@@ -21,7 +21,7 @@ public:
 
   virtual Array3D<ElemTy> &getOutput() override { return output_; }
 
-  virtual std::string getName() override { return "PNGLayer"; }
+  virtual std::string getName() const override { return "PNGLayer"; }
 
   /// Reads a png image. \returns True if an error occurred.
   bool readImage(const char *filename) {
@@ -95,6 +95,8 @@ public:
     for (int y = 0; y < height; y++)
       free(row_pointers[y]);
     free(row_pointers);
+
+    return false;
   }
 
   bool writeImage(const char *filename) {
@@ -167,6 +169,7 @@ public:
       free(row_pointers[y]);
     free(row_pointers);
     fclose(fp);
+    return false;
   }
 
   void forward() override {}

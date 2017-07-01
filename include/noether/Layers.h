@@ -13,7 +13,7 @@
 template <class ElemTy> class Layer {
 
   /// \returns a descriptive name for the operation.
-  virtual std::string getName() = 0;
+  virtual std::string getName() const = 0;
 
   /// \returns the output of a node in the compute graph.
   virtual Array3D<ElemTy> &getOutput() = 0;
@@ -21,12 +21,16 @@ template <class ElemTy> class Layer {
   /// \returns the dimension of the tensor.
   std::tuple<size_t, size_t, size_t> dims() const { return getOutput().dims(); }
 
+  /// \returns the number of elements in the tensor.
+  size_t size() const { return getOutput().size(); }
+
   /// Does the forward propagation.
   virtual void forward() = 0;
 
   /// Does the backwards propagation.
   virtual void backward() = 0;
 };
+
 
 template <class ElemTy> class ConvLayer final : public Layer<ElemTy> {
   Layer<ElemTy> *input_;
@@ -98,6 +102,58 @@ template <class ElemTy> class ConvLayer final : public Layer<ElemTy> {
           output_.get(ax, ay, d) = sum;
         }
       }
+    }
+  }
+};
+
+template <class ElemTy> class FullyConnectedLayer final : public Layer<ElemTy> {
+  /// A reference to the layer input.
+  Layer<ElemTy> *input_;
+  /// A list of filters.
+  std::vector<Array3D<ElemTy>> filters_;
+  /// The biases.
+  Array3D<ElemTy> bias_;
+  /// The output.
+  Array3D<ElemTy> output_;
+
+  FullyConnectedLayer(Layer<ElemTy> *input, size_t outDepth)
+      : input_(input) {
+    assert(input && "Invalid input layer");
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = input_->dims();
+
+    output_.reset(1, 1, outDepth);
+    bias_.reset(1, 1, outDepth);
+
+    size_t numInputs = input_->size();
+    for (size_t i = 0; i < outDepth; i++) {
+      filters_.emplace(1, 1, numInputs);
+    }
+  }
+
+  void forward() {
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = input_->dims();
+    size_t outx, outy, outz;
+    std::tie(outx, outy, outz) = output_->dims();
+    auto &inputBuffer = input_->getOutput();
+    size_t numInputs = input_->size();
+
+    for (size_t i = 0; i < outz; i++) {
+      auto &currFilter = filters_[i];
+      ElemTy sum = 0;
+
+      size_t idx = 0;
+      for (size_t x = 0; x < inx; x++) {
+        for (size_t y = 0; y < iny; y++) {
+          for (size_t z = 0; z < inz; z++) {
+            sum += inputBuffer.get(x,y,z) * currFilter[idx++];
+          }
+        }
+      }
+      assert(idx == numInputs && "Invalid index");
+      sum += bias_[i];
+      output_.get(1,1,i) = sum;
     }
   }
 };
