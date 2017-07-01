@@ -5,6 +5,7 @@
 #include <string>
 #include <cassert>
 
+/// A 3D tensor.
 template <class ElemTy>
 class Array3D final {
   size_t sx_{0}, sy_{0}, sz_{0};
@@ -17,6 +18,9 @@ class Array3D final {
   }
 
 public:
+  /// \returns the dimention of the tensor.
+  std::tuple<size_t, size_t, size_t> dims() { return {sx_, sy_, sz_}; }
+
   /// \returns the number of elements in the array.
   size_t size() { return sx_ * sy_ * sz_; }
 
@@ -34,6 +38,24 @@ public:
     return data_[getElementIdx(x,y,z)];
   }
 };
+
+/// Represents a node in the network compute graph.
+template <class ElemTy>
+class Layer {
+
+  /// \returns a descriptive name for the operation.
+  virtual std::string getName() = 0;
+
+  /// \returns the output of a node in the compute graph.
+  virtual Array3D<ElemTy> &getOutput() = 0;
+
+  /// Does the forward propagation.
+  void forward() = 0;
+
+  /// Does the backwards propagation.
+  void backward() = 0;
+};
+
 
 int main() {
   Array3D<float> X(320,200,3);
