@@ -28,7 +28,7 @@ public:
   virtual std::string getName() override { return "PNGLayer"; }
 
   /// Reads a png image. \returns True if an error occurred.
-  bool readImage(char* filename) {
+  bool readImage(const char* filename) {
         unsigned char header[8];
         // open file and test for it being a png.
         FILE *fp = fopen(filename, "rb");
@@ -62,7 +62,8 @@ public:
         int color_type = png_get_color_type(png_ptr, info_ptr);
         int bit_depth = png_get_bit_depth(png_ptr, info_ptr);
         assert(bit_depth == 8 && "Invalid image");
-        assert(color_type == PNG_COLOR_TYPE_RGB_ALPHA && "Invalid image");
+        assert(color_type == PNG_COLOR_TYPE_RGB_ALPHA || color_type == PNG_COLOR_TYPE_RGB && "Invalid image");
+        bool hasAlpha = (color_type == PNG_COLOR_TYPE_RGB_ALPHA);
 
         int number_of_passes = png_set_interlace_handling(png_ptr);
         assert(number_of_passes == 1 && "Invalid image");
@@ -85,7 +86,7 @@ public:
         for (int y=0; y<height; y++) {
           png_byte* row = row_pointers[y];
           for (int x=0; x<width; x++) {
-            png_byte* ptr = &(row[x*4]);
+            png_byte* ptr = &(row[x* (hasAlpha ? 4 : 3)]);
 
             output_.get(x,y, 0) = ptr[0];
             output_.get(x,y, 1) = ptr[1];
@@ -98,7 +99,7 @@ public:
         free(row_pointers);
 }
 
-  bool writeImage(char* filename) {
+  bool writeImage(const char* filename) {
         /* create file */
         FILE *fp = fopen(filename, "wb");
         if (!fp)
@@ -123,7 +124,7 @@ public:
           return true;
 
         size_t ix, iy, iz;
-        std::tie(ix, iy, iz) = output_->dims();
+        std::tie(ix, iy, iz) = output_.dims();
         assert(iz < 4 && "Invalid buffer to save");
 
         int width = ix;

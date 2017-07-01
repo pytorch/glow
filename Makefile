@@ -3,7 +3,7 @@ run: noether
 	./noether
 
 noether: noether.cpp
-	clang++ -std=c++14 -I include/ -Wall noether.cpp -o noether
+	clang++ -g -std=c++14 -I include/ -Wall noether.cpp -o noether -lpng
 
 clean:
 	rm -f noether
