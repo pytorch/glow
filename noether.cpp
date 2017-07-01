@@ -124,6 +124,7 @@ class ConvLayer final : public Layer<ElemTy> {
         size_t x = 0;
         for (size_t ax = 0; ax<outy ; x+=stride_, ax++) {
 
+          // For each element in the convolution-filter:
           ElemTy sum = 0;
           for (size_t fy = 0; fy < filterSize_; fy++) {
             for (size_t fx = 0; fx < filterSize_; fx++) {
