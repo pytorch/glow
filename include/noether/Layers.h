@@ -23,10 +23,10 @@ class Layer {
   std::tuple<size_t, size_t, size_t> dims() const { return getOutput().dims(); }
 
   /// Does the forward propagation.
-  void forward() = 0;
+  virtual void forward() = 0;
 
   /// Does the backwards propagation.
-  void backward() = 0;
+  virtual void backward() = 0;
 };
 
 
