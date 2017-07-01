@@ -1,0 +1,10 @@
+*.o
+*.swn
+*.swo
+*.swp
+*~
+.DS_Store
+*.so
+*.dylib
+build
+
