@@ -1,14 +1,13 @@
 #ifndef NOETHER_TENSOR_H
 #define NOETHER_TENSOR_H
 
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <cassert>
 #include <tuple>
 
 /// A 3D tensor.
-template <class ElemTy>
-class Array3D final {
+template <class ElemTy> class Array3D final {
   size_t sx_{0}, sy_{0}, sz_{0};
   ElemTy *data_{nullptr};
 
@@ -25,7 +24,9 @@ public:
   }
 
   /// \returns the dimension of the tensor.
-  std::tuple<size_t, size_t, size_t> dims() const { return std::make_tuple(sx_, sy_, sz_); }
+  std::tuple<size_t, size_t, size_t> dims() const {
+    return std::make_tuple(sx_, sy_, sz_);
+  }
 
   /// \returns the number of elements in the array.
   size_t size() const { return sx_ * sy_ * sz_; }
@@ -50,7 +51,7 @@ public:
   ~Array3D() { delete data_; }
 
   ElemTy &get(size_t x, size_t y, size_t z) const {
-    return data_[getElementIdx(x,y,z)];
+    return data_[getElementIdx(x, y, z)];
   }
 };
 

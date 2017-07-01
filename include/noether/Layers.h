@@ -3,15 +3,14 @@
 
 #include "noether/Tensor.h"
 
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <vector>
 #include <string>
-#include <cassert>
+#include <vector>
 
 /// Represents a node in the network compute graph.
-template <class ElemTy>
-class Layer {
+template <class ElemTy> class Layer {
 
   /// \returns a descriptive name for the operation.
   virtual std::string getName() = 0;
@@ -29,9 +28,7 @@ class Layer {
   virtual void backward() = 0;
 };
 
-
-template <class ElemTy>
-class ConvLayer final : public Layer<ElemTy> {
+template <class ElemTy> class ConvLayer final : public Layer<ElemTy> {
   Layer<ElemTy> *input_;
   /// A list of convolution filters.
   std::vector<Array3D<ElemTy>> filters_;
@@ -44,8 +41,9 @@ class ConvLayer final : public Layer<ElemTy> {
   size_t stride_;
   size_t pad_;
 
-  ConvLayer(Layer<ElemTy> *input, size_t outDepth, size_t filterSize, size_t stride, size_t pad) :
-    input_(input), filterSize_(filterSize), stride_(stride), pad_(pad) {
+  ConvLayer(Layer<ElemTy> *input, size_t outDepth, size_t filterSize,
+            size_t stride, size_t pad)
+      : input_(input), filterSize_(filterSize), stride_(stride), pad_(pad) {
     assert(pad == 0 && "Unsupported pad size");
     assert(input && "Invalid input layer");
     size_t inx, iny, inz;
@@ -57,7 +55,7 @@ class ConvLayer final : public Layer<ElemTy> {
     output_.reset(outsx, outsy, outDepth);
     bias_.reset(1, 1, outDepth);
 
-    for (size_t i = 0 ; i < outDepth; i++) {
+    for (size_t i = 0; i < outDepth; i++) {
       filters_.emplace(filterSize, filterSize, inz);
     }
   }
@@ -76,9 +74,9 @@ class ConvLayer final : public Layer<ElemTy> {
 
       // For each convolution 'jump' in the input tensor:
       size_t y = 0;
-      for (size_t ay = 0; ay<outy ; y+=stride_, ay++) {
+      for (size_t ay = 0; ay < outy; y += stride_, ay++) {
         size_t x = 0;
-        for (size_t ax = 0; ax<outy ; x+=stride_, ax++) {
+        for (size_t ax = 0; ax < outy; x += stride_, ax++) {
 
           // For each element in the convolution-filter:
           ElemTy sum = 0;
@@ -89,10 +87,10 @@ class ConvLayer final : public Layer<ElemTy> {
 
               if (output_.isInBounds(ox, oy)) {
                 for (size_t fd = 0; fd < inz; fd++) {
-                  sum += currFilter.get(fx, fy, fd) * inputBuffer.get(ox, oy, fd);
+                  sum +=
+                      currFilter.get(fx, fy, fd) * inputBuffer.get(ox, oy, fd);
                 }
               }
-
             }
           }
 
@@ -100,10 +98,8 @@ class ConvLayer final : public Layer<ElemTy> {
           output_.get(ax, ay, d) = sum;
         }
       }
-
     }
   }
-
 };
 
 #endif // NOETHER_LAYERS_H
