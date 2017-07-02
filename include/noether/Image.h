@@ -12,13 +12,8 @@
 #include <png.h>
 
 template <class ElemTy> class PNGLayer final : public Layer<ElemTy> {
-  /// The convolution output.
-  Array3D<ElemTy> output_;
-
 public:
   PNGLayer() {}
-
-  virtual const Array3D<ElemTy> &getOutput() const override { return output_; }
 
   virtual std::string getName() const override { return "PNGLayer"; }
 
@@ -78,16 +73,17 @@ public:
     png_read_image(png_ptr, row_pointers);
     fclose(fp);
 
-    output_.reset(width, height, 3);
+    this->output_.reset(width, height, 3);
+    this->gradient_.reset(width, height, 3);
 
     for (int y = 0; y < height; y++) {
       png_byte *row = row_pointers[y];
       for (int x = 0; x < width; x++) {
         png_byte *ptr = &(row[x * (hasAlpha ? 4 : 3)]);
 
-        output_.get(x, y, 0) = ptr[0];
-        output_.get(x, y, 1) = ptr[1];
-        output_.get(x, y, 2) = ptr[2];
+        this->output_.get(x, y, 0) = ptr[0];
+        this->output_.get(x, y, 1) = ptr[1];
+        this->output_.get(x, y, 2) = ptr[2];
       }
     }
 
@@ -124,7 +120,7 @@ public:
       return true;
 
     size_t ix, iy, iz;
-    std::tie(ix, iy, iz) = output_.dims();
+    std::tie(ix, iy, iz) = this->output_.dims();
     assert(iz < 4 && "Invalid buffer to save");
 
     int width = ix;
@@ -149,9 +145,9 @@ public:
       png_byte *row = row_pointers[y];
       for (int x = 0; x < width; x++) {
         png_byte *ptr = &(row[x * 4]);
-        ptr[0] = output_.get(x, y, 0);
-        ptr[1] = output_.get(x, y, 1);
-        ptr[2] = output_.get(x, y, 2);
+        ptr[0] = this->output_.get(x, y, 0);
+        ptr[1] = this->output_.get(x, y, 1);
+        ptr[2] = this->output_.get(x, y, 2);
         ptr[3] = 0xff;
       }
     }

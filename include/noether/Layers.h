@@ -16,8 +16,6 @@ template <class ElemTy> class ConvLayer final : public Layer<ElemTy> {
   std::vector<Array3D<ElemTy>> filters_;
   /// The convolution bias.
   Array3D<ElemTy> bias_;
-  /// The convolution output.
-  Array3D<ElemTy> output_;
 
   size_t filterSize_;
   size_t stride_;
@@ -36,7 +34,8 @@ public:
     size_t outsx = ((inx + pad_ * 2 - filterSize) / stride + 1);
     size_t outsy = ((iny + pad_ * 2 - filterSize) / stride + 1);
 
-    output_.reset(outsx, outsy, outDepth);
+    this->output_.reset(outsx, outsy, outDepth);
+    this->gradient_.reset(outsx, outsy, outDepth);
     bias_.reset(1, 1, outDepth);
 
     for (size_t i = 0; i < outDepth; i++) {
@@ -44,11 +43,9 @@ public:
     }
   }
 
-  virtual const Array3D<ElemTy> &getOutput() const override { return output_; }
-
   virtual void forward() override {
     size_t outx, outy, outz;
-    std::tie(outx, outy, outz) = output_.dims();
+    std::tie(outx, outy, outz) = this->output_.dims();
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
 
@@ -71,7 +68,7 @@ public:
               auto ox = x + fx;
               auto oy = y + fy;
 
-              if (output_.isInBounds(ox, oy, 0)) {
+              if (this->output_.isInBounds(ox, oy, 0)) {
                 for (size_t fd = 0; fd < inz; fd++) {
                   sum +=
                       currFilter.get(fx, fy, fd) * inputBuffer.get(ox, oy, fd);
@@ -81,7 +78,7 @@ public:
           }
 
           sum += bias_.get(0,0,d);
-          output_.get(ax, ay, d) = sum;
+          this->output_.get(ax, ay, d) = sum;
         }
       }
     }
@@ -99,8 +96,6 @@ template <class ElemTy> class FullyConnectedLayer final : public Layer<ElemTy> {
   std::vector<Array3D<ElemTy>> filters_;
   /// The biases.
   Array3D<ElemTy> bias_;
-  /// The output.
-  Array3D<ElemTy> output_;
 
 public:
   FullyConnectedLayer(Layer<ElemTy> *input, size_t outDepth)
@@ -109,7 +104,8 @@ public:
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
 
-    output_.reset(1, 1, outDepth);
+    this->output_.reset(1, 1, outDepth);
+    this->gradient_.reset(1, 1, outDepth);
     bias_.reset(1, 1, outDepth);
 
     for (size_t i = 0; i < outDepth; i++) {
@@ -117,13 +113,11 @@ public:
     }
   }
 
-  virtual const Array3D<ElemTy> &getOutput() const override { return output_; }
-
   virtual void forward() override {
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
     size_t outx, outy, outz;
-    std::tie(outx, outy, outz) = output_.dims();
+    std::tie(outx, outy, outz) = this->output_.dims();
     auto &inputBuffer = input_->getOutput();
 
     for (size_t i = 0; i < outz; i++) {
@@ -138,7 +132,7 @@ public:
         }
       }
       sum += bias_.get(0,0,i);
-      output_.get(0,0,i) = sum;
+      this->output_.get(0,0,i) = sum;
     }
   }
 
