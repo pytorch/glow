@@ -29,7 +29,7 @@ public:
             size_t stride, size_t pad)
       : input_(input), filterSize_(filterSize), stride_(stride), pad_(pad) {
     assert(pad == 0 && "Unsupported pad size");
-    assert(input && "Invalid input layer");
+    assert(input && input_->size() && "Invalid input");
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
 
@@ -105,7 +105,7 @@ template <class ElemTy> class FullyConnectedLayer final : public Layer<ElemTy> {
 public:
   FullyConnectedLayer(Layer<ElemTy> *input, size_t outDepth)
       : input_(input) {
-    assert(input && "Invalid input layer");
+    assert(input && input_->size() && "Invalid input");
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
 
