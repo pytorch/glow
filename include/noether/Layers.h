@@ -35,7 +35,6 @@ public:
     size_t outsy = ((iny + pad_ * 2 - filterSize) / stride + 1);
 
     this->output_.reset(outsx, outsy, outDepth);
-    this->gradient_.reset(outsx, outsy, outDepth);
     bias_.reset(1, 1, outDepth);
 
     for (size_t i = 0; i < outDepth; i++) {
@@ -71,14 +70,14 @@ public:
               if (this->output_.isInBounds(ox, oy, 0)) {
                 for (size_t fd = 0; fd < inz; fd++) {
                   sum +=
-                      currFilter.get(fx, fy, fd) * inputBuffer.get(ox, oy, fd);
+                      currFilter.get(fx, fy, fd) * inputBuffer.weight_.get(ox, oy, fd);
                 }
               }
             }
           }
 
           sum += bias_.get(0,0,d);
-          this->output_.get(ax, ay, d) = sum;
+          this->output_.weight_.get(ax, ay, d) = sum;
         }
       }
     }
@@ -105,7 +104,6 @@ public:
     std::tie(inx, iny, inz) = input_->dims();
 
     this->output_.reset(1, 1, outDepth);
-    this->gradient_.reset(1, 1, outDepth);
     bias_.reset(1, 1, outDepth);
 
     for (size_t i = 0; i < outDepth; i++) {
@@ -127,12 +125,12 @@ public:
       for (size_t x = 0; x < inx; x++) {
         for (size_t y = 0; y < iny; y++) {
           for (size_t z = 0; z < inz; z++) {
-            sum += inputBuffer.get(x,y,z) * currFilter.get(x,y,z);
+            sum += inputBuffer.weight_.get(x,y,z) * currFilter.get(x,y,z);
           }
         }
       }
       sum += bias_.get(0,0,i);
-      this->output_.get(0,0,i) = sum;
+      this->output_.weight_.get(0,0,i) = sum;
     }
   }
 

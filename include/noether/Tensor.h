@@ -23,6 +23,12 @@ public:
     return x < sx_ && y < sy_ && z < sz_;
   }
 
+  void clear(ElemTy value = 0) {
+    for (size_t i = 0, e = size(); i < e; i++) {
+      data_[i] = value;
+    }
+  }
+
   /// \returns the dimension of the tensor.
   std::tuple<size_t, size_t, size_t> dims() const {
     return std::make_tuple(sx_, sy_, sz_);
@@ -37,6 +43,7 @@ public:
   /// Initialize a new tensor.
   Array3D(size_t x, size_t y, size_t z) : sx_(x), sy_(y), sz_(z) {
     data_ = new ElemTy[size()];
+    clear();
   }
 
   /// Copy ctor.
@@ -76,6 +83,7 @@ public:
     sz_ = z;
     delete[] data_;
     data_ = new ElemTy[size()];
+    clear();
   }
 
   ~Array3D() { delete[] data_; }

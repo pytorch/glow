@@ -73,17 +73,16 @@ public:
     png_read_image(png_ptr, row_pointers);
     fclose(fp);
 
-    this->output_.reset(width, height, 3);
-    this->gradient_.reset(width, height, 3);
+    this->output_.weight_.reset(width, height, 3);
 
     for (int y = 0; y < height; y++) {
       png_byte *row = row_pointers[y];
       for (int x = 0; x < width; x++) {
         png_byte *ptr = &(row[x * (hasAlpha ? 4 : 3)]);
 
-        this->output_.get(x, y, 0) = ptr[0];
-        this->output_.get(x, y, 1) = ptr[1];
-        this->output_.get(x, y, 2) = ptr[2];
+        this->output_.weight_.get(x, y, 0) = ptr[0];
+        this->output_.weight_.get(x, y, 1) = ptr[1];
+        this->output_.weight_.get(x, y, 2) = ptr[2];
       }
     }
 
@@ -145,9 +144,9 @@ public:
       png_byte *row = row_pointers[y];
       for (int x = 0; x < width; x++) {
         png_byte *ptr = &(row[x * 4]);
-        ptr[0] = this->output_.get(x, y, 0);
-        ptr[1] = this->output_.get(x, y, 1);
-        ptr[2] = this->output_.get(x, y, 2);
+        ptr[0] = this->output_.weight_.get(x, y, 0);
+        ptr[1] = this->output_.weight_.get(x, y, 1);
+        ptr[2] = this->output_.weight_.get(x, y, 2);
         ptr[3] = 0xff;
       }
     }
