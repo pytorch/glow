@@ -2,35 +2,13 @@
 #define NOETHER_LAYERS_H
 
 #include "noether/Tensor.h"
+#include "noether/Layer.h"
 
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
-
-/// Represents a node in the network compute graph.
-template <class ElemTy> class Layer {
-
-  /// \returns a descriptive name for the operation.
-  virtual std::string getName() const = 0;
-
-  /// \returns the output of a node in the compute graph.
-  virtual Array3D<ElemTy> &getOutput() = 0;
-
-  /// \returns the dimension of the tensor.
-  std::tuple<size_t, size_t, size_t> dims() const { return getOutput().dims(); }
-
-  /// \returns the number of elements in the tensor.
-  size_t size() const { return getOutput().size(); }
-
-  /// Does the forward propagation.
-  virtual void forward() = 0;
-
-  /// Does the backwards propagation.
-  virtual void backward() = 0;
-};
-
 
 template <class ElemTy> class ConvLayer final : public Layer<ElemTy> {
   Layer<ElemTy> *input_;
@@ -44,6 +22,8 @@ template <class ElemTy> class ConvLayer final : public Layer<ElemTy> {
   size_t filterSize_;
   size_t stride_;
   size_t pad_;
+
+public:
 
   ConvLayer(Layer<ElemTy> *input, size_t outDepth, size_t filterSize,
             size_t stride, size_t pad)
@@ -60,13 +40,15 @@ template <class ElemTy> class ConvLayer final : public Layer<ElemTy> {
     bias_.reset(1, 1, outDepth);
 
     for (size_t i = 0; i < outDepth; i++) {
-      filters_.emplace(filterSize, filterSize, inz);
+      filters_.emplace_back(filterSize, filterSize, inz);
     }
   }
 
-  void forward() {
+  virtual const Array3D<ElemTy> &getOutput() const override { return output_; }
+
+  virtual void forward() override {
     size_t outx, outy, outz;
-    std::tie(outx, outy, outz) = output_->dims();
+    std::tie(outx, outy, outz) = output_.dims();
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
 
@@ -89,7 +71,7 @@ template <class ElemTy> class ConvLayer final : public Layer<ElemTy> {
               auto ox = x + fx;
               auto oy = y + fy;
 
-              if (output_.isInBounds(ox, oy)) {
+              if (output_.isInBounds(ox, oy, 0)) {
                 for (size_t fd = 0; fd < inz; fd++) {
                   sum +=
                       currFilter.get(fx, fy, fd) * inputBuffer.get(ox, oy, fd);
@@ -98,12 +80,16 @@ template <class ElemTy> class ConvLayer final : public Layer<ElemTy> {
             }
           }
 
-          sum += bias_.get(d);
+          sum += bias_.get(0,0,d);
           output_.get(ax, ay, d) = sum;
         }
       }
     }
   }
+
+  virtual void backward() override {};
+
+  virtual std::string getName() const override { return "ConvLayer"; }
 };
 
 template <class ElemTy> class FullyConnectedLayer final : public Layer<ElemTy> {
@@ -116,6 +102,7 @@ template <class ElemTy> class FullyConnectedLayer final : public Layer<ElemTy> {
   /// The output.
   Array3D<ElemTy> output_;
 
+public:
   FullyConnectedLayer(Layer<ElemTy> *input, size_t outDepth)
       : input_(input) {
     assert(input && "Invalid input layer");
@@ -126,15 +113,17 @@ template <class ElemTy> class FullyConnectedLayer final : public Layer<ElemTy> {
     bias_.reset(1, 1, outDepth);
 
     for (size_t i = 0; i < outDepth; i++) {
-      filters_.emplace(inx, iny, inz);
+      filters_.emplace_back(inx, iny, inz);
     }
   }
 
-  void forward() {
+  virtual const Array3D<ElemTy> &getOutput() const override { return output_; }
+
+  virtual void forward() override {
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
     size_t outx, outy, outz;
-    std::tie(outx, outy, outz) = output_->dims();
+    std::tie(outx, outy, outz) = output_.dims();
     auto &inputBuffer = input_->getOutput();
 
     for (size_t i = 0; i < outz; i++) {
@@ -148,10 +137,14 @@ template <class ElemTy> class FullyConnectedLayer final : public Layer<ElemTy> {
           }
         }
       }
-      sum += bias_[i];
-      output_.get(1,1,i) = sum;
+      sum += bias_.get(0,0,i);
+      output_.get(0,0,i) = sum;
     }
   }
+
+  virtual void backward() override {};
+
+  virtual std::string getName() const override { return "FullyConnectedLayer"; }
 };
 
 #endif // NOETHER_LAYERS_H

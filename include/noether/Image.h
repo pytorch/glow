@@ -1,14 +1,13 @@
 #ifndef NOETHER_IMAGE_H
 #define NOETHER_IMAGE_H
 
-#include "noether/Layers.h"
+#include "noether/Layer.h"
 #include "noether/Tensor.h"
 
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <string>
-#include <vector>
 
 #include <png.h>
 
@@ -19,7 +18,7 @@ template <class ElemTy> class PNGLayer final : public Layer<ElemTy> {
 public:
   PNGLayer() {}
 
-  virtual Array3D<ElemTy> &getOutput() override { return output_; }
+  virtual const Array3D<ElemTy> &getOutput() const override { return output_; }
 
   virtual std::string getName() const override { return "PNGLayer"; }
 

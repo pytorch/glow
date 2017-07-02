@@ -12,7 +12,12 @@
 int main() {
   Array3D<float> X(320, 200, 3);
   X.get(10u, 10u, 2u) = 2;
-  PNGLayer<float> x;
-  x.readImage("./map.png");
+  PNGLayer<float> In;
+  In.readImage("./map.png");
+  ConvLayer<float> CL(&In, 30, 5, 2, 0);
+  FullyConnectedLayer<float> FL(&CL, 100);
+
+  FL.forward();
+
   //x.writeImage("./map2.png");
 }
