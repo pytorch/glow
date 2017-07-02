@@ -39,16 +39,46 @@ public:
     data_ = new ElemTy[size()];
   }
 
+  /// Copy ctor.
+  Array3D (const Array3D& other) = delete;
+
+  // Move ctor.
+  Array3D (Array3D&& other) noexcept {
+    data_ = other.data_;
+    sx_ = other.sx_;
+    sy_ = other.sy_;
+    sz_ = other.sz_;
+    other.data_ = nullptr;
+    other.sx_ = 0;
+    other.sy_ = 0;
+    other.sz_ = 0;
+  }
+
+  Array3D& operator= (const Array3D& other) = delete;
+
+  /// Move assignment operator.
+  Array3D& operator= (Array3D&& other) noexcept {
+    data_ = other.data_;
+    sx_ = other.sx_;
+    sy_ = other.sy_;
+    sz_ = other.sz_;
+    other.data_ = nullptr;
+    other.sx_ = 0;
+    other.sy_ = 0;
+    other.sz_ = 0;
+    return *this;
+  }
+
   /// Assigns a new shape to the tensor and allocates a new buffer.
   void reset(size_t x, size_t y, size_t z) {
     sx_ = x;
     sy_ = y;
     sz_ = z;
-    delete data_;
+    delete[] data_;
     data_ = new ElemTy[size()];
   }
 
-  ~Array3D() { delete data_; }
+  ~Array3D() { delete[] data_; }
 
   ElemTy &get(size_t x, size_t y, size_t z) const {
     return data_[getElementIdx(x, y, z)];
