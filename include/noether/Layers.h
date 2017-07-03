@@ -83,7 +83,48 @@ public:
     }
   }
 
-  virtual void backward() override {};
+  virtual void backward() override {
+    size_t outx, outy, outz;
+    std::tie(outx, outy, outz) = this->output_.dims();
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = input_->dims();
+    auto &inputBuffer = input_->getOutput();
+
+    // Zero the gradient of the input.
+    inputBuffer.gradient_.clear();
+
+    // Compute the gradient. For each layer in the output tensor:
+    for (size_t d = 0; d < outz; d++) {
+      auto &currFilter = filters_[d];
+
+      // For each convolution 'jump' in the input tensor:
+      size_t y = 0;
+      for (size_t ay = 0; ay < outy; y += stride_, ay++) {
+        size_t x = 0;
+        for (size_t ax = 0; ax < outy; x += stride_, ax++) {
+
+          ElemTy chainGrad = this->output_.gradient_.at(ax,ay, d);
+
+          // For each element in the convolution-filter:
+          for (size_t fy = 0; fy < filterSize_; fy++) {
+            for (size_t fx = 0; fx < filterSize_; fx++) {
+              auto ox = x + fx;
+              auto oy = y + fy;
+
+              if (this->output_.isInBounds(ox, oy, 0)) {
+                for (size_t fd = 0; fd < inz; fd++) {
+                  currFilter.gradient_.at(fx, fy, fd) += chainGrad * inputBuffer.weight_.at(ox, oy, fd);
+                  inputBuffer.gradient_.at(ox, oy, fd) += currFilter.weight_.at(fx, fy, fd);
+                }
+              }
+            }
+          }
+
+          bias_.gradient_.at(0,0,d) += chainGrad;
+        }
+      }
+    }
+  }
 
   virtual std::string getName() const override { return "ConvLayer"; }
 };
@@ -134,7 +175,35 @@ public:
     }
   }
 
-  virtual void backward() override {};
+  virtual void backward() override {
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = input_->dims();
+    size_t outx, outy, outz;
+    std::tie(outx, outy, outz) = this->output_.dims();
+    auto &inputBuffer = input_->getOutput();
+
+    // Zero the gradient of the input.
+    inputBuffer.gradient_.clear();
+
+    // Compute the gradient:
+    for (size_t i = 0; i < outz; i++) {
+      auto &currFilter = filters_[i];
+      ElemTy chainGrad = this->output_.gradient_.at(0,0,i);
+
+      for (size_t x = 0; x < inx; x++) {
+        for (size_t y = 0; y < iny; y++) {
+          for (size_t z = 0; z < inz; z++) {
+            // Input gradient:
+            inputBuffer.gradient_.at(x,y,z) += currFilter.weight_.at(x,y,z) * chainGrad;
+            // Param gradient:
+            currFilter.gradient_.at(x,y,z) += inputBuffer.weight_.at(x,y,z) * chainGrad;
+          }
+        }
+      }
+
+      this->bias_.gradient_.at(0,0,i) += chainGrad;
+    }
+  }
 
   virtual std::string getName() const override { return "FullyConnectedLayer"; }
 };
