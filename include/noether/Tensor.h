@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <tuple>
 
+namespace noether {
+
 /// A 3D tensor.
 template <class ElemTy> class Array3D final {
   size_t sx_{0}, sy_{0}, sz_{0};
@@ -104,5 +106,7 @@ public:
     return data_[getElementIdx(x, y, z)];
   }
 };
+
+}
 
 #endif // NOETHER_TENSOR_H

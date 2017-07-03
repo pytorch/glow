@@ -11,6 +11,7 @@
 #include <vector>
 #include <cmath>
 
+namespace noether {
 
 template <class ElemTy> class ConvLayer final : public Layer<ElemTy> {
   Layer<ElemTy> *input_;
@@ -25,9 +26,9 @@ template <class ElemTy> class ConvLayer final : public Layer<ElemTy> {
 
 public:
 
-  ConvLayer(Layer<ElemTy> *input, size_t outDepth, size_t filterSize,
+  ConvLayer(Network *N, Layer<ElemTy> *input, size_t outDepth, size_t filterSize,
             size_t stride, size_t pad)
-      : input_(input), filterSize_(filterSize), stride_(stride), pad_(pad) {
+      : Layer<ElemTy>(N), input_(input), filterSize_(filterSize), stride_(stride), pad_(pad) {
     assert(pad == 0 && "Unsupported pad size");
     assert(input && input_->size() && "Invalid input");
     size_t inx, iny, inz;
@@ -42,6 +43,12 @@ public:
     for (size_t i = 0; i < outDepth; i++) {
       filters_.emplace_back(filterSize, filterSize, inz);
     }
+
+    for (size_t i = 0; i < outDepth; i++) {
+      N->registerDerivTensor(this, &filters_[i]);
+    }
+
+    N->registerDerivTensor(this, &bias_);
   }
 
   virtual void forward() override {
@@ -139,8 +146,8 @@ template <class ElemTy> class FullyConnectedLayer final : public Layer<ElemTy> {
   DerivData<ElemTy> bias_;
 
 public:
-  FullyConnectedLayer(Layer<ElemTy> *input, size_t outDepth)
-      : input_(input) {
+  FullyConnectedLayer(Network *N, Layer<ElemTy> *input, size_t outDepth)
+      : Layer<ElemTy>(N), input_(input) {
     assert(input && input_->size() && "Invalid input");
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
@@ -151,6 +158,12 @@ public:
     for (size_t i = 0; i < outDepth; i++) {
       filters_.emplace_back(inx, iny, inz);
     }
+
+    for (size_t i = 0; i < outDepth; i++) {
+      N->registerDerivTensor(this, &filters_[i]);
+    }
+
+    N->registerDerivTensor(this, &bias_);
   }
 
   virtual void forward() override {
@@ -215,8 +228,8 @@ template <class ElemTy> class RELULayer final : public Layer<ElemTy> {
   Layer<ElemTy> *input_;
 
 public:
-  RELULayer(Layer<ElemTy> *input)
-  : input_(input) {
+  RELULayer(Network *N, Layer<ElemTy> *input)
+  : Layer<ElemTy>(N), input_(input) {
     assert(input && input_->size() && "Invalid input");
     this->output_.reset(input_->dims());
   }
@@ -275,8 +288,8 @@ public:
   /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
   /// And \p selected that's the selected one-hot representation of the
   /// softmax function.
-  SoftMaxLayer(Layer<ElemTy> *input, size_t selected)
-  : input_(input), selected_(selected) {
+  SoftMaxLayer(Network *N, Layer<ElemTy> *input, size_t selected)
+  : Layer<ElemTy>(N), input_(input), selected_(selected) {
     assert(input && input_->size() && "Invalid input");
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
@@ -336,8 +349,9 @@ public:
     return -std::log(e_.at(0,0,selected_));
   }
 
-  virtual std::string getName() const override { return "RELULayer"; }
+  virtual std::string getName() const override { return "SoftMaxLayer"; }
 };
 
+}
 
 #endif // NOETHER_LAYERS_H

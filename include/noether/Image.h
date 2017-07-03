@@ -11,9 +11,11 @@
 
 #include <png.h>
 
+namespace noether {
+
 template <class ElemTy> class PNGLayer final : public Layer<ElemTy> {
 public:
-  PNGLayer() {}
+  PNGLayer(Network *N) : Layer<ElemTy>(N) {}
 
   virtual std::string getName() const override { return "PNGLayer"; }
 
@@ -170,5 +172,7 @@ public:
 
   void backward() override {}
 };
+
+}
 
 #endif // NOETHER_IMAGE_H

@@ -6,11 +6,52 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <map>
 
 
-/// A pair of some weighted data and it's derivative.
-/// The derivative (gradient) of the data is optionally initialized.
-template <class ElemTy> struct DerivData {
+namespace noether {
+
+class LayerBase;
+
+class TrainableData;
+
+class Network {
+  /// A list of dependencies.
+  std::map<LayerBase*, std::vector<LayerBase*>> deps_;
+
+  /// A list of buffers to train as part of the backwards prop pass.
+  std::map<LayerBase*, std::vector<TrainableData*>> trainableBuffers_;
+
+  /// Generate a topological order of the nodes in the network.
+  void sortNetwork(std::vector<LayerBase*> &order);
+public:
+  Network();
+
+  /// Add \p dep as a dependency (prerequisite) for \p layer.
+  void addLayerDependency(LayerBase *node, LayerBase *dep);
+
+  /// Registers the derivable data \p weights (weights and gradient) as
+  /// belonging to the node \p node.
+  void registerDerivTensor(LayerBase *node, TrainableData *weights);
+
+  /// Does the forward propagation.
+  virtual void forward();
+
+  /// Does the backwards propagation.
+  virtual void backward();
+};
+
+
+class TrainableData {
+public:
+  /// Perform a single iteration of the simple SGD algorithm for updating the
+  /// weights of the program based on the gradients.
+  virtual void train() = 0;
+};
+
+/// A pair of some weights and it's derivative. The derivative (gradient) of the
+/// weights is optionally initialized.
+template <class ElemTy> struct DerivData : public TrainableData {
   /// W - the weight.
   Array3D<ElemTy> weight_{};
   /// dW - the derivative of the weight.
@@ -48,6 +89,29 @@ template <class ElemTy> struct DerivData {
       gradient_.reset(x,y,z);
   }
 
+  virtual void train () override {
+    ElemTy batchSize = 1;
+    ElemTy L1Decay = 0;
+    ElemTy L2Decay = 0;
+    ElemTy learningRate = 0.01;
+
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = dims();
+
+    // For each weight/gradient pair:
+    for (size_t x = 0; x < inx; x++) {
+      for (size_t y = 0; y < iny; y++) {
+        for (size_t z = 0; z < inz; z++) {
+          // Do a simple SGD update:
+          ElemTy L1Grad = L1Decay * (weight_.at(x, y, z) > 0 ? 1 : -1);
+          ElemTy L2Grad = L2Decay * (weight_.at(x, y, z));
+          ElemTy gij = (L2Grad + L1Grad + gradient_.at(x,y,z)) / batchSize;
+          weight_.at(x,y,z) -= learningRate * gij;
+        }
+      }
+    }
+  }
+
   /// Performs some checks to validate the correctness of the payload.
   void verify() {
     if (gradient_.size()) {
@@ -57,15 +121,27 @@ template <class ElemTy> struct DerivData {
   }
 };
 
+/// This is the non-templated part of the compute node.
+class LayerBase {
+public:
+  /// \returns a descriptive name for the operation.
+  virtual std::string getName() const = 0;
+
+  /// Does the forward propagation.
+  virtual void forward() = 0;
+
+  /// Does the backwards propagation.
+  virtual void backward() = 0;
+};
+
 /// Represents a node in the network compute graph.
-template <class ElemTy> class Layer {
+template <class ElemTy> class Layer : public LayerBase {
 protected:
   /// The filter output.
   DerivData<ElemTy> output_;
 
 public:
-  /// \returns a descriptive name for the operation.
-  virtual std::string getName() const = 0;
+  Layer(Network *N) { N->registerDerivTensor(this, &output_); }
 
   /// \returns the output of a node in the compute graph.
   DerivData<ElemTy> &getOutput() { return output_; }
@@ -77,12 +153,8 @@ public:
 
   /// \returns the number of elements in the tensor.
   size_t size() const { return output_.size(); }
-
-  /// Does the forward propagation.
-  virtual void forward() = 0;
-
-  /// Does the backwards propagation.
-  virtual void backward() = 0;
 };
+
+}
 
 #endif // NOETHER_LAYER_H
