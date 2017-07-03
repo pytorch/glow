@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 #include <map>
 
 
@@ -20,7 +21,7 @@ class Network {
   std::map<LayerBase*, std::vector<LayerBase*>> deps_;
 
   /// A list of buffers to train as part of the backwards prop pass.
-  std::map<LayerBase*, std::vector<TrainableData*>> trainableBuffers_;
+  std::vector<TrainableData*> trainableBuffers_;
 
   /// Generate a topological order of the nodes in the network.
   void sortNetwork(std::vector<LayerBase*> &order);
@@ -34,11 +35,11 @@ public:
   /// belonging to the node \p node.
   void registerDerivTensor(LayerBase *node, TrainableData *weights);
 
-  /// Does the forward propagation.
-  virtual void forward();
+  /// Train the network on a single input.
+  void train();
 
-  /// Does the backwards propagation.
-  virtual void backward();
+  /// Infer data for a single input.
+  void infer();
 };
 
 
@@ -93,7 +94,7 @@ template <class ElemTy> struct DerivData : public TrainableData {
     ElemTy batchSize = 1;
     ElemTy L1Decay = 0;
     ElemTy L2Decay = 0;
-    ElemTy learningRate = 0.01;
+    ElemTy learningRate = 0.001;
 
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = dims();

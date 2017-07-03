@@ -31,6 +31,7 @@ public:
       : Layer<ElemTy>(N), input_(input), filterSize_(filterSize), stride_(stride), pad_(pad) {
     assert(pad == 0 && "Unsupported pad size");
     assert(input && input_->size() && "Invalid input");
+    N->addLayerDependency(this, input);
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
 
@@ -149,6 +150,7 @@ public:
   FullyConnectedLayer(Network *N, Layer<ElemTy> *input, size_t outDepth)
       : Layer<ElemTy>(N), input_(input) {
     assert(input && input_->size() && "Invalid input");
+    N->addLayerDependency(this, input);
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
 
@@ -232,6 +234,7 @@ public:
   : Layer<ElemTy>(N), input_(input) {
     assert(input && input_->size() && "Invalid input");
     this->output_.reset(input_->dims());
+    N->addLayerDependency(this, input);
   }
 
   virtual void forward() override {
@@ -288,9 +291,10 @@ public:
   /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
   /// And \p selected that's the selected one-hot representation of the
   /// softmax function.
-  SoftMaxLayer(Network *N, Layer<ElemTy> *input, size_t selected)
+  SoftMaxLayer(Network *N, Layer<ElemTy> *input, size_t selected = 0)
   : Layer<ElemTy>(N), input_(input), selected_(selected) {
     assert(input && input_->size() && "Invalid input");
+    N->addLayerDependency(this, input);
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
     assert(inx == 1 && iny == 1 && "Softmax input must be 1x1xN");
@@ -329,6 +333,13 @@ public:
     }
   }
 
+  void setSelected(size_t selected) {
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = input_->dims();
+    assert(inx == 1 && iny == 1 && selected < inz && "Invalid selection");
+    selected_ = selected;
+  }
+
   virtual void backward() override {
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
@@ -340,7 +351,7 @@ public:
     for (size_t z = 0; z < inz; z++) {
       ElemTy indicator = (selected_ == z ? 1 : 0);
       ElemTy mul = -(indicator - e_.at(0,0,z));
-      InDW.at(1,1,z) = mul;
+      InDW.at(0,0,z) = mul;
     }
   }
 

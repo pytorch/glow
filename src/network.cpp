@@ -2,6 +2,7 @@
 #include "noether/Layers.h"
 #include "noether/Tensor.h"
 
+#include <iostream>
 #include <unordered_set>
 
 using namespace noether;
@@ -37,7 +38,7 @@ void Network::sortNetwork(std::vector<LayerBase*> &order) {
       // For all dependencies of this node:
       for (auto &dep : deps_[node]) {
         // Ignore nodes that we already finished.
-        if (visited.count(node))
+        if (visited.count(dep))
           continue;
         stack.push_back(dep);
         pushed = true;
@@ -56,7 +57,6 @@ void Network::sortNetwork(std::vector<LayerBase*> &order) {
     stack.pop_back();
   }
   assert(order.size() >= deps_.size() && "Invalid order");
-  std::reverse(order.begin(), order.end());
 }
 
 void Network::addLayerDependency(LayerBase *node, LayerBase *dep) {
@@ -64,11 +64,49 @@ void Network::addLayerDependency(LayerBase *node, LayerBase *dep) {
 }
 
 void Network::registerDerivTensor(LayerBase *node, TrainableData *weights) {
-  trainableBuffers_[node].push_back(weights);
+  trainableBuffers_.push_back(weights);
 }
 
-void Network::forward() {}
+void Network::train() {
+  std::vector<LayerBase*> order;
+  sortNetwork(order);
 
-void Network::backward() {}
+  std::cout<<"Network structure:";
+  for (auto &node : order) {
+    std::cout<<node->getName()<<" ";
+  }
+  std::cout<<"\n";
 
+  // Forward scan.
+  for (unsigned i = 0, e = order.size(); i < e; i++) {
+    order[i]->forward();
+  }
+
+  // Backward scan in reverse order.
+  for (unsigned i = 0, e = order.size(); i < e; i++) {
+    order[e - i - 1]->backward();
+  }
+
+  // Update the gradients.
+  for (auto &buffer: trainableBuffers_) {
+      buffer->train();
+  }
+
+}
+
+void Network::infer() {
+  std::vector<LayerBase*> order;
+  sortNetwork(order);
+
+  std::cout<<"Network structure:";
+  for (auto &node : order) {
+    std::cout<<node->getName()<<" ";
+  }
+  std::cout<<"\n";
+
+  // Forward scan.
+  for (unsigned i = 0, e = order.size(); i < e; i++) {
+    order[i]->forward();
+  }
+}
 

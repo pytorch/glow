@@ -173,6 +173,19 @@ public:
   void backward() override {}
 };
 
+template <class ElemTy> class ArrayLayer final : public Layer<ElemTy> {
+public:
+  ArrayLayer(Network *N, size_t x, size_t y, size_t z) : Layer<ElemTy>(N) {
+    this->getOutput().reset(x,y,z);
+  }
+
+  virtual std::string getName() const override { return "ArrayLayer"; }
+
+  void forward() override {}
+
+  void backward() override {}
+};
+
 }
 
 #endif // NOETHER_IMAGE_H
