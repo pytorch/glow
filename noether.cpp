@@ -17,9 +17,9 @@ int main() {
   ConvLayer<float> CL(&In, 30, 5, 2, 0);
   FullyConnectedLayer<float> FL(&CL, 100);
   RELULayer<float> RL(&In);
+  SoftMaxLayer<float> SM(&FL, 1);
 
-
-  FL.forward();
+  SM.forward();
 
   //x.writeImage("./map2.png");
 }

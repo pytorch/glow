@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <cmath>
+
 
 template <class ElemTy> class ConvLayer final : public Layer<ElemTy> {
   Layer<ElemTy> *input_;
@@ -258,5 +260,84 @@ public:
 
   virtual std::string getName() const override { return "RELULayer"; }
 };
+
+
+template <class ElemTy> class SoftMaxLayer final : public Layer<ElemTy> {
+  /// A reference to the layer input.
+  Layer<ElemTy> *input_;
+  /// The selected one-hot value from the softmax function.
+  size_t selected_;
+
+  /// A temporary array for storing the subexpression (e ^ (a[i] - max)).
+  Array3D<ElemTy> e_;
+
+public:
+  /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
+  /// And \p selected that's the selected one-hot representation of the
+  /// softmax function.
+  SoftMaxLayer(Layer<ElemTy> *input, size_t selected)
+  : input_(input), selected_(selected) {
+    assert(input && input_->size() && "Invalid input");
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = input_->dims();
+    assert(inx == 1 && iny == 1 && "Softmax input must be 1x1xN");
+    this->output_.reset(1, 1, inz);
+    e_.reset(1,1,inz);
+  }
+
+  virtual void forward() override {
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = input_->dims();
+    auto &inputBuffer = input_->getOutput();
+
+    auto &OutW = this->output_.weight_;
+    auto &InW = inputBuffer.weight_;
+
+    ElemTy max = InW.at(0, 0, 0);
+
+    // Find Max.
+    for (size_t z = 0; z < inz; z++) {
+      max = std::max(max, InW.at(0, 0, z));
+    }
+
+    ElemTy sum = 0;
+
+    // Compute exp.
+    for (size_t z = 0; z < inz; z++) {
+      ElemTy e = std::exp(InW.at(0, 0, z) - max);
+      sum += e;
+      e_.at(0,0,z) = e;
+    }
+
+    // Normalize the output.
+    for (size_t z = 0; z < inz; z++) {
+      e_.at(0, 0, z) /= sum;
+      OutW.at(0, 0, z) = e_.at(0, 0, z);
+    }
+  }
+
+  virtual void backward() override {
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = input_->dims();
+    auto &inputBuffer = input_->getOutput();
+    auto &InDW = inputBuffer.gradient_;
+
+    InDW.clear();
+
+    for (size_t z = 0; z < inz; z++) {
+      ElemTy indicator = (selected_ == z ? 1 : 0);
+      ElemTy mul = -(indicator - e_.at(0,0,z));
+      InDW.at(1,1,z) = mul;
+    }
+  }
+
+  ElemTy loss () {
+    // The loss is the class' negative log likelihood.
+    return -std::log(e_.at(0,0,selected_));
+  }
+
+  virtual std::string getName() const override { return "RELULayer"; }
+};
+
 
 #endif // NOETHER_LAYERS_H
