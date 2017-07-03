@@ -47,7 +47,6 @@ public:
     std::tie(outx, outy, outz) = this->output_.dims();
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
-
     auto &inputBuffer = input_->getOutput();
 
     // For each layer in the output tensor:
@@ -206,6 +205,58 @@ public:
   }
 
   virtual std::string getName() const override { return "FullyConnectedLayer"; }
+};
+
+
+template <class ElemTy> class RELULayer final : public Layer<ElemTy> {
+  /// A reference to the layer input.
+  Layer<ElemTy> *input_;
+
+public:
+  RELULayer(Layer<ElemTy> *input)
+  : input_(input) {
+    assert(input && input_->size() && "Invalid input");
+    this->output_.reset(input_->dims());
+  }
+
+  virtual void forward() override {
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = input_->dims();
+    auto &inputBuffer = input_->getOutput();
+
+    auto &OutW = this->output_.weight_;
+    auto &InW = inputBuffer.weight_;
+
+    for (size_t x = 0; x < inx; x++) {
+      for (size_t y = 0; y < iny; y++) {
+        for (size_t z = 0; z < inz; z++) {
+          ElemTy val = InW.at(x,y,z);
+          OutW.at(x,y,z) = val < 0 ? 0 : val;
+        }
+      }
+    }
+  }
+
+  virtual void backward() override {
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = input_->dims();
+    auto &inputBuffer = input_->getOutput();
+
+    auto &OutW = this->output_.weight_;
+    auto &OutDW = this->output_.gradient_;
+    auto &InDW = inputBuffer.gradient_;
+
+    for (size_t x = 0; x < inx; x++) {
+      for (size_t y = 0; y < iny; y++) {
+        for (size_t z = 0; z < inz; z++) {
+          ElemTy val = OutW.at(x,y,z);
+          InDW.at(x,y,z) = (val < 0 ? 0 : OutDW.at(x,y,z));
+        }
+      }
+    }
+  }
+
+  virtual std::string getName() const override { return "RELULayer"; }
 };
 
 #endif // NOETHER_LAYERS_H

@@ -36,6 +36,13 @@ template <class ElemTy> struct DerivData {
   size_t size() const { return weight_.size(); }
 
   /// Resets the weights and gradients.
+  void reset(std::tuple<size_t, size_t, size_t> dim) {
+    size_t x, y, z;
+    std::tie(x, y, z) = dim;
+    reset(x,y,z);
+  }
+
+  /// Resets the weights and gradients.
   void reset(size_t x, size_t y, size_t z) {
       weight_.reset(x,y,z);
       gradient_.reset(x,y,z);

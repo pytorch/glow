@@ -16,6 +16,8 @@ int main() {
   In.readImage("./build/map.png");
   ConvLayer<float> CL(&In, 30, 5, 2, 0);
   FullyConnectedLayer<float> FL(&CL, 100);
+  RELULayer<float> RL(&In);
+
 
   FL.forward();
 

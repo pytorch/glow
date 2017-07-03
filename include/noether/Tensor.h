@@ -76,6 +76,13 @@ public:
   }
 
   /// Assigns a new shape to the tensor and allocates a new buffer.
+  void reset(std::tuple<size_t, size_t, size_t> dim) {
+    size_t x, y, z;
+    std::tie(x, y, z) = dim;
+    reset(x,y,z);
+  }
+
+  /// Assigns a new shape to the tensor and allocates a new buffer.
   void reset(size_t x, size_t y, size_t z) {
     sx_ = x;
     sy_ = y;
