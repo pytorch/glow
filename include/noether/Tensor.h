@@ -1,6 +1,7 @@
 #ifndef NOETHER_TENSOR_H
 #define NOETHER_TENSOR_H
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -24,9 +25,7 @@ public:
   }
 
   void clear(ElemTy value = 0) {
-    for (size_t i = 0, e = size(); i < e; i++) {
-      data_[i] = value;
-    }
+      std::fill(&data_[0], &data_[0] + size(), value);
   }
 
   /// \returns the dimension of the tensor.
@@ -88,7 +87,13 @@ public:
 
   ~Array3D() { delete[] data_; }
 
-  ElemTy &get(size_t x, size_t y, size_t z) const {
+  /// Access the flat memory inside the tensor.
+  ElemTy &atDirectIndex(size_t index) {
+    assert(index < size() && "Out of bounds");
+    return data_[index];
+  }
+
+  ElemTy &at(size_t x, size_t y, size_t z) {
     return data_[getElementIdx(x, y, z)];
   }
 };

@@ -80,9 +80,9 @@ public:
       for (int x = 0; x < width; x++) {
         png_byte *ptr = &(row[x * (hasAlpha ? 4 : 3)]);
 
-        this->output_.weight_.get(x, y, 0) = ptr[0];
-        this->output_.weight_.get(x, y, 1) = ptr[1];
-        this->output_.weight_.get(x, y, 2) = ptr[2];
+        this->output_.weight_.at(x, y, 0) = ptr[0];
+        this->output_.weight_.at(x, y, 1) = ptr[1];
+        this->output_.weight_.at(x, y, 2) = ptr[2];
       }
     }
 
@@ -144,9 +144,9 @@ public:
       png_byte *row = row_pointers[y];
       for (int x = 0; x < width; x++) {
         png_byte *ptr = &(row[x * 4]);
-        ptr[0] = this->output_.weight_.get(x, y, 0);
-        ptr[1] = this->output_.weight_.get(x, y, 1);
-        ptr[2] = this->output_.weight_.get(x, y, 2);
+        ptr[0] = this->output_.weight_.at(x, y, 0);
+        ptr[1] = this->output_.weight_.at(x, y, 1);
+        ptr[2] = this->output_.weight_.at(x, y, 2);
         ptr[3] = 0xff;
       }
     }

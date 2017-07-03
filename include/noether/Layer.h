@@ -61,7 +61,7 @@ public:
   virtual std::string getName() const = 0;
 
   /// \returns the output of a node in the compute graph.
-  const DerivData<ElemTy> &getOutput() const { return output_; }
+  DerivData<ElemTy> &getOutput() { return output_; }
 
   /// \returns the dimension of the tensor.
   std::tuple<size_t, size_t, size_t> dims() const {

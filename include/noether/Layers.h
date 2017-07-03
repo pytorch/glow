@@ -13,9 +13,9 @@
 template <class ElemTy> class ConvLayer final : public Layer<ElemTy> {
   Layer<ElemTy> *input_;
   /// A list of convolution filters.
-  std::vector<Array3D<ElemTy>> filters_;
+  std::vector<DerivData<ElemTy>> filters_;
   /// The convolution bias.
-  Array3D<ElemTy> bias_;
+  DerivData<ElemTy> bias_;
 
   size_t filterSize_;
   size_t stride_;
@@ -69,15 +69,15 @@ public:
 
               if (this->output_.isInBounds(ox, oy, 0)) {
                 for (size_t fd = 0; fd < inz; fd++) {
-                  sum +=
-                      currFilter.get(fx, fy, fd) * inputBuffer.weight_.get(ox, oy, fd);
+                  sum += currFilter.weight_.at(fx, fy, fd) *
+                    inputBuffer.weight_.at(ox, oy, fd);
                 }
               }
             }
           }
 
-          sum += bias_.get(0,0,d);
-          this->output_.weight_.get(ax, ay, d) = sum;
+          sum += bias_.weight_.at(0,0,d);
+          this->output_.weight_.at(ax, ay, d) = sum;
         }
       }
     }
@@ -92,9 +92,9 @@ template <class ElemTy> class FullyConnectedLayer final : public Layer<ElemTy> {
   /// A reference to the layer input.
   Layer<ElemTy> *input_;
   /// A list of filters.
-  std::vector<Array3D<ElemTy>> filters_;
+  std::vector<DerivData<ElemTy>> filters_;
   /// The biases.
-  Array3D<ElemTy> bias_;
+  DerivData<ElemTy> bias_;
 
 public:
   FullyConnectedLayer(Layer<ElemTy> *input, size_t outDepth)
@@ -125,12 +125,12 @@ public:
       for (size_t x = 0; x < inx; x++) {
         for (size_t y = 0; y < iny; y++) {
           for (size_t z = 0; z < inz; z++) {
-            sum += inputBuffer.weight_.get(x,y,z) * currFilter.get(x,y,z);
+            sum += inputBuffer.weight_.at(x,y,z) * currFilter.weight_.at(x,y,z);
           }
         }
       }
-      sum += bias_.get(0,0,i);
-      this->output_.weight_.get(0,0,i) = sum;
+      sum += bias_.weight_.at(0,0,i);
+      this->output_.weight_.at(0,0,i) = sum;
     }
   }
 

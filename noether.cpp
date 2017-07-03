@@ -11,7 +11,7 @@
 
 int main() {
   Array3D<float> X(320, 200, 3);
-  X.get(10u, 10u, 2u) = 2;
+  X.at(10u, 10u, 2u) = 2;
   PNGLayer<float> In;
   In.readImage("./build/map.png");
   ConvLayer<float> CL(&In, 30, 5, 2, 0);
