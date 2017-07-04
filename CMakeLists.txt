@@ -17,7 +17,7 @@ include_directories(BEFORE
 
 file(GLOB_RECURSE header_files include/noether/*.h)
 
-add_executable(noether noether.cpp ./src/noether/network.cpp ${header_files})
+add_executable(noether noether.cpp ./src/noether/Network.cpp ${header_files})
 
 target_compile_options(noether PUBLIC -std=c++14 -Wall)
 
