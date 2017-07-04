@@ -13,8 +13,8 @@
 
 namespace noether {
 
-template <class ElemTy> class ConvLayer final : public Layer<ElemTy> {
-  Layer<ElemTy> *input_;
+template <class ElemTy> class ConvNode final : public Node<ElemTy> {
+  Node<ElemTy> *input_;
   /// A list of convolution filters.
   std::vector<DerivData<ElemTy>> filters_;
   /// The convolution bias.
@@ -26,12 +26,12 @@ template <class ElemTy> class ConvLayer final : public Layer<ElemTy> {
 
 public:
 
-  ConvLayer(Network *N, Layer<ElemTy> *input, size_t outDepth, size_t filterSize,
+  ConvNode(Network *N, Node<ElemTy> *input, size_t outDepth, size_t filterSize,
             size_t stride, size_t pad)
-      : Layer<ElemTy>(N), input_(input), filterSize_(filterSize), stride_(stride), pad_(pad) {
+      : Node<ElemTy>(N), input_(input), filterSize_(filterSize), stride_(stride), pad_(pad) {
     assert(pad == 0 && "Unsupported pad size");
     assert(input && input_->size() && "Invalid input");
-    N->addLayerDependency(this, input);
+    N->addNodeDependency(this, input);
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
 
@@ -135,22 +135,22 @@ public:
     }
   }
 
-  virtual std::string getName() const override { return "ConvLayer"; }
+  virtual std::string getName() const override { return "ConvNode"; }
 };
 
-template <class ElemTy> class FullyConnectedLayer final : public Layer<ElemTy> {
+template <class ElemTy> class FullyConnectedNode final : public Node<ElemTy> {
   /// A reference to the layer input.
-  Layer<ElemTy> *input_;
+  Node<ElemTy> *input_;
   /// A list of filters.
   std::vector<DerivData<ElemTy>> filters_;
   /// The biases.
   DerivData<ElemTy> bias_;
 
 public:
-  FullyConnectedLayer(Network *N, Layer<ElemTy> *input, size_t outDepth)
-      : Layer<ElemTy>(N), input_(input) {
+  FullyConnectedNode(Network *N, Node<ElemTy> *input, size_t outDepth)
+      : Node<ElemTy>(N), input_(input) {
     assert(input && input_->size() && "Invalid input");
-    N->addLayerDependency(this, input);
+    N->addNodeDependency(this, input);
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
 
@@ -221,20 +221,20 @@ public:
     }
   }
 
-  virtual std::string getName() const override { return "FullyConnectedLayer"; }
+  virtual std::string getName() const override { return "FullyConnectedNode"; }
 };
 
 
-template <class ElemTy> class RELULayer final : public Layer<ElemTy> {
+template <class ElemTy> class RELUNode final : public Node<ElemTy> {
   /// A reference to the layer input.
-  Layer<ElemTy> *input_;
+  Node<ElemTy> *input_;
 
 public:
-  RELULayer(Network *N, Layer<ElemTy> *input)
-  : Layer<ElemTy>(N), input_(input) {
+  RELUNode(Network *N, Node<ElemTy> *input)
+  : Node<ElemTy>(N), input_(input) {
     assert(input && input_->size() && "Invalid input");
     this->output_.reset(input_->dims());
-    N->addLayerDependency(this, input);
+    N->addNodeDependency(this, input);
   }
 
   virtual void forward() override {
@@ -274,13 +274,13 @@ public:
     }
   }
 
-  virtual std::string getName() const override { return "RELULayer"; }
+  virtual std::string getName() const override { return "RELUNode"; }
 };
 
 
-template <class ElemTy> class SoftMaxLayer final : public Layer<ElemTy> {
-  /// A reference to the layer input.
-  Layer<ElemTy> *input_;
+template <class ElemTy> class SoftMaxNode final : public Node<ElemTy> {
+  /// A reference to the node input.
+  Node<ElemTy> *input_;
   /// The selected one-hot value from the softmax function.
   size_t selected_;
 
@@ -291,10 +291,10 @@ public:
   /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
   /// And \p selected that's the selected one-hot representation of the
   /// softmax function.
-  SoftMaxLayer(Network *N, Layer<ElemTy> *input, size_t selected = 0)
-  : Layer<ElemTy>(N), input_(input), selected_(selected) {
+  SoftMaxNode(Network *N, Node<ElemTy> *input, size_t selected = 0)
+  : Node<ElemTy>(N), input_(input), selected_(selected) {
     assert(input && input_->size() && "Invalid input");
-    N->addLayerDependency(this, input);
+    N->addNodeDependency(this, input);
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
     assert(inx == 1 && iny == 1 && "Softmax input must be 1x1xN");
@@ -360,7 +360,7 @@ public:
     return -std::log(e_.at(0,0,selected_));
   }
 
-  virtual std::string getName() const override { return "SoftMaxLayer"; }
+  virtual std::string getName() const override { return "SoftMaxNode"; }
 };
 
 }

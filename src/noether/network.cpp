@@ -10,12 +10,12 @@ using namespace noether;
 
 Network::Network() {}
 
-void Network::sortNetwork(std::vector<LayerBase*> &order) {
+void Network::sortNetwork(std::vector<NodeBase*> &order) {
   // TODO: add a cycle detector.
   // A list of nodes that were processed.
-  std::unordered_set<LayerBase*> visited;
+  std::unordered_set<NodeBase*> visited;
   // Our DFS stack.
-  std::vector<LayerBase*> stack;
+  std::vector<NodeBase*> stack;
 
   // Create a pseudo edge to all nodes in the graph by pusing all of the
   // keys into our stack.
@@ -60,16 +60,16 @@ void Network::sortNetwork(std::vector<LayerBase*> &order) {
   assert(order.size() >= deps_.size() && "Invalid order");
 }
 
-void Network::addLayerDependency(LayerBase *node, LayerBase *dep) {
+void Network::addNodeDependency(NodeBase *node, NodeBase *dep) {
   deps_[node].push_back(dep);
 }
 
-void Network::registerDerivTensor(LayerBase *node, TrainableData *weights) {
+void Network::registerDerivTensor(NodeBase *node, TrainableData *weights) {
   trainableBuffers_.push_back(weights);
 }
 
 void Network::train() {
-  std::vector<LayerBase*> order;
+  std::vector<NodeBase*> order;
   sortNetwork(order);
 
   std::cout<<"Network structure:";
@@ -96,7 +96,7 @@ void Network::train() {
 }
 
 void Network::infer() {
-  std::vector<LayerBase*> order;
+  std::vector<NodeBase*> order;
   sortNetwork(order);
 
   std::cout<<"Network structure:";

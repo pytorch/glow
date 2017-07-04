@@ -10,12 +10,7 @@
 #include <vector>
 #include <map>
 
-
 namespace noether {
-
-class LayerBase;
-
-class TrainableData;
 
 class TrainableData {
 public:
@@ -97,7 +92,7 @@ template <class ElemTy> struct DerivData : public TrainableData {
 };
 
 /// This is the non-templated part of the compute node.
-class LayerBase {
+class NodeBase {
 public:
   /// \returns a descriptive name for the operation.
   virtual std::string getName() const = 0;
@@ -110,13 +105,13 @@ public:
 };
 
 /// Represents a node in the network compute graph.
-template <class ElemTy> class Layer : public LayerBase {
+template <class ElemTy> class Node : public NodeBase {
 protected:
   /// The filter output.
   DerivData<ElemTy> output_;
 
 public:
-  Layer(Network *N) { N->registerDerivTensor(this, &output_); }
+  Node(Network *N) { N->registerDerivTensor(this, &output_); }
 
   /// \returns the output of a node in the compute graph.
   DerivData<ElemTy> &getOutput() { return output_; }

@@ -13,11 +13,11 @@
 
 namespace noether {
 
-template <class ElemTy> class PNGLayer final : public Layer<ElemTy> {
+template <class ElemTy> class PNGNode final : public Node<ElemTy> {
 public:
-  PNGLayer(Network *N) : Layer<ElemTy>(N) {}
+  PNGNode(Network *N) : Node<ElemTy>(N) {}
 
-  virtual std::string getName() const override { return "PNGLayer"; }
+  virtual std::string getName() const override { return "PNGNode"; }
 
   /// Reads a png image. \returns True if an error occurred.
   bool readImage(const char *filename) {
@@ -173,13 +173,13 @@ public:
   void backward() override {}
 };
 
-template <class ElemTy> class ArrayLayer final : public Layer<ElemTy> {
+template <class ElemTy> class ArrayNode final : public Node<ElemTy> {
 public:
-  ArrayLayer(Network *N, size_t x, size_t y, size_t z) : Layer<ElemTy>(N) {
+  ArrayNode(Network *N, size_t x, size_t y, size_t z) : Node<ElemTy>(N) {
     this->getOutput().reset(x,y,z);
   }
 
-  virtual std::string getName() const override { return "ArrayLayer"; }
+  virtual std::string getName() const override { return "ArrayNode"; }
 
   void forward() override {}
 

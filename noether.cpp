@@ -17,23 +17,16 @@ int main() {
   X.at(10u, 10u, 2u) = 2;
 
   Network N;
-  /*PNGLayer<float> In(&N);
-  In.readImage("./build/map.png");
-  ConvLayer<float> CL(&N, &In, 30, 5, 2, 0);
-  FullyConnectedLayer<float> FL(&N, &CL, 100);
-  RELULayer<float> RL(&N, &In);
-  SoftMaxLayer<float> SSML(&N, &FL, 1);
-*/
 
-  ArrayLayer<float> A(&N, 1,1,10);
+  ArrayNode<float> A(&N, 1,1,10);
 
-  FullyConnectedLayer<float> FCL0(&N, &A, 100);
-  RELULayer<float> RL0(&N, &FCL0);
+  FullyConnectedNode<float> FCL0(&N, &A, 100);
+  RELUNode<float> RL0(&N, &FCL0);
 
-  FullyConnectedLayer<float> FCL1(&N, &RL0, 10);
-  RELULayer<float> RL1(&N, &FCL1);
+  FullyConnectedNode<float> FCL1(&N, &RL0, 10);
+  RELUNode<float> RL1(&N, &FCL1);
 
-  SoftMaxLayer<float> SM(&N, &RL1);
+  SoftMaxNode<float> SM(&N, &RL1);
 
   for (int iter = 0; iter < 100000; iter++) {
 
@@ -45,7 +38,6 @@ int main() {
     }
 
     N.train();
-
 
     for (int j = 0; j < 10; j++) {
       A.getOutput().weight_.at(0,0, j) = (j == target);
