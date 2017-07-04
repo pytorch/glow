@@ -28,12 +28,12 @@ int main() {
   ArrayLayer<float> A(&N, 1,1,10);
 
   FullyConnectedLayer<float> FCL0(&N, &A, 100);
-  //RELULayer<float> RL0(&N, &FCL0);
+  RELULayer<float> RL0(&N, &FCL0);
 
-  //FullyConnectedLayer<float> FCL1(&N, &RL0, 10);
-  //RELULayer<float> RL1(&N, &FCL1);
+  FullyConnectedLayer<float> FCL1(&N, &RL0, 10);
+  RELULayer<float> RL1(&N, &FCL1);
 
-  SoftMaxLayer<float> SM(&N, &FCL0);
+  SoftMaxLayer<float> SM(&N, &RL1);
 
   for (int iter = 0; iter < 100000; iter++) {
 
