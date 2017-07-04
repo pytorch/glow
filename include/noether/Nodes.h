@@ -1,8 +1,8 @@
-#ifndef NOETHER_LAYERS_H
-#define NOETHER_LAYERS_H
+#ifndef NOETHER_NODES_H
+#define NOETHER_NODES_H
 
 #include "noether/Tensor.h"
-#include "noether/Layer.h"
+#include "noether/Node.h"
 
 #include <cassert>
 #include <cstddef>
@@ -365,4 +365,4 @@ public:
 
 }
 
-#endif // NOETHER_LAYERS_H
+#endif // NOETHER_NODES_H

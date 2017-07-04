@@ -1,7 +1,7 @@
 #ifndef NOETHER_IMAGE_H
 #define NOETHER_IMAGE_H
 
-#include "noether/Layer.h"
+#include "noether/Node.h"
 #include "noether/Tensor.h"
 
 #include <cassert>

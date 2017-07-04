@@ -1,5 +1,5 @@
-#ifndef NOETHER_LAYER_H
-#define NOETHER_LAYER_H
+#ifndef NOETHER_NODE_H
+#define NOETHER_NODE_H
 
 #include "noether/Tensor.h"
 #include "noether/Network.h"
@@ -127,4 +127,4 @@ public:
 
 }
 
-#endif // NOETHER_LAYER_H
+#endif // NOETHER_NODE_H

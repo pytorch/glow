@@ -1,5 +1,5 @@
 #include "noether/Image.h"
-#include "noether/Layers.h"
+#include "noether/Nodes.h"
 #include "noether/Tensor.h"
 
 #include <cassert>
