@@ -5,7 +5,8 @@ set(CMAKE_XCODE_ATTRIBUTE_CLANG_CXX_LANGUAGE_STANDARD "c++14")
 
 message("Configure with -DCMAKE_BUILD_TYPE=Release for optimized builds")
 
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native -ffast-math")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer")
 
 set(NOETHER_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(NOETHER_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
