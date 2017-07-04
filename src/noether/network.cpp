@@ -1,5 +1,6 @@
 #include "noether/Image.h"
 #include "noether/Layers.h"
+#include "noether/Network.h"
 #include "noether/Tensor.h"
 
 #include <iostream>
