@@ -100,7 +100,7 @@ public:
     auto &inputBuffer = input_->getOutput();
 
     // Zero the gradient of the input.
-    inputBuffer.gradient_.clear();
+    inputBuffer.gradient_.randomize();
 
     // Compute the gradient. For each layer in the output tensor:
     for (size_t d = 0; d < outz; d++) {
@@ -199,7 +199,7 @@ public:
     auto &inputBuffer = input_->getOutput();
 
     // Zero the gradient of the input.
-    inputBuffer.gradient_.clear();
+    inputBuffer.gradient_.randomize();
 
     // Compute the gradient:
     for (size_t i = 0; i < outz; i++) {
@@ -346,7 +346,7 @@ public:
     auto &inputBuffer = input_->getOutput();
     auto &InDW = inputBuffer.gradient_;
 
-    InDW.clear();
+    InDW.randomize();
 
     for (size_t z = 0; z < inz; z++) {
       ElemTy indicator = (selected_ == z ? 1 : 0);
