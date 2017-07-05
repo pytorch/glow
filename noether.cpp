@@ -42,9 +42,7 @@ void testFCSoftMax() {
     N.train();
   }
 
-
   for (int iter = 0; iter < 10; iter++) {
-
     int target = iter % 10;
 
     SM.setSelected(target);
@@ -52,12 +50,12 @@ void testFCSoftMax() {
       A.getOutput().weight_.at(0,0, j) = (j == target);
     }
 
-    A.getOutput().weight_.dump("Input: ","\n");
     N.infer();
+
+    A.getOutput().weight_.dump("Input: "," ");
     SM.getOutput().weight_.dump("Output:","\n");
   }
 }
-
 
 void setData(Array3D<float> &A, int seed) {
   A.clear();
@@ -81,7 +79,6 @@ void testRegression() {
   // Train the network:
   for (int iter = 0; iter < 9000; iter++) {
     float target = iter % 9 + 1;
-
     setData(A.getOutput().weight_, target);
     RN.getExpected().clear();
     RN.getExpected().at(0, 0, 1) = target + 1;
@@ -91,15 +88,13 @@ void testRegression() {
   // Test the output:
   for (int iter = 0; iter < 5; iter++) {
     float target = iter % 9 + 1;
-
     setData(A.getOutput().weight_, target);
     RN.getExpected().clear();
     RN.getExpected().at(0, 0, 1) = target + 1;
 
-    A.getOutput().weight_.dump("A w:");
-
     N.infer();
 
+    A.getOutput().weight_.dump("A w:");
     RN.getOutput().weight_.dump("Network output: ", "\n");
   }
 

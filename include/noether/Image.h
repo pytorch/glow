@@ -173,6 +173,8 @@ public:
   void forward() override {}
 
   void backward() override {}
+
+  virtual bool isTrainable() override { return false; }
 };
 
 template <class ElemTy> class ArrayNode final : public Node<ElemTy> {
@@ -186,6 +188,8 @@ public:
   void forward() override {}
 
   void backward() override {}
+
+  virtual bool isTrainable() override { return false; }
 };
 
 }

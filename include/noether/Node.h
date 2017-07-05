@@ -110,6 +110,9 @@ public:
 
   /// Does the backwards propagation.
   virtual void backward() = 0;
+
+  /// \returns True if the weights of this node are trainable.
+  virtual bool isTrainable() { return true; }
 };
 
 /// Represents a node in the network compute graph.
@@ -119,7 +122,7 @@ protected:
   DerivData<ElemTy> output_;
 
 public:
-  Node(Network *N) { N->registerDerivTensor(this, &output_); }
+  Node(Network *N) { if (isTrainable()) N->registerDerivTensor(this, &output_); }
 
   /// \returns the output of a node in the compute graph.
   DerivData<ElemTy> &getOutput() { return output_; }
