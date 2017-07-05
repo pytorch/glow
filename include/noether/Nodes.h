@@ -363,6 +363,65 @@ public:
   virtual std::string getName() const override { return "SoftMaxNode"; }
 };
 
+  template <class ElemTy> class RegressionNode final : public Node<ElemTy> {
+    /// A reference to the node input.
+    Node<ElemTy> *input_;
+    /// The expected input (also known as Y).
+    Array3D<ElemTy> expected_;
+
+  public:
+    /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
+    /// And \p expected (aka Y) is the expected input for the layer, that must
+    /// be of the same shape as \p input.
+    RegressionNode(Network *N, Node<ElemTy> *input)
+    : Node<ElemTy>(N), input_(input) {
+      assert(input && input_->size() && "Invalid input");
+      N->addNodeDependency(this, input);
+      size_t inx, iny, inz;
+      std::tie(inx, iny, inz) = input_->dims();
+      assert(inx == 1 && iny == 1 && "input must be 1x1xN");
+      expected_.reset(1, 1, inz);
+      this->output_.reset(1, 1, inz);
+    }
+
+    /// \returns a reference to the expected result vector.
+    Array3D<ElemTy> &getExpected() { return expected_; }
+
+    virtual void forward() override {
+      assert(expected_.dims() == input_->dims() && "invalid expected dims");
+      size_t inx, iny, inz;
+      std::tie(inx, iny, inz) = input_->dims();
+      auto &inputBuffer = input_->getOutput();
+
+      auto &OutW = this->output_.weight_;
+      auto &InW = inputBuffer.weight_;
+
+      for (size_t z = 0; z < inz; z++) {
+        OutW.at(0, 0, z) = InW.at(0, 0, z);
+      }
+    }
+
+    virtual void backward() override {
+      assert(expected_.dims() == input_->dims() && "invalid expected dims");
+
+      size_t inx, iny, inz;
+      std::tie(inx, iny, inz) = input_->dims();
+      auto &inputBuffer = input_->getOutput();
+      auto &InDW = inputBuffer.gradient_;
+
+      InDW.randomize();
+      ElemTy loss = 0;
+
+      for (size_t z = 0; z < inz; z++) {
+        ElemTy dy = (inputBuffer.weight_.at(0,0,z) - expected_.at(0,0,z));
+        InDW.at(0,0,z) = dy;
+        loss += 0.5 * dy * dy;
+      }
+    }
+
+    virtual std::string getName() const override { return "RegressionNode"; }
+  };
+
 }
 
 #endif // NOETHER_NODES_H

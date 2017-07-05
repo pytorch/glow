@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <tuple>
+#include <iostream>
 
 namespace noether {
 
@@ -115,6 +116,23 @@ public:
   ElemTy &at(size_t x, size_t y, size_t z) {
     return data_[getElementIdx(x, y, z)];
   }
+
+  void dump(std::string title = "", std::string suffix = "") {
+    std::cout<< title << "[";
+    for (int x = 0; x < sx_; x++) {
+      std::cout<<"[";
+      for (int y = 0; y < sy_; y++) {
+        std::cout<<"[";
+        for (int z = 0; z < sz_; z++) {
+            std::cout<< at(x, y, z) << " ";
+        }
+        std::cout<<"]";
+      }
+      std::cout<<"]";
+    }
+    std::cout<<"]" << suffix;
+  }
+
 };
 
 }

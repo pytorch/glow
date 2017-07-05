@@ -72,12 +72,6 @@ void Network::train() {
   std::vector<NodeBase*> order;
   sortNetwork(order);
 
-  std::cout<<"Network structure:";
-  for (auto &node : order) {
-    std::cout<<node->getName()<<" ";
-  }
-  std::cout<<"\n";
-
   // Forward scan.
   for (unsigned i = 0, e = order.size(); i < e; i++) {
     order[i]->forward();
@@ -99,15 +93,30 @@ void Network::infer() {
   std::vector<NodeBase*> order;
   sortNetwork(order);
 
+  // Forward scan.
+  for (unsigned i = 0, e = order.size(); i < e; i++) {
+    order[i]->forward();
+  }
+}
+
+void Network::dump() {
+  std::vector<NodeBase*> order;
+  sortNetwork(order);
+
   std::cout<<"Network structure:";
   for (auto &node : order) {
     std::cout<<node->getName()<<" ";
   }
   std::cout<<"\n";
 
-  // Forward scan.
-  for (unsigned i = 0, e = order.size(); i < e; i++) {
-    order[i]->forward();
+  std::cout<<"Buffers content:\n";
+
+  for (auto &buffer: trainableBuffers_) {
+    buffer->dump();
   }
+
+  std::cout<<"\n";
+
 }
+
 

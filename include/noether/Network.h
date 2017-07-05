@@ -34,6 +34,9 @@ public:
 
   /// Infer data for a single input.
   void infer();
+
+  /// Dump the textual representation of the network.
+  void dump();
 };
 
 }

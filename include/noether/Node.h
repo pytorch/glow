@@ -17,6 +17,9 @@ public:
   /// Perform a single iteration of the simple SGD algorithm for updating the
   /// weights of the program based on the gradients.
   virtual void train() = 0;
+
+  /// Print the textual representation of the buffer.
+  virtual void dump() = 0;
 };
 
 /// A pair of some weights and it's derivative. The derivative (gradient) of the
@@ -57,6 +60,11 @@ template <class ElemTy> struct DerivData : public TrainableData {
   void reset(size_t x, size_t y, size_t z) {
       weight_.reset(x,y,z);
       gradient_.reset(x,y,z);
+  }
+
+  virtual void dump () override {
+    weight_.dump("W");
+    gradient_.dump("G", "\n");
   }
 
   virtual void train () override {
