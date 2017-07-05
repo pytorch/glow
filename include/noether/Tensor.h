@@ -36,9 +36,12 @@ public:
 
   /// Fill the array with random data that's close to zero.
   void randomize() {
+    static int offset = 0;
     for (size_t i = 0, e = size(); i < e; ++i) {
-      data_[i] = randomVals[i % numRandomVals];
+      data_[i] = randomVals[(offset + i) % numRandomVals];
     }
+
+    offset++;
   }
 
   /// \returns the dimension of the tensor.
