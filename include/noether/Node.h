@@ -69,9 +69,9 @@ template <class ElemTy> struct DerivData : public TrainableData {
 
   virtual void train () override {
     ElemTy batchSize = 1;
-    ElemTy L1Decay = 0;
-    ElemTy L2Decay = 0;
-    ElemTy learningRate = 0.001;
+    ElemTy L1Decay = 0.9;
+    ElemTy L2Decay = 0.9;
+    ElemTy learningRate = 0.01;
 
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = dims();
