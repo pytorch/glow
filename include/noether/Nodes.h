@@ -100,7 +100,7 @@ public:
     auto &inputBuffer = input_->getOutput();
 
     // Zero the gradient of the input.
-    inputBuffer.gradient_.randomize();
+    inputBuffer.gradient_.clear();
 
     // Compute the gradient. For each layer in the output tensor:
     for (size_t d = 0; d < outz; d++) {
@@ -161,6 +161,10 @@ public:
       filters_.emplace_back(inx, iny, inz);
     }
 
+    for (auto &filter : filters_) {
+      filter.weight_.randomize();
+    }
+
     for (size_t i = 0; i < outDepth; i++) {
       N->registerDerivTensor(this, &filters_[i]);
     }
@@ -199,7 +203,7 @@ public:
     auto &inputBuffer = input_->getOutput();
 
     // Zero the gradient of the input.
-    inputBuffer.gradient_.randomize();
+    inputBuffer.gradient_.clear();
 
     // Compute the gradient:
     for (size_t i = 0; i < outz; i++) {
@@ -399,8 +403,6 @@ public:
     auto &inputBuffer = input_->getOutput();
     auto &InDW = inputBuffer.gradient_;
 
-    InDW.randomize();
-
     for (size_t z = 0; z < inz; z++) {
       ElemTy indicator = (selected_ == z ? 1 : 0);
       ElemTy mul = -(indicator - e_.at(0,0,z));
@@ -462,7 +464,6 @@ public:
       auto &inputBuffer = input_->getOutput();
       auto &InDW = inputBuffer.gradient_;
 
-      InDW.randomize();
       ElemTy loss = 0;
 
       for (size_t z = 0; z < inz; z++) {
