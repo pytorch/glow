@@ -85,6 +85,9 @@ template <class ElemTy> struct DerivData : public TrainableData {
           ElemTy L2Grad = L2Decay * (weight_.at(x, y, z));
           ElemTy gij = (L2Grad + L1Grad + gradient_.at(x,y,z)) / batchSize;
           weight_.at(x,y,z) -= learningRate * gij;
+
+          // Zero out the gradient and prepare for the next round of learning.
+          gradient_.at(x,y,z) = 0;
         }
       }
     }
