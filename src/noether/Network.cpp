@@ -84,7 +84,7 @@ void Network::train() {
 
   // Update the gradients.
   for (auto &buffer: trainableBuffers_) {
-      buffer->train();
+      buffer->train(trainingParams_);
   }
 
 }
