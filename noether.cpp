@@ -22,23 +22,26 @@ float delta(float a, float b) {
   return std::fabs(a - b);
 }
 
+/// Test the fully connected layer and the softmax function.
+/// Example from:
+/// http://cs.stanford.edu/people/karpathy/convnetjs/demo/classify2d.html
 void testFCSoftMax() {
+
+  // Construct the network:
   Network N;
-  /// Example from:
-  /// http://cs.stanford.edu/people/karpathy/convnetjs/demo/classify2d.html
-
   ArrayNode<float> A(&N, 1,1,2);
-
   FullyConnectedNode<float> FCL0(&N, &A, 6);
   RELUNode<float> RL0(&N, &FCL0);
   FullyConnectedNode<float> FCL1(&N, &RL0, 2);
   RELUNode<float> RL1(&N, &FCL1);
   SoftMaxNode<float> SM(&N, &RL1);
 
+  // Generate some random numbers in the range -1 .. 1.
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<> dis(-1, 1);
 
+  // Generate lots of samples and learn them.
   for (int iter = 0; iter < 90000; iter++) {
     float x = dis(gen);
     float y = dis(gen);
@@ -54,34 +57,37 @@ void testFCSoftMax() {
     N.train();
   }
 
-  // Verify the label for the 10 points.
+  // Verify the label for some 10 random points.
   for (int iter = 0; iter < 10; iter++) {
     float x = dis(gen);
     float y = dis(gen);
+
     float r2 = (x*x + y*y);
 
     // Throw away confusing samples.
     if (r2 > 0.5 && r2 < 0.7) continue;
 
+    // Load the inputs:
     A.getOutput().weight_.at(0,0, 0) = x;
     A.getOutput().weight_.at(0,0, 1) = y;
 
     N.infer();
 
+    // Inspect the outputs:
     if (r2 < 0.50) {
       assert(SM.getOutput().weight_.at(0,0,1) > 0.90);
     }
-
     if (r2 > 0.7) {
       assert(SM.getOutput().weight_.at(0,0,0) > 0.90);
     }
   }
 }
 
-void setData(Array3D<float> &A, float seed) {
-  A.clear();
+/// A helper function to load a one-hot vector.
+void setOneHot(Array3D<float> &A, float background, float foreground,
+               size_t idx) {
   for (int j = 0; j < A.size(); j++) {
-    A.at(0, 0, 0) = seed;
+    A.at(0, 0, j) = (j == idx ? foreground : background);
   }
 }
 
@@ -102,18 +108,17 @@ void testRegression() {
   // Train the network:
   for (int iter = 0; iter < 9000; iter++) {
     float target = float(iter % 9);
-    setData(A.getOutput().weight_, target);
-    RN.getExpected().clear();
-    RN.getExpected().at(0, 0, 1) = target + 1;
+    setOneHot(A.getOutput().weight_, 0.0, target, 0);
+    setOneHot(RN.getExpected(), 0.0, target + 1, 1);
+
     N.train();
   }
 
   // Test the output:
   for (int iter = 0; iter < 5; iter++) {
     float target = iter % 9 + 1;
-    setData(A.getOutput().weight_, target);
-    RN.getExpected().clear();
-    RN.getExpected().at(0, 0, 1) = target + 1;
+    setOneHot(A.getOutput().weight_, 0.0, target, 0);
+    setOneHot(RN.getExpected(), 0.0, target + 1, 1);
 
     N.infer();
     assert(delta(A.getOutput().weight_.at(0,0,0) + 1, RN.getOutput().weight_.at(0,0,1)) < 0.1);
