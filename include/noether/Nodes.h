@@ -157,6 +157,13 @@ public:
     this->output_.reset(1, 1, outDepth);
     bias_.reset(1, 1, outDepth);
 
+    // RELUs like small positive bias to get gradients early in the training
+    // process, otherwise the RELU units may never turn on and turn into a
+    // "dead RELU".
+    for (size_t i = 0; i < outDepth; i++) {
+      bias_.weight_.at(0,0,i) = 0.1;
+    }
+
     for (size_t i = 0; i < outDepth; i++) {
       filters_.emplace_back(inx, iny, inz);
     }
