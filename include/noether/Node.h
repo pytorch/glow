@@ -16,7 +16,7 @@ class TrainableData {
 public:
   /// Perform a single iteration of the simple SGD algorithm for updating the
   /// weights of the program based on the gradients.
-  virtual void train(const TrainingParameters &params) = 0;
+  virtual void train(const TrainingConfig &config) = 0;
 
   /// Print the textual representation of the buffer.
   virtual void dump() = 0;
@@ -67,12 +67,12 @@ template <class ElemTy> struct DerivData : public TrainableData {
     gradient_.dump("G", "\n");
   }
 
-  virtual void train (const TrainingParameters &params) override {
-    size_t batchSize = params.batchSize;
-    float L1Decay = params.L1Decay;
-    float L2Decay = params.L2Decay;
-    float learningRate = params.learningRate;
-    float momentum = params.momentum;
+  virtual void train (const TrainingConfig &config) override {
+    size_t batchSize = config.batchSize;
+    float L1Decay = config.L1Decay;
+    float L2Decay = config.L2Decay;
+    float learningRate = config.learningRate;
+    float momentum = config.momentum;
     (void) momentum;
 
     size_t inx, iny, inz;
