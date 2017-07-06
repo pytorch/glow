@@ -277,6 +277,59 @@ public:
   virtual std::string getName() const override { return "RELUNode"; }
 };
 
+template <class ElemTy> class SigmoidNode final : public Node<ElemTy> {
+  /// A reference to the layer input.
+  Node<ElemTy> *input_;
+
+public:
+  SigmoidNode(Network *N, Node<ElemTy> *input)
+  : Node<ElemTy>(N), input_(input) {
+    assert(input && input_->size() && "Invalid input");
+    this->output_.reset(input_->dims());
+    N->addNodeDependency(this, input);
+  }
+
+  virtual void forward() override {
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = input_->dims();
+    auto &inputBuffer = input_->getOutput();
+
+    auto &OutW = this->output_.weight_;
+    auto &InW = inputBuffer.weight_;
+
+    for (size_t x = 0; x < inx; x++) {
+      for (size_t y = 0; y < iny; y++) {
+        for (size_t z = 0; z < inz; z++) {
+          ElemTy val = InW.at(x,y,z);
+          OutW.at(x,y,z) = 1 /(1 + std::exp(-val));
+        }
+      }
+    }
+  }
+
+  virtual void backward() override {
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = input_->dims();
+    auto &inputBuffer = input_->getOutput();
+
+    auto &OutW = this->output_.weight_;
+    auto &OutDW = this->output_.gradient_;
+    auto &InDW = inputBuffer.gradient_;
+    auto &InW = inputBuffer.weight_;
+
+    for (size_t x = 0; x < inx; x++) {
+      for (size_t y = 0; y < iny; y++) {
+        for (size_t z = 0; z < inz; z++) {
+          ElemTy val = OutW.at(x,y,z);
+          InDW.at(x,y,z) = val * (1 - val) * OutDW.at(x,y,z);
+        }
+      }
+    }
+  }
+
+  virtual std::string getName() const override { return "SigmoidNode"; }
+};
+
 
 template <class ElemTy> class SoftMaxNode final : public Node<ElemTy> {
   /// A reference to the node input.
