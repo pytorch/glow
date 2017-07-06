@@ -268,7 +268,7 @@ public:
       for (size_t y = 0; y < iny; y++) {
         for (size_t z = 0; z < inz; z++) {
           ElemTy val = OutW.at(x,y,z);
-          InDW.at(x,y,z) = (val < 0 ? 0 : OutDW.at(x,y,z));
+          InDW.at(x,y,z) = (val <= 0 ? 0 : OutDW.at(x,y,z));
         }
       }
     }
