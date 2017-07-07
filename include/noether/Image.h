@@ -186,6 +186,10 @@ public:
     this->getOutput().isTrainable_ = false;
   }
 
+  void loadRaw(ElemTy *ptr, size_t numElements) {
+    this->getOutput().weight_.loadRaw(ptr, numElements);
+  }
+
   virtual std::string getName() const override { return "ArrayNode"; }
 
   void forward() override {}

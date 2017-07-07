@@ -114,6 +114,13 @@ public:
 
   ~Array3D() { delete[] data_; }
 
+  /// Loads the content of the array from the pointer \p ptr. The number of
+  /// elements in \p numElements must match the size of the array.
+  void loadRaw(ElemTy *ptr, size_t numElements) {
+    assert(numElements == size());
+    std::copy(&ptr[0], &ptr[size()], data_);
+  }
+
   /// Add all of the elements in the array.
   ElemTy sum() {
     return std::accumulate(&data_[0], &data_[size()], ElemTy(0));
