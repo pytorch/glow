@@ -336,7 +336,6 @@ public:
     auto &OutW = this->output_.weight_;
     auto &OutDW = this->output_.gradient_;
     auto &InDW = inputBuffer.gradient_;
-    auto &InW = inputBuffer.weight_;
 
     for (size_t x = 0; x < inx; x++) {
       for (size_t y = 0; y < iny; y++) {
