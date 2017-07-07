@@ -17,7 +17,7 @@ struct TrainingConfig {
     float L1Decay{0};
     float L2Decay{0};
     float learningRate{0.01};
-    float momentum{0.9};
+    float momentum{0.0};
 };
 
 class Network {
