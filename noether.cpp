@@ -43,7 +43,7 @@ void testFCSoftMax(bool print = false) {
   std::uniform_real_distribution<> dis(-1, 1);
 
   // Generate lots of samples and learn them.
-  for (int iter = 0; iter < 90000; iter++) {
+  for (int iter = 0; iter < 99000; iter++) {
     float x = dis(gen);
     float y = dis(gen);
 
@@ -117,6 +117,34 @@ void setOneHot(Array3D<float> &A, float background, float foreground,
   }
 }
 
+void testLearnSingleInput() {
+  Network N;
+  N.getTrainingConfig().learningRate = 0.005;
+  ArrayNode<float> A(&N, 1, 1, 10);
+  FullyConnectedNode<float> FCL0(&N, &A, 10);
+  RELUNode<float> RL0(&N, &FCL0);
+  FullyConnectedNode<float> FCL1(&N, &A, 10);
+  RELUNode<float> RL1(&N, &FCL1);
+  RegressionNode<float> RN(&N, &RL1);
+
+  // Put in [15, 0, 0, 0, 0 ... ]
+  setOneHot(A.getOutput().weight_, 0.0, 15, 0);
+  // Expect [0, 9.0, 0 , 0 , ...]
+  setOneHot(RN.getExpected(), 0.0, 9.0, 1);
+
+  // Train the network:
+  for (int iter = 0; iter < 10000; iter++) {
+    N.train();
+  }
+
+  N.infer();
+
+  // Test the output:
+  assert(RN.getOutput().weight_.sum() < 10);
+  assert(RN.getOutput().weight_.at(0,0, 1) > 8.5);
+}
+
+
 void testRegression() {
   Network N;
 
@@ -154,6 +182,8 @@ void testRegression() {
 
 int main() {
   testArray();
+
+  testLearnSingleInput();
 
   testRegression();
 

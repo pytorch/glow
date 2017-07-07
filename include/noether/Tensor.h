@@ -1,6 +1,7 @@
 #ifndef NOETHER_TENSOR_H
 #define NOETHER_TENSOR_H
 
+#include <numeric>
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -113,10 +114,9 @@ public:
 
   ~Array3D() { delete[] data_; }
 
-  /// Access the flat memory inside the tensor.
-  ElemTy &atDirectIndex(size_t index) {
-    assert(index < size() && "Out of bounds");
-    return data_[index];
+  /// Add all of the elements in the array.
+  ElemTy sum() {
+    return std::accumulate(&data_[0], &data_[size()], ElemTy(0));
   }
 
   ElemTy &at(size_t x, size_t y, size_t z) {
