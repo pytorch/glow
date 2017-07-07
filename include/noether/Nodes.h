@@ -34,6 +34,8 @@ public:
     N->addNodeDependency(this, input);
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
+    assert(inx > filterSize && iny > filterSize &&
+           "buffer too small for selected stride");
 
     size_t outsx = ((inx + pad_ * 2 - filterSize) / stride + 1);
     size_t outsy = ((iny + pad_ * 2 - filterSize) / stride + 1);
@@ -64,17 +66,21 @@ public:
       auto &currFilter = filters_[d];
 
       // For each convolution 'jump' in the input tensor:
-      size_t y = 0;
+      ssize_t y = -ssize_t(pad_);
       for (size_t ay = 0; ay < outy; y += stride_, ay++) {
-        size_t x = 0;
+        ssize_t x = -ssize_t(pad_);
         for (size_t ax = 0; ax < outy; x += stride_, ax++) {
 
           // For each element in the convolution-filter:
           ElemTy sum = 0;
           for (size_t fy = 0; fy < filterSize_; fy++) {
             for (size_t fx = 0; fx < filterSize_; fx++) {
-              auto ox = x + fx;
-              auto oy = y + fy;
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0)
+                continue;
 
               if (this->output_.isInBounds(ox, oy, 0)) {
                 for (size_t fd = 0; fd < inz; fd++) {
@@ -107,18 +113,22 @@ public:
       auto &currFilter = filters_[d];
 
       // For each convolution 'jump' in the input tensor:
-      size_t y = 0;
-      for (size_t ay = 0; ay < outy; y += stride_, ay++) {
-        size_t x = 0;
-        for (size_t ax = 0; ax < outy; x += stride_, ax++) {
+      ssize_t y = -ssize_t(pad_);
+      for (size_t ay = 0; ay < ssize_t(outy); y += stride_, ay++) {
+        ssize_t x = -ssize_t(pad_);
+        for (size_t ax = 0; ax < ssize_t(outy); x += stride_, ax++) {
 
           ElemTy chainGrad = this->output_.gradient_.at(ax,ay, d);
 
           // For each element in the convolution-filter:
           for (size_t fy = 0; fy < filterSize_; fy++) {
             for (size_t fx = 0; fx < filterSize_; fx++) {
-              auto ox = x + fx;
-              auto oy = y + fy;
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0)
+                continue;
 
               if (this->output_.isInBounds(ox, oy, 0)) {
                 for (size_t fd = 0; fd < inz; fd++) {
