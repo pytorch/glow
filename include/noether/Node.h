@@ -29,6 +29,10 @@ template <class ElemTy> struct DerivData : public TrainableData {
   Array3D<ElemTy> weight_{};
   /// dW - the derivative of the weight.
   Array3D<ElemTy> gradient_{};
+  /// gradient sum - this buffer is used by the SGD algorithm to store the
+  /// previous gradient. The array
+  Array3D<ElemTy> gsum_{};
+
 
   DerivData() = default;
 
@@ -64,7 +68,8 @@ template <class ElemTy> struct DerivData : public TrainableData {
 
   virtual void dump () override {
     weight_.dump("W");
-    gradient_.dump("G", "\n");
+    if (gradient_.size()) gradient_.dump("G", "\n");
+    if (gsum_.size()) gsum_.dump("Gsum", "\n");
   }
 
   virtual void train (const TrainingConfig &config) override {
@@ -73,7 +78,12 @@ template <class ElemTy> struct DerivData : public TrainableData {
     float L2Decay = config.L2Decay;
     float learningRate = config.learningRate;
     float momentum = config.momentum;
-    (void) momentum;
+
+    /// If we are using the momentum technique then we need to allocate an array
+    /// for the gradient sum.
+    if (momentum > 0.0 && gsum_.size() == 0) {
+      gsum_.reset(weight_.dims());
+    }
 
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = dims();
@@ -86,19 +96,36 @@ template <class ElemTy> struct DerivData : public TrainableData {
           ElemTy L1Grad = L1Decay * (weight_.at(x, y, z) > 0 ? 1 : -1);
           ElemTy L2Grad = L2Decay * (weight_.at(x, y, z));
           ElemTy gij = (L2Grad + L1Grad + gradient_.at(x,y,z)) / batchSize;
-          weight_.at(x,y,z) -= learningRate * gij;
 
-          // Zero out the gradient and prepare for the next round of learning.
-          gradient_.at(x,y,z) = 0;
+          // Use the momentum to improve the gradient descent:
+          // http://ufldl.stanford.edu/tutorial/supervised/OptimizationStochasticGradientDescent/
+          if(momentum > 0.0) {
+            // Momentum update:
+            ElemTy dx = momentum * gsum_.at(x,y,z) -  learningRate * gij;
+            // Save this value for the next iteration:
+            gsum_.at(x,y,z) = dx;
+            // Apply the gradient.
+            weight_.at(x,y,z) += dx;
+          } else {
+            // Use regular SGD:
+            weight_.at(x,y,z) -= learningRate * gij;
+          }
         }
       }
     }
+
+    // Zero out the gradient and prepare for the next round of learning.
+    gradient_.clear();
   }
 
   /// Performs some checks to validate the correctness of the payload.
   void verify() {
     if (gradient_.size()) {
       assert(gradient_.size() == weight_.size() &&
+             "Gradient tensor does not match weight tensor");
+    }
+    if (gsum_.size()) {
+      assert(gsum_.size() == weight_.size() &&
              "Gradient tensor does not match weight tensor");
     }
   }
