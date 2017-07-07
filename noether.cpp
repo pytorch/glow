@@ -25,10 +25,11 @@ float delta(float a, float b) {
 /// Test the fully connected layer and the softmax function.
 /// Example from:
 /// http://cs.stanford.edu/people/karpathy/convnetjs/demo/classify2d.html
-void testFCSoftMax() {
+void testFCSoftMax(bool print = false) {
 
   // Construct the network:
   Network N;
+  N.getTrainingConfig().momentum = 0.0;
   ArrayNode<float> A(&N, 1,1,2);
   FullyConnectedNode<float> FCL0(&N, &A, 6);
   RELUNode<float> RL0(&N, &FCL0);
@@ -55,6 +56,31 @@ void testFCSoftMax() {
     A.getOutput().weight_.at(0,0, 0) = x;
     A.getOutput().weight_.at(0,0, 1) = y;
     N.train();
+  }
+
+  // Print a diagram that depicts the network decision on a grid.
+  if (print) {
+    for (int x = -10; x < 10; x++) {
+      for (int y = -10; y < 10; y++) {
+        // Load the inputs:
+        A.getOutput().weight_.at(0,0, 0) = float(x)/10;
+        A.getOutput().weight_.at(0,0, 1) = float(y)/10;
+
+        N.infer();
+        auto A = SM.getOutput().weight_.at(0,0,0);
+        auto B = SM.getOutput().weight_.at(0,0,1);
+
+        char ch = '=';
+        if (A > (B + 0.2)) {
+          ch = '+';
+        } else if (B > (A + 0.2)) {
+          ch = '-';
+        }
+
+        std::cout<<ch;
+      }
+      std::cout<<"\n";
+    }
   }
 
   // Verify the label for some 10 random points.
