@@ -15,7 +15,10 @@ namespace noether {
 
 template <class ElemTy> class PNGNode final : public Node<ElemTy> {
 public:
-  PNGNode(Network *N) : Node<ElemTy>(N) {}
+  PNGNode(Network *N) : Node<ElemTy>(N) {
+    // Do not change the output of this layer when training the network.
+    this->getOutput().isTrainable_ = false;
+  }
 
   virtual std::string getName() const override { return "PNGNode"; }
 
@@ -179,6 +182,8 @@ template <class ElemTy> class ArrayNode final : public Node<ElemTy> {
 public:
   ArrayNode(Network *N, size_t x, size_t y, size_t z) : Node<ElemTy>(N) {
     this->getOutput().reset(x,y,z);
+    // Do not change the output of this layer when training the network.
+    this->getOutput().isTrainable_ = false;
   }
 
   virtual std::string getName() const override { return "ArrayNode"; }
@@ -186,7 +191,6 @@ public:
   void forward() override {}
 
   void backward() override {}
-
 };
 
 }

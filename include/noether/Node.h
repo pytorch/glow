@@ -32,7 +32,10 @@ template <class ElemTy> struct DerivData : public TrainableData {
   /// gradient sum - this buffer is used by the SGD algorithm to store the
   /// previous gradient. The array
   Array3D<ElemTy> gsum_{};
-
+  /// If this flag is set to false then the data is not modified during training
+  /// We use this for preventing the trainer from changing the weights of the
+  /// input buffers.
+  bool isTrainable_{true};
 
   DerivData() = default;
 
@@ -78,6 +81,10 @@ template <class ElemTy> struct DerivData : public TrainableData {
     float L2Decay = config.L2Decay;
     float learningRate = config.learningRate;
     float momentum = config.momentum;
+
+    // Do not change the weights of input layers that are marked as untrainable.
+    if (!isTrainable_)
+      return;
 
     /// If we are using the momentum technique then we need to allocate an array
     /// for the gradient sum.
