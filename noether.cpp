@@ -9,6 +9,8 @@
 #include <random>
 #include <string>
 #include <vector>
+#include <fstream>
+#include <iterator>
 
 using namespace noether;
 
@@ -25,7 +27,7 @@ float delta(float a, float b) {
 /// Test the fully connected layer and the softmax function.
 /// Example from:
 /// http://cs.stanford.edu/people/karpathy/convnetjs/demo/classify2d.html
-void testFCSoftMax(bool print = false) {
+void testFCSoftMax(bool verbose = false) {
 
   // Construct the network:
   Network N;
@@ -59,7 +61,7 @@ void testFCSoftMax(bool print = false) {
   }
 
   // Print a diagram that depicts the network decision on a grid.
-  if (print) {
+  if (verbose) {
     for (int x = -10; x < 10; x++) {
       for (int y = -10; y < 10; y++) {
         // Load the inputs:
@@ -179,6 +181,84 @@ void testRegression() {
   }
 }
 
+/// This test classifies digits from the MNIST labeled dataset.
+void testMNIST(bool verbose = false) {
+  if (verbose) {
+    std::cout<<"Loading the mnist database.\n";
+  }
+
+  std::ifstream imgInput("mnist_images.bin", std::ios::binary);
+  std::ifstream labInput("mnist_labels.bin", std::ios::binary);
+
+  std::vector<char> images((std::istreambuf_iterator<char>(imgInput)),
+                           (std::istreambuf_iterator<char>()));
+  std::vector<char> labels((std::istreambuf_iterator<char>(labInput)),
+                           (std::istreambuf_iterator<char>()));
+  float *imagesAsFloatPtr = reinterpret_cast<float*>(&images[0]);
+
+  assert(labels.size() * 28 * 28 * sizeof(float) == images.size() &&
+         "The size of the image buffer does not match the labels vector");
+
+  size_t numImages = labels.size();
+  assert(numImages && "No images were found.");
+
+  if (verbose) {
+    std::cout<<"Loaded " <<  numImages << " images.\n";
+  }
+
+  // Construct the network:
+  Network N;
+  ArrayNode<float> A(&N, 28, 28, 1);
+  FullyConnectedNode<float> FCL0(&N, &A, 28 * 28);
+  RELUNode<float> RL0(&N, &FCL0);
+  FullyConnectedNode<float> FCL1(&N, &RL0, 10);
+  RELUNode<float> RL1(&N, &FCL1);
+  SoftMaxNode<float> SM(&N, &RL1);
+
+  if (verbose) {
+    std::cout<<"Training.\n";
+  }
+
+  for (int iter = 0; iter < 90000; iter++) {
+    if (verbose && !(iter % 1000)) {
+      std::cout<<"Training - iteration #" <<  iter << "\n";
+    }
+
+    size_t imageIndex = iter % numImages;
+
+    A.loadRaw(imagesAsFloatPtr + 28 * 28 * imageIndex , 28 * 28);
+    SM.setSelected(labels[imageIndex]);
+
+    N.train();
+
+    if (verbose && !(iter % 1000)) {
+      N.infer();
+      std::cout<<"Expected: " << int(labels[imageIndex]) << " got :";
+      SM.getOutput().weight_.dump();
+      std::cout<<"\n";
+    }
+  }
+
+  if (verbose) {
+    std::cout<<"Validating.\n";
+  }
+
+  // Test some inputs:
+  for (int iter = 0; iter < 5; iter++) {
+    size_t imageIndex = (iter * 17512 + 9124) % numImages;
+
+    A.loadRaw(imagesAsFloatPtr + 28 * 28 * imageIndex , 28 * 28);
+
+    N.infer();
+
+    if (verbose) {
+      std::cout<<"Expected: " << int(labels[imageIndex]) << " got :";
+      SM.getOutput().weight_.dump();
+      std::cout<<"\n";
+    }
+  }
+}
+
 
 int main() {
   testArray();
@@ -188,4 +268,8 @@ int main() {
   testRegression();
 
   testFCSoftMax();
+
+  testMNIST();
+
+  return 0;
 }
