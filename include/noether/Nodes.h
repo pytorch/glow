@@ -148,6 +148,127 @@ public:
   virtual std::string getName() const override { return "ConvNode"; }
 };
 
+
+
+template <class ElemTy> class MaxPoolNode final : public Node<ElemTy> {
+  /// The input node.
+  Node<ElemTy> *input_;
+  /// The source coordinate for each element in the result pool. This is used
+  /// to accelerate the gradient backward pass.
+  Array3D<size_t> srcX_, srcY_;
+
+  size_t filterSize_;
+  size_t stride_;
+  size_t pad_;
+
+public:
+
+    MaxPoolNode(Network *N, Node<ElemTy> *input, size_t filterSize,
+             size_t stride, size_t pad)
+    : Node<ElemTy>(N), input_(input), filterSize_(filterSize), stride_(stride), pad_(pad) {
+      assert(pad == 0 && "Unsupported pad size");
+      assert(input && input_->size() && "Invalid input");
+      N->addNodeDependency(this, input);
+      size_t inx, iny, inz;
+      std::tie(inx, iny, inz) = input_->dims();
+      assert(inx > filterSize && iny > filterSize &&
+             "buffer too small for selected stride");
+
+      size_t outsx = ((inx + pad_ * 2 - filterSize) / stride + 1);
+      size_t outsy = ((iny + pad_ * 2 - filterSize) / stride + 1);
+
+      this->output_.reset(outsx, outsy, inz);
+
+      // Resize the arrays that store the x and y coordinates of the incoming
+      // gradient.
+      srcX_.reset(outsx, outsy, inz);
+      srcY_.reset(outsx, outsy, inz);
+    }
+
+    virtual void forward() override {
+      size_t outx, outy, outz;
+      std::tie(outx, outy, outz) = this->output_.dims();
+      size_t inx, iny, inz;
+      std::tie(inx, iny, inz) = input_->dims();
+      auto &inputBuffer = input_->getOutput();
+
+      // For each layer in the output tensor:
+      for (size_t z = 0; z < inz; z++) {
+        // For each convolution 'jump' in the input tensor:
+        ssize_t y = -ssize_t(pad_);
+        for (size_t ay = 0; ay < outy; y += stride_, ay++) {
+          ssize_t x = -ssize_t(pad_);
+          for (size_t ax = 0; ax < outy; x += stride_, ax++) {
+            size_t maxX = 0;
+            size_t maxY = 0;
+
+            // TODO: when pad != 0 this is incorrect.
+            ElemTy max = inputBuffer.weight_.at(x, y, z);
+
+            for (size_t fy = 0; fy < filterSize_; fy++) {
+              for (size_t fx = 0; fx < filterSize_; fx++) {
+                ssize_t ox = x + fx;
+                ssize_t oy = y + fy;
+
+                // Ignore index access below zero (this is due to padding).
+                if (ox < 0 || oy < 0)
+                  continue;
+
+                if (this->output_.isInBounds(ox, oy, 0)) {
+                  ElemTy val = inputBuffer.weight_.at(ox, oy, z);
+
+                  if (val > max) {
+                    val = max;
+                    maxX = ox;
+                    maxY = oy;
+                  }
+
+                }
+              }
+            }
+            srcX_.at(ax,ay,z) = maxX;
+            srcY_.at(ax,ay,z) = maxY;
+            this->output_.weight_.at(ax, ay, z) = max;
+          }
+        }
+      }
+    }
+
+    virtual void backward() override {
+      size_t outx, outy, outz;
+      std::tie(outx, outy, outz) = this->output_.dims();
+      size_t inx, iny, inz;
+      std::tie(inx, iny, inz) = input_->dims();
+      auto &inputBuffer = input_->getOutput();
+
+      // Zero the gradient of the input.
+      inputBuffer.gradient_.clear();
+
+      // Compute the gradient. For each layer in the output tensor:
+      for (size_t z = 0; z < outz; z++) {
+
+        // For each convolution 'jump' in the input tensor:
+        ssize_t y = -ssize_t(pad_);
+        for (size_t ay = 0; ay < ssize_t(outy); y += stride_, ay++) {
+          ssize_t x = -ssize_t(pad_);
+          for (size_t ax = 0; ax < ssize_t(outy); x += stride_, ax++) {
+
+            ElemTy chainGrad = this->output_.gradient_.at(ax,ay, z);
+
+            size_t maxX = srcX_.at(ax, ay, z);
+            size_t maxY = srcY_.at(ax, ay, z);
+
+            inputBuffer.gradient_.at(maxX, maxY, z) += chainGrad;
+          }
+        }
+      }
+    }
+    
+    virtual std::string getName() const override { return "MaxPoolNode"; }
+  };
+  
+
+
 template <class ElemTy> class FullyConnectedNode final : public Node<ElemTy> {
   /// A reference to the layer input.
   Node<ElemTy> *input_;
