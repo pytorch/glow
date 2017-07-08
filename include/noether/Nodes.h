@@ -613,6 +613,58 @@ public:
     virtual std::string getName() const override { return "RegressionNode"; }
   };
 
-}
+/// This node attempts to maximize the inputs by sending back a gradient signal
+/// that encourages positive values. This is very useful for debugging.
+template <class ElemTy> class MaxNode final : public Node<ElemTy> {
+  /// A reference to the node input.
+  Node<ElemTy> *input_;
+
+public:
+  MaxNode(Network *N, Node<ElemTy> *input)
+  : Node<ElemTy>(N), input_(input) {
+    assert(input && input_->size() && "Invalid input");
+    N->addNodeDependency(this, input);
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = input_->dims();
+    this->output_.reset(inx, iny, inz);
+  }
+
+  virtual void forward() override {
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = input_->dims();
+    auto &inputBuffer = input_->getOutput();
+    auto &OutW = this->output_.weight_;
+    auto &InW = inputBuffer.weight_;
+
+    for (size_t x = 0; x < inz; x++) {
+      for (size_t y = 0; y < inz; y++) {
+        for (size_t z = 0; z < inz; z++) {
+          OutW.at(x, y, z) = InW.at(x, y, z);
+        }
+      }
+    }
+  }
+
+  virtual void backward() override {
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = input_->dims();
+    auto &inputBuffer = input_->getOutput();
+    auto &InDW = inputBuffer.gradient_;
+
+    for (size_t x = 0; x < inz; x++) {
+      for (size_t y = 0; y < inz; y++) {
+        for (size_t z = 0; z < inz; z++) {
+          ElemTy dy = inputBuffer.weight_.at(x,y,z);
+          InDW.at(x,y,z) = dy > 0 ? -1 : 1;
+        }
+      }
+    }
+  }
+
+  virtual std::string getName() const override { return "MaxNode"; }
+};
+
+} // namespace noether
+
 
 #endif // NOETHER_NODES_H
