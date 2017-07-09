@@ -130,6 +130,33 @@ public:
     return data_[getElementIdx(x, y, z)];
   }
 
+  void dumpAscii(const std::string &prefix="") {
+    std::cout<<prefix<<"\n";
+    for (size_t z = 0; z < sz_; z++) {
+      std::cout<<"Layer #" << z << "\n";
+      for (size_t y = 0; y < sy_; y++) {
+        for (size_t x = 0; x < sx_; x++) {
+          auto val = at(x, y, z);
+          char ch = ' ';
+          if (val > 0.2) ch = '.';
+          if (val > 0.4) ch = ',';
+          if (val > 0.6) ch = ':';
+          if (val > 0.8) ch = 'o';
+          if (val > 1.0) ch = 'O';
+          if (val > 1.5) ch = '0';
+          if (val > 2.0) ch = '@';
+          if (val < -0.1) ch = '-';
+          if (val < -0.2) ch = '~';
+          if (val < -0.4) ch = '=';
+          if (val < -1.0) ch = '#';
+          std::cout<<ch;
+        }
+        std::cout<<"\n";
+      }
+      std::cout<<"---\n";
+    }
+  }
+
   void dump(std::string title = "", std::string suffix = "") {
     std::cout<< title << "[";
     for (int x = 0; x < sx_; x++) {
