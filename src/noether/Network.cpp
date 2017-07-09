@@ -72,6 +72,12 @@ void Network::train() {
   std::vector<NodeBase*> order;
   sortNetwork(order);
 
+  // We clear the gradient here and not as part of the trainign process to ease
+  // debugging by leaving the gradients around at the end of the scan.
+  for (auto &buffer: trainableBuffers_) {
+    buffer->clearGradient();
+  }
+
   // Forward scan.
   for (unsigned i = 0, e = order.size(); i < e; i++) {
     order[i]->forward();

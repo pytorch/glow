@@ -20,6 +20,9 @@ public:
 
   /// Print the textual representation of the buffer.
   virtual void dump() = 0;
+
+  /// Zero out the gradient and prepare for the next round of learning.
+  virtual void clearGradient () = 0;
 };
 
 /// A pair of some weights and it's derivative. The derivative (gradient) of the
@@ -75,6 +78,10 @@ template <class ElemTy> struct DerivData : public TrainableData {
     if (gsum_.size()) gsum_.dump("Gsum", "\n");
   }
 
+  virtual void clearGradient () override {
+    gradient_.clear();
+  }
+
   virtual void train (const TrainingConfig &config) override {
     size_t batchSize = config.batchSize;
     float L1Decay = config.L1Decay;
@@ -120,9 +127,6 @@ template <class ElemTy> struct DerivData : public TrainableData {
         }
       }
     }
-
-    // Zero out the gradient and prepare for the next round of learning.
-    gradient_.clear();
   }
 
   /// Performs some checks to validate the correctness of the payload.
