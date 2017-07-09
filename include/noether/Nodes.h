@@ -29,7 +29,6 @@ public:
   ConvNode(Network *N, Node<ElemTy> *input, size_t outDepth, size_t filterSize,
             size_t stride, size_t pad)
       : Node<ElemTy>(N), input_(input), filterSize_(filterSize), stride_(stride), pad_(pad) {
-    assert(pad == 0 && "Unsupported pad size");
     assert(input && input_->size() && "Invalid input");
     N->addNodeDependency(this, input);
     size_t inx, iny, inz;
@@ -166,7 +165,6 @@ public:
     MaxPoolNode(Network *N, Node<ElemTy> *input, size_t filterSize,
              size_t stride, size_t pad)
     : Node<ElemTy>(N), input_(input), filterSize_(filterSize), stride_(stride), pad_(pad) {
-      assert(pad == 0 && "Unsupported pad size");
       assert(input && input_->size() && "Invalid input");
       N->addNodeDependency(this, input);
       size_t inx, iny, inz;
