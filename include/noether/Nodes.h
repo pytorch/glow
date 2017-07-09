@@ -198,12 +198,12 @@ public:
         ssize_t y = -ssize_t(pad_);
         for (size_t ay = 0; ay < outy; y += stride_, ay++) {
           ssize_t x = -ssize_t(pad_);
-          for (size_t ax = 0; ax < outy; x += stride_, ax++) {
-            size_t maxX = 0;
-            size_t maxY = 0;
+          for (size_t ax = 0; ax < outx; x += stride_, ax++) {
+            size_t maxX = x;
+            size_t maxY = y;
 
-            // TODO: when pad != 0 this is incorrect.
-            ElemTy max = inputBuffer.weight_.at(x, y, z);
+            bool first = true;
+            ElemTy max = 0;
 
             for (size_t fy = 0; fy < filterSize_; fy++) {
               for (size_t fx = 0; fx < filterSize_; fx++) {
@@ -214,18 +214,20 @@ public:
                 if (ox < 0 || oy < 0)
                   continue;
 
-                if (this->output_.isInBounds(ox, oy, 0)) {
+                if (inputBuffer.isInBounds(ox, oy, z)) {
                   ElemTy val = inputBuffer.weight_.at(ox, oy, z);
 
-                  if (val > max) {
-                    val = max;
+                  if (first || (val >= max)) {
+                    first = false;
+                    max = val;
                     maxX = ox;
                     maxY = oy;
                   }
-
                 }
               }
             }
+
+            assert(!first && "Max value is uninitialized");
             srcX_.at(ax,ay,z) = maxX;
             srcY_.at(ax,ay,z) = maxY;
             this->output_.weight_.at(ax, ay, z) = max;
