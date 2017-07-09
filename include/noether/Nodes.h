@@ -115,7 +115,7 @@ public:
       ssize_t y = -ssize_t(pad_);
       for (size_t ay = 0; ay < ssize_t(outy); y += stride_, ay++) {
         ssize_t x = -ssize_t(pad_);
-        for (size_t ax = 0; ax < ssize_t(outy); x += stride_, ax++) {
+        for (size_t ax = 0; ax < ssize_t(outx); x += stride_, ax++) {
 
           ElemTy chainGrad = this->output_.gradient_.at(ax,ay, d);
 
