@@ -130,7 +130,7 @@ public:
     return data_[getElementIdx(x, y, z)];
   }
 
-  void dumpAscii(const std::string &prefix="") {
+  void dumpAscii(const std::string &prefix="", std::string suffix = "\n") {
     std::cout<<prefix<<"\n";
     for (size_t z = 0; z < sz_; z++) {
       std::cout<<"Layer #" << z << "\n";
@@ -153,7 +153,7 @@ public:
         }
         std::cout<<"\n";
       }
-      std::cout<<"---\n";
+      std::cout<<suffix;
     }
   }
 
