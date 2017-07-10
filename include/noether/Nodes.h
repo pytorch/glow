@@ -534,6 +534,25 @@ public:
     }
   }
 
+  /// \returns the index of the highest value.
+  size_t maxArg() {
+    size_t inx, iny, inz;
+    std::tie(inx, iny, inz) = input_->dims();
+
+    auto &OutW = this->output_.weight_;
+    ElemTy max = OutW.at(0,0,0);
+    size_t idx = 0;
+
+    for (size_t i = 1; i < inz; i++) {
+      ElemTy val = OutW.at(0,0,i);
+      if (val > max) {
+        max = val;
+        idx = i;
+      }
+    }
+    return idx;
+  }
+
   void setSelected(size_t selected) {
     size_t inx, iny, inz;
     std::tie(inx, iny, inz) = input_->dims();
