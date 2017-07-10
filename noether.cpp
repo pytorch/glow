@@ -125,7 +125,7 @@ void testLearnSingleInput() {
   ArrayNode<float> A(&N, 1, 1, 10);
   FullyConnectedNode<float> FCL0(&N, &A, 10);
   RELUNode<float> RL0(&N, &FCL0);
-  FullyConnectedNode<float> FCL1(&N, &A, 10);
+  FullyConnectedNode<float> FCL1(&N, &RL0, 10);
   RELUNode<float> RL1(&N, &FCL1);
   RegressionNode<float> RN(&N, &RL1);
 
