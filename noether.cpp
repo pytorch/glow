@@ -208,10 +208,15 @@ void testMNIST(bool verbose = false) {
 
   // Construct the network:
   Network N;
+  N.getTrainingConfig().learningRate = 0.01;
+  N.getTrainingConfig().momentum = 0.9;
+  N.getTrainingConfig().batchSize = 20;
+
   ArrayNode<float> A(&N, 28, 28, 1);
-  FullyConnectedNode<float> FCL0(&N, &A, 28 * 28);
-  RELUNode<float> RL0(&N, &FCL0);
-  FullyConnectedNode<float> FCL1(&N, &RL0, 10);
+  ConvNode<float> CV0(&N, &A, 8, 5, 1, 0);
+  RELUNode<float> RL0(&N, &CV0);
+  MaxPoolNode<float> MP0(&N, &RL0, 2, 2, 0);
+  FullyConnectedNode<float> FCL1(&N, &MP0, 10);
   RELUNode<float> RL1(&N, &FCL1);
   SoftMaxNode<float> SM(&N, &RL1);
 
@@ -230,13 +235,6 @@ void testMNIST(bool verbose = false) {
     SM.setSelected(labels[imageIndex]);
 
     N.train();
-
-    if (verbose && !(iter % 1000)) {
-      N.infer();
-      std::cout<<"Expected: " << int(labels[imageIndex]) << " got :";
-      SM.getOutput().weight_.dump();
-      std::cout<<"\n";
-    }
   }
 
   if (verbose) {
@@ -252,9 +250,11 @@ void testMNIST(bool verbose = false) {
     N.infer();
 
     if (verbose) {
-      std::cout<<"Expected: " << int(labels[imageIndex]) << " got :";
-      SM.getOutput().weight_.dump();
-      std::cout<<"\n";
+      A.getOutput().weight_.dumpAscii("MNIST Input");
+      std::cout<<"Expected: " << int(labels[imageIndex]) << " got :" <<
+      SM.maxArg() << "\n";
+      SM.getOutput().weight_.dump("","\n");
+      std::cout<<"\n-------------\n";
     }
   }
 }
