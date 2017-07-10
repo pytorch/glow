@@ -1,14 +1,14 @@
 #ifndef NOETHER_NODE_H
 #define NOETHER_NODE_H
 
-#include "noether/Tensor.h"
 #include "noether/Network.h"
+#include "noether/Tensor.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
-#include <map>
 
 namespace noether {
 
@@ -22,7 +22,7 @@ public:
   virtual void dump() = 0;
 
   /// Zero out the gradient and prepare for the next round of learning.
-  virtual void clearGradient () = 0;
+  virtual void clearGradient() = 0;
 };
 
 /// A pair of some weights and it's derivative. The derivative (gradient) of the
@@ -42,19 +42,15 @@ template <class ElemTy> struct DerivData : public TrainableData {
 
   DerivData() = default;
 
-  DerivData(size_t x, size_t y, size_t z) {
-    reset(x,y,z);
-  }
+  DerivData(size_t x, size_t y, size_t z) { reset(x, y, z); }
 
   /// \returns True if the coordinate is within the array.
   bool isInBounds(size_t x, size_t y, size_t z) const {
-    return weight_.isInBounds(x,y,z);
+    return weight_.isInBounds(x, y, z);
   }
 
   /// \returns the dimension of the weight tensor.
-  std::tuple<size_t, size_t, size_t> dims() const {
-    return weight_.dims();
-  }
+  std::tuple<size_t, size_t, size_t> dims() const { return weight_.dims(); }
 
   /// \returns the number of elements in the tensor.
   size_t size() const { return weight_.size(); }
@@ -63,26 +59,26 @@ template <class ElemTy> struct DerivData : public TrainableData {
   void reset(std::tuple<size_t, size_t, size_t> dim) {
     size_t x, y, z;
     std::tie(x, y, z) = dim;
-    reset(x,y,z);
+    reset(x, y, z);
   }
 
   /// Resets the weights and gradients.
   void reset(size_t x, size_t y, size_t z) {
-      weight_.reset(x,y,z);
-      gradient_.reset(x,y,z);
+    weight_.reset(x, y, z);
+    gradient_.reset(x, y, z);
   }
 
-  virtual void dump () override {
+  virtual void dump() override {
     weight_.dump("W");
-    if (gradient_.size()) gradient_.dump("G", "\n");
-    if (gsum_.size()) gsum_.dump("Gsum", "\n");
+    if (gradient_.size())
+      gradient_.dump("G", "\n");
+    if (gsum_.size())
+      gsum_.dump("Gsum", "\n");
   }
 
-  virtual void clearGradient () override {
-    gradient_.clear();
-  }
+  virtual void clearGradient() override { gradient_.clear(); }
 
-  virtual void train (const TrainingConfig &config) override {
+  virtual void train(const TrainingConfig &config) override {
     size_t batchSize = config.batchSize;
     float L1Decay = config.L1Decay;
     float L2Decay = config.L2Decay;
@@ -109,20 +105,20 @@ template <class ElemTy> struct DerivData : public TrainableData {
           // Do a simple SGD update:
           ElemTy L1Grad = L1Decay * (weight_.at(x, y, z) > 0 ? 1 : -1);
           ElemTy L2Grad = L2Decay * (weight_.at(x, y, z));
-          ElemTy gij = (L2Grad + L1Grad + gradient_.at(x,y,z)) / batchSize;
+          ElemTy gij = (L2Grad + L1Grad + gradient_.at(x, y, z)) / batchSize;
 
           // Use the momentum to improve the gradient descent:
           // http://ufldl.stanford.edu/tutorial/supervised/OptimizationStochasticGradientDescent/
-          if(momentum > 0.0) {
+          if (momentum > 0.0) {
             // Momentum update:
-            ElemTy dx = momentum * gsum_.at(x,y,z) -  learningRate * gij;
+            ElemTy dx = momentum * gsum_.at(x, y, z) - learningRate * gij;
             // Save this value for the next iteration:
-            gsum_.at(x,y,z) = dx;
+            gsum_.at(x, y, z) = dx;
             // Apply the gradient.
-            weight_.at(x,y,z) += dx;
+            weight_.at(x, y, z) += dx;
           } else {
             // Use regular SGD:
-            weight_.at(x,y,z) -= learningRate * gij;
+            weight_.at(x, y, z) -= learningRate * gij;
           }
         }
       }
@@ -168,14 +164,11 @@ public:
   DerivData<ElemTy> &getOutput() { return output_; }
 
   /// \returns the dimension of the tensor.
-  std::tuple<size_t, size_t, size_t> dims() const {
-    return output_.dims();
-  }
+  std::tuple<size_t, size_t, size_t> dims() const { return output_.dims(); }
 
   /// \returns the number of elements in the tensor.
   size_t size() const { return output_.size(); }
 };
-
 }
 
 #endif // NOETHER_NODE_H

@@ -1,6 +1,6 @@
+#include "noether/Network.h"
 #include "noether/Image.h"
 #include "noether/Nodes.h"
-#include "noether/Network.h"
 #include "noether/Tensor.h"
 
 #include <iostream>
@@ -10,12 +10,12 @@ using namespace noether;
 
 Network::Network() {}
 
-void Network::sortNetwork(std::vector<NodeBase*> &order) {
+void Network::sortNetwork(std::vector<NodeBase *> &order) {
   // TODO: add a cycle detector.
   // A list of nodes that were processed.
-  std::unordered_set<NodeBase*> visited;
+  std::unordered_set<NodeBase *> visited;
   // Our DFS stack.
-  std::vector<NodeBase*> stack;
+  std::vector<NodeBase *> stack;
 
   // Create a pseudo edge to all nodes in the graph by pusing all of the
   // keys into our stack.
@@ -69,12 +69,12 @@ void Network::registerDerivTensor(NodeBase *node, TrainableData *weights) {
 }
 
 void Network::train() {
-  std::vector<NodeBase*> order;
+  std::vector<NodeBase *> order;
   sortNetwork(order);
 
   // We clear the gradient here and not as part of the trainign process to ease
   // debugging by leaving the gradients around at the end of the scan.
-  for (auto &buffer: trainableBuffers_) {
+  for (auto &buffer : trainableBuffers_) {
     buffer->clearGradient();
   }
 
@@ -89,14 +89,13 @@ void Network::train() {
   }
 
   // Update the gradients.
-  for (auto &buffer: trainableBuffers_) {
-      buffer->train(trainConf_);
+  for (auto &buffer : trainableBuffers_) {
+    buffer->train(trainConf_);
   }
-
 }
 
 void Network::infer() {
-  std::vector<NodeBase*> order;
+  std::vector<NodeBase *> order;
   sortNetwork(order);
 
   // Forward scan.
@@ -106,23 +105,20 @@ void Network::infer() {
 }
 
 void Network::dump() {
-  std::vector<NodeBase*> order;
+  std::vector<NodeBase *> order;
   sortNetwork(order);
 
-  std::cout<<"Network structure:";
+  std::cout << "Network structure:";
   for (auto &node : order) {
-    std::cout<<node->getName()<<" ";
+    std::cout << node->getName() << " ";
   }
-  std::cout<<"\n";
+  std::cout << "\n";
 
-  std::cout<<"Buffers content:\n";
+  std::cout << "Buffers content:\n";
 
-  for (auto &buffer: trainableBuffers_) {
+  for (auto &buffer : trainableBuffers_) {
     buffer->dump();
   }
 
-  std::cout<<"\n";
-
+  std::cout << "\n";
 }
-
-

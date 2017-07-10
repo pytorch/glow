@@ -5,12 +5,12 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <random>
 #include <string>
 #include <vector>
-#include <fstream>
-#include <iterator>
 
 using namespace noether;
 
@@ -20,9 +20,7 @@ void testArray() {
   assert((X.at(10u, 10u, 2u) == 2) && "Invalid load/store");
 }
 
-float delta(float a, float b) {
-  return std::fabs(a - b);
-}
+float delta(float a, float b) { return std::fabs(a - b); }
 
 /// Test the fully connected layer and the softmax function.
 /// Example from:
@@ -32,7 +30,7 @@ void testFCSoftMax(bool verbose = false) {
   // Construct the network:
   Network N;
   N.getTrainingConfig().momentum = 0.0;
-  ArrayNode<float> A(&N, 1,1,2);
+  ArrayNode<float> A(&N, 1, 1, 2);
   FullyConnectedNode<float> FCL0(&N, &A, 6);
   RELUNode<float> RL0(&N, &FCL0);
   FullyConnectedNode<float> FCL1(&N, &RL0, 2);
@@ -50,13 +48,13 @@ void testFCSoftMax(bool verbose = false) {
     float y = dis(gen);
 
     // Check if the dot falls within some inner circle.
-    float r2 = (x*x + y*y);
+    float r2 = (x * x + y * y);
 
-    bool InCircle = r2 <0.6;
+    bool InCircle = r2 < 0.6;
 
     SM.setSelected(InCircle);
-    A.getOutput().weight_.at(0,0, 0) = x;
-    A.getOutput().weight_.at(0,0, 1) = y;
+    A.getOutput().weight_.at(0, 0, 0) = x;
+    A.getOutput().weight_.at(0, 0, 1) = y;
     N.train();
   }
 
@@ -65,12 +63,12 @@ void testFCSoftMax(bool verbose = false) {
     for (int x = -10; x < 10; x++) {
       for (int y = -10; y < 10; y++) {
         // Load the inputs:
-        A.getOutput().weight_.at(0,0, 0) = float(x)/10;
-        A.getOutput().weight_.at(0,0, 1) = float(y)/10;
+        A.getOutput().weight_.at(0, 0, 0) = float(x) / 10;
+        A.getOutput().weight_.at(0, 0, 1) = float(y) / 10;
 
         N.infer();
-        auto A = SM.getOutput().weight_.at(0,0,0);
-        auto B = SM.getOutput().weight_.at(0,0,1);
+        auto A = SM.getOutput().weight_.at(0, 0, 0);
+        auto B = SM.getOutput().weight_.at(0, 0, 1);
 
         char ch = '=';
         if (A > (B + 0.2)) {
@@ -79,9 +77,9 @@ void testFCSoftMax(bool verbose = false) {
           ch = '-';
         }
 
-        std::cout<<ch;
+        std::cout << ch;
       }
-      std::cout<<"\n";
+      std::cout << "\n";
     }
   }
 
@@ -90,23 +88,24 @@ void testFCSoftMax(bool verbose = false) {
     float x = dis(gen);
     float y = dis(gen);
 
-    float r2 = (x*x + y*y);
+    float r2 = (x * x + y * y);
 
     // Throw away confusing samples.
-    if (r2 > 0.5 && r2 < 0.7) continue;
+    if (r2 > 0.5 && r2 < 0.7)
+      continue;
 
     // Load the inputs:
-    A.getOutput().weight_.at(0,0, 0) = x;
-    A.getOutput().weight_.at(0,0, 1) = y;
+    A.getOutput().weight_.at(0, 0, 0) = x;
+    A.getOutput().weight_.at(0, 0, 1) = y;
 
     N.infer();
 
     // Inspect the outputs:
     if (r2 < 0.50) {
-      assert(SM.getOutput().weight_.at(0,0,1) > 0.90);
+      assert(SM.getOutput().weight_.at(0, 0, 1) > 0.90);
     }
     if (r2 > 0.7) {
-      assert(SM.getOutput().weight_.at(0,0,0) > 0.90);
+      assert(SM.getOutput().weight_.at(0, 0, 0) > 0.90);
     }
   }
 }
@@ -143,9 +142,8 @@ void testLearnSingleInput() {
 
   // Test the output:
   assert(RN.getOutput().weight_.sum() < 10);
-  assert(RN.getOutput().weight_.at(0,0, 1) > 8.5);
+  assert(RN.getOutput().weight_.at(0, 0, 1) > 8.5);
 }
-
 
 void testRegression() {
   Network N;
@@ -177,14 +175,15 @@ void testRegression() {
     setOneHot(RN.getExpected(), 0.0, target + 1, 1);
 
     N.infer();
-    assert(delta(A.getOutput().weight_.at(0,0,0) + 1, RN.getOutput().weight_.at(0,0,1)) < 0.1);
+    assert(delta(A.getOutput().weight_.at(0, 0, 0) + 1,
+                 RN.getOutput().weight_.at(0, 0, 1)) < 0.1);
   }
 }
 
 /// This test classifies digits from the MNIST labeled dataset.
 void testMNIST(bool verbose = false) {
   if (verbose) {
-    std::cout<<"Loading the mnist database.\n";
+    std::cout << "Loading the mnist database.\n";
   }
 
   std::ifstream imgInput("mnist_images.bin", std::ios::binary);
@@ -194,7 +193,7 @@ void testMNIST(bool verbose = false) {
                            (std::istreambuf_iterator<char>()));
   std::vector<char> labels((std::istreambuf_iterator<char>(labInput)),
                            (std::istreambuf_iterator<char>()));
-  float *imagesAsFloatPtr = reinterpret_cast<float*>(&images[0]);
+  float *imagesAsFloatPtr = reinterpret_cast<float *>(&images[0]);
 
   assert(labels.size() * 28 * 28 * sizeof(float) == images.size() &&
          "The size of the image buffer does not match the labels vector");
@@ -203,7 +202,7 @@ void testMNIST(bool verbose = false) {
   assert(numImages && "No images were found.");
 
   if (verbose) {
-    std::cout<<"Loaded " <<  numImages << " images.\n";
+    std::cout << "Loaded " << numImages << " images.\n";
   }
 
   // Construct the network:
@@ -221,44 +220,43 @@ void testMNIST(bool verbose = false) {
   SoftMaxNode<float> SM(&N, &RL1);
 
   if (verbose) {
-    std::cout<<"Training.\n";
+    std::cout << "Training.\n";
   }
 
   for (int iter = 0; iter < 90000; iter++) {
     if (verbose && !(iter % 1000)) {
-      std::cout<<"Training - iteration #" <<  iter << "\n";
+      std::cout << "Training - iteration #" << iter << "\n";
     }
 
     size_t imageIndex = iter % numImages;
 
-    A.loadRaw(imagesAsFloatPtr + 28 * 28 * imageIndex , 28 * 28);
+    A.loadRaw(imagesAsFloatPtr + 28 * 28 * imageIndex, 28 * 28);
     SM.setSelected(labels[imageIndex]);
 
     N.train();
   }
 
   if (verbose) {
-    std::cout<<"Validating.\n";
+    std::cout << "Validating.\n";
   }
 
   // Test some inputs:
   for (int iter = 0; iter < 5; iter++) {
     size_t imageIndex = (iter * 17512 + 9124) % numImages;
 
-    A.loadRaw(imagesAsFloatPtr + 28 * 28 * imageIndex , 28 * 28);
+    A.loadRaw(imagesAsFloatPtr + 28 * 28 * imageIndex, 28 * 28);
 
     N.infer();
 
     if (verbose) {
       A.getOutput().weight_.dumpAscii("MNIST Input");
-      std::cout<<"Expected: " << int(labels[imageIndex]) << " got :" <<
-      SM.maxArg() << "\n";
-      SM.getOutput().weight_.dump("","\n");
-      std::cout<<"\n-------------\n";
+      std::cout << "Expected: " << int(labels[imageIndex])
+                << " got :" << SM.maxArg() << "\n";
+      SM.getOutput().weight_.dump("", "\n");
+      std::cout << "\n-------------\n";
     }
   }
 }
-
 
 int main() {
   testArray();

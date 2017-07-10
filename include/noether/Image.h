@@ -181,7 +181,7 @@ public:
 template <class ElemTy> class ArrayNode final : public Node<ElemTy> {
 public:
   ArrayNode(Network *N, size_t x, size_t y, size_t z) : Node<ElemTy>(N) {
-    this->getOutput().reset(x,y,z);
+    this->getOutput().reset(x, y, z);
     // Do not change the output of this layer when training the network.
     this->getOutput().isTrainable_ = false;
   }
@@ -196,7 +196,6 @@ public:
 
   void backward() override {}
 };
-
 }
 
 #endif // NOETHER_IMAGE_H

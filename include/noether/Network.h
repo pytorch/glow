@@ -1,8 +1,8 @@
 #ifndef NOETHER_NETWORK_H
 #define NOETHER_NETWORK_H
 
-#include <vector>
 #include <map>
+#include <vector>
 
 namespace noether {
 
@@ -13,11 +13,11 @@ class TrainableData;
 /// This is a list of parameters that the network trainers (such as sgd and
 /// adam) use for training the network.
 struct TrainingConfig {
-    size_t batchSize{1};
-    float L1Decay{0};
-    float L2Decay{0};
-    float learningRate{0.01};
-    float momentum{0.0};
+  size_t batchSize{1};
+  float L1Decay{0};
+  float L2Decay{0};
+  float learningRate{0.01};
+  float momentum{0.0};
 };
 
 class Network {
@@ -25,13 +25,14 @@ class Network {
   TrainingConfig trainConf_;
 
   /// A list of dependencies.
-  std::map<NodeBase*, std::vector<NodeBase*>> deps_;
+  std::map<NodeBase *, std::vector<NodeBase *>> deps_;
 
   /// A list of buffers to train as part of the backwards prop pass.
-  std::vector<TrainableData*> trainableBuffers_;
+  std::vector<TrainableData *> trainableBuffers_;
 
   /// Generate a topological order of the nodes in the network.
-  void sortNetwork(std::vector<NodeBase*> &order);
+  void sortNetwork(std::vector<NodeBase *> &order);
+
 public:
   Network();
 
@@ -54,7 +55,6 @@ public:
   /// Dump the textual representation of the network.
   void dump();
 };
-
 }
 
 #endif // NOETHER_NETWORK_H
