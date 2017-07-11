@@ -102,10 +102,10 @@ void testFCSoftMax(bool verbose = false) {
 
     // Inspect the outputs:
     if (r2 < 0.50) {
-      assert(SM.getOutput().weight_.at(0, 0, 1) > 0.90);
+      assert(SM.maxArg() == 1);
     }
     if (r2 > 0.7) {
-      assert(SM.getOutput().weight_.at(0, 0, 0) > 0.90);
+      assert(SM.maxArg() == 0);
     }
   }
 }
