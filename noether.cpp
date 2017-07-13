@@ -261,9 +261,9 @@ void testMNIST(bool verbose = false) {
       SM.getOutput().weight_.dump("", "\n");
       std::cout << "\n-------------\n";
     }
-
-    assert(rightAnswer >= 7 && "Did not classify as many digits as expected");
   }
+  
+  assert(rightAnswer >= 7 && "Did not classify as many digits as expected");
 }
 
 int main() {
