@@ -13,9 +13,9 @@
 
 namespace noether {
 
-template <class ElemTy> class PNGNode final : public Node<ElemTy> {
+class PNGNode final : public Node {
 public:
-  PNGNode(Network *N) : Node<ElemTy>(N) {
+  PNGNode(Network *N) : Node(N) {
     // Do not change the output of this layer when training the network.
     this->getOutput().isTrainable_ = false;
   }
@@ -178,15 +178,15 @@ public:
   void backward() override {}
 };
 
-template <class ElemTy> class ArrayNode final : public Node<ElemTy> {
+class ArrayNode final : public Node {
 public:
-  ArrayNode(Network *N, size_t x, size_t y, size_t z) : Node<ElemTy>(N) {
+  ArrayNode(Network *N, size_t x, size_t y, size_t z) : Node(N) {
     this->getOutput().reset(x, y, z);
     // Do not change the output of this layer when training the network.
     this->getOutput().isTrainable_ = false;
   }
 
-  void loadRaw(ElemTy *ptr, size_t numElements) {
+  void loadRaw(FloatTy *ptr, size_t numElements) {
     this->getOutput().weight_.loadRaw(ptr, numElements);
   }
 

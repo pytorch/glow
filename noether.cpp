@@ -30,12 +30,12 @@ void testFCSoftMax(bool verbose = false) {
   // Construct the network:
   Network N;
   N.getTrainingConfig().momentum = 0.0;
-  ArrayNode<float> A(&N, 1, 1, 2);
-  FullyConnectedNode<float> FCL0(&N, &A, 6);
-  RELUNode<float> RL0(&N, &FCL0);
-  FullyConnectedNode<float> FCL1(&N, &RL0, 2);
-  RELUNode<float> RL1(&N, &FCL1);
-  SoftMaxNode<float> SM(&N, &RL1);
+  ArrayNode A(&N, 1, 1, 2);
+  FullyConnectedNode FCL0(&N, &A, 6);
+  RELUNode RL0(&N, &FCL0);
+  FullyConnectedNode FCL1(&N, &RL0, 2);
+  RELUNode RL1(&N, &FCL1);
+  SoftMaxNode SM(&N, &RL1);
 
   // Generate some random numbers in the range -1 .. 1.
   std::random_device rd;
@@ -111,7 +111,7 @@ void testFCSoftMax(bool verbose = false) {
 }
 
 /// A helper function to load a one-hot vector.
-void setOneHot(Array3D<float> &A, float background, float foreground,
+void setOneHot(Array3D<FloatTy> &A, float background, float foreground,
                size_t idx) {
   for (int j = 0; j < A.size(); j++) {
     A.at(0, 0, j) = (j == idx ? foreground : background);
@@ -121,12 +121,12 @@ void setOneHot(Array3D<float> &A, float background, float foreground,
 void testLearnSingleInput() {
   Network N;
   N.getTrainingConfig().learningRate = 0.005;
-  ArrayNode<float> A(&N, 1, 1, 10);
-  FullyConnectedNode<float> FCL0(&N, &A, 10);
-  RELUNode<float> RL0(&N, &FCL0);
-  FullyConnectedNode<float> FCL1(&N, &RL0, 10);
-  RELUNode<float> RL1(&N, &FCL1);
-  RegressionNode<float> RN(&N, &RL1);
+  ArrayNode A(&N, 1, 1, 10);
+  FullyConnectedNode FCL0(&N, &A, 10);
+  RELUNode RL0(&N, &FCL0);
+  FullyConnectedNode FCL1(&N, &RL0, 10);
+  RELUNode RL1(&N, &FCL1);
+  RegressionNode RN(&N, &RL1);
 
   // Put in [15, 0, 0, 0, 0 ... ]
   setOneHot(A.getOutput().weight_, 0.0, 15, 0);
@@ -152,12 +152,12 @@ void testRegression() {
   /// and places the result in the second element of the output vector.
   constexpr int numInputs = 4;
 
-  ArrayNode<float> A(&N, 1, 1, numInputs);
+  ArrayNode A(&N, 1, 1, numInputs);
 
-  FullyConnectedNode<float> FCL0(&N, &A, 4);
-  RELUNode<float> RL0(&N, &FCL0);
+  FullyConnectedNode FCL0(&N, &A, 4);
+  RELUNode RL0(&N, &FCL0);
 
-  RegressionNode<float> RN(&N, &RL0);
+  RegressionNode RN(&N, &RL0);
 
   // Train the network:
   for (int iter = 0; iter < 9000; iter++) {
@@ -211,13 +211,13 @@ void testMNIST(bool verbose = false) {
   N.getTrainingConfig().momentum = 0.9;
   N.getTrainingConfig().batchSize = 20;
 
-  ArrayNode<float> A(&N, 28, 28, 1);
-  ConvNode<float> CV0(&N, &A, 8, 5, 1, 0);
-  RELUNode<float> RL0(&N, &CV0);
-  MaxPoolNode<float> MP0(&N, &RL0, 2, 2, 0);
-  FullyConnectedNode<float> FCL1(&N, &MP0, 10);
-  RELUNode<float> RL1(&N, &FCL1);
-  SoftMaxNode<float> SM(&N, &RL1);
+  ArrayNode A(&N, 28, 28, 1);
+  ConvNode CV0(&N, &A, 8, 5, 1, 0);
+  RELUNode RL0(&N, &CV0);
+  MaxPoolNode MP0(&N, &RL0, 2, 2, 0);
+  FullyConnectedNode FCL1(&N, &MP0, 10);
+  RELUNode RL1(&N, &FCL1);
+  SoftMaxNode SM(&N, &RL1);
 
   if (verbose) {
     std::cout << "Training.\n";

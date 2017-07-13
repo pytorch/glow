@@ -11,10 +11,20 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -std=c++14 -Wall -fsanitize=
 set(NOETHER_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(NOETHER_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
+set(TRAINING_TENSOR_ELEMENT_TYPE float)
+
 include_directories(BEFORE
   ${CMAKE_CURRENT_BINARY_DIR}/include
   ${CMAKE_CURRENT_SOURCE_DIR}/include
   )
+
+configure_file (
+  "${NOETHER_SOURCE_DIR}/include/Config.h.in"
+  "${NOETHER_BINARY_DIR}/Config.h"
+  )
+
+include_directories ("${NOETHER_BINARY_DIR}")
+
 
 file(GLOB_RECURSE header_files include/noether/*.h)
 

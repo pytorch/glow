@@ -27,14 +27,14 @@ public:
 
 /// A pair of some weights and it's derivative. The derivative (gradient) of the
 /// weights is optionally initialized.
-template <class ElemTy> struct DerivData : public TrainableData {
+struct DerivData : public TrainableData {
   /// W - the weight.
-  Array3D<ElemTy> weight_{};
+  Array3D<FloatTy> weight_{};
   /// dW - the derivative of the weight.
-  Array3D<ElemTy> gradient_{};
+  Array3D<FloatTy> gradient_{};
   /// gradient sum - this buffer is used by the SGD algorithm to store the
   /// previous gradient. The array
-  Array3D<ElemTy> gsum_{};
+  Array3D<FloatTy> gsum_{};
   /// If this flag is set to false then the data is not modified during training
   /// We use this for preventing the trainer from changing the weights of the
   /// input buffers.
@@ -103,15 +103,15 @@ template <class ElemTy> struct DerivData : public TrainableData {
       for (size_t y = 0; y < iny; y++) {
         for (size_t z = 0; z < inz; z++) {
           // Do a simple SGD update:
-          ElemTy L1Grad = L1Decay * (weight_.at(x, y, z) > 0 ? 1 : -1);
-          ElemTy L2Grad = L2Decay * (weight_.at(x, y, z));
-          ElemTy gij = (L2Grad + L1Grad + gradient_.at(x, y, z)) / batchSize;
+          FloatTy L1Grad = L1Decay * (weight_.at(x, y, z) > 0 ? 1 : -1);
+          FloatTy L2Grad = L2Decay * (weight_.at(x, y, z));
+          FloatTy gij = (L2Grad + L1Grad + gradient_.at(x, y, z)) / batchSize;
 
           // Use the momentum to improve the gradient descent:
           // http://ufldl.stanford.edu/tutorial/supervised/OptimizationStochasticGradientDescent/
           if (momentum > 0.0) {
             // Momentum update:
-            ElemTy dx = momentum * gsum_.at(x, y, z) - learningRate * gij;
+            FloatTy dx = momentum * gsum_.at(x, y, z) - learningRate * gij;
             // Save this value for the next iteration:
             gsum_.at(x, y, z) = dx;
             // Apply the gradient.
@@ -152,16 +152,16 @@ public:
 };
 
 /// Represents a node in the network compute graph.
-template <class ElemTy> class Node : public NodeBase {
+class Node : public NodeBase {
 protected:
   /// The filter output.
-  DerivData<ElemTy> output_;
+  DerivData output_;
 
 public:
   Node(Network *N) { N->registerDerivTensor(this, &output_); }
 
   /// \returns the output of a node in the compute graph.
-  DerivData<ElemTy> &getOutput() { return output_; }
+  DerivData &getOutput() { return output_; }
 
   /// \returns the dimension of the tensor.
   std::tuple<size_t, size_t, size_t> dims() const { return output_.dims(); }

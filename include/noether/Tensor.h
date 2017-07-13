@@ -9,8 +9,13 @@
 #include <iostream>
 #include <numeric>
 #include <tuple>
+#include "Config.h"
+
 
 namespace noether {
+
+/// This is the default floating point type used for training.
+using FloatTy = TRAINING_TENSOR_ELEMENT_TYPE;
 
 const size_t numRandomVals = 32;
 const double randomVals[] = {

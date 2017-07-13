@@ -13,21 +13,21 @@
 
 namespace noether {
 
-template <class ElemTy> class ConvNode final : public Node<ElemTy> {
-  Node<ElemTy> *input_;
+class ConvNode final : public Node {
+  Node *input_;
   /// A list of convolution filters.
-  std::vector<DerivData<ElemTy>> filters_;
+  std::vector<DerivData> filters_;
   /// The convolution bias.
-  DerivData<ElemTy> bias_;
+  DerivData bias_;
 
   size_t filterSize_;
   size_t stride_;
   size_t pad_;
 
 public:
-  ConvNode(Network *N, Node<ElemTy> *input, size_t outDepth, size_t filterSize,
+  ConvNode(Network *N, Node *input, size_t outDepth, size_t filterSize,
            size_t stride, size_t pad)
-      : Node<ElemTy>(N), input_(input), filterSize_(filterSize),
+      : Node(N), input_(input), filterSize_(filterSize),
         stride_(stride), pad_(pad) {
     assert(input && input_->size() && "Invalid input");
     N->addNodeDependency(this, input);
@@ -78,7 +78,7 @@ public:
         for (size_t ax = 0; ax < outy; x += stride_, ax++) {
 
           // For each element in the convolution-filter:
-          ElemTy sum = 0;
+          FloatTy sum = 0;
           for (size_t fy = 0; fy < filterSize_; fy++) {
             for (size_t fx = 0; fx < filterSize_; fx++) {
               ssize_t ox = x + fx;
@@ -124,7 +124,7 @@ public:
         ssize_t x = -ssize_t(pad_);
         for (size_t ax = 0; ax < ssize_t(outx); x += stride_, ax++) {
 
-          ElemTy chainGrad = this->output_.gradient_.at(ax, ay, d);
+          FloatTy chainGrad = this->output_.gradient_.at(ax, ay, d);
 
           // For each element in the convolution-filter:
           for (size_t fy = 0; fy < filterSize_; fy++) {
@@ -156,9 +156,9 @@ public:
   virtual std::string getName() const override { return "ConvNode"; }
 };
 
-template <class ElemTy> class MaxPoolNode final : public Node<ElemTy> {
+class MaxPoolNode final : public Node {
   /// The input node.
-  Node<ElemTy> *input_;
+  Node *input_;
   /// The source coordinate for each element in the result pool. This is used
   /// to accelerate the gradient backward pass.
   Array3D<size_t> srcX_, srcY_;
@@ -168,9 +168,9 @@ template <class ElemTy> class MaxPoolNode final : public Node<ElemTy> {
   size_t pad_;
 
 public:
-  MaxPoolNode(Network *N, Node<ElemTy> *input, size_t filterSize, size_t stride,
+  MaxPoolNode(Network *N, Node *input, size_t filterSize, size_t stride,
               size_t pad)
-      : Node<ElemTy>(N), input_(input), filterSize_(filterSize),
+      : Node(N), input_(input), filterSize_(filterSize),
         stride_(stride), pad_(pad) {
     assert(input && input_->size() && "Invalid input");
     N->addNodeDependency(this, input);
@@ -208,7 +208,7 @@ public:
           size_t maxY = y;
 
           bool first = true;
-          ElemTy max = 0;
+          FloatTy max = 0;
 
           for (size_t fy = 0; fy < filterSize_; fy++) {
             for (size_t fx = 0; fx < filterSize_; fx++) {
@@ -220,7 +220,7 @@ public:
                 continue;
 
               if (inputBuffer.isInBounds(ox, oy, z)) {
-                ElemTy val = inputBuffer.weight_.at(ox, oy, z);
+                FloatTy val = inputBuffer.weight_.at(ox, oy, z);
 
                 if (first || (val >= max)) {
                   first = false;
@@ -260,7 +260,7 @@ public:
         ssize_t x = -ssize_t(pad_);
         for (size_t ax = 0; ax < ssize_t(outy); x += stride_, ax++) {
 
-          ElemTy chainGrad = this->output_.gradient_.at(ax, ay, z);
+          FloatTy chainGrad = this->output_.gradient_.at(ax, ay, z);
 
           size_t maxX = srcX_.at(ax, ay, z);
           size_t maxY = srcY_.at(ax, ay, z);
@@ -274,17 +274,17 @@ public:
   virtual std::string getName() const override { return "MaxPoolNode"; }
 };
 
-template <class ElemTy> class FullyConnectedNode final : public Node<ElemTy> {
+class FullyConnectedNode final : public Node {
   /// A reference to the layer input.
-  Node<ElemTy> *input_;
+  Node *input_;
   /// A list of filters.
-  std::vector<DerivData<ElemTy>> filters_;
+  std::vector<DerivData> filters_;
   /// The biases.
-  DerivData<ElemTy> bias_;
+  DerivData bias_;
 
 public:
-  FullyConnectedNode(Network *N, Node<ElemTy> *input, size_t outDepth)
-      : Node<ElemTy>(N), input_(input) {
+  FullyConnectedNode(Network *N, Node *input, size_t outDepth)
+      : Node(N), input_(input) {
     assert(input && input_->size() && "Invalid input");
     N->addNodeDependency(this, input);
     size_t inx, iny, inz;
@@ -324,7 +324,7 @@ public:
 
     for (size_t i = 0; i < outz; i++) {
       auto &currFilter = filters_[i];
-      ElemTy sum = 0;
+      FloatTy sum = 0;
 
       for (size_t x = 0; x < inx; x++) {
         for (size_t y = 0; y < iny; y++) {
@@ -352,7 +352,7 @@ public:
     // Compute the gradient:
     for (size_t i = 0; i < outz; i++) {
       auto &currFilter = filters_[i];
-      ElemTy chainGrad = this->output_.gradient_.at(0, 0, i);
+      FloatTy chainGrad = this->output_.gradient_.at(0, 0, i);
 
       for (size_t x = 0; x < inx; x++) {
         for (size_t y = 0; y < iny; y++) {
@@ -374,12 +374,12 @@ public:
   virtual std::string getName() const override { return "FullyConnectedNode"; }
 };
 
-template <class ElemTy> class RELUNode final : public Node<ElemTy> {
+class RELUNode final : public Node {
   /// A reference to the layer input.
-  Node<ElemTy> *input_;
+  Node *input_;
 
 public:
-  RELUNode(Network *N, Node<ElemTy> *input) : Node<ElemTy>(N), input_(input) {
+  RELUNode(Network *N, Node *input) : Node(N), input_(input) {
     assert(input && input_->size() && "Invalid input");
     this->output_.reset(input_->dims());
     N->addNodeDependency(this, input);
@@ -396,7 +396,7 @@ public:
     for (size_t x = 0; x < inx; x++) {
       for (size_t y = 0; y < iny; y++) {
         for (size_t z = 0; z < inz; z++) {
-          ElemTy val = InW.at(x, y, z);
+          FloatTy val = InW.at(x, y, z);
           OutW.at(x, y, z) = val < 0 ? 0 : val;
         }
       }
@@ -415,7 +415,7 @@ public:
     for (size_t x = 0; x < inx; x++) {
       for (size_t y = 0; y < iny; y++) {
         for (size_t z = 0; z < inz; z++) {
-          ElemTy val = OutW.at(x, y, z);
+          FloatTy val = OutW.at(x, y, z);
           InDW.at(x, y, z) = (val <= 0 ? 0 : OutDW.at(x, y, z));
         }
       }
@@ -425,13 +425,13 @@ public:
   virtual std::string getName() const override { return "RELUNode"; }
 };
 
-template <class ElemTy> class SigmoidNode final : public Node<ElemTy> {
+class SigmoidNode final : public Node {
   /// A reference to the layer input.
-  Node<ElemTy> *input_;
+  Node *input_;
 
 public:
-  SigmoidNode(Network *N, Node<ElemTy> *input)
-      : Node<ElemTy>(N), input_(input) {
+  SigmoidNode(Network *N, Node *input)
+      : Node(N), input_(input) {
     assert(input && input_->size() && "Invalid input");
     this->output_.reset(input_->dims());
     N->addNodeDependency(this, input);
@@ -448,7 +448,7 @@ public:
     for (size_t x = 0; x < inx; x++) {
       for (size_t y = 0; y < iny; y++) {
         for (size_t z = 0; z < inz; z++) {
-          ElemTy val = InW.at(x, y, z);
+          FloatTy val = InW.at(x, y, z);
           OutW.at(x, y, z) = 1 / (1 + std::exp(-val));
         }
       }
@@ -467,7 +467,7 @@ public:
     for (size_t x = 0; x < inx; x++) {
       for (size_t y = 0; y < iny; y++) {
         for (size_t z = 0; z < inz; z++) {
-          ElemTy val = OutW.at(x, y, z);
+          FloatTy val = OutW.at(x, y, z);
           InDW.at(x, y, z) = val * (1 - val) * OutDW.at(x, y, z);
         }
       }
@@ -477,21 +477,21 @@ public:
   virtual std::string getName() const override { return "SigmoidNode"; }
 };
 
-template <class ElemTy> class SoftMaxNode final : public Node<ElemTy> {
+class SoftMaxNode final : public Node {
   /// A reference to the node input.
-  Node<ElemTy> *input_;
+  Node *input_;
   /// The selected one-hot value from the softmax function.
   size_t selected_;
 
   /// A temporary array for storing the subexpression (e ^ (a[i] - max)).
-  Array3D<ElemTy> e_;
+  Array3D<FloatTy> e_;
 
 public:
   /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
   /// And \p selected that's the selected one-hot representation of the
   /// softmax function.
-  SoftMaxNode(Network *N, Node<ElemTy> *input, size_t selected = 0)
-      : Node<ElemTy>(N), input_(input), selected_(selected) {
+  SoftMaxNode(Network *N, Node *input, size_t selected = 0)
+      : Node(N), input_(input), selected_(selected) {
     assert(input && input_->size() && "Invalid input");
     N->addNodeDependency(this, input);
     size_t inx, iny, inz;
@@ -509,18 +509,18 @@ public:
     auto &OutW = this->output_.weight_;
     auto &InW = inputBuffer.weight_;
 
-    ElemTy max = InW.at(0, 0, 0);
+    FloatTy max = InW.at(0, 0, 0);
 
     // Find Max.
     for (size_t z = 0; z < inz; z++) {
       max = std::max(max, InW.at(0, 0, z));
     }
 
-    ElemTy sum = 0;
+    FloatTy sum = 0;
 
     // Compute exp.
     for (size_t z = 0; z < inz; z++) {
-      ElemTy e = std::exp(InW.at(0, 0, z) - max);
+      FloatTy e = std::exp(InW.at(0, 0, z) - max);
       sum += e;
       e_.at(0, 0, z) = e;
     }
@@ -538,11 +538,11 @@ public:
     std::tie(inx, iny, inz) = input_->dims();
 
     auto &OutW = this->output_.weight_;
-    ElemTy max = OutW.at(0, 0, 0);
+    FloatTy max = OutW.at(0, 0, 0);
     size_t idx = 0;
 
     for (size_t i = 1; i < inz; i++) {
-      ElemTy val = OutW.at(0, 0, i);
+      FloatTy val = OutW.at(0, 0, i);
       if (val > max) {
         max = val;
         idx = i;
@@ -565,13 +565,13 @@ public:
     auto &InDW = inputBuffer.gradient_;
 
     for (size_t z = 0; z < inz; z++) {
-      ElemTy indicator = (selected_ == z ? 1 : 0);
-      ElemTy mul = -(indicator - e_.at(0, 0, z));
+      FloatTy indicator = (selected_ == z ? 1 : 0);
+      FloatTy mul = -(indicator - e_.at(0, 0, z));
       InDW.at(0, 0, z) = mul;
     }
   }
 
-  ElemTy loss() {
+  FloatTy loss() {
     // The loss is the class' negative log likelihood.
     return -std::log(e_.at(0, 0, selected_));
   }
@@ -579,18 +579,18 @@ public:
   virtual std::string getName() const override { return "SoftMaxNode"; }
 };
 
-template <class ElemTy> class RegressionNode final : public Node<ElemTy> {
+class RegressionNode final : public Node {
   /// A reference to the node input.
-  Node<ElemTy> *input_;
+  Node *input_;
   /// The expected input (also known as Y).
-  Array3D<ElemTy> expected_;
+  Array3D<FloatTy> expected_;
 
 public:
   /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
   /// And \p expected (aka Y) is the expected input for the layer, that must
   /// be of the same shape as \p input.
-  RegressionNode(Network *N, Node<ElemTy> *input)
-      : Node<ElemTy>(N), input_(input) {
+  RegressionNode(Network *N, Node *input)
+      : Node(N), input_(input) {
     assert(input && input_->size() && "Invalid input");
     N->addNodeDependency(this, input);
     size_t inx, iny, inz;
@@ -601,7 +601,7 @@ public:
   }
 
   /// \returns a reference to the expected result vector.
-  Array3D<ElemTy> &getExpected() { return expected_; }
+  Array3D<FloatTy> &getExpected() { return expected_; }
 
   virtual void forward() override {
     assert(expected_.dims() == input_->dims() && "invalid expected dims");
@@ -625,10 +625,10 @@ public:
     auto &inputBuffer = input_->getOutput();
     auto &InDW = inputBuffer.gradient_;
 
-    ElemTy loss = 0;
+    FloatTy loss = 0;
 
     for (size_t z = 0; z < inz; z++) {
-      ElemTy dy = (inputBuffer.weight_.at(0, 0, z) - expected_.at(0, 0, z));
+      FloatTy dy = (inputBuffer.weight_.at(0, 0, z) - expected_.at(0, 0, z));
       InDW.at(0, 0, z) = dy;
       loss += 0.5 * dy * dy;
     }
@@ -639,12 +639,12 @@ public:
 
 /// This node attempts to maximize the inputs by sending back a gradient signal
 /// that encourages positive values. This is very useful for debugging.
-template <class ElemTy> class MaxNode final : public Node<ElemTy> {
+class MaxNode final : public Node {
   /// A reference to the node input.
-  Node<ElemTy> *input_;
+  Node *input_;
 
 public:
-  MaxNode(Network *N, Node<ElemTy> *input) : Node<ElemTy>(N), input_(input) {
+  MaxNode(Network *N, Node *input) : Node(N), input_(input) {
     assert(input && input_->size() && "Invalid input");
     N->addNodeDependency(this, input);
     size_t inx, iny, inz;
@@ -677,7 +677,7 @@ public:
     for (size_t x = 0; x < inz; x++) {
       for (size_t y = 0; y < inz; y++) {
         for (size_t z = 0; z < inz; z++) {
-          ElemTy dy = inputBuffer.weight_.at(x, y, z);
+          FloatTy dy = inputBuffer.weight_.at(x, y, z);
           InDW.at(x, y, z) = dy > 0 ? -1 : 1;
         }
       }
