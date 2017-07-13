@@ -152,13 +152,13 @@ public:
 };
 
 /// Represents a node in the network compute graph.
-class Node : public NodeBase {
+class TrainableNode : public NodeBase {
 protected:
   /// The filter output.
   DerivData output_;
 
 public:
-  Node(Network *N) { N->registerDerivTensor(this, &output_); }
+  TrainableNode(Network *N) { N->registerDerivTensor(this, &output_); }
 
   /// \returns the output of a node in the compute graph.
   DerivData &getOutput() { return output_; }

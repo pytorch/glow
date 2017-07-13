@@ -13,8 +13,8 @@
 
 namespace noether {
 
-class ConvNode final : public Node {
-  Node *input_;
+class ConvNode final : public TrainableNode {
+  TrainableNode *input_;
   /// A list of convolution filters.
   std::vector<DerivData> filters_;
   /// The convolution bias.
@@ -25,9 +25,9 @@ class ConvNode final : public Node {
   size_t pad_;
 
 public:
-  ConvNode(Network *N, Node *input, size_t outDepth, size_t filterSize,
+  ConvNode(Network *N, TrainableNode *input, size_t outDepth, size_t filterSize,
            size_t stride, size_t pad)
-      : Node(N), input_(input), filterSize_(filterSize),
+      : TrainableNode(N), input_(input), filterSize_(filterSize),
         stride_(stride), pad_(pad) {
     assert(input && input_->size() && "Invalid input");
     N->addNodeDependency(this, input);
@@ -156,9 +156,9 @@ public:
   virtual std::string getName() const override { return "ConvNode"; }
 };
 
-class MaxPoolNode final : public Node {
+class MaxPoolNode final : public TrainableNode {
   /// The input node.
-  Node *input_;
+  TrainableNode *input_;
   /// The source coordinate for each element in the result pool. This is used
   /// to accelerate the gradient backward pass.
   Array3D<size_t> srcX_, srcY_;
@@ -168,9 +168,9 @@ class MaxPoolNode final : public Node {
   size_t pad_;
 
 public:
-  MaxPoolNode(Network *N, Node *input, size_t filterSize, size_t stride,
+  MaxPoolNode(Network *N, TrainableNode *input, size_t filterSize, size_t stride,
               size_t pad)
-      : Node(N), input_(input), filterSize_(filterSize),
+      : TrainableNode(N), input_(input), filterSize_(filterSize),
         stride_(stride), pad_(pad) {
     assert(input && input_->size() && "Invalid input");
     N->addNodeDependency(this, input);
@@ -274,17 +274,17 @@ public:
   virtual std::string getName() const override { return "MaxPoolNode"; }
 };
 
-class FullyConnectedNode final : public Node {
+class FullyConnectedNode final : public TrainableNode {
   /// A reference to the layer input.
-  Node *input_;
+  TrainableNode *input_;
   /// A list of filters.
   std::vector<DerivData> filters_;
   /// The biases.
   DerivData bias_;
 
 public:
-  FullyConnectedNode(Network *N, Node *input, size_t outDepth)
-      : Node(N), input_(input) {
+  FullyConnectedNode(Network *N, TrainableNode *input, size_t outDepth)
+      : TrainableNode(N), input_(input) {
     assert(input && input_->size() && "Invalid input");
     N->addNodeDependency(this, input);
     size_t inx, iny, inz;
@@ -374,12 +374,12 @@ public:
   virtual std::string getName() const override { return "FullyConnectedNode"; }
 };
 
-class RELUNode final : public Node {
+class RELUNode final : public TrainableNode {
   /// A reference to the layer input.
-  Node *input_;
+  TrainableNode *input_;
 
 public:
-  RELUNode(Network *N, Node *input) : Node(N), input_(input) {
+  RELUNode(Network *N, TrainableNode *input) : TrainableNode(N), input_(input) {
     assert(input && input_->size() && "Invalid input");
     this->output_.reset(input_->dims());
     N->addNodeDependency(this, input);
@@ -425,13 +425,13 @@ public:
   virtual std::string getName() const override { return "RELUNode"; }
 };
 
-class SigmoidNode final : public Node {
+class SigmoidNode final : public TrainableNode {
   /// A reference to the layer input.
-  Node *input_;
+  TrainableNode *input_;
 
 public:
-  SigmoidNode(Network *N, Node *input)
-      : Node(N), input_(input) {
+  SigmoidNode(Network *N, TrainableNode *input)
+      : TrainableNode(N), input_(input) {
     assert(input && input_->size() && "Invalid input");
     this->output_.reset(input_->dims());
     N->addNodeDependency(this, input);
@@ -477,9 +477,9 @@ public:
   virtual std::string getName() const override { return "SigmoidNode"; }
 };
 
-class SoftMaxNode final : public Node {
+class SoftMaxNode final : public TrainableNode {
   /// A reference to the node input.
-  Node *input_;
+  TrainableNode *input_;
   /// The selected one-hot value from the softmax function.
   size_t selected_;
 
@@ -490,8 +490,8 @@ public:
   /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
   /// And \p selected that's the selected one-hot representation of the
   /// softmax function.
-  SoftMaxNode(Network *N, Node *input, size_t selected = 0)
-      : Node(N), input_(input), selected_(selected) {
+  SoftMaxNode(Network *N, TrainableNode *input, size_t selected = 0)
+      : TrainableNode(N), input_(input), selected_(selected) {
     assert(input && input_->size() && "Invalid input");
     N->addNodeDependency(this, input);
     size_t inx, iny, inz;
@@ -579,9 +579,9 @@ public:
   virtual std::string getName() const override { return "SoftMaxNode"; }
 };
 
-class RegressionNode final : public Node {
+class RegressionNode final : public TrainableNode {
   /// A reference to the node input.
-  Node *input_;
+  TrainableNode *input_;
   /// The expected input (also known as Y).
   Array3D<FloatTy> expected_;
 
@@ -589,8 +589,8 @@ public:
   /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
   /// And \p expected (aka Y) is the expected input for the layer, that must
   /// be of the same shape as \p input.
-  RegressionNode(Network *N, Node *input)
-      : Node(N), input_(input) {
+  RegressionNode(Network *N, TrainableNode *input)
+      : TrainableNode(N), input_(input) {
     assert(input && input_->size() && "Invalid input");
     N->addNodeDependency(this, input);
     size_t inx, iny, inz;
@@ -639,12 +639,12 @@ public:
 
 /// This node attempts to maximize the inputs by sending back a gradient signal
 /// that encourages positive values. This is very useful for debugging.
-class MaxNode final : public Node {
+class MaxNode final : public TrainableNode {
   /// A reference to the node input.
-  Node *input_;
+  TrainableNode *input_;
 
 public:
-  MaxNode(Network *N, Node *input) : Node(N), input_(input) {
+  MaxNode(Network *N, TrainableNode *input) : TrainableNode(N), input_(input) {
     assert(input && input_->size() && "Invalid input");
     N->addNodeDependency(this, input);
     size_t inx, iny, inz;
