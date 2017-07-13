@@ -209,7 +209,7 @@ void testMNIST(bool verbose = false) {
   Network N;
   N.getTrainingConfig().learningRate = 0.01;
   N.getTrainingConfig().momentum = 0.9;
-  N.getTrainingConfig().batchSize = 20;
+  N.getTrainingConfig().batchSize = 5;
 
   ArrayNode A(&N, 28, 28, 1);
   ConvNode CV0(&N, &A, 8, 5, 1, 0);
@@ -223,7 +223,7 @@ void testMNIST(bool verbose = false) {
     std::cout << "Training.\n";
   }
 
-  for (int iter = 0; iter < 90000; iter++) {
+  for (int iter = 0; iter < 2500; iter++) {
     if (verbose && !(iter % 1000)) {
       std::cout << "Training - iteration #" << iter << "\n";
     }
@@ -240,21 +240,29 @@ void testMNIST(bool verbose = false) {
     std::cout << "Validating.\n";
   }
 
-  // Test some inputs:
-  for (int iter = 0; iter < 5; iter++) {
+  // Check how many digits out of ten we can classify correctly.
+  int rightAnswer = 0;
+
+  for (int iter = 0; iter < 10; iter++) {
     size_t imageIndex = (iter * 17512 + 9124) % numImages;
 
     A.loadRaw(imagesAsFloatPtr + 28 * 28 * imageIndex, 28 * 28);
 
     N.infer();
 
+    size_t guess = SM.maxArg();
+    size_t correct = labels[imageIndex];
+    rightAnswer += (guess == correct);
+
     if (verbose) {
       A.getOutput().weight_.dumpAscii("MNIST Input");
-      std::cout << "Expected: " << int(labels[imageIndex])
-                << " got :" << SM.maxArg() << "\n";
+      std::cout << "Expected: " << correct
+                << " Guessed: " << guess << "\n";
       SM.getOutput().weight_.dump("", "\n");
       std::cout << "\n-------------\n";
     }
+
+    assert(rightAnswer >= 7 && "Did not classify as many digits as expected");
   }
 }
 
