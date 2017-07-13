@@ -174,6 +174,27 @@ public:
   virtual std::string getName() const override { return "MaxNode"; }
 };
 
+
+/// This is an abstraction over raw variable inputs.
+class ArrayNode final : public TrainableNode {
+public:
+  ArrayNode(Network *N, size_t x, size_t y, size_t z) : TrainableNode(N) {
+    this->getOutput().reset(x, y, z);
+    // Do not change the output of this layer when training the network.
+    this->getOutput().isTrainable_ = false;
+  }
+
+  void loadRaw(FloatTy *ptr, size_t numElements) {
+    this->getOutput().weight_.loadRaw(ptr, numElements);
+  }
+
+  virtual std::string getName() const override { return "ArrayNode"; }
+
+  void forward() override {}
+
+  void backward() override {}
+};
+
 } // namespace noether
 
 #endif // NOETHER_NODES_H

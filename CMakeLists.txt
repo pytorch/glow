@@ -28,7 +28,7 @@ include_directories ("${NOETHER_BINARY_DIR}")
 
 file(GLOB_RECURSE header_files include/noether/*.h)
 
-add_executable(noether noether.cpp ./src/noether/Network.cpp ./src/noether/Nodes.cpp ${header_files})
+add_executable(noether noether.cpp ./src/noether/Image.cpp ./src/noether/Network.cpp ./src/noether/Nodes.cpp ${header_files})
 
 find_package(PNG REQUIRED)
 
