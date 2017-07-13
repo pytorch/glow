@@ -143,6 +143,11 @@ public:
     return data_[getElementIdx(x, y, z)];
   }
 
+  const ElemTy &at(size_t x, size_t y, size_t z) const {
+    return data_[getElementIdx(x, y, z)];
+  }
+
+
   void dumpAscii(const std::string &prefix = "", std::string suffix = "\n") {
     std::cout << prefix << "\n";
     for (size_t z = 0; z < sz_; z++) {
