@@ -1,6 +1,7 @@
 #ifndef NOETHER_TENSOR_H
 #define NOETHER_TENSOR_H
 
+#include "Config.h"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -9,8 +10,6 @@
 #include <iostream>
 #include <numeric>
 #include <tuple>
-#include "Config.h"
-
 
 namespace noether {
 
@@ -146,7 +145,6 @@ public:
   const ElemTy &at(size_t x, size_t y, size_t z) const {
     return data_[getElementIdx(x, y, z)];
   }
-
 
   void dumpAscii(const std::string &prefix = "", std::string suffix = "\n") {
     std::cout << prefix << "\n";

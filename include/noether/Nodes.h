@@ -47,8 +47,8 @@ class MaxPoolNode final : public TrainableNode {
   size_t pad_;
 
 public:
-  MaxPoolNode(Network *N, TrainableNode *input, size_t filterSize, size_t stride,
-              size_t pad);
+  MaxPoolNode(Network *N, TrainableNode *input, size_t filterSize,
+              size_t stride, size_t pad);
 
   virtual void forward() override;
 
@@ -170,10 +170,9 @@ public:
   virtual void forward() override;
 
   virtual void backward() override;
-  
+
   virtual std::string getName() const override { return "MaxNode"; }
 };
-
 
 /// This is an abstraction over raw variable inputs.
 class ArrayNode final : public TrainableNode {

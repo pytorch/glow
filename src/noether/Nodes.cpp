@@ -3,10 +3,10 @@
 
 using namespace noether;
 
-ConvNode::ConvNode(Network *N, TrainableNode *input, size_t outDepth, size_t filterSize,
-         size_t stride, size_t pad)
-: TrainableNode(N), input_(input), filterSize_(filterSize),
-stride_(stride), pad_(pad) {
+ConvNode::ConvNode(Network *N, TrainableNode *input, size_t outDepth,
+                   size_t filterSize, size_t stride, size_t pad)
+    : TrainableNode(N), input_(input), filterSize_(filterSize), stride_(stride),
+      pad_(pad) {
   assert(input && input_->size() && "Invalid input");
   N->addNodeDependency(this, input);
   size_t inx, iny, inz;
@@ -69,7 +69,7 @@ void ConvNode::forward() {
             if (this->output_.isInBounds(ox, oy, 0)) {
               for (size_t fd = 0; fd < inz; fd++) {
                 sum += currFilter.weight_.at(fx, fy, fd) *
-                inputBuffer.weight_.at(ox, oy, fd);
+                       inputBuffer.weight_.at(ox, oy, fd);
               }
             }
           }
@@ -82,7 +82,7 @@ void ConvNode::forward() {
   }
 }
 
-void ConvNode::backward()  {
+void ConvNode::backward() {
   size_t outx, outy, outz;
   std::tie(outx, outy, outz) = this->output_.dims();
   size_t inx, iny, inz;
@@ -117,9 +117,9 @@ void ConvNode::backward()  {
             if (this->output_.isInBounds(ox, oy, 0)) {
               for (size_t fd = 0; fd < inz; fd++) {
                 currFilter.gradient_.at(fx, fy, fd) +=
-                chainGrad * inputBuffer.weight_.at(ox, oy, fd);
+                    chainGrad * inputBuffer.weight_.at(ox, oy, fd);
                 inputBuffer.gradient_.at(ox, oy, fd) +=
-                currFilter.weight_.at(fx, fy, fd);
+                    currFilter.weight_.at(fx, fy, fd);
               }
             }
           }
@@ -131,12 +131,10 @@ void ConvNode::backward()  {
   }
 }
 
-
-
 MaxPoolNode::MaxPoolNode(Network *N, TrainableNode *input, size_t filterSize,
                          size_t stride, size_t pad)
-: TrainableNode(N), input_(input), filterSize_(filterSize),
-stride_(stride), pad_(pad) {
+    : TrainableNode(N), input_(input), filterSize_(filterSize), stride_(stride),
+      pad_(pad) {
   assert(input && input_->size() && "Invalid input");
   N->addNodeDependency(this, input);
   size_t inx, iny, inz;
@@ -155,8 +153,7 @@ stride_(stride), pad_(pad) {
   srcY_.reset(outsx, outsy, inz);
 }
 
-
-void MaxPoolNode::forward()  {
+void MaxPoolNode::forward() {
   size_t outx, outy, outz;
   std::tie(outx, outy, outz) = this->output_.dims();
   size_t inx, iny, inz;
@@ -207,7 +204,7 @@ void MaxPoolNode::forward()  {
   }
 }
 
-void MaxPoolNode::backward()  {
+void MaxPoolNode::backward() {
   size_t outx, outy, outz;
   std::tie(outx, outy, outz) = this->output_.dims();
   size_t inx, iny, inz;
@@ -238,8 +235,8 @@ void MaxPoolNode::backward()  {
 }
 
 FullyConnectedNode::FullyConnectedNode(Network *N, TrainableNode *input,
-                                       size_t outDepth) : TrainableNode(N),
-input_(input) {
+                                       size_t outDepth)
+    : TrainableNode(N), input_(input) {
   assert(input && input_->size() && "Invalid input");
   N->addNodeDependency(this, input);
   size_t inx, iny, inz;
@@ -270,7 +267,7 @@ input_(input) {
   N->registerDerivTensor(this, &bias_);
 }
 
-void FullyConnectedNode::forward()  {
+void FullyConnectedNode::forward() {
   size_t inx, iny, inz;
   std::tie(inx, iny, inz) = input_->dims();
   size_t outx, outy, outz;
@@ -284,8 +281,8 @@ void FullyConnectedNode::forward()  {
     for (size_t x = 0; x < inx; x++) {
       for (size_t y = 0; y < iny; y++) {
         for (size_t z = 0; z < inz; z++) {
-          sum += inputBuffer.weight_.at(x, y, z) *
-          currFilter.weight_.at(x, y, z);
+          sum +=
+              inputBuffer.weight_.at(x, y, z) * currFilter.weight_.at(x, y, z);
         }
       }
     }
@@ -314,10 +311,10 @@ void FullyConnectedNode::backward() {
         for (size_t z = 0; z < inz; z++) {
           // Input gradient:
           inputBuffer.gradient_.at(x, y, z) +=
-          currFilter.weight_.at(x, y, z) * chainGrad;
+              currFilter.weight_.at(x, y, z) * chainGrad;
           // Param gradient:
           currFilter.gradient_.at(x, y, z) +=
-          inputBuffer.weight_.at(x, y, z) * chainGrad;
+              inputBuffer.weight_.at(x, y, z) * chainGrad;
         }
       }
     }
@@ -326,15 +323,14 @@ void FullyConnectedNode::backward() {
   }
 }
 
-
-RELUNode::RELUNode(Network *N, TrainableNode *input) : TrainableNode(N), input_(input) {
+RELUNode::RELUNode(Network *N, TrainableNode *input)
+    : TrainableNode(N), input_(input) {
   assert(input && input_->size() && "Invalid input");
   this->output_.reset(input_->dims());
   N->addNodeDependency(this, input);
 }
 
-
-void RELUNode::forward()  {
+void RELUNode::forward() {
   size_t inx, iny, inz;
   std::tie(inx, iny, inz) = input_->dims();
   auto &inputBuffer = input_->getOutput();
@@ -371,17 +367,14 @@ void RELUNode::backward() {
   }
 }
 
-
 SigmoidNode::SigmoidNode(Network *N, TrainableNode *input)
-: TrainableNode(N), input_(input) {
+    : TrainableNode(N), input_(input) {
   assert(input && input_->size() && "Invalid input");
   this->output_.reset(input_->dims());
   N->addNodeDependency(this, input);
 }
 
-
-
- void SigmoidNode::forward()  {
+void SigmoidNode::forward() {
   size_t inx, iny, inz;
   std::tie(inx, iny, inz) = input_->dims();
   auto &inputBuffer = input_->getOutput();
@@ -399,7 +392,7 @@ SigmoidNode::SigmoidNode(Network *N, TrainableNode *input)
   }
 }
 
- void SigmoidNode::backward()  {
+void SigmoidNode::backward() {
   size_t inx, iny, inz;
   std::tie(inx, iny, inz) = input_->dims();
   auto &inputBuffer = input_->getOutput();
@@ -419,7 +412,7 @@ SigmoidNode::SigmoidNode(Network *N, TrainableNode *input)
 }
 
 SoftMaxNode::SoftMaxNode(Network *N, TrainableNode *input, size_t selected)
-: TrainableNode(N), input_(input), selected_(selected) {
+    : TrainableNode(N), input_(input), selected_(selected) {
   assert(input && input_->size() && "Invalid input");
   N->addNodeDependency(this, input);
   size_t inx, iny, inz;
@@ -429,7 +422,7 @@ SoftMaxNode::SoftMaxNode(Network *N, TrainableNode *input, size_t selected)
   e_.reset(1, 1, inz);
 }
 
-void SoftMaxNode::forward()  {
+void SoftMaxNode::forward() {
   size_t inx, iny, inz;
   std::tie(inx, iny, inz) = input_->dims();
   auto &inputBuffer = input_->getOutput();
@@ -460,7 +453,7 @@ void SoftMaxNode::forward()  {
   }
 }
 
- void SoftMaxNode::backward()  {
+void SoftMaxNode::backward() {
   size_t inx, iny, inz;
   std::tie(inx, iny, inz) = input_->dims();
   auto &inputBuffer = input_->getOutput();
@@ -499,7 +492,7 @@ void SoftMaxNode::setSelected(size_t selected) {
 }
 
 RegressionNode::RegressionNode(Network *N, TrainableNode *input)
-: TrainableNode(N), input_(input) {
+    : TrainableNode(N), input_(input) {
   assert(input && input_->size() && "Invalid input");
   N->addNodeDependency(this, input);
   size_t inx, iny, inz;
@@ -509,8 +502,7 @@ RegressionNode::RegressionNode(Network *N, TrainableNode *input)
   this->output_.reset(1, 1, inz);
 }
 
-
-void RegressionNode::forward()  {
+void RegressionNode::forward() {
   assert(expected_.dims() == input_->dims() && "invalid expected dims");
   size_t inx, iny, inz;
   std::tie(inx, iny, inz) = input_->dims();
@@ -524,7 +516,7 @@ void RegressionNode::forward()  {
   }
 }
 
-void RegressionNode::backward()  {
+void RegressionNode::backward() {
   assert(expected_.dims() == input_->dims() && "invalid expected dims");
 
   size_t inx, iny, inz;
@@ -541,7 +533,8 @@ void RegressionNode::backward()  {
   }
 }
 
-MaxNode::MaxNode(Network *N, TrainableNode *input) : TrainableNode(N), input_(input) {
+MaxNode::MaxNode(Network *N, TrainableNode *input)
+    : TrainableNode(N), input_(input) {
   assert(input && input_->size() && "Invalid input");
   N->addNodeDependency(this, input);
   size_t inx, iny, inz;
@@ -580,5 +573,3 @@ void MaxNode::backward() {
     }
   }
 }
-
-

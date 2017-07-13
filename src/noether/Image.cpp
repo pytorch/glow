@@ -4,7 +4,6 @@
 
 #include <png.h>
 
-
 using namespace noether;
 
 /// Reads a png image. \returns True if an error occurred.
@@ -23,7 +22,7 @@ bool PNGNode::readImage(const char *filename) {
 
   // Initialize stuff.
   png_structp png_ptr =
-  png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+      png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
   if (!png_ptr)
     return true;
 
@@ -93,7 +92,7 @@ bool PNGNode::writeImage(const char *filename) {
 
   /* initialize stuff */
   png_structp png_ptr =
-  png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+      png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
 
   if (!png_ptr)
     return true;

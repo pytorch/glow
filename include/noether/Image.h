@@ -28,7 +28,6 @@ public:
 
   void backward() override {}
 };
-
 }
 
 #endif // NOETHER_IMAGE_H
