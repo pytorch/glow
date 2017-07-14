@@ -31,6 +31,10 @@ ConvNode::ConvNode(Network *N, TrainableNode *input, size_t outDepth,
     filters_.emplace_back(filterSize, filterSize, inz);
   }
 
+  for (auto &filter : filters_) {
+    filter.weight_.randomize();
+  }
+
   for (size_t i = 0; i < outDepth; i++) {
     N->registerDerivTensor(this, &filters_[i]);
   }
