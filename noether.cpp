@@ -209,21 +209,26 @@ void testMNIST(bool verbose = false) {
   Network N;
   N.getTrainingConfig().learningRate = 0.01;
   N.getTrainingConfig().momentum = 0.9;
-  N.getTrainingConfig().batchSize = 5;
+  N.getTrainingConfig().batchSize = 20;
 
   ArrayNode A(&N, 28, 28, 1);
-  ConvNode CV0(&N, &A, 8, 5, 1, 0);
+  ConvNode CV0(&N, &A, 8, 5, 1, 2);
   RELUNode RL0(&N, &CV0);
   MaxPoolNode MP0(&N, &RL0, 2, 2, 0);
-  FullyConnectedNode FCL1(&N, &MP0, 10);
-  RELUNode RL1(&N, &FCL1);
-  SoftMaxNode SM(&N, &RL1);
+
+  ConvNode CV1(&N, &MP0, 16, 5, 1, 2);
+  RELUNode RL1(&N, &CV1);
+  MaxPoolNode MP1(&N, &RL1, 2, 2, 0);
+
+  FullyConnectedNode FCL1(&N, &MP1, 10);
+  RELUNode RL2(&N, &FCL1);
+  SoftMaxNode SM(&N, &RL2);
 
   if (verbose) {
     std::cout << "Training.\n";
   }
 
-  for (int iter = 0; iter < 2500; iter++) {
+  for (int iter = 0; iter < 5000; iter++) {
     if (verbose && !(iter % 1000)) {
       std::cout << "Training - iteration #" << iter << "\n";
     }
@@ -263,7 +268,7 @@ void testMNIST(bool verbose = false) {
     }
   }
   
-  assert(rightAnswer >= 7 && "Did not classify as many digits as expected");
+  assert(rightAnswer >= 6 && "Did not classify as many digits as expected");
 }
 
 int main() {
@@ -275,7 +280,7 @@ int main() {
 
   testFCSoftMax();
 
-  testMNIST();
+  testMNIST(true);
 
   return 0;
 }
