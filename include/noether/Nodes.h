@@ -16,9 +16,9 @@ namespace noether {
 class ConvNode final : public TrainableNode {
   TrainableNode *input_;
   /// A list of convolution filters.
-  std::vector<DerivData> filters_;
+  std::vector<TrainableData> filters_;
   /// The convolution bias.
-  DerivData bias_;
+  TrainableData bias_;
 
   size_t filterSize_;
   size_t stride_;
@@ -61,9 +61,9 @@ class FullyConnectedNode final : public TrainableNode {
   /// A reference to the layer input.
   TrainableNode *input_;
   /// A list of filters.
-  std::vector<DerivData> filters_;
+  std::vector<TrainableData> filters_;
   /// The biases.
-  DerivData bias_;
+  TrainableData bias_;
 
 public:
   FullyConnectedNode(Network *N, TrainableNode *input, size_t outDepth);

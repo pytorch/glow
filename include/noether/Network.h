@@ -1,6 +1,8 @@
 #ifndef NOETHER_NETWORK_H
 #define NOETHER_NETWORK_H
 
+#include "noether/Train.h"
+
 #include <map>
 #include <vector>
 
@@ -9,16 +11,6 @@ namespace noether {
 class NodeBase;
 
 class TrainableData;
-
-/// This is a list of parameters that the network trainers (such as sgd and
-/// adam) use for training the network.
-struct TrainingConfig {
-  size_t batchSize{1};
-  float L1Decay{0};
-  float L2Decay{0};
-  float learningRate{0.01};
-  float momentum{0.0};
-};
 
 class Network {
   /// The configuration used to train the network.
