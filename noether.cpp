@@ -271,7 +271,132 @@ void testMNIST(bool verbose = false) {
   assert(rightAnswer >= 6 && "Did not classify as many digits as expected");
 }
 
+/// The CIFAR file format is structured as one byte label in the range 0..9.
+/// The label is followed by an image: 32 x 32 pixels, in RGB format. Each
+/// color is 1 byte. The first 1024 red bytes are followed by 1024 of green
+/// and blue. Each 1024 byte color slice is organized in row-major format.
+/// The database contains 10000 images.
+/// Size: (1 + (32 * 32 * 3)) * 10000 = 30730000.
+const size_t cifarImageSize = 1 + (32 * 32 * 3);
+const size_t cifarNumImages = 10000;
+
+/// Loads a CIFAR image into the input vector \p A.
+/// \returns the label that's associated with the image.
+uint8_t loadCIFARImage(Array3D<FloatTy> &A, uint8_t *rawArray,
+                       size_t imageIndex) {
+  assert(imageIndex < cifarNumImages && "Invalid image index");
+
+  // Find the start pointer for the image.
+  const size_t imageBase = cifarImageSize * imageIndex;
+
+  // The rest of the bytes are the image:
+  size_t idx = 1;
+  for (size_t z = 0; z < 3; z++) {
+    for (size_t y = 0; y < 32; y++) {
+      for (size_t x = 0; x < 32; x++) {
+        uint8_t byte = rawArray[imageBase + idx];
+        A.at(x,y,z) = FloatTy(byte)/255.0;
+        idx++;
+      }
+    }
+  }
+
+  // Return the label, which is the first field.
+  return rawArray[imageBase];
+}
+
+/// This test classifies digits from the CIFAR labeled dataset.
+/// Details: http://www.cs.toronto.edu/~kriz/cifar.html
+/// Dataset: http://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz
+void testCIFAR10(bool verbose = false) {
+  if (verbose) {
+    std::cout << "Loading the mnist database.\n";
+  }
+
+  const char* textualLabels[] = { "airplane", "automobile", "bird", "cat",
+    "deer", "dog", "frog", "horse", "ship", "truck"};
+
+  std::ifstream dbInput("cifar-10-batches-bin/data_batch_1.bin",
+                        std::ios::binary);
+
+  std::vector<char> db((std::istreambuf_iterator<char>(dbInput)),
+                       (std::istreambuf_iterator<char>()));
+
+  assert(db.size() == cifarImageSize * cifarNumImages && "Invalid input file");
+
+  // This is a pointer to the raw data.
+  uint8_t *rawArray = reinterpret_cast<uint8_t *>(&db[0]);
+
+  if (verbose) {
+    std::cout << "Loaded the CIFAR-10 database.\n";
+  }
+
+  // Construct the network:
+  Network N;
+  N.getTrainingConfig().learningRate = 0.01;
+  N.getTrainingConfig().momentum = 0.9;
+  N.getTrainingConfig().batchSize = 10;
+  N.getTrainingConfig().L2Decay = 0.0001;
+
+  ArrayNode A(&N, 32, 32, 3);
+  ConvNode CV0(&N, &A, 16, 5, 1, 2);
+  RELUNode RL0(&N, &CV0);
+  MaxPoolNode MP0(&N, &RL0, 2, 2, 0);
+
+  ConvNode CV1(&N, &MP0, 20, 5, 1, 2);
+  RELUNode RL1(&N, &CV1);
+  MaxPoolNode MP1(&N, &RL1, 2, 2, 0);
+
+  ConvNode CV2(&N, &MP1, 20, 5, 1, 2);
+  RELUNode RL2(&N, &CV2);
+  MaxPoolNode MP2(&N, &RL2, 2, 2, 0);
+
+  FullyConnectedNode FCL1(&N, &MP2, 10);
+  RELUNode RL3(&N, &FCL1);
+  SoftMaxNode SM(&N, &RL3);
+
+  if (verbose) {
+    std::cout << "Training.\n";
+  }
+
+  for (int iter = 0; iter < 18000; iter++) {
+    if (verbose && !(iter % 100)) {
+      std::cout << "Training - iteration #" << iter << "\n";
+    }
+
+    const size_t imageIndex = iter % cifarNumImages;
+
+    // Load the image.
+    auto label =  loadCIFARImage(A.getOutput().weight_, rawArray, imageIndex);
+    // Set the expected label.
+    SM.setSelected(label);
+
+    N.train();
+  }
+
+  if (verbose) {
+    std::cout << "Validating.\n";
+  }
+
+
+  for (int iter = 0; iter < 10; iter++) {
+    // Pick a random image from the stack:
+    const size_t imageIndex = (iter * 17512 + 9124) % cifarNumImages;
+
+    // Load the image.
+    auto expectedLabel =  loadCIFARImage(A.getOutput().weight_, rawArray,
+                                         imageIndex);
+    
+    N.infer();
+    
+    unsigned result = SM.maxArg();
+    std::cout << "Expected: " << textualLabels[expectedLabel] << " Guessed: " <<
+    textualLabels[result] << "\n";
+  }
+}
+
 int main() {
+
   testArray();
 
   testLearnSingleInput();
@@ -280,7 +405,9 @@ int main() {
 
   testFCSoftMax();
 
-  testMNIST(true);
+  testMNIST();
+
+  testCIFAR10();
 
   return 0;
 }
