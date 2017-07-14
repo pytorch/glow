@@ -1,4 +1,4 @@
-import six.moves.cPickle as pickle
+import pickle
 import gzip
 import array
 
@@ -11,11 +11,11 @@ import array
 def dumpToFile(dataset):
     data, labels = dataset
 
-    imagesFile = open('images.bin', 'wb')
+    imagesFile = open('mnist_images.bin', 'wb')
     data.tofile(imagesFile)
     imagesFile.close()
 
-    labelsFile = open('labels.bin', 'wb')
+    labelsFile = open('mnist_labels.bin', 'wb')
     L = array.array('B', labels)
     L.tofile(labelsFile)
     labelsFile.close()
