@@ -56,7 +56,7 @@ public:
     static int offset = 0;
     double scale = std::sqrt(double(size()));
     for (size_t i = 0, e = size(); i < e; ++i) {
-      data_[i] = randomVals[(offset + i) % numRandomVals] / scale;
+      data_[i] = (randomVals[(offset + i) % numRandomVals] - 0.5) / scale;
     }
 
     offset++;
@@ -185,7 +185,10 @@ public:
   }
 
   void dump(std::string title = "", std::string suffix = "") {
-    std::cout << title << "[";
+    ElemTy mx = *std::max_element(&data_[0], &data_[size()]);
+    ElemTy mn = *std::min_element(&data_[0], &data_[size()]);
+
+    std::cout << title << " max=" << mx << " min=" << mn << "[";
     for (int z = 0; z < sz_; z++) {
       std::cout << "[";
       for (int y = 0; y < sy_; y++) {
