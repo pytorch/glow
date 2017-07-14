@@ -18,21 +18,20 @@ include_directories(BEFORE
   ${CMAKE_CURRENT_SOURCE_DIR}/include
   )
 
-configure_file (
-  "${NOETHER_SOURCE_DIR}/include/Config.h.in"
-  "${NOETHER_BINARY_DIR}/Config.h"
-  )
 
 include_directories ("${NOETHER_BINARY_DIR}")
-
 
 file(GLOB_RECURSE header_files include/noether/*.h)
 
 add_executable(noether noether.cpp ./src/noether/Image.cpp ./src/noether/Network.cpp ./src/noether/Nodes.cpp ${header_files})
 
-find_package(PNG REQUIRED)
+find_package (PNG)
+if (PNG_FOUND)
+  include_directories(${PNG_INCLUDE_DIR})
+  target_link_libraries(noether ${PNG_LIBRARY})
+endif (PNG_FOUND)
 
-include_directories(${PNG_INCLUDE_DIR})
-
-target_link_libraries(noether ${PNG_LIBRARY})
-
+configure_file (
+  "${NOETHER_SOURCE_DIR}/include/Config.h.in"
+  "${NOETHER_BINARY_DIR}/Config.h"
+  )

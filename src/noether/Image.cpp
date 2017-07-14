@@ -2,6 +2,7 @@
 #include "noether/Nodes.h"
 #include "noether/Tensor.h"
 
+#if (NOETHER_PNG_FOUND)
 #include <png.h>
 
 using namespace noether;
@@ -156,3 +157,4 @@ bool PNGNode::writeImage(const char *filename) {
   fclose(fp);
   return false;
 }
+#endif
