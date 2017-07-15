@@ -23,13 +23,27 @@ include_directories ("${NOETHER_BINARY_DIR}")
 
 file(GLOB_RECURSE header_files include/noether/*.h)
 
-add_executable(noether noether.cpp ./src/noether/Train.cpp ./src/noether/Image.cpp ./src/noether/Network.cpp ./src/noether/Nodes.cpp ${header_files})
+find_package(Protobuf REQUIRED)
+include_directories(${PROTOBUF_INCLUDE_DIRS})
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS caffe/caffe.proto)
+
+add_executable(noether noether.cpp
+                       ./src/noether/Train.cpp
+                       ./src/noether/Image.cpp
+                       ./src/noether/Network.cpp
+                       ./src/noether/Nodes.cpp
+                       ${header_files}
+                       ${PROTO_SRCS}
+                       ${PROTO_HDRS})
 
 find_package (PNG)
 if (PNG_FOUND)
   include_directories(${PNG_INCLUDE_DIR})
   target_link_libraries(noether ${PNG_LIBRARY})
 endif (PNG_FOUND)
+
+target_link_libraries(noether ${PROTOBUF_LIBRARIES})
 
 configure_file (
   "${NOETHER_SOURCE_DIR}/include/Config.h.in"
