@@ -96,6 +96,14 @@ public:
 
   Array3D &operator=(const Array3D &other) = delete;
 
+  /// Copy the content of the array \p other into this array.
+  void copyFrom(const Array3D &other) {
+    size_t x, y, z;
+    std::tie(x, y, z) = other.dims();
+    reset(x,y,z);
+    std::copy(&other.data_[0], &other.data_[0] + size(), &data_[0]);
+  }
+
   /// Move assignment operator.
   Array3D &operator=(Array3D &&other) noexcept {
     data_ = other.data_;
@@ -200,6 +208,100 @@ public:
     std::cout << "]" << suffix;
   }
 };
+
+/// A 4D tensor.
+template <class ElemTy> class Array4D final {
+  size_t sw_{0}, sx_{0}, sy_{0}, sz_{0};
+  ElemTy *data_{nullptr};
+
+  /// \returns the offset of the element in the tensor.
+  size_t getElementIdx(size_t w, size_t x, size_t y, size_t z) const {
+    assert(isInBounds(w, x, y, z) && "Out of bounds");
+    return (((w * sy_ + y) * sx_ + x) * sz_ + z);
+  }
+
+public:
+  /// \returns True if the coordinate is within the array.
+  bool isInBounds(size_t w, size_t x, size_t y, size_t z) const {
+    return w < sw_ && x < sx_ && y < sy_ && z < sz_;
+  }
+
+  void clear(ElemTy value = 0) {
+    std::fill(&data_[0], &data_[0] + size(), value);
+  }
+
+  /// Fill the array with random data that's close to zero.
+  void randomize() {
+    static int offset = 0;
+    double scale = std::sqrt(double(size()));
+    for (size_t i = 0, e = size(); i < e; ++i) {
+      data_[i] = (randomVals[(offset + i) % numRandomVals] - 0.5) / scale;
+    }
+
+    offset++;
+  }
+
+  /// \returns the dimension of the tensor.
+  std::tuple<size_t, size_t, size_t> dims() const {
+    return std::make_tuple(sx_, sy_, sz_);
+  }
+
+  /// \returns the number of elements in the array.
+  size_t size() const { return sw_ * sx_ * sy_ * sz_; }
+
+  /// Initialize an empty tensor.
+  Array4D() = default;
+
+  /// Initialize a new tensor.
+  Array4D(size_t w, size_t x, size_t y, size_t z) : sw_(w), sx_(x), sy_(y), sz_(z) {
+    data_ = new ElemTy[size()];
+    clear();
+  }
+
+  Array4D(const Array4D &other) = delete;
+  Array4D &operator=(const Array4D &other) = delete;
+
+  /// Assigns a new shape to the tensor and allocates a new buffer.
+  void reset(std::tuple<size_t, size_t, size_t, size_t> dim) {
+    size_t w, x, y, z;
+    std::tie(w, x, y, z) = dim;
+    reset(w, x, y, z);
+  }
+
+  /// Assigns a new shape to the tensor and allocates a new buffer.
+  void reset(size_t w, size_t x, size_t y, size_t z) {
+    sw_ = w;
+    sx_ = x;
+    sy_ = y;
+    sz_ = z;
+    delete[] data_;
+    data_ = new ElemTy[size()];
+    clear();
+  }
+
+  ~Array4D() { delete[] data_; }
+
+  /// Extract a 3D array from the \p w slice.
+  Array3D<ElemTy> extractSlice(size_t w) {
+    Array3D<ElemTy> slice(sx_, sy_, sz_);
+
+    for (int x = 0; x < sx_; x++)
+      for (int y = 0; y < sy_; y++)
+        for (int z = 0; z < sz_; z++)
+          slice.at(x, y, z) = this->at(w, x, y, z);
+
+    return slice;
+  }
+
+  ElemTy &at(size_t w,size_t x, size_t y, size_t z) {
+    return data_[getElementIdx(w, x, y, z)];
+  }
+
+  const ElemTy &at(size_t w, size_t x, size_t y, size_t z) const {
+    return data_[getElementIdx(w, x, y, z)];
+  }
+};
+
 }
 
 #endif // NOETHER_TENSOR_H
