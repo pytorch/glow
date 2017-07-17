@@ -179,17 +179,8 @@ void testRegression() {
   }
 }
 
-/// Loads an MNIST image into the input vector \p A.
-void loadMNistImage(Array3D<FloatTy> &A, float *rawArray) {
-  // The rest of the bytes are the image:
-  size_t idx = 1;
-  for (size_t y = 0; y < 28; y++) {
-    for (size_t x = 0; x < 28; x++) {
-      A.at(x,y,0) = rawArray[idx];
-      idx++;
-    }
-  }
-}
+const size_t mnistNumImages = 50000;
+
 
 /// This test classifies digits from the MNIST labeled dataset.
 void testMNIST(bool verbose = false) {
@@ -209,6 +200,17 @@ void testMNIST(bool verbose = false) {
   assert(labels.size() * 28 * 28 * sizeof(float) == images.size() &&
          "The size of the image buffer does not match the labels vector");
 
+  /// Load the MNIST database into a 4d tensor.
+  Array4D<float> data(50000, 28, 28, 1);
+  size_t idx = 0;
+
+  for (size_t w = 0; w < mnistNumImages; w++) {
+      for (size_t y = 0; y < 28; y++) {
+        for (size_t x = 0; x < 28; x++) {
+          data.at(w,x,y,0) = imagesAsFloatPtr[idx++];
+      }
+    }
+  }
   size_t numImages = labels.size();
   assert(numImages && "No images were found.");
 
@@ -246,7 +248,7 @@ void testMNIST(bool verbose = false) {
 
     size_t imageIndex = iter % numImages;
 
-    loadMNistImage(A->getOutput().weight_, imagesAsFloatPtr + 28 * 28 * imageIndex);
+    A->getOutput().weight_ = data.extractSlice(imageIndex);
     SM->setSelected(labels[imageIndex]);
 
     N.train();
@@ -261,8 +263,7 @@ void testMNIST(bool verbose = false) {
 
   for (int iter = 0; iter < 10; iter++) {
     size_t imageIndex = (iter * 17512 + 9124) % numImages;
-
-    loadMNistImage(A->getOutput().weight_, imagesAsFloatPtr + 28 * 28 * imageIndex);
+    A->getOutput().weight_ = data.extractSlice(imageIndex);
 
     N.infer();
 
@@ -291,35 +292,11 @@ void testMNIST(bool verbose = false) {
 const size_t cifarImageSize = 1 + (32 * 32 * 3);
 const size_t cifarNumImages = 10000;
 
-/// Loads a CIFAR image into the input vector \p A.
-/// \returns the label that's associated with the image.
-uint8_t loadCIFARImage(Array3D<FloatTy> &A, uint8_t *rawArray,
-                       size_t imageIndex) {
-  assert(imageIndex < cifarNumImages && "Invalid image index");
-
-  // Find the start pointer for the image.
-  const size_t imageBase = cifarImageSize * imageIndex;
-
-  // The rest of the bytes are the image:
-  size_t idx = 1;
-  for (size_t z = 0; z < 3; z++) {
-    for (size_t y = 0; y < 32; y++) {
-      for (size_t x = 0; x < 32; x++) {
-        uint8_t byte = rawArray[imageBase + idx];
-        A.at(x,y,z) = FloatTy(byte)/255.0;
-        idx++;
-      }
-    }
-  }
-
-  // Return the label, which is the first field.
-  return rawArray[imageBase];
-}
-
 /// This test classifies digits from the CIFAR labeled dataset.
 /// Details: http://www.cs.toronto.edu/~kriz/cifar.html
 /// Dataset: http://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz
 void testCIFAR10(bool verbose = false) {
+  (void) cifarImageSize;
   if (verbose) {
     std::cout << "Loading the mnist database.\n";
   }
@@ -330,17 +307,30 @@ void testCIFAR10(bool verbose = false) {
   std::ifstream dbInput("cifar-10-batches-bin/data_batch_1.bin",
                         std::ios::binary);
 
-  std::vector<char> db((std::istreambuf_iterator<char>(dbInput)),
-                       (std::istreambuf_iterator<char>()));
-
-  assert(db.size() == cifarImageSize * cifarNumImages && "Invalid input file");
-
-  // This is a pointer to the raw data.
-  uint8_t *rawArray = reinterpret_cast<uint8_t *>(&db[0]);
-
   if (verbose) {
     std::cout << "Loaded the CIFAR-10 database.\n";
   }
+
+  /// Load the CIFAR database into a 4d tensor.
+  Array4D<float> data(cifarNumImages, 32, 32, 3);
+  std::vector<uint8_t> labels;
+  size_t idx = 0;
+
+  for (size_t w = 0; w < cifarNumImages; w++) {
+    labels.push_back(static_cast<uint8_t>(dbInput.get()));
+    idx++;
+
+    for (size_t z = 0; z < 3; z++) {
+      for (size_t y = 0; y < 32; y++) {
+        for (size_t x = 0; x < 32; x++) {
+          data.at(w,x,y,z) = FloatTy(static_cast<uint8_t>(dbInput.get()))/255.0;
+          idx++;
+        }
+      }
+    }
+  }
+  assert(idx == cifarImageSize * cifarNumImages && "Invalid input file");
+
 
   // Construct the network:
   Network N;
@@ -378,8 +368,9 @@ void testCIFAR10(bool verbose = false) {
     const size_t imageIndex = iter % cifarNumImages;
 
     // Load the image.
-    auto label =  loadCIFARImage(A->getOutput().weight_, rawArray, imageIndex);
+    A->getOutput().weight_ = data.extractSlice(imageIndex);
     // Set the expected label.
+    auto label =  labels[imageIndex];
     SM->setSelected(label);
 
     N.train();
@@ -389,14 +380,14 @@ void testCIFAR10(bool verbose = false) {
     std::cout << "Validating.\n";
   }
 
-
   for (int iter = 0; iter < 10; iter++) {
     // Pick a random image from the stack:
     const size_t imageIndex = (iter * 17512 + 9124) % cifarNumImages;
 
     // Load the image.
-    auto expectedLabel =  loadCIFARImage(A->getOutput().weight_, rawArray,
-                                         imageIndex);
+    A->getOutput().weight_ = data.extractSlice(imageIndex);
+    // Load the expected label.
+    auto expectedLabel =  labels[imageIndex];
 
     N.infer();
 
