@@ -38,7 +38,7 @@ template <class ElemTy> class Array3D final {
   /// \returns the offset of the element in the tensor.
   size_t getElementIdx(size_t x, size_t y, size_t z) const {
     assert(isInBounds(x, y, z) && "Out of bounds");
-    return (sx_ * y + x) * sz_ + z;
+    return (y * sx_ + x) * sz_ + z;
   }
 
 public:
@@ -139,6 +139,33 @@ public:
     return data_[getElementIdx(x, y, z)];
   }
 
+  static char valueToChar(ElemTy val) {
+    char ch = ' ';
+    if (val > 0.2)
+      ch = '.';
+    if (val > 0.4)
+      ch = ',';
+    if (val > 0.6)
+      ch = ':';
+    if (val > 0.8)
+      ch = 'o';
+    if (val > 1.0)
+      ch = 'O';
+    if (val > 1.5)
+      ch = '0';
+    if (val > 2.0)
+      ch = '@';
+    if (val < -0.1)
+      ch = '-';
+    if (val < -0.2)
+      ch = '~';
+    if (val < -0.4)
+      ch = '=';
+    if (val < -1.0)
+      ch = '#';
+    return ch;
+  }
+
   void dumpAscii(const std::string &prefix = "", std::string suffix = "\n") {
     std::cout << prefix << "\n";
     for (size_t z = 0; z < sz_; z++) {
@@ -146,30 +173,7 @@ public:
       for (size_t y = 0; y < sy_; y++) {
         for (size_t x = 0; x < sx_; x++) {
           auto val = at(x, y, z);
-          char ch = ' ';
-          if (val > 0.2)
-            ch = '.';
-          if (val > 0.4)
-            ch = ',';
-          if (val > 0.6)
-            ch = ':';
-          if (val > 0.8)
-            ch = 'o';
-          if (val > 1.0)
-            ch = 'O';
-          if (val > 1.5)
-            ch = '0';
-          if (val > 2.0)
-            ch = '@';
-          if (val < -0.1)
-            ch = '-';
-          if (val < -0.2)
-            ch = '~';
-          if (val < -0.4)
-            ch = '=';
-          if (val < -1.0)
-            ch = '#';
-          std::cout << ch;
+          std::cout << valueToChar(val);
         }
         std::cout << "\n";
       }
