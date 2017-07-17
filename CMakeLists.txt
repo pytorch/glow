@@ -23,31 +23,33 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 file(GLOB_RECURSE header_files include/noether/*.h)
 
+
 find_package(Protobuf)
+find_package(PNG)
+
 if (PROTOBUF_FOUND)
-  include_directories(${PROTOBUF_INCLUDE_DIRS})
-  target_link_libraries(noether ${PROTOBUF_LIBRARIES})
   PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS caffe/caffe.proto)
 endif (PROTOBUF_FOUND)
 
-add_executable(noether noether.cpp
-                       ./src/noether/Train.cpp
-                       ./src/noether/Image.cpp
-                       ./src/noether/Network.cpp
-                       ./src/noether/Node.cpp
-                       ./src/noether/Nodes.cpp
-                       ${header_files}
-                       ${PROTO_SRCS}
-                       ${PROTO_HDRS})
-
-find_package(PNG)
-if (PNG_FOUND)
-  include_directories(${PNG_INCLUDE_DIR})
-  target_link_libraries(noether ${PNG_LIBRARY})
-endif (PNG_FOUND)
-
+add_subdirectory(src/noether)
 
 configure_file (
   "${NOETHER_SOURCE_DIR}/include/Config.h.in"
   "${NOETHER_BINARY_DIR}/Config.h"
   )
+
+add_executable(noether noether.cpp ${header_files})
+
+SET(LinkLibs libNoether)
+
+if (PROTOBUF_FOUND)
+  SET(LinkLibs ${LinkLibs} ${PROTOBUF_LIBRARIES})
+endif (PROTOBUF_FOUND)
+
+if (PNG_FOUND)
+  SET(LinkLibs ${LinkLibs} ${PNG_LIBRARY})
+endif (PNG_FOUND)
+
+target_link_libraries (noether LINK_PUBLIC ${LinkLibs})
+
+
