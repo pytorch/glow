@@ -196,10 +196,6 @@ class ArrayNode final : public TrainableNode {
   friend Network;
 
 public:
-  void loadRaw(FloatTy *ptr, size_t numElements) {
-    this->getOutput().weight_.loadRaw(ptr, numElements);
-  }
-
   virtual std::string getName() const override { return "ArrayNode"; }
 
   void forward() override {}

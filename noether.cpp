@@ -179,6 +179,18 @@ void testRegression() {
   }
 }
 
+/// Loads an MNIST image into the input vector \p A.
+void loadMNistImage(Array3D<FloatTy> &A, float *rawArray) {
+  // The rest of the bytes are the image:
+  size_t idx = 1;
+  for (size_t y = 0; y < 28; y++) {
+    for (size_t x = 0; x < 28; x++) {
+      A.at(x,y,0) = rawArray[idx];
+      idx++;
+    }
+  }
+}
+
 /// This test classifies digits from the MNIST labeled dataset.
 void testMNIST(bool verbose = false) {
   if (verbose) {
@@ -234,7 +246,7 @@ void testMNIST(bool verbose = false) {
 
     size_t imageIndex = iter % numImages;
 
-    A->loadRaw(imagesAsFloatPtr + 28 * 28 * imageIndex, 28 * 28);
+    loadMNistImage(A->getOutput().weight_, imagesAsFloatPtr + 28 * 28 * imageIndex);
     SM->setSelected(labels[imageIndex]);
 
     N.train();
@@ -250,7 +262,7 @@ void testMNIST(bool verbose = false) {
   for (int iter = 0; iter < 10; iter++) {
     size_t imageIndex = (iter * 17512 + 9124) % numImages;
 
-    A->loadRaw(imagesAsFloatPtr + 28 * 28 * imageIndex, 28 * 28);
+    loadMNistImage(A->getOutput().weight_, imagesAsFloatPtr + 28 * 28 * imageIndex);
 
     N.infer();
 
