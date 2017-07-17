@@ -25,6 +25,9 @@ public:
 
   /// Does the backwards propagation.
   virtual void backward() = 0;
+
+  /// Dtor.
+  virtual ~NodeBase() {}
 };
 
 /// Represents a node in the network compute graph.

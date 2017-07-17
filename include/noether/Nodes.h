@@ -24,9 +24,11 @@ class ConvNode final : public TrainableNode {
   size_t stride_;
   size_t pad_;
 
-public:
   ConvNode(Network *N, TrainableNode *input, size_t outDepth, size_t filterSize,
            size_t stride, size_t pad);
+
+  friend Network;
+public:
 
   virtual void forward() override;
 
@@ -46,9 +48,11 @@ class MaxPoolNode final : public TrainableNode {
   size_t stride_;
   size_t pad_;
 
-public:
   MaxPoolNode(Network *N, TrainableNode *input, size_t filterSize,
               size_t stride, size_t pad);
+
+  friend Network;
+public:
 
   virtual void forward() override;
 
@@ -65,8 +69,10 @@ class FullyConnectedNode final : public TrainableNode {
   /// The biases.
   TrainableData bias_;
 
-public:
   FullyConnectedNode(Network *N, TrainableNode *input, size_t outDepth);
+
+  friend Network;
+public:
 
   virtual void forward() override;
 
@@ -79,8 +85,10 @@ class RELUNode final : public TrainableNode {
   /// A reference to the layer input.
   TrainableNode *input_;
 
-public:
   RELUNode(Network *N, TrainableNode *input);
+
+  friend Network;
+public:
 
   virtual void forward() override;
 
@@ -93,8 +101,10 @@ class SigmoidNode final : public TrainableNode {
   /// A reference to the layer input.
   TrainableNode *input_;
 
-public:
   SigmoidNode(Network *N, TrainableNode *input);
+
+  friend Network;
+public:
 
   virtual void forward() override;
 
@@ -112,11 +122,13 @@ class SoftMaxNode final : public TrainableNode {
   /// A temporary array for storing the subexpression (e ^ (a[i] - max)).
   Array3D<FloatTy> e_;
 
-public:
   /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
   /// And \p selected that's the selected one-hot representation of the
   /// softmax function.
-  SoftMaxNode(Network *N, TrainableNode *input, size_t selected = 0);
+  SoftMaxNode(Network *N, TrainableNode *input);
+
+  friend Network;
+public:
 
   virtual void forward() override;
 
@@ -128,11 +140,6 @@ public:
   /// Marks the channel that the SoftMax needs to optimize for.
   void setSelected(size_t selected);
 
-  FloatTy loss() {
-    // The loss is the class' negative log likelihood.
-    return -std::log(e_.at(0, 0, selected_));
-  }
-
   virtual std::string getName() const override { return "SoftMaxNode"; }
 };
 
@@ -142,11 +149,13 @@ class RegressionNode final : public TrainableNode {
   /// The expected input (also known as Y).
   Array3D<FloatTy> expected_;
 
-public:
   /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
   /// And \p expected (aka Y) is the expected input for the layer, that must
   /// be of the same shape as \p input.
   RegressionNode(Network *N, TrainableNode *input);
+
+  friend Network;
+public:
 
   /// \returns a reference to the expected result vector.
   Array3D<FloatTy> &getExpected() { return expected_; }
@@ -164,8 +173,11 @@ class MaxNode final : public TrainableNode {
   /// A reference to the node input.
   TrainableNode *input_;
 
-public:
   MaxNode(Network *N, TrainableNode *input);
+
+  friend Network;
+
+public:
 
   virtual void forward() override;
 
@@ -176,12 +188,14 @@ public:
 
 /// This is an abstraction over raw variable inputs.
 class ArrayNode final : public TrainableNode {
-public:
   ArrayNode(Network *N, size_t x, size_t y, size_t z) : TrainableNode(N) {
     this->getOutput().reset(x, y, z);
     // Do not change the output of this layer when training the network.
     this->getOutput().isTrainable_ = false;
   }
+
+  friend Network;
+public:
 
   void loadRaw(FloatTy *ptr, size_t numElements) {
     this->getOutput().weight_.loadRaw(ptr, numElements);

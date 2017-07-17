@@ -10,6 +10,52 @@ using namespace noether;
 
 Network::Network() {}
 
+Network::~Network() {
+  for (auto *node : this->networkNodes_) {
+    delete node;
+  }
+}
+
+ConvNode* Network::createConvNode(TrainableNode *input, size_t outDepth,
+                                  size_t filterSize, size_t stride, size_t pad) {
+  return addNode(new ConvNode(this, input, outDepth, filterSize, stride, pad));
+}
+
+MaxPoolNode *Network::createMaxPoolNode(TrainableNode *input, size_t filterSize,
+                                        size_t stride, size_t pad) {
+  return addNode(new MaxPoolNode(this, input, filterSize, stride, pad));
+}
+
+FullyConnectedNode* Network::createFullyConnectedNode(TrainableNode *input,
+                                                      size_t outDepth) {
+  return addNode(new FullyConnectedNode(this, input, outDepth));
+}
+
+RELUNode* Network::createRELUNode(TrainableNode *input) {
+  return addNode(new RELUNode(this, input));
+}
+
+SigmoidNode* Network::createSigmoidNode(TrainableNode *input) {
+  return addNode(new SigmoidNode(this, input));
+}
+
+SoftMaxNode* Network::createSoftMaxNode(TrainableNode *input) {
+  return addNode(new SoftMaxNode(this, input));
+}
+
+RegressionNode* Network::createRegressionNode(TrainableNode *input) {
+  return addNode(new RegressionNode(this, input));
+}
+
+MaxNode* Network::createMaxNode(TrainableNode *input) {
+  return addNode(new MaxNode(this, input));
+}
+
+ArrayNode* Network::createArrayNode(size_t x, size_t y, size_t z) {
+  return addNode(new ArrayNode(this, x, y, z));
+}
+
+
 void Network::sortNetwork(std::vector<NodeBase *> &order) {
   // TODO: add a cycle detector.
   // A list of nodes that were processed.

@@ -414,8 +414,8 @@ void SigmoidNode::backward() {
   }
 }
 
-SoftMaxNode::SoftMaxNode(Network *N, TrainableNode *input, size_t selected)
-    : TrainableNode(N), input_(input), selected_(selected) {
+SoftMaxNode::SoftMaxNode(Network *N, TrainableNode *input)
+    : TrainableNode(N), input_(input), selected_(0) {
   assert(input && input_->size() && "Invalid input");
   N->addNodeDependency(this, input);
   size_t inx, iny, inz;

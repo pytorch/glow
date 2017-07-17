@@ -31,12 +31,12 @@ void testFCSoftMax(bool verbose = false) {
   // Construct the network:
   Network N;
   N.getTrainingConfig().momentum = 0.0;
-  ArrayNode A(&N, 1, 1, 2);
-  FullyConnectedNode FCL0(&N, &A, 6);
-  RELUNode RL0(&N, &FCL0);
-  FullyConnectedNode FCL1(&N, &RL0, 2);
-  RELUNode RL1(&N, &FCL1);
-  SoftMaxNode SM(&N, &RL1);
+  auto *A = N.createArrayNode(1, 1, 2);
+  auto *FCL0 = N.createFullyConnectedNode( A, 6);
+  auto *RL0 = N.createRELUNode (FCL0);
+  auto *FCL1 = N.createFullyConnectedNode(RL0, 2);
+  auto *RL1 = N.createRELUNode(FCL1);
+  auto *SM = N.createSoftMaxNode(RL1);
 
   // Generate some random numbers in the range -1 .. 1.
   std::random_device rd;
@@ -53,9 +53,9 @@ void testFCSoftMax(bool verbose = false) {
 
     bool InCircle = r2 < 0.6;
 
-    SM.setSelected(InCircle);
-    A.getOutput().weight_.at(0, 0, 0) = x;
-    A.getOutput().weight_.at(0, 0, 1) = y;
+    SM->setSelected(InCircle);
+    A->getOutput().weight_.at(0, 0, 0) = x;
+    A->getOutput().weight_.at(0, 0, 1) = y;
     N.train();
   }
 
@@ -64,12 +64,12 @@ void testFCSoftMax(bool verbose = false) {
     for (int x = -10; x < 10; x++) {
       for (int y = -10; y < 10; y++) {
         // Load the inputs:
-        A.getOutput().weight_.at(0, 0, 0) = float(x) / 10;
-        A.getOutput().weight_.at(0, 0, 1) = float(y) / 10;
+        A->getOutput().weight_.at(0, 0, 0) = float(x) / 10;
+        A->getOutput().weight_.at(0, 0, 1) = float(y) / 10;
 
         N.infer();
-        auto A = SM.getOutput().weight_.at(0, 0, 0);
-        auto B = SM.getOutput().weight_.at(0, 0, 1);
+        auto A = SM->getOutput().weight_.at(0, 0, 0);
+        auto B = SM->getOutput().weight_.at(0, 0, 1);
 
         char ch = '=';
         if (A > (B + 0.2)) {
@@ -96,17 +96,17 @@ void testFCSoftMax(bool verbose = false) {
       continue;
 
     // Load the inputs:
-    A.getOutput().weight_.at(0, 0, 0) = x;
-    A.getOutput().weight_.at(0, 0, 1) = y;
+    A->getOutput().weight_.at(0, 0, 0) = x;
+    A->getOutput().weight_.at(0, 0, 1) = y;
 
     N.infer();
 
     // Inspect the outputs:
     if (r2 < 0.50) {
-      assert(SM.maxArg() == 1);
+      assert(SM->maxArg() == 1);
     }
     if (r2 > 0.7) {
-      assert(SM.maxArg() == 0);
+      assert(SM->maxArg() == 0);
     }
   }
 }
@@ -122,17 +122,17 @@ void setOneHot(Array3D<FloatTy> &A, float background, float foreground,
 void testLearnSingleInput() {
   Network N;
   N.getTrainingConfig().learningRate = 0.005;
-  ArrayNode A(&N, 1, 1, 10);
-  FullyConnectedNode FCL0(&N, &A, 10);
-  RELUNode RL0(&N, &FCL0);
-  FullyConnectedNode FCL1(&N, &RL0, 10);
-  RELUNode RL1(&N, &FCL1);
-  RegressionNode RN(&N, &RL1);
+  auto *A = N.createArrayNode(1, 1, 10);
+  auto *FCL0 = N.createFullyConnectedNode (A, 10);
+  auto *RL0 = N.createRELUNode (FCL0);
+  auto *FCL1 = N.createFullyConnectedNode (RL0, 10);
+  auto *RL1= N.createRELUNode (FCL1);
+  auto *RN = N.createRegressionNode(RL1);
 
   // Put in [15, 0, 0, 0, 0 ... ]
-  setOneHot(A.getOutput().weight_, 0.0, 15, 0);
+  setOneHot(A->getOutput().weight_, 0.0, 15, 0);
   // Expect [0, 9.0, 0 , 0 , ...]
-  setOneHot(RN.getExpected(), 0.0, 9.0, 1);
+  setOneHot(RN->getExpected(), 0.0, 9.0, 1);
 
   // Train the network:
   for (int iter = 0; iter < 10000; iter++) {
@@ -142,8 +142,8 @@ void testLearnSingleInput() {
   N.infer();
 
   // Test the output:
-  assert(RN.getOutput().weight_.sum() < 10);
-  assert(RN.getOutput().weight_.at(0, 0, 1) > 8.5);
+  assert(RN->getOutput().weight_.sum() < 10);
+  assert(RN->getOutput().weight_.at(0, 0, 1) > 8.5);
 }
 
 void testRegression() {
@@ -153,18 +153,16 @@ void testRegression() {
   /// and places the result in the second element of the output vector.
   constexpr int numInputs = 4;
 
-  ArrayNode A(&N, 1, 1, numInputs);
-
-  FullyConnectedNode FCL0(&N, &A, 4);
-  RELUNode RL0(&N, &FCL0);
-
-  RegressionNode RN(&N, &RL0);
+  auto *A = N.createArrayNode(1, 1, numInputs);
+  auto *FCL0 = N.createFullyConnectedNode(A, 4);
+  auto *RL0 = N.createRELUNode (FCL0);
+  auto *RN = N.createRegressionNode (RL0);
 
   // Train the network:
   for (int iter = 0; iter < 9000; iter++) {
     float target = float(iter % 9);
-    setOneHot(A.getOutput().weight_, 0.0, target, 0);
-    setOneHot(RN.getExpected(), 0.0, target + 1, 1);
+    setOneHot(A->getOutput().weight_, 0.0, target, 0);
+    setOneHot(RN->getExpected(), 0.0, target + 1, 1);
 
     N.train();
   }
@@ -172,12 +170,12 @@ void testRegression() {
   // Test the output:
   for (int iter = 0; iter < 5; iter++) {
     float target = iter % 9 + 1;
-    setOneHot(A.getOutput().weight_, 0.0, target, 0);
-    setOneHot(RN.getExpected(), 0.0, target + 1, 1);
+    setOneHot(A->getOutput().weight_, 0.0, target, 0);
+    setOneHot(RN->getExpected(), 0.0, target + 1, 1);
 
     N.infer();
-    assert(delta(A.getOutput().weight_.at(0, 0, 0) + 1,
-                 RN.getOutput().weight_.at(0, 0, 1)) < 0.1);
+    assert(delta(A->getOutput().weight_.at(0, 0, 0) + 1,
+                 RN->getOutput().weight_.at(0, 0, 1)) < 0.1);
   }
 }
 
@@ -212,18 +210,18 @@ void testMNIST(bool verbose = false) {
   N.getTrainingConfig().momentum = 0.9;
   N.getTrainingConfig().batchSize = 20;
 
-  ArrayNode A(&N, 28, 28, 1);
-  ConvNode CV0(&N, &A, 8, 5, 1, 2);
-  RELUNode RL0(&N, &CV0);
-  MaxPoolNode MP0(&N, &RL0, 2, 2, 0);
+  auto *A= N.createArrayNode(28, 28, 1);
+  auto *CV0 = N.createConvNode(A, 8, 5, 1, 2);
+  auto *RL0 = N.createRELUNode (CV0);
+  auto *MP0= N.createMaxPoolNode (RL0, 2, 2, 0);
 
-  ConvNode CV1(&N, &MP0, 16, 5, 1, 2);
-  RELUNode RL1(&N, &CV1);
-  MaxPoolNode MP1(&N, &RL1, 2, 2, 0);
+  auto *CV1= N.createConvNode (MP0, 16, 5, 1, 2);
+  auto *RL1= N.createRELUNode (CV1);
+  auto *MP1 = N.createMaxPoolNode (RL1, 2, 2, 0);
 
-  FullyConnectedNode FCL1(&N, &MP1, 10);
-  RELUNode RL2(&N, &FCL1);
-  SoftMaxNode SM(&N, &RL2);
+  auto *FCL1 = N.createFullyConnectedNode (MP1, 10);
+  auto *RL2 = N.createRELUNode (FCL1);
+  auto *SM= N.createSoftMaxNode (RL2);
 
   if (verbose) {
     std::cout << "Training.\n";
@@ -236,8 +234,8 @@ void testMNIST(bool verbose = false) {
 
     size_t imageIndex = iter % numImages;
 
-    A.loadRaw(imagesAsFloatPtr + 28 * 28 * imageIndex, 28 * 28);
-    SM.setSelected(labels[imageIndex]);
+    A->loadRaw(imagesAsFloatPtr + 28 * 28 * imageIndex, 28 * 28);
+    SM->setSelected(labels[imageIndex]);
 
     N.train();
   }
@@ -252,19 +250,19 @@ void testMNIST(bool verbose = false) {
   for (int iter = 0; iter < 10; iter++) {
     size_t imageIndex = (iter * 17512 + 9124) % numImages;
 
-    A.loadRaw(imagesAsFloatPtr + 28 * 28 * imageIndex, 28 * 28);
+    A->loadRaw(imagesAsFloatPtr + 28 * 28 * imageIndex, 28 * 28);
 
     N.infer();
 
-    size_t guess = SM.maxArg();
+    size_t guess = SM->maxArg();
     size_t correct = labels[imageIndex];
     rightAnswer += (guess == correct);
 
     if (verbose) {
-      A.getOutput().weight_.dumpAscii("MNIST Input");
+      A->getOutput().weight_.dumpAscii("MNIST Input");
       std::cout << "Expected: " << correct
                 << " Guessed: " << guess << "\n";
-      SM.getOutput().weight_.dump("", "\n");
+      SM->getOutput().weight_.dump("", "\n");
       std::cout << "\n-------------\n";
     }
   }
@@ -339,22 +337,22 @@ void testCIFAR10(bool verbose = false) {
   N.getTrainingConfig().batchSize = 10;
   N.getTrainingConfig().L2Decay = 0.0001;
 
-  ArrayNode A(&N, 32, 32, 3);
-  ConvNode CV0(&N, &A, 16, 5, 1, 2);
-  RELUNode RL0(&N, &CV0);
-  MaxPoolNode MP0(&N, &RL0, 2, 2, 0);
+  auto *A= N.createArrayNode(32, 32, 3);
+  auto *CV0= N.createConvNode (A, 16, 5, 1, 2);
+  auto *RL0= N.createRELUNode (CV0);
+  auto *MP0= N.createMaxPoolNode (RL0, 2, 2, 0);
 
-  ConvNode CV1(&N, &MP0, 20, 5, 1, 2);
-  RELUNode RL1(&N, &CV1);
-  MaxPoolNode MP1(&N, &RL1, 2, 2, 0);
+  auto *CV1= N.createConvNode (MP0, 20, 5, 1, 2);
+  auto *RL1= N.createRELUNode (CV1);
+  auto *MP1= N.createMaxPoolNode (RL1, 2, 2, 0);
 
-  ConvNode CV2(&N, &MP1, 20, 5, 1, 2);
-  RELUNode RL2(&N, &CV2);
-  MaxPoolNode MP2(&N, &RL2, 2, 2, 0);
+  auto *CV2= N.createConvNode (MP1, 20, 5, 1, 2);
+  auto *RL2= N.createRELUNode (CV2);
+  auto *MP2= N.createMaxPoolNode (RL2, 2, 2, 0);
 
-  FullyConnectedNode FCL1(&N, &MP2, 10);
-  RELUNode RL3(&N, &FCL1);
-  SoftMaxNode SM(&N, &RL3);
+  auto *FCL1 = N.createFullyConnectedNode(MP2, 10);
+  auto *RL3= N.createRELUNode (FCL1);
+  auto *SM= N.createSoftMaxNode(RL3);
 
   if (verbose) {
     std::cout << "Training.\n";
@@ -368,9 +366,9 @@ void testCIFAR10(bool verbose = false) {
     const size_t imageIndex = iter % cifarNumImages;
 
     // Load the image.
-    auto label =  loadCIFARImage(A.getOutput().weight_, rawArray, imageIndex);
+    auto label =  loadCIFARImage(A->getOutput().weight_, rawArray, imageIndex);
     // Set the expected label.
-    SM.setSelected(label);
+    SM->setSelected(label);
 
     N.train();
   }
@@ -385,12 +383,12 @@ void testCIFAR10(bool verbose = false) {
     const size_t imageIndex = (iter * 17512 + 9124) % cifarNumImages;
 
     // Load the image.
-    auto expectedLabel =  loadCIFARImage(A.getOutput().weight_, rawArray,
+    auto expectedLabel =  loadCIFARImage(A->getOutput().weight_, rawArray,
                                          imageIndex);
 
     N.infer();
 
-    unsigned result = SM.maxArg();
+    unsigned result = SM->maxArg();
     std::cout << "Expected: " << textualLabels[expectedLabel] << " Guessed: " <<
     textualLabels[result] << "\n";
   }
