@@ -5,8 +5,8 @@ set(CMAKE_BUILD_TYPE "Debug")
 
 set(CMAKE_XCODE_ATTRIBUTE_CLANG_CXX_LANGUAGE_STANDARD "c++14")
 
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -std=c++14 -Wall -march=native -ffast-math")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -std=c++14 -Wall -fsanitize=address -fno-omit-frame-pointer")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -std=c++11 -Wall -march=native -ffast-math")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -std=c++11 -Wall -fsanitize=address -fno-omit-frame-pointer")
 
 set(NOETHER_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(NOETHER_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
