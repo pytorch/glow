@@ -1,7 +1,6 @@
 #ifndef NOETHER_NODE_H
 #define NOETHER_NODE_H
 
-#include "noether/Network.h"
 #include "noether/Tensor.h"
 #include "noether/Train.h"
 
@@ -12,6 +11,8 @@
 #include <vector>
 
 namespace noether {
+
+class Network;
 
 /// This is the non-templated part of the compute node.
 class NodeBase {
@@ -33,7 +34,7 @@ protected:
   TrainableData output_;
 
 public:
-  TrainableNode(Network *N) { N->registerDerivTensor(this, &output_); }
+  TrainableNode(Network *N);
 
   /// \returns the output of a node in the compute graph.
   TrainableData &getOutput() { return output_; }

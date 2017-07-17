@@ -1,3 +1,4 @@
+#include "noether/Network.h"
 #include "noether/Nodes.h"
 #include "noether/Tensor.h"
 

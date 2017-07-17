@@ -1,5 +1,6 @@
 #include "noether/Image.h"
 #include "noether/Nodes.h"
+#include "noether/Network.h"
 #include "noether/Tensor.h"
 
 #include <cassert>
@@ -267,7 +268,7 @@ void testMNIST(bool verbose = false) {
       std::cout << "\n-------------\n";
     }
   }
-  
+
   assert(rightAnswer >= 6 && "Did not classify as many digits as expected");
 }
 
@@ -386,9 +387,9 @@ void testCIFAR10(bool verbose = false) {
     // Load the image.
     auto expectedLabel =  loadCIFARImage(A.getOutput().weight_, rawArray,
                                          imageIndex);
-    
+
     N.infer();
-    
+
     unsigned result = SM.maxArg();
     std::cout << "Expected: " << textualLabels[expectedLabel] << " Guessed: " <<
     textualLabels[result] << "\n";

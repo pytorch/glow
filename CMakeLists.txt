@@ -32,6 +32,7 @@ add_executable(noether noether.cpp
                        ./src/noether/Train.cpp
                        ./src/noether/Image.cpp
                        ./src/noether/Network.cpp
+                       ./src/noether/Node.cpp
                        ./src/noether/Nodes.cpp
                        ${header_files}
                        ${PROTO_SRCS}
