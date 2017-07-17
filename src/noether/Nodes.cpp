@@ -1,5 +1,5 @@
-#include "noether/Network.h"
 #include "noether/Nodes.h"
+#include "noether/Network.h"
 #include "noether/Tensor.h"
 
 using namespace noether;
@@ -121,8 +121,10 @@ void ConvNode::backward() {
 
             if (this->output_.isInBounds(ox, oy, 0)) {
               for (size_t fd = 0; fd < inz; fd++) {
-                currFilter.gradient_.at(fx, fy, fd) += inputBuffer.weight_.at(ox, oy, fd) * chainGrad;
-                inputBuffer.gradient_.at(ox, oy, fd) += currFilter.weight_.at(fx, fy, fd) * chainGrad;
+                currFilter.gradient_.at(fx, fy, fd) +=
+                    inputBuffer.weight_.at(ox, oy, fd) * chainGrad;
+                inputBuffer.gradient_.at(ox, oy, fd) +=
+                    currFilter.weight_.at(fx, fy, fd) * chainGrad;
               }
             }
           }

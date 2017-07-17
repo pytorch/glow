@@ -28,8 +28,8 @@ class ConvNode final : public TrainableNode {
            size_t stride, size_t pad);
 
   friend Network;
-public:
 
+public:
   virtual void forward() override;
 
   virtual void backward() override;
@@ -52,8 +52,8 @@ class MaxPoolNode final : public TrainableNode {
               size_t stride, size_t pad);
 
   friend Network;
-public:
 
+public:
   virtual void forward() override;
 
   virtual void backward() override;
@@ -72,8 +72,8 @@ class FullyConnectedNode final : public TrainableNode {
   FullyConnectedNode(Network *N, TrainableNode *input, size_t outDepth);
 
   friend Network;
-public:
 
+public:
   virtual void forward() override;
 
   virtual void backward() override;
@@ -88,8 +88,8 @@ class RELUNode final : public TrainableNode {
   RELUNode(Network *N, TrainableNode *input);
 
   friend Network;
-public:
 
+public:
   virtual void forward() override;
 
   virtual void backward() override;
@@ -104,8 +104,8 @@ class SigmoidNode final : public TrainableNode {
   SigmoidNode(Network *N, TrainableNode *input);
 
   friend Network;
-public:
 
+public:
   virtual void forward() override;
 
   virtual void backward() override;
@@ -128,8 +128,8 @@ class SoftMaxNode final : public TrainableNode {
   SoftMaxNode(Network *N, TrainableNode *input);
 
   friend Network;
-public:
 
+public:
   virtual void forward() override;
 
   virtual void backward() override;
@@ -155,8 +155,8 @@ class RegressionNode final : public TrainableNode {
   RegressionNode(Network *N, TrainableNode *input);
 
   friend Network;
-public:
 
+public:
   /// \returns a reference to the expected result vector.
   Array3D<FloatTy> &getExpected() { return expected_; }
 
@@ -178,7 +178,6 @@ class MaxNode final : public TrainableNode {
   friend Network;
 
 public:
-
   virtual void forward() override;
 
   virtual void backward() override;
@@ -195,8 +194,8 @@ class ArrayNode final : public TrainableNode {
   }
 
   friend Network;
-public:
 
+public:
   void loadRaw(FloatTy *ptr, size_t numElements) {
     this->getOutput().weight_.loadRaw(ptr, numElements);
   }
