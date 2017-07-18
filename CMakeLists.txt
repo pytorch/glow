@@ -31,14 +31,12 @@ if (PROTOBUF_FOUND)
   PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS caffe/caffe.proto)
 endif (PROTOBUF_FOUND)
 
-add_subdirectory(src/noether)
 
 configure_file (
   "${NOETHER_SOURCE_DIR}/include/Config.h.in"
   "${NOETHER_BINARY_DIR}/Config.h"
   )
 
-add_executable(noether noether.cpp ${header_files})
 
 SET(LinkLibs libNoether)
 
@@ -50,6 +48,9 @@ if (PNG_FOUND)
   SET(LinkLibs ${LinkLibs} ${PNG_LIBRARY})
 endif (PNG_FOUND)
 
-target_link_libraries (noether LINK_PUBLIC ${LinkLibs})
+add_subdirectory(src/noether)
+add_subdirectory(examples/)
 
+add_executable(noether noether.cpp ${header_files})
+target_link_libraries (noether LINK_PUBLIC ${LinkLibs})
 
