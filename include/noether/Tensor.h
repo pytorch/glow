@@ -17,7 +17,7 @@ struct Point3d {
   size_t y{0};
   size_t z{0};
   Point3d(size_t x, size_t y, size_t z) : x(x), y(y), z(z) {}
-  bool operator == (const Point3d &other) {
+  bool operator==(const Point3d &other) {
     return x == other.x && y == other.y && z == other.z;
   }
 };
@@ -28,7 +28,7 @@ struct Point4d {
   size_t y{0};
   size_t z{0};
   Point4d(size_t w, size_t x, size_t y, size_t z) : w(w), x(x), y(y), z(z) {}
-  bool operator == (const Point4d &other) {
+  bool operator==(const Point4d &other) {
     return w == other.w && x == other.x && y == other.y && z == other.z;
   }
 };
@@ -83,9 +83,7 @@ public:
   }
 
   /// \returns the dimension of the tensor.
-  Point3d dims() const {
-    return Point3d(sx_, sy_, sz_);
-  }
+  Point3d dims() const { return Point3d(sx_, sy_, sz_); }
 
   /// \returns the number of elements in the array.
   size_t size() const { return sx_ * sy_ * sz_; }
@@ -130,9 +128,7 @@ public:
   }
 
   /// Assigns a new shape to the tensor and allocates a new buffer.
-  void reset(Point3d dim) {
-    reset(dim.x, dim.y, dim.z);
-  }
+  void reset(Point3d dim) { reset(dim.x, dim.y, dim.z); }
 
   /// Assigns a new shape to the tensor and allocates a new buffer.
   void reset(size_t x, size_t y, size_t z) {
@@ -252,9 +248,7 @@ public:
   }
 
   /// \returns the dimension of the tensor.
-  Point4d dims() const {
-    return {sw_, sx_, sy_, sz_};
-  }
+  Point4d dims() const { return {sw_, sx_, sy_, sz_}; }
 
   /// \returns the number of elements in the array.
   size_t size() const { return sw_ * sx_ * sy_ * sz_; }
@@ -263,7 +257,8 @@ public:
   Array4D() = default;
 
   /// Initialize a new tensor.
-  Array4D(size_t w, size_t x, size_t y, size_t z) : sw_(w), sx_(x), sy_(y), sz_(z) {
+  Array4D(size_t w, size_t x, size_t y, size_t z)
+      : sw_(w), sx_(x), sy_(y), sz_(z) {
     data_ = new ElemTy[size()];
     clear();
   }
@@ -272,9 +267,7 @@ public:
   Array4D &operator=(const Array4D &other) = delete;
 
   /// Assigns a new shape to the tensor and allocates a new buffer.
-  void reset(Point4d dim) {
-    reset(dim.w, dim.x, dim.y, dim.z);
-  }
+  void reset(Point4d dim) { reset(dim.w, dim.x, dim.y, dim.z); }
 
   /// Assigns a new shape to the tensor and allocates a new buffer.
   void reset(size_t w, size_t x, size_t y, size_t z) {
@@ -301,7 +294,7 @@ public:
     return slice;
   }
 
-  ElemTy &at(size_t w,size_t x, size_t y, size_t z) {
+  ElemTy &at(size_t w, size_t x, size_t y, size_t z) {
     return data_[getElementIdx(w, x, y, z)];
   }
 
@@ -309,7 +302,6 @@ public:
     return data_[getElementIdx(w, x, y, z)];
   }
 };
-
 }
 
 #endif // NOETHER_TENSOR_H

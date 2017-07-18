@@ -466,8 +466,10 @@ size_t SoftMaxNode::maxArg() const {
 }
 
 void SoftMaxNode::setSelected(size_t selected) {
-  auto idim = input_->dims(); (void) idim;
-  assert(idim.x == 1 && idim.y == 1 && selected < idim.z && "Invalid selection");
+  auto idim = input_->dims();
+  (void)idim;
+  assert(idim.x == 1 && idim.y == 1 && selected < idim.z &&
+         "Invalid selection");
   selected_ = selected;
 }
 

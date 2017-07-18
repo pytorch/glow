@@ -1,6 +1,6 @@
 #include "noether/Image.h"
-#include "noether/Nodes.h"
 #include "noether/Network.h"
+#include "noether/Nodes.h"
 #include "noether/Tensor.h"
 
 #include <cassert>
@@ -42,10 +42,10 @@ void testMNIST(bool verbose = false) {
   size_t idx = 0;
 
   for (size_t w = 0; w < mnistNumImages; w++) {
-    labelInputs.at(w,0,0,0) = labels[w];
-      for (size_t y = 0; y < 28; y++) {
-        for (size_t x = 0; x < 28; x++) {
-          imageInputs.at(w,x,y,0) = imagesAsFloatPtr[idx++];
+    labelInputs.at(w, 0, 0, 0) = labels[w];
+    for (size_t y = 0; y < 28; y++) {
+      for (size_t x = 0; x < 28; x++) {
+        imageInputs.at(w, x, y, 0) = imagesAsFloatPtr[idx++];
       }
     }
   }
@@ -63,19 +63,18 @@ void testMNIST(bool verbose = false) {
   N.getTrainingConfig().batchSize = 20;
   N.getTrainingConfig().inputSize = 50000;
 
-
-  auto *A= N.createArrayNode(28, 28, 1);
+  auto *A = N.createArrayNode(28, 28, 1);
   auto *CV0 = N.createConvNode(A, 8, 5, 1, 2);
-  auto *RL0 = N.createRELUNode (CV0);
-  auto *MP0= N.createMaxPoolNode (RL0, 2, 2, 0);
+  auto *RL0 = N.createRELUNode(CV0);
+  auto *MP0 = N.createMaxPoolNode(RL0, 2, 2, 0);
 
-  auto *CV1= N.createConvNode (MP0, 16, 5, 1, 2);
-  auto *RL1= N.createRELUNode (CV1);
-  auto *MP1 = N.createMaxPoolNode (RL1, 2, 2, 0);
+  auto *CV1 = N.createConvNode(MP0, 16, 5, 1, 2);
+  auto *RL1 = N.createRELUNode(CV1);
+  auto *MP1 = N.createMaxPoolNode(RL1, 2, 2, 0);
 
-  auto *FCL1 = N.createFullyConnectedNode (MP1, 10);
-  auto *RL2 = N.createRELUNode (FCL1);
-  auto *SM = N.createSoftMaxNode (RL2);
+  auto *FCL1 = N.createFullyConnectedNode(MP1, 10);
+  auto *RL2 = N.createRELUNode(FCL1);
+  auto *SM = N.createSoftMaxNode(RL2);
 
   // On each training iteration the inputs are loaded from the image db.
   A->bind(&imageInputs);
@@ -113,8 +112,7 @@ void testMNIST(bool verbose = false) {
 
     if (verbose) {
       A->getOutput().weight_.dumpAscii("MNIST Input");
-      std::cout << "Expected: " << correct
-                << " Guessed: " << guess << "\n";
+      std::cout << "Expected: " << correct << " Guessed: " << guess << "\n";
       SM->getOutput().weight_.dump("", "\n");
       std::cout << "\n-------------\n";
     }

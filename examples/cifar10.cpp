@@ -1,6 +1,6 @@
 #include "noether/Image.h"
-#include "noether/Nodes.h"
 #include "noether/Network.h"
+#include "noether/Nodes.h"
 #include "noether/Tensor.h"
 
 #include <cassert>
@@ -28,9 +28,10 @@ const size_t cifarNumImages = 10000;
 /// Details: http://www.cs.toronto.edu/~kriz/cifar.html
 /// Dataset: http://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz
 void testCIFAR10(bool verbose = false) {
-  (void) cifarImageSize;
-  const char* textualLabels[] = { "airplane", "automobile", "bird", "cat",
-    "deer", "dog", "frog", "horse", "ship", "truck"};
+  (void)cifarImageSize;
+  const char *textualLabels[] = {"airplane", "automobile", "bird", "cat",
+                                 "deer",     "dog",        "frog", "horse",
+                                 "ship",     "truck"};
 
   std::ifstream dbInput("cifar-10-batches-bin/data_batch_1.bin",
                         std::ios::binary);
@@ -45,20 +46,20 @@ void testCIFAR10(bool verbose = false) {
   size_t idx = 0;
 
   for (size_t w = 0; w < cifarNumImages; w++) {
-    labels.at(w,0,0,0) = static_cast<uint8_t>(dbInput.get());
+    labels.at(w, 0, 0, 0) = static_cast<uint8_t>(dbInput.get());
     idx++;
 
     for (size_t z = 0; z < 3; z++) {
       for (size_t y = 0; y < 32; y++) {
         for (size_t x = 0; x < 32; x++) {
-          images.at(w,x,y,z) = FloatTy(static_cast<uint8_t>(dbInput.get()))/255.0;
+          images.at(w, x, y, z) =
+              FloatTy(static_cast<uint8_t>(dbInput.get())) / 255.0;
           idx++;
         }
       }
     }
   }
   assert(idx == cifarImageSize * cifarNumImages && "Invalid input file");
-
 
   // Construct the network:
   Network N;
@@ -68,22 +69,22 @@ void testCIFAR10(bool verbose = false) {
   N.getTrainingConfig().L2Decay = 0.0001;
   N.getTrainingConfig().inputSize = cifarImageSize;
 
-  auto *A= N.createArrayNode(32, 32, 3);
-  auto *CV0= N.createConvNode (A, 16, 5, 1, 2);
-  auto *RL0= N.createRELUNode (CV0);
-  auto *MP0= N.createMaxPoolNode (RL0, 2, 2, 0);
+  auto *A = N.createArrayNode(32, 32, 3);
+  auto *CV0 = N.createConvNode(A, 16, 5, 1, 2);
+  auto *RL0 = N.createRELUNode(CV0);
+  auto *MP0 = N.createMaxPoolNode(RL0, 2, 2, 0);
 
-  auto *CV1= N.createConvNode (MP0, 20, 5, 1, 2);
-  auto *RL1= N.createRELUNode (CV1);
-  auto *MP1= N.createMaxPoolNode (RL1, 2, 2, 0);
+  auto *CV1 = N.createConvNode(MP0, 20, 5, 1, 2);
+  auto *RL1 = N.createRELUNode(CV1);
+  auto *MP1 = N.createMaxPoolNode(RL1, 2, 2, 0);
 
-  auto *CV2= N.createConvNode (MP1, 20, 5, 1, 2);
-  auto *RL2= N.createRELUNode (CV2);
-  auto *MP2= N.createMaxPoolNode (RL2, 2, 2, 0);
+  auto *CV2 = N.createConvNode(MP1, 20, 5, 1, 2);
+  auto *RL2 = N.createRELUNode(CV2);
+  auto *MP2 = N.createMaxPoolNode(RL2, 2, 2, 0);
 
   auto *FCL1 = N.createFullyConnectedNode(MP2, 10);
-  auto *RL3= N.createRELUNode (FCL1);
-  auto *SM= N.createSoftMaxNode(RL3);
+  auto *RL3 = N.createRELUNode(FCL1);
+  auto *SM = N.createSoftMaxNode(RL3);
 
   // On each training iteration the inputs are loaded from the image db.
   A->bind(&images);
@@ -114,13 +115,13 @@ void testCIFAR10(bool verbose = false) {
     // Load the image.
     A->getOutput().weight_ = images.extractSlice(imageIndex);
     // Load the expected label.
-    auto expectedLabel =  labels.at(imageIndex,0,0,0);
+    auto expectedLabel = labels.at(imageIndex, 0, 0, 0);
 
     N.infer();
 
     unsigned result = SM->maxArg();
-    std::cout << "Expected: " << textualLabels[expectedLabel] << " Guessed: " <<
-    textualLabels[result] << "\n";
+    std::cout << "Expected: " << textualLabels[expectedLabel]
+              << " Guessed: " << textualLabels[result] << "\n";
   }
 }
 
@@ -130,4 +131,3 @@ int main() {
 
   return 0;
 }
-

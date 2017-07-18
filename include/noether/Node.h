@@ -29,7 +29,7 @@ public:
   /// If the node is bound to some input or expected output variable then
   /// copy the data now. The parameter \p sampleIdx specifies which input
   /// to load.
-  virtual void updateBoundInputs(size_t sampleIdx) { }
+  virtual void updateBoundInputs(size_t sampleIdx) {}
 
   /// Dtor.
   virtual ~NodeBase() {}

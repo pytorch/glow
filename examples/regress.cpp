@@ -1,6 +1,6 @@
 #include "noether/Image.h"
-#include "noether/Nodes.h"
 #include "noether/Network.h"
+#include "noether/Nodes.h"
 #include "noether/Tensor.h"
 
 #include <cassert>
@@ -35,8 +35,8 @@ void testFCSoftMax(bool verbose = false) {
   Network N;
   N.getTrainingConfig().momentum = 0.0;
   auto *A = N.createArrayNode(1, 1, 2);
-  auto *FCL0 = N.createFullyConnectedNode( A, 6);
-  auto *RL0 = N.createRELUNode (FCL0);
+  auto *FCL0 = N.createFullyConnectedNode(A, 6);
+  auto *RL0 = N.createRELUNode(FCL0);
   auto *FCL1 = N.createFullyConnectedNode(RL0, 2);
   auto *RL1 = N.createRELUNode(FCL1);
   auto *SM = N.createSoftMaxNode(RL1);
@@ -133,7 +133,6 @@ void setOneHot(Array3D<FloatTy> &A, float background, float foreground,
   }
 }
 
-
 void testRegression(bool verbose = false) {
   if (verbose) {
     std::cout << "Testing the regression layer.\n";
@@ -146,8 +145,8 @@ void testRegression(bool verbose = false) {
   Network N;
   auto *A = N.createArrayNode(1, 1, numInputs);
   auto *FCL0 = N.createFullyConnectedNode(A, 4);
-  auto *RL0 = N.createRELUNode (FCL0);
-  auto *RN = N.createRegressionNode (RL0);
+  auto *RL0 = N.createRELUNode(FCL0);
+  auto *RN = N.createRegressionNode(RL0);
 
   // Train the network:
   for (int iter = 0; iter < 9000; iter++) {
@@ -176,7 +175,6 @@ void testRegression(bool verbose = false) {
   }
 }
 
-
 void testLearnSingleInput(bool verbose = false) {
   if (verbose) {
     std::cout << "Learning a single input vector.\n";
@@ -185,10 +183,10 @@ void testLearnSingleInput(bool verbose = false) {
   Network N;
   N.getTrainingConfig().learningRate = 0.005;
   auto *A = N.createArrayNode(1, 1, 10);
-  auto *FCL0 = N.createFullyConnectedNode (A, 10);
-  auto *RL0 = N.createRELUNode (FCL0);
-  auto *FCL1 = N.createFullyConnectedNode (RL0, 10);
-  auto *RL1= N.createRELUNode (FCL1);
+  auto *FCL0 = N.createFullyConnectedNode(A, 10);
+  auto *RL0 = N.createRELUNode(FCL0);
+  auto *FCL1 = N.createFullyConnectedNode(RL0, 10);
+  auto *RL1 = N.createRELUNode(FCL1);
   auto *RN = N.createRegressionNode(RL1);
 
   // Put in [15, 0, 0, 0, 0 ... ]

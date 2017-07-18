@@ -134,15 +134,12 @@ class SoftMaxNode final : public TrainableNode {
   friend Network;
 
 public:
-
-  void bind(Array4D<size_t> *input) {
-    boundInputSource_ = input;
-  }
+  void bind(Array4D<size_t> *input) { boundInputSource_ = input; }
 
   virtual void updateBoundInputs(size_t sampleIdx) override {
     if (!boundInputSource_)
       return;
-    selected_ = boundInputSource_->at(sampleIdx, 0 ,0 , 0);
+    selected_ = boundInputSource_->at(sampleIdx, 0, 0, 0);
 
     assert(selected_ < dims().z && "Invalid selected value");
   }
@@ -178,13 +175,13 @@ class RegressionNode final : public TrainableNode {
   friend Network;
 
 public:
-
   void bind(Array4D<FloatTy> *input) {
     auto idim = input->dims();
     auto dim = dims();
-    (void) dim;
-    (void) idim;
-    assert(idim.x == dim.x && idim.y == dim.y && idim.z == dim.z && "Invalid input size");
+    (void)dim;
+    (void)idim;
+    assert(idim.x == dim.x && idim.y == dim.y && idim.z == dim.z &&
+           "Invalid input size");
     boundInputSource_ = input;
   }
 
@@ -239,7 +236,6 @@ class ArrayNode final : public TrainableNode {
   friend Network;
 
 public:
-
   void bind(Array4D<FloatTy> *input) {
     auto inDim = input->dims();
     auto dim = dims();
@@ -264,7 +260,6 @@ public:
     assert(boundInputSource_->isInBounds(sampleIdx, 0, 0, 0));
     this->getOutput().weight_ = boundInputSource_->extractSlice(sampleIdx);
   }
-
 };
 
 } // namespace noether

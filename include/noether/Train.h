@@ -51,9 +51,7 @@ public:
   size_t size() const { return weight_.size(); }
 
   /// Resets the weights and gradients.
-  void reset(Point3d dim) {
-    reset(dim.x, dim.y, dim.z);
-  }
+  void reset(Point3d dim) { reset(dim.x, dim.y, dim.z); }
 
   /// Resets the weights and gradients.
   void reset(size_t x, size_t y, size_t z) {
