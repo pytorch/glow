@@ -136,13 +136,6 @@ class SoftMaxNode final : public TrainableNode {
 public:
 
   void bind(Array4D<size_t> *input) {
-    size_t inw, inx, iny, inz;
-    std::tie(inw, inx, iny, inz) = input->dims();
-
-    size_t sx, sy, sz;
-    std::tie(sx, sy, sz) = dims();
-
-    assert(sx == inx && sy == iny && sz == inz && "Invalid input size");
     boundInputSource_ = input;
   }
 
@@ -150,6 +143,11 @@ public:
     if (!boundInputSource_)
       return;
     selected_ = boundInputSource_->at(sampleIdx, 0 ,0 , 0);
+
+    size_t sx, sy, sz;
+    std::tie(sx, sy, sz) = dims();
+
+    assert(selected_ < sz && "Invalid selected value");
   }
 
   virtual void forward() override;
