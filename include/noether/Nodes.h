@@ -144,10 +144,7 @@ public:
       return;
     selected_ = boundInputSource_->at(sampleIdx, 0 ,0 , 0);
 
-    size_t sx, sy, sz;
-    std::tie(sx, sy, sz) = dims();
-
-    assert(selected_ < sz && "Invalid selected value");
+    assert(selected_ < dims().z && "Invalid selected value");
   }
 
   virtual void forward() override;
@@ -183,13 +180,11 @@ class RegressionNode final : public TrainableNode {
 public:
 
   void bind(Array4D<FloatTy> *input) {
-    size_t inw, inx, iny, inz;
-    std::tie(inw, inx, iny, inz) = input->dims();
-
-    size_t sx, sy, sz;
-    std::tie(sx, sy, sz) = dims();
-
-    assert(sx == inx && sy == iny && sz == inz && "Invalid input size");
+    auto idim = input->dims();
+    auto dim = dims();
+    (void) dim;
+    (void) idim;
+    assert(idim.x == dim.x && idim.y == dim.y && idim.z == dim.z && "Invalid input size");
     boundInputSource_ = input;
   }
 
@@ -246,13 +241,13 @@ class ArrayNode final : public TrainableNode {
 public:
 
   void bind(Array4D<FloatTy> *input) {
-    size_t inw, inx, iny, inz;
-    std::tie(inw, inx, iny, inz) = input->dims();
+    auto inDim = input->dims();
+    auto dim = dims();
+    (void)inDim;
+    (void)dim;
+    assert(dim.x == inDim.x && dim.y == inDim.y && dim.z == inDim.z &&
+           "Invalid input size");
 
-    size_t sx, sy, sz;
-    std::tie(sx, sy, sz) = dims();
-
-    assert(sx == inx && sy == iny && sz == inz && "Invalid input size");
     boundInputSource_ = input;
   }
 

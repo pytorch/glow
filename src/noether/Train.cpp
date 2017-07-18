@@ -20,13 +20,12 @@ void TrainableData::train(const TrainingConfig &config) {
     gsum_.reset(weight_.dims());
   }
 
-  size_t inx, iny, inz;
-  std::tie(inx, iny, inz) = dims();
+  auto dim = dims();
 
   // For each weight/gradient pair:
-  for (size_t x = 0; x < inx; x++) {
-    for (size_t y = 0; y < iny; y++) {
-      for (size_t z = 0; z < inz; z++) {
+  for (size_t x = 0; x < dim.x; x++) {
+    for (size_t y = 0; y < dim.y; y++) {
+      for (size_t z = 0; z < dim.z; z++) {
         // Do a simple SGD update:
         FloatTy L1Grad = L1Decay * (weight_.at(x, y, z) > 0 ? 1 : -1);
         FloatTy L2Grad = L2Decay * (weight_.at(x, y, z));

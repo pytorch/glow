@@ -411,9 +411,9 @@ int main() {
 
   testFCSoftMax();
 
-  testMNIST();
+  testMNIST(1);
 
-  testCIFAR10();
+  testCIFAR10(1);
 
   return 0;
 }

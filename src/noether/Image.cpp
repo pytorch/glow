@@ -110,12 +110,11 @@ bool PNGNode::writeImage(const char *filename) {
   if (setjmp(png_jmpbuf(png_ptr)))
     return true;
 
-  size_t ix, iy, iz;
-  std::tie(ix, iy, iz) = this->output_.dims();
-  assert(iz < 4 && "Invalid buffer to save");
+  auto odim = this->output_.dims();
+  assert(odim.z < 4 && "Invalid buffer to save");
 
-  int width = ix;
-  int height = iy;
+  int width = odim.x;
+  int height = odim.y;
   int color_type = PNG_COLOR_TYPE_RGB_ALPHA;
   int bit_depth = 8;
 

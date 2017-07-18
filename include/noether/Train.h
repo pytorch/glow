@@ -45,16 +45,14 @@ public:
   }
 
   /// \returns the dimension of the weight tensor.
-  std::tuple<size_t, size_t, size_t> dims() const { return weight_.dims(); }
+  Point3d dims() const { return weight_.dims(); }
 
   /// \returns the number of elements in the tensor.
   size_t size() const { return weight_.size(); }
 
   /// Resets the weights and gradients.
-  void reset(std::tuple<size_t, size_t, size_t> dim) {
-    size_t x, y, z;
-    std::tie(x, y, z) = dim;
-    reset(x, y, z);
+  void reset(Point3d dim) {
+    reset(dim.x, dim.y, dim.z);
   }
 
   /// Resets the weights and gradients.

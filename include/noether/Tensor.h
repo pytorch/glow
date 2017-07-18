@@ -9,9 +9,29 @@
 #include <cstdint>
 #include <iostream>
 #include <numeric>
-#include <tuple>
 
 namespace noether {
+
+struct Point3d {
+  size_t x{0};
+  size_t y{0};
+  size_t z{0};
+  Point3d(size_t x, size_t y, size_t z) : x(x), y(y), z(z) {}
+  bool operator == (const Point3d &other) {
+    return x == other.x && y == other.y && z == other.z;
+  }
+};
+
+struct Point4d {
+  size_t w{0};
+  size_t x{0};
+  size_t y{0};
+  size_t z{0};
+  Point4d(size_t w, size_t x, size_t y, size_t z) : w(w), x(x), y(y), z(z) {}
+  bool operator == (const Point4d &other) {
+    return w == other.w && x == other.x && y == other.y && z == other.z;
+  }
+};
 
 /// This is the default floating point type used for training.
 using FloatTy = TRAINING_TENSOR_ELEMENT_TYPE;
@@ -63,8 +83,8 @@ public:
   }
 
   /// \returns the dimension of the tensor.
-  std::tuple<size_t, size_t, size_t> dims() const {
-    return std::make_tuple(sx_, sy_, sz_);
+  Point3d dims() const {
+    return Point3d(sx_, sy_, sz_);
   }
 
   /// \returns the number of elements in the array.
@@ -96,14 +116,6 @@ public:
 
   Array3D &operator=(const Array3D &other) = delete;
 
-  /// Copy the content of the array \p other into this array.
-  void copyFrom(const Array3D &other) {
-    size_t x, y, z;
-    std::tie(x, y, z) = other.dims();
-    reset(x,y,z);
-    std::copy(&other.data_[0], &other.data_[0] + size(), &data_[0]);
-  }
-
   /// Move assignment operator.
   Array3D &operator=(Array3D &&other) noexcept {
     data_ = other.data_;
@@ -118,10 +130,8 @@ public:
   }
 
   /// Assigns a new shape to the tensor and allocates a new buffer.
-  void reset(std::tuple<size_t, size_t, size_t> dim) {
-    size_t x, y, z;
-    std::tie(x, y, z) = dim;
-    reset(x, y, z);
+  void reset(Point3d dim) {
+    reset(dim.x, dim.y, dim.z);
   }
 
   /// Assigns a new shape to the tensor and allocates a new buffer.
@@ -242,8 +252,8 @@ public:
   }
 
   /// \returns the dimension of the tensor.
-  std::tuple<size_t, size_t, size_t, size_t> dims() const {
-    return std::make_tuple(sw_, sx_, sy_, sz_);
+  Point4d dims() const {
+    return {sw_, sx_, sy_, sz_};
   }
 
   /// \returns the number of elements in the array.
@@ -262,10 +272,8 @@ public:
   Array4D &operator=(const Array4D &other) = delete;
 
   /// Assigns a new shape to the tensor and allocates a new buffer.
-  void reset(std::tuple<size_t, size_t, size_t, size_t> dim) {
-    size_t w, x, y, z;
-    std::tie(w, x, y, z) = dim;
-    reset(w, x, y, z);
+  void reset(Point4d dim) {
+    reset(dim.w, dim.x, dim.y, dim.z);
   }
 
   /// Assigns a new shape to the tensor and allocates a new buffer.

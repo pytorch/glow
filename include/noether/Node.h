@@ -48,7 +48,7 @@ public:
   TrainableData &getOutput() { return output_; }
 
   /// \returns the dimension of the tensor.
-  std::tuple<size_t, size_t, size_t> dims() const { return output_.dims(); }
+  Point3d dims() const { return output_.dims(); }
 
   /// \returns the number of elements in the tensor.
   size_t size() const { return output_.size(); }
