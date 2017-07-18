@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 if [ $(which clang-format) ]; then
-  FILES=`find lib src include tools unittests -name \*.h -print -o -name \*.cpp -print`
+  FILES=`find lib src include examples tools unittests -name \*.h -print -o -name \*.cpp -print`
 
   FARRAY=( $FILES ) # count the number of files to process
   echo  Formatting ${#FARRAY[@]} files
