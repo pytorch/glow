@@ -90,7 +90,7 @@ void testMNIST(bool verbose = false) {
     if (verbose && !(iter % 1000)) {
       std::cout << "Training - iteration #" << iter << "\n";
     }
-    N.train();
+    N.train(SM);
   }
 
   if (verbose) {
@@ -104,7 +104,7 @@ void testMNIST(bool verbose = false) {
     size_t imageIndex = (iter * 17512 + 9124) % numImages;
     A->getOutput().weight_ = imageInputs.extractSlice(imageIndex);
 
-    N.infer();
+    N.infer(SM);
 
     size_t guess = SM->maxArg();
     size_t correct = labels[imageIndex];

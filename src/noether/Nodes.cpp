@@ -9,7 +9,6 @@ ConvNode::ConvNode(Network *N, TrainableNode *input, size_t outDepth,
     : TrainableNode(N), input_(input), filterSize_(filterSize), stride_(stride),
       pad_(pad) {
   assert(input && input_->size() && "Invalid input");
-  N->addNodeDependency(this, input);
   auto idim = input_->dims();
   assert(idim.x > filterSize && idim.y > filterSize &&
          "buffer too small for selected stride");
@@ -136,7 +135,6 @@ MaxPoolNode::MaxPoolNode(Network *N, TrainableNode *input, size_t filterSize,
     : TrainableNode(N), input_(input), filterSize_(filterSize), stride_(stride),
       pad_(pad) {
   assert(input && input_->size() && "Invalid input");
-  N->addNodeDependency(this, input);
   auto idim = input_->dims();
   assert(idim.x > filterSize && idim.y > filterSize &&
          "buffer too small for selected stride");
@@ -232,7 +230,6 @@ FullyConnectedNode::FullyConnectedNode(Network *N, TrainableNode *input,
                                        size_t outDepth)
     : TrainableNode(N), input_(input) {
   assert(input && input_->size() && "Invalid input");
-  N->addNodeDependency(this, input);
   auto idim = input_->dims();
 
   this->output_.reset(1, 1, outDepth);
@@ -316,7 +313,6 @@ RELUNode::RELUNode(Network *N, TrainableNode *input)
     : TrainableNode(N), input_(input) {
   assert(input && input_->size() && "Invalid input");
   this->output_.reset(input_->dims());
-  N->addNodeDependency(this, input);
 }
 
 void RELUNode::forward() {
@@ -358,7 +354,6 @@ SigmoidNode::SigmoidNode(Network *N, TrainableNode *input)
     : TrainableNode(N), input_(input) {
   assert(input && input_->size() && "Invalid input");
   this->output_.reset(input_->dims());
-  N->addNodeDependency(this, input);
 }
 
 void SigmoidNode::forward() {
@@ -399,7 +394,6 @@ void SigmoidNode::backward() {
 SoftMaxNode::SoftMaxNode(Network *N, TrainableNode *input)
     : TrainableNode(N), input_(input), selected_(0) {
   assert(input && input_->size() && "Invalid input");
-  N->addNodeDependency(this, input);
   auto idim = input_->dims();
   assert(idim.x == 1 && idim.y == 1 && "Softmax input must be 1x1xN");
   this->output_.reset(1, 1, idim.z);
@@ -476,7 +470,6 @@ void SoftMaxNode::setSelected(size_t selected) {
 RegressionNode::RegressionNode(Network *N, TrainableNode *input)
     : TrainableNode(N), input_(input) {
   assert(input && input_->size() && "Invalid input");
-  N->addNodeDependency(this, input);
   auto idim = input_->dims();
   assert(idim.x == 1 && idim.y == 1 && "input must be 1x1xN");
   expected_.reset(1, 1, idim.z);
@@ -515,7 +508,6 @@ void RegressionNode::backward() {
 MaxNode::MaxNode(Network *N, TrainableNode *input)
     : TrainableNode(N), input_(input) {
   assert(input && input_->size() && "Invalid input");
-  N->addNodeDependency(this, input);
   auto idim = input_->dims();
   this->output_.reset(idim);
 }
@@ -548,4 +540,28 @@ void MaxNode::backward() {
       }
     }
   }
+}
+
+// Define the node visitor for all nodes in the graph that have a single
+// incoming node.
+
+#define DEFINE_CLASS_VISITOR(CLASS_NAME) \
+void CLASS_NAME::visit(NodeVisitor *visitor) { \
+visitor->pre(this); \
+input_->visit(visitor); \
+visitor->post(this); \
+} \
+
+DEFINE_CLASS_VISITOR(ConvNode)
+DEFINE_CLASS_VISITOR(MaxPoolNode)
+DEFINE_CLASS_VISITOR(FullyConnectedNode)
+DEFINE_CLASS_VISITOR(RELUNode)
+DEFINE_CLASS_VISITOR(SigmoidNode)
+DEFINE_CLASS_VISITOR(SoftMaxNode)
+DEFINE_CLASS_VISITOR(RegressionNode)
+DEFINE_CLASS_VISITOR(MaxNode)
+
+void ArrayNode::visit(NodeVisitor *visitor) {
+  visitor->pre(this);
+  visitor->post(this);
 }

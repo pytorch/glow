@@ -35,6 +35,8 @@ public:
   virtual void backward() override;
 
   virtual std::string getName() const override { return "ConvNode"; }
+
+  virtual void visit(NodeVisitor *visitor) override;
 };
 
 class MaxPoolNode final : public TrainableNode {
@@ -59,6 +61,8 @@ public:
   virtual void backward() override;
 
   virtual std::string getName() const override { return "MaxPoolNode"; }
+
+    virtual void visit(NodeVisitor *visitor) override;
 };
 
 class FullyConnectedNode final : public TrainableNode {
@@ -79,6 +83,8 @@ public:
   virtual void backward() override;
 
   virtual std::string getName() const override { return "FullyConnectedNode"; }
+
+  virtual void visit(NodeVisitor *visitor) override;
 };
 
 class RELUNode final : public TrainableNode {
@@ -95,6 +101,8 @@ public:
   virtual void backward() override;
 
   virtual std::string getName() const override { return "RELUNode"; }
+
+  virtual void visit(NodeVisitor *visitor) override;
 };
 
 class SigmoidNode final : public TrainableNode {
@@ -111,6 +119,8 @@ public:
   virtual void backward() override;
 
   virtual std::string getName() const override { return "SigmoidNode"; }
+
+  virtual void visit(NodeVisitor *visitor) override;
 };
 
 class SoftMaxNode final : public TrainableNode {
@@ -155,6 +165,8 @@ public:
   void setSelected(size_t selected);
 
   virtual std::string getName() const override { return "SoftMaxNode"; }
+
+  virtual void visit(NodeVisitor *visitor) override;
 };
 
 class RegressionNode final : public TrainableNode {
@@ -201,6 +213,8 @@ public:
   virtual void backward() override;
 
   virtual std::string getName() const override { return "RegressionNode"; }
+
+  virtual void visit(NodeVisitor *visitor) override;
 };
 
 /// This node attempts to maximize the inputs by sending back a gradient signal
@@ -219,6 +233,8 @@ public:
   virtual void backward() override;
 
   virtual std::string getName() const override { return "MaxNode"; }
+
+  virtual void visit(NodeVisitor *visitor) override;
 };
 
 /// This is an abstraction over raw variable inputs.
@@ -260,6 +276,8 @@ public:
     assert(boundInputSource_->isInBounds(sampleIdx, 0, 0, 0));
     this->getOutput().weight_ = boundInputSource_->extractSlice(sampleIdx);
   }
+
+  virtual void visit(NodeVisitor *visitor) override;
 };
 
 } // namespace noether

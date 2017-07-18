@@ -63,7 +63,7 @@ void testFCSoftMax(bool verbose = false) {
     SM->setSelected(InCircle);
     A->getOutput().weight_.at(0, 0, 0) = x;
     A->getOutput().weight_.at(0, 0, 1) = y;
-    N.train();
+    N.train(SM);
   }
 
   // Print a diagram that depicts the network decision on a grid.
@@ -74,7 +74,7 @@ void testFCSoftMax(bool verbose = false) {
         A->getOutput().weight_.at(0, 0, 0) = float(x) / 10;
         A->getOutput().weight_.at(0, 0, 1) = float(y) / 10;
 
-        N.infer();
+        N.infer(SM);
         auto A = SM->getOutput().weight_.at(0, 0, 0);
         auto B = SM->getOutput().weight_.at(0, 0, 1);
 
@@ -110,7 +110,7 @@ void testFCSoftMax(bool verbose = false) {
     A->getOutput().weight_.at(0, 0, 0) = x;
     A->getOutput().weight_.at(0, 0, 1) = y;
 
-    N.infer();
+    N.infer(SM);
 
     // Inspect the outputs:
     if (r2 < 0.50) {
@@ -154,7 +154,7 @@ void testRegression(bool verbose = false) {
     setOneHot(A->getOutput().weight_, 0.0, target, 0);
     setOneHot(RN->getExpected(), 0.0, target + 1, 1);
 
-    N.train();
+    N.train(RN);
   }
   if (verbose) {
     std::cout << "Verify the result of the regression layer.\n";
@@ -166,7 +166,7 @@ void testRegression(bool verbose = false) {
     setOneHot(A->getOutput().weight_, 0.0, target, 0);
     setOneHot(RN->getExpected(), 0.0, target + 1, 1);
 
-    N.infer();
+    N.infer(RN);
     assert(delta(A->getOutput().weight_.at(0, 0, 0) + 1,
                  RN->getOutput().weight_.at(0, 0, 1)) < 0.1);
   }
@@ -196,14 +196,14 @@ void testLearnSingleInput(bool verbose = false) {
 
   // Train the network:
   for (int iter = 0; iter < 10000; iter++) {
-    N.train();
+    N.train(RN);
   }
 
   if (verbose) {
     std::cout << "Testing the output vector.\n";
   }
 
-  N.infer();
+  N.infer(RN);
 
   // Test the output:
   assert(RN->getOutput().weight_.sum() < 10);

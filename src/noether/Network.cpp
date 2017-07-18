@@ -56,84 +56,50 @@ ArrayNode *Network::createArrayNode(size_t x, size_t y, size_t z) {
   return addNode(new ArrayNode(this, x, y, z));
 }
 
-void Network::sortNetwork(std::vector<NodeBase *> &order) {
-  // TODO: add a cycle detector.
-  // A list of nodes that were processed.
-  std::unordered_set<NodeBase *> visited;
-  // Our DFS stack.
-  std::vector<NodeBase *> stack;
-
-  // Create a pseudo edge to all nodes in the graph by pusing all of the
-  // keys into our stack.
-  for (auto &entry : deps_) {
-    stack.push_back(entry.first);
-  }
-
-  while (!stack.empty()) {
-    auto node = stack.back();
-
-    if (visited.count(node)) {
-      // We already finished handling this node. Proceed to the next node.
-      stack.pop_back();
-      continue;
-    }
-
-    bool pushed = false;
-
-    // Process the dependencies of the node on the stack:
-    if (deps_.count(node)) {
-      // For all dependencies of this node:
-      for (auto &dep : deps_[node]) {
-        // Ignore nodes that we already finished.
-        if (visited.count(dep))
-          continue;
-        stack.push_back(dep);
-        pushed = true;
-      }
-    }
-
-    // If we pushed new nodes to the stack then we need to handle them.
-    // Do another iteration now.
-    if (pushed) {
-      continue;
-    }
-
-    // No new dependencies to process. We are done with this node.
-    visited.insert(node);
-    order.push_back(node);
-    stack.pop_back();
-  }
-  assert(order.size() >= deps_.size() && "Invalid order");
-}
-
-void Network::addNodeDependency(NodeBase *node, NodeBase *dep) {
-  deps_[node].push_back(dep);
-}
-
 void Network::registerDerivTensor(NodeBase *node, TrainableData *weights) {
   trainableBuffers_.push_back(weights);
 }
 
-void Network::train() {
-  std::vector<NodeBase *> order;
-  sortNetwork(order);
+namespace {
 
+struct BackwardPass : NodeVisitor {
+  virtual void pre(NodeBase *N) override { N->backward(); }
+};
+
+struct ForwardPass : NodeVisitor {
+  virtual void post(NodeBase *N) override { N->forward(); }
+};
+
+struct UpdaterPass : NodeVisitor {
+  size_t index{0};
+  UpdaterPass(size_t index) : index(index) {}
+
+  virtual void post(NodeBase *N) override {
+    N->updateBoundInputs(index);
+  }
+};
+
+struct PrinterPass : NodeVisitor {
+  virtual void post(NodeBase *N) override { std::cout<< N->getName() << "->"; }
+};
+
+
+} // namespace
+
+void Network::train(NodeBase *root) {
   size_t numInputs = trainConf_.inputSize;
 
-  // Update the content of the bound variables.
-  for (unsigned i = 0, e = order.size(); i < e; i++) {
-    order[i]->updateBoundInputs(trainCounter_ % numInputs);
-  }
+  // Ask all of the nodes to update the input for the specific input by index.
+  UpdaterPass UP(trainCounter_ % numInputs);
+  root->visit(&UP);
 
   // Forward scan.
-  for (unsigned i = 0, e = order.size(); i < e; i++) {
-    order[i]->forward();
-  }
+  ForwardPass FP;
+  root->visit(&FP);
 
   // Backward scan in reverse order.
-  for (unsigned i = 0, e = order.size(); i < e; i++) {
-    order[e - i - 1]->backward();
-  }
+  BackwardPass BP;
+  root->visit(&BP);
 
   trainCounter_++;
 
@@ -151,24 +117,18 @@ void Network::train() {
   }
 }
 
-void Network::infer() {
-  std::vector<NodeBase *> order;
-  sortNetwork(order);
-
-  // Forward scan. Notice that we did not update the bound variables!
-  for (unsigned i = 0, e = order.size(); i < e; i++) {
-    order[i]->forward();
-  }
+void Network::infer(NodeBase *root) {
+  // Forward scan.
+  ForwardPass FP;
+  root->visit(&FP);
 }
 
-void Network::dump() {
-  std::vector<NodeBase *> order;
-  sortNetwork(order);
-
+void Network::dump(NodeBase *root) {
   std::cout << "Network structure:";
-  for (auto &node : order) {
-    std::cout << node->getName() << " ";
-  }
+
+  // Print all of the nodes in the network.
+  PrinterPass FP;
+  root->visit(&FP);
   std::cout << "\n";
 
   std::cout << "Buffers content:\n";

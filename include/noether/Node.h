@@ -13,6 +13,16 @@
 namespace noether {
 
 class Network;
+class NodeBase;
+
+class NodeVisitor {
+public:
+  /// This callback is called before visiting the children of \p N.
+  virtual void pre(NodeBase *N) {}
+
+  /// This callback is called after visiting the children of \p N.
+  virtual void post(NodeBase *N) {}
+};
 
 /// This is the non-templated part of the compute node.
 class NodeBase {
@@ -30,6 +40,10 @@ public:
   /// copy the data now. The parameter \p sampleIdx specifies which input
   /// to load.
   virtual void updateBoundInputs(size_t sampleIdx) {}
+
+  /// This method implements the visitor pattern that scans the compute DAG top
+  /// to bottom.
+  virtual void visit(NodeVisitor *visitor) = 0;
 
   /// Dtor.
   virtual ~NodeBase() {}

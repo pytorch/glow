@@ -27,7 +27,10 @@ public:
   void forward() override {}
 
   void backward() override {}
+
+  virtual void visit(NodeVisitor *visitor) override;
 };
-}
+
+} // namespace
 
 #endif // NOETHER_IMAGE_H

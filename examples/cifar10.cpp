@@ -101,7 +101,7 @@ void testCIFAR10(bool verbose = false) {
       std::cout << "Training - iteration #" << iter << "\n";
     }
 
-    N.train();
+    N.train(SM);
   }
 
   if (verbose) {
@@ -117,7 +117,7 @@ void testCIFAR10(bool verbose = false) {
     // Load the expected label.
     auto expectedLabel = labels.at(imageIndex, 0, 0, 0);
 
-    N.infer();
+    N.infer(SM);
 
     unsigned result = SM->maxArg();
     std::cout << "Expected: " << textualLabels[expectedLabel]

@@ -2,10 +2,10 @@
 #include "noether/Nodes.h"
 #include "noether/Tensor.h"
 
+using namespace noether;
+
 #if (NOETHER_PNG_FOUND)
 #include <png.h>
-
-using namespace noether;
 
 /// Reads a png image. \returns True if an error occurred.
 bool PNGNode::readImage(const char *filename) {
@@ -156,4 +156,11 @@ bool PNGNode::writeImage(const char *filename) {
   fclose(fp);
   return false;
 }
+
+void PNGNode::visit(NodeVisitor *visitor)  {
+  visitor->pre(this);
+  visitor->post(this);
+}
+
 #endif
+
