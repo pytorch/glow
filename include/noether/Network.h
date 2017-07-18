@@ -14,6 +14,10 @@ class NodeBase;
 class TrainableData;
 
 class Network {
+  /// This variable counts the number of iterations that train() was called.
+  /// It is mainly used to detect batch size boundries.
+  size_t trainCounter_;
+
   /// The configuration used to train the network.
   TrainingConfig trainConf_;
 

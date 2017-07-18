@@ -242,8 +242,8 @@ public:
   }
 
   /// \returns the dimension of the tensor.
-  std::tuple<size_t, size_t, size_t> dims() const {
-    return std::make_tuple(sx_, sy_, sz_);
+  std::tuple<size_t, size_t, size_t, size_t> dims() const {
+    return std::make_tuple(sw_, sx_, sy_, sz_);
   }
 
   /// \returns the number of elements in the array.

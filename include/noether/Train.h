@@ -12,6 +12,7 @@ namespace noether {
 /// adam) use for training the network.
 struct TrainingConfig {
   size_t batchSize{1};
+  size_t inputSize{1};
   float L1Decay{0};
   float L2Decay{0};
   float learningRate{0.01};

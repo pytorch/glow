@@ -200,14 +200,17 @@ void testMNIST(bool verbose = false) {
   assert(labels.size() * 28 * 28 * sizeof(float) == images.size() &&
          "The size of the image buffer does not match the labels vector");
 
-  /// Load the MNIST database into a 4d tensor.
-  Array4D<float> data(50000, 28, 28, 1);
+  /// Load the MNIST database into two 4d tensors for images and labels.
+  Array4D<float> imageInputs(50000, 28, 28, 1);
+  Array4D<size_t> labelInputs(50000, 1, 1, 1);
+
   size_t idx = 0;
 
   for (size_t w = 0; w < mnistNumImages; w++) {
+    labelInputs.at(w,0,0,0) = labels[w];
       for (size_t y = 0; y < 28; y++) {
         for (size_t x = 0; x < 28; x++) {
-          data.at(w,x,y,0) = imagesAsFloatPtr[idx++];
+          imageInputs.at(w,x,y,0) = imagesAsFloatPtr[idx++];
       }
     }
   }
@@ -223,6 +226,8 @@ void testMNIST(bool verbose = false) {
   N.getTrainingConfig().learningRate = 0.01;
   N.getTrainingConfig().momentum = 0.9;
   N.getTrainingConfig().batchSize = 20;
+  N.getTrainingConfig().inputSize = 50000;
+
 
   auto *A= N.createArrayNode(28, 28, 1);
   auto *CV0 = N.createConvNode(A, 8, 5, 1, 2);
@@ -235,7 +240,13 @@ void testMNIST(bool verbose = false) {
 
   auto *FCL1 = N.createFullyConnectedNode (MP1, 10);
   auto *RL2 = N.createRELUNode (FCL1);
-  auto *SM= N.createSoftMaxNode (RL2);
+  auto *SM = N.createSoftMaxNode (RL2);
+
+  // On each training iteration the inputs are loaded from the image db.
+  A->bind(&imageInputs);
+
+  // On each  iteration the expected value is loaded from the labels vector.
+  SM->bind(&labelInputs);
 
   if (verbose) {
     std::cout << "Training.\n";
@@ -245,12 +256,6 @@ void testMNIST(bool verbose = false) {
     if (verbose && !(iter % 1000)) {
       std::cout << "Training - iteration #" << iter << "\n";
     }
-
-    size_t imageIndex = iter % numImages;
-
-    A->getOutput().weight_ = data.extractSlice(imageIndex);
-    SM->setSelected(labels[imageIndex]);
-
     N.train();
   }
 
@@ -263,7 +268,7 @@ void testMNIST(bool verbose = false) {
 
   for (int iter = 0; iter < 10; iter++) {
     size_t imageIndex = (iter * 17512 + 9124) % numImages;
-    A->getOutput().weight_ = data.extractSlice(imageIndex);
+    A->getOutput().weight_ = imageInputs.extractSlice(imageIndex);
 
     N.infer();
 
@@ -312,18 +317,18 @@ void testCIFAR10(bool verbose = false) {
   }
 
   /// Load the CIFAR database into a 4d tensor.
-  Array4D<float> data(cifarNumImages, 32, 32, 3);
-  std::vector<uint8_t> labels;
+  Array4D<float> images(cifarNumImages, 32, 32, 3);
+  Array4D<size_t> labels(cifarNumImages, 1, 1, 1);
   size_t idx = 0;
 
   for (size_t w = 0; w < cifarNumImages; w++) {
-    labels.push_back(static_cast<uint8_t>(dbInput.get()));
+    labels.at(w,0,0,0) = static_cast<uint8_t>(dbInput.get());
     idx++;
 
     for (size_t z = 0; z < 3; z++) {
       for (size_t y = 0; y < 32; y++) {
         for (size_t x = 0; x < 32; x++) {
-          data.at(w,x,y,z) = FloatTy(static_cast<uint8_t>(dbInput.get()))/255.0;
+          images.at(w,x,y,z) = FloatTy(static_cast<uint8_t>(dbInput.get()))/255.0;
           idx++;
         }
       }
@@ -334,10 +339,11 @@ void testCIFAR10(bool verbose = false) {
 
   // Construct the network:
   Network N;
-  N.getTrainingConfig().learningRate = 0.01;
+  N.getTrainingConfig().learningRate = 0.001;
   N.getTrainingConfig().momentum = 0.9;
-  N.getTrainingConfig().batchSize = 10;
+  N.getTrainingConfig().batchSize = 8;
   N.getTrainingConfig().L2Decay = 0.0001;
+  N.getTrainingConfig().inputSize = cifarImageSize;
 
   auto *A= N.createArrayNode(32, 32, 3);
   auto *CV0= N.createConvNode (A, 16, 5, 1, 2);
@@ -356,22 +362,20 @@ void testCIFAR10(bool verbose = false) {
   auto *RL3= N.createRELUNode (FCL1);
   auto *SM= N.createSoftMaxNode(RL3);
 
+  // On each training iteration the inputs are loaded from the image db.
+  A->bind(&images);
+
+  // On each  iteration the expected value is loaded from the labels vector.
+  SM->bind(&labels);
+
   if (verbose) {
     std::cout << "Training.\n";
   }
 
-  for (int iter = 0; iter < 18000; iter++) {
+  for (int iter = 0; iter < 20000; iter++) {
     if (verbose && !(iter % 100)) {
       std::cout << "Training - iteration #" << iter << "\n";
     }
-
-    const size_t imageIndex = iter % cifarNumImages;
-
-    // Load the image.
-    A->getOutput().weight_ = data.extractSlice(imageIndex);
-    // Set the expected label.
-    auto label =  labels[imageIndex];
-    SM->setSelected(label);
 
     N.train();
   }
@@ -385,9 +389,9 @@ void testCIFAR10(bool verbose = false) {
     const size_t imageIndex = (iter * 17512 + 9124) % cifarNumImages;
 
     // Load the image.
-    A->getOutput().weight_ = data.extractSlice(imageIndex);
+    A->getOutput().weight_ = images.extractSlice(imageIndex);
     // Load the expected label.
-    auto expectedLabel =  labels[imageIndex];
+    auto expectedLabel =  labels.at(imageIndex,0,0,0);
 
     N.infer();
 

@@ -118,10 +118,11 @@ void Network::train() {
   std::vector<NodeBase *> order;
   sortNetwork(order);
 
-  // We clear the gradient here and not as part of the trainign process to ease
-  // debugging by leaving the gradients around at the end of the scan.
-  for (auto &buffer : trainableBuffers_) {
-    buffer->clearGradient();
+  size_t numInputs = trainConf_.inputSize;
+
+  // Update the content of the bound variables.
+  for (unsigned i = 0, e = order.size(); i < e; i++) {
+    order[i]->updateBoundInputs(trainCounter_ % numInputs);
   }
 
   // Forward scan.
@@ -134,9 +135,19 @@ void Network::train() {
     order[e - i - 1]->backward();
   }
 
+  trainCounter_++;
+
+  // Only update the gradient when we've reached the end of the batch.
+  if (trainCounter_ % trainConf_.batchSize)
+    return;
+
   // Update the gradients.
   for (auto &buffer : trainableBuffers_) {
     buffer->train(trainConf_);
+  }
+
+  for (auto &buffer : trainableBuffers_) {
+    buffer->clearGradient();
   }
 }
 
@@ -144,7 +155,7 @@ void Network::infer() {
   std::vector<NodeBase *> order;
   sortNetwork(order);
 
-  // Forward scan.
+  // Forward scan. Notice that we did not update the bound variables!
   for (unsigned i = 0, e = order.size(); i < e; i++) {
     order[i]->forward();
   }

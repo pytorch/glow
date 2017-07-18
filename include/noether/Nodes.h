@@ -127,9 +127,31 @@ class SoftMaxNode final : public TrainableNode {
   /// softmax function.
   SoftMaxNode(Network *N, TrainableNode *input);
 
+  /// If set, the training procedure will update the content of the array node
+  /// from this input source.
+  Array4D<size_t> *boundInputSource_{nullptr};
+
   friend Network;
 
 public:
+
+  void bind(Array4D<size_t> *input) {
+    size_t inw, inx, iny, inz;
+    std::tie(inw, inx, iny, inz) = input->dims();
+
+    size_t sx, sy, sz;
+    std::tie(sx, sy, sz) = dims();
+
+    assert(sx == inx && sy == iny && sz == inz && "Invalid input size");
+    boundInputSource_ = input;
+  }
+
+  virtual void updateBoundInputs(size_t sampleIdx) override {
+    if (!boundInputSource_)
+      return;
+    selected_ = boundInputSource_->at(sampleIdx, 0 ,0 , 0);
+  }
+
   virtual void forward() override;
 
   virtual void backward() override;
@@ -149,6 +171,10 @@ class RegressionNode final : public TrainableNode {
   /// The expected input (also known as Y).
   Array3D<FloatTy> expected_;
 
+  /// If set, the training procedure will update the content of the array node
+  /// from this input source.
+  Array4D<FloatTy> *boundInputSource_{nullptr};
+
   /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
   /// And \p expected (aka Y) is the expected input for the layer, that must
   /// be of the same shape as \p input.
@@ -157,6 +183,26 @@ class RegressionNode final : public TrainableNode {
   friend Network;
 
 public:
+
+  void bind(Array4D<FloatTy> *input) {
+    size_t inw, inx, iny, inz;
+    std::tie(inw, inx, iny, inz) = input->dims();
+
+    size_t sx, sy, sz;
+    std::tie(sx, sy, sz) = dims();
+
+    assert(sx == inx && sy == iny && sz == inz && "Invalid input size");
+    boundInputSource_ = input;
+  }
+
+  virtual void updateBoundInputs(size_t sampleIdx) override {
+    if (!boundInputSource_)
+      return;
+
+    assert(boundInputSource_->isInBounds(sampleIdx, 0, 0, 0));
+    expected_ = boundInputSource_->extractSlice(sampleIdx);
+  }
+
   /// \returns a reference to the expected result vector.
   Array3D<FloatTy> &getExpected() { return expected_; }
 
@@ -193,14 +239,39 @@ class ArrayNode final : public TrainableNode {
     this->getOutput().isTrainable_ = false;
   }
 
+  /// If set, the training procedure will update the content of the array node
+  /// from this input source.
+  Array4D<FloatTy> *boundInputSource_{nullptr};
+
   friend Network;
 
 public:
+
+  void bind(Array4D<FloatTy> *input) {
+    size_t inw, inx, iny, inz;
+    std::tie(inw, inx, iny, inz) = input->dims();
+
+    size_t sx, sy, sz;
+    std::tie(sx, sy, sz) = dims();
+
+    assert(sx == inx && sy == iny && sz == inz && "Invalid input size");
+    boundInputSource_ = input;
+  }
+
   virtual std::string getName() const override { return "ArrayNode"; }
 
   void forward() override {}
 
   void backward() override {}
+
+  virtual void updateBoundInputs(size_t sampleIdx) override {
+    if (!boundInputSource_)
+      return;
+
+    assert(boundInputSource_->isInBounds(sampleIdx, 0, 0, 0));
+    this->getOutput().weight_ = boundInputSource_->extractSlice(sampleIdx);
+  }
+
 };
 
 } // namespace noether
