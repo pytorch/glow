@@ -1,6 +1,7 @@
 #ifndef NOETHER_ADT_H
 #define NOETHER_ADT_H
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <initializer_list>
@@ -55,7 +56,24 @@ public:
     assert(Index < length_ && "Invalid index!");
     return data_[Index];
   }
+
+  /// equals - Check for element-wise equality.
+  bool equals(ArrayRef RHS) const {
+    if (length_ != RHS.length_)
+      return false;
+    return std::equal(begin(), end(), RHS.begin());
+  }
 };
+
+template<typename T>
+inline bool operator==(ArrayRef<T> LHS, ArrayRef<T> RHS) {
+  return LHS.equals(RHS);
+}
+
+template<typename T>
+inline bool operator!=(ArrayRef<T> LHS, ArrayRef<T> RHS) {
+  return !(LHS == RHS);
+}
 } // namespace
 
 #endif // NOETHER_ADT_H
