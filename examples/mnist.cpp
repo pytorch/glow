@@ -79,6 +79,13 @@ void testMNIST(bool verbose = false) {
   auto *RL2 = N.createRELUNode(FCL1);
   auto *SM = N.createSoftMaxNode(RL2);
 
+  std::chrono::time_point<std::chrono::system_clock> start, end;
+  start = std::chrono::system_clock::now();
+  end = std::chrono::system_clock::now();
+
+  // Report progress every this number of training iterations.
+  constexpr int reportRate = 100;
+
   // On each training iteration the inputs are loaded from the image db.
   A->bind(&imageInputs);
 
@@ -90,8 +97,12 @@ void testMNIST(bool verbose = false) {
   }
 
   for (int iter = 0; iter < 5000; iter++) {
-    if (verbose && !(iter % 1000)) {
-      std::cout << "Training - iteration #" << iter << "\n";
+    if (verbose && !(iter % reportRate)) {
+      end = std::chrono::system_clock::now();
+      std::chrono::duration<double> elapsed_seconds = end - start;
+      std::cout << "Training - iteration #" << iter << " ";
+      std::cout <<"Rate: " << (reportRate/elapsed_seconds.count()) << "/sec\n";
+      start = std::chrono::system_clock::now();
     }
     N.train(SM);
   }

@@ -94,13 +94,27 @@ void testCIFAR10(bool verbose = false) {
   // On each  iteration the expected value is loaded from the labels vector.
   SM->bind(&labels);
 
+
+  std::chrono::time_point<std::chrono::system_clock> start, end;
+  start = std::chrono::system_clock::now();
+  end = std::chrono::system_clock::now();
+
+  // Report progress every this number of training iterations.
+  constexpr int reportRate = 100;
+
   if (verbose) {
     std::cout << "Training.\n";
   }
 
   for (int iter = 0; iter < 20000; iter++) {
-    if (verbose && !(iter % 100)) {
-      std::cout << "Training - iteration #" << iter << "\n";
+    if (verbose && !(iter % reportRate)) {
+
+      end = std::chrono::system_clock::now();
+      std::chrono::duration<double> elapsed_seconds = end - start;
+      std::cout << "Training - iteration #" << iter << " ";
+      std::cout <<"Rate: " << (reportRate/elapsed_seconds.count()) << "/sec\n";
+      start = std::chrono::system_clock::now();
+
     }
 
     N.train(SM);
