@@ -502,17 +502,32 @@ public:
   }
 
   void dumpAscii(const std::string &prefix = "", std::string suffix = "\n") {
-    auto d = tensor_->dim();
-    assert(d.size() == 2 && "Not a 2d tensor");
+    auto d = tensor_->dims();
     std::cout << prefix << "\n";
 
-    for (uint32_t y = 0; y < d[1]; y++) {
-      for (uint32_t x = 0; x < d[0]; x++) {
-        auto val = at({x, y});
-        std::cout << valueToChar(val);
+    if (d.size() == 2) {
+      for (uint32_t y = 0; y < d[1]; y++) {
+        for (uint32_t x = 0; x < d[0]; x++) {
+          auto val = at({x, y});
+          std::cout << valueToChar(val);
+        }
+        std::cout << "\n";
       }
-      std::cout << "\n";
+    } else if (d.size() == 3) {
+      for (uint32_t z = 0; z < d[2]; z++) {
+        std::cout << "\n";
+        for (uint32_t y = 0; y < d[1]; y++) {
+          for (uint32_t x = 0; x < d[0]; x++) {
+            auto val = at({x, y, z});
+            std::cout << valueToChar(val);
+          }
+          std::cout << "\n";
+        }
+      }
+    } else {
+      assert(false && "Invalid tensor size");
     }
+
     std::cout << suffix;
   }
 
