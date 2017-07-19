@@ -101,13 +101,13 @@ void testCIFAR10(bool verbose = false) {
   end = std::chrono::system_clock::now();
 
   // Report progress every this number of training iterations.
-  constexpr int reportRate = 100;
+  constexpr int reportRate = 1024;
 
   if (verbose) {
     std::cout << "Training.\n";
   }
 
-  for (int iter = 0; iter < 20000; iter++) {
+  for (int iter = 0; iter < 96000; iter++) {
     if (verbose && !(iter % reportRate)) {
 
       end = std::chrono::system_clock::now();
@@ -115,30 +115,28 @@ void testCIFAR10(bool verbose = false) {
       std::cout << "Training - iteration #" << iter << " ";
       std::cout <<"Rate: " << (reportRate/elapsed_seconds.count()) << "/sec\n";
       start = std::chrono::system_clock::now();
+      
+      unsigned score = 0;
+      for (size_t iter = 0; iter < 100; iter++) {
+        // Pick a random image from the stack:
+        const unsigned imageIndex = (iter * 17512 + 9124) % cifarNumImages;
 
+        // Load the image.
+        A->getOutput().weight_ = imagesH.extractSlice(imageIndex);
+
+        N.infer(SM);
+
+        // Read the expected label.
+        auto expectedLabel = labelsH.at({imageIndex});
+
+        unsigned result = SM->maxArg();
+        score += textualLabels[expectedLabel] ==  textualLabels[result];
+      }
+
+      std::cout << "Score : " <<score<<" / 100.\n";
     }
 
     N.train(SM);
-  }
-
-  if (verbose) {
-    std::cout << "Validating.\n";
-  }
-
-  for (size_t iter = 0; iter < 10; iter++) {
-    // Pick a random image from the stack:
-    const unsigned imageIndex = (iter * 17512 + 9124) % cifarNumImages;
-
-    // Load the image.
-    A->getOutput().weight_ = imagesH.extractSlice(imageIndex);
-    // Load the expected label.
-    auto expectedLabel = labelsH.at({imageIndex});
-
-    N.infer(SM);
-
-    unsigned result = SM->maxArg();
-    std::cout << "Expected: " << textualLabels[expectedLabel]
-              << " Guessed: " << textualLabels[result] << "\n";
   }
 }
 
