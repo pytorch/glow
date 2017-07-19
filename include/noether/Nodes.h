@@ -149,7 +149,7 @@ public:
   virtual void updateBoundInputs(size_t sampleIdx) override {
     if (!boundInputSource_)
       return;
-    selected_ = boundInputSource_->getHandle().at({(unsigned)sampleIdx, 0, 0, 0});
+    selected_ = boundInputSource_->getHandle().at({sampleIdx});
 
     assert(selected_ < dims()[2] && "Invalid selected value");
   }

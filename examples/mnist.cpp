@@ -38,7 +38,7 @@ void testMNIST(bool verbose = false) {
 
   /// Load the MNIST database into two 4d tensors for images and labels.
   Tensor<float> imageInputs({50000, 28, 28, 1});
-  Tensor<size_t> labelInputs({50000, 1, 1, 1});
+  Tensor<size_t> labelInputs(ArrayRef<size_t>((size_t)50000u));
 
   size_t idx = 0;
 
@@ -46,7 +46,7 @@ void testMNIST(bool verbose = false) {
   auto IIH = imageInputs.getHandle();
 
   for (unsigned w = 0; w < mnistNumImages; w++) {
-    LIH.at({w, 0, 0, 0}) = labels[w];
+    LIH.at({w}) = labels[w];
     for (unsigned y = 0; y < 28; y++) {
       for (unsigned x = 0; x < 28; x++) {
         IIH.at({w, x, y, 0}) = imagesAsFloatPtr[idx++];
