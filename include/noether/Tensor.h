@@ -10,7 +10,11 @@
 #include <iostream>
 #include <numeric>
 
+#include "ADT.h"
+
 namespace noether {
+
+static const unsigned max_tensor_dimensions = 6;
 
 struct Point3d {
   size_t x{0};
@@ -302,6 +306,173 @@ public:
     return data_[getElementIdx(w, x, y, z)];
   }
 };
+
+template <class ElemTy>
+class Handle;
+
+template <class ElemTy>
+class Tensor final {
+  /// Contains the dimentions (sizes) of the tensor. Ex: [sz, sy, sz].
+  uint32_t sizes_[max_tensor_dimensions] = {0,};
+  uint8_t numSizes_{0};
+
+  /// A pointer to the tensor data.
+  ElemTy *data_{nullptr};
+
+public:
+  /// \returns True if the coordinate is within the array.
+  bool isInBounds(ArrayRef<uint32_t> indices) const {
+    assert(numSizes_ == indices.size() && "Invalid number of indices");
+    for (int i = 0, e = indices.size(); i < e; i++) {
+      if (indices[i] > sizes_[i]) return false;
+    }
+    return true;
+  }
+
+  void clear(ElemTy value = 0) {
+    std::fill(&data_[0], &data_[0] + size(), value);
+  }
+
+  /// \returns the dimension of the tensor.
+  ArrayRef<uint32_t> dims() const {
+    return ArrayRef<uint32_t>(sizes_, numSizes_);
+  }
+
+  /// \returns the number of elements in the array.
+  size_t size() const {
+    size_t s = 1;
+    for (int i = 0; i < numSizes_; i++) {
+      s *= size_t(sizes_[i]);
+    }
+    return s;
+  }
+
+  /// Initialize an empty tensor.
+  Tensor() = default;
+
+  /// Initialize a new tensor.
+  Tensor(ArrayRef<uint32_t> dims) : data_(nullptr) {
+    reset(dims);
+  }
+
+  Tensor(const Tensor &other) = delete;
+  Tensor &operator=(const Tensor &other) = delete;
+
+  /// Assigns a new shape to the tensor and allocates a new buffer.
+  void reset(ArrayRef<uint32_t> dims) {
+    delete[] data_;
+
+    assert(dims.size() < max_tensor_dimensions && "Too many indices");
+    for (int i = 0, e = dims.size(); i < e; i++) { sizes_[i] = dims[i]; }
+    numSizes_ = dims.size();
+
+    data_ = new ElemTy[size()];
+    clear();
+  }
+
+  ElemTy &at(size_t index) {
+    assert(index < size() && "Out of bounds");
+    return data_[index];
+  }
+
+  const ElemTy &at(size_t index) const {
+    assert(index < size() && "Out of bounds");
+    return data_[index];
+  }
+
+  ~Tensor() { delete[] data_; }
+
+  // Move ctor.
+  Tensor(Tensor &&other) noexcept {
+    std::swap(data_, other.data_);
+    for (int i = 0; i < max_tensor_dimensions; i++) {
+      std::swap(sizes_[i], other.sizes_[i]);
+    }
+    std::swap(numSizes_, other.numSizes_);
+  }
+
+  /// Move assignment operator.
+  Tensor &operator=(Tensor &&other) noexcept {
+    std::swap(data_, other.data_);
+    for (int i = 0; i < max_tensor_dimensions; i++) {
+      std::swap(sizes_[i], other.sizes_[i]);
+    }
+    std::swap(numSizes_, other.numSizes_);
+    return *this;
+  }
+
+  /// \return a new handle that points and manages this tensor.
+  Handle<ElemTy> getHandle();
+};
+
+
+template <class ElemTy>
+class Handle final {
+  Tensor<ElemTy> *tensor_{nullptr};
+
+  /// Contains the multiplication of the sizes from current position to end.
+  /// For example, for index (w,z,y,z):  [x * y * z, y * z, z, 1]
+  uint32_t sizeIntegral[max_tensor_dimensions] = {0,};
+  uint8_t numDims{0};
+
+  /// Calculate the index for a specific element in the tensor.
+  size_t getElementPtr(ArrayRef<uint32_t> indices) {
+    assert(indices.size() == numDims && "Invalid number of indices");
+    size_t index = 0;
+    for (int i = 0, e = indices.size(); i < e; i++) {
+      index += size_t(sizeIntegral[i]) * size_t(indices[i]);
+    }
+
+    return index;
+  }
+
+public:
+  /// Construct a Tensor handle. \p rsizes is a list of reverse sizes
+  /// Example: (sz, sy, sx, sw, ... )
+  Handle(Tensor<ElemTy> *tensor) : tensor_(tensor) {
+    ArrayRef<uint32_t> sizes = tensor->dims();
+    numDims = sizes.size();
+    assert(sizes.size() && "Size list must not be empty");
+    uint32_t pi = 1;
+
+    for (int i = numDims - 1; i > 0; i--) {
+      sizeIntegral[i] = pi;
+      pi *= sizes[i];
+    }
+  }
+
+  size_t size() { return sizeIntegral[numDims]; }
+
+  ElemTy &at(ArrayRef<uint32_t> indices) {
+    assert(tensor_->isInBounds(indices));
+    return tensor_->at(getElementPtr(indices));
+  }
+
+  const ElemTy &at(ArrayRef<uint32_t> indices) const {
+    assert(tensor_->isInBounds(indices));
+    return tensor_->at(getElementPtr(indices));
+  }
+
+  /// Extract a smaller dimension tensor from a specific slice (that has to be
+  /// the first dimention).
+  Tensor<ElemTy> extractSlice(size_t idx) {
+    ArrayRef<uint32_t> sizes = tensor_->dims();
+    assert(sizes.size() > 1 && "Tensor has only one dimension");
+    Tensor<ElemTy> slice(ArrayRef<uint32_t>(&sizes[1], sizes.size() - 1));
+
+    // Extract the whole slice.
+    auto *base = &tensor_->at(sizeIntegral[0] * idx);
+    std::copy(base, base + sizeIntegral[0], &slice.at(0));
+
+    return slice;
+  }
+};
+
+template <class ElemTy>
+Handle<ElemTy> Tensor<ElemTy>::getHandle() {
+  return Handle<ElemTy>(this);
+}
+
 }
 
 #endif // NOETHER_TENSOR_H

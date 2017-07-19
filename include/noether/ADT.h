@@ -1,0 +1,61 @@
+#ifndef NOETHER_ADT_H
+#define NOETHER_ADT_H
+
+#include <cassert>
+#include <cstddef>
+#include <initializer_list>
+#include <iterator>
+
+namespace noether {
+
+/// ArrayRef - represent a constant reference to an array.
+/// Derived from LLVM's ArrayRef.
+template <typename T> class ArrayRef {
+public:
+  using iterator = const T *;
+  using const_iterator = const T *;
+  using size_type = size_t;
+  using reverse_iterator = std::reverse_iterator<iterator>;
+
+private:
+  const T *data_ = nullptr;
+  size_type length_ = 0;
+
+public:
+  /// Construct an empty ArrayRef.
+  ArrayRef() = default;
+
+  /// Construct an ArrayRef from a single element.
+  ArrayRef(const T &one) : data_(&one), length_(1) {}
+
+  /// Construct an ArrayRef from a pointer and length.
+  ArrayRef(const T *data, size_t length) : data_(data), length_(length) {}
+
+  /// Construct an ArrayRef from a range.
+  ArrayRef(const T *begin, const T *end) : data_(begin), length_(end - begin) {}
+
+  /// Construct an ArrayRef from a std::initializer_list.
+  ArrayRef(const std::initializer_list<T> &vec)
+    : data_(vec.begin() == vec.end() ? (T*)nullptr : vec.begin()),
+    length_(vec.size()) {}
+
+  iterator begin() const { return data_; }
+  iterator end() const { return data_ + length_; }
+
+  reverse_iterator rbegin() const { return reverse_iterator(end()); }
+  reverse_iterator rend() const { return reverse_iterator(begin()); }
+
+  bool empty() const { return length_ == 0; }
+
+  const T *data() const { return data_; }
+
+  size_t size() const { return length_; }
+
+  const T &operator[](size_t Index) const {
+    assert(Index < length_ && "Invalid index!");
+    return data_[Index];
+  }
+};
+} // namespace
+
+#endif // NOETHER_ADT_H
