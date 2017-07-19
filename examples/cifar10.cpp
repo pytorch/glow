@@ -42,13 +42,13 @@ void testCIFAR10(bool verbose = false) {
 
   /// Load the CIFAR database into a 4d tensor.
   Tensor<float> images({cifarNumImages, 32, 32, 3});
-  Tensor<size_t> labels({cifarNumImages, 1, 1, 1});
+  Tensor<size_t> labels(ArrayRef<size_t>((size_t)cifarNumImages));
   size_t idx = 0;
 
   auto labelsH = labels.getHandle();
   auto imagesH = images.getHandle();
   for (unsigned w = 0; w < cifarNumImages; w++) {
-    labelsH.at({w, 0, 0, 0}) = static_cast<uint8_t>(dbInput.get());
+    labelsH.at({w}) = static_cast<uint8_t>(dbInput.get());
     idx++;
 
     for (unsigned z = 0; z < 3; z++) {
@@ -117,7 +117,7 @@ void testCIFAR10(bool verbose = false) {
     // Load the image.
     A->getOutput().weight_ = imagesH.extractSlice(imageIndex);
     // Load the expected label.
-    auto expectedLabel = labelsH.at({imageIndex, 0, 0, 0});
+    auto expectedLabel = labelsH.at({imageIndex});
 
     N.infer(SM);
 

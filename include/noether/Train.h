@@ -38,21 +38,21 @@ public:
 
   TrainableData() = default;
 
-  TrainableData(ArrayRef<uint32_t> dims) { reset(dims); }
+  TrainableData(ArrayRef<size_t> dims) { reset(dims); }
 
   /// \returns True if the coordinate is within the array.
-  bool isInBounds(ArrayRef<uint32_t> dims) const {
+  bool isInBounds(ArrayRef<size_t> dims) const {
     return weight_.isInBounds(dims);
   }
 
   /// \returns the dimension of the weight tensor.
-  ArrayRef<uint32_t> dims() const { return weight_.dims(); }
+  ArrayRef<size_t> dims() const { return weight_.dims(); }
 
   /// \returns the number of elements in the tensor.
   size_t size() const { return weight_.size(); }
 
   /// Resets the weights and gradients.
-  void reset(ArrayRef<uint32_t> dims) {
+  void reset(ArrayRef<size_t> dims) {
     weight_.reset(dims);
     gradient_.reset(dims);
   }

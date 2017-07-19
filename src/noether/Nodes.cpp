@@ -13,22 +13,22 @@ ConvNode::ConvNode(Network *N, TrainableNode *input, size_t outDepth,
   assert(idim[0] > filterSize && idim[1] > filterSize &&
          "buffer too small for selected stride");
 
-  unsigned outsx = ((idim[0] + pad_ * 2 - filterSize) / stride + 1);
-  unsigned outsy = ((idim[1] + pad_ * 2 - filterSize) / stride + 1);
+  size_t outsx = ((idim[0] + pad_ * 2 - filterSize) / stride + 1);
+  size_t outsy = ((idim[1] + pad_ * 2 - filterSize) / stride + 1);
 
-  this->output_.reset({outsx, outsy, (unsigned)outDepth});
-  bias_.reset({1, 1, (unsigned)outDepth});
+  this->output_.reset({outsx, outsy, outDepth});
+  bias_.reset({1, 1, outDepth});
 
   // RELUs like small positive bias to get gradients early in the training
   // process, otherwise the RELU units may never turn on and turn into a
   // "dead RELU".
   auto biasWeights = bias_.weight_.getHandle();
-  for (unsigned i = 0; i < outDepth; i++) {
+  for (size_t i = 0; i < outDepth; i++) {
     biasWeights.at({0, 0, i}) = 0.1;
   }
 
   for (size_t i = 0; i < outDepth; i++) {
-    auto dims = {(unsigned)filterSize, (unsigned)filterSize, idim[2]};
+    auto dims = {filterSize, filterSize, idim[2]};
     filters_.emplace_back(dims);
   }
 
@@ -52,20 +52,20 @@ void ConvNode::forward() {
   auto biasW = bias_.weight_.getHandle();
 
   // For each layer in the output tensor:
-  for (unsigned d = 0; d < odim[2]; d++) {
+  for (size_t d = 0; d < odim[2]; d++) {
     auto currFilterW = filters_[d].weight_.getHandle();
 
 
     // For each convolution 'jump' in the input tensor:
     ssize_t y = -ssize_t(pad_);
-    for (unsigned ay = 0; ay < odim[1]; y += stride_, ay++) {
+    for (size_t ay = 0; ay < odim[1]; y += stride_, ay++) {
       ssize_t x = -ssize_t(pad_);
-      for (unsigned ax = 0; ax < odim[0]; x += stride_, ax++) {
+      for (size_t ax = 0; ax < odim[0]; x += stride_, ax++) {
 
         // For each element in the convolution-filter:
         FloatTy sum = 0;
-        for (unsigned fy = 0; fy < filterSize_; fy++) {
-          for (unsigned fx = 0; fx < filterSize_; fx++) {
+        for (size_t fy = 0; fy < filterSize_; fy++) {
+          for (size_t fx = 0; fx < filterSize_; fx++) {
             ssize_t ox = x + fx;
             ssize_t oy = y + fy;
 
@@ -73,10 +73,10 @@ void ConvNode::forward() {
             if (ox < 0 || oy < 0)
               continue;
 
-            if (outW.isInBounds({(unsigned)ox,(unsigned)oy, 0})) {
-              for (unsigned fd = 0; fd < idim[2]; fd++) {
+            if (outW.isInBounds({(size_t)ox,(size_t)oy, 0})) {
+              for (size_t fd = 0; fd < idim[2]; fd++) {
                 sum += currFilterW.at({fx, fy, fd}) *
-                  inW.at({(unsigned)ox, (unsigned)oy, fd});
+                  inW.at({(size_t)ox, (size_t)oy, fd});
               }
             }
           }
@@ -102,21 +102,21 @@ void ConvNode::backward() {
   inG.clear();
 
   // Compute the gradient. For each layer in the output tensor:
-  for (unsigned d = 0; d < odim[2]; d++) {
+  for (size_t d = 0; d < odim[2]; d++) {
     auto currFilterG = filters_[d].gradient_.getHandle();
     auto currFilterW = filters_[d].weight_.getHandle();
 
     // For each convolution 'jump' in the input tensor:
     ssize_t y = -ssize_t(pad_);
-    for (unsigned ay = 0; ay < ssize_t(odim[1]); y += stride_, ay++) {
+    for (size_t ay = 0; ay < ssize_t(odim[1]); y += stride_, ay++) {
       ssize_t x = -ssize_t(pad_);
-      for (unsigned ax = 0; ax < ssize_t(odim[0]); x += stride_, ax++) {
+      for (size_t ax = 0; ax < ssize_t(odim[0]); x += stride_, ax++) {
 
         FloatTy chainGrad = outG.at({ax, ay, d});
 
         // For each element in the convolution-filter:
-        for (unsigned fy = 0; fy < filterSize_; fy++) {
-          for (unsigned fx = 0; fx < filterSize_; fx++) {
+        for (size_t fy = 0; fy < filterSize_; fy++) {
+          for (size_t fx = 0; fx < filterSize_; fx++) {
             ssize_t ox = x + fx;
             ssize_t oy = y + fy;
 
@@ -124,11 +124,11 @@ void ConvNode::backward() {
             if (ox < 0 || oy < 0)
               continue;
 
-            if (outG.isInBounds({(unsigned)ox, (unsigned)oy, 0u})) {
-              for (unsigned fd = 0; fd < idim[2]; fd++) {
+            if (outG.isInBounds({(size_t)ox, (size_t)oy, 0u})) {
+              for (size_t fd = 0; fd < idim[2]; fd++) {
                 currFilterG.at({fx, fy, fd}) +=
-                inW.at({(unsigned)ox, (unsigned)oy, fd}) * chainGrad;
-                inG.at({(unsigned)ox, (unsigned)oy, fd}) +=
+                inW.at({(size_t)ox, (size_t)oy, fd}) * chainGrad;
+                inG.at({(size_t)ox, (size_t)oy, fd}) +=
                 currFilterW.at({fx, fy, fd}) * chainGrad;
               }
             }
@@ -150,8 +150,8 @@ MaxPoolNode::MaxPoolNode(Network *N, TrainableNode *input, size_t filterSize,
   assert(idim[0] > filterSize && idim[0] > filterSize &&
          "buffer too small for selected stride");
 
-  unsigned outsx = ((idim[0] + pad_ * 2 - filterSize) / stride + 1);
-  unsigned outsy = ((idim[1] + pad_ * 2 - filterSize) / stride + 1);
+  size_t outsx = ((idim[0] + pad_ * 2 - filterSize) / stride + 1);
+  size_t outsy = ((idim[1] + pad_ * 2 - filterSize) / stride + 1);
 
   this->output_.reset({outsx, outsy, idim[2]});
 
@@ -171,12 +171,12 @@ void MaxPoolNode::forward() {
   auto SY = srcY_.getHandle();
 
   // For each layer in the output tensor:
-  for (unsigned z = 0; z < idim[2]; z++) {
+  for (size_t z = 0; z < idim[2]; z++) {
     // For each convolution 'jump' in the input tensor:
     ssize_t y = -ssize_t(pad_);
-    for (unsigned ay = 0; ay < odim[1]; y += stride_, ay++) {
+    for (size_t ay = 0; ay < odim[1]; y += stride_, ay++) {
       ssize_t x = -ssize_t(pad_);
-      for (unsigned ax = 0; ax < odim[0]; x += stride_, ax++) {
+      for (size_t ax = 0; ax < odim[0]; x += stride_, ax++) {
         size_t maxX = x;
         size_t maxY = y;
 
@@ -192,8 +192,8 @@ void MaxPoolNode::forward() {
             if (ox < 0 || oy < 0)
               continue;
 
-            if (inW.isInBounds({(unsigned)ox, (unsigned)oy, z})) {
-              FloatTy val = inW.at({(unsigned)ox, (unsigned)oy, z});
+            if (inW.isInBounds({(size_t)ox, (size_t)oy, z})) {
+              FloatTy val = inW.at({(size_t)ox, (size_t)oy, z});
 
               if (first || (val >= max)) {
                 first = false;
@@ -226,16 +226,16 @@ void MaxPoolNode::backward() {
   inG.clear();
 
   // Compute the gradient. For each layer in the output tensor:
-  for (unsigned z = 0; z < odim[2]; z++) {
+  for (size_t z = 0; z < odim[2]; z++) {
 
     // For each convolution 'jump' in the input tensor:
-    for (unsigned ay = 0; ay < ssize_t(odim[1]); ay++) {
-      for (unsigned ax = 0; ax < ssize_t(odim[0]); ax++) {
+    for (size_t ay = 0; ay < odim[1]; ay++) {
+      for (size_t ax = 0; ax < odim[0]; ax++) {
 
-        FloatTy chainGrad = outG.at({ax, ay, z});
+        FloatTy chainGrad = outG.at({(size_t)ax, (size_t)ay, z});
 
-        unsigned maxX = SX.at({ax, ay, z});
-        unsigned maxY = SY.at({ax, ay, z});
+        size_t maxX = SX.at({(size_t)ax, (size_t)ay, z});
+        size_t maxY = SY.at({(size_t)ax, (size_t)ay, z});
 
         inG.at({maxX, maxY, z}) += chainGrad;
       }
@@ -249,14 +249,14 @@ FullyConnectedNode::FullyConnectedNode(Network *N, TrainableNode *input,
   assert(input && input_->size() && "Invalid input");
   auto idim = input_->dims();
 
-  this->output_.reset({1, 1, (unsigned)outDepth});
-  bias_.reset({1, 1, (unsigned)outDepth});
+  this->output_.reset({1, 1, outDepth});
+  bias_.reset({1, 1, outDepth});
 
   // RELUs like small positive bias to get gradients early in the training
   // process, otherwise the RELU units may never turn on and turn into a
   // "dead RELU".
   auto biasW = bias_.weight_.getHandle();
-  for (unsigned i = 0; i < outDepth; i++) {
+  for (size_t i = 0; i < outDepth; i++) {
     biasW.at({0, 0, i}) = 0.1;
   }
 
@@ -283,13 +283,13 @@ void FullyConnectedNode::forward() {
   auto biasW = bias_.weight_.getHandle();
   auto outW = this->output_.weight_.getHandle();
 
-  for (unsigned i = 0; i < odim[2]; i++) {
+  for (size_t i = 0; i < odim[2]; i++) {
     auto currFilterW = filters_[i].weight_.getHandle();
     FloatTy sum = 0;
 
-    for (unsigned x = 0; x < idim[0]; x++) {
-      for (unsigned y = 0; y < idim[1]; y++) {
-        for (unsigned z = 0; z < idim[2]; z++) {
+    for (size_t x = 0; x < idim[0]; x++) {
+      for (size_t y = 0; y < idim[1]; y++) {
+        for (size_t z = 0; z < idim[2]; z++) {
           sum += inW.at({x, y, z}) * currFilterW.at({x, y, z});
         }
       }
@@ -312,15 +312,15 @@ void FullyConnectedNode::backward() {
   inputBuffer.gradient_.clear();
 
   // Compute the gradient:
-  for (unsigned i = 0; i < odim[2]; i++) {
+  for (size_t i = 0; i < odim[2]; i++) {
     auto filterG = filters_[i].gradient_.getHandle();
     auto filterW = filters_[i].weight_.getHandle();
 
     FloatTy chainGrad = outG.at({0, 0, i});
 
-    for (unsigned x = 0; x < idim[0]; x++) {
-      for (unsigned y = 0; y < idim[1]; y++) {
-        for (unsigned z = 0; z < idim[2]; z++) {
+    for (size_t x = 0; x < idim[0]; x++) {
+      for (size_t y = 0; y < idim[1]; y++) {
+        for (size_t z = 0; z < idim[2]; z++) {
           // Input gradient:
           inG.at({x, y, z}) += filterW.at({x, y, z}) * chainGrad;
           // Param gradient:
@@ -346,9 +346,9 @@ void RELUNode::forward() {
   auto outW = this->output_.weight_.getHandle();
   auto inW = inputBuffer.weight_.getHandle();
 
-  for (unsigned x = 0; x < idim[0]; x++) {
-    for (unsigned y = 0; y < idim[1]; y++) {
-      for (unsigned z = 0; z < idim[2]; z++) {
+  for (size_t x = 0; x < idim[0]; x++) {
+    for (size_t y = 0; y < idim[1]; y++) {
+      for (size_t z = 0; z < idim[2]; z++) {
         FloatTy val = inW.at({x, y, z});
         outW.at({x, y, z}) = val < 0 ? 0 : val;
       }
@@ -364,9 +364,9 @@ void RELUNode::backward() {
   auto outDW = this->output_.gradient_.getHandle();
   auto inDW = inputBuffer.gradient_.getHandle();
 
-  for (unsigned x = 0; x < idim[0]; x++) {
-    for (unsigned y = 0; y < idim[1]; y++) {
-      for (unsigned z = 0; z < idim[2]; z++) {
+  for (size_t x = 0; x < idim[0]; x++) {
+    for (size_t y = 0; y < idim[1]; y++) {
+      for (size_t z = 0; z < idim[2]; z++) {
         FloatTy val = outW.at({x, y, z});
         inDW.at({x, y, z}) = (val <= 0 ? 0 : outDW.at({x, y, z}));
       }
@@ -387,9 +387,9 @@ void SigmoidNode::forward() {
   auto outW = this->output_.weight_.getHandle();
   auto inW = inputBuffer.weight_.getHandle();
 
-  for (unsigned x = 0; x < idim[0]; x++) {
-    for (unsigned y = 0; y < idim[1]; y++) {
-      for (unsigned z = 0; z < idim[2]; z++) {
+  for (size_t x = 0; x < idim[0]; x++) {
+    for (size_t y = 0; y < idim[1]; y++) {
+      for (size_t z = 0; z < idim[2]; z++) {
         FloatTy val = inW.at({x, y, z});
         outW.at({x, y, z}) = 1 / (1 + std::exp(-val));
       }
@@ -405,9 +405,9 @@ void SigmoidNode::backward() {
   auto outDW = this->output_.gradient_.getHandle();
   auto inDW = inputBuffer.gradient_.getHandle();
 
-  for (unsigned x = 0; x < idim[0]; x++) {
-    for (unsigned y = 0; y < idim[1]; y++) {
-      for (unsigned z = 0; z < idim[2]; z++) {
+  for (size_t x = 0; x < idim[0]; x++) {
+    for (size_t y = 0; y < idim[1]; y++) {
+      for (size_t z = 0; z < idim[2]; z++) {
         FloatTy val = outW.at({x, y, z});
         inDW.at({x, y, z}) = val * (1 - val) * outDW.at({x, y, z});
       }
@@ -432,7 +432,7 @@ void SoftMaxNode::forward() {
   FloatTy max = inW.at({0, 0, 0});
 
   // Find Max.
-  for (unsigned z = 0; z < idim[2]; z++) {
+  for (size_t z = 0; z < idim[2]; z++) {
     max = std::max(max, inW.at({0, 0, z}));
   }
 
@@ -440,14 +440,14 @@ void SoftMaxNode::forward() {
 
   auto EH = e_.getHandle();
   // Compute exp.
-  for (unsigned z = 0; z < idim[2]; z++) {
+  for (size_t z = 0; z < idim[2]; z++) {
     FloatTy e = std::exp(inW.at({0, 0, z}) - max);
     sum += e;
     EH.at({0, 0, z}) = e;
   }
 
   // Normalize the output.
-  for (unsigned z = 0; z < idim[2]; z++) {
+  for (size_t z = 0; z < idim[2]; z++) {
     EH.at({0, 0, z}) /= sum;
     outW.at({0, 0, z}) = EH.at({0, 0, z});
   }
@@ -458,7 +458,7 @@ void SoftMaxNode::backward() {
   auto inDW = input_->getOutput().gradient_.getHandle();
   auto ex = e_.getHandle();
 
-  for (unsigned z = 0; z < idim[2]; z++) {
+  for (size_t z = 0; z < idim[2]; z++) {
     FloatTy indicator = (selected_ == z ? 1 : 0);
     FloatTy mul = -(indicator - ex.at({0, 0, z}));
     inDW.at({0, 0, z}) = mul;
@@ -508,7 +508,7 @@ void RegressionNode::forward() {
   auto outW = this->output_.weight_.getHandle();
   auto inW = inputBuffer.weight_.getHandle();
 
-  for (unsigned z = 0; z < idim[2]; z++) {
+  for (size_t z = 0; z < idim[2]; z++) {
     outW.at({0, 0, z}) = inW.at({0, 0, z});
   }
 }
@@ -522,7 +522,7 @@ void RegressionNode::backward() {
 
   auto e = expected_.getHandle();
 
-  for (unsigned z = 0; z < idim[2]; z++) {
+  for (size_t z = 0; z < idim[2]; z++) {
     FloatTy dy = (inW.at({0, 0, z}) - e.at({0, 0, z}));
     inG.at({0, 0, z}) = dy;
   }
@@ -541,9 +541,9 @@ void MaxNode::forward() {
   auto outW = this->output_.weight_.getHandle();
   auto inW = inputBuffer.weight_.getHandle();
 
-  for (unsigned x = 0; x < idim[0]; x++) {
-    for (unsigned y = 0; y < idim[1]; y++) {
-      for (unsigned z = 0; z < idim[2]; z++) {
+  for (size_t x = 0; x < idim[0]; x++) {
+    for (size_t y = 0; y < idim[1]; y++) {
+      for (size_t z = 0; z < idim[2]; z++) {
         outW.at({x, y, z}) = inW.at({x, y, z});
       }
     }
@@ -556,9 +556,9 @@ void MaxNode::backward() {
   auto inW = inputBuffer.weight_.getHandle();
   auto inG = inputBuffer.gradient_.getHandle();
 
-  for (unsigned x = 0; x < idim[0]; x++) {
-    for (unsigned y = 0; y < idim[1]; y++) {
-      for (unsigned z = 0; z < idim[2]; z++) {
+  for (size_t x = 0; x < idim[0]; x++) {
+    for (size_t y = 0; y < idim[1]; y++) {
+      for (size_t z = 0; z < idim[2]; z++) {
         FloatTy dy = inW.at({x, y, z});
         inG.at({x, y, z}) = dy > 0 ? -1 : 1;
       }

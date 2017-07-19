@@ -16,7 +16,7 @@
 
 namespace noether {
 
-static const unsigned max_tensor_dimensions = 6;
+constexpr unsigned max_tensor_dimensions = 6;
 
 /// This is the default floating point type used for training.
 using FloatTy = TRAINING_TENSOR_ELEMENT_TYPE;
@@ -66,20 +66,21 @@ static char valueToChar(ElemTy val) {
 template <class ElemTy>
 class Handle;
 
+/// A class that represents a contiguous n-dimensional array (a tensor).
 template <class ElemTy>
 class Tensor final {
-  /// Contains the dimentions (sizes) of the tensor. Ex: [sz, sy, sz].
-  uint32_t sizes_[max_tensor_dimensions] = {0,};
-  uint8_t numSizes_{0};
+  /// Contains the dimentions (sizes) of the tensor. Ex: [sz, sy, sz, ...].
+  size_t sizes_[max_tensor_dimensions] = {0,};
+  unsigned char numSizes_{0};
 
   /// A pointer to the tensor data.
   ElemTy *data_{nullptr};
 
 public:
   /// \returns True if the coordinate is within the array.
-  bool isInBounds(ArrayRef<uint32_t> indices) const {
+  bool isInBounds(ArrayRef<size_t> indices) const {
     assert(numSizes_ == indices.size() && "Invalid number of indices");
-    for (int i = 0, e = indices.size(); i < e; i++) {
+    for (unsigned i = 0u, e = indices.size(); i < e; i++) {
       if (indices[i] >= sizes_[i]) return false;
     }
     return true;
@@ -91,7 +92,10 @@ public:
 
   /// Fill the array with random data that's close to zero.
   void randomize() {
+    // This is a global variable, a singleton, that's used as an index into
+    // the array with random numbers.
     static int offset = 0;
+
     double scale = std::sqrt(double(size()));
     for (size_t i = 0, e = size(); i < e; ++i) {
       data_[i] = (randomVals[(offset + i) % numRandomVals] - 0.5) / scale;
@@ -101,8 +105,8 @@ public:
   }
 
   /// \returns the dimension of the tensor.
-  ArrayRef<uint32_t> dims() const {
-    return ArrayRef<uint32_t>(sizes_, numSizes_);
+  ArrayRef<size_t> dims() const {
+    return ArrayRef<size_t>(sizes_, numSizes_);
   }
 
   /// \returns the number of elements in the array.
@@ -111,9 +115,10 @@ public:
       return 0;
     
     size_t s = 1;
-    for (int i = 0; i < numSizes_; i++) {
+    for (unsigned i = 0; i < numSizes_; i++) {
       s *= size_t(sizes_[i]);
     }
+
     return s;
   }
 
@@ -121,7 +126,7 @@ public:
   Tensor() = default;
 
   /// Initialize a new tensor.
-  Tensor(ArrayRef<uint32_t> dims) : data_(nullptr) {
+  Tensor(ArrayRef<size_t> dims) : data_(nullptr) {
     reset(dims);
   }
 
@@ -129,7 +134,7 @@ public:
   Tensor &operator=(const Tensor &other) = delete;
 
   /// Assigns a new shape to the tensor and allocates a new buffer.
-  void reset(ArrayRef<uint32_t> dims) {
+  void reset(ArrayRef<size_t> dims) {
     delete[] data_;
 
     assert(dims.size() < max_tensor_dimensions && "Too many indices");
@@ -171,14 +176,14 @@ public:
     return *this;
   }
 
-  void dump(std::string title = "", std::string suffix = "") {
+  void dump(const std::string &title = "", const std::string &suffix = "") {
     ElemTy mx = *std::max_element(&data_[0], &data_[size()]);
     ElemTy mn = *std::min_element(&data_[0], &data_[size()]);
 
     std::cout << title << " max=" << mx << " min=" << mn << "[";
 
     std::cout << "[";
-    for (size_t i = 0, e = std::min((size_t)400, size()); i < e; i++) {
+    for (size_t i = 0, e = std::min<size_t>(400, size()); i < e; i++) {
       std::cout << at(i) << " ";
     }
     std::cout << "]" << suffix;
@@ -189,17 +194,21 @@ public:
 };
 
 
+/// A class that provides indexed access to a tensor. This class has value
+/// semantics and it's copied around. One of the reasons for making this class
+/// value semantics is to allow efficient index calculation that the compiler
+/// can optimize (because stack allocated structures don't alias).
 template <class ElemTy>
 class Handle final {
   Tensor<ElemTy> *tensor_{nullptr};
 
   /// Contains the multiplication of the sizes from current position to end.
   /// For example, for index (w,z,y,z):  [x * y * z, y * z, z, 1]
-  uint32_t sizeIntegral[max_tensor_dimensions] = {0,};
+  size_t sizeIntegral[max_tensor_dimensions] = {0,};
   uint8_t numDims{0};
 
   /// Calculate the index for a specific element in the tensor.
-  size_t getElementPtr(ArrayRef<uint32_t> indices) {
+  size_t getElementPtr(ArrayRef<size_t> indices) {
     assert(indices.size() == numDims && "Invalid number of indices");
     size_t index = 0;
     for (int i = 0, e = indices.size(); i < e; i++) {
@@ -213,11 +222,11 @@ public:
   /// Construct a Tensor handle. \p rsizes is a list of reverse sizes
   /// Example: (sz, sy, sx, sw, ... )
   Handle(Tensor<ElemTy> *tensor) : tensor_(tensor) {
-    ArrayRef<uint32_t> sizes = tensor->dims();
+    auto sizes = tensor->dims();
     numDims = sizes.size();
     assert(sizes.size() && "Size list must not be empty");
-    uint32_t pi = 1;
 
+    size_t pi = 1;
     for (int i = numDims - 1; i >= 0; i--) {
       sizeIntegral[i] = pi;
       assert(sizes[i] > 0 && "invalid dim size");
@@ -229,7 +238,7 @@ public:
 
   size_t size() { return sizeIntegral[numDims]; }
 
-  bool isInBounds(ArrayRef<uint32_t> indices) const {
+  bool isInBounds(ArrayRef<size_t> indices) const {
     return tensor_->isInBounds(indices);
   }
 
@@ -237,22 +246,23 @@ public:
     tensor_->clear(value);
   }
 
-  ElemTy &at(ArrayRef<uint32_t> indices) {
+  ElemTy &at(ArrayRef<size_t> indices) {
     assert(tensor_->isInBounds(indices));
     return tensor_->at(getElementPtr(indices));
   }
 
-  const ElemTy &at(ArrayRef<uint32_t> indices) const {
+  const ElemTy &at(ArrayRef<size_t> indices) const {
     assert(tensor_->isInBounds(indices));
+    assert(indices.size() == numDims && "Wrong number of indices");
     return tensor_->at(getElementPtr(indices));
   }
 
   /// Extract a smaller dimension tensor from a specific slice (that has to be
   /// the first dimention).
   Tensor<ElemTy> extractSlice(size_t idx) {
-    ArrayRef<uint32_t> sizes = tensor_->dims();
+    auto sizes = tensor_->dims();
     assert(sizes.size() > 1 && "Tensor has only one dimension");
-    Tensor<ElemTy> slice(ArrayRef<uint32_t>(&sizes[1], sizes.size() - 1));
+    Tensor<ElemTy> slice(ArrayRef<size_t>(&sizes[1], sizes.size() - 1));
 
     // Extract the whole slice.
     auto *base = &tensor_->at(sizeIntegral[0] * idx);
@@ -265,7 +275,7 @@ public:
     tensor_->randomize();
   }
 
-  void dump(std::string title = "", std::string suffix = "") {
+  void dump(const std::string &title = "", const std::string &suffix = "") {
     tensor_->dump(title, suffix);
   }
 
@@ -274,18 +284,18 @@ public:
     std::cout << prefix << "\n";
 
     if (d.size() == 2) {
-      for (uint32_t y = 0; y < d[1]; y++) {
-        for (uint32_t x = 0; x < d[0]; x++) {
+      for (size_t y = 0; y < d[1]; y++) {
+        for (size_t x = 0; x < d[0]; x++) {
           auto val = at({x, y});
           std::cout << valueToChar(val);
         }
         std::cout << "\n";
       }
     } else if (d.size() == 3) {
-      for (uint32_t z = 0; z < d[2]; z++) {
+      for (size_t z = 0; z < d[2]; z++) {
         std::cout << "\n";
-        for (uint32_t y = 0; y < d[1]; y++) {
-          for (uint32_t x = 0; x < d[0]; x++) {
+        for (size_t y = 0; y < d[1]; y++) {
+          for (size_t x = 0; x < d[0]; x++) {
             auto val = at({x, y, z});
             std::cout << valueToChar(val);
           }
