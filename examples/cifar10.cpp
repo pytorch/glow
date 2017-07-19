@@ -3,6 +3,7 @@
 #include "noether/Nodes.h"
 #include "noether/Tensor.h"
 
+#include <chrono>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
