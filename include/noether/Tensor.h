@@ -472,6 +472,14 @@ public:
 
   size_t size() { return sizeIntegral[numDims]; }
 
+  bool isInBounds(ArrayRef<uint32_t> indices) const {
+    return tensor_->isInBounds(indices);
+  }
+
+  void clear(ElemTy value = 0) {
+    tensor_->clear(value);
+  }
+
   ElemTy &at(ArrayRef<uint32_t> indices) {
     assert(tensor_->isInBounds(indices));
     return tensor_->at(getElementPtr(indices));
