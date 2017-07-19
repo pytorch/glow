@@ -2,6 +2,9 @@
 #define NOETHER_TENSOR_H
 
 #include "Config.h"
+
+#include "noether/ADT.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -10,7 +13,6 @@
 #include <iostream>
 #include <numeric>
 
-#include "ADT.h"
 
 namespace noether {
 
@@ -333,6 +335,17 @@ public:
     std::fill(&data_[0], &data_[0] + size(), value);
   }
 
+  /// Fill the array with random data that's close to zero.
+  void randomize() {
+    static int offset = 0;
+    double scale = std::sqrt(double(size()));
+    for (size_t i = 0, e = size(); i < e; ++i) {
+      data_[i] = (randomVals[(offset + i) % numRandomVals] - 0.5) / scale;
+    }
+
+    offset++;
+  }
+
   /// \returns the dimension of the tensor.
   ArrayRef<uint32_t> dims() const {
     return ArrayRef<uint32_t>(sizes_, numSizes_);
@@ -401,6 +414,19 @@ public:
     return *this;
   }
 
+  void dump(std::string title = "", std::string suffix = "") {
+    ElemTy mx = *std::max_element(&data_[0], &data_[size()]);
+    ElemTy mn = *std::min_element(&data_[0], &data_[size()]);
+
+    std::cout << title << " max=" << mx << " min=" << mn << "[";
+
+    std::cout << "[";
+    for (size_t i = 0, e = std::min(400u, size()); i < e; i++) {
+      std::cout << at(i) << " ";
+    }
+    std::cout << "]" << suffix;
+  }
+
   /// \return a new handle that points and manages this tensor.
   Handle<ElemTy> getHandle();
 };
@@ -466,6 +492,30 @@ public:
 
     return slice;
   }
+
+  void randomize() {
+    tensor_->randomize();
+  }
+
+  void dump(std::string title = "", std::string suffix = "") {
+    tensor_->dump(title, suffix);
+  }
+
+  void dumpAscii(const std::string &prefix = "", std::string suffix = "\n") {
+    auto d = tensor_->dim();
+    assert(d.size() == 2 && "Not a 2d tensor");
+    std::cout << prefix << "\n";
+
+    for (uint32_t y = 0; y < d[1]; y++) {
+      for (uint32_t x = 0; x < d[0]; x++) {
+        auto val = at({x, y});
+        std::cout << valueToChar(val);
+      }
+      std::cout << "\n";
+    }
+    std::cout << suffix;
+  }
+
 };
 
 template <class ElemTy>
