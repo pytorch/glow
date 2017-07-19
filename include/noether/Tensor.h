@@ -461,10 +461,13 @@ public:
     assert(sizes.size() && "Size list must not be empty");
     uint32_t pi = 1;
 
-    for (int i = numDims - 1; i > 0; i--) {
+    for (int i = numDims - 1; i >= 0; i--) {
       sizeIntegral[i] = pi;
+      assert(sizes[i] > 0 && "invalid dim size");
       pi *= sizes[i];
     }
+
+    assert(numDims < max_tensor_dimensions);
   }
 
   size_t size() { return sizeIntegral[numDims]; }
