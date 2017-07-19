@@ -44,7 +44,7 @@ class MaxPoolNode final : public TrainableNode {
   TrainableNode *input_;
   /// The source coordinate for each element in the result pool. This is used
   /// to accelerate the gradient backward pass.
-  Array3D<size_t> srcX_, srcY_;
+  Tensor<size_t> srcX_, srcY_;
 
   size_t filterSize_;
   size_t stride_;
@@ -130,7 +130,7 @@ class SoftMaxNode final : public TrainableNode {
   size_t selected_;
 
   /// A temporary array for storing the subexpression (e ^ (a[i] - max)).
-  Array3D<FloatTy> e_;
+  Tensor<FloatTy> e_;
 
   /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
   /// And \p selected that's the selected one-hot representation of the
@@ -139,19 +139,19 @@ class SoftMaxNode final : public TrainableNode {
 
   /// If set, the training procedure will update the content of the array node
   /// from this input source.
-  Array4D<size_t> *boundInputSource_{nullptr};
+  Tensor<size_t> *boundInputSource_{nullptr};
 
   friend Network;
 
 public:
-  void bind(Array4D<size_t> *input) { boundInputSource_ = input; }
+  void bind(Tensor<size_t> *input) { boundInputSource_ = input; }
 
   virtual void updateBoundInputs(size_t sampleIdx) override {
     if (!boundInputSource_)
       return;
-    selected_ = boundInputSource_->at(sampleIdx, 0, 0, 0);
+    selected_ = boundInputSource_->getHandle().at({(unsigned)sampleIdx, 0, 0, 0});
 
-    assert(selected_ < dims().z && "Invalid selected value");
+    assert(selected_ < dims()[2] && "Invalid selected value");
   }
 
   virtual void forward() override;
@@ -173,11 +173,11 @@ class RegressionNode final : public TrainableNode {
   /// A reference to the node input.
   TrainableNode *input_;
   /// The expected input (also known as Y).
-  Array3D<FloatTy> expected_;
+  Tensor<FloatTy> expected_;
 
   /// If set, the training procedure will update the content of the array node
   /// from this input source.
-  Array4D<FloatTy> *boundInputSource_{nullptr};
+  Tensor<FloatTy> *boundInputSource_{nullptr};
 
   /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
   /// And \p expected (aka Y) is the expected input for the layer, that must
@@ -187,12 +187,12 @@ class RegressionNode final : public TrainableNode {
   friend Network;
 
 public:
-  void bind(Array4D<FloatTy> *input) {
+  void bind(Tensor<FloatTy> *input) {
     auto idim = input->dims();
     auto dim = dims();
     (void)dim;
     (void)idim;
-    assert(idim.x == dim.x && idim.y == dim.y && idim.z == dim.z &&
+    assert(idim[0] == dim[2] && idim[1] == dim[1] && idim[2] == dim[2] &&
            "Invalid input size");
     boundInputSource_ = input;
   }
@@ -201,12 +201,12 @@ public:
     if (!boundInputSource_)
       return;
 
-    assert(boundInputSource_->isInBounds(sampleIdx, 0, 0, 0));
-    expected_ = boundInputSource_->extractSlice(sampleIdx);
+    assert(boundInputSource_->isInBounds({(unsigned)sampleIdx, 0, 0, 0}));
+    expected_ = boundInputSource_->getHandle().extractSlice(sampleIdx);
   }
 
   /// \returns a reference to the expected result vector.
-  Array3D<FloatTy> &getExpected() { return expected_; }
+  Tensor<FloatTy> &getExpected() { return expected_; }
 
   virtual void forward() override;
 
@@ -240,25 +240,27 @@ public:
 /// This is an abstraction over raw variable inputs.
 class ArrayNode final : public TrainableNode {
   ArrayNode(Network *N, size_t x, size_t y, size_t z) : TrainableNode(N) {
-    this->getOutput().reset(x, y, z);
+    this->getOutput().reset({(unsigned)x, (unsigned)y, (unsigned)z});
     // Do not change the output of this layer when training the network.
     this->getOutput().isTrainable_ = false;
   }
 
   /// If set, the training procedure will update the content of the array node
   /// from this input source.
-  Array4D<FloatTy> *boundInputSource_{nullptr};
+  Tensor<FloatTy> *boundInputSource_{nullptr};
 
   friend Network;
 
 public:
-  void bind(Array4D<FloatTy> *input) {
+  void bind(Tensor<FloatTy> *input) {
     auto inDim = input->dims();
     auto dim = dims();
     (void)inDim;
     (void)dim;
-    assert(dim.x == inDim.x && dim.y == inDim.y && dim.z == inDim.z &&
+    assert(dim.size() == 3 && inDim.size() == 4 && "Invalid tensors");
+    assert(dim[0] == inDim[1] && dim[1] == inDim[2] && dim[2] == inDim[3] &&
            "Invalid input size");
+
 
     boundInputSource_ = input;
   }
@@ -273,8 +275,8 @@ public:
     if (!boundInputSource_)
       return;
 
-    assert(boundInputSource_->isInBounds(sampleIdx, 0, 0, 0));
-    this->getOutput().weight_ = boundInputSource_->extractSlice(sampleIdx);
+    assert(boundInputSource_->isInBounds({(unsigned)sampleIdx, 0, 0, 0}));
+    this->getOutput().weight_ = boundInputSource_->getHandle().extractSlice(sampleIdx);
   }
 
   virtual void visit(NodeVisitor *visitor) override;

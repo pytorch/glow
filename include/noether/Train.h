@@ -1,6 +1,7 @@
 #ifndef NOETHER_TRAIN_H
 #define NOETHER_TRAIN_H
 
+#include "noether/ADT.h"
 #include "noether/Tensor.h"
 
 #include <cstddef>
@@ -24,12 +25,12 @@ struct TrainingConfig {
 class TrainableData {
 public:
   /// W - the weight.
-  Array3D<FloatTy> weight_{};
+  Tensor<FloatTy> weight_{};
   /// dW - the derivative of the weight.
-  Array3D<FloatTy> gradient_{};
+  Tensor<FloatTy> gradient_{};
   /// gradient sum - this buffer is used by the SGD algorithm to store the
   /// previous gradient. The array
-  Array3D<FloatTy> gsum_{};
+  Tensor<FloatTy> gsum_{};
   /// If this flag is set to false then the data is not modified during training
   /// We use this for preventing the trainer from changing the weights of the
   /// input buffers.
@@ -37,26 +38,23 @@ public:
 
   TrainableData() = default;
 
-  TrainableData(size_t x, size_t y, size_t z) { reset(x, y, z); }
+  TrainableData(ArrayRef<uint32_t> dims) { reset(dims); }
 
   /// \returns True if the coordinate is within the array.
-  bool isInBounds(size_t x, size_t y, size_t z) const {
-    return weight_.isInBounds(x, y, z);
+  bool isInBounds(ArrayRef<uint32_t> dims) const {
+    return weight_.isInBounds(dims);
   }
 
   /// \returns the dimension of the weight tensor.
-  Point3d dims() const { return weight_.dims(); }
+  ArrayRef<uint32_t> dims() const { return weight_.dims(); }
 
   /// \returns the number of elements in the tensor.
   size_t size() const { return weight_.size(); }
 
   /// Resets the weights and gradients.
-  void reset(Point3d dim) { reset(dim.x, dim.y, dim.z); }
-
-  /// Resets the weights and gradients.
-  void reset(size_t x, size_t y, size_t z) {
-    weight_.reset(x, y, z);
-    gradient_.reset(x, y, z);
+  void reset(ArrayRef<uint32_t> dims) {
+    weight_.reset(dims);
+    gradient_.reset(dims);
   }
 
   /// Print the textual representation of the buffer.

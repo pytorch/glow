@@ -37,22 +37,24 @@ void testCIFAR10(bool verbose = false) {
                         std::ios::binary);
 
   if (verbose) {
-    std::cout << "Loaded the CIFAR-10 database.\n";
+    std::cout << "Loading the CIFAR-10 database.\n";
   }
 
   /// Load the CIFAR database into a 4d tensor.
-  Array4D<float> images(cifarNumImages, 32, 32, 3);
-  Array4D<size_t> labels(cifarNumImages, 1, 1, 1);
+  Tensor<float> images({cifarNumImages, 32, 32, 3});
+  Tensor<size_t> labels({cifarNumImages, 1, 1, 1});
   size_t idx = 0;
 
-  for (size_t w = 0; w < cifarNumImages; w++) {
-    labels.at(w, 0, 0, 0) = static_cast<uint8_t>(dbInput.get());
+  auto labelsH = labels.getHandle();
+  auto imagesH = images.getHandle();
+  for (unsigned w = 0; w < cifarNumImages; w++) {
+    labelsH.at({w, 0, 0, 0}) = static_cast<uint8_t>(dbInput.get());
     idx++;
 
-    for (size_t z = 0; z < 3; z++) {
-      for (size_t y = 0; y < 32; y++) {
-        for (size_t x = 0; x < 32; x++) {
-          images.at(w, x, y, z) =
+    for (unsigned z = 0; z < 3; z++) {
+      for (unsigned y = 0; y < 32; y++) {
+        for (unsigned x = 0; x < 32; x++) {
+          imagesH.at({w, x, y, z}) =
               FloatTy(static_cast<uint8_t>(dbInput.get())) / 255.0;
           idx++;
         }
@@ -108,14 +110,14 @@ void testCIFAR10(bool verbose = false) {
     std::cout << "Validating.\n";
   }
 
-  for (int iter = 0; iter < 10; iter++) {
+  for (size_t iter = 0; iter < 10; iter++) {
     // Pick a random image from the stack:
-    const size_t imageIndex = (iter * 17512 + 9124) % cifarNumImages;
+    const unsigned imageIndex = (iter * 17512 + 9124) % cifarNumImages;
 
     // Load the image.
-    A->getOutput().weight_ = images.extractSlice(imageIndex);
+    A->getOutput().weight_ = imagesH.extractSlice(imageIndex);
     // Load the expected label.
-    auto expectedLabel = labels.at(imageIndex, 0, 0, 0);
+    auto expectedLabel = labelsH.at({imageIndex, 0, 0, 0});
 
     N.infer(SM);
 

@@ -36,16 +36,19 @@ void testMNIST(bool verbose = false) {
          "The size of the image buffer does not match the labels vector");
 
   /// Load the MNIST database into two 4d tensors for images and labels.
-  Array4D<float> imageInputs(50000, 28, 28, 1);
-  Array4D<size_t> labelInputs(50000, 1, 1, 1);
+  Tensor<float> imageInputs({50000, 28, 28, 1});
+  Tensor<size_t> labelInputs({50000, 1, 1, 1});
 
   size_t idx = 0;
 
-  for (size_t w = 0; w < mnistNumImages; w++) {
-    labelInputs.at(w, 0, 0, 0) = labels[w];
-    for (size_t y = 0; y < 28; y++) {
-      for (size_t x = 0; x < 28; x++) {
-        imageInputs.at(w, x, y, 0) = imagesAsFloatPtr[idx++];
+  auto LIH = labelInputs.getHandle();
+  auto IIH = imageInputs.getHandle();
+
+  for (unsigned w = 0; w < mnistNumImages; w++) {
+    LIH.at({w, 0, 0, 0}) = labels[w];
+    for (unsigned y = 0; y < 28; y++) {
+      for (unsigned x = 0; x < 28; x++) {
+        IIH.at({w, x, y, 0}) = imagesAsFloatPtr[idx++];
       }
     }
   }
@@ -102,7 +105,7 @@ void testMNIST(bool verbose = false) {
 
   for (int iter = 0; iter < 10; iter++) {
     size_t imageIndex = (iter * 17512 + 9124) % numImages;
-    A->getOutput().weight_ = imageInputs.extractSlice(imageIndex);
+    A->getOutput().weight_ = IIH.extractSlice(imageIndex);
 
     N.infer(SM);
 
@@ -111,7 +114,7 @@ void testMNIST(bool verbose = false) {
     rightAnswer += (guess == correct);
 
     if (verbose) {
-      A->getOutput().weight_.dumpAscii("MNIST Input");
+      A->getOutput().weight_.getHandle().dumpAscii("MNIST Input");
       std::cout << "Expected: " << correct << " Guessed: " << guess << "\n";
       SM->getOutput().weight_.dump("", "\n");
       std::cout << "\n-------------\n";

@@ -20,31 +20,27 @@ void TrainableData::train(const TrainingConfig &config) {
     gsum_.reset(weight_.dims());
   }
 
-  auto dim = dims();
+  auto sz = weight_.size();
 
   // For each weight/gradient pair:
-  for (size_t x = 0; x < dim.x; x++) {
-    for (size_t y = 0; y < dim.y; y++) {
-      for (size_t z = 0; z < dim.z; z++) {
-        // Do a simple SGD update:
-        FloatTy L1Grad = L1Decay * (weight_.at(x, y, z) > 0 ? 1 : -1);
-        FloatTy L2Grad = L2Decay * (weight_.at(x, y, z));
-        FloatTy gij = (L2Grad + L1Grad + gradient_.at(x, y, z)) / batchSize;
+  for (size_t x = 0; x < sz; x++) {
+    // Do a simple SGD update:
+    FloatTy L1Grad = L1Decay * (weight_.at(x) > 0 ? 1 : -1);
+    FloatTy L2Grad = L2Decay * (weight_.at(x));
+    FloatTy gij = (L2Grad + L1Grad + gradient_.at(x)) / batchSize;
 
-        // Use the momentum to improve the gradient descent:
-        // http://ufldl.stanford.edu/tutorial/supervised/OptimizationStochasticGradientDescent/
-        if (momentum > 0.0) {
-          // Momentum update:
-          FloatTy dx = momentum * gsum_.at(x, y, z) - learningRate * gij;
-          // Save this value for the next iteration:
-          gsum_.at(x, y, z) = dx;
-          // Apply the gradient.
-          weight_.at(x, y, z) += dx;
-        } else {
-          // Use regular SGD:
-          weight_.at(x, y, z) -= learningRate * gij;
-        }
-      }
+    // Use the momentum to improve the gradient descent:
+    // http://ufldl.stanford.edu/tutorial/supervised/OptimizationStochasticGradientDescent/
+    if (momentum > 0.0) {
+      // Momentum update:
+      FloatTy dx = momentum * gsum_.at(x) - learningRate * gij;
+      // Save this value for the next iteration:
+      gsum_.at(x) = dx;
+      // Apply the gradient.
+      weight_.at(x) += dx;
+    } else {
+      // Use regular SGD:
+      weight_.at(x) -= learningRate * gij;
     }
   }
 }

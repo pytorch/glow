@@ -111,10 +111,10 @@ bool PNGNode::writeImage(const char *filename) {
     return true;
 
   auto odim = this->output_.dims();
-  assert(odim.z < 4 && "Invalid buffer to save");
+  assert(odim[2] < 4 && "Invalid buffer to save");
 
-  int width = odim.x;
-  int height = odim.y;
+  int width = odim[0];
+  int height = odim[1];
   int color_type = PNG_COLOR_TYPE_RGB_ALPHA;
   int bit_depth = 8;
 

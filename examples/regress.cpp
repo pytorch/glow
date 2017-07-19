@@ -15,12 +15,6 @@
 
 using namespace noether;
 
-void testArray() {
-  Array3D<float> X(320, 200, 3);
-  X.at(10u, 10u, 2u) = 2;
-  assert((X.at(10u, 10u, 2u) == 2) && "Invalid load/store");
-}
-
 float delta(float a, float b) { return std::fabs(a - b); }
 
 /// Test the fully connected layer and the softmax function.
@@ -50,6 +44,10 @@ void testFCSoftMax(bool verbose = false) {
     std::cout << "Train the network.\n";
   }
 
+  // Setup a handle to access array A and SM.
+  auto AWH = A->getOutput().weight_.getHandle();
+  auto SMH = SM->getOutput().weight_.getHandle();
+
   // Generate lots of samples and learn them.
   for (int iter = 0; iter < 99000; iter++) {
     float x = dis(gen);
@@ -61,22 +59,23 @@ void testFCSoftMax(bool verbose = false) {
     bool InCircle = r2 < 0.6;
 
     SM->setSelected(InCircle);
-    A->getOutput().weight_.at(0, 0, 0) = x;
-    A->getOutput().weight_.at(0, 0, 1) = y;
+    AWH.at({0, 0, 0}) = x;
+    AWH.at({0, 0, 1}) = y;
     N.train(SM);
   }
 
   // Print a diagram that depicts the network decision on a grid.
   if (verbose) {
+
     for (int x = -10; x < 10; x++) {
       for (int y = -10; y < 10; y++) {
         // Load the inputs:
-        A->getOutput().weight_.at(0, 0, 0) = float(x) / 10;
-        A->getOutput().weight_.at(0, 0, 1) = float(y) / 10;
+        AWH.at({0, 0, 0}) = float(x) / 10;
+        AWH.at({0, 0, 1}) = float(y) / 10;
 
         N.infer(SM);
-        auto A = SM->getOutput().weight_.at(0, 0, 0);
-        auto B = SM->getOutput().weight_.at(0, 0, 1);
+        auto A = SMH.at({0, 0, 0});
+        auto B = SMH.at({0, 0, 1});
 
         char ch = '=';
         if (A > (B + 0.2)) {
@@ -107,8 +106,8 @@ void testFCSoftMax(bool verbose = false) {
       continue;
 
     // Load the inputs:
-    A->getOutput().weight_.at(0, 0, 0) = x;
-    A->getOutput().weight_.at(0, 0, 1) = y;
+    AWH.at({0, 0, 0}) = x;
+    AWH.at({0, 0, 1}) = y;
 
     N.infer(SM);
 
@@ -126,10 +125,11 @@ void testFCSoftMax(bool verbose = false) {
 }
 
 /// A helper function to load a one-hot vector.
-void setOneHot(Array3D<FloatTy> &A, float background, float foreground,
+void setOneHot(Tensor<FloatTy> &A, float background, float foreground,
                size_t idx) {
-  for (int j = 0; j < A.size(); j++) {
-    A.at(0, 0, j) = (j == idx ? foreground : background);
+  auto H = A.getHandle();
+  for (unsigned j = 0; j < A.size(); j++) {
+    H.at({0, 0, j}) = (j == idx ? foreground : background);
   }
 }
 
@@ -160,6 +160,9 @@ void testRegression(bool verbose = false) {
     std::cout << "Verify the result of the regression layer.\n";
   }
 
+  auto AWH = A->getOutput().weight_.getHandle(); (void) AWH;
+  auto RNWH = RN->getOutput().weight_.getHandle(); (void) RNWH;
+
   // Test the output:
   for (int iter = 0; iter < 5; iter++) {
     float target = iter % 9 + 1;
@@ -167,8 +170,8 @@ void testRegression(bool verbose = false) {
     setOneHot(RN->getExpected(), 0.0, target + 1, 1);
 
     N.infer(RN);
-    assert(delta(A->getOutput().weight_.at(0, 0, 0) + 1,
-                 RN->getOutput().weight_.at(0, 0, 1)) < 0.1);
+    assert(delta(AWH.at({0, 0, 0}) + 1,
+                 RNWH.at({0, 0, 1})) < 0.1);
   }
   if (verbose) {
     std::cout << "Done.\n";
@@ -205,9 +208,10 @@ void testLearnSingleInput(bool verbose = false) {
 
   N.infer(RN);
 
+  auto RNWH = RN->getOutput().weight_.getHandle(); (void) RNWH;
+
   // Test the output:
-  assert(RN->getOutput().weight_.sum() < 10);
-  assert(RN->getOutput().weight_.at(0, 0, 1) > 8.5);
+  assert(RNWH.at({0, 0, 1}) > 8.5);
 
   if (verbose) {
     std::cout << "Done.\n";
@@ -215,7 +219,6 @@ void testLearnSingleInput(bool verbose = false) {
 }
 
 int main() {
-  testArray();
 
   testLearnSingleInput(true);
 

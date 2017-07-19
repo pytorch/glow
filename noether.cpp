@@ -3,6 +3,8 @@
 #include "noether/Network.h"
 #include "noether/Tensor.h"
 
+//#include "caffe.pb.h"
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
