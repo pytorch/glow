@@ -86,34 +86,36 @@ struct PrinterPass : NodeVisitor {
 
 } // namespace
 
-void Network::train(NodeBase *root) {
+void Network::train(NodeBase *root, size_t iterations) {
   size_t numInputs = trainConf_.inputSize;
 
-  // Ask all of the nodes to update the input for the specific input by index.
-  UpdaterPass UP(trainCounter_ % numInputs);
-  root->visit(&UP);
+  for (size_t i = 0; i < iterations; i++) {
+    // Ask all of the nodes to update the input for the specific input by index.
+    UpdaterPass UP(trainCounter_ % numInputs);
+    root->visit(&UP);
 
-  // Forward scan.
-  ForwardPass FP;
-  root->visit(&FP);
+    // Forward scan.
+    ForwardPass FP;
+    root->visit(&FP);
 
-  // Backward scan in reverse order.
-  BackwardPass BP;
-  root->visit(&BP);
+    // Backward scan in reverse order.
+    BackwardPass BP;
+    root->visit(&BP);
 
-  trainCounter_++;
+    trainCounter_++;
 
-  // Only update the gradient when we've reached the end of the batch.
-  if (trainCounter_ % trainConf_.batchSize)
-    return;
+    // Only update the gradient when we've reached the end of the batch.
+    if (trainCounter_ % trainConf_.batchSize)
+      continue;
 
-  // Update the gradients.
-  for (auto &buffer : trainableBuffers_) {
-    buffer->train(trainConf_);
-  }
+    // Update the gradients.
+    for (auto &buffer : trainableBuffers_) {
+      buffer->train(trainConf_);
+    }
 
-  for (auto &buffer : trainableBuffers_) {
-    buffer->clearGradient();
+    for (auto &buffer : trainableBuffers_) {
+      buffer->clearGradient();
+    }
   }
 }
 

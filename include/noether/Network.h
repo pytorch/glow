@@ -75,8 +75,9 @@ public:
   /// belonging to the node \p node.
   void registerDerivTensor(NodeBase *node, TrainableData *weights);
 
-  /// Train the network.
-  void train(NodeBase *root);
+  /// Train the network starting with the node \p root. Perform \p iterations
+  /// iterations in the training loop.
+  void train(NodeBase *root, size_t iterations = 1);
 
   /// Infer data for a single input.
   void infer(NodeBase *root);
