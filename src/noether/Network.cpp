@@ -52,8 +52,8 @@ MaxNode *Network::createMaxNode(TrainableNode *input) {
   return addNode(new MaxNode(this, input));
 }
 
-ArrayNode *Network::createArrayNode(size_t x, size_t y, size_t z) {
-  return addNode(new ArrayNode(this, x, y, z));
+ArrayNode *Network::createArrayNode(ArrayRef<size_t> dims) {
+  return addNode(new ArrayNode(this, dims));
 }
 
 void Network::registerDerivTensor(NodeBase *node, TrainableData *weights) {

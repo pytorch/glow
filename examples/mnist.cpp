@@ -67,7 +67,7 @@ void testMNIST(bool verbose = false) {
   N.getTrainingConfig().batchSize = 20;
   N.getTrainingConfig().inputSize = 50000;
 
-  auto *A = N.createArrayNode(28, 28, 1);
+  auto *A = N.createArrayNode({28, 28, 1});
   auto *CV0 = N.createConvNode(A, 8, 5, 1, 2);
   auto *RL0 = N.createRELUNode(CV0);
   auto *MP0 = N.createMaxPoolNode(RL0, 2, 2, 0);

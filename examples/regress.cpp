@@ -28,7 +28,7 @@ void testFCSoftMax(bool verbose = false) {
   // Construct the network:
   Network N;
   N.getTrainingConfig().momentum = 0.0;
-  auto *A = N.createArrayNode(1, 1, 2);
+  auto *A = N.createArrayNode({2});
   auto *FCL0 = N.createFullyConnectedNode(A, 6);
   auto *RL0 = N.createRELUNode(FCL0);
   auto *FCL1 = N.createFullyConnectedNode(RL0, 2);
@@ -59,8 +59,8 @@ void testFCSoftMax(bool verbose = false) {
     bool InCircle = r2 < 0.6;
 
     SM->setSelected(InCircle);
-    AWH.at({0, 0, 0}) = x;
-    AWH.at({0, 0, 1}) = y;
+    AWH.at({0}) = x;
+    AWH.at({1}) = y;
     N.train(SM);
   }
 
@@ -70,12 +70,12 @@ void testFCSoftMax(bool verbose = false) {
     for (int x = -10; x < 10; x++) {
       for (int y = -10; y < 10; y++) {
         // Load the inputs:
-        AWH.at({0, 0, 0}) = float(x) / 10;
-        AWH.at({0, 0, 1}) = float(y) / 10;
+        AWH.at({0}) = float(x) / 10;
+        AWH.at({1}) = float(y) / 10;
 
         N.infer(SM);
-        auto A = SMH.at({0, 0, 0});
-        auto B = SMH.at({0, 0, 1});
+        auto A = SMH.at({0});
+        auto B = SMH.at({1});
 
         char ch = '=';
         if (A > (B + 0.2)) {
@@ -106,8 +106,8 @@ void testFCSoftMax(bool verbose = false) {
       continue;
 
     // Load the inputs:
-    AWH.at({0, 0, 0}) = x;
-    AWH.at({0, 0, 1}) = y;
+    AWH.at({0}) = x;
+    AWH.at({1}) = y;
 
     N.infer(SM);
 
@@ -129,7 +129,7 @@ void setOneHot(Tensor<FloatTy> &A, float background, float foreground,
                size_t idx) {
   auto H = A.getHandle();
   for (unsigned j = 0; j < A.size(); j++) {
-    H.at({0, 0, j}) = (j == idx ? foreground : background);
+    H.at({j}) = (j == idx ? foreground : background);
   }
 }
 
@@ -143,7 +143,7 @@ void testRegression(bool verbose = false) {
   constexpr int numInputs = 4;
 
   Network N;
-  auto *A = N.createArrayNode(1, 1, numInputs);
+  auto *A = N.createArrayNode({numInputs});
   auto *FCL0 = N.createFullyConnectedNode(A, 4);
   auto *RL0 = N.createRELUNode(FCL0);
   auto *RN = N.createRegressionNode(RL0);
@@ -170,8 +170,7 @@ void testRegression(bool verbose = false) {
     setOneHot(RN->getExpected(), 0.0, target + 1, 1);
 
     N.infer(RN);
-    assert(delta(AWH.at({0, 0, 0}) + 1,
-                 RNWH.at({0, 0, 1})) < 0.1);
+    assert(delta(AWH.at({0}) + 1, RNWH.at({1})) < 0.1);
   }
   if (verbose) {
     std::cout << "Done.\n";
@@ -185,7 +184,7 @@ void testLearnSingleInput(bool verbose = false) {
 
   Network N;
   N.getTrainingConfig().learningRate = 0.005;
-  auto *A = N.createArrayNode(1, 1, 10);
+  auto *A = N.createArrayNode(10);
   auto *FCL0 = N.createFullyConnectedNode(A, 10);
   auto *RL0 = N.createRELUNode(FCL0);
   auto *FCL1 = N.createFullyConnectedNode(RL0, 10);
@@ -211,7 +210,7 @@ void testLearnSingleInput(bool verbose = false) {
   auto RNWH = RN->getOutput().weight_.getHandle(); (void) RNWH;
 
   // Test the output:
-  assert(RNWH.at({0, 0, 1}) > 8.5);
+  assert(RNWH.at({1}) > 8.5);
 
   if (verbose) {
     std::cout << "Done.\n";

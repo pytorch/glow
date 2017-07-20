@@ -72,7 +72,7 @@ void testCIFAR10(bool verbose = false) {
   N.getTrainingConfig().L2Decay = 0.0001;
   N.getTrainingConfig().inputSize = cifarImageSize;
 
-  auto *A = N.createArrayNode(32, 32, 3);
+  auto *A = N.createArrayNode({32, 32, 3});
   auto *CV0 = N.createConvNode(A, 16, 5, 1, 2);
   auto *RL0 = N.createRELUNode(CV0);
   auto *MP0 = N.createMaxPoolNode(RL0, 2, 2, 0);

@@ -65,7 +65,7 @@ public:
 
   MaxNode *createMaxNode(TrainableNode *input);
 
-  ArrayNode *createArrayNode(size_t x, size_t y, size_t z);
+  ArrayNode *createArrayNode(ArrayRef<size_t> dims);
   ///@}
 
   /// Provides access to the training configuration.
