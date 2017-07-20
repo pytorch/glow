@@ -151,7 +151,7 @@ public:
       return;
     selected_ = boundInputSource_->getHandle().at({sampleIdx});
 
-    assert(selected_ < dims()[2] && "Invalid selected value");
+    assert(selected_ < dims()[0] && "Invalid selected value");
   }
 
   virtual void forward() override;
@@ -179,7 +179,7 @@ class RegressionNode final : public TrainableNode {
   /// from this input source.
   Tensor<FloatTy> *boundInputSource_{nullptr};
 
-  /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
+  /// Ctor - \p is the input layer that must be a simple vector.
   /// And \p expected (aka Y) is the expected input for the layer, that must
   /// be of the same shape as \p input.
   RegressionNode(Network *N, TrainableNode *input);
@@ -192,8 +192,7 @@ public:
     auto dim = dims();
     (void)dim;
     (void)idim;
-    assert(idim[0] == dim[2] && idim[1] == dim[1] && idim[2] == dim[2] &&
-           "Invalid input size");
+    assert(idim == dim && "Invalid input size");
     boundInputSource_ = input;
   }
 
@@ -239,8 +238,8 @@ public:
 
 /// This is an abstraction over raw variable inputs.
 class ArrayNode final : public TrainableNode {
-  ArrayNode(Network *N, size_t x, size_t y, size_t z) : TrainableNode(N) {
-    this->getOutput().reset({x, y, z});
+  ArrayNode(Network *N, ArrayRef<size_t> dims) : TrainableNode(N) {
+    this->getOutput().reset(dims);
     // Do not change the output of this layer when training the network.
     this->getOutput().isTrainable_ = false;
   }
