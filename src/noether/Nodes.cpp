@@ -277,7 +277,7 @@ FullyConnectedNode::FullyConnectedNode(Network *N, TrainableNode *input,
 }
 
 void FullyConnectedNode::forward() {
-  auto idim = input_->dims();
+  auto &inputBuffer = input_->getOutput();
   auto odim = this->output_.dims();
   auto inW = input_->getOutput().weight_.getHandle();
   auto biasW = bias_.weight_.getHandle();
@@ -287,20 +287,16 @@ void FullyConnectedNode::forward() {
     auto currFilterW = filters_[i].weight_.getHandle();
     FloatTy sum = 0;
 
-    for (size_t x = 0; x < idim[0]; x++) {
-      for (size_t y = 0; y < idim[1]; y++) {
-        for (size_t z = 0; z < idim[2]; z++) {
-          sum += inW.at({x, y, z}) * currFilterW.at({x, y, z});
-        }
-      }
+    for (size_t i = 0, e = inputBuffer.size(); i < e; i++) {
+      sum += inW.raw(i) * currFilterW.raw(i);
     }
+
     sum += biasW.at({0, 0, i});
     outW.at({0, 0, i}) = sum;
   }
 }
 
 void FullyConnectedNode::backward() {
-  auto idim = input_->dims();
   auto odim = this->output_.dims();
   auto &inputBuffer = input_->getOutput();
   auto outG = this->output_.gradient_.getHandle();
@@ -318,15 +314,11 @@ void FullyConnectedNode::backward() {
 
     FloatTy chainGrad = outG.at({0, 0, i});
 
-    for (size_t x = 0; x < idim[0]; x++) {
-      for (size_t y = 0; y < idim[1]; y++) {
-        for (size_t z = 0; z < idim[2]; z++) {
-          // Input gradient:
-          inG.at({x, y, z}) += filterW.at({x, y, z}) * chainGrad;
-          // Param gradient:
-          filterG.at({x, y, z}) += inW.at({x, y, z}) * chainGrad;
-        }
-      }
+    for (size_t i = 0, e = inG.size(); i < e; i++) {
+      // Input gradient:
+      inG.raw(i) += filterW.raw(i) * chainGrad;
+      // Param gradient:
+      filterG.raw(i) += inW.raw(i) * chainGrad;
     }
 
     biasG.at({0, 0, i}) += chainGrad;
@@ -340,37 +332,26 @@ RELUNode::RELUNode(Network *N, TrainableNode *input)
 }
 
 void RELUNode::forward() {
-  auto idim = input_->dims();
   auto &inputBuffer = input_->getOutput();
-
   auto outW = this->output_.weight_.getHandle();
   auto inW = inputBuffer.weight_.getHandle();
 
-  for (size_t x = 0; x < idim[0]; x++) {
-    for (size_t y = 0; y < idim[1]; y++) {
-      for (size_t z = 0; z < idim[2]; z++) {
-        FloatTy val = inW.at({x, y, z});
-        outW.at({x, y, z}) = val < 0 ? 0 : val;
-      }
-    }
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+        FloatTy val = inW.raw(i);
+        outW.raw(i) = val < 0 ? 0 : val;
   }
 }
 
 void RELUNode::backward() {
-  auto idim = input_->dims();
   auto &inputBuffer = input_->getOutput();
 
   auto outW = this->output_.weight_.getHandle();
   auto outDW = this->output_.gradient_.getHandle();
   auto inDW = inputBuffer.gradient_.getHandle();
 
-  for (size_t x = 0; x < idim[0]; x++) {
-    for (size_t y = 0; y < idim[1]; y++) {
-      for (size_t z = 0; z < idim[2]; z++) {
-        FloatTy val = outW.at({x, y, z});
-        inDW.at({x, y, z}) = (val <= 0 ? 0 : outDW.at({x, y, z}));
-      }
-    }
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+        FloatTy val = outW.raw(i);
+        inDW.raw(i) = (val <= 0 ? 0 : outDW.raw(i));
   }
 }
 
@@ -381,37 +362,27 @@ SigmoidNode::SigmoidNode(Network *N, TrainableNode *input)
 }
 
 void SigmoidNode::forward() {
-  auto idim = input_->dims();
   auto &inputBuffer = input_->getOutput();
 
   auto outW = this->output_.weight_.getHandle();
   auto inW = inputBuffer.weight_.getHandle();
 
-  for (size_t x = 0; x < idim[0]; x++) {
-    for (size_t y = 0; y < idim[1]; y++) {
-      for (size_t z = 0; z < idim[2]; z++) {
-        FloatTy val = inW.at({x, y, z});
-        outW.at({x, y, z}) = 1 / (1 + std::exp(-val));
-      }
-    }
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+        FloatTy val = inW.raw(i);
+        outW.raw(i) = 1 / (1 + std::exp(-val));
   }
 }
 
 void SigmoidNode::backward() {
-  auto idim = input_->dims();
   auto &inputBuffer = input_->getOutput();
 
   auto outW = this->output_.weight_.getHandle();
   auto outDW = this->output_.gradient_.getHandle();
   auto inDW = inputBuffer.gradient_.getHandle();
 
-  for (size_t x = 0; x < idim[0]; x++) {
-    for (size_t y = 0; y < idim[1]; y++) {
-      for (size_t z = 0; z < idim[2]; z++) {
-        FloatTy val = outW.at({x, y, z});
-        inDW.at({x, y, z}) = val * (1 - val) * outDW.at({x, y, z});
-      }
-    }
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+        FloatTy val = outW.raw(i);
+        inDW.raw(i) = val * (1 - val) * outDW.raw(i);
   }
 }
 
@@ -536,33 +507,23 @@ MaxNode::MaxNode(Network *N, TrainableNode *input)
 }
 
 void MaxNode::forward() {
-  auto idim = input_->dims();
   auto &inputBuffer = input_->getOutput();
   auto outW = this->output_.weight_.getHandle();
   auto inW = inputBuffer.weight_.getHandle();
 
-  for (size_t x = 0; x < idim[0]; x++) {
-    for (size_t y = 0; y < idim[1]; y++) {
-      for (size_t z = 0; z < idim[2]; z++) {
-        outW.at({x, y, z}) = inW.at({x, y, z});
-      }
-    }
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = inW.raw(i);
   }
 }
 
 void MaxNode::backward() {
-  auto idim = input_->dims();
   auto &inputBuffer = input_->getOutput();
   auto inW = inputBuffer.weight_.getHandle();
   auto inG = inputBuffer.gradient_.getHandle();
 
-  for (size_t x = 0; x < idim[0]; x++) {
-    for (size_t y = 0; y < idim[1]; y++) {
-      for (size_t z = 0; z < idim[2]; z++) {
-        FloatTy dy = inW.at({x, y, z});
-        inG.at({x, y, z}) = dy > 0 ? -1 : 1;
-      }
-    }
+  for (size_t i = 0, e = inG.size(); i < e; i++) {
+        FloatTy dy = inW.raw(i);
+        inG.raw(i) = dy > 0 ? -1 : 1;
   }
 }
 

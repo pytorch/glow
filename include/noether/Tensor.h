@@ -257,6 +257,12 @@ public:
     return tensor_->at(getElementPtr(indices));
   }
 
+  /// \returns the element at offset \p idx without any size calculations.
+  ElemTy &raw(size_t idx) { return tensor_->at(idx); }
+
+  /// \returns the element at offset \p idx without any size calculations.
+  const ElemTy &raw(size_t idx) const { return tensor_->at(idx); }
+
   /// Extract a smaller dimension tensor from a specific slice (that has to be
   /// the first dimention).
   Tensor<ElemTy> extractSlice(size_t idx) {
