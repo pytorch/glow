@@ -285,7 +285,8 @@ public:
     tensor_->dump(title, suffix);
   }
 
-  void dumpAscii(const std::string &prefix = "", std::string suffix = "\n") {
+  void dumpAscii(const std::string &prefix = "",
+                 const std::string &suffix = "\n") {
     auto d = tensor_->dims();
     std::cout << prefix << "\n";
 
