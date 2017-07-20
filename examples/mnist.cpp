@@ -60,7 +60,7 @@ void testMNIST() {
   Network N;
   N.getTrainingConfig().learningRate = 0.01;
   N.getTrainingConfig().momentum = 0.9;
-  N.getTrainingConfig().batchSize = 20;
+  N.getTrainingConfig().batchSize = 40;
   N.getTrainingConfig().inputSize = 50000;
 
   auto *A = N.createArrayNode({28, 28, 1});
@@ -88,7 +88,7 @@ void testMNIST() {
 
   std::cout << "Training.\n";
 
-  for (int iter = 0; iter < 40; iter++) {
+  for (int iter = 0; iter < 60; iter++) {
     std::cout << "Training - iteration #" << iter << " ";
     TimerGuard reportTime(reportRate);
     N.train(SM, reportRate);
