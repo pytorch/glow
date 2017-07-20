@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstddef>
 #include <initializer_list>
+#include <vector>
 #include <iterator>
 
 namespace noether {
@@ -39,6 +40,11 @@ public:
   ArrayRef(const std::initializer_list<T> &vec)
     : data_(vec.begin() == vec.end() ? (T*)nullptr : vec.begin()),
     length_(vec.size()) {}
+
+  /// Construct an ArrayRef from a std::vector.
+  template<typename A>
+  ArrayRef(const std::vector<T, A> &vec)
+  : data_(vec.data()), length_(vec.size()) {}
 
   iterator begin() const { return data_; }
   iterator end() const { return data_ + length_; }
