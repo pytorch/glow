@@ -98,7 +98,7 @@ public:
 
     double scale = std::sqrt(double(size()));
     for (size_t i = 0, e = size(); i < e; ++i) {
-      data_[i] = (randomVals[(offset + i) % numRandomVals] - 0.5) / scale;
+      data_[i] = (randomVals[(offset++) % numRandomVals] - 0.5) / scale;
     }
 
     offset++;
