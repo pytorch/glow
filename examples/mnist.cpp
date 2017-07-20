@@ -2,15 +2,14 @@
 #include "noether/Network.h"
 #include "noether/Nodes.h"
 #include "noether/Tensor.h"
+#include "noether/Support.h"
 
-#include <chrono>
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
-#include <iterator>
-#include <random>
 #include <string>
 #include <vector>
 
@@ -19,10 +18,9 @@ using namespace noether;
 const size_t mnistNumImages = 50000;
 
 /// This test classifies digits from the MNIST labeled dataset.
-void testMNIST(bool verbose = false) {
-  if (verbose) {
-    std::cout << "Loading the mnist database.\n";
-  }
+void testMNIST() {
+  std::cout << "Loading the mnist database.\n";
+
 
   std::ifstream imgInput("mnist_images.bin", std::ios::binary);
   std::ifstream labInput("mnist_labels.bin", std::ios::binary);
@@ -56,9 +54,7 @@ void testMNIST(bool verbose = false) {
   size_t numImages = labels.size();
   assert(numImages && "No images were found.");
 
-  if (verbose) {
-    std::cout << "Loaded " << numImages << " images.\n";
-  }
+  std::cout << "Loaded " << numImages << " images.\n";
 
   // Construct the network:
   Network N;
@@ -80,9 +76,6 @@ void testMNIST(bool verbose = false) {
   auto *RL2 = N.createRELUNode(FCL1);
   auto *SM = N.createSoftMaxNode(RL2);
 
-  std::chrono::time_point<std::chrono::system_clock> start, end;
-  start = std::chrono::system_clock::now();
-  end = std::chrono::system_clock::now();
 
   // Report progress every this number of training iterations.
   constexpr int reportRate = 100;
@@ -93,24 +86,15 @@ void testMNIST(bool verbose = false) {
   // On each  iteration the expected value is loaded from the labels vector.
   SM->bind(&labelInputs);
 
-  if (verbose) {
-    std::cout << "Training.\n";
-  }
+  std::cout << "Training.\n";
 
-  for (int iter = 0; iter < 5000; iter++) {
-    if (verbose && !(iter % reportRate)) {
-      end = std::chrono::system_clock::now();
-      std::chrono::duration<double> elapsed_seconds = end - start;
-      std::cout << "Training - iteration #" << iter << " ";
-      std::cout <<"Rate: " << (reportRate/elapsed_seconds.count()) << "/sec\n";
-      start = std::chrono::system_clock::now();
-    }
-    N.train(SM);
-  }
+  for (int iter = 0; iter < 40; iter++) {
+    std::cout << "Training - iteration #" << iter << " ";
+    TimerGuard reportTime(reportRate);
+    N.train(SM, reportRate);
 
-  if (verbose) {
-    std::cout << "Validating.\n";
   }
+  std::cout << "Validating.\n";
 
   // Check how many digits out of ten we can classify correctly.
   int rightAnswer = 0;
@@ -125,20 +109,17 @@ void testMNIST(bool verbose = false) {
     size_t correct = labels[imageIndex];
     rightAnswer += (guess == correct);
 
-    if (verbose) {
-      A->getOutput().weight_.getHandle().dumpAscii("MNIST Input");
-      std::cout << "Expected: " << correct << " Guessed: " << guess << "\n";
-      SM->getOutput().weight_.dump("", "\n");
-      std::cout << "\n-------------\n";
-    }
+    A->getOutput().weight_.getHandle().dumpAscii("MNIST Input");
+    std::cout << "Expected: " << correct << " Guessed: " << guess << "\n";
+    SM->getOutput().weight_.dump("", "\n");
+    std::cout << "\n-------------\n";
   }
 
   assert(rightAnswer >= 6 && "Did not classify as many digits as expected");
 }
 
 int main() {
-
-  testMNIST(1);
+  testMNIST();
 
   return 0;
 }

@@ -2,8 +2,8 @@
 #include "noether/Network.h"
 #include "noether/Nodes.h"
 #include "noether/Tensor.h"
+#include "noether/Support.h"
 
-#include <chrono>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -28,7 +28,7 @@ const size_t cifarNumImages = 10000;
 /// This test classifies digits from the CIFAR labeled dataset.
 /// Details: http://www.cs.toronto.edu/~kriz/cifar.html
 /// Dataset: http://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz
-void testCIFAR10(bool verbose = false) {
+void testCIFAR10() {
   (void)cifarImageSize;
   const char *textualLabels[] = {"airplane", "automobile", "bird", "cat",
                                  "deer",     "dog",        "frog", "horse",
@@ -37,9 +37,7 @@ void testCIFAR10(bool verbose = false) {
   std::ifstream dbInput("cifar-10-batches-bin/data_batch_1.bin",
                         std::ios::binary);
 
-  if (verbose) {
-    std::cout << "Loading the CIFAR-10 database.\n";
-  }
+  std::cout << "Loading the CIFAR-10 database.\n";
 
   /// Load the CIFAR database into a 4d tensor.
   Tensor<float> images({cifarNumImages, 32, 32, 3});
@@ -95,54 +93,35 @@ void testCIFAR10(bool verbose = false) {
   // On each  iteration the expected value is loaded from the labels vector.
   SM->bind(&labels);
 
-
-  std::chrono::time_point<std::chrono::system_clock> start, end;
-  start = std::chrono::system_clock::now();
-  end = std::chrono::system_clock::now();
-
   // Report progress every this number of training iterations.
-  constexpr int reportRate = 1024;
+  constexpr int reportRate = 256;
 
-  if (verbose) {
-    std::cout << "Training.\n";
-  }
+  std::cout << "Training.\n";
 
-  for (int iter = 0; iter < 96000; iter++) {
-    if (verbose && !(iter % reportRate)) {
+  for (int iter = 0; iter < 190 * reportRate; iter++) {
+    std::cout << "Training - iteration #" << iter << " ";
+    TimerGuard reportTime(reportRate);
 
-      end = std::chrono::system_clock::now();
-      std::chrono::duration<double> elapsed_seconds = end - start;
-      std::cout << "Training - iteration #" << iter << " ";
-      std::cout <<"Rate: " << (reportRate/elapsed_seconds.count()) << "/sec\n";
-      start = std::chrono::system_clock::now();
-      
-      unsigned score = 0;
-      for (size_t iter = 0; iter < 100; iter++) {
-        // Pick a random image from the stack:
-        const unsigned imageIndex = (iter * 17512 + 9124) % cifarNumImages;
+    N.train(SM, reportRate);
 
-        // Load the image.
-        A->getOutput().weight_ = imagesH.extractSlice(imageIndex);
-
-        N.infer(SM);
-
-        // Read the expected label.
-        auto expectedLabel = labelsH.at({imageIndex});
-
-        unsigned result = SM->maxArg();
-        score += textualLabels[expectedLabel] ==  textualLabels[result];
-      }
-
-      std::cout << "Score : " <<score<<" / 100.\n";
+    unsigned score = 0;
+    for (size_t i = 0; i < 100; i++) {
+      // Pick a random image from the stack:
+      const unsigned imageIndex = ((i + iter) * 175 + 912) % cifarNumImages;
+      // Load the image.
+      A->getOutput().weight_ = imagesH.extractSlice(imageIndex);
+      N.infer(SM);
+      // Read the expected label.
+      auto expectedLabel = labelsH.at({imageIndex});
+      unsigned result = SM->maxArg();
+      score += textualLabels[expectedLabel] ==  textualLabels[result];
     }
-
-    N.train(SM);
+    std::cout << "Score : " <<score<<" / 100.\n";
   }
 }
 
 int main() {
-
-  testCIFAR10(true);
+  testCIFAR10();
 
   return 0;
 }
