@@ -182,7 +182,6 @@ public:
 
     std::cout << title << " max=" << mx << " min=" << mn << "[";
 
-    std::cout << "[";
     for (size_t i = 0, e = std::min<size_t>(400, size()); i < e; i++) {
       std::cout << at(i) << " ";
     }
