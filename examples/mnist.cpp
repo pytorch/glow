@@ -60,7 +60,8 @@ void testMNIST() {
   Network N;
   N.getTrainingConfig().learningRate = 0.01;
   N.getTrainingConfig().momentum = 0.9;
-  N.getTrainingConfig().batchSize = 40;
+  N.getTrainingConfig().batchSize = 20;
+  N.getTrainingConfig().L2Decay = 0.001;
   N.getTrainingConfig().inputSize = 50000;
 
   auto *A = N.createArrayNode({28, 28, 1});
@@ -70,7 +71,7 @@ void testMNIST() {
 
   auto *CV1 = N.createConvNode(MP0, 16, 5, 1, 2);
   auto *RL1 = N.createRELUNode(CV1);
-  auto *MP1 = N.createMaxPoolNode(RL1, 2, 2, 0);
+  auto *MP1 = N.createMaxPoolNode(RL1, 3, 3, 0);
 
   auto *FCL1 = N.createFullyConnectedNode(MP1, 10);
   auto *RL2 = N.createRELUNode(FCL1);
