@@ -206,9 +206,11 @@ class Handle final {
   size_t sizeIntegral[max_tensor_dimensions] = {0,};
   uint8_t numDims{0};
 
-  /// Calculate the index for a specific element in the tensor.
+public:
+  /// Calculate the index for a specific element in the tensor. Notice that
+  /// the list of indices may be incomplete.
   size_t getElementPtr(ArrayRef<size_t> indices) {
-    assert(indices.size() == numDims && "Invalid number of indices");
+    assert(indices.size() <= numDims && "Invalid number of indices");
     size_t index = 0;
     for (int i = 0, e = indices.size(); i < e; i++) {
       index += size_t(sizeIntegral[i]) * size_t(indices[i]);
@@ -217,7 +219,6 @@ class Handle final {
     return index;
   }
 
-public:
   /// Construct a Tensor handle. \p rsizes is a list of reverse sizes
   /// Example: (sz, sy, sx, sw, ... )
   Handle(Tensor<ElemTy> *tensor) : tensor_(tensor) {
