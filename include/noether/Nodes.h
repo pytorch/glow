@@ -256,11 +256,7 @@ public:
     auto dim = dims();
     (void)inDim;
     (void)dim;
-    assert(dim.size() == 3 && inDim.size() == 4 && "Invalid tensors");
-    assert(dim[0] == inDim[1] && dim[1] == inDim[2] && dim[2] == inDim[3] &&
-           "Invalid input size");
-
-
+    assert(dim.size() + 1 == inDim.size() && "Invalid tensors");
     boundInputSource_ = input;
   }
 
@@ -274,7 +270,6 @@ public:
     if (!boundInputSource_)
       return;
 
-    assert(boundInputSource_->isInBounds({(unsigned)sampleIdx, 0, 0, 0}));
     this->getOutput().weight_ = boundInputSource_->getHandle().extractSlice(sampleIdx);
   }
 
