@@ -84,12 +84,12 @@ public:
   /// Xavier method, based on the paper [Bengio and Glorot 2010].
   /// The parameter \p filterSize is the number of elements in the
   /// tensor (or the relevant slice).
-  void randomize(size_t filterSize = 0) {
+  void randomize(size_t filterSize) {
     // This is a global variable, a singleton, that's used as an index into
     // the array with random numbers.
     static int offset = 0;
 
-    double scale = std::sqrt(3.0/double(size()));
+    double scale = std::sqrt(3.0/double(filterSize));
     for (size_t i = 0, e = size(); i < e; ++i) {
       data_[i] = (randomVals[(offset++) % numRandomVals]) * scale;
     }
@@ -270,8 +270,8 @@ public:
     return slice;
   }
 
-  void randomize() {
-    tensor_->randomize();
+  void randomize(size_t filterSize) {
+    tensor_->randomize(filterSize);
   }
 
   void dump(const std::string &title = "", const std::string &suffix = "") {

@@ -27,19 +27,10 @@ ConvNode::ConvNode(Network *N, TrainableNode *input, size_t outDepth,
     biasWeights.at({0, 0, i}) = 0.1;
   }
 
-  for (size_t i = 0; i < outDepth; i++) {
-    auto dims = {filterSize, filterSize, idim[2]};
-    filters_.emplace_back(dims);
-  }
+  filters_.reset({outDepth, filterSize, filterSize, idim[2]});
+  filters_.weight_.randomize(filterSize * filterSize * idim[2]);
 
-  for (auto &filter : filters_) {
-    filter.weight_.randomize();
-  }
-
-  for (size_t i = 0; i < outDepth; i++) {
-    N->registerDerivTensor(this, &filters_[i]);
-  }
-
+  N->registerDerivTensor(this, &filters_);
   N->registerDerivTensor(this, &bias_);
 }
 
@@ -50,11 +41,10 @@ void ConvNode::forward() {
   auto inW = input_->getOutput().weight_.getHandle();
   auto outW = this->output_.weight_.getHandle();
   auto biasW = bias_.weight_.getHandle();
+  auto filterW = filters_.weight_.getHandle();
 
   // For each layer in the output tensor:
   for (size_t d = 0; d < odim[2]; d++) {
-    auto currFilterW = filters_[d].weight_.getHandle();
-
 
     // For each convolution 'jump' in the input tensor:
     ssize_t y = -ssize_t(pad_);
@@ -75,7 +65,7 @@ void ConvNode::forward() {
 
             if (outW.isInBounds({(size_t)ox,(size_t)oy, 0})) {
               for (size_t fd = 0; fd < idim[2]; fd++) {
-                sum += currFilterW.at({fx, fy, fd}) *
+                sum += filterW.at({d, fx, fy, fd}) *
                   inW.at({(size_t)ox, (size_t)oy, fd});
               }
             }
@@ -97,14 +87,14 @@ void ConvNode::backward() {
   auto inG = inputBuffer.gradient_.getHandle();
   auto outG = this->output_.gradient_.getHandle();
   auto biasG = bias_.gradient_.getHandle();
+  auto filterG = filters_.gradient_.getHandle();
+  auto filterW = filters_.weight_.getHandle();
 
   // Zero the gradient of the input.
   inG.clear();
 
   // Compute the gradient. For each layer in the output tensor:
   for (size_t d = 0; d < odim[2]; d++) {
-    auto currFilterG = filters_[d].gradient_.getHandle();
-    auto currFilterW = filters_[d].weight_.getHandle();
 
     // For each convolution 'jump' in the input tensor:
     ssize_t y = -ssize_t(pad_);
@@ -126,10 +116,10 @@ void ConvNode::backward() {
 
             if (outG.isInBounds({(size_t)ox, (size_t)oy, 0u})) {
               for (size_t fd = 0; fd < idim[2]; fd++) {
-                currFilterG.at({fx, fy, fd}) +=
+                filterG.at({d, fx, fy, fd}) +=
                 inW.at({(size_t)ox, (size_t)oy, fd}) * chainGrad;
                 inG.at({(size_t)ox, (size_t)oy, fd}) +=
-                currFilterW.at({fx, fy, fd}) * chainGrad;
+                filterW.at({d, fx, fy, fd}) * chainGrad;
               }
             }
           }
@@ -247,7 +237,6 @@ FullyConnectedNode::FullyConnectedNode(Network *N, TrainableNode *input,
                                        size_t outDepth)
     : TrainableNode(N), input_(input) {
   assert(input && input_->size() && "Invalid input");
-  auto idim = input_->dims();
 
   this->output_.reset({outDepth});
   bias_.reset({outDepth});
@@ -260,18 +249,10 @@ FullyConnectedNode::FullyConnectedNode(Network *N, TrainableNode *input,
     biasW.at({i}) = 0.1;
   }
 
-  for (size_t i = 0; i < outDepth; i++) {
-    filters_.emplace_back(idim);
-  }
+  filters_.reset({outDepth, input_->size()});
+  filters_.weight_.randomize(input_->size());
 
-  for (auto &filter : filters_) {
-    filter.weight_.randomize();
-  }
-
-  for (size_t i = 0; i < outDepth; i++) {
-    N->registerDerivTensor(this, &filters_[i]);
-  }
-
+  N->registerDerivTensor(this, &filters_);
   N->registerDerivTensor(this, &bias_);
 }
 
@@ -281,13 +262,12 @@ void FullyConnectedNode::forward() {
   auto inW = input_->getOutput().weight_.getHandle();
   auto biasW = bias_.weight_.getHandle();
   auto outW = this->output_.weight_.getHandle();
+  auto currFilterW = filters_.weight_.getHandle();
 
   for (size_t i = 0; i < odim[0]; i++) {
-    auto currFilterW = filters_[i].weight_.getHandle();
     FloatTy sum = 0;
-
-    for (size_t i = 0, e = inputBuffer.size(); i < e; i++) {
-      sum += inW.raw(i) * currFilterW.raw(i);
+    for (size_t j = 0, e = inputBuffer.size(); j < e; j++) {
+      sum += inW.raw(j) * currFilterW.at({i, j});
     }
 
     sum += biasW.at({i});
@@ -306,18 +286,18 @@ void FullyConnectedNode::backward() {
   // Zero the gradient of the input.
   inputBuffer.gradient_.clear();
 
+  auto filterG = filters_.gradient_.getHandle();
+  auto filterW = filters_.weight_.getHandle();
+
   // Compute the gradient:
   for (size_t i = 0; i < odim[0]; i++) {
-    auto filterG = filters_[i].gradient_.getHandle();
-    auto filterW = filters_[i].weight_.getHandle();
-
     FloatTy chainGrad = outG.at({i});
 
-    for (size_t i = 0, e = inG.size(); i < e; i++) {
+    for (size_t j = 0, e = inG.size(); j < e; j++) {
       // Input gradient:
-      inG.raw(i) += filterW.raw(i) * chainGrad;
+      inG.raw(j) += filterW.at({i, j}) * chainGrad;
       // Param gradient:
-      filterG.raw(i) += inW.raw(i) * chainGrad;
+      filterG.at({i, j}) += inW.raw(j) * chainGrad;
     }
 
     biasG.at({i}) += chainGrad;
