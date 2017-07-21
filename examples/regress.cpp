@@ -17,6 +17,40 @@ using namespace noether;
 
 float delta(float a, float b) { return std::fabs(a - b); }
 
+
+/// Generate data in two classes. The circle of dots that's close to the axis is
+/// L0, and the rest of the dots, away from the axis are L1.
+void generateCircleData(Tensor<float> &coordinates, Tensor<size_t> &labels) {
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<> r_radius(0, 0.4);
+  std::uniform_real_distribution<> r_angle(0, 3.14159 * 2);
+
+  auto C = coordinates.getHandle();
+  auto L = labels.getHandle();
+
+  for (size_t i = 0; i < 50; i++) {
+    float r = r_radius(gen);
+    float a = r_angle(gen);
+    float y = r * sin(a);
+    float x = r * cos(a);
+
+    C.at({i*2, 0u}) = x;
+    C.at({i*2, 1u}) = y;
+    L.at({i*2}) = 1;
+
+    r = r_radius(gen) + 0.8;
+    a = r_angle(gen);
+    y = r * sin(a);
+    x = r * cos(a);
+
+    C.at({i * 2 + 1, 0u}) = x;
+    C.at({i * 2 + 1, 1u}) = y;
+    L.at({i * 2 + 1}) = 0;
+  }
+}
+
+
 /// Test the fully connected layer and the softmax function.
 /// Example from:
 /// http://cs.stanford.edu/people/karpathy/convnetjs/demo/classify2d.html
@@ -28,6 +62,10 @@ void testFCSoftMax(bool verbose = false) {
   // Construct the network:
   Network N;
   N.getTrainingConfig().momentum = 0.0;
+  N.getTrainingConfig().learningRate = 0.1;
+  N.getTrainingConfig().batchSize = 10;
+  N.getTrainingConfig().inputSize = 100;
+
   auto *A = N.createArrayNode({2});
   auto *FCL0 = N.createFullyConnectedNode(A, 6);
   auto *RL0 = N.createRELUNode(FCL0);
@@ -35,35 +73,26 @@ void testFCSoftMax(bool verbose = false) {
   auto *RL1 = N.createRELUNode(FCL1);
   auto *SM = N.createSoftMaxNode(RL1);
 
-  // Generate some random numbers in the range -1 .. 1.
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_real_distribution<> dis(-1, 1);
 
-  if (verbose) {
-    std::cout << "Train the network.\n";
-  }
+  Tensor<float> coordinates({100, 2});
+  Tensor<size_t> labels(ArrayRef<size_t>({100}));
+  generateCircleData(coordinates, labels);
 
   // Setup a handle to access array A and SM.
   auto AWH = A->getOutput().weight_.getHandle();
   auto SMH = SM->getOutput().weight_.getHandle();
 
-  // Generate lots of samples and learn them.
-  for (int iter = 0; iter < 99000; iter++) {
-    float x = dis(gen);
-    float y = dis(gen);
+  // On each training iteration the inputs are loaded from the image db.
+  A->bind(&coordinates);
 
-    // Check if the dot falls within some inner circle.
-    float r2 = (x * x + y * y);
+  // On each  iteration the expected value is loaded from the labels vector.
+  SM->bind(&labels);
 
-    bool InCircle = r2 < 0.6;
+  std::cout << "Training.\n";
 
-    SM->setSelected(InCircle);
-    AWH.at({0}) = x;
-    AWH.at({1}) = y;
-    N.train(SM);
+  for (int iter = 0; iter < 2000; iter++) {
+    N.train(SM, 10);
   }
-
   // Print a diagram that depicts the network decision on a grid.
   if (verbose) {
 
@@ -88,39 +117,7 @@ void testFCSoftMax(bool verbose = false) {
       }
       std::cout << "\n";
     }
-  }
-
-  if (verbose) {
-    std::cout << "Verify the results of the softmax layer.\n";
-  }
-
-  // Verify the label for some 10 random points.
-  for (int iter = 0; iter < 10; iter++) {
-    float x = dis(gen);
-    float y = dis(gen);
-
-    float r2 = (x * x + y * y);
-
-    // Throw away confusing samples.
-    if (r2 > 0.5 && r2 < 0.7)
-      continue;
-
-    // Load the inputs:
-    AWH.at({0}) = x;
-    AWH.at({1}) = y;
-
-    N.infer(SM);
-
-    // Inspect the outputs:
-    if (r2 < 0.50) {
-      assert(SM->maxArg() == 1);
-    }
-    if (r2 > 0.7) {
-      assert(SM->maxArg() == 0);
-    }
-  }
-  if (verbose) {
-    std::cout << "Done.\n";
+    std::cout << "\n";
   }
 }
 
@@ -183,7 +180,7 @@ void testLearnSingleInput(bool verbose = false) {
   }
 
   Network N;
-  N.getTrainingConfig().learningRate = 0.005;
+  N.getTrainingConfig().learningRate = 0.05;
   auto *A = N.createArrayNode(10);
   auto *FCL0 = N.createFullyConnectedNode(A, 10);
   auto *RL0 = N.createRELUNode(FCL0);
