@@ -16,10 +16,10 @@ class TrainableData;
 class Network {
   /// This variable counts the number of iterations that train() was called.
   /// It is mainly used to detect batch size boundries.
-  size_t trainCounter_;
+  size_t trainCounter_{};
 
   /// The configuration used to train the network.
-  TrainingConfig trainConf_;
+  TrainingConfig trainConf_{};
 
   /// A list of buffers to train as part of the backwards prop pass.
   std::vector<TrainableData *> trainableBuffers_;
