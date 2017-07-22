@@ -17,10 +17,11 @@ using namespace noether;
 
 const size_t mnistNumImages = 50000;
 
-/// This test classifies digits from the MNIST labeled dataset.
-void testMNIST() {
-  std::cout << "Loading the mnist database.\n";
+unsigned loadMNIST(Tensor<float> &imageInputs,  Tensor<size_t> &labelInputs) {
 
+  /// Load the MNIST database into two 4d tensors for images and labels.
+  imageInputs.reset({50000, 28, 28, 1});
+  labelInputs.reset(ArrayRef<size_t>((size_t)50000u));
 
   std::ifstream imgInput("mnist_images.bin", std::ios::binary);
   std::ifstream labInput("mnist_labels.bin", std::ios::binary);
@@ -33,10 +34,6 @@ void testMNIST() {
 
   assert(labels.size() * 28 * 28 * sizeof(float) == images.size() &&
          "The size of the image buffer does not match the labels vector");
-
-  /// Load the MNIST database into two 4d tensors for images and labels.
-  Tensor<float> imageInputs({50000, 28, 28, 1});
-  Tensor<size_t> labelInputs(ArrayRef<size_t>((size_t)50000u));
 
   size_t idx = 0;
 
@@ -53,7 +50,18 @@ void testMNIST() {
   }
   size_t numImages = labels.size();
   assert(numImages && "No images were found.");
+  return numImages;
+}
 
+
+/// This test classifies digits from the MNIST labeled dataset.
+void testMNIST() {
+  std::cout << "Loading the mnist database.\n";
+
+  Tensor<float> imageInputs;
+  Tensor<size_t> labelInputs;
+
+  unsigned numImages = loadMNIST(imageInputs, labelInputs);
   std::cout << "Loaded " << numImages << " images.\n";
 
   // Construct the network:
@@ -97,6 +105,8 @@ void testMNIST() {
   }
   std::cout << "Validating.\n";
 
+  auto LIH = labelInputs.getHandle();
+  auto IIH = imageInputs.getHandle();
   // Check how many digits out of ten we can classify correctly.
   int rightAnswer = 0;
 
@@ -107,7 +117,7 @@ void testMNIST() {
     N.infer(SM);
 
     size_t guess = SM->maxArg();
-    size_t correct = labels[imageIndex];
+    size_t correct = LIH.at(imageIndex);
     rightAnswer += (guess == correct);
 
     A->getOutput().weight_.getHandle().dumpAscii("MNIST Input");
