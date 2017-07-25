@@ -18,6 +18,11 @@ void testInit() {
   H.dump("", "\n");
 
   assert(int(H.at({2})) == 51);
+
+  H = {1.1, 1.2, 1.3, 1.4};
+
+  assert(int(H.at({0})) == 1);
+  H.dump("", "\n");
 }
 
 void testTensor() {

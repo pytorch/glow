@@ -331,6 +331,15 @@ public:
     return tensor_->clone();
   }
 
+  /// Update the content of the tensor from a literal list:
+  void operator=(const std::initializer_list<ElemTy> &vec) {
+    assert(numDims == 1 && size() == vec.size() && "Invalid input dimension.");
+    size_t i = 0;
+    for (auto &e : vec) {
+      at({i++}) = e;
+    }
+  }
+
   void dumpAscii(const std::string &prefix = "",
                  const std::string &suffix = "\n") {
     auto d = tensor_->dims();
