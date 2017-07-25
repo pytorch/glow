@@ -58,6 +58,18 @@ public:
 
   size_t size() const { return length_; }
 
+  /// Drop the first element of the array.
+  ArrayRef<T> drop_front() const {
+    assert(size() >= 1 && "Array is empty");
+    return ArrayRef(data() + 1, size() - 1);
+  }
+
+  /// Drop the last element of the array.
+  ArrayRef<T> drop_back(size_t N = 1) const {
+    assert(size() >= 1 && "Array is empty");
+    return ArrayRef(data(), size() - 1);
+  }
+
   const T &operator[](size_t Index) const {
     assert(Index < length_ && "Invalid index!");
     return data_[Index];
