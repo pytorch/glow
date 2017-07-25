@@ -22,13 +22,14 @@ ConvNode::ConvNode(Network *N, TrainableNode *input, size_t outDepth,
   // RELUs like small positive bias to get gradients early in the training
   // process, otherwise the RELU units may never turn on and turn into a
   // "dead RELU".
-  auto biasWeights = bias_.weight_.getHandle();
+  auto biasWeights = bias_.weight_.getHandle<FloatTy>();
   for (size_t i = 0; i < outDepth; i++) {
     biasWeights.at({0, 0, i}) = 0.1;
   }
 
   filters_.reset({outDepth, filterSize, filterSize, idim[2]});
-  filters_.weight_.randomize(filterSize * filterSize * idim[2]);
+  size_t fanIn = filterSize * filterSize * idim[2];
+  filters_.weight_.getHandle<FloatTy>().randomize(fanIn);
 
   N->registerDerivTensor(this, &filters_);
   N->registerDerivTensor(this, &bias_);
@@ -38,10 +39,10 @@ void ConvNode::forward() {
   auto odim = this->output_.dims();
   auto idim = input_->dims();
 
-  auto inW = input_->getOutput().weight_.getHandle();
-  auto outW = this->output_.weight_.getHandle();
-  auto biasW = bias_.weight_.getHandle();
-  auto filterW = filters_.weight_.getHandle();
+  auto inW = input_->getOutput().weight_.getHandle<FloatTy>();
+  auto outW = this->output_.weight_.getHandle<FloatTy>();
+  auto biasW = bias_.weight_.getHandle<FloatTy>();
+  auto filterW = filters_.weight_.getHandle<FloatTy>();
 
   // For each layer in the output tensor:
   for (size_t d = 0; d < odim[2]; d++) {
@@ -83,12 +84,12 @@ void ConvNode::backward() {
   auto odim = this->output_.dims();
   auto idim = input_->dims();
   auto &inputBuffer = input_->getOutput();
-  auto inW = inputBuffer.weight_.getHandle();
-  auto inG = inputBuffer.gradient_.getHandle();
-  auto outG = this->output_.gradient_.getHandle();
-  auto biasG = bias_.gradient_.getHandle();
-  auto filterG = filters_.gradient_.getHandle();
-  auto filterW = filters_.weight_.getHandle();
+  auto inW = inputBuffer.weight_.getHandle<FloatTy>();
+  auto inG = inputBuffer.gradient_.getHandle<FloatTy>();
+  auto outG = this->output_.gradient_.getHandle<FloatTy>();
+  auto biasG = bias_.gradient_.getHandle<FloatTy>();
+  auto filterG = filters_.gradient_.getHandle<FloatTy>();
+  auto filterW = filters_.weight_.getHandle<FloatTy>();
 
   // Zero the gradient of the input.
   inG.clear();
@@ -147,18 +148,18 @@ MaxPoolNode::MaxPoolNode(Network *N, TrainableNode *input, size_t filterSize,
 
   // Resize the arrays that store the x and y coordinates of the incoming
   // gradient.
-  srcX_.reset({outsx, outsy, idim[2]});
-  srcY_.reset({outsx, outsy, idim[2]});
+  srcX_.reset(ElemKind::IndexTy, {outsx, outsy, idim[2]});
+  srcY_.reset(ElemKind::IndexTy, {outsx, outsy, idim[2]});
 }
 
 void MaxPoolNode::forward() {
   auto odim = this->output_.dims();
   auto idim = input_->dims();
-  auto inW = input_->getOutput().weight_.getHandle();
-  auto outW = this->output_.weight_.getHandle();
+  auto inW = input_->getOutput().weight_.getHandle<FloatTy>();
+  auto outW = this->output_.weight_.getHandle<FloatTy>();
 
-  auto SX = srcX_.getHandle();
-  auto SY = srcY_.getHandle();
+  auto SX = srcX_.getHandle<size_t>();
+  auto SY = srcY_.getHandle<size_t>();
 
   // For each layer in the output tensor:
   for (size_t z = 0; z < idim[2]; z++) {
@@ -206,11 +207,11 @@ void MaxPoolNode::forward() {
 
 void MaxPoolNode::backward() {
   auto odim = this->output_.dims();
-  auto inG = input_->getOutput().gradient_.getHandle();
-  auto outG = this->output_.gradient_.getHandle();
+  auto inG = input_->getOutput().gradient_.getHandle<FloatTy>();
+  auto outG = this->output_.gradient_.getHandle<FloatTy>();
 
-  auto SX = srcX_.getHandle();
-  auto SY = srcY_.getHandle();
+  auto SX = srcX_.getHandle<size_t>();
+  auto SY = srcY_.getHandle<size_t>();
 
   // Zero the gradient of the input.
   inG.clear();
@@ -244,13 +245,13 @@ FullyConnectedNode::FullyConnectedNode(Network *N, TrainableNode *input,
   // RELUs like small positive bias to get gradients early in the training
   // process, otherwise the RELU units may never turn on and turn into a
   // "dead RELU".
-  auto biasW = bias_.weight_.getHandle();
+  auto biasW = bias_.weight_.getHandle<FloatTy>();
   for (size_t i = 0; i < outDepth; i++) {
     biasW.at({i}) = 0.1;
   }
 
   filters_.reset({outDepth, input_->size()});
-  filters_.weight_.randomize(input_->size());
+  filters_.weight_.getHandle<FloatTy>().randomize(input_->size());
 
   N->registerDerivTensor(this, &filters_);
   N->registerDerivTensor(this, &bias_);
@@ -259,10 +260,10 @@ FullyConnectedNode::FullyConnectedNode(Network *N, TrainableNode *input,
 void FullyConnectedNode::forward() {
   auto &inputBuffer = input_->getOutput();
   auto odim = this->output_.dims();
-  auto inW = input_->getOutput().weight_.getHandle();
-  auto biasW = bias_.weight_.getHandle();
-  auto outW = this->output_.weight_.getHandle();
-  auto currFilterW = filters_.weight_.getHandle();
+  auto inW = input_->getOutput().weight_.getHandle<FloatTy>();
+  auto biasW = bias_.weight_.getHandle<FloatTy>();
+  auto outW = this->output_.weight_.getHandle<FloatTy>();
+  auto currFilterW = filters_.weight_.getHandle<FloatTy>();
 
   for (size_t i = 0; i < odim[0]; i++) {
     FloatTy sum = 0;
@@ -278,16 +279,16 @@ void FullyConnectedNode::forward() {
 void FullyConnectedNode::backward() {
   auto odim = this->output_.dims();
   auto &inputBuffer = input_->getOutput();
-  auto outG = this->output_.gradient_.getHandle();
-  auto inG = inputBuffer.gradient_.getHandle();
-  auto inW = inputBuffer.weight_.getHandle();
-  auto biasG = this->bias_.gradient_.getHandle();
+  auto outG = this->output_.gradient_.getHandle<FloatTy>();
+  auto inG = inputBuffer.gradient_.getHandle<FloatTy>();
+  auto inW = inputBuffer.weight_.getHandle<FloatTy>();
+  auto biasG = this->bias_.gradient_.getHandle<FloatTy>();
 
   // Zero the gradient of the input.
-  inputBuffer.gradient_.clear();
+  inputBuffer.gradient_.getHandle<FloatTy>().clear();
 
-  auto filterG = filters_.gradient_.getHandle();
-  auto filterW = filters_.weight_.getHandle();
+  auto filterG = filters_.gradient_.getHandle<FloatTy>();
+  auto filterW = filters_.weight_.getHandle<FloatTy>();
 
   // Compute the gradient:
   for (size_t i = 0; i < odim[0]; i++) {
@@ -312,8 +313,8 @@ RELUNode::RELUNode(Network *N, TrainableNode *input)
 
 void RELUNode::forward() {
   auto &inputBuffer = input_->getOutput();
-  auto outW = this->output_.weight_.getHandle();
-  auto inW = inputBuffer.weight_.getHandle();
+  auto outW = this->output_.weight_.getHandle<FloatTy>();
+  auto inW = inputBuffer.weight_.getHandle<FloatTy>();
 
   for (size_t i = 0, e = inW.size(); i < e; i++) {
         FloatTy val = inW.raw(i);
@@ -324,9 +325,9 @@ void RELUNode::forward() {
 void RELUNode::backward() {
   auto &inputBuffer = input_->getOutput();
 
-  auto outW = this->output_.weight_.getHandle();
-  auto outDW = this->output_.gradient_.getHandle();
-  auto inDW = inputBuffer.gradient_.getHandle();
+  auto outW = this->output_.weight_.getHandle<FloatTy>();
+  auto outDW = this->output_.gradient_.getHandle<FloatTy>();
+  auto inDW = inputBuffer.gradient_.getHandle<FloatTy>();
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
         FloatTy val = outW.raw(i);
@@ -343,8 +344,8 @@ SigmoidNode::SigmoidNode(Network *N, TrainableNode *input)
 void SigmoidNode::forward() {
   auto &inputBuffer = input_->getOutput();
 
-  auto outW = this->output_.weight_.getHandle();
-  auto inW = inputBuffer.weight_.getHandle();
+  auto outW = this->output_.weight_.getHandle<FloatTy>();
+  auto inW = inputBuffer.weight_.getHandle<FloatTy>();
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
         FloatTy val = inW.raw(i);
@@ -355,9 +356,9 @@ void SigmoidNode::forward() {
 void SigmoidNode::backward() {
   auto &inputBuffer = input_->getOutput();
 
-  auto outW = this->output_.weight_.getHandle();
-  auto outDW = this->output_.gradient_.getHandle();
-  auto inDW = inputBuffer.gradient_.getHandle();
+  auto outW = this->output_.weight_.getHandle<FloatTy>();
+  auto outDW = this->output_.gradient_.getHandle<FloatTy>();
+  auto inDW = inputBuffer.gradient_.getHandle<FloatTy>();
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
         FloatTy val = outW.raw(i);
@@ -371,13 +372,13 @@ SoftMaxNode::SoftMaxNode(Network *N, TrainableNode *input)
   auto idim = input_->dims();
   assert(idim.size() == 1 && "Softmax input must be a simple vector.");
   this->output_.reset({idim[0]});
-  e_.reset({idim[0]});
+  e_.reset(ElemKind::FloatTy, {idim[0]});
 }
 
 void SoftMaxNode::forward() {
   auto idim = input_->dims();
-  auto outW = this->output_.weight_.getHandle();
-  auto inW = input_->getOutput().weight_.getHandle();
+  auto outW = this->output_.weight_.getHandle<FloatTy>();
+  auto inW = input_->getOutput().weight_.getHandle<FloatTy>();
 
   FloatTy max = inW.at({0});
 
@@ -388,7 +389,7 @@ void SoftMaxNode::forward() {
 
   FloatTy sum = 0;
 
-  auto EH = e_.getHandle();
+  auto EH = e_.getHandle<FloatTy>();
   // Compute exp.
   for (size_t i = 0; i < idim[0]; i++) {
     FloatTy e = std::exp(inW.at({i}) - max);
@@ -405,8 +406,8 @@ void SoftMaxNode::forward() {
 
 void SoftMaxNode::backward() {
   auto idim = input_->dims();
-  auto inDW = input_->getOutput().gradient_.getHandle();
-  auto ex = e_.getHandle();
+  auto inDW = input_->getOutput().gradient_.getHandle<FloatTy>();
+  auto ex = e_.getHandle<FloatTy>();
 
   for (size_t i = 0; i < idim[0]; i++) {
     FloatTy indicator = (selected_ == i ? 1 : 0);
@@ -415,11 +416,11 @@ void SoftMaxNode::backward() {
   }
 }
 
-size_t SoftMaxNode::maxArg() const {
+size_t SoftMaxNode::maxArg() {
   auto idim = input_->dims(); (void) idim;
   assert(idim.size() && "Invalid softmax shape!");
 
-  auto &outW = this->output_.weight_;
+  auto outW = this->output_.weight_.getHandle<FloatTy>();
   FloatTy max = outW.at(0);
   size_t idx = 0;
 
@@ -446,7 +447,7 @@ RegressionNode::RegressionNode(Network *N, TrainableNode *input)
   assert(input && input_->size() && "Invalid input");
   auto idim = input_->dims();
   assert(idim.size() == 1 && "input must be a simple vector.");
-  expected_.reset({idim[0]});
+  expected_.reset(ElemKind::FloatTy, {idim[0]});
   this->output_.reset({idim[0]});
 }
 
@@ -455,8 +456,8 @@ void RegressionNode::forward() {
   auto idim = input_->dims();
   auto &inputBuffer = input_->getOutput();
 
-  auto outW = this->output_.weight_.getHandle();
-  auto inW = inputBuffer.weight_.getHandle();
+  auto outW = this->output_.weight_.getHandle<FloatTy>();
+  auto inW = inputBuffer.weight_.getHandle<FloatTy>();
 
   for (size_t i = 0; i < idim[0]; i++) {
     outW.at({i}) = inW.at({i});
@@ -467,10 +468,10 @@ void RegressionNode::backward() {
   assert(expected_.dims() == input_->dims() && "invalid expected dims");
 
   auto idim = input_->dims();
-  auto inW = input_->getOutput().weight_.getHandle();
-  auto inG = input_->getOutput().gradient_.getHandle();
+  auto inW = input_->getOutput().weight_.getHandle<FloatTy>();
+  auto inG = input_->getOutput().gradient_.getHandle<FloatTy>();
 
-  auto e = expected_.getHandle();
+  auto e = expected_.getHandle<FloatTy>();
 
   for (size_t i = 0; i < idim[0]; i++) {
     FloatTy dy = inW.at({i}) - e.at({i});
@@ -487,8 +488,8 @@ MaxNode::MaxNode(Network *N, TrainableNode *input)
 
 void MaxNode::forward() {
   auto &inputBuffer = input_->getOutput();
-  auto outW = this->output_.weight_.getHandle();
-  auto inW = inputBuffer.weight_.getHandle();
+  auto outW = this->output_.weight_.getHandle<FloatTy>();
+  auto inW = inputBuffer.weight_.getHandle<FloatTy>();
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = inW.raw(i);
@@ -497,8 +498,8 @@ void MaxNode::forward() {
 
 void MaxNode::backward() {
   auto &inputBuffer = input_->getOutput();
-  auto inW = inputBuffer.weight_.getHandle();
-  auto inG = inputBuffer.gradient_.getHandle();
+  auto inW = inputBuffer.weight_.getHandle<FloatTy>();
+  auto inG = inputBuffer.gradient_.getHandle<FloatTy>();
 
   for (size_t i = 0, e = inG.size(); i < e; i++) {
         FloatTy dy = inW.raw(i);

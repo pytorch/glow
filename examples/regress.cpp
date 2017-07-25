@@ -20,14 +20,14 @@ float delta(float a, float b) { return std::fabs(a - b); }
 
 /// Generate data in two classes. The circle of dots that's close to the axis is
 /// L0, and the rest of the dots, away from the axis are L1.
-void generateCircleData(Tensor<float> &coordinates, Tensor<size_t> &labels) {
+void generateCircleData(Tensor &coordinates, Tensor &labels) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<> r_radius(0, 0.4);
   std::uniform_real_distribution<> r_angle(0, 3.14159 * 2);
 
-  auto C = coordinates.getHandle();
-  auto L = labels.getHandle();
+  auto C = coordinates.getHandle<FloatTy>();
+  auto L = labels.getHandle<size_t>();
 
   for (size_t i = 0; i < 50; i++) {
     float r = r_radius(gen);
@@ -74,13 +74,13 @@ void testFCSoftMax(bool verbose = false) {
   auto *SM = N.createSoftMaxNode(RL1);
 
 
-  Tensor<float> coordinates({100, 2});
-  Tensor<size_t> labels(ArrayRef<size_t>({100}));
+  Tensor coordinates(ElemKind::FloatTy, {100, 2});
+  Tensor labels(ElemKind::IndexTy, ArrayRef<size_t>({100}));
   generateCircleData(coordinates, labels);
 
   // Setup a handle to access array A and SM.
-  auto AWH = A->getOutput().weight_.getHandle();
-  auto SMH = SM->getOutput().weight_.getHandle();
+  auto AWH = A->getOutput().weight_.getHandle<FloatTy>();
+  auto SMH = SM->getOutput().weight_.getHandle<FloatTy>();
 
   // On each training iteration the inputs are loaded from the image db.
   A->bind(&coordinates);
@@ -122,9 +122,9 @@ void testFCSoftMax(bool verbose = false) {
 }
 
 /// A helper function to load a one-hot vector.
-void setOneHot(Tensor<FloatTy> &A, float background, float foreground,
+void setOneHot(Tensor &A, float background, float foreground,
                size_t idx) {
-  auto H = A.getHandle();
+  auto H = A.getHandle<FloatTy>();
   for (unsigned j = 0; j < A.size(); j++) {
     H.at({j}) = (j == idx ? foreground : background);
   }
@@ -157,8 +157,8 @@ void testRegression(bool verbose = false) {
     std::cout << "Verify the result of the regression layer.\n";
   }
 
-  auto AWH = A->getOutput().weight_.getHandle(); (void) AWH;
-  auto RNWH = RN->getOutput().weight_.getHandle(); (void) RNWH;
+  auto AWH = A->getOutput().weight_.getHandle<FloatTy>(); (void) AWH;
+  auto RNWH = RN->getOutput().weight_.getHandle<FloatTy>(); (void) RNWH;
 
   // Test the output:
   for (int iter = 0; iter < 5; iter++) {
@@ -204,7 +204,7 @@ void testLearnSingleInput(bool verbose = false) {
 
   N.infer(RN);
 
-  auto RNWH = RN->getOutput().weight_.getHandle(); (void) RNWH;
+  auto RNWH = RN->getOutput().weight_.getHandle<FloatTy>(); (void) RNWH;
 
   // Test the output:
   assert(RNWH.at({1}) > 8.5);

@@ -17,40 +17,47 @@ void TrainableData::train(const TrainingConfig &config) {
   /// If we are using the momentum technique then we need to allocate an array
   /// for the gradient sum.
   if (momentum > 0.0 && gsum_.size() == 0) {
-    gsum_.reset(weight_.dims());
+    gsum_.reset(ElemKind::FloatTy, weight_.dims());
   }
 
   auto sz = weight_.size();
+  auto W = weight_.getHandle<FloatTy>();
+  auto G = gradient_.getHandle<FloatTy>();
+  auto Gsum = gsum_.getHandle<FloatTy>();
 
   // For each weight/gradient pair:
   for (size_t x = 0; x < sz; x++) {
     // Do a simple SGD update:
-    FloatTy L1Grad = L1Decay * (weight_.at(x) > 0 ? 1 : -1);
-    FloatTy L2Grad = L2Decay * (weight_.at(x));
-    FloatTy gij = (L2Grad + L1Grad + gradient_.at(x)) / batchSize;
+    FloatTy L1Grad = L1Decay * (W.raw(x) > 0 ? 1 : -1);
+    FloatTy L2Grad = L2Decay * (W.raw(x));
+    FloatTy gij = (L2Grad + L1Grad + G.raw(x)) / batchSize;
 
     // Use the momentum to improve the gradient descent:
     // http://ufldl.stanford.edu/tutorial/supervised/OptimizationStochasticGradientDescent/
     if (momentum > 0.0) {
       // Momentum update:
-      FloatTy dx = momentum * gsum_.at(x) - learningRate * gij;
+      FloatTy dx = momentum * Gsum.raw(x) - learningRate * gij;
       // Save this value for the next iteration:
-      gsum_.at(x) = dx;
+      Gsum.raw(x) = dx;
       // Apply the gradient.
-      weight_.at(x) += dx;
+      W.raw(x) += dx;
     } else {
       // Use regular SGD:
-      weight_.at(x) -= learningRate * gij;
+      W.raw(x) -= learningRate * gij;
     }
   }
 }
 
 void TrainableData::dump() {
-  weight_.dump("W");
-  if (gradient_.size())
-    gradient_.dump("G", "\n");
-  if (gsum_.size())
-    gsum_.dump("Gsum", "\n");
+  auto W = weight_.getHandle<FloatTy>();
+  auto G = gradient_.getHandle<FloatTy>();
+  auto Gsum = gsum_.getHandle<FloatTy>();
+
+  W.dump("W");
+  if (G.size())
+    G.dump("G", "\n");
+  if (Gsum.size())
+    Gsum.dump("Gsum", "\n");
 }
 
 void TrainableData::verify() {

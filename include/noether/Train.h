@@ -25,12 +25,12 @@ struct TrainingConfig {
 class TrainableData {
 public:
   /// W - the weight.
-  Tensor<FloatTy> weight_{};
+  Tensor weight_{};
   /// dW - the derivative of the weight.
-  Tensor<FloatTy> gradient_{};
+  Tensor gradient_{};
   /// gradient sum - this buffer is used by the SGD algorithm to store the
   /// previous gradient. The array
-  Tensor<FloatTy> gsum_{};
+  Tensor gsum_{};
   /// If this flag is set to false then the data is not modified during training
   /// We use this for preventing the trainer from changing the weights of the
   /// input buffers.
@@ -53,15 +53,15 @@ public:
 
   /// Resets the weights and gradients.
   void reset(ArrayRef<size_t> dims) {
-    weight_.reset(dims);
-    gradient_.reset(dims);
+    weight_.reset(ElemKind::FloatTy, dims);
+    gradient_.reset(ElemKind::FloatTy, dims);
   }
 
   /// Print the textual representation of the buffer.
   void dump();
 
   /// Zero out the gradient and prepare for the next round of learning.
-  void clearGradient() { gradient_.clear(); }
+  void clearGradient() { gradient_.zero(); }
 
   /// Perform a single iteration of the simple SGD algorithm for updating the
   /// weights of the program based on the gradients.

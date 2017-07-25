@@ -10,29 +10,34 @@ using namespace noether;
 
 void testTensor() {
   std::cout<<"Testing some tensor operations.\n";
-  Tensor<float> T;
-  T.reset({320, 200, 64});
+  Tensor T(ElemKind::FloatTy, {320, 200, 64});
 
-  auto Handle = T.getHandle();
+  auto Handle = T.getHandle<FloatTy>();
 
   for (unsigned i = 0; i < 10; i++) {
     for (unsigned x = 0; x < 320; x++) {
       for (unsigned y = 0; y < 200; y++) {
         for (unsigned z = 0; z < 64; z++) {
-          Handle.at({x,y,z}) = x * y * z;
+          Handle.at({x,y,z}) = x + y + z;
         }
       }
     }
   }
 
-  auto TT = Handle.extractSlice(0);
-  auto H2 = TT.getHandle();
+  assert(Handle.at({10, 10, 10}) == 10 + 10 + 10);
+
+  auto TT = Handle.extractSlice(1);
+  auto H2 = TT.getHandle<FloatTy>();
+
+  assert(H2.at({10, 10}) == 1 + 10 + 10);
 
   for (unsigned y = 0; y < 200; y++) {
     for (unsigned z = 0; z < 64; z++) {
       H2.at({y,z}) = 2;
     }
   }
+
+  assert(H2.at({10, 10}) == 2);
 
   std::cout<<"Done.\n";
 }

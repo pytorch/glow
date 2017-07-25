@@ -40,12 +40,12 @@ void testCIFAR10() {
   std::cout << "Loading the CIFAR-10 database.\n";
 
   /// Load the CIFAR database into a 4d tensor.
-  Tensor<float> images({cifarNumImages, 32, 32, 3});
-  Tensor<size_t> labels(ArrayRef<size_t>((size_t)cifarNumImages));
+  Tensor images(ElemKind::FloatTy, {cifarNumImages, 32, 32, 3});
+  Tensor labels(ElemKind::IndexTy, ArrayRef<size_t>((size_t)cifarNumImages));
   size_t idx = 0;
 
-  auto labelsH = labels.getHandle();
-  auto imagesH = images.getHandle();
+  auto labelsH = labels.getHandle<size_t>();
+  auto imagesH = images.getHandle<FloatTy>();
   for (unsigned w = 0; w < cifarNumImages; w++) {
     labelsH.at({w}) = static_cast<uint8_t>(dbInput.get());
     idx++;

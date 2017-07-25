@@ -44,7 +44,7 @@ class MaxPoolNode final : public TrainableNode {
   TrainableNode *input_;
   /// The source coordinate for each element in the result pool. This is used
   /// to accelerate the gradient backward pass.
-  Tensor<size_t> srcX_, srcY_;
+  Tensor srcX_, srcY_;
 
   size_t filterSize_;
   size_t stride_;
@@ -130,7 +130,7 @@ class SoftMaxNode final : public TrainableNode {
   size_t selected_;
 
   /// A temporary array for storing the subexpression (e ^ (a[i] - max)).
-  Tensor<FloatTy> e_;
+  Tensor e_{};
 
   /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
   /// And \p selected that's the selected one-hot representation of the
@@ -139,17 +139,17 @@ class SoftMaxNode final : public TrainableNode {
 
   /// If set, the training procedure will update the content of the array node
   /// from this input source.
-  Tensor<size_t> *boundInputSource_{nullptr};
+  Tensor *boundInputSource_{nullptr};
 
   friend Network;
 
 public:
-  void bind(Tensor<size_t> *input) { boundInputSource_ = input; }
+  void bind(Tensor *input) { boundInputSource_ = input; }
 
   virtual void updateBoundInputs(size_t sampleIdx) override {
     if (!boundInputSource_)
       return;
-    selected_ = boundInputSource_->getHandle().at({sampleIdx});
+    selected_ = boundInputSource_->getHandle<size_t>().at({sampleIdx});
 
     assert(selected_ < dims()[0] && "Invalid selected value");
   }
@@ -159,7 +159,7 @@ public:
   virtual void backward() override;
 
   /// \returns the index of the highest value.
-  size_t maxArg() const;
+  size_t maxArg();
 
   /// Marks the channel that the SoftMax needs to optimize for.
   void setSelected(size_t selected);
@@ -173,11 +173,11 @@ class RegressionNode final : public TrainableNode {
   /// A reference to the node input.
   TrainableNode *input_;
   /// The expected input (also known as Y).
-  Tensor<FloatTy> expected_;
+  Tensor expected_{};
 
   /// If set, the training procedure will update the content of the array node
   /// from this input source.
-  Tensor<FloatTy> *boundInputSource_{nullptr};
+  Tensor *boundInputSource_{nullptr};
 
   /// Ctor - \p is the input layer that must be a simple vector.
   /// And \p expected (aka Y) is the expected input for the layer, that must
@@ -187,7 +187,7 @@ class RegressionNode final : public TrainableNode {
   friend Network;
 
 public:
-  void bind(Tensor<FloatTy> *input) {
+  void bind(Tensor *input) {
     auto idim = input->dims();
     auto dim = dims();
     (void)dim;
@@ -201,11 +201,11 @@ public:
       return;
 
     assert(boundInputSource_->isInBounds({(unsigned)sampleIdx, 0, 0, 0}));
-    expected_ = boundInputSource_->getHandle().extractSlice(sampleIdx);
+    expected_ = boundInputSource_->getHandle<FloatTy>().extractSlice(sampleIdx);
   }
 
   /// \returns a reference to the expected result vector.
-  Tensor<FloatTy> &getExpected() { return expected_; }
+  Tensor &getExpected() { return expected_; }
 
   virtual void forward() override;
 
@@ -246,12 +246,12 @@ class ArrayNode final : public TrainableNode {
 
   /// If set, the training procedure will update the content of the array node
   /// from this input source.
-  Tensor<FloatTy> *boundInputSource_{nullptr};
+  Tensor *boundInputSource_{nullptr};
 
   friend Network;
 
 public:
-  void bind(Tensor<FloatTy> *input) {
+  void bind(Tensor *input) {
     auto inDim = input->dims();
     auto dim = dims();
     (void)inDim;
@@ -270,7 +270,7 @@ public:
     if (!boundInputSource_)
       return;
 
-    this->getOutput().weight_ = boundInputSource_->getHandle().extractSlice(sampleIdx);
+    this->getOutput().weight_ = boundInputSource_->getHandle<FloatTy>().extractSlice(sampleIdx);
   }
 
   virtual void visit(NodeVisitor *visitor) override;

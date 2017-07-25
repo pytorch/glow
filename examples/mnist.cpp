@@ -17,11 +17,11 @@ using namespace noether;
 
 const size_t mnistNumImages = 50000;
 
-unsigned loadMNIST(Tensor<float> &imageInputs,  Tensor<size_t> &labelInputs) {
+unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
 
   /// Load the MNIST database into two 4d tensors for images and labels.
-  imageInputs.reset({50000, 28, 28, 1});
-  labelInputs.reset(ArrayRef<size_t>((size_t)50000u));
+  imageInputs.reset(ElemKind::FloatTy, {50000, 28, 28, 1});
+  labelInputs.reset(ElemKind::IndexTy, ArrayRef<size_t>((size_t)50000u));
 
   std::ifstream imgInput("mnist_images.bin", std::ios::binary);
   std::ifstream labInput("mnist_labels.bin", std::ios::binary);
@@ -37,8 +37,8 @@ unsigned loadMNIST(Tensor<float> &imageInputs,  Tensor<size_t> &labelInputs) {
 
   size_t idx = 0;
 
-  auto LIH = labelInputs.getHandle();
-  auto IIH = imageInputs.getHandle();
+  auto LIH = labelInputs.getHandle<size_t>();
+  auto IIH = imageInputs.getHandle<FloatTy>();
 
   for (unsigned w = 0; w < mnistNumImages; w++) {
     LIH.at({w}) = labels[w];
@@ -58,8 +58,8 @@ unsigned loadMNIST(Tensor<float> &imageInputs,  Tensor<size_t> &labelInputs) {
 void testMNIST() {
   std::cout << "Loading the mnist database.\n";
 
-  Tensor<float> imageInputs;
-  Tensor<size_t> labelInputs;
+  Tensor imageInputs;
+  Tensor labelInputs;
 
   unsigned numImages = loadMNIST(imageInputs, labelInputs);
   std::cout << "Loaded " << numImages << " images.\n";
@@ -105,8 +105,8 @@ void testMNIST() {
   }
   std::cout << "Validating.\n";
 
-  auto LIH = labelInputs.getHandle();
-  auto IIH = imageInputs.getHandle();
+  auto LIH = labelInputs.getHandle<size_t>();
+  auto IIH = imageInputs.getHandle<FloatTy>();
   // Check how many digits out of ten we can classify correctly.
   int rightAnswer = 0;
 
@@ -120,9 +120,9 @@ void testMNIST() {
     size_t correct = LIH.at(imageIndex);
     rightAnswer += (guess == correct);
 
-    A->getOutput().weight_.getHandle().dumpAscii("MNIST Input");
+    A->getOutput().weight_.getHandle<FloatTy>().dumpAscii("MNIST Input");
     std::cout << "Expected: " << correct << " Guessed: " << guess << "\n";
-    SM->getOutput().weight_.dump("", "\n");
+    SM->getOutput().weight_.getHandle<FloatTy>().dump("", "\n");
     std::cout << "\n-------------\n";
   }
 

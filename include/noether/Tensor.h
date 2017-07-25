@@ -53,20 +53,63 @@ static char valueToChar(ElemTy val) {
   return ch;
 }
 
+enum class ElemKind: unsigned char {
+  FloatTy,
+  DoubleTy,
+  Int8Ty,
+  Int32Ty,
+  IndexTy,
+};
+
 template <class ElemTy>
 class Handle;
 
 /// A class that represents a contiguous n-dimensional array (a tensor).
-template <class ElemTy>
 class Tensor final {
-  /// Contains the dimentions (sizes) of the tensor. Ex: [sz, sy, sz, ...].
+  /// A pointer to the tensor data.
+  char *data_{nullptr};
+
+  /// Contains the dimentions (sizes) of the tensor. Ex: [sx, sy, sz, ...].
   size_t sizes_[max_tensor_dimensions] = {0,};
+
+  /// Contains the number of dimensions used by the tensor.
   unsigned char numSizes_{0};
 
-  /// A pointer to the tensor data.
-  ElemTy *data_{nullptr};
+  /// Specifies the element type of the tensor.
+  ElemKind elementType_;
+
+template <class ElemTy>
+friend class Handle;
 
 public:
+  /// \returns true if the templated parameter \p ElemTy matches the type that's
+  /// specified by the parameter \p Ty.
+  template <class ElemTy>
+  static bool isType(ElemKind Ty) {
+    switch (Ty) {
+      case ElemKind::FloatTy: return std::is_same<ElemTy, float>::value;
+      case ElemKind::DoubleTy: return std::is_same<ElemTy, double>::value;
+      case ElemKind::Int8Ty: return std::is_same<ElemTy, int8_t>::value;
+      case ElemKind::Int32Ty: return std::is_same<ElemTy, int32_t>::value;
+      case ElemKind::IndexTy: return std::is_same<ElemTy, size_t>::value;
+    }
+  }
+
+  /// \return the size of the element \p Ty.
+  static unsigned getElementSize(ElemKind Ty) {
+    switch (Ty) {
+      case ElemKind::FloatTy: return sizeof(float);
+      case ElemKind::DoubleTy: return sizeof(double);
+      case ElemKind::Int8Ty: return sizeof(int8_t);
+      case ElemKind::Int32Ty: return sizeof(int32_t);
+      case ElemKind::IndexTy: return sizeof(size_t);
+
+    }
+  }
+
+  /// \return the element type of the tensor.
+  ElemKind getElementType() { return elementType_; }
+
   /// \returns True if the coordinate is within the array.
   bool isInBounds(ArrayRef<size_t> indices) const {
     assert(numSizes_ == indices.size() && "Invalid number of indices");
@@ -76,25 +119,9 @@ public:
     return true;
   }
 
-  void clear(ElemTy value = 0) {
-    std::fill(&data_[0], &data_[0] + size(), value);
-  }
-
-  /// Fill the array with random data that's close to zero using the
-  /// Xavier method, based on the paper [Bengio and Glorot 2010].
-  /// The parameter \p filterSize is the number of elements in the
-  /// tensor (or the relevant slice).
-  void randomize(size_t filterSize) {
-    // This is a global variable, a singleton, that's used as an index into
-    // the array with random numbers.
-    static int offset = 0;
-
-    double scale = std::sqrt(3.0/double(filterSize));
-    for (size_t i = 0, e = size(); i < e; ++i) {
-      data_[i] = (randomVals[(offset++) % numRandomVals]) * scale;
-    }
-
-    offset++;
+  /// Set the content of the tensor to zero.
+  void zero() {
+    std::fill(&data_[0], &data_[0] + size() * getElementSize(elementType_), 0);
   }
 
   /// \returns the dimension of the tensor.
@@ -116,36 +143,28 @@ public:
   }
 
   /// Initialize an empty tensor.
-  Tensor() = default;
+  Tensor() {}
 
-  /// Initialize a new tensor.
-  Tensor(ArrayRef<size_t> dims) : data_(nullptr) {
-    reset(dims);
+  /// Allocate and initialize a new tensor.
+  Tensor(ElemKind elemTy, ArrayRef<size_t> dims) : data_(nullptr),
+  elementType_(elemTy) {
+    reset(elemTy, dims);
   }
 
   Tensor(const Tensor &other) = delete;
   Tensor &operator=(const Tensor &other) = delete;
 
   /// Assigns a new shape to the tensor and allocates a new buffer.
-  void reset(ArrayRef<size_t> dims) {
+  void reset(ElemKind elemTy, ArrayRef<size_t> dims) {
     delete[] data_;
+    elementType_ = elemTy;
 
     assert(dims.size() < max_tensor_dimensions && "Too many indices");
     for (int i = 0, e = dims.size(); i < e; i++) { sizes_[i] = dims[i]; }
     numSizes_ = dims.size();
 
-    data_ = new ElemTy[size()];
-    clear();
-  }
-
-  ElemTy &at(size_t index) {
-    assert(index < size() && "Out of bounds");
-    return data_[index];
-  }
-
-  const ElemTy &at(size_t index) const {
-    assert(index < size() && "Out of bounds");
-    return data_[index];
+    data_ = new char[size() * getElementSize(elementType_)];
+    zero();
   }
 
   ~Tensor() { delete[] data_; }
@@ -157,6 +176,7 @@ public:
       std::swap(sizes_[i], other.sizes_[i]);
     }
     std::swap(numSizes_, other.numSizes_);
+    std::swap(elementType_, other.elementType_);
   }
 
   /// Move assignment operator.
@@ -166,22 +186,12 @@ public:
       std::swap(sizes_[i], other.sizes_[i]);
     }
     std::swap(numSizes_, other.numSizes_);
+    std::swap(elementType_, other.elementType_);
     return *this;
   }
 
-  void dump(const std::string &title = "", const std::string &suffix = "") {
-    ElemTy mx = *std::max_element(&data_[0], &data_[size()]);
-    ElemTy mn = *std::min_element(&data_[0], &data_[size()]);
-
-    std::cout << title << " max=" << mx << " min=" << mn << "[";
-
-    for (size_t i = 0, e = std::min<size_t>(400, size()); i < e; i++) {
-      std::cout << at(i) << " ";
-    }
-    std::cout << "]" << suffix;
-  }
-
   /// \return a new handle that points and manages this tensor.
+  template <class ElemTy>
   Handle<ElemTy> getHandle();
 };
 
@@ -192,11 +202,14 @@ public:
 /// can optimize (because stack allocated structures don't alias).
 template <class ElemTy>
 class Handle final {
-  Tensor<ElemTy> *tensor_{nullptr};
+  /// A pointer to the tensor that this handle wraps.
+  Tensor *tensor_{nullptr};
 
   /// Contains the multiplication of the sizes from current position to end.
   /// For example, for index (w,z,y,z):  [x * y * z, y * z, z, 1]
   size_t sizeIntegral[max_tensor_dimensions] = {0,};
+
+  /// Saves the number of dimensions used in the tensor.
   uint8_t numDims{0};
 
 public:
@@ -212,12 +225,10 @@ public:
     return index;
   }
 
-  /// Construct a Tensor handle. \p rsizes is a list of reverse sizes
-  /// Example: (sz, sy, sx, sw, ... )
-  Handle(Tensor<ElemTy> *tensor) : tensor_(tensor) {
+  /// Construct a Tensor handle.
+  Handle(Tensor *tensor) : tensor_(tensor) {
     auto sizes = tensor->dims();
     numDims = sizes.size();
-    assert(sizes.size() && "Size list must not be empty");
 
     size_t pi = 1;
     for (int i = numDims - 1; i >= 0; i--) {
@@ -236,46 +247,55 @@ public:
   }
 
   void clear(ElemTy value = 0) {
-    tensor_->clear(value);
+    ElemTy *data = reinterpret_cast<ElemTy*>(tensor_->data_);
+    std::fill(&data[0], &data[0] + size(), value);
   }
 
   ElemTy &at(ArrayRef<size_t> indices) {
     assert(tensor_->isInBounds(indices));
-    return tensor_->at(getElementPtr(indices));
+    size_t index = getElementPtr(indices);
+    assert(index < size() && "Out of bounds");
+    ElemTy *data = reinterpret_cast<ElemTy*>(tensor_->data_);
+    return data[index];
   }
 
   const ElemTy &at(ArrayRef<size_t> indices) const {
     assert(tensor_->isInBounds(indices));
-    assert(indices.size() == numDims && "Wrong number of indices");
-    return tensor_->at(getElementPtr(indices));
+    size_t index = getElementPtr(indices);
+    assert(index < size() && "Out of bounds");
+    ElemTy *data = reinterpret_cast<ElemTy*>(tensor_->data_);
+    return data[index];
   }
 
   /// \returns the element at offset \p idx without any size calculations.
-  ElemTy &raw(size_t idx) { return tensor_->at(idx); }
+  ElemTy &raw(size_t index) {
+    assert(index < size() && "Out of bounds");
+    ElemTy *data = reinterpret_cast<ElemTy*>(tensor_->data_);
+    return data[index];
+  }
 
   /// \returns the element at offset \p idx without any size calculations.
-  const ElemTy &raw(size_t idx) const { return tensor_->at(idx); }
+  const ElemTy &raw(size_t index) const {
+    assert(index < size() && "Out of bounds");
+    ElemTy *data = reinterpret_cast<ElemTy*>(tensor_->data_);
+    return data[index];
+  }
 
   /// Extract a smaller dimension tensor from a specific slice (that has to be
   /// the first dimention).
-  Tensor<ElemTy> extractSlice(size_t idx) {
+  Tensor extractSlice(size_t idx) {
     auto sizes = tensor_->dims();
     assert(sizes.size() > 1 && "Tensor has only one dimension");
-    Tensor<ElemTy> slice(ArrayRef<size_t>(&sizes[1], sizes.size() - 1));
+    auto elemTy = tensor_->getElementType();
+    Tensor slice(elemTy, ArrayRef<size_t>(&sizes[1], sizes.size() - 1));
 
     // Extract the whole slice.
-    auto *base = &tensor_->at(sizeIntegral[0] * idx);
-    std::copy(base, base + sizeIntegral[0], &slice.at(0));
+    size_t startIdx = sizeIntegral[0] * idx;
+    ElemTy *base = reinterpret_cast<ElemTy*>(tensor_->data_) + startIdx;
+    ElemTy *dest = reinterpret_cast<ElemTy*>(slice.data_);
+    std::copy(base, base + sizeIntegral[0], dest);
 
     return slice;
-  }
-
-  void randomize(size_t filterSize) {
-    tensor_->randomize(filterSize);
-  }
-
-  void dump(const std::string &title = "", const std::string &suffix = "") {
-    tensor_->dump(title, suffix);
   }
 
   void dumpAscii(const std::string &prefix = "",
@@ -309,10 +329,41 @@ public:
     std::cout << suffix;
   }
 
+  void dump(const std::string &title = "", const std::string &suffix = "") {
+    ElemTy *data = reinterpret_cast<ElemTy*>(tensor_->data_);
+    ElemTy mx = *std::max_element(&data[0], &data[size()]);
+    ElemTy mn = *std::min_element(&data[0], &data[size()]);
+
+    std::cout << title << "max=" << mx << " min=" << mn << " [";
+
+    for (size_t i = 0, e = std::min<size_t>(400, size()); i < e; i++) {
+      std::cout << at(i) << " ";
+    }
+    std::cout << "]" << suffix;
+  }
+
+  /// Fill the array with random data that's close to zero using the
+  /// Xavier method, based on the paper [Bengio and Glorot 2010].
+  /// The parameter \p filterSize is the number of elements in the
+  /// tensor (or the relevant slice).
+  void randomize(size_t filterSize) {
+    // This is a global variable, a singleton, that's used as an index into
+    // the array with random numbers.
+    static int offset = 0;
+
+    double scale = std::sqrt(3.0/double(filterSize));
+    for (size_t i = 0, e = size(); i < e; ++i) {
+      raw(i) = (randomVals[(offset++) % numRandomVals]) * scale;
+    }
+
+    offset++;
+  }
+
 };
 
 template <class ElemTy>
-Handle<ElemTy> Tensor<ElemTy>::getHandle() {
+Handle<ElemTy> Tensor::getHandle() {
+  assert(isType<ElemTy>(elementType_) && "Getting a handle to the wrong type.");
   return Handle<ElemTy>(this);
 }
 
