@@ -190,6 +190,16 @@ public:
     return *this;
   }
 
+  /// Create a new copy of the current tensor.
+  Tensor clone() {
+    Tensor slice(getElementType(), dims());
+
+    // Extract the whole slice.
+    size_t bufferSize = size() * getElementSize(elementType_);
+    std::copy(&data_[0], &data_[bufferSize], slice.data_);
+    return slice;
+  }
+
   /// \return a new handle that points and manages this tensor.
   template <class ElemTy>
   Handle<ElemTy> getHandle();
@@ -286,8 +296,9 @@ public:
   Tensor extractSlice(size_t idx) {
     auto sizes = tensor_->dims();
     assert(sizes.size() > 1 && "Tensor has only one dimension");
+    assert(idx < sizes[0] && "Invalid first index");
     auto elemTy = tensor_->getElementType();
-    Tensor slice(elemTy, ArrayRef<size_t>(&sizes[1], sizes.size() - 1));
+    Tensor slice(elemTy, sizes.drop_front());
 
     // Extract the whole slice.
     size_t startIdx = sizeIntegral[0] * idx;
@@ -296,6 +307,11 @@ public:
     std::copy(base, base + sizeIntegral[0], dest);
 
     return slice;
+  }
+
+  /// Create a new copy of the current tensor.
+  Tensor clone() {
+    return tensor_->clone();
   }
 
   void dumpAscii(const std::string &prefix = "",
