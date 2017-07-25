@@ -362,7 +362,7 @@ public:
     std::cout << suffix;
   }
 
-  void dump(const std::string &title = "", const std::string &suffix = "") {
+  void dump(const char *title = "", const char *suffix = "") {
     ElemTy *data = tensor_->getRawDataPointer<ElemTy>();
     ElemTy mx = *std::max_element(&data[0], &data[size()]);
     ElemTy mn = *std::min_element(&data[0], &data[size()]);

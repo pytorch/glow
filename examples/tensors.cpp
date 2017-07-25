@@ -15,6 +15,8 @@ void testInit() {
 
   auto H = T.getHandle<FloatTy>();
 
+  H.dump("", "\n");
+
   assert(int(H.at({2})) == 51);
 }
 
