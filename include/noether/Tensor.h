@@ -142,8 +142,25 @@ public:
     return s;
   }
 
+  /// \returns a pointer to the raw data, of type \p ElemTy.
+  template <class ElemTy>
+  ElemTy *getRawDataPointer() {
+    assert(isType<ElemTy>(elementType_) && "Asking for the wrong ptr type.");
+    return reinterpret_cast<ElemTy*>(data_);
+  }
+
   /// Initialize an empty tensor.
   Tensor() {}
+
+  /// Initialize from a list of float literals.
+  Tensor(const std::initializer_list<double> &vec) {
+    reset(ElemKind::FloatTy, {vec.size()});
+    FloatTy *data = getRawDataPointer<FloatTy>();
+    int i = 0;
+    for (auto &f : vec) {
+      data[i++] = f;
+    }
+  }
 
   /// Allocate and initialize a new tensor.
   Tensor(ElemKind elemTy, ArrayRef<size_t> dims) : data_(nullptr),
@@ -257,7 +274,7 @@ public:
   }
 
   void clear(ElemTy value = 0) {
-    ElemTy *data = reinterpret_cast<ElemTy*>(tensor_->data_);
+    ElemTy *data = tensor_->getRawDataPointer<ElemTy>();
     std::fill(&data[0], &data[0] + size(), value);
   }
 
@@ -265,7 +282,7 @@ public:
     assert(tensor_->isInBounds(indices));
     size_t index = getElementPtr(indices);
     assert(index < size() && "Out of bounds");
-    ElemTy *data = reinterpret_cast<ElemTy*>(tensor_->data_);
+    ElemTy *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
 
@@ -273,21 +290,21 @@ public:
     assert(tensor_->isInBounds(indices));
     size_t index = getElementPtr(indices);
     assert(index < size() && "Out of bounds");
-    ElemTy *data = reinterpret_cast<ElemTy*>(tensor_->data_);
+    ElemTy *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
 
   /// \returns the element at offset \p idx without any size calculations.
   ElemTy &raw(size_t index) {
     assert(index < size() && "Out of bounds");
-    ElemTy *data = reinterpret_cast<ElemTy*>(tensor_->data_);
+    ElemTy *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
 
   /// \returns the element at offset \p idx without any size calculations.
   const ElemTy &raw(size_t index) const {
     assert(index < size() && "Out of bounds");
-    ElemTy *data = reinterpret_cast<ElemTy*>(tensor_->data_);
+    ElemTy *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
 
@@ -302,8 +319,8 @@ public:
 
     // Extract the whole slice.
     size_t startIdx = sizeIntegral[0] * idx;
-    ElemTy *base = reinterpret_cast<ElemTy*>(tensor_->data_) + startIdx;
-    ElemTy *dest = reinterpret_cast<ElemTy*>(slice.data_);
+    ElemTy *base = tensor_->getRawDataPointer<ElemTy>() + startIdx;
+    ElemTy *dest = slice.getRawDataPointer<ElemTy>();
     std::copy(base, base + sizeIntegral[0], dest);
 
     return slice;
@@ -346,7 +363,7 @@ public:
   }
 
   void dump(const std::string &title = "", const std::string &suffix = "") {
-    ElemTy *data = reinterpret_cast<ElemTy*>(tensor_->data_);
+    ElemTy *data = tensor_->getRawDataPointer<ElemTy>();
     ElemTy mx = *std::max_element(&data[0], &data[size()]);
     ElemTy mn = *std::min_element(&data[0], &data[size()]);
 

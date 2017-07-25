@@ -8,6 +8,16 @@
 
 using namespace noether;
 
+void testInit() {
+  std::cout<<"Testing initialization.\n";
+
+  Tensor T = {1.2, 12.1, 51.0, 1515.2};
+
+  auto H = T.getHandle<FloatTy>();
+
+  assert(int(H.at({2})) == 51);
+}
+
 void testTensor() {
   std::cout<<"Testing some tensor operations.\n";
   Tensor T(ElemKind::FloatTy, {320, 200, 64});
@@ -42,7 +52,10 @@ void testTensor() {
   std::cout<<"Done.\n";
 }
 
+
 int main() {
+  testInit();
+
   testTensor();
 
   return 0;
