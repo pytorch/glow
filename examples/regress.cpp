@@ -75,7 +75,7 @@ void testFCSoftMax(bool verbose = false) {
 
 
   Tensor coordinates(ElemKind::FloatTy, {100, 2});
-  Tensor labels(ElemKind::IndexTy, ArrayRef<size_t>({100}));
+  Tensor labels(ElemKind::IndexTy, {100});
   generateCircleData(coordinates, labels);
 
   // Setup a handle to access array A and SM.

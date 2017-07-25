@@ -41,7 +41,7 @@ void testCIFAR10() {
 
   /// Load the CIFAR database into a 4d tensor.
   Tensor images(ElemKind::FloatTy, {cifarNumImages, 32, 32, 3});
-  Tensor labels(ElemKind::IndexTy, ArrayRef<size_t>((size_t)cifarNumImages));
+  Tensor labels(ElemKind::IndexTy, {cifarNumImages});
   size_t idx = 0;
 
   auto labelsH = labels.getHandle<size_t>();

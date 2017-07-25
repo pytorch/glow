@@ -21,7 +21,7 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
 
   /// Load the MNIST database into two 4d tensors for images and labels.
   imageInputs.reset(ElemKind::FloatTy, {50000, 28, 28, 1});
-  labelInputs.reset(ElemKind::IndexTy, ArrayRef<size_t>((size_t)50000u));
+  labelInputs.reset(ElemKind::IndexTy, {50000u});
 
   std::ifstream imgInput("mnist_images.bin", std::ios::binary);
   std::ifstream labInput("mnist_labels.bin", std::ios::binary);
