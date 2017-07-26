@@ -1,8 +1,8 @@
 #include "noether/Image.h"
 #include "noether/Network.h"
 #include "noether/Nodes.h"
-#include "noether/Tensor.h"
 #include "noether/Support.h"
+#include "noether/Tensor.h"
 
 #include <cassert>
 #include <cstddef>
@@ -110,9 +110,9 @@ void testCIFAR10() {
       // Read the expected label.
       auto expectedLabel = labelsH.at({imageIndex});
       unsigned result = SM->maxArg();
-      score += textualLabels[expectedLabel] ==  textualLabels[result];
+      score += textualLabels[expectedLabel] == textualLabels[result];
     }
-    std::cout << "Score : " <<score<<" / 100.\n";
+    std::cout << "Score : " << score << " / 100.\n";
   }
 }
 

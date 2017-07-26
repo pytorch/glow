@@ -9,7 +9,7 @@
 using namespace noether;
 
 void testInit() {
-  std::cout<<"Testing initialization.\n";
+  std::cout << "Testing initialization.\n";
 
   Tensor T = {1.2, 12.1, 51.0, 1515.2};
 
@@ -26,7 +26,7 @@ void testInit() {
 }
 
 void testTensor() {
-  std::cout<<"Testing some tensor operations.\n";
+  std::cout << "Testing some tensor operations.\n";
   Tensor T(ElemKind::FloatTy, {320, 200, 64});
 
   auto Handle = T.getHandle<FloatTy>();
@@ -35,7 +35,7 @@ void testTensor() {
     for (unsigned x = 0; x < 320; x++) {
       for (unsigned y = 0; y < 200; y++) {
         for (unsigned z = 0; z < 64; z++) {
-          Handle.at({x,y,z}) = x + y + z;
+          Handle.at({x, y, z}) = x + y + z;
         }
       }
     }
@@ -50,15 +50,14 @@ void testTensor() {
 
   for (unsigned y = 0; y < 200; y++) {
     for (unsigned z = 0; z < 64; z++) {
-      H2.at({y,z}) = 2;
+      H2.at({y, z}) = 2;
     }
   }
 
   assert(H2.at({10, 10}) == 2);
 
-  std::cout<<"Done.\n";
+  std::cout << "Done.\n";
 }
-
 
 int main() {
   testInit();

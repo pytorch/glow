@@ -79,17 +79,17 @@ public:
   /// iterations in the training loop. Update the nodes in \p nodes with the
   /// values \p inputs.
   void train(NodeBase *root, size_t iterations, ArrayRef<NodeBase *> nodes,
-             ArrayRef<Tensor*> inputs);
+             ArrayRef<Tensor *> inputs);
 
   /// Perform a single training iteration for one input. Update the nodes in \p
   /// nodes with the values \p inputs.
   void train(NodeBase *root, ArrayRef<NodeBase *> nodes,
-             ArrayRef<Tensor*> inputs);
+             ArrayRef<Tensor *> inputs);
 
   /// Infer data for a single input. Update the nodes in \p nodes with the
   /// values \p inputs.
   void infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
-             ArrayRef<Tensor*> inputs);
+             ArrayRef<Tensor *> inputs);
 
   /// Dump the textual representation of the network.
   void dump(NodeBase *root);

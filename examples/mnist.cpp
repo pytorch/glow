@@ -1,9 +1,8 @@
 #include "noether/Image.h"
 #include "noether/Network.h"
 #include "noether/Nodes.h"
-#include "noether/Tensor.h"
 #include "noether/Support.h"
-
+#include "noether/Tensor.h"
 
 #include <cassert>
 #include <cstddef>
@@ -53,7 +52,6 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
   return numImages;
 }
 
-
 /// This test classifies digits from the MNIST labeled dataset.
 void testMNIST() {
   std::cout << "Loading the mnist database.\n";
@@ -83,7 +81,6 @@ void testMNIST() {
   auto *FCL1 = N.createFullyConnectedNode(MP1, 10);
   auto *RL2 = N.createRELUNode(FCL1);
   auto *SM = N.createSoftMaxNode(RL2);
-
 
   // Report progress every this number of training iterations.
   constexpr int reportRate = 100;

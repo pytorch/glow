@@ -64,10 +64,10 @@ void ConvNode::forward() {
             if (ox < 0 || oy < 0)
               continue;
 
-            if (outW.isInBounds({(size_t)ox,(size_t)oy, 0})) {
+            if (outW.isInBounds({(size_t)ox, (size_t)oy, 0})) {
               for (size_t fd = 0; fd < idim[2]; fd++) {
                 sum += filterW.at({d, fx, fy, fd}) *
-                  inW.at({(size_t)ox, (size_t)oy, fd});
+                       inW.at({(size_t)ox, (size_t)oy, fd});
               }
             }
           }
@@ -118,9 +118,9 @@ void ConvNode::backward() {
             if (outG.isInBounds({(size_t)ox, (size_t)oy, 0u})) {
               for (size_t fd = 0; fd < idim[2]; fd++) {
                 filterG.at({d, fx, fy, fd}) +=
-                inW.at({(size_t)ox, (size_t)oy, fd}) * chainGrad;
+                    inW.at({(size_t)ox, (size_t)oy, fd}) * chainGrad;
                 inG.at({(size_t)ox, (size_t)oy, fd}) +=
-                filterW.at({d, fx, fy, fd}) * chainGrad;
+                    filterW.at({d, fx, fy, fd}) * chainGrad;
               }
             }
           }
@@ -317,8 +317,8 @@ void RELUNode::forward() {
   auto inW = inputBuffer.weight_.getHandle<FloatTy>();
 
   for (size_t i = 0, e = inW.size(); i < e; i++) {
-        FloatTy val = inW.raw(i);
-        outW.raw(i) = val < 0 ? 0 : val;
+    FloatTy val = inW.raw(i);
+    outW.raw(i) = val < 0 ? 0 : val;
   }
 }
 
@@ -330,8 +330,8 @@ void RELUNode::backward() {
   auto inDW = inputBuffer.gradient_.getHandle<FloatTy>();
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-        FloatTy val = outW.raw(i);
-        inDW.raw(i) = (val <= 0 ? 0 : outDW.raw(i));
+    FloatTy val = outW.raw(i);
+    inDW.raw(i) = (val <= 0 ? 0 : outDW.raw(i));
   }
 }
 
@@ -348,8 +348,8 @@ void SigmoidNode::forward() {
   auto inW = inputBuffer.weight_.getHandle<FloatTy>();
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-        FloatTy val = inW.raw(i);
-        outW.raw(i) = 1 / (1 + std::exp(-val));
+    FloatTy val = inW.raw(i);
+    outW.raw(i) = 1 / (1 + std::exp(-val));
   }
 }
 
@@ -361,8 +361,8 @@ void SigmoidNode::backward() {
   auto inDW = inputBuffer.gradient_.getHandle<FloatTy>();
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-        FloatTy val = outW.raw(i);
-        inDW.raw(i) = val * (1 - val) * outDW.raw(i);
+    FloatTy val = outW.raw(i);
+    inDW.raw(i) = val * (1 - val) * outDW.raw(i);
   }
 }
 
@@ -417,7 +417,8 @@ void SoftMaxNode::backward() {
 }
 
 size_t SoftMaxNode::maxArg() {
-  auto idim = input_->dims(); (void) idim;
+  auto idim = input_->dims();
+  (void)idim;
   assert(idim.size() && "Invalid softmax shape!");
 
   auto outW = output_.weight_.getHandle<FloatTy>();
@@ -437,8 +438,7 @@ size_t SoftMaxNode::maxArg() {
 void SoftMaxNode::setSelected(size_t selected) {
   auto idim = input_->dims();
   (void)idim;
-  assert(idim.size() == 1 && selected < idim[0] &&
-         "Invalid selection");
+  assert(idim.size() == 1 && selected < idim[0] && "Invalid selection");
   selected_ = selected;
 }
 
@@ -502,20 +502,20 @@ void MaxNode::backward() {
   auto inG = inputBuffer.gradient_.getHandle<FloatTy>();
 
   for (size_t i = 0, e = inG.size(); i < e; i++) {
-        FloatTy dy = inW.raw(i);
-        inG.raw(i) = dy > 0 ? -1 : 1;
+    FloatTy dy = inW.raw(i);
+    inG.raw(i) = dy > 0 ? -1 : 1;
   }
 }
 
 // Define the node visitor for all nodes in the graph that have a single
 // incoming node.
 
-#define DEFINE_CLASS_VISITOR(CLASS_NAME) \
-void CLASS_NAME::visit(NodeVisitor *visitor) { \
-visitor->pre(this); \
-input_->visit(visitor); \
-visitor->post(this); \
-} \
+#define DEFINE_CLASS_VISITOR(CLASS_NAME)                                       \
+  void CLASS_NAME::visit(NodeVisitor *visitor) {                               \
+    visitor->pre(this);                                                        \
+    input_->visit(visitor);                                                    \
+    visitor->post(this);                                                       \
+  }
 
 DEFINE_CLASS_VISITOR(ConvNode)
 DEFINE_CLASS_VISITOR(MaxPoolNode)

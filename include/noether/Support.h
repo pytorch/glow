@@ -11,8 +11,8 @@ namespace noether {
 class TimerGuard {
   int iterations_;
   std::chrono::time_point<std::chrono::system_clock> start;
-public:
 
+public:
   TimerGuard(int iterations) : iterations_(iterations) {
     start = std::chrono::system_clock::now();
   }
@@ -20,8 +20,8 @@ public:
   ~TimerGuard() {
     auto end = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_seconds = end - start;
-    std::cout <<"Rate: " << (iterations_/elapsed_seconds.count()) <<
-    "/sec\n";
+    std::cout << "Rate: " << (iterations_ / elapsed_seconds.count())
+              << "/sec\n";
   }
 };
 

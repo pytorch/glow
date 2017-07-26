@@ -62,7 +62,7 @@ public:
 
   virtual std::string getName() const override { return "MaxPoolNode"; }
 
-    virtual void visit(NodeVisitor *visitor) override;
+  virtual void visit(NodeVisitor *visitor) override;
 };
 
 class FullyConnectedNode final : public TrainableNode {
@@ -150,7 +150,8 @@ public:
   }
 
   virtual void updateInput(Tensor *var) override {
-    auto dim = var->dims(); (void) dim;
+    auto dim = var->dims();
+    (void)dim;
     assert(dim.size() == 1 && "Invalid input shape");
 
     selected_ = var->getHandle<size_t>().at({0});
@@ -277,7 +278,8 @@ public:
   }
 
   virtual void updateInput(Tensor *var) override {
-    auto &w = getOutput().weight_; (void) w;
+    auto &w = getOutput().weight_;
+    (void)w;
     assert(w.dims() == var->dims() && "Invalid input size");
     assert(w.getElementType() == var->getElementType() && "invalid input type");
     getOutput().weight_ = var->clone();

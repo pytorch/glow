@@ -30,15 +30,15 @@ void generateCircleData(Tensor &coordinates, Tensor &labels) {
   auto C = coordinates.getHandle<FloatTy>();
   auto L = labels.getHandle<size_t>();
 
-  for (size_t i = 0; i < numSamples/2; i++) {
+  for (size_t i = 0; i < numSamples / 2; i++) {
     float r = r_radius(gen);
     float a = r_angle(gen);
     float y = r * sin(a);
     float x = r * cos(a);
 
-    C.at({i*2, 0u}) = x;
-    C.at({i*2, 1u}) = y;
-    L.at({i*2}) = 1;
+    C.at({i * 2, 0u}) = x;
+    C.at({i * 2, 1u}) = y;
+    L.at({i * 2}) = 1;
 
     r = r_radius(gen) + 0.8;
     a = r_angle(gen);
@@ -50,7 +50,6 @@ void generateCircleData(Tensor &coordinates, Tensor &labels) {
     L.at({i * 2 + 1}) = 0;
   }
 }
-
 
 /// Test the fully connected layer and the softmax function.
 /// Example from:
@@ -116,8 +115,7 @@ void testFCSoftMax(bool verbose = false) {
 }
 
 /// A helper function to load a one-hot vector.
-void setOneHot(Tensor &A, float background, float foreground,
-               size_t idx) {
+void setOneHot(Tensor &A, float background, float foreground, size_t idx) {
   auto H = A.getHandle<FloatTy>();
   for (unsigned j = 0; j < A.size(); j++) {
     H.at({j}) = (j == idx ? foreground : background);
@@ -147,15 +145,16 @@ void testRegression(bool verbose = false) {
   // Train the network:
   for (int iter = 0; iter < 9000; iter++) {
     float target = float(iter % 9);
-    I = {target, 0., 0. ,0.};
-    E = {0., target + 1, 0. ,0.};
+    I = {target, 0., 0., 0.};
+    E = {0., target + 1, 0., 0.};
     N.train(RN, {A, RN}, {&inputs, &expected});
   }
   if (verbose) {
     std::cout << "Verify the result of the regression layer.\n";
   }
 
-  auto resH = RN->getOutput().weight_.getHandle<FloatTy>(); (void) resH;
+  auto resH = RN->getOutput().weight_.getHandle<FloatTy>();
+  (void)resH;
 
   // Test the output:
   for (int iter = 0; iter < 5; iter++) {
@@ -200,7 +199,8 @@ void testLearnSingleInput(bool verbose = false) {
 
   N.infer(RN, {A}, {&inputs});
 
-  auto RNWH = RN->getOutput().weight_.getHandle<FloatTy>(); (void) RNWH;
+  auto RNWH = RN->getOutput().weight_.getHandle<FloatTy>();
+  (void)RNWH;
 
   // Test the output:
   assert(RNWH.at({1}) > 8.5);

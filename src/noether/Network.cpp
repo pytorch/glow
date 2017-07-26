@@ -71,9 +71,8 @@ struct ForwardPass : NodeVisitor {
 };
 
 struct PrinterPass : NodeVisitor {
-  virtual void post(NodeBase *N) override { std::cout<< N->getName() << "->"; }
+  virtual void post(NodeBase *N) override { std::cout << N->getName() << "->"; }
 };
-
 
 } // namespace
 
@@ -81,8 +80,7 @@ struct PrinterPass : NodeVisitor {
 /// iterations in the training loop. Update the nodes in \p nodes with the
 /// values \p inputs.
 void Network::train(NodeBase *root, size_t iterations,
-                    ArrayRef<NodeBase *> nodes,
-                    ArrayRef<Tensor*> inputs) {
+                    ArrayRef<NodeBase *> nodes, ArrayRef<Tensor *> inputs) {
 
   for (size_t i = 0; i < iterations; i++) {
     // Update all of the inputs of all of the relevant nodes:
@@ -113,13 +111,12 @@ void Network::train(NodeBase *root, size_t iterations,
       buffer->clearGradient();
     }
   }
-
 }
 
 /// Perform a single training iteration for one input. Update the nodes in \p
 /// nodes with the values \p inputs.
 void Network::train(NodeBase *root, ArrayRef<NodeBase *> nodes,
-                    ArrayRef<Tensor*> inputs) {
+                    ArrayRef<Tensor *> inputs) {
   assert(nodes.size() == inputs.size() && "Mismatched argument list");
 
   // Update all inputs.
@@ -152,7 +149,7 @@ void Network::train(NodeBase *root, ArrayRef<NodeBase *> nodes,
 }
 
 void Network::infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
-                    ArrayRef<Tensor*> inputs) {
+                    ArrayRef<Tensor *> inputs) {
   // Update all inputs.
   for (int i = 0, e = nodes.size(); i < e; i++) {
     nodes[i]->updateInput(inputs[i]);
