@@ -175,18 +175,18 @@ void testLearnSingleInput(bool verbose = false) {
 
   Network N;
   N.getTrainingConfig().learningRate = 0.05;
-  auto *A = N.createArrayNode(10);
+  auto *A = N.createArrayNode(4);
   auto *FCL0 = N.createFullyConnectedNode(A, 10);
   auto *RL0 = N.createRELUNode(FCL0);
-  auto *FCL1 = N.createFullyConnectedNode(RL0, 10);
+  auto *FCL1 = N.createFullyConnectedNode(RL0, 4);
   auto *RL1 = N.createRELUNode(FCL1);
   auto *RN = N.createRegressionNode(RL1);
 
-  Tensor inputs(ElemKind::FloatTy, {10});
-  Tensor expected(ElemKind::FloatTy, {10});
+  Tensor inputs(ElemKind::FloatTy, {4});
+  Tensor expected(ElemKind::FloatTy, {4});
 
-  inputs.getHandle<FloatTy>() = {15., 0., 0., 0., 0., 0., 0., 0., 0., 0.};
-  expected.getHandle<FloatTy>() = {0., 9., 0., 0., 0., 0., 0., 0., 0., 0.};
+  inputs.getHandle<FloatTy>() = {0.15, 0.15, 0.15, 0.15};
+  expected.getHandle<FloatTy>() = {0.9, 0.9, 0.9, 0.9};
 
   // Train the network:
   for (int iter = 0; iter < 10000; iter++) {
@@ -203,7 +203,7 @@ void testLearnSingleInput(bool verbose = false) {
   (void)RNWH;
 
   // Test the output:
-  assert(RNWH.at({1}) > 8.5);
+  assert(delta(RNWH.at({0}), 0.9) < 0.1);
 
   if (verbose) {
     std::cout << "Done.\n";

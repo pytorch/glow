@@ -70,7 +70,7 @@ void testMNIST() {
   N.getTrainingConfig().L2Decay = 0.001;
 
   auto *A = N.createArrayNode({28, 28, 1});
-  auto *CV0 = N.createConvNode(A, 8, 5, 1, 2);
+  auto *CV0 = N.createConvNode(A, 16, 5, 1, 2);
   auto *RL0 = N.createRELUNode(CV0);
   auto *MP0 = N.createMaxPoolNode(RL0, 2, 2, 0);
 
@@ -103,7 +103,7 @@ void testMNIST() {
   int rightAnswer = 0;
 
   for (int iter = 0; iter < 10; iter++) {
-    size_t imageIndex = (iter * 17512 + 9124) % numImages;
+    size_t imageIndex = (iter * 19 + 124) % numImages;
     Tensor sample = IIH.extractSlice(imageIndex);
 
     N.infer(SM, {A}, {&sample});
