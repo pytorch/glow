@@ -68,7 +68,6 @@ void testCIFAR10() {
   N.getTrainingConfig().momentum = 0.9;
   N.getTrainingConfig().batchSize = 8;
   N.getTrainingConfig().L2Decay = 0.0001;
-  N.getTrainingConfig().inputSize = cifarImageSize;
 
   auto *A = N.createArrayNode({32, 32, 3});
   auto *CV0 = N.createConvNode(A, 16, 5, 1, 2);
@@ -87,12 +86,6 @@ void testCIFAR10() {
   auto *RL3 = N.createRELUNode(FCL1);
   auto *SM = N.createSoftMaxNode(RL3);
 
-  // On each training iteration the inputs are loaded from the image db.
-  A->bind(&images);
-
-  // On each  iteration the expected value is loaded from the labels vector.
-  SM->bind(&labels);
-
   // Report progress every this number of training iterations.
   constexpr int reportRate = 256;
 
@@ -102,15 +95,18 @@ void testCIFAR10() {
     std::cout << "Training - iteration #" << iter << " ";
     TimerGuard reportTime(reportRate);
 
-    N.train(SM, reportRate);
+    // Bind the images tensor to the input array A, and the labels tensor
+    // to the softmax node SM.
+    N.train(SM, reportRate, {A, SM}, {&images, &labels});
 
     unsigned score = 0;
     for (size_t i = 0; i < 100; i++) {
       // Pick a random image from the stack:
       const unsigned imageIndex = ((i + iter) * 175 + 912) % cifarNumImages;
       // Load the image.
-      A->getOutput().weight_ = imagesH.extractSlice(imageIndex);
-      N.infer(SM);
+      Tensor sample = imagesH.extractSlice(imageIndex);
+      N.infer(SM, {A}, {&sample});
+
       // Read the expected label.
       auto expectedLabel = labelsH.at({imageIndex});
       unsigned result = SM->maxArg();

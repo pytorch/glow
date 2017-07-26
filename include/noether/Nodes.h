@@ -137,20 +137,23 @@ class SoftMaxNode final : public TrainableNode {
   /// softmax function.
   SoftMaxNode(Network *N, TrainableNode *input);
 
-  /// If set, the training procedure will update the content of the array node
-  /// from this input source.
-  Tensor *boundInputSource_{nullptr};
-
   friend Network;
 
 public:
-  void bind(Tensor *input) { boundInputSource_ = input; }
+  virtual void updateInputs(Tensor *batch, size_t sampleIdx) override {
+    auto dim = batch->dims();
+    assert(dim.size() == 1 && "Invalid input shape");
 
-  virtual void updateBoundInputs(size_t sampleIdx) override {
-    if (!boundInputSource_)
-      return;
-    selected_ = boundInputSource_->getHandle<size_t>().at({sampleIdx});
+    // Take the n'th slice in the input vector. The slice must be a scalar.
+    selected_ = batch->getHandle<size_t>().at({sampleIdx % dim[0]});
+    assert(selected_ < dims()[0] && "Invalid selected value");
+  }
 
+  virtual void updateInput(Tensor *var) override {
+    auto dim = var->dims(); (void) dim;
+    assert(dim.size() == 1 && "Invalid input shape");
+
+    selected_ = var->getHandle<size_t>().at({0});
     assert(selected_ < dims()[0] && "Invalid selected value");
   }
 
@@ -175,10 +178,6 @@ class RegressionNode final : public TrainableNode {
   /// The expected input (also known as Y).
   Tensor expected_{};
 
-  /// If set, the training procedure will update the content of the array node
-  /// from this input source.
-  Tensor *boundInputSource_{nullptr};
-
   /// Ctor - \p is the input layer that must be a simple vector.
   /// And \p expected (aka Y) is the expected input for the layer, that must
   /// be of the same shape as \p input.
@@ -193,15 +192,23 @@ public:
     (void)dim;
     (void)idim;
     assert(idim == dim && "Invalid input size");
-    boundInputSource_ = input;
   }
 
-  virtual void updateBoundInputs(size_t sampleIdx) override {
-    if (!boundInputSource_)
-      return;
+  virtual void updateInputs(Tensor *batch, size_t sampleIdx) override {
+    auto dim = batch->dims();
+    assert(expected_.getElementType() == batch->getElementType() &&
+           "invalid input type");
+    assert(dims() == dim.drop_front() && "Invalid batch size");
 
-    assert(boundInputSource_->isInBounds({(unsigned)sampleIdx, 0, 0, 0}));
-    expected_ = boundInputSource_->getHandle<FloatTy>().extractSlice(sampleIdx);
+    // Extract the n'th slice. The slice must be a tensor.
+    expected_ = batch->getHandle<FloatTy>().extractSlice(sampleIdx % dim[0]);
+  }
+
+  virtual void updateInput(Tensor *var) override {
+    assert(expected_.dims() == var->dims() && "Invalid input size");
+    assert(expected_.getElementType() == var->getElementType() &&
+           "invalid input type");
+    expected_ = var->clone();
   }
 
   /// \returns a reference to the expected result vector.
@@ -244,10 +251,6 @@ class ArrayNode final : public TrainableNode {
     this->getOutput().isTrainable_ = false;
   }
 
-  /// If set, the training procedure will update the content of the array node
-  /// from this input source.
-  Tensor *boundInputSource_{nullptr};
-
   friend Network;
 
 public:
@@ -257,7 +260,6 @@ public:
     (void)inDim;
     (void)dim;
     assert(dim.size() + 1 == inDim.size() && "Invalid tensors");
-    boundInputSource_ = input;
   }
 
   virtual std::string getName() const override { return "ArrayNode"; }
@@ -266,11 +268,19 @@ public:
 
   void backward() override {}
 
-  virtual void updateBoundInputs(size_t sampleIdx) override {
-    if (!boundInputSource_)
-      return;
+  virtual void updateInputs(Tensor *batch, size_t sampleIdx) override {
+    auto dim = batch->dims();
+    assert(dims() == dim.drop_front() && "Invalid batch size");
+    /// Extract the n'th slice, that must be a tensor.
+    size_t slc = sampleIdx % dim[0];
+    this->getOutput().weight_ = batch->getHandle<FloatTy>().extractSlice(slc);
+  }
 
-    this->getOutput().weight_ = boundInputSource_->getHandle<FloatTy>().extractSlice(sampleIdx);
+  virtual void updateInput(Tensor *var) override {
+    auto &w = this->getOutput().weight_; (void) w;
+    assert(w.dims() == var->dims() && "Invalid input size");
+    assert(w.getElementType() == var->getElementType() && "invalid input type");
+    this->getOutput().weight_ = var->clone();
   }
 
   virtual void visit(NodeVisitor *visitor) override;

@@ -108,7 +108,7 @@ public:
   }
 
   /// \return the element type of the tensor.
-  ElemKind getElementType() { return elementType_; }
+  ElemKind getElementType() const { return elementType_; }
 
   /// \returns True if the coordinate is within the array.
   bool isInBounds(ArrayRef<size_t> indices) const {
@@ -180,8 +180,10 @@ public:
     for (int i = 0, e = dims.size(); i < e; i++) { sizes_[i] = dims[i]; }
     numSizes_ = dims.size();
 
-    data_ = new char[size() * getElementSize(elementType_)];
-    zero();
+    if (size()) {
+      data_ = new char[size() * getElementSize(elementType_)];
+      zero();
+    }
   }
 
   ~Tensor() { delete[] data_; }
@@ -208,7 +210,7 @@ public:
   }
 
   /// Create a new copy of the current tensor.
-  Tensor clone() {
+  Tensor clone() const {
     Tensor slice(getElementType(), dims());
 
     // Extract the whole slice.
@@ -242,7 +244,7 @@ class Handle final {
 public:
   /// Calculate the index for a specific element in the tensor. Notice that
   /// the list of indices may be incomplete.
-  size_t getElementPtr(ArrayRef<size_t> indices) {
+  size_t getElementPtr(ArrayRef<size_t> indices) const {
     assert(indices.size() <= numDims && "Invalid number of indices");
     size_t index = 0;
     for (int i = 0, e = indices.size(); i < e; i++) {
@@ -257,6 +259,10 @@ public:
     auto sizes = tensor->dims();
     numDims = sizes.size();
 
+    /// We allow handles that wrap uninitialized tensors.
+    if (!numDims)
+      return;
+
     size_t pi = 1;
     for (int i = numDims - 1; i >= 0; i--) {
       sizeIntegral[i] = pi;
@@ -267,7 +273,7 @@ public:
     assert(numDims < max_tensor_dimensions);
   }
 
-  size_t size() { return tensor_->size(); }
+  size_t size() const { return tensor_->size(); }
 
   bool isInBounds(ArrayRef<size_t> indices) const {
     return tensor_->isInBounds(indices);
@@ -310,7 +316,7 @@ public:
 
   /// Extract a smaller dimension tensor from a specific slice (that has to be
   /// the first dimention).
-  Tensor extractSlice(size_t idx) {
+  Tensor extractSlice(size_t idx) const {
     auto sizes = tensor_->dims();
     assert(sizes.size() > 1 && "Tensor has only one dimension");
     assert(idx < sizes[0] && "Invalid first index");
@@ -327,7 +333,7 @@ public:
   }
 
   /// Create a new copy of the current tensor.
-  Tensor clone() {
+  Tensor clone() const {
     return tensor_->clone();
   }
 
@@ -341,7 +347,7 @@ public:
   }
 
   void dumpAscii(const std::string &prefix = "",
-                 const std::string &suffix = "\n") {
+                 const std::string &suffix = "\n") const {
     auto d = tensor_->dims();
     std::cout << prefix << "\n";
 
@@ -371,7 +377,7 @@ public:
     std::cout << suffix;
   }
 
-  void dump(const char *title = "", const char *suffix = "") {
+  void dump(const char *title = "", const char *suffix = "") const {
     ElemTy *data = tensor_->getRawDataPointer<ElemTy>();
     ElemTy mx = *std::max_element(&data[0], &data[size()]);
     ElemTy mn = *std::min_element(&data[0], &data[size()]);

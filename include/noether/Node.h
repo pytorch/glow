@@ -36,10 +36,13 @@ public:
   /// Does the backwards propagation.
   virtual void backward() = 0;
 
-  /// If the node is bound to some input or expected output variable then
-  /// copy the data now. The parameter \p sampleIdx specifies which input
-  /// to load.
-  virtual void updateBoundInputs(size_t sampleIdx) {}
+  /// Update the input or expected output variables of the node with data from
+  /// \p batch. Select inputs from the slice specified by \p payload.
+  virtual void updateInputs(Tensor *batch, size_t sampleIdx) {}
+
+  /// Update the input or expected output variables of the node with data from
+  /// \p var.
+  virtual void updateInput(Tensor *var) {}
 
   /// This method implements the visitor pattern that scans the compute DAG top
   /// to bottom.

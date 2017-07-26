@@ -70,15 +70,6 @@ struct ForwardPass : NodeVisitor {
   virtual void post(NodeBase *N) override { N->forward(); }
 };
 
-struct UpdaterPass : NodeVisitor {
-  size_t index{0};
-  UpdaterPass(size_t index) : index(index) {}
-
-  virtual void post(NodeBase *N) override {
-    N->updateBoundInputs(index);
-  }
-};
-
 struct PrinterPass : NodeVisitor {
   virtual void post(NodeBase *N) override { std::cout<< N->getName() << "->"; }
 };
@@ -86,13 +77,18 @@ struct PrinterPass : NodeVisitor {
 
 } // namespace
 
-void Network::train(NodeBase *root, size_t iterations) {
-  size_t numInputs = trainConf_.inputSize;
+/// Train the network starting with the node \p root. Perform \p iterations
+/// iterations in the training loop. Update the nodes in \p nodes with the
+/// values \p inputs.
+void Network::train(NodeBase *root, size_t iterations,
+                    ArrayRef<NodeBase *> nodes,
+                    ArrayRef<Tensor*> inputs) {
 
   for (size_t i = 0; i < iterations; i++) {
-    // Ask all of the nodes to update the input for the specific input by index.
-    UpdaterPass UP(trainCounter_ % numInputs);
-    root->visit(&UP);
+    // Update all of the inputs of all of the relevant nodes:
+    for (int i = 0, e = nodes.size(); i < e; i++) {
+      nodes[i]->updateInputs(inputs[i], trainCounter_);
+    }
 
     // Forward scan.
     ForwardPass FP;
@@ -117,9 +113,51 @@ void Network::train(NodeBase *root, size_t iterations) {
       buffer->clearGradient();
     }
   }
+
 }
 
-void Network::infer(NodeBase *root) {
+/// Perform a single training iteration for one input. Update the nodes in \p
+/// nodes with the values \p inputs.
+void Network::train(NodeBase *root, ArrayRef<NodeBase *> nodes,
+                    ArrayRef<Tensor*> inputs) {
+  assert(nodes.size() == inputs.size() && "Mismatched argument list");
+
+  // Update all inputs.
+  for (int i = 0, e = nodes.size(); i < e; i++) {
+    nodes[i]->updateInput(inputs[i]);
+  }
+
+  // Forward scan.
+  ForwardPass FP;
+  root->visit(&FP);
+
+  // Backward scan in reverse order.
+  BackwardPass BP;
+  root->visit(&BP);
+
+  trainCounter_++;
+
+  // Only update the gradient when we've reached the end of the batch.
+  if (trainCounter_ % trainConf_.batchSize)
+    return;
+
+  // Update the gradients.
+  for (auto &buffer : trainableBuffers_) {
+    buffer->train(trainConf_);
+  }
+
+  for (auto &buffer : trainableBuffers_) {
+    buffer->clearGradient();
+  }
+}
+
+void Network::infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
+                    ArrayRef<Tensor*> inputs) {
+  // Update all inputs.
+  for (int i = 0, e = nodes.size(); i < e; i++) {
+    nodes[i]->updateInput(inputs[i]);
+  }
+
   // Forward scan.
   ForwardPass FP;
   root->visit(&FP);

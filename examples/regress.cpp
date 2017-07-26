@@ -17,6 +17,7 @@ using namespace noether;
 
 float delta(float a, float b) { return std::fabs(a - b); }
 
+unsigned numSamples = 100;
 
 /// Generate data in two classes. The circle of dots that's close to the axis is
 /// L0, and the rest of the dots, away from the axis are L1.
@@ -29,7 +30,7 @@ void generateCircleData(Tensor &coordinates, Tensor &labels) {
   auto C = coordinates.getHandle<FloatTy>();
   auto L = labels.getHandle<size_t>();
 
-  for (size_t i = 0; i < 50; i++) {
+  for (size_t i = 0; i < numSamples/2; i++) {
     float r = r_radius(gen);
     float a = r_angle(gen);
     float y = r * sin(a);
@@ -64,7 +65,6 @@ void testFCSoftMax(bool verbose = false) {
   N.getTrainingConfig().momentum = 0.0;
   N.getTrainingConfig().learningRate = 0.1;
   N.getTrainingConfig().batchSize = 10;
-  N.getTrainingConfig().inputSize = 100;
 
   auto *A = N.createArrayNode({2});
   auto *FCL0 = N.createFullyConnectedNode(A, 6);
@@ -73,36 +73,30 @@ void testFCSoftMax(bool verbose = false) {
   auto *RL1 = N.createRELUNode(FCL1);
   auto *SM = N.createSoftMaxNode(RL1);
 
-
-  Tensor coordinates(ElemKind::FloatTy, {100, 2});
-  Tensor labels(ElemKind::IndexTy, {100});
+  Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
+  Tensor labels(ElemKind::IndexTy, {numSamples});
   generateCircleData(coordinates, labels);
 
   // Setup a handle to access array A and SM.
-  auto AWH = A->getOutput().weight_.getHandle<FloatTy>();
   auto SMH = SM->getOutput().weight_.getHandle<FloatTy>();
-
-  // On each training iteration the inputs are loaded from the image db.
-  A->bind(&coordinates);
-
-  // On each  iteration the expected value is loaded from the labels vector.
-  SM->bind(&labels);
 
   std::cout << "Training.\n";
 
   for (int iter = 0; iter < 2000; iter++) {
-    N.train(SM, 10);
+    N.train(SM, 10, {A, SM}, {&coordinates, &labels});
   }
+
   // Print a diagram that depicts the network decision on a grid.
   if (verbose) {
 
     for (int x = -10; x < 10; x++) {
       for (int y = -10; y < 10; y++) {
         // Load the inputs:
-        AWH.at({0}) = float(x) / 10;
-        AWH.at({1}) = float(y) / 10;
+        Tensor sample(ElemKind::FloatTy, {2});
+        sample.getHandle<FloatTy>() = {float(x) / 10, float(y) / 10};
 
-        N.infer(SM);
+        N.infer(SM, {A}, {&sample});
+
         auto A = SMH.at({0});
         auto B = SMH.at({1});
 
@@ -145,29 +139,30 @@ void testRegression(bool verbose = false) {
   auto *RL0 = N.createRELUNode(FCL0);
   auto *RN = N.createRegressionNode(RL0);
 
+  Tensor inputs(ElemKind::FloatTy, {numInputs});
+  Tensor expected(ElemKind::FloatTy, {numInputs});
+  auto I = inputs.getHandle<FloatTy>();
+  auto E = expected.getHandle<FloatTy>();
+
   // Train the network:
   for (int iter = 0; iter < 9000; iter++) {
     float target = float(iter % 9);
-    setOneHot(A->getOutput().weight_, 0.0, target, 0);
-    setOneHot(RN->getExpected(), 0.0, target + 1, 1);
-
-    N.train(RN);
+    I = {target, 0., 0. ,0.};
+    E = {0., target + 1, 0. ,0.};
+    N.train(RN, {A, RN}, {&inputs, &expected});
   }
   if (verbose) {
     std::cout << "Verify the result of the regression layer.\n";
   }
 
-  auto AWH = A->getOutput().weight_.getHandle<FloatTy>(); (void) AWH;
-  auto RNWH = RN->getOutput().weight_.getHandle<FloatTy>(); (void) RNWH;
+  auto resH = RN->getOutput().weight_.getHandle<FloatTy>(); (void) resH;
 
   // Test the output:
   for (int iter = 0; iter < 5; iter++) {
     float target = iter % 9 + 1;
-    setOneHot(A->getOutput().weight_, 0.0, target, 0);
-    setOneHot(RN->getExpected(), 0.0, target + 1, 1);
-
-    N.infer(RN);
-    assert(delta(AWH.at({0}) + 1, RNWH.at({1})) < 0.1);
+    I = {target, 0., 0., 0.};
+    N.infer(RN, {A}, {&inputs});
+    assert(delta(I.at({0}) + 1, resH.at({1})) < 0.1);
   }
   if (verbose) {
     std::cout << "Done.\n";
@@ -188,21 +183,22 @@ void testLearnSingleInput(bool verbose = false) {
   auto *RL1 = N.createRELUNode(FCL1);
   auto *RN = N.createRegressionNode(RL1);
 
-  // Put in [15, 0, 0, 0, 0 ... ]
-  setOneHot(A->getOutput().weight_, 0.0, 15, 0);
-  // Expect [0, 9.0, 0 , 0 , ...]
-  setOneHot(RN->getExpected(), 0.0, 9.0, 1);
+  Tensor inputs(ElemKind::FloatTy, {10});
+  Tensor expected(ElemKind::FloatTy, {10});
+
+  inputs.getHandle<FloatTy>() = {15., 0., 0., 0., 0., 0., 0., 0., 0., 0.};
+  expected.getHandle<FloatTy>() = {0., 9., 0., 0., 0., 0., 0., 0., 0., 0.};
 
   // Train the network:
   for (int iter = 0; iter < 10000; iter++) {
-    N.train(RN);
+    N.train(RN, {A, RN}, {&inputs, &expected});
   }
 
   if (verbose) {
     std::cout << "Testing the output vector.\n";
   }
 
-  N.infer(RN);
+  N.infer(RN, {A}, {&inputs});
 
   auto RNWH = RN->getOutput().weight_.getHandle<FloatTy>(); (void) RNWH;
 

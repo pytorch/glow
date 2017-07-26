@@ -70,7 +70,6 @@ void testMNIST() {
   N.getTrainingConfig().momentum = 0.9;
   N.getTrainingConfig().batchSize = 20;
   N.getTrainingConfig().L2Decay = 0.001;
-  N.getTrainingConfig().inputSize = 50000;
 
   auto *A = N.createArrayNode({28, 28, 1});
   auto *CV0 = N.createConvNode(A, 8, 5, 1, 2);
@@ -89,19 +88,15 @@ void testMNIST() {
   // Report progress every this number of training iterations.
   constexpr int reportRate = 100;
 
-  // On each training iteration the inputs are loaded from the image db.
-  A->bind(&imageInputs);
-
-  // On each  iteration the expected value is loaded from the labels vector.
-  SM->bind(&labelInputs);
-
   std::cout << "Training.\n";
 
   for (int iter = 0; iter < 60; iter++) {
     std::cout << "Training - iteration #" << iter << " ";
     TimerGuard reportTime(reportRate);
-    N.train(SM, reportRate);
-
+    // On each training iteration take an input from imageInputs and update
+    // the input variable A, and add take a corresponding label and update the
+    // softmax layer.
+    N.train(SM, reportRate, {A, SM}, {&imageInputs, &labelInputs});
   }
   std::cout << "Validating.\n";
 
@@ -112,9 +107,9 @@ void testMNIST() {
 
   for (int iter = 0; iter < 10; iter++) {
     size_t imageIndex = (iter * 17512 + 9124) % numImages;
-    A->getOutput().weight_ = IIH.extractSlice(imageIndex);
+    Tensor sample = IIH.extractSlice(imageIndex);
 
-    N.infer(SM);
+    N.infer(SM, {A}, {&sample});
 
     size_t guess = SM->maxArg();
     size_t correct = LIH.at(imageIndex);

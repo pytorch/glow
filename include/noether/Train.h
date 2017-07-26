@@ -13,7 +13,6 @@ namespace noether {
 /// adam) use for training the network.
 struct TrainingConfig {
   size_t batchSize{1};
-  size_t inputSize{1};
   float L1Decay{0};
   float L2Decay{0};
   float learningRate{0.01};
@@ -55,6 +54,7 @@ public:
   void reset(ArrayRef<size_t> dims) {
     weight_.reset(ElemKind::FloatTy, dims);
     gradient_.reset(ElemKind::FloatTy, dims);
+    gsum_.reset(ElemKind::FloatTy, {});
   }
 
   /// Print the textual representation of the buffer.
