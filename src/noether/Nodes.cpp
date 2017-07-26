@@ -265,9 +265,10 @@ void FullyConnectedNode::forward() {
   auto outW = output_.weight_.getHandle<FloatTy>();
   auto currFilterW = filters_.weight_.getHandle<FloatTy>();
 
+  size_t inputSize = inputBuffer.size();
   for (size_t i = 0; i < odim[0]; i++) {
     FloatTy sum = 0;
-    for (size_t j = 0, e = inputBuffer.size(); j < e; j++) {
+    for (size_t j = 0; j < inputSize; j++) {
       sum += inW.raw(j) * currFilterW.at({i, j});
     }
 
@@ -290,11 +291,12 @@ void FullyConnectedNode::backward() {
   auto filterG = filters_.gradient_.getHandle<FloatTy>();
   auto filterW = filters_.weight_.getHandle<FloatTy>();
 
+  size_t inSize = inG.size();
   // Compute the gradient:
   for (size_t i = 0; i < odim[0]; i++) {
     FloatTy chainGrad = outG.at({i});
 
-    for (size_t j = 0, e = inG.size(); j < e; j++) {
+    for (size_t j = 0, e = inSize; j < e; j++) {
       // Input gradient:
       inG.raw(j) += filterW.at({i, j}) * chainGrad;
       // Param gradient:
