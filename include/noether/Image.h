@@ -15,7 +15,7 @@ class PNGNode final : public TrainableNode {
 public:
   PNGNode(Network *N) : TrainableNode(N) {
     // Do not change the output of this layer when training the network.
-    this->getOutput().isTrainable_ = false;
+    getOutput().isTrainable_ = false;
   }
 
   virtual std::string getName() const override { return "PNGNode"; }

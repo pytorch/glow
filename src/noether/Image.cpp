@@ -65,16 +65,16 @@ bool PNGNode::readImage(const char *filename) {
   png_read_image(png_ptr, row_pointers);
   fclose(fp);
 
-  this->output_.weight_.reset(width, height, 3);
+  output_.weight_.reset(width, height, 3);
 
   for (int y = 0; y < height; y++) {
     png_byte *row = row_pointers[y];
     for (int x = 0; x < width; x++) {
       png_byte *ptr = &(row[x * (hasAlpha ? 4 : 3)]);
 
-      this->output_.weight_.at(x, y, 0) = ptr[0];
-      this->output_.weight_.at(x, y, 1) = ptr[1];
-      this->output_.weight_.at(x, y, 2) = ptr[2];
+      output_.weight_.at(x, y, 0) = ptr[0];
+      output_.weight_.at(x, y, 1) = ptr[1];
+      output_.weight_.at(x, y, 2) = ptr[2];
     }
   }
 
@@ -110,7 +110,7 @@ bool PNGNode::writeImage(const char *filename) {
   if (setjmp(png_jmpbuf(png_ptr)))
     return true;
 
-  auto odim = this->output_.dims();
+  auto odim = output_.dims();
   assert(odim[2] < 4 && "Invalid buffer to save");
 
   int width = odim[0];
@@ -135,9 +135,9 @@ bool PNGNode::writeImage(const char *filename) {
     png_byte *row = row_pointers[y];
     for (int x = 0; x < width; x++) {
       png_byte *ptr = &(row[x * 4]);
-      ptr[0] = this->output_.weight_.at(x, y, 0);
-      ptr[1] = this->output_.weight_.at(x, y, 1);
-      ptr[2] = this->output_.weight_.at(x, y, 2);
+      ptr[0] = output_.weight_.at(x, y, 0);
+      ptr[1] = output_.weight_.at(x, y, 1);
+      ptr[2] = output_.weight_.at(x, y, 2);
       ptr[3] = 0xff;
     }
   }

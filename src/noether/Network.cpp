@@ -11,7 +11,7 @@ using namespace noether;
 Network::Network() {}
 
 Network::~Network() {
-  for (auto *node : this->networkNodes_) {
+  for (auto *node : networkNodes_) {
     delete node;
   }
 }

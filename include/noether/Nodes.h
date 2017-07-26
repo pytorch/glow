@@ -246,9 +246,9 @@ public:
 /// This is an abstraction over raw variable inputs.
 class ArrayNode final : public TrainableNode {
   ArrayNode(Network *N, ArrayRef<size_t> dims) : TrainableNode(N) {
-    this->getOutput().reset(dims);
+    getOutput().reset(dims);
     // Do not change the output of this layer when training the network.
-    this->getOutput().isTrainable_ = false;
+    getOutput().isTrainable_ = false;
   }
 
   friend Network;
@@ -273,14 +273,14 @@ public:
     assert(dims() == dim.drop_front() && "Invalid batch size");
     /// Extract the n'th slice, that must be a tensor.
     size_t slc = sampleIdx % dim[0];
-    this->getOutput().weight_ = batch->getHandle<FloatTy>().extractSlice(slc);
+    getOutput().weight_ = batch->getHandle<FloatTy>().extractSlice(slc);
   }
 
   virtual void updateInput(Tensor *var) override {
-    auto &w = this->getOutput().weight_; (void) w;
+    auto &w = getOutput().weight_; (void) w;
     assert(w.dims() == var->dims() && "Invalid input size");
     assert(w.getElementType() == var->getElementType() && "invalid input type");
-    this->getOutput().weight_ = var->clone();
+    getOutput().weight_ = var->clone();
   }
 
   virtual void visit(NodeVisitor *visitor) override;
