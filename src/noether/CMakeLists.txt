@@ -12,6 +12,7 @@ add_library (libNoether
                        ./Network.cpp
                        ./Node.cpp
                        ./Nodes.cpp
+                       ./Random.cpp
                        ${header_files}
                        ${PROTO_SRCS}
                        ${PROTO_HDRS})
