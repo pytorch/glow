@@ -5,10 +5,11 @@
 
 #include <iostream>
 #include <unordered_set>
+#include <thread>
 
 using namespace noether;
 
-Network::Network() {}
+Network::Network() : numThreads_(std::thread::hardware_concurrency()) { }
 
 Network::~Network() {
   /// Delete the gradient tensors.

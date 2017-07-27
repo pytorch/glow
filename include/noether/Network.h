@@ -14,7 +14,13 @@ class NodeBase;
 class TrainableData;
 
 /// This represents the execution context of the graph.
-class Context {};
+class Context {
+public:
+  /// Represents the cell number, when performing concurrent training.
+  unsigned cellId;
+
+  Context(unsigned cellId) : cellId(cellId) {}
+};
 
 class Network {
   /// This variable counts the number of iterations that train() was called.
@@ -39,6 +45,8 @@ class Network {
     allocateGradientTensor(&N->output_);
     return N;
   }
+
+  const unsigned numThreads_;
 public:
   /// Ctor.
   Network();
