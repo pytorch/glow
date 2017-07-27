@@ -81,6 +81,10 @@ public:
       return false;
     return std::equal(begin(), end(), RHS.begin());
   }
+
+  std::vector<T> vec() const {
+    return std::vector<T>(begin(), end());
+  }
 };
 
 template <typename T> inline bool operator==(ArrayRef<T> LHS, ArrayRef<T> RHS) {
