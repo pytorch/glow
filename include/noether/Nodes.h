@@ -30,9 +30,9 @@ class ConvNode final : public TrainableNode {
   friend Network;
 
 public:
-  virtual void forward() override;
+  virtual void forward(Context *ctx) override;
 
-  virtual void backward() override;
+  virtual void backward(Context *ctx) override;
 
   virtual std::string getName() const override { return "ConvNode"; }
 
@@ -56,9 +56,9 @@ class MaxPoolNode final : public TrainableNode {
   friend Network;
 
 public:
-  virtual void forward() override;
+  virtual void forward(Context *ctx) override;
 
-  virtual void backward() override;
+  virtual void backward(Context *ctx) override;
 
   virtual std::string getName() const override { return "MaxPoolNode"; }
 
@@ -78,9 +78,9 @@ class FullyConnectedNode final : public TrainableNode {
   friend Network;
 
 public:
-  virtual void forward() override;
+  virtual void forward(Context *ctx) override;
 
-  virtual void backward() override;
+  virtual void backward(Context *ctx) override;
 
   virtual std::string getName() const override { return "FullyConnectedNode"; }
 
@@ -96,9 +96,9 @@ class RELUNode final : public TrainableNode {
   friend Network;
 
 public:
-  virtual void forward() override;
+  virtual void forward(Context *ctx) override;
 
-  virtual void backward() override;
+  virtual void backward(Context *ctx) override;
 
   virtual std::string getName() const override { return "RELUNode"; }
 
@@ -114,9 +114,9 @@ class SigmoidNode final : public TrainableNode {
   friend Network;
 
 public:
-  virtual void forward() override;
+  virtual void forward(Context *ctx) override;
 
-  virtual void backward() override;
+  virtual void backward(Context *ctx) override;
 
   virtual std::string getName() const override { return "SigmoidNode"; }
 
@@ -158,9 +158,9 @@ public:
     assert(selected_ < dims()[0] && "Invalid selected value");
   }
 
-  virtual void forward() override;
+  virtual void forward(Context *ctx) override;
 
-  virtual void backward() override;
+  virtual void backward(Context *ctx) override;
 
   /// \returns the index of the highest value.
   size_t maxArg();
@@ -215,9 +215,9 @@ public:
   /// \returns a reference to the expected result vector.
   Tensor &getExpected() { return expected_; }
 
-  virtual void forward() override;
+  virtual void forward(Context *ctx) override;
 
-  virtual void backward() override;
+  virtual void backward(Context *ctx) override;
 
   virtual std::string getName() const override { return "RegressionNode"; }
 
@@ -235,9 +235,9 @@ class MaxNode final : public TrainableNode {
   friend Network;
 
 public:
-  virtual void forward() override;
+  virtual void forward(Context *ctx) override;
 
-  virtual void backward() override;
+  virtual void backward(Context *ctx) override;
 
   virtual std::string getName() const override { return "MaxNode"; }
 
@@ -265,9 +265,9 @@ public:
 
   virtual std::string getName() const override { return "ArrayNode"; }
 
-  void forward() override {}
+  void forward(Context *ctx) override {}
 
-  void backward() override {}
+  void backward(Context *ctx) override {}
 
   virtual void updateInputs(Tensor *batch, size_t sampleIdx) override {
     auto dim = batch->dims();

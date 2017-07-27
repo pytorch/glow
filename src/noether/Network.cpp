@@ -65,11 +65,15 @@ ArrayNode *Network::createArrayNode(ArrayRef<size_t> dims) {
 namespace {
 
 struct BackwardPass : NodeVisitor {
-  virtual void pre(NodeBase *N) override { N->backward(); }
+  Context *ctx_;
+  BackwardPass(Context *ctx) : ctx_(ctx) {}
+  virtual void pre(NodeBase *N) override { N->backward(ctx_); }
 };
 
 struct ForwardPass : NodeVisitor {
-  virtual void post(NodeBase *N) override { N->forward(); }
+  Context *ctx_;
+  ForwardPass(Context *ctx) : ctx_(ctx) {}
+  virtual void post(NodeBase *N) override { N->forward(ctx_); }
 };
 
 struct PrinterPass : NodeVisitor {
@@ -89,12 +93,14 @@ void Network::train(NodeBase *root, size_t iterations,
       nodes[i]->updateInputs(inputs[i], trainCounter_);
     }
 
+    Context ctx(0);
+
     // Forward scan.
-    ForwardPass FP;
+    ForwardPass FP(&ctx);
     root->visit(&FP);
 
     // Backward scan in reverse order.
-    BackwardPass BP;
+    BackwardPass BP(&ctx);
     root->visit(&BP);
 
     trainCounter_++;
@@ -123,12 +129,14 @@ void Network::train(NodeBase *root, ArrayRef<NodeBase *> nodes,
     nodes[i]->updateInput(inputs[i]);
   }
 
+  Context ctx(0);
+
   // Forward scan.
-  ForwardPass FP;
+  ForwardPass FP(&ctx);
   root->visit(&FP);
 
   // Backward scan in reverse order.
-  BackwardPass BP;
+  BackwardPass BP(&ctx);
   root->visit(&BP);
 
   trainCounter_++;
@@ -152,8 +160,10 @@ void Network::infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
     nodes[i]->updateInput(inputs[i]);
   }
 
+  Context ctx(0);
+
   // Forward scan.
-  ForwardPass FP;
+  ForwardPass FP(&ctx);
   root->visit(&FP);
 }
 

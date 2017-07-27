@@ -14,6 +14,7 @@ namespace noether {
 
 class Network;
 class NodeBase;
+class Context;
 
 class NodeVisitor {
 public:
@@ -31,10 +32,10 @@ public:
   virtual std::string getName() const = 0;
 
   /// Does the forward propagation.
-  virtual void forward() = 0;
+  virtual void forward(Context *ctx) = 0;
 
   /// Does the backwards propagation.
-  virtual void backward() = 0;
+  virtual void backward(Context *ctx) = 0;
 
   /// Update the input or expected output variables of the node with data from
   /// \p batch. Select inputs from the slice specified by \p payload.

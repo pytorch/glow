@@ -23,9 +23,9 @@ public:
 
   bool readImage(const char *filename);
 
-  void forward() override {}
+  void forward(Context *ctx) override {}
 
-  void backward() override {}
+  void backward(Context *ctx) override {}
 
   virtual void visit(NodeVisitor *visitor) override;
 };

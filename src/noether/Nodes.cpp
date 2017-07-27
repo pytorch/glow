@@ -6,7 +6,7 @@ using namespace noether;
 
 /// \returns a handle to the gradient tensor \p XX.
 #define GRADHANDLE(XX) \
-  Handle<FloatTy>((network_->getGradientTensor(nullptr, XX )))
+  Handle<FloatTy>((network_->getGradientTensor(ctx, XX )))
 
 
 ConvNode::ConvNode(Network *N, TrainableNode *input, size_t outDepth,
@@ -40,7 +40,7 @@ ConvNode::ConvNode(Network *N, TrainableNode *input, size_t outDepth,
   N->allocateGradientTensor(&bias_);
 }
 
-void ConvNode::forward() {
+void ConvNode::forward(Context *ctx) {
   auto odim = output_.dims();
   auto idim = input_->dims();
 
@@ -85,7 +85,7 @@ void ConvNode::forward() {
   }
 }
 
-void ConvNode::backward() {
+void ConvNode::backward(Context *ctx) {
   auto odim = output_.dims();
   auto idim = input_->dims();
   auto &inputWeights = input_->getOutput();
@@ -157,7 +157,7 @@ MaxPoolNode::MaxPoolNode(Network *N, TrainableNode *input, size_t filterSize,
   srcY_.reset(ElemKind::IndexTy, {outsx, outsy, idim[2]});
 }
 
-void MaxPoolNode::forward() {
+void MaxPoolNode::forward(Context *ctx) {
   auto odim = output_.dims();
   auto idim = input_->dims();
   auto inW = input_->getOutput().getHandle<FloatTy>();
@@ -210,7 +210,7 @@ void MaxPoolNode::forward() {
   }
 }
 
-void MaxPoolNode::backward() {
+void MaxPoolNode::backward(Context *ctx) {
   auto odim = output_.dims();
   auto inG = GRADHANDLE(&input_->getOutput());
   auto outG = GRADHANDLE(&output_);
@@ -262,7 +262,7 @@ FullyConnectedNode::FullyConnectedNode(Network *N, TrainableNode *input,
   N->allocateGradientTensor(&bias_);
 }
 
-void FullyConnectedNode::forward() {
+void FullyConnectedNode::forward(Context *ctx) {
   auto &inputBuffer = input_->getOutput();
   auto odim = output_.dims();
   auto inW = input_->getOutput().getHandle<FloatTy>();
@@ -282,7 +282,7 @@ void FullyConnectedNode::forward() {
   }
 }
 
-void FullyConnectedNode::backward() {
+void FullyConnectedNode::backward(Context *ctx) {
   auto odim = output_.dims();
   auto &inputBuffer = input_->getOutput();
   auto outG = GRADHANDLE(&output_);
@@ -318,7 +318,7 @@ RELUNode::RELUNode(Network *N, TrainableNode *input)
   output_.reset(ElemKind::FloatTy, input_->dims());
 }
 
-void RELUNode::forward() {
+void RELUNode::forward(Context *ctx) {
   auto &inputBuffer = input_->getOutput();
   auto outW = output_.getHandle<FloatTy>();
   auto inW = inputBuffer.getHandle<FloatTy>();
@@ -329,7 +329,7 @@ void RELUNode::forward() {
   }
 }
 
-void RELUNode::backward() {
+void RELUNode::backward(Context *ctx) {
   auto &inputBuffer = input_->getOutput();
 
   auto outW = output_.getHandle<FloatTy>();
@@ -348,7 +348,7 @@ SigmoidNode::SigmoidNode(Network *N, TrainableNode *input)
   output_.reset(ElemKind::FloatTy, input_->dims());
 }
 
-void SigmoidNode::forward() {
+void SigmoidNode::forward(Context *ctx) {
   auto &inputBuffer = input_->getOutput();
 
   auto outW = output_.getHandle<FloatTy>();
@@ -360,7 +360,7 @@ void SigmoidNode::forward() {
   }
 }
 
-void SigmoidNode::backward() {
+void SigmoidNode::backward(Context *ctx) {
   auto &inputBuffer = input_->getOutput();
 
   auto outW = output_.getHandle<FloatTy>();
@@ -382,7 +382,7 @@ SoftMaxNode::SoftMaxNode(Network *N, TrainableNode *input)
   e_.reset(ElemKind::FloatTy, {idim[0]});
 }
 
-void SoftMaxNode::forward() {
+void SoftMaxNode::forward(Context *ctx) {
   auto idim = input_->dims();
   auto outW = output_.getHandle<FloatTy>();
   auto inW = input_->getOutput().getHandle<FloatTy>();
@@ -411,7 +411,7 @@ void SoftMaxNode::forward() {
   }
 }
 
-void SoftMaxNode::backward() {
+void SoftMaxNode::backward(Context *ctx) {
   auto idim = input_->dims();
   auto inDW = GRADHANDLE(&input_->getOutput());
   auto ex = e_.getHandle<FloatTy>();
@@ -458,7 +458,7 @@ RegressionNode::RegressionNode(Network *N, TrainableNode *input)
   output_.reset(ElemKind::FloatTy, {idim[0]});
 }
 
-void RegressionNode::forward() {
+void RegressionNode::forward(Context *ctx) {
   assert(expected_.dims() == input_->dims() && "invalid expected dims");
   auto idim = input_->dims();
   auto &inputBuffer = input_->getOutput();
@@ -471,7 +471,7 @@ void RegressionNode::forward() {
   }
 }
 
-void RegressionNode::backward() {
+void RegressionNode::backward(Context *ctx) {
   assert(expected_.dims() == input_->dims() && "invalid expected dims");
 
   auto idim = input_->dims();
@@ -493,7 +493,7 @@ MaxNode::MaxNode(Network *N, TrainableNode *input)
   output_.reset(ElemKind::FloatTy, idim);
 }
 
-void MaxNode::forward() {
+void MaxNode::forward(Context *ctx) {
   auto &inputBuffer = input_->getOutput();
   auto outW = output_.getHandle<FloatTy>();
   auto inW = inputBuffer.getHandle<FloatTy>();
@@ -503,7 +503,7 @@ void MaxNode::forward() {
   }
 }
 
-void MaxNode::backward() {
+void MaxNode::backward(Context *ctx) {
   auto &inputBuffer = input_->getOutput();
   auto inW = inputBuffer.getHandle<FloatTy>();
   auto inG = GRADHANDLE(&inputBuffer);
