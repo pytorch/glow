@@ -1,29 +1,44 @@
+#include "noether/Network.h"
 #include "noether/Train.h"
 #include "noether/Tensor.h"
 
 using namespace noether;
 
-void TrainableData::train(const TrainingConfig &config) {
+Trainer::~Trainer() {
+  for (auto &p : gsum_) {
+    delete p.second;
+  }
+}
+
+void Trainer::train(Tensor *weights, Tensor *gradients) {
+  assert(weights->dims() == gradients->dims() && "Invalid tensor sizes");
+
   size_t batchSize = config.batchSize;
   float L1Decay = config.L1Decay;
   float L2Decay = config.L2Decay;
   float learningRate = config.learningRate;
   float momentum = config.momentum;
 
-  // Do not change the weights of input layers that are marked as untrainable.
-  if (!isTrainable_)
-    return;
+
+  auto sz = weights->size();
+  auto W = weights->getHandle<FloatTy>();
+  auto G = gradients->getHandle<FloatTy>();
+  auto Gsum = Handle<FloatTy>::createInvalidHandle();
 
   /// If we are using the momentum technique then we need to allocate an array
   /// for the gradient sum.
-  if (momentum > 0.0 && gsum_.size() == 0) {
-    gsum_.reset(ElemKind::FloatTy, weight_.dims());
-  }
+  if (momentum > 0.0) {
+    auto it = gsum_.find(gradients);
 
-  auto sz = weight_.size();
-  auto W = weight_.getHandle<FloatTy>();
-  auto G = gradient_.getHandle<FloatTy>();
-  auto Gsum = gsum_.getHandle<FloatTy>();
+    if (it != gsum_.end()) {
+      Gsum = it->second->getHandle<FloatTy>();
+    } else {
+      Tensor *gs = new Tensor();
+      gs->reset(gradients);
+      gsum_[gradients] = gs;
+      Gsum = gs->getHandle<FloatTy>();
+    }
+  }
 
   // For each weight/gradient pair:
   for (size_t x = 0; x < sz; x++) {
@@ -33,7 +48,8 @@ void TrainableData::train(const TrainingConfig &config) {
     FloatTy gij = (L2Grad + L1Grad + G.raw(x)) / batchSize;
 
     // Use the momentum to improve the gradient descent:
-    // http://ufldl.stanford.edu/tutorial/supervised/OptimizationStochasticGradientDescent/
+    // http://ufldl.stanford.edu/tutorial/supervised/
+    // OptimizationStochasticGradientDescent/
     if (momentum > 0.0) {
       // Momentum update:
       FloatTy dx = momentum * Gsum.raw(x) - learningRate * gij;
@@ -45,28 +61,5 @@ void TrainableData::train(const TrainingConfig &config) {
       // Use regular SGD:
       W.raw(x) -= learningRate * gij;
     }
-  }
-}
-
-void TrainableData::dump() {
-  auto W = weight_.getHandle<FloatTy>();
-  auto G = gradient_.getHandle<FloatTy>();
-  auto Gsum = gsum_.getHandle<FloatTy>();
-
-  W.dump("W");
-  if (G.size())
-    G.dump("G", "\n");
-  if (Gsum.size())
-    Gsum.dump("Gsum", "\n");
-}
-
-void TrainableData::verify() {
-  if (gradient_.size()) {
-    assert(gradient_.size() == weight_.size() &&
-           "Gradient tensor does not match weight tensor");
-  }
-  if (gsum_.size()) {
-    assert(gsum_.size() == weight_.size() &&
-           "Gradient tensor does not match weight tensor");
   }
 }

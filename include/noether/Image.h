@@ -13,10 +13,9 @@ namespace noether {
 
 class PNGNode final : public TrainableNode {
 public:
-  PNGNode(Network *N) : TrainableNode(N) {
-    // Do not change the output of this layer when training the network.
-    getOutput().isTrainable_ = false;
-  }
+  PNGNode(Network *N) : TrainableNode(N) {  }
+
+  virtual bool isTrainable() override { return false; }
 
   virtual std::string getName() const override { return "PNGNode"; }
 

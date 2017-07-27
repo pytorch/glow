@@ -61,9 +61,9 @@ void testFCSoftMax(bool verbose = false) {
 
   // Construct the network:
   Network N;
-  N.getTrainingConfig().momentum = 0.0;
-  N.getTrainingConfig().learningRate = 0.1;
-  N.getTrainingConfig().batchSize = 10;
+  N.getConfig().momentum = 0.0;
+  N.getConfig().learningRate = 0.1;
+  N.getConfig().batchSize = 10;
 
   auto *A = N.createArrayNode({2});
   auto *FCL0 = N.createFullyConnectedNode(A, 6);
@@ -77,7 +77,7 @@ void testFCSoftMax(bool verbose = false) {
   generateCircleData(coordinates, labels);
 
   // Setup a handle to access array A and SM.
-  auto SMH = SM->getOutput().weight_.getHandle<FloatTy>();
+  auto SMH = SM->getOutput().getHandle<FloatTy>();
 
   std::cout << "Training.\n";
 
@@ -153,7 +153,7 @@ void testRegression(bool verbose = false) {
     std::cout << "Verify the result of the regression layer.\n";
   }
 
-  auto resH = RN->getOutput().weight_.getHandle<FloatTy>();
+  auto resH = RN->getOutput().getHandle<FloatTy>();
   (void)resH;
 
   // Test the output:
@@ -174,7 +174,8 @@ void testLearnSingleInput(bool verbose = false) {
   }
 
   Network N;
-  N.getTrainingConfig().learningRate = 0.05;
+  N.getConfig().learningRate = 0.05;
+  
   auto *A = N.createArrayNode(4);
   auto *FCL0 = N.createFullyConnectedNode(A, 10);
   auto *RL0 = N.createRELUNode(FCL0);
@@ -199,7 +200,7 @@ void testLearnSingleInput(bool verbose = false) {
 
   N.infer(RN, {A}, {&inputs});
 
-  auto RNWH = RN->getOutput().weight_.getHandle<FloatTy>();
+  auto RNWH = RN->getOutput().getHandle<FloatTy>();
   (void)RNWH;
 
   // Test the output:

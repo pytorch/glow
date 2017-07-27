@@ -11,6 +11,12 @@ using namespace noether;
 Network::Network() {}
 
 Network::~Network() {
+  /// Delete the gradient tensors.
+  for (auto &tp : gradientTensors_) {
+    delete tp.second;
+  }
+
+  /// Delete the nodes of the network.
   for (auto *node : networkNodes_) {
     delete node;
   }
@@ -56,10 +62,6 @@ ArrayNode *Network::createArrayNode(ArrayRef<size_t> dims) {
   return addNode(new ArrayNode(this, dims));
 }
 
-void Network::registerDerivTensor(NodeBase *node, TrainableData *weights) {
-  trainableBuffers_.push_back(weights);
-}
-
 namespace {
 
 struct BackwardPass : NodeVisitor {
@@ -81,7 +83,6 @@ struct PrinterPass : NodeVisitor {
 /// values \p inputs.
 void Network::train(NodeBase *root, size_t iterations,
                     ArrayRef<NodeBase *> nodes, ArrayRef<Tensor *> inputs) {
-
   for (size_t i = 0; i < iterations; i++) {
     // Update all of the inputs of all of the relevant nodes:
     for (int i = 0, e = nodes.size(); i < e; i++) {
@@ -99,16 +100,14 @@ void Network::train(NodeBase *root, size_t iterations,
     trainCounter_++;
 
     // Only update the gradient when we've reached the end of the batch.
-    if (trainCounter_ % trainConf_.batchSize)
+    if (trainCounter_ % getConfig().batchSize)
       continue;
 
-    // Update the gradients.
-    for (auto &buffer : trainableBuffers_) {
-      buffer->train(trainConf_);
-    }
-
-    for (auto &buffer : trainableBuffers_) {
-      buffer->clearGradient();
+    for (auto &p : gradientTensors_) {
+      // Update the weights.
+      trainer_.train(p.first, p.second);
+      // Clear the gradients for the next round of training.
+      p.second->zero();
     }
   }
 }
@@ -135,16 +134,14 @@ void Network::train(NodeBase *root, ArrayRef<NodeBase *> nodes,
   trainCounter_++;
 
   // Only update the gradient when we've reached the end of the batch.
-  if (trainCounter_ % trainConf_.batchSize)
+  if (trainCounter_ % getConfig().batchSize)
     return;
 
-  // Update the gradients.
-  for (auto &buffer : trainableBuffers_) {
-    buffer->train(trainConf_);
-  }
-
-  for (auto &buffer : trainableBuffers_) {
-    buffer->clearGradient();
+  for (auto &p : gradientTensors_) {
+    // Update the weights.
+    trainer_.train(p.first, p.second);
+    // Clear the gradients for the next round of training.
+    p.second->zero();
   }
 }
 
@@ -166,13 +163,27 @@ void Network::dump(NodeBase *root) {
   // Print all of the nodes in the network.
   PrinterPass FP;
   root->visit(&FP);
-  std::cout << "\n";
-
-  std::cout << "Buffers content:\n";
-
-  for (auto &buffer : trainableBuffers_) {
-    buffer->dump();
-  }
 
   std::cout << "\n";
+}
+
+
+void Network::allocateGradientTensor(Tensor *weights) {
+  assert(!gradientTensors_.count(weights) &&
+         "Already allocated gradient tensor for this weight tensor");
+  // Allocate and register a new tensor with the same type and dimensions as the
+  // weights tensor.
+  Tensor *T = new Tensor();
+  T->reset(weights);
+  gradientTensors_[weights] = T;
+}
+
+Tensor *Network::getGradientTensor(Context *ctx, Tensor *weights) {
+  // At this point ignore the context.
+
+  assert(gradientTensors_.count(weights) &&
+         "Gradient tensor was not allocated!");
+  return gradientTensors_[weights];
+
+
 }

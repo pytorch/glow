@@ -48,6 +48,10 @@ public:
   /// to bottom.
   virtual void visit(NodeVisitor *visitor) = 0;
 
+  /// \returns true if the node weights can be changed during the training
+  /// process.
+  virtual bool isTrainable() { return true; }
+
   /// Dtor.
   virtual ~NodeBase() {}
 };
@@ -56,13 +60,16 @@ public:
 class TrainableNode : public NodeBase {
 protected:
   /// The filter output.
-  TrainableData output_;
+  Tensor output_;
+
+  /// A pointer to the network that owns the node.
+  Network *network_;
 
 public:
   TrainableNode(Network *N);
 
-  /// \returns the output of a node in the compute graph.
-  TrainableData &getOutput() { return output_; }
+  /// \returns the output (weights) of a node in the compute graph.
+  Tensor &getOutput() { return output_; }
 
   /// \returns the dimension of the tensor.
   ArrayRef<size_t> dims() const { return output_.dims(); }

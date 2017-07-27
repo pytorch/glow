@@ -172,6 +172,12 @@ public:
   Tensor(const Tensor &other) = delete;
   Tensor &operator=(const Tensor &other) = delete;
 
+  /// Reset the shape and type of this tensor to match the shape and type of
+  /// \p other.
+  void reset(Tensor *other) {
+    reset(other->getElementType(), other->dims());
+  }
+
   /// Assigns a new shape to the tensor and allocates a new buffer.
   void reset(ElemKind elemTy, ArrayRef<size_t> dims) {
     delete[] data_;
@@ -243,7 +249,17 @@ template <class ElemTy> class Handle final {
   /// Saves the number of dimensions used in the tensor.
   uint8_t numDims{0};
 
+  /// Create a new invalid handle. Notice that this method is private and may
+  /// only be used by the static factory method below.
+  Handle() {}
+
 public:
+  /// Allocate a new invalid handle.
+  static Handle createInvalidHandle() { return Handle(); }
+
+  /// \returns true if this Handle points to a valid tensor.
+  bool isValid() { return tensor_; }
+
   /// Calculate the index for a specific element in the tensor. Notice that
   /// the list of indices may be incomplete.
   size_t getElementPtr(ArrayRef<size_t> indices) const {

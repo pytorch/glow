@@ -4,7 +4,7 @@
 #include "noether/Nodes.h"
 #include "noether/Train.h"
 
-#include <map>
+#include <unordered_map>
 #include <vector>
 
 namespace noether {
@@ -13,28 +13,32 @@ class NodeBase;
 
 class TrainableData;
 
+/// This represents the execution context of the graph.
+class Context {};
+
 class Network {
   /// This variable counts the number of iterations that train() was called.
   /// It is mainly used to detect batch size boundries.
   size_t trainCounter_{};
 
-  /// The configuration used to train the network.
-  TrainingConfig trainConf_{};
-
-  /// A list of buffers to train as part of the backwards prop pass.
-  std::vector<TrainableData *> trainableBuffers_;
+  /// The trainer performs the SGD and contains the caches that are needed for
+  /// training.
+  Trainer trainer_{};
 
   /// This is a list of nodes (operations) that make the network. The nodes are
   /// owned by the network.
   std::vector<TrainableNode *> networkNodes_;
 
+  /// Maps weight tensors into the corresponding gradient tensors.
+  std::unordered_map<Tensor*, Tensor*> gradientTensors_;
+
   /// Registers the newly create operation node into the network.
   /// \returns the newly created node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
     networkNodes_.push_back(N);
+    allocateGradientTensor(&N->output_);
     return N;
   }
-
 public:
   /// Ctor.
   Network();
@@ -69,11 +73,7 @@ public:
   ///@}
 
   /// Provides access to the training configuration.
-  TrainingConfig &getTrainingConfig() { return trainConf_; }
-
-  /// Registers the derivable data \p weights (weights and gradient) as
-  /// belonging to the node \p node.
-  void registerDerivTensor(NodeBase *node, TrainableData *weights);
+  TrainingConfig &getConfig() { return trainer_.config; }
 
   /// Train the network starting with the node \p root. Perform \p iterations
   /// iterations in the training loop. Update the nodes in \p nodes with the
@@ -93,6 +93,13 @@ public:
 
   /// Dump the textual representation of the network.
   void dump(NodeBase *root);
+
+  /// Allocates a gradient Tensor that corresponds to the tensor \p weights.
+  void allocateGradientTensor(Tensor *weights);
+
+  /// \returns the allocated gradient Tensor that was allocated for \p weights
+  /// in the training context \p ctx.
+  Tensor *getGradientTensor(Context *ctx, Tensor *weights);
 };
 }
 

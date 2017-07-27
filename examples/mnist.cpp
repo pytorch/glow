@@ -64,10 +64,10 @@ void testMNIST() {
 
   // Construct the network:
   Network N;
-  N.getTrainingConfig().learningRate = 0.01;
-  N.getTrainingConfig().momentum = 0.9;
-  N.getTrainingConfig().batchSize = 20;
-  N.getTrainingConfig().L2Decay = 0.001;
+  N.getConfig().learningRate = 0.01;
+  N.getConfig().momentum = 0.9;
+  N.getConfig().batchSize = 20;
+  N.getConfig().L2Decay = 0.001;
 
   auto *A = N.createArrayNode({28, 28, 1});
   auto *CV0 = N.createConvNode(A, 16, 5, 1, 2);
@@ -112,9 +112,9 @@ void testMNIST() {
     size_t correct = LIH.at(imageIndex);
     rightAnswer += (guess == correct);
 
-    A->getOutput().weight_.getHandle<FloatTy>().dumpAscii("MNIST Input");
+    A->getOutput().getHandle<FloatTy>().dumpAscii("MNIST Input");
     std::cout << "Expected: " << correct << " Guessed: " << guess << "\n";
-    SM->getOutput().weight_.getHandle<FloatTy>().dump("", "\n");
+    SM->getOutput().getHandle<FloatTy>().dump("", "\n");
     std::cout << "\n-------------\n";
   }
 

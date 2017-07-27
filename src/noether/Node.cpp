@@ -4,6 +4,4 @@
 
 using namespace noether;
 
-TrainableNode::TrainableNode(Network *N) {
-  N->registerDerivTensor(this, &output_);
-}
+TrainableNode::TrainableNode(Network *N) : network_(N) {}

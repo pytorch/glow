@@ -16,9 +16,9 @@ namespace noether {
 class ConvNode final : public TrainableNode {
   TrainableNode *input_;
   /// A list of convolution filters.
-  TrainableData filters_;
+  Tensor filters_;
   /// The convolution bias.
-  TrainableData bias_;
+  Tensor bias_;
 
   size_t filterSize_;
   size_t stride_;
@@ -69,9 +69,9 @@ class FullyConnectedNode final : public TrainableNode {
   /// A reference to the layer input.
   TrainableNode *input_;
   /// A list of filters.
-  TrainableData filters_;
+  Tensor filters_;
   /// The biases.
-  TrainableData bias_;
+  Tensor bias_;
 
   FullyConnectedNode(Network *N, TrainableNode *input, size_t outDepth);
 
@@ -247,10 +247,10 @@ public:
 /// This is an abstraction over raw variable inputs.
 class ArrayNode final : public TrainableNode {
   ArrayNode(Network *N, ArrayRef<size_t> dims) : TrainableNode(N) {
-    getOutput().reset(dims);
-    // Do not change the output of this layer when training the network.
-    getOutput().isTrainable_ = false;
+    getOutput().reset(ElemKind::FloatTy, dims);
   }
+
+  virtual bool isTrainable() override { return false; }
 
   friend Network;
 
@@ -274,15 +274,15 @@ public:
     assert(dims() == dim.drop_front() && "Invalid batch size");
     /// Extract the n'th slice, that must be a tensor.
     size_t slc = sampleIdx % dim[0];
-    getOutput().weight_ = batch->getHandle<FloatTy>().extractSlice(slc);
+    getOutput() = batch->getHandle<FloatTy>().extractSlice(slc);
   }
 
   virtual void updateInput(Tensor *var) override {
-    auto &w = getOutput().weight_;
+    auto &w = getOutput();
     (void)w;
     assert(w.dims() == var->dims() && "Invalid input size");
     assert(w.getElementType() == var->getElementType() && "invalid input type");
-    getOutput().weight_ = var->clone();
+    getOutput() = var->clone();
   }
 
   virtual void visit(NodeVisitor *visitor) override;

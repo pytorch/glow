@@ -64,10 +64,10 @@ void testCIFAR10() {
 
   // Construct the network:
   Network N;
-  N.getTrainingConfig().learningRate = 0.001;
-  N.getTrainingConfig().momentum = 0.9;
-  N.getTrainingConfig().batchSize = 8;
-  N.getTrainingConfig().L2Decay = 0.0001;
+  N.getConfig().learningRate = 0.001;
+  N.getConfig().momentum = 0.9;
+  N.getConfig().batchSize = 8;
+  N.getConfig().L2Decay = 0.0001;
 
   auto *A = N.createArrayNode({32, 32, 3});
   auto *CV0 = N.createConvNode(A, 16, 5, 1, 2);
