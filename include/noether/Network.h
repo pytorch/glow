@@ -16,11 +16,13 @@ class TrainableData;
 /// This represents the execution context of the graph.
 class Context {
 public:
+  using TrainableMap = std::unordered_map<const TensorToken*, TrainableData*>;
+
   /// Represents the cell number, when performing concurrent training.
   unsigned cellId_;
 
   /// Maps weight tensors into the corresponding weights and gradient tensors.
-  std::unordered_map<const TensorToken*, TrainableData*> trainables_;
+  TrainableMap trainables_;
 
   /// Maps weight tensors into the corresponding weights and gradient tensors.
   std::unordered_map<const TensorToken*, Tensor*> tensors_;
@@ -28,6 +30,9 @@ public:
   Context(unsigned cellId) : cellId_(cellId) {}
 
   ~Context();
+
+  TrainableMap::iterator begin() { return trainables_.begin(); }
+  TrainableMap::iterator end() { return trainables_.end(); }
 
   Handle<FloatTy> getWeightHandle(const TensorToken *tok);
 
@@ -68,7 +73,9 @@ class Network {
   /// Registers the newly create operation node into the network.
   /// \returns the newly created node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
-    N->init(&state_[0]);
+    for (auto &c : state_)
+    N->init(&c);
+
     networkNodes_.push_back(N);
     return N;
   }

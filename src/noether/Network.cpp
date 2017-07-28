@@ -153,18 +153,80 @@ void Network::learnGradient(Context *ctx) {
   }
 }
 
+static unsigned calculateNumThreads(unsigned numCores, unsigned batchSize) {
+  unsigned best = 1;
+
+  for (int i = 1;  i < numCores; i++) {
+
+    // The batch size must be a multiple of the number of threads or we'll skip
+    /// some inputs.
+    if (batchSize % i)
+      continue;
+
+    /// Each thread must handle at least 4 inputs.
+    if ((batchSize / i) < 4)
+      break;
+
+    best = i;
+  }
+  return best;
+}
+
 /// Train the network starting with the node \p root. Perform \p iterations
 /// iterations in the training loop. Update the nodes in \p nodes with the
 /// values \p inputs.
 void Network::train(NodeBase *root, size_t batches,
                     ArrayRef<NodeBase *> nodes, ArrayRef<Tensor *> inputs) {
+
+  size_t batchSize = getConfig().batchSize;
+  unsigned numThreads = calculateNumThreads(state_.size(), batchSize);
+  unsigned sliceSize = batchSize / numThreads;
+
+  std::vector<std::thread> threads;
+
   for (size_t i = 0; i < batches; i++) {
-    updateForwardBackward(&state_[0], root, trainCounter_,
-                          getConfig().batchSize, nodes, inputs,
-                          true);
+    /// Launch threads that update the different chunks in the batch:
+    for (int t = 0; t < numThreads; t++) {
+      /// Update the network inputs and perform the forward and backwards pass.
+      threads.emplace_back([=] {
+        updateForwardBackward(&state_[t], root, trainCounter_ + t * sliceSize,
+                              sliceSize, nodes, inputs,
+                              true); });
+    }
+
+    /// Wait for the threads to finish.
+    for (auto &t : threads) { t.join(); }
+    threads.clear();
+
     trainCounter_+=getConfig().batchSize;
 
+
+    // The algorithm for merging the state from the different threads is
+    /// described in the paper:
+    // Alex Krizhevsky [2014]
+    // One weird trick for parallelizing convolutional neural networks
+
+    // Merge the gradients from all of the treads into the first thread.
+    // For each buffer in the first tread:
+    for (auto trainable : state_[0]) {
+      // For each thread id.
+      for (int tid = 1; tid < numThreads; tid++) {
+        auto *T = state_[tid].getTrainable(trainable.first);
+        trainable.second->mergeGradients(T);
+        T->clearGradient();
+      }
+    }
+
+    // Perform the delta updates on the first thread:
     learnGradient(&state_[0]);
+
+    /// Send the calculated weights to all other threads:
+    for (auto trainable : state_[0]) {
+      for (int tid = 1; tid < numThreads; tid++) {
+        auto *T = state_[tid].getTrainable(trainable.first);
+        T->copyWeights(trainable.second);
+      }
+    }
   }
 }
 

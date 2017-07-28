@@ -293,6 +293,8 @@ public:
     assert(numDims < max_tensor_dimensions);
   }
 
+  ArrayRef<size_t> dims() const { return tensor_->dims(); }
+
   size_t size() const { return tensor_->size(); }
 
   bool isInBounds(ArrayRef<size_t> indices) const {

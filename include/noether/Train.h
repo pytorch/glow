@@ -63,6 +63,22 @@ public:
   /// \returns the number of elements in the tensor.
   size_t size() const { return weights_.size(); }
 
+  void mergeGradients(TrainableData *other) {
+    auto myGrad = getGradHandle();
+    auto otherGrad = other->getGradHandle();
+    assert(myGrad.dims() == otherGrad.dims() && "Mismatching sizes");
+
+    for (size_t i = 0, e = myGrad.size(); i < e; i++) {
+      myGrad.raw(i) += otherGrad.raw(i);
+    }
+  }
+
+  void copyWeights(TrainableData *other) {
+    auto myW = getWeightHandle();
+    auto otherW = other->getWeightHandle();
+    assert(myW.dims() == otherW.dims() && "Mismatching sizes");
+    weights_ = other->weights_.clone();
+  }
 
   /// Zero out the gradient and prepare for the next round of learning.
   void clearGradient() { gradients_.zero(); }
