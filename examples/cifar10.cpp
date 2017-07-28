@@ -105,11 +105,11 @@ void testCIFAR10() {
       const unsigned imageIndex = ((i + iter) * 175 + 912) % cifarNumImages;
       // Load the image.
       Tensor sample = imagesH.extractSlice(imageIndex);
-      N.infer(SM, {A}, {&sample});
+      auto *res = N.infer(SM, {A}, {&sample});
 
       // Read the expected label.
       auto expectedLabel = labelsH.at({imageIndex});
-      unsigned result = SM->maxArg();
+      unsigned result = res->getHandle<FloatTy>().maxArg();
       score += textualLabels[expectedLabel] == textualLabels[result];
     }
     std::cout << "Score : " << score << " / 100.\n";

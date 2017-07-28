@@ -12,11 +12,6 @@ using namespace noether;
 Network::Network() : numThreads_(std::thread::hardware_concurrency()) { }
 
 Network::~Network() {
-  /// Delete the gradient tensors.
-  for (auto &tp : gradientTensors_) {
-    delete tp.second;
-  }
-
   /// Delete the nodes of the network.
   for (auto *node : networkNodes_) {
     delete node;
@@ -91,17 +86,15 @@ void Network::train(NodeBase *root, size_t iterations,
   for (size_t i = 0; i < iterations; i++) {
     // Update all of the inputs of all of the relevant nodes:
     for (int i = 0, e = nodes.size(); i < e; i++) {
-      nodes[i]->updateInputs(inputs[i], trainCounter_);
+      nodes[i]->updateInputs(&ctx0_, inputs[i], trainCounter_);
     }
 
-    Context ctx(0);
-
     // Forward scan.
-    ForwardPass FP(&ctx);
+    ForwardPass FP(&ctx0_);
     root->visit(&FP);
 
     // Backward scan in reverse order.
-    BackwardPass BP(&ctx);
+    BackwardPass BP(&ctx0_);
     root->visit(&BP);
 
     trainCounter_++;
@@ -110,11 +103,11 @@ void Network::train(NodeBase *root, size_t iterations,
     if (trainCounter_ % getConfig().batchSize)
       continue;
 
-    for (auto &p : gradientTensors_) {
+    for (auto &p : ctx0_.trainables_) {
       // Update the weights.
-      trainer_.train(p.first, p.second);
+      trainer_.train(p.second);
       // Clear the gradients for the next round of training.
-      p.second->zero();
+      p.second->clearGradient();
     }
   }
 }
@@ -127,17 +120,15 @@ void Network::train(NodeBase *root, ArrayRef<NodeBase *> nodes,
 
   // Update all inputs.
   for (int i = 0, e = nodes.size(); i < e; i++) {
-    nodes[i]->updateInput(inputs[i]);
+    nodes[i]->updateInput(&ctx0_, inputs[i]);
   }
 
-  Context ctx(0);
-
   // Forward scan.
-  ForwardPass FP(&ctx);
+  ForwardPass FP(&ctx0_);
   root->visit(&FP);
 
   // Backward scan in reverse order.
-  BackwardPass BP(&ctx);
+  BackwardPass BP(&ctx0_);
   root->visit(&BP);
 
   trainCounter_++;
@@ -146,26 +137,26 @@ void Network::train(NodeBase *root, ArrayRef<NodeBase *> nodes,
   if (trainCounter_ % getConfig().batchSize)
     return;
 
-  for (auto &p : gradientTensors_) {
+  for (auto &p : ctx0_.trainables_) {
     // Update the weights.
-    trainer_.train(p.first, p.second);
+    trainer_.train(p.second);
     // Clear the gradients for the next round of training.
-    p.second->zero();
+    p.second->clearGradient();
   }
 }
 
-void Network::infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
+Tensor *Network::infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
                     ArrayRef<Tensor *> inputs) {
   // Update all inputs.
   for (int i = 0, e = nodes.size(); i < e; i++) {
-    nodes[i]->updateInput(inputs[i]);
+    nodes[i]->updateInput(&ctx0_, inputs[i]);
   }
 
-  Context ctx(0);
-
   // Forward scan.
-  ForwardPass FP(&ctx);
+  ForwardPass FP(&ctx0_);
   root->visit(&FP);
+
+  return &root->getOutput(&ctx0_)->weights_;
 }
 
 void Network::dump(NodeBase *root) {
@@ -178,23 +169,3 @@ void Network::dump(NodeBase *root) {
   std::cout << "\n";
 }
 
-
-void Network::allocateGradientTensor(Tensor *weights) {
-  assert(!gradientTensors_.count(weights) &&
-         "Already allocated gradient tensor for this weight tensor");
-  // Allocate and register a new tensor with the same type and dimensions as the
-  // weights tensor.
-  Tensor *T = new Tensor();
-  T->reset(weights);
-  gradientTensors_[weights] = T;
-}
-
-Tensor *Network::getGradientTensor(Context *ctx, Tensor *weights) {
-  // At this point ignore the context.
-
-  assert(gradientTensors_.count(weights) &&
-         "Gradient tensor was not allocated!");
-  return gradientTensors_[weights];
-
-
-}

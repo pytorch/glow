@@ -17,12 +17,55 @@ class TrainableData;
 class Context {
 public:
   /// Represents the cell number, when performing concurrent training.
-  unsigned cellId;
+  unsigned cellId_;
 
-  Context(unsigned cellId) : cellId(cellId) {}
+  /// Maps weight tensors into the corresponding weights and gradient tensors.
+  std::unordered_map<const TensorToken*, TrainableData*> trainables_;
+
+  /// Maps weight tensors into the corresponding weights and gradient tensors.
+  std::unordered_map<const TensorToken*, Tensor*> tensors_;
+
+  Context(unsigned cellId) : cellId_(cellId) {}
+
+  ~Context() {
+    for (auto t : trainables_) {
+      delete t.second;
+    }
+    for (auto t : tensors_) {
+      delete t.second;
+    }
+  }
+
+  /// Allocates a new tensor pair that's addressed by the token \p tok.
+  void allocateTrainable(const TensorToken *tok, bool trainable,
+                      ArrayRef<size_t> dims) {
+    assert(!trainables_.count(tok) && "Token already allocated");
+    trainables_[tok] = new TrainableData(trainable, dims);
+  }
+
+  /// \returns the allocated gradient and weight Tensor pair.
+  TrainableData *getTrainable(const TensorToken *tok) {
+    assert(trainables_.count(tok) && "The token was not allocated");
+    return trainables_[tok];
+  }
+
+  /// Allocates a new tensor that's addressed by the token \p tok.
+  void allocateTensor(const TensorToken *tok, ElemKind kind,
+                              ArrayRef<size_t> dims) {
+    assert(!tensors_.count(tok) && "Token already allocated");
+    tensors_[tok] = new Tensor(kind, dims);
+  }
+
+  /// \returns the allocated Tensor.
+  Tensor *getTensor(const TensorToken *tok) {
+    assert(tensors_.count(tok) && "The token was not allocated");
+    return tensors_[tok];
+  }
 };
 
 class Network {
+  Context ctx0_{0};
+
   /// This variable counts the number of iterations that train() was called.
   /// It is mainly used to detect batch size boundries.
   size_t trainCounter_{};
@@ -35,14 +78,11 @@ class Network {
   /// owned by the network.
   std::vector<TrainableNode *> networkNodes_;
 
-  /// Maps weight tensors into the corresponding gradient tensors.
-  std::unordered_map<Tensor*, Tensor*> gradientTensors_;
-
   /// Registers the newly create operation node into the network.
   /// \returns the newly created node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
+    N->init(&ctx0_);
     networkNodes_.push_back(N);
-    allocateGradientTensor(&N->output_);
     return N;
   }
 
@@ -96,18 +136,11 @@ public:
 
   /// Infer data for a single input. Update the nodes in \p nodes with the
   /// values \p inputs.
-  void infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
+  Tensor *infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
              ArrayRef<Tensor *> inputs);
 
   /// Dump the textual representation of the network.
   void dump(NodeBase *root);
-
-  /// Allocates a gradient Tensor that corresponds to the tensor \p weights.
-  void allocateGradientTensor(Tensor *weights);
-
-  /// \returns the allocated gradient Tensor that was allocated for \p weights
-  /// in the training context \p ctx.
-  Tensor *getGradientTensor(Context *ctx, Tensor *weights);
 };
 }
 

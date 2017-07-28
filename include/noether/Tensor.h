@@ -428,6 +428,7 @@ public:
   /// The parameter \p filterSize is the number of elements in the
   /// tensor (or the relevant slice).
   void randomize(size_t filterSize) {
+    assert(filterSize > 0 && "invalid filter size");
     double scale = std::sqrt(3.0 / double(filterSize));
     for (size_t i = 0, e = size(); i < e; ++i) {
       raw(i) = (nextRand()) * scale;

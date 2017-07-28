@@ -106,15 +106,15 @@ void testMNIST() {
     size_t imageIndex = (iter * 19 + 124) % numImages;
     Tensor sample = IIH.extractSlice(imageIndex);
 
-    N.infer(SM, {A}, {&sample});
+    auto *res = N.infer(SM, {A}, {&sample});
 
-    size_t guess = SM->maxArg();
+    size_t guess = res->getHandle<FloatTy>().maxArg();
     size_t correct = LIH.at(imageIndex);
     rightAnswer += (guess == correct);
 
-    A->getOutput().getHandle<FloatTy>().dumpAscii("MNIST Input");
+    sample.getHandle<FloatTy>().dumpAscii("MNIST Input");
     std::cout << "Expected: " << correct << " Guessed: " << guess << "\n";
-    SM->getOutput().getHandle<FloatTy>().dump("", "\n");
+    res->getHandle<FloatTy>().dump("", "\n");
     std::cout << "\n-------------\n";
   }
 

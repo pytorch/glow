@@ -10,15 +10,19 @@ Trainer::~Trainer() {
   }
 }
 
-void Trainer::train(Tensor *weights, Tensor *gradients) {
+void Trainer::train(TrainableData *trainable) {
+  Tensor *weights = &trainable->weights_;
+  Tensor *gradients = &trainable->gradients_;
   assert(weights->dims() == gradients->dims() && "Invalid tensor sizes");
+
+  if (!trainable->isTrainable_)
+    return;
 
   size_t batchSize = config.batchSize;
   float L1Decay = config.L1Decay;
   float L2Decay = config.L2Decay;
   float learningRate = config.learningRate;
   float momentum = config.momentum;
-
 
   auto sz = weights->size();
   auto W = weights->getHandle<FloatTy>();

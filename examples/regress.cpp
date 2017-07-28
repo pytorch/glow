@@ -76,9 +76,6 @@ void testFCSoftMax(bool verbose = false) {
   Tensor labels(ElemKind::IndexTy, {numSamples});
   generateCircleData(coordinates, labels);
 
-  // Setup a handle to access array A and SM.
-  auto SMH = SM->getOutput().getHandle<FloatTy>();
-
   std::cout << "Training.\n";
 
   for (int iter = 0; iter < 2000; iter++) {
@@ -94,7 +91,9 @@ void testFCSoftMax(bool verbose = false) {
         Tensor sample(ElemKind::FloatTy, {2});
         sample.getHandle<FloatTy>() = {float(x) / 10, float(y) / 10};
 
-        N.infer(SM, {A}, {&sample});
+        auto res = N.infer(SM, {A}, {&sample});
+
+        auto SMH = res->getHandle<FloatTy>();
 
         auto A = SMH.at({0});
         auto B = SMH.at({1});
@@ -153,14 +152,17 @@ void testRegression(bool verbose = false) {
     std::cout << "Verify the result of the regression layer.\n";
   }
 
-  auto resH = RN->getOutput().getHandle<FloatTy>();
-  (void)resH;
+
 
   // Test the output:
   for (int iter = 0; iter < 5; iter++) {
     float target = iter % 9 + 1;
     I = {target, 0., 0., 0.};
-    N.infer(RN, {A}, {&inputs});
+    auto *res = N.infer(RN, {A}, {&inputs});
+
+    auto resH = res->getHandle<FloatTy>();
+    (void)resH;
+
     assert(delta(I.at({0}) + 1, resH.at({1})) < 0.1);
   }
   if (verbose) {
@@ -190,7 +192,7 @@ void testLearnSingleInput(bool verbose = false) {
   expected.getHandle<FloatTy>() = {0.9, 0.9, 0.9, 0.9};
 
   // Train the network:
-  for (int iter = 0; iter < 10000; iter++) {
+  for (int iter = 0; iter < 1000; iter++) {
     N.train(RN, {A, RN}, {&inputs, &expected});
   }
 
@@ -198,9 +200,8 @@ void testLearnSingleInput(bool verbose = false) {
     std::cout << "Testing the output vector.\n";
   }
 
-  N.infer(RN, {A}, {&inputs});
-
-  auto RNWH = RN->getOutput().getHandle<FloatTy>();
+  auto res = N.infer(RN, {A}, {&inputs});
+  auto RNWH = res->getHandle<FloatTy>();
   (void)RNWH;
 
   // Test the output:

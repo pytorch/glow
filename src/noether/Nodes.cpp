@@ -4,50 +4,46 @@
 
 using namespace noether;
 
-/// \returns a handle to the gradient tensor \p XX.
-#define GRADHANDLE(XX) \
-  Handle<FloatTy>((network_->getGradientTensor(ctx, XX )))
-
 
 ConvNode::ConvNode(Network *N, TrainableNode *input, size_t outDepth,
                    size_t filterSize, size_t stride, size_t pad)
-    : TrainableNode(N), input_(input), filterSize_(filterSize), stride_(stride),
-      pad_(pad) {
-  assert(input && input_->size() && "Invalid input");
-  auto idim = input_->dims();
-  assert(idim[0] > filterSize && idim[1] > filterSize &&
+    : TrainableNode(), input_(input), filterSize_(filterSize), stride_(stride),
+  pad_(pad), outDepth_(outDepth) {}
+
+void ConvNode::init(Context *ctx) {
+  assert(input_ && input_->size(ctx) && "Invalid input");
+  auto idim = input_->dims(ctx);
+  assert(idim[0] > filterSize_ && idim[1] > filterSize_ &&
          "buffer too small for selected stride");
 
-  size_t outsx = ((idim[0] + pad_ * 2 - filterSize) / stride + 1);
-  size_t outsy = ((idim[1] + pad_ * 2 - filterSize) / stride + 1);
+  size_t outsx = ((idim[0] + pad_ * 2 - filterSize_) / stride_ + 1);
+  size_t outsy = ((idim[1] + pad_ * 2 - filterSize_) / stride_ + 1);
 
-  output_.reset(ElemKind::FloatTy, {outsx, outsy, outDepth});
-  bias_.reset(ElemKind::FloatTy, {1, 1, outDepth});
+  ctx->allocateTrainable(&output_, false, {outsx, outsy, outDepth_});
+  ctx->allocateTrainable(&bias_, true, {1, 1, outDepth_});
+  ctx->allocateTrainable(&filters_, true, {outDepth_, filterSize_, filterSize_, idim[2]});
 
   // RELUs like small positive bias to get gradients early in the training
   // process, otherwise the RELU units may never turn on and turn into a
   // "dead RELU".
-  auto biasWeights = bias_.getHandle<FloatTy>();
-  for (size_t i = 0; i < outDepth; i++) {
+  auto biasWeights = ctx->getTrainable(&bias_)->getWeightHandle();
+  for (size_t i = 0; i < outDepth_; i++) {
     biasWeights.at({0, 0, i}) = 0.1;
   }
 
-  filters_.reset(ElemKind::FloatTy, {outDepth, filterSize, filterSize, idim[2]});
-  size_t fanIn = filterSize * filterSize * idim[2];
-  filters_.getHandle<FloatTy>().randomize(fanIn);
-
-  N->allocateGradientTensor(&filters_);
-  N->allocateGradientTensor(&bias_);
+  size_t fanIn = filterSize_ * filterSize_ * idim[2];
+  auto F = ctx->getTrainable(&filters_)->getWeightHandle();
+  F.randomize(fanIn);
 }
 
 void ConvNode::forward(Context *ctx) {
-  auto odim = output_.dims();
-  auto idim = input_->dims();
+  auto odim = getOutput(ctx)->dims();
+  auto idim = input_->dims(ctx);
 
-  auto inW = input_->getOutput().getHandle<FloatTy>();
-  auto outW = output_.getHandle<FloatTy>();
-  auto biasW = bias_.getHandle<FloatTy>();
-  auto filterW = filters_.getHandle<FloatTy>();
+  auto inW = input_->getOutput(ctx)->getWeightHandle();
+  auto outW = getOutput(ctx)->getWeightHandle();
+  auto biasW = ctx->getTrainable(&bias_)->getWeightHandle();
+  auto filterW = ctx->getTrainable(&filters_)->getWeightHandle();
 
   // For each layer in the output tensor:
   for (size_t d = 0; d < odim[2]; d++) {
@@ -86,15 +82,14 @@ void ConvNode::forward(Context *ctx) {
 }
 
 void ConvNode::backward(Context *ctx) {
-  auto odim = output_.dims();
-  auto idim = input_->dims();
-  auto &inputWeights = input_->getOutput();
-  auto inW = inputWeights.getHandle<FloatTy>();
-  auto inG = GRADHANDLE(&inputWeights);
-  auto outG = GRADHANDLE(&output_);
-  auto biasG = GRADHANDLE(&bias_);
-  auto filterG = GRADHANDLE(&filters_);
-  auto filterW = filters_.getHandle<FloatTy>();
+  auto odim = getOutput(ctx)->dims();
+  auto idim = input_->getOutput(ctx)->dims();
+  auto inW = input_->getOutput(ctx)->getWeightHandle();
+  auto inG = input_->getOutput(ctx)->getGradHandle();
+  auto outG = getOutput(ctx)->getGradHandle();
+  auto biasG = ctx->getTrainable(&bias_)->getGradHandle();
+  auto filterG = ctx->getTrainable(&filters_)->getGradHandle();
+  auto filterW = ctx->getTrainable(&filters_)->getWeightHandle();
 
   // Zero the gradient of the input.
   inG.clear();
@@ -139,32 +134,34 @@ void ConvNode::backward(Context *ctx) {
 
 MaxPoolNode::MaxPoolNode(Network *N, TrainableNode *input, size_t filterSize,
                          size_t stride, size_t pad)
-    : TrainableNode(N), input_(input), filterSize_(filterSize), stride_(stride),
-      pad_(pad) {
-  assert(input && input_->size() && "Invalid input");
-  auto idim = input_->dims();
-  assert(idim[0] > filterSize && idim[0] > filterSize &&
+    : TrainableNode(), input_(input), filterSize_(filterSize), stride_(stride),
+pad_(pad) { }
+
+void MaxPoolNode::init(Context *ctx) {
+  assert(input_ && input_->size(ctx) && "Invalid input");
+  auto idim = input_->dims(ctx);
+  assert(idim[0] > filterSize_ && idim[0] > filterSize_ &&
          "buffer too small for selected stride");
 
-  size_t outsx = ((idim[0] + pad_ * 2 - filterSize) / stride + 1);
-  size_t outsy = ((idim[1] + pad_ * 2 - filterSize) / stride + 1);
+  size_t outsx = ((idim[0] + pad_ * 2 - filterSize_) / stride_ + 1);
+  size_t outsy = ((idim[1] + pad_ * 2 - filterSize_) / stride_ + 1);
 
-  output_.reset(ElemKind::FloatTy, {outsx, outsy, idim[2]});
+  ctx->allocateTrainable(&output_, false, {outsx, outsy, idim[2]});
 
   // Resize the arrays that store the x and y coordinates of the incoming
   // gradient.
-  srcX_.reset(ElemKind::IndexTy, {outsx, outsy, idim[2]});
-  srcY_.reset(ElemKind::IndexTy, {outsx, outsy, idim[2]});
+  ctx->allocateTensor(&srcX_, ElemKind::IndexTy, {outsx, outsy, idim[2]});
+  ctx->allocateTensor(&srcY_, ElemKind::IndexTy, {outsx, outsy, idim[2]});
 }
 
 void MaxPoolNode::forward(Context *ctx) {
-  auto odim = output_.dims();
-  auto idim = input_->dims();
-  auto inW = input_->getOutput().getHandle<FloatTy>();
-  auto outW = output_.getHandle<FloatTy>();
+  auto odim = dims(ctx);
+  auto idim = input_->dims(ctx);
+  auto inW = input_->getOutput(ctx)->getWeightHandle();
+  auto outW = getOutput(ctx)->getWeightHandle();
 
-  auto SX = srcX_.getHandle<size_t>();
-  auto SY = srcY_.getHandle<size_t>();
+  auto SX = ctx->getTensor(&srcX_)->getHandle<size_t>();
+  auto SY = ctx->getTensor(&srcY_)->getHandle<size_t>();
 
   // For each layer in the output tensor:
   for (size_t z = 0; z < idim[2]; z++) {
@@ -211,12 +208,12 @@ void MaxPoolNode::forward(Context *ctx) {
 }
 
 void MaxPoolNode::backward(Context *ctx) {
-  auto odim = output_.dims();
-  auto inG = GRADHANDLE(&input_->getOutput());
-  auto outG = GRADHANDLE(&output_);
+  auto odim = dims(ctx);
+  auto inG = input_->getOutput(ctx)->getGradHandle();
+  auto outG = getOutput(ctx)->getGradHandle();
 
-  auto SX = srcX_.getHandle<size_t>();
-  auto SY = srcY_.getHandle<size_t>();
+  auto SX = ctx->getTensor(&srcX_)->getHandle<size_t>();
+  auto SY = ctx->getTensor(&srcX_)->getHandle<size_t>();
 
   // Zero the gradient of the input.
   inG.clear();
@@ -241,36 +238,34 @@ void MaxPoolNode::backward(Context *ctx) {
 
 FullyConnectedNode::FullyConnectedNode(Network *N, TrainableNode *input,
                                        size_t outDepth)
-    : TrainableNode(N), input_(input) {
-  assert(input && input_->size() && "Invalid input");
+: TrainableNode(), input_(input), outDepth_(outDepth) {}
 
-  output_.reset(ElemKind::FloatTy, {outDepth});
-  bias_.reset(ElemKind::FloatTy, {outDepth});
+void FullyConnectedNode::init(Context *ctx) {
+  assert(input_ && input_->size(ctx) && "Invalid input");
+
+  ctx->allocateTrainable(&output_, false, {outDepth_});
+  ctx->allocateTrainable(&bias_, true, {outDepth_});
 
   // RELUs like small positive bias to get gradients early in the training
   // process, otherwise the RELU units may never turn on and turn into a
   // "dead RELU".
-  auto biasW = bias_.getHandle<FloatTy>();
-  for (size_t i = 0; i < outDepth; i++) {
+  auto biasW = ctx->getTrainable(&bias_)->getWeightHandle();
+  for (size_t i = 0; i < outDepth_; i++) {
     biasW.at({i}) = 0.1;
   }
 
-  filters_.reset(ElemKind::FloatTy, {outDepth, input_->size()});
-  filters_.getHandle<FloatTy>().randomize(input_->size());
-
-  N->allocateGradientTensor(&filters_);
-  N->allocateGradientTensor(&bias_);
+  ctx->allocateTrainable(&filters_, true, {outDepth_, input_->size(ctx)});
+  ctx->getTrainable(&filters_)->getWeightHandle().randomize(input_->size(ctx));
 }
 
 void FullyConnectedNode::forward(Context *ctx) {
-  auto &inputBuffer = input_->getOutput();
-  auto odim = output_.dims();
-  auto inW = input_->getOutput().getHandle<FloatTy>();
-  auto biasW = bias_.getHandle<FloatTy>();
-  auto outW = output_.getHandle<FloatTy>();
-  auto currFilterW = filters_.getHandle<FloatTy>();
+  auto odim = dims(ctx);
+  auto inW = input_->getOutput(ctx)->getWeightHandle();
+  auto biasW = ctx->getTrainable(&bias_)->getWeightHandle();
+  auto outW = getOutput(ctx)->getWeightHandle();
+  auto currFilterW = ctx->getTrainable(&filters_)->getWeightHandle();
 
-  size_t inputSize = inputBuffer.size();
+  size_t inputSize = inW.size();
   for (size_t i = 0; i < odim[0]; i++) {
     FloatTy sum = 0;
     for (size_t j = 0; j < inputSize; j++) {
@@ -283,18 +278,17 @@ void FullyConnectedNode::forward(Context *ctx) {
 }
 
 void FullyConnectedNode::backward(Context *ctx) {
-  auto odim = output_.dims();
-  auto &inputBuffer = input_->getOutput();
-  auto outG = GRADHANDLE(&output_);
-  auto inG = GRADHANDLE(&inputBuffer);
-  auto inW = inputBuffer.getHandle<FloatTy>();
-  auto biasG = GRADHANDLE(&bias_);
+  auto odim = dims(ctx);
+  auto outG = getOutput(ctx)->getGradHandle();
+  auto inG = input_->getOutput(ctx)->getGradHandle();
+  auto inW = input_->getOutput(ctx)->getWeightHandle();
+  auto biasG = ctx->getTrainable(&bias_)->getGradHandle();
 
   // Zero the gradient of the input.
   inG.clear();
 
-  auto filterG = GRADHANDLE(&filters_);
-  auto filterW = filters_.getHandle<FloatTy>();
+  auto filterG = ctx->getTrainable(&filters_)->getGradHandle();
+  auto filterW = ctx->getTrainable(&filters_)->getWeightHandle();
 
   size_t inSize = inG.size();
   // Compute the gradient:
@@ -313,15 +307,16 @@ void FullyConnectedNode::backward(Context *ctx) {
 }
 
 RELUNode::RELUNode(Network *N, TrainableNode *input)
-    : TrainableNode(N), input_(input) {
-  assert(input && input_->size() && "Invalid input");
-  output_.reset(ElemKind::FloatTy, input_->dims());
+    : TrainableNode(), input_(input) {}
+
+void RELUNode::init(Context *ctx) {
+  assert(input_ && input_->size(ctx) && "Invalid input");
+  ctx->allocateTrainable(&output_, false, input_->dims(ctx));
 }
 
 void RELUNode::forward(Context *ctx) {
-  auto &inputBuffer = input_->getOutput();
-  auto outW = output_.getHandle<FloatTy>();
-  auto inW = inputBuffer.getHandle<FloatTy>();
+  auto outW = getOutput(ctx)->getWeightHandle();
+  auto inW = input_->getOutput(ctx)->getWeightHandle();
 
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     FloatTy val = inW.raw(i);
@@ -330,29 +325,27 @@ void RELUNode::forward(Context *ctx) {
 }
 
 void RELUNode::backward(Context *ctx) {
-  auto &inputBuffer = input_->getOutput();
-
-  auto outW = output_.getHandle<FloatTy>();
-  auto outDW = GRADHANDLE(&output_);
-  auto inDW = GRADHANDLE(&inputBuffer);
+  auto outW = getOutput(ctx)->getWeightHandle();
+  auto outG = getOutput(ctx)->getGradHandle();
+  auto inG = input_->getOutput(ctx)->getGradHandle();
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     FloatTy val = outW.raw(i);
-    inDW.raw(i) = (val <= 0 ? 0 : outDW.raw(i));
+    inG.raw(i) = (val <= 0 ? 0 : outG.raw(i));
   }
 }
 
 SigmoidNode::SigmoidNode(Network *N, TrainableNode *input)
-    : TrainableNode(N), input_(input) {
-  assert(input && input_->size() && "Invalid input");
-  output_.reset(ElemKind::FloatTy, input_->dims());
+    : TrainableNode(), input_(input) {}
+
+void SigmoidNode::init(Context *ctx) {
+  assert(input_ && input_->size(ctx) && "Invalid input");
+  ctx->allocateTrainable(&output_, false, input_->dims(ctx));
 }
 
 void SigmoidNode::forward(Context *ctx) {
-  auto &inputBuffer = input_->getOutput();
-
-  auto outW = output_.getHandle<FloatTy>();
-  auto inW = inputBuffer.getHandle<FloatTy>();
+  auto outW = getOutput(ctx)->getWeightHandle();
+  auto inW = input_->getOutput(ctx)->getWeightHandle();
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     FloatTy val = inW.raw(i);
@@ -361,31 +354,35 @@ void SigmoidNode::forward(Context *ctx) {
 }
 
 void SigmoidNode::backward(Context *ctx) {
-  auto &inputBuffer = input_->getOutput();
+  auto outW = getOutput(ctx)->getWeightHandle();
+  auto outG = getOutput(ctx)->getGradHandle();
+  auto inG = input_->getOutput(ctx)->getGradHandle();
 
-  auto outW = output_.getHandle<FloatTy>();
-  auto outDW = GRADHANDLE(&output_);
-  auto inDW = GRADHANDLE(&inputBuffer);
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     FloatTy val = outW.raw(i);
-    inDW.raw(i) = val * (1 - val) * outDW.raw(i);
+    inG.raw(i) = val * (1 - val) * outG.raw(i);
   }
 }
 
 SoftMaxNode::SoftMaxNode(Network *N, TrainableNode *input)
-    : TrainableNode(N), input_(input), selected_(0) {
-  assert(input && input_->size() && "Invalid input");
-  auto idim = input_->dims();
+: TrainableNode(), input_(input) {}
+
+void SoftMaxNode::init(Context *ctx) {
+  assert(input_ && input_->size(ctx) && "Invalid input");
+  auto idim = input_->dims(ctx);
   assert(idim.size() == 1 && "Softmax input must be a simple vector.");
-  output_.reset(ElemKind::FloatTy, {idim[0]});
-  e_.reset(ElemKind::FloatTy, {idim[0]});
+  ctx->allocateTrainable(&output_, false, {idim[0]});
+
+
+  ctx->allocateTensor(&e_, ElemKind::FloatTy, {idim[0]});
+  ctx->allocateTensor(&selected_, ElemKind::IndexTy, {1});
 }
 
 void SoftMaxNode::forward(Context *ctx) {
-  auto idim = input_->dims();
-  auto outW = output_.getHandle<FloatTy>();
-  auto inW = input_->getOutput().getHandle<FloatTy>();
+  auto outW = getOutput(ctx)->getWeightHandle();
+  auto idim = input_->dims(ctx);
+  auto inW = input_->getOutput(ctx)->getWeightHandle();
 
   FloatTy max = inW.at({0});
 
@@ -396,7 +393,7 @@ void SoftMaxNode::forward(Context *ctx) {
 
   FloatTy sum = 0;
 
-  auto EH = e_.getHandle<FloatTy>();
+  auto EH = ctx->getTensor(&e_)->getHandle<FloatTy>();
   // Compute exp.
   for (size_t i = 0; i < idim[0]; i++) {
     FloatTy e = std::exp(inW.at({i}) - max);
@@ -412,59 +409,66 @@ void SoftMaxNode::forward(Context *ctx) {
 }
 
 void SoftMaxNode::backward(Context *ctx) {
-  auto idim = input_->dims();
-  auto inDW = GRADHANDLE(&input_->getOutput());
-  auto ex = e_.getHandle<FloatTy>();
+  auto idim = input_->dims(ctx);
+  auto inG = input_->getOutput(ctx)->getGradHandle();
+  auto EH = ctx->getTensor(&e_)->getHandle<FloatTy>();
+  auto selectedH = ctx->getTensor(&selected_)->getHandle<size_t>();
+  size_t selected = selectedH.at({0});
 
   for (size_t i = 0; i < idim[0]; i++) {
-    FloatTy indicator = (selected_ == i ? 1 : 0);
-    FloatTy mul = -(indicator - ex.at({i}));
-    inDW.at({i}) = mul;
+    FloatTy indicator = (selected == i ? 1 : 0);
+    FloatTy mul = -(indicator - EH.at({i}));
+    inG.at({i}) = mul;
   }
 }
 
-size_t SoftMaxNode::maxArg() {
-  auto idim = input_->dims();
-  (void)idim;
-  assert(idim.size() && "Invalid softmax shape!");
-
-  auto outW = output_.getHandle<FloatTy>();
-  FloatTy max = outW.at(0);
-  size_t idx = 0;
-
-  for (size_t i = 1; i < outW.size(); i++) {
-    FloatTy val = outW.at(i);
-    if (val > max) {
-      max = val;
-      idx = i;
-    }
-  }
-  return idx;
+void SoftMaxNode::setSelected(Context *ctx, size_t selected) {
+  auto selectedH = ctx->getTensor(&selected_)->getHandle<size_t>();
+  selectedH.at({0}) = selected;
 }
 
-void SoftMaxNode::setSelected(size_t selected) {
-  auto idim = input_->dims();
-  (void)idim;
-  assert(idim.size() == 1 && selected < idim[0] && "Invalid selection");
-  selected_ = selected;
+void SoftMaxNode::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx)  {
+  auto dim = batch->dims();
+  assert(dim.size() == 1 && "Invalid input shape");
+
+
+  // Take the n'th slice in the input vector. The slice must be a scalar.
+  size_t val = batch->getHandle<size_t>().at({sampleIdx % dim[0]});
+  auto selectedH = ctx->getTensor(&selected_)->getHandle<size_t>();
+  selectedH.at({0}) = val;
+  assert(val < dims(ctx)[0] && "Invalid selected value");
 }
+
+void SoftMaxNode::updateInput(Context *ctx, Tensor *var) {
+  auto dim = var->dims();
+  (void)dim;
+  assert(dim.size() == 1 && "Invalid input shape");
+
+  size_t val = var->getHandle<size_t>().at({0});
+
+  auto selectedH = ctx->getTensor(&selected_)->getHandle<size_t>();
+  selectedH.at({0}) = val;
+
+  assert(val < dims(ctx)[0] && "Invalid selected value");
+}
+
 
 RegressionNode::RegressionNode(Network *N, TrainableNode *input)
-    : TrainableNode(N), input_(input) {
-  assert(input && input_->size() && "Invalid input");
-  auto idim = input_->dims();
+: TrainableNode(), input_(input) {}
+
+void RegressionNode::init(Context *ctx) {
+  assert(input_ && input_->size(ctx) && "Invalid input");
+  auto idim = input_->dims(ctx);
   assert(idim.size() == 1 && "input must be a simple vector.");
-  expected_.reset(ElemKind::FloatTy, {idim[0]});
-  output_.reset(ElemKind::FloatTy, {idim[0]});
+  ctx->allocateTrainable(&output_, false, {idim[0]});
+  ctx->allocateTensor(&expected_, ElemKind::FloatTy, {idim[0]});
 }
 
 void RegressionNode::forward(Context *ctx) {
-  assert(expected_.dims() == input_->dims() && "invalid expected dims");
-  auto idim = input_->dims();
-  auto &inputBuffer = input_->getOutput();
-
-  auto outW = output_.getHandle<FloatTy>();
-  auto inW = inputBuffer.getHandle<FloatTy>();
+  assert(dims(ctx) == input_->dims(ctx) && "invalid expected dims");
+  auto idim = input_->dims(ctx);
+  auto outW = getOutput(ctx)->getWeightHandle();
+  auto inW = input_->getOutput(ctx)->getWeightHandle();
 
   for (size_t i = 0; i < idim[0]; i++) {
     outW.at({i}) = inW.at({i});
@@ -472,13 +476,12 @@ void RegressionNode::forward(Context *ctx) {
 }
 
 void RegressionNode::backward(Context *ctx) {
-  assert(expected_.dims() == input_->dims() && "invalid expected dims");
+  assert(dims(ctx) == input_->dims(ctx) && "invalid expected dims");
+  auto idim = input_->dims(ctx);
+  auto inW = input_->getOutput(ctx)->getWeightHandle();
+  auto inG = input_->getOutput(ctx)->getGradHandle();
 
-  auto idim = input_->dims();
-  auto inW = input_->getOutput().getHandle<FloatTy>();
-  auto inG = GRADHANDLE(&input_->getOutput());
-
-  auto e = expected_.getHandle<FloatTy>();
+  auto e = ctx->getTensor(&expected_)->getHandle<FloatTy>();
 
   for (size_t i = 0; i < idim[0]; i++) {
     FloatTy dy = inW.at({i}) - e.at({i});
@@ -486,17 +489,39 @@ void RegressionNode::backward(Context *ctx) {
   }
 }
 
+void RegressionNode::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx)  {
+  auto dim = batch->dims();
+  auto *E = ctx->getTensor(&expected_);
+
+  assert(E->getElementType() == batch->getElementType() &&
+         "invalid input type");
+  assert(dims(ctx) == dim.drop_front() && "Invalid batch size");
+
+  // Extract the n'th slice. The slice must be a tensor.
+  *E = batch->getHandle<FloatTy>().extractSlice(sampleIdx % dim[0]);
+}
+
+void RegressionNode::updateInput(Context *ctx, Tensor *var)  {
+  auto *E = ctx->getTensor(&expected_);
+
+  assert(E->dims() == var->dims() && "Invalid input size");
+  assert(E->getElementType() == var->getElementType() &&
+         "invalid input type");
+  *E = var->clone();
+}
+
 MaxNode::MaxNode(Network *N, TrainableNode *input)
-    : TrainableNode(N), input_(input) {
-  assert(input && input_->size() && "Invalid input");
-  auto idim = input_->dims();
-  output_.reset(ElemKind::FloatTy, idim);
+    : TrainableNode(), input_(input) {}
+
+void MaxNode::init(Context *ctx) {
+  assert(input_ && input_->size(ctx) && "Invalid input");
+  auto idim = input_->dims(ctx);
+  ctx->allocateTrainable(&output_, false, idim);
 }
 
 void MaxNode::forward(Context *ctx) {
-  auto &inputBuffer = input_->getOutput();
-  auto outW = output_.getHandle<FloatTy>();
-  auto inW = inputBuffer.getHandle<FloatTy>();
+  auto inW = input_->getOutput(ctx)->getWeightHandle();
+  auto outW = getOutput(ctx)->getWeightHandle();
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = inW.raw(i);
@@ -504,14 +529,36 @@ void MaxNode::forward(Context *ctx) {
 }
 
 void MaxNode::backward(Context *ctx) {
-  auto &inputBuffer = input_->getOutput();
-  auto inW = inputBuffer.getHandle<FloatTy>();
-  auto inG = GRADHANDLE(&inputBuffer);
+  auto inW = input_->getOutput(ctx)->getWeightHandle();
+  auto inG = input_->getOutput(ctx)->getGradHandle();
 
   for (size_t i = 0, e = inG.size(); i < e; i++) {
     FloatTy dy = inW.raw(i);
     inG.raw(i) = dy > 0 ? -1 : 1;
   }
+}
+
+ArrayNode::ArrayNode(Network *N, ArrayRef<size_t> dims) : TrainableNode(),
+dims_(dims.begin(), dims.end()) {}
+
+void ArrayNode::init(Context *ctx) {
+  ctx->allocateTrainable(&output_, false, dims_);
+}
+
+void ArrayNode::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx)  {
+  auto dim = batch->dims();
+  assert(dims(ctx) == dim.drop_front() && "Invalid batch size");
+  /// Extract the n'th slice, that must be a tensor.
+  size_t slc = sampleIdx % dim[0];
+  getOutput(ctx)->weights_ = batch->getHandle<FloatTy>().extractSlice(slc);
+}
+
+void ArrayNode::updateInput(Context *ctx, Tensor *var)  {
+  auto &w = getOutput(ctx)->weights_;
+  (void)w;
+  assert(w.dims() == var->dims() && "Invalid input size");
+  assert(w.getElementType() == var->getElementType() && "invalid input type");
+  getOutput(ctx)->weights_ = var->clone();
 }
 
 // Define the node visitor for all nodes in the graph that have a single

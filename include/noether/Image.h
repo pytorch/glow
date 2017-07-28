@@ -13,15 +13,15 @@ namespace noether {
 
 class PNGNode final : public TrainableNode {
 public:
-  PNGNode(Network *N) : TrainableNode(N) {  }
-
-  virtual bool isTrainable() override { return false; }
+  PNGNode(Network *N) : TrainableNode() {  }
 
   virtual std::string getName() const override { return "PNGNode"; }
 
   bool writeImage(const char *filename);
 
   bool readImage(const char *filename);
+
+  void init(Context *ctx) override {}
 
   void forward(Context *ctx) override {}
 

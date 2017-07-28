@@ -16,13 +16,14 @@ namespace noether {
 class ConvNode final : public TrainableNode {
   TrainableNode *input_;
   /// A list of convolution filters.
-  Tensor filters_;
+  TensorToken filters_;
   /// The convolution bias.
-  Tensor bias_;
+  TensorToken bias_;
 
   size_t filterSize_;
   size_t stride_;
   size_t pad_;
+  size_t outDepth_;
 
   ConvNode(Network *N, TrainableNode *input, size_t outDepth, size_t filterSize,
            size_t stride, size_t pad);
@@ -30,6 +31,8 @@ class ConvNode final : public TrainableNode {
   friend Network;
 
 public:
+  void init(Context *ctx) override;
+
   virtual void forward(Context *ctx) override;
 
   virtual void backward(Context *ctx) override;
@@ -44,7 +47,7 @@ class MaxPoolNode final : public TrainableNode {
   TrainableNode *input_;
   /// The source coordinate for each element in the result pool. This is used
   /// to accelerate the gradient backward pass.
-  Tensor srcX_, srcY_;
+  TensorToken srcX_, srcY_;
 
   size_t filterSize_;
   size_t stride_;
@@ -56,6 +59,8 @@ class MaxPoolNode final : public TrainableNode {
   friend Network;
 
 public:
+  void init(Context *ctx) override;
+
   virtual void forward(Context *ctx) override;
 
   virtual void backward(Context *ctx) override;
@@ -69,15 +74,19 @@ class FullyConnectedNode final : public TrainableNode {
   /// A reference to the layer input.
   TrainableNode *input_;
   /// A list of filters.
-  Tensor filters_;
+  TensorToken filters_;
   /// The biases.
-  Tensor bias_;
+  TensorToken bias_;
+
+  size_t outDepth_;
 
   FullyConnectedNode(Network *N, TrainableNode *input, size_t outDepth);
 
   friend Network;
 
 public:
+  void init(Context *ctx) override;
+
   virtual void forward(Context *ctx) override;
 
   virtual void backward(Context *ctx) override;
@@ -96,6 +105,8 @@ class RELUNode final : public TrainableNode {
   friend Network;
 
 public:
+  void init(Context *ctx) override;
+
   virtual void forward(Context *ctx) override;
 
   virtual void backward(Context *ctx) override;
@@ -114,6 +125,8 @@ class SigmoidNode final : public TrainableNode {
   friend Network;
 
 public:
+  void init(Context *ctx) override;
+
   virtual void forward(Context *ctx) override;
 
   virtual void backward(Context *ctx) override;
@@ -127,10 +140,10 @@ class SoftMaxNode final : public TrainableNode {
   /// A reference to the node input.
   TrainableNode *input_;
   /// The selected one-hot value from the softmax function.
-  size_t selected_;
+  TensorToken selected_;
 
   /// A temporary array for storing the subexpression (e ^ (a[i] - max)).
-  Tensor e_{};
+  TensorToken e_{};
 
   /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
   /// And \p selected that's the selected one-hot representation of the
@@ -140,33 +153,18 @@ class SoftMaxNode final : public TrainableNode {
   friend Network;
 
 public:
-  virtual void updateInputs(Tensor *batch, size_t sampleIdx) override {
-    auto dim = batch->dims();
-    assert(dim.size() == 1 && "Invalid input shape");
+  virtual void updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) override;
 
-    // Take the n'th slice in the input vector. The slice must be a scalar.
-    selected_ = batch->getHandle<size_t>().at({sampleIdx % dim[0]});
-    assert(selected_ < dims()[0] && "Invalid selected value");
-  }
+  virtual void updateInput(Context *ctx, Tensor *var) override;
 
-  virtual void updateInput(Tensor *var) override {
-    auto dim = var->dims();
-    (void)dim;
-    assert(dim.size() == 1 && "Invalid input shape");
-
-    selected_ = var->getHandle<size_t>().at({0});
-    assert(selected_ < dims()[0] && "Invalid selected value");
-  }
+  void init(Context *ctx) override;
 
   virtual void forward(Context *ctx) override;
 
   virtual void backward(Context *ctx) override;
 
-  /// \returns the index of the highest value.
-  size_t maxArg();
-
   /// Marks the channel that the SoftMax needs to optimize for.
-  void setSelected(size_t selected);
+  void setSelected(Context *ctx, size_t selected);
 
   virtual std::string getName() const override { return "SoftMaxNode"; }
 
@@ -177,7 +175,7 @@ class RegressionNode final : public TrainableNode {
   /// A reference to the node input.
   TrainableNode *input_;
   /// The expected input (also known as Y).
-  Tensor expected_{};
+  TensorToken expected_{};
 
   /// Ctor - \p is the input layer that must be a simple vector.
   /// And \p expected (aka Y) is the expected input for the layer, that must
@@ -187,33 +185,12 @@ class RegressionNode final : public TrainableNode {
   friend Network;
 
 public:
-  void bind(Tensor *input) {
-    auto idim = input->dims();
-    auto dim = dims();
-    (void)dim;
-    (void)idim;
-    assert(idim == dim && "Invalid input size");
-  }
 
-  virtual void updateInputs(Tensor *batch, size_t sampleIdx) override {
-    auto dim = batch->dims();
-    assert(expected_.getElementType() == batch->getElementType() &&
-           "invalid input type");
-    assert(dims() == dim.drop_front() && "Invalid batch size");
+  virtual void updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) override;
 
-    // Extract the n'th slice. The slice must be a tensor.
-    expected_ = batch->getHandle<FloatTy>().extractSlice(sampleIdx % dim[0]);
-  }
+  virtual void updateInput(Context *ctx, Tensor *var) override;
 
-  virtual void updateInput(Tensor *var) override {
-    assert(expected_.dims() == var->dims() && "Invalid input size");
-    assert(expected_.getElementType() == var->getElementType() &&
-           "invalid input type");
-    expected_ = var->clone();
-  }
-
-  /// \returns a reference to the expected result vector.
-  Tensor &getExpected() { return expected_; }
+  void init(Context *ctx) override;
 
   virtual void forward(Context *ctx) override;
 
@@ -235,6 +212,8 @@ class MaxNode final : public TrainableNode {
   friend Network;
 
 public:
+  void init(Context *ctx) override;
+
   virtual void forward(Context *ctx) override;
 
   virtual void backward(Context *ctx) override;
@@ -246,44 +225,25 @@ public:
 
 /// This is an abstraction over raw variable inputs.
 class ArrayNode final : public TrainableNode {
-  ArrayNode(Network *N, ArrayRef<size_t> dims) : TrainableNode(N) {
-    getOutput().reset(ElemKind::FloatTy, dims);
-  }
-
-  virtual bool isTrainable() override { return false; }
+  ArrayNode(Network *N, ArrayRef<size_t> dims);
 
   friend Network;
 
+  std::vector<size_t> dims_;
+
 public:
-  void bind(Tensor *input) {
-    auto inDim = input->dims();
-    auto dim = dims();
-    (void)inDim;
-    (void)dim;
-    assert(dim.size() + 1 == inDim.size() && "Invalid tensors");
-  }
 
   virtual std::string getName() const override { return "ArrayNode"; }
+
+  void init(Context *ctx) override;
 
   void forward(Context *ctx) override {}
 
   void backward(Context *ctx) override {}
 
-  virtual void updateInputs(Tensor *batch, size_t sampleIdx) override {
-    auto dim = batch->dims();
-    assert(dims() == dim.drop_front() && "Invalid batch size");
-    /// Extract the n'th slice, that must be a tensor.
-    size_t slc = sampleIdx % dim[0];
-    getOutput() = batch->getHandle<FloatTy>().extractSlice(slc);
-  }
+  virtual void updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) override;
 
-  virtual void updateInput(Tensor *var) override {
-    auto &w = getOutput();
-    (void)w;
-    assert(w.dims() == var->dims() && "Invalid input size");
-    assert(w.getElementType() == var->getElementType() && "invalid input type");
-    getOutput() = var->clone();
-  }
+  virtual void updateInput(Context *ctx, Tensor *var) override;
 
   virtual void visit(NodeVisitor *visitor) override;
 };
