@@ -49,7 +49,9 @@ public:
 };
 
 class Network {
-  Context ctx0_{0};
+  /// This vector holds the network state. One Context for each parallelism
+  /// unit.
+  std::vector<Context> state_{};
 
   /// This variable counts the number of iterations that train() was called.
   /// It is mainly used to detect batch size boundries.
@@ -66,12 +68,15 @@ class Network {
   /// Registers the newly create operation node into the network.
   /// \returns the newly created node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
-    N->init(&ctx0_);
+    N->init(&state_[0]);
     networkNodes_.push_back(N);
     return N;
   }
 
-  const unsigned numThreads_;
+  void updateForwardBackward(Context *ctx, NodeBase *root, size_t start, size_t len,
+                             ArrayRef<NodeBase *> nodes,
+                             ArrayRef<Tensor *> inputs, bool isBatch);
+
 public:
   /// Ctor.
   Network();

@@ -48,7 +48,11 @@ Tensor *Context::getTensor(const TensorToken *tok) {
   return tensors_[tok];
 }
 
-Network::Network() : numThreads_(std::thread::hardware_concurrency()) { }
+Network::Network() {
+  for (unsigned i = 0, e = std::thread::hardware_concurrency(); i < e; i++) {
+    state_.emplace_back(i);
+  }
+}
 
 Network::~Network() {
   /// Delete the nodes of the network.
@@ -117,32 +121,44 @@ struct PrinterPass : NodeVisitor {
 
 } // namespace
 
+void Network::updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
+                           size_t len, ArrayRef<NodeBase *> nodes,
+                           ArrayRef<Tensor *> inputs, bool isBatch) {
+  for (size_t idx = 0; idx < len; idx++) {
+    /// Update the inputs:
+    for (int i = 0, e = nodes.size(); i < e; i++) {
+      if (isBatch) {
+      nodes[i]->updateInputs(ctx, inputs[i], start + idx);
+      } else {
+        nodes[i]->updateInput(ctx, inputs[i]);
+      }
+    }
+
+    // Forward scan:
+    ForwardPass FP(ctx);
+    root->visit(&FP);
+
+    // Backward scan in reverse order:
+    BackwardPass BP(ctx);
+    root->visit(&BP);
+  }
+}
+
 /// Train the network starting with the node \p root. Perform \p iterations
 /// iterations in the training loop. Update the nodes in \p nodes with the
 /// values \p inputs.
 void Network::train(NodeBase *root, size_t iterations,
                     ArrayRef<NodeBase *> nodes, ArrayRef<Tensor *> inputs) {
   for (size_t i = 0; i < iterations; i++) {
-    // Update all of the inputs of all of the relevant nodes:
-    for (int i = 0, e = nodes.size(); i < e; i++) {
-      nodes[i]->updateInputs(&ctx0_, inputs[i], trainCounter_);
-    }
-
-    // Forward scan.
-    ForwardPass FP(&ctx0_);
-    root->visit(&FP);
-
-    // Backward scan in reverse order.
-    BackwardPass BP(&ctx0_);
-    root->visit(&BP);
-
+    updateForwardBackward(&state_[0], root, trainCounter_, 1, nodes, inputs,
+                          true);
     trainCounter_++;
 
     // Only update the gradient when we've reached the end of the batch.
     if (trainCounter_ % getConfig().batchSize)
       continue;
 
-    for (auto &p : ctx0_.trainables_) {
+    for (auto &p : state_[0].trainables_) {
       // Update the weights.
       trainer_.train(p.second);
       // Clear the gradients for the next round of training.
@@ -157,18 +173,8 @@ void Network::train(NodeBase *root, ArrayRef<NodeBase *> nodes,
                     ArrayRef<Tensor *> inputs) {
   assert(nodes.size() == inputs.size() && "Mismatched argument list");
 
-  // Update all inputs.
-  for (int i = 0, e = nodes.size(); i < e; i++) {
-    nodes[i]->updateInput(&ctx0_, inputs[i]);
-  }
-
-  // Forward scan.
-  ForwardPass FP(&ctx0_);
-  root->visit(&FP);
-
-  // Backward scan in reverse order.
-  BackwardPass BP(&ctx0_);
-  root->visit(&BP);
+  updateForwardBackward(&state_[0], root, trainCounter_, 1, nodes, inputs,
+                        false);
 
   trainCounter_++;
 
@@ -176,7 +182,7 @@ void Network::train(NodeBase *root, ArrayRef<NodeBase *> nodes,
   if (trainCounter_ % getConfig().batchSize)
     return;
 
-  for (auto &p : ctx0_.trainables_) {
+  for (auto &p : state_[0].trainables_) {
     // Update the weights.
     trainer_.train(p.second);
     // Clear the gradients for the next round of training.
@@ -188,14 +194,14 @@ Tensor *Network::infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
                     ArrayRef<Tensor *> inputs) {
   // Update all inputs.
   for (int i = 0, e = nodes.size(); i < e; i++) {
-    nodes[i]->updateInput(&ctx0_, inputs[i]);
+    nodes[i]->updateInput(&state_[0], inputs[i]);
   }
 
   // Forward scan.
-  ForwardPass FP(&ctx0_);
+  ForwardPass FP(&state_[0]);
   root->visit(&FP);
 
-  return &root->getOutput(&ctx0_)->weights_;
+  return &root->getOutput(&state_[0])->weights_;
 }
 
 void Network::dump(NodeBase *root) {
