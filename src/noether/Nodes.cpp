@@ -26,24 +26,23 @@ void ConvNode::init(Context *ctx) {
   // RELUs like small positive bias to get gradients early in the training
   // process, otherwise the RELU units may never turn on and turn into a
   // "dead RELU".
-  auto biasWeights = ctx->getTrainable(&bias_)->getWeightHandle();
+  auto biasWeights = ctx->getWeightHandle(&bias_);
   for (size_t i = 0; i < outDepth_; i++) {
     biasWeights.at({0, 0, i}) = 0.1;
   }
 
   size_t fanIn = filterSize_ * filterSize_ * idim[2];
-  auto F = ctx->getTrainable(&filters_)->getWeightHandle();
-  F.randomize(fanIn);
+  ctx->getWeightHandle(&filters_).randomize(fanIn);
 }
 
 void ConvNode::forward(Context *ctx) {
   auto odim = getOutput(ctx)->dims();
   auto idim = input_->dims(ctx);
 
-  auto inW = input_->getOutput(ctx)->getWeightHandle();
-  auto outW = getOutput(ctx)->getWeightHandle();
-  auto biasW = ctx->getTrainable(&bias_)->getWeightHandle();
-  auto filterW = ctx->getTrainable(&filters_)->getWeightHandle();
+  auto inW = input_->getWeightHandle(ctx);
+  auto outW = getWeightHandle(ctx);
+  auto biasW = ctx->getWeightHandle(&bias_);
+  auto filterW = ctx->getWeightHandle(&filters_);
 
   // For each layer in the output tensor:
   for (size_t d = 0; d < odim[2]; d++) {
@@ -84,12 +83,12 @@ void ConvNode::forward(Context *ctx) {
 void ConvNode::backward(Context *ctx) {
   auto odim = getOutput(ctx)->dims();
   auto idim = input_->getOutput(ctx)->dims();
-  auto inW = input_->getOutput(ctx)->getWeightHandle();
-  auto inG = input_->getOutput(ctx)->getGradHandle();
-  auto outG = getOutput(ctx)->getGradHandle();
-  auto biasG = ctx->getTrainable(&bias_)->getGradHandle();
-  auto filterG = ctx->getTrainable(&filters_)->getGradHandle();
-  auto filterW = ctx->getTrainable(&filters_)->getWeightHandle();
+  auto inW = input_->getWeightHandle(ctx);
+  auto inG = input_->getGradHandle(ctx);
+  auto outG = getGradHandle(ctx);
+  auto biasG = ctx->getGradHandle(&bias_);
+  auto filterG = ctx->getGradHandle(&filters_);
+  auto filterW = ctx->getWeightHandle(&filters_);
 
   // Zero the gradient of the input.
   inG.clear();
@@ -157,8 +156,8 @@ void MaxPoolNode::init(Context *ctx) {
 void MaxPoolNode::forward(Context *ctx) {
   auto odim = dims(ctx);
   auto idim = input_->dims(ctx);
-  auto inW = input_->getOutput(ctx)->getWeightHandle();
-  auto outW = getOutput(ctx)->getWeightHandle();
+  auto inW = input_->getWeightHandle(ctx);
+  auto outW = getWeightHandle(ctx);
 
   auto SX = ctx->getTensor(&srcX_)->getHandle<size_t>();
   auto SY = ctx->getTensor(&srcY_)->getHandle<size_t>();
@@ -209,8 +208,8 @@ void MaxPoolNode::forward(Context *ctx) {
 
 void MaxPoolNode::backward(Context *ctx) {
   auto odim = dims(ctx);
-  auto inG = input_->getOutput(ctx)->getGradHandle();
-  auto outG = getOutput(ctx)->getGradHandle();
+  auto inG = input_->getGradHandle(ctx);
+  auto outG = getGradHandle(ctx);
 
   auto SX = ctx->getTensor(&srcX_)->getHandle<size_t>();
   auto SY = ctx->getTensor(&srcX_)->getHandle<size_t>();
@@ -249,21 +248,21 @@ void FullyConnectedNode::init(Context *ctx) {
   // RELUs like small positive bias to get gradients early in the training
   // process, otherwise the RELU units may never turn on and turn into a
   // "dead RELU".
-  auto biasW = ctx->getTrainable(&bias_)->getWeightHandle();
+  auto biasW = ctx->getWeightHandle(&bias_);
   for (size_t i = 0; i < outDepth_; i++) {
     biasW.at({i}) = 0.1;
   }
 
   ctx->allocateTrainable(&filters_, true, {outDepth_, input_->size(ctx)});
-  ctx->getTrainable(&filters_)->getWeightHandle().randomize(input_->size(ctx));
+  ctx->getWeightHandle(&filters_).randomize(input_->size(ctx));
 }
 
 void FullyConnectedNode::forward(Context *ctx) {
   auto odim = dims(ctx);
-  auto inW = input_->getOutput(ctx)->getWeightHandle();
-  auto biasW = ctx->getTrainable(&bias_)->getWeightHandle();
-  auto outW = getOutput(ctx)->getWeightHandle();
-  auto currFilterW = ctx->getTrainable(&filters_)->getWeightHandle();
+  auto inW = input_->getWeightHandle(ctx);
+  auto biasW = ctx->getWeightHandle(&bias_);
+  auto outW = getWeightHandle(ctx);
+  auto currFilterW = ctx->getWeightHandle(&filters_);
 
   size_t inputSize = inW.size();
   for (size_t i = 0; i < odim[0]; i++) {
@@ -279,16 +278,16 @@ void FullyConnectedNode::forward(Context *ctx) {
 
 void FullyConnectedNode::backward(Context *ctx) {
   auto odim = dims(ctx);
-  auto outG = getOutput(ctx)->getGradHandle();
-  auto inG = input_->getOutput(ctx)->getGradHandle();
-  auto inW = input_->getOutput(ctx)->getWeightHandle();
-  auto biasG = ctx->getTrainable(&bias_)->getGradHandle();
+  auto outG = getGradHandle(ctx);
+  auto inG = input_->getGradHandle(ctx);
+  auto inW = input_->getWeightHandle(ctx);
+  auto biasG = ctx->getGradHandle(&bias_);
 
   // Zero the gradient of the input.
   inG.clear();
 
-  auto filterG = ctx->getTrainable(&filters_)->getGradHandle();
-  auto filterW = ctx->getTrainable(&filters_)->getWeightHandle();
+  auto filterG = ctx->getGradHandle(&filters_);
+  auto filterW = ctx->getWeightHandle(&filters_);
 
   size_t inSize = inG.size();
   // Compute the gradient:
@@ -315,8 +314,8 @@ void RELUNode::init(Context *ctx) {
 }
 
 void RELUNode::forward(Context *ctx) {
-  auto outW = getOutput(ctx)->getWeightHandle();
-  auto inW = input_->getOutput(ctx)->getWeightHandle();
+  auto outW = getWeightHandle(ctx);
+  auto inW = input_->getWeightHandle(ctx);
 
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     FloatTy val = inW.raw(i);
@@ -325,9 +324,9 @@ void RELUNode::forward(Context *ctx) {
 }
 
 void RELUNode::backward(Context *ctx) {
-  auto outW = getOutput(ctx)->getWeightHandle();
-  auto outG = getOutput(ctx)->getGradHandle();
-  auto inG = input_->getOutput(ctx)->getGradHandle();
+  auto outW = getWeightHandle(ctx);
+  auto outG = getGradHandle(ctx);
+  auto inG = input_->getGradHandle(ctx);
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     FloatTy val = outW.raw(i);
@@ -344,8 +343,8 @@ void SigmoidNode::init(Context *ctx) {
 }
 
 void SigmoidNode::forward(Context *ctx) {
-  auto outW = getOutput(ctx)->getWeightHandle();
-  auto inW = input_->getOutput(ctx)->getWeightHandle();
+  auto outW = getWeightHandle(ctx);
+  auto inW = input_->getWeightHandle(ctx);
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     FloatTy val = inW.raw(i);
@@ -354,9 +353,9 @@ void SigmoidNode::forward(Context *ctx) {
 }
 
 void SigmoidNode::backward(Context *ctx) {
-  auto outW = getOutput(ctx)->getWeightHandle();
-  auto outG = getOutput(ctx)->getGradHandle();
-  auto inG = input_->getOutput(ctx)->getGradHandle();
+  auto outW = getWeightHandle(ctx);
+  auto outG = getGradHandle(ctx);
+  auto inG = input_->getGradHandle(ctx);
 
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
@@ -380,9 +379,9 @@ void SoftMaxNode::init(Context *ctx) {
 }
 
 void SoftMaxNode::forward(Context *ctx) {
-  auto outW = getOutput(ctx)->getWeightHandle();
+  auto outW = getWeightHandle(ctx);
   auto idim = input_->dims(ctx);
-  auto inW = input_->getOutput(ctx)->getWeightHandle();
+  auto inW = input_->getWeightHandle(ctx);
 
   FloatTy max = inW.at({0});
 
@@ -410,7 +409,7 @@ void SoftMaxNode::forward(Context *ctx) {
 
 void SoftMaxNode::backward(Context *ctx) {
   auto idim = input_->dims(ctx);
-  auto inG = input_->getOutput(ctx)->getGradHandle();
+  auto inG = input_->getGradHandle(ctx);
   auto EH = ctx->getTensor(&e_)->getHandle<FloatTy>();
   auto selectedH = ctx->getTensor(&selected_)->getHandle<size_t>();
   size_t selected = selectedH.at({0});
@@ -467,8 +466,8 @@ void RegressionNode::init(Context *ctx) {
 void RegressionNode::forward(Context *ctx) {
   assert(dims(ctx) == input_->dims(ctx) && "invalid expected dims");
   auto idim = input_->dims(ctx);
-  auto outW = getOutput(ctx)->getWeightHandle();
-  auto inW = input_->getOutput(ctx)->getWeightHandle();
+  auto outW = getWeightHandle(ctx);
+  auto inW = input_->getWeightHandle(ctx);
 
   for (size_t i = 0; i < idim[0]; i++) {
     outW.at({i}) = inW.at({i});
@@ -478,8 +477,8 @@ void RegressionNode::forward(Context *ctx) {
 void RegressionNode::backward(Context *ctx) {
   assert(dims(ctx) == input_->dims(ctx) && "invalid expected dims");
   auto idim = input_->dims(ctx);
-  auto inW = input_->getOutput(ctx)->getWeightHandle();
-  auto inG = input_->getOutput(ctx)->getGradHandle();
+  auto inW = input_->getWeightHandle(ctx);
+  auto inG = input_->getGradHandle(ctx);
 
   auto e = ctx->getTensor(&expected_)->getHandle<FloatTy>();
 
@@ -520,8 +519,8 @@ void MaxNode::init(Context *ctx) {
 }
 
 void MaxNode::forward(Context *ctx) {
-  auto inW = input_->getOutput(ctx)->getWeightHandle();
-  auto outW = getOutput(ctx)->getWeightHandle();
+  auto inW = input_->getWeightHandle(ctx);
+  auto outW = getWeightHandle(ctx);
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = inW.raw(i);
@@ -529,8 +528,8 @@ void MaxNode::forward(Context *ctx) {
 }
 
 void MaxNode::backward(Context *ctx) {
-  auto inW = input_->getOutput(ctx)->getWeightHandle();
-  auto inG = input_->getOutput(ctx)->getGradHandle();
+  auto inW = input_->getWeightHandle(ctx);
+  auto inG = input_->getGradHandle(ctx);
 
   for (size_t i = 0, e = inG.size(); i < e; i++) {
     FloatTy dy = inW.raw(i);

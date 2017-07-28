@@ -70,6 +70,12 @@ public:
 
   /// \returns the number of elements in the tensor.
   size_t size(Context *ctx) const;
+
+  /// \returns the weight handle for the node output.
+  Handle<FloatTy> getWeightHandle(Context *ctx);
+
+  /// \returns the gradient handle for the node output.
+  Handle<FloatTy> getGradHandle(Context *ctx);
 };
 
 }

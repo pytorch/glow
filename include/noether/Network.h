@@ -36,6 +36,14 @@ public:
     }
   }
 
+  Handle<FloatTy> getWeightHandle(const TensorToken *tok) {
+    return getTrainable(tok)->getWeightHandle();
+  }
+
+  Handle<FloatTy> getGradHandle(const TensorToken *tok) {
+    return getTrainable(tok)->getGradHandle();
+  }
+
   /// Allocates a new tensor pair that's addressed by the token \p tok.
   void allocateTrainable(const TensorToken *tok, bool trainable,
                       ArrayRef<size_t> dims) {
