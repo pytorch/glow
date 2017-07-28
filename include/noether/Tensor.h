@@ -272,6 +272,8 @@ public:
     return index;
   }
 
+  ElemKind getElementType() const { return tensor_->getElementType(); }
+
   /// Construct a Tensor handle.
   Handle(Tensor *tensor) : tensor_(tensor) {
     auto sizes = tensor->dims();
@@ -391,6 +393,21 @@ public:
     }
 
     std::cout << suffix;
+  }
+
+  /// \returns the index of the highest value.
+  size_t maxArg() {
+    ElemTy max = at({0});
+    size_t idx = 0;
+
+    for (size_t i = 1, e = size(); i < e; i++) {
+      ElemTy val = at({i});
+      if (val > max) {
+        max = val;
+        idx = i;
+      }
+    }
+    return idx;
   }
 
   void dump(const char *title = "", const char *suffix = "") const {
