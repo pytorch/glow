@@ -5,9 +5,9 @@
 using namespace noether;
 
 
-ConvNode::ConvNode(Network *N, TrainableNode *input, size_t outDepth,
+ConvNode::ConvNode(Network *N, NodeBase *input, size_t outDepth,
                    size_t filterSize, size_t stride, size_t pad)
-    : TrainableNode(), input_(input), filterSize_(filterSize), stride_(stride),
+    : NodeBase(), input_(input), filterSize_(filterSize), stride_(stride),
   pad_(pad), outDepth_(outDepth) {}
 
 void ConvNode::init(Context *ctx) {
@@ -132,9 +132,9 @@ void ConvNode::backward(Context *ctx) {
   }
 }
 
-MaxPoolNode::MaxPoolNode(Network *N, TrainableNode *input, size_t filterSize,
+MaxPoolNode::MaxPoolNode(Network *N, NodeBase *input, size_t filterSize,
                          size_t stride, size_t pad)
-    : TrainableNode(), input_(input), filterSize_(filterSize), stride_(stride),
+    : NodeBase(), input_(input), filterSize_(filterSize), stride_(stride),
 pad_(pad) { }
 
 void MaxPoolNode::init(Context *ctx) {
@@ -236,9 +236,9 @@ void MaxPoolNode::backward(Context *ctx) {
   }
 }
 
-FullyConnectedNode::FullyConnectedNode(Network *N, TrainableNode *input,
+FullyConnectedNode::FullyConnectedNode(Network *N, NodeBase *input,
                                        size_t outDepth)
-: TrainableNode(), input_(input), outDepth_(outDepth) {}
+: NodeBase(), input_(input), outDepth_(outDepth) {}
 
 void FullyConnectedNode::init(Context *ctx) {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -306,8 +306,8 @@ void FullyConnectedNode::backward(Context *ctx) {
   }
 }
 
-RELUNode::RELUNode(Network *N, TrainableNode *input)
-    : TrainableNode(), input_(input) {}
+RELUNode::RELUNode(Network *N, NodeBase *input)
+    : NodeBase(), input_(input) {}
 
 void RELUNode::init(Context *ctx) {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -335,8 +335,8 @@ void RELUNode::backward(Context *ctx) {
   }
 }
 
-SigmoidNode::SigmoidNode(Network *N, TrainableNode *input)
-    : TrainableNode(), input_(input) {}
+SigmoidNode::SigmoidNode(Network *N, NodeBase *input)
+    : NodeBase(), input_(input) {}
 
 void SigmoidNode::init(Context *ctx) {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -365,8 +365,8 @@ void SigmoidNode::backward(Context *ctx) {
   }
 }
 
-SoftMaxNode::SoftMaxNode(Network *N, TrainableNode *input)
-: TrainableNode(), input_(input) {}
+SoftMaxNode::SoftMaxNode(Network *N, NodeBase *input)
+: NodeBase(), input_(input) {}
 
 void SoftMaxNode::init(Context *ctx) {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -453,8 +453,8 @@ void SoftMaxNode::updateInput(Context *ctx, Tensor *var) {
 }
 
 
-RegressionNode::RegressionNode(Network *N, TrainableNode *input)
-: TrainableNode(), input_(input) {}
+RegressionNode::RegressionNode(Network *N, NodeBase *input)
+: NodeBase(), input_(input) {}
 
 void RegressionNode::init(Context *ctx) {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -510,8 +510,8 @@ void RegressionNode::updateInput(Context *ctx, Tensor *var)  {
   *E = var->clone();
 }
 
-MaxNode::MaxNode(Network *N, TrainableNode *input)
-    : TrainableNode(), input_(input) {}
+MaxNode::MaxNode(Network *N, NodeBase *input)
+    : NodeBase(), input_(input) {}
 
 void MaxNode::init(Context *ctx) {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -538,7 +538,7 @@ void MaxNode::backward(Context *ctx) {
   }
 }
 
-ArrayNode::ArrayNode(Network *N, ArrayRef<size_t> dims) : TrainableNode(),
+ArrayNode::ArrayNode(Network *N, ArrayRef<size_t> dims) : NodeBase(),
 dims_(dims.begin(), dims.end()) {}
 
 void ArrayNode::init(Context *ctx) {

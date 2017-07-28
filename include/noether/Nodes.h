@@ -13,8 +13,8 @@
 
 namespace noether {
 
-class ConvNode final : public TrainableNode {
-  TrainableNode *input_;
+class ConvNode final : public NodeBase {
+  NodeBase *input_;
   /// A list of convolution filters.
   TensorToken filters_;
   /// The convolution bias.
@@ -25,7 +25,7 @@ class ConvNode final : public TrainableNode {
   size_t pad_;
   size_t outDepth_;
 
-  ConvNode(Network *N, TrainableNode *input, size_t outDepth, size_t filterSize,
+  ConvNode(Network *N, NodeBase *input, size_t outDepth, size_t filterSize,
            size_t stride, size_t pad);
 
   friend Network;
@@ -42,9 +42,9 @@ public:
   virtual void visit(NodeVisitor *visitor) override;
 };
 
-class MaxPoolNode final : public TrainableNode {
+class MaxPoolNode final : public NodeBase {
   /// The input node.
-  TrainableNode *input_;
+  NodeBase *input_;
   /// The source coordinate for each element in the result pool. This is used
   /// to accelerate the gradient backward pass.
   TensorToken srcX_, srcY_;
@@ -53,7 +53,7 @@ class MaxPoolNode final : public TrainableNode {
   size_t stride_;
   size_t pad_;
 
-  MaxPoolNode(Network *N, TrainableNode *input, size_t filterSize,
+  MaxPoolNode(Network *N, NodeBase *input, size_t filterSize,
               size_t stride, size_t pad);
 
   friend Network;
@@ -70,9 +70,9 @@ public:
   virtual void visit(NodeVisitor *visitor) override;
 };
 
-class FullyConnectedNode final : public TrainableNode {
+class FullyConnectedNode final : public NodeBase {
   /// A reference to the layer input.
-  TrainableNode *input_;
+  NodeBase *input_;
   /// A list of filters.
   TensorToken filters_;
   /// The biases.
@@ -80,7 +80,7 @@ class FullyConnectedNode final : public TrainableNode {
 
   size_t outDepth_;
 
-  FullyConnectedNode(Network *N, TrainableNode *input, size_t outDepth);
+  FullyConnectedNode(Network *N, NodeBase *input, size_t outDepth);
 
   friend Network;
 
@@ -96,11 +96,11 @@ public:
   virtual void visit(NodeVisitor *visitor) override;
 };
 
-class RELUNode final : public TrainableNode {
+class RELUNode final : public NodeBase {
   /// A reference to the layer input.
-  TrainableNode *input_;
+  NodeBase *input_;
 
-  RELUNode(Network *N, TrainableNode *input);
+  RELUNode(Network *N, NodeBase *input);
 
   friend Network;
 
@@ -116,11 +116,11 @@ public:
   virtual void visit(NodeVisitor *visitor) override;
 };
 
-class SigmoidNode final : public TrainableNode {
+class SigmoidNode final : public NodeBase {
   /// A reference to the layer input.
-  TrainableNode *input_;
+  NodeBase *input_;
 
-  SigmoidNode(Network *N, TrainableNode *input);
+  SigmoidNode(Network *N, NodeBase *input);
 
   friend Network;
 
@@ -136,9 +136,9 @@ public:
   virtual void visit(NodeVisitor *visitor) override;
 };
 
-class SoftMaxNode final : public TrainableNode {
+class SoftMaxNode final : public NodeBase {
   /// A reference to the node input.
-  TrainableNode *input_;
+  NodeBase *input_;
   /// The selected one-hot value from the softmax function.
   TensorToken selected_;
 
@@ -148,7 +148,7 @@ class SoftMaxNode final : public TrainableNode {
   /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
   /// And \p selected that's the selected one-hot representation of the
   /// softmax function.
-  SoftMaxNode(Network *N, TrainableNode *input);
+  SoftMaxNode(Network *N, NodeBase *input);
 
   friend Network;
 
@@ -171,16 +171,16 @@ public:
   virtual void visit(NodeVisitor *visitor) override;
 };
 
-class RegressionNode final : public TrainableNode {
+class RegressionNode final : public NodeBase {
   /// A reference to the node input.
-  TrainableNode *input_;
+  NodeBase *input_;
   /// The expected input (also known as Y).
   TensorToken expected_{};
 
   /// Ctor - \p is the input layer that must be a simple vector.
   /// And \p expected (aka Y) is the expected input for the layer, that must
   /// be of the same shape as \p input.
-  RegressionNode(Network *N, TrainableNode *input);
+  RegressionNode(Network *N, NodeBase *input);
 
   friend Network;
 
@@ -203,11 +203,11 @@ public:
 
 /// This node attempts to maximize the inputs by sending back a gradient signal
 /// that encourages positive values. This is very useful for debugging.
-class MaxNode final : public TrainableNode {
+class MaxNode final : public NodeBase {
   /// A reference to the node input.
-  TrainableNode *input_;
+  NodeBase *input_;
 
-  MaxNode(Network *N, TrainableNode *input);
+  MaxNode(Network *N, NodeBase *input);
 
   friend Network;
 
@@ -224,7 +224,7 @@ public:
 };
 
 /// This is an abstraction over raw variable inputs.
-class ArrayNode final : public TrainableNode {
+class ArrayNode final : public NodeBase {
   ArrayNode(Network *N, ArrayRef<size_t> dims);
 
   friend Network;

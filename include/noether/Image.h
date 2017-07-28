@@ -11,9 +11,9 @@
 
 namespace noether {
 
-class PNGNode final : public TrainableNode {
+class PNGNode final : public NodeBase {
 public:
-  PNGNode(Network *N) : TrainableNode() {  }
+  PNGNode(Network *N) : NodeBase() {  }
 
   virtual std::string getName() const override { return "PNGNode"; }
 

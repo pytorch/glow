@@ -18,39 +18,39 @@ Network::~Network() {
   }
 }
 
-ConvNode *Network::createConvNode(TrainableNode *input, size_t outDepth,
+ConvNode *Network::createConvNode(NodeBase *input, size_t outDepth,
                                   size_t filterSize, size_t stride,
                                   size_t pad) {
   return addNode(new ConvNode(this, input, outDepth, filterSize, stride, pad));
 }
 
-MaxPoolNode *Network::createMaxPoolNode(TrainableNode *input, size_t filterSize,
+MaxPoolNode *Network::createMaxPoolNode(NodeBase *input, size_t filterSize,
                                         size_t stride, size_t pad) {
   return addNode(new MaxPoolNode(this, input, filterSize, stride, pad));
 }
 
-FullyConnectedNode *Network::createFullyConnectedNode(TrainableNode *input,
+FullyConnectedNode *Network::createFullyConnectedNode(NodeBase *input,
                                                       size_t outDepth) {
   return addNode(new FullyConnectedNode(this, input, outDepth));
 }
 
-RELUNode *Network::createRELUNode(TrainableNode *input) {
+RELUNode *Network::createRELUNode(NodeBase *input) {
   return addNode(new RELUNode(this, input));
 }
 
-SigmoidNode *Network::createSigmoidNode(TrainableNode *input) {
+SigmoidNode *Network::createSigmoidNode(NodeBase *input) {
   return addNode(new SigmoidNode(this, input));
 }
 
-SoftMaxNode *Network::createSoftMaxNode(TrainableNode *input) {
+SoftMaxNode *Network::createSoftMaxNode(NodeBase *input) {
   return addNode(new SoftMaxNode(this, input));
 }
 
-RegressionNode *Network::createRegressionNode(TrainableNode *input) {
+RegressionNode *Network::createRegressionNode(NodeBase *input) {
   return addNode(new RegressionNode(this, input));
 }
 
-MaxNode *Network::createMaxNode(TrainableNode *input) {
+MaxNode *Network::createMaxNode(NodeBase *input) {
   return addNode(new MaxNode(this, input));
 }
 

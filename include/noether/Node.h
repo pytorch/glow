@@ -25,7 +25,7 @@ public:
   virtual void post(NodeBase *N) {}
 };
 
-/// This is the non-templated part of the compute node.
+/// Represents a node in the network compute graph.
 class NodeBase {
 protected:
   /// The filter output.
@@ -72,8 +72,6 @@ public:
   size_t size(Context *ctx) const;
 };
 
-/// Represents a node in the network compute graph.
-class TrainableNode : public NodeBase {};
 }
 
 #endif // NOETHER_NODE_H

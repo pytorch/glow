@@ -76,7 +76,7 @@ class Network {
 
   /// This is a list of nodes (operations) that make the network. The nodes are
   /// owned by the network.
-  std::vector<TrainableNode *> networkNodes_;
+  std::vector<NodeBase *> networkNodes_;
 
   /// Registers the newly create operation node into the network.
   /// \returns the newly created node.
@@ -98,24 +98,24 @@ public:
   /// These methods create new operation nodes that are owned by the network.
   /// The parameters are documented in the node constructors.
   ///@{
-  ConvNode *createConvNode(TrainableNode *input, size_t outDepth,
+  ConvNode *createConvNode(NodeBase *input, size_t outDepth,
                            size_t filterSize, size_t stride, size_t pad);
 
-  MaxPoolNode *createMaxPoolNode(TrainableNode *input, size_t filterSize,
+  MaxPoolNode *createMaxPoolNode(NodeBase *input, size_t filterSize,
                                  size_t stride, size_t pad);
 
-  FullyConnectedNode *createFullyConnectedNode(TrainableNode *input,
+  FullyConnectedNode *createFullyConnectedNode(NodeBase *input,
                                                size_t outDepth);
 
-  RELUNode *createRELUNode(TrainableNode *input);
+  RELUNode *createRELUNode(NodeBase *input);
 
-  SigmoidNode *createSigmoidNode(TrainableNode *input);
+  SigmoidNode *createSigmoidNode(NodeBase *input);
 
-  SoftMaxNode *createSoftMaxNode(TrainableNode *input);
+  SoftMaxNode *createSoftMaxNode(NodeBase *input);
 
-  RegressionNode *createRegressionNode(TrainableNode *input);
+  RegressionNode *createRegressionNode(NodeBase *input);
 
-  MaxNode *createMaxNode(TrainableNode *input);
+  MaxNode *createMaxNode(NodeBase *input);
 
   ArrayNode *createArrayNode(ArrayRef<size_t> dims);
   ///@}
