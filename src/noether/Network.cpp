@@ -9,6 +9,45 @@
 
 using namespace noether;
 
+Context::~Context() {
+  for (auto t : trainables_) {
+    delete t.second;
+  }
+  for (auto t : tensors_) {
+    delete t.second;
+  }
+}
+
+Handle<FloatTy> Context::getWeightHandle(const TensorToken *tok) {
+  return getTrainable(tok)->getWeightHandle();
+}
+
+Handle<FloatTy> Context::getGradHandle(const TensorToken *tok) {
+  return getTrainable(tok)->getGradHandle();
+}
+
+void Context::allocateTrainable(const TensorToken *tok, bool trainable,
+                       ArrayRef<size_t> dims) {
+  assert(!trainables_.count(tok) && "Token already allocated");
+  trainables_[tok] = new TrainableData(trainable, dims);
+}
+
+TrainableData *Context::getTrainable(const TensorToken *tok) {
+  assert(trainables_.count(tok) && "The token was not allocated");
+  return trainables_[tok];
+}
+
+void Context::allocateTensor(const TensorToken *tok, ElemKind kind,
+                    ArrayRef<size_t> dims) {
+  assert(!tensors_.count(tok) && "Token already allocated");
+  tensors_[tok] = new Tensor(kind, dims);
+}
+
+Tensor *Context::getTensor(const TensorToken *tok) {
+  assert(tensors_.count(tok) && "The token was not allocated");
+  return tensors_[tok];
+}
+
 Network::Network() : numThreads_(std::thread::hardware_concurrency()) { }
 
 Network::~Network() {

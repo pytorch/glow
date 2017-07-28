@@ -27,48 +27,25 @@ public:
 
   Context(unsigned cellId) : cellId_(cellId) {}
 
-  ~Context() {
-    for (auto t : trainables_) {
-      delete t.second;
-    }
-    for (auto t : tensors_) {
-      delete t.second;
-    }
-  }
+  ~Context();
 
-  Handle<FloatTy> getWeightHandle(const TensorToken *tok) {
-    return getTrainable(tok)->getWeightHandle();
-  }
+  Handle<FloatTy> getWeightHandle(const TensorToken *tok);
 
-  Handle<FloatTy> getGradHandle(const TensorToken *tok) {
-    return getTrainable(tok)->getGradHandle();
-  }
+  Handle<FloatTy> getGradHandle(const TensorToken *tok);
 
   /// Allocates a new tensor pair that's addressed by the token \p tok.
   void allocateTrainable(const TensorToken *tok, bool trainable,
-                      ArrayRef<size_t> dims) {
-    assert(!trainables_.count(tok) && "Token already allocated");
-    trainables_[tok] = new TrainableData(trainable, dims);
-  }
+                         ArrayRef<size_t> dims);
 
   /// \returns the allocated gradient and weight Tensor pair.
-  TrainableData *getTrainable(const TensorToken *tok) {
-    assert(trainables_.count(tok) && "The token was not allocated");
-    return trainables_[tok];
-  }
+  TrainableData *getTrainable(const TensorToken *tok);
 
   /// Allocates a new tensor that's addressed by the token \p tok.
   void allocateTensor(const TensorToken *tok, ElemKind kind,
-                              ArrayRef<size_t> dims) {
-    assert(!tensors_.count(tok) && "Token already allocated");
-    tensors_[tok] = new Tensor(kind, dims);
-  }
+                      ArrayRef<size_t> dims);
 
   /// \returns the allocated Tensor.
-  Tensor *getTensor(const TensorToken *tok) {
-    assert(tensors_.count(tok) && "The token was not allocated");
-    return tensors_[tok];
-  }
+  Tensor *getTensor(const TensorToken *tok);
 };
 
 class Network {
