@@ -79,7 +79,7 @@ void testFCSoftMax(bool verbose = false) {
   std::cout << "Training.\n";
 
   for (int iter = 0; iter < 2000; iter++) {
-    N.train(SM, 10, {A, SM}, {&coordinates, &labels});
+    N.train(SM, 1, {A, SM}, {&coordinates, &labels});
   }
 
   // Print a diagram that depicts the network decision on a grid.

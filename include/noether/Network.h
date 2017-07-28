@@ -77,6 +77,8 @@ class Network {
                              ArrayRef<NodeBase *> nodes,
                              ArrayRef<Tensor *> inputs, bool isBatch);
 
+  void learnGradient(Context *ctx);
+
 public:
   /// Ctor.
   Network();
@@ -114,9 +116,9 @@ public:
   TrainingConfig &getConfig() { return trainer_.config; }
 
   /// Train the network starting with the node \p root. Perform \p iterations
-  /// iterations in the training loop. Update the nodes in \p nodes with the
+  /// of batch size in the training loop. Update the nodes in \p nodes with the
   /// values \p inputs.
-  void train(NodeBase *root, size_t iterations, ArrayRef<NodeBase *> nodes,
+  void train(NodeBase *root, size_t batches, ArrayRef<NodeBase *> nodes,
              ArrayRef<Tensor *> inputs);
 
   /// Perform a single training iteration for one input. Update the nodes in \p

@@ -93,7 +93,7 @@ void testMNIST() {
     // On each training iteration take an input from imageInputs and update
     // the input variable A, and add take a corresponding label and update the
     // softmax layer.
-    N.train(SM, reportRate, {A, SM}, {&imageInputs, &labelInputs});
+    N.train(SM, reportRate / N.getConfig().batchSize, {A, SM}, {&imageInputs, &labelInputs});
   }
   std::cout << "Validating.\n";
 

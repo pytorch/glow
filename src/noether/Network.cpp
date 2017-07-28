@@ -144,26 +144,27 @@ void Network::updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
   }
 }
 
+void Network::learnGradient(Context *ctx) {
+  for (auto &p : ctx->trainables_) {
+    // Update the weights.
+    trainer_.train(p.second);
+    // Clear the gradients for the next round of training.
+    p.second->clearGradient();
+  }
+}
+
 /// Train the network starting with the node \p root. Perform \p iterations
 /// iterations in the training loop. Update the nodes in \p nodes with the
 /// values \p inputs.
-void Network::train(NodeBase *root, size_t iterations,
+void Network::train(NodeBase *root, size_t batches,
                     ArrayRef<NodeBase *> nodes, ArrayRef<Tensor *> inputs) {
-  for (size_t i = 0; i < iterations; i++) {
-    updateForwardBackward(&state_[0], root, trainCounter_, 1, nodes, inputs,
+  for (size_t i = 0; i < batches; i++) {
+    updateForwardBackward(&state_[0], root, trainCounter_,
+                          getConfig().batchSize, nodes, inputs,
                           true);
-    trainCounter_++;
+    trainCounter_+=getConfig().batchSize;
 
-    // Only update the gradient when we've reached the end of the batch.
-    if (trainCounter_ % getConfig().batchSize)
-      continue;
-
-    for (auto &p : state_[0].trainables_) {
-      // Update the weights.
-      trainer_.train(p.second);
-      // Clear the gradients for the next round of training.
-      p.second->clearGradient();
-    }
+    learnGradient(&state_[0]);
   }
 }
 
@@ -182,12 +183,7 @@ void Network::train(NodeBase *root, ArrayRef<NodeBase *> nodes,
   if (trainCounter_ % getConfig().batchSize)
     return;
 
-  for (auto &p : state_[0].trainables_) {
-    // Update the weights.
-    trainer_.train(p.second);
-    // Clear the gradients for the next round of training.
-    p.second->clearGradient();
-  }
+    learnGradient(&state_[0]);
 }
 
 Tensor *Network::infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
