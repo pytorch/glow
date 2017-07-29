@@ -66,6 +66,7 @@ public:
   void mergeGradients(TrainableData *other) {
     auto myGrad = getGradHandle();
     auto otherGrad = other->getGradHandle();
+    (void) otherGrad; (void) myGrad;
     assert(myGrad.dims() == otherGrad.dims() && "Mismatching sizes");
 
     for (size_t i = 0, e = myGrad.size(); i < e; i++) {
@@ -76,6 +77,7 @@ public:
   void copyWeights(TrainableData *other) {
     auto myW = getWeightHandle();
     auto otherW = other->getWeightHandle();
+    (void) otherW; (void) myW;
     assert(myW.dims() == otherW.dims() && "Mismatching sizes");
     weights_ = other->weights_.clone();
   }
