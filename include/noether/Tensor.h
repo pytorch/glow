@@ -418,10 +418,12 @@ public:
     ElemTy mn = *std::min_element(&data[0], &data[size()]);
 
     std::cout << title << "max=" << mx << " min=" << mn << " [";
+    const unsigned maxNumElem = 100;
 
-    for (size_t i = 0, e = std::min<size_t>(400, size()); i < e; i++) {
+    for (size_t i = 0, e = std::min<size_t>(maxNumElem, size()); i < e; i++) {
       std::cout << raw(i) << " ";
     }
+    if (size() > maxNumElem) std::cout << "...";
     std::cout << "]" << suffix;
   }
 
