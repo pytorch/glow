@@ -36,13 +36,13 @@ public:
   virtual std::string getName() const = 0;
 
   /// Initialize the node.
-  virtual void init(Context *ctx) = 0;
+  virtual void init(Context *ctx) const = 0;
 
   /// Does the forward propagation.
-  virtual void forward(Context *ctx) = 0;
+  virtual void forward(Context *ctx) const = 0;
 
   /// Does the backwards propagation.
-  virtual void backward(Context *ctx) = 0;
+  virtual void backward(Context *ctx) const = 0;
 
   /// Update the input or expected output variables of the node with data from
   /// \p batch. Select inputs from the slice specified by \p payload.
@@ -72,10 +72,12 @@ public:
   size_t size(Context *ctx) const;
 
   /// \returns the weight handle for the node output.
-  Handle<FloatTy> getWeightHandle(Context *ctx);
+  Handle<FloatTy> getWeightHandle(Context *ctx) const;
+
 
   /// \returns the gradient handle for the node output.
-  Handle<FloatTy> getGradHandle(Context *ctx);
+  Handle<FloatTy> getGradHandle(Context *ctx) const;
+
 };
 
 }

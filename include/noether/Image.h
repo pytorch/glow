@@ -21,11 +21,11 @@ public:
 
   bool readImage(const char *filename);
 
-  void init(Context *ctx) override {}
+  void init(Context *ctx) const override {}
 
-  void forward(Context *ctx) override {}
+  void forward(Context *ctx) const override {}
 
-  void backward(Context *ctx) override {}
+  void backward(Context *ctx) const override {}
 
   virtual void visit(NodeVisitor *visitor) override;
 };

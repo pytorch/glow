@@ -10,7 +10,7 @@ ConvNode::ConvNode(Network *N, NodeBase *input, size_t outDepth,
     : NodeBase(), input_(input), filterSize_(filterSize), stride_(stride),
   pad_(pad), outDepth_(outDepth) {}
 
-void ConvNode::init(Context *ctx) {
+void ConvNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   auto idim = input_->dims(ctx);
   assert(idim[0] > filterSize_ && idim[1] > filterSize_ &&
@@ -35,7 +35,7 @@ void ConvNode::init(Context *ctx) {
   ctx->getWeightHandle(&filters_).randomize(fanIn);
 }
 
-void ConvNode::forward(Context *ctx) {
+void ConvNode::forward(Context *ctx) const {
   auto odim = getOutput(ctx)->dims();
   auto idim = input_->dims(ctx);
 
@@ -80,7 +80,7 @@ void ConvNode::forward(Context *ctx) {
   }
 }
 
-void ConvNode::backward(Context *ctx) {
+void ConvNode::backward(Context *ctx) const {
   auto odim = getOutput(ctx)->dims();
   auto idim = input_->getOutput(ctx)->dims();
   auto inW = input_->getWeightHandle(ctx);
@@ -136,7 +136,7 @@ MaxPoolNode::MaxPoolNode(Network *N, NodeBase *input, size_t filterSize,
     : NodeBase(), input_(input), filterSize_(filterSize), stride_(stride),
 pad_(pad) { }
 
-void MaxPoolNode::init(Context *ctx) {
+void MaxPoolNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   auto idim = input_->dims(ctx);
   assert(idim[0] > filterSize_ && idim[0] > filterSize_ &&
@@ -153,7 +153,7 @@ void MaxPoolNode::init(Context *ctx) {
   ctx->allocateTensor(&srcY_, ElemKind::IndexTy, {outsx, outsy, idim[2]});
 }
 
-void MaxPoolNode::forward(Context *ctx) {
+void MaxPoolNode::forward(Context *ctx) const {
   auto odim = dims(ctx);
   auto idim = input_->dims(ctx);
   auto inW = input_->getWeightHandle(ctx);
@@ -206,7 +206,7 @@ void MaxPoolNode::forward(Context *ctx) {
   }
 }
 
-void MaxPoolNode::backward(Context *ctx) {
+void MaxPoolNode::backward(Context *ctx) const {
   auto odim = dims(ctx);
   auto inG = input_->getGradHandle(ctx);
   auto outG = getGradHandle(ctx);
@@ -239,7 +239,7 @@ FullyConnectedNode::FullyConnectedNode(Network *N, NodeBase *input,
                                        size_t outDepth)
 : NodeBase(), input_(input), outDepth_(outDepth) {}
 
-void FullyConnectedNode::init(Context *ctx) {
+void FullyConnectedNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
 
   ctx->allocateTrainable(&output_, false, {outDepth_});
@@ -257,7 +257,7 @@ void FullyConnectedNode::init(Context *ctx) {
   ctx->getWeightHandle(&filters_).randomize(input_->size(ctx));
 }
 
-void FullyConnectedNode::forward(Context *ctx) {
+void FullyConnectedNode::forward(Context *ctx) const {
   auto odim = dims(ctx);
   auto inW = input_->getWeightHandle(ctx);
   auto biasW = ctx->getWeightHandle(&bias_);
@@ -276,7 +276,7 @@ void FullyConnectedNode::forward(Context *ctx) {
   }
 }
 
-void FullyConnectedNode::backward(Context *ctx) {
+void FullyConnectedNode::backward(Context *ctx) const {
   auto odim = dims(ctx);
   auto outG = getGradHandle(ctx);
   auto inG = input_->getGradHandle(ctx);
@@ -308,12 +308,12 @@ void FullyConnectedNode::backward(Context *ctx) {
 RELUNode::RELUNode(Network *N, NodeBase *input)
     : NodeBase(), input_(input) {}
 
-void RELUNode::init(Context *ctx) {
+void RELUNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   ctx->allocateTrainable(&output_, false, input_->dims(ctx));
 }
 
-void RELUNode::forward(Context *ctx) {
+void RELUNode::forward(Context *ctx) const {
   auto outW = getWeightHandle(ctx);
   auto inW = input_->getWeightHandle(ctx);
 
@@ -323,7 +323,7 @@ void RELUNode::forward(Context *ctx) {
   }
 }
 
-void RELUNode::backward(Context *ctx) {
+void RELUNode::backward(Context *ctx) const {
   auto outW = getWeightHandle(ctx);
   auto outG = getGradHandle(ctx);
   auto inG = input_->getGradHandle(ctx);
@@ -337,12 +337,12 @@ void RELUNode::backward(Context *ctx) {
 SigmoidNode::SigmoidNode(Network *N, NodeBase *input)
     : NodeBase(), input_(input) {}
 
-void SigmoidNode::init(Context *ctx) {
+void SigmoidNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   ctx->allocateTrainable(&output_, false, input_->dims(ctx));
 }
 
-void SigmoidNode::forward(Context *ctx) {
+void SigmoidNode::forward(Context *ctx) const {
   auto outW = getWeightHandle(ctx);
   auto inW = input_->getWeightHandle(ctx);
 
@@ -352,7 +352,7 @@ void SigmoidNode::forward(Context *ctx) {
   }
 }
 
-void SigmoidNode::backward(Context *ctx) {
+void SigmoidNode::backward(Context *ctx) const {
   auto outW = getWeightHandle(ctx);
   auto outG = getGradHandle(ctx);
   auto inG = input_->getGradHandle(ctx);
@@ -367,7 +367,7 @@ void SigmoidNode::backward(Context *ctx) {
 SoftMaxNode::SoftMaxNode(Network *N, NodeBase *input)
 : NodeBase(), input_(input) {}
 
-void SoftMaxNode::init(Context *ctx) {
+void SoftMaxNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   auto idim = input_->dims(ctx);
   assert(idim.size() == 1 && "Softmax input must be a simple vector.");
@@ -378,7 +378,7 @@ void SoftMaxNode::init(Context *ctx) {
   ctx->allocateTensor(&selected_, ElemKind::IndexTy, {1});
 }
 
-void SoftMaxNode::forward(Context *ctx) {
+void SoftMaxNode::forward(Context *ctx) const {
   auto outW = getWeightHandle(ctx);
   auto idim = input_->dims(ctx);
   auto inW = input_->getWeightHandle(ctx);
@@ -407,7 +407,7 @@ void SoftMaxNode::forward(Context *ctx) {
   }
 }
 
-void SoftMaxNode::backward(Context *ctx) {
+void SoftMaxNode::backward(Context *ctx) const {
   auto idim = input_->dims(ctx);
   auto inG = input_->getGradHandle(ctx);
   auto EH = ctx->getTensor(&e_)->getHandle<FloatTy>();
@@ -455,7 +455,7 @@ void SoftMaxNode::updateInput(Context *ctx, Tensor *var) {
 RegressionNode::RegressionNode(Network *N, NodeBase *input)
 : NodeBase(), input_(input) {}
 
-void RegressionNode::init(Context *ctx) {
+void RegressionNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   auto idim = input_->dims(ctx);
   assert(idim.size() == 1 && "input must be a simple vector.");
@@ -463,7 +463,7 @@ void RegressionNode::init(Context *ctx) {
   ctx->allocateTensor(&expected_, ElemKind::FloatTy, {idim[0]});
 }
 
-void RegressionNode::forward(Context *ctx) {
+void RegressionNode::forward(Context *ctx) const {
   assert(dims(ctx) == input_->dims(ctx) && "invalid expected dims");
   auto idim = input_->dims(ctx);
   auto outW = getWeightHandle(ctx);
@@ -474,7 +474,7 @@ void RegressionNode::forward(Context *ctx) {
   }
 }
 
-void RegressionNode::backward(Context *ctx) {
+void RegressionNode::backward(Context *ctx) const {
   assert(dims(ctx) == input_->dims(ctx) && "invalid expected dims");
   auto idim = input_->dims(ctx);
   auto inW = input_->getWeightHandle(ctx);
@@ -512,13 +512,13 @@ void RegressionNode::updateInput(Context *ctx, Tensor *var)  {
 MaxNode::MaxNode(Network *N, NodeBase *input)
     : NodeBase(), input_(input) {}
 
-void MaxNode::init(Context *ctx) {
+void MaxNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   auto idim = input_->dims(ctx);
   ctx->allocateTrainable(&output_, false, idim);
 }
 
-void MaxNode::forward(Context *ctx) {
+void MaxNode::forward(Context *ctx) const {
   auto inW = input_->getWeightHandle(ctx);
   auto outW = getWeightHandle(ctx);
 
@@ -527,7 +527,7 @@ void MaxNode::forward(Context *ctx) {
   }
 }
 
-void MaxNode::backward(Context *ctx) {
+void MaxNode::backward(Context *ctx) const {
   auto inW = input_->getWeightHandle(ctx);
   auto inG = input_->getGradHandle(ctx);
 
@@ -540,7 +540,7 @@ void MaxNode::backward(Context *ctx) {
 ArrayNode::ArrayNode(Network *N, ArrayRef<size_t> dims) : NodeBase(),
 dims_(dims.begin(), dims.end()) {}
 
-void ArrayNode::init(Context *ctx) {
+void ArrayNode::init(Context *ctx) const {
   ctx->allocateTrainable(&output_, false, dims_);
 }
 

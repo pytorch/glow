@@ -20,10 +20,10 @@ size_t NodeBase::size(Context *ctx) const {
   return getOutput(ctx)->size();
 }
 
-Handle<FloatTy> NodeBase::getWeightHandle(Context *ctx) {
-  return getOutput(ctx)->getWeightHandle();
+Handle<FloatTy> NodeBase::getWeightHandle(Context *ctx)  const {
+  return ctx->getTrainable(&output_)->getWeightHandle();
 }
 
-Handle<FloatTy> NodeBase::getGradHandle(Context *ctx) {
-  return getOutput(ctx)->getGradHandle();
+Handle<FloatTy> NodeBase::getGradHandle(Context *ctx) const {
+  return ctx->getTrainable(&output_)->getGradHandle();
 }

@@ -31,11 +31,11 @@ class ConvNode final : public NodeBase {
   friend Network;
 
 public:
-  void init(Context *ctx) override;
+  void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) override;
+  virtual void forward(Context *ctx) const override;
 
-  virtual void backward(Context *ctx) override;
+  virtual void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "ConvNode"; }
 
@@ -59,11 +59,11 @@ class MaxPoolNode final : public NodeBase {
   friend Network;
 
 public:
-  void init(Context *ctx) override;
+  void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) override;
+  virtual void forward(Context *ctx) const override;
 
-  virtual void backward(Context *ctx) override;
+  virtual void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "MaxPoolNode"; }
 
@@ -85,11 +85,11 @@ class FullyConnectedNode final : public NodeBase {
   friend Network;
 
 public:
-  void init(Context *ctx) override;
+  void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) override;
+  virtual void forward(Context *ctx) const override;
 
-  virtual void backward(Context *ctx) override;
+  virtual void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "FullyConnectedNode"; }
 
@@ -105,11 +105,11 @@ class RELUNode final : public NodeBase {
   friend Network;
 
 public:
-  void init(Context *ctx) override;
+  void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) override;
+  virtual void forward(Context *ctx) const override;
 
-  virtual void backward(Context *ctx) override;
+  virtual void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "RELUNode"; }
 
@@ -125,11 +125,11 @@ class SigmoidNode final : public NodeBase {
   friend Network;
 
 public:
-  void init(Context *ctx) override;
+  void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) override;
+  virtual void forward(Context *ctx) const override;
 
-  virtual void backward(Context *ctx) override;
+  virtual void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "SigmoidNode"; }
 
@@ -157,11 +157,11 @@ public:
 
   virtual void updateInput(Context *ctx, Tensor *var) override;
 
-  void init(Context *ctx) override;
+  void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) override;
+  virtual void forward(Context *ctx) const override;
 
-  virtual void backward(Context *ctx) override;
+  virtual void backward(Context *ctx) const override;
 
   /// Marks the channel that the SoftMax needs to optimize for.
   void setSelected(Context *ctx, size_t selected);
@@ -190,11 +190,11 @@ public:
 
   virtual void updateInput(Context *ctx, Tensor *var) override;
 
-  void init(Context *ctx) override;
+  void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) override;
+  virtual void forward(Context *ctx) const override;
 
-  virtual void backward(Context *ctx) override;
+  virtual void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "RegressionNode"; }
 
@@ -212,11 +212,11 @@ class MaxNode final : public NodeBase {
   friend Network;
 
 public:
-  void init(Context *ctx) override;
+  void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) override;
+  virtual void forward(Context *ctx) const override;
 
-  virtual void backward(Context *ctx) override;
+  virtual void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "MaxNode"; }
 
@@ -235,11 +235,11 @@ public:
 
   virtual std::string getName() const override { return "ArrayNode"; }
 
-  void init(Context *ctx) override;
+  void init(Context *ctx) const override;
 
-  void forward(Context *ctx) override {}
+  void forward(Context *ctx) const override {}
 
-  void backward(Context *ctx) override {}
+  void backward(Context *ctx) const override {}
 
   virtual void updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) override;
 
