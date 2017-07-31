@@ -270,5 +270,14 @@ void Network::dump(NodeBase *root) {
   root->visit(&FP);
 
   std::cout << "\n";
+
+  for (auto &ctx : state_) {
+    std::cout << "Context:\n";
+    for (auto &t : ctx) {
+      t.second->getWeightHandle().dump("W:","\n");
+    }
+  }
+
+  std::cout << "\n";
 }
 
