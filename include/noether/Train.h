@@ -2,6 +2,7 @@
 #define NOETHER_TRAIN_H
 
 #include "noether/ADT.h"
+#include "noether/Tensor.h"
 
 #include <cstddef>
 #include <cstdint>
