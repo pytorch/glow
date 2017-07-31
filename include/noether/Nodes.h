@@ -53,8 +53,8 @@ class MaxPoolNode final : public NodeBase {
   size_t stride_;
   size_t pad_;
 
-  MaxPoolNode(Network *N, NodeBase *input, size_t filterSize,
-              size_t stride, size_t pad);
+  MaxPoolNode(Network *N, NodeBase *input, size_t filterSize, size_t stride,
+              size_t pad);
 
   friend Network;
 
@@ -153,7 +153,8 @@ class SoftMaxNode final : public NodeBase {
   friend Network;
 
 public:
-  virtual void updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) override;
+  virtual void updateInputs(Context *ctx, Tensor *batch,
+                            size_t sampleIdx) override;
 
   virtual void updateInput(Context *ctx, Tensor *var) override;
 
@@ -185,8 +186,8 @@ class RegressionNode final : public NodeBase {
   friend Network;
 
 public:
-
-  virtual void updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) override;
+  virtual void updateInputs(Context *ctx, Tensor *batch,
+                            size_t sampleIdx) override;
 
   virtual void updateInput(Context *ctx, Tensor *var) override;
 
@@ -232,7 +233,6 @@ class ArrayNode final : public NodeBase {
   std::vector<size_t> dims_;
 
 public:
-
   virtual std::string getName() const override { return "ArrayNode"; }
 
   void init(Context *ctx) const override;
@@ -241,7 +241,8 @@ public:
 
   void backward(Context *ctx) const override {}
 
-  virtual void updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) override;
+  virtual void updateInputs(Context *ctx, Tensor *batch,
+                            size_t sampleIdx) override;
 
   virtual void updateInput(Context *ctx, Tensor *var) override;
 

@@ -174,9 +174,7 @@ public:
 
   /// Reset the shape and type of this tensor to match the shape and type of
   /// \p other.
-  void reset(Tensor *other) {
-    reset(other->getElementType(), other->dims());
-  }
+  void reset(Tensor *other) { reset(other->getElementType(), other->dims()); }
 
   /// Assigns a new shape to the tensor and allocates a new buffer.
   void reset(ElemKind elemTy, ArrayRef<size_t> dims) {
@@ -423,7 +421,8 @@ public:
     for (size_t i = 0, e = std::min<size_t>(maxNumElem, size()); i < e; i++) {
       std::cout << raw(i) << " ";
     }
-    if (size() > maxNumElem) std::cout << "...";
+    if (size() > maxNumElem)
+      std::cout << "...";
     std::cout << "]" << suffix;
   }
 

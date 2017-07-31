@@ -16,11 +16,9 @@ ArrayRef<size_t> NodeBase::dims(Context *ctx) const {
   return getOutput(ctx)->dims();
 }
 
-size_t NodeBase::size(Context *ctx) const {
-  return getOutput(ctx)->size();
-}
+size_t NodeBase::size(Context *ctx) const { return getOutput(ctx)->size(); }
 
-Handle<FloatTy> NodeBase::getWeightHandle(Context *ctx)  const {
+Handle<FloatTy> NodeBase::getWeightHandle(Context *ctx) const {
   return ctx->getTrainable(&output_)->getWeightHandle();
 }
 

@@ -152,8 +152,6 @@ void testRegression(bool verbose = false) {
     std::cout << "Verify the result of the regression layer.\n";
   }
 
-
-
   // Test the output:
   for (int iter = 0; iter < 5; iter++) {
     float target = iter % 9 + 1;
@@ -177,7 +175,7 @@ void testLearnSingleInput(bool verbose = false) {
 
   Network N;
   N.getConfig().learningRate = 0.05;
-  
+
   auto *A = N.createArrayNode(4);
   auto *FCL0 = N.createFullyConnectedNode(A, 10);
   auto *RL0 = N.createRELUNode(FCL0);
@@ -258,12 +256,14 @@ void testLearnXor(bool verbose = false) {
   for (size_t i = 0; i < 4; i++) {
     Tensor in = I.extractSlice(i);
     Tensor exp = E.extractSlice(i);
-    auto expH = exp.getHandle<FloatTy>(); (void)expH;
+    auto expH = exp.getHandle<FloatTy>();
+    (void)expH;
 
     auto res = N.infer(RN, {A}, {&in});
-    auto resH = res->getHandle<FloatTy>(); (void)resH;
+    auto resH = res->getHandle<FloatTy>();
+    (void)resH;
 
-    //Test the output:
+    // Test the output:
     assert(delta(expH.at({0}), resH.at({0})) < 0.1);
   }
 

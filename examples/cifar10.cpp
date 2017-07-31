@@ -97,7 +97,8 @@ void testCIFAR10() {
 
     // Bind the images tensor to the input array A, and the labels tensor
     // to the softmax node SM.
-    N.train(SM, reportRate / N.getConfig().batchSize, {A, SM}, {&images, &labels});
+    N.train(SM, reportRate / N.getConfig().batchSize, {A, SM},
+            {&images, &labels});
 
     unsigned score = 0;
     for (size_t i = 0; i < 100; i++) {

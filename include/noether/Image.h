@@ -13,7 +13,7 @@ namespace noether {
 
 class PNGNode final : public NodeBase {
 public:
-  PNGNode(Network *N) : NodeBase() {  }
+  PNGNode(Network *N) : NodeBase() {}
 
   virtual std::string getName() const override { return "PNGNode"; }
 

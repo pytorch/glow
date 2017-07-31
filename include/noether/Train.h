@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <unordered_map>
 
-
 namespace noether {
 
 class Tensor;
@@ -27,7 +26,7 @@ class Network;
 /// The address of this token is used for keeping track of buffers inside the
 /// context.
 struct TensorToken {
-    char ID;
+  char ID;
 };
 
 /// A pair of some weights and it's derivative. The derivative (gradient) of the
@@ -45,8 +44,10 @@ public:
 
   TrainableData(bool trainable) : isTrainable_(trainable) {}
 
-  TrainableData(bool trainable, ArrayRef<size_t> dims) :
-    isTrainable_(trainable) { reset(dims); }
+  TrainableData(bool trainable, ArrayRef<size_t> dims)
+      : isTrainable_(trainable) {
+    reset(dims);
+  }
 
   /// Resets the weights and gradients.
   void reset(ArrayRef<size_t> dims) {
@@ -66,7 +67,8 @@ public:
   void mergeGradients(TrainableData *other) {
     auto myGrad = getGradHandle();
     auto otherGrad = other->getGradHandle();
-    (void) otherGrad; (void) myGrad;
+    (void)otherGrad;
+    (void)myGrad;
     assert(myGrad.dims() == otherGrad.dims() && "Mismatching sizes");
 
     for (size_t i = 0, e = myGrad.size(); i < e; i++) {
@@ -77,7 +79,8 @@ public:
   void copyWeights(TrainableData *other) {
     auto myW = getWeightHandle();
     auto otherW = other->getWeightHandle();
-    (void) otherW; (void) myW;
+    (void)otherW;
+    (void)myW;
     assert(myW.dims() == otherW.dims() && "Mismatching sizes");
     weights_ = other->weights_.clone();
   }
@@ -90,15 +93,14 @@ class Trainer {
 public:
   /// Holds the training configuration.
   TrainingConfig config{};
-  
+
 private:
   /// A temporary data structure for holding the attached gsum buffers.
   /// This data strucure owns the attached tensors, which are the values of
   /// the map, not the keys.
-  std::unordered_map<Tensor*, Tensor*> gsum_;
+  std::unordered_map<Tensor *, Tensor *> gsum_;
 
 public:
-
   Trainer() = default;
 
   ~Trainer();

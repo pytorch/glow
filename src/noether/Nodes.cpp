@@ -4,11 +4,10 @@
 
 using namespace noether;
 
-
 ConvNode::ConvNode(Network *N, NodeBase *input, size_t outDepth,
                    size_t filterSize, size_t stride, size_t pad)
     : NodeBase(), input_(input), filterSize_(filterSize), stride_(stride),
-  pad_(pad), outDepth_(outDepth) {}
+      pad_(pad), outDepth_(outDepth) {}
 
 void ConvNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -21,7 +20,8 @@ void ConvNode::init(Context *ctx) const {
 
   ctx->allocateTrainable(&output_, false, {outsx, outsy, outDepth_});
   ctx->allocateTrainable(&bias_, true, {1, 1, outDepth_});
-  ctx->allocateTrainable(&filters_, true, {outDepth_, filterSize_, filterSize_, idim[2]});
+  ctx->allocateTrainable(&filters_, true,
+                         {outDepth_, filterSize_, filterSize_, idim[2]});
 
   // RELUs like small positive bias to get gradients early in the training
   // process, otherwise the RELU units may never turn on and turn into a
@@ -134,7 +134,7 @@ void ConvNode::backward(Context *ctx) const {
 MaxPoolNode::MaxPoolNode(Network *N, NodeBase *input, size_t filterSize,
                          size_t stride, size_t pad)
     : NodeBase(), input_(input), filterSize_(filterSize), stride_(stride),
-pad_(pad) { }
+      pad_(pad) {}
 
 void MaxPoolNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -237,7 +237,7 @@ void MaxPoolNode::backward(Context *ctx) const {
 
 FullyConnectedNode::FullyConnectedNode(Network *N, NodeBase *input,
                                        size_t outDepth)
-: NodeBase(), input_(input), outDepth_(outDepth) {}
+    : NodeBase(), input_(input), outDepth_(outDepth) {}
 
 void FullyConnectedNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -305,8 +305,7 @@ void FullyConnectedNode::backward(Context *ctx) const {
   }
 }
 
-RELUNode::RELUNode(Network *N, NodeBase *input)
-    : NodeBase(), input_(input) {}
+RELUNode::RELUNode(Network *N, NodeBase *input) : NodeBase(), input_(input) {}
 
 void RELUNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -357,7 +356,6 @@ void SigmoidNode::backward(Context *ctx) const {
   auto outG = getGradHandle(ctx);
   auto inG = input_->getGradHandle(ctx);
 
-
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     FloatTy val = outW.raw(i);
     inG.raw(i) = val * (1 - val) * outG.raw(i);
@@ -365,14 +363,13 @@ void SigmoidNode::backward(Context *ctx) const {
 }
 
 SoftMaxNode::SoftMaxNode(Network *N, NodeBase *input)
-: NodeBase(), input_(input) {}
+    : NodeBase(), input_(input) {}
 
 void SoftMaxNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   auto idim = input_->dims(ctx);
   assert(idim.size() == 1 && "Softmax input must be a simple vector.");
   ctx->allocateTrainable(&output_, false, {idim[0]});
-
 
   ctx->allocateTensor(&e_, ElemKind::FloatTy, {idim[0]});
   ctx->allocateTensor(&selected_, ElemKind::IndexTy, {1});
@@ -426,10 +423,9 @@ void SoftMaxNode::setSelected(Context *ctx, size_t selected) {
   selectedH.at({0}) = selected;
 }
 
-void SoftMaxNode::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx)  {
+void SoftMaxNode::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) {
   auto dim = batch->dims();
   assert(dim.size() == 1 && "Invalid input shape");
-
 
   // Take the n'th slice in the input vector. The slice must be a scalar.
   size_t val = batch->getHandle<size_t>().at({sampleIdx % dim[0]});
@@ -451,9 +447,8 @@ void SoftMaxNode::updateInput(Context *ctx, Tensor *var) {
   assert(val < dims(ctx)[0] && "Invalid selected value");
 }
 
-
 RegressionNode::RegressionNode(Network *N, NodeBase *input)
-: NodeBase(), input_(input) {}
+    : NodeBase(), input_(input) {}
 
 void RegressionNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -488,7 +483,8 @@ void RegressionNode::backward(Context *ctx) const {
   }
 }
 
-void RegressionNode::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx)  {
+void RegressionNode::updateInputs(Context *ctx, Tensor *batch,
+                                  size_t sampleIdx) {
   auto dim = batch->dims();
   auto *E = ctx->getTensor(&expected_);
 
@@ -500,17 +496,15 @@ void RegressionNode::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx)
   *E = batch->getHandle<FloatTy>().extractSlice(sampleIdx % dim[0]);
 }
 
-void RegressionNode::updateInput(Context *ctx, Tensor *var)  {
+void RegressionNode::updateInput(Context *ctx, Tensor *var) {
   auto *E = ctx->getTensor(&expected_);
 
   assert(E->dims() == var->dims() && "Invalid input size");
-  assert(E->getElementType() == var->getElementType() &&
-         "invalid input type");
+  assert(E->getElementType() == var->getElementType() && "invalid input type");
   *E = var->clone();
 }
 
-MaxNode::MaxNode(Network *N, NodeBase *input)
-    : NodeBase(), input_(input) {}
+MaxNode::MaxNode(Network *N, NodeBase *input) : NodeBase(), input_(input) {}
 
 void MaxNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -537,14 +531,14 @@ void MaxNode::backward(Context *ctx) const {
   }
 }
 
-ArrayNode::ArrayNode(Network *N, ArrayRef<size_t> dims) : NodeBase(),
-dims_(dims.begin(), dims.end()) {}
+ArrayNode::ArrayNode(Network *N, ArrayRef<size_t> dims)
+    : NodeBase(), dims_(dims.begin(), dims.end()) {}
 
 void ArrayNode::init(Context *ctx) const {
   ctx->allocateTrainable(&output_, false, dims_);
 }
 
-void ArrayNode::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx)  {
+void ArrayNode::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) {
   auto dim = batch->dims();
   assert(dims(ctx) == dim.drop_front() && "Invalid batch size");
   /// Extract the n'th slice, that must be a tensor.
@@ -552,7 +546,7 @@ void ArrayNode::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx)  {
   getOutput(ctx)->weights_ = batch->getHandle<FloatTy>().extractSlice(slc);
 }
 
-void ArrayNode::updateInput(Context *ctx, Tensor *var)  {
+void ArrayNode::updateInput(Context *ctx, Tensor *var) {
   auto &w = getOutput(ctx)->weights_;
   (void)w;
   assert(w.dims() == var->dims() && "Invalid input size");

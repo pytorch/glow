@@ -16,7 +16,7 @@ class TrainableData;
 /// This represents the execution context of the graph.
 class Context {
 public:
-  using TrainableMap = std::unordered_map<const TensorToken*, TrainableData*>;
+  using TrainableMap = std::unordered_map<const TensorToken *, TrainableData *>;
 
   /// Represents the cell number, when performing concurrent training.
   unsigned cellId_;
@@ -25,7 +25,7 @@ public:
   TrainableMap trainables_;
 
   /// Maps weight tensors into the corresponding weights and gradient tensors.
-  std::unordered_map<const TensorToken*, Tensor*> tensors_;
+  std::unordered_map<const TensorToken *, Tensor *> tensors_;
 
   Context(unsigned cellId) : cellId_(cellId) {}
 
@@ -74,14 +74,14 @@ class Network {
   /// \returns the newly created node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
     for (auto &c : state_)
-    N->init(&c);
+      N->init(&c);
 
     networkNodes_.push_back(N);
     return N;
   }
 
-  void updateForwardBackward(Context *ctx, NodeBase *root, size_t start, size_t len,
-                             ArrayRef<NodeBase *> nodes,
+  void updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
+                             size_t len, ArrayRef<NodeBase *> nodes,
                              ArrayRef<Tensor *> inputs, bool isBatch);
 
   void learnGradient(Context *ctx);
@@ -97,8 +97,8 @@ public:
   /// These methods create new operation nodes that are owned by the network.
   /// The parameters are documented in the node constructors.
   ///@{
-  ConvNode *createConvNode(NodeBase *input, size_t outDepth,
-                           size_t filterSize, size_t stride, size_t pad);
+  ConvNode *createConvNode(NodeBase *input, size_t outDepth, size_t filterSize,
+                           size_t stride, size_t pad);
 
   MaxPoolNode *createMaxPoolNode(NodeBase *input, size_t filterSize,
                                  size_t stride, size_t pad);
@@ -136,7 +136,7 @@ public:
   /// Infer data for a single input. Update the nodes in \p nodes with the
   /// values \p inputs.
   Tensor *infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
-             ArrayRef<Tensor *> inputs);
+                ArrayRef<Tensor *> inputs);
 
   /// Dump the textual representation of the network.
   void dump(NodeBase *root);

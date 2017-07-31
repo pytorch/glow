@@ -1,5 +1,5 @@
-#include "noether/Network.h"
 #include "noether/Train.h"
+#include "noether/Network.h"
 #include "noether/Tensor.h"
 
 using namespace noether;

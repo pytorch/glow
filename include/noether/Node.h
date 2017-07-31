@@ -74,12 +74,9 @@ public:
   /// \returns the weight handle for the node output.
   Handle<FloatTy> getWeightHandle(Context *ctx) const;
 
-
   /// \returns the gradient handle for the node output.
   Handle<FloatTy> getGradHandle(Context *ctx) const;
-
 };
-
 }
 
 #endif // NOETHER_NODE_H

@@ -4,8 +4,8 @@
 #include "noether/Tensor.h"
 
 #include <iostream>
-#include <unordered_set>
 #include <thread>
+#include <unordered_set>
 
 using namespace noether;
 
@@ -27,7 +27,7 @@ Handle<FloatTy> Context::getGradHandle(const TensorToken *tok) {
 }
 
 void Context::allocateTrainable(const TensorToken *tok, bool trainable,
-                       ArrayRef<size_t> dims) {
+                                ArrayRef<size_t> dims) {
   assert(!trainables_.count(tok) && "Token already allocated");
   trainables_[tok] = new TrainableData(trainable, dims);
 }
@@ -38,7 +38,7 @@ TrainableData *Context::getTrainable(const TensorToken *tok) {
 }
 
 void Context::allocateTensor(const TensorToken *tok, ElemKind kind,
-                    ArrayRef<size_t> dims) {
+                             ArrayRef<size_t> dims) {
   assert(!tensors_.count(tok) && "Token already allocated");
   tensors_[tok] = new Tensor(kind, dims);
 }
@@ -122,13 +122,13 @@ struct PrinterPass : NodeVisitor {
 } // namespace
 
 void Network::updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
-                           size_t len, ArrayRef<NodeBase *> nodes,
-                           ArrayRef<Tensor *> inputs, bool isBatch) {
+                                    size_t len, ArrayRef<NodeBase *> nodes,
+                                    ArrayRef<Tensor *> inputs, bool isBatch) {
   for (size_t idx = 0; idx < len; idx++) {
     /// Update the inputs:
     for (int i = 0, e = nodes.size(); i < e; i++) {
       if (isBatch) {
-      nodes[i]->updateInputs(ctx, inputs[i], start + idx);
+        nodes[i]->updateInputs(ctx, inputs[i], start + idx);
       } else {
         nodes[i]->updateInput(ctx, inputs[i]);
       }
@@ -156,7 +156,7 @@ void Network::learnGradient(Context *ctx) {
 static unsigned calculateNumThreads(unsigned numCores, unsigned batchSize) {
   unsigned best = 1;
 
-  for (int i = 1;  i < numCores; i++) {
+  for (int i = 1; i < numCores; i++) {
 
     // The batch size must be a multiple of the number of threads or we'll skip
     /// some inputs.
@@ -175,8 +175,8 @@ static unsigned calculateNumThreads(unsigned numCores, unsigned batchSize) {
 /// Train the network starting with the node \p root. Perform \p iterations
 /// iterations in the training loop. Update the nodes in \p nodes with the
 /// values \p inputs.
-void Network::train(NodeBase *root, size_t batches,
-                    ArrayRef<NodeBase *> nodes, ArrayRef<Tensor *> inputs) {
+void Network::train(NodeBase *root, size_t batches, ArrayRef<NodeBase *> nodes,
+                    ArrayRef<Tensor *> inputs) {
 
   size_t batchSize = getConfig().batchSize;
   unsigned numThreads = calculateNumThreads(state_.size(), batchSize);
@@ -190,16 +190,17 @@ void Network::train(NodeBase *root, size_t batches,
       /// Update the network inputs and perform the forward and backwards pass.
       threads.emplace_back([=] {
         updateForwardBackward(&state_[t], root, trainCounter_ + t * sliceSize,
-                              sliceSize, nodes, inputs,
-                              true); });
+                              sliceSize, nodes, inputs, true);
+      });
     }
 
     /// Wait for the threads to finish.
-    for (auto &t : threads) { t.join(); }
+    for (auto &t : threads) {
+      t.join();
+    }
     threads.clear();
 
-    trainCounter_+=getConfig().batchSize;
-
+    trainCounter_ += getConfig().batchSize;
 
     // The algorithm for merging the state from the different threads is
     /// described in the paper:
@@ -245,11 +246,11 @@ void Network::train(NodeBase *root, ArrayRef<NodeBase *> nodes,
   if (trainCounter_ % getConfig().batchSize)
     return;
 
-    learnGradient(&state_[0]);
+  learnGradient(&state_[0]);
 }
 
 Tensor *Network::infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
-                    ArrayRef<Tensor *> inputs) {
+                       ArrayRef<Tensor *> inputs) {
   // Update all inputs.
   for (int i = 0, e = nodes.size(); i < e; i++) {
     nodes[i]->updateInput(&state_[0], inputs[i]);
@@ -274,10 +275,9 @@ void Network::dump(NodeBase *root) {
   for (auto &ctx : state_) {
     std::cout << "Context:\n";
     for (auto &t : ctx) {
-      t.second->getWeightHandle().dump("W:","\n");
+      t.second->getWeightHandle().dump("W:", "\n");
     }
   }
 
   std::cout << "\n";
 }
-
