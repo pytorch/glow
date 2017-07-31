@@ -212,9 +212,71 @@ void testLearnSingleInput(bool verbose = false) {
   }
 }
 
+void testLearnXor(bool verbose = false) {
+  if (verbose) {
+    std::cout << "Learning the Xor function.\n";
+  }
+
+  Network N;
+  N.getConfig().learningRate = 0.1;
+
+  auto *A = N.createArrayNode(2);
+  auto *FCL0 = N.createFullyConnectedNode(A, 4);
+  auto *RL0 = N.createRELUNode(FCL0);
+  auto *FCL1 = N.createFullyConnectedNode(RL0, 1);
+  auto *RL1 = N.createRELUNode(FCL1);
+  auto *RN = N.createRegressionNode(RL1);
+
+  Tensor inputs(ElemKind::FloatTy, {4, 2});
+  Tensor expected(ElemKind::FloatTy, {4, 1});
+
+  auto I = inputs.getHandle<FloatTy>();
+  auto E = expected.getHandle<FloatTy>();
+
+  /// The XOR lookup table:
+  I.at({0, 0}) = 0;
+  I.at({0, 1}) = 0;
+  I.at({1, 0}) = 0;
+  I.at({1, 1}) = 1;
+  I.at({2, 0}) = 1;
+  I.at({2, 1}) = 0;
+  I.at({3, 0}) = 1;
+  I.at({3, 1}) = 1;
+  // Xor result:
+  E.at({0, 0}) = 0;
+  E.at({1, 0}) = 1;
+  E.at({2, 0}) = 1;
+  E.at({3, 0}) = 0;
+
+  // Train the network:
+  N.train(RN, 400, {A, RN}, {&inputs, &expected});
+
+  if (verbose) {
+    std::cout << "Testing the output vector.\n";
+  }
+
+  for (size_t i = 0; i < 4; i++) {
+    Tensor in = I.extractSlice(i);
+    Tensor exp = E.extractSlice(i);
+    auto expH = exp.getHandle<FloatTy>(); (void)expH;
+
+    auto res = N.infer(RN, {A}, {&in});
+    auto resH = res->getHandle<FloatTy>(); (void)resH;
+
+    //Test the output:
+    assert(delta(expH.at({0}), resH.at({0})) < 0.1);
+  }
+
+  if (verbose) {
+    std::cout << "Done.\n";
+  }
+}
+
 int main() {
 
   testLearnSingleInput(true);
+
+  testLearnXor(true);
 
   testRegression(true);
 
