@@ -30,20 +30,20 @@ configure_file (
   "${NOETHER_BINARY_DIR}/Config.h"
   )
 
-
-SET(LinkLibs libNoether libCaffe)
-
-if (PROTOBUF_FOUND)
-  SET(LinkLibs ${LinkLibs} ${PROTOBUF_LIBRARIES})
-endif (PROTOBUF_FOUND)
+SET(LinkLibs "")
 
 if (PNG_FOUND)
   SET(LinkLibs ${LinkLibs} ${PNG_LIBRARY})
 endif (PNG_FOUND)
 
+add_subdirectory(caffe/)
+
+SET(LinkLibs ${LinkLibs} ${PROTOBUF_LIBRARIES})
+SET(LinkLibs ${LinkLibs} libNoether libCaffe)
+
 add_subdirectory(src/noether/)
 add_subdirectory(examples/)
-add_subdirectory(caffe/)
+
 
 add_executable(noether noether.cpp ${header_files})
 target_link_libraries (noether LINK_PUBLIC ${LinkLibs})

@@ -8,4 +8,4 @@ add_library (libCaffe
              ${PROTO_SRCS}
              ${PROTO_HDRS})
 
-
+SET(LinkLibs ${LinkLibs} ${PROTOBUF_LIBRARY} PARENT_SCOPE)
