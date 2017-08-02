@@ -14,7 +14,12 @@ C++ compiler that supports C++11, on CMake, protocol buffer, and libpng.
 
 ### Building the Compiler
 
-Create a build directory and run cmake on the source directory:
+Before building the compiler you will need to update the git submodules with the
+command:
+
+  git submodule update
+
+Next, create a build directory and run cmake on the source directory:
 
   mkdir build; cmake ../noether/
 
@@ -23,11 +28,12 @@ like GNU Makefiles, Ninja and Xcode build.
 
 ## Testing and Running
 
-After compiling the project, a few test programs will be built under the
-/examples/ directory. The 'mnist' and 'cifar10' programs train and run the digit
-recognition and image classification benchmarks. The programs 'tensors' and
-'regress' are small programs that run a few tests that check different parts of
-the runtime.
+The project has a few unittests in the tests/ directory. To run all of the unit
+tests simply run the command 'ninja test' (or gmake test).  After compiling the
+project, a few test programs will be built under the /examples/ directory. The
+'mnist' and 'cifar10' programs train and run the digit recognition and image
+classification benchmarks.
+
 
 The default compilation mode is 'Debug'. This means that the compiler itself is
 easy to debug because it has debug info, lots of assertions, and the
