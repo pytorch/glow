@@ -15,10 +15,15 @@ namespace noether {
 
 class ConvNode final : public NodeBase {
   NodeBase *input_;
-  /// A list of convolution filters.
-  TensorToken filters_;
-  /// The convolution bias.
-  TensorToken bias_;
+  /// A list of convolution filter weights.
+  TensorToken filtersW_;
+  /// A list of convolution filters gradients.
+  TensorToken filtersG_;
+
+  /// The convolution bias weights.
+  TensorToken biasW_;
+  /// The convolution bias gradients.
+  TensorToken biasG_;
 
   size_t filterSize_;
   size_t stride_;
@@ -73,10 +78,15 @@ public:
 class FullyConnectedNode final : public NodeBase {
   /// A reference to the layer input.
   NodeBase *input_;
-  /// A list of filters.
-  TensorToken filters_;
-  /// The biases.
-  TensorToken bias_;
+  /// A list of filter weights.
+  TensorToken filtersW_;
+  /// A list of filters gradients.
+  TensorToken filtersG_;
+  /// The bias weights.
+  TensorToken biasW_;
+  /// The bias gradients.
+  TensorToken biasG_;
+
 
   size_t outDepth_;
 

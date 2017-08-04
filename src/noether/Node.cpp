@@ -4,24 +4,24 @@
 
 using namespace noether;
 
-TrainableData *NodeBase::getOutput(Context *ctx) {
-  return ctx->getTrainable(&output_);
+Tensor *NodeBase::getOutputWeight(Context *ctx) const {
+  return ctx->getTensor(&outputWeight_);
 }
 
-const TrainableData *NodeBase::getOutput(Context *ctx) const {
-  return ctx->getTrainable(&output_);
+Tensor *NodeBase::getOutputGrad(Context *ctx) const {
+  return ctx->getTensor(&outputGrad_);
 }
 
 ArrayRef<size_t> NodeBase::dims(Context *ctx) const {
-  return getOutput(ctx)->dims();
+  return getOutputWeight(ctx)->dims();
 }
 
-size_t NodeBase::size(Context *ctx) const { return getOutput(ctx)->size(); }
+size_t NodeBase::size(Context *ctx) const { return getOutputWeight(ctx)->size(); }
 
 Handle<FloatTy> NodeBase::getWeightHandle(Context *ctx) const {
-  return ctx->getTrainable(&output_)->getWeightHandle();
+  return getOutputWeight(ctx)->getHandle<FloatTy>();
 }
 
 Handle<FloatTy> NodeBase::getGradHandle(Context *ctx) const {
-  return ctx->getTrainable(&output_)->getGradHandle();
+  return getOutputGrad(ctx)->getHandle<FloatTy>();
 }

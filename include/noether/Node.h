@@ -28,8 +28,11 @@ public:
 /// Represents a node in the network compute graph.
 class NodeBase {
 protected:
-  /// The filter output.
-  TensorToken output_;
+  /// The filter output weight.
+  TensorToken outputWeight_;
+
+  /// The filter output gradient.
+  TensorToken outputGrad_;
 
 public:
   /// \returns a descriptive name for the operation.
@@ -60,10 +63,10 @@ public:
   virtual ~NodeBase() {}
 
   /// \returns the output (weights) of a node in the compute graph.
-  TrainableData *getOutput(Context *ctx);
+  Tensor *getOutputWeight(Context *ctx) const;
 
-  /// \returns the output (weights) of a node in the compute graph.
-  const TrainableData *getOutput(Context *ctx) const;
+  /// \returns the output (gradient) of a node in the compute graph.
+  Tensor *getOutputGrad(Context *ctx) const;
 
   /// \returns the dimension of the tensor.
   ArrayRef<size_t> dims(Context *ctx) const;

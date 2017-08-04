@@ -50,7 +50,7 @@ TEST(Network, learnXor) {
   N.getConfig().learningRate = 0.1;
 
   auto *A = N.createArrayNode(2);
-  auto *FCL0 = N.createFullyConnectedNode(A, 4);
+  auto *FCL0 = N.createFullyConnectedNode(A, 6);
   auto *RL0 = N.createRELUNode(FCL0);
   auto *FCL1 = N.createFullyConnectedNode(RL0, 1);
   auto *RL1 = N.createRELUNode(FCL1);

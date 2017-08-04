@@ -16,47 +16,62 @@ class TrainableData;
 /// This represents the execution context of the graph.
 class Context {
 public:
-  using TrainableMap = std::unordered_map<const TensorToken *, TrainableData *>;
+  using TensorMap = std::unordered_map<const TensorToken *, Tensor *>;
+  using TensorPairTy = std::pair<const TensorToken *, const TensorToken *>;
+  using TensorPairListTy = std::vector<TensorPairTy>;
 
-  /// Represents the cell number, when performing concurrent training.
-  unsigned cellId_;
+  enum ShareKind {
+    /// Marks tensors that are shared between different context values.
+    kSharedTensor,
+        /// Marks tensors that unique to the context and are not shared.
+    kPrivateTensor,
+  };
 
-  /// Maps weight tensors into the corresponding weights and gradient tensors.
-  TrainableMap trainables_;
+private:
+  /// A pointer to the prime context, or nullptr, if this is the prime ctx.
+  Context *primeCtx_;
 
-  /// Maps weight tensors into the corresponding weights and gradient tensors.
-  std::unordered_map<const TensorToken *, Tensor *> tensors_;
+  /// Maps tensor descriptors into the corresponding tensors.
+  TensorMap tensors_;
 
-  Context(unsigned cellId) : cellId_(cellId) {}
+  /// A list of pairs of weight/gradient tensors that are attached.
+  TensorPairListTy pairs_;
+
+public:
+
+  Context(Context *primeCtx) : primeCtx_(primeCtx) {}
 
   ~Context();
 
-  TrainableMap::iterator begin() { return trainables_.begin(); }
-  TrainableMap::iterator end() { return trainables_.end(); }
+  TensorMap::iterator begin() { return tensors_.begin(); }
+  TensorMap::iterator end() { return tensors_.end(); }
 
-  Handle<FloatTy> getWeightHandle(const TensorToken *tok);
+  /// Returns the list of paired tensors.
+  TensorPairListTy &getTensorPairs() { return pairs_; }
 
-  Handle<FloatTy> getGradHandle(const TensorToken *tok);
-
-  /// Allocates a new tensor pair that's addressed by the token \p tok.
-  void allocateTrainable(const TensorToken *tok, bool trainable,
-                         ArrayRef<size_t> dims);
-
-  /// \returns the allocated gradient and weight Tensor pair.
-  TrainableData *getTrainable(const TensorToken *tok);
+  /// Mark two tensors as being paired together.
+  void addTensorPair(TensorPairTy p) { pairs_.push_back(p); }
 
   /// Allocates a new tensor that's addressed by the token \p tok.
-  void allocateTensor(const TensorToken *tok, ElemKind kind,
-                      ArrayRef<size_t> dims);
+  /// \returns the address of the allocated tensor, or nullptr, if this is a
+  /// shared tensor that's owned by the prime context.
+  Tensor *allocateTensor(const TensorToken *tok, ElemKind kind,
+                      ArrayRef<size_t> dims,
+                      ShareKind shared = ShareKind::kPrivateTensor);
 
   /// \returns the allocated Tensor.
   Tensor *getTensor(const TensorToken *tok);
+
+  /// \returns True if the tensor is managed by the context.
+  bool hasTensor(const TensorToken *tok);
+
+  Handle<FloatTy> getHandle(const TensorToken *tok);
 };
 
 class Network {
   /// This vector holds the network state. One Context for each parallelism
   /// unit.
-  std::vector<Context> state_{};
+  std::vector<Context*> state_{};
 
   /// This variable counts the number of iterations that train() was called.
   /// It is mainly used to detect batch size boundries.
@@ -74,7 +89,7 @@ class Network {
   /// \returns the newly created node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
     for (auto &c : state_)
-      N->init(&c);
+      N->init(c);
 
     networkNodes_.push_back(N);
     return N;

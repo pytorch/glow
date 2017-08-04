@@ -10,47 +10,52 @@
 using namespace noether;
 
 Context::~Context() {
-  for (auto t : trainables_) {
-    delete t.second;
-  }
-  for (auto t : tensors_) {
+   for (auto t : tensors_) {
     delete t.second;
   }
 }
 
-Handle<FloatTy> Context::getWeightHandle(const TensorToken *tok) {
-  return getTrainable(tok)->getWeightHandle();
-}
+Tensor *Context::allocateTensor(const TensorToken *tok, ElemKind kind,
+                             ArrayRef<size_t> dims,
+                             ShareKind shared) {
+  /// If we are asked to allocate a shared tensor then make sure to allocate it
+  /// in the main context.
+  if (shared == ShareKind::kSharedTensor && primeCtx_)
+    return nullptr;
 
-Handle<FloatTy> Context::getGradHandle(const TensorToken *tok) {
-  return getTrainable(tok)->getGradHandle();
-}
-
-void Context::allocateTrainable(const TensorToken *tok, bool trainable,
-                                ArrayRef<size_t> dims) {
-  assert(!trainables_.count(tok) && "Token already allocated");
-  trainables_[tok] = new TrainableData(trainable, dims);
-}
-
-TrainableData *Context::getTrainable(const TensorToken *tok) {
-  assert(trainables_.count(tok) && "The token was not allocated");
-  return trainables_[tok];
-}
-
-void Context::allocateTensor(const TensorToken *tok, ElemKind kind,
-                             ArrayRef<size_t> dims) {
-  assert(!tensors_.count(tok) && "Token already allocated");
-  tensors_[tok] = new Tensor(kind, dims);
+  assert(!hasTensor(tok) && "Token already allocated");
+  Tensor *T = new Tensor(kind, dims);
+  tensors_[tok] = T;
+  return T;
 }
 
 Tensor *Context::getTensor(const TensorToken *tok) {
-  assert(tensors_.count(tok) && "The token was not allocated");
-  return tensors_[tok];
+  // Look for the tensor in the local storage.
+  auto it = tensors_.find(tok);
+  if (it != tensors_.end()) {
+    return it->second;
+  }
+
+  // If we could not find the tensor, search the prime context for shared
+  // tensors.
+  assert(primeCtx_ && "Could not find the tensor in the prime context!");
+  return primeCtx_->getTensor(tok);
 }
 
+bool Context::hasTensor(const TensorToken *tok) {
+  return tensors_.count(tok);
+}
+
+Handle<FloatTy> Context::getHandle(const TensorToken *tok) {
+  return getTensor(tok)->getHandle<FloatTy>();
+}
+
+
 Network::Network() {
-  for (unsigned i = 0, e = std::thread::hardware_concurrency(); i < e; i++) {
-    state_.emplace_back(i);
+  state_.push_back(new Context(nullptr));
+
+  for (unsigned i = 1, e = std::thread::hardware_concurrency(); i < e; i++) {
+    state_.push_back(new Context(state_[0]));
   }
 }
 
@@ -58,6 +63,11 @@ Network::~Network() {
   /// Delete the nodes of the network.
   for (auto *node : networkNodes_) {
     delete node;
+  }
+
+  /// Delete the context.
+  for (auto *ctx : state_) {
+    delete ctx;
   }
 }
 
@@ -145,11 +155,10 @@ void Network::updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
 }
 
 void Network::learnGradient(Context *ctx) {
-  for (auto &p : ctx->trainables_) {
-    // Update the weights.
-    trainer_.train(p.second);
-    // Clear the gradients for the next round of training.
-    p.second->clearGradient();
+  for (auto p : ctx->getTensorPairs()) {
+    Tensor *W = ctx->getTensor(p.first);
+    Tensor *G = ctx->getTensor(p.second);
+    trainer_.train(W, G);
   }
 }
 
@@ -189,7 +198,7 @@ void Network::train(NodeBase *root, size_t batches, ArrayRef<NodeBase *> nodes,
     for (int t = 0; t < numThreads; t++) {
       /// Update the network inputs and perform the forward and backwards pass.
       threads.emplace_back([=] {
-        updateForwardBackward(&state_[t], root, trainCounter_ + t * sliceSize,
+        updateForwardBackward(state_[t], root, trainCounter_ + t * sliceSize,
                               sliceSize, nodes, inputs, true);
       });
     }
@@ -207,27 +216,11 @@ void Network::train(NodeBase *root, size_t batches, ArrayRef<NodeBase *> nodes,
     // Alex Krizhevsky [2014]
     // One weird trick for parallelizing convolutional neural networks
 
-    // Merge the gradients from all of the treads into the first thread.
-    // For each buffer in the first tread:
-    for (auto trainable : state_[0]) {
-      // For each thread id.
-      for (int tid = 1; tid < numThreads; tid++) {
-        auto *T = state_[tid].getTrainable(trainable.first);
-        trainable.second->mergeGradients(T);
-        T->clearGradient();
-      }
+
+    for (int tid = 0; tid < numThreads; tid++) {
+      learnGradient(state_[tid]);
     }
 
-    // Perform the delta updates on the first thread:
-    learnGradient(&state_[0]);
-
-    /// Send the calculated weights to all other threads:
-    for (auto trainable : state_[0]) {
-      for (int tid = 1; tid < numThreads; tid++) {
-        auto *T = state_[tid].getTrainable(trainable.first);
-        T->copyWeights(trainable.second);
-      }
-    }
   }
 }
 
@@ -237,7 +230,7 @@ void Network::train(NodeBase *root, ArrayRef<NodeBase *> nodes,
                     ArrayRef<Tensor *> inputs) {
   assert(nodes.size() == inputs.size() && "Mismatched argument list");
 
-  updateForwardBackward(&state_[0], root, trainCounter_, 1, nodes, inputs,
+  updateForwardBackward(state_[0], root, trainCounter_, 1, nodes, inputs,
                         false);
 
   trainCounter_++;
@@ -246,21 +239,21 @@ void Network::train(NodeBase *root, ArrayRef<NodeBase *> nodes,
   if (trainCounter_ % getConfig().batchSize)
     return;
 
-  learnGradient(&state_[0]);
+  learnGradient(state_[0]);
 }
 
 Tensor *Network::infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
                        ArrayRef<Tensor *> inputs) {
   // Update all inputs.
   for (int i = 0, e = nodes.size(); i < e; i++) {
-    nodes[i]->updateInput(&state_[0], inputs[i]);
+    nodes[i]->updateInput(state_[0], inputs[i]);
   }
 
   // Forward scan.
-  ForwardPass FP(&state_[0]);
+  ForwardPass FP(state_[0]);
   root->visit(&FP);
 
-  return &root->getOutput(&state_[0])->weights_;
+  return root->getOutputWeight(state_[0]);
 }
 
 void Network::dump(NodeBase *root) {
@@ -274,8 +267,8 @@ void Network::dump(NodeBase *root) {
 
   for (auto &ctx : state_) {
     std::cout << "Context:\n";
-    for (auto &t : ctx) {
-      t.second->getWeightHandle().dump("W:", "\n");
+    for (auto &t : *ctx) {
+      t.second->getHandle<FloatTy>().dump("W:", "\n");
     }
   }
 
