@@ -71,6 +71,10 @@ Network::~Network() {
   }
 }
 
+void Network::updateTensor(const TensorToken *tok, Tensor *t) {
+  state_[0]->getTensor(tok)->copyFrom(t);
+}
+
 ConvNode *Network::createConvNode(NodeBase *input, size_t outDepth,
                                   size_t filterSize, size_t stride,
                                   size_t pad) {

@@ -155,6 +155,9 @@ public:
 
   /// Dump the textual representation of the network.
   void dump(NodeBase *root);
+
+  /// Update the content of the internally stored tensor \p tok with \p t.
+  void updateTensor(const TensorToken *tok, Tensor *t);
 };
 }
 

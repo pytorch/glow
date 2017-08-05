@@ -45,6 +45,8 @@ public:
   virtual std::string getName() const override { return "ConvNode"; }
 
   virtual void visit(NodeVisitor *visitor) override;
+
+  void updateWeights(Network *N_, Tensor *filter, Tensor *bias);
 };
 
 class MaxPoolNode final : public NodeBase {

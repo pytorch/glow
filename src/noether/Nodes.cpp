@@ -146,6 +146,11 @@ void ConvNode::backward(Context *ctx) const {
   }
 }
 
+void ConvNode::updateWeights(Network *N_, Tensor *filter, Tensor *bias) {
+  N_->updateTensor(&filtersW_, filter);
+  N_->updateTensor(&biasW_, bias);
+}
+
 MaxPoolNode::MaxPoolNode(Network *N, NodeBase *input, size_t filterSize,
                          size_t stride, size_t pad)
     : NodeBase(), input_(input), filterSize_(filterSize), stride_(stride),
