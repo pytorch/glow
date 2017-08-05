@@ -174,7 +174,8 @@ public:
 
   /// Reset the shape and type of this tensor to match the shape and type of
   /// \p other.
-  void reset(Tensor *other) { reset(other->getElementType(), other->dims()); }
+  void reset(const Tensor *other) { reset(other->getElementType(),
+                                          other->dims()); }
 
   /// Assigns a new shape to the tensor and allocates a new buffer.
   void reset(ElemKind elemTy, ArrayRef<size_t> dims) {
@@ -216,13 +217,17 @@ public:
     return *this;
   }
 
+  /// Update the content of the tensor from the tensor \p t.
+  void copyFrom(const Tensor *t) {
+    reset(t);
+    size_t bufferSize = size() * getElementSize(elementType_);
+    std::copy(&data_[0], &data_[bufferSize], t->data_);
+  }
+
   /// Create a new copy of the current tensor.
   Tensor clone() const {
-    Tensor slice(getElementType(), dims());
-
-    // Extract the whole slice.
-    size_t bufferSize = size() * getElementSize(elementType_);
-    std::copy(&data_[0], &data_[bufferSize], slice.data_);
+    Tensor slice;
+    slice.copyFrom(this);
     return slice;
   }
 
