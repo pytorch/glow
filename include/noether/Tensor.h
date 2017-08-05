@@ -128,10 +128,10 @@ public:
     std::fill(&data_[0], &data_[0] + size() * getElementSize(elementType_), 0);
   }
 
-  /// \returns the dimension of the tensor.
+  /// \returns the shape of the tensor.
   ArrayRef<size_t> dims() const { return ArrayRef<size_t>(sizes_, numSizes_); }
 
-  /// \returns the number of elements in the array.
+  /// \returns the number of elements in the tensor.
   size_t size() const {
     if (!numSizes_)
       return 0;
@@ -178,15 +178,23 @@ public:
                                           other->dims()); }
 
   /// Assigns a new shape to the tensor and allocates a new buffer.
-  void reset(ElemKind elemTy, ArrayRef<size_t> dims) {
+  void reset(ElemKind elemTy, ArrayRef<size_t> shape) {
+    // If the new size is identical to the allocated size then there is no need
+    // to re-allocate the buffer.
+    if (elemTy == elementType_ && shape == this->dims()) {
+      zero();
+      return;
+    }
+
+    // Delete the old buffer, update the shape, and allocate a new one.
     delete[] data_;
     elementType_ = elemTy;
 
-    assert(dims.size() < max_tensor_dimensions && "Too many indices");
-    for (int i = 0, e = dims.size(); i < e; i++) {
-      sizes_[i] = dims[i];
+    assert(shape.size() < max_tensor_dimensions && "Too many indices");
+    for (int i = 0, e = shape.size(); i < e; i++) {
+      sizes_[i] = shape[i];
     }
-    numSizes_ = dims.size();
+    numSizes_ = shape.size();
 
     if (size()) {
       data_ = new char[size() * getElementSize(elementType_)];
