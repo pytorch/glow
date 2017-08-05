@@ -221,7 +221,7 @@ public:
   void copyFrom(const Tensor *t) {
     reset(t);
     size_t bufferSize = size() * getElementSize(elementType_);
-    std::copy(&data_[0], &data_[bufferSize], t->data_);
+    std::copy(&t->data_[0], &t->data_[bufferSize], data_);
   }
 
   /// Create a new copy of the current tensor.

@@ -29,6 +29,25 @@ TEST(Tensor, init) {
   H.dump("", "\n");
 }
 
+TEST(Tensor, clone) {
+  std::cout << "Testing clone.\n";
+
+  Tensor T = {1.2, 12.1, 51.0, 1515.2};
+  auto H = T.getHandle<FloatTy>();
+
+  Tensor v;
+  v.copyFrom(&T);
+  auto vH = v.getHandle<FloatTy>();
+
+  EXPECT_EQ(int(vH.at({0})), 1);
+
+  // Update the original tensor
+  H = {0.11, 0.22, 0.33, 0.44};
+
+  // The cloned vector is unmodified.
+  EXPECT_EQ(int(vH.at({1})), 12);
+}
+
 TEST(Tensor, assignment) {
   //Testing some tensor operations.
   Tensor T(ElemKind::FloatTy, {320, 200, 64});
@@ -36,8 +55,8 @@ TEST(Tensor, assignment) {
   auto Handle = T.getHandle<FloatTy>();
 
   for (unsigned i = 0; i < 10; i++) {
-    for (unsigned x = 0; x < 320; x++) {
-      for (unsigned y = 0; y < 200; y++) {
+    for (unsigned x = 0; x < 32; x++) {
+      for (unsigned y = 0; y < 20; y++) {
         for (unsigned z = 0; z < 64; z++) {
           Handle.at({x, y, z}) = x + y + z;
         }
@@ -52,7 +71,7 @@ TEST(Tensor, assignment) {
 
   EXPECT_EQ(H2.at({10, 10}) , 1 + 10 + 10);
 
-  for (unsigned y = 0; y < 200; y++) {
+  for (unsigned y = 0; y < 20; y++) {
     for (unsigned z = 0; z < 64; z++) {
       H2.at({y, z}) = 2;
     }
