@@ -252,3 +252,42 @@ TEST(Network, circle) {
     EXPECT_LE(B, 0.1);
     }
 }
+
+TEST(Network, learnSingleValueConcat) {
+  // Learning inputs in two concatenated vectors.
+  Network N;
+  N.getConfig().learningRate = 0.05;
+
+  // Left side of the network:
+  NodeBase *A = N.createArrayNode(4);
+  A = N.createFullyConnectedNode(A, 4);
+  A = N.createRELUNode(A);
+
+  // Right side of the network:
+  NodeBase *B = N.createArrayNode(4);
+  B = N.createFullyConnectedNode(B, 4);
+  B = N.createRELUNode(B);
+
+  // Concat:
+  auto *C = N.createConcatNode({A, B}, 0);
+  auto *RN = N.createRegressionNode(C);
+
+  Tensor inputs(ElemKind::FloatTy, {4});
+  Tensor expected(ElemKind::FloatTy, {8});
+  inputs.getHandle<FloatTy>() = {0.15, 0.15, 0.15, 0.15};
+  expected.getHandle<FloatTy>() = {0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9};
+
+  // Train the network:
+  for (int iter = 0; iter < 1000; iter++) {
+    N.train(RN, {A, B, RN}, {&inputs, & inputs, &expected});
+  }
+
+  // Testing the output vector.
+  auto res = N.infer(RN, {A}, {&inputs});
+  auto RNWH = res->getHandle<FloatTy>();
+  (void)RNWH;
+
+  // Test the output:
+  EXPECT_NEAR(RNWH.at({0}), 0.9, 0.1);
+}
+

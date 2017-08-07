@@ -607,6 +607,73 @@ void ArrayNode::updateInput(Context *ctx, Tensor *var) {
   *getOutputWeight(ctx) = var->clone();
 }
 
+ConcatNode::ConcatNode(Network *N, ArrayRef<NodeBase *>inputs,
+                       unsigned dimension) :
+NodeBase(), inputs_(inputs.begin(), inputs.end()), dimension_(dimension){}
+
+void ConcatNode::init(Context *ctx) const {
+  assert(inputs_.size() > 1 && "invalid number of inputs");
+  auto dims0 = inputs_[0]->dims(ctx);
+  assert(dimension_ < dims0.size() && "Invalid concat dimension");
+
+  size_t sizeNthDim = dims0[dimension_];
+  for (int i = 1, e = inputs_.size(); i < e; i++) {
+    auto dimsI = inputs_[i]->dims(ctx);
+
+    // Count how many layers are in the nth dimension.
+    sizeNthDim += dimsI[dimension_];
+
+    // Validate that the rest of the dimensions are identical.
+    assert(dims0.size() == dimsI.size() && "Invalid number of dimensions");
+    for (int i = 0; i < dims0.size(); i++) {
+      if (i == dimension_) continue;
+      assert(dimsI[i] == dims0[i] && "Invalid dimension");
+    }
+  }
+
+  // Create the shape of the new vector.
+  std::vector<size_t> shape(dims0.begin(), dims0.end());
+  shape[dimension_] = sizeNthDim;
+
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, shape);
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, shape);
+}
+
+void ConcatNode::forward(Context *ctx) const {
+  auto outW = getWeightHandle(ctx);
+
+  /// Insert the tensors at this coordinate. Start at zero.
+  std::vector<size_t> offset(outW.size(), 0);
+
+  for (int i = 0, e = inputs_.size(); i < e; i++) {
+    auto inW = inputs_[i]->getWeightHandle(ctx);
+
+    // Insert the tensor.
+    insertTensors(inW, outW, offset);
+
+
+    // The next tensor starts after this one ends.
+    offset[dimension_] += inW.dims()[dimension_];
+  }
+}
+
+void ConcatNode::backward(Context *ctx) const {
+  auto outG = getGradHandle(ctx);
+
+  /// Insert the tensors at this coordinate. Start at zero.
+  std::vector<size_t> offset(outG.size(), 0);
+
+  for (int i = 0, e = inputs_.size(); i < e; i++) {
+    auto inG = inputs_[i]->getGradHandle(ctx);
+
+    // Insert the tensor.
+    extractTensors(inG, outG, offset);
+
+    // The next tensor starts after this one ends.
+    offset[dimension_] += inG.dims()[dimension_];
+  }
+}
+
 // Define the node visitor for all nodes in the graph that have a single
 // incoming node.
 
@@ -625,6 +692,14 @@ DEFINE_CLASS_VISITOR(SigmoidNode)
 DEFINE_CLASS_VISITOR(SoftMaxNode)
 DEFINE_CLASS_VISITOR(RegressionNode)
 DEFINE_CLASS_VISITOR(MaxNode)
+
+void ConcatNode::visit(NodeVisitor *visitor) {
+  visitor->pre(this);
+  for (auto &I : inputs_) {
+    I->visit(visitor);
+  }
+  visitor->post(this);
+}
 
 void ArrayNode::visit(NodeVisitor *visitor) {
   visitor->pre(this);

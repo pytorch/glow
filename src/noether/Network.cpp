@@ -81,6 +81,11 @@ ConvNode *Network::createConvNode(NodeBase *input, size_t outDepth,
   return addNode(new ConvNode(this, input, outDepth, filterSize, stride, pad));
 }
 
+ConcatNode *Network::createConcatNode(ArrayRef<NodeBase *>inputs,
+                                      unsigned dimension) {
+  return addNode(new ConcatNode(this, inputs, dimension));
+}
+
 MaxPoolNode *Network::createMaxPoolNode(NodeBase *input, size_t filterSize,
                                         size_t stride, size_t pad) {
   return addNode(new MaxPoolNode(this, input, filterSize, stride, pad));

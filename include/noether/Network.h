@@ -115,6 +115,9 @@ public:
   ConvNode *createConvNode(NodeBase *input, size_t outDepth, size_t filterSize,
                            size_t stride, size_t pad);
 
+  ConcatNode *createConcatNode(ArrayRef<NodeBase *>inputs,
+                               unsigned dimension);
+
   MaxPoolNode *createMaxPoolNode(NodeBase *input, size_t filterSize,
                                  size_t stride, size_t pad);
 

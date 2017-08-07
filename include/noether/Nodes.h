@@ -260,6 +260,29 @@ public:
 
   virtual void visit(NodeVisitor *visitor) override;
 };
+  
+/// Concats a number of input tensors into a single tensor.
+class ConcatNode final : public NodeBase {
+  /// Pointers to incoming inputs.
+  std::vector<NodeBase *>inputs_;
+  /// Concat on this dimension.
+  unsigned dimension_;
+
+  ConcatNode(Network *N, ArrayRef<NodeBase *>inputs, unsigned dimension);
+
+  friend Network;
+
+public:
+  void init(Context *ctx) const override;
+
+  virtual void forward(Context *ctx) const override;
+
+  virtual void backward(Context *ctx) const override;
+
+  virtual std::string getName() const override { return "ConcatNode"; }
+
+  virtual void visit(NodeVisitor *visitor) override;
+};
 
 } // namespace noether
 
