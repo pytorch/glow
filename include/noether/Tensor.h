@@ -456,6 +456,75 @@ template <class ElemTy> Handle<ElemTy> Tensor::getHandle() {
   assert(isType<ElemTy>(elementType_) && "Getting a handle to the wrong type.");
   return Handle<ElemTy>(this);
 }
+
+} // namespace noether
+
+namespace {
+using noether::Handle;
+using noether::ArrayRef;
+/// Concats or splits tensors.
+/// This method concats or extracts a slice from a tensor.
+/// \p sliceCoor and \p fusedCoor are temporary storage that the function uses
+/// to construct the coordinates to access the tensor. They must be initialized
+/// to be the size of the shape of the tensor.
+/// \p slice and \p fused are the tensors to concat or extract.
+/// \p offset is the offset of the slice to add or extract along the dimension
+/// \p offsetDim. \p d is the recursion depth parameter that's following the
+/// number of the axis.
+/// if \p isInsert is set then data is copied from \p slice to \p fused.
+/// Otherwise data is copied from \p fused to \p slice.
+template <class ElemTy>
+void insertTensorsImpl(std::vector<size_t> &sliceCoor,
+                 std::vector<size_t> &fusedCoor,
+                 Handle<ElemTy> &slice,
+                 Handle<ElemTy> &fused,
+                 bool isInsert,
+                 ArrayRef<size_t> offset,
+                 unsigned d) {
+  bool isDone = (d == slice.dims().size());
+
+  if (isDone) {
+    if (isInsert) {
+      fused.at(fusedCoor) = slice.at(sliceCoor);
+    } else {
+      slice.at(sliceCoor) = fused.at(fusedCoor);
+    }
+    return;
+  }
+
+  for (size_t i = 0, e = slice.dims()[d]; i < e; i++) {
+    // Construct the coordinates for the slice and for the joint shape.
+    // Add the 'offset' to the dimension that we concat the shapes on.
+    sliceCoor[d] = i;
+    fusedCoor[d] = i + offset[d];
+    insertTensorsImpl(sliceCoor, fusedCoor, slice, fused, isInsert, offset,
+                      d + 1);
+  }
+}
+} // namespace
+
+namespace noether {
+  /// Insert the tensor \p slice into \p fused. Insert at location \p offset.
+  /// The tensors must be of the right dimensions.
+  template <class ElemTy>
+  void insertTensors(Handle<ElemTy> &slice,
+                     Handle<ElemTy> &fused,
+                     ArrayRef<size_t> offset) {
+    auto sliceCoor = slice.dims().vec();
+    auto fusedCoor = fused.dims().vec();
+    insertTensorsImpl(sliceCoor, fusedCoor, slice, fused, true, offset, 0);
+  }
+
+  /// Extract the tensor \p slice from \p fused. Extract at location \p offset.
+  /// The tensors must be of the right dimensions.
+  template <class ElemTy>
+  void extractTensors(Handle<ElemTy> &slice,
+                            Handle<ElemTy> &fused,
+                            ArrayRef<size_t> offset) {
+    auto sliceCoor = slice.dims().vec();
+    auto fusedCoor = fused.dims().vec();
+    insertTensorsImpl(sliceCoor, fusedCoor, slice, fused, false, offset, 0);
+  }
 }
 
 #endif // NOETHER_TENSOR_H

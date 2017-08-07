@@ -80,3 +80,62 @@ TEST(Tensor, assignment) {
   EXPECT_EQ(H2.at({10, 10}), 2);
 }
 
+
+TEST(Tensor, concatTensors1D) {
+  Tensor X = {1.1, 2.1, 3.1, 4.1};
+  Tensor Y = {5.2, 6.2, 7.2, 8.2};
+  Tensor Z = {0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3};
+  Tensor expected = {5.2, 6.2, 7.2, 8.2, 1.1, 2.1, 3.1, 4.1};
+
+  auto xH = X.getHandle<FloatTy>();
+  auto yH = Y.getHandle<FloatTy>();
+  auto zH = Z.getHandle<FloatTy>();
+  auto eH = expected.getHandle<FloatTy>();
+
+  insertTensors<FloatTy>(xH, zH, {4});
+  insertTensors<FloatTy>(yH, zH, {0});
+
+  for (size_t i = 0, e = eH.size(); i < e; i++) {
+    EXPECT_EQ(eH.at({i}), zH.at({i}));
+  }
+}
+
+TEST(Tensor, concatTensors2D) {
+  Tensor X(ElemKind::FloatTy, {10, 10});
+  Tensor Y(ElemKind::FloatTy, {10, 10});
+  Tensor Z(ElemKind::FloatTy, {20, 20});
+
+  auto xH = X.getHandle<FloatTy>();
+  auto yH = Y.getHandle<FloatTy>();
+  auto zH = Z.getHandle<FloatTy>();
+
+  // Create a nice picture:
+  for (size_t i = 0, e = xH.size(); i < e; i++) {
+    xH.raw(i) = (float(i) - 30) / 50;
+  }
+
+  // Insert the tensors and create a picture of three cards one on to of the
+  // other.
+  insertTensors<FloatTy>(xH, zH, {0, 0});
+  insertTensors<FloatTy>(xH, zH, {5, 5});
+  insertTensors<FloatTy>(xH, zH, {10, 10});
+
+  zH.dumpAscii();
+
+  /// Check some pixels in the image:
+  EXPECT_EQ(zH.at({0,0}), xH.at({0,0}));
+  EXPECT_EQ(zH.at({19,0}), 0);
+  EXPECT_EQ(zH.at({0,19}), 0);
+  EXPECT_EQ(zH.at({19,19}), xH.at({9,9}));
+  EXPECT_EQ(zH.at({10,10}), xH.at({0,0}));
+
+
+  // Extract an image from the tensor.
+  extractTensors<FloatTy>(yH, zH, {10, 10});
+
+  // Make sure that what we've extracted is equal to what we've inserted.
+  for (size_t i = 0, e = xH.size(); i < e; i++) {
+    EXPECT_EQ(yH.raw(i), xH.raw(i));
+  }
+
+}
