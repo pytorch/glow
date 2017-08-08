@@ -161,6 +161,9 @@ public:
 
   /// Update the content of the internally stored tensor \p tok with \p t.
   void updateTensor(const TensorToken *tok, Tensor *t);
+
+  /// \returns a pointer to the main context.
+  Context *getMainContext() { return state_[0];}
 };
 }
 
