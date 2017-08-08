@@ -256,11 +256,6 @@ void MaxPoolNode::backward(Context *ctx) const {
   }
 }
 
-
-
-
-
-
 FullyConnectedNode::FullyConnectedNode(Network *N, NodeBase *input,
                                        size_t outDepth)
     : NodeBase(), input_(input), outDepth_(outDepth) {}
@@ -462,10 +457,12 @@ void SoftMaxNode::backward(Context *ctx) const {
   auto selectedH = ctx->getTensor(&selected_)->getHandle<size_t>();
   size_t selected = selectedH.at({0});
 
+  // http://eli.thegreenplace.net/2016/the-softmax-function-and-its-derivative/
+  // https://stats.stackexchange.com/questions/79454/softmax-layer-in-a-neural-network
   for (size_t i = 0; i < idim[0]; i++) {
-    FloatTy indicator = (selected == i ? 1 : 0);
-    FloatTy mul = -(indicator - EH.at({i}));
-    inG.at({i}) = mul;
+    FloatTy delta = (selected == i);
+    FloatTy sigma = (EH.at({i}) - delta);
+    inG.at({i}) = sigma;
   }
 }
 
