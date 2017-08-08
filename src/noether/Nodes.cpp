@@ -233,7 +233,7 @@ void MaxPoolNode::backward(Context *ctx) const {
   auto outG = getGradHandle(ctx);
 
   auto SX = ctx->getTensor(&srcX_)->getHandle<size_t>();
-  auto SY = ctx->getTensor(&srcX_)->getHandle<size_t>();
+  auto SY = ctx->getTensor(&srcY_)->getHandle<size_t>();
 
   // Zero the gradient of the input.
   inG.clear();
