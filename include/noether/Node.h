@@ -27,6 +27,15 @@ public:
 
 /// Represents a node in the network compute graph.
 class NodeBase {
+public:
+  /// Describes the kind of pass that the network is executing.
+  enum class PassKind {
+    /// The network is in inference mode.
+    kInference,
+    /// The network is training.
+    kTraining,
+  };
+
 protected:
   /// The filter output weight.
   TensorToken outputWeight_;
@@ -41,8 +50,9 @@ public:
   /// Initialize the node.
   virtual void init(Context *ctx) const = 0;
 
-  /// Does the forward propagation.
-  virtual void forward(Context *ctx) const = 0;
+  /// Does the forward propagation. If \p kind describes the kind of
+  /// operation that the network is doing (training, inference, etc).
+  virtual void forward(Context *ctx, PassKind kind) const = 0;
 
   /// Does the backwards propagation.
   virtual void backward(Context *ctx) const = 0;

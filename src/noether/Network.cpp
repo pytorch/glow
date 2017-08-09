@@ -130,8 +130,10 @@ struct BackwardPass : NodeVisitor {
 
 struct ForwardPass : NodeVisitor {
   Context *ctx_;
-  ForwardPass(Context *ctx) : ctx_(ctx) {}
-  virtual void post(NodeBase *N) override { N->forward(ctx_); }
+  NodeBase::PassKind SweepKind_;
+  ForwardPass(Context *ctx, NodeBase::PassKind SweepKind) : ctx_(ctx),
+  SweepKind_(SweepKind) {}
+  virtual void post(NodeBase *N) override { N->forward(ctx_, SweepKind_); }
 };
 
 struct PrinterPass : NodeVisitor {
@@ -154,7 +156,7 @@ void Network::updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
     }
 
     // Forward scan:
-    ForwardPass FP(ctx);
+    ForwardPass FP(ctx, NodeBase::PassKind::kTraining);
     root->visit(&FP);
 
     // Backward scan in reverse order:
@@ -259,7 +261,7 @@ Tensor *Network::infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
   }
 
   // Forward scan.
-  ForwardPass FP(state_[0]);
+  ForwardPass FP(state_[0],  NodeBase::PassKind::kInference);
   root->visit(&FP);
 
   return root->getOutputWeight(state_[0]);

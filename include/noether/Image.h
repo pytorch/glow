@@ -23,7 +23,7 @@ public:
 
   void init(Context *ctx) const override {}
 
-  void forward(Context *ctx) const override {}
+  void forward(Context *ctx, PassKind kind) const override {}
 
   void backward(Context *ctx) const override {}
 

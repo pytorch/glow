@@ -38,7 +38,7 @@ class ConvNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) const override;
+  virtual void forward(Context *ctx, PassKind kind) const override;
 
   virtual void backward(Context *ctx) const override;
 
@@ -68,7 +68,7 @@ class MaxPoolNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) const override;
+  virtual void forward(Context *ctx, PassKind kind) const override;
 
   virtual void backward(Context *ctx) const override;
 
@@ -99,7 +99,7 @@ class FullyConnectedNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) const override;
+  virtual void forward(Context *ctx, PassKind kind) const override;
 
   virtual void backward(Context *ctx) const override;
 
@@ -119,7 +119,7 @@ class RELUNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) const override;
+  virtual void forward(Context *ctx, PassKind kind) const override;
 
   virtual void backward(Context *ctx) const override;
 
@@ -139,7 +139,7 @@ class SigmoidNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) const override;
+  virtual void forward(Context *ctx, PassKind kind) const override;
 
   virtual void backward(Context *ctx) const override;
 
@@ -172,7 +172,7 @@ public:
 
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) const override;
+  virtual void forward(Context *ctx, PassKind kind) const override;
 
   virtual void backward(Context *ctx) const override;
 
@@ -205,7 +205,7 @@ public:
 
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) const override;
+  virtual void forward(Context *ctx, PassKind kind) const override;
 
   virtual void backward(Context *ctx) const override;
 
@@ -227,7 +227,7 @@ class MaxNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) const override;
+  virtual void forward(Context *ctx, PassKind kind) const override;
 
   virtual void backward(Context *ctx) const override;
 
@@ -249,7 +249,7 @@ public:
 
   void init(Context *ctx) const override;
 
-  void forward(Context *ctx) const override {}
+  void forward(Context *ctx, PassKind kind) const override {}
 
   void backward(Context *ctx) const override {}
 
@@ -275,7 +275,7 @@ class ConcatNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx) const override;
+  virtual void forward(Context *ctx, PassKind kind) const override;
 
   virtual void backward(Context *ctx) const override;
 

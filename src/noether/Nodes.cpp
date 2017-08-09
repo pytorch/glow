@@ -50,7 +50,7 @@ void ConvNode::init(Context *ctx) const {
   ctx->addTensorPair({&biasW_, &biasG_});
 }
 
-void ConvNode::forward(Context *ctx) const {
+void ConvNode::forward(Context *ctx, PassKind kind) const {
   auto odim = dims(ctx);
   auto idim = input_->dims(ctx);
 
@@ -174,7 +174,7 @@ void MaxPoolNode::init(Context *ctx) const {
   ctx->allocateTensor(&srcY_, ElemKind::IndexTy, {outsx, outsy, idim[2]});
 }
 
-void MaxPoolNode::forward(Context *ctx) const {
+void MaxPoolNode::forward(Context *ctx, PassKind kind) const {
   auto odim = dims(ctx);
   auto idim = input_->dims(ctx);
   auto inW = input_->getWeightHandle(ctx);
@@ -296,7 +296,7 @@ void FullyConnectedNode::init(Context *ctx) const {
   ctx->addTensorPair({&biasW_, &biasG_});
 }
 
-void FullyConnectedNode::forward(Context *ctx) const {
+void FullyConnectedNode::forward(Context *ctx, PassKind kind) const {
   auto odim = dims(ctx);
   auto inW = input_->getWeightHandle(ctx);
   auto biasW = ctx->getHandle(&biasW_);
@@ -353,7 +353,7 @@ void RELUNode::init(Context *ctx) const {
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, input_->dims(ctx));
 }
 
-void RELUNode::forward(Context *ctx) const {
+void RELUNode::forward(Context *ctx, PassKind kind) const {
   auto outW = getWeightHandle(ctx);
   auto inW = input_->getWeightHandle(ctx);
 
@@ -385,7 +385,7 @@ void SigmoidNode::init(Context *ctx) const {
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, input_->dims(ctx));
 }
 
-void SigmoidNode::forward(Context *ctx) const {
+void SigmoidNode::forward(Context *ctx, PassKind kind) const {
   auto outW = getWeightHandle(ctx);
   auto inW = input_->getWeightHandle(ctx);
 
@@ -421,7 +421,7 @@ void SoftMaxNode::init(Context *ctx) const {
   ctx->allocateTensor(&selected_, ElemKind::IndexTy, {1});
 }
 
-void SoftMaxNode::forward(Context *ctx) const {
+void SoftMaxNode::forward(Context *ctx, PassKind kind) const {
   auto outW = getWeightHandle(ctx);
   auto idim = input_->dims(ctx);
   auto inW = input_->getWeightHandle(ctx);
@@ -508,7 +508,7 @@ void RegressionNode::init(Context *ctx) const {
   ctx->allocateTensor(&expected_, ElemKind::FloatTy, {idim[0]});
 }
 
-void RegressionNode::forward(Context *ctx) const {
+void RegressionNode::forward(Context *ctx, PassKind kind) const {
   assert(dims(ctx) == input_->dims(ctx) && "invalid expected dims");
   auto idim = input_->dims(ctx);
   auto outW = getWeightHandle(ctx);
@@ -562,7 +562,7 @@ void MaxNode::init(Context *ctx) const {
   ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, idim);
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, idim);}
 
-void MaxNode::forward(Context *ctx) const {
+void MaxNode::forward(Context *ctx, PassKind kind) const {
   auto inW = input_->getWeightHandle(ctx);
   auto outW = getWeightHandle(ctx);
 
@@ -636,7 +636,7 @@ void ConcatNode::init(Context *ctx) const {
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, shape);
 }
 
-void ConcatNode::forward(Context *ctx) const {
+void ConcatNode::forward(Context *ctx, PassKind kind) const {
   auto outW = getWeightHandle(ctx);
 
   /// Insert the tensors at this coordinate. Start at zero.
