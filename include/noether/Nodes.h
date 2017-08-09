@@ -284,6 +284,36 @@ public:
   virtual void visit(NodeVisitor *visitor) override;
 };
 
+class BatchNormalizationNode final : public NodeBase {
+  /// A reference to the node input.
+  NodeBase *input_;
+
+  const FloatTy epsilon_;
+  const FloatTy momentum_;
+
+  /// Ctor - \p is the input layer that must be a simple vector.
+  /// \p epsilon and \p momentum are the batch normalization parameters.
+  BatchNormalizationNode(Network *N, NodeBase *input, FloatTy epsilon,
+                         FloatTy momentum);
+
+  friend Network;
+
+public:
+
+  void init(Context *ctx) const override;
+
+  virtual void forward(Context *ctx, PassKind kind) const override;
+
+  virtual void backward(Context *ctx) const override;
+
+  virtual std::string getName() const override {
+    return "BatchNormalizationNode";
+  }
+
+  virtual void visit(NodeVisitor *visitor) override;
+};
+
+
 } // namespace noether
 
 #endif // NOETHER_NODES_H

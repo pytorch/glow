@@ -120,6 +120,13 @@ ArrayNode *Network::createArrayNode(ArrayRef<size_t> dims) {
   return addNode(new ArrayNode(this, dims));
 }
 
+BatchNormalizationNode*
+Network::createBatchNormalizationNode(NodeBase *input,
+                                      FloatTy epsilon,
+                                      FloatTy momentum) {
+  return addNode(new BatchNormalizationNode(this, input, epsilon, momentum));
+}
+
 namespace {
 
 struct BackwardPass : NodeVisitor {

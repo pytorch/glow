@@ -671,6 +671,24 @@ void ConcatNode::backward(Context *ctx) const {
   }
 }
 
+BatchNormalizationNode::BatchNormalizationNode(Network *N, NodeBase *input,
+                                               FloatTy epsilon,
+                                               FloatTy momentum) :
+NodeBase(), input_(input), epsilon_(epsilon), momentum_(momentum){}
+
+void BatchNormalizationNode::init(Context *ctx) const {
+  assert(input_ && input_->size(ctx) && "Invalid input");
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,input_->dims(ctx));
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, input_->dims(ctx));
+}
+
+void BatchNormalizationNode::forward(Context *ctx, PassKind kind) const {
+}
+
+void BatchNormalizationNode::backward(Context *ctx) const {
+}
+
+
 // Define the node visitor for all nodes in the graph that have a single
 // incoming node.
 
@@ -689,6 +707,7 @@ DEFINE_CLASS_VISITOR(SigmoidNode)
 DEFINE_CLASS_VISITOR(SoftMaxNode)
 DEFINE_CLASS_VISITOR(RegressionNode)
 DEFINE_CLASS_VISITOR(MaxNode)
+DEFINE_CLASS_VISITOR(BatchNormalizationNode)
 
 void ConcatNode::visit(NodeVisitor *visitor) {
   visitor->pre(this);

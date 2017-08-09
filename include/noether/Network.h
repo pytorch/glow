@@ -135,6 +135,11 @@ public:
   MaxNode *createMaxNode(NodeBase *input);
 
   ArrayNode *createArrayNode(ArrayRef<size_t> dims);
+
+  BatchNormalizationNode*
+  createBatchNormalizationNode(NodeBase *input,
+                               FloatTy epsilon = 1e-5,
+                               FloatTy momentum = 0.999);
   ///@}
 
   /// Provides access to the training configuration.
