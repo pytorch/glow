@@ -139,3 +139,20 @@ TEST(Tensor, concatTensors2D) {
   }
 
 }
+
+TEST(Tensor, MeanAndVariance) {
+
+  Tensor T1 = {3, 4, 4, 5, 6, 8};
+  Tensor T2 = {1, 2, 4, 5, 7, 11};
+
+  auto H1 = T1.getHandle<FloatTy>();
+  auto H2 = T2.getHandle<FloatTy>();
+
+  auto MV1 = H1.calculateMeanVariance();
+  auto MV2 = H2.calculateMeanVariance();
+
+  EXPECT_EQ(int(MV1.first), 5);
+  EXPECT_NEAR(MV1.second, 3.2, 0.01);
+  EXPECT_EQ(int(MV2.first), 5);
+  EXPECT_NEAR(MV2.second, 13.2, 0.01);
+}

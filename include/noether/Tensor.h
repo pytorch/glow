@@ -450,6 +450,29 @@ public:
       raw(i) = (nextRand()) * scale;
     }
   }
+
+  /// \returns the mean and variance of the tensor.
+  std::pair<ElemTy, ElemTy>
+  calculateMeanVariance() const {
+    size_t n = size();
+    assert(n > 1 && "Input must haev at least 2 elements.");
+
+    // Calculate mean.
+    ElemTy sum = 0;
+    for (size_t i = 0; i < n; i++) { sum += raw({i}); }
+
+    ElemTy mean = sum / n;
+
+    // Calculate variance.
+    ElemTy sigma = 0;
+    for (size_t i = 0; i < n; i++) {
+      ElemTy t = (raw({i}) - mean);
+      sigma += t * t ;
+    }
+
+    ElemTy variance = sigma / (n - 1);
+    return {mean, variance};
+  }
 };
 
 template <class ElemTy> Handle<ElemTy> Tensor::getHandle() {
