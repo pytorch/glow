@@ -287,6 +287,13 @@ public:
     return index;
   }
 
+  /// \returns the value of the n'th dimension \p dim, for the raw index \p idx.
+  size_t getDimForPtr(unsigned dim, size_t idx) const {
+    assert(dim < numDims && "Invalid dimension");
+    auto R = idx / sizeIntegral[dim];
+    return R % sizes_[dim];
+  }
+
   ElemKind getElementType() const { return tensor_->getElementType(); }
 
   /// Construct a Tensor handle.

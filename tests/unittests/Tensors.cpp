@@ -156,3 +156,20 @@ TEST(Tensor, MeanAndVariance) {
   EXPECT_EQ(int(MV2.first), 5);
   EXPECT_NEAR(MV2.second, 13.2, 0.01);
 }
+
+TEST(Tensor, getDimForPtr) {
+  //Testing some tensor operations.
+  Tensor T(ElemKind::FloatTy, {10, 5, 3});
+  auto H = T.getHandle<FloatTy>();
+
+    for (unsigned x = 0; x < 10; x++) {
+      for (unsigned y = 0; y < 5; y++) {
+        for (unsigned z = 0; z < 3; z++) {
+          size_t ptr = H.getElementPtr({x, y, z});
+          EXPECT_EQ(x, H.getDimForPtr(0, ptr));
+          EXPECT_EQ(y, H.getDimForPtr(1, ptr));
+          EXPECT_EQ(z, H.getDimForPtr(2, ptr));
+        }
+      }
+    }
+}
