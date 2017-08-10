@@ -138,6 +138,7 @@ public:
 
   BatchNormalizationNode*
   createBatchNormalizationNode(NodeBase *input,
+                               size_t channelIdx = 0,
                                FloatTy epsilon = 1e-5,
                                FloatTy momentum = 0.999);
   ///@}

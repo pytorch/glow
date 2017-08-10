@@ -288,12 +288,23 @@ class BatchNormalizationNode final : public NodeBase {
   /// A reference to the node input.
   NodeBase *input_;
 
+  /// Specifies which dimension splits the data into independent batches.
+  const size_t channelIdx_;
   const FloatTy epsilon_;
   const FloatTy momentum_;
 
+  TensorToken betaW_;
+  TensorToken betaG_;
+  TensorToken gammaW_;
+  TensorToken gammaG_;
+
+  TensorToken mean_;
+  TensorToken variance_;
+
   /// Ctor - \p is the input layer that must be a simple vector.
   /// \p epsilon and \p momentum are the batch normalization parameters.
-  BatchNormalizationNode(Network *N, NodeBase *input, FloatTy epsilon,
+  BatchNormalizationNode(Network *N, NodeBase *input, size_t channelIdx,
+                         FloatTy epsilon,
                          FloatTy momentum);
 
   friend Network;
@@ -303,6 +314,10 @@ public:
   void init(Context *ctx) const override;
 
   virtual void forward(Context *ctx, PassKind kind) const override;
+  
+  void forwardTrain(Context *ctx) const;
+
+  void forwardInfer(Context *ctx) const;
 
   virtual void backward(Context *ctx) const override;
 

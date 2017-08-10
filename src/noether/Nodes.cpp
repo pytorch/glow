@@ -672,17 +672,133 @@ void ConcatNode::backward(Context *ctx) const {
 }
 
 BatchNormalizationNode::BatchNormalizationNode(Network *N, NodeBase *input,
+                                               size_t channelIdx,
                                                FloatTy epsilon,
                                                FloatTy momentum) :
-NodeBase(), input_(input), epsilon_(epsilon), momentum_(momentum){}
+NodeBase(), input_(input), channelIdx_(channelIdx), epsilon_(epsilon),
+momentum_(momentum){}
 
 void BatchNormalizationNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
+  assert(input_->dims(ctx).size() > 1 && "Invalid dimensions.");
+
+  // Allocate the output buffer:
   ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,input_->dims(ctx));
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, input_->dims(ctx));
+
+  // Figure out how many channels are in the tensor.
+  size_t channels = input_->dims(ctx)[channelIdx_];
+
+  // Allocate the learnable parameters beta and gamma.
+  std::vector<size_t> paramDim = {channels};
+  ctx->allocateTensor(&betaW_, ElemKind::FloatTy, paramDim,
+                      Context::ShareKind::kSharedTensor);
+  ctx->allocateTensor(&betaG_, ElemKind::FloatTy, paramDim);
+  ctx->allocateTensor(&gammaW_, ElemKind::FloatTy, paramDim,
+                      Context::ShareKind::kSharedTensor);
+  ctx->allocateTensor(&gammaG_, ElemKind::FloatTy, paramDim);
+
+  // Allocate the batch-local storage for mean and var.
+  ctx->allocateTensor(&mean_, ElemKind::FloatTy, paramDim);
+  ctx->allocateTensor(&variance_, ElemKind::FloatTy, paramDim);
 }
 
 void BatchNormalizationNode::forward(Context *ctx, PassKind kind) const {
+
+  if (kind == PassKind::kInference) {
+    return  forwardInfer(ctx);
+  }
+
+  return forwardTrain(ctx);
+}
+
+void BatchNormalizationNode::forwardInfer(Context *ctx) const {
+  auto betaWH = ctx->getTensor(&betaW_)->getHandle<FloatTy>();
+  auto gammaWH = ctx->getTensor(&gammaW_)->getHandle<FloatTy>();
+  auto varH = ctx->getTensor(&variance_)->getHandle<FloatTy>();
+  auto meanH = ctx->getTensor(&mean_)->getHandle<FloatTy>();
+
+  auto outW = getWeightHandle(ctx);
+  auto inW = input_->getWeightHandle(ctx);
+
+
+  // In inference mode just apply the transformation:
+  // y[i] = (x[i] - mean) * gamma / stdvar + beta;
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    size_t channelId = inW.getDimForPtr(channelIdx_, i);
+    FloatTy in = inW.raw(i);
+
+    FloatTy mean = meanH.at({channelId});
+    FloatTy var = varH.at({channelId});
+
+    FloatTy stdvar = std::sqrt(var + epsilon_);
+
+
+
+    FloatTy gamma = gammaWH.at({channelId});
+    FloatTy betta = betaWH.at({channelId});
+
+    outW.raw(i) = (in - mean) * gamma / stdvar + betta;
+  }
+}
+
+void BatchNormalizationNode::forwardTrain(Context *ctx) const {
+  auto betaWH = ctx->getTensor(&betaW_)->getHandle<FloatTy>();
+  auto gammaWH = ctx->getTensor(&gammaW_)->getHandle<FloatTy>();
+  auto varH = ctx->getTensor(&variance_)->getHandle<FloatTy>();
+  auto meanH = ctx->getTensor(&mean_)->getHandle<FloatTy>();
+
+  auto outW = getWeightHandle(ctx);
+  auto inW = input_->getWeightHandle(ctx);
+
+  Tensor localMean(ElemKind::FloatTy, meanH.dims());
+  Tensor localVar(ElemKind::FloatTy, varH.dims());
+  auto localMeanH = localMean.getHandle<FloatTy>();
+  auto localVarH = localVar.getHandle<FloatTy>();
+
+
+  // The number of different channels.
+  const size_t numChannels = input_->dims(ctx)[channelIdx_];
+  // THe number of elements that each channel holds.
+  const size_t samplesPerChannel = inW.size() / numChannels;
+
+
+  // Calculate Mean:
+
+  // Mean = sum(in[i])
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    size_t channelId = inW.getDimForPtr(channelIdx_, i);
+    FloatTy v = inW.raw(i);
+    localMeanH.raw(channelId) += v;
+  }
+  // Mean = sum(in[i]) / N
+  for (size_t i = 0, e = localMeanH.size(); i < e; i++) {
+    localMeanH.at({i}) /= samplesPerChannel;
+  }
+
+    // Calculate Variance:
+
+  // Var = sum( (in[i] - mean) ^ 2)
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    size_t channelId = inW.getDimForPtr(channelIdx_, i);
+    FloatTy v = inW.raw(i) - localMeanH.at({i});
+    localVarH.raw(channelId) += v * v;
+  }
+  // Var = sum( (in[i] - mean) ^ 2) / N
+  for (size_t i = 0, e = localMeanH.size(); i < e; i++) {
+    localVarH.at({i}) /= samplesPerChannel;
+  }
+
+
+  // Update the global variance and mean:
+  for (size_t i = 0, e = localMeanH.size(); i < e; i++) {
+    auto P = momentum_;
+    meanH.at({i}) = P * localMeanH.at({i}) + (1 - P) * meanH.at({i});
+    varH.at({i}) = P * localVarH.at({i}) + (1 - P) * varH.at({i});
+  }
+
+  // TODO: should we be using the running mean or the local mean?
+  forwardInfer(ctx);
 }
 
 void BatchNormalizationNode::backward(Context *ctx) const {

@@ -122,9 +122,11 @@ ArrayNode *Network::createArrayNode(ArrayRef<size_t> dims) {
 
 BatchNormalizationNode*
 Network::createBatchNormalizationNode(NodeBase *input,
+                                      size_t channelIdx,
                                       FloatTy epsilon,
                                       FloatTy momentum) {
-  return addNode(new BatchNormalizationNode(this, input, epsilon, momentum));
+  return addNode(new BatchNormalizationNode(this, input, channelIdx, epsilon,
+                                            momentum));
 }
 
 namespace {
