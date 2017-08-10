@@ -257,6 +257,10 @@ template <class ElemTy> class Handle final {
       0,
   };
 
+  size_t sizes_[max_tensor_dimensions] = {
+    0,
+  };
+
   /// Saves the number of dimensions used in the tensor.
   uint8_t numDims{0};
 
@@ -294,17 +298,20 @@ public:
     if (!numDims)
       return;
 
+    // Copy the sizes of the tensor.
+    memcpy(sizes_, tensor_->sizes_, max_tensor_dimensions * sizeof(sizes_[0]));
+
     size_t pi = 1;
     for (int i = numDims - 1; i >= 0; i--) {
       sizeIntegral[i] = pi;
-      assert(sizes[i] > 0 && "invalid dim size");
-      pi *= sizes[i];
+      assert(sizes_[i] > 0 && "invalid dim size");
+      pi *= sizes_[i];
     }
 
     assert(numDims < max_tensor_dimensions);
   }
 
-  ArrayRef<size_t> dims() const { return tensor_->dims(); }
+  ArrayRef<size_t> dims() const { return ArrayRef<size_t>(sizes_, numDims); }
 
   size_t size() const { return tensor_->size(); }
 
