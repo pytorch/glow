@@ -120,6 +120,12 @@ ArrayNode *Network::createArrayNode(ArrayRef<size_t> dims) {
   return addNode(new ArrayNode(this, dims));
 }
 
+ReshapeNode *Network::createReshapeNode(NodeBase *input,
+                                        ArrayRef<size_t> shape) {
+  return addNode(new ReshapeNode(this, input, shape));
+
+}
+
 BatchNormalizationNode*
 Network::createBatchNormalizationNode(NodeBase *input,
                                       size_t channelIdx,

@@ -260,7 +260,35 @@ public:
 
   virtual void visit(NodeVisitor *visitor) override;
 };
-  
+
+class ReshapeNode final : public NodeBase {
+  /// A reference to the node input.
+  NodeBase *input_;
+
+  /// Specifies the output shape.
+  std::vector<size_t> shape_;
+
+  /// Ctor - reshape the input into the new shape \p shape.
+  ReshapeNode(Network *N, NodeBase *input, ArrayRef<size_t> shape);
+
+  friend Network;
+
+public:
+
+  void init(Context *ctx) const override;
+
+  virtual void forward(Context *ctx, PassKind kind) const override;
+
+  virtual void backward(Context *ctx) const override;
+
+  virtual std::string getName() const override {
+    return "ReshapeNode";
+  }
+
+  virtual void visit(NodeVisitor *visitor) override;
+};
+
+
 /// Concats a number of input tensors into a single tensor.
 class ConcatNode final : public NodeBase {
   /// Pointers to incoming inputs.

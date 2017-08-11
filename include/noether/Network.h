@@ -136,6 +136,7 @@ public:
 
   ArrayNode *createArrayNode(ArrayRef<size_t> dims);
 
+  ReshapeNode *createReshapeNode(NodeBase *input, ArrayRef<size_t> shape);
   BatchNormalizationNode*
   createBatchNormalizationNode(NodeBase *input,
                                size_t channelIdx = 0,

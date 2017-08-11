@@ -671,6 +671,39 @@ void ConcatNode::backward(Context *ctx) const {
   }
 }
 
+
+ReshapeNode::ReshapeNode(Network *N, NodeBase *input, ArrayRef<size_t> shape) :
+NodeBase(), input_(input), shape_(shape.vec()) {}
+
+void ReshapeNode::init(Context *ctx) const {
+  assert(input_ && input_->size(ctx) && "Invalid input");
+
+  auto newSize = std::accumulate(shape_.begin(), shape_.end(), 0);
+  (void) newSize;
+  assert(input_->size(ctx) == newSize && "New shape must be of the same size.");
+
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, shape_);
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, shape_);
+}
+
+void ReshapeNode::forward(Context *ctx, PassKind kind) const {
+  auto outW = getWeightHandle(ctx);
+  auto inW = input_->getWeightHandle(ctx);
+
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    outW.raw(i) = inW.raw(i);
+  }
+}
+
+void ReshapeNode::backward(Context *ctx) const {
+  auto outG = getGradHandle(ctx);
+  auto inG = input_->getGradHandle(ctx);
+  for (size_t i = 0, e = outG.size(); i < e; i++) {
+    inG.raw(i) = outG.raw(i);
+  }
+}
+
+
 BatchNormalizationNode::BatchNormalizationNode(Network *N, NodeBase *input,
                                                size_t channelIdx,
                                                FloatTy epsilon,
@@ -819,6 +852,7 @@ DEFINE_CLASS_VISITOR(ConvNode)
 DEFINE_CLASS_VISITOR(MaxPoolNode)
 DEFINE_CLASS_VISITOR(FullyConnectedNode)
 DEFINE_CLASS_VISITOR(RELUNode)
+DEFINE_CLASS_VISITOR(ReshapeNode)
 DEFINE_CLASS_VISITOR(SigmoidNode)
 DEFINE_CLASS_VISITOR(SoftMaxNode)
 DEFINE_CLASS_VISITOR(RegressionNode)
