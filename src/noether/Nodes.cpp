@@ -734,6 +734,13 @@ void BatchNormalizationNode::init(Context *ctx) const {
   // Allocate the batch-local storage for mean and var.
   ctx->allocateTensor(&mean_, ElemKind::FloatTy, paramDim);
   ctx->allocateTensor(&variance_, ElemKind::FloatTy, paramDim);
+
+  ctx->getHandle(&betaW_).clear();
+  ctx->getHandle(&gammaW_).clear(1.0);
+
+  // Tie the gradient and weight tensors and register them for sgd update.
+  ctx->addTensorPair({&betaW_, &betaG_});
+  ctx->addTensorPair({&gammaW_, &gammaG_});
 }
 
 void BatchNormalizationNode::forward(Context *ctx, PassKind kind) const {
@@ -754,34 +761,35 @@ void BatchNormalizationNode::forwardInfer(Context *ctx) const {
   auto outW = getWeightHandle(ctx);
   auto inW = input_->getWeightHandle(ctx);
 
+  // http://cthorey.github.io./backpropagation/
+  //
+  // mu = 1/N*np.sum(h,axis =0)
+  // sigma2 = 1/N*np.sum((h-mu)**2)
+  // hath = (h-mu)*(sigma2+epsilon)**(-1./2.)
+  // y = gamma*hath+beta
+
 
   // In inference mode just apply the transformation:
-  // y[i] = (x[i] - mean) * gamma / stdvar + beta;
+  // y[i] = (x - mu) * gamma / stdvar + beta;
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     size_t channelId = inW.getDimForPtr(channelIdx_, i);
-    FloatTy in = inW.raw(i);
+    FloatTy x = inW.raw(i);
 
-    FloatTy mean = meanH.at({channelId});
+    FloatTy mu = meanH.at({channelId});
     FloatTy var = varH.at({channelId});
 
-    FloatTy stdvar = std::sqrt(var + epsilon_);
-
-
+    FloatTy stdvar = 1.0 / std::sqrt(var + epsilon_);
 
     FloatTy gamma = gammaWH.at({channelId});
-    FloatTy betta = betaWH.at({channelId});
+    FloatTy beta = betaWH.at({channelId});
 
-    outW.raw(i) = (in - mean) * gamma / stdvar + betta;
+    outW.raw(i) = (x - mu) * gamma * stdvar + beta;
   }
 }
 
 void BatchNormalizationNode::forwardTrain(Context *ctx) const {
-  auto betaWH = ctx->getTensor(&betaW_)->getHandle<FloatTy>();
-  auto gammaWH = ctx->getTensor(&gammaW_)->getHandle<FloatTy>();
   auto varH = ctx->getTensor(&variance_)->getHandle<FloatTy>();
   auto meanH = ctx->getTensor(&mean_)->getHandle<FloatTy>();
-
-  auto outW = getWeightHandle(ctx);
   auto inW = input_->getWeightHandle(ctx);
 
   Tensor localMean(ElemKind::FloatTy, meanH.dims());
@@ -789,16 +797,14 @@ void BatchNormalizationNode::forwardTrain(Context *ctx) const {
   auto localMeanH = localMean.getHandle<FloatTy>();
   auto localVarH = localVar.getHandle<FloatTy>();
 
-
   // The number of different channels.
   const size_t numChannels = input_->dims(ctx)[channelIdx_];
   // THe number of elements that each channel holds.
   const size_t samplesPerChannel = inW.size() / numChannels;
 
-
   // Calculate Mean:
 
-  // Mean = sum(in[i])
+  // sum(in[i])
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     size_t channelId = inW.getDimForPtr(channelIdx_, i);
     FloatTy v = inW.raw(i);
@@ -809,19 +815,18 @@ void BatchNormalizationNode::forwardTrain(Context *ctx) const {
     localMeanH.at({i}) /= samplesPerChannel;
   }
 
-    // Calculate Variance:
+  // Calculate Variance:
 
-  // Var = sum( (in[i] - mean) ^ 2)
+  // sum((x - mu) ^ 2)
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     size_t channelId = inW.getDimForPtr(channelIdx_, i);
-    FloatTy v = inW.raw(i) - localMeanH.at({i});
+    FloatTy v = inW.raw(i) - localMeanH.at({channelId});
     localVarH.raw(channelId) += v * v;
   }
-  // Var = sum( (in[i] - mean) ^ 2) / N
+  // Var = sum((x - mu) ^ 2) / N
   for (size_t i = 0, e = localMeanH.size(); i < e; i++) {
     localVarH.at({i}) /= samplesPerChannel;
   }
-
 
   // Update the global variance and mean:
   for (size_t i = 0, e = localMeanH.size(); i < e; i++) {
@@ -835,6 +840,80 @@ void BatchNormalizationNode::forwardTrain(Context *ctx) const {
 }
 
 void BatchNormalizationNode::backward(Context *ctx) const {
+  auto gammaWH = ctx->getTensor(&gammaW_)->getHandle<FloatTy>();
+  auto betaGH = ctx->getTensor(&betaG_)->getHandle<FloatTy>();
+  auto gammaGH = ctx->getTensor(&gammaG_)->getHandle<FloatTy>();
+  auto varH = ctx->getTensor(&variance_)->getHandle<FloatTy>();
+  auto meanH = ctx->getTensor(&mean_)->getHandle<FloatTy>();
+
+  auto inW = input_->getWeightHandle(ctx);
+  auto outG = getGradHandle(ctx);
+  auto inG = input_->getGradHandle(ctx);
+
+  // Update the gradient of the incoming buffer:
+  Tensor dyhmu(ElemKind::FloatTy, meanH.dims());
+  Tensor sumDy(ElemKind::FloatTy, meanH.dims());
+  auto dyhmuH = dyhmu.getHandle<FloatTy>();
+  auto sumDyH = sumDy.getHandle<FloatTy>();
+
+  // The number of different channels.
+  const size_t numChannels = input_->dims(ctx)[channelIdx_];
+  // THe number of elements that each channel holds.
+  const size_t samplesPerChannel = inW.size() / numChannels;
+
+  // Calculate: sum(dy * (h - mu))
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    size_t channelId = inW.getDimForPtr(channelIdx_, i);
+    // x - mean.
+    FloatTy cx = inW.raw(i) - meanH.at({channelId});
+    // dy * (h - mu)
+    dyhmuH.at({channelId}) += outG.raw(i) * cx;
+  }
+
+  // Calculate: sum(dy)
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    size_t channelId = inW.getDimForPtr(channelIdx_, i);
+    sumDyH.at({channelId}) += outG.raw(i);
+  }
+
+  // http://cthorey.github.io./backpropagation/
+  //
+  // mu = 1./N*np.sum(h)
+  // var = 1./N*np.sum((h-mu)**2)
+  // dbeta = np.sum(dy)
+  // dgamma = np.sum((h - mu) * (var + eps)**(-1. / 2.) * dy)
+  // dh = (1. / N) * gamma * (var + eps)**(-1. / 2.) *
+  //     (N * dy - np.sum(dy) - (h - mu) * 1/(var + eps) *
+  //     np.sum(dy * (h - mu)))
+  //
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    size_t channelId = inW.getDimForPtr(channelIdx_, i);
+
+    FloatTy invN = (1./ samplesPerChannel);
+    FloatTy gamma = gammaWH.at({channelId});
+    FloatTy var = varH.at({channelId});
+    FloatTy mu = meanH.at({channelId});
+    FloatTy invVarSqrt = 1. / std::sqrt(var + epsilon_);
+    FloatTy invVar = 1. / (var + epsilon_);
+
+    FloatTy dy = outG.raw(i);
+    FloatTy hmu = inW.raw(i) - mu;
+    FloatTy sdy = sumDyH.at(channelId);
+    FloatTy sdyhmu = dyhmuH.at(channelId);
+    inG.raw(i) += invN * gamma * invVarSqrt * (samplesPerChannel * dy - sdy - hmu * invVar * sdyhmu);
+  }
+
+  // Update the gradient of beta and gamma.
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    size_t channelId = inW.getDimForPtr(channelIdx_, i);
+
+    FloatTy mu = meanH.at({channelId});
+    FloatTy var = varH.at({channelId});
+    FloatTy invVarSqrt = 1. / std::sqrt(var + epsilon_);
+
+    betaGH.at({channelId}) += outG.raw(i);
+    gammaGH.at({channelId}) += (inW.raw(i) - mu) * invVarSqrt * outG.raw(i);
+  }
 }
 
 

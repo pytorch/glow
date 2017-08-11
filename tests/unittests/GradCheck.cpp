@@ -146,3 +146,72 @@ TEST(Network, gradientCheck_Conv) {
   }
 }
 
+
+TEST(Network, gradientCheck_batchNorm) {
+  Network N;
+  N.getConfig().batchSize = 2;
+
+  size_t numDim = 5;
+  size_t numOutputElem = numDim * numDim * 3;
+
+  auto *A = N.createArrayNode({numDim, numDim, 3});
+
+  NodeBase *O = N.createBatchNormalizationNode(A, 2, 0.0001, 0.9);
+  //O = N.createRELUNode(O);
+  O = N.createReshapeNode(O, {numDim * numDim * 3});
+  auto *RN = N.createRegressionNode(O);
+
+  Tensor inputs(ElemKind::FloatTy, {numDim, numDim, 3});
+  Tensor outputs(ElemKind::FloatTy, {numOutputElem});
+
+  auto inputsH = inputs.getHandle<FloatTy>();
+  auto outputsH = outputs.getHandle<FloatTy>();
+
+  inputsH.randomize(1);
+  outputsH.randomize(1);
+
+  for (int i = 0, e = inputsH.size(); i < e; i++) {
+    inputsH.raw(i) *= 6;
+    inputsH.raw(i) += 4;
+  }
+
+  // Train the network just once to calculate the grads.
+  for (int i = 0; i < 30; i++) {
+    N.train(RN, {A, RN}, {&inputs, &outputs});
+  }
+  // Clear the gradients of the last layer.
+  A->getGradHandle(N.getMainContext()).clear();
+
+  N.train(RN, {A, RN}, {&inputs, &outputs});
+
+  auto analyticalGrads = A->getGradHandle(N.getMainContext()).clone();
+  auto analyticalGradsH = analyticalGrads.getHandle<FloatTy>();
+
+  float delta = 0.001;
+
+  for (size_t i = 0; i < numDim; i++) {
+    for (size_t j = 0; j < numDim; j++) {
+      auto old = inputsH.at({i, j , 0});
+
+      // Calculate f(x+e):
+      inputsH.at({i, j, 0}) = old + delta;
+      Tensor *res = N.infer(RN, {A}, {&inputs});
+      auto plusLoss = computeL2Loss(&outputs, res);
+
+      // Calculate f(x-e):
+      inputsH.at({i, j, 0}) = old - delta;
+      res = N.infer(RN, {A}, {&inputs});
+      auto minusLoss = computeL2Loss(&outputs, res);
+      inputsH.at({i, j, 0}) = old;
+
+      auto numericGrad = (plusLoss - minusLoss)/(2 * delta);
+      auto analyticalGrad = analyticalGradsH.at({i, j, 0});
+
+      auto err =  gradDiff(analyticalGrad, numericGrad);
+
+      // Make sure that the analytical and numerical gradients agree.
+      EXPECT_LE(err, 0.04);
+    }
+  }
+}
+
