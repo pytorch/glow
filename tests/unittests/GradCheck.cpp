@@ -52,10 +52,18 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   Tensor outputs(ElemKind::FloatTy, {numOutputElem});
 
   auto inputsH = inputs.getHandle<FloatTy>();
-  auto outputsH = inputs.getHandle<FloatTy>();
+  auto outputsH = outputs.getHandle<FloatTy>();
 
   inputsH.randomize(100);
   outputsH.randomize(100);
+
+  // Train the network.
+  for (int i = 0; i < 10; i++) {
+    N.train(RN, {A, RN}, {&inputs, &outputs});
+  }
+
+  // Clear the gradients of the first layer.
+  A->getGradHandle(N.getMainContext()).clear();
 
   // Train the network just once to calculate the grads.
   N.train(RN, {A, RN}, {&inputs, &outputs});
@@ -107,10 +115,18 @@ TEST(Network, gradientCheck_Conv) {
   Tensor outputs(ElemKind::FloatTy, {numOutputElem});
 
   auto inputsH = inputs.getHandle<FloatTy>();
-  auto outputsH = inputs.getHandle<FloatTy>();
+  auto outputsH = outputs.getHandle<FloatTy>();
 
   inputsH.randomize(1);
   outputsH.randomize(1);
+
+  // Train the network.
+  for (int i = 0; i < 10; i++) {
+    N.train(RN, {A, RN}, {&inputs, &outputs});
+  }
+
+  // Clear the gradients of the first layer.
+  A->getGradHandle(N.getMainContext()).clear();
 
   // Train the network just once to calculate the grads.
   N.train(RN, {A, RN}, {&inputs, &outputs});
@@ -157,7 +173,6 @@ TEST(Network, gradientCheck_batchNorm) {
   auto *A = N.createArrayNode({numDim, numDim, 3});
 
   NodeBase *O = N.createBatchNormalizationNode(A, 2, 0.0001, 0.9);
-  //O = N.createRELUNode(O);
   O = N.createReshapeNode(O, {numDim * numDim * 3});
   auto *RN = N.createRegressionNode(O);
 
