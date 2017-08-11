@@ -137,11 +137,15 @@ public:
   ArrayNode *createArrayNode(ArrayRef<size_t> dims);
 
   ReshapeNode *createReshapeNode(NodeBase *input, ArrayRef<size_t> shape);
+
   BatchNormalizationNode*
   createBatchNormalizationNode(NodeBase *input,
                                size_t channelIdx = 0,
                                FloatTy epsilon = 1e-5,
                                FloatTy momentum = 0.9);
+
+  ArithmeticNode*
+  createArithmeticNode(NodeBase *LHS, NodeBase *RHS, ArithmeticNode::OpKind op);
   ///@}
 
   /// Provides access to the training configuration.

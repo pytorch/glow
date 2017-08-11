@@ -917,6 +917,67 @@ void BatchNormalizationNode::backward(Context *ctx) const {
 }
 
 
+ArithmeticNode::ArithmeticNode(Network *N, NodeBase *LHS, NodeBase *RHS,
+                               OpKind op) : NodeBase(), LHS_(LHS), RHS_(RHS),
+                               op_(op) {}
+
+void ArithmeticNode::init(Context *ctx) const {
+  assert(LHS_ && LHS_->size(ctx) && "Invalid LHS");
+  assert(RHS_ && RHS_->size(ctx) && "Invalid RHS");
+  assert(RHS_->size(ctx) == LHS_->size(ctx) && "Operand sizes does not match.");
+
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,LHS_->dims(ctx));
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, LHS_->dims(ctx));
+}
+
+void ArithmeticNode::forward(Context *ctx, PassKind kind) const {
+  auto outW = getWeightHandle(ctx);
+  auto LHSW = LHS_->getWeightHandle(ctx);
+  auto RHSW = RHS_->getWeightHandle(ctx);
+
+  switch (op_) {
+    case OpKind::kAdd:
+      for (size_t i = 0, e = outW.size(); i < e; i++) {
+        outW.raw(i) = LHSW.raw(i) + RHSW.raw(i);
+      }
+      return;
+      break;
+
+    case OpKind::kMul:
+      for (size_t i = 0, e = outW.size(); i < e; i++) {
+        outW.raw(i) = LHSW.raw(i) * RHSW.raw(i);
+      }
+      return;
+      break;
+  }
+}
+
+void ArithmeticNode::backward(Context *ctx) const {
+  auto LHSW = LHS_->getWeightHandle(ctx);
+  auto RHSW = RHS_->getWeightHandle(ctx);
+  auto outG = getGradHandle(ctx);
+  auto LHSG = LHS_->getGradHandle(ctx);
+  auto RHSG = RHS_->getGradHandle(ctx);
+
+  switch (op_) {
+    case OpKind::kAdd:
+      for (size_t i = 0, e = outG.size(); i < e; i++) {
+        LHSG.raw(i) = outG.raw(i);
+        RHSG.raw(i) = outG.raw(i);
+      }
+      return;
+      break;
+
+    case OpKind::kMul:
+      for (size_t i = 0, e = outG.size(); i < e; i++) {
+        LHSG.raw(i) = RHSW.raw(i) * outG.raw(i);
+        RHSG.raw(i) = LHSW.raw(i) * outG.raw(i);
+      }
+      return;
+      break;
+  }
+}
+
 // Define the node visitor for all nodes in the graph that have a single
 // incoming node.
 
@@ -937,6 +998,13 @@ DEFINE_CLASS_VISITOR(SoftMaxNode)
 DEFINE_CLASS_VISITOR(RegressionNode)
 DEFINE_CLASS_VISITOR(MaxNode)
 DEFINE_CLASS_VISITOR(BatchNormalizationNode)
+
+void ArithmeticNode::visit(NodeVisitor *visitor) {
+  visitor->pre(this);
+  LHS_->visit(visitor);
+  RHS_->visit(visitor);
+  visitor->post(this);
+}
 
 void ConcatNode::visit(NodeVisitor *visitor) {
   visitor->pre(this);

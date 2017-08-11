@@ -230,3 +230,78 @@ TEST(Network, gradientCheck_batchNorm) {
   }
 }
 
+TEST(Network, gradientCheck_Arithmetic) {
+  Network N;
+  N.getConfig().batchSize = 2;
+
+  size_t numDim = 5;
+
+  auto *A = N.createArrayNode({numDim});
+  auto *B = N.createArrayNode({numDim});
+  auto *C = N.createArrayNode({numDim});
+
+  NodeBase *O = N.createArithmeticNode(A, B, ArithmeticNode::OpKind::kMul);
+  O = N.createArithmeticNode(O, C, ArithmeticNode::OpKind::kAdd);
+  auto *RN = N.createRegressionNode(O);
+
+  Tensor iA(ElemKind::FloatTy, {numDim});
+  Tensor iB(ElemKind::FloatTy, {numDim});
+  Tensor iC(ElemKind::FloatTy, {numDim});
+  Tensor outputs(ElemKind::FloatTy, {numDim});
+
+  auto iAH = iA.getHandle<FloatTy>();
+  auto iBH = iB.getHandle<FloatTy>();
+  auto iCH = iC.getHandle<FloatTy>();
+  auto outputsH = outputs.getHandle<FloatTy>();
+
+  iAH.randomize(1);
+  iBH.randomize(1);
+  iCH.randomize(1);
+  outputsH.randomize(1);
+
+  // Train the network just once to calculate the grads.
+  for (int i = 0; i < 30; i++) {
+    N.train(RN, {A, B, C, RN}, {&iA, &iB, &iC, &outputs});
+  }
+  // Clear the gradients of the last layer.
+  A->getGradHandle(N.getMainContext()).clear();
+  B->getGradHandle(N.getMainContext()).clear();
+  C->getGradHandle(N.getMainContext()).clear();
+
+  N.train(RN, {A, B, C, RN}, {&iA, &iB, &iC, &outputs});
+
+  auto check = [&] (NodeBase *node, Tensor *t) {
+    auto iH = t->getHandle<FloatTy>();
+
+    auto analyticalGrads = node->getGradHandle(N.getMainContext()).clone();
+    auto analyticalGradsH = analyticalGrads.getHandle<FloatTy>();
+
+    float delta = 0.001;
+    for (size_t i = 0; i < numDim; i++) {
+      auto old = iH.at({i});
+
+      // Calculate f(x+e):
+      iH.at({i}) = old + delta;
+      Tensor *res = N.infer(RN, {A, B, C, RN}, {&iA, &iB, &iC, &outputs});
+      auto plusLoss = computeL2Loss(&outputs, res);
+
+      // Calculate f(x-e):
+      iH.at({i}) = old - delta;
+      res = N.infer(RN, {A, B, C, RN}, {&iA, &iB, &iC, &outputs});
+      auto minusLoss = computeL2Loss(&outputs, res);
+      iH.at({i}) = old;
+
+      auto numericGrad = (plusLoss - minusLoss)/(2 * delta);
+      auto analyticalGrad = analyticalGradsH.at({i});
+
+      auto err = gradDiff(analyticalGrad, numericGrad);
+
+      // Make sure that the analytical and numerical gradients agree.
+      EXPECT_LE(err, 0.04);
+    }
+  };
+
+  check(A, &iA);
+  check(B, &iB);
+  check(C, &iC);
+}

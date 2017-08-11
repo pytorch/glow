@@ -312,6 +312,8 @@ public:
   virtual void visit(NodeVisitor *visitor) override;
 };
 
+/// Performs batch normalization.
+/// https://arxiv.org/abs/1502.03167
 class BatchNormalizationNode final : public NodeBase {
   /// A reference to the node input.
   NodeBase *input_;
@@ -356,6 +358,42 @@ public:
   virtual void visit(NodeVisitor *visitor) override;
 };
 
+/// Performs per-element arithmetic operations.
+class ArithmeticNode final : public NodeBase {
+public:
+  enum class OpKind {
+    kAdd,
+    kMul,
+  };
+
+private:
+  /// A reference to the left hand side node input.
+  NodeBase *LHS_;
+  /// A reference to the right hand side node input.
+  NodeBase *RHS_;
+  /// Specifies the kind of the operation.
+  const OpKind op_;
+
+  /// Ctor - perform a per-element operation on the input tensors
+  /// \p LHS, RHS. The operation is specified by \p kind.
+  ArithmeticNode(Network *N, NodeBase *LHS, NodeBase *RHS, OpKind kind);
+
+  friend Network;
+
+public:
+
+  void init(Context *ctx) const override;
+
+  virtual void forward(Context *ctx, PassKind kind) const override;
+
+  virtual void backward(Context *ctx) const override;
+
+  virtual std::string getName() const override {
+    return "ArithmeticNode";
+  }
+
+  virtual void visit(NodeVisitor *visitor) override;
+};
 
 } // namespace noether
 

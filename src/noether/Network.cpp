@@ -135,6 +135,12 @@ Network::createBatchNormalizationNode(NodeBase *input,
                                             momentum));
 }
 
+ArithmeticNode*
+Network::createArithmeticNode(NodeBase *LHS, NodeBase *RHS,
+                              ArithmeticNode::OpKind op) {
+  return addNode(new ArithmeticNode(this, LHS, RHS, op));
+}
+
 namespace {
 
 struct BackwardPass : NodeVisitor {
