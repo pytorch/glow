@@ -16,6 +16,103 @@
 
 using namespace noether;
 
+// Resnet loader as defined as defined in:
+// https://github.com/shuokay/resnet/blob/master/resnet-small.py
+
+NodeBase *convFactory(Network &N, NodeBase *input, size_t outDepth,
+                      size_t filterSize, size_t stride, size_t pad,
+                      size_t channelId,
+                      bool last = false) {
+  NodeBase *O = N.createConvNode(input, outDepth, filterSize, stride, pad);
+
+  if (last)
+    return O;
+
+  O = N.createBatchNormalizationNode(O, channelId);
+  O = N.createRELUNode(O);
+  return O;
+}
+
+NodeBase *residualFactory(Network &N, NodeBase *input,
+                          ArrayRef<size_t> outDepth,
+                          size_t channelId,
+                          bool lastDiff = false) {
+  if (lastDiff) {
+    NodeBase *O = convFactory(N, input, outDepth[0], 3, 2, 1, channelId, false);
+    NodeBase *conv2 = convFactory(N, O, outDepth[1], 3, 1, 1, channelId, true);
+    NodeBase *_data = N.createConvNode(input, outDepth[1], 3, 2, 1);
+    NodeBase *add = N.createArithmeticNode(_data, conv2,
+                                           ArithmeticNode::OpKind::kAdd);
+
+    O = N.createBatchNormalizationNode(add, channelId);
+    return N.createRELUNode(O);
+  }
+
+
+  NodeBase *O = convFactory(N, input, outDepth[0], 3, 1, 1, channelId, false);
+  NodeBase *conv2 = convFactory(N, O, outDepth[1], 3, 1, 1, channelId, true);
+  NodeBase *add = N.createArithmeticNode(input, conv2,
+                                         ArithmeticNode::OpKind::kAdd);
+
+  O = N.createBatchNormalizationNode(add, channelId);
+  return N.createRELUNode(O);
+}
+
+
+NodeBase *ResidualSymbol(Network &N, NodeBase *input, size_t channelId,
+                         size_t n=9) {
+    // stage 1
+  for (int i = 0; i < n; i++) {
+    input = residualFactory(N, input, {16, 16}, channelId);
+  }
+    // stage 2
+  for (int i = 0; i < n; i++) {
+      if (i == 0) {
+        input = residualFactory(N, input, {32, 32}, channelId, true);
+      } else {
+        input = residualFactory(N, input, {32, 32}, channelId);
+      }
+    }
+  // stage 3
+  for (int i = 0; i < n; i++) {
+    if (i == 0) {
+      input = residualFactory(N, input, {64, 64}, channelId, true);
+    } else {
+      input = residualFactory(N, input, {64, 64}, channelId);
+    }
+  }
+  return input;
+}
+
+NodeBase* createResnet(Network &N, NodeBase *input, size_t channelId) {
+  input    = convFactory(N, input,16, 3, 1, 1, channelId);
+  input    = ResidualSymbol(N, input, channelId);
+  auto *pool = N.createMaxPoolNode(input, 7, 1, 1);
+
+  auto *FCL1 = N.createFullyConnectedNode(pool, 10);
+  auto *RL3 = N.createRELUNode(FCL1);
+  return N.createSoftMaxNode(RL3);
+}
+
+NodeBase *createSimpleNet(Network &N, NodeBase *input) {
+  auto *CV0 = N.createConvNode(input, 16, 5, 1, 2);
+  auto *RL0 = N.createRELUNode(CV0);
+  auto *MP0 = N.createMaxPoolNode(RL0, 2, 2, 0);
+
+  auto *CV1 = N.createConvNode(MP0, 20, 5, 1, 2);
+  auto *RL1 = N.createRELUNode(CV1);
+  auto *MP1 = N.createMaxPoolNode(RL1, 2, 2, 0);
+
+  auto *CV2 = N.createConvNode(MP1, 20, 5, 1, 2);
+  auto *RL2 = N.createRELUNode(CV2);
+  auto *MP2 = N.createMaxPoolNode(RL2, 2, 2, 0);
+
+  auto *FCL1 = N.createFullyConnectedNode(MP2, 10);
+  auto *RL3 = N.createRELUNode(FCL1);
+  auto *SM = N.createSoftMaxNode(RL3);
+  return SM;
+}
+
 /// The CIFAR file format is structured as one byte label in the range 0..9.
 /// The label is followed by an image: 32 x 32 pixels, in RGB format. Each
 /// color is 1 byte. The first 1024 red bytes are followed by 1024 of green
@@ -69,22 +166,11 @@ void testCIFAR10() {
   N.getConfig().batchSize = 8;
   N.getConfig().L2Decay = 0.0001;
 
+  // Create the input layer:
   auto *A = N.createArrayNode({32, 32, 3});
-  auto *CV0 = N.createConvNode(A, 16, 5, 1, 2);
-  auto *RL0 = N.createRELUNode(CV0);
-  auto *MP0 = N.createMaxPoolNode(RL0, 2, 2, 0);
 
-  auto *CV1 = N.createConvNode(MP0, 20, 5, 1, 2);
-  auto *RL1 = N.createRELUNode(CV1);
-  auto *MP1 = N.createMaxPoolNode(RL1, 2, 2, 0);
-
-  auto *CV2 = N.createConvNode(MP1, 20, 5, 1, 2);
-  auto *RL2 = N.createRELUNode(CV2);
-  auto *MP2 = N.createMaxPoolNode(RL2, 2, 2, 0);
-
-  auto *FCL1 = N.createFullyConnectedNode(MP2, 10);
-  auto *RL3 = N.createRELUNode(FCL1);
-  auto *SM = N.createSoftMaxNode(RL3);
+  // Create the rest of the network.
+  NodeBase *SM = createSimpleNet(N, A);
 
   // Report progress every this number of training iterations.
   int reportRate = 256;
