@@ -158,6 +158,8 @@ bool PNGNode::writeImage(const char *filename) {
 }
 
 void PNGNode::visit(NodeVisitor *visitor) {
+  if (!visitor->shouldVisit(this))
+    return;
   visitor->pre(this);
   visitor->post(this);
 }

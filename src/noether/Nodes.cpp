@@ -983,6 +983,8 @@ void ArithmeticNode::backward(Context *ctx) const {
 
 #define DEFINE_CLASS_VISITOR(CLASS_NAME)                                       \
   void CLASS_NAME::visit(NodeVisitor *visitor) {                               \
+    if (!visitor->shouldVisit(this))                                           \
+      return;                                                                  \
     visitor->pre(this);                                                        \
     input_->visit(visitor);                                                    \
     visitor->post(this);                                                       \
@@ -1000,6 +1002,8 @@ DEFINE_CLASS_VISITOR(MaxNode)
 DEFINE_CLASS_VISITOR(BatchNormalizationNode)
 
 void ArithmeticNode::visit(NodeVisitor *visitor) {
+  if (!visitor->shouldVisit(this))
+    return;
   visitor->pre(this);
   LHS_->visit(visitor);
   RHS_->visit(visitor);
@@ -1007,6 +1011,8 @@ void ArithmeticNode::visit(NodeVisitor *visitor) {
 }
 
 void ConcatNode::visit(NodeVisitor *visitor) {
+  if (!visitor->shouldVisit(this))
+    return;
   visitor->pre(this);
   for (auto &I : inputs_) {
     I->visit(visitor);
@@ -1015,6 +1021,8 @@ void ConcatNode::visit(NodeVisitor *visitor) {
 }
 
 void ArrayNode::visit(NodeVisitor *visitor) {
+  if (!visitor->shouldVisit(this))
+    return;
   visitor->pre(this);
   visitor->post(this);
 }

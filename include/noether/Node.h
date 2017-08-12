@@ -23,6 +23,10 @@ public:
 
   /// This callback is called after visiting the children of \p N.
   virtual void post(NodeBase *N) {}
+
+  /// This callback is called before processing the graph. If the method returns
+  /// false then we skip this node.
+  virtual bool shouldVisit(NodeBase *N) { return true; }
 };
 
 /// Represents a node in the network compute graph.

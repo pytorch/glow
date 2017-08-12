@@ -143,18 +143,24 @@ Network::createArithmeticNode(NodeBase *LHS, NodeBase *RHS,
 
 namespace {
 
-struct BackwardPass : NodeVisitor {
-  Context *ctx_;
-  BackwardPass(Context *ctx) : ctx_(ctx) {}
-  virtual void pre(NodeBase *N) override { N->backward(ctx_); }
-};
+/// A visitor class that collects a reverse post order of the nodes in the
+/// graph.
+class TopologicalSortPass : public NodeVisitor {
+  std::unordered_set<NodeBase*> visited;
+  std::vector<NodeBase*> order;
+public:
+  // Don't revisit visited nodes.
+  virtual bool shouldVisit(NodeBase *N) override { return ! visited.count(N); }
 
-struct ForwardPass : NodeVisitor {
-  Context *ctx_;
-  NodeBase::PassKind SweepKind_;
-  ForwardPass(Context *ctx, NodeBase::PassKind SweepKind) : ctx_(ctx),
-  SweepKind_(SweepKind) {}
-  virtual void post(NodeBase *N) override { N->forward(ctx_, SweepKind_); }
+  TopologicalSortPass() {}
+  virtual void post(NodeBase *N) override {
+    if (!visited.insert(N).second)
+      return;
+
+    order.push_back(N);
+  }
+
+  ArrayRef<NodeBase*> getOrder() { return order; }
 };
 
 struct PrinterPass : NodeVisitor {
@@ -166,6 +172,10 @@ struct PrinterPass : NodeVisitor {
 void Network::updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
                                     size_t len, ArrayRef<NodeBase *> nodes,
                                     ArrayRef<Tensor *> inputs, bool isBatch) {
+  TopologicalSortPass TPS;
+  root->visit(&TPS);
+  auto order = TPS.getOrder();
+
   for (size_t idx = 0; idx < len; idx++) {
     /// Update the inputs:
     for (int i = 0, e = nodes.size(); i < e; i++) {
@@ -176,13 +186,13 @@ void Network::updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
       }
     }
 
-    // Forward scan:
-    ForwardPass FP(ctx, NodeBase::PassKind::kTraining);
-    root->visit(&FP);
+    for (auto it = order.begin(), e = order.end(); it != e; it++) {
+        (*it)->forward(ctx, NodeBase::PassKind::kTraining);
+    }
 
-    // Backward scan in reverse order:
-    BackwardPass BP(ctx);
-    root->visit(&BP);
+    for (auto it = order.rbegin(), e = order.rend(); it != e; it++) {
+      (*it)->backward(ctx);
+    }
   }
 }
 
@@ -276,14 +286,20 @@ void Network::train(NodeBase *root, ArrayRef<NodeBase *> nodes,
 
 Tensor *Network::infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
                        ArrayRef<Tensor *> inputs) {
+  TopologicalSortPass TPS;
+  root->visit(&TPS);
+  auto order = TPS.getOrder();
+
+
   // Update all inputs.
   for (int i = 0, e = nodes.size(); i < e; i++) {
     nodes[i]->updateInput(state_[0], inputs[i]);
   }
 
   // Forward scan.
-  ForwardPass FP(state_[0],  NodeBase::PassKind::kInference);
-  root->visit(&FP);
+  for (auto it = order.begin(), e = order.end(); it != e; it++) {
+    (*it)->forward(state_[0], NodeBase::PassKind::kInference);
+  }
 
   return root->getOutputWeight(state_[0]);
 }
