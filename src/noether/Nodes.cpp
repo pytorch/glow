@@ -924,7 +924,7 @@ ArithmeticNode::ArithmeticNode(Network *N, NodeBase *LHS, NodeBase *RHS,
 void ArithmeticNode::init(Context *ctx) const {
   assert(LHS_ && LHS_->size(ctx) && "Invalid LHS");
   assert(RHS_ && RHS_->size(ctx) && "Invalid RHS");
-  assert(RHS_->size(ctx) == LHS_->size(ctx) && "Operand sizes does not match.");
+  assert(RHS_->dims(ctx) == LHS_->dims(ctx) && "Operand sizes does not match.");
 
   ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,LHS_->dims(ctx));
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, LHS_->dims(ctx));
