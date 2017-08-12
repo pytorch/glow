@@ -87,7 +87,7 @@ NodeBase *ResidualSymbol(Network &N, NodeBase *input, size_t channelId,
 NodeBase* createResnet(Network &N, NodeBase *input, size_t channelId) {
   input    = convFactory(N, input,16, 3, 1, 1, channelId);
   input    = ResidualSymbol(N, input, channelId);
-  auto *pool = N.createMaxPoolNode(input, 7, 1, 1);
+  auto *pool = N.createMaxPoolNode(input, MaxPoolNode::OpKind::kMax, 7, 1, 1);
 
   auto *FCL1 = N.createFullyConnectedNode(pool, 10);
   auto *RL3 = N.createRELUNode(FCL1);
@@ -97,15 +97,15 @@ NodeBase* createResnet(Network &N, NodeBase *input, size_t channelId) {
 NodeBase *createSimpleNet(Network &N, NodeBase *input) {
   auto *CV0 = N.createConvNode(input, 16, 5, 1, 2);
   auto *RL0 = N.createRELUNode(CV0);
-  auto *MP0 = N.createMaxPoolNode(RL0, 2, 2, 0);
+  auto *MP0 = N.createMaxPoolNode(RL0, MaxPoolNode::OpKind::kMax, 2, 2, 0);
 
   auto *CV1 = N.createConvNode(MP0, 20, 5, 1, 2);
   auto *RL1 = N.createRELUNode(CV1);
-  auto *MP1 = N.createMaxPoolNode(RL1, 2, 2, 0);
+  auto *MP1 = N.createMaxPoolNode(RL1, MaxPoolNode::OpKind::kMax, 2, 2, 0);
 
   auto *CV2 = N.createConvNode(MP1, 20, 5, 1, 2);
   auto *RL2 = N.createRELUNode(CV2);
-  auto *MP2 = N.createMaxPoolNode(RL2, 2, 2, 0);
+  auto *MP2 = N.createMaxPoolNode(RL2, MaxPoolNode::OpKind::kMax, 2, 2, 0);
 
   auto *FCL1 = N.createFullyConnectedNode(MP2, 10);
   auto *RL3 = N.createRELUNode(FCL1);

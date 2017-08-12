@@ -72,11 +72,11 @@ void testMNIST() {
   auto *A = N.createArrayNode({28, 28, 1});
   auto *CV0 = N.createConvNode(A, 16, 5, 1, 2);
   auto *RL0 = N.createRELUNode(CV0);
-  auto *MP0 = N.createMaxPoolNode(RL0, 2, 2, 0);
+  auto *MP0 = N.createMaxPoolNode(RL0, MaxPoolNode::OpKind::kMax, 2, 2, 0);
 
   auto *CV1 = N.createConvNode(MP0, 16, 5, 1, 2);
   auto *RL1 = N.createRELUNode(CV1);
-  auto *MP1 = N.createMaxPoolNode(RL1, 3, 3, 0);
+  auto *MP1 = N.createMaxPoolNode(RL1, MaxPoolNode::OpKind::kMax, 3, 3, 0);
 
   auto *FCL1 = N.createFullyConnectedNode(MP1, 10);
   auto *RL2 = N.createRELUNode(FCL1);

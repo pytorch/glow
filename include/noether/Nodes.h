@@ -50,18 +50,31 @@ public:
 };
 
 class MaxPoolNode final : public NodeBase {
+public:
+  /// Specifies the kind of pooling done by the operator.
+  enum class OpKind {
+    kMax,
+    kAvg,
+  };
+
+private:
+  /// The kind of pooling (max, avg, etc).
+  OpKind kind_;
+
   /// The input node.
   NodeBase *input_;
-  /// The source coordinate for each element in the result pool. This is used
-  /// to accelerate the gradient backward pass.
+
+  /// The source coordinate for each element in the max pool results buffer.
+  /// These tensors are used to accelerate the gradient backward pass (in max
+  /// pool mode).
   TensorToken srcX_, srcY_;
 
   size_t filterSize_;
   size_t stride_;
   size_t pad_;
 
-  MaxPoolNode(Network *N, NodeBase *input, size_t filterSize, size_t stride,
-              size_t pad);
+  MaxPoolNode(Network *N, NodeBase *input, OpKind kind, size_t filterSize,
+              size_t stride, size_t pad);
 
   friend Network;
 
@@ -71,6 +84,14 @@ public:
   virtual void forward(Context *ctx, PassKind kind) const override;
 
   virtual void backward(Context *ctx) const override;
+
+  void forwardMax(Context *ctx) const;
+
+  void backwardMax(Context *ctx) const;
+
+  void forwardAvg(Context *ctx) const;
+
+  void backwardAvg(Context *ctx) const;
 
   virtual std::string getName() const override { return "MaxPoolNode"; }
 

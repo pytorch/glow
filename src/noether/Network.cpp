@@ -86,9 +86,11 @@ ConcatNode *Network::createConcatNode(ArrayRef<NodeBase *>inputs,
   return addNode(new ConcatNode(this, inputs, dimension));
 }
 
-MaxPoolNode *Network::createMaxPoolNode(NodeBase *input, size_t filterSize,
+MaxPoolNode *Network::createMaxPoolNode(NodeBase *input,
+                                        MaxPoolNode::OpKind kind,
+                                        size_t filterSize,
                                         size_t stride, size_t pad) {
-  return addNode(new MaxPoolNode(this, input, filterSize, stride, pad));
+  return addNode(new MaxPoolNode(this, input, kind, filterSize, stride, pad));
 }
 
 FullyConnectedNode *Network::createFullyConnectedNode(NodeBase *input,

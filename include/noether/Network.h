@@ -118,8 +118,8 @@ public:
   ConcatNode *createConcatNode(ArrayRef<NodeBase *>inputs,
                                unsigned dimension);
 
-  MaxPoolNode *createMaxPoolNode(NodeBase *input, size_t filterSize,
-                                 size_t stride, size_t pad);
+  MaxPoolNode *createMaxPoolNode(NodeBase *input, MaxPoolNode::OpKind kind,
+                                 size_t filterSize, size_t stride, size_t pad);
 
   FullyConnectedNode *createFullyConnectedNode(NodeBase *input,
                                                size_t outDepth);

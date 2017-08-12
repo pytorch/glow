@@ -151,10 +151,10 @@ void ConvNode::updateWeights(Network *N_, Tensor *filter, Tensor *bias) {
   N_->updateTensor(&biasW_, bias);
 }
 
-MaxPoolNode::MaxPoolNode(Network *N, NodeBase *input, size_t filterSize,
-                         size_t stride, size_t pad)
-    : NodeBase(), input_(input), filterSize_(filterSize), stride_(stride),
-      pad_(pad) {}
+MaxPoolNode::MaxPoolNode(Network *N, NodeBase *input, OpKind kind,
+                         size_t filterSize, size_t stride, size_t pad)
+    : NodeBase(), kind_(kind), input_(input), filterSize_(filterSize),
+    stride_(stride), pad_(pad) {}
 
 void MaxPoolNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -168,13 +168,29 @@ void MaxPoolNode::init(Context *ctx) const {
   ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, {outsx, outsy, idim[2]});
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {outsx, outsy, idim[2]});
 
-  // Resize the arrays that store the x and y coordinates of the incoming
-  // gradient.
-  ctx->allocateTensor(&srcX_, ElemKind::IndexTy, {outsx, outsy, idim[2]});
-  ctx->allocateTensor(&srcY_, ElemKind::IndexTy, {outsx, outsy, idim[2]});
+  // Allocate cache arrays that store the x and y coordinates of the incoming
+  // gradient for each max element.
+  if (kind_ == OpKind::kMax) {
+    ctx->allocateTensor(&srcX_, ElemKind::IndexTy, {outsx, outsy, idim[2]});
+    ctx->allocateTensor(&srcY_, ElemKind::IndexTy, {outsx, outsy, idim[2]});
+  }
 }
 
 void MaxPoolNode::forward(Context *ctx, PassKind kind) const {
+  if (kind_ == OpKind::kMax)
+    return forwardMax(ctx);
+
+  return forwardAvg(ctx);
+}
+
+void MaxPoolNode::backward(Context *ctx) const {
+  if (kind_ == OpKind::kMax)
+    return backwardMax(ctx);
+
+  return backwardAvg(ctx);
+}
+
+void MaxPoolNode::forwardMax(Context *ctx) const {
   auto odim = dims(ctx);
   auto idim = input_->dims(ctx);
   auto inW = input_->getWeightHandle(ctx);
@@ -227,7 +243,7 @@ void MaxPoolNode::forward(Context *ctx, PassKind kind) const {
   }
 }
 
-void MaxPoolNode::backward(Context *ctx) const {
+void MaxPoolNode::backwardMax(Context *ctx) const {
   auto odim = dims(ctx);
   auto inG = input_->getGradHandle(ctx);
   auto outG = getGradHandle(ctx);
@@ -251,6 +267,80 @@ void MaxPoolNode::backward(Context *ctx) const {
         size_t maxY = SY.at({(size_t)ax, (size_t)ay, z});
 
         inG.at({maxX, maxY, z}) += chainGrad;
+      }
+    }
+  }
+}
+
+void MaxPoolNode::forwardAvg(Context *ctx) const {
+  // Implement the avg pooling operation as defined here:
+  // https://arxiv.org/abs/1312.4400
+
+  auto odim = dims(ctx);
+  auto idim = input_->dims(ctx);
+  auto inW = input_->getWeightHandle(ctx);
+  auto outW = getWeightHandle(ctx);
+
+  FloatTy filterArea = filterSize_ * filterSize_;
+
+  // For each layer in the output tensor:
+  for (size_t z = 0; z < idim[2]; z++) {
+    // For each convolution 'jump' in the input tensor:
+    ssize_t y = -ssize_t(pad_);
+    for (size_t ay = 0; ay < odim[1]; y += stride_, ay++) {
+      ssize_t x = -ssize_t(pad_);
+      for (size_t ax = 0; ax < odim[0]; x += stride_, ax++) {
+        FloatTy sum = 0;
+
+        for (size_t fy = 0; fy < filterSize_; fy++) {
+          for (size_t fx = 0; fx < filterSize_; fx++) {
+            ssize_t ox = x + fx;
+            ssize_t oy = y + fy;
+
+            // Ignore index access below zero (this is due to padding).
+            if (ox < 0 || oy < 0)
+              continue;
+
+            if (inW.isInBounds({(size_t)ox, (size_t)oy, z})) {
+              sum += inW.at({(size_t)ox, (size_t)oy, z});
+            }
+          }
+        }
+        outW.at({ax, ay, z}) = sum / filterArea;
+      }
+    }
+  }
+}
+
+void MaxPoolNode::backwardAvg(Context *ctx) const {
+  auto odim = dims(ctx);
+  auto inG = input_->getGradHandle(ctx);
+  auto outG = getGradHandle(ctx);
+  FloatTy filterArea = filterSize_ * filterSize_;
+
+  // For each layer in the output tensor:
+  for (size_t z = 0; z < odim[2]; z++) {
+    // For each convolution 'jump' in the input tensor:
+    ssize_t y = -ssize_t(pad_);
+    for (size_t ay = 0; ay < odim[1]; y += stride_, ay++) {
+      ssize_t x = -ssize_t(pad_);
+      for (size_t ax = 0; ax < odim[0]; x += stride_, ax++) {
+        FloatTy dy = outG.at({ax, ay, z}) / filterArea;
+
+        for (size_t fy = 0; fy < filterSize_; fy++) {
+          for (size_t fx = 0; fx < filterSize_; fx++) {
+            ssize_t ox = x + fx;
+            ssize_t oy = y + fy;
+
+            // Ignore index access below zero (this is due to padding).
+            if (ox < 0 || oy < 0)
+              continue;
+
+            if (inG.isInBounds({(size_t)ox, (size_t)oy, z})) {
+              inG.at({(size_t)ox, (size_t)oy, z}) = dy;
+            }
+          }
+        }
       }
     }
   }
