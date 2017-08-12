@@ -6,6 +6,7 @@
 #include "noether/ADT.h"
 #include "noether/Random.h"
 
+#include <cstring>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
