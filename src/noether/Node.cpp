@@ -12,6 +12,11 @@ Tensor *NodeBase::getOutputGrad(Context *ctx) const {
   return ctx->getTensor(&outputGrad_);
 }
 
+/// Zeros the output gradient of this node.
+void NodeBase::clearOutputGrad(Context *ctx) const {
+  getOutputGrad(ctx)->zero();
+}
+
 ArrayRef<size_t> NodeBase::dims(Context *ctx) const {
   return getOutputWeight(ctx)->dims();
 }

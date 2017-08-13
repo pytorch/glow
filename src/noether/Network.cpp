@@ -189,7 +189,15 @@ void Network::updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
     }
 
     for (auto it = order.begin(), e = order.end(); it != e; it++) {
-        (*it)->forward(ctx, NodeBase::PassKind::kTraining);
+      // Prepare for the next backprop iteration by zeroing the gradient
+      // tensors. Notice that this only zeros the temporary grad tensors that
+      // match the output tensors but not the gradient tensors that are
+      // paired with filters. These are cleared during the learning process
+      // at the end of the batch.
+      (*it)->clearOutputGrad(ctx);
+
+      // Perform the learning phase.
+      (*it)->forward(ctx, NodeBase::PassKind::kTraining);
     }
 
     for (auto it = order.rbegin(), e = order.rend(); it != e; it++) {

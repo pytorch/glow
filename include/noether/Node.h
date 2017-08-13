@@ -82,6 +82,9 @@ public:
   /// \returns the output (gradient) of a node in the compute graph.
   Tensor *getOutputGrad(Context *ctx) const;
 
+  /// Zeros the output gradient of this node.
+  void clearOutputGrad(Context *ctx) const;
+
   /// \returns the dimension of the tensor.
   ArrayRef<size_t> dims(Context *ctx) const;
 

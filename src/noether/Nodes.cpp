@@ -105,9 +105,6 @@ void ConvNode::backward(Context *ctx) const {
   auto filterG = ctx->getHandle(&filtersG_);
   auto filterW = ctx->getHandle(&filtersW_);
 
-  // Zero the gradient of the input.
-  inG.clear();
-
   // Compute the gradient. For each layer in the output tensor:
   for (size_t d = 0; d < odim[2]; d++) {
 
@@ -251,9 +248,6 @@ void MaxPoolNode::backwardMax(Context *ctx) const {
   auto SX = ctx->getTensor(&srcX_)->getHandle<size_t>();
   auto SY = ctx->getTensor(&srcY_)->getHandle<size_t>();
 
-  // Zero the gradient of the input.
-  inG.clear();
-
   // Compute the gradient. For each layer in the output tensor:
   for (size_t z = 0; z < odim[2]; z++) {
 
@@ -337,7 +331,7 @@ void MaxPoolNode::backwardAvg(Context *ctx) const {
               continue;
 
             if (inG.isInBounds({(size_t)ox, (size_t)oy, z})) {
-              inG.at({(size_t)ox, (size_t)oy, z}) = dy;
+              inG.at({(size_t)ox, (size_t)oy, z}) += dy;
             }
           }
         }
@@ -412,9 +406,6 @@ void FullyConnectedNode::backward(Context *ctx) const {
   auto inW = input_->getWeightHandle(ctx);
   auto biasG = ctx->getHandle(&biasG_);
 
-  // Zero the gradient of the input.
-  inG.clear();
-
   auto filterG = ctx->getHandle(&filtersG_);
   auto filterW = ctx->getHandle(&filtersW_);
 
@@ -460,7 +451,7 @@ void RELUNode::backward(Context *ctx) const {
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     FloatTy val = outW.raw(i);
-    inG.raw(i) = (val <= 0 ? 0 : outG.raw(i));
+    inG.raw(i) += (val <= 0 ? 0 : outG.raw(i));
   }
 }
 
@@ -492,7 +483,7 @@ void SigmoidNode::backward(Context *ctx) const {
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     FloatTy val = outW.raw(i);
-    inG.raw(i) = val * (1 - val) * outG.raw(i);
+    inG.raw(i) += val * (1 - val) * outG.raw(i);
   }
 }
 
@@ -552,7 +543,7 @@ void SoftMaxNode::backward(Context *ctx) const {
   for (size_t i = 0; i < idim[0]; i++) {
     FloatTy delta = (selected == i);
     FloatTy sigma = (EH.at({i}) - delta);
-    inG.at({i}) = sigma;
+    inG.at({i}) += sigma;
   }
 }
 
@@ -619,7 +610,7 @@ void RegressionNode::backward(Context *ctx) const {
 
   for (size_t i = 0; i < idim[0]; i++) {
     FloatTy dy = inW.at({i}) - e.at({i});
-    inG.at({i}) = dy;
+    inG.at({i}) += dy;
   }
 }
 
@@ -667,7 +658,7 @@ void MaxNode::backward(Context *ctx) const {
 
   for (size_t i = 0, e = inG.size(); i < e; i++) {
     FloatTy dy = inW.raw(i);
-    inG.raw(i) = dy > 0 ? -1 : 1;
+    inG.raw(i) += dy > 0 ? -1 : 1;
   }
 }
 
@@ -756,6 +747,9 @@ void ConcatNode::backward(Context *ctx) const {
     // Insert the tensor.
     extractTensors(inG, outG, offset);
 
+    // TODO: this code assumes that input[i] has only one user, because it
+    // zeros the gradient before extracting the tensor.
+
     // The next tensor starts after this one ends.
     offset[dimension_] += inG.dims()[dimension_];
   }
@@ -789,10 +783,9 @@ void ReshapeNode::backward(Context *ctx) const {
   auto outG = getGradHandle(ctx);
   auto inG = input_->getGradHandle(ctx);
   for (size_t i = 0, e = outG.size(); i < e; i++) {
-    inG.raw(i) = outG.raw(i);
+    inG.raw(i) += outG.raw(i);
   }
 }
-
 
 BatchNormalizationNode::BatchNormalizationNode(Network *N, NodeBase *input,
                                                size_t channelIdx,
