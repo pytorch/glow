@@ -21,7 +21,9 @@ command:
 
 Next, create a build directory and run cmake on the source directory:
 
-  mkdir build; cmake ../noether/
+  ```
+  mkdir build; cmake -DCMAKE_BUILD_TYPE=Debug ../noether/
+  ```
 
 It is possible to configure and build the compiler with any CMake generator,
 like GNU Makefiles, Ninja and Xcode build.
@@ -36,10 +38,10 @@ classification benchmarks.
 
 
 The default compilation mode is 'Debug'. This means that the compiler itself is
-easy to debug because it has debug info, lots of assertions, and the
-optimizations are disabled. It also means that the compiler and runtime are very
-slow, and the execution time can be hundreds of times slower than that of
-release builds.  If you wish to benchmark the compiler or release it then you
-should compile the compiler in Release mode. Check the main CMake file for more
-details.
+easy to debug because the binary contains debug info, lots of assertions, and
+the optimizations are disabled. It also means that the compiler and runtime are
+very slow, and the execution time can be hundreds of times slower than that of
+release builds. If you wish to benchmark the compiler, run long benchmarks, or
+release the product then you should compile the compiler in Release mode. Check
+the main CMake file for more details.
 
