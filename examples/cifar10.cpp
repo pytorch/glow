@@ -21,8 +21,7 @@ using namespace noether;
 
 NodeBase *convFactory(Network &N, NodeBase *input, size_t outDepth,
                       size_t filterSize, size_t stride, size_t pad,
-                      size_t channelId,
-                      bool last = false) {
+                      size_t channelId, bool last = false) {
   NodeBase *O = N.createConvNode(input, outDepth, filterSize, stride, pad);
 
   if (last)
@@ -34,45 +33,42 @@ NodeBase *convFactory(Network &N, NodeBase *input, size_t outDepth,
 }
 
 NodeBase *residualFactory(Network &N, NodeBase *input,
-                          ArrayRef<size_t> outDepth,
-                          size_t channelId,
+                          ArrayRef<size_t> outDepth, size_t channelId,
                           bool lastDiff = false) {
   if (lastDiff) {
     NodeBase *O = convFactory(N, input, outDepth[0], 3, 2, 1, channelId, false);
     NodeBase *conv2 = convFactory(N, O, outDepth[1], 3, 1, 1, channelId, true);
     NodeBase *_data = N.createConvNode(input, outDepth[1], 3, 2, 1);
-    NodeBase *add = N.createArithmeticNode(_data, conv2,
-                                           ArithmeticNode::OpKind::kAdd);
+    NodeBase *add =
+        N.createArithmeticNode(_data, conv2, ArithmeticNode::OpKind::kAdd);
 
     O = N.createBatchNormalizationNode(add, channelId);
     return N.createRELUNode(O);
   }
 
-
   NodeBase *O = convFactory(N, input, outDepth[0], 3, 1, 1, channelId, false);
   NodeBase *conv2 = convFactory(N, O, outDepth[1], 3, 1, 1, channelId, true);
-  NodeBase *add = N.createArithmeticNode(input, conv2,
-                                         ArithmeticNode::OpKind::kAdd);
+  NodeBase *add =
+      N.createArithmeticNode(input, conv2, ArithmeticNode::OpKind::kAdd);
 
   O = N.createBatchNormalizationNode(add, channelId);
   return N.createRELUNode(O);
 }
 
-
 NodeBase *ResidualSymbol(Network &N, NodeBase *input, size_t channelId,
-                         size_t n=9) {
-    // stage 1
+                         size_t n = 9) {
+  // stage 1
   for (int i = 0; i < n; i++) {
     input = residualFactory(N, input, {16, 16}, channelId);
   }
-    // stage 2
+  // stage 2
   for (int i = 0; i < n; i++) {
-      if (i == 0) {
-        input = residualFactory(N, input, {32, 32}, channelId, true);
-      } else {
-        input = residualFactory(N, input, {32, 32}, channelId);
-      }
+    if (i == 0) {
+      input = residualFactory(N, input, {32, 32}, channelId, true);
+    } else {
+      input = residualFactory(N, input, {32, 32}, channelId);
     }
+  }
   // stage 3
   for (int i = 0; i < n; i++) {
     if (i == 0) {
@@ -84,9 +80,9 @@ NodeBase *ResidualSymbol(Network &N, NodeBase *input, size_t channelId,
   return input;
 }
 
-NodeBase* createResnet(Network &N, NodeBase *input, size_t channelId) {
-  input    = convFactory(N, input,16, 3, 1, 1, channelId);
-  input    = ResidualSymbol(N, input, channelId);
+NodeBase *createResnet(Network &N, NodeBase *input, size_t channelId) {
+  input = convFactory(N, input, 16, 3, 1, 1, channelId);
+  input = ResidualSymbol(N, input, channelId);
   auto *pool = N.createMaxPoolNode(input, MaxPoolNode::OpKind::kMax, 7, 1, 1);
 
   auto *FCL1 = N.createFullyConnectedNode(pool, 10);

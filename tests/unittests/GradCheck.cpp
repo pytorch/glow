@@ -87,10 +87,10 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
     auto minusLoss = computeL2Loss(&outputs, res);
     inputsH.at({i}) = old;
 
-    auto numericGrad = (plusLoss - minusLoss)/(2 * delta);
+    auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
     auto analyticalGrad = analyticalGradsH.at({i});
 
-    auto err =  gradDiff(analyticalGrad, numericGrad);
+    auto err = gradDiff(analyticalGrad, numericGrad);
 
     // Make sure that the analytical and numerical gradients agree.
     EXPECT_LE(err, 0.01);
@@ -138,7 +138,7 @@ TEST(Network, gradientCheck_Conv) {
 
   for (size_t i = 0; i < numDim; i++) {
     for (size_t j = 0; j < numDim; j++) {
-      auto old = inputsH.at({i, j , 0});
+      auto old = inputsH.at({i, j, 0});
 
       // Calculate f(x+e):
       inputsH.at({i, j, 0}) = old + delta;
@@ -151,10 +151,10 @@ TEST(Network, gradientCheck_Conv) {
       auto minusLoss = computeL2Loss(&outputs, res);
       inputsH.at({i, j, 0}) = old;
 
-      auto numericGrad = (plusLoss - minusLoss)/(2 * delta);
+      auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
       auto analyticalGrad = analyticalGradsH.at({i, j, 0});
 
-      auto err =  gradDiff(analyticalGrad, numericGrad);
+      auto err = gradDiff(analyticalGrad, numericGrad);
 
       // Make sure that the analytical and numerical gradients agree.
       EXPECT_LE(err, 0.04);
@@ -201,7 +201,7 @@ TEST(Network, gradientCheck_AvgPool) {
 
   for (size_t i = 0; i < numDim; i++) {
     for (size_t j = 0; j < numDim; j++) {
-      auto old = inputsH.at({i, j , 0});
+      auto old = inputsH.at({i, j, 0});
 
       // Calculate f(x+e):
       inputsH.at({i, j, 0}) = old + delta;
@@ -214,10 +214,10 @@ TEST(Network, gradientCheck_AvgPool) {
       auto minusLoss = computeL2Loss(&outputs, res);
       inputsH.at({i, j, 0}) = old;
 
-      auto numericGrad = (plusLoss - minusLoss)/(2 * delta);
+      auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
       auto analyticalGrad = analyticalGradsH.at({i, j, 0});
 
-      auto err =  gradDiff(analyticalGrad, numericGrad);
+      auto err = gradDiff(analyticalGrad, numericGrad);
 
       // Make sure that the analytical and numerical gradients agree.
       EXPECT_LE(err, 0.04);
@@ -268,7 +268,7 @@ TEST(Network, gradientCheck_batchNorm) {
 
   for (size_t i = 0; i < numDim; i++) {
     for (size_t j = 0; j < numDim; j++) {
-      auto old = inputsH.at({i, j , 0});
+      auto old = inputsH.at({i, j, 0});
 
       // Calculate f(x+e):
       inputsH.at({i, j, 0}) = old + delta;
@@ -281,10 +281,10 @@ TEST(Network, gradientCheck_batchNorm) {
       auto minusLoss = computeL2Loss(&outputs, res);
       inputsH.at({i, j, 0}) = old;
 
-      auto numericGrad = (plusLoss - minusLoss)/(2 * delta);
+      auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
       auto analyticalGrad = analyticalGradsH.at({i, j, 0});
 
-      auto err =  gradDiff(analyticalGrad, numericGrad);
+      auto err = gradDiff(analyticalGrad, numericGrad);
 
       // Make sure that the analytical and numerical gradients agree.
       EXPECT_LE(err, 0.04);
@@ -332,7 +332,7 @@ TEST(Network, gradientCheck_Arithmetic) {
 
   N.train(RN, {A, B, C, RN}, {&iA, &iB, &iC, &outputs});
 
-  auto check = [&] (NodeBase *node, Tensor *t) {
+  auto check = [&](NodeBase *node, Tensor *t) {
     auto iH = t->getHandle<FloatTy>();
 
     auto analyticalGrads = node->getGradHandle(N.getMainContext()).clone();
@@ -353,7 +353,7 @@ TEST(Network, gradientCheck_Arithmetic) {
       auto minusLoss = computeL2Loss(&outputs, res);
       iH.at({i}) = old;
 
-      auto numericGrad = (plusLoss - minusLoss)/(2 * delta);
+      auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
       auto analyticalGrad = analyticalGradsH.at({i});
 
       auto err = gradDiff(analyticalGrad, numericGrad);

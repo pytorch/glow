@@ -2,12 +2,12 @@
 
 #include "gtest/gtest.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <string>
-#include <algorithm>
 
 using namespace noether;
 
@@ -49,7 +49,7 @@ TEST(Tensor, clone) {
 }
 
 TEST(Tensor, assignment) {
-  //Testing some tensor operations.
+  // Testing some tensor operations.
   Tensor T(ElemKind::FloatTy, {320, 200, 64});
 
   auto Handle = T.getHandle<FloatTy>();
@@ -64,12 +64,12 @@ TEST(Tensor, assignment) {
     }
   }
 
-  EXPECT_EQ(Handle.at({10, 10, 10}) , 10 + 10 + 10);
+  EXPECT_EQ(Handle.at({10, 10, 10}), 10 + 10 + 10);
 
   auto TT = Handle.extractSlice(1);
   auto H2 = TT.getHandle<FloatTy>();
 
-  EXPECT_EQ(H2.at({10, 10}) , 1 + 10 + 10);
+  EXPECT_EQ(H2.at({10, 10}), 1 + 10 + 10);
 
   for (unsigned y = 0; y < 20; y++) {
     for (unsigned z = 0; z < 64; z++) {
@@ -79,7 +79,6 @@ TEST(Tensor, assignment) {
 
   EXPECT_EQ(H2.at({10, 10}), 2);
 }
-
 
 TEST(Tensor, concatTensors1D) {
   Tensor X = {1.1, 2.1, 3.1, 4.1};
@@ -123,12 +122,11 @@ TEST(Tensor, concatTensors2D) {
   zH.dumpAscii();
 
   /// Check some pixels in the image:
-  EXPECT_EQ(zH.at({0,0}), xH.at({0,0}));
-  EXPECT_EQ(zH.at({19,0}), 0);
-  EXPECT_EQ(zH.at({0,19}), 0);
-  EXPECT_EQ(zH.at({19,19}), xH.at({9,9}));
-  EXPECT_EQ(zH.at({10,10}), xH.at({0,0}));
-
+  EXPECT_EQ(zH.at({0, 0}), xH.at({0, 0}));
+  EXPECT_EQ(zH.at({19, 0}), 0);
+  EXPECT_EQ(zH.at({0, 19}), 0);
+  EXPECT_EQ(zH.at({19, 19}), xH.at({9, 9}));
+  EXPECT_EQ(zH.at({10, 10}), xH.at({0, 0}));
 
   // Extract an image from the tensor.
   extractTensors<FloatTy>(yH, zH, {10, 10});
@@ -137,7 +135,6 @@ TEST(Tensor, concatTensors2D) {
   for (size_t i = 0, e = xH.size(); i < e; i++) {
     EXPECT_EQ(yH.raw(i), xH.raw(i));
   }
-
 }
 
 TEST(Tensor, MeanAndVariance) {
@@ -158,18 +155,18 @@ TEST(Tensor, MeanAndVariance) {
 }
 
 TEST(Tensor, getDimForPtr) {
-  //Testing some tensor operations.
+  // Testing some tensor operations.
   Tensor T(ElemKind::FloatTy, {10, 5, 3});
   auto H = T.getHandle<FloatTy>();
 
-    for (unsigned x = 0; x < 10; x++) {
-      for (unsigned y = 0; y < 5; y++) {
-        for (unsigned z = 0; z < 3; z++) {
-          size_t ptr = H.getElementPtr({x, y, z});
-          EXPECT_EQ(x, H.getDimForPtr(0, ptr));
-          EXPECT_EQ(y, H.getDimForPtr(1, ptr));
-          EXPECT_EQ(z, H.getDimForPtr(2, ptr));
-        }
+  for (unsigned x = 0; x < 10; x++) {
+    for (unsigned y = 0; y < 5; y++) {
+      for (unsigned z = 0; z < 3; z++) {
+        size_t ptr = H.getElementPtr({x, y, z});
+        EXPECT_EQ(x, H.getDimForPtr(0, ptr));
+        EXPECT_EQ(y, H.getDimForPtr(1, ptr));
+        EXPECT_EQ(z, H.getDimForPtr(2, ptr));
       }
     }
+  }
 }

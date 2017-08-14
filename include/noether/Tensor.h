@@ -6,12 +6,12 @@
 #include "noether/ADT.h"
 #include "noether/Random.h"
 
-#include <cstring>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <numeric>
 
@@ -175,8 +175,9 @@ public:
 
   /// Reset the shape and type of this tensor to match the shape and type of
   /// \p other.
-  void reset(const Tensor *other) { reset(other->getElementType(),
-                                          other->dims()); }
+  void reset(const Tensor *other) {
+    reset(other->getElementType(), other->dims());
+  }
 
   /// Assigns a new shape to the tensor and allocates a new buffer.
   void reset(ElemKind elemTy, ArrayRef<size_t> shape) {
@@ -259,7 +260,7 @@ template <class ElemTy> class Handle final {
   };
 
   size_t sizes_[max_tensor_dimensions] = {
-    0,
+      0,
   };
 
   /// Saves the number of dimensions used in the tensor.
@@ -467,14 +468,15 @@ public:
   }
 
   /// \returns the mean and variance of the tensor.
-  std::pair<ElemTy, ElemTy>
-  calculateMeanVariance() const {
+  std::pair<ElemTy, ElemTy> calculateMeanVariance() const {
     size_t n = size();
     assert(n > 1 && "Input must haev at least 2 elements.");
 
     // Calculate mean.
     ElemTy sum = 0;
-    for (size_t i = 0; i < n; i++) { sum += raw({i}); }
+    for (size_t i = 0; i < n; i++) {
+      sum += raw({i});
+    }
 
     ElemTy mean = sum / n;
 
@@ -482,7 +484,7 @@ public:
     ElemTy sigma = 0;
     for (size_t i = 0; i < n; i++) {
       ElemTy t = (raw({i}) - mean);
-      sigma += t * t ;
+      sigma += t * t;
     }
 
     ElemTy variance = sigma / (n - 1);
@@ -513,12 +515,9 @@ using noether::ArrayRef;
 /// Otherwise data is copied from \p fused to \p slice.
 template <class ElemTy>
 void insertTensorsImpl(std::vector<size_t> &sliceCoor,
-                 std::vector<size_t> &fusedCoor,
-                 Handle<ElemTy> &slice,
-                 Handle<ElemTy> &fused,
-                 bool isInsert,
-                 ArrayRef<size_t> offset,
-                 unsigned d) {
+                       std::vector<size_t> &fusedCoor, Handle<ElemTy> &slice,
+                       Handle<ElemTy> &fused, bool isInsert,
+                       ArrayRef<size_t> offset, unsigned d) {
   bool isDone = (d == slice.dims().size());
 
   if (isDone) {
@@ -542,27 +541,25 @@ void insertTensorsImpl(std::vector<size_t> &sliceCoor,
 } // namespace
 
 namespace noether {
-  /// Insert the tensor \p slice into \p fused. Insert at location \p offset.
-  /// The tensors must be of the right dimensions.
-  template <class ElemTy>
-  void insertTensors(Handle<ElemTy> &slice,
-                     Handle<ElemTy> &fused,
-                     ArrayRef<size_t> offset) {
-    auto sliceCoor = slice.dims().vec();
-    auto fusedCoor = fused.dims().vec();
-    insertTensorsImpl(sliceCoor, fusedCoor, slice, fused, true, offset, 0);
-  }
+/// Insert the tensor \p slice into \p fused. Insert at location \p offset.
+/// The tensors must be of the right dimensions.
+template <class ElemTy>
+void insertTensors(Handle<ElemTy> &slice, Handle<ElemTy> &fused,
+                   ArrayRef<size_t> offset) {
+  auto sliceCoor = slice.dims().vec();
+  auto fusedCoor = fused.dims().vec();
+  insertTensorsImpl(sliceCoor, fusedCoor, slice, fused, true, offset, 0);
+}
 
-  /// Extract the tensor \p slice from \p fused. Extract at location \p offset.
-  /// The tensors must be of the right dimensions.
-  template <class ElemTy>
-  void extractTensors(Handle<ElemTy> &slice,
-                            Handle<ElemTy> &fused,
-                            ArrayRef<size_t> offset) {
-    auto sliceCoor = slice.dims().vec();
-    auto fusedCoor = fused.dims().vec();
-    insertTensorsImpl(sliceCoor, fusedCoor, slice, fused, false, offset, 0);
-  }
+/// Extract the tensor \p slice from \p fused. Extract at location \p offset.
+/// The tensors must be of the right dimensions.
+template <class ElemTy>
+void extractTensors(Handle<ElemTy> &slice, Handle<ElemTy> &fused,
+                    ArrayRef<size_t> offset) {
+  auto sliceCoor = slice.dims().vec();
+  auto fusedCoor = fused.dims().vec();
+  insertTensorsImpl(sliceCoor, fusedCoor, slice, fused, false, offset, 0);
+}
 }
 
 #endif // NOETHER_TENSOR_H

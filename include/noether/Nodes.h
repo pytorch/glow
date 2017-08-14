@@ -110,7 +110,6 @@ class FullyConnectedNode final : public NodeBase {
   /// The bias gradients.
   TensorToken biasG_;
 
-
   size_t outDepth_;
 
   FullyConnectedNode(Network *N, NodeBase *input, size_t outDepth);
@@ -295,29 +294,25 @@ class ReshapeNode final : public NodeBase {
   friend Network;
 
 public:
-
   void init(Context *ctx) const override;
 
   virtual void forward(Context *ctx, PassKind kind) const override;
 
   virtual void backward(Context *ctx) const override;
 
-  virtual std::string getName() const override {
-    return "ReshapeNode";
-  }
+  virtual std::string getName() const override { return "ReshapeNode"; }
 
   virtual void visit(NodeVisitor *visitor) override;
 };
 
-
 /// Concats a number of input tensors into a single tensor.
 class ConcatNode final : public NodeBase {
   /// Pointers to incoming inputs.
-  std::vector<NodeBase *>inputs_;
+  std::vector<NodeBase *> inputs_;
   /// Concat on this dimension.
   unsigned dimension_;
 
-  ConcatNode(Network *N, ArrayRef<NodeBase *>inputs, unsigned dimension);
+  ConcatNode(Network *N, ArrayRef<NodeBase *> inputs, unsigned dimension);
 
   friend Network;
 
@@ -355,17 +350,15 @@ class BatchNormalizationNode final : public NodeBase {
   /// Ctor - \p is the input layer that must be a simple vector.
   /// \p epsilon and \p momentum are the batch normalization parameters.
   BatchNormalizationNode(Network *N, NodeBase *input, size_t channelIdx,
-                         FloatTy epsilon,
-                         FloatTy momentum);
+                         FloatTy epsilon, FloatTy momentum);
 
   friend Network;
 
 public:
-
   void init(Context *ctx) const override;
 
   virtual void forward(Context *ctx, PassKind kind) const override;
-  
+
   void forwardTrain(Context *ctx) const;
 
   void forwardInfer(Context *ctx) const;
@@ -402,16 +395,13 @@ private:
   friend Network;
 
 public:
-
   void init(Context *ctx) const override;
 
   virtual void forward(Context *ctx, PassKind kind) const override;
 
   virtual void backward(Context *ctx) const override;
 
-  virtual std::string getName() const override {
-    return "ArithmeticNode";
-  }
+  virtual std::string getName() const override { return "ArithmeticNode"; }
 
   virtual void visit(NodeVisitor *visitor) override;
 };

@@ -96,7 +96,6 @@ TEST(Network, learnXor) {
   }
 }
 
-
 TEST(Network, regression) {
   // Testing the regression layer.
   /// This test takes the first element from the input vector, adds one to it
@@ -121,7 +120,7 @@ TEST(Network, regression) {
     E = {0., target + 1, 0., 0.};
     N.train(RN, {A, RN}, {&inputs, &expected});
   }
-    
+
   // Verify the result of the regression layer.
 
   // Test the output:
@@ -135,7 +134,7 @@ TEST(Network, regression) {
 
     EXPECT_NEAR(I.at({0}) + 1, resH.at({1}), 0.1);
   }
- }
+}
 
 unsigned numSamples = 100;
 
@@ -201,34 +200,33 @@ TEST(Network, circle) {
 
   // Print a diagram that depicts the network decision on a grid.
 
-    for (int x = -10; x < 10; x++) {
-      for (int y = -10; y < 10; y++) {
-        // Load the inputs:
-        Tensor sample(ElemKind::FloatTy, {2});
-        sample.getHandle<FloatTy>() = {float(x) / 10, float(y) / 10};
+  for (int x = -10; x < 10; x++) {
+    for (int y = -10; y < 10; y++) {
+      // Load the inputs:
+      Tensor sample(ElemKind::FloatTy, {2});
+      sample.getHandle<FloatTy>() = {float(x) / 10, float(y) / 10};
 
-        auto res = N.infer(SM, {A}, {&sample});
+      auto res = N.infer(SM, {A}, {&sample});
 
-        auto SMH = res->getHandle<FloatTy>();
+      auto SMH = res->getHandle<FloatTy>();
 
-        auto A = SMH.at({0});
-        auto B = SMH.at({1});
+      auto A = SMH.at({0});
+      auto B = SMH.at({1});
 
-        char ch = '=';
-        if (A > (B + 0.2)) {
-          ch = '+';
-        } else if (B > (A + 0.2)) {
-          ch = '-';
-        }
-
-        std::cout << ch;
+      char ch = '=';
+      if (A > (B + 0.2)) {
+        ch = '+';
+      } else if (B > (A + 0.2)) {
+        ch = '-';
       }
-      std::cout << "\n";
+
+      std::cout << ch;
     }
     std::cout << "\n";
+  }
+  std::cout << "\n";
 
-
-    {
+  {
     // The dot in the middle must be zero.
     Tensor sample(ElemKind::FloatTy, {2});
     sample.getHandle<FloatTy>() = {0., 0.};
@@ -238,10 +236,10 @@ TEST(Network, circle) {
     auto B = SMH.at({1});
     EXPECT_LE(A, 0.1);
     EXPECT_GE(B, 0.9);
-    }
+  }
 
-    {
-    // Far away dot must be one. 
+  {
+    // Far away dot must be one.
     Tensor sample(ElemKind::FloatTy, {2});
     sample.getHandle<FloatTy>() = {1., 1.};
     auto res = N.infer(SM, {A}, {&sample});
@@ -250,7 +248,7 @@ TEST(Network, circle) {
     auto B = SMH.at({1});
     EXPECT_GE(A, 0.9);
     EXPECT_LE(B, 0.1);
-    }
+  }
 }
 
 TEST(Network, learnSingleValueConcat) {
@@ -279,7 +277,7 @@ TEST(Network, learnSingleValueConcat) {
 
   // Train the network:
   for (int iter = 0; iter < 1000; iter++) {
-    N.train(RN, {A, B, RN}, {&inputs, & inputs, &expected});
+    N.train(RN, {A, B, RN}, {&inputs, &inputs, &expected});
   }
 
   // Testing the output vector.
@@ -290,4 +288,3 @@ TEST(Network, learnSingleValueConcat) {
   // Test the output:
   EXPECT_NEAR(RNWH.at({0}), 0.9, 0.1);
 }
-

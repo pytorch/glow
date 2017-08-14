@@ -18,20 +18,20 @@ void ConvNode::init(Context *ctx) const {
   size_t outsx = ((idim[0] + pad_ * 2 - filterSize_) / stride_ + 1);
   size_t outsy = ((idim[1] + pad_ * 2 - filterSize_) / stride_ + 1);
 
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, {outsx, outsy, outDepth_});
-  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {outsx, outsy, outDepth_});
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,
+                      {outsx, outsy, outDepth_});
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy,
+                      {outsx, outsy, outDepth_});
 
   std::vector<size_t> biasDim = {1, 1, outDepth_};
   ctx->allocateTensor(&biasW_, ElemKind::FloatTy, biasDim,
-                               Context::ShareKind::kSharedTensor);
+                      Context::ShareKind::kSharedTensor);
   ctx->allocateTensor(&biasG_, ElemKind::FloatTy, biasDim);
-
 
   std::vector<size_t> ftlrDim = {outDepth_, filterSize_, filterSize_, idim[2]};
   ctx->allocateTensor(&filtersW_, ElemKind::FloatTy, ftlrDim,
                       Context::ShareKind::kSharedTensor);
   ctx->allocateTensor(&filtersG_, ElemKind::FloatTy, ftlrDim);
-
 
   // RELUs like small positive bias to get gradients early in the training
   // process, otherwise the RELU units may never turn on and turn into a
@@ -39,7 +39,6 @@ void ConvNode::init(Context *ctx) const {
   if (ctx->hasTensor(&biasW_)) {
     auto biasWeights = ctx->getHandle(&biasW_);
     biasWeights.clear(0.1);
-
   }
   if (ctx->hasTensor(&filtersW_)) {
     size_t fanIn = filterSize_ * filterSize_ * idim[2];
@@ -151,7 +150,7 @@ void ConvNode::updateWeights(Network *N_, Tensor *filter, Tensor *bias) {
 MaxPoolNode::MaxPoolNode(Network *N, NodeBase *input, OpKind kind,
                          size_t filterSize, size_t stride, size_t pad)
     : NodeBase(), kind_(kind), input_(input), filterSize_(filterSize),
-    stride_(stride), pad_(pad) {}
+      stride_(stride), pad_(pad) {}
 
 void MaxPoolNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -162,7 +161,8 @@ void MaxPoolNode::init(Context *ctx) const {
   size_t outsx = ((idim[0] + pad_ * 2 - filterSize_) / stride_ + 1);
   size_t outsy = ((idim[1] + pad_ * 2 - filterSize_) / stride_ + 1);
 
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, {outsx, outsy, idim[2]});
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,
+                      {outsx, outsy, idim[2]});
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {outsx, outsy, idim[2]});
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
@@ -347,7 +347,7 @@ FullyConnectedNode::FullyConnectedNode(Network *N, NodeBase *input,
 void FullyConnectedNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
 
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,{outDepth_});
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, {outDepth_});
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {outDepth_});
 
   std::vector<size_t> biasDim = {outDepth_};
@@ -355,12 +355,10 @@ void FullyConnectedNode::init(Context *ctx) const {
                       Context::ShareKind::kSharedTensor);
   ctx->allocateTensor(&biasG_, ElemKind::FloatTy, biasDim);
 
-
   std::vector<size_t> ftlrDim = {outDepth_, input_->size(ctx)};
   ctx->allocateTensor(&filtersW_, ElemKind::FloatTy, ftlrDim,
                       Context::ShareKind::kSharedTensor);
   ctx->allocateTensor(&filtersG_, ElemKind::FloatTy, ftlrDim);
-
 
   // RELUs like small positive bias to get gradients early in the training
   // process, otherwise the RELU units may never turn on and turn into a
@@ -368,7 +366,6 @@ void FullyConnectedNode::init(Context *ctx) const {
   if (ctx->hasTensor(&biasW_)) {
     auto biasWeights = ctx->getHandle(&biasW_);
     biasWeights.clear(0.1);
-
   }
 
   if (ctx->hasTensor(&filtersW_)) {
@@ -430,7 +427,7 @@ RELUNode::RELUNode(Network *N, NodeBase *input) : NodeBase(), input_(input) {}
 void RELUNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
 
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,input_->dims(ctx));
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, input_->dims(ctx));
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, input_->dims(ctx));
 }
 
@@ -461,8 +458,7 @@ SigmoidNode::SigmoidNode(Network *N, NodeBase *input)
 void SigmoidNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
 
-
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,input_->dims(ctx));
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, input_->dims(ctx));
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, input_->dims(ctx));
 }
 
@@ -495,7 +491,7 @@ void SoftMaxNode::init(Context *ctx) const {
   auto idim = input_->dims(ctx);
   assert(idim.size() == 1 && "Softmax input must be a simple vector.");
 
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,{idim[0]});
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, {idim[0]});
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {idim[0]});
 
   ctx->allocateTensor(&e_, ElemKind::FloatTy, {idim[0]});
@@ -583,7 +579,7 @@ void RegressionNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   auto idim = input_->dims(ctx);
   assert(idim.size() == 1 && "input must be a simple vector.");
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,{idim[0]});
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, {idim[0]});
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {idim[0]});
 
   ctx->allocateTensor(&expected_, ElemKind::FloatTy, {idim[0]});
@@ -641,7 +637,8 @@ void MaxNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   auto idim = input_->dims(ctx);
   ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, idim);
-  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, idim);}
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, idim);
+}
 
 void MaxNode::forward(Context *ctx, PassKind kind) const {
   auto inW = input_->getWeightHandle(ctx);
@@ -667,7 +664,8 @@ ArrayNode::ArrayNode(Network *N, ArrayRef<size_t> dims)
 
 void ArrayNode::init(Context *ctx) const {
   ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, dims_);
-  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, dims_);}
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, dims_);
+}
 
 void ArrayNode::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) {
   auto dim = batch->dims();
@@ -685,9 +683,10 @@ void ArrayNode::updateInput(Context *ctx, Tensor *var) {
   *getOutputWeight(ctx) = var->clone();
 }
 
-ConcatNode::ConcatNode(Network *N, ArrayRef<NodeBase *>inputs,
-                       unsigned dimension) :
-NodeBase(), inputs_(inputs.begin(), inputs.end()), dimension_(dimension){}
+ConcatNode::ConcatNode(Network *N, ArrayRef<NodeBase *> inputs,
+                       unsigned dimension)
+    : NodeBase(), inputs_(inputs.begin(), inputs.end()), dimension_(dimension) {
+}
 
 void ConcatNode::init(Context *ctx) const {
   assert(inputs_.size() > 1 && "invalid number of inputs");
@@ -704,7 +703,8 @@ void ConcatNode::init(Context *ctx) const {
     // Validate that the rest of the dimensions are identical.
     assert(dims0.size() == dimsI.size() && "Invalid number of dimensions");
     for (int i = 0; i < dims0.size(); i++) {
-      if (i == dimension_) continue;
+      if (i == dimension_)
+        continue;
       assert(dimsI[i] == dims0[i] && "Invalid dimension");
     }
   }
@@ -728,7 +728,6 @@ void ConcatNode::forward(Context *ctx, PassKind kind) const {
 
     // Insert the tensor.
     insertTensors(inW, outW, offset);
-
 
     // The next tensor starts after this one ends.
     offset[dimension_] += inW.dims()[dimension_];
@@ -755,15 +754,14 @@ void ConcatNode::backward(Context *ctx) const {
   }
 }
 
-
-ReshapeNode::ReshapeNode(Network *N, NodeBase *input, ArrayRef<size_t> shape) :
-NodeBase(), input_(input), shape_(shape.vec()) {}
+ReshapeNode::ReshapeNode(Network *N, NodeBase *input, ArrayRef<size_t> shape)
+    : NodeBase(), input_(input), shape_(shape.vec()) {}
 
 void ReshapeNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
 
   auto newSize = std::accumulate(shape_.begin(), shape_.end(), 0);
-  (void) newSize;
+  (void)newSize;
   assert(input_->size(ctx) == newSize && "New shape must be of the same size.");
 
   ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, shape_);
@@ -790,16 +788,16 @@ void ReshapeNode::backward(Context *ctx) const {
 BatchNormalizationNode::BatchNormalizationNode(Network *N, NodeBase *input,
                                                size_t channelIdx,
                                                FloatTy epsilon,
-                                               FloatTy momentum) :
-NodeBase(), input_(input), channelIdx_(channelIdx), epsilon_(epsilon),
-momentum_(momentum){}
+                                               FloatTy momentum)
+    : NodeBase(), input_(input), channelIdx_(channelIdx), epsilon_(epsilon),
+      momentum_(momentum) {}
 
 void BatchNormalizationNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   assert(input_->dims(ctx).size() > 1 && "Invalid dimensions.");
 
   // Allocate the output buffer:
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,input_->dims(ctx));
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, input_->dims(ctx));
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, input_->dims(ctx));
 
   // Figure out how many channels are in the tensor.
@@ -829,7 +827,7 @@ void BatchNormalizationNode::init(Context *ctx) const {
 void BatchNormalizationNode::forward(Context *ctx, PassKind kind) const {
 
   if (kind == PassKind::kInference) {
-    return  forwardInfer(ctx);
+    return forwardInfer(ctx);
   }
 
   return forwardTrain(ctx);
@@ -850,7 +848,6 @@ void BatchNormalizationNode::forwardInfer(Context *ctx) const {
   // sigma2 = 1/N*np.sum((h-mu)**2)
   // hath = (h-mu)*(sigma2+epsilon)**(-1./2.)
   // y = gamma*hath+beta
-
 
   // In inference mode just apply the transformation:
   // y[i] = (x - mu) * gamma / stdvar + beta;
@@ -972,7 +969,7 @@ void BatchNormalizationNode::backward(Context *ctx) const {
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     size_t channelId = inW.getDimForPtr(channelIdx_, i);
 
-    FloatTy invN = (1./ samplesPerChannel);
+    FloatTy invN = (1. / samplesPerChannel);
     FloatTy gamma = gammaWH.at({channelId});
     FloatTy var = varH.at({channelId});
     FloatTy mu = meanH.at({channelId});
@@ -983,7 +980,8 @@ void BatchNormalizationNode::backward(Context *ctx) const {
     FloatTy hmu = inW.raw(i) - mu;
     FloatTy sdy = sumDyH.at(channelId);
     FloatTy sdyhmu = dyhmuH.at(channelId);
-    inG.raw(i) += invN * gamma * invVarSqrt * (samplesPerChannel * dy - sdy - hmu * invVar * sdyhmu);
+    inG.raw(i) += invN * gamma * invVarSqrt *
+                  (samplesPerChannel * dy - sdy - hmu * invVar * sdyhmu);
   }
 
   // Update the gradient of beta and gamma.
@@ -999,17 +997,16 @@ void BatchNormalizationNode::backward(Context *ctx) const {
   }
 }
 
-
 ArithmeticNode::ArithmeticNode(Network *N, NodeBase *LHS, NodeBase *RHS,
-                               OpKind op) : NodeBase(), LHS_(LHS), RHS_(RHS),
-                               op_(op) {}
+                               OpKind op)
+    : NodeBase(), LHS_(LHS), RHS_(RHS), op_(op) {}
 
 void ArithmeticNode::init(Context *ctx) const {
   assert(LHS_ && LHS_->size(ctx) && "Invalid LHS");
   assert(RHS_ && RHS_->size(ctx) && "Invalid RHS");
   assert(RHS_->dims(ctx) == LHS_->dims(ctx) && "Operand sizes does not match.");
 
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,LHS_->dims(ctx));
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, LHS_->dims(ctx));
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, LHS_->dims(ctx));
 }
 
@@ -1019,19 +1016,19 @@ void ArithmeticNode::forward(Context *ctx, PassKind kind) const {
   auto RHSW = RHS_->getWeightHandle(ctx);
 
   switch (op_) {
-    case OpKind::kAdd:
-      for (size_t i = 0, e = outW.size(); i < e; i++) {
-        outW.raw(i) = LHSW.raw(i) + RHSW.raw(i);
-      }
-      return;
-      break;
+  case OpKind::kAdd:
+    for (size_t i = 0, e = outW.size(); i < e; i++) {
+      outW.raw(i) = LHSW.raw(i) + RHSW.raw(i);
+    }
+    return;
+    break;
 
-    case OpKind::kMul:
-      for (size_t i = 0, e = outW.size(); i < e; i++) {
-        outW.raw(i) = LHSW.raw(i) * RHSW.raw(i);
-      }
-      return;
-      break;
+  case OpKind::kMul:
+    for (size_t i = 0, e = outW.size(); i < e; i++) {
+      outW.raw(i) = LHSW.raw(i) * RHSW.raw(i);
+    }
+    return;
+    break;
   }
 }
 
@@ -1043,21 +1040,21 @@ void ArithmeticNode::backward(Context *ctx) const {
   auto RHSG = RHS_->getGradHandle(ctx);
 
   switch (op_) {
-    case OpKind::kAdd:
-      for (size_t i = 0, e = outG.size(); i < e; i++) {
-        LHSG.raw(i) = outG.raw(i);
-        RHSG.raw(i) = outG.raw(i);
-      }
-      return;
-      break;
+  case OpKind::kAdd:
+    for (size_t i = 0, e = outG.size(); i < e; i++) {
+      LHSG.raw(i) = outG.raw(i);
+      RHSG.raw(i) = outG.raw(i);
+    }
+    return;
+    break;
 
-    case OpKind::kMul:
-      for (size_t i = 0, e = outG.size(); i < e; i++) {
-        LHSG.raw(i) = RHSW.raw(i) * outG.raw(i);
-        RHSG.raw(i) = LHSW.raw(i) * outG.raw(i);
-      }
-      return;
-      break;
+  case OpKind::kMul:
+    for (size_t i = 0, e = outG.size(); i < e; i++) {
+      LHSG.raw(i) = RHSW.raw(i) * outG.raw(i);
+      RHSG.raw(i) = LHSW.raw(i) * outG.raw(i);
+    }
+    return;
+    break;
   }
 }
 

@@ -23,7 +23,7 @@ public:
   enum ShareKind {
     /// Marks tensors that are shared between different context values.
     kSharedTensor,
-        /// Marks tensors that unique to the context and are not shared.
+    /// Marks tensors that unique to the context and are not shared.
     kPrivateTensor,
   };
 
@@ -38,7 +38,6 @@ private:
   TensorPairListTy pairs_;
 
 public:
-
   Context(Context *primeCtx) : primeCtx_(primeCtx) {}
 
   ~Context();
@@ -56,8 +55,8 @@ public:
   /// \returns the address of the allocated tensor, or nullptr, if this is a
   /// shared tensor that's owned by the prime context.
   Tensor *allocateTensor(const TensorToken *tok, ElemKind kind,
-                      ArrayRef<size_t> dims,
-                      ShareKind shared = ShareKind::kPrivateTensor);
+                         ArrayRef<size_t> dims,
+                         ShareKind shared = ShareKind::kPrivateTensor);
 
   /// \returns the allocated Tensor.
   Tensor *getTensor(const TensorToken *tok);
@@ -71,7 +70,7 @@ public:
 class Network {
   /// This vector holds the network state. One Context for each parallelism
   /// unit.
-  std::vector<Context*> state_{};
+  std::vector<Context *> state_{};
 
   /// This variable counts the number of iterations that train() was called.
   /// It is mainly used to detect batch size boundries.
@@ -115,8 +114,7 @@ public:
   ConvNode *createConvNode(NodeBase *input, size_t outDepth, size_t filterSize,
                            size_t stride, size_t pad);
 
-  ConcatNode *createConcatNode(ArrayRef<NodeBase *>inputs,
-                               unsigned dimension);
+  ConcatNode *createConcatNode(ArrayRef<NodeBase *> inputs, unsigned dimension);
 
   MaxPoolNode *createMaxPoolNode(NodeBase *input, MaxPoolNode::OpKind kind,
                                  size_t filterSize, size_t stride, size_t pad);
@@ -138,14 +136,13 @@ public:
 
   ReshapeNode *createReshapeNode(NodeBase *input, ArrayRef<size_t> shape);
 
-  BatchNormalizationNode*
-  createBatchNormalizationNode(NodeBase *input,
-                               size_t channelIdx = 0,
-                               FloatTy epsilon = 1e-5,
-                               FloatTy momentum = 0.9);
+  BatchNormalizationNode *createBatchNormalizationNode(NodeBase *input,
+                                                       size_t channelIdx = 0,
+                                                       FloatTy epsilon = 1e-5,
+                                                       FloatTy momentum = 0.9);
 
-  ArithmeticNode*
-  createArithmeticNode(NodeBase *LHS, NodeBase *RHS, ArithmeticNode::OpKind op);
+  ArithmeticNode *createArithmeticNode(NodeBase *LHS, NodeBase *RHS,
+                                       ArithmeticNode::OpKind op);
   ///@}
 
   /// Provides access to the training configuration.
@@ -174,7 +171,7 @@ public:
   void updateTensor(const TensorToken *tok, Tensor *t);
 
   /// \returns a pointer to the main context.
-  Context *getMainContext() { return state_[0];}
+  Context *getMainContext() { return state_[0]; }
 };
 }
 

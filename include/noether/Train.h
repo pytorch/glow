@@ -29,7 +29,7 @@ class Network;
 struct TensorToken {
   char ID;
 };
-  
+
 class Trainer {
 public:
   /// Holds the training configuration.

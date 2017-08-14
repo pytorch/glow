@@ -10,14 +10,13 @@
 using namespace noether;
 
 Context::~Context() {
-   for (auto t : tensors_) {
+  for (auto t : tensors_) {
     delete t.second;
   }
 }
 
 Tensor *Context::allocateTensor(const TensorToken *tok, ElemKind kind,
-                             ArrayRef<size_t> dims,
-                             ShareKind shared) {
+                                ArrayRef<size_t> dims, ShareKind shared) {
   /// If we are asked to allocate a shared tensor then make sure to allocate it
   /// in the main context.
   if (shared == ShareKind::kSharedTensor && primeCtx_)
@@ -42,14 +41,11 @@ Tensor *Context::getTensor(const TensorToken *tok) {
   return primeCtx_->getTensor(tok);
 }
 
-bool Context::hasTensor(const TensorToken *tok) {
-  return tensors_.count(tok);
-}
+bool Context::hasTensor(const TensorToken *tok) { return tensors_.count(tok); }
 
 Handle<FloatTy> Context::getHandle(const TensorToken *tok) {
   return getTensor(tok)->getHandle<FloatTy>();
 }
-
 
 Network::Network() {
   state_.push_back(new Context(nullptr));
@@ -81,15 +77,15 @@ ConvNode *Network::createConvNode(NodeBase *input, size_t outDepth,
   return addNode(new ConvNode(this, input, outDepth, filterSize, stride, pad));
 }
 
-ConcatNode *Network::createConcatNode(ArrayRef<NodeBase *>inputs,
+ConcatNode *Network::createConcatNode(ArrayRef<NodeBase *> inputs,
                                       unsigned dimension) {
   return addNode(new ConcatNode(this, inputs, dimension));
 }
 
 MaxPoolNode *Network::createMaxPoolNode(NodeBase *input,
                                         MaxPoolNode::OpKind kind,
-                                        size_t filterSize,
-                                        size_t stride, size_t pad) {
+                                        size_t filterSize, size_t stride,
+                                        size_t pad) {
   return addNode(new MaxPoolNode(this, input, kind, filterSize, stride, pad));
 }
 
@@ -125,21 +121,17 @@ ArrayNode *Network::createArrayNode(ArrayRef<size_t> dims) {
 ReshapeNode *Network::createReshapeNode(NodeBase *input,
                                         ArrayRef<size_t> shape) {
   return addNode(new ReshapeNode(this, input, shape));
-
 }
 
-BatchNormalizationNode*
-Network::createBatchNormalizationNode(NodeBase *input,
-                                      size_t channelIdx,
-                                      FloatTy epsilon,
-                                      FloatTy momentum) {
-  return addNode(new BatchNormalizationNode(this, input, channelIdx, epsilon,
-                                            momentum));
+BatchNormalizationNode *
+Network::createBatchNormalizationNode(NodeBase *input, size_t channelIdx,
+                                      FloatTy epsilon, FloatTy momentum) {
+  return addNode(
+      new BatchNormalizationNode(this, input, channelIdx, epsilon, momentum));
 }
 
-ArithmeticNode*
-Network::createArithmeticNode(NodeBase *LHS, NodeBase *RHS,
-                              ArithmeticNode::OpKind op) {
+ArithmeticNode *Network::createArithmeticNode(NodeBase *LHS, NodeBase *RHS,
+                                              ArithmeticNode::OpKind op) {
   return addNode(new ArithmeticNode(this, LHS, RHS, op));
 }
 
@@ -148,11 +140,12 @@ namespace {
 /// A visitor class that collects a reverse post order of the nodes in the
 /// graph.
 class TopologicalSortPass : public NodeVisitor {
-  std::unordered_set<NodeBase*> visited;
-  std::vector<NodeBase*> order;
+  std::unordered_set<NodeBase *> visited;
+  std::vector<NodeBase *> order;
+
 public:
   // Don't revisit visited nodes.
-  virtual bool shouldVisit(NodeBase *N) override { return ! visited.count(N); }
+  virtual bool shouldVisit(NodeBase *N) override { return !visited.count(N); }
 
   TopologicalSortPass() {}
   virtual void post(NodeBase *N) override {
@@ -162,7 +155,7 @@ public:
     order.push_back(N);
   }
 
-  ArrayRef<NodeBase*> getOrder() { return order; }
+  ArrayRef<NodeBase *> getOrder() { return order; }
 };
 
 struct PrinterPass : NodeVisitor {
@@ -268,11 +261,9 @@ void Network::train(NodeBase *root, size_t batches, ArrayRef<NodeBase *> nodes,
     // Alex Krizhevsky [2014]
     // One weird trick for parallelizing convolutional neural networks
 
-
     for (int tid = 0; tid < numThreads; tid++) {
       learnGradient(state_[tid]);
     }
-
   }
 }
 
@@ -299,7 +290,6 @@ Tensor *Network::infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
   TopologicalSortPass TPS;
   root->visit(&TPS);
   auto order = TPS.getOrder();
-
 
   // Update all inputs.
   for (int i = 0, e = nodes.size(); i < e; i++) {
