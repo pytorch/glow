@@ -117,7 +117,7 @@ public:
   /// \returns True if the coordinate is within the array.
   bool isInBounds(ArrayRef<size_t> indices) const {
     assert(numSizes_ == indices.size() && "Invalid number of indices");
-    for (unsigned i = 0u, e = indices.size(); i < e; i++) {
+    for (size_t i = 0u, e = indices.size(); i < e; i++) {
       if (indices[i] >= sizes_[i])
         return false;
     }
@@ -193,7 +193,7 @@ public:
     elementType_ = elemTy;
 
     assert(shape.size() < max_tensor_dimensions && "Too many indices");
-    for (int i = 0, e = shape.size(); i < e; i++) {
+    for (size_t i = 0, e = shape.size(); i < e; i++) {
       sizes_[i] = shape[i];
     }
     numSizes_ = shape.size();
@@ -290,7 +290,7 @@ public:
   }
 
   /// \returns the value of the n'th dimension \p dim, for the raw index \p idx.
-  size_t getDimForPtr(unsigned dim, size_t idx) const {
+  size_t getDimForPtr(size_t dim, size_t idx) const {
     assert(dim < numDims && "Invalid dimension");
     auto R = idx / sizeIntegral[dim];
     return R % sizes_[dim];
