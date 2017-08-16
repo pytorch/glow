@@ -6,6 +6,6 @@ namespace noether {
 /// \returns the next uniform random number in the range -1..1.
 double nextRand();
 
-} // namespace
+} // namespace noether
 
 #endif // NOETHER_RANDOM_H

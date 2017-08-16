@@ -5,7 +5,7 @@ namespace {
 
 // This is a global variable, a singleton, that's used as an index into
 // the array with random numbers.
-static unsigned randomArrayIndex = 0;
+unsigned randomArrayIndex = 0;
 
 const unsigned numRandomVals = 256;
 const double randomVals[] = {
@@ -41,7 +41,7 @@ const double randomVals[] = {
     0.9294,  0.4736,  0.1575,  -0.6042, -0.4478, 0.6700,  -0.7470, -0.6719,
     -0.7332, -0.4192, -0.8280, -0.1954, 0.0863,  -0.2299, 0.9117,  -0.3130,
     0.9571,  0.4145,  -0.3284, -0.6304, 0.2475,  -0.3137, 0.3770,  -0.4844};
-}
+} // namespace
 
 double noether::nextRand() {
   return randomVals[(randomArrayIndex++) % numRandomVals];

@@ -66,7 +66,7 @@ public:
   virtual void visit(NodeVisitor *visitor) = 0;
 
   /// Dtor.
-  virtual ~NodeBase() {}
+  virtual ~NodeBase() = default;
 
   /// \returns the output (weights) of a node in the compute graph.
   Tensor *getOutputWeight(Context *ctx) const;
@@ -89,6 +89,6 @@ public:
   /// \returns the gradient handle for the node output.
   Handle<FloatTy> getGradHandle(Context *ctx) const;
 };
-}
+} // namespace noether
 
 #endif // NOETHER_NODE_H

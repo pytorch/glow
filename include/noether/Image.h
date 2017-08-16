@@ -13,7 +13,7 @@ namespace noether {
 
 class PNGNode final : public NodeBase {
 public:
-  PNGNode(Network *N) : NodeBase() {}
+  explicit PNGNode(Network *N) {}
 
   virtual std::string getName() const override { return "PNGNode"; }
 
@@ -27,9 +27,9 @@ public:
 
   void backward(Context *ctx) const override {}
 
-  virtual void visit(NodeVisitor *visitor) override;
+  void visit(NodeVisitor *visitor) override;
 };
 
-} // namespace
+} // namespace noether
 
 #endif // NOETHER_IMAGE_H

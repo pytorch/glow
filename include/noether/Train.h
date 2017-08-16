@@ -51,6 +51,6 @@ public:
   void train(Tensor *weights, Tensor *gradients);
 };
 
-} // namespace
+} // namespace noether
 
 #endif // NOETHER_TRAIN_H

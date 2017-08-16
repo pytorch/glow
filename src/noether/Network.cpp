@@ -19,8 +19,9 @@ Tensor *Context::allocateTensor(const TensorToken *tok, ElemKind kind,
                                 ArrayRef<size_t> dims, ShareKind shared) {
   /// If we are asked to allocate a shared tensor then make sure to allocate it
   /// in the main context.
-  if (shared == ShareKind::kSharedTensor && primeCtx_)
+  if (shared == ShareKind::kSharedTensor && primeCtx_) {
     return nullptr;
+  }
 
   assert(!hasTensor(tok) && "Token already allocated");
   Tensor *T = new Tensor(kind, dims);
@@ -146,10 +147,11 @@ class TopologicalSortPass : public NodeVisitor {
 
 public:
   // Don't revisit visited nodes.
-  virtual bool shouldVisit(NodeBase *N) override { return !visited.count(N); }
+  bool shouldVisit(NodeBase *N) override { return !visited.count(N); }
 
-  TopologicalSortPass() {}
-  virtual void post(NodeBase *N) override {
+  TopologicalSortPass() = default;
+  
+  void post(NodeBase *N) override {
     if (!visited.insert(N).second)
       return;
 
@@ -160,7 +162,7 @@ public:
 };
 
 struct PrinterPass : NodeVisitor {
-  virtual void post(NodeBase *N) override { std::cout << N->getName() << "->"; }
+  void post(NodeBase *N) override { std::cout << N->getName() << "->"; }
 };
 
 } // namespace
@@ -215,12 +217,14 @@ static unsigned calculateNumThreads(unsigned numCores, unsigned batchSize) {
 
     // The batch size must be a multiple of the number of threads or we'll skip
     /// some inputs.
-    if (batchSize % i)
+    if (batchSize % i) {
       continue;
+    }
 
     /// Each thread must handle at least 4 inputs.
-    if ((batchSize / i) < 4)
+    if ((batchSize / i) < 4) {
       break;
+    }
 
     best = i;
   }
@@ -274,8 +278,7 @@ void Network::train(NodeBase *root, ArrayRef<Variable *> vars,
                     ArrayRef<Tensor *> inputs) {
   assert(vars.size() == inputs.size() && "Mismatched argument list");
 
-  updateForwardBackward(state_[0], root, trainCounter_, 1, vars, inputs,
-                        false);
+  updateForwardBackward(state_[0], root, trainCounter_, 1, vars, inputs, false);
 
   trainCounter_++;
 

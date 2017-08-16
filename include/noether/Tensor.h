@@ -24,28 +24,39 @@ using FloatTy = TRAINING_TENSOR_ELEMENT_TYPE;
 
 template <class ElemTy> static char valueToChar(ElemTy val) {
   char ch = ' ';
-  if (val > 0.2)
+  if (val > 0.2) {
     ch = '.';
-  if (val > 0.4)
+  }
+  if (val > 0.4) {
     ch = ',';
-  if (val > 0.6)
+  }
+  if (val > 0.6) {
     ch = ':';
-  if (val > 0.8)
+  }
+  if (val > 0.8) {
     ch = 'o';
-  if (val > 1.0)
+  }
+  if (val > 1.0) {
     ch = 'O';
-  if (val > 1.5)
+  }
+  if (val > 1.5) {
     ch = '0';
-  if (val > 2.0)
+  }
+  if (val > 2.0) {
     ch = '@';
-  if (val < -0.1)
+  }
+  if (val < -0.1) {
     ch = '-';
-  if (val < -0.2)
+  }
+  if (val < -0.2) {
     ch = '~';
-  if (val < -0.4)
+  }
+  if (val < -0.4) {
     ch = '=';
-  if (val < -1.0)
+  }
+  if (val < -1.0) {
     ch = '#';
+  }
   return ch;
 }
 
@@ -134,8 +145,9 @@ public:
 
   /// \returns the number of elements in the tensor.
   size_t size() const {
-    if (!numSizes_)
+    if (!numSizes_) {
       return 0;
+    }
 
     size_t s = 1;
     for (unsigned i = 0; i < numSizes_; i++) {
@@ -152,7 +164,7 @@ public:
   }
 
   /// Initialize an empty tensor.
-  Tensor() {}
+  Tensor() = default;
 
   /// Initialize from a list of float literals.
   Tensor(const std::initializer_list<double> &vec) {
@@ -238,14 +250,13 @@ public:
   /// is one index from the first dimension of the tensor.
   void copySlice(const Tensor *t, size_t slice) {
     auto dim = t->dims().drop_front();
-    (void) dim;
+    (void)dim;
     assert(dim == dims() && "Invalid slice size");
     assert(getElementType() == t->getElementType() && "Invalid element type");
 
     size_t bufferSize = size() * getElementSize(elementType_);
     std::copy(&t->data_[bufferSize * slice],
-              &t->data_[bufferSize * (slice + 1)],
-              data_);
+              &t->data_[bufferSize * (slice + 1)], data_);
   }
 
   /// Create a new copy of the current tensor.
@@ -282,7 +293,7 @@ template <class ElemTy> class Handle final {
 
   /// Create a new invalid handle. Notice that this method is private and may
   /// only be used by the static factory method below.
-  Handle() {}
+  Handle() = default;
 
 public:
   /// Allocate a new invalid handle.
@@ -313,7 +324,7 @@ public:
   ElemKind getElementType() const { return tensor_->getElementType(); }
 
   /// Construct a Tensor handle.
-  Handle(Tensor *tensor) : tensor_(tensor) {
+  explicit Handle(Tensor *tensor) : tensor_(tensor) {
     auto sizes = tensor->dims();
     numDims = sizes.size();
 
@@ -514,8 +525,8 @@ template <class ElemTy> Handle<ElemTy> Tensor::getHandle() {
 } // namespace noether
 
 namespace {
-using noether::Handle;
 using noether::ArrayRef;
+using noether::Handle;
 /// Concats or splits tensors.
 /// This method concats or extracts a slice from a tensor.
 /// \p sliceCoor and \p fusedCoor are temporary storage that the function uses
@@ -574,6 +585,6 @@ void extractTensors(Handle<ElemTy> &slice, Handle<ElemTy> &fused,
   auto fusedCoor = fused.dims().vec();
   insertTensorsImpl(sliceCoor, fusedCoor, slice, fused, false, offset, 0);
 }
-}
+} // namespace noether
 
 #endif // NOETHER_TENSOR_H

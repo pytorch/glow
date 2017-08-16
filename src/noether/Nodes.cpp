@@ -6,8 +6,8 @@ using namespace noether;
 
 ConvNode::ConvNode(Network *N, NodeBase *input, size_t outDepth,
                    size_t filterSize, size_t stride, size_t pad)
-    : NodeBase(), input_(input), filterSize_(filterSize), stride_(stride),
-      pad_(pad), outDepth_(outDepth) {}
+    : input_(input), filterSize_(filterSize), stride_(stride), pad_(pad),
+      outDepth_(outDepth) {}
 
 void ConvNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -149,8 +149,8 @@ void ConvNode::updateWeights(Network *N_, Tensor *filter, Tensor *bias) {
 
 MaxPoolNode::MaxPoolNode(Network *N, NodeBase *input, OpKind kind,
                          size_t filterSize, size_t stride, size_t pad)
-    : NodeBase(), kind_(kind), input_(input), filterSize_(filterSize),
-      stride_(stride), pad_(pad) {}
+    : kind_(kind), input_(input), filterSize_(filterSize), stride_(stride),
+      pad_(pad) {}
 
 void MaxPoolNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -174,15 +174,17 @@ void MaxPoolNode::init(Context *ctx) const {
 }
 
 void MaxPoolNode::forward(Context *ctx, PassKind kind) const {
-  if (kind_ == OpKind::kMax)
+  if (kind_ == OpKind::kMax) {
     return forwardMax(ctx);
+  }
 
   return forwardAvg(ctx);
 }
 
 void MaxPoolNode::backward(Context *ctx) const {
-  if (kind_ == OpKind::kMax)
+  if (kind_ == OpKind::kMax) {
     return backwardMax(ctx);
+  }
 
   return backwardAvg(ctx);
 }
@@ -342,7 +344,7 @@ void MaxPoolNode::backwardAvg(Context *ctx) const {
 
 FullyConnectedNode::FullyConnectedNode(Network *N, NodeBase *input,
                                        size_t outDepth)
-    : NodeBase(), input_(input), outDepth_(outDepth) {}
+    : input_(input), outDepth_(outDepth) {}
 
 void FullyConnectedNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -422,7 +424,7 @@ void FullyConnectedNode::backward(Context *ctx) const {
   }
 }
 
-RELUNode::RELUNode(Network *N, NodeBase *input) : NodeBase(), input_(input) {}
+RELUNode::RELUNode(Network *N, NodeBase *input) : input_(input) {}
 
 void RELUNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -452,8 +454,7 @@ void RELUNode::backward(Context *ctx) const {
   }
 }
 
-SigmoidNode::SigmoidNode(Network *N, NodeBase *input)
-    : NodeBase(), input_(input) {}
+SigmoidNode::SigmoidNode(Network *N, NodeBase *input) : input_(input) {}
 
 void SigmoidNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -484,7 +485,7 @@ void SigmoidNode::backward(Context *ctx) const {
 }
 
 SoftMaxNode::SoftMaxNode(Network *N, NodeBase *input, NodeBase *selected)
-    : NodeBase(), input_(input), selected_(selected) {}
+    : input_(input), selected_(selected) {}
 
 void SoftMaxNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -542,7 +543,7 @@ void SoftMaxNode::backward(Context *ctx) const {
   }
 }
 RegressionNode::RegressionNode(Network *N, NodeBase *input, NodeBase *expected)
-    : NodeBase(), input_(input), expected_(expected) {}
+    : input_(input), expected_(expected) {}
 
 void RegressionNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -577,7 +578,7 @@ void RegressionNode::backward(Context *ctx) const {
   }
 }
 
-MaxNode::MaxNode(Network *N, NodeBase *input) : NodeBase(), input_(input) {}
+MaxNode::MaxNode(Network *N, NodeBase *input) : input_(input) {}
 
 void MaxNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -606,7 +607,7 @@ void MaxNode::backward(Context *ctx) const {
 }
 
 Variable::Variable(Network *N, ArrayRef<size_t> dims, ElemKind elemTy)
-    : NodeBase(), dims_(dims.begin(), dims.end()), elemTy_(elemTy) {}
+    : dims_(dims.begin(), dims.end()), elemTy_(elemTy) {}
 
 void Variable::init(Context *ctx) const {
   ctx->allocateTensor(&outputWeight_, elemTy_, dims_);
@@ -631,8 +632,7 @@ void Variable::updateInput(Context *ctx, Tensor *var) {
 
 ConcatNode::ConcatNode(Network *N, ArrayRef<NodeBase *> inputs,
                        unsigned dimension)
-    : NodeBase(), inputs_(inputs.begin(), inputs.end()), dimension_(dimension) {
-}
+    : inputs_(inputs.begin(), inputs.end()), dimension_(dimension) {}
 
 void ConcatNode::init(Context *ctx) const {
   assert(inputs_.size() > 1 && "invalid number of inputs");
@@ -701,7 +701,7 @@ void ConcatNode::backward(Context *ctx) const {
 }
 
 ReshapeNode::ReshapeNode(Network *N, NodeBase *input, ArrayRef<size_t> shape)
-    : NodeBase(), input_(input), shape_(shape.vec()) {}
+    : input_(input), shape_(shape.vec()) {}
 
 void ReshapeNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -735,7 +735,7 @@ BatchNormalizationNode::BatchNormalizationNode(Network *N, NodeBase *input,
                                                size_t channelIdx,
                                                FloatTy epsilon,
                                                FloatTy momentum)
-    : NodeBase(), input_(input), channelIdx_(channelIdx), epsilon_(epsilon),
+    : input_(input), channelIdx_(channelIdx), epsilon_(epsilon),
       momentum_(momentum) {}
 
 void BatchNormalizationNode::init(Context *ctx) const {
@@ -945,7 +945,7 @@ void BatchNormalizationNode::backward(Context *ctx) const {
 
 ArithmeticNode::ArithmeticNode(Network *N, NodeBase *LHS, NodeBase *RHS,
                                OpKind op)
-    : NodeBase(), LHS_(LHS), RHS_(RHS), op_(op) {}
+    : LHS_(LHS), RHS_(RHS), op_(op) {}
 
 void ArithmeticNode::init(Context *ctx) const {
   assert(LHS_ && LHS_->size(ctx) && "Invalid LHS");
@@ -1028,8 +1028,9 @@ DEFINE_CLASS_VISITOR(MaxNode)
 DEFINE_CLASS_VISITOR(BatchNormalizationNode)
 
 void ArithmeticNode::visit(NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(this))
+  if (!visitor->shouldVisit(this)) {
     return;
+  }
   visitor->pre(this);
   LHS_->visit(visitor);
   RHS_->visit(visitor);

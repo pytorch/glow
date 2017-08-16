@@ -32,7 +32,7 @@ void Trainer::train(Tensor *weights, Tensor *gradients) {
     if (it != gsum_.end()) {
       Gsum = it->second->getHandle<FloatTy>();
     } else {
-      Tensor *gs = new Tensor();
+      auto *gs = new Tensor();
       gs->reset(gradients);
       gsum_[gradients] = gs;
       Gsum = gs->getHandle<FloatTy>();

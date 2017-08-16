@@ -38,7 +38,7 @@ private:
   TensorPairListTy pairs_;
 
 public:
-  Context(Context *primeCtx) : primeCtx_(primeCtx) {}
+  explicit Context(Context *primeCtx) : primeCtx_(primeCtx) {}
 
   ~Context();
 
@@ -173,6 +173,6 @@ public:
   /// \returns a pointer to the main context.
   Context *getMainContext() { return state_[0]; }
 };
-}
+} // namespace noether
 
 #endif // NOETHER_NETWORK_H

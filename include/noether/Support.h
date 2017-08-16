@@ -25,6 +25,6 @@ public:
   }
 };
 
-} // namespace
+} // namespace noether
 
 #endif // NOETHER_SUPPORT_H

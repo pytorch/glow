@@ -38,13 +38,13 @@ class ConvNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx, PassKind kind) const override;
+  void forward(Context *ctx, PassKind kind) const override;
 
-  virtual void backward(Context *ctx) const override;
+  void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "ConvNode"; }
 
-  virtual void visit(NodeVisitor *visitor) override;
+  void visit(NodeVisitor *visitor) override;
 
   void updateWeights(Network *N_, Tensor *filter, Tensor *bias);
 };
@@ -81,9 +81,9 @@ private:
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx, PassKind kind) const override;
+  void forward(Context *ctx, PassKind kind) const override;
 
-  virtual void backward(Context *ctx) const override;
+  void backward(Context *ctx) const override;
 
   void forwardMax(Context *ctx) const;
 
@@ -95,7 +95,7 @@ public:
 
   virtual std::string getName() const override { return "MaxPoolNode"; }
 
-  virtual void visit(NodeVisitor *visitor) override;
+  void visit(NodeVisitor *visitor) override;
 };
 
 class FullyConnectedNode final : public NodeBase {
@@ -119,13 +119,13 @@ class FullyConnectedNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx, PassKind kind) const override;
+  void forward(Context *ctx, PassKind kind) const override;
 
-  virtual void backward(Context *ctx) const override;
+  void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "FullyConnectedNode"; }
 
-  virtual void visit(NodeVisitor *visitor) override;
+  void visit(NodeVisitor *visitor) override;
 };
 
 class RELUNode final : public NodeBase {
@@ -139,13 +139,13 @@ class RELUNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx, PassKind kind) const override;
+  void forward(Context *ctx, PassKind kind) const override;
 
-  virtual void backward(Context *ctx) const override;
+  void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "RELUNode"; }
 
-  virtual void visit(NodeVisitor *visitor) override;
+  void visit(NodeVisitor *visitor) override;
 };
 
 class SigmoidNode final : public NodeBase {
@@ -159,13 +159,13 @@ class SigmoidNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx, PassKind kind) const override;
+  void forward(Context *ctx, PassKind kind) const override;
 
-  virtual void backward(Context *ctx) const override;
+  void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "SigmoidNode"; }
 
-  virtual void visit(NodeVisitor *visitor) override;
+  void visit(NodeVisitor *visitor) override;
 };
 
 class SoftMaxNode final : public NodeBase {
@@ -187,13 +187,13 @@ class SoftMaxNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx, PassKind kind) const override;
+  void forward(Context *ctx, PassKind kind) const override;
 
-  virtual void backward(Context *ctx) const override;
+  void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "SoftMaxNode"; }
 
-  virtual void visit(NodeVisitor *visitor) override;
+  void visit(NodeVisitor *visitor) override;
 };
 
 class RegressionNode final : public NodeBase {
@@ -212,13 +212,13 @@ class RegressionNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx, PassKind kind) const override;
+  void forward(Context *ctx, PassKind kind) const override;
 
-  virtual void backward(Context *ctx) const override;
+  void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "RegressionNode"; }
 
-  virtual void visit(NodeVisitor *visitor) override;
+  void visit(NodeVisitor *visitor) override;
 };
 
 /// This node attempts to maximize the inputs by sending back a gradient signal
@@ -234,13 +234,13 @@ class MaxNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx, PassKind kind) const override;
+  void forward(Context *ctx, PassKind kind) const override;
 
-  virtual void backward(Context *ctx) const override;
+  void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "MaxNode"; }
 
-  virtual void visit(NodeVisitor *visitor) override;
+  void visit(NodeVisitor *visitor) override;
 };
 
 /// This is an abstraction over raw variable inputs.
@@ -271,7 +271,7 @@ public:
   /// \p var.
   void updateInput(Context *ctx, Tensor *var);
 
-  virtual void visit(NodeVisitor *visitor) override;
+  void visit(NodeVisitor *visitor) override;
 };
 
 class ReshapeNode final : public NodeBase {
@@ -289,13 +289,13 @@ class ReshapeNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx, PassKind kind) const override;
+  void forward(Context *ctx, PassKind kind) const override;
 
-  virtual void backward(Context *ctx) const override;
+  void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "ReshapeNode"; }
 
-  virtual void visit(NodeVisitor *visitor) override;
+  void visit(NodeVisitor *visitor) override;
 };
 
 /// Concats a number of input tensors into a single tensor.
@@ -312,13 +312,13 @@ class ConcatNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx, PassKind kind) const override;
+  void forward(Context *ctx, PassKind kind) const override;
 
-  virtual void backward(Context *ctx) const override;
+  void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "ConcatNode"; }
 
-  virtual void visit(NodeVisitor *visitor) override;
+  void visit(NodeVisitor *visitor) override;
 };
 
 /// Performs batch normalization.
@@ -350,19 +350,19 @@ class BatchNormalizationNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx, PassKind kind) const override;
+  void forward(Context *ctx, PassKind kind) const override;
 
   void forwardTrain(Context *ctx) const;
 
   void forwardInfer(Context *ctx) const;
 
-  virtual void backward(Context *ctx) const override;
+  void backward(Context *ctx) const override;
 
   virtual std::string getName() const override {
     return "BatchNormalizationNode";
   }
 
-  virtual void visit(NodeVisitor *visitor) override;
+  void visit(NodeVisitor *visitor) override;
 };
 
 /// Performs per-element arithmetic operations.
@@ -383,20 +383,20 @@ private:
 
   /// Ctor - perform a per-element operation on the input tensors
   /// \p LHS, RHS. The operation is specified by \p kind.
-  ArithmeticNode(Network *N, NodeBase *LHS, NodeBase *RHS, OpKind kind);
+  ArithmeticNode(Network *N, NodeBase *LHS, NodeBase *RHS, OpKind op);
 
   friend Network;
 
 public:
   void init(Context *ctx) const override;
 
-  virtual void forward(Context *ctx, PassKind kind) const override;
+  void forward(Context *ctx, PassKind kind) const override;
 
-  virtual void backward(Context *ctx) const override;
+  void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "ArithmeticNode"; }
 
-  virtual void visit(NodeVisitor *visitor) override;
+  void visit(NodeVisitor *visitor) override;
 };
 
 } // namespace noether

@@ -92,6 +92,6 @@ template <typename T> inline bool operator==(ArrayRef<T> LHS, ArrayRef<T> RHS) {
 template <typename T> inline bool operator!=(ArrayRef<T> LHS, ArrayRef<T> RHS) {
   return !(LHS == RHS);
 }
-} // namespace
+} // namespace noether
 
 #endif // NOETHER_ADT_H
