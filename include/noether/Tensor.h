@@ -234,6 +234,20 @@ public:
     std::copy(&t->data_[0], &t->data_[bufferSize], data_);
   }
 
+  /// Update the content of the tensor with a slice from tensor \p t. A slice
+  /// is one index from the first dimension of the tensor.
+  void copySlice(const Tensor *t, size_t slice) {
+    auto dim = t->dims().drop_front();
+    (void) dim;
+    assert(dim == dims() && "Invalid slice size");
+    assert(getElementType() == t->getElementType() && "Invalid element type");
+
+    size_t bufferSize = size() * getElementSize(elementType_);
+    std::copy(&t->data_[bufferSize * slice],
+              &t->data_[bufferSize * (slice + 1)],
+              data_);
+  }
+
   /// Create a new copy of the current tensor.
   Tensor clone() const {
     Tensor slice;

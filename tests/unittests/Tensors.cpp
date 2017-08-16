@@ -170,3 +170,22 @@ TEST(Tensor, getDimForPtr) {
     }
   }
 }
+
+TEST(Tensor, copySlice) {
+  // Testing some tensor operations.
+  Tensor A(ElemKind::FloatTy, {10, 5, 3});
+  Tensor B(ElemKind::FloatTy, {5, 3});
+
+  auto AH = A.getHandle<FloatTy>();
+  auto BH = B.getHandle<FloatTy>();
+
+  AH.randomize(1);
+
+  B.copySlice(&A, 0);
+
+  for (unsigned y = 0; y < 5; y++) {
+    for (unsigned z = 0; z < 3; z++) {
+      EXPECT_EQ(AH.at({0, y, z}), BH.at({y, z}));
+    }
+  }
+}
