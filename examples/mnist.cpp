@@ -20,7 +20,7 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
 
   /// Load the MNIST database into two 4d tensors for images and labels.
   imageInputs.reset(ElemKind::FloatTy, {50000, 28, 28, 1});
-  labelInputs.reset(ElemKind::IndexTy, {50000u});
+  labelInputs.reset(ElemKind::IndexTy, {50000u, 1});
 
   std::ifstream imgInput("mnist_images.bin", std::ios::binary);
   std::ifstream labInput("mnist_labels.bin", std::ios::binary);
@@ -40,7 +40,7 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
   auto IIH = imageInputs.getHandle<FloatTy>();
 
   for (unsigned w = 0; w < mnistNumImages; w++) {
-    LIH.at({w}) = labels[w];
+    LIH.at({w, 0}) = labels[w];
     for (unsigned y = 0; y < 28; y++) {
       for (unsigned x = 0; x < 28; x++) {
         IIH.at({w, x, y, 0}) = imagesAsFloatPtr[idx++];
@@ -69,7 +69,7 @@ void testMNIST() {
   N.getConfig().batchSize = 20;
   N.getConfig().L2Decay = 0.001;
 
-  auto *A = N.createArrayNode({28, 28, 1});
+  auto *A = N.createVariable({28, 28, 1}, ElemKind::FloatTy);
   auto *CV0 = N.createConvNode(A, 16, 5, 1, 2);
   auto *RL0 = N.createRELUNode(CV0);
   auto *MP0 = N.createMaxPoolNode(RL0, MaxPoolNode::OpKind::kMax, 2, 2, 0);
@@ -80,7 +80,10 @@ void testMNIST() {
 
   auto *FCL1 = N.createFullyConnectedNode(MP1, 10);
   auto *RL2 = N.createRELUNode(FCL1);
-  auto *SM = N.createSoftMaxNode(RL2);
+
+  auto *selected = N.createVariable({1}, ElemKind::IndexTy);
+
+  auto *SM = N.createSoftMaxNode(RL2, selected);
 
   // Report progress every this number of training iterations.
   constexpr int reportRate = 100;
@@ -93,7 +96,7 @@ void testMNIST() {
     // On each training iteration take an input from imageInputs and update
     // the input variable A, and add take a corresponding label and update the
     // softmax layer.
-    N.train(SM, reportRate / N.getConfig().batchSize, {A, SM},
+    N.train(SM, reportRate / N.getConfig().batchSize, {A, selected},
             {&imageInputs, &labelInputs});
   }
   std::cout << "Validating.\n";

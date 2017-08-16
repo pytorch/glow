@@ -16,81 +16,7 @@
 
 using namespace noether;
 
-// Resnet loader as defined as defined in:
-// https://github.com/shuokay/resnet/blob/master/resnet-small.py
-
-NodeBase *convFactory(Network &N, NodeBase *input, size_t outDepth,
-                      size_t filterSize, size_t stride, size_t pad,
-                      size_t channelId, bool last = false) {
-  NodeBase *O = N.createConvNode(input, outDepth, filterSize, stride, pad);
-
-  if (last)
-    return O;
-
-  O = N.createBatchNormalizationNode(O, channelId);
-  O = N.createRELUNode(O);
-  return O;
-}
-
-NodeBase *residualFactory(Network &N, NodeBase *input,
-                          ArrayRef<size_t> outDepth, size_t channelId,
-                          bool lastDiff = false) {
-  if (lastDiff) {
-    NodeBase *O = convFactory(N, input, outDepth[0], 3, 2, 1, channelId, false);
-    NodeBase *conv2 = convFactory(N, O, outDepth[1], 3, 1, 1, channelId, true);
-    NodeBase *_data = N.createConvNode(input, outDepth[1], 3, 2, 1);
-    NodeBase *add =
-        N.createArithmeticNode(_data, conv2, ArithmeticNode::OpKind::kAdd);
-
-    O = N.createBatchNormalizationNode(add, channelId);
-    return N.createRELUNode(O);
-  }
-
-  NodeBase *O = convFactory(N, input, outDepth[0], 3, 1, 1, channelId, false);
-  NodeBase *conv2 = convFactory(N, O, outDepth[1], 3, 1, 1, channelId, true);
-  NodeBase *add =
-      N.createArithmeticNode(input, conv2, ArithmeticNode::OpKind::kAdd);
-
-  O = N.createBatchNormalizationNode(add, channelId);
-  return N.createRELUNode(O);
-}
-
-NodeBase *ResidualSymbol(Network &N, NodeBase *input, size_t channelId,
-                         size_t n = 9) {
-  // stage 1
-  for (int i = 0; i < n; i++) {
-    input = residualFactory(N, input, {16, 16}, channelId);
-  }
-  // stage 2
-  for (int i = 0; i < n; i++) {
-    if (i == 0) {
-      input = residualFactory(N, input, {32, 32}, channelId, true);
-    } else {
-      input = residualFactory(N, input, {32, 32}, channelId);
-    }
-  }
-  // stage 3
-  for (int i = 0; i < n; i++) {
-    if (i == 0) {
-      input = residualFactory(N, input, {64, 64}, channelId, true);
-    } else {
-      input = residualFactory(N, input, {64, 64}, channelId);
-    }
-  }
-  return input;
-}
-
-NodeBase *createResnet(Network &N, NodeBase *input, size_t channelId) {
-  input = convFactory(N, input, 16, 3, 1, 1, channelId);
-  input = ResidualSymbol(N, input, channelId);
-  auto *pool = N.createMaxPoolNode(input, MaxPoolNode::OpKind::kMax, 7, 1, 1);
-
-  auto *FCL1 = N.createFullyConnectedNode(pool, 10);
-  auto *RL3 = N.createRELUNode(FCL1);
-  return N.createSoftMaxNode(RL3);
-}
-
-NodeBase *createSimpleNet(Network &N, NodeBase *input) {
+NodeBase *createSimpleNet(Network &N, NodeBase *input, NodeBase *expected) {
   auto *CV0 = N.createConvNode(input, 16, 5, 1, 2);
   auto *RL0 = N.createRELUNode(CV0);
   auto *MP0 = N.createMaxPoolNode(RL0, MaxPoolNode::OpKind::kMax, 2, 2, 0);
@@ -105,7 +31,7 @@ NodeBase *createSimpleNet(Network &N, NodeBase *input) {
 
   auto *FCL1 = N.createFullyConnectedNode(MP2, 10);
   auto *RL3 = N.createRELUNode(FCL1);
-  auto *SM = N.createSoftMaxNode(RL3);
+  auto *SM = N.createSoftMaxNode(RL3, expected);
   return SM;
 }
 
@@ -134,13 +60,13 @@ void testCIFAR10() {
 
   /// Load the CIFAR database into a 4d tensor.
   Tensor images(ElemKind::FloatTy, {cifarNumImages, 32, 32, 3});
-  Tensor labels(ElemKind::IndexTy, {cifarNumImages});
+  Tensor labels(ElemKind::IndexTy, {cifarNumImages, 1});
   size_t idx = 0;
 
   auto labelsH = labels.getHandle<size_t>();
   auto imagesH = images.getHandle<FloatTy>();
   for (unsigned w = 0; w < cifarNumImages; w++) {
-    labelsH.at({w}) = static_cast<uint8_t>(dbInput.get());
+    labelsH.at({w, 0}) = static_cast<uint8_t>(dbInput.get());
     idx++;
 
     for (unsigned z = 0; z < 3; z++) {
@@ -163,10 +89,11 @@ void testCIFAR10() {
   N.getConfig().L2Decay = 0.0001;
 
   // Create the input layer:
-  auto *A = N.createArrayNode({32, 32, 3});
+  auto *A = N.createVariable({32, 32, 3}, ElemKind::FloatTy);
+  auto *E = N.createVariable({1}, ElemKind::IndexTy);
 
   // Create the rest of the network.
-  NodeBase *SM = createSimpleNet(N, A);
+  NodeBase *SM = createSimpleNet(N, A, E);
 
   // Report progress every this number of training iterations.
   int reportRate = 256;
@@ -179,7 +106,7 @@ void testCIFAR10() {
 
     // Bind the images tensor to the input array A, and the labels tensor
     // to the softmax node SM.
-    N.train(SM, reportRate / N.getConfig().batchSize, {A, SM},
+    N.train(SM, reportRate / N.getConfig().batchSize, {A, E},
             {&images, &labels});
 
     unsigned score = 0;
@@ -191,7 +118,7 @@ void testCIFAR10() {
       auto *res = N.infer(SM, {A}, {&sample});
 
       // Read the expected label.
-      auto expectedLabel = labelsH.at({imageIndex});
+      auto expectedLabel = labelsH.at({imageIndex, 0});
       unsigned result = res->getHandle<FloatTy>().maxArg();
       score += textualLabels[expectedLabel] == textualLabels[result];
     }

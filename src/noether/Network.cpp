@@ -102,20 +102,21 @@ SigmoidNode *Network::createSigmoidNode(NodeBase *input) {
   return addNode(new SigmoidNode(this, input));
 }
 
-SoftMaxNode *Network::createSoftMaxNode(NodeBase *input) {
-  return addNode(new SoftMaxNode(this, input));
+SoftMaxNode *Network::createSoftMaxNode(NodeBase *input, NodeBase *selected) {
+  return addNode(new SoftMaxNode(this, input, selected));
 }
 
-RegressionNode *Network::createRegressionNode(NodeBase *input) {
-  return addNode(new RegressionNode(this, input));
+RegressionNode *Network::createRegressionNode(NodeBase *input,
+                                              NodeBase *expected) {
+  return addNode(new RegressionNode(this, input, expected));
 }
 
 MaxNode *Network::createMaxNode(NodeBase *input) {
   return addNode(new MaxNode(this, input));
 }
 
-ArrayNode *Network::createArrayNode(ArrayRef<size_t> dims) {
-  return addNode(new ArrayNode(this, dims));
+Variable *Network::createVariable(ArrayRef<size_t> dims, ElemKind elemTy) {
+  return addNode(new Variable(this, dims, elemTy));
 }
 
 ReshapeNode *Network::createReshapeNode(NodeBase *input,
@@ -165,7 +166,7 @@ struct PrinterPass : NodeVisitor {
 } // namespace
 
 void Network::updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
-                                    size_t len, ArrayRef<NodeBase *> nodes,
+                                    size_t len, ArrayRef<Variable *> vars,
                                     ArrayRef<Tensor *> inputs, bool isBatch) {
   TopologicalSortPass TPS;
   root->visit(&TPS);
@@ -173,11 +174,11 @@ void Network::updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
 
   for (size_t idx = 0; idx < len; idx++) {
     /// Update the inputs:
-    for (int i = 0, e = nodes.size(); i < e; i++) {
+    for (int i = 0, e = vars.size(); i < e; i++) {
       if (isBatch) {
-        nodes[i]->updateInputs(ctx, inputs[i], start + idx);
+        vars[i]->updateInputs(ctx, inputs[i], start + idx);
       } else {
-        nodes[i]->updateInput(ctx, inputs[i]);
+        vars[i]->updateInput(ctx, inputs[i]);
       }
     }
 
@@ -227,9 +228,9 @@ static unsigned calculateNumThreads(unsigned numCores, unsigned batchSize) {
 }
 
 /// Train the network starting with the node \p root. Perform \p iterations
-/// iterations in the training loop. Update the nodes in \p nodes with the
+/// iterations in the training loop. Update the vars in \p vars with the
 /// values \p inputs.
-void Network::train(NodeBase *root, size_t batches, ArrayRef<NodeBase *> nodes,
+void Network::train(NodeBase *root, size_t batches, ArrayRef<Variable *> vars,
                     ArrayRef<Tensor *> inputs) {
 
   size_t batchSize = getConfig().batchSize;
@@ -244,7 +245,7 @@ void Network::train(NodeBase *root, size_t batches, ArrayRef<NodeBase *> nodes,
       /// Update the network inputs and perform the forward and backwards pass.
       threads.emplace_back([=] {
         updateForwardBackward(state_[t], root, trainCounter_ + t * sliceSize,
-                              sliceSize, nodes, inputs, true);
+                              sliceSize, vars, inputs, true);
       });
     }
 
@@ -267,13 +268,13 @@ void Network::train(NodeBase *root, size_t batches, ArrayRef<NodeBase *> nodes,
   }
 }
 
-/// Perform a single training iteration for one input. Update the nodes in \p
-/// nodes with the values \p inputs.
-void Network::train(NodeBase *root, ArrayRef<NodeBase *> nodes,
+/// Perform a single training iteration for one input. Update the vars in \p
+/// vars with the tensor values \p inputs.
+void Network::train(NodeBase *root, ArrayRef<Variable *> vars,
                     ArrayRef<Tensor *> inputs) {
-  assert(nodes.size() == inputs.size() && "Mismatched argument list");
+  assert(vars.size() == inputs.size() && "Mismatched argument list");
 
-  updateForwardBackward(state_[0], root, trainCounter_, 1, nodes, inputs,
+  updateForwardBackward(state_[0], root, trainCounter_, 1, vars, inputs,
                         false);
 
   trainCounter_++;
@@ -285,15 +286,15 @@ void Network::train(NodeBase *root, ArrayRef<NodeBase *> nodes,
   learnGradient(state_[0]);
 }
 
-Tensor *Network::infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
+Tensor *Network::infer(NodeBase *root, ArrayRef<Variable *> vars,
                        ArrayRef<Tensor *> inputs) {
   TopologicalSortPass TPS;
   root->visit(&TPS);
   auto order = TPS.getOrder();
 
   // Update all inputs.
-  for (int i = 0, e = nodes.size(); i < e; i++) {
-    nodes[i]->updateInput(state_[0], inputs[i]);
+  for (int i = 0, e = vars.size(); i < e; i++) {
+    vars[i]->updateInput(state_[0], inputs[i]);
   }
 
   // Forward scan.

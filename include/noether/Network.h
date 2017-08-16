@@ -95,7 +95,7 @@ class Network {
   }
 
   void updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
-                             size_t len, ArrayRef<NodeBase *> nodes,
+                             size_t len, ArrayRef<Variable *> vars,
                              ArrayRef<Tensor *> inputs, bool isBatch);
 
   void learnGradient(Context *ctx);
@@ -126,13 +126,13 @@ public:
 
   SigmoidNode *createSigmoidNode(NodeBase *input);
 
-  SoftMaxNode *createSoftMaxNode(NodeBase *input);
+  SoftMaxNode *createSoftMaxNode(NodeBase *input, NodeBase *selected);
 
-  RegressionNode *createRegressionNode(NodeBase *input);
+  RegressionNode *createRegressionNode(NodeBase *input, NodeBase *expected);
 
   MaxNode *createMaxNode(NodeBase *input);
 
-  ArrayNode *createArrayNode(ArrayRef<size_t> dims);
+  Variable *createVariable(ArrayRef<size_t> dims, ElemKind elemTy);
 
   ReshapeNode *createReshapeNode(NodeBase *input, ArrayRef<size_t> shape);
 
@@ -151,17 +151,17 @@ public:
   /// Train the network starting with the node \p root. Perform \p iterations
   /// of batch size in the training loop. Update the nodes in \p nodes with the
   /// values \p inputs.
-  void train(NodeBase *root, size_t batches, ArrayRef<NodeBase *> nodes,
+  void train(NodeBase *root, size_t batches, ArrayRef<Variable *> vars,
              ArrayRef<Tensor *> inputs);
 
   /// Perform a single training iteration for one input. Update the nodes in \p
   /// nodes with the values \p inputs.
-  void train(NodeBase *root, ArrayRef<NodeBase *> nodes,
+  void train(NodeBase *root, ArrayRef<Variable *> vars,
              ArrayRef<Tensor *> inputs);
 
   /// Infer data for a single input. Update the nodes in \p nodes with the
   /// values \p inputs.
-  Tensor *infer(NodeBase *root, ArrayRef<NodeBase *> nodes,
+  Tensor *infer(NodeBase *root, ArrayRef<Variable *> vars,
                 ArrayRef<Tensor *> inputs);
 
   /// Dump the textual representation of the network.

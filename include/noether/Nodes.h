@@ -172,7 +172,7 @@ class SoftMaxNode final : public NodeBase {
   /// A reference to the node input.
   NodeBase *input_;
   /// The selected one-hot value from the softmax function.
-  TensorToken selected_;
+  NodeBase *selected_;
 
   /// A temporary array for storing the subexpression (e ^ (a[i] - max)).
   TensorToken e_{};
@@ -180,24 +180,16 @@ class SoftMaxNode final : public NodeBase {
   /// Ctor - \p is the input layer that must be of shape (1 x 1 x N).
   /// And \p selected that's the selected one-hot representation of the
   /// softmax function.
-  SoftMaxNode(Network *N, NodeBase *input);
+  SoftMaxNode(Network *N, NodeBase *input, NodeBase *selected);
 
   friend Network;
 
 public:
-  virtual void updateInputs(Context *ctx, Tensor *batch,
-                            size_t sampleIdx) override;
-
-  virtual void updateInput(Context *ctx, Tensor *var) override;
-
   void init(Context *ctx) const override;
 
   virtual void forward(Context *ctx, PassKind kind) const override;
 
   virtual void backward(Context *ctx) const override;
-
-  /// Marks the channel that the SoftMax needs to optimize for.
-  void setSelected(Context *ctx, size_t selected);
 
   virtual std::string getName() const override { return "SoftMaxNode"; }
 
@@ -208,21 +200,16 @@ class RegressionNode final : public NodeBase {
   /// A reference to the node input.
   NodeBase *input_;
   /// The expected input (also known as Y).
-  TensorToken expected_{};
+  NodeBase *expected_{};
 
   /// Ctor - \p is the input layer that must be a simple vector.
   /// And \p expected (aka Y) is the expected input for the layer, that must
   /// be of the same shape as \p input.
-  RegressionNode(Network *N, NodeBase *input);
+  RegressionNode(Network *N, NodeBase *input, NodeBase *expected);
 
   friend Network;
 
 public:
-  virtual void updateInputs(Context *ctx, Tensor *batch,
-                            size_t sampleIdx) override;
-
-  virtual void updateInput(Context *ctx, Tensor *var) override;
-
   void init(Context *ctx) const override;
 
   virtual void forward(Context *ctx, PassKind kind) const override;
@@ -257,12 +244,15 @@ public:
 };
 
 /// This is an abstraction over raw variable inputs.
-class ArrayNode final : public NodeBase {
-  ArrayNode(Network *N, ArrayRef<size_t> dims);
+class Variable final : public NodeBase {
 
-  friend Network;
+  Variable(Network *N, ArrayRef<size_t> dims, ElemKind elemTy);
 
   std::vector<size_t> dims_;
+
+  ElemKind elemTy_;
+
+  friend Network;
 
 public:
   virtual std::string getName() const override { return "ArrayNode"; }
@@ -273,10 +263,13 @@ public:
 
   void backward(Context *ctx) const override {}
 
-  virtual void updateInputs(Context *ctx, Tensor *batch,
-                            size_t sampleIdx) override;
+  /// Update the input or expected output variables of the node with data from
+  /// \p batch. Select inputs from the slice specified by \p payload.
+  void updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx);
 
-  virtual void updateInput(Context *ctx, Tensor *var) override;
+  /// Update the input or expected output variables of the node with data from
+  /// \p var.
+  void updateInput(Context *ctx, Tensor *var);
 
   virtual void visit(NodeVisitor *visitor) override;
 };

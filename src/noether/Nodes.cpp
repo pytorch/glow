@@ -483,8 +483,8 @@ void SigmoidNode::backward(Context *ctx) const {
   }
 }
 
-SoftMaxNode::SoftMaxNode(Network *N, NodeBase *input)
-    : NodeBase(), input_(input) {}
+SoftMaxNode::SoftMaxNode(Network *N, NodeBase *input, NodeBase *selected)
+    : NodeBase(), input_(input), selected_(selected) {}
 
 void SoftMaxNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -495,7 +495,6 @@ void SoftMaxNode::init(Context *ctx) const {
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {idim[0]});
 
   ctx->allocateTensor(&e_, ElemKind::FloatTy, {idim[0]});
-  ctx->allocateTensor(&selected_, ElemKind::IndexTy, {1});
 }
 
 void SoftMaxNode::forward(Context *ctx, PassKind kind) const {
@@ -531,7 +530,7 @@ void SoftMaxNode::backward(Context *ctx) const {
   auto idim = input_->dims(ctx);
   auto inG = input_->getGradHandle(ctx);
   auto EH = ctx->getTensor(&e_)->getHandle<FloatTy>();
-  auto selectedH = ctx->getTensor(&selected_)->getHandle<size_t>();
+  auto selectedH = selected_->getOutputWeight(ctx)->getHandle<size_t>();
   size_t selected = selectedH.at({0});
 
   // http://eli.thegreenplace.net/2016/the-softmax-function-and-its-derivative/
@@ -542,38 +541,8 @@ void SoftMaxNode::backward(Context *ctx) const {
     inG.at({i}) += sigma;
   }
 }
-
-void SoftMaxNode::setSelected(Context *ctx, size_t selected) {
-  auto selectedH = ctx->getTensor(&selected_)->getHandle<size_t>();
-  selectedH.at({0}) = selected;
-}
-
-void SoftMaxNode::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) {
-  auto dim = batch->dims();
-  assert(dim.size() == 1 && "Invalid input shape");
-
-  // Take the n'th slice in the input vector. The slice must be a scalar.
-  size_t val = batch->getHandle<size_t>().at({sampleIdx % dim[0]});
-  auto selectedH = ctx->getTensor(&selected_)->getHandle<size_t>();
-  selectedH.at({0}) = val;
-  assert(val < dims(ctx)[0] && "Invalid selected value");
-}
-
-void SoftMaxNode::updateInput(Context *ctx, Tensor *var) {
-  auto dim = var->dims();
-  (void)dim;
-  assert(dim.size() == 1 && "Invalid input shape");
-
-  size_t val = var->getHandle<size_t>().at({0});
-
-  auto selectedH = ctx->getTensor(&selected_)->getHandle<size_t>();
-  selectedH.at({0}) = val;
-
-  assert(val < dims(ctx)[0] && "Invalid selected value");
-}
-
-RegressionNode::RegressionNode(Network *N, NodeBase *input)
-    : NodeBase(), input_(input) {}
+RegressionNode::RegressionNode(Network *N, NodeBase *input, NodeBase *expected)
+    : NodeBase(), input_(input), expected_(expected) {}
 
 void RegressionNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
@@ -581,8 +550,6 @@ void RegressionNode::init(Context *ctx) const {
   assert(idim.size() == 1 && "input must be a simple vector.");
   ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, {idim[0]});
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {idim[0]});
-
-  ctx->allocateTensor(&expected_, ElemKind::FloatTy, {idim[0]});
 }
 
 void RegressionNode::forward(Context *ctx, PassKind kind) const {
@@ -602,33 +569,12 @@ void RegressionNode::backward(Context *ctx) const {
   auto inW = input_->getWeightHandle(ctx);
   auto inG = input_->getGradHandle(ctx);
 
-  auto e = ctx->getTensor(&expected_)->getHandle<FloatTy>();
+  auto e = expected_->getOutputWeight(ctx)->getHandle<FloatTy>();
 
   for (size_t i = 0; i < idim[0]; i++) {
     FloatTy dy = inW.at({i}) - e.at({i});
     inG.at({i}) += dy;
   }
-}
-
-void RegressionNode::updateInputs(Context *ctx, Tensor *batch,
-                                  size_t sampleIdx) {
-  auto dim = batch->dims();
-  auto *E = ctx->getTensor(&expected_);
-
-  assert(E->getElementType() == batch->getElementType() &&
-         "invalid input type");
-  assert(dims(ctx) == dim.drop_front() && "Invalid batch size");
-
-  // Extract the n'th slice. The slice must be a tensor.
-  *E = batch->getHandle<FloatTy>().extractSlice(sampleIdx % dim[0]);
-}
-
-void RegressionNode::updateInput(Context *ctx, Tensor *var) {
-  auto *E = ctx->getTensor(&expected_);
-
-  assert(E->dims() == var->dims() && "Invalid input size");
-  assert(E->getElementType() == var->getElementType() && "invalid input type");
-  *E = var->clone();
 }
 
 MaxNode::MaxNode(Network *N, NodeBase *input) : NodeBase(), input_(input) {}
@@ -659,23 +605,23 @@ void MaxNode::backward(Context *ctx) const {
   }
 }
 
-ArrayNode::ArrayNode(Network *N, ArrayRef<size_t> dims)
-    : NodeBase(), dims_(dims.begin(), dims.end()) {}
+Variable::Variable(Network *N, ArrayRef<size_t> dims, ElemKind elemTy)
+    : NodeBase(), dims_(dims.begin(), dims.end()), elemTy_(elemTy) {}
 
-void ArrayNode::init(Context *ctx) const {
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, dims_);
-  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, dims_);
+void Variable::init(Context *ctx) const {
+  ctx->allocateTensor(&outputWeight_, elemTy_, dims_);
+  ctx->allocateTensor(&outputGrad_, elemTy_, dims_);
 }
 
-void ArrayNode::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) {
+void Variable::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) {
   auto dim = batch->dims();
   assert(dims(ctx) == dim.drop_front() && "Invalid batch size");
   /// Extract the n'th slice, that must be a tensor.
   size_t slc = sampleIdx % dim[0];
-  *getOutputWeight(ctx) = batch->getHandle<FloatTy>().extractSlice(slc);
+  ctx->getTensor(&outputWeight_)->copySlice(batch, slc);
 }
 
-void ArrayNode::updateInput(Context *ctx, Tensor *var) {
+void Variable::updateInput(Context *ctx, Tensor *var) {
   auto *w = getOutputWeight(ctx);
   (void)w;
   assert(w->dims() == var->dims() && "Invalid input size");
@@ -1100,7 +1046,7 @@ void ConcatNode::visit(NodeVisitor *visitor) {
   visitor->post(this);
 }
 
-void ArrayNode::visit(NodeVisitor *visitor) {
+void Variable::visit(NodeVisitor *visitor) {
   if (!visitor->shouldVisit(this))
     return;
   visitor->pre(this);

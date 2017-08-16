@@ -61,14 +61,6 @@ public:
   /// Does the backwards propagation.
   virtual void backward(Context *ctx) const = 0;
 
-  /// Update the input or expected output variables of the node with data from
-  /// \p batch. Select inputs from the slice specified by \p payload.
-  virtual void updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) {}
-
-  /// Update the input or expected output variables of the node with data from
-  /// \p var.
-  virtual void updateInput(Context *ctx, Tensor *var) {}
-
   /// This method implements the visitor pattern that scans the compute DAG top
   /// to bottom.
   virtual void visit(NodeVisitor *visitor) = 0;

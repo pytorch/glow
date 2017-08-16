@@ -15,12 +15,15 @@ TEST(Network, learnSingleValue) {
   Network N;
   N.getConfig().learningRate = 0.05;
 
-  auto *A = N.createArrayNode(4);
+  auto *A = N.createVariable(4, ElemKind::FloatTy);
   auto *FCL0 = N.createFullyConnectedNode(A, 10);
   auto *RL0 = N.createRELUNode(FCL0);
   auto *FCL1 = N.createFullyConnectedNode(RL0, 4);
   auto *RL1 = N.createRELUNode(FCL1);
-  auto *RN = N.createRegressionNode(RL1);
+
+  auto *E = N.createVariable(4, ElemKind::FloatTy);
+
+  auto *RN = N.createRegressionNode(RL1, E);
 
   Tensor inputs(ElemKind::FloatTy, {4});
   Tensor expected(ElemKind::FloatTy, {4});
@@ -30,7 +33,7 @@ TEST(Network, learnSingleValue) {
 
   // Train the network:
   for (int iter = 0; iter < 1000; iter++) {
-    N.train(RN, {A, RN}, {&inputs, &expected});
+    N.train(RN, {A, E}, {&inputs, &expected});
   }
 
   // Testing the output vector.
@@ -49,12 +52,14 @@ TEST(Network, learnXor) {
   Network N;
   N.getConfig().learningRate = 0.1;
 
-  auto *A = N.createArrayNode(2);
+  auto *A = N.createVariable(2, ElemKind::FloatTy);
+  auto *Ex = N.createVariable(1, ElemKind::FloatTy);
+
   auto *FCL0 = N.createFullyConnectedNode(A, 6);
   auto *RL0 = N.createRELUNode(FCL0);
   auto *FCL1 = N.createFullyConnectedNode(RL0, 1);
   auto *RL1 = N.createRELUNode(FCL1);
-  auto *RN = N.createRegressionNode(RL1);
+  auto *RN = N.createRegressionNode(RL1, Ex);
 
   Tensor inputs(ElemKind::FloatTy, {4, 2});
   Tensor expected(ElemKind::FloatTy, {4, 1});
@@ -78,7 +83,7 @@ TEST(Network, learnXor) {
   E.at({3, 0}) = 0;
 
   // Train the network:
-  N.train(RN, 400, {A, RN}, {&inputs, &expected});
+  N.train(RN, 400, {A, Ex}, {&inputs, &expected});
 
   // Testing the output vector.
   for (size_t i = 0; i < 4; i++) {
@@ -103,10 +108,12 @@ TEST(Network, regression) {
   constexpr int numInputs = 4;
 
   Network N;
-  auto *A = N.createArrayNode({numInputs});
+  auto *A = N.createVariable({numInputs}, ElemKind::FloatTy);
+  auto *Ex = N.createVariable({numInputs}, ElemKind::FloatTy);
+
   auto *FCL0 = N.createFullyConnectedNode(A, 4);
   auto *RL0 = N.createRELUNode(FCL0);
-  auto *RN = N.createRegressionNode(RL0);
+  auto *RN = N.createRegressionNode(RL0, Ex);
 
   Tensor inputs(ElemKind::FloatTy, {numInputs});
   Tensor expected(ElemKind::FloatTy, {numInputs});
@@ -118,7 +125,7 @@ TEST(Network, regression) {
     float target = float(iter % 9);
     I = {target, 0., 0., 0.};
     E = {0., target + 1, 0., 0.};
-    N.train(RN, {A, RN}, {&inputs, &expected});
+    N.train(RN, {A, Ex}, {&inputs, &expected});
   }
 
   // Verify the result of the regression layer.
@@ -157,7 +164,7 @@ void generateCircleData(Tensor &coordinates, Tensor &labels) {
 
     C.at({i * 2, 0u}) = x;
     C.at({i * 2, 1u}) = y;
-    L.at({i * 2}) = 1;
+    L.at({i * 2, 0}) = 1;
 
     r = r_radius(gen) + 0.8;
     a = r_angle(gen);
@@ -166,7 +173,7 @@ void generateCircleData(Tensor &coordinates, Tensor &labels) {
 
     C.at({i * 2 + 1, 0u}) = x;
     C.at({i * 2 + 1, 1u}) = y;
-    L.at({i * 2 + 1}) = 0;
+    L.at({i * 2 + 1, 0}) = 0;
   }
 }
 
@@ -182,20 +189,22 @@ TEST(Network, circle) {
   N.getConfig().learningRate = 0.1;
   N.getConfig().batchSize = 10;
 
-  auto *A = N.createArrayNode({2});
+  auto *A = N.createVariable({2}, ElemKind::FloatTy);
+  auto *S = N.createVariable({1}, ElemKind::IndexTy);
+
   auto *FCL0 = N.createFullyConnectedNode(A, 6);
   auto *RL0 = N.createRELUNode(FCL0);
   auto *FCL1 = N.createFullyConnectedNode(RL0, 2);
   auto *RL1 = N.createRELUNode(FCL1);
-  auto *SM = N.createSoftMaxNode(RL1);
+  auto *SM = N.createSoftMaxNode(RL1, S);
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
-  Tensor labels(ElemKind::IndexTy, {numSamples});
+  Tensor labels(ElemKind::IndexTy, {numSamples, 1});
   generateCircleData(coordinates, labels);
 
   // Training:
   for (int iter = 0; iter < 2000; iter++) {
-    N.train(SM, 1, {A, SM}, {&coordinates, &labels});
+    N.train(SM, 1, {A, S}, {&coordinates, &labels});
   }
 
   // Print a diagram that depicts the network decision on a grid.
@@ -257,18 +266,20 @@ TEST(Network, learnSingleValueConcat) {
   N.getConfig().learningRate = 0.05;
 
   // Left side of the network:
-  NodeBase *A = N.createArrayNode(4);
-  A = N.createFullyConnectedNode(A, 4);
-  A = N.createRELUNode(A);
+  Variable *A = N.createVariable(4, ElemKind::FloatTy);
+  Variable *Ex = N.createVariable(8, ElemKind::FloatTy);
+
+  NodeBase *L = N.createFullyConnectedNode(A, 4);
+  L = N.createRELUNode(L);
 
   // Right side of the network:
-  NodeBase *B = N.createArrayNode(4);
-  B = N.createFullyConnectedNode(B, 4);
-  B = N.createRELUNode(B);
+  Variable *B = N.createVariable(4, ElemKind::FloatTy);
+  NodeBase *R = N.createFullyConnectedNode(B, 4);
+  R = N.createRELUNode(R);
 
   // Concat:
-  auto *C = N.createConcatNode({A, B}, 0);
-  auto *RN = N.createRegressionNode(C);
+  auto *C = N.createConcatNode({L, R}, 0);
+  auto *RN = N.createRegressionNode(C, Ex);
 
   Tensor inputs(ElemKind::FloatTy, {4});
   Tensor expected(ElemKind::FloatTy, {8});
@@ -277,7 +288,7 @@ TEST(Network, learnSingleValueConcat) {
 
   // Train the network:
   for (int iter = 0; iter < 1000; iter++) {
-    N.train(RN, {A, B, RN}, {&inputs, &inputs, &expected});
+    N.train(RN, {A, B, Ex}, {&inputs, &inputs, &expected});
   }
 
   // Testing the output vector.
