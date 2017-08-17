@@ -11,14 +11,13 @@ using namespace noether;
 
 /// Compute the regression loss for the tensor \p X with regard to Y.
 FloatTy computeL2Loss(Tensor *X, Tensor *Y) {
-  assert(X->dims().size() == 1 && "Invalid input dims");
   assert(X->dims() == Y->dims() && "Invalid input dims");
   auto xH = X->getHandle<FloatTy>();
   auto yH = Y->getHandle<FloatTy>();
   FloatTy loss = 0;
 
   for (size_t i = 0, e = X->size(); i < e; i++) {
-    FloatTy dy = (xH.at({i}) - yH.at({i}));
+    FloatTy dy = (xH.raw(i) - yH.raw(i));
     loss += 0.5 * dy * dy;
   }
 
