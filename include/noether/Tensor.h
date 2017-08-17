@@ -273,6 +273,29 @@ public:
               &t->data_[bufferSize * (slice + 1)], data_);
   }
 
+  /// Update the content of the tensor with a sequence of slices from the
+  /// tensor \p t. A slice is one index from the first dimension of the tensor.
+  /// The copying operation may overlap the end of the tensor \p t one or more
+  /// times. This means that the data in the input tensor may be duplicated.
+  void copyConsecutiveSlices(const Tensor *t, size_t startSliceIdx) {
+    auto onceSliceDim = t->dims().drop_front();
+    (void)onceSliceDim;
+    assert(onceSliceDim == dims().drop_front() && "Invalid slice size");
+    assert(getElementType() == t->getElementType() && "Invalid element type");
+    assert(dims().size() > 1 && "Tensor must contain at least two dimensions");
+
+    size_t numSlicesInInput = t->dims()[0];
+    size_t numElementsInSlice = size() / dims()[0];
+    size_t bufferSize = numElementsInSlice * getElementSize(elementType_);
+
+    // For each outer slice in the current tensor:
+    for (size_t n = 0, e = dims()[0]; n < e; n++) {
+      size_t startIdx = (startSliceIdx + n) % numSlicesInInput;
+      std::copy(&t->data_[bufferSize * startIdx],
+                &t->data_[bufferSize * (startIdx + 1)], &data_[bufferSize * n]);
+    }
+  }
+
   /// Create a new copy of the current tensor.
   Tensor clone() const {
     Tensor slice;
