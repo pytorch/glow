@@ -448,10 +448,10 @@ public:
 
   /// Update the content of the tensor from a literal list:
   void operator=(const std::initializer_list<ElemTy> &vec) {
-    assert(numDims == 1 && size() == vec.size() && "Invalid input dimension.");
+    assert(size() == vec.size() && "Invalid input size.");
     size_t i = 0;
     for (auto &e : vec) {
-      at({i++}) = e;
+      raw(i++) = e;
     }
   }
 
