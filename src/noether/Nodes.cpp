@@ -4,6 +4,20 @@
 
 using namespace noether;
 
+/// Colllapse a tensor shape into two sizes: the first dimension and the size
+/// of the rest of the dimensions.
+/// For example, [7, 3, 4, 2] -> [7, 24]
+static std::pair<size_t, size_t> flattenCdr(ArrayRef<size_t> dims) {
+  assert(dims.size() > 1);
+  size_t first = dims[0];
+  size_t rest = dims[1];
+  for (size_t i = 2; i < dims.size(); i++) {
+    rest *= dims[i];
+  }
+
+  return {first, rest};
+}
+
 ConvNode::ConvNode(Network *N, NodeBase *input, size_t outDepth,
                    size_t filterSize, size_t stride, size_t pad)
     : input_(input), filterSize_(filterSize), stride_(stride), pad_(pad),
