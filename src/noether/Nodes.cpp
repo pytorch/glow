@@ -706,7 +706,8 @@ ReshapeNode::ReshapeNode(Network *N, NodeBase *input, ArrayRef<size_t> shape)
 void ReshapeNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
 
-  auto newSize = std::accumulate(shape_.begin(), shape_.end(), 0);
+  auto newSize = std::accumulate(shape_.begin(), shape_.end(), 1,
+                                 std::multiplies<size_t>());
   (void)newSize;
   assert(input_->size(ctx) == newSize && "New shape must be of the same size.");
 
