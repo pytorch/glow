@@ -91,14 +91,12 @@ void ConvNode::forward(Context *ctx, PassKind kind) const {
             ssize_t oy = y + fy;
 
             // Ignore index access below zero (this is due to padding).
-            if (ox < 0 || oy < 0)
+            if (ox < 0 || oy < 0 || ox >= odim.h || oy >= odim.w)
               continue;
 
-            if (outW.isInBounds({0u, (size_t)ox, (size_t)oy, 0u})) {
               for (size_t fd = 0; fd < idim.c; fd++) {
                 sum += filterW.at({d, fx, fy, fd}) *
                        inW.at({n, (size_t)ox, (size_t)oy, fd});
-              }
             }
           }
         }
@@ -108,7 +106,6 @@ void ConvNode::forward(Context *ctx, PassKind kind) const {
       } // H
     } // W
   } // C
-
   } // N
 }
 
@@ -143,16 +140,14 @@ void ConvNode::backward(Context *ctx) const {
             ssize_t oy = y + fy;
 
             // Ignore index access below zero (this is due to padding).
-            if (ox < 0 || oy < 0)
+            if (ox < 0 || oy < 0 || ox >= odim.h || oy >= odim.w)
               continue;
 
-            if (outG.isInBounds({0u, (size_t)ox, (size_t)oy, 0u})) {
               for (size_t fd = 0; fd < idim.c; fd++) {
                 filterG.at({d, fx, fy, fd}) +=
                     inW.at({0u, (size_t)ox, (size_t)oy, fd}) * chainGrad;
                 inG.at({n, (size_t)ox, (size_t)oy, fd}) +=
                     filterW.at({d, fx, fy, fd}) * chainGrad;
-              }
             }
           }
         }
@@ -161,7 +156,6 @@ void ConvNode::backward(Context *ctx) const {
       } // H
     } // W
   } // C
-
   } // N
 }
 
@@ -242,10 +236,9 @@ void MaxPoolNode::forwardMax(Context *ctx) const {
             ssize_t oy = y + fy;
 
             // Ignore index access below zero (this is due to padding).
-            if (ox < 0 || oy < 0)
+            if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w)
               continue;
 
-            if (inW.isInBounds({0u, (size_t)ox, (size_t)oy, 0u})) {
               FloatTy val = inW.at({n, (size_t)ox, (size_t)oy, z});
 
               if (first || (val >= max)) {
@@ -253,7 +246,6 @@ void MaxPoolNode::forwardMax(Context *ctx) const {
                 max = val;
                 maxX = ox;
                 maxY = oy;
-              }
             }
           }
         }
@@ -327,12 +319,10 @@ void MaxPoolNode::forwardAvg(Context *ctx) const {
             ssize_t oy = y + fy;
 
             // Ignore index access below zero (this is due to padding).
-            if (ox < 0 || oy < 0)
+            if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w)
               continue;
 
-            if (inW.isInBounds({0, (size_t)ox, (size_t)oy, 0})) {
               sum += inW.at({n, (size_t)ox, (size_t)oy, z});
-            }
           }
         }
         outW.at({n, ax, ay, z}) = sum / filterArea;
@@ -345,6 +335,7 @@ void MaxPoolNode::forwardAvg(Context *ctx) const {
 
 void MaxPoolNode::backwardAvg(Context *ctx) const {
   ShapeNHWC odim = dims(ctx);
+  ShapeNHWC idim = input_->dims(ctx);
   auto inG = input_->getGradHandle(ctx);
   auto outG = getGradHandle(ctx);
   FloatTy filterArea = filterSize_ * filterSize_;
@@ -367,12 +358,10 @@ void MaxPoolNode::backwardAvg(Context *ctx) const {
             ssize_t oy = y + fy;
 
             // Ignore index access below zero (this is due to padding).
-            if (ox < 0 || oy < 0)
+            if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w)
               continue;
 
-            if (inG.isInBounds({0, (size_t)ox, (size_t)oy, z})) {
               inG.at({n, (size_t)ox, (size_t)oy, z}) += dy;
-            }
           }
         }
       } // H
