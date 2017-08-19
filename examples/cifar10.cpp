@@ -102,7 +102,7 @@ void testCIFAR10() {
   std::cout << "Training.\n";
 
   for (int iter = 0; iter < 100000; iter++) {
-    std::cout << "Training - iteration #" << iter << " ";
+    std::cout << "Training - iteration #" << iter << "\n";
     TimerGuard reportTime(reportRate * minibatchSize);
 
     // Bind the images tensor to the input array A, and the labels tensor

@@ -171,8 +171,6 @@ void Network::updateForwardBackward(Context *ctx, NodeBase *root,
                                     size_t sampleIdx,
                                     ArrayRef<Variable *> vars,
                                     ArrayRef<Tensor *> inputs) {
-  std::cout << "updateForwardBackward " << sampleIdx << " " << "\n";
-
   TopologicalSortPass TPS;
   root->visit(&TPS);
   auto order = TPS.getOrder();
