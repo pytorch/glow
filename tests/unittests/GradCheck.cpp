@@ -39,7 +39,6 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   auto *B = N.createVariable({1, numInputElem}, ElemKind::FloatTy);
   auto *Exp = N.createVariable({1, numOutputElem}, ElemKind::FloatTy);
 
-
   NodeBase *FA = N.createFullyConnectedNode(A, numOutputElem / 2);
   FA = N.createRELUNode(FA);
 
@@ -60,7 +59,6 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
 
   // Train the network.
   N.train(RN, 10, {A, Exp}, {&inputs, &outputs});
-
 
   // Clear the gradients of the first layer.
   A->getGradHandle(N.getMainContext()).clear();
@@ -106,7 +104,6 @@ TEST(Network, gradientCheck_Conv) {
   auto *A = N.createVariable({1, numDim, numDim, 1}, ElemKind::FloatTy);
   auto *Exp = N.createVariable({1, numOutputElem}, ElemKind::FloatTy);
 
-
   NodeBase *O = N.createConvNode(A, 16, 5, 1, 2);
   O = N.createMaxPoolNode(O, MaxPoolNode::OpKind::kMax, 3, 3, 0);
   O = N.createFullyConnectedNode(O, numOutputElem);
@@ -116,7 +113,6 @@ TEST(Network, gradientCheck_Conv) {
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
 
-
   auto inputsH = inputs.getHandle<FloatTy>();
   auto outputsH = outputs.getHandle<FloatTy>();
 
@@ -125,7 +121,6 @@ TEST(Network, gradientCheck_Conv) {
 
   // Train the network.
   N.train(RN, 10, {A, Exp}, {&inputs, &outputs});
-
 
   // Clear the gradients of the first layer.
   A->getGradHandle(N.getMainContext()).clear();
@@ -173,14 +168,12 @@ TEST(Network, gradientCheck_AvgPool) {
   auto *A = N.createVariable({1, numDim, numDim, 1}, ElemKind::FloatTy);
   auto *Exp = N.createVariable({1, numOutputElem}, ElemKind::FloatTy);
 
-
   NodeBase *O = N.createMaxPoolNode(A, MaxPoolNode::OpKind::kAvg, 3, 3, 0);
   O = N.createFullyConnectedNode(O, numOutputElem);
   auto *RN = N.createRegressionNode(O, Exp);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
-
 
   auto inputsH = inputs.getHandle<FloatTy>();
   auto outputsH = outputs.getHandle<FloatTy>();
@@ -190,7 +183,6 @@ TEST(Network, gradientCheck_AvgPool) {
 
   // Train the network.
   N.train(RN, 10, {A, Exp}, {&inputs, &outputs});
-
 
   // Clear the gradients of the first layer.
   A->getGradHandle(N.getMainContext()).clear();
@@ -237,7 +229,6 @@ TEST(Network, gradientCheck_batchNorm) {
 
   auto *A = N.createVariable({1, numDim, numDim, 3}, ElemKind::FloatTy);
   auto *Exp = N.createVariable({1, numOutputElem}, ElemKind::FloatTy);
-
 
   NodeBase *O = N.createBatchNormalizationNode(A, 3, 0.0001, 0.9);
   O = N.createReshapeNode(O, {1, numDim * numDim * 3});

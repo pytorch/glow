@@ -32,8 +32,10 @@ void ConvNode::init(Context *ctx) const {
   size_t outsx = ((idim.h + pad_ * 2 - filterSize_) / stride_ + 1);
   size_t outsy = ((idim.w + pad_ * 2 - filterSize_) / stride_ + 1);
 
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, {idim.n, outsx, outsy, outDepth_});
-  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {idim.n, outsx, outsy, outDepth_});
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,
+                      {idim.n, outsx, outsy, outDepth_});
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy,
+                      {idim.n, outsx, outsy, outDepth_});
 
   std::vector<size_t> biasDim = {outDepth_};
   ctx->allocateTensor(&biasW_, ElemKind::FloatTy, biasDim,
@@ -73,40 +75,39 @@ void ConvNode::forward(Context *ctx, PassKind kind) const {
   // For each input in the batch:
   for (size_t n = 0; n < idim.n; n++) {
 
+    // For each layer in the output tensor:
+    for (size_t d = 0; d < odim.c; d++) {
 
-  // For each layer in the output tensor:
-  for (size_t d = 0; d < odim.c; d++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t y = -ssize_t(pad_);
+      for (size_t ay = 0; ay < odim.w; y += stride_, ay++) {
+        ssize_t x = -ssize_t(pad_);
+        for (size_t ax = 0; ax < odim.h; x += stride_, ax++) {
 
-    // For each convolution 'jump' in the input tensor:
-    ssize_t y = -ssize_t(pad_);
-    for (size_t ay = 0; ay < odim.w; y += stride_, ay++) {
-      ssize_t x = -ssize_t(pad_);
-      for (size_t ax = 0; ax < odim.h; x += stride_, ax++) {
+          // For each element in the convolution-filter:
+          FloatTy sum = 0;
+          for (size_t fy = 0; fy < filterSize_; fy++) {
+            for (size_t fx = 0; fx < filterSize_; fx++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
 
-        // For each element in the convolution-filter:
-        FloatTy sum = 0;
-        for (size_t fy = 0; fy < filterSize_; fy++) {
-          for (size_t fx = 0; fx < filterSize_; fx++) {
-            ssize_t ox = x + fx;
-            ssize_t oy = y + fy;
-
-            // Ignore index access below zero (this is due to padding).
-            if (ox < 0 || oy < 0 || ox >= odim.h || oy >= odim.w)
-              continue;
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= odim.h || oy >= odim.w)
+                continue;
 
               for (size_t fd = 0; fd < idim.c; fd++) {
                 sum += filterW.at({d, fx, fy, fd}) *
                        inW.at({n, (size_t)ox, (size_t)oy, fd});
+              }
             }
           }
-        }
 
-        sum += biasW.at({d});
-        outW.at({n, ax, ay, d}) = sum;
-      } // H
-    } // W
-  } // C
-  } // N
+          sum += biasW.at({d});
+          outW.at({n, ax, ay, d}) = sum;
+        } // H
+      }   // W
+    }     // C
+  }       // N
 }
 
 void ConvNode::backward(Context *ctx) const {
@@ -122,41 +123,41 @@ void ConvNode::backward(Context *ctx) const {
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
 
-  // Compute the gradient. For each layer in the output tensor:
-  for (size_t d = 0; d < odim.c; d++) {
+    // Compute the gradient. For each layer in the output tensor:
+    for (size_t d = 0; d < odim.c; d++) {
 
-    // For each convolution 'jump' in the input tensor:
-    ssize_t y = -ssize_t(pad_);
-    for (size_t ay = 0; ay < ssize_t(odim.w); y += stride_, ay++) {
-      ssize_t x = -ssize_t(pad_);
-      for (size_t ax = 0; ax < ssize_t(odim.h); x += stride_, ax++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t y = -ssize_t(pad_);
+      for (size_t ay = 0; ay < ssize_t(odim.w); y += stride_, ay++) {
+        ssize_t x = -ssize_t(pad_);
+        for (size_t ax = 0; ax < ssize_t(odim.h); x += stride_, ax++) {
 
-        FloatTy chainGrad = outG.at({n, ax, ay, d});
+          FloatTy chainGrad = outG.at({n, ax, ay, d});
 
-        // For each element in the convolution-filter:
-        for (size_t fy = 0; fy < filterSize_; fy++) {
-          for (size_t fx = 0; fx < filterSize_; fx++) {
-            ssize_t ox = x + fx;
-            ssize_t oy = y + fy;
+          // For each element in the convolution-filter:
+          for (size_t fy = 0; fy < filterSize_; fy++) {
+            for (size_t fx = 0; fx < filterSize_; fx++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
 
-            // Ignore index access below zero (this is due to padding).
-            if (ox < 0 || oy < 0 || ox >= odim.h || oy >= odim.w)
-              continue;
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= odim.h || oy >= odim.w)
+                continue;
 
               for (size_t fd = 0; fd < idim.c; fd++) {
                 filterG.at({d, fx, fy, fd}) +=
                     inW.at({0u, (size_t)ox, (size_t)oy, fd}) * chainGrad;
                 inG.at({n, (size_t)ox, (size_t)oy, fd}) +=
                     filterW.at({d, fx, fy, fd}) * chainGrad;
+              }
             }
           }
-        }
 
-        biasG.at({d}) += chainGrad;
-      } // H
-    } // W
-  } // C
-  } // N
+          biasG.at({d}) += chainGrad;
+        } // H
+      }   // W
+    }     // C
+  }       // N
 }
 
 void ConvNode::updateWeights(Network *N_, Tensor *filter, Tensor *bias) {
@@ -178,14 +179,18 @@ void MaxPoolNode::init(Context *ctx) const {
   size_t outsx = ((idim.w + pad_ * 2 - filterSize_) / stride_ + 1);
   size_t outsy = ((idim.h + pad_ * 2 - filterSize_) / stride_ + 1);
 
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, {idim.n, outsx, outsy, idim.c});
-  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {idim.n, outsx, outsy, idim.c});
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,
+                      {idim.n, outsx, outsy, idim.c});
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy,
+                      {idim.n, outsx, outsy, idim.c});
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
   if (kind_ == OpKind::kMax) {
-    ctx->allocateTensor(&srcX_, ElemKind::IndexTy, {idim.n, outsx, outsy, idim.c});
-    ctx->allocateTensor(&srcY_, ElemKind::IndexTy, {idim.n, outsx, outsy, idim.c});
+    ctx->allocateTensor(&srcX_, ElemKind::IndexTy,
+                        {idim.n, outsx, outsy, idim.c});
+    ctx->allocateTensor(&srcY_, ElemKind::IndexTy,
+                        {idim.n, outsx, outsy, idim.c});
   }
 }
 
@@ -217,27 +222,27 @@ void MaxPoolNode::forwardMax(Context *ctx) const {
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
 
-  // For each layer in the output tensor:
-  for (size_t z = 0; z < idim.c; z++) {
-    // For each convolution 'jump' in the input tensor:
-    ssize_t y = -ssize_t(pad_);
-    for (size_t ay = 0; ay < odim.w; y += stride_, ay++) {
-      ssize_t x = -ssize_t(pad_);
-      for (size_t ax = 0; ax < odim.h; x += stride_, ax++) {
-        size_t maxX = x;
-        size_t maxY = y;
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < idim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t y = -ssize_t(pad_);
+      for (size_t ay = 0; ay < odim.w; y += stride_, ay++) {
+        ssize_t x = -ssize_t(pad_);
+        for (size_t ax = 0; ax < odim.h; x += stride_, ax++) {
+          size_t maxX = x;
+          size_t maxY = y;
 
-        bool first = true;
-        FloatTy max = 0;
+          bool first = true;
+          FloatTy max = 0;
 
-        for (size_t fy = 0; fy < filterSize_; fy++) {
-          for (size_t fx = 0; fx < filterSize_; fx++) {
-            ssize_t ox = x + fx;
-            ssize_t oy = y + fy;
+          for (size_t fy = 0; fy < filterSize_; fy++) {
+            for (size_t fx = 0; fx < filterSize_; fx++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
 
-            // Ignore index access below zero (this is due to padding).
-            if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w)
-              continue;
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w)
+                continue;
 
               FloatTy val = inW.at({n, (size_t)ox, (size_t)oy, z});
 
@@ -246,18 +251,18 @@ void MaxPoolNode::forwardMax(Context *ctx) const {
                 max = val;
                 maxX = ox;
                 maxY = oy;
+              }
             }
           }
-        }
 
-        assert(!first && "Max value is uninitialized");
-        SX.at({n, ax, ay, z}) = maxX;
-        SY.at({n, ax, ay, z}) = maxY;
-        outW.at({n, ax, ay, z}) = max;
-      } // H
-    } // W
-  } // C
-  } // N
+          assert(!first && "Max value is uninitialized");
+          SX.at({n, ax, ay, z}) = maxX;
+          SY.at({n, ax, ay, z}) = maxY;
+          outW.at({n, ax, ay, z}) = max;
+        } // H
+      }   // W
+    }     // C
+  }       // N
 }
 
 void MaxPoolNode::backwardMax(Context *ctx) const {
@@ -271,23 +276,23 @@ void MaxPoolNode::backwardMax(Context *ctx) const {
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
 
-  // Compute the gradient. For each layer in the output tensor:
-  for (size_t z = 0; z < odim.c; z++) {
+    // Compute the gradient. For each layer in the output tensor:
+    for (size_t z = 0; z < odim.c; z++) {
 
-    // For each convolution 'jump' in the input tensor:
-    for (size_t ay = 0; ay < odim.w; ay++) {
-      for (size_t ax = 0; ax < odim.h; ax++) {
+      // For each convolution 'jump' in the input tensor:
+      for (size_t ay = 0; ay < odim.w; ay++) {
+        for (size_t ax = 0; ax < odim.h; ax++) {
 
-        FloatTy chainGrad = outG.at({n, (size_t)ax, (size_t)ay, z});
+          FloatTy chainGrad = outG.at({n, (size_t)ax, (size_t)ay, z});
 
-        size_t maxX = SX.at({n, (size_t)ax, (size_t)ay, z});
-        size_t maxY = SY.at({n, (size_t)ax, (size_t)ay, z});
+          size_t maxX = SX.at({n, (size_t)ax, (size_t)ay, z});
+          size_t maxY = SY.at({n, (size_t)ax, (size_t)ay, z});
 
-        inG.at({n, maxX, maxY, z}) += chainGrad;
-      } // H
-    } // W
-  } // C
-  } // N
+          inG.at({n, maxX, maxY, z}) += chainGrad;
+        } // H
+      }   // W
+    }     // C
+  }       // N
 }
 
 void MaxPoolNode::forwardAvg(Context *ctx) const {
@@ -304,31 +309,31 @@ void MaxPoolNode::forwardAvg(Context *ctx) const {
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
 
-  // For each layer in the output tensor:
-  for (size_t z = 0; z < idim.c; z++) {
-    // For each convolution 'jump' in the input tensor:
-    ssize_t y = -ssize_t(pad_);
-    for (size_t ay = 0; ay < odim.w; y += stride_, ay++) {
-      ssize_t x = -ssize_t(pad_);
-      for (size_t ax = 0; ax < odim.h; x += stride_, ax++) {
-        FloatTy sum = 0;
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < idim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t y = -ssize_t(pad_);
+      for (size_t ay = 0; ay < odim.w; y += stride_, ay++) {
+        ssize_t x = -ssize_t(pad_);
+        for (size_t ax = 0; ax < odim.h; x += stride_, ax++) {
+          FloatTy sum = 0;
 
-        for (size_t fy = 0; fy < filterSize_; fy++) {
-          for (size_t fx = 0; fx < filterSize_; fx++) {
-            ssize_t ox = x + fx;
-            ssize_t oy = y + fy;
+          for (size_t fy = 0; fy < filterSize_; fy++) {
+            for (size_t fx = 0; fx < filterSize_; fx++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
 
-            // Ignore index access below zero (this is due to padding).
-            if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w)
-              continue;
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w)
+                continue;
 
               sum += inW.at({n, (size_t)ox, (size_t)oy, z});
+            }
           }
-        }
-        outW.at({n, ax, ay, z}) = sum / filterArea;
-      } // H
-    } // W
-  } // C
+          outW.at({n, ax, ay, z}) = sum / filterArea;
+        } // H
+      }   // W
+    }     // C
 
   } // N
 }
@@ -343,31 +348,31 @@ void MaxPoolNode::backwardAvg(Context *ctx) const {
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
 
-  // For each layer in the output tensor:
-  for (size_t z = 0; z < odim.c; z++) {
-    // For each convolution 'jump' in the input tensor:
-    ssize_t y = -ssize_t(pad_);
-    for (size_t ay = 0; ay < odim.w; y += stride_, ay++) {
-      ssize_t x = -ssize_t(pad_);
-      for (size_t ax = 0; ax < odim.h; x += stride_, ax++) {
-        FloatTy dy = outG.at({n, ax, ay, z}) / filterArea;
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < odim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t y = -ssize_t(pad_);
+      for (size_t ay = 0; ay < odim.w; y += stride_, ay++) {
+        ssize_t x = -ssize_t(pad_);
+        for (size_t ax = 0; ax < odim.h; x += stride_, ax++) {
+          FloatTy dy = outG.at({n, ax, ay, z}) / filterArea;
 
-        for (size_t fy = 0; fy < filterSize_; fy++) {
-          for (size_t fx = 0; fx < filterSize_; fx++) {
-            ssize_t ox = x + fx;
-            ssize_t oy = y + fy;
+          for (size_t fy = 0; fy < filterSize_; fy++) {
+            for (size_t fx = 0; fx < filterSize_; fx++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
 
-            // Ignore index access below zero (this is due to padding).
-            if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w)
-              continue;
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w)
+                continue;
 
               inG.at({n, (size_t)ox, (size_t)oy, z}) += dy;
+            }
           }
-        }
-      } // H
-    } // W
-  } // C
-  } // N
+        } // H
+      }   // W
+    }     // C
+  }       // N
 }
 
 FullyConnectedNode::FullyConnectedNode(Network *N, NodeBase *input,
@@ -379,7 +384,8 @@ void FullyConnectedNode::init(Context *ctx) const {
 
   auto idim = flattenCdr(input_->dims(ctx));
 
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, {idim.first, outDepth_});
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,
+                      {idim.first, outDepth_});
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {idim.first, outDepth_});
 
   std::vector<size_t> biasDim = {outDepth_};
@@ -425,13 +431,13 @@ void FullyConnectedNode::forward(Context *ctx, PassKind kind) const {
     for (size_t i = 0; i < odim.second; i++) {
 
       FloatTy sum = 0;
-    for (size_t j = 0; j < inputSize; j++) {
-      sum += inW.raw(base + j) * currFilterW.at({i, j});
-    }
+      for (size_t j = 0; j < inputSize; j++) {
+        sum += inW.raw(base + j) * currFilterW.at({i, j});
+      }
 
-    sum += biasW.at({i});
-    outW.at({n, i}) = sum;
-  }
+      sum += biasW.at({i});
+      outW.at({n, i}) = sum;
+    }
   } // N
 }
 
@@ -455,15 +461,15 @@ void FullyConnectedNode::backward(Context *ctx) const {
     for (size_t i = 0; i < odim.second; i++) {
       FloatTy chainGrad = outG.at({n, i});
 
-    for (size_t j = 0, e = inSize; j < e; j++) {
-      // Input gradient:
-      inG.raw(base + j) += filterW.at({i, j}) * chainGrad;
-      // Param gradient:
-      filterG.at({i, j}) += inW.raw(base + j) * chainGrad;
-    }
+      for (size_t j = 0, e = inSize; j < e; j++) {
+        // Input gradient:
+        inG.raw(base + j) += filterW.at({i, j}) * chainGrad;
+        // Param gradient:
+        filterG.at({i, j}) += inW.raw(base + j) * chainGrad;
+      }
 
-    biasG.at({i}) += chainGrad;
-  }
+      biasG.at({i}) += chainGrad;
+    }
   } // N
 }
 
@@ -551,26 +557,26 @@ void SoftMaxNode::forward(Context *ctx, PassKind kind) const {
   for (size_t n = 0; n < idim[0]; n++) {
     FloatTy max = inW.at({n, 0});
 
-  // Find Max.
+    // Find Max.
     for (size_t i = 0; i < idim[1]; i++) {
       max = std::max(max, inW.at({n, i}));
-  }
+    }
 
-  FloatTy sum = 0;
+    FloatTy sum = 0;
 
     // Compute exp.
     for (size_t i = 0; i < idim[1]; i++) {
       FloatTy e = std::exp(inW.at({n, i}) - max);
-    sum += e;
+      sum += e;
       EH.at({n, i}) = e;
-  }
+    }
 
-  // Normalize the output.
+    // Normalize the output.
     for (size_t i = 0; i < idim[1]; i++) {
       EH.at({n, i}) /= sum;
       outW.at({n, i}) = EH.at({n, i});
     }
-    
+
   } // N
 }
 
@@ -629,7 +635,6 @@ void RegressionNode::backward(Context *ctx) const {
       inG.at({n, i}) += dy;
     }
   } // N
-
 }
 
 MaxNode::MaxNode(Network *N, NodeBase *input) : input_(input) {}
@@ -673,7 +678,7 @@ void Variable::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) {
   assert(dims(ctx).drop_front() == dim.drop_front() && "Invalid slice size");
   /// Extract the n'th slice, that must be a tensor.
   size_t slc = sampleIdx % dim[0];
-   ctx->getTensor(&outputWeight_)->copyConsecutiveSlices(batch, slc);
+  ctx->getTensor(&outputWeight_)->copyConsecutiveSlices(batch, slc);
 }
 
 ConcatNode::ConcatNode(Network *N, ArrayRef<NodeBase *> inputs,

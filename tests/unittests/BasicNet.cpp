@@ -4,7 +4,6 @@
 #include "noether/Random.h"
 #include "noether/Tensor.h"
 
-
 #include "gtest/gtest.h"
 
 #include <iostream>
@@ -31,7 +30,6 @@ TEST(Network, learnSingleValue) {
   Tensor expected(ElemKind::FloatTy, {1, 4});
   inputs.getHandle<FloatTy>() = {0.15, 0.15, 0.15, 0.15};
   expected.getHandle<FloatTy>() = {0.9, 0.9, 0.9, 0.9};
-
 
   // Train the network. Learn 1000 batches.
   N.train(RN, 1000, {A, E}, {&inputs, &expected});
@@ -98,7 +96,8 @@ TEST(Network, learnXor) {
   for (size_t i = 0; i < numTests; i++) {
     int a = TS.at({i, 0});
     int b = TS.at({i, 1});
-    std::cout<<"a = " << a << " b = " << b << " => " << resH.at({i, 0}) << "\n";
+    std::cout << "a = " << a << " b = " << b << " => " << resH.at({i, 0})
+              << "\n";
     EXPECT_NEAR(resH.at({i, 0}), (a ^ b), 0.1);
   }
 }
@@ -108,7 +107,6 @@ TEST(Network, regression) {
   // input vector, adds one to it and places the result in the second element of
   // the output vector.
   const int numInputs = 4;
-
 
   Network N;
   auto *A = N.createVariable({1, numInputs}, ElemKind::FloatTy);
@@ -122,7 +120,6 @@ TEST(Network, regression) {
   Tensor expected(ElemKind::FloatTy, {1, numInputs});
   auto I = inputs.getHandle<FloatTy>();
   auto E = expected.getHandle<FloatTy>();
-
 
   // Train the network:
   for (int iter = 0; iter < 1000; iter++) {
@@ -265,7 +262,6 @@ TEST(Network, learnSingleValueConcat) {
   Variable *A = N.createVariable({1, 4}, ElemKind::FloatTy);
   Variable *Ex = N.createVariable({1, 8}, ElemKind::FloatTy);
 
-
   NodeBase *L = N.createFullyConnectedNode(A, 4);
   L = N.createRELUNode(L);
 
@@ -285,7 +281,6 @@ TEST(Network, learnSingleValueConcat) {
 
   // Train the network:
   N.train(RN, 1000, {A, B, Ex}, {&inputs, &inputs, &expected});
-
 
   // Testing the output vector.
   auto res = N.infer(RN, {A}, {&inputs});

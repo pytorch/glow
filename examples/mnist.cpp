@@ -97,8 +97,7 @@ void testMNIST() {
     // On each training iteration take an input from imageInputs and update
     // the input variable A, and add take a corresponding label and update the
     // softmax layer.
-    N.train(SM, reportRate, {A, selected},
-            {&imageInputs, &labelInputs});
+    N.train(SM, reportRate, {A, selected}, {&imageInputs, &labelInputs});
   }
   std::cout << "Validating.\n";
 
@@ -129,8 +128,6 @@ void testMNIST() {
   }
 
   assert(rightAnswer >= 6 && "Did not classify as many digits as expected");
-
-
 }
 
 int main() {

@@ -123,9 +123,9 @@ void testCIFAR10() {
         score += guess == correct;
 
         if ((iter < 10) && i == 0) {
-          //T.getHandle<FloatTy>().dump("softmax: "," ");
-          std::cout << iter << ") Expected : " << textualLabels[correct] << " got " <<
-          textualLabels[guess] << "\n";
+          // T.getHandle<FloatTy>().dump("softmax: "," ");
+          std::cout << iter << ") Expected : " << textualLabels[correct]
+                    << " got " << textualLabels[guess] << "\n";
         }
       }
     }

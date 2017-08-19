@@ -150,7 +150,7 @@ public:
   bool shouldVisit(NodeBase *N) override { return !visited.count(N); }
 
   TopologicalSortPass() = default;
-  
+
   void post(NodeBase *N) override {
     if (!visited.insert(N).second)
       return;
@@ -168,34 +168,32 @@ struct PrinterPass : NodeVisitor {
 } // namespace
 
 void Network::updateForwardBackward(Context *ctx, NodeBase *root,
-                                    size_t sampleIdx,
-                                    ArrayRef<Variable *> vars,
+                                    size_t sampleIdx, ArrayRef<Variable *> vars,
                                     ArrayRef<Tensor *> inputs) {
   TopologicalSortPass TPS;
   root->visit(&TPS);
   auto order = TPS.getOrder();
 
-    /// Update the inputs:
-    for (int i = 0, e = vars.size(); i < e; i++) {
-        vars[i]->updateInputs(ctx, inputs[i], sampleIdx);
-    }
+  /// Update the inputs:
+  for (int i = 0, e = vars.size(); i < e; i++) {
+    vars[i]->updateInputs(ctx, inputs[i], sampleIdx);
+  }
 
-    for (auto it = order.begin(), e = order.end(); it != e; it++) {
-      // Prepare for the next backprop iteration by zeroing the gradient
-      // tensors. Notice that this only zeros the temporary grad tensors that
-      // match the output tensors but not the gradient tensors that are
-      // paired with filters. These are cleared during the learning process
-      // at the end of the batch.
-      (*it)->clearOutputGrad(ctx);
+  for (auto it = order.begin(), e = order.end(); it != e; it++) {
+    // Prepare for the next backprop iteration by zeroing the gradient
+    // tensors. Notice that this only zeros the temporary grad tensors that
+    // match the output tensors but not the gradient tensors that are
+    // paired with filters. These are cleared during the learning process
+    // at the end of the batch.
+    (*it)->clearOutputGrad(ctx);
 
-      // Perform the learning phase.
-      (*it)->forward(ctx, NodeBase::PassKind::kTraining);
-    }
+    // Perform the learning phase.
+    (*it)->forward(ctx, NodeBase::PassKind::kTraining);
+  }
 
-    for (auto it = order.rbegin(), e = order.rend(); it != e; it++) {
-      (*it)->backward(ctx);
-    }
-
+  for (auto it = order.rbegin(), e = order.rend(); it != e; it++) {
+    (*it)->backward(ctx);
+  }
 }
 
 void Network::learnGradient(Context *ctx, size_t batchSize) {
@@ -230,8 +228,8 @@ static unsigned calculateNumThreads(unsigned numCores, unsigned numPackets) {
 /// Train the network starting with the node \p root. Update the vars in \p vars
 /// with the values \p inputs. Train the network by processing \p numBatches
 /// batches.
-void Network::train(NodeBase *root, size_t numBatches, ArrayRef<Variable *> vars,
-                    ArrayRef<Tensor *> inputs) {
+void Network::train(NodeBase *root, size_t numBatches,
+                    ArrayRef<Variable *> vars, ArrayRef<Tensor *> inputs) {
   assert(inputs.size() && "No inputs");
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
@@ -244,7 +242,7 @@ void Network::train(NodeBase *root, size_t numBatches, ArrayRef<Variable *> vars
 
   std::vector<std::thread> threads;
 
-  for (size_t i = 0; i < numBatches/numThreads; i++) {
+  for (size_t i = 0; i < numBatches / numThreads; i++) {
     // Launch threads that update the different chunks in the batch:
     for (int t = 0; t < numThreads; t++) {
       // Update the network inputs and perform the forward and backwards pass.

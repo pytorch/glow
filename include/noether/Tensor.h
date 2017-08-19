@@ -31,7 +31,6 @@ struct ShapeNHWC {
   }
 };
 
-
 constexpr unsigned max_tensor_dimensions = 6;
 
 /// This is the default floating point type used for training.
