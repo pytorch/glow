@@ -1,6 +1,6 @@
-# Noether
+# Glow
 
-Noether is a machine learning compiler and inference engine for hardware
+Glow is a machine learning compiler and inference engine for hardware
 accelerators. This library is designed to be used as a backend for some machine
 learning framework. The compiler is designed to allow state of the art compiler
 optimizations on neural network graphs.
@@ -22,7 +22,7 @@ command:
 Next, create a build directory and run cmake on the source directory:
 
   ```
-  mkdir build; cmake -DCMAKE_BUILD_TYPE=Debug ../noether/
+  mkdir build; cmake -DCMAKE_BUILD_TYPE=Debug ../glow/
   ```
 
 It is possible to configure and build the compiler with any CMake generator,

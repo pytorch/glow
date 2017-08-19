@@ -1,10 +1,10 @@
-#include "noether/Image.h"
-#include "noether/Nodes.h"
-#include "noether/Tensor.h"
+#include "glow/Image.h"
+#include "glow/Nodes.h"
+#include "glow/Tensor.h"
 
-using namespace noether;
+using namespace glow;
 
-#if (NOETHER_PNG_FOUND)
+#if (GLOW_PNG_FOUND)
 #include <png.h>
 
 /// Reads a png image. \returns True if an error occurred.

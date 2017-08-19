@@ -1,13 +1,13 @@
-#include "noether/Network.h"
-#include "noether/Image.h"
-#include "noether/Nodes.h"
-#include "noether/Tensor.h"
+#include "glow/Network.h"
+#include "glow/Image.h"
+#include "glow/Nodes.h"
+#include "glow/Tensor.h"
 
 #include <iostream>
 #include <thread>
 #include <unordered_set>
 
-using namespace noether;
+using namespace glow;
 
 Context::~Context() {
   for (auto t : tensors_) {

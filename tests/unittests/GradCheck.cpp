@@ -1,13 +1,13 @@
-#include "noether/Image.h"
-#include "noether/Network.h"
-#include "noether/Nodes.h"
-#include "noether/Tensor.h"
+#include "glow/Image.h"
+#include "glow/Network.h"
+#include "glow/Nodes.h"
+#include "glow/Tensor.h"
 
 #include "gtest/gtest.h"
 
 #include <iostream>
 
-using namespace noether;
+using namespace glow;
 
 /// Compute the regression loss for the tensor \p X with regard to Y.
 FloatTy computeL2Loss(Tensor *X, Tensor *Y) {

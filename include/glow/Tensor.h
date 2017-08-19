@@ -1,10 +1,10 @@
-#ifndef NOETHER_TENSOR_H
-#define NOETHER_TENSOR_H
+#ifndef GLOW_TENSOR_H
+#define GLOW_TENSOR_H
 
 #include "Config.h"
 
-#include "noether/ADT.h"
-#include "noether/Random.h"
+#include "glow/ADT.h"
+#include "glow/Random.h"
 
 #include <algorithm>
 #include <cassert>
@@ -15,7 +15,7 @@
 #include <iostream>
 #include <numeric>
 
-namespace noether {
+namespace glow {
 
 struct ShapeNHWC {
   size_t n;
@@ -559,11 +559,11 @@ template <class ElemTy> Handle<ElemTy> Tensor::getHandle() {
   return Handle<ElemTy>(this);
 }
 
-} // namespace noether
+} // namespace glow
 
 namespace {
-using noether::ArrayRef;
-using noether::Handle;
+using glow::ArrayRef;
+using glow::Handle;
 /// Concats or splits tensors.
 /// This method concats or extracts a slice from a tensor.
 /// \p sliceCoor and \p fusedCoor are temporary storage that the function uses
@@ -602,7 +602,7 @@ void insertTensorsImpl(std::vector<size_t> &sliceCoor,
 }
 } // namespace
 
-namespace noether {
+namespace glow {
 /// Insert the tensor \p slice into \p fused. Insert at location \p offset.
 /// The tensors must be of the right dimensions.
 template <class ElemTy>
@@ -622,6 +622,6 @@ void extractTensors(Handle<ElemTy> &slice, Handle<ElemTy> &fused,
   auto fusedCoor = fused.dims().vec();
   insertTensorsImpl(sliceCoor, fusedCoor, slice, fused, false, offset, 0);
 }
-} // namespace noether
+} // namespace glow
 
-#endif // NOETHER_TENSOR_H
+#endif // GLOW_TENSOR_H

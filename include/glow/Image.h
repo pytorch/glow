@@ -1,15 +1,15 @@
-#ifndef NOETHER_IMAGE_H
-#define NOETHER_IMAGE_H
+#ifndef GLOW_IMAGE_H
+#define GLOW_IMAGE_H
 
-#include "noether/Node.h"
-#include "noether/Tensor.h"
+#include "glow/Node.h"
+#include "glow/Tensor.h"
 
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <string>
 
-namespace noether {
+namespace glow {
 
 class PNGNode final : public NodeBase {
 public:
@@ -30,6 +30,6 @@ public:
   void visit(NodeVisitor *visitor) override;
 };
 
-} // namespace noether
+} // namespace glow
 
-#endif // NOETHER_IMAGE_H
+#endif // GLOW_IMAGE_H

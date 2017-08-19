@@ -1,8 +1,8 @@
-#include "noether/Image.h"
-#include "noether/Network.h"
-#include "noether/Nodes.h"
-#include "noether/Support.h"
-#include "noether/Tensor.h"
+#include "glow/Image.h"
+#include "glow/Network.h"
+#include "glow/Nodes.h"
+#include "glow/Support.h"
+#include "glow/Tensor.h"
 
 #include <cassert>
 #include <cstddef>
@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-using namespace noether;
+using namespace glow;
 
 NodeBase *createSimpleNet(Network &N, NodeBase *input, NodeBase *expected) {
   auto *CV0 = N.createConvNode(input, 16, 5, 1, 2);

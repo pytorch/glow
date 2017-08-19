@@ -1,8 +1,8 @@
-#ifndef NOETHER_NODES_H
-#define NOETHER_NODES_H
+#ifndef GLOW_NODES_H
+#define GLOW_NODES_H
 
-#include "noether/Node.h"
-#include "noether/Tensor.h"
+#include "glow/Node.h"
+#include "glow/Tensor.h"
 
 #include <cassert>
 #include <cmath>
@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace noether {
+namespace glow {
 
 class ConvNode final : public NodeBase {
   NodeBase *input_;
@@ -395,6 +395,6 @@ public:
   void visit(NodeVisitor *visitor) override;
 };
 
-} // namespace noether
+} // namespace glow
 
-#endif // NOETHER_NODES_H
+#endif // GLOW_NODES_H

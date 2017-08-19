@@ -1,14 +1,14 @@
-#include "noether/Image.h"
-#include "noether/Network.h"
-#include "noether/Nodes.h"
-#include "noether/Random.h"
-#include "noether/Tensor.h"
+#include "glow/Image.h"
+#include "glow/Network.h"
+#include "glow/Nodes.h"
+#include "glow/Random.h"
+#include "glow/Tensor.h"
 
 #include "gtest/gtest.h"
 
 #include <iostream>
 
-using namespace noether;
+using namespace glow;
 
 TEST(Network, learnSingleValue) {
   // Learning a single input vector.

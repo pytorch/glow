@@ -1,8 +1,8 @@
-#include "noether/Nodes.h"
-#include "noether/Network.h"
-#include "noether/Tensor.h"
+#include "glow/Nodes.h"
+#include "glow/Network.h"
+#include "glow/Tensor.h"
 
-using namespace noether;
+using namespace glow;
 
 /// Colllapse a tensor shape into two sizes: the first dimension and the size
 /// of the rest of the dimensions.

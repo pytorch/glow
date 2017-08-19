@@ -1,8 +1,8 @@
-#ifndef NOETHER_NODE_H
-#define NOETHER_NODE_H
+#ifndef GLOW_NODE_H
+#define GLOW_NODE_H
 
-#include "noether/Tensor.h"
-#include "noether/Train.h"
+#include "glow/Tensor.h"
+#include "glow/Train.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-namespace noether {
+namespace glow {
 
 class Network;
 class NodeBase;
@@ -89,6 +89,6 @@ public:
   /// \returns the gradient handle for the node output.
   Handle<FloatTy> getGradHandle(Context *ctx) const;
 };
-} // namespace noether
+} // namespace glow
 
-#endif // NOETHER_NODE_H
+#endif // GLOW_NODE_H

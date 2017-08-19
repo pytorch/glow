@@ -1,14 +1,14 @@
-#ifndef NOETHER_TRAIN_H
-#define NOETHER_TRAIN_H
+#ifndef GLOW_TRAIN_H
+#define GLOW_TRAIN_H
 
-#include "noether/ADT.h"
-#include "noether/Tensor.h"
+#include "glow/ADT.h"
+#include "glow/Tensor.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <unordered_map>
 
-namespace noether {
+namespace glow {
 
 class Tensor;
 
@@ -50,6 +50,6 @@ public:
   void train(Tensor *weights, Tensor *gradients, size_t batchSize);
 };
 
-} // namespace noether
+} // namespace glow
 
-#endif // NOETHER_TRAIN_H
+#endif // GLOW_TRAIN_H

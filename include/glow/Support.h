@@ -1,10 +1,10 @@
-#ifndef NOETHER_SUPPORT_H
-#define NOETHER_SUPPORT_H
+#ifndef GLOW_SUPPORT_H
+#define GLOW_SUPPORT_H
 
 #include <chrono>
 #include <iostream>
 
-namespace noether {
+namespace glow {
 
 /// A class for measuring the lifetime of some event
 /// and for rate calculation.
@@ -25,6 +25,6 @@ public:
   }
 };
 
-} // namespace noether
+} // namespace glow
 
-#endif // NOETHER_SUPPORT_H
+#endif // GLOW_SUPPORT_H

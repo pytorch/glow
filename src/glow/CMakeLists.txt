@@ -6,7 +6,7 @@ if (PNG_FOUND)
   include_directories(${PNG_INCLUDE_DIR})
 endif (PNG_FOUND)
 
-add_library (libNoether
+add_library (libGlow
                        ./Train.cpp
                        ./Image.cpp
                        ./Network.cpp

@@ -1,5 +1,5 @@
-#ifndef NOETHER_ADT_H
-#define NOETHER_ADT_H
+#ifndef GLOW_ADT_H
+#define GLOW_ADT_H
 
 #include <algorithm>
 #include <cassert>
@@ -8,7 +8,7 @@
 #include <iterator>
 #include <vector>
 
-namespace noether {
+namespace glow {
 
 /// ArrayRef - represent a constant reference to an array.
 /// Derived from LLVM's ArrayRef.
@@ -92,6 +92,6 @@ template <typename T> inline bool operator==(ArrayRef<T> LHS, ArrayRef<T> RHS) {
 template <typename T> inline bool operator!=(ArrayRef<T> LHS, ArrayRef<T> RHS) {
   return !(LHS == RHS);
 }
-} // namespace noether
+} // namespace glow
 
-#endif // NOETHER_ADT_H
+#endif // GLOW_ADT_H

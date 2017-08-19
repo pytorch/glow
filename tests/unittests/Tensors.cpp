@@ -1,4 +1,4 @@
-#include "noether/Tensor.h"
+#include "glow/Tensor.h"
 
 #include "gtest/gtest.h"
 
@@ -9,7 +9,7 @@
 #include <iostream>
 #include <string>
 
-using namespace noether;
+using namespace glow;
 
 TEST(Tensor, init) {
   std::cout << "Testing initialization.\n";

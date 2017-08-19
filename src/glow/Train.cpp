@@ -1,8 +1,8 @@
-#include "noether/Train.h"
-#include "noether/Network.h"
-#include "noether/Tensor.h"
+#include "glow/Train.h"
+#include "glow/Network.h"
+#include "glow/Tensor.h"
 
-using namespace noether;
+using namespace glow;
 
 Trainer::~Trainer() {
   for (auto &p : gsum_) {

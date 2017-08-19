@@ -1,8 +1,8 @@
-#include "noether/Image.h"
-#include "noether/Network.h"
-#include "noether/Nodes.h"
-#include "noether/Support.h"
-#include "noether/Tensor.h"
+#include "glow/Image.h"
+#include "glow/Network.h"
+#include "glow/Nodes.h"
+#include "glow/Support.h"
+#include "glow/Tensor.h"
 
 #include <cassert>
 #include <cstddef>
@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-using namespace noether;
+using namespace glow;
 
 const size_t mnistNumImages = 50000;
 

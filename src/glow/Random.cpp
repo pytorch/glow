@@ -1,5 +1,5 @@
-#include "noether/Random.h"
-using namespace noether;
+#include "glow/Random.h"
+using namespace glow;
 
 namespace {
 
@@ -139,6 +139,6 @@ const double randomVals[] = {
     -0.1148, -0.8300, 0.2279,  -0.4554, -0.7989, -0.0142, -0.9327, -0.7709};
 } // namespace
 
-double noether::nextRand() {
+double glow::nextRand() {
   return randomVals[(randomArrayIndex++) % numRandomVals];
 }

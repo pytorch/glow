@@ -1,8 +1,8 @@
-#include "noether/Node.h"
-#include "noether/Network.h"
-#include "noether/Tensor.h"
+#include "glow/Node.h"
+#include "glow/Network.h"
+#include "glow/Tensor.h"
 
-using namespace noether;
+using namespace glow;
 
 Tensor *NodeBase::getOutputWeight(Context *ctx) const {
   return ctx->getTensor(&outputWeight_);

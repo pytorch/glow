@@ -1,13 +1,13 @@
-#ifndef NOETHER_NETWORK_H
-#define NOETHER_NETWORK_H
+#ifndef GLOW_NETWORK_H
+#define GLOW_NETWORK_H
 
-#include "noether/Nodes.h"
-#include "noether/Train.h"
+#include "glow/Nodes.h"
+#include "glow/Train.h"
 
 #include <unordered_map>
 #include <vector>
 
-namespace noether {
+namespace glow {
 
 class NodeBase;
 
@@ -175,6 +175,6 @@ public:
   /// \returns a pointer to the main context.
   Context *getMainContext() { return state_[0]; }
 };
-} // namespace noether
+} // namespace glow
 
-#endif // NOETHER_NETWORK_H
+#endif // GLOW_NETWORK_H

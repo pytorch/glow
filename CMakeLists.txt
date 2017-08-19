@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0i6)
-project(Noether)
+project(Glow)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug CACHE STRING
@@ -16,8 +16,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -std=c++11 -Wall -march=native -ffast-math")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -std=c++11 -Wall -fsanitize=address -fno-omit-frame-pointer")
 
-set(NOETHER_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-set(NOETHER_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
+set(GLOW_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(GLOW_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
 set(TRAINING_TENSOR_ELEMENT_TYPE float)
 
@@ -26,15 +26,15 @@ include_directories(BEFORE
   ${CMAKE_CURRENT_SOURCE_DIR}/include
   )
 
-include_directories (${NOETHER_BINARY_DIR})
+include_directories (${GLOW_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-file(GLOB_RECURSE header_files include/noether/*.h)
+file(GLOB_RECURSE header_files include/glow/*.h)
 find_package(PNG)
 
 configure_file (
-  "${NOETHER_SOURCE_DIR}/include/Config.h.in"
-  "${NOETHER_BINARY_DIR}/Config.h"
+  "${GLOW_SOURCE_DIR}/include/Config.h.in"
+  "${GLOW_BINARY_DIR}/Config.h"
   )
 
 SET(LinkLibs "")
@@ -44,14 +44,14 @@ if (PNG_FOUND)
 endif (PNG_FOUND)
 
 
-SET(LinkLibs ${LinkLibs} libNoether libCaffe)
+SET(LinkLibs ${LinkLibs} libGlow libCaffe)
 
 enable_testing()
 add_subdirectory(caffe/)
-add_subdirectory(src/noether/)
+add_subdirectory(src/glow/)
 add_subdirectory(examples/)
 add_subdirectory(tests/)
 
-add_executable(noether noether.cpp ${header_files})
-target_link_libraries (noether LINK_PUBLIC ${LinkLibs})
+add_executable(glow glow.cpp ${header_files})
+target_link_libraries (glow LINK_PUBLIC ${LinkLibs})
 
