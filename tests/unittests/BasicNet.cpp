@@ -1,12 +1,13 @@
 #include "noether/Image.h"
 #include "noether/Network.h"
 #include "noether/Nodes.h"
+#include "noether/Random.h"
 #include "noether/Tensor.h"
+
 
 #include "gtest/gtest.h"
 
 #include <iostream>
-#include <random>
 
 using namespace noether;
 
@@ -151,17 +152,12 @@ unsigned numSamples = 100;
 /// Generate data in two classes. The circle of dots that's close to the axis is
 /// L0, and the rest of the dots, away from the axis are L1.
 void generateCircleData(Tensor &coordinates, Tensor &labels) {
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_real_distribution<> r_radius(0, 0.4);
-  std::uniform_real_distribution<> r_angle(0, 3.14159 * 2);
-
   auto C = coordinates.getHandle<FloatTy>();
   auto L = labels.getHandle<size_t>();
 
   for (size_t i = 0; i < numSamples / 2; i++) {
-    float r = r_radius(gen);
-    float a = r_angle(gen);
+    float r = nextRand() * 0.4;
+    float a = nextRand() * 3.141592 * 2;
     float y = r * sin(a);
     float x = r * cos(a);
 
@@ -169,8 +165,8 @@ void generateCircleData(Tensor &coordinates, Tensor &labels) {
     C.at({i * 2, 1u}) = y;
     L.at({i * 2, 0}) = 1;
 
-    r = r_radius(gen) + 0.8;
-    a = r_angle(gen);
+    r = nextRand() * 0.4 + 0.8;
+    a = nextRand() * 3.141592 * 2;
     y = r * sin(a);
     x = r * cos(a);
 
