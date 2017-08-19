@@ -62,14 +62,15 @@ void testMNIST() {
   unsigned numImages = loadMNIST(imageInputs, labelInputs);
   std::cout << "Loaded " << numImages << " images.\n";
 
+  unsigned minibatchSize = 10;
+
   // Construct the network:
   Network N;
-  N.getConfig().learningRate = 0.01;
+  N.getConfig().learningRate = 0.001;
   N.getConfig().momentum = 0.9;
-  N.getConfig().batchSize = 20;
   N.getConfig().L2Decay = 0.001;
 
-  auto *A = N.createVariable({28, 28, 1}, ElemKind::FloatTy);
+  auto *A = N.createVariable({minibatchSize, 28, 28, 1}, ElemKind::FloatTy);
   auto *CV0 = N.createConvNode(A, 16, 5, 1, 2);
   auto *RL0 = N.createRELUNode(CV0);
   auto *MP0 = N.createMaxPoolNode(RL0, MaxPoolNode::OpKind::kMax, 2, 2, 0);
@@ -81,48 +82,55 @@ void testMNIST() {
   auto *FCL1 = N.createFullyConnectedNode(MP1, 10);
   auto *RL2 = N.createRELUNode(FCL1);
 
-  auto *selected = N.createVariable({1}, ElemKind::IndexTy);
+  auto *selected = N.createVariable({minibatchSize, 1}, ElemKind::IndexTy);
 
   auto *SM = N.createSoftMaxNode(RL2, selected);
 
   // Report progress every this number of training iterations.
-  constexpr int reportRate = 100;
+  constexpr int reportRate = 10;
 
   std::cout << "Training.\n";
 
   for (int iter = 0; iter < 60; iter++) {
     std::cout << "Training - iteration #" << iter << " ";
-    TimerGuard reportTime(reportRate);
+    TimerGuard reportTime(reportRate * minibatchSize);
     // On each training iteration take an input from imageInputs and update
     // the input variable A, and add take a corresponding label and update the
     // softmax layer.
-    N.train(SM, reportRate / N.getConfig().batchSize, {A, selected},
+    N.train(SM, reportRate, {A, selected},
             {&imageInputs, &labelInputs});
   }
   std::cout << "Validating.\n";
 
   auto LIH = labelInputs.getHandle<size_t>();
-  auto IIH = imageInputs.getHandle<FloatTy>();
+
   // Check how many digits out of ten we can classify correctly.
   int rightAnswer = 0;
 
-  for (int iter = 0; iter < 10; iter++) {
-    size_t imageIndex = (iter * 19 + 124) % numImages;
-    Tensor sample = IIH.extractSlice(imageIndex);
+  Tensor sample(ElemKind::FloatTy, {minibatchSize, 1, 28, 28});
+  sample.copyConsecutiveSlices(&imageInputs, 0);
+  auto *res = N.infer(SM, {A}, {&sample});
 
-    auto *res = N.infer(SM, {A}, {&sample});
+  for (int iter = 0; iter < minibatchSize; iter++) {
+    auto T = res->getHandle<FloatTy>().extractSlice(iter);
+    size_t guess = T.getHandle<FloatTy>().maxArg();
 
-    size_t guess = res->getHandle<FloatTy>().maxArg();
-    size_t correct = LIH.at(imageIndex);
+    size_t correct = LIH.at(iter);
     rightAnswer += (guess == correct);
 
-    sample.getHandle<FloatTy>().dumpAscii("MNIST Input");
+    auto I = sample.getHandle<FloatTy>().extractSlice(iter);
+    auto J = I.getHandle<FloatTy>().extractSlice(0);
+
+    J.getHandle<FloatTy>().dumpAscii("MNIST Input");
     std::cout << "Expected: " << correct << " Guessed: " << guess << "\n";
-    res->getHandle<FloatTy>().dump("", "\n");
+
+    T.getHandle<FloatTy>().dump("", "\n");
     std::cout << "\n-------------\n";
   }
 
   assert(rightAnswer >= 6 && "Did not classify as many digits as expected");
+
+
 }
 
 int main() {

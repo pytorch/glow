@@ -31,14 +31,14 @@ FloatTy gradDiff(FloatTy G1, FloatTy G2) {
 
 TEST(Network, gradientCheck_FC_Concat_RELU) {
   Network N;
-  N.getConfig().batchSize = 10;
 
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  Variable *A = N.createVariable(numInputElem, ElemKind::FloatTy);
-  auto *B = N.createVariable(numInputElem, ElemKind::FloatTy);
-  auto *Exp = N.createVariable(numOutputElem, ElemKind::FloatTy);
+  Variable *A = N.createVariable({1, numInputElem}, ElemKind::FloatTy);
+  auto *B = N.createVariable({1, numInputElem}, ElemKind::FloatTy);
+  auto *Exp = N.createVariable({1, numOutputElem}, ElemKind::FloatTy);
+
 
   NodeBase *FA = N.createFullyConnectedNode(A, numOutputElem / 2);
   FA = N.createRELUNode(FA);
@@ -46,11 +46,11 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   NodeBase *FB = N.createFullyConnectedNode(B, numOutputElem / 2);
   FB = N.createRELUNode(FB);
 
-  NodeBase *O = N.createConcatNode({FA, FB}, 0);
+  NodeBase *O = N.createConcatNode({FA, FB}, 1);
   auto *RN = N.createRegressionNode(O, Exp);
 
-  Tensor inputs(ElemKind::FloatTy, {numInputElem});
-  Tensor outputs(ElemKind::FloatTy, {numOutputElem});
+  Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
+  Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
 
   auto inputsH = inputs.getHandle<FloatTy>();
   auto outputsH = outputs.getHandle<FloatTy>();
@@ -59,15 +59,14 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   outputsH.randomize(100);
 
   // Train the network.
-  for (int i = 0; i < 10; i++) {
-    N.train(RN, {A, Exp}, {&inputs, &outputs});
-  }
+  N.train(RN, 10, {A, Exp}, {&inputs, &outputs});
+
 
   // Clear the gradients of the first layer.
   A->getGradHandle(N.getMainContext()).clear();
 
   // Train the network just once to calculate the grads.
-  N.train(RN, {A, Exp}, {&inputs, &outputs});
+  N.train(RN, 1, {A, Exp}, {&inputs, &outputs});
 
   float delta = 0.001;
 
@@ -75,21 +74,21 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   auto analyticalGradsH = analyticalGrads.getHandle<FloatTy>();
 
   for (size_t i = 0; i < analyticalGrads.size(); i++) {
-    auto old = inputsH.at({i});
+    auto old = inputsH.at({0, i});
 
     // Calculate f(x+e):
-    inputsH.at({i}) = old + delta;
+    inputsH.at({0, i}) = old + delta;
     Tensor *res = N.infer(RN, {A}, {&inputs});
     auto plusLoss = computeL2Loss(&outputs, res);
 
     // Calculate f(x-e):
-    inputsH.at({i}) = old - delta;
+    inputsH.at({0, i}) = old - delta;
     res = N.infer(RN, {A}, {&inputs});
     auto minusLoss = computeL2Loss(&outputs, res);
-    inputsH.at({i}) = old;
+    inputsH.at({0, i}) = old;
 
     auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
-    auto analyticalGrad = analyticalGradsH.at({i});
+    auto analyticalGrad = analyticalGradsH.at({0, i});
 
     auto err = gradDiff(analyticalGrad, numericGrad);
 
@@ -100,13 +99,13 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
 
 TEST(Network, gradientCheck_Conv) {
   Network N;
-  N.getConfig().batchSize = 10;
 
   size_t numDim = 10;
   size_t numOutputElem = 10;
 
-  auto *A = N.createVariable({numDim, numDim, 1}, ElemKind::FloatTy);
-  auto *Exp = N.createVariable({numOutputElem}, ElemKind::FloatTy);
+  auto *A = N.createVariable({1, numDim, numDim, 1}, ElemKind::FloatTy);
+  auto *Exp = N.createVariable({1, numOutputElem}, ElemKind::FloatTy);
+
 
   NodeBase *O = N.createConvNode(A, 16, 5, 1, 2);
   O = N.createMaxPoolNode(O, MaxPoolNode::OpKind::kMax, 3, 3, 0);
@@ -114,8 +113,9 @@ TEST(Network, gradientCheck_Conv) {
   O = N.createRELUNode(O);
   auto *RN = N.createRegressionNode(O, Exp);
 
-  Tensor inputs(ElemKind::FloatTy, {numDim, numDim, 1});
-  Tensor outputs(ElemKind::FloatTy, {numOutputElem});
+  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
+  Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
+
 
   auto inputsH = inputs.getHandle<FloatTy>();
   auto outputsH = outputs.getHandle<FloatTy>();
@@ -124,15 +124,14 @@ TEST(Network, gradientCheck_Conv) {
   outputsH.randomize(1);
 
   // Train the network.
-  for (int i = 0; i < 10; i++) {
-    N.train(RN, {A, Exp}, {&inputs, &outputs});
-  }
+  N.train(RN, 10, {A, Exp}, {&inputs, &outputs});
+
 
   // Clear the gradients of the first layer.
   A->getGradHandle(N.getMainContext()).clear();
 
   // Train the network just once to calculate the grads.
-  N.train(RN, {A, Exp}, {&inputs, &outputs});
+  N.train(RN, 1, {A, Exp}, {&inputs, &outputs});
 
   float delta = 0.001;
 
@@ -141,21 +140,21 @@ TEST(Network, gradientCheck_Conv) {
 
   for (size_t i = 0; i < numDim; i++) {
     for (size_t j = 0; j < numDim; j++) {
-      auto old = inputsH.at({i, j, 0});
+      auto old = inputsH.at({0, i, j, 0});
 
       // Calculate f(x+e):
-      inputsH.at({i, j, 0}) = old + delta;
+      inputsH.at({0, i, j, 0}) = old + delta;
       Tensor *res = N.infer(RN, {A}, {&inputs});
       auto plusLoss = computeL2Loss(&outputs, res);
 
       // Calculate f(x-e):
-      inputsH.at({i, j, 0}) = old - delta;
+      inputsH.at({0, i, j, 0}) = old - delta;
       res = N.infer(RN, {A}, {&inputs});
       auto minusLoss = computeL2Loss(&outputs, res);
-      inputsH.at({i, j, 0}) = old;
+      inputsH.at({0, i, j, 0}) = old;
 
       auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
-      auto analyticalGrad = analyticalGradsH.at({i, j, 0});
+      auto analyticalGrad = analyticalGradsH.at({0, i, j, 0});
 
       auto err = gradDiff(analyticalGrad, numericGrad);
 
@@ -167,20 +166,21 @@ TEST(Network, gradientCheck_Conv) {
 
 TEST(Network, gradientCheck_AvgPool) {
   Network N;
-  N.getConfig().batchSize = 10;
 
   size_t numDim = 10;
   size_t numOutputElem = 10;
 
-  auto *A = N.createVariable({numDim, numDim, 1}, ElemKind::FloatTy);
-  auto *Exp = N.createVariable({numOutputElem}, ElemKind::FloatTy);
+  auto *A = N.createVariable({1, numDim, numDim, 1}, ElemKind::FloatTy);
+  auto *Exp = N.createVariable({1, numOutputElem}, ElemKind::FloatTy);
+
 
   NodeBase *O = N.createMaxPoolNode(A, MaxPoolNode::OpKind::kAvg, 3, 3, 0);
   O = N.createFullyConnectedNode(O, numOutputElem);
   auto *RN = N.createRegressionNode(O, Exp);
 
-  Tensor inputs(ElemKind::FloatTy, {numDim, numDim, 1});
-  Tensor outputs(ElemKind::FloatTy, {numOutputElem});
+  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
+  Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
+
 
   auto inputsH = inputs.getHandle<FloatTy>();
   auto outputsH = outputs.getHandle<FloatTy>();
@@ -189,15 +189,14 @@ TEST(Network, gradientCheck_AvgPool) {
   outputsH.randomize(1);
 
   // Train the network.
-  for (int i = 0; i < 10; i++) {
-    N.train(RN, {A, Exp}, {&inputs, &outputs});
-  }
+  N.train(RN, 10, {A, Exp}, {&inputs, &outputs});
+
 
   // Clear the gradients of the first layer.
   A->getGradHandle(N.getMainContext()).clear();
 
   // Train the network just once to calculate the grads.
-  N.train(RN, {A, Exp}, {&inputs, &outputs});
+  N.train(RN, 1, {A, Exp}, {&inputs, &outputs});
 
   float delta = 0.001;
 
@@ -206,21 +205,21 @@ TEST(Network, gradientCheck_AvgPool) {
 
   for (size_t i = 0; i < numDim; i++) {
     for (size_t j = 0; j < numDim; j++) {
-      auto old = inputsH.at({i, j, 0});
+      auto old = inputsH.at({0, i, j, 0});
 
       // Calculate f(x+e):
-      inputsH.at({i, j, 0}) = old + delta;
+      inputsH.at({0, i, j, 0}) = old + delta;
       Tensor *res = N.infer(RN, {A}, {&inputs});
       auto plusLoss = computeL2Loss(&outputs, res);
 
       // Calculate f(x-e):
-      inputsH.at({i, j, 0}) = old - delta;
+      inputsH.at({0, i, j, 0}) = old - delta;
       res = N.infer(RN, {A}, {&inputs});
       auto minusLoss = computeL2Loss(&outputs, res);
-      inputsH.at({i, j, 0}) = old;
+      inputsH.at({0, i, j, 0}) = old;
 
       auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
-      auto analyticalGrad = analyticalGradsH.at({i, j, 0});
+      auto analyticalGrad = analyticalGradsH.at({0, i, j, 0});
 
       auto err = gradDiff(analyticalGrad, numericGrad);
 
@@ -232,20 +231,20 @@ TEST(Network, gradientCheck_AvgPool) {
 
 TEST(Network, gradientCheck_batchNorm) {
   Network N;
-  N.getConfig().batchSize = 2;
 
   size_t numDim = 5;
   size_t numOutputElem = numDim * numDim * 3;
 
-  auto *A = N.createVariable({numDim, numDim, 3}, ElemKind::FloatTy);
-  auto *Exp = N.createVariable({numOutputElem}, ElemKind::FloatTy);
+  auto *A = N.createVariable({1, numDim, numDim, 3}, ElemKind::FloatTy);
+  auto *Exp = N.createVariable({1, numOutputElem}, ElemKind::FloatTy);
 
-  NodeBase *O = N.createBatchNormalizationNode(A, 2, 0.0001, 0.9);
-  O = N.createReshapeNode(O, {numDim * numDim * 3});
+
+  NodeBase *O = N.createBatchNormalizationNode(A, 3, 0.0001, 0.9);
+  O = N.createReshapeNode(O, {1, numDim * numDim * 3});
   auto *RN = N.createRegressionNode(O, Exp);
 
-  Tensor inputs(ElemKind::FloatTy, {numDim, numDim, 3});
-  Tensor outputs(ElemKind::FloatTy, {numOutputElem});
+  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 3});
+  Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
 
   auto inputsH = inputs.getHandle<FloatTy>();
   auto outputsH = outputs.getHandle<FloatTy>();
@@ -259,13 +258,12 @@ TEST(Network, gradientCheck_batchNorm) {
   }
 
   // Train the network just once to calculate the grads.
-  for (int i = 0; i < 30; i++) {
-    N.train(RN, {A, Exp}, {&inputs, &outputs});
-  }
+  N.train(RN, 30, {A, Exp}, {&inputs, &outputs});
+
   // Clear the gradients of the last layer.
   A->getGradHandle(N.getMainContext()).clear();
 
-  N.train(RN, {A, Exp}, {&inputs, &outputs});
+  N.train(RN, 1, {A, Exp}, {&inputs, &outputs});
 
   auto analyticalGrads = A->getGradHandle(N.getMainContext()).clone();
   auto analyticalGradsH = analyticalGrads.getHandle<FloatTy>();
@@ -274,21 +272,21 @@ TEST(Network, gradientCheck_batchNorm) {
 
   for (size_t i = 0; i < numDim; i++) {
     for (size_t j = 0; j < numDim; j++) {
-      auto old = inputsH.at({i, j, 0});
+      auto old = inputsH.at({0, i, j, 0});
 
       // Calculate f(x+e):
-      inputsH.at({i, j, 0}) = old + delta;
+      inputsH.at({0, i, j, 0}) = old + delta;
       Tensor *res = N.infer(RN, {A}, {&inputs});
       auto plusLoss = computeL2Loss(&outputs, res);
 
       // Calculate f(x-e):
-      inputsH.at({i, j, 0}) = old - delta;
+      inputsH.at({0, i, j, 0}) = old - delta;
       res = N.infer(RN, {A}, {&inputs});
       auto minusLoss = computeL2Loss(&outputs, res);
-      inputsH.at({i, j, 0}) = old;
+      inputsH.at({0, i, j, 0}) = old;
 
       auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
-      auto analyticalGrad = analyticalGradsH.at({i, j, 0});
+      auto analyticalGrad = analyticalGradsH.at({0, i, j, 0});
 
       auto err = gradDiff(analyticalGrad, numericGrad);
 
@@ -300,23 +298,22 @@ TEST(Network, gradientCheck_batchNorm) {
 
 TEST(Network, gradientCheck_Arithmetic) {
   Network N;
-  N.getConfig().batchSize = 2;
 
   size_t numDim = 5;
 
-  Variable *A = N.createVariable({numDim}, ElemKind::FloatTy);
-  Variable *B = N.createVariable({numDim}, ElemKind::FloatTy);
-  Variable *C = N.createVariable({numDim}, ElemKind::FloatTy);
-  Variable *Exp = N.createVariable({numDim}, ElemKind::FloatTy);
+  Variable *A = N.createVariable({1, numDim}, ElemKind::FloatTy);
+  Variable *B = N.createVariable({1, numDim}, ElemKind::FloatTy);
+  Variable *C = N.createVariable({1, numDim}, ElemKind::FloatTy);
+  Variable *Exp = N.createVariable({1, numDim}, ElemKind::FloatTy);
 
   NodeBase *O = N.createArithmeticNode(A, B, ArithmeticNode::OpKind::kMul);
   O = N.createArithmeticNode(O, C, ArithmeticNode::OpKind::kAdd);
   auto *RN = N.createRegressionNode(O, Exp);
 
-  Tensor iA(ElemKind::FloatTy, {numDim});
-  Tensor iB(ElemKind::FloatTy, {numDim});
-  Tensor iC(ElemKind::FloatTy, {numDim});
-  Tensor outputs(ElemKind::FloatTy, {numDim});
+  Tensor iA(ElemKind::FloatTy, {1, numDim});
+  Tensor iB(ElemKind::FloatTy, {1, numDim});
+  Tensor iC(ElemKind::FloatTy, {1, numDim});
+  Tensor outputs(ElemKind::FloatTy, {1, numDim});
 
   auto iAH = iA.getHandle<FloatTy>();
   auto iBH = iB.getHandle<FloatTy>();
@@ -329,15 +326,14 @@ TEST(Network, gradientCheck_Arithmetic) {
   outputsH.randomize(1);
 
   // Train the network just once to calculate the grads.
-  for (int i = 0; i < 30; i++) {
-    N.train(RN, {A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
-  }
+  N.train(RN, 30, {A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
+
   // Clear the gradients of the last layer.
   A->getGradHandle(N.getMainContext()).clear();
   B->getGradHandle(N.getMainContext()).clear();
   C->getGradHandle(N.getMainContext()).clear();
 
-  N.train(RN, {A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
+  N.train(RN, 1, {A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
 
   auto check = [&](NodeBase *node, Tensor *t) {
     auto iH = t->getHandle<FloatTy>();
@@ -347,21 +343,21 @@ TEST(Network, gradientCheck_Arithmetic) {
 
     float delta = 0.001;
     for (size_t i = 0; i < numDim; i++) {
-      auto old = iH.at({i});
+      auto old = iH.at({0, i});
 
       // Calculate f(x+e):
-      iH.at({i}) = old + delta;
+      iH.at({0, i}) = old + delta;
       Tensor *res = N.infer(RN, {A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
       auto plusLoss = computeL2Loss(&outputs, res);
 
       // Calculate f(x-e):
-      iH.at({i}) = old - delta;
+      iH.at({0, i}) = old - delta;
       res = N.infer(RN, {A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
       auto minusLoss = computeL2Loss(&outputs, res);
-      iH.at({i}) = old;
+      iH.at({0, i}) = old;
 
       auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
-      auto analyticalGrad = analyticalGradsH.at({i});
+      auto analyticalGrad = analyticalGradsH.at({0, i});
 
       auto err = gradDiff(analyticalGrad, numericGrad);
 

@@ -169,7 +169,7 @@ struct PrinterPass : NodeVisitor {
 
 void Network::updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
                                     size_t len, ArrayRef<Variable *> vars,
-                                    ArrayRef<Tensor *> inputs, bool isBatch) {
+                                    ArrayRef<Tensor *> inputs) {
   TopologicalSortPass TPS;
   root->visit(&TPS);
   auto order = TPS.getOrder();
@@ -177,11 +177,7 @@ void Network::updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
   for (size_t idx = 0; idx < len; idx++) {
     /// Update the inputs:
     for (int i = 0, e = vars.size(); i < e; i++) {
-      if (isBatch) {
         vars[i]->updateInputs(ctx, inputs[i], start + idx);
-      } else {
-        vars[i]->updateInput(ctx, inputs[i]);
-      }
     }
 
     for (auto it = order.begin(), e = order.end(); it != e; it++) {
@@ -202,27 +198,27 @@ void Network::updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
   }
 }
 
-void Network::learnGradient(Context *ctx) {
+void Network::learnGradient(Context *ctx, size_t batchSize) {
   for (auto p : ctx->getTensorPairs()) {
     Tensor *W = ctx->getTensor(p.first);
     Tensor *G = ctx->getTensor(p.second);
-    trainer_.train(W, G);
+    trainer_.train(W, G, batchSize);
   }
 }
 
-static unsigned calculateNumThreads(unsigned numCores, unsigned batchSize) {
+static unsigned calculateNumThreads(unsigned numCores, unsigned numPackets) {
   unsigned best = 1;
 
   for (int i = 1; i < numCores; i++) {
 
-    // The batch size must be a multiple of the number of threads or we'll skip
-    /// some inputs.
-    if (batchSize % i) {
+    // The number of packets must be a multiple of the number of threads or
+    // we'll skip some packets.
+    if (numPackets % i) {
       continue;
     }
 
-    /// Each thread must handle at least 4 inputs.
-    if ((batchSize / i) < 4) {
+    /// Each thread must handle at least 2 packets.
+    if ((numPackets / i) < 2) {
       break;
     }
 
@@ -236,20 +232,23 @@ static unsigned calculateNumThreads(unsigned numCores, unsigned batchSize) {
 /// values \p inputs.
 void Network::train(NodeBase *root, size_t batches, ArrayRef<Variable *> vars,
                     ArrayRef<Tensor *> inputs) {
+  assert(inputs.size() && "No inputs");
+  assert(inputs.size() == vars.size() &&
+         "The number of inputs does not match the number of variables");
 
-  size_t batchSize = getConfig().batchSize;
-  unsigned numThreads = calculateNumThreads(state_.size(), batchSize);
-  unsigned sliceSize = batchSize / numThreads;
+  size_t batchSize = vars[0]->dims(state_[0])[0];
+
+  unsigned numThreads = calculateNumThreads(state_.size(), batches);
 
   std::vector<std::thread> threads;
 
-  for (size_t i = 0; i < batches; i++) {
+  for (size_t i = 0; i < batches/numThreads; i++) {
     /// Launch threads that update the different chunks in the batch:
     for (int t = 0; t < numThreads; t++) {
       /// Update the network inputs and perform the forward and backwards pass.
       threads.emplace_back([=] {
-        updateForwardBackward(state_[t], root, trainCounter_ + t * sliceSize,
-                              sliceSize, vars, inputs, true);
+        updateForwardBackward(state_[t], root, trainCounter_ + t, 1, vars,
+                              inputs);
       });
     }
 
@@ -259,34 +258,15 @@ void Network::train(NodeBase *root, size_t batches, ArrayRef<Variable *> vars,
     }
     threads.clear();
 
-    trainCounter_ += getConfig().batchSize;
+    trainCounter_ += batchSize;
 
     // The algorithm for merging the state from the different threads is
-    /// described in the paper:
-    // Alex Krizhevsky [2014]
-    // One weird trick for parallelizing convolutional neural networks
-
+    /// described in the paper: Alex Krizhevsky [2014]
+    // "One weird trick for parallelizing convolutional neural networks"
     for (int tid = 0; tid < numThreads; tid++) {
-      learnGradient(state_[tid]);
+      learnGradient(state_[tid], batchSize);
     }
   }
-}
-
-/// Perform a single training iteration for one input. Update the vars in \p
-/// vars with the tensor values \p inputs.
-void Network::train(NodeBase *root, ArrayRef<Variable *> vars,
-                    ArrayRef<Tensor *> inputs) {
-  assert(vars.size() == inputs.size() && "Mismatched argument list");
-
-  updateForwardBackward(state_[0], root, trainCounter_, 1, vars, inputs, false);
-
-  trainCounter_++;
-
-  // Only update the gradient when we've reached the end of the batch.
-  if (trainCounter_ % getConfig().batchSize)
-    return;
-
-  learnGradient(state_[0]);
 }
 
 Tensor *Network::infer(NodeBase *root, ArrayRef<Variable *> vars,
@@ -297,7 +277,7 @@ Tensor *Network::infer(NodeBase *root, ArrayRef<Variable *> vars,
 
   // Update all inputs.
   for (int i = 0, e = vars.size(); i < e; i++) {
-    vars[i]->updateInput(state_[0], inputs[i]);
+    vars[i]->updateInputs(state_[0], inputs[i], 0);
   }
 
   // Forward scan.

@@ -15,7 +15,6 @@ class Tensor;
 /// This is a list of parameters that the network trainers (such as sgd and
 /// adam) use for training the network.
 struct TrainingConfig {
-  size_t batchSize{1};
   float L1Decay{0};
   float L2Decay{0};
   float learningRate{0.01};
@@ -48,7 +47,7 @@ public:
 
   /// Perform a single iteration of the simple SGD algorithm for updating the
   /// weights of the program based on the gradients.
-  void train(Tensor *weights, Tensor *gradients);
+  void train(Tensor *weights, Tensor *gradients, size_t batchSize);
 };
 
 } // namespace noether

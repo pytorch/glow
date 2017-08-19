@@ -25,24 +25,22 @@ ConvNode::ConvNode(Network *N, NodeBase *input, size_t outDepth,
 
 void ConvNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
-  auto idim = input_->dims(ctx);
-  assert(idim[0] > filterSize_ && idim[1] > filterSize_ &&
+  ShapeNHWC idim = input_->dims(ctx);
+  assert(idim.h > filterSize_ && idim.w > filterSize_ &&
          "buffer too small for selected stride");
 
-  size_t outsx = ((idim[0] + pad_ * 2 - filterSize_) / stride_ + 1);
-  size_t outsy = ((idim[1] + pad_ * 2 - filterSize_) / stride_ + 1);
+  size_t outsx = ((idim.h + pad_ * 2 - filterSize_) / stride_ + 1);
+  size_t outsy = ((idim.w + pad_ * 2 - filterSize_) / stride_ + 1);
 
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,
-                      {outsx, outsy, outDepth_});
-  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy,
-                      {outsx, outsy, outDepth_});
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, {idim.n, outsx, outsy, outDepth_});
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {idim.n, outsx, outsy, outDepth_});
 
-  std::vector<size_t> biasDim = {1, 1, outDepth_};
+  std::vector<size_t> biasDim = {outDepth_};
   ctx->allocateTensor(&biasW_, ElemKind::FloatTy, biasDim,
                       Context::ShareKind::kSharedTensor);
   ctx->allocateTensor(&biasG_, ElemKind::FloatTy, biasDim);
 
-  std::vector<size_t> ftlrDim = {outDepth_, filterSize_, filterSize_, idim[2]};
+  std::vector<size_t> ftlrDim = {outDepth_, filterSize_, filterSize_, idim.c};
   ctx->allocateTensor(&filtersW_, ElemKind::FloatTy, ftlrDim,
                       Context::ShareKind::kSharedTensor);
   ctx->allocateTensor(&filtersG_, ElemKind::FloatTy, ftlrDim);
@@ -55,7 +53,7 @@ void ConvNode::init(Context *ctx) const {
     biasWeights.clear(0.1);
   }
   if (ctx->hasTensor(&filtersW_)) {
-    size_t fanIn = filterSize_ * filterSize_ * idim[2];
+    size_t fanIn = filterSize_ * filterSize_ * idim.c;
     ctx->getHandle(&filtersW_).randomize(fanIn);
   }
 
@@ -64,22 +62,26 @@ void ConvNode::init(Context *ctx) const {
 }
 
 void ConvNode::forward(Context *ctx, PassKind kind) const {
-  auto odim = dims(ctx);
-  auto idim = input_->dims(ctx);
+  ShapeNHWC odim = dims(ctx);
+  ShapeNHWC idim = input_->dims(ctx);
 
   auto inW = input_->getWeightHandle(ctx);
   auto outW = getWeightHandle(ctx);
   auto biasW = ctx->getHandle(&biasW_);
   auto filterW = ctx->getHandle(&filtersW_);
 
+  // For each input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+
+
   // For each layer in the output tensor:
-  for (size_t d = 0; d < odim[2]; d++) {
+  for (size_t d = 0; d < odim.c; d++) {
 
     // For each convolution 'jump' in the input tensor:
     ssize_t y = -ssize_t(pad_);
-    for (size_t ay = 0; ay < odim[1]; y += stride_, ay++) {
+    for (size_t ay = 0; ay < odim.w; y += stride_, ay++) {
       ssize_t x = -ssize_t(pad_);
-      for (size_t ax = 0; ax < odim[0]; x += stride_, ax++) {
+      for (size_t ax = 0; ax < odim.h; x += stride_, ax++) {
 
         // For each element in the convolution-filter:
         FloatTy sum = 0;
@@ -92,25 +94,27 @@ void ConvNode::forward(Context *ctx, PassKind kind) const {
             if (ox < 0 || oy < 0)
               continue;
 
-            if (outW.isInBounds({(size_t)ox, (size_t)oy, 0})) {
-              for (size_t fd = 0; fd < idim[2]; fd++) {
+            if (outW.isInBounds({0u, (size_t)ox, (size_t)oy, 0u})) {
+              for (size_t fd = 0; fd < idim.c; fd++) {
                 sum += filterW.at({d, fx, fy, fd}) *
-                       inW.at({(size_t)ox, (size_t)oy, fd});
+                       inW.at({n, (size_t)ox, (size_t)oy, fd});
               }
             }
           }
         }
 
-        sum += biasW.at({0, 0, d});
-        outW.at({ax, ay, d}) = sum;
-      }
-    }
-  }
+        sum += biasW.at({d});
+        outW.at({n, ax, ay, d}) = sum;
+      } // H
+    } // W
+  } // C
+
+  } // N
 }
 
 void ConvNode::backward(Context *ctx) const {
-  auto odim = dims(ctx);
-  auto idim = input_->dims(ctx);
+  ShapeNHWC odim = dims(ctx);
+  ShapeNHWC idim = input_->dims(ctx);
   auto inW = input_->getWeightHandle(ctx);
   auto inG = input_->getGradHandle(ctx);
   auto outG = getGradHandle(ctx);
@@ -118,16 +122,19 @@ void ConvNode::backward(Context *ctx) const {
   auto filterG = ctx->getHandle(&filtersG_);
   auto filterW = ctx->getHandle(&filtersW_);
 
+  // For each input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+
   // Compute the gradient. For each layer in the output tensor:
-  for (size_t d = 0; d < odim[2]; d++) {
+  for (size_t d = 0; d < odim.c; d++) {
 
     // For each convolution 'jump' in the input tensor:
     ssize_t y = -ssize_t(pad_);
-    for (size_t ay = 0; ay < ssize_t(odim[1]); y += stride_, ay++) {
+    for (size_t ay = 0; ay < ssize_t(odim.w); y += stride_, ay++) {
       ssize_t x = -ssize_t(pad_);
-      for (size_t ax = 0; ax < ssize_t(odim[0]); x += stride_, ax++) {
+      for (size_t ax = 0; ax < ssize_t(odim.h); x += stride_, ax++) {
 
-        FloatTy chainGrad = outG.at({ax, ay, d});
+        FloatTy chainGrad = outG.at({n, ax, ay, d});
 
         // For each element in the convolution-filter:
         for (size_t fy = 0; fy < filterSize_; fy++) {
@@ -139,21 +146,23 @@ void ConvNode::backward(Context *ctx) const {
             if (ox < 0 || oy < 0)
               continue;
 
-            if (outG.isInBounds({(size_t)ox, (size_t)oy, 0u})) {
-              for (size_t fd = 0; fd < idim[2]; fd++) {
+            if (outG.isInBounds({0u, (size_t)ox, (size_t)oy, 0u})) {
+              for (size_t fd = 0; fd < idim.c; fd++) {
                 filterG.at({d, fx, fy, fd}) +=
-                    inW.at({(size_t)ox, (size_t)oy, fd}) * chainGrad;
-                inG.at({(size_t)ox, (size_t)oy, fd}) +=
+                    inW.at({0u, (size_t)ox, (size_t)oy, fd}) * chainGrad;
+                inG.at({n, (size_t)ox, (size_t)oy, fd}) +=
                     filterW.at({d, fx, fy, fd}) * chainGrad;
               }
             }
           }
         }
 
-        biasG.at({0, 0, d}) += chainGrad;
-      }
-    }
-  }
+        biasG.at({d}) += chainGrad;
+      } // H
+    } // W
+  } // C
+
+  } // N
 }
 
 void ConvNode::updateWeights(Network *N_, Tensor *filter, Tensor *bias) {
@@ -168,22 +177,21 @@ MaxPoolNode::MaxPoolNode(Network *N, NodeBase *input, OpKind kind,
 
 void MaxPoolNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
-  auto idim = input_->dims(ctx);
-  assert(idim[0] > filterSize_ && idim[0] > filterSize_ &&
+  ShapeNHWC idim = input_->dims(ctx);
+  assert(idim.w > filterSize_ && idim.h > filterSize_ &&
          "buffer too small for selected stride");
 
-  size_t outsx = ((idim[0] + pad_ * 2 - filterSize_) / stride_ + 1);
-  size_t outsy = ((idim[1] + pad_ * 2 - filterSize_) / stride_ + 1);
+  size_t outsx = ((idim.w + pad_ * 2 - filterSize_) / stride_ + 1);
+  size_t outsy = ((idim.h + pad_ * 2 - filterSize_) / stride_ + 1);
 
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,
-                      {outsx, outsy, idim[2]});
-  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {outsx, outsy, idim[2]});
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, {idim.n, outsx, outsy, idim.c});
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {idim.n, outsx, outsy, idim.c});
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
   if (kind_ == OpKind::kMax) {
-    ctx->allocateTensor(&srcX_, ElemKind::IndexTy, {outsx, outsy, idim[2]});
-    ctx->allocateTensor(&srcY_, ElemKind::IndexTy, {outsx, outsy, idim[2]});
+    ctx->allocateTensor(&srcX_, ElemKind::IndexTy, {idim.n, outsx, outsy, idim.c});
+    ctx->allocateTensor(&srcY_, ElemKind::IndexTy, {idim.n, outsx, outsy, idim.c});
   }
 }
 
@@ -204,21 +212,24 @@ void MaxPoolNode::backward(Context *ctx) const {
 }
 
 void MaxPoolNode::forwardMax(Context *ctx) const {
-  auto odim = dims(ctx);
-  auto idim = input_->dims(ctx);
+  ShapeNHWC odim = dims(ctx);
+  ShapeNHWC idim = input_->dims(ctx);
   auto inW = input_->getWeightHandle(ctx);
   auto outW = getWeightHandle(ctx);
 
   auto SX = ctx->getTensor(&srcX_)->getHandle<size_t>();
   auto SY = ctx->getTensor(&srcY_)->getHandle<size_t>();
 
+  // For each input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+
   // For each layer in the output tensor:
-  for (size_t z = 0; z < idim[2]; z++) {
+  for (size_t z = 0; z < idim.c; z++) {
     // For each convolution 'jump' in the input tensor:
     ssize_t y = -ssize_t(pad_);
-    for (size_t ay = 0; ay < odim[1]; y += stride_, ay++) {
+    for (size_t ay = 0; ay < odim.w; y += stride_, ay++) {
       ssize_t x = -ssize_t(pad_);
-      for (size_t ax = 0; ax < odim[0]; x += stride_, ax++) {
+      for (size_t ax = 0; ax < odim.h; x += stride_, ax++) {
         size_t maxX = x;
         size_t maxY = y;
 
@@ -234,8 +245,8 @@ void MaxPoolNode::forwardMax(Context *ctx) const {
             if (ox < 0 || oy < 0)
               continue;
 
-            if (inW.isInBounds({(size_t)ox, (size_t)oy, z})) {
-              FloatTy val = inW.at({(size_t)ox, (size_t)oy, z});
+            if (inW.isInBounds({0u, (size_t)ox, (size_t)oy, 0u})) {
+              FloatTy val = inW.at({n, (size_t)ox, (size_t)oy, z});
 
               if (first || (val >= max)) {
                 first = false;
@@ -248,58 +259,66 @@ void MaxPoolNode::forwardMax(Context *ctx) const {
         }
 
         assert(!first && "Max value is uninitialized");
-        SX.at({ax, ay, z}) = maxX;
-        SY.at({ax, ay, z}) = maxY;
-        outW.at({ax, ay, z}) = max;
-      }
-    }
-  }
+        SX.at({n, ax, ay, z}) = maxX;
+        SY.at({n, ax, ay, z}) = maxY;
+        outW.at({n, ax, ay, z}) = max;
+      } // H
+    } // W
+  } // C
+  } // N
 }
 
 void MaxPoolNode::backwardMax(Context *ctx) const {
-  auto odim = dims(ctx);
+  ShapeNHWC odim = dims(ctx);
   auto inG = input_->getGradHandle(ctx);
   auto outG = getGradHandle(ctx);
 
   auto SX = ctx->getTensor(&srcX_)->getHandle<size_t>();
   auto SY = ctx->getTensor(&srcY_)->getHandle<size_t>();
 
+  // For each input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+
   // Compute the gradient. For each layer in the output tensor:
-  for (size_t z = 0; z < odim[2]; z++) {
+  for (size_t z = 0; z < odim.c; z++) {
 
     // For each convolution 'jump' in the input tensor:
-    for (size_t ay = 0; ay < odim[1]; ay++) {
-      for (size_t ax = 0; ax < odim[0]; ax++) {
+    for (size_t ay = 0; ay < odim.w; ay++) {
+      for (size_t ax = 0; ax < odim.h; ax++) {
 
-        FloatTy chainGrad = outG.at({(size_t)ax, (size_t)ay, z});
+        FloatTy chainGrad = outG.at({n, (size_t)ax, (size_t)ay, z});
 
-        size_t maxX = SX.at({(size_t)ax, (size_t)ay, z});
-        size_t maxY = SY.at({(size_t)ax, (size_t)ay, z});
+        size_t maxX = SX.at({n, (size_t)ax, (size_t)ay, z});
+        size_t maxY = SY.at({n, (size_t)ax, (size_t)ay, z});
 
-        inG.at({maxX, maxY, z}) += chainGrad;
-      }
-    }
-  }
+        inG.at({n, maxX, maxY, z}) += chainGrad;
+      } // H
+    } // W
+  } // C
+  } // N
 }
 
 void MaxPoolNode::forwardAvg(Context *ctx) const {
   // Implement the avg pooling operation as defined here:
   // https://arxiv.org/abs/1312.4400
 
-  auto odim = dims(ctx);
-  auto idim = input_->dims(ctx);
+  ShapeNHWC odim = dims(ctx);
+  ShapeNHWC idim = input_->dims(ctx);
   auto inW = input_->getWeightHandle(ctx);
   auto outW = getWeightHandle(ctx);
 
   FloatTy filterArea = filterSize_ * filterSize_;
 
+  // For each input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+
   // For each layer in the output tensor:
-  for (size_t z = 0; z < idim[2]; z++) {
+  for (size_t z = 0; z < idim.c; z++) {
     // For each convolution 'jump' in the input tensor:
     ssize_t y = -ssize_t(pad_);
-    for (size_t ay = 0; ay < odim[1]; y += stride_, ay++) {
+    for (size_t ay = 0; ay < odim.w; y += stride_, ay++) {
       ssize_t x = -ssize_t(pad_);
-      for (size_t ax = 0; ax < odim[0]; x += stride_, ax++) {
+      for (size_t ax = 0; ax < odim.h; x += stride_, ax++) {
         FloatTy sum = 0;
 
         for (size_t fy = 0; fy < filterSize_; fy++) {
@@ -311,31 +330,36 @@ void MaxPoolNode::forwardAvg(Context *ctx) const {
             if (ox < 0 || oy < 0)
               continue;
 
-            if (inW.isInBounds({(size_t)ox, (size_t)oy, z})) {
-              sum += inW.at({(size_t)ox, (size_t)oy, z});
+            if (inW.isInBounds({0, (size_t)ox, (size_t)oy, 0})) {
+              sum += inW.at({n, (size_t)ox, (size_t)oy, z});
             }
           }
         }
-        outW.at({ax, ay, z}) = sum / filterArea;
-      }
-    }
-  }
+        outW.at({n, ax, ay, z}) = sum / filterArea;
+      } // H
+    } // W
+  } // C
+
+  } // N
 }
 
 void MaxPoolNode::backwardAvg(Context *ctx) const {
-  auto odim = dims(ctx);
+  ShapeNHWC odim = dims(ctx);
   auto inG = input_->getGradHandle(ctx);
   auto outG = getGradHandle(ctx);
   FloatTy filterArea = filterSize_ * filterSize_;
 
+  // For each input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+
   // For each layer in the output tensor:
-  for (size_t z = 0; z < odim[2]; z++) {
+  for (size_t z = 0; z < odim.c; z++) {
     // For each convolution 'jump' in the input tensor:
     ssize_t y = -ssize_t(pad_);
-    for (size_t ay = 0; ay < odim[1]; y += stride_, ay++) {
+    for (size_t ay = 0; ay < odim.w; y += stride_, ay++) {
       ssize_t x = -ssize_t(pad_);
-      for (size_t ax = 0; ax < odim[0]; x += stride_, ax++) {
-        FloatTy dy = outG.at({ax, ay, z}) / filterArea;
+      for (size_t ax = 0; ax < odim.h; x += stride_, ax++) {
+        FloatTy dy = outG.at({n, ax, ay, z}) / filterArea;
 
         for (size_t fy = 0; fy < filterSize_; fy++) {
           for (size_t fx = 0; fx < filterSize_; fx++) {
@@ -346,14 +370,15 @@ void MaxPoolNode::backwardAvg(Context *ctx) const {
             if (ox < 0 || oy < 0)
               continue;
 
-            if (inG.isInBounds({(size_t)ox, (size_t)oy, z})) {
-              inG.at({(size_t)ox, (size_t)oy, z}) += dy;
+            if (inG.isInBounds({0, (size_t)ox, (size_t)oy, z})) {
+              inG.at({n, (size_t)ox, (size_t)oy, z}) += dy;
             }
           }
         }
-      }
-    }
-  }
+      } // H
+    } // W
+  } // C
+  } // N
 }
 
 FullyConnectedNode::FullyConnectedNode(Network *N, NodeBase *input,
@@ -363,15 +388,17 @@ FullyConnectedNode::FullyConnectedNode(Network *N, NodeBase *input,
 void FullyConnectedNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
 
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, {outDepth_});
-  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {outDepth_});
+  auto idim = flattenCdr(input_->dims(ctx));
+
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, {idim.first, outDepth_});
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {idim.first, outDepth_});
 
   std::vector<size_t> biasDim = {outDepth_};
   ctx->allocateTensor(&biasW_, ElemKind::FloatTy, biasDim,
                       Context::ShareKind::kSharedTensor);
   ctx->allocateTensor(&biasG_, ElemKind::FloatTy, biasDim);
 
-  std::vector<size_t> ftlrDim = {outDepth_, input_->size(ctx)};
+  std::vector<size_t> ftlrDim = {outDepth_, idim.second};
   ctx->allocateTensor(&filtersW_, ElemKind::FloatTy, ftlrDim,
                       Context::ShareKind::kSharedTensor);
   ctx->allocateTensor(&filtersG_, ElemKind::FloatTy, ftlrDim);
@@ -385,7 +412,7 @@ void FullyConnectedNode::init(Context *ctx) const {
   }
 
   if (ctx->hasTensor(&filtersW_)) {
-    size_t fanIn = input_->size(ctx);
+    size_t fanIn = idim.second;
     ctx->getHandle(&filtersW_).randomize(fanIn);
   }
 
@@ -394,26 +421,34 @@ void FullyConnectedNode::init(Context *ctx) const {
 }
 
 void FullyConnectedNode::forward(Context *ctx, PassKind kind) const {
-  auto odim = dims(ctx);
+  auto odim = flattenCdr(dims(ctx));
+  auto idim = flattenCdr(input_->dims(ctx));
   auto inW = input_->getWeightHandle(ctx);
   auto biasW = ctx->getHandle(&biasW_);
   auto outW = getWeightHandle(ctx);
   auto currFilterW = ctx->getHandle(&filtersW_);
 
-  size_t inputSize = inW.size();
-  for (size_t i = 0; i < odim[0]; i++) {
-    FloatTy sum = 0;
+  size_t inputSize = idim.second;
+
+  for (size_t n = 0; n < odim.first; n++) {
+    size_t base = inW.getElementPtr({n});
+
+    for (size_t i = 0; i < odim.second; i++) {
+
+      FloatTy sum = 0;
     for (size_t j = 0; j < inputSize; j++) {
-      sum += inW.raw(j) * currFilterW.at({i, j});
+      sum += inW.raw(base + j) * currFilterW.at({i, j});
     }
 
     sum += biasW.at({i});
-    outW.at({i}) = sum;
+    outW.at({n, i}) = sum;
   }
+  } // N
 }
 
 void FullyConnectedNode::backward(Context *ctx) const {
-  auto odim = dims(ctx);
+  auto odim = flattenCdr(dims(ctx));
+  auto idim = flattenCdr(input_->dims(ctx));
   auto outG = getGradHandle(ctx);
   auto inG = input_->getGradHandle(ctx);
   auto inW = input_->getWeightHandle(ctx);
@@ -422,20 +457,25 @@ void FullyConnectedNode::backward(Context *ctx) const {
   auto filterG = ctx->getHandle(&filtersG_);
   auto filterW = ctx->getHandle(&filtersW_);
 
-  size_t inSize = inG.size();
-  // Compute the gradient:
-  for (size_t i = 0; i < odim[0]; i++) {
-    FloatTy chainGrad = outG.at({i});
+  size_t inSize = idim.second;
+
+  for (size_t n = 0; n < odim.first; n++) {
+    size_t base = inW.getElementPtr({n});
+
+    // Compute the gradient:
+    for (size_t i = 0; i < odim.second; i++) {
+      FloatTy chainGrad = outG.at({n, i});
 
     for (size_t j = 0, e = inSize; j < e; j++) {
       // Input gradient:
-      inG.raw(j) += filterW.at({i, j}) * chainGrad;
+      inG.raw(base + j) += filterW.at({i, j}) * chainGrad;
       // Param gradient:
-      filterG.at({i, j}) += inW.raw(j) * chainGrad;
+      filterG.at({i, j}) += inW.raw(base + j) * chainGrad;
     }
 
     biasG.at({i}) += chainGrad;
   }
+  } // N
 }
 
 RELUNode::RELUNode(Network *N, NodeBase *input) : input_(input) {}
@@ -504,12 +544,12 @@ SoftMaxNode::SoftMaxNode(Network *N, NodeBase *input, NodeBase *selected)
 void SoftMaxNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   auto idim = input_->dims(ctx);
-  assert(idim.size() == 1 && "Softmax input must be a simple vector.");
+  assert(idim.size() == 2 && "Softmax input must be a 2D matrix.");
 
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, {idim[0]});
-  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {idim[0]});
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, idim);
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, idim);
 
-  ctx->allocateTensor(&e_, ElemKind::FloatTy, {idim[0]});
+  ctx->allocateTensor(&e_, ElemKind::FloatTy, idim);
 }
 
 void SoftMaxNode::forward(Context *ctx, PassKind kind) const {
@@ -517,28 +557,32 @@ void SoftMaxNode::forward(Context *ctx, PassKind kind) const {
   auto idim = input_->dims(ctx);
   auto inW = input_->getWeightHandle(ctx);
 
-  FloatTy max = inW.at({0});
+  auto EH = ctx->getTensor(&e_)->getHandle<FloatTy>();
+
+  for (size_t n = 0; n < idim[0]; n++) {
+    FloatTy max = inW.at({n, 0});
 
   // Find Max.
-  for (size_t i = 0; i < idim[0]; i++) {
-    max = std::max(max, inW.at({i}));
+    for (size_t i = 0; i < idim[1]; i++) {
+      max = std::max(max, inW.at({n, i}));
   }
 
   FloatTy sum = 0;
 
-  auto EH = ctx->getTensor(&e_)->getHandle<FloatTy>();
-  // Compute exp.
-  for (size_t i = 0; i < idim[0]; i++) {
-    FloatTy e = std::exp(inW.at({i}) - max);
+    // Compute exp.
+    for (size_t i = 0; i < idim[1]; i++) {
+      FloatTy e = std::exp(inW.at({n, i}) - max);
     sum += e;
-    EH.at({i}) = e;
+      EH.at({n, i}) = e;
   }
 
   // Normalize the output.
-  for (size_t i = 0; i < idim[0]; i++) {
-    EH.at({i}) /= sum;
-    outW.at({i}) = EH.at({i});
-  }
+    for (size_t i = 0; i < idim[1]; i++) {
+      EH.at({n, i}) /= sum;
+      outW.at({n, i}) = EH.at({n, i});
+    }
+    
+  } // N
 }
 
 void SoftMaxNode::backward(Context *ctx) const {
@@ -546,35 +590,36 @@ void SoftMaxNode::backward(Context *ctx) const {
   auto inG = input_->getGradHandle(ctx);
   auto EH = ctx->getTensor(&e_)->getHandle<FloatTy>();
   auto selectedH = selected_->getOutputWeight(ctx)->getHandle<size_t>();
-  size_t selected = selectedH.at({0});
 
   // http://eli.thegreenplace.net/2016/the-softmax-function-and-its-derivative/
   // https://stats.stackexchange.com/questions/79454/softmax-layer-in-a-neural-network
-  for (size_t i = 0; i < idim[0]; i++) {
-    FloatTy delta = (selected == i);
-    FloatTy sigma = (EH.at({i}) - delta);
-    inG.at({i}) += sigma;
+  for (size_t n = 0; n < idim[0]; n++) {
+    for (size_t i = 0; i < idim[1]; i++) {
+      FloatTy delta = (selectedH.at({n, 0}) == i);
+      FloatTy sigma = (EH.at({n, i}) - delta);
+      inG.at({n, i}) += sigma;
+    }
   }
 }
+
 RegressionNode::RegressionNode(Network *N, NodeBase *input, NodeBase *expected)
     : input_(input), expected_(expected) {}
 
 void RegressionNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   auto idim = input_->dims(ctx);
-  assert(idim.size() == 1 && "input must be a simple vector.");
-  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, {idim[0]});
-  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, {idim[0]});
+  assert(idim.size() == 2 && "Regression input must be a 2D matrix.");
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, idim);
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, idim);
 }
 
 void RegressionNode::forward(Context *ctx, PassKind kind) const {
   assert(dims(ctx) == input_->dims(ctx) && "invalid expected dims");
-  auto idim = input_->dims(ctx);
   auto outW = getWeightHandle(ctx);
   auto inW = input_->getWeightHandle(ctx);
 
-  for (size_t i = 0; i < idim[0]; i++) {
-    outW.at({i}) = inW.at({i});
+  for (size_t i = 0, e = size(ctx); i < e; i++) {
+    outW.raw(i) = inW.raw(i);
   }
 }
 
@@ -583,13 +628,19 @@ void RegressionNode::backward(Context *ctx) const {
   auto idim = input_->dims(ctx);
   auto inW = input_->getWeightHandle(ctx);
   auto inG = input_->getGradHandle(ctx);
+  assert(idim.size() == 2 && "Input is expected to be a vector per input");
 
   auto e = expected_->getOutputWeight(ctx)->getHandle<FloatTy>();
 
-  for (size_t i = 0; i < idim[0]; i++) {
-    FloatTy dy = inW.at({i}) - e.at({i});
-    inG.at({i}) += dy;
-  }
+  // For each input in the batch:
+  for (size_t n = 0; n < idim[0]; n++) {
+
+    for (size_t i = 0; i < idim[1]; i++) {
+      FloatTy dy = inW.at({n, i}) - e.at({n, i});
+      inG.at({n, i}) += dy;
+    }
+  } // N
+
 }
 
 MaxNode::MaxNode(Network *N, NodeBase *input) : input_(input) {}
@@ -630,18 +681,10 @@ void Variable::init(Context *ctx) const {
 
 void Variable::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) {
   auto dim = batch->dims();
-  assert(dims(ctx) == dim.drop_front() && "Invalid batch size");
+  assert(dims(ctx).drop_front() == dim.drop_front() && "Invalid slice size");
   /// Extract the n'th slice, that must be a tensor.
   size_t slc = sampleIdx % dim[0];
-  ctx->getTensor(&outputWeight_)->copySlice(batch, slc);
-}
-
-void Variable::updateInput(Context *ctx, Tensor *var) {
-  auto *w = getOutputWeight(ctx);
-  (void)w;
-  assert(w->dims() == var->dims() && "Invalid input size");
-  assert(w->getElementType() == var->getElementType() && "invalid input type");
-  *getOutputWeight(ctx) = var->clone();
+   ctx->getTensor(&outputWeight_)->copyConsecutiveSlices(batch, slc);
 }
 
 ConcatNode::ConcatNode(Network *N, ArrayRef<NodeBase *> inputs,
@@ -755,7 +798,7 @@ BatchNormalizationNode::BatchNormalizationNode(Network *N, NodeBase *input,
 
 void BatchNormalizationNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
-  assert(input_->dims(ctx).size() > 1 && "Invalid dimensions.");
+  assert(input_->dims(ctx).size() > 2 && "Invalid dimensions.");
 
   // Allocate the output buffer:
   ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, input_->dims(ctx));

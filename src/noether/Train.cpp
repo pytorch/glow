@@ -10,10 +10,9 @@ Trainer::~Trainer() {
   }
 }
 
-void Trainer::train(Tensor *weights, Tensor *gradients) {
+void Trainer::train(Tensor *weights, Tensor *gradients, size_t batchSize) {
   assert(weights->dims() == gradients->dims() && "Invalid tensor sizes");
 
-  size_t batchSize = config.batchSize;
   float L1Decay = config.L1Decay;
   float L2Decay = config.L2Decay;
   float learningRate = config.learningRate;

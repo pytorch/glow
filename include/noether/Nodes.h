@@ -267,10 +267,6 @@ public:
   /// \p batch. Select inputs from the slice specified by \p payload.
   void updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx);
 
-  /// Update the input or expected output variables of the node with data from
-  /// \p var.
-  void updateInput(Context *ctx, Tensor *var);
-
   void visit(NodeVisitor *visitor) override;
 };
 

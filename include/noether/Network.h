@@ -96,9 +96,9 @@ class Network {
 
   void updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
                              size_t len, ArrayRef<Variable *> vars,
-                             ArrayRef<Tensor *> inputs, bool isBatch);
+                             ArrayRef<Tensor *> inputs);
 
-  void learnGradient(Context *ctx);
+  void learnGradient(Context *ctx, size_t batchSize);
 
 public:
   /// Ctor.

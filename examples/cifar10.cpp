@@ -85,12 +85,13 @@ void testCIFAR10() {
   Network N;
   N.getConfig().learningRate = 0.001;
   N.getConfig().momentum = 0.9;
-  N.getConfig().batchSize = 8;
   N.getConfig().L2Decay = 0.0001;
 
+  unsigned minibatchSize = 8;
+
   // Create the input layer:
-  auto *A = N.createVariable({32, 32, 3}, ElemKind::FloatTy);
-  auto *E = N.createVariable({1}, ElemKind::IndexTy);
+  auto *A = N.createVariable({minibatchSize, 32, 32, 3}, ElemKind::FloatTy);
+  auto *E = N.createVariable({minibatchSize, 1}, ElemKind::IndexTy);
 
   // Create the rest of the network.
   NodeBase *SM = createSimpleNet(N, A, E);
@@ -100,29 +101,36 @@ void testCIFAR10() {
 
   std::cout << "Training.\n";
 
-  for (int iter = 0; iter < 190 * reportRate; iter++) {
+  for (int iter = 0; iter < 100000; iter++) {
     std::cout << "Training - iteration #" << iter << " ";
-    TimerGuard reportTime(reportRate);
+    TimerGuard reportTime(reportRate * minibatchSize);
 
     // Bind the images tensor to the input array A, and the labels tensor
     // to the softmax node SM.
-    N.train(SM, reportRate / N.getConfig().batchSize, {A, E},
-            {&images, &labels});
+    N.train(SM, reportRate, {A, E}, {&images, &labels});
 
     unsigned score = 0;
-    for (size_t i = 0; i < 100; i++) {
-      // Pick a random image from the stack:
-      const unsigned imageIndex = ((i + iter) * 175 + 912) % cifarNumImages;
-      // Load the image.
-      Tensor sample = imagesH.extractSlice(imageIndex);
+
+    for (int i = 0; i < 100 / minibatchSize; i++) {
+      Tensor sample(ElemKind::FloatTy, {minibatchSize, 3, 32, 32});
+      sample.copyConsecutiveSlices(&images, minibatchSize * i);
       auto *res = N.infer(SM, {A}, {&sample});
 
-      // Read the expected label.
-      auto expectedLabel = labelsH.at({imageIndex, 0});
-      unsigned result = res->getHandle<FloatTy>().maxArg();
-      score += textualLabels[expectedLabel] == textualLabels[result];
+      for (int iter = 0; iter < minibatchSize; iter++) {
+        auto T = res->getHandle<FloatTy>().extractSlice(iter);
+        size_t guess = T.getHandle<FloatTy>().maxArg();
+        size_t correct = labelsH.at({minibatchSize * i + iter, 0});
+        score += guess == correct;
+
+        if ((iter < 10) && i == 0) {
+          //T.getHandle<FloatTy>().dump("softmax: "," ");
+          std::cout << iter << ") Expected : " << textualLabels[correct] << " got " <<
+          textualLabels[guess] << "\n";
+        }
+      }
     }
-    std::cout << "Score : " << score << " / 100.\n";
+
+    std::cout << "Batch #" << iter << " score: " << score << "%\n";
   }
 }
 

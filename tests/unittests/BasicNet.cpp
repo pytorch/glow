@@ -15,26 +15,25 @@ TEST(Network, learnSingleValue) {
   Network N;
   N.getConfig().learningRate = 0.05;
 
-  auto *A = N.createVariable(4, ElemKind::FloatTy);
-  auto *FCL0 = N.createFullyConnectedNode(A, 10);
-  auto *RL0 = N.createRELUNode(FCL0);
-  auto *FCL1 = N.createFullyConnectedNode(RL0, 4);
-  auto *RL1 = N.createRELUNode(FCL1);
+  // Create a variable with 1 input, which is a vector of 4 elements.
+  auto *A = N.createVariable({1, 4}, ElemKind::FloatTy);
+  auto *E = N.createVariable({1, 4}, ElemKind::FloatTy);
 
-  auto *E = N.createVariable(4, ElemKind::FloatTy);
+  NodeBase *O = N.createFullyConnectedNode(A, 10);
+  O = N.createRELUNode(O);
+  O = N.createFullyConnectedNode(O, 4);
+  O = N.createRELUNode(O);
+  auto *RN = N.createRegressionNode(O, E);
 
-  auto *RN = N.createRegressionNode(RL1, E);
-
-  Tensor inputs(ElemKind::FloatTy, {4});
-  Tensor expected(ElemKind::FloatTy, {4});
-
+  // Values for the input and output variables.
+  Tensor inputs(ElemKind::FloatTy, {1, 4});
+  Tensor expected(ElemKind::FloatTy, {1, 4});
   inputs.getHandle<FloatTy>() = {0.15, 0.15, 0.15, 0.15};
   expected.getHandle<FloatTy>() = {0.9, 0.9, 0.9, 0.9};
 
-  // Train the network:
-  for (int iter = 0; iter < 1000; iter++) {
-    N.train(RN, {A, E}, {&inputs, &expected});
-  }
+
+  // Train the network. Learn 1000 batches.
+  N.train(RN, 1000, {A, E}, {&inputs, &expected});
 
   // Testing the output vector.
 
@@ -43,89 +42,93 @@ TEST(Network, learnSingleValue) {
   (void)RNWH;
 
   // Test the output:
-  EXPECT_NEAR(RNWH.at({0}), 0.9, 0.1);
+  EXPECT_NEAR(RNWH.at({0, 0}), 0.9, 0.05);
 }
 
 TEST(Network, learnXor) {
+  unsigned numInputs = 10;
+  unsigned numTests = 10;
+
   // Learning the Xor function.
 
   Network N;
-  N.getConfig().learningRate = 0.1;
+  N.getConfig().learningRate = 0.01;
 
-  auto *A = N.createVariable(2, ElemKind::FloatTy);
-  auto *Ex = N.createVariable(1, ElemKind::FloatTy);
+  auto *A = N.createVariable({numInputs, 2}, ElemKind::FloatTy);
+  auto *Ex = N.createVariable({numInputs, 1}, ElemKind::FloatTy);
 
-  auto *FCL0 = N.createFullyConnectedNode(A, 6);
-  auto *RL0 = N.createRELUNode(FCL0);
-  auto *FCL1 = N.createFullyConnectedNode(RL0, 1);
-  auto *RL1 = N.createRELUNode(FCL1);
-  auto *RN = N.createRegressionNode(RL1, Ex);
+  NodeBase *O = N.createFullyConnectedNode(A, 6);
+  O = N.createRELUNode(O);
+  O = N.createFullyConnectedNode(O, 1);
+  O = N.createRELUNode(O);
+  auto *RN = N.createRegressionNode(O, Ex);
 
-  Tensor inputs(ElemKind::FloatTy, {4, 2});
-  Tensor expected(ElemKind::FloatTy, {4, 1});
+  /// Prepare the training set and the testing set.
+  Tensor trainingSet(ElemKind::FloatTy, {numInputs, 2});
+  Tensor testingSet(ElemKind::FloatTy, {numInputs, 2});
+  Tensor trainingLabels(ElemKind::FloatTy, {numInputs, 1});
 
-  auto I = inputs.getHandle<FloatTy>();
-  auto E = expected.getHandle<FloatTy>();
+  auto TS = trainingSet.getHandle<FloatTy>();
+  auto TL = trainingLabels.getHandle<FloatTy>();
+  auto TT = testingSet.getHandle<FloatTy>();
 
-  /// The XOR lookup table:
-  I.at({0, 0}) = 0;
-  I.at({0, 1}) = 0;
-  I.at({1, 0}) = 0;
-  I.at({1, 1}) = 1;
-  I.at({2, 0}) = 1;
-  I.at({2, 1}) = 0;
-  I.at({3, 0}) = 1;
-  I.at({3, 1}) = 1;
-  // Xor result:
-  E.at({0, 0}) = 0;
-  E.at({1, 0}) = 1;
-  E.at({2, 0}) = 1;
-  E.at({3, 0}) = 0;
+  // Prepare the training data:
+  for (unsigned i = 0; i < numInputs; i++) {
+    int a = i % 2;
+    int b = (i >> 1) % 2;
+    TS.at({i, 0}) = a;
+    TS.at({i, 1}) = b;
+    TL.at({i, 0}) = a ^ b;
+  }
 
   // Train the network:
-  N.train(RN, 400, {A, Ex}, {&inputs, &expected});
+  N.train(RN, 2500, {A, Ex}, {&trainingSet, &trainingLabels});
 
-  // Testing the output vector.
-  for (size_t i = 0; i < 4; i++) {
-    Tensor in = I.extractSlice(i);
-    Tensor exp = E.extractSlice(i);
-    auto expH = exp.getHandle<FloatTy>();
-    (void)expH;
+  // Prepare the training data:
+  for (unsigned i = 0; i < numTests; i++) {
+    TT.at({i, 0}) = i % 2;
+    TT.at({i, 1}) = (i >> 1) % 2;
+  }
 
-    auto res = N.infer(RN, {A}, {&in});
-    auto resH = res->getHandle<FloatTy>();
-    (void)resH;
+  auto res = N.infer(RN, {A}, {&trainingSet});
+  auto resH = res->getHandle<FloatTy>();
 
-    // Test the output:
-    EXPECT_NEAR(expH.at({0}), resH.at({0}), 0.1);
+  // Test the output:
+  for (size_t i = 0; i < numTests; i++) {
+    int a = TS.at({i, 0});
+    int b = TS.at({i, 1});
+    std::cout<<"a = " << a << " b = " << b << " => " << resH.at({i, 0}) << "\n";
+    EXPECT_NEAR(resH.at({i, 0}), (a ^ b), 0.1);
   }
 }
 
 TEST(Network, regression) {
-  // Testing the regression layer.
-  /// This test takes the first element from the input vector, adds one to it
-  /// and places the result in the second element of the output vector.
-  constexpr int numInputs = 4;
+  // Testing the regression layer. This test takes the first element from the
+  // input vector, adds one to it and places the result in the second element of
+  // the output vector.
+  const int numInputs = 4;
+
 
   Network N;
-  auto *A = N.createVariable({numInputs}, ElemKind::FloatTy);
-  auto *Ex = N.createVariable({numInputs}, ElemKind::FloatTy);
+  auto *A = N.createVariable({1, numInputs}, ElemKind::FloatTy);
+  auto *Ex = N.createVariable({1, numInputs}, ElemKind::FloatTy);
 
-  auto *FCL0 = N.createFullyConnectedNode(A, 4);
-  auto *RL0 = N.createRELUNode(FCL0);
-  auto *RN = N.createRegressionNode(RL0, Ex);
+  NodeBase *O = N.createFullyConnectedNode(A, 4);
+  O = N.createRELUNode(O);
+  auto *RN = N.createRegressionNode(O, Ex);
 
-  Tensor inputs(ElemKind::FloatTy, {numInputs});
-  Tensor expected(ElemKind::FloatTy, {numInputs});
+  Tensor inputs(ElemKind::FloatTy, {1, numInputs});
+  Tensor expected(ElemKind::FloatTy, {1, numInputs});
   auto I = inputs.getHandle<FloatTy>();
   auto E = expected.getHandle<FloatTy>();
 
+
   // Train the network:
-  for (int iter = 0; iter < 9000; iter++) {
+  for (int iter = 0; iter < 1000; iter++) {
     float target = float(iter % 9);
     I = {target, 0., 0., 0.};
     E = {0., target + 1, 0., 0.};
-    N.train(RN, {A, Ex}, {&inputs, &expected});
+    N.train(RN, 1, {A, Ex}, {&inputs, &expected});
   }
 
   // Verify the result of the regression layer.
@@ -139,7 +142,7 @@ TEST(Network, regression) {
     auto resH = res->getHandle<FloatTy>();
     (void)resH;
 
-    EXPECT_NEAR(I.at({0}) + 1, resH.at({1}), 0.1);
+    EXPECT_NEAR(I.at({0, 0}) + 1, resH.at({0, 1}), 0.1);
   }
 }
 
@@ -185,12 +188,11 @@ TEST(Network, circle) {
 
   // Construct the network:
   Network N;
-  N.getConfig().momentum = 0.0;
-  N.getConfig().learningRate = 0.1;
-  N.getConfig().batchSize = 10;
+  N.getConfig().momentum = 0.9;
+  N.getConfig().learningRate = 0.01;
 
-  auto *A = N.createVariable({2}, ElemKind::FloatTy);
-  auto *S = N.createVariable({1}, ElemKind::IndexTy);
+  auto *A = N.createVariable({1, 2}, ElemKind::FloatTy);
+  auto *S = N.createVariable({1, 1}, ElemKind::IndexTy);
 
   auto *FCL0 = N.createFullyConnectedNode(A, 6);
   auto *RL0 = N.createRELUNode(FCL0);
@@ -203,24 +205,22 @@ TEST(Network, circle) {
   generateCircleData(coordinates, labels);
 
   // Training:
-  for (int iter = 0; iter < 2000; iter++) {
-    N.train(SM, 1, {A, S}, {&coordinates, &labels});
-  }
+  N.train(SM, 4000, {A, S}, {&coordinates, &labels});
 
   // Print a diagram that depicts the network decision on a grid.
 
   for (int x = -10; x < 10; x++) {
     for (int y = -10; y < 10; y++) {
       // Load the inputs:
-      Tensor sample(ElemKind::FloatTy, {2});
+      Tensor sample(ElemKind::FloatTy, {1, 2});
       sample.getHandle<FloatTy>() = {float(x) / 10, float(y) / 10};
 
       auto res = N.infer(SM, {A}, {&sample});
 
       auto SMH = res->getHandle<FloatTy>();
 
-      auto A = SMH.at({0});
-      auto B = SMH.at({1});
+      auto A = SMH.at({0, 0});
+      auto B = SMH.at({0, 1});
 
       char ch = '=';
       if (A > (B + 0.2)) {
@@ -237,24 +237,24 @@ TEST(Network, circle) {
 
   {
     // The dot in the middle must be zero.
-    Tensor sample(ElemKind::FloatTy, {2});
+    Tensor sample(ElemKind::FloatTy, {1, 2});
     sample.getHandle<FloatTy>() = {0., 0.};
     auto res = N.infer(SM, {A}, {&sample});
     auto SMH = res->getHandle<FloatTy>();
-    auto A = SMH.at({0});
-    auto B = SMH.at({1});
+    auto A = SMH.at({0, 0});
+    auto B = SMH.at({0, 1});
     EXPECT_LE(A, 0.1);
     EXPECT_GE(B, 0.9);
   }
 
   {
     // Far away dot must be one.
-    Tensor sample(ElemKind::FloatTy, {2});
+    Tensor sample(ElemKind::FloatTy, {1, 2});
     sample.getHandle<FloatTy>() = {1., 1.};
     auto res = N.infer(SM, {A}, {&sample});
     auto SMH = res->getHandle<FloatTy>();
-    auto A = SMH.at({0});
-    auto B = SMH.at({1});
+    auto A = SMH.at({0, 0});
+    auto B = SMH.at({0, 1});
     EXPECT_GE(A, 0.9);
     EXPECT_LE(B, 0.1);
   }
@@ -266,30 +266,30 @@ TEST(Network, learnSingleValueConcat) {
   N.getConfig().learningRate = 0.05;
 
   // Left side of the network:
-  Variable *A = N.createVariable(4, ElemKind::FloatTy);
-  Variable *Ex = N.createVariable(8, ElemKind::FloatTy);
+  Variable *A = N.createVariable({1, 4}, ElemKind::FloatTy);
+  Variable *Ex = N.createVariable({1, 8}, ElemKind::FloatTy);
+
 
   NodeBase *L = N.createFullyConnectedNode(A, 4);
   L = N.createRELUNode(L);
 
   // Right side of the network:
-  Variable *B = N.createVariable(4, ElemKind::FloatTy);
+  Variable *B = N.createVariable({1, 4}, ElemKind::FloatTy);
   NodeBase *R = N.createFullyConnectedNode(B, 4);
   R = N.createRELUNode(R);
 
   // Concat:
-  auto *C = N.createConcatNode({L, R}, 0);
+  auto *C = N.createConcatNode({L, R}, 1);
   auto *RN = N.createRegressionNode(C, Ex);
 
-  Tensor inputs(ElemKind::FloatTy, {4});
-  Tensor expected(ElemKind::FloatTy, {8});
+  Tensor inputs(ElemKind::FloatTy, {1, 4});
+  Tensor expected(ElemKind::FloatTy, {1, 8});
   inputs.getHandle<FloatTy>() = {0.15, 0.15, 0.15, 0.15};
   expected.getHandle<FloatTy>() = {0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9};
 
   // Train the network:
-  for (int iter = 0; iter < 1000; iter++) {
-    N.train(RN, {A, B, Ex}, {&inputs, &inputs, &expected});
-  }
+  N.train(RN, 1000, {A, B, Ex}, {&inputs, &inputs, &expected});
+
 
   // Testing the output vector.
   auto res = N.infer(RN, {A}, {&inputs});
@@ -297,5 +297,5 @@ TEST(Network, learnSingleValueConcat) {
   (void)RNWH;
 
   // Test the output:
-  EXPECT_NEAR(RNWH.at({0}), 0.9, 0.1);
+  EXPECT_NEAR(RNWH.at({0, 0}), 0.9, 0.1);
 }
