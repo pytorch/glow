@@ -94,8 +94,10 @@ class Network {
     return N;
   }
 
-  void updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
-                             size_t len, ArrayRef<Variable *> vars,
+  /// Update the inputs for all variables \p vars with data from the inputs \p
+  /// inputs at offset \p sampleIdx. Then perform a forward and backwards scan.
+  void updateForwardBackward(Context *ctx, NodeBase *root, size_t sampleIdx,
+                             ArrayRef<Variable *> vars,
                              ArrayRef<Tensor *> inputs);
 
   void learnGradient(Context *ctx, size_t batchSize);

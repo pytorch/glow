@@ -167,17 +167,19 @@ struct PrinterPass : NodeVisitor {
 
 } // namespace
 
-void Network::updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
-                                    size_t len, ArrayRef<Variable *> vars,
+void Network::updateForwardBackward(Context *ctx, NodeBase *root,
+                                    size_t sampleIdx,
+                                    ArrayRef<Variable *> vars,
                                     ArrayRef<Tensor *> inputs) {
+  std::cout << "updateForwardBackward " << sampleIdx << " " << "\n";
+
   TopologicalSortPass TPS;
   root->visit(&TPS);
   auto order = TPS.getOrder();
 
-  for (size_t idx = 0; idx < len; idx++) {
     /// Update the inputs:
     for (int i = 0, e = vars.size(); i < e; i++) {
-        vars[i]->updateInputs(ctx, inputs[i], start + idx);
+        vars[i]->updateInputs(ctx, inputs[i], sampleIdx);
     }
 
     for (auto it = order.begin(), e = order.end(); it != e; it++) {
@@ -195,7 +197,7 @@ void Network::updateForwardBackward(Context *ctx, NodeBase *root, size_t start,
     for (auto it = order.rbegin(), e = order.rend(); it != e; it++) {
       (*it)->backward(ctx);
     }
-  }
+
 }
 
 void Network::learnGradient(Context *ctx, size_t batchSize) {
@@ -227,28 +229,30 @@ static unsigned calculateNumThreads(unsigned numCores, unsigned numPackets) {
   return best;
 }
 
-/// Train the network starting with the node \p root. Perform \p iterations
-/// iterations in the training loop. Update the vars in \p vars with the
-/// values \p inputs.
-void Network::train(NodeBase *root, size_t batches, ArrayRef<Variable *> vars,
+/// Train the network starting with the node \p root. Update the vars in \p vars
+/// with the values \p inputs. Train the network by processing \p numBatches
+/// batches.
+void Network::train(NodeBase *root, size_t numBatches, ArrayRef<Variable *> vars,
                     ArrayRef<Tensor *> inputs) {
   assert(inputs.size() && "No inputs");
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
 
-  size_t batchSize = vars[0]->dims(state_[0])[0];
+  // This is the size of one batch (the number of samples in the batch).
+  size_t batchSize = vars[0]->dims(getMainContext())[0];
 
-  unsigned numThreads = calculateNumThreads(state_.size(), batches);
+  // Figure out how many threads to use when training the network.
+  unsigned numThreads = calculateNumThreads(state_.size(), numBatches);
 
   std::vector<std::thread> threads;
 
-  for (size_t i = 0; i < batches/numThreads; i++) {
-    /// Launch threads that update the different chunks in the batch:
+  for (size_t i = 0; i < numBatches/numThreads; i++) {
+    // Launch threads that update the different chunks in the batch:
     for (int t = 0; t < numThreads; t++) {
-      /// Update the network inputs and perform the forward and backwards pass.
+      // Update the network inputs and perform the forward and backwards pass.
       threads.emplace_back([=] {
-        updateForwardBackward(state_[t], root, trainCounter_ + t, 1, vars,
-                              inputs);
+        updateForwardBackward(state_[t], root, trainCounter_ + t * batchSize,
+                              vars, inputs);
       });
     }
 
@@ -258,7 +262,7 @@ void Network::train(NodeBase *root, size_t batches, ArrayRef<Variable *> vars,
     }
     threads.clear();
 
-    trainCounter_ += batchSize;
+    trainCounter_ += numThreads * batchSize;
 
     // The algorithm for merging the state from the different threads is
     /// described in the paper: Alex Krizhevsky [2014]
