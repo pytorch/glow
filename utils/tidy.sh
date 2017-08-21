@@ -6,10 +6,7 @@ if [ $(which clang-tidy) ]; then
   FARRAY=( $FILES ) # count the number of files to process
   echo  Inspecting ${#FARRAY[@]} files
 
-  for F in $FILES; do
-    clang-tidy $F -p ../build_/ $1
-    echo -n .
-  done
+  clang-tidy $FILES -p ../build_/ $1
   echo
   echo "Done"
   exit
