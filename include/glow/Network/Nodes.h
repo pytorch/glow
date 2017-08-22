@@ -1,8 +1,8 @@
 #ifndef GLOW_NODES_H
 #define GLOW_NODES_H
 
-#include "glow/Node.h"
-#include "glow/Tensor.h"
+#include "glow/Network/Node.h"
+#include "glow/Network/Tensor.h"
 
 #include <cassert>
 #include <cmath>

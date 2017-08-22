@@ -1,8 +1,8 @@
 #ifndef GLOW_NETWORK_H
 #define GLOW_NETWORK_H
 
-#include "glow/Nodes.h"
-#include "glow/Train.h"
+#include "glow/Network/Nodes.h"
+#include "glow/Network/Train.h"
 
 #include <unordered_map>
 #include <vector>

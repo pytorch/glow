@@ -3,8 +3,8 @@
 
 #include "Config.h"
 
-#include "glow/ADT.h"
-#include "glow/Random.h"
+#include "glow/Support/ADT.h"
+#include "glow/Support/Random.h"
 
 #include <algorithm>
 #include <cassert>

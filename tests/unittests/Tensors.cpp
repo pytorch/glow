@@ -1,4 +1,4 @@
-#include "glow/Tensor.h"
+#include "glow/Network/Tensor.h"
 
 #include "gtest/gtest.h"
 

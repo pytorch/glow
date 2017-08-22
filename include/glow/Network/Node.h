@@ -1,8 +1,8 @@
 #ifndef GLOW_NODE_H
 #define GLOW_NODE_H
 
-#include "glow/Tensor.h"
-#include "glow/Train.h"
+#include "glow/Network/Tensor.h"
+#include "glow/Network/Train.h"
 
 #include <cstddef>
 #include <cstdint>

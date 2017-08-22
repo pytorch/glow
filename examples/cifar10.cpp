@@ -1,8 +1,8 @@
-#include "glow/Image.h"
-#include "glow/Network.h"
-#include "glow/Nodes.h"
-#include "glow/Support.h"
-#include "glow/Tensor.h"
+#include "glow/Network/Image.h"
+#include "glow/Network/Network.h"
+#include "glow/Network/Nodes.h"
+#include "glow/Network/Tensor.h"
+#include "glow/Support/Support.h"
 
 #include <cassert>
 #include <cstddef>

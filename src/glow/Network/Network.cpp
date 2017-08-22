@@ -1,7 +1,7 @@
-#include "glow/Network.h"
-#include "glow/Image.h"
-#include "glow/Nodes.h"
-#include "glow/Tensor.h"
+#include "glow/Network/Network.h"
+#include "glow/Network/Image.h"
+#include "glow/Network/Nodes.h"
+#include "glow/Network/Tensor.h"
 
 #include <iostream>
 #include <thread>

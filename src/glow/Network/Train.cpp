@@ -1,6 +1,6 @@
-#include "glow/Train.h"
-#include "glow/Network.h"
-#include "glow/Tensor.h"
+#include "glow/Network/Train.h"
+#include "glow/Network/Network.h"
+#include "glow/Network/Tensor.h"
 
 using namespace glow;
 

@@ -44,10 +44,9 @@ if (PNG_FOUND)
 endif (PNG_FOUND)
 
 
-SET(LinkLibs ${LinkLibs} libGlow libCaffe)
+SET(LinkLibs ${LinkLibs} Importer Support Network)
 
 enable_testing()
-add_subdirectory(caffe/)
 add_subdirectory(src/glow/)
 add_subdirectory(examples/)
 add_subdirectory(tests/)
