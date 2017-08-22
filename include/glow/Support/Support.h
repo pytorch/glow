@@ -25,6 +25,10 @@ public:
   }
 };
 
+/// Convert the ptr \p ptr into an ascii representation in the format
+/// "0xFFF...";
+std::string pointerToString(void *ptr);
+
 } // namespace glow
 
 #endif // GLOW_SUPPORT_H

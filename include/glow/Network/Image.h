@@ -27,7 +27,7 @@ public:
 
   void backward(Context *ctx) const override {}
 
-  void visit(NodeVisitor *visitor) override;
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
 } // namespace glow

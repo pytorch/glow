@@ -44,7 +44,7 @@ public:
 
   virtual std::string getName() const override { return "ConvNode"; }
 
-  void visit(NodeVisitor *visitor) override;
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
 
   void updateWeights(Network *N_, Tensor *filter, Tensor *bias);
 };
@@ -95,7 +95,7 @@ public:
 
   virtual std::string getName() const override { return "MaxPoolNode"; }
 
-  void visit(NodeVisitor *visitor) override;
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
 class FullyConnectedNode final : public NodeBase {
@@ -125,7 +125,7 @@ public:
 
   virtual std::string getName() const override { return "FullyConnectedNode"; }
 
-  void visit(NodeVisitor *visitor) override;
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
 class RELUNode final : public NodeBase {
@@ -145,7 +145,7 @@ public:
 
   virtual std::string getName() const override { return "RELUNode"; }
 
-  void visit(NodeVisitor *visitor) override;
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
 class SigmoidNode final : public NodeBase {
@@ -165,7 +165,7 @@ public:
 
   virtual std::string getName() const override { return "SigmoidNode"; }
 
-  void visit(NodeVisitor *visitor) override;
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
 class SoftMaxNode final : public NodeBase {
@@ -193,7 +193,7 @@ public:
 
   virtual std::string getName() const override { return "SoftMaxNode"; }
 
-  void visit(NodeVisitor *visitor) override;
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
 class RegressionNode final : public NodeBase {
@@ -218,7 +218,7 @@ public:
 
   virtual std::string getName() const override { return "RegressionNode"; }
 
-  void visit(NodeVisitor *visitor) override;
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
 /// This node attempts to maximize the inputs by sending back a gradient signal
@@ -240,7 +240,7 @@ public:
 
   virtual std::string getName() const override { return "MaxNode"; }
 
-  void visit(NodeVisitor *visitor) override;
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
 /// This is an abstraction over raw variable inputs.
@@ -267,7 +267,7 @@ public:
   /// \p batch. Select inputs from the slice specified by \p payload.
   void updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx);
 
-  void visit(NodeVisitor *visitor) override;
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
 class ReshapeNode final : public NodeBase {
@@ -291,7 +291,7 @@ public:
 
   virtual std::string getName() const override { return "ReshapeNode"; }
 
-  void visit(NodeVisitor *visitor) override;
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
 /// Concats a number of input tensors into a single tensor.
@@ -314,7 +314,7 @@ public:
 
   virtual std::string getName() const override { return "ConcatNode"; }
 
-  void visit(NodeVisitor *visitor) override;
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
 /// Performs batch normalization.
@@ -358,7 +358,7 @@ public:
     return "BatchNormalizationNode";
   }
 
-  void visit(NodeVisitor *visitor) override;
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
 /// Performs per-element arithmetic operations.
@@ -392,7 +392,7 @@ public:
 
   virtual std::string getName() const override { return "ArithmeticNode"; }
 
-  void visit(NodeVisitor *visitor) override;
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
 } // namespace glow

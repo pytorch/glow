@@ -19,14 +19,14 @@ class Context;
 class NodeVisitor {
 public:
   /// This callback is called before visiting the children of \p N.
-  virtual void pre(NodeBase *N) {}
+  virtual void pre(NodeBase *parent, NodeBase *N) {}
 
   /// This callback is called after visiting the children of \p N.
-  virtual void post(NodeBase *N) {}
+  virtual void post(NodeBase *parent, NodeBase *N) {}
 
   /// This callback is called before processing the graph. If the method returns
   /// false then we skip this node.
-  virtual bool shouldVisit(NodeBase *N) { return true; }
+  virtual bool shouldVisit(NodeBase *parent, NodeBase *N) { return true; }
 };
 
 /// Represents a node in the network compute graph.
@@ -62,8 +62,9 @@ public:
   virtual void backward(Context *ctx) const = 0;
 
   /// This method implements the visitor pattern that scans the compute DAG top
-  /// to bottom.
-  virtual void visit(NodeVisitor *visitor) = 0;
+  /// to bottom. The visitor \p visitor is sent by the parent node \p parent,
+  /// or nullptr if this is the first node to be visited.
+  virtual void visit(NodeBase *parent, NodeVisitor *visitor) = 0;
 
   /// Dtor.
   virtual ~NodeBase() = default;

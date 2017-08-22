@@ -1060,12 +1060,12 @@ void ArithmeticNode::backward(Context *ctx) const {
 // incoming node.
 
 #define DEFINE_CLASS_VISITOR(CLASS_NAME)                                       \
-  void CLASS_NAME::visit(NodeVisitor *visitor) {                               \
-    if (!visitor->shouldVisit(this))                                           \
+  void CLASS_NAME::visit(NodeBase *parent, NodeVisitor *visitor) {             \
+    if (!visitor->shouldVisit(parent, this))                                   \
       return;                                                                  \
-    visitor->pre(this);                                                        \
-    input_->visit(visitor);                                                    \
-    visitor->post(this);                                                       \
+    visitor->pre(parent, this);                                                \
+    input_->visit(this, visitor);                                              \
+    visitor->post(parent, this);                                               \
   }
 
 DEFINE_CLASS_VISITOR(ConvNode)
@@ -1079,29 +1079,29 @@ DEFINE_CLASS_VISITOR(RegressionNode)
 DEFINE_CLASS_VISITOR(MaxNode)
 DEFINE_CLASS_VISITOR(BatchNormalizationNode)
 
-void ArithmeticNode::visit(NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(this)) {
+void ArithmeticNode::visit(NodeBase *parent, NodeVisitor *visitor) {
+  if (!visitor->shouldVisit(parent, this)) {
     return;
   }
-  visitor->pre(this);
-  LHS_->visit(visitor);
-  RHS_->visit(visitor);
-  visitor->post(this);
+  visitor->pre(parent, this);
+  LHS_->visit(this, visitor);
+  RHS_->visit(this, visitor);
+  visitor->post(parent, this);
 }
 
-void ConcatNode::visit(NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(this))
+void ConcatNode::visit(NodeBase *parent, NodeVisitor *visitor) {
+  if (!visitor->shouldVisit(parent, this))
     return;
-  visitor->pre(this);
+  visitor->pre(parent, this);
   for (auto &I : inputs_) {
-    I->visit(visitor);
+    I->visit(this, visitor);
   }
-  visitor->post(this);
+  visitor->post(parent, this);
 }
 
-void Variable::visit(NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(this))
+void Variable::visit(NodeBase *parent, NodeVisitor *visitor) {
+  if (!visitor->shouldVisit(parent, this))
     return;
-  visitor->pre(this);
-  visitor->post(this);
+  visitor->pre(parent, this);
+  visitor->post(parent, this);
 }

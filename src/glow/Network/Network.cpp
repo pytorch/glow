@@ -2,7 +2,9 @@
 #include "glow/Network/Image.h"
 #include "glow/Network/Nodes.h"
 #include "glow/Network/Tensor.h"
+#include "glow/Support/Support.h"
 
+#include <fstream>
 #include <iostream>
 #include <thread>
 #include <unordered_set>
@@ -147,11 +149,13 @@ class TopologicalSortPass : public NodeVisitor {
 
 public:
   // Don't revisit visited nodes.
-  bool shouldVisit(NodeBase *N) override { return !visited.count(N); }
+  bool shouldVisit(NodeBase *parent, NodeBase *N) override {
+    return !visited.count(N);
+  }
 
   TopologicalSortPass() = default;
 
-  void post(NodeBase *N) override {
+  void post(NodeBase *parent, NodeBase *N) override {
     if (!visited.insert(N).second)
       return;
 
@@ -162,7 +166,9 @@ public:
 };
 
 struct PrinterPass : NodeVisitor {
-  void post(NodeBase *N) override { std::cout << N->getName() << "->"; }
+  void post(NodeBase *parent, NodeBase *N) override {
+    std::cout << N->getName() << "->";
+  }
 };
 
 } // namespace
@@ -171,7 +177,7 @@ void Network::updateForwardBackward(Context *ctx, NodeBase *root,
                                     size_t sampleIdx, ArrayRef<Variable *> vars,
                                     ArrayRef<Tensor *> inputs) {
   TopologicalSortPass TPS;
-  root->visit(&TPS);
+  root->visit(nullptr, &TPS);
   auto order = TPS.getOrder();
 
   /// Update the inputs:
@@ -272,7 +278,7 @@ void Network::train(NodeBase *root, size_t numBatches,
 Tensor *Network::infer(NodeBase *root, ArrayRef<Variable *> vars,
                        ArrayRef<Tensor *> inputs) {
   TopologicalSortPass TPS;
-  root->visit(&TPS);
+  root->visit(nullptr, &TPS);
   auto order = TPS.getOrder();
 
   // Update all inputs.
@@ -293,7 +299,7 @@ void Network::dump(NodeBase *root) {
 
   // Print all of the nodes in the network.
   PrinterPass FP;
-  root->visit(&FP);
+  root->visit(nullptr, &FP);
 
   std::cout << "\n";
 
@@ -305,4 +311,74 @@ void Network::dump(NodeBase *root) {
   }
 
   std::cout << "\n";
+}
+
+struct DottyPrinterPass : NodeVisitor {
+  using edgeTy = std::pair<NodeBase *, NodeBase *>;
+  std::vector<edgeTy> nodeEdges;
+
+public:
+  // Don't revisit visited nodes.
+  bool shouldVisit(NodeBase *parent, NodeBase *N) override {
+    edgeTy e = {parent, N};
+    return std::find(nodeEdges.begin(), nodeEdges.end(), e) == nodeEdges.end();
+  }
+
+  DottyPrinterPass() = default;
+
+  void pre(NodeBase *parent, NodeBase *N) override {
+    nodeEdges.push_back({parent, N});
+  }
+
+  std::string nodeDescr(NodeBase *N) {
+    if (!N)
+      return "";
+    // Print a node descriptor that looks like this:
+    // Format: "node12" [ label = "0xf7fc43e01" shape = "record" ];
+    std::string sb;
+    sb += quote(pointerToString(N)) + "[\n";
+    sb += "\tlabel = " + quote(N->getName()) + "\n";
+    sb += "\tshape = \"record\"\n";
+    sb += "];\n\n";
+    return sb;
+  }
+
+  std::string quote(std::string in) { return '"' + in + '"'; }
+  std::string getDottyString() {
+    std::string sb;
+
+    sb += "digraph finite_state_machine {\n\trankdir=TD;\n";
+
+    // Assign a unique name to each one of the nodes:
+    for (auto &e : nodeEdges) {
+      if (e.first) {
+        sb += quote(pointerToString(e.second)) + " -> " +
+              quote(pointerToString(e.first)) + ";\n";
+      }
+    }
+
+    // Assign a unique name to each one of the nodes:
+    for (auto &e : nodeEdges) {
+      sb += nodeDescr(e.first);
+      sb += nodeDescr(e.second);
+    }
+
+    sb += "}";
+    return sb;
+  }
+};
+
+void Network::dumpGraph(NodeBase *root) {
+  DottyPrinterPass DP;
+  root->visit(nullptr, &DP);
+
+  std::string filename = "dotty_network_dump_" + pointerToString(root) + ".dot";
+  std::cout << "Writing dotty graph to: " << filename << '\n';
+
+  std::string rep = DP.getDottyString();
+
+  std::ofstream myfile;
+  myfile.open(filename);
+  myfile << rep;
+  myfile.close();
 }
