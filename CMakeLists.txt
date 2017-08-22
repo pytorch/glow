@@ -18,6 +18,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -std=c++11 -Wall -fsanitize=
 
 set(GLOW_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(GLOW_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${GLOW_BINARY_DIR}/bin)
 
 set(TRAINING_TENSOR_ELEMENT_TYPE float)
 
@@ -50,7 +51,5 @@ enable_testing()
 add_subdirectory(src/glow/)
 add_subdirectory(examples/)
 add_subdirectory(tests/)
-
-add_executable(glow glow.cpp ${header_files})
-target_link_libraries (glow LINK_PUBLIC ${LinkLibs})
+add_subdirectory(tools/)
 
