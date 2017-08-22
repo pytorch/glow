@@ -45,7 +45,7 @@ if (PNG_FOUND)
 endif (PNG_FOUND)
 
 
-SET(LinkLibs ${LinkLibs} Importer Support Network)
+SET(LinkLibs ${LinkLibs} Importer Network Support)
 
 enable_testing()
 add_subdirectory(src/glow/)
