@@ -13,6 +13,7 @@ using namespace glow;
 TEST(Network, learnSingleValue) {
   // Learning a single input vector.
   Network N;
+  N.getConfig().maxNumThreads = 1;
   N.getConfig().learningRate = 0.05;
 
   // Create a variable with 1 input, which is a vector of 4 elements.
@@ -49,8 +50,8 @@ TEST(Network, learnXor) {
   unsigned numTests = 10;
 
   // Learning the Xor function.
-
   Network N;
+  N.getConfig().maxNumThreads = 1;
   N.getConfig().learningRate = 0.01;
 
   auto *A = N.createVariable({numInputs, 2}, ElemKind::FloatTy);
@@ -109,6 +110,7 @@ TEST(Network, regression) {
   const int numInputs = 4;
 
   Network N;
+  N.getConfig().maxNumThreads = 1;
   auto *A = N.createVariable({1, numInputs}, ElemKind::FloatTy);
   auto *Ex = N.createVariable({1, numInputs}, ElemKind::FloatTy);
 
@@ -181,6 +183,7 @@ TEST(Network, circle) {
 
   // Construct the network:
   Network N;
+  N.getConfig().maxNumThreads = 1;
   N.getConfig().momentum = 0.9;
   N.getConfig().learningRate = 0.01;
 
@@ -256,6 +259,7 @@ TEST(Network, circle) {
 TEST(Network, learnSingleValueConcat) {
   // Learning inputs in two concatenated vectors.
   Network N;
+  N.getConfig().maxNumThreads = 1;
   N.getConfig().learningRate = 0.05;
 
   // Left side of the network:

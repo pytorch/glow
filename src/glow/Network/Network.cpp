@@ -210,11 +210,14 @@ void Network::learnGradient(Context *ctx, size_t batchSize) {
   }
 }
 
-static unsigned calculateNumThreads(unsigned numCores, unsigned numPackets) {
+static unsigned calculateNumThreads(unsigned maxNumThreads, unsigned numCores,
+                                    unsigned numPackets) {
   unsigned best = 1;
+  assert(maxNumThreads && numCores && numPackets &&
+         "Invalid work size or thread count");
+  unsigned maxThreads = std::min<unsigned>(numCores, maxNumThreads);
 
-  for (int i = 1; i < numCores; i++) {
-
+  for (int i = 1; i < maxThreads; i++) {
     // The number of packets must be a multiple of the number of threads or
     // we'll skip some packets.
     if (numPackets % i) {
@@ -244,7 +247,8 @@ void Network::train(NodeBase *root, size_t numBatches,
   size_t batchSize = vars[0]->dims(getMainContext())[0];
 
   // Figure out how many threads to use when training the network.
-  unsigned numThreads = calculateNumThreads(state_.size(), numBatches);
+  unsigned numThreads =
+      calculateNumThreads(getConfig().maxNumThreads, state_.size(), numBatches);
 
   std::vector<std::thread> threads;
 

@@ -31,6 +31,7 @@ FloatTy gradDiff(FloatTy G1, FloatTy G2) {
 
 TEST(Network, gradientCheck_FC_Concat_RELU) {
   Network N;
+  N.getConfig().maxNumThreads = 1;
 
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
@@ -97,6 +98,7 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
 
 TEST(Network, gradientCheck_Conv) {
   Network N;
+  N.getConfig().maxNumThreads = 1;
 
   size_t numDim = 10;
   size_t numOutputElem = 10;
@@ -161,6 +163,7 @@ TEST(Network, gradientCheck_Conv) {
 
 TEST(Network, gradientCheck_AvgPool) {
   Network N;
+  N.getConfig().maxNumThreads = 1;
 
   size_t numDim = 10;
   size_t numOutputElem = 10;
@@ -223,6 +226,7 @@ TEST(Network, gradientCheck_AvgPool) {
 
 TEST(Network, gradientCheck_batchNorm) {
   Network N;
+  N.getConfig().maxNumThreads = 1;
 
   size_t numDim = 5;
   size_t numOutputElem = numDim * numDim * 3;
@@ -289,6 +293,7 @@ TEST(Network, gradientCheck_batchNorm) {
 
 TEST(Network, gradientCheck_Arithmetic) {
   Network N;
+  N.getConfig().maxNumThreads = 1;
 
   size_t numDim = 5;
 
