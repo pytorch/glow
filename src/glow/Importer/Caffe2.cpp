@@ -5,6 +5,7 @@
 #include "glow/Network/Nodes.h"
 #include "glow/Network/Tensor.h"
 
+#include "caffe.pb.h"
 #include <google/protobuf/text_format.h>
 
 #include <cassert>
@@ -180,16 +181,16 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   unexpectedNodeError(op, "Could not load the operator.");
 }
 
-void caffe2ModelLoader::loadNetwork() {
+void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   /// Load the network operators:
-  for (int i = 0; i < network_.op_size(); i++) {
-    auto &op = network_.op(i);
+  for (int i = 0; i < net.op_size(); i++) {
+    auto &op = net.op(i);
     loadOperator(op);
   }
 }
 
-void caffe2ModelLoader::loadWeights() {
-  for (auto &op : weights_.op()) {
+void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
+  for (auto &op : net.op()) {
     ArgumentDictionaryTy dict = loadArgumenrMap(op);
 
     /// Load tensors with values:
@@ -271,13 +272,18 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   // compatible with the version of the headers we compiled against.
   GOOGLE_PROTOBUF_VERIFY_VERSION;
 
+  // The caffe2 weights that we are deserializing.
+  caffe2::NetDef weightsDef;
+  // The caffe2 network descriptor that we are deserializing.
+  caffe2::NetDef networkDef;
+
   assert(names.size() == tensors.size() && "Invalid initialization list");
   for (unsigned i = 0; i < names.size(); i++) {
     tensors_[names[i]] = tensors[i];
   }
 
-  loadProtoFile(network_, netDescFilename);
-  loadProtoFile(weights_, netWeightFilename);
-  loadWeights();
-  loadNetwork();
+  loadProtoFile(networkDef, netDescFilename);
+  loadProtoFile(weightsDef, netWeightFilename);
+  loadWeights(weightsDef);
+  loadNetwork(networkDef);
 }

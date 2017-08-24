@@ -3,10 +3,13 @@
 
 #include "glow/Support/ADT.h"
 
-#include "caffe/caffe.pb.h"
-
+#include <string>
 #include <unordered_map>
 
+namespace caffe2 {
+class OperatorDef;
+class NetDef;
+} // namespace caffe2
 namespace glow {
 
 class Network;
@@ -15,10 +18,6 @@ class Tensor;
 
 /// Loads caffe2 models.
 class caffe2ModelLoader {
-  /// The caffe2 weights that we are deserializing.
-  caffe2::NetDef weights_;
-  /// The caffe2 network descriptor that we are deserializing.
-  caffe2::NetDef network_;
   /// The network that we are building.
   glow::Network &N_;
   /// Saves network nodes by name.
@@ -28,10 +27,10 @@ class caffe2ModelLoader {
 
   /// Load the weight tensors from the 'init' file and register them in the map
   /// \p tensors.
-  void loadWeights();
+  void loadWeights(caffe2::NetDef &net);
 
   /// Load the structure of the network from the 'net' file.
-  void loadNetwork();
+  void loadNetwork(caffe2::NetDef &net);
 
   /// \returns the tensor that was registered under the name \p name.
   Tensor *getTensorByName(const std::string &name);
