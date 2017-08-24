@@ -274,7 +274,7 @@ void Network::train(NodeBase *root, size_t numBatches,
     /// described in the paper: Alex Krizhevsky [2014]
     // "One weird trick for parallelizing convolutional neural networks"
     for (int tid = 0; tid < numThreads; tid++) {
-      learnGradient(state_[tid], batchSize);
+      learnGradient(state_[tid], batchSize * numThreads);
     }
   }
 }
