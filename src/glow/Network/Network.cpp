@@ -298,12 +298,12 @@ Tensor *Network::infer(NodeBase *root, ArrayRef<Variable *> vars,
   return root->getOutputWeight(state_[0]);
 }
 
-void Network::dump(NodeBase *root) {
+void Network::dump() {
   std::cout << "Network structure:";
 
-  // Print all of the nodes in the network.
-  PrinterPass FP;
-  root->visit(nullptr, &FP);
+  for (auto &N : networkNodes_) {
+    std::cout << N->getName() << "\n";
+  }
 
   std::cout << "\n";
 
@@ -372,11 +372,14 @@ public:
   }
 };
 
-void Network::dumpGraph(NodeBase *root) {
+void Network::dumpGraph() {
   DottyPrinterPass DP;
-  root->visit(nullptr, &DP);
 
-  std::string filename = "dotty_network_dump_" + pointerToString(root) + ".dot";
+  for (auto &N : networkNodes_) {
+    N->visit(nullptr, &DP);
+  }
+
+  std::string filename = "dotty_network_dump_" + pointerToString(this) + ".dot";
   std::cout << "Writing dotty graph to: " << filename << '\n';
 
   std::string rep = DP.getDottyString();

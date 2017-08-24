@@ -167,10 +167,10 @@ public:
                 ArrayRef<Tensor *> inputs);
 
   /// Dump the textual representation of the network.
-  void dump(NodeBase *root);
+  void dump();
 
   /// Dump the graph representation of the network.
-  void dumpGraph(NodeBase *root);
+  void dumpGraph();
 
   /// Update the content of the internally stored tensor \p tok with \p t.
   void updateTensor(const TensorToken *tok, Tensor *t);
