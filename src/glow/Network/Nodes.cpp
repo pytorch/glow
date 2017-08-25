@@ -26,7 +26,7 @@ ConvNode::ConvNode(Network *N, NodeBase *input, size_t outDepth,
 void ConvNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   ShapeNHWC idim = input_->dims(ctx);
-  assert(idim.h > filterSize_ && idim.w > filterSize_ &&
+  assert(idim.h >= filterSize_ && idim.w >= filterSize_ &&
          "buffer too small for selected stride");
 
   size_t outsx = ((idim.h + pad_ * 2 - filterSize_) / stride_ + 1);
@@ -173,7 +173,7 @@ MaxPoolNode::MaxPoolNode(Network *N, NodeBase *input, OpKind kind,
 void MaxPoolNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   ShapeNHWC idim = input_->dims(ctx);
-  assert(idim.w > filterSize_ && idim.h > filterSize_ &&
+  assert(idim.w >= filterSize_ && idim.h >= filterSize_ &&
          "buffer too small for selected stride");
 
   size_t outsx = ((idim.w + pad_ * 2 - filterSize_) / stride_ + 1);

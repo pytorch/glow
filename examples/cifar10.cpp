@@ -1,3 +1,4 @@
+#include "glow/Models/Builders.h"
 #include "glow/Network/Image.h"
 #include "glow/Network/Network.h"
 #include "glow/Network/Nodes.h"
@@ -15,25 +16,6 @@
 #include <vector>
 
 using namespace glow;
-
-NodeBase *createSimpleNet(Network &N, NodeBase *input, NodeBase *expected) {
-  auto *CV0 = N.createConvNode(input, 16, 5, 1, 2);
-  auto *RL0 = N.createRELUNode(CV0);
-  auto *MP0 = N.createMaxPoolNode(RL0, MaxPoolNode::OpKind::kMax, 2, 2, 0);
-
-  auto *CV1 = N.createConvNode(MP0, 20, 5, 1, 2);
-  auto *RL1 = N.createRELUNode(CV1);
-  auto *MP1 = N.createMaxPoolNode(RL1, MaxPoolNode::OpKind::kMax, 2, 2, 0);
-
-  auto *CV2 = N.createConvNode(MP1, 20, 5, 1, 2);
-  auto *RL2 = N.createRELUNode(CV2);
-  auto *MP2 = N.createMaxPoolNode(RL2, MaxPoolNode::OpKind::kMax, 2, 2, 0);
-
-  auto *FCL1 = N.createFullyConnectedNode(MP2, 10);
-  auto *RL3 = N.createRELUNode(FCL1);
-  auto *SM = N.createSoftMaxNode(RL3, expected);
-  return SM;
-}
 
 /// The CIFAR file format is structured as one byte label in the range 0..9.
 /// The label is followed by an image: 32 x 32 pixels, in RGB format. Each
