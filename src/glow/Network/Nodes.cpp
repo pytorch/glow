@@ -1074,7 +1074,6 @@ DEFINE_CLASS_VISITOR(FullyConnectedNode)
 DEFINE_CLASS_VISITOR(RELUNode)
 DEFINE_CLASS_VISITOR(ReshapeNode)
 DEFINE_CLASS_VISITOR(SigmoidNode)
-DEFINE_CLASS_VISITOR(SoftMaxNode)
 DEFINE_CLASS_VISITOR(RegressionNode)
 DEFINE_CLASS_VISITOR(MaxNode)
 DEFINE_CLASS_VISITOR(BatchNormalizationNode)
@@ -1086,6 +1085,15 @@ void ArithmeticNode::visit(NodeBase *parent, NodeVisitor *visitor) {
   visitor->pre(parent, this);
   LHS_->visit(this, visitor);
   RHS_->visit(this, visitor);
+  visitor->post(parent, this);
+}
+
+void SoftMaxNode::visit(NodeBase *parent, NodeVisitor *visitor) {
+  if (!visitor->shouldVisit(parent, this))
+    return;
+  visitor->pre(parent, this);
+  input_->visit(this, visitor);
+  selected_->visit(this, visitor);
   visitor->post(parent, this);
 }
 
