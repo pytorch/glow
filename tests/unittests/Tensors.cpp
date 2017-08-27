@@ -12,8 +12,6 @@
 using namespace glow;
 
 TEST(Tensor, init) {
-  std::cout << "Testing initialization.\n";
-
   Tensor T = {1.2, 12.1, 51.0, 1515.2};
 
   auto H = T.getHandle<FloatTy>();
@@ -30,8 +28,6 @@ TEST(Tensor, init) {
 }
 
 TEST(Tensor, clone) {
-  std::cout << "Testing clone.\n";
-
   Tensor T = {1.2, 12.1, 51.0, 1515.2};
   auto H = T.getHandle<FloatTy>();
 
@@ -187,5 +183,23 @@ TEST(Tensor, copySlice) {
     for (unsigned z = 0; z < 3; z++) {
       EXPECT_EQ(AH.at({0, y, z}), BH.at({y, z}));
     }
+  }
+}
+
+TEST(Tensor, transpose) {
+  Tensor X(ElemKind::FloatTy, {5, 2});
+  auto H = X.getHandle<FloatTy>();
+  H = {
+      0.2, 0.4, 0.6, 0.8, 1.0, 0.6, 0.8, 1.0, 2.0, 3.0,
+  };
+
+  Tensor Xhat;
+  transposeTensors<FloatTy>(&Xhat, &X, {1, 0});
+
+  auto XhatH = Xhat.getHandle<FloatTy>();
+
+  for (size_t i = 0; i < 5; i++) {
+    EXPECT_EQ(H.at({i, 0}), XhatH.at({0, i}));
+    EXPECT_EQ(H.at({i, 1}), XhatH.at({1, i}));
   }
 }

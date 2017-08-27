@@ -622,6 +622,56 @@ void extractTensors(Handle<ElemTy> &slice, Handle<ElemTy> &fused,
   auto fusedCoor = fused.dims().vec();
   insertTensorsImpl(sliceCoor, fusedCoor, slice, fused, false, offset, 0);
 }
+
+/// This is a slow generic transpose. This method performs a single for loop
+/// over a single dimension, or if we've reached the last dimension perform a
+/// single copy of a single element.
+template <class ElemTy>
+void transposeImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest, size_t *srcCoor,
+                   size_t *destCoor, ArrayRef<unsigned> shuffle,
+                   unsigned depth) {
+  if (depth == shuffle.size()) {
+    auto srcIdx = ArrayRef<size_t>(srcCoor, depth);
+    auto destIdx = ArrayRef<size_t>(destCoor, depth);
+    dest.at(destIdx) = src.at(srcIdx);
+    return;
+  }
+
+  // Iterate over one dimension and continue recursively to the next dim.
+  for (size_t x = 0, e = src.dims()[depth]; x < e; x++) {
+    srcCoor[depth] = x;
+    destCoor[shuffle[depth]] = x;
+    transposeImpl(src, dest, srcCoor, destCoor, shuffle, depth + 1);
+  }
+}
+
+/// Transpose the tensor \p src into the empty tensor \p dest. Shuffle the
+/// axis based on the list \p shuffle, where each element is the src index.
+template <class ElemTy>
+void transposeTensors(Tensor *dest, Tensor *src, ArrayRef<unsigned> shuffle) {
+  auto SH = src->getHandle<ElemTy>();
+
+  unsigned numDims = shuffle.size();
+  assert(SH.dims().size() == shuffle.size() && "Invalid dimensions");
+
+  size_t newSizes[max_tensor_dimensions];
+
+  // Generate the swizzeled dimensions.
+  auto origDims = SH.dims();
+  for (unsigned i = 0; i < numDims; i++) {
+    newSizes[i] = origDims[shuffle[i]];
+  }
+
+  // Resize the tensor to the transposed shape.
+  dest->reset(SH.getElementType(), ArrayRef<size_t>(newSizes, numDims));
+
+  size_t srcCoor[max_tensor_dimensions];
+  size_t destCoor[max_tensor_dimensions];
+
+  auto DH = dest->getHandle<ElemTy>();
+  transposeImpl(SH, DH, srcCoor, destCoor, shuffle, 0);
+}
+
 } // namespace glow
 
 #endif // GLOW_TENSOR_H
