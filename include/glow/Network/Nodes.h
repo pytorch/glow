@@ -255,7 +255,7 @@ class Variable final : public NodeBase {
   friend Network;
 
 public:
-  virtual std::string getName() const override { return "ArrayNode"; }
+  virtual std::string getName() const override { return "Variable"; }
 
   void init(Context *ctx) const override;
 
