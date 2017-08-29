@@ -117,6 +117,10 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     auto *node = N_.createConvNode(in, conv1_b->size(), kernel, stride, pad);
 
+    Tensor *w = getTensorByName(op.input(1));
+    Tensor *b = getTensorByName(op.input(2));
+    node->updateWeights(&N_, w, b);
+
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;
@@ -166,13 +170,9 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *in = getOrCreateNodeByName(op.input(0));
     Tensor *w = getTensorByName(op.input(1));
     Tensor *b = getTensorByName(op.input(2));
-    (void)w;
-    (void)b;
-    // TODO: load the weights and biases into the node.
-
     auto *FC = N_.createFullyConnectedNode(in, b->size());
 
-    FC->updateWeights(N_.getMainContext(), w, b);
+    FC->updateWeights(&N_, w, b);
 
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {

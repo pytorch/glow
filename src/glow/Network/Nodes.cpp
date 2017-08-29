@@ -509,13 +509,9 @@ void FullyConnectedNode::backward(Context *ctx) const {
   } // N
 }
 
-void FullyConnectedNode::updateWeights(Context *ctx, Tensor *w, Tensor *b) {
-  auto cw = ctx->getTensor(&filtersW_);
-  auto cb = ctx->getTensor(&biasW_);
-  assert(cw->dims() == w->dims() && "Invalid weights dimensions");
-  assert(cb->dims() == b->dims() && "Invalid bias dimensions");
-  cw->copyFrom(w);
-  cb->copyFrom(b);
+void FullyConnectedNode::updateWeights(Network *N_, Tensor *w, Tensor *bias) {
+  N_->updateTensor(&filtersW_, w);
+  N_->updateTensor(&biasW_, bias);
 }
 
 RELUNode::RELUNode(Network *N, NodeBase *input) : input_(input) {}
