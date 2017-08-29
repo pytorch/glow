@@ -509,6 +509,15 @@ void FullyConnectedNode::backward(Context *ctx) const {
   } // N
 }
 
+void FullyConnectedNode::updateWeights(Context *ctx, Tensor *w, Tensor *b) {
+  auto cw = ctx->getTensor(&filtersW_);
+  auto cb = ctx->getTensor(&biasW_);
+  assert(cw->dims() == w->dims() && "Invalid weights dimensions");
+  assert(cb->dims() == b->dims() && "Invalid bias dimensions");
+  cw->copyFrom(w);
+  cb->copyFrom(b);
+}
+
 RELUNode::RELUNode(Network *N, NodeBase *input) : input_(input) {}
 
 void RELUNode::init(Context *ctx) const {
@@ -576,12 +585,12 @@ void SoftMaxNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   auto idim = input_->dims(ctx);
   auto sdim = selected_->dims(ctx);
-  (void) sdim;
+  (void)sdim;
   assert(idim.size() == 2 && sdim.size() == 2 &&
          "Softmax input must be a 2D matrix.");
   assert(idim[0] == sdim[0] && "Batch size does not match");
   assert(sdim[1] == 1 && "The selected vector must contain a single index for "
-         "each batch element");
+                         "each batch element");
 
   ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, idim);
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, idim);

@@ -123,6 +123,9 @@ class FullyConnectedNode final : public NodeBase {
 public:
   void init(Context *ctx) const override;
 
+  /// Updates the weights \p b, and bias \p b of the node for context \p ctx.
+  void updateWeights(Context *ctx, Tensor *w, Tensor *b);
+
   void forward(Context *ctx, PassKind kind) const override;
 
   void backward(Context *ctx) const override;

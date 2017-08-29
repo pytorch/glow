@@ -171,6 +171,9 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // TODO: load the weights and biases into the node.
 
     auto *FC = N_.createFullyConnectedNode(in, b->size());
+
+    FC->updateWeights(N_.getMainContext(), w, b);
+
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = FC;
