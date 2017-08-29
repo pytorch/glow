@@ -12,8 +12,8 @@ int main(int argc, char **argv) {
     return -1;
   }
 
-  auto *data = new Tensor(ElemKind::FloatTy, {1, 320, 200, 3});
-  auto *expected_softmax = new Tensor(ElemKind::IndexTy, {1, 10});
+  auto *data = new Tensor(ElemKind::FloatTy, {8, 224, 224, 3});
+  auto *expected_softmax = new Tensor(ElemKind::IndexTy, {8, 1});
 
   glow::Network N;
   caffe2ModelLoader(argv[1], argv[2], {"data", "softmax_expected"},
