@@ -1,5 +1,5 @@
-#ifndef GLOW_TENSOR_H
-#define GLOW_TENSOR_H
+#ifndef GLOW_NETWORK_TENSOR_H
+#define GLOW_NETWORK_TENSOR_H
 
 #include "Config.h"
 
@@ -143,8 +143,9 @@ public:
   bool isInBounds(ArrayRef<size_t> indices) const {
     assert(numSizes_ == indices.size() && "Invalid number of indices");
     for (size_t i = 0u, e = indices.size(); i < e; i++) {
-      if (indices[i] >= sizes_[i])
+      if (indices[i] >= sizes_[i]) {
         return false;
+      }
     }
     return true;
   }
@@ -155,7 +156,7 @@ public:
   }
 
   /// \returns the shape of the tensor.
-  ArrayRef<size_t> dims() const { return ArrayRef<size_t>(sizes_, numSizes_); }
+  ArrayRef<size_t> dims() const { return {sizes_, numSizes_}; }
 
   /// \returns the number of elements in the tensor.
   size_t size() const {
@@ -366,8 +367,9 @@ public:
     numDims = sizes.size();
 
     /// We allow handles that wrap uninitialized tensors.
-    if (!numDims)
+    if (!numDims) {
       return;
+    }
 
     // Copy the sizes of the tensor.
     memcpy(sizes_, tensor_->sizes_, max_tensor_dimensions * sizeof(sizes_[0]));
@@ -512,8 +514,9 @@ public:
     for (size_t i = 0, e = std::min<size_t>(maxNumElem, size()); i < e; i++) {
       std::cout << raw(i) << " ";
     }
-    if (size() > maxNumElem)
+    if (size() > maxNumElem) {
       std::cout << "...";
+    }
     std::cout << "]" << suffix;
   }
 
@@ -674,4 +677,4 @@ void transposeTensors(Tensor *dest, Tensor *src, ArrayRef<unsigned> shuffle) {
 
 } // namespace glow
 
-#endif // GLOW_TENSOR_H
+#endif // GLOW_NETWORK_TENSOR_H

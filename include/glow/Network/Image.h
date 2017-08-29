@@ -1,5 +1,5 @@
-#ifndef GLOW_IMAGE_H
-#define GLOW_IMAGE_H
+#ifndef GLOW_NETWORK_IMAGE_H
+#define GLOW_NETWORK_IMAGE_H
 
 #include "glow/Network/Node.h"
 #include "glow/Network/Tensor.h"
@@ -15,7 +15,7 @@ class PNGNode final : public NodeBase {
 public:
   explicit PNGNode(Network *N) {}
 
-  virtual std::string getName() const override { return "PNGNode"; }
+  std::string getName() const override { return "PNGNode"; }
 
   std::string getDebugRepr(Context *ctx) const override;
 
@@ -34,4 +34,4 @@ public:
 
 } // namespace glow
 
-#endif // GLOW_IMAGE_H
+#endif // GLOW_NETWORK_IMAGE_H

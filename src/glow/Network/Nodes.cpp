@@ -106,8 +106,9 @@ void ConvNode::forward(Context *ctx, PassKind kind) const {
               ssize_t oy = y + fy;
 
               // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= odim.h || oy >= odim.w)
+              if (ox < 0 || oy < 0 || ox >= odim.h || oy >= odim.w) {
                 continue;
+              }
 
               for (size_t fd = 0; fd < idim.c; fd++) {
                 sum += filterW.at({d, fx, fy, fd}) *
@@ -155,8 +156,9 @@ void ConvNode::backward(Context *ctx) const {
               ssize_t oy = y + fy;
 
               // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= odim.h || oy >= odim.w)
+              if (ox < 0 || oy < 0 || ox >= odim.h || oy >= odim.w) {
                 continue;
+              }
 
               for (size_t fd = 0; fd < idim.c; fd++) {
                 filterG.at({d, fx, fy, fd}) +=
@@ -267,8 +269,9 @@ void MaxPoolNode::forwardMax(Context *ctx) const {
               ssize_t oy = y + fy;
 
               // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w)
+              if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w) {
                 continue;
+              }
 
               FloatTy val = inW.at({n, (size_t)ox, (size_t)oy, z});
 
@@ -350,8 +353,9 @@ void MaxPoolNode::forwardAvg(Context *ctx) const {
               ssize_t oy = y + fy;
 
               // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w)
+              if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w) {
                 continue;
+              }
 
               sum += inW.at({n, (size_t)ox, (size_t)oy, z});
             }
@@ -389,8 +393,9 @@ void MaxPoolNode::backwardAvg(Context *ctx) const {
               ssize_t oy = y + fy;
 
               // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w)
+              if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w) {
                 continue;
+              }
 
               inG.at({n, (size_t)ox, (size_t)oy, z}) += dy;
             }
@@ -769,8 +774,9 @@ void ConcatNode::init(Context *ctx) const {
     // Validate that the rest of the dimensions are identical.
     assert(dims0.size() == dimsI.size() && "Invalid number of dimensions");
     for (int i = 0; i < dims0.size(); i++) {
-      if (i == dimension_)
+      if (i == dimension_) {
         continue;
+      }
       assert(dimsI[i] == dims0[i] && "Invalid dimension");
     }
   }
@@ -785,8 +791,8 @@ void ConcatNode::init(Context *ctx) const {
 
 std::string ConcatNode::getDebugRepr(Context *ctx) const {
   DescriptionBuilder db(getName());
-  for (int i = 0, e = inputs_.size(); i < e; i++) {
-    db.addDim("input", inputs_[i]->dims(ctx));
+  for (auto input : inputs_) {
+    db.addDim("input", input->dims(ctx));
   }
   db.addDim("output", getOutputWeight(ctx)->dims());
   db.addParam("dimension_", (size_t)dimension_);
@@ -799,8 +805,8 @@ void ConcatNode::forward(Context *ctx, PassKind kind) const {
   /// Insert the tensors at this coordinate. Start at zero.
   std::vector<size_t> offset(outW.size(), 0);
 
-  for (int i = 0, e = inputs_.size(); i < e; i++) {
-    auto inW = inputs_[i]->getWeightHandle(ctx);
+  for (auto input : inputs_) {
+    auto inW = input->getWeightHandle(ctx);
 
     // Insert the tensor.
     insertTensors(inW, outW, offset);
@@ -816,8 +822,8 @@ void ConcatNode::backward(Context *ctx) const {
   /// Insert the tensors at this coordinate. Start at zero.
   std::vector<size_t> offset(outG.size(), 0);
 
-  for (int i = 0, e = inputs_.size(); i < e; i++) {
-    auto inG = inputs_[i]->getGradHandle(ctx);
+  for (auto input : inputs_) {
+    auto inG = input->getGradHandle(ctx);
 
     // Insert the tensor.
     extractTensors(inG, outG, offset);
@@ -1203,8 +1209,9 @@ void ArithmeticNode::visit(NodeBase *parent, NodeVisitor *visitor) {
 }
 
 void SoftMaxNode::visit(NodeBase *parent, NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(parent, this))
+  if (!visitor->shouldVisit(parent, this)) {
     return;
+  }
   visitor->pre(parent, this);
   input_->visit(this, visitor);
   selected_->visit(this, visitor);
@@ -1212,8 +1219,9 @@ void SoftMaxNode::visit(NodeBase *parent, NodeVisitor *visitor) {
 }
 
 void ConcatNode::visit(NodeBase *parent, NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(parent, this))
+  if (!visitor->shouldVisit(parent, this)) {
     return;
+  }
   visitor->pre(parent, this);
   for (auto &I : inputs_) {
     I->visit(this, visitor);
@@ -1222,8 +1230,9 @@ void ConcatNode::visit(NodeBase *parent, NodeVisitor *visitor) {
 }
 
 void Variable::visit(NodeBase *parent, NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(parent, this))
+  if (!visitor->shouldVisit(parent, this)) {
     return;
+  }
   visitor->pre(parent, this);
   visitor->post(parent, this);
 }

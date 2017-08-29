@@ -13,8 +13,7 @@ std::string glow::pointerToString(void *ptr) {
 std::string glow::escapeDottyString(const std::string &str) {
   std::string out;
   out += "\"";
-  for (std::string::const_iterator i = str.begin(); i != str.end(); ++i) {
-    unsigned char c = *i;
+  for (unsigned char c : str) {
     if (std::isprint(c) && c != '\\' && c != '"') {
       out += c;
     } else {
@@ -54,7 +53,7 @@ DescriptionBuilder::DescriptionBuilder(const std::string &name) {
 
 DescriptionBuilder &DescriptionBuilder::addDim(const std::string &name,
                                                ArrayRef<size_t> dims) {
-  assert(dims.size() && "Invalid dimensions");
+  assert(!dims.empty() && "Invalid dimensions");
   repr_ << name << " : (" << dims[0];
   for (int i = 1; i < dims.size(); i++) {
     repr_ << " x " << dims[i];

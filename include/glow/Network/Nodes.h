@@ -1,5 +1,5 @@
-#ifndef GLOW_NODES_H
-#define GLOW_NODES_H
+#ifndef GLOW_NETWORK_NODES_H
+#define GLOW_NETWORK_NODES_H
 
 #include "glow/Network/Node.h"
 #include "glow/Network/Tensor.h"
@@ -42,7 +42,7 @@ public:
 
   void backward(Context *ctx) const override;
 
-  virtual std::string getName() const override { return "ConvNode"; }
+  std::string getName() const override { return "ConvNode"; }
 
   std::string getDebugRepr(Context *ctx) const override;
 
@@ -95,7 +95,7 @@ public:
 
   void backwardAvg(Context *ctx) const;
 
-  virtual std::string getName() const override { return "MaxPoolNode"; }
+  std::string getName() const override { return "MaxPoolNode"; }
 
   std::string getDebugRepr(Context *ctx) const override;
 
@@ -130,7 +130,7 @@ public:
 
   void backward(Context *ctx) const override;
 
-  virtual std::string getName() const override { return "FullyConnectedNode"; }
+  std::string getName() const override { return "FullyConnectedNode"; }
 
   std::string getDebugRepr(Context *ctx) const override;
 
@@ -152,7 +152,7 @@ public:
 
   void backward(Context *ctx) const override;
 
-  virtual std::string getName() const override { return "RELUNode"; }
+  std::string getName() const override { return "RELUNode"; }
 
   std::string getDebugRepr(Context *ctx) const override;
 
@@ -174,7 +174,7 @@ public:
 
   void backward(Context *ctx) const override;
 
-  virtual std::string getName() const override { return "SigmoidNode"; }
+  std::string getName() const override { return "SigmoidNode"; }
 
   std::string getDebugRepr(Context *ctx) const override;
 
@@ -204,7 +204,7 @@ public:
 
   void backward(Context *ctx) const override;
 
-  virtual std::string getName() const override { return "SoftMaxNode"; }
+  std::string getName() const override { return "SoftMaxNode"; }
 
   std::string getDebugRepr(Context *ctx) const override;
 
@@ -231,7 +231,7 @@ public:
 
   void backward(Context *ctx) const override;
 
-  virtual std::string getName() const override { return "RegressionNode"; }
+  std::string getName() const override { return "RegressionNode"; }
 
   std::string getDebugRepr(Context *ctx) const override;
 
@@ -255,7 +255,7 @@ public:
 
   void backward(Context *ctx) const override;
 
-  virtual std::string getName() const override { return "MaxNode"; }
+  std::string getName() const override { return "MaxNode"; }
 
   std::string getDebugRepr(Context *ctx) const override;
 
@@ -274,7 +274,7 @@ class Variable final : public NodeBase {
   friend Network;
 
 public:
-  virtual std::string getName() const override { return "Variable"; }
+  std::string getName() const override { return "Variable"; }
 
   std::string getDebugRepr(Context *ctx) const override;
 
@@ -310,7 +310,7 @@ public:
 
   void backward(Context *ctx) const override;
 
-  virtual std::string getName() const override { return "ReshapeNode"; }
+  std::string getName() const override { return "ReshapeNode"; }
 
   std::string getDebugRepr(Context *ctx) const override;
 
@@ -335,7 +335,7 @@ public:
 
   void backward(Context *ctx) const override;
 
-  virtual std::string getName() const override { return "ConcatNode"; }
+  std::string getName() const override { return "ConcatNode"; }
 
   std::string getDebugRepr(Context *ctx) const override;
 
@@ -379,9 +379,7 @@ public:
 
   void backward(Context *ctx) const override;
 
-  virtual std::string getName() const override {
-    return "BatchNormalizationNode";
-  }
+  std::string getName() const override { return "BatchNormalizationNode"; }
 
   std::string getDebugRepr(Context *ctx) const override;
 
@@ -417,7 +415,7 @@ public:
 
   void backward(Context *ctx) const override;
 
-  virtual std::string getName() const override { return "ArithmeticNode"; }
+  std::string getName() const override { return "ArithmeticNode"; }
 
   std::string getDebugRepr(Context *ctx) const override;
 
@@ -426,4 +424,4 @@ public:
 
 } // namespace glow
 
-#endif // GLOW_NODES_H
+#endif // GLOW_NETWORK_NODES_H

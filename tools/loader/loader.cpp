@@ -16,8 +16,8 @@ int main(int argc, char **argv) {
   auto *expected_softmax = new Tensor(ElemKind::IndexTy, {8, 1});
 
   glow::Network N;
-  caffe2ModelLoader(argv[1], argv[2], {"data", "softmax_expected"},
-                    {data, expected_softmax}, N);
+  caffe2ModelLoader LD(argv[1], argv[2], {"data", "softmax_expected"},
+                       {data, expected_softmax}, N);
 
   // Save the graphical representation of the loaded network.
   N.dumpGraph();

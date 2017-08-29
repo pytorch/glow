@@ -1,5 +1,5 @@
-#ifndef GLOW_ADT_H
-#define GLOW_ADT_H
+#ifndef GLOW_SUPPORT_ADT_H
+#define GLOW_SUPPORT_ADT_H
 
 #include <algorithm>
 #include <cassert>
@@ -77,8 +77,9 @@ public:
 
   /// equals - Check for element-wise equality.
   bool equals(ArrayRef RHS) const {
-    if (length_ != RHS.length_)
+    if (length_ != RHS.length_) {
       return false;
+    }
     return std::equal(begin(), end(), RHS.begin());
   }
 
@@ -94,4 +95,4 @@ template <typename T> inline bool operator!=(ArrayRef<T> LHS, ArrayRef<T> RHS) {
 }
 } // namespace glow
 
-#endif // GLOW_ADT_H
+#endif // GLOW_SUPPORT_ADT_H

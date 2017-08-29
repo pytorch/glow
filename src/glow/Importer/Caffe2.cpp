@@ -81,8 +81,9 @@ Tensor *caffe2ModelLoader::getTensorByName(const std::string &name) {
 
 NodeBase *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
   auto it = nodeByName_.find(name);
-  if (it != nodeByName_.end())
+  if (it != nodeByName_.end()) {
     return it->second;
+  }
 
   Tensor *T = getTensorByName(name);
   return N_.createVariable(T->dims(), ElemKind::FloatTy);
@@ -91,7 +92,7 @@ NodeBase *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
 void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumenrMap(op);
 
-  const std::string typeName = op.type();
+  const std::string &typeName = op.type();
 
   if (typeName == "Relu") {
     // Load the inputs:
@@ -244,7 +245,7 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
        }
        */
 
-      auto name = op.output(0);
+      const auto &name = op.output(0);
       // If the tensor is pre-populated by the user of this class then we don't
       // need to allocate a new tensor.
       if (tensors_.count(name)) {

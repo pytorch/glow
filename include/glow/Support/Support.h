@@ -1,5 +1,5 @@
-#ifndef GLOW_SUPPORT_H
-#define GLOW_SUPPORT_H
+#ifndef GLOW_SUPPORT_SUPPORT_H
+#define GLOW_SUPPORT_SUPPORT_H
 
 #include "glow/Support/ADT.h"
 
@@ -50,4 +50,4 @@ struct DescriptionBuilder {
 
 } // namespace glow
 
-#endif // GLOW_SUPPORT_H
+#endif // GLOW_SUPPORT_SUPPORT_H

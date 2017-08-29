@@ -1,5 +1,5 @@
-#ifndef GLOW_TRAIN_H
-#define GLOW_TRAIN_H
+#ifndef GLOW_NETWORK_TRAIN_H
+#define GLOW_NETWORK_TRAIN_H
 
 #include "glow/Network/Tensor.h"
 #include "glow/Support/ADT.h"
@@ -53,4 +53,4 @@ public:
 
 } // namespace glow
 
-#endif // GLOW_TRAIN_H
+#endif // GLOW_NETWORK_TRAIN_H

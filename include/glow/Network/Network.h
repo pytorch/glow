@@ -1,5 +1,5 @@
-#ifndef GLOW_NETWORK_H
-#define GLOW_NETWORK_H
+#ifndef GLOW_NETWORK_NETWORK_H
+#define GLOW_NETWORK_NETWORK_H
 
 #include "glow/Network/Nodes.h"
 #include "glow/Network/Train.h"
@@ -87,9 +87,9 @@ class Network {
   /// Registers the newly create operation node into the network.
   /// \returns the newly created node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
-    for (auto &c : state_)
+    for (auto &c : state_) {
       N->init(c);
-
+    }
     networkNodes_.push_back(N);
     return N;
   }
@@ -153,7 +153,7 @@ public:
   /// Train the network starting with the node \p root. Perform \p iterations
   /// of batch size in the training loop. Update the nodes in \p nodes with the
   /// values \p inputs.
-  void train(NodeBase *root, size_t batches, ArrayRef<Variable *> vars,
+  void train(NodeBase *root, size_t numBatches, ArrayRef<Variable *> vars,
              ArrayRef<Tensor *> inputs);
 
   /// Perform a single training iteration for one input. Update the nodes in \p
@@ -180,4 +180,4 @@ public:
 };
 } // namespace glow
 
-#endif // GLOW_NETWORK_H
+#endif // GLOW_NETWORK_NETWORK_H

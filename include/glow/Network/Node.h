@@ -1,5 +1,5 @@
-#ifndef GLOW_NODE_H
-#define GLOW_NODE_H
+#ifndef GLOW_NETWORK_NODE_H
+#define GLOW_NETWORK_NODE_H
 
 #include "glow/Network/Tensor.h"
 #include "glow/Network/Train.h"
@@ -95,4 +95,4 @@ public:
 };
 } // namespace glow
 
-#endif // GLOW_NODE_H
+#endif // GLOW_NETWORK_NODE_H

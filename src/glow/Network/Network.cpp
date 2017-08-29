@@ -156,8 +156,9 @@ public:
   TopologicalSortPass() = default;
 
   void post(NodeBase *parent, NodeBase *N) override {
-    if (!visited.insert(N).second)
+    if (!visited.insert(N).second) {
       return;
+    }
 
     order.push_back(N);
   }
@@ -185,16 +186,16 @@ void Network::updateForwardBackward(Context *ctx, NodeBase *root,
     vars[i]->updateInputs(ctx, inputs[i], sampleIdx);
   }
 
-  for (auto it = order.begin(), e = order.end(); it != e; it++) {
+  for (auto it : order) {
     // Prepare for the next backprop iteration by zeroing the gradient
     // tensors. Notice that this only zeros the temporary grad tensors that
     // match the output tensors but not the gradient tensors that are
     // paired with filters. These are cleared during the learning process
     // at the end of the batch.
-    (*it)->clearOutputGrad(ctx);
+    it->clearOutputGrad(ctx);
 
     // Perform the learning phase.
-    (*it)->forward(ctx, NodeBase::PassKind::kTraining);
+    it->forward(ctx, NodeBase::PassKind::kTraining);
   }
 
   for (auto it = order.rbegin(), e = order.rend(); it != e; it++) {
@@ -239,7 +240,7 @@ static unsigned calculateNumThreads(unsigned maxNumThreads, unsigned numCores,
 /// batches.
 void Network::train(NodeBase *root, size_t numBatches,
                     ArrayRef<Variable *> vars, ArrayRef<Tensor *> inputs) {
-  assert(inputs.size() && "No inputs");
+  assert(!inputs.empty() && "No inputs");
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
 
@@ -291,8 +292,8 @@ Tensor *Network::infer(NodeBase *root, ArrayRef<Variable *> vars,
   }
 
   // Forward scan.
-  for (auto it = order.begin(), e = order.end(); it != e; it++) {
-    (*it)->forward(state_[0], NodeBase::PassKind::kInference);
+  for (auto it : order) {
+    it->forward(state_[0], NodeBase::PassKind::kInference);
   }
 
   return root->getOutputWeight(state_[0]);
@@ -337,8 +338,9 @@ public:
   }
 
   std::string nodeDescr(NodeBase *N) {
-    if (!N)
+    if (!N) {
       return "";
+    }
 
     Context *ctx = net_->getMainContext();
     // Print a node descriptor that looks like this:

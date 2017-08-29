@@ -1,5 +1,5 @@
-#ifndef GLOW_RANDOM_H
-#define GLOW_RANDOM_H
+#ifndef GLOW_SUPPORT_RANDOM_H
+#define GLOW_SUPPORT_RANDOM_H
 
 namespace glow {
 
@@ -8,4 +8,4 @@ double nextRand();
 
 } // namespace glow
 
-#endif // GLOW_RANDOM_H
+#endif // GLOW_SUPPORT_RANDOM_H
