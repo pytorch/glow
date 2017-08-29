@@ -44,6 +44,8 @@ public:
 
   virtual std::string getName() const override { return "ConvNode"; }
 
+  std::string getDebugRepr(Context *ctx) const override;
+
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 
   void updateWeights(Network *N_, Tensor *filter, Tensor *bias);
@@ -95,6 +97,8 @@ public:
 
   virtual std::string getName() const override { return "MaxPoolNode"; }
 
+  std::string getDebugRepr(Context *ctx) const override;
+
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
@@ -125,6 +129,8 @@ public:
 
   virtual std::string getName() const override { return "FullyConnectedNode"; }
 
+  std::string getDebugRepr(Context *ctx) const override;
+
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
@@ -145,6 +151,8 @@ public:
 
   virtual std::string getName() const override { return "RELUNode"; }
 
+  std::string getDebugRepr(Context *ctx) const override;
+
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
@@ -164,6 +172,8 @@ public:
   void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "SigmoidNode"; }
+
+  std::string getDebugRepr(Context *ctx) const override;
 
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
@@ -193,6 +203,8 @@ public:
 
   virtual std::string getName() const override { return "SoftMaxNode"; }
 
+  std::string getDebugRepr(Context *ctx) const override;
+
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
@@ -218,6 +230,8 @@ public:
 
   virtual std::string getName() const override { return "RegressionNode"; }
 
+  std::string getDebugRepr(Context *ctx) const override;
+
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
@@ -240,6 +254,8 @@ public:
 
   virtual std::string getName() const override { return "MaxNode"; }
 
+  std::string getDebugRepr(Context *ctx) const override;
+
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
@@ -256,6 +272,8 @@ class Variable final : public NodeBase {
 
 public:
   virtual std::string getName() const override { return "Variable"; }
+
+  std::string getDebugRepr(Context *ctx) const override;
 
   void init(Context *ctx) const override;
 
@@ -291,6 +309,8 @@ public:
 
   virtual std::string getName() const override { return "ReshapeNode"; }
 
+  std::string getDebugRepr(Context *ctx) const override;
+
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
@@ -313,6 +333,8 @@ public:
   void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "ConcatNode"; }
+
+  std::string getDebugRepr(Context *ctx) const override;
 
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
@@ -358,6 +380,8 @@ public:
     return "BatchNormalizationNode";
   }
 
+  std::string getDebugRepr(Context *ctx) const override;
+
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
@@ -391,6 +415,8 @@ public:
   void backward(Context *ctx) const override;
 
   virtual std::string getName() const override { return "ArithmeticNode"; }
+
+  std::string getDebugRepr(Context *ctx) const override;
 
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };

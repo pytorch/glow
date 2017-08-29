@@ -1,8 +1,15 @@
 #include "glow/Network/Image.h"
 #include "glow/Network/Nodes.h"
 #include "glow/Network/Tensor.h"
+#include "glow/Support/Support.h"
 
 using namespace glow;
+
+std::string PNGNode::getDebugRepr(Context *ctx) const {
+  DescriptionBuilder db(getName());
+  db.addDim("output", getOutputWeight(ctx)->dims());
+  return db;
+}
 
 #if (GLOW_PNG_FOUND)
 #include <png.h>

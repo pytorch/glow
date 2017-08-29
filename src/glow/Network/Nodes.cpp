@@ -1,6 +1,7 @@
 #include "glow/Network/Nodes.h"
 #include "glow/Network/Network.h"
 #include "glow/Network/Tensor.h"
+#include "glow/Support/Support.h"
 
 using namespace glow;
 
@@ -61,6 +62,19 @@ void ConvNode::init(Context *ctx) const {
 
   ctx->addTensorPair({&filtersW_, &filtersG_});
   ctx->addTensorPair({&biasW_, &biasG_});
+}
+
+std::string ConvNode::getDebugRepr(Context *ctx) const {
+  DescriptionBuilder db(getName());
+  db.addDim("input", input_->dims(ctx));
+  db.addDim("output", getOutputWeight(ctx)->dims());
+  db.addDim("filter", ctx->getHandle(&filtersW_).dims());
+  db.addDim("bias", ctx->getHandle(&biasW_).dims());
+  db.addParam("filter size", filterSize_);
+  db.addParam("stride", stride_);
+  db.addParam("pad", pad_);
+  db.addParam("depth", outDepth_);
+  return db;
 }
 
 void ConvNode::forward(Context *ctx, PassKind kind) const {
@@ -192,6 +206,18 @@ void MaxPoolNode::init(Context *ctx) const {
     ctx->allocateTensor(&srcY_, ElemKind::IndexTy,
                         {idim.n, outsx, outsy, idim.c});
   }
+}
+
+std::string MaxPoolNode::getDebugRepr(Context *ctx) const {
+  DescriptionBuilder db(getName());
+  db.addDim("input", input_->dims(ctx));
+  db.addDim("output", getOutputWeight(ctx)->dims());
+
+  db.addParam("filter size", filterSize_);
+  db.addParam("stride", stride_);
+  db.addParam("pad", pad_);
+  db.addParam("operation", kind_ == OpKind::kMax ? "Max" : "Avg");
+  return db;
 }
 
 void MaxPoolNode::forward(Context *ctx, PassKind kind) const {
@@ -415,6 +441,16 @@ void FullyConnectedNode::init(Context *ctx) const {
   ctx->addTensorPair({&biasW_, &biasG_});
 }
 
+std::string FullyConnectedNode::getDebugRepr(Context *ctx) const {
+  DescriptionBuilder db(getName());
+  db.addDim("input", input_->dims(ctx));
+  db.addDim("output", getOutputWeight(ctx)->dims());
+  db.addDim("filter", ctx->getHandle(&filtersW_).dims());
+  db.addDim("bias", ctx->getHandle(&biasW_).dims());
+  db.addParam("depth", outDepth_);
+  return db;
+}
+
 void FullyConnectedNode::forward(Context *ctx, PassKind kind) const {
   auto odim = flattenCdr(dims(ctx));
   auto idim = flattenCdr(input_->dims(ctx));
@@ -547,6 +583,14 @@ void SoftMaxNode::init(Context *ctx) const {
   ctx->allocateTensor(&e_, ElemKind::FloatTy, idim);
 }
 
+std::string SoftMaxNode::getDebugRepr(Context *ctx) const {
+  DescriptionBuilder db(getName());
+  db.addDim("input", input_->dims(ctx));
+  db.addDim("selected", selected_->dims(ctx));
+  db.addDim("output", getOutputWeight(ctx)->dims());
+  return db;
+}
+
 void SoftMaxNode::forward(Context *ctx, PassKind kind) const {
   auto outW = getWeightHandle(ctx);
   auto idim = input_->dims(ctx);
@@ -606,6 +650,14 @@ void RegressionNode::init(Context *ctx) const {
   assert(idim.size() == 2 && "Regression input must be a 2D matrix.");
   ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, idim);
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, idim);
+}
+
+std::string RegressionNode::getDebugRepr(Context *ctx) const {
+  DescriptionBuilder db(getName());
+  db.addDim("input", input_->dims(ctx));
+  db.addDim("expected", expected_->dims(ctx));
+  db.addDim("output", getOutputWeight(ctx)->dims());
+  return db;
 }
 
 void RegressionNode::forward(Context *ctx, PassKind kind) const {
@@ -673,6 +725,12 @@ void Variable::init(Context *ctx) const {
   ctx->allocateTensor(&outputGrad_, elemTy_, dims_);
 }
 
+std::string Variable::getDebugRepr(Context *ctx) const {
+  DescriptionBuilder db(getName());
+  db.addDim("output", getOutputWeight(ctx)->dims());
+  return db;
+}
+
 void Variable::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) {
   auto dim = batch->dims();
   assert(dims(ctx).drop_front() == dim.drop_front() && "Invalid slice size");
@@ -712,6 +770,16 @@ void ConcatNode::init(Context *ctx) const {
 
   ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, shape);
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, shape);
+}
+
+std::string ConcatNode::getDebugRepr(Context *ctx) const {
+  DescriptionBuilder db(getName());
+  for (int i = 0, e = inputs_.size(); i < e; i++) {
+    db.addDim("input", inputs_[i]->dims(ctx));
+  }
+  db.addDim("output", getOutputWeight(ctx)->dims());
+  db.addParam("dimension_", (size_t)dimension_);
+  return db;
 }
 
 void ConcatNode::forward(Context *ctx, PassKind kind) const {
@@ -820,6 +888,19 @@ void BatchNormalizationNode::init(Context *ctx) const {
   // Tie the gradient and weight tensors and register them for sgd update.
   ctx->addTensorPair({&betaW_, &betaG_});
   ctx->addTensorPair({&gammaW_, &gammaG_});
+}
+
+std::string BatchNormalizationNode::getDebugRepr(Context *ctx) const {
+  DescriptionBuilder db(getName());
+  db.addDim("input", input_->dims(ctx));
+  db.addDim("output", getOutputWeight(ctx)->dims());
+  db.addDim("beta", ctx->getHandle(&betaW_).dims());
+  db.addDim("gamma", ctx->getHandle(&gammaW_).dims());
+
+  db.addParam("channelIdx", channelIdx_);
+  db.addParam("epsilon", epsilon_);
+  db.addParam("momentum", momentum_);
+  return db;
 }
 
 void BatchNormalizationNode::forward(Context *ctx, PassKind kind) const {
@@ -1008,6 +1089,15 @@ void ArithmeticNode::init(Context *ctx) const {
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, LHS_->dims(ctx));
 }
 
+std::string ArithmeticNode::getDebugRepr(Context *ctx) const {
+  DescriptionBuilder db(getName());
+  db.addDim("LHS", LHS_->dims(ctx));
+  db.addDim("RHS", RHS_->dims(ctx));
+  db.addDim("output", getOutputWeight(ctx)->dims());
+  db.addParam("operation", op_ == OpKind::kAdd ? "add" : "mul");
+  return db;
+}
+
 void ArithmeticNode::forward(Context *ctx, PassKind kind) const {
   auto outW = getWeightHandle(ctx);
   auto LHSW = LHS_->getWeightHandle(ctx);
@@ -1077,6 +1167,19 @@ DEFINE_CLASS_VISITOR(SigmoidNode)
 DEFINE_CLASS_VISITOR(RegressionNode)
 DEFINE_CLASS_VISITOR(MaxNode)
 DEFINE_CLASS_VISITOR(BatchNormalizationNode)
+
+#define DEFINE_CLASS_REPR(CLASS_NAME)                                          \
+  std::string CLASS_NAME::getDebugRepr(Context *ctx) const {                   \
+    DescriptionBuilder db(getName());                                          \
+    db.addDim("input", input_->dims(ctx));                                     \
+    db.addDim("output", getOutputWeight(ctx)->dims());                         \
+    return db;                                                                 \
+  }
+
+DEFINE_CLASS_REPR(RELUNode);
+DEFINE_CLASS_REPR(ReshapeNode);
+DEFINE_CLASS_REPR(SigmoidNode);
+DEFINE_CLASS_REPR(MaxNode);
 
 void ArithmeticNode::visit(NodeBase *parent, NodeVisitor *visitor) {
   if (!visitor->shouldVisit(parent, this)) {

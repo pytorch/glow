@@ -318,8 +318,10 @@ void Network::dump() {
 }
 
 struct DottyPrinterPass : NodeVisitor {
+  Network *net_;
   using edgeTy = std::pair<NodeBase *, NodeBase *>;
   std::vector<edgeTy> nodeEdges;
+  DottyPrinterPass(Network *net) : net_(net) {}
 
 public:
   // Don't revisit visited nodes.
@@ -337,11 +339,14 @@ public:
   std::string nodeDescr(NodeBase *N) {
     if (!N)
       return "";
+
+    Context *ctx = net_->getMainContext();
     // Print a node descriptor that looks like this:
     // Format: "node12" [ label = "0xf7fc43e01" shape = "record" ];
     std::string sb;
     sb += quote(pointerToString(N)) + "[\n";
-    sb += "\tlabel = " + quote(N->getName()) + "\n";
+    std::string repr = escapeDottyString(N->getDebugRepr(ctx));
+    sb += "\tlabel = " + repr + "\n";
     sb += "\tshape = \"record\"\n";
     sb += "];\n\n";
     return sb;
@@ -373,7 +378,7 @@ public:
 };
 
 void Network::dumpGraph() {
-  DottyPrinterPass DP;
+  DottyPrinterPass DP(this);
 
   for (auto &N : networkNodes_) {
     N->visit(nullptr, &DP);

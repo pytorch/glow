@@ -17,6 +17,8 @@ public:
 
   virtual std::string getName() const override { return "PNGNode"; }
 
+  std::string getDebugRepr(Context *ctx) const override;
+
   bool writeImage(const char *filename);
 
   bool readImage(const char *filename);

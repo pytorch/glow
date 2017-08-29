@@ -1,8 +1,11 @@
 #ifndef GLOW_SUPPORT_H
 #define GLOW_SUPPORT_H
 
+#include "glow/Support/ADT.h"
+
 #include <chrono>
 #include <iostream>
+#include <sstream>
 
 namespace glow {
 
@@ -28,6 +31,22 @@ public:
 /// Convert the ptr \p ptr into an ascii representation in the format
 /// "0xFFF...";
 std::string pointerToString(void *ptr);
+
+/// \returns the escaped content of string \p str.
+/// The char '\n' becomes '\'+'n' and quotes are handled correctly.
+std::string escapeDottyString(const std::string &str);
+
+/// A helper class that builds a textual descriptor of a group of parameters.
+struct DescriptionBuilder {
+  DescriptionBuilder(const std::string &name);
+  std::stringstream repr_;
+  DescriptionBuilder &addDim(const std::string &name, ArrayRef<size_t> dims);
+  DescriptionBuilder &addParam(const std::string &name, size_t param);
+  DescriptionBuilder &addParam(const std::string &name, double param);
+  DescriptionBuilder &addParam(const std::string &name, std::string param);
+
+  operator std::string() { return repr_.str(); }
+};
 
 } // namespace glow
 

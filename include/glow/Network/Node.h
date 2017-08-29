@@ -48,8 +48,11 @@ protected:
   TensorToken outputGrad_;
 
 public:
-  /// \returns a descriptive name for the operation.
+  /// \returns the name of the node.
   virtual std::string getName() const = 0;
+
+  /// \returns a descriptive debug string for the node.
+  virtual std::string getDebugRepr(Context *ctx) const = 0;
 
   /// Initialize the node.
   virtual void init(Context *ctx) const = 0;
