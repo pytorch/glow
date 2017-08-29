@@ -119,7 +119,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     Tensor *w = getTensorByName(op.input(1));
     Tensor *b = getTensorByName(op.input(2));
-    node->updateWeights(&N_, w, b);
+    node->loadWeights(&N_, w, b);
 
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
@@ -172,7 +172,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Tensor *b = getTensorByName(op.input(2));
     auto *FC = N_.createFullyConnectedNode(in, b->size());
 
-    FC->updateWeights(&N_, w, b);
+    FC->loadWeights(&N_, w, b);
 
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {

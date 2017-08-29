@@ -174,7 +174,7 @@ void ConvNode::backward(Context *ctx) const {
   }       // N
 }
 
-void ConvNode::updateWeights(Network *N_, Tensor *filter, Tensor *bias) {
+void ConvNode::loadWeights(Network *N_, Tensor *filter, Tensor *bias) {
   N_->updateTensor(&filtersW_, filter);
   N_->updateTensor(&biasW_, bias);
 }
@@ -509,7 +509,7 @@ void FullyConnectedNode::backward(Context *ctx) const {
   } // N
 }
 
-void FullyConnectedNode::updateWeights(Network *N_, Tensor *w, Tensor *bias) {
+void FullyConnectedNode::loadWeights(Network *N_, Tensor *w, Tensor *bias) {
   N_->updateTensor(&filtersW_, w);
   N_->updateTensor(&biasW_, bias);
 }

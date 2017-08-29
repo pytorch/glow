@@ -48,7 +48,7 @@ public:
 
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 
-  void updateWeights(Network *N_, Tensor *filter, Tensor *bias);
+  void loadWeights(Network *N_, Tensor *filter, Tensor *bias);
 };
 
 class MaxPoolNode final : public NodeBase {
@@ -124,7 +124,7 @@ public:
   void init(Context *ctx) const override;
 
   /// Updates the weights \p b, and bias \p b of the node.
-  void updateWeights(Network *N_, Tensor *w, Tensor *bias);
+  void loadWeights(Network *N_, Tensor *w, Tensor *bias);
 
   void forward(Context *ctx, PassKind kind) const override;
 
