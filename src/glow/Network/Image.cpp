@@ -171,4 +171,12 @@ void PNGNode::visit(NodeVisitor *visitor) {
   visitor->post(this);
 }
 
+#else
+bool PNGNode::writeImage(const char *filename) {
+  assert(false && "Not configured with libpng");
+}
+
+bool PNGNode::readImage(const char *filename) {
+  assert(false && "Not configured with libpng");
+}
 #endif
