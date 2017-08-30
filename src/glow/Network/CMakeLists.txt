@@ -1,13 +1,19 @@
-if (PNG_FOUND)
-  include_directories(${PNG_INCLUDE_DIR})
-endif (PNG_FOUND)
 
-add_library (Network
-             ./Train.cpp
-             ./Image.cpp
-             ./Network.cpp
-             ./Node.cpp
-             ./Nodes.cpp
-            )
-
+add_library(Network
+              Train.cpp
+              Image.cpp
+              Network.cpp
+              Node.cpp
+              Nodes.cpp)
+target_link_libraries(Network
+                      PRIVATE
+                        Support)
+if(PNG_FOUND)
+  target_include_directories(Network
+                             PRIVATE
+                               ${PNG_INCLUDE_DIR})
+  target_link_libraries(Network
+                        PRIVATE
+                          ${PNG_LIBRARY})
+endif()
 

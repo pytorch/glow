@@ -41,14 +41,6 @@ configure_file (
   "${GLOW_BINARY_DIR}/Config.h"
   )
 
-SET(LinkLibs "" CACHE LIST "A list of libraries to link to all executables")
-
-if (PNG_FOUND)
-  SET(LinkLibs ${LinkLibs} ${PNG_LIBRARY})
-endif (PNG_FOUND)
-
-SET(LinkLibs ${LinkLibs} Importer Network Support Models)
-
 enable_testing()
 add_subdirectory(src/glow/)
 add_subdirectory(examples/)
