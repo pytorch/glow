@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.0i6)
+cmake_minimum_required(VERSION 3.4.3)
+
 project(Glow)
 
 if(NOT CMAKE_BUILD_TYPE)
