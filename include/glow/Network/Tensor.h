@@ -4,6 +4,7 @@
 #include "Config.h"
 
 #include "glow/Support/ADT.h"
+#include "glow/Support/Compiler.h"
 #include "glow/Support/Random.h"
 
 #include <algorithm>
@@ -118,6 +119,7 @@ public:
     case ElemKind::IndexTy:
       return std::is_same<ElemTy, size_t>::value;
     }
+    glow_unreachable();
   }
 
   /// \return the size of the element \p Ty.
@@ -134,6 +136,7 @@ public:
     case ElemKind::IndexTy:
       return sizeof(size_t);
     }
+    glow_unreachable();
   }
 
   /// \return the element type of the tensor.
