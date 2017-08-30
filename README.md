@@ -22,7 +22,9 @@ command:
 Next, create a build directory and run cmake on the source directory:
 
   ```
-  mkdir build; cmake -DCMAKE_BUILD_TYPE=Debug ../glow/
+  mkdir build
+  cd build
+  cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTING=YES ..
   ```
 
 It is possible to configure and build the compiler with any CMake generator,
