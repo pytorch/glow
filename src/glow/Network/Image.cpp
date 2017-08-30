@@ -11,7 +11,7 @@ std::string PNGNode::getDebugRepr(Context *ctx) const {
   return db;
 }
 
-#if (GLOW_PNG_FOUND)
+#if WITH_PNG
 #include <png.h>
 
 /// Reads a png image. \returns True if an error occurred.
