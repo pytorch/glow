@@ -30,6 +30,28 @@ Next, create a build directory and run cmake on the source directory:
 It is possible to configure and build the compiler with any CMake generator,
 like GNU Makefiles, Ninja and Xcode build.
 
+### Building with the Sanitizers
+
+Google's santizier project provides a number of libraries which can be used with
+compiler inserted instrumentation to find a variety of bugs at runtime.  These
+include memory issues due such as use-after-free or double-free.  They can also
+detect other types of problems like memory leaks.  Glow can be built with the
+sanitizers enabled using an additional parameter to cmake.
+
+The following sanitizers are currently configurable:
+
+  - Address
+  - Memory
+  - Undefined
+  - Thread
+  - Leaks
+
+You can pass one of the above as a value to the cmake parameter
+`GLOW_USE_SANITIZER`.  `Address` and `Undefined` are special in that they may be
+enabled simultaneously by passing `Address;Undefined` as the value.
+Additionally, the `Memory` sanitizer can also track the origin of the memory
+which can be enabled by using `MemoryWithOrigins` instead of `Memory`.
+
 ## Testing and Running
 
 The project has a few unittests in the tests/ directory. To run all of the unit
