@@ -1,4 +1,7 @@
+
 cmake_minimum_required(VERSION 3.4.3)
+
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
 project(Glow)
 
@@ -16,8 +19,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # to analyze the source code of the project.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+include(SanitizerSupport)
+
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall -march=native -ffast-math")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -fsanitize=address -fno-omit-frame-pointer -O0")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -fno-omit-frame-pointer -O0")
 
 set(GLOW_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(GLOW_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
