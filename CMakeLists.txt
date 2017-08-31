@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.7)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
 project(Glow)
+enable_testing()
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug CACHE STRING
@@ -46,9 +47,11 @@ configure_file (
   "${GLOW_BINARY_DIR}/Config.h"
   )
 
-enable_testing()
 add_subdirectory(src/glow/)
 add_subdirectory(examples/)
-add_subdirectory(tests/)
 add_subdirectory(tools/)
+
+if(ENABLE_TESTING)
+  add_subdirectory(tests)
+endif()
 
