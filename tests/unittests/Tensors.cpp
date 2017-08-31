@@ -203,3 +203,22 @@ TEST(Tensor, transpose) {
     EXPECT_EQ(H.at({i, 1}), XhatH.at({1, i}));
   }
 }
+
+TEST(Tensor, transpose2) {
+  Tensor X(ElemKind::FloatTy, {10, 6, 3});
+  auto H = X.getHandle<FloatTy>();
+  H.randomize(10);
+
+  Tensor Xhat;
+  transposeTensors<FloatTy>(&Xhat, &X, {1, 2, 0});
+
+  auto XhatH = Xhat.getHandle<FloatTy>();
+
+  for (size_t i = 0; i < 10; i++) {
+    for (size_t j = 0; j < 6; j++) {
+      for (size_t k = 0; k < 3; k++) {
+        EXPECT_EQ(H.at({i, j, k}), XhatH.at({j, k, i}));
+      }
+    }
+  }
+}

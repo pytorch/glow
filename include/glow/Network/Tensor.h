@@ -644,9 +644,10 @@ void transposeImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest, size_t *srcCoor,
   }
 
   // Iterate over one dimension and continue recursively to the next dim.
-  for (size_t x = 0, e = src.dims()[depth]; x < e; x++) {
-    srcCoor[depth] = x;
-    destCoor[shuffle[depth]] = x;
+  for (size_t x = 0, e = dest.dims()[depth]; x < e; x++) {
+    unsigned swizzledDepth = shuffle[depth];
+    srcCoor[swizzledDepth] = x;
+    destCoor[depth] = x;
     transposeImpl(src, dest, srcCoor, destCoor, shuffle, depth + 1);
   }
 }
