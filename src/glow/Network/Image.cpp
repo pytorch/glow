@@ -1,4 +1,5 @@
 #include "glow/Network/Image.h"
+#include "glow/Network/Network.h"
 #include "glow/Network/Nodes.h"
 #include "glow/Network/Tensor.h"
 #include "glow/Support/Support.h"
@@ -10,6 +11,8 @@ std::string PNGNode::getDebugRepr(Context *ctx) const {
   db.addDim("output", getOutputWeight(ctx)->dims());
   return db;
 }
+
+PNGNode::PNGNode(Network *N) { ctx_ = N->getMainContext(); }
 
 #if WITH_PNG
 #include <png.h>
@@ -45,14 +48,15 @@ bool PNGNode::readImage(const char *filename) {
   png_set_sig_bytes(png_ptr, 8);
   png_read_info(png_ptr, info_ptr);
 
-  int width = png_get_image_width(png_ptr, info_ptr);
-  int height = png_get_image_height(png_ptr, info_ptr);
+  size_t width = png_get_image_width(png_ptr, info_ptr);
+  size_t height = png_get_image_height(png_ptr, info_ptr);
   int color_type = png_get_color_type(png_ptr, info_ptr);
   int bit_depth = png_get_bit_depth(png_ptr, info_ptr);
   (void)bit_depth;
   assert(bit_depth == 8 && "Invalid image");
-  assert(color_type == PNG_COLOR_TYPE_RGB_ALPHA ||
-         color_type == PNG_COLOR_TYPE_RGB && "Invalid image");
+  assert((color_type == PNG_COLOR_TYPE_RGB_ALPHA ||
+          color_type == PNG_COLOR_TYPE_RGB) &&
+         "Invalid image");
   bool hasAlpha = (color_type == PNG_COLOR_TYPE_RGB_ALPHA);
 
   int number_of_passes = png_set_interlace_handling(png_ptr);
@@ -66,26 +70,28 @@ bool PNGNode::readImage(const char *filename) {
     return true;
 
   png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
-  for (int y = 0; y < height; y++)
+  for (size_t y = 0; y < height; y++)
     row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png_ptr, info_ptr));
 
   png_read_image(png_ptr, row_pointers);
   fclose(fp);
 
-  output_.weight_.reset(width, height, 3);
+  auto outW = getWeightHandle(ctx_);
 
-  for (int y = 0; y < height; y++) {
+  getOutputWeight(ctx_)->reset(ElemKind::FloatTy, {width, height, 3});
+
+  for (size_t y = 0; y < height; y++) {
     png_byte *row = row_pointers[y];
-    for (int x = 0; x < width; x++) {
+    for (size_t x = 0; x < width; x++) {
       png_byte *ptr = &(row[x * (hasAlpha ? 4 : 3)]);
 
-      output_.weight_.at(x, y, 0) = ptr[0];
-      output_.weight_.at(x, y, 1) = ptr[1];
-      output_.weight_.at(x, y, 2) = ptr[2];
+      outW.at({x, y, 0}) = ptr[0];
+      outW.at({x, y, 1}) = ptr[1];
+      outW.at({x, y, 2}) = ptr[2];
     }
   }
 
-  for (int y = 0; y < height; y++)
+  for (size_t y = 0; y < height; y++)
     free(row_pointers[y]);
   free(row_pointers);
 
@@ -117,11 +123,13 @@ bool PNGNode::writeImage(const char *filename) {
   if (setjmp(png_jmpbuf(png_ptr)))
     return true;
 
-  auto odim = output_.dims();
+  auto outW = getWeightHandle(ctx_);
+
+  auto odim = outW.dims();
   assert(odim[2] < 4 && "Invalid buffer to save");
 
-  int width = odim[0];
-  int height = odim[1];
+  size_t width = odim[0];
+  size_t height = odim[1];
   int color_type = PNG_COLOR_TYPE_RGB_ALPHA;
   int bit_depth = 8;
 
@@ -135,16 +143,16 @@ bool PNGNode::writeImage(const char *filename) {
     return true;
 
   png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
-  for (int y = 0; y < height; y++)
+  for (size_t y = 0; y < height; y++)
     row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png_ptr, info_ptr));
 
-  for (int y = 0; y < height; y++) {
+  for (size_t y = 0; y < height; y++) {
     png_byte *row = row_pointers[y];
-    for (int x = 0; x < width; x++) {
+    for (size_t x = 0; x < width; x++) {
       png_byte *ptr = &(row[x * 4]);
-      ptr[0] = output_.weight_.at(x, y, 0);
-      ptr[1] = output_.weight_.at(x, y, 1);
-      ptr[2] = output_.weight_.at(x, y, 2);
+      ptr[0] = outW.at({x, y, 0});
+      ptr[1] = outW.at({x, y, 1});
+      ptr[2] = outW.at({x, y, 2});
       ptr[3] = 0xff;
     }
   }
@@ -157,18 +165,19 @@ bool PNGNode::writeImage(const char *filename) {
   png_write_end(png_ptr, NULL);
 
   /* cleanup heap allocation */
-  for (int y = 0; y < height; y++)
+  for (size_t y = 0; y < height; y++)
     free(row_pointers[y]);
   free(row_pointers);
   fclose(fp);
   return false;
 }
 
-void PNGNode::visit(NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(this))
+void PNGNode::visit(NodeBase *parent, NodeVisitor *visitor) {
+  if (!visitor->shouldVisit(parent, this)) {
     return;
-  visitor->pre(this);
-  visitor->post(this);
+  }
+  visitor->pre(parent, this);
+  visitor->post(parent, this);
 }
 
 #else

@@ -11,9 +11,13 @@
 
 namespace glow {
 
+class Context;
+
 class PNGNode final : public NodeBase {
+  Context *ctx_;
+
 public:
-  explicit PNGNode(Network *N) {}
+  explicit PNGNode(Network *N);
 
   std::string getName() const override { return "PNGNode"; }
 
