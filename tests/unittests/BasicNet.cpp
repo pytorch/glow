@@ -21,9 +21,9 @@ TEST(Network, learnSingleValue) {
   auto *E = N.createVariable({1, 4}, ElemKind::FloatTy);
 
   NodeBase *O = N.createFullyConnectedNode(A, 10);
-  O = N.createRELUNode(O);
+  O = N.createSigmoidNode(O);
   O = N.createFullyConnectedNode(O, 4);
-  O = N.createRELUNode(O);
+  O = N.createSigmoidNode(O);
   auto *RN = N.createRegressionNode(O, E);
 
   // Values for the input and output variables.
@@ -52,7 +52,7 @@ TEST(Network, learnXor) {
   // Learning the Xor function.
   Network N;
   N.getConfig().maxNumThreads = 1;
-  N.getConfig().learningRate = 0.01;
+  N.getConfig().learningRate = 0.05;
 
   auto *A = N.createVariable({numInputs, 2}, ElemKind::FloatTy);
   auto *Ex = N.createVariable({numInputs, 1}, ElemKind::FloatTy);
