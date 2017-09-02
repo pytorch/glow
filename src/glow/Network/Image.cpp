@@ -1,24 +1,13 @@
 #include "glow/Network/Image.h"
-#include "glow/Network/Network.h"
-#include "glow/Network/Nodes.h"
 #include "glow/Network/Tensor.h"
 #include "glow/Support/Support.h"
 
 using namespace glow;
 
-std::string PNGNode::getDebugRepr(Context *ctx) const {
-  DescriptionBuilder db(getName());
-  db.addDim("output", getOutputWeight(ctx)->dims());
-  return db;
-}
-
-PNGNode::PNGNode(Network *N) { ctx_ = N->getMainContext(); }
-
 #if WITH_PNG
 #include <png.h>
 
-/// Reads a png image. \returns True if an error occurred.
-bool PNGNode::readImage(const char *filename) {
+bool glow::readPngImage(Tensor *T, const char *filename) {
   unsigned char header[8];
   // open file and test for it being a png.
   FILE *fp = fopen(filename, "rb");
@@ -76,18 +65,17 @@ bool PNGNode::readImage(const char *filename) {
   png_read_image(png_ptr, row_pointers);
   fclose(fp);
 
-  auto outW = getWeightHandle(ctx_);
-
-  getOutputWeight(ctx_)->reset(ElemKind::FloatTy, {width, height, 3});
+  T->reset(ElemKind::FloatTy, {width, height, 3});
+  auto H = T->getHandle<FloatTy>();
 
   for (size_t y = 0; y < height; y++) {
     png_byte *row = row_pointers[y];
     for (size_t x = 0; x < width; x++) {
       png_byte *ptr = &(row[x * (hasAlpha ? 4 : 3)]);
 
-      outW.at({x, y, 0}) = ptr[0];
-      outW.at({x, y, 1}) = ptr[1];
-      outW.at({x, y, 2}) = ptr[2];
+      H.at({x, y, 0}) = ptr[0];
+      H.at({x, y, 1}) = ptr[1];
+      H.at({x, y, 2}) = ptr[2];
     }
   }
 
@@ -98,7 +86,7 @@ bool PNGNode::readImage(const char *filename) {
   return false;
 }
 
-bool PNGNode::writeImage(const char *filename) {
+bool glow::writePngImage(Tensor *T, const char *filename) {
   /* create file */
   FILE *fp = fopen(filename, "wb");
   if (!fp)
@@ -123,9 +111,9 @@ bool PNGNode::writeImage(const char *filename) {
   if (setjmp(png_jmpbuf(png_ptr)))
     return true;
 
-  auto outW = getWeightHandle(ctx_);
+  auto H = T->getHandle<FloatTy>();
 
-  auto odim = outW.dims();
+  auto odim = H.dims();
   assert(odim[2] < 4 && "Invalid buffer to save");
 
   size_t width = odim[0];
@@ -150,9 +138,9 @@ bool PNGNode::writeImage(const char *filename) {
     png_byte *row = row_pointers[y];
     for (size_t x = 0; x < width; x++) {
       png_byte *ptr = &(row[x * 4]);
-      ptr[0] = outW.at({x, y, 0});
-      ptr[1] = outW.at({x, y, 1});
-      ptr[2] = outW.at({x, y, 2});
+      ptr[0] = H.at({x, y, 0});
+      ptr[1] = H.at({x, y, 1});
+      ptr[2] = H.at({x, y, 2});
       ptr[3] = 0xff;
     }
   }
@@ -172,20 +160,12 @@ bool PNGNode::writeImage(const char *filename) {
   return false;
 }
 
-void PNGNode::visit(NodeBase *parent, NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(parent, this)) {
-    return;
-  }
-  visitor->pre(parent, this);
-  visitor->post(parent, this);
-}
-
 #else
-bool PNGNode::writeImage(const char *filename) {
+bool glow::readPngImage(Tensor *T, const char *filename) {
   assert(false && "Not configured with libpng");
 }
 
-bool PNGNode::readImage(const char *filename) {
+bool glow::writePngImage(Tensor *T, const char *filename) {
   assert(false && "Not configured with libpng");
 }
 #endif
