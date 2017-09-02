@@ -259,6 +259,7 @@ public:
 
   /// Update the content of the tensor from the tensor \p t.
   void copyFrom(const Tensor *t) {
+    assert(this != t && "Copying to self");
     reset(t);
     size_t bufferSize = size() * getElementSize(elementType_);
     std::copy(&t->data_[0], &t->data_[bufferSize], data_);
