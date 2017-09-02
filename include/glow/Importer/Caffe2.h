@@ -35,7 +35,8 @@ class caffe2ModelLoader {
   /// \returns the tensor that was registered under the name \p name.
   Tensor *getTensorByName(const std::string &name);
 
-  /// \returns the node  that was registered with the name \p name.
+  /// \returns the node that was registered with the name \p name or create a
+  /// new Variable node for a tensor with this name.
   NodeBase *getOrCreateNodeByName(const std::string &name);
 
   /// Load the operator \p op into the network. This creates one or more nodes
@@ -47,6 +48,9 @@ class caffe2ModelLoader {
   bool loadProtoFile(caffe2::NetDef &net, const std::string &filename);
 
 public:
+  /// \returns the node that was registered with the name \p name.
+  NodeBase *getNodeByName(const std::string &name);
+
   /// Loads the caffe2 model that's represnted by a network description file,
   /// serialized in \p netDescFilename, and weights file, serialized in
   /// \p netWeightFilename, and populates the network in \p N.

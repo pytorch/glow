@@ -71,7 +71,10 @@ Network::~Network() {
 }
 
 void Network::updateTensor(const TensorToken *tok, Tensor *t) {
-  getMainContext()->getTensor(tok)->copyFrom(t);
+  auto *v = getMainContext()->getTensor(tok);
+  assert(v->dims() == t->dims() && "Invalid tensor dimensions");
+  (void) v;
+  t->copyFrom(t);
 }
 
 ConvNode *Network::createConvNode(NodeBase *input, size_t outDepth,

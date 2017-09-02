@@ -69,7 +69,7 @@ bool caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
     parseNet = net.ParseFromIstream(&ff);
   }
 
-  assert(parseNet && "Failed to parse the network descriptor.\n");
+  assert(parseNet && "Failed to parse the network descriptor.");
   return true;
 }
 
@@ -77,6 +77,15 @@ Tensor *caffe2ModelLoader::getTensorByName(const std::string &name) {
   assert(tensors_.count(name) &&
          "There is no tensor registered with this name.");
   return tensors_[name];
+}
+
+NodeBase *caffe2ModelLoader::getNodeByName(const std::string &name) {
+  auto it = nodeByName_.find(name);
+  if (it != nodeByName_.end()) {
+    return it->second;
+  }
+
+  assert(false && "Could not find a node with this name.");
 }
 
 NodeBase *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
@@ -120,7 +129,13 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     Tensor *w = getTensorByName(op.input(1));
     Tensor *b = getTensorByName(op.input(2));
-    node->loadWeights(&N_, w, b);
+
+    // Transpose the NCHW to NHWC.
+    Tensor wtag;
+    transposeTensors<FloatTy>(&wtag, w, {0, 2, 3, 1});
+
+    // Load the weights into the operator.
+    node->loadWeights(&N_, &wtag, b);
 
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
