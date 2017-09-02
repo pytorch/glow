@@ -95,7 +95,9 @@ NodeBase *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
   }
 
   Tensor *T = getTensorByName(name);
-  return N_.createVariable(T->dims(), ElemKind::FloatTy);
+  Variable *V = N_.createVariable(T->dims(), ElemKind::FloatTy);
+  nodeByName_[name] = V;
+  return V;
 }
 
 void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
