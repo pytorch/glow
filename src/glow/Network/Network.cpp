@@ -108,6 +108,10 @@ SigmoidNode *Network::createSigmoidNode(NodeBase *input) {
   return addNode(new SigmoidNode(this, input));
 }
 
+TanhNode *Network::createTanhNode(NodeBase *input) {
+  return addNode(new TanhNode(this, input));
+}
+
 SoftMaxNode *Network::createSoftMaxNode(NodeBase *input, NodeBase *selected) {
   return addNode(new SoftMaxNode(this, input, selected));
 }

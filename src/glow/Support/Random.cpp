@@ -9,5 +9,4 @@ double nextRand() {
   static std::uniform_real_distribution<> distribution(-1, 1);
   return distribution(generator);
 }
-}
-
+} // namespace glow

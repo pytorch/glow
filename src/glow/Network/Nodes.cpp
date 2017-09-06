@@ -579,6 +579,38 @@ void SigmoidNode::backward(Context *ctx) const {
   }
 }
 
+TanhNode::TanhNode(Network *N, NodeBase *input) : input_(input) {}
+
+void TanhNode::init(Context *ctx) const {
+  assert(input_ && input_->size(ctx) && "Invalid input");
+
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, input_->dims(ctx));
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, input_->dims(ctx));
+}
+
+void TanhNode::forward(Context *ctx, PassKind kind) const {
+  auto outW = getWeightHandle(ctx);
+  auto inW = input_->getWeightHandle(ctx);
+
+  for (size_t i = 0, e = outW.size(); i < e; ++i) {
+    FloatTy val = inW.raw(i);
+    FloatTy exp_val = std::exp(val);
+    FloatTy exp_neg_val = std::exp(-val);
+    outW.raw(i) = (exp_val - exp_neg_val) / (exp_val + exp_neg_val);
+  }
+}
+
+void TanhNode::backward(Context *ctx) const {
+  auto outW = getWeightHandle(ctx);
+  auto outG = getGradHandle(ctx);
+  auto inG = input_->getGradHandle(ctx);
+
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    FloatTy val = outW.raw(i);
+    inG.raw(i) += (1 - val * val) * outG.raw(i);
+  }
+}
+
 SoftMaxNode::SoftMaxNode(Network *N, NodeBase *input, NodeBase *selected)
     : input_(input), selected_(selected) {}
 
@@ -1181,6 +1213,7 @@ DEFINE_CLASS_VISITOR(FullyConnectedNode)
 DEFINE_CLASS_VISITOR(RELUNode)
 DEFINE_CLASS_VISITOR(ReshapeNode)
 DEFINE_CLASS_VISITOR(SigmoidNode)
+DEFINE_CLASS_VISITOR(TanhNode)
 DEFINE_CLASS_VISITOR(RegressionNode)
 DEFINE_CLASS_VISITOR(MaxNode)
 DEFINE_CLASS_VISITOR(BatchNormalizationNode)
@@ -1196,6 +1229,7 @@ DEFINE_CLASS_VISITOR(BatchNormalizationNode)
 DEFINE_CLASS_REPR(RELUNode);
 DEFINE_CLASS_REPR(ReshapeNode);
 DEFINE_CLASS_REPR(SigmoidNode);
+DEFINE_CLASS_REPR(TanhNode);
 DEFINE_CLASS_REPR(MaxNode);
 
 void ArithmeticNode::visit(NodeBase *parent, NodeVisitor *visitor) {

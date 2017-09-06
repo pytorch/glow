@@ -128,6 +128,8 @@ public:
 
   SigmoidNode *createSigmoidNode(NodeBase *input);
 
+  TanhNode *createTanhNode(NodeBase *input);
+
   SoftMaxNode *createSoftMaxNode(NodeBase *input, NodeBase *selected);
 
   RegressionNode *createRegressionNode(NodeBase *input, NodeBase *expected);

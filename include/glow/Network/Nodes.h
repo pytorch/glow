@@ -181,6 +181,28 @@ public:
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
+class TanhNode final : public NodeBase {
+  /// A reference to the layer input.
+  NodeBase *input_;
+
+  TanhNode(Network *N, NodeBase *input);
+
+  friend Network;
+
+public:
+  void init(Context *ctx) const override;
+
+  void forward(Context *ctx, PassKind kind) const override;
+
+  void backward(Context *ctx) const override;
+
+  std::string getName() const override { return "TanhNode"; }
+
+  std::string getDebugRepr(Context *ctx) const override;
+
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
+};
+
 class SoftMaxNode final : public NodeBase {
   /// A reference to the node input.
   NodeBase *input_;
