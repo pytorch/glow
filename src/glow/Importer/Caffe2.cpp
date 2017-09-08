@@ -18,6 +18,9 @@
 
 using namespace glow;
 
+auto NCHW2NHWC = {0u, 2u, 3u, 1u};
+auto NHWC2NCHW = {0u, 3u, 1u, 2u};
+
 using ArgumentDictionaryTy =
     std::unordered_map<std::string, const caffe2::Argument *>;
 
@@ -120,6 +123,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "Conv") {
     // Load the inputs:
     auto *in = getOrCreateNodeByName(op.input(0));
+    Tensor *w = getTensorByName(op.input(1));
+    Tensor *b = getTensorByName(op.input(2));
 
     int stride = loadInt(dict["stride"]);
     int pad = loadInt(dict["pad"]);
@@ -127,10 +132,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     auto *conv1_b = tensors_[op.input(2)];
 
+    in = N_.createTransposeNode(in, NCHW2NHWC);
     auto *node = N_.createConvNode(in, conv1_b->size(), kernel, stride, pad);
-
-    Tensor *w = getTensorByName(op.input(1));
-    Tensor *b = getTensorByName(op.input(2));
 
     // Transpose the NCHW to NHWC.
     Tensor wtag;
@@ -138,10 +141,10 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     // Load the weights into the operator.
     node->loadWeights(&N_, &wtag, b);
-
+    auto *N = N_.createTransposeNode(node, NHWC2NCHW);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
+      nodeByName_[op.output(i)] = N;
     }
     return;
   }
@@ -153,11 +156,14 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     int pad = loadInt(dict["pad"]);
     int kernel = loadInt(dict["kernel"]);
 
-    auto *node = N_.createMaxPoolNode(in, MaxPoolNode::OpKind::kMax, kernel,
-                                      stride, pad);
+    in = N_.createTransposeNode(in, NCHW2NHWC);
+    NodeBase *node = N_.createMaxPoolNode(in, MaxPoolNode::OpKind::kMax, kernel,
+                                          stride, pad);
+    auto *N = N_.createTransposeNode(node, NHWC2NCHW);
+
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
+      nodeByName_[op.output(i)] = N;
     }
     return;
   }
