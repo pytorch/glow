@@ -360,7 +360,7 @@ public:
 
   void backward(Context *ctx) const override;
 
-  std::string getName() const override { return "ReshapeNode"; }
+  std::string getName() const override { return "TransposeNode"; }
 
   std::string getDebugRepr(Context *ctx) const override;
 
