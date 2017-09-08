@@ -29,6 +29,47 @@ FloatTy gradDiff(FloatTy G1, FloatTy G2) {
   return std::abs(G1 - G2) / std::abs(G1 + G2 + 1);
 }
 
+void performGradCheck(Network &N, NodeBase *root, Variable *inputVar,
+                      Variable *expVar, Tensor *inputs, Tensor *outputs,
+                      float delta, float allowedError) {
+  auto inputsH = inputs->getHandle<FloatTy>();
+
+  // Train the network.
+  N.train(root, 30, {inputVar, expVar}, {inputs, outputs});
+
+  // Clear the gradients of the first layer.
+  inputVar->getGradHandle(N.getMainContext()).clear();
+
+  // Train the network just once to calculate the grads.
+  N.train(root, 1, {inputVar, expVar}, {inputs, outputs});
+
+  auto analyticalGrads = inputVar->getGradHandle(N.getMainContext()).clone();
+  auto analyticalGradsH = analyticalGrads.getHandle<FloatTy>();
+
+  for (size_t i = 0; i < analyticalGrads.size(); i++) {
+    auto old = inputsH.raw(i);
+
+    // Calculate f(x+e):
+    inputsH.raw(i) = old + delta;
+    Tensor *res = N.infer(root, {inputVar}, {inputs});
+    auto plusLoss = computeL2Loss(outputs, res);
+
+    // Calculate f(x-e):
+    inputsH.raw(i) = old - delta;
+    res = N.infer(root, {inputVar}, {inputs});
+    auto minusLoss = computeL2Loss(outputs, res);
+    inputsH.raw(i) = old;
+
+    auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
+    auto analyticalGrad = analyticalGradsH.raw(i);
+
+    auto err = gradDiff(analyticalGrad, numericGrad);
+
+    // Make sure that the analytical and numerical gradients agree.
+    EXPECT_LE(err, allowedError);
+  }
+}
+
 TEST(Network, gradientCheck_FC_Concat_RELU) {
   Network N;
   N.getConfig().maxNumThreads = 1;
@@ -58,42 +99,7 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   inputsH.randomize(100);
   outputsH.randomize(100);
 
-  // Train the network.
-  N.train(RN, 10, {A, Exp}, {&inputs, &outputs});
-
-  // Clear the gradients of the first layer.
-  A->getGradHandle(N.getMainContext()).clear();
-
-  // Train the network just once to calculate the grads.
-  N.train(RN, 1, {A, Exp}, {&inputs, &outputs});
-
-  float delta = 0.001;
-
-  auto analyticalGrads = A->getGradHandle(N.getMainContext()).clone();
-  auto analyticalGradsH = analyticalGrads.getHandle<FloatTy>();
-
-  for (size_t i = 0; i < analyticalGrads.size(); i++) {
-    auto old = inputsH.at({0, i});
-
-    // Calculate f(x+e):
-    inputsH.at({0, i}) = old + delta;
-    Tensor *res = N.infer(RN, {A}, {&inputs});
-    auto plusLoss = computeL2Loss(&outputs, res);
-
-    // Calculate f(x-e):
-    inputsH.at({0, i}) = old - delta;
-    res = N.infer(RN, {A}, {&inputs});
-    auto minusLoss = computeL2Loss(&outputs, res);
-    inputsH.at({0, i}) = old;
-
-    auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
-    auto analyticalGrad = analyticalGradsH.at({0, i});
-
-    auto err = gradDiff(analyticalGrad, numericGrad);
-
-    // Make sure that the analytical and numerical gradients agree.
-    EXPECT_LE(err, 0.01);
-  }
+  performGradCheck(N, RN, A, Exp, &inputs, &outputs, 0.001, 0.01);
 }
 
 TEST(Network, gradientCheck_Conv) {
@@ -121,44 +127,7 @@ TEST(Network, gradientCheck_Conv) {
   inputsH.randomize(1);
   outputsH.randomize(1);
 
-  // Train the network.
-  N.train(RN, 10, {A, Exp}, {&inputs, &outputs});
-
-  // Clear the gradients of the first layer.
-  A->getGradHandle(N.getMainContext()).clear();
-
-  // Train the network just once to calculate the grads.
-  N.train(RN, 1, {A, Exp}, {&inputs, &outputs});
-
-  float delta = 0.001;
-
-  auto analyticalGrads = A->getGradHandle(N.getMainContext()).clone();
-  auto analyticalGradsH = analyticalGrads.getHandle<FloatTy>();
-
-  for (size_t i = 0; i < numDim; i++) {
-    for (size_t j = 0; j < numDim; j++) {
-      auto old = inputsH.at({0, i, j, 0});
-
-      // Calculate f(x+e):
-      inputsH.at({0, i, j, 0}) = old + delta;
-      Tensor *res = N.infer(RN, {A}, {&inputs});
-      auto plusLoss = computeL2Loss(&outputs, res);
-
-      // Calculate f(x-e):
-      inputsH.at({0, i, j, 0}) = old - delta;
-      res = N.infer(RN, {A}, {&inputs});
-      auto minusLoss = computeL2Loss(&outputs, res);
-      inputsH.at({0, i, j, 0}) = old;
-
-      auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
-      auto analyticalGrad = analyticalGradsH.at({0, i, j, 0});
-
-      auto err = gradDiff(analyticalGrad, numericGrad);
-
-      // Make sure that the analytical and numerical gradients agree.
-      EXPECT_LE(err, 0.04);
-    }
-  }
+  performGradCheck(N, RN, A, Exp, &inputs, &outputs, 0.001, 0.04);
 }
 
 TEST(Network, gradientCheck_AvgPool) {
@@ -184,44 +153,7 @@ TEST(Network, gradientCheck_AvgPool) {
   inputsH.randomize(1);
   outputsH.randomize(1);
 
-  // Train the network.
-  N.train(RN, 10, {A, Exp}, {&inputs, &outputs});
-
-  // Clear the gradients of the first layer.
-  A->getGradHandle(N.getMainContext()).clear();
-
-  // Train the network just once to calculate the grads.
-  N.train(RN, 1, {A, Exp}, {&inputs, &outputs});
-
-  float delta = 0.001;
-
-  auto analyticalGrads = A->getGradHandle(N.getMainContext()).clone();
-  auto analyticalGradsH = analyticalGrads.getHandle<FloatTy>();
-
-  for (size_t i = 0; i < numDim; i++) {
-    for (size_t j = 0; j < numDim; j++) {
-      auto old = inputsH.at({0, i, j, 0});
-
-      // Calculate f(x+e):
-      inputsH.at({0, i, j, 0}) = old + delta;
-      Tensor *res = N.infer(RN, {A}, {&inputs});
-      auto plusLoss = computeL2Loss(&outputs, res);
-
-      // Calculate f(x-e):
-      inputsH.at({0, i, j, 0}) = old - delta;
-      res = N.infer(RN, {A}, {&inputs});
-      auto minusLoss = computeL2Loss(&outputs, res);
-      inputsH.at({0, i, j, 0}) = old;
-
-      auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
-      auto analyticalGrad = analyticalGradsH.at({0, i, j, 0});
-
-      auto err = gradDiff(analyticalGrad, numericGrad);
-
-      // Make sure that the analytical and numerical gradients agree.
-      EXPECT_LE(err, 0.04);
-    }
-  }
+  performGradCheck(N, RN, A, Exp, &inputs, &outputs, 0.001, 0.04);
 }
 
 TEST(Network, gradientCheck_batchNorm) {
@@ -252,43 +184,7 @@ TEST(Network, gradientCheck_batchNorm) {
     inputsH.raw(i) += 4;
   }
 
-  // Train the network just once to calculate the grads.
-  N.train(RN, 30, {A, Exp}, {&inputs, &outputs});
-
-  // Clear the gradients of the last layer.
-  A->getGradHandle(N.getMainContext()).clear();
-
-  N.train(RN, 1, {A, Exp}, {&inputs, &outputs});
-
-  auto analyticalGrads = A->getGradHandle(N.getMainContext()).clone();
-  auto analyticalGradsH = analyticalGrads.getHandle<FloatTy>();
-
-  float delta = 0.001;
-
-  for (size_t i = 0; i < numDim; i++) {
-    for (size_t j = 0; j < numDim; j++) {
-      auto old = inputsH.at({0, i, j, 0});
-
-      // Calculate f(x+e):
-      inputsH.at({0, i, j, 0}) = old + delta;
-      Tensor *res = N.infer(RN, {A}, {&inputs});
-      auto plusLoss = computeL2Loss(&outputs, res);
-
-      // Calculate f(x-e):
-      inputsH.at({0, i, j, 0}) = old - delta;
-      res = N.infer(RN, {A}, {&inputs});
-      auto minusLoss = computeL2Loss(&outputs, res);
-      inputsH.at({0, i, j, 0}) = old;
-
-      auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
-      auto analyticalGrad = analyticalGradsH.at({0, i, j, 0});
-
-      auto err = gradDiff(analyticalGrad, numericGrad);
-
-      // Make sure that the analytical and numerical gradients agree.
-      EXPECT_LE(err, 0.04);
-    }
-  }
+  performGradCheck(N, RN, A, Exp, &inputs, &outputs, 0.001, 0.04);
 }
 
 TEST(Network, gradientCheck_Arithmetic) {
@@ -392,42 +288,7 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
   inputsH.randomize(100);
   outputsH.randomize(100);
 
-  // Train the network.
-  N.train(RN, 10, {A, Exp}, {&inputs, &outputs});
-
-  // Clear the gradients of the first layer.
-  A->getGradHandle(N.getMainContext()).clear();
-
-  // Train the network just once to calculate the grads.
-  N.train(RN, 1, {A, Exp}, {&inputs, &outputs});
-
-  float delta = 0.001;
-
-  auto analyticalGrads = A->getGradHandle(N.getMainContext()).clone();
-  auto analyticalGradsH = analyticalGrads.getHandle<FloatTy>();
-
-  for (size_t i = 0; i < analyticalGrads.size(); i++) {
-    auto old = inputsH.at({0, i});
-
-    // Calculate f(x+e):
-    inputsH.at({0, i}) = old + delta;
-    Tensor *res = N.infer(RN, {A}, {&inputs});
-    auto plusLoss = computeL2Loss(&outputs, res);
-
-    // Calculate f(x-e):
-    inputsH.at({0, i}) = old - delta;
-    res = N.infer(RN, {A}, {&inputs});
-    auto minusLoss = computeL2Loss(&outputs, res);
-    inputsH.at({0, i}) = old;
-
-    auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
-    auto analyticalGrad = analyticalGradsH.at({0, i});
-
-    auto err = gradDiff(analyticalGrad, numericGrad);
-
-    // Make sure that the analytical and numerical gradients agree.
-    EXPECT_LE(err, 0.01);
-  }
+  performGradCheck(N, RN, A, Exp, &inputs, &outputs, 0.001, 0.01);
 }
 
 TEST(Network, gradientCheck_Transpose) {
@@ -453,40 +314,5 @@ TEST(Network, gradientCheck_Transpose) {
   inputsH.randomize(100);
   outputsH.randomize(100);
 
-  // Train the network.
-  N.train(RN, 30, {A, Exp}, {&inputs, &outputs});
-
-  // Clear the gradients of the first layer.
-  A->getGradHandle(N.getMainContext()).clear();
-
-  // Train the network just once to calculate the grads.
-  N.train(RN, 1, {A, Exp}, {&inputs, &outputs});
-
-  float delta = 0.01;
-
-  auto analyticalGrads = A->getGradHandle(N.getMainContext()).clone();
-  auto analyticalGradsH = analyticalGrads.getHandle<FloatTy>();
-
-  for (size_t i = 0; i < analyticalGrads.size(); i++) {
-    auto old = inputsH.raw(i);
-
-    // Calculate f(x+e):
-    inputsH.raw(i) = old + delta;
-    Tensor *res = N.infer(RN, {A}, {&inputs});
-    auto plusLoss = computeL2Loss(&outputs, res);
-
-    // Calculate f(x-e):
-    inputsH.raw(i) = old - delta;
-    res = N.infer(RN, {A}, {&inputs});
-    auto minusLoss = computeL2Loss(&outputs, res);
-    inputsH.raw(i) = old;
-
-    auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
-    auto analyticalGrad = analyticalGradsH.raw(i);
-
-    auto err = gradDiff(analyticalGrad, numericGrad);
-
-    // Make sure that the analytical and numerical gradients agree.
-    EXPECT_LE(err, 0.01);
-  }
+  performGradCheck(N, RN, A, Exp, &inputs, &outputs, 0.001, 0.01);
 }
