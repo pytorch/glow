@@ -429,3 +429,64 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
     EXPECT_LE(err, 0.01);
   }
 }
+
+TEST(Network, gradientCheck_Transpose) {
+  // Using the same gradient check test setup as gradientCheck_FC_Concat_RELU
+  Network N;
+  N.getConfig().maxNumThreads = 1;
+  size_t numOutputElem = 10;
+
+  Variable *A = N.createVariable({1, 5, 10, 15}, ElemKind::FloatTy);
+  Variable *Exp = N.createVariable({1, numOutputElem}, ElemKind::FloatTy);
+
+  NodeBase *TA = N.createTransposeNode(A, {0, 3, 1, 2});
+  TA = N.createFullyConnectedNode(TA, numOutputElem);
+
+  auto *RN = N.createRegressionNode(TA, Exp);
+
+  Tensor inputs(ElemKind::FloatTy, {1, 5, 10, 15});
+  Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
+
+  auto inputsH = inputs.getHandle<FloatTy>();
+  auto outputsH = outputs.getHandle<FloatTy>();
+
+  inputsH.randomize(100);
+  outputsH.randomize(100);
+
+  // Train the network.
+  N.train(RN, 30, {A, Exp}, {&inputs, &outputs});
+
+  // Clear the gradients of the first layer.
+  A->getGradHandle(N.getMainContext()).clear();
+
+  // Train the network just once to calculate the grads.
+  N.train(RN, 1, {A, Exp}, {&inputs, &outputs});
+
+  float delta = 0.01;
+
+  auto analyticalGrads = A->getGradHandle(N.getMainContext()).clone();
+  auto analyticalGradsH = analyticalGrads.getHandle<FloatTy>();
+
+  for (size_t i = 0; i < analyticalGrads.size(); i++) {
+    auto old = inputsH.raw(i);
+
+    // Calculate f(x+e):
+    inputsH.raw(i) = old + delta;
+    Tensor *res = N.infer(RN, {A}, {&inputs});
+    auto plusLoss = computeL2Loss(&outputs, res);
+
+    // Calculate f(x-e):
+    inputsH.raw(i) = old - delta;
+    res = N.infer(RN, {A}, {&inputs});
+    auto minusLoss = computeL2Loss(&outputs, res);
+    inputsH.raw(i) = old;
+
+    auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
+    auto analyticalGrad = analyticalGradsH.raw(i);
+
+    auto err = gradDiff(analyticalGrad, numericGrad);
+
+    // Make sure that the analytical and numerical gradients agree.
+    EXPECT_LE(err, 0.01);
+  }
+}

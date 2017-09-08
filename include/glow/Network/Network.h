@@ -140,6 +140,8 @@ public:
 
   ReshapeNode *createReshapeNode(NodeBase *input, ArrayRef<size_t> shape);
 
+  TransposeNode *createTransposeNode(NodeBase *input, ArrayRef<unsigned> shape);
+
   BatchNormalizationNode *createBatchNormalizationNode(NodeBase *input,
                                                        size_t channelIdx = 0,
                                                        FloatTy epsilon = 1e-5,

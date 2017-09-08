@@ -339,6 +339,34 @@ public:
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
+/// Transposes a tensor by shuffling the dimensions.
+class TransposeNode final : public NodeBase {
+  NodeBase *input_;
+
+  std::vector<unsigned> shuffle_;
+  std::vector<unsigned> reverseShuffle_;
+
+  /// Ctor - change the order of the dimensions in the tensor.
+  /// \p shuffle represents a list of indices that point to the index of the
+  /// dimension in the original tensor.
+  TransposeNode(Network *N, NodeBase *input, ArrayRef<unsigned> shuffle);
+
+  friend Network;
+
+public:
+  void init(Context *ctx) const override;
+
+  void forward(Context *ctx, PassKind kind) const override;
+
+  void backward(Context *ctx) const override;
+
+  std::string getName() const override { return "ReshapeNode"; }
+
+  std::string getDebugRepr(Context *ctx) const override;
+
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
+};
+
 /// Concats a number of input tensors into a single tensor.
 class ConcatNode final : public NodeBase {
   /// Pointers to incoming inputs.

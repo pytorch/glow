@@ -134,6 +134,11 @@ ReshapeNode *Network::createReshapeNode(NodeBase *input,
   return addNode(new ReshapeNode(this, input, shape));
 }
 
+TransposeNode *Network::createTransposeNode(NodeBase *input,
+                                            ArrayRef<unsigned> shuffle) {
+  return addNode(new TransposeNode(this, input, shuffle));
+}
+
 BatchNormalizationNode *
 Network::createBatchNormalizationNode(NodeBase *input, size_t channelIdx,
                                       FloatTy epsilon, FloatTy momentum) {

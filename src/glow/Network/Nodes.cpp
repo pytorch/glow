@@ -900,6 +900,46 @@ void ReshapeNode::backward(Context *ctx) const {
   }
 }
 
+TransposeNode::TransposeNode(Network *N, NodeBase *input,
+                             ArrayRef<unsigned> shuffle)
+    : input_(input), shuffle_(shuffle.vec()), reverseShuffle_(shuffle.vec()) {
+  for (int i = 0; i < shuffle_.size(); i++) {
+    reverseShuffle_[shuffle_[i]] = i;
+  }
+}
+
+void TransposeNode::init(Context *ctx) const {
+  assert(input_ && input_->size(ctx) && "Invalid input");
+
+  assert(shuffle_.size() == input_->dims(ctx).size() && "Invalid shuffle mask");
+  std::vector<size_t> shape;
+
+  auto inDims = input_->dims(ctx);
+
+  for (size_t i = 0; i < inDims.size(); i++) {
+    shape.push_back(inDims[shuffle_[i]]);
+  }
+
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, shape);
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, shape);
+}
+
+void TransposeNode::forward(Context *ctx, PassKind kind) const {
+  auto *outW = getOutputWeight(ctx);
+  auto *inW = input_->getOutputWeight(ctx);
+  assert(outW->size() == inW->size() && "Invalid tensor dimensions");
+
+  transposeTensors<FloatTy>(outW, inW, shuffle_);
+}
+
+void TransposeNode::backward(Context *ctx) const {
+  auto *outG = getOutputGrad(ctx);
+  auto *inG = input_->getOutputGrad(ctx);
+  assert(outG->size() == inG->size() && "Invalid tensor dimensions");
+
+  transposeTensors<FloatTy>(inG, outG, reverseShuffle_);
+}
+
 BatchNormalizationNode::BatchNormalizationNode(Network *N, NodeBase *input,
                                                size_t channelIdx,
                                                FloatTy epsilon,
@@ -1212,6 +1252,7 @@ DEFINE_CLASS_VISITOR(MaxPoolNode)
 DEFINE_CLASS_VISITOR(FullyConnectedNode)
 DEFINE_CLASS_VISITOR(RELUNode)
 DEFINE_CLASS_VISITOR(ReshapeNode)
+DEFINE_CLASS_VISITOR(TransposeNode)
 DEFINE_CLASS_VISITOR(SigmoidNode)
 DEFINE_CLASS_VISITOR(TanhNode)
 DEFINE_CLASS_VISITOR(RegressionNode)
@@ -1228,6 +1269,7 @@ DEFINE_CLASS_VISITOR(BatchNormalizationNode)
 
 DEFINE_CLASS_REPR(RELUNode);
 DEFINE_CLASS_REPR(ReshapeNode);
+DEFINE_CLASS_REPR(TransposeNode);
 DEFINE_CLASS_REPR(SigmoidNode);
 DEFINE_CLASS_REPR(TanhNode);
 DEFINE_CLASS_REPR(MaxNode);
