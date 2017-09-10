@@ -62,7 +62,7 @@ void testMNIST() {
   unsigned numImages = loadMNIST(imageInputs, labelInputs);
   std::cout << "Loaded " << numImages << " images.\n";
 
-  unsigned minibatchSize = 10;
+  unsigned minibatchSize = 8;
 
   // Construct the network:
   Network N;
@@ -73,7 +73,7 @@ void testMNIST() {
   auto *A = N.createVariable({minibatchSize, 28, 28, 1}, ElemKind::FloatTy);
   auto *CV0 = N.createConvNode(A, 16, 5, 1, 2);
   auto *RL0 = N.createRELUNode(CV0);
-  auto *MP0 = N.createMaxPoolNode(RL0, MaxPoolNode::OpKind::kMax, 2, 2, 0);
+  auto *MP0 = N.createMaxPoolNode(RL0, MaxPoolNode::OpKind::kMax, 3, 3, 0);
 
   auto *CV1 = N.createConvNode(MP0, 16, 5, 1, 2);
   auto *RL1 = N.createRELUNode(CV1);
@@ -87,7 +87,7 @@ void testMNIST() {
   auto *SM = N.createSoftMaxNode(RL2, selected);
 
   // Report progress every this number of training iterations.
-  constexpr int reportRate = 10;
+  constexpr int reportRate = 30;
 
   std::cout << "Training.\n";
 
