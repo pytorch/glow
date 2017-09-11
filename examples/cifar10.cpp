@@ -93,12 +93,12 @@ void testCIFAR10() {
 
     unsigned score = 0;
 
-    for (int i = 0; i < 100 / minibatchSize; i++) {
+    for (unsigned int i = 0; i < 100 / minibatchSize; i++) {
       Tensor sample(ElemKind::FloatTy, {minibatchSize, 3, 32, 32});
       sample.copyConsecutiveSlices(&images, minibatchSize * i);
       auto *res = N.infer(SM, {A}, {&sample});
 
-      for (int iter = 0; iter < minibatchSize; iter++) {
+      for (unsigned int iter = 0; iter < minibatchSize; iter++) {
         auto T = res->getHandle<FloatTy>().extractSlice(iter);
         size_t guess = T.getHandle<FloatTy>().maxArg();
         size_t correct = labelsH.at({minibatchSize * i + iter, 0});

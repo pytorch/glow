@@ -239,7 +239,7 @@ public:
   // Move ctor.
   Tensor(Tensor &&other) noexcept {
     std::swap(data_, other.data_);
-    for (int i = 0; i < max_tensor_dimensions; i++) {
+    for (unsigned int i = 0; i < max_tensor_dimensions; i++) {
       std::swap(sizes_[i], other.sizes_[i]);
     }
     std::swap(numSizes_, other.numSizes_);
@@ -249,7 +249,7 @@ public:
   /// Move assignment operator.
   Tensor &operator=(Tensor &&other) noexcept {
     std::swap(data_, other.data_);
-    for (int i = 0; i < max_tensor_dimensions; i++) {
+    for (unsigned int i = 0; i < max_tensor_dimensions; i++) {
       std::swap(sizes_[i], other.sizes_[i]);
     }
     std::swap(numSizes_, other.numSizes_);

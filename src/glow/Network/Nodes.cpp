@@ -106,7 +106,8 @@ void ConvNode::forward(Context *ctx, PassKind kind) const {
               ssize_t oy = y + fy;
 
               // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= odim.h || oy >= odim.w) {
+              if (ox < 0 || oy < 0 || ox >= ssize_t(odim.h) ||
+                  oy >= ssize_t(odim.w)) {
                 continue;
               }
 
@@ -143,10 +144,9 @@ void ConvNode::backward(Context *ctx) const {
 
       // For each convolution 'jump' in the input tensor:
       ssize_t y = -ssize_t(pad_);
-      for (size_t ay = 0; ay < ssize_t(odim.w); y += stride_, ay++) {
+      for (size_t ay = 0; ay < odim.w; y += stride_, ay++) {
         ssize_t x = -ssize_t(pad_);
-        for (size_t ax = 0; ax < ssize_t(odim.h); x += stride_, ax++) {
-
+        for (size_t ax = 0; ax < odim.h; x += stride_, ax++) {
           FloatTy chainGrad = outG.at({n, ax, ay, d});
 
           // For each element in the convolution-filter:
@@ -156,7 +156,8 @@ void ConvNode::backward(Context *ctx) const {
               ssize_t oy = y + fy;
 
               // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= odim.h || oy >= odim.w) {
+              if (ox < 0 || oy < 0 || ox >= ssize_t(odim.h) ||
+                  oy >= ssize_t(odim.w)) {
                 continue;
               }
 
@@ -269,7 +270,8 @@ void MaxPoolNode::forwardMax(Context *ctx) const {
               ssize_t oy = y + fy;
 
               // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w) {
+              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                  oy >= ssize_t(idim.w)) {
                 continue;
               }
 
@@ -353,7 +355,8 @@ void MaxPoolNode::forwardAvg(Context *ctx) const {
               ssize_t oy = y + fy;
 
               // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w) {
+              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                  oy >= ssize_t(idim.w)) {
                 continue;
               }
 
@@ -393,7 +396,8 @@ void MaxPoolNode::backwardAvg(Context *ctx) const {
               ssize_t oy = y + fy;
 
               // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= idim.h || oy >= idim.w) {
+              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                  oy >= ssize_t(idim.w)) {
                 continue;
               }
 
@@ -805,7 +809,7 @@ void ConcatNode::init(Context *ctx) const {
 
     // Validate that the rest of the dimensions are identical.
     assert(dims0.size() == dimsI.size() && "Invalid number of dimensions");
-    for (int i = 0; i < dims0.size(); i++) {
+    for (unsigned int i = 0; i < dims0.size(); i++) {
       if (i == dimension_) {
         continue;
       }
@@ -877,7 +881,8 @@ void ReshapeNode::init(Context *ctx) const {
   auto newSize = std::accumulate(shape_.begin(), shape_.end(), 1,
                                  std::multiplies<size_t>());
   (void)newSize;
-  assert(input_->size(ctx) == newSize && "New shape must be of the same size.");
+  assert(ssize_t(input_->size(ctx)) == newSize &&
+         "New shape must be of the same size.");
 
   ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, shape_);
   ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, shape_);
@@ -903,7 +908,7 @@ void ReshapeNode::backward(Context *ctx) const {
 TransposeNode::TransposeNode(Network *N, NodeBase *input,
                              ArrayRef<unsigned> shuffle)
     : input_(input), shuffle_(shuffle.vec()), reverseShuffle_(shuffle.vec()) {
-  for (int i = 0; i < shuffle_.size(); i++) {
+  for (unsigned int i = 0; i < shuffle_.size(); i++) {
     reverseShuffle_[shuffle_[i]] = i;
   }
 }

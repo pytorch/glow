@@ -55,7 +55,7 @@ DescriptionBuilder &DescriptionBuilder::addDim(const std::string &name,
                                                ArrayRef<size_t> dims) {
   assert(!dims.empty() && "Invalid dimensions");
   repr_ << name << " : (" << dims[0];
-  for (int i = 1; i < dims.size(); i++) {
+  for (unsigned int i = 1; i < dims.size(); i++) {
     repr_ << " x " << dims[i];
   }
   repr_ << ")\n";

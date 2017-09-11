@@ -230,7 +230,7 @@ static unsigned calculateNumThreads(unsigned maxNumThreads, unsigned numCores,
          "Invalid work size or thread count");
   unsigned maxThreads = std::min<unsigned>(numCores, maxNumThreads);
 
-  for (int i = 1; i < maxThreads; i++) {
+  for (unsigned int i = 1; i < maxThreads; i++) {
     // The number of packets must be a multiple of the number of threads or
     // we'll skip some packets.
     if (numPackets % i) {
@@ -267,7 +267,7 @@ void Network::train(NodeBase *root, size_t numBatches,
 
   for (size_t i = 0; i < numBatches / numThreads; i++) {
     // Launch threads that update the different chunks in the batch:
-    for (int t = 0; t < numThreads; t++) {
+    for (unsigned int t = 0; t < numThreads; t++) {
       // Update the network inputs and perform the forward and backwards pass.
       threads.emplace_back([=] {
         updateForwardBackward(state_[t], root, trainCounter_ + t * batchSize,
@@ -286,7 +286,7 @@ void Network::train(NodeBase *root, size_t numBatches,
     // The algorithm for merging the state from the different threads is
     /// described in the paper: Alex Krizhevsky [2014]
     // "One weird trick for parallelizing convolutional neural networks"
-    for (int tid = 0; tid < numThreads; tid++) {
+    for (unsigned int tid = 0; tid < numThreads; tid++) {
       learnGradient(state_[tid], batchSize * numThreads);
     }
   }

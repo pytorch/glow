@@ -110,7 +110,7 @@ void testMNIST() {
   sample.copyConsecutiveSlices(&imageInputs, 0);
   auto *res = N.infer(SM, {A}, {&sample});
 
-  for (int iter = 0; iter < minibatchSize; iter++) {
+  for (unsigned int iter = 0; iter < minibatchSize; iter++) {
     auto T = res->getHandle<FloatTy>().extractSlice(iter);
     size_t guess = T.getHandle<FloatTy>().maxArg();
 
