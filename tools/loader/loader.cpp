@@ -6,41 +6,76 @@
 
 using namespace glow;
 
+enum class ImageNormalizationMode {
+  k0to1,     // Values are in the range: 0 and 1.
+  k0to256,   // Values are in the range: 0 and 256.
+  k128to127, // Values are in the range: -128 .. 127
+};
+
+ImageNormalizationMode strToImageNormalizationMode(const std::string &str) {
+  if (str == "0to1")
+    return ImageNormalizationMode::k0to1;
+  if (str == "0to256")
+    return ImageNormalizationMode::k0to256;
+  if (str == "128to127")
+    return ImageNormalizationMode::k128to127;
+  glow_unreachable();
+}
+
+/// Convert the normalization to numeric floating poing ranges.
+std::pair<float, float> normModeToRange(ImageNormalizationMode mode) {
+  switch (mode) {
+  case ImageNormalizationMode::k0to1:
+    return {0., 1.0};
+  case ImageNormalizationMode::k0to256:
+    return {0., 256.0};
+  case ImageNormalizationMode::k128to127:
+    return {-128., 128.};
+  }
+
+  assert(false && "Unknown image format");
+  glow_unreachable();
+}
+
 /// Loads and normalizes a PNG into a tensor in the NCHW 3x224x224 format.
-void loadImageAndPreprocess(const std::string &filename, Tensor *result) {
+void loadImageAndPreprocess(const std::string &filename, Tensor *result,
+                            ImageNormalizationMode normMode) {
+  auto range = normModeToRange(normMode);
+
   Tensor localCopy;
-  readPngImage(&localCopy, filename.c_str());
-  auto catH = localCopy.getHandle<FloatTy>();
+  readPngImage(&localCopy, filename.c_str(), range);
+  auto imageH = localCopy.getHandle<FloatTy>();
 
   auto dims = localCopy.dims();
 
   result->reset(ElemKind::FloatTy, {1, 3, dims[0], dims[1]});
   auto RH = result->getHandle<FloatTy>();
 
+  // Convert to BGR.
   for (unsigned z = 0; z < 3; z++) {
     for (unsigned y = 0; y < dims[1]; y++) {
       for (unsigned x = 0; x < dims[0]; x++) {
-        // Convert to BGR, and subtract the mean, which we hardcode to 128.
-        RH.at({0, 2 - z, x, y}) = (catH.at({x, y, z}) - 128);
+        RH.at({0, 2 - z, x, y}) = (imageH.at({x, y, z}));
       }
     }
   }
 }
 
 int main(int argc, char **argv) {
-  if (argc != 4) {
-    std::cerr << "Usage: " << argv[0]
-              << "image.png network_structure.pb weights.pb\n";
+  if (argc != 5) {
+    std::cerr << "Usage: " << argv[0] << "image.png [0to1 / 0to256 / 128to127] "
+              << "network_structure.pb weights.pb\n";
     return -1;
   }
 
   Tensor data;
   Tensor expected_softmax(ElemKind::IndexTy, {1, 1});
 
-  loadImageAndPreprocess(argv[1], &data);
+  auto imageMode = strToImageNormalizationMode(argv[2]);
+  loadImageAndPreprocess(argv[1], &data, imageMode);
 
   glow::Network N;
-  caffe2ModelLoader LD(argv[2], argv[3],
+  caffe2ModelLoader LD(argv[3], argv[4],
                        {"data", "gpu_0/data", "softmax_expected"},
                        {&data, &data, &expected_softmax}, N);
 

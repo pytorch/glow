@@ -5,11 +5,15 @@
 
 namespace glow {
 
-/// Reads a png image. \returns True if an error occurred.
-bool readPngImage(Tensor *T, const char *filename);
+/// Reads a png image. \returns True if an error occurred. The values of the
+/// image are in the range \p range.
+bool readPngImage(Tensor *T, const char *filename,
+                  std::pair<float, float> range);
 
-/// Writes a png image. \returns True if an error occurred.
-bool writePngImage(Tensor *T, const char *filename);
+/// Writes a png image. \returns True if an error occurred. The values of the
+/// image are in the range \p range.
+bool writePngImage(Tensor *T, const char *filename,
+                   std::pair<float, float> range);
 
 } // namespace glow
 

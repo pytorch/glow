@@ -7,7 +7,8 @@ using namespace glow;
 #if WITH_PNG
 #include <png.h>
 
-bool glow::readPngImage(Tensor *T, const char *filename) {
+bool glow::readPngImage(Tensor *T, const char *filename,
+                        std::pair<float, float> range) {
   unsigned char header[8];
   // open file and test for it being a png.
   FILE *fp = fopen(filename, "rb");
@@ -68,14 +69,17 @@ bool glow::readPngImage(Tensor *T, const char *filename) {
   T->reset(ElemKind::FloatTy, {width, height, 3});
   auto H = T->getHandle<FloatTy>();
 
+  float scale = ((range.second - range.first) / 255.0);
+  float bias = range.first;
+
   for (size_t y = 0; y < height; y++) {
     png_byte *row = row_pointers[y];
     for (size_t x = 0; x < width; x++) {
       png_byte *ptr = &(row[x * (hasAlpha ? 4 : 3)]);
 
-      H.at({x, y, 0}) = ptr[0];
-      H.at({x, y, 1}) = ptr[1];
-      H.at({x, y, 2}) = ptr[2];
+      H.at({x, y, 0}) = float(ptr[0]) * scale + bias;
+      H.at({x, y, 1}) = float(ptr[1]) * scale + bias;
+      H.at({x, y, 2}) = float(ptr[2]) * scale + bias;
     }
   }
 
@@ -86,7 +90,8 @@ bool glow::readPngImage(Tensor *T, const char *filename) {
   return false;
 }
 
-bool glow::writePngImage(Tensor *T, const char *filename) {
+bool glow::writePngImage(Tensor *T, const char *filename,
+                         std::pair<float, float> range) {
   /* create file */
   FILE *fp = fopen(filename, "wb");
   if (!fp)
@@ -134,13 +139,16 @@ bool glow::writePngImage(Tensor *T, const char *filename) {
   for (size_t y = 0; y < height; y++)
     row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png_ptr, info_ptr));
 
+  float scale = ((range.second - range.first) / 255.0);
+  float bias = range.first;
+
   for (size_t y = 0; y < height; y++) {
     png_byte *row = row_pointers[y];
     for (size_t x = 0; x < width; x++) {
       png_byte *ptr = &(row[x * 4]);
-      ptr[0] = H.at({x, y, 0});
-      ptr[1] = H.at({x, y, 1});
-      ptr[2] = H.at({x, y, 2});
+      ptr[0] = H.at({x, y, 0}) * scale + bias;
+      ptr[1] = H.at({x, y, 1}) * scale + bias;
+      ptr[2] = H.at({x, y, 2}) * scale + bias;
       ptr[3] = 0xff;
     }
   }
@@ -161,11 +169,13 @@ bool glow::writePngImage(Tensor *T, const char *filename) {
 }
 
 #else
-bool glow::readPngImage(Tensor *T, const char *filename) {
+bool glow::readPngImage(Tensor *T, const char *filename,
+                        std::pair<float, float> range) {
   assert(false && "Not configured with libpng");
 }
 
-bool glow::writePngImage(Tensor *T, const char *filename) {
+bool glow::writePngImage(Tensor *T, const char *filename,
+                         std::pair<float, float> range) {
   assert(false && "Not configured with libpng");
 }
 #endif
