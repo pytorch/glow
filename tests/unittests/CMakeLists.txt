@@ -26,3 +26,13 @@ target_link_libraries(gradCheckTest
                         gtest_main)
 add_test(gradCheckTest ${GLOW_BINARY_DIR}/tests/gradCheckTest)
 
+add_executable(IRTest
+                 IRTest.cpp)
+target_link_libraries(IRTest
+                      PRIVATE
+                        Network
+                        IR
+                        gtest
+                        gtest_main)
+add_test(IRTest ${GLOW_BINARY_DIR}/tests/IRTest)
+
