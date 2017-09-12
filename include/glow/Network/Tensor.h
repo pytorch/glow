@@ -3,6 +3,7 @@
 
 #include "Config.h"
 
+#include "glow/IR/Type.h"
 #include "glow/Support/ADT.h"
 #include "glow/Support/Compiler.h"
 #include "glow/Support/Random.h"
@@ -31,8 +32,6 @@ struct ShapeNHWC {
     c = shape[3];
   }
 };
-
-constexpr unsigned max_tensor_dimensions = 6;
 
 /// This is the default floating point type used for training.
 using FloatTy = TRAINING_TENSOR_ELEMENT_TYPE;
@@ -75,14 +74,6 @@ template <class ElemTy> static char valueToChar(ElemTy val) {
   return ch;
 }
 
-enum class ElemKind : unsigned char {
-  FloatTy,
-  DoubleTy,
-  Int8Ty,
-  Int32Ty,
-  IndexTy,
-};
-
 template <class ElemTy> class Handle;
 
 /// A class that represents a contiguous n-dimensional array (a tensor).
@@ -90,63 +81,23 @@ class Tensor final {
   /// A pointer to the tensor data.
   char *data_{nullptr};
 
-  /// Contains the dimentions (sizes) of the tensor. Ex: [sx, sy, sz, ...].
-  size_t sizes_[max_tensor_dimensions] = {
-      0,
-  };
-
-  /// Contains the number of dimensions used by the tensor.
-  unsigned char numSizes_{0};
-
-  /// Specifies the element type of the tensor.
-  ElemKind elementType_;
+  /// The type of the tensor.
+  Type type_;
 
   template <class ElemTy> friend class Handle;
 
 public:
-  /// \returns true if the templated parameter \p ElemTy matches the type that's
-  /// specified by the parameter \p Ty.
-  template <class ElemTy> static bool isType(ElemKind Ty) {
-    switch (Ty) {
-    case ElemKind::FloatTy:
-      return std::is_same<ElemTy, float>::value;
-    case ElemKind::DoubleTy:
-      return std::is_same<ElemTy, double>::value;
-    case ElemKind::Int8Ty:
-      return std::is_same<ElemTy, int8_t>::value;
-    case ElemKind::Int32Ty:
-      return std::is_same<ElemTy, int32_t>::value;
-    case ElemKind::IndexTy:
-      return std::is_same<ElemTy, size_t>::value;
-    }
-    glow_unreachable();
-  }
-
-  /// \return the size of the element \p Ty.
-  static unsigned getElementSize(ElemKind Ty) {
-    switch (Ty) {
-    case ElemKind::FloatTy:
-      return sizeof(float);
-    case ElemKind::DoubleTy:
-      return sizeof(double);
-    case ElemKind::Int8Ty:
-      return sizeof(int8_t);
-    case ElemKind::Int32Ty:
-      return sizeof(int32_t);
-    case ElemKind::IndexTy:
-      return sizeof(size_t);
-    }
-    glow_unreachable();
-  }
+  /// \returns the type of the tensor.
+  const Type &getType() { return type_; }
 
   /// \return the element type of the tensor.
-  ElemKind getElementType() const { return elementType_; }
+  ElemKind getElementType() const { return type_.elementType_; }
 
   /// \returns True if the coordinate is within the array.
   bool isInBounds(ArrayRef<size_t> indices) const {
-    assert(numSizes_ == indices.size() && "Invalid number of indices");
+    assert(type_.numSizes_ == indices.size() && "Invalid number of indices");
     for (size_t i = 0u, e = indices.size(); i < e; i++) {
-      if (indices[i] >= sizes_[i]) {
+      if (indices[i] >= type_.sizes_[i]) {
         return false;
       }
     }
@@ -155,29 +106,18 @@ public:
 
   /// Set the content of the tensor to zero.
   void zero() {
-    std::fill(&data_[0], &data_[0] + size() * getElementSize(elementType_), 0);
+    std::fill(&data_[0], &data_[0] + size() * type_.getElementSize(), 0);
   }
 
   /// \returns the shape of the tensor.
-  ArrayRef<size_t> dims() const { return {sizes_, numSizes_}; }
+  ArrayRef<size_t> dims() const { return type_.dims(); }
 
   /// \returns the number of elements in the tensor.
-  size_t size() const {
-    if (!numSizes_) {
-      return 0;
-    }
-
-    size_t s = 1;
-    for (unsigned i = 0; i < numSizes_; i++) {
-      s *= size_t(sizes_[i]);
-    }
-
-    return s;
-  }
+  size_t size() const { return type_.size(); }
 
   /// \returns a pointer to the raw data, of type \p ElemTy.
   template <class ElemTy> ElemTy *getRawDataPointer() {
-    assert(isType<ElemTy>(elementType_) && "Asking for the wrong ptr type.");
+    assert(type_.isType<ElemTy>() && "Asking for the wrong ptr type.");
     return reinterpret_cast<ElemTy *>(data_);
   }
 
@@ -185,7 +125,7 @@ public:
   Tensor() = default;
 
   /// Initialize from a list of float literals.
-  Tensor(const std::initializer_list<double> &vec) {
+  Tensor(const std::initializer_list<double> &vec) : type_{} {
     reset(ElemKind::FloatTy, {vec.size()});
     FloatTy *data = getRawDataPointer<FloatTy>();
     int i = 0;
@@ -196,7 +136,7 @@ public:
 
   /// Allocate and initialize a new tensor.
   Tensor(ElemKind elemTy, ArrayRef<size_t> dims)
-      : data_(nullptr), elementType_(elemTy) {
+      : data_(nullptr), type_(elemTy, dims) {
     reset(elemTy, dims);
   }
 
@@ -209,27 +149,26 @@ public:
     reset(other->getElementType(), other->dims());
   }
 
-  /// Assigns a new shape to the tensor and allocates a new buffer.
   void reset(ElemKind elemTy, ArrayRef<size_t> shape) {
+    Type t(elemTy, shape);
+    reset(t);
+  }
+
+  /// Assigns a new shape to the tensor and allocates a new buffer.
+  void reset(const Type &T) {
     // If the new size is identical to the allocated size then there is no need
     // to re-allocate the buffer.
-    if (elemTy == elementType_ && shape == this->dims()) {
+    if (type_ == T && data_) {
       zero();
       return;
     }
 
     // Delete the old buffer, update the shape, and allocate a new one.
     delete[] data_;
-    elementType_ = elemTy;
-
-    assert(shape.size() < max_tensor_dimensions && "Too many indices");
-    for (size_t i = 0, e = shape.size(); i < e; i++) {
-      sizes_[i] = shape[i];
-    }
-    numSizes_ = shape.size();
+    type_ = T;
 
     if (size()) {
-      data_ = new char[size() * getElementSize(elementType_)];
+      data_ = new char[size() * type_.getElementSize()];
       zero();
     }
   }
@@ -239,21 +178,13 @@ public:
   // Move ctor.
   Tensor(Tensor &&other) noexcept {
     std::swap(data_, other.data_);
-    for (unsigned int i = 0; i < max_tensor_dimensions; i++) {
-      std::swap(sizes_[i], other.sizes_[i]);
-    }
-    std::swap(numSizes_, other.numSizes_);
-    std::swap(elementType_, other.elementType_);
+    std::swap(type_, type_);
   }
 
   /// Move assignment operator.
   Tensor &operator=(Tensor &&other) noexcept {
     std::swap(data_, other.data_);
-    for (unsigned int i = 0; i < max_tensor_dimensions; i++) {
-      std::swap(sizes_[i], other.sizes_[i]);
-    }
-    std::swap(numSizes_, other.numSizes_);
-    std::swap(elementType_, other.elementType_);
+    std::swap(type_, other.type_);
     return *this;
   }
 
@@ -261,7 +192,7 @@ public:
   void copyFrom(const Tensor *t) {
     assert(this != t && "Copying to self");
     reset(t);
-    size_t bufferSize = size() * getElementSize(elementType_);
+    size_t bufferSize = size() * type_.getElementSize();
     std::copy(&t->data_[0], &t->data_[bufferSize], data_);
   }
 
@@ -273,7 +204,7 @@ public:
     assert(dim == dims() && "Invalid slice size");
     assert(getElementType() == t->getElementType() && "Invalid element type");
 
-    size_t bufferSize = size() * getElementSize(elementType_);
+    size_t bufferSize = size() * type_.getElementSize();
     std::copy(&t->data_[bufferSize * slice],
               &t->data_[bufferSize * (slice + 1)], data_);
   }
@@ -291,7 +222,7 @@ public:
 
     size_t numSlicesInInput = t->dims()[0];
     size_t numElementsInSlice = size() / dims()[0];
-    size_t bufferSize = numElementsInSlice * getElementSize(elementType_);
+    size_t bufferSize = numElementsInSlice * type_.getElementSize();
 
     // For each outer slice in the current tensor:
     for (size_t n = 0, e = dims()[0]; n < e; n++) {
@@ -376,7 +307,8 @@ public:
     }
 
     // Copy the sizes of the tensor.
-    memcpy(sizes_, tensor_->sizes_, max_tensor_dimensions * sizeof(sizes_[0]));
+    memcpy(sizes_, tensor_->type_.sizes_,
+           max_tensor_dimensions * sizeof(sizes_[0]));
 
     size_t pi = 1;
     for (int i = numDims - 1; i >= 0; i--) {
@@ -663,7 +595,7 @@ private:
 };
 
 template <class ElemTy> Handle<ElemTy> Tensor::getHandle() {
-  assert(isType<ElemTy>(elementType_) && "Getting a handle to the wrong type.");
+  assert(type_.isType<ElemTy>() && "Getting a handle to the wrong type.");
   return Handle<ElemTy>(this);
 }
 
