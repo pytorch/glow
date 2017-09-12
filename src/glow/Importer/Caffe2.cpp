@@ -137,7 +137,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     // Transpose the NCHW to NHWC.
     Tensor wtag;
-    transposeTensors<FloatTy>(&wtag, w, {0, 2, 3, 1});
+    w->getHandle<FloatTy>().transpose(&wtag, {0, 2, 3, 1});
 
     // Load the weights into the operator.
     node->loadWeights(&N_, &wtag, b);

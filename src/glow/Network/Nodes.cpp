@@ -845,7 +845,7 @@ void ConcatNode::forward(Context *ctx, PassKind kind) const {
     auto inW = input->getWeightHandle(ctx);
 
     // Insert the tensor.
-    insertTensors(inW, outW, offset);
+    outW.insertTensors(inW, offset);
 
     // The next tensor starts after this one ends.
     offset[dimension_] += inW.dims()[dimension_];
@@ -862,7 +862,7 @@ void ConcatNode::backward(Context *ctx) const {
     auto inG = input->getGradHandle(ctx);
 
     // Insert the tensor.
-    extractTensors(inG, outG, offset);
+    outG.extractTensors(inG, offset);
 
     // TODO: this code assumes that input[i] has only one user, because it
     // zeros the gradient before extracting the tensor.
@@ -933,8 +933,7 @@ void TransposeNode::forward(Context *ctx, PassKind kind) const {
   auto *outW = getOutputWeight(ctx);
   auto *inW = input_->getOutputWeight(ctx);
   assert(outW->size() == inW->size() && "Invalid tensor dimensions");
-
-  transposeTensors<FloatTy>(outW, inW, shuffle_);
+  inW->getHandle<FloatTy>().transpose(outW, shuffle_);
 }
 
 void TransposeNode::backward(Context *ctx) const {
@@ -942,7 +941,7 @@ void TransposeNode::backward(Context *ctx) const {
   auto *inG = input_->getOutputGrad(ctx);
   assert(outG->size() == inG->size() && "Invalid tensor dimensions");
 
-  transposeTensors<FloatTy>(inG, outG, reverseShuffle_);
+  outG->getHandle<FloatTy>().transpose(inG, reverseShuffle_);
 }
 
 BatchNormalizationNode::BatchNormalizationNode(Network *N, NodeBase *input,

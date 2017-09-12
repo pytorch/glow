@@ -559,125 +559,112 @@ public:
     ElemTy variance = sigma / (n - 1);
     return {mean, variance};
   }
+
+  /// Transpose the tensor \p src into the empty tensor \p dest. Shuffle the
+  /// axis based on the list \p shuffle, where each element is the src index.
+  void transpose(Tensor *dest, ArrayRef<unsigned> shuffle) {
+    unsigned numDims = shuffle.size();
+    assert(dims().size() == shuffle.size() && "Invalid dimensions");
+
+    size_t newSizes[max_tensor_dimensions];
+
+    // Generate the swizzeled dimensions.
+    auto origDims = dims();
+    for (unsigned i = 0; i < numDims; i++) {
+      newSizes[i] = origDims[shuffle[i]];
+    }
+
+    // Resize the tensor to the transposed shape.
+    dest->reset(getElementType(), ArrayRef<size_t>(newSizes, numDims));
+
+    size_t srcCoor[max_tensor_dimensions];
+    size_t destCoor[max_tensor_dimensions];
+
+    auto DH = dest->getHandle<ElemTy>();
+    transposeImpl(DH, srcCoor, destCoor, shuffle, 0);
+  }
+
+  /// Insert the tensor \p slice at location \p offset. This operation is
+  /// equivalent to the operation of scanning the source tensor, and saving
+  /// the value that is stored at coordinate {d_0, d_1, ... d_n} in the new
+  /// tensor at {d_0 + O_0, d_1 + O_1, ... d_n + O_n}, where O is the offset
+  /// vector. The tensors must be of the right dimensions.
+  void insertTensors(Handle<eequivalent> &slice, ArrayRef<size_t> offset) {
+    auto sliceCoor = slice.dims().vec();
+    auto fusedCoor = dims().vec();
+    insertTensorsImpl(sliceCoor, fusedCoor, slice, true, offset, 0);
+  }
+
+  /// Extract the tensor \p slice at location \p offset. This operation is
+  /// equivalent to the operation of scanning the destination tensor, and
+  /// copying into the cell at coordinate {d_0, d_1, ... d_n} a value from the
+  /// tensor at {d_0 + O_0, d_1 + O_1, ... d_n + O_n}, where O is the offset
+  /// vector. The tensors must be of the right dimensions.
+  void extractTensors(Handle<ElemTy> &slice, ArrayRef<size_t> offset) {
+    auto sliceCoor = slice.dims().vec();
+    auto fusedCoor = dims().vec();
+    insertTensorsImpl(sliceCoor, fusedCoor, slice, false, offset, 0);
+  }
+
+private:
+  /// This is a slow generic transpose. This method performs a single for loop
+  /// over a single dimension, or if we've reached the last dimension perform a
+  /// single copy of a single element.
+  void transposeImpl(Handle<ElemTy> &dest, size_t *srcCoor, size_t *destCoor,
+                     ArrayRef<unsigned> shuffle, unsigned depth) {
+    if (depth == shuffle.size()) {
+      auto srcIdx = ArrayRef<size_t>(srcCoor, depth);
+      auto destIdx = ArrayRef<size_t>(destCoor, depth);
+      dest.at(destIdx) = at(srcIdx);
+      return;
+    }
+
+    // Iterate over one dimension and continue recursively to the next dim.
+    for (size_t x = 0, e = dest.dims()[depth]; x < e; x++) {
+      unsigned swizzledDepth = shuffle[depth];
+      srcCoor[swizzledDepth] = x;
+      destCoor[depth] = x;
+      transposeImpl(dest, srcCoor, destCoor, shuffle, depth + 1);
+    }
+  }
+
+  /// Concats or splits tensors.
+  /// This method concats or extracts a slice from a tensor.
+  /// \p sliceCoor and \p fusedCoor are temporary storage that the function uses
+  /// to construct the coordinates to access the tensor. They must be
+  /// initialized to be the size of the shape of the tensor. \p slice and \p
+  /// fused are the tensors to concat or extract. \p offset is the offset of the
+  /// slice to add or extract along the dimension \p offsetDim. \p d is the
+  /// recursion depth parameter that's following the number of the axis. if \p
+  /// isInsert is set then data is copied from \p slice to \p fused. Otherwise
+  /// data is copied from \p fused to \p slice.
+  void insertTensorsImpl(std::vector<size_t> &sliceCoor,
+                         std::vector<size_t> &fusedCoor, Handle<ElemTy> &slice,
+                         bool isInsert, ArrayRef<size_t> offset, unsigned d) {
+    bool isDone = (d == slice.dims().size());
+
+    if (isDone) {
+      if (isInsert) {
+        at(fusedCoor) = slice.at(sliceCoor);
+      } else {
+        slice.at(sliceCoor) = at(fusedCoor);
+      }
+      return;
+    }
+
+    for (size_t i = 0, e = slice.dims()[d]; i < e; i++) {
+      // Construct the coordinates for the slice and for the joint shape.
+      // Add the 'offset' to the dimension that we concat the shapes on.
+      sliceCoor[d] = i;
+      fusedCoor[d] = i + offset[d];
+      insertTensorsImpl(sliceCoor, fusedCoor, slice, isInsert, offset, d + 1);
+    }
+  }
 };
 
 template <class ElemTy> Handle<ElemTy> Tensor::getHandle() {
   assert(isType<ElemTy>(elementType_) && "Getting a handle to the wrong type.");
   return Handle<ElemTy>(this);
-}
-
-} // namespace glow
-
-namespace {
-using glow::ArrayRef;
-using glow::Handle;
-/// Concats or splits tensors.
-/// This method concats or extracts a slice from a tensor.
-/// \p sliceCoor and \p fusedCoor are temporary storage that the function uses
-/// to construct the coordinates to access the tensor. They must be initialized
-/// to be the size of the shape of the tensor.
-/// \p slice and \p fused are the tensors to concat or extract.
-/// \p offset is the offset of the slice to add or extract along the dimension
-/// \p offsetDim. \p d is the recursion depth parameter that's following the
-/// number of the axis.
-/// if \p isInsert is set then data is copied from \p slice to \p fused.
-/// Otherwise data is copied from \p fused to \p slice.
-template <class ElemTy>
-void insertTensorsImpl(std::vector<size_t> &sliceCoor,
-                       std::vector<size_t> &fusedCoor, Handle<ElemTy> &slice,
-                       Handle<ElemTy> &fused, bool isInsert,
-                       ArrayRef<size_t> offset, unsigned d) {
-  bool isDone = (d == slice.dims().size());
-
-  if (isDone) {
-    if (isInsert) {
-      fused.at(fusedCoor) = slice.at(sliceCoor);
-    } else {
-      slice.at(sliceCoor) = fused.at(fusedCoor);
-    }
-    return;
-  }
-
-  for (size_t i = 0, e = slice.dims()[d]; i < e; i++) {
-    // Construct the coordinates for the slice and for the joint shape.
-    // Add the 'offset' to the dimension that we concat the shapes on.
-    sliceCoor[d] = i;
-    fusedCoor[d] = i + offset[d];
-    insertTensorsImpl(sliceCoor, fusedCoor, slice, fused, isInsert, offset,
-                      d + 1);
-  }
-}
-} // namespace
-
-namespace glow {
-/// Insert the tensor \p slice into \p fused. Insert at location \p offset.
-/// The tensors must be of the right dimensions.
-template <class ElemTy>
-void insertTensors(Handle<ElemTy> &slice, Handle<ElemTy> &fused,
-                   ArrayRef<size_t> offset) {
-  auto sliceCoor = slice.dims().vec();
-  auto fusedCoor = fused.dims().vec();
-  insertTensorsImpl(sliceCoor, fusedCoor, slice, fused, true, offset, 0);
-}
-
-/// Extract the tensor \p slice from \p fused. Extract at location \p offset.
-/// The tensors must be of the right dimensions.
-template <class ElemTy>
-void extractTensors(Handle<ElemTy> &slice, Handle<ElemTy> &fused,
-                    ArrayRef<size_t> offset) {
-  auto sliceCoor = slice.dims().vec();
-  auto fusedCoor = fused.dims().vec();
-  insertTensorsImpl(sliceCoor, fusedCoor, slice, fused, false, offset, 0);
-}
-
-/// This is a slow generic transpose. This method performs a single for loop
-/// over a single dimension, or if we've reached the last dimension perform a
-/// single copy of a single element.
-template <class ElemTy>
-void transposeImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest, size_t *srcCoor,
-                   size_t *destCoor, ArrayRef<unsigned> shuffle,
-                   unsigned depth) {
-  if (depth == shuffle.size()) {
-    auto srcIdx = ArrayRef<size_t>(srcCoor, depth);
-    auto destIdx = ArrayRef<size_t>(destCoor, depth);
-    dest.at(destIdx) = src.at(srcIdx);
-    return;
-  }
-
-  // Iterate over one dimension and continue recursively to the next dim.
-  for (size_t x = 0, e = dest.dims()[depth]; x < e; x++) {
-    unsigned swizzledDepth = shuffle[depth];
-    srcCoor[swizzledDepth] = x;
-    destCoor[depth] = x;
-    transposeImpl(src, dest, srcCoor, destCoor, shuffle, depth + 1);
-  }
-}
-
-/// Transpose the tensor \p src into the empty tensor \p dest. Shuffle the
-/// axis based on the list \p shuffle, where each element is the src index.
-template <class ElemTy>
-void transposeTensors(Tensor *dest, Tensor *src, ArrayRef<unsigned> shuffle) {
-  auto SH = src->getHandle<ElemTy>();
-
-  unsigned numDims = shuffle.size();
-  assert(SH.dims().size() == shuffle.size() && "Invalid dimensions");
-
-  size_t newSizes[max_tensor_dimensions];
-
-  // Generate the swizzeled dimensions.
-  auto origDims = SH.dims();
-  for (unsigned i = 0; i < numDims; i++) {
-    newSizes[i] = origDims[shuffle[i]];
-  }
-
-  // Resize the tensor to the transposed shape.
-  dest->reset(SH.getElementType(), ArrayRef<size_t>(newSizes, numDims));
-
-  size_t srcCoor[max_tensor_dimensions];
-  size_t destCoor[max_tensor_dimensions];
-
-  auto DH = dest->getHandle<ElemTy>();
-  transposeImpl(SH, DH, srcCoor, destCoor, shuffle, 0);
 }
 
 } // namespace glow

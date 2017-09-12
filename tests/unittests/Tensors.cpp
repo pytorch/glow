@@ -87,8 +87,8 @@ TEST(Tensor, concatTensors1D) {
   auto zH = Z.getHandle<FloatTy>();
   auto eH = expected.getHandle<FloatTy>();
 
-  insertTensors<FloatTy>(xH, zH, {4});
-  insertTensors<FloatTy>(yH, zH, {0});
+  zH.insertTensors(xH, {4});
+  zH.insertTensors(yH, {0});
 
   for (size_t i = 0, e = eH.size(); i < e; i++) {
     EXPECT_EQ(eH.at({i}), zH.at({i}));
@@ -111,9 +111,9 @@ TEST(Tensor, concatTensors2D) {
 
   // Insert the tensors and create a picture of three cards one on to of the
   // other.
-  insertTensors<FloatTy>(xH, zH, {0, 0});
-  insertTensors<FloatTy>(xH, zH, {5, 5});
-  insertTensors<FloatTy>(xH, zH, {10, 10});
+  zH.insertTensors(xH, {0, 0});
+  zH.insertTensors(xH, {5, 5});
+  zH.insertTensors(xH, {10, 10});
 
   zH.dumpAscii();
 
@@ -125,7 +125,7 @@ TEST(Tensor, concatTensors2D) {
   EXPECT_EQ(zH.at({10, 10}), xH.at({0, 0}));
 
   // Extract an image from the tensor.
-  extractTensors<FloatTy>(yH, zH, {10, 10});
+  zH.extractTensors(yH, {10, 10});
 
   // Make sure that what we've extracted is equal to what we've inserted.
   for (size_t i = 0, e = xH.size(); i < e; i++) {
@@ -194,7 +194,7 @@ TEST(Tensor, transpose) {
   };
 
   Tensor Xhat;
-  transposeTensors<FloatTy>(&Xhat, &X, {1, 0});
+  X.getHandle<FloatTy>().transpose(&Xhat, {1, 0});
 
   auto XhatH = Xhat.getHandle<FloatTy>();
 
@@ -210,7 +210,7 @@ TEST(Tensor, transpose2) {
   H.randomize(10);
 
   Tensor Xhat;
-  transposeTensors<FloatTy>(&Xhat, &X, {1, 2, 0});
+  X.getHandle<FloatTy>().transpose(&Xhat, {1, 2, 0});
 
   auto XhatH = Xhat.getHandle<FloatTy>();
 
