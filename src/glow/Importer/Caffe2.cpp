@@ -33,10 +33,22 @@ void unexpectedNodeError(const T &node, const std::string &message) {
   std::cout << message << "\n" << str << "\n";
 }
 
-/// Loads a single integer.
+/// Reads a single integer.
 static int loadInt(const caffe2::Argument *arg) {
   assert(arg->has_i() && "Node has no Int value");
   return arg->i();
+}
+
+/// Reads a single float.
+static float loadFloat(const caffe2::Argument *arg) {
+  assert(arg->has_f() && "Node has no float value");
+  return arg->f();
+}
+
+/// Reads a single string.
+static const std::string &loadStr(const caffe2::Argument *arg) {
+  assert(arg->has_s() && "Node has no str value");
+  return arg->s();
 }
 
 /// Loda the 'shape' record into a vector of sizes.
@@ -89,6 +101,7 @@ NodeBase *caffe2ModelLoader::getNodeByName(const std::string &name) {
   }
 
   assert(false && "Could not find a node with this name.");
+  glow_unreachable();
 }
 
 NodeBase *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
@@ -122,22 +135,48 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Conv") {
     // Load the inputs:
-    auto *in = getOrCreateNodeByName(op.input(0));
-    Tensor *w = getTensorByName(op.input(1));
-    Tensor *b = getTensorByName(op.input(2));
-
     int stride = loadInt(dict["stride"]);
-    int pad = loadInt(dict["pad"]);
+    int pad = dict.count("pad") ? loadInt(dict["pad"]) : 0;
     int kernel = loadInt(dict["kernel"]);
 
-    auto *conv1_b = tensors_[op.input(2)];
+    auto *in = getOrCreateNodeByName(op.input(0));
+    Tensor *w = getTensorByName(op.input(1));
 
-    in = N_.createTransposeNode(in, NCHW2NHWC);
-    auto *node = N_.createConvNode(in, conv1_b->size(), kernel, stride, pad);
+    // Transpose the weights to the right format. Glow expects to read the
+    // weights in the format CRSK. Caffe2 stores the operators as KCRS.
+    // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
 
-    // Transpose the NCHW to NHWC.
+    // TODO: need to test this code with a large batch size to verify that the
+    // conversion is correct.
     Tensor wtag;
     w->getHandle<FloatTy>().transpose(&wtag, {0, 2, 3, 1});
+
+    // The structure of the conv weigts is: NHWC. We take the C, which is the
+    // number of filters. We use this value to calculate the size of the bias
+    // if it is not specified.
+    size_t numFilters = wtag.dims()[0];
+
+    // Load the bias vector:
+    Tensor *b = nullptr;
+
+    // Check if we have a serialized bias vector.
+    if (op.input_size() > 2) {
+      auto &biasTensorName = op.input(2);
+      if (tensors_.count(biasTensorName)) {
+        b = getTensorByName(biasTensorName);
+      }
+    }
+
+    // If we don't have a bias vector then create one that matches the weight
+    // size and fill it with zeros.
+    if (!b) {
+      b = new Tensor(ElemKind::FloatTy, {numFilters});
+      b->getHandle<FloatTy>().clear();
+      tensors_[op.name() + "_conv_bias"] = b;
+    }
+
+    in = N_.createTransposeNode(in, NCHW2NHWC);
+    auto *node = N_.createConvNode(in, numFilters, kernel, stride, pad);
 
     // Load the weights into the operator.
     node->loadWeights(&N_, &wtag, b);
@@ -149,16 +188,18 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
-  if (typeName == "MaxPool") {
+  if (typeName == "MaxPool" || typeName == "AveragePool") {
+    using OpKind = MaxPoolNode::OpKind;
+    OpKind opk = (typeName == "MaxPool") ? OpKind::kMax : OpKind::kAvg;
+
     // Load the inputs:
     auto *in = getOrCreateNodeByName(op.input(0));
     int stride = loadInt(dict["stride"]);
-    int pad = loadInt(dict["pad"]);
+    int pad = dict.count("pad") ? loadInt(dict["pad"]) : 0;
     int kernel = loadInt(dict["kernel"]);
 
     in = N_.createTransposeNode(in, NCHW2NHWC);
-    NodeBase *node = N_.createMaxPoolNode(in, MaxPoolNode::OpKind::kMax, kernel,
-                                          stride, pad);
+    NodeBase *node = N_.createMaxPoolNode(in, opk, kernel, stride, pad);
     auto *N = N_.createTransposeNode(node, NHWC2NCHW);
 
     // Save the outputs:
@@ -176,6 +217,46 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
     return;
   }
+
+  if (typeName == "SpatialBN") {
+    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *scale = getTensorByName(op.input(1));
+    auto *bias = getTensorByName(op.input(2));
+    auto *mean = getTensorByName(op.input(3));
+    auto *var = getTensorByName(op.input(4));
+    float epsilon = loadFloat(dict["epsilon"]);
+
+    unsigned channel = 0;
+    auto order = loadStr(dict["order"]);
+    if (order == "NHWC") {
+      channel = 3;
+    } else if (order == "NCHW") {
+      channel = 1;
+    } else {
+      assert(false && "Invalid order field");
+    }
+
+    auto *node = N_.createBatchNormalizationNode(in, channel, epsilon);
+
+    node->loadWeights(&N_, scale, bias, mean, var);
+
+    for (int i = 0, e = op.output_size(); i < e; i++) {
+      nodeByName_[op.output(i)] = node;
+    }
+    return;
+  }
+  if (typeName == "Sum") {
+    auto *in0 = getOrCreateNodeByName(op.input(0));
+    auto *in1 = getOrCreateNodeByName(op.input(1));
+    auto *node =
+        N_.createArithmeticNode(in0, in1, ArithmeticNode::OpKind::kAdd);
+    // Save the outputs:
+    for (int i = 0, e = op.output_size(); i < e; i++) {
+      nodeByName_[op.output(i)] = node;
+    }
+    return;
+  }
+
   if (typeName == "Softmax") {
     auto *softmaxExpected = getOrCreateNodeByName("softmax_expected");
 
@@ -214,6 +295,8 @@ void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
     auto &op = net.op(i);
     loadOperator(op);
   }
+
+  root = getNodeByName(net.external_output(0));
 }
 
 void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {

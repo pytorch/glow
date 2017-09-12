@@ -1169,6 +1169,15 @@ void BatchNormalizationNode::backward(Context *ctx) const {
   }
 }
 
+void BatchNormalizationNode::loadWeights(Network *N_, Tensor *scale,
+                                         Tensor *bias, Tensor *mean,
+                                         Tensor *var) {
+  N_->updateTensor(&betaW_, bias);
+  N_->updateTensor(&gammaW_, scale);
+  N_->updateTensor(&mean_, mean);
+  N_->updateTensor(&variance_, var);
+}
+
 ArithmeticNode::ArithmeticNode(Network *N, NodeBase *LHS, NodeBase *RHS,
                                OpKind op)
     : LHS_(LHS), RHS_(RHS), op_(op) {}

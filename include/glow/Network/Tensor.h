@@ -589,7 +589,7 @@ public:
   /// the value that is stored at coordinate {d_0, d_1, ... d_n} in the new
   /// tensor at {d_0 + O_0, d_1 + O_1, ... d_n + O_n}, where O is the offset
   /// vector. The tensors must be of the right dimensions.
-  void insertTensors(Handle<eequivalent> &slice, ArrayRef<size_t> offset) {
+  void insertTensors(Handle<ElemTy> &slice, ArrayRef<size_t> offset) {
     auto sliceCoor = slice.dims().vec();
     auto fusedCoor = dims().vec();
     insertTensorsImpl(sliceCoor, fusedCoor, slice, true, offset, 0);

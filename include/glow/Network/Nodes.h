@@ -403,8 +403,10 @@ class BatchNormalizationNode final : public NodeBase {
   const FloatTy epsilon_;
   const FloatTy momentum_;
 
+  // Beta is the bias:
   TensorToken betaW_;
   TensorToken betaG_;
+  // Gamma is the scale:
   TensorToken gammaW_;
   TensorToken gammaG_;
 
@@ -434,6 +436,9 @@ public:
   std::string getDebugRepr(Context *ctx) const override;
 
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
+
+  void loadWeights(Network *N_, Tensor *scale, Tensor *bias, Tensor *mean,
+                   Tensor *var);
 };
 
 /// Performs per-element arithmetic operations.

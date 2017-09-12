@@ -40,22 +40,24 @@ int main(int argc, char **argv) {
   loadImageAndPreprocess(argv[1], &data);
 
   glow::Network N;
-  caffe2ModelLoader LD(argv[2], argv[3], {"data", "softmax_expected"},
-                       {&data, &expected_softmax}, N);
+  caffe2ModelLoader LD(argv[2], argv[3],
+                       {"data", "gpu_0/data", "softmax_expected"},
+                       {&data, &data, &expected_softmax}, N);
 
-  auto *SM = LD.getNodeByName("prob");
-  Variable *input = (Variable *)LD.getNodeByName("data");
+  auto *SM = LD.getRoot();
+  Variable *i0 = (Variable *)LD.getOrCreateNodeByName("gpu_0/data");
+  Variable *i1 = (Variable *)LD.getOrCreateNodeByName("data");
 
   N.dumpGraph();
 
-  auto *res = N.infer(SM, {input}, {&data});
+  auto *res = N.infer(SM, {i0, i1}, {&data, &data});
   auto H = res->getHandle<FloatTy>();
-  H.dump("res=", "\n");
+  H.dump("res = ", "\n");
   Tensor slice = H.extractSlice(0);
   auto SH = slice.getHandle<FloatTy>();
 
   std::cout << "\n";
-  std::cout << "Result =" << SH.maxArg() << "\n";
+  std::cout << "Result = " << SH.maxArg() << "\n";
 
   return 0;
 }
