@@ -59,16 +59,35 @@ public:
 
   /// Replace all of the uses of this value with \p v.
   void replaceAllUsesOfWith(Value *v);
+
+  /// \returns the name of the value.
+  virtual StringRef getValueName() { return "<bad>"; }
+
+  /// \returns a description of the internal instruction parameters.
+  virtual std::string getExtraDesc() { return ""; }
 };
+
+enum class OperandKind : unsigned char {
+  kIn,
+  kOut,
+  kInOut,
+};
+
+inline const char *getOperandKindStr(OperandKind CC) {
+  const char *names[] = {"@in", "@out", "@inout", nullptr};
+  return names[(int)CC];
+}
+
+using Operand = std::pair<Value *, OperandKind>;
 
 /// This represents an instruction in our IR.
 class Instruction : public Value {
   /// A list of operands that the instruction has. This is typically a very
   /// short list.
-  std::vector<Value *> ops_{};
+  std::vector<Operand> ops_{};
 
   /// Adds a new operand \p v at the end of the operand list.
-  void pushOperand(Value *v);
+  void pushOperand(Operand op);
 
   // Define/disallow default ctor, copy ctor and assignment operator.
   Instruction(const Instruction &I) = delete;
@@ -77,9 +96,9 @@ class Instruction : public Value {
 public:
   Instruction() : Value(){};
 
-  Instruction(ArrayRef<Value *> ops) : Value() {
-    for (auto &v : ops) {
-      pushOperand(v);
+  Instruction(ArrayRef<Operand> ops) : Value() {
+    for (auto &op : ops) {
+      pushOperand(op);
     }
   }
 
@@ -87,16 +106,10 @@ public:
   void setOperand(unsigned idx, Value *v);
 
   /// \returns the ith operand.
-  Value *getOperand(unsigned idx);
+  Operand getOperand(unsigned idx);
 
   /// \returns the number of operands.
   unsigned getNumOperands() { return ops_.size(); }
-
-  /// \returns the name of the instruction.
-  virtual StringRef getInstrName() { return "<bad>"; }
-
-  /// \returns a description of the internal instruction parameters.
-  virtual std::string getInstrDesc() { return ""; }
 
   /// Check the correctness of the use-list.
   void verifyUseList();
@@ -108,13 +121,17 @@ class Module final {
   /// by comparing their addresses.
   std::list<Type> types_{};
   /// A list of values that represent the non-instructions in the network.
-  std::list<Instruction *> consts_{};
+  std::list<Value *> variables_{};
   /// A list of instruction that represent the network.
   std::list<Instruction *> instrs_{};
 
 public:
   /// Add an instruction to the instr stream.
   void pushInstr(Instruction *I) { instrs_.push_back(I); }
+
+  /// Add a value to the instr stream.
+  void pushVar(Value *v) { variables_.push_back(v); }
+
   Module() = default;
 
   ~Module();

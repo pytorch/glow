@@ -39,13 +39,13 @@ TEST(IR, basicUseList) {
   Value V2;
 
   // Check that we can construct a new instruction.
-  Instruction I({&V1, &V2});
+  Instruction I({{&V1, OperandKind::kIn}, {&V2, OperandKind::kIn}});
   I.verifyUseList();
 
   // Check the getOperand and setOperand functions.
-  EXPECT_EQ(I.getOperand(0), &V1);
+  EXPECT_EQ(I.getOperand(0).first, &V1);
   I.setOperand(0, &V2);
-  EXPECT_EQ(I.getOperand(0), &V2);
+  EXPECT_EQ(I.getOperand(0).first, &V2);
   I.verifyUseList();
 
   // Check that we can destroy the operands.
@@ -58,11 +58,16 @@ TEST(IR, basisInstrs) {
 
   IRBuilder builder(M);
 
-  auto *AC0 = builder.createAllocTensorInst(T1);
-  auto *AC1 = builder.createAllocTensorInst(T1);
-  builder.createCopyTensorInst(AC0, AC1);
-  builder.createDeallocTensorInst(AC0);
+  auto *S = builder.createStaticVariable(
+      T1, StaticVariable::InitKind::kBroadcast, 1.1);
+
+  auto *AC0 = builder.createAllocInst(T1);
+  auto *AC1 = builder.createAllocInst(T1);
+  builder.createCopyInst(AC0, S);
+  builder.createReluInst(AC1, AC0);
+  builder.createCopyInst(S, AC0);
+  builder.createDeallocInst(AC0);
   builder.createReturnInst(AC0);
-  builder.createDeallocTensorInst(AC1);
+  builder.createDeallocInst(AC1);
   M.dump();
 }

@@ -43,13 +43,13 @@ void Value::replaceAllUsesOfWith(Value *v) {
   }
 }
 
-void Instruction::pushOperand(Value *v) {
-  ops_.push_back(nullptr);
-  setOperand(ops_.size() - 1, v);
+void Instruction::pushOperand(Operand op) {
+  ops_.push_back({nullptr, op.second});
+  setOperand(ops_.size() - 1, op.first);
 }
 
 void Instruction::setOperand(unsigned idx, Value *v) {
-  Value *currVal = ops_[idx];
+  Value *currVal = ops_[idx].first;
 
   if (currVal == v)
     return;
@@ -59,19 +59,19 @@ void Instruction::setOperand(unsigned idx, Value *v) {
   }
 
   if (v) {
-    ops_[idx] = v;
+    ops_[idx].first = v;
     v->addUse({idx, this});
   }
 }
 
-Value *Instruction::getOperand(unsigned idx) {
+Operand Instruction::getOperand(unsigned idx) {
   assert(ops_.size() > idx && "Invalid operand");
   return ops_[idx];
 }
 
 void Instruction::verifyUseList() {
   for (int i = 0, e = ops_.size(); i < e; i++) {
-    Value *v = ops_[i];
+    Value *v = ops_[i].first;
     assert(v && "Instruction operand must be a real value");
     assert(v->hasUser(this) && "Invalid use-list");
     assert(v != this && "Use-list cycle");
@@ -86,7 +86,7 @@ Module::~Module() {
   }
 
   // Delete all of the constants.
-  for (auto &I : consts_) {
+  for (auto &I : variables_) {
     delete I;
   }
 }
@@ -103,28 +103,51 @@ void Module::dump() {
     if (II->hasName())
       continue;
 
-    std::ostringstream os;
-    os << "I" << idx++;
-    II->setName(os.str());
+    II->setName("I" + std::to_string(idx++));
   }
 
-  // Print all of the instructions:
+  idx = 0;
+  // Name all unnamed variables.
+  for (auto it : variables_) {
+    Value *V = it;
+
+    if (V->hasName())
+      continue;
+
+    V->setName("V" + std::to_string(idx++));
+  }
+
+  // Print all of the variables:
   std::stringstream sb;
+  for (auto it : variables_) {
+    Value *V = it;
+
+    auto name = V->getName();
+    auto valName = V->getValueName().str();
+    sb << "%" << name << " = " << valName << " ";
+    sb << V->getExtraDesc();
+    sb << "\n";
+  }
+
+  sb << "\n";
+
+  // Print all of the instructions:
   for (auto it : instrs_) {
     Instruction *II = it;
 
     auto name = II->getName();
-    auto instrName = II->getInstrName().str();
+    auto instrName = II->getValueName().str();
     sb << "%" << name << " = " << instrName << " ";
     // Print operands:
     for (int i = 0, e = II->getNumOperands(); i < e; i++) {
       auto op = II->getOperand(i);
+      auto CC = getOperandKindStr(op.second);
       if (i) {
         sb << ", ";
       }
-      sb << "%" << op->getName() << " ";
+      sb << CC << " %" << op.first->getName();
     }
-    sb << II->getInstrDesc();
+    sb << II->getExtraDesc();
     sb << "\n";
   }
 

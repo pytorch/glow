@@ -2,24 +2,36 @@
 
 using namespace glow;
 
-AllocTensorInst *IRBuilder::createAllocTensorInst(TypeRef T) {
-  auto *A = new AllocTensorInst(T);
+AllocInst *IRBuilder::createAllocInst(TypeRef T) {
+  auto *A = new AllocInst(T);
   M_.pushInstr(A);
   return A;
 }
-DeallocTensorInst *IRBuilder::createDeallocTensorInst(AllocTensorInst *AT) {
-  auto *A = new DeallocTensorInst(AT);
+DeallocInst *IRBuilder::createDeallocInst(AllocInst *AT) {
+  auto *A = new DeallocInst(AT);
   M_.pushInstr(A);
   return A;
 }
-CopyTensorInst *IRBuilder::createCopyTensorInst(AllocTensorInst *dest,
-                                                AllocTensorInst *src) {
-  auto *A = new CopyTensorInst(dest, src);
+CopyInst *IRBuilder::createCopyInst(Value *dest, Value *src) {
+  auto *A = new CopyInst(dest, src);
   M_.pushInstr(A);
   return A;
 }
-ReturnInst *IRBuilder::createReturnInst(AllocTensorInst *src) {
+ReturnInst *IRBuilder::createReturnInst(Value *src) {
   auto *A = new ReturnInst(src);
   M_.pushInstr(A);
+  return A;
+}
+
+ReluInst *IRBuilder::createReluInst(Value *dest, Value *src) {
+  auto *A = new ReluInst(dest, src);
+  M_.pushInstr(A);
+  return A;
+}
+StaticVariable *IRBuilder::createStaticVariable(TypeRef T,
+                                                StaticVariable::InitKind mode,
+                                                float val) {
+  auto *A = new StaticVariable(T, mode, val);
+  M_.pushVar(A);
   return A;
 }

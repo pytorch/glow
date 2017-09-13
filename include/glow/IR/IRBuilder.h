@@ -17,11 +17,13 @@ public:
 
   /// @name IRBuilder
   ///@{
-  AllocTensorInst *createAllocTensorInst(TypeRef T);
-  DeallocTensorInst *createDeallocTensorInst(AllocTensorInst *AT);
-  CopyTensorInst *createCopyTensorInst(AllocTensorInst *dest,
-                                       AllocTensorInst *src);
-  ReturnInst *createReturnInst(AllocTensorInst *src);
+  AllocInst *createAllocInst(TypeRef T);
+  DeallocInst *createDeallocInst(AllocInst *AT);
+  CopyInst *createCopyInst(Value *dest, Value *src);
+  ReturnInst *createReturnInst(Value *src);
+  ReluInst *createReluInst(Value *dest, Value *src);
+  StaticVariable *createStaticVariable(TypeRef T, StaticVariable::InitKind mode,
+                                       float val);
   ///@}
 };
 
