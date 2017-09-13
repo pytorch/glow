@@ -12,24 +12,38 @@ class Module;
 
 using TypeRef = const Type *;
 
+class Named {
+  /// The name of the instruction. This is used for debugging.
+  std::string name_{};
+
+public:
+  Named() = default;
+
+  /// \returns the name of the instruction.
+  const std::string &getName() { return name_; }
+
+  /// \returns the name of the instruction.
+  bool hasName() { return name_.size(); }
+
+  /// Set the name of the instruction to \p name.
+  void setName(const std::string &name) { name_ = name; }
+};
+
 /// A Value is something that can be an operand for an instruction. It can be a
-/// Tensor, an instruction, a constant, etc.
-class Value {
+/// Tensor, a mask, a constant, etc.
+class Value : public Named {
 public:
   using Use = std::pair<unsigned, Instruction *>;
+
+  virtual ~Value() = default;
 
 private:
   /// A list of users. Notice that the same user may appear twice in the list.
   /// This is typically a very short list.
   std::list<Use> users_{};
-  /// The type of the value.
-  TypeRef T_;
 
 public:
-  Value(TypeRef T) : T_(T) {}
-
-  /// \returns the type of the value.
-  TypeRef getType() { return T_; }
+  Value() = default;
 
   /// Removes the use \p U from the uselist.
   void removeUse(Use U);
@@ -50,14 +64,20 @@ public:
 /// This represents an instruction in our IR.
 class Instruction : public Value {
   /// A list of operands that the instruction has. This is typically a very
-  // short list.
+  /// short list.
   std::vector<Value *> ops_{};
 
   /// Adds a new operand \p v at the end of the operand list.
   void pushOperand(Value *v);
 
+  // Define/disallow default ctor, copy ctor and assignment operator.
+  Instruction(const Instruction &I) = delete;
+  Instruction &operator=(const Instruction &I) = delete;
+
 public:
-  Instruction(TypeRef T, ArrayRef<Value *> ops = {}) : Value(T) {
+  Instruction() : Value(){};
+
+  Instruction(ArrayRef<Value *> ops) : Value() {
     for (auto &v : ops) {
       pushOperand(v);
     }
@@ -72,12 +92,18 @@ public:
   /// \returns the number of operands.
   unsigned getNumOperands() { return ops_.size(); }
 
+  /// \returns the name of the instruction.
+  virtual StringRef getInstrName() { return "<bad>"; }
+
+  /// \returns a description of the internal instruction parameters.
+  virtual std::string getInstrDesc() { return ""; }
+
   /// Check the correctness of the use-list.
   void verifyUseList();
 };
 
 /// A module that represents the compilation unit.
-class Module {
+class Module final {
   /// A uniqued list of types in the module. Types in this list can be compared
   /// by comparing their addresses.
   std::list<Type> types_{};
@@ -87,13 +113,26 @@ class Module {
   std::list<Instruction *> instrs_{};
 
 public:
+  /// Add an instruction to the instr stream.
+  void pushInstr(Instruction *I) { instrs_.push_back(I); }
   Module() = default;
+
+  ~Module();
 
   /// Return a pointer to a uniqued type \p t in the current module.
   TypeRef uniqueType(const Type &T);
 
+  /// Return a pointer to a uniqued type \p t in the current module.
+  TypeRef uniqueType(ElemKind elemTy, ArrayRef<size_t> dims);
+
+  /// Return the void type.
+  TypeRef getVoidTy();
+
   /// Verify the correctness of the module.
   void verify();
+
+  /// Dump a textual representation of the module.
+  void dump();
 };
 
 } // namespace glow

@@ -1,4 +1,6 @@
 #include "glow/IR/IR.h"
+#include "glow/IR/IRBuilder.h"
+#include "glow/IR/Instrs.h"
 
 #include "gtest/gtest.h"
 
@@ -32,13 +34,12 @@ TEST(IR, uniqueTypes) {
 TEST(IR, basicUseList) {
   Module M;
   Type T1(ElemKind::FloatTy, {320, 200});
-  auto *u1 = M.uniqueType(T1);
 
-  Value V1(u1);
-  Value V2(u1);
+  Value V1;
+  Value V2;
 
   // Check that we can construct a new instruction.
-  Instruction I(u1, {&V1, &V2});
+  Instruction I({&V1, &V2});
   I.verifyUseList();
 
   // Check the getOperand and setOperand functions.
@@ -49,4 +50,19 @@ TEST(IR, basicUseList) {
 
   // Check that we can destroy the operands.
   // ...
+}
+
+TEST(IR, basisInstrs) {
+  Module M;
+  auto T1 = M.uniqueType(ElemKind::FloatTy, {320, 200});
+
+  IRBuilder builder(M);
+
+  auto *AC0 = builder.createAllocTensorInst(T1);
+  auto *AC1 = builder.createAllocTensorInst(T1);
+  builder.createCopyTensorInst(AC0, AC1);
+  builder.createDeallocTensorInst(AC0);
+  builder.createReturnInst(AC0);
+  builder.createDeallocTensorInst(AC1);
+  M.dump();
 }

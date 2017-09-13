@@ -44,6 +44,9 @@ struct Type final {
     numSizes_ = dims.size();
   }
 
+  /// Print the textual representation of the type.
+  std::string asString() const;
+
   /// An empty type.
   Type() : elementType_(ElemKind::IndexTy) { numSizes_ = 0; }
 
@@ -120,6 +123,26 @@ struct Type final {
       return sizeof(int32_t);
     case ElemKind::IndexTy:
       return sizeof(size_t);
+    }
+    glow_unreachable();
+  }
+
+  /// \return the textual name of the element.
+  StringRef getElementName() const { return getElementName(elementType_); }
+
+  /// \return the textual name of the element \p Ty.
+  static StringRef getElementName(ElemKind Ty) {
+    switch (Ty) {
+    case ElemKind::FloatTy:
+      return "Float";
+    case ElemKind::DoubleTy:
+      return "Double";
+    case ElemKind::Int8Ty:
+      return "i8";
+    case ElemKind::Int32Ty:
+      return "i32";
+    case ElemKind::IndexTy:
+      return "idx";
     }
     glow_unreachable();
   }
