@@ -28,3 +28,25 @@ TEST(IR, uniqueTypes) {
     EXPECT_EQ(u1, M.uniqueType(T1));
   }
 }
+
+TEST(IR, basicUseList) {
+  Module M;
+  Type T1(ElemKind::FloatTy, {320, 200});
+  auto *u1 = M.uniqueType(T1);
+
+  Value V1(u1);
+  Value V2(u1);
+
+  // Check that we can construct a new instruction.
+  Instruction I(u1, {&V1, &V2});
+  I.verifyUseList();
+
+  // Check the getOperand and setOperand functions.
+  EXPECT_EQ(I.getOperand(0), &V1);
+  I.setOperand(0, &V2);
+  EXPECT_EQ(I.getOperand(0), &V2);
+  I.verifyUseList();
+
+  // Check that we can destroy the operands.
+  // ...
+}
