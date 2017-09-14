@@ -86,12 +86,13 @@ class Instruction : public Value {
   /// short list.
   std::vector<Operand> ops_{};
 
-  /// Adds a new operand \p v at the end of the operand list.
-  void pushOperand(Operand op);
-
   // Define/disallow default ctor, copy ctor and assignment operator.
   Instruction(const Instruction &I) = delete;
   Instruction &operator=(const Instruction &I) = delete;
+
+protected:
+  /// Adds a new operand \p v at the end of the operand list.
+  void pushOperand(Operand op);
 
 public:
   Instruction() : Value(){};

@@ -72,6 +72,7 @@ Operand Instruction::getOperand(unsigned idx) {
 void Instruction::verifyUseList() {
   for (int i = 0, e = ops_.size(); i < e; i++) {
     Value *v = ops_[i].first;
+    (void)v;
     assert(v && "Instruction operand must be a real value");
     assert(v->hasUser(this) && "Invalid use-list");
     assert(v != this && "Use-list cycle");
@@ -131,7 +132,6 @@ void Module::dump() {
   }
 
   sb << "}\n\n";
-
   sb << "program {\n";
 
   // Print all of the instructions:
@@ -141,6 +141,11 @@ void Module::dump() {
     auto name = II->getName();
     auto instrName = II->getValueName().str();
     sb << "  %" << name << " = " << instrName << " ";
+    auto extraDesc = II->getExtraDesc();
+    if (extraDesc.size()) {
+      sb << II->getExtraDesc() << " ";
+    }
+
     // Print operands:
     for (int i = 0, e = II->getNumOperands(); i < e; i++) {
       auto op = II->getOperand(i);
@@ -150,7 +155,6 @@ void Module::dump() {
       }
       sb << CC << " %" << op.first->getName();
     }
-    sb << II->getExtraDesc();
     sb << "\n";
   }
 
