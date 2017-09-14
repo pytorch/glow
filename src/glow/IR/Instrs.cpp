@@ -3,6 +3,8 @@
 
 using namespace glow;
 
+// Helper methods that are used to print the instruction parameters.
+namespace {
 template <typename E> std::string listToString_impl(E v) {
   return std::to_string(v);
 }
@@ -26,6 +28,7 @@ template <typename E> std::string arrayRefToString(ArrayRef<E> list) {
   }
   return sb + "}";
 }
+} // namespace
 
 std::string ConvolutionInst::getExtraDesc() {
   return listToString(kernel_, stride_, pad_, depth_);
@@ -59,13 +62,36 @@ std::string BatchNormalizationInst::getExtraDesc() {
   return listToString(channelIdx_, epsilon_, momentum_);
 }
 
+const char *ArithmeticInst::getKindStr() {
+  const char *names[] = {"add", "mul", nullptr};
+  return names[(int)kind_];
+}
+
+std::string ArithmeticInst::getExtraDesc() { return getKindStr(); }
+
 const char *StaticVariable::getKindStr() {
   const char *names[] = {"extern", "broadcast", "xavier", nullptr};
   return names[(int)mode_];
 }
 
-std::string ArithmeticInst::getExtraDesc() { return getKindStr(); }
-
 std::string StaticVariable::getExtraDesc() {
   return Ty_->asString() + ", " + std::to_string(val_) + ", " + getKindStr();
 }
+
+void CopyInst::verify() {}
+void ConvolutionInst::verify() {}
+void PoolInst::verify() {}
+void FullyConnectedInst::verify() {}
+
+void ReluInst::verify() {}
+void SigmoidInst::verify() {}
+void TanhInst::verify() {}
+
+void SoftMaxInst::verify() {}
+void RegressionInst::verify() {}
+
+void TransposeInst::verify() {}
+void ReshapeInst::verify() {}
+void ConcatInst::verify() {}
+void BatchNormalizationInst::verify() {}
+void ArithmeticInst::verify() {}

@@ -11,6 +11,7 @@ public:
   CopyInst(Value *dest, Value *src)
       : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
   StringRef getValueName() override { return "copy"; }
+  void verify() override;
 };
 
 class ConvolutionInst : public Instruction {
@@ -30,8 +31,8 @@ public:
         kernel_(kernel), stride_(stride), pad_(pad), depth_(depth) {}
 
   StringRef getValueName() override { return "convolution"; }
-
   std::string getExtraDesc() override;
+  void verify() override;
 };
 
 class PoolInst : public Instruction {
@@ -60,6 +61,7 @@ public:
 
   StringRef getValueName() override { return "pool"; }
   std::string getExtraDesc() override;
+  void verify() override;
 };
 
 class FullyConnectedInst : public Instruction {
@@ -76,6 +78,7 @@ public:
 
   StringRef getValueName() override { return "fullyconnected"; }
   std::string getExtraDesc() override;
+  void verify() override;
 };
 
 class ReluInst : public Instruction {
@@ -83,6 +86,7 @@ public:
   ReluInst(Value *dest, Value *src)
       : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
   StringRef getValueName() override { return "relu"; }
+  void verify() override;
 };
 
 class SigmoidInst : public Instruction {
@@ -90,6 +94,7 @@ public:
   SigmoidInst(Value *dest, Value *src)
       : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
   StringRef getValueName() override { return "sigmoid"; }
+  void verify() override;
 };
 
 class TanhInst : public Instruction {
@@ -97,6 +102,7 @@ public:
   TanhInst(Value *dest, Value *src)
       : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
   StringRef getValueName() override { return "tanh"; }
+  void verify() override;
 };
 
 class SoftMaxInst : public Instruction {
@@ -106,6 +112,7 @@ public:
                      {src, OperandKind::kIn},
                      {expected, OperandKind::kIn}}) {}
   StringRef getValueName() override { return "softmax"; }
+  void verify() override;
 };
 
 class RegressionInst : public Instruction {
@@ -115,6 +122,7 @@ public:
                      {src, OperandKind::kIn},
                      {expected, OperandKind::kIn}}) {}
   StringRef getValueName() override { return "regression"; }
+  void verify() override;
 };
 
 class TransposeInst : public Instruction {
@@ -127,6 +135,7 @@ public:
   StringRef getValueName() override { return "transpose"; }
 
   std::string getExtraDesc() override;
+  void verify() override;
 };
 
 class ReshapeInst : public Instruction {
@@ -139,6 +148,7 @@ public:
   StringRef getValueName() override { return "reshape"; }
 
   std::string getExtraDesc() override;
+  void verify() override;
 };
 
 class ConcatInst : public Instruction {
@@ -154,6 +164,7 @@ public:
   StringRef getValueName() override { return "concat"; }
 
   std::string getExtraDesc() override;
+  void verify() override;
 };
 
 class BatchNormalizationInst : public Instruction {
@@ -176,6 +187,7 @@ public:
   StringRef getValueName() override { return "batchnorm"; }
 
   std::string getExtraDesc() override;
+  void verify() override;
 };
 
 class ArithmeticInst : public Instruction {
@@ -188,11 +200,7 @@ public:
 
 private:
   OpKind kind_;
-
-  const char *getKindStr() {
-    const char *names[] = {"add", "mul", nullptr};
-    return names[(int)kind_];
-  }
+  const char *getKindStr();
 
 public:
   ArithmeticInst(Value *dest, Value *LHS, Value *RHS, OpKind kind)
@@ -204,6 +212,7 @@ public:
   StringRef getValueName() override { return "arithmetic"; }
 
   std::string getExtraDesc() override;
+  void verify() override;
 };
 
 class StaticVariable : public Value {

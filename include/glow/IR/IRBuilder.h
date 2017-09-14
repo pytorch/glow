@@ -53,8 +53,14 @@ public:
   ArithmeticInst *createArithmeticInst(Value *dest, Value *LHS, Value *RHS,
                                        ArithmeticInst::OpKind kind);
 
-  StaticVariable *createStaticVariable(TypeRef T, StaticVariable::InitKind mode,
-                                       float val);
+  StaticVariable *createStaticVariable(
+      ElemKind elemTy, ArrayRef<size_t> dims,
+      StaticVariable::InitKind mode = StaticVariable::InitKind::kExtern,
+      float val = 0);
+  StaticVariable *createStaticVariable(
+      TypeRef T,
+      StaticVariable::InitKind mode = StaticVariable::InitKind::kExtern,
+      float val = 0);
 
   ///@}
 };

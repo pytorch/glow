@@ -61,7 +61,7 @@ public:
   void replaceAllUsesOfWith(Value *v);
 
   /// \returns the name of the value.
-  virtual StringRef getValueName() { return "<bad>"; }
+  virtual StringRef getValueName() = 0;
 
   /// \returns a description of the internal instruction parameters.
   virtual std::string getExtraDesc() { return ""; }
@@ -114,6 +114,9 @@ public:
 
   /// Check the correctness of the use-list.
   void verifyUseList();
+
+  /// Verify the correctness of the instruction parameters.
+  virtual void verify() = 0;
 };
 
 /// A module that represents the compilation unit.

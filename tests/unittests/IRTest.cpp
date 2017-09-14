@@ -33,26 +33,26 @@ TEST(IR, uniqueTypes) {
 
 TEST(IR, basicUseList) {
   Module M;
-  Type T1(ElemKind::FloatTy, {320, 200});
+  IRBuilder builder(M);
 
-  Value V1;
-  Value V2;
+  auto *V1 = builder.createStaticVariable(ElemKind::FloatTy, {320, 200});
+  auto *V2 = builder.createStaticVariable(ElemKind::FloatTy, {320, 200});
 
   // Check that we can construct a new instruction.
-  Instruction I({{&V1, OperandKind::kIn}, {&V2, OperandKind::kIn}});
-  I.verifyUseList();
+  auto *CC = builder.createCopyInst(V1, V2);
+  CC->verifyUseList();
 
   // Check the getOperand and setOperand functions.
-  EXPECT_EQ(I.getOperand(0).first, &V1);
-  I.setOperand(0, &V2);
-  EXPECT_EQ(I.getOperand(0).first, &V2);
-  I.verifyUseList();
+  EXPECT_EQ(CC->getOperand(0).first, V1);
+  CC->setOperand(0, V2);
+  EXPECT_EQ(CC->getOperand(0).first, V2);
+  CC->verifyUseList();
 
   // Check that we can destroy the operands.
   // ...
 }
 
-TEST(IR, basisInstrs) {
+TEST(IR, allInstrs) {
   using InitKind = StaticVariable::InitKind;
 
   Module M;
