@@ -96,17 +96,6 @@ void Module::dump() {
   unsigned idx = 0;
   std::unordered_map<Instruction *, unsigned> instrIdx;
 
-  // Name all unnamed instructions.
-  for (auto it : instrs_) {
-    Instruction *II = it;
-
-    if (II->hasName())
-      continue;
-
-    II->setName("I" + std::to_string(idx++));
-  }
-
-  idx = 0;
   // Name all unnamed variables.
   for (auto it : variables_) {
     Value *V = it;
@@ -114,22 +103,36 @@ void Module::dump() {
     if (V->hasName())
       continue;
 
-    V->setName("V" + std::to_string(idx++));
+    V->setName(std::to_string(idx++));
+  }
+
+  // Name all unnamed instructions.
+  for (auto it : instrs_) {
+    Instruction *II = it;
+
+    if (II->hasName())
+      continue;
+
+    II->setName(std::to_string(idx++));
   }
 
   // Print all of the variables:
   std::stringstream sb;
+
+  sb << "declare {\n";
   for (auto it : variables_) {
     Value *V = it;
 
     auto name = V->getName();
     auto valName = V->getValueName().str();
-    sb << "%" << name << " = " << valName << " ";
+    sb << "  %" << name << " = " << valName << " ";
     sb << V->getExtraDesc();
     sb << "\n";
   }
 
-  sb << "\n";
+  sb << "}\n\n";
+
+  sb << "program {\n";
 
   // Print all of the instructions:
   for (auto it : instrs_) {
@@ -137,7 +140,7 @@ void Module::dump() {
 
     auto name = II->getName();
     auto instrName = II->getValueName().str();
-    sb << "%" << name << " = " << instrName << " ";
+    sb << "  %" << name << " = " << instrName << " ";
     // Print operands:
     for (int i = 0, e = II->getNumOperands(); i < e; i++) {
       auto op = II->getOperand(i);
@@ -150,6 +153,8 @@ void Module::dump() {
     sb << II->getExtraDesc();
     sb << "\n";
   }
+
+  sb << "}\n";
 
   std::cout << sb.str();
 }

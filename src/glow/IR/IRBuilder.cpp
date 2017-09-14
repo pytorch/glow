@@ -2,6 +2,14 @@
 
 using namespace glow;
 
+StaticVariable *IRBuilder::createStaticVariable(TypeRef T,
+                                                StaticVariable::InitKind mode,
+                                                float val) {
+  auto *A = new StaticVariable(T, mode, val);
+  M_.pushVar(A);
+  return A;
+}
+
 AllocInst *IRBuilder::createAllocInst(TypeRef T) {
   auto *A = new AllocInst(T);
   M_.pushInstr(A);
@@ -17,21 +25,26 @@ CopyInst *IRBuilder::createCopyInst(Value *dest, Value *src) {
   M_.pushInstr(A);
   return A;
 }
-ReturnInst *IRBuilder::createReturnInst(Value *src) {
-  auto *A = new ReturnInst(src);
-  M_.pushInstr(A);
-  return A;
-}
 
 ReluInst *IRBuilder::createReluInst(Value *dest, Value *src) {
   auto *A = new ReluInst(dest, src);
   M_.pushInstr(A);
   return A;
 }
-StaticVariable *IRBuilder::createStaticVariable(TypeRef T,
-                                                StaticVariable::InitKind mode,
-                                                float val) {
-  auto *A = new StaticVariable(T, mode, val);
-  M_.pushVar(A);
+
+TransposeInst *IRBuilder::createTransposeInst(Value *dest, Value *src,
+                                              ArrayRef<unsigned> shuffle) {
+  auto *A = new TransposeInst(dest, src, shuffle);
+  M_.pushInstr(A);
+  return A;
+}
+
+ConvolutionInst *IRBuilder::createConvolutionInst(Value *dest, Value *src,
+                                                  Value *filter, Value *bias,
+                                                  size_t kernel, size_t stride,
+                                                  size_t pad, size_t depth) {
+  auto *A =
+      new ConvolutionInst(dest, src, filter, bias, kernel, stride, pad, depth);
+  M_.pushInstr(A);
   return A;
 }

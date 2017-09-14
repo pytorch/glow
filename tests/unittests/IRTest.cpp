@@ -53,21 +53,29 @@ TEST(IR, basicUseList) {
 }
 
 TEST(IR, basisInstrs) {
+  using InitKind = StaticVariable::InitKind;
+
   Module M;
-  auto T1 = M.uniqueType(ElemKind::FloatTy, {320, 200});
+  auto T1 = M.uniqueType(ElemKind::FloatTy, {1, 24, 24, 3});
+  auto T2 = M.uniqueType(ElemKind::FloatTy, {64});
+  auto T3 = M.uniqueType(ElemKind::FloatTy, {1, 320, 200, 3});
 
   IRBuilder builder(M);
 
-  auto *S = builder.createStaticVariable(
-      T1, StaticVariable::InitKind::kBroadcast, 1.1);
+  auto *S = builder.createStaticVariable(T1, InitKind::kBroadcast, 1.1);
+  auto *B0 = builder.createStaticVariable(T2, InitKind::kExtern, 0);
+  auto *F0 = builder.createStaticVariable(T3, InitKind::kExtern, 0);
 
   auto *AC0 = builder.createAllocInst(T1);
   auto *AC1 = builder.createAllocInst(T1);
+
+  builder.createTransposeInst(AC0, S, {0, 2, 3, 1});
+
+  builder.createConvolutionInst(AC1, AC0, F0, B0, 7, 2, 3, 64);
   builder.createCopyInst(AC0, S);
   builder.createReluInst(AC1, AC0);
   builder.createCopyInst(S, AC0);
   builder.createDeallocInst(AC0);
-  builder.createReturnInst(AC0);
   builder.createDeallocInst(AC1);
   M.dump();
 }

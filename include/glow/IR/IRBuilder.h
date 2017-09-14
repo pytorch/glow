@@ -17,13 +17,21 @@ public:
 
   /// @name IRBuilder
   ///@{
+  StaticVariable *createStaticVariable(TypeRef T, StaticVariable::InitKind mode,
+                                       float val);
+
   AllocInst *createAllocInst(TypeRef T);
   DeallocInst *createDeallocInst(AllocInst *AT);
   CopyInst *createCopyInst(Value *dest, Value *src);
-  ReturnInst *createReturnInst(Value *src);
   ReluInst *createReluInst(Value *dest, Value *src);
-  StaticVariable *createStaticVariable(TypeRef T, StaticVariable::InitKind mode,
-                                       float val);
+  TransposeInst *createTransposeInst(Value *dest, Value *src,
+                                     ArrayRef<unsigned> shuffle);
+
+  ConvolutionInst *createConvolutionInst(Value *dest, Value *src, Value *filter,
+                                         Value *bias, size_t kernel,
+                                         size_t stride, size_t pad,
+                                         size_t depth);
+
   ///@}
 };
 

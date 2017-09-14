@@ -11,7 +11,7 @@ class AllocInst : public Instruction {
 
 public:
   AllocInst(TypeRef T) : Instruction(), Ty_(T) {}
-  StringRef getValueName() override { return "Alloc"; }
+  StringRef getValueName() override { return "alloc"; }
   std::string getExtraDesc() override { return Ty_->asString(); }
   TypeRef getType() { return Ty_; }
 };
@@ -19,27 +19,72 @@ public:
 class DeallocInst : public Instruction {
 public:
   DeallocInst(AllocInst *A) : Instruction({{A, OperandKind::kIn}}) {}
-  StringRef getValueName() override { return "Dealloc"; }
+  StringRef getValueName() override { return "dealloc"; }
 };
 
 class CopyInst : public Instruction {
 public:
   CopyInst(Value *dest, Value *src)
       : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
-  StringRef getValueName() override { return "Copy"; }
-};
-
-class ReturnInst : public Instruction {
-public:
-  ReturnInst(Value *src) : Instruction({{src, OperandKind::kIn}}) {}
-  StringRef getValueName() override { return "Return"; }
+  StringRef getValueName() override { return "copy"; }
 };
 
 class ReluInst : public Instruction {
 public:
   ReluInst(Value *dest, Value *src)
       : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
-  StringRef getValueName() override { return "Relu"; }
+  StringRef getValueName() override { return "relu"; }
+};
+
+class TransposeInst : public Instruction {
+  std::vector<unsigned> shuffle_;
+
+public:
+  TransposeInst(Value *dest, Value *src, ArrayRef<unsigned> shuffle)
+      : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}),
+        shuffle_(shuffle.begin(), shuffle.end()) {}
+  StringRef getValueName() override { return "transpose"; }
+
+  std::string getExtraDesc() override {
+    std::string sb = " {";
+    for (int i = 0; i < shuffle_.size(); i++) {
+      if (i) {
+        sb += ", ";
+      }
+      sb += std::to_string(shuffle_[i]);
+    }
+    return sb + "}";
+  }
+};
+
+class ConvolutionInst : public Instruction {
+  std::vector<unsigned> shuffle_;
+
+  size_t kernel_;
+  size_t stride_;
+  size_t pad_;
+  size_t depth_;
+
+public:
+  ConvolutionInst(Value *dest, Value *src, Value *filter, Value *bias,
+                  size_t kernel, size_t stride, size_t pad, size_t depth)
+      : Instruction({{dest, OperandKind::kOut},
+                     {src, OperandKind::kIn},
+                     {filter, OperandKind::kIn},
+                     {bias, OperandKind::kIn}}),
+
+        kernel_(kernel), stride_(stride), pad_(pad), depth_(depth) {}
+
+  StringRef getValueName() override { return "convolution"; }
+
+  std::string getExtraDesc() override {
+    std::string sb = " {";
+    sb += std::to_string(kernel_) + " ";
+    sb += std::to_string(stride_) + " ";
+    sb += std::to_string(pad_) + " ";
+    sb += std::to_string(depth_);
+    return sb + " }";
+  }
 };
 
 class StaticVariable : public Value {
@@ -69,13 +114,13 @@ private:
 public:
   StaticVariable(TypeRef Ty, InitKind mode, float val)
       : Value(), Ty_(Ty), val_(val), mode_(mode) {}
-  StringRef getValueName() override { return "Static"; }
+  StringRef getValueName() override { return "static"; }
   InitKind getMode() { return mode_; }
   float getVal() { return val_; }
   TypeRef getType() { return Ty_; }
 
   std::string getExtraDesc() override {
-    return ", " + Ty_->asString() + " " + std::to_string(val_) + ", " +
+    return Ty_->asString() + ", " + std::to_string(val_) + ", " +
            getKindStr(mode_);
   }
 };

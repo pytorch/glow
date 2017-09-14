@@ -132,19 +132,10 @@ struct Type final {
 
   /// \return the textual name of the element \p Ty.
   static StringRef getElementName(ElemKind Ty) {
-    switch (Ty) {
-    case ElemKind::FloatTy:
-      return "Float";
-    case ElemKind::DoubleTy:
-      return "Double";
-    case ElemKind::Int8Ty:
-      return "i8";
-    case ElemKind::Int32Ty:
-      return "i32";
-    case ElemKind::IndexTy:
-      return "idx";
-    }
-    glow_unreachable();
+    const char *names[] = {
+        "float", "double", "i8", "i32", "index",
+    };
+    return names[(int)Ty];
   }
 };
 
