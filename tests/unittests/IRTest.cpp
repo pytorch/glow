@@ -90,6 +90,6 @@ TEST(IR, allInstrs) {
   builder.createConcatInst(I1, {I0, I0}, 2);
   builder.createBatchNormalizationInst(I1, I0, S0, S0, S0, S0, 3, 0.01, 0.9);
   builder.createArithmeticInst(I1, I0, I0, ArithmeticInst::OpKind::kMul);
-
+  M.verify();
   M.dump();
 }

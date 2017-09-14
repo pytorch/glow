@@ -1,6 +1,8 @@
 #include "glow/IR/Instrs.h"
 #include "glow/IR/IR.h"
 
+#include <cassert>
+
 using namespace glow;
 
 // Helper methods that are used to print the instruction parameters.
@@ -75,23 +77,33 @@ const char *StaticVariable::getKindStr() {
 }
 
 std::string StaticVariable::getExtraDesc() {
-  return Ty_->asString() + ", " + std::to_string(val_) + ", " + getKindStr();
+  auto sp = ", ";
+  return getType()->asString() + sp + std::to_string(val_) + sp + getKindStr();
 }
 
-void CopyInst::verify() {}
+/// Check that the type of the first operand matches the type of the second
+/// operand.
+static void checkSameType(Instruction::Operand A, Instruction::Operand B) {
+  assert(A.first->getType() == B.first->getType() && "Invalid type");
+}
+
+void CopyInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
 void ConvolutionInst::verify() {}
 void PoolInst::verify() {}
 void FullyConnectedInst::verify() {}
 
-void ReluInst::verify() {}
-void SigmoidInst::verify() {}
-void TanhInst::verify() {}
+void ReluInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
+void SigmoidInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
+void TanhInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
 
-void SoftMaxInst::verify() {}
-void RegressionInst::verify() {}
+void SoftMaxInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
+void RegressionInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
 
 void TransposeInst::verify() {}
 void ReshapeInst::verify() {}
 void ConcatInst::verify() {}
 void BatchNormalizationInst::verify() {}
-void ArithmeticInst::verify() {}
+void ArithmeticInst::verify() {
+  checkSameType(getOperand(0), getOperand(1));
+  checkSameType(getOperand(0), getOperand(2));
+}

@@ -9,6 +9,9 @@
 #include <type_traits>
 
 namespace glow {
+struct Type;
+
+using TypeRef = const Type *;
 
 constexpr unsigned max_tensor_dimensions = 6;
 

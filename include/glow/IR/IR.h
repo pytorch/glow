@@ -2,6 +2,7 @@
 #define GLOW_IR_IR_H
 
 #include "glow/IR/Type.h"
+#include "glow/IR/UseDef.h"
 
 #include <list>
 #include <vector>
@@ -10,10 +11,8 @@ namespace glow {
 class Instruction;
 class Module;
 
-using TypeRef = const Type *;
-
+/// This add the capability to name subclasses.
 class Named {
-  /// The name of the instruction. This is used for debugging.
   std::string name_{};
 
 public:
@@ -27,44 +26,26 @@ public:
 
   /// Set the name of the instruction to \p name.
   void setName(const std::string &name) { name_ = name; }
+
+  /// \returns the name of the class.
+  /// For example, "transpose";
+  virtual StringRef getKindName() = 0;
+
+  /// \returns a description of the internal structure.
+  virtual std::string getExtraDesc() { return ""; }
 };
 
-/// A Value is something that can be an operand for an instruction. It can be a
-/// Tensor, a mask, a constant, etc.
-class Value : public Named {
-public:
-  using Use = std::pair<unsigned, Instruction *>;
-
-  virtual ~Value() = default;
-
+/// Subclasses of this class have a type associated with them.
+class Typed {
 private:
-  /// A list of users. Notice that the same user may appear twice in the list.
-  /// This is typically a very short list.
-  std::list<Use> users_{};
+  TypeRef Ty_{};
 
 public:
-  Value() = default;
+  Typed(TypeRef Ty) : Ty_(Ty){};
 
-  /// Removes the use \p U from the uselist.
-  void removeUse(Use U);
+  TypeRef getType() { return Ty_; }
 
-  /// Adds the use \p U.
-  void addUse(Use U);
-
-  /// \returns True if the value has some users.
-  bool hasUsers() { return users_.size(); }
-
-  /// Returns true if the user \p I is in the list.
-  bool hasUser(Instruction *I);
-
-  /// Replace all of the uses of this value with \p v.
-  void replaceAllUsesOfWith(Value *v);
-
-  /// \returns the name of the value.
-  virtual StringRef getValueName() = 0;
-
-  /// \returns a description of the internal instruction parameters.
-  virtual std::string getExtraDesc() { return ""; }
+  bool hasType(TypeRef T) { return Ty_ == T; }
 };
 
 enum class OperandKind : unsigned char {
@@ -78,10 +59,18 @@ inline const char *getOperandKindStr(OperandKind CC) {
   return names[(int)CC];
 }
 
-using Operand = std::pair<Value *, OperandKind>;
+class Value : public Named, public UseDef<Instruction, Value>, public Typed {
+public:
+  Value(TypeRef T) : Named(), UseDef(), Typed(T) {}
+  virtual ~Value() = default;
+};
 
 /// This represents an instruction in our IR.
-class Instruction : public Value {
+class Instruction : public Named {
+public:
+  using Operand = std::pair<Value *, OperandKind>;
+
+private:
   /// A list of operands that the instruction has. This is typically a very
   /// short list.
   std::vector<Operand> ops_{};
@@ -91,13 +80,14 @@ class Instruction : public Value {
   Instruction &operator=(const Instruction &I) = delete;
 
 protected:
-  /// Adds a new operand \p v at the end of the operand list.
+  /// Adds a new operand \p op at the end of the operand list.
   void pushOperand(Operand op);
 
 public:
-  Instruction() : Value(){};
+  Instruction() = default;
+  virtual ~Instruction() = default;
 
-  Instruction(ArrayRef<Operand> ops) : Value() {
+  Instruction(ArrayRef<Operand> ops) {
     for (auto &op : ops) {
       pushOperand(op);
     }

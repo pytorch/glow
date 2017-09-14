@@ -21,35 +21,13 @@ TypeRef Module::uniqueType(const Type &T) {
 
 TypeRef Module::getVoidTy() { return uniqueType(Type()); }
 
-void Value::removeUse(Value::Use U) {
-  auto it = std::find(users_.begin(), users_.end(), U);
-  assert(it != users_.end() && "User not in list");
-  users_.erase(it);
-}
-
-void Value::addUse(Use U) { users_.push_back(U); }
-
-bool Value::hasUser(Instruction *I) {
-  for (auto &U : users_) {
-    if (U.second == I)
-      return true;
-  }
-  return false;
-}
-
-void Value::replaceAllUsesOfWith(Value *v) {
-  for (auto &U : users_) {
-    U.second->setOperand(U.first, v);
-  }
-}
-
 void Instruction::pushOperand(Operand op) {
   ops_.push_back({nullptr, op.second});
   setOperand(ops_.size() - 1, op.first);
 }
 
 void Instruction::setOperand(unsigned idx, Value *v) {
-  Value *currVal = ops_[idx].first;
+  auto *currVal = ops_[idx].first;
 
   if (currVal == v)
     return;
@@ -64,18 +42,17 @@ void Instruction::setOperand(unsigned idx, Value *v) {
   }
 }
 
-Operand Instruction::getOperand(unsigned idx) {
+Instruction::Operand Instruction::getOperand(unsigned idx) {
   assert(ops_.size() > idx && "Invalid operand");
   return ops_[idx];
 }
 
 void Instruction::verifyUseList() {
   for (int i = 0, e = ops_.size(); i < e; i++) {
-    Value *v = ops_[i].first;
+    auto *v = ops_[i].first;
     (void)v;
     assert(v && "Instruction operand must be a real value");
     assert(v->hasUser(this) && "Invalid use-list");
-    assert(v != this && "Use-list cycle");
   }
 }
 
@@ -92,7 +69,13 @@ Module::~Module() {
   }
 }
 
-/// Dump a textual representation of the module.
+void Module::verify() {
+  for (auto it : instrs_) {
+    it->verifyUseList();
+    it->verify();
+  }
+}
+
 void Module::dump() {
   unsigned idx = 0;
   std::unordered_map<Instruction *, unsigned> instrIdx;
@@ -125,7 +108,7 @@ void Module::dump() {
     Value *V = it;
 
     auto name = V->getName();
-    auto valName = V->getValueName().str();
+    auto valName = V->getKindName().str();
     sb << "  %" << name << " = " << valName << " ";
     sb << V->getExtraDesc();
     sb << "\n";
@@ -139,7 +122,7 @@ void Module::dump() {
     Instruction *II = it;
 
     auto name = II->getName();
-    auto instrName = II->getValueName().str();
+    auto instrName = II->getKindName().str();
     sb << "  %" << name << " = " << instrName << " ";
     auto extraDesc = II->getExtraDesc();
     if (extraDesc.size()) {

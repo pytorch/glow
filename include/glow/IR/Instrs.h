@@ -10,7 +10,7 @@ class CopyInst : public Instruction {
 public:
   CopyInst(Value *dest, Value *src)
       : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
-  StringRef getValueName() override { return "copy"; }
+  StringRef getKindName() override { return "copy"; }
   void verify() override;
 };
 
@@ -30,7 +30,7 @@ public:
 
         kernel_(kernel), stride_(stride), pad_(pad), depth_(depth) {}
 
-  StringRef getValueName() override { return "convolution"; }
+  StringRef getKindName() override { return "convolution"; }
   std::string getExtraDesc() override;
   void verify() override;
 };
@@ -59,7 +59,7 @@ public:
                      {srcXY, OperandKind::kInOut}}),
         kernel_(kernel), stride_(stride), pad_(pad), kind_(kind) {}
 
-  StringRef getValueName() override { return "pool"; }
+  StringRef getKindName() override { return "pool"; }
   std::string getExtraDesc() override;
   void verify() override;
 };
@@ -76,7 +76,7 @@ public:
                      {bias, OperandKind::kIn}}),
         depth_(depth) {}
 
-  StringRef getValueName() override { return "fullyconnected"; }
+  StringRef getKindName() override { return "fullyconnected"; }
   std::string getExtraDesc() override;
   void verify() override;
 };
@@ -85,7 +85,7 @@ class ReluInst : public Instruction {
 public:
   ReluInst(Value *dest, Value *src)
       : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
-  StringRef getValueName() override { return "relu"; }
+  StringRef getKindName() override { return "relu"; }
   void verify() override;
 };
 
@@ -93,7 +93,7 @@ class SigmoidInst : public Instruction {
 public:
   SigmoidInst(Value *dest, Value *src)
       : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
-  StringRef getValueName() override { return "sigmoid"; }
+  StringRef getKindName() override { return "sigmoid"; }
   void verify() override;
 };
 
@@ -101,7 +101,7 @@ class TanhInst : public Instruction {
 public:
   TanhInst(Value *dest, Value *src)
       : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
-  StringRef getValueName() override { return "tanh"; }
+  StringRef getKindName() override { return "tanh"; }
   void verify() override;
 };
 
@@ -111,7 +111,7 @@ public:
       : Instruction({{dest, OperandKind::kOut},
                      {src, OperandKind::kIn},
                      {expected, OperandKind::kIn}}) {}
-  StringRef getValueName() override { return "softmax"; }
+  StringRef getKindName() override { return "softmax"; }
   void verify() override;
 };
 
@@ -121,7 +121,7 @@ public:
       : Instruction({{dest, OperandKind::kOut},
                      {src, OperandKind::kIn},
                      {expected, OperandKind::kIn}}) {}
-  StringRef getValueName() override { return "regression"; }
+  StringRef getKindName() override { return "regression"; }
   void verify() override;
 };
 
@@ -132,8 +132,7 @@ public:
   TransposeInst(Value *dest, Value *src, ArrayRef<unsigned> shuffle)
       : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}),
         shuffle_(shuffle.begin(), shuffle.end()) {}
-  StringRef getValueName() override { return "transpose"; }
-
+  StringRef getKindName() override { return "transpose"; }
   std::string getExtraDesc() override;
   void verify() override;
 };
@@ -145,7 +144,7 @@ public:
   ReshapeInst(Value *dest, Value *src, ArrayRef<size_t> dims)
       : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}),
         dims_(dims.begin(), dims.end()) {}
-  StringRef getValueName() override { return "reshape"; }
+  StringRef getKindName() override { return "reshape"; }
 
   std::string getExtraDesc() override;
   void verify() override;
@@ -161,8 +160,7 @@ public:
       pushOperand({s, OperandKind::kIn});
     }
   }
-  StringRef getValueName() override { return "concat"; }
-
+  StringRef getKindName() override { return "concat"; }
   std::string getExtraDesc() override;
   void verify() override;
 };
@@ -184,7 +182,7 @@ public:
                      {var, OperandKind::kInOut}}),
         channelIdx_(channelIdx), epsilon_(epsilon), momentum_(momentum) {}
 
-  StringRef getValueName() override { return "batchnorm"; }
+  StringRef getKindName() override { return "batchnorm"; }
 
   std::string getExtraDesc() override;
   void verify() override;
@@ -209,7 +207,7 @@ public:
                      {RHS, OperandKind::kIn}}),
         kind_(kind) {}
 
-  StringRef getValueName() override { return "arithmetic"; }
+  StringRef getKindName() override { return "arithmetic"; }
 
   std::string getExtraDesc() override;
   void verify() override;
@@ -224,9 +222,6 @@ public:
   };
 
 private:
-  /// The type of the tensor to allocate.
-  TypeRef Ty_;
-
   /// The value to use during initialization. This can be the value to splat or
   /// a parameter to specify the range of the random values.
   float val_;
@@ -236,15 +231,14 @@ private:
 
   const char *getKindStr();
 
+  std::string getExtraDesc() override;
+
 public:
   StaticVariable(TypeRef Ty, InitKind mode, float val)
-      : Value(), Ty_(Ty), val_(val), mode_(mode) {}
-  StringRef getValueName() override { return "static"; }
+      : Value(Ty), val_(val), mode_(mode) {}
   InitKind getMode() { return mode_; }
   float getVal() { return val_; }
-  TypeRef getType() { return Ty_; }
-
-  std::string getExtraDesc() override;
+  StringRef getKindName() override { return "static"; }
 };
 
 } // namespace glow
