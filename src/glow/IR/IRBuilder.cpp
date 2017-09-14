@@ -10,16 +10,6 @@ StaticVariable *IRBuilder::createStaticVariable(TypeRef T,
   return A;
 }
 
-AllocInst *IRBuilder::createAllocInst(TypeRef T) {
-  auto *A = new AllocInst(T);
-  M_.pushInstr(A);
-  return A;
-}
-DeallocInst *IRBuilder::createDeallocInst(AllocInst *AT) {
-  auto *A = new DeallocInst(AT);
-  M_.pushInstr(A);
-  return A;
-}
 CopyInst *IRBuilder::createCopyInst(Value *dest, Value *src) {
   auto *A = new CopyInst(dest, src);
   M_.pushInstr(A);

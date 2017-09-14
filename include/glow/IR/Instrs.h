@@ -6,22 +6,6 @@
 
 namespace glow {
 
-class AllocInst : public Instruction {
-  TypeRef Ty_;
-
-public:
-  AllocInst(TypeRef T) : Instruction(), Ty_(T) {}
-  StringRef getValueName() override { return "alloc"; }
-  std::string getExtraDesc() override { return Ty_->asString(); }
-  TypeRef getType() { return Ty_; }
-};
-
-class DeallocInst : public Instruction {
-public:
-  DeallocInst(AllocInst *A) : Instruction({{A, OperandKind::kIn}}) {}
-  StringRef getValueName() override { return "dealloc"; }
-};
-
 class CopyInst : public Instruction {
 public:
   CopyInst(Value *dest, Value *src)
@@ -101,7 +85,7 @@ public:
   }
 
 private:
-  // The type of the tensor to allocate.
+  /// The type of the tensor to allocate.
   TypeRef Ty_;
 
   /// The value to use during initialization. This can be the value to splat or

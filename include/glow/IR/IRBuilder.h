@@ -20,8 +20,6 @@ public:
   StaticVariable *createStaticVariable(TypeRef T, StaticVariable::InitKind mode,
                                        float val);
 
-  AllocInst *createAllocInst(TypeRef T);
-  DeallocInst *createDeallocInst(AllocInst *AT);
   CopyInst *createCopyInst(Value *dest, Value *src);
   ReluInst *createReluInst(Value *dest, Value *src);
   TransposeInst *createTransposeInst(Value *dest, Value *src,

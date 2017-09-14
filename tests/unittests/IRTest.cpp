@@ -62,20 +62,17 @@ TEST(IR, basisInstrs) {
 
   IRBuilder builder(M);
 
-  auto *S = builder.createStaticVariable(T1, InitKind::kBroadcast, 1.1);
+  auto *I0 = builder.createStaticVariable(T1, InitKind::kBroadcast, 1.1);
+  auto *I1 = builder.createStaticVariable(T1, InitKind::kBroadcast, 1.1);
+  auto *I2 = builder.createStaticVariable(T1, InitKind::kBroadcast, 1.1);
+
   auto *B0 = builder.createStaticVariable(T2, InitKind::kExtern, 0);
   auto *F0 = builder.createStaticVariable(T3, InitKind::kExtern, 0);
 
-  auto *AC0 = builder.createAllocInst(T1);
-  auto *AC1 = builder.createAllocInst(T1);
+  builder.createTransposeInst(I1, I0, {0, 2, 3, 1});
 
-  builder.createTransposeInst(AC0, S, {0, 2, 3, 1});
-
-  builder.createConvolutionInst(AC1, AC0, F0, B0, 7, 2, 3, 64);
-  builder.createCopyInst(AC0, S);
-  builder.createReluInst(AC1, AC0);
-  builder.createCopyInst(S, AC0);
-  builder.createDeallocInst(AC0);
-  builder.createDeallocInst(AC1);
+  builder.createConvolutionInst(I2, I1, F0, B0, 7, 2, 3, 64);
+  builder.createReluInst(I2, I2);
+  builder.createCopyInst(I0, I2);
   M.dump();
 }
