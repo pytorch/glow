@@ -1,6 +1,8 @@
 #include "glow/IR/Instrs.h"
 #include "glow/IR/IR.h"
 
+#include "glow/Network/Nodes.h"
+
 #include <cassert>
 
 using namespace glow;
@@ -88,7 +90,28 @@ static void checkSameType(Instruction::Operand A, Instruction::Operand B) {
 }
 
 void CopyInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
-void ConvolutionInst::verify() {}
+void ConvolutionInst::verify() {
+  Value *dest = getOperand(0).first;
+  Value *src = getOperand(1).first;
+  Value *filter = getOperand(2).first;
+  Value *bias = getOperand(3).first;
+
+  ShapeNHWC idim = src->getType()->dims();
+  ShapeNHWC odim = dest->getType()->dims();
+
+  auto outSz =
+      ConvNode::calculateOutputDims(idim.h, idim.w, pad_, kernel_, stride_);
+  ShapeNHWC expectedSize =
+      ArrayRef<size_t>{idim.n, outSz.first, outSz.second, depth_};
+  assert(expectedSize == odim && "Invalid output dimensions");
+
+  ArrayRef<size_t> filterDims = {depth_, kernel_, kernel_, idim.c};
+  assert(filter->getType()->dims() == filterDims && "Invalid filter dims");
+
+  ArrayRef<size_t> biasDims = {depth_};
+  assert(bias->getType()->dims() == biasDims && "Invalid bias dims");
+}
+
 void PoolInst::verify() {}
 void FullyConnectedInst::verify() {}
 

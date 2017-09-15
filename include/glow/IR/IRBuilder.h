@@ -9,15 +9,21 @@ namespace glow {
 
 /// The IRBuilder create the IR in the module.
 class IRBuilder {
+  using InitKind = StaticVariable::InitKind;
+
   /// The module that we are building.
   Module &M_;
 
 public:
   IRBuilder(Module &M) : M_(M) {}
 
-  /// @name IRBuilder
+  /// @name High-level, operation-level IRBuilder.
   ///@{
 
+  ///@}
+
+  /// @name Low-level, instruction-level IRBuilder.
+  ///@{
   CopyInst *createCopyInst(Value *dest, Value *src);
 
   ConvolutionInst *createConvolutionInst(Value *dest, Value *src, Value *filter,
@@ -34,10 +40,13 @@ public:
                                                size_t depth);
 
   ReluInst *createReluInst(Value *dest, Value *src);
+
   SigmoidInst *createSigmoidInst(Value *dest, Value *src);
+
   TanhInst *createTanhInst(Value *dest, Value *src);
 
   SoftMaxInst *createSoftMaxInst(Value *dest, Value *src, Value *expected);
+
   RegressionInst *createRegressionInst(Value *dest, Value *src,
                                        Value *expected);
 
@@ -53,15 +62,13 @@ public:
   ArithmeticInst *createArithmeticInst(Value *dest, Value *LHS, Value *RHS,
                                        ArithmeticInst::OpKind kind);
 
-  StaticVariable *createStaticVariable(
-      ElemKind elemTy, ArrayRef<size_t> dims,
-      StaticVariable::InitKind mode = StaticVariable::InitKind::kExtern,
-      float val = 0);
-  StaticVariable *createStaticVariable(
-      TypeRef T,
-      StaticVariable::InitKind mode = StaticVariable::InitKind::kExtern,
-      float val = 0);
+  StaticVariable *createStaticVariable(ElemKind elemTy, ArrayRef<size_t> dims,
+                                       InitKind mode = InitKind::kExtern,
+                                       float val = 0);
 
+  StaticVariable *createStaticVariable(TypeRef T,
+                                       InitKind mode = InitKind::kExtern,
+                                       float val = 0);
   ///@}
 };
 

@@ -24,14 +24,24 @@ ConvNode::ConvNode(Network *N, NodeBase *input, size_t outDepth,
     : input_(input), filterSize_(filterSize), stride_(stride), pad_(pad),
       outDepth_(outDepth) {}
 
+std::pair<size_t, size_t> ConvNode::calculateOutputDims(size_t sx, size_t sy,
+                                                        size_t pad,
+                                                        size_t filterSize,
+                                                        size_t stride) {
+  size_t outsx = ((sx + pad * 2 - filterSize) / stride + 1);
+  size_t outsy = ((sy + pad * 2 - filterSize) / stride + 1);
+  return {outsx, outsy};
+}
+
 void ConvNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   ShapeNHWC idim = input_->dims(ctx);
   assert(idim.h >= filterSize_ && idim.w >= filterSize_ &&
          "buffer too small for selected stride");
 
-  size_t outsx = ((idim.h + pad_ * 2 - filterSize_) / stride_ + 1);
-  size_t outsy = ((idim.w + pad_ * 2 - filterSize_) / stride_ + 1);
+  auto outSz = calculateOutputDims(idim.h, idim.w, pad_, filterSize_, stride_);
+  size_t outsx = outSz.first;
+  size_t outsy = outSz.second;
 
   ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,
                       {idim.n, outsx, outsy, outDepth_});
@@ -193,8 +203,10 @@ void MaxPoolNode::init(Context *ctx) const {
   assert(idim.w >= filterSize_ && idim.h >= filterSize_ &&
          "buffer too small for selected stride");
 
-  size_t outsx = ((idim.w + pad_ * 2 - filterSize_) / stride_ + 1);
-  size_t outsy = ((idim.h + pad_ * 2 - filterSize_) / stride_ + 1);
+  auto outSz =
+      ConvNode::calculateOutputDims(idim.h, idim.w, pad_, filterSize_, stride_);
+  size_t outsx = outSz.first;
+  size_t outsy = outSz.second;
 
   ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy,
                       {idim.n, outsx, outsy, idim.c});

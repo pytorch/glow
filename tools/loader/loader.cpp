@@ -63,8 +63,8 @@ void loadImageAndPreprocess(const std::string &filename, Tensor *result,
 
 int main(int argc, char **argv) {
   if (argc != 5) {
-    std::cerr << "Usage: " << argv[0] << "image.png [0to1 / 0to256 / 128to127] "
-              << "network_structure.pb weights.pb\n";
+    std::cerr << "Usage: " << argv[0] << " image.png [0to1 / 0to256 / 128to127]"
+              << " network_structure.pb weights.pb\n";
     return -1;
   }
 

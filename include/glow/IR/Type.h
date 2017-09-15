@@ -15,6 +15,28 @@ using TypeRef = const Type *;
 
 constexpr unsigned max_tensor_dimensions = 6;
 
+struct ShapeNHWC {
+  size_t n;
+  size_t h;
+  size_t w;
+  size_t c;
+  ShapeNHWC(ArrayRef<size_t> shape) {
+    assert(shape.size() == 4 && "Invalid shape");
+    n = shape[0];
+    h = shape[1];
+    w = shape[2];
+    c = shape[3];
+  }
+
+  bool equals(const ShapeNHWC &other) const {
+    return n == other.n && h == other.h && w == other.w && c == other.c;
+  }
+};
+
+inline bool operator==(const ShapeNHWC &LHS, const ShapeNHWC &RHS) {
+  return LHS.equals(RHS);
+}
+
 enum class ElemKind : unsigned char {
   FloatTy,
   DoubleTy,

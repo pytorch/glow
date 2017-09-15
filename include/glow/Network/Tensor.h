@@ -19,20 +19,6 @@
 
 namespace glow {
 
-struct ShapeNHWC {
-  size_t n;
-  size_t h;
-  size_t w;
-  size_t c;
-  ShapeNHWC(ArrayRef<size_t> shape) {
-    assert(shape.size() == 4 && "Invalid shape");
-    n = shape[0];
-    h = shape[1];
-    w = shape[2];
-    c = shape[3];
-  }
-};
-
 /// This is the default floating point type used for training.
 using FloatTy = TRAINING_TENSOR_ELEMENT_TYPE;
 

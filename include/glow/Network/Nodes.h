@@ -49,6 +49,13 @@ public:
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 
   void loadWeights(Network *N_, Tensor *filter, Tensor *bias);
+
+  /// Calculate the size of the output tensor based on the convolution
+  /// parameters.
+  static std::pair<size_t, size_t> calculateOutputDims(size_t sx, size_t sy,
+                                                       size_t pad,
+                                                       size_t filterSize,
+                                                       size_t stride);
 };
 
 class MaxPoolNode final : public NodeBase {

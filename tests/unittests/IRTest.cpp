@@ -58,7 +58,6 @@ TEST(IR, allInstrs) {
   Module M;
   auto T1 = M.uniqueType(ElemKind::FloatTy, {1, 24, 24, 3});
   auto T2 = M.uniqueType(ElemKind::FloatTy, {64});
-  auto T3 = M.uniqueType(ElemKind::FloatTy, {1, 320, 200, 3});
   auto T4 = M.uniqueType(ElemKind::IndexTy, {1, 1});
   auto T5 = M.uniqueType(ElemKind::FloatTy, {3});
 
@@ -67,9 +66,10 @@ TEST(IR, allInstrs) {
   auto *I0 = builder.createStaticVariable(T1, InitKind::kExtern, 0);
   auto *I1 = builder.createStaticVariable(T1, InitKind::kExtern, 0);
   auto *I2 = builder.createStaticVariable(T1, InitKind::kExtern, 0);
+  auto *I3 = builder.createStaticVariable(ElemKind::FloatTy, {1, 12, 12, 64});
 
   auto *B0 = builder.createStaticVariable(T2, InitKind::kBroadcast, 0.1);
-  auto *F0 = builder.createStaticVariable(T3, InitKind::kXavier, 300);
+  auto *F0 = builder.createStaticVariable(ElemKind::FloatTy, {64, 7, 7, 3});
   auto *E0 = builder.createStaticVariable(T4, InitKind::kExtern, 0);
   auto *S0 = builder.createStaticVariable(T5, InitKind::kExtern, 0);
 
@@ -78,7 +78,7 @@ TEST(IR, allInstrs) {
   E0->setName("expected");
 
   builder.createCopyInst(I1, I0);
-  builder.createConvolutionInst(I2, I1, F0, B0, 7, 2, 3, 64);
+  builder.createConvolutionInst(I3, I1, F0, B0, 7, 2, 3, 64);
   builder.createPoolInst(I1, I0, I2, PoolInst::OpKind::kMax, 7, 2, 3);
   builder.createFullyConnectedInst(I1, I0, F0, B0, 32);
   builder.createReluInst(I1, I0);

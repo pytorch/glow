@@ -100,16 +100,14 @@ ArithmeticInst *IRBuilder::createArithmeticInst(Value *dest, Value *LHS,
 
 StaticVariable *IRBuilder::createStaticVariable(ElemKind elemTy,
                                                 ArrayRef<size_t> dims,
-                                                StaticVariable::InitKind mode,
-                                                float val) {
+                                                InitKind mode, float val) {
   auto T = M_.uniqueType(elemTy, dims);
   auto *A = new StaticVariable(T, mode, val);
   M_.pushVar(A);
   return A;
 }
 
-StaticVariable *IRBuilder::createStaticVariable(TypeRef T,
-                                                StaticVariable::InitKind mode,
+StaticVariable *IRBuilder::createStaticVariable(TypeRef T, InitKind mode,
                                                 float val) {
   auto *A = new StaticVariable(T, mode, val);
   M_.pushVar(A);
