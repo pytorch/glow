@@ -20,6 +20,38 @@ public:
   /// @name High-level, operation-level IRBuilder.
   ///@{
 
+  ConvolutionInst *createConvOp(Value *input, size_t depth, size_t kernel,
+                                size_t stride, size_t pad);
+
+  PoolInst *createMaxPoolOp(Value *input, PoolInst::OpKind kind, size_t kernel,
+                            size_t stride, size_t pad);
+
+  FullyConnectedInst *createFullyConnectedOp(Value *input, size_t outDepth);
+
+  ReluInst *createRELUOp(Value *input);
+
+  SigmoidInst *createSigmoidOp(Value *input);
+
+  TanhInst *createTanhOp(Value *input);
+
+  SoftMaxInst *createSoftMaxOp(Value *input, Value *selected);
+
+  RegressionInst *createRegressionOp(Value *input, Value *expected);
+
+  ReshapeInst *createReshapeOp(Value *input, ArrayRef<size_t> shape);
+
+  TransposeInst *createTransposeOp(Value *input, ArrayRef<unsigned> shuffle);
+
+  ConcatInst *createConcatOp(ArrayRef<Value *> inputs, unsigned dimension);
+
+  BatchNormalizationInst *createBatchNormalizationOp(Value *input,
+                                                     size_t channelIdx,
+                                                     float epsilon,
+                                                     float momentum);
+
+  ArithmeticInst *createArithmeticOp(Value *LHS, Value *RHS,
+                                     ArithmeticInst::OpKind op);
+
   ///@}
 
   /// @name Low-level, instruction-level IRBuilder.

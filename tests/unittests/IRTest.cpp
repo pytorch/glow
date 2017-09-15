@@ -96,3 +96,16 @@ TEST(IR, allInstrs) {
   M.verify();
   M.dump();
 }
+
+TEST(IR, highLevelBuilder) {
+  Module M;
+  IRBuilder bb(M);
+
+  auto *input = bb.createStaticVariable(ElemKind::FloatTy, {1, 224, 224, 3});
+  auto *conv = bb.createConvOp(input, 16, 7, 2, 3);
+  auto *pool = bb.createMaxPoolOp(conv->getOperand(0).first,
+                                  PoolInst::OpKind::kMax, 7, 2, 3);
+  (void)pool;
+  M.verify();
+  M.dump();
+}

@@ -1,6 +1,109 @@
 #include "glow/IR/IRBuilder.h"
 
+#include "glow/Network/Nodes.h"
+
 using namespace glow;
+
+//===----------------------------------------------------------------------===//
+//                        High level operators.
+//===----------------------------------------------------------------------===//
+
+ConvolutionInst *IRBuilder::createConvOp(Value *input, size_t depth,
+                                         size_t kernel, size_t stride,
+                                         size_t pad) {
+  ShapeNHWC idim = input->getType()->dims();
+  assert(idim.w >= kernel && idim.h >= kernel &&
+         "buffer too small for selected stride");
+
+  // Calculate the size and allocate the output buffer.
+  auto outSz =
+      ConvNode::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
+  ArrayRef<size_t> outDims = {idim.n, outSz.first, outSz.second, depth};
+  Value *dest = createStaticVariable(ElemKind::FloatTy, outDims);
+
+  // Allocate the Filter and Bias tensors.
+  ArrayRef<size_t> filterDim = {depth, kernel, kernel, idim.c};
+  size_t fanIn = kernel * kernel * idim.c;
+  Value *filter = createStaticVariable(ElemKind::FloatTy, filterDim,
+                                       InitKind::kXavier, fanIn);
+  Value *bias = createStaticVariable(ElemKind::FloatTy, {depth},
+                                     InitKind::kBroadcast, 0.1);
+
+  return createConvolutionInst(dest, input, filter, bias, kernel, stride, pad,
+                               depth);
+}
+
+PoolInst *IRBuilder::createMaxPoolOp(Value *input, PoolInst::OpKind kind,
+                                     size_t kernel, size_t stride, size_t pad) {
+  ShapeNHWC idim = input->getType()->dims();
+  assert(idim.w >= kernel && idim.h >= kernel &&
+         "buffer too small for selected stride");
+
+  auto outSz =
+      ConvNode::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
+  ArrayRef<size_t> exp = {idim.n, outSz.first, outSz.second, idim.c};
+  Value *dest = createStaticVariable(ElemKind::FloatTy, exp);
+
+  // Allocate cache arrays that store the x and y coordinates of the incoming
+  // gradient for each max element.
+  Value *srcXY;
+  if (kind == PoolInst::OpKind::kMax) {
+    ArrayRef<size_t> exp = {idim.n, outSz.first, outSz.second, idim.c, 2};
+    srcXY = createStaticVariable(ElemKind::IndexTy, exp);
+  } else {
+    srcXY = createStaticVariable(ElemKind::IndexTy, {});
+  }
+
+  return createPoolInst(dest, input, srcXY, kind, kernel, stride, pad);
+}
+
+FullyConnectedInst *IRBuilder::createFullyConnectedOp(Value *input,
+                                                      size_t outDepth) {
+  return nullptr;
+}
+ReluInst *IRBuilder::createRELUOp(Value *input) { return nullptr; }
+
+SigmoidInst *IRBuilder::createSigmoidOp(Value *input) { return nullptr; }
+
+TanhInst *IRBuilder::createTanhOp(Value *input) { return nullptr; }
+
+SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input, Value *selected) {
+  return nullptr;
+}
+
+RegressionInst *IRBuilder::createRegressionOp(Value *input, Value *expected) {
+  return nullptr;
+}
+
+ReshapeInst *IRBuilder::createReshapeOp(Value *input, ArrayRef<size_t> shape) {
+  return nullptr;
+}
+
+TransposeInst *IRBuilder::createTransposeOp(Value *input,
+                                            ArrayRef<unsigned> shuffle) {
+  return nullptr;
+}
+
+ConcatInst *IRBuilder::createConcatOp(ArrayRef<Value *> inputs,
+                                      unsigned dimension) {
+  return nullptr;
+}
+
+BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(Value *input,
+                                                              size_t channelIdx,
+                                                              float epsilon,
+                                                              float momentum) {
+  return nullptr;
+}
+
+ArithmeticInst *IRBuilder::createArithmeticOp(Value *LHS, Value *RHS,
+                                              ArithmeticInst::OpKind op) {
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+//                     Low level instructions.
+//===----------------------------------------------------------------------===//
 
 CopyInst *IRBuilder::createCopyInst(Value *dest, Value *src) {
   auto *A = new CopyInst(dest, src);
