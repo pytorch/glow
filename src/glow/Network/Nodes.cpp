@@ -10,15 +10,6 @@ ConvNode::ConvNode(Network *N, NodeBase *input, size_t outDepth,
     : input_(input), filterSize_(filterSize), stride_(stride), pad_(pad),
       outDepth_(outDepth) {}
 
-std::pair<size_t, size_t> ConvNode::calculateOutputDims(size_t sx, size_t sy,
-                                                        size_t pad,
-                                                        size_t filterSize,
-                                                        size_t stride) {
-  size_t outsx = ((sx + pad * 2 - filterSize) / stride + 1);
-  size_t outsy = ((sy + pad * 2 - filterSize) / stride + 1);
-  return {outsx, outsy};
-}
-
 void ConvNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
   ShapeNHWC idim = input_->dims(ctx);

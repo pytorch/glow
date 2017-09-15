@@ -55,7 +55,11 @@ public:
   static std::pair<size_t, size_t> calculateOutputDims(size_t sx, size_t sy,
                                                        size_t pad,
                                                        size_t filterSize,
-                                                       size_t stride);
+                                                       size_t stride) {
+    size_t outsx = ((sx + pad * 2 - filterSize) / stride + 1);
+    size_t outsy = ((sy + pad * 2 - filterSize) / stride + 1);
+    return {outsx, outsy};
+  }
 };
 
 class MaxPoolNode final : public NodeBase {
