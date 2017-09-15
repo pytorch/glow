@@ -61,7 +61,7 @@ void testCIFAR10() {
       }
     }
   }
-  assert(idx == cifarImageSize * cifarNumImages && "Invalid input file");
+  GLOW_ASSERT(idx == cifarImageSize * cifarNumImages && "Invalid input file");
 
   // Construct the network:
   Network N;

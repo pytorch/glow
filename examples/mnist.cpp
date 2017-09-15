@@ -31,8 +31,8 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
                            (std::istreambuf_iterator<char>()));
   float *imagesAsFloatPtr = reinterpret_cast<float *>(&images[0]);
 
-  assert(labels.size() * 28 * 28 * sizeof(float) == images.size() &&
-         "The size of the image buffer does not match the labels vector");
+  GLOW_ASSERT(labels.size() * 28 * 28 * sizeof(float) == images.size() &&
+              "The size of the image buffer does not match the labels vector");
 
   size_t idx = 0;
 
@@ -48,7 +48,7 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
     }
   }
   size_t numImages = labels.size();
-  assert(numImages && "No images were found.");
+  GLOW_ASSERT(numImages && "No images were found.");
   return numImages;
 }
 
@@ -127,7 +127,8 @@ void testMNIST() {
     std::cout << "\n-------------\n";
   }
 
-  assert(rightAnswer >= 6 && "Did not classify as many digits as expected");
+  GLOW_ASSERT(rightAnswer >= 6 &&
+              "Did not classify as many digits as expected");
 }
 
 int main() {

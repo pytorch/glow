@@ -19,7 +19,8 @@ ImageNormalizationMode strToImageNormalizationMode(const std::string &str) {
     return ImageNormalizationMode::k0to256;
   if (str == "128to127")
     return ImageNormalizationMode::k128to127;
-  glow_unreachable();
+
+  GLOW_ASSERT(false && "Unknown image format");
 }
 
 /// Convert the normalization to numeric floating poing ranges.
@@ -33,8 +34,7 @@ std::pair<float, float> normModeToRange(ImageNormalizationMode mode) {
     return {-128., 128.};
   }
 
-  assert(false && "Unknown image format");
-  glow_unreachable();
+  GLOW_ASSERT(false && "Unknown image format");
 }
 
 /// Loads and normalizes a PNG into a tensor in the NCHW 3x224x224 format.
