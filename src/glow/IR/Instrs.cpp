@@ -95,15 +95,19 @@ void ConvolutionInst::verify() {
   Value *src = getOperand(1).first;
   Value *filter = getOperand(2).first;
   Value *bias = getOperand(3).first;
+  (void)filter;
+  (void)bias;
 
   ShapeNHWC idim = src->getType()->dims();
   ShapeNHWC odim = dest->getType()->dims();
+  (void)odim;
   assert(idim.w >= kernel_ && idim.h >= kernel_ &&
          "buffer too small for selected stride");
 
   auto outSz =
       ConvNode::calculateOutputDims(idim.h, idim.w, pad_, kernel_, stride_);
   ShapeNHWC exp = ArrayRef<size_t>{idim.n, outSz.first, outSz.second, depth_};
+  (void)exp;
   assert(exp == odim && "Invalid output dimensions");
 
   ArrayRef<size_t> filterDims = {depth_, kernel_, kernel_, idim.c};
@@ -117,15 +121,17 @@ void PoolInst::verify() {
   Value *dest = getOperand(0).first;
   Value *src = getOperand(1).first;
   Value *srcXY = getOperand(2).first;
-
+  (void)srcXY;
   ShapeNHWC idim = src->getType()->dims();
   ShapeNHWC odim = dest->getType()->dims();
+  (void)odim;
   assert(idim.w >= kernel_ && idim.h >= kernel_ &&
          "buffer too small for selected stride");
 
   auto outSz =
       ConvNode::calculateOutputDims(idim.h, idim.w, pad_, kernel_, stride_);
   ShapeNHWC exp = ArrayRef<size_t>{idim.n, outSz.first, outSz.second, idim.c};
+  (void)exp;
   assert(exp == odim && "Invalid output dimensions");
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
@@ -141,6 +147,9 @@ void FullyConnectedInst::verify() {
   Value *src = getOperand(1).first;
   Value *W = getOperand(2).first;
   Value *B = getOperand(3).first;
+  (void)dest;
+  (void)W;
+  (void)B;
   auto idim = flattenCdr(src->dims());
 
   ArrayRef<size_t> exp = {idim.first, depth_};
@@ -171,7 +180,7 @@ void ReshapeInst::verify() {
 void TransposeInst::verify() {
   auto *dest = getOperand(0).first;
   auto *src = getOperand(1).first;
-
+  (void)dest;
   std::vector<size_t> shape;
 
   auto dims = src->dims();

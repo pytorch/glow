@@ -120,6 +120,7 @@ ConcatInst *IRBuilder::createConcatOp(ArrayRef<Value *> inputs,
                                       unsigned dimension) {
   auto inDim = inputs[0]->dims();
   for (auto in : inputs) {
+    (void)in;
     assert(in->dims() == inDim && "Invalid input shape");
   }
 
