@@ -65,9 +65,11 @@ TEST(IR, allInstrs) {
 
   auto *I0 = builder.createStaticVariable(T1, InitKind::kExtern, 0);
   auto *I1 = builder.createStaticVariable(T1, InitKind::kExtern, 0);
-  auto *I2 = builder.createStaticVariable(T1, InitKind::kExtern, 0);
-  auto *I3 = builder.createStaticVariable(ElemKind::FloatTy, {1, 12, 12, 64});
 
+  auto *I3 = builder.createStaticVariable(ElemKind::FloatTy, {1, 12, 12, 64});
+  auto *I4 = builder.createStaticVariable(ElemKind::FloatTy, {1, 12, 12, 3});
+
+  auto *XY = builder.createStaticVariable(ElemKind::IndexTy, {1, 12, 12, 3, 2});
   auto *B0 = builder.createStaticVariable(T2, InitKind::kBroadcast, 0.1);
   auto *F0 = builder.createStaticVariable(ElemKind::FloatTy, {64, 7, 7, 3});
   auto *E0 = builder.createStaticVariable(T4, InitKind::kExtern, 0);
@@ -76,10 +78,11 @@ TEST(IR, allInstrs) {
   B0->setName("bias");
   F0->setName("filter");
   E0->setName("expected");
+  XY->setName("srcXY");
 
   builder.createCopyInst(I1, I0);
   builder.createConvolutionInst(I3, I1, F0, B0, 7, 2, 3, 64);
-  builder.createPoolInst(I1, I0, I2, PoolInst::OpKind::kMax, 7, 2, 3);
+  builder.createPoolInst(I4, I0, XY, PoolInst::OpKind::kMax, 7, 2, 3);
   builder.createFullyConnectedInst(I1, I0, F0, B0, 32);
   builder.createReluInst(I1, I0);
   builder.createSigmoidInst(I1, I0);

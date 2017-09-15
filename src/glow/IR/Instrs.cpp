@@ -98,12 +98,13 @@ void ConvolutionInst::verify() {
 
   ShapeNHWC idim = src->getType()->dims();
   ShapeNHWC odim = dest->getType()->dims();
+  assert(idim.w >= kernel_ && idim.h >= kernel_ &&
+         "buffer too small for selected stride");
 
   auto outSz =
       ConvNode::calculateOutputDims(idim.h, idim.w, pad_, kernel_, stride_);
-  ShapeNHWC expectedSize =
-      ArrayRef<size_t>{idim.n, outSz.first, outSz.second, depth_};
-  assert(expectedSize == odim && "Invalid output dimensions");
+  ShapeNHWC exp = ArrayRef<size_t>{idim.n, outSz.first, outSz.second, depth_};
+  assert(exp == odim && "Invalid output dimensions");
 
   ArrayRef<size_t> filterDims = {depth_, kernel_, kernel_, idim.c};
   assert(filter->getType()->dims() == filterDims && "Invalid filter dims");
@@ -112,7 +113,29 @@ void ConvolutionInst::verify() {
   assert(bias->getType()->dims() == biasDims && "Invalid bias dims");
 }
 
-void PoolInst::verify() {}
+void PoolInst::verify() {
+  Value *dest = getOperand(0).first;
+  Value *src = getOperand(1).first;
+  Value *srcXY = getOperand(2).first;
+
+  ShapeNHWC idim = src->getType()->dims();
+  ShapeNHWC odim = dest->getType()->dims();
+  assert(idim.w >= kernel_ && idim.h >= kernel_ &&
+         "buffer too small for selected stride");
+
+  auto outSz =
+      ConvNode::calculateOutputDims(idim.h, idim.w, pad_, kernel_, stride_);
+  ShapeNHWC exp = ArrayRef<size_t>{idim.n, outSz.first, outSz.second, idim.c};
+  assert(exp == odim && "Invalid output dimensions");
+
+  // Allocate cache arrays that store the x and y coordinates of the incoming
+  // gradient for each max element.
+  if (kind_ == OpKind::kMax) {
+    ArrayRef<size_t> exp = {idim.n, outSz.first, outSz.second, idim.c, 2};
+    assert(srcXY->getType()->dims() == exp && "Invalid srcXY dims");
+  }
+}
+
 void FullyConnectedInst::verify() {}
 
 void ReluInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
