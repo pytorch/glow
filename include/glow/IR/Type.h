@@ -90,6 +90,9 @@ struct Type final {
   Type() : elementType_(ElemKind::IndexTy) { numSizes_ = 0; }
 
   /// \returns true if \p other is the same type.
+  bool isEqual(TypeRef other) const { return isEqual(*other); }
+
+  /// \returns true if \p other is the same type.
   bool isEqual(const Type &other) const {
     // Element type must be the same.
     if (elementType_ != other.elementType_)

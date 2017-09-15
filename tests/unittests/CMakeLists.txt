@@ -36,3 +36,13 @@ target_link_libraries(IRTest
                         gtest_main)
 add_test(IRTest ${GLOW_BINARY_DIR}/tests/IRTest)
 
+add_executable(InterpreterTest
+                 InterpreterTest.cpp)
+target_link_libraries(InterpreterTest
+                      PRIVATE
+                        Interpreter
+                        Network
+                        IR
+                        gtest
+                        gtest_main)
+add_test(InterpreterTest ${GLOW_BINARY_DIR}/tests/InterpreterTest)
