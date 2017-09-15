@@ -42,7 +42,7 @@ void Instruction::setOperand(unsigned idx, Value *v) {
   }
 }
 
-Instruction::Operand Instruction::getOperand(unsigned idx) {
+Instruction::Operand Instruction::getOperand(unsigned idx) const {
   assert(ops_.size() > idx && "Invalid operand");
   return ops_[idx];
 }

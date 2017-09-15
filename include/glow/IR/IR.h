@@ -101,16 +101,18 @@ public:
   void setOperand(unsigned idx, Value *v);
 
   /// \returns the ith operand.
-  Operand getOperand(unsigned idx);
+  Operand getOperand(unsigned idx) const;
 
   /// \returns the number of operands.
-  unsigned getNumOperands() { return ops_.size(); }
+  unsigned getNumOperands() const { return ops_.size(); }
 
   /// Check the correctness of the use-list.
   void verifyUseList();
 
   /// Verify the correctness of the instruction parameters.
   virtual void verify() = 0;
+
+  operator Value *() const { return getOperand(0).first; }
 };
 
 /// A module that represents the compilation unit.

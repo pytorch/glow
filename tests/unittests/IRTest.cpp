@@ -71,6 +71,7 @@ TEST(IR, allInstrs) {
   auto *I3 = builder.createStaticVariable(ElemKind::FloatTy, {1, 12, 12, 64});
   auto *I4 = builder.createStaticVariable(ElemKind::FloatTy, {1, 12, 12, 3});
   auto *I5 = builder.createStaticVariable(ElemKind::FloatTy, {1, 32});
+  auto *I6 = builder.createStaticVariable(ElemKind::FloatTy, {2, 12, 12, 64});
 
   auto *XY = builder.createStaticVariable(ElemKind::IndexTy, {1, 12, 12, 3, 2});
   auto *B0 = builder.createStaticVariable(T2, InitKind::kBroadcast, 0.1);
@@ -98,7 +99,7 @@ TEST(IR, allInstrs) {
   builder.createSoftMaxInst(I1, I0, E0);
   builder.createRegressionInst(I1, I0, E0);
   builder.createTransposeInst(I2, I0, {0, 3, 1, 2});
-  builder.createConcatInst(I1, {I0, I0}, 2);
+  builder.createConcatInst(I6, {I3, I3}, 0);
   builder.createBatchNormalizationInst(I1, I0, S0, S0, S0, S0, 3, 0.01, 0.9);
   builder.createArithmeticInst(I1, I0, I0, ArithmeticInst::OpKind::kMul);
   M.verify();
@@ -111,19 +112,22 @@ TEST(IR, highLevelBuilder) {
 
   auto *input = bb.createStaticVariable(ElemKind::FloatTy, {1, 224, 224, 3});
   auto *conv = bb.createConvOp(input, 16, 7, 2, 3);
-  auto *pool = bb.createMaxPoolOp(conv->getOperand(0).first,
-                                  PoolInst::OpKind::kMax, 7, 2, 3);
-  auto *relu = bb.createRELUOp(pool->getOperand(0).first);
-  auto *sig = bb.createSigmoidOp(relu->getOperand(0).first);
-  auto *tan = bb.createTanhOp(sig->getOperand(0).first);
-  auto *fc = bb.createFullyConnectedOp(tan->getOperand(0).first, 12);
-  auto *rshp = bb.createReshapeOp(relu->getOperand(0).first, {1, 56 * 56, 16});
-
-  auto *tsps = bb.createTransposeOp(relu->getOperand(0).first, {0, 3, 1, 2});
+  auto *pool = bb.createMaxPoolOp(*conv, PoolInst::OpKind::kMax, 7, 2, 3);
+  auto *relu = bb.createRELUOp(*pool);
+  auto *sig = bb.createSigmoidOp(*relu);
+  auto *tan = bb.createTanhOp(*sig);
+  auto *fc = bb.createFullyConnectedOp(*tan, 12);
+  auto *rshp = bb.createReshapeOp(*relu, {1, 56 * 56, 16});
+  auto *tsps = bb.createTransposeOp(*relu, {0, 3, 1, 2});
+  auto *concat = bb.createConcatOp({*relu, *relu}, 0);
+  auto *bn = bb.createBatchNormalizationOp(*relu, 3, 0.001, 0.9);
+  auto *aa = bb.createArithmeticOp(*bn, *relu, ArithmeticInst::OpKind::kAdd);
 
   (void)fc;
+  (void)concat;
   (void)tsps;
   (void)rshp;
+  (void)aa;
   M.dump();
   M.verify();
 }

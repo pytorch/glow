@@ -118,19 +118,48 @@ TransposeInst *IRBuilder::createTransposeOp(Value *input,
 
 ConcatInst *IRBuilder::createConcatOp(ArrayRef<Value *> inputs,
                                       unsigned dimension) {
-  return nullptr;
+  auto inDim = inputs[0]->dims();
+  for (auto in : inputs) {
+    assert(in->dims() == inDim && "Invalid input shape");
+  }
+
+  std::vector<size_t> shape(inDim.begin(), inDim.end());
+  // We are stacking the tensors along a specific dimension. This means that we
+  // increase the size of the tensor along this dimension.
+  shape[dimension] *= inputs.size();
+
+  auto *res = createStaticVariable(inputs[0]->getElementType(), shape);
+  return createConcatInst(res, inputs, dimension);
 }
 
 BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(Value *input,
                                                               size_t channelIdx,
                                                               float epsilon,
                                                               float momentum) {
-  return nullptr;
+  // The output tensor is of the same shape as the input tensor.
+  auto *res = createStaticVariable(input->getType());
+
+  // Figure out how many channels are in the tensor.
+  size_t channels = input->dims()[channelIdx];
+
+  // Allocate the learnable parameters beta and gamma.
+  auto *beta = createStaticVariable(ElemKind::FloatTy, {channels},
+                                    InitKind::kBroadcast, 0.);
+  auto *gamma = createStaticVariable(ElemKind::FloatTy, {channels},
+                                     InitKind::kBroadcast, 1.0);
+  auto *mean = createStaticVariable(ElemKind::FloatTy, {channels});
+  auto *variance = createStaticVariable(ElemKind::FloatTy, {channels});
+
+  return createBatchNormalizationInst(res, input, gamma, beta, mean, variance,
+                                      channelIdx, epsilon, momentum);
 }
 
 ArithmeticInst *IRBuilder::createArithmeticOp(Value *LHS, Value *RHS,
                                               ArithmeticInst::OpKind op) {
-  return nullptr;
+  assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
+  // The output tensor is of the same shape as the input tensor.
+  auto *res = createStaticVariable(LHS->getType());
+  return createArithmeticInst(res, LHS, RHS, op);
 }
 
 //===----------------------------------------------------------------------===//

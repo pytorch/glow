@@ -182,8 +182,35 @@ void TransposeInst::verify() {
   assert(dest->dims() == ArrayRef<size_t>(shape) && "Invalid transpose dims");
 }
 
-void ConcatInst::verify() {}
-void BatchNormalizationInst::verify() {}
+void ConcatInst::verify() {
+  assert(getNumOperands() > 1 && "Invalid number of operands");
+  // The dimension of the first input.
+  auto inDim = getOperand(1).first->dims();
+
+  for (int i = 2, e = this->getNumOperands(); i < e; i++) {
+    assert(getOperand(i).first->dims() == inDim && "Invalid input shape");
+  }
+
+  std::vector<size_t> shape(inDim.begin(), inDim.end());
+  // We are stacking the tensors along a specific dimension. This means that we
+  // increase the size of the tensor along this dimension.
+  shape[dim_] *= getNumOperands() - 1;
+
+  assert(getOperand(0).first->dims() == ArrayRef<size_t>(shape) &&
+         "Invalid output shape");
+}
+void BatchNormalizationInst::verify() {
+  checkSameType(getOperand(0), getOperand(1));
+
+  // Figure out how many channels are in the tensor.
+  size_t channels = getOperand(0).first->dims()[channelIdx_];
+
+  ArrayRef<size_t> exp = {channels};
+  assert(getOperand(2).first->getType()->dims() == exp && "Invalid bias dim");
+  assert(getOperand(3).first->getType()->dims() == exp && "Invalid scale dim");
+  assert(getOperand(4).first->getType()->dims() == exp && "Invalid mean dim");
+  assert(getOperand(5).first->getType()->dims() == exp && "Invalid var dim");
+}
 void ArithmeticInst::verify() {
   checkSameType(getOperand(0), getOperand(1));
   checkSameType(getOperand(0), getOperand(2));

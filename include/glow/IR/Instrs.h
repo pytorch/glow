@@ -151,6 +151,7 @@ public:
 };
 
 class ConcatInst : public Instruction {
+  /// We concat the tensors along this dimension.
   size_t dim_;
 
 public:
