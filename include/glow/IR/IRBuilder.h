@@ -82,6 +82,9 @@ public:
   RegressionInst *createRegressionInst(Value *dest, Value *src,
                                        Value *expected);
 
+  ReshapeInst *createReshapeInst(Value *dest, Value *src,
+                                 ArrayRef<size_t> shape);
+
   TransposeInst *createTransposeInst(Value *dest, Value *src,
                                      ArrayRef<unsigned> shuffle);
 

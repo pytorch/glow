@@ -65,6 +65,8 @@ TEST(IR, allInstrs) {
 
   auto *I0 = builder.createStaticVariable(T1, InitKind::kExtern, 0);
   auto *I1 = builder.createStaticVariable(T1, InitKind::kExtern, 0);
+  auto *I2 = builder.createStaticVariable(ElemKind::FloatTy, {1, 3, 24, 24},
+                                          InitKind::kExtern, 0);
 
   auto *I3 = builder.createStaticVariable(ElemKind::FloatTy, {1, 12, 12, 64});
   auto *I4 = builder.createStaticVariable(ElemKind::FloatTy, {1, 12, 12, 3});
@@ -95,7 +97,7 @@ TEST(IR, allInstrs) {
   builder.createTanhInst(I1, I0);
   builder.createSoftMaxInst(I1, I0, E0);
   builder.createRegressionInst(I1, I0, E0);
-  builder.createTransposeInst(I1, I0, {0, 2, 3, 1});
+  builder.createTransposeInst(I2, I0, {0, 3, 1, 2});
   builder.createConcatInst(I1, {I0, I0}, 2);
   builder.createBatchNormalizationInst(I1, I0, S0, S0, S0, S0, 3, 0.01, 0.9);
   builder.createArithmeticInst(I1, I0, I0, ArithmeticInst::OpKind::kMul);
@@ -115,8 +117,13 @@ TEST(IR, highLevelBuilder) {
   auto *sig = bb.createSigmoidOp(relu->getOperand(0).first);
   auto *tan = bb.createTanhOp(sig->getOperand(0).first);
   auto *fc = bb.createFullyConnectedOp(tan->getOperand(0).first, 12);
+  auto *rshp = bb.createReshapeOp(relu->getOperand(0).first, {1, 56 * 56, 16});
+
+  auto *tsps = bb.createTransposeOp(relu->getOperand(0).first, {0, 3, 1, 2});
 
   (void)fc;
+  (void)tsps;
+  (void)rshp;
   M.dump();
   M.verify();
 }

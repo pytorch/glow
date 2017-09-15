@@ -159,12 +159,29 @@ void FullyConnectedInst::verify() {
 void ReluInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
 void SigmoidInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
 void TanhInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
-
 void SoftMaxInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
 void RegressionInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
 
-void TransposeInst::verify() {}
-void ReshapeInst::verify() {}
+void ReshapeInst::verify() {
+  assert(getOperand(0).first->getType()->size() ==
+             getOperand(1).first->getType()->size() &&
+         "Reshape into a different size");
+}
+
+void TransposeInst::verify() {
+  auto *dest = getOperand(0).first;
+  auto *src = getOperand(1).first;
+
+  std::vector<size_t> shape;
+
+  auto dims = src->dims();
+  for (size_t i = 0; i < dims.size(); i++) {
+    shape.push_back(dims[shuffle_[i]]);
+  }
+
+  assert(dest->dims() == ArrayRef<size_t>(shape) && "Invalid transpose dims");
+}
+
 void ConcatInst::verify() {}
 void BatchNormalizationInst::verify() {}
 void ArithmeticInst::verify() {

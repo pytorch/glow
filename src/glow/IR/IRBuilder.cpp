@@ -90,20 +90,30 @@ TanhInst *IRBuilder::createTanhOp(Value *input) {
 }
 
 SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input, Value *selected) {
-  return nullptr;
+  auto *res = createStaticVariable(input->getType());
+  return createSoftMaxInst(res, input, selected);
 }
 
 RegressionInst *IRBuilder::createRegressionOp(Value *input, Value *expected) {
-  return nullptr;
+  auto *res = createStaticVariable(input->getType());
+  return createRegressionInst(res, input, expected);
 }
 
 ReshapeInst *IRBuilder::createReshapeOp(Value *input, ArrayRef<size_t> shape) {
-  return nullptr;
+  auto *res = createStaticVariable(input->getElementType(), shape);
+  return createReshapeInst(res, input, shape);
 }
 
 TransposeInst *IRBuilder::createTransposeOp(Value *input,
                                             ArrayRef<unsigned> shuffle) {
-  return nullptr;
+  std::vector<size_t> shape;
+  auto dims = input->dims();
+  for (size_t i = 0; i < dims.size(); i++) {
+    shape.push_back(dims[shuffle[i]]);
+  }
+
+  auto *res = createStaticVariable(input->getElementType(), shape);
+  return createTransposeInst(res, input, shuffle);
 }
 
 ConcatInst *IRBuilder::createConcatOp(ArrayRef<Value *> inputs,
@@ -188,6 +198,13 @@ SoftMaxInst *IRBuilder::createSoftMaxInst(Value *dest, Value *src,
 RegressionInst *IRBuilder::createRegressionInst(Value *dest, Value *src,
                                                 Value *expected) {
   auto *A = new RegressionInst(dest, src, expected);
+  M_.pushInstr(A);
+  return A;
+}
+
+ReshapeInst *IRBuilder::createReshapeInst(Value *dest, Value *src,
+                                          ArrayRef<size_t> shape) {
+  auto *A = new ReshapeInst(dest, src, shape);
   M_.pushInstr(A);
   return A;
 }
