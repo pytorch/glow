@@ -45,7 +45,11 @@ public:
 
   TypeRef getType() { return Ty_; }
 
-  bool hasType(TypeRef T) { return Ty_ == T; }
+  ArrayRef<size_t> dims() { return Ty_->dims(); }
+
+  ElemKind getElementType() const { return Ty_->getElementType(); }
+
+  bool isType(TypeRef T) { return Ty_ == T; }
 };
 
 enum class OperandKind : unsigned char {

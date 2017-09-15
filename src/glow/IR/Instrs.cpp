@@ -136,7 +136,25 @@ void PoolInst::verify() {
   }
 }
 
-void FullyConnectedInst::verify() {}
+void FullyConnectedInst::verify() {
+  Value *dest = getOperand(0).first;
+  Value *src = getOperand(1).first;
+  Value *W = getOperand(2).first;
+  Value *B = getOperand(3).first;
+  auto idim = flattenCdr(src->dims());
+
+  ArrayRef<size_t> exp = {idim.first, depth_};
+  assert(dest->dims() == exp && "Invalid output shape");
+  (void)exp;
+
+  ArrayRef<size_t> expW = {depth_, idim.second};
+  assert(W->dims() == expW && "Invalid output shape");
+  (void)expW;
+
+  ArrayRef<size_t> expB = {depth_};
+  assert(B->dims() == expB && "Invalid output shape");
+  (void)expB;
+}
 
 void ReluInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
 void SigmoidInst::verify() { checkSameType(getOperand(0), getOperand(1)); }

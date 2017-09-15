@@ -11,7 +11,7 @@ using namespace glow;
 ConvolutionInst *IRBuilder::createConvOp(Value *input, size_t depth,
                                          size_t kernel, size_t stride,
                                          size_t pad) {
-  ShapeNHWC idim = input->getType()->dims();
+  ShapeNHWC idim = input->dims();
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
@@ -35,7 +35,7 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, size_t depth,
 
 PoolInst *IRBuilder::createMaxPoolOp(Value *input, PoolInst::OpKind kind,
                                      size_t kernel, size_t stride, size_t pad) {
-  ShapeNHWC idim = input->getType()->dims();
+  ShapeNHWC idim = input->dims();
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
@@ -59,13 +59,35 @@ PoolInst *IRBuilder::createMaxPoolOp(Value *input, PoolInst::OpKind kind,
 
 FullyConnectedInst *IRBuilder::createFullyConnectedOp(Value *input,
                                                       size_t outDepth) {
-  return nullptr;
+  TypeRef T = input->getType();
+  auto idim = flattenCdr(input->dims());
+
+  size_t fanIn = idim.second;
+  auto *Out = createStaticVariable(T->getElementType(), {idim.first, outDepth});
+
+  auto *W = createStaticVariable(T->getElementType(), {outDepth, idim.second},
+                                 InitKind::kXavier, fanIn);
+
+  auto *B = createStaticVariable(T->getElementType(), {outDepth},
+                                 InitKind::kBroadcast, 0.1);
+
+  return createFullyConnectedInst(Out, input, W, B, outDepth);
 }
-ReluInst *IRBuilder::createRELUOp(Value *input) { return nullptr; }
 
-SigmoidInst *IRBuilder::createSigmoidOp(Value *input) { return nullptr; }
+ReluInst *IRBuilder::createRELUOp(Value *input) {
+  auto *res = createStaticVariable(input->getType());
+  return createReluInst(res, input);
+}
 
-TanhInst *IRBuilder::createTanhOp(Value *input) { return nullptr; }
+SigmoidInst *IRBuilder::createSigmoidOp(Value *input) {
+  auto *res = createStaticVariable(input->getType());
+  return createSigmoidInst(res, input);
+}
+
+TanhInst *IRBuilder::createTanhOp(Value *input) {
+  auto *res = createStaticVariable(input->getType());
+  return createTanhInst(res, input);
+}
 
 SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input, Value *selected) {
   return nullptr;

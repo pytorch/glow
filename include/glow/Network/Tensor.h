@@ -77,7 +77,7 @@ public:
   const Type &getType() { return type_; }
 
   /// \return the element type of the tensor.
-  ElemKind getElementType() const { return type_.elementType_; }
+  ElemKind getElementType() const { return type_.getElementType(); }
 
   /// \returns True if the coordinate is within the array.
   bool isInBounds(ArrayRef<size_t> indices) const {
