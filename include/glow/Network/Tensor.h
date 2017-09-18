@@ -121,6 +121,12 @@ public:
   }
 
   /// Allocate and initialize a new tensor.
+  Tensor(TypeRef ty) : data_(nullptr), type_(*ty) { reset(*ty); }
+
+  /// Allocate and initialize a new tensor.
+  Tensor(const Type &ty) : data_(nullptr), type_(ty) { reset(ty); }
+
+  /// Allocate and initialize a new tensor.
   Tensor(ElemKind elemTy, ArrayRef<size_t> dims)
       : data_(nullptr), type_(elemTy, dims) {
     reset(elemTy, dims);

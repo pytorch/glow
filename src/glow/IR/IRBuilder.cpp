@@ -33,8 +33,8 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, size_t depth,
                                depth);
 }
 
-PoolInst *IRBuilder::createMaxPoolOp(Value *input, PoolInst::OpKind kind,
-                                     size_t kernel, size_t stride, size_t pad) {
+PoolInst *IRBuilder::createPoolOp(Value *input, PoolInst::OpKind kind,
+                                  size_t kernel, size_t stride, size_t pad) {
   ShapeNHWC idim = input->dims();
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");

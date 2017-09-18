@@ -23,8 +23,8 @@ public:
   ConvolutionInst *createConvOp(Value *input, size_t depth, size_t kernel,
                                 size_t stride, size_t pad);
 
-  PoolInst *createMaxPoolOp(Value *input, PoolInst::OpKind kind, size_t kernel,
-                            size_t stride, size_t pad);
+  PoolInst *createPoolOp(Value *input, PoolInst::OpKind kind, size_t kernel,
+                         size_t stride, size_t pad);
 
   FullyConnectedInst *createFullyConnectedOp(Value *input, size_t outDepth);
 

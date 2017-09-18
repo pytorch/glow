@@ -114,7 +114,7 @@ TEST(IR, highLevelBuilder) {
 
   auto *input = bb.createStaticVariable(ElemKind::FloatTy, {1, 224, 224, 3});
   auto *conv = bb.createConvOp(input, 16, 7, 2, 3);
-  auto *pool = bb.createMaxPoolOp(*conv, PoolInst::OpKind::kMax, 7, 2, 3);
+  auto *pool = bb.createPoolOp(*conv, PoolInst::OpKind::kMax, 7, 2, 3);
   auto *relu = bb.createRELUOp(*pool);
   auto *sig = bb.createSigmoidOp(*relu);
   auto *tan = bb.createTanhOp(*sig);
@@ -140,7 +140,7 @@ TEST(IR, casting) {
 
   auto *input = bb.createStaticVariable(ElemKind::FloatTy, {1, 224, 224, 3});
   auto *conv = bb.createConvOp(input, 16, 7, 2, 3);
-  auto *pool = bb.createMaxPoolOp(*conv, PoolInst::OpKind::kMax, 7, 2, 3);
+  auto *pool = bb.createPoolOp(*conv, PoolInst::OpKind::kMax, 7, 2, 3);
 
   EXPECT_EQ(isa<PoolInst>(pool), true);
   EXPECT_EQ(isa<PoolInst>(input), false);

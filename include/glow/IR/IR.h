@@ -150,13 +150,18 @@ public:
 
 /// A module that represents the compilation unit.
 class Module final {
+public:
+  using InstListTy = std::list<Instruction *>;
+  using VarListTy = std::list<Value *>;
+
+private:
   /// A uniqued list of types in the module. Types in this list can be compared
   /// by comparing their addresses.
   std::list<Type> types_{};
   /// A list of values that represent the non-instructions in the network.
   std::list<Value *> variables_{};
   /// A list of instruction that represent the network.
-  std::list<Instruction *> instrs_{};
+  InstListTy instrs_{};
 
 public:
   /// Add an instruction to the instr stream.
@@ -183,6 +188,12 @@ public:
 
   /// Dump a textual representation of the module.
   void dump();
+
+  /// \returns the list of instructions.
+  InstListTy &getInstrs() { return instrs_; }
+
+  /// \returns the list of variables.
+  VarListTy &getVars() { return variables_; }
 };
 
 } // namespace glow

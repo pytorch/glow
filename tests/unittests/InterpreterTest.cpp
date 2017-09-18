@@ -10,15 +10,36 @@
 
 using namespace glow;
 
-TEST(Interpreter, init) {
+TEST(Interpreter, interpret) {
 
   Interpreter IP;
 
   auto &builder = IP.getBuilder();
-  auto *v = builder.createStaticVariable(glow::ElemKind::FloatTy, {320, 200});
-  auto *t = new Tensor(glow::ElemKind::FloatTy, {320, 200});
-  IP.registerTensor(v, t);
+  auto *input =
+      builder.createStaticVariable(glow::ElemKind::FloatTy, {1, 320, 200, 3});
 
-  /// Check that value-tensor registery works.
-  EXPECT_EQ(IP.getTensorForValue(v), t);
+  auto *ex = builder.createStaticVariable(glow::ElemKind::IndexTy, {1, 1});
+
+  auto *CV0 = builder.createConvOp(input, 16, 5, 1, 2);
+  auto *RL0 = builder.createRELUOp(*CV0);
+  auto *MP0 = builder.createPoolOp(*RL0, PoolInst::OpKind::kMax, 2, 2, 0);
+
+  auto *CV1 = builder.createConvOp(*MP0, 20, 5, 1, 2);
+  auto *RL1 = builder.createRELUOp(*CV1);
+  auto *MP1 = builder.createPoolOp(*RL1, PoolInst::OpKind::kMax, 2, 2, 0);
+
+  auto *CV2 = builder.createConvOp(*MP1, 20, 5, 1, 2);
+  auto *RL2 = builder.createRELUOp(*CV2);
+  auto *MP2 = builder.createPoolOp(*RL2, PoolInst::OpKind::kMax, 2, 2, 0);
+
+  auto *FCL1 = builder.createFullyConnectedOp(*MP2, 10);
+  auto *RL3 = builder.createRELUOp(*FCL1);
+  auto *SM = builder.createSoftMaxOp(*RL3, ex);
+  (void)SM;
+
+  IP.getModule().dump();
+  IP.getModule().verify();
+
+  IP.initVars();
+  IP.infer();
 }

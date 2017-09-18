@@ -35,6 +35,28 @@ public:
   /// \returns a pointer to the tensor that is saved under \p v. The tensor
   /// is owned by the Interpreter.
   const Tensor *getTensorForValue(Value *v) const;
+
+  /// Initialize all of the variables in the program.
+  void initVars();
+
+  /// Runs the program in a forward pass.
+  void infer();
+
+#define DBG std::cout << __FUNCTION__ << "\n";
+  void fwdCopyInst(CopyInst *I) { DBG; }
+  void fwdConvolutionInst(ConvolutionInst *I) { DBG; }
+  void fwdPoolInst(PoolInst *I) { DBG; }
+  void fwdFullyConnectedInst(FullyConnectedInst *I) { DBG; }
+  void fwdReluInst(ReluInst *I) { DBG; }
+  void fwdSigmoidInst(SigmoidInst *I) { DBG; }
+  void fwdTanhInst(TanhInst *I) { DBG; }
+  void fwdSoftMaxInst(SoftMaxInst *I) { DBG; }
+  void fwdRegressionInst(RegressionInst *I) { DBG; }
+  void fwdTransposeInst(TransposeInst *I) { DBG; }
+  void fwdReshapeInst(ReshapeInst *I) { DBG; }
+  void fwdConcatInst(ConcatInst *I) { DBG; }
+  void fwdBatchNormalizationInst(BatchNormalizationInst *I) { DBG; }
+  void fwdArithmeticInst(ArithmeticInst *I) { DBG; }
 };
 
 } // namespace glow
