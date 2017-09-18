@@ -15,6 +15,8 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::CopyInstKind;
   }
+  Value *getDest() { return getOperand(0).first; }
+  Value *getSrc() { return getOperand(1).first; }
   void verify();
 };
 
@@ -39,6 +41,16 @@ public:
     return k->getKind() == Kinded::Kind::ConvolutionInstKind;
   }
   std::string getExtraDesc();
+  Value *getDest() { return getOperand(0).first; }
+  Value *getSrc() { return getOperand(1).first; }
+  Value *getFilter() { return getOperand(2).first; }
+  Value *getBias() { return getOperand(3).first; }
+
+  size_t getKernel() { return kernel_; }
+  size_t getStride() { return stride_; }
+  size_t getPad() { return pad_; }
+  size_t getDepth() { return depth_; }
+
   void verify();
 };
 
@@ -69,6 +81,14 @@ public:
     return k->getKind() == Kinded::Kind::PoolInstKind;
   }
   std::string getExtraDesc();
+  Value *getDest() { return getOperand(0).first; }
+  Value *getSrc() { return getOperand(1).first; }
+  Value *srcXY() { return getOperand(2).first; }
+  size_t getKernel() { return kernel_; }
+  size_t getStride() { return stride_; }
+  size_t getPad() { return pad_; }
+  OpKind getKind() { return kind_; }
+
   void verify();
 };
 
@@ -89,6 +109,11 @@ public:
     return k->getKind() == Kinded::Kind::FullyConnectedInstKind;
   }
   std::string getExtraDesc();
+  Value *getDest() { return getOperand(0).first; }
+  Value *getSrc() { return getOperand(1).first; }
+  Value *getFilter() { return getOperand(2).first; }
+  Value *getBias() { return getOperand(3).first; }
+  size_t getDepth() { return depth_; }
   void verify();
 };
 
@@ -101,6 +126,8 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::ReluInstKind;
   }
+  Value *getDest() { return getOperand(0).first; }
+  Value *getSrc() { return getOperand(1).first; }
   void verify();
 };
 
@@ -113,6 +140,8 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::SigmoidInstKind;
   }
+  Value *getDest() { return getOperand(0).first; }
+  Value *getSrc() { return getOperand(1).first; }
   void verify();
 };
 
@@ -125,6 +154,8 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::TanhInstKind;
   }
+  Value *getDest() { return getOperand(0).first; }
+  Value *getSrc() { return getOperand(1).first; }
   void verify();
 };
 
@@ -139,6 +170,9 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::SoftMaxInstKind;
   }
+  Value *getDest() { return getOperand(0).first; }
+  Value *getSrc() { return getOperand(1).first; }
+  Value *getExpected() { return getOperand(2).first; }
   void verify();
 };
 
@@ -153,6 +187,9 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::RegressionInstKind;
   }
+  Value *getDest() { return getOperand(0).first; }
+  Value *getSrc() { return getOperand(1).first; }
+  Value *getExpected() { return getOperand(2).first; }
   void verify();
 };
 
@@ -169,6 +206,10 @@ public:
     return k->getKind() == Kinded::Kind::TransposeInstKind;
   }
   std::string getExtraDesc();
+  Value *getDest() { return getOperand(0).first; }
+  Value *getSrc() { return getOperand(1).first; }
+
+  ArrayRef<unsigned> getShuffle() { return shuffle_; }
   void verify();
 };
 
@@ -186,6 +227,10 @@ public:
   }
 
   std::string getExtraDesc();
+  Value *getDest() { return getOperand(0).first; }
+  Value *getSrc() { return getOperand(1).first; }
+  ArrayRef<size_t> getDims() { return dims_; }
+
   void verify();
 };
 
@@ -206,6 +251,10 @@ public:
     return k->getKind() == Kinded::Kind::ConcatInstKind;
   }
   std::string getExtraDesc();
+  Value *getDest() { return getOperand(0).first; }
+  Value *getSrc() { return getOperand(1).first; }
+  size_t getDim() { return dim_; }
+
   void verify();
 };
 
@@ -231,6 +280,17 @@ public:
     return k->getKind() == Kinded::Kind::BatchNormalizationInstKind;
   }
   std::string getExtraDesc();
+  Value *getDest() { return getOperand(0).first; }
+  Value *getSrc() { return getOperand(1).first; }
+
+  Value *getScale() { return getOperand(2).first; }
+  Value *getBias() { return getOperand(3).first; }
+  Value *getMean() { return getOperand(4).first; }
+  Value *getVar() { return getOperand(5).first; }
+
+  size_t getChannelIdx() { return channelIdx_; }
+  float getEpsilon() { return epsilon_; }
+  float getMomentum() { return momentum_; }
   void verify();
 };
 
@@ -257,6 +317,10 @@ public:
     return k->getKind() == Kinded::Kind::ArithmeticInstKind;
   }
   std::string getExtraDesc();
+  Value *getDest() { return getOperand(0).first; }
+  Value *getSrc() { return getOperand(1).first; }
+  OpKind getKind() { return kind_; }
+
   void verify();
 };
 

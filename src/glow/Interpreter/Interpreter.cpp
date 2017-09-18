@@ -26,10 +26,14 @@ void Interpreter::registerTensor(Value *v, Tensor *t) {
   tensors_[v] = t;
 }
 
-const Tensor *Interpreter::getTensorForValue(Value *v) const {
+Tensor *Interpreter::getTensorForValue(Value *v) const {
   auto it = tensors_.find(v);
   assert(it != tensors_.end() && "Unknown value key");
   return it->second;
+}
+
+Handle<FloatTy> Interpreter::getTensorHandle(Value *v) const {
+  return getTensorForValue(v)->getHandle<FloatTy>();
 }
 
 void Interpreter::initVars() {
@@ -45,6 +49,7 @@ void Interpreter::initVars() {
     auto it = tensors_.find(V);
     if (it == tensors_.end()) {
       T = new Tensor(V->getType());
+      tensors_[V] = T;
     } else {
       T = it->second;
     }
@@ -115,7 +120,7 @@ void Interpreter::infer() {
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   case Kinded::Kind::CLASS##Kind: {                                            \
-    fwd##CLASS(cast<CLASS>(I));                                                \
+    fwd##CLASS(nullptr, false, cast<CLASS>(I));                                \
     break;                                                                     \
   }
 

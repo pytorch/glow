@@ -15,10 +15,9 @@ TEST(Interpreter, interpret) {
   Interpreter IP;
 
   auto &builder = IP.getBuilder();
-  auto *input =
-      builder.createStaticVariable(glow::ElemKind::FloatTy, {1, 320, 200, 3});
+  auto *input = builder.createStaticVariable(ElemKind::FloatTy, {1, 32, 32, 3});
 
-  auto *ex = builder.createStaticVariable(glow::ElemKind::IndexTy, {1, 1});
+  auto *ex = builder.createStaticVariable(ElemKind::IndexTy, {1, 1});
 
   auto *CV0 = builder.createConvOp(input, 16, 5, 1, 2);
   auto *RL0 = builder.createRELUOp(*CV0);

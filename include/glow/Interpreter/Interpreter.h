@@ -9,6 +9,8 @@
 
 namespace glow {
 
+class Context;
+
 /// This is the IR-interpreter. It owns the IR, and the heap, and is able to
 /// execute the instructions one at a time.
 class Interpreter final {
@@ -34,7 +36,10 @@ public:
 
   /// \returns a pointer to the tensor that is saved under \p v. The tensor
   /// is owned by the Interpreter.
-  const Tensor *getTensorForValue(Value *v) const;
+  Tensor *getTensorForValue(Value *v) const;
+
+  /// \returns a float-handle to the tensor that is stored at \p v.
+  Handle<FloatTy> getTensorHandle(Value *v) const;
 
   /// Initialize all of the variables in the program.
   void initVars();
@@ -42,21 +47,12 @@ public:
   /// Runs the program in a forward pass.
   void infer();
 
-#define DBG std::cout << __FUNCTION__ << "\n";
-  void fwdCopyInst(CopyInst *I) { DBG; }
-  void fwdConvolutionInst(ConvolutionInst *I) { DBG; }
-  void fwdPoolInst(PoolInst *I) { DBG; }
-  void fwdFullyConnectedInst(FullyConnectedInst *I) { DBG; }
-  void fwdReluInst(ReluInst *I) { DBG; }
-  void fwdSigmoidInst(SigmoidInst *I) { DBG; }
-  void fwdTanhInst(TanhInst *I) { DBG; }
-  void fwdSoftMaxInst(SoftMaxInst *I) { DBG; }
-  void fwdRegressionInst(RegressionInst *I) { DBG; }
-  void fwdTransposeInst(TransposeInst *I) { DBG; }
-  void fwdReshapeInst(ReshapeInst *I) { DBG; }
-  void fwdConcatInst(ConcatInst *I) { DBG; }
-  void fwdBatchNormalizationInst(BatchNormalizationInst *I) { DBG; }
-  void fwdArithmeticInst(ArithmeticInst *I) { DBG; }
+#define DEF_VALUE(CLASS, NAME)
+#define DEF_INSTR(CLASS, NAME)                                                 \
+  void fwd##CLASS(Context *ctx, bool isTrain, CLASS *I);
+#include "glow/IR/Instrs.def"
+#undef DEF_INSTR
+#undef DEF_VALUE
 };
 
 } // namespace glow
