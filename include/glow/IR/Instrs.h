@@ -9,9 +9,13 @@ namespace glow {
 class CopyInst : public Instruction {
 public:
   CopyInst(Value *dest, Value *src)
-      : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
-  StringRef getKindName() override { return "copy"; }
-  void verify() override;
+      : Instruction(Kinded::Kind::CopyInstKind,
+                    {{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::CopyInstKind;
+  }
+  void verify();
 };
 
 class ConvolutionInst : public Instruction {
@@ -23,16 +27,19 @@ class ConvolutionInst : public Instruction {
 public:
   ConvolutionInst(Value *dest, Value *src, Value *filter, Value *bias,
                   size_t kernel, size_t stride, size_t pad, size_t depth)
-      : Instruction({{dest, OperandKind::kOut},
+      : Instruction(Kinded::Kind::ConvolutionInstKind,
+                    {{dest, OperandKind::kOut},
                      {src, OperandKind::kIn},
                      {filter, OperandKind::kIn},
                      {bias, OperandKind::kIn}}),
 
         kernel_(kernel), stride_(stride), pad_(pad), depth_(depth) {}
 
-  StringRef getKindName() override { return "convolution"; }
-  std::string getExtraDesc() override;
-  void verify() override;
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::ConvolutionInstKind;
+  }
+  std::string getExtraDesc();
+  void verify();
 };
 
 class PoolInst : public Instruction {
@@ -54,14 +61,15 @@ private:
 public:
   PoolInst(Value *dest, Value *src, Value *srcXY, OpKind kind, size_t kernel,
            size_t stride, size_t pad)
-      : Instruction({{dest, OperandKind::kOut},
-                     {src, OperandKind::kIn},
-                     {srcXY, OperandKind::kInOut}}),
+      : Instruction(Kinded::Kind::PoolInstKind, {{dest, OperandKind::kOut},
+                                                 {src, OperandKind::kIn},
+                                                 {srcXY, OperandKind::kInOut}}),
         kernel_(kernel), stride_(stride), pad_(pad), kind_(kind) {}
-
-  StringRef getKindName() override { return "pool"; }
-  std::string getExtraDesc() override;
-  void verify() override;
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::PoolInstKind;
+  }
+  std::string getExtraDesc();
+  void verify();
 };
 
 class FullyConnectedInst : public Instruction {
@@ -70,59 +78,82 @@ class FullyConnectedInst : public Instruction {
 public:
   FullyConnectedInst(Value *dest, Value *src, Value *filter, Value *bias,
                      size_t depth)
-      : Instruction({{dest, OperandKind::kOut},
+      : Instruction(Kinded::Kind::FullyConnectedInstKind,
+                    {{dest, OperandKind::kOut},
                      {src, OperandKind::kIn},
                      {filter, OperandKind::kIn},
                      {bias, OperandKind::kIn}}),
         depth_(depth) {}
 
-  StringRef getKindName() override { return "fullyconnected"; }
-  std::string getExtraDesc() override;
-  void verify() override;
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::FullyConnectedInstKind;
+  }
+  std::string getExtraDesc();
+  void verify();
 };
 
 class ReluInst : public Instruction {
 public:
   ReluInst(Value *dest, Value *src)
-      : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
-  StringRef getKindName() override { return "relu"; }
-  void verify() override;
+      : Instruction(Kinded::Kind::ReluInstKind,
+                    {{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::ReluInstKind;
+  }
+  void verify();
 };
 
 class SigmoidInst : public Instruction {
 public:
   SigmoidInst(Value *dest, Value *src)
-      : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
-  StringRef getKindName() override { return "sigmoid"; }
-  void verify() override;
+      : Instruction(Kinded::Kind::SigmoidInstKind,
+                    {{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::SigmoidInstKind;
+  }
+  void verify();
 };
 
 class TanhInst : public Instruction {
 public:
   TanhInst(Value *dest, Value *src)
-      : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
-  StringRef getKindName() override { return "tanh"; }
-  void verify() override;
+      : Instruction(Kinded::Kind::TanhInstKind,
+                    {{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::TanhInstKind;
+  }
+  void verify();
 };
 
 class SoftMaxInst : public Instruction {
 public:
   SoftMaxInst(Value *dest, Value *src, Value *expected)
-      : Instruction({{dest, OperandKind::kOut},
+      : Instruction(Kinded::Kind::SoftMaxInstKind,
+                    {{dest, OperandKind::kOut},
                      {src, OperandKind::kIn},
                      {expected, OperandKind::kIn}}) {}
-  StringRef getKindName() override { return "softmax"; }
-  void verify() override;
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::SoftMaxInstKind;
+  }
+  void verify();
 };
 
 class RegressionInst : public Instruction {
 public:
   RegressionInst(Value *dest, Value *src, Value *expected)
-      : Instruction({{dest, OperandKind::kOut},
+      : Instruction(Kinded::Kind::RegressionInstKind,
+                    {{dest, OperandKind::kOut},
                      {src, OperandKind::kIn},
                      {expected, OperandKind::kIn}}) {}
-  StringRef getKindName() override { return "regression"; }
-  void verify() override;
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::RegressionInstKind;
+  }
+  void verify();
 };
 
 class TransposeInst : public Instruction {
@@ -130,11 +161,15 @@ class TransposeInst : public Instruction {
 
 public:
   TransposeInst(Value *dest, Value *src, ArrayRef<unsigned> shuffle)
-      : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}),
+      : Instruction(Kinded::Kind::TransposeInstKind,
+                    {{dest, OperandKind::kOut}, {src, OperandKind::kIn}}),
         shuffle_(shuffle.begin(), shuffle.end()) {}
-  StringRef getKindName() override { return "transpose"; }
-  std::string getExtraDesc() override;
-  void verify() override;
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::TransposeInstKind;
+  }
+  std::string getExtraDesc();
+  void verify();
 };
 
 class ReshapeInst : public Instruction {
@@ -142,12 +177,16 @@ class ReshapeInst : public Instruction {
 
 public:
   ReshapeInst(Value *dest, Value *src, ArrayRef<size_t> dims)
-      : Instruction({{dest, OperandKind::kOut}, {src, OperandKind::kIn}}),
+      : Instruction(Kinded::Kind::ReshapeInstKind,
+                    {{dest, OperandKind::kOut}, {src, OperandKind::kIn}}),
         dims_(dims.begin(), dims.end()) {}
-  StringRef getKindName() override { return "reshape"; }
 
-  std::string getExtraDesc() override;
-  void verify() override;
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::ReshapeInstKind;
+  }
+
+  std::string getExtraDesc();
+  void verify();
 };
 
 class ConcatInst : public Instruction {
@@ -156,14 +195,18 @@ class ConcatInst : public Instruction {
 
 public:
   ConcatInst(Value *dest, ArrayRef<Value *> src, size_t dim)
-      : Instruction({{dest, OperandKind::kOut}}), dim_(dim) {
+      : Instruction(Kinded::Kind::ConcatInstKind, {{dest, OperandKind::kOut}}),
+        dim_(dim) {
     for (auto s : src) {
       pushOperand({s, OperandKind::kIn});
     }
   }
-  StringRef getKindName() override { return "concat"; }
-  std::string getExtraDesc() override;
-  void verify() override;
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::ConcatInstKind;
+  }
+  std::string getExtraDesc();
+  void verify();
 };
 
 class BatchNormalizationInst : public Instruction {
@@ -175,7 +218,8 @@ public:
   BatchNormalizationInst(Value *dest, Value *src, Value *scale, Value *bias,
                          Value *mean, Value *var, size_t channelIdx,
                          float epsilon, float momentum)
-      : Instruction({{dest, OperandKind::kOut},
+      : Instruction(Kinded::Kind::BatchNormalizationInstKind,
+                    {{dest, OperandKind::kOut},
                      {src, OperandKind::kIn},
                      {scale, OperandKind::kIn},
                      {bias, OperandKind::kIn},
@@ -183,10 +227,11 @@ public:
                      {var, OperandKind::kInOut}}),
         channelIdx_(channelIdx), epsilon_(epsilon), momentum_(momentum) {}
 
-  StringRef getKindName() override { return "batchnorm"; }
-
-  std::string getExtraDesc() override;
-  void verify() override;
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::BatchNormalizationInstKind;
+  }
+  std::string getExtraDesc();
+  void verify();
 };
 
 class ArithmeticInst : public Instruction {
@@ -203,15 +248,16 @@ private:
 
 public:
   ArithmeticInst(Value *dest, Value *LHS, Value *RHS, OpKind kind)
-      : Instruction({{dest, OperandKind::kOut},
+      : Instruction(Kinded::Kind::ArithmeticInstKind,
+                    {{dest, OperandKind::kOut},
                      {LHS, OperandKind::kIn},
                      {RHS, OperandKind::kIn}}),
         kind_(kind) {}
-
-  StringRef getKindName() override { return "arithmetic"; }
-
-  std::string getExtraDesc() override;
-  void verify() override;
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::ArithmeticInstKind;
+  }
+  std::string getExtraDesc();
+  void verify();
 };
 
 class StaticVariable : public Value {
@@ -232,14 +278,17 @@ private:
 
   const char *getKindStr();
 
-  std::string getExtraDesc() override;
-
 public:
   StaticVariable(TypeRef Ty, InitKind mode, float val)
-      : Value(Ty), val_(val), mode_(mode) {}
+      : Value(Ty, Kinded::Kind::StaticVariableKind), val_(val), mode_(mode) {}
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::StaticVariableKind;
+  }
   InitKind getMode() { return mode_; }
   float getVal() { return val_; }
-  StringRef getKindName() override { return "static"; }
+  std::string getExtraDesc();
+  void verify() {}
 };
 
 } // namespace glow

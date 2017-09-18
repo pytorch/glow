@@ -1,4 +1,6 @@
 #include "glow/IR/IR.h"
+#include "glow/IR/Instrs.h"
+#include "glow/Support/Casting.h"
 
 #include <iostream>
 #include <sstream>
@@ -56,6 +58,16 @@ void Instruction::verifyUseList() {
   }
 }
 
+void Instruction::verify() {
+#define DEF_INSTR(CLASS, NAME)                                                 \
+  if (auto *X = dyn_cast<CLASS>(this))                                         \
+    X->verify();
+#define DEF_VALUE(CLASS, NAME)
+#include "glow/IR/Instrs.def"
+#undef DEF_INSTR
+#undef DEF_VALUE
+}
+
 Module::~Module() {
   // Delete all of the instructions, in reverse order, to make sure that
   // we delete the users before the instructions.
@@ -74,6 +86,20 @@ void Module::verify() {
     it->verifyUseList();
     it->verify();
   }
+}
+
+static std::string getExtraDesc(Kinded *K) {
+#define DEF_INSTR(CLASS, NAME)                                                 \
+  if (auto *X = dyn_cast<CLASS>(K))                                            \
+    return X->getExtraDesc();
+#define DEF_VALUE(CLASS, NAME)                                                 \
+  if (auto *X = dyn_cast<CLASS>(K))                                            \
+    return X->getExtraDesc();
+#include "glow/IR/Instrs.def"
+#undef DEF_INSTRE
+#undef DEF_VALUE
+
+  glow_unreachable();
 }
 
 void Module::dump() {
@@ -108,9 +134,9 @@ void Module::dump() {
     Value *V = it;
 
     auto name = V->getName();
-    auto valName = V->getKindName().str();
+    auto valName = V->getKindName();
     sb << "  %" << name << " = " << valName << " ";
-    sb << V->getExtraDesc();
+    sb << getExtraDesc(V);
     sb << "\n";
   }
 
@@ -122,11 +148,12 @@ void Module::dump() {
     Instruction *II = it;
 
     auto name = II->getName();
-    auto instrName = II->getKindName().str();
+    auto instrName = II->getKindName();
     sb << "  %" << name << " = " << instrName << " ";
-    auto extraDesc = II->getExtraDesc();
+    auto extraDesc = getExtraDesc(II);
+    ;
     if (extraDesc.size()) {
-      sb << II->getExtraDesc() << " ";
+      sb << extraDesc << " ";
     }
 
     // Print operands:

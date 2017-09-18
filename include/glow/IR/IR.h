@@ -26,13 +26,6 @@ public:
 
   /// Set the name of the instruction to \p name.
   void setName(const std::string &name) { name_ = name; }
-
-  /// \returns the name of the class.
-  /// For example, "transpose";
-  virtual StringRef getKindName() = 0;
-
-  /// \returns a description of the internal structure.
-  virtual std::string getExtraDesc() { return ""; }
 };
 
 /// Subclasses of this class have a type associated with them.
@@ -63,14 +56,52 @@ inline const char *getOperandKindStr(OperandKind CC) {
   return names[(int)CC];
 }
 
-class Value : public Named, public UseDef<Instruction, Value>, public Typed {
+/// Subclasses of Value have an enum that describe their kind.
+class Kinded {
 public:
-  Value(TypeRef T) : Named(), UseDef(), Typed(T) {}
-  virtual ~Value() = default;
+  enum class Kind {
+#define DEF_INSTR(CLASS, NAME) CLASS##Kind,
+#define DEF_VALUE(CLASS, NAME) CLASS##Kind,
+#include "glow/IR/Instrs.def"
+#undef DEF_INSTR
+#undef DEF_VALUE
+  };
+
+  const char *getKindName(Kind IK) {
+    const char *names[] = {
+#define DEF_INSTR(CLASS, NAME) #NAME,
+#define DEF_VALUE(CLASS, NAME) #NAME,
+#include "glow/IR/Instrs.def"
+#undef DEF_INSTR
+#undef DEF_VALUE
+        nullptr};
+    return names[(int)IK];
+  }
+
+private:
+  /// The kind of the value.
+  Kind kind_;
+
+public:
+  /// Ctor.
+  Kinded(Kind vk) : kind_(vk) {}
+
+  /// Returns the kind of the instruction.
+  Kind getKind() const { return kind_; }
+
+  const char *getKindName() { return getKindName(kind_); }
+};
+
+class Value : public Named,
+              public UseDef<Instruction, Value>,
+              public Typed,
+              public Kinded {
+public:
+  Value(TypeRef T, Kinded::Kind k) : Named(), UseDef(), Typed(T), Kinded(k) {}
 };
 
 /// This represents an instruction in our IR.
-class Instruction : public Named {
+class Instruction : public Named, public Kinded {
 public:
   using Operand = std::pair<Value *, OperandKind>;
 
@@ -88,14 +119,16 @@ protected:
   void pushOperand(Operand op);
 
 public:
-  Instruction() = default;
-  virtual ~Instruction() = default;
+  Instruction(Kinded::Kind k) : Kinded(k) {}
 
-  Instruction(ArrayRef<Operand> ops) {
+  Instruction(Kinded::Kind k, ArrayRef<Operand> ops) : Kinded(k) {
     for (auto &op : ops) {
       pushOperand(op);
     }
   }
+
+  /// When printing the instruction this method prints the extra metadata.
+  std::string getExtraDesc() { return ""; }
 
   /// Sets the ith operand at index \p idx to the value \p v.
   void setOperand(unsigned idx, Value *v);
@@ -110,7 +143,7 @@ public:
   void verifyUseList();
 
   /// Verify the correctness of the instruction parameters.
-  virtual void verify() = 0;
+  void verify();
 
   operator Value *() const { return getOperand(0).first; }
 };

@@ -2,6 +2,8 @@
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
 
+#include "glow/Support/Casting.h"
+
 #include "gtest/gtest.h"
 
 #include <algorithm>
@@ -130,4 +132,24 @@ TEST(IR, highLevelBuilder) {
   (void)aa;
   M.dump();
   M.verify();
+}
+
+TEST(IR, casting) {
+  Module M;
+  IRBuilder bb(M);
+
+  auto *input = bb.createStaticVariable(ElemKind::FloatTy, {1, 224, 224, 3});
+  auto *conv = bb.createConvOp(input, 16, 7, 2, 3);
+  auto *pool = bb.createMaxPoolOp(*conv, PoolInst::OpKind::kMax, 7, 2, 3);
+
+  EXPECT_EQ(isa<PoolInst>(pool), true);
+  EXPECT_EQ(isa<PoolInst>(input), false);
+  EXPECT_EQ(isa<ConvolutionInst>(conv), true);
+  EXPECT_EQ(isa<ConvolutionInst>(pool), false);
+
+  EXPECT_NE(dyn_cast<PoolInst>(pool), nullptr);
+  EXPECT_EQ(dyn_cast<PoolInst>(pool), pool);
+
+  EXPECT_NE(dyn_cast<StaticVariable>(input), nullptr);
+  EXPECT_EQ(dyn_cast<StaticVariable>(input), input);
 }
