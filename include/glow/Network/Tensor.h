@@ -432,20 +432,82 @@ public:
   }
 
   void dump(const char *title = "", const char *suffix = "") const {
+    std::cout << "\n" << title << "\n";
+    size_t num_dims = this->numDims;
+    auto shape = this->dims();
+
+    // Check for empty tensor.
+    if (!num_dims) {
+      std::cout << "[ Empty tensor ]\n";
+      std::cout << suffix << "\n";
+      return;
+    }
+
+    // Output shape.
+    std::cout << "shape: ( ";
+
+    for (size_t dim = 0; dim < num_dims; dim++) {
+      std::cout << shape[dim] << " ";
+    }
+
+    std::cout << ")\n";
+
     ElemTy *data = tensor_->getRawDataPointer<ElemTy>();
     ElemTy mx = *std::max_element(&data[0], &data[size()]);
     ElemTy mn = *std::min_element(&data[0], &data[size()]);
 
-    std::cout << title << "max=" << mx << " min=" << mn << " [";
+    // Check for zero tensor.
+    if (!mn && !mx) {
+      std::cout << "[ Zero tensor ]\n";
+      std::cout << suffix << "\n";
+      return;
+    }
+
+    // Output max and min.
+    std::cout << "max: " << mx << "  min: " << mn << "\n";
+
     const unsigned maxNumElem = 100;
 
+    std::cout << "[";
+
     for (size_t i = 0, e = std::min<size_t>(maxNumElem, size()); i < e; i++) {
-      std::cout << raw(i) << " ";
+
+      // Print one open brace at the beginning of every row, slice, and tensor.
+      for (size_t j = 0, e = num_dims-1; num_dims > 1 && j < e; j++) {
+        if (i % sizeIntegral[j] == 0) {
+          // This iteration of outer loop is a new row, slice or tensor.
+          std::cout << "[";
+        }
+      }
+
+      // Print the value at the current index.
+      std::cout << raw(i);
+
+      // Print one closed brace at the end of every row, slice, or tensor.
+      for (size_t j = 0, e = num_dims-1; num_dims > 1 && j < e; j++) {
+        size_t next_index = i + 1;
+        if (next_index % sizeIntegral[j] == 0) {
+          std::cout << "]";
+        }
+      }
+
+      std::cout << ", ";
+
+      // Print one newline at the end of every row, slice, or tensor.
+      for (size_t j = 0, e = num_dims-1; num_dims > 1 && j < e; j++) {
+        size_t next_index = i + 1;
+        if (next_index % sizeIntegral[j] == 0) {
+          // Next iteration of outer loop will be a new row, slice or tensor.
+          std::cout << "\n";
+        }
+      }
     }
+
     if (size() > maxNumElem) {
       std::cout << "...";
     }
-    std::cout << "]" << suffix;
+
+    std::cout << "]\n" << suffix << "\n";
   }
 
   /// Fill the array with random data that's close to zero using the
