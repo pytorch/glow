@@ -79,11 +79,26 @@ public:
   void train(size_t iterations, ArrayRef<Value *> vars,
              ArrayRef<Tensor *> inputs);
 
+private:
+  /// Update all of the weight tensors (non-activation) with their gradients.
   void learnGradient(size_t batchSize);
 
+  /// Update the inputs for all variables \p vars with data from the inputs \p
+  /// inputs at offset \p sampleIdx. Then perform a forward and backwards scan.
   void updateForwardBackward(ArrayRef<Value *> vars, ArrayRef<Tensor *> inputs,
                              size_t sampleIdx);
 
+  /// Perform a single forward scan of the network, interpreting all of the
+  /// instructions.
+  void doForwardPass(bool isTrain);
+
+  /// Perform a single backward scan of the network, interpreting all of the
+  /// instructions.
+  void doBackwardPass();
+
+  /// @name Interpreter methods. This is a list of method declerations that are
+  /// used by the interpreter to dispatch different instructions.
+  ///@{
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   void fwd##CLASS(Context *ctx, bool isTrain, CLASS *I);                       \
@@ -91,6 +106,12 @@ public:
 #include "glow/IR/Instrs.def"
 #undef DEF_INSTR
 #undef DEF_VALUE
+
+  void fwdPoolMax_impl(Context *ctx, PoolInst *I);
+  void fwdPoolAvg_impl(Context *ctx, PoolInst *I);
+  void bwdPoolMax_impl(Context *ctx, PoolInst *I);
+  void bwdPoolAvg_impl(Context *ctx, PoolInst *I);
+  ///@}
 };
 
 } // namespace glow

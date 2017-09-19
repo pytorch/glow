@@ -144,8 +144,207 @@ void Interpreter::bwdConvolutionInst(Context *ctx, ConvolutionInst *I) {
 //                       Pooling
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdPoolInst(Context *ctx, bool isTrain, PoolInst *I) { DBG; }
-void Interpreter::bwdPoolInst(Context *ctx, PoolInst *I) { DBG; }
+void Interpreter::fwdPoolInst(Context *ctx, bool isTrain, PoolInst *I) {
+  if (I->getKind() == PoolInst::OpKind::kMax) {
+    return fwdPoolMax_impl(ctx, I);
+  }
+
+  return fwdPoolAvg_impl(ctx, I);
+}
+void Interpreter::fwdPoolMax_impl(Context *ctx, PoolInst *I) {
+  auto inW = getWeightHandle(ctx, I->getSrc());
+  auto outW = getWeightHandle(ctx, I->getDest());
+
+  ShapeNHWC odim = outW.dims();
+  ShapeNHWC idim = inW.dims();
+
+  auto pad = I->getPad();
+  auto filterSize = I->getKernel();
+  auto stride = I->getStride();
+
+  auto SXY = getTensorForValue(I->srcXY())->getHandle<size_t>();
+
+  // For each input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < idim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t y = -ssize_t(pad);
+      for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+        ssize_t x = -ssize_t(pad);
+        for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+          size_t maxX = x;
+          size_t maxY = y;
+
+          bool first = true;
+          FloatTy max = 0;
+
+          for (size_t fy = 0; fy < filterSize; fy++) {
+            for (size_t fx = 0; fx < filterSize; fx++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                  oy >= ssize_t(idim.w)) {
+                continue;
+              }
+
+              FloatTy val = inW.at({n, (size_t)ox, (size_t)oy, z});
+
+              if (first || (val >= max)) {
+                first = false;
+                max = val;
+                maxX = ox;
+                maxY = oy;
+              }
+            }
+          }
+
+          assert(!first && "Max value is uninitialized");
+          SXY.at({n, ax, ay, z, 0}) = maxX;
+          SXY.at({n, ax, ay, z, 1}) = maxY;
+          outW.at({n, ax, ay, z}) = max;
+        } // H
+      }   // W
+    }     // C
+  }       // N
+}
+
+void Interpreter::fwdPoolAvg_impl(Context *ctx, PoolInst *I) {
+  auto inW = getWeightHandle(ctx, I->getSrc());
+  auto outW = getWeightHandle(ctx, I->getDest());
+
+  ShapeNHWC odim = outW.dims();
+  ShapeNHWC idim = inW.dims();
+
+  auto pad = I->getPad();
+  auto filterSize = I->getKernel();
+  auto stride = I->getStride();
+
+  // Implement the avg pooling operation as defined here:
+  // https://arxiv.org/abs/1312.4400
+
+  FloatTy filterArea = filterSize * filterSize;
+
+  // For each input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < idim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t y = -ssize_t(pad);
+      for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+        ssize_t x = -ssize_t(pad);
+        for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+          FloatTy sum = 0;
+
+          for (size_t fy = 0; fy < filterSize; fy++) {
+            for (size_t fx = 0; fx < filterSize; fx++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                  oy >= ssize_t(idim.w)) {
+                continue;
+              }
+
+              sum += inW.at({n, (size_t)ox, (size_t)oy, z});
+            }
+          }
+          outW.at({n, ax, ay, z}) = sum / filterArea;
+        } // H
+      }   // W
+    }     // C
+  }       // N
+}
+
+void Interpreter::bwdPoolInst(Context *ctx, PoolInst *I) {
+  if (I->getKind() == PoolInst::OpKind::kMax) {
+    return bwdPoolMax_impl(ctx, I);
+  }
+
+  return bwdPoolAvg_impl(ctx, I);
+}
+
+void Interpreter::bwdPoolMax_impl(Context *ctx, PoolInst *I) {
+  auto inG = getGradHandle(ctx, I->getSrc());
+  auto outW = getWeightHandle(ctx, I->getDest());
+  auto outG = getGradHandle(ctx, I->getDest());
+
+  ShapeNHWC odim = outW.dims();
+
+  auto SXY = getTensorForValue(I->srcXY())->getHandle<size_t>();
+
+  // For each input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+
+    // Compute the gradient. For each layer in the output tensor:
+    for (size_t z = 0; z < odim.c; z++) {
+
+      // For each convolution 'jump' in the input tensor:
+      for (size_t ay = 0; ay < odim.w; ay++) {
+        for (size_t ax = 0; ax < odim.h; ax++) {
+
+          FloatTy chainGrad = outG.at({n, (size_t)ax, (size_t)ay, z});
+
+          size_t maxX = SXY.at({n, (size_t)ax, (size_t)ay, z, 0});
+          size_t maxY = SXY.at({n, (size_t)ax, (size_t)ay, z, 1});
+
+          inG.at({n, maxX, maxY, z}) += chainGrad;
+        } // H
+      }   // W
+    }     // C
+  }       // N
+}
+
+void Interpreter::bwdPoolAvg_impl(Context *ctx, PoolInst *I) {
+  auto inW = getWeightHandle(ctx, I->getSrc());
+  auto inG = getGradHandle(ctx, I->getSrc());
+  auto outW = getWeightHandle(ctx, I->getDest());
+  auto outG = getGradHandle(ctx, I->getDest());
+
+  ShapeNHWC odim = outW.dims();
+  ShapeNHWC idim = inW.dims();
+
+  auto pad = I->getPad();
+  auto filterSize = I->getKernel();
+  auto stride = I->getStride();
+
+  FloatTy filterArea = filterSize * filterSize;
+
+  // For each input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < odim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t y = -ssize_t(pad);
+      for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+        ssize_t x = -ssize_t(pad);
+        for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+          FloatTy dy = outG.at({n, ax, ay, z}) / filterArea;
+
+          for (size_t fy = 0; fy < filterSize; fy++) {
+            for (size_t fx = 0; fx < filterSize; fx++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                  oy >= ssize_t(idim.w)) {
+                continue;
+              }
+              inG.at({n, (size_t)ox, (size_t)oy, z}) += dy;
+            }
+          }
+        } // H
+      }   // W
+    }     // C
+  }       // N
+}
 
 //===----------------------------------------------------------------------===//
 //                       Fully Connected
@@ -259,8 +458,27 @@ void Interpreter::bwdSigmoidInst(Context *ctx, SigmoidInst *I) {
   }
 }
 
-void Interpreter::fwdTanhInst(Context *ctx, bool isTrain, TanhInst *I) { DBG; }
-void Interpreter::bwdTanhInst(Context *ctx, TanhInst *I) { DBG; }
+void Interpreter::fwdTanhInst(Context *ctx, bool isTrain, TanhInst *I) {
+  auto inW = getWeightHandle(ctx, I->getSrc());
+  auto outW = getWeightHandle(ctx, I->getDest());
+
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    FloatTy val = inW.raw(i);
+    FloatTy exp_val = std::exp(val);
+    FloatTy exp_neg_val = std::exp(-val);
+    outW.raw(i) = (exp_val - exp_neg_val) / (exp_val + exp_neg_val);
+  }
+}
+void Interpreter::bwdTanhInst(Context *ctx, TanhInst *I) {
+  auto inG = getGradHandle(ctx, I->getSrc());
+  auto outW = getWeightHandle(ctx, I->getDest());
+  auto outG = getGradHandle(ctx, I->getDest());
+
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    FloatTy val = outW.raw(i);
+    inG.raw(i) += (1 - val * val) * outG.raw(i);
+  }
+}
 
 //===----------------------------------------------------------------------===//
 //                        Loss Functions (Softmax/regression/...)
@@ -351,15 +569,48 @@ void Interpreter::bwdRegressionInst(Context *ctx, RegressionInst *I) {
 
 void Interpreter::fwdTransposeInst(Context *ctx, bool isTrain,
                                    TransposeInst *I) {
-  DBG;
+  auto inW = getWeightHandle(ctx, I->getSrc());
+  auto outW = getTensorForValue(I->getDest());
+
+  assert(outW->size() == inW.size() && "Invalid tensor dimensions");
+  inW.transpose(outW, I->getShuffle());
 }
 
-void Interpreter::bwdTransposeInst(Context *ctx, TransposeInst *I) { DBG; }
+void Interpreter::bwdTransposeInst(Context *ctx, TransposeInst *I) {
+  auto inG = getOrCreateGradTensor(I->getSrc());
+  auto outG = getGradHandle(ctx, I->getDest());
+
+  assert(outG.size() == inG->size() && "Invalid tensor dimensions");
+
+  // Generate the reverse shuffle.
+  auto shuffle = I->getShuffle();
+  std::vector<unsigned> reverseShuffle = shuffle.vec();
+  for (unsigned int i = 0; i < shuffle.size(); i++) {
+    reverseShuffle[shuffle[i]] = i;
+  }
+
+  // Perform the reverse transpsose.
+  // TODO: this wipes out the gradients and may cause a bug for operators with
+  // multiple users.
+  outG.transpose(inG, reverseShuffle);
+}
 
 void Interpreter::fwdReshapeInst(Context *ctx, bool isTrain, ReshapeInst *I) {
-  DBG;
+  auto inW = getWeightHandle(ctx, I->getSrc());
+  auto outW = getWeightHandle(ctx, I->getDest());
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    outW.raw(i) = inW.raw(i);
+  }
 }
-void Interpreter::bwdReshapeInst(Context *ctx, ReshapeInst *I) { DBG; }
+void Interpreter::bwdReshapeInst(Context *ctx, ReshapeInst *I) {
+  auto inG = getGradHandle(ctx, I->getSrc());
+  auto outW = getWeightHandle(ctx, I->getDest());
+  auto outG = getGradHandle(ctx, I->getDest());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    inG.raw(i) += outG.raw(i);
+  }
+}
+
 void Interpreter::fwdConcatInst(Context *ctx, bool isTrain, ConcatInst *I) {
   DBG;
 }

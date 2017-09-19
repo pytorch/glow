@@ -158,22 +158,7 @@ void Interpreter::infer(ArrayRef<Value *> vars, ArrayRef<Tensor *> inputs) {
     loadValueFromTensor(vars[i], inputs[i], 0);
   }
 
-  // Dispatch the interpreter on each instruction in the program:
-#define DEF_VALUE(CLASS, NAME)
-#define DEF_INSTR(CLASS, NAME)                                                 \
-  case Kinded::Kind::CLASS##Kind: {                                            \
-    fwd##CLASS(nullptr, false, cast<CLASS>(I));                                \
-    break;                                                                     \
-  }
-  for (auto *I : M_.getInstrs()) {
-    switch (I->getKind()) {
-#include "glow/IR/Instrs.def"
-    default:
-      glow_unreachable();
-    }
-  }
-#undef DEF_INSTR
-#undef DEF_VALUE
+  doForwardPass(false);
 }
 
 void Interpreter::train(size_t iterations, ArrayRef<Value *> vars,
@@ -227,11 +212,17 @@ void Interpreter::updateForwardBackward(ArrayRef<Value *> vars,
     loadValueFromTensor(vars[i], inputs[i], sampleIdx);
   }
 
+  doForwardPass(true);
+
+  doBackwardPass();
+}
+
+void Interpreter::doForwardPass(bool isTrain) {
   // Do the forward pass.
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   case Kinded::Kind::CLASS##Kind: {                                            \
-    fwd##CLASS(nullptr, true, cast<CLASS>(I));                                 \
+    fwd##CLASS(nullptr, isTrain, cast<CLASS>(I));                              \
     break;                                                                     \
   }
   // Dispatch the interpreter on each instruction in the program:
@@ -241,7 +232,9 @@ void Interpreter::updateForwardBackward(ArrayRef<Value *> vars,
     // match the output tensors but not the gradient tensors that are
     // paired with filters. These are cleared during the learning process
     // at the end of the batch.
-    getOrCreateGradTensor(I->getOperand(0).first)->zero();
+    if (isTrain) {
+      getOrCreateGradTensor(I->getOperand(0).first)->zero();
+    }
 
     switch (I->getKind()) {
 #include "glow/IR/Instrs.def"
@@ -251,7 +244,9 @@ void Interpreter::updateForwardBackward(ArrayRef<Value *> vars,
   }
 #undef DEF_INSTR
 #undef DEF_VALUE
+}
 
+void Interpreter::doBackwardPass() {
   // Do the backward pass.
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \

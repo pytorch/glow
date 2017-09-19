@@ -11,7 +11,6 @@
 using namespace glow;
 
 TEST(Interpreter, interpret) {
-
   Interpreter IP;
 
   auto &builder = IP.getBuilder();
@@ -232,7 +231,6 @@ void generateCircleData(Tensor &coordinates, Tensor &labels) {
 /// http://cs.stanford.edu/people/karpathy/convnetjs/demo/classify2d.html
 TEST(Network, circle) {
   // Testing the softmax layer.
-
   Interpreter IP;
   auto &bb = IP.getBuilder();
 
@@ -244,7 +242,7 @@ TEST(Network, circle) {
   auto *A = bb.createStaticVariable(ElemKind::FloatTy, {1, 2});
   auto *S = bb.createStaticVariable(ElemKind::IndexTy, {1, 1});
 
-  auto *FCL0 = bb.createFullyConnectedOp(A, 6);
+  auto *FCL0 = bb.createFullyConnectedOp(A, 8);
   auto *RL0 = bb.createRELUOp(*FCL0);
   auto *FCL1 = bb.createFullyConnectedOp(*RL0, 2);
   auto *RL1 = bb.createRELUOp(*FCL1);
@@ -260,7 +258,6 @@ TEST(Network, circle) {
   IP.train(4000, {A, S}, {&coordinates, &labels});
 
   // Print a diagram that depicts the network decision on a grid.
-
   for (int x = -10; x < 10; x++) {
     for (int y = -10; y < 10; y++) {
       // Load the inputs:
