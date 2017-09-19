@@ -82,3 +82,24 @@ release builds. If you wish to benchmark the compiler, run long benchmarks, or
 release the product then you should compile the compiler in Release mode. Check
 the main CMake file for more details.
 
+After building Glow in Release-mode run the following command to download the
+cifar10 and mnist database:
+
+```
+python ../glow/utils/download_test_db.py
+```
+
+Next, after downloading and extracting the mnist and cifar10 database
+(preferably in the build directory), you can run the test programs:
+
+```
+./bin/mnist
+./bin/cifar10
+```
+
+Note: The databases should be (for now) in the same directory from where the
+executable is run.
+
+If everything goes well you should see pictures from the mnist digits database
+and print outs from cifar10 that make sense.
+
