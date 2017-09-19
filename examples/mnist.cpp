@@ -127,6 +127,8 @@ void testMNIST() {
     std::cout << "\n-------------\n";
   }
 
+  std::cout << "Results: guessed/total:" << rightAnswer << "/" << minibatchSize
+            << "\n";
   GLOW_ASSERT(rightAnswer >= 6 &&
               "Did not classify as many digits as expected");
 }
