@@ -18,6 +18,16 @@ void Interpreter::fwdCopyInst(Context *ctx, bool isTrain, CopyInst *I) {
     D.raw(i) = S.raw(i);
   }
 }
+
+void Interpreter::bwdCopyInst(Context *ctx, CopyInst *I) {
+  auto inG = getGradHandle(ctx, I->getSrc());
+  auto outG = getGradHandle(ctx, I->getDest());
+
+  for (size_t i = 0, e = outG.size(); i < e; i++) {
+    inG.raw(i) += outG.raw(i);
+  }
+}
+
 void Interpreter::fwdConvolutionInst(Context *ctx, bool isTrain,
                                      ConvolutionInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
@@ -230,9 +240,24 @@ void Interpreter::bwdReluInst(Context *ctx, ReluInst *I) {
 }
 
 void Interpreter::fwdSigmoidInst(Context *ctx, bool isTrain, SigmoidInst *I) {
-  DBG;
+  auto inW = getWeightHandle(ctx, I->getSrc());
+  auto outW = getWeightHandle(ctx, I->getDest());
+
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    FloatTy val = inW.raw(i);
+    outW.raw(i) = 1 / (1 + std::exp(-val));
+  }
 }
-void Interpreter::bwdSigmoidInst(Context *ctx, SigmoidInst *I) { DBG; }
+void Interpreter::bwdSigmoidInst(Context *ctx, SigmoidInst *I) {
+  auto inG = getGradHandle(ctx, I->getSrc());
+  auto outW = getWeightHandle(ctx, I->getDest());
+  auto outG = getGradHandle(ctx, I->getDest());
+
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    FloatTy val = outW.raw(i);
+    inG.raw(i) += val * (1 - val) * outG.raw(i);
+  }
+}
 
 void Interpreter::fwdTanhInst(Context *ctx, bool isTrain, TanhInst *I) { DBG; }
 void Interpreter::bwdTanhInst(Context *ctx, TanhInst *I) { DBG; }
@@ -245,12 +270,36 @@ void Interpreter::fwdSoftMaxInst(Context *ctx, bool isTrain, SoftMaxInst *I) {
   DBG;
 }
 void Interpreter::bwdSoftMaxInst(Context *ctx, SoftMaxInst *I) { DBG; }
+
 void Interpreter::fwdRegressionInst(Context *ctx, bool isTrain,
                                     RegressionInst *I) {
-  DBG;
+  auto inW = getWeightHandle(ctx, I->getSrc());
+  auto outW = getWeightHandle(ctx, I->getDest());
+
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    outW.raw(i) = inW.raw(i);
+  }
 }
 
-void Interpreter::bwdRegressionInst(Context *ctx, RegressionInst *I) { DBG; }
+void Interpreter::bwdRegressionInst(Context *ctx, RegressionInst *I) {
+  auto inW = getWeightHandle(ctx, I->getSrc());
+  auto inG = getGradHandle(ctx, I->getSrc());
+  auto expected = getTensorForValue(I->getExpected());
+
+  auto idim = inW.dims();
+  assert(idim.size() == 2 && "Input is expected to be a vector per input");
+
+  auto e = expected->getHandle<FloatTy>();
+
+  // For each input in the batch:
+  for (size_t n = 0; n < idim[0]; n++) {
+
+    for (size_t i = 0; i < idim[1]; i++) {
+      FloatTy dy = inW.at({n, i}) - e.at({n, i});
+      inG.at({n, i}) += dy;
+    }
+  } // N
+}
 
 //===----------------------------------------------------------------------===//
 //                       Tensor shape (transpose/reshape/concat/...)
@@ -295,3 +344,5 @@ void Interpreter::fwdArithmeticInst(Context *ctx, bool isTrain,
 }
 
 void Interpreter::bwdArithmeticInst(Context *ctx, ArithmeticInst *I) { DBG; }
+
+#undef DBG

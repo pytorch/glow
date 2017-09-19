@@ -73,14 +73,20 @@ const char *ArithmeticInst::getKindStr() {
 
 std::string ArithmeticInst::getExtraDesc() { return getKindStr(); }
 
-const char *StaticVariable::getKindStr() {
+const char *StaticVariable::getInitKindStr() {
   const char *names[] = {"extern", "broadcast", "xavier", nullptr};
-  return names[(int)mode_];
+  return names[(int)initKind_];
+}
+
+const char *StaticVariable::getShareKindStr() {
+  const char *names[] = {"weight", "activation", nullptr};
+  return names[(int)shareKind_];
 }
 
 std::string StaticVariable::getExtraDesc() {
   auto sp = ", ";
-  return getType()->asString() + sp + std::to_string(val_) + sp + getKindStr();
+  return getType()->asString() + sp + std::to_string(val_) + sp +
+         getShareKindStr() + sp + getInitKindStr();
 }
 
 /// Check that the type of the first operand matches the type of the second

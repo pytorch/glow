@@ -56,6 +56,7 @@ TEST(IR, basicUseList) {
 
 TEST(IR, allInstrs) {
   using InitKind = StaticVariable::InitKind;
+  using ShareKind = StaticVariable::ShareKind;
 
   Module M;
   auto T1 = M.uniqueType(ElemKind::FloatTy, {1, 24, 24, 3});
@@ -65,10 +66,13 @@ TEST(IR, allInstrs) {
 
   IRBuilder builder(M);
 
-  auto *I0 = builder.createStaticVariable(T1, InitKind::kExtern, 0);
-  auto *I1 = builder.createStaticVariable(T1, InitKind::kExtern, 0);
-  auto *I2 = builder.createStaticVariable(ElemKind::FloatTy, {1, 3, 24, 24},
-                                          InitKind::kExtern, 0);
+  auto *I0 = builder.createStaticVariable(T1, InitKind::kExtern,
+                                          ShareKind::kWeight, 0);
+  auto *I1 = builder.createStaticVariable(T1, InitKind::kExtern,
+                                          ShareKind::kWeight, 0);
+  auto *I2 =
+      builder.createStaticVariable(ElemKind::FloatTy, {1, 3, 24, 24},
+                                   InitKind::kExtern, ShareKind::kWeight, 0);
 
   auto *I3 = builder.createStaticVariable(ElemKind::FloatTy, {1, 12, 12, 64});
   auto *I4 = builder.createStaticVariable(ElemKind::FloatTy, {1, 12, 12, 3});
@@ -76,13 +80,16 @@ TEST(IR, allInstrs) {
   auto *I6 = builder.createStaticVariable(ElemKind::FloatTy, {2, 12, 12, 64});
 
   auto *XY = builder.createStaticVariable(ElemKind::IndexTy, {1, 12, 12, 3, 2});
-  auto *B0 = builder.createStaticVariable(T2, InitKind::kBroadcast, 0.1);
-  auto *B1 = builder.createStaticVariable(ElemKind::FloatTy, {32},
-                                          InitKind::kBroadcast, 0.1);
+  auto *B0 = builder.createStaticVariable(T2, InitKind::kBroadcast,
+                                          ShareKind::kWeight, 0.1);
+  auto *B1 = builder.createStaticVariable(
+      ElemKind::FloatTy, {32}, InitKind::kBroadcast, ShareKind::kWeight, 0.1);
   auto *F0 = builder.createStaticVariable(ElemKind::FloatTy, {64, 7, 7, 3});
   auto *F1 = builder.createStaticVariable(ElemKind::FloatTy, {32, 1728});
-  auto *E0 = builder.createStaticVariable(T4, InitKind::kExtern, 0);
-  auto *S0 = builder.createStaticVariable(T5, InitKind::kExtern, 0);
+  auto *E0 = builder.createStaticVariable(T4, InitKind::kExtern,
+                                          ShareKind::kWeight, 0);
+  auto *S0 = builder.createStaticVariable(T5, InitKind::kExtern,
+                                          ShareKind::kWeight, 0);
 
   B0->setName("bias");
   B1->setName("FC_bias");

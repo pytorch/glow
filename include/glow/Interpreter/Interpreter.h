@@ -4,6 +4,7 @@
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/Network/Tensor.h"
+#include "glow/Network/Train.h"
 
 #include <unordered_map>
 
@@ -21,6 +22,13 @@ class Interpreter final {
   /// Maps values to Tensors, that are owned by this class.
   std::unordered_map<Value *, Tensor *> tensors_;
 
+  /// Maps weight tensors to the gradients that update them. The value tensors
+  /// are owned by this map.
+  std::unordered_map<Tensor *, Tensor *> gradients_;
+
+  /// The network trainer.
+  Trainer trainer_;
+
 public:
   /// \returns the internal module.
   Module &getModule() { return M_; }
@@ -31,6 +39,9 @@ public:
   /// Dtor.
   ~Interpreter();
 
+  /// Provides access to the training configuration.
+  TrainingConfig &getConfig() { return trainer_.config; }
+
   /// Registers the tensor \p t under the IR value \p v.
   void registerTensor(Value *v, Tensor *t);
 
@@ -38,17 +49,40 @@ public:
   /// is owned by the Interpreter.
   Tensor *getTensorForValue(Value *v) const;
 
+  /// \returns gets or creates a new tensor to back the value \p v. If the
+  /// tensor does not exist then this method creates it. The dimension of the
+  /// gradient tensor must match the dimensions of the tensor that backs \p v.
+  Tensor *getOrCreateGradTensor(Value *v);
+
+  /// Update the content of the tensor \p v with data that comes from \p input.
+  /// The data starts at slice \p sampleIdx and wraps around until the data in
+  /// \p v is filled. All dimensions, except for the first (batch) dimension
+  /// must be identical.
+  void loadValueFromTensor(Value *v, Tensor *input, size_t sampleIdx);
+
   /// \returns a float-handle to the tensor that is stored at \p v.
   Handle<FloatTy> getWeightHandle(Context *, Value *v) const;
 
   /// \returns a float-handle to the tensor that is stored at \p v.
-  Handle<FloatTy> getGradHandle(Context *, Value *v) const;
+  Handle<FloatTy> getGradHandle(Context *, Value *v);
 
   /// Initialize all of the variables in the program.
   void initVars();
 
-  /// Runs the program in a forward pass.
-  void infer();
+  /// Runs the program in a forward pass. Update the nodes in \p nodes with the
+  /// values \p inputs.
+  void infer(ArrayRef<Value *> vars, ArrayRef<Tensor *> inputs);
+
+  /// Train the network. Perform \p iterations in the training loop. Each
+  /// iteration does a full forward and backward pass of a whole batch.
+  /// The method updates the variables in \p vars with the tensors \p inputs.
+  void train(size_t iterations, ArrayRef<Value *> vars,
+             ArrayRef<Tensor *> inputs);
+
+  void learnGradient(size_t batchSize);
+
+  void updateForwardBackward(ArrayRef<Value *> vars, ArrayRef<Tensor *> inputs,
+                             size_t sampleIdx);
 
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \

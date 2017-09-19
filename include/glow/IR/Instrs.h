@@ -331,6 +331,10 @@ public:
     kBroadcast, // Broadcast a single value to all elements.
     kXavier,    // Init the tensor with random values using the Xavier method.
   };
+  enum class ShareKind {
+    kWeight,     // This is a weight tensor that is shared by all threads.
+    kActivation, // This is an activation tensor that is specific for a run.
+  };
 
 private:
   /// The value to use during initialization. This can be the value to splat or
@@ -338,18 +342,24 @@ private:
   float val_;
 
   /// The initialization mode.
-  InitKind mode_;
+  InitKind initKind_;
+  /// The memory sharing/ownership mode.
+  ShareKind shareKind_;
 
-  const char *getKindStr();
+  const char *getInitKindStr();
+  const char *getShareKindStr();
 
 public:
-  StaticVariable(TypeRef Ty, InitKind mode, float val)
-      : Value(Ty, Kinded::Kind::StaticVariableKind), val_(val), mode_(mode) {}
+  StaticVariable(TypeRef Ty, InitKind initKind, ShareKind shareKind, float val)
+      : Value(Ty, Kinded::Kind::StaticVariableKind), val_(val),
+        initKind_(initKind), shareKind_(shareKind) {}
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::StaticVariableKind;
   }
-  InitKind getMode() { return mode_; }
+
+  InitKind getInitKind() { return initKind_; }
+  ShareKind getShareKind() { return shareKind_; }
   float getVal() { return val_; }
   std::string getExtraDesc();
   void verify() {}

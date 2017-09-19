@@ -10,6 +10,7 @@ namespace glow {
 /// The IRBuilder create the IR in the module.
 class IRBuilder {
   using InitKind = StaticVariable::InitKind;
+  using ShareKind = StaticVariable::ShareKind;
 
   /// The module that we are building.
   Module &M_;
@@ -97,13 +98,16 @@ public:
   ArithmeticInst *createArithmeticInst(Value *dest, Value *LHS, Value *RHS,
                                        ArithmeticInst::OpKind kind);
 
-  StaticVariable *createStaticVariable(ElemKind elemTy, ArrayRef<size_t> dims,
-                                       InitKind mode = InitKind::kExtern,
-                                       float val = 0);
+  StaticVariable *
+  createStaticVariable(ElemKind elemTy, ArrayRef<size_t> dims,
+                       InitKind initKind = InitKind::kExtern,
+                       ShareKind shareKind = ShareKind::kActivation,
+                       float val = 0);
 
-  StaticVariable *createStaticVariable(TypeRef T,
-                                       InitKind mode = InitKind::kExtern,
-                                       float val = 0);
+  StaticVariable *
+  createStaticVariable(TypeRef T, InitKind initKind = InitKind::kExtern,
+                       ShareKind shareKind = ShareKind::kActivation,
+                       float val = 0);
   ///@}
 };
 

@@ -24,10 +24,12 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, size_t depth,
   // Allocate the Filter and Bias tensors.
   ArrayRef<size_t> filterDim = {depth, kernel, kernel, idim.c};
   size_t fanIn = kernel * kernel * idim.c;
-  Value *filter = createStaticVariable(ElemKind::FloatTy, filterDim,
-                                       InitKind::kXavier, fanIn);
-  Value *bias = createStaticVariable(ElemKind::FloatTy, {depth},
-                                     InitKind::kBroadcast, 0.1);
+  Value *filter =
+      createStaticVariable(ElemKind::FloatTy, filterDim, InitKind::kXavier,
+                           ShareKind::kWeight, fanIn);
+  Value *bias =
+      createStaticVariable(ElemKind::FloatTy, {depth}, InitKind::kBroadcast,
+                           ShareKind::kWeight, 0.1);
 
   return createConvolutionInst(dest, input, filter, bias, kernel, stride, pad,
                                depth);
@@ -66,10 +68,10 @@ FullyConnectedInst *IRBuilder::createFullyConnectedOp(Value *input,
   auto *Out = createStaticVariable(T->getElementType(), {idim.first, outDepth});
 
   auto *W = createStaticVariable(T->getElementType(), {outDepth, idim.second},
-                                 InitKind::kXavier, fanIn);
+                                 InitKind::kXavier, ShareKind::kWeight, fanIn);
 
   auto *B = createStaticVariable(T->getElementType(), {outDepth},
-                                 InitKind::kBroadcast, 0.1);
+                                 InitKind::kBroadcast, ShareKind::kWeight, 0.1);
 
   return createFullyConnectedInst(Out, input, W, B, outDepth);
 }
@@ -144,10 +146,12 @@ BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(Value *input,
   size_t channels = input->dims()[channelIdx];
 
   // Allocate the learnable parameters beta and gamma.
-  auto *beta = createStaticVariable(ElemKind::FloatTy, {channels},
-                                    InitKind::kBroadcast, 0.);
-  auto *gamma = createStaticVariable(ElemKind::FloatTy, {channels},
-                                     InitKind::kBroadcast, 1.0);
+  auto *beta =
+      createStaticVariable(ElemKind::FloatTy, {channels}, InitKind::kBroadcast,
+                           ShareKind::kWeight, 0.);
+  auto *gamma =
+      createStaticVariable(ElemKind::FloatTy, {channels}, InitKind::kBroadcast,
+                           ShareKind::kWeight, 1.0);
   auto *mean = createStaticVariable(ElemKind::FloatTy, {channels});
   auto *variance = createStaticVariable(ElemKind::FloatTy, {channels});
 
@@ -272,16 +276,19 @@ ArithmeticInst *IRBuilder::createArithmeticInst(Value *dest, Value *LHS,
 
 StaticVariable *IRBuilder::createStaticVariable(ElemKind elemTy,
                                                 ArrayRef<size_t> dims,
-                                                InitKind mode, float val) {
+                                                InitKind initKind,
+                                                ShareKind shareKind,
+                                                float val) {
   auto T = M_.uniqueType(elemTy, dims);
-  auto *A = new StaticVariable(T, mode, val);
+  auto *A = new StaticVariable(T, initKind, shareKind, val);
   M_.pushVar(A);
   return A;
 }
 
-StaticVariable *IRBuilder::createStaticVariable(TypeRef T, InitKind mode,
+StaticVariable *IRBuilder::createStaticVariable(TypeRef T, InitKind initKind,
+                                                ShareKind shareKind,
                                                 float val) {
-  auto *A = new StaticVariable(T, mode, val);
+  auto *A = new StaticVariable(T, initKind, shareKind, val);
   M_.pushVar(A);
   return A;
 }
