@@ -32,8 +32,12 @@ Tensor *Interpreter::getTensorForValue(Value *v) const {
   return it->second;
 }
 
-Handle<FloatTy> Interpreter::getTensorHandle(Value *v) const {
+Handle<FloatTy> Interpreter::getWeightHandle(Context *ctx, Value *v) const {
   return getTensorForValue(v)->getHandle<FloatTy>();
+}
+
+Handle<FloatTy> Interpreter::getGradHandle(Context *ctx, Value *v) const {
+  glow_unreachable();
 }
 
 void Interpreter::initVars() {

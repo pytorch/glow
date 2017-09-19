@@ -39,7 +39,10 @@ public:
   Tensor *getTensorForValue(Value *v) const;
 
   /// \returns a float-handle to the tensor that is stored at \p v.
-  Handle<FloatTy> getTensorHandle(Value *v) const;
+  Handle<FloatTy> getWeightHandle(Context *, Value *v) const;
+
+  /// \returns a float-handle to the tensor that is stored at \p v.
+  Handle<FloatTy> getGradHandle(Context *, Value *v) const;
 
   /// Initialize all of the variables in the program.
   void initVars();
@@ -49,7 +52,8 @@ public:
 
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
-  void fwd##CLASS(Context *ctx, bool isTrain, CLASS *I);
+  void fwd##CLASS(Context *ctx, bool isTrain, CLASS *I);                       \
+  void bwd##CLASS(Context *ctx, CLASS *I);
 #include "glow/IR/Instrs.def"
 #undef DEF_INSTR
 #undef DEF_VALUE
