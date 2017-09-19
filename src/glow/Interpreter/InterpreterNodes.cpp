@@ -267,9 +267,53 @@ void Interpreter::bwdTanhInst(Context *ctx, TanhInst *I) { DBG; }
 //===----------------------------------------------------------------------===//
 
 void Interpreter::fwdSoftMaxInst(Context *ctx, bool isTrain, SoftMaxInst *I) {
-  DBG;
+  auto inW = getWeightHandle(ctx, I->getSrc());
+  auto outW = getWeightHandle(ctx, I->getDest());
+  auto idim = inW.dims();
+
+  auto EH = getWeightHandle(ctx, I->getE());
+
+  for (size_t n = 0; n < idim[0]; n++) {
+    FloatTy max = inW.at({n, 0});
+
+    // Find Max.
+    for (size_t i = 0; i < idim[1]; i++) {
+      max = std::max(max, inW.at({n, i}));
+    }
+
+    FloatTy sum = 0;
+
+    // Compute exp.
+    for (size_t i = 0; i < idim[1]; i++) {
+      FloatTy e = std::exp(inW.at({n, i}) - max);
+      sum += e;
+      EH.at({n, i}) = e;
+    }
+
+    // Normalize the output.
+    for (size_t i = 0; i < idim[1]; i++) {
+      EH.at({n, i}) /= sum;
+      outW.at({n, i}) = EH.at({n, i});
+    }
+  } // N
 }
-void Interpreter::bwdSoftMaxInst(Context *ctx, SoftMaxInst *I) { DBG; }
+void Interpreter::bwdSoftMaxInst(Context *ctx, SoftMaxInst *I) {
+  auto inG = getGradHandle(ctx, I->getSrc());
+
+  auto idim = inG.dims();
+  auto EH = getTensorForValue(I->getE())->getHandle<FloatTy>();
+  auto selectedH = getTensorForValue(I->getSelected())->getHandle<size_t>();
+
+  // http://eli.thegreenplace.net/2016/the-softmax-function-and-its-derivative/
+  // https://stats.stackexchange.com/questions/79454/softmax-layer-in-a-neural-network
+  for (size_t n = 0; n < idim[0]; n++) {
+    for (size_t i = 0; i < idim[1]; i++) {
+      FloatTy delta = (selectedH.at({n, 0}) == i);
+      FloatTy sigma = (EH.at({n, i}) - delta);
+      inG.at({n, i}) += sigma;
+    }
+  }
+}
 
 void Interpreter::fwdRegressionInst(Context *ctx, bool isTrain,
                                     RegressionInst *I) {

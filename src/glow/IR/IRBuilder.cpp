@@ -93,7 +93,8 @@ TanhInst *IRBuilder::createTanhOp(Value *input) {
 
 SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input, Value *selected) {
   auto *res = createStaticVariable(input->getType());
-  return createSoftMaxInst(res, input, selected);
+  auto *E = createStaticVariable(input->getType());
+  return createSoftMaxInst(res, input, E, selected);
 }
 
 RegressionInst *IRBuilder::createRegressionOp(Value *input, Value *expected) {
@@ -222,9 +223,9 @@ TanhInst *IRBuilder::createTanhInst(Value *dest, Value *src) {
   return A;
 }
 
-SoftMaxInst *IRBuilder::createSoftMaxInst(Value *dest, Value *src,
-                                          Value *expected) {
-  auto *A = new SoftMaxInst(dest, src, expected);
+SoftMaxInst *IRBuilder::createSoftMaxInst(Value *dest, Value *src, Value *E,
+                                          Value *selected) {
+  auto *A = new SoftMaxInst(dest, src, E, selected);
   M_.pushInstr(A);
   return A;
 }

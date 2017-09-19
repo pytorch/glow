@@ -161,18 +161,20 @@ public:
 
 class SoftMaxInst : public Instruction {
 public:
-  SoftMaxInst(Value *dest, Value *src, Value *expected)
+  SoftMaxInst(Value *dest, Value *src, Value *E, Value *selected)
       : Instruction(Kinded::Kind::SoftMaxInstKind,
                     {{dest, OperandKind::kOut},
                      {src, OperandKind::kIn},
-                     {expected, OperandKind::kIn}}) {}
+                     {E, OperandKind::kInOut},
+                     {selected, OperandKind::kIn}}) {}
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::SoftMaxInstKind;
   }
   Value *getDest() { return getOperand(0).first; }
   Value *getSrc() { return getOperand(1).first; }
-  Value *getExpected() { return getOperand(2).first; }
+  Value *getE() { return getOperand(2).first; }
+  Value *getSelected() { return getOperand(3).first; }
   void verify();
 };
 

@@ -78,7 +78,8 @@ public:
 
   TanhInst *createTanhInst(Value *dest, Value *src);
 
-  SoftMaxInst *createSoftMaxInst(Value *dest, Value *src, Value *expected);
+  SoftMaxInst *createSoftMaxInst(Value *dest, Value *src, Value *E,
+                                 Value *selected);
 
   RegressionInst *createRegressionInst(Value *dest, Value *src,
                                        Value *expected);

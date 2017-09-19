@@ -201,7 +201,6 @@ void Interpreter::train(size_t iterations, ArrayRef<Value *> vars,
 }
 
 void Interpreter::learnGradient(size_t batchSize) {
-
   for (auto *V : M_.getVars()) {
     auto SV = dyn_cast<StaticVariable>(V);
 
@@ -223,10 +222,9 @@ void Interpreter::learnGradient(size_t batchSize) {
 void Interpreter::updateForwardBackward(ArrayRef<Value *> vars,
                                         ArrayRef<Tensor *> inputs,
                                         size_t sampleIdx) {
-
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
-    loadValueFromTensor(vars[i], inputs[i], 0);
+    loadValueFromTensor(vars[i], inputs[i], sampleIdx);
   }
 
   // Do the forward pass.
