@@ -320,7 +320,8 @@ public:
   }
   std::string getExtraDesc();
   Value *getDest() { return getOperand(0).first; }
-  Value *getSrc() { return getOperand(1).first; }
+  Value *getLHS() { return getOperand(1).first; }
+  Value *getRHS() { return getOperand(2).first; }
   OpKind getKind() { return kind_; }
 
   void verify();

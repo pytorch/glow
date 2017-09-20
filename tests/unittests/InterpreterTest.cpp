@@ -36,7 +36,6 @@ TEST(Interpreter, interpret) {
   auto *SM = builder.createSoftMaxOp(*RL3, ex);
   (void)SM;
 
-  IP.getModule().dump();
   IP.getModule().verify();
 
   IP.initVars();
@@ -172,7 +171,7 @@ TEST(Interpreter, learnXor) {
     TL.at({i, 0}) = a ^ b;
   }
 
-  IP.getModule().dump();
+  IP.getModule().verify();
   IP.initVars();
 
   // Train the network:
@@ -306,4 +305,49 @@ TEST(Network, circle) {
     EXPECT_GE(A, 0.9);
     EXPECT_LE(B, 0.1);
   }
+}
+
+TEST(Network, learnSingleValueConcat) {
+  Interpreter IP;
+  auto &bb = IP.getBuilder();
+  unsigned width = 6;
+
+  // Learning a single input vector.
+  IP.getConfig().maxNumThreads = 1;
+  IP.getConfig().momentum = 0.9;
+  IP.getConfig().learningRate = 0.01;
+
+  auto *Ex = bb.createStaticVariable(ElemKind::FloatTy, {1, width * 2});
+
+  // Left side of the network:
+  auto *A = bb.createStaticVariable(ElemKind::FloatTy, {1, width});
+  Instruction *L = bb.createFullyConnectedOp(A, width);
+  L = bb.createSigmoidOp(*L);
+
+  // Right side of the network:
+  auto *B = bb.createStaticVariable(ElemKind::FloatTy, {1, width});
+  Instruction *R = bb.createFullyConnectedOp(B, width);
+  R = bb.createSigmoidOp(*R);
+
+  // Concat:
+  auto *C = bb.createConcatOp({*L, *R}, 1);
+  auto *RN = bb.createRegressionOp(*C, Ex);
+
+  Tensor inputs(ElemKind::FloatTy, {1, width});
+  Tensor expected(ElemKind::FloatTy, {1, width * 2});
+  inputs.getHandle<FloatTy>().clear(0.15);
+  expected.getHandle<FloatTy>().clear(0.9);
+
+  IP.initVars();
+
+  // Train the network:
+  IP.train(1000, {A, B, Ex}, {&inputs, &inputs, &expected});
+
+  // Testing the output vector.
+  IP.infer({A}, {&inputs});
+  auto RNWH = IP.getTensorForValue(*RN)->getHandle<FloatTy>();
+  (void)RNWH;
+
+  // Test the output:
+  EXPECT_NEAR(RNWH.at({0, 0}), 0.9, 0.1);
 }

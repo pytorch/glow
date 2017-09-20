@@ -612,9 +612,43 @@ void Interpreter::bwdReshapeInst(Context *ctx, ReshapeInst *I) {
 }
 
 void Interpreter::fwdConcatInst(Context *ctx, bool isTrain, ConcatInst *I) {
-  DBG;
+  auto outW = getWeightHandle(ctx, I->getDest());
+
+  // Insert the tensors at this coordinate. Start at zero.
+  std::vector<size_t> offset(outW.size(), 0);
+  auto dim = I->getDim();
+
+  for (int i = 1, e = I->getNumOperands(); i < e; i++) {
+    auto inW = getWeightHandle(ctx, I->getOperand(i).first);
+
+    // Insert the tensor.
+    outW.insertTensors(inW, offset);
+
+    // The next tensor starts after this one ends.
+    offset[dim] += inW.dims()[dim];
+  }
 }
-void Interpreter::bwdConcatInst(Context *ctx, ConcatInst *I) { DBG; }
+void Interpreter::bwdConcatInst(Context *ctx, ConcatInst *I) {
+  auto outG = getGradHandle(ctx, I->getDest());
+
+  // Insert the tensors at this coordinate. Start at zero.
+  std::vector<size_t> offset(outG.size(), 0);
+
+  auto dim = I->getDim();
+
+  for (int i = 1, e = I->getNumOperands(); i < e; i++) {
+    auto inG = getGradHandle(ctx, I->getOperand(i).first);
+
+    // Insert the tensor.
+    outG.extractTensors(inG, offset);
+
+    // TODO: this code assumes that input[i] has only one user, because it
+    // zeros the gradient before extracting the tensor.
+
+    // The next tensor starts after this one ends.
+    offset[dim] += inG.dims()[dim];
+  }
+}
 
 //===----------------------------------------------------------------------===//
 //                      Batch Normalization
@@ -622,11 +656,188 @@ void Interpreter::bwdConcatInst(Context *ctx, ConcatInst *I) { DBG; }
 
 void Interpreter::fwdBatchNormalizationInst(Context *ctx, bool isTrain,
                                             BatchNormalizationInst *I) {
-  DBG;
+  if (isTrain) {
+    return fwdBatchNormalizationInst_infer(ctx, I);
+  }
+
+  return fwdBatchNormalizationInst_train(ctx, I);
 }
+
+void Interpreter::fwdBatchNormalizationInst_infer(Context *ctx,
+                                                  BatchNormalizationInst *I) {
+  auto inW = getWeightHandle(ctx, I->getSrc());
+  auto outW = getWeightHandle(ctx, I->getDest());
+
+  auto betaWH = getWeightHandle(ctx, I->getBias());
+  auto gammaWH = getWeightHandle(ctx, I->getScale());
+  auto varH = getWeightHandle(ctx, I->getVar());
+  auto meanH = getWeightHandle(ctx, I->getMean());
+
+  auto channelIdx = I->getChannelIdx();
+  auto epsilon = I->getEpsilon();
+
+  // http://cthorey.github.io./backpropagation/
+  //
+  // mu = 1/N*np.sum(h,axis =0)
+  // sigma2 = 1/N*np.sum((h-mu)**2)
+  // hath = (h-mu)*(sigma2+epsilon)**(-1./2.)
+  // y = gamma*hath+beta
+
+  // In inference mode just apply the transformation:
+  // y[i] = (x - mu) * gamma / stdvar + beta;
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    size_t channelId = inW.getDimForPtr(channelIdx, i);
+    FloatTy x = inW.raw(i);
+
+    FloatTy mu = meanH.at({channelId});
+    FloatTy var = varH.at({channelId});
+
+    FloatTy stdvar = 1.0 / std::sqrt(var + epsilon);
+
+    FloatTy gamma = gammaWH.at({channelId});
+    FloatTy beta = betaWH.at({channelId});
+
+    outW.raw(i) = (x - mu) * gamma * stdvar + beta;
+  }
+}
+
+void Interpreter::fwdBatchNormalizationInst_train(Context *ctx,
+                                                  BatchNormalizationInst *I) {
+  auto inW = getWeightHandle(ctx, I->getSrc());
+  auto varH = getWeightHandle(ctx, I->getVar());
+  auto meanH = getWeightHandle(ctx, I->getMean());
+
+  auto channelIdx = I->getChannelIdx();
+  auto momentum = I->getMomentum();
+
+  Tensor localMean(ElemKind::FloatTy, meanH.dims());
+  Tensor localVar(ElemKind::FloatTy, varH.dims());
+  auto localMeanH = localMean.getHandle<FloatTy>();
+  auto localVarH = localVar.getHandle<FloatTy>();
+
+  // The number of different channels.
+  const size_t numChannels = inW.dims()[channelIdx];
+  // THe number of elements that each channel holds.
+  const size_t samplesPerChannel = inW.size() / numChannels;
+
+  // Calculate Mean:
+
+  // sum(in[i])
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    size_t channelId = inW.getDimForPtr(channelIdx, i);
+    FloatTy v = inW.raw(i);
+    localMeanH.raw(channelId) += v;
+  }
+  // Mean = sum(in[i]) / N
+  for (size_t i = 0, e = localMeanH.size(); i < e; i++) {
+    localMeanH.at({i}) /= samplesPerChannel;
+  }
+
+  // Calculate Variance:
+
+  // sum((x - mu) ^ 2)
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    size_t channelId = inW.getDimForPtr(channelIdx, i);
+    FloatTy v = inW.raw(i) - localMeanH.at({channelId});
+    localVarH.raw(channelId) += v * v;
+  }
+  // Var = sum((x - mu) ^ 2) / N
+  for (size_t i = 0, e = localMeanH.size(); i < e; i++) {
+    localVarH.at({i}) /= samplesPerChannel;
+  }
+
+  // Update the global variance and mean:
+  for (size_t i = 0, e = localMeanH.size(); i < e; i++) {
+    auto P = momentum;
+    meanH.at({i}) = P * localMeanH.at({i}) + (1 - P) * meanH.at({i});
+    varH.at({i}) = P * localVarH.at({i}) + (1 - P) * varH.at({i});
+  }
+
+  // TODO: should we be using the running mean or the local mean?
+  fwdBatchNormalizationInst_infer(ctx, I);
+}
+
 void Interpreter::bwdBatchNormalizationInst(Context *ctx,
                                             BatchNormalizationInst *I) {
-  DBG;
+  auto inW = getWeightHandle(ctx, I->getSrc());
+  auto inG = getGradHandle(ctx, I->getSrc());
+  auto outG = getGradHandle(ctx, I->getDest());
+
+  auto gammaWH = getWeightHandle(ctx, I->getScale());
+  auto betaGH = getGradHandle(ctx, I->getBias());
+  auto gammaGH = getGradHandle(ctx, I->getScale());
+
+  auto varH = getWeightHandle(ctx, I->getVar());
+  auto meanH = getWeightHandle(ctx, I->getMean());
+
+  auto channelIdx = I->getChannelIdx();
+  auto epsilon = I->getEpsilon();
+
+  // Update the gradient of the incoming buffer:
+  Tensor dyhmu(ElemKind::FloatTy, meanH.dims());
+  Tensor sumDy(ElemKind::FloatTy, meanH.dims());
+  auto dyhmuH = dyhmu.getHandle<FloatTy>();
+  auto sumDyH = sumDy.getHandle<FloatTy>();
+
+  // The number of different channels.
+  const size_t numChannels = inW.dims()[channelIdx];
+  // THe number of elements that each channel holds.
+  const size_t samplesPerChannel = inW.size() / numChannels;
+
+  // Calculate: sum(dy * (h - mu))
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    size_t channelId = inW.getDimForPtr(channelIdx, i);
+    // x - mean.
+    FloatTy cx = inW.raw(i) - meanH.at({channelId});
+    // dy * (h - mu)
+    dyhmuH.at({channelId}) += outG.raw(i) * cx;
+  }
+
+  // Calculate: sum(dy)
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    size_t channelId = inW.getDimForPtr(channelIdx, i);
+    sumDyH.at({channelId}) += outG.raw(i);
+  }
+
+  // http://cthorey.github.io./backpropagation/
+  //
+  // mu = 1./N*np.sum(h)
+  // var = 1./N*np.sum((h-mu)**2)
+  // dbeta = np.sum(dy)
+  // dgamma = np.sum((h - mu) * (var + eps)**(-1. / 2.) * dy)
+  // dh = (1. / N) * gamma * (var + eps)**(-1. / 2.) *
+  //     (N * dy - np.sum(dy) - (h - mu) * 1/(var + eps) *
+  //     np.sum(dy * (h - mu)))
+  //
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    size_t channelId = inW.getDimForPtr(channelIdx, i);
+
+    FloatTy invN = (1. / samplesPerChannel);
+    FloatTy gamma = gammaWH.at({channelId});
+    FloatTy var = varH.at({channelId});
+    FloatTy mu = meanH.at({channelId});
+    FloatTy invVarSqrt = 1. / std::sqrt(var + epsilon);
+    FloatTy invVar = 1. / (var + epsilon);
+
+    FloatTy dy = outG.raw(i);
+    FloatTy hmu = inW.raw(i) - mu;
+    FloatTy sdy = sumDyH.at(channelId);
+    FloatTy sdyhmu = dyhmuH.at(channelId);
+    inG.raw(i) += invN * gamma * invVarSqrt *
+                  (samplesPerChannel * dy - sdy - hmu * invVar * sdyhmu);
+  }
+
+  // Update the gradient of beta and gamma.
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    size_t channelId = inW.getDimForPtr(channelIdx, i);
+
+    FloatTy mu = meanH.at({channelId});
+    FloatTy var = varH.at({channelId});
+    FloatTy invVarSqrt = 1. / std::sqrt(var + epsilon);
+
+    betaGH.at({channelId}) += outG.raw(i);
+    gammaGH.at({channelId}) += (inW.raw(i) - mu) * invVarSqrt * outG.raw(i);
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -635,9 +846,51 @@ void Interpreter::bwdBatchNormalizationInst(Context *ctx,
 
 void Interpreter::fwdArithmeticInst(Context *ctx, bool isTrain,
                                     ArithmeticInst *I) {
-  DBG;
+  auto outW = getWeightHandle(ctx, I->getDest());
+  auto LHSW = getWeightHandle(ctx, I->getLHS());
+  auto RHSW = getWeightHandle(ctx, I->getRHS());
+
+  switch (I->getKind()) {
+  case ArithmeticInst::OpKind::kAdd:
+    for (size_t i = 0, e = outW.size(); i < e; i++) {
+      outW.raw(i) = LHSW.raw(i) + RHSW.raw(i);
+    }
+    return;
+    break;
+
+  case ArithmeticInst::OpKind::kMul:
+    for (size_t i = 0, e = outW.size(); i < e; i++) {
+      outW.raw(i) = LHSW.raw(i) * RHSW.raw(i);
+    }
+    return;
+    break;
+  }
 }
 
-void Interpreter::bwdArithmeticInst(Context *ctx, ArithmeticInst *I) { DBG; }
+void Interpreter::bwdArithmeticInst(Context *ctx, ArithmeticInst *I) {
+  auto LHSW = getWeightHandle(ctx, I->getLHS());
+  auto RHSW = getWeightHandle(ctx, I->getRHS());
+  auto outG = getGradHandle(ctx, I->getDest());
+  auto LHSG = getGradHandle(ctx, I->getLHS());
+  auto RHSG = getGradHandle(ctx, I->getRHS());
+
+  switch (I->getKind()) {
+  case ArithmeticInst::OpKind::kAdd:
+    for (size_t i = 0, e = outG.size(); i < e; i++) {
+      LHSG.raw(i) = outG.raw(i);
+      RHSG.raw(i) = outG.raw(i);
+    }
+    return;
+    break;
+
+  case ArithmeticInst::OpKind::kMul:
+    for (size_t i = 0, e = outG.size(); i < e; i++) {
+      LHSG.raw(i) = RHSW.raw(i) * outG.raw(i);
+      RHSG.raw(i) = LHSW.raw(i) * outG.raw(i);
+    }
+    return;
+    break;
+  }
+}
 
 #undef DBG

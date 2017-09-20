@@ -111,6 +111,9 @@ private:
   void fwdPoolAvg_impl(Context *ctx, PoolInst *I);
   void bwdPoolMax_impl(Context *ctx, PoolInst *I);
   void bwdPoolAvg_impl(Context *ctx, PoolInst *I);
+
+  void fwdBatchNormalizationInst_infer(Context *ctx, BatchNormalizationInst *I);
+  void fwdBatchNormalizationInst_train(Context *ctx, BatchNormalizationInst *I);
   ///@}
 };
 
