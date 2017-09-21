@@ -1,7 +1,7 @@
-#include "glow/Interpreter/Interpreter.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Interpreter/Interpreter.h"
 
 #include "gtest/gtest.h"
 

@@ -473,7 +473,7 @@ public:
     for (size_t i = 0, e = std::min<size_t>(maxNumElem, size()); i < e; i++) {
 
       // Print one open brace at the beginning of every row, slice, and tensor.
-      for (size_t j = 0, e = num_dims-1; num_dims > 1 && j < e; j++) {
+      for (size_t j = 0, e = num_dims - 1; num_dims > 1 && j < e; j++) {
         if (i % sizeIntegral[j] == 0) {
           // This iteration of outer loop is a new row, slice or tensor.
           std::cout << "[";
@@ -484,7 +484,7 @@ public:
       std::cout << raw(i);
 
       // Print one closed brace at the end of every row, slice, or tensor.
-      for (size_t j = 0, e = num_dims-1; num_dims > 1 && j < e; j++) {
+      for (size_t j = 0, e = num_dims - 1; num_dims > 1 && j < e; j++) {
         size_t next_index = i + 1;
         if (next_index % sizeIntegral[j] == 0) {
           std::cout << "]";
@@ -494,7 +494,7 @@ public:
       std::cout << ", ";
 
       // Print one newline at the end of every row, slice, or tensor.
-      for (size_t j = 0, e = num_dims-1; num_dims > 1 && j < e; j++) {
+      for (size_t j = 0, e = num_dims - 1; num_dims > 1 && j < e; j++) {
         size_t next_index = i + 1;
         if (next_index % sizeIntegral[j] == 0) {
           // Next iteration of outer loop will be a new row, slice or tensor.

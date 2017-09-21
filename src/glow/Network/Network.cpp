@@ -100,6 +100,11 @@ FullyConnectedNode *Network::createFullyConnectedNode(NodeBase *input,
   return addNode(new FullyConnectedNode(this, input, outDepth));
 }
 
+LRNNode *Network::createLRNNode(NodeBase *input, size_t halfWindowSize,
+                                float alpha, float beta, float k) {
+  return addNode(new LRNNode(this, input, halfWindowSize, alpha, beta, k));
+}
+
 RELUNode *Network::createRELUNode(NodeBase *input) {
   return addNode(new RELUNode(this, input));
 }

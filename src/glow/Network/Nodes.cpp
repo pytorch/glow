@@ -511,6 +511,145 @@ void FullyConnectedNode::loadWeights(Network *N_, Tensor *w, Tensor *bias) {
   N_->updateTensor(&biasW_, bias);
 }
 
+LRNNode::LRNNode(Network *N, NodeBase *input, size_t halfWindowSize,
+                 float alpha, float beta, float k)
+    : input_(input), halfWindowSize_(halfWindowSize), alpha_(alpha),
+      beta_(beta), k_(k) {}
+
+void LRNNode::init(Context *ctx) const {
+  assert(input_ && input_->size(ctx) && "Invalid input");
+
+  ctx->allocateTensor(&outputWeight_, ElemKind::FloatTy, input_->dims(ctx));
+  ctx->allocateTensor(&outputGrad_, ElemKind::FloatTy, input_->dims(ctx));
+  ctx->allocateTensor(&scale_, ElemKind::FloatTy, input_->dims(ctx));
+}
+
+void LRNNode::forward(Context *ctx, PassKind kind) const {
+  auto outW = getWeightHandle(ctx);
+  auto inW = input_->getWeightHandle(ctx);
+  auto scaleCache = ctx->getTensor(&scale_)->getHandle<FloatTy>();
+
+  ShapeNHWC odim = dims(ctx);
+  ShapeNHWC idim = input_->dims(ctx);
+
+  // LRN node does not change the shape of the input.
+  assert(odim == idim && "Output of LRN node must be same shape as input");
+
+  // LRN node normalizes across channels, so the input must have at least
+  // 3 dimensions.
+  assert(idim.c > 2 && "Input of LRN node must have at least 3 dimensions");
+
+  auto windowSize = 2 * halfWindowSize_ + 1;
+  auto normedAlpha = alpha_ / windowSize;
+
+  // For every input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+
+    // For every row:
+    for (size_t h = 0; h < idim.h; h++) {
+
+      // For every column:
+      for (size_t w = 0; w < idim.w; w++) {
+
+        FloatTy squareSum = 0.0;
+
+        // Compute squareSum for first channel.
+        for (size_t c = 1; c <= halfWindowSize_ && c < idim.c; c++) {
+          auto val = inW.at({n, h, w, c});
+          squareSum += (val * val);
+        }
+
+        // For every channel:
+        for (size_t c = 0; c < idim.c; c++) {
+          auto scale = k_ + normedAlpha * squareSum;
+
+          // This will be used to accelerate the backward pass.
+          scaleCache.at({n, h, w, c}) = scale;
+
+          auto normFactor = std::pow(scale, -beta_);
+          outW.at({n, h, w, c}) = inW.at({n, h, w, c}) * normFactor;
+
+          // Modify squareSum for next channel.
+          auto subIndex = c - halfWindowSize_;
+          auto addIndex = c + halfWindowSize_ + 1;
+          auto sub = (c >= halfWindowSize_) ? inW.at({n, h, w, subIndex}) : 0;
+          auto add = (addIndex < idim.c) ? inW.at({n, h, w, addIndex}) : 0;
+
+          // Subtract out "rear" end of this window, add "front" end of next.
+          squareSum = squareSum - (sub * sub) + (add * add);
+        }
+      }
+    }
+  }
+}
+
+void LRNNode::backward(Context *ctx) const {
+  auto outW = getWeightHandle(ctx);
+  auto outG = getGradHandle(ctx);
+  auto inG = input_->getGradHandle(ctx);
+  auto inW = input_->getWeightHandle(ctx);
+  auto scaleCache = ctx->getTensor(&scale_)->getHandle<FloatTy>();
+
+  ShapeNHWC odim = dims(ctx);
+
+  auto windowSize = 2 * halfWindowSize_ + 1;
+  auto normedAlpha = alpha_ / windowSize;
+
+  // For every input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+
+    // For every row:
+    for (size_t h = 0; h < odim.h; h++) {
+
+      // For every column:
+      for (size_t w = 0; w < odim.w; w++) {
+
+        FloatTy sum = 0.0;
+
+        // Compute sum for first channel.
+        for (size_t c = 1; c <= halfWindowSize_ && c < odim.c; c++) {
+          auto outw = outW.at({n, h, w, c});
+          auto scale = scaleCache.at({n, h, w, c});
+          auto outg = outG.at({n, h, w, c});
+          sum += (outg * (outw / scale));
+        }
+
+        // For every channel:
+        for (size_t c = 0; c < odim.c; c++) {
+          auto outg = outG.at({n, h, w, c});
+          auto scale = scaleCache.at({n, h, w, c});
+          auto inw = inW.at({n, h, w, c});
+
+          inG.at({n, h, w, c}) = outg * std::pow(scale, -beta_) -
+                                 2 * normedAlpha * beta_ * inw * sum;
+
+          // Modify sum for next channel.
+          auto subIndex = c - halfWindowSize_;
+          auto addIndex = c + halfWindowSize_ + 1;
+
+          if (c >= halfWindowSize_) {
+            auto outw = outW.at({n, h, w, subIndex});
+            auto scale = scaleCache.at({n, h, w, subIndex});
+            auto outg = outG.at({n, h, w, subIndex});
+
+            // Subtract "rear" end of this window.
+            sum -= (outg * (outw / scale));
+          }
+
+          if (addIndex < odim.c) {
+            auto outw = outW.at({n, h, w, addIndex});
+            auto scale = scaleCache.at({n, h, w, addIndex});
+            auto outg = outG.at({n, h, w, addIndex});
+
+            // Add "front" end of next window.
+            sum += (outg * (outw / scale));
+          }
+        }
+      }
+    }
+  }
+}
+
 RELUNode::RELUNode(Network *N, NodeBase *input) : input_(input) {}
 
 void RELUNode::init(Context *ctx) const {
@@ -1251,6 +1390,7 @@ void ArithmeticNode::backward(Context *ctx) const {
 DEFINE_CLASS_VISITOR(ConvNode)
 DEFINE_CLASS_VISITOR(MaxPoolNode)
 DEFINE_CLASS_VISITOR(FullyConnectedNode)
+DEFINE_CLASS_VISITOR(LRNNode)
 DEFINE_CLASS_VISITOR(RELUNode)
 DEFINE_CLASS_VISITOR(ReshapeNode)
 DEFINE_CLASS_VISITOR(TransposeNode)
@@ -1268,6 +1408,7 @@ DEFINE_CLASS_VISITOR(BatchNormalizationNode)
     return db;                                                                 \
   }
 
+DEFINE_CLASS_REPR(LRNNode);
 DEFINE_CLASS_REPR(RELUNode);
 DEFINE_CLASS_REPR(ReshapeNode);
 DEFINE_CLASS_REPR(TransposeNode);

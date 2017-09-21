@@ -124,6 +124,9 @@ public:
   FullyConnectedNode *createFullyConnectedNode(NodeBase *input,
                                                size_t outDepth);
 
+  LRNNode *createLRNNode(NodeBase *input, size_t halfWindowSize = 2,
+                         float alpha = 1e-4, float beta = 0.75, float k = 2.0);
+
   RELUNode *createRELUNode(NodeBase *input);
 
   SigmoidNode *createSigmoidNode(NodeBase *input);

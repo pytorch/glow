@@ -148,6 +148,44 @@ public:
   void visit(NodeBase *parent, NodeVisitor *visitor) override;
 };
 
+class LRNNode final : public NodeBase {
+  /// A reference to the layer input.
+  NodeBase *input_;
+
+  /// The number of neighbouring channels on each side to sum over
+  size_t halfWindowSize_;
+
+  /// The scaling parameter
+  float alpha_;
+
+  /// The exponent parameter
+  float beta_;
+
+  /// The offset parameter
+  float k_;
+
+  /// This tensor is used to accelerate the gradient backward pass
+  TensorToken scale_;
+
+  LRNNode(Network *N, NodeBase *input, size_t windowSize, float alpha,
+          float beta, float k);
+
+  friend Network;
+
+public:
+  void init(Context *ctx) const override;
+
+  void forward(Context *ctx, PassKind kind) const override;
+
+  void backward(Context *ctx) const override;
+
+  std::string getName() const override { return "LRNNode"; }
+
+  std::string getDebugRepr(Context *ctx) const override;
+
+  void visit(NodeBase *parent, NodeVisitor *visitor) override;
+};
+
 class RELUNode final : public NodeBase {
   /// A reference to the layer input.
   NodeBase *input_;

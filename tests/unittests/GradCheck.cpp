@@ -316,3 +316,32 @@ TEST(Network, gradientCheck_Transpose) {
 
   performGradCheck(N, RN, A, Exp, &inputs, &outputs, 0.001, 0.01);
 }
+
+TEST(Network, gradientCheck_LRN) {
+  Network N;
+  N.getConfig().maxNumThreads = 1;
+
+  size_t numDim = 10;
+  size_t numOutputElem = 10;
+
+  auto *A = N.createVariable({1, numDim, numDim, 1}, ElemKind::FloatTy);
+  auto *Exp = N.createVariable({1, numOutputElem}, ElemKind::FloatTy);
+
+  NodeBase *O = N.createConvNode(A, 16, 5, 1, 2);
+  O = N.createLRNNode(O);
+  O = N.createMaxPoolNode(O, MaxPoolNode::OpKind::kMax, 3, 3, 0);
+  O = N.createFullyConnectedNode(O, numOutputElem);
+  O = N.createRELUNode(O);
+  auto *RN = N.createRegressionNode(O, Exp);
+
+  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
+  Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
+
+  auto inputsH = inputs.getHandle<FloatTy>();
+  auto outputsH = outputs.getHandle<FloatTy>();
+
+  inputsH.randomize(1);
+  outputsH.randomize(1);
+
+  performGradCheck(N, RN, A, Exp, &inputs, &outputs, 0.001, 0.04);
+}
