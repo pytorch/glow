@@ -21,6 +21,7 @@ ExternalProject_Add(llvm
                       81029f142231bde8e119becda112a2173f1459c9
                     CMAKE_ARGS
                       -DCMAKE_BUILD_TYPE=RelWithDebInfo
+                      -DBUILD_SHARED_LIBS=NO
                       -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
                       -DLLVM_TARGETS_TO_BUILD=X86
                       -DLLVM_BUILD_TOOLS=NO
@@ -30,12 +31,30 @@ ExternalProject_Add(llvm
                       -DLLVM_INCLUDE_EXAMPLES=NO
                       -DLLVM_INCLUDE_GO_TESTS=NO
                       -DLLVM_ENABLE_OCAMLDOC=NO
-                    STEP_TARGETS
-                      build update
+                    BUILD_BYPRODUCTS
+                      <INSTALL_DIR>/include
+                      <INSTALL_DIR>/lib/${CMAKE_STATIC_LIBRARY_PREFIX}LLVMSupport${CMAKE_STATIC_LIBRARY_SUFFIX}
                     UPDATE_COMMAND
                       ""
-                    EXCLUDE_FROM_ALL
-                      1)
+                    STEP_TARGETS
+                      update build install)
+ExternalProject_Get_Property(llvm source_dir install_dir)
+
+# NOTE: this is a workaround for the fact that the sources may not be downloaded
+# just yet.  CMake does not like the addition of INTERFACE_INCLUDE_DIRECTORIES
+# without the directory existing.  Just create the location which will be
+# populated during the installation.
+file(MAKE_DIRECTORY ${install_dir}/include)
+
+add_library(LLVMSupport
+            STATIC IMPORTED GLOBAL)
+set_target_properties(LLVMSupport
+                      PROPERTIES
+                        IMPORTED_LOCATION
+                          ${install_dir}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}LLVMSupport${CMAKE_STATIC_LIBRARY_SUFFIX}
+                        INTERFACE_INCLUDE_DIRECTORIES
+                          ${install_dir}/include)
+add_dependencies(LLVMSupport llvm-install)
 
 ExternalProject_Add(googletest
                     SOURCE_DIR
@@ -58,7 +77,7 @@ ExternalProject_Add(googletest
                     UPDATE_COMMAND
                       ""
                     STEP_TARGETS
-                      install)
+                      update build install)
 ExternalProject_Get_Property(googletest source_dir install_dir)
 
 # NOTE: this is a workaround for the fact that the sources may not be downloaded
