@@ -1,5 +1,11 @@
 
+# NOTE: default to disconnected updates, we dont want to access the network when
+# building if possible
+set(EP_UPDATE_DISCONNECTED 1)
+
 include(ExternalProject)
+
+find_package(Threads REQUIRED)
 
 # NOTE: we use the exact commit to avoid fetching sources after the initial sync
 ExternalProject_Add(llvm
@@ -26,6 +32,62 @@ ExternalProject_Add(llvm
                       -DLLVM_ENABLE_OCAMLDOC=NO
                     STEP_TARGETS
                       build update
+                    UPDATE_COMMAND
+                      ""
                     EXCLUDE_FROM_ALL
                       1)
+
+ExternalProject_Add(googletest
+                    SOURCE_DIR
+                      ${CMAKE_SOURCE_DIR}/external/googletest
+                    BINARY_DIR
+                      ${CMAKE_BINARY_DIR}/external/googletest
+                    GIT_REPOSITORY
+                      https://github.com/google/googletest.git
+                    GIT_SHALLOW
+                      1
+                    GIT_TAG
+                      ec44c6c1675c25b9827aacd08c02433cccde7780
+                    CMAKE_ARGS
+                      -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+                      -DBUILD_SHARED_LIBS=NO
+                    BUILD_BYPRODUCTS
+                      <INSTALL_DIR>/include
+                      <INSTALL_DIR>/lib/${CMAKE_STATIC_LIBRARY_PREFIX}gtest${CMAKE_STATIC_LIBRARY_SUFFIX}
+                      <INSTALL_DIR>/lib/${CMAKE_STATIC_LIBRARY_PREFIX}gtest_main${CMAKE_STATIC_LIBRARY_SUFFIX}
+                    UPDATE_COMMAND
+                      ""
+                    STEP_TARGETS
+                      install)
+ExternalProject_Get_Property(googletest source_dir install_dir)
+
+# NOTE: this is a workaround for the fact that the sources may not be downloaded
+# just yet.  CMake does not like the addition of INTERFACE_INCLUDE_DIRECTORIES
+# without the directory existing.  Just create the location which will be
+# populated during the installation.
+file(MAKE_DIRECTORY ${install_dir}/include)
+
+add_library(gtest
+            STATIC IMPORTED GLOBAL)
+set_target_properties(gtest
+                      PROPERTIES
+                        IMPORTED_LOCATION
+                          ${install_dir}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}gtest${CMAKE_STATIC_LIBRARY_SUFFIX}
+                        IMPORTED_LINK_INTERFACE_LIBRARIES
+                          Threads::Threads
+                        INTERFACE_INCLUDE_DIRECTORIES
+                          ${install_dir}/include)
+add_dependencies(gtest googletest-install)
+
+add_library(gtest_main
+            STATIC IMPORTED GLOBAL)
+set_target_properties(gtest_main
+                      PROPERTIES
+                        IMPORTED_LOCATION
+                          ${install_dir}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}gtest_main${CMAKE_STATIC_LIBRARY_SUFFIX}
+                        IMPORTED_LINK_INTERFACE_LIBRARIES
+                          Threads::Threads
+                        INTERFACE_INCLUDE_DIRECTORIES
+                          ${install_dir}/include)
+add_dependencies(gtest_main googletest-install)
 
