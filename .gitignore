@@ -6,5 +6,8 @@
 .DS_Store
 *.so
 *.dylib
-build
+
+build/
+external/googletest/
+external/llvm/
 
