@@ -42,6 +42,7 @@ configure_file (
   "${GLOW_BINARY_DIR}/Config.h"
   )
 
+add_subdirectory(external)
 add_subdirectory(src/glow/)
 add_subdirectory(examples/)
 add_subdirectory(tools/)
