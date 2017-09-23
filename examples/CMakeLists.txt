@@ -10,5 +10,8 @@ add_executable(mnist
                  mnist.cpp)
 target_link_libraries(mnist
                       PRIVATE
-                        Network)
+                        Interpreter
+                        Network
+                        IR
+                        Support)
 

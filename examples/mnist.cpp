@@ -1,7 +1,7 @@
-#include "glow/Network/Image.h"
-#include "glow/Network/Network.h"
-#include "glow/Network/Nodes.h"
-#include "glow/Network/Tensor.h"
+#include "glow/IR/IR.h"
+#include "glow/IR/IRBuilder.h"
+#include "glow/IR/Instrs.h"
+#include "glow/Interpreter/Interpreter.h"
 #include "glow/Support/Support.h"
 
 #include <cassert>
@@ -65,26 +65,30 @@ void testMNIST() {
   unsigned minibatchSize = 8;
 
   // Construct the network:
-  Network N;
-  N.getConfig().learningRate = 0.001;
-  N.getConfig().momentum = 0.9;
-  N.getConfig().L2Decay = 0.001;
+  Interpreter IP;
+  auto &bb = IP.getBuilder();
+  IP.getConfig().learningRate = 0.001;
+  IP.getConfig().momentum = 0.9;
+  IP.getConfig().L2Decay = 0.001;
 
-  auto *A = N.createVariable({minibatchSize, 28, 28, 1}, ElemKind::FloatTy);
-  auto *CV0 = N.createConvNode(A, 16, 5, 1, 2);
-  auto *RL0 = N.createRELUNode(CV0);
-  auto *MP0 = N.createMaxPoolNode(RL0, MaxPoolNode::OpKind::kMax, 3, 3, 0);
+  auto *A =
+      bb.createStaticVariable(ElemKind::FloatTy, {minibatchSize, 28, 28, 1});
+  auto *CV0 = bb.createConvOp(A, 16, 5, 1, 2);
+  auto *RL0 = bb.createRELUOp(*CV0);
+  auto *MP0 = bb.createPoolOp(*RL0, PoolInst::OpKind::kMax, 3, 3, 0);
 
-  auto *CV1 = N.createConvNode(MP0, 16, 5, 1, 2);
-  auto *RL1 = N.createRELUNode(CV1);
-  auto *MP1 = N.createMaxPoolNode(RL1, MaxPoolNode::OpKind::kMax, 3, 3, 0);
+  auto *CV1 = bb.createConvOp(*MP0, 16, 5, 1, 2);
+  auto *RL1 = bb.createRELUOp(*CV1);
+  auto *MP1 = bb.createPoolOp(*RL1, PoolInst::OpKind::kMax, 3, 3, 0);
 
-  auto *FCL1 = N.createFullyConnectedNode(MP1, 10);
-  auto *RL2 = N.createRELUNode(FCL1);
+  auto *FCL1 = bb.createFullyConnectedOp(*MP1, 10);
+  auto *RL2 = bb.createRELUOp(*FCL1);
+  auto *selected =
+      bb.createStaticVariable(ElemKind::IndexTy, {minibatchSize, 1});
+  auto *SM = bb.createSoftMaxOp(*RL2, selected);
 
-  auto *selected = N.createVariable({minibatchSize, 1}, ElemKind::IndexTy);
-
-  auto *SM = N.createSoftMaxNode(RL2, selected);
+  IP.getModule().dump();
+  IP.initVars();
 
   // Report progress every this number of training iterations.
   constexpr int reportRate = 30;
@@ -97,7 +101,7 @@ void testMNIST() {
     // On each training iteration take an input from imageInputs and update
     // the input variable A, and add take a corresponding label and update the
     // softmax layer.
-    N.train(SM, reportRate, {A, selected}, {&imageInputs, &labelInputs});
+    IP.train(reportRate, {A, selected}, {&imageInputs, &labelInputs});
   }
   std::cout << "Validating.\n";
 
@@ -108,7 +112,8 @@ void testMNIST() {
 
   Tensor sample(ElemKind::FloatTy, {minibatchSize, 1, 28, 28});
   sample.copyConsecutiveSlices(&imageInputs, 0);
-  auto *res = N.infer(SM, {A}, {&sample});
+  IP.infer({A}, {&sample});
+  auto *res = IP.getTensorForValue(*SM);
 
   for (unsigned int iter = 0; iter < minibatchSize; iter++) {
     auto T = res->getHandle<FloatTy>().extractSlice(iter);
