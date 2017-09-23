@@ -657,10 +657,10 @@ void Interpreter::bwdConcatInst(Context *ctx, ConcatInst *I) {
 void Interpreter::fwdBatchNormalizationInst(Context *ctx, bool isTrain,
                                             BatchNormalizationInst *I) {
   if (isTrain) {
-    return fwdBatchNormalizationInst_infer(ctx, I);
+    return fwdBatchNormalizationInst_train(ctx, I);
   }
 
-  return fwdBatchNormalizationInst_train(ctx, I);
+  return fwdBatchNormalizationInst_infer(ctx, I);
 }
 
 void Interpreter::fwdBatchNormalizationInst_infer(Context *ctx,

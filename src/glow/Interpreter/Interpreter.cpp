@@ -189,18 +189,14 @@ void Interpreter::learnGradient(size_t batchSize) {
   for (auto *V : M_.getVars()) {
     auto SV = dyn_cast<StaticVariable>(V);
 
-    auto W = getTensorForValue(V);
-    auto G = getOrCreateGradTensor(V);
-
     // Handle weight update by learning the gradients into the weights.
     if (SV->getShareKind() == StaticVariable::ShareKind::kWeight) {
+      auto W = getTensorForValue(V);
+      auto G = getOrCreateGradTensor(V);
+
       trainer_.train(W, G, batchSize);
       continue;
     }
-
-    // Handle activation gradients by zeroing the grads and activations.
-    W->zero();
-    G->zero();
   }
 }
 
