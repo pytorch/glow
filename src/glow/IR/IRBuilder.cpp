@@ -18,11 +18,13 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, size_t depth,
   // Calculate the size and allocate the output buffer.
   auto outSz =
       ConvNode::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
-  ArrayRef<size_t> outDims = {idim.n, outSz.first, outSz.second, depth};
+
+  std::vector<size_t> outDims = {idim.n, outSz.first, outSz.second, depth};
+
   Value *dest = createStaticVariable(ElemKind::FloatTy, outDims);
 
   // Allocate the Filter and Bias tensors.
-  ArrayRef<size_t> filterDim = {depth, kernel, kernel, idim.c};
+  std::vector<size_t> filterDim = {depth, kernel, kernel, idim.c};
   size_t fanIn = kernel * kernel * idim.c;
   Value *filter =
       createStaticVariable(ElemKind::FloatTy, filterDim, InitKind::kXavier,
@@ -43,15 +45,15 @@ PoolInst *IRBuilder::createPoolOp(Value *input, PoolInst::OpKind kind,
 
   auto outSz =
       ConvNode::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
-  ArrayRef<size_t> exp = {idim.n, outSz.first, outSz.second, idim.c};
-  Value *dest = createStaticVariable(ElemKind::FloatTy, exp);
+  Value *dest = createStaticVariable(
+      ElemKind::FloatTy, {idim.n, outSz.first, outSz.second, idim.c});
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
   Value *srcXY;
   if (kind == PoolInst::OpKind::kMax) {
-    ArrayRef<size_t> exp = {idim.n, outSz.first, outSz.second, idim.c, 2};
-    srcXY = createStaticVariable(ElemKind::IndexTy, exp);
+    srcXY = createStaticVariable(
+        ElemKind::IndexTy, {idim.n, outSz.first, outSz.second, idim.c, 2});
   } else {
     srcXY = createStaticVariable(ElemKind::IndexTy, {});
   }
