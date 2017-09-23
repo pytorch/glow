@@ -1,8 +1,7 @@
-#include "glow/Models/Builders.h"
-#include "glow/Network/Image.h"
-#include "glow/Network/Network.h"
-#include "glow/Network/Nodes.h"
-#include "glow/Network/Tensor.h"
+#include "glow/IR/IR.h"
+#include "glow/IR/IRBuilder.h"
+#include "glow/IR/Instrs.h"
+#include "glow/Interpreter/Interpreter.h"
 #include "glow/Support/Support.h"
 
 #include <cassert>
@@ -64,19 +63,38 @@ void testCIFAR10() {
   GLOW_ASSERT(idx == cifarImageSize * cifarNumImages && "Invalid input file");
 
   // Construct the network:
-  Network N;
-  N.getConfig().learningRate = 0.001;
-  N.getConfig().momentum = 0.9;
-  N.getConfig().L2Decay = 0.0001;
+  Interpreter IP;
+  auto &bb = IP.getBuilder();
+  IP.getConfig().learningRate = 0.001;
+  IP.getConfig().momentum = 0.9;
+  IP.getConfig().L2Decay = 0.0001;
 
   unsigned minibatchSize = 8;
 
   // Create the input layer:
-  auto *A = N.createVariable({minibatchSize, 32, 32, 3}, ElemKind::FloatTy);
-  auto *E = N.createVariable({minibatchSize, 1}, ElemKind::IndexTy);
+  auto *A =
+      bb.createStaticVariable(ElemKind::FloatTy, {minibatchSize, 32, 32, 3});
+  auto *E = bb.createStaticVariable(ElemKind::IndexTy, {minibatchSize, 1});
 
-  // Create the rest of the network.
-  NodeBase *SM = createSimpleNet(N, A, E);
+  // Create the rest of the network.  NodeBase *SM = createSimpleNet(N, A, E);
+  auto *CV0 = bb.createConvOp(A, 16, 5, 1, 2);
+  auto *RL0 = bb.createRELUOp(*CV0);
+  auto *MP0 = bb.createPoolOp(*RL0, PoolInst::OpKind::kMax, 2, 2, 0);
+
+  auto *CV1 = bb.createConvOp(*MP0, 20, 5, 1, 2);
+  auto *RL1 = bb.createRELUOp(*CV1);
+  auto *MP1 = bb.createPoolOp(*RL1, PoolInst::OpKind::kMax, 2, 2, 0);
+
+  auto *CV2 = bb.createConvOp(*MP1, 20, 5, 1, 2);
+  auto *RL2 = bb.createRELUOp(*CV2);
+  auto *MP2 = bb.createPoolOp(*RL2, PoolInst::OpKind::kMax, 2, 2, 0);
+
+  auto *FCL1 = bb.createFullyConnectedOp(*MP2, 10);
+  auto *RL3 = bb.createRELUOp(*FCL1);
+  auto *SM = bb.createSoftMaxOp(*RL3, E);
+
+  IP.getModule().dump();
+  IP.initVars();
 
   // Report progress every this number of training iterations.
   int reportRate = 256;
@@ -89,14 +107,15 @@ void testCIFAR10() {
 
     // Bind the images tensor to the input array A, and the labels tensor
     // to the softmax node SM.
-    N.train(SM, reportRate, {A, E}, {&images, &labels});
+    IP.train(reportRate, {A, E}, {&images, &labels});
 
     unsigned score = 0;
 
     for (unsigned int i = 0; i < 100 / minibatchSize; i++) {
       Tensor sample(ElemKind::FloatTy, {minibatchSize, 3, 32, 32});
       sample.copyConsecutiveSlices(&images, minibatchSize * i);
-      auto *res = N.infer(SM, {A}, {&sample});
+      IP.infer({A}, {&sample});
+      auto *res = IP.getTensorForValue(*SM);
 
       for (unsigned int iter = 0; iter < minibatchSize; iter++) {
         auto T = res->getHandle<FloatTy>().extractSlice(iter);
@@ -106,8 +125,8 @@ void testCIFAR10() {
 
         if ((iter < 10) && i == 0) {
           // T.getHandle<FloatTy>().dump("softmax: "," ");
-          std::cout << iter << ") Expected : " << textualLabels[correct]
-                    << " got " << textualLabels[guess] << "\n";
+          std::cout << iter << ") Expected: " << textualLabels[correct]
+                    << " Got: " << textualLabels[guess] << "\n";
         }
       }
     }
