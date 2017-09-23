@@ -1,8 +1,10 @@
-add_library (IR
-             ./IR.cpp
-             ./Type.cpp
-             ./IRBuilder.cpp
-             ./Instrs.cpp
-            )
 
+add_library(IR
+              IR.cpp
+              Type.cpp
+              IRBuilder.cpp
+              Instrs.cpp)
+target_link_libraries(IR
+                      PRIVATE
+                        LLVMSupport)
 
