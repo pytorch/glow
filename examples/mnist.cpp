@@ -72,7 +72,7 @@ void testMNIST() {
   IP.getConfig().L2Decay = 0.001;
 
   auto *A =
-      bb.createStaticVariable(ElemKind::FloatTy, {minibatchSize, 28, 28, 1});
+      bb.createActivationVar(ElemKind::FloatTy, {minibatchSize, 28, 28, 1});
   auto *CV0 = bb.createConvOp(A, 16, 5, 1, 2);
   auto *RL0 = bb.createRELUOp(*CV0);
   auto *MP0 = bb.createPoolOp(*RL0, PoolInst::OpKind::kMax, 3, 3, 0);
@@ -84,7 +84,7 @@ void testMNIST() {
   auto *FCL1 = bb.createFullyConnectedOp(*MP1, 10);
   auto *RL2 = bb.createRELUOp(*FCL1);
   auto *selected =
-      bb.createStaticVariable(ElemKind::IndexTy, {minibatchSize, 1});
+      bb.createActivationVar(ElemKind::IndexTy, {minibatchSize, 1});
   auto *SM = bb.createSoftMaxOp(*RL2, selected);
 
   IP.getModule().dump();

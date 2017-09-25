@@ -14,10 +14,10 @@ TEST(Interpreter, interpret) {
   Interpreter IP;
 
   auto &builder = IP.getBuilder();
-  auto *input = builder.createStaticVariable(ElemKind::FloatTy, {1, 32, 32, 3});
+  auto *input = builder.createActivationVar(ElemKind::FloatTy, {1, 32, 32, 3});
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
 
-  auto *ex = builder.createStaticVariable(ElemKind::IndexTy, {1, 1});
+  auto *ex = builder.createActivationVar(ElemKind::IndexTy, {1, 1});
 
   auto *CV0 = builder.createConvOp(input, 16, 5, 1, 2);
   auto *RL0 = builder.createRELUOp(*CV0);
@@ -51,8 +51,8 @@ TEST(Interpreter, trainASimpleNetwork) {
   IP.getConfig().learningRate = 0.05;
 
   // Create a variable with 1 input, which is a vector of 4 elements.
-  auto *A = builder.createStaticVariable(ElemKind::FloatTy, {1, 4});
-  auto *E = builder.createStaticVariable(ElemKind::FloatTy, {1, 4});
+  auto *A = builder.createActivationVar(ElemKind::FloatTy, {1, 4});
+  auto *E = builder.createActivationVar(ElemKind::FloatTy, {1, 4});
 
   Instruction *O = builder.createFullyConnectedOp(A, 10);
   O = builder.createSigmoidOp(*O);
@@ -95,8 +95,8 @@ TEST(Interpreter, simpleRegression) {
   IP.getConfig().maxNumThreads = 1;
   IP.getConfig().learningRate = 0.05;
 
-  auto *A = bb.createStaticVariable(ElemKind::FloatTy, {1, numInputs});
-  auto *Ex = bb.createStaticVariable(ElemKind::FloatTy, {1, numInputs});
+  auto *A = bb.createActivationVar(ElemKind::FloatTy, {1, numInputs});
+  auto *Ex = bb.createActivationVar(ElemKind::FloatTy, {1, numInputs});
 
   Instruction *O = bb.createFullyConnectedOp(A, 4);
   O = bb.createRELUOp(*O);
@@ -144,8 +144,8 @@ TEST(Interpreter, learnXor) {
   IP.getConfig().maxNumThreads = 1;
   IP.getConfig().learningRate = 0.05;
 
-  auto *A = bb.createStaticVariable(ElemKind::FloatTy, {numInputs, 2});
-  auto *Ex = bb.createStaticVariable(ElemKind::FloatTy, {numInputs, 1});
+  auto *A = bb.createActivationVar(ElemKind::FloatTy, {numInputs, 2});
+  auto *Ex = bb.createActivationVar(ElemKind::FloatTy, {numInputs, 1});
 
   Instruction *O = bb.createFullyConnectedOp(A, 6);
   O = bb.createRELUOp(*O);
@@ -238,8 +238,8 @@ TEST(Network, circle) {
   IP.getConfig().momentum = 0.9;
   IP.getConfig().learningRate = 0.01;
 
-  auto *A = bb.createStaticVariable(ElemKind::FloatTy, {1, 2});
-  auto *S = bb.createStaticVariable(ElemKind::IndexTy, {1, 1});
+  auto *A = bb.createActivationVar(ElemKind::FloatTy, {1, 2});
+  auto *S = bb.createActivationVar(ElemKind::IndexTy, {1, 1});
 
   auto *FCL0 = bb.createFullyConnectedOp(A, 8);
   auto *RL0 = bb.createRELUOp(*FCL0);
@@ -317,15 +317,15 @@ TEST(Network, learnSingleValueConcat) {
   IP.getConfig().momentum = 0.9;
   IP.getConfig().learningRate = 0.01;
 
-  auto *Ex = bb.createStaticVariable(ElemKind::FloatTy, {1, width * 2});
+  auto *Ex = bb.createActivationVar(ElemKind::FloatTy, {1, width * 2});
 
   // Left side of the network:
-  auto *A = bb.createStaticVariable(ElemKind::FloatTy, {1, width});
+  auto *A = bb.createActivationVar(ElemKind::FloatTy, {1, width});
   Instruction *L = bb.createFullyConnectedOp(A, width);
   L = bb.createSigmoidOp(*L);
 
   // Right side of the network:
-  auto *B = bb.createStaticVariable(ElemKind::FloatTy, {1, width});
+  auto *B = bb.createActivationVar(ElemKind::FloatTy, {1, width});
   Instruction *R = bb.createFullyConnectedOp(B, width);
   R = bb.createSigmoidOp(*R);
 

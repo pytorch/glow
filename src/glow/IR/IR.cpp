@@ -77,8 +77,11 @@ Module::~Module() {
     delete *it;
   }
 
-  // Delete all of the constants.
-  for (auto &I : variables_) {
+  // Delete all of the weights and activations.
+  for (auto &I : activations_) {
+    delete I;
+  }
+  for (auto &I : weights_) {
     delete I;
   }
 }
@@ -106,7 +109,7 @@ static std::string getExtraDesc(Kinded *K) {
 
 static std::string getDesc(Value *v) {
   std::string sb;
-  auto name = v->getName();
+  std::string name = v->getName();
   auto valName = v->getKindName();
   sb += "%" + name + " = " + valName + " ";
   sb += getExtraDesc(v);
@@ -115,8 +118,7 @@ static std::string getDesc(Value *v) {
 
 static std::string getDesc(Instruction *II) {
   std::string sb;
-
-  auto name = II->getName();
+  std::string name = II->getName();
   auto instrName = II->getKindName();
   sb += "%" + name + " = " + instrName + " ";
   auto extraDesc = getExtraDesc(II);
@@ -132,40 +134,40 @@ static std::string getDesc(Instruction *II) {
     if (i) {
       sb += ", ";
     }
-    sb += std::string(CC) + " %" + op.first->getName();
+    std::string name = op.first->getName();
+    sb += std::string(CC) + " %" + name;
   }
 
   return sb;
 }
 
-void Module::nameInstructions() {
-  std::unordered_set<std::string> usedNames;
+static void nameInstr(std::unordered_set<std::string> &usedNames, Named *named,
+                      StringRef suggestion) {
   unsigned idx = 0;
 
-  // Name all unnamed variables.
-  for (auto it : variables_) {
-    Value *V = it;
+  if (!named->hasName())
+    // Use the first few letters of the value as the initial name.
+    named->setName(suggestion.slice(0, 4));
 
-    if (!V->hasName())
-      V->setName("v");
+  std::string tempName = named->getName();
 
-    while (!usedNames.insert(V->getName()).second) {
-      V->setName(V->getName() + "." + std::to_string(idx++));
-    }
+  while (!usedNames.insert(tempName).second) {
+    tempName = named->getName().str() + std::to_string(idx++);
   }
 
-  idx = 0;
+  named->setName(tempName);
+}
 
-  // Name all unnamed instructions.
-  for (auto it : instrs_) {
-    Instruction *I = it;
-
-    if (!I->hasName())
-      I->setName("i");
-
-    while (!usedNames.insert(I->getName()).second) {
-      I->setName(I->getName() + "." + std::to_string(idx++));
-    }
+void Module::nameInstructions() {
+  std::unordered_set<std::string> usedNames;
+  for (auto &v : activations_) {
+    nameInstr(usedNames, v, v->getKindName());
+  }
+  for (auto &v : weights_) {
+    nameInstr(usedNames, v, v->getKindName());
+  }
+  for (auto &v : instrs_) {
+    nameInstr(usedNames, v, v->getKindName());
   }
 }
 
@@ -175,11 +177,14 @@ void Module::dump() {
   std::stringstream sb;
 
   sb << "declare {\n";
-  for (auto it : variables_) {
+  for (auto it : weights_) {
     Value *V = it;
     sb << "  " << getDesc(V) << "\n";
   }
-
+  for (auto it : activations_) {
+    Value *V = it;
+    sb << "  " << getDesc(V) << "\n";
+  }
   sb << "}\n\n";
   sb << "program {\n";
 
@@ -198,7 +203,7 @@ static std::string quote(const std::string &in) { return '"' + in + '"'; }
 
 static std::string getDottyDesc(Value *v) {
   std::string sb;
-  auto name = v->getName();
+  std::string name = v->getName();
   auto valName = v->getKindName();
   sb += name + " | " + valName + " ";
   sb += getExtraDesc(v);
@@ -207,8 +212,6 @@ static std::string getDottyDesc(Value *v) {
 
 static std::string getDottyDesc(Instruction *II) {
   std::string sb;
-
-  auto name = II->getName();
   auto instrName = II->getKindName();
   sb += instrName;
   sb += "|";
@@ -272,12 +275,22 @@ void Module::dumpDAG() {
 
   sb += "subgraph cluster_0 {";
   sb += "  style=invis;\n";
-  for (auto &v : variables_) {
+
+  for (auto &v : activations_) {
     sb += quote(pointerToString(v)) + "[\n";
     std::string desc = escapeDottyString(getDottyDesc(v));
     sb += "\tlabel = " + desc + "\n";
     sb += "\tshape = \"record\"\n";
-    sb += "\tstyle=filled\n";
+    sb += "\tfillcolor=plum,style=filled\n";
+    sb += "];\n\n";
+  }
+
+  for (auto &v : weights_) {
+    sb += quote(pointerToString(v)) + "[\n";
+    std::string desc = escapeDottyString(getDottyDesc(v));
+    sb += "\tlabel = " + desc + "\n";
+    sb += "\tshape = \"record\"\n";
+    sb += "\tfillcolor=pink,style=filled\n";
     sb += "];\n\n";
   }
   sb += "}";

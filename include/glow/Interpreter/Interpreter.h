@@ -83,6 +83,11 @@ public:
              ArrayRef<Tensor *> inputs);
 
 private:
+  /// Allocate a tensor to back the value \p v. Do not allocate anything if a
+  /// tensor is already allocated for \p v.
+  /// \returns v's Tensor.
+  Tensor *allocateBackingTensor(Value *v);
+
   /// Update all of the weight tensors (non-activation) with their gradients.
   void learnGradient(size_t batchSize);
 

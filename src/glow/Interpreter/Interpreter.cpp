@@ -80,33 +80,38 @@ Handle<FloatTy> Interpreter::getGradHandle(Context *ctx, Value *v) {
   return getOrCreateGradTensor(v)->getHandle<FloatTy>();
 }
 
+Tensor *Interpreter::allocateBackingTensor(Value *v) {
+  // Allocate a tensor for the variable.
+  Tensor *T = nullptr;
+  // Pick the tensor.
+  auto it = tensors_.find(v);
+  if (it == tensors_.end()) {
+    T = new Tensor(v->getType());
+    tensors_[v] = T;
+    return T;
+  }
+  return it->second;
+}
+
 void Interpreter::initVars() {
-  for (auto *V : M_.getVars()) {
-    auto SV = dyn_cast<StaticVariable>(V);
-    // At the moment we only support static variables.
+  for (auto *A : M_.getActivations()) {
+    allocateBackingTensor(A);
+  }
 
-    if (!SV)
+  for (auto *W : M_.getWeights()) {
+    // Don't initialize tensors that are already initialized.
+    if (tensors_.count(W))
       continue;
 
-    Tensor *T = nullptr;
-    // Pick the tensor.
-    auto it = tensors_.find(V);
-    if (it == tensors_.end()) {
-      T = new Tensor(V->getType());
-      tensors_[V] = T;
-    } else {
-      // The value is already initialized. No need to write it again.
-      continue;
-    }
-
+    auto *T = allocateBackingTensor(W);
     // The parameter to the instruction.
-    auto val = SV->getVal();
+    auto val = W->getVal();
 
-    switch (SV->getInitKind()) {
-    case StaticVariable::InitKind::kExtern:
+    switch (W->getInitKind()) {
+    case WeightVar::InitKind::kExtern:
       break;
 
-    case StaticVariable::InitKind::kBroadcast: {
+    case WeightVar::InitKind::kBroadcast: {
       switch (T->getElementType()) {
       case ElemKind::FloatTy: {
         T->getHandle<float>().clear(val);
@@ -132,7 +137,7 @@ void Interpreter::initVars() {
       break;
     }
 
-    case StaticVariable::InitKind::kXavier: {
+    case WeightVar::InitKind::kXavier: {
       switch (T->getElementType()) {
       case ElemKind::FloatTy: {
         T->getHandle<float>().randomize(val);
@@ -199,17 +204,13 @@ void Interpreter::train(size_t iterations, ArrayRef<Value *> vars,
 }
 
 void Interpreter::learnGradient(size_t batchSize) {
-  for (auto *V : M_.getVars()) {
-    auto SV = dyn_cast<StaticVariable>(V);
-
+  for (auto *V : M_.getWeights()) {
     // Handle weight update by learning the gradients into the weights.
-    if (SV->getShareKind() == StaticVariable::ShareKind::kWeight) {
-      auto W = getTensorForValue(V);
-      auto G = getOrCreateGradTensor(V);
+    auto W = getTensorForValue(V);
+    auto G = getOrCreateGradTensor(V);
 
-      trainer_.train(W, G, batchSize);
-      continue;
-    }
+    trainer_.train(W, G, batchSize);
+    continue;
   }
 }
 
@@ -227,6 +228,7 @@ void Interpreter::updateForwardBackward(ArrayRef<Value *> vars,
 }
 
 void Interpreter::doForwardPass(bool isTrain) {
+
   // Do the forward pass.
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \

@@ -80,9 +80,9 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  auto *A = bb.createStaticVariable(ElemKind::FloatTy, {1, numInputElem});
-  auto *B = bb.createStaticVariable(ElemKind::FloatTy, {1, numInputElem});
-  auto *Exp = bb.createStaticVariable(ElemKind::FloatTy, {1, numOutputElem});
+  auto *A = bb.createActivationVar(ElemKind::FloatTy, {1, numInputElem});
+  auto *B = bb.createActivationVar(ElemKind::FloatTy, {1, numInputElem});
+  auto *Exp = bb.createActivationVar(ElemKind::FloatTy, {1, numOutputElem});
 
   Instruction *FA = bb.createFullyConnectedOp(A, numOutputElem / 2);
   FA = bb.createRELUOp(*FA);
@@ -118,8 +118,8 @@ TEST(Network, gradientCheck_Conv) {
   size_t numDim = 10;
   size_t numOutputElem = 10;
 
-  auto *A = bb.createStaticVariable(ElemKind::FloatTy, {1, numDim, numDim, 1});
-  auto *Exp = bb.createStaticVariable(ElemKind::FloatTy, {1, numOutputElem});
+  auto *A = bb.createActivationVar(ElemKind::FloatTy, {1, numDim, numDim, 1});
+  auto *Exp = bb.createActivationVar(ElemKind::FloatTy, {1, numOutputElem});
 
   Instruction *O = bb.createConvOp(A, 16, 5, 1, 2);
   O = bb.createPoolOp(*O, PoolInst::OpKind::kMax, 3, 3, 0);
@@ -150,8 +150,8 @@ TEST(Network, gradientCheck_AvgPool) {
   size_t numDim = 10;
   size_t numOutputElem = 10;
 
-  auto *A = bb.createStaticVariable(ElemKind::FloatTy, {1, numDim, numDim, 1});
-  auto *Exp = bb.createStaticVariable(ElemKind::FloatTy, {1, numOutputElem});
+  auto *A = bb.createActivationVar(ElemKind::FloatTy, {1, numDim, numDim, 1});
+  auto *Exp = bb.createActivationVar(ElemKind::FloatTy, {1, numOutputElem});
 
   Instruction *O = bb.createPoolOp(A, PoolInst::OpKind::kAvg, 3, 3, 0);
   O = bb.createFullyConnectedOp(*O, numOutputElem);
@@ -180,8 +180,8 @@ TEST(Network, gradientCheck_batchNorm) {
   size_t numDim = 5;
   size_t numOutputElem = numDim * numDim * 3;
 
-  auto *A = bb.createStaticVariable(ElemKind::FloatTy, {1, numDim, numDim, 3});
-  auto *Exp = bb.createStaticVariable(ElemKind::FloatTy, {1, numOutputElem});
+  auto *A = bb.createActivationVar(ElemKind::FloatTy, {1, numDim, numDim, 3});
+  auto *Exp = bb.createActivationVar(ElemKind::FloatTy, {1, numOutputElem});
 
   Instruction *O = bb.createBatchNormalizationOp(A, 3, 0.0001, 0.9);
   O = bb.createReshapeOp(*O, {1, numDim * numDim * 3});
@@ -215,10 +215,10 @@ TEST(Network, gradientCheck_Arithmetic) {
 
   size_t numDim = 5;
 
-  Value *A = bb.createStaticVariable(ElemKind::FloatTy, {1, numDim});
-  Value *B = bb.createStaticVariable(ElemKind::FloatTy, {1, numDim});
-  Value *C = bb.createStaticVariable(ElemKind::FloatTy, {1, numDim});
-  Value *Exp = bb.createStaticVariable(ElemKind::FloatTy, {1, numDim});
+  Value *A = bb.createActivationVar(ElemKind::FloatTy, {1, numDim});
+  Value *B = bb.createActivationVar(ElemKind::FloatTy, {1, numDim});
+  Value *C = bb.createActivationVar(ElemKind::FloatTy, {1, numDim});
+  Value *Exp = bb.createActivationVar(ElemKind::FloatTy, {1, numDim});
 
   Instruction *O = bb.createArithmeticOp(A, B, ArithmeticInst::OpKind::kMul);
   O = bb.createArithmeticOp(*O, C, ArithmeticInst::OpKind::kAdd);
@@ -299,8 +299,8 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  Value *A = bb.createStaticVariable(ElemKind::FloatTy, {1, numInputElem});
-  auto *Exp = bb.createStaticVariable(ElemKind::FloatTy, {1, numOutputElem});
+  Value *A = bb.createActivationVar(ElemKind::FloatTy, {1, numInputElem});
+  auto *Exp = bb.createActivationVar(ElemKind::FloatTy, {1, numOutputElem});
 
   Instruction *FA = bb.createFullyConnectedOp(A, numOutputElem);
   FA = bb.createTanhOp(*FA);
@@ -329,8 +329,8 @@ TEST(Network, gradientCheck_Transpose) {
   IP.getConfig().maxNumThreads = 1;
   size_t numOutputElem = 10;
 
-  Value *A = bb.createStaticVariable(ElemKind::FloatTy, {1, 5, 10, 15});
-  Value *Exp = bb.createStaticVariable(ElemKind::FloatTy, {1, numOutputElem});
+  Value *A = bb.createActivationVar(ElemKind::FloatTy, {1, 5, 10, 15});
+  Value *Exp = bb.createActivationVar(ElemKind::FloatTy, {1, numOutputElem});
 
   Instruction *TA = bb.createTransposeOp(A, {0, 3, 1, 2});
   TA = bb.createFullyConnectedOp(*TA, numOutputElem);

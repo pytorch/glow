@@ -73,8 +73,8 @@ void testCIFAR10() {
 
   // Create the input layer:
   auto *A =
-      bb.createStaticVariable(ElemKind::FloatTy, {minibatchSize, 32, 32, 3});
-  auto *E = bb.createStaticVariable(ElemKind::IndexTy, {minibatchSize, 1});
+      bb.createActivationVar(ElemKind::FloatTy, {minibatchSize, 32, 32, 3});
+  auto *E = bb.createActivationVar(ElemKind::IndexTy, {minibatchSize, 1});
 
   // Create the rest of the network.  NodeBase *SM = createSimpleNet(N, A, E);
   auto *CV0 = bb.createConvOp(A, 16, 5, 1, 2);

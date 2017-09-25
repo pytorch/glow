@@ -24,14 +24,12 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, size_t depth,
   // Allocate the Filter and Bias tensors.
   std::vector<size_t> filterDim = {depth, kernel, kernel, idim.c};
   size_t fanIn = kernel * kernel * idim.c;
-  Value *filter =
-      createStaticVariable(ElemKind::FloatTy, filterDim, "filter",
-                           InitKind::kXavier, ShareKind::kWeight, fanIn);
-  Value *bias =
-      createStaticVariable(ElemKind::FloatTy, {depth}, "bias",
-                           InitKind::kBroadcast, ShareKind::kWeight, 0.1);
+  Value *filter = createWeightVar(ElemKind::FloatTy, filterDim, "filter",
+                                  InitKind::kXavier, fanIn);
+  Value *bias = createWeightVar(ElemKind::FloatTy, {depth}, "bias",
+                                InitKind::kBroadcast, 0.1);
 
-  Value *dest = createStaticVariable(ElemKind::FloatTy, outDims);
+  Value *dest = createActivationVar(ElemKind::FloatTy, outDims);
 
   return createConvolutionInst(dest, input, filter, bias, kernel, stride, pad,
                                depth);
@@ -50,14 +48,14 @@ PoolInst *IRBuilder::createPoolOp(Value *input, PoolInst::OpKind kind,
   // gradient for each max element.
   Value *srcXY;
   if (kind == PoolInst::OpKind::kMax) {
-    srcXY = createStaticVariable(ElemKind::IndexTy,
-                                 {idim.n, outSz.first, outSz.second, idim.c, 2},
-                                 "srcXY");
+    srcXY = createActivationVar(ElemKind::IndexTy,
+                                {idim.n, outSz.first, outSz.second, idim.c, 2},
+                                "srcXY");
   } else {
-    srcXY = createStaticVariable(ElemKind::IndexTy, {}, "srcXY");
+    srcXY = createActivationVar(ElemKind::IndexTy, {}, "srcXY");
   }
 
-  Value *dest = createStaticVariable(
+  Value *dest = createActivationVar(
       ElemKind::FloatTy, {idim.n, outSz.first, outSz.second, idim.c});
 
   return createPoolInst(dest, input, srcXY, kind, kernel, stride, pad);
@@ -70,46 +68,44 @@ FullyConnectedInst *IRBuilder::createFullyConnectedOp(Value *input,
 
   size_t fanIn = idim.second;
 
-  auto *W = createStaticVariable(T->getElementType(), {outDepth, idim.second},
-                                 "weights", InitKind::kXavier,
-                                 ShareKind::kWeight, fanIn);
+  auto *W = createWeightVar(T->getElementType(), {outDepth, idim.second},
+                            "weights", InitKind::kXavier, fanIn);
 
-  auto *B = createStaticVariable(T->getElementType(), {outDepth}, "bias",
-                                 InitKind::kBroadcast, ShareKind::kWeight, 0.1);
-  auto *dest =
-      createStaticVariable(T->getElementType(), {idim.first, outDepth});
+  auto *B = createWeightVar(T->getElementType(), {outDepth}, "bias",
+                            InitKind::kBroadcast, 0.1);
+  auto *dest = createActivationVar(T->getElementType(), {idim.first, outDepth});
 
   return createFullyConnectedInst(dest, input, W, B, outDepth);
 }
 
 ReluInst *IRBuilder::createRELUOp(Value *input) {
-  auto *res = createStaticVariable(input->getType());
+  auto *res = createActivationVar(input->getType());
   return createReluInst(res, input);
 }
 
 SigmoidInst *IRBuilder::createSigmoidOp(Value *input) {
-  auto *res = createStaticVariable(input->getType());
+  auto *res = createActivationVar(input->getType());
   return createSigmoidInst(res, input);
 }
 
 TanhInst *IRBuilder::createTanhOp(Value *input) {
-  auto *res = createStaticVariable(input->getType());
+  auto *res = createActivationVar(input->getType());
   return createTanhInst(res, input);
 }
 
 SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input, Value *selected) {
-  auto *res = createStaticVariable(input->getType());
-  auto *E = createStaticVariable(input->getType(), "expected");
+  auto *res = createActivationVar(input->getType());
+  auto *E = createActivationVar(input->getType(), "expected");
   return createSoftMaxInst(res, input, E, selected);
 }
 
 RegressionInst *IRBuilder::createRegressionOp(Value *input, Value *expected) {
-  auto *res = createStaticVariable(input->getType());
+  auto *res = createActivationVar(input->getType());
   return createRegressionInst(res, input, expected);
 }
 
 ReshapeInst *IRBuilder::createReshapeOp(Value *input, ArrayRef<size_t> shape) {
-  auto *res = createStaticVariable(input->getElementType(), shape);
+  auto *res = createActivationVar(input->getElementType(), shape);
   return createReshapeInst(res, input, shape);
 }
 
@@ -121,7 +117,7 @@ TransposeInst *IRBuilder::createTransposeOp(Value *input,
     shape.push_back(dims[shuffle[i]]);
   }
 
-  auto *res = createStaticVariable(input->getElementType(), shape);
+  auto *res = createActivationVar(input->getElementType(), shape);
   return createTransposeInst(res, input, shuffle);
 }
 
@@ -138,7 +134,7 @@ ConcatInst *IRBuilder::createConcatOp(ArrayRef<Value *> inputs,
   // increase the size of the tensor along this dimension.
   shape[dimension] *= inputs.size();
 
-  auto *res = createStaticVariable(inputs[0]->getElementType(), shape);
+  auto *res = createActivationVar(inputs[0]->getElementType(), shape);
   return createConcatInst(res, inputs, dimension);
 }
 
@@ -150,20 +146,18 @@ BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(Value *input,
   size_t channels = input->dims()[channelIdx];
 
   // Allocate the learnable parameters beta and gamma.
-  auto *beta =
-      createStaticVariable(ElemKind::FloatTy, {channels}, "beta",
-                           InitKind::kBroadcast, ShareKind::kWeight, 0.);
-  auto *gamma =
-      createStaticVariable(ElemKind::FloatTy, {channels}, "gamma",
-                           InitKind::kBroadcast, ShareKind::kWeight, 1.0);
+  auto *beta = createWeightVar(ElemKind::FloatTy, {channels}, "beta",
+                               InitKind::kBroadcast, 0.);
+  auto *gamma = createWeightVar(ElemKind::FloatTy, {channels}, "gamma",
+                                InitKind::kBroadcast, 1.0);
 
-  auto *mean = createStaticVariable(ElemKind::FloatTy, {channels}, "mean");
+  auto *mean = createActivationVar(ElemKind::FloatTy, {channels}, "mean");
 
   auto *variance =
-      createStaticVariable(ElemKind::FloatTy, {channels}, "variance");
+      createActivationVar(ElemKind::FloatTy, {channels}, "variance");
 
   // The output tensor is of the same shape as the input tensor.
-  auto *dest = createStaticVariable(input->getType());
+  auto *dest = createActivationVar(input->getType());
 
   return createBatchNormalizationInst(dest, input, gamma, beta, mean, variance,
                                       channelIdx, epsilon, momentum);
@@ -173,7 +167,7 @@ ArithmeticInst *IRBuilder::createArithmeticOp(Value *LHS, Value *RHS,
                                               ArithmeticInst::OpKind op) {
   assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
-  auto *res = createStaticVariable(LHS->getType());
+  auto *res = createActivationVar(LHS->getType());
   return createArithmeticInst(res, LHS, RHS, op);
 }
 
@@ -284,22 +278,36 @@ ArithmeticInst *IRBuilder::createArithmeticInst(Value *dest, Value *LHS,
   return A;
 }
 
-StaticVariable *
-IRBuilder::createStaticVariable(ElemKind elemTy, ArrayRef<size_t> dims,
-                                StringRef name, InitKind initKind,
-                                ShareKind shareKind, float val) {
+ActivationVar *IRBuilder::createActivationVar(ElemKind elemTy,
+                                              ArrayRef<size_t> dims,
+                                              StringRef name) {
   auto T = M_.uniqueType(elemTy, dims);
-  auto *A = new StaticVariable(T, initKind, shareKind, val);
-  M_.pushVar(A);
+  auto *A = new ActivationVar(T);
+  M_.getActivations().push_back(A);
   A->setName(name);
   return A;
 }
 
-StaticVariable *IRBuilder::createStaticVariable(TypeRef T, StringRef name,
-                                                InitKind initKind,
-                                                ShareKind shareKind,
-                                                float val) {
-  auto *A = new StaticVariable(T, initKind, shareKind, val);
-  M_.pushVar(A);
+ActivationVar *IRBuilder::createActivationVar(TypeRef T, StringRef name) {
+  auto *A = new ActivationVar(T);
+  M_.getActivations().push_back(A);
+  A->setName(name);
+  return A;
+}
+
+WeightVar *IRBuilder::createWeightVar(ElemKind elemTy, ArrayRef<size_t> dims,
+                                      StringRef name, InitKind initKind,
+                                      float val) {
+  auto T = M_.uniqueType(elemTy, dims);
+  auto *A = new WeightVar(T, initKind, val);
+  M_.getWeights().push_back(A);
+  A->setName(name);
+  return A;
+}
+
+WeightVar *IRBuilder::createWeightVar(TypeRef T, StringRef name,
+                                      InitKind initKind, float val) {
+  auto *A = new WeightVar(T, initKind, val);
+  M_.getWeights().push_back(A);
   return A;
 }

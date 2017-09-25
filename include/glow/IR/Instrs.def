@@ -13,4 +13,6 @@ DEF_INSTR(ReshapeInst, reshape)
 DEF_INSTR(ConcatInst, concat)
 DEF_INSTR(BatchNormalizationInst, batchnormalization)
 DEF_INSTR(ArithmeticInst, arithmetic)
-DEF_VALUE(StaticVariable, static)
+DEF_VALUE(ActivationVar, activation)
+DEF_VALUE(WeightVar, weight)
+

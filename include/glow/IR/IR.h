@@ -3,6 +3,7 @@
 
 #include "glow/IR/Type.h"
 #include "glow/IR/UseDef.h"
+#include "glow/Support/ADT.h"
 
 #include <list>
 #include <vector>
@@ -19,13 +20,13 @@ public:
   Named() = default;
 
   /// \returns the name of the instruction.
-  const std::string &getName() { return name_; }
+  StringRef getName() { return name_; }
 
   /// \returns the name of the instruction.
   bool hasName() { return name_.size(); }
 
   /// Set the name of the instruction to \p name.
-  void setName(const std::string &name) { name_ = name; }
+  void setName(StringRef name) { name_ = name; }
 };
 
 /// Subclasses of this class have a type associated with them.
@@ -148,18 +149,25 @@ public:
   operator Value *() const { return getOperand(0).first; }
 };
 
+class WeightVar;
+class ActivationVar;
+
 /// A module that represents the compilation unit.
 class Module final {
 public:
   using InstListTy = std::list<Instruction *>;
-  using VarListTy = std::list<Value *>;
+  using WeightVarListTy = std::list<WeightVar *>;
+  using ActivationVarListTy = std::list<ActivationVar *>;
 
 private:
   /// A uniqued list of types in the module. Types in this list can be compared
   /// by comparing their addresses.
   std::list<Type> types_{};
-  /// A list of values that represent the non-instructions in the network.
-  std::list<Value *> variables_{};
+  /// A list of weights. Weights are shared between all execution context.
+  std::list<WeightVar *> weights_{};
+  /// A list of activations. Activations are allocated per context.
+  std::list<ActivationVar *> activations_{};
+
   /// A list of instruction that represent the network.
   InstListTy instrs_{};
 
@@ -169,9 +177,6 @@ private:
 public:
   /// Add an instruction to the instr stream.
   void pushInstr(Instruction *I) { instrs_.push_back(I); }
-
-  /// Add a value to the instr stream.
-  void pushVar(Value *v) { variables_.push_back(v); }
 
   Module() = default;
 
@@ -198,8 +203,11 @@ public:
   /// \returns the list of instructions.
   InstListTy &getInstrs() { return instrs_; }
 
-  /// \returns the list of variables.
-  VarListTy &getVars() { return variables_; }
+  /// \returns the list of activations.
+  ActivationVarListTy &getActivations() { return activations_; }
+
+  /// \returns the list of weights.
+  WeightVarListTy &getWeights() { return weights_; }
 };
 
 } // namespace glow

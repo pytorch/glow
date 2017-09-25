@@ -80,6 +80,7 @@ int main(int argc, char **argv) {
 
   IP.initVars();
   IP.getModule().dump();
+  IP.getModule().dumpDAG();
 
   auto *SM = LD.getRoot();
   Value *i0 = LD.getOrCreateNodeByName("gpu_0/data");

@@ -327,16 +327,27 @@ public:
   void verify();
 };
 
-class StaticVariable : public Value {
+class ActivationVar : public Value {
+  const char *getInitKindStr();
+  const char *getShareKindStr();
+
+public:
+  ActivationVar(TypeRef Ty) : Value(Ty, Kinded::Kind::ActivationVarKind) {}
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::ActivationVarKind;
+  }
+
+  std::string getExtraDesc();
+  void verify() {}
+};
+
+class WeightVar : public Value {
 public:
   enum class InitKind {
     kExtern,    // No initialization.
     kBroadcast, // Broadcast a single value to all elements.
     kXavier,    // Init the tensor with random values using the Xavier method.
-  };
-  enum class ShareKind {
-    kWeight,     // This is a weight tensor that is shared by all threads.
-    kActivation, // This is an activation tensor that is specific for a run.
   };
 
 private:
@@ -346,23 +357,19 @@ private:
 
   /// The initialization mode.
   InitKind initKind_;
-  /// The memory sharing/ownership mode.
-  ShareKind shareKind_;
 
   const char *getInitKindStr();
-  const char *getShareKindStr();
 
 public:
-  StaticVariable(TypeRef Ty, InitKind initKind, ShareKind shareKind, float val)
-      : Value(Ty, Kinded::Kind::StaticVariableKind), val_(val),
-        initKind_(initKind), shareKind_(shareKind) {}
+  WeightVar(TypeRef Ty, InitKind initKind, float val)
+      : Value(Ty, Kinded::Kind::WeightVarKind), val_(val), initKind_(initKind) {
+  }
 
   static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::StaticVariableKind;
+    return k->getKind() == Kinded::Kind::WeightVarKind;
   }
 
   InitKind getInitKind() { return initKind_; }
-  ShareKind getShareKind() { return shareKind_; }
   float getVal() { return val_; }
   std::string getExtraDesc();
   void verify() {}
