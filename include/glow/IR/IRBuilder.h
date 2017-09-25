@@ -46,9 +46,9 @@ public:
   ConcatInst *createConcatOp(ArrayRef<Value *> inputs, unsigned dimension);
 
   BatchNormalizationInst *createBatchNormalizationOp(Value *input,
-                                                     size_t channelIdx,
-                                                     float epsilon,
-                                                     float momentum);
+                                                     size_t channelIdx = 0,
+                                                     float epsilon = 1e-5,
+                                                     float momentum = 0.9);
 
   ArithmeticInst *createArithmeticOp(Value *LHS, Value *RHS,
                                      ArithmeticInst::OpKind op);

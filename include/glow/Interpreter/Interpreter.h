@@ -49,6 +49,9 @@ public:
   /// is owned by the Interpreter.
   Tensor *getTensorForValue(Value *v) const;
 
+  /// Copies the content of the tensor \p t into the value \p v.
+  void initValue(Value *v, const Tensor *t);
+
   /// \returns gets or creates a new tensor to back the value \p v. If the
   /// tensor does not exist then this method creates it. The dimension of the
   /// gradient tensor must match the dimensions of the tensor that backs \p v.

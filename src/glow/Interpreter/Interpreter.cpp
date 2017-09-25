@@ -37,6 +37,18 @@ Tensor *Interpreter::getTensorForValue(Value *v) const {
   return it->second;
 }
 
+void Interpreter::initValue(Value *v, const Tensor *t) {
+  auto it = tensors_.find(v);
+  if (it != tensors_.end()) {
+    it->second->copyFrom(t);
+  }
+
+  // Create a new tensor, register it and return it.
+  Tensor *N = new Tensor();
+  N->copyFrom(t);
+  tensors_[v] = N;
+}
+
 Tensor *Interpreter::getOrCreateGradTensor(Value *v) {
   auto *T = getTensorForValue(v);
   auto it = gradients_.find(T);
@@ -83,7 +95,8 @@ void Interpreter::initVars() {
       T = new Tensor(V->getType());
       tensors_[V] = T;
     } else {
-      T = it->second;
+      // The value is already initialized. No need to write it again.
+      continue;
     }
 
     // The parameter to the instruction.

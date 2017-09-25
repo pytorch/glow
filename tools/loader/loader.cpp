@@ -1,7 +1,6 @@
 #include "glow/Importer/Caffe2.h"
+#include "glow/Interpreter/Interpreter.h"
 #include "glow/Network/Image.h"
-#include "glow/Network/Network.h"
-#include "glow/Network/Nodes.h"
 #include "glow/Network/Tensor.h"
 
 using namespace glow;
@@ -74,18 +73,20 @@ int main(int argc, char **argv) {
   auto imageMode = strToImageNormalizationMode(argv[2]);
   loadImageAndPreprocess(argv[1], &data, imageMode);
 
-  glow::Network N;
+  Interpreter IP;
   caffe2ModelLoader LD(argv[3], argv[4],
                        {"data", "gpu_0/data", "softmax_expected"},
-                       {&data, &data, &expected_softmax}, N);
+                       {&data, &data, &expected_softmax}, IP);
+
+  IP.initVars();
+  IP.getModule().dump();
 
   auto *SM = LD.getRoot();
-  Variable *i0 = (Variable *)LD.getOrCreateNodeByName("gpu_0/data");
-  Variable *i1 = (Variable *)LD.getOrCreateNodeByName("data");
+  Value *i0 = LD.getOrCreateNodeByName("gpu_0/data");
+  Value *i1 = LD.getOrCreateNodeByName("data");
 
-  N.dumpGraph();
-
-  auto *res = N.infer(SM, {i0, i1}, {&data, &data});
+  IP.infer({i0, i1}, {&data, &data});
+  auto *res = IP.getTensorForValue(SM);
   auto H = res->getHandle<FloatTy>();
   H.dump("res = ", "\n");
   Tensor slice = H.extractSlice(0);

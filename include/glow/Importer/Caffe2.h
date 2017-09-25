@@ -12,20 +12,24 @@ class NetDef;
 } // namespace caffe2
 namespace glow {
 
-class Network;
-class NodeBase;
+class IRBuilder;
+class Instruction;
+class Interpreter;
 class Tensor;
+class Value;
 
 /// Loads caffe2 models.
 class caffe2ModelLoader {
+  /// The interpreter that runs the program.
+  Interpreter &IP_;
   /// The network that we are building.
-  glow::Network &N_;
+  IRBuilder &builder_;
   /// Saves network nodes by name.
-  std::unordered_map<std::string, NodeBase *> nodeByName_;
+  std::unordered_map<std::string, Value *> nodeByName_;
   /// A list of weight tensors indexed by name.
   std::unordered_map<std::string, Tensor *> tensors_;
   /// The external output of the network.
-  NodeBase *root{nullptr};
+  Value *root{nullptr};
 
   /// Load the weight tensors from the 'init' file and register them in the map
   /// \p tensors.
@@ -47,11 +51,11 @@ class caffe2ModelLoader {
 
 public:
   /// \returns the node that was registered with the name \p name.
-  NodeBase *getNodeByName(const std::string &name);
+  Value *getNodeByName(const std::string &name);
 
   /// \returns the node that was registered with the name \p name or create a
   /// new Variable node for a tensor with this name.
-  NodeBase *getOrCreateNodeByName(const std::string &name);
+  Value *getOrCreateNodeByName(const std::string &name);
 
   /// Loads the caffe2 model that's represnted by a network description file,
   /// serialized in \p netDescFilename, and weights file, serialized in
@@ -61,11 +65,11 @@ public:
   caffe2ModelLoader(const std::string &netDescFilename,
                     const std::string &netWeightFilename,
                     ArrayRef<const char *> names, ArrayRef<Tensor *> tensors,
-                    glow::Network &N);
+                    Interpreter &IP);
 
-  /// \returns the single external output of the network. This is usually the
+  /// \returns the output of the network. This is usually the result of the last
   /// softmax or regression layer.
-  NodeBase *getRoot() { return root; }
+  Value *getRoot() { return root; }
 };
 
 } // namespace glow
