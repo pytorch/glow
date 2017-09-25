@@ -99,16 +99,14 @@ public:
   ArithmeticInst *createArithmeticInst(Value *dest, Value *LHS, Value *RHS,
                                        ArithmeticInst::OpKind kind);
 
-  StaticVariable *
-  createStaticVariable(ElemKind elemTy, ArrayRef<size_t> dims,
-                       InitKind initKind = InitKind::kExtern,
-                       ShareKind shareKind = ShareKind::kActivation,
-                       float val = 0);
+  StaticVariable *createStaticVariable(
+      ElemKind elemTy, ArrayRef<size_t> dims, StringRef name = "",
+      InitKind initKind = InitKind::kExtern,
+      ShareKind shareKind = ShareKind::kActivation, float val = 0);
 
-  StaticVariable *
-  createStaticVariable(TypeRef T, InitKind initKind = InitKind::kExtern,
-                       ShareKind shareKind = ShareKind::kActivation,
-                       float val = 0);
+  StaticVariable *createStaticVariable(
+      TypeRef T, StringRef name = "", InitKind initKind = InitKind::kExtern,
+      ShareKind shareKind = ShareKind::kActivation, float val = 0);
   ///@}
 };
 

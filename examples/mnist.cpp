@@ -89,6 +89,7 @@ void testMNIST() {
 
   IP.getModule().dump();
   IP.initVars();
+  IP.getModule().dumpDAG();
 
   // Report progress every this number of training iterations.
   constexpr int reportRate = 30;

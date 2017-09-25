@@ -163,6 +163,9 @@ private:
   /// A list of instruction that represent the network.
   InstListTy instrs_{};
 
+  /// Give the instructions in the module a unique name.
+  void nameInstructions();
+
 public:
   /// Add an instruction to the instr stream.
   void pushInstr(Instruction *I) { instrs_.push_back(I); }
@@ -188,6 +191,9 @@ public:
 
   /// Dump a textual representation of the module.
   void dump();
+
+  /// Dump a dotty graph that depicts the module.
+  void dumpDAG();
 
   /// \returns the list of instructions.
   InstListTy &getInstrs() { return instrs_; }

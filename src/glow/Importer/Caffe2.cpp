@@ -111,8 +111,7 @@ Value *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
   }
 
   Tensor *T = getTensorByName(name);
-  auto *V = builder_.createStaticVariable(ElemKind::FloatTy, T->dims());
-  V->setName(name);
+  auto *V = builder_.createStaticVariable(ElemKind::FloatTy, T->dims(), name);
   nodeByName_[name] = V;
   return V;
 }

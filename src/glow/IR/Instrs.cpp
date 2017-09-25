@@ -19,18 +19,18 @@ std::string listToString_impl(E first, Args... args) {
 }
 
 template <typename... Args> std::string listToString(Args... args) {
-  return "{" + listToString_impl(args...) + "}";
+  return "[" + listToString_impl(args...) + "]";
 }
 
 template <typename E> std::string arrayRefToString(ArrayRef<E> list) {
-  std::string sb = "{";
+  std::string sb = "[";
   for (int i = 0, e = list.size(); i < e; i++) {
     if (i) {
       sb += ", ";
     }
     sb += std::to_string(list[i]);
   }
-  return sb + "}";
+  return sb + "]";
 }
 } // namespace
 
@@ -85,8 +85,11 @@ const char *StaticVariable::getShareKindStr() {
 
 std::string StaticVariable::getExtraDesc() {
   auto sp = ", ";
-  return getType()->asString() + sp + std::to_string(val_) + sp +
-         getShareKindStr() + sp + getInitKindStr();
+  auto r = getType()->asString() + sp + getShareKindStr();
+  if (getInitKind() != InitKind::kExtern) {
+    r += std::string(sp) + getInitKindStr() + sp + std::to_string(val_);
+  }
+  return r;
 }
 
 /// Check that the type of the first operand matches the type of the second

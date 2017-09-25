@@ -66,12 +66,12 @@ TEST(IR, allInstrs) {
 
   IRBuilder builder(M);
 
-  auto *I0 = builder.createStaticVariable(T1, InitKind::kExtern,
+  auto *I0 = builder.createStaticVariable(T1, "I0", InitKind::kExtern,
                                           ShareKind::kWeight, 0);
-  auto *I1 = builder.createStaticVariable(T1, InitKind::kExtern,
+  auto *I1 = builder.createStaticVariable(T1, "I1", InitKind::kExtern,
                                           ShareKind::kWeight, 0);
   auto *I2 =
-      builder.createStaticVariable(ElemKind::FloatTy, {1, 3, 24, 24},
+      builder.createStaticVariable(ElemKind::FloatTy, {1, 3, 24, 24}, "I2",
                                    InitKind::kExtern, ShareKind::kWeight, 0);
 
   auto *I3 = builder.createStaticVariable(ElemKind::FloatTy, {1, 12, 12, 64});
@@ -80,15 +80,16 @@ TEST(IR, allInstrs) {
   auto *I6 = builder.createStaticVariable(ElemKind::FloatTy, {2, 12, 12, 64});
 
   auto *XY = builder.createStaticVariable(ElemKind::IndexTy, {1, 12, 12, 3, 2});
-  auto *B0 = builder.createStaticVariable(T2, InitKind::kBroadcast,
+  auto *B0 = builder.createStaticVariable(T2, "B0", InitKind::kBroadcast,
                                           ShareKind::kWeight, 0.1);
-  auto *B1 = builder.createStaticVariable(
-      ElemKind::FloatTy, {32}, InitKind::kBroadcast, ShareKind::kWeight, 0.1);
+  auto *B1 = builder.createStaticVariable(ElemKind::FloatTy, {32}, "B1",
+                                          InitKind::kBroadcast,
+                                          ShareKind::kWeight, 0.1);
   auto *F0 = builder.createStaticVariable(ElemKind::FloatTy, {64, 7, 7, 3});
   auto *F1 = builder.createStaticVariable(ElemKind::FloatTy, {32, 1728});
-  auto *E0 = builder.createStaticVariable(T4, InitKind::kExtern,
+  auto *E0 = builder.createStaticVariable(T4, "E0", InitKind::kExtern,
                                           ShareKind::kWeight, 0);
-  auto *S0 = builder.createStaticVariable(T5, InitKind::kExtern,
+  auto *S0 = builder.createStaticVariable(T5, "S0", InitKind::kExtern,
                                           ShareKind::kWeight, 0);
 
   B0->setName("bias");

@@ -14,13 +14,19 @@ std::string glow::escapeDottyString(const std::string &str) {
   std::string out;
   out += "\"";
   for (unsigned char c : str) {
-    if (std::isprint(c) && c != '\\' && c != '"') {
+    if (std::isprint(c) && c != '\\' && c != '"' && c != '<' && c != '>') {
       out += c;
     } else {
       out += "\\";
       switch (c) {
       case '"':
         out += "\"";
+        break;
+      case '<':
+        out += "<";
+        break;
+      case '>':
+        out += ">";
         break;
       case '\\':
         out += "\\";
