@@ -199,7 +199,7 @@ void Network::updateForwardBackward(Context *ctx, NodeBase *root,
   auto order = TPS.getOrder();
 
   /// Update the inputs:
-  for (int i = 0, e = vars.size(); i < e; i++) {
+  for (size_t i = 0, e = vars.size(); i < e; i++) {
     vars[i]->updateInputs(ctx, inputs[i], sampleIdx);
   }
 
@@ -233,9 +233,9 @@ static unsigned calculateNumThreads(unsigned maxNumThreads, unsigned numCores,
   unsigned best = 1;
   assert(maxNumThreads && numCores && numPackets &&
          "Invalid work size or thread count");
-  unsigned maxThreads = std::min<unsigned>(numCores, maxNumThreads);
+  unsigned maxThreads = std::min(numCores, maxNumThreads);
 
-  for (unsigned int i = 1; i < maxThreads; i++) {
+  for (unsigned i = 1; i < maxThreads; i++) {
     // The number of packets must be a multiple of the number of threads or
     // we'll skip some packets.
     if (numPackets % i) {
@@ -272,7 +272,7 @@ void Network::train(NodeBase *root, size_t numBatches,
 
   for (size_t i = 0; i < numBatches / numThreads; i++) {
     // Launch threads that update the different chunks in the batch:
-    for (unsigned int t = 0; t < numThreads; t++) {
+    for (unsigned t = 0; t < numThreads; t++) {
       // Update the network inputs and perform the forward and backwards pass.
       threads.emplace_back([=] {
         updateForwardBackward(state_[t], root, trainCounter_ + t * batchSize,
@@ -291,7 +291,7 @@ void Network::train(NodeBase *root, size_t numBatches,
     // The algorithm for merging the state from the different threads is
     /// described in the paper: Alex Krizhevsky [2014]
     // "One weird trick for parallelizing convolutional neural networks"
-    for (unsigned int tid = 0; tid < numThreads; tid++) {
+    for (unsigned tid = 0; tid < numThreads; tid++) {
       learnGradient(state_[tid], batchSize * numThreads);
     }
   }
@@ -304,7 +304,7 @@ Tensor *Network::infer(NodeBase *root, ArrayRef<Variable *> vars,
   auto order = TPS.getOrder();
 
   // Update all inputs.
-  for (int i = 0, e = vars.size(); i < e; i++) {
+  for (size_t i = 0, e = vars.size(); i < e; i++) {
     vars[i]->updateInputs(state_[0], inputs[i], 0);
   }
 

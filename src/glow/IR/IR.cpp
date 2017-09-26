@@ -52,7 +52,7 @@ Instruction::Operand Instruction::getOperand(unsigned idx) const {
 }
 
 void Instruction::verifyUseList() {
-  for (int i = 0, e = ops_.size(); i < e; i++) {
+  for (size_t i = 0, e = ops_.size(); i < e; i++) {
     auto *v = ops_[i].first;
     (void)v;
     assert(v && "Instruction operand must be a real value");
@@ -128,7 +128,7 @@ static std::string getDesc(Instruction *II) {
   }
 
   // Print operands:
-  for (int i = 0, e = II->getNumOperands(); i < e; i++) {
+  for (size_t i = 0, e = II->getNumOperands(); i < e; i++) {
     auto op = II->getOperand(i);
     auto CC = getOperandKindStr(op.second);
     if (i) {
