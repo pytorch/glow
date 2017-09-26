@@ -535,9 +535,9 @@ void LRNNode::forward(Context *ctx, PassKind kind) const {
   // LRN node does not change the shape of the input.
   assert(odim == idim && "Output of LRN node must be same shape as input");
 
-  // LRN node normalizes across channels, so the input must have at least
-  // 3 dimensions.
-  assert(idim.c > 2 && "Input of LRN node must have at least 3 dimensions");
+  // LRN node normalizes across channels, so the input must have a minimum
+  // depth of 1.
+  assert(idim.c > 0 && "Input of LRN node must have a minimum depth of 1");
 
   auto windowSize = 2 * halfWindowSize_ + 1;
   auto normedAlpha = alpha_ / windowSize;
