@@ -63,7 +63,12 @@ can be done by passing an additional cmake parameter during the configure step.
   ```
 
 Adding this to the configure step will automatically run clang-tidy on the
-source tree during compilation.
+source tree during compilation. Use the following configuration to enable
+auto-fix and to enable/disable specific checks:
+
+  ```
+  -DCMAKE_CXX_CLANG_TIDY:STRING="$(which clang-tidy);-checks=...;-fix"
+  ```
 
 ## Testing and Running
 
