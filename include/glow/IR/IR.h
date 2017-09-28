@@ -102,7 +102,7 @@ public:
 };
 
 /// This represents an instruction in our IR.
-class Instruction : public Named, public Kinded {
+class Instruction : public Value {
 public:
   using Operand = std::pair<Value *, OperandKind>;
 
@@ -120,9 +120,10 @@ protected:
   void pushOperand(Operand op);
 
 public:
-  Instruction(Kinded::Kind k) : Kinded(k) {}
+  Instruction(Kinded::Kind k, TypeRef Ty) : Value(Ty, k) {}
 
-  Instruction(Kinded::Kind k, ArrayRef<Operand> ops) : Kinded(k) {
+  Instruction(Kinded::Kind k, TypeRef Ty, ArrayRef<Operand> ops)
+      : Value(Ty, k) {
     for (auto &op : ops) {
       pushOperand(op);
     }
@@ -150,14 +151,12 @@ public:
 };
 
 class WeightVar;
-class ActivationVar;
 
 /// A module that represents the compilation unit.
 class Module final {
 public:
   using InstListTy = std::list<Instruction *>;
   using WeightVarListTy = std::list<WeightVar *>;
-  using ActivationVarListTy = std::list<ActivationVar *>;
 
 private:
   /// A uniqued list of types in the module. Types in this list can be compared
@@ -165,8 +164,6 @@ private:
   std::list<Type> types_{};
   /// A list of weights. Weights are shared between all execution context.
   std::list<WeightVar *> weights_{};
-  /// A list of activations. Activations are allocated per context.
-  std::list<ActivationVar *> activations_{};
 
   /// A list of instruction that represent the network.
   InstListTy instrs_{};
@@ -202,9 +199,6 @@ public:
 
   /// \returns the list of instructions.
   InstListTy &getInstrs() { return instrs_; }
-
-  /// \returns the list of activations.
-  ActivationVarListTy &getActivations() { return activations_; }
 
   /// \returns the list of weights.
   WeightVarListTy &getWeights() { return weights_; }

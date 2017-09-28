@@ -1,6 +1,7 @@
 #ifndef GLOW_IMPORTER_CAFFE2_H
 #define GLOW_IMPORTER_CAFFE2_H
 
+#include "glow/IR/IRBuilder.h"
 #include "glow/Support/ADT.h"
 
 #include <string>
@@ -23,7 +24,7 @@ class caffe2ModelLoader {
   /// The interpreter that runs the program.
   Interpreter &IP_;
   /// The network that we are building.
-  IRBuilder &builder_;
+  IRBuilder builder_;
   /// Saves network nodes by name.
   std::unordered_map<std::string, Value *> nodeByName_;
   /// A list of weight tensors indexed by name.

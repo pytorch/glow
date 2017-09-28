@@ -111,7 +111,7 @@ Value *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
   }
 
   Tensor *T = getTensorByName(name);
-  auto *V = builder_.createActivationVar(T->getElementType(), T->dims(), name);
+  auto *V = builder_.createWeightVar(T->getElementType(), T->dims(), name);
   nodeByName_[name] = V;
   return V;
 }
@@ -385,7 +385,7 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
                                      ArrayRef<const char *> names,
                                      ArrayRef<Tensor *> tensors,
                                      Interpreter &IP)
-    : IP_(IP), builder_(IP_.getBuilder()) {
+    : IP_(IP), builder_(IP_.getModule()) {
   // Verify that the version of the library that we linked against is
   // compatible with the version of the headers we compiled against.
   GOOGLE_PROTOBUF_VERIFY_VERSION;
@@ -405,4 +405,5 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   loadProtoFile(weightsDef, netWeightFilename);
   loadWeights(weightsDef);
   loadNetwork(networkDef);
+  builder_.deallocateActiveInstrs();
 }

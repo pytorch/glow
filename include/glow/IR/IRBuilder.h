@@ -14,8 +14,14 @@ class IRBuilder {
   /// The module that we are building.
   Module &M_;
 
+  /// A list of allocated buffers that need to be deallocated at the end of the
+  /// program that we are constructing.
+  std::vector<AllocActivationInst *> activeAllocs_;
+
 public:
   IRBuilder(Module &M) : M_(M) {}
+
+  ~IRBuilder();
 
   /// @name High-level, operation-level IRBuilder.
   ///@{
@@ -98,11 +104,6 @@ public:
   ArithmeticInst *createArithmeticInst(Value *dest, Value *LHS, Value *RHS,
                                        ArithmeticInst::OpKind kind);
 
-  ActivationVar *createActivationVar(ElemKind elemTy, ArrayRef<size_t> dims,
-                                     StringRef name = "");
-
-  ActivationVar *createActivationVar(TypeRef T, StringRef name = "");
-
   WeightVar *createWeightVar(TypeRef T, StringRef name = "",
                              InitKind initKind = InitKind::kExtern,
                              float val = 0);
@@ -111,7 +112,20 @@ public:
                              StringRef name = "",
                              InitKind initKind = InitKind::kExtern,
                              float val = 0);
+
+  AllocActivationInst *createAllocActivationInst(TypeRef T,
+                                                 StringRef name = "");
+  AllocActivationInst *createAllocActivationInst(ElemKind elemTy,
+                                                 ArrayRef<size_t> dims,
+                                                 StringRef name = "");
+
+  DeallocActivationInst *createDeallocActivationInst(Value *src);
+
   ///@}
+
+  /// Inserts the deallocation instructions for all 'alloc' instructions that
+  /// need to be terminated.
+  void deallocateActiveInstrs();
 };
 
 } // namespace glow

@@ -74,26 +74,33 @@ void performGradCheck(Interpreter &IP, Instruction *root, Value *inputVar,
 
 TEST(Network, gradientCheck_FC_Concat_RELU) {
   Interpreter IP;
-  auto &bb = IP.getBuilder();
   IP.getConfig().maxNumThreads = 1;
 
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  auto *A = bb.createActivationVar(ElemKind::FloatTy, {1, numInputElem});
-  auto *B = bb.createActivationVar(ElemKind::FloatTy, {1, numInputElem});
-  auto *Exp = bb.createActivationVar(ElemKind::FloatTy, {1, numOutputElem});
+  Instruction *RN;
+  Value *A;
+  Value *Exp;
 
-  Instruction *FA = bb.createFullyConnectedOp(A, numOutputElem / 2);
-  FA = bb.createRELUOp(*FA);
+  {
+    IRBuilder bb(IP.getModule());
 
-  Instruction *FB = bb.createFullyConnectedOp(B, numOutputElem / 2);
-  FB = bb.createRELUOp(*FB);
+    A = bb.createWeightVar(ElemKind::FloatTy, {1, numInputElem});
+    Exp = bb.createWeightVar(ElemKind::FloatTy, {1, numOutputElem});
 
-  Value *v0 = *FA;
-  Value *v1 = *FB;
-  Instruction *O = bb.createConcatOp({v0, v1}, 1);
-  auto *RN = bb.createRegressionOp(*O, Exp);
+    Instruction *FA = bb.createFullyConnectedOp(A, numOutputElem / 2);
+    FA = bb.createRELUOp(*FA);
+
+    auto *B = bb.createWeightVar(ElemKind::FloatTy, {1, numInputElem});
+    Instruction *FB = bb.createFullyConnectedOp(B, numOutputElem / 2);
+    FB = bb.createRELUOp(*FB);
+
+    Value *v0 = *FA;
+    Value *v1 = *FB;
+    Instruction *O = bb.createConcatOp({v0, v1}, 1);
+    RN = bb.createRegressionOp(*O, Exp);
+  }
 
   IP.getModule().verify();
   IP.initVars();
@@ -112,20 +119,26 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
 
 TEST(Network, gradientCheck_Conv) {
   Interpreter IP;
-  auto &bb = IP.getBuilder();
   IP.getConfig().maxNumThreads = 1;
 
   size_t numDim = 10;
   size_t numOutputElem = 10;
 
-  auto *A = bb.createActivationVar(ElemKind::FloatTy, {1, numDim, numDim, 1});
-  auto *Exp = bb.createActivationVar(ElemKind::FloatTy, {1, numOutputElem});
+  Value *A;
+  Value *Ex;
+  Instruction *RN;
+  {
+    IRBuilder bb(IP.getModule());
 
-  Instruction *O = bb.createConvOp(A, 16, 5, 1, 2);
-  O = bb.createPoolOp(*O, PoolInst::OpKind::kMax, 3, 3, 0);
-  O = bb.createFullyConnectedOp(*O, numOutputElem);
-  O = bb.createRELUOp(*O);
-  auto *RN = bb.createRegressionOp(*O, Exp);
+    A = bb.createWeightVar(ElemKind::FloatTy, {1, numDim, numDim, 1});
+    Ex = bb.createWeightVar(ElemKind::FloatTy, {1, numOutputElem});
+
+    Instruction *O = bb.createConvOp(A, 16, 5, 1, 2);
+    O = bb.createPoolOp(*O, PoolInst::OpKind::kMax, 3, 3, 0);
+    O = bb.createFullyConnectedOp(*O, numOutputElem);
+    O = bb.createRELUOp(*O);
+    RN = bb.createRegressionOp(*O, Ex);
+  }
 
   IP.getModule().verify();
   IP.initVars();
@@ -139,23 +152,29 @@ TEST(Network, gradientCheck_Conv) {
   inputsH.randomize(1);
   outputsH.randomize(1);
 
-  performGradCheck(IP, RN, A, Exp, &inputs, &outputs, 0.001, 0.004);
+  performGradCheck(IP, RN, A, Ex, &inputs, &outputs, 0.001, 0.004);
 }
 
 TEST(Network, gradientCheck_AvgPool) {
   Interpreter IP;
-  auto &bb = IP.getBuilder();
   IP.getConfig().maxNumThreads = 1;
 
   size_t numDim = 10;
   size_t numOutputElem = 10;
 
-  auto *A = bb.createActivationVar(ElemKind::FloatTy, {1, numDim, numDim, 1});
-  auto *Exp = bb.createActivationVar(ElemKind::FloatTy, {1, numOutputElem});
+  Value *A;
+  Value *Exp;
+  Instruction *RN;
+  {
+    IRBuilder bb(IP.getModule());
 
-  Instruction *O = bb.createPoolOp(A, PoolInst::OpKind::kAvg, 3, 3, 0);
-  O = bb.createFullyConnectedOp(*O, numOutputElem);
-  auto *RN = bb.createRegressionOp(*O, Exp);
+    A = bb.createWeightVar(ElemKind::FloatTy, {1, numDim, numDim, 1});
+    Exp = bb.createWeightVar(ElemKind::FloatTy, {1, numOutputElem});
+
+    Instruction *O = bb.createPoolOp(A, PoolInst::OpKind::kAvg, 3, 3, 0);
+    O = bb.createFullyConnectedOp(*O, numOutputElem);
+    RN = bb.createRegressionOp(*O, Exp);
+  }
 
   IP.getModule().verify();
   IP.initVars();
@@ -174,22 +193,27 @@ TEST(Network, gradientCheck_AvgPool) {
 
 TEST(Network, gradientCheck_batchNorm) {
   Interpreter IP;
-  auto &bb = IP.getBuilder();
   IP.getConfig().maxNumThreads = 1;
 
   size_t numDim = 5;
   size_t numOutputElem = numDim * numDim * 3;
 
-  auto *A = bb.createActivationVar(ElemKind::FloatTy, {1, numDim, numDim, 3});
-  auto *Exp = bb.createActivationVar(ElemKind::FloatTy, {1, numOutputElem});
+  Value *A;
+  Value *Ex;
+  Instruction *RN;
+  {
+    IRBuilder bb(IP.getModule());
 
-  Instruction *O = bb.createBatchNormalizationOp(A, 3, 0.0001, 0.9);
-  O = bb.createReshapeOp(*O, {1, numDim * numDim * 3});
-  auto *RN = bb.createRegressionOp(*O, Exp);
+    A = bb.createWeightVar(ElemKind::FloatTy, {1, numDim, numDim, 3});
+    Ex = bb.createWeightVar(ElemKind::FloatTy, {1, numOutputElem});
+
+    Instruction *O = bb.createBatchNormalizationOp(A, 3, 0.0001, 0.9);
+    O = bb.createReshapeOp(*O, {1, numDim * numDim * 3});
+    RN = bb.createRegressionOp(*O, Ex);
+  }
 
   IP.getModule().verify();
   IP.initVars();
-  IP.getModule().dump();
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 3});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
@@ -205,24 +229,34 @@ TEST(Network, gradientCheck_batchNorm) {
     inputsH.raw(i) += 4;
   }
 
-  performGradCheck(IP, RN, A, Exp, &inputs, &outputs, 0.001, 0.004);
+  performGradCheck(IP, RN, A, Ex, &inputs, &outputs, 0.001, 0.004);
 }
 
 TEST(Network, gradientCheck_Arithmetic) {
   Interpreter IP;
-  auto &bb = IP.getBuilder();
   IP.getConfig().maxNumThreads = 1;
 
   size_t numDim = 5;
 
-  Value *A = bb.createActivationVar(ElemKind::FloatTy, {1, numDim});
-  Value *B = bb.createActivationVar(ElemKind::FloatTy, {1, numDim});
-  Value *C = bb.createActivationVar(ElemKind::FloatTy, {1, numDim});
-  Value *Exp = bb.createActivationVar(ElemKind::FloatTy, {1, numDim});
+  Instruction *RN;
 
-  Instruction *O = bb.createArithmeticOp(A, B, ArithmeticInst::OpKind::kMul);
-  O = bb.createArithmeticOp(*O, C, ArithmeticInst::OpKind::kAdd);
-  auto *RN = bb.createRegressionOp(*O, Exp);
+  Value *A;
+  Value *B;
+  Value *C;
+  Value *Exp;
+
+  {
+    IRBuilder bb(IP.getModule());
+
+    A = bb.createWeightVar(ElemKind::FloatTy, {1, numDim});
+    B = bb.createWeightVar(ElemKind::FloatTy, {1, numDim});
+    C = bb.createWeightVar(ElemKind::FloatTy, {1, numDim});
+    Exp = bb.createWeightVar(ElemKind::FloatTy, {1, numDim});
+
+    Instruction *O = bb.createArithmeticOp(A, B, ArithmeticInst::OpKind::kMul);
+    O = bb.createArithmeticOp(*O, C, ArithmeticInst::OpKind::kAdd);
+    RN = bb.createRegressionOp(*O, Exp);
+  }
 
   IP.getModule().verify();
   IP.initVars();
@@ -293,19 +327,23 @@ TEST(Network, gradientCheck_Arithmetic) {
 TEST(Network, gradientCheck_FC_Concat_Tanh) {
   // Using the same gradient check test setup as gradientCheck_FC_Concat_RELU
   Interpreter IP;
-  auto &bb = IP.getBuilder();
   IP.getConfig().maxNumThreads = 1;
 
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  Value *A = bb.createActivationVar(ElemKind::FloatTy, {1, numInputElem});
-  auto *Exp = bb.createActivationVar(ElemKind::FloatTy, {1, numOutputElem});
+  Value *A;
+  Value *Exp;
+  Instruction *RN;
+  {
+    IRBuilder bb(IP.getModule());
+    A = bb.createWeightVar(ElemKind::FloatTy, {1, numInputElem});
+    Exp = bb.createWeightVar(ElemKind::FloatTy, {1, numOutputElem});
 
-  Instruction *FA = bb.createFullyConnectedOp(A, numOutputElem);
-  FA = bb.createTanhOp(*FA);
-
-  auto *RN = bb.createRegressionOp(*FA, Exp);
+    Instruction *FA = bb.createFullyConnectedOp(A, numOutputElem);
+    FA = bb.createTanhOp(*FA);
+    RN = bb.createRegressionOp(*FA, Exp);
+  }
 
   IP.getModule().verify();
   IP.initVars();
@@ -325,17 +363,22 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
 TEST(Network, gradientCheck_Transpose) {
   // Using the same gradient check test setup as gradientCheck_FC_Concat_RELU
   Interpreter IP;
-  auto &bb = IP.getBuilder();
   IP.getConfig().maxNumThreads = 1;
   size_t numOutputElem = 10;
 
-  Value *A = bb.createActivationVar(ElemKind::FloatTy, {1, 5, 10, 15});
-  Value *Exp = bb.createActivationVar(ElemKind::FloatTy, {1, numOutputElem});
+  Value *A;
+  Value *Exp;
+  Instruction *RN;
+  {
+    IRBuilder bb(IP.getModule());
 
-  Instruction *TA = bb.createTransposeOp(A, {0, 3, 1, 2});
-  TA = bb.createFullyConnectedOp(*TA, numOutputElem);
+    A = bb.createWeightVar(ElemKind::FloatTy, {1, 5, 10, 15});
+    Exp = bb.createWeightVar(ElemKind::FloatTy, {1, numOutputElem});
+    Instruction *TA = bb.createTransposeOp(A, {0, 3, 1, 2});
+    TA = bb.createFullyConnectedOp(*TA, numOutputElem);
 
-  auto *RN = bb.createRegressionOp(*TA, Exp);
+    RN = bb.createRegressionOp(*TA, Exp);
+  }
 
   IP.getModule().verify();
   IP.initVars();

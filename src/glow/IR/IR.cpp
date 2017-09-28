@@ -77,10 +77,7 @@ Module::~Module() {
     delete *it;
   }
 
-  // Delete all of the weights and activations.
-  for (auto &I : activations_) {
-    delete I;
-  }
+  // Delete all of the weights.
   for (auto &I : weights_) {
     delete I;
   }
@@ -160,9 +157,6 @@ static void nameInstr(std::unordered_set<std::string> &usedNames, Named *named,
 
 void Module::nameInstructions() {
   std::unordered_set<std::string> usedNames;
-  for (auto &v : activations_) {
-    nameInstr(usedNames, v, v->getKindName());
-  }
   for (auto &v : weights_) {
     nameInstr(usedNames, v, v->getKindName());
   }
@@ -178,10 +172,6 @@ void Module::dump() {
 
   sb << "declare {\n";
   for (auto it : weights_) {
-    Value *V = it;
-    sb << "  " << getDesc(V) << "\n";
-  }
-  for (auto it : activations_) {
     Value *V = it;
     sb << "  " << getDesc(V) << "\n";
   }
@@ -276,15 +266,6 @@ void Module::dumpDAG() {
   sb += "subgraph cluster_0 {";
   sb += "  style=invis;\n";
 
-  for (auto &v : activations_) {
-    sb += quote(pointerToString(v)) + "[\n";
-    std::string desc = escapeDottyString(getDottyDesc(v));
-    sb += "\tlabel = " + desc + "\n";
-    sb += "\tshape = \"record\"\n";
-    sb += "\tfillcolor=plum,style=filled\n";
-    sb += "];\n\n";
-  }
-
   for (auto &v : weights_) {
     sb += quote(pointerToString(v)) + "[\n";
     std::string desc = escapeDottyString(getDottyDesc(v));
@@ -294,6 +275,9 @@ void Module::dumpDAG() {
     sb += "];\n\n";
   }
   sb += "}";
+
+  sb += "subgraph cluster_1 {";
+  sb += "  style=invis;\n";
 
   // Dump the use-def edges.
   for (auto &I : instrs_) {
@@ -306,6 +290,17 @@ void Module::dumpDAG() {
     }
   }
 
+  // Dump the order edges.
+  Instruction *prev = nullptr;
+  for (auto &I : instrs_) {
+    if (prev) {
+      std::string from = quote(pointerToString(prev));
+      std::string to = quote(pointerToString(I));
+      sb += from + "->" + to + "[color=\"blue\"];\n";
+    }
+    prev = I;
+  }
+  sb += "}";
   sb += "}";
 
   std::ofstream myfile;

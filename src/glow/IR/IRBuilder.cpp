@@ -4,6 +4,16 @@
 
 using namespace glow;
 
+IRBuilder::~IRBuilder() { deallocateActiveInstrs(); }
+
+void IRBuilder::deallocateActiveInstrs() {
+  for (auto *A : activeAllocs_) {
+    createDeallocActivationInst(A);
+  }
+
+  activeAllocs_.clear();
+}
+
 //===----------------------------------------------------------------------===//
 //                        High level operators.
 //===----------------------------------------------------------------------===//
@@ -29,7 +39,7 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, size_t depth,
   Value *bias = createWeightVar(ElemKind::FloatTy, {depth}, "bias",
                                 InitKind::kBroadcast, 0.1);
 
-  Value *dest = createActivationVar(ElemKind::FloatTy, outDims);
+  Value *dest = createAllocActivationInst(ElemKind::FloatTy, outDims);
 
   return createConvolutionInst(dest, input, filter, bias, kernel, stride, pad,
                                depth);
@@ -48,14 +58,14 @@ PoolInst *IRBuilder::createPoolOp(Value *input, PoolInst::OpKind kind,
   // gradient for each max element.
   Value *srcXY;
   if (kind == PoolInst::OpKind::kMax) {
-    srcXY = createActivationVar(ElemKind::IndexTy,
-                                {idim.n, outSz.first, outSz.second, idim.c, 2},
-                                "srcXY");
+    srcXY = createAllocActivationInst(
+        ElemKind::IndexTy, {idim.n, outSz.first, outSz.second, idim.c, 2},
+        "srcXY");
   } else {
-    srcXY = createActivationVar(ElemKind::IndexTy, {}, "srcXY");
+    srcXY = createAllocActivationInst(ElemKind::IndexTy, {}, "srcXY");
   }
 
-  Value *dest = createActivationVar(
+  Value *dest = createAllocActivationInst(
       ElemKind::FloatTy, {idim.n, outSz.first, outSz.second, idim.c});
 
   return createPoolInst(dest, input, srcXY, kind, kernel, stride, pad);
@@ -73,39 +83,40 @@ FullyConnectedInst *IRBuilder::createFullyConnectedOp(Value *input,
 
   auto *B = createWeightVar(T->getElementType(), {outDepth}, "bias",
                             InitKind::kBroadcast, 0.1);
-  auto *dest = createActivationVar(T->getElementType(), {idim.first, outDepth});
+  auto *dest =
+      createAllocActivationInst(T->getElementType(), {idim.first, outDepth});
 
   return createFullyConnectedInst(dest, input, W, B, outDepth);
 }
 
 ReluInst *IRBuilder::createRELUOp(Value *input) {
-  auto *res = createActivationVar(input->getType());
+  auto *res = createAllocActivationInst(input->getType());
   return createReluInst(res, input);
 }
 
 SigmoidInst *IRBuilder::createSigmoidOp(Value *input) {
-  auto *res = createActivationVar(input->getType());
+  auto *res = createAllocActivationInst(input->getType());
   return createSigmoidInst(res, input);
 }
 
 TanhInst *IRBuilder::createTanhOp(Value *input) {
-  auto *res = createActivationVar(input->getType());
+  auto *res = createAllocActivationInst(input->getType());
   return createTanhInst(res, input);
 }
 
 SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input, Value *selected) {
-  auto *res = createActivationVar(input->getType());
-  auto *E = createActivationVar(input->getType(), "expected");
+  auto *res = createAllocActivationInst(input->getType());
+  auto *E = createAllocActivationInst(input->getType(), "expected");
   return createSoftMaxInst(res, input, E, selected);
 }
 
 RegressionInst *IRBuilder::createRegressionOp(Value *input, Value *expected) {
-  auto *res = createActivationVar(input->getType());
+  auto *res = createAllocActivationInst(input->getType());
   return createRegressionInst(res, input, expected);
 }
 
 ReshapeInst *IRBuilder::createReshapeOp(Value *input, ArrayRef<size_t> shape) {
-  auto *res = createActivationVar(input->getElementType(), shape);
+  auto *res = createAllocActivationInst(input->getElementType(), shape);
   return createReshapeInst(res, input, shape);
 }
 
@@ -117,7 +128,7 @@ TransposeInst *IRBuilder::createTransposeOp(Value *input,
     shape.push_back(dims[shuffle[i]]);
   }
 
-  auto *res = createActivationVar(input->getElementType(), shape);
+  auto *res = createAllocActivationInst(input->getElementType(), shape);
   return createTransposeInst(res, input, shuffle);
 }
 
@@ -134,7 +145,7 @@ ConcatInst *IRBuilder::createConcatOp(ArrayRef<Value *> inputs,
   // increase the size of the tensor along this dimension.
   shape[dimension] *= inputs.size();
 
-  auto *res = createActivationVar(inputs[0]->getElementType(), shape);
+  auto *res = createAllocActivationInst(inputs[0]->getElementType(), shape);
   return createConcatInst(res, inputs, dimension);
 }
 
@@ -151,13 +162,13 @@ BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(Value *input,
   auto *gamma = createWeightVar(ElemKind::FloatTy, {channels}, "gamma",
                                 InitKind::kBroadcast, 1.0);
 
-  auto *mean = createActivationVar(ElemKind::FloatTy, {channels}, "mean");
+  auto *mean = createAllocActivationInst(ElemKind::FloatTy, {channels}, "mean");
 
   auto *variance =
-      createActivationVar(ElemKind::FloatTy, {channels}, "variance");
+      createAllocActivationInst(ElemKind::FloatTy, {channels}, "variance");
 
   // The output tensor is of the same shape as the input tensor.
-  auto *dest = createActivationVar(input->getType());
+  auto *dest = createAllocActivationInst(input->getType());
 
   return createBatchNormalizationInst(dest, input, gamma, beta, mean, variance,
                                       channelIdx, epsilon, momentum);
@@ -167,7 +178,7 @@ ArithmeticInst *IRBuilder::createArithmeticOp(Value *LHS, Value *RHS,
                                               ArithmeticInst::OpKind op) {
   assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
-  auto *res = createActivationVar(LHS->getType());
+  auto *res = createAllocActivationInst(LHS->getType());
   return createArithmeticInst(res, LHS, RHS, op);
 }
 
@@ -278,36 +289,37 @@ ArithmeticInst *IRBuilder::createArithmeticInst(Value *dest, Value *LHS,
   return A;
 }
 
-ActivationVar *IRBuilder::createActivationVar(ElemKind elemTy,
-                                              ArrayRef<size_t> dims,
-                                              StringRef name) {
-  auto T = M_.uniqueType(elemTy, dims);
-  auto *A = new ActivationVar(T);
-  M_.getActivations().push_back(A);
-  A->setName(name);
-  return A;
-}
-
-ActivationVar *IRBuilder::createActivationVar(TypeRef T, StringRef name) {
-  auto *A = new ActivationVar(T);
-  M_.getActivations().push_back(A);
-  A->setName(name);
-  return A;
-}
-
 WeightVar *IRBuilder::createWeightVar(ElemKind elemTy, ArrayRef<size_t> dims,
                                       StringRef name, InitKind initKind,
                                       float val) {
   auto T = M_.uniqueType(elemTy, dims);
-  auto *A = new WeightVar(T, initKind, val);
-  M_.getWeights().push_back(A);
-  A->setName(name);
-  return A;
+  return createWeightVar(T, name, initKind, val);
 }
 
 WeightVar *IRBuilder::createWeightVar(TypeRef T, StringRef name,
                                       InitKind initKind, float val) {
   auto *A = new WeightVar(T, initKind, val);
   M_.getWeights().push_back(A);
+  return A;
+}
+
+AllocActivationInst *IRBuilder::createAllocActivationInst(TypeRef T,
+                                                          StringRef name) {
+  auto *A = new AllocActivationInst(T);
+  M_.pushInstr(A);
+  // Add this instruction to the list of open allocations.
+  activeAllocs_.push_back(A);
+  return A;
+}
+AllocActivationInst *IRBuilder::createAllocActivationInst(ElemKind elemTy,
+                                                          ArrayRef<size_t> dims,
+                                                          StringRef name) {
+  auto T = M_.uniqueType(elemTy, dims);
+  return createAllocActivationInst(T, name);
+}
+
+DeallocActivationInst *IRBuilder::createDeallocActivationInst(Value *src) {
+  auto *A = new DeallocActivationInst(src);
+  M_.pushInstr(A);
   return A;
 }

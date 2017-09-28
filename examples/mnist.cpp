@@ -66,26 +66,30 @@ void testMNIST() {
 
   // Construct the network:
   Interpreter IP;
-  auto &bb = IP.getBuilder();
   IP.getConfig().learningRate = 0.001;
   IP.getConfig().momentum = 0.9;
   IP.getConfig().L2Decay = 0.001;
 
-  auto *A =
-      bb.createActivationVar(ElemKind::FloatTy, {minibatchSize, 28, 28, 1});
-  auto *CV0 = bb.createConvOp(A, 16, 5, 1, 2);
-  auto *RL0 = bb.createRELUOp(*CV0);
-  auto *MP0 = bb.createPoolOp(*RL0, PoolInst::OpKind::kMax, 3, 3, 0);
+  Value *A;
+  Instruction *SM;
+  Value *selected;
+  {
+    IRBuilder bb(IP.getModule());
 
-  auto *CV1 = bb.createConvOp(*MP0, 16, 5, 1, 2);
-  auto *RL1 = bb.createRELUOp(*CV1);
-  auto *MP1 = bb.createPoolOp(*RL1, PoolInst::OpKind::kMax, 3, 3, 0);
+    A = bb.createWeightVar(ElemKind::FloatTy, {minibatchSize, 28, 28, 1});
+    auto *CV0 = bb.createConvOp(A, 16, 5, 1, 2);
+    auto *RL0 = bb.createRELUOp(*CV0);
+    auto *MP0 = bb.createPoolOp(*RL0, PoolInst::OpKind::kMax, 3, 3, 0);
 
-  auto *FCL1 = bb.createFullyConnectedOp(*MP1, 10);
-  auto *RL2 = bb.createRELUOp(*FCL1);
-  auto *selected =
-      bb.createActivationVar(ElemKind::IndexTy, {minibatchSize, 1});
-  auto *SM = bb.createSoftMaxOp(*RL2, selected);
+    auto *CV1 = bb.createConvOp(*MP0, 16, 5, 1, 2);
+    auto *RL1 = bb.createRELUOp(*CV1);
+    auto *MP1 = bb.createPoolOp(*RL1, PoolInst::OpKind::kMax, 3, 3, 0);
+
+    auto *FCL1 = bb.createFullyConnectedOp(*MP1, 10);
+    auto *RL2 = bb.createRELUOp(*FCL1);
+    selected = bb.createWeightVar(ElemKind::IndexTy, {minibatchSize, 1});
+    SM = bb.createSoftMaxOp(*RL2, selected);
+  }
 
   IP.getModule().dump();
   IP.initVars();

@@ -13,28 +13,32 @@ using namespace glow;
 TEST(Interpreter, interpret) {
   Interpreter IP;
 
-  auto &builder = IP.getBuilder();
-  auto *input = builder.createActivationVar(ElemKind::FloatTy, {1, 32, 32, 3});
+  Value *input;
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
 
-  auto *ex = builder.createActivationVar(ElemKind::IndexTy, {1, 1});
+  {
+    IRBuilder builder(IP.getModule());
+    input = builder.createWeightVar(ElemKind::FloatTy, {1, 32, 32, 3});
 
-  auto *CV0 = builder.createConvOp(input, 16, 5, 1, 2);
-  auto *RL0 = builder.createRELUOp(*CV0);
-  auto *MP0 = builder.createPoolOp(*RL0, PoolInst::OpKind::kMax, 2, 2, 0);
+    auto *ex = builder.createWeightVar(ElemKind::IndexTy, {1, 1});
 
-  auto *CV1 = builder.createConvOp(*MP0, 20, 5, 1, 2);
-  auto *RL1 = builder.createRELUOp(*CV1);
-  auto *MP1 = builder.createPoolOp(*RL1, PoolInst::OpKind::kMax, 2, 2, 0);
+    auto *CV0 = builder.createConvOp(input, 16, 5, 1, 2);
+    auto *RL0 = builder.createRELUOp(*CV0);
+    auto *MP0 = builder.createPoolOp(*RL0, PoolInst::OpKind::kMax, 2, 2, 0);
 
-  auto *CV2 = builder.createConvOp(*MP1, 20, 5, 1, 2);
-  auto *RL2 = builder.createRELUOp(*CV2);
-  auto *MP2 = builder.createPoolOp(*RL2, PoolInst::OpKind::kMax, 2, 2, 0);
+    auto *CV1 = builder.createConvOp(*MP0, 20, 5, 1, 2);
+    auto *RL1 = builder.createRELUOp(*CV1);
+    auto *MP1 = builder.createPoolOp(*RL1, PoolInst::OpKind::kMax, 2, 2, 0);
 
-  auto *FCL1 = builder.createFullyConnectedOp(*MP2, 10);
-  auto *RL3 = builder.createRELUOp(*FCL1);
-  auto *SM = builder.createSoftMaxOp(*RL3, ex);
-  (void)SM;
+    auto *CV2 = builder.createConvOp(*MP1, 20, 5, 1, 2);
+    auto *RL2 = builder.createRELUOp(*CV2);
+    auto *MP2 = builder.createPoolOp(*RL2, PoolInst::OpKind::kMax, 2, 2, 0);
+
+    auto *FCL1 = builder.createFullyConnectedOp(*MP2, 10);
+    auto *RL3 = builder.createRELUOp(*FCL1);
+    auto *SM = builder.createSoftMaxOp(*RL3, ex);
+    (void)SM;
+  }
 
   IP.getModule().verify();
 
@@ -44,21 +48,26 @@ TEST(Interpreter, interpret) {
 
 TEST(Interpreter, trainASimpleNetwork) {
   Interpreter IP;
-  auto &builder = IP.getBuilder();
-
   // Learning a single input vector.
   IP.getConfig().maxNumThreads = 1;
   IP.getConfig().learningRate = 0.05;
 
-  // Create a variable with 1 input, which is a vector of 4 elements.
-  auto *A = builder.createActivationVar(ElemKind::FloatTy, {1, 4});
-  auto *E = builder.createActivationVar(ElemKind::FloatTy, {1, 4});
+  Value *A;
+  Value *E;
+  Instruction *RN;
+  {
+    IRBuilder builder(IP.getModule());
 
-  Instruction *O = builder.createFullyConnectedOp(A, 10);
-  O = builder.createSigmoidOp(*O);
-  O = builder.createFullyConnectedOp(*O, 4);
-  O = builder.createSigmoidOp(*O);
-  auto *RN = builder.createRegressionOp(*O, E);
+    // Create a variable with 1 input, which is a vector of 4 elements.
+    A = builder.createWeightVar(ElemKind::FloatTy, {1, 4});
+    E = builder.createWeightVar(ElemKind::FloatTy, {1, 4});
+
+    Instruction *O = builder.createFullyConnectedOp(A, 10);
+    O = builder.createSigmoidOp(*O);
+    O = builder.createFullyConnectedOp(*O, 4);
+    O = builder.createSigmoidOp(*O);
+    RN = builder.createRegressionOp(*O, E);
+  }
 
   // Values for the input and output variables.
   Tensor inputs(ElemKind::FloatTy, {1, 4});
@@ -89,24 +98,29 @@ TEST(Interpreter, simpleRegression) {
 
   // Learning the Xor function.
   Interpreter IP;
-  auto &bb = IP.getBuilder();
 
   // Learning a single input vector.
   IP.getConfig().maxNumThreads = 1;
   IP.getConfig().learningRate = 0.05;
 
-  auto *A = bb.createActivationVar(ElemKind::FloatTy, {1, numInputs});
-  auto *Ex = bb.createActivationVar(ElemKind::FloatTy, {1, numInputs});
-
-  Instruction *O = bb.createFullyConnectedOp(A, 4);
-  O = bb.createRELUOp(*O);
-  auto *RN = bb.createRegressionOp(*O, Ex);
-
   Tensor inputs(ElemKind::FloatTy, {1, numInputs});
   Tensor expected(ElemKind::FloatTy, {1, numInputs});
+
+  Value *A;
+  Value *Ex;
+  Instruction *RN;
+  {
+    IRBuilder bb(IP.getModule());
+    A = bb.createWeightVar(ElemKind::FloatTy, {1, numInputs});
+    Ex = bb.createWeightVar(ElemKind::FloatTy, {1, numInputs});
+    Instruction *O = bb.createFullyConnectedOp(A, 4);
+    O = bb.createRELUOp(*O);
+    RN = bb.createRegressionOp(*O, Ex);
+  }
   auto I = inputs.getHandle<FloatTy>();
   auto E = expected.getHandle<FloatTy>();
 
+  IP.getModule().verify();
   IP.initVars();
 
   // Train the network:
@@ -138,20 +152,26 @@ TEST(Interpreter, learnXor) {
 
   // Learning the Xor function.
   Interpreter IP;
-  auto &bb = IP.getBuilder();
 
   // Learning a single input vector.
   IP.getConfig().maxNumThreads = 1;
   IP.getConfig().learningRate = 0.05;
 
-  auto *A = bb.createActivationVar(ElemKind::FloatTy, {numInputs, 2});
-  auto *Ex = bb.createActivationVar(ElemKind::FloatTy, {numInputs, 1});
+  Instruction *RN;
+  Value *A;
+  Value *Ex;
+  {
+    IRBuilder bb(IP.getModule());
 
-  Instruction *O = bb.createFullyConnectedOp(A, 6);
-  O = bb.createRELUOp(*O);
-  O = bb.createFullyConnectedOp(*O, 1);
-  O = bb.createRELUOp(*O);
-  auto *RN = bb.createRegressionOp(*O, Ex);
+    A = bb.createWeightVar(ElemKind::FloatTy, {numInputs, 2});
+    Ex = bb.createWeightVar(ElemKind::FloatTy, {numInputs, 1});
+
+    Instruction *O = bb.createFullyConnectedOp(A, 6);
+    O = bb.createRELUOp(*O);
+    O = bb.createFullyConnectedOp(*O, 1);
+    O = bb.createRELUOp(*O);
+    RN = bb.createRegressionOp(*O, Ex);
+  }
 
   /// Prepare the training set and the testing set.
   Tensor trainingSet(ElemKind::FloatTy, {numInputs, 2});
@@ -231,22 +251,29 @@ void generateCircleData(Tensor &coordinates, Tensor &labels) {
 TEST(Network, circle) {
   // Testing the softmax layer.
   Interpreter IP;
-  auto &bb = IP.getBuilder();
 
   // Learning a single input vector.
   IP.getConfig().maxNumThreads = 1;
   IP.getConfig().momentum = 0.9;
   IP.getConfig().learningRate = 0.01;
 
-  auto *A = bb.createActivationVar(ElemKind::FloatTy, {1, 2});
-  auto *S = bb.createActivationVar(ElemKind::IndexTy, {1, 1});
+  Value *A;
+  Value *S;
+  Instruction *SM;
+  {
+    IRBuilder bb(IP.getModule());
 
-  auto *FCL0 = bb.createFullyConnectedOp(A, 8);
-  auto *RL0 = bb.createRELUOp(*FCL0);
-  auto *FCL1 = bb.createFullyConnectedOp(*RL0, 2);
-  auto *RL1 = bb.createRELUOp(*FCL1);
-  auto *SM = bb.createSoftMaxOp(*RL1, S);
+    A = bb.createWeightVar(ElemKind::FloatTy, {1, 2});
+    S = bb.createWeightVar(ElemKind::IndexTy, {1, 1});
 
+    auto *FCL0 = bb.createFullyConnectedOp(A, 8);
+    auto *RL0 = bb.createRELUOp(*FCL0);
+    auto *FCL1 = bb.createFullyConnectedOp(*RL0, 2);
+    auto *RL1 = bb.createRELUOp(*FCL1);
+    SM = bb.createSoftMaxOp(*RL1, S);
+  }
+
+  IP.getModule().verify();
   IP.initVars();
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
@@ -309,7 +336,6 @@ TEST(Network, circle) {
 
 TEST(Network, learnSingleValueConcat) {
   Interpreter IP;
-  auto &bb = IP.getBuilder();
   unsigned width = 6;
 
   // Learning a single input vector.
@@ -317,21 +343,29 @@ TEST(Network, learnSingleValueConcat) {
   IP.getConfig().momentum = 0.9;
   IP.getConfig().learningRate = 0.01;
 
-  auto *Ex = bb.createActivationVar(ElemKind::FloatTy, {1, width * 2});
+  Value *Ex;
+  Value *A;
+  Value *B;
+  Instruction *RN;
+  {
+    IRBuilder bb(IP.getModule());
 
-  // Left side of the network:
-  auto *A = bb.createActivationVar(ElemKind::FloatTy, {1, width});
-  Instruction *L = bb.createFullyConnectedOp(A, width);
-  L = bb.createSigmoidOp(*L);
+    Ex = bb.createWeightVar(ElemKind::FloatTy, {1, width * 2});
 
-  // Right side of the network:
-  auto *B = bb.createActivationVar(ElemKind::FloatTy, {1, width});
-  Instruction *R = bb.createFullyConnectedOp(B, width);
-  R = bb.createSigmoidOp(*R);
+    // Left side of the network:
+    A = bb.createWeightVar(ElemKind::FloatTy, {1, width});
+    Instruction *L = bb.createFullyConnectedOp(A, width);
+    L = bb.createSigmoidOp(*L);
 
-  // Concat:
-  auto *C = bb.createConcatOp({*L, *R}, 1);
-  auto *RN = bb.createRegressionOp(*C, Ex);
+    // Right side of the network:
+    B = bb.createWeightVar(ElemKind::FloatTy, {1, width});
+    Instruction *R = bb.createFullyConnectedOp(B, width);
+    R = bb.createSigmoidOp(*R);
+
+    // Concat:
+    auto *C = bb.createConcatOp({*L, *R}, 1);
+    RN = bb.createRegressionOp(*C, Ex);
+  }
 
   Tensor inputs(ElemKind::FloatTy, {1, width});
   Tensor expected(ElemKind::FloatTy, {1, width * 2});

@@ -17,8 +17,6 @@ class Context;
 class Interpreter final {
   /// The Module that holds the IR.
   Module M_;
-  /// The IR Builder.
-  IRBuilder builder_;
   /// Maps values to Tensors, that are owned by this class.
   std::unordered_map<Value *, Tensor *> tensors_;
 
@@ -32,8 +30,7 @@ class Interpreter final {
 public:
   /// \returns the internal module.
   Module &getModule() { return M_; }
-  /// \returns the internal IR builder.
-  IRBuilder &getBuilder() { return builder_; }
+
   /// Ctor.
   Interpreter();
   /// Dtor.

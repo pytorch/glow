@@ -531,6 +531,7 @@ void LRNNode::forward(Context *ctx, PassKind kind) const {
 
   ShapeNHWC odim = dims(ctx);
   ShapeNHWC idim = input_->dims(ctx);
+  (void)odim;
 
   // LRN node does not change the shape of the input.
   assert(odim == idim && "Output of LRN node must be same shape as input");

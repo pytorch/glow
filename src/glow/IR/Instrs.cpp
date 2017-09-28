@@ -1,5 +1,6 @@
 #include "glow/IR/Instrs.h"
 #include "glow/IR/IR.h"
+#include "glow/Support/Casting.h"
 
 #include "glow/Network/Nodes.h"
 
@@ -80,14 +81,16 @@ const char *WeightVar::getInitKindStr() {
 
 std::string WeightVar::getExtraDesc() {
   auto sp = ", ";
-  auto r = getType()->asString() + sp;
+  auto r = getType()->asString();
   if (getInitKind() != InitKind::kExtern) {
     r += std::string(sp) + getInitKindStr() + sp + std::to_string(val_);
   }
   return r;
 }
 
-std::string ActivationVar::getExtraDesc() { return getType()->asString(); }
+std::string AllocActivationInst::getExtraDesc() {
+  return getType()->asString();
+}
 
 /// Check that the type of the first operand matches the type of the second
 /// operand.
@@ -229,4 +232,19 @@ void BatchNormalizationInst::verify() {
 void ArithmeticInst::verify() {
   checkSameType(getOperand(0), getOperand(1));
   checkSameType(getOperand(0), getOperand(2));
+}
+
+void AllocActivationInst::verify() {
+  unsigned numDealloc = 0;
+  for (auto U : getUsers()) {
+    numDealloc += isa<DeallocActivationInst>(U.second);
+  }
+
+  // Make sure that there is exactly one user is a deallocation.
+  assert(numDealloc == 1 && "Invalid number of tensor deallocation");
+}
+
+void DeallocActivationInst::verify() {
+  // The operand of this instruction needs to be an AllocActivationInst.
+  assert(isa<AllocActivationInst>(getOperand(0).first) && "Invalid operand");
 }

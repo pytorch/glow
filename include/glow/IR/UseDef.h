@@ -47,6 +47,9 @@ public:
       U.second->setOperand(U.first, v);
     }
   }
+
+  /// \returns the list of users for this value.
+  std::list<Use> &getUsers() { return users_; }
 };
 
 } // namespace glow

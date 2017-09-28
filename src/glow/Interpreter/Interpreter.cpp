@@ -4,7 +4,7 @@
 
 using namespace glow;
 
-Interpreter::Interpreter() : M_(), builder_(M_) {}
+Interpreter::Interpreter() : M_() {}
 
 Interpreter::~Interpreter() {
   // Delete the tensors that are owned by this module.
@@ -94,10 +94,6 @@ Tensor *Interpreter::allocateBackingTensor(Value *v) {
 }
 
 void Interpreter::initVars() {
-  for (auto *A : M_.getActivations()) {
-    allocateBackingTensor(A);
-  }
-
   for (auto *W : M_.getWeights()) {
     // Don't initialize tensors that are already initialized.
     if (tensors_.count(W))
@@ -205,10 +201,14 @@ void Interpreter::train(size_t iterations, ArrayRef<Value *> vars,
 
 void Interpreter::learnGradient(size_t batchSize) {
   for (auto *V : M_.getWeights()) {
-    // Handle weight update by learning the gradients into the weights.
+    // Do not try to learn the values of input/output buffers.
+    if (V->getInitKind() == WeightVar::InitKind::kExtern)
+      continue;
+
     auto W = getTensorForValue(V);
     auto G = getOrCreateGradTensor(V);
 
+    // Handle weight update by learning the gradients into the weights.
     trainer_.train(W, G, batchSize);
     continue;
   }
@@ -238,15 +238,6 @@ void Interpreter::doForwardPass(bool isTrain) {
   }
   // Dispatch the interpreter on each instruction in the program:
   for (auto *I : M_.getInstrs()) {
-    // Prepare for the next backprop iteration by zeroing the gradient
-    // tensors. Notice that this only zeros the temporary grad tensors that
-    // match the output tensors but not the gradient tensors that are
-    // paired with filters. These are cleared during the learning process
-    // at the end of the batch.
-    if (isTrain) {
-      getOrCreateGradTensor(I->getOperand(0).first)->zero();
-    }
-
     switch (I->getKind()) {
 #include "glow/IR/Instrs.def"
     default:

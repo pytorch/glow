@@ -4,8 +4,6 @@
 
 using namespace glow;
 
-#define DBG std::cout << __FUNCTION__ << "\n";
-
 //===----------------------------------------------------------------------===//
 //                       Convolution
 //===----------------------------------------------------------------------===//
@@ -893,4 +891,26 @@ void Interpreter::bwdArithmeticInst(Context *ctx, ArithmeticInst *I) {
   }
 }
 
-#undef DBG
+//===----------------------------------------------------------------------===//
+//                  Tensor allocation operations
+//===----------------------------------------------------------------------===//
+
+void Interpreter::fwdAllocActivationInst(glow::Context *ctx, bool isTrain,
+                                         glow::AllocActivationInst *I) {
+  allocateBackingTensor(I);
+  // Prepare for the next backprop iteration by zeroing the gradient
+  // tensors. Notice that this only zeros the temporary grad tensors that
+  // match the output tensors but not the gradient tensors that are
+  // paired with filters. These are cleared during the learning process
+  // at the end of the batch.
+  getOrCreateGradTensor(I)->zero();
+}
+
+void Interpreter::bwdAllocActivationInst(glow::Context *ctx,
+                                         glow::AllocActivationInst *I) {}
+
+void Interpreter::fwdDeallocActivationInst(glow::Context *ctx, bool isTrain,
+                                           glow::DeallocActivationInst *I) {}
+
+void Interpreter::bwdDeallocActivationInst(glow::Context *ctx,
+                                           glow::DeallocActivationInst *I) {}
