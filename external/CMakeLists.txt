@@ -18,7 +18,7 @@ ExternalProject_Add(llvm
                     GIT_SHALLOW
                       1
                     GIT_TAG
-                      81029f142231bde8e119becda112a2173f1459c9
+                      b1e6cc762cd729de01f1b4f3c0f6d9a493635ae0
                     CMAKE_ARGS
                       -DCMAKE_BUILD_TYPE=RelWithDebInfo
                       -DBUILD_SHARED_LIBS=NO
