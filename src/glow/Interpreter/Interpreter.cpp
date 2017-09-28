@@ -31,13 +31,13 @@ void Interpreter::registerTensor(Value *v, Tensor *t) {
   tensors_[v] = t;
 }
 
-Tensor *Interpreter::getTensorForValue(Value *v) const {
+Tensor *Interpreter::getTensorForValue(const Value *v) const {
   auto it = tensors_.find(v);
   assert(it != tensors_.end() && "Unknown key Value.");
   return it->second;
 }
 
-void Interpreter::initValue(Value *v, const Tensor *t) {
+void Interpreter::initValue(const Value *v, const Tensor *t) {
   auto it = tensors_.find(v);
   if (it != tensors_.end()) {
     it->second->copyFrom(t);
@@ -49,7 +49,7 @@ void Interpreter::initValue(Value *v, const Tensor *t) {
   tensors_[v] = N;
 }
 
-Tensor *Interpreter::getOrCreateGradTensor(Value *v) {
+Tensor *Interpreter::getOrCreateGradTensor(const Value *v) {
   auto *T = getTensorForValue(v);
   auto it = gradients_.find(T);
   if (it != gradients_.end())
@@ -61,7 +61,7 @@ Tensor *Interpreter::getOrCreateGradTensor(Value *v) {
   return N;
 }
 
-void Interpreter::loadValueFromTensor(Value *v, Tensor *input,
+void Interpreter::loadValueFromTensor(const Value *v, Tensor *input,
                                       size_t sampleIdx) {
   auto *t = getTensorForValue(v);
 
@@ -80,7 +80,7 @@ Handle<FloatTy> Interpreter::getGradHandle(Context *ctx, Value *v) {
   return getOrCreateGradTensor(v)->getHandle<FloatTy>();
 }
 
-Tensor *Interpreter::allocateBackingTensor(Value *v) {
+Tensor *Interpreter::allocateBackingTensor(const Value *v) {
   // Allocate a tensor for the variable.
   Tensor *T = nullptr;
   // Pick the tensor.

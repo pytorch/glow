@@ -8,7 +8,7 @@ using namespace glow;
 //                       Convolution
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdCopyInst(Context *ctx, bool isTrain, CopyInst *I) {
+void Interpreter::fwdCopyInst(Context *ctx, bool isTrain, const CopyInst *I) {
   auto S = getWeightHandle(ctx, I->getSrc());
   auto D = getWeightHandle(ctx, I->getDest());
 
@@ -17,7 +17,7 @@ void Interpreter::fwdCopyInst(Context *ctx, bool isTrain, CopyInst *I) {
   }
 }
 
-void Interpreter::bwdCopyInst(Context *ctx, CopyInst *I) {
+void Interpreter::bwdCopyInst(Context *ctx, const CopyInst *I) {
   auto inG = getGradHandle(ctx, I->getSrc());
   auto outG = getGradHandle(ctx, I->getDest());
 
@@ -27,7 +27,7 @@ void Interpreter::bwdCopyInst(Context *ctx, CopyInst *I) {
 }
 
 void Interpreter::fwdConvolutionInst(Context *ctx, bool isTrain,
-                                     ConvolutionInst *I) {
+                                     const ConvolutionInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
   auto filterW = getWeightHandle(ctx, I->getFilter());
@@ -80,7 +80,7 @@ void Interpreter::fwdConvolutionInst(Context *ctx, bool isTrain,
   }       // N
 }
 
-void Interpreter::bwdConvolutionInst(Context *ctx, ConvolutionInst *I) {
+void Interpreter::bwdConvolutionInst(Context *ctx, const ConvolutionInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto inG = getGradHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
@@ -142,14 +142,14 @@ void Interpreter::bwdConvolutionInst(Context *ctx, ConvolutionInst *I) {
 //                       Pooling
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdPoolInst(Context *ctx, bool isTrain, PoolInst *I) {
+void Interpreter::fwdPoolInst(Context *ctx, bool isTrain, const PoolInst *I) {
   if (I->getKind() == PoolInst::OpKind::kMax) {
     return fwdPoolMax_impl(ctx, I);
   }
 
   return fwdPoolAvg_impl(ctx, I);
 }
-void Interpreter::fwdPoolMax_impl(Context *ctx, PoolInst *I) {
+void Interpreter::fwdPoolMax_impl(Context *ctx, const PoolInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
 
@@ -210,7 +210,7 @@ void Interpreter::fwdPoolMax_impl(Context *ctx, PoolInst *I) {
   }       // N
 }
 
-void Interpreter::fwdPoolAvg_impl(Context *ctx, PoolInst *I) {
+void Interpreter::fwdPoolAvg_impl(Context *ctx, const PoolInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
 
@@ -259,7 +259,7 @@ void Interpreter::fwdPoolAvg_impl(Context *ctx, PoolInst *I) {
   }       // N
 }
 
-void Interpreter::bwdPoolInst(Context *ctx, PoolInst *I) {
+void Interpreter::bwdPoolInst(Context *ctx, const PoolInst *I) {
   if (I->getKind() == PoolInst::OpKind::kMax) {
     return bwdPoolMax_impl(ctx, I);
   }
@@ -267,7 +267,7 @@ void Interpreter::bwdPoolInst(Context *ctx, PoolInst *I) {
   return bwdPoolAvg_impl(ctx, I);
 }
 
-void Interpreter::bwdPoolMax_impl(Context *ctx, PoolInst *I) {
+void Interpreter::bwdPoolMax_impl(Context *ctx, const PoolInst *I) {
   auto inG = getGradHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
   auto outG = getGradHandle(ctx, I->getDest());
@@ -298,7 +298,7 @@ void Interpreter::bwdPoolMax_impl(Context *ctx, PoolInst *I) {
   }       // N
 }
 
-void Interpreter::bwdPoolAvg_impl(Context *ctx, PoolInst *I) {
+void Interpreter::bwdPoolAvg_impl(Context *ctx, const PoolInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto inG = getGradHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
@@ -348,8 +348,8 @@ void Interpreter::bwdPoolAvg_impl(Context *ctx, PoolInst *I) {
 //                       Fully Connected
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdFullyConnectedInst(Context *ctx, bool isTrain,
-                                        FullyConnectedInst *I) {
+void Interpreter::fwdFullyConnectedInst(Context *ctx, const bool isTrain,
+                                        const FullyConnectedInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
 
@@ -377,7 +377,8 @@ void Interpreter::fwdFullyConnectedInst(Context *ctx, bool isTrain,
   } // N
 }
 
-void Interpreter::bwdFullyConnectedInst(Context *ctx, FullyConnectedInst *I) {
+void Interpreter::bwdFullyConnectedInst(Context *ctx,
+                                        const FullyConnectedInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto inG = getGradHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
@@ -415,7 +416,7 @@ void Interpreter::bwdFullyConnectedInst(Context *ctx, FullyConnectedInst *I) {
 //                       Activation functions
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdReluInst(Context *ctx, bool isTrain, ReluInst *I) {
+void Interpreter::fwdReluInst(Context *ctx, bool isTrain, const ReluInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
 
@@ -425,7 +426,7 @@ void Interpreter::fwdReluInst(Context *ctx, bool isTrain, ReluInst *I) {
   }
 }
 
-void Interpreter::bwdReluInst(Context *ctx, ReluInst *I) {
+void Interpreter::bwdReluInst(Context *ctx, const ReluInst *I) {
   auto inG = getGradHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
   auto outG = getGradHandle(ctx, I->getDest());
@@ -436,7 +437,8 @@ void Interpreter::bwdReluInst(Context *ctx, ReluInst *I) {
   }
 }
 
-void Interpreter::fwdSigmoidInst(Context *ctx, bool isTrain, SigmoidInst *I) {
+void Interpreter::fwdSigmoidInst(Context *ctx, bool isTrain,
+                                 const SigmoidInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
 
@@ -445,7 +447,7 @@ void Interpreter::fwdSigmoidInst(Context *ctx, bool isTrain, SigmoidInst *I) {
     outW.raw(i) = 1 / (1 + std::exp(-val));
   }
 }
-void Interpreter::bwdSigmoidInst(Context *ctx, SigmoidInst *I) {
+void Interpreter::bwdSigmoidInst(Context *ctx, const SigmoidInst *I) {
   auto inG = getGradHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
   auto outG = getGradHandle(ctx, I->getDest());
@@ -456,7 +458,7 @@ void Interpreter::bwdSigmoidInst(Context *ctx, SigmoidInst *I) {
   }
 }
 
-void Interpreter::fwdTanhInst(Context *ctx, bool isTrain, TanhInst *I) {
+void Interpreter::fwdTanhInst(Context *ctx, bool isTrain, const TanhInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
 
@@ -467,7 +469,7 @@ void Interpreter::fwdTanhInst(Context *ctx, bool isTrain, TanhInst *I) {
     outW.raw(i) = (exp_val - exp_neg_val) / (exp_val + exp_neg_val);
   }
 }
-void Interpreter::bwdTanhInst(Context *ctx, TanhInst *I) {
+void Interpreter::bwdTanhInst(Context *ctx, const TanhInst *I) {
   auto inG = getGradHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
   auto outG = getGradHandle(ctx, I->getDest());
@@ -482,7 +484,8 @@ void Interpreter::bwdTanhInst(Context *ctx, TanhInst *I) {
 //                        Loss Functions (Softmax/regression/...)
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdSoftMaxInst(Context *ctx, bool isTrain, SoftMaxInst *I) {
+void Interpreter::fwdSoftMaxInst(Context *ctx, bool isTrain,
+                                 const SoftMaxInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
   auto idim = inW.dims();
@@ -513,7 +516,7 @@ void Interpreter::fwdSoftMaxInst(Context *ctx, bool isTrain, SoftMaxInst *I) {
     }
   } // N
 }
-void Interpreter::bwdSoftMaxInst(Context *ctx, SoftMaxInst *I) {
+void Interpreter::bwdSoftMaxInst(Context *ctx, const SoftMaxInst *I) {
   auto inG = getGradHandle(ctx, I->getSrc());
 
   auto idim = inG.dims();
@@ -532,7 +535,7 @@ void Interpreter::bwdSoftMaxInst(Context *ctx, SoftMaxInst *I) {
 }
 
 void Interpreter::fwdRegressionInst(Context *ctx, bool isTrain,
-                                    RegressionInst *I) {
+                                    const RegressionInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
 
@@ -541,7 +544,7 @@ void Interpreter::fwdRegressionInst(Context *ctx, bool isTrain,
   }
 }
 
-void Interpreter::bwdRegressionInst(Context *ctx, RegressionInst *I) {
+void Interpreter::bwdRegressionInst(Context *ctx, const RegressionInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto inG = getGradHandle(ctx, I->getSrc());
   auto expected = getTensorForValue(I->getExpected());
@@ -566,7 +569,7 @@ void Interpreter::bwdRegressionInst(Context *ctx, RegressionInst *I) {
 //===----------------------------------------------------------------------===//
 
 void Interpreter::fwdTransposeInst(Context *ctx, bool isTrain,
-                                   TransposeInst *I) {
+                                   const TransposeInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto outW = getTensorForValue(I->getDest());
 
@@ -574,7 +577,7 @@ void Interpreter::fwdTransposeInst(Context *ctx, bool isTrain,
   inW.transpose(outW, I->getShuffle());
 }
 
-void Interpreter::bwdTransposeInst(Context *ctx, TransposeInst *I) {
+void Interpreter::bwdTransposeInst(Context *ctx, const TransposeInst *I) {
   auto inG = getOrCreateGradTensor(I->getSrc());
   auto outG = getGradHandle(ctx, I->getDest());
 
@@ -593,14 +596,15 @@ void Interpreter::bwdTransposeInst(Context *ctx, TransposeInst *I) {
   outG.transpose(inG, reverseShuffle);
 }
 
-void Interpreter::fwdReshapeInst(Context *ctx, bool isTrain, ReshapeInst *I) {
+void Interpreter::fwdReshapeInst(Context *ctx, bool isTrain,
+                                 const ReshapeInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     outW.raw(i) = inW.raw(i);
   }
 }
-void Interpreter::bwdReshapeInst(Context *ctx, ReshapeInst *I) {
+void Interpreter::bwdReshapeInst(Context *ctx, const ReshapeInst *I) {
   auto inG = getGradHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
   auto outG = getGradHandle(ctx, I->getDest());
@@ -609,7 +613,8 @@ void Interpreter::bwdReshapeInst(Context *ctx, ReshapeInst *I) {
   }
 }
 
-void Interpreter::fwdConcatInst(Context *ctx, bool isTrain, ConcatInst *I) {
+void Interpreter::fwdConcatInst(Context *ctx, bool isTrain,
+                                const ConcatInst *I) {
   auto outW = getWeightHandle(ctx, I->getDest());
 
   // Insert the tensors at this coordinate. Start at zero.
@@ -626,7 +631,7 @@ void Interpreter::fwdConcatInst(Context *ctx, bool isTrain, ConcatInst *I) {
     offset[dim] += inW.dims()[dim];
   }
 }
-void Interpreter::bwdConcatInst(Context *ctx, ConcatInst *I) {
+void Interpreter::bwdConcatInst(Context *ctx, const ConcatInst *I) {
   auto outG = getGradHandle(ctx, I->getDest());
 
   // Insert the tensors at this coordinate. Start at zero.
@@ -653,7 +658,7 @@ void Interpreter::bwdConcatInst(Context *ctx, ConcatInst *I) {
 //===----------------------------------------------------------------------===//
 
 void Interpreter::fwdBatchNormalizationInst(Context *ctx, bool isTrain,
-                                            BatchNormalizationInst *I) {
+                                            const BatchNormalizationInst *I) {
   if (isTrain) {
     return fwdBatchNormalizationInst_train(ctx, I);
   }
@@ -661,8 +666,8 @@ void Interpreter::fwdBatchNormalizationInst(Context *ctx, bool isTrain,
   return fwdBatchNormalizationInst_infer(ctx, I);
 }
 
-void Interpreter::fwdBatchNormalizationInst_infer(Context *ctx,
-                                                  BatchNormalizationInst *I) {
+void Interpreter::fwdBatchNormalizationInst_infer(
+    Context *ctx, const BatchNormalizationInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
 
@@ -699,8 +704,8 @@ void Interpreter::fwdBatchNormalizationInst_infer(Context *ctx,
   }
 }
 
-void Interpreter::fwdBatchNormalizationInst_train(Context *ctx,
-                                                  BatchNormalizationInst *I) {
+void Interpreter::fwdBatchNormalizationInst_train(
+    Context *ctx, const BatchNormalizationInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto varH = getWeightHandle(ctx, I->getVar());
   auto meanH = getWeightHandle(ctx, I->getMean());
@@ -756,7 +761,7 @@ void Interpreter::fwdBatchNormalizationInst_train(Context *ctx,
 }
 
 void Interpreter::bwdBatchNormalizationInst(Context *ctx,
-                                            BatchNormalizationInst *I) {
+                                            const BatchNormalizationInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto inG = getGradHandle(ctx, I->getSrc());
   auto outG = getGradHandle(ctx, I->getDest());
@@ -843,7 +848,7 @@ void Interpreter::bwdBatchNormalizationInst(Context *ctx,
 //===----------------------------------------------------------------------===//
 
 void Interpreter::fwdArithmeticInst(Context *ctx, bool isTrain,
-                                    ArithmeticInst *I) {
+                                    const ArithmeticInst *I) {
   auto outW = getWeightHandle(ctx, I->getDest());
   auto LHSW = getWeightHandle(ctx, I->getLHS());
   auto RHSW = getWeightHandle(ctx, I->getRHS());
@@ -865,7 +870,7 @@ void Interpreter::fwdArithmeticInst(Context *ctx, bool isTrain,
   }
 }
 
-void Interpreter::bwdArithmeticInst(Context *ctx, ArithmeticInst *I) {
+void Interpreter::bwdArithmeticInst(Context *ctx, const ArithmeticInst *I) {
   auto LHSW = getWeightHandle(ctx, I->getLHS());
   auto RHSW = getWeightHandle(ctx, I->getRHS());
   auto outG = getGradHandle(ctx, I->getDest());
@@ -895,8 +900,8 @@ void Interpreter::bwdArithmeticInst(Context *ctx, ArithmeticInst *I) {
 //                  Tensor allocation operations
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdAllocActivationInst(glow::Context *ctx, bool isTrain,
-                                         glow::AllocActivationInst *I) {
+void Interpreter::fwdAllocActivationInst(Context *ctx, bool isTrain,
+                                         const AllocActivationInst *I) {
   allocateBackingTensor(I);
   // Prepare for the next backprop iteration by zeroing the gradient
   // tensors. Notice that this only zeros the temporary grad tensors that
@@ -906,11 +911,11 @@ void Interpreter::fwdAllocActivationInst(glow::Context *ctx, bool isTrain,
   getOrCreateGradTensor(I)->zero();
 }
 
-void Interpreter::bwdAllocActivationInst(glow::Context *ctx,
-                                         glow::AllocActivationInst *I) {}
+void Interpreter::bwdAllocActivationInst(Context *ctx,
+                                         const AllocActivationInst *I) {}
 
-void Interpreter::fwdDeallocActivationInst(glow::Context *ctx, bool isTrain,
-                                           glow::DeallocActivationInst *I) {}
+void Interpreter::fwdDeallocActivationInst(Context *ctx, bool isTrain,
+                                           const DeallocActivationInst *I) {}
 
-void Interpreter::bwdDeallocActivationInst(glow::Context *ctx,
-                                           glow::DeallocActivationInst *I) {}
+void Interpreter::bwdDeallocActivationInst(Context *ctx,
+                                           const DeallocActivationInst *I) {}

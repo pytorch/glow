@@ -18,7 +18,7 @@ class Interpreter final {
   /// The Module that holds the IR.
   Module M_;
   /// Maps values to Tensors, that are owned by this class.
-  std::unordered_map<Value *, Tensor *> tensors_;
+  std::unordered_map<const Value *, Tensor *> tensors_;
 
   /// Maps weight tensors to the gradients that update them. The value tensors
   /// are owned by this map.
@@ -44,21 +44,21 @@ public:
 
   /// \returns a pointer to the tensor that is saved under \p v. The tensor
   /// is owned by the Interpreter.
-  Tensor *getTensorForValue(Value *v) const;
+  Tensor *getTensorForValue(const Value *v) const;
 
   /// Copies the content of the tensor \p t into the value \p v.
-  void initValue(Value *v, const Tensor *t);
+  void initValue(const Value *v, const Tensor *t);
 
   /// \returns gets or creates a new tensor to back the value \p v. If the
   /// tensor does not exist then this method creates it. The dimension of the
   /// gradient tensor must match the dimensions of the tensor that backs \p v.
-  Tensor *getOrCreateGradTensor(Value *v);
+  Tensor *getOrCreateGradTensor(const Value *v);
 
   /// Update the content of the tensor \p v with data that comes from \p input.
   /// The data starts at slice \p sampleIdx and wraps around until the data in
   /// \p v is filled. All dimensions, except for the first (batch) dimension
   /// must be identical.
-  void loadValueFromTensor(Value *v, Tensor *input, size_t sampleIdx);
+  void loadValueFromTensor(const Value *v, Tensor *input, size_t sampleIdx);
 
   /// \returns a float-handle to the tensor that is stored at \p v.
   Handle<FloatTy> getWeightHandle(Context *, Value *v) const;
@@ -83,7 +83,7 @@ private:
   /// Allocate a tensor to back the value \p v. Do not allocate anything if a
   /// tensor is already allocated for \p v.
   /// \returns v's Tensor.
-  Tensor *allocateBackingTensor(Value *v);
+  Tensor *allocateBackingTensor(const Value *v);
 
   /// Update all of the weight tensors (non-activation) with their gradients.
   void learnGradient(size_t batchSize);
@@ -106,19 +106,21 @@ private:
   ///@{
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
-  void fwd##CLASS(Context *ctx, bool isTrain, CLASS *I);                       \
-  void bwd##CLASS(Context *ctx, CLASS *I);
+  void fwd##CLASS(Context *ctx, bool isTrain, const CLASS *I);                 \
+  void bwd##CLASS(Context *ctx, const CLASS *I);
 #include "glow/IR/Instrs.def"
 #undef DEF_INSTR
 #undef DEF_VALUE
 
-  void fwdPoolMax_impl(Context *ctx, PoolInst *I);
-  void fwdPoolAvg_impl(Context *ctx, PoolInst *I);
-  void bwdPoolMax_impl(Context *ctx, PoolInst *I);
-  void bwdPoolAvg_impl(Context *ctx, PoolInst *I);
+  void fwdPoolMax_impl(Context *ctx, const PoolInst *I);
+  void fwdPoolAvg_impl(Context *ctx, const PoolInst *I);
+  void bwdPoolMax_impl(Context *ctx, const PoolInst *I);
+  void bwdPoolAvg_impl(Context *ctx, const PoolInst *I);
 
-  void fwdBatchNormalizationInst_infer(Context *ctx, BatchNormalizationInst *I);
-  void fwdBatchNormalizationInst_train(Context *ctx, BatchNormalizationInst *I);
+  void fwdBatchNormalizationInst_infer(Context *ctx,
+                                       const BatchNormalizationInst *I);
+  void fwdBatchNormalizationInst_train(Context *ctx,
+                                       const BatchNormalizationInst *I);
   ///@}
 };
 

@@ -20,10 +20,10 @@ public:
   Named() = default;
 
   /// \returns the name of the instruction.
-  StringRef getName() { return name_; }
+  StringRef getName() const { return name_; }
 
   /// \returns the name of the instruction.
-  bool hasName() { return name_.size(); }
+  bool hasName() const { return name_.size(); }
 
   /// Set the name of the instruction to \p name.
   void setName(StringRef name) { name_ = name; }
@@ -37,9 +37,9 @@ private:
 public:
   Typed(TypeRef Ty) : Ty_(Ty){};
 
-  TypeRef getType() { return Ty_; }
+  TypeRef getType() const { return Ty_; }
 
-  ArrayRef<size_t> dims() { return Ty_->dims(); }
+  ArrayRef<size_t> dims() const { return Ty_->dims(); }
 
   ElemKind getElementType() const { return Ty_->getElementType(); }
 
@@ -68,7 +68,7 @@ public:
 #undef DEF_VALUE
   };
 
-  const char *getKindName(Kind IK) {
+  static const char *getKindName(Kind IK) {
     const char *names[] = {
 #define DEF_INSTR(CLASS, NAME) #NAME,
 #define DEF_VALUE(CLASS, NAME) #NAME,
@@ -90,7 +90,7 @@ public:
   /// Returns the kind of the instruction.
   Kind getKind() const { return kind_; }
 
-  const char *getKindName() { return getKindName(kind_); }
+  const char *getKindName() const { return getKindName(kind_); }
 };
 
 class Value : public Named,
@@ -130,7 +130,7 @@ public:
   }
 
   /// When printing the instruction this method prints the extra metadata.
-  std::string getExtraDesc() { return ""; }
+  std::string getExtraDesc() const { return ""; }
 
   /// Sets the ith operand at index \p idx to the value \p v.
   void setOperand(unsigned idx, Value *v);
@@ -142,10 +142,10 @@ public:
   unsigned getNumOperands() const { return ops_.size(); }
 
   /// Check the correctness of the use-list.
-  void verifyUseList();
+  void verifyUseList() const;
 
   /// Verify the correctness of the instruction parameters.
-  void verify();
+  void verify() const;
 
   operator Value *() const { return getOperand(0).first; }
 };
@@ -189,7 +189,7 @@ public:
   TypeRef getVoidTy();
 
   /// Verify the correctness of the module.
-  void verify();
+  void verify() const;
 
   /// Dump a textual representation of the module.
   void dump();

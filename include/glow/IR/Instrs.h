@@ -15,8 +15,8 @@ public:
     return k->getKind() == Kinded::Kind::AllocActivationInstKind;
   }
 
-  std::string getExtraDesc();
-  void verify();
+  std::string getExtraDesc() const;
+  void verify() const;
 };
 
 class DeallocActivationInst : public Instruction {
@@ -29,7 +29,7 @@ public:
     return k->getKind() == Kinded::Kind::DeallocActivationInstKind;
   }
 
-  void verify();
+  void verify() const;
 };
 
 class CopyInst : public Instruction {
@@ -41,9 +41,9 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::CopyInstKind;
   }
-  Value *getDest() { return getOperand(0).first; }
-  Value *getSrc() { return getOperand(1).first; }
-  void verify();
+  Value *getDest() const { return getOperand(0).first; }
+  Value *getSrc() const { return getOperand(1).first; }
+  void verify() const;
 };
 
 class ConvolutionInst : public Instruction {
@@ -66,18 +66,18 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::ConvolutionInstKind;
   }
-  std::string getExtraDesc();
-  Value *getDest() { return getOperand(0).first; }
-  Value *getSrc() { return getOperand(1).first; }
-  Value *getFilter() { return getOperand(2).first; }
-  Value *getBias() { return getOperand(3).first; }
+  std::string getExtraDesc() const;
+  Value *getDest() const { return getOperand(0).first; }
+  Value *getSrc() const { return getOperand(1).first; }
+  Value *getFilter() const { return getOperand(2).first; }
+  Value *getBias() const { return getOperand(3).first; }
 
-  size_t getKernel() { return kernel_; }
-  size_t getStride() { return stride_; }
-  size_t getPad() { return pad_; }
-  size_t getDepth() { return depth_; }
+  size_t getKernel() const { return kernel_; }
+  size_t getStride() const { return stride_; }
+  size_t getPad() const { return pad_; }
+  size_t getDepth() const { return depth_; }
 
-  void verify();
+  void verify() const;
 };
 
 class PoolInst : public Instruction {
@@ -94,7 +94,7 @@ private:
   size_t pad_;
   OpKind kind_;
 
-  const char *getKindStr();
+  const char *getKindStr() const;
 
 public:
   PoolInst(Value *dest, Value *src, Value *srcXY, OpKind kind, size_t kernel,
@@ -107,16 +107,16 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::PoolInstKind;
   }
-  std::string getExtraDesc();
-  Value *getDest() { return getOperand(0).first; }
-  Value *getSrc() { return getOperand(1).first; }
-  Value *srcXY() { return getOperand(2).first; }
-  size_t getKernel() { return kernel_; }
-  size_t getStride() { return stride_; }
-  size_t getPad() { return pad_; }
-  OpKind getKind() { return kind_; }
+  std::string getExtraDesc() const;
+  Value *getDest() const { return getOperand(0).first; }
+  Value *getSrc() const { return getOperand(1).first; }
+  Value *srcXY() const { return getOperand(2).first; }
+  size_t getKernel() const { return kernel_; }
+  size_t getStride() const { return stride_; }
+  size_t getPad() const { return pad_; }
+  OpKind getKind() const { return kind_; }
 
-  void verify();
+  void verify() const;
 };
 
 class FullyConnectedInst : public Instruction {
@@ -135,13 +135,13 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::FullyConnectedInstKind;
   }
-  std::string getExtraDesc();
-  Value *getDest() { return getOperand(0).first; }
-  Value *getSrc() { return getOperand(1).first; }
-  Value *getFilter() { return getOperand(2).first; }
-  Value *getBias() { return getOperand(3).first; }
-  size_t getDepth() { return depth_; }
-  void verify();
+  std::string getExtraDesc() const;
+  Value *getDest() const { return getOperand(0).first; }
+  Value *getSrc() const { return getOperand(1).first; }
+  Value *getFilter() const { return getOperand(2).first; }
+  Value *getBias() const { return getOperand(3).first; }
+  size_t getDepth() const { return depth_; }
+  void verify() const;
 };
 
 class ReluInst : public Instruction {
@@ -153,9 +153,9 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::ReluInstKind;
   }
-  Value *getDest() { return getOperand(0).first; }
-  Value *getSrc() { return getOperand(1).first; }
-  void verify();
+  Value *getDest() const { return getOperand(0).first; }
+  Value *getSrc() const { return getOperand(1).first; }
+  void verify() const;
 };
 
 class SigmoidInst : public Instruction {
@@ -167,9 +167,9 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::SigmoidInstKind;
   }
-  Value *getDest() { return getOperand(0).first; }
-  Value *getSrc() { return getOperand(1).first; }
-  void verify();
+  Value *getDest() const { return getOperand(0).first; }
+  Value *getSrc() const { return getOperand(1).first; }
+  void verify() const;
 };
 
 class TanhInst : public Instruction {
@@ -181,9 +181,9 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::TanhInstKind;
   }
-  Value *getDest() { return getOperand(0).first; }
-  Value *getSrc() { return getOperand(1).first; }
-  void verify();
+  Value *getDest() const { return getOperand(0).first; }
+  Value *getSrc() const { return getOperand(1).first; }
+  void verify() const;
 };
 
 class SoftMaxInst : public Instruction {
@@ -198,11 +198,11 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::SoftMaxInstKind;
   }
-  Value *getDest() { return getOperand(0).first; }
-  Value *getSrc() { return getOperand(1).first; }
-  Value *getE() { return getOperand(2).first; }
-  Value *getSelected() { return getOperand(3).first; }
-  void verify();
+  Value *getDest() const { return getOperand(0).first; }
+  Value *getSrc() const { return getOperand(1).first; }
+  Value *getE() const { return getOperand(2).first; }
+  Value *getSelected() const { return getOperand(3).first; }
+  void verify() const;
 };
 
 class RegressionInst : public Instruction {
@@ -216,10 +216,10 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::RegressionInstKind;
   }
-  Value *getDest() { return getOperand(0).first; }
-  Value *getSrc() { return getOperand(1).first; }
-  Value *getExpected() { return getOperand(2).first; }
-  void verify();
+  Value *getDest() const { return getOperand(0).first; }
+  Value *getSrc() const { return getOperand(1).first; }
+  Value *getExpected() const { return getOperand(2).first; }
+  void verify() const;
 };
 
 class TransposeInst : public Instruction {
@@ -234,12 +234,12 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::TransposeInstKind;
   }
-  std::string getExtraDesc();
-  Value *getDest() { return getOperand(0).first; }
-  Value *getSrc() { return getOperand(1).first; }
+  std::string getExtraDesc() const;
+  Value *getDest() const { return getOperand(0).first; }
+  Value *getSrc() const { return getOperand(1).first; }
 
-  ArrayRef<unsigned> getShuffle() { return shuffle_; }
-  void verify();
+  ArrayRef<unsigned> getShuffle() const { return shuffle_; }
+  void verify() const;
 };
 
 class ReshapeInst : public Instruction {
@@ -255,12 +255,12 @@ public:
     return k->getKind() == Kinded::Kind::ReshapeInstKind;
   }
 
-  std::string getExtraDesc();
-  Value *getDest() { return getOperand(0).first; }
-  Value *getSrc() { return getOperand(1).first; }
+  std::string getExtraDesc() const;
+  Value *getDest() const { return getOperand(0).first; }
+  Value *getSrc() const { return getOperand(1).first; }
   ArrayRef<size_t> getDims() { return dims_; }
 
-  void verify();
+  void verify() const;
 };
 
 class ConcatInst : public Instruction {
@@ -280,12 +280,12 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::ConcatInstKind;
   }
-  std::string getExtraDesc();
-  Value *getDest() { return getOperand(0).first; }
-  Value *getSrc() { return getOperand(1).first; }
-  size_t getDim() { return dim_; }
+  std::string getExtraDesc() const;
+  Value *getDest() const { return getOperand(0).first; }
+  Value *getSrc() const { return getOperand(1).first; }
+  size_t getDim() const { return dim_; }
 
-  void verify();
+  void verify() const;
 };
 
 class BatchNormalizationInst : public Instruction {
@@ -309,19 +309,19 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::BatchNormalizationInstKind;
   }
-  std::string getExtraDesc();
-  Value *getDest() { return getOperand(0).first; }
-  Value *getSrc() { return getOperand(1).first; }
+  std::string getExtraDesc() const;
+  Value *getDest() const { return getOperand(0).first; }
+  Value *getSrc() const { return getOperand(1).first; }
 
-  Value *getScale() { return getOperand(2).first; }
-  Value *getBias() { return getOperand(3).first; }
-  Value *getMean() { return getOperand(4).first; }
-  Value *getVar() { return getOperand(5).first; }
+  Value *getScale() const { return getOperand(2).first; }
+  Value *getBias() const { return getOperand(3).first; }
+  Value *getMean() const { return getOperand(4).first; }
+  Value *getVar() const { return getOperand(5).first; }
 
-  size_t getChannelIdx() { return channelIdx_; }
-  float getEpsilon() { return epsilon_; }
-  float getMomentum() { return momentum_; }
-  void verify();
+  size_t getChannelIdx() const { return channelIdx_; }
+  float getEpsilon() const { return epsilon_; }
+  float getMomentum() const { return momentum_; }
+  void verify() const;
 };
 
 class ArithmeticInst : public Instruction {
@@ -334,7 +334,7 @@ public:
 
 private:
   OpKind kind_;
-  const char *getKindStr();
+  const char *getKindStr() const;
 
 public:
   ArithmeticInst(Value *dest, Value *LHS, Value *RHS, OpKind kind)
@@ -346,13 +346,13 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::ArithmeticInstKind;
   }
-  std::string getExtraDesc();
-  Value *getDest() { return getOperand(0).first; }
-  Value *getLHS() { return getOperand(1).first; }
-  Value *getRHS() { return getOperand(2).first; }
-  OpKind getKind() { return kind_; }
+  std::string getExtraDesc() const;
+  Value *getDest() const { return getOperand(0).first; }
+  Value *getLHS() const { return getOperand(1).first; }
+  Value *getRHS() const { return getOperand(2).first; }
+  OpKind getKind() const { return kind_; }
 
-  void verify();
+  void verify() const;
 };
 
 class WeightVar : public Value {
@@ -371,7 +371,7 @@ private:
   /// The initialization mode.
   InitKind initKind_;
 
-  const char *getInitKindStr();
+  const char *getInitKindStr() const;
 
 public:
   WeightVar(TypeRef Ty, InitKind initKind, float val)
@@ -382,10 +382,10 @@ public:
     return k->getKind() == Kinded::Kind::WeightVarKind;
   }
 
-  InitKind getInitKind() { return initKind_; }
-  float getVal() { return val_; }
-  std::string getExtraDesc();
-  void verify() {}
+  InitKind getInitKind() const { return initKind_; }
+  float getVal() const { return val_; }
+  std::string getExtraDesc() const;
+  void verify() const {}
 };
 
 } // namespace glow

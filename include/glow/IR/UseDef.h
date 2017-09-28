@@ -30,10 +30,10 @@ public:
   void addUse(Use U) { users_.push_back(U); }
 
   /// \returns True if the value has some users.
-  bool hasUsers() { return users_.size(); }
+  bool hasUsers() const { return users_.size(); }
 
   /// Returns true if the user \p I is in the list.
-  bool hasUser(UserTy *I) {
+  bool hasUser(const UserTy *I) const {
     for (auto &U : users_) {
       if (U.second == I)
         return true;
@@ -50,6 +50,9 @@ public:
 
   /// \returns the list of users for this value.
   std::list<Use> &getUsers() { return users_; }
+
+  /// \returns the list of users for this value.
+  const std::list<Use> &getUsers() const { return users_; }
 };
 
 } // namespace glow

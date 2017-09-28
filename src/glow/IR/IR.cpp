@@ -51,7 +51,7 @@ Instruction::Operand Instruction::getOperand(unsigned idx) const {
   return ops_[idx];
 }
 
-void Instruction::verifyUseList() {
+void Instruction::verifyUseList() const {
   for (size_t i = 0, e = ops_.size(); i < e; i++) {
     auto *v = ops_[i].first;
     (void)v;
@@ -60,9 +60,9 @@ void Instruction::verifyUseList() {
   }
 }
 
-void Instruction::verify() {
+void Instruction::verify() const {
 #define DEF_INSTR(CLASS, NAME)                                                 \
-  if (auto *X = dyn_cast<CLASS>(this))                                         \
+  if (auto *X = dyn_cast<const CLASS>(this))                                   \
     X->verify();
 #define DEF_VALUE(CLASS, NAME)
 #include "glow/IR/Instrs.def"
@@ -83,19 +83,19 @@ Module::~Module() {
   }
 }
 
-void Module::verify() {
+void Module::verify() const {
   for (auto it : instrs_) {
     it->verifyUseList();
     it->verify();
   }
 }
 
-static std::string getExtraDesc(Kinded *K) {
+static std::string getExtraDesc(const Kinded *K) {
 #define DEF_INSTR(CLASS, NAME)                                                 \
-  if (auto *X = dyn_cast<CLASS>(K))                                            \
+  if (auto *X = dyn_cast<const CLASS>(K))                                      \
     return X->getExtraDesc();
 #define DEF_VALUE(CLASS, NAME)                                                 \
-  if (auto *X = dyn_cast<CLASS>(K))                                            \
+  if (auto *X = dyn_cast<const CLASS>(K))                                      \
     return X->getExtraDesc();
 #include "glow/IR/Instrs.def"
 #undef DEF_INSTRE
@@ -104,7 +104,7 @@ static std::string getExtraDesc(Kinded *K) {
   glow_unreachable();
 }
 
-static std::string getDesc(Value *v) {
+static std::string getDesc(const Value *v) {
   std::string sb;
   std::string name = v->getName();
   auto valName = v->getKindName();
@@ -113,7 +113,7 @@ static std::string getDesc(Value *v) {
   return sb;
 }
 
-static std::string getDesc(Instruction *II) {
+static std::string getDesc(const Instruction *II) {
   std::string sb;
   std::string name = II->getName();
   auto instrName = II->getKindName();
@@ -191,7 +191,7 @@ void Module::dump() {
 
 static std::string quote(const std::string &in) { return '"' + in + '"'; }
 
-static std::string getDottyDesc(Value *v) {
+static std::string getDottyDesc(const Value *v) {
   std::string sb;
   std::string name = v->getName();
   auto valName = v->getKindName();
@@ -200,7 +200,7 @@ static std::string getDottyDesc(Value *v) {
   return sb;
 }
 
-static std::string getDottyDesc(Instruction *II) {
+static std::string getDottyDesc(const Instruction *II) {
   std::string sb;
   auto instrName = II->getKindName();
   sb += instrName;

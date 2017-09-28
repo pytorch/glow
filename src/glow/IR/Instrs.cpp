@@ -35,51 +35,53 @@ template <typename E> std::string arrayRefToString(ArrayRef<E> list) {
 }
 } // namespace
 
-std::string ConvolutionInst::getExtraDesc() {
+std::string ConvolutionInst::getExtraDesc() const {
   return listToString(kernel_, stride_, pad_, depth_);
 }
 
-const char *PoolInst::getKindStr() {
+const char *PoolInst::getKindStr() const {
   const char *names[] = {"max", "avg", nullptr};
   return names[(int)kind_];
 }
 
-std::string PoolInst::getExtraDesc() {
+std::string PoolInst::getExtraDesc() const {
   std::string sb = getKindStr();
   return sb += " " + listToString(kernel_, stride_, pad_);
 }
 
-std::string FullyConnectedInst::getExtraDesc() { return listToString(depth_); }
+std::string FullyConnectedInst::getExtraDesc() const {
+  return listToString(depth_);
+}
 
-std::string TransposeInst::getExtraDesc() {
+std::string TransposeInst::getExtraDesc() const {
   return arrayRefToString<unsigned>(shuffle_);
 }
 
-std::string ReshapeInst::getExtraDesc() {
+std::string ReshapeInst::getExtraDesc() const {
   return arrayRefToString<size_t>(dims_);
 }
 
-std::string ConcatInst::getExtraDesc() {
+std::string ConcatInst::getExtraDesc() const {
   return "{ " + std::to_string(dim_) + " }";
 }
 
-std::string BatchNormalizationInst::getExtraDesc() {
+std::string BatchNormalizationInst::getExtraDesc() const {
   return listToString(channelIdx_, epsilon_, momentum_);
 }
 
-const char *ArithmeticInst::getKindStr() {
+const char *ArithmeticInst::getKindStr() const {
   const char *names[] = {"add", "mul", nullptr};
   return names[(int)kind_];
 }
 
-std::string ArithmeticInst::getExtraDesc() { return getKindStr(); }
+std::string ArithmeticInst::getExtraDesc() const { return getKindStr(); }
 
-const char *WeightVar::getInitKindStr() {
+const char *WeightVar::getInitKindStr() const {
   const char *names[] = {"extern", "broadcast", "xavier", nullptr};
   return names[(int)initKind_];
 }
 
-std::string WeightVar::getExtraDesc() {
+std::string WeightVar::getExtraDesc() const {
   auto sp = ", ";
   auto r = getType()->asString();
   if (getInitKind() != InitKind::kExtern) {
@@ -88,7 +90,7 @@ std::string WeightVar::getExtraDesc() {
   return r;
 }
 
-std::string AllocActivationInst::getExtraDesc() {
+std::string AllocActivationInst::getExtraDesc() const {
   return getType()->asString();
 }
 
@@ -98,8 +100,8 @@ static void checkSameType(Instruction::Operand A, Instruction::Operand B) {
   assert(A.first->getType() == B.first->getType() && "Invalid type");
 }
 
-void CopyInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
-void ConvolutionInst::verify() {
+void CopyInst::verify() const { checkSameType(getOperand(0), getOperand(1)); }
+void ConvolutionInst::verify() const {
   Value *dest = getOperand(0).first;
   Value *src = getOperand(1).first;
   Value *filter = getOperand(2).first;
@@ -126,7 +128,7 @@ void ConvolutionInst::verify() {
   assert(bias->getType()->dims() == biasDims && "Invalid bias dims");
 }
 
-void PoolInst::verify() {
+void PoolInst::verify() const {
   Value *dest = getOperand(0).first;
   Value *src = getOperand(1).first;
   Value *srcXY = getOperand(2).first;
@@ -151,7 +153,7 @@ void PoolInst::verify() {
   }
 }
 
-void FullyConnectedInst::verify() {
+void FullyConnectedInst::verify() const {
   Value *dest = getOperand(0).first;
   Value *src = getOperand(1).first;
   Value *W = getOperand(2).first;
@@ -174,19 +176,25 @@ void FullyConnectedInst::verify() {
   (void)expB;
 }
 
-void ReluInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
-void SigmoidInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
-void TanhInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
-void SoftMaxInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
-void RegressionInst::verify() { checkSameType(getOperand(0), getOperand(1)); }
+void ReluInst::verify() const { checkSameType(getOperand(0), getOperand(1)); }
+void SigmoidInst::verify() const {
+  checkSameType(getOperand(0), getOperand(1));
+}
+void TanhInst::verify() const { checkSameType(getOperand(0), getOperand(1)); }
+void SoftMaxInst::verify() const {
+  checkSameType(getOperand(0), getOperand(1));
+}
+void RegressionInst::verify() const {
+  checkSameType(getOperand(0), getOperand(1));
+}
 
-void ReshapeInst::verify() {
+void ReshapeInst::verify() const {
   assert(getOperand(0).first->getType()->size() ==
              getOperand(1).first->getType()->size() &&
          "Reshape into a different size");
 }
 
-void TransposeInst::verify() {
+void TransposeInst::verify() const {
   auto *dest = getOperand(0).first;
   auto *src = getOperand(1).first;
   (void)dest;
@@ -200,7 +208,7 @@ void TransposeInst::verify() {
   assert(dest->dims() == ArrayRef<size_t>(shape) && "Invalid transpose dims");
 }
 
-void ConcatInst::verify() {
+void ConcatInst::verify() const {
   assert(getNumOperands() > 1 && "Invalid number of operands");
   // The dimension of the first input.
   auto inDim = getOperand(1).first->dims();
@@ -217,7 +225,7 @@ void ConcatInst::verify() {
   assert(getOperand(0).first->dims() == ArrayRef<size_t>(shape) &&
          "Invalid output shape");
 }
-void BatchNormalizationInst::verify() {
+void BatchNormalizationInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
 
   // Figure out how many channels are in the tensor.
@@ -229,14 +237,14 @@ void BatchNormalizationInst::verify() {
   assert(getOperand(4).first->getType()->dims() == exp && "Invalid mean dim");
   assert(getOperand(5).first->getType()->dims() == exp && "Invalid var dim");
 }
-void ArithmeticInst::verify() {
+void ArithmeticInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
   checkSameType(getOperand(0), getOperand(2));
 }
 
-void AllocActivationInst::verify() {
+void AllocActivationInst::verify() const {
   unsigned numDealloc = 0;
-  for (auto U : getUsers()) {
+  for (const Use &U : getUsers()) {
     numDealloc += isa<DeallocActivationInst>(U.second);
   }
 
@@ -244,7 +252,7 @@ void AllocActivationInst::verify() {
   assert(numDealloc == 1 && "Invalid number of tensor deallocation");
 }
 
-void DeallocActivationInst::verify() {
+void DeallocActivationInst::verify() const {
   // The operand of this instruction needs to be an AllocActivationInst.
   assert(isa<AllocActivationInst>(getOperand(0).first) && "Invalid operand");
 }
