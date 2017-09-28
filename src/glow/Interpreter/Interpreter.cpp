@@ -4,7 +4,7 @@
 
 using namespace glow;
 
-Interpreter::Interpreter() : M_() {}
+Interpreter::Interpreter() {}
 
 Interpreter::~Interpreter() {
   // Delete the tensors that are owned by this module.
@@ -44,7 +44,7 @@ void Interpreter::initValue(const Value *v, const Tensor *t) {
   }
 
   // Create a new tensor, register it and return it.
-  Tensor *N = new Tensor();
+  auto *N = new Tensor();
   N->copyFrom(t);
   tensors_[v] = N;
 }
@@ -52,11 +52,12 @@ void Interpreter::initValue(const Value *v, const Tensor *t) {
 Tensor *Interpreter::getOrCreateGradTensor(const Value *v) {
   auto *T = getTensorForValue(v);
   auto it = gradients_.find(T);
-  if (it != gradients_.end())
+  if (it != gradients_.end()) {
     return it->second;
+  }
 
   // Create a new tensor, register it and return it.
-  Tensor *N = new Tensor(T->getType());
+  auto *N = new Tensor(T->getType());
   gradients_[T] = N;
   return N;
 }
@@ -96,8 +97,9 @@ Tensor *Interpreter::allocateBackingTensor(const Value *v) {
 void Interpreter::initVars() {
   for (auto *W : M_.getWeights()) {
     // Don't initialize tensors that are already initialized.
-    if (tensors_.count(W))
+    if (tensors_.count(W)) {
       continue;
+    }
 
     auto *T = allocateBackingTensor(W);
     // The parameter to the instruction.
@@ -202,15 +204,15 @@ void Interpreter::train(size_t iterations, ArrayRef<Value *> vars,
 void Interpreter::learnGradient(size_t batchSize) {
   for (auto *V : M_.getWeights()) {
     // Do not try to learn the values of input/output buffers.
-    if (V->getInitKind() == WeightVar::InitKind::kExtern)
+    if (V->getInitKind() == WeightVar::InitKind::kExtern) {
       continue;
+    }
 
     auto W = getTensorForValue(V);
     auto G = getOrCreateGradTensor(V);
 
     // Handle weight update by learning the gradients into the weights.
     trainer_.train(W, G, batchSize);
-    continue;
   }
 }
 

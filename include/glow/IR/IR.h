@@ -23,7 +23,7 @@ public:
   StringRef getName() const { return name_; }
 
   /// \returns the name of the instruction.
-  bool hasName() const { return name_.size(); }
+  bool hasName() const { return !name_.empty(); }
 
   /// Set the name of the instruction to \p name.
   void setName(StringRef name) { name_ = name; }

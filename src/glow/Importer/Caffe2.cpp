@@ -329,7 +329,7 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
        floats: -0.028315347
        */
 
-      Tensor *T = new Tensor();
+      auto *T = new Tensor();
       for (auto &o : op.output()) {
         tensors_[o] = T;
       }
@@ -366,7 +366,7 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
         continue;
       }
 
-      Tensor *T = new Tensor();
+      auto *T = new Tensor();
       tensors_[name] = T;
 
       auto dim = getShape(dict["shape"]);
