@@ -54,6 +54,19 @@ set_target_properties(LLVMSupport
                           ${install_dir}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}LLVMSupport${CMAKE_STATIC_LIBRARY_SUFFIX}
                         INTERFACE_INCLUDE_DIRECTORIES
                           ${install_dir}/include)
+
+# TODO: this really should get wired through with the LLVM build
+foreach(library tinfo terminfo curses ncurses ncursesw)
+  string(TOUPPER ${library} library_suffix)
+  check_library_exists(${library} setupterm "" HAVE_TERMINFO_${library_suffix})
+  if(HAVE_TERMINFO_${library_suffix})
+    target_link_libraries(LLVMSupport
+                          INTERFACE
+                            ${library})
+    break()
+  endif()
+endforeach()
+
 add_dependencies(LLVMSupport llvm-install)
 
 ExternalProject_Add(googletest

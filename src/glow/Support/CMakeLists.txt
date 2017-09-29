@@ -8,4 +8,5 @@ target_link_libraries(Support
 target_include_directories(Support
                            PUBLIC
                              $<TARGET_PROPERTY:LLVMSupport,INTERFACE_INCLUDE_DIRECTORIES>)
+add_dependencies(Support llvm-install)
 
