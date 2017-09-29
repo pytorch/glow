@@ -25,7 +25,7 @@ template <typename... Args> std::string listToString(Args... args) {
 
 template <typename E> std::string arrayRefToString(ArrayRef<E> list) {
   std::string sb = "[";
-  for (int i = 0, e = list.size(); i < e; i++) {
+  for (size_t i = 0, e = list.size(); i < e; i++) {
     if (i) {
       sb += ", ";
     }
@@ -41,7 +41,7 @@ std::string ConvolutionInst::getExtraDesc() const {
 
 const char *PoolInst::getKindStr() const {
   const char *names[] = {"max", "avg", nullptr};
-  return names[(int)kind_];
+  return names[static_cast<int>(kind_)];
 }
 
 std::string PoolInst::getExtraDesc() const {
@@ -71,14 +71,17 @@ std::string BatchNormalizationInst::getExtraDesc() const {
 
 const char *ArithmeticInst::getKindStr() const {
   const char *names[] = {"add", "mul", nullptr};
-  return names[(int)kind_];
+  return names[static_cast<int>(kind_)];
 }
 
 std::string ArithmeticInst::getExtraDesc() const { return getKindStr(); }
 
 const char *WeightVar::getInitKindStr() const {
+  // extern: No initialization.
+  // broadcast: Broadcast a single value to all elements.
+  // xavier: Init the tensor with random values using the Xavier method.
   const char *names[] = {"extern", "broadcast", "xavier", nullptr};
-  return names[(int)initKind_];
+  return names[static_cast<int>(initKind_)];
 }
 
 std::string WeightVar::getExtraDesc() const {
@@ -213,7 +216,7 @@ void ConcatInst::verify() const {
   // The dimension of the first input.
   auto inDim = getOperand(1).first->dims();
 
-  for (int i = 2, e = this->getNumOperands(); i < e; i++) {
+  for (size_t i = 2, e = this->getNumOperands(); i < e; i++) {
     assert(getOperand(i).first->dims() == inDim && "Invalid input shape");
   }
 

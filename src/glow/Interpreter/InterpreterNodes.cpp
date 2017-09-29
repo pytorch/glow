@@ -149,6 +149,7 @@ void Interpreter::fwdPoolInst(Context *ctx, bool isTrain, const PoolInst *I) {
 
   return fwdPoolAvg_impl(ctx, I);
 }
+
 void Interpreter::fwdPoolMax_impl(Context *ctx, const PoolInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
@@ -286,10 +287,10 @@ void Interpreter::bwdPoolMax_impl(Context *ctx, const PoolInst *I) {
       for (size_t ay = 0; ay < odim.w; ay++) {
         for (size_t ax = 0; ax < odim.h; ax++) {
 
-          FloatTy chainGrad = outG.at({n, (size_t)ax, (size_t)ay, z});
+          FloatTy chainGrad = outG.at({n, ax, ay, z});
 
-          size_t maxX = SXY.at({n, (size_t)ax, (size_t)ay, z, 0});
-          size_t maxY = SXY.at({n, (size_t)ax, (size_t)ay, z, 1});
+          size_t maxX = SXY.at({n, ax, ay, z, 0});
+          size_t maxY = SXY.at({n, ax, ay, z, 1});
 
           inG.at({n, maxX, maxY, z}) += chainGrad;
         } // H
@@ -516,6 +517,7 @@ void Interpreter::fwdSoftMaxInst(Context *ctx, bool isTrain,
     }
   } // N
 }
+
 void Interpreter::bwdSoftMaxInst(Context *ctx, const SoftMaxInst *I) {
   auto inG = getGradHandle(ctx, I->getSrc());
 
@@ -621,7 +623,7 @@ void Interpreter::fwdConcatInst(Context *ctx, bool isTrain,
   std::vector<size_t> offset(outW.size(), 0);
   auto dim = I->getDim();
 
-  for (int i = 1, e = I->getNumOperands(); i < e; i++) {
+  for (unsigned i = 1, e = I->getNumOperands(); i < e; i++) {
     auto inW = getWeightHandle(ctx, I->getOperand(i).first);
 
     // Insert the tensor.
@@ -639,7 +641,7 @@ void Interpreter::bwdConcatInst(Context *ctx, const ConcatInst *I) {
 
   auto dim = I->getDim();
 
-  for (int i = 1, e = I->getNumOperands(); i < e; i++) {
+  for (unsigned i = 1, e = I->getNumOperands(); i < e; i++) {
     auto inG = getGradHandle(ctx, I->getOperand(i).first);
 
     // Insert the tensor.
@@ -695,7 +697,7 @@ void Interpreter::fwdBatchNormalizationInst_infer(
     FloatTy mu = meanH.at({channelId});
     FloatTy var = varH.at({channelId});
 
-    FloatTy stdvar = 1.0 / std::sqrt(var + epsilon);
+    FloatTy stdvar = FloatTy(1.0) / std::sqrt(var + epsilon);
 
     FloatTy gamma = gammaWH.at({channelId});
     FloatTy beta = betaWH.at({channelId});
@@ -815,12 +817,12 @@ void Interpreter::bwdBatchNormalizationInst(Context *ctx,
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     size_t channelId = inW.getDimForPtr(channelIdx, i);
 
-    FloatTy invN = (1. / samplesPerChannel);
+    FloatTy invN = (FloatTy(1.0) / samplesPerChannel);
     FloatTy gamma = gammaWH.at({channelId});
     FloatTy var = varH.at({channelId});
     FloatTy mu = meanH.at({channelId});
-    FloatTy invVarSqrt = 1. / std::sqrt(var + epsilon);
-    FloatTy invVar = 1. / (var + epsilon);
+    FloatTy invVarSqrt = FloatTy(1.0) / std::sqrt(var + epsilon);
+    FloatTy invVar = FloatTy(1.0) / (var + epsilon);
 
     FloatTy dy = outG.raw(i);
     FloatTy hmu = inW.raw(i) - mu;
@@ -836,7 +838,7 @@ void Interpreter::bwdBatchNormalizationInst(Context *ctx,
 
     FloatTy mu = meanH.at({channelId});
     FloatTy var = varH.at({channelId});
-    FloatTy invVarSqrt = 1. / std::sqrt(var + epsilon);
+    FloatTy invVarSqrt = FloatTy(1.0) / std::sqrt(var + epsilon);
 
     betaGH.at({channelId}) += outG.raw(i);
     gammaGH.at({channelId}) += (inW.raw(i) - mu) * invVarSqrt * outG.raw(i);
