@@ -5,4 +5,7 @@ add_library(Support
 target_link_libraries(Support
                       INTERFACE
                         LLVMSupport)
+target_include_directories(Support
+                           PUBLIC
+                             $<TARGET_PROPERTY:LLVMSupport,INTERFACE_INCLUDE_DIRECTORIES>)
 

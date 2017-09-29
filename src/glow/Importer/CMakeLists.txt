@@ -11,5 +11,6 @@ add_library(Importer
                ${PROTO_HDRS})
 target_link_libraries(Importer
                       PRIVATE
+                        IR
                         ${PROTOBUF_LIBRARY})
 

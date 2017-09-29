@@ -6,8 +6,8 @@ add_library(Network
               Node.cpp
               Nodes.cpp)
 target_link_libraries(Network
-                      PRIVATE
-                        Support)
+                      PUBLIC
+                        IR)
 if(PNG_FOUND)
   target_compile_definitions(Network
                              PRIVATE
