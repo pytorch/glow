@@ -11,40 +11,10 @@
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/iterator_range.h"
 
 namespace glow {
-/// \brief A range adaptor for a pair of iterators.
-///
-/// This just wraps two iterators into a range-compatible interface. Nothing
-/// fancy at all.
-template <typename IteratorT> class iterator_range {
-  IteratorT begin_iterator, end_iterator;
-
-public:
-  template <typename Container>
-  iterator_range(Container &&c)
-      : begin_iterator(c.begin()), end_iterator(c.end()) {}
-  iterator_range(IteratorT begin_iterator, IteratorT end_iterator)
-      : begin_iterator(std::move(begin_iterator)),
-        end_iterator(std::move(end_iterator)) {}
-
-  IteratorT begin() const { return begin_iterator; }
-  IteratorT end() const { return end_iterator; }
-};
-
-/// \brief Convenience function for iterating over sub-ranges.
-template <class T> iterator_range<T> make_range(T x, T y) {
-  return iterator_range<T>(std::move(x), std::move(y));
-}
-
-template <typename T> iterator_range<T> make_range(std::pair<T, T> p) {
-  return iterator_range<T>(std::move(p.first), std::move(p.second));
-}
-
-template <typename T>
-iterator_range<decltype(begin(std::declval<T>()))> drop_begin(T &&t, int n) {
-  return make_range(std::next(begin(t), n), end(t));
-}
+using llvm::iterator_range;
 
 using llvm::ArrayRef;
 
