@@ -102,7 +102,7 @@ TEST(IR, allInstrs) {
     builder.createSigmoidInst(I1, I0);
     builder.createTanhInst(I1, I0);
     builder.createSoftMaxInst(I1, I0, I0, E0);
-    builder.createRegressionInst(I1, I0, E0);
+    builder.createRegressionInst(E0, E0, E0);
     builder.createTransposeInst(I2, I0, {0, 3, 1, 2});
     builder.createConcatInst(I6, {I3, I3}, 0);
     builder.createBatchNormalizationInst(I1, I0, S0, S0, S0, S0, 3, 0.01, 0.9);
