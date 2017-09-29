@@ -21,7 +21,7 @@ void IRBuilder::deallocateActiveInstrs() {
 ConvolutionInst *IRBuilder::createConvOp(Value *input, size_t depth,
                                          size_t kernel, size_t stride,
                                          size_t pad) {
-  ShapeNHWC idim = input->dims();
+  ShapeNHWC idim = ShapeNHWC(input->dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
@@ -47,7 +47,7 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, size_t depth,
 
 PoolInst *IRBuilder::createPoolOp(Value *input, PoolInst::OpKind kind,
                                   size_t kernel, size_t stride, size_t pad) {
-  ShapeNHWC idim = input->dims();
+  ShapeNHWC idim = ShapeNHWC(input->dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 

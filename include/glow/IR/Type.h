@@ -20,13 +20,19 @@ struct ShapeNHWC {
   size_t h; // Height
   size_t w; // Width
   size_t c; // # of Channels
-  ShapeNHWC(ArrayRef<size_t> shape) {
+
+  // TODO: deprecate this for std::array<size_t, 4>
+  explicit ShapeNHWC(ArrayRef<size_t> shape) {
     assert(shape.size() == 4 && "Invalid shape");
     n = shape[0];
     h = shape[1];
     w = shape[2];
     c = shape[3];
   }
+
+  explicit ShapeNHWC(size_t samples, size_t height, size_t width,
+                     size_t channels)
+      : n(samples), h(height), w(width), c(channels) {}
 
   bool equals(const ShapeNHWC &other) const {
     return n == other.n && h == other.h && w == other.w && c == other.c;

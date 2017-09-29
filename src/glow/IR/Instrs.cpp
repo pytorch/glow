@@ -116,15 +116,15 @@ void ConvolutionInst::verify() const {
   (void)filter;
   (void)bias;
 
-  ShapeNHWC idim = src->getType()->dims();
-  ShapeNHWC odim = dest->getType()->dims();
+  ShapeNHWC idim(src->getType()->dims());
+  ShapeNHWC odim(dest->getType()->dims());
   (void)odim;
   assert(idim.w >= kernel_ && idim.h >= kernel_ &&
          "buffer too small for selected stride");
 
   auto outSz =
       ConvNode::calculateOutputDims(idim.h, idim.w, pad_, kernel_, stride_);
-  ShapeNHWC exp = ArrayRef<size_t>{idim.n, outSz.first, outSz.second, depth_};
+  ShapeNHWC exp(idim.n, outSz.first, outSz.second, depth_);
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");
 
@@ -140,15 +140,15 @@ void PoolInst::verify() const {
   Value *src = getOperand(1).first;
   Value *srcXY = getOperand(2).first;
   (void)srcXY;
-  ShapeNHWC idim = src->getType()->dims();
-  ShapeNHWC odim = dest->getType()->dims();
+  ShapeNHWC idim = ShapeNHWC(src->getType()->dims());
+  ShapeNHWC odim = ShapeNHWC(dest->getType()->dims());
   (void)odim;
   assert(idim.w >= kernel_ && idim.h >= kernel_ &&
          "buffer too small for selected stride");
 
   auto outSz =
       ConvNode::calculateOutputDims(idim.h, idim.w, pad_, kernel_, stride_);
-  ShapeNHWC exp = ArrayRef<size_t>{idim.n, outSz.first, outSz.second, idim.c};
+  ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");
 
