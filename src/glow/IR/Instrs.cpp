@@ -90,7 +90,7 @@ const char *WeightVar::getInitKindStr() const {
 
 std::string WeightVar::getExtraDesc() const {
   auto sp = ", ";
-  auto r = getType()->asString();
+  auto r = std::to_string(*getType());
   if (getInitKind() != InitKind::kExtern) {
     r += std::string(sp) + getInitKindStr() + sp + std::to_string(val_);
   }
@@ -98,7 +98,7 @@ std::string WeightVar::getExtraDesc() const {
 }
 
 std::string AllocActivationInst::getExtraDesc() const {
-  return getType()->asString();
+  return std::to_string(*getType());
 }
 
 /// Check that the type of the first operand matches the type of the second

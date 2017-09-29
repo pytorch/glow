@@ -4,21 +4,23 @@
 
 using namespace glow;
 
-std::string Type::asString() const {
-  if (!numSizes_) {
+namespace std {
+std::string to_string(const glow::Type &type) {
+  if (type.numSizes_ == 0) {
     return "<void>";
   }
 
-  std::stringstream sb;
-  sb << getElementName().str() << "<";
-
-  for (unsigned i = 0; i < numSizes_; i++) {
+  std::stringstream os;
+  os << type.getElementName().str() << '<';
+  for (unsigned i = 0; i < type.numSizes_; ++i) {
     if (i) {
-      sb << " x ";
+      os << " x ";
     }
-    sb << sizes_[i];
+    os << type.sizes_[i];
   }
+  os << '>';
 
-  sb << ">";
-  return sb.str();
+  return os.str();
 }
+}
+
