@@ -271,12 +271,8 @@ public:
   /// the list of indices may be incomplete.
   size_t getElementPtr(ArrayRef<size_t> indices) const {
     assert(indices.size() <= numDims && "Invalid number of indices");
-    size_t index = 0;
-    for (int i = 0, e = indices.size(); i < e; i++) {
-      index += size_t(sizeIntegral[i]) * size_t(indices[i]);
-    }
-
-    return index;
+    return std::inner_product(indices.begin(), indices.end(),
+                              std::begin(sizeIntegral), 0);
   }
 
   /// \returns the value of the n'th dimension \p dim, for the raw index \p idx.
