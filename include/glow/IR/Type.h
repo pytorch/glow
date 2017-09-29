@@ -89,9 +89,6 @@ struct Type final {
     numSizes_ = dims.size();
   }
 
-  /// Print the textual representation of the type.
-  std::string asString() const;
-
   /// An empty type.
   Type() : elementType_(ElemKind::IndexTy) { numSizes_ = 0; }
 
@@ -194,5 +191,9 @@ inline bool operator==(const Type &LHS, const Type &RHS) {
 }
 
 } // namespace glow
+
+namespace std {
+std::string to_string(const glow::Type &);
+}
 
 #endif // GLOW_IR_TYPE_H
