@@ -12,7 +12,7 @@ ConvNode::ConvNode(Network *N, NodeBase *input, size_t outDepth,
 
 void ConvNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
-  ShapeNHWC idim = input_->dims(ctx);
+  ShapeNHWC idim(input_->dims(ctx));
   assert(idim.h >= filterSize_ && idim.w >= filterSize_ &&
          "buffer too small for selected stride");
 
@@ -65,8 +65,8 @@ std::string ConvNode::getDebugRepr(Context *ctx) const {
 }
 
 void ConvNode::forward(Context *ctx, PassKind kind) const {
-  ShapeNHWC odim = dims(ctx);
-  ShapeNHWC idim = input_->dims(ctx);
+  ShapeNHWC odim(dims(ctx));
+  ShapeNHWC idim(input_->dims(ctx));
 
   auto inW = input_->getWeightHandle(ctx);
   auto outW = getWeightHandle(ctx);
@@ -114,8 +114,9 @@ void ConvNode::forward(Context *ctx, PassKind kind) const {
 }
 
 void ConvNode::backward(Context *ctx) const {
-  ShapeNHWC odim = dims(ctx);
-  ShapeNHWC idim = input_->dims(ctx);
+  ShapeNHWC odim(dims(ctx));
+  ShapeNHWC idim(input_->dims(ctx));
+
   auto inW = input_->getWeightHandle(ctx);
   auto inG = input_->getGradHandle(ctx);
   auto outG = getGradHandle(ctx);
@@ -176,7 +177,7 @@ MaxPoolNode::MaxPoolNode(Network *N, NodeBase *input, OpKind kind,
 
 void MaxPoolNode::init(Context *ctx) const {
   assert(input_ && input_->size(ctx) && "Invalid input");
-  ShapeNHWC idim = input_->dims(ctx);
+  ShapeNHWC idim(input_->dims(ctx));
   assert(idim.w >= filterSize_ && idim.h >= filterSize_ &&
          "buffer too small for selected stride");
 
@@ -229,8 +230,9 @@ void MaxPoolNode::backward(Context *ctx) const {
 }
 
 void MaxPoolNode::forwardMax(Context *ctx) const {
-  ShapeNHWC odim = dims(ctx);
-  ShapeNHWC idim = input_->dims(ctx);
+  ShapeNHWC odim(dims(ctx));
+  ShapeNHWC idim(input_->dims(ctx));
+
   auto inW = input_->getWeightHandle(ctx);
   auto outW = getWeightHandle(ctx);
 
@@ -286,7 +288,8 @@ void MaxPoolNode::forwardMax(Context *ctx) const {
 }
 
 void MaxPoolNode::backwardMax(Context *ctx) const {
-  ShapeNHWC odim = dims(ctx);
+  ShapeNHWC odim(dims(ctx));
+
   auto inG = input_->getGradHandle(ctx);
   auto outG = getGradHandle(ctx);
 
@@ -319,8 +322,9 @@ void MaxPoolNode::forwardAvg(Context *ctx) const {
   // Implement the avg pooling operation as defined here:
   // https://arxiv.org/abs/1312.4400
 
-  ShapeNHWC odim = dims(ctx);
-  ShapeNHWC idim = input_->dims(ctx);
+  ShapeNHWC odim(dims(ctx));
+  ShapeNHWC idim(input_->dims(ctx));
+
   auto inW = input_->getWeightHandle(ctx);
   auto outW = getWeightHandle(ctx);
 
@@ -360,8 +364,9 @@ void MaxPoolNode::forwardAvg(Context *ctx) const {
 }
 
 void MaxPoolNode::backwardAvg(Context *ctx) const {
-  ShapeNHWC odim = dims(ctx);
-  ShapeNHWC idim = input_->dims(ctx);
+  ShapeNHWC odim(dims(ctx));
+  ShapeNHWC idim(input_->dims(ctx));
+
   auto inG = input_->getGradHandle(ctx);
   auto outG = getGradHandle(ctx);
   FloatTy filterArea = filterSize_ * filterSize_;
@@ -529,8 +534,9 @@ void LRNNode::forward(Context *ctx, PassKind kind) const {
   auto inW = input_->getWeightHandle(ctx);
   auto scaleCache = ctx->getTensor(&scale_)->getHandle<FloatTy>();
 
-  ShapeNHWC odim = dims(ctx);
-  ShapeNHWC idim = input_->dims(ctx);
+  ShapeNHWC odim(dims(ctx));
+  ShapeNHWC idim(input_->dims(ctx));
+
   (void)odim;
 
   // LRN node does not change the shape of the input.
@@ -591,7 +597,7 @@ void LRNNode::backward(Context *ctx) const {
   auto inW = input_->getWeightHandle(ctx);
   auto scaleCache = ctx->getTensor(&scale_)->getHandle<FloatTy>();
 
-  ShapeNHWC odim = dims(ctx);
+  ShapeNHWC odim(dims(ctx));
 
   auto windowSize = 2 * halfWindowSize_ + 1;
   auto normedAlpha = alpha_ / windowSize;

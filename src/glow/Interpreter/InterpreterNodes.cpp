@@ -37,8 +37,8 @@ void Interpreter::fwdConvolutionInst(Context *ctx, bool isTrain,
   size_t pad = I->getPad();
   size_t stride = I->getStride();
 
-  ShapeNHWC odim = outW.dims();
-  ShapeNHWC idim = inW.dims();
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
 
   // For each input in the batch:
   for (size_t n = 0; n < idim.n; n++) {
@@ -94,8 +94,8 @@ void Interpreter::bwdConvolutionInst(Context *ctx, const ConvolutionInst *I) {
   size_t pad = I->getPad();
   size_t stride = I->getStride();
 
-  ShapeNHWC odim = outW.dims();
-  ShapeNHWC idim = inW.dims();
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
@@ -154,8 +154,8 @@ void Interpreter::fwdPoolMax_impl(Context *ctx, const PoolInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
 
-  ShapeNHWC odim = outW.dims();
-  ShapeNHWC idim = inW.dims();
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
 
   auto pad = I->getPad();
   auto filterSize = I->getKernel();
@@ -215,8 +215,8 @@ void Interpreter::fwdPoolAvg_impl(Context *ctx, const PoolInst *I) {
   auto inW = getWeightHandle(ctx, I->getSrc());
   auto outW = getWeightHandle(ctx, I->getDest());
 
-  ShapeNHWC odim = outW.dims();
-  ShapeNHWC idim = inW.dims();
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
 
   auto pad = I->getPad();
   auto filterSize = I->getKernel();
@@ -273,7 +273,7 @@ void Interpreter::bwdPoolMax_impl(Context *ctx, const PoolInst *I) {
   auto outW = getWeightHandle(ctx, I->getDest());
   auto outG = getGradHandle(ctx, I->getDest());
 
-  ShapeNHWC odim = outW.dims();
+  ShapeNHWC odim(outW.dims());
 
   auto SXY = getTensorForValue(I->srcXY())->getHandle<size_t>();
 
@@ -305,8 +305,8 @@ void Interpreter::bwdPoolAvg_impl(Context *ctx, const PoolInst *I) {
   auto outW = getWeightHandle(ctx, I->getDest());
   auto outG = getGradHandle(ctx, I->getDest());
 
-  ShapeNHWC odim = outW.dims();
-  ShapeNHWC idim = inW.dims();
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
 
   auto pad = I->getPad();
   auto filterSize = I->getKernel();
@@ -852,8 +852,9 @@ void Interpreter::fwdLocalResponseNormalizationInst(
   auto outW = getWeightHandle(ctx, I->getDest());
   auto scaleCache = getWeightHandle(ctx, I->getScale());
 
-  ShapeNHWC odim = outW.dims();
-  ShapeNHWC idim = inW.dims();
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
+
   (void)odim;
 
   // LRN node does not change the shape of the input.
@@ -918,7 +919,7 @@ void Interpreter::bwdLocalResponseNormalizationInst(
   auto outG = getGradHandle(ctx, I->getDest());
   auto scaleCache = getWeightHandle(ctx, I->getScale());
 
-  ShapeNHWC odim = outW.dims();
+  ShapeNHWC odim(outW.dims());
 
   auto halfWindowSize = I->gethalfWindowSize();
   auto beta = I->getBeta();
