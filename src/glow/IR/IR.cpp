@@ -239,6 +239,8 @@ static const char *getDottyArrowForCC(OperandKind k) {
     return "both";
     break;
   }
+
+  glow_unreachable();
 }
 
 /// Dump a dotty graph that depicts the module.
