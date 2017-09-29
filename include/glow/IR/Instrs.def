@@ -14,6 +14,7 @@ DEF_INSTR(TransposeInst, transpose)
 DEF_INSTR(ReshapeInst, reshape)
 DEF_INSTR(ConcatInst, concat)
 DEF_INSTR(BatchNormalizationInst, batchnormalization)
+DEF_INSTR(LocalResponseNormalizationInst, localresponsenormalization)
 DEF_INSTR(ArithmeticInst, arithmetic)
 DEF_VALUE(WeightVar, weight)
 

@@ -55,6 +55,11 @@ public:
                                                      float epsilon = 1e-5,
                                                      float momentum = 0.9);
 
+  LocalResponseNormalizationInst *
+  createLocalResponseNormalizationOp(Value *input, size_t halfWindowSize = 2,
+                                     float alpha = 1e-4, float beta = 0.75,
+                                     float k = 2.0);
+
   ArithmeticInst *createArithmeticOp(Value *LHS, Value *RHS,
                                      ArithmeticInst::OpKind op);
 
@@ -100,6 +105,11 @@ public:
   BatchNormalizationInst *createBatchNormalizationInst(
       Value *dest, Value *src, Value *scale, Value *bias, Value *mean,
       Value *var, size_t channelIdx, float epsilon, float momentum);
+
+  LocalResponseNormalizationInst *
+  createLocalResponseNormalizationInst(Value *dest, Value *src, Value *scale,
+                                       size_t halfWindowSize, float alpha,
+                                       float beta, float k);
 
   ArithmeticInst *createArithmeticInst(Value *dest, Value *LHS, Value *RHS,
                                        ArithmeticInst::OpKind kind);

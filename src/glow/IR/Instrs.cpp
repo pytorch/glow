@@ -69,6 +69,10 @@ std::string BatchNormalizationInst::getExtraDesc() const {
   return listToString(channelIdx_, epsilon_, momentum_);
 }
 
+std::string LocalResponseNormalizationInst::getExtraDesc() const {
+  return listToString(halfWindowSize_, alpha_, beta_, k_);
+}
+
 const char *ArithmeticInst::getKindStr() const {
   const char *names[] = {"add", "mul", nullptr};
   return names[static_cast<int>(kind_)];
@@ -189,6 +193,7 @@ void SoftMaxInst::verify() const {
 }
 void RegressionInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
+  checkSameType(getOperand(0), getOperand(2));
 }
 
 void ReshapeInst::verify() const {
@@ -239,6 +244,10 @@ void BatchNormalizationInst::verify() const {
   assert(getOperand(3).first->getType()->dims() == exp && "Invalid scale dim");
   assert(getOperand(4).first->getType()->dims() == exp && "Invalid mean dim");
   assert(getOperand(5).first->getType()->dims() == exp && "Invalid var dim");
+}
+void LocalResponseNormalizationInst::verify() const {
+  checkSameType(getOperand(0), getOperand(1));
+  checkSameType(getOperand(0), getOperand(2));
 }
 void ArithmeticInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));

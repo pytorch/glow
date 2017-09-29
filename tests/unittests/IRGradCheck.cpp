@@ -232,6 +232,42 @@ TEST(Network, gradientCheck_batchNorm) {
   performGradCheck(IP, RN, A, Ex, &inputs, &outputs, 0.001, 0.004);
 }
 
+TEST(Network, gradientCheck_LRN) {
+  Interpreter IP;
+  IP.getConfig().maxNumThreads = 1;
+
+  size_t numDim = 8;
+  size_t numOutputElem = numDim;
+
+  Value *A;
+  Value *Ex;
+  Instruction *RN;
+  {
+    IRBuilder bb(IP.getModule());
+
+    A = bb.createWeightVar(ElemKind::FloatTy, {1, numDim, numDim, 3});
+    Ex = bb.createWeightVar(ElemKind::FloatTy, {1, numOutputElem});
+
+    Instruction *O = bb.createLocalResponseNormalizationOp(A, 3, 0.0001, 0.9);
+    O = bb.createFullyConnectedOp(*O, numOutputElem);
+    RN = bb.createRegressionOp(*O, Ex);
+  }
+
+  IP.getModule().verify();
+  IP.initVars();
+
+  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 3});
+  Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
+
+  auto inputsH = inputs.getHandle<FloatTy>();
+  auto outputsH = outputs.getHandle<FloatTy>();
+
+  inputsH.randomize(1);
+  outputsH.randomize(1);
+
+  performGradCheck(IP, RN, A, Ex, &inputs, &outputs, 0.001, 0.004);
+}
+
 TEST(Network, gradientCheck_Arithmetic) {
   Interpreter IP;
   IP.getConfig().maxNumThreads = 1;

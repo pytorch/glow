@@ -174,6 +174,17 @@ BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(Value *input,
                                       channelIdx, epsilon, momentum);
 }
 
+LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationOp(
+    Value *input, size_t halfWindowSize, float alpha, float beta, float k) {
+  auto Ty = input->getType();
+  auto *scale = createAllocActivationInst(Ty, "scale");
+
+  // The output tensor is of the same shape as the input tensor.
+  auto *res = createAllocActivationInst(Ty);
+  return createLocalResponseNormalizationInst(input, res, scale, halfWindowSize,
+                                              alpha, beta, k);
+}
+
 ArithmeticInst *IRBuilder::createArithmeticOp(Value *LHS, Value *RHS,
                                               ArithmeticInst::OpKind op) {
   assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
@@ -277,6 +288,15 @@ BatchNormalizationInst *IRBuilder::createBatchNormalizationInst(
     size_t channelIdx, float epsilon, float momentum) {
   auto *A = new BatchNormalizationInst(dest, src, scale, bias, mean, var,
                                        channelIdx, epsilon, momentum);
+  M_.pushInstr(A);
+  return A;
+}
+
+LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationInst(
+    Value *dest, Value *src, Value *scale, size_t halfWindowSize, float alpha,
+    float beta, float k) {
+  auto *A = new LocalResponseNormalizationInst(dest, src, scale, halfWindowSize,
+                                               alpha, beta, k);
   M_.pushInstr(A);
   return A;
 }

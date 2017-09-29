@@ -355,6 +355,45 @@ public:
   void verify() const;
 };
 
+class LocalResponseNormalizationInst : public Instruction {
+  /// The number of neighbouring channels on each side to sum over
+  size_t halfWindowSize_;
+
+  /// The scaling parameter
+  float alpha_;
+
+  /// The exponent parameter
+  float beta_;
+
+  /// The offset parameter
+  float k_;
+
+public:
+  LocalResponseNormalizationInst(Value *dest, Value *src, Value *scale,
+                                 size_t halfWindowSize, float alpha, float beta,
+                                 float k)
+      : Instruction(Kinded::Kind::LocalResponseNormalizationInstKind,
+                    dest->getType(),
+                    {{dest, OperandKind::kOut},
+                     {src, OperandKind::kIn},
+                     {scale, OperandKind::kInOut}}),
+        halfWindowSize_(halfWindowSize), alpha_(alpha), beta_(beta), k_(k) {}
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::LocalResponseNormalizationInstKind;
+  }
+  std::string getExtraDesc() const;
+  Value *getDest() const { return getOperand(0).first; }
+  Value *getSrc() const { return getOperand(1).first; }
+  Value *getScale() const { return getOperand(2).first; }
+
+  size_t gethalfWindowSize() const { return halfWindowSize_; }
+  float getAlpha() const { return alpha_; }
+  float getBeta() const { return beta_; }
+  float getK() const { return k_; }
+  void verify() const;
+};
+
 class WeightVar : public Value {
 public:
   enum class InitKind {

@@ -845,6 +845,141 @@ void Interpreter::bwdBatchNormalizationInst(Context *ctx,
   }
 }
 
+void Interpreter::fwdLocalResponseNormalizationInst(
+    glow::Context *ctx, bool isTrain,
+    const glow::LocalResponseNormalizationInst *I) {
+  auto inW = getWeightHandle(ctx, I->getSrc());
+  auto outW = getWeightHandle(ctx, I->getDest());
+  auto scaleCache = getWeightHandle(ctx, I->getScale());
+
+  ShapeNHWC odim = outW.dims();
+  ShapeNHWC idim = inW.dims();
+  (void)odim;
+
+  // LRN node does not change the shape of the input.
+  assert(odim == idim && "Output of LRN node must be same shape as input");
+
+  // LRN node normalizes across channels, so the input must have a minimum
+  // depth of 1.
+  assert(idim.c > 0 && "Input of LRN node must have a minimum depth of 1");
+
+  auto halfWindowSize = I->gethalfWindowSize();
+  auto k = I->getK();
+  auto beta = I->getBeta();
+  auto windowSize = 2 * halfWindowSize + 1;
+  auto normedAlpha = I->getAlpha() / windowSize;
+
+  // For every input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+
+    // For every row:
+    for (size_t h = 0; h < idim.h; h++) {
+
+      // For every column:
+      for (size_t w = 0; w < idim.w; w++) {
+
+        FloatTy squareSum = 0.0;
+
+        // Compute squareSum for first channel.
+        for (size_t c = 1; c <= halfWindowSize && c < idim.c; c++) {
+          auto val = inW.at({n, h, w, c});
+          squareSum += (val * val);
+        }
+
+        // For every channel:
+        for (size_t c = 0; c < idim.c; c++) {
+          auto scale = k + normedAlpha * squareSum;
+
+          // This will be used to accelerate the backward pass.
+          scaleCache.at({n, h, w, c}) = scale;
+
+          auto normFactor = std::pow(scale, -beta);
+          outW.at({n, h, w, c}) = inW.at({n, h, w, c}) * normFactor;
+
+          // Modify squareSum for next channel.
+          auto subIndex = c - halfWindowSize;
+          auto addIndex = c + halfWindowSize + 1;
+          auto sub = (c >= halfWindowSize) ? inW.at({n, h, w, subIndex}) : 0;
+          auto add = (addIndex < idim.c) ? inW.at({n, h, w, addIndex}) : 0;
+
+          // Subtract out "rear" end of this window, add "front" end of next.
+          squareSum = squareSum - (sub * sub) + (add * add);
+        }
+      }
+    }
+  }
+}
+
+void Interpreter::bwdLocalResponseNormalizationInst(
+    glow::Context *ctx, const glow::LocalResponseNormalizationInst *I) {
+  auto inW = getWeightHandle(ctx, I->getSrc());
+  auto inG = getGradHandle(ctx, I->getSrc());
+  auto outW = getWeightHandle(ctx, I->getDest());
+  auto outG = getGradHandle(ctx, I->getDest());
+  auto scaleCache = getWeightHandle(ctx, I->getScale());
+
+  ShapeNHWC odim = outW.dims();
+
+  auto halfWindowSize = I->gethalfWindowSize();
+  auto beta = I->getBeta();
+  auto windowSize = 2 * halfWindowSize + 1;
+  auto normedAlpha = I->getAlpha() / windowSize;
+
+  // For every input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+
+    // For every row:
+    for (size_t h = 0; h < odim.h; h++) {
+
+      // For every column:
+      for (size_t w = 0; w < odim.w; w++) {
+
+        FloatTy sum = 0.0;
+
+        // Compute sum for first channel.
+        for (size_t c = 1; c <= halfWindowSize && c < odim.c; c++) {
+          auto outw = outW.at({n, h, w, c});
+          auto scale = scaleCache.at({n, h, w, c});
+          auto outg = outG.at({n, h, w, c});
+          sum += (outg * (outw / scale));
+        }
+
+        // For every channel:
+        for (size_t c = 0; c < odim.c; c++) {
+          auto outg = outG.at({n, h, w, c});
+          auto scale = scaleCache.at({n, h, w, c});
+          auto inw = inW.at({n, h, w, c});
+
+          inG.at({n, h, w, c}) = outg * std::pow(scale, -beta) -
+                                 2 * normedAlpha * beta * inw * sum;
+
+          // Modify sum for next channel.
+          auto subIndex = c - halfWindowSize;
+          auto addIndex = c + halfWindowSize + 1;
+
+          if (c >= halfWindowSize) {
+            auto outw = outW.at({n, h, w, subIndex});
+            auto scale = scaleCache.at({n, h, w, subIndex});
+            auto outg = outG.at({n, h, w, subIndex});
+
+            // Subtract "rear" end of this window.
+            sum -= (outg * (outw / scale));
+          }
+
+          if (addIndex < odim.c) {
+            auto outw = outW.at({n, h, w, addIndex});
+            auto scale = scaleCache.at({n, h, w, addIndex});
+            auto outg = outG.at({n, h, w, addIndex});
+
+            // Add "front" end of next window.
+            sum += (outg * (outw / scale));
+          }
+        }
+      }
+    }
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                       Arithmetic operations
 //===----------------------------------------------------------------------===//
