@@ -4,4 +4,7 @@ add_library(IR
               Type.cpp
               IRBuilder.cpp
               Instrs.cpp)
+target_link_libraries(IR
+                      PUBLIC
+                        Support)
 
