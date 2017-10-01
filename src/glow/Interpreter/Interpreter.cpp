@@ -37,6 +37,20 @@ Tensor *Interpreter::getTensorForValue(const Value *v) const {
   return it->second;
 }
 
+void Interpreter::deleteTensor(const Value *v) {
+  auto it = tensors_.find(v);
+  assert(it != tensors_.end() && "Unknown key Value.");
+  auto *T = it->second;
+  tensors_.erase(it);
+  delete T;
+
+  auto git = gradients_.find(T);
+  if (git != gradients_.end()) {
+    delete git->second;
+    gradients_.erase(git);
+  }
+}
+
 void Interpreter::initValue(const Value *v, const Tensor *t) {
   auto it = tensors_.find(v);
   if (it != tensors_.end()) {
