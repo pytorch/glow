@@ -1,5 +1,6 @@
 #include "glow/Interpreter/Interpreter.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Optimizer/Optimizer.h"
 #include "glow/Support/Casting.h"
 
 using namespace glow;
@@ -16,6 +17,10 @@ Interpreter::~Interpreter() {
   for (auto &p : gradients_) {
     delete p.second;
   }
+}
+
+void Interpreter::optimize() {
+  ::glow::optimize(M_);
 }
 
 void Interpreter::registerTensor(Value *v, Tensor *t) {

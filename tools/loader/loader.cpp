@@ -78,6 +78,7 @@ int main(int argc, char **argv) {
                        {"data", "gpu_0/data", "softmax_expected"},
                        {&data, &data, &expected_softmax}, IP);
 
+  IP.optimize();
   IP.initVars();
   IP.getModule().dump();
   IP.getModule().dumpDAG();

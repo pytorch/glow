@@ -92,7 +92,7 @@ void testMNIST() {
     result = bb.createReturnOp(SM);
   }
 
-  IP.getModule().dump();
+  IP.optimize();
   IP.initVars();
   IP.getModule().dumpDAG();
 

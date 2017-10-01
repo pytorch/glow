@@ -31,6 +31,9 @@ public:
   /// \returns the internal module.
   Module &getModule() { return M_; }
 
+  /// Run the target-independent optimizations on the module.
+  void optimize();
+
   /// Ctor.
   Interpreter();
   /// Dtor.

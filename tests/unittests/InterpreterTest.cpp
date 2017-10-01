@@ -40,8 +40,7 @@ TEST(Interpreter, interpret) {
     builder.createReturnOp(*SM);
   }
 
-  IP.getModule().verify();
-
+  IP.optimize();
   IP.initVars();
   IP.infer({input}, {&inputs});
 }
@@ -76,6 +75,7 @@ TEST(Interpreter, trainASimpleNetwork) {
   inputs.getHandle<FloatTy>() = {0.15, 0.15, 0.15, 0.15};
   expected.getHandle<FloatTy>() = {0.9, 0.9, 0.9, 0.9};
 
+  IP.optimize();
   IP.initVars();
 
   // Train the network. Learn 1000 batches.
@@ -122,7 +122,7 @@ TEST(Interpreter, simpleRegression) {
   auto I = inputs.getHandle<FloatTy>();
   auto E = expected.getHandle<FloatTy>();
 
-  IP.getModule().verify();
+  IP.optimize();
   IP.initVars();
 
   // Train the network:
@@ -194,7 +194,7 @@ TEST(Interpreter, learnXor) {
     TL.at({i, 0}) = a ^ b;
   }
 
-  IP.getModule().verify();
+  IP.optimize();
   IP.initVars();
 
   // Train the network:
@@ -277,7 +277,7 @@ TEST(Network, circle) {
     result = bb.createReturnOp(*SM);
   }
 
-  IP.getModule().verify();
+  IP.optimize();
   IP.initVars();
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
@@ -377,6 +377,7 @@ TEST(Network, learnSingleValueConcat) {
   inputs.getHandle<FloatTy>().clear(0.15);
   expected.getHandle<FloatTy>().clear(0.9);
 
+  IP.optimize();
   IP.initVars();
 
   // Train the network:
