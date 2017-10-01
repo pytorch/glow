@@ -63,6 +63,8 @@ public:
   ArithmeticInst *createArithmeticOp(Value *LHS, Value *RHS,
                                      ArithmeticInst::OpKind op);
 
+  Value *createReturnOp(Value *input);
+
   ///@}
 
   /// @name Low-level, instruction-level IRBuilder.
