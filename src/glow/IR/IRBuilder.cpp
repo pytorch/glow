@@ -193,6 +193,12 @@ ArithmeticInst *IRBuilder::createArithmeticOp(Value *LHS, Value *RHS,
   return createArithmeticInst(res, LHS, RHS, op);
 }
 
+Value *IRBuilder::createReturnOp(Value *input) {
+  auto *W = createWeightVar(input->getType(), "result", InitKind::kExtern);
+  createCopyInst(W, input);
+  return W;
+}
+
 //===----------------------------------------------------------------------===//
 //                     Low level instructions.
 //===----------------------------------------------------------------------===//
