@@ -107,7 +107,14 @@ static void checkSameType(Instruction::Operand A, Instruction::Operand B) {
   assert(A.first->getType() == B.first->getType() && "Invalid type");
 }
 
-void CopyInst::verify() const { checkSameType(getOperand(0), getOperand(1)); }
+void CopyInst::verify() const {
+  checkSameType(getOperand(0), getOperand(1));
+  auto *op0 = getOperand(0).first;
+  auto *op1 = getOperand(1).first;
+  // The operands of the copy instruction must be variables.
+  assert(isa<AllocActivationInst>(op0) || isa<WeightVar>(op0));
+  assert(isa<AllocActivationInst>(op1) || isa<WeightVar>(op1));
+}
 void ConvolutionInst::verify() const {
   Value *dest = getOperand(0).first;
   Value *src = getOperand(1).first;
