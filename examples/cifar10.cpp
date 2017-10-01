@@ -96,7 +96,7 @@ void testCIFAR10() {
     auto *FCL1 = bb.createFullyConnectedOp(*MP2, 10);
     auto *RL3 = bb.createRELUOp(*FCL1);
     auto *SM = bb.createSoftMaxOp(*RL3, E);
-    result = bb.createReturnOp(SM);
+    result = bb.createReturnOp(*SM);
   }
 
   IP.optimize();
