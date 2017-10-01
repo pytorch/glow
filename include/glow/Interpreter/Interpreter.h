@@ -46,6 +46,9 @@ public:
   /// is owned by the Interpreter.
   Tensor *getTensorForValue(const Value *v) const;
 
+  /// Remove the tensor (and the gradient) that's stored for \p v;
+  void deleteTensor(const Value *v);
+
   /// Copies the content of the tensor \p t into the value \p v.
   void initValue(const Value *v, const Tensor *t);
 
