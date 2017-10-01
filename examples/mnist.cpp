@@ -89,7 +89,7 @@ void testMNIST() {
     auto *RL2 = bb.createRELUOp(*FCL1);
     selected = bb.createWeightVar(ElemKind::IndexTy, {minibatchSize, 1});
     auto *SM = bb.createSoftMaxOp(*RL2, selected);
-    result = bb.createReturnOp(SM);
+    result = bb.createReturnOp(*SM);
   }
 
   IP.optimize();
