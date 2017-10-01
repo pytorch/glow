@@ -30,7 +30,7 @@ FloatTy gradDiff(FloatTy G1, FloatTy G2) {
   return std::abs(G1 - G2) / std::abs(G1 + G2 + 1);
 }
 
-void performGradCheck(Interpreter &IP, Instruction *root, Value *inputVar,
+void performGradCheck(Interpreter &IP, Value *result, Value *inputVar,
                       Value *expVar, Tensor *inputs, Tensor *outputs,
                       float delta, float allowedError) {
   auto inputsH = inputs->getHandle<FloatTy>();
@@ -52,13 +52,13 @@ void performGradCheck(Interpreter &IP, Instruction *root, Value *inputVar,
     // Calculate f(x+e):
     inputsH.raw(i) = old + delta;
     IP.infer({inputVar}, {inputs});
-    Tensor *res = IP.getTensorForValue(*root);
+    Tensor *res = IP.getTensorForValue(result);
     auto plusLoss = computeL2Loss(outputs, res);
 
     // Calculate f(x-e):
     inputsH.raw(i) = old - delta;
     IP.infer({inputVar}, {inputs});
-    res = IP.getTensorForValue(*root);
+    res = IP.getTensorForValue(result);
     auto minusLoss = computeL2Loss(outputs, res);
     inputsH.raw(i) = old;
 
@@ -79,7 +79,7 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  Instruction *RN;
+  Value *result;
   Value *A;
   Value *Exp;
 
@@ -99,7 +99,8 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
     Value *v0 = *FA;
     Value *v1 = *FB;
     Instruction *O = bb.createConcatOp({v0, v1}, 1);
-    RN = bb.createRegressionOp(*O, Exp);
+    O = bb.createRegressionOp(*O, Exp);
+    result = bb.createReturnOp(*O);
   }
 
   IP.getModule().verify();
@@ -114,7 +115,7 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   inputsH.randomize(100);
   outputsH.randomize(100);
 
-  performGradCheck(IP, RN, A, Exp, &inputs, &outputs, 0.001, 0.001);
+  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.001, 0.001);
 }
 
 TEST(Network, gradientCheck_Conv) {
@@ -126,7 +127,7 @@ TEST(Network, gradientCheck_Conv) {
 
   Value *A;
   Value *Ex;
-  Instruction *RN;
+  Value *result;
   {
     IRBuilder bb(IP.getModule());
 
@@ -137,7 +138,8 @@ TEST(Network, gradientCheck_Conv) {
     O = bb.createPoolOp(*O, PoolInst::OpKind::kMax, 3, 3, 0);
     O = bb.createFullyConnectedOp(*O, numOutputElem);
     O = bb.createRELUOp(*O);
-    RN = bb.createRegressionOp(*O, Ex);
+    O = bb.createRegressionOp(*O, Ex);
+    result = bb.createReturnOp(*O);
   }
 
   IP.getModule().verify();
@@ -152,7 +154,7 @@ TEST(Network, gradientCheck_Conv) {
   inputsH.randomize(1);
   outputsH.randomize(1);
 
-  performGradCheck(IP, RN, A, Ex, &inputs, &outputs, 0.001, 0.004);
+  performGradCheck(IP, result, A, Ex, &inputs, &outputs, 0.001, 0.004);
 }
 
 TEST(Network, gradientCheck_AvgPool) {
@@ -164,7 +166,7 @@ TEST(Network, gradientCheck_AvgPool) {
 
   Value *A;
   Value *Exp;
-  Instruction *RN;
+  Value *result;
   {
     IRBuilder bb(IP.getModule());
 
@@ -173,10 +175,12 @@ TEST(Network, gradientCheck_AvgPool) {
 
     Instruction *O = bb.createPoolOp(A, PoolInst::OpKind::kAvg, 3, 3, 0);
     O = bb.createFullyConnectedOp(*O, numOutputElem);
-    RN = bb.createRegressionOp(*O, Exp);
+    O = bb.createRegressionOp(*O, Exp);
+    result = bb.createReturnOp(*O);
   }
 
   IP.getModule().verify();
+  IP.getModule().dump();
   IP.initVars();
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
@@ -188,7 +192,7 @@ TEST(Network, gradientCheck_AvgPool) {
   inputsH.randomize(1);
   outputsH.randomize(1);
 
-  performGradCheck(IP, RN, A, Exp, &inputs, &outputs, 0.001, 0.004);
+  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.001, 0.004);
 }
 
 TEST(Network, gradientCheck_batchNorm) {
@@ -200,7 +204,7 @@ TEST(Network, gradientCheck_batchNorm) {
 
   Value *A;
   Value *Ex;
-  Instruction *RN;
+  Value *result;
   {
     IRBuilder bb(IP.getModule());
 
@@ -209,7 +213,8 @@ TEST(Network, gradientCheck_batchNorm) {
 
     Instruction *O = bb.createBatchNormalizationOp(A, 3, 0.0001, 0.9);
     O = bb.createReshapeOp(*O, {1, numDim * numDim * 3});
-    RN = bb.createRegressionOp(*O, Ex);
+    O = bb.createRegressionOp(*O, Ex);
+    result = bb.createReturnOp(*O);
   }
 
   IP.getModule().verify();
@@ -229,7 +234,7 @@ TEST(Network, gradientCheck_batchNorm) {
     inputsH.raw(i) += 4;
   }
 
-  performGradCheck(IP, RN, A, Ex, &inputs, &outputs, 0.001, 0.004);
+  performGradCheck(IP, result, A, Ex, &inputs, &outputs, 0.001, 0.004);
 }
 
 TEST(Network, gradientCheck_Arithmetic) {
@@ -238,8 +243,7 @@ TEST(Network, gradientCheck_Arithmetic) {
 
   size_t numDim = 5;
 
-  Instruction *RN;
-
+  Value *result;
   Value *A;
   Value *B;
   Value *C;
@@ -255,7 +259,8 @@ TEST(Network, gradientCheck_Arithmetic) {
 
     Instruction *O = bb.createArithmeticOp(A, B, ArithmeticInst::OpKind::kMul);
     O = bb.createArithmeticOp(*O, C, ArithmeticInst::OpKind::kAdd);
-    RN = bb.createRegressionOp(*O, Exp);
+    O = bb.createRegressionOp(*O, Exp);
+    result = bb.createReturnOp(*O);
   }
 
   IP.getModule().verify();
@@ -298,14 +303,14 @@ TEST(Network, gradientCheck_Arithmetic) {
       // Calculate f(x+e):
       iH.at({0, i}) = old + delta;
       IP.infer({A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
-      Tensor *res = IP.getTensorForValue(*RN);
+      Tensor *res = IP.getTensorForValue(result);
 
       auto plusLoss = computeL2Loss(&outputs, res);
 
       // Calculate f(x-e):
       iH.at({0, i}) = old - delta;
       IP.infer({A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
-      res = IP.getTensorForValue(*RN);
+      res = IP.getTensorForValue(result);
       auto minusLoss = computeL2Loss(&outputs, res);
       iH.at({0, i}) = old;
 
@@ -334,7 +339,7 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
 
   Value *A;
   Value *Exp;
-  Instruction *RN;
+  Value *result;
   {
     IRBuilder bb(IP.getModule());
     A = bb.createWeightVar(ElemKind::FloatTy, {1, numInputElem});
@@ -342,7 +347,8 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
 
     Instruction *FA = bb.createFullyConnectedOp(A, numOutputElem);
     FA = bb.createTanhOp(*FA);
-    RN = bb.createRegressionOp(*FA, Exp);
+    FA = bb.createRegressionOp(*FA, Exp);
+    result = bb.createReturnOp(*FA);
   }
 
   IP.getModule().verify();
@@ -357,7 +363,7 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
   inputsH.randomize(100);
   outputsH.randomize(100);
 
-  performGradCheck(IP, RN, A, Exp, &inputs, &outputs, 0.0001, 0.001);
+  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
 
 TEST(Network, gradientCheck_Transpose) {
@@ -368,7 +374,7 @@ TEST(Network, gradientCheck_Transpose) {
 
   Value *A;
   Value *Exp;
-  Instruction *RN;
+  Value *result;
   {
     IRBuilder bb(IP.getModule());
 
@@ -376,8 +382,8 @@ TEST(Network, gradientCheck_Transpose) {
     Exp = bb.createWeightVar(ElemKind::FloatTy, {1, numOutputElem});
     Instruction *TA = bb.createTransposeOp(A, {0, 3, 1, 2});
     TA = bb.createFullyConnectedOp(*TA, numOutputElem);
-
-    RN = bb.createRegressionOp(*TA, Exp);
+    TA = bb.createRegressionOp(*TA, Exp);
+    result = bb.createReturnOp(*TA);
   }
 
   IP.getModule().verify();
@@ -392,5 +398,5 @@ TEST(Network, gradientCheck_Transpose) {
   inputsH.randomize(100);
   outputsH.randomize(100);
 
-  performGradCheck(IP, RN, A, Exp, &inputs, &outputs, 0.0001, 0.001);
+  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }

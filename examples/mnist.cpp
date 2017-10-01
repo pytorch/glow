@@ -71,7 +71,7 @@ void testMNIST() {
   IP.getConfig().L2Decay = 0.001;
 
   Value *A;
-  Instruction *SM;
+  Value *result;
   Value *selected;
   {
     IRBuilder bb(IP.getModule());
@@ -88,7 +88,8 @@ void testMNIST() {
     auto *FCL1 = bb.createFullyConnectedOp(*MP1, 10);
     auto *RL2 = bb.createRELUOp(*FCL1);
     selected = bb.createWeightVar(ElemKind::IndexTy, {minibatchSize, 1});
-    SM = bb.createSoftMaxOp(*RL2, selected);
+    auto *SM = bb.createSoftMaxOp(*RL2, selected);
+    result = bb.createReturnOp(SM);
   }
 
   IP.getModule().dump();
@@ -118,7 +119,7 @@ void testMNIST() {
   Tensor sample(ElemKind::FloatTy, {minibatchSize, 1, 28, 28});
   sample.copyConsecutiveSlices(&imageInputs, 0);
   IP.infer({A}, {&sample});
-  auto *res = IP.getTensorForValue(*SM);
+  auto *res = IP.getTensorForValue(result);
 
   for (unsigned int iter = 0; iter < minibatchSize; iter++) {
     auto T = res->getHandle<FloatTy>().extractSlice(iter);
