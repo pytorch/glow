@@ -111,6 +111,8 @@ void CopyInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
   auto *op0 = getOperand(0).first;
   auto *op1 = getOperand(1).first;
+  (void) op0;
+  (void) op1;
   // The operands of the copy instruction must be variables.
   assert(isa<AllocActivationInst>(op0) || isa<WeightVar>(op0));
   assert(isa<AllocActivationInst>(op1) || isa<WeightVar>(op1));
