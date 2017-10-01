@@ -320,6 +320,7 @@ WeightVar *IRBuilder::createWeightVar(TypeRef T, StringRef name,
                                       InitKind initKind, float val) {
   auto *A = new WeightVar(T, initKind, val);
   M_.getWeights().push_back(A);
+  A->setName(name);
   return A;
 }
 
