@@ -30,7 +30,7 @@ class caffe2ModelLoader {
   /// A list of weight tensors indexed by name.
   std::unordered_map<std::string, Tensor *> tensors_;
   /// The external output of the network.
-  Value *root{nullptr};
+  Value *root_{nullptr};
 
   /// Load the weight tensors from the 'init' file and register them in the map
   /// \p tensors.
@@ -70,7 +70,7 @@ public:
 
   /// \returns the output of the network. This is usually the result of the last
   /// softmax or regression layer.
-  Value *getRoot() { return root; }
+  Value *getRoot() { return root_; }
 };
 
 } // namespace glow

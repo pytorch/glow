@@ -37,7 +37,7 @@ TEST(Interpreter, interpret) {
     auto *FCL1 = builder.createFullyConnectedOp(*MP2, 10);
     auto *RL3 = builder.createRELUOp(*FCL1);
     auto *SM = builder.createSoftMaxOp(*RL3, ex);
-    (void)SM;
+    builder.createReturnOp(*SM);
   }
 
   IP.getModule().verify();
@@ -54,7 +54,7 @@ TEST(Interpreter, trainASimpleNetwork) {
 
   Value *A;
   Value *E;
-  Instruction *RN;
+  Value *result;
   {
     IRBuilder builder(IP.getModule());
 
@@ -66,7 +66,8 @@ TEST(Interpreter, trainASimpleNetwork) {
     O = builder.createSigmoidOp(*O);
     O = builder.createFullyConnectedOp(*O, 4);
     O = builder.createSigmoidOp(*O);
-    RN = builder.createRegressionOp(*O, E);
+    O = builder.createRegressionOp(*O, E);
+    result = builder.createReturnOp(*O);
   }
 
   // Values for the input and output variables.
@@ -83,7 +84,7 @@ TEST(Interpreter, trainASimpleNetwork) {
   // Testing the output vector.
 
   IP.infer({A}, {&inputs});
-  auto RNWH = IP.getTensorForValue(*RN)->getHandle<FloatTy>();
+  auto RNWH = IP.getTensorForValue(result)->getHandle<FloatTy>();
   (void)RNWH;
 
   // Test the output:
@@ -108,14 +109,15 @@ TEST(Interpreter, simpleRegression) {
 
   Value *A;
   Value *Ex;
-  Instruction *RN;
+  Value *result;
   {
     IRBuilder bb(IP.getModule());
     A = bb.createWeightVar(ElemKind::FloatTy, {1, numInputs});
     Ex = bb.createWeightVar(ElemKind::FloatTy, {1, numInputs});
     Instruction *O = bb.createFullyConnectedOp(A, 4);
     O = bb.createRELUOp(*O);
-    RN = bb.createRegressionOp(*O, Ex);
+    O = bb.createRegressionOp(*O, Ex);
+    result = bb.createReturnOp(*O);
   }
   auto I = inputs.getHandle<FloatTy>();
   auto E = expected.getHandle<FloatTy>();
@@ -139,7 +141,7 @@ TEST(Interpreter, simpleRegression) {
     I = {target, 0., 0., 0.};
     IP.infer({A}, {&inputs});
 
-    auto resH = IP.getTensorForValue(*RN)->getHandle<FloatTy>();
+    auto resH = IP.getTensorForValue(result)->getHandle<FloatTy>();
     (void)resH;
 
     EXPECT_NEAR(I.at({0, 0}) + 1, resH.at({0, 1}), 0.1);
@@ -157,7 +159,7 @@ TEST(Interpreter, learnXor) {
   IP.getConfig().maxNumThreads = 1;
   IP.getConfig().learningRate = 0.05;
 
-  Instruction *RN;
+  Value *result;
   Value *A;
   Value *Ex;
   {
@@ -170,7 +172,8 @@ TEST(Interpreter, learnXor) {
     O = bb.createRELUOp(*O);
     O = bb.createFullyConnectedOp(*O, 1);
     O = bb.createRELUOp(*O);
-    RN = bb.createRegressionOp(*O, Ex);
+    O = bb.createRegressionOp(*O, Ex);
+    result = bb.createReturnOp(*O);
   }
 
   /// Prepare the training set and the testing set.
@@ -204,7 +207,7 @@ TEST(Interpreter, learnXor) {
   }
 
   IP.infer({A}, {&trainingSet});
-  auto resH = IP.getTensorForValue(*RN)->getHandle<FloatTy>();
+  auto resH = IP.getTensorForValue(result)->getHandle<FloatTy>();
 
   // Test the output:
   for (size_t i = 0; i < numTests; i++) {
@@ -259,7 +262,7 @@ TEST(Network, circle) {
 
   Value *A;
   Value *S;
-  Instruction *SM;
+  Value *result;
   {
     IRBuilder bb(IP.getModule());
 
@@ -270,7 +273,8 @@ TEST(Network, circle) {
     auto *RL0 = bb.createRELUOp(*FCL0);
     auto *FCL1 = bb.createFullyConnectedOp(*RL0, 2);
     auto *RL1 = bb.createRELUOp(*FCL1);
-    SM = bb.createSoftMaxOp(*RL1, S);
+    auto *SM = bb.createSoftMaxOp(*RL1, S);
+    result = bb.createReturnOp(*SM);
   }
 
   IP.getModule().verify();
@@ -292,7 +296,7 @@ TEST(Network, circle) {
 
       IP.infer({A}, {&sample});
 
-      auto SMH = IP.getTensorForValue(*SM)->getHandle<FloatTy>();
+      auto SMH = IP.getTensorForValue(result)->getHandle<FloatTy>();
       auto A = SMH.at({0, 0});
       auto B = SMH.at({0, 1});
 
@@ -314,7 +318,7 @@ TEST(Network, circle) {
     Tensor sample(ElemKind::FloatTy, {1, 2});
     sample.getHandle<FloatTy>() = {0., 0.};
     IP.infer({A}, {&sample});
-    auto SMH = IP.getTensorForValue(*SM)->getHandle<FloatTy>();
+    auto SMH = IP.getTensorForValue(result)->getHandle<FloatTy>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
     EXPECT_LE(A, 0.1);
@@ -326,7 +330,7 @@ TEST(Network, circle) {
     Tensor sample(ElemKind::FloatTy, {1, 2});
     sample.getHandle<FloatTy>() = {1., 1.};
     IP.infer({A}, {&sample});
-    auto SMH = IP.getTensorForValue(*SM)->getHandle<FloatTy>();
+    auto SMH = IP.getTensorForValue(result)->getHandle<FloatTy>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
     EXPECT_GE(A, 0.9);
@@ -346,7 +350,7 @@ TEST(Network, learnSingleValueConcat) {
   Value *Ex;
   Value *A;
   Value *B;
-  Instruction *RN;
+  Value *result;
   {
     IRBuilder bb(IP.getModule());
 
@@ -364,7 +368,8 @@ TEST(Network, learnSingleValueConcat) {
 
     // Concat:
     auto *C = bb.createConcatOp({*L, *R}, 1);
-    RN = bb.createRegressionOp(*C, Ex);
+    auto *RN = bb.createRegressionOp(*C, Ex);
+    result = bb.createReturnOp(*RN);
   }
 
   Tensor inputs(ElemKind::FloatTy, {1, width});
@@ -379,7 +384,7 @@ TEST(Network, learnSingleValueConcat) {
 
   // Testing the output vector.
   IP.infer({A}, {&inputs});
-  auto RNWH = IP.getTensorForValue(*RN)->getHandle<FloatTy>();
+  auto RNWH = IP.getTensorForValue(result)->getHandle<FloatTy>();
   (void)RNWH;
 
   // Test the output:

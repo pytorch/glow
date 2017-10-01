@@ -304,7 +304,7 @@ void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
     loadOperator(op);
   }
 
-  root = getNodeByName(net.external_output(0));
+  root_ = getNodeByName(net.external_output(0));
 }
 
 void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
@@ -406,4 +406,7 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   loadWeights(weightsDef);
   loadNetwork(networkDef);
   builder_.deallocateActiveInstrs();
+
+  // Save the result of the last operator into a weight.
+  root_ = builder_.createReturnOp(root_);
 }

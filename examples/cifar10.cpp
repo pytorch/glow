@@ -68,7 +68,7 @@ void testCIFAR10() {
   IP.getConfig().momentum = 0.9;
   IP.getConfig().L2Decay = 0.0001;
 
-  Instruction *SM;
+  Value *result;
   Value *E;
   Value *A;
   unsigned minibatchSize = 8;
@@ -95,7 +95,8 @@ void testCIFAR10() {
 
     auto *FCL1 = bb.createFullyConnectedOp(*MP2, 10);
     auto *RL3 = bb.createRELUOp(*FCL1);
-    SM = bb.createSoftMaxOp(*RL3, E);
+    auto *SM = bb.createSoftMaxOp(*RL3, E);
+    result = bb.createReturnOp(SM);
   }
 
   IP.getModule().dump();
@@ -120,7 +121,7 @@ void testCIFAR10() {
       Tensor sample(ElemKind::FloatTy, {minibatchSize, 3, 32, 32});
       sample.copyConsecutiveSlices(&images, minibatchSize * i);
       IP.infer({A}, {&sample});
-      auto *res = IP.getTensorForValue(*SM);
+      auto *res = IP.getTensorForValue(result);
 
       for (unsigned int iter = 0; iter < minibatchSize; iter++) {
         auto T = res->getHandle<FloatTy>().extractSlice(iter);
