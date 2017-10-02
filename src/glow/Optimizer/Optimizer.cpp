@@ -28,7 +28,8 @@ static void hoistDealloc(Module &M) {
   }
 
   // Now that we've found the last user we can hoist the instruction.
-  for (auto it = instrs.begin(), e = instrs.end(); it != e; /* increment below */) {
+  for (auto it = instrs.begin(), e = instrs.end(); it != e;
+       /* increment below */) {
     iterator curr = it;
     auto *da = dyn_cast<DeallocActivationInst>(*curr);
     if (!da) {

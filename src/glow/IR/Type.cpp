@@ -22,5 +22,4 @@ std::string to_string(const glow::Type &type) {
 
   return os.str();
 }
-}
-
+} // namespace std
