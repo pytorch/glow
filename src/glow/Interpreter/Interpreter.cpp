@@ -19,9 +19,7 @@ Interpreter::~Interpreter() {
   }
 }
 
-void Interpreter::optimize() {
-  ::glow::optimize(M_);
-}
+void Interpreter::optimize() { ::glow::optimize(M_); }
 
 void Interpreter::registerTensor(Value *v, Tensor *t) {
   assert(t->getType().isEqual(v->getType()) &&
