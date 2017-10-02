@@ -46,8 +46,8 @@ void Interpreter::deleteTensor(const Value *v) {
   auto it = tensors_.find(v);
   assert(it != tensors_.end() && "Unknown key Value.");
   auto *T = it->second;
-  tensors_.erase(it);
   delete T;
+  tensors_.erase(it);
 
   auto git = gradients_.find(T);
   if (git != gradients_.end()) {
