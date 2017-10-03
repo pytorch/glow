@@ -92,10 +92,10 @@ void Module::verify() const {
 
 static std::string getExtraDesc(const Kinded *K) {
 #define DEF_INSTR(CLASS, NAME)                                                 \
-  if (auto *X = dyn_cast<const CLASS>(K))                                      \
+  if (const auto *X = dyn_cast<const CLASS>(K))                                \
     return X->getExtraDesc();
 #define DEF_VALUE(CLASS, NAME)                                                 \
-  if (auto *X = dyn_cast<const CLASS>(K))                                      \
+  if (const auto *X = dyn_cast<const CLASS>(K))                                \
     return X->getExtraDesc();
 #include "glow/IR/Instrs.def"
 #undef DEF_INSTR
@@ -106,7 +106,7 @@ static std::string getExtraDesc(const Kinded *K) {
 
 bool Instruction::mayShareBuffers(const Instruction *I) {
 #define DEF_INSTR(CLASS, NAME)                                                 \
-  if (auto *X = dyn_cast<const CLASS>(I))                                      \
+  if (const auto *X = dyn_cast<const CLASS>(I))                                \
     return X->mayShareBuffers();
 #define DEF_VALUE(CLASS, NAME)
 #include "glow/IR/Instrs.def"
