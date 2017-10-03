@@ -1,3 +1,5 @@
+// Copyright 2017 Facebook Inc.  All Rights Reserved.
+
 #include "glow/IR/IR.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Casting.h"

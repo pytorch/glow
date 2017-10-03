@@ -1,3 +1,5 @@
+// Copyright 2017 Facebook Inc.  All Rights Reserved.
+
 #include "glow/Importer/Caffe2.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
