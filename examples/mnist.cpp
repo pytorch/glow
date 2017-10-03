@@ -4,6 +4,9 @@
 #include "glow/Interpreter/Interpreter.h"
 #include "glow/Support/Support.h"
 
+#include "glow/Graph/Node.h"
+#include "glow/Graph/Nodes.h"
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
