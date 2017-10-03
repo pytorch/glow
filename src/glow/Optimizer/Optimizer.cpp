@@ -51,38 +51,27 @@ static void hoistDealloc(Module &M) {
 static void deleteDeadAllocs(Module &M) {
   auto &instrs = M.getInstrs();
 
-  // C++ does not have a clean way to erase reverse iterators, so we'll need to
-  // collect a set of instructions to delete.
-  std::unordered_set<Instruction *> toDelete;
+  // Remove all of the DeallocActivationInst that close unused allocs.
+  instrs.erase(
+      std::remove_if(instrs.begin(), instrs.end(),
+                     [](const Instruction *I) -> bool {
+                       if (const auto *DA =
+                               dyn_cast<const DeallocActivationInst>(I)) {
+                         return DA->getAlloc()->getNumUsers() < 2;
+                       }
+                       return false;
+                     }),
+      instrs.end());
 
-  // Collect pairs of alloc-dealloc to remove.
-  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
-    if (auto *da = dyn_cast<DeallocActivationInst>(*it)) {
-      auto *alloc = da->getAlloc();
-      // Delete the dealloc, if this is the only user of the alloc.
-      if (alloc->getNumUsers() < 2) {
-        toDelete.insert(da);
-        continue;
-      }
-    }
-    // Erase allocs with no users.
-    if (auto *alloc = dyn_cast<AllocActivationInst>(*it)) {
-      if (alloc->getNumUsers() < 2) {
-        toDelete.insert(alloc);
-        continue;
-      }
-    }
-  }
-
-  // Delete the instructions.
-  for (auto it = instrs.begin(), e = instrs.end(); it != e;
-       /* nop */) {
-    if (toDelete.count(*it)) {
-      it = instrs.erase(it);
-      continue;
-    }
-    it++;
-  }
+  // Remove the unused allocs.
+  instrs.erase(std::remove_if(instrs.begin(), instrs.end(),
+                              [](const Instruction *I) -> bool {
+                                if (isa<const AllocActivationInst>(I)) {
+                                  return I->getNumUsers() < 2;
+                                }
+                                return false;
+                              }),
+               std::end(instrs));
 }
 
 // Replace all users of some value with another value, but don't touch the
@@ -90,9 +79,11 @@ static void deleteDeadAllocs(Module &M) {
 // IR.
 static void replaceAllNonDeallocUsersWith(Value *val, Value *with) {
   assert(val != with && "Replacing value with self");
-  auto &lst = val->getUsers();
-  std::vector<Value::Use> users(lst.begin(), lst.end());
-  for (auto &U : users) {
+  auto &users = val->getUsers();
+  // We use a vector here because changing the operands of the user changes the
+  // uselist, and this invalidates the iterator.
+  std::vector<Value::Use> usersVec(users.begin(), users.end());
+  for (auto &U : usersVec) {
     // Ignore dealloc instrs.
     if (isa<DeallocActivationInst>(U.second)) {
       continue;
@@ -148,9 +139,13 @@ static void shareBuffers(Module &M) {
       auto O = I->getOperand(op);
       auto ai = dyn_cast<AllocActivationInst>(O.first);
 
+      if (!ai) {
+        continue;
+      }
+
       // <Out> dependency means that the buffer is being killed. Remove from the
       // live list.
-      if (ai && O.second == OperandKind::kOut) {
+      if (O.second == OperandKind::kOut) {
         auto it = liveBuffers.find(ai);
         if (it != liveBuffers.end()) {
           liveBuffers.erase(it);
@@ -172,9 +167,13 @@ static void shareBuffers(Module &M) {
       auto O = I->getOperand(op);
       auto ai = dyn_cast<AllocActivationInst>(O.first);
 
+      if (!ai) {
+        continue;
+      }
+
       // The <In> means that the value of the buffer is being consumed,
       // which means that it is alive. Add to the live set.
-      if (ai && O.second != OperandKind::kOut) {
+      if (O.second != OperandKind::kOut) {
         liveBuffers.insert(ai);
       }
     }
