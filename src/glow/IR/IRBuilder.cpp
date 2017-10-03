@@ -1,7 +1,5 @@
 #include "glow/IR/IRBuilder.h"
 
-#include "glow/Network/Nodes.h"
-
 using namespace glow;
 
 IRBuilder::~IRBuilder() { deallocateActiveInstrs(); }
@@ -27,7 +25,7 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, size_t depth,
 
   // Calculate the size and allocate the output buffer.
   auto outSz =
-      ConvNode::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
+      ConvolutionInst::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
 
   std::vector<size_t> outDims = {idim.n, outSz.first, outSz.second, depth};
 
@@ -52,7 +50,7 @@ PoolInst *IRBuilder::createPoolOp(Value *input, PoolInst::OpKind kind,
          "buffer too small for selected stride");
 
   auto outSz =
-      ConvNode::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
+      ConvolutionInst::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.

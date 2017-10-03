@@ -4,8 +4,8 @@
 #include "glow/IR/Type.h"
 #include "glow/IR/UseDef.h"
 
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 
 #include <list>
 #include <vector>
