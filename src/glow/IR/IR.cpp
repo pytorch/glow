@@ -258,7 +258,7 @@ static const char *getDottyArrowForCC(OperandKind k) {
 
 /// Dump a dotty graph that depicts the module.
 void Module::dumpDAG() {
-  std::string filename = "dotty_network_dump_" + pointerToString(this) + ".dot";
+  std::string filename = "dotty_network_dump_" + std::to_string(this) + ".dot";
   std::cout << "Writing dotty graph to: " << filename << '\n';
 
   std::string sb;
@@ -270,7 +270,7 @@ void Module::dumpDAG() {
   for (auto &I : instrs_) {
     std::string desc = getDottyDesc(I);
 
-    sb += quote(pointerToString(I)) + "[\n";
+    sb += quote(std::to_string(I)) + "[\n";
     std::string repr = quote(desc);
     sb += "\tlabel = " + repr + "\n";
     sb += "\tshape = \"record\"\n";
@@ -282,7 +282,7 @@ void Module::dumpDAG() {
   sb += "  style=invis;\n";
 
   for (auto &v : weights_) {
-    sb += quote(pointerToString(v)) + "[\n";
+    sb += quote(std::to_string(v)) + "[\n";
     std::string desc = escapeDottyString(getDottyDesc(v));
     sb += "\tlabel = " + desc + "\n";
     sb += "\tshape = \"record\"\n";
@@ -298,8 +298,8 @@ void Module::dumpDAG() {
   for (auto &I : instrs_) {
     for (int i = 0, e = I->getNumOperands(); i < e; i++) {
       auto op = I->getOperand(i);
-      std::string from = quote(pointerToString(I)) + ":f" + std::to_string(i);
-      std::string to = quote(pointerToString(op.first));
+      std::string from = quote(std::to_string(I)) + ":f" + std::to_string(i);
+      std::string to = quote(std::to_string(op.first));
 
       sb += from + "->" + to + "[dir=" + getDottyArrowForCC(op.second) + "];\n";
     }
@@ -309,8 +309,8 @@ void Module::dumpDAG() {
   Instruction *prev = nullptr;
   for (auto &I : instrs_) {
     if (prev) {
-      std::string from = quote(pointerToString(prev));
-      std::string to = quote(pointerToString(I));
+      std::string from = quote(std::to_string(prev));
+      std::string to = quote(std::to_string(I));
       sb += from + "->" + to + "[color=\"blue\"];\n";
     }
     prev = I;
