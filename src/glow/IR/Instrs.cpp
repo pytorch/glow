@@ -2,8 +2,6 @@
 #include "glow/IR/IR.h"
 #include "glow/Support/Casting.h"
 
-#include "glow/Network/Nodes.h"
-
 #include <cassert>
 
 using namespace glow;
@@ -131,8 +129,8 @@ void ConvolutionInst::verify() const {
   assert(idim.w >= kernel_ && idim.h >= kernel_ &&
          "buffer too small for selected stride");
 
-  auto outSz =
-      ConvNode::calculateOutputDims(idim.h, idim.w, pad_, kernel_, stride_);
+  auto outSz = ConvolutionInst::calculateOutputDims(idim.h, idim.w, pad_,
+                                                    kernel_, stride_);
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, depth_);
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");
@@ -155,8 +153,8 @@ void PoolInst::verify() const {
   assert(idim.w >= kernel_ && idim.h >= kernel_ &&
          "buffer too small for selected stride");
 
-  auto outSz =
-      ConvNode::calculateOutputDims(idim.h, idim.w, pad_, kernel_, stride_);
+  auto outSz = ConvolutionInst::calculateOutputDims(idim.h, idim.w, pad_,
+                                                    kernel_, stride_);
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");

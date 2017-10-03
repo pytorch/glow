@@ -80,7 +80,7 @@ void testCIFAR10() {
     A = bb.createWeightVar(ElemKind::FloatTy, {minibatchSize, 32, 32, 3});
     E = bb.createWeightVar(ElemKind::IndexTy, {minibatchSize, 1});
 
-    // Create the rest of the network.  NodeBase *SM = createSimpleNet(N, A, E);
+    // Create the rest of the network.
     auto *CV0 = bb.createConvOp(A, 16, 5, 1, 2);
     auto *RL0 = bb.createRELUOp(*CV0);
     auto *MP0 = bb.createPoolOp(*RL0, PoolInst::OpKind::kMax, 2, 2, 0);

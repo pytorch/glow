@@ -1,10 +1,7 @@
 
 add_library(Network
               Train.cpp
-              Image.cpp
-              Network.cpp
-              Node.cpp
-              Nodes.cpp)
+              Image.cpp)
 target_link_libraries(Network
                       PUBLIC
                         IR)

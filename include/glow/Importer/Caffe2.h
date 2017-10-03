@@ -68,8 +68,7 @@ public:
   caffe2ModelLoader(const std::string &netDescFilename,
                     const std::string &netWeightFilename,
                     llvm::ArrayRef<const char *> names,
-                    llvm::ArrayRef<Tensor *> tensors,
-                    Interpreter &IP);
+                    llvm::ArrayRef<Tensor *> tensors, Interpreter &IP);
 
   /// \returns the output of the network. This is usually the result of the last
   /// softmax or regression layer.
