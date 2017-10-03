@@ -23,7 +23,7 @@ template <typename... Args> std::string listToString(Args... args) {
   return "[" + listToString_impl(args...) + "]";
 }
 
-template <typename E> std::string arrayRefToString(ArrayRef<E> list) {
+template <typename E> std::string arrayRefToString(llvm::ArrayRef<E> list) {
   std::string sb = "[";
   for (size_t i = 0, e = list.size(); i < e; i++) {
     if (i) {
@@ -137,10 +137,10 @@ void ConvolutionInst::verify() const {
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");
 
-  ArrayRef<size_t> filterDims = {depth_, kernel_, kernel_, idim.c};
+  llvm::ArrayRef<size_t> filterDims = {depth_, kernel_, kernel_, idim.c};
   assert(filter->getType()->dims() == filterDims && "Invalid filter dims");
 
-  ArrayRef<size_t> biasDims = {depth_};
+  llvm::ArrayRef<size_t> biasDims = {depth_};
   assert(bias->getType()->dims() == biasDims && "Invalid bias dims");
 }
 
@@ -164,7 +164,7 @@ void PoolInst::verify() const {
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
   if (kind_ == OpKind::kMax) {
-    ArrayRef<size_t> exp = {idim.n, outSz.first, outSz.second, idim.c, 2};
+    llvm::ArrayRef<size_t> exp = {idim.n, outSz.first, outSz.second, idim.c, 2};
     assert(srcXY->getType()->dims() == exp && "Invalid srcXY dims");
   }
 }
@@ -179,15 +179,15 @@ void FullyConnectedInst::verify() const {
   (void)B;
   auto idim = flattenCdr(src->dims());
 
-  ArrayRef<size_t> exp = {idim.first, depth_};
+  llvm::ArrayRef<size_t> exp = {idim.first, depth_};
   assert(dest->dims() == exp && "Invalid output shape");
   (void)exp;
 
-  ArrayRef<size_t> expW = {depth_, idim.second};
+  llvm::ArrayRef<size_t> expW = {depth_, idim.second};
   assert(W->dims() == expW && "Invalid output shape");
   (void)expW;
 
-  ArrayRef<size_t> expB = {depth_};
+  llvm::ArrayRef<size_t> expB = {depth_};
   assert(B->dims() == expB && "Invalid output shape");
   (void)expB;
 }
@@ -222,7 +222,8 @@ void TransposeInst::verify() const {
     shape.push_back(dims[shuffle_[i]]);
   }
 
-  assert(dest->dims() == ArrayRef<size_t>(shape) && "Invalid transpose dims");
+  assert(dest->dims() == llvm::ArrayRef<size_t>(shape) &&
+         "Invalid transpose dims");
 }
 
 void ConcatInst::verify() const {
@@ -239,7 +240,7 @@ void ConcatInst::verify() const {
   // increase the size of the tensor along this dimension.
   shape[dim_] *= getNumOperands() - 1;
 
-  assert(getOperand(0).first->dims() == ArrayRef<size_t>(shape) &&
+  assert(getOperand(0).first->dims() == llvm::ArrayRef<size_t>(shape) &&
          "Invalid output shape");
 }
 void BatchNormalizationInst::verify() const {
@@ -248,7 +249,7 @@ void BatchNormalizationInst::verify() const {
   // Figure out how many channels are in the tensor.
   size_t channels = getOperand(0).first->dims()[channelIdx_];
 
-  ArrayRef<size_t> exp = {channels};
+  llvm::ArrayRef<size_t> exp = {channels};
   assert(getOperand(2).first->getType()->dims() == exp && "Invalid bias dim");
   assert(getOperand(3).first->getType()->dims() == exp && "Invalid scale dim");
   assert(getOperand(4).first->getType()->dims() == exp && "Invalid mean dim");

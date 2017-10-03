@@ -181,7 +181,8 @@ void Interpreter::initVars() {
   }
 }
 
-void Interpreter::infer(ArrayRef<Value *> vars, ArrayRef<Tensor *> inputs) {
+void Interpreter::infer(llvm::ArrayRef<Value *> vars,
+                        llvm::ArrayRef<Tensor *> inputs) {
   assert(!inputs.empty() && "No inputs");
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
@@ -194,8 +195,8 @@ void Interpreter::infer(ArrayRef<Value *> vars, ArrayRef<Tensor *> inputs) {
   doForwardPass(false);
 }
 
-void Interpreter::train(size_t iterations, ArrayRef<Value *> vars,
-                        ArrayRef<Tensor *> inputs) {
+void Interpreter::train(size_t iterations, llvm::ArrayRef<Value *> vars,
+                        llvm::ArrayRef<Tensor *> inputs) {
   static size_t trainCounter = 0;
 
   assert(!inputs.empty() && "No inputs");
@@ -233,8 +234,8 @@ void Interpreter::learnGradient(size_t batchSize) {
   }
 }
 
-void Interpreter::updateForwardBackward(ArrayRef<Value *> vars,
-                                        ArrayRef<Tensor *> inputs,
+void Interpreter::updateForwardBackward(llvm::ArrayRef<Value *> vars,
+                                        llvm::ArrayRef<Tensor *> inputs,
                                         size_t sampleIdx) {
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {

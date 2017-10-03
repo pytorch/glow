@@ -1,8 +1,9 @@
 #ifndef GLOW_IMPORTER_CAFFE2_H
 #define GLOW_IMPORTER_CAFFE2_H
 
+#include "llvm/ADT/ArrayRef.h"
+
 #include "glow/IR/IRBuilder.h"
-#include "glow/Support/ADT.h"
 
 #include <string>
 #include <unordered_map>
@@ -11,6 +12,7 @@ namespace caffe2 {
 class OperatorDef;
 class NetDef;
 } // namespace caffe2
+
 namespace glow {
 
 class IRBuilder;
@@ -65,7 +67,8 @@ public:
   /// \p names and used as inputs to the network.
   caffe2ModelLoader(const std::string &netDescFilename,
                     const std::string &netWeightFilename,
-                    ArrayRef<const char *> names, ArrayRef<Tensor *> tensors,
+                    llvm::ArrayRef<const char *> names,
+                    llvm::ArrayRef<Tensor *> tensors,
                     Interpreter &IP);
 
   /// \returns the output of the network. This is usually the result of the last

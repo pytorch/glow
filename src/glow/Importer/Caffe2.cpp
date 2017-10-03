@@ -382,8 +382,8 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
 
 caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
                                      const std::string &netWeightFilename,
-                                     ArrayRef<const char *> names,
-                                     ArrayRef<Tensor *> tensors,
+                                     llvm::ArrayRef<const char *> names,
+                                     llvm::ArrayRef<Tensor *> tensors,
                                      Interpreter &IP)
     : IP_(IP), builder_(IP_.getModule()) {
   // Verify that the version of the library that we linked against is

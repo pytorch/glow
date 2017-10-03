@@ -18,7 +18,7 @@ Context::~Context() {
 }
 
 Tensor *Context::allocateTensor(const TensorToken *tok, ElemKind kind,
-                                ArrayRef<size_t> dims, ShareKind shared) {
+                                llvm::ArrayRef<size_t> dims, ShareKind shared) {
   /// If we are asked to allocate a shared tensor then make sure to allocate it
   /// in the main context.
   if (shared == ShareKind::kSharedTensor && primeCtx_) {
@@ -83,7 +83,7 @@ ConvNode *Network::createConvNode(NodeBase *input, size_t outDepth,
   return addNode(new ConvNode(this, input, outDepth, filterSize, stride, pad));
 }
 
-ConcatNode *Network::createConcatNode(ArrayRef<NodeBase *> inputs,
+ConcatNode *Network::createConcatNode(llvm::ArrayRef<NodeBase *> inputs,
                                       unsigned dimension) {
   return addNode(new ConcatNode(this, inputs, dimension));
 }
@@ -130,17 +130,18 @@ MaxNode *Network::createMaxNode(NodeBase *input) {
   return addNode(new MaxNode(this, input));
 }
 
-Variable *Network::createVariable(ArrayRef<size_t> dims, ElemKind elemTy) {
+Variable *Network::createVariable(llvm::ArrayRef<size_t> dims,
+                                  ElemKind elemTy) {
   return addNode(new Variable(this, dims, elemTy));
 }
 
 ReshapeNode *Network::createReshapeNode(NodeBase *input,
-                                        ArrayRef<size_t> shape) {
+                                        llvm::ArrayRef<size_t> shape) {
   return addNode(new ReshapeNode(this, input, shape));
 }
 
 TransposeNode *Network::createTransposeNode(NodeBase *input,
-                                            ArrayRef<unsigned> shuffle) {
+                                            llvm::ArrayRef<unsigned> shuffle) {
   return addNode(new TransposeNode(this, input, shuffle));
 }
 
@@ -180,7 +181,7 @@ public:
     order.push_back(N);
   }
 
-  ArrayRef<NodeBase *> getOrder() { return order; }
+  llvm::ArrayRef<NodeBase *> getOrder() { return order; }
 };
 
 struct PrinterPass : NodeVisitor {
@@ -192,8 +193,9 @@ struct PrinterPass : NodeVisitor {
 } // namespace
 
 void Network::updateForwardBackward(Context *ctx, NodeBase *root,
-                                    size_t sampleIdx, ArrayRef<Variable *> vars,
-                                    ArrayRef<Tensor *> inputs) {
+                                    size_t sampleIdx,
+                                    llvm::ArrayRef<Variable *> vars,
+                                    llvm::ArrayRef<Tensor *> inputs) {
   TopologicalSortPass TPS;
   root->visit(nullptr, &TPS);
   auto order = TPS.getOrder();
@@ -256,7 +258,8 @@ static unsigned calculateNumThreads(unsigned maxNumThreads, unsigned numCores,
 /// with the values \p inputs. Train the network by processing \p numBatches
 /// batches.
 void Network::train(NodeBase *root, size_t numBatches,
-                    ArrayRef<Variable *> vars, ArrayRef<Tensor *> inputs) {
+                    llvm::ArrayRef<Variable *> vars,
+                    llvm::ArrayRef<Tensor *> inputs) {
   assert(!inputs.empty() && "No inputs");
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
@@ -297,8 +300,8 @@ void Network::train(NodeBase *root, size_t numBatches,
   }
 }
 
-Tensor *Network::infer(NodeBase *root, ArrayRef<Variable *> vars,
-                       ArrayRef<Tensor *> inputs) {
+Tensor *Network::infer(NodeBase *root, llvm::ArrayRef<Variable *> vars,
+                       llvm::ArrayRef<Tensor *> inputs) {
   TopologicalSortPass TPS;
   root->visit(nullptr, &TPS);
   auto order = TPS.getOrder();
