@@ -28,10 +28,6 @@ public:
   }
 };
 
-/// Convert the ptr \p ptr into an ascii representation in the format
-/// "0xFFF...";
-std::string pointerToString(void *ptr);
-
 /// \returns the escaped content of string \p str.
 /// The char '\n' becomes '\'+'n' and quotes are handled correctly.
 std::string escapeDottyString(const std::string &str);
@@ -71,5 +67,10 @@ public:
 };
 
 } // namespace glow
+
+namespace std {
+/// Convert the ptr \p ptr into an ascii representation in the format "0xFFF..."
+std::string to_string(void *ptr);
+}
 
 #endif // GLOW_SUPPORT_SUPPORT_H

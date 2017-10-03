@@ -6,12 +6,6 @@
 
 using namespace glow;
 
-std::string glow::pointerToString(void *ptr) {
-  std::ostringstream oss;
-  oss << ptr;
-  return oss.str();
-}
-
 std::string glow::escapeDottyString(const std::string &str) {
   std::string out;
   out += "\"";
@@ -64,5 +58,13 @@ DescriptionBuilder &DescriptionBuilder::addDim(const std::string &name,
   }
   repr_ << ")\n";
   return *this;
+}
+
+namespace std {
+std::string to_string(void *ptr) {
+  std::ostringstream oss;
+  oss << ptr;
+  return oss.str();
+}
 }
 
