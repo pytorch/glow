@@ -99,10 +99,8 @@ void testCIFAR10() {
     result = bb.createReturnOp(*SM);
   }
 
-  IP.optimize();
+  IP.optimize(OptimizationMode::kTrain);
   IP.initVars();
-  IP.getModule().dump();
-  IP.getModule().dumpDAG();
 
   // Report progress every this number of training iterations.
   int reportRate = 256;

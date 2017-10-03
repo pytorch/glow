@@ -5,7 +5,13 @@ namespace glow {
 
 class Module;
 
-void optimize(Module &M);
+enum class OptimizationMode {
+  kNone,  // Don't optimize the module.
+  kTrain, // Optimize the module but allow training.
+  kInfer, // Optimize the module and break training.
+};
+
+void optimize(Module &M, OptimizationMode mode);
 
 } // namespace glow
 

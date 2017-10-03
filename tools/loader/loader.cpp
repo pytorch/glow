@@ -78,10 +78,8 @@ int main(int argc, char **argv) {
                        {"data", "gpu_0/data", "softmax_expected"},
                        {&data, &data, &expected_softmax}, IP);
 
-  IP.optimize();
+  IP.optimize(OptimizationMode::kInfer);
   IP.initVars();
-  IP.getModule().dump();
-  IP.getModule().dumpDAG();
 
   auto *SM = LD.getRoot();
   Value *i0 = LD.getOrCreateNodeByName("gpu_0/data");

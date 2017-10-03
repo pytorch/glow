@@ -5,6 +5,7 @@
 #include "glow/IR/IRBuilder.h"
 #include "glow/Network/Tensor.h"
 #include "glow/Network/Train.h"
+#include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/ADT/ArrayRef.h"
 
@@ -34,7 +35,7 @@ public:
   Module &getModule() { return M_; }
 
   /// Run the target-independent optimizations on the module.
-  void optimize();
+  void optimize(OptimizationMode mode);
 
   /// Ctor.
   Interpreter();
