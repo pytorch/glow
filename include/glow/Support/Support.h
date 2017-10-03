@@ -37,16 +37,37 @@ std::string pointerToString(void *ptr);
 std::string escapeDottyString(const std::string &str);
 
 /// A helper class that builds a textual descriptor of a group of parameters.
-struct DescriptionBuilder {
-  DescriptionBuilder(const std::string &name);
+class DescriptionBuilder {
   std::stringstream repr_;
+
+public:
+  DescriptionBuilder(const std::string &name) {
+    repr_ << name << '\n';
+  }
+
   DescriptionBuilder &addDim(const std::string &name,
                              llvm::ArrayRef<size_t> dims);
-  DescriptionBuilder &addParam(const std::string &name, size_t param);
-  DescriptionBuilder &addParam(const std::string &name, double param);
-  DescriptionBuilder &addParam(const std::string &name, std::string param);
 
-  operator std::string() { return repr_.str(); }
+  DescriptionBuilder &addParam(const std::string &name, const char *value) {
+    repr_ << name << " : " << value << '\n';
+    return *this;
+  }
+
+  template <typename T_,
+            typename = typename std::enable_if<std::is_scalar<T_>::value>::type>
+  DescriptionBuilder &addParam(const std::string &name, T_ value) {
+    repr_ << name << " : " << value << '\n';
+    return *this;
+  }
+
+  template <typename T_,
+            typename = typename std::enable_if<!std::is_scalar<T_>::value>::type>
+  DescriptionBuilder &addParam(const std::string &name, const T_ &value) {
+    repr_ << name << " : " << value << '\n';
+    return *this;
+  }
+
+  operator std::string() const { return repr_.str(); }
 };
 
 } // namespace glow
