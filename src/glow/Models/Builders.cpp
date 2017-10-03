@@ -23,7 +23,7 @@ NodeBase *createConv(Network &N, NodeBase *data, size_t num_filter,
 }
 
 NodeBase *createResidualBlock(Network &N, NodeBase *data,
-                              ArrayRef<size_t> num_filter, bool diverge,
+                              llvm::ArrayRef<size_t> num_filter, bool diverge,
                               bool shrink) {
   // Some residual nodes shrink the input by a factor of two:
   int shrinkStride = shrink ? 2 : 1;

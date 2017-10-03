@@ -903,7 +903,7 @@ void MaxNode::backward(Context *ctx) const {
   }
 }
 
-Variable::Variable(Network *N, ArrayRef<size_t> dims, ElemKind elemTy)
+Variable::Variable(Network *N, llvm::ArrayRef<size_t> dims, ElemKind elemTy)
     : dims_(dims.begin(), dims.end()), elemTy_(elemTy) {}
 
 void Variable::init(Context *ctx) const {
@@ -925,7 +925,7 @@ void Variable::updateInputs(Context *ctx, Tensor *batch, size_t sampleIdx) {
   ctx->getTensor(&outputWeight_)->copyConsecutiveSlices(batch, slc);
 }
 
-ConcatNode::ConcatNode(Network *N, ArrayRef<NodeBase *> inputs,
+ConcatNode::ConcatNode(Network *N, llvm::ArrayRef<NodeBase *> inputs,
                        unsigned dimension)
     : inputs_(inputs.begin(), inputs.end()), dimension_(dimension) {}
 
@@ -1006,7 +1006,8 @@ void ConcatNode::backward(Context *ctx) const {
   }
 }
 
-ReshapeNode::ReshapeNode(Network *N, NodeBase *input, ArrayRef<size_t> shape)
+ReshapeNode::ReshapeNode(Network *N, NodeBase *input,
+                         llvm::ArrayRef<size_t> shape)
     : input_(input), shape_(shape.vec()) {}
 
 void ReshapeNode::init(Context *ctx) const {
@@ -1040,7 +1041,7 @@ void ReshapeNode::backward(Context *ctx) const {
 }
 
 TransposeNode::TransposeNode(Network *N, NodeBase *input,
-                             ArrayRef<unsigned> shuffle)
+                             llvm::ArrayRef<unsigned> shuffle)
     : input_(input), shuffle_(shuffle.vec()), reverseShuffle_(shuffle.vec()) {
   for (unsigned int i = 0; i < shuffle_.size(); i++) {
     reverseShuffle_[shuffle_[i]] = i;

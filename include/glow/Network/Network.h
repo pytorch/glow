@@ -4,6 +4,8 @@
 #include "glow/Network/Nodes.h"
 #include "glow/Network/Train.h"
 
+#include "llvm/ADT/ArrayRef.h"
+
 #include <unordered_map>
 #include <vector>
 
@@ -55,7 +57,7 @@ public:
   /// \returns the address of the allocated tensor, or nullptr, if this is a
   /// shared tensor that's owned by the prime context.
   Tensor *allocateTensor(const TensorToken *tok, ElemKind kind,
-                         ArrayRef<size_t> dims,
+                         llvm::ArrayRef<size_t> dims,
                          ShareKind shared = ShareKind::kPrivateTensor);
 
   /// \returns the allocated Tensor.
@@ -97,8 +99,8 @@ class Network {
   /// Update the inputs for all variables \p vars with data from the inputs \p
   /// inputs at offset \p sampleIdx. Then perform a forward and backwards scan.
   void updateForwardBackward(Context *ctx, NodeBase *root, size_t sampleIdx,
-                             ArrayRef<Variable *> vars,
-                             ArrayRef<Tensor *> inputs);
+                             llvm::ArrayRef<Variable *> vars,
+                             llvm::ArrayRef<Tensor *> inputs);
 
   void learnGradient(Context *ctx, size_t batchSize);
 
@@ -116,7 +118,8 @@ public:
   ConvNode *createConvNode(NodeBase *input, size_t outDepth, size_t filterSize,
                            size_t stride, size_t pad);
 
-  ConcatNode *createConcatNode(ArrayRef<NodeBase *> inputs, unsigned dimension);
+  ConcatNode *createConcatNode(llvm::ArrayRef<NodeBase *> inputs,
+                               unsigned dimension);
 
   MaxPoolNode *createMaxPoolNode(NodeBase *input, MaxPoolNode::OpKind kind,
                                  size_t filterSize, size_t stride, size_t pad);
@@ -139,11 +142,12 @@ public:
 
   MaxNode *createMaxNode(NodeBase *input);
 
-  Variable *createVariable(ArrayRef<size_t> dims, ElemKind elemTy);
+  Variable *createVariable(llvm::ArrayRef<size_t> dims, ElemKind elemTy);
 
-  ReshapeNode *createReshapeNode(NodeBase *input, ArrayRef<size_t> shape);
+  ReshapeNode *createReshapeNode(NodeBase *input, llvm::ArrayRef<size_t> shape);
 
-  TransposeNode *createTransposeNode(NodeBase *input, ArrayRef<unsigned> shape);
+  TransposeNode *createTransposeNode(NodeBase *input,
+                                     llvm::ArrayRef<unsigned> shape);
 
   BatchNormalizationNode *createBatchNormalizationNode(NodeBase *input,
                                                        size_t channelIdx = 0,
@@ -160,18 +164,18 @@ public:
   /// Train the network starting with the node \p root. Perform \p iterations
   /// of batch size in the training loop. Update the nodes in \p nodes with the
   /// values \p inputs.
-  void train(NodeBase *root, size_t numBatches, ArrayRef<Variable *> vars,
-             ArrayRef<Tensor *> inputs);
+  void train(NodeBase *root, size_t numBatches, llvm::ArrayRef<Variable *> vars,
+             llvm::ArrayRef<Tensor *> inputs);
 
   /// Perform a single training iteration for one input. Update the nodes in \p
   /// nodes with the values \p inputs.
-  void train(NodeBase *root, ArrayRef<Variable *> vars,
-             ArrayRef<Tensor *> inputs);
+  void train(NodeBase *root, llvm::ArrayRef<Variable *> vars,
+             llvm::ArrayRef<Tensor *> inputs);
 
   /// Infer data for a single input. Update the nodes in \p nodes with the
   /// values \p inputs.
-  Tensor *infer(NodeBase *root, ArrayRef<Variable *> vars,
-                ArrayRef<Tensor *> inputs);
+  Tensor *infer(NodeBase *root, llvm::ArrayRef<Variable *> vars,
+                llvm::ArrayRef<Tensor *> inputs);
 
   /// Dump the textual representation of the network.
   void dump();

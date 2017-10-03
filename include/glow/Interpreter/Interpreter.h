@@ -6,6 +6,8 @@
 #include "glow/Network/Tensor.h"
 #include "glow/Network/Train.h"
 
+#include "llvm/ADT/ArrayRef.h"
+
 #include <unordered_map>
 
 namespace glow {
@@ -77,13 +79,13 @@ public:
 
   /// Runs the program in a forward pass. Update the nodes in \p nodes with the
   /// values \p inputs.
-  void infer(ArrayRef<Value *> vars, ArrayRef<Tensor *> inputs);
+  void infer(llvm::ArrayRef<Value *> vars, llvm::ArrayRef<Tensor *> inputs);
 
   /// Train the network. Perform \p iterations in the training loop. Each
   /// iteration does a full forward and backward pass of a whole batch.
   /// The method updates the variables in \p vars with the tensors \p inputs.
-  void train(size_t iterations, ArrayRef<Value *> vars,
-             ArrayRef<Tensor *> inputs);
+  void train(size_t iterations, llvm::ArrayRef<Value *> vars,
+             llvm::ArrayRef<Tensor *> inputs);
 
 private:
   /// Allocate a tensor to back the value \p v. Do not allocate anything if a
@@ -96,8 +98,8 @@ private:
 
   /// Update the inputs for all variables \p vars with data from the inputs \p
   /// inputs at offset \p sampleIdx. Then perform a forward and backwards scan.
-  void updateForwardBackward(ArrayRef<Value *> vars, ArrayRef<Tensor *> inputs,
-                             size_t sampleIdx);
+  void updateForwardBackward(llvm::ArrayRef<Value *> vars,
+                             llvm::ArrayRef<Tensor *> inputs, size_t sampleIdx);
 
   /// Perform a single forward scan of the network, interpreting all of the
   /// instructions.

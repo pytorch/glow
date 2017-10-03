@@ -115,13 +115,14 @@ RegressionInst *IRBuilder::createRegressionOp(Value *input, Value *expected) {
   return createRegressionInst(res, input, expected);
 }
 
-ReshapeInst *IRBuilder::createReshapeOp(Value *input, ArrayRef<size_t> shape) {
+ReshapeInst *IRBuilder::createReshapeOp(Value *input,
+                                        llvm::ArrayRef<size_t> shape) {
   auto *res = createAllocActivationInst(input->getElementType(), shape);
   return createReshapeInst(res, input, shape);
 }
 
 TransposeInst *IRBuilder::createTransposeOp(Value *input,
-                                            ArrayRef<unsigned> shuffle) {
+                                            llvm::ArrayRef<unsigned> shuffle) {
   std::vector<size_t> shape;
   auto dims = input->dims();
   for (size_t i = 0; i < dims.size(); i++) {
@@ -132,7 +133,7 @@ TransposeInst *IRBuilder::createTransposeOp(Value *input,
   return createTransposeInst(res, input, shuffle);
 }
 
-ConcatInst *IRBuilder::createConcatOp(ArrayRef<Value *> inputs,
+ConcatInst *IRBuilder::createConcatOp(llvm::ArrayRef<Value *> inputs,
                                       unsigned dimension) {
   auto inDim = inputs[0]->dims();
   for (auto in : inputs) {
@@ -269,20 +270,22 @@ RegressionInst *IRBuilder::createRegressionInst(Value *dest, Value *src,
 }
 
 ReshapeInst *IRBuilder::createReshapeInst(Value *dest, Value *src,
-                                          ArrayRef<size_t> shape) {
+                                          llvm::ArrayRef<size_t> shape) {
   auto *A = new ReshapeInst(dest, src, shape);
   M_.pushInstr(A);
   return A;
 }
 
-TransposeInst *IRBuilder::createTransposeInst(Value *dest, Value *src,
-                                              ArrayRef<unsigned> shuffle) {
+TransposeInst *
+IRBuilder::createTransposeInst(Value *dest, Value *src,
+                               llvm::ArrayRef<unsigned> shuffle) {
   auto *A = new TransposeInst(dest, src, shuffle);
   M_.pushInstr(A);
   return A;
 }
 
-ConcatInst *IRBuilder::createConcatInst(Value *dest, ArrayRef<Value *> src,
+ConcatInst *IRBuilder::createConcatInst(Value *dest,
+                                        llvm::ArrayRef<Value *> src,
                                         size_t dim) {
   auto *A = new ConcatInst(dest, src, dim);
   M_.pushInstr(A);
@@ -315,14 +318,15 @@ ArithmeticInst *IRBuilder::createArithmeticInst(Value *dest, Value *LHS,
   return A;
 }
 
-WeightVar *IRBuilder::createWeightVar(ElemKind elemTy, ArrayRef<size_t> dims,
-                                      StringRef name, InitKind initKind,
+WeightVar *IRBuilder::createWeightVar(ElemKind elemTy,
+                                      llvm::ArrayRef<size_t> dims,
+                                      llvm::StringRef name, InitKind initKind,
                                       float val) {
   auto T = M_.uniqueType(elemTy, dims);
   return createWeightVar(T, name, initKind, val);
 }
 
-WeightVar *IRBuilder::createWeightVar(TypeRef T, StringRef name,
+WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
                                       InitKind initKind, float val) {
   auto *A = new WeightVar(T, initKind, val);
   M_.getWeights().push_back(A);
@@ -330,17 +334,16 @@ WeightVar *IRBuilder::createWeightVar(TypeRef T, StringRef name,
   return A;
 }
 
-AllocActivationInst *IRBuilder::createAllocActivationInst(TypeRef T,
-                                                          StringRef name) {
+AllocActivationInst *
+IRBuilder::createAllocActivationInst(TypeRef T, llvm::StringRef name) {
   auto *A = new AllocActivationInst(T);
   M_.pushInstr(A);
   // Add this instruction to the list of open allocations.
   activeAllocs_.push_back(A);
   return A;
 }
-AllocActivationInst *IRBuilder::createAllocActivationInst(ElemKind elemTy,
-                                                          ArrayRef<size_t> dims,
-                                                          StringRef name) {
+AllocActivationInst *IRBuilder::createAllocActivationInst(
+    ElemKind elemTy, llvm::ArrayRef<size_t> dims, llvm::StringRef name) {
   auto T = M_.uniqueType(elemTy, dims);
   return createAllocActivationInst(T, name);
 }

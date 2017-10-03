@@ -1,7 +1,7 @@
 #ifndef GLOW_SUPPORT_SUPPORT_H
 #define GLOW_SUPPORT_SUPPORT_H
 
-#include "glow/Support/ADT.h"
+#include "llvm/ADT/ArrayRef.h"
 
 #include <chrono>
 #include <iostream>
@@ -40,7 +40,8 @@ std::string escapeDottyString(const std::string &str);
 struct DescriptionBuilder {
   DescriptionBuilder(const std::string &name);
   std::stringstream repr_;
-  DescriptionBuilder &addDim(const std::string &name, ArrayRef<size_t> dims);
+  DescriptionBuilder &addDim(const std::string &name,
+                             llvm::ArrayRef<size_t> dims);
   DescriptionBuilder &addParam(const std::string &name, size_t param);
   DescriptionBuilder &addParam(const std::string &name, double param);
   DescriptionBuilder &addParam(const std::string &name, std::string param);

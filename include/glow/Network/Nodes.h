@@ -4,6 +4,8 @@
 #include "glow/Network/Node.h"
 #include "glow/Network/Tensor.h"
 
+#include "llvm/ADT/ArrayRef.h"
+
 #include <cassert>
 #include <cmath>
 #include <cstddef>
@@ -336,7 +338,7 @@ public:
 /// This is an abstraction over raw variable inputs.
 class Variable final : public NodeBase {
 
-  Variable(Network *N, ArrayRef<size_t> dims, ElemKind elemTy);
+  Variable(Network *N, llvm::ArrayRef<size_t> dims, ElemKind elemTy);
 
   std::vector<size_t> dims_;
 
@@ -370,7 +372,7 @@ class ReshapeNode final : public NodeBase {
   std::vector<size_t> shape_;
 
   /// Ctor - reshape the input into the new shape \p shape.
-  ReshapeNode(Network *N, NodeBase *input, ArrayRef<size_t> shape);
+  ReshapeNode(Network *N, NodeBase *input, llvm::ArrayRef<size_t> shape);
 
   friend Network;
 
@@ -398,7 +400,7 @@ class TransposeNode final : public NodeBase {
   /// Ctor - change the order of the dimensions in the tensor.
   /// \p shuffle represents a list of indices that point to the index of the
   /// dimension in the original tensor.
-  TransposeNode(Network *N, NodeBase *input, ArrayRef<unsigned> shuffle);
+  TransposeNode(Network *N, NodeBase *input, llvm::ArrayRef<unsigned> shuffle);
 
   friend Network;
 
@@ -423,7 +425,7 @@ class ConcatNode final : public NodeBase {
   /// Concat on this dimension.
   unsigned dimension_;
 
-  ConcatNode(Network *N, ArrayRef<NodeBase *> inputs, unsigned dimension);
+  ConcatNode(Network *N, llvm::ArrayRef<NodeBase *> inputs, unsigned dimension);
 
   friend Network;
 

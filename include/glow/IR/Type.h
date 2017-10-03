@@ -1,8 +1,10 @@
 #ifndef GLOW_IR_TYPE_H
 #define GLOW_IR_TYPE_H
 
-#include "glow/Support/ADT.h"
 #include "glow/Support/Compiler.h"
+
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -22,7 +24,7 @@ struct ShapeNHWC {
   size_t c; // # of Channels
 
   // TODO: deprecate this for std::array<size_t, 4>
-  explicit ShapeNHWC(ArrayRef<size_t> shape) {
+  explicit ShapeNHWC(llvm::ArrayRef<size_t> shape) {
     assert(shape.size() == 4 && "Invalid shape");
     n = shape[0];
     h = shape[1];
@@ -42,7 +44,7 @@ struct ShapeNHWC {
 /// Colllapse a tensor shape into two sizes: the first dimension and the size of
 /// the rest of the dimensions.
 /// For example, [7, 3, 4, 2] -> [7, 24]
-inline std::pair<size_t, size_t> flattenCdr(ArrayRef<size_t> dims) {
+inline std::pair<size_t, size_t> flattenCdr(llvm::ArrayRef<size_t> dims) {
   assert(dims.size() > 1);
   size_t first = dims[0];
   size_t rest = dims[1];
@@ -79,7 +81,7 @@ struct Type final {
   ElemKind elementType_;
 
   /// Initialize a new type.
-  Type(ElemKind elemTy, ArrayRef<size_t> dims) : elementType_(elemTy) {
+  Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims) : elementType_(elemTy) {
     assert(dims.size() < max_tensor_dimensions && "Too many indices");
 
     // Update the tensor sizes.
@@ -115,7 +117,7 @@ struct Type final {
   ElemKind getElementType() const { return elementType_; }
 
   /// \returns the shape of the tensor.
-  ArrayRef<size_t> dims() const { return {sizes_, numSizes_}; }
+  llvm::ArrayRef<size_t> dims() const { return {sizes_, numSizes_}; }
 
   /// \returns the number of elements in the tensor.
   size_t size() const {
@@ -175,10 +177,12 @@ struct Type final {
   }
 
   /// \return the textual name of the element.
-  StringRef getElementName() const { return getElementName(elementType_); }
+  llvm::StringRef getElementName() const {
+    return getElementName(elementType_);
+  }
 
   /// \return the textual name of the element \p Ty.
-  static StringRef getElementName(ElemKind Ty) {
+  static llvm::StringRef getElementName(ElemKind Ty) {
     const char *names[] = {
         "float", "double", "i8", "i32", "index",
     };

@@ -4,6 +4,8 @@
 #include "glow/IR/IR.h"
 #include "glow/IR/Type.h"
 
+#include "llvm/ADT/ArrayRef.h"
+
 namespace glow {
 
 class AllocActivationInst : public Instruction {
@@ -226,7 +228,7 @@ class TransposeInst : public Instruction {
   std::vector<unsigned> shuffle_;
 
 public:
-  TransposeInst(Value *dest, Value *src, ArrayRef<unsigned> shuffle)
+  TransposeInst(Value *dest, Value *src, llvm::ArrayRef<unsigned> shuffle)
       : Instruction(Kinded::Kind::TransposeInstKind, dest->getType(),
                     {{dest, OperandKind::kOut}, {src, OperandKind::kIn}}),
         shuffle_(shuffle.begin(), shuffle.end()) {}
@@ -238,7 +240,7 @@ public:
   Value *getDest() const { return getOperand(0).first; }
   Value *getSrc() const { return getOperand(1).first; }
 
-  ArrayRef<unsigned> getShuffle() const { return shuffle_; }
+  llvm::ArrayRef<unsigned> getShuffle() const { return shuffle_; }
   void verify() const;
 };
 
@@ -246,7 +248,7 @@ class ReshapeInst : public Instruction {
   std::vector<size_t> dims_;
 
 public:
-  ReshapeInst(Value *dest, Value *src, ArrayRef<size_t> dims)
+  ReshapeInst(Value *dest, Value *src, llvm::ArrayRef<size_t> dims)
       : Instruction(Kinded::Kind::ReshapeInstKind, dest->getType(),
                     {{dest, OperandKind::kOut}, {src, OperandKind::kIn}}),
         dims_(dims.begin(), dims.end()) {}
@@ -258,7 +260,7 @@ public:
   std::string getExtraDesc() const;
   Value *getDest() const { return getOperand(0).first; }
   Value *getSrc() const { return getOperand(1).first; }
-  ArrayRef<size_t> getDims() { return dims_; }
+  llvm::ArrayRef<size_t> getDims() { return dims_; }
 
   void verify() const;
 };
@@ -268,7 +270,7 @@ class ConcatInst : public Instruction {
   size_t dim_;
 
 public:
-  ConcatInst(Value *dest, ArrayRef<Value *> src, size_t dim)
+  ConcatInst(Value *dest, llvm::ArrayRef<Value *> src, size_t dim)
       : Instruction(Kinded::Kind::ConcatInstKind, dest->getType(),
                     {{dest, OperandKind::kOut}}),
         dim_(dim) {

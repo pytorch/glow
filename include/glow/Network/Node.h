@@ -4,6 +4,8 @@
 #include "glow/Network/Tensor.h"
 #include "glow/Network/Train.h"
 
+#include "llvm/ADT/ArrayRef.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -82,7 +84,7 @@ public:
   void clearOutputGrad(Context *ctx) const;
 
   /// \returns the dimension of the tensor.
-  ArrayRef<size_t> dims(Context *ctx) const;
+  llvm::ArrayRef<size_t> dims(Context *ctx) const;
 
   /// \returns the number of elements in the tensor.
   size_t size(Context *ctx) const;

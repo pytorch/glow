@@ -3,7 +3,9 @@
 
 #include "glow/IR/Type.h"
 #include "glow/IR/UseDef.h"
-#include "glow/Support/ADT.h"
+
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/ArrayRef.h"
 
 #include <list>
 #include <vector>
@@ -20,13 +22,13 @@ public:
   Named() = default;
 
   /// \returns the name of the instruction.
-  StringRef getName() const { return name_; }
+  llvm::StringRef getName() const { return name_; }
 
   /// \returns the name of the instruction.
   bool hasName() const { return !name_.empty(); }
 
   /// Set the name of the instruction to \p name.
-  void setName(StringRef name) { name_ = name; }
+  void setName(llvm::StringRef name) { name_ = name; }
 };
 
 /// Subclasses of this class have a type associated with them.
@@ -39,7 +41,7 @@ public:
 
   TypeRef getType() const { return Ty_; }
 
-  ArrayRef<size_t> dims() const { return Ty_->dims(); }
+  llvm::ArrayRef<size_t> dims() const { return Ty_->dims(); }
 
   ElemKind getElementType() const { return Ty_->getElementType(); }
 
@@ -122,7 +124,7 @@ protected:
 public:
   Instruction(Kinded::Kind k, TypeRef Ty) : Value(Ty, k) {}
 
-  Instruction(Kinded::Kind k, TypeRef Ty, ArrayRef<Operand> ops)
+  Instruction(Kinded::Kind k, TypeRef Ty, llvm::ArrayRef<Operand> ops)
       : Value(Ty, k) {
     for (auto &op : ops) {
       pushOperand(op);
@@ -183,7 +185,7 @@ public:
   TypeRef uniqueType(const Type &T);
 
   /// Return a pointer to a uniqued type \p t in the current module.
-  TypeRef uniqueType(ElemKind elemTy, ArrayRef<size_t> dims);
+  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims);
 
   /// Return the void type.
   TypeRef getVoidTy();

@@ -4,9 +4,10 @@
 #include "Config.h"
 
 #include "glow/IR/Type.h"
-#include "glow/Support/ADT.h"
 #include "glow/Support/Compiler.h"
 #include "glow/Support/Random.h"
+
+#include "llvm/ADT/ArrayRef.h"
 
 #include <algorithm>
 #include <cassert>
@@ -80,7 +81,7 @@ public:
   ElemKind getElementType() const { return type_.getElementType(); }
 
   /// \returns True if the coordinate is within the array.
-  bool isInBounds(ArrayRef<size_t> indices) const {
+  bool isInBounds(llvm::ArrayRef<size_t> indices) const {
     assert(type_.numSizes_ == indices.size() && "Invalid number of indices");
     for (size_t i = 0u, e = indices.size(); i < e; i++) {
       if (indices[i] >= type_.sizes_[i]) {
@@ -96,7 +97,7 @@ public:
   }
 
   /// \returns the shape of the tensor.
-  ArrayRef<size_t> dims() const { return type_.dims(); }
+  llvm::ArrayRef<size_t> dims() const { return type_.dims(); }
 
   /// \returns the number of elements in the tensor.
   size_t size() const { return type_.size(); }
@@ -127,7 +128,7 @@ public:
   Tensor(const Type &ty) : data_(nullptr), type_(ty) { reset(ty); }
 
   /// Allocate and initialize a new tensor.
-  Tensor(ElemKind elemTy, ArrayRef<size_t> dims)
+  Tensor(ElemKind elemTy, llvm::ArrayRef<size_t> dims)
       : data_(nullptr), type_(elemTy, dims) {
     reset(elemTy, dims);
   }
@@ -141,7 +142,7 @@ public:
     reset(other->getElementType(), other->dims());
   }
 
-  void reset(ElemKind elemTy, ArrayRef<size_t> shape) {
+  void reset(ElemKind elemTy, llvm::ArrayRef<size_t> shape) {
     Type t(elemTy, shape);
     reset(t);
   }
@@ -269,7 +270,7 @@ public:
 
   /// Calculate the index for a specific element in the tensor. Notice that
   /// the list of indices may be incomplete.
-  size_t getElementPtr(ArrayRef<size_t> indices) const {
+  size_t getElementPtr(llvm::ArrayRef<size_t> indices) const {
     assert(indices.size() <= numDims && "Invalid number of indices");
     return std::inner_product(indices.begin(), indices.end(),
                               std::begin(sizeIntegral), 0);
@@ -308,11 +309,13 @@ public:
     assert(numDims < max_tensor_dimensions);
   }
 
-  ArrayRef<size_t> dims() const { return ArrayRef<size_t>(sizes_, numDims); }
+  llvm::ArrayRef<size_t> dims() const {
+    return llvm::ArrayRef<size_t>(sizes_, numDims);
+  }
 
   size_t size() const { return tensor_->size(); }
 
-  bool isInBounds(ArrayRef<size_t> indices) const {
+  bool isInBounds(llvm::ArrayRef<size_t> indices) const {
     return tensor_->isInBounds(indices);
   }
 
@@ -321,7 +324,7 @@ public:
     std::fill(&data[0], &data[0] + size(), value);
   }
 
-  ElemTy &at(ArrayRef<size_t> indices) {
+  ElemTy &at(llvm::ArrayRef<size_t> indices) {
     assert(tensor_->isInBounds(indices));
     size_t index = getElementPtr(indices);
     assert(index < size() && "Out of bounds");
@@ -329,7 +332,7 @@ public:
     return data[index];
   }
 
-  const ElemTy &at(ArrayRef<size_t> indices) const {
+  const ElemTy &at(llvm::ArrayRef<size_t> indices) const {
     assert(tensor_->isInBounds(indices));
     size_t index = getElementPtr(indices);
     assert(index < size() && "Out of bounds");
@@ -544,7 +547,7 @@ public:
 
   /// Transpose the tensor \p src into the empty tensor \p dest. Shuffle the
   /// axis based on the list \p shuffle, where each element is the src index.
-  void transpose(Tensor *dest, ArrayRef<unsigned> shuffle) {
+  void transpose(Tensor *dest, llvm::ArrayRef<unsigned> shuffle) {
     unsigned numDims = shuffle.size();
     assert(dims().size() == shuffle.size() && "Invalid dimensions");
 
@@ -557,7 +560,7 @@ public:
     }
 
     // Resize the tensor to the transposed shape.
-    dest->reset(getElementType(), ArrayRef<size_t>(newSizes, numDims));
+    dest->reset(getElementType(), llvm::ArrayRef<size_t>(newSizes, numDims));
 
     size_t srcCoor[max_tensor_dimensions];
     size_t destCoor[max_tensor_dimensions];
@@ -571,7 +574,7 @@ public:
   /// the value that is stored at coordinate {d_0, d_1, ... d_n} in the new
   /// tensor at {d_0 + O_0, d_1 + O_1, ... d_n + O_n}, where O is the offset
   /// vector. The tensors must be of the right dimensions.
-  void insertTensors(Handle<ElemTy> &slice, ArrayRef<size_t> offset) {
+  void insertTensors(Handle<ElemTy> &slice, llvm::ArrayRef<size_t> offset) {
     auto sliceCoor = slice.dims().vec();
     auto fusedCoor = dims().vec();
     insertTensorsImpl(sliceCoor, fusedCoor, slice, true, offset, 0);
@@ -582,7 +585,7 @@ public:
   /// copying into the cell at coordinate {d_0, d_1, ... d_n} a value from the
   /// tensor at {d_0 + O_0, d_1 + O_1, ... d_n + O_n}, where O is the offset
   /// vector. The tensors must be of the right dimensions.
-  void extractTensors(Handle<ElemTy> &slice, ArrayRef<size_t> offset) {
+  void extractTensors(Handle<ElemTy> &slice, llvm::ArrayRef<size_t> offset) {
     auto sliceCoor = slice.dims().vec();
     auto fusedCoor = dims().vec();
     insertTensorsImpl(sliceCoor, fusedCoor, slice, false, offset, 0);
@@ -593,10 +596,10 @@ private:
   /// over a single dimension, or if we've reached the last dimension perform a
   /// single copy of a single element.
   void transposeImpl(Handle<ElemTy> &dest, size_t *srcCoor, size_t *destCoor,
-                     ArrayRef<unsigned> shuffle, unsigned depth) {
+                     llvm::ArrayRef<unsigned> shuffle, unsigned depth) {
     if (depth == shuffle.size()) {
-      auto srcIdx = ArrayRef<size_t>(srcCoor, depth);
-      auto destIdx = ArrayRef<size_t>(destCoor, depth);
+      auto srcIdx = llvm::ArrayRef<size_t>(srcCoor, depth);
+      auto destIdx = llvm::ArrayRef<size_t>(destCoor, depth);
       dest.at(destIdx) = at(srcIdx);
       return;
     }
@@ -622,7 +625,8 @@ private:
   /// data is copied from \p fused to \p slice.
   void insertTensorsImpl(std::vector<size_t> &sliceCoor,
                          std::vector<size_t> &fusedCoor, Handle<ElemTy> &slice,
-                         bool isInsert, ArrayRef<size_t> offset, unsigned d) {
+                         bool isInsert, llvm::ArrayRef<size_t> offset,
+                         unsigned d) {
     bool isDone = (d == slice.dims().size());
 
     if (isDone) {

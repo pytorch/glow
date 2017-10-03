@@ -10,7 +10,7 @@
 
 using namespace glow;
 
-TypeRef Module::uniqueType(ElemKind elemTy, ArrayRef<size_t> dims) {
+TypeRef Module::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims) {
   return uniqueType(Type(elemTy, dims));
 }
 
@@ -139,7 +139,7 @@ static std::string getDesc(const Instruction *II) {
 }
 
 static void nameInstr(std::unordered_set<std::string> &usedNames, Named *named,
-                      StringRef suggestion) {
+                      llvm::StringRef suggestion) {
   unsigned idx = 0;
 
   if (!named->hasName())

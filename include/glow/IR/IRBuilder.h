@@ -5,6 +5,9 @@
 #include "glow/IR/Instrs.h"
 #include "glow/IR/Type.h"
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
+
 namespace glow {
 
 /// The IRBuilder create the IR in the module.
@@ -44,11 +47,13 @@ public:
 
   RegressionInst *createRegressionOp(Value *input, Value *expected);
 
-  ReshapeInst *createReshapeOp(Value *input, ArrayRef<size_t> shape);
+  ReshapeInst *createReshapeOp(Value *input, llvm::ArrayRef<size_t> shape);
 
-  TransposeInst *createTransposeOp(Value *input, ArrayRef<unsigned> shuffle);
+  TransposeInst *createTransposeOp(Value *input,
+                                   llvm::ArrayRef<unsigned> shuffle);
 
-  ConcatInst *createConcatOp(ArrayRef<Value *> inputs, unsigned dimension);
+  ConcatInst *createConcatOp(llvm::ArrayRef<Value *> inputs,
+                             unsigned dimension);
 
   BatchNormalizationInst *createBatchNormalizationOp(Value *input,
                                                      size_t channelIdx = 0,
@@ -97,12 +102,13 @@ public:
                                        Value *expected);
 
   ReshapeInst *createReshapeInst(Value *dest, Value *src,
-                                 ArrayRef<size_t> shape);
+                                 llvm::ArrayRef<size_t> shape);
 
   TransposeInst *createTransposeInst(Value *dest, Value *src,
-                                     ArrayRef<unsigned> shuffle);
+                                     llvm::ArrayRef<unsigned> shuffle);
 
-  ConcatInst *createConcatInst(Value *dest, ArrayRef<Value *> src, size_t dim);
+  ConcatInst *createConcatInst(Value *dest, llvm::ArrayRef<Value *> src,
+                               size_t dim);
 
   BatchNormalizationInst *createBatchNormalizationInst(
       Value *dest, Value *src, Value *scale, Value *bias, Value *mean,
@@ -116,20 +122,20 @@ public:
   ArithmeticInst *createArithmeticInst(Value *dest, Value *LHS, Value *RHS,
                                        ArithmeticInst::OpKind kind);
 
-  WeightVar *createWeightVar(TypeRef T, StringRef name = "",
+  WeightVar *createWeightVar(TypeRef T, llvm::StringRef name = "",
                              InitKind initKind = InitKind::kExtern,
                              float val = 0);
 
-  WeightVar *createWeightVar(ElemKind elemTy, ArrayRef<size_t> dims,
-                             StringRef name = "",
+  WeightVar *createWeightVar(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
+                             llvm::StringRef name = "",
                              InitKind initKind = InitKind::kExtern,
                              float val = 0);
 
   AllocActivationInst *createAllocActivationInst(TypeRef T,
-                                                 StringRef name = "");
+                                                 llvm::StringRef name = "");
   AllocActivationInst *createAllocActivationInst(ElemKind elemTy,
-                                                 ArrayRef<size_t> dims,
-                                                 StringRef name = "");
+                                                 llvm::ArrayRef<size_t> dims,
+                                                 llvm::StringRef name = "");
 
   DeallocActivationInst *createDeallocActivationInst(Value *src);
 

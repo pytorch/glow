@@ -2,7 +2,6 @@
 #define GLOW_NETWORK_TRAIN_H
 
 #include "glow/Network/Tensor.h"
-#include "glow/Support/ADT.h"
 
 #include <cstddef>
 #include <cstdint>
