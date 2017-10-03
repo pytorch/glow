@@ -32,7 +32,7 @@ like GNU Makefiles, Ninja and Xcode build.
 
 ### Building with the Sanitizers
 
-Google's santizier project provides a number of libraries which can be used with
+Google's sanitizer project provides a number of libraries which can be used with
 compiler inserted instrumentation to find a variety of bugs at runtime.  These
 include memory issues due such as use-after-free or double-free.  They can also
 detect other types of problems like memory leaks.  Glow can be built with the
