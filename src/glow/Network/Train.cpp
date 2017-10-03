@@ -1,3 +1,5 @@
+// Copyright 2017 Facebook Inc.  All Rights Reserved.
+
 #include "glow/Network/Train.h"
 #include "glow/Network/Tensor.h"
 

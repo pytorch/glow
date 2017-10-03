@@ -1,3 +1,5 @@
+// Copyright 2017 Facebook Inc.  All Rights Reserved.
+
 #include "glow/IR/IRBuilder.h"
 
 using namespace glow;
