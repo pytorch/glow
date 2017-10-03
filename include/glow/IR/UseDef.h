@@ -32,6 +32,11 @@ public:
   /// \returns True if the value has some users.
   bool hasUsers() const { return users_.size(); }
 
+  /// \returns the number of users that the value has.
+  unsigned getNumUsers() const {
+    return std::distance(users_.begin(), users_.end());
+  }
+
   /// Returns true if the user \p I is in the list.
   bool hasUser(const UserTy *I) const {
     for (auto &U : users_) {

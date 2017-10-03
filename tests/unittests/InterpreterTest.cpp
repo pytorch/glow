@@ -40,7 +40,7 @@ TEST(Interpreter, interpret) {
     builder.createReturnOp(*SM);
   }
 
-  IP.optimize();
+  IP.optimize(OptimizationMode::kInfer);
   IP.initVars();
   IP.infer({input}, {&inputs});
 }
@@ -75,7 +75,7 @@ TEST(Interpreter, trainASimpleNetwork) {
   inputs.getHandle<FloatTy>() = {0.15, 0.15, 0.15, 0.15};
   expected.getHandle<FloatTy>() = {0.9, 0.9, 0.9, 0.9};
 
-  IP.optimize();
+  IP.optimize(OptimizationMode::kTrain);
   IP.initVars();
 
   // Train the network. Learn 1000 batches.
@@ -83,6 +83,7 @@ TEST(Interpreter, trainASimpleNetwork) {
 
   // Testing the output vector.
 
+  IP.optimize(OptimizationMode::kInfer);
   IP.infer({A}, {&inputs});
   auto RNWH = IP.getTensorForValue(result)->getHandle<FloatTy>();
   (void)RNWH;
@@ -122,7 +123,7 @@ TEST(Interpreter, simpleRegression) {
   auto I = inputs.getHandle<FloatTy>();
   auto E = expected.getHandle<FloatTy>();
 
-  IP.optimize();
+  IP.optimize(OptimizationMode::kTrain);
   IP.initVars();
 
   // Train the network:
@@ -194,7 +195,7 @@ TEST(Interpreter, learnXor) {
     TL.at({i, 0}) = a ^ b;
   }
 
-  IP.optimize();
+  IP.optimize(OptimizationMode::kTrain);
   IP.initVars();
 
   // Train the network:
@@ -277,7 +278,7 @@ TEST(Network, circle) {
     result = bb.createReturnOp(*SM);
   }
 
-  IP.optimize();
+  IP.optimize(OptimizationMode::kTrain);
   IP.initVars();
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
@@ -377,11 +378,13 @@ TEST(Network, learnSingleValueConcat) {
   inputs.getHandle<FloatTy>().clear(0.15);
   expected.getHandle<FloatTy>().clear(0.9);
 
-  IP.optimize();
+  IP.optimize(OptimizationMode::kTrain);
   IP.initVars();
 
   // Train the network:
   IP.train(1000, {A, B, Ex}, {&inputs, &inputs, &expected});
+
+  IP.optimize(OptimizationMode::kInfer);
 
   // Testing the output vector.
   IP.infer({A}, {&inputs});

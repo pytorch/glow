@@ -109,7 +109,6 @@ TEST(IR, allInstrs) {
     builder.createArithmeticInst(I1, I0, I0, ArithmeticInst::OpKind::kMul);
   }
   M.verify();
-  M.dump();
 }
 
 TEST(IR, highLevelBuilder) {
@@ -136,7 +135,6 @@ TEST(IR, highLevelBuilder) {
     (void)rshp;
     (void)aa;
   }
-  M.dump();
   M.verify();
 }
 

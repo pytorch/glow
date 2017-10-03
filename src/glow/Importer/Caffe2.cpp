@@ -405,8 +405,9 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   loadProtoFile(weightsDef, netWeightFilename);
   loadWeights(weightsDef);
   loadNetwork(networkDef);
-  builder_.deallocateActiveInstrs();
 
   // Save the result of the last operator into a weight.
   root_ = builder_.createReturnOp(root_);
+
+  builder_.deallocateActiveInstrs();
 }

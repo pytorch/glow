@@ -3,6 +3,7 @@
 
 #include "glow/IR/IR.h"
 #include "glow/IR/Type.h"
+#include "glow/Support/Casting.h"
 
 namespace glow {
 
@@ -23,13 +24,17 @@ class DeallocActivationInst : public Instruction {
 public:
   DeallocActivationInst(Value *src)
       : Instruction(Kinded::Kind::DeallocActivationInstKind, src->getType(),
-                    {{src, OperandKind::kIn}}) {}
+                    {{src, OperandKind::kOut}}) {}
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::DeallocActivationInstKind;
   }
 
   void verify() const;
+
+  AllocActivationInst *getAlloc() const {
+    return cast<AllocActivationInst>(getOperand(0).first);
+  }
 };
 
 class CopyInst : public Instruction {
@@ -66,6 +71,9 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::ConvolutionInstKind;
   }
+
+  bool mayShareBuffers() const { return false; }
+
   std::string getExtraDesc() const;
   Value *getDest() const { return getOperand(0).first; }
   Value *getSrc() const { return getOperand(1).first; }
@@ -107,6 +115,8 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::PoolInstKind;
   }
+
+  bool mayShareBuffers() const { return false; }
   std::string getExtraDesc() const;
   Value *getDest() const { return getOperand(0).first; }
   Value *getSrc() const { return getOperand(1).first; }
@@ -135,6 +145,8 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::FullyConnectedInstKind;
   }
+
+  bool mayShareBuffers() const { return false; }
   std::string getExtraDesc() const;
   Value *getDest() const { return getOperand(0).first; }
   Value *getSrc() const { return getOperand(1).first; }
@@ -234,6 +246,8 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::TransposeInstKind;
   }
+
+  bool mayShareBuffers() const { return false; }
   std::string getExtraDesc() const;
   Value *getDest() const { return getOperand(0).first; }
   Value *getSrc() const { return getOperand(1).first; }
@@ -280,6 +294,7 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::ConcatInstKind;
   }
+  bool mayShareBuffers() const { return false; }
   std::string getExtraDesc() const;
   Value *getDest() const { return getOperand(0).first; }
   Value *getSrc() const { return getOperand(1).first; }

@@ -129,6 +129,11 @@ public:
     }
   }
 
+  /// \returns true if the @In arguments can share a buffer with the @Out
+  /// arguments. This happens when the read and write access for the buffer are
+  /// the same.
+  bool mayShareBuffers() const { return true; }
+
   /// When printing the instruction this method prints the extra metadata.
   std::string getExtraDesc() const { return ""; }
 
@@ -148,6 +153,8 @@ public:
   void verify() const;
 
   operator Value *() const { return getOperand(0).first; }
+
+  static bool mayShareBuffers(const Instruction *I);
 };
 
 class WeightVar;

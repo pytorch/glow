@@ -103,7 +103,7 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
     result = bb.createReturnOp(*O);
   }
 
-  IP.optimize();
+  IP.optimize(OptimizationMode::kTrain);
   IP.initVars();
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
@@ -142,7 +142,7 @@ TEST(Network, gradientCheck_Conv) {
     result = bb.createReturnOp(*O);
   }
 
-  IP.optimize();
+  IP.optimize(OptimizationMode::kTrain);
   IP.initVars();
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
@@ -180,7 +180,6 @@ TEST(Network, gradientCheck_AvgPool) {
   }
 
   IP.getModule().verify();
-  IP.getModule().dump();
   IP.initVars();
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
@@ -217,7 +216,7 @@ TEST(Network, gradientCheck_batchNorm) {
     result = bb.createReturnOp(*O);
   }
 
-  IP.optimize();
+  IP.optimize(OptimizationMode::kTrain);
   IP.initVars();
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 3});
@@ -263,7 +262,7 @@ TEST(Network, gradientCheck_Arithmetic) {
     result = bb.createReturnOp(*O);
   }
 
-  IP.optimize();
+  IP.optimize(OptimizationMode::kTrain);
   IP.initVars();
 
   Tensor iA(ElemKind::FloatTy, {1, numDim});
@@ -351,7 +350,7 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
     result = bb.createReturnOp(*FA);
   }
 
-  IP.optimize();
+  IP.optimize(OptimizationMode::kTrain);
   IP.initVars();
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
@@ -386,7 +385,7 @@ TEST(Network, gradientCheck_Transpose) {
     result = bb.createReturnOp(*TA);
   }
 
-  IP.optimize();
+  IP.optimize(OptimizationMode::kTrain);
   IP.initVars();
 
   Tensor inputs(ElemKind::FloatTy, {1, 5, 10, 15});

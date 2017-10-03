@@ -92,9 +92,8 @@ void testMNIST() {
     result = bb.createReturnOp(*SM);
   }
 
-  IP.optimize();
+  IP.optimize(OptimizationMode::kTrain);
   IP.initVars();
-  IP.getModule().dumpDAG();
 
   // Report progress every this number of training iterations.
   constexpr int reportRate = 30;
@@ -110,6 +109,7 @@ void testMNIST() {
     IP.train(reportRate, {A, selected}, {&imageInputs, &labelInputs});
   }
   std::cout << "Validating.\n";
+  IP.optimize(OptimizationMode::kInfer);
 
   auto LIH = labelInputs.getHandle<size_t>();
 
