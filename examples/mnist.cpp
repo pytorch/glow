@@ -79,11 +79,11 @@ void testMNIST() {
     A = bb.createWeightVar(ElemKind::FloatTy, {minibatchSize, 28, 28, 1});
     auto *CV0 = bb.createConvOp(A, 16, 5, 1, 2);
     auto *RL0 = bb.createRELUOp(*CV0);
-    auto *MP0 = bb.createPoolOp(*RL0, PoolInst::OpKind::kMax, 3, 3, 0);
+    auto *MP0 = bb.createPoolOp(*RL0, PoolInst::OpKind::Max, 3, 3, 0);
 
     auto *CV1 = bb.createConvOp(*MP0, 16, 5, 1, 2);
     auto *RL1 = bb.createRELUOp(*CV1);
-    auto *MP1 = bb.createPoolOp(*RL1, PoolInst::OpKind::kMax, 3, 3, 0);
+    auto *MP1 = bb.createPoolOp(*RL1, PoolInst::OpKind::Max, 3, 3, 0);
 
     auto *FCL1 = bb.createFullyConnectedOp(*MP1, 10);
     auto *RL2 = bb.createRELUOp(*FCL1);
@@ -92,7 +92,7 @@ void testMNIST() {
     result = bb.createReturnOp(*SM);
   }
 
-  IP.optimize(OptimizationMode::kTrain);
+  IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
   // Report progress every this number of training iterations.
@@ -109,7 +109,7 @@ void testMNIST() {
     IP.train(reportRate, {A, selected}, {&imageInputs, &labelInputs});
   }
   std::cout << "Validating.\n";
-  IP.optimize(OptimizationMode::kInfer);
+  IP.optimize(OptimizationMode::Infer);
 
   auto LIH = labelInputs.getHandle<size_t>();
 

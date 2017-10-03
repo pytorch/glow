@@ -78,7 +78,7 @@ int main(int argc, char **argv) {
                        {"data", "gpu_0/data", "softmax_expected"},
                        {&data, &data, &expected_softmax}, IP);
 
-  IP.optimize(OptimizationMode::kInfer);
+  IP.optimize(OptimizationMode::Infer);
   IP.initVars();
 
   auto *SM = LD.getRoot();

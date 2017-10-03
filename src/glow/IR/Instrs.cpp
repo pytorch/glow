@@ -89,7 +89,7 @@ const char *WeightVar::getInitKindStr() const {
 std::string WeightVar::getExtraDesc() const {
   auto sp = ", ";
   auto r = std::to_string(*getType());
-  if (getInitKind() != InitKind::kExtern) {
+  if (getInitKind() != InitKind::Extern) {
     r += std::string(sp) + getInitKindStr() + sp + std::to_string(val_);
   }
   return r;
@@ -161,7 +161,7 @@ void PoolInst::verify() const {
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
-  if (kind_ == OpKind::kMax) {
+  if (kind_ == OpKind::Max) {
     llvm::ArrayRef<size_t> exp = {idim.n, outSz.first, outSz.second, idim.c, 2};
     assert(srcXY->getType()->dims() == exp && "Invalid srcXY dims");
   }

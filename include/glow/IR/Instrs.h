@@ -26,7 +26,7 @@ class DeallocActivationInst : public Instruction {
 public:
   DeallocActivationInst(Value *src)
       : Instruction(Kinded::Kind::DeallocActivationInstKind, src->getType(),
-                    {{src, OperandKind::kOut}}) {}
+                    {{src, OperandKind::Out}}) {}
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::DeallocActivationInstKind;
@@ -43,7 +43,7 @@ class CopyInst : public Instruction {
 public:
   CopyInst(Value *dest, Value *src)
       : Instruction(Kinded::Kind::CopyInstKind, dest->getType(),
-                    {{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
+                    {{dest, OperandKind::Out}, {src, OperandKind::In}}) {}
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::CopyInstKind;
@@ -63,10 +63,10 @@ public:
   ConvolutionInst(Value *dest, Value *src, Value *filter, Value *bias,
                   size_t kernel, size_t stride, size_t pad, size_t depth)
       : Instruction(Kinded::Kind::ConvolutionInstKind, dest->getType(),
-                    {{dest, OperandKind::kOut},
-                     {src, OperandKind::kIn},
-                     {filter, OperandKind::kIn},
-                     {bias, OperandKind::kIn}}),
+                    {{dest, OperandKind::Out},
+                     {src, OperandKind::In},
+                     {filter, OperandKind::In},
+                     {bias, OperandKind::In}}),
 
         kernel_(kernel), stride_(stride), pad_(pad), depth_(depth) {}
 
@@ -105,8 +105,8 @@ class PoolInst : public Instruction {
 public:
   /// Specifies the kind of pooling done by the operator.
   enum class OpKind {
-    kMax,
-    kAvg,
+    Max,
+    Avg,
   };
 
 private:
@@ -121,9 +121,9 @@ public:
   PoolInst(Value *dest, Value *src, Value *srcXY, OpKind kind, size_t kernel,
            size_t stride, size_t pad)
       : Instruction(Kinded::Kind::PoolInstKind, dest->getType(),
-                    {{dest, OperandKind::kOut},
-                     {src, OperandKind::kIn},
-                     {srcXY, OperandKind::kInOut}}),
+                    {{dest, OperandKind::Out},
+                     {src, OperandKind::In},
+                     {srcXY, OperandKind::InOut}}),
         kernel_(kernel), stride_(stride), pad_(pad), kind_(kind) {}
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::PoolInstKind;
@@ -149,10 +149,10 @@ public:
   FullyConnectedInst(Value *dest, Value *src, Value *filter, Value *bias,
                      size_t depth)
       : Instruction(Kinded::Kind::FullyConnectedInstKind, dest->getType(),
-                    {{dest, OperandKind::kOut},
-                     {src, OperandKind::kIn},
-                     {filter, OperandKind::kIn},
-                     {bias, OperandKind::kIn}}),
+                    {{dest, OperandKind::Out},
+                     {src, OperandKind::In},
+                     {filter, OperandKind::In},
+                     {bias, OperandKind::In}}),
         depth_(depth) {}
 
   static bool classof(const Kinded *k) {
@@ -173,7 +173,7 @@ class ReluInst : public Instruction {
 public:
   ReluInst(Value *dest, Value *src)
       : Instruction(Kinded::Kind::ReluInstKind, dest->getType(),
-                    {{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
+                    {{dest, OperandKind::Out}, {src, OperandKind::In}}) {}
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::ReluInstKind;
@@ -187,7 +187,7 @@ class SigmoidInst : public Instruction {
 public:
   SigmoidInst(Value *dest, Value *src)
       : Instruction(Kinded::Kind::SigmoidInstKind, dest->getType(),
-                    {{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
+                    {{dest, OperandKind::Out}, {src, OperandKind::In}}) {}
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::SigmoidInstKind;
@@ -201,7 +201,7 @@ class TanhInst : public Instruction {
 public:
   TanhInst(Value *dest, Value *src)
       : Instruction(Kinded::Kind::TanhInstKind, dest->getType(),
-                    {{dest, OperandKind::kOut}, {src, OperandKind::kIn}}) {}
+                    {{dest, OperandKind::Out}, {src, OperandKind::In}}) {}
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::TanhInstKind;
@@ -215,10 +215,10 @@ class SoftMaxInst : public Instruction {
 public:
   SoftMaxInst(Value *dest, Value *src, Value *E, Value *selected)
       : Instruction(Kinded::Kind::SoftMaxInstKind, dest->getType(),
-                    {{dest, OperandKind::kOut},
-                     {src, OperandKind::kIn},
-                     {E, OperandKind::kInOut},
-                     {selected, OperandKind::kIn}}) {}
+                    {{dest, OperandKind::Out},
+                     {src, OperandKind::In},
+                     {E, OperandKind::InOut},
+                     {selected, OperandKind::In}}) {}
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::SoftMaxInstKind;
@@ -234,9 +234,9 @@ class RegressionInst : public Instruction {
 public:
   RegressionInst(Value *dest, Value *src, Value *expected)
       : Instruction(Kinded::Kind::RegressionInstKind, dest->getType(),
-                    {{dest, OperandKind::kOut},
-                     {src, OperandKind::kIn},
-                     {expected, OperandKind::kIn}}) {}
+                    {{dest, OperandKind::Out},
+                     {src, OperandKind::In},
+                     {expected, OperandKind::In}}) {}
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::RegressionInstKind;
@@ -253,7 +253,7 @@ class TransposeInst : public Instruction {
 public:
   TransposeInst(Value *dest, Value *src, llvm::ArrayRef<unsigned> shuffle)
       : Instruction(Kinded::Kind::TransposeInstKind, dest->getType(),
-                    {{dest, OperandKind::kOut}, {src, OperandKind::kIn}}),
+                    {{dest, OperandKind::Out}, {src, OperandKind::In}}),
         shuffle_(shuffle.begin(), shuffle.end()) {}
 
   static bool classof(const Kinded *k) {
@@ -275,7 +275,7 @@ class ReshapeInst : public Instruction {
 public:
   ReshapeInst(Value *dest, Value *src, llvm::ArrayRef<size_t> dims)
       : Instruction(Kinded::Kind::ReshapeInstKind, dest->getType(),
-                    {{dest, OperandKind::kOut}, {src, OperandKind::kIn}}),
+                    {{dest, OperandKind::Out}, {src, OperandKind::In}}),
         dims_(dims.begin(), dims.end()) {}
 
   static bool classof(const Kinded *k) {
@@ -297,10 +297,10 @@ class ConcatInst : public Instruction {
 public:
   ConcatInst(Value *dest, llvm::ArrayRef<Value *> src, size_t dim)
       : Instruction(Kinded::Kind::ConcatInstKind, dest->getType(),
-                    {{dest, OperandKind::kOut}}),
+                    {{dest, OperandKind::Out}}),
         dim_(dim) {
     for (auto s : src) {
-      pushOperand({s, OperandKind::kIn});
+      pushOperand({s, OperandKind::In});
     }
   }
 
@@ -326,12 +326,12 @@ public:
                          Value *mean, Value *var, size_t channelIdx,
                          float epsilon, float momentum)
       : Instruction(Kinded::Kind::BatchNormalizationInstKind, dest->getType(),
-                    {{dest, OperandKind::kOut},
-                     {src, OperandKind::kIn},
-                     {scale, OperandKind::kIn},
-                     {bias, OperandKind::kIn},
-                     {mean, OperandKind::kInOut},
-                     {var, OperandKind::kInOut}}),
+                    {{dest, OperandKind::Out},
+                     {src, OperandKind::In},
+                     {scale, OperandKind::In},
+                     {bias, OperandKind::In},
+                     {mean, OperandKind::InOut},
+                     {var, OperandKind::InOut}}),
         channelIdx_(channelIdx), epsilon_(epsilon), momentum_(momentum) {}
 
   static bool classof(const Kinded *k) {
@@ -356,8 +356,8 @@ class ArithmeticInst : public Instruction {
 public:
   /// Specifies the kind of pooling done by the operator.
   enum class OpKind {
-    kAdd,
-    kMul,
+    Add,
+    Mul,
   };
 
 private:
@@ -367,9 +367,9 @@ private:
 public:
   ArithmeticInst(Value *dest, Value *LHS, Value *RHS, OpKind kind)
       : Instruction(Kinded::Kind::ArithmeticInstKind, dest->getType(),
-                    {{dest, OperandKind::kOut},
-                     {LHS, OperandKind::kIn},
-                     {RHS, OperandKind::kIn}}),
+                    {{dest, OperandKind::Out},
+                     {LHS, OperandKind::In},
+                     {RHS, OperandKind::In}}),
         kind_(kind) {}
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::ArithmeticInstKind;
@@ -402,9 +402,9 @@ public:
                                  float k)
       : Instruction(Kinded::Kind::LocalResponseNormalizationInstKind,
                     dest->getType(),
-                    {{dest, OperandKind::kOut},
-                     {src, OperandKind::kIn},
-                     {scale, OperandKind::kInOut}}),
+                    {{dest, OperandKind::Out},
+                     {src, OperandKind::In},
+                     {scale, OperandKind::InOut}}),
         halfWindowSize_(halfWindowSize), alpha_(alpha), beta_(beta), k_(k) {}
 
   static bool classof(const Kinded *k) {
@@ -425,9 +425,9 @@ public:
 class WeightVar : public Value {
 public:
   enum class InitKind {
-    kExtern,    // No initialization.
-    kBroadcast, // Broadcast a single value to all elements.
-    kXavier,    // Init the tensor with random values using the Xavier method.
+    Extern,    // No initialization.
+    Broadcast, // Broadcast a single value to all elements.
+    Xavier,    // Init the tensor with random values using the Xavier method.
   };
 
 private:

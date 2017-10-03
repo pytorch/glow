@@ -103,7 +103,7 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
     result = bb.createReturnOp(*O);
   }
 
-  IP.optimize(OptimizationMode::kTrain);
+  IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
@@ -135,14 +135,14 @@ TEST(Network, gradientCheck_Conv) {
     Ex = bb.createWeightVar(ElemKind::FloatTy, {1, numOutputElem});
 
     Instruction *O = bb.createConvOp(A, 16, 5, 1, 2);
-    O = bb.createPoolOp(*O, PoolInst::OpKind::kMax, 3, 3, 0);
+    O = bb.createPoolOp(*O, PoolInst::OpKind::Max, 3, 3, 0);
     O = bb.createFullyConnectedOp(*O, numOutputElem);
     O = bb.createRELUOp(*O);
     O = bb.createRegressionOp(*O, Ex);
     result = bb.createReturnOp(*O);
   }
 
-  IP.optimize(OptimizationMode::kTrain);
+  IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
@@ -173,7 +173,7 @@ TEST(Network, gradientCheck_AvgPool) {
     A = bb.createWeightVar(ElemKind::FloatTy, {1, numDim, numDim, 1});
     Exp = bb.createWeightVar(ElemKind::FloatTy, {1, numOutputElem});
 
-    Instruction *O = bb.createPoolOp(A, PoolInst::OpKind::kAvg, 3, 3, 0);
+    Instruction *O = bb.createPoolOp(A, PoolInst::OpKind::Avg, 3, 3, 0);
     O = bb.createFullyConnectedOp(*O, numOutputElem);
     O = bb.createRegressionOp(*O, Exp);
     result = bb.createReturnOp(*O);
@@ -216,7 +216,7 @@ TEST(Network, gradientCheck_batchNorm) {
     result = bb.createReturnOp(*O);
   }
 
-  IP.optimize(OptimizationMode::kTrain);
+  IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 3});
@@ -256,13 +256,13 @@ TEST(Network, gradientCheck_Arithmetic) {
     C = bb.createWeightVar(ElemKind::FloatTy, {1, numDim});
     Exp = bb.createWeightVar(ElemKind::FloatTy, {1, numDim});
 
-    Instruction *O = bb.createArithmeticOp(A, B, ArithmeticInst::OpKind::kMul);
-    O = bb.createArithmeticOp(*O, C, ArithmeticInst::OpKind::kAdd);
+    Instruction *O = bb.createArithmeticOp(A, B, ArithmeticInst::OpKind::Mul);
+    O = bb.createArithmeticOp(*O, C, ArithmeticInst::OpKind::Add);
     O = bb.createRegressionOp(*O, Exp);
     result = bb.createReturnOp(*O);
   }
 
-  IP.optimize(OptimizationMode::kTrain);
+  IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
   Tensor iA(ElemKind::FloatTy, {1, numDim});
@@ -350,7 +350,7 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
     result = bb.createReturnOp(*FA);
   }
 
-  IP.optimize(OptimizationMode::kTrain);
+  IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
@@ -385,7 +385,7 @@ TEST(Network, gradientCheck_Transpose) {
     result = bb.createReturnOp(*TA);
   }
 
-  IP.optimize(OptimizationMode::kTrain);
+  IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
   Tensor inputs(ElemKind::FloatTy, {1, 5, 10, 15});
