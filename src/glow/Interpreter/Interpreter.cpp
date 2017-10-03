@@ -127,10 +127,10 @@ void Interpreter::initVars() {
     auto val = W->getVal();
 
     switch (W->getInitKind()) {
-    case WeightVar::InitKind::kExtern:
+    case WeightVar::InitKind::Extern:
       break;
 
-    case WeightVar::InitKind::kBroadcast: {
+    case WeightVar::InitKind::Broadcast: {
       switch (T->getElementType()) {
       case ElemKind::FloatTy: {
         T->getHandle<float>().clear(val);
@@ -156,7 +156,7 @@ void Interpreter::initVars() {
       break;
     }
 
-    case WeightVar::InitKind::kXavier: {
+    case WeightVar::InitKind::Xavier: {
       switch (T->getElementType()) {
       case ElemKind::FloatTy: {
         T->getHandle<float>().randomize(val);
@@ -226,7 +226,7 @@ void Interpreter::train(size_t iterations, llvm::ArrayRef<Value *> vars,
 void Interpreter::learnGradient(size_t batchSize) {
   for (auto *V : M_.getWeights()) {
     // Do not try to learn the values of input/output buffers.
-    if (V->getInitKind() == WeightVar::InitKind::kExtern) {
+    if (V->getInitKind() == WeightVar::InitKind::Extern) {
       continue;
     }
 

@@ -83,15 +83,15 @@ void testCIFAR10() {
     // Create the rest of the network.
     auto *CV0 = bb.createConvOp(A, 16, 5, 1, 2);
     auto *RL0 = bb.createRELUOp(*CV0);
-    auto *MP0 = bb.createPoolOp(*RL0, PoolInst::OpKind::kMax, 2, 2, 0);
+    auto *MP0 = bb.createPoolOp(*RL0, PoolInst::OpKind::Max, 2, 2, 0);
 
     auto *CV1 = bb.createConvOp(*MP0, 20, 5, 1, 2);
     auto *RL1 = bb.createRELUOp(*CV1);
-    auto *MP1 = bb.createPoolOp(*RL1, PoolInst::OpKind::kMax, 2, 2, 0);
+    auto *MP1 = bb.createPoolOp(*RL1, PoolInst::OpKind::Max, 2, 2, 0);
 
     auto *CV2 = bb.createConvOp(*MP1, 20, 5, 1, 2);
     auto *RL2 = bb.createRELUOp(*CV2);
-    auto *MP2 = bb.createPoolOp(*RL2, PoolInst::OpKind::kMax, 2, 2, 0);
+    auto *MP2 = bb.createPoolOp(*RL2, PoolInst::OpKind::Max, 2, 2, 0);
 
     auto *FCL1 = bb.createFullyConnectedOp(*MP2, 10);
     auto *RL3 = bb.createRELUOp(*FCL1);
@@ -99,7 +99,7 @@ void testCIFAR10() {
     result = bb.createReturnOp(*SM);
   }
 
-  IP.optimize(OptimizationMode::kTrain);
+  IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
   // Report progress every this number of training iterations.

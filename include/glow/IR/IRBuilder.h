@@ -123,12 +123,12 @@ public:
                                        ArithmeticInst::OpKind kind);
 
   WeightVar *createWeightVar(TypeRef T, llvm::StringRef name = "",
-                             InitKind initKind = InitKind::kExtern,
+                             InitKind initKind = InitKind::Extern,
                              float val = 0);
 
   WeightVar *createWeightVar(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
                              llvm::StringRef name = "",
-                             InitKind initKind = InitKind::kExtern,
+                             InitKind initKind = InitKind::Extern,
                              float val = 0);
 
   AllocActivationInst *createAllocActivationInst(TypeRef T,

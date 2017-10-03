@@ -194,7 +194,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "MaxPool" || typeName == "AveragePool") {
     using OpKind = PoolInst::OpKind;
-    OpKind opk = (typeName == "MaxPool") ? OpKind::kMax : OpKind::kAvg;
+    OpKind opk = (typeName == "MaxPool") ? OpKind::Max : OpKind::Avg;
 
     // Load the inputs:
     auto *in = getOrCreateNodeByName(op.input(0));
@@ -257,7 +257,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *in0 = getOrCreateNodeByName(op.input(0));
     auto *in1 = getOrCreateNodeByName(op.input(1));
     auto *node =
-        builder_.createArithmeticOp(in0, in1, ArithmeticInst::OpKind::kAdd);
+        builder_.createArithmeticOp(in0, in1, ArithmeticInst::OpKind::Add);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = *node;

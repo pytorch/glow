@@ -240,15 +240,15 @@ static std::string getDottyDesc(const Instruction *II) {
 /// for printing edges in the dotty printer.
 static const char *getDottyArrowForCC(OperandKind k) {
   switch (k) {
-  case glow::OperandKind::kOut:
+  case glow::OperandKind::Out:
     return "forward";
     break;
 
-  case glow::OperandKind::kIn:
+  case glow::OperandKind::In:
     return "back";
     break;
 
-  case glow::OperandKind::kInOut:
+  case glow::OperandKind::InOut:
     return "both";
     break;
   }

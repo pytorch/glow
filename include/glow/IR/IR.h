@@ -49,9 +49,9 @@ public:
 };
 
 enum class OperandKind : unsigned char {
-  kIn,
-  kOut,
-  kInOut,
+  In,
+  Out,
+  InOut,
 };
 
 inline const char *getOperandKindStr(OperandKind CC) {

@@ -147,7 +147,7 @@ static void shareBuffers(Module &M) {
 
       // <Out> dependency means that the buffer is being killed. Remove from the
       // live list.
-      if (O.second == OperandKind::kOut) {
+      if (O.second == OperandKind::Out) {
         auto it = liveBuffers.find(ai);
         if (it != liveBuffers.end()) {
           liveBuffers.erase(it);
@@ -156,7 +156,7 @@ static void shareBuffers(Module &M) {
       }
       // The <InOut> means that the value of the buffer is being consumed,
       // which means that it is alive. Add to the live set.
-      if (ai && O.second == OperandKind::kInOut) {
+      if (ai && O.second == OperandKind::InOut) {
         liveBuffers.insert(ai);
       }
     }
@@ -175,7 +175,7 @@ static void shareBuffers(Module &M) {
 
       // The <In> means that the value of the buffer is being consumed,
       // which means that it is alive. Add to the live set.
-      if (O.second != OperandKind::kOut) {
+      if (O.second != OperandKind::Out) {
         liveBuffers.insert(ai);
       }
     }
@@ -185,13 +185,13 @@ static void shareBuffers(Module &M) {
 void glow::optimize(Module &M, OptimizationMode mode) {
   M.verify();
 
-  if (mode == OptimizationMode::kNone) {
+  if (mode == OptimizationMode::None) {
     return;
   }
 
   // Sharing buffers is only legal in training mode because it kills the
   // backprop.
-  if (mode == OptimizationMode::kInfer) {
+  if (mode == OptimizationMode::Infer) {
     shareBuffers(M);
     M.verify();
   }

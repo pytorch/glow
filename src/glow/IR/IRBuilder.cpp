@@ -35,9 +35,9 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, size_t depth,
   std::vector<size_t> filterDim = {depth, kernel, kernel, idim.c};
   size_t fanIn = kernel * kernel * idim.c;
   Value *filter = createWeightVar(ElemKind::FloatTy, filterDim, "filter",
-                                  InitKind::kXavier, fanIn);
+                                  InitKind::Xavier, fanIn);
   Value *bias = createWeightVar(ElemKind::FloatTy, {depth}, "bias",
-                                InitKind::kBroadcast, 0.1);
+                                InitKind::Broadcast, 0.1);
 
   Value *dest = createAllocActivationInst(ElemKind::FloatTy, outDims);
 
@@ -57,7 +57,7 @@ PoolInst *IRBuilder::createPoolOp(Value *input, PoolInst::OpKind kind,
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
   Value *srcXY;
-  if (kind == PoolInst::OpKind::kMax) {
+  if (kind == PoolInst::OpKind::Max) {
     srcXY = createAllocActivationInst(
         ElemKind::IndexTy, {idim.n, outSz.first, outSz.second, idim.c, 2},
         "srcXY");
@@ -79,10 +79,10 @@ FullyConnectedInst *IRBuilder::createFullyConnectedOp(Value *input,
   size_t fanIn = idim.second;
 
   auto *W = createWeightVar(T->getElementType(), {outDepth, idim.second},
-                            "weights", InitKind::kXavier, fanIn);
+                            "weights", InitKind::Xavier, fanIn);
 
   auto *B = createWeightVar(T->getElementType(), {outDepth}, "bias",
-                            InitKind::kBroadcast, 0.1);
+                            InitKind::Broadcast, 0.1);
   auto *dest =
       createAllocActivationInst(T->getElementType(), {idim.first, outDepth});
 
@@ -159,9 +159,9 @@ BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(Value *input,
 
   // Allocate the learnable parameters beta and gamma.
   auto *beta = createWeightVar(ElemKind::FloatTy, {channels}, "beta",
-                               InitKind::kBroadcast, 0.);
+                               InitKind::Broadcast, 0.);
   auto *gamma = createWeightVar(ElemKind::FloatTy, {channels}, "gamma",
-                                InitKind::kBroadcast, 1.0);
+                                InitKind::Broadcast, 1.0);
 
   auto *mean = createAllocActivationInst(ElemKind::FloatTy, {channels}, "mean");
 
@@ -195,7 +195,7 @@ ArithmeticInst *IRBuilder::createArithmeticOp(Value *LHS, Value *RHS,
 }
 
 Value *IRBuilder::createReturnOp(Value *input) {
-  auto *W = createWeightVar(input->getType(), "result", InitKind::kExtern);
+  auto *W = createWeightVar(input->getType(), "result", InitKind::Extern);
   createCopyInst(W, input);
   return W;
 }

@@ -6,9 +6,9 @@ namespace glow {
 class Module;
 
 enum class OptimizationMode {
-  kNone,  // Don't optimize the module.
-  kTrain, // Optimize the module but allow training.
-  kInfer, // Optimize the module and break training.
+  None,  // Don't optimize the module.
+  Train, // Optimize the module but allow training.
+  Infer, // Optimize the module and break training.
 };
 
 void optimize(Module &M, OptimizationMode mode);

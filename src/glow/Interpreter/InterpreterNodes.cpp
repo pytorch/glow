@@ -145,7 +145,7 @@ void Interpreter::bwdConvolutionInst(Context *ctx, const ConvolutionInst *I) {
 //===----------------------------------------------------------------------===//
 
 void Interpreter::fwdPoolInst(Context *ctx, bool isTrain, const PoolInst *I) {
-  if (I->getKind() == PoolInst::OpKind::kMax) {
+  if (I->getKind() == PoolInst::OpKind::Max) {
     return fwdPoolMax_impl(ctx, I);
   }
 
@@ -263,7 +263,7 @@ void Interpreter::fwdPoolAvg_impl(Context *ctx, const PoolInst *I) {
 }
 
 void Interpreter::bwdPoolInst(Context *ctx, const PoolInst *I) {
-  if (I->getKind() == PoolInst::OpKind::kMax) {
+  if (I->getKind() == PoolInst::OpKind::Max) {
     return bwdPoolMax_impl(ctx, I);
   }
 
@@ -994,14 +994,14 @@ void Interpreter::fwdArithmeticInst(Context *ctx, bool isTrain,
   auto RHSW = getWeightHandle(ctx, I->getRHS());
 
   switch (I->getKind()) {
-  case ArithmeticInst::OpKind::kAdd:
+  case ArithmeticInst::OpKind::Add:
     for (size_t i = 0, e = outW.size(); i < e; i++) {
       outW.raw(i) = LHSW.raw(i) + RHSW.raw(i);
     }
     return;
     break;
 
-  case ArithmeticInst::OpKind::kMul:
+  case ArithmeticInst::OpKind::Mul:
     for (size_t i = 0, e = outW.size(); i < e; i++) {
       outW.raw(i) = LHSW.raw(i) * RHSW.raw(i);
     }
@@ -1018,7 +1018,7 @@ void Interpreter::bwdArithmeticInst(Context *ctx, const ArithmeticInst *I) {
   auto RHSG = getGradHandle(ctx, I->getRHS());
 
   switch (I->getKind()) {
-  case ArithmeticInst::OpKind::kAdd:
+  case ArithmeticInst::OpKind::Add:
     for (size_t i = 0, e = outG.size(); i < e; i++) {
       LHSG.raw(i) = outG.raw(i);
       RHSG.raw(i) = outG.raw(i);
@@ -1026,7 +1026,7 @@ void Interpreter::bwdArithmeticInst(Context *ctx, const ArithmeticInst *I) {
     return;
     break;
 
-  case ArithmeticInst::OpKind::kMul:
+  case ArithmeticInst::OpKind::Mul:
     for (size_t i = 0, e = outG.size(); i < e; i++) {
       LHSG.raw(i) = RHSW.raw(i) * outG.raw(i);
       RHSG.raw(i) = LHSW.raw(i) * outG.raw(i);
