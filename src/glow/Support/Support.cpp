@@ -55,10 +55,6 @@ std::string glow::escapeDottyString(const std::string &str) {
   return out;
 }
 
-DescriptionBuilder::DescriptionBuilder(const std::string &name) {
-  repr_ << name << "\n";
-}
-
 DescriptionBuilder &DescriptionBuilder::addDim(const std::string &name,
                                                llvm::ArrayRef<size_t> dims) {
   assert(!dims.empty() && "Invalid dimensions");
@@ -70,18 +66,3 @@ DescriptionBuilder &DescriptionBuilder::addDim(const std::string &name,
   return *this;
 }
 
-DescriptionBuilder &DescriptionBuilder::addParam(const std::string &name,
-                                                 size_t param) {
-  repr_ << name << " : " << param << "\n";
-  return *this;
-}
-DescriptionBuilder &DescriptionBuilder::addParam(const std::string &name,
-                                                 double param) {
-  repr_ << name << " : " << param << "\n";
-  return *this;
-}
-DescriptionBuilder &DescriptionBuilder::addParam(const std::string &name,
-                                                 std::string param) {
-  repr_ << name << " : " << param << "\n";
-  return *this;
-}
