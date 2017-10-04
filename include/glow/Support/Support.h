@@ -16,25 +16,6 @@ std::string to_string(const llvm::StringRef sr);
 
 namespace glow {
 
-/// A class for measuring the lifetime of some event
-/// and for rate calculation.
-class TimerGuard {
-  int iterations_;
-  std::chrono::time_point<std::chrono::system_clock> start;
-
-public:
-  TimerGuard(int iterations) : iterations_(iterations) {
-    start = std::chrono::system_clock::now();
-  }
-
-  ~TimerGuard() {
-    auto end = std::chrono::system_clock::now();
-    std::chrono::duration<double> elapsed_seconds = end - start;
-    std::cout << "Rate: " << (iterations_ / elapsed_seconds.count())
-              << "/sec\n";
-  }
-};
-
 /// \returns the escaped content of string \p str.
 /// The char '\n' becomes '\'+'n' and quotes are handled correctly.
 std::string escapeDottyString(const std::string &str);

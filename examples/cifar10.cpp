@@ -4,6 +4,8 @@
 #include "glow/Interpreter/Interpreter.h"
 #include "glow/Support/Support.h"
 
+#include "llvm/Support/Timer.h"
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -109,7 +111,9 @@ void testCIFAR10() {
 
   for (int iter = 0; iter < 100000; iter++) {
     std::cout << "Training - iteration #" << iter << "\n";
-    TimerGuard reportTime(reportRate * minibatchSize);
+
+    llvm::Timer timer("Training", "Training");
+    timer.startTimer();
 
     // Bind the images tensor to the input array A, and the labels tensor
     // to the softmax node SM.
@@ -136,6 +140,8 @@ void testCIFAR10() {
         }
       }
     }
+
+    timer.stopTimer();
 
     std::cout << "Batch #" << iter << " score: " << score << "%\n";
   }

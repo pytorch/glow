@@ -67,6 +67,10 @@ foreach(library tinfo terminfo curses ncurses ncursesw)
   endif()
 endforeach()
 
+target_link_libraries(LLVMSupport
+                      INTERFACE
+                        Threads::Threads)
+
 add_dependencies(LLVMSupport llvm-install)
 
 ExternalProject_Add(googletest
