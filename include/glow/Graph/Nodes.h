@@ -7,6 +7,27 @@
 
 namespace glow {
 
+class Variable : public Node {
+  /// The value to use during initialization. This can be the value to splat or
+  /// a parameter to specify the range of the random values.
+  float val_;
+  /// The initialization mode.
+  WeightVar::InitKind initKind_;
+
+public:
+  Variable(Module &M, llvm::StringRef name, TypeRef Ty,
+           WeightVar::InitKind initKind, float val)
+      : Node(Kinded::Kind::WeightVarKind, Ty, name), val_(val),
+        initKind_(initKind) {}
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::WeightVarKind;
+  }
+
+  WeightVar::InitKind getInitKind() const { return initKind_; }
+  float getVal() const { return val_; }
+};
+
 class ConvolutionNode final : public Node {
   Node *in_;
   Node *filter_;
