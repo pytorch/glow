@@ -36,8 +36,9 @@ Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
   return createVariable(FT, name, initKind, val);
 }
 
-ConvolutionNode *Graph::createConv(Node *input, size_t depth, size_t kernel,
-                                   size_t stride, size_t pad) {
+ConvolutionNode *Graph::createConv(llvm::StringRef name, Node *input,
+                                   size_t depth, size_t kernel, size_t stride,
+                                   size_t pad) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
@@ -59,12 +60,13 @@ ConvolutionNode *Graph::createConv(Node *input, size_t depth, size_t kernel,
 
   auto OT = M_.uniqueType(ElemKind::FloatTy, outDims);
 
-  return addNode(new ConvolutionNode(input, OT, "Conv", filter, bias, kernel,
+  return addNode(new ConvolutionNode(input, OT, name, filter, bias, kernel,
                                      stride, pad, depth));
 }
 
-PoolNode *Graph::createPool(Node *input, PoolInst::OpKind kind, size_t kernel,
-                            size_t stride, size_t pad) {
+PoolNode *Graph::createPool(llvm::StringRef name, Node *input,
+                            PoolInst::OpKind kind, size_t kernel, size_t stride,
+                            size_t pad) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
@@ -75,10 +77,11 @@ PoolNode *Graph::createPool(Node *input, PoolInst::OpKind kind, size_t kernel,
   auto OT = M_.uniqueType(ElemKind::FloatTy,
                           {idim.n, outSz.first, outSz.second, idim.c});
 
-  return addNode(new PoolNode(input, OT, "pool", kind, kernel, stride, pad));
+  return addNode(new PoolNode(input, OT, name, kind, kernel, stride, pad));
 }
 
-FullyConnectedNode *Graph::createFullyConnected(Node *input, size_t outDepth) {
+FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
+                                                Node *input, size_t outDepth) {
   TypeRef T = input->getType();
   auto idim = flattenCdr(input->dims());
 
@@ -91,35 +94,37 @@ FullyConnectedNode *Graph::createFullyConnected(Node *input, size_t outDepth) {
                            WeightVar::InitKind::Xavier, 0.1);
 
   auto OT = M_.uniqueType(T->getElementType(), {idim.first, outDepth});
-  return addNode(
-      new FullyConnectedNode(input, OT, "Fullyconnected", W, B, outDepth));
+  return addNode(new FullyConnectedNode(input, OT, name, W, B, outDepth));
 }
 
-ReluNode *Graph::createRELU(Node *input) {
-  return addNode(new ReluNode(input, "relu"));
+ReluNode *Graph::createRELU(llvm::StringRef name, Node *input) {
+  return addNode(new ReluNode(input, name));
 }
 
-SigmoidNode *Graph::createSigmoid(Node *input) {
-  return addNode(new SigmoidNode(input, "Sigmoid"));
+SigmoidNode *Graph::createSigmoid(llvm::StringRef name, Node *input) {
+  return addNode(new SigmoidNode(input, name));
 }
 
-TanhNode *Graph::createTanh(Node *input) {
-  return addNode(new TanhNode(input, "Tanh"));
+TanhNode *Graph::createTanh(llvm::StringRef name, Node *input) {
+  return addNode(new TanhNode(input, name));
 }
 
-SoftMaxNode *Graph::createSoftMax(Node *input, Node *selected) {
-  return addNode(new SoftMaxNode(input, "SoftMax", selected));
+SoftMaxNode *Graph::createSoftMax(llvm::StringRef name, Node *input,
+                                  Node *selected) {
+  return addNode(new SoftMaxNode(input, name, selected));
 }
 
-RegressionNode *Graph::createRegression(Node *input, Node *expected) {
-  return addNode(new RegressionNode(input, "Regression", expected));
+RegressionNode *Graph::createRegression(llvm::StringRef name, Node *input,
+                                        Node *expected) {
+  return addNode(new RegressionNode(input, name, expected));
 }
 
-ReshapeNode *Graph::createReshape(Node *input, llvm::ArrayRef<size_t> shape) {
-  return addNode(new ReshapeNode(input, "Reshape", shape));
+ReshapeNode *Graph::createReshape(llvm::StringRef name, Node *input,
+                                  llvm::ArrayRef<size_t> shape) {
+  return addNode(new ReshapeNode(input, name, shape));
 }
 
-TransposeNode *Graph::createTranspose(Node *input,
+TransposeNode *Graph::createTranspose(llvm::StringRef name, Node *input,
                                       llvm::ArrayRef<unsigned> shuffle) {
   std::vector<size_t> shape;
   auto dims = input->dims();
@@ -128,10 +133,11 @@ TransposeNode *Graph::createTranspose(Node *input,
   }
 
   auto NT = M_.uniqueType(input->getElementType(), shape);
-  return addNode(new TransposeNode(input, NT, "Transpose", shuffle));
+  return addNode(new TransposeNode(input, NT, name, shuffle));
 }
 
-ConcatNode *Graph::createConcat(llvm::ArrayRef<Node *> inputs,
+ConcatNode *Graph::createConcat(llvm::StringRef name,
+                                llvm::ArrayRef<Node *> inputs,
                                 unsigned dimension) {
   auto inDim = inputs[0]->dims();
 
@@ -146,10 +152,11 @@ ConcatNode *Graph::createConcat(llvm::ArrayRef<Node *> inputs,
   shape[dimension] *= inputs.size();
 
   auto NT = M_.uniqueType(inputs[0]->getElementType(), shape);
-  return addNode(new ConcatNode(inputs, NT, "Concat", dimension));
+  return addNode(new ConcatNode(inputs, NT, name, dimension));
 }
 
-BatchNormalizationNode *Graph::createBatchNormalization(Node *input,
+BatchNormalizationNode *Graph::createBatchNormalization(llvm::StringRef name,
+                                                        Node *input,
                                                         size_t channelIdx,
                                                         float epsilon,
                                                         float momentum) {
@@ -167,14 +174,14 @@ BatchNormalizationNode *Graph::createBatchNormalization(Node *input,
   auto *variance = createVariable(ElemKind::FloatTy, {channels}, "variance",
                                   WeightVar::InitKind::Broadcast, 0.0);
 
-  return addNode(new BatchNormalizationNode(input, "Norm", gamma, beta, mean,
-                                            variance, channelIdx, epsilon,
-                                            momentum));
+  return addNode(new BatchNormalizationNode(
+      input, name, gamma, beta, mean, variance, channelIdx, epsilon, momentum));
 }
 
 LocalResponseNormalizationNode *
-Graph::createLocalResponseNormalization(Node *input, size_t halfWindowSize,
-                                        float alpha, float beta, float k) {
+Graph::createLocalResponseNormalization(llvm::StringRef name, Node *input,
+                                        size_t halfWindowSize, float alpha,
+                                        float beta, float k) {
   auto Ty = input->getType();
   auto *scale =
       createVariable(Ty, "scale", WeightVar::InitKind::Broadcast, 0.0);
@@ -184,8 +191,8 @@ Graph::createLocalResponseNormalization(Node *input, size_t halfWindowSize,
       input, "LRN", scale, halfWindowSize, alpha, beta, k));
 }
 
-ArithmeticNode *Graph::createArithmetic(Node *LHS, Node *RHS,
-                                        ArithmeticInst::OpKind op) {
+ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, Node *LHS,
+                                        Node *RHS, ArithmeticInst::OpKind op) {
   assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
   return addNode(new ArithmeticNode("Arithmetic", LHS, RHS, op));

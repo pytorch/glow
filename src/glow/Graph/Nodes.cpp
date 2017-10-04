@@ -183,7 +183,7 @@ std::string ArithmeticNode::getDebugDesc() const {
 #define DEFINE_CLASS_REPR(CLASS_NAME)                                          \
   std::string CLASS_NAME::getDebugDesc() const {                               \
     DescriptionBuilder db(getKindName());                                      \
-    db.addParam("input", *in_->getType());                                     \
+    db.addParam("name", quote(getName())).addParam("input", *in_->getType());  \
     return db;                                                                 \
   }
 

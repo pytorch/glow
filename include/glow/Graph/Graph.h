@@ -64,41 +64,46 @@ public:
                  WeightVar::InitKind initKind = WeightVar::InitKind::Broadcast,
                  float val = 0.0);
 
-  ConvolutionNode *createConv(Node *input, size_t depth, size_t kernel,
-                              size_t stride, size_t pad);
+  ConvolutionNode *createConv(llvm::StringRef name, Node *input, size_t depth,
+                              size_t kernel, size_t stride, size_t pad);
 
-  PoolNode *createPool(Node *input, PoolInst::OpKind kind, size_t kernel,
-                       size_t stride, size_t pad);
+  PoolNode *createPool(llvm::StringRef name, Node *input, PoolInst::OpKind kind,
+                       size_t kernel, size_t stride, size_t pad);
 
-  FullyConnectedNode *createFullyConnected(Node *input, size_t outDepth);
+  FullyConnectedNode *createFullyConnected(llvm::StringRef name, Node *input,
+                                           size_t outDepth);
 
-  ReluNode *createRELU(Node *input);
+  ReluNode *createRELU(llvm::StringRef name, Node *input);
 
-  SigmoidNode *createSigmoid(Node *input);
+  SigmoidNode *createSigmoid(llvm::StringRef name, Node *input);
 
-  TanhNode *createTanh(Node *input);
+  TanhNode *createTanh(llvm::StringRef name, Node *input);
 
-  SoftMaxNode *createSoftMax(Node *input, Node *selected);
+  SoftMaxNode *createSoftMax(llvm::StringRef name, Node *input, Node *selected);
 
-  RegressionNode *createRegression(Node *input, Node *expected);
+  RegressionNode *createRegression(llvm::StringRef name, Node *input,
+                                   Node *expected);
 
-  ReshapeNode *createReshape(Node *input, llvm::ArrayRef<size_t> shape);
+  ReshapeNode *createReshape(llvm::StringRef name, Node *input,
+                             llvm::ArrayRef<size_t> shape);
 
-  TransposeNode *createTranspose(Node *input, llvm::ArrayRef<unsigned> shuffle);
+  TransposeNode *createTranspose(llvm::StringRef name, Node *input,
+                                 llvm::ArrayRef<unsigned> shuffle);
 
-  ConcatNode *createConcat(llvm::ArrayRef<Node *> inputs, unsigned dimension);
+  ConcatNode *createConcat(llvm::StringRef name, llvm::ArrayRef<Node *> inputs,
+                           unsigned dimension);
 
-  BatchNormalizationNode *createBatchNormalization(Node *input,
+  BatchNormalizationNode *createBatchNormalization(llvm::StringRef name,
+                                                   Node *input,
                                                    size_t channelIdx = 0,
                                                    float epsilon = 1e-5,
                                                    float momentum = 0.9);
 
-  LocalResponseNormalizationNode *
-  createLocalResponseNormalization(Node *input, size_t halfWindowSize = 2,
-                                   float alpha = 1e-4, float beta = 0.75,
-                                   float k = 2.0);
+  LocalResponseNormalizationNode *createLocalResponseNormalization(
+      llvm::StringRef name, Node *input, size_t halfWindowSize = 2,
+      float alpha = 1e-4, float beta = 0.75, float k = 2.0);
 
-  ArithmeticNode *createArithmetic(Node *LHS, Node *RHS,
+  ArithmeticNode *createArithmetic(llvm::StringRef name, Node *LHS, Node *RHS,
                                    ArithmeticInst::OpKind op);
   /// @}
 
