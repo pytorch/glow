@@ -21,9 +21,11 @@ TEST(Graph, simpleTest) {
     Module M;
     Graph G(M);
     Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+    Node *S = G.createVariable(ElemKind::IndexTy, {4, 1}, "select");
+
     K = G.createConv(K, 16, 3, 2, 3);
     K = G.createRELU(K);
-    K = G.createSoftMax(K, nullptr);
+    K = G.createSoftMax(K, S);
   }
 
   {

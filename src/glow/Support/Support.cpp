@@ -49,17 +49,6 @@ std::string glow::escapeDottyString(const std::string &str) {
   return out;
 }
 
-DescriptionBuilder &DescriptionBuilder::addDim(const std::string &name,
-                                               llvm::ArrayRef<size_t> dims) {
-  assert(!dims.empty() && "Invalid dimensions");
-  repr_ << name << " : (" << dims[0];
-  for (unsigned int i = 1; i < dims.size(); i++) {
-    repr_ << " x " << dims[i];
-  }
-  repr_ << ")\n";
-  return *this;
-}
-
 namespace std {
 std::string to_string(void *ptr) {
   std::ostringstream oss;

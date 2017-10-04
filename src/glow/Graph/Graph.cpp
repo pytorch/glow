@@ -4,6 +4,8 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
 
+#include <iostream>
+
 using namespace glow;
 
 Graph::~Graph() {
@@ -15,6 +17,10 @@ Graph::~Graph() {
     delete V;
   }
 }
+
+//===----------------------------------------------------------------------===//
+//                       Node builders
+//===----------------------------------------------------------------------===//
 
 Variable *Graph::createVariable(TypeRef T, llvm::StringRef name,
                                 WeightVar::InitKind initKind, float val) {
@@ -180,4 +186,19 @@ ArithmeticNode *Graph::createArithmetic(Node *LHS, Node *RHS,
   assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
   return addNode(new ArithmeticNode("Arithmetic", LHS, RHS, op));
+}
+
+//===----------------------------------------------------------------------===//
+//                       Graph Utilities
+//===----------------------------------------------------------------------===//
+
+void Graph::dump() {
+  std::cout << "Graph structure:\n";
+  for (auto v : vars_) {
+    std::cout << v->getDebugDesc() << "\n";
+  }
+
+  for (auto n : nodes_) {
+    std::cout << n->getDebugDesc() << "\n";
+  }
 }
