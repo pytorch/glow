@@ -66,5 +66,4 @@ std::string to_string(void *ptr) {
   oss << ptr;
   return oss.str();
 }
-}
-
+} // namespace std
