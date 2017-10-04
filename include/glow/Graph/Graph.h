@@ -107,6 +107,9 @@ public:
                                    ArithmeticInst::OpKind op);
   /// @}
 
+  /// Generate IR from the nodes in the graph into the module.
+  void generateIR();
+
   /// Dumps the textual representation of the network.
   void dump();
 
