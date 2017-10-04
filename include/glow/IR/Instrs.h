@@ -438,8 +438,6 @@ private:
   /// The initialization mode.
   InitKind initKind_;
 
-  const char *getInitKindStr() const;
-
 public:
   WeightVar(TypeRef Ty, InitKind initKind, float val)
       : Value(Ty, Kinded::Kind::WeightVarKind), val_(val), initKind_(initKind) {
@@ -448,6 +446,10 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::WeightVarKind;
   }
+
+  static const char *getInitKindStr(InitKind kind);
+
+  const char *getInitKindStr() const;
 
   InitKind getInitKind() const { return initKind_; }
   float getVal() const { return val_; }

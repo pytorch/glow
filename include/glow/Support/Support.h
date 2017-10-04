@@ -57,7 +57,7 @@ public:
   template <typename T_, typename = typename std::enable_if<
                              !std::is_scalar<T_>::value>::type>
   DescriptionBuilder &addParam(const std::string &name, const T_ &value) {
-    repr_ << name << " : " << value << '\n';
+    repr_ << name << " : " << std::to_string(value) << '\n';
     return *this;
   }
 

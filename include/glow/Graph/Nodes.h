@@ -7,7 +7,7 @@
 
 namespace glow {
 
-class Variable : public Node {
+class Variable final : public Node {
   /// The value to use during initialization. This can be the value to splat or
   /// a parameter to specify the range of the random values.
   float val_;
@@ -26,6 +26,9 @@ public:
 
   WeightVar::InitKind getInitKind() const { return initKind_; }
   float getVal() const { return val_; }
+
+  std::string getDebugDesc() const override;
+  void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
 class ConvolutionNode final : public Node {
@@ -60,6 +63,9 @@ public:
   size_t getStride() const { return stride_; }
   size_t getPad() const { return pad_; }
   size_t getDepth() const { return depth_; }
+
+  std::string getDebugDesc() const override;
+  void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
 class PoolNode final : public Node {
@@ -84,6 +90,9 @@ public:
   size_t getStride() const { return stride_; }
   size_t getPad() const { return pad_; }
   PoolInst::OpKind getKind() const { return kind_; }
+
+  std::string getDebugDesc() const override;
+  void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
 class FullyConnectedNode final : public Node {
@@ -108,6 +117,9 @@ public:
   Node *getFilter() const { return filter_; }
   Node *getBias() const { return bias_; }
   size_t getDepth() const { return depth_; }
+
+  std::string getDebugDesc() const override;
+  void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
 class ReluNode final : public Node {
@@ -117,6 +129,9 @@ public:
   ReluNode(Node *in, llvm::StringRef name)
       : Node(Kinded::Kind::ReluInstKind, in->getType(), name), in_(in) {}
   Node *getInput() { return in_; }
+
+  std::string getDebugDesc() const override;
+  void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
 class SigmoidNode final : public Node {
@@ -127,6 +142,9 @@ public:
       : Node(Kinded::Kind::SigmoidInstKind, in->getType(), name), in_(in) {}
 
   Node *getInput() { return in_; }
+
+  std::string getDebugDesc() const override;
+  void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
 class TanhNode final : public Node {
@@ -137,6 +155,9 @@ public:
       : Node(Kinded::Kind::TanhInstKind, in->getType(), name), in_(in) {}
 
   Node *getInput() { return in_; }
+
+  std::string getDebugDesc() const override;
+  void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
 class SoftMaxNode final : public Node {
@@ -153,6 +174,9 @@ public:
   }
   Node *getInput() const { return in_; }
   Node *getSelected() const { return selected_; }
+
+  std::string getDebugDesc() const override;
+  void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
 class RegressionNode final : public Node {
@@ -169,6 +193,9 @@ public:
   }
   Node *getInput() const { return in_; }
   Node *getExpected() const { return expected_; }
+
+  std::string getDebugDesc() const override;
+  void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
 class TransposeNode final : public Node {
@@ -187,6 +214,9 @@ public:
 
   Node *getInput() const { return in_; }
   llvm::ArrayRef<unsigned> getShuffle() const { return shuffle_; }
+
+  std::string getDebugDesc() const override;
+  void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
 class ReshapeNode final : public Node {
@@ -204,6 +234,9 @@ public:
 
   Node *getInput() const { return in_; }
   llvm::ArrayRef<size_t> getDims() { return dims_; }
+
+  std::string getDebugDesc() const override;
+  void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
 class ConcatNode final : public Node {
@@ -223,6 +256,9 @@ public:
   }
   llvm::ArrayRef<Node *> getInputs() const { return in_; }
   size_t getDim() const { return dim_; }
+
+  std::string getDebugDesc() const override;
+  void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
 class BatchNormalizationNode final : public Node {
@@ -256,6 +292,9 @@ public:
   size_t getChannelIdx() const { return channelIdx_; }
   float getEpsilon() const { return epsilon_; }
   float getMomentum() const { return momentum_; }
+
+  std::string getDebugDesc() const override;
+  void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
 class ArithmeticNode final : public Node {
@@ -275,6 +314,9 @@ public:
   Node *getLHS() const { return LHS_; }
   Node *getRHS() const { return RHS_; }
   ArithmeticInst::OpKind getKind() const { return kind_; }
+
+  std::string getDebugDesc() const override;
+  void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
 class LocalResponseNormalizationNode final : public Node {
@@ -308,6 +350,9 @@ public:
   float getAlpha() const { return alpha_; }
   float getBeta() const { return beta_; }
   float getK() const { return k_; }
+
+  std::string getDebugDesc() const override;
+  void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
 } // namespace glow
