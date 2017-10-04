@@ -37,9 +37,7 @@ class DescriptionBuilder {
   std::stringstream repr_;
 
 public:
-  DescriptionBuilder(const std::string &name) {
-    repr_ << name << '\n';
-  }
+  DescriptionBuilder(const std::string &name) { repr_ << name << '\n'; }
 
   DescriptionBuilder &addDim(const std::string &name,
                              llvm::ArrayRef<size_t> dims);
@@ -56,8 +54,8 @@ public:
     return *this;
   }
 
-  template <typename T_,
-            typename = typename std::enable_if<!std::is_scalar<T_>::value>::type>
+  template <typename T_, typename = typename std::enable_if<
+                             !std::is_scalar<T_>::value>::type>
   DescriptionBuilder &addParam(const std::string &name, const T_ &value) {
     repr_ << name << " : " << value << '\n';
     return *this;
@@ -71,6 +69,6 @@ public:
 namespace std {
 /// Convert the ptr \p ptr into an ascii representation in the format "0xFFF..."
 std::string to_string(void *ptr);
-}
+} // namespace std
 
 #endif // GLOW_SUPPORT_SUPPORT_H
