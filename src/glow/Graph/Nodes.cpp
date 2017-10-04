@@ -78,7 +78,7 @@ std::string Node::getDebugDesc() const { return "<node>"; }
 
 std::string Variable::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name ", quote(getName()))
+  db.addParam("name", quote(getName()))
       .addParam("output", *getType())
       .addParam("init", WeightVar::getInitKindStr(initKind_))
       .addParam("val", val_);
@@ -87,7 +87,7 @@ std::string Variable::getDebugDesc() const {
 
 std::string ConvolutionNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name ", quote(getName()))
+  db.addParam("name", quote(getName()))
       .addParam("input", *in_->getType())
       .addParam("output", *getType())
       .addParam("filter", *filter_->getType())
@@ -100,7 +100,7 @@ std::string ConvolutionNode::getDebugDesc() const {
 }
 std::string PoolNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name ", quote(getName()))
+  db.addParam("name", quote(getName()))
 
       .addParam("input", *in_->getType())
       .addParam("output", *getType())
@@ -113,7 +113,7 @@ std::string PoolNode::getDebugDesc() const {
 
 std::string FullyConnectedNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name ", quote(getName()))
+  db.addParam("name", quote(getName()))
       .addParam("input", *in_->getType())
       .addParam("output", *getType())
       .addParam("filter", *filter_->getType())
@@ -124,7 +124,7 @@ std::string FullyConnectedNode::getDebugDesc() const {
 
 std::string LocalResponseNormalizationNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name ", quote(getName()))
+  db.addParam("name", quote(getName()))
       .addParam("input", *in_->getType())
       .addParam("alpha", alpha_)
       .addParam("beta", beta_)
@@ -135,7 +135,7 @@ std::string LocalResponseNormalizationNode::getDebugDesc() const {
 
 std::string ConcatNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name ", quote(getName()));
+  db.addParam("name", quote(getName()));
 
   for (auto input : in_) {
     db.addParam("input", *input->getType());
@@ -146,7 +146,7 @@ std::string ConcatNode::getDebugDesc() const {
 
 std::string SoftMaxNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name ", quote(getName()))
+  db.addParam("name", quote(getName()))
       .addParam("input", *in_->getType())
       .addParam("selected", *selected_->getType());
   return db;
@@ -154,7 +154,7 @@ std::string SoftMaxNode::getDebugDesc() const {
 
 std::string RegressionNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name ", quote(getName()))
+  db.addParam("name", quote(getName()))
       .addParam("input", *in_->getType())
       .addParam("expected", *expected_->getType());
   return db;
@@ -162,7 +162,7 @@ std::string RegressionNode::getDebugDesc() const {
 
 std::string BatchNormalizationNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name ", quote(getName()))
+  db.addParam("name", quote(getName()))
       .addParam("input", *in_->getType())
       .addParam("beta", *bias_->getType())
       .addParam("gamma", *scale_->getType())
@@ -174,7 +174,7 @@ std::string BatchNormalizationNode::getDebugDesc() const {
 
 std::string ArithmeticNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name ", quote(getName()))
+  db.addParam("name", quote(getName()))
       .addParam("output", *getType())
       .addParam("op", kind_ == ArithmeticInst::OpKind::Add ? "add" : "mul");
   return db;

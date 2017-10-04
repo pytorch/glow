@@ -104,6 +104,9 @@ public:
 
   /// Dumps the textual representation of the network.
   void dump();
+
+  /// Dump a dotty graph that depicts the module.
+  void dumpDAG();
 };
 
 } // namespace glow
