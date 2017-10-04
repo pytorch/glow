@@ -1,13 +1,13 @@
 #ifndef GLOW_GRAPH_NODES_H
 #define GLOW_GRAPH_NODES_H
 
-#include "glow/IR/IR.h"
-
 #include "glow/Graph/Node.h"
+#include "glow/IR/IR.h"
+#include "glow/IR/Instrs.h"
 
 namespace glow {
 
-class ConvolutionNode : public Node {
+class ConvolutionNode final : public Node {
   Node *in_;
   Node *filter_;
   Node *bias_;
@@ -17,17 +17,9 @@ class ConvolutionNode : public Node {
   size_t pad_;
   size_t depth_;
 
+  /// \returns the calculated size of the output tensor.
   static TypeRef getOutputType(Module &M, TypeRef Ty, size_t pad, size_t kernel,
-                               size_t stride, size_t depth) {
-    ShapeNHWC idim = ShapeNHWC(Ty->dims());
-
-    // Calculate the size and allocate the output buffer.
-    auto outSz = ConvolutionInst::calculateOutputDims(idim.h, idim.w, pad,
-                                                      kernel, stride);
-
-    return M.uniqueType(ElemKind::FloatTy,
-                        {idim.n, outSz.first, outSz.second, depth});
-  }
+                               size_t stride, size_t depth);
 
 public:
   ConvolutionNode(Module &M, Node *in, llvm::StringRef name, Node *filter,
@@ -54,24 +46,16 @@ public:
   size_t getDepth() const { return depth_; }
 };
 
-class PoolNode : public Node {
+class PoolNode final : public Node {
   Node *in_;
   size_t kernel_;
   size_t stride_;
   size_t pad_;
   PoolInst::OpKind kind_;
 
+  /// \returns the calculated size of the output tensor.
   static TypeRef getOutputType(Module &M, TypeRef Ty, size_t pad, size_t kernel,
-                               size_t stride) {
-    ShapeNHWC idim = ShapeNHWC(Ty->dims());
-
-    // Calculate the size and allocate the output buffer.
-    auto outSz = ConvolutionInst::calculateOutputDims(idim.h, idim.w, pad,
-                                                      kernel, stride);
-
-    return M.uniqueType(ElemKind::FloatTy,
-                        {idim.n, outSz.first, outSz.second, idim.c});
-  }
+                               size_t stride);
 
 public:
   PoolNode(Module &M, Node *in, llvm::StringRef name, PoolInst::OpKind kind,
@@ -91,16 +75,14 @@ public:
   PoolInst::OpKind getKind() const { return kind_; }
 };
 
-class FullyConnectedNode : public Node {
+class FullyConnectedNode final : public Node {
   Node *in_;
   Node *filter_;
   Node *bias_;
   size_t depth_;
 
-  static TypeRef getOutputType(Module &M, TypeRef Ty, size_t depth) {
-    auto idim = flattenCdr(Ty->dims());
-    return M.uniqueType(Ty->getElementType(), {idim.first, depth});
-  }
+  /// \returns the calculated size of the output tensor.
+  static TypeRef getOutputType(Module &M, TypeRef Ty, size_t depth);
 
 public:
   FullyConnectedNode(Module &M, Node *in, llvm::StringRef name, Node *filter,
@@ -121,7 +103,7 @@ public:
   size_t getDepth() const { return depth_; }
 };
 
-class ReluNode : public Node {
+class ReluNode final : public Node {
   Node *in_;
 
 public:
@@ -130,7 +112,7 @@ public:
   Node *getInput() { return in_; }
 };
 
-class SigmoidNode : public Node {
+class SigmoidNode final : public Node {
   Node *in_;
 
 public:
@@ -140,7 +122,7 @@ public:
   Node *getInput() { return in_; }
 };
 
-class TanhNode : public Node {
+class TanhNode final : public Node {
   Node *in_;
 
 public:
@@ -150,7 +132,7 @@ public:
   Node *getInput() { return in_; }
 };
 
-class SoftMaxNode : public Node {
+class SoftMaxNode final : public Node {
   Node *in_;
   Node *selected_;
 
@@ -166,7 +148,7 @@ public:
   Node *getSelected() const { return selected_; }
 };
 
-class RegressionNode : public Node {
+class RegressionNode final : public Node {
   Node *in_;
   Node *expected_;
 
@@ -182,7 +164,7 @@ public:
   Node *getExpected() const { return expected_; }
 };
 
-class TransposeNode : public Node {
+class TransposeNode final : public Node {
   Node *in_;
   std::vector<unsigned> shuffle_;
 
@@ -200,7 +182,7 @@ public:
   llvm::ArrayRef<unsigned> getShuffle() const { return shuffle_; }
 };
 
-class ReshapeNode : public Node {
+class ReshapeNode final : public Node {
   Node *in_;
   std::vector<size_t> dims_;
 
@@ -218,26 +200,15 @@ public:
   llvm::ArrayRef<size_t> getDims() { return dims_; }
 };
 
-class ConcatNode : public Node {
+class ConcatNode final : public Node {
   /// The input nodes to concat.
   std::vector<Node *> in_;
   /// We concat the tensors along this dimension.
   size_t dim_;
 
+  /// \returns the calculated size of the output tensor.
   static TypeRef getOutputType(Module &M, llvm::ArrayRef<Node *> inputs,
-                               unsigned dimension) {
-    auto inDim = inputs[0]->dims();
-    for (auto in : inputs) {
-      (void)in;
-      assert(in->dims() == inDim && "Invalid input shape");
-    }
-
-    std::vector<size_t> shape(inDim.begin(), inDim.end());
-    // We are stacking the tensors along a specific dimension. This means that
-    // we increase the size of the tensor along this dimension.
-    shape[dimension] *= inputs.size();
-    return M.uniqueType(inputs[0]->getElementType(), shape);
-  }
+                               unsigned dimension);
 
 public:
   ConcatNode(Module &M, llvm::StringRef name, llvm::ArrayRef<Node *> src,
@@ -252,7 +223,7 @@ public:
   size_t getDim() const { return dim_; }
 };
 
-class BatchNormalizationNode : public Node {
+class BatchNormalizationNode final : public Node {
   Node *in_;
   Node *scale_;
   Node *bias_;
@@ -285,7 +256,7 @@ public:
   float getMomentum() const { return momentum_; }
 };
 
-class ArithmeticNode : public Node {
+class ArithmeticNode final : public Node {
   Node *LHS_;
   Node *RHS_;
   ArithmeticInst::OpKind kind_;
@@ -304,7 +275,7 @@ public:
   ArithmeticInst::OpKind getKind() const { return kind_; }
 };
 
-class LocalResponseNormalizationNode : public Node {
+class LocalResponseNormalizationNode final : public Node {
   Node *in_;
   Node *scale_;
   /// The number of neighbouring channels on each side to sum over
