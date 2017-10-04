@@ -202,8 +202,6 @@ void Module::dump() {
   std::cout << sb.str();
 }
 
-static std::string quote(const std::string &in) { return '"' + in + '"'; }
-
 static std::string getDottyDesc(const Value *v) {
   std::string sb;
   std::string name = v->getName();
