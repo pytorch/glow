@@ -41,3 +41,15 @@ target_link_libraries(InterpreterTest
                         gtest
                         gtest_main)
 add_test(InterpreterTest ${GLOW_BINARY_DIR}/tests/InterpreterTest)
+
+add_executable(GraphTest
+                 GraphTest.cpp)
+target_link_libraries(GraphTest
+                      PRIVATE
+                        Graph
+                        IR
+                        Interpreter
+                        Network
+                        gtest
+                        gtest_main)
+add_test(GraphTest ${GLOW_BINARY_DIR}/tests/GraphTest)
