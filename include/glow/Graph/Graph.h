@@ -30,7 +30,7 @@ class ArithmeticNode;
 class Graph final {
   /// A list of nodes that the graph owns.
   std::vector<Node *> nodes_;
-  /// A list of variables.
+  /// A list of variables that the graph owns.
   std::vector<Variable *> vars_;
   /// A reference to the low-level IR module.
   Module &M_;

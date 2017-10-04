@@ -98,32 +98,32 @@ std::string ConvolutionNode::getDebugDesc() const {
 }
 std::string PoolNode::getDebugDesc() const {
   DescriptionBuilder db(getName());
-  db.addParam("input", *in_->getType());
-  db.addParam("output", *getType());
-  db.addParam("kernel", kernel_);
-  db.addParam("stride", stride_);
-  db.addParam("pad", pad_);
-  db.addParam("kind", kind_ == PoolInst::OpKind::Max ? "max" : "avg");
+  db.addParam("input", *in_->getType())
+      .addParam("output", *getType())
+      .addParam("kernel", kernel_)
+      .addParam("stride", stride_)
+      .addParam("pad", pad_)
+      .addParam("kind", kind_ == PoolInst::OpKind::Max ? "max" : "avg");
   return db;
 }
 
 std::string FullyConnectedNode::getDebugDesc() const {
   DescriptionBuilder db(getName());
-  db.addParam("input", *in_->getType());
-  db.addParam("output", *getType());
-  db.addParam("filter", *filter_->getType());
-  db.addParam("bias", *bias_->getType());
-  db.addParam("depth", depth_);
+  db.addParam("input", *in_->getType())
+      .addParam("output", *getType())
+      .addParam("filter", *filter_->getType())
+      .addParam("bias", *bias_->getType())
+      .addParam("depth", depth_);
   return db;
 }
 
 std::string LocalResponseNormalizationNode::getDebugDesc() const {
   DescriptionBuilder db(getName());
-  db.addParam("input", *in_->getType());
-  db.addParam("alpha", alpha_);
-  db.addParam("beta", beta_);
-  db.addParam("half window size", this->halfWindowSize_);
-  db.addParam("scale", *scale_->getType());
+  db.addParam("input", *in_->getType())
+      .addParam("alpha", alpha_)
+      .addParam("beta", beta_)
+      .addParam("half window size", this->halfWindowSize_)
+      .addParam("scale", *scale_->getType());
   return db;
 }
 
@@ -132,42 +132,39 @@ std::string ConcatNode::getDebugDesc() const {
   for (auto input : in_) {
     db.addParam("input", *input->getType());
   }
-  db.addParam("output", *getType());
-  db.addParam("dimension", dim_);
+  db.addParam("output", *getType()).addParam("dimension", dim_);
   return db;
 }
 
 std::string SoftMaxNode::getDebugDesc() const {
   DescriptionBuilder db(getName());
-  db.addParam("input", *in_->getType());
-  db.addParam("selected", *selected_->getType());
+  db.addParam("input", *in_->getType())
+      .addParam("selected", *selected_->getType());
   return db;
 }
 
 std::string RegressionNode::getDebugDesc() const {
   DescriptionBuilder db(getName());
-  db.addParam("input", *in_->getType());
-  db.addParam("expected", *expected_->getType());
+  db.addParam("input", *in_->getType())
+      .addParam("expected", *expected_->getType());
   return db;
 }
 
 std::string BatchNormalizationNode::getDebugDesc() const {
   DescriptionBuilder db(getName());
-  db.addParam("input", *in_->getType());
-
-  db.addParam("beta", *bias_->getType());
-  db.addParam("gamma", *scale_->getType());
-
-  db.addParam("channelIdx", channelIdx_);
-  db.addParam("epsilon", epsilon_);
-  db.addParam("momentum", momentum_);
+  db.addParam("input", *in_->getType())
+      .addParam("beta", *bias_->getType())
+      .addParam("gamma", *scale_->getType())
+      .addParam("channelIdx", channelIdx_)
+      .addParam("epsilon", epsilon_)
+      .addParam("momentum", momentum_);
   return db;
 }
 
 std::string ArithmeticNode::getDebugDesc() const {
   DescriptionBuilder db(getName());
-  db.addParam("output", *getType());
-  db.addParam("op", kind_ == ArithmeticInst::OpKind::Add ? "add" : "mul");
+  db.addParam("output", *getType())
+      .addParam("op", kind_ == ArithmeticInst::OpKind::Add ? "add" : "mul");
   return db;
 }
 
