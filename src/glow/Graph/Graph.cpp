@@ -3,7 +3,9 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
+#include "glow/Support/Support.h"
 
+#include <fstream>
 #include <iostream>
 
 using namespace glow;
@@ -202,4 +204,78 @@ void Graph::dump() {
   for (auto n : nodes_) {
     std::cout << n->getDebugDesc() << "\n";
   }
+}
+
+/// A helper class for visiting and generating the dotty file from the graph.
+struct DottyPrinterPass : NodeVisitor {
+  using edgeTy = std::pair<Node *, Node *>;
+  std::vector<edgeTy> nodeEdges{};
+
+public:
+  // Don't revisit visited nodes.
+  bool shouldVisit(Node *parent, Node *N) override {
+    edgeTy e = {parent, N};
+    return std::find(nodeEdges.begin(), nodeEdges.end(), e) == nodeEdges.end();
+  }
+
+  DottyPrinterPass() = default;
+
+  void pre(Node *parent, Node *N) override { nodeEdges.push_back({parent, N}); }
+
+  std::string nodeDescr(Node *N) {
+    if (!N) {
+      return "";
+    }
+    // Print a node descriptor that looks like this:
+    // Format: "node12" [ label = "0xf7fc43e01" shape = "record" ];
+    std::string sb;
+    sb += quote(std::to_string((void *)N)) + "[\n";
+    std::string repr = escapeDottyString(N->getDebugDesc());
+    sb += "\tlabel = " + repr + "\n";
+    sb += "\tshape = \"record\"\n";
+    sb += "];\n\n";
+    return sb;
+  }
+
+  std::string quote(std::string in) { return '"' + in + '"'; }
+  std::string getDottyString() {
+    std::string sb;
+
+    sb += "digraph finite_state_machine {\n\trankdir=TD;\n";
+
+    // Assign a unique name to each one of the nodes:
+    for (auto &e : nodeEdges) {
+      if (e.first) {
+        sb += quote(std::to_string(e.second)) + " -> " +
+              quote(std::to_string(e.first)) + ";\n";
+      }
+    }
+
+    // Assign a unique name to each one of the nodes:
+    for (auto &e : nodeEdges) {
+      sb += nodeDescr(e.first);
+      sb += nodeDescr(e.second);
+    }
+
+    sb += "}";
+    return sb;
+  }
+};
+
+void Graph::dumpDAG() {
+  DottyPrinterPass DP;
+
+  for (auto &N : nodes_) {
+    N->visit(nullptr, &DP);
+  }
+
+  std::string filename = "dotty_graph_dump_" + std::to_string(this) + ".dot";
+  std::cout << "Writing dotty graph to: " << filename << '\n';
+
+  std::string rep = DP.getDottyString();
+
+  std::ofstream myfile;
+  myfile.open(filename);
+  myfile << rep;
+  myfile.close();
 }

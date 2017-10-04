@@ -256,7 +256,7 @@ static const char *getDottyArrowForCC(OperandKind k) {
 
 /// Dump a dotty graph that depicts the module.
 void Module::dumpDAG() {
-  std::string filename = "dotty_network_dump_" + std::to_string(this) + ".dot";
+  std::string filename = "dotty_ir_dump_" + std::to_string(this) + ".dot";
   std::cout << "Writing dotty graph to: " << filename << '\n';
 
   std::string sb;
