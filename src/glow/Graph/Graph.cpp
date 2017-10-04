@@ -132,6 +132,7 @@ TransposeNode *Graph::createTranspose(Node *input,
 ConcatNode *Graph::createConcat(llvm::ArrayRef<Node *> inputs,
                                 unsigned dimension) {
   auto inDim = inputs[0]->dims();
+
   for (auto in : inputs) {
     (void)in;
     assert(in->dims() == inDim && "Invalid input shape");
