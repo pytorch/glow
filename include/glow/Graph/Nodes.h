@@ -15,8 +15,8 @@ class Variable : public Node {
   WeightVar::InitKind initKind_;
 
 public:
-  Variable(Module &M, llvm::StringRef name, TypeRef Ty,
-           WeightVar::InitKind initKind, float val)
+  Variable(llvm::StringRef name, TypeRef Ty, WeightVar::InitKind initKind,
+           float val)
       : Node(Kinded::Kind::WeightVarKind, Ty, name), val_(val),
         initKind_(initKind) {}
 
@@ -38,17 +38,12 @@ class ConvolutionNode final : public Node {
   size_t pad_;
   size_t depth_;
 
-  /// \returns the calculated size of the output tensor.
-  static TypeRef getOutputType(Module &M, TypeRef Ty, size_t pad, size_t kernel,
-                               size_t stride, size_t depth);
-
 public:
-  ConvolutionNode(Module &M, Node *in, llvm::StringRef name, Node *filter,
+  ConvolutionNode(Node *in, TypeRef outTy, llvm::StringRef name, Node *filter,
                   Node *bias, size_t kernel, size_t stride, size_t pad,
                   size_t depth)
-      : Node(Kinded::Kind::ConvolutionInstKind,
-             getOutputType(M, in->getType(), pad, kernel, stride, depth), name),
-        in_(in), filter_(filter), bias_(bias), kernel_(kernel), stride_(stride),
+      : Node(Kinded::Kind::ConvolutionInstKind, outTy, name), in_(in),
+        filter_(filter), bias_(bias), kernel_(kernel), stride_(stride),
         pad_(pad), depth_(depth) {}
 
   static bool classof(const Kinded *k) {
@@ -74,16 +69,11 @@ class PoolNode final : public Node {
   size_t pad_;
   PoolInst::OpKind kind_;
 
-  /// \returns the calculated size of the output tensor.
-  static TypeRef getOutputType(Module &M, TypeRef Ty, size_t pad, size_t kernel,
-                               size_t stride);
-
 public:
-  PoolNode(Module &M, Node *in, llvm::StringRef name, PoolInst::OpKind kind,
+  PoolNode(Node *in, TypeRef outTy, llvm::StringRef name, PoolInst::OpKind kind,
            size_t kernel, size_t stride, size_t pad)
-      : Node(Kinded::Kind::PoolInstKind,
-             getOutputType(M, in->getType(), pad, kernel, stride), name),
-        in_(in), kernel_(kernel), stride_(stride), pad_(pad), kind_(kind) {}
+      : Node(Kinded::Kind::PoolInstKind, outTy, name), in_(in), kernel_(kernel),
+        stride_(stride), pad_(pad), kind_(kind) {}
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::PoolInstKind;
   }
@@ -102,15 +92,11 @@ class FullyConnectedNode final : public Node {
   Node *bias_;
   size_t depth_;
 
-  /// \returns the calculated size of the output tensor.
-  static TypeRef getOutputType(Module &M, TypeRef Ty, size_t depth);
-
 public:
-  FullyConnectedNode(Module &M, Node *in, llvm::StringRef name, Node *filter,
-                     Node *bias, size_t depth)
-      : Node(Kinded::Kind::FullyConnectedInstKind,
-             getOutputType(M, in->getType(), depth), name),
-        in_(in), filter_(filter), bias_(bias), depth_(depth) {}
+  FullyConnectedNode(Node *in, TypeRef outTy, llvm::StringRef name,
+                     Node *filter, Node *bias, size_t depth)
+      : Node(Kinded::Kind::FullyConnectedInstKind, outTy, name), in_(in),
+        filter_(filter), bias_(bias), depth_(depth) {}
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::FullyConnectedInstKind;
@@ -128,7 +114,7 @@ class ReluNode final : public Node {
   Node *in_;
 
 public:
-  ReluNode(Module &M, Node *in, llvm::StringRef name)
+  ReluNode(Node *in, llvm::StringRef name)
       : Node(Kinded::Kind::ReluInstKind, in->getType(), name), in_(in) {}
   Node *getInput() { return in_; }
 };
@@ -137,7 +123,7 @@ class SigmoidNode final : public Node {
   Node *in_;
 
 public:
-  SigmoidNode(Module &M, Node *in, llvm::StringRef name)
+  SigmoidNode(Node *in, llvm::StringRef name)
       : Node(Kinded::Kind::SigmoidInstKind, in->getType(), name), in_(in) {}
 
   Node *getInput() { return in_; }
@@ -147,7 +133,7 @@ class TanhNode final : public Node {
   Node *in_;
 
 public:
-  TanhNode(Module &M, Node *in, llvm::StringRef name)
+  TanhNode(Node *in, llvm::StringRef name)
       : Node(Kinded::Kind::TanhInstKind, in->getType(), name), in_(in) {}
 
   Node *getInput() { return in_; }
@@ -158,7 +144,7 @@ class SoftMaxNode final : public Node {
   Node *selected_;
 
 public:
-  SoftMaxNode(Module &M, Node *in, llvm::StringRef name, Node *selected)
+  SoftMaxNode(Node *in, llvm::StringRef name, Node *selected)
       : Node(Kinded::Kind::SoftMaxInstKind, in->getType(), name), in_(in),
         selected_(selected) {}
 
@@ -174,7 +160,7 @@ class RegressionNode final : public Node {
   Node *expected_;
 
 public:
-  RegressionNode(Module &M, Node *in, llvm::StringRef name, Node *expected)
+  RegressionNode(Node *in, llvm::StringRef name, Node *expected)
       : Node(Kinded::Kind::RegressionInstKind, in->getType(), name), in_(in),
         expected_(expected) {}
 
@@ -190,9 +176,9 @@ class TransposeNode final : public Node {
   std::vector<unsigned> shuffle_;
 
 public:
-  TransposeNode(Module &M, Node *in, llvm::StringRef name,
+  TransposeNode(Node *in, TypeRef outTy, llvm::StringRef name,
                 llvm::ArrayRef<unsigned> shuffle)
-      : Node(Kinded::Kind::TransposeInstKind, in->getType(), name), in_(in),
+      : Node(Kinded::Kind::TransposeInstKind, outTy, name), in_(in),
         shuffle_(shuffle.begin(), shuffle.end()) {}
 
   static bool classof(const Kinded *k) {
@@ -208,8 +194,7 @@ class ReshapeNode final : public Node {
   std::vector<size_t> dims_;
 
 public:
-  ReshapeNode(Module &M, Node *in, llvm::StringRef name,
-              llvm::ArrayRef<size_t> dims)
+  ReshapeNode(Node *in, llvm::StringRef name, llvm::ArrayRef<size_t> dims)
       : Node(Kinded::Kind::ReshapeInstKind, in->getType(), name), in_(in),
         dims_(dims.begin(), dims.end()) {}
 
@@ -227,14 +212,10 @@ class ConcatNode final : public Node {
   /// We concat the tensors along this dimension.
   size_t dim_;
 
-  /// \returns the calculated size of the output tensor.
-  static TypeRef getOutputType(Module &M, llvm::ArrayRef<Node *> inputs,
-                               unsigned dimension);
-
 public:
-  ConcatNode(Module &M, llvm::StringRef name, llvm::ArrayRef<Node *> src,
+  ConcatNode(llvm::ArrayRef<Node *> src, TypeRef outTy, llvm::StringRef name,
              size_t dim)
-      : Node(Kinded::Kind::ConcatInstKind, getOutputType(M, src, dim), name),
+      : Node(Kinded::Kind::ConcatInstKind, outTy, name),
         in_(src.begin(), src.end()), dim_(dim) {}
 
   static bool classof(const Kinded *k) {
@@ -255,7 +236,7 @@ class BatchNormalizationNode final : public Node {
   const float momentum_;
 
 public:
-  BatchNormalizationNode(Module &M, Node *in, llvm::StringRef name, Node *scale,
+  BatchNormalizationNode(Node *in, llvm::StringRef name, Node *scale,
                          Node *bias, Node *mean, Node *var, size_t channelIdx,
                          float epsilon, float momentum)
       : Node(Kinded::Kind::BatchNormalizationInstKind, in->getType(), name),
@@ -284,7 +265,7 @@ class ArithmeticNode final : public Node {
   const char *getKindStr() const;
 
 public:
-  ArithmeticNode(Module &M, llvm::StringRef name, Node *LHS, Node *RHS,
+  ArithmeticNode(llvm::StringRef name, Node *LHS, Node *RHS,
                  ArithmeticInst::OpKind kind)
       : Node(Kinded::Kind::ArithmeticInstKind, LHS->getType(), name), LHS_(LHS),
         RHS_(RHS), kind_(kind) {}
@@ -309,9 +290,9 @@ class LocalResponseNormalizationNode final : public Node {
   float k_;
 
 public:
-  LocalResponseNormalizationNode(Module &M, Node *in, llvm::StringRef name,
-                                 Node *scale, size_t halfWindowSize,
-                                 float alpha, float beta, float k)
+  LocalResponseNormalizationNode(Node *in, llvm::StringRef name, Node *scale,
+                                 size_t halfWindowSize, float alpha, float beta,
+                                 float k)
       : Node(Kinded::Kind::LocalResponseNormalizationInstKind, in->getType(),
              name),
         in_(in), halfWindowSize_(halfWindowSize), alpha_(alpha), beta_(beta),

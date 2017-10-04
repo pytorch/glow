@@ -33,18 +33,36 @@ class Graph final {
   /// A list of variables.
   std::vector<Variable *> vars_;
 
+  Module &M_;
+
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
-  Node *addNode(Node *N) {
+  template <class NodeTy> NodeTy *addNode(NodeTy *N) {
     nodes_.push_back(N);
     return N;
   }
 
+  /// Inserts the variable \p V to the list of variables.
+  Variable *addVar(Variable *V) {
+    vars_.push_back(V);
+    return V;
+  }
+
 public:
-  Graph() = default;
+  Graph(Module &M) : M_(M) {}
   ~Graph();
 
   /// @name High-level, operation-level IRBuilder.
   ///@{
+
+  Variable *
+  createVariable(TypeRef T, llvm::StringRef name,
+                 WeightVar::InitKind initKind = WeightVar::InitKind::Broadcast,
+                 float val = 0.0);
+
+  Variable *
+  createVariable(ElemKind T, llvm::ArrayRef<size_t> dims, llvm::StringRef name,
+                 WeightVar::InitKind initKind = WeightVar::InitKind::Broadcast,
+                 float val = 0.0);
 
   ConvolutionNode *createConv(Node *input, size_t depth, size_t kernel,
                               size_t stride, size_t pad);
