@@ -80,12 +80,16 @@ const char *ArithmeticInst::getKindStr() const {
 
 std::string ArithmeticInst::getExtraDesc() const { return getKindStr(); }
 
-const char *WeightVar::getInitKindStr() const {
+const char *WeightVar::getInitKindStr(InitKind kind) {
   // extern: No initialization.
   // broadcast: Broadcast a single value to all elements.
   // xavier: Init the tensor with random values using the Xavier method.
   const char *names[] = {"extern", "broadcast", "xavier", nullptr};
-  return names[static_cast<int>(initKind_)];
+  return names[static_cast<int>(kind)];
+}
+
+const char *WeightVar::getInitKindStr() const {
+  return getInitKindStr(initKind_);
 }
 
 std::string WeightVar::getExtraDesc() const {
