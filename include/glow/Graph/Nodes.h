@@ -128,6 +128,9 @@ class ReluNode final : public Node {
 public:
   ReluNode(Node *in, llvm::StringRef name)
       : Node(Kinded::Kind::ReluInstKind, in->getType(), name), in_(in) {}
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::ReluInstKind;
+  }
   Node *getInput() { return in_; }
 
   std::string getDebugDesc() const override;
@@ -140,7 +143,9 @@ class SigmoidNode final : public Node {
 public:
   SigmoidNode(Node *in, llvm::StringRef name)
       : Node(Kinded::Kind::SigmoidInstKind, in->getType(), name), in_(in) {}
-
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::SigmoidInstKind;
+  }
   Node *getInput() { return in_; }
 
   std::string getDebugDesc() const override;
@@ -153,7 +158,9 @@ class TanhNode final : public Node {
 public:
   TanhNode(Node *in, llvm::StringRef name)
       : Node(Kinded::Kind::TanhInstKind, in->getType(), name), in_(in) {}
-
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::TanhInstKind;
+  }
   Node *getInput() { return in_; }
 
   std::string getDebugDesc() const override;
