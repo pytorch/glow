@@ -7,6 +7,13 @@
 #include <iostream>
 #include <sstream>
 
+namespace std {
+/// Convert the ptr \p ptr into an ascii representation in the format "0xFFF..."
+std::string to_string(void *ptr);
+/// Converts LLVM's StringRef to std::string.
+std::string to_string(const llvm::StringRef sr);
+} // namespace std
+
 namespace glow {
 
 /// A class for measuring the lifetime of some event
@@ -31,6 +38,9 @@ public:
 /// \returns the escaped content of string \p str.
 /// The char '\n' becomes '\'+'n' and quotes are handled correctly.
 std::string escapeDottyString(const std::string &str);
+
+/// Add quotes to the string \p in.
+inline std::string quote(const std::string &in) { return '"' + in + '"'; }
 
 /// A helper class that builds a textual descriptor of a group of parameters.
 class DescriptionBuilder {
@@ -62,10 +72,5 @@ public:
 };
 
 } // namespace glow
-
-namespace std {
-/// Convert the ptr \p ptr into an ascii representation in the format "0xFFF..."
-std::string to_string(void *ptr);
-} // namespace std
 
 #endif // GLOW_SUPPORT_SUPPORT_H
