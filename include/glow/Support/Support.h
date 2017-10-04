@@ -39,9 +39,6 @@ class DescriptionBuilder {
 public:
   DescriptionBuilder(const std::string &name) { repr_ << name << '\n'; }
 
-  DescriptionBuilder &addDim(const std::string &name,
-                             llvm::ArrayRef<size_t> dims);
-
   DescriptionBuilder &addParam(const std::string &name, const char *value) {
     repr_ << name << " : " << value << '\n';
     return *this;

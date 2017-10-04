@@ -32,7 +32,7 @@ class Graph final {
   std::vector<Node *> nodes_;
   /// A list of variables.
   std::vector<Variable *> vars_;
-
+  /// A reference to the low-level IR module.
   Module &M_;
 
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
@@ -100,6 +100,10 @@ public:
 
   ArithmeticNode *createArithmetic(Node *LHS, Node *RHS,
                                    ArithmeticInst::OpKind op);
+  /// @}
+
+  /// Dumps the textual representation of the network.
+  void dump();
 };
 
 } // namespace glow
