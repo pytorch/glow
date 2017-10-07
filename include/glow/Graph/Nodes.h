@@ -362,6 +362,22 @@ public:
   void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
+class ReturnNode final : public Node {
+  Node *in_;
+
+public:
+  ReturnNode(llvm::StringRef name, Node *input)
+      : Node(Kinded::Kind::ReturnInstKind, input->getType(), name), in_(input) {
+  }
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::ReturnInstKind;
+  }
+  Node *getInput() const { return in_; }
+
+  std::string getDebugDesc() const override;
+  void visit(Node *parent, NodeVisitor *visitor) override;
+};
+
 } // namespace glow
 
 #endif // GLOW_GRAPH_NODES_H

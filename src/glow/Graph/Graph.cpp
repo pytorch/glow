@@ -91,7 +91,7 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
                            "weights", WeightVar::InitKind::Xavier, fanIn);
 
   auto *B = createVariable(T->getElementType(), {outDepth}, "bias",
-                           WeightVar::InitKind::Xavier, 0.1);
+                           WeightVar::InitKind::Broadcast, 0.1);
 
   auto OT = M_.uniqueType(T->getElementType(), {idim.first, outDepth});
   return addNode(new FullyConnectedNode(input, OT, name, W, B, outDepth));
@@ -188,14 +188,18 @@ Graph::createLocalResponseNormalization(llvm::StringRef name, Node *input,
 
   // The output tensor is of the same shape as the input tensor.
   return addNode(new LocalResponseNormalizationNode(
-      input, "LRN", scale, halfWindowSize, alpha, beta, k));
+      input, name, scale, halfWindowSize, alpha, beta, k));
 }
 
 ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, Node *LHS,
                                         Node *RHS, ArithmeticInst::OpKind op) {
   assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
-  return addNode(new ArithmeticNode("Arithmetic", LHS, RHS, op));
+  return addNode(new ArithmeticNode(name, LHS, RHS, op));
+}
+
+ReturnNode *Graph::createReturn(llvm::StringRef name, Node *input) {
+  return addNode(new ReturnNode(name, input));
 }
 
 //===----------------------------------------------------------------------===//

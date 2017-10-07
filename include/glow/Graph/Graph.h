@@ -5,6 +5,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 
+#include <unordered_map>
 #include <vector>
 
 namespace glow {
@@ -25,6 +26,7 @@ class ConcatNode;
 class BatchNormalizationNode;
 class LocalResponseNormalizationNode;
 class ArithmeticNode;
+class ReturnNode;
 
 /// Represents the compute graph.
 class Graph final {
@@ -48,6 +50,9 @@ class Graph final {
   }
 
 public:
+  /// Holds the mapping between graph nodes to IR variables.
+  using NodeToInstrTy = std::unordered_map<Node *, Value *>;
+
   Graph(Module &M) : M_(M) {}
   ~Graph();
 
@@ -105,10 +110,13 @@ public:
 
   ArithmeticNode *createArithmetic(llvm::StringRef name, Node *LHS, Node *RHS,
                                    ArithmeticInst::OpKind op);
+
+  ReturnNode *createReturn(llvm::StringRef name, Node *input);
+
   /// @}
 
   /// Generate IR from the nodes in the graph into the module.
-  void generateIR();
+  NodeToInstrTy generateIR();
 
   /// Dumps the textual representation of the network.
   void dump();

@@ -16,5 +16,10 @@ DEF_INSTR(ConcatInst, concat)
 DEF_INSTR(BatchNormalizationInst, batchnormalization)
 DEF_INSTR(LocalResponseNormalizationInst, localresponsenormalization)
 DEF_INSTR(ArithmeticInst, arithmetic)
+
+// Pseudo instructions (exist only in node form):
+DEF_NODE(ReturnInst, return)
+
+// Variables (exist as memory/variable declarations):
 DEF_VALUE(WeightVar, weight)
 
