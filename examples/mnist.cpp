@@ -4,6 +4,8 @@
 #include "glow/Interpreter/Interpreter.h"
 #include "glow/Support/Support.h"
 
+#include "llvm/Support/Timer.h"
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -102,11 +104,16 @@ void testMNIST() {
 
   for (int iter = 0; iter < 60; iter++) {
     std::cout << "Training - iteration #" << iter << " ";
-    TimerGuard reportTime(reportRate * minibatchSize);
+
+    llvm::Timer timer("Training", "Training");
+    timer.startTimer();
+
     // On each training iteration take an input from imageInputs and update
     // the input variable A, and add take a corresponding label and update the
     // softmax layer.
     IP.train(reportRate, {A, selected}, {&imageInputs, &labelInputs});
+
+    timer.stopTimer();
   }
   std::cout << "Validating.\n";
   IP.optimize(OptimizationMode::Infer);
