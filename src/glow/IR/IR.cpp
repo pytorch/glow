@@ -67,9 +67,11 @@ void Instruction::verify() const {
   if (auto *X = dyn_cast<const CLASS>(this))                                   \
     X->verify();
 #define DEF_VALUE(CLASS, NAME)
+#define DEF_NODE(CLASS, NAME)
 #include "glow/IR/Instrs.def"
 #undef DEF_INSTR
 #undef DEF_VALUE
+#undef DEF_NODE
 }
 
 Module::~Module() {
@@ -93,16 +95,18 @@ void Module::verify() const {
 }
 
 static std::string getExtraDesc(const Kinded *K) {
+#define DEF_NODE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   if (const auto *X = dyn_cast<const CLASS>(K))                                \
     return X->getExtraDesc();
 #define DEF_VALUE(CLASS, NAME)                                                 \
   if (const auto *X = dyn_cast<const CLASS>(K))                                \
     return X->getExtraDesc();
+
 #include "glow/IR/Instrs.def"
 #undef DEF_INSTR
 #undef DEF_VALUE
-
+#undef DEF_NODE
   glow_unreachable();
 }
 
@@ -111,9 +115,11 @@ bool Instruction::mayShareBuffers(const Instruction *I) {
   if (const auto *X = dyn_cast<const CLASS>(I))                                \
     return X->mayShareBuffers();
 #define DEF_VALUE(CLASS, NAME)
+#define DEF_NODE(CLASS, NAME)
 #include "glow/IR/Instrs.def"
 #undef DEF_INSTR
 #undef DEF_VALUE
+#undef DEF_NODE
   glow_unreachable();
 }
 

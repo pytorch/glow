@@ -114,6 +114,7 @@ private:
   /// used by the interpreter to dispatch different instructions.
   ///@{
 #define DEF_VALUE(CLASS, NAME)
+#define DEF_NODE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   void fwd##CLASS(Context *ctx, bool isTrain, const CLASS *I);                 \
   void bwd##CLASS(Context *ctx, const CLASS *I);

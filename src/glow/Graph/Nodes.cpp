@@ -39,6 +39,7 @@ DEFINE_CLASS_VISITOR(SigmoidNode)
 DEFINE_CLASS_VISITOR(TanhNode)
 DEFINE_CLASS_VISITOR(RegressionNode)
 DEFINE_CLASS_VISITOR(BatchNormalizationNode)
+DEFINE_CLASS_VISITOR(ReturnNode)
 
 void ArithmeticNode::visit(Node *parent, NodeVisitor *visitor) {
   if (!visitor->shouldVisit(parent, this)) {
@@ -177,6 +178,12 @@ std::string ArithmeticNode::getDebugDesc() const {
   db.addParam("name", quote(getName()))
       .addParam("output", *getType())
       .addParam("op", kind_ == ArithmeticInst::OpKind::Add ? "add" : "mul");
+  return db;
+}
+
+std::string ReturnNode::getDebugDesc() const {
+  DescriptionBuilder db(getKindName());
+  db.addParam("name", quote(getName()));
   return db;
 }
 

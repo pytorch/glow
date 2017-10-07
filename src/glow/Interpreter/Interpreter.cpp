@@ -255,6 +255,7 @@ void Interpreter::doForwardPass(bool isTrain) {
 
   // Do the forward pass.
 #define DEF_VALUE(CLASS, NAME)
+#define DEF_NODE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   case Kinded::Kind::CLASS##Kind: {                                            \
     fwd##CLASS(nullptr, isTrain, cast<CLASS>(I));                              \
@@ -270,11 +271,13 @@ void Interpreter::doForwardPass(bool isTrain) {
   }
 #undef DEF_INSTR
 #undef DEF_VALUE
+#undef DEF_NODE
 }
 
 void Interpreter::doBackwardPass() {
   // Do the backward pass.
 #define DEF_VALUE(CLASS, NAME)
+#define DEF_NODE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   case Kinded::Kind::CLASS##Kind: {                                            \
     bwd##CLASS(nullptr, cast<CLASS>(*it));                                     \
@@ -291,5 +294,6 @@ void Interpreter::doBackwardPass() {
     }
   }
 #undef DEF_INSTR
+#undef DEF_NODE
 #undef DEF_VALUE
 }

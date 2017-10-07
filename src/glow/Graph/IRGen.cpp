@@ -17,7 +17,8 @@ namespace {
 
 /// A helper class for visiting and generating the dotty file from the graph.
 struct IRGenVisitor : NodeVisitor {
-  std::unordered_map<Node *, Value *> generatedNode;
+  /// Holds the mapping between graph nodes to IR variables.
+  Graph::NodeToInstrTy generatedNodes;
   /// The module that we are building.
   Module &M_;
   /// The builder that adds instructions into the module.
@@ -26,21 +27,23 @@ struct IRGenVisitor : NodeVisitor {
 public:
   bool shouldVisit(Node *parent, Node *N) override {
     // Don't revisit nodes that we've already processed.
-    return !generatedNode.count(N);
+    return !generatedNodes.count(N);
   }
 
   IRGenVisitor(Module &M) : M_(M), builder_(M_) {}
 
   /// \returns the generated instruction for the node \p N.
   Value *valueForNode(Node *N) {
-    auto it = generatedNode.find(N);
-    assert(it != generatedNode.end() && "IR was not generated for the node");
+    auto it = generatedNodes.find(N);
+    assert(it != generatedNodes.end() && "IR was not generated for the node");
     return it->second;
   }
   /// Saves the generated IR in \p v for the node \p N.
   void registerIR(Node *N, Value *v) {
-    assert(!generatedNode.count(N) && "Already generated code for this node");
-    generatedNode[N] = v;
+    assert(!generatedNodes.count(N) && "Already generated code for this node");
+    assert(isa<AllocActivationInst>(v) ||
+           isa<WeightVar>(v) && "Value operand must be a memory location");
+    generatedNodes[N] = v;
   }
 
   void post(Node *parent, Node *N) override {
@@ -55,7 +58,7 @@ public:
       auto *in = valueForNode(C->getInput());
       auto *V = builder_.createConvOp(in, C->getDepth(), C->getKernel(),
                                       C->getStride(), C->getPad());
-      registerIR(N, V);
+      registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::PoolInstKind: {
@@ -63,29 +66,33 @@ public:
       auto *in = valueForNode(P->getInput());
       auto *V = builder_.createPoolOp(in, P->getKind(), P->getKernel(),
                                       P->getStride(), P->getPad());
-      registerIR(N, V);
+      registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::FullyConnectedInstKind: {
       auto *FC = cast<FullyConnectedNode>(N);
       auto *in = valueForNode(FC->getInput());
       auto *V = builder_.createFullyConnectedOp(in, FC->getDepth());
-      registerIR(N, V);
+      registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::ReluInstKind: {
       auto *R = cast<ReluNode>(N);
-      registerIR(N, builder_.createRELUOp(valueForNode(R->getInput())));
+      auto *V = builder_.createRELUOp(valueForNode(R->getInput()));
+      registerIR(N, V->getDest());
+
       break;
     }
     case glow::Kinded::Kind::SigmoidInstKind: {
       auto *S = cast<SigmoidNode>(N);
-      registerIR(N, builder_.createSigmoidOp(valueForNode(S->getInput())));
+      auto *V = builder_.createSigmoidOp(valueForNode(S->getInput()));
+      registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::TanhInstKind: {
       auto *T = cast<TanhNode>(N);
-      registerIR(N, builder_.createTanhOp(valueForNode(T->getInput())));
+      auto *V = builder_.createTanhOp(valueForNode(T->getInput()));
+      registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::SoftMaxInstKind: {
@@ -93,29 +100,29 @@ public:
       auto *in = valueForNode(SM->getInput());
       auto *select = valueForNode(SM->getSelected());
       auto *V = builder_.createSoftMaxOp(in, select);
-      registerIR(N, V);
+      registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::RegressionInstKind: {
       auto *RR = cast<RegressionNode>(N);
       auto *in = valueForNode(RR->getInput());
       auto *expected = valueForNode(RR->getExpected());
-      auto *V = builder_.createSoftMaxOp(in, expected);
-      registerIR(N, V);
+      auto *V = builder_.createRegressionOp(in, expected);
+      registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::TransposeInstKind: {
       auto *TT = cast<TransposeNode>(N);
       auto *in = valueForNode(TT->getInput());
       auto *V = builder_.createTransposeOp(in, TT->getShuffle());
-      registerIR(N, V);
+      registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::ReshapeInstKind: {
       auto *RS = cast<ReshapeNode>(N);
       auto *in = valueForNode(RS->getInput());
       auto *V = builder_.createReshapeOp(in, RS->getDims());
-      registerIR(N, V);
+      registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::ConcatInstKind: {
@@ -125,7 +132,7 @@ public:
         vals.push_back(valueForNode(in));
       }
       auto *V = builder_.createConcatOp(vals, CC->getDim());
-      registerIR(N, V);
+      registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::BatchNormalizationInstKind: {
@@ -133,7 +140,7 @@ public:
       auto *in = valueForNode(BN->getInput());
       auto *V = builder_.createBatchNormalizationOp(
           in, BN->getChannelIdx(), BN->getEpsilon(), BN->getMomentum());
-      registerIR(N, V);
+      registerIR(N, V->getDest());
       break;
     }
 
@@ -143,7 +150,7 @@ public:
       auto *V = builder_.createLocalResponseNormalizationOp(
           in, LR->gethalfWindowSize(), LR->getAlpha(), LR->getBeta(),
           LR->getK());
-      registerIR(N, V);
+      registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::ArithmeticInstKind: {
@@ -151,7 +158,13 @@ public:
       auto *L = valueForNode(AR->getLHS());
       auto *R = valueForNode(AR->getRHS());
       auto *V = builder_.createArithmeticOp(L, R, AR->getKind());
-      registerIR(N, V);
+      registerIR(N, V->getDest());
+      break;
+    }
+    case glow::Kinded::Kind::ReturnInstKind: {
+      auto *R = cast<ReturnNode>(N);
+      auto *V = builder_.createReturnOp(valueForNode(R->getInput()));
+      registerIR(R, V);
       break;
     }
     case glow::Kinded::Kind::WeightVarKind: {
@@ -163,10 +176,13 @@ public:
     }
     }
   }
+
+  /// \returns the mapping between the graph nodes to the IR instructions.
+  Graph::NodeToInstrTy getMapping() { return generatedNodes; }
 };
 } // namespace
 
-void Graph::generateIR() {
+Graph::NodeToInstrTy Graph::generateIR() {
   IRGenVisitor irgen(M_);
 
   for (auto &N : vars_) {
@@ -176,4 +192,6 @@ void Graph::generateIR() {
   for (auto &N : nodes_) {
     N->visit(nullptr, &irgen);
   }
+
+  return irgen.getMapping();
 }
