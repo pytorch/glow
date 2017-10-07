@@ -7,7 +7,6 @@ include(ExternalProject)
 
 find_package(Threads REQUIRED)
 
-# NOTE: we use the exact commit to avoid fetching sources after the initial sync
 ExternalProject_Add(llvm
                     SOURCE_DIR
                       ${CMAKE_SOURCE_DIR}/external/llvm
