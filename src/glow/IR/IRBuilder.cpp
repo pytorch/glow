@@ -25,12 +25,6 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, size_t depth,
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
-  // Calculate the size and allocate the output buffer.
-  auto outSz =
-      ConvolutionInst::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
-
-  std::vector<size_t> outDims = {idim.n, outSz.first, outSz.second, depth};
-
   // Allocate the Filter and Bias tensors.
   std::vector<size_t> filterDim = {depth, kernel, kernel, idim.c};
   size_t fanIn = kernel * kernel * idim.c;
@@ -38,6 +32,23 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, size_t depth,
                                   InitKind::Xavier, fanIn);
   Value *bias = createWeightVar(ElemKind::FloatTy, {depth}, "bias",
                                 InitKind::Broadcast, 0.1);
+
+  return createConvOp(input, filter, bias, depth, kernel, stride, pad);
+}
+
+ConvolutionInst *IRBuilder::createConvOp(Value *input, Value *filter,
+                                         Value *bias, size_t depth,
+                                         size_t kernel, size_t stride,
+                                         size_t pad) {
+  ShapeNHWC idim = ShapeNHWC(input->dims());
+  assert(idim.w >= kernel && idim.h >= kernel &&
+         "buffer too small for selected stride");
+
+  // Calculate the size and allocate the output buffer.
+  auto outSz =
+      ConvolutionInst::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
+
+  std::vector<size_t> outDims = {idim.n, outSz.first, outSz.second, depth};
 
   Value *dest = createAllocActivationInst(ElemKind::FloatTy, outDims);
 
@@ -87,6 +98,19 @@ FullyConnectedInst *IRBuilder::createFullyConnectedOp(Value *input,
       createAllocActivationInst(T->getElementType(), {idim.first, outDepth});
 
   return createFullyConnectedInst(dest, input, W, B, outDepth);
+}
+
+FullyConnectedInst *IRBuilder::createFullyConnectedOp(Value *input,
+                                                      Value *filter,
+                                                      Value *bias,
+                                                      size_t outDepth) {
+  TypeRef T = input->getType();
+  auto idim = flattenCdr(input->dims());
+
+  auto *dest =
+      createAllocActivationInst(T->getElementType(), {idim.first, outDepth});
+
+  return createFullyConnectedInst(dest, input, filter, bias, outDepth);
 }
 
 ReluInst *IRBuilder::createRELUOp(Value *input) {
@@ -168,10 +192,17 @@ BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(Value *input,
   auto *variance =
       createAllocActivationInst(ElemKind::FloatTy, {channels}, "variance");
 
+  return createBatchNormalizationOp(input, beta, gamma, mean, variance,
+                                    channelIdx, epsilon, momentum);
+}
+
+BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(
+    Value *input, Value *beta, Value *gamma, Value *mean, Value *var,
+    size_t channelIdx, float epsilon, float momentum) {
   // The output tensor is of the same shape as the input tensor.
   auto *dest = createAllocActivationInst(input->getType());
 
-  return createBatchNormalizationInst(dest, input, gamma, beta, mean, variance,
+  return createBatchNormalizationInst(dest, input, gamma, beta, mean, var,
                                       channelIdx, epsilon, momentum);
 }
 
