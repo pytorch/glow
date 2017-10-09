@@ -178,11 +178,24 @@ public:
   }
 
   /// \returns the mapping between the graph nodes to the IR instructions.
-  Graph::NodeToInstrTy getMapping() { return generatedNodes; }
+  Graph::NodeToInstrTy &getMapping() { return generatedNodes; }
 };
 } // namespace
 
-Graph::NodeToInstrTy Graph::generateIR() {
+void Graph::registerIRMap(const Node *N, Value *V) {
+  assert(!IRMap.count(N) && "Node already in map");
+  IRMap[N] = V;
+}
+
+Value *Graph::getIRForNode(const Node *N) const {
+  auto it = IRMap.find(N);
+  if (it == IRMap.end()) {
+    return nullptr;
+  }
+  return it->second;
+}
+
+void Graph::generateIR() {
   IRGenVisitor irgen(M_);
 
   for (auto &N : vars_) {
@@ -193,5 +206,8 @@ Graph::NodeToInstrTy Graph::generateIR() {
     N->visit(nullptr, &irgen);
   }
 
-  return irgen.getMapping();
+  // Record the lowering of the nodes in the Graph class.
+  for (auto p : irgen.getMapping()) {
+    registerIRMap(p.first, p.second);
+  }
 }
