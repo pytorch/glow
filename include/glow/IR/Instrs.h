@@ -451,8 +451,12 @@ public:
 
   const char *getInitKindStr() const;
 
+  void setInitKind(InitKind k) { initKind_ = k; }
   InitKind getInitKind() const { return initKind_; }
+
+  void setVal(float v) { val_ = v; }
   float getVal() const { return val_; }
+  
   std::string getExtraDesc() const;
   void verify() const {}
 };
