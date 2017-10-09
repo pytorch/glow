@@ -32,10 +32,17 @@ public:
   ConvolutionInst *createConvOp(Value *input, size_t depth, size_t kernel,
                                 size_t stride, size_t pad);
 
+  ConvolutionInst *createConvOp(Value *input, Value *filter, Value *bias,
+                                size_t depth, size_t kernel, size_t stride,
+                                size_t pad);
+
   PoolInst *createPoolOp(Value *input, PoolInst::OpKind kind, size_t kernel,
                          size_t stride, size_t pad);
 
   FullyConnectedInst *createFullyConnectedOp(Value *input, size_t outDepth);
+
+  FullyConnectedInst *createFullyConnectedOp(Value *input, Value *filter,
+                                             Value *bias, size_t outDepth);
 
   ReluInst *createRELUOp(Value *input);
 
@@ -59,6 +66,11 @@ public:
                                                      size_t channelIdx = 0,
                                                      float epsilon = 1e-5,
                                                      float momentum = 0.9);
+
+  BatchNormalizationInst *
+  createBatchNormalizationOp(Value *input, Value *beta, Value *gamma,
+                             Value *mean, Value *var, size_t channelIdx = 0,
+                             float epsilon = 1e-5, float momentum = 0.9);
 
   LocalResponseNormalizationInst *
   createLocalResponseNormalizationOp(Value *input, size_t halfWindowSize = 2,
