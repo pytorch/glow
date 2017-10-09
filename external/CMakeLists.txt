@@ -32,6 +32,7 @@ ExternalProject_Add(llvm
                       -DLLVM_ENABLE_OCAMLDOC=NO
                     BUILD_BYPRODUCTS
                       <INSTALL_DIR>/include
+                      <INSTALL_DIR>/lib/${CMAKE_STATIC_LIBRARY_PREFIX}LLVMDemangle${CMAKE_STATIC_LIBRARY_SUFFIX}
                       <INSTALL_DIR>/lib/${CMAKE_STATIC_LIBRARY_PREFIX}LLVMSupport${CMAKE_STATIC_LIBRARY_SUFFIX}
                     UPDATE_COMMAND
                       ""
@@ -45,6 +46,15 @@ ExternalProject_Get_Property(llvm source_dir install_dir)
 # populated during the installation.
 file(MAKE_DIRECTORY ${install_dir}/include)
 
+add_library(LLVMDemangle
+            STATIC IMPORTED GLOBAL)
+set_target_properties(LLVMDemangle
+                      PROPERTIES
+                        IMPORTED_LOCATION
+                          ${install_dir}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}LLVMDemangle${CMAKE_STATIC_LIBRARY_SUFFIX}
+                        INTERFACE_INCLUDE_DIRECTORIES
+                          ${install_dir}/include)
+
 add_library(LLVMSupport
             STATIC IMPORTED GLOBAL)
 set_target_properties(LLVMSupport
@@ -52,7 +62,9 @@ set_target_properties(LLVMSupport
                         IMPORTED_LOCATION
                           ${install_dir}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}LLVMSupport${CMAKE_STATIC_LIBRARY_SUFFIX}
                         INTERFACE_INCLUDE_DIRECTORIES
-                          ${install_dir}/include)
+                          ${install_dir}/include
+                        INTERFACE_LINK_LIBRARIES
+                          LLVMDemangle)
 
 # TODO: this really should get wired through with the LLVM build
 foreach(library tinfo terminfo curses ncurses ncursesw)
