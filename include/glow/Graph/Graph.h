@@ -30,12 +30,19 @@ class ReturnNode;
 
 /// Represents the compute graph.
 class Graph final {
+public:
+  /// Stores the mapping between graph nodes to IR variables.
+  using NodeToInstrTy = std::unordered_map<const Node *, Value *>;
+
+private:
   /// A list of nodes that the graph owns.
   std::vector<Node *> nodes_;
   /// A list of variables that the graph owns.
   std::vector<Variable *> vars_;
   /// A reference to the low-level IR module.
   Module &M_;
+  /// Maps nodes in the graph to the generated IR.
+  NodeToInstrTy IRMap;
 
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
@@ -50,9 +57,6 @@ class Graph final {
   }
 
 public:
-  /// Holds the mapping between graph nodes to IR variables.
-  using NodeToInstrTy = std::unordered_map<Node *, Value *>;
-
   Graph(Module &M) : M_(M) {}
   ~Graph();
 
@@ -115,8 +119,15 @@ public:
 
   /// @}
 
+  /// Registers the fact that the node \p N was lowered into the IR value \p V.
+  void registerIRMap(const Node *N, Value *V);
+
+  /// \returns the IR value that the node \p N was lowered into, or null, if the
+  /// node was not lowered into any IR value.
+  Value *getIRForNode(const Node *N) const;
+
   /// Generate IR from the nodes in the graph into the module.
-  NodeToInstrTy generateIR();
+  void generateIR();
 
   /// Dumps the textual representation of the network.
   void dump();
