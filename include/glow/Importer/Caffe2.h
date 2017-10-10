@@ -3,7 +3,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 
-#include "glow/IR/IRBuilder.h"
+#include "glow/Graph/Graph.h"
 
 #include <string>
 #include <unordered_map>
@@ -25,14 +25,16 @@ class Value;
 class caffe2ModelLoader {
   /// The interpreter that runs the program.
   Interpreter &IP_;
-  /// The network that we are building.
-  IRBuilder builder_;
+  /// The graph that we are building.
+  Graph &G_;
   /// Saves network nodes by name.
-  std::unordered_map<std::string, Value *> nodeByName_;
+  std::unordered_map<std::string, Node *> nodeByName_;
   /// A list of weight tensors indexed by name.
   std::unordered_map<std::string, Tensor *> tensors_;
   /// The external output of the network.
-  Value *root_{nullptr};
+  Node *root_{nullptr};
+  /// A list of tensors to load into variables once the graph is materialized.
+  std::vector<std::pair<Variable *, Tensor *>> variableInit_;
 
   /// Load the weight tensors from the 'init' file and register them in the map
   /// \p tensors.
@@ -52,13 +54,18 @@ class caffe2ModelLoader {
   /// file.
   bool loadProtoFile(caffe2::NetDef &net, const std::string &filename);
 
+  /// Register the tensor \p t to initialize the variable \p v.
+  void registerVariableInit(Node *v, Tensor *t) {
+    variableInit_.push_back({cast<Variable>(v), t});
+  }
+
 public:
   /// \returns the node that was registered with the name \p name.
-  Value *getNodeByName(const std::string &name);
+  Node *getNodeByName(const std::string &name);
 
   /// \returns the node that was registered with the name \p name or create a
   /// new Variable node for a tensor with this name.
-  Value *getOrCreateNodeByName(const std::string &name);
+  Node *getOrCreateNodeByName(const std::string &name);
 
   /// Loads the caffe2 model that's represnted by a network description file,
   /// serialized in \p netDescFilename, and weights file, serialized in
@@ -72,7 +79,7 @@ public:
 
   /// \returns the output of the network. This is usually the result of the last
   /// softmax or regression layer.
-  Value *getRoot() { return root_; }
+  Node *getRoot() { return root_; }
 };
 
 } // namespace glow

@@ -1,6 +1,8 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "glow/Interpreter/Interpreter.h"
+#include "glow/Graph/Node.h"
+#include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
@@ -15,33 +17,31 @@ using namespace glow;
 TEST(Interpreter, interpret) {
   Interpreter IP;
 
-  Value *input;
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
 
-  {
-    IRBuilder builder(IP.getModule());
-    input = builder.createWeightVar(ElemKind::FloatTy, {1, 32, 32, 3});
+  auto &G = IP.getGraph();
+  auto *input = G.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input");
 
-    auto *ex = builder.createWeightVar(ElemKind::IndexTy, {1, 1});
+  auto *ex = G.createVariable(ElemKind::IndexTy, {1, 1}, "exp");
 
-    auto *CV0 = builder.createConvOp(input, 16, 5, 1, 2);
-    auto *RL0 = builder.createRELUOp(*CV0);
-    auto *MP0 = builder.createPoolOp(*RL0, PoolInst::OpKind::Max, 2, 2, 0);
+  auto *CV0 = G.createConv("conv", input, 16, 5, 1, 2);
+  auto *RL0 = G.createRELU("relu", CV0);
+  auto *MP0 = G.createPool("pool", RL0, PoolInst::OpKind::Max, 2, 2, 0);
 
-    auto *CV1 = builder.createConvOp(*MP0, 20, 5, 1, 2);
-    auto *RL1 = builder.createRELUOp(*CV1);
-    auto *MP1 = builder.createPoolOp(*RL1, PoolInst::OpKind::Max, 2, 2, 0);
+  auto *CV1 = G.createConv("conv", MP0, 20, 5, 1, 2);
+  auto *RL1 = G.createRELU("relu", CV1);
+  auto *MP1 = G.createPool("pool", RL1, PoolInst::OpKind::Max, 2, 2, 0);
 
-    auto *CV2 = builder.createConvOp(*MP1, 20, 5, 1, 2);
-    auto *RL2 = builder.createRELUOp(*CV2);
-    auto *MP2 = builder.createPoolOp(*RL2, PoolInst::OpKind::Max, 2, 2, 0);
+  auto *CV2 = G.createConv("conv", MP1, 20, 5, 1, 2);
+  auto *RL2 = G.createRELU("relu", CV2);
+  auto *MP2 = G.createPool("pool", RL2, PoolInst::OpKind::Max, 2, 2, 0);
 
-    auto *FCL1 = builder.createFullyConnectedOp(*MP2, 10);
-    auto *RL3 = builder.createRELUOp(*FCL1);
-    auto *SM = builder.createSoftMaxOp(*RL3, ex);
-    builder.createReturnOp(*SM);
-  }
+  auto *FCL1 = G.createFullyConnected("fc", MP2, 10);
+  auto *RL3 = G.createRELU("relu", FCL1);
+  auto *SM = G.createSoftMax("sm", RL3, ex);
+  G.createReturn("ret", SM);
 
+  G.generateIR();
   IP.optimize(OptimizationMode::Infer);
   IP.initVars();
   IP.infer({input}, {&inputs});
@@ -53,23 +53,18 @@ TEST(Interpreter, trainASimpleNetwork) {
   IP.getConfig().maxNumThreads = 1;
   IP.getConfig().learningRate = 0.05;
 
-  Value *A;
-  Value *E;
-  Value *result;
-  {
-    IRBuilder builder(IP.getModule());
+  auto &G = IP.getGraph();
 
-    // Create a variable with 1 input, which is a vector of 4 elements.
-    A = builder.createWeightVar(ElemKind::FloatTy, {1, 4});
-    E = builder.createWeightVar(ElemKind::FloatTy, {1, 4});
+  // Create a variable with 1 input, which is a vector of 4 elements.
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, 4}, "A");
+  auto *E = G.createVariable(ElemKind::FloatTy, {1, 4}, "E");
 
-    Instruction *O = builder.createFullyConnectedOp(A, 10);
-    O = builder.createSigmoidOp(*O);
-    O = builder.createFullyConnectedOp(*O, 4);
-    O = builder.createSigmoidOp(*O);
-    O = builder.createRegressionOp(*O, E);
-    result = builder.createReturnOp(*O);
-  }
+  Node *O = G.createFullyConnected("fc", A, 10);
+  O = G.createSigmoid("sig", O);
+  O = G.createFullyConnected("fc", O, 4);
+  O = G.createSigmoid("sig", O);
+  O = G.createRegression("reg", O, E);
+  auto *result = G.createReturn("return", O);
 
   // Values for the input and output variables.
   Tensor inputs(ElemKind::FloatTy, {1, 4});
@@ -77,6 +72,7 @@ TEST(Interpreter, trainASimpleNetwork) {
   inputs.getHandle<FloatTy>() = {0.15, 0.15, 0.15, 0.15};
   expected.getHandle<FloatTy>() = {0.9, 0.9, 0.9, 0.9};
 
+  G.generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -110,21 +106,18 @@ TEST(Interpreter, simpleRegression) {
   Tensor inputs(ElemKind::FloatTy, {1, numInputs});
   Tensor expected(ElemKind::FloatTy, {1, numInputs});
 
-  Value *A;
-  Value *Ex;
-  Value *result;
-  {
-    IRBuilder bb(IP.getModule());
-    A = bb.createWeightVar(ElemKind::FloatTy, {1, numInputs});
-    Ex = bb.createWeightVar(ElemKind::FloatTy, {1, numInputs});
-    Instruction *O = bb.createFullyConnectedOp(A, 4);
-    O = bb.createRELUOp(*O);
-    O = bb.createRegressionOp(*O, Ex);
-    result = bb.createReturnOp(*O);
-  }
+  auto &G = IP.getGraph();
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputs}, "A");
+  auto *Ex = G.createVariable(ElemKind::FloatTy, {1, numInputs}, "E");
+  Node *O = G.createFullyConnected("fc", A, 4);
+  O = G.createRELU("relu", O);
+  O = G.createRegression("reg", O, Ex);
+  auto *result = G.createReturn("result", O);
+
   auto I = inputs.getHandle<FloatTy>();
   auto E = expected.getHandle<FloatTy>();
 
+  G.generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -162,22 +155,17 @@ TEST(Interpreter, learnXor) {
   IP.getConfig().maxNumThreads = 1;
   IP.getConfig().learningRate = 0.05;
 
-  Value *result;
-  Value *A;
-  Value *Ex;
-  {
-    IRBuilder bb(IP.getModule());
+  auto &G = IP.getGraph();
 
-    A = bb.createWeightVar(ElemKind::FloatTy, {numInputs, 2});
-    Ex = bb.createWeightVar(ElemKind::FloatTy, {numInputs, 1});
+  auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
+  auto *Ex = G.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
 
-    Instruction *O = bb.createFullyConnectedOp(A, 6);
-    O = bb.createRELUOp(*O);
-    O = bb.createFullyConnectedOp(*O, 1);
-    O = bb.createRELUOp(*O);
-    O = bb.createRegressionOp(*O, Ex);
-    result = bb.createReturnOp(*O);
-  }
+  Node *O = G.createFullyConnected("fc", A, 6);
+  O = G.createRELU("relu", O);
+  O = G.createFullyConnected("fc", O, 1);
+  O = G.createRELU("relu", O);
+  O = G.createRegression("reg", O, Ex);
+  auto *result = G.createReturn("ret", O);
 
   /// Prepare the training set and the testing set.
   Tensor trainingSet(ElemKind::FloatTy, {numInputs, 2});
@@ -197,6 +185,7 @@ TEST(Interpreter, learnXor) {
     TL.at({i, 0}) = a ^ b;
   }
 
+  G.generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -263,23 +252,19 @@ TEST(Network, circle) {
   IP.getConfig().momentum = 0.9;
   IP.getConfig().learningRate = 0.01;
 
-  Value *A;
-  Value *S;
-  Value *result;
-  {
-    IRBuilder bb(IP.getModule());
+  auto &G = IP.getGraph();
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, 2}, "A");
+  auto *S = G.createVariable(ElemKind::IndexTy, {1, 1}, "S",
+                             WeightVar::InitKind::Extern);
 
-    A = bb.createWeightVar(ElemKind::FloatTy, {1, 2});
-    S = bb.createWeightVar(ElemKind::IndexTy, {1, 1});
+  auto *FCL0 = G.createFullyConnected("fc", A, 8);
+  auto *RL0 = G.createRELU("relu", FCL0);
+  auto *FCL1 = G.createFullyConnected("fc", RL0, 2);
+  auto *RL1 = G.createRELU("relu", FCL1);
+  auto *SM = G.createSoftMax("soft", RL1, S);
+  auto *result = G.createReturn("ret", SM);
 
-    auto *FCL0 = bb.createFullyConnectedOp(A, 8);
-    auto *RL0 = bb.createRELUOp(*FCL0);
-    auto *FCL1 = bb.createFullyConnectedOp(*RL0, 2);
-    auto *RL1 = bb.createRELUOp(*FCL1);
-    auto *SM = bb.createSoftMaxOp(*RL1, S);
-    result = bb.createReturnOp(*SM);
-  }
-
+  G.generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -350,36 +335,31 @@ TEST(Network, learnSingleValueConcat) {
   IP.getConfig().momentum = 0.9;
   IP.getConfig().learningRate = 0.01;
 
-  Value *Ex;
-  Value *A;
-  Value *B;
-  Value *result;
-  {
-    IRBuilder bb(IP.getModule());
+  auto &G = IP.getGraph();
 
-    Ex = bb.createWeightVar(ElemKind::FloatTy, {1, width * 2});
+  auto *Ex = G.createVariable(ElemKind::FloatTy, {1, width * 2}, "Ex");
 
-    // Left side of the network:
-    A = bb.createWeightVar(ElemKind::FloatTy, {1, width});
-    Instruction *L = bb.createFullyConnectedOp(A, width);
-    L = bb.createSigmoidOp(*L);
+  // Left side of the network:
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, width}, "A");
+  Node *L = G.createFullyConnected("fc", A, width);
+  L = G.createSigmoid("", L);
 
-    // Right side of the network:
-    B = bb.createWeightVar(ElemKind::FloatTy, {1, width});
-    Instruction *R = bb.createFullyConnectedOp(B, width);
-    R = bb.createSigmoidOp(*R);
+  // Right side of the network:
+  auto *B = G.createVariable(ElemKind::FloatTy, {1, width}, "B");
+  Node *R = G.createFullyConnected("fc", B, width);
+  R = G.createSigmoid("sig", R);
 
-    // Concat:
-    auto *C = bb.createConcatOp({*L, *R}, 1);
-    auto *RN = bb.createRegressionOp(*C, Ex);
-    result = bb.createReturnOp(*RN);
-  }
+  // Concat:
+  auto *C = G.createConcat("con", {L, R}, 1);
+  auto *RN = G.createRegression("reg", C, Ex);
+  auto *result = G.createReturn("ret", RN);
 
   Tensor inputs(ElemKind::FloatTy, {1, width});
   Tensor expected(ElemKind::FloatTy, {1, width * 2});
   inputs.getHandle<FloatTy>().clear(0.15);
   expected.getHandle<FloatTy>().clear(0.9);
 
+  G.generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 

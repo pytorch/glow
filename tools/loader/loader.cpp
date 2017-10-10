@@ -1,5 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
+#include "glow/Graph/Graph.h"
+#include "glow/Graph/Nodes.h"
 #include "glow/Importer/Caffe2.h"
 #include "glow/Interpreter/Interpreter.h"
 #include "glow/Network/Image.h"
@@ -84,8 +86,8 @@ int main(int argc, char **argv) {
   IP.initVars();
 
   auto *SM = LD.getRoot();
-  Value *i0 = LD.getOrCreateNodeByName("gpu_0/data");
-  Value *i1 = LD.getOrCreateNodeByName("data");
+  auto *i0 = cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
+  auto *i1 = cast<Variable>(LD.getOrCreateNodeByName("data"));
 
   IP.infer({i0, i1}, {&data, &data});
   auto *res = IP.getTensorForValue(SM);

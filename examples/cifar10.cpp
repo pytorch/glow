@@ -1,3 +1,5 @@
+#include "glow/Graph/Graph.h"
+#include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
@@ -70,37 +72,35 @@ void testCIFAR10() {
   IP.getConfig().momentum = 0.9;
   IP.getConfig().L2Decay = 0.0001;
 
-  Value *result;
-  Value *E;
-  Value *A;
   unsigned minibatchSize = 8;
 
-  {
-    IRBuilder bb(IP.getModule());
+  auto &G = IP.getGraph();
 
-    // Create the input layer:
-    A = bb.createWeightVar(ElemKind::FloatTy, {minibatchSize, 32, 32, 3});
-    E = bb.createWeightVar(ElemKind::IndexTy, {minibatchSize, 1});
+  // Create the input layer:
+  auto *A =
+      G.createVariable(ElemKind::FloatTy, {minibatchSize, 32, 32, 3}, "input");
+  auto *E = G.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, "expected",
+                             WeightVar::InitKind::Extern);
 
-    // Create the rest of the network.
-    auto *CV0 = bb.createConvOp(A, 16, 5, 1, 2);
-    auto *RL0 = bb.createRELUOp(*CV0);
-    auto *MP0 = bb.createPoolOp(*RL0, PoolInst::OpKind::Max, 2, 2, 0);
+  // Create the rest of the network.
+  auto *CV0 = G.createConv("conv", A, 16, 5, 1, 2);
+  auto *RL0 = G.createRELU("relu", CV0);
+  auto *MP0 = G.createPool("pool", RL0, PoolInst::OpKind::Max, 2, 2, 0);
 
-    auto *CV1 = bb.createConvOp(*MP0, 20, 5, 1, 2);
-    auto *RL1 = bb.createRELUOp(*CV1);
-    auto *MP1 = bb.createPoolOp(*RL1, PoolInst::OpKind::Max, 2, 2, 0);
+  auto *CV1 = G.createConv("conv", MP0, 20, 5, 1, 2);
+  auto *RL1 = G.createRELU("relu", CV1);
+  auto *MP1 = G.createPool("pool", RL1, PoolInst::OpKind::Max, 2, 2, 0);
 
-    auto *CV2 = bb.createConvOp(*MP1, 20, 5, 1, 2);
-    auto *RL2 = bb.createRELUOp(*CV2);
-    auto *MP2 = bb.createPoolOp(*RL2, PoolInst::OpKind::Max, 2, 2, 0);
+  auto *CV2 = G.createConv("conv", MP1, 20, 5, 1, 2);
+  auto *RL2 = G.createRELU("relu", CV2);
+  auto *MP2 = G.createPool("pool", RL2, PoolInst::OpKind::Max, 2, 2, 0);
 
-    auto *FCL1 = bb.createFullyConnectedOp(*MP2, 10);
-    auto *RL3 = bb.createRELUOp(*FCL1);
-    auto *SM = bb.createSoftMaxOp(*RL3, E);
-    result = bb.createReturnOp(*SM);
-  }
+  auto *FCL1 = G.createFullyConnected("fc", MP2, 10);
+  auto *RL3 = G.createRELU("relu", FCL1);
+  auto *SM = G.createSoftMax("softmax", RL3, E);
+  auto *result = G.createReturn("ret", SM);
 
+  G.generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 

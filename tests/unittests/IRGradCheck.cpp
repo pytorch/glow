@@ -1,5 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
+#include "glow/Graph/Graph.h"
+#include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
@@ -32,8 +34,8 @@ FloatTy gradDiff(FloatTy G1, FloatTy G2) {
   return std::abs(G1 - G2) / std::abs(G1 + G2 + 1);
 }
 
-void performGradCheck(Interpreter &IP, Value *result, Value *inputVar,
-                      Value *expVar, Tensor *inputs, Tensor *outputs,
+void performGradCheck(Interpreter &IP, Node *result, Variable *inputVar,
+                      Variable *expVar, Tensor *inputs, Tensor *outputs,
                       float delta, float allowedError) {
   auto inputsH = inputs->getHandle<FloatTy>();
 
@@ -81,30 +83,25 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  Value *result;
-  Value *A;
-  Value *Exp;
+  auto &G = IP.getGraph();
 
-  {
-    IRBuilder bb(IP.getModule());
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
+                             WeightVar::InitKind::Extern);
+  auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
+                               WeightVar::InitKind::Extern);
 
-    A = bb.createWeightVar(ElemKind::FloatTy, {1, numInputElem});
-    Exp = bb.createWeightVar(ElemKind::FloatTy, {1, numOutputElem});
+  Node *FA = G.createFullyConnected("fc", A, numOutputElem / 2);
+  FA = G.createRELU("relu", FA);
 
-    Instruction *FA = bb.createFullyConnectedOp(A, numOutputElem / 2);
-    FA = bb.createRELUOp(*FA);
+  auto *B = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "B");
+  Node *FB = G.createFullyConnected("fc", B, numOutputElem / 2);
+  FB = G.createRELU("relu", FB);
 
-    auto *B = bb.createWeightVar(ElemKind::FloatTy, {1, numInputElem});
-    Instruction *FB = bb.createFullyConnectedOp(B, numOutputElem / 2);
-    FB = bb.createRELUOp(*FB);
+  Node *O = G.createConcat("concat", {FA, FB}, 1);
+  O = G.createRegression("reg", O, Exp);
+  auto *result = G.createReturn("ret", O);
 
-    Value *v0 = *FA;
-    Value *v1 = *FB;
-    Instruction *O = bb.createConcatOp({v0, v1}, 1);
-    O = bb.createRegressionOp(*O, Exp);
-    result = bb.createReturnOp(*O);
-  }
-
+  G.generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -127,23 +124,21 @@ TEST(Network, gradientCheck_Conv) {
   size_t numDim = 10;
   size_t numOutputElem = 10;
 
-  Value *A;
-  Value *Ex;
-  Value *result;
-  {
-    IRBuilder bb(IP.getModule());
+  auto &G = IP.getGraph();
 
-    A = bb.createWeightVar(ElemKind::FloatTy, {1, numDim, numDim, 1});
-    Ex = bb.createWeightVar(ElemKind::FloatTy, {1, numOutputElem});
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
+                             WeightVar::InitKind::Extern);
+  auto *Ex = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
+                              WeightVar::InitKind::Extern);
 
-    Instruction *O = bb.createConvOp(A, 16, 5, 1, 2);
-    O = bb.createPoolOp(*O, PoolInst::OpKind::Max, 3, 3, 0);
-    O = bb.createFullyConnectedOp(*O, numOutputElem);
-    O = bb.createRELUOp(*O);
-    O = bb.createRegressionOp(*O, Ex);
-    result = bb.createReturnOp(*O);
-  }
+  Node *O = G.createConv("conv", A, 16, 5, 1, 2);
+  O = G.createPool("pool", O, PoolInst::OpKind::Max, 3, 3, 0);
+  O = G.createFullyConnected("fc", O, numOutputElem);
+  O = G.createRELU("relu", O);
+  O = G.createRegression("reg", O, Ex);
+  auto *result = G.createReturn("ret", O);
 
+  G.generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -166,22 +161,20 @@ TEST(Network, gradientCheck_AvgPool) {
   size_t numDim = 10;
   size_t numOutputElem = 10;
 
-  Value *A;
-  Value *Exp;
-  Value *result;
-  {
-    IRBuilder bb(IP.getModule());
+  auto &G = IP.getGraph();
 
-    A = bb.createWeightVar(ElemKind::FloatTy, {1, numDim, numDim, 1});
-    Exp = bb.createWeightVar(ElemKind::FloatTy, {1, numOutputElem});
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
+                             WeightVar::InitKind::Extern);
+  auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
+                               WeightVar::InitKind::Extern);
 
-    Instruction *O = bb.createPoolOp(A, PoolInst::OpKind::Avg, 3, 3, 0);
-    O = bb.createFullyConnectedOp(*O, numOutputElem);
-    O = bb.createRegressionOp(*O, Exp);
-    result = bb.createReturnOp(*O);
-  }
+  Node *O = G.createPool("pool", A, PoolInst::OpKind::Avg, 3, 3, 0);
+  O = G.createFullyConnected("fc", O, numOutputElem);
+  O = G.createRegression("reg", O, Exp);
+  auto *result = G.createReturn("ret", O);
 
-  IP.getModule().verify();
+  G.generateIR();
+  IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
@@ -203,21 +196,19 @@ TEST(Network, gradientCheck_batchNorm) {
   size_t numDim = 5;
   size_t numOutputElem = numDim * numDim * 3;
 
-  Value *A;
-  Value *Ex;
-  Value *result;
-  {
-    IRBuilder bb(IP.getModule());
+  auto &G = IP.getGraph();
 
-    A = bb.createWeightVar(ElemKind::FloatTy, {1, numDim, numDim, 3});
-    Ex = bb.createWeightVar(ElemKind::FloatTy, {1, numOutputElem});
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 3}, "A",
+                             WeightVar::InitKind::Extern);
+  auto *Ex = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
+                              WeightVar::InitKind::Extern);
 
-    Instruction *O = bb.createBatchNormalizationOp(A, 3, 0.0001, 0.9);
-    O = bb.createReshapeOp(*O, {1, numDim * numDim * 3});
-    O = bb.createRegressionOp(*O, Ex);
-    result = bb.createReturnOp(*O);
-  }
+  Node *O = G.createBatchNormalization("batch", A, 3, 0.0001, 0.9);
+  O = G.createReshape("reshape", O, {1, numDim * numDim * 3});
+  O = G.createRegression("reg", O, Ex);
+  auto result = G.createReturn("ret", O);
 
+  G.generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -244,26 +235,23 @@ TEST(Network, gradientCheck_Arithmetic) {
 
   size_t numDim = 5;
 
-  Value *result;
-  Value *A;
-  Value *B;
-  Value *C;
-  Value *Exp;
+  auto &G = IP.getGraph();
 
-  {
-    IRBuilder bb(IP.getModule());
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
+                             WeightVar::InitKind::Extern);
+  auto *B = G.createVariable(ElemKind::FloatTy, {1, numDim}, "B",
+                             WeightVar::InitKind::Extern);
+  auto *C = G.createVariable(ElemKind::FloatTy, {1, numDim}, "C",
+                             WeightVar::InitKind::Extern);
+  auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
+                               WeightVar::InitKind::Extern);
 
-    A = bb.createWeightVar(ElemKind::FloatTy, {1, numDim});
-    B = bb.createWeightVar(ElemKind::FloatTy, {1, numDim});
-    C = bb.createWeightVar(ElemKind::FloatTy, {1, numDim});
-    Exp = bb.createWeightVar(ElemKind::FloatTy, {1, numDim});
+  Node *O = G.createArithmetic("arith", A, B, ArithmeticInst::OpKind::Mul);
+  O = G.createArithmetic("arith", O, C, ArithmeticInst::OpKind::Add);
+  O = G.createRegression("reg", O, Exp);
+  auto *result = G.createReturn("ret", O);
 
-    Instruction *O = bb.createArithmeticOp(A, B, ArithmeticInst::OpKind::Mul);
-    O = bb.createArithmeticOp(*O, C, ArithmeticInst::OpKind::Add);
-    O = bb.createRegressionOp(*O, Exp);
-    result = bb.createReturnOp(*O);
-  }
-
+  G.generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -292,7 +280,7 @@ TEST(Network, gradientCheck_Arithmetic) {
 
   IP.train(1, {A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
 
-  auto check = [&](Value *var, Tensor *t) {
+  auto check = [&](Variable *var, Tensor *t) {
     auto iH = t->getHandle<FloatTy>();
 
     auto analyticalGradsH = IP.getGradHandle(nullptr, var);
@@ -338,20 +326,18 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  Value *A;
-  Value *Exp;
-  Value *result;
-  {
-    IRBuilder bb(IP.getModule());
-    A = bb.createWeightVar(ElemKind::FloatTy, {1, numInputElem});
-    Exp = bb.createWeightVar(ElemKind::FloatTy, {1, numOutputElem});
+  auto &G = IP.getGraph();
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
+                             WeightVar::InitKind::Extern);
+  auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
+                               WeightVar::InitKind::Extern);
 
-    Instruction *FA = bb.createFullyConnectedOp(A, numOutputElem);
-    FA = bb.createTanhOp(*FA);
-    FA = bb.createRegressionOp(*FA, Exp);
-    result = bb.createReturnOp(*FA);
-  }
+  Node *FA = G.createFullyConnected("fc", A, numOutputElem);
+  FA = G.createTanh("tanh", FA);
+  FA = G.createRegression("reg", FA, Exp);
+  auto *result = G.createReturn("ret", FA);
 
+  G.generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -373,20 +359,18 @@ TEST(Network, gradientCheck_Transpose) {
   IP.getConfig().maxNumThreads = 1;
   size_t numOutputElem = 10;
 
-  Value *A;
-  Value *Exp;
-  Value *result;
-  {
-    IRBuilder bb(IP.getModule());
+  auto &G = IP.getGraph();
 
-    A = bb.createWeightVar(ElemKind::FloatTy, {1, 5, 10, 15});
-    Exp = bb.createWeightVar(ElemKind::FloatTy, {1, numOutputElem});
-    Instruction *TA = bb.createTransposeOp(A, {0, 3, 1, 2});
-    TA = bb.createFullyConnectedOp(*TA, numOutputElem);
-    TA = bb.createRegressionOp(*TA, Exp);
-    result = bb.createReturnOp(*TA);
-  }
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                             WeightVar::InitKind::Extern);
+  auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
+                               WeightVar::InitKind::Extern);
+  Node *TA = G.createTranspose("transpose", A, {0, 3, 1, 2});
+  TA = G.createFullyConnected("fc", TA, numOutputElem);
+  TA = G.createRegression("regress", TA, Exp);
+  auto *result = G.createReturn("ret", TA);
 
+  G.generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
