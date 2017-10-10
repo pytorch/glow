@@ -86,9 +86,9 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   auto &G = IP.getGraph();
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
-                             WeightVar::InitKind::Extern);
+                             Variable::InitKind::Extern);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
-                               WeightVar::InitKind::Extern);
+                               Variable::InitKind::Extern);
 
   Node *FA = G.createFullyConnected("fc", A, numOutputElem / 2);
   FA = G.createRELU("relu", FA);
@@ -127,12 +127,12 @@ TEST(Network, gradientCheck_Conv) {
   auto &G = IP.getGraph();
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
-                             WeightVar::InitKind::Extern);
+                             Variable::InitKind::Extern);
   auto *Ex = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
-                              WeightVar::InitKind::Extern);
+                              Variable::InitKind::Extern);
 
   Node *O = G.createConv("conv", A, 16, 5, 1, 2);
-  O = G.createPool("pool", O, PoolInst::OpKind::Max, 3, 3, 0);
+  O = G.createPool("pool", O, PoolNode::OpKind::Max, 3, 3, 0);
   O = G.createFullyConnected("fc", O, numOutputElem);
   O = G.createRELU("relu", O);
   O = G.createRegression("reg", O, Ex);
@@ -164,11 +164,11 @@ TEST(Network, gradientCheck_AvgPool) {
   auto &G = IP.getGraph();
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
-                             WeightVar::InitKind::Extern);
+                             Variable::InitKind::Extern);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
-                               WeightVar::InitKind::Extern);
+                               Variable::InitKind::Extern);
 
-  Node *O = G.createPool("pool", A, PoolInst::OpKind::Avg, 3, 3, 0);
+  Node *O = G.createPool("pool", A, PoolNode::OpKind::Avg, 3, 3, 0);
   O = G.createFullyConnected("fc", O, numOutputElem);
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createReturn("ret", O);
@@ -199,9 +199,9 @@ TEST(Network, gradientCheck_batchNorm) {
   auto &G = IP.getGraph();
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 3}, "A",
-                             WeightVar::InitKind::Extern);
+                             Variable::InitKind::Extern);
   auto *Ex = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
-                              WeightVar::InitKind::Extern);
+                              Variable::InitKind::Extern);
 
   Node *O = G.createBatchNormalization("batch", A, 3, 0.0001, 0.9);
   O = G.createReshape("reshape", O, {1, numDim * numDim * 3});
@@ -238,16 +238,16 @@ TEST(Network, gradientCheck_Arithmetic) {
   auto &G = IP.getGraph();
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
-                             WeightVar::InitKind::Extern);
+                             Variable::InitKind::Extern);
   auto *B = G.createVariable(ElemKind::FloatTy, {1, numDim}, "B",
-                             WeightVar::InitKind::Extern);
+                             Variable::InitKind::Extern);
   auto *C = G.createVariable(ElemKind::FloatTy, {1, numDim}, "C",
-                             WeightVar::InitKind::Extern);
+                             Variable::InitKind::Extern);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
-                               WeightVar::InitKind::Extern);
+                               Variable::InitKind::Extern);
 
-  Node *O = G.createArithmetic("arith", A, B, ArithmeticInst::OpKind::Mul);
-  O = G.createArithmetic("arith", O, C, ArithmeticInst::OpKind::Add);
+  Node *O = G.createArithmetic("arith", A, B, ArithmeticNode::OpKind::Mul);
+  O = G.createArithmetic("arith", O, C, ArithmeticNode::OpKind::Add);
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createReturn("ret", O);
 
@@ -328,9 +328,9 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
 
   auto &G = IP.getGraph();
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
-                             WeightVar::InitKind::Extern);
+                             Variable::InitKind::Extern);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
-                               WeightVar::InitKind::Extern);
+                               Variable::InitKind::Extern);
 
   Node *FA = G.createFullyConnected("fc", A, numOutputElem);
   FA = G.createTanh("tanh", FA);
@@ -362,9 +362,9 @@ TEST(Network, gradientCheck_Transpose) {
   auto &G = IP.getGraph();
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             WeightVar::InitKind::Extern);
+                             Variable::InitKind::Extern);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
-                               WeightVar::InitKind::Extern);
+                               Variable::InitKind::Extern);
   Node *TA = G.createTranspose("transpose", A, {0, 3, 1, 2});
   TA = G.createFullyConnected("fc", TA, numOutputElem);
   TA = G.createRegression("regress", TA, Exp);

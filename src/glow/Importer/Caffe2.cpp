@@ -116,7 +116,7 @@ Node *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
 
   Tensor *T = getTensorByName(name);
   auto *V = G_.createVariable(T->getElementType(), T->dims(), name,
-                              WeightVar::InitKind::Broadcast);
+                              Variable::InitKind::Broadcast);
   nodeByName_[name] = V;
   return V;
 }

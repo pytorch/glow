@@ -8,15 +8,18 @@
 namespace glow {
 
 class Variable final : public Node {
+public:
+  using InitKind = WeightVar::InitKind;
+
+private:
   /// The value to use during initialization. This can be the value to splat or
   /// a parameter to specify the range of the random values.
   float val_;
   /// The initialization mode.
-  WeightVar::InitKind initKind_;
+  InitKind initKind_;
 
 public:
-  Variable(llvm::StringRef name, TypeRef Ty, WeightVar::InitKind initKind,
-           float val)
+  Variable(llvm::StringRef name, TypeRef Ty, InitKind initKind, float val)
       : Node(Kinded::Kind::WeightVarKind, Ty, name), val_(val),
         initKind_(initKind) {}
 
@@ -24,7 +27,7 @@ public:
     return k->getKind() == Kinded::Kind::WeightVarKind;
   }
 
-  WeightVar::InitKind getInitKind() const { return initKind_; }
+  InitKind getInitKind() const { return initKind_; }
   float getVal() const { return val_; }
 
   std::string getDebugDesc() const override;
@@ -69,6 +72,10 @@ public:
 };
 
 class PoolNode final : public Node {
+public:
+  using OpKind = PoolInst::OpKind;
+
+private:
   Node *in_;
   size_t kernel_;
   size_t stride_;
@@ -76,7 +83,7 @@ class PoolNode final : public Node {
   PoolInst::OpKind kind_;
 
 public:
-  PoolNode(Node *in, TypeRef outTy, llvm::StringRef name, PoolInst::OpKind kind,
+  PoolNode(Node *in, TypeRef outTy, llvm::StringRef name, OpKind kind,
            size_t kernel, size_t stride, size_t pad)
       : Node(Kinded::Kind::PoolInstKind, outTy, name), in_(in), kernel_(kernel),
         stride_(stride), pad_(pad), kind_(kind) {}
@@ -89,7 +96,7 @@ public:
   size_t getKernel() const { return kernel_; }
   size_t getStride() const { return stride_; }
   size_t getPad() const { return pad_; }
-  PoolInst::OpKind getKind() const { return kind_; }
+  OpKind getKind() const { return kind_; }
 
   std::string getDebugDesc() const override;
   void visit(Node *parent, NodeVisitor *visitor) override;
@@ -305,14 +312,17 @@ public:
 };
 
 class ArithmeticNode final : public Node {
+public:
+  using OpKind = ArithmeticInst::OpKind;
+
+private:
   Node *LHS_;
   Node *RHS_;
   ArithmeticInst::OpKind kind_;
   const char *getKindStr() const;
 
 public:
-  ArithmeticNode(llvm::StringRef name, Node *LHS, Node *RHS,
-                 ArithmeticInst::OpKind kind)
+  ArithmeticNode(llvm::StringRef name, Node *LHS, Node *RHS, OpKind kind)
       : Node(Kinded::Kind::ArithmeticInstKind, LHS->getType(), name), LHS_(LHS),
         RHS_(RHS), kind_(kind) {}
   static bool classof(const Kinded *k) {
@@ -320,7 +330,7 @@ public:
   }
   Node *getLHS() const { return LHS_; }
   Node *getRHS() const { return RHS_; }
-  ArithmeticInst::OpKind getKind() const { return kind_; }
+  OpKind getKind() const { return kind_; }
 
   std::string getDebugDesc() const override;
   void visit(Node *parent, NodeVisitor *visitor) override;

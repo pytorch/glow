@@ -25,13 +25,13 @@ Graph::~Graph() {
 //===----------------------------------------------------------------------===//
 
 Variable *Graph::createVariable(TypeRef T, llvm::StringRef name,
-                                WeightVar::InitKind initKind, float val) {
+                                Variable::InitKind initKind, float val) {
   return addVar(new Variable(name, T, initKind, val));
 }
 
 Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
                                 llvm::StringRef name,
-                                WeightVar::InitKind initKind, float val) {
+                                Variable::InitKind initKind, float val) {
   auto FT = M_.uniqueType(T, dims);
   return createVariable(FT, name, initKind, val);
 }
@@ -53,10 +53,10 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, Node *input,
   std::vector<size_t> filterDim = {depth, kernel, kernel, idim.c};
   size_t fanIn = kernel * kernel * idim.c;
   auto *filter = createVariable(ElemKind::FloatTy, filterDim, "filter",
-                                WeightVar::InitKind::Xavier, fanIn);
+                                Variable::InitKind::Xavier, fanIn);
 
   auto *bias = createVariable(ElemKind::FloatTy, {depth}, "filter",
-                              WeightVar::InitKind::Broadcast, 0.1);
+                              Variable::InitKind::Broadcast, 0.1);
 
   auto OT = M_.uniqueType(ElemKind::FloatTy, outDims);
 
@@ -65,7 +65,7 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, Node *input,
 }
 
 PoolNode *Graph::createPool(llvm::StringRef name, Node *input,
-                            PoolInst::OpKind kind, size_t kernel, size_t stride,
+                            PoolNode::OpKind kind, size_t kernel, size_t stride,
                             size_t pad) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
@@ -88,10 +88,10 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
   size_t fanIn = idim.second;
 
   auto *W = createVariable(T->getElementType(), {outDepth, idim.second},
-                           "weights", WeightVar::InitKind::Xavier, fanIn);
+                           "weights", Variable::InitKind::Xavier, fanIn);
 
   auto *B = createVariable(T->getElementType(), {outDepth}, "bias",
-                           WeightVar::InitKind::Broadcast, 0.1);
+                           Variable::InitKind::Broadcast, 0.1);
 
   auto OT = M_.uniqueType(T->getElementType(), {idim.first, outDepth});
   return addNode(new FullyConnectedNode(input, OT, name, W, B, outDepth));
@@ -165,14 +165,14 @@ BatchNormalizationNode *Graph::createBatchNormalization(llvm::StringRef name,
 
   // Allocate the learnable parameters beta and gamma.
   auto *beta = createVariable(ElemKind::FloatTy, {channels}, "beta",
-                              WeightVar::InitKind::Broadcast, 0.);
+                              Variable::InitKind::Broadcast, 0.);
   auto *gamma = createVariable(ElemKind::FloatTy, {channels}, "gamma",
-                               WeightVar::InitKind::Broadcast, 1.0);
+                               Variable::InitKind::Broadcast, 1.0);
 
   auto *mean = createVariable(ElemKind::FloatTy, {channels}, "mean",
-                              WeightVar::InitKind::Broadcast, 0.0);
+                              Variable::InitKind::Broadcast, 0.0);
   auto *variance = createVariable(ElemKind::FloatTy, {channels}, "variance",
-                                  WeightVar::InitKind::Broadcast, 0.0);
+                                  Variable::InitKind::Broadcast, 0.0);
 
   return addNode(new BatchNormalizationNode(
       input, name, gamma, beta, mean, variance, channelIdx, epsilon, momentum));
@@ -183,8 +183,7 @@ Graph::createLocalResponseNormalization(llvm::StringRef name, Node *input,
                                         size_t halfWindowSize, float alpha,
                                         float beta, float k) {
   auto Ty = input->getType();
-  auto *scale =
-      createVariable(Ty, "scale", WeightVar::InitKind::Broadcast, 0.0);
+  auto *scale = createVariable(Ty, "scale", Variable::InitKind::Broadcast, 0.0);
 
   // The output tensor is of the same shape as the input tensor.
   return addNode(new LocalResponseNormalizationNode(
