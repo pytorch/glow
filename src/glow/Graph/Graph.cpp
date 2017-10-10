@@ -55,7 +55,7 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, Node *input,
   auto *filter = createVariable(ElemKind::FloatTy, filterDim, "filter",
                                 Variable::InitKind::Xavier, fanIn);
 
-  auto *bias = createVariable(ElemKind::FloatTy, {depth}, "filter",
+  auto *bias = createVariable(ElemKind::FloatTy, {depth}, "bias",
                               Variable::InitKind::Broadcast, 0.1);
 
   auto OT = M_.uniqueType(ElemKind::FloatTy, outDims);
