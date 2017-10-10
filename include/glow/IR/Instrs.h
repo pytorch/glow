@@ -456,7 +456,7 @@ public:
 
   void setVal(float v) { val_ = v; }
   float getVal() const { return val_; }
-  
+
   std::string getExtraDesc() const;
   void verify() const {}
 };

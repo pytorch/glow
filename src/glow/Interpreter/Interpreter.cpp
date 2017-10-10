@@ -1,13 +1,15 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "glow/Interpreter/Interpreter.h"
+#include "glow/Graph/Graph.h"
+#include "glow/Graph/Nodes.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/Optimizer.h"
 #include "glow/Support/Casting.h"
 
 using namespace glow;
 
-Interpreter::Interpreter() {}
+Interpreter::Interpreter() : G_(M_) {}
 
 Interpreter::~Interpreter() {
   // Delete the tensors that are owned by this module.
@@ -44,6 +46,17 @@ Tensor *Interpreter::getTensorForValue(const Value *v) const {
   return it->second;
 }
 
+Tensor *Interpreter::getTensorForValue(const Variable *v) const {
+  auto *N = G_.getIRForNode(v);
+  return getTensorForValue(N);
+}
+
+Tensor *Interpreter::getTensorForValue(const Node *v) const {
+  auto val = G_.getIRForNode(v);
+  assert(val && "Node does not have a registered IR value");
+  return getTensorForValue(val);
+}
+
 void Interpreter::deleteTensor(const Value *v) {
   auto it = tensors_.find(v);
   assert(it != tensors_.end() && "Unknown key Value.");
@@ -58,7 +71,7 @@ void Interpreter::deleteTensor(const Value *v) {
   }
 }
 
-void Interpreter::initValue(const Value *v, const Tensor *t) {
+void Interpreter::initValue(const WeightVar *v, const Tensor *t) {
   auto it = tensors_.find(v);
   if (it != tensors_.end()) {
     it->second->copyFrom(t);
@@ -85,6 +98,7 @@ Tensor *Interpreter::getOrCreateGradTensor(const Value *v) {
 
 void Interpreter::loadValueFromTensor(const Value *v, Tensor *input,
                                       size_t sampleIdx) {
+  assert(v && "Invalid value");
   auto *t = getTensorForValue(v);
 
   auto dim = input->dims();
@@ -98,8 +112,18 @@ Handle<FloatTy> Interpreter::getWeightHandle(Context *ctx, Value *v) const {
   return getTensorForValue(v)->getHandle<FloatTy>();
 }
 
+Handle<FloatTy> Interpreter::getWeightHandle(Context *ctx, Variable *v) const {
+  auto *N = G_.getIRForNode(v);
+  return getTensorForValue(N)->getHandle<FloatTy>();
+}
+
 Handle<FloatTy> Interpreter::getGradHandle(Context *ctx, Value *v) {
   return getOrCreateGradTensor(v)->getHandle<FloatTy>();
+}
+
+Handle<FloatTy> Interpreter::getGradHandle(Context *ctx, Variable *v) {
+  auto *N = G_.getIRForNode(v);
+  return getOrCreateGradTensor(N)->getHandle<FloatTy>();
 }
 
 Tensor *Interpreter::allocateBackingTensor(const Value *v) {
@@ -185,7 +209,7 @@ void Interpreter::initVars() {
   }
 }
 
-void Interpreter::infer(llvm::ArrayRef<Value *> vars,
+void Interpreter::infer(llvm::ArrayRef<Variable *> vars,
                         llvm::ArrayRef<Tensor *> inputs) {
   assert(!inputs.empty() && "No inputs");
   assert(inputs.size() == vars.size() &&
@@ -193,13 +217,14 @@ void Interpreter::infer(llvm::ArrayRef<Value *> vars,
 
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
-    loadValueFromTensor(vars[i], inputs[i], 0);
+    auto *val = G_.getIRForNode(vars[i]);
+    loadValueFromTensor(val, inputs[i], 0);
   }
 
   doForwardPass(false);
 }
 
-void Interpreter::train(size_t iterations, llvm::ArrayRef<Value *> vars,
+void Interpreter::train(size_t iterations, llvm::ArrayRef<Variable *> vars,
                         llvm::ArrayRef<Tensor *> inputs) {
   static size_t trainCounter = 0;
 
@@ -207,12 +232,17 @@ void Interpreter::train(size_t iterations, llvm::ArrayRef<Value *> vars,
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
 
+  std::vector<Value *> weights;
+  for (auto *v : vars) {
+    weights.push_back(G_.getIRForNode(v));
+  }
+
   // This is the size of one batch (the number of samples in the batch).
   size_t batchSize = vars[0]->dims()[0];
 
   for (size_t i = 0; i < iterations; i++) {
     // Launch threads that update the different chunks in the batch:
-    updateForwardBackward(vars, inputs, trainCounter + batchSize);
+    updateForwardBackward(weights, inputs, trainCounter + batchSize);
 
     trainCounter += batchSize;
 

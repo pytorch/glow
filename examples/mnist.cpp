@@ -1,3 +1,6 @@
+#include "glow/Graph/Graph.h"
+#include "glow/Graph/Node.h"
+#include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
@@ -72,28 +75,29 @@ void testMNIST() {
   IP.getConfig().momentum = 0.9;
   IP.getConfig().L2Decay = 0.001;
 
-  Value *A;
-  Value *result;
-  Value *selected;
-  {
-    IRBuilder bb(IP.getModule());
+  auto &G = IP.getGraph();
 
-    A = bb.createWeightVar(ElemKind::FloatTy, {minibatchSize, 28, 28, 1});
-    auto *CV0 = bb.createConvOp(A, 16, 5, 1, 2);
-    auto *RL0 = bb.createRELUOp(*CV0);
-    auto *MP0 = bb.createPoolOp(*RL0, PoolInst::OpKind::Max, 3, 3, 0);
+  Variable *A = G.createVariable(ElemKind::FloatTy, {minibatchSize, 28, 28, 1},
+                                 "input", WeightVar::InitKind::Extern);
 
-    auto *CV1 = bb.createConvOp(*MP0, 16, 5, 1, 2);
-    auto *RL1 = bb.createRELUOp(*CV1);
-    auto *MP1 = bb.createPoolOp(*RL1, PoolInst::OpKind::Max, 3, 3, 0);
+  auto *CV0 = G.createConv("conv", A, 16, 5, 1, 2);
+  auto *RL0 = G.createRELU("relu", CV0);
+  auto *MP0 = G.createPool("pool", RL0, PoolInst::OpKind::Max, 3, 3, 0);
 
-    auto *FCL1 = bb.createFullyConnectedOp(*MP1, 10);
-    auto *RL2 = bb.createRELUOp(*FCL1);
-    selected = bb.createWeightVar(ElemKind::IndexTy, {minibatchSize, 1});
-    auto *SM = bb.createSoftMaxOp(*RL2, selected);
-    result = bb.createReturnOp(*SM);
-  }
+  auto *CV1 = G.createConv("conv", MP0, 16, 5, 1, 2);
+  auto *RL1 = G.createRELU("conv", CV1);
+  auto *MP1 = G.createPool("pool", RL1, PoolInst::OpKind::Max, 3, 3, 0);
 
+  auto *FCL1 = G.createFullyConnected("fc", MP1, 10);
+  auto *RL2 = G.createRELU("fc", FCL1);
+  Variable *selected =
+      G.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, +"selected",
+                       WeightVar::InitKind::Extern);
+  auto *SM = G.createSoftMax("sm", RL2, selected);
+
+  auto *result = G.createReturn("return", SM);
+
+  G.generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -126,7 +130,7 @@ void testMNIST() {
   Tensor sample(ElemKind::FloatTy, {minibatchSize, 1, 28, 28});
   sample.copyConsecutiveSlices(&imageInputs, 0);
   IP.infer({A}, {&sample});
-  auto *res = IP.getTensorForValue(result);
+  Tensor *res = IP.getTensorForValue(result);
 
   for (unsigned int iter = 0; iter < minibatchSize; iter++) {
     auto T = res->getHandle<FloatTy>().extractSlice(iter);

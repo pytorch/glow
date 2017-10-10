@@ -1,6 +1,7 @@
 #ifndef GLOW_INTERPRETER_INTERPRETER_H
 #define GLOW_INTERPRETER_INTERPRETER_H
 
+#include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/Network/Tensor.h"
@@ -20,6 +21,8 @@ class Context;
 class Interpreter final {
   /// The Module that holds the IR.
   Module M_;
+  /// The Graph that represents the high-level program.
+  Graph G_;
   /// Maps values to Tensors, that are owned by this class.
   std::unordered_map<const Value *, Tensor *> tensors_;
 
@@ -33,7 +36,8 @@ class Interpreter final {
 public:
   /// \returns the internal module.
   Module &getModule() { return M_; }
-
+  /// \returns the internal module.
+  Graph &getGraph() { return G_; }
   /// Run the target-independent optimizations on the module.
   void optimize(OptimizationMode mode);
 
@@ -52,11 +56,19 @@ public:
   /// is owned by the Interpreter.
   Tensor *getTensorForValue(const Value *v) const;
 
+  /// \returns a pointer to the tensor that is saved under \p v. The tensor
+  /// is owned by the Interpreter.
+  Tensor *getTensorForValue(const Variable *v) const;
+
+  /// \returns a pointer to the tensor that is saved under \p v. The tensor
+  /// is owned by the Interpreter.
+  Tensor *getTensorForValue(const Node *v) const;
+
   /// Remove the tensor (and the gradient) that's stored for \p v;
   void deleteTensor(const Value *v);
 
   /// Copies the content of the tensor \p t into the value \p v.
-  void initValue(const Value *v, const Tensor *t);
+  void initValue(const WeightVar *v, const Tensor *t);
 
   /// \returns gets or creates a new tensor to back the value \p v. If the
   /// tensor does not exist then this method creates it. The dimension of the
@@ -73,19 +85,25 @@ public:
   Handle<FloatTy> getWeightHandle(Context *, Value *v) const;
 
   /// \returns a float-handle to the tensor that is stored at \p v.
+  Handle<FloatTy> getWeightHandle(Context *, Variable *v) const;
+
+  /// \returns a float-handle to the tensor that is stored at \p v.
   Handle<FloatTy> getGradHandle(Context *, Value *v);
+
+  /// \returns a float-handle to the tensor that is stored at \p v.
+  Handle<FloatTy> getGradHandle(Context *, Variable *v);
 
   /// Initialize all of the variables in the program.
   void initVars();
 
   /// Runs the program in a forward pass. Update the nodes in \p nodes with the
   /// values \p inputs.
-  void infer(llvm::ArrayRef<Value *> vars, llvm::ArrayRef<Tensor *> inputs);
+  void infer(llvm::ArrayRef<Variable *> vars, llvm::ArrayRef<Tensor *> inputs);
 
   /// Train the network. Perform \p iterations in the training loop. Each
   /// iteration does a full forward and backward pass of a whole batch.
   /// The method updates the variables in \p vars with the tensors \p inputs.
-  void train(size_t iterations, llvm::ArrayRef<Value *> vars,
+  void train(size_t iterations, llvm::ArrayRef<Variable *> vars,
              llvm::ArrayRef<Tensor *> inputs);
 
 private:
