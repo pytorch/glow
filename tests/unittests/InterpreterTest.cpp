@@ -83,7 +83,7 @@ TEST(Interpreter, trainASimpleNetwork) {
 
   IP.optimize(OptimizationMode::Infer);
   IP.infer({A}, {&inputs});
-  auto RNWH = IP.getTensorForValue(result)->getHandle<FloatTy>();
+  auto RNWH = IP.getTensorForNode(result)->getHandle<FloatTy>();
   (void)RNWH;
 
   // Test the output:
@@ -137,7 +137,7 @@ TEST(Interpreter, simpleRegression) {
     I = {target, 0., 0., 0.};
     IP.infer({A}, {&inputs});
 
-    auto resH = IP.getTensorForValue(result)->getHandle<FloatTy>();
+    auto resH = IP.getTensorForNode(result)->getHandle<FloatTy>();
     (void)resH;
 
     EXPECT_NEAR(I.at({0, 0}) + 1, resH.at({0, 1}), 0.1);
@@ -199,7 +199,7 @@ TEST(Interpreter, learnXor) {
   }
 
   IP.infer({A}, {&trainingSet});
-  auto resH = IP.getTensorForValue(result)->getHandle<FloatTy>();
+  auto resH = IP.getTensorForNode(result)->getHandle<FloatTy>();
 
   // Test the output:
   for (size_t i = 0; i < numTests; i++) {
@@ -284,7 +284,7 @@ TEST(Network, circle) {
 
       IP.infer({A}, {&sample});
 
-      auto SMH = IP.getTensorForValue(result)->getHandle<FloatTy>();
+      auto SMH = IP.getTensorForNode(result)->getHandle<FloatTy>();
       auto A = SMH.at({0, 0});
       auto B = SMH.at({0, 1});
 
@@ -306,7 +306,7 @@ TEST(Network, circle) {
     Tensor sample(ElemKind::FloatTy, {1, 2});
     sample.getHandle<FloatTy>() = {0., 0.};
     IP.infer({A}, {&sample});
-    auto SMH = IP.getTensorForValue(result)->getHandle<FloatTy>();
+    auto SMH = IP.getTensorForNode(result)->getHandle<FloatTy>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
     EXPECT_LE(A, 0.1);
@@ -318,7 +318,7 @@ TEST(Network, circle) {
     Tensor sample(ElemKind::FloatTy, {1, 2});
     sample.getHandle<FloatTy>() = {1., 1.};
     IP.infer({A}, {&sample});
-    auto SMH = IP.getTensorForValue(result)->getHandle<FloatTy>();
+    auto SMH = IP.getTensorForNode(result)->getHandle<FloatTy>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
     EXPECT_GE(A, 0.9);
@@ -370,7 +370,7 @@ TEST(Network, learnSingleValueConcat) {
 
   // Testing the output vector.
   IP.infer({A}, {&inputs});
-  auto RNWH = IP.getTensorForValue(result)->getHandle<FloatTy>();
+  auto RNWH = IP.getTensorForNode(result)->getHandle<FloatTy>();
   (void)RNWH;
 
   // Test the output:

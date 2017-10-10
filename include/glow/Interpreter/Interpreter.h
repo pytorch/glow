@@ -58,11 +58,7 @@ public:
 
   /// \returns a pointer to the tensor that is saved under \p v. The tensor
   /// is owned by the Interpreter.
-  Tensor *getTensorForValue(const Variable *v) const;
-
-  /// \returns a pointer to the tensor that is saved under \p v. The tensor
-  /// is owned by the Interpreter.
-  Tensor *getTensorForValue(const Node *v) const;
+  Tensor *getTensorForNode(const Node *v) const;
 
   /// Remove the tensor (and the gradient) that's stored for \p v;
   void deleteTensor(const Value *v);

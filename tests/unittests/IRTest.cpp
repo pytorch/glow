@@ -120,16 +120,22 @@ TEST(IR, highLevelBuilder) {
 
     auto *input = bb.createWeightVar(ElemKind::FloatTy, {1, 224, 224, 3});
     auto *conv = bb.createConvOp(input, 16, 7, 2, 3);
-    auto *pool = bb.createPoolOp(*conv, PoolInst::OpKind::Max, 7, 2, 3);
-    auto *relu = bb.createRELUOp(*pool);
-    auto *sig = bb.createSigmoidOp(*relu);
-    auto *tan = bb.createTanhOp(*sig);
-    auto *fc = bb.createFullyConnectedOp(*tan, 12);
-    auto *rshp = bb.createReshapeOp(*relu, {1, 56 * 56, 16});
-    auto *tsps = bb.createTransposeOp(*relu, {0, 3, 1, 2});
-    auto *concat = bb.createConcatOp({*relu, *relu}, 0);
-    auto *bn = bb.createBatchNormalizationOp(*relu, 3, 0.001, 0.9);
-    auto *aa = bb.createArithmeticOp(*bn, *relu, ArithmeticInst::OpKind::Add);
+    auto *pool = bb.createPoolOp(conv->getOperand(0).first,
+                                 PoolInst::OpKind::Max, 7, 2, 3);
+    auto *relu = bb.createRELUOp(pool->getOperand(0).first);
+    auto *sig = bb.createSigmoidOp(relu->getOperand(0).first);
+    auto *tan = bb.createTanhOp(sig->getOperand(0).first);
+    auto *fc = bb.createFullyConnectedOp(tan->getOperand(0).first, 12);
+    auto *rshp =
+        bb.createReshapeOp(relu->getOperand(0).first, {1, 56 * 56, 16});
+    auto *tsps = bb.createTransposeOp(relu->getOperand(0).first, {0, 3, 1, 2});
+    auto *concat = bb.createConcatOp(
+        {relu->getOperand(0).first, relu->getOperand(0).first}, 0);
+    auto *bn =
+        bb.createBatchNormalizationOp(relu->getOperand(0).first, 3, 0.001, 0.9);
+    auto *aa = bb.createArithmeticOp(bn->getOperand(0).first,
+                                     relu->getOperand(0).first,
+                                     ArithmeticInst::OpKind::Add);
 
     (void)fc;
     (void)concat;
@@ -147,7 +153,8 @@ TEST(IR, casting) {
 
     auto *input = bb.createWeightVar(ElemKind::FloatTy, {1, 224, 224, 3});
     auto *conv = bb.createConvOp(input, 16, 7, 2, 3);
-    auto *pool = bb.createPoolOp(*conv, PoolInst::OpKind::Max, 7, 2, 3);
+    auto *pool = bb.createPoolOp(conv->getOperand(0).first,
+                                 PoolInst::OpKind::Max, 7, 2, 3);
 
     EXPECT_EQ(isa<PoolInst>(pool), true);
     EXPECT_EQ(isa<PoolInst>(input), false);

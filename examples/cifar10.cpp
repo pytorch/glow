@@ -125,7 +125,7 @@ void testCIFAR10() {
       Tensor sample(ElemKind::FloatTy, {minibatchSize, 3, 32, 32});
       sample.copyConsecutiveSlices(&images, minibatchSize * i);
       IP.infer({A}, {&sample});
-      auto *res = IP.getTensorForValue(result);
+      auto *res = IP.getTensorForNode(result);
 
       for (unsigned int iter = 0; iter < minibatchSize; iter++) {
         auto T = res->getHandle<FloatTy>().extractSlice(iter);

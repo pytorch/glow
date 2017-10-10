@@ -56,13 +56,13 @@ void performGradCheck(Interpreter &IP, Node *result, Variable *inputVar,
     // Calculate f(x+e):
     inputsH.raw(i) = old + delta;
     IP.infer({inputVar}, {inputs});
-    Tensor *res = IP.getTensorForValue(result);
+    Tensor *res = IP.getTensorForNode(result);
     auto plusLoss = computeL2Loss(outputs, res);
 
     // Calculate f(x-e):
     inputsH.raw(i) = old - delta;
     IP.infer({inputVar}, {inputs});
-    res = IP.getTensorForValue(result);
+    res = IP.getTensorForNode(result);
     auto minusLoss = computeL2Loss(outputs, res);
     inputsH.raw(i) = old;
 
@@ -292,14 +292,14 @@ TEST(Network, gradientCheck_Arithmetic) {
       // Calculate f(x+e):
       iH.at({0, i}) = old + delta;
       IP.infer({A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
-      Tensor *res = IP.getTensorForValue(result);
+      Tensor *res = IP.getTensorForNode(result);
 
       auto plusLoss = computeL2Loss(&outputs, res);
 
       // Calculate f(x-e):
       iH.at({0, i}) = old - delta;
       IP.infer({A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
-      res = IP.getTensorForValue(result);
+      res = IP.getTensorForNode(result);
       auto minusLoss = computeL2Loss(&outputs, res);
       iH.at({0, i}) = old;
 

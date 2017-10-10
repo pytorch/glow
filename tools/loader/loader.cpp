@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
   auto *i1 = cast<Variable>(LD.getOrCreateNodeByName("data"));
 
   IP.infer({i0, i1}, {&data, &data});
-  auto *res = IP.getTensorForValue(SM);
+  auto *res = IP.getTensorForNode(SM);
   auto H = res->getHandle<FloatTy>();
   H.dump("res = ", "\n");
   Tensor slice = H.extractSlice(0);
