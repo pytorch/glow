@@ -140,7 +140,7 @@ std::string PoolNode::getDebugDesc() const {
       .addParam("kernel", kernel_)
       .addParam("stride", stride_)
       .addParam("pad", pad_)
-      .addParam("kind", kind_ == PoolInst::OpKind::Max ? "max" : "avg");
+      .addParam("kind", kind_ == OpKind::Max ? "max" : "avg");
   return db;
 }
 
