@@ -85,8 +85,6 @@ public:
   /// Verify the correctness of the instruction parameters.
   void verify() const;
 
-  operator Value *() const { return getOperand(0).first; }
-
   static bool mayShareBuffers(const Instruction *I);
 };
 

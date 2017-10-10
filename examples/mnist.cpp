@@ -130,7 +130,7 @@ void testMNIST() {
   Tensor sample(ElemKind::FloatTy, {minibatchSize, 1, 28, 28});
   sample.copyConsecutiveSlices(&imageInputs, 0);
   IP.infer({A}, {&sample});
-  Tensor *res = IP.getTensorForValue(result);
+  Tensor *res = IP.getTensorForNode(result);
 
   for (unsigned int iter = 0; iter < minibatchSize; iter++) {
     auto T = res->getHandle<FloatTy>().extractSlice(iter);

@@ -46,12 +46,7 @@ Tensor *Interpreter::getTensorForValue(const Value *v) const {
   return it->second;
 }
 
-Tensor *Interpreter::getTensorForValue(const Variable *v) const {
-  auto *N = G_.getIRForNode(v);
-  return getTensorForValue(N);
-}
-
-Tensor *Interpreter::getTensorForValue(const Node *v) const {
+Tensor *Interpreter::getTensorForNode(const Node *v) const {
   auto val = G_.getIRForNode(v);
   assert(val && "Node does not have a registered IR value");
   return getTensorForValue(val);
