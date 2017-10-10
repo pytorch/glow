@@ -61,7 +61,9 @@ public:
       auto *V =
           builder_.createConvOp(in, filter, bias, C->getDepth(), C->getKernel(),
                                 C->getStride(), C->getPad());
+      V->setName(N->getName());
       registerIR(N, V->getDest());
+
       break;
     }
     case glow::Kinded::Kind::PoolInstKind: {
@@ -69,6 +71,7 @@ public:
       auto *in = valueForNode(P->getInput());
       auto *V = builder_.createPoolOp(in, P->getKind(), P->getKernel(),
                                       P->getStride(), P->getPad());
+      V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
     }
@@ -79,12 +82,14 @@ public:
       auto *bias = valueForNode(FC->getBias());
       auto *V =
           builder_.createFullyConnectedOp(in, filter, bias, FC->getDepth());
+      V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::ReluInstKind: {
       auto *R = cast<ReluNode>(N);
       auto *V = builder_.createRELUOp(valueForNode(R->getInput()));
+      V->setName(N->getName());
       registerIR(N, V->getDest());
 
       break;
@@ -92,12 +97,14 @@ public:
     case glow::Kinded::Kind::SigmoidInstKind: {
       auto *S = cast<SigmoidNode>(N);
       auto *V = builder_.createSigmoidOp(valueForNode(S->getInput()));
+      V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::TanhInstKind: {
       auto *T = cast<TanhNode>(N);
       auto *V = builder_.createTanhOp(valueForNode(T->getInput()));
+      V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
     }
@@ -106,6 +113,7 @@ public:
       auto *in = valueForNode(SM->getInput());
       auto *select = valueForNode(SM->getSelected());
       auto *V = builder_.createSoftMaxOp(in, select);
+      V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
     }
@@ -114,6 +122,7 @@ public:
       auto *in = valueForNode(RR->getInput());
       auto *expected = valueForNode(RR->getExpected());
       auto *V = builder_.createRegressionOp(in, expected);
+      V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
     }
@@ -121,6 +130,7 @@ public:
       auto *TT = cast<TransposeNode>(N);
       auto *in = valueForNode(TT->getInput());
       auto *V = builder_.createTransposeOp(in, TT->getShuffle());
+      V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
     }
@@ -128,6 +138,7 @@ public:
       auto *RS = cast<ReshapeNode>(N);
       auto *in = valueForNode(RS->getInput());
       auto *V = builder_.createReshapeOp(in, RS->getDims());
+      V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
     }
@@ -138,6 +149,7 @@ public:
         vals.push_back(valueForNode(in));
       }
       auto *V = builder_.createConcatOp(vals, CC->getDim());
+      V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
     }
@@ -152,6 +164,7 @@ public:
       auto *V = builder_.createBatchNormalizationOp(
           in, beta, gamma, mean, var, BN->getChannelIdx(), BN->getEpsilon(),
           BN->getMomentum());
+      V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
     }
@@ -162,6 +175,7 @@ public:
       auto *V = builder_.createLocalResponseNormalizationOp(
           in, LR->gethalfWindowSize(), LR->getAlpha(), LR->getBeta(),
           LR->getK());
+      V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
     }
@@ -170,12 +184,14 @@ public:
       auto *L = valueForNode(AR->getLHS());
       auto *R = valueForNode(AR->getRHS());
       auto *V = builder_.createArithmeticOp(L, R, AR->getKind());
+      V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::ReturnInstKind: {
       auto *R = cast<ReturnNode>(N);
       auto *V = builder_.createReturnOp(valueForNode(R->getInput()));
+      V->setName(N->getName());
       registerIR(R, V);
       break;
     }
@@ -183,6 +199,7 @@ public:
       auto *V = cast<Variable>(N);
       auto *W = builder_.createWeightVar(V->getType(), V->getName(),
                                          V->getInitKind(), V->getVal());
+      W->setName(N->getName());
       registerIR(N, W);
       break;
     }
