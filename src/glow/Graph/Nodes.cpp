@@ -28,9 +28,7 @@ void Variable::visit(Node *parent, NodeVisitor *visitor) {
     visitor->post(parent, this);                                               \
   }
 
-DEFINE_CLASS_VISITOR(ConvolutionNode)
 DEFINE_CLASS_VISITOR(PoolNode)
-DEFINE_CLASS_VISITOR(FullyConnectedNode)
 DEFINE_CLASS_VISITOR(LocalResponseNormalizationNode)
 DEFINE_CLASS_VISITOR(ReluNode)
 DEFINE_CLASS_VISITOR(ReshapeNode)
@@ -38,8 +36,42 @@ DEFINE_CLASS_VISITOR(TransposeNode)
 DEFINE_CLASS_VISITOR(SigmoidNode)
 DEFINE_CLASS_VISITOR(TanhNode)
 DEFINE_CLASS_VISITOR(RegressionNode)
-DEFINE_CLASS_VISITOR(BatchNormalizationNode)
 DEFINE_CLASS_VISITOR(ReturnNode)
+
+void ConvolutionNode::visit(Node *parent, NodeVisitor *visitor) {
+  if (!visitor->shouldVisit(parent, this)) {
+    return;
+  }
+  visitor->pre(parent, this);
+  in_->visit(this, visitor);
+  filter_->visit(this, visitor);
+  bias_->visit(this, visitor);
+  visitor->post(parent, this);
+}
+
+void FullyConnectedNode::visit(Node *parent, NodeVisitor *visitor) {
+  if (!visitor->shouldVisit(parent, this)) {
+    return;
+  }
+  visitor->pre(parent, this);
+  in_->visit(this, visitor);
+  filter_->visit(this, visitor);
+  bias_->visit(this, visitor);
+  visitor->post(parent, this);
+}
+
+void BatchNormalizationNode::visit(Node *parent, NodeVisitor *visitor) {
+  if (!visitor->shouldVisit(parent, this)) {
+    return;
+  }
+  visitor->pre(parent, this);
+  in_->visit(this, visitor);
+  scale_->visit(this, visitor);
+  bias_->visit(this, visitor);
+  mean_->visit(this, visitor);
+  var_->visit(this, visitor);
+  visitor->post(parent, this);
+}
 
 void ArithmeticNode::visit(Node *parent, NodeVisitor *visitor) {
   if (!visitor->shouldVisit(parent, this)) {
