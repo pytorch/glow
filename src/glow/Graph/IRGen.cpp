@@ -56,8 +56,11 @@ public:
     case glow::Kinded::Kind::ConvolutionInstKind: {
       auto *C = cast<ConvolutionNode>(N);
       auto *in = valueForNode(C->getInput());
-      auto *V = builder_.createConvOp(in, C->getDepth(), C->getKernel(),
-                                      C->getStride(), C->getPad());
+      auto *filter = valueForNode(C->getFilter());
+      auto *bias = valueForNode(C->getBias());
+      auto *V =
+          builder_.createConvOp(in, filter, bias, C->getDepth(), C->getKernel(),
+                                C->getStride(), C->getPad());
       registerIR(N, V->getDest());
       break;
     }
@@ -72,7 +75,10 @@ public:
     case glow::Kinded::Kind::FullyConnectedInstKind: {
       auto *FC = cast<FullyConnectedNode>(N);
       auto *in = valueForNode(FC->getInput());
-      auto *V = builder_.createFullyConnectedOp(in, FC->getDepth());
+      auto *filter = valueForNode(FC->getFilter());
+      auto *bias = valueForNode(FC->getBias());
+      auto *V =
+          builder_.createFullyConnectedOp(in, filter, bias, FC->getDepth());
       registerIR(N, V->getDest());
       break;
     }
@@ -138,8 +144,14 @@ public:
     case glow::Kinded::Kind::BatchNormalizationInstKind: {
       auto *BN = cast<BatchNormalizationNode>(N);
       auto *in = valueForNode(BN->getInput());
+      auto *beta = valueForNode(BN->getBias());
+      auto *gamma = valueForNode(BN->getScale());
+      auto *mean = valueForNode(BN->getMean());
+      auto *var = valueForNode(BN->getVar());
+
       auto *V = builder_.createBatchNormalizationOp(
-          in, BN->getChannelIdx(), BN->getEpsilon(), BN->getMomentum());
+          in, beta, gamma, mean, var, BN->getChannelIdx(), BN->getEpsilon(),
+          BN->getMomentum());
       registerIR(N, V->getDest());
       break;
     }
