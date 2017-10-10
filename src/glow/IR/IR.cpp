@@ -88,6 +88,7 @@ Module::~Module() {
 }
 
 void Module::verify() const {
+  assert(instrs_.size() && "Instruction list is empty!");
   for (auto it : instrs_) {
     it->verifyUseList();
     it->verify();
