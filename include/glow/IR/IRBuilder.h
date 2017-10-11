@@ -22,7 +22,7 @@ class IRBuilder {
   std::vector<AllocActivationInst *> activeAllocs_;
 
 public:
-  IRBuilder(Module &M) : M_(M) {}
+  explicit IRBuilder(Module &M) : M_(M) {}
 
   ~IRBuilder();
 

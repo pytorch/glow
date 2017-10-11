@@ -17,15 +17,16 @@ using namespace glow;
 //===----------------------------------------------------------------------===//
 
 void Instruction::pushOperand(Operand op) {
-  ops_.push_back({nullptr, op.second});
+  ops_.emplace_back(nullptr, op.second);
   setOperand(ops_.size() - 1, op.first);
 }
 
 void Instruction::setOperand(unsigned idx, Value *v) {
   auto *currVal = ops_[idx].first;
 
-  if (currVal == v)
+  if (currVal == v) {
     return;
+  }
 
   if (currVal) {
     currVal->removeUse({idx, this});
@@ -43,8 +44,8 @@ Instruction::Operand Instruction::getOperand(unsigned idx) const {
 }
 
 void Instruction::verifyUseList() const {
-  for (size_t i = 0, e = ops_.size(); i < e; i++) {
-    auto *v = ops_[i].first;
+  for (const auto &op : ops_) {
+    auto *v = op.first;
     (void)v;
     assert(v && "Instruction operand must be a real value");
     assert(v->hasUser(this) && "Invalid use-list");
@@ -74,7 +75,7 @@ Module::~Module() {
 }
 
 void Module::verify() const {
-  assert(instrs_.size() && "Instruction list is empty!");
+  assert(!instrs_.empty() && "Instruction list is empty!");
   for (auto it : instrs_) {
     it->verifyUseList();
     it->verify();
@@ -83,8 +84,9 @@ void Module::verify() const {
 
 Value *Module::getWeightForNode(const Node *V) const {
   auto it = variableMap.find(V);
-  if (it == variableMap.end())
+  if (it == variableMap.end()) {
     return nullptr;
+  }
 
   return it->second;
 }
@@ -132,7 +134,7 @@ static std::string getDesc(const Instruction *II) {
   sb += "%" + name + " = " + instrName + " ";
   auto extraDesc = getExtraDesc(II);
   ;
-  if (extraDesc.size()) {
+  if (!extraDesc.empty()) {
     sb += extraDesc + " ";
   }
 
@@ -154,9 +156,10 @@ static void nameInstr(std::unordered_set<std::string> &usedNames, Named *named,
                       llvm::StringRef suggestion) {
   unsigned idx = 0;
 
-  if (!named->hasName())
-    // Use the first few letters of the value as the initial name.
+  // Use the first few letters of the value as the initial name.
+  if (!named->hasName()) {
     named->setName(suggestion.slice(0, 4));
+  }
 
   std::string tempName = named->getName();
 
@@ -216,7 +219,7 @@ static std::string getDottyDesc(const Instruction *II) {
   sb += instrName;
   sb += "|";
   auto extraDesc = getExtraDesc(II);
-  if (extraDesc.size()) {
+  if (!extraDesc.empty()) {
     sb += extraDesc + "|";
   }
 
