@@ -3,8 +3,8 @@
 
 #include "llvm/ADT/StringRef.h"
 
+#include "glow/Base/Type.h"
 #include "glow/IR/Traits.h"
-#include "glow/IR/Type.h"
 
 namespace glow {
 

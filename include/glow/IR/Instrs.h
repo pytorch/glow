@@ -1,8 +1,8 @@
 #ifndef GLOW_IR_INSTRS_H
 #define GLOW_IR_INSTRS_H
 
+#include "glow/Base/Type.h"
 #include "glow/IR/IR.h"
-#include "glow/IR/Type.h"
 #include "glow/Support/Casting.h"
 
 #include "llvm/ADT/ArrayRef.h"

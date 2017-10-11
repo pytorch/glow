@@ -1,9 +1,9 @@
 #ifndef GLOW_IR_IRBUILDER_H
 #define GLOW_IR_IRBUILDER_H
 
+#include "glow/Base/Type.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/Instrs.h"
-#include "glow/IR/Type.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"

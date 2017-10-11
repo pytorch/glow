@@ -1,6 +1,7 @@
 
 add_library(Base
               Train.cpp
+              Type.cpp
               Image.cpp)
 target_link_libraries(Base
                       PUBLIC

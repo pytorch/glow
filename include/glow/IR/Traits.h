@@ -1,7 +1,7 @@
 #ifndef GLOW_IR_TRAITS_H
 #define GLOW_IR_TRAITS_H
 
-#include "glow/IR/Type.h"
+#include "glow/Base/Type.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"

@@ -1,6 +1,6 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
-#include "glow/IR/Type.h"
+#include "glow/Base/Type.h"
 
 #include <sstream>
 

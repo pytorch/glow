@@ -3,7 +3,7 @@
 
 #include "Config.h"
 
-#include "glow/IR/Type.h"
+#include "glow/Base/Type.h"
 #include "glow/Support/Compiler.h"
 #include "glow/Support/Random.h"
 
