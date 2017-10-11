@@ -35,6 +35,10 @@ template <typename E> std::string arrayRefToString(llvm::ArrayRef<E> list) {
 }
 } // namespace
 
+//===----------------------------------------------------------------------===//
+//                      Instruction textual printers
+//===----------------------------------------------------------------------===//
+
 std::string ConvolutionInst::getExtraDesc() const {
   return listToString(kernel_, stride_, pad_, depth_);
 }
@@ -104,6 +108,10 @@ std::string WeightVar::getExtraDesc() const {
 std::string AllocActivationInst::getExtraDesc() const {
   return std::to_string(*getType());
 }
+
+//===----------------------------------------------------------------------===//
+//                       Instruction verification
+//===----------------------------------------------------------------------===//
 
 /// Check that the type of the first operand matches the type of the second
 /// operand.

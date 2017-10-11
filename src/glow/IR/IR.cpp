@@ -12,6 +12,10 @@
 
 using namespace glow;
 
+//===----------------------------------------------------------------------===//
+//                       General IR operations
+//===----------------------------------------------------------------------===//
+
 void Instruction::pushOperand(Operand op) {
   ops_.push_back({nullptr, op.second});
   setOperand(ops_.size() - 1, op.first);
@@ -84,6 +88,10 @@ Value *Module::getWeightForNode(const Node *V) const {
 
   return it->second;
 }
+
+//===----------------------------------------------------------------------===//
+//                    IR printing and visualizing
+//===----------------------------------------------------------------------===//
 
 static std::string getExtraDesc(const Kinded *K) {
 #define DEF_NODE(CLASS, NAME)
