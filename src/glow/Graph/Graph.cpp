@@ -217,7 +217,7 @@ ReturnNode *Graph::createReturn(llvm::StringRef name, Node *input) {
 }
 
 //===----------------------------------------------------------------------===//
-//                       Graph Utilities
+//                   Graph dumping and printing
 //===----------------------------------------------------------------------===//
 
 void Graph::dump() {
