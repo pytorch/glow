@@ -1,5 +1,5 @@
-#ifndef GLOW_NETWORK_TENSOR_H
-#define GLOW_NETWORK_TENSOR_H
+#ifndef GLOW_BASE_TENSOR_H
+#define GLOW_BASE_TENSOR_H
 
 #include "Config.h"
 
@@ -655,4 +655,4 @@ template <class ElemTy> Handle<ElemTy> Tensor::getHandle() {
 
 } // namespace glow
 
-#endif // GLOW_NETWORK_TENSOR_H
+#endif // GLOW_BASE_TENSOR_H

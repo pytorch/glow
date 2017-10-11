@@ -1,7 +1,7 @@
-#ifndef GLOW_NETWORK_TRAIN_H
-#define GLOW_NETWORK_TRAIN_H
+#ifndef GLOW_BASE_TRAIN_H
+#define GLOW_BASE_TRAIN_H
 
-#include "glow/Network/Tensor.h"
+#include "glow/Base/Tensor.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -52,4 +52,4 @@ public:
 
 } // namespace glow
 
-#endif // GLOW_NETWORK_TRAIN_H
+#endif // GLOW_BASE_TRAIN_H

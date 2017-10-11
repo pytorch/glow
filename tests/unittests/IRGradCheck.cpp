@@ -1,12 +1,12 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
+#include "glow/Base/Tensor.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Interpreter/Interpreter.h"
-#include "glow/Network/Tensor.h"
 
 #include "gtest/gtest.h"
 
