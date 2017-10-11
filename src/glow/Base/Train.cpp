@@ -1,7 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
-#include "glow/Network/Train.h"
-#include "glow/Network/Tensor.h"
+#include "glow/Base/Train.h"
+#include "glow/Base/Tensor.h"
 
 using namespace glow;
 

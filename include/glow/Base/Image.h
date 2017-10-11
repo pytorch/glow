@@ -1,7 +1,7 @@
-#ifndef GLOW_NETWORK_IMAGE_H
-#define GLOW_NETWORK_IMAGE_H
+#ifndef GLOW_BASE_IMAGE_H
+#define GLOW_BASE_IMAGE_H
 
-#include "glow/Network/Tensor.h"
+#include "glow/Base/Tensor.h"
 
 namespace glow {
 
@@ -17,4 +17,4 @@ bool writePngImage(Tensor *T, const char *filename,
 
 } // namespace glow
 
-#endif // GLOW_NETWORK_IMAGE_H
+#endif // GLOW_BASE_IMAGE_H

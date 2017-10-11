@@ -5,6 +5,6 @@ add_library(Interpreter
 target_link_libraries(Interpreter
                       PRIVATE
                         Optimizer
-                        Network
+                        Base
                         Graph)
 

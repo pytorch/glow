@@ -1,6 +1,6 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
-#include "glow/Network/Tensor.h"
+#include "glow/Base/Tensor.h"
 
 #include "gtest/gtest.h"
 

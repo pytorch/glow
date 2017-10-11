@@ -1,11 +1,11 @@
 #ifndef GLOW_INTERPRETER_INTERPRETER_H
 #define GLOW_INTERPRETER_INTERPRETER_H
 
+#include "glow/Base/Tensor.h"
+#include "glow/Base/Train.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
-#include "glow/Network/Tensor.h"
-#include "glow/Network/Train.h"
 #include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/ADT/ArrayRef.h"
