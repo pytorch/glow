@@ -3,6 +3,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/IR/IR.h"
 
 #include "gtest/gtest.h"
 
@@ -18,8 +19,8 @@ using namespace glow;
 TEST(Graph, simpleTest) {
 
   {
-    Module M;
-    Graph G(M);
+    Graph G;
+    Module M(G);
     Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
     Node *S = G.createVariable(ElemKind::IndexTy, {4, 1}, "select");
 
@@ -28,14 +29,15 @@ TEST(Graph, simpleTest) {
     K = G.createSoftMax("SoftMax", K, S);
     G.dump();
     G.dumpDAG();
-    G.generateIR();
+    M.generateIR();
     M.dump();
   }
 
   {
     unsigned numInputs = 10;
-    Module M;
-    Graph G(M);
+    Graph G;
+    Module M(G);
+
     auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
     auto *Ex = G.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
 
@@ -46,7 +48,7 @@ TEST(Graph, simpleTest) {
     G.createRegression("Regression", O, Ex);
     G.dump();
     G.dumpDAG();
-    G.generateIR();
+    M.generateIR();
     M.dump();
   }
 }

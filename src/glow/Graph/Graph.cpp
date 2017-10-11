@@ -20,6 +20,21 @@ Graph::~Graph() {
   }
 }
 
+TypeRef Graph::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims) {
+  return uniqueType(Type(elemTy, dims));
+}
+
+TypeRef Graph::uniqueType(const Type &T) {
+  for (auto &tp : types_) {
+    if (T.isEqual(tp))
+      return &tp;
+  }
+
+  return &*types_.insert(types_.begin(), T);
+}
+
+TypeRef Graph::getVoidTy() { return uniqueType(Type()); }
+
 //===----------------------------------------------------------------------===//
 //                       Node builders
 //===----------------------------------------------------------------------===//
@@ -32,7 +47,7 @@ Variable *Graph::createVariable(TypeRef T, llvm::StringRef name,
 Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
                                 llvm::StringRef name,
                                 Variable::InitKind initKind, float val) {
-  auto FT = M_.uniqueType(T, dims);
+  auto FT = uniqueType(T, dims);
   return createVariable(FT, name, initKind, val);
 }
 
@@ -45,7 +60,7 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, Node *input,
 
   // Calculate the size and allocate the output buffer.
   auto outSz =
-      ConvolutionInst::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
+      ConvolutionNode::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
 
   std::vector<size_t> outDims = {idim.n, outSz.first, outSz.second, depth};
 
@@ -58,7 +73,7 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, Node *input,
   auto *bias = createVariable(ElemKind::FloatTy, {depth}, "bias",
                               Variable::InitKind::Broadcast, 0.1);
 
-  auto OT = M_.uniqueType(ElemKind::FloatTy, outDims);
+  auto OT = uniqueType(ElemKind::FloatTy, outDims);
 
   return addNode(new ConvolutionNode(input, OT, name, filter, bias, kernel,
                                      stride, pad, depth));
@@ -72,10 +87,10 @@ PoolNode *Graph::createPool(llvm::StringRef name, Node *input,
          "buffer too small for selected stride");
 
   auto outSz =
-      ConvolutionInst::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
+      ConvolutionNode::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
 
-  auto OT = M_.uniqueType(ElemKind::FloatTy,
-                          {idim.n, outSz.first, outSz.second, idim.c});
+  auto OT = uniqueType(ElemKind::FloatTy,
+                       {idim.n, outSz.first, outSz.second, idim.c});
 
   return addNode(new PoolNode(input, OT, name, kind, kernel, stride, pad));
 }
@@ -93,7 +108,7 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
   auto *B = createVariable(T->getElementType(), {outDepth}, "bias",
                            Variable::InitKind::Broadcast, 0.1);
 
-  auto OT = M_.uniqueType(T->getElementType(), {idim.first, outDepth});
+  auto OT = uniqueType(T->getElementType(), {idim.first, outDepth});
   return addNode(new FullyConnectedNode(input, OT, name, W, B, outDepth));
 }
 
@@ -132,7 +147,7 @@ TransposeNode *Graph::createTranspose(llvm::StringRef name, Node *input,
     shape.push_back(dims[shuffle[i]]);
   }
 
-  auto NT = M_.uniqueType(input->getElementType(), shape);
+  auto NT = uniqueType(input->getElementType(), shape);
   return addNode(new TransposeNode(input, NT, name, shuffle));
 }
 
@@ -151,7 +166,7 @@ ConcatNode *Graph::createConcat(llvm::StringRef name,
   // increase the size of the tensor along this dimension.
   shape[dimension] *= inputs.size();
 
-  auto NT = M_.uniqueType(inputs[0]->getElementType(), shape);
+  auto NT = uniqueType(inputs[0]->getElementType(), shape);
   return addNode(new ConcatNode(inputs, NT, name, dimension));
 }
 
@@ -191,7 +206,7 @@ Graph::createLocalResponseNormalization(llvm::StringRef name, Node *input,
 }
 
 ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, Node *LHS,
-                                        Node *RHS, ArithmeticInst::OpKind op) {
+                                        Node *RHS, ArithmeticNode::OpKind op) {
   assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
   return addNode(new ArithmeticNode(name, LHS, RHS, op));

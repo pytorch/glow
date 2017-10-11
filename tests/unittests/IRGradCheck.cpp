@@ -101,7 +101,7 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createReturn("ret", O);
 
-  G.generateIR();
+  IP.getModule().generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -138,7 +138,7 @@ TEST(Network, gradientCheck_Conv) {
   O = G.createRegression("reg", O, Ex);
   auto *result = G.createReturn("ret", O);
 
-  G.generateIR();
+  IP.getModule().generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -173,7 +173,7 @@ TEST(Network, gradientCheck_AvgPool) {
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createReturn("ret", O);
 
-  G.generateIR();
+  IP.getModule().generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -208,7 +208,7 @@ TEST(Network, gradientCheck_batchNorm) {
   O = G.createRegression("reg", O, Ex);
   auto result = G.createReturn("ret", O);
 
-  G.generateIR();
+  IP.getModule().generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -251,7 +251,7 @@ TEST(Network, gradientCheck_Arithmetic) {
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createReturn("ret", O);
 
-  G.generateIR();
+  IP.getModule().generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -337,7 +337,7 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
   FA = G.createRegression("reg", FA, Exp);
   auto *result = G.createReturn("ret", FA);
 
-  G.generateIR();
+  IP.getModule().generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -370,7 +370,7 @@ TEST(Network, gradientCheck_Transpose) {
   TA = G.createRegression("regress", TA, Exp);
   auto *result = G.createReturn("ret", TA);
 
-  G.generateIR();
+  IP.getModule().generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 

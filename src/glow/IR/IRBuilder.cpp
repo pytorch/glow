@@ -1,5 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
+#include "glow/Graph/Graph.h"
+
 #include "glow/IR/IRBuilder.h"
 
 using namespace glow;
@@ -46,7 +48,7 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, Value *filter,
 
   // Calculate the size and allocate the output buffer.
   auto outSz =
-      ConvolutionInst::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
+      ConvolutionNode::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
 
   std::vector<size_t> outDims = {idim.n, outSz.first, outSz.second, depth};
 
@@ -63,7 +65,7 @@ PoolInst *IRBuilder::createPoolOp(Value *input, PoolInst::OpKind kind,
          "buffer too small for selected stride");
 
   auto outSz =
-      ConvolutionInst::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
+      ConvolutionNode::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
@@ -353,7 +355,7 @@ WeightVar *IRBuilder::createWeightVar(ElemKind elemTy,
                                       llvm::ArrayRef<size_t> dims,
                                       llvm::StringRef name, InitKind initKind,
                                       float val) {
-  auto T = M_.uniqueType(elemTy, dims);
+  auto T = M_.getGraph().uniqueType(elemTy, dims);
   return createWeightVar(T, name, initKind, val);
 }
 
@@ -375,7 +377,7 @@ IRBuilder::createAllocActivationInst(TypeRef T, llvm::StringRef name) {
 }
 AllocActivationInst *IRBuilder::createAllocActivationInst(
     ElemKind elemTy, llvm::ArrayRef<size_t> dims, llvm::StringRef name) {
-  auto T = M_.uniqueType(elemTy, dims);
+  auto T = M_.getGraph().uniqueType(elemTy, dims);
   return createAllocActivationInst(T, name);
 }
 

@@ -41,7 +41,7 @@ TEST(Interpreter, interpret) {
   auto *SM = G.createSoftMax("sm", RL3, ex);
   G.createReturn("ret", SM);
 
-  G.generateIR();
+  IP.getModule().generateIR();
   IP.optimize(OptimizationMode::Infer);
   IP.initVars();
   IP.infer({input}, {&inputs});
@@ -72,7 +72,7 @@ TEST(Interpreter, trainASimpleNetwork) {
   inputs.getHandle<FloatTy>() = {0.15, 0.15, 0.15, 0.15};
   expected.getHandle<FloatTy>() = {0.9, 0.9, 0.9, 0.9};
 
-  G.generateIR();
+  IP.getModule().generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -117,7 +117,7 @@ TEST(Interpreter, simpleRegression) {
   auto I = inputs.getHandle<FloatTy>();
   auto E = expected.getHandle<FloatTy>();
 
-  G.generateIR();
+  IP.getModule().generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -185,7 +185,7 @@ TEST(Interpreter, learnXor) {
     TL.at({i, 0}) = a ^ b;
   }
 
-  G.generateIR();
+  IP.getModule().generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -264,7 +264,7 @@ TEST(Network, circle) {
   auto *SM = G.createSoftMax("soft", RL1, S);
   auto *result = G.createReturn("ret", SM);
 
-  G.generateIR();
+  IP.getModule().generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
@@ -359,7 +359,7 @@ TEST(Network, learnSingleValueConcat) {
   inputs.getHandle<FloatTy>().clear(0.15);
   expected.getHandle<FloatTy>().clear(0.9);
 
-  G.generateIR();
+  IP.getModule().generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 

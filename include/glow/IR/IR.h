@@ -9,11 +9,13 @@
 #include "llvm/ADT/StringRef.h"
 
 #include <list>
+#include <unordered_map>
 #include <vector>
 
 namespace glow {
 class Instruction;
 class Module;
+class Graph;
 
 enum class OperandKind : unsigned char {
   In,
@@ -89,42 +91,46 @@ public:
 };
 
 class WeightVar;
+class Value;
+class Node;
 
 /// A module that represents the compilation unit.
 class Module final {
 public:
+  using VariableMap = std::unordered_map<const Node *, Value *>;
   using InstListTy = std::list<Instruction *>;
   using WeightVarListTy = std::list<WeightVar *>;
 
 private:
-  /// A uniqued list of types in the module. Types in this list can be compared
-  /// by comparing their addresses.
-  std::list<Type> types_{};
+  /// A reference to the graph structure.
+  Graph &G_;
+
   /// A list of weights. Weights are shared between all execution context.
   std::list<WeightVar *> weights_{};
 
   /// A list of instruction that represent the network.
   InstListTy instrs_{};
 
-  /// Give the instructions in the module a unique name.
+  /// Maps Variable nodes in the original graph to the weight values that
+  /// represent them in the lower IR.
+  VariableMap variableMap{};
+
+  /// Assign the instructions in the module a unique name.
   void nameInstructions();
 
 public:
   /// Add an instruction to the instr stream.
   void pushInstr(Instruction *I) { instrs_.push_back(I); }
 
-  Module() = default;
+  Module(Graph &G) : G_(G) {}
 
   ~Module();
 
-  /// Return a pointer to a uniqued type \p t in the current module.
-  TypeRef uniqueType(const Type &T);
+  /// Generate IR from the graph nodes.
+  void generateIR();
 
-  /// Return a pointer to a uniqued type \p t in the current module.
-  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims);
-
-  /// Return the void type.
-  TypeRef getVoidTy();
+  /// \returns a reference to the original graph.
+  Graph &getGraph() { return G_; }
 
   /// Verify the correctness of the module.
   void verify() const;
@@ -134,6 +140,13 @@ public:
 
   /// Dump a dotty graph that depicts the module.
   void dumpDAG();
+
+  /// \returns the variable map.
+  VariableMap &getVariableMap() { return variableMap; }
+
+  /// \returns the weight that the variable \p v is lowered into, or null if the
+  /// variable is unknown.
+  Value *getWeightForNode(const Node *V) const;
 
   /// \returns the list of instructions.
   InstListTy &getInstrs() { return instrs_; }

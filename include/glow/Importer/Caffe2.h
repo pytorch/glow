@@ -4,6 +4,7 @@
 #include "llvm/ADT/ArrayRef.h"
 
 #include "glow/Graph/Graph.h"
+#include "glow/Support/Casting.h"
 
 #include <string>
 #include <unordered_map>
@@ -25,8 +26,7 @@ class Value;
 class caffe2ModelLoader {
   /// The interpreter that runs the program.
   Interpreter &IP_;
-  /// The graph that we are building.
-  Graph &G_;
+
   /// Saves network nodes by name.
   std::unordered_map<std::string, Node *> nodeByName_;
   /// A list of weight tensors indexed by name.

@@ -1,5 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
+#include "glow/Graph/Graph.h"
+
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
@@ -18,25 +20,27 @@
 using namespace glow;
 
 TEST(IR, uniqueTypes) {
-  Module M;
+  Graph G;
+  Module M(G);
   Type T1(ElemKind::FloatTy, {320, 200});
   Type T2(ElemKind::FloatTy, {320, 200});
   Type T3(ElemKind::FloatTy, {1, 2});
 
-  auto *u1 = M.uniqueType(T1);
-  auto *u2 = M.uniqueType(T2);
-  auto *u3 = M.uniqueType(T3);
+  auto *u1 = G.uniqueType(T1);
+  auto *u2 = G.uniqueType(T2);
+  auto *u3 = G.uniqueType(T3);
 
   EXPECT_EQ(u1, u2);
   EXPECT_NE(u1, u3);
 
   for (int i = 0; i < 10; i++) {
-    EXPECT_EQ(u1, M.uniqueType(T1));
+    EXPECT_EQ(u1, G.uniqueType(T1));
   }
 }
 
 TEST(IR, basicUseList) {
-  Module M;
+  Graph G;
+  Module M(G);
   {
     IRBuilder builder(M);
 
@@ -61,11 +65,12 @@ TEST(IR, basicUseList) {
 TEST(IR, allInstrs) {
   using InitKind = WeightVar::InitKind;
 
-  Module M;
-  auto T1 = M.uniqueType(ElemKind::FloatTy, {1, 24, 24, 3});
-  auto T2 = M.uniqueType(ElemKind::FloatTy, {64});
-  auto T4 = M.uniqueType(ElemKind::IndexTy, {1, 1});
-  auto T5 = M.uniqueType(ElemKind::FloatTy, {3});
+  Graph G;
+  Module M(G);
+  auto T1 = G.uniqueType(ElemKind::FloatTy, {1, 24, 24, 3});
+  auto T2 = G.uniqueType(ElemKind::FloatTy, {64});
+  auto T4 = G.uniqueType(ElemKind::IndexTy, {1, 1});
+  auto T5 = G.uniqueType(ElemKind::FloatTy, {3});
 
   {
     IRBuilder builder(M);
@@ -114,7 +119,8 @@ TEST(IR, allInstrs) {
 }
 
 TEST(IR, highLevelBuilder) {
-  Module M;
+  Graph G;
+  Module M(G);
   {
     IRBuilder bb(M);
 
@@ -147,7 +153,8 @@ TEST(IR, highLevelBuilder) {
 }
 
 TEST(IR, casting) {
-  Module M;
+  Graph G;
+  Module M(G);
   {
     IRBuilder bb(M);
 

@@ -97,7 +97,7 @@ void testMNIST() {
 
   auto *result = G.createReturn("return", SM);
 
-  G.generateIR();
+  IP.getModule().generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 

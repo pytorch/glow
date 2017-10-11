@@ -9,7 +9,7 @@
 
 using namespace glow;
 
-Interpreter::Interpreter() : G_(M_) {}
+Interpreter::Interpreter() : M_(G_) {}
 
 Interpreter::~Interpreter() {
   // Delete the tensors that are owned by this module.
@@ -47,7 +47,7 @@ Tensor *Interpreter::getTensorForValue(const Value *v) const {
 }
 
 Tensor *Interpreter::getTensorForNode(const Node *v) const {
-  auto val = G_.getIRForNode(v);
+  auto val = M_.getWeightForNode(v);
   assert(val && "Node does not have a registered IR value");
   return getTensorForValue(val);
 }
@@ -108,7 +108,7 @@ Handle<FloatTy> Interpreter::getWeightHandle(Context *ctx, Value *v) const {
 }
 
 Handle<FloatTy> Interpreter::getWeightHandle(Context *ctx, Variable *v) const {
-  auto *N = G_.getIRForNode(v);
+  auto *N = M_.getWeightForNode(v);
   return getTensorForValue(N)->getHandle<FloatTy>();
 }
 
@@ -117,7 +117,7 @@ Handle<FloatTy> Interpreter::getGradHandle(Context *ctx, Value *v) {
 }
 
 Handle<FloatTy> Interpreter::getGradHandle(Context *ctx, Variable *v) {
-  auto *N = G_.getIRForNode(v);
+  auto *N = M_.getWeightForNode(v);
   return getOrCreateGradTensor(N)->getHandle<FloatTy>();
 }
 
@@ -212,7 +212,7 @@ void Interpreter::infer(llvm::ArrayRef<Variable *> vars,
 
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
-    auto *val = G_.getIRForNode(vars[i]);
+    auto *val = M_.getWeightForNode(vars[i]);
     loadValueFromTensor(val, inputs[i], 0);
   }
 
@@ -229,7 +229,7 @@ void Interpreter::train(size_t iterations, llvm::ArrayRef<Variable *> vars,
 
   std::vector<Value *> weights;
   for (auto *v : vars) {
-    weights.push_back(G_.getIRForNode(v));
+    weights.push_back(M_.getWeightForNode(v));
   }
 
   // This is the size of one batch (the number of samples in the batch).
@@ -316,4 +316,3 @@ void Interpreter::doBackwardPass() {
     }
   }
 }
-

@@ -100,7 +100,7 @@ void testCIFAR10() {
   auto *SM = G.createSoftMax("softmax", RL3, E);
   auto *result = G.createReturn("ret", SM);
 
-  G.generateIR();
+  IP.getModule().generateIR();
   IP.optimize(OptimizationMode::Train);
   IP.initVars();
 
