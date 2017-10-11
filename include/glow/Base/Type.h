@@ -78,7 +78,7 @@ struct Type final {
   unsigned char numSizes_{0};
 
   /// Specifies the element type of the tensor.
-  ElemKind elementType_;
+  ElemKind elementType_{ElemKind::IndexTy};
 
   /// Initialize a new type.
   Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims) : elementType_(elemTy) {
@@ -92,7 +92,7 @@ struct Type final {
   }
 
   /// An empty type.
-  Type() : elementType_(ElemKind::IndexTy) { numSizes_ = 0; }
+  Type() = default;
 
   /// \returns true if \p other is the same type.
   bool isEqual(TypeRef other) const { return isEqual(*other); }
@@ -100,15 +100,18 @@ struct Type final {
   /// \returns true if \p other is the same type.
   bool isEqual(const Type &other) const {
     // Element type must be the same.
-    if (elementType_ != other.elementType_)
+    if (elementType_ != other.elementType_) {
       return false;
+    }
     // Must have the same number of sizes.
-    if (numSizes_ != other.numSizes_)
+    if (numSizes_ != other.numSizes_) {
       return false;
+    }
     // Sizes must be the same.
     for (size_t i = 0; i < numSizes_; i++) {
-      if (sizes_[i] != other.sizes_[i])
+      if (sizes_[i] != other.sizes_[i]) {
         return false;
+      }
     }
 
     return true;
@@ -198,6 +201,6 @@ inline bool operator==(const Type &LHS, const Type &RHS) {
 
 namespace std {
 std::string to_string(const glow::Type &);
-}
+} // namespace std
 
 #endif // GLOW_BASE_TYPE_H

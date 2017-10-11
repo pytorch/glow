@@ -328,7 +328,7 @@ public:
     assert(tensor_->isInBounds(indices));
     size_t index = getElementPtr(indices);
     assert(index < size() && "Out of bounds");
-    ElemTy *data = tensor_->getRawDataPointer<ElemTy>();
+    auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
 
@@ -343,7 +343,7 @@ public:
   /// \returns the element at offset \p idx without any size calculations.
   ElemTy &raw(size_t index) {
     assert(index < size() && "Out of bounds");
-    ElemTy *data = tensor_->getRawDataPointer<ElemTy>();
+    auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
 

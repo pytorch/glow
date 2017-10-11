@@ -26,8 +26,9 @@ TypeRef Graph::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims) {
 
 TypeRef Graph::uniqueType(const Type &T) {
   for (auto &tp : types_) {
-    if (T.isEqual(tp))
+    if (T.isEqual(tp)) {
       return &tp;
+    }
   }
 
   return &*types_.insert(types_.begin(), T);
@@ -245,7 +246,9 @@ public:
 
   DottyPrinterPass() = default;
 
-  void pre(Node *parent, Node *N) override { nodeEdges.push_back({parent, N}); }
+  void pre(Node *parent, Node *N) override {
+    nodeEdges.emplace_back(parent, N);
+  }
 
   std::string nodeDescr(Node *N) {
     if (!N) {

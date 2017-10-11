@@ -33,7 +33,7 @@ public:
     return !generatedNodes.count(N);
   }
 
-  IRGenVisitor(Module &M) : M_(M), builder_(M_) {}
+  explicit IRGenVisitor(Module &M) : M_(M), builder_(M_) {}
 
   /// \returns the generated instruction for the node \p N.
   Value *valueForNode(Node *N) {

@@ -277,7 +277,6 @@ void Interpreter::updateForwardBackward(llvm::ArrayRef<Value *> vars,
 }
 
 void Interpreter::doForwardPass(bool isTrain) {
-
   // Do the forward pass.
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_NODE(CLASS, NAME)

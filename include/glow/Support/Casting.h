@@ -15,8 +15,9 @@ template <class TO, class FROM> TO *cast(FROM *k) {
 }
 
 template <class TO, class FROM> TO *dyn_cast(FROM *k) {
-  if (isa<TO>(k))
+  if (isa<TO>(k)) {
     return cast<TO>(k);
+  }
 
   return nullptr;
 }

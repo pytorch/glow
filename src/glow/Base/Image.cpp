@@ -15,26 +15,31 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   // open file and test for it being a png.
   FILE *fp = fopen(filename, "rb");
   // Can't open the file.
-  if (!fp)
+  if (!fp) {
     return true;
+  }
 
   // Validate signature.
   fread(header, 1, 8, fp);
-  if (png_sig_cmp(header, 0, 8))
+  if (png_sig_cmp(header, 0, 8)) {
     return true;
+  }
 
   // Initialize stuff.
   png_structp png_ptr =
-      png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-  if (!png_ptr)
+      png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+  if (!png_ptr) {
     return true;
+  }
 
   png_infop info_ptr = png_create_info_struct(png_ptr);
-  if (!info_ptr)
+  if (!info_ptr) {
     return true;
+  }
 
-  if (setjmp(png_jmpbuf(png_ptr)))
+  if (setjmp(png_jmpbuf(png_ptr))) {
     return true;
+  }
 
   png_init_io(png_ptr, fp);
   png_set_sig_bytes(png_ptr, 8);
@@ -58,12 +63,14 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   png_read_update_info(png_ptr, info_ptr);
 
   // Error during image read.
-  if (setjmp(png_jmpbuf(png_ptr)))
+  if (setjmp(png_jmpbuf(png_ptr))) {
     return true;
+  }
 
-  png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
-  for (size_t y = 0; y < height; y++)
+  auto *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
+  for (size_t y = 0; y < height; y++) {
     row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png_ptr, info_ptr));
+  }
 
   png_read_image(png_ptr, row_pointers);
   fclose(fp);
@@ -85,8 +92,9 @@ bool glow::readPngImage(Tensor *T, const char *filename,
     }
   }
 
-  for (size_t y = 0; y < height; y++)
+  for (size_t y = 0; y < height; y++) {
     free(row_pointers[y]);
+  }
   free(row_pointers);
 
   return false;
@@ -96,27 +104,32 @@ bool glow::writePngImage(Tensor *T, const char *filename,
                          std::pair<float, float> range) {
   /* create file */
   FILE *fp = fopen(filename, "wb");
-  if (!fp)
+  if (!fp) {
     return true;
+  }
 
   /* initialize stuff */
   png_structp png_ptr =
-      png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+      png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
 
-  if (!png_ptr)
+  if (!png_ptr) {
     return true;
+  }
 
   png_infop info_ptr = png_create_info_struct(png_ptr);
-  if (!info_ptr)
+  if (!info_ptr) {
     return true;
+  }
 
-  if (setjmp(png_jmpbuf(png_ptr)))
+  if (setjmp(png_jmpbuf(png_ptr))) {
     return true;
+  }
 
   png_init_io(png_ptr, fp);
 
-  if (setjmp(png_jmpbuf(png_ptr)))
+  if (setjmp(png_jmpbuf(png_ptr))) {
     return true;
+  }
 
   auto H = T->getHandle<FloatTy>();
 
@@ -134,12 +147,14 @@ bool glow::writePngImage(Tensor *T, const char *filename,
 
   png_write_info(png_ptr, info_ptr);
 
-  if (setjmp(png_jmpbuf(png_ptr)))
+  if (setjmp(png_jmpbuf(png_ptr))) {
     return true;
+  }
 
-  png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
-  for (size_t y = 0; y < height; y++)
+  auto *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
+  for (size_t y = 0; y < height; y++) {
     row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png_ptr, info_ptr));
+  }
 
   float scale = ((range.second - range.first) / 255.0);
   float bias = range.first;
@@ -157,14 +172,16 @@ bool glow::writePngImage(Tensor *T, const char *filename,
 
   png_write_image(png_ptr, row_pointers);
 
-  if (setjmp(png_jmpbuf(png_ptr)))
+  if (setjmp(png_jmpbuf(png_ptr))) {
     return true;
+  }
 
-  png_write_end(png_ptr, NULL);
+  png_write_end(png_ptr, nullptr);
 
   /* cleanup heap allocation */
-  for (size_t y = 0; y < height; y++)
+  for (size_t y = 0; y < height; y++) {
     free(row_pointers[y]);
+  }
   free(row_pointers);
   fclose(fp);
   return false;

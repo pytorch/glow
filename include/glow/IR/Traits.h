@@ -68,7 +68,7 @@ private:
 
 public:
   /// Ctor.
-  Kinded(Kind vk) : kind_(vk) {}
+  explicit Kinded(Kind vk) : kind_(vk) {}
 
   /// Returns the kind of the instruction.
   Kind getKind() const { return kind_; }

@@ -122,7 +122,7 @@ public:
   /// Add an instruction to the instr stream.
   void pushInstr(Instruction *I) { instrs_.push_back(I); }
 
-  Module(Graph &G) : G_(G) {}
+  explicit Module(Graph &G) : G_(G) {}
 
   ~Module();
 
