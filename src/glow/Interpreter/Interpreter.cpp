@@ -294,9 +294,6 @@ void Interpreter::doForwardPass(bool isTrain) {
       glow_unreachable();
     }
   }
-#undef DEF_INSTR
-#undef DEF_VALUE
-#undef DEF_NODE
 }
 
 void Interpreter::doBackwardPass() {
@@ -318,7 +315,5 @@ void Interpreter::doBackwardPass() {
       glow_unreachable();
     }
   }
-#undef DEF_INSTR
-#undef DEF_NODE
-#undef DEF_VALUE
 }
+
