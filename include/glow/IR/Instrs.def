@@ -1,3 +1,12 @@
+#ifndef DEF_INSTR
+#error "The macro DEF_INSTR was not declared."
+#endif
+#ifndef DEF_NODE
+#error "The macro DEF_NODE was not declared."
+#endif
+#ifndef DEF_VALUE
+#error "The macro DEF_VALUE was not declared."
+#endif
 
 DEF_INSTR(AllocActivationInst, alloc)
 DEF_INSTR(DeallocActivationInst, dealloc)
@@ -23,3 +32,6 @@ DEF_NODE(ReturnInst, return)
 // Variables (exist as memory/variable declarations):
 DEF_VALUE(WeightVar, weight)
 
+#undef DEF_INSTR
+#undef DEF_VALUE
+#undef DEF_NODE

@@ -133,8 +133,6 @@ private:
   void fwd##CLASS(Context *ctx, bool isTrain, const CLASS *I);                 \
   void bwd##CLASS(Context *ctx, const CLASS *I);
 #include "glow/IR/Instrs.def"
-#undef DEF_INSTR
-#undef DEF_VALUE
 
   void fwdPoolMax_impl(Context *ctx, const PoolInst *I);
   void fwdPoolAvg_impl(Context *ctx, const PoolInst *I);
