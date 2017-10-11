@@ -2,6 +2,7 @@
 
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/Support/Casting.h"
 
@@ -17,8 +18,10 @@ namespace {
 
 /// A helper class for visiting and generating the dotty file from the graph.
 struct IRGenVisitor : NodeVisitor {
+  using NodeToInstrTy = std::unordered_map<const Node *, Value *>;
+
   /// Holds the mapping between graph nodes to IR variables.
-  Graph::NodeToInstrTy generatedNodes;
+  NodeToInstrTy generatedNodes;
   /// The module that we are building.
   Module &M_;
   /// The builder that adds instructions into the module.
@@ -44,6 +47,9 @@ public:
     assert((isa<AllocActivationInst>(v) || isa<WeightVar>(v)) &&
            "Value operand must be a memory location");
     generatedNodes[N] = v;
+    // Register the fact that we've lowered this variable to the new weight.
+    auto &map = M_.getVariableMap();
+    map[N] = v;
   }
 
   void post(Node *parent, Node *N) override {
@@ -205,38 +211,17 @@ public:
     }
     }
   }
-
-  /// \returns the mapping between the graph nodes to the IR instructions.
-  Graph::NodeToInstrTy &getMapping() { return generatedNodes; }
 };
 } // namespace
 
-void Graph::registerIRMap(const Node *N, Value *V) {
-  assert(!IRMap.count(N) && "Node already in map");
-  IRMap[N] = V;
-}
+void Module::generateIR() {
+  IRGenVisitor irgen(*this);
 
-Value *Graph::getIRForNode(const Node *N) const {
-  auto it = IRMap.find(N);
-  if (it == IRMap.end()) {
-    return nullptr;
-  }
-  return it->second;
-}
-
-void Graph::generateIR() {
-  IRGenVisitor irgen(M_);
-
-  for (auto &N : vars_) {
+  for (auto &N : G_.getVars()) {
     N->visit(nullptr, &irgen);
   }
 
-  for (auto &N : nodes_) {
+  for (auto &N : G_.getNodes()) {
     N->visit(nullptr, &irgen);
-  }
-
-  // Record the lowering of the nodes in the Graph class.
-  for (auto p : irgen.getMapping()) {
-    registerIRMap(p.first, p.second);
   }
 }

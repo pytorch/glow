@@ -8,6 +8,7 @@
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Interpreter/Interpreter.h"
+#include "glow/Support/Casting.h"
 
 #include "caffe.pb.h"
 #include <google/protobuf/text_format.h>
@@ -109,19 +110,22 @@ Node *caffe2ModelLoader::getNodeByName(const std::string &name) {
 }
 
 Node *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
+  auto &G = IP_.getGraph();
   auto it = nodeByName_.find(name);
   if (it != nodeByName_.end()) {
     return it->second;
   }
 
   Tensor *T = getTensorByName(name);
-  auto *V = G_.createVariable(T->getElementType(), T->dims(), name,
-                              Variable::InitKind::Broadcast);
+  auto *V = G.createVariable(T->getElementType(), T->dims(), name,
+                             Variable::InitKind::Broadcast);
   nodeByName_[name] = V;
   return V;
 }
 
 void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
+  auto &G = IP_.getGraph();
+
   ArgumentDictionaryTy dict = loadArgumenrMap(op);
 
   const std::string &typeName = op.type();
@@ -130,7 +134,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Load the inputs:
     auto *in = getOrCreateNodeByName(op.input(0));
     // Create the RELU:
-    auto *R = G_.createRELU(op.name(), in);
+    auto *R = G.createRELU(op.name(), in);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = R;
@@ -181,14 +185,14 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       tensors_[op.name() + "_conv_bias"] = b;
     }
 
-    auto *tr = G_.createTranspose(op.name(), in, NCHW2NHWC);
-    auto *node = G_.createConv(op.name(), tr, numFilters, kernel, stride, pad);
+    auto *tr = G.createTranspose(op.name(), in, NCHW2NHWC);
+    auto *node = G.createConv(op.name(), tr, numFilters, kernel, stride, pad);
 
     // Load the weights into the operator.
     registerVariableInit(node->getFilter(), wtag);
     registerVariableInit(node->getBias(), b);
 
-    auto *N = G_.createTranspose(op.name(), node, NHWC2NCHW);
+    auto *N = G.createTranspose(op.name(), node, NHWC2NCHW);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = N;
@@ -206,9 +210,9 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     int pad = dict.count("pad") ? loadInt(dict["pad"]) : 0;
     int kernel = loadInt(dict["kernel"]);
 
-    auto *tr = G_.createTranspose(op.name(), in, NCHW2NHWC);
-    auto *node = G_.createPool(op.name(), tr, opk, kernel, stride, pad);
-    auto *N = G_.createTranspose(op.name(), node, NHWC2NCHW);
+    auto *tr = G.createTranspose(op.name(), in, NCHW2NHWC);
+    auto *node = G.createPool(op.name(), tr, opk, kernel, stride, pad);
+    auto *N = G.createTranspose(op.name(), node, NHWC2NCHW);
 
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
@@ -244,7 +248,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       assert(false && "Invalid order field");
     }
 
-    auto *node = G_.createBatchNormalization(op.name(), in, channel, epsilon);
+    auto *node = G.createBatchNormalization(op.name(), in, channel, epsilon);
 
     // Load the weights.
     registerVariableInit(node->getScale(), scale);
@@ -261,7 +265,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *in0 = getOrCreateNodeByName(op.input(0));
     auto *in1 = getOrCreateNodeByName(op.input(1));
     auto *node =
-        G_.createArithmetic(op.name(), in0, in1, ArithmeticInst::OpKind::Add);
+        G.createArithmetic(op.name(), in0, in1, ArithmeticNode::OpKind::Add);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;
@@ -275,7 +279,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Load the inputs:
     auto *in = getOrCreateNodeByName(op.input(0));
 
-    auto *node = G_.createSoftMax(op.name(), in, softmaxExpected);
+    auto *node = G.createSoftMax(op.name(), in, softmaxExpected);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;
@@ -287,7 +291,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *in = getOrCreateNodeByName(op.input(0));
     Tensor *w = getTensorByName(op.input(1));
     Tensor *b = getTensorByName(op.input(2));
-    auto *FC = G_.createFullyConnected(op.name(), in, b->size());
+    auto *FC = G.createFullyConnected(op.name(), in, b->size());
 
     // Load weights.
     registerVariableInit(FC->getFilter(), w);
@@ -391,7 +395,7 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
                                      llvm::ArrayRef<const char *> names,
                                      llvm::ArrayRef<Tensor *> tensors,
                                      Interpreter &IP)
-    : IP_(IP), G_(IP_.getGraph()) {
+    : IP_(IP) {
   // Verify that the version of the library that we linked against is
   // compatible with the version of the headers we compiled against.
   GOOGLE_PROTOBUF_VERIFY_VERSION;
@@ -413,14 +417,16 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   loadNetwork(networkDef);
 
   // Save the result of the last operator into a weight.
-  root_ = G_.createReturn("ret", root_);
+  auto &G = IP_.getGraph();
+  auto &M = IP_.getModule();
+  root_ = G.createReturn("ret", root_);
 
   // Emit IR for the graph.
-  G_.generateIR();
+  IP_.getModule().generateIR();
 
   // Load the value of the variables.
   for (auto p : variableInit_) {
-    WeightVar *N = cast<WeightVar>(G_.getIRForNode(p.first));
+    WeightVar *N = cast<WeightVar>(M.getWeightForNode(p.first));
     N->setInitKind(WeightVar::InitKind::Extern);
     IP.initValue(N, p.second);
   }

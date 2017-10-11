@@ -2,6 +2,7 @@
 #define GLOW_IR_INSTRS_H
 
 #include "glow/Base/Type.h"
+#include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
 #include "glow/Support/Casting.h"
 
@@ -88,26 +89,11 @@ public:
   size_t getDepth() const { return depth_; }
 
   void verify() const;
-
-  /// Calculate the size of the output tensor based on the convolution
-  /// parameters.
-  static std::pair<size_t, size_t> calculateOutputDims(size_t sx, size_t sy,
-                                                       size_t pad,
-                                                       size_t filterSize,
-                                                       size_t stride) {
-    size_t outsx = ((sx + pad * 2 - filterSize) / stride + 1);
-    size_t outsy = ((sy + pad * 2 - filterSize) / stride + 1);
-    return {outsx, outsy};
-  }
 };
 
 class PoolInst : public Instruction {
 public:
-  /// Specifies the kind of pooling done by the operator.
-  enum class OpKind {
-    Max,
-    Avg,
-  };
+  using OpKind = PoolNode::OpKind;
 
 private:
   size_t kernel_;
@@ -354,11 +340,7 @@ public:
 
 class ArithmeticInst : public Instruction {
 public:
-  /// Specifies the kind of pooling done by the operator.
-  enum class OpKind {
-    Add,
-    Mul,
-  };
+  using OpKind = ArithmeticNode::OpKind;
 
 private:
   OpKind kind_;
@@ -424,11 +406,7 @@ public:
 
 class WeightVar : public Value {
 public:
-  enum class InitKind {
-    Extern,    // No initialization.
-    Broadcast, // Broadcast a single value to all elements.
-    Xavier,    // Init the tensor with random values using the Xavier method.
-  };
+  using InitKind = Variable::InitKind;
 
 private:
   /// The value to use during initialization. This can be the value to splat or

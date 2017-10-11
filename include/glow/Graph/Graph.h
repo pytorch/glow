@@ -1,10 +1,13 @@
 #ifndef GLOW_GRAPH_GRAPH_H
 #define GLOW_GRAPH_GRAPH_H
 
-#include "glow/IR/Instrs.h"
+#include "glow/Base/Type.h"
+
+#include "glow/Graph/Nodes.h"
 
 #include "llvm/ADT/ArrayRef.h"
 
+#include <list>
 #include <unordered_map>
 #include <vector>
 
@@ -30,19 +33,13 @@ class ReturnNode;
 
 /// Represents the compute graph.
 class Graph final {
-public:
-  /// Stores the mapping between graph nodes to IR variables.
-  using NodeToInstrTy = std::unordered_map<const Node *, Value *>;
-
-private:
+  /// A uniqued list of types in the module. Types in this list can be compared
+  /// by comparing their addresses.
+  std::list<Type> types_{};
   /// A list of nodes that the graph owns.
   std::vector<Node *> nodes_;
   /// A list of variables that the graph owns.
   std::vector<Variable *> vars_;
-  /// A reference to the low-level IR module.
-  Module &M_;
-  /// Maps nodes in the graph to the generated IR.
-  NodeToInstrTy IRMap;
 
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
@@ -57,26 +54,36 @@ private:
   }
 
 public:
-  Graph(Module &M) : M_(M) {}
+  Graph() = default;
+
   ~Graph();
+
+  /// Return a pointer to a uniqued type \p t in the current module.
+  TypeRef uniqueType(const Type &T);
+
+  /// Return a pointer to a uniqued type \p t in the current module.
+  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims);
+
+  /// Return the void type.
+  TypeRef getVoidTy();
 
   /// @name High-level, operation-level IRBuilder.
   ///@{
 
   Variable *
   createVariable(TypeRef T, llvm::StringRef name,
-                 WeightVar::InitKind initKind = WeightVar::InitKind::Broadcast,
+                 Variable::InitKind initKind = Variable::InitKind::Broadcast,
                  float val = 0.0);
 
   Variable *
   createVariable(ElemKind T, llvm::ArrayRef<size_t> dims, llvm::StringRef name,
-                 WeightVar::InitKind initKind = WeightVar::InitKind::Broadcast,
+                 Variable::InitKind initKind = Variable::InitKind::Broadcast,
                  float val = 0.0);
 
   ConvolutionNode *createConv(llvm::StringRef name, Node *input, size_t depth,
                               size_t kernel, size_t stride, size_t pad);
 
-  PoolNode *createPool(llvm::StringRef name, Node *input, PoolInst::OpKind kind,
+  PoolNode *createPool(llvm::StringRef name, Node *input, PoolNode::OpKind kind,
                        size_t kernel, size_t stride, size_t pad);
 
   FullyConnectedNode *createFullyConnected(llvm::StringRef name, Node *input,
@@ -113,27 +120,23 @@ public:
       float alpha = 1e-4, float beta = 0.75, float k = 2.0);
 
   ArithmeticNode *createArithmetic(llvm::StringRef name, Node *LHS, Node *RHS,
-                                   ArithmeticInst::OpKind op);
+                                   ArithmeticNode::OpKind op);
 
   ReturnNode *createReturn(llvm::StringRef name, Node *input);
 
   /// @}
-
-  /// Registers the fact that the node \p N was lowered into the IR value \p V.
-  void registerIRMap(const Node *N, Value *V);
-
-  /// \returns the IR value that the node \p N was lowered into, or null, if the
-  /// node was not lowered into any IR value.
-  Value *getIRForNode(const Node *N) const;
-
-  /// Generate IR from the nodes in the graph into the module.
-  void generateIR();
 
   /// Dumps the textual representation of the network.
   void dump();
 
   /// Dump a dotty graph that depicts the module.
   void dumpDAG();
+
+  /// \returns the list of nodes that the graph owns.
+  const std::vector<Node *> &getNodes() const { return nodes_; }
+
+  /// \returns the list of variables that the graph owns.
+  const std::vector<Variable *> &getVars() const { return vars_; }
 };
 
 } // namespace glow

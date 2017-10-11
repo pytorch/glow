@@ -2,14 +2,16 @@
 #define GLOW_GRAPH_NODES_H
 
 #include "glow/Graph/Node.h"
-#include "glow/IR/IR.h"
-#include "glow/IR/Instrs.h"
 
 namespace glow {
 
 class Variable final : public Node {
 public:
-  using InitKind = WeightVar::InitKind;
+  enum class InitKind {
+    Extern,    // No initialization.
+    Broadcast, // Broadcast a single value to all elements.
+    Xavier,    // Init the tensor with random values using the Xavier method.
+  };
 
 private:
   /// The value to use during initialization. This can be the value to splat or
@@ -69,18 +71,33 @@ public:
 
   std::string getDebugDesc() const override;
   void visit(Node *parent, NodeVisitor *visitor) override;
+
+  /// Calculate the size of the output tensor based on the convolution
+  /// parameters.
+  static std::pair<size_t, size_t> calculateOutputDims(size_t sx, size_t sy,
+                                                       size_t pad,
+                                                       size_t filterSize,
+                                                       size_t stride) {
+    size_t outsx = ((sx + pad * 2 - filterSize) / stride + 1);
+    size_t outsy = ((sy + pad * 2 - filterSize) / stride + 1);
+    return {outsx, outsy};
+  }
 };
 
 class PoolNode final : public Node {
 public:
-  using OpKind = PoolInst::OpKind;
+  /// Specifies the kind of pooling done by the operator.
+  enum class OpKind {
+    Max,
+    Avg,
+  };
 
 private:
   Node *in_;
   size_t kernel_;
   size_t stride_;
   size_t pad_;
-  PoolInst::OpKind kind_;
+  OpKind kind_;
 
 public:
   PoolNode(Node *in, TypeRef outTy, llvm::StringRef name, OpKind kind,
@@ -313,12 +330,16 @@ public:
 
 class ArithmeticNode final : public Node {
 public:
-  using OpKind = ArithmeticInst::OpKind;
+  /// Specifies the kind of pooling done by the operator.
+  enum class OpKind {
+    Add,
+    Mul,
+  };
 
 private:
   Node *LHS_;
   Node *RHS_;
-  ArithmeticInst::OpKind kind_;
+  OpKind kind_;
   const char *getKindStr() const;
 
 public:

@@ -19,10 +19,10 @@ class Context;
 /// This is the IR-interpreter. It owns the IR, and the heap, and is able to
 /// execute the instructions one at a time.
 class Interpreter final {
-  /// The Module that holds the IR.
-  Module M_;
   /// The Graph that represents the high-level program.
   Graph G_;
+  /// The Module that holds the IR.
+  Module M_;
   /// Maps values to Tensors, that are owned by this class.
   std::unordered_map<const Value *, Tensor *> tensors_;
 

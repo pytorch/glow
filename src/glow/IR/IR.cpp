@@ -12,21 +12,6 @@
 
 using namespace glow;
 
-TypeRef Module::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims) {
-  return uniqueType(Type(elemTy, dims));
-}
-
-TypeRef Module::uniqueType(const Type &T) {
-  for (auto &tp : types_) {
-    if (T.isEqual(tp))
-      return &tp;
-  }
-
-  return &*types_.insert(types_.begin(), T);
-}
-
-TypeRef Module::getVoidTy() { return uniqueType(Type()); }
-
 void Instruction::pushOperand(Operand op) {
   ops_.push_back({nullptr, op.second});
   setOperand(ops_.size() - 1, op.first);
@@ -90,6 +75,14 @@ void Module::verify() const {
     it->verifyUseList();
     it->verify();
   }
+}
+
+Value *Module::getWeightForNode(const Node *V) const {
+  auto it = variableMap.find(V);
+  if (it == variableMap.end())
+    return nullptr;
+
+  return it->second;
 }
 
 static std::string getExtraDesc(const Kinded *K) {
