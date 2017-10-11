@@ -41,8 +41,8 @@ public:
   /// Saves the generated IR in \p v for the node \p N.
   void registerIR(Node *N, Value *v) {
     assert(!generatedNodes.count(N) && "Already generated code for this node");
-    assert(isa<AllocActivationInst>(v) ||
-           isa<WeightVar>(v) && "Value operand must be a memory location");
+    assert((isa<AllocActivationInst>(v) || isa<WeightVar>(v)) &&
+           "Value operand must be a memory location");
     generatedNodes[N] = v;
   }
 
