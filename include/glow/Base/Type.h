@@ -1,5 +1,5 @@
-#ifndef GLOW_IR_TYPE_H
-#define GLOW_IR_TYPE_H
+#ifndef GLOW_BASE_TYPE_H
+#define GLOW_BASE_TYPE_H
 
 #include "glow/Support/Compiler.h"
 
@@ -200,4 +200,4 @@ namespace std {
 std::string to_string(const glow::Type &);
 }
 
-#endif // GLOW_IR_TYPE_H
+#endif // GLOW_BASE_TYPE_H

@@ -1,8 +1,8 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "glow/Graph/Nodes.h"
+#include "glow/Base/Type.h"
 #include "glow/IR/Instrs.h"
-#include "glow/IR/Type.h"
 #include "glow/Support/Support.h"
 
 using namespace glow;
