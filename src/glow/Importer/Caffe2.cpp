@@ -2,12 +2,12 @@
 
 #include "glow/Importer/Caffe2.h"
 #include "glow/Base/Tensor.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
-#include "glow/Interpreter/Interpreter.h"
 #include "glow/Support/Casting.h"
 
 #include "caffe.pb.h"
@@ -110,7 +110,7 @@ Node *caffe2ModelLoader::getNodeByName(const std::string &name) {
 }
 
 Node *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
-  auto &G = IP_.getGraph();
+  auto &G = EE_.getGraph();
   auto it = nodeByName_.find(name);
   if (it != nodeByName_.end()) {
     return it->second;
@@ -124,7 +124,7 @@ Node *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
 }
 
 void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
-  auto &G = IP_.getGraph();
+  auto &G = EE_.getGraph();
 
   ArgumentDictionaryTy dict = loadArgumenrMap(op);
 
@@ -394,8 +394,8 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
                                      const std::string &netWeightFilename,
                                      llvm::ArrayRef<const char *> names,
                                      llvm::ArrayRef<Tensor *> tensors,
-                                     Interpreter &IP)
-    : IP_(IP) {
+                                     ExecutionEngine &EE)
+    : EE_(EE) {
   // Verify that the version of the library that we linked against is
   // compatible with the version of the headers we compiled against.
   GOOGLE_PROTOBUF_VERIFY_VERSION;
@@ -417,17 +417,17 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   loadNetwork(networkDef);
 
   // Save the result of the last operator into a weight.
-  auto &G = IP_.getGraph();
-  auto &M = IP_.getModule();
+  auto &G = EE_.getGraph();
+  auto &M = EE_.getModule();
   root_ = G.createReturn("ret", root_);
 
   // Emit IR for the graph.
-  IP_.getModule().generateIR();
+  EE_.getModule().generateIR();
 
   // Load the value of the variables.
   for (auto p : variableInit_) {
     WeightVar *N = cast<WeightVar>(M.getWeightForNode(p.first));
     N->setInitKind(WeightVar::InitKind::Extern);
-    IP.initValue(N, p.second);
+    EE.initValue(p.first, p.second);
   }
 }

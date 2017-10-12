@@ -1,3 +1,4 @@
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
@@ -69,13 +70,14 @@ void testMNIST() {
 
   unsigned minibatchSize = 8;
 
-  // Construct the network:
-  Interpreter IP;
-  IP.getConfig().learningRate = 0.001;
-  IP.getConfig().momentum = 0.9;
-  IP.getConfig().L2Decay = 0.001;
+  ExecutionEngine EE;
 
-  auto &G = IP.getGraph();
+  // Construct the network:
+  EE.getConfig().learningRate = 0.001;
+  EE.getConfig().momentum = 0.9;
+  EE.getConfig().L2Decay = 0.001;
+
+  auto &G = EE.getGraph();
 
   Variable *A = G.createVariable(ElemKind::FloatTy, {minibatchSize, 28, 28, 1},
                                  "input", Variable::InitKind::Extern);
@@ -97,9 +99,9 @@ void testMNIST() {
 
   auto *result = G.createReturn("return", SM);
 
-  IP.getModule().generateIR();
-  IP.optimize(OptimizationMode::Train);
-  IP.initVars();
+  EE.getModule().generateIR();
+  EE.optimize(OptimizationMode::Train);
+  EE.initVars();
 
   // Report progress every this number of training iterations.
   constexpr int reportRate = 30;
@@ -115,12 +117,12 @@ void testMNIST() {
     // On each training iteration take an input from imageInputs and update
     // the input variable A, and add take a corresponding label and update the
     // softmax layer.
-    IP.train(reportRate, {A, selected}, {&imageInputs, &labelInputs});
+    EE.train(reportRate, {A, selected}, {&imageInputs, &labelInputs});
 
     timer.stopTimer();
   }
   std::cout << "Validating.\n";
-  IP.optimize(OptimizationMode::Infer);
+  EE.optimize(OptimizationMode::Infer);
 
   auto LIH = labelInputs.getHandle<size_t>();
 
@@ -129,8 +131,8 @@ void testMNIST() {
 
   Tensor sample(ElemKind::FloatTy, {minibatchSize, 1, 28, 28});
   sample.copyConsecutiveSlices(&imageInputs, 0);
-  IP.infer({A}, {&sample});
-  Tensor *res = IP.getTensorForNode(result);
+  EE.infer({A}, {&sample});
+  Tensor *res = EE.getTensor(result);
 
   for (unsigned int iter = 0; iter < minibatchSize; iter++) {
     auto T = res->getHandle<FloatTy>().extractSlice(iter);

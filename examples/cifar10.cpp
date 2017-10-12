@@ -1,9 +1,9 @@
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
-#include "glow/Interpreter/Interpreter.h"
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/Timer.h"
@@ -67,14 +67,14 @@ void testCIFAR10() {
   GLOW_ASSERT(idx == cifarImageSize * cifarNumImages && "Invalid input file");
 
   // Construct the network:
-  Interpreter IP;
-  IP.getConfig().learningRate = 0.001;
-  IP.getConfig().momentum = 0.9;
-  IP.getConfig().L2Decay = 0.0001;
+  ExecutionEngine EE;
+  EE.getConfig().learningRate = 0.001;
+  EE.getConfig().momentum = 0.9;
+  EE.getConfig().L2Decay = 0.0001;
 
   unsigned minibatchSize = 8;
 
-  auto &G = IP.getGraph();
+  auto &G = EE.getGraph();
 
   // Create the input layer:
   auto *A =
@@ -100,9 +100,9 @@ void testCIFAR10() {
   auto *SM = G.createSoftMax("softmax", RL3, E);
   auto *result = G.createReturn("ret", SM);
 
-  IP.getModule().generateIR();
-  IP.optimize(OptimizationMode::Train);
-  IP.initVars();
+  EE.getModule().generateIR();
+  EE.optimize(OptimizationMode::Train);
+  EE.initVars();
 
   // Report progress every this number of training iterations.
   int reportRate = 256;
@@ -117,15 +117,15 @@ void testCIFAR10() {
 
     // Bind the images tensor to the input array A, and the labels tensor
     // to the softmax node SM.
-    IP.train(reportRate, {A, E}, {&images, &labels});
+    EE.train(reportRate, {A, E}, {&images, &labels});
 
     unsigned score = 0;
 
     for (unsigned int i = 0; i < 100 / minibatchSize; i++) {
       Tensor sample(ElemKind::FloatTy, {minibatchSize, 3, 32, 32});
       sample.copyConsecutiveSlices(&images, minibatchSize * i);
-      IP.infer({A}, {&sample});
-      auto *res = IP.getTensorForNode(result);
+      EE.infer({A}, {&sample});
+      auto *res = EE.getTensor(result);
 
       for (unsigned int iter = 0; iter < minibatchSize; iter++) {
         auto T = res->getHandle<FloatTy>().extractSlice(iter);

@@ -9,8 +9,6 @@
 
 using namespace glow;
 
-Interpreter::Interpreter() : M_(G_) {}
-
 Interpreter::~Interpreter() {
   // Delete the tensors that are owned by this module.
   for (auto p : tensors_) {
@@ -23,50 +21,13 @@ Interpreter::~Interpreter() {
   }
 }
 
-void Interpreter::optimize(OptimizationMode mode) {
-  ::glow::optimize(M_, mode);
-}
-
-void Interpreter::registerTensor(Value *v, Tensor *t) {
-  assert(t->getType().isEqual(v->getType()) &&
-         "Tensor must match variable dimensions");
-
-  auto it = tensors_.find(v);
-  if (it != tensors_.end()) {
-    delete it->second;
-    it->second = t;
-    return;
-  }
-  tensors_[v] = t;
-}
-
-Tensor *Interpreter::getTensorForValue(const Value *v) const {
+Tensor *Interpreter::getTensor(const Value *v) const {
   auto it = tensors_.find(v);
   assert(it != tensors_.end() && "Unknown key Value.");
   return it->second;
 }
 
-Tensor *Interpreter::getTensorForNode(const Node *v) const {
-  auto val = M_.getWeightForNode(v);
-  assert(val && "Node does not have a registered IR value");
-  return getTensorForValue(val);
-}
-
-void Interpreter::deleteTensor(const Value *v) {
-  auto it = tensors_.find(v);
-  assert(it != tensors_.end() && "Unknown key Value.");
-  auto *T = it->second;
-  delete T;
-  tensors_.erase(it);
-
-  auto git = gradients_.find(T);
-  if (git != gradients_.end()) {
-    delete git->second;
-    gradients_.erase(git);
-  }
-}
-
-void Interpreter::initValue(const WeightVar *v, const Tensor *t) {
+void Interpreter::initValue(const Value *v, const Tensor *t) {
   auto it = tensors_.find(v);
   if (it != tensors_.end()) {
     it->second->copyFrom(t);
@@ -79,7 +40,7 @@ void Interpreter::initValue(const WeightVar *v, const Tensor *t) {
 }
 
 Tensor *Interpreter::getOrCreateGradTensor(const Value *v) {
-  auto *T = getTensorForValue(v);
+  auto *T = getTensor(v);
   auto it = gradients_.find(T);
   if (it != gradients_.end()) {
     return it->second;
@@ -91,190 +52,26 @@ Tensor *Interpreter::getOrCreateGradTensor(const Value *v) {
   return N;
 }
 
-void Interpreter::loadValueFromTensor(const Value *v, Tensor *input,
-                                      size_t sampleIdx) {
-  assert(v && "Invalid value");
-  auto *t = getTensorForValue(v);
-
-  auto dim = input->dims();
-  assert(t->dims().drop_front() == dim.drop_front() && "Invalid slice size");
-  // Extract the n'th slice, that must be a tensor.
-  size_t slc = sampleIdx % dim[0];
-  t->copyConsecutiveSlices(input, slc);
+Handle<FloatTy> Interpreter::getWeightHandle(Value *v) const {
+  return getTensor(v)->getHandle<FloatTy>();
 }
 
-Handle<FloatTy> Interpreter::getWeightHandle(Context *ctx, Value *v) const {
-  return getTensorForValue(v)->getHandle<FloatTy>();
-}
-
-Handle<FloatTy> Interpreter::getWeightHandle(Context *ctx, Variable *v) const {
-  auto *N = M_.getWeightForNode(v);
-  return getTensorForValue(N)->getHandle<FloatTy>();
-}
-
-Handle<FloatTy> Interpreter::getGradHandle(Context *ctx, Value *v) {
+Handle<FloatTy> Interpreter::getGradHandle(Value *v) {
   return getOrCreateGradTensor(v)->getHandle<FloatTy>();
 }
 
-Handle<FloatTy> Interpreter::getGradHandle(Context *ctx, Variable *v) {
-  auto *N = M_.getWeightForNode(v);
-  return getOrCreateGradTensor(N)->getHandle<FloatTy>();
-}
-
-Tensor *Interpreter::allocateBackingTensor(const Value *v) {
-  // Allocate a tensor for the variable.
-  Tensor *T = nullptr;
+Tensor *Interpreter::getOrCreateTensor(const Value *v) {
   // Pick the tensor.
   auto it = tensors_.find(v);
   if (it == tensors_.end()) {
-    T = new Tensor(v->getType());
+    Tensor *T = new Tensor(v->getType());
     tensors_[v] = T;
     return T;
   }
   return it->second;
 }
 
-void Interpreter::initVars() {
-  for (auto *W : M_.getWeights()) {
-    // Don't initialize tensors that are already initialized.
-    if (tensors_.count(W)) {
-      continue;
-    }
-
-    auto *T = allocateBackingTensor(W);
-    // The parameter to the instruction.
-    auto val = W->getVal();
-
-    switch (W->getInitKind()) {
-    case WeightVar::InitKind::Extern:
-      break;
-
-    case WeightVar::InitKind::Broadcast: {
-      switch (T->getElementType()) {
-      case ElemKind::FloatTy: {
-        T->getHandle<float>().clear(val);
-        break;
-      }
-      case ElemKind::DoubleTy: {
-        T->getHandle<double>().clear(val);
-        break;
-      }
-      case ElemKind::Int8Ty: {
-        T->getHandle<int8_t>().clear(val);
-        break;
-      };
-      case ElemKind::Int32Ty: {
-        T->getHandle<int32_t>().clear(val);
-        break;
-      }
-      case ElemKind::IndexTy: {
-        T->getHandle<size_t>().clear(val);
-        break;
-      }
-      }
-      break;
-    }
-
-    case WeightVar::InitKind::Xavier: {
-      switch (T->getElementType()) {
-      case ElemKind::FloatTy: {
-        T->getHandle<float>().randomize(val);
-        break;
-      }
-      case ElemKind::DoubleTy: {
-        T->getHandle<double>().randomize(val);
-        break;
-      }
-      case ElemKind::Int8Ty: {
-        T->getHandle<int8_t>().randomize(val);
-        break;
-      };
-      case ElemKind::Int32Ty: {
-        T->getHandle<int32_t>().randomize(val);
-        break;
-      }
-      case ElemKind::IndexTy: {
-        T->getHandle<size_t>().randomize(val);
-        break;
-      }
-      }
-      break;
-    }
-    }
-  }
-}
-
-void Interpreter::infer(llvm::ArrayRef<Variable *> vars,
-                        llvm::ArrayRef<Tensor *> inputs) {
-  assert(!inputs.empty() && "No inputs");
-  assert(inputs.size() == vars.size() &&
-         "The number of inputs does not match the number of variables");
-
-  // Update the input variables.
-  for (int i = 0, e = vars.size(); i < e; i++) {
-    auto *val = M_.getWeightForNode(vars[i]);
-    loadValueFromTensor(val, inputs[i], 0);
-  }
-
-  doForwardPass(false);
-}
-
-void Interpreter::train(size_t iterations, llvm::ArrayRef<Variable *> vars,
-                        llvm::ArrayRef<Tensor *> inputs) {
-  static size_t trainCounter = 0;
-
-  assert(!inputs.empty() && "No inputs");
-  assert(inputs.size() == vars.size() &&
-         "The number of inputs does not match the number of variables");
-
-  std::vector<Value *> weights;
-  for (auto *v : vars) {
-    weights.push_back(M_.getWeightForNode(v));
-  }
-
-  // This is the size of one batch (the number of samples in the batch).
-  size_t batchSize = vars[0]->dims()[0];
-
-  for (size_t i = 0; i < iterations; i++) {
-    // Launch threads that update the different chunks in the batch:
-    updateForwardBackward(weights, inputs, trainCounter + batchSize);
-
-    trainCounter += batchSize;
-
-    // The algorithm for merging the state from the different threads is
-    /// described in the paper: Alex Krizhevsky [2014]
-    // "One weird trick for parallelizing convolutional neural networks"
-    learnGradient(batchSize);
-  }
-}
-
-void Interpreter::learnGradient(size_t batchSize) {
-  for (auto *V : M_.getWeights()) {
-    // Do not try to learn the values of input/output buffers.
-    if (V->getInitKind() == WeightVar::InitKind::Extern) {
-      continue;
-    }
-
-    auto W = getTensorForValue(V);
-    auto G = getOrCreateGradTensor(V);
-
-    // Handle weight update by learning the gradients into the weights.
-    trainer_.train(W, G, batchSize);
-  }
-}
-
-void Interpreter::updateForwardBackward(llvm::ArrayRef<Value *> vars,
-                                        llvm::ArrayRef<Tensor *> inputs,
-                                        size_t sampleIdx) {
-  // Update the input variables.
-  for (int i = 0, e = vars.size(); i < e; i++) {
-    loadValueFromTensor(vars[i], inputs[i], sampleIdx);
-  }
-
-  doForwardPass(true);
-
-  doBackwardPass();
-}
+bool Interpreter::hasTensor(const Value *v) { return tensors_.count(v); }
 
 void Interpreter::doForwardPass(bool isTrain) {
   // Do the forward pass.

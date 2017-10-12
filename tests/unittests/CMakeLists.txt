@@ -15,6 +15,7 @@ target_link_libraries(IRgradCheckTest
                       PRIVATE
                         Network
                         Interpreter
+                        ExecutionEngine
                         IR
                         gtest
                         gtest_main)
@@ -38,6 +39,7 @@ target_link_libraries(InterpreterTest
                         Interpreter
                         Network
                         IR
+                        ExecutionEngine
                         gtest
                         gtest_main)
 add_test(InterpreterTest ${GLOW_BINARY_DIR}/tests/InterpreterTest)

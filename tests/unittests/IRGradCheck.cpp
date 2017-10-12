@@ -1,12 +1,12 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "glow/Base/Tensor.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
-#include "glow/Interpreter/Interpreter.h"
 
 #include "gtest/gtest.h"
 
@@ -34,7 +34,7 @@ FloatTy gradDiff(FloatTy G1, FloatTy G2) {
   return std::abs(G1 - G2) / std::abs(G1 + G2 + 1);
 }
 
-void performGradCheck(Interpreter &IP, Node *result, Variable *inputVar,
+void performGradCheck(ExecutionEngine &IP, Node *result, Variable *inputVar,
                       Variable *expVar, Tensor *inputs, Tensor *outputs,
                       float delta, float allowedError) {
   auto inputsH = inputs->getHandle<FloatTy>();
@@ -43,12 +43,12 @@ void performGradCheck(Interpreter &IP, Node *result, Variable *inputVar,
   IP.train(300, {inputVar, expVar}, {inputs, outputs});
 
   // Clear the gradients of the first layer.
-  IP.getGradHandle(nullptr, inputVar).clear();
+  IP.getGradHandle(inputVar).clear();
 
   // Train the network just once to calculate the grads.
   IP.train(1, {inputVar, expVar}, {inputs, outputs});
 
-  auto analyticalGradsH = IP.getGradHandle(nullptr, inputVar);
+  auto analyticalGradsH = IP.getGradHandle(inputVar);
 
   for (size_t i = 0; i < analyticalGradsH.size(); i++) {
     auto old = inputsH.raw(i);
@@ -56,13 +56,13 @@ void performGradCheck(Interpreter &IP, Node *result, Variable *inputVar,
     // Calculate f(x+e):
     inputsH.raw(i) = old + delta;
     IP.infer({inputVar}, {inputs});
-    Tensor *res = IP.getTensorForNode(result);
+    Tensor *res = IP.getTensor(result);
     auto plusLoss = computeL2Loss(outputs, res);
 
     // Calculate f(x-e):
     inputsH.raw(i) = old - delta;
     IP.infer({inputVar}, {inputs});
-    res = IP.getTensorForNode(result);
+    res = IP.getTensor(result);
     auto minusLoss = computeL2Loss(outputs, res);
     inputsH.raw(i) = old;
 
@@ -77,7 +77,7 @@ void performGradCheck(Interpreter &IP, Node *result, Variable *inputVar,
 }
 
 TEST(Network, gradientCheck_FC_Concat_RELU) {
-  Interpreter IP;
+  ExecutionEngine IP;
   IP.getConfig().maxNumThreads = 1;
 
   size_t numInputElem = 20;
@@ -118,7 +118,7 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
 }
 
 TEST(Network, gradientCheck_Conv) {
-  Interpreter IP;
+  ExecutionEngine IP;
   IP.getConfig().maxNumThreads = 1;
 
   size_t numDim = 10;
@@ -155,7 +155,7 @@ TEST(Network, gradientCheck_Conv) {
 }
 
 TEST(Network, gradientCheck_AvgPool) {
-  Interpreter IP;
+  ExecutionEngine IP;
   IP.getConfig().maxNumThreads = 1;
 
   size_t numDim = 10;
@@ -190,7 +190,7 @@ TEST(Network, gradientCheck_AvgPool) {
 }
 
 TEST(Network, gradientCheck_batchNorm) {
-  Interpreter IP;
+  ExecutionEngine IP;
   IP.getConfig().maxNumThreads = 1;
 
   size_t numDim = 5;
@@ -230,7 +230,7 @@ TEST(Network, gradientCheck_batchNorm) {
 }
 
 TEST(Network, gradientCheck_Arithmetic) {
-  Interpreter IP;
+  ExecutionEngine IP;
   IP.getConfig().maxNumThreads = 1;
 
   size_t numDim = 5;
@@ -274,16 +274,16 @@ TEST(Network, gradientCheck_Arithmetic) {
   IP.train(30, {A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
 
   // Clear the gradients of the last layer.
-  IP.getGradHandle(nullptr, A).clear();
-  IP.getGradHandle(nullptr, B).clear();
-  IP.getGradHandle(nullptr, C).clear();
+  IP.getGradHandle(A).clear();
+  IP.getGradHandle(B).clear();
+  IP.getGradHandle(C).clear();
 
   IP.train(1, {A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
 
   auto check = [&](Variable *var, Tensor *t) {
     auto iH = t->getHandle<FloatTy>();
 
-    auto analyticalGradsH = IP.getGradHandle(nullptr, var);
+    auto analyticalGradsH = IP.getGradHandle(var);
 
     float delta = 0.001;
     for (size_t i = 0; i < numDim; i++) {
@@ -292,14 +292,14 @@ TEST(Network, gradientCheck_Arithmetic) {
       // Calculate f(x+e):
       iH.at({0, i}) = old + delta;
       IP.infer({A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
-      Tensor *res = IP.getTensorForNode(result);
+      Tensor *res = IP.getTensor(result);
 
       auto plusLoss = computeL2Loss(&outputs, res);
 
       // Calculate f(x-e):
       iH.at({0, i}) = old - delta;
       IP.infer({A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
-      res = IP.getTensorForNode(result);
+      res = IP.getTensor(result);
       auto minusLoss = computeL2Loss(&outputs, res);
       iH.at({0, i}) = old;
 
@@ -320,7 +320,7 @@ TEST(Network, gradientCheck_Arithmetic) {
 
 TEST(Network, gradientCheck_FC_Concat_Tanh) {
   // Using the same gradient check test setup as gradientCheck_FC_Concat_RELU
-  Interpreter IP;
+  ExecutionEngine IP;
   IP.getConfig().maxNumThreads = 1;
 
   size_t numInputElem = 20;
@@ -355,7 +355,7 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
 
 TEST(Network, gradientCheck_Transpose) {
   // Using the same gradient check test setup as gradientCheck_FC_Concat_RELU
-  Interpreter IP;
+  ExecutionEngine IP;
   IP.getConfig().maxNumThreads = 1;
   size_t numOutputElem = 10;
 
