@@ -18,14 +18,14 @@ namespace glow {
 
 class IRBuilder;
 class Instruction;
-class Interpreter;
+class ExecutionEngine;
 class Tensor;
 class Value;
 
 /// Loads caffe2 models.
 class caffe2ModelLoader {
   /// The interpreter that runs the program.
-  Interpreter &IP_;
+  ExecutionEngine &EE_;
 
   /// Saves network nodes by name.
   std::unordered_map<std::string, Node *> nodeByName_;
@@ -75,7 +75,7 @@ public:
   caffe2ModelLoader(const std::string &netDescFilename,
                     const std::string &netWeightFilename,
                     llvm::ArrayRef<const char *> names,
-                    llvm::ArrayRef<Tensor *> tensors, Interpreter &IP);
+                    llvm::ArrayRef<Tensor *> tensors, ExecutionEngine &IP);
 
   /// \returns the output of the network. This is usually the result of the last
   /// softmax or regression layer.

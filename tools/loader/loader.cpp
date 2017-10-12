@@ -2,6 +2,7 @@
 
 #include "glow/Base/Image.h"
 #include "glow/Base/Tensor.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Importer/Caffe2.h"
@@ -77,20 +78,20 @@ int main(int argc, char **argv) {
   auto imageMode = strToImageNormalizationMode(argv[2]);
   loadImageAndPreprocess(argv[1], &data, imageMode);
 
-  Interpreter IP;
+  ExecutionEngine EE;
   caffe2ModelLoader LD(argv[3], argv[4],
                        {"data", "gpu_0/data", "softmax_expected"},
-                       {&data, &data, &expected_softmax}, IP);
+                       {&data, &data, &expected_softmax}, EE);
 
-  IP.optimize(OptimizationMode::Infer);
-  IP.initVars();
+  EE.optimize(OptimizationMode::Infer);
+  EE.initVars();
 
   auto *SM = LD.getRoot();
   auto *i0 = cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
   auto *i1 = cast<Variable>(LD.getOrCreateNodeByName("data"));
 
-  IP.infer({i0, i1}, {&data, &data});
-  auto *res = IP.getTensorForNode(SM);
+  EE.infer({i0, i1}, {&data, &data});
+  auto *res = EE.getTensor(SM);
   auto H = res->getHandle<FloatTy>();
   H.dump("res = ", "\n");
   Tensor slice = H.extractSlice(0);

@@ -1,6 +1,6 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
-#include "glow/Interpreter/Interpreter.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
@@ -15,11 +15,11 @@
 using namespace glow;
 
 TEST(Interpreter, interpret) {
-  Interpreter IP;
+  ExecutionEngine EE;
 
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
 
-  auto &G = IP.getGraph();
+  auto &G = EE.getGraph();
   auto *input = G.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input");
 
   auto *ex = G.createVariable(ElemKind::IndexTy, {1, 1}, "exp");
@@ -41,19 +41,19 @@ TEST(Interpreter, interpret) {
   auto *SM = G.createSoftMax("sm", RL3, ex);
   G.createReturn("ret", SM);
 
-  IP.getModule().generateIR();
-  IP.optimize(OptimizationMode::Infer);
-  IP.initVars();
-  IP.infer({input}, {&inputs});
+  EE.getModule().generateIR();
+  EE.optimize(OptimizationMode::Infer);
+  EE.initVars();
+  EE.infer({input}, {&inputs});
 }
 
 TEST(Interpreter, trainASimpleNetwork) {
-  Interpreter IP;
+  ExecutionEngine EE;
   // Learning a single input vector.
-  IP.getConfig().maxNumThreads = 1;
-  IP.getConfig().learningRate = 0.05;
+  EE.getConfig().maxNumThreads = 1;
+  EE.getConfig().learningRate = 0.05;
 
-  auto &G = IP.getGraph();
+  auto &G = EE.getGraph();
 
   // Create a variable with 1 input, which is a vector of 4 elements.
   auto *A = G.createVariable(ElemKind::FloatTy, {1, 4}, "A");
@@ -72,18 +72,18 @@ TEST(Interpreter, trainASimpleNetwork) {
   inputs.getHandle<FloatTy>() = {0.15, 0.15, 0.15, 0.15};
   expected.getHandle<FloatTy>() = {0.9, 0.9, 0.9, 0.9};
 
-  IP.getModule().generateIR();
-  IP.optimize(OptimizationMode::Train);
-  IP.initVars();
+  EE.getModule().generateIR();
+  EE.optimize(OptimizationMode::Train);
+  EE.initVars();
 
   // Train the network. Learn 1000 batches.
-  IP.train(1000, {A, E}, {&inputs, &expected});
+  EE.train(1000, {A, E}, {&inputs, &expected});
 
   // Testing the output vector.
 
-  IP.optimize(OptimizationMode::Infer);
-  IP.infer({A}, {&inputs});
-  auto RNWH = IP.getTensorForNode(result)->getHandle<FloatTy>();
+  EE.optimize(OptimizationMode::Infer);
+  EE.infer({A}, {&inputs});
+  auto RNWH = EE.getTensor(result)->getHandle<FloatTy>();
   (void)RNWH;
 
   // Test the output:
@@ -97,16 +97,16 @@ TEST(Interpreter, simpleRegression) {
   const int numInputs = 4;
 
   // Learning the Xor function.
-  Interpreter IP;
+  ExecutionEngine EE;
 
   // Learning a single input vector.
-  IP.getConfig().maxNumThreads = 1;
-  IP.getConfig().learningRate = 0.05;
+  EE.getConfig().maxNumThreads = 1;
+  EE.getConfig().learningRate = 0.05;
 
   Tensor inputs(ElemKind::FloatTy, {1, numInputs});
   Tensor expected(ElemKind::FloatTy, {1, numInputs});
 
-  auto &G = IP.getGraph();
+  auto &G = EE.getGraph();
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputs}, "A");
   auto *Ex = G.createVariable(ElemKind::FloatTy, {1, numInputs}, "E");
   Node *O = G.createFullyConnected("fc", A, 4);
@@ -117,16 +117,16 @@ TEST(Interpreter, simpleRegression) {
   auto I = inputs.getHandle<FloatTy>();
   auto E = expected.getHandle<FloatTy>();
 
-  IP.getModule().generateIR();
-  IP.optimize(OptimizationMode::Train);
-  IP.initVars();
+  EE.getModule().generateIR();
+  EE.optimize(OptimizationMode::Train);
+  EE.initVars();
 
   // Train the network:
   for (int iter = 0; iter < 1000; iter++) {
     float target = float(iter % 9);
     I = {target, 0., 0., 0.};
     E = {0., target + 1, 0., 0.};
-    IP.train(1, {A, Ex}, {&inputs, &expected});
+    EE.train(1, {A, Ex}, {&inputs, &expected});
   }
 
   // Verify the result of the regression layer.
@@ -135,9 +135,9 @@ TEST(Interpreter, simpleRegression) {
   for (int iter = 0; iter < 5; iter++) {
     float target = iter % 9 + 1;
     I = {target, 0., 0., 0.};
-    IP.infer({A}, {&inputs});
+    EE.infer({A}, {&inputs});
 
-    auto resH = IP.getTensorForNode(result)->getHandle<FloatTy>();
+    auto resH = EE.getTensor(result)->getHandle<FloatTy>();
     (void)resH;
 
     EXPECT_NEAR(I.at({0, 0}) + 1, resH.at({0, 1}), 0.1);
@@ -149,13 +149,13 @@ TEST(Interpreter, learnXor) {
   unsigned numTests = 10;
 
   // Learning the Xor function.
-  Interpreter IP;
+  ExecutionEngine EE;
 
   // Learning a single input vector.
-  IP.getConfig().maxNumThreads = 1;
-  IP.getConfig().learningRate = 0.05;
+  EE.getConfig().maxNumThreads = 1;
+  EE.getConfig().learningRate = 0.05;
 
-  auto &G = IP.getGraph();
+  auto &G = EE.getGraph();
 
   auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
   auto *Ex = G.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
@@ -185,12 +185,12 @@ TEST(Interpreter, learnXor) {
     TL.at({i, 0}) = a ^ b;
   }
 
-  IP.getModule().generateIR();
-  IP.optimize(OptimizationMode::Train);
-  IP.initVars();
+  EE.getModule().generateIR();
+  EE.optimize(OptimizationMode::Train);
+  EE.initVars();
 
   // Train the network:
-  IP.train(2500, {A, Ex}, {&trainingSet, &trainingLabels});
+  EE.train(2500, {A, Ex}, {&trainingSet, &trainingLabels});
 
   // Prepare the testing tensor:
   for (unsigned i = 0; i < numTests; i++) {
@@ -198,8 +198,8 @@ TEST(Interpreter, learnXor) {
     TT.at({i, 1}) = (i >> 1) % 2;
   }
 
-  IP.infer({A}, {&trainingSet});
-  auto resH = IP.getTensorForNode(result)->getHandle<FloatTy>();
+  EE.infer({A}, {&trainingSet});
+  auto resH = EE.getTensor(result)->getHandle<FloatTy>();
 
   // Test the output:
   for (size_t i = 0; i < numTests; i++) {
@@ -245,14 +245,14 @@ void generateCircleData(Tensor &coordinates, Tensor &labels) {
 /// http://cs.stanford.edu/people/karpathy/convnetjs/demo/classify2d.html
 TEST(Network, circle) {
   // Testing the softmax layer.
-  Interpreter IP;
+  ExecutionEngine EE;
 
   // Learning a single input vector.
-  IP.getConfig().maxNumThreads = 1;
-  IP.getConfig().momentum = 0.9;
-  IP.getConfig().learningRate = 0.01;
+  EE.getConfig().maxNumThreads = 1;
+  EE.getConfig().momentum = 0.9;
+  EE.getConfig().learningRate = 0.01;
 
-  auto &G = IP.getGraph();
+  auto &G = EE.getGraph();
   auto *A = G.createVariable(ElemKind::FloatTy, {1, 2}, "A");
   auto *S = G.createVariable(ElemKind::IndexTy, {1, 1}, "S",
                              Variable::InitKind::Extern);
@@ -264,16 +264,16 @@ TEST(Network, circle) {
   auto *SM = G.createSoftMax("soft", RL1, S);
   auto *result = G.createReturn("ret", SM);
 
-  IP.getModule().generateIR();
-  IP.optimize(OptimizationMode::Train);
-  IP.initVars();
+  EE.getModule().generateIR();
+  EE.optimize(OptimizationMode::Train);
+  EE.initVars();
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
   Tensor labels(ElemKind::IndexTy, {numSamples, 1});
   generateCircleData(coordinates, labels);
 
   // Training:
-  IP.train(4000, {A, S}, {&coordinates, &labels});
+  EE.train(4000, {A, S}, {&coordinates, &labels});
 
   // Print a diagram that depicts the network decision on a grid.
   for (int x = -10; x < 10; x++) {
@@ -282,9 +282,9 @@ TEST(Network, circle) {
       Tensor sample(ElemKind::FloatTy, {1, 2});
       sample.getHandle<FloatTy>() = {float(x) / 10, float(y) / 10};
 
-      IP.infer({A}, {&sample});
+      EE.infer({A}, {&sample});
 
-      auto SMH = IP.getTensorForNode(result)->getHandle<FloatTy>();
+      auto SMH = EE.getTensor(result)->getHandle<FloatTy>();
       auto A = SMH.at({0, 0});
       auto B = SMH.at({0, 1});
 
@@ -305,8 +305,8 @@ TEST(Network, circle) {
     // The dot in the middle must be zero.
     Tensor sample(ElemKind::FloatTy, {1, 2});
     sample.getHandle<FloatTy>() = {0., 0.};
-    IP.infer({A}, {&sample});
-    auto SMH = IP.getTensorForNode(result)->getHandle<FloatTy>();
+    EE.infer({A}, {&sample});
+    auto SMH = EE.getTensor(result)->getHandle<FloatTy>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
     EXPECT_LE(A, 0.1);
@@ -317,8 +317,8 @@ TEST(Network, circle) {
     // Far away dot must be one.
     Tensor sample(ElemKind::FloatTy, {1, 2});
     sample.getHandle<FloatTy>() = {1., 1.};
-    IP.infer({A}, {&sample});
-    auto SMH = IP.getTensorForNode(result)->getHandle<FloatTy>();
+    EE.infer({A}, {&sample});
+    auto SMH = EE.getTensor(result)->getHandle<FloatTy>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
     EXPECT_GE(A, 0.9);
@@ -327,15 +327,15 @@ TEST(Network, circle) {
 }
 
 TEST(Network, learnSingleValueConcat) {
-  Interpreter IP;
+  ExecutionEngine EE;
   unsigned width = 6;
 
   // Learning a single input vector.
-  IP.getConfig().maxNumThreads = 1;
-  IP.getConfig().momentum = 0.9;
-  IP.getConfig().learningRate = 0.01;
+  EE.getConfig().maxNumThreads = 1;
+  EE.getConfig().momentum = 0.9;
+  EE.getConfig().learningRate = 0.01;
 
-  auto &G = IP.getGraph();
+  auto &G = EE.getGraph();
 
   auto *Ex = G.createVariable(ElemKind::FloatTy, {1, width * 2}, "Ex");
 
@@ -359,18 +359,18 @@ TEST(Network, learnSingleValueConcat) {
   inputs.getHandle<FloatTy>().clear(0.15);
   expected.getHandle<FloatTy>().clear(0.9);
 
-  IP.getModule().generateIR();
-  IP.optimize(OptimizationMode::Train);
-  IP.initVars();
+  EE.getModule().generateIR();
+  EE.optimize(OptimizationMode::Train);
+  EE.initVars();
 
   // Train the network:
-  IP.train(1000, {A, B, Ex}, {&inputs, &inputs, &expected});
+  EE.train(1000, {A, B, Ex}, {&inputs, &inputs, &expected});
 
-  IP.optimize(OptimizationMode::Infer);
+  EE.optimize(OptimizationMode::Infer);
 
   // Testing the output vector.
-  IP.infer({A}, {&inputs});
-  auto RNWH = IP.getTensorForNode(result)->getHandle<FloatTy>();
+  EE.infer({A}, {&inputs});
+  auto RNWH = EE.getTensor(result)->getHandle<FloatTy>();
   (void)RNWH;
 
   // Test the output:
