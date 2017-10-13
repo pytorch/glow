@@ -427,7 +427,7 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   root_ = G.createReturn("ret", root_);
 
   // Emit IR for the graph.
-  EE_.getModule().generateIR();
+  EE.compile(OptimizationMode::Infer);
 
   // Load the value of the variables.
   for (auto p : variableInit_) {

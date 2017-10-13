@@ -82,7 +82,6 @@ int main(int argc, char **argv) {
                        {"data", "gpu_0/data", "softmax_expected"},
                        {&data, &data, &expected_softmax}, EE);
 
-  EE.compile(OptimizationMode::Infer);
   EE.initVars();
 
   auto *SM = LD.getRoot();
