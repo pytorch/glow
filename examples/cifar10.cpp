@@ -90,8 +90,7 @@ void testCIFAR10() {
   auto *SM = G.createSoftMax("softmax", RL3, E);
   auto *result = G.createReturn("ret", SM);
 
-  EE.generateIR();
-  EE.optimize(OptimizationMode::Train);
+  EE.compile(OptimizationMode::Train);
   EE.initVars();
 
   // Report progress every this number of training iterations.

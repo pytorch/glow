@@ -104,11 +104,18 @@ void ExecutionEngine::loadValueFromTensor(const Value *v, Tensor *input,
   t->copyConsecutiveSlices(input, slc);
 }
 
-void ExecutionEngine::optimize(OptimizationMode mode) {
+void ExecutionEngine::compile(OptimizationMode mode) {
+  // Wipe out the module and start a new compilation process.
+  M_->clear();
+  IP_->clear();
+  ::glow::optimize(*G_, mode);
+  M_->generateIR();
   ::glow::optimize(*M_, mode);
 }
 
-void ExecutionEngine::generateIR() { M_->generateIR(); }
+void ExecutionEngine::optimize(OptimizationMode mode) {
+  ::glow::optimize(*M_, mode);
+}
 
 Tensor *ExecutionEngine::getTensor(const Node *v) const {
   auto val = M_->getWeightForNode(v);

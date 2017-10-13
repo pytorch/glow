@@ -89,8 +89,7 @@ void testMNIST() {
 
   auto *result = G.createReturn("return", SM);
 
-  EE.generateIR();
-  EE.optimize(OptimizationMode::Train);
+  EE.compile(OptimizationMode::Train);
   EE.initVars();
 
   // Report progress every this number of training iterations.
@@ -112,7 +111,7 @@ void testMNIST() {
     timer.stopTimer();
   }
   std::cout << "Validating.\n";
-  EE.optimize(OptimizationMode::Infer);
+  EE.compile(OptimizationMode::Infer);
 
   auto LIH = labelInputs.getHandle<size_t>();
 

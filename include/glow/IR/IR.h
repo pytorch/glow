@@ -129,6 +129,10 @@ public:
   /// Generate IR from the graph nodes.
   void generateIR();
 
+  /// Wipe out the content of the module. This allows the module to be used
+  /// again for another round of code generation.
+  void clear();
+
   /// \returns a reference to the original graph.
   Graph *getGraph() { return G_; }
 
