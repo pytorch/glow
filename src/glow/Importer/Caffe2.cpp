@@ -123,6 +123,11 @@ Node *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
   return V;
 }
 
+bool caffe2ModelLoader::hasNodeByName(const std::string &name) {
+  auto it = nodeByName_.find(name);
+  return (it != nodeByName_.end());
+}
+
 void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   auto &G = EE_.getGraph();
 

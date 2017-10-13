@@ -67,6 +67,9 @@ public:
   /// new Variable node for a tensor with this name.
   Node *getOrCreateNodeByName(const std::string &name);
 
+  /// \returns True if the node that's registered using \p name exists.
+  bool hasNodeByName(const std::string &name);
+
   /// Loads the caffe2 model that's represnted by a network description file,
   /// serialized in \p netDescFilename, and weights file, serialized in
   /// \p netWeightFilename, and populates the network in \p N.
