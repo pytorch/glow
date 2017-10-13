@@ -228,6 +228,13 @@ std::string ReturnNode::getDebugDesc() const {
   return db;
 }
 
+std::string TransposeNode::getDebugDesc() const {
+  std::string sh = arrayRefToString(llvm::ArrayRef<unsigned>(shuffle_));
+  DescriptionBuilder db(getKindName());
+  db.addParam("name", quote(getName())).addParam("shuffle", sh);
+  return db;
+}
+
 #define DEFINE_CLASS_REPR(CLASS_NAME)                                          \
   std::string CLASS_NAME::getDebugDesc() const {                               \
     DescriptionBuilder db(getKindName());                                      \
@@ -237,6 +244,5 @@ std::string ReturnNode::getDebugDesc() const {
 
 DEFINE_CLASS_REPR(ReluNode);
 DEFINE_CLASS_REPR(ReshapeNode);
-DEFINE_CLASS_REPR(TransposeNode);
 DEFINE_CLASS_REPR(SigmoidNode);
 DEFINE_CLASS_REPR(TanhNode);
