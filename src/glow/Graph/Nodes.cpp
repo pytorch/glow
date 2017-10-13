@@ -35,7 +35,6 @@ DEFINE_CLASS_VISITOR(ReshapeNode)
 DEFINE_CLASS_VISITOR(TransposeNode)
 DEFINE_CLASS_VISITOR(SigmoidNode)
 DEFINE_CLASS_VISITOR(TanhNode)
-DEFINE_CLASS_VISITOR(RegressionNode)
 DEFINE_CLASS_VISITOR(ReturnNode)
 
 void ConvolutionNode::visit(Node *parent, NodeVisitor *visitor) {
@@ -90,6 +89,16 @@ void SoftMaxNode::visit(Node *parent, NodeVisitor *visitor) {
   visitor->pre(parent, this);
   in_->visit(this, visitor);
   selected_->visit(this, visitor);
+  visitor->post(parent, this);
+}
+
+void RegressionNode::visit(Node *parent, NodeVisitor *visitor) {
+  if (!visitor->shouldVisit(parent, this)) {
+    return;
+  }
+  visitor->pre(parent, this);
+  in_->visit(this, visitor);
+  expected_->visit(this, visitor);
   visitor->post(parent, this);
 }
 
