@@ -43,11 +43,11 @@ public:
   /// \returns the internal module.
   Graph &getGraph() { return *G_; }
 
-  /// Run the target-independent optimizations on the module.
-  void optimize(OptimizationMode mode);
+  /// Optimize the graph, generate IR, and optimize the IR.
+  void compile(OptimizationMode mode);
 
-  /// Generate IR from the graph nodes.
-  void generateIR();
+  /// Optimize the low-level IR without invalidating the interpreter.
+  void optimize(OptimizationMode mode);
 
   /// Provides access to the training configuration.
   TrainingConfig &getConfig() { return trainer_.config; }

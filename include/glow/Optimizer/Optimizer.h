@@ -4,6 +4,7 @@
 namespace glow {
 
 class Module;
+class Graph;
 
 enum class OptimizationMode {
   None,  // Don't optimize the module.
@@ -12,6 +13,7 @@ enum class OptimizationMode {
 };
 
 void optimize(Module &M, OptimizationMode mode);
+void optimize(Graph &G, OptimizationMode mode);
 
 } // namespace glow
 

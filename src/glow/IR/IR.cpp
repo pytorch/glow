@@ -61,7 +61,12 @@ void Instruction::verify() const {
 #include "glow/IR/Instrs.def"
 }
 
-Module::~Module() {
+Module::~Module() { clear(); }
+
+void Module::clear() {
+  // Remove the mapping between the graph nodes and the IR that we are deleting.
+  variableMap.clear();
+
   // Delete all of the instructions, in reverse order, to make sure that
   // we delete the users before the instructions.
   for (auto it = instrs_.rbegin(), e = instrs_.rend(); it != e; ++it) {
@@ -72,6 +77,8 @@ Module::~Module() {
   for (auto &I : weights_) {
     delete I;
   }
+  instrs_.clear();
+  weights_.clear();
 }
 
 void Module::verify() const {

@@ -38,6 +38,9 @@ public:
   /// Dtor.
   ~Interpreter();
 
+  /// Wipe out the state of the interpreter.
+  void clear();
+
   /// \returns a pointer to the tensor that is saved under \p v. The tensor
   /// is owned by the Interpreter.
   Tensor *getTensor(const Value *v) const;

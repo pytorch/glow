@@ -40,8 +40,7 @@ TEST(Interpreter, interpret) {
   auto *SM = G.createSoftMax("sm", RL3, ex);
   G.createReturn("ret", SM);
 
-  EE.getModule().generateIR();
-  EE.optimize(OptimizationMode::Infer);
+  EE.compile(OptimizationMode::Infer);
   EE.initVars();
   EE.infer({input}, {&inputs});
 }
@@ -71,8 +70,7 @@ TEST(Interpreter, trainASimpleNetwork) {
   inputs.getHandle<FloatTy>() = {0.15, 0.15, 0.15, 0.15};
   expected.getHandle<FloatTy>() = {0.9, 0.9, 0.9, 0.9};
 
-  EE.getModule().generateIR();
-  EE.optimize(OptimizationMode::Train);
+  EE.compile(OptimizationMode::Train);
   EE.initVars();
 
   // Train the network. Learn 1000 batches.
@@ -116,8 +114,7 @@ TEST(Interpreter, simpleRegression) {
   auto I = inputs.getHandle<FloatTy>();
   auto E = expected.getHandle<FloatTy>();
 
-  EE.getModule().generateIR();
-  EE.optimize(OptimizationMode::Train);
+  EE.compile(OptimizationMode::Train);
   EE.initVars();
 
   // Train the network:
@@ -184,8 +181,7 @@ TEST(Interpreter, learnXor) {
     TL.at({i, 0}) = a ^ b;
   }
 
-  EE.getModule().generateIR();
-  EE.optimize(OptimizationMode::Train);
+  EE.compile(OptimizationMode::Train);
   EE.initVars();
 
   // Train the network:
@@ -263,8 +259,7 @@ TEST(Network, circle) {
   auto *SM = G.createSoftMax("soft", RL1, S);
   auto *result = G.createReturn("ret", SM);
 
-  EE.getModule().generateIR();
-  EE.optimize(OptimizationMode::Train);
+  EE.compile(OptimizationMode::Train);
   EE.initVars();
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
@@ -358,8 +353,7 @@ TEST(Network, learnSingleValueConcat) {
   inputs.getHandle<FloatTy>().clear(0.15);
   expected.getHandle<FloatTy>().clear(0.9);
 
-  EE.getModule().generateIR();
-  EE.optimize(OptimizationMode::Train);
+  EE.compile(OptimizationMode::Train);
   EE.initVars();
 
   // Train the network:

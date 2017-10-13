@@ -1,6 +1,7 @@
 
 add_library(Optimizer
-            Optimizer.cpp)
+            IROptimizer.cpp
+            GraphOptimizer.cpp)
 
 target_link_libraries(Optimizer
                       PRIVATE

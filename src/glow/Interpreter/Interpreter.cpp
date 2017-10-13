@@ -9,7 +9,9 @@
 
 using namespace glow;
 
-Interpreter::~Interpreter() {
+Interpreter::~Interpreter() { clear(); }
+
+void Interpreter::clear() {
   // Delete the tensors that are owned by this module.
   for (auto p : tensors_) {
     delete p.second;
