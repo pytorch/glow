@@ -239,7 +239,7 @@ Value *IRBuilder::createReturnOp(Value *input) {
 
 CopyInst *IRBuilder::createCopyInst(Value *dest, Value *src) {
   auto *A = new CopyInst(dest, src);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   return A;
 }
 
@@ -249,7 +249,7 @@ ConvolutionInst *IRBuilder::createConvolutionInst(Value *dest, Value *src,
                                                   size_t pad, size_t depth) {
   auto *A =
       new ConvolutionInst(dest, src, filter, bias, kernel, stride, pad, depth);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   return A;
 }
 
@@ -257,7 +257,7 @@ PoolInst *IRBuilder::createPoolInst(Value *dest, Value *src, Value *srcXY,
                                     PoolInst::OpKind kind, size_t kernel,
                                     size_t stride, size_t pad) {
   auto *A = new PoolInst(dest, src, srcXY, kind, kernel, stride, pad);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   return A;
 }
 
@@ -266,46 +266,46 @@ FullyConnectedInst *IRBuilder::createFullyConnectedInst(Value *dest, Value *src,
                                                         Value *bias,
                                                         size_t depth) {
   auto *A = new FullyConnectedInst(dest, src, filter, bias, depth);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   return A;
 }
 
 ReluInst *IRBuilder::createReluInst(Value *dest, Value *src) {
   auto *A = new ReluInst(dest, src);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   return A;
 }
 
 SigmoidInst *IRBuilder::createSigmoidInst(Value *dest, Value *src) {
   auto *A = new SigmoidInst(dest, src);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   return A;
 }
 
 TanhInst *IRBuilder::createTanhInst(Value *dest, Value *src) {
   auto *A = new TanhInst(dest, src);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   return A;
 }
 
 SoftMaxInst *IRBuilder::createSoftMaxInst(Value *dest, Value *src, Value *E,
                                           Value *selected) {
   auto *A = new SoftMaxInst(dest, src, E, selected);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   return A;
 }
 
 RegressionInst *IRBuilder::createRegressionInst(Value *dest, Value *src,
                                                 Value *expected) {
   auto *A = new RegressionInst(dest, src, expected);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   return A;
 }
 
 ReshapeInst *IRBuilder::createReshapeInst(Value *dest, Value *src,
                                           llvm::ArrayRef<size_t> shape) {
   auto *A = new ReshapeInst(dest, src, shape);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   return A;
 }
 
@@ -313,7 +313,7 @@ TransposeInst *
 IRBuilder::createTransposeInst(Value *dest, Value *src,
                                llvm::ArrayRef<unsigned> shuffle) {
   auto *A = new TransposeInst(dest, src, shuffle);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   return A;
 }
 
@@ -321,7 +321,7 @@ ConcatInst *IRBuilder::createConcatInst(Value *dest,
                                         llvm::ArrayRef<Value *> src,
                                         size_t dim) {
   auto *A = new ConcatInst(dest, src, dim);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   return A;
 }
 
@@ -330,7 +330,7 @@ BatchNormalizationInst *IRBuilder::createBatchNormalizationInst(
     size_t channelIdx, float epsilon, float momentum) {
   auto *A = new BatchNormalizationInst(dest, src, scale, bias, mean, var,
                                        channelIdx, epsilon, momentum);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   return A;
 }
 
@@ -339,7 +339,7 @@ LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationInst(
     float beta, float k) {
   auto *A = new LocalResponseNormalizationInst(dest, src, scale, halfWindowSize,
                                                alpha, beta, k);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   return A;
 }
 
@@ -347,7 +347,7 @@ ArithmeticInst *IRBuilder::createArithmeticInst(Value *dest, Value *LHS,
                                                 Value *RHS,
                                                 ArithmeticInst::OpKind kind) {
   auto *A = new ArithmeticInst(dest, LHS, RHS, kind);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   return A;
 }
 
@@ -355,14 +355,14 @@ WeightVar *IRBuilder::createWeightVar(ElemKind elemTy,
                                       llvm::ArrayRef<size_t> dims,
                                       llvm::StringRef name, InitKind initKind,
                                       float val) {
-  auto T = M_.getGraph().uniqueType(elemTy, dims);
+  auto T = M_->getGraph()->uniqueType(elemTy, dims);
   return createWeightVar(T, name, initKind, val);
 }
 
 WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
                                       InitKind initKind, float val) {
   auto *A = new WeightVar(T, initKind, val);
-  M_.getWeights().push_back(A);
+  M_->getWeights().push_back(A);
   A->setName(name);
   return A;
 }
@@ -370,19 +370,19 @@ WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
 AllocActivationInst *
 IRBuilder::createAllocActivationInst(TypeRef T, llvm::StringRef name) {
   auto *A = new AllocActivationInst(T);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   // Add this instruction to the list of open allocations.
   activeAllocs_.push_back(A);
   return A;
 }
 AllocActivationInst *IRBuilder::createAllocActivationInst(
     ElemKind elemTy, llvm::ArrayRef<size_t> dims, llvm::StringRef name) {
-  auto T = M_.getGraph().uniqueType(elemTy, dims);
+  auto T = M_->getGraph()->uniqueType(elemTy, dims);
   return createAllocActivationInst(T, name);
 }
 
 DeallocActivationInst *IRBuilder::createDeallocActivationInst(Value *src) {
   auto *A = new DeallocActivationInst(src);
-  M_.pushInstr(A);
+  M_->pushInstr(A);
   return A;
 }

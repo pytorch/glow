@@ -1,42 +1,53 @@
 #ifndef GLOW_EXECUTIONENGINE_EXECUTIONENGINE_H
 #define GLOW_EXECUTIONENGINE_EXECUTIONENGINE_H
 
-#include "glow/Base/Tensor.h"
 #include "glow/Base/Train.h"
-#include "glow/Graph/Graph.h"
-#include "glow/IR/IR.h"
-#include "glow/IR/IRBuilder.h"
-#include "glow/Interpreter/Interpreter.h"
 #include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/ADT/ArrayRef.h"
 
+#include <memory>
 #include <unordered_map>
 
 namespace glow {
 
+class Graph;
+class Node;
+class Interpreter;
+class Variable;
+class Tensor;
+class Value;
+
 /// This is the ExecutionEngine. It owns the Graph, the IR, and the backends.
+/// The Graph, Module, etc in this class are defined as pointers, in order to
+/// erase the type and prevent the internal types from leaking out to the
+/// users of this class.
 class ExecutionEngine final {
   /// The Graph that represents the high-level program.
-  Graph G_{};
+  Graph *G_;
   /// The Module that holds the IR.
-  Module M_;
+  Module *M_;
   /// The network interpreter
-  Interpreter IP_;
+  Interpreter *IP_;
   /// The network trainer.
   Trainer trainer_{};
 
 public:
-  ExecutionEngine() : M_(G_), IP_(M_) {}
+  ExecutionEngine();
+
+  ~ExecutionEngine();
 
   /// \returns the internal module.
-  Module &getModule() { return M_; }
+  Module &getModule() { return *M_; }
 
   /// \returns the internal module.
-  Graph &getGraph() { return G_; }
+  Graph &getGraph() { return *G_; }
 
   /// Run the target-independent optimizations on the module.
   void optimize(OptimizationMode mode);
+
+  /// Generate IR from the graph nodes.
+  void generateIR();
 
   /// Provides access to the training configuration.
   TrainingConfig &getConfig() { return trainer_.config; }

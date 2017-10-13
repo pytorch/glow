@@ -1,11 +1,5 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
-#include "glow/Graph/Node.h"
-#include "glow/Graph/Nodes.h"
-#include "glow/IR/IR.h"
-#include "glow/IR/IRBuilder.h"
-#include "glow/IR/Instrs.h"
-#include "glow/Interpreter/Interpreter.h"
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/Timer.h"
@@ -99,7 +93,7 @@ void testMNIST() {
 
   auto *result = G.createReturn("return", SM);
 
-  EE.getModule().generateIR();
+  EE.generateIR();
   EE.optimize(OptimizationMode::Train);
   EE.initVars();
 

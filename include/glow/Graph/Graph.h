@@ -13,24 +13,6 @@
 
 namespace glow {
 
-class Node;
-class Variable;
-class ConvolutionNode;
-class PoolNode;
-class FullyConnectedNode;
-class ReluNode;
-class SigmoidNode;
-class TanhNode;
-class SoftMaxNode;
-class RegressionNode;
-class ReshapeNode;
-class TransposeNode;
-class ConcatNode;
-class BatchNormalizationNode;
-class LocalResponseNormalizationNode;
-class ArithmeticNode;
-class ReturnNode;
-
 /// Represents the compute graph.
 class Graph final {
   /// A uniqued list of types in the module. Types in this list can be compared

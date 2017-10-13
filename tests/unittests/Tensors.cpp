@@ -4,13 +4,6 @@
 
 #include "gtest/gtest.h"
 
-#include <algorithm>
-#include <cassert>
-#include <cstddef>
-#include <cstdint>
-#include <iostream>
-#include <string>
-
 using namespace glow;
 
 TEST(Tensor, init) {

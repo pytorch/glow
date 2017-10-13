@@ -2,7 +2,7 @@
 #define GLOW_IR_IR_H
 
 #include "glow/Base/Type.h"
-#include "glow/IR/Traits.h"
+#include "glow/Base/Traits.h"
 #include "glow/IR/UseDef.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -102,8 +102,8 @@ public:
   using WeightVarListTy = std::list<WeightVar *>;
 
 private:
-  /// A reference to the graph structure.
-  Graph &G_;
+  /// A pointer to the graph structure. The Module does not own the graph.
+  Graph *G_;
 
   /// A list of weights. Weights are shared between all execution context.
   std::list<WeightVar *> weights_{};
@@ -122,7 +122,7 @@ public:
   /// Add an instruction to the instr stream.
   void pushInstr(Instruction *I) { instrs_.push_back(I); }
 
-  explicit Module(Graph &G) : G_(G) {}
+  explicit Module(Graph *G) : G_(G) {}
 
   ~Module();
 
@@ -130,7 +130,7 @@ public:
   void generateIR();
 
   /// \returns a reference to the original graph.
-  Graph &getGraph() { return G_; }
+  Graph *getGraph() { return G_; }
 
   /// Verify the correctness of the module.
   void verify() const;

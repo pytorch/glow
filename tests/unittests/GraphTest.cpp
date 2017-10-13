@@ -20,7 +20,7 @@ TEST(Graph, simpleTest) {
 
   {
     Graph G;
-    Module M(G);
+    Module M(&G);
     Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
     Node *S = G.createVariable(ElemKind::IndexTy, {4, 1}, "select");
 
@@ -36,7 +36,7 @@ TEST(Graph, simpleTest) {
   {
     unsigned numInputs = 10;
     Graph G;
-    Module M(G);
+    Module M(&G);
 
     auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
     auto *Ex = G.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");

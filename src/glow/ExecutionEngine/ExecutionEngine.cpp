@@ -1,8 +1,24 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Interpreter/Interpreter.h"
+
+#include "glow/Graph/Graph.h"
+#include "glow/IR/IR.h"
+#include "glow/IR/IRBuilder.h"
+#include "glow/IR/Instrs.h"
+#include "glow/Optimizer/Optimizer.h"
 
 using namespace glow;
+
+ExecutionEngine::ExecutionEngine()
+    : G_(new Graph()), M_(new Module(G_)), IP_(new Interpreter(M_)) {}
+
+ExecutionEngine::~ExecutionEngine() {
+  delete IP_;
+  delete M_;
+  delete G_;
+}
 
 void ExecutionEngine::infer(llvm::ArrayRef<Variable *> vars,
                             llvm::ArrayRef<Tensor *> inputs) {
@@ -12,11 +28,11 @@ void ExecutionEngine::infer(llvm::ArrayRef<Variable *> vars,
 
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
-    auto *val = M_.getWeightForNode(vars[i]);
+    auto *val = M_->getWeightForNode(vars[i]);
     loadValueFromTensor(val, inputs[i], 0);
   }
 
-  IP_.doForwardPass(false);
+  IP_->doForwardPass(false);
 }
 
 void ExecutionEngine::train(size_t iterations, llvm::ArrayRef<Variable *> vars,
@@ -29,7 +45,7 @@ void ExecutionEngine::train(size_t iterations, llvm::ArrayRef<Variable *> vars,
 
   std::vector<Value *> weights;
   for (auto *v : vars) {
-    weights.push_back(M_.getWeightForNode(v));
+    weights.push_back(M_->getWeightForNode(v));
   }
 
   // This is the size of one batch (the number of samples in the batch).
@@ -49,14 +65,14 @@ void ExecutionEngine::train(size_t iterations, llvm::ArrayRef<Variable *> vars,
 }
 
 void ExecutionEngine::learnGradient(size_t batchSize) {
-  for (auto *V : M_.getWeights()) {
+  for (auto *V : M_->getWeights()) {
     // Do not try to learn the values of input/output buffers.
     if (V->getInitKind() == WeightVar::InitKind::Extern) {
       continue;
     }
 
-    auto W = IP_.getTensor(V);
-    auto G = IP_.getOrCreateGradTensor(V);
+    auto W = IP_->getTensor(V);
+    auto G = IP_->getOrCreateGradTensor(V);
 
     // Handle weight update by learning the gradients into the weights.
     trainer_.train(W, G, batchSize);
@@ -71,15 +87,15 @@ void ExecutionEngine::updateForwardBackward(llvm::ArrayRef<Value *> vars,
     loadValueFromTensor(vars[i], inputs[i], sampleIdx);
   }
 
-  IP_.doForwardPass(true);
+  IP_->doForwardPass(true);
 
-  IP_.doBackwardPass();
+  IP_->doBackwardPass();
 }
 
 void ExecutionEngine::loadValueFromTensor(const Value *v, Tensor *input,
                                           size_t sampleIdx) {
   assert(v && "Invalid value");
-  auto *t = IP_.getTensor(v);
+  auto *t = IP_->getTensor(v);
 
   auto dim = input->dims();
   assert(t->dims().drop_front() == dim.drop_front() && "Invalid slice size");
@@ -89,41 +105,43 @@ void ExecutionEngine::loadValueFromTensor(const Value *v, Tensor *input,
 }
 
 void ExecutionEngine::optimize(OptimizationMode mode) {
-  ::glow::optimize(M_, mode);
+  ::glow::optimize(*M_, mode);
 }
 
+void ExecutionEngine::generateIR() { M_->generateIR(); }
+
 Tensor *ExecutionEngine::getTensor(const Node *v) const {
-  auto val = M_.getWeightForNode(v);
+  auto val = M_->getWeightForNode(v);
   assert(val && "Node does not have a registered IR value");
-  return IP_.getTensor(val);
+  return IP_->getTensor(val);
 }
 
 /// \returns a float-handle to the tensor that is stored at \p v.
 Handle<FloatTy> ExecutionEngine::getWeightHandle(Variable *v) const {
-  auto val = M_.getWeightForNode(v);
-  return IP_.getWeightHandle(val);
+  auto val = M_->getWeightForNode(v);
+  return IP_->getWeightHandle(val);
 }
 
 /// \returns a float-handle to the tensor that is stored at \p v.
 Handle<FloatTy> ExecutionEngine::getGradHandle(Variable *v) {
-  auto val = M_.getWeightForNode(v);
-  return IP_.getGradHandle(val);
+  auto val = M_->getWeightForNode(v);
+  return IP_->getGradHandle(val);
 }
 
 /// Copies the content of the tensor \p t into the value \p v.
 void ExecutionEngine::initValue(const Variable *v, const Tensor *t) {
-  auto *N = M_.getWeightForNode(v);
-  return IP_.initValue(N, t);
+  auto *N = M_->getWeightForNode(v);
+  return IP_->initValue(N, t);
 }
 
 void ExecutionEngine::initVars() {
-  for (auto *W : M_.getWeights()) {
+  for (auto *W : M_->getWeights()) {
     // Don't initialize tensors that are already initialized.
-    if (IP_.hasTensor(W)) {
+    if (IP_->hasTensor(W)) {
       continue;
     }
 
-    auto *T = IP_.getOrCreateTensor(W);
+    auto *T = IP_->getOrCreateTensor(W);
     // The parameter to the instruction.
     auto val = W->getVal();
 
