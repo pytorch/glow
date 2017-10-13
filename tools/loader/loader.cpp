@@ -3,10 +3,9 @@
 #include "glow/Base/Image.h"
 #include "glow/Base/Tensor.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
-#include "glow/Graph/Graph.h"
-#include "glow/Graph/Nodes.h"
 #include "glow/Importer/Caffe2.h"
-#include "glow/Interpreter/Interpreter.h"
+
+#include <iostream>
 
 using namespace glow;
 

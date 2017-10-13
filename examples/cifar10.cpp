@@ -1,22 +1,12 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
-#include "glow/Graph/Nodes.h"
-#include "glow/IR/IR.h"
-#include "glow/IR/IRBuilder.h"
-#include "glow/IR/Instrs.h"
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/Timer.h"
 
 #include <cassert>
-#include <cstddef>
-#include <cstdint>
 #include <fstream>
 #include <iostream>
-#include <iterator>
-#include <random>
-#include <string>
-#include <vector>
 
 using namespace glow;
 
@@ -100,7 +90,7 @@ void testCIFAR10() {
   auto *SM = G.createSoftMax("softmax", RL3, E);
   auto *result = G.createReturn("ret", SM);
 
-  EE.getModule().generateIR();
+  EE.generateIR();
   EE.optimize(OptimizationMode::Train);
   EE.initVars();
 

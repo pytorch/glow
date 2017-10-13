@@ -5,12 +5,8 @@
 #include "llvm/Support/Timer.h"
 
 #include <cassert>
-#include <cstddef>
-#include <cstdint>
 #include <fstream>
 #include <iostream>
-#include <string>
-#include <vector>
 
 using namespace glow;
 
