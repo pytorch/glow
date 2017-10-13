@@ -2,11 +2,6 @@
 #define GLOW_INTERPRETER_INTERPRETER_H
 
 #include "glow/Base/Tensor.h"
-#include "glow/Base/Train.h"
-#include "glow/Graph/Graph.h"
-#include "glow/IR/IR.h"
-#include "glow/IR/IRBuilder.h"
-#include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/ADT/ArrayRef.h"
 
@@ -15,12 +10,21 @@
 namespace glow {
 
 class Context;
+class Module;
+class Value;
+class Tensor;
+
+// Forward declare all of the classes.
+#define DEF_VALUE(CLASS, NAME) class CLASS;
+#define DEF_NODE(CLASS, NAME) class CLASS;
+#define DEF_INSTR(CLASS, NAME) class CLASS;
+#include "glow/IR/Instrs.def"
 
 /// This is the IR-interpreter. It owns the IR, and the heap, and is able to
 /// execute the instructions one at a time.
 class Interpreter final {
-  /// The Module that holds the IR.
-  Module &M_;
+  /// The Module that holds the IR. This does not own the module.
+  Module *M_;
   /// Maps values to Tensors, that are owned by this class.
   std::unordered_map<const Value *, Tensor *> tensors_;
 
@@ -29,11 +33,8 @@ class Interpreter final {
   std::unordered_map<Tensor *, Tensor *> gradients_;
 
 public:
-  /// \returns the internal module.
-  Module &getModule() { return M_; }
-
   /// Ctor.
-  Interpreter(Module &M) : M_(M) {}
+  Interpreter(Module *M) : M_(M) {}
   /// Dtor.
   ~Interpreter();
 
@@ -75,6 +76,7 @@ private:
   /// @name Interpreter methods. This is a list of method declerations that are
   /// used by the interpreter to dispatch different instructions.
   ///@{
+
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_NODE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \

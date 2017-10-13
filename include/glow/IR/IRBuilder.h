@@ -15,14 +15,14 @@ class IRBuilder {
   using InitKind = WeightVar::InitKind;
 
   /// The module that we are building.
-  Module &M_;
+  Module *M_;
 
   /// A list of allocated buffers that need to be deallocated at the end of the
   /// program that we are constructing.
   std::vector<AllocActivationInst *> activeAllocs_;
 
 public:
-  explicit IRBuilder(Module &M) : M_(M) {}
+  explicit IRBuilder(Module *M) : M_(M) {}
 
   ~IRBuilder();
 

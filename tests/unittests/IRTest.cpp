@@ -21,7 +21,7 @@ using namespace glow;
 
 TEST(IR, uniqueTypes) {
   Graph G;
-  Module M(G);
+  Module M(&G);
   Type T1(ElemKind::FloatTy, {320, 200});
   Type T2(ElemKind::FloatTy, {320, 200});
   Type T3(ElemKind::FloatTy, {1, 2});
@@ -40,9 +40,9 @@ TEST(IR, uniqueTypes) {
 
 TEST(IR, basicUseList) {
   Graph G;
-  Module M(G);
+  Module M(&G);
   {
-    IRBuilder builder(M);
+    IRBuilder builder(&M);
 
     auto *V1 = builder.createWeightVar(ElemKind::FloatTy, {320, 200});
     auto *V2 = builder.createWeightVar(ElemKind::FloatTy, {320, 200});
@@ -66,14 +66,14 @@ TEST(IR, allInstrs) {
   using InitKind = WeightVar::InitKind;
 
   Graph G;
-  Module M(G);
+  Module M(&G);
   auto T1 = G.uniqueType(ElemKind::FloatTy, {1, 24, 24, 3});
   auto T2 = G.uniqueType(ElemKind::FloatTy, {64});
   auto T4 = G.uniqueType(ElemKind::IndexTy, {1, 1});
   auto T5 = G.uniqueType(ElemKind::FloatTy, {3});
 
   {
-    IRBuilder builder(M);
+    IRBuilder builder(&M);
 
     auto *I0 = builder.createWeightVar(T1, "I0", InitKind::Extern, 0);
     auto *I1 = builder.createWeightVar(T1, "I1", InitKind::Extern, 0);
@@ -120,9 +120,9 @@ TEST(IR, allInstrs) {
 
 TEST(IR, highLevelBuilder) {
   Graph G;
-  Module M(G);
+  Module M(&G);
   {
-    IRBuilder bb(M);
+    IRBuilder bb(&M);
 
     auto *input = bb.createWeightVar(ElemKind::FloatTy, {1, 224, 224, 3});
     auto *conv = bb.createConvOp(input, 16, 7, 2, 3);
@@ -154,9 +154,9 @@ TEST(IR, highLevelBuilder) {
 
 TEST(IR, casting) {
   Graph G;
-  Module M(G);
+  Module M(&G);
   {
-    IRBuilder bb(M);
+    IRBuilder bb(&M);
 
     auto *input = bb.createWeightVar(ElemKind::FloatTy, {1, 224, 224, 3});
     auto *conv = bb.createConvOp(input, 16, 7, 2, 3);

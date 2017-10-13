@@ -23,7 +23,7 @@ struct IRGenVisitor : NodeVisitor {
   /// Holds the mapping between graph nodes to IR variables.
   NodeToInstrTy generatedNodes;
   /// The module that we are building.
-  Module &M_;
+  Module *M_;
   /// The builder that adds instructions into the module.
   IRBuilder builder_;
 
@@ -33,7 +33,7 @@ public:
     return !generatedNodes.count(N);
   }
 
-  explicit IRGenVisitor(Module &M) : M_(M), builder_(M_) {}
+  explicit IRGenVisitor(Module *M) : M_(M), builder_(M_) {}
 
   /// \returns the generated instruction for the node \p N.
   Value *valueForNode(Node *N) {
@@ -48,7 +48,7 @@ public:
            "Value operand must be a memory location");
     generatedNodes[N] = v;
     // Register the fact that we've lowered this variable to the new weight.
-    auto &map = M_.getVariableMap();
+    auto &map = M_->getVariableMap();
     map[N] = v;
   }
 
@@ -215,13 +215,13 @@ public:
 } // namespace
 
 void Module::generateIR() {
-  IRGenVisitor irgen(*this);
+  IRGenVisitor irgen(this);
 
-  for (auto &N : G_.getVars()) {
+  for (auto &N : G_->getVars()) {
     N->visit(nullptr, &irgen);
   }
 
-  for (auto &N : G_.getNodes()) {
+  for (auto &N : G_->getNodes()) {
     N->visit(nullptr, &irgen);
   }
 }

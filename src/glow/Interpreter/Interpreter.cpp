@@ -83,7 +83,7 @@ void Interpreter::doForwardPass(bool isTrain) {
     break;                                                                     \
   }
   // Dispatch the interpreter on each instruction in the program:
-  for (auto *I : M_.getInstrs()) {
+  for (auto *I : M_->getInstrs()) {
     switch (I->getKind()) {
 #include "glow/IR/Instrs.def"
     default:
@@ -103,7 +103,7 @@ void Interpreter::doBackwardPass() {
   }
   // Dispatch the interpreter on each instruction in the program, in reverse
   // order.
-  auto &L = M_.getInstrs();
+  auto &L = M_->getInstrs();
   for (auto it = L.rbegin(), e = L.rend(); it != e; it++) {
     switch ((*it)->getKind()) {
 #include "glow/IR/Instrs.def"
