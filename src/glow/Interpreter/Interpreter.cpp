@@ -21,6 +21,9 @@ void Interpreter::clear() {
   for (auto &p : gradients_) {
     delete p.second;
   }
+
+  tensors_.clear();
+  gradients_.clear();
 }
 
 Tensor *Interpreter::getTensor(const Value *v) const {
