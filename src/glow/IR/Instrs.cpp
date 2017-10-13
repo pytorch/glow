@@ -3,37 +3,11 @@
 #include "glow/IR/Instrs.h"
 #include "glow/IR/IR.h"
 #include "glow/Support/Casting.h"
+#include "glow/Support/Support.h"
 
 #include <cassert>
 
 using namespace glow;
-
-// Helper methods that are used to print the instruction parameters.
-namespace {
-template <typename E> std::string listToString_impl(E v) {
-  return std::to_string(v);
-}
-
-template <typename E, typename... Args>
-std::string listToString_impl(E first, Args... args) {
-  return std::to_string(first) + " " + listToString_impl(args...);
-}
-
-template <typename... Args> std::string listToString(Args... args) {
-  return "[" + listToString_impl(args...) + "]";
-}
-
-template <typename E> std::string arrayRefToString(llvm::ArrayRef<E> list) {
-  std::string sb = "[";
-  for (size_t i = 0, e = list.size(); i < e; i++) {
-    if (i) {
-      sb += ", ";
-    }
-    sb += std::to_string(list[i]);
-  }
-  return sb + "]";
-}
-} // namespace
 
 //===----------------------------------------------------------------------===//
 //                      Instruction textual printers
