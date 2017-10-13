@@ -64,7 +64,7 @@ Tensor *Interpreter::getOrCreateTensor(const Value *v) {
   // Pick the tensor.
   auto it = tensors_.find(v);
   if (it == tensors_.end()) {
-    Tensor *T = new Tensor(v->getType());
+    auto *T = new Tensor(v->getType());
     tensors_[v] = T;
     return T;
   }

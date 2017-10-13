@@ -3,8 +3,8 @@
 
 #include "llvm/ADT/StringRef.h"
 
-#include "glow/Base/Type.h"
 #include "glow/Base/Traits.h"
+#include "glow/Base/Type.h"
 
 namespace glow {
 

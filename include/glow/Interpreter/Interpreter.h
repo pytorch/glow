@@ -34,7 +34,7 @@ class Interpreter final {
 
 public:
   /// Ctor.
-  Interpreter(Module *M) : M_(M) {}
+  explicit Interpreter(Module *M) : M_(M) {}
   /// Dtor.
   ~Interpreter();
 

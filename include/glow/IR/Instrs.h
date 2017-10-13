@@ -12,7 +12,7 @@ namespace glow {
 
 class AllocActivationInst : public Instruction {
 public:
-  AllocActivationInst(TypeRef Ty)
+  explicit AllocActivationInst(TypeRef Ty)
       : Instruction(Kinded::Kind::AllocActivationInstKind, Ty) {}
 
   static bool classof(const Kinded *k) {
@@ -25,7 +25,7 @@ public:
 
 class DeallocActivationInst : public Instruction {
 public:
-  DeallocActivationInst(Value *src)
+  explicit DeallocActivationInst(Value *src)
       : Instruction(Kinded::Kind::DeallocActivationInstKind, src->getType(),
                     {{src, OperandKind::Out}}) {}
 
