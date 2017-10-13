@@ -19,9 +19,9 @@ class Graph final {
   /// by comparing their addresses.
   std::list<Type> types_{};
   /// A list of nodes that the graph owns.
-  std::vector<Node *> nodes_;
+  std::list<Node *> nodes_;
   /// A list of variables that the graph owns.
-  std::vector<Variable *> vars_;
+  std::list<Variable *> vars_;
 
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
@@ -115,10 +115,10 @@ public:
   void dumpDAG();
 
   /// \returns the list of nodes that the graph owns.
-  const std::vector<Node *> &getNodes() const { return nodes_; }
+ std::list<Node *> &getNodes() { return nodes_; }
 
   /// \returns the list of variables that the graph owns.
-  const std::vector<Variable *> &getVars() const { return vars_; }
+   std::list<Variable *> &getVars() { return vars_; }
 };
 
 } // namespace glow
