@@ -115,10 +115,10 @@ public:
   void dumpDAG();
 
   /// \returns the list of nodes that the graph owns.
- std::list<Node *> &getNodes() { return nodes_; }
+  std::list<Node *> &getNodes() { return nodes_; }
 
   /// \returns the list of variables that the graph owns.
-   std::list<Variable *> &getVars() { return vars_; }
+  std::list<Variable *> &getVars() { return vars_; }
 };
 
 } // namespace glow
