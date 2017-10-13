@@ -1,5 +1,5 @@
-#ifndef GLOW_IR_TRAITS_H
-#define GLOW_IR_TRAITS_H
+#ifndef GLOW_BASE_TRAITS_H
+#define GLOW_BASE_TRAITS_H
 
 #include "glow/Base/Type.h"
 
@@ -31,7 +31,7 @@ private:
   TypeRef Ty_{};
 
 public:
-  Typed(TypeRef Ty) : Ty_(Ty){};
+  explicit Typed(TypeRef Ty) : Ty_(Ty){};
 
   TypeRef getType() const { return Ty_; }
 
@@ -78,4 +78,4 @@ public:
 
 } // namespace glow
 
-#endif // GLOW_IR_TRAITS_H
+#endif // GLOW_BASE_TRAITS_H

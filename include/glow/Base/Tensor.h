@@ -112,9 +112,9 @@ public:
   Tensor() = default;
 
   /// Initialize from a list of float literals.
-  Tensor(const std::initializer_list<double> &vec) : type_{} {
+  Tensor(const std::initializer_list<double> &vec) {
     reset(ElemKind::FloatTy, {vec.size()});
-    FloatTy *data = getRawDataPointer<FloatTy>();
+    auto *data = getRawDataPointer<FloatTy>();
     int i = 0;
     for (auto &f : vec) {
       data[i++] = f;
@@ -122,10 +122,10 @@ public:
   }
 
   /// Allocate and initialize a new tensor.
-  Tensor(TypeRef ty) : data_(nullptr), type_(*ty) { reset(*ty); }
+  explicit Tensor(TypeRef ty) : data_(nullptr), type_(*ty) { reset(*ty); }
 
   /// Allocate and initialize a new tensor.
-  Tensor(const Type &ty) : data_(nullptr), type_(ty) { reset(ty); }
+  explicit Tensor(const Type &ty) : data_(nullptr), type_(ty) { reset(ty); }
 
   /// Allocate and initialize a new tensor.
   Tensor(ElemKind elemTy, llvm::ArrayRef<size_t> dims)
@@ -320,7 +320,7 @@ public:
   }
 
   void clear(ElemTy value = 0) {
-    ElemTy *data = tensor_->getRawDataPointer<ElemTy>();
+    auto *data = tensor_->getRawDataPointer<ElemTy>();
     std::fill(&data[0], &data[0] + size(), value);
   }
 

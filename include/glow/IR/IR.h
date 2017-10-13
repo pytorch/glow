@@ -1,8 +1,8 @@
 #ifndef GLOW_IR_IR_H
 #define GLOW_IR_IR_H
 
-#include "glow/Base/Type.h"
 #include "glow/Base/Traits.h"
+#include "glow/Base/Type.h"
 #include "glow/IR/UseDef.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -33,7 +33,7 @@ class Value : public Named,
               public Typed,
               public Kinded {
 public:
-  Value(TypeRef T, Kinded::Kind k) : Named(), UseDef(), Typed(T), Kinded(k) {}
+  Value(TypeRef T, Kinded::Kind k) : Typed(T), Kinded(k) {}
 };
 
 /// This represents an instruction in our IR.
