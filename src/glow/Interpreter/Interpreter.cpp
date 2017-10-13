@@ -79,7 +79,7 @@ void Interpreter::doForwardPass(bool isTrain) {
 #define DEF_NODE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   case Kinded::Kind::CLASS##Kind: {                                            \
-    fwd##CLASS(nullptr, isTrain, cast<CLASS>(I));                              \
+    fwd##CLASS(isTrain, cast<CLASS>(I));                                       \
     break;                                                                     \
   }
   // Dispatch the interpreter on each instruction in the program:
@@ -98,7 +98,7 @@ void Interpreter::doBackwardPass() {
 #define DEF_NODE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   case Kinded::Kind::CLASS##Kind: {                                            \
-    bwd##CLASS(nullptr, cast<CLASS>(*it));                                     \
+    bwd##CLASS(cast<CLASS>(*it));                                              \
     break;                                                                     \
   }
   // Dispatch the interpreter on each instruction in the program, in reverse

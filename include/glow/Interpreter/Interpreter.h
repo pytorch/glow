@@ -80,19 +80,17 @@ private:
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_NODE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
-  void fwd##CLASS(Context *ctx, bool isTrain, const CLASS *I);                 \
-  void bwd##CLASS(Context *ctx, const CLASS *I);
+  void fwd##CLASS(bool isTrain, const CLASS *I);                               \
+  void bwd##CLASS(const CLASS *I);
 #include "glow/IR/Instrs.def"
 
-  void fwdPoolMax_impl(Context *ctx, const PoolInst *I);
-  void fwdPoolAvg_impl(Context *ctx, const PoolInst *I);
-  void bwdPoolMax_impl(Context *ctx, const PoolInst *I);
-  void bwdPoolAvg_impl(Context *ctx, const PoolInst *I);
+  void fwdPoolMax_impl(const PoolInst *I);
+  void fwdPoolAvg_impl(const PoolInst *I);
+  void bwdPoolMax_impl(const PoolInst *I);
+  void bwdPoolAvg_impl(const PoolInst *I);
 
-  void fwdBatchNormalizationInst_infer(Context *ctx,
-                                       const BatchNormalizationInst *I);
-  void fwdBatchNormalizationInst_train(Context *ctx,
-                                       const BatchNormalizationInst *I);
+  void fwdBatchNormalizationInst_infer(const BatchNormalizationInst *I);
+  void fwdBatchNormalizationInst_train(const BatchNormalizationInst *I);
   ///@}
 };
 
