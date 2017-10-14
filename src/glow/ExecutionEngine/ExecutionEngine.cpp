@@ -1,12 +1,12 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
-#include "glow/Interpreter/Interpreter.h"
 
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Interpreter/Interpreter.h"
 #include "glow/Optimizer/Optimizer.h"
 
 using namespace glow;
