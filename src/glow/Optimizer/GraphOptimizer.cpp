@@ -59,6 +59,18 @@ static void SinkTranspose(Graph &G) {
 
       BN->replaceAllUsesOfWith(newTR);
     }
+
+    // Sink Transpose below batch RELU nodes.
+    // TODO: support other similar activation functions, such as sigmoid, etc.
+    if (auto *RL = dyn_cast<ReluNode>(*it)) {
+      auto *TR = dyn_cast<TransposeNode>(RL->getInput());
+      if (!TR)
+        continue;
+
+      auto *NRL = G.createRELU(RL->getName(), TR->getInput());
+      auto *newTR = G.createTranspose(TR->getName(), NRL, TR->getShuffle());
+      RL->replaceAllUsesOfWith(newTR);
+    }
   }
 }
 
