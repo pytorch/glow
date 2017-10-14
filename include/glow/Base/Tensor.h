@@ -272,8 +272,16 @@ public:
   /// the list of indices may be incomplete.
   size_t getElementPtr(llvm::ArrayRef<size_t> indices) const {
     assert(indices.size() <= numDims && "Invalid number of indices");
-    return std::inner_product(indices.begin(), indices.end(),
-                              std::begin(sizeIntegral), 0);
+    // The loop below can be rewritten using std::inner_product. Unfortunately
+    // std::inner_product does not optimize very well and loops that use this
+    // method don't get vectorized. Don't change this loop without benchmarking
+    // the program on a few compilers.
+    size_t index = 0;
+    for (int i = 0, e = indices.size(); i < e; i++) {
+      index += size_t(sizeIntegral[i]) * size_t(indices[i]);
+    }
+
+    return index;
   }
 
   /// \returns the value of the n'th dimension \p dim, for the raw index \p idx.
