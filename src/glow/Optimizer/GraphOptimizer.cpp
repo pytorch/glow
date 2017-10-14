@@ -111,7 +111,24 @@ static void SinkTranspose(Graph &G) {
         continue;
       }
     }
-  }
+
+    // Sink Transpose below batch Arithmetic nodes.
+    if (auto *AN = dyn_cast<ArithmeticNode>(*it)) {
+      auto *LTR = dyn_cast<TransposeNode>(AN->getLHS());
+      auto *RTR = dyn_cast<TransposeNode>(AN->getRHS());
+      if (!LTR || !RTR)
+        continue;
+      // The masks of the transposes on both sizes must match.
+      if (LTR->getShuffle() != RTR->getShuffle()) {
+        continue;
+      }
+
+      auto *newAN = G.createArithmetic(AN->getName(), LTR->getInput(),
+                                       RTR->getInput(), AN->getKind());
+      auto *newTR = G.createTranspose(LTR->getName(), newAN, LTR->getShuffle());
+      AN->replaceAllUsesOfWith(newTR);
+    }
+  } // For all nodes in the graph.
 }
 
 void glow::optimize(Graph &G, OptimizationMode mode) {
