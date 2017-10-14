@@ -56,8 +56,6 @@ class Value : public Named,
               public Typed,
               public Kinded {
 public:
-  using Use = Use;
-
   Value(TypeRef T, Kinded::Kind k) : Typed(T), Kinded(k) {}
 };
 
