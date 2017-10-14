@@ -7,10 +7,6 @@ namespace glow {
 
 /// A UseDef is something that can be an operand for an instruction.
 template <typename UserTy, typename UseTy, typename Use> class UseDef {
-public:
-  virtual ~UseDef() = default;
-
-private:
   /// A list of users. Notice that the same user may appear twice in the list.
   /// This is typically a very short list.
   std::list<Use> users_{};

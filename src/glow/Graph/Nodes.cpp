@@ -7,6 +7,24 @@
 
 using namespace glow;
 
+void NodeUse::setOperand(Node *other) { site_->setOperand(other); }
+
+void NodeOperand::setOperand(Node *v) {
+  if (node_ == v) {
+    return;
+  }
+
+  if (node_) {
+    node_->removeUse(NodeUse(this));
+    node_ = nullptr;
+  }
+
+  if (v) {
+    node_ = v;
+    v->addUse(NodeUse(this));
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                        Visitor methods
 //===----------------------------------------------------------------------===//
@@ -123,7 +141,8 @@ std::string Variable::getDebugDesc() const {
   db.addParam("name", quote(getName()))
       .addParam("output", *getType())
       .addParam("init", WeightVar::getInitKindStr(initKind_))
-      .addParam("val", val_);
+      .addParam("val", val_)
+      .addParam("users", getNumUsers());
   return db;
 }
 
@@ -137,19 +156,20 @@ std::string ConvolutionNode::getDebugDesc() const {
       .addParam("kernel", kernel_)
       .addParam("stride", stride_)
       .addParam("pad", pad_)
-      .addParam("depth", depth_);
+      .addParam("depth", depth_)
+      .addParam("users", getNumUsers());
   return db;
 }
 std::string PoolNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
-
       .addParam("input", *in_->getType())
       .addParam("output", *getType())
       .addParam("kernel", kernel_)
       .addParam("stride", stride_)
       .addParam("pad", pad_)
-      .addParam("kind", kind_ == OpKind::Max ? "max" : "avg");
+      .addParam("kind", kind_ == OpKind::Max ? "max" : "avg")
+      .addParam("users", getNumUsers());
   return db;
 }
 
@@ -160,7 +180,8 @@ std::string FullyConnectedNode::getDebugDesc() const {
       .addParam("output", *getType())
       .addParam("filter", *filter_->getType())
       .addParam("bias", *bias_->getType())
-      .addParam("depth", depth_);
+      .addParam("depth", depth_)
+      .addParam("users", getNumUsers());
   return db;
 }
 
@@ -171,7 +192,8 @@ std::string LocalResponseNormalizationNode::getDebugDesc() const {
       .addParam("alpha", alpha_)
       .addParam("beta", beta_)
       .addParam("half window size", this->halfWindowSize_)
-      .addParam("scale", *scale_->getType());
+      .addParam("scale", *scale_->getType())
+      .addParam("users", getNumUsers());
   return db;
 }
 
@@ -179,10 +201,12 @@ std::string ConcatNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()));
 
-  for (auto input : in_) {
+  for (auto &input : in_) {
     db.addParam("input", *input->getType());
   }
-  db.addParam("output", *getType()).addParam("dimension", dim_);
+  db.addParam("output", *getType())
+      .addParam("dimension", dim_)
+      .addParam("users", getNumUsers());
   return db;
 }
 
@@ -190,7 +214,8 @@ std::string SoftMaxNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
       .addParam("input", *in_->getType())
-      .addParam("selected", *selected_->getType());
+      .addParam("selected", *selected_->getType())
+      .addParam("users", getNumUsers());
   return db;
 }
 
@@ -198,7 +223,8 @@ std::string RegressionNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
       .addParam("input", *in_->getType())
-      .addParam("expected", *expected_->getType());
+      .addParam("expected", *expected_->getType())
+      .addParam("users", getNumUsers());
   return db;
 }
 
@@ -210,7 +236,8 @@ std::string BatchNormalizationNode::getDebugDesc() const {
       .addParam("gamma", *scale_->getType())
       .addParam("channelIdx", channelIdx_)
       .addParam("epsilon", epsilon_)
-      .addParam("momentum", momentum_);
+      .addParam("momentum", momentum_)
+      .addParam("users", getNumUsers());
   return db;
 }
 
@@ -218,27 +245,32 @@ std::string ArithmeticNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
       .addParam("output", *getType())
-      .addParam("op", kind_ == ArithmeticInst::OpKind::Add ? "add" : "mul");
+      .addParam("op", kind_ == ArithmeticInst::OpKind::Add ? "add" : "mul")
+      .addParam("users", getNumUsers());
   return db;
 }
 
 std::string ReturnNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()));
+  db.addParam("name", quote(getName())).addParam("users", getNumUsers());
   return db;
 }
 
 std::string TransposeNode::getDebugDesc() const {
   std::string sh = arrayRefToString(llvm::ArrayRef<unsigned>(shuffle_));
   DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName())).addParam("shuffle", sh);
+  db.addParam("name", quote(getName()))
+      .addParam("shuffle", sh)
+      .addParam("users", getNumUsers());
   return db;
 }
 
 #define DEFINE_CLASS_REPR(CLASS_NAME)                                          \
   std::string CLASS_NAME::getDebugDesc() const {                               \
     DescriptionBuilder db(getKindName());                                      \
-    db.addParam("name", quote(getName())).addParam("input", *in_->getType());  \
+    db.addParam("name", quote(getName()))                                      \
+        .addParam("input", *in_->getType())                                    \
+        .addParam("users", getNumUsers());                                     \
     return db;                                                                 \
   }
 

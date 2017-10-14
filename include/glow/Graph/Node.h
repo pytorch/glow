@@ -5,13 +5,57 @@
 
 #include "glow/Base/Traits.h"
 #include "glow/Base/Type.h"
+#include "glow/IR/UseDef.h"
 
 namespace glow {
 
 class NodeVisitor;
+class Node;
+
+/// Node operands are the handles that wrap the pointer to the nodes that a node
+/// references. They add functionality for maintaining the use-list.
+struct NodeOperand {
+private:
+  Node *node_{nullptr};
+
+public:
+  /// Create a new operand and register the node we reference.
+  explicit NodeOperand(Node *N) { setOperand(N); }
+  /// When deleting an operand we need to unregister the operand from the
+  /// use-list of the node it used to reference.
+  ~NodeOperand() { setOperand(nullptr); }
+  /// Sets the operand to point to \p N. This method registers the operand as a
+  /// user of \p N.
+  void setOperand(Node *N);
+
+  operator Node *() const { return node_; }
+  Node *operator->() const { return node_; }
+
+  /// We don't allow copying operands around because we save their address.
+  NodeOperand(const NodeOperand &that) = delete;
+};
+
+/// A 'Use' is a use-list representation of a Node operand.
+struct NodeUse {
+  /// The operand site. This is the address of the operand that points to our
+  /// node.
+  NodeOperand *site_;
+
+  NodeUse(NodeOperand *site) : site_(site) {}
+
+  bool operator==(const NodeUse &other) const { return site_ == other.site_; }
+
+  /// \returns the instruction that the use refers to.
+  NodeOperand *get() const { return site_; }
+  /// Sets the operand to a new value.
+  void setOperand(Node *other);
+};
 
 /// Represents a node in the compute graph.
-class Node : public Kinded, public Typed, public Named {
+class Node : public Kinded,
+             public Typed,
+             public Named,
+             public UseDef<Node, Node, NodeUse> {
 
 public:
   Node(Kinded::Kind k, TypeRef Ty, llvm::StringRef name)
@@ -27,7 +71,9 @@ public:
   /// or nullptr if this is the first node to be visited.
   virtual void visit(Node *parent, NodeVisitor *visitor){};
 
-  virtual ~Node() = default;
+  /// When the node is deleted we need to unregister all users. This allows us
+  /// to deconstruct the graph in an arbitrary order.
+  virtual ~Node() { replaceAllUsesOfWith(nullptr); }
 };
 
 class NodeVisitor {
