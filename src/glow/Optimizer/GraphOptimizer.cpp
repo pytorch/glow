@@ -34,6 +34,26 @@ static void DCE(Graph &G) {
   } while (changedLocally);
 }
 
+/// \returns true if the masks \p shuffle1 and shuffle2 are
+/// the inverse of on another. Applying both masks should result in the identity
+/// shuffle.
+static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle1,
+                              llvm::ArrayRef<unsigned> shuffle2) {
+
+  if (shuffle1.size() != shuffle2.size()) {
+    return false;
+  }
+
+  // Check if the combined masks are the identity mask.
+  for (unsigned i = 0, e = shuffle1.size(); i < e; i++) {
+    unsigned idx = shuffle2[shuffle1[i]];
+    if (idx != i) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /// Dead code elimination.
 static void SinkTranspose(Graph &G) {
   auto &nodes = G.getNodes();
@@ -58,6 +78,7 @@ static void SinkTranspose(Graph &G) {
       auto *newTR = G.createTranspose(TR->getName(), NewBN, TR->getShuffle());
 
       BN->replaceAllUsesOfWith(newTR);
+      continue;
     }
 
     // Sink Transpose below batch RELU nodes.
@@ -70,6 +91,25 @@ static void SinkTranspose(Graph &G) {
       auto *NRL = G.createRELU(RL->getName(), TR->getInput());
       auto *newTR = G.createTranspose(TR->getName(), NRL, TR->getShuffle());
       RL->replaceAllUsesOfWith(newTR);
+      continue;
+    }
+
+    // Merge consecutive Transpose operations.
+    if (auto *TR1 = dyn_cast<TransposeNode>(*it)) {
+      auto *TR2 = dyn_cast<TransposeNode>(TR1->getInput());
+      if (!TR2)
+        continue;
+
+      auto mask1 = TR1->getShuffle();
+      auto mask2 = TR2->getShuffle();
+      assert(mask1.size() == mask2.size() && "Invalid mask size");
+
+      // The two transposes are reversing one another. We can skip both of them
+      // alltogether.
+      if (isIdentityShuffle(mask1, mask2)) {
+        TR1->replaceAllUsesOfWith(TR2->getInput());
+        continue;
+      }
     }
   }
 }
