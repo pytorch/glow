@@ -190,8 +190,15 @@ BatchNormalizationNode *Graph::createBatchNormalization(llvm::StringRef name,
   auto *variance = createVariable(ElemKind::FloatTy, {channels}, "variance",
                                   Variable::InitKind::Broadcast, 0.0);
 
-  return addNode(new BatchNormalizationNode(
-      input, name, gamma, beta, mean, variance, channelIdx, epsilon, momentum));
+  return createBatchNormalization(name, input, beta, gamma, mean, variance,
+                                  channelIdx, epsilon, momentum);
+}
+
+BatchNormalizationNode *Graph::createBatchNormalization(
+    llvm::StringRef name, Node *input, Node *beta, Node *gamma, Node *mean,
+    Node *var, size_t channelIdx, float epsilon, float momentum) {
+  return addNode(new BatchNormalizationNode(input, name, gamma, beta, mean, var,
+                                            channelIdx, epsilon, momentum));
 }
 
 LocalResponseNormalizationNode *

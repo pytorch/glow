@@ -97,6 +97,12 @@ public:
                                                    float epsilon = 1e-5,
                                                    float momentum = 0.9);
 
+  BatchNormalizationNode *
+  createBatchNormalization(llvm::StringRef name, Node *input, Node *beta,
+                           Node *gamma, Node *mean, Node *var,
+                           size_t channelIdx = 0, float epsilon = 1e-5,
+                           float momentum = 0.9);
+
   LocalResponseNormalizationNode *createLocalResponseNormalization(
       llvm::StringRef name, Node *input, size_t halfWindowSize = 2,
       float alpha = 1e-4, float beta = 0.75, float k = 2.0);
