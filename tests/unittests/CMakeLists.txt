@@ -55,3 +55,16 @@ target_link_libraries(GraphTest
                         gtest
                         gtest_main)
 add_test(GraphTest ${GLOW_BINARY_DIR}/tests/GraphTest)
+
+
+add_executable(GraphOptz
+                 GraphOpt.cpp)
+target_link_libraries(GraphOptz
+                      PRIVATE
+                        Graph
+                        IR
+                        Interpreter
+                        Network
+                        gtest
+                        gtest_main)
+add_test(GraphOptz ${GLOW_BINARY_DIR}/tests/GraphOptz)
