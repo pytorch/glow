@@ -87,11 +87,11 @@ static void replaceAllNonDeallocUsersWith(Value *val, Value *with) {
   std::vector<Value::Use> usersVec(users.begin(), users.end());
   for (auto &U : usersVec) {
     // Ignore dealloc instrs.
-    if (isa<DeallocActivationInst>(U.second)) {
+    if (isa<DeallocActivationInst>(U.get())) {
       continue;
     }
 
-    U.second->setOperand(U.first, with);
+    U.setOperand(with);
   }
 }
 

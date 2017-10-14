@@ -253,7 +253,7 @@ void ArithmeticInst::verify() const {
 void AllocActivationInst::verify() const {
   unsigned numDealloc = 0;
   for (const Use &U : getUsers()) {
-    numDealloc += isa<DeallocActivationInst>(U.second);
+    numDealloc += isa<DeallocActivationInst>(U.get());
   }
 
   // Make sure that there is exactly one user is a deallocation.
