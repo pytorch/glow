@@ -31,7 +31,7 @@ TEST(GraphOptz, DCE) {
   }
 
   // Check that we know how many knows we've created.
-  EXPECT_EQ(G.getNodes().size(), 40);
+  EXPECT_EQ(G.getNodes().size(), 80);
 
   // Optimize all of the dead code.
   ::glow::optimize(G, OptimizationMode::Infer);
