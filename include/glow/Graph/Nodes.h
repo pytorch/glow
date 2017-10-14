@@ -375,8 +375,8 @@ public:
                                  float k)
       : Node(Kinded::Kind::LocalResponseNormalizationInstKind, in->getType(),
              name),
-        in_(in), halfWindowSize_(halfWindowSize), alpha_(alpha), beta_(beta),
-        k_(k) {}
+        in_(in), scale_(scale), halfWindowSize_(halfWindowSize), alpha_(alpha),
+        beta_(beta), k_(k) {}
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::LocalResponseNormalizationInstKind;
