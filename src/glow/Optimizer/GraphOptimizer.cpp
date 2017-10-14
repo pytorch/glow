@@ -34,10 +34,41 @@ static void DCE(Graph &G) {
   } while (changedLocally);
 }
 
+/// Dead code elimination.
+static void SinkTranspose(Graph &G) {
+  auto &nodes = G.getNodes();
+
+  // For each node:
+  for (auto it = nodes.begin(), e = nodes.end(); it != e; ++it) {
+    // Sink Transpose below batch normalization nodes:
+    if (auto *BN = dyn_cast<BatchNormalizationNode>(*it)) {
+      auto *TR = dyn_cast<TransposeNode>(BN->getInput());
+      if (!TR)
+        continue;
+
+      // Figure out where we transposed the channel index for batch
+      // normalization.
+      unsigned idx = BN->getChannelIdx();
+      unsigned newChannelIdx = TR->getShuffle()[idx];
+
+      auto *NewBN = G.createBatchNormalization(
+          BN->getName(), TR->getInput(), BN->getBias(), BN->getScale(),
+          BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
+          BN->getMomentum());
+      auto *newTR = G.createTranspose(TR->getName(), NewBN, TR->getShuffle());
+
+      BN->replaceAllUsesOfWith(newTR);
+    }
+  }
+}
+
 void glow::optimize(Graph &G, OptimizationMode mode) {
   if (mode == OptimizationMode::None) {
     return;
   }
+
+  // Sink transpose operations in an attempt to cancel them out.
+  SinkTranspose(G);
 
   // Perform Dead Code Elimination.
   DCE(G);
