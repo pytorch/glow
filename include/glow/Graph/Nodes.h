@@ -37,9 +37,9 @@ public:
 };
 
 class ConvolutionNode final : public Node {
-  Node *in_;
-  Node *filter_;
-  Node *bias_;
+  NodeOperand in_;
+  NodeOperand filter_;
+  NodeOperand bias_;
 
   size_t kernel_;
   size_t stride_;
@@ -93,7 +93,7 @@ public:
   };
 
 private:
-  Node *in_;
+  NodeOperand in_;
   size_t kernel_;
   size_t stride_;
   size_t pad_;
@@ -120,9 +120,9 @@ public:
 };
 
 class FullyConnectedNode final : public Node {
-  Node *in_;
-  Node *filter_;
-  Node *bias_;
+  NodeOperand in_;
+  NodeOperand filter_;
+  NodeOperand bias_;
   size_t depth_;
 
 public:
@@ -147,7 +147,7 @@ public:
 };
 
 class ReluNode final : public Node {
-  Node *in_;
+  NodeOperand in_;
 
 public:
   ReluNode(Node *in, llvm::StringRef name)
@@ -162,7 +162,7 @@ public:
 };
 
 class SigmoidNode final : public Node {
-  Node *in_;
+  NodeOperand in_;
 
 public:
   SigmoidNode(Node *in, llvm::StringRef name)
@@ -177,7 +177,7 @@ public:
 };
 
 class TanhNode final : public Node {
-  Node *in_;
+  NodeOperand in_;
 
 public:
   TanhNode(Node *in, llvm::StringRef name)
@@ -192,8 +192,8 @@ public:
 };
 
 class SoftMaxNode final : public Node {
-  Node *in_;
-  Node *selected_;
+  NodeOperand in_;
+  NodeOperand selected_;
 
 public:
   SoftMaxNode(Node *in, llvm::StringRef name, Node *selected)
@@ -211,8 +211,8 @@ public:
 };
 
 class RegressionNode final : public Node {
-  Node *in_;
-  Node *expected_;
+  NodeOperand in_;
+  NodeOperand expected_;
 
 public:
   RegressionNode(Node *in, llvm::StringRef name, Node *expected)
@@ -230,7 +230,7 @@ public:
 };
 
 class TransposeNode final : public Node {
-  Node *in_;
+  NodeOperand in_;
   std::vector<unsigned> shuffle_;
 
 public:
@@ -251,7 +251,7 @@ public:
 };
 
 class ReshapeNode final : public Node {
-  Node *in_;
+  NodeOperand in_;
   std::vector<size_t> dims_;
 
 public:
@@ -272,7 +272,7 @@ public:
 
 class ConcatNode final : public Node {
   /// The input nodes to concat.
-  std::vector<Node *> in_;
+  std::vector<NodeOperand> in_;
   /// We concat the tensors along this dimension.
   size_t dim_;
 
@@ -285,7 +285,7 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::ConcatInstKind;
   }
-  llvm::ArrayRef<Node *> getInputs() const { return in_; }
+  llvm::ArrayRef<NodeOperand> getInputs() const { return in_; }
   size_t getDim() const { return dim_; }
 
   std::string getDebugDesc() const override;
@@ -293,11 +293,11 @@ public:
 };
 
 class BatchNormalizationNode final : public Node {
-  Node *in_;
-  Node *scale_;
-  Node *bias_;
-  Node *mean_;
-  Node *var_;
+  NodeOperand in_;
+  NodeOperand scale_;
+  NodeOperand bias_;
+  NodeOperand mean_;
+  NodeOperand var_;
   const size_t channelIdx_;
   const float epsilon_;
   const float momentum_;
@@ -337,8 +337,8 @@ public:
   };
 
 private:
-  Node *LHS_;
-  Node *RHS_;
+  NodeOperand LHS_;
+  NodeOperand RHS_;
   OpKind kind_;
   const char *getKindStr() const;
 
@@ -358,8 +358,8 @@ public:
 };
 
 class LocalResponseNormalizationNode final : public Node {
-  Node *in_;
-  Node *scale_;
+  NodeOperand in_;
+  NodeOperand scale_;
   /// The number of neighbouring channels on each side to sum over
   size_t halfWindowSize_;
   /// The scaling parameter
@@ -394,7 +394,7 @@ public:
 };
 
 class ReturnNode final : public Node {
-  Node *in_;
+  NodeOperand in_;
 
 public:
   ReturnNode(llvm::StringRef name, Node *input)
