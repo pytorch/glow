@@ -41,7 +41,9 @@ public:
 
   /// Replace all of the uses of this value with \p v.
   void replaceAllUsesOfWith(UseTy *v) {
-    for (auto &U : users_) {
+    // Copy the users to a temporary location, because RAUW changes the uselist.
+    std::vector<Use> usersVec(users_.begin(), users_.end());
+    for (auto &U : usersVec) {
       U.setOperand(v);
     }
   }
