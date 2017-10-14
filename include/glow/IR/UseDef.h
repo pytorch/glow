@@ -6,10 +6,8 @@
 namespace glow {
 
 /// A UseDef is something that can be an operand for an instruction.
-template <typename UserTy, typename UseTy> class UseDef {
+template <typename UserTy, typename UseTy, typename Use> class UseDef {
 public:
-  using Use = std::pair<unsigned, UserTy *>;
-
   virtual ~UseDef() = default;
 
 private:
@@ -38,7 +36,7 @@ public:
   /// Returns true if the user \p I is in the list.
   bool hasUser(const UserTy *I) const {
     for (const auto &U : users_) {
-      if (U.second == I) {
+      if (U.get() == I) {
         return true;
       }
     }
@@ -48,7 +46,7 @@ public:
   /// Replace all of the uses of this value with \p v.
   void replaceAllUsesOfWith(UseTy *v) {
     for (auto &U : users_) {
-      U.second->setOperand(U.first, v);
+      U.setOperand(v);
     }
   }
 

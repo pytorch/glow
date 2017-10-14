@@ -16,6 +16,8 @@ using namespace glow;
 //                       General IR operations
 //===----------------------------------------------------------------------===//
 
+void Use::setOperand(Value *other) { use_->setOperand(idx_, other); }
+
 void Instruction::pushOperand(Operand op) {
   ops_.emplace_back(nullptr, op.second);
   setOperand(ops_.size() - 1, op.first);
@@ -29,12 +31,12 @@ void Instruction::setOperand(unsigned idx, Value *v) {
   }
 
   if (currVal) {
-    currVal->removeUse({idx, this});
+    currVal->removeUse(Use(idx, this));
   }
 
   if (v) {
     ops_[idx].first = v;
-    v->addUse({idx, this});
+    v->addUse(Use(idx, this));
   }
 }
 

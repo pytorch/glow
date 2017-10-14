@@ -16,6 +16,7 @@ namespace glow {
 class Instruction;
 class Module;
 class Graph;
+class Value;
 
 enum class OperandKind : unsigned char {
   In,
@@ -28,11 +29,35 @@ inline const char *getOperandKindStr(OperandKind CC) {
   return names[(int)CC];
 }
 
+/// A 'Use' is a use-list representation of an instruction operand. It maps to a
+/// specific operand in an instruction.
+struct Use {
+  /// The index of the operand.
+  unsigned idx_;
+  /// The instruction.
+  Instruction *use_;
+
+  bool operator==(const Use &other) const {
+    return idx_ == other.idx_ && use_ == other.use_;
+  }
+
+  Use(unsigned idx, Instruction *use) : idx_(idx), use_(use) {}
+
+  /// \returns the instruction that the use refers to.
+  Instruction *get() const { return use_; }
+  /// \returns true if this Use is for the instruction \p other.
+  bool isSame(Instruction *other) const { return use_ == other; }
+  /// Sets the operand to a new value.
+  void setOperand(Value *other);
+};
+
 class Value : public Named,
-              public UseDef<Instruction, Value>,
+              public UseDef<Instruction, Value, Use>,
               public Typed,
               public Kinded {
 public:
+  using Use = Use;
+
   Value(TypeRef T, Kinded::Kind k) : Typed(T), Kinded(k) {}
 };
 
