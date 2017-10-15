@@ -56,7 +56,9 @@ class caffe2ModelLoader {
 
   /// Register the tensor \p t to initialize the variable \p v.
   void registerVariableInit(Node *v, Tensor *t) {
-    variableInit_.push_back({cast<Variable>(v), t});
+    auto *var = cast<Variable>(v);
+    var->setInitKind(Variable::InitKind::Extern);
+    variableInit_.push_back({var, t});
   }
 
 public:

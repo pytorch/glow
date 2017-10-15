@@ -423,7 +423,6 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
 
   // Save the result of the last operator into a weight.
   auto &G = EE_.getGraph();
-  auto &M = EE_.getModule();
   root_ = G.createReturn("ret", root_);
 
   // Emit IR for the graph.
@@ -431,8 +430,6 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
 
   // Load the value of the variables.
   for (auto p : variableInit_) {
-    WeightVar *N = cast<WeightVar>(M.getWeightForNode(p.first));
-    N->setInitKind(WeightVar::InitKind::Extern);
     EE.initValue(p.first, p.second);
   }
 }
