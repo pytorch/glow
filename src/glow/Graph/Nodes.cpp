@@ -7,7 +7,13 @@
 
 using namespace glow;
 
-void NodeUse::setOperand(Node *other) { site_->setOperand(other); }
+void NodeUse::setOperand(Node *other) {
+  if (other && site_->get()) {
+    assert(site_->get()->getType() == other->getType() &&
+           "Setting operand to a node with a different type");
+  }
+  site_->setOperand(other);
+}
 
 void NodeOperand::setOperand(Node *v) {
   if (node_ == v) {
