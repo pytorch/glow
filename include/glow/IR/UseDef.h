@@ -26,6 +26,9 @@ public:
   /// \returns True if the value has some users.
   bool hasUsers() const { return !users_.empty(); }
 
+  /// \returns true if there is a single use to this value.
+  bool hasOneUse() const { return users_.size() == 1; }
+
   /// \returns the number of users that the value has.
   unsigned getNumUsers() const { return users_.size(); }
 
