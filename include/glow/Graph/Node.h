@@ -28,9 +28,12 @@ public:
   /// user of \p N.
   void setOperand(Node *N);
 
+  /// \returns the underlying pointer.
+  Node* get() const {return node_;}
+  /// \returns the underlying pointer when casting.
   operator Node *() const { return node_; }
+  /// Provide a smart-pointer interface.
   Node *operator->() const { return node_; }
-
   /// We don't allow copying operands around because we save their address.
   NodeOperand(const NodeOperand &that) = delete;
 };
