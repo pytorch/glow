@@ -29,7 +29,12 @@ public:
     return k->getKind() == Kinded::Kind::WeightVarKind;
   }
 
+  /// Sets the initialization kind of the variable.
+  void setInitKind(InitKind kind){ initKind_ = kind; }
+
+  /// \returns the initialization kind of the variable.
   InitKind getInitKind() const { return initKind_; }
+  
   float getVal() const { return val_; }
 
   std::string getDebugDesc() const override;
