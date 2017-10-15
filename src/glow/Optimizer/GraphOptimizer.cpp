@@ -63,8 +63,10 @@ static void SinkTranspose(Graph &G) {
     // Sink Transpose below batch normalization nodes:
     if (auto *BN = dyn_cast<BatchNormalizationNode>(*it)) {
       auto *TR = dyn_cast<TransposeNode>(BN->getInput());
-      if (!TR)
+
+      if (!TR) {
         continue;
+      }
 
       // Figure out where we transposed the channel index for batch
       // normalization.
@@ -85,8 +87,10 @@ static void SinkTranspose(Graph &G) {
     // TODO: support other similar activation functions, such as sigmoid, etc.
     if (auto *RL = dyn_cast<ReluNode>(*it)) {
       auto *TR = dyn_cast<TransposeNode>(RL->getInput());
-      if (!TR)
+
+      if (!TR) {
         continue;
+      }
 
       auto *NRL = G.createRELU(RL->getName(), TR->getInput());
       auto *newTR = G.createTranspose(TR->getName(), NRL, TR->getShuffle());
@@ -97,8 +101,10 @@ static void SinkTranspose(Graph &G) {
     // Merge consecutive Transpose operations.
     if (auto *TR1 = dyn_cast<TransposeNode>(*it)) {
       auto *TR2 = dyn_cast<TransposeNode>(TR1->getInput());
-      if (!TR2)
+
+      if (!TR2) {
         continue;
+      }
 
       auto mask1 = TR1->getShuffle();
       auto mask2 = TR2->getShuffle();
@@ -116,8 +122,10 @@ static void SinkTranspose(Graph &G) {
     if (auto *AN = dyn_cast<ArithmeticNode>(*it)) {
       auto *LTR = dyn_cast<TransposeNode>(AN->getLHS());
       auto *RTR = dyn_cast<TransposeNode>(AN->getRHS());
-      if (!LTR || !RTR)
+
+      if (!LTR || !RTR) {
         continue;
+      }
       // The masks of the transposes on both sizes must match.
       if (LTR->getShuffle() != RTR->getShuffle()) {
         continue;
@@ -131,6 +139,46 @@ static void SinkTranspose(Graph &G) {
   } // For all nodes in the graph.
 }
 
+/// Dead code elimination.
+static void OptimizePool(Graph &G) {
+  auto &nodes = G.getNodes();
+
+  // For each node:
+  for (auto it = nodes.begin(), e = nodes.end(); it != e; ++it) {
+    // Swap the order of Relu->MaxPool, to perform the RELU operation on a
+    // smaller tensor. This optimization is not a major performance win. The
+    // RELU operation takes a small fraction of the time, and reordering the
+    // nodes does not give us much. However, reordering the buffers allows us to
+    // reuse the memory buffer of the pool operation and potentially save
+    // memory.
+    if (auto *PL = dyn_cast<PoolNode>(*it)) {
+      auto *RL = dyn_cast<ReluNode>(PL->getInput());
+
+      if (!RL) {
+        continue;
+      }
+
+      // This optimization is only valid on max pooling.
+      if (PL->getKind() != PoolNode::OpKind::Max) {
+        continue;
+      }
+
+      // We don't want to increase the number of operations in the program, so
+      // perform this transformation if the relu has a single user, which is the
+      // pooling operation.
+      if (!RL->hasOneUse()) {
+        continue;
+      }
+
+      auto *NPL = G.createPool(PL->getName(), RL->getInput(), PL->getKind(),
+                               PL->getKernel(), PL->getStride(), PL->getPad());
+      auto *NRL = G.createRELU(RL->getName(), NPL);
+      PL->replaceAllUsesOfWith(NRL);
+      continue;
+    }
+  } // For all nodes in the graph.
+}
+
 void glow::optimize(Graph &G, OptimizationMode mode) {
   if (mode == OptimizationMode::None) {
     return;
@@ -138,6 +186,9 @@ void glow::optimize(Graph &G, OptimizationMode mode) {
 
   // Sink transpose operations in an attempt to cancel them out.
   SinkTranspose(G);
+
+  // Optimize the pooling operation.
+  OptimizePool(G);
 
   // Perform Dead Code Elimination.
   DCE(G);
