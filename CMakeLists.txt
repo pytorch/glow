@@ -16,7 +16,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(GlowDefaults)
 include(SanitizerSupport)
-include(Flags)
 
 set(GLOW_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(GLOW_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
