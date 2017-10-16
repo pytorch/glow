@@ -91,12 +91,14 @@ int main(int argc, char **argv) {
   EE.infer({i0, i1}, {&data, &data});
   auto *res = EE.getTensor(SM);
   auto H = res->getHandle<FloatTy>();
-  H.dump("res = ", "\n");
   Tensor slice = H.extractSlice(0);
   auto SH = slice.getHandle<FloatTy>();
 
   std::cout << "\n";
-  std::cout << "Result = " << SH.maxArg() << "\n";
+
+  std::cout << "Model: " << argv[3] << "\n";
+  std::cout << " File: " << argv[1];
+  std::cout << " Result:" << SH.maxArg() << "\n";
 
   return 0;
 }
