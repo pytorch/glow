@@ -702,9 +702,6 @@ void Interpreter::fwdBatchNormalizationInst_infer(
   auto varH = getWeightHandle(I->getVar());
   auto meanH = getWeightHandle(I->getMean());
 
-  auto channelIdx = I->getChannelIdx();
-  auto epsilon = I->getEpsilon();
-
   // http://cthorey.github.io./backpropagation/
   //
   // mu = 1/N*np.sum(h,axis =0)
@@ -714,6 +711,38 @@ void Interpreter::fwdBatchNormalizationInst_infer(
 
   // In inference mode just apply the transformation:
   // y[i] = (x - mu) * gamma / stdvar + beta;
+
+  auto channelIdx = I->getChannelIdx();
+  auto epsilon = I->getEpsilon();
+
+  // Fast path:
+  // This loop is specialized for the case where the shape is NHWC and we are
+  // normalizing on the channel dimension.
+  if (inW.dims().size() == 4 && channelIdx == 3) {
+    ShapeNHWC odim(outW.dims());
+    ShapeNHWC idim(inW.dims());
+
+    for (size_t n = 0; n < idim.n; n++) {
+      for (size_t x = 0; x < odim.h; x++) {
+        for (size_t y = 0; y < odim.w; y++) {
+          for (size_t c = 0; c < odim.c; c++) {
+            FloatTy inp = inW.at({n, x, y, c});
+            FloatTy mu = meanH.at(c);
+            FloatTy var = varH.at(c);
+            FloatTy stdvar = FloatTy(1.0) / std::sqrt(var + epsilon);
+            FloatTy gamma = gammaWH.at(c);
+            FloatTy beta = betaWH.at(c);
+            outW.at({n, x, y, c}) = (inp - mu) * gamma * stdvar + beta;
+          } // H
+        }   // W
+      }     // C
+    }       // N
+    return;
+  }
+
+  // Slow path:
+  // This is the general batch normalization implementation for
+  // n-dimensional tensors.
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     size_t channelId = inW.getDimForPtr(channelIdx, i);
     FloatTy x = inW.raw(i);

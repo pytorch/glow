@@ -29,7 +29,7 @@ public:
   void setOperand(Node *N);
 
   /// \returns the underlying pointer.
-  Node* get() const {return node_;}
+  Node *get() const { return node_; }
   /// \returns the underlying pointer when casting.
   operator Node *() const { return node_; }
   /// Provide a smart-pointer interface.
