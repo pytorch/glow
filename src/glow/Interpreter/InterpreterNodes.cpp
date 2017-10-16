@@ -28,15 +28,18 @@ void Interpreter::bwdCopyInst(const CopyInst *I) {
   }
 }
 
-void Interpreter::fwdConvolutionInst(bool isTrain, const ConvolutionInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-  auto filterW = getWeightHandle(I->getFilter());
-  auto biasW = getWeightHandle(I->getBias());
-
-  size_t filterSize = I->getKernel();
-  size_t pad = I->getPad();
-  size_t stride = I->getStride();
+template <bool specialize, size_t filter_t, size_t pad_t, size_t stride_t>
+__attribute__((noinline)) void
+fwdConvolutionInst_Impl(Handle<FloatTy> inW, Handle<FloatTy> outW,
+                        Handle<FloatTy> filterW, Handle<FloatTy> biasW,
+                        size_t filterSize, size_t pad, size_t stride) {
+  // If the method is specialized then we can override the parameters with the
+  // specialized constant values.
+  if (specialize) {
+    filterSize = filter_t;
+    pad = pad_t;
+    stride = stride_t;
+  }
 
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
@@ -79,6 +82,33 @@ void Interpreter::fwdConvolutionInst(bool isTrain, const ConvolutionInst *I) {
       }   // W
     }     // C
   }       // N
+}
+
+void Interpreter::fwdConvolutionInst(bool isTrain, const ConvolutionInst *I) {
+  auto inW = getWeightHandle(I->getSrc());
+  auto outW = getWeightHandle(I->getDest());
+  auto filterW = getWeightHandle(I->getFilter());
+  auto biasW = getWeightHandle(I->getBias());
+
+  size_t filterSize = I->getKernel();
+  size_t pad = I->getPad();
+  size_t stride = I->getStride();
+
+#define SPECIALIZE_CONV(F, P, S)                                               \
+  if (filterSize == F && pad == P && stride == S)                              \
+    return fwdConvolutionInst_Impl<true, F, P, S>(inW, outW, filterW, biasW,   \
+                                                  0, 0, 0);
+
+  // Popular conv kernels:
+  SPECIALIZE_CONV(7, 3, 2)
+  SPECIALIZE_CONV(7, 4, 2)
+  SPECIALIZE_CONV(3, 1, 2)
+  SPECIALIZE_CONV(1, 0, 1)
+  SPECIALIZE_CONV(1, 0, 2)
+  SPECIALIZE_CONV(3, 1, 1)
+
+  fwdConvolutionInst_Impl<false, 0, 0, 0>(inW, outW, filterW, biasW, filterSize,
+                                          pad, stride);
 }
 
 void Interpreter::bwdConvolutionInst(const ConvolutionInst *I) {
