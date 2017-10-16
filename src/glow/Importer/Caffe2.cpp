@@ -216,6 +216,14 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     int kernel = loadInt(dict["kernel"]);
 
     auto *tr = G.createTranspose(op.name(), in, NCHW2NHWC);
+
+    // If 'global_pooling' is set then the operation will pool over the size of
+    // the input by doing: kernel = height/width.
+    if (dict.count("global_pooling")) {
+      auto Ty = in->getType();
+      kernel = Ty->dims()[3];
+    }
+
     auto *node = G.createPool(op.name(), tr, opk, kernel, stride, pad);
     auto *N = G.createTranspose(op.name(), node, NHWC2NCHW);
 
@@ -449,6 +457,8 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
 
   // Emit IR for the graph.
   EE.compile(OptimizationMode::Infer);
+
+      G.dumpDAG();
 
   // Load the value of the variables.
   for (auto p : variableInit_) {
