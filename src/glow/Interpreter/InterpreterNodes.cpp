@@ -1102,6 +1102,15 @@ void Interpreter::fwdAllocActivationInst(bool isTrain,
 void Interpreter::bwdAllocActivationInst(const AllocActivationInst *I) {}
 
 void Interpreter::fwdDeallocActivationInst(bool isTrain,
-                                           const DeallocActivationInst *I) {}
+                                           const DeallocActivationInst *I) {
+  // In inference mode we don't need to keep the deleted tensors around for the
+  // backward pass.
+  if (!isTrain) {
+    deleteTensor(I->getOperand(0).first);
+  }
+}
 
-void Interpreter::bwdDeallocActivationInst(const DeallocActivationInst *I) {}
+void Interpreter::bwdDeallocActivationInst(const DeallocActivationInst *I) {
+  assert(getTensor(I->getOperand(0).first) &&
+         "Make sure that some tensor is already allocated for this buffer.");
+}

@@ -50,6 +50,9 @@ public:
   /// \returns a tensor for \p v.
   Tensor *getOrCreateTensor(const Value *v);
 
+  /// If a tensor is allocated for \p v then delete it.
+  void deleteTensor(const Value *v);
+
   /// \returns True if a tensor was allocated for \p v.
   bool hasTensor(const Value *v);
 
