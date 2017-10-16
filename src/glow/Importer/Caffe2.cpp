@@ -266,6 +266,28 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
     return;
   }
+
+  if (typeName == "Concat") {
+    auto *lhs = getOrCreateNodeByName(op.input(0));
+    auto *rhs = getOrCreateNodeByName(op.input(1));
+
+    unsigned channel = 0;
+    auto order = loadStr(dict["order"]);
+    if (order == "NHWC") {
+      channel = 3;
+    } else if (order == "NCHW") {
+      channel = 1;
+    } else {
+      assert(false && "Invalid order field");
+    }
+
+    Node *node = G.createConcat(op.name(), {lhs, rhs}, channel);
+
+    for (int i = 0, e = op.output_size(); i < e; i++) {
+      nodeByName_[op.output(i)] = node;
+    }
+    return;
+  }
   if (typeName == "Sum") {
     auto *in0 = getOrCreateNodeByName(op.input(0));
     auto *in1 = getOrCreateNodeByName(op.input(1));
