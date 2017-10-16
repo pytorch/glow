@@ -136,6 +136,55 @@ static void SinkTranspose(Graph &G) {
       auto *newTR = G.createTranspose(LTR->getName(), newAN, LTR->getShuffle());
       AN->replaceAllUsesOfWith(newTR);
     }
+
+    // Sink Transpose below batch Arithmetic nodes.
+    if (auto *CN = dyn_cast<ConcatNode>(*it)) {
+      assert(CN->getInputs().size() > 1 && "Invalid number of concat operands");
+
+      // Collect all of the transpose nodes and their inputs.
+      std::vector<Node *> inputs;
+      std::vector<TransposeNode *> transposes;
+      for (auto &in : CN->getInputs()) {
+
+        if (auto *II = dyn_cast<TransposeNode>(in.get())) {
+          transposes.push_back(II);
+          inputs.push_back(II->getInput());
+          continue;
+        }
+
+        break;
+      }
+
+      // If some of the inputs were not transposes then bail out.
+      if (CN->getInputs().size() != transposes.size()) {
+        continue;
+      }
+
+      auto *first = transposes[0];
+      auto firstMask = first->getShuffle();
+      bool sameMask = true;
+      for (auto *T : transposes) {
+        if (T->getShuffle() != firstMask) {
+          sameMask = false;
+          break;
+        }
+      }
+
+      // If the shuffle masks don't agree then bail out.
+      if (!sameMask) {
+        continue;
+      }
+
+      // Figure out where we transposed the channel index for batch
+      // normalization.
+      unsigned idx = CN->getDim();
+      unsigned newChannelIdx = firstMask[idx];
+
+      auto *newCN = G.createConcat(CN->getName(), inputs, newChannelIdx);
+      auto *newTR = G.createTranspose(first->getName(), newCN, firstMask);
+      CN->replaceAllUsesOfWith(newTR);
+    }
+
   } // For all nodes in the graph.
 }
 
