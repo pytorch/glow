@@ -312,7 +312,12 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *softmaxExpected = getOrCreateNodeByName("softmax_expected");
 
     // Load the inputs:
-    auto *in = getOrCreateNodeByName(op.input(0));
+    Node *in = getOrCreateNodeByName(op.input(0));
+
+    // Caffe2 allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
+    // softmax function. This is similar to a bitcast operation.
+    auto flatten = flattenCdr(in->getType()->dims());
+    in = G.createReshape("reshape", in, {flatten.first, flatten.second});
 
     auto *node = G.createSoftMax(op.name(), in, softmaxExpected);
     // Save the outputs:
@@ -457,8 +462,6 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
 
   // Emit IR for the graph.
   EE.compile(OptimizationMode::Infer);
-
-      G.dumpDAG();
 
   // Load the value of the variables.
   for (auto p : variableInit_) {
