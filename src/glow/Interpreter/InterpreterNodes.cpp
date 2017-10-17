@@ -68,7 +68,7 @@ fwdConvolutionInst_Impl(Handle<FloatTy> inW, Handle<FloatTy> outW,
                   oy >= ssize_t(odim.w)) {
                 continue;
               }
-
+              #pragma clang loop interleave_count(8)
               for (size_t fd = 0; fd < idim.c; fd++) {
                 sum += filterW.at({d, fx, fy, fd}) *
                        inW.at({n, (size_t)ox, (size_t)oy, fd});
