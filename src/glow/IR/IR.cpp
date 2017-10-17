@@ -194,11 +194,18 @@ void Module::dump() {
   // Print all of the variables:
   std::stringstream sb;
 
+  size_t sizeInBytes = 0;
   sb << "declare {\n";
   for (auto it : weights_) {
     Value *V = it;
     sb << "  " << getDesc(V) << "\n";
+
+    auto *T = V->getType();
+    sizeInBytes += T->getElementSize() * T->size();
   }
+
+  sb << "\n  ; size = " << sizeInBytes << " bytes\n";
+
   sb << "}\n\n";
   sb << "program {\n";
 
