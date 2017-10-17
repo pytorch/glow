@@ -4,6 +4,7 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
 #include "glow/Support/Support.h"
+#include "glow/Support/Casting.h"
 
 #include <fstream>
 #include <iostream>
@@ -268,6 +269,9 @@ public:
     std::string repr = escapeDottyString(N->getDebugDesc());
     sb += "\tlabel = " + quote(repr) + "\n";
     sb += "\tshape = \"record\"\n";
+    if (isa<Variable>(N)) {
+      sb += "\tfillcolor=pink,style=filled\n";
+    }
     sb += "];\n\n";
     return sb;
   }
