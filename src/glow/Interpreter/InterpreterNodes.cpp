@@ -51,15 +51,15 @@ fwdConvolutionInst_Impl(Handle<FloatTy> inW, Handle<FloatTy> outW,
     for (size_t d = 0; d < odim.c; d++) {
 
       // For each convolution 'jump' in the input tensor:
-      ssize_t y = -ssize_t(pad);
-      for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
-        ssize_t x = -ssize_t(pad);
-        for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+      ssize_t x = -ssize_t(pad);
+      for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+        ssize_t y = -ssize_t(pad);
+        for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
 
           // For each element in the convolution-filter:
           FloatTy sum = 0;
-          for (size_t fy = 0; fy < filterSize; fy++) {
-            for (size_t fx = 0; fx < filterSize; fx++) {
+          for (size_t fx = 0; fx < filterSize; fx++) {
+            for (size_t fy = 0; fy < filterSize; fy++) {
               ssize_t ox = x + fx;
               ssize_t oy = y + fy;
 
@@ -135,15 +135,16 @@ void Interpreter::bwdConvolutionInst(const ConvolutionInst *I) {
     for (size_t d = 0; d < odim.c; d++) {
 
       // For each convolution 'jump' in the input tensor:
-      ssize_t y = -ssize_t(pad);
-      for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
-        ssize_t x = -ssize_t(pad);
-        for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+      ssize_t x = -ssize_t(pad);
+      for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+        ssize_t y = -ssize_t(pad);
+        for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+
           FloatTy chainGrad = outG.at({n, ax, ay, d});
 
           // For each element in the convolution-filter:
-          for (size_t fy = 0; fy < filterSize; fy++) {
-            for (size_t fx = 0; fx < filterSize; fx++) {
+          for (size_t fx = 0; fx < filterSize; fx++) {
+            for (size_t fy = 0; fy < filterSize; fy++) {
               ssize_t ox = x + fx;
               ssize_t oy = y + fy;
 
@@ -200,18 +201,18 @@ void Interpreter::fwdPoolMax_impl(const PoolInst *I) {
     // For each layer in the output tensor:
     for (size_t z = 0; z < idim.c; z++) {
       // For each convolution 'jump' in the input tensor:
-      ssize_t y = -ssize_t(pad);
-      for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
-        ssize_t x = -ssize_t(pad);
-        for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+      ssize_t x = -ssize_t(pad);
+      for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+        ssize_t y = -ssize_t(pad);
+        for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
           size_t maxX = x;
           size_t maxY = y;
 
           bool first = true;
           FloatTy max = 0;
 
-          for (size_t fy = 0; fy < filterSize; fy++) {
-            for (size_t fx = 0; fx < filterSize; fx++) {
+          for (size_t fx = 0; fx < filterSize; fx++) {
+            for (size_t fy = 0; fy < filterSize; fy++) {
               ssize_t ox = x + fx;
               ssize_t oy = y + fy;
 
@@ -264,14 +265,14 @@ void Interpreter::fwdPoolAvg_impl(const PoolInst *I) {
     // For each layer in the output tensor:
     for (size_t z = 0; z < idim.c; z++) {
       // For each convolution 'jump' in the input tensor:
-      ssize_t y = -ssize_t(pad);
-      for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
-        ssize_t x = -ssize_t(pad);
-        for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+      ssize_t x = -ssize_t(pad);
+      for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+        ssize_t y = -ssize_t(pad);
+        for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
           FloatTy sum = 0;
 
-          for (size_t fy = 0; fy < filterSize; fy++) {
-            for (size_t fx = 0; fx < filterSize; fx++) {
+          for (size_t fx = 0; fx < filterSize; fx++) {
+            for (size_t fy = 0; fy < filterSize; fy++) {
               ssize_t ox = x + fx;
               ssize_t oy = y + fy;
 
@@ -315,8 +316,8 @@ void Interpreter::bwdPoolMax_impl(const PoolInst *I) {
     for (size_t z = 0; z < odim.c; z++) {
 
       // For each convolution 'jump' in the input tensor:
-      for (size_t ay = 0; ay < odim.w; ay++) {
-        for (size_t ax = 0; ax < odim.h; ax++) {
+      for (size_t ax = 0; ax < odim.h; ax++) {
+        for (size_t ay = 0; ay < odim.w; ay++) {
 
           FloatTy chainGrad = outG.at({n, ax, ay, z});
 
@@ -351,14 +352,15 @@ void Interpreter::bwdPoolAvg_impl(const PoolInst *I) {
     // For each layer in the output tensor:
     for (size_t z = 0; z < odim.c; z++) {
       // For each convolution 'jump' in the input tensor:
-      ssize_t y = -ssize_t(pad);
-      for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
-        ssize_t x = -ssize_t(pad);
-        for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+      ssize_t x = -ssize_t(pad);
+      for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+        ssize_t y = -ssize_t(pad);
+        for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+
           FloatTy dy = outG.at({n, ax, ay, z}) / filterArea;
 
-          for (size_t fy = 0; fy < filterSize; fy++) {
-            for (size_t fx = 0; fx < filterSize; fx++) {
+          for (size_t fx = 0; fx < filterSize; fx++) {
+            for (size_t fy = 0; fy < filterSize; fy++) {
               ssize_t ox = x + fx;
               ssize_t oy = y + fy;
 
