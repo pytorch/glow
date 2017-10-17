@@ -79,15 +79,18 @@ int main(int argc, char **argv) {
   loadImageAndPreprocess(argv[1], &data, imageMode);
 
   ExecutionEngine EE;
-  caffe2ModelLoader LD(argv[3], argv[4],
-                       {"data", "gpu_0/data", "softmax_expected"},
-                       {&data, &data, &expected_softmax}, EE);
-
-  EE.initVars();
-
-  auto *SM = LD.getRoot();
-  auto *i0 = cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
-  auto *i1 = cast<Variable>(LD.getOrCreateNodeByName("data"));
+  Node *SM;
+  Variable *i0;
+  Variable *i1;
+  {
+    caffe2ModelLoader LD(argv[3], argv[4],
+                         {"data", "gpu_0/data", "softmax_expected"},
+                         {&data, &data, &expected_softmax}, EE);
+    SM = LD.getRoot();
+    i0 = cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
+    i1 = cast<Variable>(LD.getOrCreateNodeByName("data"));
+    EE.initVars();
+  }
 
   llvm::Timer timer("Infer", "Infer");
   timer.startTimer();
