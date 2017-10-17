@@ -28,21 +28,27 @@ void Interpreter::bwdCopyInst(const CopyInst *I) {
   }
 }
 
-template <bool specialize, size_t filterX, size_t padX, size_t strideX>
+template <bool SpecializeFPS, size_t filterX, size_t padX, size_t strideX,
+          bool SpecializeChannel, size_t channelX>
 [[gnu::noinline]] void
 fwdConvolutionInst_Impl(Handle<FloatTy> inW, Handle<FloatTy> outW,
                         Handle<FloatTy> filterW, Handle<FloatTy> biasW,
                         size_t filterSize, size_t pad, size_t stride) {
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
+
   // If the method is specialized then we can override the parameters with the
   // specialized constant values.
-  if (specialize) {
+  if (SpecializeFPS) {
     filterSize = filterX;
     pad = padX;
     stride = strideX;
   }
 
-  ShapeNHWC odim(outW.dims());
-  ShapeNHWC idim(inW.dims());
+  size_t inChannels = idim.c;
+  if (SpecializeChannel) {
+    inChannels = channelX;
+  }
 
   // For each input in the batch:
   for (size_t n = 0; n < idim.n; n++) {
@@ -69,7 +75,7 @@ fwdConvolutionInst_Impl(Handle<FloatTy> inW, Handle<FloatTy> outW,
                 continue;
               }
 #pragma clang loop interleave_count(8)
-              for (size_t fd = 0; fd < idim.c; fd++) {
+              for (size_t fd = 0; fd < inChannels; fd++) {
                 sum += filterW.at({d, fx, fy, fd}) *
                        inW.at({n, (size_t)ox, (size_t)oy, fd});
               }
@@ -94,21 +100,29 @@ void Interpreter::fwdConvolutionInst(bool isTrain, const ConvolutionInst *I) {
   size_t pad = I->getPad();
   size_t stride = I->getStride();
 
-#define SPECIALIZE_CONV(F, P, S)                                               \
+  ShapeNHWC idim(inW.dims());
+
+#define SPECIALIZE_CONV_FPS(F, P, S)                                           \
   if (filterSize == F && pad == P && stride == S)                              \
-    return fwdConvolutionInst_Impl<true, F, P, S>(inW, outW, filterW, biasW,   \
-                                                  0, 0, 0);
+    return fwdConvolutionInst_Impl<true, F, P, S, false, 0>(                   \
+        inW, outW, filterW, biasW, 0, 0, 0);
 
-  // Popular conv kernels:
-  SPECIALIZE_CONV(7, 3, 2)
-  SPECIALIZE_CONV(7, 4, 2)
-  SPECIALIZE_CONV(3, 1, 2)
-  SPECIALIZE_CONV(1, 0, 1)
-  SPECIALIZE_CONV(1, 0, 2)
-  SPECIALIZE_CONV(3, 1, 1)
+#define SPECIALIZE_CONV_FPSC(F, P, S, C)                                       \
+  if (filterSize == F && pad == P && stride == S && idim.c == C)               \
+    return fwdConvolutionInst_Impl<true, F, P, S, true, C>(inW, outW, filterW, \
+                                                           biasW, 0, 0, 0);
 
-  fwdConvolutionInst_Impl<false, 0, 0, 0>(inW, outW, filterW, biasW, filterSize,
-                                          pad, stride);
+  // Specialize the convolution on popular Conv kernels:
+  SPECIALIZE_CONV_FPSC(7, 3, 2, 3)
+  SPECIALIZE_CONV_FPS(7, 3, 2)
+  SPECIALIZE_CONV_FPS(7, 4, 2)
+  SPECIALIZE_CONV_FPS(3, 1, 2)
+  SPECIALIZE_CONV_FPS(1, 0, 1)
+  SPECIALIZE_CONV_FPS(1, 0, 2)
+  SPECIALIZE_CONV_FPS(3, 1, 1)
+
+  fwdConvolutionInst_Impl<false, 0, 0, 0, false, 0>(inW, outW, filterW, biasW,
+                                                    filterSize, pad, stride);
 }
 
 void Interpreter::bwdConvolutionInst(const ConvolutionInst *I) {
