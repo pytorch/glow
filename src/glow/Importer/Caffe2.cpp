@@ -165,6 +165,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Tensor *wtag = new Tensor();
     w->getHandle<FloatTy>().transpose(wtag, {0, 2, 3, 1});
     tensors_[op.name() + "_conv_filter"] = wtag;
+    toRemove_.insert(wtag);
 
     // The structure of the conv weigts is: NHWC. We take the C, which is the
     // number of filters. We use this value to calculate the size of the bias
@@ -188,6 +189,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       b = new Tensor(ElemKind::FloatTy, {numFilters});
       b->getHandle<FloatTy>().clear();
       tensors_[op.name() + "_conv_bias"] = b;
+      toRemove_.insert(b);
     }
 
     auto *tr = G.createTranspose(op.name(), in, NCHW2NHWC);
@@ -380,6 +382,7 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
        */
 
       auto *T = new Tensor();
+      toRemove_.insert(T);
       for (auto &o : op.output()) {
         tensors_[o] = T;
       }
@@ -417,6 +420,7 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
       }
 
       auto *T = new Tensor();
+      toRemove_.insert(T);
       tensors_[name] = T;
 
       auto dim = getShape(dict["shape"]);
@@ -466,5 +470,11 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   // Load the value of the variables.
   for (auto p : variableInit_) {
     EE.initValue(p.first, p.second);
+  }
+}
+
+caffe2ModelLoader::~caffe2ModelLoader() {
+  for (auto *t : toRemove_) {
+    delete t;
   }
 }

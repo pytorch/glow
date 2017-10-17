@@ -8,6 +8,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace caffe2 {
 class OperatorDef;
@@ -26,7 +27,6 @@ class Value;
 class caffe2ModelLoader {
   /// The interpreter that runs the program.
   ExecutionEngine &EE_;
-
   /// Saves network nodes by name.
   std::unordered_map<std::string, Node *> nodeByName_;
   /// A list of weight tensors indexed by name.
@@ -35,6 +35,9 @@ class caffe2ModelLoader {
   Node *root_{nullptr};
   /// A list of tensors to load into variables once the graph is materialized.
   std::vector<std::pair<Variable *, Tensor *>> variableInit_;
+  /// A list of temporary tensors to remove once the graph construction and
+  /// initialization is complete.
+  std::unordered_set<Tensor *> toRemove_;
 
   /// Load the weight tensors from the 'init' file and register them in the map
   /// \p tensors.
@@ -81,6 +84,8 @@ public:
                     const std::string &netWeightFilename,
                     llvm::ArrayRef<const char *> names,
                     llvm::ArrayRef<Tensor *> tensors, ExecutionEngine &IP);
+
+  ~caffe2ModelLoader();
 
   /// \returns the output of the network. This is usually the result of the last
   /// softmax or regression layer.
