@@ -229,7 +229,7 @@ static std::string getDottyDesc(const Instruction *II) {
   sb += "|";
   auto extraDesc = getExtraDesc(II);
   if (!extraDesc.empty()) {
-    sb += extraDesc + "|";
+    sb += escapeDottyString(extraDesc) + "|";
   }
 
   // Print operands:
@@ -293,7 +293,7 @@ void Module::dumpDAG() {
   for (auto &v : weights_) {
     sb += quote(std::to_string(v)) + "[\n";
     std::string desc = escapeDottyString(getDottyDesc(v));
-    sb += "\tlabel = " + desc + "\n";
+    sb += "\tlabel = " + quote(desc) + "\n";
     sb += "\tshape = \"record\"\n";
     sb += "\tfillcolor=pink,style=filled\n";
     sb += "];\n\n";
