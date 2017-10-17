@@ -12,13 +12,10 @@
 using namespace glow;
 
 ExecutionEngine::ExecutionEngine()
-    : G_(new Graph()), M_(new Module(G_)), IP_(new Interpreter(M_)) {}
+    : G_(std::make_unique<Graph>()), M_(std::make_unique<Module>(&*G_)),
+      IP_(std::make_unique<Interpreter>(&*M_)) {}
 
-ExecutionEngine::~ExecutionEngine() {
-  delete IP_;
-  delete M_;
-  delete G_;
-}
+ExecutionEngine::~ExecutionEngine() = default;
 
 void ExecutionEngine::infer(llvm::ArrayRef<Variable *> vars,
                             llvm::ArrayRef<Tensor *> inputs) {
