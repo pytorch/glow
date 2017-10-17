@@ -78,10 +78,12 @@ Tensor *Interpreter::getOrCreateTensor(const Value *v) {
 
 void Interpreter::deleteTensor(const Value *v) {
   auto it = tensors_.find(v);
-  if (it != tensors_.end()) {
-    delete it->second;
-    tensors_.erase(it);
+  if (it == tensors_.end()) {
+    return;
   }
+
+  delete it->second;
+  tensors_.erase(it);
 }
 
 bool Interpreter::hasTensor(const Value *v) { return tensors_.count(v); }

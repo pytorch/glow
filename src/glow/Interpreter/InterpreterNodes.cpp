@@ -28,17 +28,17 @@ void Interpreter::bwdCopyInst(const CopyInst *I) {
   }
 }
 
-template <bool specialize, size_t filter_t, size_t pad_t, size_t stride_t>
-__attribute__((noinline)) void
+template <bool specialize, size_t filterX, size_t padX, size_t strideX>
+[[gnu::noinline]] void
 fwdConvolutionInst_Impl(Handle<FloatTy> inW, Handle<FloatTy> outW,
                         Handle<FloatTy> filterW, Handle<FloatTy> biasW,
                         size_t filterSize, size_t pad, size_t stride) {
   // If the method is specialized then we can override the parameters with the
   // specialized constant values.
   if (specialize) {
-    filterSize = filter_t;
-    pad = pad_t;
-    stride = stride_t;
+    filterSize = filterX;
+    pad = padX;
+    stride = strideX;
   }
 
   ShapeNHWC odim(outW.dims());
@@ -68,7 +68,7 @@ fwdConvolutionInst_Impl(Handle<FloatTy> inW, Handle<FloatTy> outW,
                   oy >= ssize_t(odim.w)) {
                 continue;
               }
-              #pragma clang loop interleave_count(8)
+#pragma clang loop interleave_count(8)
               for (size_t fd = 0; fd < idim.c; fd++) {
                 sum += filterW.at({d, fx, fy, fd}) *
                        inW.at({n, (size_t)ox, (size_t)oy, fd});
