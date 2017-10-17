@@ -6,7 +6,6 @@ target_link_libraries(loader
                         Interpreter
                         Importer
                         ExecutionEngine
-                        Network
                         IR
                         Support)
 

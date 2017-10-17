@@ -13,7 +13,6 @@ add_executable(IRgradCheckTest
                  IRGradCheck.cpp)
 target_link_libraries(IRgradCheckTest
                       PRIVATE
-                        Network
                         Interpreter
                         ExecutionEngine
                         IR
@@ -25,7 +24,6 @@ add_executable(IRTest
                  IRTest.cpp)
 target_link_libraries(IRTest
                       PRIVATE
-                        Network
                         Interpreter
                         IR
                         gtest
@@ -37,7 +35,6 @@ add_executable(InterpreterTest
 target_link_libraries(InterpreterTest
                       PRIVATE
                         Interpreter
-                        Network
                         IR
                         ExecutionEngine
                         gtest
@@ -51,7 +48,6 @@ target_link_libraries(GraphTest
                         Graph
                         IR
                         Interpreter
-                        Network
                         gtest
                         gtest_main)
 add_test(GraphTest ${GLOW_BINARY_DIR}/tests/GraphTest)
@@ -64,7 +60,6 @@ target_link_libraries(GraphOptz
                         Graph
                         IR
                         Interpreter
-                        Network
                         gtest
                         gtest_main)
 add_test(GraphOptz ${GLOW_BINARY_DIR}/tests/GraphOptz)
