@@ -4,6 +4,7 @@
 #include "glow/Base/Tensor.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Importer/Caffe2.h"
+#include "llvm/Support/Timer.h"
 
 #include <iostream>
 
@@ -88,7 +89,11 @@ int main(int argc, char **argv) {
   auto *i0 = cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
   auto *i1 = cast<Variable>(LD.getOrCreateNodeByName("data"));
 
+  llvm::Timer timer("Infer", "Infer");
+  timer.startTimer();
   EE.infer({i0, i1}, {&data, &data});
+  timer.stopTimer();
+
   auto *res = EE.getTensor(SM);
   auto H = res->getHandle<FloatTy>();
   Tensor slice = H.extractSlice(0);
