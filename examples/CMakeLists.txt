@@ -4,7 +4,6 @@ add_executable(cifar10
 target_link_libraries(cifar10
                       PRIVATE
                         Interpreter
-                        Network
                         ExecutionEngine
                         Graph
                         IR
@@ -15,7 +14,6 @@ add_executable(mnist
 target_link_libraries(mnist
                       PRIVATE
                         Interpreter
-                        Network
                         ExecutionEngine
                         Graph
                         IR
