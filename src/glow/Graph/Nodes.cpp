@@ -146,9 +146,11 @@ std::string Variable::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
       .addParam("output", *getType())
-      .addParam("init", WeightVar::getInitKindStr(initKind_))
-      .addParam("val", val_)
-      .addParam("users", getNumUsers());
+  .addParam("init", WeightVar::getInitKindStr(initKind_));
+  if (initKind_ != Variable::InitKind::Extern) {
+    db.addParam("val", val_);
+  }
+  db.addParam("users", getNumUsers());
   return db;
 }
 
