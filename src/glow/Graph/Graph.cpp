@@ -266,7 +266,7 @@ public:
     std::string sb;
     sb += quote(std::to_string((void *)N)) + "[\n";
     std::string repr = escapeDottyString(N->getDebugDesc());
-    sb += "\tlabel = " + repr + "\n";
+    sb += "\tlabel = " + quote(repr) + "\n";
     sb += "\tshape = \"record\"\n";
     sb += "];\n\n";
     return sb;

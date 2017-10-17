@@ -8,7 +8,6 @@ using namespace glow;
 
 std::string glow::escapeDottyString(const std::string &str) {
   std::string out;
-  out += "\"";
   for (unsigned char c : str) {
     if (std::isprint(c) && c != '\\' && c != '"' && c != '<' && c != '>') {
       out += c;
@@ -45,7 +44,6 @@ std::string glow::escapeDottyString(const std::string &str) {
       }
     }
   }
-  out += "\"";
   return out;
 }
 
