@@ -24,11 +24,11 @@ class Value;
 /// users of this class.
 class ExecutionEngine final {
   /// The Graph that represents the high-level program.
-  Graph *G_;
+  std::unique_ptr<Graph> G_;
   /// The Module that holds the IR.
-  Module *M_;
+  std::unique_ptr<Module> M_;
   /// The network interpreter
-  Interpreter *IP_;
+  std::unique_ptr<Interpreter> IP_;
   /// The network trainer.
   Trainer trainer_{};
 
