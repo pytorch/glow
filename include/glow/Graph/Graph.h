@@ -15,7 +15,7 @@ namespace glow {
 
 /// Represents the compute graph.
 class Graph final {
-  /// A uniqued list of types in the module. Types in this list can be compared
+  /// A uniqued list of types in the module. Types in this list can be equated
   /// by comparing their addresses.
   std::list<Type> types_{};
   /// A list of nodes that the graph owns.
