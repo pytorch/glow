@@ -21,6 +21,8 @@ private:
 public:
   /// Create a new operand and register the node we reference.
   explicit NodeOperand(Node *N) { setOperand(N); }
+  /// Create a new operand and register it as a new user to the node.
+  NodeOperand(const NodeOperand &that) { setOperand(that.get()); }
   /// When deleting an operand we need to unregister the operand from the
   /// use-list of the node it used to reference.
   ~NodeOperand() { setOperand(nullptr); }
@@ -34,8 +36,6 @@ public:
   operator Node *() const { return node_; }
   /// Provide a smart-pointer interface.
   Node *operator->() const { return node_; }
-  /// We don't allow copying operands around because we save their address.
-  NodeOperand(const NodeOperand &that) = delete;
 };
 
 /// A 'Use' is a use-list representation of a Node operand.

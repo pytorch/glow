@@ -33,6 +33,10 @@ class caffe2ModelLoader {
   std::unordered_map<std::string, Tensor *> tensors_;
   /// The external output of the network.
   SaveNode *root_{nullptr};
+  /// A list of handles to keep some variables alive during the lifetime of the
+  /// loader. This is used for preventing the optimizer from deleting variables
+  /// that the loader expects as inputs.
+  std::vector<NodeOperand> keepAlive_;
 
   /// Load the weight tensors from the 'init' file and register them in the map
   /// \p tensors.

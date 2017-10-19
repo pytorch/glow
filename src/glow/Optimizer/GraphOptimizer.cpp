@@ -13,6 +13,7 @@ using namespace glow;
 /// Dead code elimination.
 static void DCE(Graph &G) {
   auto &nodes = G.getNodes();
+  auto &vars = G.getVars();
 
   // Remove unused nodes. Do not remove unused vars because they are the
   // interface to the user program.
@@ -32,6 +33,17 @@ static void DCE(Graph &G) {
     }
 
   } while (changedLocally);
+
+  // Delete unused variables.
+  for (auto it = vars.begin(), e = vars.end(); it != e;) {
+    if ((*it)->hasUsers()) {
+      it++;
+      continue;
+    }
+
+    delete *it;
+    it = vars.erase(it);
+  }
 }
 
 /// \returns true if the masks \p shuffle1 and shuffle2 are
