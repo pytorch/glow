@@ -33,11 +33,6 @@ class caffe2ModelLoader {
   std::unordered_map<std::string, Tensor *> tensors_;
   /// The external output of the network.
   Node *root_{nullptr};
-  /// A list of tensors to load into variables once the graph is materialized.
-  std::vector<std::pair<Variable *, Tensor *>> variableInit_;
-  /// A list of temporary tensors to remove once the graph construction and
-  /// initialization is complete.
-  std::unordered_set<Tensor *> toRemove_;
 
   /// Load the weight tensors from the 'init' file and register them in the map
   /// \p tensors.
@@ -56,13 +51,6 @@ class caffe2ModelLoader {
   /// Reads a network (weights or structure) from the serialized protocol buffer
   /// file.
   bool loadProtoFile(caffe2::NetDef &net, const std::string &filename);
-
-  /// Register the tensor \p t to initialize the variable \p v.
-  void registerVariableInit(Node *v, Tensor *t) {
-    auto *var = cast<Variable>(v);
-    var->setInitKind(Variable::InitKind::Extern);
-    variableInit_.push_back({var, t});
-  }
 
 public:
   /// \returns the node that was registered with the name \p name.

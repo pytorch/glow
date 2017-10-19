@@ -89,7 +89,6 @@ int main(int argc, char **argv) {
     SM = LD.getRoot();
     i0 = cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
     i1 = cast<Variable>(LD.getOrCreateNodeByName("data"));
-    EE.initVars();
   }
 
   llvm::Timer timer("Infer", "Infer");

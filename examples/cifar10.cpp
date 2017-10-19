@@ -91,7 +91,6 @@ void testCIFAR10() {
   auto *result = G.createReturn("ret", SM);
 
   EE.compile(OptimizationMode::Train);
-  EE.initVars();
 
   // Report progress every this number of training iterations.
   int reportRate = 256;

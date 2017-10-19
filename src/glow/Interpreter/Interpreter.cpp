@@ -27,21 +27,19 @@ void Interpreter::clear() {
 }
 
 Tensor *Interpreter::getTensor(const Value *v) const {
+  auto ie = externalTensors_.find(v);
+  if (ie != externalTensors_.end()) {
+    return ie->second;
+  }
+
   auto it = tensors_.find(v);
   assert(it != tensors_.end() && "Unknown key Value.");
   return it->second;
 }
 
-void Interpreter::initValue(const Value *v, const Tensor *t) {
-  auto it = tensors_.find(v);
-  if (it != tensors_.end()) {
-    it->second->copyFrom(t);
-  }
-
-  // Create a new tensor, register it and return it.
-  auto *N = new Tensor();
-  N->copyFrom(t);
-  tensors_[v] = N;
+void Interpreter::registerGraphTensor(const Value *v, Tensor *t) {
+  assert(!externalTensors_.count(v) && "The tensor is already registered");
+  externalTensors_[v] = t;
 }
 
 Tensor *Interpreter::getOrCreateGradTensor(const Value *v) {
@@ -66,6 +64,11 @@ Handle<FloatTy> Interpreter::getGradHandle(Value *v) {
 }
 
 Tensor *Interpreter::getOrCreateTensor(const Value *v) {
+  auto ie = externalTensors_.find(v);
+  if (ie != externalTensors_.end()) {
+    return ie->second;
+  }
+
   // Pick the tensor.
   auto it = tensors_.find(v);
   if (it == tensors_.end()) {

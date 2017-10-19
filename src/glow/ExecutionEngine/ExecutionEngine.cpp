@@ -64,7 +64,7 @@ void ExecutionEngine::train(size_t iterations, llvm::ArrayRef<Variable *> vars,
 void ExecutionEngine::learnGradient(size_t batchSize) {
   for (auto *V : M_->getWeights()) {
     // Do not try to learn the values of input/output buffers.
-    if (V->getInitKind() == WeightVar::InitKind::Extern) {
+    if (V->getKind() == WeightVar::MutabilityKind::Constant) {
       continue;
     }
 
@@ -108,6 +108,15 @@ void ExecutionEngine::compile(OptimizationMode mode) {
   ::glow::optimize(*G_, mode);
   M_->generateIR();
   ::glow::optimize(*M_, mode);
+
+  for (auto &v : G_->getVars()) {
+    auto *w = M_->getWeightForNode(v);
+    IP_->registerGraphTensor(w, &v->getPayload());
+  }
+
+  for (auto *W : M_->getWeights()) {
+    IP_->getOrCreateTensor(W);
+  }
 }
 
 void ExecutionEngine::optimize(OptimizationMode mode) {
@@ -130,80 +139,4 @@ Handle<FloatTy> ExecutionEngine::getWeightHandle(Variable *v) const {
 Handle<FloatTy> ExecutionEngine::getGradHandle(Variable *v) {
   auto val = M_->getWeightForNode(v);
   return IP_->getGradHandle(val);
-}
-
-/// Copies the content of the tensor \p t into the value \p v.
-void ExecutionEngine::initValue(const Variable *v, const Tensor *t) {
-  auto *N = M_->getWeightForNode(v);
-  return IP_->initValue(N, t);
-}
-
-void ExecutionEngine::initVars() {
-  for (auto *W : M_->getWeights()) {
-    // Don't initialize tensors that are already initialized.
-    if (IP_->hasTensor(W)) {
-      continue;
-    }
-
-    auto *T = IP_->getOrCreateTensor(W);
-    // The parameter to the instruction.
-    auto val = W->getVal();
-
-    switch (W->getInitKind()) {
-    case WeightVar::InitKind::Extern:
-      break;
-
-    case WeightVar::InitKind::Broadcast: {
-      switch (T->getElementType()) {
-      case ElemKind::FloatTy: {
-        T->getHandle<float>().clear(val);
-        break;
-      }
-      case ElemKind::DoubleTy: {
-        T->getHandle<double>().clear(val);
-        break;
-      }
-      case ElemKind::Int8Ty: {
-        T->getHandle<int8_t>().clear(val);
-        break;
-      };
-      case ElemKind::Int32Ty: {
-        T->getHandle<int32_t>().clear(val);
-        break;
-      }
-      case ElemKind::IndexTy: {
-        T->getHandle<size_t>().clear(val);
-        break;
-      }
-      }
-      break;
-    }
-
-    case WeightVar::InitKind::Xavier: {
-      switch (T->getElementType()) {
-      case ElemKind::FloatTy: {
-        T->getHandle<float>().randomize(val);
-        break;
-      }
-      case ElemKind::DoubleTy: {
-        T->getHandle<double>().randomize(val);
-        break;
-      }
-      case ElemKind::Int8Ty: {
-        T->getHandle<int8_t>().randomize(val);
-        break;
-      };
-      case ElemKind::Int32Ty: {
-        T->getHandle<int32_t>().randomize(val);
-        break;
-      }
-      case ElemKind::IndexTy: {
-        T->getHandle<size_t>().randomize(val);
-        break;
-      }
-      }
-      break;
-    }
-    }
-  }
 }

@@ -52,9 +52,6 @@ public:
   /// Provides access to the training configuration.
   TrainingConfig &getConfig() { return trainer_.config; }
 
-  /// Initialize all of the variables in the program.
-  void initVars();
-
   /// Runs the program in a forward pass. Update the nodes in \p nodes with the
   /// values \p inputs.
   void infer(llvm::ArrayRef<Variable *> vars, llvm::ArrayRef<Tensor *> inputs);
@@ -74,9 +71,6 @@ public:
 
   /// \returns a float-handle to the tensor that is stored at \p v.
   Handle<FloatTy> getGradHandle(Variable *v);
-
-  /// Copies the content of the tensor \p t into the value \p v.
-  void initValue(const Variable *v, const Tensor *t);
 
 private:
   /// Update the inputs for all variables \p vars with data from the inputs \p

@@ -63,7 +63,7 @@ TEST(IR, basicUseList) {
 }
 
 TEST(IR, allInstrs) {
-  using InitKind = WeightVar::InitKind;
+  using MK = WeightVar::MutabilityKind;
 
   Graph G;
   Module M(&G);
@@ -75,10 +75,10 @@ TEST(IR, allInstrs) {
   {
     IRBuilder builder(&M);
 
-    auto *I0 = builder.createWeightVar(T1, "I0", InitKind::Extern, 0);
-    auto *I1 = builder.createWeightVar(T1, "I1", InitKind::Extern, 0);
+    auto *I0 = builder.createWeightVar(T1, "I0");
+    auto *I1 = builder.createWeightVar(T1, "I1");
     auto *I2 = builder.createWeightVar(ElemKind::FloatTy, {1, 3, 24, 24}, "I2",
-                                       InitKind::Extern, 0);
+                                       MK::Constant);
 
     auto *I3 = builder.createWeightVar(ElemKind::FloatTy, {1, 12, 12, 64});
     auto *I4 = builder.createWeightVar(ElemKind::FloatTy, {1, 12, 12, 3});
@@ -86,13 +86,13 @@ TEST(IR, allInstrs) {
     auto *I6 = builder.createWeightVar(ElemKind::FloatTy, {2, 12, 12, 64});
 
     auto *XY = builder.createWeightVar(ElemKind::IndexTy, {1, 12, 12, 3, 2});
-    auto *B0 = builder.createWeightVar(T2, "B0", InitKind::Broadcast, 0.1);
-    auto *B1 = builder.createWeightVar(ElemKind::FloatTy, {32}, "B1",
-                                       InitKind::Broadcast, 0.1);
+    auto *B0 = builder.createWeightVar(T2, "B0");
+    auto *B1 =
+        builder.createWeightVar(ElemKind::FloatTy, {32}, "B1", MK::Mutable);
     auto *F0 = builder.createWeightVar(ElemKind::FloatTy, {64, 7, 7, 3});
     auto *F1 = builder.createWeightVar(ElemKind::FloatTy, {32, 1728});
-    auto *E0 = builder.createWeightVar(T4, "E0", InitKind::Extern, 0);
-    auto *S0 = builder.createWeightVar(T5, "S0", InitKind::Extern, 0);
+    auto *E0 = builder.createWeightVar(T4, "E0");
+    auto *S0 = builder.createWeightVar(T5, "S0");
 
     B0->setName("bias");
     B1->setName("FC_bias");
@@ -118,40 +118,6 @@ TEST(IR, allInstrs) {
   M.verify();
 }
 
-TEST(IR, highLevelBuilder) {
-  Graph G;
-  Module M(&G);
-  {
-    IRBuilder bb(&M);
-
-    auto *input = bb.createWeightVar(ElemKind::FloatTy, {1, 224, 224, 3});
-    auto *conv = bb.createConvOp(input, 16, 7, 2, 3);
-    auto *pool = bb.createPoolOp(conv->getOperand(0).first,
-                                 PoolInst::OpKind::Max, 7, 2, 3);
-    auto *relu = bb.createRELUOp(pool->getOperand(0).first);
-    auto *sig = bb.createSigmoidOp(relu->getOperand(0).first);
-    auto *tan = bb.createTanhOp(sig->getOperand(0).first);
-    auto *fc = bb.createFullyConnectedOp(tan->getOperand(0).first, 12);
-    auto *rshp =
-        bb.createReshapeOp(relu->getOperand(0).first, {1, 56 * 56, 16});
-    auto *tsps = bb.createTransposeOp(relu->getOperand(0).first, {0, 3, 1, 2});
-    auto *concat = bb.createConcatOp(
-        {relu->getOperand(0).first, relu->getOperand(0).first}, 0);
-    auto *bn =
-        bb.createBatchNormalizationOp(relu->getOperand(0).first, 3, 0.001, 0.9);
-    auto *aa = bb.createArithmeticOp(bn->getOperand(0).first,
-                                     relu->getOperand(0).first,
-                                     ArithmeticInst::OpKind::Add);
-
-    (void)fc;
-    (void)concat;
-    (void)tsps;
-    (void)rshp;
-    (void)aa;
-  }
-  M.verify();
-}
-
 TEST(IR, casting) {
   Graph G;
   Module M(&G);
@@ -159,14 +125,14 @@ TEST(IR, casting) {
     IRBuilder bb(&M);
 
     auto *input = bb.createWeightVar(ElemKind::FloatTy, {1, 224, 224, 3});
-    auto *conv = bb.createConvOp(input, 16, 7, 2, 3);
-    auto *pool = bb.createPoolOp(conv->getOperand(0).first,
+    auto *relu = bb.createRELUOp(input);
+    auto *pool = bb.createPoolOp(relu->getOperand(0).first,
                                  PoolInst::OpKind::Max, 7, 2, 3);
 
     EXPECT_EQ(isa<PoolInst>(pool), true);
     EXPECT_EQ(isa<PoolInst>(input), false);
-    EXPECT_EQ(isa<ConvolutionInst>(conv), true);
-    EXPECT_EQ(isa<ConvolutionInst>(pool), false);
+    EXPECT_EQ(isa<ReluInst>(relu), true);
+    EXPECT_EQ(isa<ReluInst>(pool), false);
 
     EXPECT_NE(dyn_cast<PoolInst>(pool), nullptr);
     EXPECT_EQ(dyn_cast<PoolInst>(pool), pool);

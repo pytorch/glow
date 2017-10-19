@@ -20,24 +20,6 @@ void IRBuilder::deallocateActiveInstrs() {
 //                        High level operators.
 //===----------------------------------------------------------------------===//
 
-ConvolutionInst *IRBuilder::createConvOp(Value *input, size_t depth,
-                                         size_t kernel, size_t stride,
-                                         size_t pad) {
-  ShapeNHWC idim = ShapeNHWC(input->dims());
-  assert(idim.w >= kernel && idim.h >= kernel &&
-         "buffer too small for selected stride");
-
-  // Allocate the Filter and Bias tensors.
-  std::vector<size_t> filterDim = {depth, kernel, kernel, idim.c};
-  size_t fanIn = kernel * kernel * idim.c;
-  Value *filter = createWeightVar(ElemKind::FloatTy, filterDim, "filter",
-                                  InitKind::Xavier, fanIn);
-  Value *bias = createWeightVar(ElemKind::FloatTy, {depth}, "bias",
-                                InitKind::Broadcast, 0.1);
-
-  return createConvOp(input, filter, bias, depth, kernel, stride, pad);
-}
-
 ConvolutionInst *IRBuilder::createConvOp(Value *input, Value *filter,
                                          Value *bias, size_t depth,
                                          size_t kernel, size_t stride,
@@ -82,24 +64,6 @@ PoolInst *IRBuilder::createPoolOp(Value *input, PoolInst::OpKind kind,
       ElemKind::FloatTy, {idim.n, outSz.first, outSz.second, idim.c});
 
   return createPoolInst(dest, input, srcXY, kind, kernel, stride, pad);
-}
-
-FullyConnectedInst *IRBuilder::createFullyConnectedOp(Value *input,
-                                                      size_t outDepth) {
-  TypeRef T = input->getType();
-  auto idim = flattenCdr(input->dims());
-
-  size_t fanIn = idim.second;
-
-  auto *W = createWeightVar(T->getElementType(), {outDepth, idim.second},
-                            "weights", InitKind::Xavier, fanIn);
-
-  auto *B = createWeightVar(T->getElementType(), {outDepth}, "bias",
-                            InitKind::Broadcast, 0.1);
-  auto *dest =
-      createAllocActivationInst(T->getElementType(), {idim.first, outDepth});
-
-  return createFullyConnectedInst(dest, input, W, B, outDepth);
 }
 
 FullyConnectedInst *IRBuilder::createFullyConnectedOp(Value *input,
@@ -176,28 +140,6 @@ ConcatInst *IRBuilder::createConcatOp(llvm::ArrayRef<Value *> inputs,
   return createConcatInst(res, inputs, dimension);
 }
 
-BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(Value *input,
-                                                              size_t channelIdx,
-                                                              float epsilon,
-                                                              float momentum) {
-  // Figure out how many channels are in the tensor.
-  size_t channels = input->dims()[channelIdx];
-
-  // Allocate the learnable parameters beta and gamma.
-  auto *beta = createWeightVar(ElemKind::FloatTy, {channels}, "beta",
-                               InitKind::Broadcast, 0.);
-  auto *gamma = createWeightVar(ElemKind::FloatTy, {channels}, "gamma",
-                                InitKind::Broadcast, 1.0);
-
-  auto *mean = createAllocActivationInst(ElemKind::FloatTy, {channels}, "mean");
-
-  auto *variance =
-      createAllocActivationInst(ElemKind::FloatTy, {channels}, "variance");
-
-  return createBatchNormalizationOp(input, beta, gamma, mean, variance,
-                                    channelIdx, epsilon, momentum);
-}
-
 BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(
     Value *input, Value *beta, Value *gamma, Value *mean, Value *var,
     size_t channelIdx, float epsilon, float momentum) {
@@ -228,7 +170,8 @@ ArithmeticInst *IRBuilder::createArithmeticOp(Value *LHS, Value *RHS,
 }
 
 Value *IRBuilder::createReturnOp(Value *input) {
-  auto *W = createWeightVar(input->getType(), "result", InitKind::Extern);
+  auto *W = createWeightVar(input->getType(), "result",
+                            WeightVar::MutabilityKind::Mutable);
   createCopyInst(W, input);
   return W;
 }
@@ -353,15 +296,15 @@ ArithmeticInst *IRBuilder::createArithmeticInst(Value *dest, Value *LHS,
 
 WeightVar *IRBuilder::createWeightVar(ElemKind elemTy,
                                       llvm::ArrayRef<size_t> dims,
-                                      llvm::StringRef name, InitKind initKind,
-                                      float val) {
+                                      llvm::StringRef name,
+                                      WeightVar::MutabilityKind k) {
   auto T = M_->getGraph()->uniqueType(elemTy, dims);
-  return createWeightVar(T, name, initKind, val);
+  return createWeightVar(T, name, k);
 }
 
 WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
-                                      InitKind initKind, float val) {
-  auto *A = new WeightVar(T, initKind, val);
+                                      WeightVar::MutabilityKind k) {
+  auto *A = new WeightVar(T, k);
   M_->getWeights().push_back(A);
   A->setName(name);
   return A;
