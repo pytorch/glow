@@ -749,9 +749,9 @@ void Interpreter::fwdBatchNormalizationInst_infer(
             FloatTy gamma = gammaWH.at(c);
             FloatTy beta = betaWH.at(c);
             outW.at({n, x, y, c}) = (inp - mu) * gamma * stdvar + beta;
-          } // H
+          } // C
         }   // W
-      }     // C
+      }     // H
     }       // N
     return;
   }
