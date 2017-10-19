@@ -453,6 +453,10 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
                                Variable::InitKind::Extern);
     V->copyFrom(T);
     nodeByName_[names[i]] = V;
+
+    // Keep this variable alive to prevent the optimizer from deleting it. This
+    // variable is used as an interface so we better not delete it.
+    keepAlive_.emplace_back(V);
   }
 
   loadProtoFile(networkDef, netDescFilename);
