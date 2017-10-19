@@ -48,6 +48,10 @@ public:
 
   Tensor &getPayload() { return payload_; }
 
+  template <class ElemTy> Handle<ElemTy> getHandle() {
+    return getPayload().getHandle<ElemTy>();
+  }
+
   void copyFrom(Tensor *t) { payload_.copyFrom(t); }
 
   std::string getDebugDesc() const override;
