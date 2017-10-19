@@ -1,6 +1,7 @@
 #ifndef GLOW_GRAPH_NODES_H
 #define GLOW_GRAPH_NODES_H
 
+#include "glow/Base/Tensor.h"
 #include "glow/Graph/Node.h"
 
 namespace glow {
@@ -19,25 +20,37 @@ private:
   float val_;
   /// The initialization mode.
   InitKind initKind_;
+  /// The tensor payload that the variable holds.
+  Tensor payload_;
+
+  /// Initialize the content of the tensor. If an 'extern' is set then the user
+  /// of the graph is responsible for updating the tensor externally.
+  void initPayload();
 
 public:
   Variable(llvm::StringRef name, TypeRef Ty, InitKind initKind, float val)
       : Node(Kinded::Kind::WeightVarKind, Ty, name), val_(val),
-        initKind_(initKind) {}
+        initKind_(initKind) {
+    initPayload();
+  }
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::WeightVarKind;
   }
 
-  /// Sets the initialization kind of the variable.
-  void setInitKind(InitKind kind) { initKind_ = kind; }
+  const char *getInitKindStr() const;
 
-  /// \returns the initialization kind of the variable.
+  static const char *getInitKindStr(InitKind kind);
+
+  /// \returns the original initialization mode of the variable.
   InitKind getInitKind() const { return initKind_; }
 
-  float getVal() const { return val_; }
+  Tensor &getPayload() { return payload_; }
+
+  void copyFrom(Tensor *t) { payload_.copyFrom(t); }
 
   std::string getDebugDesc() const override;
+
   void visit(Node *parent, NodeVisitor *visitor) override;
 };
 

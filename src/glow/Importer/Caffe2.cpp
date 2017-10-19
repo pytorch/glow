@@ -119,6 +119,7 @@ Node *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
   Tensor *T = getTensorByName(name);
   auto *V = G.createVariable(T->getElementType(), T->dims(), name,
                              Variable::InitKind::Broadcast);
+  V->copyFrom(T);
   nodeByName_[name] = V;
   return V;
 }
@@ -162,15 +163,13 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     // TODO: need to test this code with a large batch size to verify that the
     // conversion is correct.
-    Tensor *wtag = new Tensor();
-    w->getHandle<FloatTy>().transpose(wtag, {0, 2, 3, 1});
-    tensors_[op.name() + "_conv_filter"] = wtag;
-    toRemove_.insert(wtag);
+    Tensor wtag;
+    w->getHandle<FloatTy>().transpose(&wtag, {0, 2, 3, 1});
 
     // The structure of the conv weigts is: NHWC. We take the C, which is the
     // number of filters. We use this value to calculate the size of the bias
     // if it is not specified.
-    size_t numFilters = wtag->dims()[0];
+    size_t numFilters = wtag.dims()[0];
 
     // Load the bias vector:
     Tensor *b = nullptr;
@@ -183,21 +182,18 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       }
     }
 
-    // If we don't have a bias vector then create one that matches the weight
-    // size and fill it with zeros.
-    if (!b) {
-      b = new Tensor(ElemKind::FloatTy, {numFilters});
-      b->getHandle<FloatTy>().clear();
-      tensors_[op.name() + "_conv_bias"] = b;
-      toRemove_.insert(b);
-    }
-
     auto *tr = G.createTranspose(op.name(), in, NCHW2NHWC);
     auto *node = G.createConv(op.name(), tr, numFilters, kernel, stride, pad);
 
-    // Load the weights into the operator.
-    registerVariableInit(node->getFilter(), wtag);
-    registerVariableInit(node->getBias(), b);
+    cast<Variable>(node->getFilter())->copyFrom(&wtag);
+
+    // If we don't have a bias vector then create one that matches the weight
+    // size and fill it with zeros.
+    if (b) {
+      cast<Variable>(node->getBias())->copyFrom(b);
+    } else {
+      cast<Variable>(node->getBias())->getPayload().zero();
+    }
 
     auto *N = G.createTranspose(op.name(), node, NHWC2NCHW);
     // Save the outputs:
@@ -266,10 +262,10 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *node = G.createBatchNormalization(op.name(), in, channel, epsilon);
 
     // Load the weights.
-    registerVariableInit(node->getScale(), scale);
-    registerVariableInit(node->getBias(), bias);
-    registerVariableInit(node->getMean(), mean);
-    registerVariableInit(node->getVar(), var);
+    cast<Variable>(node->getScale())->copyFrom(scale);
+    cast<Variable>(node->getBias())->copyFrom(bias);
+    cast<Variable>(node->getMean())->copyFrom(mean);
+    cast<Variable>(node->getVar())->copyFrom(var);
 
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;
@@ -336,8 +332,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *FC = G.createFullyConnected(op.name(), in, b->size());
 
     // Load weights.
-    registerVariableInit(FC->getFilter(), w);
-    registerVariableInit(FC->getBias(), b);
+    cast<Variable>(FC->getFilter())->getPayload().copyFrom(w);
+    cast<Variable>(FC->getBias())->getPayload().copyFrom(b);
 
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
@@ -382,7 +378,6 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
        */
 
       auto *T = new Tensor();
-      toRemove_.insert(T);
       for (auto &o : op.output()) {
         tensors_[o] = T;
       }
@@ -420,7 +415,6 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
       }
 
       auto *T = new Tensor();
-      toRemove_.insert(T);
       tensors_[name] = T;
 
       auto dim = getShape(dict["shape"]);
@@ -444,6 +438,8 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   // compatible with the version of the headers we compiled against.
   GOOGLE_PROTOBUF_VERIFY_VERSION;
 
+  auto &G = EE_.getGraph();
+
   // The caffe2 weights that we are deserializing.
   caffe2::NetDef weightsDef;
   // The caffe2 network descriptor that we are deserializing.
@@ -451,8 +447,11 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
 
   assert(names.size() == tensors.size() && "Invalid initialization list");
   for (unsigned i = 0; i < names.size(); i++) {
-    tensors_[names[i]] = tensors[i];
-    getOrCreateNodeByName(names[i]);
+    auto *T = tensors[i];
+    auto *V = G.createVariable(T->getElementType(), T->dims(), names[i],
+                               Variable::InitKind::Extern);
+    V->copyFrom(T);
+    nodeByName_[names[i]] = V;
   }
 
   loadProtoFile(networkDef, netDescFilename);
@@ -461,20 +460,16 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   loadNetwork(networkDef);
 
   // Save the result of the last operator into a weight.
-  auto &G = EE_.getGraph();
   root_ = G.createReturn("ret", root_);
 
   // Emit IR for the graph.
   EE.compile(OptimizationMode::Infer);
-
-  // Load the value of the variables.
-  for (auto p : variableInit_) {
-    EE.initValue(p.first, p.second);
-  }
+      EE.getModule().dump();
+      EE.getGraph().dump();
 }
 
 caffe2ModelLoader::~caffe2ModelLoader() {
-  for (auto *t : toRemove_) {
-    delete t;
+  for (auto it : tensors_) {
+    delete it.second;
   }
 }

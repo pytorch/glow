@@ -12,7 +12,7 @@ namespace glow {
 
 /// The IRBuilder create the IR in the module.
 class IRBuilder {
-  using InitKind = WeightVar::InitKind;
+  using MutabilityKind = WeightVar::MutabilityKind;
 
   /// The module that we are building.
   Module *M_;
@@ -135,13 +135,11 @@ public:
                                        ArithmeticInst::OpKind kind);
 
   WeightVar *createWeightVar(TypeRef T, llvm::StringRef name = "",
-                             InitKind initKind = InitKind::Extern,
-                             float val = 0);
+                             MutabilityKind k = MutabilityKind::Mutable);
 
   WeightVar *createWeightVar(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
                              llvm::StringRef name = "",
-                             InitKind initKind = InitKind::Extern,
-                             float val = 0);
+                             MutabilityKind k = MutabilityKind::Mutable);
 
   AllocActivationInst *createAllocActivationInst(TypeRef T,
                                                  llvm::StringRef name = "");

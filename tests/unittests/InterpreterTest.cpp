@@ -41,7 +41,6 @@ TEST(Interpreter, interpret) {
   G.createReturn("ret", SM);
 
   EE.compile(OptimizationMode::Infer);
-  EE.initVars();
   EE.infer({input}, {&inputs});
 }
 
@@ -71,7 +70,6 @@ TEST(Interpreter, trainASimpleNetwork) {
   expected.getHandle<FloatTy>() = {0.9, 0.9, 0.9, 0.9};
 
   EE.compile(OptimizationMode::Train);
-  EE.initVars();
 
   // Train the network. Learn 1000 batches.
   EE.train(1000, {A, E}, {&inputs, &expected});
@@ -115,7 +113,6 @@ TEST(Interpreter, simpleRegression) {
   auto E = expected.getHandle<FloatTy>();
 
   EE.compile(OptimizationMode::Train);
-  EE.initVars();
 
   // Train the network:
   for (int iter = 0; iter < 1000; iter++) {
@@ -182,7 +179,6 @@ TEST(Interpreter, learnXor) {
   }
 
   EE.compile(OptimizationMode::Train);
-  EE.initVars();
 
   // Train the network:
   EE.train(2500, {A, Ex}, {&trainingSet, &trainingLabels});
@@ -260,7 +256,6 @@ TEST(Network, circle) {
   auto *result = G.createReturn("ret", SM);
 
   EE.compile(OptimizationMode::Train);
-  EE.initVars();
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
   Tensor labels(ElemKind::IndexTy, {numSamples, 1});
@@ -354,7 +349,6 @@ TEST(Network, learnSingleValueConcat) {
   expected.getHandle<FloatTy>().clear(0.9);
 
   EE.compile(OptimizationMode::Train);
-  EE.initVars();
 
   // Train the network:
   EE.train(1000, {A, B, Ex}, {&inputs, &inputs, &expected});

@@ -90,7 +90,6 @@ void testMNIST() {
   auto *result = G.createReturn("return", SM);
 
   EE.compile(OptimizationMode::Train);
-  EE.initVars();
 
   // Report progress every this number of training iterations.
   constexpr int reportRate = 30;

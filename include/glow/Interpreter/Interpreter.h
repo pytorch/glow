@@ -28,6 +28,9 @@ class Interpreter final {
   /// Maps values to Tensors, that are owned by this class.
   std::unordered_map<const Value *, Tensor *> tensors_;
 
+  /// Maps values to Tensors, that are *not* owned by this class.
+  std::unordered_map<const Value *, Tensor *> externalTensors_;
+
   /// Maps weight tensors to the gradients that update them. The value tensors
   /// are owned by this map.
   std::unordered_map<Tensor *, Tensor *> gradients_;
@@ -41,8 +44,7 @@ public:
   /// Wipe out the state of the interpreter.
   void clear();
 
-  /// \returns a pointer to the tensor that is saved under \p v. The tensor
-  /// is owned by the Interpreter.
+  /// \returns a pointer to the tensor that is saved under \p v.
   Tensor *getTensor(const Value *v) const;
 
   /// Allocate a tensor to back the value \p v. Do not allocate anything if a
@@ -56,8 +58,9 @@ public:
   /// \returns True if a tensor was allocated for \p v.
   bool hasTensor(const Value *v);
 
-  /// Copies the content of the tensor \p t into the value \p v.
-  void initValue(const Value *v, const Tensor *t);
+  /// Registers the external tensor \p t, that's owned by the graph, as mapped
+  /// to the value \p v.
+  void registerGraphTensor(const Value *v, Tensor *t);
 
   /// \returns gets or creates a new tensor to back the value \p v. If the
   /// tensor does not exist then this method creates it. The dimension of the

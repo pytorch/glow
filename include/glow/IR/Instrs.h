@@ -406,34 +406,29 @@ public:
 
 class WeightVar : public Value {
 public:
-  using InitKind = Variable::InitKind;
+  enum class MutabilityKind {
+    Constant, // A read-only region of memory.
+    Mutable,  // A read/write region of memory.
+  };
 
 private:
-  /// The value to use during initialization. This can be the value to splat or
-  /// a parameter to specify the range of the random values.
-  float val_;
-
-  /// The initialization mode.
-  InitKind initKind_;
+  /// The mutability mode.
+  MutabilityKind mut_;
 
 public:
-  WeightVar(TypeRef Ty, InitKind initKind, float val)
-      : Value(Ty, Kinded::Kind::WeightVarKind), val_(val), initKind_(initKind) {
-  }
+  WeightVar(TypeRef Ty, MutabilityKind mut)
+      : Value(Ty, Kinded::Kind::WeightVarKind), mut_(mut) {}
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::WeightVarKind;
   }
 
-  static const char *getInitKindStr(InitKind kind);
+  static const char *getKindStr(MutabilityKind mut);
 
-  const char *getInitKindStr() const;
+  const char *getKindStr() const;
 
-  void setInitKind(InitKind k) { initKind_ = k; }
-  InitKind getInitKind() const { return initKind_; }
-
-  void setVal(float v) { val_ = v; }
-  float getVal() const { return val_; }
+  void setInitKind(MutabilityKind k) { mut_ = k; }
+  MutabilityKind getKind() const { return mut_; }
 
   std::string getExtraDesc() const;
   void verify() const {}
