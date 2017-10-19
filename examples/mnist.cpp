@@ -87,7 +87,7 @@ void testMNIST() {
                        Variable::InitKind::Extern);
   auto *SM = G.createSoftMax("sm", RL2, selected);
 
-  auto *result = G.createReturn("return", SM);
+  auto *result = G.createSave("return", SM);
 
   EE.compile(OptimizationMode::Train);
 
@@ -120,10 +120,11 @@ void testMNIST() {
   Tensor sample(ElemKind::FloatTy, {minibatchSize, 1, 28, 28});
   sample.copyConsecutiveSlices(&imageInputs, 0);
   EE.infer({A}, {&sample});
-  Tensor *res = EE.getTensor(result);
+
+  Tensor &res = result->getOutput()->getPayload();
 
   for (unsigned int iter = 0; iter < minibatchSize; iter++) {
-    auto T = res->getHandle<FloatTy>().extractSlice(iter);
+    auto T = res.getHandle<FloatTy>().extractSlice(iter);
     size_t guess = T.getHandle<FloatTy>().maxArg();
 
     size_t correct = LIH.at(iter);

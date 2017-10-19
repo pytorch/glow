@@ -138,7 +138,9 @@ RegressionNode *Graph::createRegression(llvm::StringRef name, Node *input,
 
 ReshapeNode *Graph::createReshape(llvm::StringRef name, Node *input,
                                   llvm::ArrayRef<size_t> shape) {
-  return addNode(new ReshapeNode(input, name, shape));
+  auto TR = uniqueType(input->getType()->getElementType(), shape);
+
+  return addNode(new ReshapeNode(input, name, TR));
 }
 
 TransposeNode *Graph::createTranspose(llvm::StringRef name, Node *input,
@@ -221,8 +223,16 @@ ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, Node *LHS,
   return addNode(new ArithmeticNode(name, LHS, RHS, op));
 }
 
-ReturnNode *Graph::createReturn(llvm::StringRef name, Node *input) {
-  return addNode(new ReturnNode(name, input));
+SaveNode *Graph::createSave(llvm::StringRef name, Node *input) {
+  auto *dest = createVariable(input->getType(), "saved",
+                              Variable::InitKind::Broadcast, 0);
+
+  return addNode(new SaveNode(name, input, dest));
+}
+
+SaveNode *Graph::createSave(llvm::StringRef name, Node *input,
+                            Variable *output) {
+  return addNode(new SaveNode(name, input, output));
 }
 
 //===----------------------------------------------------------------------===//

@@ -34,7 +34,7 @@ FloatTy gradDiff(FloatTy G1, FloatTy G2) {
   return std::abs(G1 - G2) / std::abs(G1 + G2 + 1);
 }
 
-void performGradCheck(ExecutionEngine &IP, Node *result, Variable *inputVar,
+void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
                       Variable *expVar, Tensor *inputs, Tensor *outputs,
                       float delta, float allowedError) {
   auto inputsH = inputs->getHandle<FloatTy>();
@@ -56,14 +56,13 @@ void performGradCheck(ExecutionEngine &IP, Node *result, Variable *inputVar,
     // Calculate f(x+e):
     inputsH.raw(i) = old + delta;
     IP.infer({inputVar}, {inputs});
-    Tensor *res = IP.getTensor(result);
-    auto plusLoss = computeL2Loss(outputs, res);
+    Tensor &res = result->getOutput()->getPayload();
+    auto plusLoss = computeL2Loss(outputs, &res);
 
     // Calculate f(x-e):
     inputsH.raw(i) = old - delta;
     IP.infer({inputVar}, {inputs});
-    res = IP.getTensor(result);
-    auto minusLoss = computeL2Loss(outputs, res);
+    auto minusLoss = computeL2Loss(outputs, &res);
     inputsH.raw(i) = old;
 
     auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
@@ -99,7 +98,7 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
 
   Node *O = G.createConcat("concat", {FA, FB}, 1);
   O = G.createRegression("reg", O, Exp);
-  auto *result = G.createReturn("ret", O);
+  auto *result = G.createSave("ret", O);
 
   IP.compile(OptimizationMode::Train);
 
@@ -134,7 +133,7 @@ TEST(Network, gradientCheck_Conv) {
   O = G.createFullyConnected("fc", O, numOutputElem);
   O = G.createRELU("relu", O);
   O = G.createRegression("reg", O, Ex);
-  auto *result = G.createReturn("ret", O);
+  auto *result = G.createSave("ret", O);
 
   IP.compile(OptimizationMode::Train);
 
@@ -167,7 +166,7 @@ TEST(Network, gradientCheck_AvgPool) {
   Node *O = G.createPool("pool", A, PoolNode::OpKind::Avg, 3, 3, 0);
   O = G.createFullyConnected("fc", O, numOutputElem);
   O = G.createRegression("reg", O, Exp);
-  auto *result = G.createReturn("ret", O);
+  auto *result = G.createSave("ret", O);
 
   IP.compile(OptimizationMode::Train);
 
@@ -200,7 +199,7 @@ TEST(Network, gradientCheck_batchNorm) {
   Node *O = G.createBatchNormalization("batch", A, 3, 0.0001, 0.9);
   O = G.createReshape("reshape", O, {1, numDim * numDim * 3});
   O = G.createRegression("reg", O, Ex);
-  auto result = G.createReturn("ret", O);
+  auto result = G.createSave("ret", O);
 
   IP.compile(OptimizationMode::Train);
 
@@ -241,7 +240,7 @@ TEST(Network, gradientCheck_Arithmetic) {
   Node *O = G.createArithmetic("arith", A, B, ArithmeticNode::OpKind::Mul);
   O = G.createArithmetic("arith", O, C, ArithmeticNode::OpKind::Add);
   O = G.createRegression("reg", O, Exp);
-  auto *result = G.createReturn("ret", O);
+  auto *result = G.createSave("ret", O);
 
   IP.compile(OptimizationMode::Train);
 
@@ -282,15 +281,14 @@ TEST(Network, gradientCheck_Arithmetic) {
       // Calculate f(x+e):
       iH.at({0, i}) = old + delta;
       IP.infer({A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
-      Tensor *res = IP.getTensor(result);
+      Tensor &res = result->getOutput()->getPayload();
 
-      auto plusLoss = computeL2Loss(&outputs, res);
+      auto plusLoss = computeL2Loss(&outputs, &res);
 
       // Calculate f(x-e):
       iH.at({0, i}) = old - delta;
       IP.infer({A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
-      res = IP.getTensor(result);
-      auto minusLoss = computeL2Loss(&outputs, res);
+      auto minusLoss = computeL2Loss(&outputs, &res);
       iH.at({0, i}) = old;
 
       auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
@@ -325,7 +323,7 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
   Node *FA = G.createFullyConnected("fc", A, numOutputElem);
   FA = G.createTanh("tanh", FA);
   FA = G.createRegression("reg", FA, Exp);
-  auto *result = G.createReturn("ret", FA);
+  auto *result = G.createSave("ret", FA);
 
   IP.compile(OptimizationMode::Train);
 
@@ -356,7 +354,7 @@ TEST(Network, gradientCheck_Transpose) {
   Node *TA = G.createTranspose("transpose", A, {0, 3, 1, 2});
   TA = G.createFullyConnected("fc", TA, numOutputElem);
   TA = G.createRegression("regress", TA, Exp);
-  auto *result = G.createReturn("ret", TA);
+  auto *result = G.createSave("ret", TA);
 
   IP.compile(OptimizationMode::Train);
 

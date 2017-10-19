@@ -194,11 +194,12 @@ public:
       registerIR(N, V->getDest());
       break;
     }
-    case glow::Kinded::Kind::ReturnInstKind: {
-      auto *R = cast<ReturnNode>(N);
-      auto *V = builder_.createReturnOp(valueForNode(R->getInput()));
+    case glow::Kinded::Kind::SaveInstKind: {
+      auto *R = cast<SaveNode>(N);
+      auto *src = valueForNode(R->getInput());
+      auto *dest = valueForNode(R->getOutput());
+      auto *V = builder_.createCopyInst(dest, src);
       V->setName(N->getName());
-      registerIR(R, V);
       break;
     }
     case glow::Kinded::Kind::WeightVarKind: {
