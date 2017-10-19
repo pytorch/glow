@@ -1112,7 +1112,9 @@ void Interpreter::fwdAllocActivationInst(bool isTrain,
   // match the output tensors but not the gradient tensors that are
   // paired with filters. These are cleared during the learning process
   // at the end of the batch.
-  getOrCreateGradTensor(I)->zero();
+  if (isTrain) {
+    getOrCreateGradTensor(I)->zero();
+  }
 }
 
 void Interpreter::bwdAllocActivationInst(const AllocActivationInst *I) {}
