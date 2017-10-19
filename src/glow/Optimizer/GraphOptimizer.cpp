@@ -228,6 +228,98 @@ static void OptimizePool(Graph &G) {
   } // For all nodes in the graph.
 }
 
+static void OptimizeBatchNorm(Graph &G) {
+  auto &nodes = G.getNodes();
+
+  // For each node:
+  for (auto it = nodes.begin(), e = nodes.end(); it != e; ++it) {
+    // Merge the Batch Normalization operation into the convolution that comes
+    // before it by updating the weights of the filter.
+    if (auto *BN = dyn_cast<BatchNormalizationNode>(*it)) {
+      auto *CV = dyn_cast<ConvolutionNode>(BN->getInput());
+      if (!CV) {
+        continue;
+      }
+
+      // We can't modify conv operators that have multiple users.
+      if (!CV->hasOneUse()) {
+        continue;
+      }
+
+      // First, BN computation can be phrased as follows:
+      //
+      // (X - mean) * (1.0 / sqrt(var + eps)) * bn_scale + bias
+      //
+      // Thus, we can rewrite bn_scale as:
+      //  X * bn_scale * 1.0 / (sqrt(var + eps)) +
+      //    (bias - mean * (1.0 / sqrt(var + eps)) * bn_scale)
+      //
+      // Thus, can just have the affine transform:
+      //
+      //  X * A + B
+      //
+      //  where
+      //
+      //  A = bn_scale * 1.0 / (sqrt(running_var + eps))
+      //  B =  (bias - mean * (1.0 / sqrt(var + eps)) * bn_scale)
+      //
+      // Now, we have that the computation made is the following:
+      //
+      // ((X `conv` W) + b) * A + B
+      //
+      // Then, we can simply fuse this as follows:
+      //
+      // (X `conv` (W * A)) + b * A + B
+      //
+      // which is simply
+      //
+      // (X `conv` Q) + C
+      //
+      // where
+      //
+      // Q = W * A
+      // C = b * A + B
+
+      auto filterH = cast<Variable>(CV->getFilter())->getHandle<FloatTy>();
+      auto cbiasH = cast<Variable>(CV->getBias())->getHandle<FloatTy>();
+
+      auto scaleH = cast<Variable>(BN->getScale())->getHandle<FloatTy>();
+      auto biasH = cast<Variable>(BN->getBias())->getHandle<FloatTy>();
+      auto meanH = cast<Variable>(BN->getMean())->getHandle<FloatTy>();
+      auto varH = cast<Variable>(BN->getVar())->getHandle<FloatTy>();
+
+      // Update the filater/bias variables of the Conv node.
+      auto epsilon = BN->getEpsilon();
+      for (size_t i = 0, e = filterH.size(); i < e; i++) {
+        // Dimension zero is the 'channel' dimension. If we ever change the
+        // layout of the filter then we need to change this optimization.
+        size_t channelId = filterH.getDimForPtr(0, i);
+        FloatTy var = varH.at({channelId});
+        FloatTy stdvar = FloatTy(1.0) / std::sqrt(var + epsilon);
+        FloatTy gamma = scaleH.at({channelId});
+        FloatTy A = gamma * stdvar;
+        filterH.raw(i) = filterH.raw(i) * A;
+      }
+
+      for (size_t i = 0, e = cbiasH.size(); i < e; i++) {
+        // Dimension zero is the 'channel' dimension. If we ever change the
+        // layout of the filter then we need to change this optimization.
+        size_t channelId = cbiasH.getDimForPtr(0, i);
+        FloatTy mu = meanH.at({channelId});
+        FloatTy var = varH.at({channelId});
+        FloatTy stdvar = FloatTy(1.0) / std::sqrt(var + epsilon);
+        FloatTy gamma = scaleH.at({channelId});
+        FloatTy beta = biasH.at({channelId});
+        FloatTy A = gamma * stdvar;
+        FloatTy B = beta - mu * A;
+        cbiasH.raw(i) = cbiasH.raw(i) * A + B;
+      }
+
+      BN->replaceAllUsesOfWith(CV);
+    }
+  } // For all nodes in the graph.
+}
+
 void glow::optimize(Graph &G, OptimizationMode mode) {
   if (mode == OptimizationMode::None) {
     return;
@@ -238,6 +330,14 @@ void glow::optimize(Graph &G, OptimizationMode mode) {
 
   // Optimize the pooling operation.
   OptimizePool(G);
+
+  // Perform Dead Code Elimination.
+  DCE(G);
+
+  if (mode == OptimizationMode::Infer) {
+    // Merge batch normalization operations.
+    OptimizeBatchNorm(G);
+  }
 
   // Perform Dead Code Elimination.
   DCE(G);
