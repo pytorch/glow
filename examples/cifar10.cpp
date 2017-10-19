@@ -88,7 +88,7 @@ void testCIFAR10() {
   auto *FCL1 = G.createFullyConnected("fc", MP2, 10);
   auto *RL3 = G.createRELU("relu", FCL1);
   auto *SM = G.createSoftMax("softmax", RL3, E);
-  auto *result = G.createReturn("ret", SM);
+  auto *result = G.createSave("ret", SM);
 
   EE.compile(OptimizationMode::Train);
 
@@ -113,10 +113,11 @@ void testCIFAR10() {
       Tensor sample(ElemKind::FloatTy, {minibatchSize, 3, 32, 32});
       sample.copyConsecutiveSlices(&images, minibatchSize * i);
       EE.infer({A}, {&sample});
-      auto *res = EE.getTensor(result);
+      result->getOutput();
+      Tensor &res = result->getOutput()->getPayload();
 
       for (unsigned int iter = 0; iter < minibatchSize; iter++) {
-        auto T = res->getHandle<FloatTy>().extractSlice(iter);
+        auto T = res.getHandle<FloatTy>().extractSlice(iter);
         size_t guess = T.getHandle<FloatTy>().maxArg();
         size_t correct = labelsH.at({minibatchSize * i + iter, 0});
         score += guess == correct;

@@ -38,7 +38,7 @@ TEST(Interpreter, interpret) {
   auto *FCL1 = G.createFullyConnected("fc", MP2, 10);
   auto *RL3 = G.createRELU("relu", FCL1);
   auto *SM = G.createSoftMax("sm", RL3, ex);
-  G.createReturn("ret", SM);
+  G.createSave("ret", SM);
 
   EE.compile(OptimizationMode::Infer);
   EE.infer({input}, {&inputs});
@@ -61,7 +61,7 @@ TEST(Interpreter, trainASimpleNetwork) {
   O = G.createFullyConnected("fc", O, 4);
   O = G.createSigmoid("sig", O);
   O = G.createRegression("reg", O, E);
-  auto *result = G.createReturn("return", O);
+  auto *result = G.createSave("return", O);
 
   // Values for the input and output variables.
   Tensor inputs(ElemKind::FloatTy, {1, 4});
@@ -78,7 +78,7 @@ TEST(Interpreter, trainASimpleNetwork) {
 
   EE.optimize(OptimizationMode::Infer);
   EE.infer({A}, {&inputs});
-  auto RNWH = EE.getTensor(result)->getHandle<FloatTy>();
+  auto RNWH = result->getOutput()->getPayload().getHandle<FloatTy>();
   (void)RNWH;
 
   // Test the output:
@@ -107,7 +107,7 @@ TEST(Interpreter, simpleRegression) {
   Node *O = G.createFullyConnected("fc", A, 4);
   O = G.createRELU("relu", O);
   O = G.createRegression("reg", O, Ex);
-  auto *result = G.createReturn("result", O);
+  auto *result = G.createSave("result", O);
 
   auto I = inputs.getHandle<FloatTy>();
   auto E = expected.getHandle<FloatTy>();
@@ -130,7 +130,7 @@ TEST(Interpreter, simpleRegression) {
     I = {target, 0., 0., 0.};
     EE.infer({A}, {&inputs});
 
-    auto resH = EE.getTensor(result)->getHandle<FloatTy>();
+    auto resH = result->getOutput()->getPayload().getHandle<FloatTy>();
     (void)resH;
 
     EXPECT_NEAR(I.at({0, 0}) + 1, resH.at({0, 1}), 0.1);
@@ -158,7 +158,7 @@ TEST(Interpreter, learnXor) {
   O = G.createFullyConnected("fc", O, 1);
   O = G.createRELU("relu", O);
   O = G.createRegression("reg", O, Ex);
-  auto *result = G.createReturn("ret", O);
+  auto *result = G.createSave("ret", O);
 
   /// Prepare the training set and the testing set.
   Tensor trainingSet(ElemKind::FloatTy, {numInputs, 2});
@@ -190,7 +190,7 @@ TEST(Interpreter, learnXor) {
   }
 
   EE.infer({A}, {&trainingSet});
-  auto resH = EE.getTensor(result)->getHandle<FloatTy>();
+  auto resH = result->getOutput()->getPayload().getHandle<FloatTy>();
 
   // Test the output:
   for (size_t i = 0; i < numTests; i++) {
@@ -253,7 +253,7 @@ TEST(Network, circle) {
   auto *FCL1 = G.createFullyConnected("fc", RL0, 2);
   auto *RL1 = G.createRELU("relu", FCL1);
   auto *SM = G.createSoftMax("soft", RL1, S);
-  auto *result = G.createReturn("ret", SM);
+  auto *result = G.createSave("ret", SM);
 
   EE.compile(OptimizationMode::Train);
 
@@ -273,7 +273,7 @@ TEST(Network, circle) {
 
       EE.infer({A}, {&sample});
 
-      auto SMH = EE.getTensor(result)->getHandle<FloatTy>();
+      auto SMH = result->getOutput()->getPayload().getHandle<FloatTy>();
       auto A = SMH.at({0, 0});
       auto B = SMH.at({0, 1});
 
@@ -295,7 +295,7 @@ TEST(Network, circle) {
     Tensor sample(ElemKind::FloatTy, {1, 2});
     sample.getHandle<FloatTy>() = {0., 0.};
     EE.infer({A}, {&sample});
-    auto SMH = EE.getTensor(result)->getHandle<FloatTy>();
+    auto SMH = result->getOutput()->getPayload().getHandle<FloatTy>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
     EXPECT_LE(A, 0.1);
@@ -307,7 +307,7 @@ TEST(Network, circle) {
     Tensor sample(ElemKind::FloatTy, {1, 2});
     sample.getHandle<FloatTy>() = {1., 1.};
     EE.infer({A}, {&sample});
-    auto SMH = EE.getTensor(result)->getHandle<FloatTy>();
+    auto SMH = result->getOutput()->getPayload().getHandle<FloatTy>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
     EXPECT_GE(A, 0.9);
@@ -341,7 +341,7 @@ TEST(Network, learnSingleValueConcat) {
   // Concat:
   auto *C = G.createConcat("con", {L, R}, 1);
   auto *RN = G.createRegression("reg", C, Ex);
-  auto *result = G.createReturn("ret", RN);
+  auto *result = G.createSave("ret", RN);
 
   Tensor inputs(ElemKind::FloatTy, {1, width});
   Tensor expected(ElemKind::FloatTy, {1, width * 2});
@@ -357,7 +357,7 @@ TEST(Network, learnSingleValueConcat) {
 
   // Testing the output vector.
   EE.infer({A}, {&inputs});
-  auto RNWH = EE.getTensor(result)->getHandle<FloatTy>();
+  auto RNWH = result->getOutput()->getPayload().getHandle<FloatTy>();
   (void)RNWH;
 
   // Test the output:

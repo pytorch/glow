@@ -21,7 +21,7 @@ static void DCE(Graph &G) {
     changedLocally = false;
     for (auto it = nodes.begin(), e = nodes.end(); it != e;) {
       bool used = (*it)->hasUsers();
-      if (used || isa<ReturnNode>(*it)) {
+      if (used || isa<SaveNode>(*it)) {
         it++;
         continue;
       }

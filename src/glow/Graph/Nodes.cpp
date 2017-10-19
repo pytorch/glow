@@ -132,7 +132,6 @@ DEFINE_CLASS_VISITOR(ReshapeNode)
 DEFINE_CLASS_VISITOR(TransposeNode)
 DEFINE_CLASS_VISITOR(SigmoidNode)
 DEFINE_CLASS_VISITOR(TanhNode)
-DEFINE_CLASS_VISITOR(ReturnNode)
 
 void ConvolutionNode::visit(Node *parent, NodeVisitor *visitor) {
   if (!visitor->shouldVisit(parent, this)) {
@@ -207,6 +206,15 @@ void ConcatNode::visit(Node *parent, NodeVisitor *visitor) {
   for (auto &I : in_) {
     I->visit(this, visitor);
   }
+  visitor->post(parent, this);
+}
+void SaveNode::visit(Node *parent, NodeVisitor *visitor) {
+  if (!visitor->shouldVisit(parent, this)) {
+    return;
+  }
+  visitor->pre(parent, this);
+  in_->visit(this, visitor);
+  out_->visit(this, visitor);
   visitor->post(parent, this);
 }
 
@@ -331,7 +339,7 @@ std::string ArithmeticNode::getDebugDesc() const {
   return db;
 }
 
-std::string ReturnNode::getDebugDesc() const {
+std::string SaveNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName())).addParam("users", getNumUsers());
   return db;

@@ -352,7 +352,8 @@ void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
     loadOperator(op);
   }
 
-  root_ = getNodeByName(net.external_output(0));
+  auto *r = getNodeByName(net.external_output(0));
+  root_ = EE_.getGraph().createSave("output", r);
 }
 
 void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
@@ -459,13 +460,8 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   loadWeights(weightsDef);
   loadNetwork(networkDef);
 
-  // Save the result of the last operator into a weight.
-  root_ = G.createReturn("ret", root_);
-
   // Emit IR for the graph.
   EE.compile(OptimizationMode::Infer);
-      EE.getModule().dump();
-      EE.getGraph().dump();
 }
 
 caffe2ModelLoader::~caffe2ModelLoader() {

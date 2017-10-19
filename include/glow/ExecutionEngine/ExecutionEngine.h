@@ -62,10 +62,6 @@ public:
   void train(size_t iterations, llvm::ArrayRef<Variable *> vars,
              llvm::ArrayRef<Tensor *> inputs);
 
-  /// \returns a pointer to the tensor that is saved under \p v. The tensor
-  /// is owned by the Interpreter.
-  Tensor *getTensor(const Node *v) const;
-
   /// \returns a float-handle to the tensor that is stored at \p v.
   Handle<FloatTy> getWeightHandle(Variable *v) const;
 

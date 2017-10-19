@@ -79,7 +79,7 @@ int main(int argc, char **argv) {
   loadImageAndPreprocess(argv[1], &data, imageMode);
 
   ExecutionEngine EE;
-  Node *SM;
+  SaveNode *SM;
   Variable *i0;
   Variable *i1;
   {
@@ -96,8 +96,8 @@ int main(int argc, char **argv) {
   EE.infer({i0, i1}, {&data, &data});
   timer.stopTimer();
 
-  auto *res = EE.getTensor(SM);
-  auto H = res->getHandle<FloatTy>();
+  Tensor &res = SM->getOutput()->getPayload();
+  auto H = res.getHandle<FloatTy>();
   Tensor slice = H.extractSlice(0);
   auto SH = slice.getHandle<FloatTy>();
 

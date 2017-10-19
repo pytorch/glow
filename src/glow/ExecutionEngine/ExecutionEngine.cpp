@@ -123,12 +123,6 @@ void ExecutionEngine::optimize(OptimizationMode mode) {
   ::glow::optimize(*M_, mode);
 }
 
-Tensor *ExecutionEngine::getTensor(const Node *v) const {
-  auto val = M_->getWeightForNode(v);
-  assert(val && "Node does not have a registered IR value");
-  return IP_->getTensor(val);
-}
-
 /// \returns a float-handle to the tensor that is stored at \p v.
 Handle<FloatTy> ExecutionEngine::getWeightHandle(Variable *v) const {
   auto val = M_->getWeightForNode(v);

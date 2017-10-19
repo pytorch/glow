@@ -110,7 +110,8 @@ public:
   ArithmeticNode *createArithmetic(llvm::StringRef name, Node *LHS, Node *RHS,
                                    ArithmeticNode::OpKind op);
 
-  ReturnNode *createReturn(llvm::StringRef name, Node *input);
+  SaveNode *createSave(llvm::StringRef name, Node *input);
+  SaveNode *createSave(llvm::StringRef name, Node *input, Variable *output);
 
   /// @}
 

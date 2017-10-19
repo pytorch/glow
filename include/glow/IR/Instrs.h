@@ -44,7 +44,9 @@ class CopyInst : public Instruction {
 public:
   CopyInst(Value *dest, Value *src)
       : Instruction(Kinded::Kind::CopyInstKind, dest->getType(),
-                    {{dest, OperandKind::Out}, {src, OperandKind::In}}) {}
+                    {{dest, OperandKind::Out}, {src, OperandKind::In}}) {
+    assert(dest->getType() == src->getType() && "Invalid copy instr");
+  }
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::CopyInstKind;

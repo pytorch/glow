@@ -3,6 +3,7 @@
 
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Node.h"
+#include "glow/Support/Casting.h"
 
 namespace glow {
 
@@ -273,9 +274,9 @@ class ReshapeNode final : public Node {
   std::vector<size_t> dims_;
 
 public:
-  ReshapeNode(Node *in, llvm::StringRef name, llvm::ArrayRef<size_t> dims)
-      : Node(Kinded::Kind::ReshapeInstKind, in->getType(), name), in_(in),
-        dims_(dims.begin(), dims.end()) {}
+  ReshapeNode(Node *in, llvm::StringRef name, TypeRef TR)
+      : Node(Kinded::Kind::ReshapeInstKind, TR, name), in_(in),
+        dims_(TR->dims().begin(), TR->dims().end()) {}
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::ReshapeInstKind;
@@ -411,17 +412,20 @@ public:
   void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
-class ReturnNode final : public Node {
+class SaveNode final : public Node {
   NodeOperand in_;
+  NodeOperand out_;
 
 public:
-  ReturnNode(llvm::StringRef name, Node *input)
-      : Node(Kinded::Kind::ReturnInstKind, input->getType(), name), in_(input) {
-  }
+  SaveNode(llvm::StringRef name, Node *input, Variable *output)
+      : Node(Kinded::Kind::SaveInstKind, input->getType(), name), in_(input),
+        out_(output) {}
+
   static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::ReturnInstKind;
+    return k->getKind() == Kinded::Kind::SaveInstKind;
   }
   Node *getInput() const { return in_; }
+  Variable *getOutput() const { return cast<Variable>(out_.get()); }
 
   std::string getDebugDesc() const override;
   void visit(Node *parent, NodeVisitor *visitor) override;
