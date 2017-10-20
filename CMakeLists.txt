@@ -21,8 +21,6 @@ set(GLOW_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(GLOW_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${GLOW_BINARY_DIR}/bin)
 
-set(TRAINING_TENSOR_ELEMENT_TYPE float)
-
 include_directories(BEFORE
   ${CMAKE_CURRENT_BINARY_DIR}/include
   ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -35,11 +33,6 @@ file(GLOB_RECURSE header_files include/*.h)
 add_custom_target(CollectHeaders SOURCES ${header_files})
 
 find_package(PNG)
-
-configure_file (
-  "${GLOW_SOURCE_DIR}/include/Config.h.in"
-  "${GLOW_BINARY_DIR}/Config.h"
-  )
 
 add_subdirectory(external)
 add_subdirectory(src/glow/)

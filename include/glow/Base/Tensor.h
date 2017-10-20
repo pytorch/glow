@@ -1,8 +1,6 @@
 #ifndef GLOW_BASE_TENSOR_H
 #define GLOW_BASE_TENSOR_H
 
-#include "Config.h"
-
 #include "glow/Base/Type.h"
 #include "glow/Support/Compiler.h"
 #include "glow/Support/Random.h"
@@ -21,7 +19,7 @@
 namespace glow {
 
 /// This is the default floating point type used for training.
-using DefaultFloatTy = TRAINING_TENSOR_ELEMENT_TYPE;
+using DefaultFloatTy = float;
 
 template <class ElemTy> static char valueToChar(ElemTy val) {
   char ch = ' ';
