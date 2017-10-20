@@ -63,10 +63,10 @@ public:
              llvm::ArrayRef<Tensor *> inputs);
 
   /// \returns a float-handle to the tensor that is stored at \p v.
-  Handle<FloatTy> getWeightHandle(Variable *v) const;
+  Handle<glow::DefaultFloatTy> getWeightHandle(Variable *v) const;
 
   /// \returns a float-handle to the tensor that is stored at \p v.
-  Handle<FloatTy> getGradHandle(Variable *v);
+  Handle<glow::DefaultFloatTy> getGradHandle(Variable *v);
 
 private:
   /// Update the inputs for all variables \p vars with data from the inputs \p

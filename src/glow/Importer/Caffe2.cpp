@@ -164,7 +164,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // TODO: need to test this code with a large batch size to verify that the
     // conversion is correct.
     Tensor wtag;
-    w->getHandle<FloatTy>().transpose(&wtag, {0, 2, 3, 1});
+    w->getHandle<glow::DefaultFloatTy>().transpose(&wtag, {0, 2, 3, 1});
 
     // The structure of the conv weigts is: NHWC. We take the C, which is the
     // number of filters. We use this value to calculate the size of the bias
@@ -385,7 +385,7 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
 
       auto dim = getShape(dict["shape"]);
       T->reset(ElemKind::FloatTy, dim);
-      auto TH = T->getHandle<FloatTy>();
+      auto TH = T->getHandle<glow::DefaultFloatTy>();
       size_t i = 0;
       for (auto f : dict["values"]->floats()) {
         TH.raw(i++) = f;
@@ -420,7 +420,7 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
 
       auto dim = getShape(dict["shape"]);
       T->reset(ElemKind::FloatTy, dim);
-      auto TH = T->getHandle<FloatTy>();
+      auto TH = T->getHandle<glow::DefaultFloatTy>();
       TH.clear();
       continue;
     }

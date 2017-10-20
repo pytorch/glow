@@ -21,7 +21,7 @@
 namespace glow {
 
 /// This is the default floating point type used for training.
-using FloatTy = TRAINING_TENSOR_ELEMENT_TYPE;
+using DefaultFloatTy = TRAINING_TENSOR_ELEMENT_TYPE;
 
 template <class ElemTy> static char valueToChar(ElemTy val) {
   char ch = ' ';
@@ -114,7 +114,7 @@ public:
   /// Initialize from a list of float literals.
   Tensor(const std::initializer_list<double> &vec) {
     reset(ElemKind::FloatTy, {vec.size()});
-    auto *data = getRawDataPointer<FloatTy>();
+    auto *data = getRawDataPointer<glow::DefaultFloatTy>();
     int i = 0;
     for (auto &f : vec) {
       data[i++] = f;

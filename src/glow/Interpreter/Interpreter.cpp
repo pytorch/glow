@@ -55,12 +55,12 @@ Tensor *Interpreter::getOrCreateGradTensor(const Value *v) {
   return N;
 }
 
-Handle<FloatTy> Interpreter::getWeightHandle(Value *v) const {
-  return getTensor(v)->getHandle<FloatTy>();
+Handle<glow::DefaultFloatTy> Interpreter::getWeightHandle(Value *v) const {
+  return getTensor(v)->getHandle<glow::DefaultFloatTy>();
 }
 
-Handle<FloatTy> Interpreter::getGradHandle(Value *v) {
-  return getOrCreateGradTensor(v)->getHandle<FloatTy>();
+Handle<glow::DefaultFloatTy> Interpreter::getGradHandle(Value *v) {
+  return getOrCreateGradTensor(v)->getHandle<glow::DefaultFloatTy>();
 }
 
 Tensor *Interpreter::getOrCreateTensor(const Value *v) {

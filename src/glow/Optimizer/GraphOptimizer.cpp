@@ -306,10 +306,11 @@ static void OptimizeBatchNorm(Graph &G) {
         // Dimension zero is the 'channel' dimension. If we ever change the
         // layout of the filter then we need to change this optimization.
         size_t channelId = filterH.getDimForPtr(0, i);
-        FloatTy var = varH.at({channelId});
-        FloatTy stdvar = FloatTy(1.0) / std::sqrt(var + epsilon);
-        FloatTy gamma = scaleH.at({channelId});
-        FloatTy A = gamma * stdvar;
+        glow::DefaultFloatTy var = varH.at({channelId});
+        glow::DefaultFloatTy stdvar =
+            glow::DefaultFloatTy(1.0) / std::sqrt(var + epsilon);
+        glow::DefaultFloatTy gamma = scaleH.at({channelId});
+        glow::DefaultFloatTy A = gamma * stdvar;
         filterH.raw(i) = filterH.raw(i) * A;
       }
 
@@ -317,13 +318,14 @@ static void OptimizeBatchNorm(Graph &G) {
         // Dimension zero is the 'channel' dimension. If we ever change the
         // layout of the filter then we need to change this optimization.
         size_t channelId = cbiasH.getDimForPtr(0, i);
-        FloatTy mu = meanH.at({channelId});
-        FloatTy var = varH.at({channelId});
-        FloatTy stdvar = FloatTy(1.0) / std::sqrt(var + epsilon);
-        FloatTy gamma = scaleH.at({channelId});
-        FloatTy beta = biasH.at({channelId});
-        FloatTy A = gamma * stdvar;
-        FloatTy B = beta - mu * A;
+        glow::DefaultFloatTy mu = meanH.at({channelId});
+        glow::DefaultFloatTy var = varH.at({channelId});
+        glow::DefaultFloatTy stdvar =
+            glow::DefaultFloatTy(1.0) / std::sqrt(var + epsilon);
+        glow::DefaultFloatTy gamma = scaleH.at({channelId});
+        glow::DefaultFloatTy beta = biasH.at({channelId});
+        glow::DefaultFloatTy A = gamma * stdvar;
+        glow::DefaultFloatTy B = beta - mu * A;
         cbiasH.raw(i) = cbiasH.raw(i) * A + B;
       }
 

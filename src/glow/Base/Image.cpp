@@ -76,7 +76,7 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   fclose(fp);
 
   T->reset(ElemKind::FloatTy, {width, height, 3});
-  auto H = T->getHandle<FloatTy>();
+  auto H = T->getHandle<glow::DefaultFloatTy>();
 
   float scale = ((range.second - range.first) / 255.0);
   float bias = range.first;
@@ -131,7 +131,7 @@ bool glow::writePngImage(Tensor *T, const char *filename,
     return true;
   }
 
-  auto H = T->getHandle<FloatTy>();
+  auto H = T->getHandle<glow::DefaultFloatTy>();
 
   auto odim = H.dims();
   assert(odim[2] < 4 && "Invalid buffer to save");
