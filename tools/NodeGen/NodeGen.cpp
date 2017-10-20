@@ -1,7 +1,7 @@
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
-#include <fstream>
 
 class NodeBuilder {
   /// The type-initialization expression.
@@ -51,7 +51,8 @@ public:
     return *this;
   }
   void done(std::ofstream &OS) {
-    std::string sb = "class " + name_ + "Node final : public Node {\n";
+    std::string sb = "namespace glow {\n";
+    sb += "class " + name_ + "Node final : public Node {\n";
 
     if (enum_.size()) {
       sb += "\tpublic:\n";
@@ -133,7 +134,7 @@ public:
     sb += "\tstd::string getDebugDesc() const override;\n";
     sb += "\tvoid visit(Node *parent, NodeVisitor *visitor) override;\n";
     sb += "};\n\n";
-
+    sb += " } // namespace glow\n";
     OS << sb;
   }
 };
@@ -141,9 +142,11 @@ public:
 int main(int argc, char **argv) {
   if (argc != 2) {
     std::cerr << "Usage: " << argv[0] << " output.h"
-    << "\n";
+              << "\n";
     return -1;
   }
+
+  std::cout << "Writing into " << argv[1] << "\n";
 
   std::ofstream OS;
   OS.open(argv[1]);
@@ -155,7 +158,9 @@ int main(int argc, char **argv) {
       .addMember("size_t", "Kernel")
       .addMember("size_t", "Pad")
       .addMember("size_t", "Stride")
-      .addMember("size_t", "Depth").done(OS);
+      .addMember("size_t", "Depth")
+      .setType("Input->getType()")
+      .done(OS);
 
   NodeBuilder("Pool")
       .addEnumCase("Max")
@@ -165,10 +170,14 @@ int main(int argc, char **argv) {
       .addMember("size_t", "Stride")
       .addMember("size_t", "Pad")
       .addExtraParam("TypeRef", "outTy")
-      .setType("outTy").done(OS);
+      .setType("outTy")
+      .done(OS);
 
   NodeBuilder("Relu").addOperand("Input").setType("Input->getType()").done(OS);
-  NodeBuilder("Sigmoid").addOperand("Input").setType("Input->getType()").done(OS);
+  NodeBuilder("Sigmoid")
+      .addOperand("Input")
+      .setType("Input->getType()")
+      .done(OS);
   NodeBuilder("Tanh").addOperand("Input").setType("Input->getType()").done(OS);
 
   OS.close();
