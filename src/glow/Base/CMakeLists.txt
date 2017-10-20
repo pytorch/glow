@@ -1,11 +1,17 @@
 
 add_library(Base
-              Train.cpp
-              Type.cpp
-              Image.cpp)
+              ${CMAKE_SOURCE_DIR}/include/glow/Base/Image.h
+              ${CMAKE_SOURCE_DIR}/include/glow/Base/Tensor.h
+              ${CMAKE_SOURCE_DIR}/include/glow/Base/Train.h
+              ${CMAKE_SOURCE_DIR}/include/glow/Base/Traits.h
+              ${CMAKE_SOURCE_DIR}/include/glow/Base/Type.h
+
+              ${CMAKE_SOURCE_DIR}/src/glow/Base/Train.cpp
+              ${CMAKE_SOURCE_DIR}/src/glow/Base/Type.cpp
+              ${CMAKE_SOURCE_DIR}/src/glow/Base/Image.cpp)
 target_link_libraries(Base
                       PUBLIC
-                       Support)
+                        Support)
 if(PNG_FOUND)
   target_compile_definitions(Base
                              PRIVATE
@@ -17,4 +23,3 @@ if(PNG_FOUND)
                         PRIVATE
                           ${PNG_LIBRARY})
 endif()
-

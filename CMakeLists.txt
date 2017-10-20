@@ -17,27 +17,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(GlowDefaults)
 include(SanitizerSupport)
 
-set(GLOW_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-set(GLOW_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${GLOW_BINARY_DIR}/bin)
-
-include_directories(BEFORE
-  ${CMAKE_CURRENT_BINARY_DIR}/include
-  ${CMAKE_CURRENT_SOURCE_DIR}/include
-  )
-
-include_directories (${GLOW_BINARY_DIR})
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
-
-file(GLOB_RECURSE header_files include/*.h)
-add_custom_target(CollectHeaders SOURCES ${header_files})
+include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 find_package(PNG)
 
 add_subdirectory(external)
-add_subdirectory(src/glow/)
-add_subdirectory(examples/)
-add_subdirectory(tools/)
+add_subdirectory(src/glow)
+add_subdirectory(examples)
+add_subdirectory(tools)
 
 if(ENABLE_TESTING)
   add_subdirectory(tests)
