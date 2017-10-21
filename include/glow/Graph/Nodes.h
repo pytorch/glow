@@ -5,6 +5,8 @@
 #include "glow/Graph/Node.h"
 #include "glow/Support/Casting.h"
 
+#include "AutoGenNodes.h"
+
 namespace glow {
 
 class Variable final : public Node {
@@ -59,88 +61,16 @@ public:
   void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
-class ConvolutionNode final : public Node {
-  NodeOperand in_;
-  NodeOperand filter_;
-  NodeOperand bias_;
-
-  size_t kernel_;
-  size_t stride_;
-  size_t pad_;
-  size_t depth_;
-
-public:
-  ConvolutionNode(Node *in, TypeRef outTy, llvm::StringRef name, Node *filter,
-                  Node *bias, size_t kernel, size_t stride, size_t pad,
-                  size_t depth)
-      : Node(Kinded::Kind::ConvolutionInstKind, outTy, name), in_(in),
-        filter_(filter), bias_(bias), kernel_(kernel), stride_(stride),
-        pad_(pad), depth_(depth) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::ConvolutionInstKind;
-  }
-
-  bool mayShareBuffers() const { return false; }
-
-  Node *getInput() const { return in_; }
-  Node *getFilter() const { return filter_; }
-  Node *getBias() const { return bias_; }
-
-  size_t getKernel() const { return kernel_; }
-  size_t getStride() const { return stride_; }
-  size_t getPad() const { return pad_; }
-  size_t getDepth() const { return depth_; }
-
-  std::string getDebugDesc() const override;
-  void visit(Node *parent, NodeVisitor *visitor) override;
-
-  /// Calculate the size of the output tensor based on the convolution
-  /// parameters.
-  static std::pair<size_t, size_t> calculateOutputDims(size_t sx, size_t sy,
-                                                       size_t pad,
-                                                       size_t filterSize,
-                                                       size_t stride) {
-    size_t outsx = ((sx + pad * 2 - filterSize) / stride + 1);
-    size_t outsy = ((sy + pad * 2 - filterSize) / stride + 1);
-    return {outsx, outsy};
-  }
-};
-
-class PoolNode final : public Node {
-public:
-  /// Specifies the kind of pooling done by the operator.
-  enum class OpKind {
-    Max,
-    Avg,
-  };
-
-private:
-  NodeOperand in_;
-  size_t kernel_;
-  size_t stride_;
-  size_t pad_;
-  OpKind kind_;
-
-public:
-  PoolNode(Node *in, TypeRef outTy, llvm::StringRef name, OpKind kind,
-           size_t kernel, size_t stride, size_t pad)
-      : Node(Kinded::Kind::PoolInstKind, outTy, name), in_(in), kernel_(kernel),
-        stride_(stride), pad_(pad), kind_(kind) {}
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::PoolInstKind;
-  }
-
-  Node *getInput() const { return in_; }
-
-  size_t getKernel() const { return kernel_; }
-  size_t getStride() const { return stride_; }
-  size_t getPad() const { return pad_; }
-  OpKind getKind() const { return kind_; }
-
-  std::string getDebugDesc() const override;
-  void visit(Node *parent, NodeVisitor *visitor) override;
-};
+/// Calculate the size of the output tensor based on the convolution
+/// parameters.
+inline std::pair<size_t, size_t> calculateConvOutputDims(size_t sx, size_t sy,
+                                                         size_t pad,
+                                                         size_t filterSize,
+                                                         size_t stride) {
+  size_t outsx = ((sx + pad * 2 - filterSize) / stride + 1);
+  size_t outsy = ((sy + pad * 2 - filterSize) / stride + 1);
+  return {outsx, outsy};
+}
 
 class FullyConnectedNode final : public Node {
   NodeOperand in_;
@@ -164,51 +94,6 @@ public:
   Node *getFilter() const { return filter_; }
   Node *getBias() const { return bias_; }
   size_t getDepth() const { return depth_; }
-
-  std::string getDebugDesc() const override;
-  void visit(Node *parent, NodeVisitor *visitor) override;
-};
-
-class ReluNode final : public Node {
-  NodeOperand in_;
-
-public:
-  ReluNode(Node *in, llvm::StringRef name)
-      : Node(Kinded::Kind::ReluInstKind, in->getType(), name), in_(in) {}
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::ReluInstKind;
-  }
-  Node *getInput() { return in_; }
-
-  std::string getDebugDesc() const override;
-  void visit(Node *parent, NodeVisitor *visitor) override;
-};
-
-class SigmoidNode final : public Node {
-  NodeOperand in_;
-
-public:
-  SigmoidNode(Node *in, llvm::StringRef name)
-      : Node(Kinded::Kind::SigmoidInstKind, in->getType(), name), in_(in) {}
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::SigmoidInstKind;
-  }
-  Node *getInput() { return in_; }
-
-  std::string getDebugDesc() const override;
-  void visit(Node *parent, NodeVisitor *visitor) override;
-};
-
-class TanhNode final : public Node {
-  NodeOperand in_;
-
-public:
-  TanhNode(Node *in, llvm::StringRef name)
-      : Node(Kinded::Kind::TanhInstKind, in->getType(), name), in_(in) {}
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::TanhInstKind;
-  }
-  Node *getInput() { return in_; }
 
   std::string getDebugDesc() const override;
   void visit(Node *parent, NodeVisitor *visitor) override;

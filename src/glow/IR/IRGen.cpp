@@ -75,7 +75,7 @@ public:
     case glow::Kinded::Kind::PoolInstKind: {
       auto *P = cast<PoolNode>(N);
       auto *in = valueForNode(P->getInput());
-      auto *V = builder_.createPoolOp(in, P->getKind(), P->getKernel(),
+      auto *V = builder_.createPoolOp(in, P->getMode(), P->getKernel(),
                                       P->getStride(), P->getPad());
       V->setName(N->getName());
       registerIR(N, V->getDest());

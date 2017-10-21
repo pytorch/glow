@@ -5,7 +5,7 @@ add_library(Base
               Image.cpp)
 target_link_libraries(Base
                       PUBLIC
-                        IR)
+                       Support)
 if(PNG_FOUND)
   target_compile_definitions(Base
                              PRIVATE

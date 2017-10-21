@@ -129,7 +129,7 @@ TEST(Network, gradientCheck_Conv) {
                               Variable::InitKind::Extern);
 
   Node *O = G.createConv("conv", A, 16, 5, 1, 2);
-  O = G.createPool("pool", O, PoolNode::OpKind::Max, 3, 3, 0);
+  O = G.createPool("pool", O, PoolNode::Mode::Max, 3, 3, 0);
   O = G.createFullyConnected("fc", O, numOutputElem);
   O = G.createRELU("relu", O);
   O = G.createRegression("reg", O, Ex);
@@ -163,7 +163,7 @@ TEST(Network, gradientCheck_AvgPool) {
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
                                Variable::InitKind::Extern);
 
-  Node *O = G.createPool("pool", A, PoolNode::OpKind::Avg, 3, 3, 0);
+  Node *O = G.createPool("pool", A, PoolNode::Mode::Avg, 3, 3, 0);
   O = G.createFullyConnected("fc", O, numOutputElem);
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createSave("ret", O);

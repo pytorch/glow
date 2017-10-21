@@ -6,6 +6,7 @@ add_library(IR
               Instrs.cpp)
 target_link_libraries(IR
                       PUBLIC
+                        Graph
                         Base
                         Support)
 

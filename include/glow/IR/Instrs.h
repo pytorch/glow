@@ -95,7 +95,7 @@ public:
 
 class PoolInst : public Instruction {
 public:
-  using OpKind = PoolNode::OpKind;
+  using OpKind = PoolNode::Mode;
 
 private:
   size_t kernel_;
