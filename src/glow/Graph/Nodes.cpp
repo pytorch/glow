@@ -138,15 +138,6 @@ void ConcatNode::visit(Node *parent, NodeVisitor *visitor) {
   }
   visitor->post(parent, this);
 }
-void SaveNode::visit(Node *parent, NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(parent, this)) {
-    return;
-  }
-  visitor->pre(parent, this);
-  in_->visit(this, visitor);
-  out_->visit(this, visitor);
-  visitor->post(parent, this);
-}
 
 //===----------------------------------------------------------------------===//
 //                     Debug description methods
@@ -175,12 +166,6 @@ std::string ConcatNode::getDebugDesc() const {
   db.addParam("output", *getType())
       .addParam("dimension", dim_)
       .addParam("users", getNumUsers());
-  return db;
-}
-
-std::string SaveNode::getDebugDesc() const {
-  DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName())).addParam("users", getNumUsers());
   return db;
 }
 

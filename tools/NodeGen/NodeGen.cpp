@@ -1,6 +1,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 class NodeBuilder {
@@ -16,6 +17,9 @@ class NodeBuilder {
   std::vector<std::string> enum_;
   /// A list of extra parameters that are passed to the constructor.
   std::vector<std::pair<std::string, std::string>> extraParams_;
+
+  /// A list of getters to override. Format (variable name, alternative getter).
+  std::unordered_map<std::string, std::string> overrideGetter_;
 
 public:
   NodeBuilder(const std::string &name) : name_(name) {}
@@ -33,6 +37,14 @@ public:
     members_.push_back({type, name});
     return *this;
   }
+
+  /// Override the getter for variable \p var with the body \p body.
+  NodeBuilder &overrideGetter(const std::string &var, const std::string &body) {
+    assert(!overrideGetter_.count(var) && "Variable already overridden");
+    overrideGetter_[var] = body;
+    return *this;
+  }
+
   /// Add an field to the enum. The enum name should start with a capital
   /// letter. For example: "External".
   NodeBuilder &addEnumCase(const std::string &op) {
@@ -141,6 +153,14 @@ public:
 
     // Print the getters/setters.
     for (auto op : operands_) {
+      // Synthesize a user-defined getter.
+      auto it = overrideGetter_.find(op);
+      if (it != overrideGetter_.end()) {
+        sb += "\t" + it->second + "\n";
+        continue;
+      }
+
+      // Synthesize the general getter.
       sb += "\tNode *get" + op + "() const { return " + op + "_; }\n";
     }
     for (auto op : members_) {
@@ -356,6 +376,14 @@ int main(int argc, char **argv) {
   NodeBuilder("Tanh")
       .addOperand("Input")
       .setType("Input->getType()")
+      .done(hFile, cFile);
+
+  NodeBuilder("Save")
+      .addOperand("Input")
+      .addOperand("Output")
+      .setType("Input->getType()")
+      .overrideGetter("Output", "Variable *getOutput() const { return "
+                                "cast<Variable>(Output_.get()); };")
       .done(hFile, cFile);
 
   hFile.close();
