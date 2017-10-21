@@ -20,8 +20,8 @@ void Trainer::train(Tensor *weights, Tensor *gradients, size_t batchSize) {
   float momentum = config.momentum;
 
   auto sz = weights->size();
-  auto W = weights->getHandle<glow::DefaultFloatTy>();
-  auto G = gradients->getHandle<glow::DefaultFloatTy>();
+  auto W = weights->getHandle<>();
+  auto G = gradients->getHandle<>();
   auto Gsum = Handle<glow::DefaultFloatTy>::createInvalidHandle();
 
   /// If we are using the momentum technique then we need to allocate an array
@@ -30,12 +30,12 @@ void Trainer::train(Tensor *weights, Tensor *gradients, size_t batchSize) {
     auto it = gsum_.find(gradients);
 
     if (it != gsum_.end()) {
-      Gsum = it->second->getHandle<glow::DefaultFloatTy>();
+      Gsum = it->second->getHandle<>();
     } else {
       auto *gs = new Tensor();
       gs->reset(gradients);
       gsum_[gradients] = gs;
-      Gsum = gs->getHandle<glow::DefaultFloatTy>();
+      Gsum = gs->getHandle<>();
     }
   }
 

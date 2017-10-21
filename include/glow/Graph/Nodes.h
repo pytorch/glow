@@ -48,7 +48,7 @@ public:
 
   Tensor &getPayload() { return payload_; }
 
-  template <class ElemTy> Handle<ElemTy> getHandle() {
+  template <class ElemTy = glow::DefaultFloatTy> Handle<ElemTy> getHandle() {
     return getPayload().getHandle<ElemTy>();
   }
 

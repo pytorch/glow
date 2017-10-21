@@ -33,7 +33,7 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
   size_t idx = 0;
 
   auto LIH = labelInputs.getHandle<size_t>();
-  auto IIH = imageInputs.getHandle<glow::DefaultFloatTy>();
+  auto IIH = imageInputs.getHandle<>();
 
   for (unsigned w = 0; w < mnistNumImages; w++) {
     LIH.at({w, 0}) = labels[w];
@@ -124,19 +124,19 @@ void testMNIST() {
   Tensor &res = result->getOutput()->getPayload();
 
   for (unsigned int iter = 0; iter < minibatchSize; iter++) {
-    auto T = res.getHandle<glow::DefaultFloatTy>().extractSlice(iter);
-    size_t guess = T.getHandle<glow::DefaultFloatTy>().maxArg();
+    auto T = res.getHandle<>().extractSlice(iter);
+    size_t guess = T.getHandle<>().maxArg();
 
     size_t correct = LIH.at(iter);
     rightAnswer += (guess == correct);
 
-    auto I = sample.getHandle<glow::DefaultFloatTy>().extractSlice(iter);
-    auto J = I.getHandle<glow::DefaultFloatTy>().extractSlice(0);
+    auto I = sample.getHandle<>().extractSlice(iter);
+    auto J = I.getHandle<>().extractSlice(0);
 
-    J.getHandle<glow::DefaultFloatTy>().dumpAscii("MNIST Input");
+    J.getHandle<>().dumpAscii("MNIST Input");
     std::cout << "Expected: " << correct << " Guessed: " << guess << "\n";
 
-    T.getHandle<glow::DefaultFloatTy>().dump("", "\n");
+    T.getHandle<>().dump("", "\n");
     std::cout << "\n-------------\n";
   }
 

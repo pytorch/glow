@@ -231,7 +231,7 @@ public:
   }
 
   /// \return a new handle that points and manages this tensor.
-  template <class ElemTy> Handle<ElemTy> getHandle();
+  template <class ElemTy = glow::DefaultFloatTy> Handle<ElemTy> getHandle();
 };
 
 /// A class that provides indexed access to a tensor. This class has value

@@ -568,7 +568,7 @@ void Interpreter::bwdSoftMaxInst(const SoftMaxInst *I) {
   auto inG = getGradHandle(I->getSrc());
 
   auto idim = inG.dims();
-  auto EH = getTensor(I->getE())->getHandle<glow::DefaultFloatTy>();
+  auto EH = getTensor(I->getE())->getHandle<>();
   auto selectedH = getTensor(I->getSelected())->getHandle<size_t>();
 
   // http://eli.thegreenplace.net/2016/the-softmax-function-and-its-derivative/
@@ -599,7 +599,7 @@ void Interpreter::bwdRegressionInst(const RegressionInst *I) {
   auto idim = inW.dims();
   assert(idim.size() == 2 && "Input is expected to be a vector per input");
 
-  auto e = expected->getHandle<glow::DefaultFloatTy>();
+  auto e = expected->getHandle<>();
 
   // For each input in the batch:
   for (size_t n = 0; n < idim[0]; n++) {
@@ -790,8 +790,8 @@ void Interpreter::fwdBatchNormalizationInst_train(
 
   Tensor localMean(ElemKind::FloatTy, meanH.dims());
   Tensor localVar(ElemKind::FloatTy, varH.dims());
-  auto localMeanH = localMean.getHandle<glow::DefaultFloatTy>();
-  auto localVarH = localVar.getHandle<glow::DefaultFloatTy>();
+  auto localMeanH = localMean.getHandle<>();
+  auto localVarH = localVar.getHandle<>();
 
   // The number of different channels.
   const size_t numChannels = inW.dims()[channelIdx];
@@ -853,8 +853,8 @@ void Interpreter::bwdBatchNormalizationInst(const BatchNormalizationInst *I) {
   // Update the gradient of the incoming buffer:
   Tensor dyhmu(ElemKind::FloatTy, meanH.dims());
   Tensor sumDy(ElemKind::FloatTy, meanH.dims());
-  auto dyhmuH = dyhmu.getHandle<glow::DefaultFloatTy>();
-  auto sumDyH = sumDy.getHandle<glow::DefaultFloatTy>();
+  auto dyhmuH = dyhmu.getHandle<>();
+  auto sumDyH = sumDy.getHandle<>();
 
   // The number of different channels.
   const size_t numChannels = inW.dims()[channelIdx];

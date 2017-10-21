@@ -48,12 +48,12 @@ void loadImageAndPreprocess(const std::string &filename, Tensor *result,
 
   Tensor localCopy;
   readPngImage(&localCopy, filename.c_str(), range);
-  auto imageH = localCopy.getHandle<glow::DefaultFloatTy>();
+  auto imageH = localCopy.getHandle<>();
 
   auto dims = localCopy.dims();
 
   result->reset(ElemKind::FloatTy, {1, 3, dims[0], dims[1]});
-  auto RH = result->getHandle<glow::DefaultFloatTy>();
+  auto RH = result->getHandle<>();
 
   // Convert to BGR.
   for (unsigned z = 0; z < 3; z++) {
@@ -97,9 +97,9 @@ int main(int argc, char **argv) {
   timer.stopTimer();
 
   Tensor &res = SM->getOutput()->getPayload();
-  auto H = res.getHandle<glow::DefaultFloatTy>();
+  auto H = res.getHandle<>();
   Tensor slice = H.extractSlice(0);
-  auto SH = slice.getHandle<glow::DefaultFloatTy>();
+  auto SH = slice.getHandle<>();
 
   std::cout << "\n";
 

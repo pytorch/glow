@@ -292,13 +292,13 @@ static void OptimizeBatchNorm(Graph &G) {
       // Q = W * A
       // C = b * A + B
 
-      auto filterH = cast<Variable>(CV->getFilter())->getHandle<FloatTy>();
-      auto cbiasH = cast<Variable>(CV->getBias())->getHandle<FloatTy>();
+      auto filterH = cast<Variable>(CV->getFilter())->getHandle<>();
+      auto cbiasH = cast<Variable>(CV->getBias())->getHandle<>();
 
-      auto scaleH = cast<Variable>(BN->getScale())->getHandle<FloatTy>();
-      auto biasH = cast<Variable>(BN->getBias())->getHandle<FloatTy>();
-      auto meanH = cast<Variable>(BN->getMean())->getHandle<FloatTy>();
-      auto varH = cast<Variable>(BN->getVar())->getHandle<FloatTy>();
+      auto scaleH = cast<Variable>(BN->getScale())->getHandle<>();
+      auto biasH = cast<Variable>(BN->getBias())->getHandle<>();
+      auto meanH = cast<Variable>(BN->getMean())->getHandle<>();
+      auto varH = cast<Variable>(BN->getVar())->getHandle<>();
 
       // Update the filater/bias variables of the Conv node.
       auto epsilon = BN->getEpsilon();
