@@ -144,7 +144,7 @@ static void SinkTranspose(Graph &G) {
       }
 
       auto *newAN = G.createArithmetic(AN->getName(), LTR->getInput(),
-                                       RTR->getInput(), AN->getKind());
+                                       RTR->getInput(), AN->getMode());
       auto *newTR = G.createTranspose(LTR->getName(), newAN, LTR->getShuffle());
       AN->replaceAllUsesOfWith(newTR);
     }

@@ -135,35 +135,6 @@ public:
   void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
-class ArithmeticNode final : public Node {
-public:
-  /// Specifies the kind of pooling done by the operator.
-  enum class OpKind {
-    Add,
-    Mul,
-  };
-
-private:
-  NodeOperand LHS_;
-  NodeOperand RHS_;
-  OpKind kind_;
-  const char *getKindStr() const;
-
-public:
-  ArithmeticNode(llvm::StringRef name, Node *LHS, Node *RHS, OpKind kind)
-      : Node(Kinded::Kind::ArithmeticInstKind, LHS->getType(), name), LHS_(LHS),
-        RHS_(RHS), kind_(kind) {}
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::ArithmeticInstKind;
-  }
-  Node *getLHS() const { return LHS_; }
-  Node *getRHS() const { return RHS_; }
-  OpKind getKind() const { return kind_; }
-
-  std::string getDebugDesc() const override;
-  void visit(Node *parent, NodeVisitor *visitor) override;
-};
-
 class SaveNode final : public Node {
   NodeOperand in_;
   NodeOperand out_;

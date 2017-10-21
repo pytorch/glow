@@ -298,7 +298,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *in0 = getOrCreateNodeByName(op.input(0));
     auto *in1 = getOrCreateNodeByName(op.input(1));
     auto *node =
-        G.createArithmetic(op.name(), in0, in1, ArithmeticNode::OpKind::Add);
+        G.createArithmetic(op.name(), in0, in1, ArithmeticNode::Mode::Add);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;
