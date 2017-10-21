@@ -198,7 +198,7 @@ BatchNormalizationNode *Graph::createBatchNormalization(llvm::StringRef name,
 BatchNormalizationNode *Graph::createBatchNormalization(
     llvm::StringRef name, Node *input, Node *beta, Node *gamma, Node *mean,
     Node *var, size_t channelIdx, float epsilon, float momentum) {
-  return addNode(new BatchNormalizationNode(input, name, gamma, beta, mean, var,
+  return addNode(new BatchNormalizationNode(name, input, gamma, beta, mean, var,
                                             channelIdx, epsilon, momentum));
 }
 

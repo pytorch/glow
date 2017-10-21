@@ -276,6 +276,18 @@ int main(int argc, char **argv) {
       .setType("outTy")
       .done(hFile, cFile);
 
+  NodeBuilder("BatchNormalization")
+      .addOperand("Input")
+      .addOperand("Scale")
+      .addOperand("Bias")
+      .addOperand("Mean")
+      .addOperand("Var")
+      .addMember("size_t", "ChannelIdx")
+      .addMember("float", "Epsilon")
+      .addMember("float", "Momentum")
+      .setType("Input->getType()")
+      .done(hFile, cFile);
+
   NodeBuilder("SoftMax")
       .addOperand("Input")
       .addOperand("Selected")

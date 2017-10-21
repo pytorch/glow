@@ -129,19 +129,6 @@ DEFINE_CLASS_VISITOR(LocalResponseNormalizationNode)
 DEFINE_CLASS_VISITOR(ReshapeNode)
 DEFINE_CLASS_VISITOR(TransposeNode)
 
-void BatchNormalizationNode::visit(Node *parent, NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(parent, this)) {
-    return;
-  }
-  visitor->pre(parent, this);
-  in_->visit(this, visitor);
-  scale_->visit(this, visitor);
-  bias_->visit(this, visitor);
-  mean_->visit(this, visitor);
-  var_->visit(this, visitor);
-  visitor->post(parent, this);
-}
-
 void ArithmeticNode::visit(Node *parent, NodeVisitor *visitor) {
   if (!visitor->shouldVisit(parent, this)) {
     return;
@@ -210,19 +197,6 @@ std::string ConcatNode::getDebugDesc() const {
   }
   db.addParam("output", *getType())
       .addParam("dimension", dim_)
-      .addParam("users", getNumUsers());
-  return db;
-}
-
-std::string BatchNormalizationNode::getDebugDesc() const {
-  DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()))
-      .addParam("input", *in_->getType())
-      .addParam("beta", *bias_->getType())
-      .addParam("gamma", *scale_->getType())
-      .addParam("channelIdx", channelIdx_)
-      .addParam("epsilon", epsilon_)
-      .addParam("momentum", momentum_)
       .addParam("users", getNumUsers());
   return db;
 }
