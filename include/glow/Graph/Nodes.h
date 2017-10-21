@@ -135,42 +135,6 @@ public:
   void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
-class BatchNormalizationNode final : public Node {
-  NodeOperand in_;
-  NodeOperand scale_;
-  NodeOperand bias_;
-  NodeOperand mean_;
-  NodeOperand var_;
-  const size_t channelIdx_;
-  const float epsilon_;
-  const float momentum_;
-
-public:
-  BatchNormalizationNode(Node *in, llvm::StringRef name, Node *scale,
-                         Node *bias, Node *mean, Node *var, size_t channelIdx,
-                         float epsilon, float momentum)
-      : Node(Kinded::Kind::BatchNormalizationInstKind, in->getType(), name),
-        in_(in), scale_(scale), bias_(bias), mean_(mean), var_(var),
-        channelIdx_(channelIdx), epsilon_(epsilon), momentum_(momentum) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::BatchNormalizationInstKind;
-  }
-  Node *getInput() const { return in_; }
-
-  Node *getScale() const { return scale_; }
-  Node *getBias() const { return bias_; }
-  Node *getMean() const { return mean_; }
-  Node *getVar() const { return var_; }
-
-  size_t getChannelIdx() const { return channelIdx_; }
-  float getEpsilon() const { return epsilon_; }
-  float getMomentum() const { return momentum_; }
-
-  std::string getDebugDesc() const override;
-  void visit(Node *parent, NodeVisitor *visitor) override;
-};
-
 class ArithmeticNode final : public Node {
 public:
   /// Specifies the kind of pooling done by the operator.
