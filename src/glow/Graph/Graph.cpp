@@ -215,10 +215,10 @@ Graph::createLocalResponseNormalization(llvm::StringRef name, Node *input,
 }
 
 ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, Node *LHS,
-                                        Node *RHS, ArithmeticNode::OpKind op) {
+                                        Node *RHS, ArithmeticNode::Mode op) {
   assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
-  return addNode(new ArithmeticNode(name, LHS, RHS, op));
+  return addNode(new ArithmeticNode(name, op, LHS, RHS));
 }
 
 SaveNode *Graph::createSave(llvm::StringRef name, Node *input) {

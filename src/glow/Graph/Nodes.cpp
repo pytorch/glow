@@ -128,16 +128,6 @@ void Variable::visit(Node *parent, NodeVisitor *visitor) {
 DEFINE_CLASS_VISITOR(ReshapeNode)
 DEFINE_CLASS_VISITOR(TransposeNode)
 
-void ArithmeticNode::visit(Node *parent, NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(parent, this)) {
-    return;
-  }
-  visitor->pre(parent, this);
-  LHS_->visit(this, visitor);
-  RHS_->visit(this, visitor);
-  visitor->post(parent, this);
-}
-
 void ConcatNode::visit(Node *parent, NodeVisitor *visitor) {
   if (!visitor->shouldVisit(parent, this)) {
     return;
@@ -184,15 +174,6 @@ std::string ConcatNode::getDebugDesc() const {
   }
   db.addParam("output", *getType())
       .addParam("dimension", dim_)
-      .addParam("users", getNumUsers());
-  return db;
-}
-
-std::string ArithmeticNode::getDebugDesc() const {
-  DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()))
-      .addParam("output", *getType())
-      .addParam("op", kind_ == ArithmeticInst::OpKind::Add ? "add" : "mul")
       .addParam("users", getNumUsers());
   return db;
 }

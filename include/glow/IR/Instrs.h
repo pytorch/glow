@@ -342,7 +342,7 @@ public:
 
 class ArithmeticInst : public Instruction {
 public:
-  using OpKind = ArithmeticNode::OpKind;
+  using OpKind = ArithmeticNode::Mode;
 
 private:
   OpKind kind_;

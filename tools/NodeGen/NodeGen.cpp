@@ -337,6 +337,14 @@ int main(int argc, char **argv) {
       .setType("Input->getType()")
       .done(hFile, cFile);
 
+  NodeBuilder("Arithmetic")
+      .addEnumCase("Add")
+      .addEnumCase("Mul")
+      .addOperand("LHS")
+      .addOperand("RHS")
+      .setType("LHS->getType()")
+      .done(hFile, cFile);
+
   NodeBuilder("Relu")
       .addOperand("Input")
       .setType("Input->getType()")

@@ -27,7 +27,7 @@ TEST(GraphOptz, DCE) {
     K = G.createRELU("relu", K);
     // Add a graph structure that diverges and converges, to catch algorithms
     // that perform a dump recursive scan.
-    K = G.createArithmetic("arith", K, K, ArithmeticNode::OpKind::Add);
+    K = G.createArithmetic("arith", K, K, ArithmeticNode::Mode::Add);
   }
 
   // Check that we know how many knows we've created.

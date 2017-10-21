@@ -108,7 +108,7 @@ public:
       float alpha = 1e-4, float beta = 0.75, float k = 2.0);
 
   ArithmeticNode *createArithmetic(llvm::StringRef name, Node *LHS, Node *RHS,
-                                   ArithmeticNode::OpKind op);
+                                   ArithmeticNode::Mode op);
 
   SaveNode *createSave(llvm::StringRef name, Node *input);
   SaveNode *createSave(llvm::StringRef name, Node *input, Variable *output);
