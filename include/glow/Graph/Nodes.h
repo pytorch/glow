@@ -5,8 +5,6 @@
 #include "glow/Graph/Node.h"
 #include "glow/Support/Casting.h"
 
-#include "AutoGenNodes.h"
-
 namespace glow {
 
 class Variable final : public Node {
@@ -135,25 +133,9 @@ public:
   void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
-class SaveNode final : public Node {
-  NodeOperand in_;
-  NodeOperand out_;
-
-public:
-  SaveNode(llvm::StringRef name, Node *input, Variable *output)
-      : Node(Kinded::Kind::SaveInstKind, input->getType(), name), in_(input),
-        out_(output) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::SaveInstKind;
-  }
-  Node *getInput() const { return in_; }
-  Variable *getOutput() const { return cast<Variable>(out_.get()); }
-
-  std::string getDebugDesc() const override;
-  void visit(Node *parent, NodeVisitor *visitor) override;
-};
-
 } // namespace glow
+
+// The rest of the nodes are auto-generated into this file:
+#include "AutoGenNodes.h"
 
 #endif // GLOW_GRAPH_NODES_H
