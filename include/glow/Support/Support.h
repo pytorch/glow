@@ -23,35 +23,6 @@ std::string escapeDottyString(const std::string &str);
 /// Add quotes to the string \p in.
 inline std::string quote(const std::string &in) { return '"' + in + '"'; }
 
-/// A helper class that builds a textual descriptor of a group of parameters.
-class DescriptionBuilder {
-  std::stringstream repr_;
-
-public:
-  DescriptionBuilder(const std::string &name) { repr_ << name << '\n'; }
-
-  DescriptionBuilder &addParam(const std::string &name, const char *value) {
-    repr_ << name << " : " << value << '\n';
-    return *this;
-  }
-
-  template <typename T_,
-            typename = typename std::enable_if<std::is_scalar<T_>::value>::type>
-  DescriptionBuilder &addParam(const std::string &name, T_ value) {
-    repr_ << name << " : " << value << '\n';
-    return *this;
-  }
-
-  template <typename T_, typename = typename std::enable_if<
-                             !std::is_scalar<T_>::value>::type>
-  DescriptionBuilder &addParam(const std::string &name, const T_ &value) {
-    repr_ << name << " : " << std::to_string(value) << '\n';
-    return *this;
-  }
-
-  operator std::string() const { return repr_.str(); }
-};
-
 template <typename E> std::string listToString_impl(E v) {
   return std::to_string(v);
 }
@@ -75,6 +46,41 @@ template <typename E> std::string arrayRefToString(llvm::ArrayRef<E> list) {
   }
   return sb + "]";
 }
+
+/// A helper class that builds a textual descriptor of a group of parameters.
+class DescriptionBuilder {
+  std::stringstream repr_;
+
+public:
+  DescriptionBuilder(const std::string &name) { repr_ << name << '\n'; }
+
+  DescriptionBuilder &addParam(const std::string &name, const char *value) {
+    repr_ << name << " : " << value << '\n';
+    return *this;
+  }
+
+  template <typename E>
+  DescriptionBuilder &addParam(const std::string &name, llvm::ArrayRef<E> L) {
+    repr_ << name << " : " << arrayRefToString<E>(L) << '\n';
+    return *this;
+  }
+
+  template <typename T_,
+            typename = typename std::enable_if<std::is_scalar<T_>::value>::type>
+  DescriptionBuilder &addParam(const std::string &name, T_ value) {
+    repr_ << name << " : " << value << '\n';
+    return *this;
+  }
+
+  template <typename T_, typename = typename std::enable_if<
+                             !std::is_scalar<T_>::value>::type>
+  DescriptionBuilder &addParam(const std::string &name, const T_ &value) {
+    repr_ << name << " : " << std::to_string(value) << '\n';
+    return *this;
+  }
+
+  operator std::string() const { return repr_.str(); }
+};
 
 } // namespace glow
 
