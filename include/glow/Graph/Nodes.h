@@ -70,47 +70,6 @@ inline std::pair<size_t, size_t> calculateConvOutputDims(size_t sx, size_t sy,
   return {outsx, outsy};
 }
 
-class TransposeNode final : public Node {
-  NodeOperand in_;
-  std::vector<unsigned> shuffle_;
-
-public:
-  TransposeNode(Node *in, TypeRef outTy, llvm::StringRef name,
-                llvm::ArrayRef<unsigned> shuffle)
-      : Node(Kinded::Kind::TransposeInstKind, outTy, name), in_(in),
-        shuffle_(shuffle.begin(), shuffle.end()) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::TransposeInstKind;
-  }
-
-  Node *getInput() const { return in_; }
-  llvm::ArrayRef<unsigned> getShuffle() const { return shuffle_; }
-
-  std::string getDebugDesc() const override;
-  void visit(Node *parent, NodeVisitor *visitor) override;
-};
-
-class ReshapeNode final : public Node {
-  NodeOperand in_;
-  std::vector<size_t> dims_;
-
-public:
-  ReshapeNode(Node *in, llvm::StringRef name, TypeRef TR)
-      : Node(Kinded::Kind::ReshapeInstKind, TR, name), in_(in),
-        dims_(TR->dims().begin(), TR->dims().end()) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::ReshapeInstKind;
-  }
-
-  Node *getInput() const { return in_; }
-  llvm::ArrayRef<size_t> getDims() { return dims_; }
-
-  std::string getDebugDesc() const override;
-  void visit(Node *parent, NodeVisitor *visitor) override;
-};
-
 class ConcatNode final : public Node {
   /// The input nodes to concat.
   std::vector<NodeOperand> in_;

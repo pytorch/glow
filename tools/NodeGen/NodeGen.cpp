@@ -1,3 +1,4 @@
+#include <cassert>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -164,6 +165,14 @@ public:
       sb += "\tNode *get" + op + "() const { return " + op + "_; }\n";
     }
     for (auto op : members_) {
+      // Synthesize a user-defined getter.
+      auto it = overrideGetter_.find(op.second);
+      if (it != overrideGetter_.end()) {
+        sb += "\t" + it->second + "\n";
+        continue;
+      }
+
+      // Synthesize the general getter.
       sb += "\t" + op.first + " get" + op.second + "() const { return " +
             op.second + "_; }\n";
     }
@@ -195,7 +204,7 @@ public:
     }
 
     for (auto mem : members_) {
-      sb += "\t\t.addParam(\"" + mem.second + "\", " + mem.second + "_)\n";
+      sb += "\t\t.addParam(\"" + mem.second + "\", get" + mem.second + "())\n";
     }
     sb += "\t\t.addParam(\"users\", getNumUsers());\n";
 
@@ -376,6 +385,25 @@ int main(int argc, char **argv) {
   NodeBuilder("Tanh")
       .addOperand("Input")
       .setType("Input->getType()")
+      .done(hFile, cFile);
+
+  NodeBuilder("Reshape")
+      .addOperand("Input")
+      .addMember("std::vector<size_t>", "Dims")
+      .addExtraParam("TypeRef", "outTy")
+      .setType("outTy")
+      .overrideGetter(
+          "Dims", "llvm::ArrayRef<size_t> getDims() const { return Dims_; }")
+      .done(hFile, cFile);
+
+  NodeBuilder("Transpose")
+      .addOperand("Input")
+      .addMember("std::vector<unsigned>", "Shuffle")
+      .addExtraParam("TypeRef", "outTy")
+      .setType("outTy")
+      .overrideGetter(
+          "Shuffle",
+          "llvm::ArrayRef<unsigned> getShuffle() const { return Shuffle_; }")
       .done(hFile, cFile);
 
   NodeBuilder("Save")

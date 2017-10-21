@@ -138,7 +138,7 @@ ReshapeNode *Graph::createReshape(llvm::StringRef name, Node *input,
                                   llvm::ArrayRef<size_t> shape) {
   auto TR = uniqueType(input->getType()->getElementType(), shape);
 
-  return addNode(new ReshapeNode(input, name, TR));
+  return addNode(new ReshapeNode(name, TR, input, shape.vec()));
 }
 
 TransposeNode *Graph::createTranspose(llvm::StringRef name, Node *input,
@@ -150,7 +150,7 @@ TransposeNode *Graph::createTranspose(llvm::StringRef name, Node *input,
   }
 
   auto NT = uniqueType(input->getElementType(), shape);
-  return addNode(new TransposeNode(input, NT, name, shuffle));
+  return addNode(new TransposeNode(name, NT, input, shuffle.vec()));
 }
 
 ConcatNode *Graph::createConcat(llvm::StringRef name,
