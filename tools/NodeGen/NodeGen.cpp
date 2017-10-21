@@ -167,6 +167,18 @@ public:
   std::string getEquator() {
     std::string sb;
 
+    sb += "\tbool isEqual(const " + name_ + "Node &other) {\n";
+    sb += "\treturn true";
+
+    for (auto op : operands_) {
+      sb += " &&\n\t " + op + "_ == other." + op + "_";
+    }
+
+    for (auto mem : members_) {
+      sb += " &&\n\t " + mem.second + "_ == other." + mem.second + "_";
+    }
+
+    sb += ";\n }\n";
     return sb;
   }
 
@@ -181,6 +193,7 @@ public:
     hdr += genCtor();
 
     hdr += getSettersGetters();
+    hdr += getEquator();
     hdr += "\tstd::string getDebugDesc() const override;\n";
     hdr += "\tvoid visit(Node *parent, NodeVisitor *visitor) override;\n";
     hdr += "};\n\n";
