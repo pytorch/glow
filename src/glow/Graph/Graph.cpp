@@ -61,8 +61,7 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, Node *input,
          "buffer too small for selected stride");
 
   // Calculate the size and allocate the output buffer.
-  auto outSz =
-      ConvolutionNode::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
 
   std::vector<size_t> outDims = {idim.n, outSz.first, outSz.second, depth};
 
@@ -77,24 +76,23 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, Node *input,
 
   auto OT = uniqueType(ElemKind::FloatTy, outDims);
 
-  return addNode(new ConvolutionNode(input, OT, name, filter, bias, kernel,
+  return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernel,
                                      stride, pad, depth));
 }
 
 PoolNode *Graph::createPool(llvm::StringRef name, Node *input,
-                            PoolNode::OpKind kind, size_t kernel, size_t stride,
+                            PoolNode::Mode mode, size_t kernel, size_t stride,
                             size_t pad) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
-  auto outSz =
-      ConvolutionNode::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
 
   auto OT = uniqueType(ElemKind::FloatTy,
                        {idim.n, outSz.first, outSz.second, idim.c});
 
-  return addNode(new PoolNode(input, OT, name, kind, kernel, stride, pad));
+  return addNode(new PoolNode(name, OT, mode, input, kernel, stride, pad));
 }
 
 FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
@@ -115,15 +113,15 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
 }
 
 ReluNode *Graph::createRELU(llvm::StringRef name, Node *input) {
-  return addNode(new ReluNode(input, name));
+  return addNode(new ReluNode(name, input));
 }
 
 SigmoidNode *Graph::createSigmoid(llvm::StringRef name, Node *input) {
-  return addNode(new SigmoidNode(input, name));
+  return addNode(new SigmoidNode(name, input));
 }
 
 TanhNode *Graph::createTanh(llvm::StringRef name, Node *input) {
-  return addNode(new TanhNode(input, name));
+  return addNode(new TanhNode(name, input));
 }
 
 SoftMaxNode *Graph::createSoftMax(llvm::StringRef name, Node *input,

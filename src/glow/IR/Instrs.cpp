@@ -110,8 +110,7 @@ void ConvolutionInst::verify() const {
   assert(idim.w >= kernel_ && idim.h >= kernel_ &&
          "buffer too small for selected stride");
 
-  auto outSz = ConvolutionNode::calculateOutputDims(idim.h, idim.w, pad_,
-                                                    kernel_, stride_);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad_, kernel_, stride_);
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, depth_);
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");
@@ -134,8 +133,7 @@ void PoolInst::verify() const {
   assert(idim.w >= kernel_ && idim.h >= kernel_ &&
          "buffer too small for selected stride");
 
-  auto outSz = ConvolutionNode::calculateOutputDims(idim.h, idim.w, pad_,
-                                                    kernel_, stride_);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad_, kernel_, stride_);
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");

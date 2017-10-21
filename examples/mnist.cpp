@@ -74,11 +74,11 @@ void testMNIST() {
 
   auto *CV0 = G.createConv("conv", A, 16, 5, 1, 2);
   auto *RL0 = G.createRELU("relu", CV0);
-  auto *MP0 = G.createPool("pool", RL0, PoolNode::OpKind::Max, 3, 3, 0);
+  auto *MP0 = G.createPool("pool", RL0, PoolNode::Mode::Max, 3, 3, 0);
 
   auto *CV1 = G.createConv("conv", MP0, 16, 5, 1, 2);
   auto *RL1 = G.createRELU("conv", CV1);
-  auto *MP1 = G.createPool("pool", RL1, PoolNode::OpKind::Max, 3, 3, 0);
+  auto *MP1 = G.createPool("pool", RL1, PoolNode::Mode::Max, 3, 3, 0);
 
   auto *FCL1 = G.createFullyConnected("fc", MP1, 10);
   auto *RL2 = G.createRELU("fc", FCL1);

@@ -121,7 +121,7 @@ void Variable::visit(Node *parent, NodeVisitor *visitor) {
     if (!visitor->shouldVisit(parent, this))                                   \
       return;                                                                  \
     visitor->pre(parent, this);                                                \
-    in_->visit(this, visitor);                                                 \
+    getInput()->visit(this, visitor);                                          \
     visitor->post(parent, this);                                               \
   }
 
@@ -138,9 +138,9 @@ void ConvolutionNode::visit(Node *parent, NodeVisitor *visitor) {
     return;
   }
   visitor->pre(parent, this);
-  in_->visit(this, visitor);
-  filter_->visit(this, visitor);
-  bias_->visit(this, visitor);
+  getInput()->visit(this, visitor);
+  getFilter()->visit(this, visitor);
+  getBias()->visit(this, visitor);
   visitor->post(parent, this);
 }
 
@@ -232,33 +232,6 @@ std::string Variable::getDebugDesc() const {
     db.addParam("val", val_);
   }
   db.addParam("users", getNumUsers());
-  return db;
-}
-
-std::string ConvolutionNode::getDebugDesc() const {
-  DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()))
-      .addParam("input", *in_->getType())
-      .addParam("output", *getType())
-      .addParam("filter", *filter_->getType())
-      .addParam("bias", *bias_->getType())
-      .addParam("kernel", kernel_)
-      .addParam("stride", stride_)
-      .addParam("pad", pad_)
-      .addParam("depth", depth_)
-      .addParam("users", getNumUsers());
-  return db;
-}
-std::string PoolNode::getDebugDesc() const {
-  DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()))
-      .addParam("input", *in_->getType())
-      .addParam("output", *getType())
-      .addParam("kernel", kernel_)
-      .addParam("stride", stride_)
-      .addParam("pad", pad_)
-      .addParam("kind", kind_ == OpKind::Max ? "max" : "avg")
-      .addParam("users", getNumUsers());
   return db;
 }
 
@@ -363,7 +336,4 @@ std::string TransposeNode::getDebugDesc() const {
     return db;                                                                 \
   }
 
-DEFINE_CLASS_REPR(ReluNode);
 DEFINE_CLASS_REPR(ReshapeNode);
-DEFINE_CLASS_REPR(SigmoidNode);
-DEFINE_CLASS_REPR(TanhNode);

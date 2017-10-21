@@ -25,15 +25,15 @@ TEST(Interpreter, interpret) {
 
   auto *CV0 = G.createConv("conv", input, 16, 5, 1, 2);
   auto *RL0 = G.createRELU("relu", CV0);
-  auto *MP0 = G.createPool("pool", RL0, PoolNode::OpKind::Max, 2, 2, 0);
+  auto *MP0 = G.createPool("pool", RL0, PoolNode::Mode::Max, 2, 2, 0);
 
   auto *CV1 = G.createConv("conv", MP0, 20, 5, 1, 2);
   auto *RL1 = G.createRELU("relu", CV1);
-  auto *MP1 = G.createPool("pool", RL1, PoolNode::OpKind::Max, 2, 2, 0);
+  auto *MP1 = G.createPool("pool", RL1, PoolNode::Mode::Max, 2, 2, 0);
 
   auto *CV2 = G.createConv("conv", MP1, 20, 5, 1, 2);
   auto *RL2 = G.createRELU("relu", CV2);
-  auto *MP2 = G.createPool("pool", RL2, PoolNode::OpKind::Max, 2, 2, 0);
+  auto *MP2 = G.createPool("pool", RL2, PoolNode::Mode::Max, 2, 2, 0);
 
   auto *FCL1 = G.createFullyConnected("fc", MP2, 10);
   auto *RL3 = G.createRELU("relu", FCL1);

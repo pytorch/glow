@@ -220,7 +220,7 @@ static void OptimizePool(Graph &G) {
       }
 
       // This optimization is only valid on max pooling.
-      if (PL->getKind() != PoolNode::OpKind::Max) {
+      if (PL->getMode() != PoolNode::Mode::Max) {
         continue;
       }
 
@@ -231,7 +231,7 @@ static void OptimizePool(Graph &G) {
         continue;
       }
 
-      auto *NPL = G.createPool(PL->getName(), RL->getInput(), PL->getKind(),
+      auto *NPL = G.createPool(PL->getName(), RL->getInput(), PL->getMode(),
                                PL->getKernel(), PL->getStride(), PL->getPad());
       auto *NRL = G.createRELU(RL->getName(), NPL);
       PL->replaceAllUsesOfWith(NRL);

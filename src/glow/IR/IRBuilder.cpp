@@ -29,8 +29,7 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, Value *filter,
          "buffer too small for selected stride");
 
   // Calculate the size and allocate the output buffer.
-  auto outSz =
-      ConvolutionNode::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
 
   std::vector<size_t> outDims = {idim.n, outSz.first, outSz.second, depth};
 
@@ -46,8 +45,7 @@ PoolInst *IRBuilder::createPoolOp(Value *input, PoolInst::OpKind kind,
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
-  auto outSz =
-      ConvolutionNode::calculateOutputDims(idim.h, idim.w, pad, kernel, stride);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
