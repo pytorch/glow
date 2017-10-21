@@ -149,9 +149,9 @@ void FullyConnectedNode::visit(Node *parent, NodeVisitor *visitor) {
     return;
   }
   visitor->pre(parent, this);
-  in_->visit(this, visitor);
-  filter_->visit(this, visitor);
-  bias_->visit(this, visitor);
+  getInput()->visit(this, visitor);
+  getFilter()->visit(this, visitor);
+  getBias()->visit(this, visitor);
   visitor->post(parent, this);
 }
 
@@ -183,8 +183,8 @@ void SoftMaxNode::visit(Node *parent, NodeVisitor *visitor) {
     return;
   }
   visitor->pre(parent, this);
-  in_->visit(this, visitor);
-  selected_->visit(this, visitor);
+  getInput()->visit(this, visitor);
+  getSelected()->visit(this, visitor);
   visitor->post(parent, this);
 }
 
@@ -193,8 +193,8 @@ void RegressionNode::visit(Node *parent, NodeVisitor *visitor) {
     return;
   }
   visitor->pre(parent, this);
-  in_->visit(this, visitor);
-  expected_->visit(this, visitor);
+  getInput()->visit(this, visitor);
+  getExpected()->visit(this, visitor);
   visitor->post(parent, this);
 }
 
@@ -235,18 +235,6 @@ std::string Variable::getDebugDesc() const {
   return db;
 }
 
-std::string FullyConnectedNode::getDebugDesc() const {
-  DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()))
-      .addParam("input", *in_->getType())
-      .addParam("output", *getType())
-      .addParam("filter", *filter_->getType())
-      .addParam("bias", *bias_->getType())
-      .addParam("depth", depth_)
-      .addParam("users", getNumUsers());
-  return db;
-}
-
 std::string LocalResponseNormalizationNode::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
@@ -268,24 +256,6 @@ std::string ConcatNode::getDebugDesc() const {
   }
   db.addParam("output", *getType())
       .addParam("dimension", dim_)
-      .addParam("users", getNumUsers());
-  return db;
-}
-
-std::string SoftMaxNode::getDebugDesc() const {
-  DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()))
-      .addParam("input", *in_->getType())
-      .addParam("selected", *selected_->getType())
-      .addParam("users", getNumUsers());
-  return db;
-}
-
-std::string RegressionNode::getDebugDesc() const {
-  DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()))
-      .addParam("input", *in_->getType())
-      .addParam("expected", *expected_->getType())
       .addParam("users", getNumUsers());
   return db;
 }

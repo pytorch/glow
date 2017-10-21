@@ -208,19 +208,18 @@ int main(int argc, char **argv) {
   hFile.open(argv[1]);
   cFile.open(argv[2]);
 
-  cFile <<
-  "#include \"glow/Graph/Nodes.h\"\n"
-  "#include \"glow/Base/Type.h\"\n"
-  "#include \"glow/IR/Instrs.h\"\n"
-  "#include \"glow/Support/Support.h\"\n\n"
-  "using namespace glow;\n";
+  cFile << "#include \"glow/Graph/Nodes.h\"\n"
+           "#include \"glow/Base/Type.h\"\n"
+           "#include \"glow/IR/Instrs.h\"\n"
+           "#include \"glow/Support/Support.h\"\n\n"
+           "using namespace glow;\n";
 
   NodeBuilder("Convolution")
       .addOperand("Input")
       .addOperand("Filter")
       .addOperand("Bias")
       .addMember("size_t", "Kernel")
-  .addMember("size_t", "Stride")
+      .addMember("size_t", "Stride")
       .addMember("size_t", "Pad")
       .addMember("size_t", "Depth")
       .addExtraParam("TypeRef", "outTy")
@@ -236,6 +235,27 @@ int main(int argc, char **argv) {
       .addMember("size_t", "Pad")
       .addExtraParam("TypeRef", "outTy")
       .setType("outTy")
+      .done(hFile, cFile);
+
+  NodeBuilder("FullyConnected")
+      .addOperand("Input")
+      .addOperand("Filter")
+      .addOperand("Bias")
+      .addMember("size_t", "Depth")
+      .addExtraParam("TypeRef", "outTy")
+      .setType("outTy")
+      .done(hFile, cFile);
+
+  NodeBuilder("SoftMax")
+      .addOperand("Input")
+      .addOperand("Selected")
+      .setType("Input->getType()")
+      .done(hFile, cFile);
+
+  NodeBuilder("Regression")
+      .addOperand("Input")
+      .addOperand("Expected")
+      .setType("Input->getType()")
       .done(hFile, cFile);
 
   NodeBuilder("Relu")
