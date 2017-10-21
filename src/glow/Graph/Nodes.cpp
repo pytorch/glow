@@ -125,7 +125,6 @@ void Variable::visit(Node *parent, NodeVisitor *visitor) {
     visitor->post(parent, this);                                               \
   }
 
-DEFINE_CLASS_VISITOR(LocalResponseNormalizationNode)
 DEFINE_CLASS_VISITOR(ReshapeNode)
 DEFINE_CLASS_VISITOR(TransposeNode)
 
@@ -173,18 +172,6 @@ std::string Variable::getDebugDesc() const {
     db.addParam("val", val_);
   }
   db.addParam("users", getNumUsers());
-  return db;
-}
-
-std::string LocalResponseNormalizationNode::getDebugDesc() const {
-  DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()))
-      .addParam("input", *in_->getType())
-      .addParam("alpha", alpha_)
-      .addParam("beta", beta_)
-      .addParam("half window size", this->halfWindowSize_)
-      .addParam("scale", *scale_->getType())
-      .addParam("users", getNumUsers());
   return db;
 }
 

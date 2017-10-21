@@ -300,6 +300,16 @@ int main(int argc, char **argv) {
       .setType("Input->getType()")
       .done(hFile, cFile);
 
+  NodeBuilder("LocalResponseNormalization")
+      .addOperand("Input")
+      .addOperand("Scale")
+      .addMember("size_t", "HalfWindowSize")
+      .addMember("float", "Alpha")
+      .addMember("float", "Beta")
+      .addMember("float", "K")
+      .setType("Input->getType()")
+      .done(hFile, cFile);
+
   NodeBuilder("Relu")
       .addOperand("Input")
       .setType("Input->getType()")

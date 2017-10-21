@@ -211,7 +211,7 @@ Graph::createLocalResponseNormalization(llvm::StringRef name, Node *input,
 
   // The output tensor is of the same shape as the input tensor.
   return addNode(new LocalResponseNormalizationNode(
-      input, name, scale, halfWindowSize, alpha, beta, k));
+      name, input, scale, halfWindowSize, alpha, beta, k));
 }
 
 ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, Node *LHS,
