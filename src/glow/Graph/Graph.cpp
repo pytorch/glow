@@ -109,7 +109,7 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
                            Variable::InitKind::Broadcast, 0.1);
 
   auto OT = uniqueType(T->getElementType(), {idim.first, outDepth});
-  return addNode(new FullyConnectedNode(input, OT, name, W, B, outDepth));
+  return addNode(new FullyConnectedNode(name, OT, input, W, B, outDepth));
 }
 
 ReluNode *Graph::createRELU(llvm::StringRef name, Node *input) {
@@ -126,12 +126,12 @@ TanhNode *Graph::createTanh(llvm::StringRef name, Node *input) {
 
 SoftMaxNode *Graph::createSoftMax(llvm::StringRef name, Node *input,
                                   Node *selected) {
-  return addNode(new SoftMaxNode(input, name, selected));
+  return addNode(new SoftMaxNode(name, input, selected));
 }
 
 RegressionNode *Graph::createRegression(llvm::StringRef name, Node *input,
                                         Node *expected) {
-  return addNode(new RegressionNode(input, name, expected));
+  return addNode(new RegressionNode(name, input, expected));
 }
 
 ReshapeNode *Graph::createReshape(llvm::StringRef name, Node *input,
