@@ -164,42 +164,6 @@ public:
   void visit(Node *parent, NodeVisitor *visitor) override;
 };
 
-class LocalResponseNormalizationNode final : public Node {
-  NodeOperand in_;
-  NodeOperand scale_;
-  /// The number of neighbouring channels on each side to sum over
-  size_t halfWindowSize_;
-  /// The scaling parameter
-  float alpha_;
-  /// The exponent parameter
-  float beta_;
-  /// The offset parameter
-  float k_;
-
-public:
-  LocalResponseNormalizationNode(Node *in, llvm::StringRef name, Node *scale,
-                                 size_t halfWindowSize, float alpha, float beta,
-                                 float k)
-      : Node(Kinded::Kind::LocalResponseNormalizationInstKind, in->getType(),
-             name),
-        in_(in), scale_(scale), halfWindowSize_(halfWindowSize), alpha_(alpha),
-        beta_(beta), k_(k) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::LocalResponseNormalizationInstKind;
-  }
-  Node *getInput() const { return in_; }
-  Node *getScale() const { return scale_; }
-
-  size_t gethalfWindowSize() const { return halfWindowSize_; }
-  float getAlpha() const { return alpha_; }
-  float getBeta() const { return beta_; }
-  float getK() const { return k_; }
-
-  std::string getDebugDesc() const override;
-  void visit(Node *parent, NodeVisitor *visitor) override;
-};
-
 class SaveNode final : public Node {
   NodeOperand in_;
   NodeOperand out_;

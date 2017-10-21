@@ -179,7 +179,7 @@ public:
       auto *LR = cast<LocalResponseNormalizationNode>(N);
       auto *in = valueForNode(LR->getInput());
       auto *V = builder_.createLocalResponseNormalizationOp(
-          in, LR->gethalfWindowSize(), LR->getAlpha(), LR->getBeta(),
+          in, LR->getHalfWindowSize(), LR->getAlpha(), LR->getBeta(),
           LR->getK());
       V->setName(N->getName());
       registerIR(N, V->getDest());
