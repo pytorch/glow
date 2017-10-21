@@ -50,36 +50,9 @@ public:
     extraParams_.push_back({type, name});
     return *this;
   }
-  void done(std::ofstream &OS) {
-    std::string sb = "namespace glow {\n";
-    sb += "class " + name_ + "Node final : public Node {\n";
 
-    if (enum_.size()) {
-      sb += "\tpublic:\n";
-
-      sb += "\tenum class Mode {\n";
-      for (auto E : enum_) {
-        sb += "\t  " + E + ",\n";
-      }
-
-      sb += "\t};\n";
-      sb += "\tprivate:\n";
-    }
-
-    // Class members:
-    if (enum_.size()) {
-      sb += "\tMode mode_;\n";
-    }
-    for (auto op : operands_) {
-      sb += "\tNodeOperand " + op + "_;\n";
-    }
-    for (auto op : members_) {
-      sb += "\t" + op.first + " " + op.second + "_;\n";
-    }
-
-    sb += "\n";
-    sb += "\tpublic:\n";
-
+  std::string genCtor() {
+    std::string sb;
     // Constructor parameter list:
     sb += "\t" + name_ + "Node(llvm::StringRef name";
 
@@ -115,52 +88,144 @@ public:
       sb += ", " + op.second + "_(" + op.second + ") ";
     }
     sb += " {}\n\n";
+    return sb;
+  }
+
+  std::string genClassMembers() {
+    std::string sb;
+    if (enum_.size()) {
+      sb += "\tpublic:\n";
+
+      sb += "\tenum class Mode {\n";
+      for (auto E : enum_) {
+        sb += "\t  " + E + ",\n";
+      }
+
+      sb += "\t};\n";
+      sb += "\tprivate:\n";
+    }
+
+    // Class members:
+    if (enum_.size()) {
+      sb += "\tMode mode_;\n";
+    }
+    for (auto op : operands_) {
+      sb += "\tNodeOperand " + op + "_;\n";
+    }
+    for (auto op : members_) {
+      sb += "\t" + op.first + " " + op.second + "_;\n";
+    }
+
+    sb += "\n";
+
+    return sb;
+  }
+
+  std::string getSettersGetters() {
+    std::string sb;
 
     // Print the getters/setters.
     for (auto op : operands_) {
-      sb += "\tNode *get" + op + "() { return " + op + "_; }\n";
+      sb += "\tNode *get" + op + "() const { return " + op + "_; }\n";
     }
-
     for (auto op : members_) {
-      sb += "\t" + op.first + " get" + op.second + "() { return " + op.second +
-            "_; }\n";
+      sb += "\t" + op.first + " get" + op.second + "() const { return " +
+            op.second + "_; }\n";
     }
     sb += "\n";
+
+    sb += "static bool classof(const Kinded *k) { return k->getKind() == "
+          " Kinded::Kind::" +
+          name_ + "InstKind; }\n";
 
     if (enum_.size()) {
       sb += "\tMode getMode() const { return mode_; }\n";
     }
 
-    sb += "\tstd::string getDebugDesc() const override;\n";
-    sb += "\tvoid visit(Node *parent, NodeVisitor *visitor) override;\n";
-    sb += "};\n\n";
-    sb += " } // namespace glow\n";
-    OS << sb;
+    return sb;
+  }
+
+  std::string genPrettyPrinter() {
+    std::string sb;
+    sb += "\tstd::string " + name_ + "Node::" + "getDebugDesc() const {\n";
+    sb += "\t\tDescriptionBuilder db(getKindName());\n";
+    sb += "\t\tdb.addParam(\"name\", getName())\n";
+
+    for (auto op : operands_) {
+      sb += "\t\t.addParam(\"" + op + "\", *get" + op + "()->getType())\n";
+    }
+
+    for (auto mem : members_) {
+      sb += "\t\t.addParam(\"" + mem.second + "\", " + mem.second + "_)\n";
+    }
+    sb += "\t\t.addParam(\"users\", getNumUsers());\n";
+
+    sb += "\t\treturn db;\n}\n";
+    return sb;
+  }
+
+  std::string getEquator() {
+    std::string sb;
+
+    return sb;
+  }
+
+  void done(std::ofstream &hFile, std::ofstream &cFile) {
+    std::string hdr = "namespace glow {\n";
+    hdr += "class " + name_ + "Node final : public Node {\n";
+
+    hdr += genClassMembers();
+
+    hdr += "\tpublic:\n";
+
+    hdr += genCtor();
+
+    hdr += getSettersGetters();
+    hdr += "\tstd::string getDebugDesc() const override;\n";
+    hdr += "\tvoid visit(Node *parent, NodeVisitor *visitor) override;\n";
+    hdr += "};\n\n";
+    hdr += " } // namespace glow\n";
+    hFile << hdr;
+
+    std::string cpp;
+    cpp += genPrettyPrinter();
+    cFile << cpp;
   }
 };
 
 int main(int argc, char **argv) {
-  if (argc != 2) {
-    std::cerr << "Usage: " << argv[0] << " output.h"
+  if (argc != 3) {
+    std::cerr << "Usage: " << argv[0] << " output.h output.cpp"
               << "\n";
     return -1;
   }
 
-  std::cout << "Writing into " << argv[1] << "\n";
+  std::cout << "Writing node descriptors into " << argv[1] << " and " << argv[2]
+            << "\n";
 
-  std::ofstream OS;
-  OS.open(argv[1]);
+  std::ofstream hFile;
+  std::ofstream cFile;
+  hFile.open(argv[1]);
+  cFile.open(argv[2]);
+
+  cFile <<
+  "#include \"glow/Graph/Nodes.h\"\n"
+  "#include \"glow/Base/Type.h\"\n"
+  "#include \"glow/IR/Instrs.h\"\n"
+  "#include \"glow/Support/Support.h\"\n\n"
+  "using namespace glow;\n";
 
   NodeBuilder("Convolution")
       .addOperand("Input")
       .addOperand("Filter")
       .addOperand("Bias")
       .addMember("size_t", "Kernel")
+  .addMember("size_t", "Stride")
       .addMember("size_t", "Pad")
-      .addMember("size_t", "Stride")
       .addMember("size_t", "Depth")
-      .setType("Input->getType()")
-      .done(OS);
+      .addExtraParam("TypeRef", "outTy")
+      .setType("outTy")
+      .done(hFile, cFile);
 
   NodeBuilder("Pool")
       .addEnumCase("Max")
@@ -171,14 +236,21 @@ int main(int argc, char **argv) {
       .addMember("size_t", "Pad")
       .addExtraParam("TypeRef", "outTy")
       .setType("outTy")
-      .done(OS);
+      .done(hFile, cFile);
 
-  NodeBuilder("Relu").addOperand("Input").setType("Input->getType()").done(OS);
+  NodeBuilder("Relu")
+      .addOperand("Input")
+      .setType("Input->getType()")
+      .done(hFile, cFile);
   NodeBuilder("Sigmoid")
       .addOperand("Input")
       .setType("Input->getType()")
-      .done(OS);
-  NodeBuilder("Tanh").addOperand("Input").setType("Input->getType()").done(OS);
+      .done(hFile, cFile);
+  NodeBuilder("Tanh")
+      .addOperand("Input")
+      .setType("Input->getType()")
+      .done(hFile, cFile);
 
-  OS.close();
+  hFile.close();
+  cFile.close();
 }
