@@ -10,11 +10,11 @@ class NodeBuilder {
   std::string name_;
   /// The node operands.
   std::vector<std::string> operands_;
-  /// The node members (type, name).
+  /// A list of node members. Format: (type, name).
   std::vector<std::pair<std::string, std::string>> members_;
   /// The node enum cases.
   std::vector<std::string> enum_;
-  /// A list of extra parameters;
+  /// A list of extra parameters that are passed to the constructor.
   std::vector<std::pair<std::string, std::string>> extraParams_;
 
 public:
@@ -49,6 +49,21 @@ public:
   NodeBuilder &addExtraParam(const std::string &type, const std::string &name) {
     extraParams_.push_back({type, name});
     return *this;
+  }
+
+  std::string getEnumModePrinters() {
+    std::string sb;
+
+    sb += "const char *" + name_ + "Node::getModeStr(" + name_ +
+          "Node::Mode m) {\n";
+    sb += "\tconst char *names[] = {";
+    for (auto &e : enum_) {
+      sb += "\"" + e + "\", ";
+    }
+    sb += "nullptr};\n";
+    sb += "\treturn names[static_cast<int>(m)];\n";
+    sb += "}\n";
+    return sb;
   }
 
   std::string genCtor() {
@@ -151,6 +166,10 @@ public:
     sb += "\t\tDescriptionBuilder db(getKindName());\n";
     sb += "\t\tdb.addParam(\"name\", getName())\n";
 
+    if (enum_.size()) {
+      sb += "\t\t.addParam(\"Mode\", getModeStr())\n";
+    }
+
     for (auto op : operands_) {
       sb += "\t\t.addParam(\"" + op + "\", *get" + op + "()->getType())\n";
     }
@@ -212,6 +231,11 @@ public:
     hdr += getEquator();
     hdr += "\tstd::string getDebugDesc() const override;\n";
     hdr += "\tvoid visit(Node *parent, NodeVisitor *visitor) override;\n";
+    if (enum_.size()) {
+      hdr += "\tconst char *getModeStr() const { return getModeStr(mode_); }\n";
+      hdr += "\tstatic const char *getModeStr(Mode m);\n";
+    }
+
     hdr += "};\n\n";
     hdr += " } // namespace glow\n";
     hFile << hdr;
@@ -219,6 +243,9 @@ public:
     std::string cpp;
     cpp += genPrettyPrinter();
     cpp += getVisitor();
+    if (enum_.size()) {
+      cpp += getEnumModePrinters();
+    }
     cFile << cpp;
   }
 };
