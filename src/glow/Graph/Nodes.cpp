@@ -125,9 +125,6 @@ void Variable::visit(Node *parent, NodeVisitor *visitor) {
     visitor->post(parent, this);                                               \
   }
 
-DEFINE_CLASS_VISITOR(ReshapeNode)
-DEFINE_CLASS_VISITOR(TransposeNode)
-
 void ConcatNode::visit(Node *parent, NodeVisitor *visitor) {
   if (!visitor->shouldVisit(parent, this)) {
     return;
@@ -168,23 +165,3 @@ std::string ConcatNode::getDebugDesc() const {
       .addParam("users", getNumUsers());
   return db;
 }
-
-std::string TransposeNode::getDebugDesc() const {
-  std::string sh = arrayRefToString(llvm::ArrayRef<unsigned>(shuffle_));
-  DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()))
-      .addParam("shuffle", sh)
-      .addParam("users", getNumUsers());
-  return db;
-}
-
-#define DEFINE_CLASS_REPR(CLASS_NAME)                                          \
-  std::string CLASS_NAME::getDebugDesc() const {                               \
-    DescriptionBuilder db(getKindName());                                      \
-    db.addParam("name", quote(getName()))                                      \
-        .addParam("input", *in_->getType())                                    \
-        .addParam("users", getNumUsers());                                     \
-    return db;                                                                 \
-  }
-
-DEFINE_CLASS_REPR(ReshapeNode);
