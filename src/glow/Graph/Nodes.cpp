@@ -125,35 +125,9 @@ void Variable::visit(Node *parent, NodeVisitor *visitor) {
     visitor->post(parent, this);                                               \
   }
 
-DEFINE_CLASS_VISITOR(PoolNode)
 DEFINE_CLASS_VISITOR(LocalResponseNormalizationNode)
-DEFINE_CLASS_VISITOR(ReluNode)
 DEFINE_CLASS_VISITOR(ReshapeNode)
 DEFINE_CLASS_VISITOR(TransposeNode)
-DEFINE_CLASS_VISITOR(SigmoidNode)
-DEFINE_CLASS_VISITOR(TanhNode)
-
-void ConvolutionNode::visit(Node *parent, NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(parent, this)) {
-    return;
-  }
-  visitor->pre(parent, this);
-  getInput()->visit(this, visitor);
-  getFilter()->visit(this, visitor);
-  getBias()->visit(this, visitor);
-  visitor->post(parent, this);
-}
-
-void FullyConnectedNode::visit(Node *parent, NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(parent, this)) {
-    return;
-  }
-  visitor->pre(parent, this);
-  getInput()->visit(this, visitor);
-  getFilter()->visit(this, visitor);
-  getBias()->visit(this, visitor);
-  visitor->post(parent, this);
-}
 
 void BatchNormalizationNode::visit(Node *parent, NodeVisitor *visitor) {
   if (!visitor->shouldVisit(parent, this)) {
@@ -175,26 +149,6 @@ void ArithmeticNode::visit(Node *parent, NodeVisitor *visitor) {
   visitor->pre(parent, this);
   LHS_->visit(this, visitor);
   RHS_->visit(this, visitor);
-  visitor->post(parent, this);
-}
-
-void SoftMaxNode::visit(Node *parent, NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(parent, this)) {
-    return;
-  }
-  visitor->pre(parent, this);
-  getInput()->visit(this, visitor);
-  getSelected()->visit(this, visitor);
-  visitor->post(parent, this);
-}
-
-void RegressionNode::visit(Node *parent, NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(parent, this)) {
-    return;
-  }
-  visitor->pre(parent, this);
-  getInput()->visit(this, visitor);
-  getExpected()->visit(this, visitor);
   visitor->post(parent, this);
 }
 

@@ -147,7 +147,7 @@ public:
 
   std::string genPrettyPrinter() {
     std::string sb;
-    sb += "\tstd::string " + name_ + "Node::" + "getDebugDesc() const {\n";
+    sb += "std::string " + name_ + "Node::" + "getDebugDesc() const {\n";
     sb += "\t\tDescriptionBuilder db(getKindName());\n";
     sb += "\t\tdb.addParam(\"name\", getName())\n";
 
@@ -182,6 +182,22 @@ public:
     return sb;
   }
 
+  std::string getVisitor() {
+    std::string sb;
+
+    sb += "void " + name_ +
+          "Node::" + "visit(Node *parent, NodeVisitor *visitor) {\n";
+    sb += "\tif (!visitor->shouldVisit(parent, this)) { return; }\n";
+
+    sb += "\tvisitor->pre(parent, this);\n";
+    for (auto op : operands_) {
+      sb += "\tget" + op + "()->visit(this, visitor);\n";
+    }
+    sb += "\tvisitor->post(parent, this);\n";
+    sb += "}\n";
+    return sb;
+  }
+
   void done(std::ofstream &hFile, std::ofstream &cFile) {
     std::string hdr = "namespace glow {\n";
     hdr += "class " + name_ + "Node final : public Node {\n";
@@ -202,6 +218,7 @@ public:
 
     std::string cpp;
     cpp += genPrettyPrinter();
+    cpp += getVisitor();
     cFile << cpp;
   }
 };
