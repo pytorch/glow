@@ -220,7 +220,8 @@ public:
 
   /// Emit the isEqual method that performs node comparisons.
   void emitEquator(std::ostream &os) {
-    os << "\tbool isEqual(const " << name_ << "Node &other) {\n\treturn true";
+    os << "bool " << name_ << "Node::isEqual(const " << name_ <<
+    "Node &other) {\n\treturn true";
 
     if (enum_.size()) {
       os << " &&\n\t getMode() == other.getMode()";
@@ -262,9 +263,9 @@ public:
     emitCtor(os);
 
     emitSettersGetters(os);
-    emitEquator(os);
 
     os << "\tstd::string getDebugDesc() const override;\n";
+    os << "\tbool isEqual(const " << name_ << "Node &other);\n";
     os << "\tvoid visit(Node *parent, NodeVisitor *visitor) override;\n";
     if (enum_.size()) {
       os << "\tconst char *getModeStr() const { return getModeStr(mode_); "
@@ -279,6 +280,7 @@ public:
   void emitCppMethods(std::ostream &os) {
     emitPrettyPrinter(os);
     emitVisitor(os);
+    emitEquator(os);
     if (enum_.size()) {
       emitEnumModePrinters(os);
     }
