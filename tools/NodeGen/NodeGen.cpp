@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <vector>
 
+class Builder;
+
 class NodeBuilder {
   /// The type-initialization expression.
   std::string ty_;
@@ -20,9 +22,17 @@ class NodeBuilder {
   std::vector<std::pair<std::string, std::string>> extraParams_;
   /// A list of getters to override. Format (variable name, alternative getter).
   std::unordered_map<std::string, std::string> overrideGetter_;
+  /// Header file stream.
+  std::ofstream &hStream;
+  /// CPP file stream.
+  std::ofstream &cStream;
+  /// Def file stream.
+  std::ofstream &dStream;
 
 public:
-  NodeBuilder(const std::string &name) : name_(name) {}
+  NodeBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
+              const std::string &name)
+      : name_(name), hStream(H), cStream(C), dStream(D) {}
 
   /// Add an operand to the node. The name should start with a capital letter.
   /// For example: "Input".
@@ -274,26 +284,47 @@ public:
     }
   }
 
-  void done(std::ofstream &hFile, std::ofstream &cFile) {
-    emitNodeClass(hFile);
-    emitCppMethods(cFile);
+  ~NodeBuilder() {
+    emitNodeClass(hStream);
+    emitCppMethods(cStream);
+  }
+};
+
+class Builder {
+  std::ofstream &hStream;
+  std::ofstream &cStream;
+  std::ofstream &dStream;
+
+public:
+  /// Create a new top-level builder that holds the three output streams that
+  /// point to the header file, cpp file and enum definition file.
+  Builder(std::ofstream &H, std::ofstream &C, std::ofstream &D)
+      : hStream(H), cStream(C), dStream(D) {}
+
+  /// Declare a new node and generate code for it.
+  NodeBuilder newNode(const std::string &name) {
+    dStream << "DEF_NODE(nameNode, name)\n";
+    return NodeBuilder(hStream, cStream, dStream, name);
+  }
+
+  /// Declare the node in the def file but don't generate code for it.
+  void declareNode(const std::string &name) {
+    dStream << "DEF_NODE(nameNode, name)\n";
   }
 };
 
 int main(int argc, char **argv) {
-  if (argc != 3) {
-    std::cerr << "Usage: " << argv[0] << " output.h output.cpp"
-              << "\n";
+  if (argc != 4) {
+    std::cerr << "Usage: " << argv[0] << " output.h output.cpp output.def\n";
     return -1;
   }
 
-  std::cout << "Writing node descriptors into " << argv[1] << " and " << argv[2]
-            << "\n";
+  std::cout << "Writing node descriptors to:\n\t" << argv[1] << "\n\t"
+            << argv[2] << "\n\t" << argv[3] << "\n";
 
-  std::ofstream hFile;
-  std::ofstream cFile;
-  hFile.open(argv[1]);
-  cFile.open(argv[2]);
+  std::ofstream hFile(argv[1]);
+  std::ofstream cFile(argv[2]);
+  std::ofstream dFile(argv[3]);
 
   cFile << "#include \"glow/Graph/Nodes.h\"\n"
            "#include \"glow/Base/Type.h\"\n"
@@ -301,7 +332,12 @@ int main(int argc, char **argv) {
            "#include \"glow/Support/Support.h\"\n\n"
            "using namespace glow;\n";
 
-  NodeBuilder("Convolution")
+  Builder BB(hFile, cFile, dFile);
+
+  BB.declareNode("Variable");
+  BB.declareNode("Concat");
+
+  BB.newNode("Convolution")
       .addOperand("Input")
       .addOperand("Filter")
       .addOperand("Bias")
@@ -310,10 +346,9 @@ int main(int argc, char **argv) {
       .addMember("size_t", "Pad")
       .addMember("size_t", "Depth")
       .addExtraParam("TypeRef", "outTy")
-      .setType("outTy")
-      .done(hFile, cFile);
+      .setType("outTy");
 
-  NodeBuilder("Pool")
+  BB.newNode("Pool")
       .addEnumCase("Max")
       .addEnumCase("Avg")
       .addOperand("Input")
@@ -321,19 +356,17 @@ int main(int argc, char **argv) {
       .addMember("size_t", "Stride")
       .addMember("size_t", "Pad")
       .addExtraParam("TypeRef", "outTy")
-      .setType("outTy")
-      .done(hFile, cFile);
+      .setType("outTy");
 
-  NodeBuilder("FullyConnected")
+  BB.newNode("FullyConnected")
       .addOperand("Input")
       .addOperand("Filter")
       .addOperand("Bias")
       .addMember("size_t", "Depth")
       .addExtraParam("TypeRef", "outTy")
-      .setType("outTy")
-      .done(hFile, cFile);
+      .setType("outTy");
 
-  NodeBuilder("BatchNormalization")
+  BB.newNode("BatchNormalization")
       .addOperand("Input")
       .addOperand("Scale")
       .addOperand("Bias")
@@ -342,79 +375,59 @@ int main(int argc, char **argv) {
       .addMember("size_t", "ChannelIdx")
       .addMember("float", "Epsilon")
       .addMember("float", "Momentum")
-      .setType("Input->getType()")
-      .done(hFile, cFile);
+      .setType("Input->getType()");
 
-  NodeBuilder("SoftMax")
+  BB.newNode("SoftMax")
       .addOperand("Input")
       .addOperand("Selected")
-      .setType("Input->getType()")
-      .done(hFile, cFile);
+      .setType("Input->getType()");
 
-  NodeBuilder("Regression")
+  BB.newNode("Regression")
       .addOperand("Input")
       .addOperand("Expected")
-      .setType("Input->getType()")
-      .done(hFile, cFile);
+      .setType("Input->getType()");
 
-  NodeBuilder("LocalResponseNormalization")
+  BB.newNode("LocalResponseNormalization")
       .addOperand("Input")
       .addOperand("Scale")
       .addMember("size_t", "HalfWindowSize")
       .addMember("float", "Alpha")
       .addMember("float", "Beta")
       .addMember("float", "K")
-      .setType("Input->getType()")
-      .done(hFile, cFile);
+      .setType("Input->getType()");
 
-  NodeBuilder("Arithmetic")
+  BB.newNode("Arithmetic")
       .addEnumCase("Add")
       .addEnumCase("Mul")
       .addOperand("LHS")
       .addOperand("RHS")
-      .setType("LHS->getType()")
-      .done(hFile, cFile);
+      .setType("LHS->getType()");
 
-  NodeBuilder("Relu")
-      .addOperand("Input")
-      .setType("Input->getType()")
-      .done(hFile, cFile);
-  NodeBuilder("Sigmoid")
-      .addOperand("Input")
-      .setType("Input->getType()")
-      .done(hFile, cFile);
-  NodeBuilder("Tanh")
-      .addOperand("Input")
-      .setType("Input->getType()")
-      .done(hFile, cFile);
+  BB.newNode("Relu").addOperand("Input").setType("Input->getType()");
+  BB.newNode("Sigmoid").addOperand("Input").setType("Input->getType()");
+  BB.newNode("Tanh").addOperand("Input").setType("Input->getType()");
 
-  NodeBuilder("Reshape")
+  BB.newNode("Reshape")
       .addOperand("Input")
       .addMember("std::vector<size_t>", "Dims")
       .addExtraParam("TypeRef", "outTy")
       .setType("outTy")
       .overrideGetter(
-          "Dims", "llvm::ArrayRef<size_t> getDims() const { return Dims_; }")
-      .done(hFile, cFile);
+          "Dims", "llvm::ArrayRef<size_t> getDims() const { return Dims_; }");
 
-  NodeBuilder("Transpose")
+  BB.newNode("Transpose")
       .addOperand("Input")
       .addMember("std::vector<unsigned>", "Shuffle")
       .addExtraParam("TypeRef", "outTy")
       .setType("outTy")
       .overrideGetter(
           "Shuffle",
-          "llvm::ArrayRef<unsigned> getShuffle() const { return Shuffle_; }")
-      .done(hFile, cFile);
+          "llvm::ArrayRef<unsigned> getShuffle() const { return Shuffle_; }");
 
-  NodeBuilder("Save")
+  BB.newNode("Save")
       .addOperand("Input")
       .addOperand("Output")
       .setType("Input->getType()")
       .overrideGetter("Output", "Variable *getOutput() const { return "
-                                "cast<Variable>(Output_.get()); };")
-      .done(hFile, cFile);
-
-  hFile.close();
-  cFile.close();
+                                "cast<Variable>(Output_.get()); };");
 }
