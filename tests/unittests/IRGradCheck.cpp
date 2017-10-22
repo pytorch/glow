@@ -15,14 +15,14 @@
 using namespace glow;
 
 /// Compute the regression loss for the tensor \p X with regard to Y.
-glow::DefaultFloatTy computeL2Loss(Tensor *X, Tensor *Y) {
+float computeL2Loss(Tensor *X, Tensor *Y) {
   assert(X->dims() == Y->dims() && "Invalid input dims");
   auto xH = X->getHandle<>();
   auto yH = Y->getHandle<>();
-  glow::DefaultFloatTy loss = 0;
+  float loss = 0;
 
   for (size_t i = 0, e = X->size(); i < e; i++) {
-    glow::DefaultFloatTy dy = (xH.raw(i) - yH.raw(i));
+    float dy = (xH.raw(i) - yH.raw(i));
     loss += 0.5 * dy * dy;
   }
 
@@ -30,7 +30,7 @@ glow::DefaultFloatTy computeL2Loss(Tensor *X, Tensor *Y) {
 }
 
 /// \returns the error rate when comparing two grads.
-glow::DefaultFloatTy gradDiff(glow::DefaultFloatTy G1, glow::DefaultFloatTy G2) {
+float gradDiff(float G1, float G2) {
   return std::abs(G1 - G2) / std::abs(G1 + G2 + 1);
 }
 

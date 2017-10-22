@@ -48,7 +48,7 @@ void testCIFAR10() {
       for (unsigned y = 0; y < 32; y++) {
         for (unsigned x = 0; x < 32; x++) {
           imagesH.at({w, x, y, z}) =
-              glow::DefaultFloatTy(static_cast<uint8_t>(dbInput.get())) / 255.0;
+              static_cast<float>(static_cast<uint8_t>(dbInput.get())) / 255.0;
           idx++;
         }
       }

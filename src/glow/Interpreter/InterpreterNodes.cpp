@@ -31,10 +31,8 @@ void Interpreter::bwdCopyInst(const CopyInst *I) {
 template <bool SpecializeFPS, size_t filterX, size_t padX, size_t strideX,
           bool SpecializeChannel, size_t channelX>
 [[gnu::noinline]] void
-fwdConvolutionInst_Impl(Handle<glow::DefaultFloatTy> inW,
-                        Handle<glow::DefaultFloatTy> outW,
-                        Handle<glow::DefaultFloatTy> filterW,
-                        Handle<glow::DefaultFloatTy> biasW,
+fwdConvolutionInst_Impl(Handle<float> inW, Handle<float> outW,
+                        Handle<float> filterW, Handle<float> biasW,
                         size_t filterSize, size_t pad, size_t stride) {
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
@@ -65,7 +63,7 @@ fwdConvolutionInst_Impl(Handle<glow::DefaultFloatTy> inW,
         for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
 
           // For each element in the convolution-filter:
-          glow::DefaultFloatTy sum = 0;
+          float sum = 0;
           for (size_t fx = 0; fx < filterSize; fx++) {
             for (size_t fy = 0; fy < filterSize; fy++) {
               ssize_t ox = x + fx;
@@ -156,7 +154,7 @@ void Interpreter::bwdConvolutionInst(const ConvolutionInst *I) {
         ssize_t y = -ssize_t(pad);
         for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
 
-          glow::DefaultFloatTy chainGrad = outG.at({n, ax, ay, d});
+          float chainGrad = outG.at({n, ax, ay, d});
 
           // For each element in the convolution-filter:
           for (size_t fx = 0; fx < filterSize; fx++) {
@@ -225,7 +223,7 @@ void Interpreter::fwdPoolMax_impl(const PoolInst *I) {
           size_t maxY = y;
 
           bool first = true;
-          glow::DefaultFloatTy max = 0;
+          float max = 0;
 
           for (size_t fx = 0; fx < filterSize; fx++) {
             for (size_t fy = 0; fy < filterSize; fy++) {
@@ -238,7 +236,7 @@ void Interpreter::fwdPoolMax_impl(const PoolInst *I) {
                 continue;
               }
 
-              glow::DefaultFloatTy val = inW.at({n, (size_t)ox, (size_t)oy, z});
+              float val = inW.at({n, (size_t)ox, (size_t)oy, z});
 
               if (first || (val >= max)) {
                 first = false;
@@ -273,7 +271,7 @@ void Interpreter::fwdPoolAvg_impl(const PoolInst *I) {
   // Implement the avg pooling operation as defined here:
   // https://arxiv.org/abs/1312.4400
 
-  glow::DefaultFloatTy filterArea = filterSize * filterSize;
+  float filterArea = filterSize * filterSize;
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
@@ -285,7 +283,7 @@ void Interpreter::fwdPoolAvg_impl(const PoolInst *I) {
       for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
         ssize_t y = -ssize_t(pad);
         for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
-          glow::DefaultFloatTy sum = 0;
+          float sum = 0;
 
           for (size_t fx = 0; fx < filterSize; fx++) {
             for (size_t fy = 0; fy < filterSize; fy++) {
@@ -335,7 +333,7 @@ void Interpreter::bwdPoolMax_impl(const PoolInst *I) {
       for (size_t ax = 0; ax < odim.h; ax++) {
         for (size_t ay = 0; ay < odim.w; ay++) {
 
-          glow::DefaultFloatTy chainGrad = outG.at({n, ax, ay, z});
+          float chainGrad = outG.at({n, ax, ay, z});
 
           size_t maxX = SXY.at({n, ax, ay, z, 0});
           size_t maxY = SXY.at({n, ax, ay, z, 1});
@@ -360,7 +358,7 @@ void Interpreter::bwdPoolAvg_impl(const PoolInst *I) {
   auto filterSize = I->getKernel();
   auto stride = I->getStride();
 
-  glow::DefaultFloatTy filterArea = filterSize * filterSize;
+  float filterArea = filterSize * filterSize;
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
@@ -373,7 +371,7 @@ void Interpreter::bwdPoolAvg_impl(const PoolInst *I) {
         ssize_t y = -ssize_t(pad);
         for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
 
-          glow::DefaultFloatTy dy = outG.at({n, ax, ay, z}) / filterArea;
+          float dy = outG.at({n, ax, ay, z}) / filterArea;
 
           for (size_t fx = 0; fx < filterSize; fx++) {
             for (size_t fy = 0; fy < filterSize; fy++) {
@@ -416,7 +414,7 @@ void Interpreter::fwdFullyConnectedInst(const bool isTrain,
 
     for (size_t i = 0; i < odim.second; i++) {
 
-      glow::DefaultFloatTy sum = 0;
+      float sum = 0;
       for (size_t j = 0; j < inputSize; j++) {
         sum += inW.raw(base + j) * filterW.at({i, j});
       }
@@ -447,7 +445,7 @@ void Interpreter::bwdFullyConnectedInst(const FullyConnectedInst *I) {
 
     // Compute the gradient:
     for (size_t i = 0; i < odim.second; i++) {
-      glow::DefaultFloatTy chainGrad = outG.at({n, i});
+      float chainGrad = outG.at({n, i});
 
       for (size_t j = 0, e = inSize; j < e; j++) {
         // Input gradient:
@@ -470,7 +468,7 @@ void Interpreter::fwdReluInst(bool isTrain, const ReluInst *I) {
   auto outW = getWeightHandle(I->getDest());
 
   for (size_t i = 0, e = inW.size(); i < e; i++) {
-    glow::DefaultFloatTy val = inW.raw(i);
+    float val = inW.raw(i);
     outW.raw(i) = val < 0 ? 0 : val;
   }
 }
@@ -481,7 +479,7 @@ void Interpreter::bwdReluInst(const ReluInst *I) {
   auto outG = getGradHandle(I->getDest());
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    glow::DefaultFloatTy val = outW.raw(i);
+    float val = outW.raw(i);
     inG.raw(i) += (val <= 0 ? 0 : outG.raw(i));
   }
 }
@@ -491,7 +489,7 @@ void Interpreter::fwdSigmoidInst(bool isTrain, const SigmoidInst *I) {
   auto outW = getWeightHandle(I->getDest());
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    glow::DefaultFloatTy val = inW.raw(i);
+    float val = inW.raw(i);
     outW.raw(i) = 1 / (1 + std::exp(-val));
   }
 }
@@ -501,7 +499,7 @@ void Interpreter::bwdSigmoidInst(const SigmoidInst *I) {
   auto outG = getGradHandle(I->getDest());
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    glow::DefaultFloatTy val = outW.raw(i);
+    float val = outW.raw(i);
     inG.raw(i) += val * (1 - val) * outG.raw(i);
   }
 }
@@ -511,9 +509,9 @@ void Interpreter::fwdTanhInst(bool isTrain, const TanhInst *I) {
   auto outW = getWeightHandle(I->getDest());
 
   for (size_t i = 0, e = inW.size(); i < e; i++) {
-    glow::DefaultFloatTy val = inW.raw(i);
-    glow::DefaultFloatTy exp_val = std::exp(val);
-    glow::DefaultFloatTy exp_neg_val = std::exp(-val);
+    float val = inW.raw(i);
+    float exp_val = std::exp(val);
+    float exp_neg_val = std::exp(-val);
     outW.raw(i) = (exp_val - exp_neg_val) / (exp_val + exp_neg_val);
   }
 }
@@ -523,7 +521,7 @@ void Interpreter::bwdTanhInst(const TanhInst *I) {
   auto outG = getGradHandle(I->getDest());
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    glow::DefaultFloatTy val = outW.raw(i);
+    float val = outW.raw(i);
     inG.raw(i) += (1 - val * val) * outG.raw(i);
   }
 }
@@ -540,18 +538,18 @@ void Interpreter::fwdSoftMaxInst(bool isTrain, const SoftMaxInst *I) {
   auto EH = getWeightHandle(I->getE());
 
   for (size_t n = 0; n < idim[0]; n++) {
-    glow::DefaultFloatTy max = inW.at({n, 0});
+    float max = inW.at({n, 0});
 
     // Find Max.
     for (size_t i = 0; i < idim[1]; i++) {
       max = std::max(max, inW.at({n, i}));
     }
 
-    glow::DefaultFloatTy sum = 0;
+    float sum = 0;
 
     // Compute exp.
     for (size_t i = 0; i < idim[1]; i++) {
-      glow::DefaultFloatTy e = std::exp(inW.at({n, i}) - max);
+      float e = std::exp(inW.at({n, i}) - max);
       sum += e;
       EH.at({n, i}) = e;
     }
@@ -575,8 +573,8 @@ void Interpreter::bwdSoftMaxInst(const SoftMaxInst *I) {
   // https://stats.stackexchange.com/questions/79454/softmax-layer-in-a-neural-network
   for (size_t n = 0; n < idim[0]; n++) {
     for (size_t i = 0; i < idim[1]; i++) {
-      glow::DefaultFloatTy delta = (selectedH.at({n, 0}) == i);
-      glow::DefaultFloatTy sigma = (EH.at({n, i}) - delta);
+      float delta = (selectedH.at({n, 0}) == i);
+      float sigma = (EH.at({n, i}) - delta);
       inG.at({n, i}) += sigma;
     }
   }
@@ -605,7 +603,7 @@ void Interpreter::bwdRegressionInst(const RegressionInst *I) {
   for (size_t n = 0; n < idim[0]; n++) {
 
     for (size_t i = 0; i < idim[1]; i++) {
-      glow::DefaultFloatTy dy = inW.at({n, i}) - e.at({n, i});
+      float dy = inW.at({n, i}) - e.at({n, i});
       inG.at({n, i}) += dy;
     }
   } // N
@@ -744,13 +742,12 @@ void Interpreter::fwdBatchNormalizationInst_infer(
       for (size_t x = 0; x < odim.h; x++) {
         for (size_t y = 0; y < odim.w; y++) {
           for (size_t c = 0; c < odim.c; c++) {
-            glow::DefaultFloatTy inp = inW.at({n, x, y, c});
-            glow::DefaultFloatTy mu = meanH.at(c);
-            glow::DefaultFloatTy var = varH.at(c);
-            glow::DefaultFloatTy stdvar =
-                glow::DefaultFloatTy(1.0) / std::sqrt(var + epsilon);
-            glow::DefaultFloatTy gamma = gammaWH.at(c);
-            glow::DefaultFloatTy beta = betaWH.at(c);
+            float inp = inW.at({n, x, y, c});
+            float mu = meanH.at(c);
+            float var = varH.at(c);
+            float stdvar = 1.0f / std::sqrt(var + epsilon);
+            float gamma = gammaWH.at(c);
+            float beta = betaWH.at(c);
             outW.at({n, x, y, c}) = (inp - mu) * gamma * stdvar + beta;
           } // C
         }   // W
@@ -764,16 +761,15 @@ void Interpreter::fwdBatchNormalizationInst_infer(
   // n-dimensional tensors.
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     size_t channelId = inW.getDimForPtr(channelIdx, i);
-    glow::DefaultFloatTy x = inW.raw(i);
+    float x = inW.raw(i);
 
-    glow::DefaultFloatTy mu = meanH.at({channelId});
-    glow::DefaultFloatTy var = varH.at({channelId});
+    float mu = meanH.at({channelId});
+    float var = varH.at({channelId});
 
-    glow::DefaultFloatTy stdvar =
-        glow::DefaultFloatTy(1.0) / std::sqrt(var + epsilon);
+    float stdvar = 1.0f / std::sqrt(var + epsilon);
 
-    glow::DefaultFloatTy gamma = gammaWH.at({channelId});
-    glow::DefaultFloatTy beta = betaWH.at({channelId});
+    float gamma = gammaWH.at({channelId});
+    float beta = betaWH.at({channelId});
 
     outW.raw(i) = (x - mu) * gamma * stdvar + beta;
   }
@@ -803,7 +799,7 @@ void Interpreter::fwdBatchNormalizationInst_train(
   // sum(in[i])
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     size_t channelId = inW.getDimForPtr(channelIdx, i);
-    glow::DefaultFloatTy v = inW.raw(i);
+    float v = inW.raw(i);
     localMeanH.raw(channelId) += v;
   }
   // Mean = sum(in[i]) / N
@@ -816,7 +812,7 @@ void Interpreter::fwdBatchNormalizationInst_train(
   // sum((x - mu) ^ 2)
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     size_t channelId = inW.getDimForPtr(channelIdx, i);
-    glow::DefaultFloatTy v = inW.raw(i) - localMeanH.at({channelId});
+    float v = inW.raw(i) - localMeanH.at({channelId});
     localVarH.raw(channelId) += v * v;
   }
   // Var = sum((x - mu) ^ 2) / N
@@ -865,7 +861,7 @@ void Interpreter::bwdBatchNormalizationInst(const BatchNormalizationInst *I) {
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     size_t channelId = inW.getDimForPtr(channelIdx, i);
     // x - mean.
-    glow::DefaultFloatTy cx = inW.raw(i) - meanH.at({channelId});
+    float cx = inW.raw(i) - meanH.at({channelId});
     // dy * (h - mu)
     dyhmuH.at({channelId}) += outG.raw(i) * cx;
   }
@@ -889,18 +885,17 @@ void Interpreter::bwdBatchNormalizationInst(const BatchNormalizationInst *I) {
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     size_t channelId = inW.getDimForPtr(channelIdx, i);
 
-    glow::DefaultFloatTy invN = glow::DefaultFloatTy(1.0) / samplesPerChannel;
-    glow::DefaultFloatTy gamma = gammaWH.at({channelId});
-    glow::DefaultFloatTy var = varH.at({channelId});
-    glow::DefaultFloatTy mu = meanH.at({channelId});
-    glow::DefaultFloatTy invVarSqrt =
-        glow::DefaultFloatTy(1.0) / std::sqrt(var + epsilon);
-    glow::DefaultFloatTy invVar = glow::DefaultFloatTy(1.0) / (var + epsilon);
+    float invN = 1.0f / samplesPerChannel;
+    float gamma = gammaWH.at({channelId});
+    float var = varH.at({channelId});
+    float mu = meanH.at({channelId});
+    float invVarSqrt = 1.0f / std::sqrt(var + epsilon);
+    float invVar = 1.0f / (var + epsilon);
 
-    glow::DefaultFloatTy dy = outG.raw(i);
-    glow::DefaultFloatTy hmu = inW.raw(i) - mu;
-    glow::DefaultFloatTy sdy = sumDyH.at(channelId);
-    glow::DefaultFloatTy sdyhmu = dyhmuH.at(channelId);
+    float dy = outG.raw(i);
+    float hmu = inW.raw(i) - mu;
+    float sdy = sumDyH.at(channelId);
+    float sdyhmu = dyhmuH.at(channelId);
     inG.raw(i) += invN * gamma * invVarSqrt *
                   (samplesPerChannel * dy - sdy - hmu * invVar * sdyhmu);
   }
@@ -909,10 +904,9 @@ void Interpreter::bwdBatchNormalizationInst(const BatchNormalizationInst *I) {
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     size_t channelId = inW.getDimForPtr(channelIdx, i);
 
-    glow::DefaultFloatTy mu = meanH.at({channelId});
-    glow::DefaultFloatTy var = varH.at({channelId});
-    glow::DefaultFloatTy invVarSqrt =
-        glow::DefaultFloatTy(1.0) / std::sqrt(var + epsilon);
+    float mu = meanH.at({channelId});
+    float var = varH.at({channelId});
+    float invVarSqrt = 1.0f / std::sqrt(var + epsilon);
 
     betaGH.at({channelId}) += outG.raw(i);
     gammaGH.at({channelId}) += (inW.raw(i) - mu) * invVarSqrt * outG.raw(i);
@@ -952,7 +946,7 @@ void Interpreter::fwdLocalResponseNormalizationInst(
       // For every column:
       for (size_t w = 0; w < idim.w; w++) {
 
-        glow::DefaultFloatTy squareSum = 0.0;
+        float squareSum = 0.0;
 
         // Compute squareSum for first channel.
         for (size_t c = 1; c <= halfWindowSize && c < idim.c; c++) {
@@ -1008,7 +1002,7 @@ void Interpreter::bwdLocalResponseNormalizationInst(
       // For every column:
       for (size_t w = 0; w < odim.w; w++) {
 
-        glow::DefaultFloatTy sum = 0.0;
+        float sum = 0.0;
 
         // Compute sum for first channel.
         for (size_t c = 1; c <= halfWindowSize && c < odim.c; c++) {
