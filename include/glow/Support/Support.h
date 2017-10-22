@@ -37,14 +37,12 @@ template <typename... Args> std::string listToString(Args... args) {
 }
 
 template <typename E> std::string arrayRefToString(llvm::ArrayRef<E> list) {
-  std::string sb = "[";
-  for (size_t i = 0, e = list.size(); i < e; i++) {
-    if (i) {
-      sb += ", ";
-    }
-    sb += std::to_string(list[i]);
-  }
-  return sb + "]";
+  std::ostringstream buffer;
+  buffer << '[';
+  std::copy(std::begin(list), std::end(list),
+            std::ostream_iterator<E>(buffer, ", "));
+  buffer << ']';
+  return buffer.str();
 }
 
 /// A helper class that builds a textual descriptor of a group of parameters.
