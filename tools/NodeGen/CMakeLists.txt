@@ -1,3 +1,4 @@
 
 add_executable(NodeGen
-                 NodeGen.cpp)
+                 NodeGen.cpp
+                 NodeBuilder.cpp)
