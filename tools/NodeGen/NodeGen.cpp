@@ -18,7 +18,6 @@ class NodeBuilder {
   std::vector<std::string> enum_;
   /// A list of extra parameters that are passed to the constructor.
   std::vector<std::pair<std::string, std::string>> extraParams_;
-
   /// A list of getters to override. Format (variable name, alternative getter).
   std::unordered_map<std::string, std::string> overrideGetter_;
 
@@ -64,218 +63,220 @@ public:
     return *this;
   }
 
-  std::string getEnumModePrinters() {
-    std::string sb;
-
-    sb += "const char *" + name_ + "Node::getModeStr(" + name_ +
-          "Node::Mode m) {\n";
-    sb += "\tconst char *names[] = {";
+  /// Emits the methods that converts an enum case into a textual label.
+  void emitEnumModePrinters(std::ostream &os) {
+    os << "const char *" << name_ << "Node::getModeStr(" << name_
+       << "Node::Mode m) {\n";
+    os << "\tconst char *names[] = {";
     for (auto &e : enum_) {
-      sb += "\"" + e + "\", ";
+      os << "\"" << e << "\", ";
     }
-    sb += "nullptr};\n";
-    sb += "\treturn names[static_cast<int>(m)];\n";
-    sb += "}\n";
-    return sb;
+    os << "nullptr};\n";
+    os << "\treturn names[static_cast<int>(m)];\n";
+    os << "}\n";
   }
 
-  std::string genCtor() {
-    std::string sb;
-    // Constructor parameter list:
-    sb += "\t" + name_ + "Node(llvm::StringRef name";
+  /// Emit the Node class constructor.
+  void emitCtor(std::ostream &os) {
+    os << "\t" << name_ << "Node(llvm::StringRef name";
 
+    // Constructor non-standard parameter list:
     for (auto op : extraParams_) {
-      sb += ", " + op.first + " " + op.second + " ";
+      os << ", " << op.first << " " << op.second << " ";
     }
 
+    // The enum 'Mode' parameter:
     if (enum_.size()) {
-      sb += ", Mode mode";
+      os << ", Mode mode";
     }
 
+    // The operands of the graph node:
     for (auto op : operands_) {
-      sb += ", Node *" + op;
+      os << ", Node *" << op;
     }
 
+    // Extra class members:
     for (auto op : members_) {
-      sb += ", " + op.first + " " + op.second;
+      os << ", " << op.first << " " << op.second;
     }
 
-    sb += "):\n\t Node(Kinded::Kind::" + name_ + "InstKind, " + ty_ + ", name)";
+    // Initialize the base clases:
+    os << "):\n\t Node(Kinded::Kind::" << name_ << "InstKind, " << ty_
+       << ", name)";
 
     // Print the initialization list:
-
     if (enum_.size()) {
-      sb += ", mode_(mode)";
+      os << ", mode_(mode)";
     }
 
+    // Initialize the operands:
     for (auto op : operands_) {
-      sb += ", " + op + "_(" + op + ")";
+      os << ", " << op << "_(" << op << ")";
     }
 
+    // Initialize the members:
     for (auto op : members_) {
-      sb += ", " + op.second + "_(" + op.second + ") ";
+      os << ", " << op.second << "_(" << op.second << ") ";
     }
-    sb += " {}\n\n";
-    return sb;
+
+    // Empty constructor body.
+    os << " {}\n\n";
   }
 
-  std::string genClassMembers() {
-    std::string sb;
-    if (enum_.size()) {
-      sb += "\tpublic:\n";
+  /// Emits the class members (the fields of the class).
+  void emitClassMembers(std::ostream &os) {
 
-      sb += "\tenum class Mode {\n";
+    // Emit the type of the enum (which is public).
+    if (enum_.size()) {
+      os << "\tpublic:\n\tenum class Mode {\n";
       for (auto E : enum_) {
-        sb += "\t  " + E + ",\n";
+        os << "\t  " << E << ",\n";
       }
+      os << "\t};\n";
 
-      sb += "\t};\n";
-      sb += "\tprivate:\n";
+      os << "\tprivate:\n";
     }
 
-    // Class members:
+    // Emit class members:
     if (enum_.size()) {
-      sb += "\tMode mode_;\n";
+      os << "\tMode mode_;\n";
     }
     for (auto op : operands_) {
-      sb += "\tNodeOperand " + op + "_;\n";
+      os << "\tNodeOperand " << op << "_;\n";
     }
     for (auto op : members_) {
-      sb += "\t" + op.first + " " + op.second + "_;\n";
+      os << "\t" << op.first << " " << op.second << "_;\n";
     }
-
-    sb += "\n";
-
-    return sb;
+    os << "\n";
   }
 
-  std::string getSettersGetters() {
-    std::string sb;
-
+  /// Emit stters/getters for each accessible class member.
+  void emitSettersGetters(std::ostream &os) {
     // Print the getters/setters.
     for (auto op : operands_) {
-      // Synthesize a user-defined getter.
+      // Synthesize a user-defined operand getter.
       auto it = overrideGetter_.find(op);
       if (it != overrideGetter_.end()) {
-        sb += "\t" + it->second + "\n";
+        os << "\t" << it->second << "\n";
         continue;
       }
 
       // Synthesize the general getter.
-      sb += "\tNode *get" + op + "() const { return " + op + "_; }\n";
+      os << "\tNode *get" << op << "() const { return " << op << "_; }\n";
     }
+
     for (auto op : members_) {
-      // Synthesize a user-defined getter.
+      // Synthesize a user-defined member getter.
       auto it = overrideGetter_.find(op.second);
       if (it != overrideGetter_.end()) {
-        sb += "\t" + it->second + "\n";
+        os << "\t" << it->second << "\n";
         continue;
       }
 
       // Synthesize the general getter.
-      sb += "\t" + op.first + " get" + op.second + "() const { return " +
-            op.second + "_; }\n";
+      os << "\t" << op.first + " get" << op.second << "() const { return "
+         << op.second << "_; }\n";
     }
-    sb += "\n";
-
-    sb += "static bool classof(const Kinded *k) { return k->getKind() == "
-          " Kinded::Kind::" +
-          name_ + "InstKind; }\n";
+    // Synthesize the 'classof' method that enables the non-rtti polymorphism.
+    os << "\nstatic bool classof(const Kinded *k) { return k->getKind() == "
+          "Kinded::Kind::"
+       << name_ << "InstKind; }\n";
 
     if (enum_.size()) {
-      sb += "\tMode getMode() const { return mode_; }\n";
+      os << "\tMode getMode() const { return mode_; }\n";
     }
-
-    return sb;
   }
 
-  std::string genPrettyPrinter() {
-    std::string sb;
-    sb += "std::string " + name_ + "Node::" + "getDebugDesc() const {\n";
-    sb += "\t\tDescriptionBuilder db(getKindName());\n";
-    sb += "\t\tdb.addParam(\"name\", getName())\n";
+  /// Emit the methods that print a textual summary of the node.
+  void emitPrettyPrinter(std::ostream &os) {
+    os << "std::string " << name_
+       << "Node::getDebugDesc() const {\n\t\tDescriptionBuilder "
+          "db(getKindName());\n\t\tdb.addParam(\"name\", getName())\n";
 
     if (enum_.size()) {
-      sb += "\t\t.addParam(\"Mode\", getModeStr())\n";
+      os << "\t\t.addParam(\"Mode\", getModeStr())\n";
     }
 
     for (auto op : operands_) {
-      sb += "\t\t.addParam(\"" + op + "\", *get" + op + "()->getType())\n";
+      os << "\t\t.addParam(\"" << op << "\", *get" << op << "()->getType())\n";
     }
 
     for (auto mem : members_) {
-      sb += "\t\t.addParam(\"" + mem.second + "\", get" + mem.second + "())\n";
+      os << "\t\t.addParam(\"" << mem.second << "\", get" << mem.second
+         << "())\n";
     }
-    sb += "\t\t.addParam(\"users\", getNumUsers());\n";
-
-    sb += "\t\treturn db;\n}\n";
-    return sb;
+    os << "\t\t.addParam(\"users\", getNumUsers());\n\t\treturn db;\n}\n";
   }
 
-  std::string getEquator() {
-    std::string sb;
+  /// Emit the isEqual method that performs node comparisons.
+  void emitEquator(std::ostream &os) {
+    os << "\tbool isEqual(const " << name_ << "Node &other) {\n\treturn true";
 
-    sb += "\tbool isEqual(const " + name_ + "Node &other) {\n";
-    sb += "\treturn true";
+    if (enum_.size()) {
+      os << " &&\n\t getMode() == other.getMode()";
+    }
 
     for (auto op : operands_) {
-      sb += " &&\n\t " + op + "_ == other." + op + "_";
+      os << " &&\n\t " << op << "_ == other." << op << "_";
     }
 
     for (auto mem : members_) {
-      sb += " &&\n\t " + mem.second + "_ == other." + mem.second + "_";
+      os << " &&\n\t " << mem.second << "_ == other." << mem.second << "_";
     }
 
-    sb += ";\n }\n";
-    return sb;
+    os << ";\n }\n";
   }
 
-  std::string getVisitor() {
-    std::string sb;
+  /// Emit the 'visit' method that implements node visitors.
+  void emitVisitor(std::ostream &os) {
+    os << "void " << name_
+       << "Node::visit(Node *parent, NodeVisitor *visitor) {\n\tif "
+          "(!visitor->shouldVisit(parent, this)) { return; }\n";
 
-    sb += "void " + name_ +
-          "Node::" + "visit(Node *parent, NodeVisitor *visitor) {\n";
-    sb += "\tif (!visitor->shouldVisit(parent, this)) { return; }\n";
-
-    sb += "\tvisitor->pre(parent, this);\n";
+    os << "\tvisitor->pre(parent, this);\n";
     for (auto op : operands_) {
-      sb += "\tget" + op + "()->visit(this, visitor);\n";
+      os << "\tget" << op << "()->visit(this, visitor);\n";
     }
-    sb += "\tvisitor->post(parent, this);\n";
-    sb += "}\n";
-    return sb;
+    os << "\tvisitor->post(parent, this);\n";
+    os << "}\n";
+  }
+
+  /// Emit the class definition for the node.
+  void emitNodeClass(std::ostream &os) {
+    os << "namespace glow {\nclass " << name_ << "Node final : public Node {\n";
+
+    emitClassMembers(os);
+
+    os << "\tpublic:\n";
+
+    emitCtor(os);
+
+    emitSettersGetters(os);
+    emitEquator(os);
+
+    os << "\tstd::string getDebugDesc() const override;\n";
+    os << "\tvoid visit(Node *parent, NodeVisitor *visitor) override;\n";
+    if (enum_.size()) {
+      os << "\tconst char *getModeStr() const { return getModeStr(mode_); "
+            "}\n\tstatic const char *getModeStr(Mode m);\n";
+    }
+
+    os << "};\n\n} // namespace glow\n";
+  }
+
+  /// Emit the methods that go into the CPP file and implement the methods that
+  /// were declared in the header file.
+  void emitCppMethods(std::ostream &os) {
+    emitPrettyPrinter(os);
+    emitVisitor(os);
+    if (enum_.size()) {
+      emitEnumModePrinters(os);
+    }
   }
 
   void done(std::ofstream &hFile, std::ofstream &cFile) {
-    std::string hdr = "namespace glow {\n";
-    hdr += "class " + name_ + "Node final : public Node {\n";
-
-    hdr += genClassMembers();
-
-    hdr += "\tpublic:\n";
-
-    hdr += genCtor();
-
-    hdr += getSettersGetters();
-    hdr += getEquator();
-    hdr += "\tstd::string getDebugDesc() const override;\n";
-    hdr += "\tvoid visit(Node *parent, NodeVisitor *visitor) override;\n";
-    if (enum_.size()) {
-      hdr += "\tconst char *getModeStr() const { return getModeStr(mode_); }\n";
-      hdr += "\tstatic const char *getModeStr(Mode m);\n";
-    }
-
-    hdr += "};\n\n";
-    hdr += " } // namespace glow\n";
-    hFile << hdr;
-
-    std::string cpp;
-    cpp += genPrettyPrinter();
-    cpp += getVisitor();
-    if (enum_.size()) {
-      cpp += getEnumModePrinters();
-    }
-    cFile << cpp;
+    emitNodeClass(hFile);
+    emitCppMethods(cFile);
   }
 };
 
