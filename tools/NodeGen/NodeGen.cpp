@@ -111,7 +111,7 @@ public:
     }
 
     // Initialize the base clases:
-    os << "):\n\t Node(Kinded::Kind::" << name_ << "InstKind, " << ty_
+    os << "):\n\t Node(Kinded::Kind::" << name_ << "NodeKind, " << ty_
        << ", name)";
 
     // Print the initialization list:
@@ -190,7 +190,7 @@ public:
     // Synthesize the 'classof' method that enables the non-rtti polymorphism.
     os << "\nstatic bool classof(const Kinded *k) { return k->getKind() == "
           "Kinded::Kind::"
-       << name_ << "InstKind; }\n";
+       << name_ << "NodeKind; }\n";
 
     if (enum_.size()) {
       os << "\tMode getMode() const { return mode_; }\n";
@@ -299,17 +299,26 @@ public:
   /// Create a new top-level builder that holds the three output streams that
   /// point to the header file, cpp file and enum definition file.
   Builder(std::ofstream &H, std::ofstream &C, std::ofstream &D)
-      : hStream(H), cStream(C), dStream(D) {}
+      : hStream(H), cStream(C), dStream(D) {
+    cStream << "#include \"glow/Graph/Nodes.h\"\n"
+               "#include \"glow/Base/Type.h\"\n"
+               "#include \"glow/Support/Support.h\"\n\n"
+               "using namespace glow;\n";
+    dStream << "#ifndef DEF_NODE\n#error The macro DEF_NODE was not declared.\n"
+               "#endif\n";
+  }
+
+  ~Builder() { dStream << "#undef DEF_NODE"; }
 
   /// Declare a new node and generate code for it.
   NodeBuilder newNode(const std::string &name) {
-    dStream << "DEF_NODE(nameNode, name)\n";
+    dStream << "DEF_NODE(" << name << "Node, " << name << ")\n";
     return NodeBuilder(hStream, cStream, dStream, name);
   }
 
   /// Declare the node in the def file but don't generate code for it.
   void declareNode(const std::string &name) {
-    dStream << "DEF_NODE(nameNode, name)\n";
+    dStream << "DEF_NODE(" << name << "Node, " << name << ")\n";
   }
 };
 
@@ -325,12 +334,6 @@ int main(int argc, char **argv) {
   std::ofstream hFile(argv[1]);
   std::ofstream cFile(argv[2]);
   std::ofstream dFile(argv[3]);
-
-  cFile << "#include \"glow/Graph/Nodes.h\"\n"
-           "#include \"glow/Base/Type.h\"\n"
-           "#include \"glow/IR/Instrs.h\"\n"
-           "#include \"glow/Support/Support.h\"\n\n"
-           "using namespace glow;\n";
 
   Builder BB(hFile, cFile, dFile);
 

@@ -16,7 +16,6 @@ class Tensor;
 
 // Forward declare all of the classes.
 #define DEF_VALUE(CLASS, NAME) class CLASS;
-#define DEF_NODE(CLASS, NAME) class CLASS;
 #define DEF_INSTR(CLASS, NAME) class CLASS;
 #include "glow/IR/Instrs.def"
 
@@ -87,7 +86,6 @@ private:
   ///@{
 
 #define DEF_VALUE(CLASS, NAME)
-#define DEF_NODE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   void fwd##CLASS(bool isTrain, const CLASS *I);                               \
   void bwd##CLASS(const CLASS *I);

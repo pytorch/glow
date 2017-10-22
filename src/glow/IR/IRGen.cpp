@@ -54,12 +54,10 @@ public:
 
   void post(Node *parent, Node *N) override {
     switch (N->getKind()) {
-    case glow::Kinded::Kind::AllocActivationInstKind:
-    case glow::Kinded::Kind::DeallocActivationInstKind:
-    case Kinded::Kind::CopyInstKind:
+    default:
       assert("Invalid Node");
       break;
-    case glow::Kinded::Kind::ConvolutionInstKind: {
+    case glow::Kinded::Kind::ConvolutionNodeKind: {
       auto *C = cast<ConvolutionNode>(N);
       auto *in = valueForNode(C->getInput());
       auto *filter = valueForNode(C->getFilter());
@@ -72,7 +70,7 @@ public:
 
       break;
     }
-    case glow::Kinded::Kind::PoolInstKind: {
+    case glow::Kinded::Kind::PoolNodeKind: {
       auto *P = cast<PoolNode>(N);
       auto *in = valueForNode(P->getInput());
       auto *V = builder_.createPoolOp(in, P->getMode(), P->getKernel(),
@@ -81,7 +79,7 @@ public:
       registerIR(N, V->getDest());
       break;
     }
-    case glow::Kinded::Kind::FullyConnectedInstKind: {
+    case glow::Kinded::Kind::FullyConnectedNodeKind: {
       auto *FC = cast<FullyConnectedNode>(N);
       auto *in = valueForNode(FC->getInput());
       auto *filter = valueForNode(FC->getFilter());
@@ -92,7 +90,7 @@ public:
       registerIR(N, V->getDest());
       break;
     }
-    case glow::Kinded::Kind::ReluInstKind: {
+    case glow::Kinded::Kind::ReluNodeKind: {
       auto *R = cast<ReluNode>(N);
       auto *V = builder_.createRELUOp(valueForNode(R->getInput()));
       V->setName(N->getName());
@@ -100,21 +98,21 @@ public:
 
       break;
     }
-    case glow::Kinded::Kind::SigmoidInstKind: {
+    case glow::Kinded::Kind::SigmoidNodeKind: {
       auto *S = cast<SigmoidNode>(N);
       auto *V = builder_.createSigmoidOp(valueForNode(S->getInput()));
       V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
     }
-    case glow::Kinded::Kind::TanhInstKind: {
+    case glow::Kinded::Kind::TanhNodeKind: {
       auto *T = cast<TanhNode>(N);
       auto *V = builder_.createTanhOp(valueForNode(T->getInput()));
       V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
     }
-    case glow::Kinded::Kind::SoftMaxInstKind: {
+    case glow::Kinded::Kind::SoftMaxNodeKind: {
       auto *SM = cast<SoftMaxNode>(N);
       auto *in = valueForNode(SM->getInput());
       auto *select = valueForNode(SM->getSelected());
@@ -123,7 +121,7 @@ public:
       registerIR(N, V->getDest());
       break;
     }
-    case glow::Kinded::Kind::RegressionInstKind: {
+    case glow::Kinded::Kind::RegressionNodeKind: {
       auto *RR = cast<RegressionNode>(N);
       auto *in = valueForNode(RR->getInput());
       auto *expected = valueForNode(RR->getExpected());
@@ -132,7 +130,7 @@ public:
       registerIR(N, V->getDest());
       break;
     }
-    case glow::Kinded::Kind::TransposeInstKind: {
+    case glow::Kinded::Kind::TransposeNodeKind: {
       auto *TT = cast<TransposeNode>(N);
       auto *in = valueForNode(TT->getInput());
       auto *V = builder_.createTransposeOp(in, TT->getShuffle());
@@ -140,7 +138,7 @@ public:
       registerIR(N, V->getDest());
       break;
     }
-    case glow::Kinded::Kind::ReshapeInstKind: {
+    case glow::Kinded::Kind::ReshapeNodeKind: {
       auto *RS = cast<ReshapeNode>(N);
       auto *in = valueForNode(RS->getInput());
       auto *V = builder_.createReshapeOp(in, RS->getDims());
@@ -148,7 +146,7 @@ public:
       registerIR(N, V->getDest());
       break;
     }
-    case glow::Kinded::Kind::ConcatInstKind: {
+    case glow::Kinded::Kind::ConcatNodeKind: {
       auto *CC = cast<ConcatNode>(N);
       std::vector<Value *> vals;
       for (auto &in : CC->getInputs()) {
@@ -159,7 +157,7 @@ public:
       registerIR(N, V->getDest());
       break;
     }
-    case glow::Kinded::Kind::BatchNormalizationInstKind: {
+    case glow::Kinded::Kind::BatchNormalizationNodeKind: {
       auto *BN = cast<BatchNormalizationNode>(N);
       auto *in = valueForNode(BN->getInput());
       auto *beta = valueForNode(BN->getBias());
@@ -175,7 +173,7 @@ public:
       break;
     }
 
-    case glow::Kinded::Kind::LocalResponseNormalizationInstKind: {
+    case glow::Kinded::Kind::LocalResponseNormalizationNodeKind: {
       auto *LR = cast<LocalResponseNormalizationNode>(N);
       auto *in = valueForNode(LR->getInput());
       auto *V = builder_.createLocalResponseNormalizationOp(
@@ -185,7 +183,7 @@ public:
       registerIR(N, V->getDest());
       break;
     }
-    case glow::Kinded::Kind::ArithmeticInstKind: {
+    case glow::Kinded::Kind::ArithmeticNodeKind: {
       auto *AR = cast<ArithmeticNode>(N);
       auto *L = valueForNode(AR->getLHS());
       auto *R = valueForNode(AR->getRHS());
@@ -194,7 +192,7 @@ public:
       registerIR(N, V->getDest());
       break;
     }
-    case glow::Kinded::Kind::SaveInstKind: {
+    case glow::Kinded::Kind::SaveNodeKind: {
       auto *R = cast<SaveNode>(N);
       auto *src = valueForNode(R->getInput());
       auto *dest = valueForNode(R->getOutput());
@@ -202,7 +200,7 @@ public:
       V->setName(N->getName());
       break;
     }
-    case glow::Kinded::Kind::WeightVarKind: {
+    case glow::Kinded::Kind::VariableNodeKind: {
       using MK = WeightVar::MutabilityKind;
       auto *V = cast<Variable>(N);
       bool isConst = V->getInitKind() == Variable::InitKind::Extern;

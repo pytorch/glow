@@ -59,7 +59,6 @@ void Instruction::verify() const {
   if (auto *X = dyn_cast<const CLASS>(this))                                   \
     X->verify();
 #define DEF_VALUE(CLASS, NAME)
-#define DEF_NODE(CLASS, NAME)
 #include "glow/IR/Instrs.def"
 }
 
@@ -105,7 +104,6 @@ Value *Module::getWeightForNode(const Node *V) const {
 //===----------------------------------------------------------------------===//
 
 static std::string getExtraDesc(const Kinded *K) {
-#define DEF_NODE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   if (const auto *X = dyn_cast<const CLASS>(K))                                \
     return X->getExtraDesc();
@@ -122,7 +120,6 @@ bool Instruction::mayShareBuffers(const Instruction *I) {
   if (const auto *X = dyn_cast<const CLASS>(I))                                \
     return X->mayShareBuffers();
 #define DEF_VALUE(CLASS, NAME)
-#define DEF_NODE(CLASS, NAME)
 #include "glow/IR/Instrs.def"
   glow_unreachable();
 }
