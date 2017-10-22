@@ -48,16 +48,20 @@ public:
   enum class Kind {
 #define DEF_INSTR(CLASS, NAME) CLASS##Kind,
 #define DEF_VALUE(CLASS, NAME) CLASS##Kind,
-#define DEF_NODE(CLASS, NAME) CLASS##Kind,
 #include "glow/IR/Instrs.def"
+
+#define DEF_NODE(CLASS, NAME) CLASS##Kind,
+#include "AutoGenNodes.def"
   };
 
   static const char *getKindName(Kind IK) {
     const char *names[] = {
 #define DEF_INSTR(CLASS, NAME) #NAME,
 #define DEF_VALUE(CLASS, NAME) #NAME,
-#define DEF_NODE(CLASS, NAME) #NAME,
 #include "glow/IR/Instrs.def"
+
+#define DEF_NODE(CLASS, NAME) #NAME,
+#include "AutoGenNodes.def"
         nullptr};
     return names[(int)IK];
   }

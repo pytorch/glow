@@ -30,13 +30,13 @@ private:
 
 public:
   Variable(llvm::StringRef name, TypeRef Ty, InitKind initKind, float val)
-      : Node(Kinded::Kind::WeightVarKind, Ty, name), val_(val),
+      : Node(Kinded::Kind::VariableNodeKind, Ty, name), val_(val),
         initKind_(initKind) {
     initPayload();
   }
 
   static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::WeightVarKind;
+    return k->getKind() == Kinded::Kind::VariableNodeKind;
   }
 
   const char *getInitKindStr() const;
@@ -79,11 +79,11 @@ class ConcatNode final : public Node {
 public:
   ConcatNode(llvm::ArrayRef<Node *> src, TypeRef outTy, llvm::StringRef name,
              size_t dim)
-      : Node(Kinded::Kind::ConcatInstKind, outTy, name),
+      : Node(Kinded::Kind::ConcatNodeKind, outTy, name),
         in_(src.begin(), src.end()), dim_(dim) {}
 
   static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::ConcatInstKind;
+    return k->getKind() == Kinded::Kind::ConcatNodeKind;
   }
   llvm::ArrayRef<NodeOperand> getInputs() const { return in_; }
   size_t getDim() const { return dim_; }

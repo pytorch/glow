@@ -94,7 +94,6 @@ bool Interpreter::hasTensor(const Value *v) { return tensors_.count(v); }
 void Interpreter::doForwardPass(bool isTrain) {
   // Do the forward pass.
 #define DEF_VALUE(CLASS, NAME)
-#define DEF_NODE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   case Kinded::Kind::CLASS##Kind: {                                            \
     fwd##CLASS(isTrain, cast<CLASS>(I));                                       \
@@ -113,7 +112,6 @@ void Interpreter::doForwardPass(bool isTrain) {
 void Interpreter::doBackwardPass() {
   // Do the backward pass.
 #define DEF_VALUE(CLASS, NAME)
-#define DEF_NODE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   case Kinded::Kind::CLASS##Kind: {                                            \
     bwd##CLASS(cast<CLASS>(*it));                                              \

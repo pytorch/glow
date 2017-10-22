@@ -1,9 +1,6 @@
 #ifndef DEF_INSTR
 #error "The macro DEF_INSTR was not declared."
 #endif
-#ifndef DEF_NODE
-#error "The macro DEF_NODE was not declared."
-#endif
 #ifndef DEF_VALUE
 #error "The macro DEF_VALUE was not declared."
 #endif
@@ -26,12 +23,8 @@ DEF_INSTR(BatchNormalizationInst, batchnormalization)
 DEF_INSTR(LocalResponseNormalizationInst, localresponsenormalization)
 DEF_INSTR(ArithmeticInst, arithmetic)
 
-// Pseudo instructions (exist only in node form):
-DEF_NODE(SaveInst, return)
-
 // Variables (exist as memory/variable declarations):
 DEF_VALUE(WeightVar, weight)
 
 #undef DEF_INSTR
 #undef DEF_VALUE
-#undef DEF_NODE
