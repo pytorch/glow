@@ -74,11 +74,11 @@ public:
   }
 
   /// Emits the methods that converts an enum case into a textual label.
-  void emitEnumModePrinters(std::ostream &os) {
+  void emitEnumModePrinters(std::ostream &os) const {
     os << "const char *" << name_ << "Node::getModeStr(" << name_
        << "Node::Mode m) {\n";
-    os << "\tconst char *names[] = {";
-    for (auto &e : enum_) {
+    os << "\tstatic const char *names[] = {";
+    for (const auto &e : enum_) {
       os << "\"" << e << "\", ";
     }
     os << "nullptr};\n";
@@ -87,11 +87,11 @@ public:
   }
 
   /// Emit the Node class constructor.
-  void emitCtor(std::ostream &os) {
+  void emitCtor(std::ostream &os) const {
     os << "\t" << name_ << "Node(llvm::StringRef name";
 
     // Constructor non-standard parameter list:
-    for (auto op : extraParams_) {
+    for (const auto &op : extraParams_) {
       os << ", " << op.first << " " << op.second << " ";
     }
 
@@ -101,12 +101,12 @@ public:
     }
 
     // The operands of the graph node:
-    for (auto op : operands_) {
+    for (const auto &op : operands_) {
       os << ", Node *" << op;
     }
 
     // Extra class members:
-    for (auto op : members_) {
+    for (const auto &op : members_) {
       os << ", " << op.first << " " << op.second;
     }
 
@@ -120,12 +120,12 @@ public:
     }
 
     // Initialize the operands:
-    for (auto op : operands_) {
+    for (const auto &op : operands_) {
       os << ", " << op << "_(" << op << ")";
     }
 
     // Initialize the members:
-    for (auto op : members_) {
+    for (const auto &op : members_) {
       os << ", " << op.second << "_(" << op.second << ") ";
     }
 
@@ -134,12 +134,12 @@ public:
   }
 
   /// Emits the class members (the fields of the class).
-  void emitClassMembers(std::ostream &os) {
+  void emitClassMembers(std::ostream &os) const {
 
     // Emit the type of the enum (which is public).
     if (enum_.size()) {
       os << "\tpublic:\n\tenum class Mode {\n";
-      for (auto E : enum_) {
+      for (const auto &E : enum_) {
         os << "\t  " << E << ",\n";
       }
       os << "\t};\n";
@@ -151,19 +151,19 @@ public:
     if (enum_.size()) {
       os << "\tMode mode_;\n";
     }
-    for (auto op : operands_) {
+    for (const auto &op : operands_) {
       os << "\tNodeOperand " << op << "_;\n";
     }
-    for (auto op : members_) {
+    for (const auto &op : members_) {
       os << "\t" << op.first << " " << op.second << "_;\n";
     }
     os << "\n";
   }
 
   /// Emit stters/getters for each accessible class member.
-  void emitSettersGetters(std::ostream &os) {
+  void emitSettersGetters(std::ostream &os) const {
     // Print the getters/setters.
-    for (auto op : operands_) {
+    for (const auto &op : operands_) {
       // Synthesize a user-defined operand getter.
       auto it = overrideGetter_.find(op);
       if (it != overrideGetter_.end()) {
@@ -175,7 +175,7 @@ public:
       os << "\tNode *get" << op << "() const { return " << op << "_; }\n";
     }
 
-    for (auto op : members_) {
+    for (const auto &op : members_) {
       // Synthesize a user-defined member getter.
       auto it = overrideGetter_.find(op.second);
       if (it != overrideGetter_.end()) {
@@ -198,7 +198,7 @@ public:
   }
 
   /// Emit the methods that print a textual summary of the node.
-  void emitPrettyPrinter(std::ostream &os) {
+  void emitPrettyPrinter(std::ostream &os) const {
     os << "std::string " << name_
        << "Node::getDebugDesc() const {\n\t\tDescriptionBuilder "
           "db(getKindName());\n\t\tdb.addParam(\"name\", getName())\n";
@@ -207,11 +207,11 @@ public:
       os << "\t\t.addParam(\"Mode\", getModeStr())\n";
     }
 
-    for (auto op : operands_) {
+    for (const auto &op : operands_) {
       os << "\t\t.addParam(\"" << op << "\", *get" << op << "()->getType())\n";
     }
 
-    for (auto mem : members_) {
+    for (const auto &mem : members_) {
       os << "\t\t.addParam(\"" << mem.second << "\", get" << mem.second
          << "())\n";
     }
@@ -219,19 +219,19 @@ public:
   }
 
   /// Emit the isEqual method that performs node comparisons.
-  void emitEquator(std::ostream &os) {
-    os << "bool " << name_ << "Node::isEqual(const " << name_ <<
-    "Node &other) {\n\treturn true";
+  void emitEquator(std::ostream &os) const {
+    os << "bool " << name_ << "Node::isEqual(const " << name_
+       << "Node &other) {\n\treturn true";
 
     if (enum_.size()) {
       os << " &&\n\t getMode() == other.getMode()";
     }
 
-    for (auto op : operands_) {
+    for (const auto &op : operands_) {
       os << " &&\n\t " << op << "_ == other." << op << "_";
     }
 
-    for (auto mem : members_) {
+    for (const auto &mem : members_) {
       os << " &&\n\t " << mem.second << "_ == other." << mem.second << "_";
     }
 
@@ -239,13 +239,13 @@ public:
   }
 
   /// Emit the 'visit' method that implements node visitors.
-  void emitVisitor(std::ostream &os) {
+  void emitVisitor(std::ostream &os) const {
     os << "void " << name_
        << "Node::visit(Node *parent, NodeVisitor *visitor) {\n\tif "
           "(!visitor->shouldVisit(parent, this)) { return; }\n";
 
     os << "\tvisitor->pre(parent, this);\n";
-    for (auto op : operands_) {
+    for (const auto &op : operands_) {
       os << "\tget" << op << "()->visit(this, visitor);\n";
     }
     os << "\tvisitor->post(parent, this);\n";
@@ -253,7 +253,7 @@ public:
   }
 
   /// Emit the class definition for the node.
-  void emitNodeClass(std::ostream &os) {
+  void emitNodeClass(std::ostream &os) const {
     os << "namespace glow {\nclass " << name_ << "Node final : public Node {\n";
 
     emitClassMembers(os);
@@ -277,7 +277,7 @@ public:
 
   /// Emit the methods that go into the CPP file and implement the methods that
   /// were declared in the header file.
-  void emitCppMethods(std::ostream &os) {
+  void emitCppMethods(std::ostream &os) const {
     emitPrettyPrinter(os);
     emitVisitor(os);
     emitEquator(os);
@@ -435,4 +435,6 @@ int main(int argc, char **argv) {
       .setType("Input->getType()")
       .overrideGetter("Output", "Variable *getOutput() const { return "
                                 "cast<Variable>(Output_.get()); };");
+
+  return 0;
 }
