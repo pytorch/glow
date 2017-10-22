@@ -32,11 +32,11 @@ std::string FullyConnectedInst::getExtraDesc() const {
 }
 
 std::string TransposeInst::getExtraDesc() const {
-  return arrayRefToString<unsigned>(shuffle_);
+  return std::to_string(llvm::makeArrayRef(shuffle_));
 }
 
 std::string ReshapeInst::getExtraDesc() const {
-  return arrayRefToString<size_t>(dims_);
+  return std::to_string(llvm::makeArrayRef(dims_));
 }
 
 std::string ConcatInst::getExtraDesc() const {
