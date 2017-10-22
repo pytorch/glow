@@ -12,6 +12,15 @@ namespace std {
 std::string to_string(void *ptr);
 /// Converts LLVM's StringRef to std::string.
 std::string to_string(const llvm::StringRef sr);
+/// Converts LLVM's ArrayRef to std::string.
+template <typename E> std::string to_string(const llvm::ArrayRef<E> list) {
+  std::ostringstream buffer;
+  buffer << '[';
+  std::copy(std::begin(list), std::end(list),
+            std::ostream_iterator<E>(buffer, ", "));
+  buffer << ']';
+  return buffer.str();
+}
 } // namespace std
 
 namespace glow {
@@ -36,15 +45,6 @@ template <typename... Args> std::string listToString(Args... args) {
   return "[" + listToString_impl(args...) + "]";
 }
 
-template <typename E> std::string arrayRefToString(llvm::ArrayRef<E> list) {
-  std::ostringstream buffer;
-  buffer << '[';
-  std::copy(std::begin(list), std::end(list),
-            std::ostream_iterator<E>(buffer, ", "));
-  buffer << ']';
-  return buffer.str();
-}
-
 /// A helper class that builds a textual descriptor of a group of parameters.
 class DescriptionBuilder {
   std::stringstream repr_;
@@ -59,7 +59,7 @@ public:
 
   template <typename E>
   DescriptionBuilder &addParam(const std::string &name, llvm::ArrayRef<E> L) {
-    repr_ << name << " : " << arrayRefToString<E>(L) << '\n';
+    repr_ << name << " : " << std::to_string(L) << '\n';
     return *this;
   }
 
