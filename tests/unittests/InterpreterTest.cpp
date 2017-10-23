@@ -66,8 +66,8 @@ TEST(Interpreter, trainASimpleNetwork) {
   // Values for the input and output variables.
   Tensor inputs(ElemKind::FloatTy, {1, 4});
   Tensor expected(ElemKind::FloatTy, {1, 4});
-  inputs.getHandle<FloatTy>() = {0.15, 0.15, 0.15, 0.15};
-  expected.getHandle<FloatTy>() = {0.9, 0.9, 0.9, 0.9};
+  inputs.getHandle<>() = {0.15, 0.15, 0.15, 0.15};
+  expected.getHandle<>() = {0.9, 0.9, 0.9, 0.9};
 
   EE.compile(OptimizationMode::Train);
 
@@ -78,7 +78,7 @@ TEST(Interpreter, trainASimpleNetwork) {
 
   EE.optimize(OptimizationMode::Infer);
   EE.infer({A}, {&inputs});
-  auto RNWH = result->getOutput()->getPayload().getHandle<FloatTy>();
+  auto RNWH = result->getOutput()->getPayload().getHandle<>();
   (void)RNWH;
 
   // Test the output:
@@ -109,8 +109,8 @@ TEST(Interpreter, simpleRegression) {
   O = G.createRegression("reg", O, Ex);
   auto *result = G.createSave("result", O);
 
-  auto I = inputs.getHandle<FloatTy>();
-  auto E = expected.getHandle<FloatTy>();
+  auto I = inputs.getHandle<>();
+  auto E = expected.getHandle<>();
 
   EE.compile(OptimizationMode::Train);
 
@@ -130,7 +130,7 @@ TEST(Interpreter, simpleRegression) {
     I = {target, 0., 0., 0.};
     EE.infer({A}, {&inputs});
 
-    auto resH = result->getOutput()->getPayload().getHandle<FloatTy>();
+    auto resH = result->getOutput()->getPayload().getHandle<>();
     (void)resH;
 
     EXPECT_NEAR(I.at({0, 0}) + 1, resH.at({0, 1}), 0.1);
@@ -165,9 +165,9 @@ TEST(Interpreter, learnXor) {
   Tensor testingSet(ElemKind::FloatTy, {numInputs, 2});
   Tensor trainingLabels(ElemKind::FloatTy, {numInputs, 1});
 
-  auto TS = trainingSet.getHandle<FloatTy>();
-  auto TL = trainingLabels.getHandle<FloatTy>();
-  auto TT = testingSet.getHandle<FloatTy>();
+  auto TS = trainingSet.getHandle<>();
+  auto TL = trainingLabels.getHandle<>();
+  auto TT = testingSet.getHandle<>();
 
   // Prepare the training data:
   for (unsigned i = 0; i < numInputs; i++) {
@@ -190,7 +190,7 @@ TEST(Interpreter, learnXor) {
   }
 
   EE.infer({A}, {&trainingSet});
-  auto resH = result->getOutput()->getPayload().getHandle<FloatTy>();
+  auto resH = result->getOutput()->getPayload().getHandle<>();
 
   // Test the output:
   for (size_t i = 0; i < numTests; i++) {
@@ -207,7 +207,7 @@ unsigned numSamples = 100;
 /// Generate data in two classes. The circle of dots that's close to the axis is
 /// L0, and the rest of the dots, away from the axis are L1.
 void generateCircleData(Tensor &coordinates, Tensor &labels) {
-  auto C = coordinates.getHandle<FloatTy>();
+  auto C = coordinates.getHandle<>();
   auto L = labels.getHandle<size_t>();
 
   for (size_t i = 0; i < numSamples / 2; i++) {
@@ -269,11 +269,11 @@ TEST(Network, circle) {
     for (int y = -10; y < 10; y++) {
       // Load the inputs:
       Tensor sample(ElemKind::FloatTy, {1, 2});
-      sample.getHandle<FloatTy>() = {float(x) / 10, float(y) / 10};
+      sample.getHandle<>() = {float(x) / 10, float(y) / 10};
 
       EE.infer({A}, {&sample});
 
-      auto SMH = result->getOutput()->getPayload().getHandle<FloatTy>();
+      auto SMH = result->getOutput()->getPayload().getHandle<>();
       auto A = SMH.at({0, 0});
       auto B = SMH.at({0, 1});
 
@@ -293,9 +293,9 @@ TEST(Network, circle) {
   {
     // The dot in the middle must be zero.
     Tensor sample(ElemKind::FloatTy, {1, 2});
-    sample.getHandle<FloatTy>() = {0., 0.};
+    sample.getHandle<>() = {0., 0.};
     EE.infer({A}, {&sample});
-    auto SMH = result->getOutput()->getPayload().getHandle<FloatTy>();
+    auto SMH = result->getOutput()->getPayload().getHandle<>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
     EXPECT_LE(A, 0.1);
@@ -305,9 +305,9 @@ TEST(Network, circle) {
   {
     // Far away dot must be one.
     Tensor sample(ElemKind::FloatTy, {1, 2});
-    sample.getHandle<FloatTy>() = {1., 1.};
+    sample.getHandle<>() = {1., 1.};
     EE.infer({A}, {&sample});
-    auto SMH = result->getOutput()->getPayload().getHandle<FloatTy>();
+    auto SMH = result->getOutput()->getPayload().getHandle<>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
     EXPECT_GE(A, 0.9);
@@ -345,8 +345,8 @@ TEST(Network, learnSingleValueConcat) {
 
   Tensor inputs(ElemKind::FloatTy, {1, width});
   Tensor expected(ElemKind::FloatTy, {1, width * 2});
-  inputs.getHandle<FloatTy>().clear(0.15);
-  expected.getHandle<FloatTy>().clear(0.9);
+  inputs.getHandle<>().clear(0.15);
+  expected.getHandle<>().clear(0.9);
 
   EE.compile(OptimizationMode::Train);
 
@@ -357,7 +357,7 @@ TEST(Network, learnSingleValueConcat) {
 
   // Testing the output vector.
   EE.infer({A}, {&inputs});
-  auto RNWH = result->getOutput()->getPayload().getHandle<FloatTy>();
+  auto RNWH = result->getOutput()->getPayload().getHandle<>();
   (void)RNWH;
 
   // Test the output:

@@ -124,13 +124,14 @@ void ExecutionEngine::optimize(OptimizationMode mode) {
 }
 
 /// \returns a float-handle to the tensor that is stored at \p v.
-Handle<FloatTy> ExecutionEngine::getWeightHandle(Variable *v) const {
+Handle<float>
+ExecutionEngine::getWeightHandle(Variable *v) const {
   auto val = M_->getWeightForNode(v);
   return IP_->getWeightHandle(val);
 }
 
 /// \returns a float-handle to the tensor that is stored at \p v.
-Handle<FloatTy> ExecutionEngine::getGradHandle(Variable *v) {
+Handle<float> ExecutionEngine::getGradHandle(Variable *v) {
   auto val = M_->getWeightForNode(v);
   return IP_->getGradHandle(val);
 }

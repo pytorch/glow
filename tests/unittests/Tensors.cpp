@@ -9,7 +9,7 @@ using namespace glow;
 TEST(Tensor, init) {
   Tensor T = {1.2, 12.1, 51.0, 1515.2};
 
-  auto H = T.getHandle<FloatTy>();
+  auto H = T.getHandle<>();
 
   H.dump("", "\n");
 
@@ -24,11 +24,11 @@ TEST(Tensor, init) {
 
 TEST(Tensor, clone) {
   Tensor T = {1.2, 12.1, 51.0, 1515.2};
-  auto H = T.getHandle<FloatTy>();
+  auto H = T.getHandle<>();
 
   Tensor v;
   v.copyFrom(&T);
-  auto vH = v.getHandle<FloatTy>();
+  auto vH = v.getHandle<>();
 
   EXPECT_EQ(int(vH.at({0})), 1);
 
@@ -43,7 +43,7 @@ TEST(Tensor, assignment) {
   // Testing some tensor operations.
   Tensor T(ElemKind::FloatTy, {320, 200, 64});
 
-  auto Handle = T.getHandle<FloatTy>();
+  auto Handle = T.getHandle<>();
 
   for (unsigned i = 0; i < 10; i++) {
     for (unsigned x = 0; x < 32; x++) {
@@ -58,7 +58,7 @@ TEST(Tensor, assignment) {
   EXPECT_EQ(Handle.at({10, 10, 10}), 10 + 10 + 10);
 
   auto TT = Handle.extractSlice(1);
-  auto H2 = TT.getHandle<FloatTy>();
+  auto H2 = TT.getHandle<>();
 
   EXPECT_EQ(H2.at({10, 10}), 1 + 10 + 10);
 
@@ -77,10 +77,10 @@ TEST(Tensor, concatTensors1D) {
   Tensor Z = {0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3};
   Tensor expected = {5.2, 6.2, 7.2, 8.2, 1.1, 2.1, 3.1, 4.1};
 
-  auto xH = X.getHandle<FloatTy>();
-  auto yH = Y.getHandle<FloatTy>();
-  auto zH = Z.getHandle<FloatTy>();
-  auto eH = expected.getHandle<FloatTy>();
+  auto xH = X.getHandle<>();
+  auto yH = Y.getHandle<>();
+  auto zH = Z.getHandle<>();
+  auto eH = expected.getHandle<>();
 
   zH.insertTensors(xH, {4});
   zH.insertTensors(yH, {0});
@@ -95,9 +95,9 @@ TEST(Tensor, concatTensors2D) {
   Tensor Y(ElemKind::FloatTy, {10, 10});
   Tensor Z(ElemKind::FloatTy, {20, 20});
 
-  auto xH = X.getHandle<FloatTy>();
-  auto yH = Y.getHandle<FloatTy>();
-  auto zH = Z.getHandle<FloatTy>();
+  auto xH = X.getHandle<>();
+  auto yH = Y.getHandle<>();
+  auto zH = Z.getHandle<>();
 
   // Create a nice picture:
   for (size_t i = 0, e = xH.size(); i < e; i++) {
@@ -133,8 +133,8 @@ TEST(Tensor, MeanAndVariance) {
   Tensor T1 = {3, 4, 4, 5, 6, 8};
   Tensor T2 = {1, 2, 4, 5, 7, 11};
 
-  auto H1 = T1.getHandle<FloatTy>();
-  auto H2 = T2.getHandle<FloatTy>();
+  auto H1 = T1.getHandle<>();
+  auto H2 = T2.getHandle<>();
 
   auto MV1 = H1.calculateMeanVariance();
   auto MV2 = H2.calculateMeanVariance();
@@ -148,7 +148,7 @@ TEST(Tensor, MeanAndVariance) {
 TEST(Tensor, getDimForPtr) {
   // Testing some tensor operations.
   Tensor T(ElemKind::FloatTy, {10, 5, 3});
-  auto H = T.getHandle<FloatTy>();
+  auto H = T.getHandle<>();
 
   for (unsigned x = 0; x < 10; x++) {
     for (unsigned y = 0; y < 5; y++) {
@@ -167,8 +167,8 @@ TEST(Tensor, copySlice) {
   Tensor A(ElemKind::FloatTy, {10, 5, 3});
   Tensor B(ElemKind::FloatTy, {5, 3});
 
-  auto AH = A.getHandle<FloatTy>();
-  auto BH = B.getHandle<FloatTy>();
+  auto AH = A.getHandle<>();
+  auto BH = B.getHandle<>();
 
   AH.randomize(1);
 
@@ -183,15 +183,15 @@ TEST(Tensor, copySlice) {
 
 TEST(Tensor, transpose) {
   Tensor X(ElemKind::FloatTy, {5, 2});
-  auto H = X.getHandle<FloatTy>();
+  auto H = X.getHandle<>();
   H = {
       0.2, 0.4, 0.6, 0.8, 1.0, 0.6, 0.8, 1.0, 2.0, 3.0,
   };
 
   Tensor Xhat;
-  X.getHandle<FloatTy>().transpose(&Xhat, {1, 0});
+  X.getHandle<>().transpose(&Xhat, {1, 0});
 
-  auto XhatH = Xhat.getHandle<FloatTy>();
+  auto XhatH = Xhat.getHandle<>();
 
   for (size_t i = 0; i < 5; i++) {
     EXPECT_EQ(H.at({i, 0}), XhatH.at({0, i}));
@@ -201,13 +201,13 @@ TEST(Tensor, transpose) {
 
 TEST(Tensor, transpose2) {
   Tensor X(ElemKind::FloatTy, {10, 6, 3});
-  auto H = X.getHandle<FloatTy>();
+  auto H = X.getHandle<>();
   H.randomize(10);
 
   Tensor Xhat;
-  X.getHandle<FloatTy>().transpose(&Xhat, {1, 2, 0});
+  X.getHandle<>().transpose(&Xhat, {1, 2, 0});
 
-  auto XhatH = Xhat.getHandle<FloatTy>();
+  auto XhatH = Xhat.getHandle<>();
 
   for (size_t i = 0; i < 10; i++) {
     for (size_t j = 0; j < 6; j++) {

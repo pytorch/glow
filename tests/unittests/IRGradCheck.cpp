@@ -15,14 +15,14 @@
 using namespace glow;
 
 /// Compute the regression loss for the tensor \p X with regard to Y.
-FloatTy computeL2Loss(Tensor *X, Tensor *Y) {
+float computeL2Loss(Tensor *X, Tensor *Y) {
   assert(X->dims() == Y->dims() && "Invalid input dims");
-  auto xH = X->getHandle<FloatTy>();
-  auto yH = Y->getHandle<FloatTy>();
-  FloatTy loss = 0;
+  auto xH = X->getHandle<>();
+  auto yH = Y->getHandle<>();
+  float loss = 0;
 
   for (size_t i = 0, e = X->size(); i < e; i++) {
-    FloatTy dy = (xH.raw(i) - yH.raw(i));
+    float dy = (xH.raw(i) - yH.raw(i));
     loss += 0.5 * dy * dy;
   }
 
@@ -30,14 +30,14 @@ FloatTy computeL2Loss(Tensor *X, Tensor *Y) {
 }
 
 /// \returns the error rate when comparing two grads.
-FloatTy gradDiff(FloatTy G1, FloatTy G2) {
+float gradDiff(float G1, float G2) {
   return std::abs(G1 - G2) / std::abs(G1 + G2 + 1);
 }
 
 void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
                       Variable *expVar, Tensor *inputs, Tensor *outputs,
                       float delta, float allowedError) {
-  auto inputsH = inputs->getHandle<FloatTy>();
+  auto inputsH = inputs->getHandle<>();
 
   // Train the network.
   IP.train(300, {inputVar, expVar}, {inputs, outputs});
@@ -105,8 +105,8 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
 
-  auto inputsH = inputs.getHandle<FloatTy>();
-  auto outputsH = outputs.getHandle<FloatTy>();
+  auto inputsH = inputs.getHandle<>();
+  auto outputsH = outputs.getHandle<>();
 
   inputsH.randomize(100);
   outputsH.randomize(100);
@@ -140,8 +140,8 @@ TEST(Network, gradientCheck_Conv) {
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
 
-  auto inputsH = inputs.getHandle<FloatTy>();
-  auto outputsH = outputs.getHandle<FloatTy>();
+  auto inputsH = inputs.getHandle<>();
+  auto outputsH = outputs.getHandle<>();
 
   inputsH.randomize(1);
   outputsH.randomize(1);
@@ -173,8 +173,8 @@ TEST(Network, gradientCheck_AvgPool) {
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
 
-  auto inputsH = inputs.getHandle<FloatTy>();
-  auto outputsH = outputs.getHandle<FloatTy>();
+  auto inputsH = inputs.getHandle<>();
+  auto outputsH = outputs.getHandle<>();
 
   inputsH.randomize(1);
   outputsH.randomize(1);
@@ -206,8 +206,8 @@ TEST(Network, gradientCheck_batchNorm) {
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 3});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
 
-  auto inputsH = inputs.getHandle<FloatTy>();
-  auto outputsH = outputs.getHandle<FloatTy>();
+  auto inputsH = inputs.getHandle<>();
+  auto outputsH = outputs.getHandle<>();
 
   inputsH.randomize(1);
   outputsH.randomize(1);
@@ -249,10 +249,10 @@ TEST(Network, gradientCheck_Arithmetic) {
   Tensor iC(ElemKind::FloatTy, {1, numDim});
   Tensor outputs(ElemKind::FloatTy, {1, numDim});
 
-  auto iAH = iA.getHandle<FloatTy>();
-  auto iBH = iB.getHandle<FloatTy>();
-  auto iCH = iC.getHandle<FloatTy>();
-  auto outputsH = outputs.getHandle<FloatTy>();
+  auto iAH = iA.getHandle<>();
+  auto iBH = iB.getHandle<>();
+  auto iCH = iC.getHandle<>();
+  auto outputsH = outputs.getHandle<>();
 
   iAH.randomize(1);
   iBH.randomize(1);
@@ -270,7 +270,7 @@ TEST(Network, gradientCheck_Arithmetic) {
   IP.train(1, {A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
 
   auto check = [&](Variable *var, Tensor *t) {
-    auto iH = t->getHandle<FloatTy>();
+    auto iH = t->getHandle<>();
 
     auto analyticalGradsH = IP.getGradHandle(var);
 
@@ -330,8 +330,8 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
 
-  auto inputsH = inputs.getHandle<FloatTy>();
-  auto outputsH = outputs.getHandle<FloatTy>();
+  auto inputsH = inputs.getHandle<>();
+  auto outputsH = outputs.getHandle<>();
 
   inputsH.randomize(100);
   outputsH.randomize(100);
@@ -361,8 +361,8 @@ TEST(Network, gradientCheck_Transpose) {
   Tensor inputs(ElemKind::FloatTy, {1, 5, 10, 15});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
 
-  auto inputsH = inputs.getHandle<FloatTy>();
-  auto outputsH = outputs.getHandle<FloatTy>();
+  auto inputsH = inputs.getHandle<>();
+  auto outputsH = outputs.getHandle<>();
 
   inputsH.randomize(100);
   outputsH.randomize(100);

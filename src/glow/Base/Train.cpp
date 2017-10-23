@@ -20,9 +20,9 @@ void Trainer::train(Tensor *weights, Tensor *gradients, size_t batchSize) {
   float momentum = config.momentum;
 
   auto sz = weights->size();
-  auto W = weights->getHandle<FloatTy>();
-  auto G = gradients->getHandle<FloatTy>();
-  auto Gsum = Handle<FloatTy>::createInvalidHandle();
+  auto W = weights->getHandle<>();
+  auto G = gradients->getHandle<>();
+  auto Gsum = Handle<float>::createInvalidHandle();
 
   /// If we are using the momentum technique then we need to allocate an array
   /// for the gradient sum.
@@ -30,28 +30,28 @@ void Trainer::train(Tensor *weights, Tensor *gradients, size_t batchSize) {
     auto it = gsum_.find(gradients);
 
     if (it != gsum_.end()) {
-      Gsum = it->second->getHandle<FloatTy>();
+      Gsum = it->second->getHandle<>();
     } else {
       auto *gs = new Tensor();
       gs->reset(gradients);
       gsum_[gradients] = gs;
-      Gsum = gs->getHandle<FloatTy>();
+      Gsum = gs->getHandle<>();
     }
   }
 
   // For each weight/gradient pair:
   for (size_t x = 0; x < sz; x++) {
     // Do a simple SGD update:
-    FloatTy L1Grad = L1Decay * (W.raw(x) > 0 ? 1 : -1);
-    FloatTy L2Grad = L2Decay * (W.raw(x));
-    FloatTy gij = (L2Grad + L1Grad + G.raw(x)) / batchSize;
+    float L1Grad = L1Decay * (W.raw(x) > 0 ? 1 : -1);
+    float L2Grad = L2Decay * (W.raw(x));
+    float gij = (L2Grad + L1Grad + G.raw(x)) / batchSize;
 
     // Use the momentum to improve the gradient descent:
     // http://ufldl.stanford.edu/tutorial/supervised/
     // OptimizationStochasticGradientDescent/
     if (momentum > 0.0) {
       // Momentum update:
-      FloatTy dx = momentum * Gsum.raw(x) - learningRate * gij;
+      float dx = momentum * Gsum.raw(x) - learningRate * gij;
       // Save this value for the next iteration:
       Gsum.raw(x) = dx;
       // Apply the gradient.

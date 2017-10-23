@@ -39,7 +39,7 @@ void testCIFAR10() {
   size_t idx = 0;
 
   auto labelsH = labels.getHandle<size_t>();
-  auto imagesH = images.getHandle<FloatTy>();
+  auto imagesH = images.getHandle<>();
   for (unsigned w = 0; w < cifarNumImages; w++) {
     labelsH.at({w, 0}) = static_cast<uint8_t>(dbInput.get());
     idx++;
@@ -48,7 +48,7 @@ void testCIFAR10() {
       for (unsigned y = 0; y < 32; y++) {
         for (unsigned x = 0; x < 32; x++) {
           imagesH.at({w, x, y, z}) =
-              FloatTy(static_cast<uint8_t>(dbInput.get())) / 255.0;
+              static_cast<float>(static_cast<uint8_t>(dbInput.get())) / 255.0;
           idx++;
         }
       }
@@ -117,8 +117,8 @@ void testCIFAR10() {
       Tensor &res = result->getOutput()->getPayload();
 
       for (unsigned int iter = 0; iter < minibatchSize; iter++) {
-        auto T = res.getHandle<FloatTy>().extractSlice(iter);
-        size_t guess = T.getHandle<FloatTy>().maxArg();
+        auto T = res.getHandle<>().extractSlice(iter);
+        size_t guess = T.getHandle<>().maxArg();
         size_t correct = labelsH.at({minibatchSize * i + iter, 0});
         score += guess == correct;
 

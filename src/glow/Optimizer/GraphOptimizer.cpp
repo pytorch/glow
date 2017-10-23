@@ -292,13 +292,13 @@ static void OptimizeBatchNorm(Graph &G) {
       // Q = W * A
       // C = b * A + B
 
-      auto filterH = cast<Variable>(CV->getFilter())->getHandle<FloatTy>();
-      auto cbiasH = cast<Variable>(CV->getBias())->getHandle<FloatTy>();
+      auto filterH = cast<Variable>(CV->getFilter())->getHandle<>();
+      auto cbiasH = cast<Variable>(CV->getBias())->getHandle<>();
 
-      auto scaleH = cast<Variable>(BN->getScale())->getHandle<FloatTy>();
-      auto biasH = cast<Variable>(BN->getBias())->getHandle<FloatTy>();
-      auto meanH = cast<Variable>(BN->getMean())->getHandle<FloatTy>();
-      auto varH = cast<Variable>(BN->getVar())->getHandle<FloatTy>();
+      auto scaleH = cast<Variable>(BN->getScale())->getHandle<>();
+      auto biasH = cast<Variable>(BN->getBias())->getHandle<>();
+      auto meanH = cast<Variable>(BN->getMean())->getHandle<>();
+      auto varH = cast<Variable>(BN->getVar())->getHandle<>();
 
       // Update the filater/bias variables of the Conv node.
       auto epsilon = BN->getEpsilon();
@@ -306,10 +306,10 @@ static void OptimizeBatchNorm(Graph &G) {
         // Dimension zero is the 'channel' dimension. If we ever change the
         // layout of the filter then we need to change this optimization.
         size_t channelId = filterH.getDimForPtr(0, i);
-        FloatTy var = varH.at({channelId});
-        FloatTy stdvar = FloatTy(1.0) / std::sqrt(var + epsilon);
-        FloatTy gamma = scaleH.at({channelId});
-        FloatTy A = gamma * stdvar;
+        float var = varH.at({channelId});
+        float stdvar = 1.0f / std::sqrt(var + epsilon);
+        float gamma = scaleH.at({channelId});
+        float A = gamma * stdvar;
         filterH.raw(i) = filterH.raw(i) * A;
       }
 
@@ -317,13 +317,13 @@ static void OptimizeBatchNorm(Graph &G) {
         // Dimension zero is the 'channel' dimension. If we ever change the
         // layout of the filter then we need to change this optimization.
         size_t channelId = cbiasH.getDimForPtr(0, i);
-        FloatTy mu = meanH.at({channelId});
-        FloatTy var = varH.at({channelId});
-        FloatTy stdvar = FloatTy(1.0) / std::sqrt(var + epsilon);
-        FloatTy gamma = scaleH.at({channelId});
-        FloatTy beta = biasH.at({channelId});
-        FloatTy A = gamma * stdvar;
-        FloatTy B = beta - mu * A;
+        float mu = meanH.at({channelId});
+        float var = varH.at({channelId});
+        float stdvar = 1.0f / std::sqrt(var + epsilon);
+        float gamma = scaleH.at({channelId});
+        float beta = biasH.at({channelId});
+        float A = gamma * stdvar;
+        float B = beta - mu * A;
         cbiasH.raw(i) = cbiasH.raw(i) * A + B;
       }
 

@@ -67,10 +67,10 @@ public:
   Tensor *getOrCreateGradTensor(const Value *v);
 
   /// \returns a float-handle to the tensor that is stored at \p v.
-  Handle<FloatTy> getWeightHandle(Value *v) const;
+  Handle<float> getWeightHandle(Value *v) const;
 
   /// \returns a float-handle to the tensor that is stored at \p v.
-  Handle<FloatTy> getGradHandle(Value *v);
+  Handle<float> getGradHandle(Value *v);
 
   /// Perform a single forward scan of the network, interpreting all of the
   /// instructions.
