@@ -1,3 +1,6 @@
+#ifndef GLOW_TOOLS_NODEGEN_NODEBUILDER_H
+#define GLOW_TOOLS_NODEGEN_NODEBUILDER_H
+
 #include <cassert>
 #include <fstream>
 #include <iostream>
@@ -135,3 +138,5 @@ public:
     dStream << "DEF_NODE(" << name << "Node, " << name << ")\n";
   }
 };
+
+#endif // GLOW_TOOLS_NODEGEN_NODEBUILDER_H
