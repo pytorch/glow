@@ -190,16 +190,16 @@ void Module::dump() {
 static std::string getDottyDesc(const Value *v) {
   std::string sb;
   std::string name = v->getName();
-  auto valName = v->getKindName();
-  sb += name + " | " + valName + " ";
+  std::string valName = v->getKindName();
+  sb += valName + " | " + name + " | " +
+        escapeDottyString(std::to_string(*v->getType()));
   return sb;
 }
 
 static std::string getDottyDesc(const Instruction *II) {
   std::string sb;
-  auto instrName = II->getKindName();
-  sb += instrName;
-  sb += "|";
+  sb += II->getKindName();
+  sb += "|" + escapeDottyString(std::to_string(*II->getType())) + "|";
 
   // Print operands:
   for (int i = 0, e = II->getNumOperands(); i < e; i++) {
@@ -261,7 +261,7 @@ void Module::dumpDAG() {
 
   for (auto &v : weights_) {
     sb += quote(std::to_string(v)) + "[\n";
-    std::string desc = escapeDottyString(getDottyDesc(v));
+    std::string desc = getDottyDesc(v);
     sb += "\tlabel = " + quote(desc) + "\n";
     sb += "\tshape = \"record\"\n";
     sb += "\tfillcolor=pink,style=filled\n";
