@@ -80,5 +80,18 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .setType("Dest->getType()");
 
+  BB.newInstr("SoftMax")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("E", OperandKind::InOut)
+      .addOperand("Selected", OperandKind::InOut)
+      .setType("Dest->getType()");
+
+  BB.newInstr("Regression")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Expected", OperandKind::InOut)
+      .setType("Dest->getType()");
+
   return 0;
 }
