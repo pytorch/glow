@@ -13,48 +13,6 @@ namespace glow {
 class AllocActivationInst;
 class DeallocActivationInst;
 
-class ReluInst : public Instruction {
-public:
-  ReluInst(Value *dest, Value *src)
-      : Instruction(Kinded::Kind::ReluInstKind, dest->getType(),
-                    {{dest, OperandKind::Out}, {src, OperandKind::In}}) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::ReluInstKind;
-  }
-  Value *getDest() const { return getOperand(0).first; }
-  Value *getSrc() const { return getOperand(1).first; }
-  void verify() const;
-};
-
-class SigmoidInst : public Instruction {
-public:
-  SigmoidInst(Value *dest, Value *src)
-      : Instruction(Kinded::Kind::SigmoidInstKind, dest->getType(),
-                    {{dest, OperandKind::Out}, {src, OperandKind::In}}) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::SigmoidInstKind;
-  }
-  Value *getDest() const { return getOperand(0).first; }
-  Value *getSrc() const { return getOperand(1).first; }
-  void verify() const;
-};
-
-class TanhInst : public Instruction {
-public:
-  TanhInst(Value *dest, Value *src)
-      : Instruction(Kinded::Kind::TanhInstKind, dest->getType(),
-                    {{dest, OperandKind::Out}, {src, OperandKind::In}}) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::TanhInstKind;
-  }
-  Value *getDest() const { return getOperand(0).first; }
-  Value *getSrc() const { return getOperand(1).first; }
-  void verify() const;
-};
-
 class SoftMaxInst : public Instruction {
 public:
   SoftMaxInst(Value *dest, Value *src, Value *E, Value *selected)

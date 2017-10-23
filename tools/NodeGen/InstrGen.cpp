@@ -65,5 +65,20 @@ int main(int argc, char **argv) {
       .addExtraMethod("bool mayShareBuffers() const { return false; }")
       .setType("Dest->getType()");
 
+  BB.newInstr("Relu")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .setType("Dest->getType()");
+
+  BB.newInstr("Sigmoid")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .setType("Dest->getType()");
+
+  BB.newInstr("Tanh")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .setType("Dest->getType()");
+
   return 0;
 }
