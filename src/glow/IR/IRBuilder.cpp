@@ -206,7 +206,7 @@ FullyConnectedInst *IRBuilder::createFullyConnectedInst(Value *dest, Value *src,
                                                         Value *filter,
                                                         Value *bias,
                                                         size_t depth) {
-  auto *A = new FullyConnectedInst(dest, src, filter, bias, depth);
+  auto *A = new FullyConnectedInst("", dest, src, filter, bias, depth);
   M_->pushInstr(A);
   return A;
 }

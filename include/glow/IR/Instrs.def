@@ -5,7 +5,6 @@
 #error "The macro DEF_VALUE was not declared."
 #endif
 
-DEF_INSTR(FullyConnectedInst, fullyconnected)
 DEF_INSTR(ReluInst, relu)
 DEF_INSTR(SigmoidInst, sigmoid)
 DEF_INSTR(TanhInst, tanh)
