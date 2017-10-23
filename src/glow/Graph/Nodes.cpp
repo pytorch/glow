@@ -115,26 +115,6 @@ void Variable::visit(Node *parent, NodeVisitor *visitor) {
   visitor->post(parent, this);
 }
 
-#define DEFINE_CLASS_VISITOR(CLASS_NAME)                                       \
-  void CLASS_NAME::visit(Node *parent, NodeVisitor *visitor) {                 \
-    if (!visitor->shouldVisit(parent, this))                                   \
-      return;                                                                  \
-    visitor->pre(parent, this);                                                \
-    getInput()->visit(this, visitor);                                          \
-    visitor->post(parent, this);                                               \
-  }
-
-void ConcatNode::visit(Node *parent, NodeVisitor *visitor) {
-  if (!visitor->shouldVisit(parent, this)) {
-    return;
-  }
-  visitor->pre(parent, this);
-  for (auto &I : in_) {
-    I->visit(this, visitor);
-  }
-  visitor->post(parent, this);
-}
-
 //===----------------------------------------------------------------------===//
 //                     Debug description methods
 //===----------------------------------------------------------------------===//
@@ -149,18 +129,5 @@ std::string Variable::getDebugDesc() const {
     db.addParam("val", val_);
   }
   db.addParam("users", getNumUsers());
-  return db;
-}
-
-std::string ConcatNode::getDebugDesc() const {
-  DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()));
-
-  for (auto &input : in_) {
-    db.addParam("input", *input->getType());
-  }
-  db.addParam("output", *getType())
-      .addParam("dimension", dim_)
-      .addParam("users", getNumUsers());
   return db;
 }

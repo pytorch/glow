@@ -339,7 +339,7 @@ TEST(Network, learnSingleValueConcat) {
   R = G.createSigmoid("sig", R);
 
   // Concat:
-  auto *C = G.createConcat("con", {L, R}, 1);
+  auto *C = G.createConcat("con", L, R, 1);
   auto *RN = G.createRegression("reg", C, Ex);
   auto *result = G.createSave("ret", RN);
 
