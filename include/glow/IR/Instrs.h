@@ -13,33 +13,6 @@ namespace glow {
 class AllocActivationInst;
 class DeallocActivationInst;
 
-class FullyConnectedInst : public Instruction {
-  size_t depth_;
-
-public:
-  FullyConnectedInst(Value *dest, Value *src, Value *filter, Value *bias,
-                     size_t depth)
-      : Instruction(Kinded::Kind::FullyConnectedInstKind, dest->getType(),
-                    {{dest, OperandKind::Out},
-                     {src, OperandKind::In},
-                     {filter, OperandKind::In},
-                     {bias, OperandKind::In}}),
-        depth_(depth) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::FullyConnectedInstKind;
-  }
-
-  bool mayShareBuffers() const { return false; }
-  std::string getExtraDesc() const;
-  Value *getDest() const { return getOperand(0).first; }
-  Value *getSrc() const { return getOperand(1).first; }
-  Value *getFilter() const { return getOperand(2).first; }
-  Value *getBias() const { return getOperand(3).first; }
-  size_t getDepth() const { return depth_; }
-  void verify() const;
-};
-
 class ReluInst : public Instruction {
 public:
   ReluInst(Value *dest, Value *src)

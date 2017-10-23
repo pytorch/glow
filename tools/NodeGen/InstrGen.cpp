@@ -56,5 +56,14 @@ int main(int argc, char **argv) {
       .addExtraMethod("bool mayShareBuffers() const { return false; }")
       .setType("Dest->getType()");
 
+  BB.newInstr("FullyConnected")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Filter", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addMember("size_t", "Depth")
+      .addExtraMethod("bool mayShareBuffers() const { return false; }")
+      .setType("Dest->getType()");
+
   return 0;
 }

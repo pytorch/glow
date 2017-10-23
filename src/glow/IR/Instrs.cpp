@@ -13,10 +13,6 @@ using namespace glow;
 //                      Instruction textual printers
 //===----------------------------------------------------------------------===//
 
-std::string FullyConnectedInst::getExtraDesc() const {
-  return listToString(depth_);
-}
-
 std::string TransposeInst::getExtraDesc() const {
   return std::to_string(llvm::makeArrayRef(shuffle_));
 }
@@ -138,15 +134,15 @@ void FullyConnectedInst::verify() const {
   (void)B;
   auto idim = flattenCdr(src->dims());
 
-  llvm::ArrayRef<size_t> exp = {idim.first, depth_};
+  llvm::ArrayRef<size_t> exp = {idim.first, Depth_};
   assert(dest->dims() == exp && "Invalid output shape");
   (void)exp;
 
-  llvm::ArrayRef<size_t> expW = {depth_, idim.second};
+  llvm::ArrayRef<size_t> expW = {Depth_, idim.second};
   assert(W->dims() == expW && "Invalid output shape");
   (void)expW;
 
-  llvm::ArrayRef<size_t> expB = {depth_};
+  llvm::ArrayRef<size_t> expB = {Depth_};
   assert(B->dims() == expB && "Invalid output shape");
   (void)expB;
 }
