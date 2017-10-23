@@ -32,5 +32,29 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .setType("Src->getType()");
 
+  BB.newInstr("Convolution")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Filter", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addMember("size_t", "Kernel")
+      .addMember("size_t", "Stride")
+      .addMember("size_t", "Pad")
+      .addMember("size_t", "Depth")
+      .addExtraMethod("bool mayShareBuffers() const { return false; }")
+      .setType("Dest->getType()");
+
+  BB.newInstr("Pool")
+      .addEnumCase("Max")
+      .addEnumCase("Avg")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("SrcXY", OperandKind::InOut)
+      .addMember("size_t", "Kernel")
+      .addMember("size_t", "Stride")
+      .addMember("size_t", "Pad")
+      .addExtraMethod("bool mayShareBuffers() const { return false; }")
+      .setType("Dest->getType()");
+
   return 0;
 }

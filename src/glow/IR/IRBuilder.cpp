@@ -39,7 +39,7 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, Value *filter,
                                depth);
 }
 
-PoolInst *IRBuilder::createPoolOp(Value *input, PoolInst::OpKind kind,
+PoolInst *IRBuilder::createPoolOp(Value *input, PoolInst::Mode kind,
                                   size_t kernel, size_t stride, size_t pad) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
@@ -50,7 +50,7 @@ PoolInst *IRBuilder::createPoolOp(Value *input, PoolInst::OpKind kind,
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
   Value *srcXY;
-  if (kind == PoolInst::OpKind::Max) {
+  if (kind == PoolInst::Mode::Max) {
     srcXY = createAllocActivationInst(
         ElemKind::IndexTy, {idim.n, outSz.first, outSz.second, idim.c, 2},
         "srcXY");
@@ -188,16 +188,16 @@ ConvolutionInst *IRBuilder::createConvolutionInst(Value *dest, Value *src,
                                                   Value *filter, Value *bias,
                                                   size_t kernel, size_t stride,
                                                   size_t pad, size_t depth) {
-  auto *A =
-      new ConvolutionInst(dest, src, filter, bias, kernel, stride, pad, depth);
+  auto *A = new ConvolutionInst("", dest, src, filter, bias, kernel, stride,
+                                pad, depth);
   M_->pushInstr(A);
   return A;
 }
 
 PoolInst *IRBuilder::createPoolInst(Value *dest, Value *src, Value *srcXY,
-                                    PoolInst::OpKind kind, size_t kernel,
+                                    PoolInst::Mode mode, size_t kernel,
                                     size_t stride, size_t pad) {
-  auto *A = new PoolInst(dest, src, srcXY, kind, kernel, stride, pad);
+  auto *A = new PoolInst("", mode, dest, src, srcXY, kernel, stride, pad);
   M_->pushInstr(A);
   return A;
 }

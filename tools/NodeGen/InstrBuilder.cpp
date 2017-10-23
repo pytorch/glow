@@ -155,6 +155,10 @@ void InstrBuilder::emitClass(std::ostream &os) const {
 
   emitSettersGetters(os);
 
+  for (const auto &m : extraMethods_) {
+    os << "\t" << m << "\n";
+  }
+
   if (!enum_.empty()) {
     os << "\tconst char *getModeStr() const { return getModeStr(mode_); "
           "}\n\tstatic const char *getModeStr(Mode m);\n";

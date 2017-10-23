@@ -189,7 +189,7 @@ void Interpreter::bwdConvolutionInst(const ConvolutionInst *I) {
 //===----------------------------------------------------------------------===//
 
 void Interpreter::fwdPoolInst(bool isTrain, const PoolInst *I) {
-  if (I->getKind() == PoolInst::OpKind::Max) {
+  if (I->getMode() == PoolInst::Mode::Max) {
     return fwdPoolMax_impl(I);
   }
 
@@ -207,7 +207,7 @@ void Interpreter::fwdPoolMax_impl(const PoolInst *I) {
   auto filterSize = I->getKernel();
   auto stride = I->getStride();
 
-  auto SXY = getTensor(I->srcXY())->getHandle<size_t>();
+  auto SXY = getTensor(I->getSrcXY())->getHandle<size_t>();
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
@@ -307,7 +307,7 @@ void Interpreter::fwdPoolAvg_impl(const PoolInst *I) {
 }
 
 void Interpreter::bwdPoolInst(const PoolInst *I) {
-  if (I->getKind() == PoolInst::OpKind::Max) {
+  if (I->getMode() == PoolInst::Mode::Max) {
     return bwdPoolMax_impl(I);
   }
 
@@ -321,7 +321,7 @@ void Interpreter::bwdPoolMax_impl(const PoolInst *I) {
 
   ShapeNHWC odim(outW.dims());
 
-  auto SXY = getTensor(I->srcXY())->getHandle<size_t>();
+  auto SXY = getTensor(I->getSrcXY())->getHandle<size_t>();
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {

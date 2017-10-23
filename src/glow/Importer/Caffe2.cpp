@@ -204,7 +204,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "MaxPool" || typeName == "AveragePool") {
-    using OpKind = PoolInst::OpKind;
+    using OpKind = PoolNode::Mode;
     OpKind opk = (typeName == "MaxPool") ? OpKind::Max : OpKind::Avg;
 
     // Load the inputs:
