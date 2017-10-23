@@ -10,9 +10,6 @@
 
 namespace glow {
 
-class AllocActivationInst;
-class DeallocActivationInst;
-
 class WeightVar : public Value {
 public:
   enum class MutabilityKind {
@@ -36,7 +33,6 @@ public:
 
   const char *getKindStr() const;
 
-  void setInitKind(MutabilityKind k) { mut_ = k; }
   MutabilityKind getKind() const { return mut_; }
   void dump(std::ostream &os) const;
   void verify() const {}
@@ -44,6 +40,7 @@ public:
 
 } // namespace glow
 
+// The rest of the nodes are auto-generated into this file:
 #include "AutoGenInstr.h"
 
 #endif // GLOW_IR_INSTRS_H
