@@ -13,10 +13,6 @@ using namespace glow;
 //                      Instruction textual printers
 //===----------------------------------------------------------------------===//
 
-std::string ConcatInst::getExtraDesc() const {
-  return "{ " + std::to_string(dim_) + " }";
-}
-
 const char *WeightVar::getKindStr(MutabilityKind kind) {
   const char *names[] = {"const", "mutable", nullptr};
   return names[static_cast<int>(kind)];
@@ -170,7 +166,7 @@ void ConcatInst::verify() const {
   std::vector<size_t> shape(inDim.begin(), inDim.end());
   // We are stacking the tensors along a specific dimension. This means that we
   // increase the size of the tensor along this dimension.
-  shape[dim_] *= getNumOperands() - 1;
+  shape[Dim_] *= getNumOperands() - 1;
 
   assert(getOperand(0).first->dims() == llvm::ArrayRef<size_t>(shape) &&
          "Invalid output shape");

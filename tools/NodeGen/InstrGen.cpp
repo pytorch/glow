@@ -140,7 +140,14 @@ int main(int argc, char **argv) {
       .addOperand("RHS", OperandKind::In)
       .setType("LHS->getType()");
 
-  BB.declareInstr("Concat");
+  BB.newInstr("Concat")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .addMember("size_t", "Dim")
+      .addExtraMethod("bool mayShareBuffers() const { return false; }")
+      .setType("Dest->getType()");
+
   BB.declareValue("WeightVar");
 
   return 0;

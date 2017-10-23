@@ -70,28 +70,6 @@ inline std::pair<size_t, size_t> calculateConvOutputDims(size_t sx, size_t sy,
   return {outsx, outsy};
 }
 
-class ConcatNode final : public Node {
-  /// The input nodes to concat.
-  std::vector<NodeOperand> in_;
-  /// We concat the tensors along this dimension.
-  size_t dim_;
-
-public:
-  ConcatNode(llvm::ArrayRef<Node *> src, TypeRef outTy, llvm::StringRef name,
-             size_t dim)
-      : Node(Kinded::Kind::ConcatNodeKind, outTy, name),
-        in_(src.begin(), src.end()), dim_(dim) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::ConcatNodeKind;
-  }
-  llvm::ArrayRef<NodeOperand> getInputs() const { return in_; }
-  size_t getDim() const { return dim_; }
-
-  std::string getDebugDesc() const override;
-  void visit(Node *parent, NodeVisitor *visitor) override;
-};
-
 } // namespace glow
 
 // The rest of the nodes are auto-generated into this file:

@@ -151,11 +151,9 @@ public:
     }
     case glow::Kinded::Kind::ConcatNodeKind: {
       auto *CC = cast<ConcatNode>(N);
-      std::vector<Value *> vals;
-      for (auto &in : CC->getInputs()) {
-        vals.push_back(valueForNode(in));
-      }
-      auto *V = builder_.createConcatOp(vals, CC->getDim());
+      auto *LHS = valueForNode(CC->getLHS());
+      auto *RHS = valueForNode(CC->getRHS());
+      auto *V = builder_.createConcatOp(LHS, RHS, CC->getDim());
       V->setName(N->getName());
       registerIR(N, V->getDest());
       break;

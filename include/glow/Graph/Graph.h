@@ -88,7 +88,7 @@ public:
   TransposeNode *createTranspose(llvm::StringRef name, Node *input,
                                  llvm::ArrayRef<unsigned> shuffle);
 
-  ConcatNode *createConcat(llvm::StringRef name, llvm::ArrayRef<Node *> inputs,
+  ConcatNode *createConcat(llvm::StringRef name, Node *LHS, Node *RHS,
                            unsigned dimension);
 
   BatchNormalizationNode *createBatchNormalization(llvm::StringRef name,

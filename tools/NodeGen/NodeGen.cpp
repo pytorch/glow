@@ -19,7 +19,6 @@ int main(int argc, char **argv) {
   Builder BB(hFile, cFile, dFile);
 
   BB.declareNode("Variable");
-  BB.declareNode("Concat");
 
   BB.newNode("Convolution")
       .addOperand("Input")
@@ -86,6 +85,13 @@ int main(int argc, char **argv) {
       .addOperand("LHS")
       .addOperand("RHS")
       .setType("LHS->getType()");
+
+  BB.newNode("Concat")
+      .addOperand("LHS")
+      .addOperand("RHS")
+      .addMember("size_t", "Dim")
+      .addExtraParam("TypeRef", "outTy")
+      .setType("outTy");
 
   BB.newNode("Relu").addOperand("Input").setType("Input->getType()");
   BB.newNode("Sigmoid").addOperand("Input").setType("Input->getType()");

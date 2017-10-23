@@ -59,8 +59,7 @@ public:
   TransposeInst *createTransposeOp(Value *input,
                                    llvm::ArrayRef<unsigned> shuffle);
 
-  ConcatInst *createConcatOp(llvm::ArrayRef<Value *> inputs,
-                             unsigned dimension);
+  ConcatInst *createConcatOp(Value *LHS, Value *RHS, unsigned dimension);
 
   BatchNormalizationInst *createBatchNormalizationOp(Value *input,
                                                      size_t channelIdx = 0,
@@ -119,8 +118,7 @@ public:
   TransposeInst *createTransposeInst(Value *dest, Value *src,
                                      llvm::ArrayRef<unsigned> shuffle);
 
-  ConcatInst *createConcatInst(Value *dest, llvm::ArrayRef<Value *> src,
-                               size_t dim);
+  ConcatInst *createConcatInst(Value *dest, Value *LHS, Value *RHS, size_t dim);
 
   BatchNormalizationInst *createBatchNormalizationInst(
       Value *dest, Value *src, Value *scale, Value *bias, Value *mean,

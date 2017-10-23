@@ -121,21 +121,18 @@ TransposeInst *IRBuilder::createTransposeOp(Value *input,
   return createTransposeInst(res, input, shuffle);
 }
 
-ConcatInst *IRBuilder::createConcatOp(llvm::ArrayRef<Value *> inputs,
+ConcatInst *IRBuilder::createConcatOp(Value *LHS, Value *RHS,
                                       unsigned dimension) {
-  auto inDim = inputs[0]->dims();
-  for (auto in : inputs) {
-    (void)in;
-    assert(in->dims() == inDim && "Invalid input shape");
-  }
+  assert(LHS->getType() == RHS->getType() && "Invalid dims");
+  auto inDim = LHS->dims();
 
   std::vector<size_t> shape(inDim.begin(), inDim.end());
   // We are stacking the tensors along a specific dimension. This means that we
   // increase the size of the tensor along this dimension.
-  shape[dimension] *= inputs.size();
+  shape[dimension] *= 2;
 
-  auto *res = createAllocActivationInst(inputs[0]->getElementType(), shape);
-  return createConcatInst(res, inputs, dimension);
+  auto *res = createAllocActivationInst(LHS->getElementType(), shape);
+  return createConcatInst(res, LHS, RHS, dimension);
 }
 
 BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(
@@ -258,10 +255,9 @@ IRBuilder::createTransposeInst(Value *dest, Value *src,
   return A;
 }
 
-ConcatInst *IRBuilder::createConcatInst(Value *dest,
-                                        llvm::ArrayRef<Value *> src,
+ConcatInst *IRBuilder::createConcatInst(Value *dest, Value *LHS, Value *RHS,
                                         size_t dim) {
-  auto *A = new ConcatInst(dest, src, dim);
+  auto *A = new ConcatInst("", dest, LHS, RHS, dim);
   M_->pushInstr(A);
   return A;
 }

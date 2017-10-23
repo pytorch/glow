@@ -151,49 +151,27 @@ static void SinkTranspose(Graph &G) {
 
     // Sink Transpose below batch Arithmetic nodes.
     if (auto *CN = dyn_cast<ConcatNode>(*it)) {
-      assert(CN->getInputs().size() > 1 && "Invalid number of concat operands");
+      TransposeNode *L = dyn_cast<TransposeNode>(CN->getLHS());
+      TransposeNode *R = dyn_cast<TransposeNode>(CN->getRHS());
 
-      // Collect all of the transpose nodes and their inputs.
-      std::vector<Node *> inputs;
-      std::vector<TransposeNode *> transposes;
-      for (auto &in : CN->getInputs()) {
-
-        if (auto *II = dyn_cast<TransposeNode>(in.get())) {
-          transposes.push_back(II);
-          inputs.push_back(II->getInput());
-          continue;
-        }
-
-        break;
-      }
-
-      // If some of the inputs were not transposes then bail out.
-      if (CN->getInputs().size() != transposes.size()) {
+      // Both sides must be a transpose instruction.
+      if (!L || !R) {
         continue;
       }
 
-      auto *first = transposes[0];
-      auto firstMask = first->getShuffle();
-      bool sameMask = true;
-      for (auto *T : transposes) {
-        if (T->getShuffle() != firstMask) {
-          sameMask = false;
-          break;
-        }
-      }
-
       // If the shuffle masks don't agree then bail out.
-      if (!sameMask) {
+      if (L->getShuffle() != R->getShuffle()) {
         continue;
       }
 
       // Figure out where we transposed the channel index for batch
       // normalization.
       unsigned idx = CN->getDim();
-      unsigned newChannelIdx = firstMask[idx];
+      unsigned newChannelIdx = L->getShuffle()[idx];
 
-      auto *newCN = G.createConcat(CN->getName(), inputs, newChannelIdx);
-      auto *newTR = G.createTranspose(first->getName(), newCN, firstMask);
+      auto *newCN = G.createConcat(CN->getName(), L->getInput(), R->getInput(),
+                                   newChannelIdx);
+      auto *newTR = G.createTranspose(L->getName(), newCN, L->getShuffle());
       CN->replaceAllUsesOfWith(newTR);
     }
 
