@@ -13,49 +13,6 @@ namespace glow {
 class AllocActivationInst;
 class DeallocActivationInst;
 
-class TransposeInst : public Instruction {
-  std::vector<unsigned> shuffle_;
-
-public:
-  TransposeInst(Value *dest, Value *src, llvm::ArrayRef<unsigned> shuffle)
-      : Instruction(Kinded::Kind::TransposeInstKind, dest->getType(),
-                    {{dest, OperandKind::Out}, {src, OperandKind::In}}),
-        shuffle_(shuffle.begin(), shuffle.end()) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::TransposeInstKind;
-  }
-
-  bool mayShareBuffers() const { return false; }
-  std::string getExtraDesc() const;
-  Value *getDest() const { return getOperand(0).first; }
-  Value *getSrc() const { return getOperand(1).first; }
-
-  llvm::ArrayRef<unsigned> getShuffle() const { return shuffle_; }
-  void verify() const;
-};
-
-class ReshapeInst : public Instruction {
-  std::vector<size_t> dims_;
-
-public:
-  ReshapeInst(Value *dest, Value *src, llvm::ArrayRef<size_t> dims)
-      : Instruction(Kinded::Kind::ReshapeInstKind, dest->getType(),
-                    {{dest, OperandKind::Out}, {src, OperandKind::In}}),
-        dims_(dims.begin(), dims.end()) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::ReshapeInstKind;
-  }
-
-  std::string getExtraDesc() const;
-  Value *getDest() const { return getOperand(0).first; }
-  Value *getSrc() const { return getOperand(1).first; }
-  llvm::ArrayRef<size_t> getDims() { return dims_; }
-
-  void verify() const;
-};
-
 class ConcatInst : public Instruction {
   /// We concat the tensors along this dimension.
   size_t dim_;

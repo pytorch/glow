@@ -13,14 +13,6 @@ using namespace glow;
 //                      Instruction textual printers
 //===----------------------------------------------------------------------===//
 
-std::string TransposeInst::getExtraDesc() const {
-  return std::to_string(llvm::makeArrayRef(shuffle_));
-}
-
-std::string ReshapeInst::getExtraDesc() const {
-  return std::to_string(llvm::makeArrayRef(dims_));
-}
-
 std::string ConcatInst::getExtraDesc() const {
   return "{ " + std::to_string(dim_) + " }";
 }
@@ -174,7 +166,7 @@ void TransposeInst::verify() const {
 
   auto dims = src->dims();
   for (size_t i = 0; i < dims.size(); i++) {
-    shape.push_back(dims[shuffle_[i]]);
+    shape.push_back(dims[Shuffle_[i]]);
   }
 
   assert(dest->dims() == llvm::ArrayRef<size_t>(shape) &&
