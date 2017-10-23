@@ -92,9 +92,6 @@ public:
   /// the same.
   bool mayShareBuffers() const { return true; }
 
-  /// When printing the instruction this method prints the extra metadata.
-  std::string getExtraDesc() const { return ""; }
-
   /// Sets the ith operand at index \p idx to the value \p v.
   void setOperand(unsigned idx, Value *v);
 

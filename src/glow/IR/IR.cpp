@@ -103,7 +103,16 @@ Value *Module::getWeightForNode(const Node *V) const {
 //                    IR printing and visualizing
 //===----------------------------------------------------------------------===//
 
-static std::string getExtraDesc(const Kinded *K) { return "[removed]"; }
+static void dumpIR(Value *V, std::ostream &out) {
+#define DEF_INSTR(CLASS, NAME)                                                 \
+  if (const auto *X = dyn_cast<const CLASS>(V))                                \
+    return X->dump(out);
+#define DEF_VALUE(CLASS, NAME)                                                 \
+  if (const auto *X = dyn_cast<const CLASS>(V))                                \
+    return X->dump(out);
+#include "AutoGenInstr.def"
+  glow_unreachable();
+}
 
 bool Instruction::mayShareBuffers(const Instruction *I) {
 #define DEF_INSTR(CLASS, NAME)                                                 \
@@ -113,40 +122,6 @@ bool Instruction::mayShareBuffers(const Instruction *I) {
 #include "AutoGenInstr.def"
 
   glow_unreachable();
-}
-
-static std::string getDesc(const Value *v) {
-  std::string sb;
-  std::string name = v->getName();
-  auto valName = v->getKindName();
-  sb += "%" + name + " = " + valName + " ";
-  sb += getExtraDesc(v);
-  return sb;
-}
-
-static std::string getDesc(const Instruction *II) {
-  std::string sb;
-  std::string name = II->getName();
-  auto instrName = II->getKindName();
-  sb += "%" + name + " = " + instrName + " ";
-  auto extraDesc = getExtraDesc(II);
-  ;
-  if (!extraDesc.empty()) {
-    sb += extraDesc + " ";
-  }
-
-  // Print operands:
-  for (size_t i = 0, e = II->getNumOperands(); i < e; i++) {
-    auto op = II->getOperand(i);
-    auto CC = getOperandKindStr(op.second);
-    if (i) {
-      sb += ", ";
-    }
-    std::string name = op.first->getName();
-    sb += std::string(CC) + " %" + name;
-  }
-
-  return sb;
 }
 
 static void nameInstr(std::unordered_set<std::string> &usedNames, Named *named,
@@ -186,7 +161,9 @@ void Module::dump() {
   sb << "declare {\n";
   for (auto it : weights_) {
     Value *V = it;
-    sb << "  " << getDesc(V) << "\n";
+    sb << "  ";
+    dumpIR(V, sb);
+    sb << "\n";
 
     auto *T = V->getType();
     sizeInBytes += T->getElementSize() * T->size();
@@ -200,7 +177,9 @@ void Module::dump() {
   // Print all of the instructions:
   for (auto it : instrs_) {
     Instruction *II = it;
-    sb << "  " << getDesc(II) << "\n";
+    sb << "  ";
+    dumpIR(II, sb);
+    sb << "\n";
   }
 
   sb << "}\n";
@@ -213,7 +192,6 @@ static std::string getDottyDesc(const Value *v) {
   std::string name = v->getName();
   auto valName = v->getKindName();
   sb += name + " | " + valName + " ";
-  sb += getExtraDesc(v);
   return sb;
 }
 
@@ -222,10 +200,6 @@ static std::string getDottyDesc(const Instruction *II) {
   auto instrName = II->getKindName();
   sb += instrName;
   sb += "|";
-  auto extraDesc = getExtraDesc(II);
-  if (!extraDesc.empty()) {
-    sb += escapeDottyString(extraDesc) + "|";
-  }
 
   // Print operands:
   for (int i = 0, e = II->getNumOperands(); i < e; i++) {
