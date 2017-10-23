@@ -231,14 +231,14 @@ TanhInst *IRBuilder::createTanhInst(Value *dest, Value *src) {
 
 SoftMaxInst *IRBuilder::createSoftMaxInst(Value *dest, Value *src, Value *E,
                                           Value *selected) {
-  auto *A = new SoftMaxInst(dest, src, E, selected);
+  auto *A = new SoftMaxInst("", dest, src, E, selected);
   M_->pushInstr(A);
   return A;
 }
 
 RegressionInst *IRBuilder::createRegressionInst(Value *dest, Value *src,
                                                 Value *expected) {
-  auto *A = new RegressionInst(dest, src, expected);
+  auto *A = new RegressionInst("", dest, src, expected);
   M_->pushInstr(A);
   return A;
 }

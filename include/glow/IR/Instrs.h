@@ -13,42 +13,6 @@ namespace glow {
 class AllocActivationInst;
 class DeallocActivationInst;
 
-class SoftMaxInst : public Instruction {
-public:
-  SoftMaxInst(Value *dest, Value *src, Value *E, Value *selected)
-      : Instruction(Kinded::Kind::SoftMaxInstKind, dest->getType(),
-                    {{dest, OperandKind::Out},
-                     {src, OperandKind::In},
-                     {E, OperandKind::InOut},
-                     {selected, OperandKind::In}}) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::SoftMaxInstKind;
-  }
-  Value *getDest() const { return getOperand(0).first; }
-  Value *getSrc() const { return getOperand(1).first; }
-  Value *getE() const { return getOperand(2).first; }
-  Value *getSelected() const { return getOperand(3).first; }
-  void verify() const;
-};
-
-class RegressionInst : public Instruction {
-public:
-  RegressionInst(Value *dest, Value *src, Value *expected)
-      : Instruction(Kinded::Kind::RegressionInstKind, dest->getType(),
-                    {{dest, OperandKind::Out},
-                     {src, OperandKind::In},
-                     {expected, OperandKind::In}}) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::RegressionInstKind;
-  }
-  Value *getDest() const { return getOperand(0).first; }
-  Value *getSrc() const { return getOperand(1).first; }
-  Value *getExpected() const { return getOperand(2).first; }
-  void verify() const;
-};
-
 class TransposeInst : public Instruction {
   std::vector<unsigned> shuffle_;
 
