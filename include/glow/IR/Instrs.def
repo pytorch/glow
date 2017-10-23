@@ -5,8 +5,6 @@
 #error "The macro DEF_VALUE was not declared."
 #endif
 
-DEF_INSTR(TransposeInst, transpose)
-DEF_INSTR(ReshapeInst, reshape)
 DEF_INSTR(ConcatInst, concat)
 DEF_INSTR(BatchNormalizationInst, batchnormalization)
 DEF_INSTR(LocalResponseNormalizationInst, localresponsenormalization)

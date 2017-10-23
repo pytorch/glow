@@ -138,7 +138,7 @@ void InstrBuilder::emitPrettyPrinter(std::ostream &os) const {
 
   for (const auto &mem : members_) {
     os << "\tos << \", " << mem.second << " \" <<  std::to_string("
-       << mem.second << "_);\n";
+       << "get" << mem.second << "());\n";
   }
   os << "\n}\n";
 }

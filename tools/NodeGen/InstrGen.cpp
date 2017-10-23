@@ -93,5 +93,22 @@ int main(int argc, char **argv) {
       .addOperand("Expected", OperandKind::InOut)
       .setType("Dest->getType()");
 
+  BB.newInstr("Reshape")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember("std::vector<size_t>", "Dims")
+      .setType("Dest->getType()")
+      .overrideGetter(
+          "Dims", "llvm::ArrayRef<size_t> getDims() const { return Dims_; }");
+
+  BB.newInstr("Transpose")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember("std::vector<unsigned>", "Shuffle")
+      .setType("Dest->getType()")
+      .overrideGetter(
+          "Shuffle",
+          "llvm::ArrayRef<unsigned> getShuffle() const { return Shuffle_; }");
+
   return 0;
 }

@@ -245,7 +245,7 @@ RegressionInst *IRBuilder::createRegressionInst(Value *dest, Value *src,
 
 ReshapeInst *IRBuilder::createReshapeInst(Value *dest, Value *src,
                                           llvm::ArrayRef<size_t> shape) {
-  auto *A = new ReshapeInst(dest, src, shape);
+  auto *A = new ReshapeInst("", dest, src, shape.vec());
   M_->pushInstr(A);
   return A;
 }
@@ -253,7 +253,7 @@ ReshapeInst *IRBuilder::createReshapeInst(Value *dest, Value *src,
 TransposeInst *
 IRBuilder::createTransposeInst(Value *dest, Value *src,
                                llvm::ArrayRef<unsigned> shuffle) {
-  auto *A = new TransposeInst(dest, src, shuffle);
+  auto *A = new TransposeInst("", dest, src, shuffle.vec());
   M_->pushInstr(A);
   return A;
 }
