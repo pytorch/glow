@@ -18,6 +18,8 @@ class Tensor;
 #define DEF_VALUE(CLASS, NAME) class CLASS;
 #define DEF_INSTR(CLASS, NAME) class CLASS;
 #include "glow/IR/Instrs.def"
+#define DEF_INSTR(CLASS, NAME) class CLASS;
+#include "AutoGenInstr.def"
 
 /// This is the IR-interpreter. It owns the IR, and the heap, and is able to
 /// execute the instructions one at a time.
@@ -90,6 +92,10 @@ private:
   void fwd##CLASS(bool isTrain, const CLASS *I);                               \
   void bwd##CLASS(const CLASS *I);
 #include "glow/IR/Instrs.def"
+#define DEF_INSTR(CLASS, NAME)                                                 \
+  void fwd##CLASS(bool isTrain, const CLASS *I);                               \
+  void bwd##CLASS(const CLASS *I);
+#include "AutoGenInstr.def"
 
   void fwdPoolMax_impl(const PoolInst *I);
   void fwdPoolAvg_impl(const PoolInst *I);

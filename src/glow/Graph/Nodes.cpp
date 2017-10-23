@@ -2,7 +2,6 @@
 
 #include "glow/Graph/Nodes.h"
 #include "glow/Base/Type.h"
-#include "glow/IR/Instrs.h"
 #include "glow/Support/Support.h"
 
 using namespace glow;

@@ -18,16 +18,19 @@ int main(int argc, char **argv) {
 
   Builder BB(hFile, cFile, dFile);
 
-  BB.newInstr("Pool")
-      .addEnumCase("Max")
-      .addEnumCase("Avg")
-      .addOperand("Src", OperandKind::In)
+  BB.newInstr("AllocActivation").addExtraParam("TypeRef", "Ty").setType("Ty");
+
+  BB.newInstr("DeallocActivation")
+      .addOperand("Src", OperandKind::Out)
+      .overrideGetter("Src", "AllocActivationInst *getAlloc() const { return "
+                             "cast<AllocActivationInst>(getOperand(0).first); "
+                             "}")
+      .setType("Src->getType()");
+
+  BB.newInstr("Copy")
       .addOperand("Dest", OperandKind::Out)
-      .addOperand("SrcXY", OperandKind::InOut)
-      .addMember("size_t", "Kernel")
-      .addMember("size_t", "Stride")
-      .addMember("size_t", "Pad")
-      .setType("Dest->getType()");
+      .addOperand("Src", OperandKind::In)
+      .setType("Src->getType()");
 
   return 0;
 }
