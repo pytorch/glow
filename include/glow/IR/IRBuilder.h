@@ -78,7 +78,7 @@ public:
                                      float k = 2.0);
 
   ArithmeticInst *createArithmeticOp(Value *LHS, Value *RHS,
-                                     ArithmeticInst::OpKind op);
+                                     ArithmeticInst::Mode op);
 
   Value *createReturnOp(Value *input);
 
@@ -132,7 +132,7 @@ public:
                                        float beta, float k);
 
   ArithmeticInst *createArithmeticInst(Value *dest, Value *LHS, Value *RHS,
-                                       ArithmeticInst::OpKind kind);
+                                       ArithmeticInst::Mode kind);
 
   WeightVar *createWeightVar(TypeRef T, llvm::StringRef name = "",
                              MutabilityKind k = MutabilityKind::Mutable);

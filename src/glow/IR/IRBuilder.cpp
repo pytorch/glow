@@ -160,7 +160,7 @@ LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationOp(
 }
 
 ArithmeticInst *IRBuilder::createArithmeticOp(Value *LHS, Value *RHS,
-                                              ArithmeticInst::OpKind op) {
+                                              ArithmeticInst::Mode op) {
   assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
   auto *res = createAllocActivationInst(LHS->getType());
@@ -269,7 +269,7 @@ ConcatInst *IRBuilder::createConcatInst(Value *dest,
 BatchNormalizationInst *IRBuilder::createBatchNormalizationInst(
     Value *dest, Value *src, Value *scale, Value *bias, Value *mean, Value *var,
     size_t channelIdx, float epsilon, float momentum) {
-  auto *A = new BatchNormalizationInst(dest, src, scale, bias, mean, var,
+  auto *A = new BatchNormalizationInst("", dest, src, scale, bias, mean, var,
                                        channelIdx, epsilon, momentum);
   M_->pushInstr(A);
   return A;
@@ -278,16 +278,16 @@ BatchNormalizationInst *IRBuilder::createBatchNormalizationInst(
 LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationInst(
     Value *dest, Value *src, Value *scale, size_t halfWindowSize, float alpha,
     float beta, float k) {
-  auto *A = new LocalResponseNormalizationInst(dest, src, scale, halfWindowSize,
-                                               alpha, beta, k);
+  auto *A = new LocalResponseNormalizationInst("", dest, src, scale,
+                                               halfWindowSize, alpha, beta, k);
   M_->pushInstr(A);
   return A;
 }
 
 ArithmeticInst *IRBuilder::createArithmeticInst(Value *dest, Value *LHS,
                                                 Value *RHS,
-                                                ArithmeticInst::OpKind kind) {
-  auto *A = new ArithmeticInst(dest, LHS, RHS, kind);
+                                                ArithmeticInst::Mode md) {
+  auto *A = new ArithmeticInst("", md, dest, LHS, RHS);
   M_->pushInstr(A);
   return A;
 }
