@@ -17,8 +17,6 @@ class Tensor;
 // Forward declare all of the classes.
 #define DEF_VALUE(CLASS, NAME) class CLASS;
 #define DEF_INSTR(CLASS, NAME) class CLASS;
-#include "glow/IR/Instrs.def"
-#define DEF_INSTR(CLASS, NAME) class CLASS;
 #include "AutoGenInstr.def"
 
 /// This is the IR-interpreter. It owns the IR, and the heap, and is able to
@@ -88,10 +86,6 @@ private:
   ///@{
 
 #define DEF_VALUE(CLASS, NAME)
-#define DEF_INSTR(CLASS, NAME)                                                 \
-  void fwd##CLASS(bool isTrain, const CLASS *I);                               \
-  void bwd##CLASS(const CLASS *I);
-#include "glow/IR/Instrs.def"
 #define DEF_INSTR(CLASS, NAME)                                                 \
   void fwd##CLASS(bool isTrain, const CLASS *I);                               \
   void bwd##CLASS(const CLASS *I);

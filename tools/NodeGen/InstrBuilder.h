@@ -140,10 +140,12 @@ public:
                "using namespace glow;\n";
     dStream
         << "#ifndef DEF_INSTR\n#error The macro DEF_INSTR was not declared.\n"
+           "#endif\n#ifndef DEF_VALUE\n#error The macro DEF_VALUE was not "
+           "declared.\n"
            "#endif\n";
   }
 
-  ~Builder() { dStream << "#undef DEF_INSTR"; }
+  ~Builder() { dStream << "#undef DEF_INSTR\n#undef DEF_VALUE"; }
 
   /// Declare a new instruction and generate code for it.
   InstrBuilder newInstr(const std::string &name) {
@@ -154,6 +156,11 @@ public:
   /// Declare the instruction in the def file but don't generate code for it.
   void declareInstr(const std::string &name) {
     dStream << "DEF_INSTR(" << name << "Inst, " << name << ")\n";
+  }
+
+  /// Declare the value in the def file but don't generate code for it.
+  void declareValue(const std::string &name) {
+    dStream << "DEF_VALUE(" << name << ", " << name << ")\n";
   }
 };
 

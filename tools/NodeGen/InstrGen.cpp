@@ -140,5 +140,8 @@ int main(int argc, char **argv) {
       .addOperand("RHS", OperandKind::In)
       .setType("LHS->getType()");
 
+  BB.declareInstr("Concat");
+  BB.declareValue("WeightVar");
+
   return 0;
 }

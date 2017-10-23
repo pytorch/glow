@@ -102,13 +102,6 @@ void Interpreter::doForwardPass(bool isTrain) {
   // Dispatch the interpreter on each instruction in the program:
   for (auto *I : M_->getInstrs()) {
     switch (I->getKind()) {
-#include "glow/IR/Instrs.def"
-
-#define DEF_INSTR(CLASS, NAME)                                                 \
-  case Kinded::Kind::CLASS##Kind: {                                            \
-    fwd##CLASS(isTrain, cast<CLASS>(I));                                       \
-    break;                                                                     \
-  }
 #include "AutoGenInstr.def"
 
     default:
@@ -130,12 +123,6 @@ void Interpreter::doBackwardPass() {
   auto &L = M_->getInstrs();
   for (auto it = L.rbegin(), e = L.rend(); it != e; it++) {
     switch ((*it)->getKind()) {
-#include "glow/IR/Instrs.def"
-#define DEF_INSTR(CLASS, NAME)                                                 \
-  case Kinded::Kind::CLASS##Kind: {                                            \
-    bwd##CLASS(cast<CLASS>(*it));                                              \
-    break;                                                                     \
-  }
 #include "AutoGenInstr.def"
 
     default:
