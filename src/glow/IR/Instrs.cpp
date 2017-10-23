@@ -13,20 +13,6 @@ using namespace glow;
 //                      Instruction textual printers
 //===----------------------------------------------------------------------===//
 
-std::string ConvolutionInst::getExtraDesc() const {
-  return listToString(kernel_, stride_, pad_, depth_);
-}
-
-const char *PoolInst::getKindStr() const {
-  const char *names[] = {"max", "avg", nullptr};
-  return names[static_cast<int>(kind_)];
-}
-
-std::string PoolInst::getExtraDesc() const {
-  std::string sb = getKindStr();
-  return sb += " " + listToString(kernel_, stride_, pad_);
-}
-
 std::string FullyConnectedInst::getExtraDesc() const {
   return listToString(depth_);
 }
@@ -103,18 +89,18 @@ void ConvolutionInst::verify() const {
   ShapeNHWC idim(src->getType()->dims());
   ShapeNHWC odim(dest->getType()->dims());
   (void)odim;
-  assert(idim.w >= kernel_ && idim.h >= kernel_ &&
+  assert(idim.w >= Kernel_ && idim.h >= Kernel_ &&
          "buffer too small for selected stride");
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad_, kernel_, stride_);
-  ShapeNHWC exp(idim.n, outSz.first, outSz.second, depth_);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, Pad_, Kernel_, Stride_);
+  ShapeNHWC exp(idim.n, outSz.first, outSz.second, Depth_);
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");
 
-  llvm::ArrayRef<size_t> filterDims = {depth_, kernel_, kernel_, idim.c};
+  llvm::ArrayRef<size_t> filterDims = {Depth_, Kernel_, Kernel_, idim.c};
   assert(filter->getType()->dims() == filterDims && "Invalid filter dims");
 
-  llvm::ArrayRef<size_t> biasDims = {depth_};
+  llvm::ArrayRef<size_t> biasDims = {Depth_};
   assert(bias->getType()->dims() == biasDims && "Invalid bias dims");
 }
 
@@ -126,17 +112,17 @@ void PoolInst::verify() const {
   ShapeNHWC idim = ShapeNHWC(src->getType()->dims());
   ShapeNHWC odim = ShapeNHWC(dest->getType()->dims());
   (void)odim;
-  assert(idim.w >= kernel_ && idim.h >= kernel_ &&
+  assert(idim.w >= Kernel_ && idim.h >= Kernel_ &&
          "buffer too small for selected stride");
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad_, kernel_, stride_);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, Pad_, Kernel_, Stride_);
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
-  if (kind_ == OpKind::Max) {
+  if (getMode() == Mode::Max) {
     llvm::ArrayRef<size_t> exp = {idim.n, outSz.first, outSz.second, idim.c, 2};
     assert(srcXY->getType()->dims() == exp && "Invalid srcXY dims");
   }

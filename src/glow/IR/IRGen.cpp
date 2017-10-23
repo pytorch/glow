@@ -73,8 +73,11 @@ public:
     case glow::Kinded::Kind::PoolNodeKind: {
       auto *P = cast<PoolNode>(N);
       auto *in = valueForNode(P->getInput());
-      auto *V = builder_.createPoolOp(in, P->getMode(), P->getKernel(),
-                                      P->getStride(), P->getPad());
+      PoolInst::Mode Md =
+          (P->getMode() == PoolNode::Mode::Max ? PoolInst::Mode::Max
+                                               : PoolInst::Mode::Avg);
+      auto *V = builder_.createPoolOp(in, Md, P->getKernel(), P->getStride(),
+                                      P->getPad());
       V->setName(N->getName());
       registerIR(N, V->getDest());
       break;

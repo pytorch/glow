@@ -36,7 +36,7 @@ public:
                                 size_t depth, size_t kernel, size_t stride,
                                 size_t pad);
 
-  PoolInst *createPoolOp(Value *input, PoolInst::OpKind kind, size_t kernel,
+  PoolInst *createPoolOp(Value *input, PoolInst::Mode kind, size_t kernel,
                          size_t stride, size_t pad);
 
   FullyConnectedInst *createFullyConnectedOp(Value *input, size_t outDepth);
@@ -94,7 +94,7 @@ public:
                                          size_t depth);
 
   PoolInst *createPoolInst(Value *dest, Value *src, Value *srcXY,
-                           PoolInst::OpKind kind, size_t kernel, size_t stride,
+                           PoolInst::Mode kind, size_t kernel, size_t stride,
                            size_t pad);
 
   FullyConnectedInst *createFullyConnectedInst(Value *dest, Value *src,
