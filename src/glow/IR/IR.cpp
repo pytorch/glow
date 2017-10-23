@@ -116,6 +116,13 @@ bool Instruction::mayShareBuffers(const Instruction *I) {
     return X->mayShareBuffers();
 #define DEF_VALUE(CLASS, NAME)
 #include "glow/IR/Instrs.def"
+
+#define DEF_INSTR(CLASS, NAME)                                                 \
+  if (const auto *X = dyn_cast<const CLASS>(I))                                \
+    return X->mayShareBuffers();
+#define DEF_VALUE(CLASS, NAME)
+#include "AutoGenInstr.def"
+
   glow_unreachable();
 }
 

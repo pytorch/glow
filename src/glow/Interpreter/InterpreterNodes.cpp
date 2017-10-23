@@ -931,7 +931,7 @@ void Interpreter::fwdLocalResponseNormalizationInst(
   // depth of 1.
   assert(idim.c > 0 && "Input of LRN node must have a minimum depth of 1");
 
-  auto halfWindowSize = I->gethalfWindowSize();
+  auto halfWindowSize = I->getHalfWindowSize();
   auto k = I->getK();
   auto beta = I->getBeta();
   auto windowSize = 2 * halfWindowSize + 1;
@@ -988,7 +988,7 @@ void Interpreter::bwdLocalResponseNormalizationInst(
 
   ShapeNHWC odim(outW.dims());
 
-  auto halfWindowSize = I->gethalfWindowSize();
+  auto halfWindowSize = I->getHalfWindowSize();
   auto beta = I->getBeta();
   auto windowSize = 2 * halfWindowSize + 1;
   auto normedAlpha = I->getAlpha() / windowSize;
@@ -1057,15 +1057,15 @@ void Interpreter::fwdArithmeticInst(bool isTrain, const ArithmeticInst *I) {
   auto LHSW = getWeightHandle(I->getLHS());
   auto RHSW = getWeightHandle(I->getRHS());
 
-  switch (I->getKind()) {
-  case ArithmeticInst::OpKind::Add:
+  switch (I->getMode()) {
+  case ArithmeticInst::Mode::Add:
     for (size_t i = 0, e = outW.size(); i < e; i++) {
       outW.raw(i) = LHSW.raw(i) + RHSW.raw(i);
     }
     return;
     break;
 
-  case ArithmeticInst::OpKind::Mul:
+  case ArithmeticInst::Mode::Mul:
     for (size_t i = 0, e = outW.size(); i < e; i++) {
       outW.raw(i) = LHSW.raw(i) * RHSW.raw(i);
     }
@@ -1081,8 +1081,8 @@ void Interpreter::bwdArithmeticInst(const ArithmeticInst *I) {
   auto LHSG = getGradHandle(I->getLHS());
   auto RHSG = getGradHandle(I->getRHS());
 
-  switch (I->getKind()) {
-  case ArithmeticInst::OpKind::Add:
+  switch (I->getMode()) {
+  case ArithmeticInst::Mode::Add:
     for (size_t i = 0, e = outG.size(); i < e; i++) {
       LHSG.raw(i) = outG.raw(i);
       RHSG.raw(i) = outG.raw(i);
@@ -1090,7 +1090,7 @@ void Interpreter::bwdArithmeticInst(const ArithmeticInst *I) {
     return;
     break;
 
-  case ArithmeticInst::OpKind::Mul:
+  case ArithmeticInst::Mode::Mul:
     for (size_t i = 0, e = outG.size(); i < e; i++) {
       LHSG.raw(i) = RHSW.raw(i) * outG.raw(i);
       RHSG.raw(i) = LHSW.raw(i) * outG.raw(i);

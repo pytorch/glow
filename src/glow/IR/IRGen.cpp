@@ -190,7 +190,12 @@ public:
       auto *AR = cast<ArithmeticNode>(N);
       auto *L = valueForNode(AR->getLHS());
       auto *R = valueForNode(AR->getRHS());
-      auto *V = builder_.createArithmeticOp(L, R, AR->getMode());
+
+      ArithmeticInst::Mode Md = (AR->getMode() == ArithmeticNode::Mode::Add
+                                     ? ArithmeticInst::Mode::Add
+                                     : ArithmeticInst::Mode::Mul);
+
+      auto *V = builder_.createArithmeticOp(L, R, Md);
       V->setName(N->getName());
       registerIR(N, V->getDest());
       break;

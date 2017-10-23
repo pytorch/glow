@@ -17,21 +17,6 @@ std::string ConcatInst::getExtraDesc() const {
   return "{ " + std::to_string(dim_) + " }";
 }
 
-std::string BatchNormalizationInst::getExtraDesc() const {
-  return listToString(channelIdx_, epsilon_, momentum_);
-}
-
-std::string LocalResponseNormalizationInst::getExtraDesc() const {
-  return listToString(halfWindowSize_, alpha_, beta_, k_);
-}
-
-const char *ArithmeticInst::getKindStr() const {
-  const char *names[] = {"add", "mul", nullptr};
-  return names[static_cast<int>(kind_)];
-}
-
-std::string ArithmeticInst::getExtraDesc() const { return getKindStr(); }
-
 const char *WeightVar::getKindStr(MutabilityKind kind) {
   const char *names[] = {"const", "mutable", nullptr};
   return names[static_cast<int>(kind)];
@@ -194,7 +179,7 @@ void BatchNormalizationInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
 
   // Figure out how many channels are in the tensor.
-  size_t channels = getOperand(0).first->dims()[channelIdx_];
+  size_t channels = getOperand(0).first->dims()[ChannelIdx_];
 
   llvm::ArrayRef<size_t> exp = {channels};
   assert(getOperand(2).first->getType()->dims() == exp && "Invalid bias dim");

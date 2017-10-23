@@ -6,9 +6,6 @@
 #endif
 
 DEF_INSTR(ConcatInst, concat)
-DEF_INSTR(BatchNormalizationInst, batchnormalization)
-DEF_INSTR(LocalResponseNormalizationInst, localresponsenormalization)
-DEF_INSTR(ArithmeticInst, arithmetic)
 
 // Variables (exist as memory/variable declarations):
 DEF_VALUE(WeightVar, weight)

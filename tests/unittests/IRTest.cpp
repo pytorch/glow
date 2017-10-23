@@ -113,7 +113,7 @@ TEST(IR, allInstrs) {
     builder.createTransposeInst(I2, I0, {0, 3, 1, 2});
     builder.createConcatInst(I6, {I3, I3}, 0);
     builder.createBatchNormalizationInst(I1, I0, S0, S0, S0, S0, 3, 0.01, 0.9);
-    builder.createArithmeticInst(I1, I0, I0, ArithmeticInst::OpKind::Mul);
+    builder.createArithmeticInst(I1, I0, I0, ArithmeticInst::Mode::Mul);
   }
   M.verify();
 }

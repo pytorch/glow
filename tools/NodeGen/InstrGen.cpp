@@ -110,5 +110,35 @@ int main(int argc, char **argv) {
           "Shuffle",
           "llvm::ArrayRef<unsigned> getShuffle() const { return Shuffle_; }");
 
+  BB.newInstr("BatchNormalization")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Scale", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addOperand("Mean", OperandKind::In)
+      .addOperand("Var", OperandKind::In)
+      .addMember("size_t", "ChannelIdx")
+      .addMember("float", "Epsilon")
+      .addMember("float", "Momentum")
+      .setType("Src->getType()");
+
+  BB.newInstr("LocalResponseNormalization")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Scale", OperandKind::In)
+      .addMember("size_t", "HalfWindowSize")
+      .addMember("float", "Alpha")
+      .addMember("float", "Beta")
+      .addMember("float", "K")
+      .setType("Src->getType()");
+
+  BB.newInstr("Arithmetic")
+      .addEnumCase("Add")
+      .addEnumCase("Mul")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .setType("LHS->getType()");
+
   return 0;
 }
