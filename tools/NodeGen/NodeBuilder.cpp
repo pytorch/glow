@@ -21,7 +21,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
   }
 
   // The enum 'Mode' parameter:
-  if (enum_.size()) {
+  if (!enum_.empty()) {
     os << ", Mode mode";
   }
 
@@ -40,7 +40,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
      << ", name)";
 
   // Print the initialization list:
-  if (enum_.size()) {
+  if (!enum_.empty()) {
     os << ", mode_(mode)";
   }
 
@@ -60,7 +60,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
 
 void NodeBuilder::emitClassMembers(std::ostream &os) const {
   // Emit the type of the enum (which is public).
-  if (enum_.size()) {
+  if (!enum_.empty()) {
     os << "\tpublic:\n\tenum class Mode {\n";
     for (const auto &E : enum_) {
       os << "\t  " << E << ",\n";
@@ -71,7 +71,7 @@ void NodeBuilder::emitClassMembers(std::ostream &os) const {
   }
 
   // Emit class members:
-  if (enum_.size()) {
+  if (!enum_.empty()) {
     os << "\tMode mode_;\n";
   }
   for (const auto &op : operands_) {
@@ -114,7 +114,7 @@ void NodeBuilder::emitSettersGetters(std::ostream &os) const {
         "Kinded::Kind::"
      << name_ << "NodeKind; }\n";
 
-  if (enum_.size()) {
+  if (!enum_.empty()) {
     os << "\tMode getMode() const { return mode_; }\n";
   }
 }
@@ -124,7 +124,7 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
      << "Node::getDebugDesc() const {\n\t\tDescriptionBuilder "
         "db(getKindName());\n\t\tdb.addParam(\"name\", getName())\n";
 
-  if (enum_.size()) {
+  if (!enum_.empty()) {
     os << "\t\t.addParam(\"Mode\", getModeStr())\n";
   }
 
@@ -143,7 +143,7 @@ void NodeBuilder::emitEquator(std::ostream &os) const {
   os << "bool " << name_ << "Node::isEqual(const " << name_
      << "Node &other) {\n\treturn true";
 
-  if (enum_.size()) {
+  if (!enum_.empty()) {
     os << " &&\n\t getMode() == other.getMode()";
   }
 
@@ -185,7 +185,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
   os << "\tstd::string getDebugDesc() const override;\n";
   os << "\tbool isEqual(const " << name_ << "Node &other);\n";
   os << "\tvoid visit(Node *parent, NodeVisitor *visitor) override;\n";
-  if (enum_.size()) {
+  if (!enum_.empty()) {
     os << "\tconst char *getModeStr() const { return getModeStr(mode_); "
           "}\n\tstatic const char *getModeStr(Mode m);\n";
   }
@@ -197,7 +197,7 @@ void NodeBuilder::emitCppMethods(std::ostream &os) const {
   emitPrettyPrinter(os);
   emitVisitor(os);
   emitEquator(os);
-  if (enum_.size()) {
+  if (!enum_.empty()) {
     emitEnumModePrinters(os);
   }
 }
