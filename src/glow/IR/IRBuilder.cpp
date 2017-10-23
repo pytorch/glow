@@ -179,7 +179,7 @@ Value *IRBuilder::createReturnOp(Value *input) {
 //===----------------------------------------------------------------------===//
 
 CopyInst *IRBuilder::createCopyInst(Value *dest, Value *src) {
-  auto *A = new CopyInst(dest, src);
+  auto *A = new CopyInst("", dest, src);
   M_->pushInstr(A);
   return A;
 }
@@ -310,7 +310,7 @@ WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
 
 AllocActivationInst *
 IRBuilder::createAllocActivationInst(TypeRef T, llvm::StringRef name) {
-  auto *A = new AllocActivationInst(T);
+  auto *A = new AllocActivationInst(name, T);
   M_->pushInstr(A);
   // Add this instruction to the list of open allocations.
   activeAllocs_.push_back(A);
@@ -323,7 +323,7 @@ AllocActivationInst *IRBuilder::createAllocActivationInst(
 }
 
 DeallocActivationInst *IRBuilder::createDeallocActivationInst(Value *src) {
-  auto *A = new DeallocActivationInst(src);
+  auto *A = new DeallocActivationInst("", src);
   M_->pushInstr(A);
   return A;
 }

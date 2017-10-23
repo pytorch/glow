@@ -72,10 +72,6 @@ std::string WeightVar::getExtraDesc() const {
   return r;
 }
 
-std::string AllocActivationInst::getExtraDesc() const {
-  return std::to_string(*getType());
-}
-
 //===----------------------------------------------------------------------===//
 //                       Instruction verification
 //===----------------------------------------------------------------------===//

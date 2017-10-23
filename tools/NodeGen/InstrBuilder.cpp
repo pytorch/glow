@@ -1,8 +1,8 @@
 #include "InstrBuilder.h"
 
 void InstrBuilder::emitEnumModePrinters(std::ostream &os) const {
-  os << "const char *" << name_ << "Instr::getModeStr(" << name_
-     << "Instr::Mode m) {\n";
+  os << "const char *" << name_ << "Inst::getModeStr(" << name_
+     << "Inst::Mode m) {\n";
   os << "\tstatic const char *names[] = {";
   for (const auto &e : enum_) {
     os << "\"" << e << "\", ";
@@ -123,8 +123,8 @@ void InstrBuilder::emitSettersGetters(std::ostream &os) const {
 }
 
 void InstrBuilder::emitPrettyPrinter(std::ostream &os) const {
-  os << "void dump(std::ostream &os) const {\n";
-  os << "\tos << '%' << getName() << \" = " << name_ << " \";\n";
+  os << "void " << name_ << "Inst::dump(std::ostream &os) const {\n";
+  os << "\tos << '%' << (std::string) getName() << \" = " << name_ << " \";\n";
 
   bool first = true;
   for (const auto &op : operands_) {
@@ -138,7 +138,7 @@ void InstrBuilder::emitPrettyPrinter(std::ostream &os) const {
 
   for (const auto &mem : members_) {
     os << "\tos << \", " << mem.second << " \" <<  std::to_string("
-       << mem.second << ")\";\n";
+       << mem.second << "_);\n";
   }
   os << "\n}\n";
 }

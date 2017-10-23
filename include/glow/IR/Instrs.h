@@ -10,51 +10,8 @@
 
 namespace glow {
 
-class AllocActivationInst : public Instruction {
-public:
-  explicit AllocActivationInst(TypeRef Ty)
-      : Instruction(Kinded::Kind::AllocActivationInstKind, Ty) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::AllocActivationInstKind;
-  }
-
-  std::string getExtraDesc() const;
-  void verify() const;
-};
-
-class DeallocActivationInst : public Instruction {
-public:
-  explicit DeallocActivationInst(Value *src)
-      : Instruction(Kinded::Kind::DeallocActivationInstKind, src->getType(),
-                    {{src, OperandKind::Out}}) {}
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::DeallocActivationInstKind;
-  }
-
-  void verify() const;
-
-  AllocActivationInst *getAlloc() const {
-    return cast<AllocActivationInst>(getOperand(0).first);
-  }
-};
-
-class CopyInst : public Instruction {
-public:
-  CopyInst(Value *dest, Value *src)
-      : Instruction(Kinded::Kind::CopyInstKind, dest->getType(),
-                    {{dest, OperandKind::Out}, {src, OperandKind::In}}) {
-    assert(dest->getType() == src->getType() && "Invalid copy instr");
-  }
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::CopyInstKind;
-  }
-  Value *getDest() const { return getOperand(0).first; }
-  Value *getSrc() const { return getOperand(1).first; }
-  void verify() const;
-};
+class AllocActivationInst;
+class DeallocActivationInst;
 
 class ConvolutionInst : public Instruction {
   size_t kernel_;
@@ -437,5 +394,7 @@ public:
 };
 
 } // namespace glow
+
+#include "AutoGenInstr.h"
 
 #endif // GLOW_IR_INSTRS_H

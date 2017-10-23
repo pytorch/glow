@@ -5,9 +5,6 @@
 #error "The macro DEF_VALUE was not declared."
 #endif
 
-DEF_INSTR(AllocActivationInst, alloc)
-DEF_INSTR(DeallocActivationInst, dealloc)
-DEF_INSTR(CopyInst, copy)
 DEF_INSTR(ConvolutionInst, convolution)
 DEF_INSTR(PoolInst, pool)
 DEF_INSTR(FullyConnectedInst, fullyconnected)

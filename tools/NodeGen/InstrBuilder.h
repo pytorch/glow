@@ -125,6 +125,7 @@ public:
   Builder(std::ofstream &H, std::ofstream &C, std::ofstream &D)
       : hStream(H), cStream(C), dStream(D) {
     cStream << "#include \"glow/IR/IR.h\"\n"
+               "#include \"glow/IR/Instrs.h\"\n"
                "#include \"glow/Base/Type.h\"\n"
                "#include \"glow/Support/Support.h\"\n\n"
                "using namespace glow;\n";

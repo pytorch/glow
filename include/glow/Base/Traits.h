@@ -49,7 +49,8 @@ public:
 #define DEF_INSTR(CLASS, NAME) CLASS##Kind,
 #define DEF_VALUE(CLASS, NAME) CLASS##Kind,
 #include "glow/IR/Instrs.def"
-
+#define DEF_INSTR(CLASS, NAME) CLASS##Kind,
+#include "AutoGenInstr.def"
 #define DEF_NODE(CLASS, NAME) CLASS##Kind,
 #include "AutoGenNodes.def"
   };
@@ -59,7 +60,8 @@ public:
 #define DEF_INSTR(CLASS, NAME) #NAME,
 #define DEF_VALUE(CLASS, NAME) #NAME,
 #include "glow/IR/Instrs.def"
-
+#define DEF_INSTR(CLASS, NAME) #NAME,
+#include "AutoGenInstr.def"
 #define DEF_NODE(CLASS, NAME) #NAME,
 #include "AutoGenNodes.def"
         nullptr};
