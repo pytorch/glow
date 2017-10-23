@@ -38,8 +38,7 @@ public:
 
   void setInitKind(MutabilityKind k) { mut_ = k; }
   MutabilityKind getKind() const { return mut_; }
-
-  std::string getExtraDesc() const;
+  void dump(std::ostream &os) const;
   void verify() const {}
 };
 

@@ -20,11 +20,9 @@ const char *WeightVar::getKindStr(MutabilityKind kind) {
 
 const char *WeightVar::getKindStr() const { return getKindStr(mut_); }
 
-std::string WeightVar::getExtraDesc() const {
-  auto sp = ", ";
-  auto r = std::to_string(*getType());
-  r += std::string(sp) + getKindStr();
-  return r;
+void WeightVar::dump(std::ostream &os) const {
+  os << '%' << (std::string)getName() << " = WeightVar ";
+  os << std::to_string(*getType()) << " " << getKindStr();
 }
 
 //===----------------------------------------------------------------------===//
