@@ -5,9 +5,6 @@
 #error "The macro DEF_VALUE was not declared."
 #endif
 
-DEF_INSTR(ReluInst, relu)
-DEF_INSTR(SigmoidInst, sigmoid)
-DEF_INSTR(TanhInst, tanh)
 DEF_INSTR(SoftMaxInst, softmax)
 DEF_INSTR(RegressionInst, regression)
 DEF_INSTR(TransposeInst, transpose)

@@ -212,19 +212,19 @@ FullyConnectedInst *IRBuilder::createFullyConnectedInst(Value *dest, Value *src,
 }
 
 ReluInst *IRBuilder::createReluInst(Value *dest, Value *src) {
-  auto *A = new ReluInst(dest, src);
+  auto *A = new ReluInst("", dest, src);
   M_->pushInstr(A);
   return A;
 }
 
 SigmoidInst *IRBuilder::createSigmoidInst(Value *dest, Value *src) {
-  auto *A = new SigmoidInst(dest, src);
+  auto *A = new SigmoidInst("", dest, src);
   M_->pushInstr(A);
   return A;
 }
 
 TanhInst *IRBuilder::createTanhInst(Value *dest, Value *src) {
-  auto *A = new TanhInst(dest, src);
+  auto *A = new TanhInst("", dest, src);
   M_->pushInstr(A);
   return A;
 }
