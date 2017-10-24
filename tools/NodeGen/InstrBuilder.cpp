@@ -124,21 +124,20 @@ void InstrBuilder::emitSettersGetters(std::ostream &os) const {
 
 void InstrBuilder::emitPrettyPrinter(std::ostream &os) const {
   os << "void " << name_ << "Inst::dump(std::ostream &os) const {\n";
-  os << "\tos << '%' << (std::string) getName() << \" = " << name_ << " \";\n";
+  os << "\tos << '%' << (std::string) getName() << \" = \" << getKindName() << "
+        "\" \";\n";
+  os << "\tdumpOperands(os);\n";
 
-  bool first = true;
-  for (const auto &op : operands_) {
-    if (!first) {
-      os << "\tos << \", \";";
+  if (!members_.empty()) {
+    os << "\tos << \" {\";\n";
+    bool first = true;
+    for (const auto &mem : members_) {
+      os << "\tos << \"" << (first ? " " : ", ") << mem.second
+         << ": \" <<  std::to_string("
+         << "get" << mem.second << "());\n";
+      first = false;
     }
-    os << "\tos << \"@" << getOperandKindStr(op.second) << " %" << op.first
-       << "\";\n";
-    first = false;
-  }
-
-  for (const auto &mem : members_) {
-    os << "\tos << \", " << mem.second << " \" <<  std::to_string("
-       << "get" << mem.second << "());\n";
+    os << "\tos << '}';\n";
   }
   os << "\n}\n";
 }

@@ -1,6 +1,8 @@
 #ifndef GLOW_TOOLS_NODEGEN_INSTRBUILDER_H
 #define GLOW_TOOLS_NODEGEN_INSTRBUILDER_H
 
+#include "glow/Support/Support.h"
+
 #include <cassert>
 #include <fstream>
 #include <iostream>
@@ -149,18 +151,18 @@ public:
 
   /// Declare a new instruction and generate code for it.
   InstrBuilder newInstr(const std::string &name) {
-    dStream << "DEF_INSTR(" << name << "Inst, " << name << ")\n";
+    dStream << "DEF_INSTR(" << name << "Inst, " << glow::tolower(name) << ")\n";
     return InstrBuilder(hStream, cStream, dStream, name);
   }
 
   /// Declare the instruction in the def file but don't generate code for it.
   void declareInstr(const std::string &name) {
-    dStream << "DEF_INSTR(" << name << "Inst, " << name << ")\n";
+    dStream << "DEF_INSTR(" << name << "Inst, " << glow::tolower(name) << ")\n";
   }
 
   /// Declare the value in the def file but don't generate code for it.
   void declareValue(const std::string &name) {
-    dStream << "DEF_VALUE(" << name << ", " << name << ")\n";
+    dStream << "DEF_VALUE(" << name << ", " << glow::tolower(name) << ")\n";
   }
 };
 

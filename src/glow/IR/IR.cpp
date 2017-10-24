@@ -124,6 +124,17 @@ bool Instruction::mayShareBuffers(const Instruction *I) {
   glow_unreachable();
 }
 
+void Instruction::dumpOperands(std::ostream &os) const {
+  for (size_t i = 0, e = getNumOperands(); i < e; i++) {
+    auto op = getOperand(i);
+    auto CC = getOperandKindStr(op.second);
+    if (i) {
+      os << ", ";
+    }
+    os << CC << " %" << op.first->getName().str();
+  }
+}
+
 static void nameInstr(std::unordered_set<std::string> &usedNames, Named *named,
                       llvm::StringRef suggestion) {
   unsigned idx = 0;

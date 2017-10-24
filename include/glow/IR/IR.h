@@ -108,6 +108,10 @@ public:
   void verify() const;
 
   static bool mayShareBuffers(const Instruction *I);
+
+protected:
+  /// Dump the operands of the instruction into the stream \p os.
+  void dumpOperands(std::ostream &os) const;
 };
 
 class WeightVar;
