@@ -78,7 +78,7 @@ static ArgumentDictionaryTy loadArgumenrMap(const caffe2::OperatorDef &op) {
 bool caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
                                       const std::string &filename) {
   std::fstream ff(filename, std::ios::in | std::ios::binary);
-  assert(ff && "Can't find the model or network files.");
+  GLOW_ASSERT(ff && "Can't find the model or network files.");
 
   bool parseNet = false;
   if (filename.find(".pbtxt") != std::string::npos) {
@@ -89,7 +89,7 @@ bool caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
     parseNet = net.ParseFromIstream(&ff);
   }
 
-  assert(parseNet && "Failed to parse the network descriptor.");
+  GLOW_ASSERT(parseNet && "Failed to parse the network descriptor.");
   return true;
 }
 
@@ -466,6 +466,11 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
 
   // Emit IR for the graph.
   EE.compile(OptimizationMode::Infer);
+
+  EE.getModule().dump();
+  EE.getModule().dumpDAG();
+  EE.getGraph().dump();
+  EE.getGraph().dumpDAG();
 }
 
 caffe2ModelLoader::~caffe2ModelLoader() {
