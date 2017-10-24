@@ -16,8 +16,13 @@ std::string to_string(const llvm::StringRef sr);
 template <typename E> std::string to_string(const llvm::ArrayRef<E> list) {
   std::ostringstream buffer;
   buffer << '[';
-  std::copy(std::begin(list), std::end(list),
-            std::ostream_iterator<E>(buffer, ", "));
+  // Print the array without a trailing comma.
+  for (size_t i = 0, e = list.size(); i < e; i++) {
+    if (i) {
+      buffer << ", ";
+    }
+    buffer << std::to_string(list[i]);
+  }
   buffer << ']';
   return buffer.str();
 }
