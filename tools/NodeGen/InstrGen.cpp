@@ -18,6 +18,12 @@ int main(int argc, char **argv) {
 
   Builder BB(hFile, cFile, dFile);
 
+  //===--------------------------------------------------------------------===//
+  //               Memory / Buffer Management
+  //===--------------------------------------------------------------------===//
+
+  BB.declareValue("WeightVar");
+
   BB.newInstr("AllocActivation").addExtraParam("TypeRef", "Ty").setType("Ty");
 
   BB.newInstr("DeallocActivation")
@@ -31,6 +37,10 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .setType("Src->getType()");
+
+  //===--------------------------------------------------------------------===//
+  //                   Convolution / Pool / FC
+  //===--------------------------------------------------------------------===//
 
   BB.newInstr("Convolution")
       .addOperand("Dest", OperandKind::Out)
@@ -65,50 +75,9 @@ int main(int argc, char **argv) {
       .addExtraMethod("bool mayShareBuffers() const { return false; }")
       .setType("Dest->getType()");
 
-  BB.newInstr("Relu")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .setType("Dest->getType()");
-
-  BB.newInstr("Sigmoid")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .setType("Dest->getType()");
-
-  BB.newInstr("Tanh")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .setType("Dest->getType()");
-
-  BB.newInstr("SoftMax")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .addOperand("E", OperandKind::InOut)
-      .addOperand("Selected", OperandKind::InOut)
-      .setType("Dest->getType()");
-
-  BB.newInstr("Regression")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .addOperand("Expected", OperandKind::InOut)
-      .setType("Dest->getType()");
-
-  BB.newInstr("Reshape")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .addMember("std::vector<size_t>", "Dims")
-      .setType("Dest->getType()")
-      .overrideGetter(
-          "Dims", "llvm::ArrayRef<size_t> getDims() const { return Dims_; }");
-
-  BB.newInstr("Transpose")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .addMember("std::vector<unsigned>", "Shuffle")
-      .setType("Dest->getType()")
-      .overrideGetter(
-          "Shuffle",
-          "llvm::ArrayRef<unsigned> getShuffle() const { return Shuffle_; }");
+  //===--------------------------------------------------------------------===//
+  //                     Normalization
+  //===--------------------------------------------------------------------===//
 
   BB.newInstr("BatchNormalization")
       .addOperand("Dest", OperandKind::Out)
@@ -132,6 +101,27 @@ int main(int argc, char **argv) {
       .addMember("float", "K")
       .setType("Src->getType()");
 
+  //===--------------------------------------------------------------------===//
+  //                      Loss operations
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("SoftMax")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("E", OperandKind::InOut)
+      .addOperand("Selected", OperandKind::InOut)
+      .setType("Dest->getType()");
+
+  BB.newInstr("Regression")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Expected", OperandKind::InOut)
+      .setType("Dest->getType()");
+
+  //===--------------------------------------------------------------------===//
+  //                      Arithmetic
+  //===--------------------------------------------------------------------===//
+
   BB.newInstr("Arithmetic")
       .addEnumCase("Add")
       .addEnumCase("Mul")
@@ -140,6 +130,46 @@ int main(int argc, char **argv) {
       .addOperand("RHS", OperandKind::In)
       .setType("LHS->getType()");
 
+  //===--------------------------------------------------------------------===//
+  //                Non-linearities
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("Relu")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .setType("Dest->getType()");
+
+  BB.newInstr("Sigmoid")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .setType("Dest->getType()");
+
+  BB.newInstr("Tanh")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .setType("Dest->getType()");
+
+  //===--------------------------------------------------------------------===//
+  //                Shape transformations
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("Reshape")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember("std::vector<size_t>", "Dims")
+      .setType("Dest->getType()")
+      .overrideGetter(
+          "Dims", "llvm::ArrayRef<size_t> getDims() const { return Dims_; }");
+
+  BB.newInstr("Transpose")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember("std::vector<unsigned>", "Shuffle")
+      .setType("Dest->getType()")
+      .overrideGetter(
+          "Shuffle",
+          "llvm::ArrayRef<unsigned> getShuffle() const { return Shuffle_; }");
+
   BB.newInstr("Concat")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
@@ -147,8 +177,6 @@ int main(int argc, char **argv) {
       .addMember("size_t", "Dim")
       .addExtraMethod("bool mayShareBuffers() const { return false; }")
       .setType("Dest->getType()");
-
-  BB.declareValue("WeightVar");
 
   return 0;
 }

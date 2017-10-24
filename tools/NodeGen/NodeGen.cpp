@@ -18,7 +18,22 @@ int main(int argc, char **argv) {
 
   Builder BB(hFile, cFile, dFile);
 
+  //===--------------------------------------------------------------------===//
+  //                    Input/Output nodes
+  //===--------------------------------------------------------------------===//
+
   BB.declareNode("Variable");
+
+  BB.newNode("Save")
+      .addOperand("Input")
+      .addOperand("Output")
+      .setType("Input->getType()")
+      .overrideGetter("Output", "Variable *getOutput() const { return "
+                                "cast<Variable>(Output_.get()); };");
+
+  //===--------------------------------------------------------------------===//
+  //                   Convolution / Pool / FC
+  //===--------------------------------------------------------------------===//
 
   BB.newNode("Convolution")
       .addOperand("Input")
@@ -49,6 +64,10 @@ int main(int argc, char **argv) {
       .addExtraParam("TypeRef", "outTy")
       .setType("outTy");
 
+  //===--------------------------------------------------------------------===//
+  //                     Normalization
+  //===--------------------------------------------------------------------===//
+
   BB.newNode("BatchNormalization")
       .addOperand("Input")
       .addOperand("Scale")
@@ -60,6 +79,19 @@ int main(int argc, char **argv) {
       .addMember("float", "Momentum")
       .setType("Input->getType()");
 
+  BB.newNode("LocalResponseNormalization")
+      .addOperand("Input")
+      .addOperand("Scale")
+      .addMember("size_t", "HalfWindowSize")
+      .addMember("float", "Alpha")
+      .addMember("float", "Beta")
+      .addMember("float", "K")
+      .setType("Input->getType()");
+
+  //===--------------------------------------------------------------------===//
+  //                      Loss operations
+  //===--------------------------------------------------------------------===//
+
   BB.newNode("SoftMax")
       .addOperand("Input")
       .addOperand("Selected")
@@ -70,14 +102,9 @@ int main(int argc, char **argv) {
       .addOperand("Expected")
       .setType("Input->getType()");
 
-  BB.newNode("LocalResponseNormalization")
-      .addOperand("Input")
-      .addOperand("Scale")
-      .addMember("size_t", "HalfWindowSize")
-      .addMember("float", "Alpha")
-      .addMember("float", "Beta")
-      .addMember("float", "K")
-      .setType("Input->getType()");
+  //===--------------------------------------------------------------------===//
+  //                      Arithmetic
+  //===--------------------------------------------------------------------===//
 
   BB.newNode("Arithmetic")
       .addEnumCase("Add")
@@ -86,16 +113,17 @@ int main(int argc, char **argv) {
       .addOperand("RHS")
       .setType("LHS->getType()");
 
-  BB.newNode("Concat")
-      .addOperand("LHS")
-      .addOperand("RHS")
-      .addMember("size_t", "Dim")
-      .addExtraParam("TypeRef", "outTy")
-      .setType("outTy");
+  //===--------------------------------------------------------------------===//
+  //                Non-linearities
+  //===--------------------------------------------------------------------===//
 
   BB.newNode("Relu").addOperand("Input").setType("Input->getType()");
   BB.newNode("Sigmoid").addOperand("Input").setType("Input->getType()");
   BB.newNode("Tanh").addOperand("Input").setType("Input->getType()");
+
+  //===--------------------------------------------------------------------===//
+  //                Shape transformations
+  //===--------------------------------------------------------------------===//
 
   BB.newNode("Reshape")
       .addOperand("Input")
@@ -114,12 +142,12 @@ int main(int argc, char **argv) {
           "Shuffle",
           "llvm::ArrayRef<unsigned> getShuffle() const { return Shuffle_; }");
 
-  BB.newNode("Save")
-      .addOperand("Input")
-      .addOperand("Output")
-      .setType("Input->getType()")
-      .overrideGetter("Output", "Variable *getOutput() const { return "
-                                "cast<Variable>(Output_.get()); };");
+  BB.newNode("Concat")
+      .addOperand("LHS")
+      .addOperand("RHS")
+      .addMember("size_t", "Dim")
+      .addExtraParam("TypeRef", "outTy")
+      .setType("outTy");
 
   return 0;
 }
