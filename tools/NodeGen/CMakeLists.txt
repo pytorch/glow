@@ -6,3 +6,8 @@ add_executable(NodeGen
 add_executable(InstrGen
                  InstrGen.cpp
                  InstrBuilder.cpp)
+
+target_link_libraries(InstrGen
+                      PUBLIC
+                        Base
+                        Support)

@@ -37,6 +37,13 @@ std::string escapeDottyString(const std::string &str);
 /// Add quotes to the string \p in.
 inline std::string quote(const std::string &in) { return '"' + in + '"'; }
 
+/// \returns the content of the string \p in after conversion to lower case.
+inline std::string tolower(const std::string &in) {
+  std::string data = in;
+  std::transform(data.begin(), data.end(), data.begin(), ::tolower);
+  return data;
+}
+
 template <typename E> std::string listToString_impl(E v) {
   return std::to_string(v);
 }
