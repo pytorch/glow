@@ -103,7 +103,7 @@ TEST(IR, allInstrs) {
 
     builder.createCopyInst(I1, I0);
     builder.createConvolutionInst(I3, I1, F0, B0, 7, 2, 3, 64);
-    builder.createPoolInst(I4, I0, XY, PoolInst::Mode::Max, 7, 2, 3);
+    builder.createPoolMaxInst(I4, I0, XY, 7, 2, 3);
     builder.createFullyConnectedInst(I5, I0, F1, B1, 32);
     builder.createReluInst(I1, I0);
     builder.createSigmoidInst(I1, I0);
@@ -113,7 +113,7 @@ TEST(IR, allInstrs) {
     builder.createTransposeInst(I2, I0, {0, 3, 1, 2});
     builder.createConcatInst(I6, I3, I3, 0);
     builder.createBatchNormalizationInst(I1, I0, S0, S0, S0, S0, 3, 0.01, 0.9);
-    builder.createArithmeticInst(I1, I0, I0, ArithmeticInst::Mode::Mul);
+    builder.createElementMulInst(I1, I0, I0);
   }
   M.verify();
 }
@@ -126,16 +126,15 @@ TEST(IR, casting) {
 
     auto *input = bb.createWeightVar(ElemKind::FloatTy, {1, 224, 224, 3});
     auto *relu = bb.createRELUOp(input);
-    auto *pool = bb.createPoolOp(relu->getOperand(0).first, PoolInst::Mode::Max,
-                                 7, 2, 3);
+    auto *pool = bb.createPoolMaxOp(relu->getOperand(0).first, 7, 2, 3);
 
-    EXPECT_EQ(isa<PoolInst>(pool), true);
-    EXPECT_EQ(isa<PoolInst>(input), false);
+    EXPECT_EQ(isa<PoolMaxInst>(pool), true);
+    EXPECT_EQ(isa<PoolMaxInst>(input), false);
     EXPECT_EQ(isa<ReluInst>(relu), true);
     EXPECT_EQ(isa<ReluInst>(pool), false);
 
-    EXPECT_NE(dyn_cast<PoolInst>(pool), nullptr);
-    EXPECT_EQ(dyn_cast<PoolInst>(pool), pool);
+    EXPECT_NE(dyn_cast<PoolMaxInst>(pool), nullptr);
+    EXPECT_EQ(dyn_cast<PoolMaxInst>(pool), pool);
 
     EXPECT_NE(dyn_cast<WeightVar>(input), nullptr);
     EXPECT_EQ(dyn_cast<WeightVar>(input), input);

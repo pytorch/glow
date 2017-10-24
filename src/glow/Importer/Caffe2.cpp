@@ -466,11 +466,6 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
 
   // Emit IR for the graph.
   EE.compile(OptimizationMode::Infer);
-
-  EE.getModule().dump();
-  EE.getModule().dumpDAG();
-  EE.getGraph().dump();
-  EE.getGraph().dumpDAG();
 }
 
 caffe2ModelLoader::~caffe2ModelLoader() {

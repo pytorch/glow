@@ -32,8 +32,6 @@ class InstrBuilder {
   std::vector<std::pair<std::string, OperandKind>> operands_;
   /// A list of instruction members. Format: (type, name).
   std::vector<std::pair<std::string, std::string>> members_;
-  /// The instruction enum cases.
-  std::vector<std::string> enum_;
   /// A list of extra parameters that are passed to the constructor.
   std::vector<std::pair<std::string, std::string>> extraParams_;
   /// A list of getters to override. Format (variable name, alternative getter).
@@ -81,12 +79,6 @@ public:
     return *this;
   }
 
-  /// Add an field to the enum. The enum name should start with a capital
-  /// letter. For example: "External".
-  InstrBuilder &addEnumCase(const std::string &op) {
-    enum_.push_back(op);
-    return *this;
-  }
   /// Set the expression that initializes the type of the instruction.
   /// Example: 'LHS->getType()'.
   InstrBuilder &setType(const std::string &ty) {
@@ -99,9 +91,6 @@ public:
     extraParams_.push_back({type, name});
     return *this;
   }
-
-  /// Emits the methods that converts an enum case into a textual label.
-  void emitEnumModePrinters(std::ostream &os) const;
 
   /// Emit the class constructor.
   void emitCtor(std::ostream &os) const;

@@ -39,8 +39,8 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, Value *filter,
                                depth);
 }
 
-PoolInst *IRBuilder::createPoolOp(Value *input, PoolInst::Mode kind,
-                                  size_t kernel, size_t stride, size_t pad) {
+PoolMaxInst *IRBuilder::createPoolMaxOp(Value *input, size_t kernel,
+                                        size_t stride, size_t pad) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
@@ -49,19 +49,27 @@ PoolInst *IRBuilder::createPoolOp(Value *input, PoolInst::Mode kind,
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
-  Value *srcXY;
-  if (kind == PoolInst::Mode::Max) {
-    srcXY = createAllocActivationInst(
-        ElemKind::IndexTy, {idim.n, outSz.first, outSz.second, idim.c, 2},
-        "srcXY");
-  } else {
-    srcXY = createAllocActivationInst(ElemKind::IndexTy, {}, "srcXY");
-  }
+  Value *srcXY = createAllocActivationInst(
+      ElemKind::IndexTy, {idim.n, outSz.first, outSz.second, idim.c, 2},
+      "srcXY");
+  Value *dest = createAllocActivationInst(
+      ElemKind::FloatTy, {idim.n, outSz.first, outSz.second, idim.c});
+
+  return createPoolMaxInst(dest, input, srcXY, kernel, stride, pad);
+}
+
+PoolAvgInst *IRBuilder::createPoolAvgOp(Value *input, size_t kernel,
+                                        size_t stride, size_t pad) {
+  ShapeNHWC idim = ShapeNHWC(input->dims());
+  assert(idim.w >= kernel && idim.h >= kernel &&
+         "buffer too small for selected stride");
+
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
 
   Value *dest = createAllocActivationInst(
       ElemKind::FloatTy, {idim.n, outSz.first, outSz.second, idim.c});
 
-  return createPoolInst(dest, input, srcXY, kind, kernel, stride, pad);
+  return createPoolAvgInst(dest, input, kernel, stride, pad);
 }
 
 FullyConnectedInst *IRBuilder::createFullyConnectedOp(Value *input,
@@ -156,12 +164,18 @@ LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationOp(
                                               alpha, beta, k);
 }
 
-ArithmeticInst *IRBuilder::createArithmeticOp(Value *LHS, Value *RHS,
-                                              ArithmeticInst::Mode op) {
+ElementAddInst *IRBuilder::createElementAddOp(Value *LHS, Value *RHS) {
   assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
   auto *res = createAllocActivationInst(LHS->getType());
-  return createArithmeticInst(res, LHS, RHS, op);
+  return createElementAddInst(res, LHS, RHS);
+}
+
+ElementMulInst *IRBuilder::createElementMulOp(Value *LHS, Value *RHS) {
+  assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
+  // The output tensor is of the same shape as the input tensor.
+  auto *res = createAllocActivationInst(LHS->getType());
+  return createElementMulInst(res, LHS, RHS);
 }
 
 Value *IRBuilder::createReturnOp(Value *input) {
@@ -191,10 +205,18 @@ ConvolutionInst *IRBuilder::createConvolutionInst(Value *dest, Value *src,
   return A;
 }
 
-PoolInst *IRBuilder::createPoolInst(Value *dest, Value *src, Value *srcXY,
-                                    PoolInst::Mode mode, size_t kernel,
-                                    size_t stride, size_t pad) {
-  auto *A = new PoolInst("", mode, dest, src, srcXY, kernel, stride, pad);
+PoolMaxInst *IRBuilder::createPoolMaxInst(Value *dest, Value *src, Value *srcXY,
+                                          size_t kernel, size_t stride,
+                                          size_t pad) {
+  auto *A = new PoolMaxInst("", dest, src, srcXY, kernel, stride, pad);
+  M_->pushInstr(A);
+  return A;
+}
+
+PoolAvgInst *IRBuilder::createPoolAvgInst(Value *dest, Value *src,
+                                          size_t kernel, size_t stride,
+                                          size_t pad) {
+  auto *A = new PoolAvgInst("", dest, src, kernel, stride, pad);
   M_->pushInstr(A);
   return A;
 }
@@ -280,10 +302,16 @@ LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationInst(
   return A;
 }
 
-ArithmeticInst *IRBuilder::createArithmeticInst(Value *dest, Value *LHS,
-                                                Value *RHS,
-                                                ArithmeticInst::Mode md) {
-  auto *A = new ArithmeticInst("", md, dest, LHS, RHS);
+ElementAddInst *IRBuilder::createElementAddInst(Value *dest, Value *LHS,
+                                                Value *RHS) {
+  auto *A = new ElementAddInst("", dest, LHS, RHS);
+  M_->pushInstr(A);
+  return A;
+}
+
+ElementMulInst *IRBuilder::createElementMulInst(Value *dest, Value *LHS,
+                                                Value *RHS) {
+  auto *A = new ElementMulInst("", dest, LHS, RHS);
   M_->pushInstr(A);
   return A;
 }
