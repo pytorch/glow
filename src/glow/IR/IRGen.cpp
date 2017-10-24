@@ -73,13 +73,17 @@ public:
     case glow::Kinded::Kind::PoolNodeKind: {
       auto *P = cast<PoolNode>(N);
       auto *in = valueForNode(P->getInput());
-      PoolInst::Mode Md =
-          (P->getMode() == PoolNode::Mode::Max ? PoolInst::Mode::Max
-                                               : PoolInst::Mode::Avg);
-      auto *V = builder_.createPoolOp(in, Md, P->getKernel(), P->getStride(),
-                                      P->getPad());
+      Instruction *V = nullptr;
+      if (P->getMode() == PoolNode::Mode::Max) {
+        V = builder_.createPoolMaxOp(in, P->getKernel(), P->getStride(),
+                                     P->getPad());
+      } else {
+        V = builder_.createPoolAvgOp(in, P->getKernel(), P->getStride(),
+                                     P->getPad());
+      }
+
       V->setName(N->getName());
-      registerIR(N, V->getDest());
+      registerIR(N, V->getOperand(0).first);
       break;
     }
     case glow::Kinded::Kind::FullyConnectedNodeKind: {
@@ -189,13 +193,15 @@ public:
       auto *L = valueForNode(AR->getLHS());
       auto *R = valueForNode(AR->getRHS());
 
-      ArithmeticInst::Mode Md = (AR->getMode() == ArithmeticNode::Mode::Add
-                                     ? ArithmeticInst::Mode::Add
-                                     : ArithmeticInst::Mode::Mul);
+      Instruction *V = nullptr;
+      if (AR->getMode() == ArithmeticNode::Mode::Add) {
+        V = builder_.createElementAddOp(L, R);
+      } else {
+        V = builder_.createElementMulOp(L, R);
+      }
 
-      auto *V = builder_.createArithmeticOp(L, R, Md);
       V->setName(N->getName());
-      registerIR(N, V->getDest());
+      registerIR(N, V->getOperand(0).first);
       break;
     }
     case glow::Kinded::Kind::SaveNodeKind: {

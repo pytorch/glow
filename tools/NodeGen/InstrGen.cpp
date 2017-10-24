@@ -54,12 +54,19 @@ int main(int argc, char **argv) {
       .addExtraMethod("bool mayShareBuffers() const { return false; }")
       .setType("Dest->getType()");
 
-  BB.newInstr("Pool")
-      .addEnumCase("Max")
-      .addEnumCase("Avg")
+  BB.newInstr("PoolMax")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("SrcXY", OperandKind::InOut)
+      .addMember("size_t", "Kernel")
+      .addMember("size_t", "Stride")
+      .addMember("size_t", "Pad")
+      .addExtraMethod("bool mayShareBuffers() const { return false; }")
+      .setType("Dest->getType()");
+
+  BB.newInstr("PoolAvg")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
       .addMember("size_t", "Kernel")
       .addMember("size_t", "Stride")
       .addMember("size_t", "Pad")
@@ -122,9 +129,13 @@ int main(int argc, char **argv) {
   //                      Arithmetic
   //===--------------------------------------------------------------------===//
 
-  BB.newInstr("Arithmetic")
-      .addEnumCase("Add")
-      .addEnumCase("Mul")
+  BB.newInstr("ElementAdd")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .setType("LHS->getType()");
+
+  BB.newInstr("ElementMul")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)

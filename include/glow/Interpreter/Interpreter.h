@@ -91,11 +91,6 @@ private:
   void bwd##CLASS(const CLASS *I);
 #include "AutoGenInstr.def"
 
-  void fwdPoolMax_impl(const PoolInst *I);
-  void fwdPoolAvg_impl(const PoolInst *I);
-  void bwdPoolMax_impl(const PoolInst *I);
-  void bwdPoolAvg_impl(const PoolInst *I);
-
   void fwdBatchNormalizationInst_infer(const BatchNormalizationInst *I);
   void fwdBatchNormalizationInst_train(const BatchNormalizationInst *I);
   ///@}

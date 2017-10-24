@@ -71,7 +71,7 @@ void ConvolutionInst::verify() const {
   assert(bias->getType()->dims() == biasDims && "Invalid bias dims");
 }
 
-void PoolInst::verify() const {
+void PoolMaxInst::verify() const {
   Value *dest = getOperand(0).first;
   Value *src = getOperand(1).first;
   Value *srcXY = getOperand(2).first;
@@ -85,14 +85,27 @@ void PoolInst::verify() const {
   auto outSz = calculateConvOutputDims(idim.h, idim.w, Pad_, Kernel_, Stride_);
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
   (void)exp;
-  assert(exp == odim && "Invalid output dimensions");
+  assert(exp == odim && "Unexpected output dimensions");
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
-  if (getMode() == Mode::Max) {
-    llvm::ArrayRef<size_t> exp = {idim.n, outSz.first, outSz.second, idim.c, 2};
-    assert(srcXY->getType()->dims() == exp && "Invalid srcXY dims");
-  }
+  llvm::ArrayRef<size_t> E = {idim.n, outSz.first, outSz.second, idim.c, 2};
+  assert(srcXY->getType()->dims() == E && "Invalid srcXY dims");
+}
+
+void PoolAvgInst::verify() const {
+  Value *dest = getOperand(0).first;
+  Value *src = getOperand(1).first;
+  ShapeNHWC idim = ShapeNHWC(src->getType()->dims());
+  ShapeNHWC odim = ShapeNHWC(dest->getType()->dims());
+  (void)odim;
+  assert(idim.w >= Kernel_ && idim.h >= Kernel_ &&
+         "buffer too small for selected stride");
+
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, Pad_, Kernel_, Stride_);
+  ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
+  (void)exp;
+  assert(exp == odim && "Unexpected output dimensions");
 }
 
 void FullyConnectedInst::verify() const {
@@ -185,11 +198,14 @@ void LocalResponseNormalizationInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
   checkSameType(getOperand(0), getOperand(2));
 }
-void ArithmeticInst::verify() const {
+void ElementAddInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
   checkSameType(getOperand(0), getOperand(2));
 }
-
+void ElementMulInst::verify() const {
+  checkSameType(getOperand(0), getOperand(1));
+  checkSameType(getOperand(0), getOperand(2));
+}
 void AllocActivationInst::verify() const {
   unsigned numDealloc = 0;
   for (const Use &U : getUsers()) {

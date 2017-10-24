@@ -188,15 +188,7 @@ void Interpreter::bwdConvolutionInst(const ConvolutionInst *I) {
 //                       Pooling
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdPoolInst(bool isTrain, const PoolInst *I) {
-  if (I->getMode() == PoolInst::Mode::Max) {
-    return fwdPoolMax_impl(I);
-  }
-
-  return fwdPoolAvg_impl(I);
-}
-
-void Interpreter::fwdPoolMax_impl(const PoolInst *I) {
+void Interpreter::fwdPoolMaxInst(bool isTrain, const PoolMaxInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
 
@@ -257,7 +249,7 @@ void Interpreter::fwdPoolMax_impl(const PoolInst *I) {
   }       // N
 }
 
-void Interpreter::fwdPoolAvg_impl(const PoolInst *I) {
+void Interpreter::fwdPoolAvgInst(bool isTrain, const PoolAvgInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
 
@@ -306,15 +298,7 @@ void Interpreter::fwdPoolAvg_impl(const PoolInst *I) {
   }       // N
 }
 
-void Interpreter::bwdPoolInst(const PoolInst *I) {
-  if (I->getMode() == PoolInst::Mode::Max) {
-    return bwdPoolMax_impl(I);
-  }
-
-  return bwdPoolAvg_impl(I);
-}
-
-void Interpreter::bwdPoolMax_impl(const PoolInst *I) {
+void Interpreter::bwdPoolMaxInst(const PoolMaxInst *I) {
   auto inG = getGradHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
   auto outG = getGradHandle(I->getDest());
@@ -345,7 +329,7 @@ void Interpreter::bwdPoolMax_impl(const PoolInst *I) {
   }       // N
 }
 
-void Interpreter::bwdPoolAvg_impl(const PoolInst *I) {
+void Interpreter::bwdPoolAvgInst(const PoolAvgInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto inG = getGradHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
@@ -1052,51 +1036,42 @@ void Interpreter::bwdLocalResponseNormalizationInst(
 //                       Arithmetic operations
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdArithmeticInst(bool isTrain, const ArithmeticInst *I) {
+void Interpreter::fwdElementAddInst(bool isTrain, const ElementAddInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto LHSW = getWeightHandle(I->getLHS());
   auto RHSW = getWeightHandle(I->getRHS());
-
-  switch (I->getMode()) {
-  case ArithmeticInst::Mode::Add:
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
-      outW.raw(i) = LHSW.raw(i) + RHSW.raw(i);
-    }
-    return;
-    break;
-
-  case ArithmeticInst::Mode::Mul:
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
-      outW.raw(i) = LHSW.raw(i) * RHSW.raw(i);
-    }
-    return;
-    break;
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = LHSW.raw(i) + RHSW.raw(i);
   }
 }
 
-void Interpreter::bwdArithmeticInst(const ArithmeticInst *I) {
+void Interpreter::fwdElementMulInst(bool isTrain, const ElementMulInst *I) {
+  auto outW = getWeightHandle(I->getDest());
+  auto LHSW = getWeightHandle(I->getLHS());
+  auto RHSW = getWeightHandle(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = LHSW.raw(i) * RHSW.raw(i);
+  }
+}
+
+void Interpreter::bwdElementAddInst(const ElementAddInst *I) {
+  auto outG = getGradHandle(I->getDest());
+  auto LHSG = getGradHandle(I->getLHS());
+  auto RHSG = getGradHandle(I->getRHS());
+  for (size_t i = 0, e = outG.size(); i < e; i++) {
+    LHSG.raw(i) = outG.raw(i);
+    RHSG.raw(i) = outG.raw(i);
+  }
+}
+void Interpreter::bwdElementMulInst(const ElementMulInst *I) {
   auto LHSW = getWeightHandle(I->getLHS());
   auto RHSW = getWeightHandle(I->getRHS());
   auto outG = getGradHandle(I->getDest());
   auto LHSG = getGradHandle(I->getLHS());
   auto RHSG = getGradHandle(I->getRHS());
-
-  switch (I->getMode()) {
-  case ArithmeticInst::Mode::Add:
-    for (size_t i = 0, e = outG.size(); i < e; i++) {
-      LHSG.raw(i) = outG.raw(i);
-      RHSG.raw(i) = outG.raw(i);
-    }
-    return;
-    break;
-
-  case ArithmeticInst::Mode::Mul:
-    for (size_t i = 0, e = outG.size(); i < e; i++) {
-      LHSG.raw(i) = RHSW.raw(i) * outG.raw(i);
-      RHSG.raw(i) = LHSW.raw(i) * outG.raw(i);
-    }
-    return;
-    break;
+  for (size_t i = 0, e = outG.size(); i < e; i++) {
+    LHSG.raw(i) = RHSW.raw(i) * outG.raw(i);
+    RHSG.raw(i) = LHSW.raw(i) * outG.raw(i);
   }
 }
 

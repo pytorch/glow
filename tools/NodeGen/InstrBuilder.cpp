@@ -1,28 +1,11 @@
 #include "InstrBuilder.h"
 
-void InstrBuilder::emitEnumModePrinters(std::ostream &os) const {
-  os << "const char *" << name_ << "Inst::getModeStr(" << name_
-     << "Inst::Mode m) {\n";
-  os << "\tstatic const char *names[] = {";
-  for (const auto &e : enum_) {
-    os << "\"" << e << "\", ";
-  }
-  os << "nullptr};\n";
-  os << "\treturn names[static_cast<int>(m)];\n";
-  os << "}\n";
-}
-
 void InstrBuilder::emitCtor(std::ostream &os) const {
   os << "\t" << name_ << "Inst(llvm::StringRef name";
 
   // Constructor non-standard parameter list:
   for (const auto &op : extraParams_) {
     os << ", " << op.first << " " << op.second << " ";
-  }
-
-  // The enum 'Mode' parameter:
-  if (!enum_.empty()) {
-    os << ", Mode mode";
   }
 
   // The operands of the instruction class:
@@ -47,11 +30,6 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
 
   os << "\t})";
 
-  // Print the initialization list:
-  if (!enum_.empty()) {
-    os << ", mode_(mode)";
-  }
-
   // Initialize the members:
   for (const auto &op : members_) {
     os << ", " << op.second << "_(" << op.second << ") ";
@@ -62,21 +40,7 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
 }
 
 void InstrBuilder::emitClassMembers(std::ostream &os) const {
-  // Emit the type of the enum (which is public).
-  if (!enum_.empty()) {
-    os << "\tpublic:\n\tenum class Mode {\n";
-    for (const auto &E : enum_) {
-      os << "\t  " << E << ",\n";
-    }
-    os << "\t};\n";
-
-    os << "\tprivate:\n";
-  }
-
   // Emit class members:
-  if (!enum_.empty()) {
-    os << "\tMode mode_;\n";
-  }
   for (const auto &op : members_) {
     os << "\t" << op.first << " " << op.second << "_;\n";
   }
@@ -116,10 +80,6 @@ void InstrBuilder::emitSettersGetters(std::ostream &os) const {
   os << "\n\tstatic bool classof(const Kinded *k) { return k->getKind() == "
         "Kinded::Kind::"
      << name_ << "InstKind; }\n";
-
-  if (!enum_.empty()) {
-    os << "\tMode getMode() const { return mode_; }\n";
-  }
 }
 
 void InstrBuilder::emitPrettyPrinter(std::ostream &os) const {
@@ -158,10 +118,6 @@ void InstrBuilder::emitClass(std::ostream &os) const {
     os << "\t" << m << "\n";
   }
 
-  if (!enum_.empty()) {
-    os << "\tconst char *getModeStr() const { return getModeStr(mode_); "
-          "}\n\tstatic const char *getModeStr(Mode m);\n";
-  }
   os << "\t void dump(std::ostream &os) const;\n";
   os << "\t void verify() const;\n";
   os << "};\n\n} // namespace glow\n";
@@ -169,9 +125,6 @@ void InstrBuilder::emitClass(std::ostream &os) const {
 
 void InstrBuilder::emitCppMethods(std::ostream &os) const {
   emitPrettyPrinter(os);
-  if (!enum_.empty()) {
-    emitEnumModePrinters(os);
-  }
 }
 
 InstrBuilder::~InstrBuilder() {

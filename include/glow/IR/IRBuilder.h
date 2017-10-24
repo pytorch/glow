@@ -36,8 +36,11 @@ public:
                                 size_t depth, size_t kernel, size_t stride,
                                 size_t pad);
 
-  PoolInst *createPoolOp(Value *input, PoolInst::Mode kind, size_t kernel,
-                         size_t stride, size_t pad);
+  PoolMaxInst *createPoolMaxOp(Value *input, size_t kernel, size_t stride,
+                               size_t pad);
+
+  PoolAvgInst *createPoolAvgOp(Value *input, size_t kernel, size_t stride,
+                               size_t pad);
 
   FullyConnectedInst *createFullyConnectedOp(Value *input, size_t outDepth);
 
@@ -76,8 +79,9 @@ public:
                                      float alpha = 1e-4, float beta = 0.75,
                                      float k = 2.0);
 
-  ArithmeticInst *createArithmeticOp(Value *LHS, Value *RHS,
-                                     ArithmeticInst::Mode op);
+  ElementAddInst *createElementAddOp(Value *LHS, Value *RHS);
+
+  ElementMulInst *createElementMulOp(Value *LHS, Value *RHS);
 
   Value *createReturnOp(Value *input);
 
@@ -92,9 +96,11 @@ public:
                                          size_t stride, size_t pad,
                                          size_t depth);
 
-  PoolInst *createPoolInst(Value *dest, Value *src, Value *srcXY,
-                           PoolInst::Mode kind, size_t kernel, size_t stride,
-                           size_t pad);
+  PoolAvgInst *createPoolAvgInst(Value *dest, Value *src, size_t kernel,
+                                 size_t stride, size_t pad);
+
+  PoolMaxInst *createPoolMaxInst(Value *dest, Value *src, Value *srcXY,
+                                 size_t kernel, size_t stride, size_t pad);
 
   FullyConnectedInst *createFullyConnectedInst(Value *dest, Value *src,
                                                Value *filter, Value *bias,
@@ -129,8 +135,9 @@ public:
                                        size_t halfWindowSize, float alpha,
                                        float beta, float k);
 
-  ArithmeticInst *createArithmeticInst(Value *dest, Value *LHS, Value *RHS,
-                                       ArithmeticInst::Mode kind);
+  ElementAddInst *createElementAddInst(Value *dest, Value *LHS, Value *RHS);
+
+  ElementMulInst *createElementMulInst(Value *dest, Value *LHS, Value *RHS);
 
   WeightVar *createWeightVar(TypeRef T, llvm::StringRef name = "",
                              MutabilityKind k = MutabilityKind::Mutable);
