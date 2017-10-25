@@ -326,7 +326,7 @@ WeightVar *IRBuilder::createWeightVar(ElemKind elemTy,
 
 WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
                                       WeightVar::MutabilityKind k) {
-  auto *A = new WeightVar(T, k);
+  auto *A = new WeightVar(name, T, k);
   M_->getWeights().push_back(A);
   A->setName(name);
   return A;

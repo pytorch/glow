@@ -55,16 +55,14 @@ struct NodeUse {
 };
 
 /// Represents a node in the compute graph.
-class Node : public Kinded,
+class Node : public Named,
+             public Kinded,
              public Typed,
-             public Named,
              public UseDef<Node, Node, NodeUse> {
 
 public:
   Node(Kinded::Kind k, TypeRef Ty, llvm::StringRef name)
-      : Kinded(k), Typed(Ty) {
-    setName(name);
-  }
+      : Named(name), Kinded(k), Typed(Ty) {}
 
   /// \returns a textual description of the node.
   virtual std::string getDebugDesc() const;
