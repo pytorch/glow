@@ -56,7 +56,8 @@ class Value : public Named,
               public Typed,
               public Kinded {
 public:
-  Value(TypeRef T, Kinded::Kind k) : Typed(T), Kinded(k) {}
+  Value(llvm::StringRef name, TypeRef T, Kinded::Kind k)
+      : Named(name), Typed(T), Kinded(k) {}
 };
 
 /// This represents an instruction in our IR.
@@ -78,10 +79,12 @@ protected:
   void pushOperand(Operand op);
 
 public:
-  Instruction(Kinded::Kind k, TypeRef Ty) : Value(Ty, k) {}
+  Instruction(llvm::StringRef name, Kinded::Kind k, TypeRef Ty)
+      : Value(name, Ty, k) {}
 
-  Instruction(Kinded::Kind k, TypeRef Ty, llvm::ArrayRef<Operand> ops)
-      : Value(Ty, k) {
+  Instruction(llvm::StringRef name, Kinded::Kind k, TypeRef Ty,
+              llvm::ArrayRef<Operand> ops)
+      : Value(name, Ty, k) {
     for (auto &op : ops) {
       pushOperand(op);
     }

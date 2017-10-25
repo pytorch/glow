@@ -22,8 +22,8 @@ private:
   MutabilityKind mut_;
 
 public:
-  WeightVar(TypeRef Ty, MutabilityKind mut)
-      : Value(Ty, Kinded::Kind::WeightVarKind), mut_(mut) {}
+  WeightVar(llvm::StringRef name, TypeRef Ty, MutabilityKind mut)
+      : Value(name, Ty, Kinded::Kind::WeightVarKind), mut_(mut) {}
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::WeightVarKind;

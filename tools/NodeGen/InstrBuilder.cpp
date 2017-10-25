@@ -19,8 +19,8 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
   }
 
   // Initialize the base clases:
-  os << "):\n\t Instruction(Kinded::Kind::" << name_ << "InstKind, " << ty_
-     << ",{\n";
+  os << "):\n\t Instruction(name, Kinded::Kind::" << name_ << "InstKind, "
+     << ty_ << ",{\n";
 
   // The operands of the instruction class:
   for (const auto &op : operands_) {

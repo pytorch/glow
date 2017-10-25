@@ -13,7 +13,7 @@ class Named {
   std::string name_{};
 
 public:
-  Named() = default;
+  Named(llvm::StringRef name) : name_(name) {}
 
   /// \returns the name of the instruction.
   llvm::StringRef getName() const { return name_; }
