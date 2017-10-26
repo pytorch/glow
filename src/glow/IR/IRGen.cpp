@@ -313,12 +313,10 @@ void generateBackwardPass(Module &M) {
     }
     case Kind::ElementAddInstKind: {
       toAppend.push_back(cast<ElementAddInst>(I)->getGrad(weightToGradMap));
-
       break;
     }
     case Kind::ElementMulInstKind: {
       toAppend.push_back(cast<ElementMulInst>(I)->getGrad(weightToGradMap));
-
       break;
     }
     case Kind::ReluInstKind: {
@@ -328,7 +326,6 @@ void generateBackwardPass(Module &M) {
     }
     case Kind::SigmoidInstKind: {
       toAppend.push_back(cast<SigmoidInst>(I)->getGrad(weightToGradMap));
-
       break;
     }
     case Kind::TanhInstKind: {
