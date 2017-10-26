@@ -465,7 +465,7 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   loadNetwork(networkDef);
 
   // Emit IR for the graph.
-  EE.compile(OptimizationMode::Infer);
+  EE.compile(CompilationMode::Infer);
 }
 
 caffe2ModelLoader::~caffe2ModelLoader() {

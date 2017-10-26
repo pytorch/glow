@@ -310,11 +310,7 @@ static void OptimizeBatchNorm(Graph &G) {
   } // For all nodes in the graph.
 }
 
-void glow::optimize(Graph &G, OptimizationMode mode) {
-  if (mode == OptimizationMode::None) {
-    return;
-  }
-
+void glow::optimize(Graph &G, CompilationMode mode) {
   // Sink transpose operations in an attempt to cancel them out.
   SinkTranspose(G);
 
@@ -324,7 +320,7 @@ void glow::optimize(Graph &G, OptimizationMode mode) {
   // Perform Dead Code Elimination.
   DCE(G);
 
-  if (mode == OptimizationMode::Infer) {
+  if (mode == CompilationMode::Infer) {
     // Merge batch normalization operations.
     OptimizeBatchNorm(G);
   }

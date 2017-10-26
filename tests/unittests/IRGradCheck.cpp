@@ -104,7 +104,7 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createSave("ret", O);
 
-  IP.compile(OptimizationMode::Train);
+  IP.compile(CompilationMode::Train);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -139,7 +139,7 @@ TEST(Network, gradientCheck_Conv) {
   O = G.createRegression("reg", O, Ex);
   auto *result = G.createSave("ret", O);
 
-  IP.compile(OptimizationMode::Train);
+  IP.compile(CompilationMode::Train);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
@@ -172,7 +172,7 @@ TEST(Network, gradientCheck_AvgPool) {
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createSave("ret", O);
 
-  IP.compile(OptimizationMode::Train);
+  IP.compile(CompilationMode::Train);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
@@ -205,7 +205,7 @@ TEST(Network, gradientCheck_batchNorm) {
   O = G.createRegression("reg", O, Ex);
   auto result = G.createSave("ret", O);
 
-  IP.compile(OptimizationMode::Train);
+  IP.compile(CompilationMode::Train);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 3});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
@@ -246,7 +246,7 @@ TEST(Network, gradientCheck_Arithmetic) {
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createSave("ret", O);
 
-  IP.compile(OptimizationMode::Train);
+  IP.compile(CompilationMode::Train);
 
   Tensor iA(ElemKind::FloatTy, {1, numDim});
   Tensor iB(ElemKind::FloatTy, {1, numDim});
@@ -329,7 +329,7 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
   FA = G.createRegression("reg", FA, Exp);
   auto *result = G.createSave("ret", FA);
 
-  IP.compile(OptimizationMode::Train);
+  IP.compile(CompilationMode::Train);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -360,7 +360,7 @@ TEST(Network, gradientCheck_Transpose) {
   TA = G.createRegression("regress", TA, Exp);
   auto *result = G.createSave("ret", TA);
 
-  IP.compile(OptimizationMode::Train);
+  IP.compile(CompilationMode::Train);
 
   Tensor inputs(ElemKind::FloatTy, {1, 5, 10, 15});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});

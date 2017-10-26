@@ -6,14 +6,13 @@ namespace glow {
 class Module;
 class Graph;
 
-enum class OptimizationMode {
-  None,  // Don't optimize the module.
+enum class CompilationMode {
   Train, // Optimize the module but allow training.
   Infer, // Optimize the module and break training.
 };
 
-void optimize(Module &M, OptimizationMode mode);
-void optimize(Graph &G, OptimizationMode mode);
+void optimize(Module &M, CompilationMode mode);
+void optimize(Graph &G, CompilationMode mode);
 
 } // namespace glow
 
