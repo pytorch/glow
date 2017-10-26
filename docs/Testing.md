@@ -27,3 +27,10 @@ between zero and one, or negative 128 to positive 128? The user needs to be
 aware of these things when running the models. The script in the directory
 'utils/' downloads a number of pre-trained networks that we can use for testing.
 
+The Glow build scripts copy a few sample images and a run script that tests the
+loader program. The script can be executed with the command:
+
+  ```
+  build$./tests/images/run.sh
+  ```
+
