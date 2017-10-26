@@ -365,7 +365,7 @@ void generateBackwardPass(Module &M) {
 
 } // namespace
 
-void Module::generateIR(bool isTrain) {
+void Module::generateIR(CompilationMode mode) {
   IRGenVisitor irgen(this);
 
   for (auto &N : G_->getVars()) {
@@ -376,7 +376,7 @@ void Module::generateIR(bool isTrain) {
     N->visit(nullptr, &irgen);
   }
 
-  if (isTrain) {
+  if (mode == CompilationMode::Train) {
     generateBackwardPass(*this);
   }
 }

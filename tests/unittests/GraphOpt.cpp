@@ -34,7 +34,7 @@ TEST(GraphOptz, DCE) {
   EXPECT_EQ(G.getNodes().size(), 80);
 
   // Optimize all of the dead code.
-  ::glow::optimize(G, OptimizationMode::Infer);
+  ::glow::optimize(G, CompilationMode::Infer);
 
   //  All of the nodes are gone.
   EXPECT_EQ(G.getNodes().size(), 0);

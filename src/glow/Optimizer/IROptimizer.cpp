@@ -182,16 +182,12 @@ static void shareBuffers(Module &M) {
   }
 }
 
-void glow::optimize(Module &M, OptimizationMode mode) {
+void glow::optimize(Module &M, CompilationMode mode) {
   M.verify();
-
-  if (mode == OptimizationMode::None) {
-    return;
-  }
 
   // Sharing buffers is only legal in training mode because it kills the
   // backprop.
-  if (mode == OptimizationMode::Infer) {
+  if (mode == CompilationMode::Infer) {
     shareBuffers(M);
     M.verify();
   }

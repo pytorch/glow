@@ -40,7 +40,7 @@ TEST(Interpreter, interpret) {
   auto *SM = G.createSoftMax("sm", RL3, ex);
   G.createSave("ret", SM);
 
-  EE.compile(OptimizationMode::Infer);
+  EE.compile(CompilationMode::Infer);
   EE.infer({input}, {&inputs});
 }
 
@@ -69,14 +69,14 @@ TEST(Interpreter, trainASimpleNetwork) {
   inputs.getHandle<>() = {0.15, 0.15, 0.15, 0.15};
   expected.getHandle<>() = {0.9, 0.9, 0.9, 0.9};
 
-  EE.compile(OptimizationMode::Train);
+  EE.compile(CompilationMode::Train);
 
   // Train the network. Learn 1000 batches.
   EE.train(1000, {A, E}, {&inputs, &expected});
 
   // Testing the output vector.
 
-  EE.compile(OptimizationMode::Infer);
+  EE.compile(CompilationMode::Infer);
   EE.infer({A}, {&inputs});
   auto RNWH = result->getOutput()->getPayload().getHandle<>();
   (void)RNWH;
@@ -112,7 +112,7 @@ TEST(Interpreter, simpleRegression) {
   auto I = inputs.getHandle<>();
   auto E = expected.getHandle<>();
 
-  EE.compile(OptimizationMode::Train);
+  EE.compile(CompilationMode::Train);
 
   // Train the network:
   for (int iter = 0; iter < 1000; iter++) {
@@ -178,7 +178,7 @@ TEST(Interpreter, learnXor) {
     TL.at({i, 0}) = a ^ b;
   }
 
-  EE.compile(OptimizationMode::Train);
+  EE.compile(CompilationMode::Train);
 
   // Train the network:
   EE.train(2500, {A, Ex}, {&trainingSet, &trainingLabels});
@@ -255,7 +255,7 @@ TEST(Network, circle) {
   auto *SM = G.createSoftMax("soft", RL1, S);
   auto *result = G.createSave("ret", SM);
 
-  EE.compile(OptimizationMode::Train);
+  EE.compile(CompilationMode::Train);
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
   Tensor labels(ElemKind::IndexTy, {numSamples, 1});
@@ -348,12 +348,12 @@ TEST(Network, learnSingleValueConcat) {
   inputs.getHandle<>().clear(0.15);
   expected.getHandle<>().clear(0.9);
 
-  EE.compile(OptimizationMode::Train);
+  EE.compile(CompilationMode::Train);
 
   // Train the network:
   EE.train(1000, {A, B, Ex}, {&inputs, &inputs, &expected});
 
-  EE.compile(OptimizationMode::Infer);
+  EE.compile(CompilationMode::Infer);
 
   // Testing the output vector.
   EE.infer({A}, {&inputs});

@@ -104,12 +104,12 @@ void ExecutionEngine::loadValueFromTensor(const Value *v, Tensor *input,
   t->copyConsecutiveSlices(input, slc);
 }
 
-void ExecutionEngine::compile(OptimizationMode mode) {
+void ExecutionEngine::compile(CompilationMode mode) {
   // Wipe out the module and start a new compilation process.
   M_->clear();
   IP_->clear();
   ::glow::optimize(*G_, mode);
-  M_->generateIR(mode == OptimizationMode::Train);
+  M_->generateIR(mode);
   ::glow::optimize(*M_, mode);
 
   for (auto &v : G_->getVars()) {

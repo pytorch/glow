@@ -4,6 +4,7 @@
 #include "glow/Base/Traits.h"
 #include "glow/Base/Type.h"
 #include "glow/IR/UseDef.h"
+#include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -158,9 +159,9 @@ public:
 
   ~Module();
 
-  /// Generate IR from the graph nodes. If \p isTrain is set then the procedure
-  /// will also generate the code for the backward pass.
-  void generateIR(bool isTrain);
+  /// Generate IR from the graph nodes. If the compilation mode is 'training'
+  /// then this procedure will also generate the code for the backward pass.
+  void generateIR(CompilationMode mode);
 
   /// Wipe out the content of the module. This allows the module to be used
   /// again for another round of code generation.

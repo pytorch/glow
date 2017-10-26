@@ -44,7 +44,7 @@ public:
   Graph &getGraph() { return *G_; }
 
   /// Optimize the graph, generate IR, and optimize the IR.
-  void compile(OptimizationMode mode);
+  void compile(CompilationMode mode);
 
   /// Provides access to the training configuration.
   TrainingConfig &getConfig() { return trainer_.config; }
