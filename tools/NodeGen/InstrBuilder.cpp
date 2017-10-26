@@ -131,3 +131,58 @@ InstrBuilder::~InstrBuilder() {
   emitClass(hStream);
   emitCppMethods(cStream);
 }
+
+void InstrBuilder::addGradientInstr(
+    llvm::ArrayRef<llvm::StringRef> gradFields) {
+  InstrBuilder GI(hStream, cStream, dStream, name_ + "Grad");
+
+  // The new 'Grad' class will have all of the fields of the current class.
+  GI.ty_ = ty_;
+  GI.operands_ = operands_;
+  GI.members_ = members_;
+  GI.extraParams_ = extraParams_;
+  GI.overrideGetter_ = overrideGetter_;
+  GI.extraMethods_ = extraMethods_;
+
+  // Add the new 'grad' operands for the gradients.
+  for (const auto &op : operands_) {
+    for (const auto &field : gradFields) {
+      if (field == op.first) {
+        GI.addOperand(op.first + "Grad", negateOperandKind(op.second));
+      }
+    }
+  }
+
+  // Construct a factory method that builds the new grad instruction and add
+  // it to the current non-grad instruction.
+  std::stringstream ss;
+  ss << name_ + "GradInst* getGrad(Module::GradientMap &map) const {\n";
+  ss << "\t return new " + name_ + "GradInst(getName()";
+
+  // Non-standard parameter list:
+  for (const auto &op : extraParams_) {
+    ss << ", " << op.second;
+  }
+
+  // The operands of the input class:
+  for (const auto &op : operands_) {
+    ss << ", get" << op.first << "()";
+  }
+
+  // Add new operands for the gradients.
+  for (const auto &op : operands_) {
+    for (const auto &field : gradFields) {
+      if (field == op.first) {
+        { ss << ", map[get" << op.first << "()]"; }
+      }
+    }
+  }
+
+  // Extra class members:
+  for (const auto &op : members_) {
+    ss << ", get" << op.second << "()";
+  }
+
+  ss << ");\n }";
+  addExtraMethod(ss.str());
+}
