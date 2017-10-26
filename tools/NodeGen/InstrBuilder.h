@@ -18,6 +18,17 @@ enum class OperandKind : unsigned char {
   InOut,
 };
 
+inline OperandKind negateOperandKind(OperandKind CC) {
+  switch (CC) {
+  case OperandKind::In:
+    return OperandKind::Out;
+  case OperandKind::Out:
+    return OperandKind::In;
+  case OperandKind::InOut:
+    return OperandKind::InOut;
+  }
+}
+
 inline const char *getOperandKindStr(OperandKind CC) {
   const char *names[] = {"In", "Out", "InOut", nullptr};
   return names[(int)CC];
@@ -49,12 +60,23 @@ class InstrBuilder {
 public:
   InstrBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
                const std::string &name)
-      : name_(name), hStream(H), cStream(C), dStream(D) {}
+      : name_(name), hStream(H), cStream(C), dStream(D) {
+    dStream << "DEF_INSTR(" << name << "Inst, " << glow::tolower(name) << ")\n";
+  }
 
   /// Add an operand to the instruction. The name should start with a capital
   /// letter. For example: "Input".
   InstrBuilder &addOperand(const std::string &op, OperandKind k) {
     operands_.push_back({op, k});
+    return *this;
+  }
+
+  /// Adds two operands to the instruction: the operand and the gradient of the
+  /// operand. This API is used for building instructions that perform the
+  /// backward propagation pass.
+  InstrBuilder &addOperandWithGrad(const std::string &op) {
+    addOperand(op, OperandKind::InOut);
+    addOperand(op + "Grad", OperandKind::InOut);
     return *this;
   }
   /// Add a member to the instruction. Format: type, name.
@@ -111,6 +133,10 @@ public:
   /// were declared in the header file.
   void emitCppMethods(std::ostream &os) const;
 
+  // Constructs a new gradient instruction that is based on the current
+  // instruction that we are building.
+  void addGradientInstr(llvm::ArrayRef<llvm::StringRef> gradFields);
+
   ~InstrBuilder();
 };
 
@@ -140,7 +166,6 @@ public:
 
   /// Declare a new instruction and generate code for it.
   InstrBuilder newInstr(const std::string &name) {
-    dStream << "DEF_INSTR(" << name << "Inst, " << glow::tolower(name) << ")\n";
     return InstrBuilder(hStream, cStream, dStream, name);
   }
 
