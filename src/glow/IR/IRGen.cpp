@@ -225,9 +225,147 @@ public:
     }
   }
 };
+
+void generateBackwardPass(Module &M) {
+  using Kind = glow::Kinded::Kind;
+  auto &weightToGradMap = M.getGradientMap();
+  auto &vars = M.getWeights();
+
+  // Create a shadow variable for each one of the weights in the module.
+  for (auto it = vars.begin(), e = vars.end(); it != e;) {
+    WeightVar *I = *it;
+    std::string newName = I->getName().str() + "_grad";
+    auto *A = new WeightVar(newName, I->getType(),
+                            WeightVar::MutabilityKind::Mutable);
+    weightToGradMap[I] = A;
+    auto curr = it;
+    ++it;
+    vars.insert(curr, A);
+  }
+
+  // A list of instructions to add to the module.
+  std::vector<Instruction *> allocs;
+  std::vector<Instruction *> toAppend;
+  std::vector<Instruction *> deallocs;
+
+  // Generate the gradient instructions for each one of the instructions in
+  // the module.
+  auto &instrs = M.getInstrs();
+  for (auto it = instrs.begin(); it != instrs.end(); it++) {
+    Instruction *I = *it;
+
+    switch (I->getKind()) {
+    case Kind::AllocActivationInstKind: {
+      AllocActivationInst *AC = cast<AllocActivationInst>(I);
+      auto *N = new AllocActivationInst(AC->getName(), AC->getType());
+      allocs.push_back(N);
+      weightToGradMap[I] = N;
+
+      auto *D = new DeallocActivationInst(AC->getName(), N);
+      deallocs.push_back(D);
+      break;
+    }
+    case Kind::CopyInstKind: {
+      CopyInst *CC = cast<CopyInst>(I);
+      auto *N = new CopyInst(CC->getName(), weightToGradMap[CC->getSrc()],
+                             weightToGradMap[CC->getDest()]);
+      toAppend.push_back(N);
+      break;
+    }
+    case Kind::ConvolutionInstKind: {
+      toAppend.push_back(cast<ConvolutionInst>(I)->getGrad(weightToGradMap));
+      break;
+    }
+    case Kind::PoolMaxInstKind: {
+      toAppend.push_back(cast<PoolMaxInst>(I)->getGrad(weightToGradMap));
+      break;
+    }
+    case Kind::PoolAvgInstKind: {
+      toAppend.push_back(cast<PoolAvgInst>(I)->getGrad(weightToGradMap));
+      break;
+    }
+    case Kind::FullyConnectedInstKind: {
+      toAppend.push_back(cast<FullyConnectedInst>(I)->getGrad(weightToGradMap));
+      break;
+    }
+    case Kind::BatchNormalizationInstKind: {
+      toAppend.push_back(
+          cast<BatchNormalizationInst>(I)->getGrad(weightToGradMap));
+      break;
+    }
+    case Kind::LocalResponseNormalizationInstKind: {
+      toAppend.push_back(
+          cast<LocalResponseNormalizationInst>(I)->getGrad(weightToGradMap));
+      break;
+    }
+    case Kind::SoftMaxInstKind: {
+      toAppend.push_back(cast<SoftMaxInst>(I)->getGrad(weightToGradMap));
+      break;
+    }
+    case Kind::RegressionInstKind: {
+      toAppend.push_back(cast<RegressionInst>(I)->getGrad(weightToGradMap));
+
+      break;
+    }
+    case Kind::ElementAddInstKind: {
+      toAppend.push_back(cast<ElementAddInst>(I)->getGrad(weightToGradMap));
+
+      break;
+    }
+    case Kind::ElementMulInstKind: {
+      toAppend.push_back(cast<ElementMulInst>(I)->getGrad(weightToGradMap));
+
+      break;
+    }
+    case Kind::ReluInstKind: {
+      toAppend.push_back(cast<ReluInst>(I)->getGrad(weightToGradMap));
+
+      break;
+    }
+    case Kind::SigmoidInstKind: {
+      toAppend.push_back(cast<SigmoidInst>(I)->getGrad(weightToGradMap));
+
+      break;
+    }
+    case Kind::TanhInstKind: {
+      toAppend.push_back(cast<TanhInst>(I)->getGrad(weightToGradMap));
+      break;
+    }
+    case Kind::ReshapeInstKind: {
+      toAppend.push_back(cast<ReshapeInst>(I)->getGrad(weightToGradMap));
+      break;
+    }
+    case Kind::TransposeInstKind: {
+      toAppend.push_back(cast<TransposeInst>(I)->getGrad(weightToGradMap));
+      break;
+    }
+    case Kind::ConcatInstKind: {
+      toAppend.push_back(cast<ConcatInst>(I)->getGrad(weightToGradMap));
+      break;
+    }
+    default:
+      glow_unreachable();
+    } // Switch.
+  }   // For each Instr.
+
+  for (auto &I : allocs) {
+    instrs.push_back(I);
+  }
+
+  // Add all of the new instructions.
+  std::reverse(toAppend.begin(), toAppend.end());
+  for (auto &I : toAppend) {
+    instrs.push_back(I);
+  }
+
+  for (auto &I : deallocs) {
+    instrs.push_back(I);
+  }
+}
+
 } // namespace
 
-void Module::generateIR() {
+void Module::generateIR(bool isTrain) {
   IRGenVisitor irgen(this);
 
   for (auto &N : G_->getVars()) {
@@ -236,5 +374,9 @@ void Module::generateIR() {
 
   for (auto &N : G_->getNodes()) {
     N->visit(nullptr, &irgen);
+  }
+
+  if (isTrain) {
+    generateBackwardPass(*this);
   }
 }

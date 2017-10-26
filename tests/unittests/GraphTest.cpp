@@ -29,7 +29,7 @@ TEST(Graph, simpleTest) {
     K = G.createSoftMax("SoftMax", K, S);
     G.dump();
     G.dumpDAG();
-    M.generateIR();
+    M.generateIR(true);
     M.dump();
   }
 
@@ -48,7 +48,7 @@ TEST(Graph, simpleTest) {
     G.createRegression("Regression", O, Ex);
     G.dump();
     G.dumpDAG();
-    M.generateIR();
+    M.generateIR(true);
     M.dump();
   }
 }

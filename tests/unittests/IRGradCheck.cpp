@@ -48,7 +48,9 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
   // Train the network just once to calculate the grads.
   IP.train(1, {inputVar, expVar}, {inputs, outputs});
 
-  auto analyticalGradsH = IP.getGradHandle(inputVar);
+  // Copy the gradient buffer. Future iterations will invalidate the buffer.
+  Tensor gradCopy = IP.getGradHandle(inputVar).clone();
+  auto analyticalGradsH = gradCopy.getHandle();
 
   for (size_t i = 0; i < analyticalGradsH.size(); i++) {
     auto old = inputsH.raw(i);
@@ -69,6 +71,8 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
     auto analyticalGrad = analyticalGradsH.raw(i);
 
     auto err = gradDiff(analyticalGrad, numericGrad);
+    std::cout << "analyticalGrad " << analyticalGrad << "\n";
+    std::cout << "numericGrad " << numericGrad << "\n";
 
     // Make sure that the analytical and numerical gradients agree.
     EXPECT_LE(err, allowedError);

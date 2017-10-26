@@ -46,9 +46,6 @@ public:
   /// Optimize the graph, generate IR, and optimize the IR.
   void compile(OptimizationMode mode);
 
-  /// Optimize the low-level IR without invalidating the interpreter.
-  void optimize(OptimizationMode mode);
-
   /// Provides access to the training configuration.
   TrainingConfig &getConfig() { return trainer_.config; }
 

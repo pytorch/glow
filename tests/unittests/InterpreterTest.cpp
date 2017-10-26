@@ -76,7 +76,7 @@ TEST(Interpreter, trainASimpleNetwork) {
 
   // Testing the output vector.
 
-  EE.optimize(OptimizationMode::Infer);
+  EE.compile(OptimizationMode::Infer);
   EE.infer({A}, {&inputs});
   auto RNWH = result->getOutput()->getPayload().getHandle<>();
   (void)RNWH;
@@ -353,7 +353,7 @@ TEST(Network, learnSingleValueConcat) {
   // Train the network:
   EE.train(1000, {A, B, Ex}, {&inputs, &inputs, &expected});
 
-  EE.optimize(OptimizationMode::Infer);
+  EE.compile(OptimizationMode::Infer);
 
   // Testing the output vector.
   EE.infer({A}, {&inputs});

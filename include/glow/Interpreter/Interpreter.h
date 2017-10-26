@@ -30,10 +30,6 @@ class Interpreter final {
   /// Maps values to Tensors, that are *not* owned by this class.
   std::unordered_map<const Value *, Tensor *> externalTensors_;
 
-  /// Maps weight tensors to the gradients that update them. The value tensors
-  /// are owned by this map.
-  std::unordered_map<Tensor *, Tensor *> gradients_;
-
 public:
   /// Ctor.
   explicit Interpreter(Module *M) : M_(M) {}
@@ -61,24 +57,23 @@ public:
   /// to the value \p v.
   void registerGraphTensor(const Value *v, Tensor *t);
 
-  /// \returns gets or creates a new tensor to back the value \p v. If the
-  /// tensor does not exist then this method creates it. The dimension of the
-  /// gradient tensor must match the dimensions of the tensor that backs \p v.
-  Tensor *getOrCreateGradTensor(const Value *v);
-
   /// \returns a float-handle to the tensor that is stored at \p v.
   Handle<float> getWeightHandle(Value *v) const;
 
-  /// \returns a float-handle to the tensor that is stored at \p v.
-  Handle<float> getGradHandle(Value *v);
+  /// \returns a float-handle to the gradient tensor that matches \p v. Notice
+  /// that this API is only valid when the module is compiled in training mode.
+  Handle<float> getGradHandle(Value *v) const;
+
+  /// \returns a pointer to the gradient tensor that matches \p v. Notice
+  /// that this API is only valid when the module is compiled in training mode.
+  Tensor *getGradTensor(const Value *v) const;
+
+  /// \returns True if the value \p has an associated gradient tensor.
+  bool hasGradTensor(const Value *v) const;
 
   /// Perform a single forward scan of the network, interpreting all of the
   /// instructions.
   void doForwardPass(bool isTrain);
-
-  /// Perform a single backward scan of the network, interpreting all of the
-  /// instructions.
-  void doBackwardPass();
 
 private:
   /// @name Interpreter methods. This is a list of method declerations that are
@@ -86,9 +81,7 @@ private:
   ///@{
 
 #define DEF_VALUE(CLASS, NAME)
-#define DEF_INSTR(CLASS, NAME)                                                 \
-  void fwd##CLASS(bool isTrain, const CLASS *I);                               \
-  void bwd##CLASS(const CLASS *I);
+#define DEF_INSTR(CLASS, NAME) void fwd##CLASS(bool isTrain, const CLASS *I);
 #include "AutoGenInstr.def"
 
   void fwdBatchNormalizationInst_infer(const BatchNormalizationInst *I);

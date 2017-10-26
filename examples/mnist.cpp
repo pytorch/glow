@@ -110,7 +110,7 @@ void testMNIST() {
     timer.stopTimer();
   }
   std::cout << "Validating.\n";
-  EE.optimize(OptimizationMode::Infer);
+  EE.compile(OptimizationMode::Infer);
 
   auto LIH = labelInputs.getHandle<size_t>();
 

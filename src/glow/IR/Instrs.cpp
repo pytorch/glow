@@ -220,3 +220,23 @@ void DeallocActivationInst::verify() const {
   // The operand of this instruction needs to be an AllocActivationInst.
   assert(isa<AllocActivationInst>(getOperand(0).first) && "Invalid operand");
 }
+// TODO: verify the gradient instructions.
+#define NOVERIFY(ClassName)                                                    \
+  void ClassName ::verify() const {}
+NOVERIFY(ConvolutionGradInst)
+NOVERIFY(PoolMaxGradInst)
+NOVERIFY(PoolAvgGradInst)
+NOVERIFY(FullyConnectedGradInst)
+NOVERIFY(BatchNormalizationGradInst)
+NOVERIFY(LocalResponseNormalizationGradInst)
+NOVERIFY(SoftMaxGradInst)
+NOVERIFY(RegressionGradInst)
+NOVERIFY(ReluGradInst)
+NOVERIFY(TanhGradInst)
+NOVERIFY(SigmoidGradInst)
+NOVERIFY(TransposeGradInst)
+NOVERIFY(ReshapeGradInst)
+NOVERIFY(ElementAddGradInst)
+NOVERIFY(ElementMulGradInst)
+NOVERIFY(ConcatGradInst)
+#undef NOVERIFY
