@@ -68,8 +68,13 @@ void ExecutionEngine::learnGradient(size_t batchSize) {
       continue;
     }
 
+    // Don't try to train tensorts that don't have a gradient.
+    if (!IP_->hasGradTensor(V)) {
+      continue;
+    }
+
     auto W = IP_->getTensor(V);
-    auto G = IP_->getOrCreateGradTensor(V);
+    auto G = IP_->getGradTensor(V);
 
     // Handle weight update by learning the gradients into the weights.
     trainer_.train(W, G, batchSize);
@@ -85,8 +90,6 @@ void ExecutionEngine::updateForwardBackward(llvm::ArrayRef<Value *> vars,
   }
 
   IP_->doForwardPass(true);
-
-  IP_->doBackwardPass();
 }
 
 void ExecutionEngine::loadValueFromTensor(const Value *v, Tensor *input,
@@ -106,7 +109,7 @@ void ExecutionEngine::compile(OptimizationMode mode) {
   M_->clear();
   IP_->clear();
   ::glow::optimize(*G_, mode);
-  M_->generateIR();
+  M_->generateIR(mode == OptimizationMode::Train);
   ::glow::optimize(*M_, mode);
 
   for (auto &v : G_->getVars()) {
@@ -117,10 +120,6 @@ void ExecutionEngine::compile(OptimizationMode mode) {
   for (auto *W : M_->getWeights()) {
     IP_->getOrCreateTensor(W);
   }
-}
-
-void ExecutionEngine::optimize(OptimizationMode mode) {
-  ::glow::optimize(*M_, mode);
 }
 
 /// \returns a float-handle to the tensor that is stored at \p v.

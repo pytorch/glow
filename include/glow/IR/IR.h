@@ -124,6 +124,7 @@ class Node;
 /// A module that represents the compilation unit.
 class Module final {
 public:
+  using GradientMap = std::unordered_map<const Value *, Value *>;
   using VariableMap = std::unordered_map<const Node *, Value *>;
   using InstListTy = std::list<Instruction *>;
   using WeightVarListTy = std::list<WeightVar *>;
@@ -142,6 +143,10 @@ private:
   /// represent them in the lower IR.
   VariableMap variableMap{};
 
+  /// In training mode, this map maps some weight variable to the tensor that
+  /// collects inputs for it.
+  GradientMap gradientMap{};
+
   /// Assign the instructions in the module a unique name.
   void nameInstructions();
 
@@ -153,8 +158,9 @@ public:
 
   ~Module();
 
-  /// Generate IR from the graph nodes.
-  void generateIR();
+  /// Generate IR from the graph nodes. If \p isTrain is set then the procedure
+  /// will also generate the code for the backward pass.
+  void generateIR(bool isTrain);
 
   /// Wipe out the content of the module. This allows the module to be used
   /// again for another round of code generation.
@@ -174,6 +180,9 @@ public:
 
   /// \returns the variable map.
   VariableMap &getVariableMap() { return variableMap; }
+
+  /// \returns the gradient map.
+  GradientMap &getGradientMap() { return gradientMap; }
 
   /// \returns the weight that the variable \p v is lowered into, or null if the
   /// variable is unknown.

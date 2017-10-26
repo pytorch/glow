@@ -17,13 +17,8 @@ void Interpreter::clear() {
     delete p.second;
   }
 
-  // Delete the attached gradients.
-  for (auto &p : gradients_) {
-    delete p.second;
-  }
-
   tensors_.clear();
-  gradients_.clear();
+  externalTensors_.clear();
 }
 
 Tensor *Interpreter::getTensor(const Value *v) const {
@@ -42,25 +37,23 @@ void Interpreter::registerGraphTensor(const Value *v, Tensor *t) {
   externalTensors_[v] = t;
 }
 
-Tensor *Interpreter::getOrCreateGradTensor(const Value *v) {
-  auto *T = getTensor(v);
-  auto it = gradients_.find(T);
-  if (it != gradients_.end()) {
-    return it->second;
-  }
-
-  // Create a new tensor, register it and return it.
-  auto *N = new Tensor(T->getType());
-  gradients_[T] = N;
-  return N;
-}
-
 Handle<float> Interpreter::getWeightHandle(Value *v) const {
   return getTensor(v)->getHandle<>();
 }
 
-Handle<float> Interpreter::getGradHandle(Value *v) {
-  return getOrCreateGradTensor(v)->getHandle<>();
+Handle<float> Interpreter::getGradHandle(Value *v) const {
+  return getGradTensor(v)->getHandle<>();
+}
+
+Tensor *Interpreter::getGradTensor(const Value *v) const {
+  auto &map = M_->getGradientMap();
+  auto it = map.find(v);
+  assert(it != map.end() && "Gradient tensor unavailable");
+  return getTensor(it->second);
+}
+
+bool Interpreter::hasGradTensor(const Value *v) const {
+  return M_->getGradientMap().count(v);
 }
 
 Tensor *Interpreter::getOrCreateTensor(const Value *v) {
@@ -102,27 +95,6 @@ void Interpreter::doForwardPass(bool isTrain) {
   // Dispatch the interpreter on each instruction in the program:
   for (auto *I : M_->getInstrs()) {
     switch (I->getKind()) {
-#include "AutoGenInstr.def"
-
-    default:
-      glow_unreachable();
-    }
-  }
-}
-
-void Interpreter::doBackwardPass() {
-  // Do the backward pass.
-#define DEF_VALUE(CLASS, NAME)
-#define DEF_INSTR(CLASS, NAME)                                                 \
-  case Kinded::Kind::CLASS##Kind: {                                            \
-    bwd##CLASS(cast<CLASS>(*it));                                              \
-    break;                                                                     \
-  }
-  // Dispatch the interpreter on each instruction in the program, in reverse
-  // order.
-  auto &L = M_->getInstrs();
-  for (auto it = L.rbegin(), e = L.rend(); it != e; it++) {
-    switch ((*it)->getKind()) {
 #include "AutoGenInstr.def"
 
     default:
