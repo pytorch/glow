@@ -49,6 +49,46 @@ static void hoistDealloc(Module &M) {
   }
 }
 
+/// Sink Alloc instructions right before their first use.
+static void sinkAllocas(Module &M) {
+  using iterator = Module::InstListTy::iterator;
+  /// A list of allocas to reschedule.
+  std::unordered_set<AllocActivationInst *> allocs;
+  auto &instrs = M.getInstrs();
+
+  // Remove all of the allocas.
+  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
+    iterator curr = it;
+    auto *aa = dyn_cast<AllocActivationInst>(*curr);
+    if (!aa) {
+      ++it;
+      continue;
+    }
+
+    allocs.insert(aa);
+    it = instrs.erase(curr);
+  }
+
+  // Place all of the allocas in the right place:
+  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
+    for (int i = 0, e = (*it)->getNumOperands(); i < e; i++) {
+      auto op = (*it)->getOperand(i).first;
+      auto aa = dyn_cast<AllocActivationInst>(op);
+      if (!aa) {
+        continue;
+      }
+      auto A = allocs.find(aa);
+      if (A == allocs.end()) {
+        continue;
+      }
+      allocs.erase(A);
+      instrs.insert(it, aa);
+    }
+  }
+
+  assert(allocs.empty() && "Forgot to insert some allocas!");
+}
+
 /// Delete alloc instructions that have no readers or writers.
 static void deleteDeadAllocs(Module &M) {
   auto &instrs = M.getInstrs();
@@ -198,5 +238,6 @@ void glow::optimize(Module &M, CompilationMode mode) {
 
   // Shorten the lifetime of buffers.
   hoistDealloc(M);
+  sinkAllocas(M);
   M.verify();
 }

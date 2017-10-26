@@ -71,8 +71,6 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
     auto analyticalGrad = analyticalGradsH.raw(i);
 
     auto err = gradDiff(analyticalGrad, numericGrad);
-    std::cout << "analyticalGrad " << analyticalGrad << "\n";
-    std::cout << "numericGrad " << numericGrad << "\n";
 
     // Make sure that the analytical and numerical gradients agree.
     EXPECT_LE(err, allowedError);
