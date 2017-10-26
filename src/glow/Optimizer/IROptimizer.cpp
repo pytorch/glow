@@ -57,7 +57,7 @@ static void sinkAllocas(Module &M) {
   auto &instrs = M.getInstrs();
 
   // Remove all of the allocas.
-  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
+  for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
     iterator curr = it;
     auto *aa = dyn_cast<AllocActivationInst>(*curr);
     if (!aa) {
@@ -225,16 +225,10 @@ static void shareBuffers(Module &M) {
 void glow::optimize(Module &M, CompilationMode mode) {
   M.verify();
 
-  // Sharing buffers is only legal in training mode because it kills the
-  // backprop.
-  if (mode == CompilationMode::Infer) {
-    shareBuffers(M);
-    M.verify();
-  }
+  shareBuffers(M);
 
   // Remove unused allocations.
   deleteDeadAllocs(M);
-  M.verify();
 
   // Shorten the lifetime of buffers.
   hoistDealloc(M);
