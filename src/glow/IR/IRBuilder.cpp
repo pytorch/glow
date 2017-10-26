@@ -102,7 +102,7 @@ TanhInst *IRBuilder::createTanhOp(Value *input) {
 
 SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input, Value *selected) {
   auto *res = createAllocActivationInst(input->getType());
-  auto *E = createWeightVar(input->getType(), "e_cache");
+  auto *E = createAllocActivationInst(input->getType(), "e_cache");
   return createSoftMaxInst(res, input, E, selected);
 }
 
