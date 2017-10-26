@@ -11,7 +11,7 @@
 using namespace glow;
 
 //===----------------------------------------------------------------------===//
-//                        IRGen visitor
+//              IRGen visitor - the code that generates the IR.
 //===----------------------------------------------------------------------===//
 
 namespace {
@@ -226,6 +226,10 @@ public:
   }
 };
 
+//===----------------------------------------------------------------------===//
+//        Code for automatically generating the back propagation code.
+//===----------------------------------------------------------------------===//
+
 void generateBackwardPass(Module &M) {
   using Kind = glow::Kinded::Kind;
   auto &weightToGradMap = M.getGradientMap();
@@ -345,14 +349,14 @@ void generateBackwardPass(Module &M) {
     }
     default:
       glow_unreachable();
-    } // Switch.
-  }   // For each Instr.
+    } // End of switch.
+  }   // Eod of the for-each instr loop.
 
   for (auto &I : allocs) {
     instrs.push_back(I);
   }
 
-  // Add all of the new instructions.
+  // Add all of the new instructions, in reverse.
   std::reverse(toAppend.begin(), toAppend.end());
   for (auto &I : toAppend) {
     instrs.push_back(I);

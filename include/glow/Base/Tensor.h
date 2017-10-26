@@ -18,43 +18,9 @@
 
 namespace glow {
 
-template <class ElemTy> static char valueToChar(ElemTy val) {
-  char ch = ' ';
-  if (val > 0.2) {
-    ch = '.';
-  }
-  if (val > 0.4) {
-    ch = ',';
-  }
-  if (val > 0.6) {
-    ch = ':';
-  }
-  if (val > 0.8) {
-    ch = 'o';
-  }
-  if (val > 1.0) {
-    ch = 'O';
-  }
-  if (val > 1.5) {
-    ch = '0';
-  }
-  if (val > 2.0) {
-    ch = '@';
-  }
-  if (val < -0.1) {
-    ch = '-';
-  }
-  if (val < -0.2) {
-    ch = '~';
-  }
-  if (val < -0.4) {
-    ch = '=';
-  }
-  if (val < -1.0) {
-    ch = '#';
-  }
-  return ch;
-}
+//===----------------------------------------------------------------------===//
+//                               Tensor
+//===----------------------------------------------------------------------===//
 
 template <class ElemTy> class Handle;
 
@@ -230,6 +196,49 @@ public:
   /// \return a new handle that points and manages this tensor.
   template <class ElemTy = float> Handle<ElemTy> getHandle();
 };
+
+//===----------------------------------------------------------------------===//
+//                    Tensor Handle
+//===----------------------------------------------------------------------===//
+
+/// This is a helper method that's used in the visualization of tensors.
+template <class ElemTy> static char valueToChar(ElemTy val) {
+  char ch = ' ';
+  if (val > 0.2) {
+    ch = '.';
+  }
+  if (val > 0.4) {
+    ch = ',';
+  }
+  if (val > 0.6) {
+    ch = ':';
+  }
+  if (val > 0.8) {
+    ch = 'o';
+  }
+  if (val > 1.0) {
+    ch = 'O';
+  }
+  if (val > 1.5) {
+    ch = '0';
+  }
+  if (val > 2.0) {
+    ch = '@';
+  }
+  if (val < -0.1) {
+    ch = '-';
+  }
+  if (val < -0.2) {
+    ch = '~';
+  }
+  if (val < -0.4) {
+    ch = '=';
+  }
+  if (val < -1.0) {
+    ch = '#';
+  }
+  return ch;
+}
 
 /// A class that provides indexed access to a tensor. This class has value
 /// semantics and it's copied around. One of the reasons for making this class
