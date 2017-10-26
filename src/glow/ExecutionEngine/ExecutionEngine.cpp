@@ -11,9 +11,11 @@
 
 using namespace glow;
 
-ExecutionEngine::ExecutionEngine()
-    : G_(std::make_unique<Graph>()), M_(std::make_unique<Module>(&*G_)),
-      IP_(std::make_unique<Interpreter>(&*M_)) {}
+ExecutionEngine::ExecutionEngine() {
+  G_ = std::unique_ptr<Graph>(new Graph());
+  M_ = std::unique_ptr<Module>(new Module(&*G_));
+  IP_ = std::unique_ptr<Interpreter>(new Interpreter(&*M_));
+}
 
 ExecutionEngine::~ExecutionEngine() = default;
 
