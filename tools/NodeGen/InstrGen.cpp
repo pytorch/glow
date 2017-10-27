@@ -51,7 +51,7 @@ int main(int argc, char **argv) {
       .addMember("size_t", "Stride")
       .addMember("size_t", "Pad")
       .addMember("size_t", "Depth")
-      .addGradientInstr({"Src", "Dest", "Filter"},
+      .addGradientInstr({"Src", "Filter"},
                         {"Dest", "Src", "Filter", "Bias"});
 
   BB.newInstr("PoolMax")
