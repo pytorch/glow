@@ -116,8 +116,126 @@ static void deleteDeadAllocs(Module &M) {
                std::end(instrs));
 }
 
+// Replace all users of some value with another value, but don't touch the
+// dealloc instruction, because we need to preserve the well formdness of the
+// IR.
+static void replaceAllNonDeallocUsersWith(Value *val, Value *with) {
+  assert(val != with && "Replacing value with self");
+  auto &users = val->getUsers();
+  // We use a vector here because changing the operands of the user changes the
+  // uselist, and this invalidates the iterator.
+  std::vector<Use> usersVec(users.begin(), users.end());
+  for (auto &U : usersVec) {
+    // Ignore dealloc instrs.
+    if (isa<DeallocActivationInst>(U.get())) {
+      continue;
+    }
+
+    U.setOperand(with);
+  }
+}
+
+/// Optimize the input/output buffer for the instruction \p I, based on the
+/// liveness information in \p liveBuffers.
+static void
+tryToShareBuffersForInstr(const std::unordered_set<Value *> &liveBuffers,
+                          Instruction *I) {
+  // At this point <out> variables are marked as dead, and <in> variables have
+  // not been marked alive yet.
+
+  for (unsigned first = 0, e = I->getNumOperands(); first < e; first++) {
+    for (unsigned second = first + 1; second < e; second++) {
+      auto destOp = I->getOperand(first);
+      auto srcOp = I->getOperand(second);
+      // Operands must be different, but of the same type.
+      if (destOp.first->getType() != srcOp.first->getType() ||
+          destOp.first == srcOp.first) {
+        continue;
+      }
+
+      if (!Instruction::isInplaceOp(I, first, second)) {
+        continue;
+      }
+
+      // If both the src and the dest operands are dead, this means that we can
+      // reuse the buffer storage!
+      if (!liveBuffers.count(destOp.first) && !liveBuffers.count(srcOp.first)) {
+        replaceAllNonDeallocUsersWith(destOp.first, srcOp.first);
+        return;
+      }
+    }
+  }
+}
+
+static void shareBuffers(Module &M) {
+  auto &instrs = M.getInstrs();
+
+  // The live set stores allocations that are known to contain information
+  // that's used by some user. These buffers can't be clobbered.
+  std::unordered_set<Value *> liveBuffers;
+
+  // All of the weights are alive. We can't touch them.
+  for (auto *W : M.getWeights()) {
+    liveBuffers.insert(W);
+  }
+
+  // For each instruction, in reverse order.
+  for (auto it = instrs.rbegin(), e = instrs.rend(); it != e; ++it) {
+    Instruction *I = *it;
+
+    // Remove <out> dependencies from the live set, because this instruction
+    // writes into them. This means that the buffer is unused before the write
+    // point.
+    for (unsigned op = 0, ope = I->getNumOperands(); op < ope; op++) {
+      auto O = I->getOperand(op);
+      auto ai = dyn_cast<AllocActivationInst>(O.first);
+      if (!ai) {
+        continue;
+      }
+
+      // <Out> dependency means that the buffer is being killed. Remove from the
+      // live list.
+      if (O.second == OperandKind::Out) {
+        auto it = liveBuffers.find(ai);
+        if (it != liveBuffers.end()) {
+          liveBuffers.erase(it);
+        }
+        continue;
+      }
+      // The <InOut> means that the value of the buffer is being consumed,
+      // which means that it is alive. Add to the live set.
+      if (ai && O.second == OperandKind::InOut) {
+        liveBuffers.insert(ai);
+      }
+    }
+
+    // Now that we've calculated the liveness for the exact location of the
+    // buffer we can try to reuse the operand memory buffers.
+    tryToShareBuffersForInstr(liveBuffers, I);
+
+    // Now, before we are moving to the next instruction, insert the input
+    // operand-buffers into the live set, because this instruction needs them
+    // alive.
+    for (unsigned op = 0, ope = I->getNumOperands(); op < ope; op++) {
+      auto O = I->getOperand(op);
+      auto ai = dyn_cast<AllocActivationInst>(O.first);
+      if (!ai) {
+        continue;
+      }
+
+      // The <In> means that the value of the buffer is being consumed,
+      // which means that it is alive. Add to the live set.
+      if (O.second != OperandKind::Out) {
+        liveBuffers.insert(ai);
+      }
+    }
+  }
+}
+
 void glow::optimize(Module &M, CompilationMode mode) {
   M.verify();
+
+  shareBuffers(M);
 
   // Remove unused allocations.
   deleteDeadAllocs(M);
