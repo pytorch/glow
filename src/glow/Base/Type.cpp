@@ -24,4 +24,10 @@ std::string to_string(const glow::Type &type) {
 
   return os.str();
 }
+std::string to_string(const glow::TypeRef &type) {
+  if (!type)
+    return "<none>";
+  return std::to_string(*type);
+}
+
 } // namespace std
