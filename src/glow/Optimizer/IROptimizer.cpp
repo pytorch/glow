@@ -232,8 +232,127 @@ static void shareBuffers(Module &M) {
   }
 }
 
+/// \returns the pointer to the single writer that writes into this value, or
+/// nullptr if the number of writers is not one (zero or above one).
+static Instruction *getSingleWriter(Value *V) {
+  Instruction *singleUser = nullptr;
+  for (auto U : V->getUsers()) {
+    Instruction *user = U.get();
+
+    // Ignore deallocs.
+    if (isa<DeallocActivationInst>(user))
+      continue;
+
+    auto op = U.getOperand();
+
+    // Ignore the readers.
+    if (op.second == OperandKind::In) {
+      continue;
+    }
+
+    // Multiple users.
+    if (singleUser) {
+      return nullptr;
+    }
+
+    singleUser = user;
+  }
+
+  return singleUser;
+}
+
+/// This optimization is based on the paper:
+/// "Training Deep Nets with Sublinear Memory Cost" Arxiv 1604.06174
+/// The idea is that instead of keeping a buffer around for a really long time
+/// we can simply recompute some nodes. There is a tradeoff here between compute
+/// and memory usage. The idea is to reduce memory usage significantly at a low
+/// compute cost.
+void rematerializeCompute(Module &M) {
+  auto &instrs = M.getInstrs();
+
+  // Don't rematerialize if the distance between the original calculation and
+  // the use is below this number of instructions.
+  const unsigned rematerializeDistance = 5;
+
+  unsigned instIdx = 0;
+
+  // This map maps the destination buffers to the single writer instruction
+  // that stores into them. The map also saves the index of the writer in the
+  // basic block, starting from the top.
+  std::unordered_map<Value *, std::pair<ReluInst *, unsigned>> writers;
+  // Maps the original values to the re-calculated one. It's always better to
+  // use the recalculated write because it is closer.
+  std::unordered_map<Value *, Value *> rewrites;
+
+  // Do an initial pass that collects all of the available RELUs.
+  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
+    instIdx++;
+    auto RL = dyn_cast<ReluInst>(*it);
+    if (!RL) {
+      continue;
+    }
+
+    // Ignore RL instructions that are writing to a shared buffer.
+    if (RL != getSingleWriter(RL->getDest())) {
+      continue;
+    }
+
+    writers[RL->getDest()] = {RL, instIdx};
+  }
+
+  // Do a second pass that rematerializes the RELUs.
+  instIdx = 0;
+  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
+    Instruction *I = *it;
+    instIdx++;
+
+    // Try to optimize the operands of each instruction that we encounter.
+    for (unsigned op = 0, ope = I->getNumOperands(); op < ope; op++) {
+      auto O = I->getOperand(op);
+      // Ignore write operands.
+      if (O.second != OperandKind::In) {
+        continue;
+      }
+
+      // Ignore unknown operands.
+      auto rit = writers.find(O.first);
+      if (rit == writers.end()) {
+        continue;
+      }
+
+      // Ignore cases where the allocation is very close.
+      if ((instIdx - rit->second.second) < rematerializeDistance) {
+        continue;
+      }
+
+      // If we've already rematerialized this computation then we can use the
+      // cache.
+      auto wit = rewrites.find(O.first);
+      if (wit != rewrites.end()) {
+        I->setOperand(op, wit->second);
+        continue;
+      }
+
+      // Recompute the relu locally.
+      auto *A = new AllocActivationInst(O.first->getName().str() + ".re",
+                                        O.first->getType());
+      instrs.insert(it, A);
+      auto *R = new ReluInst("re.Relu", A, rit->second.first->getSrc());
+      instrs.insert(it, R);
+      auto *D = new DeallocActivationInst("re", A);
+      instrs.push_back(D);
+
+      I->setOperand(op, A);
+      rewrites[O.first] = A;
+      break;
+    }
+  }
+}
+
 void glow::optimize(Module &M, CompilationMode mode) {
   M.verify();
+
+  rematerializeCompute(M);
 
   shareBuffers(M);
 

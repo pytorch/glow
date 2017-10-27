@@ -18,6 +18,8 @@ using namespace glow;
 
 void Use::setOperand(Value *other) { use_->setOperand(idx_, other); }
 
+InstructionOperand Use::getOperand() { return use_->getOperand(idx_); }
+
 void Instruction::pushOperand(Operand op) {
   ops_.emplace_back(nullptr, op.second);
   setOperand(ops_.size() - 1, op.first);
