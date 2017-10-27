@@ -120,7 +120,6 @@ void Interpreter::fwdConvolutionGradInst(bool isTrain,
                                          const ConvolutionGradInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto inG = getWeightHandle(I->getSrcGrad());
-  auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
 
   auto filterW = getWeightHandle(I->getFilter());
@@ -131,7 +130,7 @@ void Interpreter::fwdConvolutionGradInst(bool isTrain,
   size_t pad = I->getPad();
   size_t stride = I->getStride();
 
-  ShapeNHWC odim(outW.dims());
+  ShapeNHWC odim(outG.dims());
   ShapeNHWC idim(inW.dims());
 
   // For each input in the batch:
