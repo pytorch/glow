@@ -322,13 +322,12 @@ void Interpreter::fwdPoolMaxGradInst(bool isTrain, const PoolMaxGradInst *I) {
 }
 
 void Interpreter::fwdPoolAvgGradInst(bool isTrain, const PoolAvgGradInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
 
   ShapeNHWC odim(outW.dims());
-  ShapeNHWC idim(inW.dims());
+  ShapeNHWC idim(inG.dims());
 
   auto pad = I->getPad();
   auto filterSize = I->getKernel();
@@ -405,10 +404,9 @@ void Interpreter::fwdFullyConnectedGradInst(bool isTrain,
                                             const FullyConnectedGradInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto inG = getWeightHandle(I->getSrcGrad());
-  auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
 
-  auto odim = flattenCdr(outW.dims());
+  auto odim = flattenCdr(outG.dims());
   auto idim = flattenCdr(inW.dims());
 
   auto filterW = getWeightHandle(I->getFilter());
@@ -601,7 +599,7 @@ void Interpreter::fwdTransposeInst(bool isTrain, const TransposeInst *I) {
 
 void Interpreter::fwdTransposeGradInst(bool isTrain,
                                        const TransposeGradInst *I) {
-  auto inG = getTensor(I->getSrc());
+  auto inG = getTensor(I->getSrcGrad());
   auto outG = getWeightHandle(I->getDestGrad());
 
   assert(outG.size() == inG->size() && "Invalid tensor dimensions");
@@ -628,9 +626,8 @@ void Interpreter::fwdReshapeInst(bool isTrain, const ReshapeInst *I) {
 }
 void Interpreter::fwdReshapeGradInst(bool isTrain, const ReshapeGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
-  auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
+  for (size_t i = 0, e = outG.size(); i < e; i++) {
     inG.raw(i) += outG.raw(i);
   }
 }
