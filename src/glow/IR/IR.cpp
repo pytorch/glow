@@ -127,10 +127,11 @@ static void dumpIR(Value *V, std::ostream &out) {
   glow_unreachable();
 }
 
-bool Instruction::mayShareBuffers(const Instruction *I) {
+bool Instruction::isInplaceOp(const Instruction *I, unsigned dstIdx,
+                              unsigned srcIdx) {
 #define DEF_INSTR(CLASS, NAME)                                                 \
   if (const auto *X = dyn_cast<const CLASS>(I))                                \
-    return X->mayShareBuffers();
+    return X->isInplaceOp(dstIdx, srcIdx);
 #define DEF_VALUE(CLASS, NAME)
 #include "AutoGenInstr.def"
 

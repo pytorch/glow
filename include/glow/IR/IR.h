@@ -91,10 +91,9 @@ public:
     }
   }
 
-  /// \returns true if the @In arguments can share a buffer with the @Out
-  /// arguments. This happens when the read and write access for the buffer are
-  /// the same.
-  bool mayShareBuffers() const { return true; }
+  /// \returns True if this instruction may reuse the memory buffer read by
+  /// operand \p srcIdx for writing the result of the operand at \p dstIdx.
+  bool isInplaceOp(unsigned dstIdx, unsigned srcIdx) const { return false; }
 
   /// Sets the ith operand at index \p idx to the value \p v.
   void setOperand(unsigned idx, Value *v);
@@ -111,7 +110,9 @@ public:
   /// Verify the correctness of the instruction parameters.
   void verify() const;
 
-  static bool mayShareBuffers(const Instruction *I);
+  /// The static dispatch version of isInplaceOp.
+  static bool isInplaceOp(const Instruction *I, unsigned dstIdx,
+                          unsigned srcIdx);
 
 protected:
   /// Dump the operands of the instruction into the stream \p os.
