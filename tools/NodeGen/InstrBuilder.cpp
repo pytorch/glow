@@ -178,7 +178,8 @@ void InstrBuilder::addGradientInstr(
   for (const auto &op : operands_) {
     for (const auto &field : originalFields) {
       if (field == op.first) {
-        GI.addOperand(op.first, negateOperandKind(op.second));
+        // We may only read from the original weight operands.
+        GI.addOperand(op.first, OperandKind::In);
       }
     }
   }
