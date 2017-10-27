@@ -49,6 +49,8 @@ class InstrBuilder {
   std::unordered_map<std::string, std::string> overrideGetter_;
   /// Stores the body of a new public method that will be added to the class.
   std::vector<std::string> extraMethods_;
+  /// A list of operands that are declared as 'inplace' operands.
+  std::vector<std::string> inplaceOperands_;
 
   /// Header file stream.
   std::ofstream &hStream;
@@ -56,6 +58,10 @@ class InstrBuilder {
   std::ofstream &cStream;
   /// Def file stream.
   std::ofstream &dStream;
+
+  /// \returns the index of the operand with the name \p name. Aborts if no such
+  /// name.
+  unsigned getOperandIndexByName(llvm::StringRef name) const;
 
 public:
   InstrBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
@@ -114,11 +120,24 @@ public:
     return *this;
   }
 
+  /// Adds a list of inplace operands. The instruction may use the memory
+  /// read by any of the operands in \p lst[1 .. n] for writing the result of
+  /// the operand \p lst[0].
+  InstrBuilder &inplaceOperand(llvm::ArrayRef<llvm::StringRef> lst) {
+    assert(lst.size() > 1 && "Not enough operands");
+    assert(!inplaceOperands_.size() && "Initializing field twice");
+    inplaceOperands_.insert(inplaceOperands_.begin(), lst.begin(), lst.end());
+    return *this;
+  }
+
   /// Emit the class constructor.
   void emitCtor(std::ostream &os) const;
 
   /// Emits the class members (the fields of the class).
   void emitClassMembers(std::ostream &os) const;
+
+  /// Emits the method that calculates the inplace property.
+  void emitInplaceMethod(std::ostream &os) const;
 
   /// Emit stters/getters for each accessible class member.
   void emitSettersGetters(std::ostream &os) const;

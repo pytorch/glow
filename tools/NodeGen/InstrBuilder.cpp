@@ -1,4 +1,16 @@
 #include "InstrBuilder.h"
+#include "glow/Support/Compiler.h"
+
+unsigned InstrBuilder::getOperandIndexByName(llvm::StringRef name) const {
+  for (unsigned i = 0; i < operands_.size(); i++) {
+    if (name == operands_[i].first) {
+      return i;
+    }
+  }
+
+  assert(false && "Can't find an operand with this name");
+  glow_unreachable();
+}
 
 void InstrBuilder::emitCtor(std::ostream &os) const {
   os << "\t" << name_ << "Inst(llvm::StringRef name";
@@ -37,6 +49,22 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
 
   // Empty constructor body.
   os << " {}\n\n";
+}
+
+void InstrBuilder::emitInplaceMethod(std::ostream &os) const {
+  os << "\tbool isInplaceOp(unsigned dstIdx, unsigned srcIdx) const {\n";
+  if (!inplaceOperands_.empty()) {
+    assert(inplaceOperands_.size() > 1 &&
+           "We don't have a pair of inplace args");
+    for (int i = 1, e = inplaceOperands_.size(); i < e; i++) {
+      auto F0 = getOperandIndexByName(inplaceOperands_[0]);
+      auto F1 = getOperandIndexByName(inplaceOperands_[i]);
+      os << "\tif (" << F0 << " == dstIdx && " << F1
+         << " == srcIdx) {return true;}\n";
+    }
+  }
+  os << "\t\treturn false;\n";
+  os << "}\n";
 }
 
 void InstrBuilder::emitClassMembers(std::ostream &os) const {
@@ -114,6 +142,8 @@ void InstrBuilder::emitClass(std::ostream &os) const {
 
   emitSettersGetters(os);
 
+  emitInplaceMethod(os);
+
   for (const auto &m : extraMethods_) {
     os << "\t" << m << "\n";
   }
@@ -186,7 +216,7 @@ void InstrBuilder::addGradientInstr(
   for (const auto &op : operands_) {
     for (const auto &field : gradFields) {
       if (field == op.first) {
-         ss << ", map[get" << op.first << "()]"; 
+        ss << ", map[get" << op.first << "()]";
       }
     }
   }
