@@ -133,16 +133,25 @@ InstrBuilder::~InstrBuilder() {
 }
 
 void InstrBuilder::addGradientInstr(
+    llvm::ArrayRef<llvm::StringRef> originalFields,
     llvm::ArrayRef<llvm::StringRef> gradFields) {
   InstrBuilder GI(hStream, cStream, dStream, name_ + "Grad");
 
   // The new 'Grad' class will have all of the fields of the current class.
   GI.ty_ = ty_;
-  GI.operands_ = operands_;
   GI.members_ = members_;
   GI.extraParams_ = extraParams_;
   GI.overrideGetter_ = overrideGetter_;
   GI.extraMethods_ = extraMethods_;
+
+  // Add the operands that we'll use in the grad instruction.
+  for (const auto &op : operands_) {
+    for (const auto &field : originalFields) {
+      if (field == op.first) {
+        GI.addOperand(op.first, op.second);
+      }
+    }
+  }
 
   // Add the new 'grad' operands for the gradients.
   for (const auto &op : operands_) {
@@ -166,14 +175,18 @@ void InstrBuilder::addGradientInstr(
 
   // The operands of the input class:
   for (const auto &op : operands_) {
-    ss << ", get" << op.first << "()";
+    for (const auto &field : originalFields) {
+      if (field == op.first) {
+        ss << ", get" << op.first << "()";
+      }
+    }
   }
 
   // Add new operands for the gradients.
   for (const auto &op : operands_) {
     for (const auto &field : gradFields) {
       if (field == op.first) {
-        { ss << ", map[get" << op.first << "()]"; }
+         ss << ", map[get" << op.first << "()]"; 
       }
     }
   }

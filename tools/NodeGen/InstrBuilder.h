@@ -36,7 +36,7 @@ inline const char *getOperandKindStr(OperandKind CC) {
 
 class InstrBuilder {
   /// The type-initialization expression.
-  std::string ty_;
+  std::string ty_{"nullptr"};
   /// The instruction name.
   std::string name_;
   /// The instruction operands.
@@ -135,7 +135,8 @@ public:
 
   // Constructs a new gradient instruction that is based on the current
   // instruction that we are building.
-  void addGradientInstr(llvm::ArrayRef<llvm::StringRef> gradFields);
+  void addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
+                        llvm::ArrayRef<llvm::StringRef> gradFields);
 
   ~InstrBuilder();
 };
