@@ -24,7 +24,7 @@ int main(int argc, char **argv) {
 
   BB.declareValue("WeightVar");
 
-  BB.newInstr("AllocActivation").addExtraParam("TypeRef", "Ty").setType("Ty");
+  BB.newInstr("AllocActivation").addMember("TypeRef", "Ty").setType("Ty");
 
   BB.newInstr("DeallocActivation")
       .addOperand("Src", OperandKind::Out)
