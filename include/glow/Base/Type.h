@@ -201,6 +201,7 @@ inline bool operator==(const Type &LHS, const Type &RHS) {
 
 namespace std {
 std::string to_string(const glow::Type &);
+std::string to_string(const glow::TypeRef &);
 } // namespace std
 
 #endif // GLOW_BASE_TYPE_H
