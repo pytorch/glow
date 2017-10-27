@@ -352,6 +352,7 @@ void rematerializeCompute(Module &M) {
 void glow::optimize(Module &M, CompilationMode mode) {
   M.verify();
 
+  // Try to recompute instead of carying large buffers for a while.
   rematerializeCompute(M);
 
   shareBuffers(M);

@@ -226,7 +226,7 @@ static std::string getDottyDesc(const Value *v) {
 static std::string getDottyDesc(const Instruction *II) {
   std::string sb;
   sb += II->getKindName();
-  sb += "|" + escapeDottyString(std::to_string(*II->getType())) + "|";
+  sb += "|" + escapeDottyString(std::to_string(II->getType())) + "|";
 
   // Print operands:
   for (int i = 0, e = II->getNumOperands(); i < e; i++) {
