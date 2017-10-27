@@ -52,8 +52,7 @@ int main(int argc, char **argv) {
       .addMember("size_t", "Pad")
       .addMember("size_t", "Depth")
       .addExtraMethod("bool mayShareBuffers() const { return false; }")
-      .setType("Dest->getType()")
-      .addGradientInstr({"Dest", "Src", "Filter", "Bias"});
+  .addGradientInstr({"Src", "Dest", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
 
   BB.newInstr("PoolMax")
       .addOperand("Dest", OperandKind::Out)
@@ -63,8 +62,7 @@ int main(int argc, char **argv) {
       .addMember("size_t", "Stride")
       .addMember("size_t", "Pad")
       .addExtraMethod("bool mayShareBuffers() const { return false; }")
-      .setType("Dest->getType()")
-      .addGradientInstr({"Dest", "Src"});
+  .addGradientInstr({"Dest","SrcXY"},{"Dest", "Src"});
 
   BB.newInstr("PoolAvg")
       .addOperand("Dest", OperandKind::Out)
@@ -73,8 +71,7 @@ int main(int argc, char **argv) {
       .addMember("size_t", "Stride")
       .addMember("size_t", "Pad")
       .addExtraMethod("bool mayShareBuffers() const { return false; }")
-      .setType("Dest->getType()")
-      .addGradientInstr({"Dest", "Src"});
+  .addGradientInstr({"Dest"},{"Dest", "Src"});
 
   BB.newInstr("FullyConnected")
       .addOperand("Dest", OperandKind::Out)
@@ -83,8 +80,7 @@ int main(int argc, char **argv) {
       .addOperand("Bias", OperandKind::In)
       .addMember("size_t", "Depth")
       .addExtraMethod("bool mayShareBuffers() const { return false; }")
-      .setType("Dest->getType()")
-      .addGradientInstr({"Dest", "Src", "Filter", "Bias"});
+  .addGradientInstr({"Src", "Filter"},{"Dest", "Src", "Filter", "Bias"});
 
   //===--------------------------------------------------------------------===//
   //                     Normalization
@@ -100,8 +96,7 @@ int main(int argc, char **argv) {
       .addMember("size_t", "ChannelIdx")
       .addMember("float", "Epsilon")
       .addMember("float", "Momentum")
-      .setType("Src->getType()")
-      .addGradientInstr({"Dest", "Src", "Scale", "Bias", "Mean", "Var"});
+      .addGradientInstr({"Src", "Scale","Mean","Var"}, {"Dest", "Src", "Scale", "Bias"});
 
   BB.newInstr("LocalResponseNormalization")
       .addOperand("Dest", OperandKind::Out)
@@ -112,7 +107,7 @@ int main(int argc, char **argv) {
       .addMember("float", "Beta")
       .addMember("float", "K")
       .setType("Src->getType()")
-      .addGradientInstr({"Dest", "Src", "Scale"});
+      .addGradientInstr({"Dest", "Src", "Scale"}, {"Dest", "Src", "Scale"});
 
   //===--------------------------------------------------------------------===//
   //                      Loss operations
@@ -123,15 +118,13 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addOperand("E", OperandKind::InOut)
       .addOperand("Selected", OperandKind::InOut)
-      .setType("Dest->getType()")
-      .addGradientInstr({"Dest", "Src", "Selected"});
+      .addGradientInstr({"Src","E","Selected"}, {"Dest", "Src"});
 
   BB.newInstr("Regression")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("Expected", OperandKind::InOut)
-      .setType("Dest->getType()")
-      .addGradientInstr({"Dest", "Src", "Expected"});
+  .addGradientInstr({"Src","Expected"}, {"Dest", "Src"});
 
   //===--------------------------------------------------------------------===//
   //                      Arithmetic
@@ -141,15 +134,13 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .setType("LHS->getType()")
-      .addGradientInstr({"Dest", "LHS", "RHS"});
+  .addGradientInstr({}, {"Dest", "LHS", "RHS"});
 
   BB.newInstr("ElementMul")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .setType("LHS->getType()")
-      .addGradientInstr({"Dest", "LHS", "RHS"});
+  .addGradientInstr({"LHS", "RHS"}, {"Dest", "LHS", "RHS"});
 
   //===--------------------------------------------------------------------===//
   //                Non-linearities
@@ -158,20 +149,17 @@ int main(int argc, char **argv) {
   BB.newInstr("Relu")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .setType("Dest->getType()")
-      .addGradientInstr({"Dest", "Src"});
+      .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
   BB.newInstr("Sigmoid")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .setType("Dest->getType()")
-      .addGradientInstr({"Dest", "Src"});
+      .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
   BB.newInstr("Tanh")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .setType("Dest->getType()")
-      .addGradientInstr({"Dest", "Src"});
+      .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
   //===--------------------------------------------------------------------===//
   //                Shape transformations
@@ -181,20 +169,18 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addMember("std::vector<size_t>", "Dims")
-      .setType("Dest->getType()")
       .overrideGetter(
           "Dims", "llvm::ArrayRef<size_t> getDims() const { return Dims_; }")
-      .addGradientInstr({"Dest", "Src"});
+  .addGradientInstr({}, {"Dest", "Src"});
 
   BB.newInstr("Transpose")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addMember("std::vector<unsigned>", "Shuffle")
-      .setType("Dest->getType()")
       .overrideGetter(
           "Shuffle",
           "llvm::ArrayRef<unsigned> getShuffle() const { return Shuffle_; }")
-      .addGradientInstr({"Dest", "Src"});
+      .addGradientInstr({}, {"Dest", "Src"});
 
   BB.newInstr("Concat")
       .addOperand("Dest", OperandKind::Out)
@@ -202,8 +188,7 @@ int main(int argc, char **argv) {
       .addOperand("RHS", OperandKind::In)
       .addMember("size_t", "Dim")
       .addExtraMethod("bool mayShareBuffers() const { return false; }")
-      .setType("Dest->getType()")
-      .addGradientInstr({"Dest", "LHS", "RHS"});
+      .addGradientInstr({}, {"Dest", "LHS", "RHS"});
 
   return 0;
 }
