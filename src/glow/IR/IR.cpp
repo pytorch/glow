@@ -2,8 +2,9 @@
 
 #include "glow/IR/IR.h"
 #include "glow/IR/Instrs.h"
-#include "glow/Support/Casting.h"
 #include "glow/Support/Support.h"
+
+#include "llvm/Support/Casting.h"
 
 #include <fstream>
 #include <iostream>
@@ -58,7 +59,7 @@ void Instruction::verifyUseList() const {
 
 void Instruction::verify() const {
 #define DEF_INSTR(CLASS, NAME)                                                 \
-  if (auto *X = dyn_cast<const CLASS>(this))                                   \
+  if (auto *X = llvm::dyn_cast<const CLASS>(this))                             \
     X->verify();
 #define DEF_VALUE(CLASS, NAME)
 #include "AutoGenInstr.def"
@@ -120,10 +121,10 @@ Value *Module::getWeightForNode(const Node *V) const {
 
 static void dumpIR(Value *V, std::ostream &out) {
 #define DEF_INSTR(CLASS, NAME)                                                 \
-  if (const auto *X = dyn_cast<const CLASS>(V))                                \
+  if (const auto *X = llvm::dyn_cast<const CLASS>(V))                          \
     return X->dump(out);
 #define DEF_VALUE(CLASS, NAME)                                                 \
-  if (const auto *X = dyn_cast<const CLASS>(V))                                \
+  if (const auto *X = llvm::dyn_cast<const CLASS>(V))                          \
     return X->dump(out);
 #include "AutoGenInstr.def"
   glow_unreachable();
@@ -132,7 +133,7 @@ static void dumpIR(Value *V, std::ostream &out) {
 bool Instruction::isInplaceOp(const Instruction *I, unsigned dstIdx,
                               unsigned srcIdx) {
 #define DEF_INSTR(CLASS, NAME)                                                 \
-  if (const auto *X = dyn_cast<const CLASS>(I))                                \
+  if (const auto *X = llvm::dyn_cast<const CLASS>(I))                          \
     return X->isInplaceOp(dstIdx, srcIdx);
 #define DEF_VALUE(CLASS, NAME)
 #include "AutoGenInstr.def"

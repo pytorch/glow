@@ -2,8 +2,9 @@
 
 #include "glow/IR/Instrs.h"
 #include "glow/IR/IR.h"
-#include "glow/Support/Casting.h"
 #include "glow/Support/Support.h"
+
+#include "llvm/Support/Casting.h"
 
 #include <cassert>
 
@@ -42,8 +43,8 @@ void CopyInst::verify() const {
   (void)op0;
   (void)op1;
   // The operands of the copy instruction must be variables.
-  assert(isa<AllocActivationInst>(op0) || isa<WeightVar>(op0));
-  assert(isa<AllocActivationInst>(op1) || isa<WeightVar>(op1));
+  assert(llvm::isa<AllocActivationInst>(op0) || llvm::isa<WeightVar>(op0));
+  assert(llvm::isa<AllocActivationInst>(op1) || llvm::isa<WeightVar>(op1));
 }
 void ConvolutionInst::verify() const {
   Value *dest = getOperand(0).first;
@@ -209,7 +210,7 @@ void ElementMulInst::verify() const {
 void AllocActivationInst::verify() const {
   unsigned numDealloc = 0;
   for (const Use &U : getUsers()) {
-    numDealloc += isa<DeallocActivationInst>(U.get());
+    numDealloc += llvm::isa<DeallocActivationInst>(U.get());
   }
 
   // Make sure that there is exactly one user is a deallocation.
@@ -218,7 +219,8 @@ void AllocActivationInst::verify() const {
 
 void DeallocActivationInst::verify() const {
   // The operand of this instruction needs to be an AllocActivationInst.
-  assert(isa<AllocActivationInst>(getOperand(0).first) && "Invalid operand");
+  assert(llvm::isa<AllocActivationInst>(getOperand(0).first) &&
+         "Invalid operand");
 }
 // TODO: verify the gradient instructions.
 #define NOVERIFY(ClassName)                                                    \

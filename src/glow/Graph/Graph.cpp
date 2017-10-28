@@ -3,8 +3,9 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
-#include "glow/Support/Casting.h"
 #include "glow/Support/Support.h"
+
+#include "llvm/Support/Casting.h"
 
 #include <fstream>
 #include <iostream>
@@ -274,7 +275,7 @@ public:
     std::string repr = escapeDottyString(N->getDebugDesc());
     os_ << "\tlabel = " + quote(repr) + "\n";
     os_ << "\tshape = \"record\"\n";
-    if (isa<Variable>(N)) {
+    if (llvm::isa<Variable>(N)) {
       os_ << "\tfillcolor=pink,style=filled\n";
     }
     os_ << "];\n\n";

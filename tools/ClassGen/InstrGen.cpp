@@ -30,8 +30,8 @@ int main(int argc, char **argv) {
   BB.newInstr("DeallocActivation")
       .addOperand("Src", OperandKind::Out)
       .overrideGetter("Src", "AllocActivationInst *getAlloc() const { return "
-                             "cast<AllocActivationInst>(getOperand(0).first); "
-                             "}")
+                             "llvm::cast<AllocActivationInst>(getOperand(0)."
+                             "first); }")
       .setType("Src->getType()");
 
   BB.newInstr("Copy")
