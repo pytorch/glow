@@ -30,7 +30,7 @@ int main(int argc, char **argv) {
       .addOperand("Output")
       .setType("Input->getType()")
       .overrideGetter("Output", "Variable *getOutput() const { return "
-                                "cast<Variable>(Output_.get()); };");
+                                "llvm::cast<Variable>(Output_.get()); };");
 
   //===--------------------------------------------------------------------===//
   //                   Convolution / Pool / FC

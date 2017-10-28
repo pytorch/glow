@@ -8,7 +8,8 @@
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
-#include "glow/Support/Casting.h"
+
+#include "llvm/Support/Casting.h"
 
 #include "caffe.pb.h"
 #include <google/protobuf/text_format.h>
@@ -185,14 +186,14 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *tr = G.createTranspose(op.name(), in, NCHW2NHWC);
     auto *node = G.createConv(op.name(), tr, numFilters, kernel, stride, pad);
 
-    cast<Variable>(node->getFilter())->copyFrom(&wtag);
+    llvm::cast<Variable>(node->getFilter())->copyFrom(&wtag);
 
     // If we don't have a bias vector then create one that matches the weight
     // size and fill it with zeros.
     if (b) {
-      cast<Variable>(node->getBias())->copyFrom(b);
+      llvm::cast<Variable>(node->getBias())->copyFrom(b);
     } else {
-      cast<Variable>(node->getBias())->getPayload().zero();
+      llvm::cast<Variable>(node->getBias())->getPayload().zero();
     }
 
     auto *N = G.createTranspose(op.name(), node, NHWC2NCHW);
@@ -262,10 +263,10 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *node = G.createBatchNormalization(op.name(), in, channel, epsilon);
 
     // Load the weights.
-    cast<Variable>(node->getScale())->copyFrom(scale);
-    cast<Variable>(node->getBias())->copyFrom(bias);
-    cast<Variable>(node->getMean())->copyFrom(mean);
-    cast<Variable>(node->getVar())->copyFrom(var);
+    llvm::cast<Variable>(node->getScale())->copyFrom(scale);
+    llvm::cast<Variable>(node->getBias())->copyFrom(bias);
+    llvm::cast<Variable>(node->getMean())->copyFrom(mean);
+    llvm::cast<Variable>(node->getVar())->copyFrom(var);
 
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;
@@ -332,8 +333,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *FC = G.createFullyConnected(op.name(), in, b->size());
 
     // Load weights.
-    cast<Variable>(FC->getFilter())->getPayload().copyFrom(w);
-    cast<Variable>(FC->getBias())->getPayload().copyFrom(b);
+    llvm::cast<Variable>(FC->getFilter())->getPayload().copyFrom(w);
+    llvm::cast<Variable>(FC->getBias())->getPayload().copyFrom(b);
 
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {

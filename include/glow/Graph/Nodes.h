@@ -3,7 +3,8 @@
 
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Node.h"
-#include "glow/Support/Casting.h"
+
+#include "llvm/Support/Casting.h"
 
 namespace glow {
 

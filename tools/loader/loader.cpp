@@ -87,8 +87,8 @@ int main(int argc, char **argv) {
                          {"data", "gpu_0/data", "softmax_expected"},
                          {&data, &data, &expected_softmax}, EE);
     SM = LD.getRoot();
-    i0 = cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
-    i1 = cast<Variable>(LD.getOrCreateNodeByName("data"));
+    i0 = llvm::cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
+    i1 = llvm::cast<Variable>(LD.getOrCreateNodeByName("data"));
   }
 
   llvm::Timer timer("Infer", "Infer");

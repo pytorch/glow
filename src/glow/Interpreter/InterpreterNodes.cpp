@@ -2,7 +2,8 @@
 
 #include "glow/IR/Instrs.h"
 #include "glow/Interpreter/Interpreter.h"
-#include "glow/Support/Casting.h"
+
+#include "llvm/Support/Casting.h"
 
 using namespace glow;
 

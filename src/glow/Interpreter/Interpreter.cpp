@@ -5,7 +5,8 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/Optimizer.h"
-#include "glow/Support/Casting.h"
+
+#include "llvm/Support/Casting.h"
 
 using namespace glow;
 
@@ -89,7 +90,7 @@ void Interpreter::doForwardPass(bool isTrain) {
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   case Kinded::Kind::CLASS##Kind: {                                            \
-    fwd##CLASS(isTrain, cast<CLASS>(I));                                       \
+    fwd##CLASS(isTrain, llvm::cast<CLASS>(I));                                 \
     break;                                                                     \
   }
   // Dispatch the interpreter on each instruction in the program:

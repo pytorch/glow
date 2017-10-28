@@ -1,10 +1,10 @@
 #ifndef GLOW_IMPORTER_CAFFE2_H
 #define GLOW_IMPORTER_CAFFE2_H
 
-#include "llvm/ADT/ArrayRef.h"
-
 #include "glow/Graph/Graph.h"
-#include "glow/Support/Casting.h"
+
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/Support/Casting.h"
 
 #include <string>
 #include <unordered_map>

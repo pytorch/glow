@@ -4,9 +4,9 @@
 #include "glow/Base/Type.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
-#include "glow/Support/Casting.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/Support/Casting.h"
 
 namespace glow {
 
