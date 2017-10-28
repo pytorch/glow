@@ -348,7 +348,7 @@ public:
     assert(tensor_->isInBounds(indices));
     size_t index = getElementPtr(indices);
     assert(index < size() && "Out of bounds");
-    ElemTy *data = tensor_->getRawDataPointer<ElemTy>();
+    auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
 
@@ -362,7 +362,7 @@ public:
   /// \returns the element at offset \p idx without any size calculations.
   const ElemTy &raw(size_t index) const {
     assert(index < size() && "Out of bounds");
-    ElemTy *data = tensor_->getRawDataPointer<ElemTy>();
+    auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
 
@@ -378,7 +378,7 @@ public:
     // Extract the whole slice.
     size_t startIdx = sizeIntegral[0] * idx;
     ElemTy *base = tensor_->getRawDataPointer<ElemTy>() + startIdx;
-    ElemTy *dest = slice.getRawDataPointer<ElemTy>();
+    auto *dest = slice.getRawDataPointer<ElemTy>();
     std::copy(base, base + sizeIntegral[0], dest);
 
     return slice;
@@ -463,7 +463,7 @@ public:
 
     std::cout << ")\n";
 
-    ElemTy *data = tensor_->getRawDataPointer<ElemTy>();
+    auto *data = tensor_->getRawDataPointer<ElemTy>();
     ElemTy mx = *std::max_element(&data[0], &data[size()]);
     ElemTy mn = *std::min_element(&data[0], &data[size()]);
 

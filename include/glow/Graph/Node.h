@@ -28,7 +28,7 @@ public:
   ~NodeOperand() { setOperand(nullptr); }
   /// Sets the operand to point to \p N. This method registers the operand as a
   /// user of \p N.
-  void setOperand(Node *N);
+  void setOperand(Node *v);
 
   /// \returns the underlying pointer.
   Node *get() const { return node_; }
@@ -44,7 +44,7 @@ struct NodeUse {
   /// node.
   NodeOperand *site_;
 
-  NodeUse(NodeOperand *site) : site_(site) {}
+  explicit NodeUse(NodeOperand *site) : site_(site) {}
 
   bool operator==(const NodeUse &other) const { return site_ == other.site_; }
 

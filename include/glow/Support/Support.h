@@ -11,7 +11,7 @@ namespace std {
 /// Convert the ptr \p ptr into an ascii representation in the format "0xFFF..."
 std::string to_string(void *ptr);
 /// Converts LLVM's StringRef to std::string.
-std::string to_string(const llvm::StringRef sr);
+std::string to_string(llvm::StringRef sr);
 /// Converts LLVM's ArrayRef to std::string.
 template <typename E> std::string to_string(const llvm::ArrayRef<E> list) {
   std::ostringstream buffer;
@@ -62,7 +62,7 @@ class DescriptionBuilder {
   std::stringstream repr_;
 
 public:
-  DescriptionBuilder(const std::string &name) { repr_ << name << '\n'; }
+  explicit DescriptionBuilder(const char *name) { repr_ << name << '\n'; }
 
   DescriptionBuilder &addParam(const std::string &name, const char *value) {
     repr_ << name << " : " << value << '\n';

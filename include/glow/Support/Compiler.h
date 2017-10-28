@@ -1,4 +1,3 @@
-
 #ifndef GLOW_SUPPORT_COMPILER_H
 #define GLOW_SUPPORT_COMPILER_H
 
@@ -20,9 +19,9 @@
 #define glow_unreachable() __assume(0)
 #endif
 
-#endif
-
 #define GLOW_ASSERT(e)                                                         \
   ((void)((e) ? ((void)0) : GLOW_ASSERT_IMPL(#e, __FILE__, __LINE__)))
 #define GLOW_ASSERT_IMPL(e, file, line)                                        \
   ((void)printf("%s:%u: failed assertion `%s'\n", file, line, e), abort())
+
+#endif // GLOW_SUPPORT_COMPILER_H
