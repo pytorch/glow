@@ -1,3 +1,4 @@
+// Copyright 2017 Facebook Inc.  All Rights Reserved.
 #include "InstrBuilder.h"
 #include "glow/Support/Compiler.h"
 
