@@ -266,38 +266,40 @@ void Module::dumpDAG() {
   std::string filename = "dotty_ir_dump_" + std::to_string(this) + ".dot";
   std::cout << "Writing dotty graph to: " << filename << '\n';
 
-  std::string sb;
-  sb += "digraph finite_state_machine {\n\trankdir=LR;\n";
+  std::ofstream os;
+  os.open(filename);
 
-  sb += "subgraph cluster_1 {";
-  sb += "  style=invis;\n";
+  os << "digraph finite_state_machine {\n\trankdir=LR;\n";
+
+  os << "subgraph cluster_1 {";
+  os << "  style=invis;\n";
 
   for (auto &I : instrs_) {
     std::string desc = getDottyDesc(I);
 
-    sb += quote(std::to_string(I)) + "[\n";
+    os << quote(std::to_string(I)) << "[\n";
     std::string repr = quote(desc);
-    sb += "\tlabel = " + repr + "\n";
-    sb += "\tshape = \"record\"\n";
-    sb += "];\n\n";
+    os << "\tlabel = " << repr << "\n";
+    os << "\tshape = \"record\"\n";
+    os << "];\n\n";
   }
-  sb += "}";
+  os << "}";
 
-  sb += "subgraph cluster_0 {";
-  sb += "  style=invis;\n";
+  os << "subgraph cluster_0 {";
+  os << "  style=invis;\n";
 
   for (auto &v : weights_) {
-    sb += quote(std::to_string(v)) + "[\n";
+    os << quote(std::to_string(v)) + "[\n";
     std::string desc = getDottyDesc(v);
-    sb += "\tlabel = " + quote(desc) + "\n";
-    sb += "\tshape = \"record\"\n";
-    sb += "\tfillcolor=pink,style=filled\n";
-    sb += "];\n\n";
+    os << "\tlabel = " << quote(desc) << "\n";
+    os << "\tshape = \"record\"\n";
+    os << "\tfillcolor=pink,style=filled\n";
+    os << "];\n\n";
   }
-  sb += "}";
+  os << "}";
 
-  sb += "subgraph cluster_1 {";
-  sb += "  style=invis;\n";
+  os << "subgraph cluster_1 {";
+  os << "  style=invis;\n";
 
   // Dump the use-def edges.
   for (auto &I : instrs_) {
@@ -306,7 +308,8 @@ void Module::dumpDAG() {
       std::string from = quote(std::to_string(I)) + ":f" + std::to_string(i);
       std::string to = quote(std::to_string(op.first));
 
-      sb += from + "->" + to + "[dir=" + getDottyArrowForCC(op.second) + "];\n";
+      os << from + "->" << to << "[dir=" << getDottyArrowForCC(op.second)
+         << "];\n";
     }
   }
 
@@ -316,15 +319,11 @@ void Module::dumpDAG() {
     if (prev) {
       std::string from = quote(std::to_string(prev));
       std::string to = quote(std::to_string(I));
-      sb += from + "->" + to + "[color=\"blue\"];\n";
+      os << from << "->" << to << "[color=\"blue\"];\n";
     }
     prev = I;
   }
-  sb += "}";
-  sb += "}";
-
-  std::ofstream myfile;
-  myfile.open(filename);
-  myfile << sb;
-  myfile.close();
+  os << "}";
+  os << "}";
+  os.close();
 }

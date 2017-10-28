@@ -246,7 +246,10 @@ void Graph::dump() {
 /// A helper class for visiting and generating the dotty file from the graph.
 struct DottyPrinterPass : NodeVisitor {
   using edgeTy = std::pair<Node *, Node *>;
+  // A set of ordered visited edges.
   std::vector<edgeTy> nodeEdges{};
+  // The output stream for writing the dotty descriptor.
+  std::ostream &os_;
 
 public:
   // Don't revisit visited nodes.
@@ -255,69 +258,63 @@ public:
     return std::find(nodeEdges.begin(), nodeEdges.end(), e) == nodeEdges.end();
   }
 
-  DottyPrinterPass() = default;
+  DottyPrinterPass(std::ostream &os) : os_(os) {}
 
   void pre(Node *parent, Node *N) override {
     nodeEdges.emplace_back(parent, N);
   }
 
-  std::string nodeDescr(Node *N) {
+  void dumpDesc(Node *N) {
     if (!N) {
-      return "";
+      return;
     }
     // Print a node descriptor that looks like this:
     // Format: "node12" [ label = "0xf7fc43e01" shape = "record" ];
-    std::string sb;
-    sb += quote(std::to_string((void *)N)) + "[\n";
+    os_ << quote(std::to_string((void *)N)) << "[\n";
     std::string repr = escapeDottyString(N->getDebugDesc());
-    sb += "\tlabel = " + quote(repr) + "\n";
-    sb += "\tshape = \"record\"\n";
+    os_ << "\tlabel = " + quote(repr) + "\n";
+    os_ << "\tshape = \"record\"\n";
     if (isa<Variable>(N)) {
-      sb += "\tfillcolor=pink,style=filled\n";
+      os_ << "\tfillcolor=pink,style=filled\n";
     }
-    sb += "];\n\n";
-    return sb;
+    os_ << "];\n\n";
   }
 
   std::string quote(std::string in) { return '"' + in + '"'; }
-  std::string getDottyString() {
-    std::string sb;
-
-    sb += "digraph finite_state_machine {\n\trankdir=TD;\n";
+  void dump() {
+    os_ << "digraph finite_state_machine {\n\trankdir=TD;\n";
 
     // Assign a unique name to each one of the nodes:
     for (auto &e : nodeEdges) {
       if (e.first) {
-        sb += quote(std::to_string(e.second)) + " -> " +
-              quote(std::to_string(e.first)) + ";\n";
+        os_ << quote(std::to_string(e.second)) << " -> "
+            << quote(std::to_string(e.first)) << ";\n";
       }
     }
 
     // Assign a unique name to each one of the nodes:
     for (auto &e : nodeEdges) {
-      sb += nodeDescr(e.first);
-      sb += nodeDescr(e.second);
+      dumpDesc(e.first);
+      dumpDesc(e.second);
     }
 
-    sb += "}";
-    return sb;
+    os_ << "}";
   }
 };
 
 void Graph::dumpDAG() {
-  DottyPrinterPass DP;
+  std::string filename = "dotty_graph_dump_" + std::to_string(this) + ".dot";
+  std::cout << "Writing dotty graph to: " << filename << '\n';
+
+  std::ofstream myfile;
+  myfile.open(filename);
+
+  DottyPrinterPass DP(myfile);
 
   for (auto &N : nodes_) {
     N->visit(nullptr, &DP);
   }
 
-  std::string filename = "dotty_graph_dump_" + std::to_string(this) + ".dot";
-  std::cout << "Writing dotty graph to: " << filename << '\n';
-
-  std::string rep = DP.getDottyString();
-
-  std::ofstream myfile;
-  myfile.open(filename);
-  myfile << rep;
+  DP.dump();
   myfile.close();
 }
