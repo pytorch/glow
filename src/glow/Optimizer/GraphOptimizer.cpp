@@ -67,7 +67,7 @@ static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle1,
 }
 
 /// Dead code elimination.
-static void SinkTranspose(Graph &G) {
+static void sinkCode(Graph &G) {
   auto &nodes = G.getNodes();
 
   // For each node:
@@ -130,7 +130,7 @@ static void SinkTranspose(Graph &G) {
       }
     }
 
-    // Sink Transpose below batch Arithmetic nodes.
+    // Sink Transpose below Arithmetic nodes.
     if (auto *AN = dyn_cast<ArithmeticNode>(*it)) {
       auto *LTR = dyn_cast<TransposeNode>(AN->getLHS());
       auto *RTR = dyn_cast<TransposeNode>(AN->getRHS());
@@ -149,7 +149,20 @@ static void SinkTranspose(Graph &G) {
       AN->replaceAllUsesOfWith(newTR);
     }
 
-    // Sink Transpose below batch Arithmetic nodes.
+    // Sink RELU below batch concat nodes.
+    if (auto *CN = dyn_cast<ConcatNode>(*it)) {
+      auto *L = dyn_cast<ReluNode>(CN->getLHS());
+      auto *R = dyn_cast<ReluNode>(CN->getRHS());
+
+      if (L && R) {
+        auto *newCN = G.createConcat(CN->getName(), L->getInput(),
+                                     R->getInput(), CN->getDim());
+        auto *newRL = G.createRELU(L->getName(), newCN);
+        CN->replaceAllUsesOfWith(newRL);
+      }
+    }
+
+    // Sink Transpose below concat nodes.
     if (auto *CN = dyn_cast<ConcatNode>(*it)) {
       TransposeNode *L = dyn_cast<TransposeNode>(CN->getLHS());
       TransposeNode *R = dyn_cast<TransposeNode>(CN->getRHS());
@@ -312,7 +325,7 @@ static void OptimizeBatchNorm(Graph &G) {
 
 void glow::optimize(Graph &G, CompilationMode mode) {
   // Sink transpose operations in an attempt to cancel them out.
-  SinkTranspose(G);
+  sinkCode(G);
 
   // Optimize the pooling operation.
   OptimizePool(G);
