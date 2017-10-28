@@ -10,6 +10,41 @@
 
 using namespace glow;
 
+using Interval = std::pair<unsigned, unsigned>;
+using LivenessMap = std::unordered_map<Value *, Interval>;
+static void calculateLiveness(Module &M, LivenessMap &liveness) {
+  auto &instrs = M.getInstrs();
+  unsigned instIdx = 0;
+
+  // Compute the [start..end) intervals for each alloc activation in our basic
+  // block. Notice that we ignore Dealloc instructions in our analysis.
+  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
+    instIdx++;
+    // Ignore deallocations in our liveness calculation.
+    if (isa<DeallocActivationInst>(*it)) {
+      continue;
+    }
+
+    for (int i = 0, e = (*it)->getNumOperands(); i < e; i++) {
+      auto op = (*it)->getOperand(i).first;
+      auto aa = dyn_cast<AllocActivationInst>(op);
+      if (!aa) {
+        continue;
+      }
+
+      auto I = liveness.find(aa);
+      if (I == liveness.end()) {
+        // Create a new interval.
+        liveness[aa] = {instIdx, instIdx};
+        continue;
+      }
+
+      // Increase the size of the interval.
+      I->second.second = instIdx;
+    }
+  }
+}
+
 /// Hoists Dealloc instructions right after their last use.
 static void hoistDealloc(Module &M) {
   using iterator = Module::InstListTy::iterator;
@@ -233,7 +268,7 @@ static void shareBuffers(Module &M) {
 }
 
 /// \returns the pointer to the single writer that writes into this value, or
-/// nullptr if the number of writers is not one (zero or above one).
+/// nullptr if the number of writers is not exactly one.
 static Instruction *getSingleWriter(Value *V) {
   Instruction *singleUser = nullptr;
   for (auto U : V->getUsers()) {
@@ -266,7 +301,8 @@ static Instruction *getSingleWriter(Value *V) {
 /// The idea is that instead of keeping a buffer around for a really long time
 /// we can simply recompute some nodes. There is a tradeoff here between compute
 /// and memory usage. The idea is to reduce memory usage significantly at a low
-/// compute cost.
+/// compute cost. Only apply this optimization when two parallel lifetimes are
+/// reduces to one, for at least a part of the program.
 void rematerializeCompute(Module &M) {
   auto &instrs = M.getInstrs();
 
@@ -275,6 +311,11 @@ void rematerializeCompute(Module &M) {
   const unsigned rematerializeDistance = 5;
 
   unsigned instIdx = 0;
+
+  // Calculate the liveness of the allocas in the block. This does not include
+  // the alloc/dealloc instructions because they will be shrinked later on.
+  LivenessMap liveness;
+  calculateLiveness(M, liveness);
 
   // This map maps the destination buffers to the single writer instruction
   // that stores into them. The map also saves the index of the writer in the
@@ -314,22 +355,45 @@ void rematerializeCompute(Module &M) {
         continue;
       }
 
-      // Ignore unknown operands.
-      auto rit = writers.find(O.first);
-      if (rit == writers.end()) {
+      // Ignore operands that don't touch known allocas.
+      auto reluIter = writers.find(O.first);
+      if (reluIter == writers.end()) {
         continue;
       }
 
-      // Ignore cases where the allocation is very close.
-      if ((instIdx - rit->second.second) < rematerializeDistance) {
+      // Ignore very recently allocated .
+      unsigned indexOfPrevReluWriter = reluIter->second.second;
+      if ((instIdx - indexOfPrevReluWriter) < rematerializeDistance) {
         continue;
       }
 
       // If we've already rematerialized this computation then we can use the
       // cache.
-      auto wit = rewrites.find(O.first);
-      if (wit != rewrites.end()) {
-        I->setOperand(op, wit->second);
+      auto cacheIter = rewrites.find(O.first);
+      if (cacheIter != rewrites.end()) {
+        I->setOperand(op, cacheIter->second);
+        continue;
+      }
+
+      // Check if the lifetime of the thing that feeds into the original relu is
+      // still alive. If it's not aloive the copying the relu would extend it's
+      // lifetime for no good reason.
+      ReluInst *prevRelu = reluIter->second.first;
+
+      auto LI = liveness.find(prevRelu->getSrc());
+      if (LI == liveness.end()) {
+        // Cound not find liveness for the original relu operand. Is it not an
+        // alloca?
+        continue;
+      }
+
+      // This is the interval of the thing that flows into the RELU.
+      Interval origReluSrcInterval = LI->second;
+      assert(origReluSrcInterval.first < instIdx && "Invalid start index");
+
+      // Don't perform this optimization if it extends the lifetime of the
+      // inputs of the relu.
+      if (origReluSrcInterval.second < instIdx) {
         continue;
       }
 
@@ -337,7 +401,7 @@ void rematerializeCompute(Module &M) {
       auto *A = new AllocActivationInst(O.first->getName().str() + ".re",
                                         O.first->getType());
       instrs.insert(it, A);
-      auto *R = new ReluInst("re.Relu", A, rit->second.first->getSrc());
+      auto *R = new ReluInst("re.Relu", A, prevRelu->getSrc());
       instrs.insert(it, R);
       auto *D = new DeallocActivationInst("re", A);
       instrs.push_back(D);
