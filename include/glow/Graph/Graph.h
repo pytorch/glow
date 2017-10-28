@@ -65,7 +65,7 @@ public:
   ConvolutionNode *createConv(llvm::StringRef name, Node *input, size_t depth,
                               size_t kernel, size_t stride, size_t pad);
 
-  PoolNode *createPool(llvm::StringRef name, Node *input, PoolNode::Mode kind,
+  PoolNode *createPool(llvm::StringRef name, Node *input, PoolNode::Mode mode,
                        size_t kernel, size_t stride, size_t pad);
 
   FullyConnectedNode *createFullyConnected(llvm::StringRef name, Node *input,

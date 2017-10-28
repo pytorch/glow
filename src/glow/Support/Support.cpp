@@ -54,5 +54,5 @@ std::string to_string(void *ptr) {
   return oss.str();
 }
 
-std::string to_string(const llvm::StringRef sr) { return sr.str(); }
+std::string to_string(llvm::StringRef sr) { return sr.str(); }
 } // namespace std

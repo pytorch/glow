@@ -55,7 +55,8 @@ public:
   void post(Node *parent, Node *N) override {
     switch (N->getKind()) {
     default:
-      assert("Invalid Node");
+      // Unkniwn node kind.
+      glow_unreachable();
       break;
     case glow::Kinded::Kind::ConvolutionNodeKind: {
       auto *C = cast<ConvolutionNode>(N);
@@ -255,12 +256,10 @@ void generateBackwardPass(Module &M) {
   // Generate the gradient instructions for each one of the instructions in
   // the module.
   auto &instrs = M.getInstrs();
-  for (auto it = instrs.begin(); it != instrs.end(); it++) {
-    Instruction *I = *it;
-
+  for (auto I : instrs) {
     switch (I->getKind()) {
     case Kind::AllocActivationInstKind: {
-      AllocActivationInst *AC = cast<AllocActivationInst>(I);
+      auto *AC = cast<AllocActivationInst>(I);
       auto *N = new AllocActivationInst(AC->getName(), AC->getType());
       allocs.push_back(N);
       weightToGradMap[I] = N;
@@ -270,7 +269,7 @@ void generateBackwardPass(Module &M) {
       break;
     }
     case Kind::CopyInstKind: {
-      CopyInst *CC = cast<CopyInst>(I);
+      auto *CC = cast<CopyInst>(I);
       auto *N = new CopyInst(CC->getName(), weightToGradMap[CC->getSrc()],
                              weightToGradMap[CC->getDest()]);
       toAppend.push_back(N);
