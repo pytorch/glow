@@ -17,6 +17,9 @@ using namespace glow;
 
 namespace {
 
+using llvm::cast;
+using llvm::isa;
+
 /// A helper class for visiting and generating the dotty file from the graph.
 struct IRGenVisitor : NodeVisitor {
   using NodeToInstrTy = std::unordered_map<const Node *, Value *>;
@@ -45,7 +48,7 @@ public:
   /// Saves the generated IR in \p v for the node \p N.
   void registerIR(Node *N, Value *v) {
     assert(!generatedNodes.count(N) && "Already generated code for this node");
-    assert((llvm::isa<AllocActivationInst>(v) || llvm::isa<WeightVar>(v)) &&
+    assert((isa<AllocActivationInst>(v) || isa<WeightVar>(v)) &&
            "Value operand must be a memory location");
     generatedNodes[N] = v;
     // Register the fact that we've lowered this variable to the new weight.
@@ -60,7 +63,7 @@ public:
       glow_unreachable();
       break;
     case glow::Kinded::Kind::ConvolutionNodeKind: {
-      auto *C = llvm::cast<ConvolutionNode>(N);
+      auto *C = cast<ConvolutionNode>(N);
       auto *in = valueForNode(C->getInput());
       auto *filter = valueForNode(C->getFilter());
       auto *bias = valueForNode(C->getBias());
@@ -73,7 +76,7 @@ public:
       break;
     }
     case glow::Kinded::Kind::PoolNodeKind: {
-      auto *P = llvm::cast<PoolNode>(N);
+      auto *P = cast<PoolNode>(N);
       auto *in = valueForNode(P->getInput());
       Instruction *V = nullptr;
       if (P->getMode() == PoolNode::Mode::Max) {
@@ -89,7 +92,7 @@ public:
       break;
     }
     case glow::Kinded::Kind::FullyConnectedNodeKind: {
-      auto *FC = llvm::cast<FullyConnectedNode>(N);
+      auto *FC = cast<FullyConnectedNode>(N);
       auto *in = valueForNode(FC->getInput());
       auto *filter = valueForNode(FC->getFilter());
       auto *bias = valueForNode(FC->getBias());
@@ -100,7 +103,7 @@ public:
       break;
     }
     case glow::Kinded::Kind::ReluNodeKind: {
-      auto *R = llvm::cast<ReluNode>(N);
+      auto *R = cast<ReluNode>(N);
       auto *V = builder_.createRELUOp(valueForNode(R->getInput()));
       V->setName(N->getName());
       registerIR(N, V->getDest());
@@ -108,21 +111,21 @@ public:
       break;
     }
     case glow::Kinded::Kind::SigmoidNodeKind: {
-      auto *S = llvm::cast<SigmoidNode>(N);
+      auto *S = cast<SigmoidNode>(N);
       auto *V = builder_.createSigmoidOp(valueForNode(S->getInput()));
       V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::TanhNodeKind: {
-      auto *T = llvm::cast<TanhNode>(N);
+      auto *T = cast<TanhNode>(N);
       auto *V = builder_.createTanhOp(valueForNode(T->getInput()));
       V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::SoftMaxNodeKind: {
-      auto *SM = llvm::cast<SoftMaxNode>(N);
+      auto *SM = cast<SoftMaxNode>(N);
       auto *in = valueForNode(SM->getInput());
       auto *select = valueForNode(SM->getSelected());
       auto *V = builder_.createSoftMaxOp(in, select);
@@ -131,7 +134,7 @@ public:
       break;
     }
     case glow::Kinded::Kind::RegressionNodeKind: {
-      auto *RR = llvm::cast<RegressionNode>(N);
+      auto *RR = cast<RegressionNode>(N);
       auto *in = valueForNode(RR->getInput());
       auto *expected = valueForNode(RR->getExpected());
       auto *V = builder_.createRegressionOp(in, expected);
@@ -140,7 +143,7 @@ public:
       break;
     }
     case glow::Kinded::Kind::TransposeNodeKind: {
-      auto *TT = llvm::cast<TransposeNode>(N);
+      auto *TT = cast<TransposeNode>(N);
       auto *in = valueForNode(TT->getInput());
       auto *V = builder_.createTransposeOp(in, TT->getShuffle());
       V->setName(N->getName());
@@ -148,7 +151,7 @@ public:
       break;
     }
     case glow::Kinded::Kind::ReshapeNodeKind: {
-      auto *RS = llvm::cast<ReshapeNode>(N);
+      auto *RS = cast<ReshapeNode>(N);
       auto *in = valueForNode(RS->getInput());
       auto *V = builder_.createReshapeOp(in, RS->getDims());
       V->setName(N->getName());
@@ -156,7 +159,7 @@ public:
       break;
     }
     case glow::Kinded::Kind::ConcatNodeKind: {
-      auto *CC = llvm::cast<ConcatNode>(N);
+      auto *CC = cast<ConcatNode>(N);
       auto *LHS = valueForNode(CC->getLHS());
       auto *RHS = valueForNode(CC->getRHS());
       auto *V = builder_.createConcatOp(LHS, RHS, CC->getDim());
@@ -165,7 +168,7 @@ public:
       break;
     }
     case glow::Kinded::Kind::BatchNormalizationNodeKind: {
-      auto *BN = llvm::cast<BatchNormalizationNode>(N);
+      auto *BN = cast<BatchNormalizationNode>(N);
       auto *in = valueForNode(BN->getInput());
       auto *beta = valueForNode(BN->getBias());
       auto *gamma = valueForNode(BN->getScale());
@@ -181,7 +184,7 @@ public:
     }
 
     case glow::Kinded::Kind::LocalResponseNormalizationNodeKind: {
-      auto *LR = llvm::cast<LocalResponseNormalizationNode>(N);
+      auto *LR = cast<LocalResponseNormalizationNode>(N);
       auto *in = valueForNode(LR->getInput());
       auto *V = builder_.createLocalResponseNormalizationOp(
           in, LR->getHalfWindowSize(), LR->getAlpha(), LR->getBeta(),
@@ -191,7 +194,7 @@ public:
       break;
     }
     case glow::Kinded::Kind::ArithmeticNodeKind: {
-      auto *AR = llvm::cast<ArithmeticNode>(N);
+      auto *AR = cast<ArithmeticNode>(N);
       auto *L = valueForNode(AR->getLHS());
       auto *R = valueForNode(AR->getRHS());
 
@@ -207,7 +210,7 @@ public:
       break;
     }
     case glow::Kinded::Kind::SaveNodeKind: {
-      auto *R = llvm::cast<SaveNode>(N);
+      auto *R = cast<SaveNode>(N);
       auto *src = valueForNode(R->getInput());
       auto *dest = valueForNode(R->getOutput());
       auto *V = builder_.createCopyInst(dest, src);
@@ -216,7 +219,7 @@ public:
     }
     case glow::Kinded::Kind::VariableNodeKind: {
       using MK = WeightVar::MutabilityKind;
-      auto *V = llvm::cast<Variable>(N);
+      auto *V = cast<Variable>(N);
       bool isConst = V->getInitKind() == Variable::InitKind::Extern;
       auto *W = builder_.createWeightVar(V->getType(), V->getName(),
                                          isConst ? MK::Constant : MK::Mutable);
@@ -260,7 +263,7 @@ void generateBackwardPass(Module &M) {
   for (auto I : instrs) {
     switch (I->getKind()) {
     case Kind::AllocActivationInstKind: {
-      auto *AC = llvm::cast<AllocActivationInst>(I);
+      auto *AC = cast<AllocActivationInst>(I);
       auto *N = new AllocActivationInst(AC->getName(), AC->getType());
       allocs.push_back(N);
       weightToGradMap[I] = N;
@@ -270,82 +273,76 @@ void generateBackwardPass(Module &M) {
       break;
     }
     case Kind::CopyInstKind: {
-      auto *CC = llvm::cast<CopyInst>(I);
+      auto *CC = cast<CopyInst>(I);
       auto *N = new CopyInst(CC->getName(), weightToGradMap[CC->getSrc()],
                              weightToGradMap[CC->getDest()]);
       toAppend.push_back(N);
       break;
     }
     case Kind::ConvolutionInstKind: {
-      toAppend.push_back(
-          llvm::cast<ConvolutionInst>(I)->getGrad(weightToGradMap));
+      toAppend.push_back(cast<ConvolutionInst>(I)->getGrad(weightToGradMap));
       break;
     }
     case Kind::PoolMaxInstKind: {
-      toAppend.push_back(llvm::cast<PoolMaxInst>(I)->getGrad(weightToGradMap));
+      toAppend.push_back(cast<PoolMaxInst>(I)->getGrad(weightToGradMap));
       break;
     }
     case Kind::PoolAvgInstKind: {
-      toAppend.push_back(llvm::cast<PoolAvgInst>(I)->getGrad(weightToGradMap));
+      toAppend.push_back(cast<PoolAvgInst>(I)->getGrad(weightToGradMap));
       break;
     }
     case Kind::FullyConnectedInstKind: {
-      toAppend.push_back(
-          llvm::cast<FullyConnectedInst>(I)->getGrad(weightToGradMap));
+      toAppend.push_back(cast<FullyConnectedInst>(I)->getGrad(weightToGradMap));
       break;
     }
     case Kind::BatchNormalizationInstKind: {
       toAppend.push_back(
-          llvm::cast<BatchNormalizationInst>(I)->getGrad(weightToGradMap));
+          cast<BatchNormalizationInst>(I)->getGrad(weightToGradMap));
       break;
     }
     case Kind::LocalResponseNormalizationInstKind: {
-      toAppend.push_back(llvm::cast<LocalResponseNormalizationInst>(I)->getGrad(
-          weightToGradMap));
+      toAppend.push_back(
+          cast<LocalResponseNormalizationInst>(I)->getGrad(weightToGradMap));
       break;
     }
     case Kind::SoftMaxInstKind: {
-      toAppend.push_back(llvm::cast<SoftMaxInst>(I)->getGrad(weightToGradMap));
+      toAppend.push_back(cast<SoftMaxInst>(I)->getGrad(weightToGradMap));
       break;
     }
     case Kind::RegressionInstKind: {
-      toAppend.push_back(
-          llvm::cast<RegressionInst>(I)->getGrad(weightToGradMap));
+      toAppend.push_back(cast<RegressionInst>(I)->getGrad(weightToGradMap));
       break;
     }
     case Kind::ElementAddInstKind: {
-      toAppend.push_back(
-          llvm::cast<ElementAddInst>(I)->getGrad(weightToGradMap));
+      toAppend.push_back(cast<ElementAddInst>(I)->getGrad(weightToGradMap));
       break;
     }
     case Kind::ElementMulInstKind: {
-      toAppend.push_back(
-          llvm::cast<ElementMulInst>(I)->getGrad(weightToGradMap));
+      toAppend.push_back(cast<ElementMulInst>(I)->getGrad(weightToGradMap));
       break;
     }
     case Kind::ReluInstKind: {
-      toAppend.push_back(llvm::cast<ReluInst>(I)->getGrad(weightToGradMap));
+      toAppend.push_back(cast<ReluInst>(I)->getGrad(weightToGradMap));
       break;
     }
     case Kind::SigmoidInstKind: {
-      toAppend.push_back(llvm::cast<SigmoidInst>(I)->getGrad(weightToGradMap));
+      toAppend.push_back(cast<SigmoidInst>(I)->getGrad(weightToGradMap));
       break;
     }
     case Kind::TanhInstKind: {
-      toAppend.push_back(llvm::cast<TanhInst>(I)->getGrad(weightToGradMap));
+      toAppend.push_back(cast<TanhInst>(I)->getGrad(weightToGradMap));
       break;
     }
     case Kind::ReshapeInstKind: {
-      toAppend.push_back(llvm::cast<ReshapeInst>(I)->getGrad(weightToGradMap));
+      toAppend.push_back(cast<ReshapeInst>(I)->getGrad(weightToGradMap));
       break;
     }
     case Kind::TransposeInstKind: {
-      toAppend.push_back(
-          llvm::cast<TransposeInst>(I)->getGrad(weightToGradMap));
+      toAppend.push_back(cast<TransposeInst>(I)->getGrad(weightToGradMap));
       break;
     }
     case Kind::ConcatInstKind: {
-      toAppend.push_back(llvm::cast<ConcatInst>(I)->getGrad(weightToGradMap));
+      toAppend.push_back(cast<ConcatInst>(I)->getGrad(weightToGradMap));
       break;
     }
     default:

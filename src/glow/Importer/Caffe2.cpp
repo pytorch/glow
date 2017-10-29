@@ -23,6 +23,7 @@
 #include <vector>
 
 using namespace glow;
+using llvm::cast;
 
 auto NCHW2NHWC = {0u, 2u, 3u, 1u};
 auto NHWC2NCHW = {0u, 3u, 1u, 2u};
@@ -186,14 +187,14 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *tr = G.createTranspose(op.name(), in, NCHW2NHWC);
     auto *node = G.createConv(op.name(), tr, numFilters, kernel, stride, pad);
 
-    llvm::cast<Variable>(node->getFilter())->copyFrom(&wtag);
+    cast<Variable>(node->getFilter())->copyFrom(&wtag);
 
     // If we don't have a bias vector then create one that matches the weight
     // size and fill it with zeros.
     if (b) {
-      llvm::cast<Variable>(node->getBias())->copyFrom(b);
+      cast<Variable>(node->getBias())->copyFrom(b);
     } else {
-      llvm::cast<Variable>(node->getBias())->getPayload().zero();
+      cast<Variable>(node->getBias())->getPayload().zero();
     }
 
     auto *N = G.createTranspose(op.name(), node, NHWC2NCHW);
@@ -263,10 +264,10 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *node = G.createBatchNormalization(op.name(), in, channel, epsilon);
 
     // Load the weights.
-    llvm::cast<Variable>(node->getScale())->copyFrom(scale);
-    llvm::cast<Variable>(node->getBias())->copyFrom(bias);
-    llvm::cast<Variable>(node->getMean())->copyFrom(mean);
-    llvm::cast<Variable>(node->getVar())->copyFrom(var);
+    cast<Variable>(node->getScale())->copyFrom(scale);
+    cast<Variable>(node->getBias())->copyFrom(bias);
+    cast<Variable>(node->getMean())->copyFrom(mean);
+    cast<Variable>(node->getVar())->copyFrom(var);
 
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;
@@ -333,8 +334,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *FC = G.createFullyConnected(op.name(), in, b->size());
 
     // Load weights.
-    llvm::cast<Variable>(FC->getFilter())->getPayload().copyFrom(w);
-    llvm::cast<Variable>(FC->getBias())->getPayload().copyFrom(b);
+    cast<Variable>(FC->getFilter())->getPayload().copyFrom(w);
+    cast<Variable>(FC->getBias())->getPayload().copyFrom(b);
 
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
