@@ -1,6 +1,7 @@
 #ifndef GLOW_EXECUTIONENGINE_EXECUTIONENGINE_H
 #define GLOW_EXECUTIONENGINE_EXECUTIONENGINE_H
 
+#include "glow/Base/Backend.h"
 #include "glow/Base/Train.h"
 #include "glow/Optimizer/Optimizer.h"
 
@@ -28,7 +29,7 @@ class ExecutionEngine final {
   /// The Module that holds the IR.
   std::unique_ptr<Module> M_;
   /// The network interpreter
-  std::unique_ptr<Interpreter> IP_;
+  std::unique_ptr<Backend> IP_;
   /// The network trainer.
   Trainer trainer_{};
 
