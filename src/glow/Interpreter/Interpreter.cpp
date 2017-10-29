@@ -22,6 +22,12 @@ void Interpreter::clear() {
   externalTensors_.clear();
 }
 
+void Interpreter::init() {
+  for (auto *W : M_->getWeights()) {
+    getOrCreateTensor(W);
+  }
+}
+
 Tensor *Interpreter::getTensor(const Value *v) const {
   auto ie = externalTensors_.find(v);
   if (ie != externalTensors_.end()) {
@@ -36,6 +42,26 @@ Tensor *Interpreter::getTensor(const Value *v) const {
 void Interpreter::registerGraphTensor(const Value *v, Tensor *t) {
   assert(!externalTensors_.count(v) && "The tensor is already registered");
   externalTensors_[v] = t;
+}
+
+Tensor *Interpreter::getTensor(const Variable *v) const {
+  auto *W = M_->getWeightForNode(v);
+  return getTensor(W);
+}
+
+Tensor *Interpreter::getGradTensor(const Variable *v) const {
+  auto *W = M_->getWeightForNode(v);
+  return getGradTensor(W);
+}
+
+Handle<float> Interpreter::getWeightHandle(Variable *v) const {
+  auto *W = M_->getWeightForNode(v);
+  return getWeightHandle(W);
+}
+
+Handle<float> Interpreter::getGradHandle(Variable *v) const {
+  auto *W = M_->getWeightForNode(v);
+  return getGradHandle(W);
 }
 
 Handle<float> Interpreter::getWeightHandle(Value *v) const {
@@ -82,8 +108,6 @@ void Interpreter::deleteTensor(const Value *v) {
   delete it->second;
   tensors_.erase(it);
 }
-
-bool Interpreter::hasTensor(const Value *v) { return tensors_.count(v); }
 
 void Interpreter::doForwardPass(bool isTrain) {
   // Do the forward pass.
