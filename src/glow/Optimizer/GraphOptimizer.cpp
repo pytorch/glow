@@ -10,6 +10,8 @@
 #include <unordered_set>
 
 using namespace glow;
+using llvm::cast;
+using llvm::dyn_cast;
 
 /// Dead code elimination.
 static void DCE(Graph &G) {
@@ -74,8 +76,8 @@ static void sinkCode(Graph &G) {
   // For each node:
   for (auto it = nodes.begin(), e = nodes.end(); it != e; ++it) {
     // Sink Transpose below batch normalization nodes:
-    if (auto *BN = llvm::dyn_cast<BatchNormalizationNode>(*it)) {
-      auto *TR = llvm::dyn_cast<TransposeNode>(BN->getInput());
+    if (auto *BN = dyn_cast<BatchNormalizationNode>(*it)) {
+      auto *TR = dyn_cast<TransposeNode>(BN->getInput());
 
       if (!TR) {
         continue;
@@ -98,8 +100,8 @@ static void sinkCode(Graph &G) {
 
     // Sink Transpose below batch RELU nodes.
     // TODO: support other similar activation functions, such as sigmoid, etc.
-    if (auto *RL = llvm::dyn_cast<ReluNode>(*it)) {
-      auto *TR = llvm::dyn_cast<TransposeNode>(RL->getInput());
+    if (auto *RL = dyn_cast<ReluNode>(*it)) {
+      auto *TR = dyn_cast<TransposeNode>(RL->getInput());
 
       if (!TR) {
         continue;
@@ -112,8 +114,8 @@ static void sinkCode(Graph &G) {
     }
 
     // Merge consecutive Transpose operations.
-    if (auto *TR1 = llvm::dyn_cast<TransposeNode>(*it)) {
-      auto *TR2 = llvm::dyn_cast<TransposeNode>(TR1->getInput());
+    if (auto *TR1 = dyn_cast<TransposeNode>(*it)) {
+      auto *TR2 = dyn_cast<TransposeNode>(TR1->getInput());
 
       if (!TR2) {
         continue;
@@ -132,9 +134,9 @@ static void sinkCode(Graph &G) {
     }
 
     // Sink Transpose below Arithmetic nodes.
-    if (auto *AN = llvm::dyn_cast<ArithmeticNode>(*it)) {
-      auto *LTR = llvm::dyn_cast<TransposeNode>(AN->getLHS());
-      auto *RTR = llvm::dyn_cast<TransposeNode>(AN->getRHS());
+    if (auto *AN = dyn_cast<ArithmeticNode>(*it)) {
+      auto *LTR = dyn_cast<TransposeNode>(AN->getLHS());
+      auto *RTR = dyn_cast<TransposeNode>(AN->getRHS());
 
       if (!LTR || !RTR) {
         continue;
@@ -151,9 +153,9 @@ static void sinkCode(Graph &G) {
     }
 
     // Sink RELU below batch concat nodes.
-    if (auto *CN = llvm::dyn_cast<ConcatNode>(*it)) {
-      auto *L = llvm::dyn_cast<ReluNode>(CN->getLHS());
-      auto *R = llvm::dyn_cast<ReluNode>(CN->getRHS());
+    if (auto *CN = dyn_cast<ConcatNode>(*it)) {
+      auto *L = dyn_cast<ReluNode>(CN->getLHS());
+      auto *R = dyn_cast<ReluNode>(CN->getRHS());
 
       if (L && R) {
         auto *newCN = G.createConcat(CN->getName(), L->getInput(),
@@ -164,9 +166,9 @@ static void sinkCode(Graph &G) {
     }
 
     // Sink Transpose below concat nodes.
-    if (auto *CN = llvm::dyn_cast<ConcatNode>(*it)) {
-      TransposeNode *L = llvm::dyn_cast<TransposeNode>(CN->getLHS());
-      TransposeNode *R = llvm::dyn_cast<TransposeNode>(CN->getRHS());
+    if (auto *CN = dyn_cast<ConcatNode>(*it)) {
+      TransposeNode *L = dyn_cast<TransposeNode>(CN->getLHS());
+      TransposeNode *R = dyn_cast<TransposeNode>(CN->getRHS());
 
       // Both sides must be a transpose instruction.
       if (!L || !R) {
@@ -204,8 +206,8 @@ static void OptimizePool(Graph &G) {
     // nodes does not give us much. However, reordering the buffers allows us to
     // reuse the memory buffer of the pool operation and potentially save
     // memory.
-    if (auto *PL = llvm::dyn_cast<PoolNode>(*it)) {
-      auto *RL = llvm::dyn_cast<ReluNode>(PL->getInput());
+    if (auto *PL = dyn_cast<PoolNode>(*it)) {
+      auto *RL = dyn_cast<ReluNode>(PL->getInput());
 
       if (!RL) {
         continue;
@@ -239,8 +241,8 @@ static void OptimizeBatchNorm(Graph &G) {
   for (auto it = nodes.begin(), e = nodes.end(); it != e; ++it) {
     // Merge the Batch Normalization operation into the convolution that comes
     // before it by updating the weights of the filter.
-    if (auto *BN = llvm::dyn_cast<BatchNormalizationNode>(*it)) {
-      auto *CV = llvm::dyn_cast<ConvolutionNode>(BN->getInput());
+    if (auto *BN = dyn_cast<BatchNormalizationNode>(*it)) {
+      auto *CV = dyn_cast<ConvolutionNode>(BN->getInput());
       if (!CV) {
         continue;
       }
@@ -284,13 +286,13 @@ static void OptimizeBatchNorm(Graph &G) {
       // Q = W * A
       // C = b * A + B
 
-      auto filterH = llvm::cast<Variable>(CV->getFilter())->getHandle<>();
-      auto cbiasH = llvm::cast<Variable>(CV->getBias())->getHandle<>();
+      auto filterH = cast<Variable>(CV->getFilter())->getHandle<>();
+      auto cbiasH = cast<Variable>(CV->getBias())->getHandle<>();
 
-      auto scaleH = llvm::cast<Variable>(BN->getScale())->getHandle<>();
-      auto biasH = llvm::cast<Variable>(BN->getBias())->getHandle<>();
-      auto meanH = llvm::cast<Variable>(BN->getMean())->getHandle<>();
-      auto varH = llvm::cast<Variable>(BN->getVar())->getHandle<>();
+      auto scaleH = cast<Variable>(BN->getScale())->getHandle<>();
+      auto biasH = cast<Variable>(BN->getBias())->getHandle<>();
+      auto meanH = cast<Variable>(BN->getMean())->getHandle<>();
+      auto varH = cast<Variable>(BN->getVar())->getHandle<>();
 
       // Update the filater/bias variables of the Conv node.
       auto epsilon = BN->getEpsilon();

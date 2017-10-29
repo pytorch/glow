@@ -18,6 +18,9 @@
 #include <string>
 
 using namespace glow;
+using llvm::cast;
+using llvm::dyn_cast;
+using llvm::isa;
 
 TEST(IR, uniqueTypes) {
   Graph G;
@@ -128,15 +131,15 @@ TEST(IR, casting) {
     auto *relu = bb.createRELUOp(input);
     auto *pool = bb.createPoolMaxOp(relu->getOperand(0).first, 7, 2, 3);
 
-    EXPECT_EQ(llvm::isa<PoolMaxInst>(pool), true);
-    EXPECT_EQ(llvm::isa<PoolMaxInst>(input), false);
-    EXPECT_EQ(llvm::isa<ReluInst>(relu), true);
-    EXPECT_EQ(llvm::isa<ReluInst>(pool), false);
+    EXPECT_EQ(isa<PoolMaxInst>(pool), true);
+    EXPECT_EQ(isa<PoolMaxInst>(input), false);
+    EXPECT_EQ(isa<ReluInst>(relu), true);
+    EXPECT_EQ(isa<ReluInst>(pool), false);
 
-    EXPECT_NE(llvm::dyn_cast<PoolMaxInst>(pool), nullptr);
-    EXPECT_EQ(llvm::dyn_cast<PoolMaxInst>(pool), pool);
+    EXPECT_NE(dyn_cast<PoolMaxInst>(pool), nullptr);
+    EXPECT_EQ(dyn_cast<PoolMaxInst>(pool), pool);
 
-    EXPECT_NE(llvm::dyn_cast<WeightVar>(input), nullptr);
-    EXPECT_EQ(llvm::dyn_cast<WeightVar>(input), input);
+    EXPECT_NE(dyn_cast<WeightVar>(input), nullptr);
+    EXPECT_EQ(dyn_cast<WeightVar>(input), input);
   }
 }

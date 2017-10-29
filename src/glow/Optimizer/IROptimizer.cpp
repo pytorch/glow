@@ -11,6 +11,10 @@
 
 using namespace glow;
 
+using llvm::cast;
+using llvm::dyn_cast;
+using llvm::isa;
+
 using Interval = std::pair<unsigned, unsigned>;
 using LivenessMap = std::unordered_map<Value *, Interval>;
 static void calculateLiveness(Module &M, LivenessMap &liveness) {
@@ -22,13 +26,13 @@ static void calculateLiveness(Module &M, LivenessMap &liveness) {
   for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
     instIdx++;
     // Ignore deallocations in our liveness calculation.
-    if (llvm::isa<DeallocActivationInst>(*it)) {
+    if (isa<DeallocActivationInst>(*it)) {
       continue;
     }
 
     for (int i = 0, e = (*it)->getNumOperands(); i < e; i++) {
       auto op = (*it)->getOperand(i).first;
-      auto aa = llvm::dyn_cast<AllocActivationInst>(op);
+      auto aa = dyn_cast<AllocActivationInst>(op);
       if (!aa) {
         continue;
       }
@@ -55,12 +59,12 @@ static void hoistDealloc(Module &M) {
 
   // Record the last use of each dealloc.
   for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
-    if (llvm::isa<DeallocActivationInst>(*it))
+    if (isa<DeallocActivationInst>(*it))
       continue;
 
     for (int i = 0, e = (*it)->getNumOperands(); i < e; i++) {
       auto op = (*it)->getOperand(i).first;
-      if (auto alloc = llvm::dyn_cast<AllocActivationInst>(op)) {
+      if (auto alloc = dyn_cast<AllocActivationInst>(op)) {
         lastUser[alloc] = it;
       }
     }
@@ -70,13 +74,13 @@ static void hoistDealloc(Module &M) {
   for (auto it = instrs.begin(), e = instrs.end(); it != e;
        /* increment below */) {
     iterator curr = it;
-    auto *da = llvm::dyn_cast<DeallocActivationInst>(*curr);
+    auto *da = dyn_cast<DeallocActivationInst>(*curr);
     if (!da) {
       ++it;
       continue;
     }
 
-    auto *alloc = llvm::cast<AllocActivationInst>(da->getOperand(0).first);
+    auto *alloc = cast<AllocActivationInst>(da->getOperand(0).first);
 
     it = instrs.erase(curr);
     auto &where = lastUser[alloc];
@@ -95,7 +99,7 @@ static void sinkAllocas(Module &M) {
   // Remove all of the allocas.
   for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
     iterator curr = it;
-    auto *aa = llvm::dyn_cast<AllocActivationInst>(*curr);
+    auto *aa = dyn_cast<AllocActivationInst>(*curr);
     if (!aa) {
       ++it;
       continue;
@@ -109,7 +113,7 @@ static void sinkAllocas(Module &M) {
   for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
     for (int i = 0, e = (*it)->getNumOperands(); i < e; i++) {
       auto op = (*it)->getOperand(i).first;
-      auto aa = llvm::dyn_cast<AllocActivationInst>(op);
+      auto aa = dyn_cast<AllocActivationInst>(op);
       if (!aa) {
         continue;
       }
@@ -134,7 +138,7 @@ static void deleteDeadAllocs(Module &M) {
       std::remove_if(instrs.begin(), instrs.end(),
                      [](const Instruction *I) -> bool {
                        if (const auto *DA =
-                               llvm::dyn_cast<const DeallocActivationInst>(I)) {
+                               dyn_cast<const DeallocActivationInst>(I)) {
                          return DA->getAlloc()->getNumUsers() < 2;
                        }
                        return false;
@@ -144,7 +148,7 @@ static void deleteDeadAllocs(Module &M) {
   // Remove the unused allocs.
   instrs.erase(std::remove_if(instrs.begin(), instrs.end(),
                               [](const Instruction *I) -> bool {
-                                if (llvm::isa<const AllocActivationInst>(I)) {
+                                if (isa<const AllocActivationInst>(I)) {
                                   return I->getNumUsers() < 2;
                                 }
                                 return false;
@@ -163,7 +167,7 @@ static void replaceAllNonDeallocUsersWith(Value *val, Value *with) {
   std::vector<Use> usersVec(users.begin(), users.end());
   for (auto &U : usersVec) {
     // Ignore dealloc instrs.
-    if (llvm::isa<DeallocActivationInst>(U.get())) {
+    if (isa<DeallocActivationInst>(U.get())) {
       continue;
     }
 
@@ -224,7 +228,7 @@ static void shareBuffers(Module &M) {
     // point.
     for (unsigned op = 0, ope = I->getNumOperands(); op < ope; op++) {
       auto O = I->getOperand(op);
-      auto ai = llvm::dyn_cast<AllocActivationInst>(O.first);
+      auto ai = dyn_cast<AllocActivationInst>(O.first);
       if (!ai) {
         continue;
       }
@@ -254,7 +258,7 @@ static void shareBuffers(Module &M) {
     // alive.
     for (unsigned op = 0, ope = I->getNumOperands(); op < ope; op++) {
       auto O = I->getOperand(op);
-      auto ai = llvm::dyn_cast<AllocActivationInst>(O.first);
+      auto ai = dyn_cast<AllocActivationInst>(O.first);
       if (!ai) {
         continue;
       }
@@ -276,7 +280,7 @@ static Instruction *getSingleWriter(Value *V) {
     Instruction *user = U.get();
 
     // Ignore deallocs.
-    if (llvm::isa<DeallocActivationInst>(user))
+    if (isa<DeallocActivationInst>(user))
       continue;
 
     auto op = U.getOperand();
@@ -329,7 +333,7 @@ void rematerializeCompute(Module &M) {
   // Do an initial pass that collects all of the available RELUs.
   for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
     instIdx++;
-    auto RL = llvm::dyn_cast<ReluInst>(*it);
+    auto RL = dyn_cast<ReluInst>(*it);
     if (!RL) {
       continue;
     }
