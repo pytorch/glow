@@ -68,7 +68,7 @@ public:
 private:
   /// Update the inputs for all variables \p vars with data from the inputs \p
   /// inputs at offset \p sampleIdx. Then perform a forward and backwards scan.
-  void updateForwardBackward(llvm::ArrayRef<Value *> vars,
+  void updateForwardBackward(llvm::ArrayRef<Variable *> vars,
                              llvm::ArrayRef<Tensor *> inputs, size_t sampleIdx);
 
   /// Update all of the weight tensors (non-activation) with their gradients.
@@ -78,7 +78,7 @@ private:
   /// The data starts at slice \p sampleIdx and wraps around until the data in
   /// \p v is filled. All dimensions, except for the first (batch) dimension
   /// must be identical.
-  void loadValueFromTensor(const Value *v, Tensor *input, size_t sampleIdx);
+  void loadValueFromTensor(const Variable *v, Tensor *input, size_t sampleIdx);
 };
 
 } // namespace glow

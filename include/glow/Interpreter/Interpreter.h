@@ -13,6 +13,7 @@ class Context;
 class Module;
 class Value;
 class Tensor;
+class Variable;
 
 // Forward declare all of the classes.
 #define DEF_VALUE(CLASS, NAME) class CLASS;
@@ -39,6 +40,32 @@ public:
   /// Wipe out the state of the interpreter.
   void clear();
 
+  /// Prepare the interpreter for execution of new code.
+  void init();
+
+  /// Perform a single forward scan of the network, interpreting all of the
+  /// instructions.
+  void doForwardPass(bool isTrain);
+
+  /// Registers the external tensor \p t, that's owned by the graph, as mapped
+  /// to the value \p v.
+  void registerGraphTensor(const Value *v, Tensor *t);
+
+  /// \returns a pointer to the tensor that is saved under \p v.
+  Tensor *getTensor(const Variable *v) const;
+
+  /// \returns a pointer to the gradient tensor that matches \p v. Notice
+  /// that this API is only valid when the module is compiled in training mode.
+  Tensor *getGradTensor(const Variable *v) const;
+
+  /// \returns a float-handle to the tensor that is stored at \p v.
+  Handle<float> getWeightHandle(Variable *v) const;
+
+  /// \returns a float-handle to the gradient tensor that matches \p v. Notice
+  /// that this API is only valid when the module is compiled in training mode.
+  Handle<float> getGradHandle(Variable *v) const;
+
+private:
   /// \returns a pointer to the tensor that is saved under \p v.
   Tensor *getTensor(const Value *v) const;
 
@@ -49,13 +76,6 @@ public:
 
   /// If a tensor is allocated for \p v then delete it.
   void deleteTensor(const Value *v);
-
-  /// \returns True if a tensor was allocated for \p v.
-  bool hasTensor(const Value *v);
-
-  /// Registers the external tensor \p t, that's owned by the graph, as mapped
-  /// to the value \p v.
-  void registerGraphTensor(const Value *v, Tensor *t);
 
   /// \returns a float-handle to the tensor that is stored at \p v.
   Handle<float> getWeightHandle(Value *v) const;
@@ -71,11 +91,6 @@ public:
   /// \returns True if the value \p has an associated gradient tensor.
   bool hasGradTensor(const Value *v) const;
 
-  /// Perform a single forward scan of the network, interpreting all of the
-  /// instructions.
-  void doForwardPass(bool isTrain);
-
-private:
   /// @name Interpreter methods. This is a list of method declerations that are
   /// used by the interpreter to dispatch different instructions.
   ///@{

@@ -27,8 +27,7 @@ void ExecutionEngine::infer(llvm::ArrayRef<Variable *> vars,
 
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
-    auto *val = M_->getWeightForNode(vars[i]);
-    loadValueFromTensor(val, inputs[i], 0);
+    loadValueFromTensor(vars[i], inputs[i], 0);
   }
 
   IP_->doForwardPass(false);
@@ -42,17 +41,12 @@ void ExecutionEngine::train(size_t iterations, llvm::ArrayRef<Variable *> vars,
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
 
-  std::vector<Value *> weights;
-  for (auto *v : vars) {
-    weights.push_back(M_->getWeightForNode(v));
-  }
-
   // This is the size of one batch (the number of samples in the batch).
   size_t batchSize = vars[0]->dims()[0];
 
   for (size_t i = 0; i < iterations; i++) {
     // Launch threads that update the different chunks in the batch:
-    updateForwardBackward(weights, inputs, trainCounter + batchSize);
+    updateForwardBackward(vars, inputs, trainCounter + batchSize);
 
     trainCounter += batchSize;
 
@@ -64,14 +58,9 @@ void ExecutionEngine::train(size_t iterations, llvm::ArrayRef<Variable *> vars,
 }
 
 void ExecutionEngine::learnGradient(size_t batchSize) {
-  for (auto *V : M_->getWeights()) {
+  for (auto *V : G_->getVars()) {
     // Do not try to learn the values of input/output buffers.
-    if (V->getKind() == WeightVar::MutabilityKind::Constant) {
-      continue;
-    }
-
-    // Don't try to train tensorts that don't have a gradient.
-    if (!IP_->hasGradTensor(V)) {
+    if (V->getInitKind() == Variable::InitKind::Extern) {
       continue;
     }
 
@@ -83,7 +72,7 @@ void ExecutionEngine::learnGradient(size_t batchSize) {
   }
 }
 
-void ExecutionEngine::updateForwardBackward(llvm::ArrayRef<Value *> vars,
+void ExecutionEngine::updateForwardBackward(llvm::ArrayRef<Variable *> vars,
                                             llvm::ArrayRef<Tensor *> inputs,
                                             size_t sampleIdx) {
   // Update the input variables.
@@ -94,7 +83,7 @@ void ExecutionEngine::updateForwardBackward(llvm::ArrayRef<Value *> vars,
   IP_->doForwardPass(true);
 }
 
-void ExecutionEngine::loadValueFromTensor(const Value *v, Tensor *input,
+void ExecutionEngine::loadValueFromTensor(const Variable *v, Tensor *input,
                                           size_t sampleIdx) {
   assert(v && "Invalid value");
   auto *t = IP_->getTensor(v);
@@ -119,19 +108,15 @@ void ExecutionEngine::compile(CompilationMode mode) {
     IP_->registerGraphTensor(w, &v->getPayload());
   }
 
-  for (auto *W : M_->getWeights()) {
-    IP_->getOrCreateTensor(W);
-  }
+  IP_->init();
 }
 
 /// \returns a float-handle to the tensor that is stored at \p v.
 Handle<float> ExecutionEngine::getWeightHandle(Variable *v) const {
-  auto val = M_->getWeightForNode(v);
-  return IP_->getWeightHandle(val);
+  return IP_->getWeightHandle(v);
 }
 
 /// \returns a float-handle to the tensor that is stored at \p v.
 Handle<float> ExecutionEngine::getGradHandle(Variable *v) {
-  auto val = M_->getWeightForNode(v);
-  return IP_->getGradHandle(val);
+  return IP_->getGradHandle(v);
 }
