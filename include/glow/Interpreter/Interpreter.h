@@ -1,6 +1,7 @@
 #ifndef GLOW_INTERPRETER_INTERPRETER_H
 #define GLOW_INTERPRETER_INTERPRETER_H
 
+#include "glow/Base/Backend.h"
 #include "glow/Base/Tensor.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -22,7 +23,7 @@ class Variable;
 
 /// This is the IR-interpreter. It owns the IR, and the heap, and is able to
 /// execute the instructions one at a time.
-class Interpreter final {
+class Interpreter final : public Backend {
   /// The Module that holds the IR. This does not own the module.
   Module *M_;
   /// Maps values to Tensors, that are owned by this class.
@@ -34,36 +35,29 @@ class Interpreter final {
 public:
   /// Ctor.
   explicit Interpreter(Module *M) : M_(M) {}
-  /// Dtor.
-  ~Interpreter();
 
-  /// Wipe out the state of the interpreter.
-  void clear();
+  /// @name Backend methods.
+  /// This is the implementation of the Backend interface.
+  ///@{
+  ~Interpreter() override;
 
-  /// Prepare the interpreter for execution of new code.
-  void init();
+  void clear() override;
 
-  /// Perform a single forward scan of the network, interpreting all of the
-  /// instructions.
-  void doForwardPass(bool isTrain);
+  void init() override;
 
-  /// Registers the external tensor \p t, that's owned by the graph, as mapped
-  /// to the value \p v.
-  void registerGraphTensor(const Value *v, Tensor *t);
+  void doForwardPass(bool isTrain) override;
 
-  /// \returns a pointer to the tensor that is saved under \p v.
-  Tensor *getTensor(const Variable *v) const;
+  void registerGraphTensor(const Value *v, Tensor *t) override;
 
-  /// \returns a pointer to the gradient tensor that matches \p v. Notice
-  /// that this API is only valid when the module is compiled in training mode.
-  Tensor *getGradTensor(const Variable *v) const;
+  Tensor *getTensor(const Variable *v) const override;
 
-  /// \returns a float-handle to the tensor that is stored at \p v.
-  Handle<float> getWeightHandle(Variable *v) const;
+  Tensor *getGradTensor(const Variable *v) const override;
 
-  /// \returns a float-handle to the gradient tensor that matches \p v. Notice
-  /// that this API is only valid when the module is compiled in training mode.
-  Handle<float> getGradHandle(Variable *v) const;
+  Handle<float> getWeightHandle(Variable *v) const override;
+
+  Handle<float> getGradHandle(Variable *v) const override;
+
+  /// @}
 
 private:
   /// \returns a pointer to the tensor that is saved under \p v.

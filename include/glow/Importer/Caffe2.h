@@ -25,7 +25,7 @@ class Value;
 
 /// Loads caffe2 models.
 class caffe2ModelLoader {
-  /// The interpreter that runs the program.
+  /// The ExecutionEngine that runs the program.
   ExecutionEngine &EE_;
   /// Saves network nodes by name.
   std::unordered_map<std::string, Node *> nodeByName_;
