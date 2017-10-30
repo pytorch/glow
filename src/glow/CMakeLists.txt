@@ -1,4 +1,5 @@
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 add_subdirectory(Base)
 add_subdirectory(ExecutionEngine)
 add_subdirectory(Graph)

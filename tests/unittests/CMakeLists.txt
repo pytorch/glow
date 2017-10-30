@@ -1,5 +1,4 @@
 
-
 add_executable(tensorsTest
                  Tensors.cpp)
 target_link_libraries(tensorsTest
@@ -7,7 +6,10 @@ target_link_libraries(tensorsTest
                         Support
                         gtest
                         gtest_main)
-add_test(tensorsTest ${GLOW_BINARY_DIR}/tests/tensorsTest)
+add_test(NAME
+          tensorsTest
+        COMMAND
+          $<TARGET_FILE:tensorsTest>)
 
 add_executable(IRgradCheckTest
                  IRGradCheck.cpp)
@@ -18,7 +20,10 @@ target_link_libraries(IRgradCheckTest
                         IR
                         gtest
                         gtest_main)
-add_test(IRgradCheckTest ${GLOW_BINARY_DIR}/tests/IRgradCheckTest)
+add_test(NAME
+           IRgradCheckTest
+         COMMAND
+           $<TARGET_FILE:IRgradCheckTest>)
 
 add_executable(IRTest
                  IRTest.cpp)
@@ -28,7 +33,10 @@ target_link_libraries(IRTest
                         IR
                         gtest
                         gtest_main)
-add_test(IRTest ${GLOW_BINARY_DIR}/tests/IRTest)
+add_test(NAME
+           IRTest
+         COMMAND
+           $<TARGET_FILE:IRTest>)
 
 add_executable(InterpreterTest
                  InterpreterTest.cpp)
@@ -39,7 +47,10 @@ target_link_libraries(InterpreterTest
                         ExecutionEngine
                         gtest
                         gtest_main)
-add_test(InterpreterTest ${GLOW_BINARY_DIR}/tests/InterpreterTest)
+add_test(NAME
+           InterpreterTest
+         COMMAND
+           $<TARGET_FILE:InterpreterTest>)
 
 add_executable(GraphTest
                  GraphTest.cpp)
@@ -50,7 +61,10 @@ target_link_libraries(GraphTest
                         Interpreter
                         gtest
                         gtest_main)
-add_test(GraphTest ${GLOW_BINARY_DIR}/tests/GraphTest)
+add_test(NAME
+           GraphTest
+         COMMAND
+           $<TARGET_FILE:GraphTest>)
 
 
 add_executable(GraphOptz
@@ -62,4 +76,8 @@ target_link_libraries(GraphOptz
                         Interpreter
                         gtest
                         gtest_main)
-add_test(GraphOptz ${GLOW_BINARY_DIR}/tests/GraphOptz)
+add_test(NAME
+           GraphOptz
+         COMMAND
+            $<TARGET_FILE:GraphOptz>)
+
