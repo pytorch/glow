@@ -43,13 +43,13 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
   IP.train(300, {inputVar, expVar}, {inputs, outputs});
 
   // Clear the gradients of the first layer.
-  IP.getGradHandle(inputVar).clear();
+  IP.getGrad(inputVar)->zero();
 
   // Train the network just once to calculate the grads.
   IP.train(1, {inputVar, expVar}, {inputs, outputs});
 
   // Copy the gradient buffer. Future iterations will invalidate the buffer.
-  Tensor gradCopy = IP.getGradHandle(inputVar).clone();
+  Tensor gradCopy = IP.getGrad(inputVar)->clone();
   auto analyticalGradsH = gradCopy.getHandle();
 
   for (size_t i = 0; i < analyticalGradsH.size(); i++) {
@@ -265,16 +265,16 @@ TEST(Network, gradientCheck_Arithmetic) {
   IP.train(30, {A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
 
   // Clear the gradients of the last layer.
-  IP.getGradHandle(A).clear();
-  IP.getGradHandle(B).clear();
-  IP.getGradHandle(C).clear();
+  IP.getGrad(A)->zero();
+  IP.getGrad(B)->zero();
+  IP.getGrad(C)->zero();
 
   IP.train(1, {A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
 
   auto check = [&](Variable *var, Tensor *t) {
     auto iH = t->getHandle<>();
 
-    auto analyticalGradsH = IP.getGradHandle(var);
+    auto analyticalGradsH = IP.getGrad(var)->getHandle();
 
     float delta = 0.001;
     for (size_t i = 0; i < numDim; i++) {

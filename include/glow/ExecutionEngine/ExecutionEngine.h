@@ -60,11 +60,11 @@ public:
   void train(size_t iterations, llvm::ArrayRef<Variable *> vars,
              llvm::ArrayRef<Tensor *> inputs);
 
-  /// \returns a float-handle to the tensor that is stored at \p v.
-  Handle<float> getWeightHandle(Variable *v) const;
+  /// \returns a pointer to the tensor that is stored at \p v.
+  Tensor *getWeight(const Variable *v) const;
 
-  /// \returns a float-handle to the tensor that is stored at \p v.
-  Handle<float> getGradHandle(Variable *v);
+  /// \returns a pointer to the tensor that is stored at \p v.
+  Tensor *getGrad(const Variable *v);
 
 private:
   /// Update the inputs for all variables \p vars with data from the inputs \p

@@ -41,13 +41,6 @@ public:
   /// \returns a pointer to the gradient tensor that matches \p v. Notice
   /// that this API is only valid when the module is compiled in training mode.
   virtual Tensor *getGradTensor(const Variable *v) const = 0;
-
-  /// \returns a float-handle to the tensor that is stored at \p v.
-  virtual Handle<float> getWeightHandle(Variable *v) const = 0;
-
-  /// \returns a float-handle to the gradient tensor that matches \p v. Notice
-  /// that this API is only valid when the module is compiled in training mode.
-  virtual Handle<float> getGradHandle(Variable *v) const = 0;
 };
 
 } // namespace glow

@@ -54,16 +54,6 @@ Tensor *Interpreter::getGradTensor(const Variable *v) const {
   return getGradTensor(W);
 }
 
-Handle<float> Interpreter::getWeightHandle(Variable *v) const {
-  auto *W = M_->getWeightForNode(v);
-  return getWeightHandle(W);
-}
-
-Handle<float> Interpreter::getGradHandle(Variable *v) const {
-  auto *W = M_->getWeightForNode(v);
-  return getGradHandle(W);
-}
-
 Handle<float> Interpreter::getWeightHandle(Value *v) const {
   return getTensor(v)->getHandle<>();
 }

@@ -52,11 +52,6 @@ public:
   Tensor *getTensor(const Variable *v) const override;
 
   Tensor *getGradTensor(const Variable *v) const override;
-
-  Handle<float> getWeightHandle(Variable *v) const override;
-
-  Handle<float> getGradHandle(Variable *v) const override;
-
   /// @}
 
 private:
