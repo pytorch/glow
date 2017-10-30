@@ -111,12 +111,10 @@ void ExecutionEngine::compile(CompilationMode mode) {
   IP_->init();
 }
 
-/// \returns a float-handle to the tensor that is stored at \p v.
-Handle<float> ExecutionEngine::getWeightHandle(Variable *v) const {
-  return IP_->getWeightHandle(v);
+Tensor *ExecutionEngine::getWeight(const Variable *v) const {
+  return IP_->getTensor(v);
 }
 
-/// \returns a float-handle to the tensor that is stored at \p v.
-Handle<float> ExecutionEngine::getGradHandle(Variable *v) {
-  return IP_->getGradHandle(v);
+Tensor *ExecutionEngine::getGrad(const Variable *v) {
+  return IP_->getGradTensor(v);
 }
