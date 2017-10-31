@@ -53,11 +53,13 @@ class InstrBuilder {
   std::vector<std::string> inplaceOperands_;
 
   /// Header file stream.
-  std::ofstream &hStream;
+  std::ofstream &headerStream;
   /// CPP file stream.
-  std::ofstream &cStream;
-  /// Def file stream.
-  std::ofstream &dStream;
+  std::ofstream &cppStream;
+  /// Def-enum file stream.
+  std::ofstream &defStream;
+  /// The IRBuilder stream.
+  std::ofstream &builderStream;
 
   /// \returns the index of the operand with the name \p name. Aborts if no such
   /// name.
@@ -65,9 +67,11 @@ class InstrBuilder {
 
 public:
   InstrBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
-               const std::string &name)
-      : name_(name), hStream(H), cStream(C), dStream(D) {
-    dStream << "DEF_INSTR(" << name << "Inst, " << glow::tolower(name) << ")\n";
+               std::ofstream &B, const std::string &name)
+      : name_(name), headerStream(H), cppStream(C), defStream(D),
+        builderStream(B) {
+    defStream << "DEF_INSTR(" << name << "Inst, " << glow::tolower(name)
+              << ")\n";
   }
 
   /// Add an operand to the instruction. The name should start with a capital
@@ -133,6 +137,9 @@ public:
   /// Emit the class constructor.
   void emitCtor(std::ostream &os) const;
 
+  /// Emit the methods that make the IRBuilder.
+  void emitIRBuilderMethods(std::ostream &os) const;
+
   /// Emits the class members (the fields of the class).
   void emitClassMembers(std::ostream &os) const;
 
@@ -161,42 +168,46 @@ public:
 };
 
 class Builder {
-  std::ofstream &hStream;
-  std::ofstream &cStream;
-  std::ofstream &dStream;
+  std::ofstream &headerStream;
+  std::ofstream &cppStream;
+  std::ofstream &defStream;
+  std::ofstream &builderStream;
 
 public:
   /// Create a new top-level builder that holds the three output streams that
   /// point to the header file, cpp file and enum definition file.
-  Builder(std::ofstream &H, std::ofstream &C, std::ofstream &D)
-      : hStream(H), cStream(C), dStream(D) {
-    cStream << "#include \"glow/IR/IR.h\"\n"
-               "#include \"glow/IR/Instrs.h\"\n"
-               "#include \"glow/Base/Type.h\"\n"
-               "#include \"glow/Support/Support.h\"\n\n"
-               "using namespace glow;\n";
-    dStream
+  Builder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
+          std::ofstream &B)
+      : headerStream(H), cppStream(C), defStream(D), builderStream(B) {
+    cppStream << "#include \"glow/IR/IR.h\"\n"
+                 "#include \"glow/IR/Instrs.h\"\n"
+                 "#include \"glow/Base/Type.h\"\n"
+                 "#include \"glow/Support/Support.h\"\n\n"
+                 "using namespace glow;\n";
+    defStream
         << "#ifndef DEF_INSTR\n#error The macro DEF_INSTR was not declared.\n"
            "#endif\n#ifndef DEF_VALUE\n#error The macro DEF_VALUE was not "
            "declared.\n"
            "#endif\n";
   }
 
-  ~Builder() { dStream << "#undef DEF_INSTR\n#undef DEF_VALUE"; }
+  ~Builder() { defStream << "#undef DEF_INSTR\n#undef DEF_VALUE"; }
 
   /// Declare a new instruction and generate code for it.
   InstrBuilder newInstr(const std::string &name) {
-    return InstrBuilder(hStream, cStream, dStream, name);
+    return InstrBuilder(headerStream, cppStream, defStream, builderStream,
+                        name);
   }
 
   /// Declare the instruction in the def file but don't generate code for it.
   void declareInstr(const std::string &name) {
-    dStream << "DEF_INSTR(" << name << "Inst, " << glow::tolower(name) << ")\n";
+    defStream << "DEF_INSTR(" << name << "Inst, " << glow::tolower(name)
+              << ")\n";
   }
 
   /// Declare the value in the def file but don't generate code for it.
   void declareValue(const std::string &name) {
-    dStream << "DEF_VALUE(" << name << ", " << glow::tolower(name) << ")\n";
+    defStream << "DEF_VALUE(" << name << ", " << glow::tolower(name) << ")\n";
   }
 };
 

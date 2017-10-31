@@ -2,12 +2,14 @@
 set(HDR ${GLOW_BINARY_DIR}/AutoGenInstr.h)
 set(SRC ${GLOW_BINARY_DIR}/AutoGenInstr.cpp)
 set(DEF ${GLOW_BINARY_DIR}/AutoGenInstr.def)
+set(BLD ${GLOW_BINARY_DIR}/AutoGenIRBuilder.h)
 
 add_custom_command(OUTPUT
                     "${HDR}"
                     "${SRC}"
                     "${DEF}"
-                   COMMAND InstrGen ${HDR} ${SRC} ${DEF}
+                    "${BLD}"
+                   COMMAND InstrGen ${HDR} ${SRC} ${DEF} ${BLD}
                    DEPENDS InstrGen
                    COMMENT "InstrGen: Generating instrs." VERBATIM)
 
@@ -16,7 +18,8 @@ add_custom_command(OUTPUT
 add_library(AutoGenIR
               ${HDR}
               ${SRC}
-              ${DEF})
+              ${DEF}
+              ${BLD})
 target_link_libraries(AutoGenIR
                       PUBLIC
                         Support)

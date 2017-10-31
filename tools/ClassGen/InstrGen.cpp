@@ -5,19 +5,21 @@
 #include <iostream>
 
 int main(int argc, char **argv) {
-  if (argc != 4) {
-    std::cerr << "Usage: " << argv[0] << " output.h output.cpp output.def\n";
+  if (argc != 5) {
+    std::cerr << "Usage: " << argv[0]
+              << " header.h impl.cpp enums.def irbuilder.h\n";
     return -1;
   }
 
   std::cout << "Writing instr descriptors to:\n\t" << argv[1] << "\n\t"
-            << argv[2] << "\n\t" << argv[3] << "\n";
+            << argv[2] << "\n\t" << argv[3] << "\n\t" << argv[4] << "\n";
 
-  std::ofstream hFile(argv[1]);
-  std::ofstream cFile(argv[2]);
-  std::ofstream dFile(argv[3]);
+  std::ofstream headerStream(argv[1]);
+  std::ofstream cppStream(argv[2]);
+  std::ofstream defStream(argv[3]);
+  std::ofstream builderStream(argv[4]);
 
-  Builder BB(hFile, cFile, dFile);
+  Builder BB(headerStream, cppStream, defStream, builderStream);
 
   //===--------------------------------------------------------------------===//
   //               Memory / Buffer Management

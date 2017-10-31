@@ -52,6 +52,56 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
   os << " {}\n\n";
 }
 
+/*
+ ConvolutionInst *IRBuilder::createConvolutionInst(Value *dest, Value *src,
+ Value *filter, Value *bias,
+ size_t kernel, size_t stride,
+ size_t pad, size_t depth) {
+ auto *A = new ConvolutionInst("", dest, src, filter, bias, kernel, stride,
+ pad, depth);
+ M_->pushInstr(A);
+ return A;
+ }
+ */
+
+void InstrBuilder::emitIRBuilderMethods(std::ostream &os) const {
+  os << name_ << "Inst *create" << name_ << "Inst(llvm::StringRef name";
+
+  // Constructor non-standard parameter list:
+  for (const auto &op : extraParams_) {
+    os << ", " << op.first << " " << op.second << " ";
+  }
+
+  // The operands of the instruction class:
+  for (const auto &op : operands_) {
+    os << ", Value *" << op.first;
+  }
+
+  // Extra class members:
+  for (const auto &op : members_) {
+    os << ", " << op.first << " " << op.second;
+  }
+
+  // Initialize the base clases:
+  os << ") {\n";
+  os << "auto *A = new " << name_ << "Inst(name ";
+  // Constructor non-standard parameter list:
+  for (const auto &op : extraParams_) {
+    os << ", "
+       << " " << op.second << " ";
+  }
+  // The operands of the instruction class:
+  for (const auto &op : operands_) {
+    os << ", " << op.first;
+  }
+  // Extra class members:
+  for (const auto &op : members_) {
+    os << ", " << op.second;
+  }
+  os << ");\n";
+  os << "M_->pushInstr(A);\nreturn A;\n}\n\n";
+}
+
 void InstrBuilder::emitInplaceMethod(std::ostream &os) const {
   os << "\tbool isInplaceOp(unsigned dstIdx, unsigned srcIdx) const {\n";
   if (!inplaceOperands_.empty()) {
@@ -159,14 +209,16 @@ void InstrBuilder::emitCppMethods(std::ostream &os) const {
 }
 
 InstrBuilder::~InstrBuilder() {
-  emitClass(hStream);
-  emitCppMethods(cStream);
+  emitClass(headerStream);
+  emitCppMethods(cppStream);
+  emitIRBuilderMethods(builderStream);
 }
 
 void InstrBuilder::addGradientInstr(
     llvm::ArrayRef<llvm::StringRef> originalFields,
     llvm::ArrayRef<llvm::StringRef> gradFields) {
-  InstrBuilder GI(hStream, cStream, dStream, name_ + "Grad");
+  InstrBuilder GI(headerStream, cppStream, defStream, builderStream,
+                  name_ + "Grad");
 
   // The new 'Grad' class will have all of the fields of the current class.
   GI.ty_ = ty_;
