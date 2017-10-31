@@ -52,18 +52,6 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
   os << " {}\n\n";
 }
 
-/*
- ConvolutionInst *IRBuilder::createConvolutionInst(Value *dest, Value *src,
- Value *filter, Value *bias,
- size_t kernel, size_t stride,
- size_t pad, size_t depth) {
- auto *A = new ConvolutionInst("", dest, src, filter, bias, kernel, stride,
- pad, depth);
- M_->pushInstr(A);
- return A;
- }
- */
-
 void InstrBuilder::emitIRBuilderMethods(std::ostream &os) const {
   os << name_ << "Inst *create" << name_ << "Inst(llvm::StringRef name";
 
