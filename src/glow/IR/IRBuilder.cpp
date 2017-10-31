@@ -10,7 +10,7 @@ IRBuilder::~IRBuilder() { deallocateActiveInstrs(); }
 
 void IRBuilder::deallocateActiveInstrs() {
   for (auto *A : activeAllocs_) {
-    createDeallocActivationInst(A);
+    createDeallocActivationInst("dealloc", A);
   }
 
   activeAllocs_.clear();
@@ -32,11 +32,11 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, Value *filter,
   auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
 
   std::vector<size_t> outDims = {idim.n, outSz.first, outSz.second, depth};
+  auto TR = M_->getGraph()->uniqueType(ElemKind::FloatTy, outDims);
+  Value *dest = createAllocActivationInst("conv.res", TR);
 
-  Value *dest = createAllocActivationInst(ElemKind::FloatTy, outDims);
-
-  return createConvolutionInst(dest, input, filter, bias, kernel, stride, pad,
-                               depth);
+  return createConvolutionInst("conv", dest, input, filter, bias, kernel,
+                               stride, pad, depth);
 }
 
 PoolMaxInst *IRBuilder::createPoolMaxOp(Value *input, size_t kernel,
@@ -49,13 +49,14 @@ PoolMaxInst *IRBuilder::createPoolMaxOp(Value *input, size_t kernel,
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
-  Value *srcXY = createAllocActivationInst(
-      ElemKind::IndexTy, {idim.n, outSz.first, outSz.second, idim.c, 2},
-      "srcXY");
-  Value *dest = createAllocActivationInst(
-      ElemKind::FloatTy, {idim.n, outSz.first, outSz.second, idim.c});
+  Value *srcXY =
+      createAllocActivationInst("srcXY", ElemKind::IndexTy,
+                                {idim.n, outSz.first, outSz.second, idim.c, 2});
+  Value *dest =
+      createAllocActivationInst("pool.res", ElemKind::FloatTy,
+                                {idim.n, outSz.first, outSz.second, idim.c});
 
-  return createPoolMaxInst(dest, input, srcXY, kernel, stride, pad);
+  return createPoolMaxInst("pool", dest, input, srcXY, kernel, stride, pad);
 }
 
 PoolAvgInst *IRBuilder::createPoolAvgOp(Value *input, size_t kernel,
@@ -66,10 +67,11 @@ PoolAvgInst *IRBuilder::createPoolAvgOp(Value *input, size_t kernel,
 
   auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
 
-  Value *dest = createAllocActivationInst(
-      ElemKind::FloatTy, {idim.n, outSz.first, outSz.second, idim.c});
+  Value *dest =
+      createAllocActivationInst("pool.res", ElemKind::FloatTy,
+                                {idim.n, outSz.first, outSz.second, idim.c});
 
-  return createPoolAvgInst(dest, input, kernel, stride, pad);
+  return createPoolAvgInst("pool", dest, input, kernel, stride, pad);
 }
 
 FullyConnectedInst *IRBuilder::createFullyConnectedOp(Value *input,
@@ -79,42 +81,43 @@ FullyConnectedInst *IRBuilder::createFullyConnectedOp(Value *input,
   TypeRef T = input->getType();
   auto idim = flattenCdr(input->dims());
 
-  auto *dest =
-      createAllocActivationInst(T->getElementType(), {idim.first, outDepth});
+  auto *dest = createAllocActivationInst("fcres", T->getElementType(),
+                                         {idim.first, outDepth});
 
-  return createFullyConnectedInst(dest, input, filter, bias, outDepth);
+  return createFullyConnectedInst("fc", dest, input, filter, bias, outDepth);
 }
 
 ReluInst *IRBuilder::createRELUOp(Value *input) {
-  auto *res = createAllocActivationInst(input->getType());
-  return createReluInst(res, input);
+  auto *res = createAllocActivationInst("relu.res", input->getType());
+  return createReluInst("relu", res, input);
 }
 
 SigmoidInst *IRBuilder::createSigmoidOp(Value *input) {
-  auto *res = createAllocActivationInst(input->getType());
-  return createSigmoidInst(res, input);
+  auto *res = createAllocActivationInst("sigmoid.res", input->getType());
+  return createSigmoidInst("sigmoid", res, input);
 }
 
 TanhInst *IRBuilder::createTanhOp(Value *input) {
-  auto *res = createAllocActivationInst(input->getType());
-  return createTanhInst(res, input);
+  auto *res = createAllocActivationInst("tanh.res", input->getType());
+  return createTanhInst("tanh", res, input);
 }
 
 SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input, Value *selected) {
-  auto *res = createAllocActivationInst(input->getType());
-  auto *E = createAllocActivationInst(input->getType(), "e_cache");
-  return createSoftMaxInst(res, input, E, selected);
+  auto *res = createAllocActivationInst("softmax.res", input->getType());
+  auto *E = createAllocActivationInst("e_cache", input->getType());
+  return createSoftMaxInst("softmax", res, input, E, selected);
 }
 
 RegressionInst *IRBuilder::createRegressionOp(Value *input, Value *expected) {
-  auto *res = createAllocActivationInst(input->getType());
-  return createRegressionInst(res, input, expected);
+  auto *res = createAllocActivationInst("regrs.res", input->getType());
+  return createRegressionInst("regrs", res, input, expected);
 }
 
 ReshapeInst *IRBuilder::createReshapeOp(Value *input,
                                         llvm::ArrayRef<size_t> shape) {
-  auto *res = createAllocActivationInst(input->getElementType(), shape);
-  return createReshapeInst(res, input, shape);
+  auto *res =
+      createAllocActivationInst("reshape.res", input->getElementType(), shape);
+  return createReshapeInst("reshape", res, input, shape);
 }
 
 TransposeInst *IRBuilder::createTransposeOp(Value *input,
@@ -125,8 +128,9 @@ TransposeInst *IRBuilder::createTransposeOp(Value *input,
     shape.push_back(dims[shuffle[i]]);
   }
 
-  auto *res = createAllocActivationInst(input->getElementType(), shape);
-  return createTransposeInst(res, input, shuffle);
+  auto *res =
+      createAllocActivationInst("transp.res", input->getElementType(), shape);
+  return createTransposeInst("transp", res, input, shuffle);
 }
 
 ConcatInst *IRBuilder::createConcatOp(Value *LHS, Value *RHS,
@@ -139,182 +143,56 @@ ConcatInst *IRBuilder::createConcatOp(Value *LHS, Value *RHS,
   // increase the size of the tensor along this dimension.
   shape[dimension] *= 2;
 
-  auto *res = createAllocActivationInst(LHS->getElementType(), shape);
-  return createConcatInst(res, LHS, RHS, dimension);
+  auto *res =
+      createAllocActivationInst("concat.res", LHS->getElementType(), shape);
+  return createConcatInst("concat", res, LHS, RHS, dimension);
 }
 
 BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(
     Value *input, Value *beta, Value *gamma, Value *mean, Value *var,
     size_t channelIdx, float epsilon, float momentum) {
   // The output tensor is of the same shape as the input tensor.
-  auto *dest = createAllocActivationInst(input->getType());
+  auto *dest = createAllocActivationInst("BN.res", input->getType());
 
-  return createBatchNormalizationInst(dest, input, gamma, beta, mean, var,
+  return createBatchNormalizationInst("BN", dest, input, gamma, beta, mean, var,
                                       channelIdx, epsilon, momentum);
 }
 
 LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationOp(
     Value *input, size_t halfWindowSize, float alpha, float beta, float k) {
   auto Ty = input->getType();
-  auto *scale = createAllocActivationInst(Ty, "scale");
+  auto *scale = createAllocActivationInst("scale", Ty);
 
   // The output tensor is of the same shape as the input tensor.
-  auto *res = createAllocActivationInst(Ty);
-  return createLocalResponseNormalizationInst(input, res, scale, halfWindowSize,
-                                              alpha, beta, k);
+  auto *res = createAllocActivationInst("LRN.res", Ty);
+  return createLocalResponseNormalizationInst("LRN", input, res, scale,
+                                              halfWindowSize, alpha, beta, k);
 }
 
 ElementAddInst *IRBuilder::createElementAddOp(Value *LHS, Value *RHS) {
   assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
-  auto *res = createAllocActivationInst(LHS->getType());
-  return createElementAddInst(res, LHS, RHS);
+  auto *res = createAllocActivationInst("add.res", LHS->getType());
+  return createElementAddInst("add", res, LHS, RHS);
 }
 
 ElementMulInst *IRBuilder::createElementMulOp(Value *LHS, Value *RHS) {
   assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
-  auto *res = createAllocActivationInst(LHS->getType());
-  return createElementMulInst(res, LHS, RHS);
+  auto *res = createAllocActivationInst("mul.res", LHS->getType());
+  return createElementMulInst("mul", res, LHS, RHS);
 }
 
 Value *IRBuilder::createReturnOp(Value *input) {
   auto *W = createWeightVar(input->getType(), "result",
                             WeightVar::MutabilityKind::Mutable);
-  createCopyInst(W, input);
+  createCopyInst("return", W, input);
   return W;
 }
 
 //===----------------------------------------------------------------------===//
 //                     Low level instructions.
 //===----------------------------------------------------------------------===//
-
-CopyInst *IRBuilder::createCopyInst(Value *dest, Value *src) {
-  auto *A = new CopyInst("", dest, src);
-  M_->pushInstr(A);
-  return A;
-}
-
-ConvolutionInst *IRBuilder::createConvolutionInst(Value *dest, Value *src,
-                                                  Value *filter, Value *bias,
-                                                  size_t kernel, size_t stride,
-                                                  size_t pad, size_t depth) {
-  auto *A = new ConvolutionInst("", dest, src, filter, bias, kernel, stride,
-                                pad, depth);
-  M_->pushInstr(A);
-  return A;
-}
-
-PoolMaxInst *IRBuilder::createPoolMaxInst(Value *dest, Value *src, Value *srcXY,
-                                          size_t kernel, size_t stride,
-                                          size_t pad) {
-  auto *A = new PoolMaxInst("", dest, src, srcXY, kernel, stride, pad);
-  M_->pushInstr(A);
-  return A;
-}
-
-PoolAvgInst *IRBuilder::createPoolAvgInst(Value *dest, Value *src,
-                                          size_t kernel, size_t stride,
-                                          size_t pad) {
-  auto *A = new PoolAvgInst("", dest, src, kernel, stride, pad);
-  M_->pushInstr(A);
-  return A;
-}
-
-FullyConnectedInst *IRBuilder::createFullyConnectedInst(Value *dest, Value *src,
-                                                        Value *filter,
-                                                        Value *bias,
-                                                        size_t depth) {
-  auto *A = new FullyConnectedInst("", dest, src, filter, bias, depth);
-  M_->pushInstr(A);
-  return A;
-}
-
-ReluInst *IRBuilder::createReluInst(Value *dest, Value *src) {
-  auto *A = new ReluInst("", dest, src);
-  M_->pushInstr(A);
-  return A;
-}
-
-SigmoidInst *IRBuilder::createSigmoidInst(Value *dest, Value *src) {
-  auto *A = new SigmoidInst("", dest, src);
-  M_->pushInstr(A);
-  return A;
-}
-
-TanhInst *IRBuilder::createTanhInst(Value *dest, Value *src) {
-  auto *A = new TanhInst("", dest, src);
-  M_->pushInstr(A);
-  return A;
-}
-
-SoftMaxInst *IRBuilder::createSoftMaxInst(Value *dest, Value *src, Value *E,
-                                          Value *selected) {
-  auto *A = new SoftMaxInst("", dest, src, E, selected);
-  M_->pushInstr(A);
-  return A;
-}
-
-RegressionInst *IRBuilder::createRegressionInst(Value *dest, Value *src,
-                                                Value *expected) {
-  auto *A = new RegressionInst("", dest, src, expected);
-  M_->pushInstr(A);
-  return A;
-}
-
-ReshapeInst *IRBuilder::createReshapeInst(Value *dest, Value *src,
-                                          llvm::ArrayRef<size_t> shape) {
-  auto *A = new ReshapeInst("", dest, src, shape.vec());
-  M_->pushInstr(A);
-  return A;
-}
-
-TransposeInst *
-IRBuilder::createTransposeInst(Value *dest, Value *src,
-                               llvm::ArrayRef<unsigned> shuffle) {
-  auto *A = new TransposeInst("", dest, src, shuffle.vec());
-  M_->pushInstr(A);
-  return A;
-}
-
-ConcatInst *IRBuilder::createConcatInst(Value *dest, Value *LHS, Value *RHS,
-                                        size_t dim) {
-  auto *A = new ConcatInst("", dest, LHS, RHS, dim);
-  M_->pushInstr(A);
-  return A;
-}
-
-BatchNormalizationInst *IRBuilder::createBatchNormalizationInst(
-    Value *dest, Value *src, Value *scale, Value *bias, Value *mean, Value *var,
-    size_t channelIdx, float epsilon, float momentum) {
-  auto *A = new BatchNormalizationInst("", dest, src, scale, bias, mean, var,
-                                       channelIdx, epsilon, momentum);
-  M_->pushInstr(A);
-  return A;
-}
-
-LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationInst(
-    Value *dest, Value *src, Value *scale, size_t halfWindowSize, float alpha,
-    float beta, float k) {
-  auto *A = new LocalResponseNormalizationInst("", dest, src, scale,
-                                               halfWindowSize, alpha, beta, k);
-  M_->pushInstr(A);
-  return A;
-}
-
-ElementAddInst *IRBuilder::createElementAddInst(Value *dest, Value *LHS,
-                                                Value *RHS) {
-  auto *A = new ElementAddInst("", dest, LHS, RHS);
-  M_->pushInstr(A);
-  return A;
-}
-
-ElementMulInst *IRBuilder::createElementMulInst(Value *dest, Value *LHS,
-                                                Value *RHS) {
-  auto *A = new ElementMulInst("", dest, LHS, RHS);
-  M_->pushInstr(A);
-  return A;
-}
 
 WeightVar *IRBuilder::createWeightVar(ElemKind elemTy,
                                       llvm::ArrayRef<size_t> dims,
@@ -329,25 +207,5 @@ WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
   auto *A = new WeightVar(name, T, k);
   M_->getWeights().push_back(A);
   A->setName(name);
-  return A;
-}
-
-AllocActivationInst *
-IRBuilder::createAllocActivationInst(TypeRef T, llvm::StringRef name) {
-  auto *A = new AllocActivationInst(name, T);
-  M_->pushInstr(A);
-  // Add this instruction to the list of open allocations.
-  activeAllocs_.push_back(A);
-  return A;
-}
-AllocActivationInst *IRBuilder::createAllocActivationInst(
-    ElemKind elemTy, llvm::ArrayRef<size_t> dims, llvm::StringRef name) {
-  auto T = M_->getGraph()->uniqueType(elemTy, dims);
-  return createAllocActivationInst(T, name);
-}
-
-DeallocActivationInst *IRBuilder::createDeallocActivationInst(Value *src) {
-  auto *A = new DeallocActivationInst("", src);
-  M_->pushInstr(A);
   return A;
 }

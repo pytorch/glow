@@ -51,7 +51,7 @@ TEST(IR, basicUseList) {
     auto *V2 = builder.createWeightVar(ElemKind::FloatTy, {320, 200});
 
     // Check that we can construct a new instruction.
-    auto *CC = builder.createCopyInst(V1, V2);
+    auto *CC = builder.createCopyInst("C", V1, V2);
     CC->verifyUseList();
 
     // Check the getOperand and setOperand functions.
@@ -104,19 +104,20 @@ TEST(IR, allInstrs) {
     E0->setName("expected");
     XY->setName("srcXY");
 
-    builder.createCopyInst(I1, I0);
-    builder.createConvolutionInst(I3, I1, F0, B0, 7, 2, 3, 64);
-    builder.createPoolMaxInst(I4, I0, XY, 7, 2, 3);
-    builder.createFullyConnectedInst(I5, I0, F1, B1, 32);
-    builder.createReluInst(I1, I0);
-    builder.createSigmoidInst(I1, I0);
-    builder.createTanhInst(I1, I0);
-    builder.createSoftMaxInst(I1, I0, I0, E0);
-    builder.createRegressionInst(E0, E0, E0);
-    builder.createTransposeInst(I2, I0, {0, 3, 1, 2});
-    builder.createConcatInst(I6, I3, I3, 0);
-    builder.createBatchNormalizationInst(I1, I0, S0, S0, S0, S0, 3, 0.01, 0.9);
-    builder.createElementMulInst(I1, I0, I0);
+    builder.createCopyInst("", I1, I0);
+    builder.createConvolutionInst("", I3, I1, F0, B0, 7, 2, 3, 64);
+    builder.createPoolMaxInst("", I4, I0, XY, 7, 2, 3);
+    builder.createFullyConnectedInst("", I5, I0, F1, B1, 32);
+    builder.createReluInst("", I1, I0);
+    builder.createSigmoidInst("", I1, I0);
+    builder.createTanhInst("", I1, I0);
+    builder.createSoftMaxInst("", I1, I0, I0, E0);
+    builder.createRegressionInst("", E0, E0, E0);
+    builder.createTransposeInst("", I2, I0, {0, 3, 1, 2});
+    builder.createConcatInst("", I6, I3, I3, 0);
+    builder.createBatchNormalizationInst("", I1, I0, S0, S0, S0, S0, 3, 0.01,
+                                         0.9);
+    builder.createElementMulInst("", I1, I0, I0);
   }
   M.verify();
 }

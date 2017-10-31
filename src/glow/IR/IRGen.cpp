@@ -213,7 +213,7 @@ public:
       auto *R = cast<SaveNode>(N);
       auto *src = valueForNode(R->getInput());
       auto *dest = valueForNode(R->getOutput());
-      auto *V = builder_.createCopyInst(dest, src);
+      auto *V = builder_.createCopyInst("save", dest, src);
       V->setName(N->getName());
       break;
     }

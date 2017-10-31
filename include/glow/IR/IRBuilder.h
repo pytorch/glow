@@ -89,55 +89,6 @@ public:
 
   /// @name Low-level, instruction-level IRBuilder.
   ///@{
-  CopyInst *createCopyInst(Value *dest, Value *src);
-
-  ConvolutionInst *createConvolutionInst(Value *dest, Value *src, Value *filter,
-                                         Value *bias, size_t kernel,
-                                         size_t stride, size_t pad,
-                                         size_t depth);
-
-  PoolAvgInst *createPoolAvgInst(Value *dest, Value *src, size_t kernel,
-                                 size_t stride, size_t pad);
-
-  PoolMaxInst *createPoolMaxInst(Value *dest, Value *src, Value *srcXY,
-                                 size_t kernel, size_t stride, size_t pad);
-
-  FullyConnectedInst *createFullyConnectedInst(Value *dest, Value *src,
-                                               Value *filter, Value *bias,
-                                               size_t depth);
-
-  ReluInst *createReluInst(Value *dest, Value *src);
-
-  SigmoidInst *createSigmoidInst(Value *dest, Value *src);
-
-  TanhInst *createTanhInst(Value *dest, Value *src);
-
-  SoftMaxInst *createSoftMaxInst(Value *dest, Value *src, Value *E,
-                                 Value *selected);
-
-  RegressionInst *createRegressionInst(Value *dest, Value *src,
-                                       Value *expected);
-
-  ReshapeInst *createReshapeInst(Value *dest, Value *src,
-                                 llvm::ArrayRef<size_t> shape);
-
-  TransposeInst *createTransposeInst(Value *dest, Value *src,
-                                     llvm::ArrayRef<unsigned> shuffle);
-
-  ConcatInst *createConcatInst(Value *dest, Value *LHS, Value *RHS, size_t dim);
-
-  BatchNormalizationInst *createBatchNormalizationInst(
-      Value *dest, Value *src, Value *scale, Value *bias, Value *mean,
-      Value *var, size_t channelIdx, float epsilon, float momentum);
-
-  LocalResponseNormalizationInst *
-  createLocalResponseNormalizationInst(Value *dest, Value *src, Value *scale,
-                                       size_t halfWindowSize, float alpha,
-                                       float beta, float k);
-
-  ElementAddInst *createElementAddInst(Value *dest, Value *LHS, Value *RHS);
-
-  ElementMulInst *createElementMulInst(Value *dest, Value *LHS, Value *RHS);
 
   WeightVar *createWeightVar(TypeRef T, llvm::StringRef name = "",
                              MutabilityKind k = MutabilityKind::Mutable);
@@ -146,13 +97,15 @@ public:
                              llvm::StringRef name = "",
                              MutabilityKind k = MutabilityKind::Mutable);
 
-  AllocActivationInst *createAllocActivationInst(TypeRef T,
-                                                 llvm::StringRef name = "");
-  AllocActivationInst *createAllocActivationInst(ElemKind elemTy,
-                                                 llvm::ArrayRef<size_t> dims,
-                                                 llvm::StringRef name = "");
+  AllocActivationInst *createAllocActivationInst(llvm::StringRef name,
+                                                 ElemKind elemTy,
+                                                 llvm::ArrayRef<size_t> dims) {
+    auto T = M_->getGraph()->uniqueType(elemTy, dims);
+    return createAllocActivationInst(name, T);
+  }
 
-  DeallocActivationInst *createDeallocActivationInst(Value *src);
+  // Import the auto-generated instruction creation methods:
+#include "AutoGenIRBuilder.h"
 
   ///@}
 
