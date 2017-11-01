@@ -11,10 +11,20 @@
 
 using namespace glow;
 
-ExecutionEngine::ExecutionEngine() {
+ExecutionEngine::ExecutionEngine(ExecutorKind execKind) {
   G_ = std::unique_ptr<Graph>(new Graph());
   M_ = std::unique_ptr<Module>(new Module(&*G_));
-  IP_ = std::unique_ptr<Interpreter>(new Interpreter(&*M_));
+
+  switch (execKind) {
+  case ExecutorKind::Interpreter:
+    IP_ = std::unique_ptr<Interpreter>(new Interpreter(&*M_));
+    break;
+
+  default:
+    // Unknown execution backend.
+    glow_unreachable();
+    break;
+  }
 }
 
 ExecutionEngine::~ExecutionEngine() = default;
