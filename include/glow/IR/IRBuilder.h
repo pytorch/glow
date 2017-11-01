@@ -17,10 +17,6 @@ class IRBuilder {
   /// The module that we are building.
   Module *M_;
 
-  /// A list of allocated buffers that need to be deallocated at the end of the
-  /// program that we are constructing.
-  std::vector<AllocActivationInst *> activeAllocs_;
-
 public:
   explicit IRBuilder(Module *M) : M_(M) {}
 
