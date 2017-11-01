@@ -5,15 +5,36 @@
 #include "glow/IR/IRBuilder.h"
 
 using namespace glow;
+using llvm::dyn_cast;
+using llvm::isa;
 
 IRBuilder::~IRBuilder() { deallocateActiveInstrs(); }
 
-void IRBuilder::deallocateActiveInstrs() {
-  for (auto *A : activeAllocs_) {
-    createDeallocActivationInst("dealloc", A);
+static bool hasDeallocas(AllocActivationInst *AA) {
+  for (auto &U : AA->getUsers()) {
+    if (isa<DeallocActivationInst>(U.get())) {
+      return true;
+    }
   }
+  return false;
+}
 
-  activeAllocs_.clear();
+void IRBuilder::deallocateActiveInstrs() {
+  auto &instrs = M_->getInstrs();
+  // Inserts dealloc instructions for all instructions that don't have
+  // 'dealloc' as one of their users.
+  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
+    auto AA = dyn_cast<AllocActivationInst>(*it);
+    if (!AA) {
+      continue;
+    }
+
+    if (hasDeallocas(AA)) {
+      continue;
+    }
+
+    createDeallocActivationInst("dealloc", AA);
+  }
 }
 
 //===----------------------------------------------------------------------===//
