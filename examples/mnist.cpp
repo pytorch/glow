@@ -117,7 +117,7 @@ void testMNIST() {
   // Check how many digits out of ten we can classify correctly.
   int rightAnswer = 0;
 
-  Tensor sample(ElemKind::FloatTy, {minibatchSize, 1, 28, 28});
+  Tensor sample(ElemKind::FloatTy, {minibatchSize, 28, 28, 1});
   sample.copyConsecutiveSlices(&imageInputs, 0);
   EE.infer({A}, {&sample});
 
@@ -127,13 +127,12 @@ void testMNIST() {
     auto T = res.getHandle<>().extractSlice(iter);
     size_t guess = T.getHandle<>().maxArg();
 
-    size_t correct = LIH.at(iter);
+    size_t correct = LIH.at({iter, 0});
     rightAnswer += (guess == correct);
 
     auto I = sample.getHandle<>().extractSlice(iter);
-    auto J = I.getHandle<>().extractSlice(0);
 
-    J.getHandle<>().dumpAscii("MNIST Input");
+    I.getHandle<>().dumpAscii("MNIST Input");
     std::cout << "Expected: " << correct << " Guessed: " << guess << "\n";
 
     T.getHandle<>().dump("", "\n");
