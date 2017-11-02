@@ -410,16 +410,28 @@ public:
         std::cout << "\n";
       }
     } else if (d.size() == 3) {
-      for (size_t z = 0; z < d[2]; z++) {
-        std::cout << "\n";
+      // Print monochrome (one-color channel) tensors:
+      if (d[2] == 1) {
         for (size_t y = 0; y < d[1]; y++) {
           for (size_t x = 0; x < d[0]; x++) {
-            auto val = at({x, y, z});
+            auto val = at({x, y, 0});
             std::cout << valueToChar(val);
           }
           std::cout << "\n";
         }
+      } else {
+        for (size_t z = 0; z < d[2]; z++) {
+          std::cout << "\n";
+          for (size_t y = 0; y < d[1]; y++) {
+            for (size_t x = 0; x < d[0]; x++) {
+              auto val = at({x, y, z});
+              std::cout << valueToChar(val);
+            }
+            std::cout << "\n";
+          }
+        }
       }
+
     } else {
       assert(false && "Invalid tensor size");
     }
