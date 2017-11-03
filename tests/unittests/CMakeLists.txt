@@ -13,7 +13,7 @@ add_executable(IRgradCheckTest
                  IRGradCheck.cpp)
 target_link_libraries(IRgradCheckTest
                       PRIVATE
-                        Interpreter
+                        Backends
                         ExecutionEngine
                         IR
                         gtest
@@ -24,7 +24,7 @@ add_executable(IRTest
                  IRTest.cpp)
 target_link_libraries(IRTest
                       PRIVATE
-                        Interpreter
+                        Backends
                         IR
                         gtest
                         gtest_main)
@@ -34,7 +34,7 @@ add_executable(InterpreterTest
                  InterpreterTest.cpp)
 target_link_libraries(InterpreterTest
                       PRIVATE
-                        Interpreter
+                        Backends
                         IR
                         ExecutionEngine
                         gtest
@@ -47,7 +47,7 @@ target_link_libraries(GraphTest
                       PRIVATE
                         Graph
                         IR
-                        Interpreter
+                        Backends
                         gtest
                         gtest_main)
 add_test(GraphTest ${GLOW_BINARY_DIR}/tests/GraphTest)
@@ -59,7 +59,7 @@ target_link_libraries(GraphOptz
                       PRIVATE
                         Graph
                         IR
-                        Interpreter
+                        Backends
                         gtest
                         gtest_main)
 add_test(GraphOptz ${GLOW_BINARY_DIR}/tests/GraphOptz)

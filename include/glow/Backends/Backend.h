@@ -1,12 +1,6 @@
 #ifndef GLOW_BASE_BACKEND_H
 #define GLOW_BASE_BACKEND_H
 
-#include "glow/Base/Tensor.h"
-
-#include "llvm/ADT/ArrayRef.h"
-
-#include <unordered_map>
-
 namespace glow {
 
 class Context;
@@ -14,6 +8,11 @@ class Module;
 class Value;
 class Tensor;
 class Variable;
+
+enum class BackendKind {
+  Interpreter, // Execute the network with the built-in interpreter.
+  None,
+};
 
 // This is the interface that glow backends need to implement.
 class Backend {
@@ -42,6 +41,9 @@ public:
   /// that this API is only valid when the module is compiled in training mode.
   virtual Tensor *getGradTensor(const Variable *v) const = 0;
 };
+
+/// Create a backend of kind \p kind, to run the module \p M.
+Backend *createBackend(BackendKind kind, Module *M);
 
 } // namespace glow
 
