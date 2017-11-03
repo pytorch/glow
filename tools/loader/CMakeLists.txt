@@ -3,7 +3,7 @@ add_executable(loader
                  loader.cpp)
 target_link_libraries(loader
                       PRIVATE
-                        Interpreter
+                        Backends
                         Importer
                         ExecutionEngine
                         IR

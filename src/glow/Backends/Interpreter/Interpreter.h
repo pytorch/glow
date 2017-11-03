@@ -1,7 +1,7 @@
 #ifndef GLOW_INTERPRETER_INTERPRETER_H
 #define GLOW_INTERPRETER_INTERPRETER_H
 
-#include "glow/Base/Backend.h"
+#include "glow/Backends/Backend.h"
 #include "glow/Base/Tensor.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -92,6 +92,9 @@ private:
   void fwdBatchNormalizationInst_train(const BatchNormalizationInst *I);
   ///@}
 };
+
+/// Create a new instance of the Interpreter backend.
+inline Backend *createInterpreter(Module *M) { return new Interpreter(M); }
 
 } // namespace glow
 

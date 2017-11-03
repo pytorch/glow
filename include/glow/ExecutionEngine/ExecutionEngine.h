@@ -1,7 +1,7 @@
 #ifndef GLOW_EXECUTIONENGINE_EXECUTIONENGINE_H
 #define GLOW_EXECUTIONENGINE_EXECUTIONENGINE_H
 
-#include "glow/Base/Backend.h"
+#include "glow/Backends/Backend.h"
 #include "glow/Base/Train.h"
 #include "glow/Optimizer/Optimizer.h"
 
@@ -19,11 +19,6 @@ class Variable;
 class Tensor;
 class Value;
 
-enum class ExecutorKind {
-  Interpreter, // Execute the network with the built-in interpreter.
-  None,
-};
-
 /// This is the ExecutionEngine. It owns the Graph, the IR, and the backends.
 /// The Graph, Module, etc in this class are defined as pointers, in order to
 /// erase the type and prevent the internal types from leaking out to the
@@ -39,7 +34,7 @@ class ExecutionEngine final {
   Trainer trainer_{};
 
 public:
-  ExecutionEngine(ExecutorKind execKind = ExecutorKind::Interpreter);
+  ExecutionEngine(BackendKind backendKind = BackendKind::Interpreter);
 
   ~ExecutionEngine();
 

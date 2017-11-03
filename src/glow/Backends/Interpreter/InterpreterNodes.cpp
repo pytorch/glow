@@ -1,6 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
-#include "glow/Backends/Interpreter/Interpreter.h"
+#include "Interpreter.h"
+
 #include "glow/IR/Instrs.h"
 
 #include "llvm/Support/Casting.h"
