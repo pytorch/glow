@@ -11,6 +11,7 @@ class Variable;
 
 enum class BackendKind {
   Interpreter, // Execute the network with the built-in interpreter.
+  OpenCL,
   None,
 };
 
