@@ -11,11 +11,25 @@
 
 using namespace glow;
 
+using llvm::dyn_cast;
+using llvm::isa;
+
 Backend *glow::createOCLBackend(Module *M) { return new OCLBackend(M); }
 
 const char *ReluSrc =
-    "__kernel void op(__global float* dest, __global float* src)"
-    "{ size_t i = get_global_id(0); dest[i] = fmax(src[i], 0); }";
+    "__kernel void op(__global float* dest, __global float* src) {"
+    " size_t i = get_global_id(0); dest[i] = fmax(src[i], 0); }";
+
+const char *SigmoidSrc =
+    "__kernel void op(__global float* dest, __global float* src) {"
+    " size_t i = get_global_id(0); dest[i] = 1 / (1 + exp(-src[i])); }";
+
+const char *TanhSrc =
+    "__kernel void op(__global float* dest, __global float* src) { "
+    " size_t i = get_global_id(0); float val = src[i]; float exp_val = "
+    "exp(val); float exp_neg_val = exp(-val);"
+    " dest[i] = (exp_val - exp_neg_val) / (exp_val + exp_neg_val); }";
+
 const char *RegressionSrc =
     "__kernel void op(__global float* dest, __global float* src)"
     "{ size_t i = get_global_id(0); dest[i] = src[i]; }";
@@ -26,6 +40,8 @@ using kernelSrcEnum = struct {
   const char *src;
 };
 kernelSrcEnum shaders[] = {{Kind::ReluInstKind, ReluSrc},
+                           {Kind::SigmoidInstKind, SigmoidSrc},
+                           {Kind::TanhInstKind, TanhSrc},
                            {Kind::RegressionInstKind, RegressionSrc}};
 
 static void dumpCompileLog(cl_device_id dev, cl_program prog) {
@@ -107,22 +123,24 @@ void OCLBackend::doForwardPass(bool isTrain) {
       continue;
     }
 
-    if (auto *R = llvm::dyn_cast<ReluInst>(I)) {
-      cl_program program = programs_[Kinded::Kind::ReluInstKind];
+    if (isa<ReluInst>(I) || isa<SigmoidInst>(I) || isa<TanhInst>(I) ||
+        isa<ReluInst>(I)) {
+      cl_program program = programs_[I->getKind()];
 
       cl_int err = CL_SUCCESS;
       cl_kernel kernel = clCreateKernel(program, "op", &err);
       GLOW_ASSERT((kernel && err == CL_SUCCESS) && "clCreateKernel Failed.");
 
-      auto *dest = tensors_[R->getDest()];
-      auto *src = tensors_[R->getSrc()];
-
       err = CL_SUCCESS;
-      err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &dest);
-      err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &src);
+      for (unsigned arg = 0, e = I->getNumOperands(); arg < e; arg++) {
+        auto *op = tensors_[I->getOperand(arg).first];
+        err |= clSetKernelArg(kernel, arg, sizeof(cl_mem), &op);
+      }
       GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
 
-      size_t global = R->getDest()->getType()->size();
+      // Figure out how many element-wise elements are there to process:
+      size_t global = I->getOperand(0).first->getType()->size();
+      // Figure out the size of the workgroup.
       size_t local;
       err =
           clGetKernelWorkGroupInfo(kernel, deviceId_, CL_KERNEL_WORK_GROUP_SIZE,
@@ -140,13 +158,14 @@ void OCLBackend::doForwardPass(bool isTrain) {
     if (auto *C = llvm::dyn_cast<CopyInst>(I)) {
       auto *dest = tensors_[C->getDest()];
       auto *src = tensors_[C->getSrc()];
-      size_t size = C->getDest()->getType()->size();
-      clFinish(commands_);
+      size_t sizeInBytes = C->getDest()->getType()->getSizeInBytes();
       cl_int err =
-          clEnqueueCopyBuffer(commands_, src, dest, 0, 0, size, 0, 0, 0);
+          clEnqueueCopyBuffer(commands_, src, dest, 0, 0, sizeInBytes, 0, 0, 0);
       GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueCopyBuffer.");
       continue;
     }
+
+    assert(false && "Unexpected node");
   }
 
   clFinish(commands_);
@@ -182,11 +201,12 @@ void OCLBackend::copyWeightsFromDevice() {
 
     Tensor *T = externalTensors_[it.first];
     size_t sizeInBytes = T->getType().getSizeInBytes();
+
     // Issue a non-blocking command to copy the buffer from the device.
     cl_int err =
         clEnqueueReadBuffer(commands_, it.second, CL_FALSE, 0, sizeInBytes,
                             T->getUnsafePtr(), 0, nullptr, nullptr);
-    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
+    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy from the device");
   }
   clFinish(commands_);
 }
