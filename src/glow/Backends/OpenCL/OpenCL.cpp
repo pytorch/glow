@@ -46,7 +46,6 @@ static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 #endif
 }
 
-using namespace glow;
 OCLBackend::OCLBackend(Module *M) : M_(M) {
   cl_int err =
       clGetDeviceIDs(NULL, CL_DEVICE_TYPE_DEFAULT, 1, &deviceId_, NULL);
@@ -97,12 +96,15 @@ void OCLBackend::doForwardPass(bool isTrain) {
                                  nullptr);
       assert(!tensors_.count(A) && "Allocation already made!");
       tensors_[A] = buff;
+      continue;
     }
 
     if (auto *D = llvm::dyn_cast<DeallocActivationInst>(I)) {
       auto *A = D->getAlloc();
       assert(tensors_.count(A) && "Invalid deallocation!");
+      clFinish(commands_);
       clReleaseMemObject(tensors_[A]);
+      continue;
     }
 
     if (auto *R = llvm::dyn_cast<ReluInst>(I)) {
@@ -126,18 +128,28 @@ void OCLBackend::doForwardPass(bool isTrain) {
           clGetKernelWorkGroupInfo(kernel, deviceId_, CL_KERNEL_WORK_GROUP_SIZE,
                                    sizeof(local), &local, NULL);
       GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelWorkGroupInfo.");
-
-      global = 36;
       local = std::min(local, global);
 
       err = clEnqueueNDRangeKernel(commands_, kernel, 1, NULL, &global, &local,
                                    0, NULL, NULL);
       GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
       kernels.push_back(kernel);
+      continue;
+    }
+
+    if (auto *C = llvm::dyn_cast<CopyInst>(I)) {
+      auto *dest = tensors_[C->getDest()];
+      auto *src = tensors_[C->getSrc()];
+      size_t size = C->getDest()->getType()->size();
+      clFinish(commands_);
+      cl_int err =
+          clEnqueueCopyBuffer(commands_, src, dest, 0, 0, size, 0, 0, 0);
+      GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueCopyBuffer.");
+      continue;
     }
   }
 
-  clFlush(commands_);
+  clFinish(commands_);
 
   for (auto &k : kernels) {
     clReleaseKernel(k);
@@ -158,10 +170,12 @@ void OCLBackend::copyWeightsToDevice() {
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
   }
   // Do it!
-  clFlush(commands_);
+  clFinish(commands_);
 }
 
 void OCLBackend::copyWeightsFromDevice() {
+  clFinish(commands_);
+
   for (auto it : tensors_) {
     if (!externalTensors_.count(it.first))
       continue;
@@ -174,8 +188,7 @@ void OCLBackend::copyWeightsFromDevice() {
                             T->getUnsafePtr(), 0, nullptr, nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
   }
-  // Do it!
-  clFlush(commands_);
+  clFinish(commands_);
 }
 
 void OCLBackend::registerGraphTensor(const Value *v, Tensor *t) {
