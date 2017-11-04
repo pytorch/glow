@@ -13,6 +13,8 @@
 
 using namespace glow;
 
+#if WITH_OPENCL
+
 TEST(Interpreter, interpret) {
   ExecutionEngine EE(BackendKind::OpenCL);
 
@@ -39,3 +41,5 @@ TEST(Interpreter, interpret) {
   EE.infer({input}, {&inputs});
   result->getOutput()->getHandle().dump("after", "\n");
 }
+
+#endif // WITH_OPENCL
