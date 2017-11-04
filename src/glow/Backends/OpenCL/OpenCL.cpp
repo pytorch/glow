@@ -30,6 +30,14 @@ const char *TanhSrc =
     "exp(val); float exp_neg_val = exp(-val);"
     " dest[i] = (exp_val - exp_neg_val) / (exp_val + exp_neg_val); }";
 
+const char *ElementAddSrc = "__kernel void op(__global float* dest, __global "
+                            "float* LHS, __global float* RHS) { size_t i = "
+                            "get_global_id(0); dest[i] = LHS[i] + RHS[i]; }";
+
+const char *ElementMulSrc = "__kernel void op(__global float* dest, __global "
+                            "float* LHS,  __global float* RHS) { size_t i = "
+                            "get_global_id(0); dest[i] = LHS[i] * RHS[i]; }";
+
 const char *RegressionSrc =
     "__kernel void op(__global float* dest, __global float* src)"
     "{ size_t i = get_global_id(0); dest[i] = src[i]; }";
@@ -42,6 +50,8 @@ using kernelSrcEnum = struct {
 kernelSrcEnum shaders[] = {{Kind::ReluInstKind, ReluSrc},
                            {Kind::SigmoidInstKind, SigmoidSrc},
                            {Kind::TanhInstKind, TanhSrc},
+                           {Kind::ElementAddInstKind, ElementAddSrc},
+                           {Kind::ElementMulInstKind, ElementMulSrc},
                            {Kind::RegressionInstKind, RegressionSrc}};
 
 static void dumpCompileLog(cl_device_id dev, cl_program prog) {
@@ -124,7 +134,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
     }
 
     if (isa<ReluInst>(I) || isa<SigmoidInst>(I) || isa<TanhInst>(I) ||
-        isa<ReluInst>(I)) {
+        isa<ReluInst>(I) || isa<ElementAddInst>(I) || isa<ElementMulInst>(I)) {
       cl_program program = programs_[I->getKind()];
 
       cl_int err = CL_SUCCESS;

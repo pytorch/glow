@@ -14,7 +14,7 @@
 using namespace glow;
 
 TEST(Interpreter, interpret) {
-  ExecutionEngine EE(BackendKind::Interpreter);
+  ExecutionEngine EE(BackendKind::OpenCL);
 
   Tensor inputs(ElemKind::FloatTy, {1, 6, 6});
 
@@ -26,8 +26,9 @@ TEST(Interpreter, interpret) {
   auto *S1 = G.createSigmoid("sig", RL0);
   auto *T1 = G.createTanh("tanh", S1);
   auto *RL2 = G.createRELU("relu", T1);
-
-  auto result = G.createSave("ret", RL2);
+  auto *A1 = G.createArithmetic("add", S1, RL2, ArithmeticNode::Mode::Add);
+  auto *M1 = G.createArithmetic("add", A1, T1, ArithmeticNode::Mode::Mul);
+  auto result = G.createSave("ret", M1);
 
   EE.compile(CompilationMode::Infer);
 
