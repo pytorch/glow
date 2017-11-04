@@ -193,6 +193,9 @@ public:
     return slice;
   }
 
+  /// Return the raw unsafe pointer to the tensor payload.
+  char *getUnsafePtr() const { return data_; }
+
   /// \return a new handle that points and manages this tensor.
   template <class ElemTy = float> Handle<ElemTy> getHandle();
 };

@@ -162,6 +162,9 @@ struct Type final {
   /// \return the size of the type element.
   unsigned getElementSize() const { return getElementSize(elementType_); }
 
+  /// \returns the size in bytes for this Tensor.
+  size_t getSizeInBytes() const { return getElementSize() * size(); }
+
   /// \return the size of the element \p Ty.
   static unsigned getElementSize(ElemKind Ty) {
     switch (Ty) {

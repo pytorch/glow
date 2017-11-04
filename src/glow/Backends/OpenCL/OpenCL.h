@@ -60,30 +60,16 @@ public:
   /// @}
 
 private:
+  void copyWeightsToDevice();
+
+  void copyWeightsFromDevice();
+
   /// \returns a pointer to the tensor that is saved under \p v.
   Tensor *getTensor(const Value *v) const;
-
-  /// Allocate a tensor to back the value \p v. Do not allocate anything if a
-  /// tensor is already allocated for \p v.
-  /// \returns a tensor for \p v.
-  Tensor *getOrCreateTensor(const Value *v);
-
-  /// If a tensor is allocated for \p v then delete it.
-  void deleteTensor(const Value *v);
-
-  /// \returns a float-handle to the tensor that is stored at \p v.
-  Handle<float> getWeightHandle(Value *v) const;
-
-  /// \returns a float-handle to the gradient tensor that matches \p v. Notice
-  /// that this API is only valid when the module is compiled in training mode.
-  Handle<float> getGradHandle(Value *v) const;
 
   /// \returns a pointer to the gradient tensor that matches \p v. Notice
   /// that this API is only valid when the module is compiled in training mode.
   Tensor *getGradTensor(const Value *v) const;
-
-  /// \returns True if the value \p has an associated gradient tensor.
-  bool hasGradTensor(const Value *v) const;
 };
 
 Backend *createOCLBackend(Module *M);
