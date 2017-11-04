@@ -9,6 +9,8 @@
 
 #include <unordered_map>
 
+#if WITH_OPENCL
+
 #if defined(__APPLE__) || defined(__MACOSX)
 #include "OpenCL/opencl.h"
 #else
@@ -71,6 +73,12 @@ private:
   /// that this API is only valid when the module is compiled in training mode.
   Tensor *getGradTensor(const Value *v) const;
 };
+
+} // namespace glow
+
+#endif // WITH_OPENCL
+
+namespace glow {
 
 Backend *createOCLBackend(Module *M);
 

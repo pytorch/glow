@@ -14,6 +14,8 @@ using namespace glow;
 using llvm::dyn_cast;
 using llvm::isa;
 
+#if WITH_OPENCL
+
 Backend *glow::createOCLBackend(Module *M) { return new OCLBackend(M); }
 
 const char *ReluSrc =
@@ -273,3 +275,11 @@ Tensor *OCLBackend::getTensor(const Value *v) const {
   auto ie = externalTensors_.find(v);
   return ie->second;
 }
+
+#else
+
+Backend *glow::createOCLBackend(Module *M) {
+  GLOW_ASSERT(false && "Glow is compiled without OpenCL support");
+}
+
+#endif // WITH_OPENCL

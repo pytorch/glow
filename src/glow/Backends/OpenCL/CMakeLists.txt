@@ -6,6 +6,15 @@ add_library(OpenCL
 target_link_libraries(OpenCL
                       PRIVATE
                       Base
-                      Graph
-                      OpenCL::OpenCL)
+                      Graph)
+
+if(OpenCL_FOUND)
+  target_compile_definitions(OpenCL
+                             PRIVATE
+                             WITH_OPENCL=1)
+
+  target_link_libraries(OpenCL
+                        PRIVATE
+                        OpenCL::OpenCL)
+endif()
 
