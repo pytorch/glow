@@ -88,6 +88,60 @@ OCLBackend::~OCLBackend() {
 
 void OCLBackend::doForwardPass(bool isTrain) {
   copyWeightsToDevice();
+  std::vector<cl_kernel> kernels;
+
+  for (auto &I : M_->getInstrs()) {
+    if (auto *A = llvm::dyn_cast<AllocActivationInst>(I)) {
+      auto numBytes = I->getType()->getSizeInBytes();
+      auto buff = clCreateBuffer(context_, CL_MEM_READ_WRITE, numBytes, nullptr,
+                                 nullptr);
+      assert(!tensors_.count(A) && "Allocation already made!");
+      tensors_[A] = buff;
+    }
+
+    if (auto *D = llvm::dyn_cast<DeallocActivationInst>(I)) {
+      auto *A = D->getAlloc();
+      assert(tensors_.count(A) && "Invalid deallocation!");
+      clReleaseMemObject(tensors_[A]);
+    }
+
+    if (auto *R = llvm::dyn_cast<ReluInst>(I)) {
+      cl_program program = programs_[Kinded::Kind::ReluInstKind];
+
+      cl_int err = CL_SUCCESS;
+      cl_kernel kernel = clCreateKernel(program, "op", &err);
+      GLOW_ASSERT((kernel && err == CL_SUCCESS) && "clCreateKernel Failed.");
+
+      auto *dest = tensors_[R->getDest()];
+      auto *src = tensors_[R->getSrc()];
+
+      err = CL_SUCCESS;
+      err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &dest);
+      err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &src);
+      GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
+
+      size_t global = R->getDest()->getType()->size();
+      size_t local;
+      err =
+          clGetKernelWorkGroupInfo(kernel, deviceId_, CL_KERNEL_WORK_GROUP_SIZE,
+                                   sizeof(local), &local, NULL);
+      GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelWorkGroupInfo.");
+
+      global = 36;
+      local = std::min(local, global);
+
+      err = clEnqueueNDRangeKernel(commands_, kernel, 1, NULL, &global, &local,
+                                   0, NULL, NULL);
+      GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
+      kernels.push_back(kernel);
+    }
+  }
+
+  clFlush(commands_);
+
+  for (auto &k : kernels) {
+    clReleaseKernel(k);
+  }
 
   copyWeightsFromDevice();
 }
@@ -109,7 +163,9 @@ void OCLBackend::copyWeightsToDevice() {
 
 void OCLBackend::copyWeightsFromDevice() {
   for (auto it : tensors_) {
-    assert(externalTensors_.count(it.first) && "Unknown weight!");
+    if (!externalTensors_.count(it.first))
+      continue;
+
     Tensor *T = externalTensors_[it.first];
     size_t sizeInBytes = T->getType().getSizeInBytes();
     // Issue a non-blocking command to copy the buffer from the device.

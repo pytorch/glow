@@ -30,6 +30,8 @@ TEST(Interpreter, interpret) {
 
   EE.getModule().dump();
   inputs.getHandle().dump("Inputs", "\n");
+  result->getOutput()->getHandle().randomize(1);
+  result->getOutput()->getHandle().dump("before", "\n");
 
   EE.infer({input}, {&inputs});
   result->getOutput()->getHandle().dump("after", "\n");
