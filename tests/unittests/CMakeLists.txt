@@ -63,3 +63,15 @@ target_link_libraries(GraphOptz
                         gtest
                         gtest_main)
 add_test(GraphOptz ${GLOW_BINARY_DIR}/tests/GraphOptz)
+
+add_executable(OCLTest
+                 OCLTest.cpp)
+target_link_libraries(OCLTest
+                      PRIVATE
+                        Backends
+                        IR
+                        ExecutionEngine
+                        gtest
+                        gtest_main)
+add_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest)
+
