@@ -58,6 +58,23 @@ const char *RegressionSrc =
     "__kernel void op(__global float* dest, __global float* src, "
     "__global float* exp) { size_t i = get_global_id(0); dest[i] = src[i]; }";
 
+const char *SoftmaxSrc =
+    "__kernel void op(__global float* dest, __global float* src, "
+    "__global float* e_cache, __global unsigned* selected,  unsigned "
+    "sliceSize) "
+    "{ size_t i = get_global_id(0); "
+    "float max_ = src[i * sliceSize]; for (size_t j = 0; j < sliceSize; j++) "
+    "{ max_ = max(max_, src[i * sliceSize + j]); } "
+    "float sum = 0; "
+    "for (size_t j = 0; j < sliceSize; j++) { "
+    " float e = exp(src[i * sliceSize + j] - max_); "
+    " sum += e; "
+    " e_cache[i * sliceSize + j] = e;} "
+    "for (size_t j = 0; j < sliceSize; j++) { "
+    "e_cache[i * sliceSize + j] /= sum; "
+    "dest[i * sliceSize + j] = e_cache[i * sliceSize + j]; "
+    "}}";
+
 using Kind = Kinded::Kind;
 using kernelSrcEnum = struct {
   Kind kind;
@@ -66,6 +83,7 @@ using kernelSrcEnum = struct {
 kernelSrcEnum shaders[] = {{Kind::ReluInstKind, ReluSrc},
                            {Kind::SigmoidInstKind, SigmoidSrc},
                            {Kind::TanhInstKind, TanhSrc},
+                           {Kind::SoftMaxInstKind, SoftmaxSrc},
                            {Kind::FullyConnectedInstKind, FullyConnectedSrc},
                            {Kind::ElementAddInstKind, ElementAddSrc},
                            {Kind::ElementMulInstKind, ElementMulSrc},
@@ -150,6 +168,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
       continue;
     }
 
+    // Element-wise operations:
     if (isa<ReluInst>(I) || isa<SigmoidInst>(I) || isa<TanhInst>(I) ||
         isa<RegressionInst>(I) || isa<ReluInst>(I) || isa<ElementAddInst>(I) ||
         isa<ElementMulInst>(I)) {
@@ -176,6 +195,52 @@ void OCLBackend::doForwardPass(bool isTrain) {
       GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelWorkGroupInfo.");
       local = std::min(local, global);
 
+      err = clEnqueueNDRangeKernel(commands_, kernel, 1, NULL, &global, &local,
+                                   0, NULL, NULL);
+      GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
+      kernels.push_back(kernel);
+      continue;
+    }
+
+    if (auto *SM = dyn_cast<SoftMaxInst>(I)) {
+      // Implement Softmax by parallelizing the batsh dimension. Each sample in
+      // the batch is processed by a different parallel 'thread'.
+      cl_program program = programs_[I->getKind()];
+
+      cl_int err = CL_SUCCESS;
+      cl_kernel kernel = clCreateKernel(program, "op", &err);
+      GLOW_ASSERT((kernel && err == CL_SUCCESS) && "clCreateKernel Failed.");
+
+      err = CL_SUCCESS;
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        auto *op = tensors_[I->getOperand(arg).first];
+        err |= clSetKernelArg(kernel, arg, sizeof(cl_mem), &op);
+      }
+
+      // This is the number of elements for each slice. There are N slices in
+      // our batch.
+      auto inputDims = SM->getSrc()->getType()->dims();
+      size_t sliceSize = flattenCdr(inputDims).second;
+      size_t numSlices = inputDims[0];
+
+      err |= clSetKernelArg(kernel, numArgs, sizeof(unsigned), &sliceSize);
+      GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
+
+      // Figure out the max size of the workgroup.
+      size_t L;
+      err = clGetKernelWorkGroupInfo(
+          kernel, deviceId_, CL_KERNEL_WORK_GROUP_SIZE, sizeof(L), &L, NULL);
+      GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelWorkGroupInfo.");
+      L = std::min(L, numSlices);
+      // The global workgroup size must be a multiple of the local workgroup
+      // size.
+      if (L % numSlices) {
+        L = 1;
+      }
+
+      const size_t local = L;
+      const size_t global = numSlices;
       err = clEnqueueNDRangeKernel(commands_, kernel, 1, NULL, &global, &local,
                                    0, NULL, NULL);
       GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
