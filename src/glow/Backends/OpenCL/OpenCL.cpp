@@ -40,6 +40,20 @@ const char *ElementMulSrc = "__kernel void op(__global float* dest, __global "
                             "float* LHS,  __global float* RHS) { size_t i = "
                             "get_global_id(0); dest[i] = LHS[i] * RHS[i]; }";
 
+const char *FullyConnectedSrc =
+    "__kernel void op(__global float* dest, "
+    "__global float* src, __global float* filter, __global float* bias, "
+    "unsigned sliceSize) { "
+    " size_t depth = get_global_id(0); "
+    " size_t N = get_global_id(1); "
+    "  size_t inBase = N * sliceSize; "
+    " float sum = 0;"
+    "   for (size_t j = 0; j < sliceSize; j++) { "
+    "     sum += src[inBase + j] * filter[depth * sliceSize + j];"
+    "  } "
+    " sum += bias[depth];"
+    " dest[N * sliceSize + depth] = sum; } ";
+
 const char *RegressionSrc =
     "__kernel void op(__global float* dest, __global float* src)"
     "{ size_t i = get_global_id(0); dest[i] = src[i]; }";
@@ -52,6 +66,7 @@ using kernelSrcEnum = struct {
 kernelSrcEnum shaders[] = {{Kind::ReluInstKind, ReluSrc},
                            {Kind::SigmoidInstKind, SigmoidSrc},
                            {Kind::TanhInstKind, TanhSrc},
+                           {Kind::FullyConnectedInstKind, FullyConnectedSrc},
                            {Kind::ElementAddInstKind, ElementAddSrc},
                            {Kind::ElementMulInstKind, ElementMulSrc},
                            {Kind::RegressionInstKind, RegressionSrc}};
@@ -162,6 +177,57 @@ void OCLBackend::doForwardPass(bool isTrain) {
 
       err = clEnqueueNDRangeKernel(commands_, kernel, 1, NULL, &global, &local,
                                    0, NULL, NULL);
+      GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
+      kernels.push_back(kernel);
+      continue;
+    }
+
+    if (auto *FC = dyn_cast<FullyConnectedInst>(I)) {
+      // This is a naive implementation of sgemm that's based on this algorithm:
+      // https://cnugteren.github.io/tutorial/pages/page3.html
+
+      cl_program program = programs_[I->getKind()];
+
+      cl_int err = CL_SUCCESS;
+      cl_kernel kernel = clCreateKernel(program, "op", &err);
+      GLOW_ASSERT((kernel && err == CL_SUCCESS) && "clCreateKernel Failed.");
+
+      err = CL_SUCCESS;
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        auto *op = tensors_[I->getOperand(arg).first];
+        err |= clSetKernelArg(kernel, arg, sizeof(cl_mem), &op);
+      }
+
+      // This is the number of elements for each slice. There are N slices in
+      // our batch.
+      auto inputDims = FC->getSrc()->getType()->dims();
+      size_t sliceSize = flattenCdr(inputDims).second;
+      // This is the batch size (number of slices/samples in the batch).
+      size_t numSlices = inputDims[0];
+      size_t depth = FC->getDepth();
+
+      err |= clSetKernelArg(kernel, numArgs, sizeof(unsigned), &sliceSize);
+      GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
+
+      // Figure out the max size of the workgroup.
+      size_t L;
+      err = clGetKernelWorkGroupInfo(
+          kernel, deviceId_, CL_KERNEL_WORK_GROUP_SIZE, sizeof(L), &L, NULL);
+      GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelWorkGroupInfo.");
+      L = std::min(std::min(L, numSlices), depth);
+      // The global workgroup size must be a multiple of the local workgroup
+      // size.
+      if (L % depth || L % numSlices) {
+        L = 1;
+      }
+
+      // Use a 2D grid where the first dimension is the depth and the second
+      // dimension is the slice index in the batch.
+      const size_t local[2] = {L, L};
+      const size_t global[2] = {depth, numSlices};
+      err = clEnqueueNDRangeKernel(commands_, kernel, 2, NULL, global, local, 0,
+                                   NULL, NULL);
       GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
       kernels.push_back(kernel);
       continue;

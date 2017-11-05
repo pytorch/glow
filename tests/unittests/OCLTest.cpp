@@ -12,8 +12,7 @@
 #include <string>
 
 using namespace glow;
-
-#if WITH_OPENCL
+using llvm::cast;
 
 TEST(Interpreter, interpret) {
   ExecutionEngine EE(BackendKind::OpenCL);
@@ -30,7 +29,9 @@ TEST(Interpreter, interpret) {
   auto *RL2 = G.createRELU("relu", T1);
   auto *A1 = G.createArithmetic("add", S1, RL2, ArithmeticNode::Mode::Add);
   auto *M1 = G.createArithmetic("add", A1, T1, ArithmeticNode::Mode::Mul);
-  auto result = G.createSave("ret", M1);
+  auto *FC = G.createFullyConnected("fc", M1, 15);
+  cast<Variable>(FC->getFilter())->getHandle().randomize(1);
+  auto result = G.createSave("ret", FC);
 
   EE.compile(CompilationMode::Infer);
 
@@ -41,5 +42,3 @@ TEST(Interpreter, interpret) {
   EE.infer({input}, {&inputs});
   result->getOutput()->getHandle().dump("after", "\n");
 }
-
-#endif // WITH_OPENCL
