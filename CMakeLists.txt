@@ -33,6 +33,7 @@ file(GLOB_RECURSE header_files include/*.h)
 add_custom_target(CollectHeaders SOURCES ${header_files})
 
 find_package(PNG)
+find_package(OpenCL)
 
 add_subdirectory(external)
 add_subdirectory(src/glow/)
