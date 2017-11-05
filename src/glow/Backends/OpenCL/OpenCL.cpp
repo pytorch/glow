@@ -55,8 +55,8 @@ const char *FullyConnectedSrc =
     " dest[N * sliceSize + depth] = sum; } ";
 
 const char *RegressionSrc =
-    "__kernel void op(__global float* dest, __global float* src)"
-    "{ size_t i = get_global_id(0); dest[i] = src[i]; }";
+    "__kernel void op(__global float* dest, __global float* src, "
+    "__global float* exp) { size_t i = get_global_id(0); dest[i] = src[i]; }";
 
 using Kind = Kinded::Kind;
 using kernelSrcEnum = struct {
@@ -151,7 +151,8 @@ void OCLBackend::doForwardPass(bool isTrain) {
     }
 
     if (isa<ReluInst>(I) || isa<SigmoidInst>(I) || isa<TanhInst>(I) ||
-        isa<ReluInst>(I) || isa<ElementAddInst>(I) || isa<ElementMulInst>(I)) {
+        isa<RegressionInst>(I) || isa<ReluInst>(I) || isa<ElementAddInst>(I) ||
+        isa<ElementMulInst>(I)) {
       cl_program program = programs_[I->getKind()];
 
       cl_int err = CL_SUCCESS;

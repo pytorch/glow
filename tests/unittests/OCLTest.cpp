@@ -31,7 +31,8 @@ TEST(Interpreter, interpret) {
   auto *M1 = G.createArithmetic("add", A1, T1, ArithmeticNode::Mode::Mul);
   auto *FC = G.createFullyConnected("fc", M1, 15);
   cast<Variable>(FC->getFilter())->getHandle().randomize(1);
-  auto result = G.createSave("ret", FC);
+  auto *R = G.createRegression("reg", FC, FC);
+  auto result = G.createSave("ret", R);
 
   EE.compile(CompilationMode::Infer);
 
