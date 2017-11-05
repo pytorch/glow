@@ -379,6 +379,7 @@ void Interpreter::fwdFullyConnectedInst(bool isTrain,
 
   auto odim = flattenCdr(outW.dims());
   auto idim = flattenCdr(inW.dims());
+  assert(odim.first == idim.first && "Mismatch batch size");
 
   auto filterW = getWeightHandle(I->getFilter());
   auto biasW = getWeightHandle(I->getBias());
