@@ -21,6 +21,8 @@ TEST(Interpreter, interpret) {
 
   auto &G = EE.getGraph();
   auto *input = G.createVariable(ElemKind::FloatTy, {1, 6, 6}, "input");
+  auto *selected = G.createVariable(ElemKind::IndexTy, {1, 1}, "selected");
+
   inputs.getHandle().randomize(1);
 
   auto *RL0 = G.createRELU("relu", input);
@@ -32,7 +34,8 @@ TEST(Interpreter, interpret) {
   auto *FC = G.createFullyConnected("fc", M1, 15);
   cast<Variable>(FC->getFilter())->getHandle().randomize(1);
   auto *R = G.createRegression("reg", FC, FC);
-  auto result = G.createSave("ret", R);
+  auto *SM = G.createSoftMax("SM", R, selected);
+  auto result = G.createSave("ret", SM);
 
   EE.compile(CompilationMode::Infer);
 
