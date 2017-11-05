@@ -64,6 +64,7 @@ target_link_libraries(GraphOptz
                         gtest_main)
 add_test(GraphOptz ${GLOW_BINARY_DIR}/tests/GraphOptz)
 
+if(OpenCL_FOUND)
 add_executable(OCLTest
                  OCLTest.cpp)
 target_link_libraries(OCLTest
@@ -74,4 +75,5 @@ target_link_libraries(OCLTest
                         gtest
                         gtest_main)
 add_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest)
+endif()
 

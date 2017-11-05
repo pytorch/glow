@@ -1,5 +1,3 @@
-find_package(OpenCL REQUIRED )
-
 add_library(OpenCL
             OpenCL.cpp)
 
