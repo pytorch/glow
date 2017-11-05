@@ -36,8 +36,8 @@ class OCLBackend final : public Backend {
   cl_context context_;
   /// CL compute command queue.
   cl_command_queue commands_;
-  // A list of compiled shaders.
-  std::unordered_map<Kinded::Kind, cl_program> programs_;
+  // Stores the compiled kernel bank.
+  cl_program program_;
 
 public:
   /// Ctor.

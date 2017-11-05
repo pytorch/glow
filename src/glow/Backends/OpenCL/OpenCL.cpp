@@ -14,80 +14,18 @@ using namespace glow;
 using llvm::dyn_cast;
 using llvm::isa;
 
+// This defines the string "SHADER_CODE".
+#include "kernels.cl"
+
 #if WITH_OPENCL
 
 Backend *glow::createOCLBackend(Module *M) { return new OCLBackend(M); }
 
-const char *ReluSrc =
-    "__kernel void op(__global float* dest, __global float* src) {"
-    " size_t i = get_global_id(0); dest[i] = fmax(src[i], 0); }";
-
-const char *SigmoidSrc =
-    "__kernel void op(__global float* dest, __global float* src) {"
-    " size_t i = get_global_id(0); dest[i] = 1 / (1 + exp(-src[i])); }";
-
-const char *TanhSrc =
-    "__kernel void op(__global float* dest, __global float* src) { "
-    " size_t i = get_global_id(0); float val = src[i]; float exp_val = "
-    "exp(val); float exp_neg_val = exp(-val);"
-    " dest[i] = (exp_val - exp_neg_val) / (exp_val + exp_neg_val); }";
-
-const char *ElementAddSrc = "__kernel void op(__global float* dest, __global "
-                            "float* LHS, __global float* RHS) { size_t i = "
-                            "get_global_id(0); dest[i] = LHS[i] + RHS[i]; }";
-
-const char *ElementMulSrc = "__kernel void op(__global float* dest, __global "
-                            "float* LHS,  __global float* RHS) { size_t i = "
-                            "get_global_id(0); dest[i] = LHS[i] * RHS[i]; }";
-
-const char *FullyConnectedSrc =
-    "__kernel void op(__global float* dest, "
-    "__global float* src, __global float* filter, __global float* bias, "
-    "unsigned sliceSize) { "
-    " size_t depth = get_global_id(0); "
-    " size_t N = get_global_id(1); "
-    "  size_t inBase = N * sliceSize; "
-    " float sum = 0;"
-    "   for (size_t j = 0; j < sliceSize; j++) { "
-    "     sum += src[inBase + j] * filter[depth * sliceSize + j];"
-    "  } "
-    " sum += bias[depth];"
-    " dest[N * sliceSize + depth] = sum; } ";
-
-const char *RegressionSrc =
-    "__kernel void op(__global float* dest, __global float* src, "
-    "__global float* exp) { size_t i = get_global_id(0); dest[i] = src[i]; }";
-
-const char *SoftmaxSrc =
-    "__kernel void op(__global float* dest, __global float* src, "
-    "__global float* e_cache, __global unsigned* selected,  unsigned "
-    "sliceSize) "
-    "{ size_t i = get_global_id(0); "
-    "float max_ = src[i * sliceSize]; for (size_t j = 0; j < sliceSize; j++) "
-    "{ max_ = max(max_, src[i * sliceSize + j]); } "
-    "float sum = 0; "
-    "for (size_t j = 0; j < sliceSize; j++) { "
-    " float e = exp(src[i * sliceSize + j] - max_); "
-    " sum += e; "
-    " e_cache[i * sliceSize + j] = e;} "
-    "for (size_t j = 0; j < sliceSize; j++) { "
-    "e_cache[i * sliceSize + j] /= sum; "
-    "dest[i * sliceSize + j] = e_cache[i * sliceSize + j]; "
-    "}}";
-
 using Kind = Kinded::Kind;
 using kernelSrcEnum = struct {
   Kind kind;
-  const char *src;
+  const char *funcName;
 };
-kernelSrcEnum shaders[] = {{Kind::ReluInstKind, ReluSrc},
-                           {Kind::SigmoidInstKind, SigmoidSrc},
-                           {Kind::TanhInstKind, TanhSrc},
-                           {Kind::SoftMaxInstKind, SoftmaxSrc},
-                           {Kind::FullyConnectedInstKind, FullyConnectedSrc},
-                           {Kind::ElementAddInstKind, ElementAddSrc},
-                           {Kind::ElementMulInstKind, ElementMulSrc},
-                           {Kind::RegressionInstKind, RegressionSrc}};
 
 static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 #ifndef NDEBUG
@@ -118,29 +56,18 @@ OCLBackend::OCLBackend(Module *M) : M_(M) {
   commands_ = clCreateCommandQueue(context_, deviceId_, 0, &err);
   GLOW_ASSERT(commands_ && "clCreateCommandQueue Failed.");
 
-  // Compile all of the shaders:
-  for (auto SH : shaders) {
-    err = CL_SUCCESS;
-    cl_program program =
-        clCreateProgramWithSource(context_, 1, &SH.src, NULL, &err);
-    GLOW_ASSERT(program && "clCreateProgramWithSource Failed.");
-    err = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
-    if (err) {
-      dumpCompileLog(deviceId_, program);
-    }
-    GLOW_ASSERT(err == CL_SUCCESS && "clBuildProgram Failed.");
-    assert(!programs_.count(SH.kind) && "Opcode already registered");
-    programs_[SH.kind] = program;
+  err = CL_SUCCESS;
+  program_ = clCreateProgramWithSource(context_, 1, &SHADER_CODE, NULL, &err);
+  GLOW_ASSERT(program_ && "clCreateProgramWithSource Failed.");
+  err = clBuildProgram(program_, 0, NULL, NULL, NULL, NULL);
+  if (err) {
+    dumpCompileLog(deviceId_, program_);
   }
+  GLOW_ASSERT(err == CL_SUCCESS && "clBuildProgram Failed.");
 }
 
 OCLBackend::~OCLBackend() {
-  // Free all of the compiled programs.
-  for (auto &p : programs_) {
-    clReleaseProgram(p.second);
-  }
-  programs_.clear();
-
+  clReleaseProgram(program_);
   clReleaseCommandQueue(commands_);
   clReleaseContext(context_);
   clear();
@@ -151,6 +78,11 @@ void OCLBackend::doForwardPass(bool isTrain) {
   std::vector<cl_kernel> kernels;
 
   for (auto &I : M_->getInstrs()) {
+    // The kernels are named after the name of the instruction, plus the "K"
+    // suffix to prevent name colissions for functions like 'tanh' that are also
+    // a part of the OpenCL runtime.
+    std::string kernelName = std::string(I->getKindName()) + "K";
+
     if (auto *A = llvm::dyn_cast<AllocActivationInst>(I)) {
       auto numBytes = I->getType()->getSizeInBytes();
       auto buff = clCreateBuffer(context_, CL_MEM_READ_WRITE, numBytes, nullptr,
@@ -172,10 +104,8 @@ void OCLBackend::doForwardPass(bool isTrain) {
     if (isa<ReluInst>(I) || isa<SigmoidInst>(I) || isa<TanhInst>(I) ||
         isa<RegressionInst>(I) || isa<ReluInst>(I) || isa<ElementAddInst>(I) ||
         isa<ElementMulInst>(I)) {
-      cl_program program = programs_[I->getKind()];
-
       cl_int err = CL_SUCCESS;
-      cl_kernel kernel = clCreateKernel(program, "op", &err);
+      cl_kernel kernel = clCreateKernel(program_, kernelName.c_str(), &err);
       GLOW_ASSERT((kernel && err == CL_SUCCESS) && "clCreateKernel Failed.");
 
       err = CL_SUCCESS;
@@ -205,10 +135,8 @@ void OCLBackend::doForwardPass(bool isTrain) {
     if (auto *SM = dyn_cast<SoftMaxInst>(I)) {
       // Implement Softmax by parallelizing the batsh dimension. Each sample in
       // the batch is processed by a different parallel 'thread'.
-      cl_program program = programs_[I->getKind()];
-
       cl_int err = CL_SUCCESS;
-      cl_kernel kernel = clCreateKernel(program, "op", &err);
+      cl_kernel kernel = clCreateKernel(program_, kernelName.c_str(), &err);
       GLOW_ASSERT((kernel && err == CL_SUCCESS) && "clCreateKernel Failed.");
 
       err = CL_SUCCESS;
@@ -251,11 +179,8 @@ void OCLBackend::doForwardPass(bool isTrain) {
     if (auto *FC = dyn_cast<FullyConnectedInst>(I)) {
       // This is a naive implementation of sgemm that's based on this algorithm:
       // https://cnugteren.github.io/tutorial/pages/page3.html
-
-      cl_program program = programs_[I->getKind()];
-
       cl_int err = CL_SUCCESS;
-      cl_kernel kernel = clCreateKernel(program, "op", &err);
+      cl_kernel kernel = clCreateKernel(program_, kernelName.c_str(), &err);
       GLOW_ASSERT((kernel && err == CL_SUCCESS) && "clCreateKernel Failed.");
 
       err = CL_SUCCESS;
