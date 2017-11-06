@@ -78,7 +78,7 @@ int main(int argc, char **argv) {
   auto imageMode = strToImageNormalizationMode(argv[2]);
   loadImageAndPreprocess(argv[1], &data, imageMode);
 
-  ExecutionEngine EE;
+  ExecutionEngine EE(BackendKind::OpenCL);
   SaveNode *SM;
   Variable *i0;
   Variable *i1;
