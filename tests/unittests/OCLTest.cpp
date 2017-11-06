@@ -25,7 +25,8 @@ TEST(Interpreter, interpret) {
 
   inputs.getHandle().randomize(1);
 
-  auto *conv = G.createConv("conv", input, 32, 5, 2, 1);
+  auto *tr = G.createTranspose("tr", input, {0, 2, 1, 3});
+  auto *conv = G.createConv("conv", tr, 32, 5, 2, 1);
   cast<Variable>(conv->getFilter())->getHandle().randomize(1);
   cast<Variable>(conv->getBias())->getHandle().randomize(1);
   auto *RL0 = G.createRELU("relu", conv);
