@@ -127,4 +127,25 @@ __kernel void convolutionK(__global float *dest, __global float *src,
   }   // N
 }
 
+
+__kernel void transposeK(__global float *dest, __global float *src,
+                         ShapeNHWC odim, ShapeNHWC idim,
+                         ShapeNHWC shuffle) {
+  size_t d0 = get_global_id(0);
+  size_t res[4];
+    res[shuffle.n] = d0;
+    for (size_t d1 = 0; d1 < idim.h; d1++) {
+      res[shuffle.h] = d1;
+      for (size_t d2 = 0; d2 < idim.w; d2++) {
+        res[shuffle.w] = d2;
+        for (size_t d3 = 0; d3 < idim.c; d3++) {
+          res[shuffle.c] = d3;
+          size_t dstIdx = getNHWC(odim, res[0], res[1], res[2], res[3]);
+          size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
+          dest[dstIdx] = src[srcIdx];
+        }
+      }
+    }
+}
+
 )";

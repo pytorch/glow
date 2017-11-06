@@ -262,6 +262,34 @@ void OCLBackend::doForwardPass(bool isTrain) {
       continue;
     }
 
+    if (auto *TR = dyn_cast<TransposeInst>(I)) {
+      // This is a naive implementation that parallelizes using one dimension,
+      // the N (batch size).
+      GLOW_ASSERT(TR->getShuffle().size() == 4 &&
+                  "This code supports only 4-dim transposes");
+
+      cl_kernel kernel = createKernel(program_, kernelName);
+
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg(kernel, arg, tensors_[I->getOperand(arg).first]);
+      }
+
+      auto odim = ShapeNHWC(TR->getDest()->getType()->dims());
+      auto idim = ShapeNHWC(TR->getSrc()->getType()->dims());
+
+      setKernelArg(kernel, 2, odim);
+      setKernelArg(kernel, 3, idim);
+
+      auto mask = TR->getShuffle();
+      ShapeNHWC shuff(mask[0], mask[1], mask[2], mask[3]);
+      setKernelArg(kernel, 4, shuff);
+
+      enqueueKernel(commands_, kernel, deviceId_, {idim.n});
+      kernels.push_back(kernel);
+      continue;
+    }
+
     if (isa<CopyInst>(I) || isa<ReshapeInst>(I)) {
       auto *dest = I->getOperand(0).first;
       auto *src = I->getOperand(1).first;
