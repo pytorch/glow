@@ -94,15 +94,14 @@ size_t getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
   auto err = clGetKernelWorkGroupInfo(kernel, device, CL_KERNEL_WORK_GROUP_SIZE,
                                       sizeof(L), &L, NULL);
   GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelWorkGroupInfo.");
-
+  size_t res = L;
   // The global workgroup size must be a multiple of the local workgroup size.
   // In here we find the highest L that divides the global workgroup size.
   // This is our naive implementation of gcd:
-  while (globalWGSize0 % L || globalWGSize1 % L) {
-    L--;
+  while (globalWGSize0 % res || globalWGSize1 % res || L % res) {
+    res--;
   }
-
-  return L;
+  return res;
 }
 
 void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
