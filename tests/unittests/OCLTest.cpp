@@ -17,15 +17,16 @@ using llvm::cast;
 TEST(Interpreter, interpret) {
   ExecutionEngine EE(BackendKind::OpenCL);
 
-  Tensor inputs(ElemKind::FloatTy, {1, 6, 6});
+  Tensor inputs(ElemKind::FloatTy, {1, 6, 6, 3});
 
   auto &G = EE.getGraph();
-  auto *input = G.createVariable(ElemKind::FloatTy, {1, 6, 6}, "input");
+  auto *input = G.createVariable(ElemKind::FloatTy, {1, 6, 6, 3}, "input");
   auto *selected = G.createVariable(ElemKind::IndexTy, {1, 1}, "selected");
 
   inputs.getHandle().randomize(1);
 
-  auto *RL0 = G.createRELU("relu", input);
+  auto *conv = G.createConv("conv", input, 32, 5, 2, 1);
+  auto *RL0 = G.createRELU("relu", conv);
   auto *S1 = G.createSigmoid("sig", RL0);
   auto *T1 = G.createTanh("tanh", S1);
   auto *RL2 = G.createRELU("relu", T1);
