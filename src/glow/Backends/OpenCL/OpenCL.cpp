@@ -236,7 +236,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
     }
 
     if (auto *CC = dyn_cast<ConvolutionInst>(I)) {
-      // This is a naive implementation that parallelizes using two dimensions:
+      // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(program_, kernelName);
 
@@ -245,19 +245,69 @@ void OCLBackend::doForwardPass(bool isTrain) {
         setKernelArg(kernel, arg, tensors_[I->getOperand(arg).first]);
       }
 
+      auto odim = ShapeNHWC(CC->getDest()->getType()->dims());
+      auto idim = ShapeNHWC(CC->getSrc()->getType()->dims());
+
       setKernelArg<size_t>(kernel, 4, CC->getKernel());
       setKernelArg(kernel, 5, CC->getPad());
       setKernelArg(kernel, 6, CC->getStride());
-      setKernelArg(kernel, 7, ShapeNHWC(CC->getDest()->getType()->dims()));
-      setKernelArg(kernel, 8, ShapeNHWC(CC->getSrc()->getType()->dims()));
+      setKernelArg(kernel, 7, odim);
+      setKernelArg(kernel, 8, idim);
       setKernelArg(kernel, 9, ShapeNHWC(CC->getFilter()->getType()->dims()));
 
-      auto odim = ShapeNHWC(CC->getDest()->getType()->dims());
       auto depth = CC->getDepth();
 
-      // Use a 2D grid where the first dimension is the depth and the second
+      // Use a 3D grid where the first dimension is the depth and the second
       // dimension is the slice index in the batch.
       enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, depth});
+      kernels.push_back(kernel);
+      continue;
+    }
+
+    if (auto *PM = dyn_cast<PoolMaxInst>(I)) {
+      // This is a naive implementation that parallelizes using three dims:
+      // the X and the Y in the output filter.
+      cl_kernel kernel = createKernel(program_, kernelName);
+
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg(kernel, arg, tensors_[I->getOperand(arg).first]);
+      }
+
+      auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
+      auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
+
+      setKernelArg<size_t>(kernel, 3, PM->getKernel());
+      setKernelArg(kernel, 4, PM->getPad());
+      setKernelArg(kernel, 5, PM->getStride());
+      setKernelArg(kernel, 6, odim);
+      setKernelArg(kernel, 7, idim);
+
+      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c});
+      kernels.push_back(kernel);
+      continue;
+    }
+
+    if (auto *PA = dyn_cast<PoolAvgInst>(I)) {
+      // This is a naive implementation that parallelizes using three dims:
+      // the X and the Y in the output filter.
+      cl_kernel kernel = createKernel(program_, kernelName);
+
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg(kernel, arg, tensors_[I->getOperand(arg).first]);
+      }
+
+      auto odim = ShapeNHWC(PA->getDest()->getType()->dims());
+      auto idim = ShapeNHWC(PA->getSrc()->getType()->dims());
+
+      setKernelArg<size_t>(kernel, 2, PA->getKernel());
+      setKernelArg(kernel, 3, PA->getPad());
+      setKernelArg(kernel, 4, PA->getStride());
+      setKernelArg(kernel, 5, odim);
+      setKernelArg(kernel, 6, idim);
+
+      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c});
       kernels.push_back(kernel);
       continue;
     }
