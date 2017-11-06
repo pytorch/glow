@@ -73,11 +73,45 @@ OCLBackend::~OCLBackend() {
   clear();
 }
 
+cl_kernel createKernel(cl_program program, const std::string &name) {
+  cl_int err = CL_SUCCESS;
+  cl_kernel kernel = clCreateKernel(program, name.c_str(), &err);
+  GLOW_ASSERT((kernel && err == CL_SUCCESS) && "clCreateKernel Failed.");
+  return kernel;
+}
 
 template <class T>
 void setKernelArg(cl_kernel kernel, unsigned argIdx, T value) {
   cl_int err = clSetKernelArg(kernel, argIdx, sizeof(T), &value);
   GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
+}
+
+size_t getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
+                                size_t globalWGSize0,
+                                size_t globalWGSize1 = 0) {
+  // Figure out the max size of the workgroup.
+  size_t L;
+  auto err = clGetKernelWorkGroupInfo(kernel, device, CL_KERNEL_WORK_GROUP_SIZE,
+                                      sizeof(L), &L, NULL);
+  GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelWorkGroupInfo.");
+
+  // The global workgroup size must be a multiple of the local workgroup size.
+  // In here we find the highest L that divides the global workgroup size.
+  // This is our naive implementation of gcd:
+  while (globalWGSize0 % L || globalWGSize1 % L) {
+    L--;
+  }
+
+  return L;
+}
+
+void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
+                   llvm::ArrayRef<size_t> global,
+                   llvm::ArrayRef<size_t> local) {
+  assert(global.size() == local.size());
+  auto err = clEnqueueNDRangeKernel(commands, kernel, global.size(), NULL,
+                                    &global[0], &local[0], 0, NULL, NULL);
+  GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
 }
 
 void OCLBackend::doForwardPass(bool isTrain) {
@@ -102,7 +136,6 @@ void OCLBackend::doForwardPass(bool isTrain) {
     if (auto *D = llvm::dyn_cast<DeallocActivationInst>(I)) {
       auto *A = D->getAlloc();
       assert(tensors_.count(A) && "Invalid deallocation!");
-      clFinish(commands_);
       clReleaseMemObject(tensors_[A]);
       continue;
     }
@@ -111,30 +144,19 @@ void OCLBackend::doForwardPass(bool isTrain) {
     if (isa<ReluInst>(I) || isa<SigmoidInst>(I) || isa<TanhInst>(I) ||
         isa<RegressionInst>(I) || isa<ReluInst>(I) || isa<ElementAddInst>(I) ||
         isa<ElementMulInst>(I)) {
-      cl_int err = CL_SUCCESS;
-      cl_kernel kernel = clCreateKernel(program_, kernelName.c_str(), &err);
-      GLOW_ASSERT((kernel && err == CL_SUCCESS) && "clCreateKernel Failed.");
 
-      err = CL_SUCCESS;
+      cl_kernel kernel = createKernel(program_, kernelName);
+
       for (unsigned arg = 0, e = I->getNumOperands(); arg < e; arg++) {
-        auto *op = tensors_[I->getOperand(arg).first];
-        err |= clSetKernelArg(kernel, arg, sizeof(cl_mem), &op);
+        setKernelArg(kernel, arg, tensors_[I->getOperand(arg).first]);
       }
-      GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
 
       // Figure out how many element-wise elements are there to process:
       size_t global = I->getOperand(0).first->getType()->size();
       // Figure out the size of the workgroup.
-      size_t local;
-      err =
-          clGetKernelWorkGroupInfo(kernel, deviceId_, CL_KERNEL_WORK_GROUP_SIZE,
-                                   sizeof(local), &local, NULL);
-      GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelWorkGroupInfo.");
-      local = std::min(local, global);
+      size_t local = getMaxLocalWorkgroupSize(kernel, deviceId_, global);
 
-      err = clEnqueueNDRangeKernel(commands_, kernel, 1, NULL, &global, &local,
-                                   0, NULL, NULL);
-      GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
+      enqueueKernel(commands_, kernel, {global}, {local});
       kernels.push_back(kernel);
       continue;
     }
@@ -142,43 +164,27 @@ void OCLBackend::doForwardPass(bool isTrain) {
     if (auto *SM = dyn_cast<SoftMaxInst>(I)) {
       // Implement Softmax by parallelizing the batsh dimension. Each sample in
       // the batch is processed by a different parallel 'thread'.
-      cl_int err = CL_SUCCESS;
-      cl_kernel kernel = clCreateKernel(program_, kernelName.c_str(), &err);
-      GLOW_ASSERT((kernel && err == CL_SUCCESS) && "clCreateKernel Failed.");
+      cl_kernel kernel = createKernel(program_, kernelName);
 
-      err = CL_SUCCESS;
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        auto *op = tensors_[I->getOperand(arg).first];
-        err |= clSetKernelArg(kernel, arg, sizeof(cl_mem), &op);
+        setKernelArg(kernel, arg, tensors_[I->getOperand(arg).first]);
       }
 
       // This is the number of elements for each slice. There are N slices in
       // our batch.
       auto inputDims = SM->getSrc()->getType()->dims();
-      size_t sliceSize = flattenCdr(inputDims).second;
       size_t numSlices = inputDims[0];
 
-      err |= clSetKernelArg(kernel, numArgs, sizeof(unsigned), &sliceSize);
-      GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
+      // Pass the slice size (size of each sample in the batch) as a parameter.
+      setKernelArg(kernel, numArgs, flattenCdr(inputDims).second);
 
       // Figure out the max size of the workgroup.
-      size_t L;
-      err = clGetKernelWorkGroupInfo(
-          kernel, deviceId_, CL_KERNEL_WORK_GROUP_SIZE, sizeof(L), &L, NULL);
-      GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelWorkGroupInfo.");
-      L = std::min(L, numSlices);
-      // The global workgroup size must be a multiple of the local workgroup
-      // size.
-      if (L % numSlices) {
-        L = 1;
-      }
+      size_t L = getMaxLocalWorkgroupSize(kernel, deviceId_, numSlices);
 
       const size_t local = L;
       const size_t global = numSlices;
-      err = clEnqueueNDRangeKernel(commands_, kernel, 1, NULL, &global, &local,
-                                   0, NULL, NULL);
-      GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
+      enqueueKernel(commands_, kernel, {global}, {local});
       kernels.push_back(kernel);
       continue;
     }
@@ -186,59 +192,38 @@ void OCLBackend::doForwardPass(bool isTrain) {
     if (auto *FC = dyn_cast<FullyConnectedInst>(I)) {
       // This is a naive implementation of sgemm that's based on this algorithm:
       // https://cnugteren.github.io/tutorial/pages/page3.html
-      cl_int err = CL_SUCCESS;
-      cl_kernel kernel = clCreateKernel(program_, kernelName.c_str(), &err);
-      GLOW_ASSERT((kernel && err == CL_SUCCESS) && "clCreateKernel Failed.");
+      cl_kernel kernel = createKernel(program_, kernelName);
 
-      err = CL_SUCCESS;
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        auto *op = tensors_[I->getOperand(arg).first];
-        err |= clSetKernelArg(kernel, arg, sizeof(cl_mem), &op);
+        setKernelArg(kernel, arg, tensors_[I->getOperand(arg).first]);
       }
 
       // This is the number of elements for each slice. There are N slices in
       // our batch.
       auto inputDims = FC->getSrc()->getType()->dims();
-      size_t sliceSize = flattenCdr(inputDims).second;
       // This is the batch size (number of slices/samples in the batch).
       size_t numSlices = inputDims[0];
       size_t depth = FC->getDepth();
 
-      err |= clSetKernelArg(kernel, numArgs, sizeof(unsigned), &sliceSize);
-      GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
+      // Pass the slice size (size of each sample in the batch) as a parameter.
+      setKernelArg(kernel, numArgs, flattenCdr(inputDims).second);
 
       // Figure out the max size of the workgroup.
-      size_t L;
-      err = clGetKernelWorkGroupInfo(
-          kernel, deviceId_, CL_KERNEL_WORK_GROUP_SIZE, sizeof(L), &L, NULL);
-      GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelWorkGroupInfo.");
-      L = std::min(std::min(L, numSlices), depth);
-      // The global workgroup size must be a multiple of the local workgroup
-      // size.
-      if (L % depth || L % numSlices) {
-        L = 1;
-      }
+      size_t L = getMaxLocalWorkgroupSize(kernel, deviceId_, numSlices, depth);
 
       // Use a 2D grid where the first dimension is the depth and the second
       // dimension is the slice index in the batch.
-      const size_t local[2] = {L, L};
-      const size_t global[2] = {depth, numSlices};
-      err = clEnqueueNDRangeKernel(commands_, kernel, 2, NULL, global, local, 0,
-                                   NULL, NULL);
-      GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
+      enqueueKernel(commands_, kernel, {depth, numSlices}, {L, L});
       kernels.push_back(kernel);
       continue;
     }
-
 
     if (auto *CC = dyn_cast<ConvolutionInst>(I)) {
       // This is a naive implementation that parallelizes using two dimensions:
       // the N (sample number in the batch) and D (the depth of the output
       // channel).
-      cl_int err = CL_SUCCESS;
-      cl_kernel kernel = clCreateKernel(program_, kernelName.c_str(), &err);
-      GLOW_ASSERT((kernel && err == CL_SUCCESS) && "clCreateKernel Failed.");
+      cl_kernel kernel = createKernel(program_, kernelName);
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
@@ -248,7 +233,6 @@ void OCLBackend::doForwardPass(bool isTrain) {
       setKernelArg<size_t>(kernel, 4, CC->getKernel());
       setKernelArg(kernel, 5, CC->getPad());
       setKernelArg(kernel, 6, CC->getStride());
-
       setKernelArg(kernel, 7, ShapeNHWC(CC->getDest()->getType()->dims()));
       setKernelArg(kernel, 8, ShapeNHWC(CC->getSrc()->getType()->dims()));
       setKernelArg(kernel, 9, ShapeNHWC(CC->getFilter()->getType()->dims()));
@@ -261,24 +245,11 @@ void OCLBackend::doForwardPass(bool isTrain) {
       size_t depth = CC->getDepth();
 
       // Figure out the max size of the workgroup.
-      size_t L;
-      err = clGetKernelWorkGroupInfo(
-                                     kernel, deviceId_, CL_KERNEL_WORK_GROUP_SIZE, sizeof(L), &L, NULL);
-      GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelWorkGroupInfo.");
-      L = std::min(std::min(L, numSlices), depth);
-      // The global workgroup size must be a multiple of the local workgroup
-      // size.
-      if (L % depth || L % numSlices) {
-        L = 1;
-      }
+      size_t L = getMaxLocalWorkgroupSize(kernel, deviceId_, numSlices, depth);
 
       // Use a 2D grid where the first dimension is the depth and the second
       // dimension is the slice index in the batch.
-      const size_t local[2] = {L, L};
-      const size_t global[2] = {depth, numSlices};
-      err = clEnqueueNDRangeKernel(commands_, kernel, 2, NULL, global, local, 0,
-                                   NULL, NULL);
-      GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
+      enqueueKernel(commands_, kernel, {depth, numSlices}, {L, L});
       kernels.push_back(kernel);
       continue;
     }

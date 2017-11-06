@@ -26,6 +26,8 @@ TEST(Interpreter, interpret) {
   inputs.getHandle().randomize(1);
 
   auto *conv = G.createConv("conv", input, 32, 5, 2, 1);
+  cast<Variable>(conv->getFilter())->getHandle().randomize(1);
+  cast<Variable>(conv->getBias())->getHandle().randomize(1);
   auto *RL0 = G.createRELU("relu", conv);
   auto *S1 = G.createSigmoid("sig", RL0);
   auto *T1 = G.createTanh("tanh", S1);
