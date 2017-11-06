@@ -1,5 +1,4 @@
 
-
 static const char* SHADER_CODE = R"(
 
 typedef struct {
@@ -10,7 +9,6 @@ typedef struct {
 } ShapeNHWC;
 
 /// \returns the index of the element at x,y,z,w.
-
 size_t getNHWC(ShapeNHWC s, size_t x, size_t y, size_t z, size_t w) {
   return (x * s.c * s.w * s.h) + (y * s.c * s.w) + (z * s.c) + w;
 }
@@ -102,50 +100,127 @@ __kernel void convolutionK(__global float *dest, __global float *src,
   // For each input in the batch:
   for (size_t n = 0; n < idim.n; n++) {
 
-      // For each element in the convolution-filter:
-      float sum = 0;
-      for (size_t fx = 0; fx < filterSize; fx++) {
-        for (size_t fy = 0; fy < filterSize; fy++) {
-          ssize_t ox = x + fx;
-          ssize_t oy = y + fy;
+    // For each element in the convolution-filter:
+    float sum = 0;
+    for (size_t fx = 0; fx < filterSize; fx++) {
+      for (size_t fy = 0; fy < filterSize; fy++) {
+        ssize_t ox = x + fx;
+        ssize_t oy = y + fy;
 
-          // Ignore index access below zero (this is due to padding).
-          if (ox < 0 || oy < 0 || ox >= ssize_t(odim.h) ||
-              oy >= ssize_t(odim.w)) {
-            continue;
-          }
-
-          for (size_t fd = 0; fd < idim.c; fd++) {
-            sum += filter[getNHWC(filterDim, d, fx, fy, fd)] *
-                   src[getNHWC(idim, n, (size_t)ox, (size_t)oy, fd)];
-          }
+        // Ignore index access below zero (this is due to padding).
+        if (ox < 0 || oy < 0 || ox >= ssize_t(odim.h) ||
+            oy >= ssize_t(odim.w)) {
+          continue;
         }
-      }
 
-      sum += bias[d];
-      dest[getNHWC(odim, n, ax, ay, d)] = sum;
-  }   // N
-}
-
-
-__kernel void transposeK(__global float *dest, __global float *src,
-                         ShapeNHWC odim, ShapeNHWC idim,
-                         ShapeNHWC shuffle) {
-  size_t d0 = get_global_id(0);
-  size_t res[4];
-    res[shuffle.n] = d0;
-    for (size_t d1 = 0; d1 < idim.h; d1++) {
-      res[shuffle.h] = d1;
-      for (size_t d2 = 0; d2 < idim.w; d2++) {
-        res[shuffle.w] = d2;
-        for (size_t d3 = 0; d3 < idim.c; d3++) {
-          res[shuffle.c] = d3;
-          size_t dstIdx = getNHWC(odim, res[0], res[1], res[2], res[3]);
-          size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
-          dest[dstIdx] = src[srcIdx];
+        for (size_t fd = 0; fd < idim.c; fd++) {
+          sum += filter[getNHWC(filterDim, d, fx, fy, fd)] *
+                 src[getNHWC(idim, n, (size_t)ox, (size_t)oy, fd)];
         }
       }
     }
+
+    sum += bias[d];
+    dest[getNHWC(odim, n, ax, ay, d)] = sum;
+  } // N
+}
+
+__kernel void poolmaxK(__global float *dest, __global float *src,
+                       __global float *srcXY, size_t filterSize, size_t pad,
+                       size_t stride, ShapeNHWC odim, ShapeNHWC idim) {
+  size_t ax = get_global_id(0);
+  size_t ay = get_global_id(1);
+  size_t d = get_global_id(2);
+
+  typedef int ssize_t;
+  // For each convolution 'jump' in the input tensor:
+  ssize_t x = -ssize_t(pad) + ax * stride;
+  ssize_t y = -ssize_t(pad) + ay * stride;
+
+  // For each input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+    float maxVal = 0;
+    bool first = true;
+
+    // For each element in the convolution-filter:
+    for (size_t fx = 0; fx < filterSize; fx++) {
+      for (size_t fy = 0; fy < filterSize; fy++) {
+        ssize_t ox = x + fx;
+        ssize_t oy = y + fy;
+
+        // Ignore index access below zero (this is due to padding).
+        if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+            oy >= ssize_t(idim.w)) {
+          continue;
+        }
+
+        float val = src[getNHWC(idim, n, (size_t)ox, (size_t)oy, d)];
+
+        if (first || (val >= maxVal)) {
+          first = false;
+          maxVal = val;
+        }
+      }
+    }
+    dest[getNHWC(odim, n, ax, ay, d)] = maxVal;
+  } // N
+}
+
+__kernel void poolavgK(__global float *dest, __global float *src,
+                       size_t filterSize, size_t pad, size_t stride,
+                       ShapeNHWC odim, ShapeNHWC idim) {
+  size_t ax = get_global_id(0);
+  size_t ay = get_global_id(1);
+  size_t d = get_global_id(2);
+
+  typedef int ssize_t;
+  // For each convolution 'jump' in the input tensor:
+  ssize_t x = -ssize_t(pad) + ax * stride;
+  ssize_t y = -ssize_t(pad) + ay * stride;
+
+  float filterArea = filterSize * filterSize;
+
+  // For each input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+    float sumVal = 0;
+    bool first = true;
+
+    // For each element in the convolution-filter:
+    for (size_t fx = 0; fx < filterSize; fx++) {
+      for (size_t fy = 0; fy < filterSize; fy++) {
+        ssize_t ox = x + fx;
+        ssize_t oy = y + fy;
+
+        // Ignore index access below zero (this is due to padding).
+        if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+            oy >= ssize_t(idim.w)) {
+          continue;
+        }
+
+        sumVal += src[getNHWC(idim, n, (size_t)ox, (size_t)oy, d)];
+      }
+    }
+    dest[getNHWC(odim, n, ax, ay, d)] = sumVal / filterArea;
+  } // N
+}
+
+__kernel void transposeK(__global float *dest, __global float *src,
+                         ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC shuffle) {
+  size_t d0 = get_global_id(0);
+  size_t res[4];
+  res[shuffle.n] = d0;
+  for (size_t d1 = 0; d1 < idim.h; d1++) {
+    res[shuffle.h] = d1;
+    for (size_t d2 = 0; d2 < idim.w; d2++) {
+      res[shuffle.w] = d2;
+      for (size_t d3 = 0; d3 < idim.c; d3++) {
+        res[shuffle.c] = d3;
+        size_t dstIdx = getNHWC(odim, res[0], res[1], res[2], res[3]);
+        size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
+        dest[dstIdx] = src[srcIdx];
+      }
+    }
+  }
 }
 
 )";
