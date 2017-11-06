@@ -599,7 +599,8 @@ public:
   /// \returns true if the content of the other handle \p other is identical to
   /// this one.
   bool isEqual(Handle<ElemTy> &other) {
-    if (other.dims() != dims()) { return false;
+    if (other.dims() != dims()) {
+      return false;
     }
     for (size_t i = 0, e = size(); i < e; i++) {
       if (raw(i) != other.raw(i))
