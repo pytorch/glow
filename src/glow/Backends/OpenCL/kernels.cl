@@ -45,16 +45,17 @@ __kernel void elementmulK(__global float *dest, __global float *LHS,
 
 __kernel void fullyconnectedK(__global float *dest, __global float *src,
                               __global float *filter, __global float *bias,
-                              unsigned sliceSize) {
-  size_t depth = get_global_id(0);
+                              unsigned sliceSize, unsigned depth) {
+  size_t D = get_global_id(0);
   size_t N = get_global_id(1);
+
   size_t inBase = N * sliceSize;
   float sum = 0;
   for (size_t j = 0; j < sliceSize; j++) {
-    sum += src[inBase + j] * filter[depth * sliceSize + j];
+    sum += src[inBase + j] * filter[D * sliceSize + j];
   }
-  sum += bias[depth];
-  dest[N * sliceSize + depth] = sum;
+  sum += bias[D];
+  dest[N * depth + D] = sum;
 }
 
 __kernel void regressionK(__global float *dest, __global float *src,

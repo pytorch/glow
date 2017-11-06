@@ -227,6 +227,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
 
       // Pass the slice size (size of each sample in the batch) as a parameter.
       setKernelArg(kernel, numArgs, flattenCdr(inputDims).second);
+      setKernelArg(kernel, numArgs + 1, FC->getDepth());
 
       // Use a 2D grid where the first dimension is the depth and the second
       // dimension is the slice index in the batch.
