@@ -88,17 +88,12 @@ void setKernelArg(cl_kernel kernel, unsigned argIdx, T value) {
   GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
 }
 
-struct WGdims {
-  size_t d0;
-  size_t d1;
-  size_t d2;
-};
 /// \returns the max local workgroup size for each dimension, under the
-/// opencl constraints, with the global workgroup sizes of \p WGSize0,
-/// \p WGSize1, \p WGSize2.
-WGdims getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
-                                size_t WGSize0 = 1, size_t WGSize1 = 1,
-                                size_t WGSize2 = 1) {
+/// opencl constraints, with the global workgroup sizes of \p global;
+void getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
+                              llvm::ArrayRef<size_t> global,
+                              llvm::MutableArrayRef<size_t> local) {
+
   // Figure out the max size of the workgroup.
   size_t L;
   auto err = clGetKernelWorkGroupInfo(kernel, device, CL_KERNEL_WORK_GROUP_SIZE,
@@ -119,28 +114,27 @@ WGdims getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
   // less than WSG. In here we find the highest L that divides the globa
   // workgroup size. This is our naive implementation of gcd, with the other
   // constraints:
+  size_t totalWorkPrevDims = 1;
+  for (int i = 0, e = global.size(); i < e; i++) {
+    local[i] = L;
 
-  size_t d0 = L;
-  size_t d1 = L;
-  size_t d2 = L;
+    while (global[i] % local[i] || L % local[i] || local[i] > WIS[i] ||
+           local[i] * totalWorkPrevDims > WGS) {
+      local[i]--;
+    }
 
-  while (WGSize0 % d0 || L % d0 || d0 >= WIS[0]) {
-    d0--;
+    // Remember how much work we are doing in this dimension. Use it to make
+    // sure that the next dimenstions don't exceed the total allowed workgroup
+    // size.
+    totalWorkPrevDims *= local[i];
   }
-  while (WGSize1 % d1 || L % d1 || d1 >= WIS[1] || d0 * d1 > WGS) {
-    d1--;
-  }
-  while (WGSize2 % d2 || L % d2 || d2 >= WIS[2] || d0 * d1 * d2 > WGS) {
-    d2--;
-  }
-
-  return {d0, d1, d2};
 }
 
 void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
-                   llvm::ArrayRef<size_t> global,
-                   llvm::ArrayRef<size_t> local) {
-  assert(global.size() == local.size());
+                   cl_device_id device, llvm::ArrayRef<size_t> global) {
+  std::vector<size_t> local(global.size(), 0);
+  getMaxLocalWorkgroupSize(kernel, device, global, local);
+
   auto err = clEnqueueNDRangeKernel(commands, kernel, global.size(), nullptr,
                                     &global[0], &local[0], 0, nullptr, nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
@@ -185,10 +179,8 @@ void OCLBackend::doForwardPass(bool isTrain) {
 
       // Figure out how many element-wise elements are there to process:
       size_t global = I->getOperand(0).first->getType()->size();
-      // Figure out the size of the workgroup.
-      size_t local = getMaxLocalWorkgroupSize(kernel, deviceId_, global).d0;
 
-      enqueueKernel(commands_, kernel, {global}, {local});
+      enqueueKernel(commands_, kernel, deviceId_, {global});
       kernels.push_back(kernel);
       continue;
     }
@@ -211,12 +203,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
       // Pass the slice size (size of each sample in the batch) as a parameter.
       setKernelArg(kernel, numArgs, flattenCdr(inputDims).second);
 
-      // Figure out the max size of the workgroup.
-      size_t L = getMaxLocalWorkgroupSize(kernel, deviceId_, numSlices).d0;
-
-      const size_t local = L;
-      const size_t global = numSlices;
-      enqueueKernel(commands_, kernel, {global}, {local});
+      enqueueKernel(commands_, kernel, deviceId_, {numSlices});
       kernels.push_back(kernel);
       continue;
     }
@@ -241,12 +228,9 @@ void OCLBackend::doForwardPass(bool isTrain) {
       // Pass the slice size (size of each sample in the batch) as a parameter.
       setKernelArg(kernel, numArgs, flattenCdr(inputDims).second);
 
-      // Figure out the max size of the workgroup.
-      auto L = getMaxLocalWorkgroupSize(kernel, deviceId_, depth, numSlices);
-
       // Use a 2D grid where the first dimension is the depth and the second
       // dimension is the slice index in the batch.
-      enqueueKernel(commands_, kernel, {depth, numSlices}, {L.d0, L.d1});
+      enqueueKernel(commands_, kernel, deviceId_, {depth, numSlices});
       kernels.push_back(kernel);
       continue;
     }
@@ -271,14 +255,9 @@ void OCLBackend::doForwardPass(bool isTrain) {
       auto odim = ShapeNHWC(CC->getDest()->getType()->dims());
       auto depth = CC->getDepth();
 
-      // Figure out the max size of the workgroup.
-      auto L =
-          getMaxLocalWorkgroupSize(kernel, deviceId_, odim.h, odim.w, depth);
-
       // Use a 2D grid where the first dimension is the depth and the second
       // dimension is the slice index in the batch.
-      enqueueKernel(commands_, kernel, {odim.h, odim.w, depth},
-                    {L.d0, L.d1, L.d2});
+      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, depth});
       kernels.push_back(kernel);
       continue;
     }
