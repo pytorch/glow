@@ -254,12 +254,17 @@ void OCLBackend::doForwardPass(bool isTrain) {
       continue;
     }
 
-    if (auto *C = llvm::dyn_cast<CopyInst>(I)) {
-      auto *dest = tensors_[C->getDest()];
-      auto *src = tensors_[C->getSrc()];
-      size_t sizeInBytes = C->getDest()->getType()->getSizeInBytes();
-      cl_int err =
-          clEnqueueCopyBuffer(commands_, src, dest, 0, 0, sizeInBytes, 0, 0, 0);
+    if (isa<CopyInst>(I) || isa<ReshapeInst>(I))  {
+      auto *dest = I->getOperand(0).first;
+      auto *src = I->getOperand(1).first;
+      if (src == dest) {
+        continue;
+      }
+      auto *destPtr = tensors_[dest];
+      auto *srcPtr = tensors_[src];
+      size_t sizeInBytes = dest->getType()->getSizeInBytes();
+      cl_int err = clEnqueueCopyBuffer(commands_, srcPtr, destPtr, 0, 0,
+                                       sizeInBytes, 0, 0, 0);
       GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueCopyBuffer.");
       continue;
     }
