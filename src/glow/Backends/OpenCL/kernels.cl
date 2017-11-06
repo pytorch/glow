@@ -90,15 +90,19 @@ __kernel void convolutionK(__global float *dest, __global float *src,
                            size_t filterSize, size_t pad, size_t stride,
                            ShapeNHWC odim, ShapeNHWC idim,
                            ShapeNHWC filterDim) {
-  size_t d = get_global_id(0);
-  size_t n = get_global_id(1);
+  size_t ax = get_global_id(0);
+  size_t ay = get_global_id(1);
 
-  typedef int ssize_t;
-  // For each convolution 'jump' in the input tensor:
-  ssize_t x = -ssize_t(pad);
-  for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
-    ssize_t y = -ssize_t(pad);
-    for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+  // For each input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+
+    // For each layer in the output tensor:
+    for (size_t d = 0; d < odim.c; d++) {
+
+      typedef int ssize_t;
+      // For each convolution 'jump' in the input tensor:
+      ssize_t x = -ssize_t(pad) + ax * stride;
+      ssize_t y = -ssize_t(pad) + ay * stride;
 
       // For each element in the convolution-filter:
       float sum = 0;
@@ -122,8 +126,8 @@ __kernel void convolutionK(__global float *dest, __global float *src,
 
       sum += bias[d];
       dest[getNHWC(odim, n, ax, ay, d)] = sum;
-    } // H
-  }   // W
+    } // D
+  }   // N
 }
 
 )";

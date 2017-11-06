@@ -221,8 +221,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
 
     if (auto *CC = dyn_cast<ConvolutionInst>(I)) {
       // This is a naive implementation that parallelizes using two dimensions:
-      // the N (sample number in the batch) and D (the depth of the output
-      // channel).
+      // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(program_, kernelName);
 
       unsigned numArgs = I->getNumOperands();
@@ -237,19 +236,14 @@ void OCLBackend::doForwardPass(bool isTrain) {
       setKernelArg(kernel, 8, ShapeNHWC(CC->getSrc()->getType()->dims()));
       setKernelArg(kernel, 9, ShapeNHWC(CC->getFilter()->getType()->dims()));
 
-      // This is the number of elements for each slice. There are N slices in
-      // our batch.
-      auto inputDims = CC->getSrc()->getType()->dims();
-      // This is the batch size (number of slices/samples in the batch).
-      size_t numSlices = inputDims[0];
-      size_t depth = CC->getDepth();
+      auto odim = ShapeNHWC(CC->getDest()->getType()->dims());
 
       // Figure out the max size of the workgroup.
-      size_t L = getMaxLocalWorkgroupSize(kernel, deviceId_, numSlices, depth);
+      size_t L = getMaxLocalWorkgroupSize(kernel, deviceId_, odim.h, odim.w);
 
       // Use a 2D grid where the first dimension is the depth and the second
       // dimension is the slice index in the batch.
-      enqueueKernel(commands_, kernel, {depth, numSlices}, {L, L});
+      enqueueKernel(commands_, kernel, {odim.h, odim.w}, {L, L});
       kernels.push_back(kernel);
       continue;
     }
