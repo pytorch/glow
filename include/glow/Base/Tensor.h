@@ -596,6 +596,18 @@ public:
     transposeImpl(DH, srcCoor, destCoor, shuffle, 0);
   }
 
+  /// \returns true if the content of the other handle \p other is identical to
+  /// this one.
+  bool isEqual(Handle<ElemTy> &other) {
+    if (other.dims() != dims()) { return false;
+    }
+    for (size_t i = 0, e = size(); i < e; i++) {
+      if (raw(i) != other.raw(i))
+        return false;
+    }
+    return true;
+  }
+
   /// Insert the tensor \p slice at location \p offset. This operation is
   /// equivalent to the operation of scanning the source tensor, and saving
   /// the value that is stored at coordinate {d_0, d_1, ... d_n} in the new
