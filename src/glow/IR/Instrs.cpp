@@ -173,7 +173,7 @@ void ConcatInst::verify() const {
   // The dimension of the first input.
   auto inDim = getOperand(1).first->dims();
 
-  for (size_t i = 2, e = this->getNumOperands(); i < e; i++) {
+  for (size_t i = 2, e = getNumOperands(); i < e; i++) {
     assert(getOperand(i).first->dims() == inDim && "Invalid input shape");
   }
 
