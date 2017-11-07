@@ -154,15 +154,25 @@ TransposeInst *IRBuilder::createTransposeOp(Value *input,
   return createTransposeInst("transp", res, input, shuffle);
 }
 
+SliceInst *IRBuilder::createSliceOp(Value *input,
+				     llvm::ArrayRef<size_t> begin,
+				     llvm::ArrayRef<size_t> size) {
+  auto *res =
+      createAllocActivationInst("slice.res", input->getElementType(), size);
+  return createSliceInst("slice", res, input, begin, size);
+}
+
 ConcatInst *IRBuilder::createConcatOp(Value *LHS, Value *RHS,
                                       unsigned dimension) {
   assert(LHS->getType() == RHS->getType() && "Invalid dims");
   auto inDim = LHS->dims();
+  auto inDim2 = RHS->dims();
 
   std::vector<size_t> shape(inDim.begin(), inDim.end());
+  std::vector<size_t> shape2(inDim2.begin(), inDim2.end());
   // We are stacking the tensors along a specific dimension. This means that we
   // increase the size of the tensor along this dimension.
-  shape[dimension] *= 2;
+  shape[dimension] += shape2[dimension];
 
   auto *res =
       createAllocActivationInst("concat.res", LHS->getElementType(), shape);

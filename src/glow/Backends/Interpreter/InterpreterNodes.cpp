@@ -618,17 +618,126 @@ void Interpreter::fwdTransposeGradInst(bool isTrain,
 }
 
 void Interpreter::fwdReshapeInst(bool isTrain, const ReshapeInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-  for (size_t i = 0, e = inW.size(); i < e; i++) {
-    outW.raw(i) = inW.raw(i);
+  auto inT = getTensor(I->getSrc());
+  auto outT = getTensor(I->getDest());
+  switch(inT->getElementType()) {
+  case ElemKind::FloatTy: {
+    auto outW = outT->getHandle<>();
+    auto inW = inT->getHandle<>();
+    for (size_t i = 0, e = inW.size(); i < e; i++) {
+      outW.raw(i) = inW.raw(i);
+    }
+    break;
+  }
+  case ElemKind::IndexTy: {
+    auto outW = outT->getHandle<size_t>();
+    auto inW = inT->getHandle<size_t>();
+    for (size_t i = 0, e = inW.size(); i < e; i++) {
+      outW.raw(i) = inW.raw(i);
+    }
+    break;
+  }
+  case ElemKind::DoubleTy: {
+    break;
+  }
+  case ElemKind::Int8Ty: {
+    break;
+  }
+  case ElemKind::Int32Ty: {
+    break;
+  }
   }
 }
 void Interpreter::fwdReshapeGradInst(bool isTrain, const ReshapeGradInst *I) {
-  auto inG = getWeightHandle(I->getSrcGrad());
-  auto outG = getWeightHandle(I->getDestGrad());
-  for (size_t i = 0, e = outG.size(); i < e; i++) {
-    inG.raw(i) += outG.raw(i);
+  auto inT = getTensor(I->getSrcGrad());
+  auto outT = getTensor(I->getDestGrad());
+  switch(inT->getElementType()) {
+  case ElemKind::FloatTy: {
+    auto outG = outT->getHandle<>();
+    auto inG = inT->getHandle<>();
+    for (size_t i = 0, e = outG.size(); i < e; i++) {
+      inG.raw(i) += outG.raw(i);
+    }
+    break;
+  }
+  case ElemKind::IndexTy: {
+    auto outG = outT->getHandle<size_t>();
+    auto inG = inT->getHandle<size_t>();
+    for (size_t i = 0, e = outG.size(); i < e; i++) {
+      inG.raw(i) += outG.raw(i);
+    }
+    break;
+  }
+  case ElemKind::DoubleTy: {
+    break;
+  }
+  case ElemKind::Int8Ty: {
+    break;
+  }
+  case ElemKind::Int32Ty: {
+    break;
+  }
+  }
+}
+
+void Interpreter::fwdSliceInst(bool isTrain, const SliceInst *I) {
+  auto inW = getTensor(I->getSrc());
+  auto outW = getTensor(I->getDest());
+  auto begin = I->getBegin();
+  // Instead of switching with each tensor element type, we could be using
+  // directly tensor operations similar to copySlice and copyConsecutiveSlices.
+  switch(inW->getElementType()) {
+  case ElemKind::FloatTy: {
+    auto outWH = outW->getHandle<>();
+    auto inWH = inW->getHandle<>();
+    inWH.extractTensors(outWH, begin);
+    break;
+  }
+  case ElemKind::IndexTy: {
+    auto outWH = outW->getHandle<size_t>();
+    auto inWH = inW->getHandle<size_t>();
+    inWH.extractTensors(outWH, begin);
+    break;
+  }
+  case ElemKind::DoubleTy: {
+    break;
+  }
+  case ElemKind::Int8Ty: {
+    break;
+  }
+  case ElemKind::Int32Ty: {
+    break;
+  }
+  }
+}
+void Interpreter::fwdSliceGradInst(bool isTrain, const SliceGradInst *I) {
+  auto inG = getTensor(I->getSrcGrad());
+  auto outG = getTensor(I->getDestGrad());
+  auto begin = I->getBegin();
+  // Instead of switching with each tensor element type, we could be using
+  // directly tensor operations similar to copySlice and copyConsecutiveSlices.
+  switch(inG->getElementType()) {
+  case ElemKind::FloatTy: {
+    auto outGH = outG->getHandle<>();
+    auto inGH = inG->getHandle<>();
+    inGH.insertTensors(outGH, begin);
+    break;
+  }
+  case ElemKind::IndexTy: {
+    auto outGH = outG->getHandle<size_t>();
+    auto inGH = inG->getHandle<size_t>();
+    inGH.extractTensors(outGH, begin);
+    break;
+  }
+  case ElemKind::DoubleTy: {
+    break;
+  }
+  case ElemKind::Int8Ty: {
+    break;
+  }
+  case ElemKind::Int32Ty: {
+    break;
+  }
   }
 }
 

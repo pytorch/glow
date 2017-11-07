@@ -17,7 +17,9 @@ C++ compiler that supports C++11, on CMake, protocol buffer, and libpng.
 Before building the compiler you will need to update the git submodules with the
 command:
 
+  ```
   git submodule update
+  ```
 
 Next, create a build directory and run cmake on the source directory:
 
@@ -72,11 +74,14 @@ auto-fix and to enable/disable specific checks:
 
 ## Testing and Running
 
+To compile the project run 'ninja all' from the build/ directory.
+
 The project has a few unittests in the tests/ directory. To run all of the unit
-tests simply run the command 'ninja test' (or gmake test).  After compiling the
-project, a few test programs will be built under the /examples/ directory. The
-'mnist' and 'cifar10' programs train and run the digit recognition and image
-classification benchmarks.
+tests simply run the command 'ninja test' (or gmake test).
+
+After compiling the project, a few test programs will be built under
+the /examples/ directory. The 'mnist' and 'cifar10' programs train and run the
+digit recognition and imageOD classification benchmarks.
 
 
 The default compilation mode is 'Debug'. This means that the compiler itself is
@@ -84,14 +89,17 @@ easy to debug because the binary contains debug info, lots of assertions, and
 the optimizations are disabled. It also means that the compiler and runtime are
 very slow, and the execution time can be hundreds of times slower than that of
 release builds. If you wish to benchmark the compiler, run long benchmarks, or
-release the product then you should compile the compiler in Release mode. Check
+release the product then you should compile the compiler in 'Release' mode. Check
 the main CMake file for more details.
 
-After building Glow in Release-mode run the following command to download the
+After building Glow in 'Release' mode run the following command to download the
 cifar10 and mnist database:
 
 ```
-python ../glow/utils/download_test_db.py
+cd build/
+cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTING=YES ..
+ninja all
+python ../utils/download_test_db.py
 ```
 
 Next, after downloading and extracting the mnist and cifar10 database
@@ -100,6 +108,7 @@ Next, after downloading and extracting the mnist and cifar10 database
 ```
 ./bin/mnist
 ./bin/cifar10
+./bin/ptb
 ```
 
 Note: The databases should be (for now) in the same directory from where the

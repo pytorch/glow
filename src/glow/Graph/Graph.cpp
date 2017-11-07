@@ -154,16 +154,25 @@ TransposeNode *Graph::createTranspose(llvm::StringRef name, Node *input,
   return addNode(new TransposeNode(name, NT, input, shuffle.vec()));
 }
 
+SliceNode *Graph::createSlice(llvm::StringRef name, Node *input,
+			      llvm::ArrayRef<size_t> begin,
+			      llvm::ArrayRef<size_t> size) {
+  auto TS = uniqueType(input->getType()->getElementType(), size);
+
+  return addNode(new SliceNode(name, TS, input, begin.vec(), size.vec()));
+}
+
 ConcatNode *Graph::createConcat(llvm::StringRef name, Node *LHS, Node *RHS,
                                 unsigned dimension) {
   assert(LHS->getType() == RHS->getType() && "Invalid types");
   auto inDim = LHS->dims();
+  auto inDim2 = RHS->dims();
 
   std::vector<size_t> shape(inDim.begin(), inDim.end());
+  std::vector<size_t> shape2(inDim2.begin(), inDim2.end());
   // We are stacking the tensors along a specific dimension. This means that we
   // increase the size of the tensor along this dimension.
-  shape[dimension] *= 2;
-
+  shape[dimension] += shape2[dimension];
   auto NT = uniqueType(LHS->getElementType(), shape);
   return addNode(new ConcatNode(name, NT, LHS, RHS, dimension));
 }
