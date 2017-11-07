@@ -208,6 +208,26 @@ void OCLBackend::doForwardPass(bool isTrain) {
       continue;
     }
 
+    if (auto *CI = dyn_cast<ConcatInst>(I)) {
+      cl_kernel kernel = createKernel(program_, kernelName);
+
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg(kernel, arg, tensors_[I->getOperand(arg).first]);
+      }
+
+      auto odim = ShapeNHWC(CI->getDest()->getType()->dims());
+      auto ldim = ShapeNHWC(CI->getLHS()->getType()->dims());
+
+      setKernelArg(kernel, 3, odim);
+      setKernelArg(kernel, 4, ldim);
+      setKernelArg<unsigned>(kernel, 5, CI->getDim());
+
+      enqueueKernel(commands_, kernel, deviceId_, {ldim.n});
+      kernels.push_back(kernel);
+      continue;
+    }
+
     if (auto *FC = dyn_cast<FullyConnectedInst>(I)) {
       // This is a naive implementation of sgemm that's based on this algorithm:
       // https://cnugteren.github.io/tutorial/pages/page3.html

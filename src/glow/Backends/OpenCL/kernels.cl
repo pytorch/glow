@@ -225,4 +225,30 @@ __kernel void transposeK(__global float *dest, __global float *src,
   }
 }
 
+__kernel void concatK(__global float *dest,
+                      __global float *LHS,
+                      __global float *RHS,
+                       ShapeNHWC odim, ShapeNHWC ldim, unsigned dim) {
+  size_t d0 = get_global_id(0);
+  for (size_t d1 = 0; d1 < ldim.h; d1++) {
+    for (size_t d2 = 0; d2 < ldim.w; d2++) {
+      for (size_t d3 = 0; d3 < ldim.c; d3++) {
+        size_t r0 = d0 + (dim == 0 ? ldim.n : 0);
+        size_t r1 = d1 + (dim == 1 ? ldim.h : 0);
+        size_t r2 = d2 + (dim == 2 ? ldim.w : 0);
+        size_t r3 = d3 + (dim == 3 ? ldim.c : 0);
+
+        size_t srcIdx = getNHWC(ldim, d0, d1, d2, d3);
+        size_t destIdx0 = getNHWC(odim, d0, d1, d2, d3);
+        size_t destIdx1 = getNHWC(odim, r0, r1, r2, r3);
+
+        float v0 = LHS[srcIdx];
+        float v1 = RHS[srcIdx];
+        dest[destIdx0] = v0;
+        dest[destIdx1] = v1;
+      }
+    }
+  }
+}
+
 )";
