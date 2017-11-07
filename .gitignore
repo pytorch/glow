@@ -11,3 +11,10 @@ build/
 external/googletest/
 external/llvm/
 
+cifar-10-batches-bin/
+cifar-10.binary.tar.gz
+mnist.pkl.gz
+mnist_images.bin
+mnist_labels.bin
+ptb/
+ptb.tgz

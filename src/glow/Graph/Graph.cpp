@@ -154,6 +154,14 @@ TransposeNode *Graph::createTranspose(llvm::StringRef name, Node *input,
   return addNode(new TransposeNode(name, NT, input, shuffle.vec()));
 }
 
+SliceNode *Graph::createSlice(llvm::StringRef name, Node *input,
+			      llvm::ArrayRef<size_t> begin,
+			      llvm::ArrayRef<size_t> size) {
+  auto TS = uniqueType(input->getType()->getElementType(), size);
+
+  return addNode(new SliceNode(name, TS, input, begin.vec(), size.vec()));
+}
+
 ConcatNode *Graph::createConcat(llvm::StringRef name, Node *LHS, Node *RHS,
                                 unsigned dimension) {
   assert(LHS->getType() == RHS->getType() && "Invalid types");
