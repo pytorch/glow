@@ -598,15 +598,18 @@ public:
 
   /// \returns true if the content of the other handle \p other is identical to
   /// this one.
-  bool isEqual(Handle<ElemTy> &other) {
+  bool isEqual(Handle<ElemTy> &other, float allowedError = 0.0001) {
     if (other.dims() != dims()) {
       return false;
     }
+
+    ElemTy sumErr = 0;
     for (size_t i = 0, e = size(); i < e; i++) {
-      if (raw(i) != other.raw(i))
-        return false;
+      ElemTy delta = raw(i) - other.raw(i);
+      sumErr += delta * delta;
     }
-    return true;
+
+    return sumErr < allowedError;
   }
 
   /// Insert the tensor \p slice at location \p offset. This operation is
