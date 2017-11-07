@@ -303,8 +303,10 @@ public:
   }
 };
 
-void Graph::dumpDAG() {
-  std::string filename = "dotty_graph_dump_" + std::to_string(this) + ".dot";
+void Graph::dumpDAG(llvm::StringRef dotFilename) {
+  std::string filename =
+      dotFilename.empty() ? "dotty_graph_dump_" + std::to_string(this) + ".dot"
+                          : dotFilename.str();
   std::cout << "Writing dotty graph to: " << filename << '\n';
 
   std::ofstream myfile;

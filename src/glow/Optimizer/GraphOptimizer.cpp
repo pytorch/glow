@@ -26,7 +26,7 @@ static void DCE(Graph &G) {
     for (auto it = nodes.begin(), e = nodes.end(); it != e;) {
       bool used = (*it)->hasUsers();
       if (used || llvm::isa<SaveNode>(*it)) {
-        it++;
+        ++it;
         continue;
       }
 
@@ -40,7 +40,7 @@ static void DCE(Graph &G) {
   // Delete unused variables.
   for (auto it = vars.begin(), e = vars.end(); it != e;) {
     if ((*it)->hasUsers()) {
-      it++;
+      ++it;
       continue;
     }
 
@@ -74,9 +74,9 @@ static void sinkCode(Graph &G) {
   auto &nodes = G.getNodes();
 
   // For each node:
-  for (auto it = nodes.begin(), e = nodes.end(); it != e; ++it) {
+  for (auto const &node : nodes) {
     // Sink Transpose below batch normalization nodes:
-    if (auto *BN = dyn_cast<BatchNormalizationNode>(*it)) {
+    if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
       auto *TR = dyn_cast<TransposeNode>(BN->getInput());
 
       if (!TR) {
@@ -100,7 +100,7 @@ static void sinkCode(Graph &G) {
 
     // Sink Transpose below batch RELU nodes.
     // TODO: support other similar activation functions, such as sigmoid, etc.
-    if (auto *RL = dyn_cast<ReluNode>(*it)) {
+    if (auto *RL = dyn_cast<ReluNode>(node)) {
       auto *TR = dyn_cast<TransposeNode>(RL->getInput());
 
       if (!TR) {
@@ -114,7 +114,7 @@ static void sinkCode(Graph &G) {
     }
 
     // Merge consecutive Transpose operations.
-    if (auto *TR1 = dyn_cast<TransposeNode>(*it)) {
+    if (auto *TR1 = dyn_cast<TransposeNode>(node)) {
       auto *TR2 = dyn_cast<TransposeNode>(TR1->getInput());
 
       if (!TR2) {
@@ -134,7 +134,7 @@ static void sinkCode(Graph &G) {
     }
 
     // Sink Transpose below Arithmetic nodes.
-    if (auto *AN = dyn_cast<ArithmeticNode>(*it)) {
+    if (auto *AN = dyn_cast<ArithmeticNode>(node)) {
       auto *LTR = dyn_cast<TransposeNode>(AN->getLHS());
       auto *RTR = dyn_cast<TransposeNode>(AN->getRHS());
 
@@ -153,7 +153,7 @@ static void sinkCode(Graph &G) {
     }
 
     // Sink RELU below batch concat nodes.
-    if (auto *CN = dyn_cast<ConcatNode>(*it)) {
+    if (auto *CN = dyn_cast<ConcatNode>(node)) {
       auto *L = dyn_cast<ReluNode>(CN->getLHS());
       auto *R = dyn_cast<ReluNode>(CN->getRHS());
 
@@ -166,7 +166,7 @@ static void sinkCode(Graph &G) {
     }
 
     // Sink Transpose below concat nodes.
-    if (auto *CN = dyn_cast<ConcatNode>(*it)) {
+    if (auto *CN = dyn_cast<ConcatNode>(node)) {
       TransposeNode *L = dyn_cast<TransposeNode>(CN->getLHS());
       TransposeNode *R = dyn_cast<TransposeNode>(CN->getRHS());
 
@@ -199,14 +199,14 @@ static void OptimizePool(Graph &G) {
   auto &nodes = G.getNodes();
 
   // For each node:
-  for (auto it = nodes.begin(), e = nodes.end(); it != e; ++it) {
+  for (auto const &node : nodes) {
     // Swap the order of Relu->MaxPool, to perform the RELU operation on a
     // smaller tensor. This optimization is not a major performance win. The
     // RELU operation takes a small fraction of the time, and reordering the
     // nodes does not give us much. However, reordering the buffers allows us to
     // reuse the memory buffer of the pool operation and potentially save
     // memory.
-    if (auto *PL = dyn_cast<PoolNode>(*it)) {
+    if (auto *PL = dyn_cast<PoolNode>(node)) {
       auto *RL = dyn_cast<ReluNode>(PL->getInput());
 
       if (!RL) {
@@ -238,10 +238,10 @@ static void OptimizeBatchNorm(Graph &G) {
   auto &nodes = G.getNodes();
 
   // For each node:
-  for (auto it = nodes.begin(), e = nodes.end(); it != e; ++it) {
+  for (auto const &node : nodes) {
     // Merge the Batch Normalization operation into the convolution that comes
     // before it by updating the weights of the filter.
-    if (auto *BN = dyn_cast<BatchNormalizationNode>(*it)) {
+    if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
       auto *CV = dyn_cast<ConvolutionNode>(BN->getInput());
       if (!CV) {
         continue;

@@ -119,7 +119,7 @@ public:
   void dump();
 
   /// Dump a dotty graph that depicts the module.
-  void dumpDAG();
+  void dumpDAG(llvm::StringRef dotFilename = "");
 
   /// \returns the list of nodes that the graph owns.
   std::list<Node *> &getNodes() { return nodes_; }
