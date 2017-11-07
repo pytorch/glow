@@ -83,3 +83,12 @@ TEST(MemAlloc, dealloc2) {
   // Check that after deallocating everything we start allocating from zero.
   EXPECT_EQ(MA.allocate(10), 0);
 }
+
+TEST(MemAlloc, allocateToTheMax) {
+  MemoryAllocator MA(100);
+  auto p0 = MA.allocate(50);
+  auto p1 = MA.allocate(50);
+
+  EXPECT_EQ(p0, 0);
+  EXPECT_NE(p1, MemoryAllocator::npos);
+}
