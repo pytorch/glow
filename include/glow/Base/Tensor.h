@@ -459,8 +459,8 @@ public:
 
   void dump(const char *title = "", const char *suffix = "") const {
     std::cout << "\n" << title << "\n";
-    size_t num_dims = this->numDims;
-    auto shape = this->dims();
+    size_t num_dims = numDims;
+    auto shape = dims();
 
     // Check for empty tensor.
     if (!num_dims) {

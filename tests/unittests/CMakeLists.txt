@@ -77,3 +77,12 @@ target_link_libraries(OCLTest
 add_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest)
 endif()
 
+add_executable(MemoryAllocatorTest
+                MemoryAllocatorTest.cpp)
+target_link_libraries(MemoryAllocatorTest
+                      PRIVATE
+                        Backends
+                        IR
+                        gtest
+                        gtest_main)
+add_test(MemoryAllocatorTest ${GLOW_BINARY_DIR}/tests/MemoryAllocatorTest)

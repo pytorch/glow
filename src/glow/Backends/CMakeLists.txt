@@ -2,7 +2,8 @@
 add_subdirectory(Interpreter)
 add_subdirectory(OpenCL)
 
-add_library(Backends Backends.cpp)
+add_library(Backends Backends.cpp MemoryAllocator.cpp)
+
 target_link_libraries(Backends
                       PRIVATE
                         Interpreter
