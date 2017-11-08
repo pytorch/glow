@@ -15,6 +15,7 @@ size_t MemoryAllocator::allocate(size_t size) {
   for (auto it = allocations_.begin(), e = allocations_.end(); it != e; it++) {
     if (it->begin_ - prev >= size) {
       allocations_.emplace(it, prev, prev + size);
+      maxMemoryAllocated_ = std::max(maxMemoryAllocated_, prev + size);
       return prev;
     }
     prev = it->end_;
@@ -28,6 +29,7 @@ size_t MemoryAllocator::allocate(size_t size) {
   }
 
   allocations_.emplace_back(prev, prev + size);
+  maxMemoryAllocated_ = std::max(maxMemoryAllocated_, prev + size);
   return prev;
 }
 

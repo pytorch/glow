@@ -91,4 +91,9 @@ TEST(MemAlloc, allocateToTheMax) {
 
   EXPECT_EQ(p0, 0);
   EXPECT_NE(p1, MemoryAllocator::npos);
+
+  MA.deallocate(p0);
+  MA.deallocate(p1);
+
+  EXPECT_EQ(MA.getMaxMemoryUsage(), 100);
 }
