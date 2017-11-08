@@ -4,6 +4,7 @@
 #include <cassert>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -31,6 +32,8 @@ class NodeBuilder {
   std::ofstream &cStream;
   /// Def file stream.
   std::ofstream &dStream;
+  /// Documentation string printed with the class definition.
+  std::string docstring_;
 
 public:
   NodeBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
@@ -76,6 +79,12 @@ public:
     return *this;
   }
 
+  /// Set the documentation string. Each line will be prepended with "/// ".
+  NodeBuilder &setDocstring(const std::string &docstring) {
+    docstring_ = docstring;
+    return *this;
+  }
+
   /// Emits the methods that converts an enum case into a textual label.
   void emitEnumModePrinters(std::ostream &os) const;
 
@@ -96,6 +105,9 @@ public:
 
   /// Emit the 'visit' method that implements node visitors.
   void emitVisitor(std::ostream &os) const;
+
+  /// Emit the class-level documentation string, if any.
+  void emitDocstring(std::ostream &os) const;
 
   /// Emit the class definition for the node.
   void emitNodeClass(std::ostream &os) const;

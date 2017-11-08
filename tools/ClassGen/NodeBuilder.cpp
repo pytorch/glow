@@ -172,8 +172,20 @@ void NodeBuilder::emitVisitor(std::ostream &os) const {
   os << "}\n";
 }
 
+void NodeBuilder::emitDocstring(std::ostream &os) const {
+  std::istringstream stream(docstring_);
+  std::string line;
+  while (std::getline(stream, line)) {
+    os << "/// " << line << "\n";
+  }
+}
+
 void NodeBuilder::emitNodeClass(std::ostream &os) const {
-  os << "namespace glow {\nclass " << name_ << "Node final : public Node {\n";
+  os << "namespace glow {\n";
+
+  emitDocstring(os);
+
+  os << "class " << name_ << "Node final : public Node {\n";
 
   emitClassMembers(os);
 
