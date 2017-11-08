@@ -100,7 +100,7 @@ public:
     return createAllocActivationInst(name, T);
   }
 
-  // Import the auto-generated instruction creation methods:
+// Import the auto-generated instruction creation methods:
 #include "AutoGenIRBuilder.h"
 
   ///@}

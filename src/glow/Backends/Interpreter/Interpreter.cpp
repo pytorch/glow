@@ -101,7 +101,7 @@ void Interpreter::deleteTensor(const Value *v) {
 }
 
 void Interpreter::doForwardPass(bool isTrain) {
-  // Do the forward pass.
+// Do the forward pass.
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   case Kinded::Kind::CLASS##Kind: {                                            \
