@@ -27,12 +27,19 @@ class MemoryAllocator {
   std::list<Segment> allocations_;
   /// The size of the memory region that we can allocate segments into.
   size_t poolSize_;
+  /// This is the high water mark for the allocated memory.
+  size_t maxMemoryAllocated_{0};
 
 public:
   /// A reserved value to mark invalid allocation.
   static const size_t npos;
 
   MemoryAllocator(size_t poolSize) : poolSize_(poolSize) {}
+
+  void reset() {
+    maxMemoryAllocated_ = 0;
+    allocations_.clear();
+  }
 
   /// Allocate a region of size \p size.
   /// \returns the allocated pointer, or MemoryAllocator::npos, if the
@@ -41,6 +48,9 @@ public:
 
   /// Frees the allocation at \p ptr.
   void deallocate(size_t ptr);
+
+  /// \returns the high water mark for the allocated memory.
+  size_t getMaxMemoryUsage() { return maxMemoryAllocated_; }
 };
 
 } // namespace glow
