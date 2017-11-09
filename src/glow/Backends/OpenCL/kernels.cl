@@ -18,9 +18,17 @@ __kernel void reluK(__global float *dest, __global float *src) {
   dest[i] = fmax(src[i], 0);
 }
 
+__kernel void reluW(__global float *mem, size_t dest, size_t src) {
+  reluK(&mem[dest], &mem[src]);
+}
+
 __kernel void sigmoidK(__global float *dest, __global float *src) {
   size_t i = get_global_id(0);
   dest[i] = 1 / (1 + exp(-src[i]));
+}
+
+__kernel void sigmoidW(__global float *mem, size_t dest, size_t src) {
+  sigmoidK(&mem[dest], &mem[src]);
 }
 
 __kernel void tanhK(__global float *dest, __global float *src) {
@@ -29,7 +37,11 @@ __kernel void tanhK(__global float *dest, __global float *src) {
   float exp_val = exp(val);
   float exp_neg_val = exp(-val);
   dest[i] = (exp_val - exp_neg_val) / (exp_val + exp_neg_val);
-};
+}
+
+__kernel void tanhW(__global float *mem, size_t dest, size_t src) {
+  tanhK(&mem[dest], &mem[src]);
+}
 
 __kernel void elementaddK(__global float *dest, __global float *LHS,
                           __global float *RHS) {
@@ -37,10 +49,20 @@ __kernel void elementaddK(__global float *dest, __global float *LHS,
   dest[i] = LHS[i] + RHS[i];
 }
 
+__kernel void elementaddW(__global float *mem, size_t dest, size_t LHS,
+                          size_t RHS) {
+  elementaddK(&mem[dest], &mem[LHS], &mem[RHS]);
+}
+
 __kernel void elementmulK(__global float *dest, __global float *LHS,
                           __global float *RHS) {
   size_t i = get_global_id(0);
   dest[i] = LHS[i] * RHS[i];
+}
+__kernel void elementmulW(__global float *mem, size_t dest, size_t LHS,
+
+                          size_t RHS) {
+  elementmulK(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
 __kernel void fullyconnectedK(__global float *dest, __global float *src,
@@ -58,10 +80,22 @@ __kernel void fullyconnectedK(__global float *dest, __global float *src,
   dest[N * depth + D] = sum;
 }
 
+__kernel void fullyconnectedW(__global float *mem, size_t dest, size_t src,
+                              size_t filter, size_t bias, unsigned sliceSize,
+                              unsigned depth) {
+  fullyconnectedK(&mem[dest], &mem[src], &mem[filter], &mem[bias], sliceSize,
+                  depth);
+}
+
 __kernel void regressionK(__global float *dest, __global float *src,
                           __global float *exp) {
   size_t i = get_global_id(0);
   dest[i] = src[i];
+}
+
+__kernel void regressionW(__global float *mem, size_t dest, size_t src,
+                          size_t exp) {
+  regressionK(&mem[dest], &mem[src], &mem[exp]);
 }
 
 __kernel void softmaxK(__global float *dest, __global float *src,
@@ -82,6 +116,12 @@ __kernel void softmaxK(__global float *dest, __global float *src,
     e_cache[i * sliceSize + j] /= sum;
     dest[i * sliceSize + j] = e_cache[i * sliceSize + j];
   }
+}
+
+__kernel void softmaxW(__global float *mem, size_t dest, size_t src,
+                       size_t e_cache, size_t selected, unsigned sliceSize) {
+  softmaxK(&mem[dest], &mem[src], &mem[e_cache],
+           (__global unsigned *)&mem[selected], sliceSize);
 }
 
 __kernel void convolutionK(__global float *dest, __global float *src,
@@ -126,6 +166,14 @@ __kernel void convolutionK(__global float *dest, __global float *src,
   } // N
 }
 
+__kernel void convolutionW(__global float *mem, size_t dest, size_t src,
+                           size_t filter, size_t bias, size_t filterSize,
+                           size_t pad, size_t stride, ShapeNHWC odim,
+                           ShapeNHWC idim, ShapeNHWC filterDim) {
+  convolutionK(&mem[dest], &mem[src], &mem[filter], &mem[bias], filterSize, pad,
+               stride, odim, idim, filterDim);
+}
+
 __kernel void poolmaxK(__global float *dest, __global float *src,
                        __global float *srcXY, size_t filterSize, size_t pad,
                        size_t stride, ShapeNHWC odim, ShapeNHWC idim) {
@@ -167,6 +215,13 @@ __kernel void poolmaxK(__global float *dest, __global float *src,
   } // N
 }
 
+__kernel void poolmaxW(__global float *mem, size_t dest, size_t src,
+                       size_t srcXY, size_t filterSize, size_t pad,
+                       size_t stride, ShapeNHWC odim, ShapeNHWC idim) {
+  poolmaxK(&mem[dest], &mem[src], &mem[srcXY], filterSize, pad, stride, odim,
+           idim);
+}
+
 __kernel void poolavgK(__global float *dest, __global float *src,
                        size_t filterSize, size_t pad, size_t stride,
                        ShapeNHWC odim, ShapeNHWC idim) {
@@ -205,6 +260,12 @@ __kernel void poolavgK(__global float *dest, __global float *src,
   } // N
 }
 
+__kernel void poolavgW(__global float *mem, size_t dest, size_t src,
+                       size_t filterSize, size_t pad, size_t stride,
+                       ShapeNHWC odim, ShapeNHWC idim) {
+  poolavgK(&mem[dest], &mem[src], filterSize, pad, stride, odim, idim);
+}
+
 __kernel void transposeK(__global float *dest, __global float *src,
                          ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC shuffle) {
   size_t d0 = get_global_id(0);
@@ -225,10 +286,14 @@ __kernel void transposeK(__global float *dest, __global float *src,
   }
 }
 
-__kernel void concatK(__global float *dest,
-                      __global float *LHS,
-                      __global float *RHS,
-                       ShapeNHWC odim, ShapeNHWC ldim, unsigned dim) {
+__kernel void transposeW(__global float *mem, size_t dest, size_t src,
+                         ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC shuffle) {
+  transposeK(&mem[dest], &mem[src], odim, idim, shuffle);
+}
+
+__kernel void concatK(__global float *dest, __global float *LHS,
+                      __global float *RHS, ShapeNHWC odim, ShapeNHWC ldim,
+                      unsigned dim) {
   size_t d0 = get_global_id(0);
   for (size_t d1 = 0; d1 < ldim.h; d1++) {
     for (size_t d2 = 0; d2 < ldim.w; d2++) {
@@ -251,4 +316,8 @@ __kernel void concatK(__global float *dest,
   }
 }
 
+__kernel void concatW(__global float *mem, size_t dest, size_t LHS, size_t RHS,
+                      ShapeNHWC odim, ShapeNHWC ldim, unsigned dim) {
+  concatK(&mem[dest], &mem[LHS], &mem[RHS], odim, ldim, dim);
+}
 )";

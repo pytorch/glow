@@ -481,4 +481,7 @@ Backend *glow::createOCLBackend(Module *M) {
   GLOW_ASSERT(false && "Glow is compiled without OpenCL support");
 }
 
+// Disable the unused variable warning on non-ocl builds.
+(void)SHADER_CODE;
+
 #endif // WITH_OPENCL
