@@ -4,7 +4,7 @@ add_library(ExecutionEngine
 
 target_link_libraries(ExecutionEngine
                       PRIVATE
-                        Interpreter
+                        Backends
                         Optimizer
                         Base
                         Graph)
