@@ -14,6 +14,18 @@
 using namespace glow;
 using llvm::cast;
 
+void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &G = EE.getGraph();
+  auto *var =
+      G.createVariable(inputs->getElementType(), inputs->dims(), "input");
+  auto *relu = G.createRELU("relu", var);
+  auto result = G.createSave("ret", relu);
+  EE.compile(CompilationMode::Infer);
+  EE.infer({var}, {inputs});
+  out->copyFrom(&result->getOutput()->getPayload());
+}
+
 void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &G = EE.getGraph();
@@ -72,6 +84,24 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   EE.compile(CompilationMode::Infer);
   EE.infer({var}, {inputs});
   out->copyFrom(&result->getOutput()->getPayload());
+}
+
+TEST(OpenCLCorrectnessTest, ReluTest) {
+  Tensor inputs(ElemKind::FloatTy, {2, 16});
+  inputs.getHandle().randomize(1);
+  Tensor out1;
+  Tensor out2;
+
+  inferReluNet(&inputs, &out1, BackendKind::OpenCL);
+  inferReluNet(&inputs, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+  if (!H1.isEqual(H2)) {
+    H1.dump();
+    H2.dump();
+  }
 }
 
 TEST(OpenCLCorrectnessTest, convOps) {
