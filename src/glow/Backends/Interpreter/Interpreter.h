@@ -80,9 +80,9 @@ private:
   /// \returns True if the value \p has an associated gradient tensor.
   bool hasGradTensor(const Value *v) const;
 
-/// @name Interpreter methods. This is a list of method declerations that are
-/// used by the interpreter to dispatch different instructions.
-///@{
+  /// @name Interpreter methods. This is a list of method declerations that are
+  /// used by the interpreter to dispatch different instructions.
+  ///@{
 
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME) void fwd##CLASS(bool isTrain, const CLASS *I);

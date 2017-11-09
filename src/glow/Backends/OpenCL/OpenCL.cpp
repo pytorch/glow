@@ -46,7 +46,7 @@ static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 #endif
 }
 
-OCLBackend::OCLBackend(Module *M) : M_(M) {
+OCLBackend::OCLBackend(Module *M) : M_(M), allocator_(0xFFFFFFFF) {
   cl_int err =
       clGetDeviceIDs(nullptr, CL_DEVICE_TYPE_DEFAULT, 1, &deviceId_, nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
@@ -72,6 +72,10 @@ OCLBackend::~OCLBackend() {
   clReleaseProgram(program_);
   clReleaseCommandQueue(commands_);
   clReleaseContext(context_);
+  if (deviceBuffer_) {
+    clReleaseMemObject(deviceBuffer_);
+    deviceBuffer_ = 0;
+  }
   clear();
 }
 
@@ -145,24 +149,12 @@ void OCLBackend::doForwardPass(bool isTrain) {
   std::vector<cl_kernel> kernels;
 
   for (auto &I : M_->getInstrs()) {
-    // The kernels are named after the name of the instruction, plus the "K"
+    // The kernels are named after the name of the instruction, plus the "W"
     // suffix to prevent name colissions for functions like 'tanh' that are also
     // a part of the OpenCL runtime.
-    std::string kernelName = std::string(I->getKindName()) + "K";
+    std::string kernelName = std::string(I->getKindName()) + "W";
 
-    if (auto *A = llvm::dyn_cast<AllocActivationInst>(I)) {
-      auto numBytes = I->getType()->getSizeInBytes();
-      auto buff = clCreateBuffer(context_, CL_MEM_READ_WRITE, numBytes, nullptr,
-                                 nullptr);
-      assert(!tensors_.count(A) && "Allocation already made!");
-      tensors_[A] = buff;
-      continue;
-    }
-
-    if (auto *D = llvm::dyn_cast<DeallocActivationInst>(I)) {
-      auto *A = D->getAlloc();
-      assert(tensors_.count(A) && "Invalid deallocation!");
-      clReleaseMemObject(tensors_[A]);
+    if (isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I)) {
       continue;
     }
 
@@ -172,9 +164,10 @@ void OCLBackend::doForwardPass(bool isTrain) {
         isa<ElementMulInst>(I)) {
 
       cl_kernel kernel = createKernel(program_, kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
 
       for (unsigned arg = 0, e = I->getNumOperands(); arg < e; arg++) {
-        setKernelArg(kernel, arg, tensors_[I->getOperand(arg).first]);
+        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
       }
 
       // Figure out how many element-wise elements are there to process:
@@ -190,9 +183,11 @@ void OCLBackend::doForwardPass(bool isTrain) {
       // the batch is processed by a different parallel 'thread'.
       cl_kernel kernel = createKernel(program_, kernelName);
 
+      setKernelArg(kernel, 0, deviceBuffer_);
+
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg, tensors_[I->getOperand(arg).first]);
+        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
       }
 
       // This is the number of elements for each slice. There are N slices in
@@ -201,7 +196,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
       size_t numSlices = inputDims[0];
 
       // Pass the slice size (size of each sample in the batch) as a parameter.
-      setKernelArg(kernel, numArgs, flattenCdr(inputDims).second);
+      setKernelArg(kernel, numArgs + 1, flattenCdr(inputDims).second);
 
       enqueueKernel(commands_, kernel, deviceId_, {numSlices});
       kernels.push_back(kernel);
@@ -210,18 +205,19 @@ void OCLBackend::doForwardPass(bool isTrain) {
 
     if (auto *CI = dyn_cast<ConcatInst>(I)) {
       cl_kernel kernel = createKernel(program_, kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg, tensors_[I->getOperand(arg).first]);
+        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
       }
 
       auto odim = ShapeNHWC(CI->getDest()->getType()->dims());
       auto ldim = ShapeNHWC(CI->getLHS()->getType()->dims());
 
-      setKernelArg(kernel, 3, odim);
-      setKernelArg(kernel, 4, ldim);
-      setKernelArg<unsigned>(kernel, 5, CI->getDim());
+      setKernelArg(kernel, 4, odim);
+      setKernelArg(kernel, 5, ldim);
+      setKernelArg<unsigned>(kernel, 6, CI->getDim());
 
       enqueueKernel(commands_, kernel, deviceId_, {ldim.n});
       kernels.push_back(kernel);
@@ -232,10 +228,11 @@ void OCLBackend::doForwardPass(bool isTrain) {
       // This is a naive implementation of sgemm that's based on this algorithm:
       // https://cnugteren.github.io/tutorial/pages/page3.html
       cl_kernel kernel = createKernel(program_, kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg, tensors_[I->getOperand(arg).first]);
+        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
       }
 
       // This is the number of elements for each slice. There are N slices in
@@ -246,8 +243,8 @@ void OCLBackend::doForwardPass(bool isTrain) {
       size_t depth = FC->getDepth();
 
       // Pass the slice size (size of each sample in the batch) as a parameter.
-      setKernelArg(kernel, numArgs, flattenCdr(inputDims).second);
-      setKernelArg(kernel, numArgs + 1, FC->getDepth());
+      setKernelArg(kernel, numArgs + 1, flattenCdr(inputDims).second);
+      setKernelArg(kernel, numArgs + 2, FC->getDepth());
 
       // Use a 2D grid where the first dimension is the depth and the second
       // dimension is the slice index in the batch.
@@ -260,21 +257,22 @@ void OCLBackend::doForwardPass(bool isTrain) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(program_, kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg, tensors_[I->getOperand(arg).first]);
+        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
       }
 
       auto odim = ShapeNHWC(CC->getDest()->getType()->dims());
       auto idim = ShapeNHWC(CC->getSrc()->getType()->dims());
 
-      setKernelArg<size_t>(kernel, 4, CC->getKernel());
-      setKernelArg(kernel, 5, CC->getPad());
-      setKernelArg(kernel, 6, CC->getStride());
-      setKernelArg(kernel, 7, odim);
-      setKernelArg(kernel, 8, idim);
-      setKernelArg(kernel, 9, ShapeNHWC(CC->getFilter()->getType()->dims()));
+      setKernelArg<size_t>(kernel, 5, CC->getKernel());
+      setKernelArg(kernel, 6, CC->getPad());
+      setKernelArg(kernel, 7, CC->getStride());
+      setKernelArg(kernel, 8, odim);
+      setKernelArg(kernel, 9, idim);
+      setKernelArg(kernel, 10, ShapeNHWC(CC->getFilter()->getType()->dims()));
 
       auto depth = CC->getDepth();
 
@@ -289,20 +287,21 @@ void OCLBackend::doForwardPass(bool isTrain) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(program_, kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg, tensors_[I->getOperand(arg).first]);
+        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
       }
 
       auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
 
-      setKernelArg<size_t>(kernel, 3, PM->getKernel());
-      setKernelArg(kernel, 4, PM->getPad());
-      setKernelArg(kernel, 5, PM->getStride());
-      setKernelArg(kernel, 6, odim);
-      setKernelArg(kernel, 7, idim);
+      setKernelArg<size_t>(kernel, 4, PM->getKernel());
+      setKernelArg(kernel, 5, PM->getPad());
+      setKernelArg(kernel, 6, PM->getStride());
+      setKernelArg(kernel, 7, odim);
+      setKernelArg(kernel, 8, idim);
 
       enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c});
       kernels.push_back(kernel);
@@ -313,20 +312,21 @@ void OCLBackend::doForwardPass(bool isTrain) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(program_, kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg, tensors_[I->getOperand(arg).first]);
+        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
       }
 
       auto odim = ShapeNHWC(PA->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PA->getSrc()->getType()->dims());
 
-      setKernelArg<size_t>(kernel, 2, PA->getKernel());
-      setKernelArg(kernel, 3, PA->getPad());
-      setKernelArg(kernel, 4, PA->getStride());
-      setKernelArg(kernel, 5, odim);
-      setKernelArg(kernel, 6, idim);
+      setKernelArg<size_t>(kernel, 3, PA->getKernel());
+      setKernelArg(kernel, 4, PA->getPad());
+      setKernelArg(kernel, 5, PA->getStride());
+      setKernelArg(kernel, 6, odim);
+      setKernelArg(kernel, 7, idim);
 
       enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c});
       kernels.push_back(kernel);
@@ -340,21 +340,22 @@ void OCLBackend::doForwardPass(bool isTrain) {
                   "This code supports only 4-dim transposes");
 
       cl_kernel kernel = createKernel(program_, kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg, tensors_[I->getOperand(arg).first]);
+        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
       }
 
       auto odim = ShapeNHWC(TR->getDest()->getType()->dims());
       auto idim = ShapeNHWC(TR->getSrc()->getType()->dims());
 
-      setKernelArg(kernel, 2, odim);
-      setKernelArg(kernel, 3, idim);
+      setKernelArg(kernel, 3, odim);
+      setKernelArg(kernel, 4, idim);
 
       auto mask = TR->getShuffle();
       ShapeNHWC shuff(mask[0], mask[1], mask[2], mask[3]);
-      setKernelArg(kernel, 4, shuff);
+      setKernelArg(kernel, 5, shuff);
 
       enqueueKernel(commands_, kernel, deviceId_, {idim.n});
       kernels.push_back(kernel);
@@ -367,11 +368,13 @@ void OCLBackend::doForwardPass(bool isTrain) {
       if (src == dest) {
         continue;
       }
-      auto *destPtr = tensors_[dest];
-      auto *srcPtr = tensors_[src];
+      size_t destOff = tensors_[dest];
+      size_t srcOff = tensors_[src];
       size_t sizeInBytes = dest->getType()->getSizeInBytes();
-      cl_int err = clEnqueueCopyBuffer(commands_, srcPtr, destPtr, 0, 0,
-                                       sizeInBytes, 0, 0, 0);
+
+      cl_int err =
+          clEnqueueCopyBuffer(commands_, deviceBuffer_, deviceBuffer_, srcOff,
+                              destOff, sizeInBytes, 0, nullptr, nullptr);
       GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueCopyBuffer.");
       continue;
     }
@@ -390,13 +393,14 @@ void OCLBackend::doForwardPass(bool isTrain) {
 
 void OCLBackend::copyWeightsToDevice() {
   for (auto it : tensors_) {
-    assert(externalTensors_.count(it.first) && "Unknown weight!");
+    if (!externalTensors_.count(it.first))
+      continue;
     Tensor *T = externalTensors_[it.first];
     size_t sizeInBytes = T->getType().getSizeInBytes();
     // Issue a non-blocking command to copy the buffer to the device.
-    cl_int err =
-        clEnqueueWriteBuffer(commands_, it.second, CL_FALSE, 0, sizeInBytes,
-                             T->getUnsafePtr(), 0, nullptr, nullptr);
+    cl_int err = clEnqueueWriteBuffer(commands_, deviceBuffer_, CL_FALSE,
+                                      it.second, sizeInBytes, T->getUnsafePtr(),
+                                      0, nullptr, nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
   }
   // Do it!
@@ -414,9 +418,9 @@ void OCLBackend::copyWeightsFromDevice() {
     size_t sizeInBytes = T->getType().getSizeInBytes();
 
     // Issue a non-blocking command to copy the buffer from the device.
-    cl_int err =
-        clEnqueueReadBuffer(commands_, it.second, CL_FALSE, 0, sizeInBytes,
-                            T->getUnsafePtr(), 0, nullptr, nullptr);
+    cl_int err = clEnqueueReadBuffer(commands_, deviceBuffer_, CL_FALSE,
+                                     it.second, sizeInBytes, T->getUnsafePtr(),
+                                     0, nullptr, nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy from the device");
   }
   clFinish(commands_);
@@ -428,26 +432,46 @@ void OCLBackend::registerGraphTensor(const Value *v, Tensor *t) {
 }
 
 void OCLBackend::init() {
-  // Copy the weights into the device.
-
-  // For each weight:
+  // Assign device-space addresses to the weights.
   for (auto it : externalTensors_) {
     Tensor *T = it.second;
     size_t sizeInBytes = T->getType().getSizeInBytes();
-
-    // Allocate a new buffer, unless it was allocated in previous compilations.
-    cl_mem buff;
-    auto tt = tensors_.find(it.first);
-    if (tt == tensors_.end()) {
-      buff = clCreateBuffer(context_, CL_MEM_READ_WRITE, sizeInBytes, nullptr,
-                            nullptr);
-    } else {
-      buff = tt->second;
-    }
-    GLOW_ASSERT(buff && "Allocation failed!");
+    size_t addr = allocator_.allocate(sizeInBytes);
     // Associate the new buffer with the weight value.
-    tensors_[it.first] = buff;
+    tensors_[it.first] = addr;
   }
+
+  // Assign device-space addresses to the activations.
+  for (auto &I : M_->getInstrs()) {
+    if (auto *A = llvm::dyn_cast<AllocActivationInst>(I)) {
+      auto numBytes = I->getType()->getSizeInBytes();
+      size_t addr = allocator_.allocate(numBytes);
+      assert(!tensors_.count(A) && "Allocation already made!");
+      tensors_[A] = addr;
+      continue;
+    }
+
+    if (auto *D = llvm::dyn_cast<DeallocActivationInst>(I)) {
+      auto *A = D->getAlloc();
+      assert(tensors_.count(A) && "Invalid deallocation!");
+      allocator_.deallocate(tensors_[A]);
+      continue;
+    }
+  }
+
+  // Ask the memory allocator how much memory is required. What was the high
+  // watermark for this program.
+  size_t requiredSpace = allocator_.getMaxMemoryUsage();
+
+  // Release the memory from the previous run.
+  if (deviceBuffer_) {
+    clReleaseMemObject(deviceBuffer_);
+    deviceBuffer_ = 0;
+  }
+
+  deviceBuffer_ = clCreateBuffer(context_, CL_MEM_READ_WRITE, requiredSpace,
+                                 nullptr, nullptr);
+  GLOW_ASSERT(deviceBuffer_ && "Allocation failed!");
 }
 
 void OCLBackend::clear() { externalTensors_.clear(); }

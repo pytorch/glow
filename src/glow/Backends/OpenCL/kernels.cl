@@ -18,7 +18,7 @@ __kernel void reluK(__global float *dest, __global float *src) {
   dest[i] = fmax(src[i], 0);
 }
 
-__kernel void reluW(__global float *mem, size_t dest, size_t src) {
+__kernel void reluW(__global void *mem, size_t dest, size_t src) {
   reluK(&mem[dest], &mem[src]);
 }
 
@@ -27,7 +27,7 @@ __kernel void sigmoidK(__global float *dest, __global float *src) {
   dest[i] = 1 / (1 + exp(-src[i]));
 }
 
-__kernel void sigmoidW(__global float *mem, size_t dest, size_t src) {
+__kernel void sigmoidW(__global void *mem, size_t dest, size_t src) {
   sigmoidK(&mem[dest], &mem[src]);
 }
 
@@ -39,7 +39,7 @@ __kernel void tanhK(__global float *dest, __global float *src) {
   dest[i] = (exp_val - exp_neg_val) / (exp_val + exp_neg_val);
 }
 
-__kernel void tanhW(__global float *mem, size_t dest, size_t src) {
+__kernel void tanhW(__global void *mem, size_t dest, size_t src) {
   tanhK(&mem[dest], &mem[src]);
 }
 
@@ -49,7 +49,7 @@ __kernel void elementaddK(__global float *dest, __global float *LHS,
   dest[i] = LHS[i] + RHS[i];
 }
 
-__kernel void elementaddW(__global float *mem, size_t dest, size_t LHS,
+__kernel void elementaddW(__global void *mem, size_t dest, size_t LHS,
                           size_t RHS) {
   elementaddK(&mem[dest], &mem[LHS], &mem[RHS]);
 }
@@ -59,7 +59,7 @@ __kernel void elementmulK(__global float *dest, __global float *LHS,
   size_t i = get_global_id(0);
   dest[i] = LHS[i] * RHS[i];
 }
-__kernel void elementmulW(__global float *mem, size_t dest, size_t LHS,
+__kernel void elementmulW(__global void *mem, size_t dest, size_t LHS,
 
                           size_t RHS) {
   elementmulK(&mem[dest], &mem[LHS], &mem[RHS]);
@@ -80,7 +80,7 @@ __kernel void fullyconnectedK(__global float *dest, __global float *src,
   dest[N * depth + D] = sum;
 }
 
-__kernel void fullyconnectedW(__global float *mem, size_t dest, size_t src,
+__kernel void fullyconnectedW(__global void *mem, size_t dest, size_t src,
                               size_t filter, size_t bias, unsigned sliceSize,
                               unsigned depth) {
   fullyconnectedK(&mem[dest], &mem[src], &mem[filter], &mem[bias], sliceSize,
@@ -93,7 +93,7 @@ __kernel void regressionK(__global float *dest, __global float *src,
   dest[i] = src[i];
 }
 
-__kernel void regressionW(__global float *mem, size_t dest, size_t src,
+__kernel void regressionW(__global void *mem, size_t dest, size_t src,
                           size_t exp) {
   regressionK(&mem[dest], &mem[src], &mem[exp]);
 }
@@ -118,7 +118,7 @@ __kernel void softmaxK(__global float *dest, __global float *src,
   }
 }
 
-__kernel void softmaxW(__global float *mem, size_t dest, size_t src,
+__kernel void softmaxW(__global void *mem, size_t dest, size_t src,
                        size_t e_cache, size_t selected, unsigned sliceSize) {
   softmaxK(&mem[dest], &mem[src], &mem[e_cache],
            (__global unsigned *)&mem[selected], sliceSize);
@@ -166,7 +166,7 @@ __kernel void convolutionK(__global float *dest, __global float *src,
   } // N
 }
 
-__kernel void convolutionW(__global float *mem, size_t dest, size_t src,
+__kernel void convolutionW(__global void *mem, size_t dest, size_t src,
                            size_t filter, size_t bias, size_t filterSize,
                            size_t pad, size_t stride, ShapeNHWC odim,
                            ShapeNHWC idim, ShapeNHWC filterDim) {
@@ -215,7 +215,7 @@ __kernel void poolmaxK(__global float *dest, __global float *src,
   } // N
 }
 
-__kernel void poolmaxW(__global float *mem, size_t dest, size_t src,
+__kernel void poolmaxW(__global void *mem, size_t dest, size_t src,
                        size_t srcXY, size_t filterSize, size_t pad,
                        size_t stride, ShapeNHWC odim, ShapeNHWC idim) {
   poolmaxK(&mem[dest], &mem[src], &mem[srcXY], filterSize, pad, stride, odim,
@@ -260,7 +260,7 @@ __kernel void poolavgK(__global float *dest, __global float *src,
   } // N
 }
 
-__kernel void poolavgW(__global float *mem, size_t dest, size_t src,
+__kernel void poolavgW(__global void *mem, size_t dest, size_t src,
                        size_t filterSize, size_t pad, size_t stride,
                        ShapeNHWC odim, ShapeNHWC idim) {
   poolavgK(&mem[dest], &mem[src], filterSize, pad, stride, odim, idim);
@@ -286,7 +286,7 @@ __kernel void transposeK(__global float *dest, __global float *src,
   }
 }
 
-__kernel void transposeW(__global float *mem, size_t dest, size_t src,
+__kernel void transposeW(__global void *mem, size_t dest, size_t src,
                          ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC shuffle) {
   transposeK(&mem[dest], &mem[src], odim, idim, shuffle);
 }
@@ -316,7 +316,7 @@ __kernel void concatK(__global float *dest, __global float *LHS,
   }
 }
 
-__kernel void concatW(__global float *mem, size_t dest, size_t LHS, size_t RHS,
+__kernel void concatW(__global void *mem, size_t dest, size_t LHS, size_t RHS,
                       ShapeNHWC odim, ShapeNHWC ldim, unsigned dim) {
   concatK(&mem[dest], &mem[LHS], &mem[RHS], odim, ldim, dim);
 }
