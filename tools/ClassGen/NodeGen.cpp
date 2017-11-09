@@ -148,7 +148,10 @@ int main(int argc, char **argv) {
       .addOperand("RHS")
       .addMember("size_t", "Dim")
       .addExtraParam("TypeRef", "outTy")
-      .setType("outTy");
+      .setType("outTy")
+      .setDocstring("The concat operator adds two tensors together.\nThe "
+                    "parameter 'dim' specifies the dimension to use when "
+                    "joining the tensors.");
 
   return 0;
 }
