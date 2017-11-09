@@ -2,6 +2,7 @@
 #define GLOW_OPENCL_BACKEND_H
 
 #include "glow/Backends/Backend.h"
+#include "glow/Backends/MemoryAllocator.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Traits.h"
 
@@ -25,9 +26,11 @@ class Backend;
 class OCLBackend final : public Backend {
   /// The Module that holds the IR. This does not own the module.
   Module *M_;
+  /// The allocator assigns device memory addresses to the buffers.
+  MemoryAllocator allocator_;
   /// Maps values to on-device buffers. This list includes both weights and
   /// activations.
-  std::unordered_map<const Value *, cl_mem> tensors_;
+  std::unordered_map<const Value *, size_t> tensors_;
   /// Maps values to Tensors, that are *not* owned by this class.
   std::unordered_map<const Value *, Tensor *> externalTensors_;
   /// CL compute device id.
@@ -38,6 +41,8 @@ class OCLBackend final : public Backend {
   cl_command_queue commands_;
   // Stores the compiled kernel bank.
   cl_program program_;
+  // A pointer to the on-device memory buffer.
+  cl_mem deviceBuffer_{0};
 
 public:
   /// Ctor.

@@ -96,7 +96,8 @@ int main(int argc, char **argv) {
       .addMember("float", "Epsilon")
       .addMember("float", "Momentum")
       .inplaceOperand({
-          "Dest", "Src",
+          "Dest",
+          "Src",
       })
       .addGradientInstr({"Src", "Scale", "Mean", "Var"},
                         {"Dest", "Src", "Scale", "Bias"});
@@ -111,7 +112,8 @@ int main(int argc, char **argv) {
       .addMember("float", "K")
       .setType("Src->getType()")
       .inplaceOperand({
-          "Dest", "Src",
+          "Dest",
+          "Src",
       })
       .addGradientInstr({"Dest", "Src", "Scale"}, {"Dest", "Src", "Scale"});
 
@@ -160,7 +162,8 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .inplaceOperand({
-          "Dest", "Src",
+          "Dest",
+          "Src",
       })
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
@@ -168,7 +171,8 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .inplaceOperand({
-          "Dest", "Src",
+          "Dest",
+          "Src",
       })
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
@@ -176,7 +180,8 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .inplaceOperand({
-          "Dest", "Src",
+          "Dest",
+          "Src",
       })
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
