@@ -19,6 +19,9 @@ public:
 
   /// \returns the size of the interval.
   size_t size() { return end_ - begin_; }
+
+  /// \returns True if the value \p idx falls within this segment.
+  bool contains(size_t idx) { return idx >= begin_ && idx < end_; }
 };
 
 /// Allocates segments of memory.
@@ -39,6 +42,15 @@ public:
   void reset() {
     maxMemoryAllocated_ = 0;
     allocations_.clear();
+  }
+
+  /// \returns True if the value \p idx is within the currently allocated range.
+  bool contains(size_t idx) {
+    for (auto &s : allocations_) {
+      if (s.contains(idx))
+        return true;
+    }
+    return false;
   }
 
   /// Allocate a region of size \p size.
