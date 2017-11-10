@@ -2,6 +2,7 @@
 #define GLOW_TOOLS_NODEGEN_INSTRBUILDER_H
 
 #include "glow/Support/Support.h"
+#include "MemberType.h"
 
 #include <cassert>
 #include <fstream>
@@ -42,7 +43,7 @@ class InstrBuilder {
   /// The instruction operands.
   std::vector<std::pair<std::string, OperandKind>> operands_;
   /// A list of instruction members. Format: (type, name).
-  std::vector<std::pair<std::string, std::string>> members_;
+  std::vector<std::pair<MemberType, std::string>> members_;
   /// A list of extra parameters that are passed to the constructor.
   std::vector<std::pair<std::string, std::string>> extraParams_;
   /// A list of getters to override. Format (variable name, alternative getter).
@@ -89,10 +90,11 @@ public:
     addOperand(op + "Grad", OperandKind::InOut);
     return *this;
   }
+
   /// Add a member to the instruction. Format: type, name.
   /// The name should start with a capital letter.
   /// For example: "Filter".
-  InstrBuilder &addMember(const std::string &type, const std::string &name) {
+  InstrBuilder &addMember(const MemberType type, const std::string &name) {
     members_.push_back({type, name});
     return *this;
   }
@@ -146,7 +148,17 @@ public:
   /// Emits the method that calculates the inplace property.
   void emitInplaceMethod(std::ostream &os) const;
 
-  /// Emit stters/getters for each accessible class member.
+  /// Emit the getter for an operand.
+  void emitOperandGetter(std::ostream &os,
+                         const std::string &name,
+                         int index) const;
+
+  /// Emit the getter for a accessible class member.
+  void emitMemberGetter(std::ostream &os,
+                        MemberType type,
+                        const std::string &name) const;
+
+  /// Emit setters/getters for each accessible class member.
   void emitSettersGetters(std::ostream &os) const;
 
   /// Emit the methods that print a textual summary.

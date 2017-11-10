@@ -28,7 +28,7 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
 
   // Extra class members:
   for (const auto &op : members_) {
-    os << ", " << op.first << " " << op.second;
+    os << ", " << getStorageTypename(op.first) << " " << op.second;
   }
 
   // Initialize the base clases:
@@ -67,7 +67,7 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &os) const {
 
   // Extra class members:
   for (const auto &op : members_) {
-    os << ", " << op.first << " " << op.second;
+    os << ", " << getStorageTypename(op.first) << " " << op.second;
   }
 
   // Initialize the base clases:
@@ -109,40 +109,54 @@ void InstrBuilder::emitInplaceMethod(std::ostream &os) const {
 void InstrBuilder::emitClassMembers(std::ostream &os) const {
   // Emit class members:
   for (const auto &op : members_) {
-    os << "\t" << op.first << " " << op.second << "_;\n";
+    os << "\t" << getStorageTypename(op.first) << " "
+       << op.second << "_;\n";
   }
   os << "\n";
+}
+
+void InstrBuilder::emitOperandGetter(std::ostream &os,
+                                     const std::string &name,
+                                     int index) const {
+  // Synthesize a user-defined operand getter.
+  auto it = overrideGetter_.find(name);
+  if (it != overrideGetter_.end()) {
+    os << "\t" << it->second << "\n";
+    return;
+  }
+
+  // Synthesize the general operand getter.
+  os << "\tValue *get" << name << "() const { return getOperand(" << index
+     << ").first; }\n";
+}
+
+void InstrBuilder::emitMemberGetter(std::ostream &os,
+                                    MemberType type,
+                                    const std::string &name) const {
+  // Synthesize a user-defined member getter.
+  auto it = overrideGetter_.find(name);
+  if (it != overrideGetter_.end()) {
+    os << "\t" << it->second << "\n";
+    return;
+  }
+
+  // Synthesize the general getter.
+  auto returnTypeStr = getReturnTypename(type);
+  os << "\t" << returnTypeStr  << " get" << name << "() const { return "
+     << name << "_; }\n";
 }
 
 void InstrBuilder::emitSettersGetters(std::ostream &os) const {
   // Print the getters/setters.
   for (int i = 0, e = operands_.size(); i < e; i++) {
     auto &op = operands_[i];
-
-    // Synthesize a user-defined operand getter.
-    auto it = overrideGetter_.find(op.first);
-    if (it != overrideGetter_.end()) {
-      os << "\t" << it->second << "\n";
-      continue;
-    }
-
-    // Synthesize the general getter.
-    os << "\tValue *get" << op.first << "() const { return getOperand(" << i
-       << ").first; }\n";
+    emitOperandGetter(os, op.first, i);
   }
 
   for (const auto &op : members_) {
-    // Synthesize a user-defined member getter.
-    auto it = overrideGetter_.find(op.second);
-    if (it != overrideGetter_.end()) {
-      os << "\t" << it->second << "\n";
-      continue;
-    }
-
-    // Synthesize the general getter.
-    os << "\t" << op.first + " get" << op.second << "() const { return "
-       << op.second << "_; }\n";
+    emitMemberGetter(os, op.first, op.second);
   }
+
   // Synthesize the 'classof' method that enables the non-rtti polymorphism.
   os << "\n\tstatic bool classof(const Kinded *k) { return k->getKind() == "
         "Kinded::Kind::"

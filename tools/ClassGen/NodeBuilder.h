@@ -1,6 +1,8 @@
 #ifndef GLOW_TOOLS_NODEGEN_NODEBUILDER_H
 #define GLOW_TOOLS_NODEGEN_NODEBUILDER_H
 
+#include "MemberType.h"
+
 #include <cassert>
 #include <fstream>
 #include <iostream>
@@ -19,7 +21,7 @@ class NodeBuilder {
   /// The node operands.
   std::vector<std::string> operands_;
   /// A list of node members. Format: (type, name).
-  std::vector<std::pair<std::string, std::string>> members_;
+  std::vector<std::pair<MemberType, std::string>> members_;
   /// The node enum cases.
   std::vector<std::string> enum_;
   /// A list of extra parameters that are passed to the constructor.
@@ -49,7 +51,7 @@ public:
   /// Add a member to the node. Format: type, name.
   /// The name should start with a capital letter.
   /// For example: "Filter".
-  NodeBuilder &addMember(const std::string &type, const std::string &name) {
+  NodeBuilder &addMember(MemberType type, const std::string &name) {
     members_.push_back({type, name});
     return *this;
   }
@@ -94,7 +96,16 @@ public:
   /// Emits the class members (the fields of the class).
   void emitClassMembers(std::ostream &os) const;
 
-  /// Emit stters/getters for each accessible class member.
+  /// Emit the getter for an operand.
+  void emitOperandGetter(std::ostream &os,
+                         const std::string &name) const;
+
+  /// Emit the getter for a accessible class member.
+  void emitMemberGetter(std::ostream &os,
+                        MemberType type,
+                        const std::string &name) const;
+
+  /// Emit setters/getters for each accessible class member.
   void emitSettersGetters(std::ostream &os) const;
 
   /// Emit the methods that print a textual summary of the node.

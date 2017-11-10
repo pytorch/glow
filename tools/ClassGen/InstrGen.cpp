@@ -27,7 +27,9 @@ int main(int argc, char **argv) {
 
   BB.declareValue("WeightVar");
 
-  BB.newInstr("AllocActivation").addMember("TypeRef", "Ty").setType("Ty");
+  BB.newInstr("AllocActivation")
+      .addMember(MemberType::TypeRef, "Ty")
+      .setType("Ty");
 
   BB.newInstr("DeallocActivation")
       .addOperand("Src", OperandKind::Out)
@@ -50,27 +52,27 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addOperand("Filter", OperandKind::In)
       .addOperand("Bias", OperandKind::In)
-      .addMember("size_t", "Kernel")
-      .addMember("size_t", "Stride")
-      .addMember("size_t", "Pad")
-      .addMember("size_t", "Depth")
+      .addMember(MemberType::SizeT, "Kernel")
+      .addMember(MemberType::SizeT, "Stride")
+      .addMember(MemberType::SizeT, "Pad")
+      .addMember(MemberType::SizeT, "Depth")
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
 
   BB.newInstr("PoolMax")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("SrcXY", OperandKind::InOut)
-      .addMember("size_t", "Kernel")
-      .addMember("size_t", "Stride")
-      .addMember("size_t", "Pad")
+      .addMember(MemberType::SizeT, "Kernel")
+      .addMember(MemberType::SizeT, "Stride")
+      .addMember(MemberType::SizeT, "Pad")
       .addGradientInstr({"Dest", "SrcXY"}, {"Dest", "Src"});
 
   BB.newInstr("PoolAvg")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addMember("size_t", "Kernel")
-      .addMember("size_t", "Stride")
-      .addMember("size_t", "Pad")
+      .addMember(MemberType::SizeT, "Kernel")
+      .addMember(MemberType::SizeT, "Stride")
+      .addMember(MemberType::SizeT, "Pad")
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
   BB.newInstr("FullyConnected")
@@ -78,7 +80,7 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addOperand("Filter", OperandKind::In)
       .addOperand("Bias", OperandKind::In)
-      .addMember("size_t", "Depth")
+      .addMember(MemberType::SizeT, "Depth")
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
 
   //===--------------------------------------------------------------------===//
@@ -92,9 +94,9 @@ int main(int argc, char **argv) {
       .addOperand("Bias", OperandKind::In)
       .addOperand("Mean", OperandKind::In)
       .addOperand("Var", OperandKind::In)
-      .addMember("size_t", "ChannelIdx")
-      .addMember("float", "Epsilon")
-      .addMember("float", "Momentum")
+      .addMember(MemberType::SizeT, "ChannelIdx")
+      .addMember(MemberType::Float, "Epsilon")
+      .addMember(MemberType::Float, "Momentum")
       .inplaceOperand({
           "Dest",
           "Src",
@@ -106,10 +108,10 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("Scale", OperandKind::In)
-      .addMember("size_t", "HalfWindowSize")
-      .addMember("float", "Alpha")
-      .addMember("float", "Beta")
-      .addMember("float", "K")
+      .addMember(MemberType::SizeT, "HalfWindowSize")
+      .addMember(MemberType::Float, "Alpha")
+      .addMember(MemberType::Float, "Beta")
+      .addMember(MemberType::Float, "K")
       .setType("Src->getType()")
       .inplaceOperand({
           "Dest",
@@ -192,25 +194,20 @@ int main(int argc, char **argv) {
   BB.newInstr("Reshape")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addMember("std::vector<size_t>", "Dims")
-      .overrideGetter(
-          "Dims", "llvm::ArrayRef<size_t> getDims() const { return Dims_; }")
+      .addMember(MemberType::VectorSizeT, "Dims")
       .addGradientInstr({}, {"Dest", "Src"});
 
   BB.newInstr("Transpose")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addMember("std::vector<unsigned>", "Shuffle")
-      .overrideGetter(
-          "Shuffle",
-          "llvm::ArrayRef<unsigned> getShuffle() const { return Shuffle_; }")
+      .addMember(MemberType::VectorUnsigned, "Shuffle")
       .addGradientInstr({}, {"Dest", "Src"});
 
   BB.newInstr("Concat")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .addMember("size_t", "Dim")
+      .addMember(MemberType::SizeT, "Dim")
       .addGradientInstr({}, {"Dest", "LHS", "RHS"});
 
   return 0;

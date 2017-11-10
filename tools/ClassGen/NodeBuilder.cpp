@@ -33,7 +33,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
 
   // Extra class members:
   for (const auto &op : members_) {
-    os << ", " << op.first << " " << op.second;
+    os << ", " << getStorageTypename(op.first) << " " << op.second;
   }
 
   // Initialize the base clases:
@@ -79,37 +79,51 @@ void NodeBuilder::emitClassMembers(std::ostream &os) const {
     os << "\tNodeOperand " << op << "_;\n";
   }
   for (const auto &op : members_) {
-    os << "\t" << op.first << " " << op.second << "_;\n";
+    os << "\t" << getStorageTypename(op.first) << " "
+       << op.second << "_;\n";
   }
   os << "\n";
+}
+
+void NodeBuilder::emitOperandGetter(std::ostream &os,
+                                     const std::string &name) const {
+  // Synthesize a user-defined operand getter.
+  auto it = overrideGetter_.find(name);
+  if (it != overrideGetter_.end()) {
+    os << "\t" << it->second << "\n";
+    return;
+  }
+
+  // Synthesize the general operand getter.
+  os << "\tNode *get" << name << "() const { return " << name << "_; }\n";
+}
+
+void NodeBuilder::emitMemberGetter(std::ostream &os,
+                                    MemberType type,
+                                    const std::string &name) const {
+  // Synthesize a user-defined member getter.
+  auto it = overrideGetter_.find(name);
+  if (it != overrideGetter_.end()) {
+    os << "\t" << it->second << "\n";
+    return;
+  }
+
+  // Synthesize the general getter.
+  auto returnTypeStr = getReturnTypename(type);
+  os << "\t" << returnTypeStr << " get" << name << "() const { return "
+     << name << "_; }\n";
 }
 
 void NodeBuilder::emitSettersGetters(std::ostream &os) const {
   // Print the getters/setters.
   for (const auto &op : operands_) {
-    // Synthesize a user-defined operand getter.
-    auto it = overrideGetter_.find(op);
-    if (it != overrideGetter_.end()) {
-      os << "\t" << it->second << "\n";
-      continue;
-    }
-
-    // Synthesize the general getter.
-    os << "\tNode *get" << op << "() const { return " << op << "_; }\n";
+    emitOperandGetter(os, op);
   }
 
   for (const auto &op : members_) {
-    // Synthesize a user-defined member getter.
-    auto it = overrideGetter_.find(op.second);
-    if (it != overrideGetter_.end()) {
-      os << "\t" << it->second << "\n";
-      continue;
-    }
-
-    // Synthesize the general getter.
-    os << "\t" << op.first + " get" << op.second << "() const { return "
-       << op.second << "_; }\n";
+    emitMemberGetter(os, op.first, op.second);
   }
+
   // Synthesize the 'classof' method that enables the non-rtti polymorphism.
   os << "\nstatic bool classof(const Kinded *k) { return k->getKind() == "
         "Kinded::Kind::"
