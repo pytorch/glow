@@ -29,11 +29,14 @@ public:
     return k->getKind() == Kinded::Kind::WeightVarKind;
   }
 
-  static const char *getKindStr(MutabilityKind mut);
+  static const char *getMutabilityStr(MutabilityKind mut);
 
-  const char *getKindStr() const;
+  const char *getMutabilityStr() const;
 
-  MutabilityKind getKind() const { return mut_; }
+  MutabilityKind getMutability() const { return mut_; }
+
+  void setMutability(MutabilityKind mut) { mut_ = mut; }
+
   void dump(std::ostream &os) const;
   void verify() const {}
 };

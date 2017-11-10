@@ -16,16 +16,18 @@ using llvm::isa;
 //                      Instruction textual printers
 //===----------------------------------------------------------------------===//
 
-const char *WeightVar::getKindStr(MutabilityKind kind) {
+const char *WeightVar::getMutabilityStr(MutabilityKind kind) {
   const char *names[] = {"const", "mutable", nullptr};
   return names[static_cast<int>(kind)];
 }
 
-const char *WeightVar::getKindStr() const { return getKindStr(mut_); }
+const char *WeightVar::getMutabilityStr() const {
+  return getMutabilityStr(mut_);
+}
 
 void WeightVar::dump(std::ostream &os) const {
   os << '%' << (std::string)getName() << " = WeightVar ";
-  os << std::to_string(*getType()) << " " << getKindStr();
+  os << std::to_string(*getType()) << " " << getMutabilityStr();
 }
 
 //===----------------------------------------------------------------------===//
