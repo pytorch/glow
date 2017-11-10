@@ -418,12 +418,34 @@ void rematerializeCompute(Module &M) {
   }
 }
 
+void makeWeightsConst(Module &M) {
+  // For each weight:
+  for (auto *W : M.getWeights()) {
+    bool readOnly = true;
+    // For each instruction that uses the weight:
+    for (auto &U : W->getUsers()) {
+      auto kind = U.getOperand().second;
+      // Check if all of the users are read-only.
+      if (kind != OperandKind::In) {
+        readOnly = false;
+        break;
+      }
+    }
+
+    // Mark the variable as read only.
+    if (readOnly) {
+      W->setMutability(WeightVar::MutabilityKind::Constant);
+    }
+  }
+}
+
 void glow::optimize(Module &M, CompilationMode mode) {
   M.verify();
 
   // Try to recompute instead of carying large buffers for a while.
   rematerializeCompute(M);
 
+  // Reuse buffers from previous operations.
   shareBuffers(M);
 
   // Remove unused allocations.
@@ -432,5 +454,9 @@ void glow::optimize(Module &M, CompilationMode mode) {
   // Shorten the lifetime of buffers.
   hoistDealloc(M);
   sinkAllocas(M);
+
+  // Turn read-only weights into constant weights.
+  makeWeightsConst(M);
+
   M.verify();
 }
