@@ -40,10 +40,10 @@ int main(int argc, char **argv) {
       .addOperand("Input")
       .addOperand("Filter")
       .addOperand("Bias")
-      .addMember("size_t", "Kernel")
-      .addMember("size_t", "Stride")
-      .addMember("size_t", "Pad")
-      .addMember("size_t", "Depth")
+      .addMember(MemberType::SizeT, "Kernel")
+      .addMember(MemberType::SizeT, "Stride")
+      .addMember(MemberType::SizeT, "Pad")
+      .addMember(MemberType::SizeT, "Depth")
       .addExtraParam("TypeRef", "outTy")
       .setType("outTy");
 
@@ -51,9 +51,9 @@ int main(int argc, char **argv) {
       .addEnumCase("Max")
       .addEnumCase("Avg")
       .addOperand("Input")
-      .addMember("size_t", "Kernel")
-      .addMember("size_t", "Stride")
-      .addMember("size_t", "Pad")
+      .addMember(MemberType::SizeT, "Kernel")
+      .addMember(MemberType::SizeT, "Stride")
+      .addMember(MemberType::SizeT, "Pad")
       .addExtraParam("TypeRef", "outTy")
       .setType("outTy");
 
@@ -61,7 +61,7 @@ int main(int argc, char **argv) {
       .addOperand("Input")
       .addOperand("Filter")
       .addOperand("Bias")
-      .addMember("size_t", "Depth")
+      .addMember(MemberType::SizeT, "Depth")
       .addExtraParam("TypeRef", "outTy")
       .setType("outTy");
 
@@ -75,18 +75,18 @@ int main(int argc, char **argv) {
       .addOperand("Bias")
       .addOperand("Mean")
       .addOperand("Var")
-      .addMember("size_t", "ChannelIdx")
-      .addMember("float", "Epsilon")
-      .addMember("float", "Momentum")
+      .addMember(MemberType::SizeT, "ChannelIdx")
+      .addMember(MemberType::Float, "Epsilon")
+      .addMember(MemberType::Float, "Momentum")
       .setType("Input->getType()");
 
   BB.newNode("LocalResponseNormalization")
       .addOperand("Input")
       .addOperand("Scale")
-      .addMember("size_t", "HalfWindowSize")
-      .addMember("float", "Alpha")
-      .addMember("float", "Beta")
-      .addMember("float", "K")
+      .addMember(MemberType::SizeT, "HalfWindowSize")
+      .addMember(MemberType::Float, "Alpha")
+      .addMember(MemberType::Float, "Beta")
+      .addMember(MemberType::Float, "K")
       .setType("Input->getType()");
 
   //===--------------------------------------------------------------------===//
@@ -128,25 +128,20 @@ int main(int argc, char **argv) {
 
   BB.newNode("Reshape")
       .addOperand("Input")
-      .addMember("std::vector<size_t>", "Dims")
+      .addMember(MemberType::VectorSizeT, "Dims")
       .addExtraParam("TypeRef", "outTy")
-      .setType("outTy")
-      .overrideGetter(
-          "Dims", "llvm::ArrayRef<size_t> getDims() const { return Dims_; }");
+      .setType("outTy");
 
   BB.newNode("Transpose")
       .addOperand("Input")
-      .addMember("std::vector<unsigned>", "Shuffle")
+      .addMember(MemberType::VectorUnsigned, "Shuffle")
       .addExtraParam("TypeRef", "outTy")
-      .setType("outTy")
-      .overrideGetter(
-          "Shuffle",
-          "llvm::ArrayRef<unsigned> getShuffle() const { return Shuffle_; }");
+      .setType("outTy");
 
   BB.newNode("Concat")
       .addOperand("LHS")
       .addOperand("RHS")
-      .addMember("size_t", "Dim")
+      .addMember(MemberType::SizeT, "Dim")
       .addExtraParam("TypeRef", "outTy")
       .setType("outTy");
 
