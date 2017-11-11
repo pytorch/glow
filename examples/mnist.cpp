@@ -3,6 +3,7 @@
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/Timer.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <cassert>
 #include <fstream>
@@ -50,17 +51,18 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
 
 /// This test classifies digits from the MNIST labeled dataset.
 void testMNIST() {
-  std::cout << "Loading the mnist database.\n";
+  llvm::outs() << "Loading the mnist database.\n";
 
   Tensor imageInputs;
   Tensor labelInputs;
 
   unsigned numImages = loadMNIST(imageInputs, labelInputs);
-  std::cout << "Loaded " << numImages << " images.\n";
+  llvm::outs() << "Loaded " << numImages << " images.\n";
 
   unsigned minibatchSize = 8;
 
   ExecutionEngine EE;
+  llvm::Timer timer("Training", "Training");
 
   // Construct the network:
   EE.getConfig().learningRate = 0.001;
@@ -94,12 +96,11 @@ void testMNIST() {
   // Report progress every this number of training iterations.
   constexpr int reportRate = 30;
 
-  std::cout << "Training.\n";
+  llvm::outs() << "Training.\n";
 
   for (int iter = 0; iter < 60; iter++) {
-    std::cout << "Training - iteration #" << iter << " ";
+    llvm::outs() << "Training - iteration #" << iter << "\n";
 
-    llvm::Timer timer("Training", "Training");
     timer.startTimer();
 
     // On each training iteration take an input from imageInputs and update
@@ -109,7 +110,7 @@ void testMNIST() {
 
     timer.stopTimer();
   }
-  std::cout << "Validating.\n";
+  llvm::outs() << "Validating.\n";
   EE.compile(CompilationMode::Infer);
 
   auto LIH = labelInputs.getHandle<size_t>();
@@ -133,14 +134,14 @@ void testMNIST() {
     auto I = sample.getHandle<>().extractSlice(iter);
 
     I.getHandle<>().dumpAscii("MNIST Input");
-    std::cout << "Expected: " << correct << " Guessed: " << guess << "\n";
+    llvm::outs() << "Expected: " << correct << " Guessed: " << guess << "\n";
 
     T.getHandle<>().dump("", "\n");
-    std::cout << "\n-------------\n";
+    llvm::outs() << "\n-------------\n";
   }
 
-  std::cout << "Results: guessed/total:" << rightAnswer << "/" << minibatchSize
-            << "\n";
+  llvm::outs() << "Results: guessed/total:" << rightAnswer << "/"
+               << minibatchSize << "\n";
   GLOW_ASSERT(rightAnswer >= 6 &&
               "Did not classify as many digits as expected");
 }

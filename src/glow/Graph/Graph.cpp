@@ -6,6 +6,7 @@
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <fstream>
 #include <iostream>
@@ -234,13 +235,13 @@ SaveNode *Graph::createSave(llvm::StringRef name, Node *input,
 //===----------------------------------------------------------------------===//
 
 void Graph::dump() {
-  std::cout << "Graph structure:\n";
+  llvm::outs() << "Graph structure:\n";
   for (auto v : vars_) {
-    std::cout << v->getDebugDesc() << "\n";
+    llvm::outs() << v->getDebugDesc() << "\n";
   }
 
   for (auto n : nodes_) {
-    std::cout << n->getDebugDesc() << "\n";
+    llvm::outs() << n->getDebugDesc() << "\n";
   }
 }
 
@@ -307,7 +308,7 @@ void Graph::dumpDAG(llvm::StringRef dotFilename) {
   std::string filename =
       dotFilename.empty() ? "dotty_graph_dump_" + std::to_string(this) + ".dot"
                           : dotFilename.str();
-  std::cout << "Writing dotty graph to: " << filename << '\n';
+  llvm::outs() << "Writing dotty graph to: " << filename << '\n';
 
   std::ofstream myfile;
   myfile.open(filename);

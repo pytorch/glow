@@ -10,6 +10,7 @@
 #include "glow/IR/Instrs.h"
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include "caffe.pb.h"
 #include <google/protobuf/text_format.h>
@@ -37,7 +38,7 @@ template <typename T>
 void unexpectedNodeError(const T &node, const std::string &message) {
   std::string str;
   google::protobuf::TextFormat::PrintToString(node, &str);
-  std::cout << message << "\n" << str << "\n";
+  llvm::outs() << message << "\n" << str << "\n";
 }
 
 /// Reads a single integer.

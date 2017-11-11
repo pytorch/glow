@@ -79,14 +79,13 @@ void NodeBuilder::emitClassMembers(std::ostream &os) const {
     os << "\tNodeOperand " << op << "_;\n";
   }
   for (const auto &op : members_) {
-    os << "\t" << getStorageTypename(op.first) << " "
-       << op.second << "_;\n";
+    os << "\t" << getStorageTypename(op.first) << " " << op.second << "_;\n";
   }
   os << "\n";
 }
 
 void NodeBuilder::emitOperandGetter(std::ostream &os,
-                                     const std::string &name) const {
+                                    const std::string &name) const {
   // Synthesize a user-defined operand getter.
   auto it = overrideGetter_.find(name);
   if (it != overrideGetter_.end()) {
@@ -98,9 +97,8 @@ void NodeBuilder::emitOperandGetter(std::ostream &os,
   os << "\tNode *get" << name << "() const { return " << name << "_; }\n";
 }
 
-void NodeBuilder::emitMemberGetter(std::ostream &os,
-                                    MemberType type,
-                                    const std::string &name) const {
+void NodeBuilder::emitMemberGetter(std::ostream &os, MemberType type,
+                                   const std::string &name) const {
   // Synthesize a user-defined member getter.
   auto it = overrideGetter_.find(name);
   if (it != overrideGetter_.end()) {
@@ -110,8 +108,8 @@ void NodeBuilder::emitMemberGetter(std::ostream &os,
 
   // Synthesize the general getter.
   auto returnTypeStr = getReturnTypename(type);
-  os << "\t" << returnTypeStr << " get" << name << "() const { return "
-     << name << "_; }\n";
+  os << "\t" << returnTypeStr << " get" << name << "() const { return " << name
+     << "_; }\n";
 }
 
 void NodeBuilder::emitSettersGetters(std::ostream &os) const {

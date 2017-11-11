@@ -5,6 +5,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Importer/Caffe2.h"
 #include "llvm/Support/Timer.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <iostream>
 
@@ -67,8 +68,9 @@ void loadImageAndPreprocess(const std::string &filename, Tensor *result,
 
 int main(int argc, char **argv) {
   if (argc != 5) {
-    std::cerr << "Usage: " << argv[0] << " image.png [0to1 / 0to256 / 128to127]"
-              << " network_structure.pb weights.pb\n";
+    llvm::errs() << "Usage: " << argv[0]
+                 << " image.png [0to1 / 0to256 / 128to127]"
+                 << " network_structure.pb weights.pb\n";
     return -1;
   }
 
@@ -101,11 +103,11 @@ int main(int argc, char **argv) {
   Tensor slice = H.extractSlice(0);
   auto SH = slice.getHandle<>();
 
-  std::cout << "\n";
+  llvm::outs() << "\n";
 
-  std::cout << "Model: " << argv[3] << "\n";
-  std::cout << " File: " << argv[1];
-  std::cout << " Result:" << SH.maxArg() << "\n";
+  llvm::outs() << "Model: " << argv[3] << "\n";
+  llvm::outs() << " File: " << argv[1];
+  llvm::outs() << " Result:" << SH.maxArg() << "\n";
 
   return 0;
 }

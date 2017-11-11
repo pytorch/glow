@@ -109,14 +109,12 @@ void InstrBuilder::emitInplaceMethod(std::ostream &os) const {
 void InstrBuilder::emitClassMembers(std::ostream &os) const {
   // Emit class members:
   for (const auto &op : members_) {
-    os << "\t" << getStorageTypename(op.first) << " "
-       << op.second << "_;\n";
+    os << "\t" << getStorageTypename(op.first) << " " << op.second << "_;\n";
   }
   os << "\n";
 }
 
-void InstrBuilder::emitOperandGetter(std::ostream &os,
-                                     const std::string &name,
+void InstrBuilder::emitOperandGetter(std::ostream &os, const std::string &name,
                                      int index) const {
   // Synthesize a user-defined operand getter.
   auto it = overrideGetter_.find(name);
@@ -130,8 +128,7 @@ void InstrBuilder::emitOperandGetter(std::ostream &os,
      << ").first; }\n";
 }
 
-void InstrBuilder::emitMemberGetter(std::ostream &os,
-                                    MemberType type,
+void InstrBuilder::emitMemberGetter(std::ostream &os, MemberType type,
                                     const std::string &name) const {
   // Synthesize a user-defined member getter.
   auto it = overrideGetter_.find(name);
@@ -142,8 +139,8 @@ void InstrBuilder::emitMemberGetter(std::ostream &os,
 
   // Synthesize the general getter.
   auto returnTypeStr = getReturnTypename(type);
-  os << "\t" << returnTypeStr  << " get" << name << "() const { return "
-     << name << "_; }\n";
+  os << "\t" << returnTypeStr << " get" << name << "() const { return " << name
+     << "_; }\n";
 }
 
 void InstrBuilder::emitSettersGetters(std::ostream &os) const {

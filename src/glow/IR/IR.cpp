@@ -5,6 +5,7 @@
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <fstream>
 #include <iostream>
@@ -213,7 +214,7 @@ void Module::dump() {
 
   sb << "}\n";
 
-  std::cout << sb.str();
+  llvm::outs() << sb.str();
 }
 
 static std::string getDottyDesc(const Value *v) {
@@ -266,7 +267,7 @@ static const char *getDottyArrowForCC(OperandKind k) {
 /// Dump a dotty graph that depicts the module.
 void Module::dumpDAG() {
   std::string filename = "dotty_ir_dump_" + std::to_string(this) + ".dot";
-  std::cout << "Writing dotty graph to: " << filename << '\n';
+  llvm::outs() << "Writing dotty graph to: " << filename << '\n';
 
   std::ofstream os;
   os.open(filename);
