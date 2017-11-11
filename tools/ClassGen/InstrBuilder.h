@@ -1,8 +1,8 @@
 #ifndef GLOW_TOOLS_NODEGEN_INSTRBUILDER_H
 #define GLOW_TOOLS_NODEGEN_INSTRBUILDER_H
 
-#include "glow/Support/Support.h"
 #include "MemberType.h"
+#include "glow/Support/Support.h"
 
 #include <cassert>
 #include <fstream>
@@ -149,13 +149,11 @@ public:
   void emitInplaceMethod(std::ostream &os) const;
 
   /// Emit the getter for an operand.
-  void emitOperandGetter(std::ostream &os,
-                         const std::string &name,
+  void emitOperandGetter(std::ostream &os, const std::string &name,
                          int index) const;
 
   /// Emit the getter for a accessible class member.
-  void emitMemberGetter(std::ostream &os,
-                        MemberType type,
+  void emitMemberGetter(std::ostream &os, MemberType type,
                         const std::string &name) const;
 
   /// Emit setters/getters for each accessible class member.

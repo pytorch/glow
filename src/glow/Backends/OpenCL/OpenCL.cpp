@@ -8,6 +8,7 @@
 #include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
 
@@ -41,7 +42,7 @@ static void dumpCompileLog(cl_device_id dev, cl_program prog) {
                         nullptr);
 
   // Print the log.
-  std::cout << log << "\n";
+  llvm::outs() << log << "\n";
   free(log);
 #endif
 }
@@ -378,8 +379,9 @@ void OCLBackend::doForwardPass(bool isTrain) {
       GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueCopyBuffer.");
       continue;
     }
-    std::cout << "unknown node " << I->getKindName() << "\n";
-    // assert(false && "Unexpected node");
+
+    llvm::errs() << "Cannot select: " << I->getKindName() << "\n";
+    llvm::report_fatal_error("compilation failed");
   }
 
   clFinish(commands_);

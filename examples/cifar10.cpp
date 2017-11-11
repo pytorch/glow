@@ -3,6 +3,7 @@
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/Timer.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <cassert>
 #include <fstream>
@@ -31,7 +32,7 @@ void testCIFAR10() {
   std::ifstream dbInput("cifar-10-batches-bin/data_batch_1.bin",
                         std::ios::binary);
 
-  std::cout << "Loading the CIFAR-10 database.\n";
+  llvm::outs() << "Loading the CIFAR-10 database.\n";
 
   /// Load the CIFAR database into a 4d tensor.
   Tensor images(ElemKind::FloatTy, {cifarNumImages, 32, 32, 3});
@@ -95,10 +96,10 @@ void testCIFAR10() {
   // Report progress every this number of training iterations.
   int reportRate = 256;
 
-  std::cout << "Training.\n";
+  llvm::outs() << "Training.\n";
 
   for (int iter = 0; iter < 100000; iter++) {
-    std::cout << "Training - iteration #" << iter << "\n";
+    llvm::outs() << "Training - iteration #" << iter << "\n";
 
     llvm::Timer timer("Training", "Training");
     timer.startTimer();
@@ -124,15 +125,15 @@ void testCIFAR10() {
 
         if ((iter < 10) && i == 0) {
           // T.getHandle<FloatTy>().dump("softmax: "," ");
-          std::cout << iter << ") Expected: " << textualLabels[correct]
-                    << " Got: " << textualLabels[guess] << "\n";
+          llvm::outs() << iter << ") Expected: " << textualLabels[correct]
+                       << " Got: " << textualLabels[guess] << "\n";
         }
       }
     }
 
     timer.stopTimer();
 
-    std::cout << "Batch #" << iter << " score: " << score << "%\n";
+    llvm::outs() << "Batch #" << iter << " score: " << score << "%\n";
   }
 }
 
