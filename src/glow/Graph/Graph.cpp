@@ -5,6 +5,7 @@
 #include "glow/IR/IR.h"
 #include "glow/Support/Support.h"
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -65,10 +66,10 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, Node *input,
   // Calculate the size and allocate the output buffer.
   auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
 
-  std::vector<size_t> outDims = {idim.n, outSz.first, outSz.second, depth};
+  std::array<size_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
 
   // Allocate the Filter and Bias tensors.
-  std::vector<size_t> filterDim = {depth, kernel, kernel, idim.c};
+  std::array<size_t, 4> filterDim = {{depth, kernel, kernel, idim.c}};
   size_t fanIn = kernel * kernel * idim.c;
   auto *filter = createVariable(ElemKind::FloatTy, filterDim, "filter",
                                 Variable::InitKind::Xavier, fanIn);
@@ -145,7 +146,7 @@ ReshapeNode *Graph::createReshape(llvm::StringRef name, Node *input,
 
 TransposeNode *Graph::createTranspose(llvm::StringRef name, Node *input,
                                       llvm::ArrayRef<unsigned> shuffle) {
-  std::vector<size_t> shape;
+  llvm::SmallVector<size_t, 6> shape;
   auto dims = input->dims();
   for (size_t i = 0; i < dims.size(); i++) {
     shape.push_back(dims[shuffle[i]]);
@@ -160,7 +161,7 @@ ConcatNode *Graph::createConcat(llvm::StringRef name, Node *LHS, Node *RHS,
   assert(LHS->getType() == RHS->getType() && "Invalid types");
   auto inDim = LHS->dims();
 
-  std::vector<size_t> shape(inDim.begin(), inDim.end());
+  llvm::SmallVector<size_t, 6> shape(inDim.begin(), inDim.end());
   // We are stacking the tensors along a specific dimension. This means that we
   // increase the size of the tensor along this dimension.
   shape[dimension] *= 2;

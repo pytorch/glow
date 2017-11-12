@@ -4,6 +4,7 @@
 
 #include "glow/IR/Instrs.h"
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 
 using namespace glow;
@@ -608,7 +609,7 @@ void Interpreter::fwdTransposeGradInst(bool isTrain,
 
   // Generate the reverse shuffle.
   auto shuffle = I->getShuffle();
-  std::vector<unsigned> reverseShuffle = shuffle.vec();
+  llvm::SmallVector<unsigned, 6> reverseShuffle(shuffle.begin(), shuffle.end());
   for (unsigned int i = 0; i < shuffle.size(); i++) {
     reverseShuffle[shuffle[i]] = i;
   }
@@ -638,7 +639,7 @@ void Interpreter::fwdConcatInst(bool isTrain, const ConcatInst *I) {
   auto outW = getWeightHandle(I->getDest());
 
   // Insert the tensors at this coordinate. Start at zero.
-  std::vector<size_t> offset(outW.size(), 0);
+  llvm::SmallVector<size_t, 6> offset(outW.size(), 0);
   auto dim = I->getDim();
 
   for (unsigned i = 1, e = I->getNumOperands(); i < e; i++) {
@@ -655,7 +656,7 @@ void Interpreter::fwdConcatGradInst(bool isTrain, const ConcatGradInst *I) {
   auto outG = getWeightHandle(I->getDestGrad());
 
   // Insert the tensors at this coordinate. Start at zero.
-  std::vector<size_t> offset(outG.size(), 0);
+  llvm::SmallVector<size_t, 6> offset(outG.size(), 0);
 
   // TODO: this code assumes that input[i] has only one user, because it
   // zeros the gradient before extracting the tensor.
