@@ -2,6 +2,7 @@
 
 #include "glow/Base/Tensor.h"
 
+#include "llvm/Support/NativeFormatting.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
@@ -79,7 +80,11 @@ template <class ElemTy> void dumpGenericImpl(Handle<ElemTy> handle) {
   }
 
   // Output max and min.
-  llvm::outs() << "max: " << mx << "  min: " << mn << "\n";
+  llvm::outs() << "max: ";
+  llvm::write_double(llvm::outs(), mx, llvm::FloatStyle::Fixed, 3);
+  llvm::outs() << "  min: ";
+  llvm::write_double(llvm::outs(), mn, llvm::FloatStyle::Fixed, 3);
+  llvm::outs() << "\n";
 
   const unsigned maxNumElem = 100;
 
@@ -97,7 +102,7 @@ template <class ElemTy> void dumpGenericImpl(Handle<ElemTy> handle) {
     }
 
     // Print the value at the current index.
-    llvm::outs() << handle.raw(i);
+    llvm::write_double(llvm::outs(), handle.raw(i), llvm::FloatStyle::Fixed, 3);
 
     // Print one closed brace at the end of every row, slice, or tensor.
     for (size_t j = 0, e = num_dims - 1; num_dims > 1 && j < e; j++) {
