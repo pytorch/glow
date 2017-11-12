@@ -133,10 +133,11 @@ void testMNIST() {
 
     auto I = sample.getHandle<>().extractSlice(iter);
 
-    I.getHandle<>().dumpAscii("MNIST Input");
+    llvm::outs() << "MNIST Input";
+    I.getHandle<>().dumpAscii();
     llvm::outs() << "Expected: " << correct << " Guessed: " << guess << "\n";
 
-    T.getHandle<>().dump("", "\n");
+    T.getHandle<>().dump();
     llvm::outs() << "\n-------------\n";
   }
 
