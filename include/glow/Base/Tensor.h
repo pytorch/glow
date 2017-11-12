@@ -7,14 +7,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 
-#include <algorithm>
 #include <cassert>
-#include <cmath>
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
-#include <iostream>
-#include <numeric>
 
 namespace glow {
 
@@ -204,44 +197,9 @@ public:
 //                    Tensor Handle
 //===----------------------------------------------------------------------===//
 
-/// This is a helper method that's used in the visualization of tensors.
-template <class ElemTy> static char valueToChar(ElemTy val) {
-  char ch = ' ';
-  if (val > 0.2) {
-    ch = '.';
-  }
-  if (val > 0.4) {
-    ch = ',';
-  }
-  if (val > 0.6) {
-    ch = ':';
-  }
-  if (val > 0.8) {
-    ch = 'o';
-  }
-  if (val > 1.0) {
-    ch = 'O';
-  }
-  if (val > 1.5) {
-    ch = '0';
-  }
-  if (val > 2.0) {
-    ch = '@';
-  }
-  if (val < -0.1) {
-    ch = '-';
-  }
-  if (val < -0.2) {
-    ch = '~';
-  }
-  if (val < -0.4) {
-    ch = '=';
-  }
-  if (val < -1.0) {
-    ch = '#';
-  }
-  return ch;
-}
+void dumpAsciiImpl(Tensor *T);
+
+void dumpImpl(Tensor *T);
 
 /// A class that provides indexed access to a tensor. This class has value
 /// semantics and it's copied around. One of the reasons for making this class
@@ -328,7 +286,18 @@ public:
     return llvm::ArrayRef<size_t>(sizes_, numDims);
   }
 
+  /// \returns the number of elements in the whole tensor.
   size_t size() const { return tensor_->size(); }
+
+  /// \returns the number of elements in a slice for a specific dimension.
+  /// For a tensor of dimensions (w, x,y,z) the result for each value of \p
+  /// dimIdx would be [x * y * z, y * z, z, 1]. This means that each element
+  /// in the n-th dimension is made of tensors with n-1 dimensions, and this
+  /// function returns the size of that tensor.
+  size_t sliceSize(unsigned dimIdx) const {
+    assert(dimIdx < max_tensor_dimensions);
+    return sizeIntegral[dimIdx];
+  }
 
   bool isInBounds(llvm::ArrayRef<size_t> indices) const {
     return tensor_->isInBounds(indices);
@@ -399,48 +368,7 @@ public:
     }
   }
 
-  void dumpAscii(const std::string &prefix = "",
-                 const std::string &suffix = "\n") const {
-    auto d = tensor_->dims();
-    std::cout << prefix << "\n";
-
-    if (d.size() == 2) {
-      for (size_t y = 0; y < d[1]; y++) {
-        for (size_t x = 0; x < d[0]; x++) {
-          auto val = at({x, y});
-          std::cout << valueToChar(val);
-        }
-        std::cout << "\n";
-      }
-    } else if (d.size() == 3) {
-      // Print monochrome (one-color channel) tensors:
-      if (d[2] == 1) {
-        for (size_t y = 0; y < d[1]; y++) {
-          for (size_t x = 0; x < d[0]; x++) {
-            auto val = at({x, y, 0});
-            std::cout << valueToChar(val);
-          }
-          std::cout << "\n";
-        }
-      } else {
-        for (size_t z = 0; z < d[2]; z++) {
-          std::cout << "\n";
-          for (size_t y = 0; y < d[1]; y++) {
-            for (size_t x = 0; x < d[0]; x++) {
-              auto val = at({x, y, z});
-              std::cout << valueToChar(val);
-            }
-            std::cout << "\n";
-          }
-        }
-      }
-
-    } else {
-      assert(false && "Invalid tensor size");
-    }
-
-    std::cout << suffix;
-  }
+  void dumpAscii() const { dumpAsciiImpl(tensor_); }
 
   /// \returns the index of the highest value.
   size_t maxArg() {
@@ -457,84 +385,7 @@ public:
     return idx;
   }
 
-  void dump(const char *title = "", const char *suffix = "") const {
-    std::cout << "\n" << title << "\n";
-    size_t num_dims = numDims;
-    auto shape = dims();
-
-    // Check for empty tensor.
-    if (!num_dims) {
-      std::cout << "[ Empty tensor ]\n";
-      std::cout << suffix << "\n";
-      return;
-    }
-
-    // Output shape.
-    std::cout << "shape: ( ";
-
-    for (size_t dim = 0; dim < num_dims; dim++) {
-      std::cout << shape[dim] << " ";
-    }
-
-    std::cout << ")\n";
-
-    auto *data = tensor_->getRawDataPointer<ElemTy>();
-    ElemTy mx = *std::max_element(&data[0], &data[size()]);
-    ElemTy mn = *std::min_element(&data[0], &data[size()]);
-
-    // Check for zero tensor.
-    if (!mn && !mx) {
-      std::cout << "[ Zero tensor ]\n";
-      std::cout << suffix << "\n";
-      return;
-    }
-
-    // Output max and min.
-    std::cout << "max: " << mx << "  min: " << mn << "\n";
-
-    const unsigned maxNumElem = 100;
-
-    std::cout << "[";
-
-    for (size_t i = 0, e = std::min<size_t>(maxNumElem, size()); i < e; i++) {
-
-      // Print one open brace at the beginning of every row, slice, and tensor.
-      for (size_t j = 0, e = num_dims - 1; num_dims > 1 && j < e; j++) {
-        if (i % sizeIntegral[j] == 0) {
-          // This iteration of outer loop is a new row, slice or tensor.
-          std::cout << "[";
-        }
-      }
-
-      // Print the value at the current index.
-      std::cout << raw(i);
-
-      // Print one closed brace at the end of every row, slice, or tensor.
-      for (size_t j = 0, e = num_dims - 1; num_dims > 1 && j < e; j++) {
-        size_t next_index = i + 1;
-        if (next_index % sizeIntegral[j] == 0) {
-          std::cout << "]";
-        }
-      }
-
-      std::cout << ", ";
-
-      // Print one newline at the end of every row, slice, or tensor.
-      for (size_t j = 0, e = num_dims - 1; num_dims > 1 && j < e; j++) {
-        size_t next_index = i + 1;
-        if (next_index % sizeIntegral[j] == 0) {
-          // Next iteration of outer loop will be a new row, slice or tensor.
-          std::cout << "\n";
-        }
-      }
-    }
-
-    if (size() > maxNumElem) {
-      std::cout << "...";
-    }
-
-    std::cout << "]\n" << suffix << "\n";
-  }
+  void dump() const { dumpImpl(tensor_); }
 
   /// Fill the array with random data that's close to zero using the
   /// Xavier method, based on the paper [Bengio and Glorot 2010].

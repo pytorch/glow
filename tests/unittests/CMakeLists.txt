@@ -4,6 +4,7 @@ add_executable(tensorsTest
                  Tensors.cpp)
 target_link_libraries(tensorsTest
                       PRIVATE
+                        Base
                         Support
                         gtest
                         gtest_main)

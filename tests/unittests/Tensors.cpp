@@ -11,7 +11,7 @@ TEST(Tensor, init) {
 
   auto H = T.getHandle<>();
 
-  H.dump("", "\n");
+  H.dump();
 
   EXPECT_EQ(int(H.at({2})), 51);
 
@@ -19,7 +19,7 @@ TEST(Tensor, init) {
 
   EXPECT_EQ(int(H.at({0})), 1);
 
-  H.dump("", "\n");
+  H.dump();
 }
 
 TEST(Tensor, clone) {
