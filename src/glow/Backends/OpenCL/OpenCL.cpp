@@ -7,6 +7,7 @@
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/Optimizer.h"
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -137,7 +138,7 @@ void getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
 
 void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
                    cl_device_id device, llvm::ArrayRef<size_t> global) {
-  std::vector<size_t> local(global.size(), 0);
+  llvm::SmallVector<size_t, 4> local(global.size(), 0);
   getMaxLocalWorkgroupSize(kernel, device, global, local);
 
   auto err = clEnqueueNDRangeKernel(commands, kernel, global.size(), nullptr,

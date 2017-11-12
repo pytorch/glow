@@ -159,7 +159,7 @@ void TransposeInst::verify() const {
   auto *dest = getOperand(0).first;
   auto *src = getOperand(1).first;
   (void)dest;
-  std::vector<size_t> shape;
+  llvm::SmallVector<size_t, 6> shape;
 
   auto dims = src->dims();
   for (size_t i = 0; i < dims.size(); i++) {
@@ -179,7 +179,7 @@ void ConcatInst::verify() const {
     assert(getOperand(i).first->dims() == inDim && "Invalid input shape");
   }
 
-  std::vector<size_t> shape(inDim.begin(), inDim.end());
+  llvm::SmallVector<size_t, 6> shape(inDim.begin(), inDim.end());
   // We are stacking the tensors along a specific dimension. This means that we
   // increase the size of the tensor along this dimension.
   shape[Dim_] *= getNumOperands() - 1;

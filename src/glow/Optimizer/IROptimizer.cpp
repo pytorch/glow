@@ -164,7 +164,7 @@ static void replaceAllNonDeallocUsersWith(Value *val, Value *with) {
   auto &users = val->getUsers();
   // We use a vector here because changing the operands of the user changes the
   // uselist, and this invalidates the iterator.
-  std::vector<Use> usersVec(users.begin(), users.end());
+  llvm::SmallVector<Use, 6> usersVec(users.begin(), users.end());
   for (auto &U : usersVec) {
     // Ignore dealloc instrs.
     if (isa<DeallocActivationInst>(U.get())) {

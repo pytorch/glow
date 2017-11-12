@@ -517,10 +517,10 @@ private:
   /// recursion depth parameter that's following the number of the axis. if \p
   /// isInsert is set then data is copied from \p slice to \p fused. Otherwise
   /// data is copied from \p fused to \p slice.
-  void insertTensorsImpl(std::vector<size_t> &sliceCoor,
-                         std::vector<size_t> &fusedCoor, Handle<ElemTy> &slice,
-                         bool isInsert, llvm::ArrayRef<size_t> offset,
-                         unsigned d) {
+  void insertTensorsImpl(llvm::MutableArrayRef<size_t> sliceCoor,
+                         llvm::MutableArrayRef<size_t> fusedCoor,
+                         Handle<ElemTy> &slice, bool isInsert,
+                         llvm::ArrayRef<size_t> offset, unsigned d) {
     bool isDone = (d == slice.dims().size());
 
     if (isDone) {

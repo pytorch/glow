@@ -52,7 +52,8 @@ ConvolutionInst *IRBuilder::createConvOp(Value *input, Value *filter,
   // Calculate the size and allocate the output buffer.
   auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
 
-  std::vector<size_t> outDims = {idim.n, outSz.first, outSz.second, depth};
+  llvm::SmallVector<size_t, 4> outDims = {idim.n, outSz.first, outSz.second,
+                                          depth};
   auto TR = M_->getGraph()->uniqueType(ElemKind::FloatTy, outDims);
   Value *dest = createAllocActivationInst("conv.res", TR);
 
@@ -143,7 +144,7 @@ ReshapeInst *IRBuilder::createReshapeOp(Value *input,
 
 TransposeInst *IRBuilder::createTransposeOp(Value *input,
                                             llvm::ArrayRef<unsigned> shuffle) {
-  std::vector<size_t> shape;
+  llvm::SmallVector<size_t, 6> shape;
   auto dims = input->dims();
   for (size_t i = 0; i < dims.size(); i++) {
     shape.push_back(dims[shuffle[i]]);
@@ -159,7 +160,7 @@ ConcatInst *IRBuilder::createConcatOp(Value *LHS, Value *RHS,
   assert(LHS->getType() == RHS->getType() && "Invalid dims");
   auto inDim = LHS->dims();
 
-  std::vector<size_t> shape(inDim.begin(), inDim.end());
+  llvm::SmallVector<size_t, 6> shape(inDim.begin(), inDim.end());
   // We are stacking the tensors along a specific dimension. This means that we
   // increase the size of the tensor along this dimension.
   shape[dimension] *= 2;

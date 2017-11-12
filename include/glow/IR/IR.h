@@ -7,6 +7,7 @@
 #include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 #include <list>
@@ -73,7 +74,7 @@ public:
 private:
   /// A list of operands that the instruction has. This is typically a very
   /// short list.
-  std::vector<Operand> ops_{};
+  llvm::SmallVector<Operand, 6> ops_{};
 
   // Define/disallow default ctor, copy ctor and assignment operator.
   Instruction(const Instruction &I) = delete;

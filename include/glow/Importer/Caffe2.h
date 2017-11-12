@@ -4,6 +4,7 @@
 #include "glow/Graph/Graph.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 
 #include <string>
