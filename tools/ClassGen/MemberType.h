@@ -5,7 +5,7 @@
 #include <string>
 #include <unordered_map>
 
-enum MemberType {
+enum class MemberType : unsigned {
   TypeRef,
   Float,
   Unsigned,
@@ -15,29 +15,28 @@ enum MemberType {
   VectorSizeT,
 };
 
-struct TypeStr {
-  std::string storageType;
-  std::string returnType;
-};
-
-static const std::unordered_map<MemberType, TypeStr> kMemberTypeStrMap = {
-    {MemberType::TypeRef, {"TypeRef", "TypeRef"}},
-    {MemberType::Float, {"float", "float"}},
-    {MemberType::Unsigned, {"unsigned", "unsigned"}},
-    {MemberType::SizeT, {"size_t", "size_t"}},
-    {MemberType::VectorFloat, {"std::vector<float>", "llvm::ArrayRef<float>"}},
-    {MemberType::VectorUnsigned,
-     {"std::vector<unsigned>", "llvm::ArrayRef<unsigned>"}},
-    {MemberType::VectorSizeT,
-     {"std::vector<size_t>", "llvm::ArrayRef<size_t>"}},
-};
-
-inline std::string getStorageTypename(MemberType type) {
-  return kMemberTypeStrMap.at(type).storageType;
+inline const char *getReturnTypename(MemberType type) {
+  const char *returnTypes[] = {"TypeRef",
+                               "float",
+                               "unsigned",
+                               "size_t",
+                               "llvm::ArrayRef<float>",
+                               "llvm::ArrayRef<unsigned>",
+                               "llvm::ArrayRef<size_t>",
+                               nullptr};
+  return returnTypes[(int)type];
 }
 
-inline std::string getReturnTypename(MemberType type) {
-  return kMemberTypeStrMap.at(type).returnType;
+inline const char *getStorageTypename(MemberType type) {
+  const char *storageTypes[] = {"TypeRef",
+                                "float",
+                                "unsigned",
+                                "size_t",
+                                "std::vector<float>",
+                                "std::vector<unsigned>",
+                                "std::vector<size_t>",
+                                nullptr};
+  return storageTypes[(int)type];
 }
 
 #endif // GLOW_TOOLS_CLASSGEN_MEMBERTYPE_H
