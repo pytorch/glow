@@ -16,10 +16,10 @@ using namespace glow;
 using llvm::dyn_cast;
 using llvm::isa;
 
+#if WITH_OPENCL
+
 // This defines the string "SHADER_CODE".
 #include "kernels.cl"
-
-#if WITH_OPENCL
 
 Backend *glow::createOCLBackend(Module *M) { return new OCLBackend(M); }
 
@@ -507,8 +507,5 @@ Tensor *OCLBackend::getTensor(const Value *v) const {
 Backend *glow::createOCLBackend(Module *M) {
   GLOW_ASSERT(false && "Glow is compiled without OpenCL support");
 }
-
-// Disable the unused variable warning on non-ocl builds.
-(void)SHADER_CODE;
 
 #endif // WITH_OPENCL
