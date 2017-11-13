@@ -155,6 +155,14 @@ TransposeInst *IRBuilder::createTransposeOp(Value *input,
   return createTransposeInst("transp", res, input, shuffle);
 }
 
+SliceInst *IRBuilder::createSliceOp(Value *input,
+				     llvm::ArrayRef<size_t> begin,
+				     llvm::ArrayRef<size_t> size) {
+  auto *res =
+      createAllocActivationInst("slice.res", input->getElementType(), size);
+  return createSliceInst("slice", res, input, begin, size);
+}
+
 ConcatInst *IRBuilder::createConcatOp(Value *LHS, Value *RHS,
                                       unsigned dimension) {
   assert(LHS->getType() == RHS->getType() && "Invalid dims");

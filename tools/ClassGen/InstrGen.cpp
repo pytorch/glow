@@ -203,6 +203,19 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Shuffle")
       .addGradientInstr({}, {"Dest", "Src"});
 
+  BB.newInstr("Slice")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember("std::vector<size_t>", "Begin")
+      .overrideGetter(
+          "Begin",
+          "llvm::ArrayRef<size_t> getBegin() const { return Begin_; }")
+      .addMember("std::vector<size_t>", "Size")
+      .overrideGetter(
+          "Size",
+          "llvm::ArrayRef<size_t> getSize() const { return Size_; }")
+      .addGradientInstr({}, {"Dest", "Src"});
+
   BB.newInstr("Concat")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)

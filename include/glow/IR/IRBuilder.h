@@ -58,6 +58,10 @@ public:
   TransposeInst *createTransposeOp(Value *input,
                                    llvm::ArrayRef<unsigned> shuffle);
 
+  SliceInst *createSliceOp(Value *input,
+			   llvm::ArrayRef<size_t> begin,
+			   llvm::ArrayRef<size_t> size);
+
   ConcatInst *createConcatOp(Value *LHS, Value *RHS, unsigned dimension);
 
   BatchNormalizationInst *createBatchNormalizationOp(Value *input,

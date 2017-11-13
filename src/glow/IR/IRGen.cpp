@@ -150,6 +150,14 @@ public:
       registerIR(N, V->getDest());
       break;
     }
+    case glow::Kinded::Kind::SliceNodeKind: {
+      auto *SS = cast<SliceNode>(N);
+      auto *in = valueForNode(SS->getInput());
+      auto *V = builder_.createSliceOp(in, SS->getBegin(), SS->getSize());
+      V->setName(N->getName());
+      registerIR(N, V->getDest());
+      break;
+    }
     case glow::Kinded::Kind::ReshapeNodeKind: {
       auto *RS = cast<ReshapeNode>(N);
       auto *in = valueForNode(RS->getInput());
@@ -339,6 +347,10 @@ void generateBackwardPass(Module &M) {
     }
     case Kind::TransposeInstKind: {
       toAppend.push_back(cast<TransposeInst>(I)->getGrad(weightToGradMap));
+      break;
+    }
+    case Kind::SliceInstKind: {
+      toAppend.push_back(cast<SliceInst>(I)->getGrad(weightToGradMap));
       break;
     }
     case Kind::ConcatInstKind: {

@@ -170,6 +170,22 @@ void TransposeInst::verify() const {
          "Invalid transpose dims");
 }
 
+void SliceInst::verify() const {
+  auto *dest = getOperand(0).first;
+  auto *src = getOperand(1).first;
+  auto dims = src->dims();
+  assert(dims.size() == 2 && "Only 2-dimensional slices supported");
+  for (size_t i = 0; i < dims.size(); i++) {
+    auto i_size = Size_[i];
+    auto i_begin = Begin_[i];
+    auto i_end = i_begin + i_size - 1;
+    assert(i_begin >= 0 && "Invalid slice indices");
+    assert(i_size > 0 && "Invalid slice size");
+    assert(i_end < dims[i] && "Invalid slice indices");
+  }
+  assert(dest->dims() == llvm::ArrayRef<size_t>(Size_) && "Invalid slice dims");
+}
+
 void ConcatInst::verify() const {
   assert(getNumOperands() > 1 && "Invalid number of operands");
   // The dimension of the first input.
@@ -240,6 +256,7 @@ NOVERIFY(ReluGradInst)
 NOVERIFY(TanhGradInst)
 NOVERIFY(SigmoidGradInst)
 NOVERIFY(TransposeGradInst)
+NOVERIFY(SliceGradInst)
 NOVERIFY(ReshapeGradInst)
 NOVERIFY(ElementAddGradInst)
 NOVERIFY(ElementMulGradInst)

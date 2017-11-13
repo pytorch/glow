@@ -138,6 +138,19 @@ int main(int argc, char **argv) {
       .addExtraParam("TypeRef", "outTy")
       .setType("outTy");
 
+  BB.newNode("Slice")
+      .addOperand("Input")
+      .addMember("std::vector<size_t>", "Begin")
+      .addMember("std::vector<size_t>", "Size")
+      .addExtraParam("TypeRef", "outTy")
+      .setType("outTy")
+      .overrideGetter(
+          "Begin",
+          "llvm::ArrayRef<size_t> getBegin() const { return Begin_; }")
+      .overrideGetter(
+          "Size",
+          "llvm::ArrayRef<size_t> getSize() const { return Size_; }");
+
   BB.newNode("Concat")
       .addOperand("LHS")
       .addOperand("RHS")

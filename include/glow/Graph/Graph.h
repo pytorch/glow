@@ -88,6 +88,10 @@ public:
   TransposeNode *createTranspose(llvm::StringRef name, Node *input,
                                  llvm::ArrayRef<unsigned> shuffle);
 
+  SliceNode *createSlice(llvm::StringRef name, Node *input,
+			 llvm::ArrayRef<size_t> begin,
+			 llvm::ArrayRef<size_t> size);
+
   ConcatNode *createConcat(llvm::StringRef name, Node *LHS, Node *RHS,
                            unsigned dimension);
 
