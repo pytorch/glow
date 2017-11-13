@@ -46,7 +46,7 @@ void ExecutionEngine::train(size_t iterations, llvm::ArrayRef<Variable *> vars,
 
   for (size_t i = 0; i < iterations; i++) {
     // Launch threads that update the different chunks in the batch:
-    updateForwardBackward(vars, inputs, trainCounter + batchSize);
+    updateForwardBackward(vars, inputs, trainCounter);
 
     trainCounter += batchSize;
 
