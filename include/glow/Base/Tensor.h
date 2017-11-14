@@ -143,6 +143,15 @@ public:
     std::copy(&t->data_[0], &t->data_[bufferSize], data_);
   }
 
+  /// Update the raw data of the tensor from the tensor \p t.
+  void copyRawFrom(const Tensor *t) {
+    assert(this != t && "Copying to self");
+    assert(size() == t->size());
+    assert(getElementType() == t->getElementType() && "Invalid element type");
+    size_t bufferSize = size() * type_.getElementSize();
+    std::copy(&t->data_[0], &t->data_[bufferSize], data_);
+  }
+
   /// Update the content of the tensor with a slice from tensor \p t. A slice
   /// is one index from the first dimension of the tensor.
   void copySlice(const Tensor *t, size_t slice) {
