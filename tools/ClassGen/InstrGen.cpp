@@ -199,8 +199,7 @@ int main(int argc, char **argv) {
   BB.newInstr("Transpose")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addMember(MemberType::VectorUnsigned, "Shuffle")
-      .addGradientInstr({}, {"Dest", "Src"});
+      .addMember(MemberType::VectorUnsigned, "Shuffle");
 
   BB.newInstr("Zero").addOperand("Dest", OperandKind::Out);
 
