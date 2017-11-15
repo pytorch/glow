@@ -14,12 +14,9 @@ using namespace glow;
 //===----------------------------------------------------------------------===//
 
 void Interpreter::fwdCopyInst(bool isTrain, const CopyInst *I) {
-  auto S = getWeightHandle(I->getSrc());
-  auto D = getWeightHandle(I->getDest());
-
-  for (size_t i = 0, e = S.size(); i < e; i++) {
-    D.raw(i) = S.raw(i);
-  }
+  auto inT = getTensor(I->getSrc());
+  auto outT = getTensor(I->getDest());
+  outT->copyRawFrom(inT);
 }
 
 template <bool SpecializeFPS, size_t filterX, size_t padX, size_t strideX,
@@ -632,15 +629,25 @@ void Interpreter::fwdReshapeGradInst(bool isTrain, const ReshapeGradInst *I) {
 }
 
 void Interpreter::fwdZeroInst(bool isTrain, const glow::ZeroInst *I) {
-  auto outW = getWeightHandle(I->getDest());
-  outW.clear();
+  auto *T = getTensor(I->getDest());
+  T->zero();
 }
 
 void Interpreter::fwdInsertTensorInst(bool isTrain,
                                       const glow::InsertTensorInst *I) {
-  auto outW = getWeightHandle(I->getDest());
-  auto inW = getWeightHandle(I->getSrc());
-  outW.insertTensors(inW, I->getOffsets());
+  Tensor *outT = getTensor(I->getDest());
+  Tensor *inT = getTensor(I->getSrc());
+  ElemKind k = outT->getElementType();
+#define TYPED_INSERT(TY, TYPEKIND)                                             \
+  if (k == TYPEKIND) {                                                         \
+    auto OH = outT->getHandle<TY>();                                           \
+    auto IH = inT->getHandle<TY>();                                            \
+    return OH.insertTensors(IH, I->getOffsets());                              \
+  }
+
+  TYPED_INSERT(size_t, ElemKind::IndexTy);
+  TYPED_INSERT(float, ElemKind::FloatTy);
+#undef TYPED_INSERT
 }
 
 void Interpreter::fwdExtractTensorInst(bool isTrain,
