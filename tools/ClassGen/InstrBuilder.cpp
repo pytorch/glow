@@ -16,11 +16,6 @@ unsigned InstrBuilder::getOperandIndexByName(llvm::StringRef name) const {
 void InstrBuilder::emitCtor(std::ostream &os) const {
   os << "\t" << name_ << "Inst(llvm::StringRef name";
 
-  // Constructor non-standard parameter list:
-  for (const auto &op : extraParams_) {
-    os << ", " << op.first << " " << op.second << " ";
-  }
-
   // The operands of the instruction class:
   for (const auto &op : operands_) {
     os << ", Value *" << op.first;
@@ -55,11 +50,6 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
 void InstrBuilder::emitIRBuilderMethods(std::ostream &os) const {
   os << name_ << "Inst *create" << name_ << "Inst(llvm::StringRef name";
 
-  // Constructor non-standard parameter list:
-  for (const auto &op : extraParams_) {
-    os << ", " << op.first << " " << op.second << " ";
-  }
-
   // The operands of the instruction class:
   for (const auto &op : operands_) {
     os << ", Value *" << op.first;
@@ -73,11 +63,7 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &os) const {
   // Initialize the base clases:
   os << ") {\n";
   os << "auto *A = new " << name_ << "Inst(name ";
-  // Constructor non-standard parameter list:
-  for (const auto &op : extraParams_) {
-    os << ", "
-       << " " << op.second << " ";
-  }
+
   // The operands of the instruction class:
   for (const auto &op : operands_) {
     os << ", " << op.first;
@@ -222,7 +208,6 @@ void InstrBuilder::addGradientInstr(
   // The new 'Grad' class will have all of the fields of the current class.
   GI.ty_ = ty_;
   GI.members_ = members_;
-  GI.extraParams_ = extraParams_;
   GI.overrideGetter_ = overrideGetter_;
   GI.extraMethods_ = extraMethods_;
 
@@ -250,11 +235,6 @@ void InstrBuilder::addGradientInstr(
   std::stringstream ss;
   ss << name_ + "GradInst* getGrad(Module::GradientMap &map) const {\n";
   ss << "\t return new " + name_ + "GradInst(getName()";
-
-  // Non-standard parameter list:
-  for (const auto &op : extraParams_) {
-    ss << ", " << op.second;
-  }
 
   // The operands of the input class:
   for (const auto &op : operands_) {

@@ -44,8 +44,6 @@ class InstrBuilder {
   std::vector<std::pair<std::string, OperandKind>> operands_;
   /// A list of instruction members. Format: (type, name).
   std::vector<std::pair<MemberType, std::string>> members_;
-  /// A list of extra parameters that are passed to the constructor.
-  std::vector<std::pair<std::string, std::string>> extraParams_;
   /// A list of getters to override. Format (variable name, alternative getter).
   std::unordered_map<std::string, std::string> overrideGetter_;
   /// Stores the body of a new public method that will be added to the class.
@@ -119,12 +117,6 @@ public:
     ty_ = ty;
     return *this;
   }
-  /// Add a parameter to the constructor. For example "TypeRef" "outTy".
-  InstrBuilder &addExtraParam(const std::string &type,
-                              const std::string &name) {
-    extraParams_.push_back({type, name});
-    return *this;
-  }
 
   /// Adds a list of inplace operands. The instruction may use the memory
   /// read by any of the operands in \p lst[1 .. n] for writing the result of
@@ -136,6 +128,14 @@ public:
     return *this;
   }
 
+  /// Constructs a new gradient instruction that is based on the current
+  /// instruction that we are building.
+  void addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
+                        llvm::ArrayRef<llvm::StringRef> gradFields);
+
+  ~InstrBuilder();
+
+private:
   /// Emit the class constructor.
   void emitCtor(std::ostream &os) const;
 
@@ -168,13 +168,6 @@ public:
   /// Emit the methods that go into the CPP file and implement the methods that
   /// were declared in the header file.
   void emitCppMethods(std::ostream &os) const;
-
-  // Constructs a new gradient instruction that is based on the current
-  // instruction that we are building.
-  void addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
-                        llvm::ArrayRef<llvm::StringRef> gradFields);
-
-  ~InstrBuilder();
 };
 
 class Builder {

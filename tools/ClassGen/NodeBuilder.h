@@ -87,6 +87,9 @@ public:
     return *this;
   }
 
+  ~NodeBuilder();
+
+private:
   /// Emits the methods that converts an enum case into a textual label.
   void emitEnumModePrinters(std::ostream &os) const;
 
@@ -124,8 +127,6 @@ public:
   /// Emit the methods that go into the CPP file and implement the methods that
   /// were declared in the header file.
   void emitCppMethods(std::ostream &os) const;
-
-  ~NodeBuilder();
 };
 
 class Builder {
