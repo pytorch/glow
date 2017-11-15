@@ -13,6 +13,15 @@ size_t getNHWC(ShapeNHWC s, size_t x, size_t y, size_t z, size_t w) {
   return (x * s.c * s.w * s.h) + (y * s.c * s.w) + (z * s.c) + w;
 }
 
+__kernel void zeroK(__global float *dest) {
+  size_t i = get_global_id(0);
+  dest[i] = 0;
+}
+
+__kernel void zeroW(__global void *mem, size_t dest) {
+  zeroK(&mem[dest]);
+}
+
 __kernel void reluK(__global float *dest, __global float *src) {
   size_t i = get_global_id(0);
   dest[i] = fmax(src[i], 0);
@@ -239,8 +248,6 @@ __kernel void poolavgK(__global float *dest, __global float *src,
   // For each input in the batch:
   for (size_t n = 0; n < idim.n; n++) {
     float sumVal = 0;
-    bool first = true;
-
     // For each element in the convolution-filter:
     for (size_t fx = 0; fx < filterSize; fx++) {
       for (size_t fy = 0; fy < filterSize; fy++) {
@@ -291,33 +298,26 @@ __kernel void transposeW(__global void *mem, size_t dest, size_t src,
   transposeK(&mem[dest], &mem[src], odim, idim, shuffle);
 }
 
-__kernel void concatK(__global float *dest, __global float *LHS,
-                      __global float *RHS, ShapeNHWC odim, ShapeNHWC ldim,
-                      unsigned dim) {
+__kernel void inserttensorK(__global float *dest, __global float *src,
+                      ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset) {
   size_t d0 = get_global_id(0);
-  for (size_t d1 = 0; d1 < ldim.h; d1++) {
-    for (size_t d2 = 0; d2 < ldim.w; d2++) {
-      for (size_t d3 = 0; d3 < ldim.c; d3++) {
-        size_t r0 = d0 + (dim == 0 ? ldim.n : 0);
-        size_t r1 = d1 + (dim == 1 ? ldim.h : 0);
-        size_t r2 = d2 + (dim == 2 ? ldim.w : 0);
-        size_t r3 = d3 + (dim == 3 ? ldim.c : 0);
-
-        size_t srcIdx = getNHWC(ldim, d0, d1, d2, d3);
-        size_t destIdx0 = getNHWC(odim, d0, d1, d2, d3);
-        size_t destIdx1 = getNHWC(odim, r0, r1, r2, r3);
-
-        float v0 = LHS[srcIdx];
-        float v1 = RHS[srcIdx];
-        dest[destIdx0] = v0;
-        dest[destIdx1] = v1;
+  for (size_t d1 = 0; d1 < idim.h; d1++) {
+    for (size_t d2 = 0; d2 < idim.w; d2++) {
+      for (size_t d3 = 0; d3 < idim.c; d3++) {
+        size_t r0 = d0 + offset.n;
+        size_t r1 = d1 + offset.h;
+        size_t r2 = d2 + offset.w;
+        size_t r3 = d3 + offset.c;
+        size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
+        size_t destIdx = getNHWC(odim, r0, r1, r2, r3);
+        dest[destIdx] = src[srcIdx];
       }
     }
   }
 }
 
-__kernel void concatW(__global void *mem, size_t dest, size_t LHS, size_t RHS,
-                      ShapeNHWC odim, ShapeNHWC ldim, unsigned dim) {
-  concatK(&mem[dest], &mem[LHS], &mem[RHS], odim, ldim, dim);
+__kernel void inserttensorW(__global void *mem, size_t dest, size_t src,
+                       ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset) {
+  inserttensorK(&mem[dest], &mem[src], odim, idim, offset);
 }
 )";
