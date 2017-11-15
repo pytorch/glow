@@ -163,7 +163,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
     // Element-wise operations:
     if (isa<ReluInst>(I) || isa<SigmoidInst>(I) || isa<TanhInst>(I) ||
         isa<RegressionInst>(I) || isa<ReluInst>(I) || isa<ElementAddInst>(I) ||
-        isa<ElementMulInst>(I)) {
+        isa<ElementMulInst>(I) || isa<ZeroInst>(I)) {
 
       cl_kernel kernel = createKernel(program_, kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
@@ -205,8 +205,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
       continue;
     }
 
-    /*
-    if (auto *CI = dyn_cast<ConcatInst>(I)) {
+    if (auto *CI = dyn_cast<InsertTensorInst>(I)) {
       cl_kernel kernel = createKernel(program_, kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
@@ -216,17 +215,17 @@ void OCLBackend::doForwardPass(bool isTrain) {
       }
 
       auto odim = ShapeNHWC(CI->getDest()->getType()->dims());
-      auto ldim = ShapeNHWC(CI->getLHS()->getType()->dims());
+      auto idim = ShapeNHWC(CI->getSrc()->getType()->dims());
+      auto o = CI->getOffsets();
+      ShapeNHWC offset(o[0], o[1], o[2], o[3]);
 
-      setKernelArg(kernel, 4, odim);
-      setKernelArg(kernel, 5, ldim);
-      setKernelArg<unsigned>(kernel, 6, CI->getDim());
-
-      enqueueKernel(commands_, kernel, deviceId_, {ldim.n});
+      setKernelArg(kernel, 3, odim);
+      setKernelArg(kernel, 4, idim);
+      setKernelArg(kernel, 5, offset);
+      enqueueKernel(commands_, kernel, deviceId_, {idim.n});
       kernels.push_back(kernel);
       continue;
     }
-    */
 
     if (auto *FC = dyn_cast<FullyConnectedInst>(I)) {
       // This is a naive implementation of sgemm that's based on this algorithm:
