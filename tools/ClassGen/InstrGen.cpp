@@ -203,12 +203,17 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Shuffle")
       .addGradientInstr({}, {"Dest", "Src"});
 
-  BB.newInstr("Concat")
+  BB.newInstr("Zero").addOperand("Dest", OperandKind::Out);
+
+  BB.newInstr("InsertTensor")
       .addOperand("Dest", OperandKind::Out)
-      .addOperand("LHS", OperandKind::In)
-      .addOperand("RHS", OperandKind::In)
-      .addMember(MemberType::SizeT, "Dim")
-      .addGradientInstr({}, {"Dest", "LHS", "RHS"});
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::VectorSizeT, "Offsets");
+
+  BB.newInstr("ExtractTensor")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::VectorSizeT, "Offsets");
 
   return 0;
 }

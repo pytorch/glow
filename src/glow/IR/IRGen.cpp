@@ -160,13 +160,24 @@ public:
     }
     case glow::Kinded::Kind::ConcatNodeKind: {
       auto *CC = cast<ConcatNode>(N);
-      assert(CC->getInputs().size() == 2 && "Invalid number of inputs");
+
+      auto *dest = builder_.createAllocActivationInst(
+          CC->getName(), CC->getElementType(), CC->dims());
+      builder_.createZeroInst(CC->getName(), dest);
       auto inputs = CC->getInputs();
-      auto *LHS = valueForNode(inputs[0]);
-      auto *RHS = valueForNode(inputs[1]);
-      auto *V = builder_.createConcatOp(LHS, RHS, CC->getDim());
-      V->setName(N->getName());
-      registerIR(N, V->getDest());
+
+      // We start inserting to the shape at (0,0, ... ).
+      std::vector<size_t> offsets(CC->dims().size(), 0);
+      unsigned dim = CC->getDim();
+
+      for (int i = 0, e = inputs.size(); i < e; i++) {
+        builder_.createInsertTensorInst(CC->getName(), dest,
+                                        valueForNode(inputs[i]), offsets);
+        // We are stacking the tensors along a specific dimension. This means
+        // that we increase the size of the tensor along this dimension.
+        offsets[dim] += inputs[i]->dims()[dim];
+      }
+      registerIR(N, dest);
       break;
     }
     case glow::Kinded::Kind::BatchNormalizationNodeKind: {
@@ -343,8 +354,28 @@ void generateBackwardPass(Module &M) {
       toAppend.push_back(cast<TransposeInst>(I)->getGrad(weightToGradMap));
       break;
     }
-    case Kind::ConcatInstKind: {
-      toAppend.push_back(cast<ConcatInst>(I)->getGrad(weightToGradMap));
+    case Kind::ZeroInstKind: {
+      Value *src = weightToGradMap[I->getOperand(0).first];
+      toAppend.push_back(new ZeroInst(I->getName(), src));
+      break;
+    }
+    case Kind::InsertTensorInstKind: {
+      InsertTensorInst *ITI = cast<InsertTensorInst>(I);
+      Value *dest = weightToGradMap[ITI->getDest()];
+      Value *src = weightToGradMap[ITI->getSrc()];
+      // Swap the src and dest.
+      toAppend.push_back(
+          new ExtractTensorInst(I->getName(), src, dest, ITI->getOffsets()));
+      break;
+    }
+    case Kind::ExtractTensorInstKind: {
+      ExtractTensorInst *ETI = cast<ExtractTensorInst>(I);
+      Value *dest = weightToGradMap[ETI->getDest()];
+      Value *src = weightToGradMap[ETI->getSrc()];
+
+      // Swap the src and dest.
+      toAppend.push_back(
+          new InsertTensorInst(I->getName(), src, dest, ETI->getOffsets()));
       break;
     }
     default:

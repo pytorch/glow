@@ -631,42 +631,23 @@ void Interpreter::fwdReshapeGradInst(bool isTrain, const ReshapeGradInst *I) {
   inT->copyRawFrom(outT);
 }
 
-void Interpreter::fwdConcatInst(bool isTrain, const ConcatInst *I) {
+void Interpreter::fwdZeroInst(bool isTrain, const glow::ZeroInst *I) {
   auto outW = getWeightHandle(I->getDest());
-
-  // Insert the tensors at this coordinate. Start at zero.
-  llvm::SmallVector<size_t, 6> offset(outW.size(), 0);
-  auto dim = I->getDim();
-
-  for (unsigned i = 1, e = I->getNumOperands(); i < e; i++) {
-    auto inW = getWeightHandle(I->getOperand(i).first);
-
-    // Insert the tensor.
-    outW.insertTensors(inW, offset);
-
-    // The next tensor starts after this one ends.
-    offset[dim] += inW.dims()[dim];
-  }
+  outW.clear();
 }
-void Interpreter::fwdConcatGradInst(bool isTrain, const ConcatGradInst *I) {
-  auto outG = getWeightHandle(I->getDestGrad());
 
-  // Insert the tensors at this coordinate. Start at zero.
-  llvm::SmallVector<size_t, 6> offset(outG.size(), 0);
+void Interpreter::fwdInsertTensorInst(bool isTrain,
+                                      const glow::InsertTensorInst *I) {
+  auto outW = getWeightHandle(I->getDest());
+  auto inW = getWeightHandle(I->getSrc());
+  outW.insertTensors(inW, I->getOffsets());
+}
 
-  // TODO: this code assumes that input[i] has only one user, because it
-  // zeros the gradient before extracting the tensor.
-  // TODO: This code does not match the code in the forward pass. This could be
-  // buggy.
-
-  auto dim = I->getDim();
-  auto LHSG = getWeightHandle(I->getLHSGrad());
-  auto RHSG = getWeightHandle(I->getRHSGrad());
-
-  // Insert the tensor.
-  outG.extractTensors(LHSG, offset);
-  offset[dim] += LHSG.dims()[dim];
-  outG.extractTensors(RHSG, offset);
+void Interpreter::fwdExtractTensorInst(bool isTrain,
+                                       const glow::ExtractTensorInst *I) {
+  auto outW = getWeightHandle(I->getDest());
+  auto inW = getWeightHandle(I->getSrc());
+  inW.extractTensors(outW, I->getOffsets());
 }
 
 //===----------------------------------------------------------------------===//
