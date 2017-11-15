@@ -27,7 +27,7 @@ void ExecutionEngine::infer(llvm::ArrayRef<Variable *> vars,
 
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
-    loadValueFromTensor(vars[i], inputs[i], 0);
+    loadValueFromTensor(vars[i], inputs[i]);
   }
 
   IP_->doForwardPass(false);
@@ -77,14 +77,14 @@ void ExecutionEngine::updateForwardBackward(llvm::ArrayRef<Variable *> vars,
                                             size_t sampleIdx) {
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
-    loadValueFromTensor(vars[i], inputs[i], sampleIdx);
+    loadValueFromTensorSlice(vars[i], inputs[i], sampleIdx);
   }
 
   IP_->doForwardPass(true);
 }
 
-void ExecutionEngine::loadValueFromTensor(const Variable *v, Tensor *input,
-                                          size_t sampleIdx) {
+void ExecutionEngine::loadValueFromTensorSlice(const Variable *v, Tensor *input,
+                                               size_t sampleIdx) {
   assert(v && "Invalid value");
   auto *t = IP_->getTensor(v);
 
@@ -93,6 +93,15 @@ void ExecutionEngine::loadValueFromTensor(const Variable *v, Tensor *input,
   // Extract the n'th slice, that must be a tensor.
   size_t slc = sampleIdx % dim[0];
   t->copyConsecutiveSlices(input, slc);
+}
+
+void ExecutionEngine::loadValueFromTensor(const Variable *v, Tensor *input) {
+  assert(v && "Invalid value");
+  auto *t = IP_->getTensor(v);
+  auto dim = input->dims();
+  (void)dim;
+  assert(t->dims() == dim && "Invalid slice size");
+  t->copyFrom(input);
 }
 
 void ExecutionEngine::compile(CompilationMode mode) {
