@@ -180,6 +180,14 @@ void NodeBuilder::emitVisitor(std::ostream &os) const {
   for (const auto &op : operands_) {
     os << "\tget" << op << "()->visit(this, visitor);\n";
   }
+
+  for (const auto &op : members_) {
+    if (op.first == MemberType::VectorNodeOperand) {
+      os << " for (auto &I : " << op.second
+         << "_) { I->visit(this, visitor);}\n";
+    }
+  }
+
   os << "\tvisitor->post(parent, this);\n";
   os << "}\n";
 }

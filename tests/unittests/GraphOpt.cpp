@@ -221,7 +221,7 @@ TEST(GraphOptz, SinkReluBelowConcatNodes) {
                               Variable::InitKind::Extern);
   Node *R1 = G.createRELU("relu1", A1);
   Node *R2 = G.createRELU("relu2", A2);
-  Node *CN = G.createConcat("concat", R1, R2, 1);
+  Node *CN = G.createConcat("concat", {R1, R2}, 1);
   Node *O = G.createSave("ret", CN);
 
   EXPECT_EQ(G.getNodes().size(), 4);
@@ -244,7 +244,7 @@ TEST(GraphOptz, SinkTransposeBelowConcatNodes) {
                               Variable::InitKind::Extern);
   Node *T1 = G.createTranspose("transpose", A1, {0, 2, 3, 1});
   Node *T2 = G.createTranspose("transpose", A2, {0, 2, 3, 1});
-  Node *CN = G.createConcat("concat", T1, T2, 1);
+  Node *CN = G.createConcat("concat", {T1, T2}, 1);
   Node *O = G.createSave("ret", CN);
 
   EXPECT_EQ(G.getNodes().size(), 4);

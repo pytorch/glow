@@ -156,18 +156,26 @@ TransposeNode *Graph::createTranspose(llvm::StringRef name, Node *input,
   return addNode(new TransposeNode(name, NT, input, shuffle.vec()));
 }
 
-ConcatNode *Graph::createConcat(llvm::StringRef name, Node *LHS, Node *RHS,
+ConcatNode *Graph::createConcat(llvm::StringRef name,
+                                llvm::ArrayRef<Node *> inputs,
                                 unsigned dimension) {
-  assert(LHS->getType() == RHS->getType() && "Invalid types");
-  auto inDim = LHS->dims();
+  for (int i = 0, e = inputs.size(); i < e; i++) {
+    assert(inputs[i]->getType() == inputs[0]->getType() && "Invalid types");
+  }
+  auto inDim = inputs[0]->dims();
 
   llvm::SmallVector<size_t, 6> shape(inDim.begin(), inDim.end());
   // We are stacking the tensors along a specific dimension. This means that we
   // increase the size of the tensor along this dimension.
-  shape[dimension] *= 2;
+  shape[dimension] *= inputs.size();
 
-  auto NT = uniqueType(LHS->getElementType(), shape);
-  return addNode(new ConcatNode(name, NT, LHS, RHS, dimension));
+  auto NT = uniqueType(inputs[0]->getElementType(), shape);
+  std::vector<NodeOperand> ops;
+  ops.reserve(inputs.size());
+  for (auto &I : inputs) {
+    ops.emplace_back(I);
+  }
+  return addNode(new ConcatNode(name, NT, ops, dimension));
 }
 
 BatchNormalizationNode *Graph::createBatchNormalization(llvm::StringRef name,

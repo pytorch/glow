@@ -160,8 +160,10 @@ public:
     }
     case glow::Kinded::Kind::ConcatNodeKind: {
       auto *CC = cast<ConcatNode>(N);
-      auto *LHS = valueForNode(CC->getLHS());
-      auto *RHS = valueForNode(CC->getRHS());
+      assert(CC->getInputs().size() == 2 && "Invalid number of inputs");
+      auto inputs = CC->getInputs();
+      auto *LHS = valueForNode(inputs[0]);
+      auto *RHS = valueForNode(inputs[1]);
       auto *V = builder_.createConcatOp(LHS, RHS, CC->getDim());
       V->setName(N->getName());
       registerIR(N, V->getDest());
