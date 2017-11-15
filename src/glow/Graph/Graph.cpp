@@ -190,6 +190,7 @@ ConcatNode *Graph::createConcat(llvm::StringRef name,
     assert(sameSameShapeExceptDim(inputs[i]->getType(), inputs[0]->getType(),
                                   dimension) &&
            "Invalid type");
+    (void)sameSameShapeExceptDim;
   }
   auto inDim = inputs[0]->dims();
 

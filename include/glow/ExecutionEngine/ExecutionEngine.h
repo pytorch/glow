@@ -75,11 +75,15 @@ private:
   /// Update all of the weight tensors (non-activation) with their gradients.
   void learnGradient(size_t batchSize);
 
-  /// Update the content of the tensor \p v with data that comes from \p input.
-  /// The data starts at slice \p sampleIdx and wraps around until the data in
-  /// \p v is filled. All dimensions, except for the first (batch) dimension
-  /// must be identical.
-  void loadValueFromTensor(const Variable *v, Tensor *input, size_t sampleIdx);
+  /// Update the content of the tensor \p v with some slices that from \p input.
+  /// The data starts at slice \p sampleIdx and wraps around until the
+  /// data in \p v is filled. All dimensions, except for the first (batch)
+  /// dimension must be identical.
+  void loadValueFromTensorSlice(const Variable *v, Tensor *input,
+                                size_t sampleIdx);
+
+  // Update the content of the tensor \p v with \p input.
+  void loadValueFromTensor(const Variable *v, Tensor *input);
 };
 
 } // namespace glow
