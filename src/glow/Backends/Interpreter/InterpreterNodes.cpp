@@ -622,11 +622,6 @@ void Interpreter::fwdReshapeInst(bool isTrain, const ReshapeInst *I) {
   auto outT = getTensor(I->getDest());
   outT->copyRawFrom(inT);
 }
-void Interpreter::fwdReshapeGradInst(bool isTrain, const ReshapeGradInst *I) {
-  auto inT = getTensor(I->getSrcGrad());
-  auto outT = getTensor(I->getDestGrad());
-  inT->copyRawFrom(outT);
-}
 
 void Interpreter::fwdZeroInst(bool isTrain, const glow::ZeroInst *I) {
   auto *T = getTensor(I->getDest());

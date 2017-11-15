@@ -259,7 +259,6 @@ NOVERIFY(ReluGradInst)
 NOVERIFY(TanhGradInst)
 NOVERIFY(SigmoidGradInst)
 NOVERIFY(TransposeGradInst)
-NOVERIFY(ReshapeGradInst)
 NOVERIFY(ElementAddGradInst)
 NOVERIFY(ElementMulGradInst)
 #undef NOVERIFY
