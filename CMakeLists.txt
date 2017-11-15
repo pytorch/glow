@@ -29,7 +29,7 @@ include_directories(BEFORE
 include_directories (${GLOW_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-file(GLOB_RECURSE header_files include/*.h)
+file(GLOB_RECURSE header_files include/*.h tools/*.h src/*.h)
 add_custom_target(CollectHeaders SOURCES ${header_files})
 
 find_package(PNG)
