@@ -156,18 +156,51 @@ TransposeNode *Graph::createTranspose(llvm::StringRef name, Node *input,
   return addNode(new TransposeNode(name, NT, input, shuffle.vec()));
 }
 
+/// \returns true if \p T1 and T2 has the exact same type except for dimension
+/// \p dim.
+static bool sameSameShapeExceptDim(TypeRef T1, TypeRef T2, unsigned dim) {
+  if (T1->getElementType() != T2->getElementType())
+    return false;
+
+  auto D1 = T1->dims();
+  auto D2 = T2->dims();
+
+  if (D1.size() != D2.size()) {
+    return false;
+  }
+
+  for (int i = 0, e = D1.size(); i < e; i++) {
+    // Ignore the dimension \p dim.
+    if (i == dim) {
+      continue;
+    }
+
+    if (D1[i] != D2[i]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 ConcatNode *Graph::createConcat(llvm::StringRef name,
                                 llvm::ArrayRef<Node *> inputs,
                                 unsigned dimension) {
   for (int i = 0, e = inputs.size(); i < e; i++) {
-    assert(inputs[i]->getType() == inputs[0]->getType() && "Invalid types");
+    assert(sameSameShapeExceptDim(inputs[i]->getType(), inputs[0]->getType(),
+                                  dimension) &&
+           "Invalid type");
   }
   auto inDim = inputs[0]->dims();
 
   llvm::SmallVector<size_t, 6> shape(inDim.begin(), inDim.end());
+
   // We are stacking the tensors along a specific dimension. This means that we
   // increase the size of the tensor along this dimension.
-  shape[dimension] *= inputs.size();
+  shape[dimension] = 0;
+  for (auto I : inputs) {
+    shape[dimension] += I->getType()->dims()[dimension];
+  }
 
   auto NT = uniqueType(inputs[0]->getElementType(), shape);
   std::vector<NodeOperand> ops;

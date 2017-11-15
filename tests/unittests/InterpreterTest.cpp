@@ -363,3 +363,42 @@ TEST(Network, learnSingleValueConcat) {
   // Test the output:
   EXPECT_NEAR(RNWH.at({0, 0}), 0.9, 0.1);
 }
+
+TEST(Network, concatVectors) {
+  ExecutionEngine EE;
+
+  auto &G = EE.getGraph();
+
+  auto *V1 = G.createVariable(ElemKind::IndexTy, {1, 10}, "V1");
+  auto *V2 = G.createVariable(ElemKind::IndexTy, {1, 20}, "V2");
+  auto *V3 = G.createVariable(ElemKind::IndexTy, {1, 30}, "V2");
+
+  Node *L = G.createConcat("concat", {V1, V2, V3}, 1);
+  auto *result = G.createSave("ret", L);
+
+  Tensor I1(ElemKind::IndexTy, {1, 10});
+  Tensor I2(ElemKind::IndexTy, {1, 20});
+  Tensor I3(ElemKind::IndexTy, {1, 30});
+
+  for (size_t i = 0; i < 10; i++) {
+    I1.getHandle<size_t>().at({0, i}) = i;
+
+    I2.getHandle<size_t>().at({0, i}) = i + 10;
+    I2.getHandle<size_t>().at({0, i + 10}) = i + 20;
+
+    I3.getHandle<size_t>().at({0, i}) = i + 30;
+    I3.getHandle<size_t>().at({0, i + 10}) = i + 40;
+    I3.getHandle<size_t>().at({0, i + 20}) = i + 40;
+  }
+
+  EE.compile(CompilationMode::Infer);
+
+  // Testing the output vector.
+  EE.infer({V1, V2, V3}, {&I1, &I2, &I3});
+  auto RNWH = result->getOutput()->getPayload().getHandle<size_t>();
+  (void)RNWH;
+
+  for (size_t i = 0; i < 50; i++) {
+    EXPECT_NEAR(RNWH.at({0, i}), i, 0.001);
+  }
+}
