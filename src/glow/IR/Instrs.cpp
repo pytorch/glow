@@ -178,6 +178,9 @@ void InsertTensorInst::verify() const {
   auto offsets = getOffsets();
   unsigned numDims = dest->dims().size();
   (void)numDims;
+  (void)dest;
+  (void)src;
+  (void)offsets;
   assert(numDims == src->dims().size() && numDims == offsets.size() &&
          "Invalid number of dimensions");
 
@@ -192,6 +195,9 @@ void ExtractTensorInst::verify() const {
   auto offsets = getOffsets();
   unsigned numDims = dest->dims().size();
   (void)numDims;
+  (void)dest;
+  (void)src;
+  (void)offsets;
   assert(numDims == src->dims().size() && numDims == offsets.size() &&
          "Invalid number of dimensions");
 
