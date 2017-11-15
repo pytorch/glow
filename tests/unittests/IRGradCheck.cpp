@@ -98,7 +98,7 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   Node *FB = G.createFullyConnected("fc", B, numOutputElem / 2);
   FB = G.createRELU("relu", FB);
 
-  Node *O = G.createConcat("concat", FA, FB, 1);
+  Node *O = G.createConcat("concat", {FA, FB}, 1);
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createSave("ret", O);
 

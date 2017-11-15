@@ -290,7 +290,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       assert(false && "Invalid order field");
     }
 
-    Node *node = G.createConcat(op.name(), lhs, rhs, channel);
+    Node *node = G.createConcat(op.name(), {lhs, rhs}, channel);
 
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;

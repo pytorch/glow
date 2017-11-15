@@ -139,8 +139,7 @@ int main(int argc, char **argv) {
       .setType("outTy");
 
   BB.newNode("Concat")
-      .addOperand("LHS")
-      .addOperand("RHS")
+      .addMember(MemberType::VectorNodeOperand, "Inputs")
       .addMember(MemberType::SizeT, "Dim")
       .addExtraParam("TypeRef", "outTy")
       .setType("outTy")

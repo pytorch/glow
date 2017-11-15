@@ -154,12 +154,17 @@ static void sinkCode(Graph &G) {
 
     // Sink RELU below batch concat nodes.
     if (auto *CN = dyn_cast<ConcatNode>(node)) {
-      auto *L = dyn_cast<ReluNode>(CN->getLHS());
-      auto *R = dyn_cast<ReluNode>(CN->getRHS());
+      if (CN->getInputs().size() != 2) {
+        continue;
+      }
+      auto *LInput = CN->getInputs()[0].get();
+      auto *RInput = CN->getInputs()[1].get();
+      auto *L = dyn_cast<ReluNode>(LInput);
+      auto *R = dyn_cast<ReluNode>(RInput);
 
       if (L && R) {
-        auto *newCN = G.createConcat(CN->getName(), L->getInput(),
-                                     R->getInput(), CN->getDim());
+        auto *newCN = G.createConcat(
+            CN->getName(), {L->getInput(), R->getInput()}, CN->getDim());
         auto *newRL = G.createRELU(L->getName(), newCN);
         CN->replaceAllUsesOfWith(newRL);
       }
@@ -167,8 +172,13 @@ static void sinkCode(Graph &G) {
 
     // Sink Transpose below concat nodes.
     if (auto *CN = dyn_cast<ConcatNode>(node)) {
-      TransposeNode *L = dyn_cast<TransposeNode>(CN->getLHS());
-      TransposeNode *R = dyn_cast<TransposeNode>(CN->getRHS());
+      if (CN->getInputs().size() != 2) {
+        continue;
+      }
+      auto *LInput = CN->getInputs()[0].get();
+      auto *RInput = CN->getInputs()[1].get();
+      auto *L = dyn_cast<TransposeNode>(LInput);
+      auto *R = dyn_cast<TransposeNode>(RInput);
 
       // Both sides must be a transpose instruction.
       if (!L || !R) {
@@ -185,8 +195,8 @@ static void sinkCode(Graph &G) {
       unsigned idx = CN->getDim();
       unsigned newChannelIdx = L->getShuffle()[idx];
 
-      auto *newCN = G.createConcat(CN->getName(), L->getInput(), R->getInput(),
-                                   newChannelIdx);
+      auto *newCN = G.createConcat(
+          CN->getName(), {L->getInput(), R->getInput()}, newChannelIdx);
       auto *newTR = G.createTranspose(L->getName(), newCN, L->getShuffle());
       CN->replaceAllUsesOfWith(newTR);
     }
