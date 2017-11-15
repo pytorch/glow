@@ -194,8 +194,7 @@ int main(int argc, char **argv) {
   BB.newInstr("Reshape")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addMember(MemberType::VectorSizeT, "Dims")
-      .addGradientInstr({}, {"Dest", "Src"});
+      .addMember(MemberType::VectorSizeT, "Dims");
 
   BB.newInstr("Transpose")
       .addOperand("Dest", OperandKind::Out)

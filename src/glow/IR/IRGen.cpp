@@ -347,7 +347,11 @@ void generateBackwardPass(Module &M) {
       break;
     }
     case Kind::ReshapeInstKind: {
-      toAppend.push_back(cast<ReshapeInst>(I)->getGrad(weightToGradMap));
+      ReshapeInst *RI = cast<ReshapeInst>(I);
+      Value *dest = weightToGradMap[RI->getDest()];
+      Value *src = weightToGradMap[RI->getSrc()];
+      // Swap the src and dest.
+      toAppend.push_back(new ReshapeInst(I->getName(), src, dest, src->dims()));
       break;
     }
     case Kind::TransposeInstKind: {
