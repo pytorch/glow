@@ -36,7 +36,7 @@ static void dumpCompileLog(cl_device_id dev, cl_program prog) {
   clGetProgramBuildInfo(prog, dev, CL_PROGRAM_BUILD_LOG, 0, nullptr, &log_size);
 
   // Allocate memory for the log.
-  char *log = (char *)malloc(log_size);
+  auto *log = (char *)malloc(log_size);
 
   // Get the log.
   clGetProgramBuildInfo(prog, dev, CL_PROGRAM_BUILD_LOG, log_size, log,
@@ -53,7 +53,7 @@ OCLBackend::OCLBackend(Module *M) : M_(M), allocator_(0xFFFFFFFF) {
       clGetDeviceIDs(nullptr, CL_DEVICE_TYPE_DEFAULT, 1, &deviceId_, nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
 
-  context_ = clCreateContext(0, 1, &deviceId_, nullptr, nullptr, &err);
+  context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, &err);
   GLOW_ASSERT(context_ && "clCreateContext Failed.");
 
   commands_ = clCreateCommandQueue(context_, deviceId_, 0, &err);
@@ -76,7 +76,7 @@ OCLBackend::~OCLBackend() {
   clReleaseContext(context_);
   if (deviceBuffer_) {
     clReleaseMemObject(deviceBuffer_);
-    deviceBuffer_ = 0;
+    deviceBuffer_ = nullptr;
   }
   clear();
 }
@@ -397,8 +397,9 @@ void OCLBackend::doForwardPass(bool isTrain) {
 
 void OCLBackend::copyWeightsToDevice() {
   for (auto it : tensors_) {
-    if (!externalTensors_.count(it.first))
+    if (!externalTensors_.count(it.first)) {
       continue;
+    }
     Tensor *T = externalTensors_[it.first];
     size_t sizeInBytes = T->getType().getSizeInBytes();
     // Issue a non-blocking command to copy the buffer to the device.
@@ -415,8 +416,9 @@ void OCLBackend::copyWeightsFromDevice() {
   clFinish(commands_);
 
   for (auto it : tensors_) {
-    if (!externalTensors_.count(it.first))
+    if (!externalTensors_.count(it.first)) {
       continue;
+    }
 
     Tensor *T = externalTensors_[it.first];
     size_t sizeInBytes = T->getType().getSizeInBytes();
@@ -470,7 +472,7 @@ void OCLBackend::init() {
   // Release the memory from the previous run.
   if (deviceBuffer_) {
     clReleaseMemObject(deviceBuffer_);
-    deviceBuffer_ = 0;
+    deviceBuffer_ = nullptr;
   }
 
   deviceBuffer_ = clCreateBuffer(context_, CL_MEM_READ_WRITE, requiredSpace,
