@@ -621,18 +621,14 @@ void Interpreter::fwdTransposeGradInst(bool isTrain,
 }
 
 void Interpreter::fwdReshapeInst(bool isTrain, const ReshapeInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-  for (size_t i = 0, e = inW.size(); i < e; i++) {
-    outW.raw(i) = inW.raw(i);
-  }
+  auto inT = getTensor(I->getSrc());
+  auto outT = getTensor(I->getDest());
+  outT->copyRawFrom(inT);
 }
 void Interpreter::fwdReshapeGradInst(bool isTrain, const ReshapeGradInst *I) {
-  auto inG = getWeightHandle(I->getSrcGrad());
-  auto outG = getWeightHandle(I->getDestGrad());
-  for (size_t i = 0, e = outG.size(); i < e; i++) {
-    inG.raw(i) += outG.raw(i);
-  }
+  auto inT = getTensor(I->getSrcGrad());
+  auto outT = getTensor(I->getDestGrad());
+  inT->copyRawFrom(outT);
 }
 
 void Interpreter::fwdConcatInst(bool isTrain, const ConcatInst *I) {
