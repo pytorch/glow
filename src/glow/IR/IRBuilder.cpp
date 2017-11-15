@@ -155,6 +155,7 @@ TransposeInst *IRBuilder::createTransposeOp(Value *input,
   return createTransposeInst("transp", res, input, shuffle);
 }
 
+/*
 ConcatInst *IRBuilder::createConcatOp(Value *LHS, Value *RHS,
                                       unsigned dimension) {
   assert(LHS->getType() == RHS->getType() && "Invalid dims");
@@ -168,7 +169,7 @@ ConcatInst *IRBuilder::createConcatOp(Value *LHS, Value *RHS,
   auto *res =
       createAllocActivationInst("concat.res", LHS->getElementType(), shape);
   return createConcatInst("concat", res, LHS, RHS, dimension);
-}
+}*/
 
 BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(
     Value *input, Value *beta, Value *gamma, Value *mean, Value *var,

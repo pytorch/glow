@@ -170,23 +170,36 @@ void TransposeInst::verify() const {
          "Invalid transpose dims");
 }
 
-void ConcatInst::verify() const {
-  assert(getNumOperands() > 1 && "Invalid number of operands");
-  // The dimension of the first input.
-  auto inDim = getOperand(1).first->dims();
+void ZeroInst::verify() const {}
 
-  for (size_t i = 2, e = getNumOperands(); i < e; i++) {
-    assert(getOperand(i).first->dims() == inDim && "Invalid input shape");
+void InsertTensorInst::verify() const {
+  auto *dest = getDest();
+  auto *src = getSrc();
+  auto offsets = getOffsets();
+  unsigned numDims = dest->dims().size();
+  (void)numDims;
+  assert(numDims == src->dims().size() && numDims == offsets.size() &&
+         "Invalid number of dimensions");
+
+  for (int i = 0; i < numDims; i++) {
+    assert(src->dims()[i] + offsets[i] <= dest->dims()[i] && "out of bounds");
   }
-
-  llvm::SmallVector<size_t, 6> shape(inDim.begin(), inDim.end());
-  // We are stacking the tensors along a specific dimension. This means that we
-  // increase the size of the tensor along this dimension.
-  shape[Dim_] *= getNumOperands() - 1;
-
-  assert(getOperand(0).first->dims() == llvm::ArrayRef<size_t>(shape) &&
-         "Invalid output shape");
 }
+
+void ExtractTensorInst::verify() const {
+  auto *dest = getDest();
+  auto *src = getSrc();
+  auto offsets = getOffsets();
+  unsigned numDims = dest->dims().size();
+  (void)numDims;
+  assert(numDims == src->dims().size() && numDims == offsets.size() &&
+         "Invalid number of dimensions");
+
+  for (int i = 0; i < numDims; i++) {
+    assert(dest->dims()[i] + offsets[i] <= src->dims()[i] && "out of bounds");
+  }
+}
+
 void BatchNormalizationInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
 
@@ -243,5 +256,4 @@ NOVERIFY(TransposeGradInst)
 NOVERIFY(ReshapeGradInst)
 NOVERIFY(ElementAddGradInst)
 NOVERIFY(ElementMulGradInst)
-NOVERIFY(ConcatGradInst)
 #undef NOVERIFY

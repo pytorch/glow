@@ -205,6 +205,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
       continue;
     }
 
+    /*
     if (auto *CI = dyn_cast<ConcatInst>(I)) {
       cl_kernel kernel = createKernel(program_, kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
@@ -225,6 +226,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
       kernels.push_back(kernel);
       continue;
     }
+    */
 
     if (auto *FC = dyn_cast<FullyConnectedInst>(I)) {
       // This is a naive implementation of sgemm that's based on this algorithm:
