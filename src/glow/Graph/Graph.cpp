@@ -159,8 +159,9 @@ TransposeNode *Graph::createTranspose(llvm::StringRef name, Node *input,
 /// \returns true if \p T1 and T2 has the exact same type except for dimension
 /// \p dim.
 static bool sameSameShapeExceptDim(TypeRef T1, TypeRef T2, unsigned dim) {
-  if (T1->getElementType() != T2->getElementType())
+  if (T1->getElementType() != T2->getElementType()) {
     return false;
+  }
 
   auto D1 = T1->dims();
   auto D2 = T2->dims();
@@ -303,7 +304,7 @@ public:
     return std::find(nodeEdges.begin(), nodeEdges.end(), e) == nodeEdges.end();
   }
 
-  DottyPrinterPass(std::ostream &os) : os_(os) {}
+  explicit DottyPrinterPass(std::ostream &os) : os_(os) {}
 
   void pre(Node *parent, Node *N) override {
     nodeEdges.emplace_back(parent, N);

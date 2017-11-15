@@ -1,6 +1,5 @@
-#ifndef GLOW_BASE_MEMORYALLOCATOR_H
-#define GLOW_BASE_MEMORYALLOCATOR_H
-
+#ifndef GLOW_BACKENDS_MEMORYALLOCATOR_H
+#define GLOW_BACKENDS_MEMORYALLOCATOR_H
 #include <cstddef>
 #include <cstdint>
 #include <list>
@@ -37,7 +36,7 @@ public:
   /// A reserved value to mark invalid allocation.
   static const size_t npos;
 
-  MemoryAllocator(size_t poolSize) : poolSize_(poolSize) {}
+  explicit MemoryAllocator(size_t poolSize) : poolSize_(poolSize) {}
 
   void reset() {
     maxMemoryAllocated_ = 0;
@@ -47,8 +46,9 @@ public:
   /// \returns True if the value \p idx is within the currently allocated range.
   bool contains(size_t idx) {
     for (auto &s : allocations_) {
-      if (s.contains(idx))
+      if (s.contains(idx)) {
         return true;
+      }
     }
     return false;
   }
@@ -67,4 +67,4 @@ public:
 
 } // namespace glow
 
-#endif // GLOW_BASE_MEMORYALLOCATOR_H
+#endif // GLOW_BACKENDS_MEMORYALLOCATOR_H

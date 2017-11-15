@@ -1,5 +1,5 @@
-#ifndef GLOW_BASE_BACKEND_H
-#define GLOW_BASE_BACKEND_H
+#ifndef GLOW_BACKENDS_BACKEND_H
+#define GLOW_BACKENDS_BACKEND_H
 
 namespace glow {
 
@@ -19,7 +19,7 @@ enum class BackendKind {
 class Backend {
 public:
   /// Dtor.
-  virtual ~Backend() {}
+  virtual ~Backend() = default;
 
   /// Wipe out the state of the interpreter.
   virtual void clear() = 0;
@@ -44,8 +44,8 @@ public:
 };
 
 /// Create a backend of kind \p kind, to run the module \p M.
-Backend *createBackend(BackendKind kind, Module *M);
+Backend *createBackend(BackendKind backendKind, Module *M);
 
 } // namespace glow
 
-#endif // GLOW_BASE_BACKEND_H
+#endif // GLOW_BACKENDS_BACKEND_H
