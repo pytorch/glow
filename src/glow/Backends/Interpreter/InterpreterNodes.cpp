@@ -597,26 +597,6 @@ void Interpreter::fwdTransposeInst(bool isTrain, const TransposeInst *I) {
   inW.transpose(outW, I->getShuffle());
 }
 
-void Interpreter::fwdTransposeGradInst(bool isTrain,
-                                       const TransposeGradInst *I) {
-  auto inG = getTensor(I->getSrcGrad());
-  auto outG = getWeightHandle(I->getDestGrad());
-
-  assert(outG.size() == inG->size() && "Invalid tensor dimensions");
-
-  // Generate the reverse shuffle.
-  auto shuffle = I->getShuffle();
-  llvm::SmallVector<unsigned, 6> reverseShuffle(shuffle.begin(), shuffle.end());
-  for (unsigned int i = 0; i < shuffle.size(); i++) {
-    reverseShuffle[shuffle[i]] = i;
-  }
-
-  // Perform the reverse transpsose.
-  // TODO: this wipes out the gradients and may cause a bug for operators with
-  // multiple users.
-  outG.transpose(inG, reverseShuffle);
-}
-
 void Interpreter::fwdReshapeInst(bool isTrain, const ReshapeInst *I) {
   auto inT = getTensor(I->getSrc());
   auto outT = getTensor(I->getDest());

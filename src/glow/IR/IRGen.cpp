@@ -355,7 +355,20 @@ void generateBackwardPass(Module &M) {
       break;
     }
     case Kind::TransposeInstKind: {
-      toAppend.push_back(cast<TransposeInst>(I)->getGrad(weightToGradMap));
+      TransposeInst *TI = cast<TransposeInst>(I);
+      Value *dest = weightToGradMap[TI->getDest()];
+      Value *src = weightToGradMap[TI->getSrc()];
+
+      // Generate the reverse shuffle.
+      auto shuffle = TI->getShuffle();
+      std::vector<unsigned> reverseShuffle(shuffle.begin(), shuffle.end());
+      for (unsigned int i = 0; i < shuffle.size(); i++) {
+        reverseShuffle[shuffle[i]] = i;
+      }
+
+      // Swap the src and dest.
+      toAppend.push_back(
+          new TransposeInst(I->getName(), src, dest, reverseShuffle));
       break;
     }
     case Kind::ZeroInstKind: {
