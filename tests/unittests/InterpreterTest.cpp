@@ -455,3 +455,83 @@ TEST(Network, sliceVectors) {
     EXPECT_NEAR(RNWH3.at({0, j - 10}), j + 60, 0.001);
   }
 }
+
+TEST(Network, trainASimpleRNN) {
+  ExecutionEngine EE;
+  // Learning a single input vector.
+  EE.getConfig().maxNumThreads = 1;
+  EE.getConfig().learningRate = 0.05;
+
+  auto &G = EE.getGraph();
+
+  // Create a variable with 1 input, which is 3 consecutive vectors
+  // of 4 elements each.
+  auto *X = G.createVariable(ElemKind::FloatTy, {1, 3, 4}, "X");
+  auto *Y = G.createVariable(ElemKind::FloatTy, {1, 3}, "Y");
+
+  // Initialize the state to zero.
+  auto *HInit = G.createVariable(ElemKind::FloatTy, {1, 3}, "initial_state",
+                                 Variable::InitKind::Broadcast, 0);
+
+  // Extract a slice for each input.
+  auto *X1 = G.createSlice("X1", X, {0, 0, 0}, {1, 1, 4});
+  auto *X2 = G.createSlice("X2", X, {0, 1, 0}, {1, 2, 4});
+  auto *X3 = G.createSlice("X3", X, {0, 2, 0}, {1, 3, 4});
+
+  // Extract a slice for each output.
+  auto *Y1 = G.createSlice("Y1", Y, {0, 0}, {1, 1});
+  auto *Y2 = G.createSlice("Y2", Y, {0, 1}, {1, 2});
+  auto *Y3 = G.createSlice("Y3", Y, {0, 2}, {1, 3});
+
+  // Create the first block in the RNN
+  auto *FC11 = G.createFullyConnected("fc11", HInit, 5);
+  auto *FC12 = G.createFullyConnected("fc12", X1, 5);
+  auto *A1 = G.createArithmetic("fc1", FC11, FC12, ArithmeticNode::Mode::Add);
+  auto *H1 = G.createTanh("tan1", A1);
+  auto *O1 = G.createFullyConnected("O1", H1, 1);
+  auto *R1 = G.createRegression("reg", O1, Y1);
+
+  // Create the second block in the RNN
+  auto *FC21 = G.createFullyConnected("fc21", H1, 5);
+  auto *FC22 = G.createFullyConnected("fc22", X2, 5);
+  auto *A2 = G.createArithmetic("fc2", FC21, FC22, ArithmeticNode::Mode::Add);
+  auto *H2 = G.createTanh("tan1", A2);
+  auto *O2 = G.createFullyConnected("O2", H2, 1);
+  auto *R2 = G.createRegression("reg", O2, Y2);
+
+  // Create the third block in the RNN
+  auto *FC31 = G.createFullyConnected("fc31", H2, 5);
+  auto *FC32 = G.createFullyConnected("fc32", X3, 5);
+  auto *A3 = G.createArithmetic("fc3", FC31, FC32, ArithmeticNode::Mode::Add);
+  auto *H3 = G.createTanh("tan3", A3);
+  auto *O3 = G.createFullyConnected("O3", H3, 1);
+  auto *R3 = G.createRegression("reg", O3, Y3);
+
+  auto *R = G.createConcat("O", {R1, R2, R3}, 1);
+  auto *result = G.createSave("result", R);
+
+  EE.compile(CompilationMode::Train);
+
+  // Values for the input and output variables.
+  Tensor inputs(ElemKind::FloatTy, {1, 3, 4});
+  Tensor expected(ElemKind::FloatTy, {1, 3});
+  for (size_t i = 0; i < 3; i++) {
+    inputs.getHandle<float_t>().at({0, i, 1}) = i;
+    expected.getHandle<float_t>().at({0, i}) = i;
+  }
+
+  // Train the network. Learn 1000 batches.
+  EE.train(1000, {X, Y}, {&inputs, &expected});
+
+  // Testing the output vector.
+  EE.compile(CompilationMode::Infer);
+
+  EE.infer({X}, {&inputs});
+  auto RNWH = result->getOutput()->getPayload().getHandle<>();
+  (void)RNWH;
+
+  // Test the output:
+  EXPECT_NEAR(RNWH.at({0, 0}), 0, 0.05);
+  EXPECT_NEAR(RNWH.at({0, 1}), 1, 0.05);
+  EXPECT_NEAR(RNWH.at({0, 2}), 2, 0.05);
+}
