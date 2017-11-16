@@ -180,6 +180,16 @@ public:
       registerIR(N, dest);
       break;
     }
+    case glow::Kinded::Kind::SliceNodeKind: {
+      auto *SL = cast<SliceNode>(N);
+      auto start = SL->getStart();
+      auto *in = valueForNode(SL->getInput());
+      auto *dest = builder_.createAllocActivationInst(
+          SL->getName(), SL->getElementType(), SL->dims());
+      builder_.createExtractTensorInst(SL->getName(), dest, in, start);
+      registerIR(N, dest);
+      break;
+    }
     case glow::Kinded::Kind::BatchNormalizationNodeKind: {
       auto *BN = cast<BatchNormalizationNode>(N);
       auto *in = valueForNode(BN->getInput());

@@ -213,6 +213,33 @@ ConcatNode *Graph::createConcat(llvm::StringRef name,
   return addNode(new ConcatNode(name, NT, ops, dimension));
 }
 
+SliceNode *Graph::createSlice(llvm::StringRef name, Node *input,
+                              llvm::ArrayRef<size_t> begin,
+                              llvm::ArrayRef<size_t> end) {
+
+  std::vector<size_t> begin_v, shape;
+  auto dims = input->dims();
+  assert(begin.size() == end.size() &&
+         "Begin and End dimensions should match");
+  assert(begin.size() == dims.size() &&
+         "Begin and Input dimensions should match");
+  for (int i = 0; i < dims.size(); i++) {
+    size_t begin_i = begin[i];
+    size_t end_i = end[i];
+    size_t dim_i = dims[i];
+    assert(begin_i >= 0 && "Illegal Begin  indices");
+    assert(end_i > 0 && "Illegal End indices");
+    assert(begin_i < dim_i && "Illegal Begin  indices");
+    assert(end_i <= dim_i && "Illegal End indices");
+    assert(end_i > begin_i && "Illegal Begin and End indices");
+    begin_v.push_back(begin_i);
+    shape.push_back(end_i - begin_i);
+  }
+  auto NT = uniqueType(input->getType()->getElementType(), shape);
+
+  return addNode(new SliceNode(name, NT, input, begin_v));
+}
+
 BatchNormalizationNode *Graph::createBatchNormalization(llvm::StringRef name,
                                                         Node *input,
                                                         size_t channelIdx,
