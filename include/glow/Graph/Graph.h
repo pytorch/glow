@@ -91,6 +91,10 @@ public:
   ConcatNode *createConcat(llvm::StringRef name, llvm::ArrayRef<Node *> inputs,
                            unsigned dimension);
 
+  SliceNode *createSlice(llvm::StringRef name, Node *input,
+                         llvm::ArrayRef<size_t> begin,
+                         llvm::ArrayRef<size_t> end);
+
   BatchNormalizationNode *createBatchNormalization(llvm::StringRef name,
                                                    Node *input,
                                                    size_t channelIdx = 0,

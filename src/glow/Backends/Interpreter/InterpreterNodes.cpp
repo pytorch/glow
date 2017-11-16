@@ -652,9 +652,19 @@ void Interpreter::fwdInsertTensorInst(bool isTrain,
 
 void Interpreter::fwdExtractTensorInst(bool isTrain,
                                        const glow::ExtractTensorInst *I) {
-  auto outW = getWeightHandle(I->getDest());
-  auto inW = getWeightHandle(I->getSrc());
-  inW.extractTensors(outW, I->getOffsets());
+  Tensor *outT = getTensor(I->getDest());
+  Tensor *inT = getTensor(I->getSrc());
+  ElemKind k = outT->getElementType();
+#define TYPED_INSERT(TY, TYPEKIND)                                             \
+  if (k == TYPEKIND) {                                                         \
+    auto OH = outT->getHandle<TY>();                                           \
+    auto IH = inT->getHandle<TY>();                                            \
+    return IH.extractTensors(OH, I->getOffsets());                             \
+  }
+
+  TYPED_INSERT(size_t, ElemKind::IndexTy);
+  TYPED_INSERT(float, ElemKind::FloatTy);
+#undef TYPED_INSERT
 }
 
 //===----------------------------------------------------------------------===//

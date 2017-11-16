@@ -147,5 +147,11 @@ int main(int argc, char **argv) {
                     "parameter 'dim' specifies the dimension to use when "
                     "joining the tensors.");
 
+  BB.newNode("Slice")
+      .addOperand("Input")
+      .addMember(MemberType::VectorSizeT, "Start")
+      .addExtraParam("TypeRef", "outTy")
+      .setType("outTy");
+
   return 0;
 }
