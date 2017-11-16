@@ -146,10 +146,24 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
   }
 
   for (const auto &mem : members_) {
+    // Don't try to print the node operands directly.
+    if (mem.first == MemberType::VectorNodeOperand)
+      continue;
+
     os << "\t\t.addParam(\"" << mem.second << "\", get" << mem.second
        << "())\n";
   }
-  os << "\t\t.addParam(\"users\", getNumUsers());\n\t\treturn db;\n}\n";
+  os << "\t\t.addParam(\"users\", getNumUsers());";
+
+  for (const auto &mem : members_) {
+    if (mem.first != MemberType::VectorNodeOperand)
+      continue;
+
+    os << " for (auto II : get" << mem.second << "()) { db.addParam(\""
+       << mem.second << "\", *II->getType()); }";
+  }
+
+  os << "\n\t\treturn db;\n}\n";
 }
 
 void NodeBuilder::emitEquator(std::ostream &os) const {
