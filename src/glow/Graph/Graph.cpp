@@ -217,8 +217,7 @@ SliceNode *Graph::createSlice(llvm::StringRef name, Node *input,
 
   std::vector<size_t> begin_v, shape;
   auto dims = input->dims();
-  assert(begin.size() == end.size() &&
-         "Begin and End dimensions should match");
+  assert(begin.size() == end.size() && "Begin and End dimensions should match");
   assert(begin.size() == dims.size() &&
          "Begin and Input dimensions should match");
   for (int i = 0; i < dims.size(); i++) {
