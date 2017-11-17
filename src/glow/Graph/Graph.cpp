@@ -205,7 +205,7 @@ ConcatNode *Graph::createConcat(llvm::StringRef name,
   }
 
   auto NT = uniqueType(inputs[0]->getElementType(), shape);
-  std::vector<NodeOperand> ops;
+  std::vector<NodeValue> ops;
   ops.reserve(inputs.size());
   for (auto &I : inputs) {
     ops.emplace_back(I);

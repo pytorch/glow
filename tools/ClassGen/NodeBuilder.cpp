@@ -76,7 +76,7 @@ void NodeBuilder::emitClassMembers(std::ostream &os) const {
     os << "\tMode mode_;\n";
   }
   for (const auto &op : operands_) {
-    os << "\tNodeOperand " << op << "_;\n";
+    os << "\tNodeValue " << op << "_;\n";
   }
   for (const auto &op : members_) {
     os << "\t" << getStorageTypename(op.first) << " " << op.second << "_;\n";
@@ -147,7 +147,7 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
 
   for (const auto &mem : members_) {
     // Don't try to print the node operands directly.
-    if (mem.first == MemberType::VectorNodeOperand)
+    if (mem.first == MemberType::VectorNodeValue)
       continue;
 
     os << "\t\t.addParam(\"" << mem.second << "\", get" << mem.second
@@ -156,7 +156,7 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
   os << "\t\t.addParam(\"users\", getNumUsers());";
 
   for (const auto &mem : members_) {
-    if (mem.first != MemberType::VectorNodeOperand)
+    if (mem.first != MemberType::VectorNodeValue)
       continue;
 
     os << " for (auto II : get" << mem.second << "()) { db.addParam(\""
@@ -196,7 +196,7 @@ void NodeBuilder::emitVisitor(std::ostream &os) const {
   }
 
   for (const auto &op : members_) {
-    if (op.first == MemberType::VectorNodeOperand) {
+    if (op.first == MemberType::VectorNodeValue) {
       os << " for (auto &I : " << op.second
          << "_) { I->visit(this, visitor);}\n";
     }

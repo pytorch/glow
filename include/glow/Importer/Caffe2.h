@@ -37,7 +37,7 @@ class caffe2ModelLoader {
   /// A list of handles to keep some variables alive during the lifetime of the
   /// loader. This is used for preventing the optimizer from deleting variables
   /// that the loader expects as inputs.
-  std::vector<NodeOperand> keepAlive_;
+  std::vector<NodeValue> keepAlive_;
 
   /// Load the weight tensors from the 'init' file and register them in the map
   /// \p tensors.
