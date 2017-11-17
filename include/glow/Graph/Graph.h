@@ -62,60 +62,60 @@ public:
                  Variable::InitKind initKind = Variable::InitKind::Broadcast,
                  float val = 0.0);
 
-  ConvolutionNode *createConv(llvm::StringRef name, Node *input, size_t depth,
+  ConvolutionNode *createConv(llvm::StringRef name, NodeValue input, size_t depth,
                               size_t kernel, size_t stride, size_t pad);
 
-  PoolNode *createPool(llvm::StringRef name, Node *input, PoolNode::Mode mode,
+  PoolNode *createPool(llvm::StringRef name, NodeValue input, PoolNode::Mode mode,
                        size_t kernel, size_t stride, size_t pad);
 
-  FullyConnectedNode *createFullyConnected(llvm::StringRef name, Node *input,
+  FullyConnectedNode *createFullyConnected(llvm::StringRef name, NodeValue input,
                                            size_t outDepth);
 
-  ReluNode *createRELU(llvm::StringRef name, Node *input);
+  ReluNode *createRELU(llvm::StringRef name, NodeValue input);
 
-  SigmoidNode *createSigmoid(llvm::StringRef name, Node *input);
+  SigmoidNode *createSigmoid(llvm::StringRef name, NodeValue input);
 
-  TanhNode *createTanh(llvm::StringRef name, Node *input);
+  TanhNode *createTanh(llvm::StringRef name, NodeValue input);
 
-  SoftMaxNode *createSoftMax(llvm::StringRef name, Node *input, Node *selected);
+  SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input, NodeValue selected);
 
-  RegressionNode *createRegression(llvm::StringRef name, Node *input,
-                                   Node *expected);
+  RegressionNode *createRegression(llvm::StringRef name, NodeValue input,
+                                   NodeValue expected);
 
-  ReshapeNode *createReshape(llvm::StringRef name, Node *input,
+  ReshapeNode *createReshape(llvm::StringRef name, NodeValue input,
                              llvm::ArrayRef<size_t> shape);
 
-  TransposeNode *createTranspose(llvm::StringRef name, Node *input,
+  TransposeNode *createTranspose(llvm::StringRef name, NodeValue input,
                                  llvm::ArrayRef<unsigned> shuffle);
 
   ConcatNode *createConcat(llvm::StringRef name, llvm::ArrayRef<Node *> inputs,
                            unsigned dimension);
 
-  SliceNode *createSlice(llvm::StringRef name, Node *input,
+  SliceNode *createSlice(llvm::StringRef name, NodeValue input,
                          llvm::ArrayRef<size_t> begin,
                          llvm::ArrayRef<size_t> end);
 
   BatchNormalizationNode *createBatchNormalization(llvm::StringRef name,
-                                                   Node *input,
+                                                   NodeValue input,
                                                    size_t channelIdx = 0,
                                                    float epsilon = 1e-5,
                                                    float momentum = 0.9);
 
   BatchNormalizationNode *
-  createBatchNormalization(llvm::StringRef name, Node *input, Node *beta,
-                           Node *gamma, Node *mean, Node *var,
+  createBatchNormalization(llvm::StringRef name, NodeValue input, NodeValue beta,
+                           NodeValue gamma, NodeValue mean, NodeValue var,
                            size_t channelIdx = 0, float epsilon = 1e-5,
                            float momentum = 0.9);
 
   LocalResponseNormalizationNode *createLocalResponseNormalization(
-      llvm::StringRef name, Node *input, size_t halfWindowSize = 2,
+      llvm::StringRef name, NodeValue input, size_t halfWindowSize = 2,
       float alpha = 1e-4, float beta = 0.75, float k = 2.0);
 
-  ArithmeticNode *createArithmetic(llvm::StringRef name, Node *LHS, Node *RHS,
+  ArithmeticNode *createArithmetic(llvm::StringRef name, NodeValue LHS, NodeValue RHS,
                                    ArithmeticNode::Mode op);
 
-  SaveNode *createSave(llvm::StringRef name, Node *input);
-  SaveNode *createSave(llvm::StringRef name, Node *input, Variable *output);
+  SaveNode *createSave(llvm::StringRef name, NodeValue input);
+  SaveNode *createSave(llvm::StringRef name, NodeValue input, Variable *output);
 
   /// @}
 

@@ -37,8 +37,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
   }
 
   // Initialize the base clases:
-  os << "):\n\t Node(Kinded::Kind::" << name_ << "NodeKind, " << ty_
-     << ", name)";
+  os << "):\n\t Node(Kinded::Kind::" << name_ << "NodeKind, name)";
 
   // Print the initialization list:
   if (!enum_.empty()) {
@@ -55,8 +54,12 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
     os << ", " << op.second << "_(" << op.second << ") ";
   }
 
-  // Empty constructor body.
-  os << " {}\n\n";
+  // The constructor body:
+  os << " {";
+  for (auto &RT : resultTypes_) {
+    os << "\taddResult(" << RT << ");\n";
+  }
+  os << "}\n\n";
 }
 
 void NodeBuilder::emitClassMembers(std::ostream &os) const {

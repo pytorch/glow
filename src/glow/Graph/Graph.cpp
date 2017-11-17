@@ -56,7 +56,7 @@ Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
   return createVariable(FT, name, initKind, val);
 }
 
-ConvolutionNode *Graph::createConv(llvm::StringRef name, Node *input,
+ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
                                    size_t depth, size_t kernel, size_t stride,
                                    size_t pad) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
@@ -83,7 +83,7 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, Node *input,
                                      stride, pad, depth));
 }
 
-PoolNode *Graph::createPool(llvm::StringRef name, Node *input,
+PoolNode *Graph::createPool(llvm::StringRef name, NodeValue input,
                             PoolNode::Mode mode, size_t kernel, size_t stride,
                             size_t pad) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
@@ -99,7 +99,7 @@ PoolNode *Graph::createPool(llvm::StringRef name, Node *input,
 }
 
 FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
-                                                Node *input, size_t outDepth) {
+                                                NodeValue input, size_t outDepth) {
   TypeRef T = input->getType();
   auto idim = flattenCdr(input->dims());
 
@@ -115,36 +115,36 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
   return addNode(new FullyConnectedNode(name, OT, input, W, B, outDepth));
 }
 
-ReluNode *Graph::createRELU(llvm::StringRef name, Node *input) {
+ReluNode *Graph::createRELU(llvm::StringRef name, NodeValue input) {
   return addNode(new ReluNode(name, input));
 }
 
-SigmoidNode *Graph::createSigmoid(llvm::StringRef name, Node *input) {
+SigmoidNode *Graph::createSigmoid(llvm::StringRef name, NodeValue input) {
   return addNode(new SigmoidNode(name, input));
 }
 
-TanhNode *Graph::createTanh(llvm::StringRef name, Node *input) {
+TanhNode *Graph::createTanh(llvm::StringRef name, NodeValue input) {
   return addNode(new TanhNode(name, input));
 }
 
-SoftMaxNode *Graph::createSoftMax(llvm::StringRef name, Node *input,
-                                  Node *selected) {
+SoftMaxNode *Graph::createSoftMax(llvm::StringRef name, NodeValue input,
+                                  NodeValue selected) {
   return addNode(new SoftMaxNode(name, input, selected));
 }
 
-RegressionNode *Graph::createRegression(llvm::StringRef name, Node *input,
-                                        Node *expected) {
+RegressionNode *Graph::createRegression(llvm::StringRef name, NodeValue input,
+                                        NodeValue expected) {
   return addNode(new RegressionNode(name, input, expected));
 }
 
-ReshapeNode *Graph::createReshape(llvm::StringRef name, Node *input,
+ReshapeNode *Graph::createReshape(llvm::StringRef name, NodeValue input,
                                   llvm::ArrayRef<size_t> shape) {
   auto TR = uniqueType(input->getType()->getElementType(), shape);
 
   return addNode(new ReshapeNode(name, TR, input, shape.vec()));
 }
 
-TransposeNode *Graph::createTranspose(llvm::StringRef name, Node *input,
+TransposeNode *Graph::createTranspose(llvm::StringRef name, NodeValue input,
                                       llvm::ArrayRef<unsigned> shuffle) {
   llvm::SmallVector<size_t, 6> shape;
   auto dims = input->dims();
@@ -213,7 +213,7 @@ ConcatNode *Graph::createConcat(llvm::StringRef name,
   return addNode(new ConcatNode(name, NT, ops, dimension));
 }
 
-SliceNode *Graph::createSlice(llvm::StringRef name, Node *input,
+SliceNode *Graph::createSlice(llvm::StringRef name, NodeValue input,
                               llvm::ArrayRef<size_t> begin,
                               llvm::ArrayRef<size_t> end) {
 
@@ -225,8 +225,9 @@ SliceNode *Graph::createSlice(llvm::StringRef name, Node *input,
   for (int i = 0; i < dims.size(); i++) {
     size_t begin_i = begin[i];
     size_t end_i = end[i];
-    size_t dim_i = dims[i];(void) dim_i;
-    (void) dim_i;
+    size_t dim_i = dims[i];
+    (void)dim_i;
+    (void)dim_i;
     assert(begin_i >= 0 && "Illegal Begin  indices");
     assert(end_i > 0 && "Illegal End indices");
     assert(begin_i < dim_i && "Illegal Begin  indices");
@@ -241,7 +242,7 @@ SliceNode *Graph::createSlice(llvm::StringRef name, Node *input,
 }
 
 BatchNormalizationNode *Graph::createBatchNormalization(llvm::StringRef name,
-                                                        Node *input,
+                                                        NodeValue input,
                                                         size_t channelIdx,
                                                         float epsilon,
                                                         float momentum) {
@@ -264,14 +265,14 @@ BatchNormalizationNode *Graph::createBatchNormalization(llvm::StringRef name,
 }
 
 BatchNormalizationNode *Graph::createBatchNormalization(
-    llvm::StringRef name, Node *input, Node *beta, Node *gamma, Node *mean,
-    Node *var, size_t channelIdx, float epsilon, float momentum) {
+    llvm::StringRef name, NodeValue input, NodeValue beta, NodeValue gamma, NodeValue mean,
+    NodeValue var, size_t channelIdx, float epsilon, float momentum) {
   return addNode(new BatchNormalizationNode(name, input, gamma, beta, mean, var,
                                             channelIdx, epsilon, momentum));
 }
 
 LocalResponseNormalizationNode *
-Graph::createLocalResponseNormalization(llvm::StringRef name, Node *input,
+Graph::createLocalResponseNormalization(llvm::StringRef name, NodeValue input,
                                         size_t halfWindowSize, float alpha,
                                         float beta, float k) {
   auto Ty = input->getType();
@@ -282,21 +283,21 @@ Graph::createLocalResponseNormalization(llvm::StringRef name, Node *input,
       name, input, scale, halfWindowSize, alpha, beta, k));
 }
 
-ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, Node *LHS,
-                                        Node *RHS, ArithmeticNode::Mode op) {
+ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, NodeValue LHS,
+                                        NodeValue RHS, ArithmeticNode::Mode op) {
   assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
   return addNode(new ArithmeticNode(name, op, LHS, RHS));
 }
 
-SaveNode *Graph::createSave(llvm::StringRef name, Node *input) {
+SaveNode *Graph::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest = createVariable(input->getType(), "saved",
                               Variable::InitKind::Broadcast, 0);
 
   return addNode(new SaveNode(name, input, dest));
 }
 
-SaveNode *Graph::createSave(llvm::StringRef name, Node *input,
+SaveNode *Graph::createSave(llvm::StringRef name, NodeValue input,
                             Variable *output) {
   return addNode(new SaveNode(name, input, output));
 }
