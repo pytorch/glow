@@ -70,7 +70,7 @@ public:
   /// This method implements the visitor pattern that scans the compute DAG top
   /// to bottom. The visitor \p visitor is sent by the parent node \p parent,
   /// or nullptr if this is the first node to be visited.
-  virtual void visit(Node *parent, NodeVisitor *visitor){};
+  virtual void visit(Node *parent, NodeVisitor *visitor) {}
 
   /// When the node is deleted we need to unregister all users. This allows us
   /// to deconstruct the graph in an arbitrary order.
@@ -88,6 +88,9 @@ public:
   /// This callback is called before processing the graph. If the method returns
   /// false then we skip this node.
   virtual bool shouldVisit(Node *parent, Node *N) { return true; }
+
+  /// Dtor.
+  virtual ~NodeVisitor() = default;
 };
 
 } // namespace glow

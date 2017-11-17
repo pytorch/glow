@@ -229,7 +229,7 @@ template <class ElemTy> class Handle final {
   };
 
   /// Saves the number of dimensions used in the tensor.
-  uint8_t numDims{0};
+  uint8_t numDims_{0};
 
   /// Create a new invalid handle. Notice that this method is private and may
   /// only be used by the static factory method below.
@@ -245,13 +245,13 @@ public:
   /// Calculate the index for a specific element in the tensor. Notice that
   /// the list of indices may be incomplete.
   size_t getElementPtr(llvm::ArrayRef<size_t> indices) const {
-    assert(indices.size() <= numDims && "Invalid number of indices");
+    assert(indices.size() <= numDims_ && "Invalid number of indices");
     // The loop below can be rewritten using std::inner_product. Unfortunately
     // std::inner_product does not optimize very well and loops that use this
     // method don't get vectorized. Don't change this loop without benchmarking
     // the program on a few compilers.
     size_t index = 0;
-    for (int i = 0, e = indices.size(); i < e; i++) {
+    for (size_t i = 0, e = indices.size(); i < e; i++) {
       index += size_t(sizeIntegral[i]) * size_t(indices[i]);
     }
 
@@ -260,7 +260,7 @@ public:
 
   /// \returns the value of the n'th dimension \p dim, for the raw index \p idx.
   size_t getDimForPtr(size_t dim, size_t idx) const {
-    assert(dim < numDims && "Invalid dimension");
+    assert(dim < numDims_ && "Invalid dimension");
     auto R = idx / sizeIntegral[dim];
     return R % sizes_[dim];
   }
@@ -270,10 +270,10 @@ public:
   /// Construct a Tensor handle.
   explicit Handle(Tensor *tensor) : tensor_(tensor) {
     auto sizes = tensor->dims();
-    numDims = sizes.size();
+    numDims_ = sizes.size();
 
     /// We allow handles that wrap uninitialized tensors.
-    if (!numDims) {
+    if (!numDims_) {
       return;
     }
 
@@ -282,17 +282,17 @@ public:
            max_tensor_dimensions * sizeof(sizes_[0]));
 
     size_t pi = 1;
-    for (int i = numDims - 1; i >= 0; i--) {
+    for (int i = numDims_ - 1; i >= 0; i--) {
       sizeIntegral[i] = pi;
       assert(sizes_[i] > 0 && "invalid dim size");
       pi *= sizes_[i];
     }
 
-    assert(numDims < max_tensor_dimensions);
+    assert(numDims_ < max_tensor_dimensions);
   }
 
   llvm::ArrayRef<size_t> dims() const {
-    return llvm::ArrayRef<size_t>(sizes_, numDims);
+    return llvm::ArrayRef<size_t>(sizes_, numDims_);
   }
 
   /// \returns the number of elements in the whole tensor.
@@ -435,19 +435,18 @@ public:
   /// Transpose the tensor \p src into the empty tensor \p dest. Shuffle the
   /// axis based on the list \p shuffle, where each element is the src index.
   void transpose(Tensor *dest, llvm::ArrayRef<unsigned> shuffle) {
-    unsigned numDims = shuffle.size();
     assert(dims().size() == shuffle.size() && "Invalid dimensions");
 
     size_t newSizes[max_tensor_dimensions];
 
     // Generate the swizzeled dimensions.
     auto origDims = dims();
-    for (unsigned i = 0; i < numDims; i++) {
+    for (unsigned i = 0; i < numDims_; i++) {
       newSizes[i] = origDims[shuffle[i]];
     }
 
     // Resize the tensor to the transposed shape.
-    dest->reset(getElementType(), llvm::ArrayRef<size_t>(newSizes, numDims));
+    dest->reset(getElementType(), llvm::ArrayRef<size_t>(newSizes, numDims_));
 
     size_t srcCoor[max_tensor_dimensions];
     size_t destCoor[max_tensor_dimensions];

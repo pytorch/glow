@@ -50,10 +50,10 @@ template <class ElemTy> static char valueToChar(ElemTy val) {
 
 template <class ElemTy> void dumpGenericImpl(Handle<ElemTy> handle) {
   auto shape = handle.dims();
-  size_t num_dims = shape.size();
+  size_t numDims = shape.size();
 
   // Check for empty tensor.
-  if (!num_dims) {
+  if (!numDims) {
     llvm::outs() << "[ Empty tensor ]\n";
     return;
   }
@@ -74,7 +74,7 @@ template <class ElemTy> void dumpGenericImpl(Handle<ElemTy> handle) {
   }
 
   // Check for zero tensor.
-  if (!mn && !mx) {
+  if (mn == .0 && mx == .0) {
     llvm::outs() << "[ Zero tensor ]\n";
     return;
   }
@@ -94,7 +94,7 @@ template <class ElemTy> void dumpGenericImpl(Handle<ElemTy> handle) {
        i++) {
 
     // Print one open brace at the beginning of every row, slice, and tensor.
-    for (size_t j = 0, e = num_dims - 1; num_dims > 1 && j < e; j++) {
+    for (size_t j = 0, e = numDims - 1; numDims > 1 && j < e; j++) {
       if (i % handle.sliceSize(j) == 0) {
         // This iteration of outer loop is a new row, slice or tensor.
         llvm::outs() << "[";
@@ -105,9 +105,9 @@ template <class ElemTy> void dumpGenericImpl(Handle<ElemTy> handle) {
     llvm::write_double(llvm::outs(), handle.raw(i), llvm::FloatStyle::Fixed, 3);
 
     // Print one closed brace at the end of every row, slice, or tensor.
-    for (size_t j = 0, e = num_dims - 1; num_dims > 1 && j < e; j++) {
+    for (size_t j = 0, e = numDims - 1; numDims > 1 && j < e; j++) {
       size_t next_index = i + 1;
-      if (next_index % handle.sliceSize(j) == 0) {
+      if (next_index % handle.sliceSize(j) == 0u) {
         llvm::outs() << "]";
       }
     }
@@ -115,9 +115,9 @@ template <class ElemTy> void dumpGenericImpl(Handle<ElemTy> handle) {
     llvm::outs() << ", ";
 
     // Print one newline at the end of every row, slice, or tensor.
-    for (size_t j = 0, e = num_dims - 1; num_dims > 1 && j < e; j++) {
+    for (size_t j = 0, e = numDims - 1; numDims > 1 && j < e; j++) {
       size_t next_index = i + 1;
-      if (next_index % handle.sliceSize(j) == 0) {
+      if (next_index % handle.sliceSize(j) == 0u) {
         // Next iteration of outer loop will be a new row, slice or tensor.
         llvm::outs() << "\n";
       }
