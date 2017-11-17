@@ -14,8 +14,8 @@
 class Builder;
 
 class NodeBuilder {
-  /// The type-initialization expression.
-  std::string ty_;
+  /// Initializes the return types of the nodes.
+  std::vector<std::string> resultTypes_;
   /// The node name.
   std::string name_;
   /// The node operands.
@@ -69,10 +69,10 @@ public:
     enum_.push_back(op);
     return *this;
   }
-  /// Set the expression that initializes the type of the node.
+  /// Set the expression that initializes a new return type for the node.
   /// Example: 'LHS->getType()'.
-  NodeBuilder &setType(const std::string &ty) {
-    ty_ = ty;
+  NodeBuilder &addResult(const std::string &ty) {
+    resultTypes_.push_back(ty);
     return *this;
   }
   /// Add a parameter to the constructor. For example "TypeRef" "outTy".

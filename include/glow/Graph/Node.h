@@ -28,8 +28,12 @@ private:
   unsigned resNo_{0};
 
 public:
-  /// Create a new operand and register the node we reference.
-  explicit NodeValue(Node *N) { setOperand(N); }
+  /// Create a new value and register the node we reference.
+  NodeValue(Node *N);
+
+  /// Create a new value for result \p resNo and register the node we reference.
+  NodeValue(Node *N, unsigned resNo);
+
   /// Create a new operand and register it as a new user to the node.
   NodeValue(const NodeValue &that) { setOperand(that.getNode()); }
   /// When deleting an operand we need to unregister the operand from the
@@ -48,6 +52,12 @@ public:
   Node *operator->() const { return node_; }
   /// Return the TypeRef of the referenced return value.
   TypeRef getValueType() const;
+
+  /// Methods that forward to the result type (that must be valid):
+  /// @{
+  ElemKind getElementType() const;
+  llvm::ArrayRef<size_t> dims() const;
+  /// @}
 
   bool operator==(const NodeValue &O) const {
     return node_ == O.node_ && resNo_ == O.resNo_;
@@ -71,14 +81,21 @@ struct NodeUse {
 };
 
 /// Represents a node in the compute graph.
-class Node : public Named,
-             public Kinded,
-             public Typed,
-             public UseDef<Node, Node, NodeUse> {
-
+class Node : public Named, public Kinded, public UseDef<Node, Node, NodeUse> {
 public:
-  Node(Kinded::Kind k, TypeRef Ty, llvm::StringRef name)
-      : Named(name), Kinded(k), Typed(Ty) {}
+  /// This is the maximum number of results that a node may have.
+  static constexpr unsigned max_node_resno = 4;
+
+  /// The output types for the results of the node.
+  std::array<TypeRef, max_node_resno> types_;
+  /// The number of results that the node has.
+  unsigned numRes_{0};
+
+  Node(Kinded::Kind k, llvm::StringRef name)
+      : Named(name), Kinded(k) {}
+
+  /// \returns the number of results that the node has.
+  unsigned getNumRes() { return numRes_; }
 
   /// \returns a textual description of the node.
   virtual std::string getDebugDesc() const;
@@ -91,6 +108,19 @@ public:
   /// When the node is deleted we need to unregister all users. This allows us
   /// to deconstruct the graph in an arbitrary order.
   virtual ~Node() { replaceAllUsesOfWith(nullptr); }
+
+  /// \returns the n'th result type of the node.
+  TypeRef getType(unsigned idx = -1) const;
+
+  /// Methods that forward to the result type (that must be valid):
+  /// @{
+  ElemKind getElementType(unsigned resNo = -1) const;
+  llvm::ArrayRef<size_t> dims(unsigned resNo  = -1) const;
+  /// @}
+
+protected:
+  /// When constructing the node, add a new result of type \p T.
+  void addResult(TypeRef T);
 };
 
 class NodeVisitor {

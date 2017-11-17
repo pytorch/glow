@@ -6,12 +6,24 @@
 
 using namespace glow;
 
+
 void NodeUse::setOperand(Node *other) {
   if (other && site_->getNode()) {
     assert(site_->getNode()->getType() == other->getType() &&
            "Setting operand to a node with a different type");
   }
   site_->setOperand(other);
+}
+
+NodeValue::NodeValue(Node *N) {
+  resNo_ = 0;
+  assert(N->getNumRes() == 1 && "Constructing a value for a multi-res node");
+  setOperand(N);
+}
+
+NodeValue::NodeValue(Node *N, unsigned resNo) {
+  assert(resNo < N->getNumRes() && "Invalid result number");
+  setOperand(N);
 }
 
 void NodeValue::setOperand(Node *v) {
@@ -29,6 +41,38 @@ void NodeValue::setOperand(Node *v) {
     v->addUse(NodeUse(this));
   }
 }
+
+/// \returns the n'th result type of the node.
+TypeRef Node::getType(unsigned idx) const {
+  if (idx == -1) {
+    assert(numRes_ == 1 && "Did not specify the result number for a node "
+           "with multiple results.");
+    return types_[0];
+  }
+  assert(idx < numRes_ && "Result number does not exist.");
+  return types_[idx];
+}
+
+ElemKind Node::getElementType(unsigned resNo) const {
+  TypeRef TR = getType(resNo);
+  return TR->getElementType();
+}
+
+llvm::ArrayRef<size_t> Node::dims(unsigned resNo) const {
+  TypeRef TR = getType(resNo);
+  return TR->dims();
+}
+
+void Node::addResult(TypeRef T) {
+  assert(numRes_ < max_node_resno && "Too many results");
+  types_[numRes_++] = T;
+}
+
+TypeRef NodeValue::getValueType() const { return node_->getType(resNo_); }
+
+ElemKind NodeValue::getElementType() const { return getValueType()->getElementType(); }
+
+llvm::ArrayRef<size_t> NodeValue::dims() const { return getValueType()->dims(); }
 
 const char *Variable::getInitKindStr(InitKind kind) {
   // extern: No initialization.

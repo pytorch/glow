@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
   BB.newNode("Save")
       .addOperand("Input")
       .addOperand("Output")
-      .setType("Input->getType()")
+      .addResult("Input->getType()")
       .overrideGetter("Output", "Variable *getOutput() const { return "
                                 "llvm::cast<Variable>(Output_.getNode()); };");
 
@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Pad")
       .addMember(MemberType::SizeT, "Depth")
       .addExtraParam("TypeRef", "outTy")
-      .setType("outTy");
+      .addResult("outTy");
 
   BB.newNode("Pool")
       .addEnumCase("Max")
@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Stride")
       .addMember(MemberType::SizeT, "Pad")
       .addExtraParam("TypeRef", "outTy")
-      .setType("outTy");
+      .addResult("outTy");
 
   BB.newNode("FullyConnected")
       .addOperand("Input")
@@ -63,7 +63,7 @@ int main(int argc, char **argv) {
       .addOperand("Bias")
       .addMember(MemberType::SizeT, "Depth")
       .addExtraParam("TypeRef", "outTy")
-      .setType("outTy");
+      .addResult("outTy");
 
   //===--------------------------------------------------------------------===//
   //                     Normalization
@@ -78,7 +78,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "ChannelIdx")
       .addMember(MemberType::Float, "Epsilon")
       .addMember(MemberType::Float, "Momentum")
-      .setType("Input->getType()");
+      .addResult("Input->getType()");
 
   BB.newNode("LocalResponseNormalization")
       .addOperand("Input")
@@ -87,7 +87,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "Alpha")
       .addMember(MemberType::Float, "Beta")
       .addMember(MemberType::Float, "K")
-      .setType("Input->getType()");
+      .addResult("Input->getType()");
 
   //===--------------------------------------------------------------------===//
   //                      Loss operations
@@ -96,12 +96,12 @@ int main(int argc, char **argv) {
   BB.newNode("SoftMax")
       .addOperand("Input")
       .addOperand("Selected")
-      .setType("Input->getType()");
+      .addResult("Input->getType()");
 
   BB.newNode("Regression")
       .addOperand("Input")
       .addOperand("Expected")
-      .setType("Input->getType()");
+      .addResult("Input->getType()");
 
   //===--------------------------------------------------------------------===//
   //                      Arithmetic
@@ -112,15 +112,15 @@ int main(int argc, char **argv) {
       .addEnumCase("Mul")
       .addOperand("LHS")
       .addOperand("RHS")
-      .setType("LHS->getType()");
+      .addResult("LHS->getType()");
 
   //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//
 
-  BB.newNode("Relu").addOperand("Input").setType("Input->getType()");
-  BB.newNode("Sigmoid").addOperand("Input").setType("Input->getType()");
-  BB.newNode("Tanh").addOperand("Input").setType("Input->getType()");
+  BB.newNode("Relu").addOperand("Input").addResult("Input->getType()");
+  BB.newNode("Sigmoid").addOperand("Input").addResult("Input->getType()");
+  BB.newNode("Tanh").addOperand("Input").addResult("Input->getType()");
 
   //===--------------------------------------------------------------------===//
   //                Shape transformations
@@ -130,19 +130,19 @@ int main(int argc, char **argv) {
       .addOperand("Input")
       .addMember(MemberType::VectorSizeT, "Dims")
       .addExtraParam("TypeRef", "outTy")
-      .setType("outTy");
+      .addResult("outTy");
 
   BB.newNode("Transpose")
       .addOperand("Input")
       .addMember(MemberType::VectorUnsigned, "Shuffle")
       .addExtraParam("TypeRef", "outTy")
-      .setType("outTy");
+      .addResult("outTy");
 
   BB.newNode("Concat")
       .addMember(MemberType::VectorNodeValue, "Inputs")
       .addMember(MemberType::SizeT, "Dim")
       .addExtraParam("TypeRef", "outTy")
-      .setType("outTy")
+      .addResult("outTy")
       .setDocstring("The concat operator adds two tensors together.\nThe "
                     "parameter 'dim' specifies the dimension to use when "
                     "joining the tensors.");
@@ -151,13 +151,13 @@ int main(int argc, char **argv) {
       .addOperand("Input")
       .addMember(MemberType::VectorSizeT, "Start")
       .addExtraParam("TypeRef", "outTy")
-      .setType("outTy");
+      .addResult("outTy");
 
   /// This is a test node that's used by the node unittests.
   BB.newNode("Distribute")
-  .addOperand("Input")
-//  .setMultipleReturnTypes({"","",""})
-  .setType("LHS->getType()");
+      .addOperand("Input")
+      //  .setMultipleReturnTypes({"","",""})
+      .addResult("Input->getType()");
 
   return 0;
 }

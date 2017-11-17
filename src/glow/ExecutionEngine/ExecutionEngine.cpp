@@ -42,7 +42,7 @@ void ExecutionEngine::train(size_t iterations, llvm::ArrayRef<Variable *> vars,
          "The number of inputs does not match the number of variables");
 
   // This is the size of one batch (the number of samples in the batch).
-  size_t batchSize = vars[0]->dims()[0];
+  size_t batchSize = vars[0]->getType()->dims()[0];
 
   for (size_t i = 0; i < iterations; i++) {
     // Launch threads that update the different chunks in the batch:
