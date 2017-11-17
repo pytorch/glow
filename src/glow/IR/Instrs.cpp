@@ -184,7 +184,7 @@ void InsertTensorInst::verify() const {
   assert(numDims == src->dims().size() && numDims == offsets.size() &&
          "Invalid number of dimensions");
 
-  for (int i = 0; i < numDims; i++) {
+  for (unsigned i = 0; i < numDims; i++) {
     assert(src->dims()[i] + offsets[i] <= dest->dims()[i] && "out of bounds");
   }
 }

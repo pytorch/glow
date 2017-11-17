@@ -26,8 +26,8 @@
 using namespace glow;
 using llvm::cast;
 
-auto NCHW2NHWC = {0u, 2u, 3u, 1u};
-auto NHWC2NCHW = {0u, 3u, 1u, 2u};
+static auto NCHW2NHWC = {0u, 2u, 3u, 1u};
+static auto NHWC2NCHW = {0u, 3u, 1u, 2u};
 
 using ArgumentDictionaryTy =
     std::unordered_map<std::string, const caffe2::Argument *>;
@@ -214,7 +214,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *in = getOrCreateNodeByName(op.input(0));
     int stride = loadInt(dict["stride"]);
     int pad = dict.count("pad") ? loadInt(dict["pad"]) : 0;
-    int kernel = loadInt(dict["kernel"]);
+    size_t kernel = loadInt(dict["kernel"]);
 
     auto *tr = G.createTranspose(op.name(), in, NCHW2NHWC);
 

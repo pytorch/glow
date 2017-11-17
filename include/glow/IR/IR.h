@@ -36,10 +36,10 @@ using InstructionOperand = std::pair<Value *, OperandKind>;
 /// A 'Use' is a use-list representation of an instruction operand. It maps to a
 /// specific operand in an instruction.
 struct Use {
-  /// The index of the operand.
-  unsigned idx_;
   /// The instruction.
   Instruction *use_;
+  /// The index of the operand.
+  unsigned idx_;
 
   bool operator==(const Use &other) const {
     return idx_ == other.idx_ && use_ == other.use_;

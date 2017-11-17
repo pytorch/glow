@@ -21,9 +21,8 @@ struct ShapeNHWC {
   size_t n; // Number of samples
   size_t h; // Height
   size_t w; // Width
-  size_t c; // # of Channels
+  size_t c; // Number of Channels
 
-  // TODO: deprecate this for std::array<size_t, 4>
   explicit ShapeNHWC(llvm::ArrayRef<size_t> shape) {
     assert(shape.size() == 4 && "Invalid shape");
     n = shape[0];

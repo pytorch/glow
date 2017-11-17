@@ -31,7 +31,7 @@ private:
   TypeRef Ty_{};
 
 public:
-  explicit Typed(TypeRef Ty) : Ty_(Ty){};
+  explicit Typed(TypeRef Ty) : Ty_(Ty) {}
 
   TypeRef getType() const { return Ty_; }
 
