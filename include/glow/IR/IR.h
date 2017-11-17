@@ -45,7 +45,7 @@ struct Use {
     return idx_ == other.idx_ && use_ == other.use_;
   }
 
-  Use(unsigned idx, Instruction *use) : idx_(idx), use_(use) {}
+  Use(unsigned idx, Instruction *use) : use_(use), idx_(idx) {}
 
   /// \returns the instruction that the use refers to.
   Instruction *get() const { return use_; }

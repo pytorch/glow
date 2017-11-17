@@ -14,17 +14,12 @@ C++ compiler that supports C++11, on CMake, protocol buffer, and libpng.
 
 ### Building the Compiler
 
-Before building the compiler you will need to update the git submodules with the
-command:
-
-  git submodule update
-
 Next, create a build directory and run cmake on the source directory:
 
   ```
   mkdir build
   cd build
-  cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTING=YES ..
+  cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTING=YES ../glow
   ```
 
 It is possible to configure and build the compiler with any CMake generator,
@@ -77,7 +72,6 @@ tests simply run the command 'ninja test' (or gmake test).  After compiling the
 project, a few test programs will be built under the /examples/ directory. The
 'mnist' and 'cifar10' programs train and run the digit recognition and image
 classification benchmarks.
-
 
 The default compilation mode is 'Debug'. This means that the compiler itself is
 easy to debug because the binary contains debug info, lots of assertions, and

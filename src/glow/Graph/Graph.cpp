@@ -225,7 +225,8 @@ SliceNode *Graph::createSlice(llvm::StringRef name, Node *input,
   for (int i = 0; i < dims.size(); i++) {
     size_t begin_i = begin[i];
     size_t end_i = end[i];
-    size_t dim_i = dims[i];
+    size_t dim_i = dims[i];(void) dim_i;
+    (void) dim_i;
     assert(begin_i >= 0 && "Illegal Begin  indices");
     assert(end_i > 0 && "Illegal End indices");
     assert(begin_i < dim_i && "Illegal Begin  indices");
