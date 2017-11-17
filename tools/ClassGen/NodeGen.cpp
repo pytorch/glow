@@ -30,7 +30,7 @@ int main(int argc, char **argv) {
       .addOperand("Output")
       .setType("Input->getType()")
       .overrideGetter("Output", "Variable *getOutput() const { return "
-                                "llvm::cast<Variable>(Output_.get()); };");
+                                "llvm::cast<Variable>(Output_.getNode()); };");
 
   //===--------------------------------------------------------------------===//
   //                   Convolution / Pool / FC
@@ -139,7 +139,7 @@ int main(int argc, char **argv) {
       .setType("outTy");
 
   BB.newNode("Concat")
-      .addMember(MemberType::VectorNodeOperand, "Inputs")
+      .addMember(MemberType::VectorNodeValue, "Inputs")
       .addMember(MemberType::SizeT, "Dim")
       .addExtraParam("TypeRef", "outTy")
       .setType("outTy")
@@ -152,6 +152,12 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorSizeT, "Start")
       .addExtraParam("TypeRef", "outTy")
       .setType("outTy");
+
+  /// This is a test node that's used by the node unittests.
+  BB.newNode("Distribute")
+  .addOperand("Input")
+//  .setMultipleReturnTypes({"","",""})
+  .setType("LHS->getType()");
 
   return 0;
 }

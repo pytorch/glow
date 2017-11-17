@@ -12,44 +12,60 @@ namespace glow {
 class NodeVisitor;
 class Node;
 
-/// Node operands are the handles that wrap the pointer to the nodes that a node
-/// references. They add functionality for maintaining the use-list.
-struct NodeOperand {
+/// Unlike LLVM values, graph nodes may return multiple values as the result of
+/// a computation. Gradient-calculating nodes, such as conv-grad return
+/// multiple values. As such, each use of a node computation must indicate the
+/// node that computes it as well as which return value to use from that node.
+/// This pair of information is represented in this class. This class also
+/// manages the node use-def chain, by registering and removing the address of
+/// the value from the use-list. This data structure is similar to LLVM's
+/// SDValue.
+struct NodeValue {
 private:
+  /// A pointer the the node (owned by the graph).
   Node *node_{nullptr};
+  /// Specifies the node result number to use.
+  unsigned resNo_{0};
 
 public:
   /// Create a new operand and register the node we reference.
-  explicit NodeOperand(Node *N) { setOperand(N); }
+  explicit NodeValue(Node *N) { setOperand(N); }
   /// Create a new operand and register it as a new user to the node.
-  NodeOperand(const NodeOperand &that) { setOperand(that.get()); }
+  NodeValue(const NodeValue &that) { setOperand(that.getNode()); }
   /// When deleting an operand we need to unregister the operand from the
   /// use-list of the node it used to reference.
-  ~NodeOperand() { setOperand(nullptr); }
+  ~NodeValue() { setOperand(nullptr); }
   /// Sets the operand to point to \p N. This method registers the operand as a
   /// user of \p N.
   void setOperand(Node *v);
-
+  /// Get the index which selects a specific result in the SDNode
+  unsigned getResNo() const { return resNo_; }
   /// \returns the underlying pointer.
-  Node *get() const { return node_; }
+  Node *getNode() const { return node_; }
   /// \returns the underlying pointer when casting.
   operator Node *() const { return node_; }
   /// Provide a smart-pointer interface.
   Node *operator->() const { return node_; }
+  /// Return the TypeRef of the referenced return value.
+  TypeRef getValueType() const;
+
+  bool operator==(const NodeValue &O) const {
+    return node_ == O.node_ && resNo_ == O.resNo_;
+  }
 };
 
 /// A 'Use' is a use-list representation of a Node operand.
 struct NodeUse {
   /// The operand site. This is the address of the operand that points to our
   /// node.
-  NodeOperand *site_;
+  NodeValue *site_;
 
-  explicit NodeUse(NodeOperand *site) : site_(site) {}
+  explicit NodeUse(NodeValue *site) : site_(site) {}
 
   bool operator==(const NodeUse &other) const { return site_ == other.site_; }
 
   /// \returns the instruction that the use refers to.
-  NodeOperand *get() const { return site_; }
+  NodeValue *get() const { return site_; }
   /// Sets the operand to a new value.
   void setOperand(Node *other);
 };
