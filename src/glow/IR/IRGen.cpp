@@ -175,7 +175,7 @@ public:
                                         valueForNode(inputs[i]), offsets);
         // We are stacking the tensors along a specific dimension. This means
         // that we increase the size of the tensor along this dimension.
-        offsets[dim] += inputs[i]->dims()[dim];
+        offsets[dim] += inputs[i].dims()[dim];
       }
       registerIR(N, dest);
       break;

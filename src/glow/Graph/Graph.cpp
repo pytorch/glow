@@ -59,7 +59,7 @@ Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
 ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
                                    size_t depth, size_t kernel, size_t stride,
                                    size_t pad) {
-  ShapeNHWC idim = ShapeNHWC(input->dims());
+  ShapeNHWC idim = ShapeNHWC(input.dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
@@ -86,7 +86,7 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
 PoolNode *Graph::createPool(llvm::StringRef name, NodeValue input,
                             PoolNode::Mode mode, size_t kernel, size_t stride,
                             size_t pad) {
-  ShapeNHWC idim = ShapeNHWC(input->dims());
+  ShapeNHWC idim = ShapeNHWC(input.dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
@@ -101,8 +101,8 @@ PoolNode *Graph::createPool(llvm::StringRef name, NodeValue input,
 FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
                                                 NodeValue input,
                                                 size_t outDepth) {
-  TypeRef T = input->getType();
-  auto idim = flattenCdr(input->dims());
+  TypeRef T = input.getType();
+  auto idim = flattenCdr(input.dims());
 
   size_t fanIn = idim.second;
 
@@ -140,7 +140,7 @@ RegressionNode *Graph::createRegression(llvm::StringRef name, NodeValue input,
 
 ReshapeNode *Graph::createReshape(llvm::StringRef name, NodeValue input,
                                   llvm::ArrayRef<size_t> shape) {
-  auto TR = uniqueType(input->getType()->getElementType(), shape);
+  auto TR = uniqueType(input.getType()->getElementType(), shape);
 
   return addNode(new ReshapeNode(name, TR, input, shape.vec()));
 }
@@ -148,12 +148,12 @@ ReshapeNode *Graph::createReshape(llvm::StringRef name, NodeValue input,
 TransposeNode *Graph::createTranspose(llvm::StringRef name, NodeValue input,
                                       llvm::ArrayRef<unsigned> shuffle) {
   llvm::SmallVector<size_t, 6> shape;
-  auto dims = input->dims();
+  auto dims = input.dims();
   for (size_t i = 0; i < dims.size(); i++) {
     shape.push_back(dims[shuffle[i]]);
   }
 
-  auto NT = uniqueType(input->getElementType(), shape);
+  auto NT = uniqueType(input.getElementType(), shape);
   return addNode(new TransposeNode(name, NT, input, shuffle.vec()));
 }
 
@@ -219,7 +219,7 @@ SliceNode *Graph::createSlice(llvm::StringRef name, NodeValue input,
                               llvm::ArrayRef<size_t> end) {
 
   std::vector<size_t> begin_v, shape;
-  auto dims = input->dims();
+  auto dims = input.dims();
   assert(begin.size() == end.size() && "Begin and End dimensions should match");
   assert(begin.size() == dims.size() &&
          "Begin and Input dimensions should match");
@@ -227,7 +227,6 @@ SliceNode *Graph::createSlice(llvm::StringRef name, NodeValue input,
     size_t begin_i = begin[i];
     size_t end_i = end[i];
     size_t dim_i = dims[i];
-    (void)dim_i;
     (void)dim_i;
     assert(begin_i >= 0 && "Illegal Begin  indices");
     assert(end_i > 0 && "Illegal End indices");
@@ -237,7 +236,7 @@ SliceNode *Graph::createSlice(llvm::StringRef name, NodeValue input,
     begin_v.push_back(begin_i);
     shape.push_back(end_i - begin_i);
   }
-  auto NT = uniqueType(input->getType()->getElementType(), shape);
+  auto NT = uniqueType(input.getType()->getElementType(), shape);
 
   return addNode(new SliceNode(name, NT, input, begin_v));
 }
@@ -248,7 +247,7 @@ BatchNormalizationNode *Graph::createBatchNormalization(llvm::StringRef name,
                                                         float epsilon,
                                                         float momentum) {
   // Figure out how many channels are in the tensor.
-  size_t channels = input->dims()[channelIdx];
+  size_t channels = input.dims()[channelIdx];
 
   // Allocate the learnable parameters beta and gamma.
   auto *beta = createVariable(ElemKind::FloatTy, {channels}, "beta",
@@ -278,7 +277,7 @@ LocalResponseNormalizationNode *
 Graph::createLocalResponseNormalization(llvm::StringRef name, NodeValue input,
                                         size_t halfWindowSize, float alpha,
                                         float beta, float k) {
-  auto Ty = input->getType();
+  auto Ty = input.getType();
   auto *scale = createVariable(Ty, "scale", Variable::InitKind::Broadcast, 0.0);
 
   // The output tensor is of the same shape as the input tensor.
@@ -289,7 +288,7 @@ Graph::createLocalResponseNormalization(llvm::StringRef name, NodeValue input,
 ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, NodeValue LHS,
                                         NodeValue RHS,
                                         ArithmeticNode::Mode op) {
-  assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
+  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
   return addNode(new ArithmeticNode(name, op, LHS, RHS));
 }

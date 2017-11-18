@@ -62,9 +62,9 @@ TEST(Graph, multipleReturnType) {
         G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
     auto *D = new DistributeNode("dist", K);
     G.getNodes().push_back(D);
-
-    G.createSave("S0", NodeValue(D, 0));
-    G.createSave("S1", NodeValue(D, 1));
+    auto *V = G.createArithmetic("add", NodeValue(D, 0), NodeValue(D, 1),
+                                 ArithmeticNode::Mode::Add);
+    G.createSave("S1", V);
     G.dump();
     G.dumpDAG();
   }
