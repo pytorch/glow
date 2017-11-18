@@ -14,12 +14,12 @@
 class Builder;
 
 class NodeBuilder {
-  /// Initializes the return types of the nodes.
-  std::vector<std::string> resultTypes_;
   /// The node name.
   std::string name_;
   /// The node operands.
-  std::vector<std::string> operands_;
+  std::vector<std::string> nodeInputs_;
+  /// Initializes the return types of the nodes. Format: (type, name)
+  std::vector<std::pair<std::string, std::string>> nodeOutputs_;
   /// A list of node members. Format: (type, name).
   std::vector<std::pair<MemberType, std::string>> members_;
   /// The node enum cases.
@@ -44,8 +44,8 @@ public:
 
   /// Add an operand to the node. The name should start with a capital letter.
   /// For example: "Input".
-  NodeBuilder &addOperand(const std::string &op) {
-    operands_.push_back(op);
+  NodeBuilder &addInput(const std::string &op) {
+    nodeInputs_.push_back(op);
     return *this;
   }
   /// Add a member to the node. Format: type, name.
@@ -69,9 +69,10 @@ public:
     return *this;
   }
   /// Set the expression that initializes a new return type for the node.
-  /// Example: 'LHS->getType()'.
-  NodeBuilder &addResult(const std::string &ty) {
-    resultTypes_.push_back(ty);
+  /// Example: 'LHS->getType()', "Result".
+  NodeBuilder &addResult(const std::string &ty,
+                         const std::string &name = "Result") {
+    nodeOutputs_.push_back({ty, name});
     return *this;
   }
   /// Add a parameter to the constructor. For example "TypeRef" "outTy".

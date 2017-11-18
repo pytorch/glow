@@ -27,7 +27,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
   }
 
   // The operands of the graph node:
-  for (const auto &op : operands_) {
+  for (const auto &op : nodeInputs_) {
     os << ", NodeValue " << op;
   }
 
@@ -45,7 +45,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
   }
 
   // Initialize the operands:
-  for (const auto &op : operands_) {
+  for (const auto &op : nodeInputs_) {
     os << ", " << op << "_(" << op << ")";
   }
 
@@ -56,8 +56,8 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
 
   // The constructor body:
   os << " {";
-  for (auto &RT : resultTypes_) {
-    os << "\taddResult(" << RT << ");\n";
+  for (auto &RT : nodeOutputs_) {
+    os << "\taddResult(" << RT.first << ");\n";
   }
   os << "}\n\n";
 }
@@ -78,7 +78,7 @@ void NodeBuilder::emitClassMembers(std::ostream &os) const {
   if (!enum_.empty()) {
     os << "\tMode mode_;\n";
   }
-  for (const auto &op : operands_) {
+  for (const auto &op : nodeInputs_) {
     os << "\tNodeValue " << op << "_;\n";
   }
   for (const auto &op : members_) {
@@ -103,8 +103,15 @@ void NodeBuilder::emitMemberGetter(std::ostream &os, MemberType type,
 
 void NodeBuilder::emitSettersGetters(std::ostream &os) const {
   // Print the getters/setters.
-  for (const auto &op : operands_) {
-    emitOperandGetter(os, op);
+  for (const auto &inName : nodeInputs_) {
+    os << "\tNodeValue get" << inName << "() const { return " << inName
+       << "_; }\n";
+  }
+
+  unsigned idx = 0;
+  for (const auto &op : nodeOutputs_) {
+    os << "\tNodeValue get" << op.second << "() { return NodeValue(this,"
+       << idx++ << "); }\n";
   }
 
   for (const auto &op : members_) {
@@ -130,7 +137,7 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
     os << "\t\t.addParam(\"Mode\", getModeStr())\n";
   }
 
-  for (const auto &op : operands_) {
+  for (const auto &op : nodeInputs_) {
     os << "\t\t.addParam(\"" << op << "\", *get" << op << "().getType())\n";
   }
 
@@ -163,7 +170,7 @@ void NodeBuilder::emitEquator(std::ostream &os) const {
     os << " &&\n\t getMode() == other.getMode()";
   }
 
-  for (const auto &op : operands_) {
+  for (const auto &op : nodeInputs_) {
     os << " &&\n\t " << op << "_ == other." << op << "_";
   }
 
@@ -180,7 +187,7 @@ void NodeBuilder::emitVisitor(std::ostream &os) const {
         "(!visitor->shouldVisit(parent, this)) { return; }\n";
 
   os << "\tvisitor->pre(parent, this);\n";
-  for (const auto &op : operands_) {
+  for (const auto &op : nodeInputs_) {
     os << "\tget" << op << "()->visit(this, visitor);\n";
   }
 
