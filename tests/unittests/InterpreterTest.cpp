@@ -526,7 +526,7 @@ TEST(Network, trainASimpleRNN) {
   EE.compile(CompilationMode::Infer);
 
   EE.infer({X}, {&inputs});
-  auto RNWH = result->getOutput()->getPayload().getHandle<>();
+  auto RNWH = result->getVariable()->getPayload().getHandle<>();
   (void)RNWH;
 
   // Test the output:
