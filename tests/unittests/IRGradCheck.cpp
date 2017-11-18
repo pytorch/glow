@@ -58,7 +58,7 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
     // Calculate f(x+e):
     inputsH.raw(i) = old + delta;
     IP.infer({inputVar}, {inputs});
-    Tensor &res = result->getOutput()->getPayload();
+    Tensor &res = result->getVariable()->getPayload();
     auto plusLoss = computeL2Loss(outputs, &res);
 
     // Calculate f(x-e):
@@ -283,7 +283,7 @@ TEST(Network, gradientCheck_Arithmetic) {
       // Calculate f(x+e):
       iH.at({0, i}) = old + delta;
       IP.infer({A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
-      Tensor &res = result->getOutput()->getPayload();
+      Tensor &res = result->getVariable()->getPayload();
 
       auto plusLoss = computeL2Loss(&outputs, &res);
 

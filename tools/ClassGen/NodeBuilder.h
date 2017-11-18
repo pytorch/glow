@@ -26,8 +26,8 @@ class NodeBuilder {
   std::vector<std::string> enum_;
   /// A list of extra parameters that are passed to the constructor.
   std::vector<std::pair<std::string, std::string>> extraParams_;
-  /// A list of getters to override. Format (variable name, alternative getter).
-  std::unordered_map<std::string, std::string> overrideGetter_;
+  /// Stores the body of a new public method that will be added to the class.
+  std::vector<std::string> extraMethods_;
   /// Header file stream.
   std::ofstream &hStream;
   /// CPP file stream.
@@ -56,10 +56,9 @@ public:
     return *this;
   }
 
-  /// Override the getter for variable \p var with the body \p body.
-  NodeBuilder &overrideGetter(const std::string &var, const std::string &body) {
-    assert(!overrideGetter_.count(var) && "Variable already overridden");
-    overrideGetter_[var] = body;
+  /// Adds the body of a new public method to the class.
+  NodeBuilder &addExtraMethod(const std::string &body) {
+    extraMethods_.push_back(body);
     return *this;
   }
 

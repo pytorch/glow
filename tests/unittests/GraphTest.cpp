@@ -52,3 +52,20 @@ TEST(Graph, simpleTest) {
     M.dump();
   }
 }
+
+TEST(Graph, multipleReturnType) {
+
+  {
+    Graph G;
+    Module M(&G);
+    Variable *K =
+        G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+    auto *D = new DistributeNode("dist", K);
+    G.getNodes().push_back(D);
+
+    G.createSave("S0", NodeValue(D, 0));
+    G.createSave("S1", NodeValue(D, 1));
+    G.dump();
+    G.dumpDAG();
+  }
+}

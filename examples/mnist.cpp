@@ -122,7 +122,7 @@ void testMNIST() {
   sample.copyConsecutiveSlices(&imageInputs, 0);
   EE.infer({A}, {&sample});
 
-  Tensor &res = result->getOutput()->getPayload();
+  Tensor &res = result->getVariable()->getPayload();
 
   for (unsigned int iter = 0; iter < minibatchSize; iter++) {
     auto T = res.getHandle<>().extractSlice(iter);

@@ -6,7 +6,6 @@
 
 using namespace glow;
 
-
 void NodeUse::setOperand(Node *other) {
   if (other && site_->getNode()) {
     assert(site_->getNode()->getType() == other->getType() &&
@@ -46,7 +45,7 @@ void NodeValue::setOperand(Node *v) {
 TypeRef Node::getType(unsigned idx) const {
   if (idx == -1) {
     assert(numRes_ == 1 && "Did not specify the result number for a node "
-           "with multiple results.");
+                           "with multiple results.");
     return types_[0];
   }
   assert(idx < numRes_ && "Result number does not exist.");
@@ -68,11 +67,13 @@ void Node::addResult(TypeRef T) {
   types_[numRes_++] = T;
 }
 
-TypeRef NodeValue::getValueType() const { return node_->getType(resNo_); }
+TypeRef NodeValue::getType() const { return node_->getType(resNo_); }
 
-ElemKind NodeValue::getElementType() const { return getValueType()->getElementType(); }
+ElemKind NodeValue::getElementType() const {
+  return getType()->getElementType();
+}
 
-llvm::ArrayRef<size_t> NodeValue::dims() const { return getValueType()->dims(); }
+llvm::ArrayRef<size_t> NodeValue::dims() const { return getType()->dims(); }
 
 const char *Variable::getInitKindStr(InitKind kind) {
   // extern: No initialization.

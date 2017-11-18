@@ -102,13 +102,6 @@ void InstrBuilder::emitClassMembers(std::ostream &os) const {
 
 void InstrBuilder::emitOperandGetter(std::ostream &os, const std::string &name,
                                      int index) const {
-  // Synthesize a user-defined operand getter.
-  auto it = overrideGetter_.find(name);
-  if (it != overrideGetter_.end()) {
-    os << "\t" << it->second << "\n";
-    return;
-  }
-
   // Synthesize the general operand getter.
   os << "\tValue *get" << name << "() const { return getOperand(" << index
      << ").first; }\n";
@@ -116,13 +109,6 @@ void InstrBuilder::emitOperandGetter(std::ostream &os, const std::string &name,
 
 void InstrBuilder::emitMemberGetter(std::ostream &os, MemberType type,
                                     const std::string &name) const {
-  // Synthesize a user-defined member getter.
-  auto it = overrideGetter_.find(name);
-  if (it != overrideGetter_.end()) {
-    os << "\t" << it->second << "\n";
-    return;
-  }
-
   // Synthesize the general getter.
   auto returnTypeStr = getReturnTypename(type);
   os << "\t" << returnTypeStr << " get" << name << "() const { return " << name
@@ -208,7 +194,6 @@ void InstrBuilder::addGradientInstr(
   // The new 'Grad' class will have all of the fields of the current class.
   GI.ty_ = ty_;
   GI.members_ = members_;
-  GI.overrideGetter_ = overrideGetter_;
   GI.extraMethods_ = extraMethods_;
 
   // Add the operands that we'll use in the grad instruction.

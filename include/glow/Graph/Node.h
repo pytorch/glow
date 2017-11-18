@@ -48,10 +48,11 @@ public:
   Node *getNode() const { return node_; }
   /// \returns the underlying pointer when casting.
   operator Node *() const { return node_; }
+
   /// Provide a smart-pointer interface.
   Node *operator->() const { return node_; }
   /// Return the TypeRef of the referenced return value.
-  TypeRef getValueType() const;
+  TypeRef getType() const;
 
   /// Methods that forward to the result type (that must be valid):
   /// @{
@@ -91,8 +92,7 @@ public:
   /// The number of results that the node has.
   unsigned numRes_{0};
 
-  Node(Kinded::Kind k, llvm::StringRef name)
-      : Named(name), Kinded(k) {}
+  Node(Kinded::Kind k, llvm::StringRef name) : Named(name), Kinded(k) {}
 
   /// \returns the number of results that the node has.
   unsigned getNumRes() { return numRes_; }
@@ -115,7 +115,7 @@ public:
   /// Methods that forward to the result type (that must be valid):
   /// @{
   ElemKind getElementType(unsigned resNo = -1) const;
-  llvm::ArrayRef<size_t> dims(unsigned resNo  = -1) const;
+  llvm::ArrayRef<size_t> dims(unsigned resNo = -1) const;
   /// @}
 
 protected:
@@ -140,5 +140,22 @@ public:
 };
 
 } // namespace glow
+
+namespace llvm {
+/// Allow casting NodeValue into Node*.
+template <> struct simplify_type<glow::NodeValue> {
+  typedef glow::Node *SimpleType;
+  static SimpleType getSimplifiedValue(glow::NodeValue &val) {
+    return val.getNode();
+  }
+};
+/// Allow casting NodeValue into Node*.
+template <> struct simplify_type<const glow::NodeValue> {
+  typedef glow::Node *SimpleType;
+  static SimpleType getSimplifiedValue(const glow::NodeValue &val) {
+    return val.getNode();
+  }
+};
+} // namespace llvm
 
 #endif // GLOW_GRAPH_NODE_H

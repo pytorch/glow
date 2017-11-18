@@ -33,8 +33,8 @@ public:
   Variable(llvm::StringRef name, TypeRef Ty, InitKind initKind, float val)
       : Node(Kinded::Kind::VariableNodeKind, name), val_(val),
         initKind_(initKind) {
-          addResult(Ty);
-          initPayload();
+    addResult(Ty);
+    initPayload();
   }
 
   static bool classof(const Kinded *k) {

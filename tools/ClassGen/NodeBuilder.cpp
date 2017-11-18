@@ -28,7 +28,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
 
   // The operands of the graph node:
   for (const auto &op : operands_) {
-    os << ", Node *" << op;
+    os << ", NodeValue " << op;
   }
 
   // Extra class members:
@@ -89,26 +89,12 @@ void NodeBuilder::emitClassMembers(std::ostream &os) const {
 
 void NodeBuilder::emitOperandGetter(std::ostream &os,
                                     const std::string &name) const {
-  // Synthesize a user-defined operand getter.
-  auto it = overrideGetter_.find(name);
-  if (it != overrideGetter_.end()) {
-    os << "\t" << it->second << "\n";
-    return;
-  }
-
   // Synthesize the general operand getter.
-  os << "\tNode *get" << name << "() const { return " << name << "_; }\n";
+  os << "\tNodeValue get" << name << "() const { return " << name << "_; }\n";
 }
 
 void NodeBuilder::emitMemberGetter(std::ostream &os, MemberType type,
                                    const std::string &name) const {
-  // Synthesize a user-defined member getter.
-  auto it = overrideGetter_.find(name);
-  if (it != overrideGetter_.end()) {
-    os << "\t" << it->second << "\n";
-    return;
-  }
-
   // Synthesize the general getter.
   auto returnTypeStr = getReturnTypename(type);
   os << "\t" << returnTypeStr << " get" << name << "() const { return " << name
@@ -145,7 +131,7 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
   }
 
   for (const auto &op : operands_) {
-    os << "\t\t.addParam(\"" << op << "\", *get" << op << "()->getType())\n";
+    os << "\t\t.addParam(\"" << op << "\", *get" << op << "().getType())\n";
   }
 
   for (const auto &mem : members_) {
@@ -238,6 +224,10 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
   if (!enum_.empty()) {
     os << "\tconst char *getModeStr() const { return getModeStr(mode_); "
           "}\n\tstatic const char *getModeStr(Mode m);\n";
+  }
+
+  for (const auto &m : extraMethods_) {
+    os << "\t" << m << "\n";
   }
 
   os << "};\n\n} // namespace glow\n";
