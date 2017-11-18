@@ -115,7 +115,7 @@ void testCIFAR10() {
       sample.copyConsecutiveSlices(&images, minibatchSize * i);
       EE.infer({A}, {&sample});
       result->getOutput();
-      Tensor &res = result->getOutput()->getPayload();
+      Tensor &res = result->getVariable()->getPayload();
 
       for (unsigned int iter = 0; iter < minibatchSize; iter++) {
         auto T = res.getHandle<>().extractSlice(iter);

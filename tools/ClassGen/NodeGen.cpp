@@ -28,10 +28,9 @@ int main(int argc, char **argv) {
   BB.newNode("Save")
       .addOperand("Input")
       .addOperand("Output")
-      .addResult("Input->getType()")
-      .overrideGetter("Output", "Variable *getOutput() const { return "
-                                "llvm::cast<Variable>(Output_.getNode()); };");
-
+      .addResult("Input.getType()")
+      .addExtraMethod("Variable *getVariable() const { return "
+                      "llvm::cast<Variable>(Output_.getNode()); };");
   //===--------------------------------------------------------------------===//
   //                   Convolution / Pool / FC
   //===--------------------------------------------------------------------===//
@@ -78,7 +77,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "ChannelIdx")
       .addMember(MemberType::Float, "Epsilon")
       .addMember(MemberType::Float, "Momentum")
-      .addResult("Input->getType()");
+      .addResult("Input.getType()");
 
   BB.newNode("LocalResponseNormalization")
       .addOperand("Input")
@@ -87,7 +86,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "Alpha")
       .addMember(MemberType::Float, "Beta")
       .addMember(MemberType::Float, "K")
-      .addResult("Input->getType()");
+      .addResult("Input.getType()");
 
   //===--------------------------------------------------------------------===//
   //                      Loss operations
@@ -96,12 +95,12 @@ int main(int argc, char **argv) {
   BB.newNode("SoftMax")
       .addOperand("Input")
       .addOperand("Selected")
-      .addResult("Input->getType()");
+      .addResult("Input.getType()");
 
   BB.newNode("Regression")
       .addOperand("Input")
       .addOperand("Expected")
-      .addResult("Input->getType()");
+      .addResult("Input.getType()");
 
   //===--------------------------------------------------------------------===//
   //                      Arithmetic
@@ -112,15 +111,15 @@ int main(int argc, char **argv) {
       .addEnumCase("Mul")
       .addOperand("LHS")
       .addOperand("RHS")
-      .addResult("LHS->getType()");
+      .addResult("LHS.getType()");
 
   //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//
 
-  BB.newNode("Relu").addOperand("Input").addResult("Input->getType()");
-  BB.newNode("Sigmoid").addOperand("Input").addResult("Input->getType()");
-  BB.newNode("Tanh").addOperand("Input").addResult("Input->getType()");
+  BB.newNode("Relu").addOperand("Input").addResult("Input.getType()");
+  BB.newNode("Sigmoid").addOperand("Input").addResult("Input.getType()");
+  BB.newNode("Tanh").addOperand("Input").addResult("Input.getType()");
 
   //===--------------------------------------------------------------------===//
   //                Shape transformations
@@ -156,8 +155,8 @@ int main(int argc, char **argv) {
   /// This is a test node that's used by the node unittests.
   BB.newNode("Distribute")
       .addOperand("Input")
-      //  .setMultipleReturnTypes({"","",""})
-      .addResult("Input->getType()");
+      .addResult("Input.getType()")
+      .addResult("Input.getType()");
 
   return 0;
 }

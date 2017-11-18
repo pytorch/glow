@@ -23,7 +23,7 @@ void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto result = G.createSave("ret", relu);
   EE.compile(CompilationMode::Infer);
   EE.infer({var}, {inputs});
-  out->copyFrom(&result->getOutput()->getPayload());
+  out->copyFrom(&result->getVariable()->getPayload());
 }
 
 void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind) {
@@ -39,7 +39,7 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto result = G.createSave("ret", pool);
   EE.compile(CompilationMode::Infer);
   EE.infer({var}, {inputs});
-  out->copyFrom(&result->getOutput()->getPayload());
+  out->copyFrom(&result->getVariable()->getPayload());
 }
 
 void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
@@ -57,7 +57,7 @@ void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto result = G.createSave("ret", rl1);
   EE.compile(CompilationMode::Infer);
   EE.infer({var}, {inputs});
-  out->copyFrom(&result->getOutput()->getPayload());
+  out->copyFrom(&result->getVariable()->getPayload());
 }
 
 void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
@@ -83,7 +83,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
 
   EE.compile(CompilationMode::Infer);
   EE.infer({var}, {inputs});
-  out->copyFrom(&result->getOutput()->getPayload());
+  out->copyFrom(&result->getVariable()->getPayload());
 }
 
 TEST(OpenCLCorrectnessTest, ReluTest) {

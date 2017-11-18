@@ -78,7 +78,7 @@ TEST(Interpreter, trainASimpleNetwork) {
 
   EE.compile(CompilationMode::Infer);
   EE.infer({A}, {&inputs});
-  auto RNWH = result->getOutput()->getPayload().getHandle<>();
+  auto RNWH = result->getVariable()->getPayload().getHandle<>();
   (void)RNWH;
 
   // Test the output:
@@ -130,7 +130,7 @@ TEST(Interpreter, simpleRegression) {
     I = {target, 0., 0., 0.};
     EE.infer({A}, {&inputs});
 
-    auto resH = result->getOutput()->getPayload().getHandle<>();
+    auto resH = result->getVariable()->getPayload().getHandle<>();
     (void)resH;
 
     EXPECT_NEAR(I.at({0, 0}) + 1, resH.at({0, 1}), 0.1);
@@ -190,7 +190,7 @@ TEST(Interpreter, learnXor) {
   }
 
   EE.infer({A}, {&trainingSet});
-  auto resH = result->getOutput()->getPayload().getHandle<>();
+  auto resH = result->getVariable()->getPayload().getHandle<>();
 
   // Test the output:
   for (size_t i = 0; i < numTests; i++) {
@@ -273,7 +273,7 @@ TEST(Network, circle) {
 
       EE.infer({A}, {&sample});
 
-      auto SMH = result->getOutput()->getPayload().getHandle<>();
+      auto SMH = result->getVariable()->getPayload().getHandle<>();
       auto A = SMH.at({0, 0});
       auto B = SMH.at({0, 1});
 
@@ -295,7 +295,7 @@ TEST(Network, circle) {
     Tensor sample(ElemKind::FloatTy, {1, 2});
     sample.getHandle<>() = {0., 0.};
     EE.infer({A}, {&sample});
-    auto SMH = result->getOutput()->getPayload().getHandle<>();
+    auto SMH = result->getVariable()->getPayload().getHandle<>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
     EXPECT_LE(A, 0.1);
@@ -307,7 +307,7 @@ TEST(Network, circle) {
     Tensor sample(ElemKind::FloatTy, {1, 2});
     sample.getHandle<>() = {1., 1.};
     EE.infer({A}, {&sample});
-    auto SMH = result->getOutput()->getPayload().getHandle<>();
+    auto SMH = result->getVariable()->getPayload().getHandle<>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
     EXPECT_GE(A, 0.9);
@@ -357,7 +357,7 @@ TEST(Network, learnSingleValueConcat) {
 
   // Testing the output vector.
   EE.infer({A}, {&inputs});
-  auto RNWH = result->getOutput()->getPayload().getHandle<>();
+  auto RNWH = result->getVariable()->getPayload().getHandle<>();
   (void)RNWH;
 
   // Test the output:
@@ -394,7 +394,7 @@ TEST(Network, concatVectors) {
 
   // Testing the output vector.
   EE.infer({V1, V2, V3}, {&I1, &I2, &I3});
-  auto RNWH = result->getOutput()->getPayload().getHandle<size_t>();
+  auto RNWH = result->getVariable()->getPayload().getHandle<size_t>();
   (void)RNWH;
 
   for (size_t i = 0; i < 50; i++) {
@@ -429,11 +429,11 @@ TEST(Network, sliceVectors) {
 
   // Testing the output slices.
   EE.infer({V}, {&I});
-  auto RNWH1 = result1->getOutput()->getPayload().getHandle<size_t>();
+  auto RNWH1 = result1->getVariable()->getPayload().getHandle<size_t>();
   (void)RNWH1;
-  auto RNWH2 = result2->getOutput()->getPayload().getHandle<size_t>();
+  auto RNWH2 = result2->getVariable()->getPayload().getHandle<size_t>();
   (void)RNWH2;
-  auto RNWH3 = result3->getOutput()->getPayload().getHandle<size_t>();
+  auto RNWH3 = result3->getVariable()->getPayload().getHandle<size_t>();
   (void)RNWH3;
 
   EXPECT_EQ(3, RNWH1.dims()[0]);

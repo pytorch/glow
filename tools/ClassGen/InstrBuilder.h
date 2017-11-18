@@ -44,8 +44,6 @@ class InstrBuilder {
   std::vector<std::pair<std::string, OperandKind>> operands_;
   /// A list of instruction members. Format: (type, name).
   std::vector<std::pair<MemberType, std::string>> members_;
-  /// A list of getters to override. Format (variable name, alternative getter).
-  std::unordered_map<std::string, std::string> overrideGetter_;
   /// Stores the body of a new public method that will be added to the class.
   std::vector<std::string> extraMethods_;
   /// A list of operands that are declared as 'inplace' operands.
@@ -94,14 +92,6 @@ public:
   /// For example: "Filter".
   InstrBuilder &addMember(const MemberType type, const std::string &name) {
     members_.push_back({type, name});
-    return *this;
-  }
-
-  /// Override the getter for variable \p var with the body \p body.
-  InstrBuilder &overrideGetter(const std::string &var,
-                               const std::string &body) {
-    assert(!overrideGetter_.count(var) && "Variable already overridden");
-    overrideGetter_[var] = body;
     return *this;
   }
 

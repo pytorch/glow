@@ -99,7 +99,8 @@ PoolNode *Graph::createPool(llvm::StringRef name, NodeValue input,
 }
 
 FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
-                                                NodeValue input, size_t outDepth) {
+                                                NodeValue input,
+                                                size_t outDepth) {
   TypeRef T = input->getType();
   auto idim = flattenCdr(input->dims());
 
@@ -264,9 +265,11 @@ BatchNormalizationNode *Graph::createBatchNormalization(llvm::StringRef name,
                                   channelIdx, epsilon, momentum);
 }
 
-BatchNormalizationNode *Graph::createBatchNormalization(
-    llvm::StringRef name, NodeValue input, NodeValue beta, NodeValue gamma, NodeValue mean,
-    NodeValue var, size_t channelIdx, float epsilon, float momentum) {
+BatchNormalizationNode *
+Graph::createBatchNormalization(llvm::StringRef name, NodeValue input,
+                                NodeValue beta, NodeValue gamma, NodeValue mean,
+                                NodeValue var, size_t channelIdx, float epsilon,
+                                float momentum) {
   return addNode(new BatchNormalizationNode(name, input, gamma, beta, mean, var,
                                             channelIdx, epsilon, momentum));
 }
@@ -284,15 +287,16 @@ Graph::createLocalResponseNormalization(llvm::StringRef name, NodeValue input,
 }
 
 ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, NodeValue LHS,
-                                        NodeValue RHS, ArithmeticNode::Mode op) {
+                                        NodeValue RHS,
+                                        ArithmeticNode::Mode op) {
   assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
   return addNode(new ArithmeticNode(name, op, LHS, RHS));
 }
 
 SaveNode *Graph::createSave(llvm::StringRef name, NodeValue input) {
-  auto *dest = createVariable(input->getType(), "saved",
-                              Variable::InitKind::Broadcast, 0);
+  auto *dest =
+      createVariable(input.getType(), name, Variable::InitKind::Broadcast, 0);
 
   return addNode(new SaveNode(name, input, dest));
 }
