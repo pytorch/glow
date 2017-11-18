@@ -87,12 +87,6 @@ void NodeBuilder::emitClassMembers(std::ostream &os) const {
   os << "\n";
 }
 
-void NodeBuilder::emitOperandGetter(std::ostream &os,
-                                    const std::string &name) const {
-  // Synthesize the general operand getter.
-  os << "\tNodeValue get" << name << "() const { return " << name << "_; }\n";
-}
-
 void NodeBuilder::emitMemberGetter(std::ostream &os, MemberType type,
                                    const std::string &name) const {
   // Synthesize the general getter.
