@@ -157,8 +157,8 @@ static void sinkCode(Graph &G) {
       if (CN->getInputs().size() != 2) {
         continue;
       }
-      auto *LInput = CN->getInputs()[0].getNode();
-      auto *RInput = CN->getInputs()[1].getNode();
+      auto LInput = CN->getInputs()[0];
+      auto RInput = CN->getInputs()[1];
       auto *L = dyn_cast<ReluNode>(LInput);
       auto *R = dyn_cast<ReluNode>(RInput);
 
@@ -175,8 +175,8 @@ static void sinkCode(Graph &G) {
       if (CN->getInputs().size() != 2) {
         continue;
       }
-      auto *LInput = CN->getInputs()[0].getNode();
-      auto *RInput = CN->getInputs()[1].getNode();
+      auto LInput = CN->getInputs()[0];
+      auto RInput = CN->getInputs()[1];
       auto *L = dyn_cast<TransposeNode>(LInput);
       auto *R = dyn_cast<TransposeNode>(RInput);
 
