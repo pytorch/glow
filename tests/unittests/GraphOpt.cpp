@@ -148,8 +148,8 @@ TEST(GraphOptz, SinkTransposeBelowRELU) {
 
   // Expecting Transpose->Output rather than RELU->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
-  EXPECT_TRUE(llvm::isa<TransposeNode>(
-      llvm::dyn_cast<SaveNode>(O)->getInput().getNode()));
+  EXPECT_TRUE(
+      llvm::isa<TransposeNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
   EXPECT_EQ(G.getNodes().size(), 3);
 }
