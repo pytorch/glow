@@ -99,9 +99,6 @@ private:
   /// Emits the class members (the fields of the class).
   void emitClassMembers(std::ostream &os) const;
 
-  /// Emit the getter for an operand.
-  void emitOperandGetter(std::ostream &os, const std::string &name) const;
-
   /// Emit the getter for a accessible class member.
   void emitMemberGetter(std::ostream &os, MemberType type,
                         const std::string &name) const;
