@@ -25,20 +25,17 @@ int main(int argc, char **argv) {
 
   BB.declareNode("Variable");
 
-  BB.newNode("Save")
-      .addOperand("Input")
-      .addOperand("Output")
-      .addResult("Input.getType()")
-      .addExtraMethod("Variable *getVariable() const { return "
-                      "llvm::cast<Variable>(Output_.getNode()); };");
+  BB.newNode("Save").addInput("Input").addInput("Output").addExtraMethod(
+      "Variable *getVariable() const { return "
+      "llvm::cast<Variable>(Output_.getNode()); };");
   //===--------------------------------------------------------------------===//
   //                   Convolution / Pool / FC
   //===--------------------------------------------------------------------===//
 
   BB.newNode("Convolution")
-      .addOperand("Input")
-      .addOperand("Filter")
-      .addOperand("Bias")
+      .addInput("Input")
+      .addInput("Filter")
+      .addInput("Bias")
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
       .addMember(MemberType::SizeT, "Pad")
@@ -49,7 +46,7 @@ int main(int argc, char **argv) {
   BB.newNode("Pool")
       .addEnumCase("Max")
       .addEnumCase("Avg")
-      .addOperand("Input")
+      .addInput("Input")
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
       .addMember(MemberType::SizeT, "Pad")
@@ -57,9 +54,9 @@ int main(int argc, char **argv) {
       .addResult("outTy");
 
   BB.newNode("FullyConnected")
-      .addOperand("Input")
-      .addOperand("Filter")
-      .addOperand("Bias")
+      .addInput("Input")
+      .addInput("Filter")
+      .addInput("Bias")
       .addMember(MemberType::SizeT, "Depth")
       .addExtraParam("TypeRef", "outTy")
       .addResult("outTy");
@@ -69,19 +66,19 @@ int main(int argc, char **argv) {
   //===--------------------------------------------------------------------===//
 
   BB.newNode("BatchNormalization")
-      .addOperand("Input")
-      .addOperand("Scale")
-      .addOperand("Bias")
-      .addOperand("Mean")
-      .addOperand("Var")
+      .addInput("Input")
+      .addInput("Scale")
+      .addInput("Bias")
+      .addInput("Mean")
+      .addInput("Var")
       .addMember(MemberType::SizeT, "ChannelIdx")
       .addMember(MemberType::Float, "Epsilon")
       .addMember(MemberType::Float, "Momentum")
       .addResult("Input.getType()");
 
   BB.newNode("LocalResponseNormalization")
-      .addOperand("Input")
-      .addOperand("Scale")
+      .addInput("Input")
+      .addInput("Scale")
       .addMember(MemberType::SizeT, "HalfWindowSize")
       .addMember(MemberType::Float, "Alpha")
       .addMember(MemberType::Float, "Beta")
@@ -93,13 +90,13 @@ int main(int argc, char **argv) {
   //===--------------------------------------------------------------------===//
 
   BB.newNode("SoftMax")
-      .addOperand("Input")
-      .addOperand("Selected")
+      .addInput("Input")
+      .addInput("Selected")
       .addResult("Input.getType()");
 
   BB.newNode("Regression")
-      .addOperand("Input")
-      .addOperand("Expected")
+      .addInput("Input")
+      .addInput("Expected")
       .addResult("Input.getType()");
 
   //===--------------------------------------------------------------------===//
@@ -109,30 +106,30 @@ int main(int argc, char **argv) {
   BB.newNode("Arithmetic")
       .addEnumCase("Add")
       .addEnumCase("Mul")
-      .addOperand("LHS")
-      .addOperand("RHS")
+      .addInput("LHS")
+      .addInput("RHS")
       .addResult("LHS.getType()");
 
   //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//
 
-  BB.newNode("Relu").addOperand("Input").addResult("Input.getType()");
-  BB.newNode("Sigmoid").addOperand("Input").addResult("Input.getType()");
-  BB.newNode("Tanh").addOperand("Input").addResult("Input.getType()");
+  BB.newNode("Relu").addInput("Input").addResult("Input.getType()");
+  BB.newNode("Sigmoid").addInput("Input").addResult("Input.getType()");
+  BB.newNode("Tanh").addInput("Input").addResult("Input.getType()");
 
   //===--------------------------------------------------------------------===//
   //                Shape transformations
   //===--------------------------------------------------------------------===//
 
   BB.newNode("Reshape")
-      .addOperand("Input")
+      .addInput("Input")
       .addMember(MemberType::VectorSizeT, "Dims")
       .addExtraParam("TypeRef", "outTy")
       .addResult("outTy");
 
   BB.newNode("Transpose")
-      .addOperand("Input")
+      .addInput("Input")
       .addMember(MemberType::VectorUnsigned, "Shuffle")
       .addExtraParam("TypeRef", "outTy")
       .addResult("outTy");
@@ -147,16 +144,16 @@ int main(int argc, char **argv) {
                     "joining the tensors.");
 
   BB.newNode("Slice")
-      .addOperand("Input")
+      .addInput("Input")
       .addMember(MemberType::VectorSizeT, "Start")
       .addExtraParam("TypeRef", "outTy")
       .addResult("outTy");
 
   /// This is a test node that's used by the node unittests.
   BB.newNode("Distribute")
-      .addOperand("Input")
-      .addResult("Input.getType()")
-      .addResult("Input.getType()");
+      .addInput("Input")
+      .addResult("Input.getType()", "Left")
+      .addResult("Input.getType()", "Right");
 
   return 0;
 }
