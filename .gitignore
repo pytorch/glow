@@ -7,7 +7,16 @@
 *.so
 *.dylib
 
+GPATH
+GRTAGS
+GTAGS
+
+compile_commands.json
+
 build/
 external/googletest/
 external/llvm/
+.vscode/
+.vim/
+
 
