@@ -336,6 +336,42 @@ static void OptimizeBatchNorm(Graph &G) {
   } // For all nodes in the graph.
 }
 
+/// Concat nodes merging.
+/// concat(dim1, concat(dim2, X, Y), Z) -> concat(dim1, X, Y, Z)
+/// but only if dim1 == dim2
+static void optimizeConcatNodes(Graph &G) {
+  auto &nodes = G.getNodes();
+
+  // For each node:
+  for (auto const &node : nodes) {
+    if (auto *CN = dyn_cast<ConcatNode>(node)) {
+      auto Inputs = CN->getInputs();
+      // Check if any of the inputs is a ConcatNode.
+      llvm::SmallVector<Node *, 16> NewInputs;
+      bool Changed = false;
+      for (auto input : Inputs) {
+        NewInputs.push_back(input);
+        auto *CNI = dyn_cast<ConcatNode>(input);
+        // Bail if it is not a ConcatNode or it is a concat node with a diffrent
+        // dimension.
+        if (!CNI || CNI->getDim() != CN->getDim())
+          continue;
+
+        Changed = true;
+        // Replace current input by its own inputs, i.e. merge them into the
+        // parent concat node.
+        NewInputs.pop_back();
+        NewInputs.append(CNI->getInputs().begin(), CNI->getInputs().end());
+      }
+      if (!Changed)
+        continue;
+      // Create a new Concat node.
+      auto NewCN = G.createConcat(CN->getName(), NewInputs, CN->getDim());
+      CN->replaceAllUsesOfWith(NewCN);
+    }
+  }
+}
+
 void glow::optimize(Graph &G, CompilationMode mode) {
   // Sink transpose operations in an attempt to cancel them out.
   sinkCode(G);
@@ -350,6 +386,8 @@ void glow::optimize(Graph &G, CompilationMode mode) {
     // Merge batch normalization operations.
     OptimizeBatchNorm(G);
   }
+
+  optimizeConcatNodes(G);
 
   // Perform Dead Code Elimination.
   DCE(G);

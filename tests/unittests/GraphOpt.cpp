@@ -319,3 +319,61 @@ TEST(GraphOptz, PoolBelowReluNotSwappedIfNotSingleUse) {
 
   EXPECT_EQ(G.getNodes().size(), 4);
 }
+
+TEST(GraphOptz, MergeConcatNodes) {
+  Graph G;
+  Module M(&G);
+  Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                              Variable::InitKind::Extern);
+  Node *A2 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                              Variable::InitKind::Extern);
+  Node *A3 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input3",
+                              Variable::InitKind::Extern);
+  Node *A4 = G.createVariable(ElemKind::FloatTy, {1, 1, 10, 15}, "input4",
+                              Variable::InitKind::Extern);
+
+  Node *CN1 = G.createConcat("concat1", {A1, A2}, 1);
+  Node *CN2 = G.createConcat("concat2", {A1, CN1}, 1);
+  Node *CN3 = G.createConcat("concat3", {A4}, 2);
+  Node *CN4 = G.createConcat("concat4", {A3, CN2, CN3}, 1);
+  Node *O = G.createSave("ret", CN4);
+
+  EXPECT_EQ(G.getNodes().size(), 5);
+
+  ::glow::optimize(G, CompilationMode::Train);
+
+  // It is expected that the optimization transforms
+  // concat4(1, A3, concat2(1, A1, concat1(1, A1, A2)), concat3(2, A4))
+  // into
+  // concat4(1, A3, A1, A1, A2, concat3(2, A4))
+
+  // Expecting Transpose->Output rather than Concat->Output.
+  EXPECT_TRUE(llvm::isa<SaveNode>(O));
+
+  auto *CN =
+      llvm::dyn_cast<ConcatNode>(llvm::dyn_cast<SaveNode>(O)->getInput());
+  EXPECT_TRUE(CN);
+
+  // The merged ConcatNode should have 4 inputs.
+  EXPECT_EQ(CN->getInputs().size(), 5);
+
+  // CN1 should be merged into a new CN2 and later into a new CN4 and removed by
+  // the optimizations.
+  EXPECT_TRUE(std::find(G.getNodes().begin(), G.getNodes().end(), CN1) ==
+              G.getNodes().end());
+
+  // CN2 should be merged into a new CN4 and removed by the optimizations.
+  EXPECT_TRUE(std::find(G.getNodes().begin(), G.getNodes().end(), CN2) ==
+              G.getNodes().end());
+
+  // CN3 should not be merged into CN4 and should not be removed,
+  // because CN4 and CN3 have a different dimention parameter.
+  EXPECT_TRUE(std::find(G.getNodes().begin(), G.getNodes().end(), CN3) !=
+              G.getNodes().end());
+
+  // The CN4 concat node should be replaced by a merged concat node.
+  EXPECT_TRUE(std::find(G.getNodes().begin(), G.getNodes().end(), CN4) ==
+              G.getNodes().end());
+
+  EXPECT_EQ(G.getNodes().size(), 3);
+}
