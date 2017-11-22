@@ -18,6 +18,9 @@ static void DCE(Graph &G) {
   auto &nodes = G.getNodes();
   auto &vars = G.getVars();
 
+  std::vector<VariablesList::iterator> erasedVars{};
+  std::vector<NodesList::iterator> erasedNodes{};
+
   // Remove unused nodes. Do not remove unused vars because they are the
   // interface to the user program.
   bool changedLocally = true;
@@ -30,9 +33,15 @@ static void DCE(Graph &G) {
         continue;
       }
 
-      delete *it;
-      it = nodes.erase(it);
+      erasedNodes.push_back(it);
+      ++it;
       changedLocally = true;
+    }
+
+    while(!erasedNodes.empty()) {
+      auto it = erasedNodes.back();
+      G.eraseNode(it);
+      erasedNodes.pop_back();
     }
 
   } while (changedLocally);
@@ -43,9 +52,14 @@ static void DCE(Graph &G) {
       ++it;
       continue;
     }
+    erasedVars.push_back(it);
+    ++it;
+  }
 
-    delete *it;
-    it = vars.erase(it);
+  while(!erasedVars.empty()) {
+    auto it = erasedVars.back();
+    G.eraseVariable(it);
+    erasedVars.pop_back();
   }
 }
 

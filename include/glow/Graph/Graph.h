@@ -127,6 +127,14 @@ public:
 
   /// @}
 
+  /// Erase a variable from the graph.
+  void eraseVariable(VariableNode *N);
+  void eraseVariable(VariablesList::iterator I);
+
+  /// Erase a node from the graph.
+  void eraseNode(Node *N);
+  void eraseNode(NodesList::iterator I);
+
   /// Dumps the textual representation of the network.
   void dump();
 

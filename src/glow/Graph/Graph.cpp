@@ -397,3 +397,27 @@ void Graph::dumpDAG(const char *dotFilename) {
   DP.dump();
   myfile.close();
 }
+
+void Graph::eraseVariable(VariablesList::iterator I) {
+  if (I == vars_.end())
+    return;
+  vars_.erase(I);
+  delete *I;
+}
+
+void Graph::eraseNode(NodesList::iterator I) {
+  if (I == nodes_.end())
+    return;
+  nodes_.erase(I);
+  delete *I;
+}
+
+void Graph::eraseVariable(VariableNode *N) {
+  auto I = std::find(vars_.begin(), vars_.end(), N);
+  eraseVariable(I);
+}
+
+void Graph::eraseNode(Node *N) {
+  auto I = std::find(nodes_.begin(), nodes_.end(), N);
+  eraseNode(I);
+}
