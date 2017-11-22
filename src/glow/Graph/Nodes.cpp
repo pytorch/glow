@@ -152,7 +152,7 @@ void Variable::initPayload() {
 //                        Visitor methods
 //===----------------------------------------------------------------------===//
 
-void Variable::visit(Node *parent, NodeVisitor *visitor) {
+void Variable::visit(Node *parent, NodeWalker *visitor) {
   if (!visitor->shouldVisit(parent, this)) {
     return;
   }

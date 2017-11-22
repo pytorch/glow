@@ -58,7 +58,7 @@ public:
 
   std::string getDebugDesc() const override;
 
-  void visit(Node *parent, NodeVisitor *visitor) override;
+  void visit(Node *parent, NodeWalker *visitor) override;
 };
 
 /// Calculate the size of the output tensor based on the convolution

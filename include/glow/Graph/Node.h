@@ -9,8 +9,8 @@
 
 namespace glow {
 
-class NodeVisitor;
 class Node;
+class NodeWalker;
 
 /// Unlike LLVM values, graph nodes may return multiple values as the result of
 /// a computation. Gradient-calculating nodes, such as conv-grad return
@@ -103,7 +103,7 @@ public:
   /// This method implements the visitor pattern that scans the compute DAG top
   /// to bottom. The visitor \p visitor is sent by the parent node \p parent,
   /// or nullptr if this is the first node to be visited.
-  virtual void visit(Node *parent, NodeVisitor *visitor) {}
+  virtual void visit(Node *parent, NodeWalker *visitor) {}
 
   /// When the node is deleted we need to unregister all users. This allows us
   /// to deconstruct the graph in an arbitrary order.
@@ -123,7 +123,8 @@ protected:
   void addResult(TypeRef T);
 };
 
-class NodeVisitor {
+/// A walker that recursively visits a node and its children.
+class NodeWalker {
 public:
   /// This callback is called before visiting the children of \p N.
   virtual void pre(Node *parent, Node *N) {}
@@ -136,7 +137,7 @@ public:
   virtual bool shouldVisit(Node *parent, Node *N) { return true; }
 
   /// Dtor.
-  virtual ~NodeVisitor() = default;
+  virtual ~NodeWalker() = default;
 };
 
 } // namespace glow

@@ -321,7 +321,7 @@ void Graph::dump() {
 }
 
 /// A helper class for visiting and generating the dotty file from the graph.
-struct DottyPrinterPass : NodeVisitor {
+struct DottyPrinterPass : NodeWalker {
   using edgeTy = std::pair<Node *, Node *>;
   // A set of ordered visited edges.
   std::vector<edgeTy> nodeEdges{};

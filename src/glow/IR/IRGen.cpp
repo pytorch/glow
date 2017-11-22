@@ -21,7 +21,7 @@ using llvm::cast;
 using llvm::isa;
 
 /// A helper class for visiting and generating the dotty file from the graph.
-struct IRGenVisitor : NodeVisitor {
+struct IRGenVisitor : NodeWalker {
   using NodeToInstrTy = std::unordered_map<const Node *, Value *>;
 
   /// Holds the mapping between graph nodes to IR variables.
