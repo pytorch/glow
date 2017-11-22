@@ -175,6 +175,51 @@ void NodeBuilder::emitEquator(std::ostream &os) const {
   os << ";\n }\n";
 }
 
+static bool isVectorType(MemberType ty) {
+  return ty == MemberType::VectorFloat || ty == MemberType::VectorNodeValue ||
+         ty == MemberType::VectorSizeT || ty == MemberType::VectorUnsigned;
+}
+
+void NodeBuilder::emitHasher(std::ostream &os) const {
+  os << "llvm::hash_code " << name_ << "Node::getHash()"
+     << " const {\n\treturn llvm::hash_combine(";
+
+  if (enum_.empty() && nodeInputs_.empty() && members_.empty()) {
+    os << "0);\n }\n";
+    return;
+  }
+
+  auto delim = "";
+  if (!enum_.empty()) {
+    os << delim << "\n\t getMode()";
+    delim = ",";
+  }
+
+  for (const auto &mem : members_) {
+    auto ty = mem.first;
+    if (ty == MemberType::Float) {
+      os << delim << "\n\t "
+         << "toBinary(" << mem.second << "_"
+         << ")";
+    } else if (isVectorType(ty)) {
+      os << delim << "\n\t "
+         << "llvm::hash_combine_range(" << mem.second << "_"
+         << ".begin(), " << mem.second << "_"
+         << ".end()"
+         << ")";
+    } else {
+      os << delim << "\n\t " << mem.second << "_";
+    }
+    delim = ",";
+  }
+
+  for (const auto &op : nodeInputs_) {
+    os << delim << "\n\t " << op << "_";
+    delim = ",";
+  }
+
+  os << ");\n }\n";
+}
 void NodeBuilder::emitVisitor(std::ostream &os) const {
   os << "void " << name_
      << "Node::visit(Node *parent, NodeWalker *visitor) {\n\tif "
@@ -221,6 +266,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
 
   os << "\tstd::string getDebugDesc() const override;\n";
   os << "\tbool isEqual(const " << name_ << "Node &other) const;\n";
+  os << "\tllvm::hash_code getHash() const;\n";
   os << "\tvoid visit(Node *parent, NodeWalker *visitor) override;\n";
   if (!enum_.empty()) {
     os << "\tconst char *getModeStr() const { return getModeStr(mode_); "
@@ -238,6 +284,7 @@ void NodeBuilder::emitCppMethods(std::ostream &os) const {
   emitPrettyPrinter(os);
   emitVisitor(os);
   emitEquator(os);
+  emitHasher(os);
   if (!enum_.empty()) {
     emitEnumModePrinters(os);
   }
