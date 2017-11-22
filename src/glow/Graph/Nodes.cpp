@@ -67,6 +67,30 @@ void Node::addResult(TypeRef T) {
   types_[numRes_++] = T;
 }
 
+bool Node::isEqual(const Node &other) const {
+  if (this == &other)
+    return true;
+
+  if (getKind() != other.getKind())
+    return false;
+
+  switch (getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<const CLASS *>(this)->isEqual(                          \
+        *static_cast<const CLASS *>(&other));
+#include "AutoGenNodes.def"
+
+#define DEF_INSTR(CLASS, NAME) case glow::Kinded::Kind::CLASS##Kind:
+#define DEF_VALUE(CLASS, NAME) case glow::Kinded::Kind::CLASS##Kind:
+#include "AutoGenInstr.def"
+
+    llvm_unreachable(
+        "Not reachable, values and instructions are not handled here");
+  }
+  return false;
+}
+
 TypeRef NodeValue::getType() const { return node_->getType(resNo_); }
 
 ElemKind NodeValue::getElementType() const {
@@ -165,6 +189,12 @@ void Variable::initPayload() {
     break;
   }
   }
+}
+
+/// Equality predicate for variables.
+bool Variable::isEqual(const Variable &other) const {
+  /// A variable should be equal only to itself!
+  return this == &other;
 }
 
 //===----------------------------------------------------------------------===//

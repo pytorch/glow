@@ -121,6 +121,9 @@ public:
   /// \returns a textual description of the node.
   virtual std::string getDebugDesc() const;
 
+  /// \returns true if the node is equal to the other node.  
+  bool isEqual(const Node &other) const;
+
   /// This method implements the visitor pattern that scans the compute DAG top
   /// to bottom. The visitor \p visitor is sent by the parent node \p parent,
   /// or nullptr if this is the first node to be visited.

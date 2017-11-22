@@ -59,7 +59,12 @@ public:
   std::string getDebugDesc() const override;
 
   void visit(Node *parent, NodeWalker *visitor) override;
+
+  bool isEqual(const Variable &other) const;
+
 };
+
+using VariableNode = Variable;
 
 /// Calculate the size of the output tensor based on the convolution
 /// parameters.
