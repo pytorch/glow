@@ -91,6 +91,28 @@ bool Node::isEqual(const Node &other) const {
   return false;
 }
 
+namespace {
+class HashNodeVisitor : public NodeVisitor<HashNodeVisitor, llvm::hash_code> {
+  using hash_code = llvm::hash_code;
+  using super = NodeVisitor;
+
+public:
+#define DEF_NODE(CLASS, NAME)                                                  \
+  hash_code visit##CLASS(const CLASS *N) const { return N->getHash(); }
+#include "AutoGenNodes.def"
+
+  hash_code visit(const Node *N) const {
+    return const_cast<HashNodeVisitor *>(this)->super::visit(
+        const_cast<Node *>(N));
+  }
+};
+
+} // namespace
+
+llvm::hash_code Node::getHash() const {
+  return HashNodeVisitor().visit(this);
+}
+
 TypeRef NodeValue::getType() const { return node_->getType(resNo_); }
 
 ElemKind NodeValue::getElementType() const {
@@ -197,6 +219,10 @@ bool Variable::isEqual(const Variable &other) const {
   return this == &other;
 }
 
+llvm::hash_code Variable::getHash() const {
+  return llvm::hash_combine(getName(), getInitKind(), getType(),
+                            toBinary(val_));
+}
 //===----------------------------------------------------------------------===//
 //                        Visitor methods
 //===----------------------------------------------------------------------===//
@@ -225,3 +251,41 @@ std::string Variable::getDebugDesc() const {
   db.addParam("users", getNumUsers());
   return db;
 }
+
+//===----------------------------------------------------------------------===//
+//                     Node hashing support
+//===----------------------------------------------------------------------===//
+
+/// These hash functions are required for using llvm::hash_combine.
+/// hash_value functions should be defined in the same namespace as
+/// the types they apply to.
+namespace glow {
+  /// Convert a float into an unsigned integer binary representation. 
+  /// Do not use union-based tricks, because they introduce undefined behavior.
+  /// Instead, convert the float to an unsigned integer at the cost of
+  /// having more hash collisions.
+  size_t toBinary(float f) {
+    /// First convert to an integer and then to an unsigned.
+    /// Direct conversion from a float to an unsigned integer may result
+    /// in an undefined behavior according to the C++ standard.
+    return static_cast<size_t>(static_cast<int>(f));
+  }
+
+  /// FIXME: Provide a more meaningful implementation for Tensors.
+  llvm::hash_code hash_value(const glow::Tensor &T) {
+    return 0;
+  }
+  
+  // Types are uniqued, so just a pointer can be used. 
+  llvm::hash_code hash_value(const glow::Type *T) { 
+    return llvm::hash_value((void *)(T)); 
+  }
+  
+  llvm::hash_code hash_value(glow::Node *N) {
+    return N->getHash();
+  }
+  
+  llvm::hash_code hash_value(const glow::NodeValue &NV) {
+    return llvm::hash_combine(NV.getNode(), NV.getResNo());
+  }
+} // namespace glow
