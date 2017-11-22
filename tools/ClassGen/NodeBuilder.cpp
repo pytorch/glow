@@ -158,7 +158,7 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
 
 void NodeBuilder::emitEquator(std::ostream &os) const {
   os << "bool " << name_ << "Node::isEqual(const " << name_
-     << "Node &other) {\n\treturn true";
+     << "Node &other) const {\n\treturn true";
 
   if (!enum_.empty()) {
     os << " &&\n\t getMode() == other.getMode()";
@@ -220,7 +220,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
   emitSettersGetters(os);
 
   os << "\tstd::string getDebugDesc() const override;\n";
-  os << "\tbool isEqual(const " << name_ << "Node &other);\n";
+  os << "\tbool isEqual(const " << name_ << "Node &other) const;\n";
   os << "\tvoid visit(Node *parent, NodeWalker *visitor) override;\n";
   if (!enum_.empty()) {
     os << "\tconst char *getModeStr() const { return getModeStr(mode_); "
