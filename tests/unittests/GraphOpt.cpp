@@ -376,3 +376,40 @@ TEST(GraphOptz, MergeConcatNodes) {
 
   EXPECT_EQ(G.getNodes().size(), 3);
 }
+
+TEST(GraphOptz, CSE) {
+  Graph G;
+  Module M(&G);
+  Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                              Variable::InitKind::Extern);
+  Node *A2 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                              Variable::InitKind::Extern);
+
+  Node *CN1 = G.createConcat("concat1", {A1, A2}, 1);
+  Node *CN2 = G.createConcat("concat2", {A1, A2}, 1);
+  Node *CN3 = G.createConcat("concat3", {CN1, CN2}, 2);
+  Node *O = G.createSave("ret", CN3);
+
+  EXPECT_EQ(G.getNodes().size(), 4);
+
+  ::glow::optimize(G, CompilationMode::Train);
+
+  EXPECT_TRUE(llvm::isa<SaveNode>(O));
+
+  auto *CN =
+      llvm::dyn_cast<ConcatNode>(llvm::dyn_cast<SaveNode>(O)->getInput());
+  EXPECT_TRUE(CN);
+
+  // The merged ConcatNode should have 2 inputs.
+  EXPECT_EQ(CN->getInputs().size(), 2);
+
+  // CN1 should not be removed.
+  EXPECT_TRUE(std::find(G.getNodes().begin(), G.getNodes().end(), CN1) !=
+              G.getNodes().end());
+
+  // CSE should replace CN2 by CN1 and remove CN2.
+  EXPECT_TRUE(std::find(G.getNodes().begin(), G.getNodes().end(), CN2) ==
+              G.getNodes().end());
+
+  EXPECT_EQ(G.getNodes().size(), 3);
+}
