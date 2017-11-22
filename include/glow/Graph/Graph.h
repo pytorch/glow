@@ -13,15 +13,20 @@
 
 namespace glow {
 
+using TypesList = std::list<Type>;
+using NodesList = std::list<Node *>;
+using VariablesList = std::list<Variable *>;
+using UnsignedArrayRef = llvm::ArrayRef<size_t>;
+
 /// Represents the compute graph.
 class Graph final {
   /// A uniqued list of types in the module. Types in this list can be equated
   /// by comparing their addresses.
-  std::list<Type> types_{};
+  TypesList types_{};
   /// A list of nodes that the graph owns.
-  std::list<Node *> nodes_;
+  NodesList nodes_;
   /// A list of variables that the graph owns.
-  std::list<Variable *> vars_;
+  VariablesList vars_;
 
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
@@ -44,7 +49,7 @@ public:
   TypeRef uniqueType(const Type &T);
 
   /// Return a pointer to a uniqued type \p t in the current module.
-  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims);
+  TypeRef uniqueType(ElemKind elemTy, UnsignedArrayRef dims);
 
   /// Return the void type.
   TypeRef getVoidTy();
@@ -58,7 +63,7 @@ public:
                  float val = 0.0);
 
   Variable *
-  createVariable(ElemKind T, llvm::ArrayRef<size_t> dims, llvm::StringRef name,
+  createVariable(ElemKind T, UnsignedArrayRef dims, llvm::StringRef name,
                  Variable::InitKind initKind = Variable::InitKind::Broadcast,
                  float val = 0.0);
 
@@ -86,7 +91,7 @@ public:
                                    NodeValue expected);
 
   ReshapeNode *createReshape(llvm::StringRef name, NodeValue input,
-                             llvm::ArrayRef<size_t> shape);
+                             UnsignedArrayRef shape);
 
   TransposeNode *createTranspose(llvm::StringRef name, NodeValue input,
                                  llvm::ArrayRef<unsigned> shuffle);
@@ -95,8 +100,8 @@ public:
                            unsigned dimension);
 
   SliceNode *createSlice(llvm::StringRef name, NodeValue input,
-                         llvm::ArrayRef<size_t> begin,
-                         llvm::ArrayRef<size_t> end);
+                         UnsignedArrayRef begin,
+                         UnsignedArrayRef end);
 
   BatchNormalizationNode *createBatchNormalization(llvm::StringRef name,
                                                    NodeValue input,
@@ -129,10 +134,10 @@ public:
   void dumpDAG(const char *dotFilename = nullptr);
 
   /// \returns the list of nodes that the graph owns.
-  std::list<Node *> &getNodes() { return nodes_; }
+  NodesList &getNodes() { return nodes_; }
 
   /// \returns the list of variables that the graph owns.
-  std::list<Variable *> &getVars() { return vars_; }
+  VariablesList &getVars() { return vars_; }
 };
 
 } // namespace glow
