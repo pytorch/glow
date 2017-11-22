@@ -83,7 +83,7 @@ static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle1,
   return true;
 }
 
-/// Dead code elimination.
+/// Code Sinking.
 static void sinkCode(Graph &G) {
   auto &nodes = G.getNodes();
 
@@ -218,7 +218,7 @@ static void sinkCode(Graph &G) {
   } // For all nodes in the graph.
 }
 
-/// Dead code elimination.
+/// Pool optimization.
 static void OptimizePool(Graph &G) {
   auto &nodes = G.getNodes();
 
@@ -318,7 +318,7 @@ static void OptimizeBatchNorm(Graph &G) {
       auto meanH = cast<Variable>(BN->getMean())->getHandle<>();
       auto varH = cast<Variable>(BN->getVar())->getHandle<>();
 
-      // Update the filater/bias variables of the Conv node.
+      // Update the filter/bias variables of the Conv node.
       auto epsilon = BN->getEpsilon();
       for (size_t i = 0, e = filterH.size(); i < e; i++) {
         // Dimension zero is the 'channel' dimension. If we ever change the
