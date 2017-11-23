@@ -347,14 +347,13 @@ TEST(GraphOptz, MergeConcatNodes) {
   // into
   // concat4(1, A3, A1, A1, A2, concat3(2, A4))
 
-  // Expecting Transpose->Output rather than Concat->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
 
   auto *CN =
       llvm::dyn_cast<ConcatNode>(llvm::dyn_cast<SaveNode>(O)->getInput());
   EXPECT_TRUE(CN);
 
-  // The merged ConcatNode should have 4 inputs.
+  // The merged ConcatNode should have 5 inputs.
   EXPECT_EQ(CN->getInputs().size(), 5);
 
   // CN1 should be merged into a new CN2 and later into a new CN4 and removed by
@@ -367,7 +366,7 @@ TEST(GraphOptz, MergeConcatNodes) {
               G.getNodes().end());
 
   // CN3 should not be merged into CN4 and should not be removed,
-  // because CN4 and CN3 have a different dimention parameter.
+  // because CN4 and CN3 have a different dimension parameter.
   EXPECT_TRUE(std::find(G.getNodes().begin(), G.getNodes().end(), CN3) !=
               G.getNodes().end());
 

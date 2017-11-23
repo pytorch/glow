@@ -177,7 +177,7 @@ void NodeBuilder::emitEquator(std::ostream &os) const {
 
 void NodeBuilder::emitVisitor(std::ostream &os) const {
   os << "void " << name_
-     << "Node::visit(Node *parent, NodeVisitor *visitor) {\n\tif "
+     << "Node::visit(Node *parent, NodeWalker *visitor) {\n\tif "
         "(!visitor->shouldVisit(parent, this)) { return; }\n";
 
   os << "\tvisitor->pre(parent, this);\n";
@@ -221,7 +221,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
 
   os << "\tstd::string getDebugDesc() const override;\n";
   os << "\tbool isEqual(const " << name_ << "Node &other);\n";
-  os << "\tvoid visit(Node *parent, NodeVisitor *visitor) override;\n";
+  os << "\tvoid visit(Node *parent, NodeWalker *visitor) override;\n";
   if (!enum_.empty()) {
     os << "\tconst char *getModeStr() const { return getModeStr(mode_); "
           "}\n\tstatic const char *getModeStr(Mode m);\n";
