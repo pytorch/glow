@@ -243,6 +243,59 @@ void NodeBuilder::emitCppMethods(std::ostream &os) const {
   }
 }
 
+void NodeBuilder::addGradient() {
+  NodeBuilder GN(hStream, cStream, dStream, name_ + "Grad");
+
+  // The new 'Grad' class will have all of the fields of the current class.
+  GN.members_ = members_;
+
+  // Add the inputs that we'll use in the grad instruction.
+  for (const std::string &in : nodeInputs_) {
+    GN.addInput(in);
+  }
+
+  for (const std::string &in : nodeInputs_) {
+    GN.addResult(in + ".getType()", in + "Grad");
+  }
+
+  for (const auto &out : nodeOutputs_) {
+    GN.addInput(out.second + "Res");
+    GN.addInput(out.second + "Grad");
+  }
+
+  // Construct a factory method that builds the new grad node and add
+  // it to the current non-grad instruction.
+  std::stringstream ss;
+  ss << name_ + "GradNode* getGrad(UnownedNodeValueMap &map) {\n";
+  ss << "\tauto * x = new " + name_ + "GradNode(getName()";
+
+  // Add the inputs that we'll use in the grad instruction.
+  for (const std::string &in : nodeInputs_) {
+    ss << ", get" << in << "()";
+  }
+
+  for (const auto &out : nodeOutputs_) {
+    ss << ", get" << out.second << "()";
+    ss << ", map.get(get" << out.second << "())";
+  }
+
+  // Extra class members:
+  for (const auto &op : members_) {
+    ss << ", get" << op.second << "()";
+  }
+
+  ss << ");\n";
+
+  // Register the result of the new node as the gradients of the original node
+  // inputs.
+  for (const std::string &in : nodeInputs_) {
+    ss << "\tmap.insert(get" << in << "(), x->get" << in << "Grad());\n";
+  }
+  ss << "\treturn x;\n";
+  ss << " }";
+  addExtraMethod(ss.str());
+}
+
 NodeBuilder::~NodeBuilder() {
   emitNodeClass(hStream);
   emitCppMethods(cStream);
