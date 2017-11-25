@@ -38,7 +38,7 @@ static void DCE(Graph &G) {
       changedLocally = true;
     }
 
-    while(!erasedNodes.empty()) {
+    while (!erasedNodes.empty()) {
       auto it = erasedNodes.back();
       G.eraseNode(it);
       erasedNodes.pop_back();
@@ -56,7 +56,7 @@ static void DCE(Graph &G) {
     ++it;
   }
 
-  while(!erasedVars.empty()) {
+  while (!erasedVars.empty()) {
     auto it = erasedVars.back();
     G.eraseVariable(it);
     erasedVars.pop_back();

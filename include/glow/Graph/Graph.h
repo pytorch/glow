@@ -100,8 +100,7 @@ public:
                            unsigned dimension);
 
   SliceNode *createSlice(llvm::StringRef name, NodeValue input,
-                         UnsignedArrayRef begin,
-                         UnsignedArrayRef end);
+                         UnsignedArrayRef begin, UnsignedArrayRef end);
 
   BatchNormalizationNode *createBatchNormalization(llvm::StringRef name,
                                                    NodeValue input,
@@ -128,7 +127,7 @@ public:
   /// @}
 
   /// Erase a variable from the graph.
-  void eraseVariable(VariableNode *N);
+  void eraseVariable(Variable *N);
   void eraseVariable(VariablesList::iterator I);
 
   /// Erase a node from the graph.

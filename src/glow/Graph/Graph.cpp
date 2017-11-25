@@ -412,7 +412,7 @@ void Graph::eraseNode(NodesList::iterator I) {
   delete *I;
 }
 
-void Graph::eraseVariable(VariableNode *N) {
+void Graph::eraseVariable(Variable *N) {
   auto I = std::find(vars_.begin(), vars_.end(), N);
   eraseVariable(I);
 }
