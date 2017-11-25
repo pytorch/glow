@@ -250,6 +250,13 @@ public:
       registerIR(N, W);
       break;
     }
+    case glow::Kinded::Kind::ZeroNodeKind: {
+      auto *Z = cast<ZeroNode>(N);
+      auto *AC = new AllocActivationInst(Z->getName(), Z->getType());
+      builder_.createZeroInst(N->getName(), AC);
+      registerIR(N, AC);
+      break;
+    }
     }
   }
 };
