@@ -2,6 +2,9 @@
 #define GLOW_TOOLS_NODEGEN_NODEBUILDER_H
 
 #include "MemberType.h"
+#include "glow/Support/Support.h"
+
+#include "llvm/ADT/ArrayRef.h"
 
 #include <cassert>
 #include <fstream>
@@ -40,7 +43,9 @@ class NodeBuilder {
 public:
   NodeBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
               const std::string &name)
-      : name_(name), hStream(H), cStream(C), dStream(D) {}
+      : name_(name), hStream(H), cStream(C), dStream(D) {
+    dStream << "DEF_NODE(" << name << "Node, " << name << ")\n";
+  }
 
   /// Add an operand to the node. The name should start with a capital letter.
   /// For example: "Input".
@@ -86,6 +91,13 @@ public:
     docstring_ = docstring;
     return *this;
   }
+
+  /// Constructs a new gradient node that is based on the current node that we
+  /// are building. The gradient node will produce one gradient output for each
+  /// input. The rule is that each output becomes an input (named "Output", to
+  /// preserve the original name) and each input becomes a gradient output with
+  /// the same name.
+  void addGradient();
 
   ~NodeBuilder();
 
@@ -148,7 +160,6 @@ public:
 
   /// Declare a new node and generate code for it.
   NodeBuilder newNode(const std::string &name) {
-    dStream << "DEF_NODE(" << name << "Node, " << name << ")\n";
     return NodeBuilder(hStream, cStream, dStream, name);
   }
 
