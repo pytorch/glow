@@ -41,7 +41,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Pad")
       .addMember(MemberType::SizeT, "Depth")
       .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy");
+      .addResult("outTy")
+      .addGradient();
 
   BB.newNode("Pool")
       .addEnumCase("Max")
@@ -51,7 +52,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Stride")
       .addMember(MemberType::SizeT, "Pad")
       .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy");
+      .addResult("outTy")
+      .addGradient();
 
   BB.newNode("FullyConnected")
       .addInput("Input")
@@ -59,7 +61,8 @@ int main(int argc, char **argv) {
       .addInput("Bias")
       .addMember(MemberType::SizeT, "Depth")
       .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy");
+      .addResult("outTy", "Output")
+      .addGradient();
 
   //===--------------------------------------------------------------------===//
   //                     Normalization
@@ -74,7 +77,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "ChannelIdx")
       .addMember(MemberType::Float, "Epsilon")
       .addMember(MemberType::Float, "Momentum")
-      .addResult("Input.getType()");
+      .addResult("Input.getType()")
+      .addGradient();
 
   BB.newNode("LocalResponseNormalization")
       .addInput("Input")
@@ -83,7 +87,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "Alpha")
       .addMember(MemberType::Float, "Beta")
       .addMember(MemberType::Float, "K")
-      .addResult("Input.getType()");
+      .addResult("Input.getType()")
+      .addGradient();
 
   //===--------------------------------------------------------------------===//
   //                      Loss operations
@@ -92,12 +97,14 @@ int main(int argc, char **argv) {
   BB.newNode("SoftMax")
       .addInput("Input")
       .addInput("Selected")
-      .addResult("Input.getType()");
+      .addResult("Input.getType()")
+      .addGradient();
 
   BB.newNode("Regression")
       .addInput("Input")
       .addInput("Expected")
-      .addResult("Input.getType()");
+      .addResult("Input.getType()")
+      .addGradient();
 
   //===--------------------------------------------------------------------===//
   //                      Arithmetic
@@ -108,15 +115,27 @@ int main(int argc, char **argv) {
       .addEnumCase("Mul")
       .addInput("LHS")
       .addInput("RHS")
-      .addResult("LHS.getType()");
+      .addResult("LHS.getType()")
+      .addGradient();
 
   //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//
 
-  BB.newNode("Relu").addInput("Input").addResult("Input.getType()");
-  BB.newNode("Sigmoid").addInput("Input").addResult("Input.getType()");
-  BB.newNode("Tanh").addInput("Input").addResult("Input.getType()");
+  BB.newNode("Relu")
+      .addInput("Input")
+      .addResult("Input.getType()")
+      .addGradient();
+
+  BB.newNode("Sigmoid")
+      .addInput("Input")
+      .addResult("Input.getType()")
+      .addGradient();
+
+  BB.newNode("Tanh")
+      .addInput("Input")
+      .addResult("Input.getType()")
+      .addGradient();
 
   //===--------------------------------------------------------------------===//
   //                Shape transformations
@@ -148,6 +167,27 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorSizeT, "Start")
       .addExtraParam("TypeRef", "outTy")
       .addResult("outTy");
+
+  //===--------------------------------------------------------------------===//
+  //                Nodes used for network training
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("Zero")
+      .addExtraParam("TypeRef", "outTy")
+      .addResult("outTy")
+      .setDocstring("Generate the zero tensor of a specific type");
+
+  BB.newNode("SGD")
+      .addInput("Gradient")
+      .addInput("Weight")
+      .addMember(MemberType::Float, "L1Decay")
+      .addMember(MemberType::Float, "L2Decay")
+      .addMember(MemberType::Float, "LearningRate")
+      .addMember(MemberType::Float, "Momentum");
+
+  //===--------------------------------------------------------------------===//
+  //                Nodes used by unit tests.
+  //===--------------------------------------------------------------------===//
 
   /// This is a test node that's used by the node unittests.
   BB.newNode("Distribute")
