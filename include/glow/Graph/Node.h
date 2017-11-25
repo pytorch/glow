@@ -7,6 +7,8 @@
 #include "glow/Base/Type.h"
 #include "glow/IR/UseDef.h"
 
+#include <list>
+
 namespace glow {
 
 class Node;
@@ -63,6 +65,25 @@ public:
   bool operator==(const NodeValue &O) const {
     return node_ == O.node_ && resNo_ == O.resNo_;
   }
+};
+
+/// A simple linear map that stores NodeValue without maintaining the reverse
+/// reference that allows the RAUW operation.
+class UnownedNodeValueMap {
+public:
+  /// A reference to some Node's result.
+  using ValRef = std::pair<Node *, unsigned>;
+  using Entry = std::pair<ValRef, ValRef>;
+
+private:
+  std::list<Entry> entries;
+
+public:
+  /// \register the node \p from as mapping to \p to.
+  void insert(NodeValue from, NodeValue to);
+
+  /// \returns the node that \p from is mapped to.
+  NodeValue get(NodeValue from);
 };
 
 /// A 'Use' is a use-list representation of a Node operand.

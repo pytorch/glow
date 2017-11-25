@@ -73,6 +73,25 @@ ElemKind NodeValue::getElementType() const {
   return getType()->getElementType();
 }
 
+void UnownedNodeValueMap::insert(NodeValue from, NodeValue to) {
+  entries.push_back(
+      {{from.getNode(), from.getResNo()}, {to.getNode(), to.getResNo()}});
+}
+
+NodeValue UnownedNodeValueMap::get(NodeValue from) {
+  for (auto &E : entries) {
+    auto &F = E.first;
+    auto &T = E.second;
+
+    if (F.first == from.getNode() && F.second == from.getResNo()) {
+      return NodeValue(T.first, T.second);
+    }
+  }
+
+  assert(false && "Invalid node");
+  return NodeValue(nullptr, 0);
+}
+
 llvm::ArrayRef<size_t> NodeValue::dims() const { return getType()->dims(); }
 
 const char *Variable::getInitKindStr(InitKind kind) {
