@@ -53,6 +53,18 @@ target_link_libraries(GraphTest
                         gtest_main)
 add_test(GraphTest ${GLOW_BINARY_DIR}/tests/GraphTest)
 
+add_executable(GraphGradTest
+                 GraphAutoGrad.cpp)
+target_link_libraries(GraphGradTest
+                      PRIVATE
+                        Graph
+                        IR
+                        Backends
+                        ExecutionEngine
+                        gtest
+                        gtest_main)
+add_test(GraphGradTest ${GLOW_BINARY_DIR}/tests/GraphGradTest)
+
 
 add_executable(GraphOptz
                  GraphOpt.cpp)

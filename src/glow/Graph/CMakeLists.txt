@@ -14,6 +14,7 @@ add_custom_command(OUTPUT
 add_library(Graph
             Nodes.cpp
             Graph.cpp
+            Grad.cpp
             ${HDR}
             ${SRC}
             ${DEF}
