@@ -147,6 +147,12 @@ public:
   VariablesList &getVars() { return vars_; }
 };
 
+struct TrainingConfig;
+
+/// Mutate the inference graph and turn it into a training graph by inserting
+/// training (gradient calculation) nodes.
+void generateGradientNodes(Graph &G, TrainingConfig &config);
+
 } // namespace glow
 
 #endif // GLOW_GRAPH_GRAPH_H
