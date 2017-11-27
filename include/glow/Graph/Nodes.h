@@ -38,6 +38,11 @@ public:
     initPayload();
   }
 
+  /// \returns True if the Variable is initialized to be in training mode.
+  bool isTraining() {
+    return initKind_ == InitKind::Broadcast || initKind_ == InitKind::Xavier;
+  }
+
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::VariableNodeKind;
   }
