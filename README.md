@@ -10,16 +10,17 @@ optimizations on neural network graphs.
 ### System Requirements
 
 The project builds and runs on macOS and Linux. The software depends on a modern
-C++ compiler that supports C++11, on CMake, protocol buffer, and libpng.
+C++ compiler that supports C++11, on CMake, OpenCL, protocol buffer, and libpng.
 
 ### Building the Compiler
 
-Next, create a build directory and run cmake on the source directory:
+Next, create a build directory next to the `Glow` directory, and run cmake on the source directory:
 
   ```
   mkdir build
   cd build
-  cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTING=YES ../Glow
+  export OPENCL_DIR=/usr/lib64  # replace with location of `libOpenCL.so*`
+  cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTING=YES -DOpenCL_INCLUDE_DIR=$OPENCL_DIR ../Glow
   ```
 
 It is possible to configure and build the compiler with any CMake generator,
