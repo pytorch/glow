@@ -2,6 +2,7 @@
 
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
+#include "glow/Graph/Nodes.h"
 #include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/Support/Casting.h"
@@ -386,12 +387,96 @@ static void optimizeConcatNodes(Graph &G) {
   }
 }
 
+namespace {
+
+/// A helper type for hasing Node pointers when they are used as keys in hash
+/// maps.
+struct NodeHasher {
+  size_t operator()(Node *N) const { return N->getHash(); }
+};
+
+/// A helper type implementing the Node equality predicate that can be used
+/// when Node pointers are used as keys in hash maps.
+struct NodeEq {
+  bool operator()(const Node *LHS, const Node *RHS) const {
+    return LHS->isEqual(*RHS);
+  }
+};
+
+/// This visitor is used to walk the the graph and
+/// perform a common subexpression evaluation.
+struct CSEVisitor : NodeWalker {
+  // Mapping from the original node to its canonical representation under CSE.
+  std::unordered_map<Node *, Node *, NodeHasher, NodeEq> CSENodes;
+  // Set of visited nodes.
+  std::unordered_set<Node *> VisitedNodes;
+
+  /// This callback is called before visiting the children of \p N.
+  void pre(Node *parent, Node *N) override {
+    // Put the node into a visited set to make sure it is visited
+    // only once.
+    VisitedNodes.insert(N); 
+  }
+
+  /// This callback is called after visiting the children of \p N.
+  /// It means that all of its dependencies are processed already.
+  void post(Node *parent, Node *N) override {
+    // Try to find a node equivalent to the current one.
+    auto FoundI = CSENodes.find(N);
+    if (FoundI == CSENodes.end()) {
+      // No node CSE-equivalent to the current one has been seen yet.
+      // Remember this node, so that the next occurrence can be 
+      // replaced by this one.
+      CSENodes.insert({N, N});
+      assert(CSENodes.find(N) != CSENodes.end());
+      return;
+    }
+    Node *FoundN = FoundI->second;
+    // Bail if the equivalent node is the same node.
+    if (FoundN == N)
+      return;
+    // Replace current node by a found node, which is
+    // equivalent to it.
+    assert(N->isEqual(*FoundN));
+    N->replaceAllUsesOfWith(FoundN);
+    // TODO: Erase N during CSE? If we don't do it here,
+    // DCE will remove it later anyways.
+  }
+
+  /// Make sure that each node is processed only once.
+  bool shouldVisit(Node *parent, Node *N) override {
+    return VisitedNodes.count(N) == 0;
+  }
+};
+
+} // namespace anonymous
+
+/// Common Subexpression Elimination.
+static void CSE(Graph &G) {
+  CSEVisitor Visitor;
+
+  // No need to perform CSE on variables because
+  // all variables are distinct from each other.
+
+  // Perform CSE on all nodes.
+  // 
+  // TODO: Make sure that nodes are visited after nodes that dominate them.
+  // This code may need to be updated if we allow for non-linear control flow
+  // in the future. 
+  for (auto const &N : G.getNodes()) {
+    N->visit(nullptr, &Visitor);
+  }
+}
+
 void glow::optimize(Graph &G, CompilationMode mode) {
   // Sink transpose operations in an attempt to cancel them out.
   sinkCode(G);
 
   // Optimize the pooling operation.
   OptimizePool(G);
+
+  // Perform Common Subexpression Elimination.
+  CSE(G);
 
   // Perform Dead Code Elimination.
   DCE(G);
@@ -400,6 +485,9 @@ void glow::optimize(Graph &G, CompilationMode mode) {
     // Merge batch normalization operations.
     OptimizeBatchNorm(G);
   }
+
+  // Perform Common Subexpression Elimination.
+  CSE(G);
 
   optimizeConcatNodes(G);
 

@@ -124,6 +124,9 @@ private:
   /// Emit the isEqual method that performs node comparisons.
   void emitEquator(std::ostream &os) const;
 
+  /// Emit the getHash method that computes a hash of a node.
+  void emitHasher(std::ostream &os) const;
+
   /// Emit the 'visit' method that implements node visitors.
   void emitVisitor(std::ostream &os) const;
 

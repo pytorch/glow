@@ -4,6 +4,7 @@
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Node.h"
 
+#include "llvm/ADT/Hashing.h"
 #include "llvm/Support/Casting.h"
 
 namespace glow {
@@ -59,7 +60,13 @@ public:
   std::string getDebugDesc() const override;
 
   void visit(Node *parent, NodeWalker *visitor) override;
+
+  bool isEqual(const Variable &other) const;
+
+  llvm::hash_code getHash() const;
 };
+
+using VariableNode = Variable;
 
 /// Calculate the size of the output tensor based on the convolution
 /// parameters.
@@ -72,9 +79,83 @@ inline std::pair<size_t, size_t> calculateConvOutputDims(size_t sx, size_t sy,
   return {outsx, outsy};
 }
 
+/// Support for hashing the Nodes. This is required for using llvm::hash_combine.
+class Node;
+class Tensor;
+struct Type;
+struct NodeValue;
+
+/// Convert a float into an unsigned integer binary representation.
+/// FIXME: This is a workaround, because defining the hash_code hash_value(float)
+/// does not work for some reason.
+size_t toBinary(float f);
+llvm::hash_code hash_value(const glow::Tensor &T);
+
+llvm::hash_code hash_value(const glow::Type *T);
+
+llvm::hash_code hash_value(glow::Node *T);
+
+llvm::hash_code hash_value(const glow::NodeValue &T);
+
 } // namespace glow
 
 // The rest of the nodes are auto-generated into this file:
 #include "AutoGenNodes.h"
+
+namespace glow {
+
+/// A helper class for all the Node visitors.
+/// You probably shouldn't use this directly.
+template <typename ImplClass> class NodeVisitorBase {
+public:
+  ImplClass &asImpl() { return static_cast<ImplClass &>(*this); }
+};
+
+/// A visitor that visits only nodes. It does not recursively
+/// visit any children of nodes.
+template <typename ImplClass, typename RetTy = void, typename... ArgTys>
+class NodeVisitor : public NodeVisitorBase<ImplClass> {
+  using super = NodeVisitorBase<ImplClass>;
+
+public:
+  using super::asImpl;
+
+  // Perform any required pre-processing before visiting.
+  // Sub-classes can override it to provide their custom
+  // pre-processing steps.
+  void pre(Node *N) {}
+  void post(Node *N) {}
+
+  RetTy visit(Node *N, ArgTys... args) {
+    asImpl().pre(N, args...);
+
+    switch (N->getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return asImpl().visit##CLASS(static_cast<CLASS *>(N),                      \
+                                 std::forward<ArgTys>(args)...);
+#include "AutoGenNodes.def"
+
+#define DEF_INSTR(CLASS, NAME) case glow::Kinded::Kind::CLASS##Kind:
+#define DEF_VALUE(CLASS, NAME) case glow::Kinded::Kind::CLASS##Kind:
+#include "AutoGenInstr.def"
+
+      llvm_unreachable(
+          "Not reachable, values and instructions are not handled here");
+    }
+    llvm_unreachable("Not reachable, all cases handled");
+  }
+
+// Define default dispatcher implementations chain to parent nodes.
+#define DEF_NODE(CLASS, NAME)                                                  \
+  RetTy visit##CLASS(CLASS *N, ArgTys... args) {                               \
+    auto Ret = asImpl().visit##PARENT(N, std::forward<ArgTys>(args)...);       \
+    asImpl().post(N, args...);                                                 \
+    return Ret;                                                                \
+  }
+#include "AutoGenNodes.def"
+};
+
+} // namespace glow
 
 #endif // GLOW_GRAPH_NODES_H
