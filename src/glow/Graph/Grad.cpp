@@ -109,6 +109,11 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf) {
   } // End of the for-each instr loop.
 
   for (auto &V : G.getVars()) {
+    // Don't update nodes that are not in training mode.
+    if (!V->isTraining()) {
+      continue;
+    }
+
     auto X = new SGDNode(V->getName(), map.get(V), V, conf.L1Decay,
                          conf.L2Decay, conf.learningRate, conf.momentum);
     toAppend.push_back(X);

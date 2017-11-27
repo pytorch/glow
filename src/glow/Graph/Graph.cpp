@@ -295,7 +295,7 @@ ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, NodeValue LHS,
 
 SaveNode *Graph::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest =
-      createVariable(input.getType(), name, Variable::InitKind::Broadcast, 0);
+      createVariable(input.getType(), name, Variable::InitKind::Extern);
 
   return addNode(new SaveNode(name, input, dest));
 }
