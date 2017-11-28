@@ -109,9 +109,7 @@ public:
 
 } // namespace
 
-llvm::hash_code Node::getHash() const {
-  return HashNodeVisitor().visit(this);
-}
+llvm::hash_code Node::getHash() const { return HashNodeVisitor().visit(this); }
 
 TypeRef NodeValue::getType() const { return node_->getType(resNo_); }
 
@@ -260,32 +258,28 @@ std::string Variable::getDebugDesc() const {
 /// hash_value functions should be defined in the same namespace as
 /// the types they apply to.
 namespace glow {
-  /// Convert a float into an unsigned integer binary representation. 
-  /// Do not use union-based tricks, because they introduce undefined behavior.
-  /// Instead, convert the float to an unsigned integer at the cost of
-  /// having more hash collisions.
-  size_t toBinary(float f) {
-    /// First convert to an integer and then to an unsigned.
-    /// Direct conversion from a float to an unsigned integer may result
-    /// in an undefined behavior according to the C++ standard.
-    return static_cast<size_t>(static_cast<int>(f));
-  }
+/// Convert a float into an unsigned integer binary representation.
+/// Do not use union-based tricks, because they introduce undefined behavior.
+/// Instead, convert the float to an unsigned integer at the cost of
+/// having more hash collisions.
+size_t toBinary(float f) {
+  /// First convert to an integer and then to an unsigned.
+  /// Direct conversion from a float to an unsigned integer may result
+  /// in an undefined behavior according to the C++ standard.
+  return static_cast<size_t>(static_cast<int>(f));
+}
 
-  /// FIXME: Provide a more meaningful implementation for Tensors.
-  llvm::hash_code hash_value(const glow::Tensor &T) {
-    return 0;
-  }
-  
-  // Types are uniqued, so just a pointer can be used. 
-  llvm::hash_code hash_value(const glow::Type *T) { 
-    return llvm::hash_value((void *)(T)); 
-  }
-  
-  llvm::hash_code hash_value(glow::Node *N) {
-    return N->getHash();
-  }
-  
-  llvm::hash_code hash_value(const glow::NodeValue &NV) {
-    return llvm::hash_combine(NV.getNode(), NV.getResNo());
-  }
+/// FIXME: Provide a more meaningful implementation for Tensors.
+llvm::hash_code hash_value(const glow::Tensor &T) { return 0; }
+
+// Types are uniqued, so just a pointer can be used.
+llvm::hash_code hash_value(const glow::Type *T) {
+  return llvm::hash_value((void *)(T));
+}
+
+llvm::hash_code hash_value(glow::Node *N) { return N->getHash(); }
+
+llvm::hash_code hash_value(const glow::NodeValue &NV) {
+  return llvm::hash_combine(NV.getNode(), NV.getResNo());
+}
 } // namespace glow

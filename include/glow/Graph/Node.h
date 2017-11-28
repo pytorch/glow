@@ -121,7 +121,7 @@ public:
   /// \returns a textual description of the node.
   virtual std::string getDebugDesc() const;
 
-  /// \returns true if the node is equal to the other node.  
+  /// \returns true if the node is equal to the other node.
   bool isEqual(const Node &other) const;
 
   /// \returns a hash code of the node.

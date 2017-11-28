@@ -84,15 +84,16 @@ inline std::pair<size_t, size_t> calculateConvOutputDims(size_t sx, size_t sy,
   return {outsx, outsy};
 }
 
-/// Support for hashing the Nodes. This is required for using llvm::hash_combine.
+/// Support for hashing the Nodes. This is required for using
+/// llvm::hash_combine.
 class Node;
 class Tensor;
 struct Type;
 struct NodeValue;
 
 /// Convert a float into an unsigned integer binary representation.
-/// FIXME: This is a workaround, because defining the hash_code hash_value(float)
-/// does not work for some reason.
+/// FIXME: This is a workaround, because defining the hash_code
+/// hash_value(float) does not work for some reason.
 size_t toBinary(float f);
 llvm::hash_code hash_value(const glow::Tensor &T);
 
