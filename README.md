@@ -14,12 +14,15 @@ C++ compiler that supports C++11, on CMake, protocol buffer, and libpng.
 
 ### Building the Compiler
 
-Next, create a build directory and run cmake on the source directory:
+Next, create a build directory and run cmake on the source directory. It is a
+good idea to build two configurations (Release and Debug) because some programs
+take a really long time to run in Debug mode. It is also a good idea to build
+the project outside of the source directory.
 
   ```
   mkdir build
   cd build
-  cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTING=YES ../glow
+  cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug ../glow
   ```
 
 It is possible to configure and build the compiler with any CMake generator,
