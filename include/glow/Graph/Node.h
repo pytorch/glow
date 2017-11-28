@@ -65,6 +65,12 @@ public:
   bool operator==(const NodeValue &O) const {
     return node_ == O.node_ && resNo_ == O.resNo_;
   }
+
+  bool operator<(const NodeValue &O) const {
+    if (node_ == O.node_)
+      return resNo_ < O.resNo_;
+    return (node_ < O.node_);
+  }
 };
 
 /// A simple linear map that stores NodeValue without maintaining the reverse
@@ -185,5 +191,19 @@ template <> struct simplify_type<const glow::NodeValue> {
   }
 };
 } // namespace llvm
+
+// custom specialization of std::hash for NodeValue.
+namespace std {
+template <> struct hash<glow::NodeValue> {
+  typedef glow::NodeValue argument_type;
+  typedef std::size_t result_type;
+  result_type operator()(argument_type const &s) const noexcept {
+    auto name = s.getNode()->getName();
+    result_type const h1(std::hash<std::string>{}(name.str()));
+    result_type const h2(std::hash<unsigned>{}(s.getResNo()));
+    return h1 ^ (h2 << 8);
+  }
+};
+} // namespace std
 
 #endif // GLOW_GRAPH_NODE_H
