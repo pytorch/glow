@@ -8,6 +8,7 @@
 #include "llvm/Support/Casting.h"
 
 #include <unordered_map>
+#include <unordered_set>
 
 using namespace glow;
 
@@ -18,12 +19,14 @@ using namespace glow;
 namespace {
 
 using llvm::cast;
+using llvm::dyn_cast;
 using llvm::isa;
 
 /// A helper class for visiting and generating the dotty file from the graph.
 struct IRGenVisitor : NodeWalker {
-  using NodeToInstrTy = std::unordered_map<const Node *, Value *>;
-
+  using NodeToInstrTy = std::unordered_map<NodeValue, Value *>;
+  /// A set of visited nodes.
+  std::unordered_set<Node *> visited;
   /// Holds the mapping between graph nodes to IR variables.
   NodeToInstrTy generatedNodes;
   /// The module that we are building.
@@ -34,22 +37,30 @@ struct IRGenVisitor : NodeWalker {
 public:
   bool shouldVisit(Node *parent, Node *N) override {
     // Don't revisit nodes that we've already processed.
-    return !generatedNodes.count(N);
+    return !visited.count(N);
   }
 
   explicit IRGenVisitor(Module *M) : M_(M), builder_(M_) {}
 
   /// \returns the generated instruction for the node \p N.
   Value *valueForNode(Node *N) {
+    if (auto *V = dyn_cast<Variable>(N)) {
+      auto &map = M_->getVariableMap();
+      return map[V];
+    }
     auto it = generatedNodes.find(N);
     assert(it != generatedNodes.end() && "IR was not generated for the node");
     return it->second;
   }
   /// Saves the generated IR in \p v for the node \p N.
-  void registerIR(Node *N, Value *v) {
+  void registerIR(NodeValue N, Value *v) {
+    if (auto *V = dyn_cast<Variable>(N)) {
+      auto &map = M_->getVariableMap();
+      map[V] = v;
+      return;
+    }
     assert(!generatedNodes.count(N) && "Already generated code for this node");
-    assert((isa<AllocActivationInst>(v) || isa<WeightVar>(v)) &&
-           "Value operand must be a memory location");
+    assert(isa<AllocActivationInst>(v) && "The value must be an activation");
     generatedNodes[N] = v;
     // Register the fact that we've lowered this variable to the new weight.
     auto &map = M_->getVariableMap();
@@ -57,6 +68,7 @@ public:
   }
 
   void post(Node *parent, Node *N) override {
+    visited.insert(N);
     switch (N->getKind()) {
     default:
       // Unkniwn node kind.
