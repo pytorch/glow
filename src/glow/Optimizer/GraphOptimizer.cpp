@@ -415,7 +415,7 @@ struct CSEVisitor : NodeWalker {
   void pre(Node *parent, Node *N) override {
     // Put the node into a visited set to make sure it is visited
     // only once.
-    VisitedNodes.insert(N); 
+    VisitedNodes.insert(N);
   }
 
   /// This callback is called after visiting the children of \p N.
@@ -425,7 +425,7 @@ struct CSEVisitor : NodeWalker {
     auto FoundI = CSENodes.find(N);
     if (FoundI == CSENodes.end()) {
       // No node CSE-equivalent to the current one has been seen yet.
-      // Remember this node, so that the next occurrence can be 
+      // Remember this node, so that the next occurrence can be
       // replaced by this one.
       CSENodes.insert({N, N});
       assert(CSENodes.find(N) != CSENodes.end());
@@ -449,7 +449,7 @@ struct CSEVisitor : NodeWalker {
   }
 };
 
-} // namespace anonymous
+} // namespace
 
 /// Common Subexpression Elimination.
 static void CSE(Graph &G) {
@@ -459,10 +459,10 @@ static void CSE(Graph &G) {
   // all variables are distinct from each other.
 
   // Perform CSE on all nodes.
-  // 
+  //
   // TODO: Make sure that nodes are visited after nodes that dominate them.
   // This code may need to be updated if we allow for non-linear control flow
-  // in the future. 
+  // in the future.
   for (auto const &N : G.getNodes()) {
     N->visit(nullptr, &Visitor);
   }
