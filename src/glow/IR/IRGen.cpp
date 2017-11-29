@@ -140,11 +140,9 @@ public:
       auto *DG = builder_.createAllocActivationInst("relu.inG.grad",
                                                     outGrad->getType());
 
-      auto *GRI = new ReluGradInst(
+      auto *GRI = builder_.createReluGradInst(
           N->getName(), valueForNode(RG->getOriginalOutputForResult()), outGrad,
           DG);
-
-      M_->pushInstr(GRI);
 
       registerIR(N, GRI->getDestGrad());
       break;
@@ -188,9 +186,8 @@ public:
       auto *srcGrad = builder_.createAllocActivationInst("softmax.res.grad",
                                                          outGrad->getType());
 
-      auto *SMGI = new SoftMaxGradInst(N->getName(), origIn, SM->getE(),
-                                       origSelect, srcGrad);
-      M_->pushInstr(SMGI);
+      auto *SMGI = builder_.createSoftMaxGradInst(
+          N->getName(), origIn, SM->getE(), origSelect, srcGrad);
 
       registerIR(SMG->getGradOfInputNamedInput(), SMGI->getSrcGrad());
       break;
