@@ -24,11 +24,19 @@ using llvm::isa;
 
 /// A helper class for visiting and generating the dotty file from the graph.
 struct IRGenVisitor : NodeWalker {
-  using NodeToInstrTy = std::unordered_map<NodeValue, Value *>;
+  using NodeValueToDestTy = std::unordered_map<NodeValue, Value *>;
+  using NodeToInstrTy = std::unordered_map<Node *, Instruction *>;
+
   /// A set of visited nodes.
   std::unordered_set<Node *> visited;
-  /// Holds the mapping between graph nodes to IR variables.
-  NodeToInstrTy generatedNodes;
+  /// Holds the mapping between graph nodes to the destination buffers.
+  NodeValueToDestTy generatedNodeDest_;
+  /// Holds the mapping between graph nodes and the lowered instructions. This
+  /// map is used by instructions that want to inspect the generated
+  /// instructions. For example, gradient instructions that look at operands
+  /// that do not exist at the graph level. Not all variables are representible.
+  NodeToInstrTy nodeToInstr_;
+
   /// The module that we are building.
   Module *M_;
   /// The builder that adds instructions into the module.
@@ -43,13 +51,14 @@ public:
   explicit IRGenVisitor(Module *M) : M_(M), builder_(M_) {}
 
   /// \returns the generated instruction for the node \p N.
-  Value *valueForNode(Node *N) {
+  Value *valueForNode(NodeValue N) {
     if (auto *V = dyn_cast<Variable>(N)) {
       auto &map = M_->getVariableMap();
       return map[V];
     }
-    auto it = generatedNodes.find(N);
-    assert(it != generatedNodes.end() && "IR was not generated for the node");
+    auto it = generatedNodeDest_.find(N);
+    assert(it != generatedNodeDest_.end() &&
+           "IR was not generated for the node");
     return it->second;
   }
   /// Saves the generated IR in \p v for the node \p N.
@@ -59,9 +68,10 @@ public:
       map[V] = v;
       return;
     }
-    assert(!generatedNodes.count(N) && "Already generated code for this node");
+    assert(!generatedNodeDest_.count(N) &&
+           "Already generated code for this node");
     assert(isa<AllocActivationInst>(v) && "The value must be an activation");
-    generatedNodes[N] = v;
+    generatedNodeDest_[N] = v;
     // Register the fact that we've lowered this variable to the new weight.
     auto &map = M_->getVariableMap();
     map[N] = v;
@@ -73,6 +83,7 @@ public:
     default:
       // Unkniwn node kind.
       glow_unreachable();
+      assert(false);
       break;
     case glow::Kinded::Kind::ConvolutionNodeKind: {
       auto *C = cast<ConvolutionNode>(N);
@@ -119,7 +130,23 @@ public:
       auto *V = builder_.createRELUOp(valueForNode(R->getInput()));
       V->setName(N->getName());
       registerIR(N, V->getDest());
+      break;
+    }
+    case glow::Kinded::Kind::ReluGradNodeKind: {
+      auto *RG = cast<ReluGradNode>(N);
 
+      auto *outGrad = valueForNode(RG->getGradOfOriginalOutputNamedResult());
+
+      auto *DG = builder_.createAllocActivationInst("relu.inG.grad",
+                                                    outGrad->getType());
+
+      auto *GRI = new ReluGradInst(
+          N->getName(), valueForNode(RG->getOriginalOutputForResult()), outGrad,
+          DG);
+
+      M_->pushInstr(GRI);
+
+      registerIR(N, GRI->getDestGrad());
       break;
     }
     case glow::Kinded::Kind::SigmoidNodeKind: {
@@ -143,6 +170,29 @@ public:
       auto *V = builder_.createSoftMaxOp(in, select);
       V->setName(N->getName());
       registerIR(N, V->getDest());
+      nodeToInstr_[N] = V;
+
+      break;
+    }
+    case glow::Kinded::Kind::SoftMaxGradNodeKind: {
+      auto *SMG = cast<SoftMaxGradNode>(N);
+      // Original inputs:
+      auto *origIn = valueForNode(SMG->getInput());
+      auto *origSelect = valueForNode(SMG->getSelected());
+      // Values related to the output of the node.
+      auto *outGrad = valueForNode(SMG->getGradOfOriginalOutputNamedResult());
+      auto originalNodeResult = SMG->getOriginalOutputForResult();
+      assert(nodeToInstr_.count(originalNodeResult.getNode()) &&
+             "Unknown original node");
+      auto *SM = cast<SoftMaxInst>(nodeToInstr_[originalNodeResult]);
+      auto *srcGrad = builder_.createAllocActivationInst("softmax.res.grad",
+                                                         outGrad->getType());
+
+      auto *SMGI = new SoftMaxGradInst(N->getName(), origIn, SM->getE(),
+                                       origSelect, srcGrad);
+      M_->pushInstr(SMGI);
+
+      registerIR(SMG->getGradOfInputNamedInput(), SMGI->getSrcGrad());
       break;
     }
     case glow::Kinded::Kind::RegressionNodeKind: {

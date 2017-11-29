@@ -302,12 +302,12 @@ void NodeBuilder::addGradient() {
   }
 
   for (const std::string &in : nodeInputs_) {
-    GN.addResult(in + ".getType()", in + "Grad");
+    GN.addResult(in + ".getType()", "GradOfInputNamed" + in);
   }
 
   for (const auto &out : nodeOutputs_) {
-    GN.addInput(out.second + "Res");
-    GN.addInput(out.second + "Grad");
+    GN.addInput("OriginalOutputFor" + out.second);
+    GN.addInput("GradOfOriginalOutputNamed" + out.second);
   }
 
   // Construct a factory method that builds the new grad node and add
@@ -336,7 +336,8 @@ void NodeBuilder::addGradient() {
   // Register the result of the new node as the gradients of the original node
   // inputs.
   for (const std::string &in : nodeInputs_) {
-    ss << "\tmap.insert(get" << in << "(), x->get" << in << "Grad());\n";
+    ss << "\tmap.insert(get" << in << "(), x->getGradOfInputNamed" << in
+       << "());\n";
   }
   ss << "\treturn x;\n";
   ss << " }";
