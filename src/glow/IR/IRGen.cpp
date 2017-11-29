@@ -125,6 +125,30 @@ public:
       registerIR(N, V->getDest());
       break;
     }
+
+    case glow::Kinded::Kind::FullyConnectedGradNodeKind: {
+      auto *FCG = cast<FullyConnectedGradNode>(N);
+      auto *inW = valueForNode(FCG->getInput());
+      auto *filterW = valueForNode(FCG->getFilter());
+      auto *outW = valueForNode(FCG->getGradOfOriginalOutputNamedOutput());
+      auto biasX = FCG->getBias();
+
+      auto *InG = builder_.createAllocActivationInst("inG", inW->getType());
+      auto *FilterG =
+          builder_.createAllocActivationInst("filterG", filterW->getType());
+      auto *BiasG =
+          builder_.createAllocActivationInst("biasG", biasX.getType());
+
+      builder_.createFullyConnectedGradInst(N->getName(), inW, filterW, outW,
+                                            InG, FilterG, BiasG,
+                                            FCG->getDepth());
+
+      registerIR(FCG->getGradOfInputNamedInput(), InG);
+      registerIR(FCG->getGradOfInputNamedFilter(), FilterG);
+      registerIR(FCG->getGradOfInputNamedBias(), BiasG);
+      break;
+    }
+
     case glow::Kinded::Kind::ReluNodeKind: {
       auto *R = cast<ReluNode>(N);
       auto *V = builder_.createRELUOp(valueForNode(R->getInput()));
@@ -134,16 +158,12 @@ public:
     }
     case glow::Kinded::Kind::ReluGradNodeKind: {
       auto *RG = cast<ReluGradNode>(N);
-
       auto *outGrad = valueForNode(RG->getGradOfOriginalOutputNamedResult());
-
       auto *DG = builder_.createAllocActivationInst("relu.inG.grad",
                                                     outGrad->getType());
-
       auto *GRI = builder_.createReluGradInst(
           N->getName(), valueForNode(RG->getOriginalOutputForResult()), outGrad,
           DG);
-
       registerIR(N, GRI->getDestGrad());
       break;
     }
