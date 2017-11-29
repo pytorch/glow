@@ -20,9 +20,13 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf) {
 
   // A list of nodes to add to the graph.
   std::vector<Node *> toAppend;
+  // A list of vars to add to the graph.
+  std::vector<Variable *> newVars;
 
   // Generate the gradient nodes for each one of the nodes in the module.
   auto &nodes = G.getNodes();
+  auto &vars = G.getVars();
+
   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
     Node *N = *it;
 
@@ -114,13 +118,26 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf) {
       continue;
     }
 
-    auto X = new SGDNode(V->getName(), map.get(V), V, conf.L1Decay,
+    Variable *gsum = nullptr;
+
+    if (conf.momentum > 0) {
+      gsum = new Variable("gsum", V->getType(), Variable::InitKind::Extern, 0);
+    } else {
+      gsum = new Variable("gsum", G.getVoidTy(), Variable::InitKind::Extern, 0);
+    }
+
+    newVars.push_back(gsum);
+
+    auto X = new SGDNode(V->getName(), map.get(V), V, gsum, conf.L1Decay,
                          conf.L2Decay, conf.learningRate, conf.momentum);
     toAppend.push_back(X);
   }
 
-  // Add all of the new instructions.
+  // Add all of the new variables and instructions.
   for (auto &I : toAppend) {
     nodes.push_back(I);
+  }
+  for (auto &I : newVars) {
+    vars.push_back(I);
   }
 }

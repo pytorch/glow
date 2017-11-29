@@ -180,6 +180,7 @@ int main(int argc, char **argv) {
   BB.newNode("SGD")
       .addInput("Gradient")
       .addInput("Weight")
+      .addInput("Gsum")
       .addMember(MemberType::Float, "L1Decay")
       .addMember(MemberType::Float, "L2Decay")
       .addMember(MemberType::Float, "LearningRate")
