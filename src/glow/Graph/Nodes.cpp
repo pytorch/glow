@@ -22,6 +22,7 @@ NodeValue::NodeValue(Node *N) {
 
 NodeValue::NodeValue(Node *N, unsigned resNo) {
   assert(resNo < N->getNumRes() && "Invalid result number");
+  resNo_ = resNo;
   setOperand(N);
 }
 
