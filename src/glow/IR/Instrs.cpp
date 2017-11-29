@@ -240,10 +240,21 @@ void AllocActivationInst::verify() const {
   assert(numDealloc == 1 && "Invalid number of tensor deallocation");
 }
 
+void SGDInst::verify() const {
+  if (Momentum_ > 0.0) {
+    assert(getGradient()->getType() == getGsum()->getType() &&
+           "Invalid gsum type");
+  }
+
+  assert(getGradient()->getType() == getWeight()->getType() &&
+         "Invalid weight or gradient type");
+}
+
 void DeallocActivationInst::verify() const {
   // The operand of this instruction needs to be an AllocActivationInst.
   assert(isa<AllocActivationInst>(getOperand(0).first) && "Invalid operand");
 }
+
 // TODO: verify the gradient instructions.
 #define NOVERIFY(ClassName)                                                    \
   void ClassName ::verify() const {}
