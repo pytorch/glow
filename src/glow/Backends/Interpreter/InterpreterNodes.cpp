@@ -1041,6 +1041,10 @@ void Interpreter::fwdElementMulGradInst(bool isTrain,
   }
 }
 
+void Interpreter::fwdSGDInst(bool isTrain, const glow::SGDInst *I) {
+  assert(false && "Unimplemented");
+}
+
 //===----------------------------------------------------------------------===//
 //                  Tensor allocation operations
 //===----------------------------------------------------------------------===//
