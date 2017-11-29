@@ -295,6 +295,7 @@ void NodeBuilder::addGradient() {
 
   // The new 'Grad' class will have all of the fields of the current class.
   GN.members_ = members_;
+  GN.enum_ = enum_;
 
   // Add the inputs that we'll use in the grad instruction.
   for (const std::string &in : nodeInputs_) {
@@ -315,6 +316,11 @@ void NodeBuilder::addGradient() {
   std::stringstream ss;
   ss << name_ + "GradNode* getGrad(UnownedNodeValueMap &map) {\n";
   ss << "\tauto * x = new " + name_ + "GradNode(getName()";
+
+  if (enum_.size()) {
+    ss << ", (" << name_ + "GradNode::Mode"
+       << ")getMode()";
+  }
 
   // Add the inputs that we'll use in the grad instruction.
   for (const std::string &in : nodeInputs_) {

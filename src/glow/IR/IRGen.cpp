@@ -95,9 +95,9 @@ public:
                                 C->getStride(), C->getPad());
       V->setName(N->getName());
       registerIR(N, V->getDest());
-
       break;
     }
+
     case glow::Kinded::Kind::PoolNodeKind: {
       auto *P = cast<PoolNode>(N);
       auto *in = valueForNode(P->getInput());
@@ -105,6 +105,7 @@ public:
       if (P->getMode() == PoolNode::Mode::Max) {
         V = builder_.createPoolMaxOp(in, P->getKernel(), P->getStride(),
                                      P->getPad());
+        nodeToInstr_[N] = V;
       } else {
         V = builder_.createPoolAvgOp(in, P->getKernel(), P->getStride(),
                                      P->getPad());
@@ -114,6 +115,39 @@ public:
       registerIR(N, V->getOperand(0).first);
       break;
     }
+
+    case glow::Kinded::Kind::PoolGradNodeKind: {
+      auto *PG = cast<PoolGradNode>(N);
+
+      auto poolOut = PG->getOriginalOutputForResult();
+      auto *outW = valueForNode(poolOut);
+      auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
+
+      Instruction *V = nullptr;
+      if (PG->getMode() == PoolGradNode::Mode::Max) {
+        // Find the original pool instruction.
+        assert(nodeToInstr_.count(poolOut) &&
+               "Pool IRgen did not register itself");
+        auto *PI = cast<PoolMaxInst>(nodeToInstr_[poolOut.getNode()]);
+        auto *inG = builder_.createAllocActivationInst("maxpool.outG",
+                                                       poolOut->getType());
+
+        V = builder_.createPoolMaxGradInst(N->getName(), outW, PI->getSrcXY(),
+                                           outG, inG, PG->getKernel(),
+                                           PG->getStride(), PG->getPad());
+        registerIR(PG->getGradOfInputNamedInput(), inG);
+        break;
+      } else {
+        auto *inG = builder_.createAllocActivationInst("avgpool.outG",
+                                                       poolOut->getType());
+        V = builder_.createPoolAvgGradInst(N->getName(), outW, outG, inG,
+                                           PG->getKernel(), PG->getStride(),
+                                           PG->getPad());
+        registerIR(PG->getGradOfInputNamedInput(), inG);
+        break;
+      }
+    }
+
     case glow::Kinded::Kind::FullyConnectedNodeKind: {
       auto *FC = cast<FullyConnectedNode>(N);
       auto *in = valueForNode(FC->getInput());
@@ -189,7 +223,6 @@ public:
       V->setName(N->getName());
       registerIR(N, V->getDest());
       nodeToInstr_[N] = V;
-
       break;
     }
     case glow::Kinded::Kind::SoftMaxGradNodeKind: {
