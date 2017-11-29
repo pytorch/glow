@@ -129,7 +129,7 @@ int main(int argc, char **argv) {
       .addOperand("E", OperandKind::InOut)
       .addOperand("Selected", OperandKind::InOut)
       .inplaceOperand({"Dest", "Src"})
-      .addGradientInstr({"Src", "E", "Selected"}, {"Dest", "Src"});
+      .addGradientInstr({"Src", "E", "Selected"}, {"Src"});
 
   BB.newInstr("Regression")
       .addOperand("Dest", OperandKind::Out)
