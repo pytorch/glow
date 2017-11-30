@@ -395,6 +395,15 @@ public:
       registerIR(N, AC);
       break;
     }
+    case glow::Kinded::Kind::SGDNodeKind: {
+      auto *S = cast<SGDNode>(N);
+      builder_.createSGDInst(N->getName(), valueForNode(S->getGradient()),
+                             valueForNode(S->getWeight()),
+                             valueForNode(S->getGsum()), S->getL1Decay(),
+                             S->getL2Decay(), S->getLearningRate(),
+                             S->getMomentum());
+      break;
+    }
     }
   }
 };
