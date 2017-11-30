@@ -234,11 +234,33 @@ public:
       registerIR(N, V->getDest());
       break;
     }
+    case glow::Kinded::Kind::SigmoidGradNodeKind: {
+      auto *SG = cast<SigmoidGradNode>(N);
+      auto *outGrad = valueForNode(SG->getGradOfOriginalOutputNamedResult());
+      auto *DG = builder_.createAllocActivationInst("sigmoid.inG.grad",
+                                                    outGrad->getType());
+      auto *SI = builder_.createSigmoidGradInst(
+          N->getName(), valueForNode(SG->getOriginalOutputForResult()), outGrad,
+          DG);
+      registerIR(N, SI->getDestGrad());
+      break;
+    }
     case glow::Kinded::Kind::TanhNodeKind: {
       auto *T = cast<TanhNode>(N);
       auto *V = builder_.createTanhOp(valueForNode(T->getInput()));
       V->setName(N->getName());
       registerIR(N, V->getDest());
+      break;
+    }
+    case glow::Kinded::Kind::TanhGradNodeKind: {
+      auto *TG = cast<TanhGradNode>(N);
+      auto *outGrad = valueForNode(TG->getGradOfOriginalOutputNamedResult());
+      auto *DG = builder_.createAllocActivationInst("tanh.inG.grad",
+                                                    outGrad->getType());
+      auto *TI = builder_.createTanhGradInst(
+          N->getName(), valueForNode(TG->getOriginalOutputForResult()), outGrad,
+          DG);
+      registerIR(N, TI->getDestGrad());
       break;
     }
     case glow::Kinded::Kind::SoftMaxNodeKind: {
