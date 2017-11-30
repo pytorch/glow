@@ -151,7 +151,8 @@ struct TrainingConfig;
 
 /// Mutate the inference graph and turn it into a training graph by inserting
 /// training (gradient calculation) nodes.
-void generateGradientNodes(Graph &G, TrainingConfig &config);
+void generateGradientNodes(Graph &G, unsigned batchSize,
+                           TrainingConfig &config);
 
 } // namespace glow
 

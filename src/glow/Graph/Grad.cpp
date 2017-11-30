@@ -14,7 +14,8 @@ using namespace glow;
 
 using llvm::cast;
 
-void glow::generateGradientNodes(Graph &G, TrainingConfig &conf) {
+void glow::generateGradientNodes(Graph &G, unsigned batchSize,
+                                 TrainingConfig &conf) {
   using Kind = glow::Kinded::Kind;
   UnownedNodeValueMap map;
 
@@ -123,8 +124,9 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf) {
 
     newVars.push_back(gsum);
 
-    auto X = new SGDNode(V->getName(), map.get(V), V, gsum, conf.L1Decay,
-                         conf.L2Decay, conf.learningRate, conf.momentum);
+    auto X =
+        new SGDNode(V->getName(), map.get(V), V, gsum, conf.L1Decay,
+                    conf.L2Decay, conf.learningRate, conf.momentum, batchSize);
     toAppend.push_back(X);
   }
 

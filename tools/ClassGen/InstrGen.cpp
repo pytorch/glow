@@ -224,7 +224,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "L1Decay")
       .addMember(MemberType::Float, "L2Decay")
       .addMember(MemberType::Float, "LearningRate")
-      .addMember(MemberType::Float, "Momentum");
+      .addMember(MemberType::Float, "Momentum")
+      .addMember(MemberType::Unsigned, "BatchSize");
 
   return 0;
 }

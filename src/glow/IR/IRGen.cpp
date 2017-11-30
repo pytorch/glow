@@ -401,7 +401,7 @@ public:
                              valueForNode(S->getWeight()),
                              valueForNode(S->getGsum()), S->getL1Decay(),
                              S->getL2Decay(), S->getLearningRate(),
-                             S->getMomentum());
+                             S->getMomentum(), S->getBatchSize());
       break;
     }
     }
