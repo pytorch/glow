@@ -98,6 +98,32 @@ public:
       break;
     }
 
+    case glow::Kinded::Kind::ConvolutionGradNodeKind: {
+      auto *CG = cast<ConvolutionGradNode>(N);
+
+      auto *input = valueForNode(CG->getInput());
+      auto *filter = valueForNode(CG->getFilter());
+      auto *bias = valueForNode(CG->getBias());
+
+      auto *outGrad = valueForNode(CG->getGradOfOriginalOutputNamedResult());
+
+      auto *inG =
+          builder_.createAllocActivationInst("conv.input.G", input->getType());
+      auto *biasG =
+          builder_.createAllocActivationInst("conv.bias.G", filter->getType());
+      auto *filterG =
+          builder_.createAllocActivationInst("conv.filter.G", bias->getType());
+
+      builder_.createConvolutionGradInst(
+          N->getName(), input, filter, outGrad, inG, filterG, biasG,
+          CG->getKernel(), CG->getStride(), CG->getPad(), CG->getDepth());
+
+      registerIR(CG->getGradOfInputNamedInput(), inG);
+      registerIR(CG->getGradOfInputNamedFilter(), filterG);
+      registerIR(CG->getGradOfInputNamedBias(), biasG);
+      break;
+    }
+
     case glow::Kinded::Kind::PoolNodeKind: {
       auto *P = cast<PoolNode>(N);
       auto *in = valueForNode(P->getInput());
