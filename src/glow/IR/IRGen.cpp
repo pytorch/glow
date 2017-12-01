@@ -302,6 +302,25 @@ public:
       registerIR(N, V->getDest());
       break;
     }
+    case glow::Kinded::Kind::RegressionGradNodeKind: {
+      auto *RG = cast<RegressionGradNode>(N);
+      // Original inputs:
+      auto *origIn = valueForNode(RG->getInput());
+      auto *origExpected = valueForNode(RG->getExpected());
+      // Values related to the output of the node.
+      auto *outGrad = valueForNode(RG->getGradOfOriginalOutputNamedResult());
+      auto originalNodeResult = RG->getOriginalOutputForResult();
+      assert(nodeToInstr_.count(originalNodeResult.getNode()) &&
+             "Unknown original node");
+      auto *srcGrad = builder_.createAllocActivationInst("softmax.res.grad",
+                                                         outGrad->getType());
+
+      auto *SMGI = builder_.createRegressionGradInst(N->getName(), origIn,
+                                                     origExpected, srcGrad);
+
+      registerIR(RG->getGradOfInputNamedInput(), SMGI->getSrcGrad());
+      break;
+    }
     case glow::Kinded::Kind::TransposeNodeKind: {
       auto *TT = cast<TransposeNode>(N);
       auto *in = valueForNode(TT->getInput());
