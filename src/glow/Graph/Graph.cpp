@@ -401,15 +401,16 @@ void Graph::dumpDAG(const char *dotFilename) {
 void Graph::eraseVariable(VariablesList::iterator I) {
   if (I == vars_.end())
     return;
-  vars_.erase(I);
   delete *I;
+  vars_.erase(I);
+ 
 }
 
 void Graph::eraseNode(NodesList::iterator I) {
   if (I == nodes_.end())
     return;
-  nodes_.erase(I);
   delete *I;
+  nodes_.erase(I);
 }
 
 void Graph::eraseVariable(Variable *N) {
