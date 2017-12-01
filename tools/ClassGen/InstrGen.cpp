@@ -136,7 +136,7 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addOperand("Expected", OperandKind::InOut)
       .inplaceOperand({"Dest", "Src"})
-      .addGradientInstr({"Src", "Expected"}, {"Dest", "Src"});
+      .addGradientInstr({"Src", "Expected"}, {"Src"});
 
   //===--------------------------------------------------------------------===//
   //                      Arithmetic
