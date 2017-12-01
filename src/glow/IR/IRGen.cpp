@@ -296,6 +296,7 @@ public:
       auto *in = valueForNode(RR->getInput());
       auto *expected = valueForNode(RR->getExpected());
       auto *V = builder_.createRegressionOp(in, expected);
+      nodeToInstr_[N] = V;
       V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
