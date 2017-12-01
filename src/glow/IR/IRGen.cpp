@@ -455,7 +455,7 @@ public:
     }
     case glow::Kinded::Kind::ZeroNodeKind: {
       auto *Z = cast<ZeroNode>(N);
-      auto *AC = new AllocActivationInst(Z->getName(), Z->getType());
+      auto *AC = builder_.createAllocActivationInst(Z->getName(), Z->getType());
       builder_.createZeroInst(N->getName(), AC);
       registerIR(N, AC);
       break;
