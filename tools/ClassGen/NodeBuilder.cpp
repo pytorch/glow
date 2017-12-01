@@ -132,7 +132,7 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
   }
 
   for (const auto &op : nodeInputs_) {
-    os << "\t\t.addParam(\"" << op << "\", *get" << op << "().getType())\n";
+    os << "\t\t.addParam(\"" << op << "\", *(get" << op << "().getType()))\n";
   }
 
   for (const auto &mem : members_) {
