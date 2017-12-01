@@ -44,7 +44,7 @@ TEST(GraphAutoGrad, autoGrad) {
   auto *result = G.createSave("return", SM);
   (void)result;
 
-  generateGradientNodes(G, EE.getConfig());
+  generateGradientNodes(G, 10, EE.getConfig());
 
   G.dump();
   G.dumpDAG();
