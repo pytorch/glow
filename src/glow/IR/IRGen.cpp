@@ -97,7 +97,6 @@ public:
       registerIR(N, V->getDest());
       break;
     }
-
     case glow::Kinded::Kind::ConvolutionGradNodeKind: {
       auto *CG = cast<ConvolutionGradNode>(N);
 
@@ -123,7 +122,6 @@ public:
       registerIR(CG->getGradOfInputNamedBias(), biasG);
       break;
     }
-
     case glow::Kinded::Kind::PoolNodeKind: {
       auto *P = cast<PoolNode>(N);
       auto *in = valueForNode(P->getInput());
@@ -382,6 +380,31 @@ public:
           BN->getMomentum());
       V->setName(N->getName());
       registerIR(N, V->getDest());
+      break;
+    }
+    case glow::Kinded::Kind::BatchNormalizationGradNodeKind: {
+      auto *BN = cast<BatchNormalizationGradNode>(N);
+      auto *in = valueForNode(BN->getInput());
+      auto *beta = valueForNode(BN->getBias());
+      auto *gamma = valueForNode(BN->getScale());
+      auto *mean = valueForNode(BN->getMean());
+      auto *var = valueForNode(BN->getVar());
+
+      auto *outG = valueForNode(BN->getGradOfOriginalOutputNamedResult());
+
+      auto *inG =
+          builder_.createAllocActivationInst("bn.input.G", in->getType());
+      auto *scaleG =
+          builder_.createAllocActivationInst("bn.scale.G", gamma->getType());
+      auto *biasG =
+          builder_.createAllocActivationInst("bn.bias.G", beta->getType());
+
+      builder_.createBatchNormalizationGradInst(
+          N->getName(), in, gamma, mean, var, outG, inG, scaleG, biasG,
+          BN->getChannelIdx(), BN->getEpsilon(), BN->getMomentum());
+      registerIR(BN->getGradOfInputNamedInput(), inG);
+      registerIR(BN->getGradOfInputNamedBias(), biasG);
+      registerIR(BN->getGradOfInputNamedScale(), scaleG);
       break;
     }
 
