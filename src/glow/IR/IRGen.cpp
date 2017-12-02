@@ -72,9 +72,6 @@ public:
            "Already generated code for this node");
     assert(isa<AllocActivationInst>(v) && "The value must be an activation");
     generatedNodeDest_[N] = v;
-    // Register the fact that we've lowered this variable to the new weight.
-    auto &map = M_->getVariableMap();
-    map[N] = v;
   }
 
   void post(Node *parent, Node *N) override {
@@ -462,6 +459,7 @@ public:
     }
     case glow::Kinded::Kind::SGDNodeKind: {
       auto *S = cast<SGDNode>(N);
+      assert(S->getGradient().getType() == S->getWeight().getType());
       builder_.createSGDInst(N->getName(), valueForNode(S->getGradient()),
                              valueForNode(S->getWeight()),
                              valueForNode(S->getGsum()), S->getL1Decay(),
