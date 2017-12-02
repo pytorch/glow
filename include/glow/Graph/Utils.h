@@ -31,7 +31,7 @@ public:
   }
 
   /// \returns the order.
-  llvm::ArrayRef<Node*> getPostOrder() { return postOrder_; }
+  llvm::ArrayRef<Node *> getPostOrder() { return postOrder_; }
 };
 
 } // namespace glow
