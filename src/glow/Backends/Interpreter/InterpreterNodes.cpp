@@ -1044,7 +1044,11 @@ void Interpreter::fwdElementMulGradInst(bool isTrain,
 void Interpreter::fwdSGDInst(bool isTrain, const glow::SGDInst *I) {
   auto W = getWeightHandle(I->getWeight());
   auto G = getWeightHandle(I->getGradient());
-  auto Gsum = getWeightHandle(I->getGsum());
+  auto Gsum = Handle<float>::createInvalidHandle();
+
+  if (I->getMomentum() > 0.0) {
+    Gsum = getWeightHandle(I->getGsum());
+  }
 
   assert(W.dims() == G.dims() && "Invalid tensor sizes");
 
