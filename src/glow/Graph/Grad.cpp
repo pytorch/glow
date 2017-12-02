@@ -3,6 +3,7 @@
 #include "glow/Base/Train.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/Utils.h"
 #include "glow/IR/IR.h"
 #include "glow/Support/Support.h"
 
@@ -13,6 +14,7 @@
 using namespace glow;
 
 using llvm::cast;
+using llvm::isa;
 
 void glow::generateGradientNodes(Graph &G, unsigned batchSize,
                                  TrainingConfig &conf) {
@@ -25,11 +27,23 @@ void glow::generateGradientNodes(Graph &G, unsigned batchSize,
   std::vector<Variable *> newVars;
 
   // Generate the gradient nodes for each one of the nodes in the module.
-  auto &nodes = G.getNodes();
+
+  PostOrderVisitor pov;
+  for (auto &N : G.getVars()) {
+    N->visit(nullptr, &pov);
+  }
+  for (auto &N : G.getNodes()) {
+    N->visit(nullptr, &pov);
+  }
+
+  auto nodes = pov.getPostOrder();
   auto &vars = G.getVars();
 
   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
     Node *N = *it;
+    if (isa<Variable>(N)) {
+      continue;
+    }
 
 #define CONVERT_TO_GRAD_NODE(NodeKind)                                         \
   if (N->getKind() == Kind::NodeKind##Kind) {                                  \
@@ -70,7 +84,7 @@ void glow::generateGradientNodes(Graph &G, unsigned batchSize,
                                 inputW->getType()->dims());
       toAppend.push_back(X);
       map.insert(RN->getResult(), X);
-      break;
+      continue;
     }
 
     if (N->getKind() == Kind::TransposeNodeKind) {
@@ -89,24 +103,25 @@ void glow::generateGradientNodes(Graph &G, unsigned batchSize,
       auto *X = new TransposeNode(N->getName(), inputW->getType(), outputG,
                                   reverseShuffle);
       map.insert(TN->getResult(), X);
-      break;
+      continue;
     }
 
     if (N->getKind() == Kind::ConcatNodeKind) {
       auto *CC = cast<ConcatNode>(N);
       auto inputs = CC->getInputs();
+      NodeValue outputG = map.get(CC->getResult());
 
       // We start extracting the shape at (0,0, ... ).
       std::vector<size_t> offsets(CC->dims().size(), 0);
       unsigned dim = CC->getDim();
       for (auto &N : inputs) {
-        auto *X = new SliceNode("extract", N.getType(), N, offsets);
+        auto *X = new SliceNode("extract", N.getType(), outputG, offsets);
         // We are stacking the tensors along a specific dimension. This means
         // that we increase the size of the tensor along this dimension.
         offsets[dim] += N.dims()[dim];
         map.insert(N, X);
       }
-      break;
+      continue;
     }
 
     assert(false);
@@ -131,8 +146,9 @@ void glow::generateGradientNodes(Graph &G, unsigned batchSize,
   }
 
   // Add all of the new variables and instructions.
+  auto &graphNodes = G.getNodes();
   for (auto &I : toAppend) {
-    nodes.push_back(I);
+    graphNodes.push_back(I);
   }
   for (auto &I : newVars) {
     vars.push_back(I);
