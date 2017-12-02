@@ -37,7 +37,10 @@ public:
   NodeValue(Node *N, unsigned resNo);
 
   /// Create a new operand and register it as a new user to the node.
-  NodeValue(const NodeValue &that) { setOperand(that.getNode()); }
+  NodeValue(const NodeValue &that) {
+    setOperand(that.getNode());
+    resNo_ = that.resNo_;
+  }
   /// When deleting an operand we need to unregister the operand from the
   /// use-list of the node it used to reference.
   ~NodeValue() { setOperand(nullptr); }
