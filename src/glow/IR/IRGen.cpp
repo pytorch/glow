@@ -432,6 +432,25 @@ public:
       registerIR(N, V->getOperand(0).first);
       break;
     }
+    case glow::Kinded::Kind::ArithmeticGradNodeKind: {
+      auto *AR = cast<ArithmeticGradNode>(N);
+      auto *L = valueForNode(AR->getLHS());
+      auto *R = valueForNode(AR->getRHS());
+
+      auto outG = valueForNode(AR->getOriginalOutputForResult());
+      auto *LG = builder_.createAllocActivationInst("LG", L->getType());
+      auto *RG = builder_.createAllocActivationInst("RG", L->getType());
+
+      if (AR->getMode() == ArithmeticGradNode::Mode::Add) {
+        builder_.createElementAddGradInst(N->getName(), outG, LG, RG);
+      } else {
+        builder_.createElementMulGradInst(N->getName(), L, R, outG, LG, RG);
+      }
+
+      registerIR(AR->getGradOfInputNamedLHS(), LG);
+      registerIR(AR->getGradOfInputNamedRHS(), RG);
+      break;
+    }
     case glow::Kinded::Kind::SaveNodeKind: {
       auto *R = cast<SaveNode>(N);
       auto *src = valueForNode(R->getInput());
