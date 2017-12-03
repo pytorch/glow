@@ -310,11 +310,14 @@ public:
              "Unknown original node");
       auto *srcGrad = builder_.createAllocActivationInst("softmax.res.grad",
                                                          outGrad->getType());
+      auto *expGrad = builder_.createAllocActivationInst("expected.res.grad",
+                                                         outGrad->getType());
 
-      auto *SMGI = builder_.createRegressionGradInst(N->getName(), origIn,
-                                                     origExpected, srcGrad);
+      auto *SMGI = builder_.createRegressionGradInst(
+          N->getName(), origIn, origExpected, srcGrad, expGrad);
 
       registerIR(RG->getGradOfInputNamedInput(), SMGI->getSrcGrad());
+      registerIR(RG->getGradOfInputNamedExpected(), SMGI->getExpectedGrad());
       break;
     }
     case glow::Kinded::Kind::TransposeNodeKind: {
