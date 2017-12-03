@@ -15,7 +15,7 @@ using llvm::cast;
 using llvm::dyn_cast;
 
 /// Dead code elimination.
-static void DCE(Graph &G) {
+static void DCE(Graph &G, CompilationMode mode) {
   auto &nodes = G.getNodes();
   auto &vars = G.getVars();
 
@@ -32,6 +32,14 @@ static void DCE(Graph &G) {
       if (used || llvm::isa<SaveNode>(*it)) {
         ++it;
         continue;
+      }
+
+      // In training mode we should not remove the training nodes.
+      if (mode == CompilationMode::Train) {
+        if (llvm::isa<SGDNode>(*it)) {
+          ++it;
+          continue;
+        }
       }
 
       erasedNodes.push_back(it);
@@ -479,7 +487,7 @@ void glow::optimize(Graph &G, CompilationMode mode) {
   CSE(G);
 
   // Perform Dead Code Elimination.
-  DCE(G);
+  DCE(G, mode);
 
   if (mode == CompilationMode::Infer) {
     // Merge batch normalization operations.
@@ -492,5 +500,5 @@ void glow::optimize(Graph &G, CompilationMode mode) {
   optimizeConcatNodes(G);
 
   // Perform Dead Code Elimination.
-  DCE(G);
+  DCE(G, mode);
 }
