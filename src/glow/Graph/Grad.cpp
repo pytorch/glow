@@ -1,5 +1,6 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
+#include "glow/Graph/Grad.h"
 #include "glow/Base/Train.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
@@ -16,10 +17,26 @@ using namespace glow;
 using llvm::cast;
 using llvm::isa;
 
+void GraphGradMapper::addGradient(NodeValue activation, NodeValue grad) {
+  if (map_.count(activation)) {
+    auto curr = map_.get(activation);
+    auto *sum = G_.createArithmetic("updateGrad", curr, grad,
+                                    ArithmeticNode::Mode::Add);
+    map_.insert(activation, sum);
+    return;
+  }
+
+  map_.insert(activation, grad);
+}
+
+NodeValue GraphGradMapper::getGradient(NodeValue activation) {
+  return map_.get(activation);
+}
+
 void glow::generateGradientNodes(Graph &G, unsigned batchSize,
                                  TrainingConfig &conf) {
   using Kind = glow::Kinded::Kind;
-  UnownedNodeValueMap map;
+  GraphGradMapper map(G);
 
   // A list of nodes to add to the graph.
   std::vector<Node *> toAppend;
@@ -62,34 +79,33 @@ void glow::generateGradientNodes(Graph &G, unsigned batchSize,
     CONVERT_TO_GRAD_NODE(ReluNode)
     CONVERT_TO_GRAD_NODE(SigmoidNode)
     CONVERT_TO_GRAD_NODE(TanhNode)
-    CONVERT_TO_GRAD_NODE(ConvolutionNode)
 
     if (N->getKind() == Kind::SaveNodeKind) {
       // Swap the src and dest.
       auto *X =
           new ZeroNode(N->getName(), cast<SaveNode>(N)->getInput()->getType());
       toAppend.push_back(X);
-      map.insert(cast<SaveNode>(N)->getInput(), X);
-      map.insert(cast<SaveNode>(N)->getVariable(), X);
+      map.addGradient(cast<SaveNode>(N)->getInput(), X);
+      map.addGradient(cast<SaveNode>(N)->getVariable(), X);
       continue;
     }
 
     if (N->getKind() == Kind::ReshapeNodeKind) {
       ReshapeNode *RN = cast<ReshapeNode>(N);
-      NodeValue outputG = map.get(RN->getResult());
+      NodeValue outputG = map.getGradient(RN->getResult());
       NodeValue inputW = RN->getInput();
 
       // Swap the src and dest.
       auto *X = new ReshapeNode(N->getName(), inputW->getType(), outputG,
                                 inputW->getType()->dims());
       toAppend.push_back(X);
-      map.insert(RN->getResult(), X);
+      map.addGradient(RN->getResult(), X);
       continue;
     }
 
     if (N->getKind() == Kind::TransposeNodeKind) {
       TransposeNode *TN = cast<TransposeNode>(N);
-      NodeValue outputG = map.get(TN->getResult());
+      NodeValue outputG = map.getGradient(TN->getResult());
       NodeValue inputW = TN->getInput();
 
       // Generate the reverse shuffle.
@@ -102,14 +118,14 @@ void glow::generateGradientNodes(Graph &G, unsigned batchSize,
       // Swap the src and dest.
       auto *X = new TransposeNode(N->getName(), inputW->getType(), outputG,
                                   reverseShuffle);
-      map.insert(TN->getResult(), X);
+      map.addGradient(TN->getResult(), X);
       continue;
     }
 
     if (N->getKind() == Kind::ConcatNodeKind) {
       auto *CC = cast<ConcatNode>(N);
       auto inputs = CC->getInputs();
-      NodeValue outputG = map.get(CC->getResult());
+      NodeValue outputG = map.getGradient(CC->getResult());
 
       // We start extracting the shape at (0,0, ... ).
       std::vector<size_t> offsets(CC->dims().size(), 0);
@@ -119,7 +135,7 @@ void glow::generateGradientNodes(Graph &G, unsigned batchSize,
         // We are stacking the tensors along a specific dimension. This means
         // that we increase the size of the tensor along this dimension.
         offsets[dim] += N.dims()[dim];
-        map.insert(N, X);
+        map.addGradient(N, X);
       }
       continue;
     }
@@ -140,7 +156,7 @@ void glow::generateGradientNodes(Graph &G, unsigned batchSize,
     newVars.push_back(gsum);
 
     auto X =
-        new SGDNode(V->getName(), map.get(V), V, gsum, conf.L1Decay,
+        new SGDNode(V->getName(), map.getGradient(V), V, gsum, conf.L1Decay,
                     conf.L2Decay, conf.learningRate, conf.momentum, batchSize);
     toAppend.push_back(X);
   }

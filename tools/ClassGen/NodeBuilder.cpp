@@ -314,7 +314,7 @@ void NodeBuilder::addGradient() {
   // Construct a factory method that builds the new grad node and add
   // it to the current non-grad instruction.
   std::stringstream ss;
-  ss << name_ + "GradNode* getGrad(UnownedNodeValueMap &map) {\n";
+  ss << name_ + "GradNode* getGrad(GraphGradMapper &builder) {\n";
   ss << "\tauto * x = new " + name_ + "GradNode(getName()";
 
   if (enum_.size()) {
@@ -329,7 +329,7 @@ void NodeBuilder::addGradient() {
 
   for (const auto &out : nodeOutputs_) {
     ss << ", get" << out.second << "()";
-    ss << ", map.get(get" << out.second << "())";
+    ss << ", builder.getGradient(get" << out.second << "())";
   }
 
   // Extra class members:
@@ -342,8 +342,8 @@ void NodeBuilder::addGradient() {
   // Register the result of the new node as the gradients of the original node
   // inputs.
   for (const std::string &in : nodeInputs_) {
-    ss << "\tmap.insert(get" << in << "(), x->getGradOfInputNamed" << in
-       << "());\n";
+    ss << "\tbuilder.addGradient(get" << in << "(), x->getGradOfInputNamed"
+       << in << "());\n";
   }
   ss << "\treturn x;\n";
   ss << " }";

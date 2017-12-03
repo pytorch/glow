@@ -2,6 +2,7 @@
 
 #include "glow/Graph/Nodes.h"
 #include "glow/Base/Type.h"
+#include "glow/Graph/Graph.h"
 #include "glow/Support/Support.h"
 
 using namespace glow;
@@ -119,7 +120,7 @@ ElemKind NodeValue::getElementType() const {
 }
 
 void UnownedNodeValueMap::insert(NodeValue from, NodeValue to) {
-  entries.push_back(
+  entries.push_front(
       {{from.getNode(), from.getResNo()}, {to.getNode(), to.getResNo()}});
 }
 
@@ -135,6 +136,17 @@ NodeValue UnownedNodeValueMap::get(NodeValue from) {
 
   assert(false && "Invalid node");
   return NodeValue(nullptr, 0);
+}
+
+bool UnownedNodeValueMap::count(NodeValue from) {
+  for (auto &E : entries) {
+    auto &F = E.first;
+    if (F.first == from.getNode() && F.second == from.getResNo()) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 llvm::ArrayRef<size_t> NodeValue::dims() const { return getType()->dims(); }

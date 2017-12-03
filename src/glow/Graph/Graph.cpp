@@ -403,7 +403,6 @@ void Graph::eraseVariable(VariablesList::iterator I) {
     return;
   delete *I;
   vars_.erase(I);
- 
 }
 
 void Graph::eraseNode(NodesList::iterator I) {

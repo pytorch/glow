@@ -2,6 +2,7 @@
 #define GLOW_GRAPH_NODES_H
 
 #include "glow/Base/Tensor.h"
+#include "glow/Graph/Grad.h"
 #include "glow/Graph/Node.h"
 
 #include "llvm/ADT/Hashing.h"
