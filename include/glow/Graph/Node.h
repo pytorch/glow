@@ -91,6 +91,9 @@ public:
   /// \register the node \p from as mapping to \p to.
   void insert(NodeValue from, NodeValue to);
 
+  /// \returns True if N is in the map.
+  bool count(NodeValue from);
+
   /// \returns the node that \p from is mapped to.
   NodeValue get(NodeValue from);
 };
