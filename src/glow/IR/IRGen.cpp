@@ -106,9 +106,9 @@ public:
       auto *inG =
           builder_.createAllocActivationInst("conv.input.G", input->getType());
       auto *biasG =
-          builder_.createAllocActivationInst("conv.bias.G", filter->getType());
-      auto *filterG =
-          builder_.createAllocActivationInst("conv.filter.G", bias->getType());
+          builder_.createAllocActivationInst("conv.bias.G", bias->getType());
+      auto *filterG = builder_.createAllocActivationInst("conv.filter.G",
+                                                         filter->getType());
 
       builder_.createConvolutionGradInst(
           N->getName(), input, filter, outGrad, inG, filterG, biasG,
