@@ -368,6 +368,19 @@ public:
       registerIR(N, dest);
       break;
     }
+      case glow::Kinded::Kind::InsertTensorNodeKind: {
+        auto *IT = cast<InsertTensorNode>(N);
+        auto start = IT->getStart();
+        auto *big = valueForNode(IT->getBig());
+        auto *small = valueForNode(IT->getSmall());
+        auto *dest = builder_.createAllocActivationInst(IT->getName(),
+                                                        IT->getType());
+        builder_.createCopyInst("copy.insert", dest, big);
+        builder_.createInsertTensorInst("insert", dest, small, start);
+        registerIR(N, dest);
+        break;
+      }
+
     case glow::Kinded::Kind::BatchNormalizationNodeKind: {
       auto *BN = cast<BatchNormalizationNode>(N);
       auto *in = valueForNode(BN->getInput());
