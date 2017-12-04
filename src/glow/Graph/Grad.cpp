@@ -122,6 +122,19 @@ void glow::generateGradientNodes(Graph &G, unsigned batchSize,
       continue;
     }
 
+    if (N->getKind() == Kind::SliceNodeKind) {
+      SliceNode *SN = cast<SliceNode>(N);
+      auto *zero = new ZeroNode("expand", SN->getType());
+      auto *insert = new InsertTensorNode("insert.slice.grad",
+                                          zero, SN,
+                                          SN->getStart());
+
+      toAppend.push_back(zero);
+      toAppend.push_back(insert);
+      map.addGradient(SN->getResult(), insert);
+      continue;
+    }
+
     if (N->getKind() == Kind::ConcatNodeKind) {
       auto *CC = cast<ConcatNode>(N);
       auto inputs = CC->getInputs();
