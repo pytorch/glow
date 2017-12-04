@@ -118,6 +118,7 @@ void glow::generateGradientNodes(Graph &G, unsigned batchSize,
       // Swap the src and dest.
       auto *X = new TransposeNode(N->getName(), inputW->getType(), outputG,
                                   reverseShuffle);
+      toAppend.push_back(X);
       map.addGradient(TN->getResult(), X);
       continue;
     }
