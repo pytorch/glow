@@ -485,9 +485,7 @@ void Interpreter::fwdTanhInst(bool isTrain, const TanhInst *I) {
 
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     float val = inW.raw(i);
-    float exp_val = std::exp(val);
-    float exp_neg_val = std::exp(-val);
-    outW.raw(i) = (exp_val - exp_neg_val) / (exp_val + exp_neg_val);
+    outW.raw(i) = std::tanh(val);
   }
 }
 void Interpreter::fwdTanhGradInst(bool isTrain, const TanhGradInst *I) {
