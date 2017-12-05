@@ -1,6 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "glow/IR/IR.h"
+#include "glow/Graph/Graph.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Support.h"
 
@@ -172,6 +173,7 @@ static void nameInstr(std::unordered_set<std::string> &usedNames, Named *named,
   named->setName(tempName);
 }
 
+Module::Module(Graph *G) : G_(G), name_(G->getName()) {}
 void Module::nameInstructions() {
   std::unordered_set<std::string> usedNames;
   for (auto &v : weights_) {
@@ -186,6 +188,7 @@ void Module::dump() {
   nameInstructions();
   // Print all of the variables:
   std::stringstream sb;
+  sb << "module " << G_->getName().str() << "\n";
 
   size_t sizeInBytes = 0;
   sb << "declare {\n";

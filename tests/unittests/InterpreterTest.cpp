@@ -19,6 +19,7 @@ TEST(Interpreter, interpret) {
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
 
   auto &G = EE.getGraph();
+  G.setName("interpret");
   auto *input = G.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input");
 
   auto *ex = G.createVariable(ElemKind::IndexTy, {1, 1}, "exp");
@@ -51,6 +52,7 @@ TEST(Interpreter, trainASimpleNetwork) {
   EE.getConfig().learningRate = 0.05;
 
   auto &G = EE.getGraph();
+  G.setName("trainASimpleNetwork");
 
   // Create a variable with 1 input, which is a vector of 4 elements.
   auto *A = G.createVariable(ElemKind::FloatTy, {1, 4}, "A");
@@ -102,6 +104,7 @@ TEST(Interpreter, simpleRegression) {
   Tensor expected(ElemKind::FloatTy, {1, numInputs});
 
   auto &G = EE.getGraph();
+  G.setName("simpleRegression");
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputs}, "A");
   auto *Ex = G.createVariable(ElemKind::FloatTy, {1, numInputs}, "E");
   Node *O = G.createFullyConnected("fc", A, 4);
@@ -149,6 +152,7 @@ TEST(Interpreter, learnXor) {
   EE.getConfig().learningRate = 0.05;
 
   auto &G = EE.getGraph();
+  G.setName("learnXor");
 
   auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
   auto *Ex = G.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
@@ -244,6 +248,7 @@ TEST(Network, circle) {
   EE.getConfig().learningRate = 0.01;
 
   auto &G = EE.getGraph();
+  G.setName("circle");
   auto *A = G.createVariable(ElemKind::FloatTy, {1, 2}, "A");
   auto *S = G.createVariable(ElemKind::IndexTy, {1, 1}, "S",
                              Variable::InitKind::Extern);
@@ -325,6 +330,7 @@ TEST(Network, learnSingleValueConcat) {
   EE.getConfig().learningRate = 0.01;
 
   auto &G = EE.getGraph();
+  G.setName("learnSingleValueConcat");
 
   auto *Ex = G.createVariable(ElemKind::FloatTy, {1, width * 2}, "Ex");
 
@@ -368,6 +374,7 @@ TEST(Network, concatVectors) {
   ExecutionEngine EE;
 
   auto &G = EE.getGraph();
+  G.setName("concatVectors");
 
   auto *V1 = G.createVariable(ElemKind::IndexTy, {10}, "V1");
   auto *V2 = G.createVariable(ElemKind::IndexTy, {20}, "V2");
@@ -406,6 +413,7 @@ TEST(Network, sliceVectors) {
   ExecutionEngine EE;
 
   auto &G = EE.getGraph();
+  G.setName("sliceVectors");
 
   auto *V = G.createVariable(ElemKind::IndexTy, {3, 30}, "V");
 
@@ -462,6 +470,7 @@ TEST(Network, trainASimpleRNN) {
   EE.getConfig().learningRate = 0.05;
 
   auto &G = EE.getGraph();
+  G.setName("trainASimpleRNN");
 
   // Create a variable with 1 input, which is 3 consecutive vectors
   // of 4 elements each.
