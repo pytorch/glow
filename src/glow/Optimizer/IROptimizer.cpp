@@ -790,6 +790,77 @@ void copyPropagation(Module &M) {
   eraseInstructions(M, ErasedInstructions);
 }
 
+/// Get a set of operands updated by an instruction.
+static void
+getUpdatedOperands(InstrIterator I,
+                   llvm::SmallVectorImpl<Instruction::Operand> &Operands) {
+  assert(Operands.empty());
+  for (int i = 0, e = (*I)->getNumOperands(); i < e; i++) {
+    auto Op = (*I)->getOperand(i);
+    // Collect only operands that are updated.
+    if (Op.second == OperandKind::In)
+      continue;
+    // Add to the set if it is not present there yet.
+    if (std::find(Operands.begin(), Operands.end(), Op) == Operands.end())
+      Operands.push_back(Op);
+  }
+}
+
+/// Dead Store Elimination.
+static void eliminateDeadStores(Module &M) {
+  InstructionNumbers ErasedInstructions;
+  // Build a list of live intervals for each memory location
+  // which is either a WeightVar or a an Allocation.
+  InstructionNumbering InstrNumbering(M);
+  LiveIntervalsMap IntervalsMap;
+  calculateLiveIntervals(M, IntervalsMap);
+
+  // For each memory location from the intervals map
+  // - Find intervals which whose start and end are the same and the first
+  // instruction is a write. It means that they are only written to, but
+  // never read.
+  // - If this first instruction writes only into the memory location in
+  // question and does not write/update any other memory locations,
+  // this instruction can be removed.
+  for (auto const &Entry : IntervalsMap) {
+    auto *ML = Entry.first;
+    auto &IL = Entry.second;
+    for (auto &LI : IL) {
+      auto IntervalBegin = LI.first;
+      auto IntervalEnd = LI.second;
+      if (IntervalBegin != IntervalEnd)
+        continue;
+      // Get the defining instruction for this interval.
+      auto I = InstrNumbering.getInstr(IntervalBegin);
+      if (isa<AllocActivationInst>(*I) || isa<DeallocActivationInst>(*I))
+        continue;
+      // Check which memory locations are being changed by this instruction.
+      llvm::SmallVector<Instruction::Operand, 8> Operands;
+      getUpdatedOperands(I, Operands);
+      if (Operands.size() > 1) {
+        // Instruction updates more than one memory location.
+        // TODO: If none of those locations are used afterwards, then it is fine
+        // to remove it.
+        continue;
+      }
+      DEBUG(std::cout << "Found a dead store into " << ML->getName().str()
+                      << ": ";
+            (*I)->dump(std::cout); std::cout << "\n";
+            std::cout << "Operand being updated is: "
+                      << Operands[0].first->getName().str() << "\n";
+            std::cout << "Interval is: "
+                      << "(" << IntervalBegin << ", " << IntervalEnd << ")"
+                      << "\n");
+      assert(Operands[0].first == ML);
+      // Only the current memory location is being updated by this instruction.
+      ErasedInstructions.insert(IntervalBegin);
+    }
+  }
+  if (!ErasedInstructions.empty()) {
+    eraseInstructions(M, ErasedInstructions);
+  }
+}
+
 void glow::optimize(Module &M, CompilationMode mode) {
   M.verify();
 
@@ -812,6 +883,11 @@ void glow::optimize(Module &M, CompilationMode mode) {
 
   // Perform copy propagation.
   copyPropagation(M);
+
+  deleteDeadAllocs(M);
+
+  // Perform Dead Store Elimination.
+  eliminateDeadStores(M);
 
   deleteDeadAllocs(M);
 
