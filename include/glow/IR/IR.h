@@ -96,6 +96,12 @@ public:
     }
   }
 
+  ~Instruction() {
+    for (unsigned idx = 0, e = ops_.size(); idx < e; ++idx) {
+      setOperand(idx, nullptr);
+    }
+  }
+
   /// \returns True if this instruction may reuse the memory buffer read by
   /// operand \p srcIdx for writing the result of the operand at \p dstIdx.
   bool isInplaceOp(unsigned dstIdx, unsigned srcIdx) const { return false; }
