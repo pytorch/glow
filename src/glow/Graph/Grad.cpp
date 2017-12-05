@@ -99,7 +99,7 @@ void glow::generateGradientNodes(Graph &G, unsigned batchSize,
       auto *X = new ReshapeNode(N->getName(), inputW->getType(), outputG,
                                 inputW->getType()->dims());
       toAppend.push_back(X);
-      map.addGradient(RN->getResult(), X);
+      map.addGradient(RN->getInput(), X);
       continue;
     }
 
@@ -119,20 +119,20 @@ void glow::generateGradientNodes(Graph &G, unsigned batchSize,
       auto *X = new TransposeNode(N->getName(), inputW->getType(), outputG,
                                   reverseShuffle);
       toAppend.push_back(X);
-      map.addGradient(TN->getResult(), X);
+      map.addGradient(TN->getInput(), X);
       continue;
     }
 
     if (N->getKind() == Kind::SliceNodeKind) {
       SliceNode *SN = cast<SliceNode>(N);
-      auto *zero = new ZeroNode("expand", SN->getType());
-      auto *insert = new InsertTensorNode("insert.slice.grad",
-                                          zero, SN,
+      auto *zero = new ZeroNode("expand", SN->getInput()->getType());
+      auto *insert = new InsertTensorNode("insert.slice.grad", zero,
+                                          map.getGradient(SN->getResult()),
                                           SN->getStart());
 
       toAppend.push_back(zero);
       toAppend.push_back(insert);
-      map.addGradient(SN->getResult(), insert);
+      map.addGradient(SN->getInput(), insert);
       continue;
     }
 
