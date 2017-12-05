@@ -234,6 +234,8 @@ static void dumpIR(Value *V, std::ostream &out) {
   glow_unreachable();
 }
 
+void Instruction::dump(std::ostream &out) { dumpIR(this, out); }
+
 bool Instruction::isInplaceOp(const Instruction *I, unsigned dstIdx,
                               unsigned srcIdx) {
 #define DEF_INSTR(CLASS, NAME)                                                 \

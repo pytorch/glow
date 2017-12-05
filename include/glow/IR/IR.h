@@ -129,6 +129,9 @@ public:
   /// Verify the correctness of the instruction parameters.
   void verify() const;
 
+  /// Print instruction.
+  void dump(std::ostream &out);
+
   /// The static dispatch version of isInplaceOp.
   static bool isInplaceOp(const Instruction *I, unsigned dstIdx,
                           unsigned srcIdx);
