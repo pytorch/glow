@@ -64,6 +64,11 @@ class Value : public Named,
 public:
   Value(llvm::StringRef name, TypeRef T, Kinded::Kind k)
       : Named(name), Typed(T), Kinded(k) {}
+
+  void verifyUseList(const Module &M) const;
+
+  /// Verify the correctness of the instruction parameters.
+  void verify(const Module &M) const;
 };
 
 /// This represents an instruction in our IR.
