@@ -172,6 +172,9 @@ void NodeBuilder::emitEquator(std::ostream &os) const {
     os << " &&\n\t " << mem.second << "_ == other." << mem.second << "_";
   }
 
+  for (int i = 0, e = nodeOutputs_.size(); i < e; i++) {
+    os << " &&\n\t getType(" << i << ") == other.getType(" << i << ")";
+  }
   os << ";\n }\n";
 }
 
