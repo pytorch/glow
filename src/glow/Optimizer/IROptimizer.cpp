@@ -1,11 +1,15 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
+#define DEBUG_TYPE "ir-optimizer"
 
 #include "glow/IR/IR.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 
+#include <iostream>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -15,8 +19,14 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
+/// A live interval is represented as [begin, end).
 using Interval = std::pair<unsigned, unsigned>;
+using Intervals = std::list<Interval>;
 using LivenessMap = std::unordered_map<Value *, Interval>;
+using LiveIntervalsMap = std::unordered_map<Value *, Intervals>;
+/// Set of instruction numbers.
+using InstructionNumbers = std::unordered_set<size_t>;
+
 static void calculateLiveness(Module &M, LivenessMap &liveness) {
   auto &instrs = M.getInstrs();
   unsigned instIdx = 0;
@@ -449,6 +459,323 @@ void makeWeightsConst(Module &M) {
   }
 }
 
+/// Compute live intervals for each mutable location represented by
+/// Value which is either an AllocActivationInst or a WeightVar.
+/// Each such value is mapped to a list of intervals where it is alive.
+/// Each interval starts at the point of definition and ends at last use
+/// of the current value, which is assigned at the beginning of the current
+/// interval. If there are multiple writes to the same mutable memory
+/// location, then each such assignment would result in a new interval.
+static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
+  assert(liveness.empty());
+  auto &instrs = M.getInstrs();
+  unsigned instIdx = 0;
+
+  // Compute the [start..end) intervals for each alloc activation in our basic
+  // block. Notice that we ignore Dealloc instructions in our analysis.
+  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it, ++instIdx) {
+    // Ignore deallocations in our liveness calculation.
+    if (isa<DeallocActivationInst>(*it)) {
+      continue;
+    }
+
+    for (int i = 0, e = (*it)->getNumOperands(); i < e; i++) {
+      auto op = (*it)->getOperand(i).first;
+      auto opKind = (*it)->getOperand(i).second;
+      Value *loc = dyn_cast<AllocActivationInst>(op);
+      if (!loc) {
+        loc = dyn_cast<WeightVar>(op);
+        // No need to track constants. They are always read-only.
+        if (loc && dyn_cast<WeightVar>(op)->getMutability() ==
+                       WeightVar::MutabilityKind::Constant)
+          continue;
+      }
+      // Bail if the operand is not an allocation.
+      if (!loc) {
+        continue;
+      }
+
+      auto I = liveness.find(loc);
+      if (I == liveness.end()) {
+        // Create a new interval.
+        liveness[loc].push_back({instIdx, instIdx});
+        // If it is a first use, it should be either an input variable or
+        // a write.
+        // FIXME: Remove InOut!
+        if (!(isa<WeightVar>(op) || opKind == OperandKind::Out ||
+              opKind == OperandKind::InOut)) {
+          llvm::outs() << "\nRead before write for " << loc->getName()
+                       << " at instruction " << instIdx << "\n\n";
+          assert(isa<WeightVar>(op) || opKind == OperandKind::Out ||
+                 opKind == OperandKind::InOut);
+        }
+        continue;
+      }
+
+      // Expand the interval.
+      I->second.back().second = instIdx;
+
+      if (opKind == OperandKind::In) {
+        continue;
+      }
+      /// FIXME: This is a hack! InsertTensorInst does not completely
+      /// overwrite the target. It just appends something to it.
+      if (auto *ITI = dyn_cast<InsertTensorInst>(*it)) {
+        if (op == ITI->getDest())
+          continue;
+      }
+      // This instruction modifies the memory location.
+      // Therefore, end the current active live interval
+      // for this memory location and begin a new one.
+      liveness[loc].push_back({instIdx, instIdx});
+    }
+  }
+
+  for (auto &Entry : liveness) {
+    auto *ML = Entry.first;
+    auto &IL = Entry.second;
+    if (auto *WV = dyn_cast<WeightVar>(ML)) {
+      assert(!IL.empty());
+      // Extend the last interval till the end of the program
+      // to express that all mutable weights are used outside.
+      IL.back().second = instIdx;
+    }
+  }
+}
+
+#ifdef NDEBUG
+/// Dump a live intervals map.
+static void dump(Module &M, LiveIntervalsMap &IntervalsMap) {
+  llvm::outs() << "\nDumping live intervals map:\n";
+  for (auto &I : IntervalsMap) {
+    llvm::outs() << "\nValue " << I.first->getName();
+    llvm::outs() << "\n";
+    for (auto &Interval : I.second) {
+      llvm::outs() << " (" << Interval.first << ", " << Interval.second << ")";
+    }
+    llvm::outs() << "\n";
+  }
+}
+#endif
+
+/// Provided a set of intervals, return the interval covering
+/// a given instruction.
+static Intervals::iterator getEnclosingInterval(Intervals &LiveIntervals,
+                                                size_t instIdx) {
+  for (auto I = LiveIntervals.begin(), E = LiveIntervals.end(); I != E; ++I) {
+    if (I->first <= instIdx && instIdx <= I->second)
+      return I;
+  }
+  return LiveIntervals.end();
+}
+
+/// Returns true if RHS is enclosed inside LHS.
+static bool isEnclosedInside(Interval &LHS, Interval &RHS) {
+  return LHS.first < RHS.first && RHS.second <= LHS.second;
+}
+
+static void replaceAllUsesWith(Value *val, Value *with, Interval &I, Module &M,
+                               std::vector<Instruction *> &ChangedInstrs) {
+  auto &instrs = M.getInstrs();
+  size_t instIdx = 0;
+  for (auto it = instrs.begin(), e = instrs.end();
+       it != e && instIdx <= I.second; ++instIdx, ++it) {
+    if (instIdx < I.first)
+      continue;
+    // This is an instruction inside the interval.
+    for (int i = 0, e = (*it)->getNumOperands(); i < e; i++) {
+      auto op = (*it)->getOperand(i).first;
+      auto kind = (*it)->getOperand(i).second;
+      if (op != val)
+        continue;
+      if (instIdx == I.first && kind != OperandKind::Out)
+        continue;
+      DEBUG(llvm::outs() << "Replacing inside instruction " << instIdx << "\n");
+      // Replace the old value by the new value.
+      (*it)->setOperand(i, with);
+      ChangedInstrs.push_back(*it);
+    }
+  }
+}
+
+static void eraseInstructions(Module &M,
+                              InstructionNumbers &ErasedInstructions) {
+  auto &instrs = M.getInstrs();
+  size_t instIdx = 0;
+  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++instIdx) {
+    if (ErasedInstructions.count(instIdx) == 0) {
+      ++it;
+      continue;
+    }
+    it = M.eraseInstruction(it);
+  }
+}
+
+/// Perform a copy propagation.
+void copyPropagation(Module &M) {
+  auto &instrs = M.getInstrs();
+
+  InstructionNumbers ErasedInstructions;
+  // Build a list of live intervals for each memory location
+  // which is either a WeightVar or a an Allocation.
+  LiveIntervalsMap IntervalsMap;
+  calculateLiveIntervals(M, IntervalsMap);
+
+  size_t instIdx = 0;
+  // Go over instructions and loop for copy instructions.
+  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++instIdx) {
+    auto curr = it;
+    auto *ci = dyn_cast<CopyInst>(*curr);
+    // We need only copy instructions.
+    if (!ci) {
+      ++it;
+      continue;
+    }
+
+    // Get the source of the copy. This memory location may have been
+    // modified by any instruction that used it as an @out or @inout
+    // parameter.
+    auto *Src = ci->getSrc();
+    auto *Dest = ci->getDest();
+    assert(Src->getType() == Dest->getType() &&
+           "Both src and dest of copy should have the same type");
+    DEBUG(llvm::outs() << "Instruction " << instIdx << ": Found a copy from "
+                       << Src->getName() << " to " << Dest->getName() << ":\n";
+          ci->dump(std::cout); std::cout << "\n");
+
+    // We plan to replace the assignments to Src by assignments
+    // to Dest and replace all uses of Src to use Dest to get rid of the copy.
+    // But before we can do it, we need to check some preconditions.
+
+    // Check if writes to Src are allowed to be replaced by writes
+    // to Dest.
+    if (auto *WV = dyn_cast<WeightVar>(Src)) {
+      // Writes into an output variable should not be transformed,
+      // because it would change the observable effect of the write.
+      // So, bail if:
+      // - Src is a mutable WeightVar or
+      // - it is a constant, but Dest is assigned multiple times.
+      if (WV->getMutability() == WeightVar::MutabilityKind::Mutable ||
+          getSingleWriter(Dest) != ci) {
+        DEBUG(llvm::outs() << "Cannot copy propagate if src is a WeightVar\n");
+        ++it;
+        continue;
+      }
+      // There is only one write into Dest and it is this copy instruction.
+      // Therefore it is safe to replace all uses of Dest by Src.
+      replaceAllNonDeallocUsersWith(Dest, Src);
+      ErasedInstructions.insert(instIdx);
+      DEBUG(llvm::outs() << "Can replace this copy by forward "
+                            "propagating its value\n");
+      ++it;
+      continue;
+    }
+
+    auto &SrcIntervals = IntervalsMap[Src];
+    auto &DestIntervals = IntervalsMap[Dest];
+    // Bail if information about live intervals is not known.
+    if (SrcIntervals.empty() || DestIntervals.empty()) {
+      DEBUG(llvm::outs() << "Cannot copy propagate because "
+                            "cannot find live intervals\n");
+      ++it;
+      continue;
+    }
+
+    // Find the Src live interval that encloses instIdx
+    auto SrcInterval = getEnclosingInterval(SrcIntervals, instIdx);
+    if (SrcInterval == SrcIntervals.end()) {
+      DEBUG(llvm::outs() << "Cannot copy propagate: cannot "
+                            "find enclosing src interval\n";
+            llvm::outs() << "instruction idx = " << instIdx << "\n");
+      ++it;
+      continue;
+    }
+
+    // Find the Dest live interval that encloses instIdx.
+    auto DestInterval = getEnclosingInterval(DestIntervals, instIdx);
+    if (DestInterval == DestIntervals.end()) {
+      DEBUG(llvm::outs() << "Cannot copy propagate: cannot "
+                            "find enclosing dest interval\n");
+      ++it;
+      continue;
+    }
+
+    // If the Src interval ends before the Dest interval starts,
+    // it means that the copy instruction is the last use of Src.
+    // After this copy, Dest would be equal to Src.
+    // Thus, it is safe to replace all uses of Src inside the Src
+    // interval by Dest. In particular, the instruction that
+    // initializes Src will now initialize Dest.
+    // This would have the effect of shrinking Src's lifetime
+    // and extending the Dest's lifetime.
+    //
+    // So, basically:
+    // src <- val
+    // use1_src
+    // dest <- src
+    // use2_dest
+    //
+    // is transformed into:
+    //
+    // dest <- val
+    // use1_dest
+    // use2_dest
+
+    // Another possible case is that Dest interval is enclosed
+    // into Src interval.
+    //
+    // In this case, we get:
+    // src <- val
+    // use1_src
+    // dest <- src
+    // use2_src
+    // use3_dest // Last use of dest
+    // use4_src
+    //
+    // is transformed into:
+    //
+    // dest <- val
+    // use1_dest
+    // use2_dest
+    // user3_dest
+    // use4_dest
+
+    // Check if SrcInterval ends before DestInterval starts or
+    // that DestInterval is enclosed inside the SrcInterval.
+    bool canPropagate = SrcInterval->second <= DestInterval->first ||
+                        isEnclosedInside(*SrcInterval, *DestInterval);
+    if (!canPropagate) {
+      DEBUG(llvm::outs() << "Cannot copy propagate: "
+                         << "DstInterval"
+                         << "(" << DestInterval->first << ","
+                         << DestInterval->second << ")"
+                         << " is not enclosed inside SrcInterval"
+                         << "(" << SrcInterval->first << ","
+                         << SrcInterval->second << ")"
+                         << "\n");
+      ++it;
+      continue;
+    }
+
+    // It is safe to replace all references to Src inside SrcInterval
+    // by references to Dest.
+    std::vector<Instruction *> ChangedInstrs;
+    replaceAllUsesWith(Src, Dest, *SrcInterval, M, ChangedInstrs);
+    /// TODO: Do we need to update the information about Src and Dest in the
+    /// live intervals map?
+    assert(!ChangedInstrs.empty());
+    DEBUG(llvm::outs() << "Can replace this copy by producing instruction:\n";
+          ChangedInstrs[0]->dump(std::cout); std::cout << "\n");
+    assert(ci->getSrc() == ci->getDest());
+    // Remove the obsolete copy instruction.
+    ErasedInstructions.insert(instIdx);
+    ++it;
+  }
+
+  // Erase instructions.
+  eraseInstructions(M, ErasedInstructions);
+}
+
 void glow::optimize(Module &M, CompilationMode mode) {
   M.verify();
 
@@ -463,10 +790,16 @@ void glow::optimize(Module &M, CompilationMode mode) {
 
   // Shorten the lifetime of buffers.
   hoistDealloc(M);
+
   sinkAllocas(M);
 
   // Turn read-only weights into constant weights.
   makeWeightsConst(M);
+
+  // Perform copy propagation.
+  copyPropagation(M);
+
+  deleteDeadAllocs(M);
 
   M.verify();
 }
