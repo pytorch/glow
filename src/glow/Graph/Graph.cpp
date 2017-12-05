@@ -310,7 +310,7 @@ SaveNode *Graph::createSave(llvm::StringRef name, NodeValue input,
 //===----------------------------------------------------------------------===//
 
 void Graph::dump() {
-  llvm::outs() << "Graph structure:\n";
+  llvm::outs() << "Graph structure " << getName() << ":\n";
   for (auto v : vars_) {
     llvm::outs() << v->getDebugDesc() << "\n";
   }

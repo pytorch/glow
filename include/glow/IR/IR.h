@@ -139,6 +139,8 @@ public:
 private:
   /// A pointer to the graph structure. The Module does not own the graph.
   Graph *G_;
+  /// Name of the module.
+  llvm::StringRef name_;
 
   /// A list of weights. Weights are shared between all execution context.
   std::list<WeightVar *> weights_{};
@@ -161,7 +163,7 @@ public:
   /// Add an instruction to the instr stream.
   void pushInstr(Instruction *I) { instrs_.push_back(I); }
 
-  explicit Module(Graph *G) : G_(G) {}
+  explicit Module(Graph *G);
 
   ~Module();
 
@@ -175,6 +177,8 @@ public:
 
   /// \returns a reference to the original graph.
   Graph *getGraph() { return G_; }
+
+  llvm::StringRef getName() const { return name_; }
 
   /// Verify the correctness of the module.
   void verify() const;

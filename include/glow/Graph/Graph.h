@@ -27,6 +27,8 @@ class Graph final {
   NodesList nodes_;
   /// A list of variables that the graph owns.
   VariablesList vars_;
+  /// Name of the graph.
+  llvm::StringRef name_;
 
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
@@ -145,6 +147,12 @@ public:
 
   /// \returns the list of variables that the graph owns.
   VariablesList &getVars() { return vars_; }
+
+  /// \ returns name of the graph.
+  llvm::StringRef getName() const { return name_; }
+
+  /// Sets the name of the graph.
+  void setName(llvm::StringRef name) { name_ = name; }
 };
 
 struct TrainingConfig;
