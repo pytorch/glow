@@ -216,10 +216,10 @@ public:
       auto *outGrad = valueForNode(RG->getGradOfOriginalOutputNamedResult());
       auto *DG = builder_.createAllocActivationInst("relu.inG.grad",
                                                     outGrad->getType());
-      auto *GRI = builder_.createReluGradInst(
+      builder_.createReluGradInst(
           N->getName(), valueForNode(RG->getOriginalOutputForResult()), outGrad,
           DG);
-      registerIR(N, GRI->getDestGrad());
+      registerIR(N, DG);
       break;
     }
     case glow::Kinded::Kind::SigmoidNodeKind: {
@@ -234,10 +234,10 @@ public:
       auto *outGrad = valueForNode(SG->getGradOfOriginalOutputNamedResult());
       auto *DG = builder_.createAllocActivationInst("sigmoid.inG.grad",
                                                     outGrad->getType());
-      auto *SI = builder_.createSigmoidGradInst(
+      builder_.createSigmoidGradInst(
           N->getName(), valueForNode(SG->getOriginalOutputForResult()), outGrad,
           DG);
-      registerIR(N, SI->getDestGrad());
+      registerIR(N, DG);
       break;
     }
     case glow::Kinded::Kind::TanhNodeKind: {
@@ -252,10 +252,10 @@ public:
       auto *outGrad = valueForNode(TG->getGradOfOriginalOutputNamedResult());
       auto *DG = builder_.createAllocActivationInst("tanh.inG.grad",
                                                     outGrad->getType());
-      auto *TI = builder_.createTanhGradInst(
+      builder_.createTanhGradInst(
           N->getName(), valueForNode(TG->getOriginalOutputForResult()), outGrad,
           DG);
-      registerIR(N, TI->getDestGrad());
+      registerIR(N, DG);
       break;
     }
     case glow::Kinded::Kind::SoftMaxNodeKind: {
@@ -308,7 +308,7 @@ public:
       auto originalNodeResult = RG->getOriginalOutputForResult();
       assert(nodeToInstr_.count(originalNodeResult.getNode()) &&
              "Unknown original node");
-      auto *srcGrad = builder_.createAllocActivationInst("softmax.res.grad",
+      auto *srcGrad = builder_.createAllocActivationInst("regression.res.grad",
                                                          outGrad->getType());
       auto *expGrad = builder_.createAllocActivationInst("expected.res.grad",
                                                          outGrad->getType());
@@ -692,6 +692,6 @@ void Module::generateIR(CompilationMode mode) {
   }
 
   if (mode == CompilationMode::Train) {
-    generateBackwardPass(*this);
+    //generateBackwardPass(*this);
   }
 }
