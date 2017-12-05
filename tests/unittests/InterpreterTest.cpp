@@ -126,6 +126,7 @@ TEST(Interpreter, simpleRegression) {
   }
 
   // Verify the result of the regression layer.
+  EE.compile(CompilationMode::Infer);
 
   // Test the output:
   for (int iter = 0; iter < 5; iter++) {
@@ -268,6 +269,8 @@ TEST(Network, circle) {
 
   // Training:
   EE.train(4000, {A, S}, {&coordinates, &labels});
+
+  EE.compile(CompilationMode::Infer);
 
   // Print a diagram that depicts the network decision on a grid.
   for (int x = -10; x < 10; x++) {
@@ -474,8 +477,10 @@ TEST(Network, trainASimpleRNN) {
 
   // Create a variable with 1 input, which is 3 consecutive vectors
   // of 4 elements each.
-  auto *X = G.createVariable(ElemKind::FloatTy, {1, 3, 4}, "X");
-  auto *Y = G.createVariable(ElemKind::FloatTy, {1, 3}, "Y");
+  auto *X = G.createVariable(ElemKind::FloatTy, {1, 3, 4}, "X",
+                             Variable::InitKind::Extern);
+  auto *Y = G.createVariable(ElemKind::FloatTy, {1, 3}, "Y",
+                             Variable::InitKind::Extern);
 
   // Initialize the state to zero.
   auto *HInit = G.createVariable(ElemKind::FloatTy, {1, 3}, "initial_state",
