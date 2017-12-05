@@ -191,6 +191,35 @@ Value *Module::getWeightForNode(const Node *V) const {
 }
 
 //===----------------------------------------------------------------------===//
+//                    Instruction numbering
+//===----------------------------------------------------------------------===//
+
+InstructionNumbering::InstructionNumbering(Module &M) : M_(M) {
+  auto &instrs = M.getInstrs();
+  size_t instIdx = 0;
+  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++instIdx, ++it) {
+    NumToInstr_.push_back(it);
+    InstrToNum_[*it] = instIdx;
+  }
+}
+
+int64_t InstructionNumbering::getInstrNumber(Instruction *I) {
+  auto Result = InstrToNum_.find(I);
+  if (Result == InstrToNum_.end())
+    return -1;
+  return (int64_t)Result->second;
+}
+
+int64_t InstructionNumbering::getInstrNumber(InstrIterator IT) {
+  return getInstrNumber(*IT);
+}
+
+InstrIterator InstructionNumbering::getInstr(size_t InstrNumber) {
+  assert(InstrNumber < NumToInstr_.size());
+  return NumToInstr_[InstrNumber];
+}
+
+//===----------------------------------------------------------------------===//
 //                    IR printing and visualizing
 //===----------------------------------------------------------------------===//
 
@@ -204,6 +233,34 @@ static void dumpIR(Value *V, std::ostream &out) {
 #include "AutoGenInstr.def"
   glow_unreachable();
 }
+
+static void dumpUsers(Value *V, std::ostream &out, InstructionNumbering &IN) {
+  if (V->getNumUsers() == 0)
+    return;
+  out << " // Users: ";
+  bool IsFirst = true;
+  for (auto U = V->getUsers().rbegin(), E = V->getUsers().rend(); U != E; ++U) {
+    auto *I = U->get();
+    if (!IsFirst) {
+      out << ", ";
+    }
+    auto InstrNum = IN.getInstrNumber(I);
+    if (InstrNum < 0) {
+      dumpIR(V, std::cout);
+      I->dump(std::cout);
+      std::cout.flush();
+      // continue;
+    }
+    assert(std::find(IN.getModule().getInstrs().begin(),
+                     IN.getModule().getInstrs().end(),
+                     I) != IN.getModule().getInstrs().end());
+    assert(InstrNum >= 0);
+    out << InstrNum;
+    IsFirst = false;
+  }
+}
+
+void Instruction::dump(std::ostream &out) { dumpIR(this, out); }
 
 bool Instruction::isInplaceOp(const Instruction *I, unsigned dstIdx,
                               unsigned srcIdx) {
@@ -246,6 +303,11 @@ static void nameInstr(std::unordered_set<std::string> &usedNames, Named *named,
 }
 
 Module::Module(Graph *G) : G_(G), name_(G->getName()) {}
+
+static bool hasResultValue(Instruction *I) {
+  return I->getKind() == Instruction::Kind::AllocActivationInstKind;
+}
+
 void Module::nameInstructions() {
   std::unordered_set<std::string> usedNames;
   for (auto &v : weights_) {
@@ -258,6 +320,7 @@ void Module::nameInstructions() {
 
 void Module::dump() {
   nameInstructions();
+  InstructionNumbering InstrNumbering(*this);
   // Print all of the variables:
   std::stringstream sb;
   sb << "module " << G_->getName().str() << "\n";
@@ -268,6 +331,7 @@ void Module::dump() {
     Value *V = it;
     sb << "  ";
     dumpIR(V, sb);
+    dumpUsers(V, sb, InstrNumbering);
     sb << "\n";
 
     auto *T = V->getType();
@@ -283,7 +347,12 @@ void Module::dump() {
   for (auto it : instrs_) {
     Instruction *II = it;
     sb << "  ";
+    auto InstrNum = InstrNumbering.getInstrNumber(II);
+    assert(InstrNum >= 0);
+    sb << InstrNum << " ";
     dumpIR(II, sb);
+    if (hasResultValue(II))
+      dumpUsers(II, sb, InstrNumbering);
     sb << "\n";
   }
 
