@@ -259,6 +259,35 @@ public:
 /// Iterator over inteructions.
 using InstrIterator = Module::InstListTy::iterator;
 
+/// A helper class used for instructions numbering.
+class InstructionNumbering {
+  using NumberedInstructionMap = std::vector<InstrIterator>;
+  using InstructionNumbersMap = std::unordered_map<Instruction *, size_t>;
+  /// Maps the number to an instruction.
+  NumberedInstructionMap NumToInstr_;
+  /// Maps an instruction to its number.
+  InstructionNumbersMap InstrToNum_;
+  Module &M_;
+
+public:
+  InstructionNumbering(Module &M);
+
+  /// Return the instruction with a given number or
+  /// M.getInstrs().end() if this instruction is not assigned any number.
+  InstrIterator getInstr(size_t InstrNumber);
+
+  /// Return the number of an instruction or a negative value if no number
+  /// was assigned to this instruction.
+  int64_t getInstrNumber(InstrIterator IT);
+
+  /// Return the number of an instruction or a negative value if no number
+  /// was assigned to this instruction.
+  int64_t getInstrNumber(Instruction *I);
+
+  /// Return the module
+  Module &getModule() { return M_; }
+};
+
 } // namespace glow
 
 #endif // GLOW_IR_IR_H
