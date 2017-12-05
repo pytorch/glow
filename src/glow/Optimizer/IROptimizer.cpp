@@ -443,6 +443,8 @@ void makeWeightsConst(Module &M) {
     // Mark the variable as read only.
     if (readOnly) {
       W->setMutability(WeightVar::MutabilityKind::Constant);
+    } else {
+      W->setMutability(WeightVar::MutabilityKind::Mutable);
     }
   }
 }
