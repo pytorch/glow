@@ -304,20 +304,16 @@ public:
       auto *origIn = valueForNode(RG->getInput());
       auto *origExpected = valueForNode(RG->getExpected());
       // Values related to the output of the node.
-      auto *outGrad = valueForNode(RG->getGradOfOriginalOutputNamedResult());
-      auto originalNodeResult = RG->getOriginalOutputForResult();
-      assert(nodeToInstr_.count(originalNodeResult.getNode()) &&
-             "Unknown original node");
       auto *srcGrad = builder_.createAllocActivationInst("regression.res.grad",
-                                                         outGrad->getType());
+                                                         origIn->getType());
       auto *expGrad = builder_.createAllocActivationInst("expected.res.grad",
-                                                         outGrad->getType());
+                                                         origIn->getType());
 
-      auto *SMGI = builder_.createRegressionGradInst(
-          N->getName(), origIn, origExpected, srcGrad, expGrad);
+      builder_.createRegressionGradInst(N->getName(), origIn, origExpected,
+                                        srcGrad, expGrad);
 
-      registerIR(RG->getGradOfInputNamedInput(), SMGI->getSrcGrad());
-      registerIR(RG->getGradOfInputNamedExpected(), SMGI->getExpectedGrad());
+      registerIR(RG->getGradOfInputNamedInput(), srcGrad);
+      registerIR(RG->getGradOfInputNamedExpected(), expGrad);
       break;
     }
     case glow::Kinded::Kind::TransposeNodeKind: {
@@ -368,18 +364,18 @@ public:
       registerIR(N, dest);
       break;
     }
-      case glow::Kinded::Kind::InsertTensorNodeKind: {
-        auto *IT = cast<InsertTensorNode>(N);
-        auto start = IT->getStart();
-        auto *big = valueForNode(IT->getBig());
-        auto *small = valueForNode(IT->getSmall());
-        auto *dest = builder_.createAllocActivationInst(IT->getName(),
-                                                        IT->getType());
-        builder_.createCopyInst("copy.insert", dest, big);
-        builder_.createInsertTensorInst("insert", dest, small, start);
-        registerIR(N, dest);
-        break;
-      }
+    case glow::Kinded::Kind::InsertTensorNodeKind: {
+      auto *IT = cast<InsertTensorNode>(N);
+      auto start = IT->getStart();
+      auto *big = valueForNode(IT->getBig());
+      auto *small = valueForNode(IT->getSmall());
+      auto *dest =
+          builder_.createAllocActivationInst(IT->getName(), IT->getType());
+      builder_.createCopyInst("copy.insert", dest, big);
+      builder_.createInsertTensorInst("insert", dest, small, start);
+      registerIR(N, dest);
+      break;
+    }
 
     case glow::Kinded::Kind::BatchNormalizationNodeKind: {
       auto *BN = cast<BatchNormalizationNode>(N);
