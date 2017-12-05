@@ -169,10 +169,10 @@ int main(int argc, char **argv) {
       .addResult("outTy");
 
   BB.newNode("InsertTensor")
-  .addInput("Big")
-  .addInput("Small")
-  .addMember(MemberType::VectorSizeT, "Start")
-  .addResult("Big.getType()");
+      .addInput("Big")
+      .addInput("Small")
+      .addMember(MemberType::VectorSizeT, "Start")
+      .addResult("Big.getType()");
 
   //===--------------------------------------------------------------------===//
   //                Nodes used for network training
