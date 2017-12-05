@@ -688,6 +688,6 @@ void Module::generateIR(CompilationMode mode) {
   }
 
   if (mode == CompilationMode::Train) {
-    //generateBackwardPass(*this);
+    generateBackwardPass(*this);
   }
 }
