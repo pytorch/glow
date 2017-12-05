@@ -289,6 +289,7 @@ void Module::nameInstructions() {
 
 void Module::dump() {
   nameInstructions();
+  InstructionNumbering InstrNumbering(*this);
   // Print all of the variables:
   std::stringstream sb;
   sb << "module " << G_->getName().str() << "\n";
@@ -314,6 +315,9 @@ void Module::dump() {
   for (auto it : instrs_) {
     Instruction *II = it;
     sb << "  ";
+    auto InstrNum = InstrNumbering.getInstrNumber(II);
+    assert(InstrNum >= 0);
+    sb << InstrNum << " ";
     dumpIR(II, sb);
     sb << "\n";
   }
