@@ -59,6 +59,7 @@ void Instruction::verifyUseList() const {
     (void)v;
     assert(v && "Instruction operand must be a real value");
     assert(v->hasUser(this) && "Invalid use-list");
+    v->verifyUseList(getParent());
   }
 }
 
@@ -68,6 +69,19 @@ void Instruction::verify() const {
     X->verify();
 #define DEF_VALUE(CLASS, NAME)
 #include "AutoGenInstr.def"
+}
+
+void Value::verify(const Module &M) const {}
+
+void Value::verifyUseList(const Module &M) const {
+  auto Users = getUsers();
+  auto Instrs = M.getInstrs();
+  for (auto Use : Users) {
+    auto *I = Use.get();
+    (void)I;
+    // Every instruction using this value should be in the instruction list.
+    assert(std::find(Instrs.begin(), Instrs.end(), I) != Instrs.end());
+  }
 }
 
 InstrIterator Module::eraseInstruction(InstListTy::iterator it) {
@@ -146,16 +160,24 @@ void Module::verify() const {
     it->verify();
   }
 
+#if 0
+  // gradientMap will soon be removed. Once we do it,
+  // this whole check should be removed.
   for (auto p : gradientMap) {
     (void)p;
     assert(p.first->getType() == p.second->getType() &&
            "Weight and gradient must have the same type");
+    p.second->verify(*this);
+    p.second->verifyUseList(*this);
   }
+#endif
 
   for (auto p : variableMap) {
     (void)p;
     assert(p.first->getType() == p.second->getType() &&
            "Weight and variable must have the same type");
+    p.second->verify(*this);
+    p.second->verifyUseList(*this);
   }
 }
 
