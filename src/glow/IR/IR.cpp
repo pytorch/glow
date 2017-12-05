@@ -51,6 +51,8 @@ Instruction::Operand Instruction::getOperand(unsigned idx) const {
   return ops_[idx];
 }
 
+void Instruction::eraseFromParent() { getParent().eraseInstruction(this); }
+
 void Instruction::verifyUseList() const {
   for (const auto &op : ops_) {
     auto *v = op.first;
@@ -66,6 +68,54 @@ void Instruction::verify() const {
     X->verify();
 #define DEF_VALUE(CLASS, NAME)
 #include "AutoGenInstr.def"
+}
+
+InstrIterator Module::eraseInstruction(InstListTy::iterator it) {
+  auto *I = *it;
+  assert(std::find(instrs_.begin(), instrs_.end(), I) != instrs_.end() &&
+         "Cannot erase an instruction not belonging to a module");
+  delete I;
+  auto result = instrs_.erase(it);
+  assert(std::find(instrs_.begin(), instrs_.end(), I) == instrs_.end() &&
+         "Instruction should be erased");
+  return result;
+}
+
+void Module::eraseInstruction(glow::Instruction *I) {
+  // find the instruction inside the module.
+  auto it = std::find(instrs_.begin(), instrs_.end(), I);
+  assert(it != instrs_.end() &&
+         "Cannot erase an instruction not belonging to a module");
+  eraseInstruction(it);
+}
+
+InstrIterator Module::removeInstruction(InstListTy::iterator it) {
+  auto *I = *it;
+  assert(std::find(instrs_.begin(), instrs_.end(), I) != instrs_.end() &&
+         "Cannot remove an instruction not belonging to a module");
+  auto result = instrs_.erase(it);
+  assert(std::find(instrs_.begin(), instrs_.end(), I) == instrs_.end() &&
+         "Instruction should be removed");
+  return result;
+}
+
+void Module::removeInstruction(glow::Instruction *I) {
+  // find the instruction inside the module.
+  auto it = std::find(instrs_.begin(), instrs_.end(), I);
+  assert(it != instrs_.end() &&
+         "Cannot remove an instruction not belonging to a module");
+  eraseInstruction(it);
+}
+
+void Module::insertInstruction(glow::Instruction *I) {
+  instrs_.push_back(I);
+  I->setParent(this);
+}
+
+void Module::insertInstruction(InstListTy::iterator where,
+                               glow::Instruction *I) {
+  instrs_.insert(where, I);
+  I->setParent(this);
 }
 
 Module::~Module() { clear(); }

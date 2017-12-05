@@ -82,10 +82,10 @@ static void hoistDealloc(Module &M) {
 
     auto *alloc = cast<AllocActivationInst>(da->getOperand(0).first);
 
-    it = instrs.erase(curr);
+    it = M.removeInstruction(curr);
     auto &where = lastUser[alloc];
     where++;
-    instrs.insert(where, da);
+    M.insertInstruction(where, da);
   }
 }
 
@@ -106,7 +106,7 @@ static void sinkAllocas(Module &M) {
     }
 
     allocs.insert(aa);
-    it = instrs.erase(curr);
+    it = M.removeInstruction(curr);
   }
 
   // Place all of the allocas in the right place:
@@ -122,7 +122,7 @@ static void sinkAllocas(Module &M) {
         continue;
       }
       allocs.erase(A);
-      instrs.insert(it, aa);
+      M.insertInstruction(it, aa);
     }
   }
 
@@ -133,27 +133,35 @@ static void sinkAllocas(Module &M) {
 static void deleteDeadAllocs(Module &M) {
   auto &instrs = M.getInstrs();
 
+  llvm::SmallVector<Instruction *, 16> ErasedInstructions{};
   // Remove all of the DeallocActivationInst that close unused allocs.
-  instrs.erase(
-      std::remove_if(instrs.begin(), instrs.end(),
-                     [](const Instruction *I) -> bool {
-                       if (const auto *DA =
-                               dyn_cast<const DeallocActivationInst>(I)) {
-                         return DA->getAlloc()->getNumUsers() < 2;
-                       }
-                       return false;
-                     }),
-      instrs.end());
+  std::copy_if(
+      instrs.begin(), instrs.end(), std::back_inserter(ErasedInstructions),
+      [](const Instruction *I) -> bool {
+        if (const auto *DA = dyn_cast<const DeallocActivationInst>(I)) {
+          return DA->getAlloc()->getNumUsers() < 2;
+        }
+        return false;
+      });
 
+  for (auto I : ErasedInstructions) {
+    M.eraseInstruction(I);
+  }
+
+  ErasedInstructions.clear();
   // Remove the unused allocs.
-  instrs.erase(std::remove_if(instrs.begin(), instrs.end(),
-                              [](const Instruction *I) -> bool {
-                                if (isa<const AllocActivationInst>(I)) {
-                                  return I->getNumUsers() < 2;
-                                }
-                                return false;
-                              }),
-               std::end(instrs));
+  std::copy_if(instrs.begin(), instrs.end(),
+               std::back_inserter(ErasedInstructions),
+               [](const Instruction *I) -> bool {
+                 if (isa<const AllocActivationInst>(I)) {
+                   return I->getNumUsers() < 2;
+                 }
+                 return false;
+               });
+
+  for (auto I : ErasedInstructions) {
+    M.eraseInstruction(I);
+  }
 }
 
 // Replace all users of some value with another value, but don't touch the
@@ -405,11 +413,11 @@ void rematerializeCompute(Module &M) {
       // Recompute the relu locally.
       auto *A = new AllocActivationInst(M, O.first->getName().str() + ".re",
                                         O.first->getType());
-      instrs.insert(it, A);
+      M.insertInstruction(it, A);
       auto *R = new ReluInst(M, "re.Relu", A, prevRelu->getSrc());
-      instrs.insert(it, R);
+      M.insertInstruction(it, R);
       auto *D = new DeallocActivationInst(M, "re", A);
-      instrs.push_back(D);
+      M.insertInstruction(D);
 
       I->setOperand(op, A);
       rewrites[O.first] = A;
