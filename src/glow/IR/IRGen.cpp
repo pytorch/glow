@@ -539,17 +539,17 @@ void generateBackwardPass(Module &M) {
     switch (I->getKind()) {
     case Kind::AllocActivationInstKind: {
       auto *AC = cast<AllocActivationInst>(I);
-      auto *N = new AllocActivationInst(AC->getName(), AC->getType());
+      auto *N = new AllocActivationInst(M, AC->getName(), AC->getType());
       allocs.push_back(N);
       weightToGradMap[I] = N;
 
-      auto *D = new DeallocActivationInst(AC->getName(), N);
+      auto *D = new DeallocActivationInst(M, AC->getName(), N);
       deallocs.push_back(D);
       break;
     }
     case Kind::CopyInstKind: {
       auto *CC = cast<CopyInst>(I);
-      auto *N = new CopyInst(CC->getName(), weightToGradMap[CC->getSrc()],
+      auto *N = new CopyInst(M, CC->getName(), weightToGradMap[CC->getSrc()],
                              weightToGradMap[CC->getDest()]);
       toAppend.push_back(N);
       break;
@@ -613,7 +613,8 @@ void generateBackwardPass(Module &M) {
       Value *dest = weightToGradMap[RI->getDest()];
       Value *src = weightToGradMap[RI->getSrc()];
       // Swap the src and dest.
-      toAppend.push_back(new ReshapeInst(I->getName(), src, dest, src->dims()));
+      toAppend.push_back(
+          new ReshapeInst(M, I->getName(), src, dest, src->dims()));
       break;
     }
     case Kind::TransposeInstKind: {
@@ -630,12 +631,12 @@ void generateBackwardPass(Module &M) {
 
       // Swap the src and dest.
       toAppend.push_back(
-          new TransposeInst(I->getName(), src, dest, reverseShuffle));
+          new TransposeInst(M, I->getName(), src, dest, reverseShuffle));
       break;
     }
     case Kind::ZeroInstKind: {
       Value *src = weightToGradMap[I->getOperand(0).first];
-      toAppend.push_back(new ZeroInst(I->getName(), src));
+      toAppend.push_back(new ZeroInst(M, I->getName(), src));
       break;
     }
     case Kind::InsertTensorInstKind: {
@@ -644,7 +645,7 @@ void generateBackwardPass(Module &M) {
       Value *src = weightToGradMap[ITI->getSrc()];
       // Swap the src and dest.
       toAppend.push_back(
-          new ExtractTensorInst(I->getName(), src, dest, ITI->getOffsets()));
+          new ExtractTensorInst(M, I->getName(), src, dest, ITI->getOffsets()));
       break;
     }
     case Kind::ExtractTensorInstKind: {
@@ -654,7 +655,7 @@ void generateBackwardPass(Module &M) {
 
       // Swap the src and dest.
       toAppend.push_back(
-          new InsertTensorInst(I->getName(), src, dest, ETI->getOffsets()));
+          new InsertTensorInst(M, I->getName(), src, dest, ETI->getOffsets()));
       break;
     }
     default:

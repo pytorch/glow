@@ -403,12 +403,12 @@ void rematerializeCompute(Module &M) {
       }
 
       // Recompute the relu locally.
-      auto *A = new AllocActivationInst(O.first->getName().str() + ".re",
+      auto *A = new AllocActivationInst(M, O.first->getName().str() + ".re",
                                         O.first->getType());
       instrs.insert(it, A);
-      auto *R = new ReluInst("re.Relu", A, prevRelu->getSrc());
+      auto *R = new ReluInst(M, "re.Relu", A, prevRelu->getSrc());
       instrs.insert(it, R);
-      auto *D = new DeallocActivationInst("re", A);
+      auto *D = new DeallocActivationInst(M, "re", A);
       instrs.push_back(D);
 
       I->setOperand(op, A);

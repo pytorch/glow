@@ -14,7 +14,7 @@ unsigned InstrBuilder::getOperandIndexByName(llvm::StringRef name) const {
 }
 
 void InstrBuilder::emitCtor(std::ostream &os) const {
-  os << "\t" << name_ << "Inst(llvm::StringRef name";
+  os << "\t" << name_ << "Inst(Module &M, llvm::StringRef name";
 
   // The operands of the instruction class:
   for (const auto &op : operands_) {
@@ -27,7 +27,7 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
   }
 
   // Initialize the base clases:
-  os << "):\n\t Instruction(name, Kinded::Kind::" << name_ << "InstKind, "
+  os << "):\n\t Instruction(M, name, Kinded::Kind::" << name_ << "InstKind, "
      << ty_ << ",{\n";
 
   // The operands of the instruction class:
@@ -62,7 +62,7 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &os) const {
 
   // Initialize the base clases:
   os << ") {\n";
-  os << "auto *A = new " << name_ << "Inst(name ";
+  os << "auto *A = new " << name_ << "Inst(getModule(), name ";
 
   // The operands of the instruction class:
   for (const auto &op : operands_) {
@@ -219,7 +219,7 @@ void InstrBuilder::addGradientInstr(
   // it to the current non-grad instruction.
   std::stringstream ss;
   ss << name_ + "GradInst* getGrad(Module::GradientMap &map) const {\n";
-  ss << "\t return new " + name_ + "GradInst(getName()";
+  ss << "\t return new " + name_ + "GradInst(getParent(), getName()";
 
   // The operands of the input class:
   for (const auto &op : operands_) {
