@@ -62,9 +62,8 @@ static void calculateLiveness(Module &M, LivenessMap &liveness) {
 
 /// Hoists Dealloc instructions right after their last use.
 static void hoistDealloc(Module &M) {
-  using iterator = Module::InstListTy::iterator;
   // Maps activation instructions to their last non-dealloc user.
-  std::unordered_map<AllocActivationInst *, iterator> lastUser;
+  std::unordered_map<AllocActivationInst *, InstrIterator> lastUser;
   auto &instrs = M.getInstrs();
 
   // Record the last use of each dealloc.
@@ -83,7 +82,7 @@ static void hoistDealloc(Module &M) {
   // Now that we've found the last user we can hoist the instruction.
   for (auto it = instrs.begin(), e = instrs.end(); it != e;
        /* increment below */) {
-    iterator curr = it;
+    auto curr = it;
     auto *da = dyn_cast<DeallocActivationInst>(*curr);
     if (!da) {
       ++it;
@@ -101,14 +100,13 @@ static void hoistDealloc(Module &M) {
 
 /// Sink Alloc instructions right before their first use.
 static void sinkAllocas(Module &M) {
-  using iterator = Module::InstListTy::iterator;
   /// A list of allocas to reschedule.
   std::unordered_set<AllocActivationInst *> allocs;
   auto &instrs = M.getInstrs();
 
   // Remove all of the allocas.
   for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
-    iterator curr = it;
+    auto curr = it;
     auto *aa = dyn_cast<AllocActivationInst>(*curr);
     if (!aa) {
       ++it;
