@@ -246,15 +246,6 @@ static void dumpUsers(Value *V, std::ostream &out, InstructionNumbering &IN) {
       out << ", ";
     }
     auto InstrNum = IN.getInstrNumber(I);
-    if (InstrNum < 0) {
-      dumpIR(V, std::cout);
-      I->dump(std::cout);
-      std::cout.flush();
-      // continue;
-    }
-    assert(std::find(IN.getModule().getInstrs().begin(),
-                     IN.getModule().getInstrs().end(),
-                     I) != IN.getModule().getInstrs().end());
     assert(InstrNum >= 0);
     out << InstrNum;
     IsFirst = false;
