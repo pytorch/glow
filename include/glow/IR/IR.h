@@ -137,6 +137,13 @@ public:
   /// Sets a parent for the current instruction.
   void setParent(Module *Mod) { M = Mod; }
 
+  /// Erases instruction from its parent and destroy it.
+  void eraseFromParent();
+
+  /// Removes instruction from its parent, but does not destroy it.
+  /// The instruction can be inserted elsewhere afterwards.
+  void removeFromParent();
+
 protected:
   /// Dump the operands of the instruction into the stream \p os.
   void dumpOperands(std::ostream &os) const;
@@ -219,10 +226,33 @@ public:
 
   /// \returns the list of instructions.
   InstListTy &getInstrs() { return instrs_; }
+  /// \returns the list of instructions.
+  const InstListTy &getInstrs() const { return instrs_; }
 
   /// \returns the list of weights.
   WeightVarListTy &getWeights() { return weights_; }
+
+  /// Erase the instruction from the module.
+  void eraseInstruction(Instruction *I);
+
+  /// Erase the instruction from the module.
+  InstListTy::iterator eraseInstruction(InstListTy::iterator it);
+
+  /// Remove the instruction from the module.
+  void removeInstruction(Instruction *I);
+
+  /// Remove the instruction from the module.
+  InstListTy::iterator removeInstruction(InstListTy::iterator it);
+
+  /// Inserts an instruction at the place described by \where.
+  void insertInstruction(InstListTy::iterator where, Instruction *I);
+
+  /// Inserts an instruction at the end of the instructions list.
+  void insertInstruction(Instruction *I);
 };
+
+/// Iterator over inteructions.
+using InstrIterator = Module::InstListTy::iterator;
 
 } // namespace glow
 
