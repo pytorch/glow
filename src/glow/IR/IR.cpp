@@ -105,6 +105,7 @@ void Module::eraseInstruction(glow::Instruction *I) {
 
 InstrIterator Module::removeInstruction(InstListTy::iterator it) {
   auto *I = *it;
+  (void)I;
   assert(std::find(instrs_.begin(), instrs_.end(), I) != instrs_.end() &&
          "Cannot remove an instruction not belonging to a module");
   auto result = instrs_.erase(it);
