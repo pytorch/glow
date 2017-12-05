@@ -124,13 +124,13 @@ void Module::removeInstruction(glow::Instruction *I) {
 
 void Module::insertInstruction(glow::Instruction *I) {
   instrs_.push_back(I);
-  I->setParent(this);
+  I->setParent(*this);
 }
 
 void Module::insertInstruction(InstListTy::iterator where,
                                glow::Instruction *I) {
   instrs_.insert(where, I);
-  I->setParent(this);
+  I->setParent(*this);
 }
 
 Module::~Module() { clear(); }
