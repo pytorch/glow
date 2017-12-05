@@ -124,13 +124,13 @@ void Module::removeInstruction(glow::Instruction *I) {
 
 void Module::insertInstruction(glow::Instruction *I) {
   instrs_.push_back(I);
-  I->setParent(this);
+  I->setParent(*this);
 }
 
 void Module::insertInstruction(InstListTy::iterator where,
                                glow::Instruction *I) {
   instrs_.insert(where, I);
-  I->setParent(this);
+  I->setParent(*this);
 }
 
 Module::~Module() { clear(); }
@@ -246,15 +246,6 @@ static void dumpUsers(Value *V, std::ostream &out, InstructionNumbering &IN) {
       out << ", ";
     }
     auto InstrNum = IN.getInstrNumber(I);
-    if (InstrNum < 0) {
-      dumpIR(V, std::cout);
-      I->dump(std::cout);
-      std::cout.flush();
-      // continue;
-    }
-    assert(std::find(IN.getModule().getInstrs().begin(),
-                     IN.getModule().getInstrs().end(),
-                     I) != IN.getModule().getInstrs().end());
     assert(InstrNum >= 0);
     out << InstrNum;
     IsFirst = false;

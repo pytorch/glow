@@ -143,7 +143,7 @@ public:
   }
 
   /// Sets a parent for the current instruction.
-  void setParent(Module *Mod) { M = Mod; }
+  void setParent(Module &Mod) { M = &Mod; }
 
   /// Erases instruction from its parent and destroy it.
   void eraseFromParent();
