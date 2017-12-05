@@ -22,6 +22,12 @@ public:
 
   ~IRBuilder();
 
+  /// \returns Module of the current builder.
+  Module &getModule() {
+    assert(M_);
+    return *M_;
+  }
+
   /// @name High-level, operation-level IRBuilder.
   ///@{
 

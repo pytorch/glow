@@ -72,6 +72,9 @@ public:
   using Operand = InstructionOperand;
 
 private:
+  /// Parent module.
+  Module *M;
+
   /// A list of operands that the instruction has. This is typically a very
   /// short list.
   llvm::SmallVector<Operand, 6> ops_{};
@@ -85,12 +88,12 @@ protected:
   void pushOperand(Operand op);
 
 public:
-  Instruction(llvm::StringRef name, Kinded::Kind k, TypeRef Ty)
-      : Value(name, Ty, k) {}
+  Instruction(Module &M, llvm::StringRef name, Kinded::Kind k, TypeRef Ty)
+      : Value(name, Ty, k), M(&M) {}
 
-  Instruction(llvm::StringRef name, Kinded::Kind k, TypeRef Ty,
+  Instruction(Module &M, llvm::StringRef name, Kinded::Kind k, TypeRef Ty,
               llvm::ArrayRef<Operand> ops)
-      : Value(name, Ty, k) {
+      : Value(name, Ty, k), M(&M) {
     for (auto &op : ops) {
       pushOperand(op);
     }
@@ -124,6 +127,15 @@ public:
   /// The static dispatch version of isInplaceOp.
   static bool isInplaceOp(const Instruction *I, unsigned dstIdx,
                           unsigned srcIdx);
+
+  /// \returns parent of current instruction.
+  Module &getParent() const {
+    assert(M);
+    return *M;
+  }
+
+  /// Sets a parent for the current instruction.
+  void setParent(Module *Mod) { M = Mod; }
 
 protected:
   /// Dump the operands of the instruction into the stream \p os.
