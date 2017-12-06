@@ -26,20 +26,20 @@ TEST(Interpreter, interpret) {
 
   auto *ex = G.createVariable(ElemKind::IndexTy, {1, 1}, "exp");
 
-  auto *CV0 = G.createConv("conv", input, 16, 5, 1, 2);
-  auto *RL0 = G.createRELU("relu", CV0);
-  auto *MP0 = G.createPool("pool", RL0, PoolNode::Mode::Max, 2, 2, 0);
+  auto *CV0 = G.createConv("conv1", input, 16, 5, 1, 2);
+  auto *RL0 = G.createRELU("relu1", CV0);
+  auto *MP0 = G.createPool("pool1", RL0, PoolNode::Mode::Max, 2, 2, 0);
 
-  auto *CV1 = G.createConv("conv", MP0, 20, 5, 1, 2);
-  auto *RL1 = G.createRELU("relu", CV1);
-  auto *MP1 = G.createPool("pool", RL1, PoolNode::Mode::Max, 2, 2, 0);
+  auto *CV1 = G.createConv("conv2", MP0, 20, 5, 1, 2);
+  auto *RL1 = G.createRELU("relu2", CV1);
+  auto *MP1 = G.createPool("pool2", RL1, PoolNode::Mode::Max, 2, 2, 0);
 
-  auto *CV2 = G.createConv("conv", MP1, 20, 5, 1, 2);
-  auto *RL2 = G.createRELU("relu", CV2);
-  auto *MP2 = G.createPool("pool", RL2, PoolNode::Mode::Max, 2, 2, 0);
+  auto *CV2 = G.createConv("conv3", MP1, 20, 5, 1, 2);
+  auto *RL2 = G.createRELU("relu3", CV2);
+  auto *MP2 = G.createPool("pool3", RL2, PoolNode::Mode::Max, 2, 2, 0);
 
   auto *FCL1 = G.createFullyConnected("fc", MP2, 10);
-  auto *RL3 = G.createRELU("relu", FCL1);
+  auto *RL3 = G.createRELU("relu4", FCL1);
   auto *SM = G.createSoftMax("sm", RL3, ex);
   G.createSave("ret", SM);
 
@@ -60,10 +60,10 @@ TEST(Interpreter, trainASimpleNetwork) {
   auto *A = G.createVariable(ElemKind::FloatTy, {1, 4}, "A");
   auto *E = G.createVariable(ElemKind::FloatTy, {1, 4}, "E");
 
-  Node *O = G.createFullyConnected("fc", A, 10);
-  O = G.createSigmoid("sig", O);
-  O = G.createFullyConnected("fc", O, 4);
-  O = G.createSigmoid("sig", O);
+  Node *O = G.createFullyConnected("fc1", A, 10);
+  O = G.createSigmoid("sig1", O);
+  O = G.createFullyConnected("fc2", O, 4);
+  O = G.createSigmoid("sig2", O);
   O = G.createRegression("reg", O, E);
   auto *result = G.createSave("return", O);
 
@@ -160,10 +160,10 @@ TEST(Interpreter, learnXor) {
   auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
   auto *Ex = G.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
 
-  Node *O = G.createFullyConnected("fc", A, 6);
-  O = G.createRELU("relu", O);
-  O = G.createFullyConnected("fc", O, 1);
-  O = G.createRELU("relu", O);
+  Node *O = G.createFullyConnected("fc1", A, 6);
+  O = G.createRELU("relu1", O);
+  O = G.createFullyConnected("fc2", O, 1);
+  O = G.createRELU("relu2", O);
   O = G.createRegression("reg", O, Ex);
   auto *result = G.createSave("ret", O);
 
@@ -256,10 +256,10 @@ TEST(Network, circle) {
   auto *S = G.createVariable(ElemKind::IndexTy, {1, 1}, "S",
                              Variable::InitKind::Extern);
 
-  auto *FCL0 = G.createFullyConnected("fc", A, 8);
-  auto *RL0 = G.createRELU("relu", FCL0);
-  auto *FCL1 = G.createFullyConnected("fc", RL0, 2);
-  auto *RL1 = G.createRELU("relu", FCL1);
+  auto *FCL0 = G.createFullyConnected("fc1", A, 8);
+  auto *RL0 = G.createRELU("relu1", FCL0);
+  auto *FCL1 = G.createFullyConnected("fc2", RL0, 2);
+  auto *RL1 = G.createRELU("relu2", FCL1);
   auto *SM = G.createSoftMax("soft", RL1, S);
   auto *result = G.createSave("ret", SM);
 
@@ -341,12 +341,12 @@ TEST(Network, learnSingleValueConcat) {
 
   // Left side of the network:
   auto *A = G.createVariable(ElemKind::FloatTy, {1, width}, "A");
-  Node *L = G.createFullyConnected("fc", A, width);
+  Node *L = G.createFullyConnected("fc1", A, width);
   L = G.createSigmoid("", L);
 
   // Right side of the network:
   auto *B = G.createVariable(ElemKind::FloatTy, {1, width}, "B");
-  Node *R = G.createFullyConnected("fc", B, width);
+  Node *R = G.createFullyConnected("fc2", B, width);
   R = G.createSigmoid("sig", R);
 
   // Concat:
@@ -383,7 +383,7 @@ TEST(Network, concatVectors) {
 
   auto *V1 = G.createVariable(ElemKind::IndexTy, {10}, "V1");
   auto *V2 = G.createVariable(ElemKind::IndexTy, {20}, "V2");
-  auto *V3 = G.createVariable(ElemKind::IndexTy, {30}, "V2");
+  auto *V3 = G.createVariable(ElemKind::IndexTy, {30}, "V3");
 
   Node *L = G.createConcat("concat", {V1, V2, V3}, 0);
   auto *result = G.createSave("ret", L);
@@ -504,15 +504,15 @@ TEST(Network, trainASimpleRNN) {
   auto *A1 = G.createArithmetic("fc1", FC11, FC12, ArithmeticNode::Mode::Add);
   auto *H1 = G.createTanh("tan1", A1);
   auto *O1 = G.createFullyConnected("O1", H1, 1);
-  auto *R1 = G.createRegression("reg", O1, Y1);
+  auto *R1 = G.createRegression("reg1", O1, Y1);
 
   // Create the second block in the RNN
   auto *FC21 = G.createFullyConnected("fc21", H1, 5);
   auto *FC22 = G.createFullyConnected("fc22", X2, 5);
   auto *A2 = G.createArithmetic("fc2", FC21, FC22, ArithmeticNode::Mode::Add);
-  auto *H2 = G.createTanh("tan1", A2);
+  auto *H2 = G.createTanh("tan2", A2);
   auto *O2 = G.createFullyConnected("O2", H2, 1);
-  auto *R2 = G.createRegression("reg", O2, Y2);
+  auto *R2 = G.createRegression("reg2", O2, Y2);
 
   // Create the third block in the RNN
   auto *FC31 = G.createFullyConnected("fc31", H2, 5);
@@ -520,7 +520,7 @@ TEST(Network, trainASimpleRNN) {
   auto *A3 = G.createArithmetic("fc3", FC31, FC32, ArithmeticNode::Mode::Add);
   auto *H3 = G.createTanh("tan3", A3);
   auto *O3 = G.createFullyConnected("O3", H3, 1);
-  auto *R3 = G.createRegression("reg", O3, Y3);
+  auto *R3 = G.createRegression("reg3", O3, Y3);
 
   auto *R = G.createConcat("O", {R1, R2, R3}, 1);
   auto *result = G.createSave("result", R);

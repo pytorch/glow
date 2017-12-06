@@ -101,12 +101,12 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
                                Variable::InitKind::Extern);
 
-  Node *FA = G.createFullyConnected("fc", A, numOutputElem / 2);
-  FA = G.createRELU("relu", FA);
+  Node *FA = G.createFullyConnected("fc1", A, numOutputElem / 2);
+  FA = G.createRELU("relu1", FA);
 
   auto *B = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "B");
-  Node *FB = G.createFullyConnected("fc", B, numOutputElem / 2);
-  FB = G.createRELU("relu", FB);
+  Node *FB = G.createFullyConnected("fc2", B, numOutputElem / 2);
+  FB = G.createRELU("relu2", FB);
 
   Node *O = G.createConcat("concat", {FA, FB}, 1);
   O = G.createRegression("reg", O, Exp);
@@ -249,8 +249,8 @@ TEST(Network, gradientCheck_Arithmetic) {
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
                                Variable::InitKind::Extern);
 
-  Node *O = G.createArithmetic("arith", A, B, ArithmeticNode::Mode::Mul);
-  O = G.createArithmetic("arith", O, C, ArithmeticNode::Mode::Add);
+  Node *O = G.createArithmetic("arith1", A, B, ArithmeticNode::Mode::Mul);
+  O = G.createArithmetic("arith2", O, C, ArithmeticNode::Mode::Add);
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createSave("ret", O);
 

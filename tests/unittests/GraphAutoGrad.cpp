@@ -26,17 +26,17 @@ TEST(GraphAutoGrad, autoGrad) {
   Variable *A = G.createVariable(ElemKind::FloatTy, {10, 28, 28, 1}, "input",
                                  Variable::InitKind::Extern);
 
-  auto *CV0 = G.createConv("conv", A, 16, 5, 1, 2);
-  auto *RL0 = G.createRELU("relu", CV0);
-  auto *MP0 = G.createPool("pool", RL0, PoolNode::Mode::Max, 3, 3, 0);
+  auto *CV0 = G.createConv("conv1", A, 16, 5, 1, 2);
+  auto *RL0 = G.createRELU("relu1", CV0);
+  auto *MP0 = G.createPool("pool1", RL0, PoolNode::Mode::Max, 3, 3, 0);
 
-  auto *CV1 = G.createConv("conv", MP0, 16, 5, 1, 2);
-  auto *RL1 = G.createRELU("conv", CV1);
-  auto *MP1 = G.createPool("pool", RL1, PoolNode::Mode::Max, 3, 3, 0);
+  auto *CV1 = G.createConv("conv2", MP0, 16, 5, 1, 2);
+  auto *RL1 = G.createRELU("conv23", CV1);
+  auto *MP1 = G.createPool("pool2", RL1, PoolNode::Mode::Max, 3, 3, 0);
 
-  auto *FCL1 = G.createFullyConnected("fc", MP1, 10);
-  auto *RL2 = G.createRELU("fc", FCL1);
-  Variable *selected = G.createVariable(ElemKind::IndexTy, {10, 1}, +"selected",
+  auto *FCL1 = G.createFullyConnected("fc3", MP1, 10);
+  auto *RL2 = G.createRELU("relu3", FCL1);
+  Variable *selected = G.createVariable(ElemKind::IndexTy, {10, 1}, "selected",
                                         Variable::InitKind::Extern);
 
   auto *SM = G.createSoftMax("sm", RL2, selected);
