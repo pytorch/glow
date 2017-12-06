@@ -14,6 +14,27 @@ using namespace glow;
 using llvm::cast;
 using llvm::dyn_cast;
 
+static bool shouldDeleteNode(CompilationMode mode, Node *N) {
+  // We need the SGD nodes in training modes.
+  if (mode != CompilationMode::Infer) {
+    if (llvm::isa<SGDNode>(N)) {
+      return false;
+    }
+  }
+
+  // We don't delete Save nodes because they have side effects.
+  if (llvm::isa<SaveNode>(N)) {
+    return false;
+  }
+
+  // Don't delete nodes that have users.
+  if (N->hasUsers()) {
+    return false;
+  }
+
+  return true;
+}
+
 /// Dead code elimination.
 static void DCE(Graph &G, CompilationMode mode) {
   auto &nodes = G.getNodes();
@@ -28,18 +49,9 @@ static void DCE(Graph &G, CompilationMode mode) {
   do {
     changedLocally = false;
     for (auto it = nodes.begin(), e = nodes.end(); it != e;) {
-      bool used = (*it)->hasUsers();
-      if (used || llvm::isa<SaveNode>(*it)) {
+      if (!shouldDeleteNode(mode, *it)) {
         ++it;
         continue;
-      }
-
-      // In training mode we should not remove the training nodes.
-      if (mode == CompilationMode::Train) {
-        if (llvm::isa<SGDNode>(*it)) {
-          ++it;
-          continue;
-        }
       }
 
       erasedNodes.push_back(it);
