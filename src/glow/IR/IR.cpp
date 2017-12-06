@@ -224,7 +224,7 @@ InstrIterator InstructionNumbering::getInstr(size_t InstrNumber) {
 //                    IR printing and visualizing
 //===----------------------------------------------------------------------===//
 
-static void dumpIR(Value *V, std::ostream &out) {
+static void dumpIR(Value *V, llvm::raw_ostream &out) {
 #define DEF_INSTR(CLASS, NAME)                                                 \
   if (const auto *X = dyn_cast<const CLASS>(V))                                \
     return X->dump(out);
@@ -235,7 +235,8 @@ static void dumpIR(Value *V, std::ostream &out) {
   glow_unreachable();
 }
 
-static void dumpUsers(Value *V, std::ostream &out, InstructionNumbering &IN) {
+static void dumpUsers(Value *V, llvm::raw_ostream &out,
+                      InstructionNumbering &IN) {
   if (V->getNumUsers() == 0)
     return;
   out << " // Users: ";
@@ -252,7 +253,7 @@ static void dumpUsers(Value *V, std::ostream &out, InstructionNumbering &IN) {
   }
 }
 
-void Instruction::dump(std::ostream &out) { dumpIR(this, out); }
+void Instruction::dump(llvm::raw_ostream &out) { dumpIR(this, out); }
 
 bool Instruction::isInplaceOp(const Instruction *I, unsigned dstIdx,
                               unsigned srcIdx) {
@@ -265,7 +266,7 @@ bool Instruction::isInplaceOp(const Instruction *I, unsigned dstIdx,
   glow_unreachable();
 }
 
-void Instruction::dumpOperands(std::ostream &os) const {
+void Instruction::dumpOperands(llvm::raw_ostream &os) const {
   for (size_t i = 0, e = getNumOperands(); i < e; i++) {
     auto op = getOperand(i);
     auto CC = getOperandKindStr(op.second);
@@ -314,7 +315,8 @@ void Module::dump() {
   nameInstructions();
   InstructionNumbering InstrNumbering(*this);
   // Print all of the variables:
-  std::stringstream sb;
+  std::string s;
+  llvm::raw_string_ostream sb{s};
   sb << "module " << G_->getName().str() << "\n";
 
   size_t sizeInBytes = 0;

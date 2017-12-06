@@ -8,6 +8,8 @@
 
 #include "gtest/gtest.h"
 
+#include "llvm/Support/raw_ostream.h"
+
 #include <cassert>
 #include <string>
 
@@ -201,8 +203,8 @@ TEST(Interpreter, learnXor) {
   for (size_t i = 0; i < numTests; i++) {
     int a = TS.at({i, 0});
     int b = TS.at({i, 1});
-    std::cout << "a = " << a << " b = " << b << " => " << resH.at({i, 0})
-              << "\n";
+    llvm::outs() << "a = " << a << " b = " << b << " => " << resH.at({i, 0})
+                 << "\n";
     EXPECT_NEAR(resH.at({i, 0}), (a ^ b), 0.1);
   }
 }
@@ -292,11 +294,11 @@ TEST(Network, circle) {
         ch = '-';
       }
 
-      std::cout << ch;
+      llvm::outs() << ch;
     }
-    std::cout << "\n";
+    llvm::outs() << "\n";
   }
-  std::cout << "\n";
+  llvm::outs() << "\n";
 
   {
     // The dot in the middle must be zero.

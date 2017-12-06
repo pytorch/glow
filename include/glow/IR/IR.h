@@ -133,7 +133,7 @@ public:
   void verify() const;
 
   /// Print instruction.
-  void dump(std::ostream &out);
+  void dump(llvm::raw_ostream &out);
 
   /// The static dispatch version of isInplaceOp.
   static bool isInplaceOp(const Instruction *I, unsigned dstIdx,
@@ -154,7 +154,7 @@ public:
 
 protected:
   /// Dump the operands of the instruction into the stream \p os.
-  void dumpOperands(std::ostream &os) const;
+  void dumpOperands(llvm::raw_ostream &os) const;
 };
 
 class WeightVar;
