@@ -256,9 +256,9 @@ BatchNormalizationNode *Graph::createBatchNormalization(llvm::StringRef name,
                                Variable::InitKind::Broadcast, 1.0);
 
   auto *mean = createVariable(ElemKind::FloatTy, {channels}, "mean",
-                              Variable::InitKind::Broadcast, 0.0);
+                              Variable::InitKind::Extern);
   auto *variance = createVariable(ElemKind::FloatTy, {channels}, "variance",
-                                  Variable::InitKind::Broadcast, 0.0);
+                                  Variable::InitKind::Extern);
 
   return createBatchNormalization(name, input, beta, gamma, mean, variance,
                                   channelIdx, epsilon, momentum);
