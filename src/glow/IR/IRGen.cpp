@@ -513,6 +513,7 @@ public:
 } // namespace
 
 void Module::generateIR(CompilationMode mode) {
+  G_->verify();
   IRGenVisitor irgen(this);
 
   for (auto &N : G_->getVars()) {

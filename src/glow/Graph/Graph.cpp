@@ -474,3 +474,33 @@ void Graph::eraseNode(Node *N) {
   auto I = std::find(nodes_.begin(), nodes_.end(), N);
   eraseNode(I);
 }
+
+void Graph::verify() const {
+  std::unordered_map<std::string, Node *> NameToNode;
+
+  for (auto *V : vars_) {
+    if (NameToNode.insert({V->getName(), V}).second)
+      continue;
+    /// Output extra information helping to find the error.
+    llvm::errs() << "The var with name '" << V->getName()
+                 << "' conflicts with a previous definition:\n";
+    llvm::errs() << "Current definition: " << V->getDebugDesc() << "\n";
+    llvm::errs() << "Previous definition: "
+                 << NameToNode[V->getName()]->getDebugDesc() << "\n";
+    dump();
+    assert(false && "Multiple nodes with the same name");
+  }
+
+  for (auto *N : nodes_) {
+    if (NameToNode.insert({N->getName(), N}).second)
+      continue;
+    /// Output extra information helping to find the error.
+    llvm::outs() << "The node with name '" << N->getName()
+                 << "' conflicts with a previous definition:\n";
+    llvm::errs() << "Current definition: " << N->getDebugDesc() << "\n";
+    llvm::errs() << "Previous definition: "
+                 << NameToNode[N->getName()]->getDebugDesc() << "\n";
+    dump();
+    assert(false && "Multiple nodes with the same name");
+  }
+}

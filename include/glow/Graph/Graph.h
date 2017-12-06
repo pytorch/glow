@@ -150,6 +150,9 @@ public:
   void eraseNode(Node *N);
   void eraseNode(NodesList::iterator I);
 
+  /// Verify the correctness of the graph.
+  void verify() const;
+
   /// Dumps the textual representation of the network.
   void dump() const;
 
