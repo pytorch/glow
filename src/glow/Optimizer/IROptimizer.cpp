@@ -457,6 +457,22 @@ void makeWeightsConst(Module &M) {
   }
 }
 
+#ifndef NDEBUG
+/// Dump a live intervals map.
+static void LLVM_ATTRIBUTE_UNUSED dump(Module &M,
+                                       LiveIntervalsMap &IntervalsMap) {
+  llvm::outs() << "\nDumping live intervals map:\n";
+  for (auto &I : IntervalsMap) {
+    llvm::outs() << "\nValue " << I.first->getName();
+    llvm::outs() << "\n";
+    for (auto &Interval : I.second) {
+      llvm::outs() << " (" << Interval.first << ", " << Interval.second << ")";
+    }
+    llvm::outs() << "\n";
+  }
+}
+#endif
+
 /// Compute live intervals for each mutable location represented by
 /// Value which is either an AllocActivationInst or a WeightVar.
 /// Each such value is mapped to a list of intervals where it is alive.
@@ -465,7 +481,8 @@ void makeWeightsConst(Module &M) {
 /// interval. If there are multiple writes to the same mutable memory
 /// location, then each such assignment would result in a new interval.
 static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
-  assert(liveness.empty());
+  assert(liveness.empty() &&
+         "This function should be called with empty liveness map");
   auto &instrs = M.getInstrs();
   unsigned instIdx = 0;
 
@@ -477,9 +494,21 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
       continue;
     }
 
-    for (int i = 0, e = (*it)->getNumOperands(); i < e; i++) {
-      auto op = (*it)->getOperand(i).first;
-      auto opKind = (*it)->getOperand(i).second;
+    auto InstOperands = (*it)->getOperands();
+    llvm::SmallVector<Instruction::Operand, 8> SortedOperands(
+        InstOperands.begin(), InstOperands.end());
+
+    // Sort operands so that:
+    // - all operands referencing the same Value are grouped together.
+    // - operands related to the same Value are always in the following
+    // order: In, InOut, Out.
+    //
+    // This ordering ensures that we process reads before writes.
+    std::sort(SortedOperands.begin(), SortedOperands.end());
+
+    for (int i = 0, e = SortedOperands.size(); i < e; i++) {
+      auto op = SortedOperands[i].first;
+      auto opKind = SortedOperands[i].second;
       Value *loc = dyn_cast<AllocActivationInst>(op);
       if (!loc) {
         loc = dyn_cast<WeightVar>(op);
@@ -500,32 +529,28 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
         // If it is a first use, it should be either an input variable or
         // a write.
         // FIXME: Remove InOut!
-        if (!(isa<WeightVar>(op) || opKind == OperandKind::Out ||
-              opKind == OperandKind::InOut)) {
-          llvm::outs() << "\nRead before write for " << loc->getName()
-                       << " at instruction " << instIdx << "\n\n";
-          assert(isa<WeightVar>(op) || opKind == OperandKind::Out ||
-                 opKind == OperandKind::InOut);
-        }
+        assert((isa<WeightVar>(op) || opKind == OperandKind::Out ||
+                opKind == OperandKind::InOut) &&
+               "First reference inside a live interval should be either an "
+               "input variable or a write");
         continue;
       }
 
-      // Expand the interval.
-      I->second.back().second = instIdx;
+      auto &Intervals = I->second;
+      // Extend the interval but only if current use is not a write or
+      // if it is a write, but we have seen a read before.
+      if (opKind != OperandKind::Out ||
+          Intervals.back().second != Intervals.back().first)
+        Intervals.back().second = instIdx;
 
-      if (opKind == OperandKind::In) {
+      // No need to create a new interval unless it is a write.
+      if (opKind == OperandKind::In || opKind == OperandKind::InOut)
         continue;
-      }
-      /// FIXME: This is a hack! InsertTensorInst does not completely
-      /// overwrite the target. It just appends something to it.
-      if (auto *ITI = dyn_cast<InsertTensorInst>(*it)) {
-        if (op == ITI->getDest())
-          continue;
-      }
+
       // This instruction modifies the memory location.
       // Therefore, end the current active live interval
       // for this memory location and begin a new one.
-      liveness[loc].push_back({instIdx, instIdx});
+      Intervals.push_back({instIdx, instIdx});
     }
   }
 
@@ -533,28 +558,13 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
     auto *ML = Entry.first;
     auto &IL = Entry.second;
     if (auto *WV = dyn_cast<WeightVar>(ML)) {
-      assert(!IL.empty());
+      assert(!IL.empty() && "Live interval list cannot be empty");
       // Extend the last interval till the end of the program
       // to express that all mutable weights are used outside.
       IL.back().second = instIdx;
     }
   }
 }
-
-#ifdef NDEBUG
-/// Dump a live intervals map.
-static void dump(Module &M, LiveIntervalsMap &IntervalsMap) {
-  llvm::outs() << "\nDumping live intervals map:\n";
-  for (auto &I : IntervalsMap) {
-    llvm::outs() << "\nValue " << I.first->getName();
-    llvm::outs() << "\n";
-    for (auto &Interval : I.second) {
-      llvm::outs() << " (" << Interval.first << ", " << Interval.second << ")";
-    }
-    llvm::outs() << "\n";
-  }
-}
-#endif
 
 /// Provided a set of intervals, return the interval covering
 /// a given instruction.
@@ -652,9 +662,12 @@ void copyPropagation(Module &M) {
       // because it would change the observable effect of the write.
       // So, bail if:
       // - Src is a mutable WeightVar or
-      // - it is a constant, but Dest is assigned multiple times.
+      // - Src it is a WeightVar constant, but Dest is assigned multiple times.
+      // - or Dest is assigned once, but it is an output variable and thus
+      //   assignments to it cannot be removed.
       if (WV->getMutability() == WeightVar::MutabilityKind::Mutable ||
-          getSingleWriter(Dest) != ci) {
+          getSingleWriter(Dest) != ci ||
+          Dest->getKind() == Kinded::Kind::WeightVarKind) {
         DEBUG(llvm::outs() << "Cannot copy propagate if src is a WeightVar\n");
         ++it;
         continue;
@@ -761,10 +774,13 @@ void copyPropagation(Module &M) {
     replaceAllUsesWith(Src, Dest, *SrcInterval, M, ChangedInstrs);
     /// TODO: Do we need to update the information about Src and Dest in the
     /// live intervals map?
-    assert(!ChangedInstrs.empty());
+    assert(!ChangedInstrs.empty() &&
+           "Some instructions should have been changed");
     DEBUG(llvm::outs() << "Can replace this copy by producing instruction:\n";
           ChangedInstrs[0]->dump(std::cout); std::cout << "\n");
-    assert(ci->getSrc() == ci->getDest());
+    assert(ci->getSrc() == ci->getDest() && "Src and Dest of a copy "
+                                            "instruction should be the same "
+                                            "after copy propagation");
     // Remove the obsolete copy instruction.
     ErasedInstructions.insert(instIdx);
     ++it;

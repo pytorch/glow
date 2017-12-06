@@ -22,12 +22,12 @@ class Value;
 
 enum class OperandKind : unsigned char {
   In,
-  Out,
   InOut,
+  Out,
 };
 
 inline const char *getOperandKindStr(OperandKind CC) {
-  const char *names[] = {"@in", "@out", "@inout", nullptr};
+  const char *names[] = {"@in", "@inout", "@out", nullptr};
   return names[(int)CC];
 }
 
@@ -122,6 +122,9 @@ public:
 
   /// \returns the number of operands.
   unsigned getNumOperands() const { return ops_.size(); }
+
+  /// \returns the operands of the instruction.
+  llvm::ArrayRef<Operand> getOperands() const { return ops_; }
 
   /// Check the correctness of the use-list.
   void verifyUseList() const;
