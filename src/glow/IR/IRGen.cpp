@@ -144,26 +144,24 @@ public:
       auto *outW = valueForNode(poolOut);
       auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
 
-      Instruction *V = nullptr;
+      auto *inG = builder_.createAllocActivationInst("pool.outG",
+                                                     PG->getInput()->getType());
+
       if (PG->getMode() == PoolGradNode::Mode::Max) {
         // Find the original pool instruction.
         assert(nodeToInstr_.count(poolOut) &&
                "Pool IRgen did not register itself");
         auto *PI = cast<PoolMaxInst>(nodeToInstr_[poolOut.getNode()]);
-        auto *inG = builder_.createAllocActivationInst("maxpool.outG",
-                                                       poolOut->getType());
-
-        V = builder_.createPoolMaxGradInst(N->getName(), outW, PI->getSrcXY(),
-                                           outG, inG, PG->getKernel(),
-                                           PG->getStride(), PG->getPad());
+        
+        builder_.createPoolMaxGradInst(N->getName(), outW, PI->getSrcXY(),
+                                       outG, inG, PG->getKernel(),
+                                       PG->getStride(), PG->getPad());
         registerIR(PG->getGradOfInputNamedInput(), inG);
         break;
       } else {
-        auto *inG = builder_.createAllocActivationInst("avgpool.outG",
-                                                       poolOut->getType());
-        V = builder_.createPoolAvgGradInst(N->getName(), outW, outG, inG,
-                                           PG->getKernel(), PG->getStride(),
-                                           PG->getPad());
+        builder_.createPoolAvgGradInst(N->getName(), outW, outG, inG,
+                                       PG->getKernel(), PG->getStride(),
+                                       PG->getPad());
         registerIR(PG->getGradOfInputNamedInput(), inG);
         break;
       }
