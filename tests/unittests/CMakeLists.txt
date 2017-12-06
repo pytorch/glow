@@ -21,6 +21,16 @@ target_link_libraries(IRgradCheckTest
                         gtest_main)
 add_test(IRgradCheckTest ${GLOW_BINARY_DIR}/tests/IRgradCheckTest)
 
+add_executable(IROpt
+                 IROpt.cpp)
+target_link_libraries(IROpt
+                      PRIVATE
+                        Backends
+                        IR
+                        gtest
+                        gtest_main)
+add_test(IRTest ${GLOW_BINARY_DIR}/tests/IROpt)
+
 add_executable(IRTest
                  IRTest.cpp)
 target_link_libraries(IRTest
