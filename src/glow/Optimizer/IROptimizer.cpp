@@ -824,6 +824,7 @@ static void eliminateDeadStores(Module &M) {
   // this instruction can be removed.
   for (auto const &Entry : IntervalsMap) {
     auto *ML = Entry.first;
+    (void)ML;
     auto &IL = Entry.second;
     for (auto &LI : IL) {
       auto IntervalBegin = LI.first;
