@@ -457,6 +457,22 @@ void makeWeightsConst(Module &M) {
   }
 }
 
+#ifndef NDEBUG
+/// Dump a live intervals map.
+static void LLVM_ATTRIBUTE_UNUSED dump(Module &M,
+                                       LiveIntervalsMap &IntervalsMap) {
+  llvm::outs() << "\nDumping live intervals map:\n";
+  for (auto &I : IntervalsMap) {
+    llvm::outs() << "\nValue " << I.first->getName();
+    llvm::outs() << "\n";
+    for (auto &Interval : I.second) {
+      llvm::outs() << " (" << Interval.first << ", " << Interval.second << ")";
+    }
+    llvm::outs() << "\n";
+  }
+}
+#endif
+
 /// Compute live intervals for each mutable location represented by
 /// Value which is either an AllocActivationInst or a WeightVar.
 /// Each such value is mapped to a list of intervals where it is alive.
@@ -549,21 +565,6 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
     }
   }
 }
-
-#ifdef NDEBUG
-/// Dump a live intervals map.
-static void dump(Module &M, LiveIntervalsMap &IntervalsMap) {
-  llvm::outs() << "\nDumping live intervals map:\n";
-  for (auto &I : IntervalsMap) {
-    llvm::outs() << "\nValue " << I.first->getName();
-    llvm::outs() << "\n";
-    for (auto &Interval : I.second) {
-      llvm::outs() << " (" << Interval.first << ", " << Interval.second << ")";
-    }
-    llvm::outs() << "\n";
-  }
-}
-#endif
 
 /// Provided a set of intervals, return the interval covering
 /// a given instruction.
