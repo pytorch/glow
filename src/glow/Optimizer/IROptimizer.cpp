@@ -6,6 +6,7 @@
 #include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -26,6 +27,9 @@ using LivenessMap = std::unordered_map<Value *, Interval>;
 using LiveIntervalsMap = std::unordered_map<Value *, Intervals>;
 /// Set of instruction numbers.
 using InstructionNumbers = std::unordered_set<size_t>;
+
+llvm::cl::opt<bool> IRVerifyAll("ir-verify-all", llvm::cl::init(true),
+                                llvm::cl::desc("Verify IR after each pass"));
 
 static void calculateLiveness(Module &M, LivenessMap &liveness) {
   auto &instrs = M.getInstrs();
@@ -862,35 +866,92 @@ static void eliminateDeadStores(Module &M) {
   }
 }
 
+/// A function implementing an optimization or transformation pass.
+using OptimizationPassFn = void (*)(Module &M);
+
+class OptimizationPass : Named {
+  /// Function implementing the pass.
+  OptimizationPassFn F;
+
+public:
+  OptimizationPass(llvm::StringRef Name, OptimizationPassFn F)
+      : Named(Name), F(F) {}
+  /// Runs the pass on a module \p M.
+  void operator()(Module &M) { F(M); }
+};
+
+/// Definition of a pass pipeline.
+using PassPipeline = std::vector<OptimizationPass>;
+
+/// This the default optimization pipeline.
+static PassPipeline OptimizationPipeline{
+    // Try to recompute instead of carying large buffers for a while.
+    OptimizationPass{"remat-compute", rematerializeCompute},
+    // Reuse buffers from previous operations.
+    OptimizationPass{"share-buffers", shareBuffers},
+    // Remove unused allocations.
+    OptimizationPass{"delete-dead-allocs", deleteDeadAllocs},
+    // Shorten the lifetime of buffers.
+    OptimizationPass{"hoist-dealloc", hoistDealloc},
+    OptimizationPass{"sink-allocs", sinkAllocas},
+    // Turn read-only weights into constant weights.
+    OptimizationPass{"make-weights-const", makeWeightsConst},
+    // Perform copy propagation.
+    OptimizationPass{"copy-propagation", copyPropagation},
+    // Remove unused allocations.
+    OptimizationPass{"delete-dead-allocs", deleteDeadAllocs},
+    // Eliminate dead stores.
+    OptimizationPass{"elim-dead-stores", eliminateDeadStores},
+    // Remove unused allocations.
+    OptimizationPass{"delete-dead-allocs", deleteDeadAllocs},
+};
+
+/// \returns true if the pass \p P is disabled.
+/// TODO: Add command-line options to configure this behavior.
+static bool isPassDisabled(OptimizationPass &P) { return false; }
+
+/// An action to be executed before a pass \p P runs on module \p M.
+static void beforePassAction(OptimizationPass &P, Module &M) {
+  // One could e.g. dump the module before each pass.
+  // M.dump();
+}
+
+/// An action to be executed after a pass \p P finished running on module \p M.
+static void afterPassAction(OptimizationPass &P, Module &M) {
+  // One could e.g. dump the module after each pass.
+  // M.dump();
+}
+
+/// \returns pass pipeline to be used for optimization.
+/// The concrete pipeline being returned may depend on the
+/// compilation mode, command-line options, etc.
+static PassPipeline &getPassPipeline(CompilationMode mode) {
+  return OptimizationPipeline;
+}
+
 void glow::optimize(Module &M, CompilationMode mode) {
+  DEBUG(llvm::outs() << "\nModule before all optimizations\n"; M.dump());
+  // Always verify before optimizations.
   M.verify();
 
-  // Try to recompute instead of carying large buffers for a while.
-  rematerializeCompute(M);
+  auto &Pipeline = getPassPipeline(mode);
 
-  // Reuse buffers from previous operations.
-  shareBuffers(M);
+  /// Process the module by optimization passes executed in the order
+  /// specified by the optimization pipeline.
+  for (OptimizationPass &P : Pipeline) {
+    /// Skip the pass if it is disabled.
+    if (isPassDisabled(P))
+      continue;
+    beforePassAction(P, M);
+    // Run current pass on the module M.
+    P(M);
+    afterPassAction(P, M);
+    // Verify after each pass if required.
+    if (IRVerifyAll)
+      M.verify();
+  }
 
-  // Remove unused allocations.
-  deleteDeadAllocs(M);
-
-  // Shorten the lifetime of buffers.
-  hoistDealloc(M);
-
-  sinkAllocas(M);
-
-  // Turn read-only weights into constant weights.
-  makeWeightsConst(M);
-
-  // Perform copy propagation.
-  copyPropagation(M);
-
-  deleteDeadAllocs(M);
-
-  // Perform Dead Store Elimination.
-  eliminateDeadStores(M);
-
-  deleteDeadAllocs(M);
-
+  DEBUG(llvm::outs() << "\nModule after all optimizations\n"; M.dump());
+  // Always verify after optimizations.
   M.verify();
 }
