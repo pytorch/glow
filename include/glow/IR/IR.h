@@ -140,9 +140,7 @@ public:
                           unsigned srcIdx);
 
   /// \returns parent of current instruction.
-  Module *getParent() const {
-    return M;
-  }
+  Module *getParent() const { return M; }
 
   /// Sets a parent for the current instruction.
   void setParent(Module *Mod) { M = Mod; }

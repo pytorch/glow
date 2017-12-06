@@ -152,10 +152,10 @@ public:
         assert(nodeToInstr_.count(poolOut) &&
                "Pool IRgen did not register itself");
         auto *PI = cast<PoolMaxInst>(nodeToInstr_[poolOut.getNode()]);
-        
-        builder_.createPoolMaxGradInst(N->getName(), outW, PI->getSrcXY(),
-                                       outG, inG, PG->getKernel(),
-                                       PG->getStride(), PG->getPad());
+
+        builder_.createPoolMaxGradInst(N->getName(), outW, PI->getSrcXY(), outG,
+                                       inG, PG->getKernel(), PG->getStride(),
+                                       PG->getPad());
         registerIR(PG->getGradOfInputNamedInput(), inG);
         break;
       } else {
@@ -638,8 +638,8 @@ void generateBackwardPass(Module &M) {
       Value *dest = weightToGradMap[ITI->getDest()];
       Value *src = weightToGradMap[ITI->getSrc()];
       // Swap the src and dest.
-      toAppend.push_back(
-          new ExtractTensorInst(&M, I->getName(), src, dest, ITI->getOffsets()));
+      toAppend.push_back(new ExtractTensorInst(&M, I->getName(), src, dest,
+                                               ITI->getOffsets()));
       break;
     }
     case Kind::ExtractTensorInstKind: {
