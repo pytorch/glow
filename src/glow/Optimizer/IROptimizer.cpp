@@ -465,7 +465,8 @@ void makeWeightsConst(Module &M) {
 /// interval. If there are multiple writes to the same mutable memory
 /// location, then each such assignment would result in a new interval.
 static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
-  assert(liveness.empty());
+  assert(liveness.empty() &&
+         "This function should be called with empty liveness map");
   auto &instrs = M.getInstrs();
   unsigned instIdx = 0;
 
@@ -477,9 +478,21 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
       continue;
     }
 
-    for (int i = 0, e = (*it)->getNumOperands(); i < e; i++) {
-      auto op = (*it)->getOperand(i).first;
-      auto opKind = (*it)->getOperand(i).second;
+    auto InstOperands = (*it)->getOperands();
+    llvm::SmallVector<Instruction::Operand, 8> SortedOperands(
+        InstOperands.begin(), InstOperands.end());
+
+    // Sort operands so that:
+    // - all operands referencing the same Value are grouped together.
+    // - operands related to the same Value are always in the following
+    // order: In, InOut, Out.
+    //
+    // This ordering ensures that we process reads before writes.
+    std::sort(SortedOperands.begin(), SortedOperands.end());
+
+    for (int i = 0, e = SortedOperands.size(); i < e; i++) {
+      auto op = SortedOperands[i].first;
+      auto opKind = SortedOperands[i].second;
       Value *loc = dyn_cast<AllocActivationInst>(op);
       if (!loc) {
         loc = dyn_cast<WeightVar>(op);
@@ -500,32 +513,28 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
         // If it is a first use, it should be either an input variable or
         // a write.
         // FIXME: Remove InOut!
-        if (!(isa<WeightVar>(op) || opKind == OperandKind::Out ||
-              opKind == OperandKind::InOut)) {
-          llvm::outs() << "\nRead before write for " << loc->getName()
-                       << " at instruction " << instIdx << "\n\n";
-          assert(isa<WeightVar>(op) || opKind == OperandKind::Out ||
-                 opKind == OperandKind::InOut);
-        }
+        assert((isa<WeightVar>(op) || opKind == OperandKind::Out ||
+                opKind == OperandKind::InOut) &&
+               "First reference inside a live interval should be either an "
+               "input variable or a write");
         continue;
       }
 
-      // Expand the interval.
-      I->second.back().second = instIdx;
+      auto &Intervals = I->second;
+      // Extend the interval but only if current use is not a write or
+      // if it is a write, but we have seen a read before.
+      if (opKind != OperandKind::Out ||
+          Intervals.back().second != Intervals.back().first)
+        Intervals.back().second = instIdx;
 
-      if (opKind == OperandKind::In) {
+      // No need to create a new interval unless it is a write.
+      if (opKind == OperandKind::In || opKind == OperandKind::InOut)
         continue;
-      }
-      /// FIXME: This is a hack! InsertTensorInst does not completely
-      /// overwrite the target. It just appends something to it.
-      if (auto *ITI = dyn_cast<InsertTensorInst>(*it)) {
-        if (op == ITI->getDest())
-          continue;
-      }
+
       // This instruction modifies the memory location.
       // Therefore, end the current active live interval
       // for this memory location and begin a new one.
-      liveness[loc].push_back({instIdx, instIdx});
+      Intervals.push_back({instIdx, instIdx});
     }
   }
 
