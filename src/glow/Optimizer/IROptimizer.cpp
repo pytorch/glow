@@ -661,9 +661,12 @@ void copyPropagation(Module &M) {
       // because it would change the observable effect of the write.
       // So, bail if:
       // - Src is a mutable WeightVar or
-      // - it is a constant, but Dest is assigned multiple times.
+      // - Src it is a WeightVar constant, but Dest is assigned multiple times.
+      // - or Dest is assigned once, but it is an output variable and thus
+      //   assignments to it cannot be removed.
       if (WV->getMutability() == WeightVar::MutabilityKind::Mutable ||
-          getSingleWriter(Dest) != ci) {
+          getSingleWriter(Dest) != ci ||
+          Dest->getKind() == Kinded::Kind::WeightVarKind) {
         DEBUG(llvm::outs() << "Cannot copy propagate if src is a WeightVar\n");
         ++it;
         continue;
