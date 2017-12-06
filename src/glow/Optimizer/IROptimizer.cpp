@@ -542,7 +542,7 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
     auto *ML = Entry.first;
     auto &IL = Entry.second;
     if (auto *WV = dyn_cast<WeightVar>(ML)) {
-      assert(!IL.empty());
+      assert(!IL.empty() && "Live interval list cannot be empty");
       // Extend the last interval till the end of the program
       // to express that all mutable weights are used outside.
       IL.back().second = instIdx;
@@ -770,10 +770,13 @@ void copyPropagation(Module &M) {
     replaceAllUsesWith(Src, Dest, *SrcInterval, M, ChangedInstrs);
     /// TODO: Do we need to update the information about Src and Dest in the
     /// live intervals map?
-    assert(!ChangedInstrs.empty());
+    assert(!ChangedInstrs.empty() &&
+           "Some instructions should have been changed");
     DEBUG(llvm::outs() << "Can replace this copy by producing instruction:\n";
           ChangedInstrs[0]->dump(std::cout); std::cout << "\n");
-    assert(ci->getSrc() == ci->getDest());
+    assert(ci->getSrc() == ci->getDest() && "Src and Dest of a copy "
+                                            "instruction should be the same "
+                                            "after copy propagation");
     // Remove the obsolete copy instruction.
     ErasedInstructions.insert(instIdx);
     ++it;
