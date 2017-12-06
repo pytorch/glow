@@ -34,13 +34,8 @@ float gradDiff(float G1, float G2) {
   return std::abs(G1 - G2) / std::abs(G1 + G2 + 1);
 }
 
-/// Convert the variable name to the name of the gradient.
-static std::string getGradName(llvm::StringRef name) {
-  return name.str() + "_grad";
-}
-
 Variable *getGrad(Graph &G, Variable *V) {
-  return G.getVariableByName(getGradName(V->getName()));
+  return G.getGradientVariable(V);
 }
 
 void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
