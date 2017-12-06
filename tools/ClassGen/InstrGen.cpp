@@ -204,7 +204,7 @@ int main(int argc, char **argv) {
   BB.newInstr("Zero").addOperand("Dest", OperandKind::Out);
 
   BB.newInstr("InsertTensor")
-      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Dest", OperandKind::InOut)
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::VectorSizeT, "Offsets");
 
