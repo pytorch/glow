@@ -647,9 +647,9 @@ void copyPropagation(Module &M) {
     auto *Dest = ci->getDest();
     assert(Src->getType() == Dest->getType() &&
            "Both src and dest of copy should have the same type");
-    DEBUG(llvm::outs() << "Instruction " << instIdx << ": Found a copy from "
+    DEBUG(llvm::dbgs() << "Instruction " << instIdx << ": Found a copy from "
                        << Src->getName() << " to " << Dest->getName() << ":\n";
-          ci->dump(std::cout); std::cout << "\n");
+          ci->dump(llvm::dbgs()); llvm::dbgs() << "\n");
 
     // We plan to replace the assignments to Src by assignments
     // to Dest and replace all uses of Src to use Dest to get rid of the copy.
@@ -776,8 +776,8 @@ void copyPropagation(Module &M) {
     /// live intervals map?
     assert(!ChangedInstrs.empty() &&
            "Some instructions should have been changed");
-    DEBUG(llvm::outs() << "Can replace this copy by producing instruction:\n";
-          ChangedInstrs[0]->dump(std::cout); std::cout << "\n");
+    DEBUG(llvm::dbgs() << "Can replace this copy by producing instruction:\n";
+          ChangedInstrs[0]->dump(llvm::dbgs()); llvm::dbgs() << "\n");
     assert(ci->getSrc() == ci->getDest() && "Src and Dest of a copy "
                                             "instruction should be the same "
                                             "after copy propagation");
@@ -844,14 +844,14 @@ static void eliminateDeadStores(Module &M) {
         // to remove it.
         continue;
       }
-      DEBUG(std::cout << "Found a dead store into " << ML->getName().str()
-                      << ": ";
-            (*I)->dump(std::cout); std::cout << "\n";
-            std::cout << "Operand being updated is: "
-                      << Operands[0].first->getName().str() << "\n";
-            std::cout << "Interval is: "
-                      << "(" << IntervalBegin << ", " << IntervalEnd << ")"
-                      << "\n");
+      DEBUG(llvm::dbgs() << "Found a dead store into " << ML->getName().str()
+                         << ": ";
+            (*I)->dump(llvm::dbgs()); llvm::dbgs() << "\n";
+            llvm::dbgs() << "Operand being updated is: "
+                         << Operands[0].first->getName().str() << "\n";
+            llvm::dbgs() << "Interval is: "
+                         << "(" << IntervalBegin << ", " << IntervalEnd << ")"
+                         << "\n");
       assert(Operands[0].first == ML);
       // Only the current memory location is being updated by this instruction.
       ErasedInstructions.insert(IntervalBegin);

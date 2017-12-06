@@ -37,7 +37,7 @@ public:
 
   void setMutability(MutabilityKind mut) { mut_ = mut; }
 
-  void dump(std::ostream &os) const;
+  void dump(llvm::raw_ostream &os) const;
   void verify() const {}
 };
 

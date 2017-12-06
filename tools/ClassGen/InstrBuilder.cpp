@@ -133,8 +133,9 @@ void InstrBuilder::emitSettersGetters(std::ostream &os) const {
 }
 
 void InstrBuilder::emitPrettyPrinter(std::ostream &os) const {
-  os << "void " << name_ << "Inst::dump(std::ostream &os) const {\n";
-  os << "\tos << '%' << (std::string) getName() << \" = \" << getKindName() << "
+  os << "void " << name_ << "Inst::dump(llvm::raw_ostream &os) const {\n";
+  os << "\tos << \"%\" << (std::string) getName() "
+        "<< \" = \" << getKindName() << "
         "\" \";\n";
   os << "\tdumpOperands(os);\n";
 
@@ -147,7 +148,7 @@ void InstrBuilder::emitPrettyPrinter(std::ostream &os) const {
          << "get" << mem.second << "());\n";
       first = false;
     }
-    os << "\tos << '}';\n";
+    os << "\tos << \"}\";\n";
   }
   os << "\n}\n";
 }
@@ -170,7 +171,7 @@ void InstrBuilder::emitClass(std::ostream &os) const {
     os << "\t" << m << "\n";
   }
 
-  os << "\t void dump(std::ostream &os) const;\n";
+  os << "\t void dump(llvm::raw_ostream &os) const;\n";
   os << "\t void verify() const;\n";
   os << "};\n\n} // namespace glow\n";
 }

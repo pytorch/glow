@@ -25,8 +25,8 @@ const char *WeightVar::getMutabilityStr() const {
   return getMutabilityStr(mut_);
 }
 
-void WeightVar::dump(std::ostream &os) const {
-  os << '%' << (std::string)getName() << " = WeightVar ";
+void WeightVar::dump(llvm::raw_ostream &os) const {
+  os << "%" << (std::string)getName() << " = WeightVar ";
   os << std::to_string(*getType()) << " " << getMutabilityStr();
 }
 
