@@ -16,6 +16,7 @@ namespace glow {
 using TypesList = std::list<Type>;
 using NodesList = std::list<Node *>;
 using VariablesList = std::list<Variable *>;
+using VariableGradientsList = std::list<std::pair<Variable *, Variable *>>;
 using UnsignedArrayRef = llvm::ArrayRef<size_t>;
 
 /// Represents the compute graph.
@@ -28,22 +29,37 @@ class Graph final : public Named {
   /// A list of variables that the graph owns.
   VariablesList vars_;
 
+  /// A list of (var, grad_var) pairs associating variables with their
+  /// gradient variables.
+  VariableGradientsList grads_;
+
+  /// Unique index for producing unique names.
+  size_t unique_idx_;
+
+  /// \returns unique name with a prefix \p Name.
+  std::string uniqueName(llvm::StringRef Name);
+ 
+  /// Unique names defined by node \p N.
+  void uniqueNames(Node *N);
+
+public:
+  Graph(llvm::StringRef Name = {}) : Named(Name), unique_idx_(1) {}
+
+  ~Graph();
+
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
+    uniqueNames(N);
     nodes_.push_back(N);
     return N;
   }
 
   /// Inserts the variable \p V to the list of variables.
   Variable *addVar(Variable *V) {
+    uniqueNames(V);
     vars_.push_back(V);
     return V;
   }
-
-public:
-  Graph(llvm::StringRef Name = {}) : Named(Name) {}
-
-  ~Graph();
 
   /// Return a pointer to a uniqued type \p t in the current module.
   TypeRef uniqueType(const Type &T);
@@ -134,8 +150,11 @@ public:
   void eraseNode(Node *N);
   void eraseNode(NodesList::iterator I);
 
+  /// Verify the correctness of the graph.
+  void verify() const;
+
   /// Dumps the textual representation of the network.
-  void dump();
+  void dump() const;
 
   /// Dump a dotty graph that depicts the module.
   void dumpDAG(const char *dotFilename = nullptr);
@@ -149,6 +168,14 @@ public:
 
   /// \returns the list of variables that the graph owns.
   VariablesList &getVars() { return vars_; }
+
+  /// Associates a gradient variable \p GradV with the variable \p V.
+  void addGradientVariable(Variable *V, Variable *GradV);
+
+  /// \returns a gradient variable associated with \p V.
+  /// Returns nullptr if there is no gradient variable
+  /// related to this variable.
+  Variable *getGradientVariable(Variable *V);
 };
 
 struct TrainingConfig;

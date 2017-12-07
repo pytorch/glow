@@ -56,6 +56,49 @@ Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
   return createVariable(FT, name, initKind, val);
 }
 
+/// Form a unique name based on the original non-uniqued \p Name.
+/// 
+/// This is done by taking the original non-uniqued name
+/// (i.e. the part of the name before the first occurrence of "__")
+/// and concatenating it with "__N", where N is a unique numeric
+/// suffix.
+///
+/// The "__" suffix is used as a delimeter and therefore it should
+/// not be used by names of user-defined variables.
+///
+/// If the compiler needs to auto-generate some node names, it should
+/// never add any suffix anywhere after "__", because it will get
+/// stripped by uniqueName. Instead, all such auto-generated pieces of
+/// a name should be added somewhere before "__", e.g. as a prefix.
+std::string Graph::uniqueName(llvm::StringRef name) {
+  // First, remove everything starting with the __ delimiter.
+  auto delimPos = name.find("__", 0);
+  if (delimPos != llvm::StringRef::npos) {
+    name = name.substr(0, delimPos);
+  }
+  std::string UniqueName{name};
+  UniqueName += "__";
+  UniqueName += std::to_string(unique_idx_);
+  unique_idx_++;
+  return UniqueName;
+}
+
+void Graph::uniqueNames(Node *N) { N->setName(uniqueName(N->getName())); }
+
+void Graph::addGradientVariable(Variable *V, Variable *GradV) {
+  grads_.push_back({V, GradV});
+}
+
+Variable *Graph::getGradientVariable(Variable *V) {
+  auto it = std::find_if(grads_.begin(), grads_.end(),
+                         [&V](std::pair<Variable *, Variable *> &e) -> bool {
+                           return e.first == V;
+                         });
+  if (it == grads_.end())
+    return nullptr;
+  return it->second;
+}
+
 ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
                                    size_t depth, size_t kernel, size_t stride,
                                    size_t pad) {
@@ -297,7 +340,9 @@ SaveNode *Graph::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest =
       createVariable(input.getType(), name, Variable::InitKind::Extern);
 
-  return addNode(new SaveNode(name, input, dest));
+  std::string nodeName{"_save_"};
+  nodeName += name;
+  return addNode(new SaveNode(nodeName, input, dest));
 }
 
 SaveNode *Graph::createSave(llvm::StringRef name, NodeValue input,
@@ -309,7 +354,7 @@ SaveNode *Graph::createSave(llvm::StringRef name, NodeValue input,
 //                   Graph dumping and printing
 //===----------------------------------------------------------------------===//
 
-void Graph::dump() {
+void Graph::dump() const {
   llvm::outs() << "Graph structure " << getName() << ":\n";
   for (auto v : vars_) {
     llvm::outs() << v->getDebugDesc() << "\n";
@@ -428,4 +473,34 @@ void Graph::eraseVariable(Variable *N) {
 void Graph::eraseNode(Node *N) {
   auto I = std::find(nodes_.begin(), nodes_.end(), N);
   eraseNode(I);
+}
+
+void Graph::verify() const {
+  std::unordered_map<std::string, Node *> NameToNode;
+
+  for (auto *V : vars_) {
+    if (NameToNode.insert({V->getName(), V}).second)
+      continue;
+    /// Output extra information helping to find the error.
+    llvm::errs() << "The var with name '" << V->getName()
+                 << "' conflicts with a previous definition:\n";
+    llvm::errs() << "Current definition: " << V->getDebugDesc() << "\n";
+    llvm::errs() << "Previous definition: "
+                 << NameToNode[V->getName()]->getDebugDesc() << "\n";
+    dump();
+    assert(false && "Multiple nodes with the same name");
+  }
+
+  for (auto *N : nodes_) {
+    if (NameToNode.insert({N->getName(), N}).second)
+      continue;
+    /// Output extra information helping to find the error.
+    llvm::outs() << "The node with name '" << N->getName()
+                 << "' conflicts with a previous definition:\n";
+    llvm::errs() << "Current definition: " << N->getDebugDesc() << "\n";
+    llvm::errs() << "Previous definition: "
+                 << NameToNode[N->getName()]->getDebugDesc() << "\n";
+    dump();
+    assert(false && "Multiple nodes with the same name");
+  }
 }

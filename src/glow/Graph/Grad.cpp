@@ -62,7 +62,6 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
   }
 
   auto nodes = pov.getPostOrder();
-  auto &vars = G.getVars();
 
   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
     Node *N = *it;
@@ -169,9 +168,11 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
   for (auto &V : G.getVars()) {
     // In TrainDebug mode we save a copy of the last gradient
     if (mode == CompilationMode::TrainDebug && map.hasGradient(V)) {
-      std::string nodeName = V->getName().str() + "_grad";
+      std::string nodeName = "_grad_" + V->getName().str();
       // Save the gradient and return the destination variable.
-      G.createSave(nodeName, map.getGradient(V));
+      auto *saveNode = G.createSave(nodeName, map.getGradient(V));
+      auto *GradV = llvm::dyn_cast<Variable>(saveNode->getOutput().getNode());
+      G.addGradientVariable(V, GradV);
     }
 
     // Don't update nodes that are not in training mode.
@@ -191,11 +192,10 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
   }
 
   // Add all of the new variables and instructions.
-  auto &graphNodes = G.getNodes();
   for (auto &I : toAppend) {
-    graphNodes.push_back(I);
+    G.addNode(I);
   }
   for (auto &I : newVars) {
-    vars.push_back(I);
+    G.addVar(I);
   }
 }
