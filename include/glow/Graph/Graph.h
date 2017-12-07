@@ -2,7 +2,7 @@
 #define GLOW_GRAPH_GRAPH_H
 
 #include "glow/Base/Type.h"
-
+#include "glow/Optimizer/Optimizer.h"
 #include "glow/Graph/Nodes.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -143,6 +143,10 @@ public:
   /// \returns the list of nodes that the graph owns.
   NodesList &getNodes() { return nodes_; }
 
+  /// \returns a pointer to the first variable with the name \p name or nullptr
+  /// if no node has this name.
+  Variable* getVariableByName(llvm::StringRef name);
+
   /// \returns the list of variables that the graph owns.
   VariablesList &getVars() { return vars_; }
 };
@@ -151,8 +155,13 @@ struct TrainingConfig;
 
 /// Mutate the inference graph and turn it into a training graph by inserting
 /// training (gradient calculation) nodes.
-void generateGradientNodes(Graph &G, unsigned batchSize,
-                           TrainingConfig &config);
+void generateGradientNodes(Graph &G, TrainingConfig &config,
+                           CompilationMode mode);
+
+/// \returns a variable that accumulates the gradients that update \p V.
+/// Given the variable \p V, find the SGD node that trains it and record the
+/// gradients that flow into V.
+Variable *generateRecordGradientNode(Graph &G, Variable *V);
 
 } // namespace glow
 

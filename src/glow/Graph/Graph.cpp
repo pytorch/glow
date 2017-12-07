@@ -412,6 +412,14 @@ void Graph::eraseNode(NodesList::iterator I) {
   nodes_.erase(I);
 }
 
+Variable* Graph::getVariableByName(llvm::StringRef name) {
+  for (auto *V : getVars()) {
+    if (V->getName() == name)
+      return V;
+  }
+  return nullptr;
+}
+
 void Graph::eraseVariable(Variable *N) {
   auto I = std::find(vars_.begin(), vars_.end(), N);
   eraseVariable(I);
