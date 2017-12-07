@@ -1,7 +1,7 @@
 
 
 add_executable(tensorsTest
-                 Tensors.cpp)
+               tensorsTest.cpp)
 target_link_libraries(tensorsTest
                       PRIVATE
                         Base
@@ -11,7 +11,7 @@ target_link_libraries(tensorsTest
 add_test(tensorsTest ${GLOW_BINARY_DIR}/tests/tensorsTest)
 
 add_executable(gradCheckTest
-                 GradCheck.cpp)
+               gradCheckTest.cpp)
 target_link_libraries(gradCheckTest
                       PRIVATE
                         Backends
@@ -22,7 +22,7 @@ target_link_libraries(gradCheckTest
 add_test(gradCheckTest ${GLOW_BINARY_DIR}/tests/gradCheckTest)
 
 add_executable(IROptTest
-                 IROpt.cpp)
+               IROptTest.cpp)
 target_link_libraries(IROptTest
                       PRIVATE
                         Backends
@@ -32,7 +32,7 @@ target_link_libraries(IROptTest
 add_test(IROptTest ${GLOW_BINARY_DIR}/tests/IROptTest)
 
 add_executable(basicIRTest
-                 IRTest.cpp)
+               basicIRTest.cpp)
 target_link_libraries(basicIRTest
                       PRIVATE
                         Backends
@@ -42,7 +42,7 @@ target_link_libraries(basicIRTest
 add_test(basicIRTest ${GLOW_BINARY_DIR}/tests/basicIRTest)
 
 add_executable(interpreterTest
-                 InterpreterTest.cpp)
+               InterpreterTest.cpp)
 target_link_libraries(interpreterTest
                       PRIVATE
                         Backends
@@ -53,7 +53,7 @@ target_link_libraries(interpreterTest
 add_test(interpreterTest ${GLOW_BINARY_DIR}/tests/interpreterTest)
 
 add_executable(graphTest
-                 GraphTest.cpp)
+               graphTest.cpp)
 target_link_libraries(graphTest
                       PRIVATE
                         Graph
@@ -64,7 +64,7 @@ target_link_libraries(graphTest
 add_test(graphTest ${GLOW_BINARY_DIR}/tests/graphTest)
 
 add_executable(graphGradTest
-                 graphAutoGrad.cpp)
+               graphGradTest.cpp)
 target_link_libraries(graphGradTest
                       PRIVATE
                         Graph
@@ -77,7 +77,7 @@ add_test(graphGradTest ${GLOW_BINARY_DIR}/tests/graphGradTest)
 
 
 add_executable(graphOptzTest
-                 GraphOpt.cpp)
+               graphOptzTest.cpp)
 target_link_libraries(graphOptzTest
                       PRIVATE
                         Graph
@@ -89,7 +89,7 @@ add_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest)
 
 if(OpenCL_FOUND)
 add_executable(OCLTest
-                 OCLTest.cpp)
+               OCLTest.cpp)
 target_link_libraries(OCLTest
                       PRIVATE
                         Backends
@@ -101,7 +101,7 @@ add_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest)
 endif()
 
 add_executable(memoryAllocatorTest
-                MemoryAllocatorTest.cpp)
+               memoryAllocatorTest.cpp)
 target_link_libraries(memoryAllocatorTest
                       PRIVATE
                         Backends
@@ -109,3 +109,4 @@ target_link_libraries(memoryAllocatorTest
                         gtest
                         gtest_main)
 add_test(memoryAllocatorTest ${GLOW_BINARY_DIR}/tests/memoryAllocatorTest)
+
