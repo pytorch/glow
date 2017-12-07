@@ -44,8 +44,6 @@ TEST(GraphAutoGrad, autoGrad) {
   auto *result = G.createSave("return", SM);
   (void)result;
 
-  G.dump();
-  G.dumpDAG();
-
   EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Infer);
 }
