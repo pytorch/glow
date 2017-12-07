@@ -11,7 +11,7 @@ target_link_libraries(tensorsTest
 add_test(tensorsTest ${GLOW_BINARY_DIR}/tests/tensorsTest)
 
 add_executable(IRgradCheckTest
-                 IRGradCheck.cpp)
+                 GradCheck.cpp)
 target_link_libraries(IRgradCheckTest
                       PRIVATE
                         Backends
