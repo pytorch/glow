@@ -1044,6 +1044,9 @@ void Interpreter::fwdSGDInst(bool isTrain, const glow::SGDInst *I) {
   auto G = getWeightHandle(I->getGradient());
   auto Gsum = Handle<float>::createInvalidHandle();
 
+  /// Described in the paper: Alex Krizhevsky [2014]
+  // "One weird trick for parallelizing convolutional neural networks"
+
   if (I->getMomentum() > 0.0) {
     Gsum = getWeightHandle(I->getGsum());
   }

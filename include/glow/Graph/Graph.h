@@ -2,8 +2,8 @@
 #define GLOW_GRAPH_GRAPH_H
 
 #include "glow/Base/Type.h"
-#include "glow/Optimizer/Optimizer.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/ADT/ArrayRef.h"
 
@@ -145,7 +145,7 @@ public:
 
   /// \returns a pointer to the first variable with the name \p name or nullptr
   /// if no node has this name.
-  Variable* getVariableByName(llvm::StringRef name);
+  Variable *getVariableByName(llvm::StringRef name);
 
   /// \returns the list of variables that the graph owns.
   VariablesList &getVars() { return vars_; }
