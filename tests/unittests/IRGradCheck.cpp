@@ -246,11 +246,14 @@ TEST(Network, gradientCheck_Arithmetic) {
                              Variable::InitKind::Broadcast, 0.1);
   auto *C = G.createVariable(ElemKind::FloatTy, {1, numDim}, "C",
                              Variable::InitKind::Broadcast, 0.1);
+  auto *D = G.createVariable(ElemKind::FloatTy, {1, numDim}, "D",
+                             Variable::InitKind::Broadcast, 0.1);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
                                Variable::InitKind::Extern);
 
-  Node *O = G.createArithmetic("arith1", A, B, ArithmeticNode::Mode::Mul);
-  O = G.createArithmetic("arith2", O, C, ArithmeticNode::Mode::Add);
+  Node *O = G.createArithmetic("mul", A, B, ArithmeticNode::Mode::Mul);
+  O = G.createArithmetic("add", O, C, ArithmeticNode::Mode::Add);
+  O = G.createArithmetic("sub", D, O, ArithmeticNode::Mode::Sub);
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createSave("ret", O);
 

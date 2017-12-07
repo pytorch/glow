@@ -163,7 +163,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
     // Element-wise operations:
     if (isa<ReluInst>(I) || isa<SigmoidInst>(I) || isa<TanhInst>(I) ||
         isa<RegressionInst>(I) || isa<ReluInst>(I) || isa<ElementAddInst>(I) ||
-        isa<ElementMulInst>(I) || isa<ZeroInst>(I)) {
+        isa<ElementSubInst>(I) || isa<ElementMulInst>(I) || isa<ZeroInst>(I)) {
 
       cl_kernel kernel = createKernel(program_, kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);

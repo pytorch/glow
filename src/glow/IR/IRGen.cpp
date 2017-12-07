@@ -442,12 +442,20 @@ public:
       auto *R = valueForNode(AR->getRHS());
 
       Instruction *V = nullptr;
-      if (AR->getMode() == ArithmeticNode::Mode::Add) {
+      switch (AR->getMode()) {
+      case glow::ArithmeticNode::Mode::Add: {
         V = builder_.createElementAddOp(L, R);
-      } else {
-        V = builder_.createElementMulOp(L, R);
+        break;
       }
-
+      case glow::ArithmeticNode::Mode::Mul: {
+        V = builder_.createElementMulOp(L, R);
+        break;
+      }
+      case glow::ArithmeticNode::Mode::Sub: {
+        V = builder_.createElementSubOp(L, R);
+        break;
+      }
+      }
       V->setName(N->getName());
       registerIR(N, V->getOperand(0).first);
       break;

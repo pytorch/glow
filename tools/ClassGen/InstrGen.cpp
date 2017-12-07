@@ -149,6 +149,13 @@ int main(int argc, char **argv) {
       .inplaceOperand({"Dest", "LHS", "RHS"})
       .addGradientInstr({}, {"Dest", "LHS", "RHS"});
 
+  BB.newInstr("ElementSub")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .addGradientInstr({}, {"Dest", "LHS", "RHS"});
+
   BB.newInstr("ElementMul")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)

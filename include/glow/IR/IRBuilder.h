@@ -81,6 +81,8 @@ public:
 
   ElementAddInst *createElementAddOp(Value *LHS, Value *RHS);
 
+  ElementSubInst *createElementSubOp(Value *LHS, Value *RHS);
+
   ElementMulInst *createElementMulOp(Value *LHS, Value *RHS);
 
   Value *createReturnOp(Value *input);
