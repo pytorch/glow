@@ -482,18 +482,6 @@ void OCLBackend::init() {
 
 void OCLBackend::clear() { externalTensors_.clear(); }
 
-Tensor *OCLBackend::getGradTensor(const Value *v) const {
-  auto &map = M_->getGradientMap();
-  auto it = map.find(v);
-  assert(it != map.end() && "Gradient tensor unavailable");
-  return getTensor(it->second);
-}
-
-Tensor *OCLBackend::getGradTensor(const Variable *v) const {
-  auto *W = M_->getWeightForNode(v);
-  return getGradTensor(W);
-}
-
 Tensor *OCLBackend::getTensor(const Variable *v) const {
   auto *W = M_->getWeightForNode(v);
   return getTensor(W);

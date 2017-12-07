@@ -50,8 +50,6 @@ public:
   void registerGraphTensor(const Value *v, Tensor *t) override;
 
   Tensor *getTensor(const Variable *v) const override;
-
-  Tensor *getGradTensor(const Variable *v) const override;
   /// @}
 
 private:
@@ -68,17 +66,6 @@ private:
 
   /// \returns a float-handle to the tensor that is stored at \p v.
   Handle<float> getWeightHandle(Value *v) const;
-
-  /// \returns a float-handle to the gradient tensor that matches \p v. Notice
-  /// that this API is only valid when the module is compiled in training mode.
-  Handle<float> getGradHandle(Value *v) const;
-
-  /// \returns a pointer to the gradient tensor that matches \p v. Notice
-  /// that this API is only valid when the module is compiled in training mode.
-  Tensor *getGradTensor(const Value *v) const;
-
-  /// \returns True if the value \p has an associated gradient tensor.
-  bool hasGradTensor(const Value *v) const;
 
   /// @name Interpreter methods. This is a list of method declerations that are
   /// used by the interpreter to dispatch different instructions.

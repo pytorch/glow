@@ -52,21 +52,6 @@ void ExecutionEngine::train(size_t iterations, llvm::ArrayRef<Variable *> vars,
   }
 }
 
-void ExecutionEngine::learnGradient(size_t batchSize) {
-  for (auto *V : G_->getVars()) {
-    // Do not try to learn the values of input/output buffers.
-    if (V->getInitKind() == Variable::InitKind::Extern) {
-      continue;
-    }
-
-    auto W = IP_->getTensor(V);
-    auto G = IP_->getGradTensor(V);
-
-    // Handle weight update by learning the gradients into the weights.
-    trainer_.train(W, G, batchSize);
-  }
-}
-
 void ExecutionEngine::updateForwardBackward(llvm::ArrayRef<Variable *> vars,
                                             llvm::ArrayRef<Tensor *> inputs,
                                             size_t sampleIdx) {

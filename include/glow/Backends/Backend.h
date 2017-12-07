@@ -37,10 +37,6 @@ public:
 
   /// \returns a pointer to the tensor that is saved under \p v.
   virtual Tensor *getTensor(const Variable *v) const = 0;
-
-  /// \returns a pointer to the gradient tensor that matches \p v. Notice
-  /// that this API is only valid when the module is compiled in training mode.
-  virtual Tensor *getGradTensor(const Variable *v) const = 0;
 };
 
 /// Create a backend of kind \p kind, to run the module \p M.
