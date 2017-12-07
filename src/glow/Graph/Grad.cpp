@@ -37,6 +37,10 @@ NodeValue GraphGradMapper::getGradient(NodeValue activation) {
   return map_.get(activation);
 }
 
+//===----------------------------------------------------------------------===//
+//        Code for automatically generating the back propagation code.
+//===----------------------------------------------------------------------===//
+
 void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
                                  CompilationMode mode) {
   using Kind = glow::Kinded::Kind;
