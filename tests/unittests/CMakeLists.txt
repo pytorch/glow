@@ -10,62 +10,62 @@ target_link_libraries(tensorsTest
                         gtest_main)
 add_test(tensorsTest ${GLOW_BINARY_DIR}/tests/tensorsTest)
 
-add_executable(IRgradCheckTest
+add_executable(gradCheckTest
                  GradCheck.cpp)
-target_link_libraries(IRgradCheckTest
+target_link_libraries(gradCheckTest
                       PRIVATE
                         Backends
                         ExecutionEngine
                         IR
                         gtest
                         gtest_main)
-add_test(IRgradCheckTest ${GLOW_BINARY_DIR}/tests/IRgradCheckTest)
+add_test(gradCheckTest ${GLOW_BINARY_DIR}/tests/gradCheckTest)
 
-add_executable(IROpt
+add_executable(IROptTest
                  IROpt.cpp)
-target_link_libraries(IROpt
+target_link_libraries(IROptTest
                       PRIVATE
                         Backends
                         IR
                         gtest
                         gtest_main)
-add_test(IRTest ${GLOW_BINARY_DIR}/tests/IROpt)
+add_test(IROptTest ${GLOW_BINARY_DIR}/tests/IROptTest)
 
-add_executable(IRTest
+add_executable(basicIRTest
                  IRTest.cpp)
-target_link_libraries(IRTest
+target_link_libraries(basicIRTest
                       PRIVATE
                         Backends
                         IR
                         gtest
                         gtest_main)
-add_test(IRTest ${GLOW_BINARY_DIR}/tests/IRTest)
+add_test(basicIRTest ${GLOW_BINARY_DIR}/tests/basicIRTest)
 
-add_executable(InterpreterTest
+add_executable(interpreterTest
                  InterpreterTest.cpp)
-target_link_libraries(InterpreterTest
+target_link_libraries(interpreterTest
                       PRIVATE
                         Backends
                         IR
                         ExecutionEngine
                         gtest
                         gtest_main)
-add_test(InterpreterTest ${GLOW_BINARY_DIR}/tests/InterpreterTest)
+add_test(interpreterTest ${GLOW_BINARY_DIR}/tests/interpreterTest)
 
-add_executable(GraphTest
+add_executable(graphTest
                  GraphTest.cpp)
-target_link_libraries(GraphTest
+target_link_libraries(graphTest
                       PRIVATE
                         Graph
                         IR
                         Backends
                         gtest
                         gtest_main)
-add_test(GraphTest ${GLOW_BINARY_DIR}/tests/GraphTest)
+add_test(graphTest ${GLOW_BINARY_DIR}/tests/graphTest)
 
-add_executable(GraphGradTest
-                 GraphAutoGrad.cpp)
-target_link_libraries(GraphGradTest
+add_executable(graphGradTest
+                 graphAutoGrad.cpp)
+target_link_libraries(graphGradTest
                       PRIVATE
                         Graph
                         IR
@@ -73,19 +73,19 @@ target_link_libraries(GraphGradTest
                         ExecutionEngine
                         gtest
                         gtest_main)
-add_test(GraphGradTest ${GLOW_BINARY_DIR}/tests/GraphGradTest)
+add_test(graphGradTest ${GLOW_BINARY_DIR}/tests/graphGradTest)
 
 
-add_executable(GraphOptz
+add_executable(graphOptzTest
                  GraphOpt.cpp)
-target_link_libraries(GraphOptz
+target_link_libraries(graphOptzTest
                       PRIVATE
                         Graph
                         IR
                         Backends
                         gtest
                         gtest_main)
-add_test(GraphOptz ${GLOW_BINARY_DIR}/tests/GraphOptz)
+add_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest)
 
 if(OpenCL_FOUND)
 add_executable(OCLTest
@@ -100,12 +100,12 @@ target_link_libraries(OCLTest
 add_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest)
 endif()
 
-add_executable(MemoryAllocatorTest
+add_executable(memoryAllocatorTest
                 MemoryAllocatorTest.cpp)
-target_link_libraries(MemoryAllocatorTest
+target_link_libraries(memoryAllocatorTest
                       PRIVATE
                         Backends
                         IR
                         gtest
                         gtest_main)
-add_test(MemoryAllocatorTest ${GLOW_BINARY_DIR}/tests/MemoryAllocatorTest)
+add_test(memoryAllocatorTest ${GLOW_BINARY_DIR}/tests/memoryAllocatorTest)
