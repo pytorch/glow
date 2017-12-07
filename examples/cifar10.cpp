@@ -57,13 +57,14 @@ void testCIFAR10() {
   }
   GLOW_ASSERT(idx == cifarImageSize * cifarNumImages && "Invalid input file");
 
+  unsigned minibatchSize = 8;
+
   // Construct the network:
   ExecutionEngine EE;
   EE.getConfig().learningRate = 0.001;
   EE.getConfig().momentum = 0.9;
   EE.getConfig().L2Decay = 0.0001;
-
-  unsigned minibatchSize = 8;
+  EE.getConfig().batchSize = minibatchSize;
 
   auto &G = EE.getGraph();
 
