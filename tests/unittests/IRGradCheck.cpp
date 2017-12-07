@@ -34,9 +34,7 @@ float gradDiff(float G1, float G2) {
   return std::abs(G1 - G2) / std::abs(G1 + G2 + 1);
 }
 
-Variable *getGrad(Graph &G, Variable *V) {
-  return G.getGradientVariable(V);
-}
+Variable *getGrad(Graph &G, Variable *V) { return G.getGradientVariable(V); }
 
 void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
                       Variable *expVar, Tensor *inputs, Tensor *outputs,

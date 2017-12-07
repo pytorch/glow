@@ -371,6 +371,17 @@ static void OptimizeBatchNorm(Graph &G) {
   } // For all nodes in the graph.
 }
 
+static void OptimizeRegression(Graph &G) {
+  auto &nodes = G.getNodes();
+  // For each node:
+  for (auto const &node : nodes) {
+    // In inference mode Regression nodes simply forward their inputs.
+    if (auto *R = dyn_cast<RegressionNode>(node)) {
+      R->replaceAllUsesOfWith(R->getInput());
+    }
+  } // For all nodes in the graph.
+}
+
 /// Concat nodes merging.
 /// concat(dim1, concat(dim2, X, Y), Z) -> concat(dim1, X, Y, Z)
 /// but only if dim1 == dim2
@@ -504,6 +515,8 @@ void glow::optimize(Graph &G, CompilationMode mode) {
   if (mode == CompilationMode::Infer) {
     // Merge batch normalization operations.
     OptimizeBatchNorm(G);
+
+    OptimizeRegression(G);
   }
 
   // Perform Common Subexpression Elimination.

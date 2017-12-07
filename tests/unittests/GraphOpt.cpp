@@ -46,13 +46,13 @@ TEST(GraphOptz, LiveCodeNotEliminated) {
   Graph G;
   Module M(&G);
   Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  auto *Ex = G.createVariable(ElemKind::FloatTy, {4, 1}, "Ex");
+  auto *Ex = G.createVariable(ElemKind::IndexTy, {4, 1}, "Ex");
 
   for (int i = 0; i < 40; i++) {
     K = G.createRELU("relu", K);
     K = G.createArithmetic("arith", K, K, ArithmeticNode::Mode::Add);
   }
-  K = G.createRegression("Regression", K, Ex);
+  K = G.createSoftMax("Regression", K, Ex);
   G.createSave("ret", K);
 
   // Check that we know how many nodes we've created.

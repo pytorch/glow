@@ -17,7 +17,8 @@ void NodeUse::setOperand(Node *other) {
 
 NodeValue::NodeValue(Node *N) {
   resNo_ = 0;
-  assert(N->getNumRes() == 1 && "Constructing a value for a multi-res node");
+  assert(!N ||
+         (N->getNumRes() == 1) && "Constructing a value for a multi-res node");
   setOperand(N);
 }
 
