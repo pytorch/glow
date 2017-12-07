@@ -62,8 +62,6 @@ public:
   void registerGraphTensor(const Value *v, Tensor *t) override;
 
   Tensor *getTensor(const Variable *v) const override;
-
-  Tensor *getGradTensor(const Variable *v) const override;
   /// @}
 
 private:
@@ -73,10 +71,6 @@ private:
 
   /// \returns a pointer to the tensor that is saved under \p v.
   Tensor *getTensor(const Value *v) const;
-
-  /// \returns a pointer to the gradient tensor that matches \p v. Notice
-  /// that this API is only valid when the module is compiled in training mode.
-  Tensor *getGradTensor(const Value *v) const;
 };
 
 } // namespace glow

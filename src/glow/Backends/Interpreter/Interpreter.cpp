@@ -50,28 +50,8 @@ Tensor *Interpreter::getTensor(const Variable *v) const {
   return getTensor(W);
 }
 
-Tensor *Interpreter::getGradTensor(const Variable *v) const {
-  auto *W = M_->getWeightForNode(v);
-  return getGradTensor(W);
-}
-
 Handle<float> Interpreter::getWeightHandle(Value *v) const {
   return getTensor(v)->getHandle<>();
-}
-
-Handle<float> Interpreter::getGradHandle(Value *v) const {
-  return getGradTensor(v)->getHandle<>();
-}
-
-Tensor *Interpreter::getGradTensor(const Value *v) const {
-  auto &map = M_->getGradientMap();
-  auto it = map.find(v);
-  assert(it != map.end() && "Gradient tensor unavailable");
-  return getTensor(it->second);
-}
-
-bool Interpreter::hasGradTensor(const Value *v) const {
-  return M_->getGradientMap().count(v);
 }
 
 Tensor *Interpreter::getOrCreateTensor(const Value *v) {

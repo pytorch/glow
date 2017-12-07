@@ -30,8 +30,8 @@ class ExecutionEngine final {
   std::unique_ptr<Module> M_;
   /// The network interpreter
   std::unique_ptr<Backend> IP_;
-  /// The network trainer.
-  Trainer trainer_{};
+  /// The training configuration.
+  TrainingConfig config_;
 
 public:
   ExecutionEngine(BackendKind backendKind = BackendKind::Interpreter);
@@ -48,7 +48,7 @@ public:
   void compile(CompilationMode mode);
 
   /// Provides access to the training configuration.
-  TrainingConfig &getConfig() { return trainer_.config; }
+  TrainingConfig &getConfig() { return config_; }
 
   /// Runs the program in a forward pass. Update the nodes in \p nodes with the
   /// values \p inputs.
@@ -63,17 +63,11 @@ public:
   /// \returns a pointer to the tensor that is stored at \p v.
   Tensor *getWeight(const Variable *v) const;
 
-  /// \returns a pointer to the tensor that is stored at \p v.
-  Tensor *getGrad(const Variable *v);
-
 private:
   /// Update the inputs for all variables \p vars with data from the inputs \p
   /// inputs at offset \p sampleIdx. Then perform a forward and backwards scan.
   void updateForwardBackward(llvm::ArrayRef<Variable *> vars,
                              llvm::ArrayRef<Tensor *> inputs, size_t sampleIdx);
-
-  /// Update all of the weight tensors (non-activation) with their gradients.
-  void learnGradient(size_t batchSize);
 
   /// Update the content of the tensor \p v with some slices that from \p input.
   /// The data starts at slice \p sampleIdx and wraps around until the
