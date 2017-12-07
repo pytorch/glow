@@ -288,7 +288,7 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
                                Variable::InitKind::Extern);
 
   Node *FA = G.createFullyConnected("fc", A, numOutputElem);
-  // FA = G.createTanh("tanh", FA);
+  FA = G.createTanh("tanh", FA);
   FA = G.createRegression("reg", FA, Exp);
   auto *result = G.createSave("ret", FA);
 
