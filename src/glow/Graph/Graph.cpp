@@ -57,7 +57,7 @@ Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
 }
 
 /// Form a unique name based on the original non-uniqued \p Name.
-/// 
+///
 /// This is done by taking the original non-uniqued name
 /// (i.e. the part of the name before the first occurrence of "__")
 /// and concatenating it with "__N", where N is a unique numeric

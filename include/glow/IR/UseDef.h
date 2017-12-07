@@ -45,7 +45,7 @@ public:
   }
 
   /// Replace all of the uses of this value with \p v.
-  void replaceAllUsesOfWith(UseTy *v) {
+  void replaceAllUsesOfWith(UseTy v) {
     // Copy the users to a temporary location, because RAUW changes the uselist.
     llvm::SmallVector<Use, 4> usersVec(users_.begin(), users_.end());
     for (auto &U : usersVec) {

@@ -38,7 +38,7 @@ class Graph final : public Named {
 
   /// \returns unique name with a prefix \p Name.
   std::string uniqueName(llvm::StringRef Name);
- 
+
   /// Unique names defined by node \p N.
   void uniqueNames(Node *N);
 

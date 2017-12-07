@@ -115,7 +115,9 @@ struct NodeUse {
 };
 
 /// Represents a node in the compute graph.
-class Node : public Named, public Kinded, public UseDef<Node, Node, NodeUse> {
+class Node : public Named,
+             public Kinded,
+             public UseDef<Node, NodeValue, NodeUse> {
 public:
   /// This is the maximum number of results that a node may have.
   static constexpr unsigned max_node_resno = 6;
@@ -146,7 +148,7 @@ public:
 
   /// When the node is deleted we need to unregister all users. This allows us
   /// to deconstruct the graph in an arbitrary order.
-  virtual ~Node() { replaceAllUsesOfWith(nullptr); }
+  virtual ~Node() { replaceAllUsesOfWith(NodeValue(nullptr)); }
 
   /// \returns the n'th result type of the node.
   TypeRef getType(unsigned idx = -1) const;
