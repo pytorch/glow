@@ -407,12 +407,20 @@ public:
       auto *biasG =
           builder_.createAllocActivationInst("bn.bias.G", beta->getType());
 
+      auto *meanG = builder_.createAllocActivationInst("bn.mean.G", mean->getType());
+      auto *varG = builder_.createAllocActivationInst("bn.var.G", var->getType());
+
+      builder_.createZeroInst("bn.zero.mean.G", meanG);
+      builder_.createZeroInst("bn.zero.var.G", varG);
+
       builder_.createBatchNormalizationGradInst(
           N->getName(), in, gamma, mean, var, outG, inG, scaleG, biasG,
           BN->getChannelIdx(), BN->getEpsilon(), BN->getMomentum());
       registerIR(BN->getGradOfInputNamedInput(), inG);
       registerIR(BN->getGradOfInputNamedBias(), biasG);
       registerIR(BN->getGradOfInputNamedScale(), scaleG);
+      registerIR(BN->getGradOfInputNamedMean(), meanG);
+      registerIR(BN->getGradOfInputNamedVar(), varG);
       break;
     }
 
