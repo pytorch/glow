@@ -27,6 +27,9 @@ public:
 
   /// \returns the node that \p activation is mapped to.
   NodeValue getGradient(NodeValue activation);
+
+  /// \returns True if the node \p activation is mapped.
+  bool hasGradient(NodeValue activation);
 };
 
 } // namespace glow

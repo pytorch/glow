@@ -29,6 +29,10 @@ void GraphGradMapper::addGradient(NodeValue activation, NodeValue grad) {
   map_.insert(activation, grad);
 }
 
+bool GraphGradMapper::hasGradient(NodeValue activation) {
+  return map_.count(activation);
+}
+
 NodeValue GraphGradMapper::getGradient(NodeValue activation) {
   return map_.get(activation);
 }
