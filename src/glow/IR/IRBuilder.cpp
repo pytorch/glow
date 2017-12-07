@@ -199,6 +199,13 @@ ElementAddInst *IRBuilder::createElementAddOp(Value *LHS, Value *RHS) {
   return createElementAddInst("add", res, LHS, RHS);
 }
 
+ElementSubInst *IRBuilder::createElementSubOp(Value *LHS, Value *RHS) {
+  assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
+  // The output tensor is of the same shape as the input tensor.
+  auto *res = createAllocActivationInst("sub.res", LHS->getType());
+  return createElementSubInst("sub", res, LHS, RHS);
+}
+
 ElementMulInst *IRBuilder::createElementMulOp(Value *LHS, Value *RHS) {
   assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.

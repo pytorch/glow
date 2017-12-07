@@ -113,6 +113,7 @@ int main(int argc, char **argv) {
   BB.newNode("Arithmetic")
       .addEnumCase("Add")
       .addEnumCase("Mul")
+      .addEnumCase("Sub")
       .addInput("LHS")
       .addInput("RHS")
       .addResult("LHS.getType()")

@@ -230,6 +230,10 @@ void ElementMulInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
   checkSameType(getOperand(0), getOperand(2));
 }
+void ElementSubInst::verify() const {
+  checkSameType(getOperand(0), getOperand(1));
+  checkSameType(getOperand(0), getOperand(2));
+}
 void AllocActivationInst::verify() const {
   unsigned numDealloc = 0;
   for (const Use &U : getUsers()) {
@@ -271,4 +275,5 @@ NOVERIFY(TanhGradInst)
 NOVERIFY(SigmoidGradInst)
 NOVERIFY(ElementAddGradInst)
 NOVERIFY(ElementMulGradInst)
+NOVERIFY(ElementSubGradInst)
 #undef NOVERIFY

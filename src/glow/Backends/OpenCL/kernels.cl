@@ -63,6 +63,17 @@ __kernel void elementaddW(__global void *mem, size_t dest, size_t LHS,
   elementaddK(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
+__kernel void elementsubK(__global float *dest, __global float *LHS,
+                          __global float *RHS) {
+  size_t i = get_global_id(0);
+  dest[i] = LHS[i] - RHS[i];
+}
+
+__kernel void elementsubW(__global void *mem, size_t dest, size_t LHS,
+                          size_t RHS) {
+  elementsubK(&mem[dest], &mem[LHS], &mem[RHS]);
+}
+
 __kernel void elementmulK(__global float *dest, __global float *LHS,
                           __global float *RHS) {
   size_t i = get_global_id(0);
