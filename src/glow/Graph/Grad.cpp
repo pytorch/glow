@@ -37,8 +37,8 @@ NodeValue GraphGradMapper::getGradient(NodeValue activation) {
   return map_.get(activation);
 }
 
-void glow::generateGradientNodes(Graph &G, unsigned batchSize,
-                                 TrainingConfig &conf) {
+void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
+                                 CompilationMode mode) {
   using Kind = glow::Kinded::Kind;
   GraphGradMapper map(G);
 
@@ -163,6 +163,13 @@ void glow::generateGradientNodes(Graph &G, unsigned batchSize,
   } // End of the for-each instr loop.
 
   for (auto &V : G.getVars()) {
+    // In TrainDebug mode we save a copy of the last gradient
+    if (mode == CompilationMode::TrainDebug && map.hasGradient(V)) {
+      std::string nodeName = V->getName().str() + "_grad";
+      // Save the gradient and return the destination variable.
+      G.createSave(nodeName, map.getGradient(V));
+    }
+
     // Don't update nodes that are not in training mode.
     if (!V->isTraining()) {
       continue;
@@ -173,9 +180,9 @@ void glow::generateGradientNodes(Graph &G, unsigned batchSize,
 
     newVars.push_back(gsum);
 
-    auto X =
-        new SGDNode(V->getName(), map.getGradient(V), V, gsum, conf.L1Decay,
-                    conf.L2Decay, conf.learningRate, conf.momentum, batchSize);
+    auto X = new SGDNode(V->getName(), map.getGradient(V), V, gsum,
+                         conf.L1Decay, conf.L2Decay, conf.learningRate,
+                         conf.momentum, conf.batchSize);
     toAppend.push_back(X);
   }
 

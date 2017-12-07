@@ -407,8 +407,10 @@ public:
       auto *biasG =
           builder_.createAllocActivationInst("bn.bias.G", beta->getType());
 
-      auto *meanG = builder_.createAllocActivationInst("bn.mean.G", mean->getType());
-      auto *varG = builder_.createAllocActivationInst("bn.var.G", var->getType());
+      auto *meanG =
+          builder_.createAllocActivationInst("bn.mean.G", mean->getType());
+      auto *varG =
+          builder_.createAllocActivationInst("bn.var.G", var->getType());
 
       builder_.createZeroInst("bn.zero.mean.G", meanG);
       builder_.createZeroInst("bn.zero.var.G", varG);
@@ -691,9 +693,5 @@ void Module::generateIR(CompilationMode mode) {
 
   for (auto &N : G_->getNodes()) {
     N->visit(nullptr, &irgen);
-  }
-
-  if (mode == CompilationMode::Train) {
-    generateBackwardPass(*this);
   }
 }

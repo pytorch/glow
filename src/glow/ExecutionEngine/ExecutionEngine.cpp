@@ -49,11 +49,6 @@ void ExecutionEngine::train(size_t iterations, llvm::ArrayRef<Variable *> vars,
     updateForwardBackward(vars, inputs, trainCounter);
 
     trainCounter += batchSize;
-
-    // The algorithm for merging the state from the different threads is
-    /// described in the paper: Alex Krizhevsky [2014]
-    // "One weird trick for parallelizing convolutional neural networks"
-    learnGradient(batchSize);
   }
 }
 
@@ -108,6 +103,11 @@ void ExecutionEngine::compile(CompilationMode mode) {
   // Wipe out the module and start a new compilation process.
   M_->clear();
   IP_->clear();
+
+  if (mode != CompilationMode::Infer) {
+    generateGradientNodes(*G_, getConfig(), mode);
+  }
+
   ::glow::optimize(*G_, mode);
   M_->generateIR(mode);
   ::glow::optimize(*M_, mode);
@@ -122,8 +122,4 @@ void ExecutionEngine::compile(CompilationMode mode) {
 
 Tensor *ExecutionEngine::getWeight(const Variable *v) const {
   return IP_->getTensor(v);
-}
-
-Tensor *ExecutionEngine::getGrad(const Variable *v) {
-  return IP_->getGradTensor(v);
 }

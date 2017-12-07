@@ -7,8 +7,11 @@ class Module;
 class Graph;
 
 enum class CompilationMode {
-  Train, // Optimize the module but allow training.
-  Infer, // Optimize the module and break training.
+  TrainDebug, /// Compiler the graph for training and add extra instrumentation
+              /// that enable unit testing and debugging.
+  Train,      /// Compile the graph in preperation for training.
+  Infer,      /// Compiler the graph for inference. Notice that this operation
+              /// changes the graph in a way that is not reversible.
 };
 
 void optimize(Module &M, CompilationMode mode);

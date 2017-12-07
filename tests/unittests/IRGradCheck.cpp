@@ -34,6 +34,15 @@ float gradDiff(float G1, float G2) {
   return std::abs(G1 - G2) / std::abs(G1 + G2 + 1);
 }
 
+/// Convert the variable name to the name of the gradient.
+static std::string getGradName(llvm::StringRef name) {
+  return name.str() + "_grad";
+}
+
+Variable *getGrad(Graph &G, Variable *V) {
+  return G.getVariableByName(getGradName(V->getName()));
+}
+
 void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
                       Variable *expVar, Tensor *inputs, Tensor *outputs,
                       float delta, float allowedError) {
@@ -41,15 +50,21 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
 
   // Train the network.
   IP.train(300, {inputVar, expVar}, {inputs, outputs});
+  Graph &G = IP.getGraph();
+
+  // Remove the SGD nodes by compiling in Inference mode. This compilation will
+  // keep the "grad" nodes.
+  IP.compile(CompilationMode::Infer);
 
   // Clear the gradients of the first layer.
-  IP.getGrad(inputVar)->zero();
+  auto gradVar = getGrad(G, inputVar);
+  gradVar->getPayload().zero();
 
   // Train the network just once to calculate the grads.
   IP.train(1, {inputVar, expVar}, {inputs, outputs});
 
   // Copy the gradient buffer. Future iterations will invalidate the buffer.
-  Tensor gradCopy = IP.getGrad(inputVar)->clone();
+  Tensor gradCopy = gradVar->getPayload().clone();
   auto analyticalGradsH = gradCopy.getHandle();
 
   for (size_t i = 0; i < analyticalGradsH.size(); i++) {
@@ -102,7 +117,7 @@ TEST(Network, gradientCheck_FC_Concat_RELU) {
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createSave("ret", O);
 
-  IP.compile(CompilationMode::Train);
+  IP.compile(CompilationMode::TrainDebug);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -137,7 +152,7 @@ TEST(Network, gradientCheck_Conv) {
   O = G.createRegression("reg", O, Ex);
   auto *result = G.createSave("ret", O);
 
-  IP.compile(CompilationMode::Train);
+  IP.compile(CompilationMode::TrainDebug);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
@@ -170,7 +185,7 @@ TEST(Network, gradientCheck_AvgPool) {
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createSave("ret", O);
 
-  IP.compile(CompilationMode::Train);
+  IP.compile(CompilationMode::TrainDebug);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
@@ -203,7 +218,7 @@ TEST(Network, gradientCheck_batchNorm) {
   O = G.createRegression("reg", O, Ex);
   auto result = G.createSave("ret", O);
 
-  IP.compile(CompilationMode::Train);
+  IP.compile(CompilationMode::TrainDebug);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 3});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
@@ -233,9 +248,9 @@ TEST(Network, gradientCheck_Arithmetic) {
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
                              Variable::InitKind::Extern);
   auto *B = G.createVariable(ElemKind::FloatTy, {1, numDim}, "B",
-                             Variable::InitKind::Extern);
+                             Variable::InitKind::Broadcast, 0.1);
   auto *C = G.createVariable(ElemKind::FloatTy, {1, numDim}, "C",
-                             Variable::InitKind::Extern);
+                             Variable::InitKind::Broadcast, 0.1);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
                                Variable::InitKind::Extern);
 
@@ -244,68 +259,18 @@ TEST(Network, gradientCheck_Arithmetic) {
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createSave("ret", O);
 
-  IP.compile(CompilationMode::Train);
+  IP.compile(CompilationMode::TrainDebug);
 
-  Tensor iA(ElemKind::FloatTy, {1, numDim});
-  Tensor iB(ElemKind::FloatTy, {1, numDim});
-  Tensor iC(ElemKind::FloatTy, {1, numDim});
+  Tensor inputs(ElemKind::FloatTy, {1, numDim});
   Tensor outputs(ElemKind::FloatTy, {1, numDim});
 
-  auto iAH = iA.getHandle<>();
-  auto iBH = iB.getHandle<>();
-  auto iCH = iC.getHandle<>();
+  auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  iAH.randomize(1);
-  iBH.randomize(1);
-  iCH.randomize(1);
+  inputsH.randomize(1);
   outputsH.randomize(1);
 
-  // Train the network just once to calculate the grads.
-  IP.train(30, {A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
-
-  // Clear the gradients of the last layer.
-  IP.getGrad(A)->zero();
-  IP.getGrad(B)->zero();
-  IP.getGrad(C)->zero();
-
-  IP.train(1, {A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
-
-  auto check = [&](Variable *var, Tensor *t) {
-    auto iH = t->getHandle<>();
-
-    auto analyticalGradsH = IP.getGrad(var)->getHandle();
-
-    float delta = 0.001;
-    for (size_t i = 0; i < numDim; i++) {
-      auto old = iH.at({0, i});
-
-      // Calculate f(x+e):
-      iH.at({0, i}) = old + delta;
-      IP.infer({A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
-      Tensor &res = result->getVariable()->getPayload();
-
-      auto plusLoss = computeL2Loss(&outputs, &res);
-
-      // Calculate f(x-e):
-      iH.at({0, i}) = old - delta;
-      IP.infer({A, B, C, Exp}, {&iA, &iB, &iC, &outputs});
-      auto minusLoss = computeL2Loss(&outputs, &res);
-      iH.at({0, i}) = old;
-
-      auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
-      auto analyticalGrad = analyticalGradsH.at({0, i});
-
-      auto err = gradDiff(analyticalGrad, numericGrad);
-
-      // Make sure that the analytical and numerical gradients agree.
-      EXPECT_LE(err, 0.04);
-    }
-  };
-
-  check(A, &iA);
-  check(B, &iB);
-  check(C, &iC);
+  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.001, 0.004);
 }
 
 TEST(Network, gradientCheck_FC_Concat_Tanh) {
@@ -323,11 +288,11 @@ TEST(Network, gradientCheck_FC_Concat_Tanh) {
                                Variable::InitKind::Extern);
 
   Node *FA = G.createFullyConnected("fc", A, numOutputElem);
-  FA = G.createTanh("tanh", FA);
+  // FA = G.createTanh("tanh", FA);
   FA = G.createRegression("reg", FA, Exp);
   auto *result = G.createSave("ret", FA);
 
-  IP.compile(CompilationMode::Train);
+  IP.compile(CompilationMode::TrainDebug);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -358,7 +323,7 @@ TEST(Network, gradientCheck_Transpose) {
   TA = G.createRegression("regress", TA, Exp);
   auto *result = G.createSave("ret", TA);
 
-  IP.compile(CompilationMode::Train);
+  IP.compile(CompilationMode::TrainDebug);
 
   Tensor inputs(ElemKind::FloatTy, {1, 5, 10, 15});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});

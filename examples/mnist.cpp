@@ -68,6 +68,7 @@ void testMNIST() {
   EE.getConfig().learningRate = 0.001;
   EE.getConfig().momentum = 0.9;
   EE.getConfig().L2Decay = 0.001;
+  EE.getConfig().batchSize = minibatchSize;
 
   auto &G = EE.getGraph();
 

@@ -412,7 +412,7 @@ void Graph::eraseNode(NodesList::iterator I) {
   nodes_.erase(I);
 }
 
-Variable* Graph::getVariableByName(llvm::StringRef name) {
+Variable *Graph::getVariableByName(llvm::StringRef name) {
   for (auto *V : getVars()) {
     if (V->getName() == name)
       return V;
