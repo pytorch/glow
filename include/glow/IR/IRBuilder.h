@@ -57,8 +57,6 @@ public:
 
   SoftMaxInst *createSoftMaxOp(Value *input, Value *selected);
 
-  RegressionInst *createRegressionOp(Value *input, Value *expected);
-
   ReshapeInst *createReshapeOp(Value *input, llvm::ArrayRef<size_t> shape);
 
   TransposeInst *createTransposeOp(Value *input,

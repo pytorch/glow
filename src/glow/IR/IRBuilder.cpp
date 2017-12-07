@@ -130,11 +130,6 @@ SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input, Value *selected) {
   return createSoftMaxInst("softmax", res, input, E, selected);
 }
 
-RegressionInst *IRBuilder::createRegressionOp(Value *input, Value *expected) {
-  auto *res = createAllocActivationInst("regrs.res", input->getType());
-  return createRegressionInst("regrs", res, input, expected);
-}
-
 ReshapeInst *IRBuilder::createReshapeOp(Value *input,
                                         llvm::ArrayRef<size_t> shape) {
   auto *res =
