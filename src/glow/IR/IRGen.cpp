@@ -289,11 +289,7 @@ public:
     case glow::Kinded::Kind::RegressionNodeKind: {
       auto *RR = cast<RegressionNode>(N);
       auto *in = valueForNode(RR->getInput());
-      auto *expected = valueForNode(RR->getExpected());
-      auto *V = builder_.createRegressionOp(in, expected);
-      nodeToInstr_[N] = V;
-      V->setName(N->getName());
-      registerIR(N, V->getDest());
+      registerIR(N, in);
       break;
     }
     case glow::Kinded::Kind::RegressionGradNodeKind: {
@@ -307,8 +303,9 @@ public:
       auto *expGrad = builder_.createAllocActivationInst("expected.res.grad",
                                                          origIn->getType());
 
-      builder_.createRegressionGradInst(N->getName(), origIn, origExpected,
-                                        srcGrad, expGrad);
+      builder_.createElementSubInst(N->getName(), srcGrad, origIn,
+                                    origExpected);
+      builder_.createZeroInst(N->getName(), expGrad);
 
       registerIR(RG->getGradOfInputNamedInput(), srcGrad);
       registerIR(RG->getGradOfInputNamedExpected(), expGrad);

@@ -553,36 +553,6 @@ void Interpreter::fwdSoftMaxGradInst(bool isTrain, const SoftMaxGradInst *I) {
   }
 }
 
-void Interpreter::fwdRegressionInst(bool isTrain, const RegressionInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-
-  for (size_t i = 0, e = inW.size(); i < e; i++) {
-    outW.raw(i) = inW.raw(i);
-  }
-}
-
-void Interpreter::fwdRegressionGradInst(bool isTrain,
-                                        const RegressionGradInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto inG = getWeightHandle(I->getSrcGrad());
-  auto expected = getTensor(I->getExpected());
-
-  auto idim = inW.dims();
-  assert(idim.size() == 2 && "Input is expected to be a vector per input");
-
-  auto e = expected->getHandle<>();
-
-  // For each input in the batch:
-  for (size_t n = 0; n < idim[0]; n++) {
-
-    for (size_t i = 0; i < idim[1]; i++) {
-      float dy = inW.at({n, i}) - e.at({n, i});
-      inG.at({n, i}) += dy;
-    }
-  } // N
-}
-
 //===----------------------------------------------------------------------===//
 //                       Tensor shape (transpose/reshape/concat/...)
 //===----------------------------------------------------------------------===//

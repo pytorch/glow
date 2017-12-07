@@ -144,10 +144,6 @@ void TanhInst::verify() const { checkSameType(getOperand(0), getOperand(1)); }
 void SoftMaxInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
 }
-void RegressionInst::verify() const {
-  checkSameType(getOperand(0), getOperand(1));
-  checkSameType(getOperand(0), getOperand(2));
-}
 
 void ReshapeInst::verify() const {
   assert(getOperand(0).first->getType()->size() ==
@@ -269,7 +265,6 @@ NOVERIFY(FullyConnectedGradInst)
 NOVERIFY(BatchNormalizationGradInst)
 NOVERIFY(LocalResponseNormalizationGradInst)
 NOVERIFY(SoftMaxGradInst)
-NOVERIFY(RegressionGradInst)
 NOVERIFY(ReluGradInst)
 NOVERIFY(TanhGradInst)
 NOVERIFY(SigmoidGradInst)

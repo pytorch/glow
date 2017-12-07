@@ -131,13 +131,6 @@ int main(int argc, char **argv) {
       .inplaceOperand({"Dest", "Src"})
       .addGradientInstr({"Src", "E", "Selected"}, {"Src"});
 
-  BB.newInstr("Regression")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .addOperand("Expected", OperandKind::InOut)
-      .inplaceOperand({"Dest", "Src"})
-      .addGradientInstr({"Src", "Expected"}, {"Src", "Expected"});
-
   //===--------------------------------------------------------------------===//
   //                      Arithmetic
   //===--------------------------------------------------------------------===//

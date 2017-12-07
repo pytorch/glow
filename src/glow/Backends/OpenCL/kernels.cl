@@ -107,17 +107,6 @@ __kernel void fullyconnectedW(__global void *mem, size_t dest, size_t src,
                   depth);
 }
 
-__kernel void regressionK(__global float *dest, __global float *src,
-                          __global float *exp) {
-  size_t i = get_global_id(0);
-  dest[i] = src[i];
-}
-
-__kernel void regressionW(__global void *mem, size_t dest, size_t src,
-                          size_t exp) {
-  regressionK(&mem[dest], &mem[src], &mem[exp]);
-}
-
 __kernel void softmaxK(__global float *dest, __global float *src,
                        __global float *e_cache, __global unsigned *selected,
                        unsigned sliceSize) {
