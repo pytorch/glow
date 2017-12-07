@@ -34,7 +34,7 @@ class Graph final : public Named {
   VariableGradientsList grads_;
 
   /// Unique index for producing unique names.
-  size_t unique_idx_;
+  size_t uniqueIdx_;
 
   /// \returns unique name with a prefix \p Name.
   std::string uniqueName(llvm::StringRef Name);
@@ -43,7 +43,7 @@ class Graph final : public Named {
   void uniqueNames(Node *N);
 
 public:
-  Graph(llvm::StringRef Name = {}) : Named(Name), unique_idx_(1) {}
+  Graph(llvm::StringRef Name = {}) : Named(Name), uniqueIdx_(1) {}
 
   ~Graph();
 

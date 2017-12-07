@@ -78,8 +78,8 @@ std::string Graph::uniqueName(llvm::StringRef name) {
   }
   std::string UniqueName{name};
   UniqueName += "__";
-  UniqueName += std::to_string(unique_idx_);
-  unique_idx_++;
+  UniqueName += std::to_string(uniqueIdx_);
+  uniqueIdx_++;
   return UniqueName;
 }
 
