@@ -557,7 +557,7 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
   for (auto &Entry : liveness) {
     auto *ML = Entry.first;
     auto &IL = Entry.second;
-    if (auto *WV = dyn_cast<WeightVar>(ML)) {
+    if (isa<WeightVar>(ML)) {
       assert(!IL.empty() && "Live interval list cannot be empty");
       // Extend the last interval till the end of the program
       // to express that all mutable weights are used outside.
