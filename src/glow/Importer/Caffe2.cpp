@@ -13,6 +13,8 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "caffe.pb.h"
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <google/protobuf/text_format.h>
 
 #include <cassert>
@@ -80,7 +82,7 @@ static ArgumentDictionaryTy loadArgumenrMap(const caffe2::OperatorDef &op) {
 
 bool caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
                                       const std::string &filename) {
-  std::fstream ff(filename, std::ios::in | std::ios::binary);
+  std::ifstream ff(filename, std::ios::in | std::ios::binary);
   GLOW_ASSERT(ff && "Can't find the model or network files.");
 
   bool parseNet = false;
@@ -89,7 +91,12 @@ bool caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
                     std::istreambuf_iterator<char>());
     parseNet = google::protobuf::TextFormat::ParseFromString(str, &net);
   } else {
-    parseNet = net.ParseFromIstream(&ff);
+    // Construct and configure a Coded Input Stream
+    google::protobuf::io::IstreamInputStream filestr(&ff);
+    google::protobuf::io::CodedInputStream codedstr(&filestr);
+    // Don't warn about large file sizes.
+    codedstr.SetTotalBytesLimit(1e+9, 1e+9);
+    parseNet = net.ParseFromCodedStream(&codedstr);
   }
 
   GLOW_ASSERT(parseNet && "Failed to parse the network descriptor.");
