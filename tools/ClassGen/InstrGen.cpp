@@ -107,7 +107,7 @@ int main(int argc, char **argv) {
   BB.newInstr("LocalResponseNormalization")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addOperand("Scale", OperandKind::In)
+      .addOperand("Scale", OperandKind::Out)
       .addMember(MemberType::SizeT, "HalfWindowSize")
       .addMember(MemberType::Float, "Alpha")
       .addMember(MemberType::Float, "Beta")
@@ -117,7 +117,7 @@ int main(int argc, char **argv) {
           "Dest",
           "Src",
       })
-      .addGradientInstr({"Dest", "Src", "Scale"}, {"Dest", "Src", "Scale"});
+      .addGradientInstr({"Dest", "Src", "Scale"}, {"Dest", "Src"});
 
   //===--------------------------------------------------------------------===//
   //                      Loss operations

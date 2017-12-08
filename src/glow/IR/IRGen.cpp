@@ -430,9 +430,35 @@ public:
           in, LR->getHalfWindowSize(), LR->getAlpha(), LR->getBeta(),
           LR->getK());
       V->setName(N->getName());
+      nodeToInstr_[N] = V;
       registerIR(N, V->getDest());
       break;
     }
+
+    case glow::Kinded::Kind::LocalResponseNormalizationGradNodeKind: {
+      auto *LRG = cast<LocalResponseNormalizationGradNode>(N);
+      auto *origIn = valueForNode(LRG->getInput());
+
+      auto originalNodeResult = LRG->getOriginalOutputForResult();
+      assert(nodeToInstr_.count(originalNodeResult.getNode()) &&
+             "Unknown original node");
+      auto *LRI = cast<LocalResponseNormalizationInst>(
+          nodeToInstr_[originalNodeResult]);
+
+      auto *srcGrad =
+          builder_.createAllocActivationInst("lrn.res.grad", origIn->getType());
+
+      builder_.createLocalResponseNormalizationGradInst(
+          N->getName(), valueForNode(LRG->getOriginalOutputForResult()),
+          valueForNode(LRG->getInput()), LRI->getScale(),
+          valueForNode(LRG->getGradOfOriginalOutputNamedResult()), srcGrad,
+          LRG->getHalfWindowSize(), LRG->getAlpha(), LRG->getBeta(),
+          LRG->getK());
+
+      registerIR(LRG->getGradOfInputNamedInput(), srcGrad);
+      break;
+    }
+
     case glow::Kinded::Kind::ArithmeticNodeKind: {
       auto *AR = cast<ArithmeticNode>(N);
       auto *L = valueForNode(AR->getLHS());

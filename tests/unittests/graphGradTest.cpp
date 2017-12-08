@@ -47,3 +47,29 @@ TEST(GraphAutoGrad, autoGrad) {
   EE.compile(CompilationMode::Train);
   EE.compile(CompilationMode::Infer);
 }
+
+TEST(GraphAutoGrad, checkLRNGen) {
+  ExecutionEngine EE;
+
+  // Construct the network:
+  EE.getConfig().learningRate = 0.001;
+  EE.getConfig().momentum = 0.9;
+  EE.getConfig().L2Decay = 0.001;
+
+  auto &G = EE.getGraph();
+
+  Variable *A = G.createVariable(ElemKind::FloatTy, {10, 28, 28, 1}, "input",
+                                 Variable::InitKind::Extern);
+  auto *CV0 = G.createLocalResponseNormalization("LRN", A);
+  auto *FCL1 = G.createFullyConnected("fc3", CV0, 10);
+  auto *RL2 = G.createRELU("relu3", FCL1);
+  Variable *selected = G.createVariable(ElemKind::IndexTy, {10, 1}, "selected",
+                                        Variable::InitKind::Extern);
+
+  auto *SM = G.createSoftMax("sm", RL2, selected);
+
+  auto *result = G.createSave("return", SM);
+  (void)result;
+  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Infer);
+}

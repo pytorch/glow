@@ -82,7 +82,6 @@ int main(int argc, char **argv) {
 
   BB.newNode("LocalResponseNormalization")
       .addInput("Input")
-      .addInput("Scale")
       .addMember(MemberType::SizeT, "HalfWindowSize")
       .addMember(MemberType::Float, "Alpha")
       .addMember(MemberType::Float, "Beta")
