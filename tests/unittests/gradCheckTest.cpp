@@ -138,7 +138,7 @@ TEST(Network, gradientCheck_Conv) {
   auto *Ex = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
                               Variable::InitKind::Extern);
 
-  Node *O = G.createConv("conv", A, 16, 5, 1, 2);
+  Node *O = G.createConv("conv", A, 4, 5, 1, 2);
   O = G.createPool("pool", O, PoolNode::Mode::Max, 3, 3, 0);
   O = G.createFullyConnected("fc", O, numOutputElem);
   O = G.createRELU("relu", O);
@@ -234,18 +234,18 @@ TEST(Network, gradientCheck_Arithmetic) {
   ExecutionEngine IP;
   IP.getConfig().maxNumThreads = 1;
 
-  size_t numDim = 5;
+  size_t numDim = 20;
 
   auto &G = IP.getGraph();
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
                              Variable::InitKind::Extern);
   auto *B = G.createVariable(ElemKind::FloatTy, {1, numDim}, "B",
-                             Variable::InitKind::Broadcast, 0.1);
+                             Variable::InitKind::Extern, 0.1);
   auto *C = G.createVariable(ElemKind::FloatTy, {1, numDim}, "C",
-                             Variable::InitKind::Broadcast, 0.1);
+                             Variable::InitKind::Extern, 0.1);
   auto *D = G.createVariable(ElemKind::FloatTy, {1, numDim}, "D",
-                             Variable::InitKind::Broadcast, 0.1);
+                             Variable::InitKind::Extern, 0.1);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
                                Variable::InitKind::Extern);
 
@@ -266,7 +266,7 @@ TEST(Network, gradientCheck_Arithmetic) {
   inputsH.randomize(1);
   outputsH.randomize(1);
 
-  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.001, 0.004);
+  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.01, 0.004);
 }
 
 TEST(Network, gradientCheck_FC_Concat_Tanh) {
@@ -310,7 +310,7 @@ TEST(Network, gradientCheck_Transpose) {
 
   auto &G = IP.getGraph();
 
-  auto *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 5}, "input",
                              Variable::InitKind::Extern);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
                                Variable::InitKind::Extern);
@@ -321,7 +321,7 @@ TEST(Network, gradientCheck_Transpose) {
 
   IP.compile(CompilationMode::TrainDebug);
 
-  Tensor inputs(ElemKind::FloatTy, {1, 5, 10, 15});
+  Tensor inputs(ElemKind::FloatTy, {1, 5, 10, 5});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
 
   auto inputsH = inputs.getHandle<>();
