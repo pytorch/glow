@@ -319,12 +319,9 @@ LocalResponseNormalizationNode *
 Graph::createLocalResponseNormalization(llvm::StringRef name, NodeValue input,
                                         size_t halfWindowSize, float alpha,
                                         float beta, float k) {
-  auto Ty = input.getType();
-  auto *scale = createVariable(Ty, "scale", Variable::InitKind::Broadcast, 0.0);
-
   // The output tensor is of the same shape as the input tensor.
-  return addNode(new LocalResponseNormalizationNode(
-      name, input, scale, halfWindowSize, alpha, beta, k));
+  return addNode(new LocalResponseNormalizationNode(name, input, halfWindowSize,
+                                                    alpha, beta, k));
 }
 
 ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, NodeValue LHS,
