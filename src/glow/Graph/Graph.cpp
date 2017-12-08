@@ -213,7 +213,7 @@ static bool sameSameShapeExceptDim(TypeRef T1, TypeRef T2, unsigned dim) {
     return false;
   }
 
-  for (int i = 0, e = D1.size(); i < e; i++) {
+  for (unsigned i = 0, e = D1.size(); i < e; i++) {
     // Ignore the dimension \p dim.
     if (i == dim) {
       continue;
@@ -265,7 +265,7 @@ SliceNode *Graph::createSlice(llvm::StringRef name, NodeValue input,
   assert(begin.size() == end.size() && "Begin and End dimensions should match");
   assert(begin.size() == dims.size() &&
          "Begin and Input dimensions should match");
-  for (int i = 0; i < dims.size(); i++) {
+  for (unsigned i = 0; i < dims.size(); i++) {
     size_t begin_i = begin[i];
     size_t end_i = end[i];
     size_t dim_i = dims[i];
