@@ -183,7 +183,7 @@ LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationOp(
 
   // The output tensor is of the same shape as the input tensor.
   auto *res = createAllocActivationInst("LRN.res", Ty);
-  return createLocalResponseNormalizationInst("LRN", input, res, scale,
+  return createLocalResponseNormalizationInst("LRN", res, input, scale,
                                               halfWindowSize, alpha, beta, k);
 }
 
