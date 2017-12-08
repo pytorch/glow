@@ -215,36 +215,4 @@ void InstrBuilder::addGradientInstr(
       }
     }
   }
-
-  // Construct a factory method that builds the new grad instruction and add
-  // it to the current non-grad instruction.
-  std::stringstream ss;
-  ss << name_ + "GradInst* getGrad(Module::GradientMap &map) const {\n";
-  ss << "\t return new " + name_ + "GradInst(getParent(), getName()";
-
-  // The operands of the input class:
-  for (const auto &op : operands_) {
-    for (const auto &field : originalFields) {
-      if (field == op.first) {
-        ss << ", get" << op.first << "()";
-      }
-    }
-  }
-
-  // Add new operands for the gradients.
-  for (const auto &op : operands_) {
-    for (const auto &field : gradFields) {
-      if (field == op.first) {
-        ss << ", map[get" << op.first << "()]";
-      }
-    }
-  }
-
-  // Extra class members:
-  for (const auto &op : members_) {
-    ss << ", get" << op.second << "()";
-  }
-
-  ss << ");\n }";
-  addExtraMethod(ss.str());
 }
