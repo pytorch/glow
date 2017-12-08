@@ -22,7 +22,7 @@ void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *relu = G.createRELU("relu", var);
   auto result = G.createSave("ret", relu);
   EE.compile(CompilationMode::Infer);
-  EE.infer({var}, {inputs});
+  EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
@@ -38,7 +38,7 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *pool = G.createPool("pool", conv, PoolNode::Mode::Max, 2, 2, 0);
   auto result = G.createSave("ret", pool);
   EE.compile(CompilationMode::Infer);
-  EE.infer({var}, {inputs});
+  EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
@@ -56,7 +56,7 @@ void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   cast<Variable>(fc2->getFilter())->getHandle().clear(1.5);
   auto result = G.createSave("ret", rl1);
   EE.compile(CompilationMode::Infer);
-  EE.infer({var}, {inputs});
+  EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
@@ -82,7 +82,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   cast<Variable>(fc2->getFilter())->getHandle().clear(3.5);
 
   EE.compile(CompilationMode::Infer);
-  EE.infer({var}, {inputs});
+  EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 

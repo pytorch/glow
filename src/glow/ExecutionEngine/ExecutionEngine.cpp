@@ -19,8 +19,8 @@ ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
 
 ExecutionEngine::~ExecutionEngine() = default;
 
-void ExecutionEngine::infer(llvm::ArrayRef<Variable *> vars,
-                            llvm::ArrayRef<Tensor *> inputs) {
+void ExecutionEngine::run(llvm::ArrayRef<Variable *> vars,
+                          llvm::ArrayRef<Tensor *> inputs) {
   assert(!inputs.empty() && "No inputs");
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
@@ -33,8 +33,9 @@ void ExecutionEngine::infer(llvm::ArrayRef<Variable *> vars,
   IP_->doForwardPass(false);
 }
 
-void ExecutionEngine::train(size_t iterations, llvm::ArrayRef<Variable *> vars,
-                            llvm::ArrayRef<Tensor *> inputs) {
+void ExecutionEngine::runBatch(size_t iterations,
+                               llvm::ArrayRef<Variable *> vars,
+                               llvm::ArrayRef<Tensor *> inputs) {
   static size_t trainCounter = 0;
 
   assert(!inputs.empty() && "No inputs");

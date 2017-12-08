@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
 
   llvm::Timer timer("Infer", "Infer");
   timer.startTimer();
-  EE.infer({i0, i1}, {&data, &data});
+  EE.run({i0, i1}, {&data, &data});
   timer.stopTimer();
 
   Tensor &res = SM->getVariable()->getPayload();

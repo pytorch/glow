@@ -52,13 +52,13 @@ public:
 
   /// Runs the program in a forward pass. Update the nodes in \p nodes with the
   /// values \p inputs.
-  void infer(llvm::ArrayRef<Variable *> vars, llvm::ArrayRef<Tensor *> inputs);
+  void run(llvm::ArrayRef<Variable *> vars, llvm::ArrayRef<Tensor *> inputs);
 
   /// Train the network. Perform \p iterations in the training loop. Each
   /// iteration does a full forward and backward pass of a whole batch.
   /// The method updates the variables in \p vars with the tensors \p inputs.
-  void train(size_t iterations, llvm::ArrayRef<Variable *> vars,
-             llvm::ArrayRef<Tensor *> inputs);
+  void runBatch(size_t iterations, llvm::ArrayRef<Variable *> vars,
+                llvm::ArrayRef<Tensor *> inputs);
 
   /// \returns a pointer to the tensor that is stored at \p v.
   Tensor *getWeight(const Variable *v) const;

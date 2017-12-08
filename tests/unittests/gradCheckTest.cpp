@@ -42,7 +42,7 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
   auto inputsH = inputs->getHandle<>();
 
   // Train the network.
-  IP.train(300, {inputVar, expVar}, {inputs, outputs});
+  IP.runBatch(300, {inputVar, expVar}, {inputs, outputs});
   Graph &G = IP.getGraph();
 
   // Remove the SGD nodes by compiling in Inference mode. This compilation will
@@ -54,7 +54,7 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
   gradVar->getPayload().zero();
 
   // Train the network just once to calculate the grads.
-  IP.train(1, {inputVar, expVar}, {inputs, outputs});
+  IP.runBatch(1, {inputVar, expVar}, {inputs, outputs});
 
   // Copy the gradient buffer. Future iterations will invalidate the buffer.
   Tensor gradCopy = gradVar->getPayload().clone();
@@ -65,13 +65,13 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
 
     // Calculate f(x+e):
     inputsH.raw(i) = old + delta;
-    IP.infer({inputVar}, {inputs});
+    IP.run({inputVar}, {inputs});
     Tensor &res = result->getVariable()->getPayload();
     auto plusLoss = computeL2Loss(outputs, &res);
 
     // Calculate f(x-e):
     inputsH.raw(i) = old - delta;
-    IP.infer({inputVar}, {inputs});
+    IP.run({inputVar}, {inputs});
     auto minusLoss = computeL2Loss(outputs, &res);
     inputsH.raw(i) = old;
 
