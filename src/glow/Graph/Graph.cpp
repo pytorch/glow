@@ -90,13 +90,12 @@ void Graph::addGradientVariable(Variable *V, Variable *GradV) {
 }
 
 Variable *Graph::getGradientVariable(Variable *V) {
-  auto it = std::find_if(grads_.begin(), grads_.end(),
-                         [&V](std::pair<Variable *, Variable *> &e) -> bool {
-                           return e.first == V;
-                         });
-  if (it == grads_.end())
-    return nullptr;
-  return it->second;
+  for (auto &p : grads_) {
+    if (p.first == V) {
+      return p.second;
+    }
+  }
+  return nullptr;
 }
 
 ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
