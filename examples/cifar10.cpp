@@ -107,14 +107,14 @@ void testCIFAR10() {
 
     // Bind the images tensor to the input array A, and the labels tensor
     // to the softmax node SM.
-    EE.train(reportRate, {A, E}, {&images, &labels});
+    EE.runBatch(reportRate, {A, E}, {&images, &labels});
 
     unsigned score = 0;
 
     for (unsigned int i = 0; i < 100 / minibatchSize; i++) {
       Tensor sample(ElemKind::FloatTy, {minibatchSize, 3, 32, 32});
       sample.copyConsecutiveSlices(&images, minibatchSize * i);
-      EE.infer({A}, {&sample});
+      EE.run({A}, {&sample});
       result->getOutput();
       Tensor &res = result->getVariable()->getPayload();
 

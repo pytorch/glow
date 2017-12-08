@@ -44,7 +44,7 @@ TEST(Interpreter, interpret) {
   G.createSave("ret", SM);
 
   EE.compile(CompilationMode::Infer);
-  EE.infer({input}, {&inputs});
+  EE.run({input}, {&inputs});
 }
 
 TEST(Interpreter, trainASimpleNetwork) {
@@ -76,12 +76,12 @@ TEST(Interpreter, trainASimpleNetwork) {
   EE.compile(CompilationMode::Train);
 
   // Train the network. Learn 1000 batches.
-  EE.train(1000, {A, E}, {&inputs, &expected});
+  EE.runBatch(1000, {A, E}, {&inputs, &expected});
 
   // Testing the output vector.
 
   EE.compile(CompilationMode::Infer);
-  EE.infer({A}, {&inputs});
+  EE.run({A}, {&inputs});
   auto RNWH = result->getVariable()->getPayload().getHandle<>();
   (void)RNWH;
 
@@ -124,7 +124,7 @@ TEST(Interpreter, simpleRegression) {
     float target = float(iter % 9);
     I = {target, 0., 0., 0.};
     E = {0., target + 1, 0., 0.};
-    EE.train(1, {A, Ex}, {&inputs, &expected});
+    EE.runBatch(1, {A, Ex}, {&inputs, &expected});
   }
 
   // Verify the result of the regression layer.
@@ -134,7 +134,7 @@ TEST(Interpreter, simpleRegression) {
   for (int iter = 0; iter < 5; iter++) {
     float target = iter % 9 + 1;
     I = {target, 0., 0., 0.};
-    EE.infer({A}, {&inputs});
+    EE.run({A}, {&inputs});
 
     auto resH = result->getVariable()->getPayload().getHandle<>();
     (void)resH;
@@ -188,7 +188,7 @@ TEST(Interpreter, learnXor) {
   EE.compile(CompilationMode::Train);
 
   // Train the network:
-  EE.train(2500, {A, Ex}, {&trainingSet, &trainingLabels});
+  EE.runBatch(2500, {A, Ex}, {&trainingSet, &trainingLabels});
 
   // Prepare the testing tensor:
   for (unsigned i = 0; i < numTests; i++) {
@@ -196,7 +196,7 @@ TEST(Interpreter, learnXor) {
     TT.at({i, 1}) = (i >> 1) % 2;
   }
 
-  EE.infer({A}, {&trainingSet});
+  EE.run({A}, {&trainingSet});
   auto resH = result->getVariable()->getPayload().getHandle<>();
 
   // Test the output:
@@ -270,7 +270,7 @@ TEST(Network, circle) {
   generateCircleData(coordinates, labels);
 
   // Training:
-  EE.train(4000, {A, S}, {&coordinates, &labels});
+  EE.runBatch(4000, {A, S}, {&coordinates, &labels});
 
   EE.compile(CompilationMode::Infer);
 
@@ -281,7 +281,7 @@ TEST(Network, circle) {
       Tensor sample(ElemKind::FloatTy, {1, 2});
       sample.getHandle<>() = {float(x) / 10, float(y) / 10};
 
-      EE.infer({A}, {&sample});
+      EE.run({A}, {&sample});
 
       auto SMH = result->getVariable()->getPayload().getHandle<>();
       auto A = SMH.at({0, 0});
@@ -304,7 +304,7 @@ TEST(Network, circle) {
     // The dot in the middle must be zero.
     Tensor sample(ElemKind::FloatTy, {1, 2});
     sample.getHandle<>() = {0., 0.};
-    EE.infer({A}, {&sample});
+    EE.run({A}, {&sample});
     auto SMH = result->getVariable()->getPayload().getHandle<>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
@@ -316,7 +316,7 @@ TEST(Network, circle) {
     // Far away dot must be one.
     Tensor sample(ElemKind::FloatTy, {1, 2});
     sample.getHandle<>() = {1., 1.};
-    EE.infer({A}, {&sample});
+    EE.run({A}, {&sample});
     auto SMH = result->getVariable()->getPayload().getHandle<>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
@@ -362,12 +362,12 @@ TEST(Network, learnSingleValueConcat) {
   EE.compile(CompilationMode::Train);
 
   // Train the network:
-  EE.train(1000, {A, B, Ex}, {&inputs, &inputs, &expected});
+  EE.runBatch(1000, {A, B, Ex}, {&inputs, &inputs, &expected});
 
   EE.compile(CompilationMode::Infer);
 
   // Testing the output vector.
-  EE.infer({A}, {&inputs});
+  EE.run({A}, {&inputs});
   auto RNWH = result->getVariable()->getPayload().getHandle<>();
   (void)RNWH;
 
@@ -405,7 +405,7 @@ TEST(Network, concatVectors) {
   EE.compile(CompilationMode::Infer);
 
   // Testing the output vector.
-  EE.infer({V1, V2, V3}, {&I1, &I2, &I3});
+  EE.run({V1, V2, V3}, {&I1, &I2, &I3});
   auto RNWH = result->getVariable()->getPayload().getHandle<size_t>();
   (void)RNWH;
 
@@ -441,7 +441,7 @@ TEST(Network, sliceVectors) {
   EE.compile(CompilationMode::Infer);
 
   // Testing the output slices.
-  EE.infer({V}, {&I});
+  EE.run({V}, {&I});
   auto RNWH1 = result1->getVariable()->getPayload().getHandle<size_t>();
   (void)RNWH1;
   auto RNWH2 = result2->getVariable()->getPayload().getHandle<size_t>();
@@ -536,12 +536,12 @@ TEST(Network, trainASimpleRNN) {
   }
 
   // Train the network. Learn 1000 batches.
-  EE.train(1000, {X, Y}, {&inputs, &expected});
+  EE.runBatch(1000, {X, Y}, {&inputs, &expected});
 
   // Testing the output vector.
   EE.compile(CompilationMode::Infer);
 
-  EE.infer({X}, {&inputs});
+  EE.run({X}, {&inputs});
   auto RNWH = result->getVariable()->getPayload().getHandle<>();
   (void)RNWH;
 

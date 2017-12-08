@@ -107,7 +107,7 @@ void testMNIST() {
     // On each training iteration take an input from imageInputs and update
     // the input variable A, and add take a corresponding label and update the
     // softmax layer.
-    EE.train(reportRate, {A, selected}, {&imageInputs, &labelInputs});
+    EE.runBatch(reportRate, {A, selected}, {&imageInputs, &labelInputs});
 
     timer.stopTimer();
   }
@@ -121,7 +121,7 @@ void testMNIST() {
 
   Tensor sample(ElemKind::FloatTy, {minibatchSize, 28, 28, 1});
   sample.copyConsecutiveSlices(&imageInputs, 0);
-  EE.infer({A}, {&sample});
+  EE.run({A}, {&sample});
 
   Tensor &res = result->getVariable()->getPayload();
 
