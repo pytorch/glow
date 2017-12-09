@@ -1,6 +1,5 @@
 
 add_library(Base
-              Train.cpp
               Tensor.cpp
               Type.cpp
               Image.cpp)
