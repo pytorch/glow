@@ -22,7 +22,7 @@ Backend *glow::createBackend(BackendKind backendKind, Module *M) {
 
   default:
     // Unknown execution backend.
-    glow_unreachable();
+    llvm_unreachable("Invalid backend kind.");
     break;
   }
 }

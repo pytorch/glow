@@ -94,7 +94,7 @@ void Interpreter::doForwardPass(bool isTrain) {
 #include "AutoGenInstr.def"
 
     default:
-      glow_unreachable();
+      llvm_unreachable("Invalid instruction.");
     }
   }
 }

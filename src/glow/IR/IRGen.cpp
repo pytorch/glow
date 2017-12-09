@@ -79,8 +79,7 @@ public:
     switch (N->getKind()) {
     default:
       // Unkniwn node kind.
-      glow_unreachable();
-      assert(false);
+      llvm_unreachable("Unhandled node kind");
       break;
     case glow::Kinded::Kind::ConvolutionNodeKind: {
       auto *C = cast<ConvolutionNode>(N);

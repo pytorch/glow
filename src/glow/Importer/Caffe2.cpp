@@ -115,8 +115,7 @@ Node *caffe2ModelLoader::getNodeByName(const std::string &name) {
     return it->second;
   }
 
-  assert(false && "Could not find a node with this name.");
-  glow_unreachable();
+  llvm_unreachable("Could not find a node with this name.");
 }
 
 Node *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
@@ -266,7 +265,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     } else if (order == "NCHW") {
       channel = 1;
     } else {
-      assert(false && "Invalid order field");
+      GLOW_ASSERT(false && "Invalid order field");
     }
 
     auto *node = G.createBatchNormalization(op.name(), in, channel, epsilon);
@@ -294,7 +293,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     } else if (order == "NCHW") {
       channel = 1;
     } else {
-      assert(false && "Invalid order field");
+      GLOW_ASSERT(false && "Invalid order field");
     }
 
     Node *node = G.createConcat(op.name(), {lhs, rhs}, channel);

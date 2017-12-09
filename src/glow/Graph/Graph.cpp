@@ -484,7 +484,7 @@ void Graph::verify() const {
     llvm::errs() << "Previous definition: "
                  << NameToNode[V->getName()]->getDebugDesc() << "\n";
     dump();
-    assert(false && "Multiple nodes with the same name");
+    llvm_unreachable("Multiple nodes with the same name");
   }
 
   for (auto *N : nodes_) {
@@ -497,6 +497,6 @@ void Graph::verify() const {
     llvm::errs() << "Previous definition: "
                  << NameToNode[N->getName()]->getDebugDesc() << "\n";
     dump();
-    assert(false && "Multiple nodes with the same name");
+    llvm_unreachable("Multiple nodes with the same name");
   }
 }

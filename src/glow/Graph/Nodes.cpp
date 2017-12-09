@@ -135,7 +135,7 @@ NodeValue UnownedNodeValueMap::get(NodeValue from) {
     }
   }
 
-  assert(false && "Invalid node");
+  llvm_unreachable("Invalid node");
   return NodeValue(nullptr, 0);
 }
 

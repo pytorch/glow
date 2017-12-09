@@ -161,8 +161,7 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
       continue;
     }
 
-    assert(false);
-    glow_unreachable();
+    llvm_unreachable("Invalid instruction type.");
   } // End of the for-each instr loop.
 
   for (auto &V : G.getVars()) {
