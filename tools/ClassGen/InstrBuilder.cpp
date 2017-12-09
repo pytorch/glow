@@ -9,8 +9,7 @@ unsigned InstrBuilder::getOperandIndexByName(llvm::StringRef name) const {
     }
   }
 
-  assert(false && "Can't find an operand with this name");
-  glow_unreachable();
+  llvm_unreachable("Can't find an operand with this name");
 }
 
 void InstrBuilder::emitCtor(std::ostream &os) const {

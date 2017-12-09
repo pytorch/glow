@@ -155,7 +155,7 @@ struct Type final {
     case ElemKind::IndexTy:
       return std::is_same<ElemTy, size_t>::value;
     }
-    glow_unreachable();
+    llvm_unreachable("Invalid type.");
   }
 
   /// \return the size of the type element.
@@ -178,7 +178,7 @@ struct Type final {
     case ElemKind::IndexTy:
       return sizeof(size_t);
     }
-    glow_unreachable();
+    llvm_unreachable("Invalid type.");
   }
 
   /// \return the textual name of the element.

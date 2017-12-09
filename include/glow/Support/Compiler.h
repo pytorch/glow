@@ -13,12 +13,6 @@
 #define GLOW_GNUC_ATLEAST(major, minor, patch) 0
 #endif
 
-#if __has_builtin(__builtin_unreachable) || GLOW_GNUC_ATLEAST(4, 5, 0)
-#define glow_unreachable() __builtin_unreachable()
-#else
-#define glow_unreachable() __assume(0)
-#endif
-
 #define GLOW_ASSERT(e)                                                         \
   ((void)((e) ? ((void)0) : GLOW_ASSERT_IMPL(#e, __FILE__, __LINE__)))
 #define GLOW_ASSERT_IMPL(e, file, line)                                        \

@@ -232,7 +232,7 @@ static void dumpIR(Value *V, llvm::raw_ostream &out) {
   if (const auto *X = dyn_cast<const CLASS>(V))                                \
     return X->dump(out);
 #include "AutoGenInstr.def"
-  glow_unreachable();
+  llvm_unreachable("Invalid instruction kind.");
 }
 
 static void dumpUsers(Value *V, llvm::raw_ostream &out,
@@ -263,7 +263,7 @@ bool Instruction::isInplaceOp(const Instruction *I, unsigned dstIdx,
 #define DEF_VALUE(CLASS, NAME)
 #include "AutoGenInstr.def"
 
-  glow_unreachable();
+  llvm_unreachable("Invalid instruction kind.");
 }
 
 void Instruction::dumpOperands(llvm::raw_ostream &os) const {
@@ -398,8 +398,7 @@ static const char *getDottyArrowForCC(OperandKind k) {
     return "both";
     break;
   }
-
-  glow_unreachable();
+  llvm_unreachable("Invalid operand kind.");
 }
 
 /// Dump a dotty graph that depicts the module.
