@@ -158,8 +158,8 @@ __kernel void convolutionK(__global float *dest, __global float *src,
         ssize_t oy = y + fy;
 
         // Ignore index access below zero (this is due to padding).
-        if (ox < 0 || oy < 0 || ox >= ssize_t(odim.h) ||
-            oy >= ssize_t(odim.w)) {
+        if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+            oy >= ssize_t(idim.w)) {
           continue;
         }
 
