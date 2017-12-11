@@ -69,6 +69,18 @@ public:
 
   /// Verify the correctness of the instruction parameters.
   void verify(const Module &M) const;
+
+  /// Print value.
+  void dump(llvm::raw_ostream &out);
+
+  /// Print value using a default output stream.
+  void dump();
+
+  /// Print value in context.
+  void dumpInContext(llvm::raw_ostream &out);
+
+  /// Print value in context using a default output stream.
+  void dumpInContext();
 };
 
 /// This represents an instruction in our IR.
@@ -131,9 +143,6 @@ public:
 
   /// Verify the correctness of the instruction parameters.
   void verify() const;
-
-  /// Print instruction.
-  void dump(llvm::raw_ostream &out);
 
   /// The static dispatch version of isInplaceOp.
   static bool isInplaceOp(const Instruction *I, unsigned dstIdx,
