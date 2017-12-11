@@ -165,6 +165,10 @@ class Builder {
   std::ofstream &cppStream;
   std::ofstream &defStream;
   std::ofstream &builderStream;
+  // First defined instruction.
+  std::string firstInstr;
+  // Last defined instruction.
+  std::string lastInstr;
 
 public:
   /// Create a new top-level builder that holds the three output streams that
@@ -181,13 +185,27 @@ public:
         << "#ifndef DEF_INSTR\n#error The macro DEF_INSTR was not declared.\n"
            "#endif\n#ifndef DEF_VALUE\n#error The macro DEF_VALUE was not "
            "declared.\n"
+           "#endif\n"
+           "#ifndef DEF_INSTR_RANGE\n"
+           "#define DEF_INSTR_RANGE(ID, FIRST, LAST)\n"
            "#endif\n";
   }
 
-  ~Builder() { defStream << "#undef DEF_INSTR\n#undef DEF_VALUE"; }
+  ~Builder() {
+    defStream << "DEF_INSTR_RANGE(Instruction, " << firstInstr << "Inst"
+              << ", " << lastInstr << "Inst"
+              << ")\n";
+
+    defStream << "#undef DEF_INSTR_RANGE\n"
+                 "#undef DEF_INSTR\n"
+                 "#undef DEF_VALUE";
+  }
 
   /// Declare a new instruction and generate code for it.
   InstrBuilder newInstr(const std::string &name) {
+    if (firstInstr.empty())
+      firstInstr = name;
+    lastInstr = name;
     return InstrBuilder(headerStream, cppStream, defStream, builderStream,
                         name);
   }

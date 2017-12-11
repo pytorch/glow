@@ -152,6 +152,10 @@ public:
   /// The instruction can be inserted elsewhere afterwards.
   void removeFromParent();
 
+  static bool classof(const Value *V);
+
+  static bool classof(const Instruction *I) { return true; }
+
 protected:
   /// Dump the operands of the instruction into the stream \p os.
   void dumpOperands(llvm::raw_ostream &os) const;

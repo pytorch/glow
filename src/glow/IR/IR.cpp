@@ -20,6 +20,16 @@ using llvm::dyn_cast;
 //                       General IR operations
 //===----------------------------------------------------------------------===//
 
+bool Instruction::classof(const Value *V) {
+#define DEF_VALUE(CLASS, NAME)
+#define DEF_INSTR(CLASS, NAME)
+#define DEF_INSTR_RANGE(CLASS, FIRST, LAST)                                    \
+  constexpr auto First_##CLASS = Kinded::Kind::FIRST##Kind;                    \
+  constexpr auto Last_##CLASS = Kinded::Kind::LAST##Kind;
+#include "AutoGenInstr.def"
+  return V->getKind() >= First_Instruction && V->getKind() <= Last_Instruction;
+}
+
 void Use::setOperand(Value *other) { use_->setOperand(idx_, other); }
 
 InstructionOperand Use::getOperand() { return use_->getOperand(idx_); }
