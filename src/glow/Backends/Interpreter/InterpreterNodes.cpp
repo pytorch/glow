@@ -61,8 +61,8 @@ fwdConvolutionInst_Impl(Handle<float> inW, Handle<float> outW,
               ssize_t oy = y + fy;
 
               // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= ssize_t(odim.h) ||
-                  oy >= ssize_t(odim.w)) {
+              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                  oy >= ssize_t(idim.w)) {
                 continue;
               }
 #pragma clang loop interleave_count(8)
@@ -75,8 +75,8 @@ fwdConvolutionInst_Impl(Handle<float> inW, Handle<float> outW,
 
           sum += biasW.at({d});
           outW.at({n, ax, ay, d}) = sum;
-        } // H
-      }   // W
+        } // W
+      }   // H
     }     // C
   }       // N
 }
@@ -862,16 +862,16 @@ void Interpreter::fwdLocalResponseNormalizationInst(
       // For every column:
       for (size_t w = 0; w < idim.w; w++) {
 
-        float squareSum = 0.0;
-
-        // Compute squareSum for first channel.
-        for (size_t c = 1; c <= halfWindowSize && c < idim.c; c++) {
-          auto val = inW.at({n, h, w, c});
-          squareSum += (val * val);
-        }
-
         // For every channel:
         for (size_t c = 0; c < idim.c; c++) {
+          float squareSum = 0.0;
+          for (int i = (c >= halfWindowSize ? c - halfWindowSize : 0);
+               i <= std::min(c + halfWindowSize, idim.c - 1);
+               i++) { 
+            auto val = inW.at({n, h, w, i});
+            squareSum += val * val;
+          }
+
           auto scale = k + normedAlpha * squareSum;
 
           // This will be used to accelerate the backward pass.
@@ -879,15 +879,6 @@ void Interpreter::fwdLocalResponseNormalizationInst(
 
           auto normFactor = std::pow(scale, -beta);
           outW.at({n, h, w, c}) = inW.at({n, h, w, c}) * normFactor;
-
-          // Modify squareSum for next channel.
-          auto subIndex = c - halfWindowSize;
-          auto addIndex = c + halfWindowSize + 1;
-          auto sub = (c >= halfWindowSize) ? inW.at({n, h, w, subIndex}) : 0;
-          auto add = (addIndex < idim.c) ? inW.at({n, h, w, addIndex}) : 0;
-
-          // Subtract out "rear" end of this window, add "front" end of next.
-          squareSum = squareSum - (sub * sub) + (add * add);
         }
       }
     }
@@ -921,7 +912,7 @@ void Interpreter::fwdLocalResponseNormalizationGradInst(
         float sum = 0.0;
 
         // Compute sum for first channel.
-        for (size_t c = 1; c <= halfWindowSize && c < odim.c; c++) {
+        for (size_t c = 0; c <= halfWindowSize && c < odim.c; c++) {
           auto outw = outW.at({n, h, w, c});
           auto scale = scaleCache.at({n, h, w, c});
           auto outg = outG.at({n, h, w, c});

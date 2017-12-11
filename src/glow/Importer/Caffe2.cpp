@@ -71,7 +71,7 @@ std::vector<size_t> getShape(const ::caffe2::Argument *arg) {
 }
 
 /// Translates the protocol buffer node \p op into a random access map.
-static ArgumentDictionaryTy loadArgumenrMap(const caffe2::OperatorDef &op) {
+static ArgumentDictionaryTy loadArgumentMap(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict;
   for (auto i = 0, e = op.arg_size(); i < e; i++) {
     const caffe2::Argument &arg = op.arg(i);
@@ -141,7 +141,7 @@ bool caffe2ModelLoader::hasNodeByName(const std::string &name) {
 void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   auto &G = EE_.getGraph();
 
-  ArgumentDictionaryTy dict = loadArgumenrMap(op);
+  ArgumentDictionaryTy dict = loadArgumentMap(op);
 
   const std::string &typeName = op.type();
 
@@ -350,6 +350,27 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
     return;
   }
+  if (typeName == "LRN") {
+    auto *in = getOrCreateNodeByName(op.input(0));
+
+    size_t size = loadInt(dict["size"]);
+    float alpha = loadFloat(dict["alpha"]);
+    float beta = loadFloat(dict["beta"]);
+    float k = loadFloat(dict["bias"]);
+
+    auto *tr = G.createTranspose(op.name(), in, NCHW2NHWC);
+
+    auto *node = G.createLocalResponseNormalization(
+        op.name(), tr, size / 2, alpha, beta, k);
+
+    auto *N = G.createTranspose(op.name(), node, NHWC2NCHW);
+
+    // Save the outputs:
+    for (int i = 0, e = op.output_size(); i < e; i++) {
+      nodeByName_[op.output(i)] = N;
+    }
+    return;
+  }
 
   unexpectedNodeError(op, "Could not load the operator.");
 }
@@ -367,7 +388,7 @@ void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
 
 void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
   for (auto &op : net.op()) {
-    ArgumentDictionaryTy dict = loadArgumenrMap(op);
+    ArgumentDictionaryTy dict = loadArgumentMap(op);
 
     /// Load tensors with values:
     if (op.type() == "GivenTensorFill") {
