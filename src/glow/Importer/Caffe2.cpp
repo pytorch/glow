@@ -347,17 +347,21 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "LRN") {
     auto *in = getOrCreateNodeByName(op.input(0));
 
-    size_t halfWindowSize = loadInt(dict["size"]);
+    size_t size = loadInt(dict["size"]);
     float alpha = loadFloat(dict["alpha"]);
     float beta = loadFloat(dict["beta"]);
     float k = loadFloat(dict["bias"]);
 
+    auto *tr = G.createTranspose(op.name(), in, NCHW2NHWC);
+
     auto *node = G.createLocalResponseNormalization(
-        op.name(), in, halfWindowSize, alpha, beta, k);
+        op.name(), tr, size / 2, alpha, beta, k);
+
+    auto *N = G.createTranspose(op.name(), node, NHWC2NCHW);
 
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
+      nodeByName_[op.output(i)] = N;
     }
     return;
   }
