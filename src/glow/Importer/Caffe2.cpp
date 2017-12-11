@@ -360,8 +360,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     auto *tr = G.createTranspose(op.name(), in, NCHW2NHWC);
 
-    auto *node = G.createLocalResponseNormalization(
-        op.name(), tr, size / 2, alpha, beta, k);
+    auto *node = G.createLocalResponseNormalization(op.name(), tr, size / 2,
+                                                    alpha, beta, k);
 
     auto *N = G.createTranspose(op.name(), node, NHWC2NCHW);
 

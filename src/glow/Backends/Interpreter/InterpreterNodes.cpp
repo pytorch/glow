@@ -866,8 +866,7 @@ void Interpreter::fwdLocalResponseNormalizationInst(
         for (size_t c = 0; c < idim.c; c++) {
           float squareSum = 0.0;
           for (size_t i = (c >= halfWindowSize ? c - halfWindowSize : 0);
-               i <= std::min(c + halfWindowSize, idim.c - 1);
-               i++) { 
+               i <= std::min(c + halfWindowSize, idim.c - 1); i++) {
             auto val = inW.at({n, h, w, i});
             squareSum += val * val;
           }
