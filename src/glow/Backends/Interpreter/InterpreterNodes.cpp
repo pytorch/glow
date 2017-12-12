@@ -154,8 +154,8 @@ void Interpreter::fwdConvolutionGradInst(bool isTrain,
               ssize_t oy = y + fy;
 
               // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= ssize_t(odim.h) ||
-                  oy >= ssize_t(odim.w)) {
+              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                  oy >= ssize_t(idim.w)) {
                 continue;
               }
 
@@ -169,8 +169,8 @@ void Interpreter::fwdConvolutionGradInst(bool isTrain,
           }
 
           biasG.at({d}) += chainGrad;
-        } // H
-      }   // W
+        } // W
+      }   // H
     }     // C
   }       // N
 }
@@ -865,9 +865,9 @@ void Interpreter::fwdLocalResponseNormalizationInst(
         // For every channel:
         for (size_t c = 0; c < idim.c; c++) {
           float squareSum = 0.0;
-          for (int i = (c >= halfWindowSize ? c - halfWindowSize : 0);
+          for (size_t i = (c >= halfWindowSize ? c - halfWindowSize : 0);
                i <= std::min(c + halfWindowSize, idim.c - 1); i++) {
-            auto val = inW.at({n, h, w, (size_t)i});
+            auto val = inW.at({n, h, w, i});
             squareSum += val * val;
           }
 
