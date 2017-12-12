@@ -69,6 +69,18 @@ public:
 
   /// Verify the correctness of the instruction parameters.
   void verify(const Module &M) const;
+
+  /// Print value.
+  void dump(llvm::raw_ostream &out);
+
+  /// Print value using a default output stream.
+  void dump();
+
+  /// Print value in context.
+  void dumpInContext(llvm::raw_ostream &out);
+
+  /// Print value in context using a default output stream.
+  void dumpInContext();
 };
 
 /// This represents an instruction in our IR.
@@ -132,9 +144,6 @@ public:
   /// Verify the correctness of the instruction parameters.
   void verify() const;
 
-  /// Print instruction.
-  void dump(llvm::raw_ostream &out);
-
   /// The static dispatch version of isInplaceOp.
   static bool isInplaceOp(const Instruction *I, unsigned dstIdx,
                           unsigned srcIdx);
@@ -151,6 +160,10 @@ public:
   /// Removes instruction from its parent, but does not destroy it.
   /// The instruction can be inserted elsewhere afterwards.
   void removeFromParent();
+
+  static bool classof(const Value *V);
+
+  static bool classof(const Instruction *I) { return true; }
 
 protected:
   /// Dump the operands of the instruction into the stream \p os.
