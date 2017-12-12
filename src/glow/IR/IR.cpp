@@ -164,10 +164,51 @@ void Module::clear() {
   weights_.clear();
 }
 
+static void verifyOperandsAccess(Instruction *I) {
+  if (llvm::isa<CopyInst>(I))
+    return;
+  for (size_t opIdx = 0, e = I->getNumOperands(); opIdx < e; ++opIdx) {
+    auto Op = I->getOperand(opIdx);
+    auto OpKind = Op.second;
+    auto OpValue = Op.first;
+    // Check that an instruction never tries to update a constant argument.
+    if (OpKind != OperandKind::In) {
+      if (auto *W = llvm::dyn_cast<WeightVar>(OpValue)) {
+        assert(W->getMutability() != WeightVar::MutabilityKind::Constant &&
+               "Constant weights cannot be updated");
+      }
+    }
+    // If the same operand is used multiple times by an instruction,
+    // check that it is a valid access pattern.
+    for (size_t nextOpIdx = opIdx + 1; nextOpIdx < e; ++nextOpIdx) {
+      auto NextOp = I->getOperand(nextOpIdx);
+      auto NextOpKind = NextOp.second;
+      auto NextOpValue = NextOp.first;
+      // Bail if it is a different value.
+      if (OpValue != NextOpValue)
+        continue;
+      // It is OK to write into the same buffer if the instruction permits such
+      // an inplace update.
+      if (OpKind == OperandKind::In && NextOpKind != OperandKind::In &&
+          I->isInplaceOp(nextOpIdx, opIdx))
+        continue;
+      if (OpKind != OperandKind::In && NextOpKind == OperandKind::In &&
+          I->isInplaceOp(opIdx, nextOpIdx))
+        continue;
+      // If an operand is used as @out or @inout it cannot be used
+      // for anything else.
+      // It is OK to use the same operand as input multiple times.
+      assert(OpKind == OperandKind::In && NextOpKind == OperandKind::In &&
+             "Conflicting uses of the same operand by the same instruction");
+    }
+  }
+}
+
 void Module::verify() const {
   assert(!instrs_.empty() && "Instruction list is empty!");
   for (auto it : instrs_) {
     it->verifyUseList();
+    verifyOperandsAccess(it);
     it->verify();
   }
 
