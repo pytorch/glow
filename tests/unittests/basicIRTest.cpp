@@ -87,6 +87,8 @@ TEST(IR, allInstrs) {
     auto *I4 = builder.createWeightVar(ElemKind::FloatTy, {1, 12, 12, 3});
     auto *I5 = builder.createWeightVar(ElemKind::FloatTy, {1, 32});
     auto *I6 = builder.createWeightVar(ElemKind::FloatTy, {2, 12, 12, 64});
+    auto *I7 = builder.createWeightVar(T1, "I7");
+    auto *I8 = builder.createWeightVar(ElemKind::FloatTy, {1, 24, 3, 24}, "I8");
 
     auto *XY = builder.createWeightVar(ElemKind::IndexTy, {1, 12, 12, 3, 2});
     auto *B0 = builder.createWeightVar(T2, "B0");
@@ -111,8 +113,8 @@ TEST(IR, allInstrs) {
     builder.createReluInst("", I1, I0);
     builder.createSigmoidInst("", I1, I0);
     builder.createTanhInst("", I1, I0);
-    builder.createSoftMaxInst("", I1, I0, I0, E0);
-    builder.createTransposeInst("", I2, I0, {0, 3, 1, 2});
+    builder.createSoftMaxInst("", I1, I0, I7, E0);
+    builder.createTransposeInst("", I8, I2, {0, 3, 1, 2});
     builder.createInsertTensorInst("", I6, I3, {0, 0, 0, 0});
     builder.createBatchNormalizationInst("", I1, I0, S0, S0, S0, S0, 3, 0.01,
                                          0.9);

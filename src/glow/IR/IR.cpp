@@ -190,10 +190,10 @@ static void LLVM_ATTRIBUTE_UNUSED verifyOperandsAccess(Instruction *I) {
       // It is OK to write into the same buffer if the instruction permits such
       // an inplace update.
       if (OpKind == OperandKind::In && NextOpKind != OperandKind::In &&
-          I->isInplaceOp(nextOpIdx, opIdx))
+          Instruction::isInplaceOp(I, nextOpIdx, opIdx))
         continue;
       if (OpKind != OperandKind::In && NextOpKind == OperandKind::In &&
-          I->isInplaceOp(opIdx, nextOpIdx))
+          Instruction::isInplaceOp(I, opIdx, nextOpIdx))
         continue;
       // If an operand is used as @out or @inout it cannot be used
       // for anything else.
@@ -208,8 +208,7 @@ void Module::verify() const {
   assert(!instrs_.empty() && "Instruction list is empty!");
   for (auto it : instrs_) {
     it->verifyUseList();
-    // FIXME: The check is disabled until we can generate correct IR.
-    // verifyOperandsAccess(it);
+    verifyOperandsAccess(it);
     it->verify();
   }
 
