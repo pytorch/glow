@@ -4,6 +4,7 @@
 #include "glow/Base/Tensor.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Importer/Caffe2.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -66,48 +67,84 @@ void loadImageAndPreprocess(const std::string &filename, Tensor *result,
   }
 }
 
+llvm::cl::list<std::string>
+    InputImageFilenames(llvm::cl::Positional,
+                        llvm::cl::desc("<input image files>"),
+                        llvm::cl::OneOrMore);
+
+llvm::cl::OptionCategory ModelInputCat("How to input the models",
+                                       "These control the caffe2 model paths");
+llvm::cl::opt<std::string>
+    NetDescFilename("n", llvm::cl::desc("Specify the network structure file"),
+                    llvm::cl::value_desc("netDescFilename"),
+                    llvm::cl::cat(ModelInputCat), llvm::cl::Optional);
+llvm::cl::opt<std::string>
+    NetWeightFilename("w", llvm::cl::desc("Specify the network weight file"),
+                      llvm::cl::value_desc("netWeightFilename"),
+                      llvm::cl::cat(ModelInputCat), llvm::cl::Optional);
+llvm::cl::opt<std::string> NetDirectory(
+    "d",
+    llvm::cl::desc("Specify the directory with the network structure "
+                   "<init_net.pb> and weight <predict_net.pb> files"),
+    llvm::cl::value_desc("netDirectory"), llvm::cl::cat(ModelInputCat),
+    llvm::cl::Optional);
+
+llvm::cl::opt<ImageNormalizationMode> ImageMode(
+    "image_mode", llvm::cl::desc("Specify the image mode:"), llvm::cl::Required,
+    llvm::cl::values(clEnumValN(ImageNormalizationMode::k0to1, "0to1",
+                                "Values are in the range: 0 and 1"),
+                     clEnumValN(ImageNormalizationMode::k0to256, "0to256",
+                                "Values are in the range: 0 and 256"),
+                     clEnumValN(ImageNormalizationMode::k128to127, "128to127",
+                                "Values are in the range: -128 .. 127")));
+
 int main(int argc, char **argv) {
-  if (argc != 5) {
-    llvm::errs() << "Usage: " << argv[0]
-                 << " image.png [0to1 / 0to256 / 128to127]"
-                 << " network_structure.pb weights.pb\n";
-    return -1;
-  }
+  llvm::cl::ParseCommandLineOptions(
+      argc, argv,
+      " The Glow compiler\n\n"
+      "Glow is a compiler for neural network accelerators.\n");
 
   Tensor data;
   Tensor expected_softmax(ElemKind::IndexTy, {1, 1});
 
-  auto imageMode = strToImageNormalizationMode(argv[2]);
-  loadImageAndPreprocess(argv[1], &data, imageMode);
+  for (auto InputImageFilename : InputImageFilenames) {
+    llvm::outs() << "loading and preprocessing: " + InputImageFilename +
+                        "...\n";
+    loadImageAndPreprocess(InputImageFilename, &data, ImageMode);
 
-  ExecutionEngine EE(BackendKind::Interpreter);
-  SaveNode *SM;
-  Variable *i0;
-  Variable *i1;
-  {
-    caffe2ModelLoader LD(argv[3], argv[4],
-                         {"data", "gpu_0/data", "softmax_expected"},
-                         {&data, &data, &expected_softmax}, EE);
-    SM = LD.getRoot();
-    i0 = llvm::cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
-    i1 = llvm::cast<Variable>(LD.getOrCreateNodeByName("data"));
+    if (!NetDirectory.empty()) {
+      NetDescFilename.setValue(NetDirectory + "/predict_net.pb");
+      NetWeightFilename.setValue(NetDirectory + "/init_net.pb");
+    }
+
+    ExecutionEngine EE(BackendKind::Interpreter);
+    SaveNode *SM;
+    Variable *i0;
+    Variable *i1;
+    {
+      caffe2ModelLoader LD(NetDescFilename, NetWeightFilename,
+                           {"data", "gpu_0/data", "softmax_expected"},
+                           {&data, &data, &expected_softmax}, EE);
+      SM = LD.getRoot();
+      i0 = llvm::cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
+      i1 = llvm::cast<Variable>(LD.getOrCreateNodeByName("data"));
+    }
+
+    llvm::Timer timer("Infer", "Infer");
+    timer.startTimer();
+    EE.run({i0, i1}, {&data, &data});
+    timer.stopTimer();
+
+    Tensor &res = SM->getVariable()->getPayload();
+    auto H = res.getHandle<>();
+    Tensor slice = H.extractSlice(0);
+    auto SH = slice.getHandle<>();
+
+    llvm::outs() << "\n";
+
+    llvm::outs() << "Model: " << argv[3] << "\n";
+    llvm::outs() << " File: " << argv[1];
+    llvm::outs() << " Result:" << SH.maxArg() << "\n";
   }
-
-  llvm::Timer timer("Infer", "Infer");
-  timer.startTimer();
-  EE.run({i0, i1}, {&data, &data});
-  timer.stopTimer();
-
-  Tensor &res = SM->getVariable()->getPayload();
-  auto H = res.getHandle<>();
-  Tensor slice = H.extractSlice(0);
-  auto SH = slice.getHandle<>();
-
-  llvm::outs() << "\n";
-
-  llvm::outs() << "Model: " << argv[3] << "\n";
-  llvm::outs() << " File: " << argv[1];
-  llvm::outs() << " Result:" << SH.maxArg() << "\n";
-
   return 0;
 }
