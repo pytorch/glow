@@ -112,6 +112,12 @@ llvm::cl::opt<ImageNormalizationMode> ImageMode(
                                 "Values are in the range: -128 .. 127")));
 llvm::cl::alias ImageModeA("i", llvm::cl::desc("Alias for -image_mode"),
                            llvm::cl::aliasopt(ImageMode));
+
+llvm::cl::opt<bool>
+    Verbose("verbose",
+            llvm::cl::desc("Specify whether to run with verbose output"),
+            llvm::cl::Optional);
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -124,8 +130,10 @@ int main(int argc, char **argv) {
   Tensor expected_softmax(ElemKind::IndexTy, {1, 1});
 
   for (const auto &InputImageFilename : InputImageFilenames) {
-    llvm::outs() << "loading and preprocessing: " + InputImageFilename +
-                        "...\n";
+    if (Verbose) {
+      llvm::outs() << "loading and preprocessing: " + InputImageFilename +
+                          "...\n";
+    }
     loadImageAndPreprocess(InputImageFilename, &data, ImageMode);
 
     if (!NetDirectory.empty()) {
