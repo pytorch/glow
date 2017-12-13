@@ -18,4 +18,6 @@
 #define GLOW_ASSERT_IMPL(e, file, line)                                        \
   ((void)printf("%s:%u: failed assertion `%s'\n", file, line, e), abort())
 
+#define UNREFERENCED_VAR(X) ((void)(X))
+
 #endif // GLOW_SUPPORT_COMPILER_H

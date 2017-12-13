@@ -49,7 +49,7 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   size_t height = png_get_image_height(png_ptr, info_ptr);
   int color_type = png_get_color_type(png_ptr, info_ptr);
   int bit_depth = png_get_bit_depth(png_ptr, info_ptr);
-  (void)bit_depth;
+  UNREFERENCED_VAR(bit_depth);
   assert(bit_depth == 8 && "Invalid image");
   assert((color_type == PNG_COLOR_TYPE_RGB_ALPHA ||
           color_type == PNG_COLOR_TYPE_RGB) &&
@@ -57,7 +57,7 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   bool hasAlpha = (color_type == PNG_COLOR_TYPE_RGB_ALPHA);
 
   int number_of_passes = png_set_interlace_handling(png_ptr);
-  (void)number_of_passes;
+  UNREFERENCED_VAR(number_of_passes);
   assert(number_of_passes == 1 && "Invalid image");
 
   png_read_update_info(png_ptr, info_ptr);
@@ -190,11 +190,11 @@ bool glow::writePngImage(Tensor *T, const char *filename,
 #else
 bool glow::readPngImage(Tensor *T, const char *filename,
                         std::pair<float, float> range) {
-  assert(false && "Not configured with libpng");
+  GLOW_ASSERT(false && "Not configured with libpng");
 }
 
 bool glow::writePngImage(Tensor *T, const char *filename,
                          std::pair<float, float> range) {
-  assert(false && "Not configured with libpng");
+  GLOW_ASSERT(false && "Not configured with libpng");
 }
 #endif
