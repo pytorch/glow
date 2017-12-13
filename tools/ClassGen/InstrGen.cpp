@@ -127,7 +127,7 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("E", OperandKind::InOut)
-      .addOperand("Selected", OperandKind::InOut)
+      .addOperand("Selected", OperandKind::In)
       .inplaceOperand({"Dest", "Src"})
       .addGradientInstr({"Src", "E", "Selected"}, {"Src"});
 

@@ -20,6 +20,16 @@ using llvm::dyn_cast;
 //                       General IR operations
 //===----------------------------------------------------------------------===//
 
+bool Instruction::classof(const Value *V) {
+#define DEF_VALUE(CLASS, NAME)
+#define DEF_INSTR(CLASS, NAME)
+#define DEF_INSTR_RANGE(CLASS, FIRST, LAST)                                    \
+  constexpr auto First_##CLASS = Kinded::Kind::FIRST##Kind;                    \
+  constexpr auto Last_##CLASS = Kinded::Kind::LAST##Kind;
+#include "AutoGenInstr.def"
+  return V->getKind() >= First_Instruction && V->getKind() <= Last_Instruction;
+}
+
 void Use::setOperand(Value *other) { use_->setOperand(idx_, other); }
 
 InstructionOperand Use::getOperand() { return use_->getOperand(idx_); }
@@ -154,10 +164,52 @@ void Module::clear() {
   weights_.clear();
 }
 
+static void LLVM_ATTRIBUTE_UNUSED verifyOperandsAccess(Instruction *I) {
+  if (llvm::isa<CopyInst>(I))
+    return;
+  for (size_t opIdx = 0, e = I->getNumOperands(); opIdx < e; ++opIdx) {
+    auto Op = I->getOperand(opIdx);
+    auto OpKind = Op.second;
+    auto OpValue = Op.first;
+    // Check that an instruction never tries to update a constant argument.
+    if (OpKind != OperandKind::In) {
+      if (auto *W = llvm::dyn_cast<WeightVar>(OpValue)) {
+        assert(W->getMutability() != WeightVar::MutabilityKind::Constant &&
+               "Constant weights cannot be updated");
+      }
+    }
+    // If the same operand is used multiple times by an instruction,
+    // check that it is a valid access pattern.
+    for (size_t nextOpIdx = opIdx + 1; nextOpIdx < e; ++nextOpIdx) {
+      auto NextOp = I->getOperand(nextOpIdx);
+      auto NextOpKind = NextOp.second;
+      auto NextOpValue = NextOp.first;
+      // Bail if it is a different value.
+      if (OpValue != NextOpValue)
+        continue;
+      // It is OK to write into the same buffer if the instruction permits such
+      // an inplace update.
+      if (OpKind == OperandKind::In && NextOpKind != OperandKind::In &&
+          I->isInplaceOp(nextOpIdx, opIdx))
+        continue;
+      if (OpKind != OperandKind::In && NextOpKind == OperandKind::In &&
+          I->isInplaceOp(opIdx, nextOpIdx))
+        continue;
+      // If an operand is used as @out or @inout it cannot be used
+      // for anything else.
+      // It is OK to use the same operand as input multiple times.
+      assert(OpKind == OperandKind::In && NextOpKind == OperandKind::In &&
+             "Conflicting uses of the same operand by the same instruction");
+    }
+  }
+}
+
 void Module::verify() const {
   assert(!instrs_.empty() && "Instruction list is empty!");
   for (auto it : instrs_) {
     it->verifyUseList();
+    // FIXME: The check is disabled until we can generate correct IR.
+    // verifyOperandsAccess(it);
     it->verify();
   }
 
@@ -225,16 +277,53 @@ InstrIterator InstructionNumbering::getInstr(size_t InstrNumber) {
 //===----------------------------------------------------------------------===//
 
 static void dumpIR(Value *V, llvm::raw_ostream &out) {
+  switch (V->getKind()) {
+  default:
+    llvm_unreachable("Unknown value kind");
+    break;
 #define DEF_INSTR(CLASS, NAME)                                                 \
-  if (const auto *X = dyn_cast<const CLASS>(V))                                \
-    return X->dump(out);
+  case Kinded::Kind::CLASS##Kind: {                                            \
+    auto *X = llvm::cast<const CLASS>(V);                                      \
+    X->dump(out);                                                              \
+    break;                                                                     \
+  }
 #define DEF_VALUE(CLASS, NAME)                                                 \
-  if (const auto *X = dyn_cast<const CLASS>(V))                                \
-    return X->dump(out);
+  case Kinded::Kind::CLASS##Kind: {                                            \
+    auto *X = llvm::cast<const CLASS>(V);                                      \
+    X->dump(out);                                                              \
+    break;                                                                     \
+  }
 #include "AutoGenInstr.def"
-  llvm_unreachable("Invalid instruction kind.");
+  }
 }
 
+static void dumpIRInContext(Value *V, llvm::raw_ostream &out) {
+  // Dump all operands.
+  if (const auto *I = dyn_cast<const Instruction>(V)) {
+    if (I->getNumOperands() > 0)
+      out << "Operands:\n";
+    for (auto &Op : I->getOperands()) {
+      out << "\t";
+      Op.first->dump(out);
+      out << "\n";
+    }
+  }
+  out << "-> ";
+
+  dumpIR(V, out);
+
+  // Dump all uses.
+  out << "\n";
+  if (V->getNumUsers() > 0)
+    out << "Users:\n";
+  for (Use &U : V->getUsers()) {
+    out << "\t";
+    U.get()->dump(out);
+    out << "\n";
+  }
+}
+
+/// Dump the instruction numbers of all users of \p V.
 static void dumpUsers(Value *V, llvm::raw_ostream &out,
                       InstructionNumbering &IN) {
   if (V->getNumUsers() == 0)
@@ -253,7 +342,15 @@ static void dumpUsers(Value *V, llvm::raw_ostream &out,
   }
 }
 
-void Instruction::dump(llvm::raw_ostream &out) { dumpIR(this, out); }
+void Value::dump(llvm::raw_ostream &out) { dumpIR(this, out); }
+
+void Value::dump() { dumpIR(this, llvm::outs()); }
+
+void Value::dumpInContext(llvm::raw_ostream &out) {
+  dumpIRInContext(this, out);
+}
+
+void Value::dumpInContext() { dumpInContext(llvm::outs()); }
 
 bool Instruction::isInplaceOp(const Instruction *I, unsigned dstIdx,
                               unsigned srcIdx) {
