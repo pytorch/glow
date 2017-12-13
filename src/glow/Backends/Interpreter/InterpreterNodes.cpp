@@ -1071,7 +1071,7 @@ void Interpreter::fwdSGDInst(bool isTrain, const glow::SGDInst *I) {
 
 void Interpreter::fwdAllocActivationInst(bool isTrain,
                                          const AllocActivationInst *I) {
-  getOrCreateTensor(I);
+  getOrCreateTensor(I)->zero();
 }
 
 void Interpreter::fwdDeallocActivationInst(bool isTrain,
