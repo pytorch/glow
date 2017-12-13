@@ -6,6 +6,7 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
 
@@ -1077,4 +1078,24 @@ void Interpreter::fwdAllocActivationInst(bool isTrain,
 void Interpreter::fwdDeallocActivationInst(bool isTrain,
                                            const DeallocActivationInst *I) {
   deleteTensor(I->getOperand(0).first);
+}
+
+void Interpreter::fwdDebugActionInst(bool isTrain, const DebugActionInst *I) {
+  auto *V = I->getSrc();
+  switch (I->getAction()) {
+  case DebugActionType::Debug:
+    break;
+  case DebugActionType::Print: {
+    // Dump the content of a value.
+    V->dump();
+    llvm::outs() << "\n";
+    auto WH = getWeightHandle(V);
+    WH.dump();
+    llvm::outs() << "\n";
+  } break;
+  case DebugActionType::Profile: {
+    // TODO: Collect some value profiles which can be later
+    // used to implement a better quantization.
+  }
+  }
 }

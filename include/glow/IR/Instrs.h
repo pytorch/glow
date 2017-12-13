@@ -41,7 +41,18 @@ public:
   void verify() const {}
 };
 
+// Define different kinds of debug actions.
+enum class DebugActionType {
+  Print,
+  Debug,
+  Profile,
+};
+
 } // namespace glow
+
+namespace std {
+std::string to_string(glow::DebugActionType action);
+} // namespace std
 
 // The rest of the nodes are auto-generated into this file:
 #include "AutoGenInstr.h"
