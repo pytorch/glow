@@ -217,3 +217,40 @@ TEST(Tensor, transpose2) {
     }
   }
 }
+
+TEST(Tensor, nonOwnedTensor) {
+  Tensor T1 = {1.2, 12.1, 51.0, 1515.2};
+
+  auto H1 = T1.getHandle<>();
+  H1.dump();
+  EXPECT_EQ(int(H1.at({0})), 1);
+
+  {
+    // Create a view on T1 which makes it look like 2x2
+    Tensor T2 = T1.getUnowned({2, 2});
+    EXPECT_EQ(T2.getRawDataPointer<float>(), T1.getRawDataPointer<float>());
+    auto H2 = T2.getHandle<>();
+    // Check that T2 has the same values as T1.
+    EXPECT_EQ(int(H2.at({0, 0})), 1);
+    EXPECT_EQ(int(H2.at({0, 1})), 12);
+    EXPECT_EQ(int(H2.at({1, 0})), 51);
+    EXPECT_EQ(int(H2.at({1, 1})), 1515);
+    // Modify a value through T2.
+    H2.at({1, 1}) = 30.3;
+    EXPECT_EQ(int(H2.at({1, 1})), 30);
+    // Modify a value through T1 and check
+    // that this update is visible through
+    // T2.
+    H1.at({1}) = 40.4;
+    EXPECT_EQ(int(H2.at({0, 1})), 40);
+    H2.dump();
+  }
+
+  // Check that modifications through T2 changed
+  // T1 as well, i.e. T2 was acting like a view
+  // on T1.
+  EXPECT_EQ(int(H1.at({3})), 30);
+
+  // Check that T1 is still alive
+  H1.dump();
+}

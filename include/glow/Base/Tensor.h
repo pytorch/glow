@@ -6,6 +6,7 @@
 #include "glow/Support/Random.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/PointerUnion.h"
 
 #include <cassert>
 
@@ -19,17 +20,23 @@ template <class ElemTy> class Handle;
 
 /// A class that represents a contiguous n-dimensional array (a tensor).
 class Tensor final {
-  /// A pointer to the tensor data.
-  char *data_{nullptr};
+  /// A pointer to the tensor data and the unowned flag.
+  llvm::PointerIntPair<void *, 1, bool> data_{nullptr};
 
   /// The type of the tensor.
   Type type_;
 
   template <class ElemTy> friend class Handle;
 
+  /// \returns a pointer to the tensor data buffer.
+  char *getData() const { return reinterpret_cast<char *>(data_.getPointer()); }
+
+  /// \returns true if it is an unowned tensor.
+  bool isUnowned() const { return data_.getInt(); }
+
 public:
   /// \returns the type of the tensor.
-  const Type &getType() { return type_; }
+  const Type &getType() const { return type_; }
 
   /// \return the element type of the tensor.
   ElemKind getElementType() const { return type_.getElementType(); }
@@ -47,7 +54,8 @@ public:
 
   /// Set the content of the tensor to zero.
   void zero() {
-    std::fill(&data_[0], &data_[0] + size() * type_.getElementSize(), 0);
+    std::fill(&getData()[0], &getData()[0] + size() * type_.getElementSize(),
+              0);
   }
 
   /// \returns the shape of the tensor.
@@ -59,7 +67,7 @@ public:
   /// \returns a pointer to the raw data, of type \p ElemTy.
   template <class ElemTy> ElemTy *getRawDataPointer() {
     assert(type_.isType<ElemTy>() && "Asking for the wrong ptr type.");
-    return reinterpret_cast<ElemTy *>(data_);
+    return reinterpret_cast<ElemTy *>(data_.getPointer());
   }
 
   /// Initialize an empty tensor.
@@ -90,6 +98,28 @@ public:
   Tensor(const Tensor &other) = delete;
   Tensor &operator=(const Tensor &other) = delete;
 
+  /// \returns unowned tensor using the same data buffer as the current tensor
+  /// but having different dimensions. This is essentially a different
+  /// view on the same data.
+  ///
+  /// The lifetime of the returned unowned tensor should be always within
+  /// the lifetime of its parent tensor, i.e. the unowned tensor should not
+  /// outlive its parent tensor.
+  ///
+  /// TODO: Add mechanims like RC (reference counting) to ensure that unowned
+  /// tensors do not outlive their parent tensors.
+  Tensor getUnowned(llvm::ArrayRef<size_t> dims) const {
+    Tensor unownedTensor;
+    unownedTensor.data_.setPointer(getData());
+    unownedTensor.data_.setInt(1);
+    unownedTensor.type_ = Type(getElementType(), dims);
+    assert(size() == unownedTensor.size() &&
+           "The size of the non-owned tensor should be "
+           "the same as the size of the original "
+           "tensor");
+    return unownedTensor;
+  }
+
   /// Reset the shape and type of this tensor to match the shape and type of
   /// \p other.
   void reset(const Tensor *other) {
@@ -105,22 +135,26 @@ public:
   void reset(const Type &T) {
     // If the new size is identical to the allocated size then there is no need
     // to re-allocate the buffer.
-    if (type_ == T && data_) {
+    if (type_ == T && getData()) {
       zero();
       return;
     }
 
     // Delete the old buffer, update the shape, and allocate a new one.
-    delete[] data_;
+    if (!isUnowned())
+      delete[] getData();
     type_ = T;
 
     if (size()) {
-      data_ = new char[size() * type_.getElementSize()];
+      data_.setPointer(new char[size() * type_.getElementSize()]);
       zero();
     }
   }
 
-  ~Tensor() { delete[] data_; }
+  ~Tensor() {
+    if (!isUnowned())
+      delete[] getData();
+  }
 
   // Move ctor.
   Tensor(Tensor &&other) noexcept {
@@ -140,7 +174,7 @@ public:
     assert(this != t && "Copying to self");
     reset(t);
     size_t bufferSize = size() * type_.getElementSize();
-    std::copy(&t->data_[0], &t->data_[bufferSize], data_);
+    std::copy(&t->getData()[0], &t->getData()[bufferSize], getData());
   }
 
   /// Update the raw data of the tensor from the tensor \p t.
@@ -149,7 +183,7 @@ public:
     assert(size() == t->size());
     assert(getElementType() == t->getElementType() && "Invalid element type");
     size_t bufferSize = size() * type_.getElementSize();
-    std::copy(&t->data_[0], &t->data_[bufferSize], data_);
+    std::copy(&t->getData()[0], &t->getData()[bufferSize], getData());
   }
 
   /// Update the content of the tensor with a slice from tensor \p t. A slice
@@ -161,8 +195,8 @@ public:
     assert(getElementType() == t->getElementType() && "Invalid element type");
 
     size_t bufferSize = size() * type_.getElementSize();
-    std::copy(&t->data_[bufferSize * slice],
-              &t->data_[bufferSize * (slice + 1)], data_);
+    std::copy(&t->getData()[bufferSize * slice],
+              &t->getData()[bufferSize * (slice + 1)], getData());
   }
 
   /// Update the content of the tensor with a sequence of slices from the
@@ -183,8 +217,9 @@ public:
     // For each outer slice in the current tensor:
     for (size_t n = 0, e = dims()[0]; n < e; n++) {
       size_t startIdx = (startSliceIdx + n) % numSlicesInInput;
-      std::copy(&t->data_[bufferSize * startIdx],
-                &t->data_[bufferSize * (startIdx + 1)], &data_[bufferSize * n]);
+      std::copy(&t->getData()[bufferSize * startIdx],
+                &t->getData()[bufferSize * (startIdx + 1)],
+                &getData()[bufferSize * n]);
     }
   }
 
@@ -196,7 +231,7 @@ public:
   }
 
   /// Return the raw unsafe pointer to the tensor payload.
-  char *getUnsafePtr() const { return data_; }
+  char *getUnsafePtr() const { return getData(); }
 
   /// \return a new handle that points and manages this tensor.
   template <class ElemTy = float> Handle<ElemTy> getHandle();
