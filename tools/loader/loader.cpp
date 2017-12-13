@@ -158,9 +158,9 @@ int main(int argc, char **argv) {
 
     llvm::outs() << "\n";
 
-    llvm::outs() << "Model: " << argv[3] << "\n";
-    llvm::outs() << " File: " << argv[1];
-    llvm::outs() << " Result:" << SH.maxArg() << "\n";
+    llvm::outs() << "Model: " << NetDescFilename << "\n"
+                 << " File: " << InputImageFilename << " Result:" << SH.maxArg()
+                 << "\n";
   }
   return 0;
 }
