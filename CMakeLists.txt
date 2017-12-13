@@ -1,6 +1,13 @@
 
 cmake_minimum_required(VERSION 3.7)
 
+option(BUILD_DEPENDENCIES "whether dependencies (LLVM) should be built" OFF)
+if(BUILD_DEPENDENCIES)
+  project(GlowWithDependencies)
+  include(cmake/GlowWithDependencies.cmake)
+  return()
+endif()
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
 project(Glow)
@@ -38,7 +45,11 @@ add_custom_target(CollectHeaders SOURCES ${header_files})
 find_package(PNG)
 find_package(OpenCL)
 
-add_subdirectory(external)
+find_package(LLVM REQUIRED CONFIG)
+message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
+
 add_subdirectory(lib)
 add_subdirectory(examples/)
 add_subdirectory(tools/)

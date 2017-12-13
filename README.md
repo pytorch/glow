@@ -28,6 +28,20 @@ the project outside of the source directory.
 It is possible to configure and build the compiler with any CMake generator,
 like GNU Makefiles, Ninja and Xcode build.
 
+### Building with dependencies (LLVM)
+
+By default, Glow will use a system provided LLVM.  Note that Glow requires LLVM
+5.0.  However, it is possible to have Glow build LLVM as part of itself by
+indicating to CMake that you want to build dependencies.
+
+  ```
+  mkdir build
+  cd build
+  cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_DEPENDENCIES=YES ../glow
+  ```
+
+This will move the build of Glow into Dependencies/Build/Glow.
+
 ### Building with the Sanitizers
 
 Google's sanitizer project provides a number of libraries which can be used with
