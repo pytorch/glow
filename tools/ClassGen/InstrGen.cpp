@@ -135,6 +135,16 @@ int main(int argc, char **argv) {
   //                      Arithmetic
   //===--------------------------------------------------------------------===//
 
+  /// Perform matrix multiplication between the matrix Filter and all matrices
+  /// in the batch Batch. Filter is a two dimensional matrix, and Batch is a
+  /// three dimensional matrix where the first dimension is the batch size. The
+  /// result is a tensor that has the same batch size as the Batch parameter,
+  /// and the second and third dimensions are the size of the multiplied matrix.
+  BB.newInstr("BatchedMatMul")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Batch", OperandKind::In)
+      .addOperand("Filter", OperandKind::In);
+
   BB.newInstr("ElementAdd")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)

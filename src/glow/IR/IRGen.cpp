@@ -200,7 +200,16 @@ public:
       registerIR(FCG->getGradOfInputNamedBias(), BiasG);
       break;
     }
-
+    case glow::Kinded::Kind::BatchedMatMulNodeKind: {
+      auto *BMM = cast<BatchedMatMulNode>(N);
+      auto *batch = valueForNode(BMM->getBatch());
+      auto *filter = valueForNode(BMM->getFilter());
+      auto *dest = builder_.createAllocActivationInst(
+          "bmm.res", BMM->getResult().getType());
+      builder_.createBatchedMatMulInst("bmm", dest, batch, filter);
+      registerIR(N, dest);
+      break;
+    }
     case glow::Kinded::Kind::ReluNodeKind: {
       auto *R = cast<ReluNode>(N);
       auto *V = builder_.createRELUOp(valueForNode(R->getInput()));
