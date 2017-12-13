@@ -32,6 +32,12 @@ void testCIFAR10() {
   std::ifstream dbInput("cifar-10-batches-bin/data_batch_1.bin",
                         std::ios::binary);
 
+  if (!dbInput.is_open()) {
+    llvm::outs() << "Failed to open cifar10 data file, probably missing.\n";
+    llvm::outs() << "Run 'python ../glow/utils/download_test_db.py'\n";
+    exit(1);
+  }
+
   llvm::outs() << "Loading the CIFAR-10 database.\n";
 
   /// Load the CIFAR database into a 4d tensor.
