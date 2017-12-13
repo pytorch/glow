@@ -120,7 +120,7 @@ int main(int argc, char **argv) {
   Tensor data;
   Tensor expected_softmax(ElemKind::IndexTy, {1, 1});
 
-  for (auto InputImageFilename : InputImageFilenames) {
+  for (const auto &InputImageFilename : InputImageFilenames) {
     llvm::outs() << "loading and preprocessing: " + InputImageFilename +
                         "...\n";
     loadImageAndPreprocess(InputImageFilename, &data, ImageMode);
