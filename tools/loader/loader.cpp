@@ -67,6 +67,8 @@ void loadImageAndPreprocess(const std::string &filename, Tensor *result,
   }
 }
 
+namespace {
+
 llvm::cl::list<std::string>
     InputImageFilenames(llvm::cl::Positional,
                         llvm::cl::desc("<input image files>"),
@@ -110,6 +112,7 @@ llvm::cl::opt<ImageNormalizationMode> ImageMode(
                                 "Values are in the range: -128 .. 127")));
 llvm::cl::alias ImageModeA("i", llvm::cl::desc("Alias for -image_mode"),
                            llvm::cl::aliasopt(ImageMode));
+} // namespace
 
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(
