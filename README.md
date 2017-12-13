@@ -16,21 +16,29 @@ C++ compiler that supports C++11, on CMake, protocol buffer, and libpng.
 
 Next, create a build directory and run cmake on the source directory. It is a
 good idea to build two configurations (Release and Debug) because some programs
-take a really long time to run in Debug mode. It is also a good idea to build
+take a really long time to run in Debug mode. It's also a good idea to build
 the project outside of the source directory.
 
   ```
-  mkdir build
-  cd build
+  mkdir build_Debug
+  cd build_Debug
   cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug ../glow
   ```
 
-It is possible to configure and build the compiler with any CMake generator,
+It's possible to configure and build the compiler with any CMake generator,
 like GNU Makefiles, Ninja and Xcode build.
+
+### Building with dependencies (LLVM)
+
+By default, Glow will use a system provided LLVM.  Note that Glow requires LLVM
+5.0. If LLVM is not available on your system you'll need to build it manually.
+You may find the script './utils/build\_llvm.sh"' useful. You will need to
+configure Glow with the flag '-DCMAKE\_PREFIX\_PATH' to tell the build system
+where to find LLVM.
 
 ### Building with the Sanitizers
 
-Google's sanitizer project provides a number of libraries which can be used with
+The clang-sanitizer project provides a number of libraries which can be used with
 compiler inserted instrumentation to find a variety of bugs at runtime.  These
 include memory issues due such as use-after-free or double-free.  They can also
 detect other types of problems like memory leaks.  Glow can be built with the
@@ -112,3 +120,4 @@ ptb dataset go down as the network trains.
 To get started please refer to the following guides:
 * [Contributing](docs/Contributing.md)
 * [CodingStandards](docs/CodingStandards.md)
+
