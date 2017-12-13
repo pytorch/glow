@@ -571,6 +571,6 @@ std::string std::to_string(glow::DebugActionType action) {
   case glow::DebugActionType::Print:
     return "print";
   case glow::DebugActionType::Profile:
-    return "print";
+    return "profile";
   }
 }

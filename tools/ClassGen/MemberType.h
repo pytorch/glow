@@ -23,9 +23,9 @@ class MemberTypeProvider {
   mutable std::unordered_map<std::string, std::string> customTypeMembersTypes_;
 
 public:
-  void addCustomTypeMember(const std::string &typeName,
-                           const std::string &name) {
-    customTypeMembersTypes_.insert({name, typeName});
+  virtual void addCustomTypeMember(const std::string &typeName,
+                                   const std::string &name) {
+    customTypeMembersTypes_.emplace(name, typeName);
   }
 
   inline const char *getReturnTypename(MemberType type,
@@ -42,10 +42,8 @@ public:
                                         nullptr};
     if (type != MemberType::CustomType)
       return returnTypes[(int)type];
-    auto found = customTypeMembersTypes_.find(name);
-    assert(found != customTypeMembersTypes_.end() &&
-           "typename should be defined");
-    return (*found).second.c_str();
+    auto const &found = customTypeMembersTypes_.at(name);
+    return found.c_str();
   }
 
   inline const char *getStorageTypename(MemberType type,
@@ -62,10 +60,8 @@ public:
                                          nullptr};
     if (type != MemberType::CustomType)
       return storageTypes[(int)type];
-    auto found = customTypeMembersTypes_.find(name);
-    assert(found != customTypeMembersTypes_.end() &&
-           "typename should be defined");
-    return (*found).second.c_str();
+    auto const &found = customTypeMembersTypes_.at(name);
+    return found.c_str();
   }
 };
 #endif // GLOW_TOOLS_CLASSGEN_MEMBERTYPE_H

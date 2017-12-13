@@ -233,7 +233,7 @@ int main(int argc, char **argv) {
 
   BB.newInstr("DebugAction")
       .addOperand("Src", OperandKind::In)
-      .addCustomTypeMember("DebugActionType", "Action");
+      .addMember("DebugActionType", "Action");
 
   return 0;
 }
