@@ -21,7 +21,6 @@ ExecutionEngine::~ExecutionEngine() = default;
 
 void ExecutionEngine::run(llvm::ArrayRef<Variable *> vars,
                           llvm::ArrayRef<Tensor *> inputs) {
-  assert(!inputs.empty() && "No inputs");
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
 
