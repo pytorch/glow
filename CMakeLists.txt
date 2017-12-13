@@ -38,12 +38,26 @@ add_custom_target(CollectHeaders SOURCES ${header_files})
 find_package(PNG)
 find_package(OpenCL)
 
-add_subdirectory(external)
-add_subdirectory(lib)
-add_subdirectory(examples/)
-add_subdirectory(tools/)
-
-if(ENABLE_TESTING)
-  add_subdirectory(tests)
+find_package(LLVM CONFIG)
+if (NOT LLVM_FOUND)
+  message("Could not find LLVM. Build LLVM manually and")
+  message("configure the project with -DCMAKE_PREFIX_PATH=/path/to/llvm/install")
+  return()
 endif()
+message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
+
+if(NOT EXISTS "${GLOW_SOURCE_DIR}/tests/googletest/googletest")
+  message("The git submodules are not available. ")
+  message("Run git submodule update --init --recursive")
+  return()
+endif()
+
+add_subdirectory(tests/googletest/)
+
+add_subdirectory(lib)
+add_subdirectory(examples)
+add_subdirectory(tools)
+add_subdirectory(tests)
 
