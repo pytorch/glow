@@ -81,14 +81,14 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   float scale = ((range.second - range.first) / 255.0);
   float bias = range.first;
 
-  for (size_t y = 0; y < height; y++) {
-    png_byte *row = row_pointers[y];
-    for (size_t x = 0; x < width; x++) {
-      png_byte *ptr = &(row[x * (hasAlpha ? 4 : 3)]);
+  for (size_t row_n = 0; row_n < height; row_n++) {
+    png_byte *row = row_pointers[row_n];
+    for (size_t col_n = 0; col_n < width; col_n++) {
+      png_byte *ptr = &(row[col_n * (hasAlpha ? 4 : 3)]);
 
-      H.at({x, y, 0}) = float(ptr[0]) * scale + bias;
-      H.at({x, y, 1}) = float(ptr[1]) * scale + bias;
-      H.at({x, y, 2}) = float(ptr[2]) * scale + bias;
+      H.at({row_n, col_n, 0}) = float(ptr[0]) * scale + bias;
+      H.at({row_n, col_n, 1}) = float(ptr[1]) * scale + bias;
+      H.at({row_n, col_n, 2}) = float(ptr[2]) * scale + bias;
     }
   }
 
