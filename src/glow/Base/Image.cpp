@@ -49,7 +49,7 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   size_t height = png_get_image_height(png_ptr, info_ptr);
   int color_type = png_get_color_type(png_ptr, info_ptr);
   int bit_depth = png_get_bit_depth(png_ptr, info_ptr);
-  UNREFERENCED_VAR(bit_depth);
+  (void)bit_depth;
   assert(bit_depth == 8 && "Invalid image");
   assert((color_type == PNG_COLOR_TYPE_RGB_ALPHA ||
           color_type == PNG_COLOR_TYPE_RGB) &&
@@ -57,7 +57,7 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   bool hasAlpha = (color_type == PNG_COLOR_TYPE_RGB_ALPHA);
 
   int number_of_passes = png_set_interlace_handling(png_ptr);
-  UNREFERENCED_VAR(number_of_passes);
+  (void)number_of_passes;
   assert(number_of_passes == 1 && "Invalid image");
 
   png_read_update_info(png_ptr, info_ptr);
