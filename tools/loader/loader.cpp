@@ -118,6 +118,12 @@ llvm::cl::opt<bool>
             llvm::cl::desc("Specify whether to run with verbose output"),
             llvm::cl::Optional);
 
+llvm::cl::opt<bool>
+    Timer("timer",
+          llvm::cl::desc("Print timer output to stderr detailing how long it "
+                         "takes for the program to execute"),
+          llvm::cl::Optional);
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -155,9 +161,11 @@ int main(int argc, char **argv) {
     }
 
     llvm::Timer timer("Infer", "Infer");
-    timer.startTimer();
+    if (Timer)
+      timer.startTimer();
     EE.run({i0, i1}, {&data, &data});
-    timer.stopTimer();
+    if (Timer)
+      timer.stopTimer();
 
     Tensor &res = SM->getVariable()->getPayload();
     auto H = res.getHandle<>();
