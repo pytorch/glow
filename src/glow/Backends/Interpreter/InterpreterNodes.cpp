@@ -1020,6 +1020,37 @@ void Interpreter::fwdElementMulGradInst(bool isTrain,
   }
 }
 
+void Interpreter::fwdBatchedMatMulInst(bool isTrain,
+                                       const glow::BatchedMatMulInst *I) {
+  auto batch = getWeightHandle(I->getBatch());
+  auto filter = getWeightHandle(I->getFilter());
+  auto dest = getWeightHandle(I->getDest());
+
+  auto destDim = dest.dims();
+  auto filterDim = filter.dims();
+
+  // For each layer in the batch:
+  for (size_t n = 0; n < destDim[0]; n++) {
+
+    // For each (x,y) in the destination matrix:
+    for (size_t x = 0; x < destDim[1]; x++) {
+      for (size_t y = 0; y < destDim[2]; y++) {
+
+        // Perform DOT on the row an column.
+        float sum = 0;
+        for (size_t i = 0; i < filterDim[0]; i++) {
+          sum += batch.at({n, x, i}) * filter.at({i, y});
+        }
+        dest.at({n, x, y}) = sum;
+      }
+    }
+  } // N
+}
+
+//===----------------------------------------------------------------------===//
+//                       Training Instructions
+//===----------------------------------------------------------------------===//
+
 void Interpreter::fwdSGDInst(bool isTrain, const glow::SGDInst *I) {
   auto W = getWeightHandle(I->getWeight());
   auto G = getWeightHandle(I->getGradient());

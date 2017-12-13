@@ -573,3 +573,29 @@ TEST(Optimizer, CopyPropagation) {
         return I->getKind() == Instruction::Kind::CopyInstKind;
       }));
 }
+
+TEST(Network, matmul) {
+  ExecutionEngine EE;
+
+  auto &G = EE.getGraph();
+
+  auto *batch = G.createVariable(ElemKind::FloatTy, {1, 2, 3}, "batch");
+  auto *filter = G.createVariable(ElemKind::FloatTy, {3, 2}, "filter");
+  auto *result = G.createVariable(ElemKind::FloatTy, {1, 2, 2}, "result");
+  batch->getPayload().getHandle() = {1, 2, 3, 4, 5, 6};
+  filter->getPayload().getHandle() = {7, 8, 9, 10, 11, 12};
+
+  auto R = G.createBatchedMatMulNode("MM", batch, filter);
+
+  G.createSave("save", R, result);
+
+  EE.compile(CompilationMode::Infer);
+
+  EE.run({}, {});
+
+  auto H = result->getPayload().getHandle();
+  EXPECT_NEAR(H.at({0, 0, 0}), 58, 0.001);
+  EXPECT_NEAR(H.at({0, 0, 1}), 64, 0.001);
+  EXPECT_NEAR(H.at({0, 1, 0}), 139, 0.001);
+  EXPECT_NEAR(H.at({0, 1, 1}), 154, 0.001);
+}

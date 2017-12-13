@@ -332,6 +332,28 @@ ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, NodeValue LHS,
   return addNode(new ArithmeticNode(name, op, LHS, RHS));
 }
 
+BatchedMatMulNode *Graph::createBatchedMatMulNode(llvm::StringRef name,
+                                                  NodeValue batch,
+                                                  NodeValue filter) {
+  auto BT = batch.getType();
+  auto FT = filter.getType();
+
+  assert(BT->dims().size() == 3);
+  assert(FT->dims().size() == 2);
+
+  size_t a1 = BT->dims()[1];
+  size_t a2 = BT->dims()[2];
+  size_t b1 = FT->dims()[0];
+  size_t b2 = FT->dims()[1];
+  assert(a2 == b1 && "Column of A is not equal to the row of A.");
+  (void)a1;
+  (void)a2;
+  (void)b1;
+  (void)b2;
+  auto RT = Type(BT->getElementType(), {BT->dims()[0], a1, b2});
+  return addNode(new BatchedMatMulNode(name, uniqueType(RT), batch, filter));
+}
+
 SaveNode *Graph::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest =
       createVariable(input.getType(), name, Variable::InitKind::Extern);

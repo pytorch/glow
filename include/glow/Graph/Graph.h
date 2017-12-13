@@ -137,6 +137,9 @@ public:
   ArithmeticNode *createArithmetic(llvm::StringRef name, NodeValue LHS,
                                    NodeValue RHS, ArithmeticNode::Mode op);
 
+  BatchedMatMulNode *createBatchedMatMulNode(llvm::StringRef name,
+                                             NodeValue batch, NodeValue filter);
+
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
   SaveNode *createSave(llvm::StringRef name, NodeValue input, Variable *output);
 

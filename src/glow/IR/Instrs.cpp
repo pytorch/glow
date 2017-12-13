@@ -136,6 +136,33 @@ void FullyConnectedInst::verify() const {
   (void)expB;
 }
 
+void BatchedMatMulInst::verify() const {
+  Value *dest = getDest();
+  Value *batch = getBatch();
+  Value *filter = getFilter();
+  (void)dest;
+  (void)batch;
+  (void)filter;
+  assert(batch->dims().size() == 3 && "Invalid A shape");
+  assert(filter->dims().size() == 2 && "Invalid B shape");
+  assert(dest->dims()[0] == batch->dims()[0] && "Mismatch batch size");
+
+  size_t a1 = batch->dims()[1];
+  size_t a2 = batch->dims()[2];
+  size_t b1 = filter->dims()[0];
+  size_t b2 = filter->dims()[1];
+  size_t c1 = dest->dims()[1];
+  size_t c2 = dest->dims()[2];
+  assert(a2 == b1 && "Column of A is not equal to the row of A.");
+  assert(c1 == a1 && c2 == b2 && "Invalid size of output matrix");
+  (void)a1;
+  (void)a2;
+  (void)b1;
+  (void)b2;
+  (void)c1;
+  (void)c2;
+}
+
 void ReluInst::verify() const { checkSameType(getOperand(0), getOperand(1)); }
 void SigmoidInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
