@@ -22,7 +22,7 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
 
   // Extra class members:
   for (const auto &op : members_) {
-    os << ", " << getStorageTypename(op.first) << " " << op.second;
+    os << ", " << getStorageTypename(op.first, op.second) << " " << op.second;
   }
 
   // Initialize the base clases:
@@ -56,7 +56,7 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &os) const {
 
   // Extra class members:
   for (const auto &op : members_) {
-    os << ", " << getStorageTypename(op.first) << " " << op.second;
+    os << ", " << getStorageTypename(op.first, op.second) << " " << op.second;
   }
 
   // Initialize the base clases:
@@ -94,7 +94,8 @@ void InstrBuilder::emitInplaceMethod(std::ostream &os) const {
 void InstrBuilder::emitClassMembers(std::ostream &os) const {
   // Emit class members:
   for (const auto &op : members_) {
-    os << "\t" << getStorageTypename(op.first) << " " << op.second << "_;\n";
+    os << "\t" << getStorageTypename(op.first, op.second) << " " << op.second
+       << "_;\n";
   }
   os << "\n";
 }
@@ -109,7 +110,7 @@ void InstrBuilder::emitOperandGetter(std::ostream &os, const std::string &name,
 void InstrBuilder::emitMemberGetter(std::ostream &os, MemberType type,
                                     const std::string &name) const {
   // Synthesize the general getter.
-  auto returnTypeStr = getReturnTypename(type);
+  auto returnTypeStr = getReturnTypename(type, name);
   os << "\t" << returnTypeStr << " get" << name << "() const { return " << name
      << "_; }\n";
 }
@@ -147,7 +148,7 @@ void InstrBuilder::emitPrettyPrinter(std::ostream &os) const {
          << "get" << mem.second << "());\n";
       first = false;
     }
-    os << "\tos << \"}\";\n";
+    os << "\tos << \" }\";\n";
   }
   os << "\n}\n";
 }
