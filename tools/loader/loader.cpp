@@ -75,19 +75,30 @@ llvm::cl::list<std::string>
 llvm::cl::OptionCategory ModelInputCat("How to input the models",
                                        "These control the caffe2 model paths");
 llvm::cl::opt<std::string>
-    NetDescFilename("n", llvm::cl::desc("Specify the network structure file"),
+    NetDescFilename("network",
+                    llvm::cl::desc("Specify the network structure file"),
                     llvm::cl::value_desc("netDescFilename"),
                     llvm::cl::cat(ModelInputCat), llvm::cl::Optional);
+llvm::cl::alias NetDescFileNameA("n", llvm::cl::desc("Alias for -network"),
+                                 llvm::cl::aliasopt(NetDescFilename),
+                                 llvm::cl::cat(ModelInputCat));
 llvm::cl::opt<std::string>
-    NetWeightFilename("w", llvm::cl::desc("Specify the network weight file"),
+    NetWeightFilename("weight",
+                      llvm::cl::desc("Specify the network weight file"),
                       llvm::cl::value_desc("netWeightFilename"),
                       llvm::cl::cat(ModelInputCat), llvm::cl::Optional);
+llvm::cl::alias NetWeightFileNameA("w", llvm::cl::desc("Alias for -weight"),
+                                   llvm::cl::aliasopt(NetWeightFilename),
+                                   llvm::cl::cat(ModelInputCat));
 llvm::cl::opt<std::string> NetDirectory(
-    "d",
+    "directory",
     llvm::cl::desc("Specify the directory with the network structure "
                    "<init_net.pb> and weight <predict_net.pb> files"),
     llvm::cl::value_desc("netDirectory"), llvm::cl::cat(ModelInputCat),
     llvm::cl::Optional);
+llvm::cl::alias NetDirectoryA("d", llvm::cl::desc("Alias for -directory"),
+                              llvm::cl::aliasopt(NetDirectory),
+                              llvm::cl::cat(ModelInputCat));
 
 llvm::cl::opt<ImageNormalizationMode> ImageMode(
     "image_mode", llvm::cl::desc("Specify the image mode:"), llvm::cl::Required,
@@ -97,6 +108,8 @@ llvm::cl::opt<ImageNormalizationMode> ImageMode(
                                 "Values are in the range: 0 and 256"),
                      clEnumValN(ImageNormalizationMode::k128to127, "128to127",
                                 "Values are in the range: -128 .. 127")));
+llvm::cl::alias ImageModeA("i", llvm::cl::desc("Alias for -image_mode"),
+                           llvm::cl::aliasopt(ImageMode));
 
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(
