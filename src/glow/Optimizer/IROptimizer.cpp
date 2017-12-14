@@ -6,12 +6,18 @@
 #include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <iostream>
 #include <unordered_map>
 #include <unordered_set>
+
+static llvm::cl::opt<bool>
+    instrumentDebug("instrument-debug",
+                    llvm::cl::desc("Instrument the IR for debugging"),
+                    llvm::cl::init(false), llvm::cl::Hidden);
 
 using namespace glow;
 
@@ -862,6 +868,43 @@ static void eliminateDeadStores(Module &M) {
   }
 }
 
+/// Instrument the code to make it easier to debug issues.
+/// Add dumping of inputs before each instruction and
+/// dumping of outputs after each instruction.
+/// For each input/output tensor its name and its value are dumped.
+static void performDebugInstrumentation(Module &M) {
+  if (!instrumentDebug)
+    return;
+
+  auto &instrs = M.getInstrs();
+  for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
+    auto next = std::next(it);
+    if (isa<DebugPrintInst>(*it) || isa<AllocActivationInst>(*it) ||
+        isa<DeallocActivationInst>(*it)) {
+      it = next;
+      continue;
+    }
+    for (auto const &Op : (*it)->getOperands()) {
+      // Dump inputs of the current instruction before the instruction.
+      if (Op.second != OperandKind::Out) {
+        std::string name = "print_input_";
+        name += Op.first->getName();
+        auto *dumpInstr = new DebugPrintInst(&M, name, Op.first);
+        M.insertInstruction(it, dumpInstr);
+      }
+
+      // Dump outputs of the current instruction after the instruction.
+      if (Op.second != OperandKind::In) {
+        std::string name = "print_output_";
+        name += Op.first->getName();
+        auto *dumpInstr = new DebugPrintInst(&M, name, Op.first);
+        M.insertInstruction(next, dumpInstr);
+      }
+    }
+    it = next;
+  }
+}
+
 void glow::optimize(Module &M, CompilationMode mode) {
   M.verify();
 
@@ -891,6 +934,9 @@ void glow::optimize(Module &M, CompilationMode mode) {
   eliminateDeadStores(M);
 
   deleteDeadAllocs(M);
+
+  // Perform a debug instrumentation if required.
+  performDebugInstrumentation(M);
 
   M.verify();
 }
