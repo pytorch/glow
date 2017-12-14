@@ -157,7 +157,10 @@ public:
   void dump() const;
 
   /// Dump a dotty graph that depicts the module.
-  void dumpDAG(const char *dotFilename = nullptr);
+  void dumpDAG();
+
+  /// Dump a dotty graph that depicts the module.
+  void dumpDAG(const char *dotFilename);
 
   /// \returns the list of nodes that the graph owns.
   NodesList &getNodes() { return nodes_; }

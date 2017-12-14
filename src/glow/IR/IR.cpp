@@ -497,11 +497,14 @@ static const char *getDottyArrowForCC(OperandKind k) {
   llvm_unreachable("Invalid operand kind.");
 }
 
+void Module::dumpDAG() {
+  std::string filename = "dotty_ir_dump_" + std::to_string(this) + ".dot";
+  dumpDAG(filename.c_str());
+}
+
 /// Dump a dotty graph that depicts the module.
 void Module::dumpDAG(const char *dotFilename) {
-  std::string filename = !dotFilename
-                             ? "dotty_ir_dump_" + std::to_string(this) + ".dot"
-                             : dotFilename;
+  std::string filename = dotFilename;
   llvm::outs() << "Writing dotty graph to: " << filename << '\n';
 
   std::ofstream os;
