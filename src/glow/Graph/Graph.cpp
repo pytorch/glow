@@ -332,9 +332,9 @@ ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, NodeValue LHS,
   return addNode(new ArithmeticNode(name, op, LHS, RHS));
 }
 
-BatchedMatMulNode *Graph::createBatchedMatMulNode(llvm::StringRef name,
-                                                  NodeValue batch,
-                                                  NodeValue filter) {
+BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,
+                                              NodeValue batch,
+                                              NodeValue filter) {
   auto BT = batch.getType();
   auto FT = filter.getType();
 
@@ -352,6 +352,21 @@ BatchedMatMulNode *Graph::createBatchedMatMulNode(llvm::StringRef name,
   (void)b2;
   auto RT = Type(BT->getElementType(), {BT->dims()[0], a1, b2});
   return addNode(new BatchedMatMulNode(name, uniqueType(RT), batch, filter));
+}
+
+BatchedReduceNode *Graph::createBatchedReduce(llvm::StringRef name,
+                                              BatchedReduceNode::Mode mode,
+                                              NodeValue batch) {
+  auto BT = batch.getType();
+  auto RT = Type(BT->getElementType(), BT->dims().drop_front());
+  return addNode(new BatchedReduceNode(name, uniqueType(RT), mode, batch));
+}
+
+BatchedArithmeticNode *
+Graph::createBatchedArithmetic(llvm::StringRef name,
+                               BatchedArithmeticNode::Mode mode,
+                               NodeValue batch, NodeValue sample) {
+  return addNode(new BatchedArithmeticNode(name, mode, batch, sample));
 }
 
 SaveNode *Graph::createSave(llvm::StringRef name, NodeValue input) {

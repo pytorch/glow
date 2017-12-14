@@ -118,6 +118,14 @@ int main(int argc, char **argv) {
       .addResult("LHS.getType()")
       .addGradient();
 
+  BB.newNode("BatchedArithmetic")
+      .addInput("Batch")
+      .addInput("Slice")
+      .addEnumCase("Add")
+      .addResult("Batch.getType()")
+      .setDocstring(
+          "Adds the 'Slice' operand to each one of the slices in the batch.");
+
   BB.newNode("BatchedMatMul")
       .addInput("Batch")
       .addInput("Filter")
@@ -130,6 +138,15 @@ int main(int argc, char **argv) {
                     "result is a tensor that has the same batch size as the "
                     "Batch parameter, and the second and third dimensions are "
                     "the size of the multiplied matrix.");
+
+  BB.newNode("BatchedReduce")
+      .addInput("Batch")
+      .addEnumCase("Add")
+      .addExtraParam("TypeRef", "outTy")
+      .addResult("outTy")
+      .setDocstring("Accumulates all of the layers in the batch and produce a "
+                    "tensor that has the same dimensions as the input tensor "
+                    "without the first dimension.");
 
   //===--------------------------------------------------------------------===//
   //                Non-linearities

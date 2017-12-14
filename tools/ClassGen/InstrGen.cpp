@@ -145,6 +145,19 @@ int main(int argc, char **argv) {
       .addOperand("Batch", OperandKind::In)
       .addOperand("Filter", OperandKind::In);
 
+  /// Accumulates all of the layers in the batch and produce a tensor that has
+  /// the same dimensions as the input tensor without the first dimension.
+  BB.newInstr("BatchedReduceAdd")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Batch", OperandKind::In);
+
+  /// Adds the 'Slice' operand to each one of the slices in the batch.
+  BB.newInstr("BatchedAdd")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Batch", OperandKind::In)
+      .addOperand("Slice", OperandKind::In)
+      .inplaceOperand({"Dest", "Batch"});
+
   BB.newInstr("ElementAdd")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
