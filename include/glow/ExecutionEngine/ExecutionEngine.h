@@ -41,7 +41,7 @@ public:
   /// \returns the internal module.
   Module &getModule() { return *M_; }
 
-  /// \returns the internal module.
+  /// \returns the internal graph.
   Graph &getGraph() { return *G_; }
 
   /// Optimize the graph, generate IR, and optimize the IR.
