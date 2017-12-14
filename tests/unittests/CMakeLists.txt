@@ -52,6 +52,18 @@ target_link_libraries(interpreterTest
                         gtest_main)
 add_test(interpreterTest ${GLOW_BINARY_DIR}/tests/interpreterTest)
 
+add_executable(operatorTest
+               OperatorTest.cpp)
+target_link_libraries(operatorTest
+                      PRIVATE
+                        Backends
+                        IR
+                        ExecutionEngine
+                        gtest
+                        gtest_main)
+add_test(operatorTest ${GLOW_BINARY_DIR}/tests/operatorTest)
+
+
 add_executable(graphTest
                graphTest.cpp)
 target_link_libraries(graphTest
