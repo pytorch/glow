@@ -233,6 +233,9 @@ public:
   void dump();
 
   /// Dump a dotty graph that depicts the module.
+  void dumpDAG(const char *dotFilename);
+
+  /// Dump a dotty graph that depicts the module.
   void dumpDAG();
 
   /// \returns the variable map.

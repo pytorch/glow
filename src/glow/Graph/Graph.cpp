@@ -442,10 +442,13 @@ public:
   }
 };
 
+void Graph::dumpDAG() {
+  std::string filename = "dotty_graph_dump_" + std::to_string(this) + ".dot";
+  dumpDAG(filename.c_str());
+}
+
 void Graph::dumpDAG(const char *dotFilename) {
-  std::string filename =
-      !dotFilename ? "dotty_graph_dump_" + std::to_string(this) + ".dot"
-                   : dotFilename;
+  std::string filename = dotFilename;
   llvm::outs() << "Writing dotty graph to: " << filename << '\n';
 
   std::ofstream myfile;
