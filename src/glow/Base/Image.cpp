@@ -190,11 +190,11 @@ bool glow::writePngImage(Tensor *T, const char *filename,
 #else
 bool glow::readPngImage(Tensor *T, const char *filename,
                         std::pair<float, float> range) {
-  assert(false && "Not configured with libpng");
+  GLOW_ASSERT(false && "Not configured with libpng");
 }
 
 bool glow::writePngImage(Tensor *T, const char *filename,
                          std::pair<float, float> range) {
-  assert(false && "Not configured with libpng");
+  GLOW_ASSERT(false && "Not configured with libpng");
 }
 #endif
