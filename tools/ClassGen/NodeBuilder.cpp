@@ -33,7 +33,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
 
   // Extra class members:
   for (const auto &op : members_) {
-    os << ", " << getStorageTypename(op.first) << " " << op.second;
+    os << ", " << getStorageTypename(op.first, op.second) << " " << op.second;
   }
 
   // Initialize the base clases:
@@ -82,7 +82,8 @@ void NodeBuilder::emitClassMembers(std::ostream &os) const {
     os << "\tNodeValue " << op << "_;\n";
   }
   for (const auto &op : members_) {
-    os << "\t" << getStorageTypename(op.first) << " " << op.second << "_;\n";
+    os << "\t" << getStorageTypename(op.first, op.second) << " " << op.second
+       << "_;\n";
   }
   os << "\n";
 }
@@ -90,7 +91,7 @@ void NodeBuilder::emitClassMembers(std::ostream &os) const {
 void NodeBuilder::emitMemberGetter(std::ostream &os, MemberType type,
                                    const std::string &name) const {
   // Synthesize the general getter.
-  auto returnTypeStr = getReturnTypename(type);
+  auto returnTypeStr = getReturnTypename(type, name);
   os << "\t" << returnTypeStr << " get" << name << "() const { return " << name
      << "_; }\n";
 }

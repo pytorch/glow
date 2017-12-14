@@ -237,5 +237,13 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "Momentum")
       .addMember(MemberType::Unsigned, "BatchSize");
 
+  //===--------------------------------------------------------------------===//
+  //             Instructions used for debugging/profiling/printing
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("DebugAction")
+      .addOperand("Src", OperandKind::In)
+      .addMember("DebugActionType", "Action");
+
   return 0;
 }

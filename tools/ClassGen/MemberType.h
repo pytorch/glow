@@ -14,32 +14,54 @@ enum class MemberType : unsigned {
   VectorUnsigned,
   VectorSizeT,
   VectorNodeValue,
+  CustomType,
 };
 
-inline const char *getReturnTypename(MemberType type) {
-  const char *returnTypes[] = {"TypeRef",
-                               "float",
-                               "unsigned",
-                               "size_t",
-                               "llvm::ArrayRef<float>",
-                               "llvm::ArrayRef<unsigned>",
-                               "llvm::ArrayRef<size_t>",
-                               "llvm::ArrayRef<NodeValue>",
-                               nullptr};
-  return returnTypes[(int)type];
-}
+/// A helper type for handling members with custom types.
+class MemberTypeProvider {
+  /// A mapping of members names to their custom types.
+  mutable std::unordered_map<std::string, std::string> customTypeMembersTypes_;
 
-inline const char *getStorageTypename(MemberType type) {
-  const char *storageTypes[] = {"TypeRef",
-                                "float",
-                                "unsigned",
-                                "size_t",
-                                "std::vector<float>",
-                                "std::vector<unsigned>",
-                                "std::vector<size_t>",
-                                "std::vector<NodeValue>",
-                                nullptr};
-  return storageTypes[(int)type];
-}
+public:
+  virtual void addCustomTypeMember(const std::string &typeName,
+                                   const std::string &name) {
+    customTypeMembersTypes_.emplace(name, typeName);
+  }
 
+  inline const char *getReturnTypename(MemberType type,
+                                       const std::string &name) const {
+    static const char *returnTypes[] = {"TypeRef",
+                                        "float",
+                                        "unsigned",
+                                        "size_t",
+                                        "llvm::ArrayRef<float>",
+                                        "llvm::ArrayRef<unsigned>",
+                                        "llvm::ArrayRef<size_t>",
+                                        "llvm::ArrayRef<NodeValue>",
+                                        "CustomType",
+                                        nullptr};
+    if (type != MemberType::CustomType)
+      return returnTypes[(int)type];
+    auto const &found = customTypeMembersTypes_.at(name);
+    return found.c_str();
+  }
+
+  inline const char *getStorageTypename(MemberType type,
+                                        const std::string &name) const {
+    static const char *storageTypes[] = {"TypeRef",
+                                         "float",
+                                         "unsigned",
+                                         "size_t",
+                                         "std::vector<float>",
+                                         "std::vector<unsigned>",
+                                         "std::vector<size_t>",
+                                         "std::vector<NodeValue>",
+                                         "CustomType",
+                                         nullptr};
+    if (type != MemberType::CustomType)
+      return storageTypes[(int)type];
+    auto const &found = customTypeMembersTypes_.at(name);
+    return found.c_str();
+  }
+};
 #endif // GLOW_TOOLS_CLASSGEN_MEMBERTYPE_H

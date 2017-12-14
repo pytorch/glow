@@ -35,7 +35,7 @@ inline const char *getOperandKindStr(OperandKind CC) {
   return names[(int)CC];
 }
 
-class InstrBuilder {
+class InstrBuilder : MemberTypeProvider {
   /// The type-initialization expression.
   std::string ty_{"nullptr"};
   /// The instruction name.
@@ -92,6 +92,13 @@ public:
   /// For example: "Filter".
   InstrBuilder &addMember(const MemberType type, const std::string &name) {
     members_.push_back({type, name});
+    return *this;
+  }
+
+  InstrBuilder &addMember(const std::string &typeName,
+                          const std::string &name) {
+    members_.push_back({MemberType::CustomType, name});
+    addCustomTypeMember(typeName, name);
     return *this;
   }
 

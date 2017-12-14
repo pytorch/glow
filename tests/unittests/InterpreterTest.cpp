@@ -44,6 +44,14 @@ TEST(Interpreter, interpret) {
   G.createSave("ret", SM);
 
   EE.compile(CompilationMode::Infer);
+
+  /// Add a debug_action instruction to check that it can be
+  /// processed by the interpreter.
+  auto &M = EE.getModule();
+  IRBuilder builder(&M);
+  builder.createDebugActionInst("print1", *M.getWeights().begin(),
+                                glow::DebugActionType::Print);
+
   EE.run({input}, {&inputs});
 }
 

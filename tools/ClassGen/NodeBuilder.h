@@ -16,7 +16,7 @@
 
 class Builder;
 
-class NodeBuilder {
+class NodeBuilder : MemberTypeProvider {
   /// The node name.
   std::string name_;
   /// The node operands.

@@ -568,3 +568,14 @@ void Module::dumpDAG(const char *dotFilename) {
   os << "}";
   os.close();
 }
+
+std::string std::to_string(glow::DebugActionType action) {
+  switch (action) {
+  case glow::DebugActionType::Debug:
+    return "debug";
+  case glow::DebugActionType::Print:
+    return "print";
+  case glow::DebugActionType::Profile:
+    return "profile";
+  }
+}

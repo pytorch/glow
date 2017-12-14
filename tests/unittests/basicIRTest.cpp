@@ -119,6 +119,7 @@ TEST(IR, allInstrs) {
     builder.createBatchNormalizationInst("", I1, I0, S0, S0, S0, S0, 3, 0.01,
                                          0.9);
     builder.createElementMulInst("", I1, I0, I0);
+    builder.createDebugActionInst("", I0, glow::DebugActionType::Print);
   }
   M.verify();
 }
