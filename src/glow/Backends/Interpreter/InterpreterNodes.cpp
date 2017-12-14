@@ -6,6 +6,7 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
 
@@ -1108,4 +1109,17 @@ void Interpreter::fwdAllocActivationInst(bool isTrain,
 void Interpreter::fwdDeallocActivationInst(bool isTrain,
                                            const DeallocActivationInst *I) {
   deleteTensor(I->getOperand(0).first);
+}
+
+/// Prints a value of the instruction's operand.
+/// In most cases it will be the name of the variable and the value of the
+/// tensor.
+void Interpreter::fwdDebugPrintInst(bool isTrain, const DebugPrintInst *I) {
+  auto *V = I->getSrc();
+  // Dump the content of a value.
+  V->dump();
+  llvm::outs() << "\n";
+  auto WH = getWeightHandle(V);
+  WH.dump();
+  llvm::outs() << "\n";
 }

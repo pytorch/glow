@@ -298,4 +298,5 @@ NOVERIFY(SigmoidGradInst)
 NOVERIFY(ElementAddGradInst)
 NOVERIFY(ElementMulGradInst)
 NOVERIFY(ElementSubGradInst)
+NOVERIFY(DebugPrintInst)
 #undef NOVERIFY
