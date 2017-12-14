@@ -3,6 +3,7 @@
 #include "glow/Base/Image.h"
 #include "glow/Base/Tensor.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/IR/IR.h"
 #include "glow/Importer/Caffe2.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Timer.h"
@@ -102,6 +103,29 @@ llvm::cl::alias NetDirectoryA("d", llvm::cl::desc("Alias for -directory"),
                               llvm::cl::aliasopt(NetDirectory),
                               llvm::cl::cat(ModelInputCat));
 
+llvm::cl::OptionCategory
+    ModelExportCat("How to export the Glow Intermediate Representation/Graphs",
+                   "These options are for debugging the "
+                   "graphs by writing the IR/Graphs to "
+                   "given files/stdout");
+
+llvm::cl::opt<std::string> DumpGraphDAGFile(
+    "dumpGraphDAG",
+    llvm::cl::desc("Specify the file to export the Graph in DOT format"),
+    llvm::cl::value_desc("file.dot"), llvm::cl::cat(ModelExportCat));
+
+llvm::cl::opt<bool> DumpGraph("dumpGraph",
+                              llvm::cl::desc("Prints Graph to stdout"),
+                              llvm::cl::cat(ModelExportCat));
+
+llvm::cl::opt<std::string> DumpIRDAGFile(
+    "dumpIRDAG",
+    llvm::cl::desc("Specify the file to export the IR in DOT format"),
+    llvm::cl::value_desc("file.dot"), llvm::cl::cat(ModelExportCat));
+
+llvm::cl::opt<bool> DumpIR("dumpIR", llvm::cl::desc("Prints IR to stdout"),
+                           llvm::cl::cat(ModelExportCat));
+
 llvm::cl::opt<ImageNormalizationMode> ImageMode(
     "image_mode", llvm::cl::desc("Specify the image mode:"), llvm::cl::Required,
     llvm::cl::values(clEnumValN(ImageNormalizationMode::k0to1, "0to1",
@@ -158,6 +182,22 @@ int main(int argc, char **argv) {
       SM = LD.getRoot();
       i0 = llvm::cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
       i1 = llvm::cast<Variable>(LD.getOrCreateNodeByName("data"));
+    }
+
+    auto &G = EE.getGraph();
+    auto &M = EE.getModule();
+
+    if (DumpGraph) {
+      G.dump();
+    }
+    if (!DumpGraphDAGFile.empty()) {
+      G.dumpDAG(DumpGraphDAGFile.c_str());
+    }
+    if (DumpIR) {
+      M.dump();
+    }
+    if (!DumpIRDAGFile.empty()) {
+      M.dumpDAG(DumpIRDAGFile.c_str());
     }
 
     llvm::Timer timer("Infer", "Infer");
