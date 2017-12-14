@@ -1047,6 +1047,45 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
   } // N
 }
 
+void Interpreter::fwdBatchedAddInst(bool isTrain,
+                                    const glow::BatchedAddInst *I) {
+  auto batch = getWeightHandle(I->getBatch());
+  auto slice = getWeightHandle(I->getSlice());
+  auto dest = getWeightHandle(I->getDest());
+
+  auto bdim = flattenCdr(batch.dims());
+  assert(slice.size() == bdim.second && "Invalid slice size");
+  assert(batch.dims().drop_front() == slice.dims() && "Invalid batch size");
+
+  // For each layer in the batch:
+  for (size_t n = 0; n < bdim.first; n++) {
+    size_t base = batch.getElementPtr({n});
+
+    // For each element in the slice.
+    for (size_t i = 0; i < bdim.second; i++) {
+      dest.raw(base + i) = batch.raw(base + i) + slice.raw(i);
+    }
+  }
+}
+
+void Interpreter::fwdBatchedReduceAddInst(bool isTrain,
+                                          const glow::BatchedReduceAddInst *I) {
+  auto batch = getWeightHandle(I->getBatch());
+  auto dest = getWeightHandle(I->getDest());
+
+  auto bdim = flattenCdr(batch.dims());
+
+  // For each layer in the batch:
+  for (size_t n = 0; n < bdim.first; n++) {
+    size_t base = batch.getElementPtr({n});
+
+    // For each element in the slice.
+    for (size_t i = 0; i < bdim.second; i++) {
+      dest.raw(i) += batch.raw(base + i);
+    }
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                       Training Instructions
 //===----------------------------------------------------------------------===//

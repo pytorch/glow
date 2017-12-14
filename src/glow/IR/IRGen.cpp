@@ -210,6 +210,43 @@ public:
       registerIR(N, dest);
       break;
     }
+
+    case glow::Kinded::Kind::BatchedReduceNodeKind: {
+      auto *BR = cast<BatchedReduceNode>(N);
+      auto *batch = valueForNode(BR->getBatch());
+      auto *dest = builder_.createAllocActivationInst(
+          "br.res", BR->getResult().getType());
+
+      switch (BR->getMode()) {
+      case BatchedReduceNode::Mode::Add: {
+        builder_.createBatchedReduceAddInst(N->getName(), dest, batch);
+        break;
+      }
+      }
+
+      registerIR(N, dest);
+      break;
+    }
+
+    case glow::Kinded::Kind::BatchedArithmeticNodeKind: {
+      auto *BA = cast<BatchedArithmeticNode>(N);
+      auto *batch = valueForNode(BA->getBatch());
+      auto *sample = valueForNode(BA->getSlice());
+
+      auto *dest = builder_.createAllocActivationInst(
+          "br.res", BA->getResult().getType());
+
+      switch (BA->getMode()) {
+      case BatchedArithmeticNode::Mode::Add: {
+        builder_.createBatchedAddInst(N->getName(), dest, batch, sample);
+        break;
+      }
+      }
+
+      registerIR(N, dest);
+      break;
+    }
+
     case glow::Kinded::Kind::ReluNodeKind: {
       auto *R = cast<ReluNode>(N);
       auto *V = builder_.createRELUOp(valueForNode(R->getInput()));

@@ -257,6 +257,20 @@ void ElementSubInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
   checkSameType(getOperand(0), getOperand(2));
 }
+
+void BatchedAddInst::verify() const {
+  auto batchShape = getBatch()->dims();
+  auto rhsShape = getSlice()->dims();
+  assert(batchShape.drop_front() == rhsShape && "Invalid shape");
+  assert(getBatch()->dims() == getDest()->dims() && "Invalid dest type");
+  (void)batchShape;
+  (void)rhsShape;
+}
+
+void BatchedReduceAddInst::verify() const {
+  assert(getBatch()->dims().size() > 1 && "Invalid shape");
+}
+
 void AllocActivationInst::verify() const {
   unsigned numDealloc = 0;
   for (const Use &U : getUsers()) {
