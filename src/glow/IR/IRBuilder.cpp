@@ -208,6 +208,14 @@ ElementMulInst *IRBuilder::createElementMulOp(Value *LHS, Value *RHS) {
   return createElementMulInst("mul", res, LHS, RHS);
 }
 
+ElementDivInst *IRBuilder::createElementDivOp(Value *LHS, Value *RHS) {
+  assert(LHS->dims() == RHS->dims() &&
+         "Input and Output dimensions are different");
+
+  auto *res = createAllocActivationInst("div.res", LHS->getType());
+  return createElementDivInst("div", res, LHS, RHS);
+}
+
 Value *IRBuilder::createReturnOp(Value *input) {
   auto *W = createWeightVar(input->getType(), "result",
                             WeightVar::MutabilityKind::Mutable);

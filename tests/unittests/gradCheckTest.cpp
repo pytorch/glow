@@ -10,8 +10,6 @@
 
 #include "gtest/gtest.h"
 
-#include <iostream>
-
 using namespace glow;
 
 /// Compute the regression loss for the tensor \p X with regard to Y.
@@ -246,12 +244,16 @@ TEST(Network, gradientCheck_Arithmetic) {
                              Variable::InitKind::Extern, 0.1);
   auto *D = G.createVariable(ElemKind::FloatTy, {1, numDim}, "D",
                              Variable::InitKind::Extern, 0.1);
+  auto *E = G.createVariable(ElemKind::FloatTy, {1, numDim}, "E",
+                             Variable::InitKind::Broadcast, 0.1);
+
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
                                Variable::InitKind::Extern);
 
   Node *O = G.createArithmetic("mul", A, B, ArithmeticNode::Mode::Mul);
   O = G.createArithmetic("add", O, C, ArithmeticNode::Mode::Add);
   O = G.createArithmetic("sub", D, O, ArithmeticNode::Mode::Sub);
+  O = G.createArithmetic("div", O, E, ArithmeticNode::Mode::Div);
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createSave("ret", O);
 

@@ -28,7 +28,7 @@ struct IRGenVisitor : NodeWalker {
   using NodeToInstrTy = std::unordered_map<Node *, Instruction *>;
 
   /// A set of visited nodes.
-  std::unordered_set<Node *> visited;
+  std::unordered_set<Node *> visited_;
   /// Holds the mapping between graph nodes to the destination buffers.
   NodeValueToDestTy generatedNodeDest_;
   /// Holds the mapping between graph nodes and the lowered instructions. This
@@ -45,7 +45,7 @@ struct IRGenVisitor : NodeWalker {
 public:
   bool shouldVisit(Node *parent, Node *N) override {
     // Don't revisit nodes that we've already processed.
-    return !visited.count(N);
+    return !visited_.count(N);
   }
 
   explicit IRGenVisitor(Module *M) : M_(M), builder_(M_) {}
@@ -75,10 +75,10 @@ public:
   }
 
   void post(Node *parent, Node *N) override {
-    visited.insert(N);
+    visited_.insert(N);
     switch (N->getKind()) {
     default:
-      // Unkniwn node kind.
+      // Unknown node kind.
       llvm_unreachable("Unhandled node kind");
       break;
     case glow::Kinded::Kind::ConvolutionNodeKind: {
@@ -509,23 +509,27 @@ public:
       auto *L = valueForNode(AR->getLHS());
       auto *R = valueForNode(AR->getRHS());
 
-      Instruction *V = nullptr;
+      Instruction *instruction = nullptr;
       switch (AR->getMode()) {
       case glow::ArithmeticNode::Mode::Add: {
-        V = builder_.createElementAddOp(L, R);
+        instruction = builder_.createElementAddOp(L, R);
         break;
       }
       case glow::ArithmeticNode::Mode::Mul: {
-        V = builder_.createElementMulOp(L, R);
+        instruction = builder_.createElementMulOp(L, R);
         break;
       }
       case glow::ArithmeticNode::Mode::Sub: {
-        V = builder_.createElementSubOp(L, R);
+        instruction = builder_.createElementSubOp(L, R);
+        break;
+      }
+      case glow::ArithmeticNode::Mode::Div: {
+        instruction = builder_.createElementDivOp(L, R);
         break;
       }
       }
-      V->setName(N->getName());
-      registerIR(N, V->getOperand(0).first);
+      instruction->setName(N->getName());
+      registerIR(N, instruction->getOperand(0).first);
       break;
     }
     case glow::Kinded::Kind::ArithmeticGradNodeKind: {
@@ -547,6 +551,10 @@ public:
         break;
       }
       case ArithmeticGradNode::Mode::Sub: {
+        builder_.createElementSubGradInst(N->getName(), outG, LG, RG);
+        break;
+      }
+      case ArithmeticGradNode::Mode::Div: {
         builder_.createElementSubGradInst(N->getName(), outG, LG, RG);
         break;
       }

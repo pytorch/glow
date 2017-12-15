@@ -1010,6 +1010,15 @@ void Interpreter::fwdElementMulInst(bool isTrain, const ElementMulInst *I) {
   }
 }
 
+void Interpreter::fwdElementDivInst(bool isTrain, const ElementDivInst *I) {
+  auto outW = getWeightHandle(I->getDest());
+  auto LHSW = getWeightHandle(I->getLHS());
+  auto RHSW = getWeightHandle(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = LHSW.raw(i) / RHSW.raw(i);
+  }
+}
+
 void Interpreter::fwdElementAddGradInst(bool isTrain,
                                         const ElementAddGradInst *I) {
   auto outG = getWeightHandle(I->getDestGrad());
@@ -1042,6 +1051,19 @@ void Interpreter::fwdElementMulGradInst(bool isTrain,
   for (size_t i = 0, e = outG.size(); i < e; i++) {
     LHSG.raw(i) = RHSW.raw(i) * outG.raw(i);
     RHSG.raw(i) = LHSW.raw(i) * outG.raw(i);
+  }
+}
+
+void Interpreter::fwdElementDivGradInst(bool isTrain,
+                                        const ElementDivGradInst *I) {
+  auto LHSW = getWeightHandle(I->getLHS());
+  auto RHSW = getWeightHandle(I->getRHS());
+  auto outG = getWeightHandle(I->getDestGrad());
+  auto LHSG = getWeightHandle(I->getLHSGrad());
+  auto RHSG = getWeightHandle(I->getRHSGrad());
+  for (size_t i = 0, e = outG.size(); i < e; i++) {
+    LHSG.raw(i) = outG.raw(i) / RHSW.raw(i);
+    RHSG.raw(i) = -outG.raw(i) * LHSW.raw(i) / (RHSW.raw(i) * RHSW.raw(i));
   }
 }
 

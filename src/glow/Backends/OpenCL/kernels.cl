@@ -79,10 +79,21 @@ __kernel void elementmulK(__global float *dest, __global float *LHS,
   size_t i = get_global_id(0);
   dest[i] = LHS[i] * RHS[i];
 }
-__kernel void elementmulW(__global void *mem, size_t dest, size_t LHS,
 
+__kernel void elementmulW(__global void *mem, size_t dest, size_t LHS,
                           size_t RHS) {
   elementmulK(&mem[dest], &mem[LHS], &mem[RHS]);
+}
+
+__kernel void elementdivK(__global float *dest, __global float *LHS,
+                          __global float *RHS) {
+  size_t i = get_global_id(0);
+  dest[i] = LHS[i] / RHS[i];
+}
+
+__kernel void elementdivW(__global void *mem, size_t dest, size_t LHS,
+                          size_t RHS) {
+  elementdivK(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
 __kernel void fullyconnectedK(__global float *dest, __global float *src,

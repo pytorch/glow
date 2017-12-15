@@ -241,18 +241,22 @@ void BatchNormalizationInst::verify() const {
   assert(getOperand(4).first->getType()->dims() == exp && "Invalid mean dim");
   assert(getOperand(5).first->getType()->dims() == exp && "Invalid var dim");
 }
+
 void LocalResponseNormalizationInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
   checkSameType(getOperand(0), getOperand(2));
 }
+
 void ElementAddInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
   checkSameType(getOperand(0), getOperand(2));
 }
+
 void ElementMulInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
   checkSameType(getOperand(0), getOperand(2));
 }
+
 void ElementSubInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
   checkSameType(getOperand(0), getOperand(2));
@@ -269,6 +273,11 @@ void BatchedAddInst::verify() const {
 
 void BatchedReduceAddInst::verify() const {
   assert(getBatch()->dims().size() > 1 && "Invalid shape");
+}
+
+void ElementDivInst::verify() const {
+  checkSameType(getOperand(0), getOperand(1));
+  checkSameType(getOperand(0), getOperand(2));
 }
 
 void AllocActivationInst::verify() const {
@@ -313,4 +322,5 @@ NOVERIFY(ElementAddGradInst)
 NOVERIFY(ElementMulGradInst)
 NOVERIFY(ElementSubGradInst)
 NOVERIFY(DebugPrintInst)
+NOVERIFY(ElementDivGradInst)
 #undef NOVERIFY
