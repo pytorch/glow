@@ -533,7 +533,7 @@ public:
       auto *L = valueForNode(AR->getLHS());
       auto *R = valueForNode(AR->getRHS());
 
-      auto outG = valueForNode(AR->getOriginalOutputForResult());
+      auto outG = valueForNode(AR->getGradOfOriginalOutputNamedResult());
       auto *LG = builder_.createAllocActivationInst("LG", L->getType());
       auto *RG = builder_.createAllocActivationInst("RG", L->getType());
 
