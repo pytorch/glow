@@ -537,10 +537,19 @@ public:
       auto *LG = builder_.createAllocActivationInst("LG", L->getType());
       auto *RG = builder_.createAllocActivationInst("RG", L->getType());
 
-      if (AR->getMode() == ArithmeticGradNode::Mode::Add) {
+      switch (AR->getMode()) {
+      case ArithmeticGradNode::Mode::Add: {
         builder_.createElementAddGradInst(N->getName(), outG, LG, RG);
-      } else {
+        break;
+      }
+      case ArithmeticGradNode::Mode::Mul: {
         builder_.createElementMulGradInst(N->getName(), L, R, outG, LG, RG);
+        break;
+      }
+      case ArithmeticGradNode::Mode::Sub: {
+        builder_.createElementSubGradInst(N->getName(), outG, LG, RG);
+        break;
+      }
       }
 
       registerIR(AR->getGradOfInputNamedLHS(), LG);
