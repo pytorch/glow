@@ -131,6 +131,10 @@ void Interpreter::fwdConvolutionGradInst(bool isTrain,
   size_t pad = I->getPad();
   size_t stride = I->getStride();
 
+  inG.clear();
+  filterG.clear();
+  biasG.clear();
+
   ShapeNHWC odim(outG.dims());
   ShapeNHWC idim(inW.dims());
 
@@ -295,6 +299,8 @@ void Interpreter::fwdPoolMaxGradInst(bool isTrain, const PoolMaxGradInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
 
+  inG.clear();
+
   ShapeNHWC odim(outW.dims());
 
   auto SXY = getTensor(I->getSrcXY())->getHandle<size_t>();
@@ -332,6 +338,8 @@ void Interpreter::fwdPoolAvgGradInst(bool isTrain, const PoolAvgGradInst *I) {
   auto pad = I->getPad();
   auto filterSize = I->getKernel();
   auto stride = I->getStride();
+
+  inG.clear();
 
   float filterArea = filterSize * filterSize;
 
@@ -414,6 +422,10 @@ void Interpreter::fwdFullyConnectedGradInst(bool isTrain,
   auto filterG = getWeightHandle(I->getFilterGrad());
   auto biasG = getWeightHandle(I->getBiasGrad());
 
+  biasG.clear();
+  filterG.clear();
+  inG.clear();
+
   size_t inSize = idim.second;
 
   for (size_t n = 0; n < odim.first; n++) {
@@ -454,6 +466,8 @@ void Interpreter::fwdReluGradInst(bool isTrain, const ReluGradInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
 
+  inG.clear();
+
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     float val = outW.raw(i);
     inG.raw(i) += (val <= 0 ? 0 : outG.raw(i));
@@ -474,6 +488,8 @@ void Interpreter::fwdSigmoidGradInst(bool isTrain, const SigmoidGradInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
 
+  inG.clear();
+
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     float val = outW.raw(i);
     inG.raw(i) += val * (1 - val) * outG.raw(i);
@@ -493,6 +509,8 @@ void Interpreter::fwdTanhGradInst(bool isTrain, const TanhGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
+
+  inG.clear();
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     float val = outW.raw(i);
@@ -542,6 +560,8 @@ void Interpreter::fwdSoftMaxGradInst(bool isTrain, const SoftMaxGradInst *I) {
   auto idim = inG.dims();
   auto EH = getTensor(I->getE())->getHandle<>();
   auto selectedH = getTensor(I->getSelected())->getHandle<size_t>();
+
+  inG.clear();
 
   // http://eli.thegreenplace.net/2016/the-softmax-function-and-its-derivative/
   // https://stats.stackexchange.com/questions/79454/softmax-layer-in-a-neural-network
@@ -756,6 +776,10 @@ void Interpreter::fwdBatchNormalizationGradInst(
   auto gammaWH = getWeightHandle(I->getScale());
   auto betaGH = getWeightHandle(I->getBiasGrad());
   auto gammaGH = getWeightHandle(I->getScaleGrad());
+
+  inG.clear();
+  betaGH.clear();
+  gammaGH.clear();
 
   auto varH = getWeightHandle(I->getVar());
   auto meanH = getWeightHandle(I->getMean());
@@ -1076,6 +1100,8 @@ void Interpreter::fwdBatchedReduceAddInst(bool isTrain,
 
   auto bdim = flattenCdr(batch.dims());
 
+  dest.clear();
+
   // For each layer in the batch:
   for (size_t n = 0; n < bdim.first; n++) {
     size_t base = batch.getElementPtr({n});
@@ -1142,7 +1168,7 @@ void Interpreter::fwdSGDInst(bool isTrain, const glow::SGDInst *I) {
 
 void Interpreter::fwdAllocActivationInst(bool isTrain,
                                          const AllocActivationInst *I) {
-  getOrCreateTensor(I)->zero();
+  getOrCreateTensor(I);
 }
 
 void Interpreter::fwdDeallocActivationInst(bool isTrain,
