@@ -19,3 +19,12 @@ target_link_libraries(mnist
                         IR
                         Support)
 
+add_executable(ptb
+                 ptb.cpp)
+target_link_libraries(ptb
+                      PRIVATE
+                        Backends
+                        ExecutionEngine
+                        Graph
+                        IR
+                        Support)
