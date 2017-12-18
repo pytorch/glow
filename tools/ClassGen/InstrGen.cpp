@@ -179,6 +179,13 @@ int main(int argc, char **argv) {
       .inplaceOperand({"Dest", "LHS", "RHS"})
       .addGradientInstr({"LHS", "RHS"}, {"Dest", "LHS", "RHS"});
 
+  BB.newInstr("ElementDiv")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .addGradientInstr({"LHS", "RHS"}, {"Dest", "LHS", "RHS"});
+
   //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//

@@ -83,6 +83,8 @@ public:
 
   ElementMulInst *createElementMulOp(Value *LHS, Value *RHS);
 
+  ElementDivInst *createElementDivOp(Value *LHS, Value *RHS);
+
   Value *createReturnOp(Value *input);
 
   ///@}

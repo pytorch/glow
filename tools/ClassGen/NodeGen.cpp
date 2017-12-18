@@ -113,6 +113,7 @@ int main(int argc, char **argv) {
       .addEnumCase("Add")
       .addEnumCase("Mul")
       .addEnumCase("Sub")
+      .addEnumCase("Div")
       .addInput("LHS")
       .addInput("RHS")
       .addResult("LHS.getType()")
