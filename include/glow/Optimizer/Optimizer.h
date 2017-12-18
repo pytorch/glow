@@ -17,6 +17,10 @@ enum class CompilationMode {
 void optimize(Module &M, CompilationMode mode);
 void optimize(Graph &G, CompilationMode mode);
 
+/// Lower the high-level neural network operators into low-level lineal algebra
+/// operators.
+void lower(Graph &G, CompilationMode mode);
+
 } // namespace glow
 
 #endif // GLOW_OPTIMIZER_OPTIMIZER_H
