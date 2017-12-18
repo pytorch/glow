@@ -16,7 +16,22 @@ void glow::lower(Graph &G, CompilationMode mode) {
 
   // For each node:
   for (auto const &node : nodes) {
-    // Sink Transpose below batch normalization nodes:
+
+    // Lower the RegressionGradNode node:
+    if (auto *RGN = dyn_cast<RegressionGradNode>(node)) {
+      auto outG = RGN->getInput();
+
+      auto inputG =
+          G.createArithmetic("rgn.grad", RGN->getInput(), RGN->getExpected(),
+                             ArithmeticNode::Mode::Sub);
+      auto expG = G.createZero("exp.grad", RGN->getExpected().getType());
+
+      RGN->getGradOfInputNamedInput()->replaceAllUsesOfWith(inputG);
+      RGN->getGradOfInputNamedExpected()->replaceAllUsesOfWith(expG);
+      continue;
+    }
+
+    // Lower the ArithmeticGradNode node:
     if (auto *EMG = dyn_cast<ArithmeticGradNode>(node)) {
       switch (EMG->getMode()) {
       case ArithmeticGradNode::Mode::Add: {
@@ -52,8 +67,8 @@ void glow::lower(Graph &G, CompilationMode mode) {
         auto outG = EMG->getGradOfOriginalOutputNamedResult();
         EMG->getGradOfInputNamedLHS()->replaceAllUsesOfWith(outG);
         auto zero = G.createZero("zero", outG.getType());
-        auto sub =
-            G.createArithmetic("sub", zero, outG, ArithmeticNode::Mode::Sub);
+        auto sub = G.createArithmetic("sub.grad", zero, outG,
+                                      ArithmeticNode::Mode::Sub);
         EMG->getGradOfInputNamedRHS()->replaceAllUsesOfWith(sub);
         continue;
       }
