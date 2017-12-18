@@ -16,7 +16,12 @@ void glow::lower(Graph &G, CompilationMode mode) {
 
   // For each node:
   for (auto const &node : nodes) {
-
+    // Lower the RegressionNode node:
+    if (auto *RN = dyn_cast<RegressionNode>(node)) {
+      auto outG = RN->getInput();
+      RN->getResult()->replaceAllUsesOfWith(outG);
+      continue;
+    }
     // Lower the RegressionGradNode node:
     if (auto *RGN = dyn_cast<RegressionGradNode>(node)) {
       auto outG = RGN->getInput();
