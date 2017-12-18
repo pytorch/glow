@@ -141,10 +141,8 @@ PoolNode *Graph::createPool(llvm::StringRef name, NodeValue input,
 }
 
 FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
-                                                NodeValue input,
-                                                Variable* W,
-                                                Variable* B,
-                                                size_t outDepth) {
+                                                NodeValue input, Variable *W,
+                                                Variable *B, size_t outDepth) {
   TypeRef T = input.getType();
   auto idim = flattenCdr(input.dims());
 
