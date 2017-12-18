@@ -486,11 +486,9 @@ void Interpreter::fwdSigmoidGradInst(bool isTrain, const SigmoidGradInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
 
-  inG.clear();
-
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     float val = outW.raw(i);
-    inG.raw(i) += val * (1 - val) * outG.raw(i);
+    inG.raw(i) = val * (1 - val) * outG.raw(i);
   }
 }
 
