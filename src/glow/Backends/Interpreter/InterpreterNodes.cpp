@@ -466,11 +466,9 @@ void Interpreter::fwdReluGradInst(bool isTrain, const ReluGradInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
 
-  inG.clear();
-
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     float val = outW.raw(i);
-    inG.raw(i) += (val <= 0 ? 0 : outG.raw(i));
+    inG.raw(i) = (val <= 0 ? 0 : outG.raw(i));
   }
 }
 
