@@ -73,8 +73,8 @@ auto-fix and to enable/disable specific checks:
 The project has a few unittests in the tests/ directory. To run all of the unit
 tests simply run the command 'ninja test' (or gmake test).  After compiling the
 project, a few test programs will be built under the /examples/ directory. The
-'mnist' and 'cifar10' programs train and run the digit recognition and image
-classification benchmarks.
+'mnist', 'cifar10' and 'ptb' programs train and run the digit recognition, image
+classification and language modeling benchmarks.
 
 The default compilation mode is 'Debug'. This means that the compiler itself is
 easy to debug because the binary contains debug info, lots of assertions, and
@@ -85,7 +85,7 @@ release the product then you should compile the compiler in Release mode. Check
 the main CMake file for more details.
 
 After building Glow in Release-mode run the following command to download the
-cifar10 and mnist database:
+cifar10, mnist and ptb database:
 
 ```
 python ../glow/utils/download_test_db.py
@@ -97,11 +97,12 @@ Next, after downloading and extracting the mnist and cifar10 database
 ```
 ./bin/mnist
 ./bin/cifar10
+./bin/ptb
 ```
 
 Note: The databases should be (for now) in the same directory from where the
 executable is run.
 
 If everything goes well you should see pictures from the mnist digits database
-and print outs from cifar10 that make sense.
-
+and print outs from cifar10 that make sense as well as the perplexity on the
+ptb dataset go down as the network trains.
