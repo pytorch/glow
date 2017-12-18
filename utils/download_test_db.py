@@ -14,6 +14,7 @@ print("""Downloading test files. If the download fails try setting up a proxy:
 
 mnist_filename = "mnist.pkl.gz"
 cifar10_filename = "cifar-10.binary.tar.gz"
+ptb_filename = "ptb.tgz"
 
 if os.path.exists(mnist_filename):
     print("MNIST file found. Not downloading.")
@@ -26,6 +27,12 @@ if os.path.exists(cifar10_filename):
 else:
     print("Downloading CIFAR ... ")
     urllib.urlretrieve ("http://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz", cifar10_filename)
+
+if os.path.exists(ptb_filename):
+    print("PTB file found. Not downloading.")
+else:
+    print("Downloading PTB ... ")
+    urllib.urlretrieve ("http://www.fit.vutbr.cz/~imikolov/rnnlm/simple-examples.tgz", ptb_filename)
 
 def dumpToFile(dataset):
     data, labels = dataset
@@ -51,3 +58,7 @@ tar = tarfile.open(cifar10_filename, "r:gz")
 tar.extractall()
 tar.close()
 
+print("Extracting the PTB database.")
+tar = tarfile.open(ptb_filename, "r:gz")
+tar.extractall('ptb')
+tar.close()

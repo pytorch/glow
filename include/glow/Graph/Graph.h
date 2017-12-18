@@ -92,6 +92,9 @@ public:
                        size_t pad);
 
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
+                                           NodeValue input, Variable *W,
+                                           Variable *B, size_t outDepth);
+  FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, size_t outDepth);
 
   ReluNode *createRELU(llvm::StringRef name, NodeValue input);
