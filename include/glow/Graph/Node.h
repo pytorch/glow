@@ -37,16 +37,13 @@ public:
   NodeValue(Node *N, unsigned resNo);
 
   /// Create a new operand and register it as a new user to the node.
-  NodeValue(const NodeValue &that) {
-    setOperand(that.getNode());
-    resNo_ = that.resNo_;
-  }
+  NodeValue(const NodeValue &that) { setOperand(that.getNode(), that.resNo_); }
   /// When deleting an operand we need to unregister the operand from the
   /// use-list of the node it used to reference.
-  ~NodeValue() { setOperand(nullptr); }
+  ~NodeValue() { setOperand(nullptr, 0); }
   /// Sets the operand to point to \p N. This method registers the operand as a
   /// user of \p N.
-  void setOperand(Node *v);
+  void setOperand(Node *v, unsigned resNo);
   /// Get the index which selects a specific result in the SDNode
   unsigned getResNo() const { return resNo_; }
   /// \returns the underlying pointer.
@@ -111,7 +108,7 @@ struct NodeUse {
   /// \returns the instruction that the use refers to.
   NodeValue *get() const { return site_; }
   /// Sets the operand to a new value.
-  void setOperand(Node *other);
+  void setOperand(NodeValue &site);
 };
 
 /// Represents a node in the compute graph.

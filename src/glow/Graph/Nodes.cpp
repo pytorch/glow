@@ -7,39 +7,39 @@
 
 using namespace glow;
 
-void NodeUse::setOperand(Node *other) {
+void NodeUse::setOperand(NodeValue &other) {
   if (other && site_->getNode()) {
-    assert(site_->getNode()->getType() == other->getType() &&
+    assert(site_->getType() == other.getType() &&
            "Setting operand to a node with a different type");
   }
-  site_->setOperand(other);
+  site_->setOperand(other.getNode(), other.getResNo());
 }
 
 NodeValue::NodeValue(Node *N) {
-  resNo_ = 0;
   assert((!N || (N->getNumRes() == 1)) &&
          "Constructing a value for a multi-res node");
-  setOperand(N);
+  setOperand(N, 0);
 }
 
 NodeValue::NodeValue(Node *N, unsigned resNo) {
   assert(resNo < N->getNumRes() && "Invalid result number");
-  resNo_ = resNo;
-  setOperand(N);
+  setOperand(N, resNo);
 }
 
-void NodeValue::setOperand(Node *v) {
-  if (node_ == v) {
+void NodeValue::setOperand(Node *v, unsigned resNo) {
+  if (node_ == v && resNo == resNo_) {
     return;
   }
 
   if (node_) {
     node_->removeUse(NodeUse(this));
     node_ = nullptr;
+    resNo_ = 0;
   }
 
   if (v) {
     node_ = v;
+    resNo_ = resNo;
     v->addUse(NodeUse(this));
   }
 }
