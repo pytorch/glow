@@ -101,12 +101,20 @@ FullyConnectedInst *IRBuilder::createFullyConnectedOp(Value *input,
                                                       Value *bias,
                                                       size_t outDepth) {
   TypeRef T = input->getType();
+
   auto idim = flattenCdr(input->dims());
 
+  Value *inputview = input;
+  // Create a tensor view only if the dimensionality needs to be changed.
+  if (input->dims().size() != 2)
+    inputview =
+        createTensorView(input->getElementType(), {idim.first, idim.second},
+                         input, "fctensorview");
   auto *dest = createAllocActivationInst("fcres", T->getElementType(),
                                          {idim.first, outDepth});
 
-  return createFullyConnectedInst("fc", dest, input, filter, bias, outDepth);
+  return createFullyConnectedInst("fc", dest, inputview, filter, bias,
+                                  outDepth);
 }
 
 ReluInst *IRBuilder::createRELUOp(Value *input) {
@@ -135,6 +143,19 @@ ReshapeInst *IRBuilder::createReshapeOp(Value *input,
   auto *res =
       createAllocActivationInst("reshape.res", input->getElementType(), shape);
   return createReshapeInst("reshape", res, input, shape);
+}
+
+/// Creates a tensorview instruction with the following parameters:
+/// \param elemKind the type of elements in a tensor
+/// \param dims dimensions of the view, such that the number of elements
+/// in the view is the same as the number of elements in the source tensor
+/// \p src
+/// \param src the source tensor used to create the unowned tensor.
+TensorViewInst *IRBuilder::createTensorView(ElemKind elemKind,
+                                            llvm::ArrayRef<size_t> dims,
+                                            Value *src, llvm::StringRef name) {
+  auto ty = getModule().getGraph()->uniqueType(Type(elemKind, dims));
+  return createTensorViewInst(name, src, ty);
 }
 
 TransposeInst *IRBuilder::createTransposeOp(Value *input,

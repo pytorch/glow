@@ -61,6 +61,11 @@ private:
   /// \returns a tensor for \p v.
   Tensor *getOrCreateTensor(const Value *v);
 
+  /// Allocate an unowned tensor to back the value \p v. The source tensor of
+  /// the unowned tensor is provided by \p src.
+  /// \returns a tensor for \p v.
+  Tensor *getOrCreateUnownedTensor(const Value *v, const Value *src);
+
   /// If a tensor is allocated for \p v then delete it.
   void deleteTensor(const Value *v);
 

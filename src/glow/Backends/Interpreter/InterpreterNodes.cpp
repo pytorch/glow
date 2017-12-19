@@ -384,23 +384,27 @@ void Interpreter::fwdFullyConnectedInst(bool isTrain,
   auto inW = getWeightHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
 
-  auto odim = flattenCdr(outW.dims());
-  auto idim = flattenCdr(inW.dims());
-  assert(odim.first == idim.first && "Mismatch batch size");
+  // outW and inW are 2-dimensional.
+  // Dimensions are depth and width.
+  auto OutWidth = outW.dims()[0];
+  auto OutDepth = outW.dims()[1];
+  auto InDepth = inW.dims()[0];
+  auto InWidth = inW.dims()[1];
+
+  assert(OutWidth == InDepth && "Mismatch batch size");
 
   auto filterW = getWeightHandle(I->getFilter());
   auto biasW = getWeightHandle(I->getBias());
 
-  size_t inputSize = idim.second;
+  size_t inputSize = InWidth;
 
-  for (size_t n = 0; n < odim.first; n++) {
-    size_t base = inW.getElementPtr({n});
+  for (size_t n = 0; n < OutWidth; n++) {
 
-    for (size_t i = 0; i < odim.second; i++) {
+    for (size_t i = 0; i < OutDepth; i++) {
 
       float sum = 0;
       for (size_t j = 0; j < inputSize; j++) {
-        sum += inW.raw(base + j) * filterW.at({i, j});
+        sum += inW.at({n, j}) * filterW.at({i, j});
       }
 
       sum += biasW.at({i});
@@ -415,8 +419,14 @@ void Interpreter::fwdFullyConnectedGradInst(bool isTrain,
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outG = getWeightHandle(I->getDestGrad());
 
-  auto odim = flattenCdr(outG.dims());
-  auto idim = flattenCdr(inW.dims());
+  assert(inW.dims().size() == 2);
+  assert(inG.dims().size() == 2);
+
+  // outG and inW are 2-dimensional.
+  // Dimensions are depth and width.
+  auto OutWidth = outG.dims()[0];
+  auto OutDepth = outG.dims()[1];
+  auto InWidth = inW.dims()[1];
 
   auto filterW = getWeightHandle(I->getFilter());
   auto filterG = getWeightHandle(I->getFilterGrad());
@@ -426,20 +436,19 @@ void Interpreter::fwdFullyConnectedGradInst(bool isTrain,
   filterG.clear();
   inG.clear();
 
-  size_t inSize = idim.second;
+  size_t inSize = InWidth;
 
-  for (size_t n = 0; n < odim.first; n++) {
-    size_t base = inW.getElementPtr({n});
+  for (size_t n = 0; n < OutWidth; n++) {
 
     // Compute the gradient:
-    for (size_t i = 0; i < odim.second; i++) {
+    for (size_t i = 0; i < OutDepth; i++) {
       float chainGrad = outG.at({n, i});
 
       for (size_t j = 0, e = inSize; j < e; j++) {
         // Input gradient:
-        inG.raw(base + j) += filterW.at({i, j}) * chainGrad;
+        inG.at({n, j}) += filterW.at({i, j}) * chainGrad;
         // Param gradient:
-        filterG.at({i, j}) += inW.raw(base + j) * chainGrad;
+        filterG.at({i, j}) += inW.at({n, j}) * chainGrad;
       }
 
       biasG.at({i}) += chainGrad;
@@ -584,6 +593,10 @@ void Interpreter::fwdReshapeInst(bool isTrain, const ReshapeInst *I) {
   auto inT = getTensor(I->getSrc());
   auto outT = getTensor(I->getDest());
   outT->copyRawFrom(inT);
+}
+
+void Interpreter::fwdTensorViewInst(bool isTrain, const TensorViewInst *I) {
+  getOrCreateUnownedTensor(I, I->getSrc());
 }
 
 void Interpreter::fwdZeroInst(bool isTrain, const glow::ZeroInst *I) {

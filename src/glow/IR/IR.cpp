@@ -394,7 +394,8 @@ static void nameInstr(std::unordered_set<std::string> &usedNames, Named *named,
 Module::Module(Graph *G) : G_(G), name_(G->getName()) {}
 
 static bool hasResultValue(Instruction *I) {
-  return I->getKind() == Instruction::Kind::AllocActivationInstKind;
+  return I->getKind() == Instruction::Kind::AllocActivationInstKind ||
+         I->getKind() == Instruction::Kind::TensorViewInstKind;
 }
 
 void Module::nameInstructions() {

@@ -59,6 +59,10 @@ public:
 
   ReshapeInst *createReshapeOp(Value *input, llvm::ArrayRef<size_t> shape);
 
+  TensorViewInst *createTensorView(ElemKind elemKind,
+                                   llvm::ArrayRef<size_t> dims, Value *src,
+                                   llvm::StringRef name);
+
   TransposeInst *createTransposeOp(Value *input,
                                    llvm::ArrayRef<unsigned> shuffle);
 
