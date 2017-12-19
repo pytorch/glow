@@ -134,6 +134,11 @@ void FullyConnectedInst::verify() const {
   llvm::ArrayRef<size_t> expB = {Depth_};
   assert(B->dims() == expB && "Invalid output shape");
   (void)expB;
+
+  assert(src->dims().size() == 2 &&
+         "Src of a FullyConnectedInst should be 2-dimensional");
+  assert(dest->dims().size() == 2 &&
+         "Dest of a FullyConnectedInst should be 2-dimensional");
 }
 
 void BatchedMatMulInst::verify() const {
@@ -176,6 +181,13 @@ void ReshapeInst::verify() const {
   assert(getOperand(0).first->getType()->size() ==
              getOperand(1).first->getType()->size() &&
          "Reshape into a different size");
+}
+
+void TensorViewInst::verify() const {
+  assert(getOperand(0).first->getType()->size() == getType()->size() &&
+         "TensorView view size should be the same as Src size");
+  assert(getOperand(0).first->getElementType() == getType()->getElementType() &&
+         "TensorView view element type should be the same as Src size");
 }
 
 void TransposeInst::verify() const {

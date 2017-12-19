@@ -31,6 +31,11 @@ int main(int argc, char **argv) {
       .addMember(MemberType::TypeRef, "Ty")
       .setType("Ty");
 
+  BB.newInstr("TensorView")
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::TypeRef, "Ty")
+      .setType("Ty");
+
   BB.newInstr("DeallocActivation")
       .addOperand("Src", OperandKind::Out)
       .addExtraMethod("AllocActivationInst *getAlloc() const { return "

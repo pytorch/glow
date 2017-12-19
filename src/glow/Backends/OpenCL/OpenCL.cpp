@@ -365,6 +365,13 @@ void OCLBackend::doForwardPass(bool isTrain) {
       continue;
     }
 
+    if (auto *TV = dyn_cast<TensorViewInst>(I)) {
+      assert(tensors_[TV] == tensors_[TV->getSrc()] &&
+             "Memory address for a tensor_view should be the same as the "
+             "address of its origin");
+      continue;
+    }
+
     if (isa<CopyInst>(I) || isa<ReshapeInst>(I)) {
       auto *dest = I->getOperand(0).first;
       auto *src = I->getOperand(1).first;
@@ -454,6 +461,12 @@ void OCLBackend::init() {
       size_t addr = allocator_.allocate(numBytes);
       assert(!tensors_.count(A) && "Allocation already made!");
       tensors_[A] = addr;
+      continue;
+    }
+
+    if (auto *TV = llvm::dyn_cast<TensorViewInst>(I)) {
+      assert(!tensors_.count(TV) && "Allocation already made!");
+      tensors_[TV] = tensors_[TV->getSrc()];
       continue;
     }
 

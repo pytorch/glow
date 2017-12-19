@@ -85,7 +85,6 @@ TEST(IR, allInstrs) {
 
     auto *I3 = builder.createWeightVar(ElemKind::FloatTy, {1, 12, 12, 64});
     auto *I4 = builder.createWeightVar(ElemKind::FloatTy, {1, 12, 12, 3});
-    auto *I5 = builder.createWeightVar(ElemKind::FloatTy, {1, 32});
     auto *I6 = builder.createWeightVar(ElemKind::FloatTy, {2, 12, 12, 64});
     auto *I7 = builder.createWeightVar(T1, "I7");
     auto *I8 = builder.createWeightVar(ElemKind::FloatTy, {1, 24, 3, 24}, "I8");
@@ -109,12 +108,13 @@ TEST(IR, allInstrs) {
     builder.createCopyInst("", I1, I0);
     builder.createConvolutionInst("", I3, I1, F0, B0, 7, 2, 3, 64);
     builder.createPoolMaxInst("", I4, I0, XY, 7, 2, 3);
-    builder.createFullyConnectedInst("", I5, I0, F1, B1, 32);
+    builder.createFullyConnectedOp(I0, F1, B1, 32);
     builder.createReluInst("", I1, I0);
     builder.createSigmoidInst("", I1, I0);
     builder.createTanhInst("", I1, I0);
     builder.createSoftMaxInst("", I1, I0, I7, E0);
     builder.createTransposeInst("", I8, I2, {0, 3, 1, 2});
+    builder.createTensorView(ElemKind::FloatTy, {1, 24, 3, 24}, I2, "I2_view");
     builder.createInsertTensorInst("", I6, I3, {0, 0, 0, 0});
     builder.createBatchNormalizationInst("", I1, I0, S0, S0, S0, S0, 3, 0.01,
                                          0.9);

@@ -69,7 +69,7 @@ static void calculateLiveness(Module &M, LivenessMap &liveness) {
 /// Hoists Dealloc instructions right after their last use.
 static void hoistDealloc(Module &M) {
   // Maps activation instructions to their last non-dealloc user.
-  std::unordered_map<AllocActivationInst *, InstrIterator> lastUser;
+  std::unordered_map<Value *, InstrIterator> lastUser;
   auto &instrs = M.getInstrs();
 
   // Record the last use of each dealloc.
@@ -81,6 +81,14 @@ static void hoistDealloc(Module &M) {
       auto op = (*it)->getOperand(i).first;
       if (auto alloc = dyn_cast<AllocActivationInst>(op)) {
         lastUser[alloc] = it;
+      }
+
+      if (auto tensorView = dyn_cast<TensorViewInst>(op)) {
+        // Consider any use of a tensor_view to be also a use
+        // of its source tensor. This is required to make
+        // sure that a lifetime of a tensor_view is always
+        // enclosed inside the lifetime of its source tensor.
+        lastUser[tensorView->getSrc()] = it;
       }
     }
   }
