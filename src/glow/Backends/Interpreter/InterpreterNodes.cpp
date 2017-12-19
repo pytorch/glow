@@ -1197,10 +1197,10 @@ void Interpreter::fwdDeallocActivationInst(bool isTrain,
 /// tensor.
 void Interpreter::fwdDebugPrintInst(bool isTrain, const DebugPrintInst *I) {
   auto *V = I->getSrc();
+  llvm::outs() << I->getName() << ": ";
   // Dump the content of a value.
   V->dump();
   llvm::outs() << "\n";
-  auto WH = getWeightHandle(V);
-  WH.dump();
+  dumpImpl(getTensor(V));
   llvm::outs() << "\n";
 }

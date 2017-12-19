@@ -884,19 +884,24 @@ static void performDebugInstrumentation(Module &M) {
       it = next;
       continue;
     }
+    auto instrName = (*it)->getName();
     for (auto const &Op : (*it)->getOperands()) {
       // Dump inputs of the current instruction before the instruction.
       if (Op.second != OperandKind::Out) {
-        std::string name = "print_input_";
+        std::string name = "debug_print.before.";
         name += Op.first->getName();
+        name += ".";
+        name += instrName;
         auto *dumpInstr = new DebugPrintInst(&M, name, Op.first);
         M.insertInstruction(it, dumpInstr);
       }
 
       // Dump outputs of the current instruction after the instruction.
       if (Op.second != OperandKind::In) {
-        std::string name = "print_output_";
+        std::string name = "debug_print.after.";
         name += Op.first->getName();
+        name += ".";
+        name += instrName;
         auto *dumpInstr = new DebugPrintInst(&M, name, Op.first);
         M.insertInstruction(next, dumpInstr);
       }
