@@ -70,7 +70,10 @@ public:
     }
     assert(!generatedNodeDest_.count(N) &&
            "Already generated code for this node");
-    assert(isa<AllocActivationInst>(v) && "The value must be an activation");
+    auto *dest = v;
+    if (auto *zn = dyn_cast<ZeroInst>(v))
+      dest = zn->getDest();
+    assert(isa<AllocActivationInst>(dest) && "The value must be an activation");
     generatedNodeDest_[N] = v;
   }
 
