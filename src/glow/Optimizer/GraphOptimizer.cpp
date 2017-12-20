@@ -129,7 +129,7 @@ static void sinkCode(Graph &G) {
           BN->getMomentum());
       auto *newTR = G.createTranspose(TR->getName(), NewBN, TR->getShuffle());
 
-      BN->replaceAllUsesOfWith(newTR);
+      BN->getResult().replaceAllUsesOfWith(newTR);
       continue;
     }
 
@@ -144,7 +144,7 @@ static void sinkCode(Graph &G) {
 
       auto *NRL = G.createRELU(RL->getName(), TR->getInput());
       auto *newTR = G.createTranspose(TR->getName(), NRL, TR->getShuffle());
-      RL->replaceAllUsesOfWith(newTR);
+      RL->getResult().replaceAllUsesOfWith(newTR);
       continue;
     }
 
@@ -163,7 +163,7 @@ static void sinkCode(Graph &G) {
       // The two transposes are reversing one another. We can skip both of them
       // alltogether.
       if (isIdentityShuffle(mask1, mask2)) {
-        TR1->replaceAllUsesOfWith(TR2->getInput());
+        TR1->getResult().replaceAllUsesOfWith(TR2->getInput());
         continue;
       }
     }
@@ -184,7 +184,7 @@ static void sinkCode(Graph &G) {
       auto *newAN = G.createArithmetic(AN->getName(), LTR->getInput(),
                                        RTR->getInput(), AN->getMode());
       auto *newTR = G.createTranspose(LTR->getName(), newAN, LTR->getShuffle());
-      AN->replaceAllUsesOfWith(newTR);
+      AN->getResult().replaceAllUsesOfWith(newTR);
     }
 
     // Sink RELU below batch concat nodes.
@@ -201,7 +201,7 @@ static void sinkCode(Graph &G) {
         auto *newCN = G.createConcat(
             CN->getName(), {L->getInput(), R->getInput()}, CN->getDim());
         auto *newRL = G.createRELU(L->getName(), newCN);
-        CN->replaceAllUsesOfWith(newRL);
+        CN->getResult().replaceAllUsesOfWith(newRL);
       }
     }
 
@@ -233,7 +233,7 @@ static void sinkCode(Graph &G) {
       auto *newCN = G.createConcat(
           CN->getName(), {L->getInput(), R->getInput()}, newChannelIdx);
       auto *newTR = G.createTranspose(L->getName(), newCN, L->getShuffle());
-      CN->replaceAllUsesOfWith(newTR);
+      CN->getResult().replaceAllUsesOfWith(newTR);
     }
 
   } // For all nodes in the graph.
@@ -273,7 +273,7 @@ static void OptimizePool(Graph &G) {
       auto *NPL = G.createPool(PL->getName(), RL->getInput(), PL->getMode(),
                                PL->getKernel(), PL->getStride(), PL->getPad());
       auto *NRL = G.createRELU(RL->getName(), NPL);
-      PL->replaceAllUsesOfWith(NRL);
+      PL->getResult().replaceAllUsesOfWith(NRL);
       continue;
     }
   } // For all nodes in the graph.
@@ -366,7 +366,7 @@ static void OptimizeBatchNorm(Graph &G) {
         cbiasH.raw(i) = cbiasH.raw(i) * A + B;
       }
 
-      BN->replaceAllUsesOfWith(CV);
+      BN->getResult().replaceAllUsesOfWith(CV);
     }
   } // For all nodes in the graph.
 }
@@ -377,7 +377,7 @@ static void OptimizeRegression(Graph &G) {
   for (auto const &node : nodes) {
     // In inference mode Regression nodes simply forward their inputs.
     if (auto *R = dyn_cast<RegressionNode>(node)) {
-      R->replaceAllUsesOfWith(R->getInput());
+      R->getResult().replaceAllUsesOfWith(R->getInput());
     }
   } // For all nodes in the graph.
 }
@@ -413,7 +413,7 @@ static void optimizeConcatNodes(Graph &G) {
         continue;
       // Create a new Concat node.
       auto NewCN = G.createConcat(CN->getName(), NewInputs, CN->getDim());
-      CN->replaceAllUsesOfWith(NewCN);
+      CN->getResult().replaceAllUsesOfWith(NewCN);
     }
   }
 }
@@ -469,7 +469,10 @@ struct CSEVisitor : NodeWalker {
     // Replace current node by a found node, which is
     // equivalent to it.
     assert(N->isEqual(*FoundN));
-    N->replaceAllUsesOfWith(FoundN);
+    for (int i = 0; i < N->getNumRes(); i++) {
+      NodeValue FV(FoundN, i);
+      NodeValue(N, i).replaceAllUsesOfWith(FV);
+    }
     // TODO: Erase N during CSE? If we don't do it here,
     // DCE will remove it later anyways.
   }

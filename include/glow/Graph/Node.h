@@ -51,6 +51,9 @@ public:
   /// \returns the underlying pointer when casting.
   operator Node *() const { return node_; }
 
+  /// Replace all of the uses of this value with \p v.
+  void replaceAllUsesOfWith(NodeValue v);
+
   /// Provide a smart-pointer interface.
   Node *operator->() const { return node_; }
   /// Return the TypeRef of the referenced return value.
@@ -145,7 +148,12 @@ public:
 
   /// When the node is deleted we need to unregister all users. This allows us
   /// to deconstruct the graph in an arbitrary order.
-  virtual ~Node() { replaceAllUsesOfWith(NodeValue(nullptr)); }
+  virtual ~Node() {
+    NodeValue nop(nullptr);
+    for (int i = 0; i < getNumRes(); i++) {
+      NodeValue(this, i).replaceAllUsesOfWith(nop);
+    }
+  }
 
   /// \returns the n'th result type of the node.
   TypeRef getType(unsigned idx = -1) const;
