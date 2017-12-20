@@ -140,7 +140,7 @@ public:
   ArithmeticNode *createArithmetic(llvm::StringRef name, NodeValue LHS,
                                    NodeValue RHS, ArithmeticNode::Mode op);
 
-  ZeroNode *createZero(llvm::StringRef name, TypeRef ty);
+  SplatNode *createSplat(llvm::StringRef name, TypeRef ty, float value);
 
   BatchedMatMulNode *createBatchedMatMul(llvm::StringRef name, NodeValue batch,
                                          NodeValue filter);

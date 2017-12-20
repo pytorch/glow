@@ -13,13 +13,13 @@ size_t getNHWC(ShapeNHWC s, size_t x, size_t y, size_t z, size_t w) {
   return (x * s.c * s.w * s.h) + (y * s.c * s.w) + (z * s.c) + w;
 }
 
-__kernel void zeroK(__global float *dest) {
+__kernel void splatK(__global float *dest, float val) {
   size_t i = get_global_id(0);
-  dest[i] = 0;
+  dest[i] = val;
 }
 
-__kernel void zeroW(__global void *mem, size_t dest) {
-  zeroK(&mem[dest]);
+__kernel void splatW(__global void *mem, size_t dest, float val) {
+  splatK(&mem[dest], val);
 }
 
 __kernel void reluK(__global float *dest, __global float *src) {

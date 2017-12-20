@@ -209,10 +209,11 @@ int main(int argc, char **argv) {
   //                Nodes used for network training
   //===--------------------------------------------------------------------===//
 
-  BB.newNode("Zero")
+  BB.newNode("Splat")
+      .addMember(MemberType::Float, "Value")
       .addExtraParam("TypeRef", "outTy")
       .addResult("outTy")
-      .setDocstring("Generate the zero tensor of a specific type");
+      .setDocstring("Generate a tensor of a specific type filled with 'Value'");
 
   BB.newNode("SGD")
       .addInput("Gradient")

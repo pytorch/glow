@@ -29,7 +29,7 @@ void glow::lower(Graph &G, CompilationMode mode) {
       auto inputG =
           G.createArithmetic("rgn.grad", RGN->getInput(), RGN->getExpected(),
                              ArithmeticNode::Mode::Sub);
-      auto expG = G.createZero("exp.grad", RGN->getExpected().getType());
+      auto expG = G.createSplat("exp.grad", RGN->getExpected().getType(), 0);
 
       RGN->getGradOfInputNamedInput().replaceAllUsesOfWith(inputG);
       RGN->getGradOfInputNamedExpected().replaceAllUsesOfWith(expG);
@@ -71,8 +71,7 @@ void glow::lower(Graph &G, CompilationMode mode) {
         /// RHS' =  -OUT'
         auto outG = EMG->getGradOfOriginalOutputNamedResult();
         EMG->getGradOfInputNamedLHS().replaceAllUsesOfWith(outG);
-        auto zero = G.createZero("zero", outG.getType());
-
+        auto zero = G.createSplat("zero", outG.getType(), 0);
         auto sub = G.createArithmetic("sub.grad", zero, outG,
                                       ArithmeticNode::Mode::Sub);
         EMG->getGradOfInputNamedRHS().replaceAllUsesOfWith(sub);
