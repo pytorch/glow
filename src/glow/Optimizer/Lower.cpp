@@ -19,7 +19,7 @@ void glow::lower(Graph &G, CompilationMode mode) {
     // Lower the RegressionNode node:
     if (auto *RN = dyn_cast<RegressionNode>(node)) {
       auto outG = RN->getInput();
-      RN->getResult()->replaceAllUsesOfWith(outG);
+      RN->getResult().replaceAllUsesOfWith(outG);
       continue;
     }
     // Lower the RegressionGradNode node:
@@ -31,8 +31,8 @@ void glow::lower(Graph &G, CompilationMode mode) {
                              ArithmeticNode::Mode::Sub);
       auto expG = G.createZero("exp.grad", RGN->getExpected().getType());
 
-      RGN->getGradOfInputNamedInput()->replaceAllUsesOfWith(inputG);
-      RGN->getGradOfInputNamedExpected()->replaceAllUsesOfWith(expG);
+      RGN->getGradOfInputNamedInput().replaceAllUsesOfWith(inputG);
+      RGN->getGradOfInputNamedExpected().replaceAllUsesOfWith(expG);
       continue;
     }
 
@@ -44,8 +44,8 @@ void glow::lower(Graph &G, CompilationMode mode) {
         /// LHS' = OUT'
         /// RHS' = OUT'
         auto outG = EMG->getGradOfOriginalOutputNamedResult();
-        EMG->getGradOfInputNamedLHS()->replaceAllUsesOfWith(outG);
-        EMG->getGradOfInputNamedRHS()->replaceAllUsesOfWith(outG);
+        EMG->getGradOfInputNamedLHS().replaceAllUsesOfWith(outG);
+        EMG->getGradOfInputNamedRHS().replaceAllUsesOfWith(outG);
         continue;
       }
 
@@ -60,8 +60,8 @@ void glow::lower(Graph &G, CompilationMode mode) {
                                        ArithmeticNode::Mode::Mul);
         auto RHS1 = G.createArithmetic("mul.grad.rhs", LHS, outG,
                                        ArithmeticNode::Mode::Mul);
-        EMG->getGradOfInputNamedLHS()->replaceAllUsesOfWith(LHS1);
-        EMG->getGradOfInputNamedRHS()->replaceAllUsesOfWith(RHS1);
+        EMG->getGradOfInputNamedLHS().replaceAllUsesOfWith(LHS1);
+        EMG->getGradOfInputNamedRHS().replaceAllUsesOfWith(RHS1);
         continue;
       }
 
@@ -70,11 +70,12 @@ void glow::lower(Graph &G, CompilationMode mode) {
         /// LHS' =  OUT'
         /// RHS' =  -OUT'
         auto outG = EMG->getGradOfOriginalOutputNamedResult();
-        EMG->getGradOfInputNamedLHS()->replaceAllUsesOfWith(outG);
+        EMG->getGradOfInputNamedLHS().replaceAllUsesOfWith(outG);
         auto zero = G.createZero("zero", outG.getType());
+
         auto sub = G.createArithmetic("sub.grad", zero, outG,
                                       ArithmeticNode::Mode::Sub);
-        EMG->getGradOfInputNamedRHS()->replaceAllUsesOfWith(sub);
+        EMG->getGradOfInputNamedRHS().replaceAllUsesOfWith(sub);
         continue;
       }
       }
