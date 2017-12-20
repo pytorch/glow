@@ -44,6 +44,18 @@ void NodeValue::setOperand(Node *v, unsigned resNo) {
   }
 }
 
+void NodeValue::replaceAllUsesOfWith(NodeValue v) {
+  auto &users = node_->getUsers();
+  llvm::SmallVector<NodeUse, 4> usersVec(users.begin(), users.end());
+  for (auto &U : usersVec) {
+    NodeValue *site = U.get();
+    assert(site->getNode() == node_ && "Invalid user");
+    if (site->getResNo() == getResNo()) {
+      site->setOperand(v.getNode(), v.getResNo());
+    }
+  }
+}
+
 /// \returns the n'th result type of the node.
 TypeRef Node::getType(unsigned idx) const {
   if (idx == (unsigned)-1) {
