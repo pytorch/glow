@@ -8,7 +8,7 @@ by LLVM's TableGen tools.
 ### Introduction
 
 The purpose of the automatic code generation tools in glow is identical to the
-motivation begind TableGen:
+motivation behind TableGen:
 
 " ... to help a human develop and maintain records of domain-specific
 information. Because there may be a large number of these records, it is
