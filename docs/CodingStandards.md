@@ -49,6 +49,11 @@ We encourage the use of clang-format to enforce code style and formatting.
 Commits that only change the formatting of code should go in separate commits.
 This makes reviewing the code and inspecting history easier.
 
+It's recommended to use a pre-commit hook to properly format your code prior
+committing any changes. Run the following command from the root of the repo
+to enable the hook:
+`ln -s ../../utils/format.sh .git/hooks/pre-commit`.
+
 ### Commit messages
 
 Here are some guidelines about the format of the commit message:
@@ -70,4 +75,3 @@ people’s changes! Anybody is allowed to review code and comment on patches.
 
 All changes, by all developers, must be reviewed before they are committed to
 the repository.
-
