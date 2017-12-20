@@ -42,7 +42,7 @@ Code example of creating tensors and the APIs to create a Handle and mutate the
 data:
 
 ```
-  /// Create a tensor of type Flow, of the shape {4 x 2}.
+  /// Create a tensor of type Float, of the shape {4 x 2}.
   Tensor inputs(ElemKind::FloatTy, {4, 2});
 
   /// Create a handle to the tensor.
