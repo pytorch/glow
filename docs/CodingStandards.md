@@ -2,7 +2,7 @@
 
 This document provides general guidance for developing code for the project.
 The rules in this document will guide us in writing high quality code that will
-allow us scale the project and ensure that the code base remains readable and
+allow us to scale the project and ensure that the code base remains readable and
 maintainable.
 
 ### Follow the LLVM and Facebook coding standards
