@@ -69,7 +69,7 @@ static void calculateLiveness(Module &M, LivenessMap &liveness) {
 /// Hoists Dealloc instructions right after their last use.
 static void hoistDealloc(Module &M) {
   // Maps activation instructions to their last non-dealloc user.
-  std::unordered_map<AllocActivationInst *, InstrIterator> lastUser;
+  std::unordered_map<Value *, InstrIterator> lastUser;
   auto &instrs = M.getInstrs();
 
   // Record the last use of each dealloc.
@@ -81,6 +81,14 @@ static void hoistDealloc(Module &M) {
       auto op = (*it)->getOperand(i).first;
       if (auto alloc = dyn_cast<AllocActivationInst>(op)) {
         lastUser[alloc] = it;
+      }
+
+      if (auto tensorView = dyn_cast<TensorViewInst>(op)) {
+        // Consider any use of a tensor_view to be also a use
+        // of its source tensor. This is required to make
+        // sure that a lifetime of a tensor_view is always
+        // enclosed inside the lifetime of its source tensor.
+        lastUser[tensorView->getSrc()] = it;
       }
     }
   }
@@ -884,19 +892,24 @@ static void performDebugInstrumentation(Module &M) {
       it = next;
       continue;
     }
+    auto instrName = (*it)->getName();
     for (auto const &Op : (*it)->getOperands()) {
       // Dump inputs of the current instruction before the instruction.
       if (Op.second != OperandKind::Out) {
-        std::string name = "print_input_";
+        std::string name = "debug_print.before.";
         name += Op.first->getName();
+        name += ".";
+        name += instrName;
         auto *dumpInstr = new DebugPrintInst(&M, name, Op.first);
         M.insertInstruction(it, dumpInstr);
       }
 
       // Dump outputs of the current instruction after the instruction.
       if (Op.second != OperandKind::In) {
-        std::string name = "print_output_";
+        std::string name = "debug_print.after.";
         name += Op.first->getName();
+        name += ".";
+        name += instrName;
         auto *dumpInstr = new DebugPrintInst(&M, name, Op.first);
         M.insertInstruction(next, dumpInstr);
       }

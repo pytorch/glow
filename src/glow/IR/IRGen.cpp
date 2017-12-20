@@ -70,7 +70,10 @@ public:
     }
     assert(!generatedNodeDest_.count(N) &&
            "Already generated code for this node");
-    assert(isa<AllocActivationInst>(v) && "The value must be an activation");
+    auto *dest = v;
+    if (auto *zn = dyn_cast<ZeroInst>(v))
+      dest = zn->getDest();
+    assert(isa<AllocActivationInst>(dest) && "The value must be an activation");
     generatedNodeDest_[N] = v;
   }
 
@@ -180,19 +183,41 @@ public:
 
     case glow::Kinded::Kind::FullyConnectedGradNodeKind: {
       auto *FCG = cast<FullyConnectedGradNode>(N);
-      auto *inW = valueForNode(FCG->getInput());
+      auto *InW = valueForNode(FCG->getInput());
+      // FullyConnected works with tensor views, so create them.
+      auto *InWview = InW;
+      // Create a tensor view only if the dimensionality needs to be changed.
+      if (InWview->dims().size() != 2) {
+        auto idim = flattenCdr(InW->dims());
+        InWview = builder_.createTensorView(InWview->getElementType(),
+                                            {idim.first, idim.second}, InW,
+                                            "inWtensorview");
+      }
       auto *filterW = valueForNode(FCG->getFilter());
       auto *outW = valueForNode(FCG->getGradOfOriginalOutputNamedOutput());
       auto biasX = FCG->getBias();
 
-      auto *InG = builder_.createAllocActivationInst("inG", inW->getType());
+      Value *InG = builder_.createAllocActivationInst("inG", InW->getType());
+      // Create a tensor view for the @out parameter G.
+      Value *InGview = InG;
+      if (InGview->dims().size() != 2) {
+        auto idim = flattenCdr(InG->dims());
+        // tensorview is the first use of InG and takes inG an @in parameter.
+        // But InG is not initialized yet to be used as an @in parameter and
+        // the IR verifier would complain about it. Therefore, we initialize
+        // InG as zero to make the verifier happy.
+        builder_.createZeroInst("zero", InG);
+        InGview = builder_.createTensorView(InGview->getElementType(),
+                                            {idim.first, idim.second}, InG,
+                                            "inGtensorview");
+      }
       auto *FilterG =
           builder_.createAllocActivationInst("filterG", filterW->getType());
       auto *BiasG =
           builder_.createAllocActivationInst("biasG", biasX.getType());
 
-      builder_.createFullyConnectedGradInst(N->getName(), inW, filterW, outW,
-                                            InG, FilterG, BiasG,
+      builder_.createFullyConnectedGradInst(N->getName(), InWview, filterW,
+                                            outW, InGview, FilterG, BiasG,
                                             FCG->getDepth());
 
       registerIR(FCG->getGradOfInputNamedInput(), InG);

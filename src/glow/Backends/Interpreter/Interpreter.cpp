@@ -10,6 +10,7 @@
 #include "llvm/Support/Casting.h"
 
 using namespace glow;
+using llvm::isa;
 
 Interpreter::~Interpreter() { clear(); }
 
@@ -68,6 +69,24 @@ Tensor *Interpreter::getOrCreateTensor(const Value *v) {
     return T;
   }
   return it->second;
+}
+
+Tensor *Interpreter::getOrCreateUnownedTensor(const Value *v,
+                                              const Value *src) {
+  assert(isa<TensorViewInst>(v) && "Expected a tensor view");
+
+  // Pick the tensor.
+  auto it = tensors_.find(v);
+
+  // Release unowned tensors before re-creating them.
+  if (it != tensors_.end()) {
+    deleteTensor(v);
+  }
+
+  auto *T = new Tensor();
+  *T = getTensor(src)->getUnowned(v->dims());
+  tensors_[v] = T;
+  return T;
 }
 
 void Interpreter::deleteTensor(const Value *v) {
