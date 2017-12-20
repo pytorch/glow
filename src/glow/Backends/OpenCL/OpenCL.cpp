@@ -163,7 +163,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
     // Element-wise operations:
     if (isa<ReluInst>(I) || isa<SigmoidInst>(I) || isa<TanhInst>(I) ||
         isa<ReluInst>(I) || isa<ElementAddInst>(I) || isa<ElementSubInst>(I) ||
-        isa<ElementMulInst>(I) || isa<ElementDivInst>(I) || isa<ZeroInst>(I)) {
+        isa<ElementMulInst>(I) || isa<ElementDivInst>(I)) {
 
       cl_kernel kernel = createKernel(program_, kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
@@ -171,6 +171,27 @@ void OCLBackend::doForwardPass(bool isTrain) {
       for (unsigned arg = 0, e = I->getNumOperands(); arg < e; arg++) {
         setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
       }
+
+      // Figure out how many element-wise elements are there to process:
+      size_t global = I->getOperand(0).first->getType()->size();
+
+      enqueueKernel(commands_, kernel, deviceId_, {global});
+      kernels.push_back(kernel);
+      continue;
+    }
+
+    // Element-wise operations:
+    if (auto *SI = dyn_cast<SplatInst>(I)) {
+      cl_kernel kernel = createKernel(program_, kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
+      unsigned numArgs = I->getNumOperands();
+
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+      }
+
+      // Pass the splat as a parameter.
+      setKernelArg(kernel, numArgs + 1, SI->getValue());
 
       // Figure out how many element-wise elements are there to process:
       size_t global = I->getOperand(0).first->getType()->size();

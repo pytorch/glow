@@ -70,10 +70,7 @@ public:
     }
     assert(!generatedNodeDest_.count(N) &&
            "Already generated code for this node");
-    auto *dest = v;
-    if (auto *zn = dyn_cast<ZeroInst>(v))
-      dest = zn->getDest();
-    assert(isa<AllocActivationInst>(dest) && "The value must be an activation");
+    assert(isa<AllocActivationInst>(v) && "The value must be an activation");
     generatedNodeDest_[N] = v;
   }
 
@@ -206,7 +203,7 @@ public:
         // But InG is not initialized yet to be used as an @in parameter and
         // the IR verifier would complain about it. Therefore, we initialize
         // InG as zero to make the verifier happy.
-        builder_.createZeroInst("zero", InG);
+        builder_.createSplatInst("zero", InG, 0);
         InGview = builder_.createTensorView(InGview->getElementType(),
                                             {idim.first, idim.second}, InG,
                                             "inGtensorview");
@@ -375,7 +372,7 @@ public:
 
       builder_.createElementSubInst(N->getName(), srcGrad, origIn,
                                     origExpected);
-      builder_.createZeroInst(N->getName(), expGrad);
+      builder_.createSplatInst(N->getName(), expGrad, 0);
 
       registerIR(RG->getGradOfInputNamedInput(), srcGrad);
       registerIR(RG->getGradOfInputNamedExpected(), expGrad);
@@ -402,7 +399,7 @@ public:
 
       auto *dest = builder_.createAllocActivationInst(
           CC->getName(), CC->getElementType(), CC->dims());
-      builder_.createZeroInst(CC->getName(), dest);
+      builder_.createSplatInst(CC->getName(), dest, 0);
       auto inputs = CC->getInputs();
 
       // We start inserting to the shape at (0,0, ... ).
@@ -479,8 +476,8 @@ public:
       auto *varG =
           builder_.createAllocActivationInst("bn.var.G", var->getType());
 
-      builder_.createZeroInst("bn.zero.mean.G", meanG);
-      builder_.createZeroInst("bn.zero.var.G", varG);
+      builder_.createSplatInst("bn.zero.mean.G", meanG, 0);
+      builder_.createSplatInst("bn.zero.var.G", varG, 0);
 
       builder_.createBatchNormalizationGradInst(
           N->getName(), in, gamma, mean, var, outG, inG, scaleG, biasG,
@@ -607,10 +604,10 @@ public:
       registerIR(N, W);
       break;
     }
-    case glow::Kinded::Kind::ZeroNodeKind: {
-      auto *Z = cast<ZeroNode>(N);
+    case glow::Kinded::Kind::SplatNodeKind: {
+      auto *Z = cast<SplatNode>(N);
       auto *AC = builder_.createAllocActivationInst(Z->getName(), Z->getType());
-      builder_.createZeroInst(N->getName(), AC);
+      builder_.createSplatInst(N->getName(), AC, Z->getValue());
       registerIR(N, AC);
       break;
     }

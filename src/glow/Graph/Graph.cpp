@@ -342,8 +342,8 @@ ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, NodeValue LHS,
   return addNode(new ArithmeticNode(name, op, LHS, RHS));
 }
 
-ZeroNode *Graph::createZero(llvm::StringRef name, TypeRef ty) {
-  return addNode(new ZeroNode(name, ty));
+SplatNode *Graph::createSplat(llvm::StringRef name, TypeRef ty, float value) {
+  return addNode(new SplatNode(name, ty, value));
 }
 
 BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,

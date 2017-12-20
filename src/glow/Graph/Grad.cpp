@@ -88,9 +88,9 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
     CONVERT_TO_GRAD_NODE(TanhNode)
 
     if (N->getKind() == Kind::SaveNodeKind) {
-      // Swap the src and dest.
-      auto *X =
-          new ZeroNode(N->getName(), cast<SaveNode>(N)->getInput()->getType());
+      // Swap the src and dest. Send the Zero value as gradient for both sides.
+      auto *X = new SplatNode(N->getName(),
+                              cast<SaveNode>(N)->getInput()->getType(), 0);
       toAppend.push_back(X);
       map.addGradient(cast<SaveNode>(N)->getInput(), X);
       map.addGradient(cast<SaveNode>(N)->getVariable(), X);
@@ -132,7 +132,7 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
 
     if (N->getKind() == Kind::SliceNodeKind) {
       SliceNode *SN = cast<SliceNode>(N);
-      auto *zero = new ZeroNode("expand", SN->getInput()->getType());
+      auto *zero = new SplatNode("expand", SN->getInput()->getType(), 0);
       auto *insert = new InsertTensorNode("insert.slice.grad", zero,
                                           map.getGradient(SN->getResult()),
                                           SN->getStart());

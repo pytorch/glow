@@ -600,9 +600,20 @@ void Interpreter::fwdTensorViewInst(bool isTrain, const TensorViewInst *I) {
   getOrCreateUnownedTensor(I, I->getSrc());
 }
 
-void Interpreter::fwdZeroInst(bool isTrain, const glow::ZeroInst *I) {
+void Interpreter::fwdSplatInst(bool isTrain, const glow::SplatInst *I) {
   auto *T = getTensor(I->getDest());
-  T->zero();
+  ElemKind k = T->getElementType();
+
+#define TYPED_SPLAT(TY, TYPEKIND)                                              \
+  if (k == TYPEKIND) {                                                         \
+    return T->getHandle<TY>().clear(I->getValue());                            \
+  }
+
+  TYPED_SPLAT(size_t, ElemKind::IndexTy);
+  TYPED_SPLAT(float, ElemKind::FloatTy);
+#undef TYPED_SPLAT
+
+  llvm_unreachable("Unsupported tensor type");
 }
 
 void Interpreter::fwdInsertTensorInst(bool isTrain,

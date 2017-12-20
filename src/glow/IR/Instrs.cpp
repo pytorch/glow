@@ -205,7 +205,7 @@ void TransposeInst::verify() const {
          "Invalid transpose dims");
 }
 
-void ZeroInst::verify() const {}
+void SplatInst::verify() const {}
 
 void InsertTensorInst::verify() const {
   auto *dest = getDest();

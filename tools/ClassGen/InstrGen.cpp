@@ -236,7 +236,9 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::VectorUnsigned, "Shuffle");
 
-  BB.newInstr("Zero").addOperand("Dest", OperandKind::Out);
+  BB.newInstr("Splat")
+      .addMember(MemberType::Float, "Value")
+      .addOperand("Dest", OperandKind::Out);
 
   BB.newInstr("InsertTensor")
       .addOperand("Dest", OperandKind::InOut)
