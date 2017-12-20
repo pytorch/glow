@@ -110,4 +110,5 @@ void glow::lower(Graph &G, CompilationMode mode) {
       lowerArithmeticNode(G, *EMG);
     }
   }
+
 }
