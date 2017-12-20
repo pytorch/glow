@@ -17,6 +17,7 @@ extern llvm::cl::opt<bool> DumpIR;
 extern llvm::cl::opt<ImageNormalizationMode> ImageMode; // interesting
 extern llvm::cl::opt<bool> Verbose;
 extern llvm::cl::opt<bool> Timer;
+extern llvm::cl::opt<bool> NoBGR;
 } // namespace opts
 
 #endif

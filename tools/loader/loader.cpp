@@ -59,11 +59,13 @@ void loadImageAndPreprocess(const std::string &filename, Tensor *result,
   result->reset(ElemKind::FloatTy, {1, 3, dims[0], dims[1]});
   auto RH = result->getHandle<>();
 
-  // Convert to BGR.
-  for (unsigned z = 0; z < 3; z++) {
-    for (unsigned y = 0; y < dims[1]; y++) {
-      for (unsigned x = 0; x < dims[0]; x++) {
-        RH.at({0, 2 - z, x, y}) = (imageH.at({x, y, z}));
+  if (!opts::NoBGR) {
+    // Convert to BGR.
+    for (unsigned z = 0; z < 3; z++) {
+      for (unsigned y = 0; y < dims[1]; y++) {
+        for (unsigned x = 0; x < dims[0]; x++) {
+          RH.at({0, 2 - z, x, y}) = (imageH.at({x, y, z}));
+        }
       }
     }
   }
@@ -149,6 +151,10 @@ llvm::cl::opt<bool>
                          "takes for the program to execute"),
           llvm::cl::Optional);
 
+llvm::cl::opt<bool>
+    NoBGR("noBGR",
+          llvm::cl::desc("Do not convert the given png files to BGR format"),
+          llvm::cl::init(false));
 } // namespace opts
 
 int main(int argc, char **argv) {
