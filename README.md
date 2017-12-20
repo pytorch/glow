@@ -106,3 +106,9 @@ executable is run.
 If everything goes well you should see pictures from the mnist digits database
 and print outs from cifar10 that make sense as well as the perplexity on the
 ptb dataset go down as the network trains.
+
+## Contributing
+
+To get started please refer to the following guides:
+* [Contributing](docs/Contributing.md)
+* [CodingStandards](docs/CodingStandards.md)
