@@ -6,6 +6,7 @@
 #include "glow/Base/Traits.h"
 #include "glow/Base/Type.h"
 #include "glow/IR/UseDef.h"
+#include "glow/Support/Support.h"
 
 #include <list>
 
@@ -133,7 +134,7 @@ public:
   unsigned getNumRes() { return numRes_; }
 
   /// \returns a textual description of the node.
-  virtual std::string getDebugDesc() const;
+  virtual DescriptionBuilder getDebugDesc() const;
 
   /// \returns true if the node is equal to the other node.
   bool isEqual(const Node &other) const;

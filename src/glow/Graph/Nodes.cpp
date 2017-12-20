@@ -262,17 +262,19 @@ void Variable::visit(Node *parent, NodeWalker *visitor) {
 //===----------------------------------------------------------------------===//
 //                     Debug description methods
 //===----------------------------------------------------------------------===//
-std::string Node::getDebugDesc() const { return "<node>"; }
+DescriptionBuilder Node::getDebugDesc() const { 
+  return DescriptionBuilder("<node>");
+}
 
-std::string Variable::getDebugDesc() const {
+DescriptionBuilder Variable::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()))
-      .addParam("output", *getType())
-      .addParam("init", Variable::getInitKindStr(initKind_));
+  db.addParam(1, "name", quote(getName()))
+      .addParam(1, "output", *getType())
+      .addParam(1, "init", Variable::getInitKindStr(initKind_));
   if (initKind_ != Variable::InitKind::Extern) {
-    db.addParam("val", val_);
+    db.addParam(1, "val", val_);
   }
-  db.addParam("users", getNumUsers());
+  db.addParam(1, "users", getNumUsers());
   return db;
 }
 

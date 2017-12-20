@@ -63,7 +63,7 @@ public:
 
   void copyFrom(Tensor *t) { payload_.copyFrom(t); }
 
-  std::string getDebugDesc() const override;
+  DescriptionBuilder getDebugDesc() const override;
 
   void visit(Node *parent, NodeWalker *visitor) override;
 

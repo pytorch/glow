@@ -123,16 +123,14 @@ void NodeBuilder::emitSettersGetters(std::ostream &os) const {
 }
 
 void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
-  os << "std::string " << name_
+  os << "DescriptionBuilder " << name_
      << "Node::getDebugDesc() const {\n\t\tDescriptionBuilder "
-        "db(getKindName());\n\t\tdb.addParam(\"name\", getName())\n";
+        "db(getKindName());\n";
+
+  os << "\t\tdb.addParam(1, \"name\", getName())\n";
 
   if (!enum_.empty()) {
-    os << "\t\t.addParam(\"Mode\", getModeStr())\n";
-  }
-
-  for (const auto &op : nodeInputs_) {
-    os << "\t\t.addParam(\"" << op << "\", *(get" << op << "().getType()))\n";
+    os << "\t\t.addParam(1, \"Mode\", getModeStr())\n";
   }
 
   for (const auto &mem : members_) {
@@ -140,16 +138,21 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
     if (mem.first == MemberType::VectorNodeValue)
       continue;
 
-    os << "\t\t.addParam(\"" << mem.second << "\", get" << mem.second
+    os << "\t\t.addParam(1, \"" << mem.second << "\", get" << mem.second
        << "())\n";
   }
-  os << "\t\t.addParam(\"users\", getNumUsers());";
+  os << "\t\t.addParam(1, \"users\", getNumUsers());";
+
+  for (const auto &op : nodeInputs_) {
+    os << "\t\tdb.addParam(0, \"" << op << "\", *(get" << op
+       << "().getType()));\n";
+  }
 
   for (const auto &mem : members_) {
     if (mem.first != MemberType::VectorNodeValue)
       continue;
 
-    os << " for (auto II : get" << mem.second << "()) { db.addParam(\""
+    os << "\t\tfor (auto II : get" << mem.second << "()) { db.addParam(0, \""
        << mem.second << "\", *II->getType()); }";
   }
 
@@ -267,7 +270,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
 
   emitSettersGetters(os);
 
-  os << "\tstd::string getDebugDesc() const override;\n";
+  os << "\tDescriptionBuilder getDebugDesc() const override;\n";
   os << "\tbool isEqual(const " << name_ << "Node &other) const;\n";
   os << "\tllvm::hash_code getHash() const;\n";
   os << "\tvoid visit(Node *parent, NodeWalker *visitor) override;\n";
