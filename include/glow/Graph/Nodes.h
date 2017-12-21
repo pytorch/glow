@@ -37,6 +37,7 @@ public:
         initKind_(initKind) {
     addResult(Ty);
     initPayload();
+    OutputNames.push_back("output");
   }
 
   /// \returns True if the Variable is initialized to be in training mode.
@@ -63,7 +64,7 @@ public:
 
   void copyFrom(Tensor *t) { payload_.copyFrom(t); }
 
-  DescriptionBuilder getDebugDesc() const override;
+  std::string getDebugDesc() const override;
 
   void visit(Node *parent, NodeWalker *visitor) override;
 

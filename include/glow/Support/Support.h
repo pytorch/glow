@@ -59,80 +59,37 @@ template <typename... Args> std::string listToString(Args... args) {
 
 /// A helper class that builds a textual descriptor of a group of parameters.
 class DescriptionBuilder {
-  std::vector<std::vector<std::string>> rows_;
+  std::stringstream repr_;
 
 public:
-  explicit DescriptionBuilder(const char *name): rows_(2) {
-    rows_[1].push_back(name);
-  }
+  explicit DescriptionBuilder(const char *name) { repr_ << name << '\n'; }
 
-  DescriptionBuilder &addParam(size_t row_n, const std::string &name, const char *value) {
-    rows_[row_n].push_back(name + " : " + value);
+  DescriptionBuilder &addParam(const std::string &name, const char *value) {
+    repr_ << name << " : " << value << '\n';
     return *this;
   }
 
   template <typename E>
-  DescriptionBuilder &addParam(size_t row_n, const std::string &name, llvm::ArrayRef<E> L) {
-    rows_[row_n].push_back(name + " : " + std::to_string(L));
+  DescriptionBuilder &addParam(const std::string &name, llvm::ArrayRef<E> L) {
+    repr_ << name << " : " << std::to_string(L) << '\n';
     return *this;
   }
 
   template <typename T_,
             typename = typename std::enable_if<std::is_scalar<T_>::value>::type>
-  DescriptionBuilder &addParam(size_t row_n, const std::string &name, T_ value) {
-    std::ostringstream line;
-    line << name << " : " << value;
-    rows_[row_n].push_back(line.str());
+  DescriptionBuilder &addParam(const std::string &name, T_ value) {
+    repr_ << name << " : " << value << '\n';
     return *this;
   }
 
   template <typename T_, typename = typename std::enable_if<
                              !std::is_scalar<T_>::value>::type>
-  DescriptionBuilder &addParam(size_t row_n, const std::string &name, const T_ &value) {
-    rows_[row_n].push_back(name + " : " + std::to_string(value));
+  DescriptionBuilder &addParam(const std::string &name, const T_ &value) {
+    repr_ << name << " : " << std::to_string(value) << '\n';
     return *this;
   }
 
-  std::string toGraphNodeString() const {
-    std::vector<std::vector<std::string>> escaped_rows(2);
-    for (size_t i = 0; i < 2; i++) {
-      escaped_rows[i].resize(rows_[i].size());
-      for (size_t j = 0; j < rows_[i].size(); j++)
-        escaped_rows[i][j] = escapeDottyString(rows_[i][j]);
-    }
-
-    std::ostringstream result;
-    result << "{";
-    if (!escaped_rows[0].empty()) {
-      result << "{<i0>" << escaped_rows[0][0];
-      for (size_t i = 1; i < escaped_rows[0].size(); i++) {
-        result << "|<i" << i << ">" << escaped_rows[0][i];
-      }
-      result << "}";
-    }
-    if (!escaped_rows[0].empty() && !escaped_rows[1].empty()) {
-      result << "|";
-    }
-    if (!escaped_rows[1].empty()) {
-      result << "{";
-      for (const auto& elem : escaped_rows[1]) {
-        result << elem << "\\l";
-      }
-      result << "}";
-    }
-    result << "}";
-    return result.str();
-  }
-
-  operator std::string() const {
-    std::ostringstream result;
-    for (int i = 1; i >= 0; i--) {
-      for (const auto& elem : rows_[i]) {
-        result << elem << '\n';
-      }
-    }
-    return result.str();
-  }
+  operator std::string() const { return repr_.str(); }
 };
 
 } // namespace glow

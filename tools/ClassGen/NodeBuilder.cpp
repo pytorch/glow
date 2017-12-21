@@ -59,6 +59,22 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
   for (auto &RT : nodeOutputs_) {
     os << "\taddResult(" << RT.first << ");\n";
   }
+  for (const auto &op : nodeInputs_) {
+    os << "\t\tInputNames.push_back(\"" << op << "\");\n"
+       << "\t\tInputNodes.push_back(" << op << "_);\n";
+  }
+  for (const auto &op : members_) {
+    if (op.first != MemberType::VectorNodeValue)
+      continue;
+    os << "\t\tfor (size_t i = 0; i < " << op.second << "_.size(); i++) { "
+       << "InputNodes.push_back(" << op.second << "_[i]); "
+       << "InputNames.push_back(\"" << op.second
+       << "\" + std::to_string(i)); }\n";
+  }
+  for (size_t i = 0; i < nodeOutputs_.size(); i++) {
+    os << "\t\tOutputNames.push_back(\"" << nodeOutputs_[i].second << "\");\n";
+  }
+
   os << "}\n\n";
 }
 
@@ -123,14 +139,13 @@ void NodeBuilder::emitSettersGetters(std::ostream &os) const {
 }
 
 void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
-  os << "DescriptionBuilder " << name_
-     << "Node::getDebugDesc() const {\n\t\tDescriptionBuilder "
-        "db(getKindName());\n";
-
-  os << "\t\tdb.addParam(1, \"name\", getName())\n";
+  os << "std::string " << name_
+     << "Node::getDebugDesc() const {\n"
+     << "\t\tDescriptionBuilder db(getKindName());\n"
+     << "\t\tdb.addParam(\"name\", getName())\n";
 
   if (!enum_.empty()) {
-    os << "\t\t.addParam(1, \"Mode\", getModeStr())\n";
+    os << "\t\t.addParam(\"Mode\", getModeStr())\n";
   }
 
   for (const auto &mem : members_) {
@@ -138,13 +153,13 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
     if (mem.first == MemberType::VectorNodeValue)
       continue;
 
-    os << "\t\t.addParam(1, \"" << mem.second << "\", get" << mem.second
+    os << "\t\t.addParam(\"" << mem.second << "\", get" << mem.second
        << "())\n";
   }
-  os << "\t\t.addParam(1, \"users\", getNumUsers());";
+  os << "\t\t.addParam(\"users\", getNumUsers());";
 
   for (const auto &op : nodeInputs_) {
-    os << "\t\tdb.addParam(0, \"" << op << "\", *(get" << op
+    os << "\t\tdb.addParam(\"" << op << "\", *(get" << op
        << "().getType()));\n";
   }
 
@@ -152,7 +167,7 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
     if (mem.first != MemberType::VectorNodeValue)
       continue;
 
-    os << "\t\tfor (auto II : get" << mem.second << "()) { db.addParam(0, \""
+    os << "\t\tfor (auto II : get" << mem.second << "()) { db.addParam(\""
        << mem.second << "\", *II->getType()); }";
   }
 
@@ -238,7 +253,7 @@ void NodeBuilder::emitVisitor(std::ostream &os) const {
 
   for (const auto &op : members_) {
     if (op.first == MemberType::VectorNodeValue) {
-      os << " for (auto &I : " << op.second
+      os << "\tfor (auto &I : " << op.second
          << "_) { I->visit(this, visitor);}\n";
     }
   }
@@ -270,7 +285,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
 
   emitSettersGetters(os);
 
-  os << "\tDescriptionBuilder getDebugDesc() const override;\n";
+  os << "\tstd::string getDebugDesc() const override;\n";
   os << "\tbool isEqual(const " << name_ << "Node &other) const;\n";
   os << "\tllvm::hash_code getHash() const;\n";
   os << "\tvoid visit(Node *parent, NodeWalker *visitor) override;\n";
