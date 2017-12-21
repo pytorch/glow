@@ -44,7 +44,7 @@ void lowerArithmeticNode(Graph &graph, ArithmeticGradNode &node) {
     /// LHS' = OUT'
     /// RHS' = -OUT'
     auto outG = node.getGradOfOriginalOutputNamedResult();
-    auto zero = graph.createSplat("zero", outG.getType(), 0);
+    auto zero = graph.createZero("zero", outG.getType());
     auto sub = graph.createArithmetic("sub.grad", zero, outG,
                                       ArithmeticNode::Mode::Sub);
     node.getGradOfInputNamedLHS().replaceAllUsesOfWith(outG);
@@ -63,7 +63,7 @@ void lowerArithmeticNode(Graph &graph, ArithmeticGradNode &node) {
     auto lhsResult = graph.createArithmetic("div.grad.rhs", outG, RHS,
                                             ArithmeticNode::Mode::Div);
 
-    auto zero = graph.createSplat("zero", outG.getType(), 0);
+    auto zero = graph.createZero("zero", outG.getType());
     auto subGrad = graph.createArithmetic("sub.grad", zero, outG,
                                           ArithmeticNode::Mode::Sub);
     auto mulLhsGrad = graph.createArithmetic("mul.sub.grad.lhs", subGrad, LHS,
@@ -92,7 +92,7 @@ void lowerRegressionGradNode(Graph &graph, RegressionGradNode &node) {
   auto inputG =
       graph.createArithmetic("rgn.grad", node.getInput(), node.getExpected(),
                              ArithmeticNode::Mode::Sub);
-  auto expG = graph.createSplat("exp.grad", node.getExpected().getType(), 0);
+  auto expG = graph.createZero("exp.grad", node.getExpected().getType());
 
   node.getGradOfInputNamedInput().replaceAllUsesOfWith(inputG);
   node.getGradOfInputNamedExpected().replaceAllUsesOfWith(expG);
