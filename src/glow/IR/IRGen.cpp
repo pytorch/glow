@@ -580,7 +580,7 @@ public:
         break;
       }
       case ArithmeticGradNode::Mode::Div: {
-        builder_.createElementSubGradInst(N->getName(), outG, LG, RG);
+        builder_.createElementDivGradInst(N->getName(), L, R, outG, LG, RG);
         break;
       }
       }
