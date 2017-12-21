@@ -415,7 +415,7 @@ void Graph::dump() const {
 
 /// A helper class for visiting and generating the dotty file from the graph.
 /// We can't use NodeWalker here, because it ignores result indices, which
-/// are critical in generating detailing debug output.
+/// are critical in generating detailed debug output.
 struct DottyPrinterPass {
   // The output stream for writing the dotty descriptor.
   std::ostream &os_;
