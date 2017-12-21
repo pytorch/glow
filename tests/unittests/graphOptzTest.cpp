@@ -154,6 +154,46 @@ TEST(GraphOptz, sinkTransposeBelowRELU) {
   EXPECT_EQ(G.getNodes().size(), 3);
 }
 
+TEST(GraphOptz, sinkSigmoidBelowRELU) {
+  Graph G;
+  Module M(&G);
+
+  Node *A = G.createVariable(ElemKind::FloatTy, {1, 6}, "input",
+                             Variable::InitKind::Extern);
+  Node *S = G.createSigmoid("sigmoid", A);
+  Node *K = G.createRELU("relu", S);
+  Node *O = G.createSave("ret", K);
+
+  EXPECT_EQ(G.getNodes().size(), 3);
+  ::glow::optimize(G, CompilationMode::Infer);
+
+  // Expecting Sigmoid->Output rather than RELU->Output
+  EXPECT_TRUE(llvm::isa<SaveNode>(O));
+  EXPECT_TRUE(llvm::isa<SigmoidNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
+
+  EXPECT_EQ(G.getNodes().size(), 3);
+}
+
+TEST(GraphOptz, sinkTanhBelowRELU) {
+  Graph G;
+  Module M(&G);
+
+  Node *A = G.createVariable(ElemKind::FloatTy, {1, 6}, "input",
+                             Variable::InitKind::Extern);
+  Node *T = G.createTanh("tanh", A);
+  Node *K = G.createRELU("relu", T);
+  Node *O = G.createSave("ret", K);
+
+  EXPECT_EQ(G.getNodes().size(), 3);
+  ::glow::optimize(G, CompilationMode::Infer);
+
+  // Expecting Tanh->Outpu rather than RELU->Output
+  EXPECT_TRUE(llvm::isa<SaveNode>(O));
+  EXPECT_TRUE(llvm::isa<TanhNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
+
+  EXPECT_EQ(G.getNodes().size(), 3);
+}
+
 TEST(GraphOptz, cancelTwoTransposes) {
   Graph G;
   Module M(&G);
