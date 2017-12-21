@@ -1,5 +1,6 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
+#include "loader.h"
 #include "glow/Base/Image.h"
 #include "glow/Base/Tensor.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
@@ -58,17 +59,19 @@ void loadImageAndPreprocess(const std::string &filename, Tensor *result,
   result->reset(ElemKind::FloatTy, {1, 3, dims[0], dims[1]});
   auto RH = result->getHandle<>();
 
-  // Convert to BGR.
-  for (unsigned z = 0; z < 3; z++) {
-    for (unsigned y = 0; y < dims[1]; y++) {
-      for (unsigned x = 0; x < dims[0]; x++) {
-        RH.at({0, 2 - z, x, y}) = (imageH.at({x, y, z}));
+  if (!opts::NoBGR) {
+    // Convert to BGR.
+    for (unsigned z = 0; z < 3; z++) {
+      for (unsigned y = 0; y < dims[1]; y++) {
+        for (unsigned x = 0; x < dims[0]; x++) {
+          RH.at({0, 2 - z, x, y}) = (imageH.at({x, y, z}));
+        }
       }
     }
   }
 }
 
-namespace {
+namespace opts {
 
 llvm::cl::list<std::string>
     InputImageFilenames(llvm::cl::Positional,
@@ -148,7 +151,11 @@ llvm::cl::opt<bool>
                          "takes for the program to execute"),
           llvm::cl::Optional);
 
-} // namespace
+llvm::cl::opt<bool>
+    NoBGR("noBGR",
+          llvm::cl::desc("Do not convert the given png files to BGR format"),
+          llvm::cl::init(false));
+} // namespace opts
 
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(
@@ -159,16 +166,16 @@ int main(int argc, char **argv) {
   Tensor data;
   Tensor expected_softmax(ElemKind::IndexTy, {1, 1});
 
-  for (const auto &InputImageFilename : InputImageFilenames) {
-    if (Verbose) {
+  for (const auto &InputImageFilename : opts::InputImageFilenames) {
+    if (opts::Verbose) {
       llvm::outs() << "loading and preprocessing: " + InputImageFilename +
                           "...\n";
     }
-    loadImageAndPreprocess(InputImageFilename, &data, ImageMode);
+    loadImageAndPreprocess(InputImageFilename, &data, opts::ImageMode);
 
-    if (!NetDirectory.empty()) {
-      NetDescFilename.setValue(NetDirectory + "/predict_net.pb");
-      NetWeightFilename.setValue(NetDirectory + "/init_net.pb");
+    if (!opts::NetDirectory.empty()) {
+      opts::NetDescFilename.setValue(opts::NetDirectory + "/predict_net.pb");
+      opts::NetWeightFilename.setValue(opts::NetDirectory + "/init_net.pb");
     }
 
     ExecutionEngine EE(BackendKind::Interpreter);
@@ -176,7 +183,7 @@ int main(int argc, char **argv) {
     Variable *i0;
     Variable *i1;
     {
-      caffe2ModelLoader LD(NetDescFilename, NetWeightFilename,
+      caffe2ModelLoader LD(opts::NetDescFilename, opts::NetWeightFilename,
                            {"data", "gpu_0/data", "softmax_expected"},
                            {&data, &data, &expected_softmax}, EE);
       SM = LD.getRoot();
@@ -187,24 +194,24 @@ int main(int argc, char **argv) {
     auto &G = EE.getGraph();
     auto &M = EE.getModule();
 
-    if (DumpGraph) {
+    if (opts::DumpGraph) {
       G.dump();
     }
-    if (!DumpGraphDAGFile.empty()) {
-      G.dumpDAG(DumpGraphDAGFile.c_str());
+    if (!opts::DumpGraphDAGFile.empty()) {
+      G.dumpDAG(opts::DumpGraphDAGFile.c_str());
     }
-    if (DumpIR) {
+    if (opts::DumpIR) {
       M.dump();
     }
-    if (!DumpIRDAGFile.empty()) {
-      M.dumpDAG(DumpIRDAGFile.c_str());
+    if (!opts::DumpIRDAGFile.empty()) {
+      M.dumpDAG(opts::DumpIRDAGFile.c_str());
     }
 
     llvm::Timer timer("Infer", "Infer");
-    if (Timer)
+    if (opts::Timer)
       timer.startTimer();
     EE.run({i0, i1}, {&data, &data});
-    if (Timer)
+    if (opts::Timer)
       timer.stopTimer();
 
     Tensor &res = SM->getVariable()->getPayload();
@@ -214,7 +221,7 @@ int main(int argc, char **argv) {
 
     llvm::outs() << "\n";
 
-    llvm::outs() << "Model: " << NetDescFilename << "\n"
+    llvm::outs() << "Model: " << opts::NetDescFilename << "\n"
                  << " File: " << InputImageFilename << " Result:" << SH.maxArg()
                  << "\n";
   }
