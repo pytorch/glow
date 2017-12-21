@@ -228,6 +228,35 @@ TEST(Network, gradientCheck_batchNorm) {
   performGradCheck(IP, result, A, Ex, &inputs, &outputs, 0.001, 0.004);
 }
 
+TEST(Network, gradientCheck_Arithmetic_Div) {
+  ExecutionEngine IP;
+  IP.getConfig().maxNumThreads = 1;
+  size_t numDim = 20;
+
+  auto &G = IP.getGraph();
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
+                             Variable::InitKind::Extern);
+  auto *B = G.createVariable(ElemKind::FloatTy, {1, numDim}, "B",
+                             Variable::InitKind::Extern);
+  auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
+                               Variable::InitKind::Extern);
+  Node *O = G.createArithmetic("div", A, B, ArithmeticNode::Mode::Div);
+  O = G.createRegression("reg", O, Exp);
+  auto *result = G.createSave("ret", O);
+
+  IP.compile(CompilationMode::TrainDebug);
+  Tensor inputs(ElemKind::FloatTy, {1, numDim});
+  Tensor outputs(ElemKind::FloatTy, {1, numDim});
+  A->getPayload().getHandle().randomize(1);
+  B->getPayload().getHandle().randomize(1);
+  auto inputsH = inputs.getHandle<>();
+  auto outputsH = outputs.getHandle<>();
+  inputsH.randomize(1);
+  outputsH.randomize(1);
+
+  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.01, 0.004);
+}
+
 TEST(Network, gradientCheck_Arithmetic) {
   ExecutionEngine IP;
   IP.getConfig().maxNumThreads = 1;
