@@ -122,6 +122,58 @@ void NodeBuilder::emitSettersGetters(std::ostream &os) const {
   }
 }
 
+void NodeBuilder::emitEdges(std::ostream &os) const {
+  os << "unsigned " << name_ << "Node::getNumInputs() const {\n"
+     << "\t\treturn " << nodeInputs_.size();
+  for (const auto &op : members_) {
+    if (op.first != MemberType::VectorNodeValue)
+      continue;
+    os << " + " << op.second << "_.size()";
+  }
+  os << ";\n}\n";
+
+  os << "llvm::StringRef " << name_
+     << "Node::getInputName(unsigned idx) const {\n";
+  for (size_t i = 0; i < nodeInputs_.size(); i++) {
+    os << "\t\tif (idx == " << i << ") { return \"" << nodeInputs_[i]
+       << "\"; }\n";
+  }
+  os << "\t\tidx -= " << nodeInputs_.size() << ";\n";
+  for (const auto &op : members_) {
+    if (op.first != MemberType::VectorNodeValue)
+      continue;
+    os << "\t\tif (idx < " << op.second << "_.size()) { return \"" << op.second
+       << "\" + std::to_string(idx); }\n"
+       << "\t\tidx -= " << op.second << "_.size();\n";
+  }
+  os << "\t\tllvm_unreachable(\"Invalid index\");\n"
+     << "}\n";
+
+  os << "NodeValue " << name_ << "Node::getInputNode(unsigned idx) const {\n";
+  for (size_t i = 0; i < nodeInputs_.size(); i++) {
+    os << "\t\tif (idx == " << i << ") { return " << nodeInputs_[i] << "_; }\n";
+  }
+  os << "\t\tidx -= " << nodeInputs_.size() << ";\n";
+  for (const auto &op : members_) {
+    if (op.first != MemberType::VectorNodeValue)
+      continue;
+    os << "\t\tif (idx < " << op.second << "_.size()) { return " << op.second
+       << "_[idx]; }\n"
+       << "\t\tidx -= " << op.second << "_.size();\n";
+  }
+  os << "\t\tllvm_unreachable(\"Invalid index\");\n"
+     << "}\n";
+
+  os << "llvm::StringRef " << name_
+     << "Node::getOutputName(unsigned idx) const {\n";
+  for (size_t i = 0; i < nodeOutputs_.size(); i++) {
+    os << "\t\tif (idx == " << i << ") { return \"" << nodeOutputs_[i].second
+       << "\"; }\n";
+  }
+  os << "\t\tllvm_unreachable(\"Invalid index\");\n"
+     << "}\n";
+}
+
 void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
   os << "std::string " << name_
      << "Node::getDebugDesc() const {\n\t\tDescriptionBuilder "
@@ -143,17 +195,17 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
     os << "\t\t.addParam(\"" << mem.second << "\", get" << mem.second
        << "())\n";
   }
-  os << "\t\t.addParam(\"users\", getNumUsers());";
+  os << "\t\t.addParam(\"users\", getNumUsers());\n";
 
   for (const auto &mem : members_) {
     if (mem.first != MemberType::VectorNodeValue)
       continue;
 
-    os << " for (auto II : get" << mem.second << "()) { db.addParam(\""
-       << mem.second << "\", *II->getType()); }";
+    os << "\t\tfor (auto II : get" << mem.second << "()) { db.addParam(\""
+       << mem.second << "\", *II->getType()); }\n";
   }
 
-  os << "\n\t\treturn db;\n}\n";
+  os << "\t\treturn db;\n}\n";
 }
 
 void NodeBuilder::emitEquator(std::ostream &os) const {
@@ -235,7 +287,7 @@ void NodeBuilder::emitVisitor(std::ostream &os) const {
 
   for (const auto &op : members_) {
     if (op.first == MemberType::VectorNodeValue) {
-      os << " for (auto &I : " << op.second
+      os << "\tfor (auto &I : " << op.second
          << "_) { I->visit(this, visitor);}\n";
     }
   }
@@ -267,6 +319,10 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
 
   emitSettersGetters(os);
 
+  os << "\tunsigned getNumInputs() const override;\n";
+  os << "\tllvm::StringRef getInputName(unsigned idx) const override;\n";
+  os << "\tNodeValue getInputNode(unsigned idx) const override;\n";
+  os << "\tllvm::StringRef getOutputName(unsigned idx) const override;\n";
   os << "\tstd::string getDebugDesc() const override;\n";
   os << "\tbool isEqual(const " << name_ << "Node &other) const;\n";
   os << "\tllvm::hash_code getHash() const;\n";
@@ -284,6 +340,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
 }
 
 void NodeBuilder::emitCppMethods(std::ostream &os) const {
+  emitEdges(os);
   emitPrettyPrinter(os);
   emitVisitor(os);
   emitEquator(os);

@@ -11,6 +11,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <unordered_set>
 
 using namespace glow;
 
@@ -413,35 +414,62 @@ void Graph::dump() const {
 }
 
 /// A helper class for visiting and generating the dotty file from the graph.
-struct DottyPrinterPass : NodeWalker {
-  using edgeTy = std::pair<Node *, Node *>;
-  // A set of ordered visited edges.
-  std::vector<edgeTy> nodeEdges{};
+/// We can't use NodeWalker here, because it ignores result indices, which
+/// are critical in generating detailed debug output.
+class DottyPrinterPass {
   // The output stream for writing the dotty descriptor.
   std::ostream &os_;
+  // A set of already visited (during graph walk) nodes.
+  std::unordered_set<Node *> visitedNodes_{};
+  // List of generated edges.
+  std::vector<std::string> nodeEdges_{};
 
-public:
-  // Don't revisit visited nodes.
-  bool shouldVisit(Node *parent, Node *N) override {
-    edgeTy e = {parent, N};
-    return std::find(nodeEdges.begin(), nodeEdges.end(), e) == nodeEdges.end();
+  /// Dumps label for a input/output row, given port names.
+  /// E.g. {"LHS", "RHS"} will produce {<LHS>LHS|<RHS>RHS}
+  void dumpLabelForRow(llvm::ArrayRef<std::string> names) {
+    os_ << "{";
+    for (size_t i = 0; i < names.size(); i++) {
+      if (i) {
+        os_ << "|";
+      }
+      os_ << "<" << names[i] << ">" << names[i];
+    }
+    os_ << "}";
   }
 
-  explicit DottyPrinterPass(std::ostream &os) : os_(os) {}
-
-  void pre(Node *parent, Node *N) override {
-    nodeEdges.emplace_back(parent, N);
+  void dumpLabel(Node *N) {
+    os_ << "{";
+    if (N->getNumInputs()) {
+      std::vector<std::string> names(N->getNumInputs());
+      for (size_t i = 0; i < names.size(); i++) {
+        names[i] = N->getInputName(i).str();
+      }
+      dumpLabelForRow(names);
+      os_ << "|";
+    }
+    os_ << "{" << escapeDottyString(N->getDebugDesc()) << "}";
+    if (N->getNumRes()) {
+      os_ << "|";
+      std::vector<std::string> names(N->getNumRes());
+      for (size_t i = 0; i < names.size(); i++) {
+        names[i] = N->getOutputName(i).str();
+      }
+      dumpLabelForRow(names);
+    }
+    os_ << "}";
   }
 
-  void dumpDesc(Node *N) {
+  void dumpNode(Node *N) {
     if (!N) {
       return;
     }
     // Print a node descriptor that looks like this:
-    // Format: "node12" [ label = "0xf7fc43e01" shape = "record" ];
-    os_ << quote(std::to_string((void *)N)) << "[\n";
-    std::string repr = escapeDottyString(N->getDebugDesc());
-    os_ << "\tlabel = " + quote(repr) + "\n";
+    // "0xf7fc43e01" [ shape = "record" label = "{...}" ];
+    // where 0xf7fc43e01 is address of node.
+    os_ << uniqueNodeName(N) << "[\n";
+    os_ << "\tlabel = \"";
+    dumpLabel(N);
+    os_ << "\"\n";
     os_ << "\tshape = \"record\"\n";
     if (llvm::isa<Variable>(N)) {
       os_ << "\tfillcolor=pink,style=filled\n";
@@ -450,21 +478,51 @@ public:
   }
 
   std::string quote(std::string in) { return '"' + in + '"'; }
-  void dump() {
-    os_ << "digraph finite_state_machine {\n\trankdir=TD;\n";
+  std::string uniqueNodeName(Node *N) {
+    return quote(std::to_string((void *)N));
+  }
 
-    // Assign a unique name to each one of the nodes:
-    for (auto &e : nodeEdges) {
-      if (e.first) {
-        os_ << quote(std::to_string(e.second)) << " -> "
-            << quote(std::to_string(e.first)) << ";\n";
-      }
+  /// Recursively traverses inputs of node \p N using Deep First Search.
+  /// Each node will be visited no more than once. The method also dumps
+  /// edges with their port identifiers in dotty format.
+  void visitNode(Node *N) {
+    if (visitedNodes_.find(N) != visitedNodes_.end())
+      return;
+    visitedNodes_.insert(N);
+
+    for (size_t i = 0; i < N->getNumInputs(); i++) {
+      Node *to = N->getInputNode(i).getNode();
+      size_t resNo = N->getInputNode(i).getResNo();
+
+      std::ostringstream edge;
+      edge << uniqueNodeName(to) << ":" << to->getOutputName(resNo).str()
+           << " -> " << uniqueNodeName(N) << ":" << N->getInputName(i).str();
+      nodeEdges_.push_back(edge.str());
+
+      visitNode(to);
+    }
+  }
+
+public:
+  explicit DottyPrinterPass(std::ostream &os) : os_(os) {}
+
+  void visitGraph(Graph *G) {
+    for (auto N : G->getNodes()) {
+      visitNode(N);
+    }
+  }
+
+  void dumpAll() {
+    os_ << "digraph finite_state_machine {\n\trankdir=TB;\n";
+
+    // Dump nodes:
+    for (auto e : visitedNodes_) {
+      dumpNode(e);
     }
 
-    // Assign a unique name to each one of the nodes:
-    for (auto &e : nodeEdges) {
-      dumpDesc(e.first);
-      dumpDesc(e.second);
+    // Dump edges:
+    for (auto &e : nodeEdges_) {
+      os_ << e << ";\n";
     }
 
     os_ << "}";
@@ -485,11 +543,9 @@ void Graph::dumpDAG(const char *dotFilename) {
 
   DottyPrinterPass DP(myfile);
 
-  for (auto &N : nodes_) {
-    N->visit(nullptr, &DP);
-  }
+  DP.visitGraph(this);
 
-  DP.dump();
+  DP.dumpAll();
   myfile.close();
 }
 
