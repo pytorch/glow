@@ -11,6 +11,9 @@
 
 #include <iostream>
 
+#define DEFAULT_CAFFE2_HEIGHT 224
+#define DEFAULT_CAFFE2_WIDTH 224
+
 using namespace glow;
 
 enum class ImageNormalizationMode {
@@ -44,25 +47,35 @@ std::pair<float, float> normModeToRange(ImageNormalizationMode mode) {
   GLOW_ASSERT(false && "Unknown image format");
 }
 
-/// Loads and normalizes a PNG into a tensor in the NCHW 3x224x224 format.
-void loadImageAndPreprocess(const std::string &filename, Tensor *result,
-                            ImageNormalizationMode normMode) {
+/// Loads and normalizes all PNGs into a tensor in the NCHW 3x224x224 format.
+void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
+                             Tensor *result, ImageNormalizationMode normMode) {
+  assert(filenames.size() > 0 &&
+         "There must be at least one filename in filenames");
   auto range = normModeToRange(normMode);
-
-  Tensor localCopy;
-  readPngImage(&localCopy, filename.c_str(), range);
-  auto imageH = localCopy.getHandle<>();
-
-  auto dims = localCopy.dims();
-
-  result->reset(ElemKind::FloatTy, {1, 3, dims[0], dims[1]});
+  unsigned numImages = filenames.size();
+  // N x C x H x W
+  result->reset(ElemKind::FloatTy,
+                {numImages, 3, DEFAULT_CAFFE2_HEIGHT, DEFAULT_CAFFE2_WIDTH});
   auto RH = result->getHandle<>();
+  // We iterate over all the png files, reading them all into our result tensor
+  // for processing
+  for (unsigned n = 0; n < filenames.size(); n++) {
+    Tensor localCopy;
+    readPngImage(&localCopy, filenames[n].c_str(), range);
+    auto imageH = localCopy.getHandle<>();
 
-  // Convert to BGR.
-  for (unsigned z = 0; z < 3; z++) {
-    for (unsigned y = 0; y < dims[1]; y++) {
-      for (unsigned x = 0; x < dims[0]; x++) {
-        RH.at({0, 2 - z, x, y}) = (imageH.at({x, y, z}));
+    auto dims = localCopy.dims();
+    assert(
+        (dims[0] == DEFAULT_CAFFE2_HEIGHT && dims[1] == DEFAULT_CAFFE2_WIDTH) &&
+        "All images must have the same Height and Width");
+
+    // Convert to BGR, as this is what Caffe2 is expecting.
+    for (unsigned z = 0; z < 3; z++) {
+      for (unsigned y = 0; y < dims[1]; y++) {
+        for (unsigned x = 0; x < dims[0]; x++) {
+          RH.at({n, 2 - z, x, y}) = (imageH.at({x, y, z}));
+        }
       }
     }
   }
@@ -159,64 +172,57 @@ int main(int argc, char **argv) {
   Tensor data;
   Tensor expected_softmax(ElemKind::IndexTy, {1, 1});
 
-  for (const auto &InputImageFilename : InputImageFilenames) {
-    if (Verbose) {
-      llvm::outs() << "loading and preprocessing: " + InputImageFilename +
-                          "...\n";
-    }
-    loadImageAndPreprocess(InputImageFilename, &data, ImageMode);
+  loadImagesAndPreprocess(InputImageFilenames, &data, ImageMode);
 
-    if (!NetDirectory.empty()) {
-      NetDescFilename.setValue(NetDirectory + "/predict_net.pb");
-      NetWeightFilename.setValue(NetDirectory + "/init_net.pb");
-    }
+  if (!NetDirectory.empty()) {
+    NetDescFilename.setValue(NetDirectory + "/predict_net.pb");
+    NetWeightFilename.setValue(NetDirectory + "/init_net.pb");
+  }
 
-    ExecutionEngine EE(BackendKind::Interpreter);
-    SaveNode *SM;
-    Variable *i0;
-    Variable *i1;
-    {
-      caffe2ModelLoader LD(NetDescFilename, NetWeightFilename,
-                           {"data", "gpu_0/data", "softmax_expected"},
-                           {&data, &data, &expected_softmax}, EE);
-      SM = LD.getRoot();
-      i0 = llvm::cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
-      i1 = llvm::cast<Variable>(LD.getOrCreateNodeByName("data"));
-    }
+  ExecutionEngine EE(BackendKind::Interpreter);
+  SaveNode *SM;
+  Variable *i0;
+  Variable *i1;
+  {
+    caffe2ModelLoader LD(NetDescFilename, NetWeightFilename,
+                         {"data", "gpu_0/data", "softmax_expected"},
+                         {&data, &data, &expected_softmax}, EE);
+    SM = LD.getRoot();
+    i0 = llvm::cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
+    i1 = llvm::cast<Variable>(LD.getOrCreateNodeByName("data"));
+  }
 
-    auto &G = EE.getGraph();
-    auto &M = EE.getModule();
+  auto &G = EE.getGraph();
+  auto &M = EE.getModule();
 
-    if (DumpGraph) {
-      G.dump();
-    }
-    if (!DumpGraphDAGFile.empty()) {
-      G.dumpDAG(DumpGraphDAGFile.c_str());
-    }
-    if (DumpIR) {
-      M.dump();
-    }
-    if (!DumpIRDAGFile.empty()) {
-      M.dumpDAG(DumpIRDAGFile.c_str());
-    }
+  if (DumpGraph) {
+    G.dump();
+  }
+  if (!DumpGraphDAGFile.empty()) {
+    G.dumpDAG(DumpGraphDAGFile.c_str());
+  }
+  if (DumpIR) {
+    M.dump();
+  }
+  if (!DumpIRDAGFile.empty()) {
+    M.dumpDAG(DumpIRDAGFile.c_str());
+  }
 
-    llvm::Timer timer("Infer", "Infer");
-    if (Timer)
-      timer.startTimer();
-    EE.run({i0, i1}, {&data, &data});
-    if (Timer)
-      timer.stopTimer();
+  llvm::Timer timer("Infer", "Infer");
+  if (Timer)
+    timer.startTimer();
+  EE.run({i0, i1}, {&data, &data});
+  if (Timer)
+    timer.stopTimer();
 
-    Tensor &res = SM->getVariable()->getPayload();
-    auto H = res.getHandle<>();
-    Tensor slice = H.extractSlice(0);
+  Tensor &res = SM->getVariable()->getPayload();
+  auto H = res.getHandle<>();
+  llvm::outs() << "Model: " << NetDescFilename << "\n";
+  for (unsigned i = 0; i < InputImageFilenames.size(); i++) {
+    Tensor slice = H.extractSlice(i);
     auto SH = slice.getHandle<>();
-
-    llvm::outs() << "\n";
-
-    llvm::outs() << "Model: " << NetDescFilename << "\n"
-                 << " File: " << InputImageFilename << " Result:" << SH.maxArg()
-                 << "\n";
+    llvm::outs() << " File: " << InputImageFilenames[i]
+                 << " Result:" << SH.maxArg() << "\n";
   }
   return 0;
 }
