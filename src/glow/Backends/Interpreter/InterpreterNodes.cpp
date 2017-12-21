@@ -392,6 +392,7 @@ void Interpreter::fwdFullyConnectedInst(bool isTrain,
   auto InWidth = inW.dims()[1];
 
   assert(OutWidth == InDepth && "Mismatch batch size");
+  (void)InDepth;
 
   auto filterW = getWeightHandle(I->getFilter());
   auto biasW = getWeightHandle(I->getBias());
