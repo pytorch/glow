@@ -41,7 +41,7 @@ TEST(GraphOptz, DCE) {
   EXPECT_EQ(G.getVars().size(), 0);
 }
 
-TEST(GraphOptz, LiveCodeNotEliminated) {
+TEST(GraphOptz, liveCodeNotEliminated) {
 
   Graph G;
   Module M(&G);
@@ -66,7 +66,7 @@ TEST(GraphOptz, LiveCodeNotEliminated) {
   EXPECT_EQ(G.getVars().size(), 3);
 }
 
-TEST(GraphOptz, OptimizeBatchNormAfterConv) {
+TEST(GraphOptz, optimizeBatchNormAfterConv) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
@@ -96,7 +96,7 @@ TEST(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
   EXPECT_EQ(G.getNodes().size(), 3);
 }
 
-TEST(GraphOptz, BatchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
+TEST(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
@@ -112,7 +112,7 @@ TEST(GraphOptz, BatchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
   EXPECT_EQ(G.getNodes().size(), 4);
 }
 
-TEST(GraphOptz, SinkTransposeBelowOptimizeBatchNorm) {
+TEST(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
@@ -133,7 +133,7 @@ TEST(GraphOptz, SinkTransposeBelowOptimizeBatchNorm) {
   EXPECT_EQ(G.getNodes().size(), 3);
 }
 
-TEST(GraphOptz, SinkTransposeBelowRELU) {
+TEST(GraphOptz, sinkTransposeBelowRELU) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
@@ -154,7 +154,7 @@ TEST(GraphOptz, SinkTransposeBelowRELU) {
   EXPECT_EQ(G.getNodes().size(), 3);
 }
 
-TEST(GraphOptz, CancelTwoTransposes) {
+TEST(GraphOptz, cancelTwoTransposes) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
@@ -171,7 +171,7 @@ TEST(GraphOptz, CancelTwoTransposes) {
   EXPECT_EQ(G.getNodes().size(), 2);
 }
 
-TEST(GraphOptz, DontCancelTwoTransposesIfNotMatching) {
+TEST(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
@@ -188,7 +188,7 @@ TEST(GraphOptz, DontCancelTwoTransposesIfNotMatching) {
   EXPECT_EQ(G.getNodes().size(), 4);
 }
 
-TEST(GraphOptz, SinkTransposeBelowArithmeticNodes) {
+TEST(GraphOptz, sinkTransposeBelowArithmeticNodes) {
   Graph G;
   Module M(&G);
   Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
@@ -212,7 +212,7 @@ TEST(GraphOptz, SinkTransposeBelowArithmeticNodes) {
   EXPECT_EQ(G.getNodes().size(), 3);
 }
 
-TEST(GraphOptz, SinkReluBelowConcatNodes) {
+TEST(GraphOptz, sinkReluBelowConcatNodes) {
   Graph G;
   Module M(&G);
   Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
@@ -235,7 +235,7 @@ TEST(GraphOptz, SinkReluBelowConcatNodes) {
   EXPECT_EQ(G.getNodes().size(), 3);
 }
 
-TEST(GraphOptz, SinkTransposeBelowConcatNodes) {
+TEST(GraphOptz, sinkTransposeBelowConcatNodes) {
   Graph G;
   Module M(&G);
   Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
@@ -259,7 +259,7 @@ TEST(GraphOptz, SinkTransposeBelowConcatNodes) {
   EXPECT_EQ(G.getNodes().size(), 3);
 }
 
-TEST(GraphOptz, PoolBelowReluSwapped) {
+TEST(GraphOptz, poolBelowReluSwapped) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
@@ -279,7 +279,7 @@ TEST(GraphOptz, PoolBelowReluSwapped) {
   EXPECT_EQ(G.getNodes().size(), 3);
 }
 
-TEST(GraphOptz, PoolBelowReluNotSwappedIfModeNotMax) {
+TEST(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
@@ -299,7 +299,7 @@ TEST(GraphOptz, PoolBelowReluNotSwappedIfModeNotMax) {
   EXPECT_EQ(G.getNodes().size(), 3);
 }
 
-TEST(GraphOptz, PoolBelowReluNotSwappedIfNotSingleUse) {
+TEST(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
@@ -320,7 +320,7 @@ TEST(GraphOptz, PoolBelowReluNotSwappedIfNotSingleUse) {
   EXPECT_EQ(G.getNodes().size(), 4);
 }
 
-TEST(GraphOptz, MergeConcatNodes) {
+TEST(GraphOptz, mergeConcatNodes) {
   Graph G;
   Module M(&G);
   Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
