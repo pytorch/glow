@@ -156,7 +156,7 @@ public:
   /// to deconstruct the graph in an arbitrary order.
   virtual ~Node() {
     NodeValue nop(nullptr);
-    for (int i = 0; i < getNumRes(); i++) {
+    for (unsigned i = 0; i < getNumRes(); i++) {
       NodeValue(this, i).replaceAllUsesOfWith(nop);
     }
   }
