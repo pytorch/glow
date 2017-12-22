@@ -86,7 +86,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
-TEST(OpenCLCorrectnessTest, ReluTest) {
+TEST(OpenCLCorrectnessTest, reluTest) {
   Tensor inputs(ElemKind::FloatTy, {2, 16});
   inputs.getHandle().randomize(1);
   Tensor out1;

@@ -558,7 +558,7 @@ TEST(Network, trainASimpleRNN) {
   EXPECT_NEAR(RNWH.at({0, 2}), 2, 0.05);
 }
 
-TEST(Optimizer, CopyPropagation) {
+TEST(Optimizer, copyPropagation) {
   ExecutionEngine EE;
 
   auto &G = EE.getGraph();

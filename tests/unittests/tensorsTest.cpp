@@ -128,7 +128,7 @@ TEST(Tensor, concatTensors2D) {
   }
 }
 
-TEST(Tensor, MeanAndVariance) {
+TEST(Tensor, meanAndVariance) {
 
   Tensor T1 = {3, 4, 4, 5, 6, 8};
   Tensor T2 = {1, 2, 4, 5, 7, 11};
