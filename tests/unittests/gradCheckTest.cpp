@@ -231,7 +231,7 @@ TEST(Network, gradientCheckBatchNorm) {
 TEST(Network, gradientCheckArithmeticDiv) {
   ExecutionEngine IP;
   IP.getConfig().maxNumThreads = 1;
-  size_t numDim = 20;
+  size_t numDim = 10;
 
   auto &G = IP.getGraph();
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
@@ -254,7 +254,7 @@ TEST(Network, gradientCheckArithmeticDiv) {
   inputsH.randomize(1);
   outputsH.randomize(1);
 
-  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.01, 0.004);
+  performGradCheck(IP, result, B, Exp, &inputs, &outputs, 0.001, 0.006);
 }
 
 TEST(Network, gradientCheckArithmetic) {
