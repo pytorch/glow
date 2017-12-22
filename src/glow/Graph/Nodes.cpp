@@ -126,6 +126,17 @@ public:
 
 llvm::hash_code Node::getHash() const { return HashNodeVisitor().visit(this); }
 
+void Node::visit(Node *parent, NodeWalker *visitor) {
+  switch (getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<CLASS *>(this)->visit(parent, visitor);
+#include "AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+}
+
 TypeRef NodeValue::getType() const { return node_->getType(resNo_); }
 
 ElemKind NodeValue::getElementType() const {
@@ -271,7 +282,7 @@ NodeValue Variable::getInputNode(unsigned idx) const {
 }
 llvm::StringRef Variable::getOutputName(unsigned idx) const {
   if (idx == 0) {
-    return "output";
+    return "Output";
   }
   llvm_unreachable("Invalid index");
 }
@@ -279,7 +290,59 @@ llvm::StringRef Variable::getOutputName(unsigned idx) const {
 //===----------------------------------------------------------------------===//
 //                     Debug description methods
 //===----------------------------------------------------------------------===//
-std::string Node::getDebugDesc() const { return "<node>"; }
+
+unsigned Node::getNumInputs() const {
+  switch (getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<const CLASS *>(this)->getNumInputs();
+#include "AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+}
+llvm::StringRef Node::getInputName(unsigned idx) const {
+  switch (getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<const CLASS *>(this)->getInputName(idx);
+#include "AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+}
+NodeValue Node::getInputNode(unsigned idx) const {
+  switch (getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<const CLASS *>(this)->getInputNode(idx);
+#include "AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+}
+
+llvm::StringRef Node::getOutputName(unsigned idx) {
+  switch (getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<const CLASS *>(this)->getOutputName(idx);
+#include "AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+}
+
+std::string Node::getDebugDesc() const {
+  switch (getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<const CLASS *>(this)->getDebugDesc();
+#include "AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+}
 
 std::string Variable::getDebugDesc() const {
   DescriptionBuilder db(getKindName());

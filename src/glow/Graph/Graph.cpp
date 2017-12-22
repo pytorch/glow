@@ -14,14 +14,15 @@
 #include <unordered_set>
 
 using namespace glow;
+using llvm::dyn_cast;
 
 Graph::~Graph() {
   // Delete all of the nodes and the variables.
   for (auto *N : nodes_) {
-    delete N;
+    eraseNode(N);
   }
   for (auto *V : vars_) {
-    delete V;
+    eraseNode(V);
   }
 }
 
@@ -557,9 +558,18 @@ void Graph::eraseVariable(VariablesList::iterator I) {
 }
 
 void Graph::eraseNode(NodesList::iterator I) {
-  if (I == nodes_.end())
-    return;
-  delete *I;
+  Node *N = *I;
+  switch (N->getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind: {                                      \
+    delete static_cast<CLASS *>(N);                                            \
+    break;                                                                     \
+  }
+#include "AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+
   nodes_.erase(I);
 }
 
@@ -578,6 +588,10 @@ void Graph::eraseVariable(Variable *N) {
 
 void Graph::eraseNode(Node *N) {
   auto I = std::find(nodes_.begin(), nodes_.end(), N);
+  if (Variable *V = dyn_cast<Variable>(N)) {
+    return eraseVariable(V);
+  }
+  assert(I != nodes_.end() && "Could not find node to delete!");
   eraseNode(I);
 }
 
