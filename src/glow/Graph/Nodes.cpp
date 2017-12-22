@@ -260,6 +260,23 @@ void Variable::visit(Node *parent, NodeWalker *visitor) {
 }
 
 //===----------------------------------------------------------------------===//
+//                     Edge getters methods
+//===----------------------------------------------------------------------===//
+unsigned Variable::getNumInputs() const { return 0; }
+llvm::StringRef Variable::getInputName(unsigned idx) const {
+  llvm_unreachable("Invalid index");
+}
+NodeValue Variable::getInputNode(unsigned idx) const {
+  llvm_unreachable("Invalid index");
+}
+llvm::StringRef Variable::getOutputName(unsigned idx) const {
+  if (idx == 0) {
+    return "output";
+  }
+  llvm_unreachable("Invalid index");
+}
+
+//===----------------------------------------------------------------------===//
 //                     Debug description methods
 //===----------------------------------------------------------------------===//
 std::string Node::getDebugDesc() const { return "<node>"; }

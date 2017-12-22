@@ -118,6 +118,9 @@ private:
   /// Emit setters/getters for each accessible class member.
   void emitSettersGetters(std::ostream &os) const;
 
+  /// Emit getters for input/output names and input nodes.
+  void emitEdges(std::ostream &os) const;
+
   /// Emit the methods that print a textual summary of the node.
   void emitPrettyPrinter(std::ostream &os) const;
 

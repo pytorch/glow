@@ -132,6 +132,12 @@ public:
   /// \returns the number of results that the node has.
   unsigned getNumRes() { return numRes_; }
 
+  /// Getters to access Node's inputs and outputs.
+  virtual unsigned getNumInputs() const = 0;
+  virtual llvm::StringRef getInputName(unsigned idx) const = 0;
+  virtual NodeValue getInputNode(unsigned idx) const = 0;
+  virtual llvm::StringRef getOutputName(unsigned idx) const = 0;
+
   /// \returns a textual description of the node.
   virtual std::string getDebugDesc() const;
 
@@ -150,7 +156,7 @@ public:
   /// to deconstruct the graph in an arbitrary order.
   virtual ~Node() {
     NodeValue nop(nullptr);
-    for (int i = 0; i < getNumRes(); i++) {
+    for (unsigned i = 0; i < getNumRes(); i++) {
       NodeValue(this, i).replaceAllUsesOfWith(nop);
     }
   }
