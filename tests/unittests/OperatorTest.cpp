@@ -41,7 +41,7 @@ TEST(Operator, matmul) {
   EXPECT_NEAR(H.at({0, 1, 1}), 154, 0.001);
 }
 
-TEST(Operator, batched_reduce_add) {
+TEST(Operator, batchedReduceAdd) {
   ExecutionEngine EE;
 
   auto &G = EE.getGraph();
@@ -66,7 +66,7 @@ TEST(Operator, batched_reduce_add) {
   EXPECT_NEAR(H.at({3}), 44, 0.001);
 }
 
-TEST(Operator, batched_batched_add) {
+TEST(Operator, batchedBatchedAdd) {
   ExecutionEngine EE;
 
   auto &G = EE.getGraph();

@@ -22,7 +22,7 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-TEST(Optimizer, DeadStoreElimination) {
+TEST(Optimizer, deadStoreElimination) {
   Graph G("DeadStoreElimination");
   Module M(&G);
   IRBuilder bb(&M);
