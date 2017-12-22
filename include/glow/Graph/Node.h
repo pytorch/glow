@@ -133,13 +133,13 @@ public:
   unsigned getNumRes() { return numRes_; }
 
   /// Getters to access Node's inputs and outputs.
-  virtual unsigned getNumInputs() const = 0;
-  virtual llvm::StringRef getInputName(unsigned idx) const = 0;
-  virtual NodeValue getInputNode(unsigned idx) const = 0;
-  virtual llvm::StringRef getOutputName(unsigned idx) const = 0;
+  unsigned getNumInputs() const;
+  llvm::StringRef getInputName(unsigned idx) const;
+  NodeValue getInputNode(unsigned idx) const;
+  llvm::StringRef getOutputName(unsigned idx);
 
   /// \returns a textual description of the node.
-  virtual std::string getDebugDesc() const;
+  std::string getDebugDesc() const;
 
   /// \returns true if the node is equal to the other node.
   bool isEqual(const Node &other) const;
@@ -150,16 +150,19 @@ public:
   /// This method implements the visitor pattern that scans the compute DAG top
   /// to bottom. The visitor \p visitor is sent by the parent node \p parent,
   /// or nullptr if this is the first node to be visited.
-  virtual void visit(Node *parent, NodeWalker *visitor) {}
+  void visit(Node *parent, NodeWalker *visitor);
 
-  /// When the node is deleted we need to unregister all users. This allows us
-  /// to deconstruct the graph in an arbitrary order.
-  virtual ~Node() {
+  /// Replace all uses of this node with null. This method is used by the
+  /// destruction sequence. When the node is deleted we need to unregister all
+  /// users. This allows us to deconstruct the graph in an arbitrary order.
+  void releaseUsers() {
     NodeValue nop(nullptr);
     for (unsigned i = 0; i < getNumRes(); i++) {
       NodeValue(this, i).replaceAllUsesOfWith(nop);
     }
   }
+
+  ~Node() { releaseUsers(); }
 
   /// \returns the n'th result type of the node.
   TypeRef getType(unsigned idx = -1) const;
