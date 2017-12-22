@@ -189,7 +189,7 @@ public:
   /// Update the content of the tensor with a slice from tensor \p t. A slice
   /// is one index from the first dimension of the tensor.
   void copySlice(const Tensor *t, size_t slice) {
-    auto dim = t->dims().drop_front();
+    auto dim = t->dims().slice(1);
     (void)dim;
     assert(dim == dims() && "Invalid slice size");
     assert(getElementType() == t->getElementType() && "Invalid element type");
@@ -204,9 +204,9 @@ public:
   /// The copying operation may overlap the end of the tensor \p t one or more
   /// times. This means that the data in the input tensor may be duplicated.
   void copyConsecutiveSlices(const Tensor *t, size_t startSliceIdx) {
-    auto onceSliceDim = t->dims().drop_front();
+    auto onceSliceDim = t->dims().slice(1);
     (void)onceSliceDim;
-    assert(onceSliceDim == dims().drop_front() && "Invalid slice size");
+    assert(onceSliceDim == dims().slice(1) && "Invalid slice size");
     assert(getElementType() == t->getElementType() && "Invalid element type");
     assert(dims().size() > 1 && "Tensor must contain at least two dimensions");
 
@@ -389,7 +389,7 @@ public:
     assert(sizes.size() > 1 && "Tensor has only one dimension");
     assert(idx < sizes[0] && "Invalid first index");
     auto elemTy = tensor_->getElementType();
-    Tensor slice(elemTy, sizes.drop_front());
+    Tensor slice(elemTy, sizes.slice(1));
 
     // Extract the whole slice.
     size_t startIdx = sizeIntegral[0] * idx;
