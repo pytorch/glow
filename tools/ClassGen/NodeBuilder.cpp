@@ -319,14 +319,14 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
 
   emitSettersGetters(os);
 
-  os << "\tunsigned getNumInputs() const override;\n";
-  os << "\tllvm::StringRef getInputName(unsigned idx) const override;\n";
-  os << "\tNodeValue getInputNode(unsigned idx) const override;\n";
-  os << "\tllvm::StringRef getOutputName(unsigned idx) const override;\n";
-  os << "\tstd::string getDebugDesc() const override;\n";
+  os << "\tunsigned getNumInputs() const;\n";
+  os << "\tllvm::StringRef getInputName(unsigned idx) const;\n";
+  os << "\tNodeValue getInputNode(unsigned idx) const;\n";
+  os << "\tllvm::StringRef getOutputName(unsigned idx) const;\n";
+  os << "\tstd::string getDebugDesc() const;\n";
   os << "\tbool isEqual(const " << name_ << "Node &other) const;\n";
   os << "\tllvm::hash_code getHash() const;\n";
-  os << "\tvoid visit(Node *parent, NodeWalker *visitor) override;\n";
+  os << "\tvoid visit(Node *parent, NodeWalker *visitor);\n";
   if (!enum_.empty()) {
     os << "\tconst char *getModeStr() const { return getModeStr(mode_); "
           "}\n\tstatic const char *getModeStr(Mode m);\n";

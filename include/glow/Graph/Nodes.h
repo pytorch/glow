@@ -63,14 +63,14 @@ public:
 
   void copyFrom(Tensor *t) { payload_.copyFrom(t); }
 
-  unsigned getNumInputs() const override;
-  llvm::StringRef getInputName(unsigned idx) const override;
-  NodeValue getInputNode(unsigned idx) const override;
-  llvm::StringRef getOutputName(unsigned idx) const override;
+  unsigned getNumInputs() const;
+  llvm::StringRef getInputName(unsigned idx) const;
+  NodeValue getInputNode(unsigned idx) const;
+  llvm::StringRef getOutputName(unsigned idx) const;
 
-  std::string getDebugDesc() const override;
+  std::string getDebugDesc() const;
 
-  void visit(Node *parent, NodeWalker *visitor) override;
+  void visit(Node *parent, NodeWalker *visitor);
 
   bool isEqual(const Variable &other) const;
 
