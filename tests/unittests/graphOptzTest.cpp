@@ -154,6 +154,48 @@ TEST(GraphOptz, sinkTransposeBelowRELU) {
   EXPECT_EQ(G.getNodes().size(), 3);
 }
 
+TEST(GraphOptz, sinkTransposeBelowSigmoid) {
+  Graph G;
+  Module M(&G);
+  Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                             Variable::InitKind::Extern);
+  Node *T = G.createTranspose("transpose", A, {0, 3, 1, 2});
+  Node *SI = G.createSigmoid("sigmoid", T);
+  Node *O = G.createSave("ret", SI);
+
+  EXPECT_EQ(G.getNodes().size(), 3);
+
+  ::glow::optimize(G, CompilationMode::Infer);
+
+  // Expecting Transpose->Output rather than Sigmoid->Output.
+  EXPECT_TRUE(llvm::isa<SaveNode>(O));
+  EXPECT_TRUE(
+      llvm::isa<TransposeNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
+
+  EXPECT_EQ(G.getNodes().size(), 3);
+}
+
+TEST(GraphOptz, sinkTransposeBelowTanh) {
+  Graph G;
+  Module M(&G);
+  Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                             Variable::InitKind::Extern);
+  Node *T = G.createTranspose("transpose", A, {0, 3, 1, 2});
+  Node *TN = G.createTanh("tanh", T);
+  Node *O = G.createSave("ret", TN);
+
+  EXPECT_EQ(G.getNodes().size(), 3);
+
+  ::glow::optimize(G, CompilationMode::Infer);
+
+  // Expecting Transpose->Output rather than Sigmoid->Output.
+  EXPECT_TRUE(llvm::isa<SaveNode>(O));
+  EXPECT_TRUE(
+      llvm::isa<TransposeNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
+
+  EXPECT_EQ(G.getNodes().size(), 3);
+}
+
 TEST(GraphOptz, cancelTwoTransposes) {
   Graph G;
   Module M(&G);
