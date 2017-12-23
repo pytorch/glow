@@ -531,7 +531,7 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
                        WeightVar::MutabilityKind::Constant)
           continue;
       }
-      // Bail if the operand is not an allocation.
+      // Bail if the operand is not an AllocActivationInst or a WeightVar.
       if (!loc) {
         continue;
       }
