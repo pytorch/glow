@@ -134,7 +134,6 @@ static void sinkCode(Graph &G) {
     }
 
     // Sink Transpose below batch RELU nodes.
-    // TODO: support other similar activation functions, such as sigmoid, etc.
     if (auto *RL = dyn_cast<ReluNode>(node)) {
       auto *TR = dyn_cast<TransposeNode>(RL->getInput());
 
@@ -145,6 +144,34 @@ static void sinkCode(Graph &G) {
       auto *NRL = G.createRELU(RL->getName(), TR->getInput());
       auto *newTR = G.createTranspose(TR->getName(), NRL, TR->getShuffle());
       RL->getResult().replaceAllUsesOfWith(newTR);
+      continue;
+    }
+
+    // Sink Transpose below Sigmoid nodes.
+    if (auto *SI = dyn_cast<SigmoidNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(SI->getInput());
+
+      if (!TR) {
+        continue;
+      }
+
+      auto *NSI = G.createSigmoid(SI->getName(), TR->getInput());
+      auto *newTR = G.createTranspose(TR->getName(), NSI, TR->getShuffle());
+      SI->getResult().replaceAllUsesOfWith(newTR);
+      continue;
+    }
+
+    // Sink Transpose below Tanh nodes.
+    if (auto *TN = dyn_cast<TanhNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(TN->getInput());
+
+      if (!TR) {
+        continue;
+      }
+
+      auto *NTN = G.createTanh(TN->getName(), TR->getInput());
+      auto *newTR = G.createTranspose(TR->getName(), NTN, TR->getShuffle());
+      TN->getResult().replaceAllUsesOfWith(newTR);
       continue;
     }
 
