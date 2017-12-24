@@ -98,6 +98,24 @@ void lowerRegressionGradNode(Graph &graph, RegressionGradNode &node) {
   node.getGradOfInputNamedExpected().replaceAllUsesOfWith(expG);
 }
 
+void lowerFullyConnectedNode(Graph &graph, FullyConnectedNode &FC) {
+  TypeRef T = FC.getInput().getType();
+  auto idim = flattenCdr(T->dims());
+
+  auto *batch = graph.createReshape("fc.cast", FC.getInput(),
+                                    {idim.first, idim.second, 1});
+
+  auto *mul = graph.createBatchedMatMul("fc.dot", batch, FC.getFilter());
+
+  auto *mulFlat =
+      graph.createReshape("fc.cast2", mul, {idim.first, FC.getDepth()});
+
+  auto add = graph.createBatchedArithmetic(
+      "fc.add.bias", BatchedArithmeticNode::Mode::Add, mulFlat, FC.getBias());
+
+  FC.getOutput().replaceAllUsesOfWith(add);
+}
+
 void glow::lower(Graph &G, CompilationMode mode) {
   auto &nodes = G.getNodes();
 
@@ -108,6 +126,8 @@ void glow::lower(Graph &G, CompilationMode mode) {
       lowerRegressionGradNode(G, *RGN);
     } else if (auto *EMG = dyn_cast<ArithmeticGradNode>(node)) {
       lowerArithmeticNode(G, *EMG);
+    } else if (auto *FC = dyn_cast<FullyConnectedNode>(node)) {
+      lowerFullyConnectedNode(G, *FC);
     }
   }
 
