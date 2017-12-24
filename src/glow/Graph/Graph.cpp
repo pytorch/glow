@@ -361,12 +361,12 @@ BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,
   size_t a2 = BT->dims()[2];
   size_t b1 = FT->dims()[0];
   size_t b2 = FT->dims()[1];
-  assert(a2 == b1 && "Column of A is not equal to the row of A.");
+  assert(a1 == b2 && "Column of A is not equal to the row of B.");
   (void)a1;
   (void)a2;
   (void)b1;
   (void)b2;
-  auto RT = Type(BT->getElementType(), {BT->dims()[0], a1, b2});
+  auto RT = Type(BT->getElementType(), {BT->dims()[0], a2, b1});
   return addNode(new BatchedMatMulNode(name, uniqueType(RT), batch, filter));
 }
 

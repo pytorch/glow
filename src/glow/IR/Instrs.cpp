@@ -158,8 +158,8 @@ void BatchedMatMulInst::verify() const {
   size_t b2 = filter->dims()[1];
   size_t c1 = dest->dims()[1];
   size_t c2 = dest->dims()[2];
-  assert(a2 == b1 && "Column of A is not equal to the row of A.");
-  assert(c1 == a1 && c2 == b2 && "Invalid size of output matrix");
+  assert(a1 == b2 && "Column of A is not equal to the row of A.");
+  assert(c1 == a2 && c2 == b1 && "Invalid size of output matrix");
   (void)a1;
   (void)a2;
   (void)b1;
