@@ -1104,8 +1104,8 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
 
         // Perform DOT on the row an column.
         float sum = 0;
-        for (size_t i = 0; i < filterDim[0]; i++) {
-          sum += batch.at({n, x, i}) * filter.at({i, y});
+        for (size_t i = 0; i < filterDim[1]; i++) {
+          sum += batch.at({n, i, x}) * filter.at({y, i});
         }
         dest.at({n, x, y}) = sum;
       }
