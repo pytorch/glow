@@ -224,11 +224,11 @@ public:
     }
     case glow::Kinded::Kind::BatchedMatMulNodeKind: {
       auto *BMM = cast<BatchedMatMulNode>(N);
-      auto *batch = valueForNode(BMM->getBatch());
-      auto *filter = valueForNode(BMM->getFilter());
+      auto *lhs = valueForNode(BMM->getLHS());
+      auto *rhs = valueForNode(BMM->getRHS());
       auto *dest = builder_.createAllocActivationInst(
           "bmm.res", BMM->getResult().getType());
-      builder_.createBatchedMatMulInst("bmm", dest, batch, filter);
+      builder_.createBatchedMatMulInst("bmm", dest, lhs, rhs);
       registerIR(N, dest);
       break;
     }

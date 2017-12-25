@@ -101,11 +101,15 @@ void lowerRegressionGradNode(Graph &graph, RegressionGradNode &node) {
 void lowerFullyConnectedNode(Graph &graph, FullyConnectedNode &FC) {
   TypeRef T = FC.getInput().getType();
   auto idim = flattenCdr(T->dims());
+  auto fdim = FC.getFilter().dims();
 
-  auto *batch = graph.createReshape("fc.cast", FC.getInput(),
-                                    {idim.first, idim.second, 1});
+  auto *lhs = graph.createReshape("fc.cast", FC.getInput(),
+                                  {idim.first, idim.second, 1});
 
-  auto *mul = graph.createBatchedMatMul("fc.dot", batch, FC.getFilter());
+  auto *rhs =
+      graph.createReshape("fc.cast", FC.getFilter(), {1, fdim[0], fdim[1]});
+
+  auto *mul = graph.createBatchedMatMul("fc.dot", lhs, rhs);
 
   auto *mulFlat =
       graph.createReshape("fc.cast2", mul, {idim.first, FC.getDepth()});
@@ -130,5 +134,4 @@ void glow::lower(Graph &G, CompilationMode mode) {
       lowerFullyConnectedNode(G, *FC);
     }
   }
-
 }

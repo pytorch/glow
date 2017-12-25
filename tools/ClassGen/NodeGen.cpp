@@ -128,17 +128,16 @@ int main(int argc, char **argv) {
           "Adds the 'Slice' operand to each one of the slices in the batch.");
 
   BB.newNode("BatchedMatMul")
-      .addInput("Batch")
-      .addInput("Filter")
+      .addInput("LHS")
+      .addInput("RHS")
       .addExtraParam("TypeRef", "outTy")
       .addResult("outTy")
-      .setDocstring("Performs matrix multiplication between the matrix Filter "
-                    "and all matrices in the tensor Batch. Filter is a two "
-                    "dimensional matrix, and Batch is a three dimensional "
-                    "matrix where the first dimension is the batch size. The "
-                    "result is a tensor that has the same batch size as the "
-                    "Batch parameter, and the second and third dimensions are "
-                    "the size of the multiplied matrix.");
+      .setDocstring("Performs matrix multiplication between the LHS RHS. The "
+                    "operands are a stack of two dimensional matrices. If one "
+                    "of the matrices has a batch size of one then the matrix "
+                    "is broadcasted to match the batch size of the other one."
+                    "The result is a three dimensional tensor."
+                    "Example: (1, Z, A) x (N, B, Z) => (N, A, B)");
 
   BB.newNode("BatchedReduce")
       .addInput("Batch")

@@ -349,25 +349,40 @@ SplatNode *Graph::createSplat(llvm::StringRef name, TypeRef ty, float value) {
 }
 
 BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,
-                                              NodeValue batch,
-                                              NodeValue filter) {
-  auto BT = batch.getType();
-  auto FT = filter.getType();
+                                              NodeValue LHS, NodeValue RHS) {
+  auto LT = LHS.getType();
+  auto RT = RHS.getType();
+  auto LDims = LT->dims();
+  auto RDims = RT->dims();
 
-  assert(BT->dims().size() == 3);
-  assert(FT->dims().size() == 2);
+  assert(LDims.size() == 3);
+  assert(RDims.size() == 3);
+  assert(LHS.getType()->getElementType() == RHS->getElementType());
 
-  size_t a1 = BT->dims()[1];
-  size_t a2 = BT->dims()[2];
-  size_t b1 = FT->dims()[0];
-  size_t b2 = FT->dims()[1];
-  assert(a1 == b2 && "Column of A is not equal to the row of B.");
+  size_t a0 = LDims[0];
+  size_t a1 = LDims[1];
+  size_t a2 = LDims[2];
+
+  size_t b0 = RDims[0];
+  size_t b1 = RDims[1];
+  size_t b2 = RDims[2];
+
+  assert(a0 == 1 || b0 == 1 ||
+         a0 == b0 && "Batch size must be broadcasted or identical");
+
+  // Select the batch size. If the left operand is broadcast (value 1), select
+  // the RHS.
+  size_t N = (a0 != 1 ? a0 : b0);
+
+  assert(a1 == b2 && "Column of LHS is not equal to the row of RHS.");
   (void)a1;
   (void)a2;
   (void)b1;
   (void)b2;
-  auto RT = Type(BT->getElementType(), {BT->dims()[0], a2, b1});
-  return addNode(new BatchedMatMulNode(name, uniqueType(RT), batch, filter));
+
+  auto Ty = Type(LHS.getType()->getElementType(), {N, a2, b1});
+
+  return addNode(new BatchedMatMulNode(name, uniqueType(Ty), LHS, RHS));
 }
 
 BatchedReduceNode *Graph::createBatchedReduce(llvm::StringRef name,

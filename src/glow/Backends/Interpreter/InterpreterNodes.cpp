@@ -1088,15 +1088,19 @@ void Interpreter::fwdElementDivGradInst(bool isTrain,
 
 void Interpreter::fwdBatchedMatMulInst(bool isTrain,
                                        const glow::BatchedMatMulInst *I) {
-  auto batch = getWeightHandle(I->getBatch());
-  auto filter = getWeightHandle(I->getFilter());
+  auto lhs = getWeightHandle(I->getLHS());
+  auto rhs = getWeightHandle(I->getRHS());
   auto dest = getWeightHandle(I->getDest());
 
   auto destDim = dest.dims();
-  auto filterDim = filter.dims();
+  auto lhsDim = lhs.dims();
+  auto rhsDim = rhs.dims();
 
   // For each layer in the batch:
   for (size_t n = 0; n < destDim[0]; n++) {
+    // Broadcast tensors with a batch size of 1 by selecting the right slice.
+    size_t ln = (lhsDim[0] == 1 ? 0 : n);
+    size_t rn = (rhsDim[0] == 1 ? 0 : n);
 
     // For each (x,y) in the destination matrix:
     for (size_t x = 0; x < destDim[1]; x++) {
@@ -1104,8 +1108,8 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
 
         // Perform DOT on the row an column.
         float sum = 0;
-        for (size_t i = 0; i < filterDim[1]; i++) {
-          sum += batch.at({n, i, x}) * filter.at({y, i});
+        for (size_t i = 0; i < rhsDim[2]; i++) {
+          sum += lhs.at({ln, i, x}) * rhs.at({rn, y, i});
         }
         dest.at({n, x, y}) = sum;
       }

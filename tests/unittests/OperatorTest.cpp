@@ -21,7 +21,7 @@ TEST(Operator, matmul) {
   auto &G = EE.getGraph();
 
   auto *batch = G.createVariable(ElemKind::FloatTy, {1, 2, 3}, "batch");
-  auto *filter = G.createVariable(ElemKind::FloatTy, {3, 2}, "filter");
+  auto *filter = G.createVariable(ElemKind::FloatTy, {1, 3, 2}, "filter");
   auto *result = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "result");
   batch->getPayload().getHandle() = {1, 2, 3, 4, 5, 6};
   filter->getPayload().getHandle() = {7, 8, 9, 10, 11, 12};
