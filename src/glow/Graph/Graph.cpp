@@ -195,7 +195,8 @@ RegressionNode *Graph::createRegression(llvm::StringRef name, NodeValue input,
 ReshapeNode *Graph::createReshape(llvm::StringRef name, NodeValue input,
                                   llvm::ArrayRef<size_t> shape) {
   auto TR = uniqueType(input.getType()->getElementType(), shape);
-
+  assert(TR->size() == input.getType()->size() &&
+         "Reshape to a different size");
   return addNode(new ReshapeNode(name, TR, input, shape.vec()));
 }
 
