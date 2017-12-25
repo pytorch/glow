@@ -580,4 +580,3 @@ TEST(Optimizer, copyPropagation) {
         return I->getKind() == Instruction::Kind::CopyInstKind;
       }));
 }
-
