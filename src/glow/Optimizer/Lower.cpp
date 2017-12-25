@@ -120,6 +120,38 @@ void lowerFullyConnectedNode(Graph &graph, FullyConnectedNode &FC) {
   FC.getOutput().replaceAllUsesOfWith(add);
 }
 
+void lowerFullyConnectedGradNode(Graph &graph, FullyConnectedGradNode &FCG) {
+  TypeRef T = FCG.getInput().getType();
+  auto fDims = FCG.getFilter().dims();
+  auto doDims = FCG.getGradOfOriginalOutputNamedOutput().dims();
+  auto f3d = graph.createReshape("fcg.filter", FCG.getFilter(),
+                                 {1, fDims[0], fDims[1]});
+  auto outG3d =
+      graph.createReshape("fcg.outG", FCG.getGradOfOriginalOutputNamedOutput(),
+                          {doDims[0], 1, doDims[1]});
+  auto *dx3d = graph.createBatchedMatMul("fc.dot", f3d, outG3d);
+  auto dx = graph.createReshape("fcg.dx", dx3d, T->dims());
+
+  // inG = Filter * outG.
+  FCG.getGradOfInputNamedInput().replaceAllUsesOfWith(dx);
+
+  auto inDims = flattenCdr(FCG.getInput().dims());
+  auto in3d = graph.createReshape("fcg.in", FCG.getInput(),
+                                  {inDims.first, inDims.second, 1});
+
+  auto *df3d = graph.createBatchedMatMul("fc.dot", outG3d, in3d);
+  auto *df = graph.createBatchedReduce("fc.filter.reduce",
+                                       BatchedReduceNode::Mode::Add, df3d);
+  // FilterG = reduce(outG * in).
+  FCG.getGradOfInputNamedFilter().replaceAllUsesOfWith(df);
+
+  auto in = FCG.getGradOfOriginalOutputNamedOutput();
+  auto *biasG = graph.createBatchedReduce("fc.bias.reduce",
+                                          BatchedReduceNode::Mode::Add, in);
+  // BiasG = reduce(in).
+  FCG.getGradOfInputNamedBias().replaceAllUsesOfWith(biasG);
+}
+
 void glow::lower(Graph &G, CompilationMode mode) {
   auto &nodes = G.getNodes();
 
@@ -132,6 +164,8 @@ void glow::lower(Graph &G, CompilationMode mode) {
       lowerArithmeticNode(G, *EMG);
     } else if (auto *FC = dyn_cast<FullyConnectedNode>(node)) {
       lowerFullyConnectedNode(G, *FC);
+    } else if (auto *FCG = dyn_cast<FullyConnectedGradNode>(node)) {
+      lowerFullyConnectedGradNode(G, *FCG);
     }
   }
 }
