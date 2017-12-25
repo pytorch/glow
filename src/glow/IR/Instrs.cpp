@@ -193,6 +193,7 @@ void BatchedMatMulInst::verify() const {
   (void)c0;
   (void)c1;
   (void)c2;
+  (void)N;
 }
 
 void ReluInst::verify() const { checkSameType(getOperand(0), getOperand(1)); }
