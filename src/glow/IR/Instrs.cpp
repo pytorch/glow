@@ -143,27 +143,54 @@ void FullyConnectedInst::verify() const {
 
 void BatchedMatMulInst::verify() const {
   Value *dest = getDest();
-  Value *batch = getBatch();
-  Value *filter = getFilter();
+  Value *lhs = getLHS();
+  Value *rhs = getRHS();
   (void)dest;
-  (void)batch;
-  (void)filter;
-  assert(batch->dims().size() == 3 && "Invalid A shape");
-  assert(filter->dims().size() == 2 && "Invalid B shape");
-  assert(dest->dims()[0] == batch->dims()[0] && "Mismatch batch size");
+  (void)lhs;
+  (void)rhs;
 
-  size_t a1 = batch->dims()[1];
-  size_t a2 = batch->dims()[2];
-  size_t b1 = filter->dims()[0];
-  size_t b2 = filter->dims()[1];
-  size_t c1 = dest->dims()[1];
-  size_t c2 = dest->dims()[2];
+  auto LDims = lhs->dims();
+  auto RDims = rhs->dims();
+  auto DDims = dest->dims();
+  assert(LDims.size() == 3);
+  assert(RDims.size() == 3);
+  assert(DDims.size() == 3);
+  auto elem = dest->getType()->getElementType();
+  (void)elem;
+  assert(lhs->getType()->getElementType() == elem);
+  assert(rhs->getType()->getElementType() == elem);
+
+  size_t a0 = LDims[0];
+  size_t a1 = LDims[1];
+  size_t a2 = LDims[2];
+
+  size_t b0 = RDims[0];
+  size_t b1 = RDims[1];
+  size_t b2 = RDims[2];
+
+  size_t c0 = DDims[0];
+  size_t c1 = DDims[1];
+  size_t c2 = DDims[2];
+
+  assert(a0 == 1 || b0 == 1 ||
+         a0 == b0 && "Batch size must be broadcasted or identical");
+
+  // Select the batch size. If the left operand is broadcast (value 1), select
+  // the RHS.
+  size_t N = (a0 != 1 ? a0 : b0);
+  assert(N == c0);
+
+  assert(a1 == b2 && "Column of LHS is not equal to the row of RHS.");
+
   assert(a1 == b2 && "Column of A is not equal to the row of A.");
   assert(c1 == a2 && c2 == b1 && "Invalid size of output matrix");
+  (void)a0;
   (void)a1;
   (void)a2;
+  (void)b0;
   (void)b1;
   (void)b2;
+  (void)c0;
   (void)c1;
   (void)c2;
 }
