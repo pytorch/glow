@@ -330,7 +330,7 @@ void ElementMinInst::verify() const {
   checkSameType(getOperand(0), getOperand(2));
 }
 
-void ElementCmpLTInst::verify() const {
+void ElementCmpLTEInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
   checkSameType(getOperand(0), getOperand(2));
 }

@@ -116,7 +116,7 @@ int main(int argc, char **argv) {
       .addEnumCase("Div")
       .addEnumCase("Max")
       .addEnumCase("Min")
-      .addEnumCase("CmpLT")
+      .addEnumCase("CmpLTE")
       .addInput("LHS")
       .addInput("RHS")
       .addResult("LHS.getType()")

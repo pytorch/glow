@@ -93,7 +93,7 @@ public:
 
   ElementMinInst *createElementMinOp(Value *LHS, Value *RHS);
 
-  ElementCmpLTInst *createElementCmpLTOp(Value *LHS, Value *RHS);
+  ElementCmpLTEInst *createElementCmpLTEOp(Value *LHS, Value *RHS);
 
   ElementSelectInst *createSelectOp(Value *Cond, Value *LHS, Value *RHS);
 

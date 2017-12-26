@@ -1104,12 +1104,13 @@ void Interpreter::fwdElementMinInst(bool isTrain, const ElementMinInst *I) {
   }
 }
 
-void Interpreter::fwdElementCmpLTInst(bool isTrain, const ElementCmpLTInst *I) {
+void Interpreter::fwdElementCmpLTEInst(bool isTrain,
+                                       const ElementCmpLTEInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto LHSW = getWeightHandle(I->getLHS());
   auto RHSW = getWeightHandle(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = LHSW.raw(i) < RHSW.raw(i) ? 1.0 : 0.0;
+    outW.raw(i) = LHSW.raw(i) <= RHSW.raw(i) ? 1.0 : 0.0;
   }
 }
 
