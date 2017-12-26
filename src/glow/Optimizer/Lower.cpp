@@ -78,7 +78,7 @@ void lowerArithmeticNode(Graph &graph, ArithmeticGradNode &node) {
     node.getGradOfInputNamedRHS().replaceAllUsesOfWith(rhsResult);
     break;
   }
-  case ArithmeticGradNode::Mode::CmpLT: {
+  case ArithmeticGradNode::Mode::CmpLTE: {
     llvm_unreachable("Unable to differentiate the CmpLT function");
   }
   case ArithmeticGradNode::Mode::Max: {
@@ -161,6 +161,26 @@ void lowerFullyConnectedGradNode(Graph &graph, FullyConnectedGradNode &FCG) {
   FCG.getGradOfInputNamedBias().replaceAllUsesOfWith(biasG);
 }
 
+void lowerReluGradNode(Graph &graph, ReluGradNode &RG) {
+  // ReluGrad: if the input value is greater than zero then let the gradient
+  // pass.
+  auto *zero = graph.createSplat("zero", RG.getInput().getType(), 0.0);
+  auto *cond =
+      graph.createArithmetic("relugrad", RG.getOriginalOutputForResult(), zero,
+                             ArithmeticNode::Mode::CmpLTE);
+  auto *res = graph.createSelect("relugrad", cond, zero,
+                                 RG.getGradOfOriginalOutputNamedResult());
+  RG.getGradOfInputNamedInput().replaceAllUsesOfWith(res);
+}
+
+void lowerReluNode(Graph &graph, ReluNode &R) {
+  // Relu is a max between zero and the input value.
+  auto *zero = graph.createSplat("zero", R.getType(), 0.0);
+  auto *relu = graph.createArithmetic("relu", zero, R.getInput(),
+                                      ArithmeticNode::Mode::Max);
+  R.getResult().replaceAllUsesOfWith(relu);
+}
+
 void glow::lower(Graph &G, CompilationMode mode) {
   auto &nodes = G.getNodes();
 
@@ -175,6 +195,10 @@ void glow::lower(Graph &G, CompilationMode mode) {
       lowerFullyConnectedNode(G, *FC);
     } else if (auto *FCG = dyn_cast<FullyConnectedGradNode>(node)) {
       lowerFullyConnectedGradNode(G, *FCG);
+    } else if (auto *RG = dyn_cast<ReluGradNode>(node)) {
+      lowerReluGradNode(G, *RG);
+    } else if (auto *R = dyn_cast<ReluNode>(node)) {
+      lowerReluNode(G, *R);
     }
   }
 }

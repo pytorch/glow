@@ -200,7 +200,7 @@ int main(int argc, char **argv) {
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS"});
 
-  BB.newInstr("ElementCmpLT")
+  BB.newInstr("ElementCmpLTE")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)

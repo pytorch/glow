@@ -557,8 +557,8 @@ public:
         instruction = builder_.createElementMinOp(L, R);
         break;
       }
-      case glow::ArithmeticNode::Mode::CmpLT: {
-        instruction = builder_.createElementCmpLTOp(L, R);
+      case glow::ArithmeticNode::Mode::CmpLTE: {
+        instruction = builder_.createElementCmpLTEOp(L, R);
         break;
       }
       }
@@ -592,8 +592,8 @@ public:
         builder_.createElementDivGradInst(N->getName(), L, R, outG, LG, RG);
         break;
       }
-      case ArithmeticGradNode::Mode::CmpLT: {
-        llvm_unreachable("Unable to differentiate the CmpLT function");
+      case ArithmeticGradNode::Mode::CmpLTE: {
+        llvm_unreachable("Unable to differentiate the CmpLTE function");
       }
       case ArithmeticGradNode::Mode::Max: {
         llvm_unreachable("Unable to differentiate the Max function");
@@ -604,6 +604,16 @@ public:
       }
       registerIR(AR->getGradOfInputNamedLHS(), LG);
       registerIR(AR->getGradOfInputNamedRHS(), RG);
+      break;
+    }
+    case glow::Kinded::Kind::SelectNodeKind: {
+      auto *S = cast<SelectNode>(N);
+      auto *cond = valueForNode(S->getCond());
+      auto *lhs = valueForNode(S->getLHS());
+      auto *rhs = valueForNode(S->getRHS());
+      auto *V = builder_.createSelectOp(cond, lhs, rhs);
+      registerIR(S->getResult(), V->getDest());
+      V->setName(N->getName());
       break;
     }
     case glow::Kinded::Kind::SaveNodeKind: {

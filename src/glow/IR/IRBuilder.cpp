@@ -253,11 +253,11 @@ ElementMinInst *IRBuilder::createElementMinOp(Value *LHS, Value *RHS) {
   return createElementMinInst("min", res, LHS, RHS);
 }
 
-ElementCmpLTInst *IRBuilder::createElementCmpLTOp(Value *LHS, Value *RHS) {
+ElementCmpLTEInst *IRBuilder::createElementCmpLTEOp(Value *LHS, Value *RHS) {
   assert(LHS->dims() == RHS->dims() &&
          "Input and Output dimensions are different");
-  auto *res = createAllocActivationInst("cmp.lt.res", LHS->getType());
-  return createElementCmpLTInst("cmp.lt", res, LHS, RHS);
+  auto *res = createAllocActivationInst("cmp.lte.res", LHS->getType());
+  return createElementCmpLTEInst("cmp.lte", res, LHS, RHS);
 }
 
 ElementSelectInst *IRBuilder::createSelectOp(Value *Cond, Value *LHS,
