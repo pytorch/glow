@@ -148,7 +148,6 @@ Module::~Module() { clear(); }
 void Module::clear() {
   // Remove the mapping between the graph nodes and the IR that we are deleting.
   variableMap.clear();
-  gradientMap.clear();
 
   // Delete all of the instructions, in reverse order, to make sure that
   // we delete the users before the instructions.
@@ -211,18 +210,6 @@ void Module::verify() const {
     verifyOperandsAccess(it);
     it->verify();
   }
-
-#if 0
-  // gradientMap will soon be removed. Once we do it,
-  // this whole check should be removed.
-  for (auto p : gradientMap) {
-    (void)p;
-    assert(p.first->getType() == p.second->getType() &&
-           "Weight and gradient must have the same type");
-    p.second->verify(*this);
-    p.second->verifyUseList(*this);
-  }
-#endif
 
   for (auto p : variableMap) {
     (void)p;
