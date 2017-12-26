@@ -1086,6 +1086,24 @@ void Interpreter::fwdElementDivGradInst(bool isTrain,
   }
 }
 
+void Interpreter::fwdElementMaxInst(bool isTrain, const ElementMaxInst *I) {
+  auto outW = getWeightHandle(I->getDest());
+  auto LHSW = getWeightHandle(I->getLHS());
+  auto RHSW = getWeightHandle(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = std::max(LHSW.raw(i), RHSW.raw(i));
+  }
+}
+
+void Interpreter::fwdElementMinInst(bool isTrain, const ElementMinInst *I) {
+  auto outW = getWeightHandle(I->getDest());
+  auto LHSW = getWeightHandle(I->getLHS());
+  auto RHSW = getWeightHandle(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = std::min(LHSW.raw(i), RHSW.raw(i));
+  }
+}
+
 void Interpreter::fwdBatchedMatMulInst(bool isTrain,
                                        const glow::BatchedMatMulInst *I) {
   auto lhs = getWeightHandle(I->getLHS());

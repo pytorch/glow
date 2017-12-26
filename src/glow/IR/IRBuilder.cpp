@@ -237,6 +237,22 @@ ElementDivInst *IRBuilder::createElementDivOp(Value *LHS, Value *RHS) {
   return createElementDivInst("div", res, LHS, RHS);
 }
 
+ElementMaxInst *IRBuilder::createElementMaxOp(Value *LHS, Value *RHS) {
+  assert(LHS->dims() == RHS->dims() &&
+         "Input and Output dimensions are different");
+
+  auto *res = createAllocActivationInst("max.res", LHS->getType());
+  return createElementMaxInst("max", res, LHS, RHS);
+}
+
+ElementMinInst *IRBuilder::createElementMinOp(Value *LHS, Value *RHS) {
+  assert(LHS->dims() == RHS->dims() &&
+         "Input and Output dimensions are different");
+
+  auto *res = createAllocActivationInst("min.res", LHS->getType());
+  return createElementMinInst("min", res, LHS, RHS);
+}
+
 Value *IRBuilder::createReturnOp(Value *input) {
   auto *W = createWeightVar(input->getType(), "result",
                             WeightVar::MutabilityKind::Mutable);

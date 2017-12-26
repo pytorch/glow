@@ -320,6 +320,16 @@ void ElementDivInst::verify() const {
   checkSameType(getOperand(0), getOperand(2));
 }
 
+void ElementMaxInst::verify() const {
+  checkSameType(getOperand(0), getOperand(1));
+  checkSameType(getOperand(0), getOperand(2));
+}
+
+void ElementMinInst::verify() const {
+  checkSameType(getOperand(0), getOperand(1));
+  checkSameType(getOperand(0), getOperand(2));
+}
+
 void AllocActivationInst::verify() const {
   unsigned numDealloc = 0;
   for (const Use &U : getUsers()) {

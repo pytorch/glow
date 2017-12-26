@@ -549,6 +549,14 @@ public:
         instruction = builder_.createElementDivOp(L, R);
         break;
       }
+      case glow::ArithmeticNode::Mode::Max: {
+        instruction = builder_.createElementMaxOp(L, R);
+        break;
+      }
+      case glow::ArithmeticNode::Mode::Min: {
+        instruction = builder_.createElementMinOp(L, R);
+        break;
+      }
       }
       instruction->setName(N->getName());
       registerIR(N, instruction->getOperand(0).first);
@@ -580,8 +588,14 @@ public:
         builder_.createElementDivGradInst(N->getName(), L, R, outG, LG, RG);
         break;
       }
+      case ArithmeticGradNode::Mode::Max: {
+        llvm_unreachable("Unable to differentiate the Max function");
       }
 
+      case ArithmeticGradNode::Mode::Min: {
+        llvm_unreachable("Unable to differentiate the Max function");
+      }
+      }
       registerIR(AR->getGradOfInputNamedLHS(), LG);
       registerIR(AR->getGradOfInputNamedRHS(), RG);
       break;
