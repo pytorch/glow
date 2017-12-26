@@ -164,8 +164,8 @@ void OCLBackend::doForwardPass(bool isTrain) {
     if (isa<ReluInst>(I) || isa<SigmoidInst>(I) || isa<TanhInst>(I) ||
         isa<ReluInst>(I) || isa<ElementAddInst>(I) || isa<ElementSubInst>(I) ||
         isa<ElementMaxInst>(I) || isa<ElementMinInst>(I) ||
-        isa<ElementCmpLTEInst>(I) ||
-        isa<ElementMulInst>(I) || isa<ElementDivInst>(I)) {
+        isa<ElementCmpLTEInst>(I) || isa<ElementMulInst>(I) ||
+        isa<ElementDivInst>(I)) {
 
       cl_kernel kernel = createKernel(program_, kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
@@ -298,10 +298,28 @@ void OCLBackend::doForwardPass(bool isTrain) {
       setKernelArg(kernel, 5, ldim);
       setKernelArg(kernel, 6, rdim);
 
-
       // Use a 3D grid where the first dimension is the N and the second and
       // third dimensions are the X and Y in the output buffer.
       enqueueKernel(commands_, kernel, deviceId_, {ddim.n, ddim.h, ddim.w});
+      kernels.push_back(kernel);
+      continue;
+    }
+
+    if (auto *BA = dyn_cast<BatchedAddInst>(I)) {
+      cl_kernel kernel = createKernel(program_, kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
+
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+      }
+
+      auto bdim = flattenCdr(BA->getBatch()->dims());
+      setKernelArg(kernel, 4, bdim.first);
+      setKernelArg(kernel, 5, bdim.second);
+
+      // Parallelize on each element in the slice.
+      enqueueKernel(commands_, kernel, deviceId_, {bdim.second});
       kernels.push_back(kernel);
       continue;
     }
