@@ -163,6 +163,8 @@ void OCLBackend::doForwardPass(bool isTrain) {
     // Element-wise operations:
     if (isa<ReluInst>(I) || isa<SigmoidInst>(I) || isa<TanhInst>(I) ||
         isa<ReluInst>(I) || isa<ElementAddInst>(I) || isa<ElementSubInst>(I) ||
+        isa<ElementMaxInst>(I) || isa<ElementMinInst>(I) ||
+        isa<ElementCmpLTEInst>(I) ||
         isa<ElementMulInst>(I) || isa<ElementDivInst>(I)) {
 
       cl_kernel kernel = createKernel(program_, kernelName);
@@ -273,6 +275,33 @@ void OCLBackend::doForwardPass(bool isTrain) {
       // Use a 2D grid where the first dimension is the depth and the second
       // dimension is the slice index in the batch.
       enqueueKernel(commands_, kernel, deviceId_, {depth, numSlices});
+      kernels.push_back(kernel);
+      continue;
+    }
+
+    if (auto *BMM = dyn_cast<BatchedMatMulInst>(I)) {
+      // This is a naive implementation that parallelizes using three dims:
+      // batch, X and Y in the output filter.
+      cl_kernel kernel = createKernel(program_, kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
+
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+      }
+
+      auto ddim = ShapeNHWC::fromXYZ(BMM->getDest()->getType()->dims());
+      auto ldim = ShapeNHWC::fromXYZ(BMM->getLHS()->getType()->dims());
+      auto rdim = ShapeNHWC::fromXYZ(BMM->getRHS()->getType()->dims());
+
+      setKernelArg(kernel, 4, ddim);
+      setKernelArg(kernel, 5, ldim);
+      setKernelArg(kernel, 6, rdim);
+
+
+      // Use a 3D grid where the first dimension is the N and the second and
+      // third dimensions are the X and Y in the output buffer.
+      enqueueKernel(commands_, kernel, deviceId_, {ddim.n, ddim.h, ddim.w});
       kernels.push_back(kernel);
       continue;
     }

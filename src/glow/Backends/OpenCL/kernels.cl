@@ -13,6 +13,38 @@ size_t getNHWC(ShapeNHWC s, size_t x, size_t y, size_t z, size_t w) {
   return (x * s.c * s.w * s.h) + (y * s.c * s.w) + (z * s.c) + w;
 }
 
+__kernel void batchedmatmulK(__global float *dest, __global float *lhs,
+                             __global float *rhs,
+                             ShapeNHWC ddim, ShapeNHWC ldim,
+                             ShapeNHWC rdim) {
+  // For each layer in the batch.
+  size_t n = get_global_id(0);
+  // For each X in the destination matrix.
+  size_t x = get_global_id(1);
+  // For each Y in the destination matrix.
+  size_t y = get_global_id(2);
+
+  // Broadcast tensors with a batch size of 1 by selecting the right slice.
+  size_t ln = (ldim.n == 1 ? 0 : n);
+  size_t rn = (rdim.n == 1 ? 0 : n);
+
+
+  // Perform DOT on the row an column.
+  float sum = 0;
+  for (size_t i = 0; i < rdim.w; i++) {
+    sum += lhs[getNHWC(ldim, ln, i, x, 0)] * rhs[getNHWC(rdim, rn, y, i, 0)];
+  }
+
+  dest[getNHWC(ddim, n, x, y, 0)] = sum;
+}
+
+__kernel void batchedmatmulW(__global void *mem, size_t dest, size_t lhs,
+                           size_t rhs, ShapeNHWC ddim,
+                           ShapeNHWC ldim, ShapeNHWC rdim) {
+  batchedmatmulK(&mem[dest], &mem[lhs], &mem[rhs],
+               ddim, ldim, rdim);
+}
+
 __kernel void splatK(__global float *dest, float val) {
   size_t i = get_global_id(0);
   dest[i] = val;
@@ -61,6 +93,39 @@ __kernel void elementaddK(__global float *dest, __global float *LHS,
 __kernel void elementaddW(__global void *mem, size_t dest, size_t LHS,
                           size_t RHS) {
   elementaddK(&mem[dest], &mem[LHS], &mem[RHS]);
+}
+
+__kernel void elementmaxK(__global float *dest, __global float *LHS,
+                          __global float *RHS) {
+  size_t i = get_global_id(0);
+  dest[i] = max(LHS[i], RHS[i]);
+}
+
+__kernel void elementmaxW(__global void *mem, size_t dest, size_t LHS,
+                          size_t RHS) {
+  elementmaxK(&mem[dest], &mem[LHS], &mem[RHS]);
+}
+
+__kernel void elementminK(__global float *dest, __global float *LHS,
+                          __global float *RHS) {
+  size_t i = get_global_id(0);
+  dest[i] = min(LHS[i], RHS[i]);
+}
+
+__kernel void elementminW(__global void *mem, size_t dest, size_t LHS,
+                          size_t RHS) {
+  elementminK(&mem[dest], &mem[LHS], &mem[RHS]);
+}
+
+__kernel void elementcmplteK(__global float *dest, __global float *LHS,
+                          __global float *RHS) {
+  size_t i = get_global_id(0);
+  dest[i] = LHS[i] <= RHS[i];
+}
+
+__kernel void elementcmplteW(__global void *mem, size_t dest, size_t LHS,
+                          size_t RHS) {
+  elementcmplteK(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
 __kernel void elementsubK(__global float *dest, __global float *LHS,
