@@ -200,6 +200,19 @@ int main(int argc, char **argv) {
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS"});
 
+  BB.newInstr("ElementCmpLT")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"});
+
+  BB.newInstr("ElementSelect")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Cond", OperandKind::In)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS", "Cond"});
+
   //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//

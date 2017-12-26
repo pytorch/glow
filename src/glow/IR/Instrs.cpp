@@ -330,6 +330,17 @@ void ElementMinInst::verify() const {
   checkSameType(getOperand(0), getOperand(2));
 }
 
+void ElementCmpLTInst::verify() const {
+  checkSameType(getOperand(0), getOperand(1));
+  checkSameType(getOperand(0), getOperand(2));
+}
+
+void ElementSelectInst::verify() const {
+  checkSameType(getOperand(0), getOperand(1));
+  checkSameType(getOperand(0), getOperand(2));
+  checkSameType(getOperand(0), getOperand(3));
+}
+
 void AllocActivationInst::verify() const {
   unsigned numDealloc = 0;
   for (const Use &U : getUsers()) {
