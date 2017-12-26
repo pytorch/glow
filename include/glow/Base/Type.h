@@ -32,6 +32,11 @@ struct ShapeNHWC {
     c = shape[3];
   }
 
+  static ShapeNHWC fromXYZ(llvm::ArrayRef<size_t> shape) {
+    assert(shape.size() == 3 && "Invalid 3d shape");
+    return ShapeNHWC(shape[0], shape[1], shape[2], 1);
+  }
+
   explicit ShapeNHWC(size_t samples, size_t height, size_t width,
                      size_t channels)
       : n(samples), h(height), w(width), c(channels) {}
