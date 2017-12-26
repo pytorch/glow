@@ -78,6 +78,9 @@ void lowerArithmeticNode(Graph &graph, ArithmeticGradNode &node) {
     node.getGradOfInputNamedRHS().replaceAllUsesOfWith(rhsResult);
     break;
   }
+  case ArithmeticGradNode::Mode::CmpLT: {
+    llvm_unreachable("Unable to differentiate the CmpLT function");
+  }
   case ArithmeticGradNode::Mode::Max: {
     llvm_unreachable("Unable to differentiate the Max function");
   }

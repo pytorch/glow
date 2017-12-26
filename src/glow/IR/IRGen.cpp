@@ -557,6 +557,10 @@ public:
         instruction = builder_.createElementMinOp(L, R);
         break;
       }
+      case glow::ArithmeticNode::Mode::CmpLT: {
+        instruction = builder_.createElementCmpLTOp(L, R);
+        break;
+      }
       }
       instruction->setName(N->getName());
       registerIR(N, instruction->getOperand(0).first);
@@ -588,10 +592,12 @@ public:
         builder_.createElementDivGradInst(N->getName(), L, R, outG, LG, RG);
         break;
       }
+      case ArithmeticGradNode::Mode::CmpLT: {
+        llvm_unreachable("Unable to differentiate the CmpLT function");
+      }
       case ArithmeticGradNode::Mode::Max: {
         llvm_unreachable("Unable to differentiate the Max function");
       }
-
       case ArithmeticGradNode::Mode::Min: {
         llvm_unreachable("Unable to differentiate the Max function");
       }

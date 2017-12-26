@@ -345,6 +345,13 @@ ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, NodeValue LHS,
   return addNode(new ArithmeticNode(name, op, LHS, RHS));
 }
 
+SelectNode *Graph::createSelect(llvm::StringRef name, NodeValue Cond,
+                                NodeValue LHS, NodeValue RHS) {
+  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
+  assert(Cond.dims() == RHS.dims() && "Invalid operand shapes");
+  return addNode(new SelectNode(name, Cond, LHS, RHS));
+}
+
 SplatNode *Graph::createSplat(llvm::StringRef name, TypeRef ty, float value) {
   return addNode(new SplatNode(name, ty, value));
 }
