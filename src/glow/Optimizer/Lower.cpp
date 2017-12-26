@@ -78,6 +78,12 @@ void lowerArithmeticNode(Graph &graph, ArithmeticGradNode &node) {
     node.getGradOfInputNamedRHS().replaceAllUsesOfWith(rhsResult);
     break;
   }
+  case ArithmeticGradNode::Mode::Max: {
+    llvm_unreachable("Unable to differentiate the Max function");
+  }
+  case ArithmeticGradNode::Mode::Min: {
+    llvm_unreachable("Unable to differentiate the Min function");
+  }
   }
 }
 

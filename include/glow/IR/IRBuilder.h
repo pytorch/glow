@@ -89,6 +89,10 @@ public:
 
   ElementDivInst *createElementDivOp(Value *LHS, Value *RHS);
 
+  ElementMaxInst *createElementMaxOp(Value *LHS, Value *RHS);
+
+  ElementMinInst *createElementMinOp(Value *LHS, Value *RHS);
+
   Value *createReturnOp(Value *input);
 
   ///@}

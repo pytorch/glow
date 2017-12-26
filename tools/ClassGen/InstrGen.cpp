@@ -188,6 +188,18 @@ int main(int argc, char **argv) {
       .inplaceOperand({"Dest", "LHS", "RHS"})
       .addGradientInstr({"LHS", "RHS"}, {"Dest", "LHS", "RHS"});
 
+  BB.newInstr("ElementMax")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"});
+
+  BB.newInstr("ElementMin")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"});
+
   //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//
