@@ -13,6 +13,21 @@ size_t getNHWC(ShapeNHWC s, size_t x, size_t y, size_t z, size_t w) {
   return (x * s.c * s.w * s.h) + (y * s.c * s.w) + (z * s.c) + w;
 }
 
+__kernel void batchedaddK(__global float *dest, __global float *batch,
+                             __global float *slice,
+                             size_t numSlice, size_t sliceSize) {
+  size_t s = get_global_id(0);
+  for (size_t n = 0; n < numSlice; n++) {
+    dest[n * sliceSize + s] = batch[n * sliceSize + s] + slice[s];
+  }
+}
+
+__kernel void batchedaddW(__global void *mem, size_t dest, size_t batch,
+                           size_t slice, size_t numSlice, size_t sliceSize) {
+  batchedaddK(&mem[dest], &mem[batch], &mem[slice],
+               numSlice, sliceSize);
+}
+
 __kernel void batchedmatmulK(__global float *dest, __global float *lhs,
                              __global float *rhs,
                              ShapeNHWC ddim, ShapeNHWC ldim,
@@ -39,11 +54,12 @@ __kernel void batchedmatmulK(__global float *dest, __global float *lhs,
 }
 
 __kernel void batchedmatmulW(__global void *mem, size_t dest, size_t lhs,
-                           size_t rhs, ShapeNHWC ddim,
-                           ShapeNHWC ldim, ShapeNHWC rdim) {
+                             size_t rhs, ShapeNHWC ddim,
+                             ShapeNHWC ldim, ShapeNHWC rdim) {
   batchedmatmulK(&mem[dest], &mem[lhs], &mem[rhs],
-               ddim, ldim, rdim);
+                 ddim, ldim, rdim);
 }
+
 
 __kernel void splatK(__global float *dest, float val) {
   size_t i = get_global_id(0);
