@@ -496,7 +496,7 @@ struct CSEVisitor : NodeWalker {
     // Replace current node by a found node, which is
     // equivalent to it.
     assert(N->isEqual(*FoundN));
-    for (int i = 0; i < N->getNumRes(); i++) {
+    for (unsigned i = 0; i < N->getNumRes(); i++) {
       NodeValue FV(FoundN, i);
       NodeValue(N, i).replaceAllUsesOfWith(FV);
     }
