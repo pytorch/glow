@@ -324,6 +324,25 @@ void OCLBackend::doForwardPass(bool isTrain) {
       continue;
     }
 
+    if (auto *BRA = dyn_cast<BatchedReduceAddInst>(I)) {
+      cl_kernel kernel = createKernel(program_, kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
+
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+      }
+
+      auto bdim = flattenCdr(BRA->getBatch()->dims());
+      setKernelArg(kernel, 3, bdim.first);
+      setKernelArg(kernel, 4, bdim.second);
+
+      // Parallelize on each element in the slice.
+      enqueueKernel(commands_, kernel, deviceId_, {bdim.second});
+      kernels.push_back(kernel);
+      continue;
+    }
+
     if (auto *CC = dyn_cast<ConvolutionInst>(I)) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
