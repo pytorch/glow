@@ -34,7 +34,7 @@ class ExecutionEngine final {
   TrainingConfig config_;
 
 public:
-  ExecutionEngine(BackendKind backendKind = BackendKind::OpenCL);
+  ExecutionEngine(BackendKind backendKind = BackendKind::Interpreter);
 
   ~ExecutionEngine();
 
