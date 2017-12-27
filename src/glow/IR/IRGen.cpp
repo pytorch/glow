@@ -165,63 +165,6 @@ public:
         break;
       }
     }
-
-    case glow::Kinded::Kind::FullyConnectedNodeKind: {
-      auto *FC = cast<FullyConnectedNode>(N);
-      auto *in = valueForNode(FC->getInput());
-      auto *filter = valueForNode(FC->getFilter());
-      auto *bias = valueForNode(FC->getBias());
-      auto *V =
-          builder_.createFullyConnectedOp(in, filter, bias, FC->getDepth());
-      V->setName(N->getName());
-      registerIR(N, V->getDest());
-      break;
-    }
-
-    case glow::Kinded::Kind::FullyConnectedGradNodeKind: {
-      auto *FCG = cast<FullyConnectedGradNode>(N);
-      auto *InW = valueForNode(FCG->getInput());
-      // FullyConnected works with tensor views, so create them.
-      auto *InWview = InW;
-      // Create a tensor view only if the dimensionality needs to be changed.
-      if (InWview->dims().size() != 2) {
-        auto idim = flattenCdr(InW->dims());
-        InWview = builder_.createTensorView(InWview->getElementType(),
-                                            {idim.first, idim.second}, InW,
-                                            "inWtensorview");
-      }
-      auto *filterW = valueForNode(FCG->getFilter());
-      auto *outW = valueForNode(FCG->getGradOfOriginalOutputNamedOutput());
-      auto biasX = FCG->getBias();
-
-      Value *InG = builder_.createAllocActivationInst("inG", InW->getType());
-      // Create a tensor view for the @out parameter G.
-      Value *InGview = InG;
-      if (InGview->dims().size() != 2) {
-        auto idim = flattenCdr(InG->dims());
-        // tensorview is the first use of InG and takes inG an @in parameter.
-        // But InG is not initialized yet to be used as an @in parameter and
-        // the IR verifier would complain about it. Therefore, we initialize
-        // InG as zero to make the verifier happy.
-        builder_.createSplatInst("zero", InG, 0);
-        InGview = builder_.createTensorView(InGview->getElementType(),
-                                            {idim.first, idim.second}, InG,
-                                            "inGtensorview");
-      }
-      auto *FilterG =
-          builder_.createAllocActivationInst("filterG", filterW->getType());
-      auto *BiasG =
-          builder_.createAllocActivationInst("biasG", biasX.getType());
-
-      builder_.createFullyConnectedGradInst(N->getName(), InWview, filterW,
-                                            outW, InGview, FilterG, BiasG,
-                                            FCG->getDepth());
-
-      registerIR(FCG->getGradOfInputNamedInput(), InG);
-      registerIR(FCG->getGradOfInputNamedFilter(), FilterG);
-      registerIR(FCG->getGradOfInputNamedBias(), BiasG);
-      break;
-    }
     case glow::Kinded::Kind::BatchedMatMulNodeKind: {
       auto *BMM = cast<BatchedMatMulNode>(N);
       auto *lhs = valueForNode(BMM->getLHS());
@@ -268,25 +211,6 @@ public:
       registerIR(N, dest);
       break;
     }
-
-    case glow::Kinded::Kind::ReluNodeKind: {
-      auto *R = cast<ReluNode>(N);
-      auto *V = builder_.createRELUOp(valueForNode(R->getInput()));
-      V->setName(N->getName());
-      registerIR(N, V->getDest());
-      break;
-    }
-    case glow::Kinded::Kind::ReluGradNodeKind: {
-      auto *RG = cast<ReluGradNode>(N);
-      auto *outGrad = valueForNode(RG->getGradOfOriginalOutputNamedResult());
-      auto *DG = builder_.createAllocActivationInst("relu.inG.grad",
-                                                    outGrad->getType());
-      builder_.createReluGradInst(
-          N->getName(), valueForNode(RG->getOriginalOutputForResult()), outGrad,
-          DG);
-      registerIR(N, DG);
-      break;
-    }
     case glow::Kinded::Kind::SigmoidNodeKind: {
       auto *S = cast<SigmoidNode>(N);
       auto *V = builder_.createSigmoidOp(valueForNode(S->getInput()));
@@ -294,33 +218,11 @@ public:
       registerIR(N, V->getDest());
       break;
     }
-    case glow::Kinded::Kind::SigmoidGradNodeKind: {
-      auto *SG = cast<SigmoidGradNode>(N);
-      auto *outGrad = valueForNode(SG->getGradOfOriginalOutputNamedResult());
-      auto *DG = builder_.createAllocActivationInst("sigmoid.inG.grad",
-                                                    outGrad->getType());
-      builder_.createSigmoidGradInst(
-          N->getName(), valueForNode(SG->getOriginalOutputForResult()), outGrad,
-          DG);
-      registerIR(N, DG);
-      break;
-    }
     case glow::Kinded::Kind::TanhNodeKind: {
       auto *T = cast<TanhNode>(N);
       auto *V = builder_.createTanhOp(valueForNode(T->getInput()));
       V->setName(N->getName());
       registerIR(N, V->getDest());
-      break;
-    }
-    case glow::Kinded::Kind::TanhGradNodeKind: {
-      auto *TG = cast<TanhGradNode>(N);
-      auto *outGrad = valueForNode(TG->getGradOfOriginalOutputNamedResult());
-      auto *DG = builder_.createAllocActivationInst("tanh.inG.grad",
-                                                    outGrad->getType());
-      builder_.createTanhGradInst(
-          N->getName(), valueForNode(TG->getOriginalOutputForResult()), outGrad,
-          DG);
-      registerIR(N, DG);
       break;
     }
     case glow::Kinded::Kind::SoftMaxNodeKind: {
@@ -566,46 +468,6 @@ public:
       registerIR(N, instruction->getOperand(0).first);
       break;
     }
-    case glow::Kinded::Kind::ArithmeticGradNodeKind: {
-      auto *AR = cast<ArithmeticGradNode>(N);
-      auto *L = valueForNode(AR->getLHS());
-      auto *R = valueForNode(AR->getRHS());
-
-      auto outG = valueForNode(AR->getGradOfOriginalOutputNamedResult());
-      auto *LG = builder_.createAllocActivationInst("LG", L->getType());
-      auto *RG = builder_.createAllocActivationInst("RG", L->getType());
-
-      switch (AR->getMode()) {
-      case ArithmeticGradNode::Mode::Add: {
-        builder_.createElementAddGradInst(N->getName(), outG, LG, RG);
-        break;
-      }
-      case ArithmeticGradNode::Mode::Mul: {
-        builder_.createElementMulGradInst(N->getName(), L, R, outG, LG, RG);
-        break;
-      }
-      case ArithmeticGradNode::Mode::Sub: {
-        builder_.createElementSubGradInst(N->getName(), outG, LG, RG);
-        break;
-      }
-      case ArithmeticGradNode::Mode::Div: {
-        builder_.createElementDivGradInst(N->getName(), L, R, outG, LG, RG);
-        break;
-      }
-      case ArithmeticGradNode::Mode::CmpLTE: {
-        llvm_unreachable("Unable to differentiate the CmpLTE function");
-      }
-      case ArithmeticGradNode::Mode::Max: {
-        llvm_unreachable("Unable to differentiate the Max function");
-      }
-      case ArithmeticGradNode::Mode::Min: {
-        llvm_unreachable("Unable to differentiate the Max function");
-      }
-      }
-      registerIR(AR->getGradOfInputNamedLHS(), LG);
-      registerIR(AR->getGradOfInputNamedRHS(), RG);
-      break;
-    }
     case glow::Kinded::Kind::SelectNodeKind: {
       auto *S = cast<SelectNode>(N);
       auto *cond = valueForNode(S->getCond());
@@ -650,6 +512,16 @@ public:
                              S->getL2Decay(), S->getLearningRate(),
                              S->getMomentum(), S->getBatchSize());
       break;
+    }
+
+    case glow::Kinded::Kind::TanhGradNodeKind:
+    case glow::Kinded::Kind::SigmoidGradNodeKind:
+    case glow::Kinded::Kind::ArithmeticGradNodeKind:
+    case glow::Kinded::Kind::ReluNodeKind:
+    case glow::Kinded::Kind::ReluGradNodeKind:
+    case glow::Kinded::Kind::FullyConnectedNodeKind:
+    case glow::Kinded::Kind::FullyConnectedGradNodeKind: {
+      llvm_unreachable("Node should have been lowered to low-level nodes");
     }
     }
   }

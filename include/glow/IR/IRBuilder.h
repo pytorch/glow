@@ -44,13 +44,6 @@ public:
   PoolAvgInst *createPoolAvgOp(Value *input, size_t kernel, size_t stride,
                                size_t pad);
 
-  FullyConnectedInst *createFullyConnectedOp(Value *input, size_t outDepth);
-
-  FullyConnectedInst *createFullyConnectedOp(Value *input, Value *filter,
-                                             Value *bias, size_t outDepth);
-
-  ReluInst *createRELUOp(Value *input);
-
   SigmoidInst *createSigmoidOp(Value *input);
 
   TanhInst *createTanhOp(Value *input);

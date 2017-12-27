@@ -80,14 +80,6 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Pad")
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
-  BB.newInstr("FullyConnected")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .addOperand("Filter", OperandKind::In)
-      .addOperand("Bias", OperandKind::In)
-      .addMember(MemberType::SizeT, "Depth")
-      .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
-
   //===--------------------------------------------------------------------===//
   //                     Normalization
   //===--------------------------------------------------------------------===//
@@ -164,29 +156,25 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .inplaceOperand({"Dest", "LHS", "RHS"})
-      .addGradientInstr({}, {"Dest", "LHS", "RHS"});
+      .inplaceOperand({"Dest", "LHS", "RHS"});
 
   BB.newInstr("ElementSub")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .inplaceOperand({"Dest", "LHS", "RHS"})
-      .addGradientInstr({}, {"Dest", "LHS", "RHS"});
+      .inplaceOperand({"Dest", "LHS", "RHS"});
 
   BB.newInstr("ElementMul")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .inplaceOperand({"Dest", "LHS", "RHS"})
-      .addGradientInstr({"LHS", "RHS"}, {"Dest", "LHS", "RHS"});
+      .inplaceOperand({"Dest", "LHS", "RHS"});
 
   BB.newInstr("ElementDiv")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .inplaceOperand({"Dest", "LHS", "RHS"})
-      .addGradientInstr({"LHS", "RHS"}, {"Dest", "LHS", "RHS"});
+      .inplaceOperand({"Dest", "LHS", "RHS"});
 
   BB.newInstr("ElementMax")
       .addOperand("Dest", OperandKind::Out)
@@ -217,23 +205,13 @@ int main(int argc, char **argv) {
   //                Non-linearities
   //===--------------------------------------------------------------------===//
 
-  BB.newInstr("Relu")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .inplaceOperand({
-          "Dest",
-          "Src",
-      })
-      .addGradientInstr({"Dest"}, {"Dest", "Src"});
-
   BB.newInstr("Sigmoid")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .inplaceOperand({
           "Dest",
           "Src",
-      })
-      .addGradientInstr({"Dest"}, {"Dest", "Src"});
+      });
 
   BB.newInstr("Tanh")
       .addOperand("Dest", OperandKind::Out)
@@ -241,8 +219,7 @@ int main(int argc, char **argv) {
       .inplaceOperand({
           "Dest",
           "Src",
-      })
-      .addGradientInstr({"Dest"}, {"Dest", "Src"});
+      });
 
   //===--------------------------------------------------------------------===//
   //                Shape transformations

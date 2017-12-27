@@ -96,32 +96,6 @@ PoolAvgInst *IRBuilder::createPoolAvgOp(Value *input, size_t kernel,
   return createPoolAvgInst("pool", dest, input, kernel, stride, pad);
 }
 
-FullyConnectedInst *IRBuilder::createFullyConnectedOp(Value *input,
-                                                      Value *filter,
-                                                      Value *bias,
-                                                      size_t outDepth) {
-  TypeRef T = input->getType();
-
-  auto idim = flattenCdr(input->dims());
-
-  Value *inputview = input;
-  // Create a tensor view only if the dimensionality needs to be changed.
-  if (input->dims().size() != 2)
-    inputview =
-        createTensorView(input->getElementType(), {idim.first, idim.second},
-                         input, "fctensorview");
-  auto *dest = createAllocActivationInst("fcres", T->getElementType(),
-                                         {idim.first, outDepth});
-
-  return createFullyConnectedInst("fc", dest, inputview, filter, bias,
-                                  outDepth);
-}
-
-ReluInst *IRBuilder::createRELUOp(Value *input) {
-  auto *res = createAllocActivationInst("relu.res", input->getType());
-  return createReluInst("relu", res, input);
-}
-
 SigmoidInst *IRBuilder::createSigmoidOp(Value *input) {
   auto *res = createAllocActivationInst("sigmoid.res", input->getType());
   return createSigmoidInst("sigmoid", res, input);

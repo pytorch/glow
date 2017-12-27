@@ -113,34 +113,6 @@ void PoolAvgInst::verify() const {
   assert(exp == odim && "Unexpected output dimensions");
 }
 
-void FullyConnectedInst::verify() const {
-  Value *dest = getOperand(0).first;
-  Value *src = getOperand(1).first;
-  Value *W = getOperand(2).first;
-  Value *B = getOperand(3).first;
-  (void)dest;
-  (void)W;
-  (void)B;
-  auto idim = flattenCdr(src->dims());
-
-  llvm::ArrayRef<size_t> exp = {idim.first, Depth_};
-  assert(dest->dims() == exp && "Invalid output shape");
-  (void)exp;
-
-  llvm::ArrayRef<size_t> expW = {Depth_, idim.second};
-  assert(W->dims() == expW && "Invalid output shape");
-  (void)expW;
-
-  llvm::ArrayRef<size_t> expB = {Depth_};
-  assert(B->dims() == expB && "Invalid output shape");
-  (void)expB;
-
-  assert(src->dims().size() == 2 &&
-         "Src of a FullyConnectedInst should be 2-dimensional");
-  assert(dest->dims().size() == 2 &&
-         "Dest of a FullyConnectedInst should be 2-dimensional");
-}
-
 void BatchedMatMulInst::verify() const {
   Value *dest = getDest();
   Value *lhs = getLHS();
@@ -196,7 +168,6 @@ void BatchedMatMulInst::verify() const {
   (void)N;
 }
 
-void ReluInst::verify() const { checkSameType(getOperand(0), getOperand(1)); }
 void SigmoidInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
 }
@@ -372,16 +343,8 @@ void DeallocActivationInst::verify() const {
 NOVERIFY(ConvolutionGradInst)
 NOVERIFY(PoolMaxGradInst)
 NOVERIFY(PoolAvgGradInst)
-NOVERIFY(FullyConnectedGradInst)
 NOVERIFY(BatchNormalizationGradInst)
 NOVERIFY(LocalResponseNormalizationGradInst)
 NOVERIFY(SoftMaxGradInst)
-NOVERIFY(ReluGradInst)
-NOVERIFY(TanhGradInst)
-NOVERIFY(SigmoidGradInst)
-NOVERIFY(ElementAddGradInst)
-NOVERIFY(ElementMulGradInst)
-NOVERIFY(ElementSubGradInst)
 NOVERIFY(DebugPrintInst)
-NOVERIFY(ElementDivGradInst)
 #undef NOVERIFY

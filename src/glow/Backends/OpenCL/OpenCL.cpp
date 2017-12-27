@@ -161,11 +161,10 @@ void OCLBackend::doForwardPass(bool isTrain) {
     }
 
     // Element-wise operations:
-    if (isa<ReluInst>(I) || isa<SigmoidInst>(I) || isa<TanhInst>(I) ||
-        isa<ReluInst>(I) || isa<ElementAddInst>(I) || isa<ElementSubInst>(I) ||
-        isa<ElementMaxInst>(I) || isa<ElementMinInst>(I) ||
-        isa<ElementCmpLTEInst>(I) || isa<ElementMulInst>(I) ||
-        isa<ElementDivInst>(I)) {
+    if (isa<SigmoidInst>(I) || isa<TanhInst>(I) || isa<ElementAddInst>(I) ||
+        isa<ElementSubInst>(I) || isa<ElementMaxInst>(I) ||
+        isa<ElementMinInst>(I) || isa<ElementCmpLTEInst>(I) ||
+        isa<ElementMulInst>(I) || isa<ElementDivInst>(I)) {
 
       cl_kernel kernel = createKernel(program_, kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
@@ -246,35 +245,6 @@ void OCLBackend::doForwardPass(bool isTrain) {
       setKernelArg(kernel, 4, idim);
       setKernelArg(kernel, 5, offset);
       enqueueKernel(commands_, kernel, deviceId_, {idim.n});
-      kernels.push_back(kernel);
-      continue;
-    }
-
-    if (auto *FC = dyn_cast<FullyConnectedInst>(I)) {
-      // This is a naive implementation of sgemm that's based on this algorithm:
-      // https://cnugteren.github.io/tutorial/pages/page3.html
-      cl_kernel kernel = createKernel(program_, kernelName);
-      setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I->getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
-      }
-
-      // This is the number of elements for each slice. There are N slices in
-      // our batch.
-      auto inputDims = FC->getSrc()->getType()->dims();
-      // This is the batch size (number of slices/samples in the batch).
-      size_t numSlices = inputDims[0];
-      size_t depth = FC->getDepth();
-
-      // Pass the slice size (size of each sample in the batch) as a parameter.
-      setKernelArg(kernel, numArgs + 1, flattenCdr(inputDims).second);
-      setKernelArg(kernel, numArgs + 2, FC->getDepth());
-
-      // Use a 2D grid where the first dimension is the depth and the second
-      // dimension is the slice index in the batch.
-      enqueueKernel(commands_, kernel, deviceId_, {depth, numSlices});
       kernels.push_back(kernel);
       continue;
     }

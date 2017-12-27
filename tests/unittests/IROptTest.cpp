@@ -34,8 +34,8 @@ TEST(Optimizer, deadStoreElimination) {
   auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "ouput",
                                     WeightVar::MutabilityKind::Mutable);
 
-  bb.createReluInst("relu1", output, input1);
-  bb.createReluInst("relu2", output, input2);
+  bb.createElementAddInst("relu1", output, input1, input1);
+  bb.createElementAddInst("relu2", output, input2, input2);
 
   optimize(M, CompilationMode::Infer);
 
