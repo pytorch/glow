@@ -10,7 +10,6 @@ using namespace glow;
 const size_t MemoryAllocator::npos = -1;
 
 size_t MemoryAllocator::allocate(size_t size) {
-  assert(size && "Allocating an empty buffer");
   size_t prev = 0;
   for (auto it = allocations_.begin(), e = allocations_.end(); it != e; it++) {
     if (it->begin_ - prev >= size) {
