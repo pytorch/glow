@@ -100,7 +100,7 @@ unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
 
 void debug(Node *node) {
   std::cout << (std::string)node->getName();
-  for (int i = 0; i < node->dims().size(); i++) {
+  for (size_t i = 0; i < node->dims().size(); i++) {
     std::cout << " " << node->dims()[i];
   }
   std::cout << std::endl;
@@ -239,7 +239,7 @@ void testPTB() {
 
   std::cout << "Training for " << numBatches << " rounds" << std::endl;
 
-  for (int iter = 0; iter < numEpochs; iter++) {
+  for (size_t iter = 0; iter < numEpochs; iter++) {
     std::cout << "Training - iteration #" << (iter + 1) << std::endl;
 
     llvm::Timer timer("Training", "Training");

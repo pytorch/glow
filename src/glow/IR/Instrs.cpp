@@ -172,8 +172,8 @@ void BatchedMatMulInst::verify() const {
   size_t c1 = DDims[1];
   size_t c2 = DDims[2];
 
-  assert(a0 == 1 || b0 == 1 ||
-         a0 == b0 && "Batch size must be broadcasted or identical");
+  assert(((a0 == 1) || (b0 == 1) || (a0 == b0)) &&
+         "Batch size must be broadcasted or identical");
 
   // Select the batch size. If the left operand is broadcast (value 1), select
   // the RHS.
