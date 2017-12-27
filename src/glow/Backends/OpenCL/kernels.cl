@@ -14,7 +14,7 @@ size_t getNHWC(ShapeNHWC s, size_t x, size_t y, size_t z, size_t w) {
 }
 
 __kernel void batchedreduceaddK(__global float *dest, __global float *batch,
-                          size_t numSlice, size_t sliceSize) {
+                                size_t numSlice, size_t sliceSize) {
   size_t s = get_global_id(0);
   dest[s] = 0;
   for (size_t n = 0; n < numSlice; n++) {
@@ -28,8 +28,8 @@ __kernel void batchedreduceaddW(__global void *mem, size_t dest, size_t batch,
 }
 
 __kernel void batchedaddK(__global float *dest, __global float *batch,
-                             __global float *slice,
-                             size_t numSlice, size_t sliceSize) {
+                          __global float *slice, size_t numSlice,
+                          size_t sliceSize) {
   size_t s = get_global_id(0);
   for (size_t n = 0; n < numSlice; n++) {
     dest[n * sliceSize + s] = batch[n * sliceSize + s] + slice[s];
@@ -37,15 +37,13 @@ __kernel void batchedaddK(__global float *dest, __global float *batch,
 }
 
 __kernel void batchedaddW(__global void *mem, size_t dest, size_t batch,
-                           size_t slice, size_t numSlice, size_t sliceSize) {
-  batchedaddK(&mem[dest], &mem[batch], &mem[slice],
-               numSlice, sliceSize);
+                          size_t slice, size_t numSlice, size_t sliceSize) {
+  batchedaddK(&mem[dest], &mem[batch], &mem[slice], numSlice, sliceSize);
 }
 
 __kernel void batchedmatmulK(__global float *dest, __global float *lhs,
-                             __global float *rhs,
-                             ShapeNHWC ddim, ShapeNHWC ldim,
-                             ShapeNHWC rdim) {
+                             __global float *rhs, ShapeNHWC ddim,
+                             ShapeNHWC ldim, ShapeNHWC rdim) {
   // For each layer in the batch.
   size_t n = get_global_id(0);
   // For each X in the destination matrix.
@@ -57,7 +55,6 @@ __kernel void batchedmatmulK(__global float *dest, __global float *lhs,
   size_t ln = (ldim.n == 1 ? 0 : n);
   size_t rn = (rdim.n == 1 ? 0 : n);
 
-
   // Perform DOT on the row an column.
   float sum = 0;
   for (size_t i = 0; i < rdim.w; i++) {
@@ -68,12 +65,10 @@ __kernel void batchedmatmulK(__global float *dest, __global float *lhs,
 }
 
 __kernel void batchedmatmulW(__global void *mem, size_t dest, size_t lhs,
-                             size_t rhs, ShapeNHWC ddim,
-                             ShapeNHWC ldim, ShapeNHWC rdim) {
-  batchedmatmulK(&mem[dest], &mem[lhs], &mem[rhs],
-                 ddim, ldim, rdim);
+                             size_t rhs, ShapeNHWC ddim, ShapeNHWC ldim,
+                             ShapeNHWC rdim) {
+  batchedmatmulK(&mem[dest], &mem[lhs], &mem[rhs], ddim, ldim, rdim);
 }
-
 
 __kernel void splatK(__global float *dest, float val) {
   size_t i = get_global_id(0);
@@ -148,13 +143,13 @@ __kernel void elementminW(__global void *mem, size_t dest, size_t LHS,
 }
 
 __kernel void elementcmplteK(__global float *dest, __global float *LHS,
-                          __global float *RHS) {
+                             __global float *RHS) {
   size_t i = get_global_id(0);
   dest[i] = LHS[i] <= RHS[i];
 }
 
 __kernel void elementcmplteW(__global void *mem, size_t dest, size_t LHS,
-                          size_t RHS) {
+                             size_t RHS) {
   elementcmplteK(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
@@ -405,7 +400,7 @@ __kernel void transposeW(__global void *mem, size_t dest, size_t src,
 }
 
 __kernel void inserttensorK(__global float *dest, __global float *src,
-                      ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset) {
+                            ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset) {
   size_t d0 = get_global_id(0);
   for (size_t d1 = 0; d1 < idim.h; d1++) {
     for (size_t d2 = 0; d2 < idim.w; d2++) {
@@ -423,7 +418,7 @@ __kernel void inserttensorK(__global float *dest, __global float *src,
 }
 
 __kernel void inserttensorW(__global void *mem, size_t dest, size_t src,
-                       ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset) {
+                            ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset) {
   inserttensorK(&mem[dest], &mem[src], odim, idim, offset);
 }
 )";
