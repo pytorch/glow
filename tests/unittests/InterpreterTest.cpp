@@ -197,6 +197,8 @@ TEST(Interpreter, learnXor) {
   // Train the network:
   EE.runBatch(2500, {A, Ex}, {&trainingSet, &trainingLabels});
 
+  EE.compile(CompilationMode::Infer);
+
   // Prepare the testing tensor:
   for (unsigned i = 0; i < numTests; i++) {
     TT.at({i, 0}) = i % 2;
