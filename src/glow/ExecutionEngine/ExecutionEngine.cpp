@@ -93,6 +93,7 @@ void ExecutionEngine::compile(CompilationMode mode) {
     generateGradientNodes(*G_, getConfig(), mode);
   }
 
+  ::glow::lower(*G_, mode);
   ::glow::optimize(*G_, mode);
   M_->generateIR(mode);
   ::glow::optimize(*M_, mode);
