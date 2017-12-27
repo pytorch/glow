@@ -79,15 +79,6 @@ __kernel void splatW(__global void *mem, size_t dest, float val) {
   splatK(&mem[dest], val);
 }
 
-__kernel void reluK(__global float *dest, __global float *src) {
-  size_t i = get_global_id(0);
-  dest[i] = fmax(src[i], 0);
-}
-
-__kernel void reluW(__global void *mem, size_t dest, size_t src) {
-  reluK(&mem[dest], &mem[src]);
-}
-
 __kernel void sigmoidK(__global float *dest, __global float *src) {
   size_t i = get_global_id(0);
   dest[i] = 1 / (1 + exp(-src[i]));
@@ -184,28 +175,6 @@ __kernel void elementdivK(__global float *dest, __global float *LHS,
 __kernel void elementdivW(__global void *mem, size_t dest, size_t LHS,
                           size_t RHS) {
   elementdivK(&mem[dest], &mem[LHS], &mem[RHS]);
-}
-
-__kernel void fullyconnectedK(__global float *dest, __global float *src,
-                              __global float *filter, __global float *bias,
-                              unsigned sliceSize, unsigned depth) {
-  size_t D = get_global_id(0);
-  size_t N = get_global_id(1);
-
-  size_t inBase = N * sliceSize;
-  float sum = 0;
-  for (size_t j = 0; j < sliceSize; j++) {
-    sum += src[inBase + j] * filter[D * sliceSize + j];
-  }
-  sum += bias[D];
-  dest[N * depth + D] = sum;
-}
-
-__kernel void fullyconnectedW(__global void *mem, size_t dest, size_t src,
-                              size_t filter, size_t bias, unsigned sliceSize,
-                              unsigned depth) {
-  fullyconnectedK(&mem[dest], &mem[src], &mem[filter], &mem[bias], sliceSize,
-                  depth);
 }
 
 __kernel void softmaxK(__global float *dest, __global float *src,

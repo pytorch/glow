@@ -376,111 +376,8 @@ void Interpreter::fwdPoolAvgGradInst(bool isTrain, const PoolAvgGradInst *I) {
 }
 
 //===----------------------------------------------------------------------===//
-//                       Fully Connected
-//===----------------------------------------------------------------------===//
-
-void Interpreter::fwdFullyConnectedInst(bool isTrain,
-                                        const FullyConnectedInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-
-  // outW and inW are 2-dimensional.
-  // Dimensions are depth and width.
-  auto OutWidth = outW.dims()[0];
-  auto OutDepth = outW.dims()[1];
-  auto InDepth = inW.dims()[0];
-  auto InWidth = inW.dims()[1];
-
-  assert(OutWidth == InDepth && "Mismatch batch size");
-  (void)InDepth;
-
-  auto filterW = getWeightHandle(I->getFilter());
-  auto biasW = getWeightHandle(I->getBias());
-
-  size_t inputSize = InWidth;
-
-  for (size_t n = 0; n < OutWidth; n++) {
-
-    for (size_t i = 0; i < OutDepth; i++) {
-
-      float sum = 0;
-      for (size_t j = 0; j < inputSize; j++) {
-        sum += inW.at({n, j}) * filterW.at({i, j});
-      }
-
-      sum += biasW.at({i});
-      outW.at({n, i}) = sum;
-    }
-  } // N
-}
-
-void Interpreter::fwdFullyConnectedGradInst(bool isTrain,
-                                            const FullyConnectedGradInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto inG = getWeightHandle(I->getSrcGrad());
-  auto outG = getWeightHandle(I->getDestGrad());
-
-  assert(inW.dims().size() == 2);
-  assert(inG.dims().size() == 2);
-
-  // outG and inW are 2-dimensional.
-  // Dimensions are depth and width.
-  auto OutWidth = outG.dims()[0];
-  auto OutDepth = outG.dims()[1];
-  auto InWidth = inW.dims()[1];
-
-  auto filterW = getWeightHandle(I->getFilter());
-  auto filterG = getWeightHandle(I->getFilterGrad());
-  auto biasG = getWeightHandle(I->getBiasGrad());
-
-  biasG.clear();
-  filterG.clear();
-  inG.clear();
-
-  size_t inSize = InWidth;
-
-  for (size_t n = 0; n < OutWidth; n++) {
-
-    // Compute the gradient:
-    for (size_t i = 0; i < OutDepth; i++) {
-      float chainGrad = outG.at({n, i});
-
-      for (size_t j = 0, e = inSize; j < e; j++) {
-        // Input gradient:
-        inG.at({n, j}) += filterW.at({i, j}) * chainGrad;
-        // Param gradient:
-        filterG.at({i, j}) += inW.at({n, j}) * chainGrad;
-      }
-
-      biasG.at({i}) += chainGrad;
-    }
-  } // N
-}
-
-//===----------------------------------------------------------------------===//
 //                       Activation functions
 //===----------------------------------------------------------------------===//
-
-void Interpreter::fwdReluInst(bool isTrain, const ReluInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-
-  for (size_t i = 0, e = inW.size(); i < e; i++) {
-    float val = inW.raw(i);
-    outW.raw(i) = val < 0 ? 0 : val;
-  }
-}
-
-void Interpreter::fwdReluGradInst(bool isTrain, const ReluGradInst *I) {
-  auto inG = getWeightHandle(I->getSrcGrad());
-  auto outW = getWeightHandle(I->getDest());
-  auto outG = getWeightHandle(I->getDestGrad());
-
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
-    float val = outW.raw(i);
-    inG.raw(i) = (val <= 0 ? 0 : outG.raw(i));
-  }
-}
 
 void Interpreter::fwdSigmoidInst(bool isTrain, const SigmoidInst *I) {
   auto inW = getWeightHandle(I->getSrc());
@@ -491,16 +388,6 @@ void Interpreter::fwdSigmoidInst(bool isTrain, const SigmoidInst *I) {
     outW.raw(i) = 1 / (1 + std::exp(-val));
   }
 }
-void Interpreter::fwdSigmoidGradInst(bool isTrain, const SigmoidGradInst *I) {
-  auto inG = getWeightHandle(I->getSrcGrad());
-  auto outW = getWeightHandle(I->getDest());
-  auto outG = getWeightHandle(I->getDestGrad());
-
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
-    float val = outW.raw(i);
-    inG.raw(i) = val * (1 - val) * outG.raw(i);
-  }
-}
 
 void Interpreter::fwdTanhInst(bool isTrain, const TanhInst *I) {
   auto inW = getWeightHandle(I->getSrc());
@@ -509,16 +396,6 @@ void Interpreter::fwdTanhInst(bool isTrain, const TanhInst *I) {
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     float val = inW.raw(i);
     outW.raw(i) = std::tanh(val);
-  }
-}
-void Interpreter::fwdTanhGradInst(bool isTrain, const TanhGradInst *I) {
-  auto inG = getWeightHandle(I->getSrcGrad());
-  auto outW = getWeightHandle(I->getDest());
-  auto outG = getWeightHandle(I->getDestGrad());
-
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
-    float val = outW.raw(i);
-    inG.raw(i) = (1 - val * val) * outG.raw(i);
   }
 }
 
@@ -1035,54 +912,6 @@ void Interpreter::fwdElementDivInst(bool isTrain, const ElementDivInst *I) {
   auto RHSW = getWeightHandle(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = LHSW.raw(i) / RHSW.raw(i);
-  }
-}
-
-void Interpreter::fwdElementAddGradInst(bool isTrain,
-                                        const ElementAddGradInst *I) {
-  auto outG = getWeightHandle(I->getDestGrad());
-  auto LHSG = getWeightHandle(I->getLHSGrad());
-  auto RHSG = getWeightHandle(I->getRHSGrad());
-  for (size_t i = 0, e = outG.size(); i < e; i++) {
-    LHSG.raw(i) = outG.raw(i);
-    RHSG.raw(i) = outG.raw(i);
-  }
-}
-
-void Interpreter::fwdElementSubGradInst(bool isTrain,
-                                        const ElementSubGradInst *I) {
-  auto outG = getWeightHandle(I->getDestGrad());
-  auto LHSG = getWeightHandle(I->getLHSGrad());
-  auto RHSG = getWeightHandle(I->getRHSGrad());
-  for (size_t i = 0, e = outG.size(); i < e; i++) {
-    LHSG.raw(i) = outG.raw(i);
-    RHSG.raw(i) = -outG.raw(i);
-  }
-}
-
-void Interpreter::fwdElementMulGradInst(bool isTrain,
-                                        const ElementMulGradInst *I) {
-  auto LHSW = getWeightHandle(I->getLHS());
-  auto RHSW = getWeightHandle(I->getRHS());
-  auto outG = getWeightHandle(I->getDestGrad());
-  auto LHSG = getWeightHandle(I->getLHSGrad());
-  auto RHSG = getWeightHandle(I->getRHSGrad());
-  for (size_t i = 0, e = outG.size(); i < e; i++) {
-    LHSG.raw(i) = RHSW.raw(i) * outG.raw(i);
-    RHSG.raw(i) = LHSW.raw(i) * outG.raw(i);
-  }
-}
-
-void Interpreter::fwdElementDivGradInst(bool isTrain,
-                                        const ElementDivGradInst *I) {
-  auto LHSW = getWeightHandle(I->getLHS());
-  auto RHSW = getWeightHandle(I->getRHS());
-  auto outG = getWeightHandle(I->getDestGrad());
-  auto LHSG = getWeightHandle(I->getLHSGrad());
-  auto RHSG = getWeightHandle(I->getRHSGrad());
-  for (size_t i = 0, e = outG.size(); i < e; i++) {
-    LHSG.raw(i) = outG.raw(i) / RHSW.raw(i);
-    RHSG.raw(i) = -outG.raw(i) * LHSW.raw(i) / (RHSW.raw(i) * RHSW.raw(i));
   }
 }
 

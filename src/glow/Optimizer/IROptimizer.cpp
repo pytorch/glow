@@ -33,39 +33,6 @@ using LiveIntervalsMap = std::unordered_map<Value *, Intervals>;
 /// Set of instruction numbers.
 using InstructionNumbers = std::unordered_set<size_t>;
 
-static void calculateLiveness(Module &M, LivenessMap &liveness) {
-  auto &instrs = M.getInstrs();
-  unsigned instIdx = 0;
-
-  // Compute the [start..end) intervals for each alloc activation in our basic
-  // block. Notice that we ignore Dealloc instructions in our analysis.
-  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
-    instIdx++;
-    // Ignore deallocations in our liveness calculation.
-    if (isa<DeallocActivationInst>(*it)) {
-      continue;
-    }
-
-    for (int i = 0, e = (*it)->getNumOperands(); i < e; i++) {
-      auto op = (*it)->getOperand(i).first;
-      auto aa = dyn_cast<AllocActivationInst>(op);
-      if (!aa) {
-        continue;
-      }
-
-      auto I = liveness.find(aa);
-      if (I == liveness.end()) {
-        // Create a new interval.
-        liveness[aa] = {instIdx, instIdx};
-        continue;
-      }
-
-      // Increase the size of the interval.
-      I->second.second = instIdx;
-    }
-  }
-}
-
 /// Hoists Dealloc instructions right after their last use.
 static void hoistDealloc(Module &M) {
   // Maps activation instructions to their last non-dealloc user.
@@ -329,123 +296,6 @@ static Instruction *getSingleWriter(Value *V) {
   }
 
   return singleUser;
-}
-
-/// This optimization is based on the paper:
-/// "Training Deep Nets with Sublinear Memory Cost" Arxiv 1604.06174
-/// The idea is that instead of keeping a buffer around for a really long time
-/// we can simply recompute some nodes. There is a tradeoff here between compute
-/// and memory usage. The idea is to reduce memory usage significantly at a low
-/// compute cost. Only apply this optimization when two parallel lifetimes are
-/// reduces to one, for at least a part of the program.
-void rematerializeCompute(Module &M) {
-  auto &instrs = M.getInstrs();
-
-  // Don't rematerialize if the distance between the original calculation and
-  // the use is below this number of instructions.
-  const unsigned rematerializeDistance = 5;
-
-  unsigned instIdx = 0;
-
-  // Calculate the liveness of the allocas in the block. This does not include
-  // the alloc/dealloc instructions because they will be shrinked later on.
-  LivenessMap liveness;
-  calculateLiveness(M, liveness);
-
-  // This map maps the destination buffers to the single writer instruction
-  // that stores into them. The map also saves the index of the writer in the
-  // basic block, starting from the top.
-  std::unordered_map<Value *, std::pair<ReluInst *, unsigned>> writers;
-  // Maps the original values to the re-calculated one. It's always better to
-  // use the recalculated write because it is closer.
-  std::unordered_map<Value *, Value *> rewrites;
-
-  // Do an initial pass that collects all of the available RELUs.
-  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
-    instIdx++;
-    auto RL = dyn_cast<ReluInst>(*it);
-    if (!RL) {
-      continue;
-    }
-
-    // Ignore RL instructions that are writing to a shared buffer.
-    if (RL != getSingleWriter(RL->getDest())) {
-      continue;
-    }
-
-    writers[RL->getDest()] = {RL, instIdx};
-  }
-
-  // Do a second pass that rematerializes the RELUs.
-  instIdx = 0;
-  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
-    Instruction *I = *it;
-    instIdx++;
-
-    // Try to optimize the operands of each instruction that we encounter.
-    for (unsigned op = 0, ope = I->getNumOperands(); op < ope; op++) {
-      auto O = I->getOperand(op);
-      // Ignore write operands.
-      if (O.second != OperandKind::In) {
-        continue;
-      }
-
-      // Ignore operands that don't touch known allocas.
-      auto reluIter = writers.find(O.first);
-      if (reluIter == writers.end()) {
-        continue;
-      }
-
-      // Ignore very recently allocated .
-      unsigned indexOfPrevReluWriter = reluIter->second.second;
-      if ((instIdx - indexOfPrevReluWriter) < rematerializeDistance) {
-        continue;
-      }
-
-      // If we've already rematerialized this computation then we can use the
-      // cache.
-      auto cacheIter = rewrites.find(O.first);
-      if (cacheIter != rewrites.end()) {
-        I->setOperand(op, cacheIter->second);
-        continue;
-      }
-
-      // Check if the lifetime of the thing that feeds into the original relu is
-      // still alive. If it's not aloive the copying the relu would extend it's
-      // lifetime for no good reason.
-      ReluInst *prevRelu = reluIter->second.first;
-
-      auto LI = liveness.find(prevRelu->getSrc());
-      if (LI == liveness.end()) {
-        // Cound not find liveness for the original relu operand. Is it not an
-        // alloca?
-        continue;
-      }
-
-      // This is the interval of the thing that flows into the RELU.
-      Interval origReluSrcInterval = LI->second;
-      assert(origReluSrcInterval.first < instIdx && "Invalid start index");
-
-      // Don't perform this optimization if it extends the lifetime of the
-      // inputs of the relu.
-      if (origReluSrcInterval.second < instIdx) {
-        continue;
-      }
-
-      // Recompute the relu locally.
-      auto *A = new AllocActivationInst(&M, O.first->getName().str() + ".re",
-                                        O.first->getType());
-      M.insertInstruction(it, A);
-      auto *R = new ReluInst(&M, "re.Relu", A, prevRelu->getSrc());
-      M.insertInstruction(it, R);
-      auto *D = new DeallocActivationInst(&M, "re", A);
-      M.insertInstruction(D);
-
-      I->setOperand(op, A);
-      rewrites[O.first] = A;
-      break;
-    }
-  }
 }
 
 void makeWeightsConst(Module &M) {
@@ -920,9 +770,6 @@ static void performDebugInstrumentation(Module &M) {
 
 void glow::optimize(Module &M, CompilationMode mode) {
   M.verify();
-
-  // Try to recompute instead of carying large buffers for a while.
-  rematerializeCompute(M);
 
   // Reuse buffers from previous operations.
   shareBuffers(M);

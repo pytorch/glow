@@ -30,6 +30,7 @@ TEST(Graph, simpleTest) {
     G.dump();
     G.dumpDAG();
     lower(G, glow::CompilationMode::Train);
+    ::glow::optimize(G, glow::CompilationMode::Train);
     M.generateIR(CompilationMode::Train);
     M.dump();
   }
@@ -50,6 +51,7 @@ TEST(Graph, simpleTest) {
     G.dump();
     G.dumpDAG();
     lower(G, glow::CompilationMode::Train);
+    ::glow::optimize(G, glow::CompilationMode::Train);
     M.generateIR(CompilationMode::Train);
     M.dump();
   }

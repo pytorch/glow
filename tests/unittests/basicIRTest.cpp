@@ -108,8 +108,6 @@ TEST(IR, allInstrs) {
     builder.createCopyInst("", I1, I0);
     builder.createConvolutionInst("", I3, I1, F0, B0, 7, 2, 3, 64);
     builder.createPoolMaxInst("", I4, I0, XY, 7, 2, 3);
-    builder.createFullyConnectedOp(I0, F1, B1, 32);
-    builder.createReluInst("", I1, I0);
     builder.createSigmoidInst("", I1, I0);
     builder.createTanhInst("", I1, I0);
     builder.createSoftMaxInst("", I1, I0, I7, E0);
@@ -131,13 +129,13 @@ TEST(IR, casting) {
     IRBuilder bb(&M);
 
     auto *input = bb.createWeightVar(ElemKind::FloatTy, {1, 224, 224, 3});
-    auto *relu = bb.createRELUOp(input);
-    auto *pool = bb.createPoolMaxOp(relu->getOperand(0).first, 7, 2, 3);
+    auto *sig = bb.createSigmoidOp(input);
+    auto *pool = bb.createPoolMaxOp(sig->getOperand(0).first, 7, 2, 3);
 
     EXPECT_EQ(isa<PoolMaxInst>(pool), true);
     EXPECT_EQ(isa<PoolMaxInst>(input), false);
-    EXPECT_EQ(isa<ReluInst>(relu), true);
-    EXPECT_EQ(isa<ReluInst>(pool), false);
+    EXPECT_EQ(isa<SigmoidInst>(sig), true);
+    EXPECT_EQ(isa<SigmoidInst>(pool), false);
 
     EXPECT_NE(dyn_cast<PoolMaxInst>(pool), nullptr);
     EXPECT_EQ(dyn_cast<PoolMaxInst>(pool), pool);
