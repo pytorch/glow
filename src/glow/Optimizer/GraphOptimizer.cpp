@@ -529,6 +529,22 @@ static void CSE(Graph &G) {
   }
 }
 
+/// Eliminate SliceNode when the input is SplatNode.
+/// Slice(Splat(args)) -> Splat(args')
+static void OptimizeSliceOfSplat(Graph &G) {
+  for (const auto &node : G.getNodes()) {
+    auto *sliceNode = dyn_cast<SliceNode>(node);
+    if (!sliceNode)
+      continue;
+    auto *splatNode = dyn_cast<SplatNode>(sliceNode->getInput());
+    if (!splatNode)
+      continue;
+    auto *newSplatNode = G.createSplat(
+        sliceNode->getName(), sliceNode->getType(), splatNode->getValue());
+    sliceNode->getResult().replaceAllUsesOfWith(newSplatNode);
+  }
+}
+
 void glow::optimize(Graph &G, CompilationMode mode) {
   // Sink transpose operations in an attempt to cancel them out.
   sinkCode(G);
@@ -553,6 +569,9 @@ void glow::optimize(Graph &G, CompilationMode mode) {
   CSE(G);
 
   optimizeConcatNodes(G);
+
+  // Slice(Splat(dims, value)) -> Splat(dims', value)
+  OptimizeSliceOfSplat(G);
 
   // Perform Dead Code Elimination.
   DCE(G, mode);
