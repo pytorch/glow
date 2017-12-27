@@ -413,3 +413,50 @@ TEST(GraphOptz, CSE) {
 
   EXPECT_EQ(G.getNodes().size(), 3);
 }
+
+TEST(GraphOptz, SliceOfSplatNode) {
+  Graph G;
+  Module M(&G);
+  Type t(ElemKind::FloatTy, {1000, 1000, 1000});
+  Node *Z = G.createSplat("zero", &t, 0.);
+  Node *S = G.createSlice("slice", Z, {5, 15, 42}, {99, 88, 77});
+  Node *O = G.createSave("ret", S);
+
+  EXPECT_EQ(G.getNodes().size(), 3);
+
+  ::glow::optimize(G, CompilationMode::Train);
+
+  EXPECT_EQ(G.getNodes().size(), 2);
+
+  EXPECT_TRUE(llvm::isa<SaveNode>(O));
+
+  auto *CN = llvm::dyn_cast<SplatNode>(llvm::dyn_cast<SaveNode>(O)->getInput());
+  EXPECT_TRUE(CN);
+
+  EXPECT_TRUE(CN->getType()->dims().equals({94, 73, 35}));
+}
+
+TEST(GraphOptz, SliceOfSplatNodeChain) {
+  for (int shouldReverse = 0; shouldReverse <= 1; shouldReverse++) {
+    Graph G;
+    Module M(&G);
+    Type t(ElemKind::FloatTy, {1000, 1000, 1000});
+    Node *Z = G.createSplat("zero", &t, 0.);
+    Node *S1 = G.createSlice("slice1", Z, {5, 15, 42}, {99, 88, 77});
+    Node *S2 = G.createSlice("slice2", S1, {1, 1, 1}, {2, 3, 4});
+    G.createSave("ret", S2);
+
+    if (shouldReverse) {
+      auto &nodes = G.getNodes();
+      reverse(nodes.begin(), nodes.end());
+    }
+
+    EXPECT_EQ(G.getNodes().size(), 4);
+
+    ::glow::optimize(G, CompilationMode::Train);
+
+    // This test illustrates some inconsistency in the optimization.
+    // Chain splats are not guaranteed to be optimized.
+    EXPECT_EQ(G.getNodes().size(), shouldReverse ? 3 : 2);
+  }
+}
