@@ -173,6 +173,26 @@ void lowerReluGradNode(Graph &graph, ReluGradNode &RG) {
   RG.getGradOfInputNamedInput().replaceAllUsesOfWith(res);
 }
 
+void lowerTanhGradNode(Graph &graph, TanhGradNode &THG) {
+  // Tanh grad is calculated as:
+  // inG = (1 - outW * outW) * outG
+
+  // (W * W)
+  auto outW = THG.getOriginalOutputForResult();
+  auto *sq =
+      graph.createArithmetic("tanh.in2", outW, outW, ArithmeticNode::Mode::Mul);
+
+  auto *one = graph.createSplat("zero", THG.getInput().getType(), 1.0);
+  // (1 - W * W)
+  auto *oneSubsq =
+      graph.createArithmetic("tanh.one.sq", one, sq, ArithmeticNode::Mode::Sub);
+
+  auto *grad = graph.createArithmetic("tanh.one.sq", oneSubsq,
+                                      THG.getGradOfOriginalOutputNamedResult(),
+                                      ArithmeticNode::Mode::Mul);
+  THG.getGradOfInputNamedInput().replaceAllUsesOfWith(grad);
+}
+
 void lowerReluNode(Graph &graph, ReluNode &R) {
   // Relu is a max between zero and the input value.
   auto *zero = graph.createSplat("zero", R.getType(), 0.0);
@@ -199,6 +219,8 @@ void glow::lower(Graph &G, CompilationMode mode) {
       lowerReluGradNode(G, *RG);
     } else if (auto *R = dyn_cast<ReluNode>(node)) {
       lowerReluNode(G, *R);
+    } else if (auto *THG = dyn_cast<TanhGradNode>(node)) {
+      lowerTanhGradNode(G, *THG);
     }
   }
 }
