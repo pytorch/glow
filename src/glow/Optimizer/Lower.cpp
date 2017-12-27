@@ -182,12 +182,33 @@ void lowerTanhGradNode(Graph &graph, TanhGradNode &THG) {
   auto *sq =
       graph.createArithmetic("tanh.in2", outW, outW, ArithmeticNode::Mode::Mul);
 
-  auto *one = graph.createSplat("zero", THG.getInput().getType(), 1.0);
+  auto *one = graph.createSplat("tanh.one", THG.getInput().getType(), 1.0);
   // (1 - W * W)
   auto *oneSubsq =
       graph.createArithmetic("tanh.one.sq", one, sq, ArithmeticNode::Mode::Sub);
 
   auto *grad = graph.createArithmetic("tanh.one.sq", oneSubsq,
+                                      THG.getGradOfOriginalOutputNamedResult(),
+                                      ArithmeticNode::Mode::Mul);
+  THG.getGradOfInputNamedInput().replaceAllUsesOfWith(grad);
+}
+
+void lowerSigmoidGradNode(Graph &graph, SigmoidGradNode &THG) {
+  // Sigmoid grad is calculated as:
+  // inG = outW * (1 - outW) * outG;
+
+  auto outW = THG.getOriginalOutputForResult();
+  auto *one = graph.createSplat("zero", THG.getInput().getType(), 1.0);
+
+  // (1 - W)
+  auto *onew =
+      graph.createArithmetic("sig.1w", one, outW, ArithmeticNode::Mode::Sub);
+
+  // (1 - W) * W
+  auto *expr1 =
+      graph.createArithmetic("sig.1ww", onew, outW, ArithmeticNode::Mode::Mul);
+
+  auto *grad = graph.createArithmetic("sigg.one.sq", expr1,
                                       THG.getGradOfOriginalOutputNamedResult(),
                                       ArithmeticNode::Mode::Mul);
   THG.getGradOfInputNamedInput().replaceAllUsesOfWith(grad);
@@ -221,6 +242,8 @@ void glow::lower(Graph &G, CompilationMode mode) {
       lowerReluNode(G, *R);
     } else if (auto *THG = dyn_cast<TanhGradNode>(node)) {
       lowerTanhGradNode(G, *THG);
+    } else if (auto *SG = dyn_cast<SigmoidGradNode>(node)) {
+      lowerSigmoidGradNode(G, *SG);
     }
   }
 }
