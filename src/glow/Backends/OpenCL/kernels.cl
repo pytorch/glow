@@ -13,6 +13,20 @@ size_t getNHWC(ShapeNHWC s, size_t x, size_t y, size_t z, size_t w) {
   return (x * s.c * s.w * s.h) + (y * s.c * s.w) + (z * s.c) + w;
 }
 
+__kernel void batchedreduceaddK(__global float *dest, __global float *batch,
+                          size_t numSlice, size_t sliceSize) {
+  size_t s = get_global_id(0);
+  dest[s] = 0;
+  for (size_t n = 0; n < numSlice; n++) {
+    dest[s] += batch[n * sliceSize + s];
+  }
+}
+
+__kernel void batchedreduceaddW(__global void *mem, size_t dest, size_t batch,
+                                size_t numSlice, size_t sliceSize) {
+  batchedreduceaddK(&mem[dest], &mem[batch], numSlice, sliceSize);
+}
+
 __kernel void batchedaddK(__global float *dest, __global float *batch,
                              __global float *slice,
                              size_t numSlice, size_t sliceSize) {
