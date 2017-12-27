@@ -333,6 +333,38 @@ TEST(Network, gradientCheckFCConcatTanh) {
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
 
+TEST(Network, gradientCheckFCConcatSigmoid) {
+  ExecutionEngine IP;
+  IP.getConfig().maxNumThreads = 1;
+
+  size_t numInputElem = 20;
+  size_t numOutputElem = 10;
+
+  auto &G = IP.getGraph();
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
+                             Variable::InitKind::Extern);
+  auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
+                               Variable::InitKind::Extern);
+
+  Node *FA = G.createFullyConnected("fc", A, numOutputElem);
+  FA = G.createSigmoid("sig", FA);
+  FA = G.createRegression("reg", FA, Exp);
+  auto *result = G.createSave("ret", FA);
+
+  IP.compile(CompilationMode::TrainDebug);
+
+  Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
+  Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
+
+  auto inputsH = inputs.getHandle<>();
+  auto outputsH = outputs.getHandle<>();
+
+  inputsH.randomize(100);
+  outputsH.randomize(100);
+
+  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
+}
+
 TEST(Network, gradientCheckTranspose) {
   // Using the same gradient check test setup as gradientCheck_FC_Concat_RELU
   ExecutionEngine IP;
