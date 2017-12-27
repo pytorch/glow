@@ -543,8 +543,8 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
         // If it is a first use, it should be either an input variable or
         // a write.
         // FIXME: Remove InOut!
-        assert((isa<WeightVar>(op) || opKind == OperandKind::Out ||
-                opKind == OperandKind::InOut) &&
+        assert((isa<TensorViewInst>(*it) || isa<WeightVar>(op) ||
+                opKind == OperandKind::Out || opKind == OperandKind::InOut) &&
                "First reference inside a live interval should be either an "
                "input variable or a write");
         continue;
