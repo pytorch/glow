@@ -18,11 +18,14 @@ using llvm::dyn_cast;
 
 Graph::~Graph() {
   // Delete all of the nodes and the variables.
-  for (auto *N : nodes_) {
-    eraseNode(N);
+  for (auto it = nodes_.begin(), e = nodes_.end(); it != e;) {
+    auto cur = it++;
+    eraseNode(*cur);
   }
-  for (auto *V : vars_) {
-    eraseNode(V);
+
+  for (auto it = vars_.begin(), e = vars_.end(); it != e;) {
+    auto cur = it++;
+    eraseVariable(*cur);
   }
 }
 
@@ -610,10 +613,10 @@ void Graph::eraseVariable(Variable *N) {
 }
 
 void Graph::eraseNode(Node *N) {
-  auto I = std::find(nodes_.begin(), nodes_.end(), N);
   if (Variable *V = dyn_cast<Variable>(N)) {
     return eraseVariable(V);
   }
+  auto I = std::find(nodes_.begin(), nodes_.end(), N);
   assert(I != nodes_.end() && "Could not find node to delete!");
   eraseNode(I);
 }
