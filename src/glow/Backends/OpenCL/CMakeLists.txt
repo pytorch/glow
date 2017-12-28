@@ -4,7 +4,8 @@ add_library(OpenCL
 target_link_libraries(OpenCL
                       PRIVATE
                       Base
-                      Graph)
+                      Graph
+                      Backends)
 
 if(OpenCL_FOUND)
   target_compile_definitions(OpenCL
