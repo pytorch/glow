@@ -71,16 +71,16 @@ public:
   void verify(const Module &M) const;
 
   /// Print value.
-  void dump(llvm::raw_ostream &out);
+  void dump(llvm::raw_ostream &out) const;
 
   /// Print value using a default output stream.
-  void dump();
+  void dump() const;
 
   /// Print value in context.
-  void dumpInContext(llvm::raw_ostream &out);
+  void dumpInContext(llvm::raw_ostream &out) const;
 
   /// Print value in context using a default output stream.
-  void dumpInContext();
+  void dumpInContext() const;
 };
 
 /// This represents an instruction in our IR.
