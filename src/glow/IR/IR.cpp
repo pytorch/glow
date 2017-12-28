@@ -262,7 +262,7 @@ InstrIterator InstructionNumbering::getInstr(size_t InstrNumber) {
 //                    IR printing and visualizing
 //===----------------------------------------------------------------------===//
 
-static void dumpIR(Value *V, llvm::raw_ostream &out) {
+static void dumpIR(const Value *V, llvm::raw_ostream &out) {
   switch (V->getKind()) {
   default:
     llvm_unreachable("Unknown value kind");
@@ -283,7 +283,7 @@ static void dumpIR(Value *V, llvm::raw_ostream &out) {
   }
 }
 
-static void dumpIRInContext(Value *V, llvm::raw_ostream &out) {
+static void dumpIRInContext(const Value *V, llvm::raw_ostream &out) {
   // Dump all operands.
   if (const auto *I = dyn_cast<const Instruction>(V)) {
     if (I->getNumOperands() > 0)
@@ -302,7 +302,7 @@ static void dumpIRInContext(Value *V, llvm::raw_ostream &out) {
   out << "\n";
   if (V->getNumUsers() > 0)
     out << "Users:\n";
-  for (Use &U : V->getUsers()) {
+  for (const Use &U : V->getUsers()) {
     out << "\t";
     U.get()->dump(out);
     out << "\n";
@@ -310,7 +310,7 @@ static void dumpIRInContext(Value *V, llvm::raw_ostream &out) {
 }
 
 /// Dump the instruction numbers of all users of \p V.
-static void dumpUsers(Value *V, llvm::raw_ostream &out,
+static void dumpUsers(const Value *V, llvm::raw_ostream &out,
                       InstructionNumbering &IN) {
   if (V->getNumUsers() == 0)
     return;
@@ -328,15 +328,15 @@ static void dumpUsers(Value *V, llvm::raw_ostream &out,
   }
 }
 
-void Value::dump(llvm::raw_ostream &out) { dumpIR(this, out); }
+void Value::dump(llvm::raw_ostream &out) const { dumpIR(this, out); }
 
-void Value::dump() { dumpIR(this, llvm::outs()); }
+void Value::dump() const { dumpIR(this, llvm::outs()); }
 
-void Value::dumpInContext(llvm::raw_ostream &out) {
+void Value::dumpInContext(llvm::raw_ostream &out) const {
   dumpIRInContext(this, out);
 }
 
-void Value::dumpInContext() { dumpInContext(llvm::outs()); }
+void Value::dumpInContext() const { dumpInContext(llvm::outs()); }
 
 bool Instruction::isInplaceOp(const Instruction *I, unsigned dstIdx,
                               unsigned srcIdx) {
