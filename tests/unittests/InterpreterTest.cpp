@@ -174,7 +174,7 @@ TEST(Interpreter, learnXor) {
   O = G.createRegression("reg", O, Ex);
   auto *result = G.createSave("ret", O);
 
-  /// Prepare the training set and the testing set.
+  // Prepare the training set and the testing set.
   Tensor trainingSet(ElemKind::FloatTy, {numInputs, 2});
   Tensor testingSet(ElemKind::FloatTy, {numInputs, 2});
   Tensor trainingLabels(ElemKind::FloatTy, {numInputs, 1});
@@ -581,4 +581,33 @@ TEST(Optimizer, copyPropagation) {
       instrs.begin(), instrs.end(), [](const Instruction *I) -> bool {
         return I->getKind() == Instruction::Kind::CopyInstKind;
       }));
+}
+
+/// Learn the square root of two.
+TEST(Interpreter, learnSqrt2) {
+  ExecutionEngine EE;
+
+  EE.getConfig().learningRate = 0.03;
+
+  auto &G = EE.getGraph();
+  G.setName("Square root of 2");
+
+  auto *A = G.createVariable(ElemKind::FloatTy, {1}, "A",
+                             Variable::InitKind::Broadcast, 1);
+  auto *Ex = G.createVariable(ElemKind::FloatTy, {1}, "Ex",
+                              Variable::InitKind::Broadcast, 2);
+
+  Node *O = G.createArithmetic("Mult", A, A, ArithmeticNode::Mode::Mul);
+  O = G.createRegression("reg", O, Ex);
+  G.createSave("ret", O);
+
+  EE.compile(CompilationMode::Train);
+
+  // Train the network:
+  for (int i = 0; i < 50; i++) {
+    EE.run({}, {});
+  }
+
+  float res = A->getPayload().getHandle().at({0});
+  EXPECT_NEAR(res, 1.4142, 0.01);
 }
