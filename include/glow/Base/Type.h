@@ -74,7 +74,7 @@ enum class ElemKind : unsigned char {
 
 /// A class that represents a type of a tensor.
 struct Type final {
-  /// Contains the dimentions (sizes) of the tensor. Ex: [sx, sy, sz, ...].
+  /// Contains the dimensions (sizes) of the tensor. Ex: [sx, sy, sz, ...].
   size_t sizes_[max_tensor_dimensions] = {
       0,
   };
@@ -194,7 +194,7 @@ struct Type final {
 
   /// \return the textual name of the element \p Ty.
   static llvm::StringRef getElementName(ElemKind Ty) {
-    const char *names[] = {
+    static const char *names[] = {
         "float", "double", "i8", "i32", "index",
     };
     return names[(int)Ty];
