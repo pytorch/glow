@@ -467,10 +467,12 @@ void OCLBackend::copyWeightsToDevice() {
     Tensor *T = externalTensors_[it.first];
     size_t sizeInBytes = T->getType().getSizeInBytes();
     // Issue a non-blocking command to copy the buffer to the device.
-    cl_int err = clEnqueueWriteBuffer(commands_, deviceBuffer_, CL_FALSE,
-                                      it.second, sizeInBytes, T->getUnsafePtr(),
-                                      0, nullptr, nullptr);
-    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
+    if (sizeInBytes) {
+      cl_int err = clEnqueueWriteBuffer(commands_, deviceBuffer_, CL_FALSE,
+                                        it.second, sizeInBytes, T->getUnsafePtr(),
+                                        0, nullptr, nullptr);
+      GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
+    }
   }
   // Do it!
   clFinish(commands_);
