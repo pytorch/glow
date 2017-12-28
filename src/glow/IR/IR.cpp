@@ -203,6 +203,39 @@ static void LLVM_ATTRIBUTE_UNUSED verifyOperandsAccess(Instruction *I) {
   }
 }
 
+/// Verify that liveness constraints are satisfied.
+/// There should be no uses of an allocation after
+/// it was deallocated or before it is allocated.
+static void verifyLiveness(const Module &M) {
+  // The live set stores allocations that are known to be live.
+  std::unordered_set<Value *> liveBuffers;
+  for (auto it : M.getInstrs()) {
+    if (auto *AI = dyn_cast<AllocActivationInst>((it))) {
+      assert(std::find(liveBuffers.begin(), liveBuffers.end(), AI) ==
+                 liveBuffers.end() &&
+             "Redefinition of an existing allocation");
+      liveBuffers.insert(AI);
+      continue;
+    }
+    if (auto *DI = dyn_cast<DeallocActivationInst>((it))) {
+      assert(llvm::isa<AllocActivationInst>(DI->getSrc()) &&
+             "Only allocations can be deallocated");
+      assert(std::find(liveBuffers.begin(), liveBuffers.end(), DI->getSrc()) !=
+                 liveBuffers.end() &&
+             "Deallocation of an allocation that is not alive");
+      liveBuffers.erase(DI->getSrc());
+      continue;
+    }
+    for (auto &Op : it->getOperands()) {
+      if (auto *AI = dyn_cast<AllocActivationInst>(Op.first)) {
+        assert(std::find(liveBuffers.begin(), liveBuffers.end(), AI) !=
+                   liveBuffers.end() &&
+               "Allocation should be alive when it is used");
+      }
+    }
+  }
+}
+
 void Module::verify() const {
   assert(!instrs_.empty() && "Instruction list is empty!");
   for (auto it : instrs_) {
@@ -210,6 +243,8 @@ void Module::verify() const {
     verifyOperandsAccess(it);
     it->verify();
   }
+
+  verifyLiveness(*this);
 
   for (auto p : variableMap) {
     (void)p;
