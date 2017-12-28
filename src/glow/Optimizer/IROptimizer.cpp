@@ -44,6 +44,11 @@ static void hoistDealloc(Module &M) {
     if (isa<DeallocActivationInst>(*it))
       continue;
 
+    if (auto alloc = dyn_cast<AllocActivationInst>(*it)) {
+      lastUser[alloc] = it;
+      continue;
+    }
+
     for (int i = 0, e = (*it)->getNumOperands(); i < e; i++) {
       auto op = (*it)->getOperand(i).first;
       if (auto alloc = dyn_cast<AllocActivationInst>(op)) {
