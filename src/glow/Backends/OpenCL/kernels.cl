@@ -179,7 +179,7 @@ __kernel void elementdivW(__global void *mem, size_t dest, size_t LHS,
 
 __kernel void softmaxK(__global float *dest, __global float *src,
                        __global float *e_cache, __global unsigned *selected,
-                       unsigned sliceSize) {
+                       size_t sliceSize) {
   size_t i = get_global_id(0);
   float max_ = src[i * sliceSize];
   for (size_t j = 0; j < sliceSize; j++) {
@@ -198,7 +198,7 @@ __kernel void softmaxK(__global float *dest, __global float *src,
 }
 
 __kernel void softmaxW(__global void *mem, size_t dest, size_t src,
-                       size_t e_cache, size_t selected, unsigned sliceSize) {
+                       size_t e_cache, size_t selected, size_t sliceSize) {
   softmaxK(&mem[dest], &mem[src], &mem[e_cache],
            (__global unsigned *)&mem[selected], sliceSize);
 }
@@ -214,8 +214,8 @@ __kernel void convolutionK(__global float *dest, __global float *src,
 
   typedef int ssize_t;
   // For each convolution 'jump' in the input tensor:
-  ssize_t x = -ssize_t(pad) + ax * stride;
-  ssize_t y = -ssize_t(pad) + ay * stride;
+  ssize_t x = -(ssize_t)pad + ax * stride;
+  ssize_t y = -(ssize_t)pad + ay * stride;
 
   // For each input in the batch:
   for (size_t n = 0; n < idim.n; n++) {
@@ -228,8 +228,8 @@ __kernel void convolutionK(__global float *dest, __global float *src,
         ssize_t oy = y + fy;
 
         // Ignore index access below zero (this is due to padding).
-        if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-            oy >= ssize_t(idim.w)) {
+        if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
+            oy >= (ssize_t)idim.w) {
           continue;
         }
 
@@ -262,8 +262,8 @@ __kernel void poolmaxK(__global float *dest, __global float *src,
 
   typedef int ssize_t;
   // For each convolution 'jump' in the input tensor:
-  ssize_t x = -ssize_t(pad) + ax * stride;
-  ssize_t y = -ssize_t(pad) + ay * stride;
+  ssize_t x = -(ssize_t)pad + ax * stride;
+  ssize_t y = -(ssize_t)pad + ay * stride;
 
   // For each input in the batch:
   for (size_t n = 0; n < idim.n; n++) {
@@ -277,8 +277,8 @@ __kernel void poolmaxK(__global float *dest, __global float *src,
         ssize_t oy = y + fy;
 
         // Ignore index access below zero (this is due to padding).
-        if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-            oy >= ssize_t(idim.w)) {
+        if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
+            oy >= (ssize_t)idim.w) {
           continue;
         }
 
@@ -310,8 +310,8 @@ __kernel void poolavgK(__global float *dest, __global float *src,
 
   typedef int ssize_t;
   // For each convolution 'jump' in the input tensor:
-  ssize_t x = -ssize_t(pad) + ax * stride;
-  ssize_t y = -ssize_t(pad) + ay * stride;
+  ssize_t x = -(ssize_t)pad + ax * stride;
+  ssize_t y = -(ssize_t)pad + ay * stride;
 
   float filterArea = filterSize * filterSize;
 
@@ -325,8 +325,8 @@ __kernel void poolavgK(__global float *dest, __global float *src,
         ssize_t oy = y + fy;
 
         // Ignore index access below zero (this is due to padding).
-        if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-            oy >= ssize_t(idim.w)) {
+        if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
+            oy >= (ssize_t)idim.w) {
           continue;
         }
 
