@@ -5,7 +5,7 @@ target_link_libraries(OpenCL
                       PRIVATE
                       Base
                       Graph
-                      Backends)
+                      CodeGen)
 
 if(OpenCL_FOUND)
   target_compile_definitions(OpenCL

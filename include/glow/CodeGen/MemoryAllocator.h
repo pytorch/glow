@@ -1,5 +1,5 @@
-#ifndef GLOW_BACKENDS_MEMORYALLOCATOR_H
-#define GLOW_BACKENDS_MEMORYALLOCATOR_H
+#ifndef GLOW_CODEGEN_MEMORYALLOCATOR_H
+#define GLOW_CODEGEN_MEMORYALLOCATOR_H
 #include <cstddef>
 #include <cstdint>
 #include <list>
@@ -67,4 +67,4 @@ public:
 
 } // namespace glow
 
-#endif // GLOW_BACKENDS_MEMORYALLOCATOR_H
+#endif // GLOW_CODEGEN_MEMORYALLOCATOR_H
