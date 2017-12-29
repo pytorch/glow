@@ -530,6 +530,7 @@ public:
 } // namespace
 
 void Module::generateIR(CompilationMode mode) {
+  G_->advanceState(Graph::State::IRGenerated);
   G_->verify();
   IRGenVisitor irgen(this);
 

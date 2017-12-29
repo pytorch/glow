@@ -88,6 +88,7 @@ void ExecutionEngine::compile(CompilationMode mode) {
   // Wipe out the module and start a new compilation process.
   M_->clear();
   IP_->clear();
+  G_->resetState();
 
   if (mode != CompilationMode::Infer) {
     generateGradientNodes(*G_, getConfig(), mode);
