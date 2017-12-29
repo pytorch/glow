@@ -2,9 +2,9 @@
 #define GLOW_OPENCL_BACKEND_H
 
 #include "glow/Backends/Backend.h"
-#include "glow/Backends/MemoryAllocator.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Traits.h"
+#include "glow/CodeGen/MemoryAllocator.h"
 
 #include "llvm/ADT/ArrayRef.h"
 
