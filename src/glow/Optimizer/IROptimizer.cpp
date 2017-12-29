@@ -221,9 +221,14 @@ static void shareBuffers(Module &M) {
     liveBuffers.insert(W);
   }
 
+  // Output buffers of the current instruction.
+  std::unordered_set<Value *> outBuffers;
+
   // For each instruction, in reverse order.
   for (auto it = instrs.rbegin(), e = instrs.rend(); it != e; ++it) {
     Instruction *I = *it;
+
+    outBuffers.clear();
 
     // Remove <out> dependencies from the live set, because this instruction
     // writes into them. This means that the buffer is unused before the write
@@ -241,12 +246,19 @@ static void shareBuffers(Module &M) {
         auto it = liveBuffers.find(ai);
         if (it != liveBuffers.end()) {
           liveBuffers.erase(it);
+          outBuffers.insert(ai);
         }
         continue;
       }
       // The <InOut> means that the value of the buffer is being consumed,
       // which means that it is alive. Add to the live set.
       if (ai && O.second == OperandKind::InOut) {
+        liveBuffers.insert(ai);
+      }
+      // The <In> use of a buffer that is also used as an <Out> means that the
+      // value of the buffer is being consumed, which means that it is alive.
+      // Add to the live set.
+      if (ai && O.second == OperandKind::In && outBuffers.count(ai) > 0) {
         liveBuffers.insert(ai);
       }
     }
