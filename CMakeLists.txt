@@ -32,14 +32,14 @@ include_directories(BEFORE
 include_directories (${GLOW_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-file(GLOB_RECURSE header_files include/*.h tools/*.h src/*.h)
+file(GLOB_RECURSE header_files include/*.h tools/*.h lib/*.h)
 add_custom_target(CollectHeaders SOURCES ${header_files})
 
 find_package(PNG)
 find_package(OpenCL)
 
 add_subdirectory(external)
-add_subdirectory(src/glow/)
+add_subdirectory(lib)
 add_subdirectory(examples/)
 add_subdirectory(tools/)
 
