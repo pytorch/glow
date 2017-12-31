@@ -121,5 +121,47 @@ This is an example of an unoptimized IR.
   }
   ```
 
+### The Lifetime of a Glow Instruction
+
+This section describes how instructions make their way from the beginning of the
+compilation pipeline, and through the different levels of IR and to the
+backends.  The Glow compilation pipeline comes to solve the problem of targeting
+a large number of opcodes to many different targets. For example, being able to
+run the Div, Relu, ConvGrad opcodes on three different accelerators and two GPU
+vendors. The approach that was taken by classic learning frameworks was to
+implement each opcode for each hardware target. And so, Div would be implemented
+once for the GPU, once for the CPU, once for mobile, etc. This approach does not
+scale as the number of opcodes increase and the number of hardware targets
+increase. Instead, Glow takes a different approach. Instead of compiling the
+high-level operators directly, Glow performs "node-lowering". In this phase the
+compiler breaks the high-level operators into low-level linear algebra
+operators. For example, the FullyConnected layer is represented as a sequence of
+matrix multiplication followed by element-wise add. Then, the different compiler
+backends don't have to implement the FullyConnected layer and a dozen other
+high-level opcodes, just the low-level matrix multiplication. This lowering
+phase derives many of the design decisions of the compiler.
+
+In Glow, lowering is performed as part of the high-level graph, that's described
+above. The lowering process happens before IR-Gen for a number of reasons.
+First, the new lowered graph may allow additional graph-level optimizations.
+Second, the new graph structure may effect the decisions that the scheduler must
+take. And third, after lowering we allow the backends to perform additional
+target-specific optimizations. The lowering transformation does not preserve the
+semantics of the graph, because it is not possible to differentiate the graph
+for certain operators. For example, the Regression node becomes a nop, for the
+forward pass, but is translated into a element-wise subtract for the backward
+pass. Performing the lowering before differentiantion would prevent us from
+performing the correct lowering of the Regression node.
+
+This is a high-level overview of the compilation process:
+1. The graph is constructed (via the c++ interface or graph loader).
+2. The graph is optimized, and differentianted, if needed.
+3. Linear Algebra lowering takes place.
+4. Additional rounds of optimizations (both target independent and target specific.)
+5. Scheduling of the graph into a linear sequence of nodes that minimizes the memory usage.
+6. IRGen (convert the low-level graph into instructions).
+7. IR-level optimizations.
+8. Backend-specific optimizations and code generation.
+
 
 
