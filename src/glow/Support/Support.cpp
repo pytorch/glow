@@ -2,12 +2,20 @@
 
 #include "glow/Support/Support.h"
 
+#include <cctype>
 #include <sstream>
+#include <string>
 
-using namespace glow;
+namespace glow {
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, void *ptr) {
+  std::ostringstream stringstream;
+  stringstream << ptr;
+  return os << stringstream.str();
+}
 
-std::string glow::escapeDottyString(const std::string &str) {
+std::string escapeDottyString(const std::string &str) {
   std::string out;
+  out.reserve(str.capacity());
   for (unsigned char c : str) {
     if (std::isprint(c) && c != '\\' && c != '"' && c != '<' && c != '>') {
       out += c;
@@ -46,13 +54,4 @@ std::string glow::escapeDottyString(const std::string &str) {
   }
   return out;
 }
-
-namespace std {
-std::string to_string(void *ptr) {
-  std::ostringstream oss;
-  oss << ptr;
-  return oss.str();
-}
-
-std::string to_string(llvm::StringRef sr) { return sr.str(); }
-} // namespace std
+} // namespace glow

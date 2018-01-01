@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <string>
 
 using namespace glow;
 
@@ -115,7 +116,7 @@ void debug(Node *node) {
 /// Tensorflow https://gist.github.com/mcaounfb/7ba05b0a62383c36e24a33defa3f11aa
 /// Vanilla https://gist.github.com/mcaounfb/c4ee98bbddaa6f8505f283ac018f8c34
 ///
-/// The results for the perplextiy are expected to look as:
+/// The results for the perplexity are expected to look as:
 ///
 /// Iteration 1: 104.985069275
 /// Iteration 2: 82.1509094238
@@ -192,13 +193,13 @@ void testPTB() {
                               Variable::InitKind::Broadcast, b);
 
   for (unsigned t = 0; t < numSteps; t++) {
-    const std::string XtName = std::to_string("x") + std::to_string(t);
-    const std::string YtName = std::to_string("y") + std::to_string(t);
-    const std::string FC1tName = std::to_string("fc1") + std::to_string(t);
-    const std::string FC2tName = std::to_string("fc2") + std::to_string(t);
-    const std::string FCtName = std::to_string("fc") + std::to_string(t);
-    const std::string TanhtName = std::to_string("tanh") + std::to_string(t);
-    const std::string OtName = std::to_string("o") + std::to_string(t);
+    const std::string XtName = "x" + std::to_string(t);
+    const std::string YtName = "y" + std::to_string(t);
+    const std::string FC1tName = "fc1" + std::to_string(t);
+    const std::string FC2tName = "fc2" + std::to_string(t);
+    const std::string FCtName = "fc" + std::to_string(t);
+    const std::string TanhtName = "tanh" + std::to_string(t);
+    const std::string OtName = "o" + std::to_string(t);
 
     auto *Xt = G.createSlice(XtName, X, {0, t * vocabSize},
                              {minibatchSize, (t + 1) * vocabSize});

@@ -143,8 +143,8 @@ void InstrBuilder::emitPrettyPrinter(std::ostream &os) const {
     bool first = true;
     for (const auto &mem : members_) {
       os << "\tos << \"" << (first ? " " : ", ") << mem.second
-         << ": \" <<  std::to_string("
-         << "get" << mem.second << "());\n";
+         << ": \" << "
+         << "get" << mem.second << "();\n";
       first = false;
     }
     os << "\tos << \"}\";\n";
