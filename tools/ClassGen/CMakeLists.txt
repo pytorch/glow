@@ -9,10 +9,8 @@ add_executable(InstrGen
 
 target_link_libraries(NodeGen
                       PUBLIC
-                        Base
                         Support)
 
 target_link_libraries(InstrGen
                       PUBLIC
-                        Base
                         Support)
