@@ -285,15 +285,15 @@ public:
 
   /// Return the instruction with a given number or
   /// M.getInstrs().end() if this instruction is not assigned any number.
-  InstrIterator getInstr(size_t InstrNumber);
+  InstrIterator getInstr(size_t InstrNumber) const;
 
   /// Return the number of an instruction or a negative value if no number
   /// was assigned to this instruction.
-  int64_t getInstrNumber(InstrIterator IT);
+  int64_t getInstrNumber(InstrIterator IT) const;
 
   /// Return the number of an instruction or a negative value if no number
   /// was assigned to this instruction.
-  int64_t getInstrNumber(Instruction *I);
+  int64_t getInstrNumber(Instruction *I) const;
 
   /// Return the module
   Module &getModule() { return M_; }

@@ -277,18 +277,18 @@ InstructionNumbering::InstructionNumbering(Module &M) : M_(M) {
   }
 }
 
-int64_t InstructionNumbering::getInstrNumber(Instruction *I) {
+int64_t InstructionNumbering::getInstrNumber(Instruction *I) const {
   auto Result = InstrToNum_.find(I);
   if (Result == InstrToNum_.end())
     return -1;
   return (int64_t)Result->second;
 }
 
-int64_t InstructionNumbering::getInstrNumber(InstrIterator IT) {
+int64_t InstructionNumbering::getInstrNumber(InstrIterator IT) const {
   return getInstrNumber(*IT);
 }
 
-InstrIterator InstructionNumbering::getInstr(size_t InstrNumber) {
+InstrIterator InstructionNumbering::getInstr(size_t InstrNumber) const {
   assert(InstrNumber < NumToInstr_.size());
   return NumToInstr_[InstrNumber];
 }

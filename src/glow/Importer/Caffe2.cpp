@@ -133,7 +133,7 @@ Node *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
   return V;
 }
 
-bool caffe2ModelLoader::hasNodeByName(const std::string &name) {
+bool caffe2ModelLoader::hasNodeByName(const std::string &name) const {
   auto it = nodeByName_.find(name);
   return (it != nodeByName_.end());
 }

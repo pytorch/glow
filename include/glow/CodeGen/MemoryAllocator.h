@@ -17,10 +17,10 @@ public:
   Segment(size_t begin, size_t end) : begin_(begin), end_(end) {}
 
   /// \returns the size of the interval.
-  size_t size() { return end_ - begin_; }
+  size_t size() const { return end_ - begin_; }
 
   /// \returns True if the value \p idx falls within this segment.
-  bool contains(size_t idx) { return idx >= begin_ && idx < end_; }
+  bool contains(size_t idx) const { return idx >= begin_ && idx < end_; }
 };
 
 /// Allocates segments of memory.
@@ -44,7 +44,7 @@ public:
   }
 
   /// \returns True if the value \p idx is within the currently allocated range.
-  bool contains(size_t idx) {
+  bool contains(size_t idx) const {
     for (auto &s : allocations_) {
       if (s.contains(idx)) {
         return true;
@@ -62,7 +62,7 @@ public:
   void deallocate(size_t ptr);
 
   /// \returns the high water mark for the allocated memory.
-  size_t getMaxMemoryUsage() { return maxMemoryAllocated_; }
+  size_t getMaxMemoryUsage() const { return maxMemoryAllocated_; }
 };
 
 } // namespace glow
