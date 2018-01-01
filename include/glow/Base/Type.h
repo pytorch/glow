@@ -205,11 +205,9 @@ inline bool operator==(const Type &LHS, const Type &RHS) {
   return LHS.isEqual(RHS);
 }
 
-} // namespace glow
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Type &type);
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TypeRef &type);
 
-namespace std {
-std::string to_string(const glow::Type &);
-std::string to_string(const glow::TypeRef &);
-} // namespace std
+} // namespace glow
 
 #endif // GLOW_BASE_TYPE_H

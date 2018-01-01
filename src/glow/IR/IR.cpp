@@ -475,30 +475,29 @@ void Module::dump() {
 }
 
 static std::string getDottyDesc(const Value *v) {
-  std::string sb;
-  std::string name = v->getName();
-  std::string valName = v->getKindName();
-  sb += valName + " | " + name + " | " +
-        escapeDottyString(std::to_string(*v->getType()));
-  return sb;
+  std::string buffer;
+  llvm::raw_string_ostream stream(buffer);
+  stream << v->getKindName() << " | " << v->getName() << " | " << *v->getType();
+  return escapeDottyString(stream.str());
 }
 
 static std::string getDottyDesc(const Instruction *II) {
-  std::string sb;
-  sb += II->getKindName();
-  sb += "|" + escapeDottyString(std::to_string(II->getType())) + "|";
+  std::string buffer;
+  llvm::raw_string_ostream stream(buffer);
+  stream << II->getKindName();
+  stream << "|" << II->getType() << "|";
 
   // Print operands:
   for (int i = 0, e = II->getNumOperands(); i < e; i++) {
-    auto op = II->getOperand(i);
+    const auto op = II->getOperand(i);
     if (i) {
-      sb += "|";
+      stream << "|";
     }
-    sb += " <f" + std::to_string(i) + ">";
-    sb += op.first->getName();
+    stream << " <f" << i << ">";
+    stream << op.first->getName();
   }
 
-  return sb;
+  return escapeDottyString(stream.str());
 }
 
 /// \returns the arrow property for the operand kind \p k. This method is used
@@ -521,8 +520,10 @@ static const char *getDottyArrowForCC(OperandKind k) {
 }
 
 void Module::dumpDAG() {
-  std::string filename = "dotty_ir_dump_" + std::to_string(this) + ".dot";
-  dumpDAG(filename.c_str());
+  std::string buffer;
+  llvm::raw_string_ostream stream(buffer);
+  stream << "dotty_ir_dump_" << this << ".dot";
+  dumpDAG(stream.str().c_str());
 }
 
 /// Dump a dotty graph that depicts the module.
@@ -530,50 +531,47 @@ void Module::dumpDAG(const char *dotFilename) {
   std::string filename = dotFilename;
   llvm::outs() << "Writing dotty graph to: " << filename << '\n';
 
-  std::ofstream os;
-  os.open(filename);
+  std::string buffer;
+  llvm::raw_string_ostream stream(buffer);
 
-  os << "digraph finite_state_machine {\n\trankdir=LR;\n";
+  stream << "digraph finite_state_machine {\n\trankdir=LR;\n";
 
-  os << "subgraph cluster_1 {";
-  os << "  style=invis;\n";
+  stream << "subgraph cluster_1 {";
+  stream << "  style=invis;\n";
 
   for (auto &I : instrs_) {
     std::string desc = getDottyDesc(I);
 
-    os << quote(std::to_string(I)) << "[\n";
+    stream << '"' << I << "\"[\n";
     std::string repr = quote(desc);
-    os << "\tlabel = " << repr << "\n";
-    os << "\tshape = \"record\"\n";
-    os << "];\n\n";
+    stream << "\tlabel = " << repr << "\n";
+    stream << "\tshape = \"record\"\n";
+    stream << "];\n\n";
   }
-  os << "}";
+  stream << "}";
 
-  os << "subgraph cluster_0 {";
-  os << "  style=invis;\n";
+  stream << "subgraph cluster_0 {";
+  stream << "  style=invis;\n";
 
   for (auto &v : weights_) {
-    os << quote(std::to_string(v)) + "[\n";
+    stream << '"' << v << "\"[\n";
     std::string desc = getDottyDesc(v);
-    os << "\tlabel = " << quote(desc) << "\n";
-    os << "\tshape = \"record\"\n";
-    os << "\tfillcolor=pink,style=filled\n";
-    os << "];\n\n";
+    stream << "\tlabel = " << quote(desc) << "\n";
+    stream << "\tshape = \"record\"\n";
+    stream << "\tfillcolor=pink,style=filled\n";
+    stream << "];\n\n";
   }
-  os << "}";
+  stream << "}";
 
-  os << "subgraph cluster_1 {";
-  os << "  style=invis;\n";
+  stream << "subgraph cluster_1 {";
+  stream << "  style=invis;\n";
 
   // Dump the use-def edges.
   for (auto &I : instrs_) {
     for (int i = 0, e = I->getNumOperands(); i < e; i++) {
       auto op = I->getOperand(i);
-      std::string from = quote(std::to_string(I)) + ":f" + std::to_string(i);
-      std::string to = quote(std::to_string(op.first));
-
-      os << from + "->" << to << "[dir=" << getDottyArrowForCC(op.second)
-         << "];\n";
+      stream << '"' << I << "\":f" << i << "->\"" << op.first
+             << "\"[dir=" << getDottyArrowForCC(op.second) << "];\n";
     }
   }
 
@@ -581,13 +579,13 @@ void Module::dumpDAG(const char *dotFilename) {
   Instruction *prev = nullptr;
   for (auto &I : instrs_) {
     if (prev) {
-      std::string from = quote(std::to_string(prev));
-      std::string to = quote(std::to_string(I));
-      os << from << "->" << to << "[color=\"blue\"];\n";
+      stream << '"' << prev << "\"->\"" << I << "\"[color=\"blue\"];\n";
     }
     prev = I;
   }
-  os << "}";
-  os << "}";
-  os.close();
+  stream << "}";
+  stream << "}";
+
+  std::ofstream filestream(dotFilename);
+  filestream << stream.str();
 }

@@ -5,6 +5,7 @@
 #include "glow/IR/IR.h"
 #include "glow/Support/Support.h"
 
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
@@ -505,9 +506,11 @@ class DottyPrinterPass {
     os_ << "];\n\n";
   }
 
-  std::string quote(std::string in) { return '"' + in + '"'; }
   std::string uniqueNodeName(Node *N) {
-    return quote(std::to_string((void *)N));
+    std::string Buffer;
+    llvm::raw_string_ostream Stream(Buffer);
+    Stream << '"' << N << '"';
+    return Stream.str();
   }
 
   /// Recursively traverses inputs of node \p N using Deep First Search.
@@ -558,8 +561,10 @@ public:
 };
 
 void Graph::dumpDAG() {
-  std::string filename = "dotty_graph_dump_" + std::to_string(this) + ".dot";
-  dumpDAG(filename.c_str());
+  std::string Buffer;
+  llvm::raw_string_ostream Stream(Buffer);
+  Stream << "dotty_graph_dump_" << this << ".dot";
+  dumpDAG(Stream.str().c_str());
 }
 
 void Graph::dumpDAG(const char *dotFilename) {

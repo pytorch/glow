@@ -2,33 +2,33 @@
 #define GLOW_SUPPORT_SUPPORT_H
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <chrono>
 #include <iostream>
 #include <sstream>
 
-namespace std {
+namespace glow {
+
 /// Convert the ptr \p ptr into an ascii representation in the format "0xFFF..."
-std::string to_string(void *ptr);
-/// Converts LLVM's StringRef to std::string.
-std::string to_string(llvm::StringRef sr);
-/// Converts LLVM's ArrayRef to std::string.
-template <typename E> std::string to_string(const llvm::ArrayRef<E> list) {
-  std::ostringstream buffer;
-  buffer << '[';
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, void *ptr);
+
+/// Stream LLVM's ArrayRef into the given output stream.
+template <typename E>
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                              const llvm::ArrayRef<E> list) {
+  os << '[';
   // Print the array without a trailing comma.
   for (size_t i = 0, e = list.size(); i < e; i++) {
     if (i) {
-      buffer << ", ";
+      os << ", ";
     }
-    buffer << std::to_string(list[i]);
+    os << list[i];
   }
-  buffer << ']';
-  return buffer.str();
-}
-} // namespace std
+  os << ']';
 
-namespace glow {
+  return os;
+}
 
 /// \returns the escaped content of string \p str.
 /// The char '\n' becomes '\'+'n' and quotes are handled correctly.
@@ -59,10 +59,13 @@ template <typename... Args> std::string listToString(Args... args) {
 
 /// A helper class that builds a textual descriptor of a group of parameters.
 class DescriptionBuilder {
-  std::stringstream repr_;
+  std::string buffer_;
+  llvm::raw_string_ostream repr_;
 
 public:
-  explicit DescriptionBuilder(const char *name) { repr_ << name << '\n'; }
+  explicit DescriptionBuilder(const char *name) : repr_(buffer_) {
+    repr_ << name << '\n';
+  }
 
   DescriptionBuilder &addParam(const std::string &name, const char *value) {
     repr_ << name << " : " << value << '\n';
@@ -71,7 +74,7 @@ public:
 
   template <typename E>
   DescriptionBuilder &addParam(const std::string &name, llvm::ArrayRef<E> L) {
-    repr_ << name << " : " << std::to_string(L) << '\n';
+    repr_ << name << " : " << L << '\n';
     return *this;
   }
 
@@ -85,11 +88,11 @@ public:
   template <typename T_, typename = typename std::enable_if<
                              !std::is_scalar<T_>::value>::type>
   DescriptionBuilder &addParam(const std::string &name, const T_ &value) {
-    repr_ << name << " : " << std::to_string(value) << '\n';
+    repr_ << name << " : " << value << '\n';
     return *this;
   }
 
-  operator std::string() const { return repr_.str(); }
+  operator std::string() { return repr_.str(); }
 };
 
 } // namespace glow

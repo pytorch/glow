@@ -1,19 +1,15 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "glow/Base/Type.h"
+#include "llvm/Support/raw_ostream.h"
 
-#include <sstream>
-
-using namespace glow;
-
-namespace std {
-std::string to_string(const glow::Type &type) {
+namespace glow {
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Type &type) {
   if (type.numSizes_ == 0) {
-    return "<void>";
+    return os << "<void>";
   }
 
-  std::ostringstream os;
-  os << type.getElementName().str() << '<';
+  os << type.getElementName() << '<';
   for (unsigned i = 0; i < type.numSizes_; ++i) {
     if (i) {
       os << " x ";
@@ -22,13 +18,13 @@ std::string to_string(const glow::Type &type) {
   }
   os << '>';
 
-  return os.str();
-}
-std::string to_string(const glow::TypeRef &type) {
-  if (!type) {
-    return "<none>";
-  }
-  return std::to_string(*type);
+  return os;
 }
 
-} // namespace std
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TypeRef &type) {
+  if (!type) {
+    return os << "<none>";
+  }
+  return os << *type;
+}
+} // namespace glow
