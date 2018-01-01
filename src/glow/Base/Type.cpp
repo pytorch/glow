@@ -12,7 +12,7 @@ std::string to_string(const glow::Type &type) {
     return "<void>";
   }
 
-  std::stringstream os;
+  std::ostringstream os;
   os << type.getElementName().str() << '<';
   for (unsigned i = 0; i < type.numSizes_; ++i) {
     if (i) {

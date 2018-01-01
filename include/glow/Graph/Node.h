@@ -31,7 +31,7 @@ private:
 
 public:
   /// Create a new value and register the node we reference.
-  NodeValue(Node *N);
+  /*implicit*/ NodeValue(Node *N);
 
   /// Create a new value for result \p resNo and register the node we reference.
   NodeValue(Node *N, unsigned resNo);
@@ -130,7 +130,7 @@ public:
   Node(Kinded::Kind k, llvm::StringRef name) : Named(name), Kinded(k) {}
 
   /// \returns the number of results that the node has.
-  unsigned getNumRes() { return numRes_; }
+  unsigned getNumRes() const { return numRes_; }
 
   /// Getters to access Node's inputs and outputs.
   unsigned getNumInputs() const;

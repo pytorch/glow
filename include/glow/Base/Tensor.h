@@ -275,7 +275,7 @@ public:
   static Handle createInvalidHandle() { return Handle(); }
 
   /// \returns true if this Handle points to a valid tensor.
-  bool isValid() { return tensor_; }
+  bool isValid() const { return tensor_ != nullptr; }
 
   /// Calculate the index for a specific element in the tensor. Notice that
   /// the list of indices may be incomplete.
@@ -492,7 +492,7 @@ public:
 
   /// \returns true if the content of the other handle \p other is identical to
   /// this one.
-  bool isEqual(Handle<ElemTy> &other, float allowedError = 0.0001) {
+  bool isEqual(Handle<ElemTy> &other, float allowedError = 0.0001) const {
     if (other.dims() != dims()) {
       return false;
     }

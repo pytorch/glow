@@ -40,7 +40,7 @@ public:
   }
 
   /// \returns True if the Variable is initialized to be in training mode.
-  bool isTraining() {
+  bool isTraining() const {
     return initKind_ == InitKind::Broadcast || initKind_ == InitKind::Xavier;
   }
 
