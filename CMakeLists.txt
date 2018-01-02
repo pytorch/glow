@@ -39,7 +39,7 @@ find_package(PNG)
 find_package(OpenCL)
 
 add_subdirectory(external)
-add_subdirectory(src/glow/)
+add_subdirectory(lib)
 add_subdirectory(examples/)
 add_subdirectory(tools/)
 
