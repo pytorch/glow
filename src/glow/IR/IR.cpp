@@ -474,18 +474,26 @@ void Module::dump() {
   llvm::outs() << sb.str();
 }
 
+static std::string getEscapedDottyType(const TypeRef& type) {
+  std::string buffer;
+  llvm::raw_string_ostream stream(buffer);
+  stream << type;
+  return escapeDottyString(stream.str());
+}
+
 static std::string getDottyDesc(const Value *v) {
   std::string buffer;
   llvm::raw_string_ostream stream(buffer);
-  stream << v->getKindName() << " | " << v->getName() << " | " << *v->getType();
-  return escapeDottyString(stream.str());
+  stream << v->getKindName() << " | " << v->getName() << " | "
+         << getEscapedDottyType(v->getType());
+  return stream.str();
 }
 
 static std::string getDottyDesc(const Instruction *II) {
   std::string buffer;
   llvm::raw_string_ostream stream(buffer);
   stream << II->getKindName();
-  stream << "|" << II->getType() << "|";
+  stream << "|" << getEscapedDottyType(II->getType()) << "|";
 
   // Print operands:
   for (int i = 0, e = II->getNumOperands(); i < e; i++) {
@@ -497,7 +505,7 @@ static std::string getDottyDesc(const Instruction *II) {
     stream << op.first->getName();
   }
 
-  return escapeDottyString(stream.str());
+  return stream.str();
 }
 
 /// \returns the arrow property for the operand kind \p k. This method is used
