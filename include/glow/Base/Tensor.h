@@ -275,7 +275,7 @@ public:
   static Handle createInvalidHandle() { return Handle(); }
 
   /// \returns true if this Handle points to a valid tensor.
-  bool isValid() const { return tensor_ != nullptr; }
+  bool isValid() const { return tensor_; }
 
   /// Calculate the index for a specific element in the tensor. Notice that
   /// the list of indices may be incomplete.
