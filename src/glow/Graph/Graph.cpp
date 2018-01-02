@@ -507,10 +507,10 @@ class DottyPrinterPass {
   }
 
   std::string uniqueNodeName(Node *N) {
-    std::string Buffer;
-    llvm::raw_string_ostream Stream(Buffer);
-    Stream << '"' << N << '"';
-    return Stream.str();
+    std::string buffer;
+    llvm::raw_string_ostream stream(buffer);
+    stream << '"' << N << '"';
+    return stream.str();
   }
 
   /// Recursively traverses inputs of node \p N using Deep First Search.
@@ -561,10 +561,10 @@ public:
 };
 
 void Graph::dumpDAG() {
-  std::string Buffer;
-  llvm::raw_string_ostream Stream(Buffer);
-  Stream << "dotty_graph_dump_" << this << ".dot";
-  dumpDAG(Stream.str().c_str());
+  std::string buffer;
+  llvm::raw_string_ostream stream(buffer);
+  stream << "dotty_graph_dump_" << this << ".dot";
+  dumpDAG(stream.str().c_str());
 }
 
 void Graph::dumpDAG(const char *dotFilename) {
