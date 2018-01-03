@@ -129,7 +129,7 @@ void Module::removeInstruction(glow::Instruction *I) {
   auto it = std::find(instrs_.begin(), instrs_.end(), I);
   assert(it != instrs_.end() &&
          "Cannot remove an instruction not belonging to a module");
-  eraseInstruction(it);
+  removeInstruction(it);
 }
 
 void Module::insertInstruction(glow::Instruction *I) {
