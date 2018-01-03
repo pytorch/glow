@@ -18,6 +18,10 @@ unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
                  size_t vocabSize, size_t minibatchSize, size_t maxNumWords) {
 
   std::ifstream ptbInput("ptb/simple-examples/data/ptb.train.txt");
+  if (!ptbInput.is_open()) {
+    llvm::errs() << "Error loading ptb.train.txt\n";
+    std::exit(EXIT_FAILURE);
+  }
 
   std::vector<std::string> words;
   std::string line;
