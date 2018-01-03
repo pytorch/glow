@@ -474,7 +474,7 @@ void Module::dump() {
   llvm::outs() << sb.str();
 }
 
-static std::string getEscapedDottyType(const TypeRef& type) {
+static std::string getEscapedDottyType(const TypeRef &type) {
   std::string buffer;
   llvm::raw_string_ostream stream(buffer);
   stream << type;
