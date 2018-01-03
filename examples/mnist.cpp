@@ -22,6 +22,15 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
   std::ifstream imgInput("mnist_images.bin", std::ios::binary);
   std::ifstream labInput("mnist_labels.bin", std::ios::binary);
 
+  if (!imgInput.is_open()) {
+    llvm::errs() << "Error loading mnist_images.bin\n";
+    std::exit(EXIT_FAILURE);
+  }
+  if (!labInput.is_open()) {
+    llvm::errs() << "Error loading mnist_labels.bin\n";
+    std::exit(EXIT_FAILURE);
+  }
+
   std::vector<char> images((std::istreambuf_iterator<char>(imgInput)),
                            (std::istreambuf_iterator<char>()));
   std::vector<char> labels((std::istreambuf_iterator<char>(labInput)),
