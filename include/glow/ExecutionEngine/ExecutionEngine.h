@@ -60,9 +60,6 @@ public:
   void runBatch(size_t iterations, llvm::ArrayRef<Variable *> vars,
                 llvm::ArrayRef<Tensor *> inputs);
 
-  /// \returns a pointer to the tensor that is stored at \p v.
-  Tensor *getWeight(const Variable *v) const;
-
 private:
   /// Update the inputs for all variables \p vars with data from the inputs \p
   /// inputs at offset \p sampleIdx. Then perform a forward and backwards scan.
@@ -73,11 +70,10 @@ private:
   /// The data starts at slice \p sampleIdx and wraps around until the
   /// data in \p v is filled. All dimensions, except for the first (batch)
   /// dimension must be identical.
-  void loadValueFromTensorSlice(const Variable *v, Tensor *input,
-                                size_t sampleIdx);
+  void loadValueFromTensorSlice(Variable *v, Tensor *input, size_t sampleIdx);
 
   // Update the content of the tensor \p v with \p input.
-  void loadValueFromTensor(const Variable *v, Tensor *input);
+  void loadValueFromTensor(Variable *v, Tensor *input);
 };
 
 } // namespace glow

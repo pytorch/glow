@@ -34,9 +34,6 @@ public:
   /// Registers the external tensor \p t, that's owned by the graph, as mapped
   /// to the value \p v.
   virtual void registerGraphTensor(const Value *v, Tensor *t) = 0;
-
-  /// \returns a pointer to the tensor that is saved under \p v.
-  virtual Tensor *getTensor(const Variable *v) const = 0;
 };
 
 /// Create a backend of kind \p kind, to run the module \p M.
