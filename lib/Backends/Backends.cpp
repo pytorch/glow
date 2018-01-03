@@ -1,6 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "Interpreter/Interpreter.h"
+#include "JIT/JIT.h"
 #include "OpenCL/OpenCL.h"
 
 #include "glow/Backends/Backend.h"
@@ -19,6 +20,8 @@ Backend *glow::createBackend(BackendKind backendKind, Module *M) {
     return createInterpreter(M);
   case BackendKind::OpenCL:
     return createOCLBackend(M);
+  case BackendKind::JIT:
+    return createJIT(M);
 
   default:
     // Unknown execution backend.
