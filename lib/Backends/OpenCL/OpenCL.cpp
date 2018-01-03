@@ -203,7 +203,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
     }
 
     if (auto *SM = dyn_cast<SoftMaxInst>(I)) {
-      // Implement Softmax by parallelizing the batsh dimension. Each sample in
+      // Implement Softmax by parallelizing the batch dimension. Each sample in
       // the batch is processed by a different parallel 'thread'.
       cl_kernel kernel = createKernel(program_, kernelName);
 
@@ -236,16 +236,31 @@ void OCLBackend::doForwardPass(bool isTrain) {
         setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
       }
 
-      auto odim = ShapeNHWC(CI->getDest()->getType()->dims());
-      auto idim = ShapeNHWC(CI->getSrc()->getType()->dims());
-      auto o = CI->getOffsets();
-      ShapeNHWC offset(o[0], o[1], o[2], o[3]);
+      // Currently support tensors of 2 and 4 dimensions.
+      // TODO: Handle other dimensions.
+      const size_t numDimensions = CI->getDest()->getType()->dims().size();
+      ShapeNHWC odim = ShapeNHWC::empty();
+      ShapeNHWC idim = ShapeNHWC::empty();
+      ShapeNHWC offset = ShapeNHWC::empty();
+
+      if (numDimensions == 4) {
+        odim = ShapeNHWC(CI->getDest()->getType()->dims());
+        idim = ShapeNHWC(CI->getSrc()->getType()->dims());
+        offset = ShapeNHWC(CI->getOffsets());
+      } else if (numDimensions == 2) {
+        odim = ShapeNHWC::fromXY(CI->getDest()->getType()->dims());
+        idim = ShapeNHWC::fromXY(CI->getSrc()->getType()->dims());
+        offset = ShapeNHWC::fromXY(CI->getOffsets());
+      } else {
+        assert(false && "Unsupported tensor dimension");
+      }
 
       setKernelArg(kernel, 3, odim);
       setKernelArg(kernel, 4, idim);
       setKernelArg(kernel, 5, offset);
       enqueueKernel(commands_, kernel, deviceId_, {idim.n});
       kernels.push_back(kernel);
+      
       continue;
     }
 
