@@ -469,8 +469,8 @@ void OCLBackend::copyWeightsToDevice() {
     // Issue a non-blocking command to copy the buffer to the device.
     if (sizeInBytes) {
       cl_int err = clEnqueueWriteBuffer(commands_, deviceBuffer_, CL_FALSE,
-                                        it.second, sizeInBytes, T->getUnsafePtr(),
-                                        0, nullptr, nullptr);
+                                        it.second, sizeInBytes,
+                                        T->getUnsafePtr(), 0, nullptr, nullptr);
       GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
     }
   }
@@ -553,11 +553,6 @@ void OCLBackend::init() {
 }
 
 void OCLBackend::clear() { externalTensors_.clear(); }
-
-Tensor *OCLBackend::getTensor(const Variable *v) const {
-  auto *W = M_->getWeightForNode(v);
-  return getTensor(W);
-}
 
 Tensor *OCLBackend::getTensor(const Value *v) const {
   assert(externalTensors_.count(v) && "Unknown Value");

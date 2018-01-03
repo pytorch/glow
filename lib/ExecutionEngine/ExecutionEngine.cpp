@@ -63,25 +63,25 @@ void ExecutionEngine::updateForwardBackward(llvm::ArrayRef<Variable *> vars,
   IP_->doForwardPass(true);
 }
 
-void ExecutionEngine::loadValueFromTensorSlice(const Variable *v, Tensor *input,
+void ExecutionEngine::loadValueFromTensorSlice(Variable *v, Tensor *input,
                                                size_t sampleIdx) {
   assert(v && "Invalid value");
-  auto *t = IP_->getTensor(v);
+  auto &t = v->getPayload();
 
   auto dim = input->dims();
-  assert(t->dims().drop_front() == dim.drop_front() && "Invalid slice size");
+  assert(t.dims().drop_front() == dim.drop_front() && "Invalid slice size");
   // Extract the n'th slice, that must be a tensor.
   size_t slc = sampleIdx % dim[0];
-  t->copyConsecutiveSlices(input, slc);
+  t.copyConsecutiveSlices(input, slc);
 }
 
-void ExecutionEngine::loadValueFromTensor(const Variable *v, Tensor *input) {
+void ExecutionEngine::loadValueFromTensor(Variable *v, Tensor *input) {
   assert(v && "Invalid value");
-  auto *t = IP_->getTensor(v);
+  auto &t = v->getPayload();
   auto dim = input->dims();
   (void)dim;
-  assert(t->dims() == dim && "Invalid slice size");
-  t->copyFrom(input);
+  assert(t.dims() == dim && "Invalid slice size");
+  t.copyFrom(input);
 }
 
 void ExecutionEngine::compile(CompilationMode mode) {
@@ -105,8 +105,4 @@ void ExecutionEngine::compile(CompilationMode mode) {
   }
 
   IP_->init();
-}
-
-Tensor *ExecutionEngine::getWeight(const Variable *v) const {
-  return IP_->getTensor(v);
 }

@@ -46,11 +46,6 @@ void Interpreter::registerGraphTensor(const Value *v, Tensor *t) {
   externalTensors_[v] = t;
 }
 
-Tensor *Interpreter::getTensor(const Variable *v) const {
-  auto *W = M_->getWeightForNode(v);
-  return getTensor(W);
-}
-
 Handle<float> Interpreter::getWeightHandle(Value *v) const {
   return getTensor(v)->getHandle<>();
 }
