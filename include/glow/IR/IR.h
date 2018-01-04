@@ -263,6 +263,10 @@ public:
   /// Inserts an instruction at the place described by \where.
   void insertInstruction(InstListTy::iterator where, Instruction *I);
 
+  /// Moves an instruction belonging to a module to the place described by
+  /// \where.
+  void moveInstruction(InstListTy::iterator where, Instruction *I);
+
   /// Inserts an instruction at the end of the instructions list.
   void insertInstruction(Instruction *I);
 };
