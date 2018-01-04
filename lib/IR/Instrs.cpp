@@ -48,7 +48,8 @@ void CopyInst::verify() const {
   (void)op1;
   // The operands of the copy instruction must be variables.
   assert(isa<AllocActivationInst>(op0) || isa<WeightVar>(op0));
-  assert(isa<AllocActivationInst>(op1) || isa<WeightVar>(op1));
+  assert(isa<AllocActivationInst>(op1) || isa<WeightVar>(op1) ||
+         isa<TensorViewInst>(op1));
 }
 void ConvolutionInst::verify() const {
   Value *dest = getOperand(0).first;
