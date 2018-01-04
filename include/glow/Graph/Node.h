@@ -2,6 +2,7 @@
 #define GLOW_GRAPH_NODE_H
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 
 #include "glow/Base/Traits.h"
 #include "glow/Base/Type.h"
