@@ -41,6 +41,9 @@ public:
   PoolMaxInst *createPoolMaxOp(Value *input, size_t kernel, size_t stride,
                                size_t pad);
 
+  PoolMaxWithXYInst *createPoolMaxWithXYOp(Value *input, size_t kernel,
+                                           size_t stride, size_t pad);
+
   PoolAvgInst *createPoolAvgOp(Value *input, size_t kernel, size_t stride,
                                size_t pad);
 
@@ -49,6 +52,8 @@ public:
   TanhInst *createTanhOp(Value *input);
 
   SoftMaxInst *createSoftMaxOp(Value *input, Value *selected);
+
+  SoftMaxWithEInst *createSoftMaxWithEOp(Value *input, Value *selected);
 
   ReshapeInst *createReshapeOp(Value *input, llvm::ArrayRef<size_t> shape);
 

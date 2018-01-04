@@ -184,18 +184,11 @@ void Interpreter::fwdConvolutionGradInst(bool isTrain,
 //                       Pooling
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdPoolMaxInst(bool isTrain, const PoolMaxInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-
+static void fwdPoolMax(Handle<float> inW, Handle<float> outW,
+                       Handle<size_t> *SXY, size_t pad, size_t filterSize,
+                       size_t stride) {
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
-
-  auto pad = I->getPad();
-  auto filterSize = I->getKernel();
-  auto stride = I->getStride();
-
-  auto SXY = getTensor(I->getSrcXY())->getHandle<size_t>();
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
@@ -236,13 +229,29 @@ void Interpreter::fwdPoolMaxInst(bool isTrain, const PoolMaxInst *I) {
           }
 
           assert(!first && "Max value is uninitialized");
-          SXY.at({n, ax, ay, z, 0}) = maxX;
-          SXY.at({n, ax, ay, z, 1}) = maxY;
           outW.at({n, ax, ay, z}) = max;
+          if (SXY) {
+            SXY->at({n, ax, ay, z, 0}) = maxX;
+            SXY->at({n, ax, ay, z, 1}) = maxY;
+          }
         } // H
       }   // W
     }     // C
   }       // N
+}
+
+void Interpreter::fwdPoolMaxInst(bool isTrain, const PoolMaxInst *I) {
+  auto inW = getWeightHandle(I->getSrc());
+  auto outW = getWeightHandle(I->getDest());
+  fwdPoolMax(inW, outW, nullptr, I->getPad(), I->getKernel(), I->getStride());
+}
+
+void Interpreter::fwdPoolMaxWithXYInst(bool isTrain,
+                                       const PoolMaxWithXYInst *I) {
+  auto inW = getWeightHandle(I->getSrc());
+  auto outW = getWeightHandle(I->getDest());
+  auto SXY = getTensor(I->getSrcXY())->getHandle<size_t>();
+  fwdPoolMax(inW, outW, &SXY, I->getPad(), I->getKernel(), I->getStride());
 }
 
 void Interpreter::fwdPoolAvgInst(bool isTrain, const PoolAvgInst *I) {
@@ -294,7 +303,8 @@ void Interpreter::fwdPoolAvgInst(bool isTrain, const PoolAvgInst *I) {
   }       // N
 }
 
-void Interpreter::fwdPoolMaxGradInst(bool isTrain, const PoolMaxGradInst *I) {
+void Interpreter::fwdPoolMaxWithXYGradInst(bool isTrain,
+                                           const PoolMaxWithXYGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
@@ -403,12 +413,9 @@ void Interpreter::fwdTanhInst(bool isTrain, const TanhInst *I) {
 //                        Loss Functions (Softmax/regression/...)
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdSoftMaxInst(bool isTrain, const SoftMaxInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
+static void fwdSoftMax(Handle<float> inW, Handle<float> outW,
+                       Handle<float> *EH) {
   auto idim = inW.dims();
-
-  auto EH = getWeightHandle(I->getE());
 
   for (size_t n = 0; n < idim[0]; n++) {
     float max = inW.at({n, 0});
@@ -424,18 +431,34 @@ void Interpreter::fwdSoftMaxInst(bool isTrain, const SoftMaxInst *I) {
     for (size_t i = 0; i < idim[1]; i++) {
       float e = std::exp(inW.at({n, i}) - max);
       sum += e;
-      EH.at({n, i}) = e;
+      // EH.at({n, i}) = e;
+      outW.at({n, i}) = e;
     }
 
     // Normalize the output.
     for (size_t i = 0; i < idim[1]; i++) {
-      EH.at({n, i}) /= sum;
-      outW.at({n, i}) = EH.at({n, i});
+      outW.at({n, i}) = outW.at({n, i}) / sum;
+      if (EH)
+        EH->at({n, i}) = outW.at({n, i});
     }
   } // N
 }
 
-void Interpreter::fwdSoftMaxGradInst(bool isTrain, const SoftMaxGradInst *I) {
+void Interpreter::fwdSoftMaxInst(bool isTrain, const SoftMaxInst *I) {
+  auto inW = getWeightHandle(I->getSrc());
+  auto outW = getWeightHandle(I->getDest());
+  fwdSoftMax(inW, outW, nullptr);
+}
+
+void Interpreter::fwdSoftMaxWithEInst(bool isTrain, const SoftMaxWithEInst *I) {
+  auto inW = getWeightHandle(I->getSrc());
+  auto outW = getWeightHandle(I->getDest());
+  auto EH = getWeightHandle(I->getE());
+  fwdSoftMax(inW, outW, &EH);
+}
+
+void Interpreter::fwdSoftMaxWithEGradInst(bool isTrain,
+                                          const SoftMaxWithEGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
 
   auto idim = inG.dims();

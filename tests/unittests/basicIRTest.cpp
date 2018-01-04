@@ -107,10 +107,10 @@ TEST(IR, allInstrs) {
 
     builder.createCopyInst("", I1, I0);
     builder.createConvolutionInst("", I3, I1, F0, B0, 7, 2, 3, 64);
-    builder.createPoolMaxInst("", I4, I0, XY, 7, 2, 3);
+    builder.createPoolMaxInst("", I4, I0, 7, 2, 3);
     builder.createSigmoidInst("", I1, I0);
     builder.createTanhInst("", I1, I0);
-    builder.createSoftMaxInst("", I1, I0, I7, E0);
+    builder.createSoftMaxInst("", I1, I0, I7);
     builder.createTransposeInst("", I8, I2, {0, 3, 1, 2});
     builder.createTensorView(ElemKind::FloatTy, {1, 24, 3, 24}, I2, "I2_view");
     builder.createInsertTensorInst("", I6, I3, {0, 0, 0, 0});

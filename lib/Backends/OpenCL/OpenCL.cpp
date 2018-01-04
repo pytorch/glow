@@ -227,6 +227,31 @@ void OCLBackend::doForwardPass(bool isTrain) {
       continue;
     }
 
+    if (auto *SM = dyn_cast<SoftMaxWithEInst>(I)) {
+      // Implement Softmax by parallelizing the batch dimension. Each sample in
+      // the batch is processed by a different parallel 'thread'.
+      cl_kernel kernel = createKernel(program_, kernelName);
+
+      setKernelArg(kernel, 0, deviceBuffer_);
+
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+      }
+
+      // This is the number of elements for each slice. There are N slices in
+      // our batch.
+      auto inputDims = SM->getSrc()->getType()->dims();
+      size_t numSlices = inputDims[0];
+
+      // Pass the slice size (size of each sample in the batch) as a parameter.
+      setKernelArg(kernel, numArgs + 1, flattenCdr(inputDims).second);
+
+      enqueueKernel(commands_, kernel, deviceId_, {numSlices});
+      kernels.push_back(kernel);
+      continue;
+    }
+
     if (auto *CI = dyn_cast<InsertTensorInst>(I)) {
       cl_kernel kernel = createKernel(program_, kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
@@ -372,11 +397,36 @@ void OCLBackend::doForwardPass(bool isTrain) {
       auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
 
-      setKernelArg<size_t>(kernel, 4, PM->getKernel());
-      setKernelArg(kernel, 5, PM->getPad());
-      setKernelArg(kernel, 6, PM->getStride());
-      setKernelArg(kernel, 7, odim);
-      setKernelArg(kernel, 8, idim);
+      setKernelArg<size_t>(kernel, numArgs + 1, PM->getKernel());
+      setKernelArg(kernel, numArgs + 2, PM->getPad());
+      setKernelArg(kernel, numArgs + 3, PM->getStride());
+      setKernelArg(kernel, numArgs + 4, odim);
+      setKernelArg(kernel, numArgs + 5, idim);
+
+      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c});
+      kernels.push_back(kernel);
+      continue;
+    }
+
+    if (auto *PM = dyn_cast<PoolMaxWithXYInst>(I)) {
+      // This is a naive implementation that parallelizes using three dims:
+      // the X and the Y in the output filter.
+      cl_kernel kernel = createKernel(program_, kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
+
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+      }
+
+      auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
+      auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
+
+      setKernelArg<size_t>(kernel, numArgs + 1, PM->getKernel());
+      setKernelArg(kernel, numArgs + 2, PM->getPad());
+      setKernelArg(kernel, numArgs + 3, PM->getStride());
+      setKernelArg(kernel, numArgs + 4, odim);
+      setKernelArg(kernel, numArgs + 5, idim);
 
       enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c});
       kernels.push_back(kernel);

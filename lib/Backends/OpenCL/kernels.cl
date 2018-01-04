@@ -189,18 +189,25 @@ __kernel void softmaxK(__global float *dest, __global float *src,
   for (size_t j = 0; j < sliceSize; j++) {
     float e = exp(src[i * sliceSize + j] - max_);
     sum += e;
-    e_cache[i * sliceSize + j] = e;
+    dest[i * sliceSize + j] = e;
   }
   for (size_t j = 0; j < sliceSize; j++) {
-    e_cache[i * sliceSize + j] /= sum;
-    dest[i * sliceSize + j] = e_cache[i * sliceSize + j];
+    dest[i * sliceSize + j] /= sum;
+    if (e_cache)
+      e_cache[i * sliceSize + j] = dest[i * sliceSize + j];
   }
 }
 
 __kernel void softmaxW(__global void *mem, size_t dest, size_t src,
-                       size_t e_cache, size_t selected, size_t sliceSize) {
-  softmaxK(&mem[dest], &mem[src], &mem[e_cache],
+                       size_t selected, size_t sliceSize) {
+  softmaxK(&mem[dest], &mem[src], (__global float *)0,
            (__global unsigned *)&mem[selected], sliceSize);
+}
+
+__kernel void softmaxwitheW(__global void *mem, size_t dest, size_t src,
+                            size_t e_cache, size_t selected, size_t sliceSize) {
+  softmaxK(&mem[dest], &mem[src], &mem[e_cache],
+          (__global unsigned *)&mem[selected], sliceSize);
 }
 
 __kernel void convolutionK(__global float *dest, __global float *src,
@@ -254,7 +261,7 @@ __kernel void convolutionW(__global void *mem, size_t dest, size_t src,
 }
 
 __kernel void poolmaxK(__global float *dest, __global float *src,
-                       __global float *srcXY, size_t filterSize, size_t pad,
+                       size_t filterSize, size_t pad,
                        size_t stride, ShapeNHWC odim, ShapeNHWC idim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
@@ -295,10 +302,59 @@ __kernel void poolmaxK(__global float *dest, __global float *src,
 }
 
 __kernel void poolmaxW(__global void *mem, size_t dest, size_t src,
-                       size_t srcXY, size_t filterSize, size_t pad,
+                       size_t filterSize, size_t pad,
                        size_t stride, ShapeNHWC odim, ShapeNHWC idim) {
-  poolmaxK(&mem[dest], &mem[src], &mem[srcXY], filterSize, pad, stride, odim,
+  poolmaxK(&mem[dest], &mem[src], filterSize, pad, stride, odim,
            idim);
+}
+
+__kernel void poolmaxwithxyK(__global float *dest, __global float *src,
+                             __global float *srcXY, size_t filterSize,
+                             size_t pad, size_t stride, ShapeNHWC odim,
+                             ShapeNHWC idim) {
+  size_t ax = get_global_id(0);
+  size_t ay = get_global_id(1);
+  size_t d = get_global_id(2);
+
+  typedef int ssize_t;
+  // For each convolution 'jump' in the input tensor:
+  ssize_t x = -(ssize_t)pad + ax * stride;
+  ssize_t y = -(ssize_t)pad + ay * stride;
+
+  // For each input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+    float maxVal = 0;
+    bool first = true;
+
+    // For each element in the convolution-filter:
+    for (size_t fx = 0; fx < filterSize; fx++) {
+      for (size_t fy = 0; fy < filterSize; fy++) {
+        ssize_t ox = x + fx;
+        ssize_t oy = y + fy;
+
+        // Ignore index access below zero (this is due to padding).
+        if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
+            oy >= (ssize_t)idim.w) {
+          continue;
+        }
+
+        float val = src[getNHWC(idim, n, (size_t)ox, (size_t)oy, d)];
+
+        if (first || (val >= maxVal)) {
+          first = false;
+          maxVal = val;
+        }
+      }
+    }
+    dest[getNHWC(odim, n, ax, ay, d)] = maxVal;
+  } // N
+}
+
+__kernel void poolmaxwithxyW(__global void *mem, size_t dest, size_t src,
+                             size_t srcXY, size_t filterSize, size_t pad,
+                             size_t stride, ShapeNHWC odim, ShapeNHWC idim) {
+  poolmaxwithxyK(&mem[dest], &mem[src], &mem[srcXY], filterSize, pad, stride,
+                 odim, idim);
 }
 
 __kernel void poolavgK(__global float *dest, __global float *src,
