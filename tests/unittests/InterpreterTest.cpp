@@ -611,3 +611,56 @@ TEST(Interpreter, learnSqrt2) {
   float res = A->getPayload().getHandle().at({0});
   EXPECT_NEAR(res, 1.4142, 0.01);
 }
+
+TEST(LinearRegression, trainSimpleLinearRegression) {
+  // Given 1-D vectors x and y, find real numbers m and b such that
+  // m * x + b is approximately equal to y.
+  ExecutionEngine EE;
+  EE.getConfig().maxNumThreads = 1;
+  EE.getConfig().learningRate = 0.1;
+
+  auto &G = EE.getGraph();
+  G.setName("Gradient descent solution for simple linear regression");
+
+  // These m and b are only used to generate training data.
+  float referenceM = 3.0;
+  float referenceB = 6.0;
+
+  unsigned numSamples = 500;
+  Tensor tensorX(ElemKind::FloatTy, {numSamples, 1});
+  Tensor tensorY(ElemKind::FloatTy, {numSamples, 1});
+  for (unsigned i = 0; i < numSamples; i++) {
+    float x_i = -2.0 + 4.0 * i / numSamples;
+    float y_i = referenceM * x_i + referenceB + nextRand() / 10.0;
+    tensorX.getHandle<>().at({i, 0}) = x_i;
+    tensorY.getHandle<>().at({i, 0}) = y_i;
+  }
+
+  // Create a variable with 1 input, which is a real number.
+  auto *inputX = G.createVariable(ElemKind::FloatTy, {numSamples, 1}, "input",
+                                  Variable::InitKind::Extern);
+  auto *expectedY = G.createVariable(ElemKind::FloatTy, {numSamples, 1},
+                                     "expected", Variable::InitKind::Extern);
+
+  FullyConnectedNode *FC = G.createFullyConnected("fc", inputX, 1);
+  Node *coef =
+      G.createSplat("coef", FC->getType(), 1.0 / sqrt((double)numSamples));
+  Node *normX =
+      G.createArithmetic("normX", FC, coef, ArithmeticNode::Mode::Mul);
+  Node *normY =
+      G.createArithmetic("normY", expectedY, coef, ArithmeticNode::Mode::Mul);
+  Node *R = G.createRegression("reg", normX, normY);
+  G.createSave("return", R);
+
+  Variable *M = llvm::cast<Variable>(FC->getFilter());
+  Variable *B = llvm::cast<Variable>(FC->getBias());
+
+  EE.compile(CompilationMode::Train);
+
+  // Train the network doing 100 steps. Learn on 500 samples.
+  EE.runBatch(100, {inputX, expectedY}, {&tensorX, &tensorY});
+
+  // Testing trained m and b:
+  EXPECT_NEAR(M->getPayload().getHandle<>().at({0, 0}), referenceM, 0.01);
+  EXPECT_NEAR(B->getPayload().getHandle<>().at({0}), referenceB, 0.01);
+}
