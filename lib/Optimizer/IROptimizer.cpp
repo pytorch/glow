@@ -35,6 +35,14 @@ using LiveIntervalsMap = std::unordered_map<Value *, Intervals>;
 /// Set of instruction numbers.
 using InstructionNumbers = std::unordered_set<size_t>;
 
+static AllocActivationInst *getAllocationOrigin(Value *V) {
+  if (auto *AI = dyn_cast<AllocActivationInst>(V))
+    return AI;
+  if (auto *TVI = dyn_cast<TensorViewInst>(V))
+    return getAllocationOrigin(TVI->getSrc());
+  return nullptr;
+}
+
 /// Hoists Dealloc instructions right after their last use.
 static void hoistDealloc(Module &M) {
   // Maps activation instructions to their last non-dealloc user.
@@ -53,16 +61,13 @@ static void hoistDealloc(Module &M) {
 
     for (int i = 0, e = (*it)->getNumOperands(); i < e; i++) {
       auto op = (*it)->getOperand(i).first;
-      if (auto alloc = dyn_cast<AllocActivationInst>(op)) {
+      // Consider any use of a tensor_view to be also a use
+      // of its source tensor. This is required to make
+      // sure that a lifetime of a tensor_view is always
+      // enclosed inside the lifetime of its source tensor.
+      if (auto *alloc = getAllocationOrigin(op)) {
         lastUser[alloc] = it;
-      }
-
-      if (auto tensorView = dyn_cast<TensorViewInst>(op)) {
-        // Consider any use of a tensor_view to be also a use
-        // of its source tensor. This is required to make
-        // sure that a lifetime of a tensor_view is always
-        // enclosed inside the lifetime of its source tensor.
-        lastUser[tensorView->getSrc()] = it;
+        continue;
       }
     }
   }
@@ -191,9 +196,14 @@ tryToShareBuffersForInstr(const std::unordered_set<Value *> &liveBuffers,
     for (unsigned second = first + 1; second < e; second++) {
       auto destOp = I->getOperand(first);
       auto srcOp = I->getOperand(second);
+      Value *dest = getAllocationOrigin(destOp.first);
+      Value *src = getAllocationOrigin(srcOp.first);
+      if (!dest)
+        dest = destOp.first;
+      if (!src)
+        src = srcOp.first;
       // Operands must be different, but of the same type.
-      if (destOp.first->getType() != srcOp.first->getType() ||
-          destOp.first == srcOp.first) {
+      if (dest->getType() != src->getType() || dest == src) {
         continue;
       }
 
@@ -203,8 +213,8 @@ tryToShareBuffersForInstr(const std::unordered_set<Value *> &liveBuffers,
 
       // If both the src and the dest operands are dead, this means that we can
       // reuse the buffer storage!
-      if (!liveBuffers.count(destOp.first) && !liveBuffers.count(srcOp.first)) {
-        replaceAllNonDeallocUsersWith(destOp.first, srcOp.first);
+      if (!liveBuffers.count(dest) && !liveBuffers.count(src)) {
+        replaceAllNonDeallocUsersWith(dest, src);
         return;
       }
     }
@@ -237,7 +247,8 @@ static void shareBuffers(Module &M) {
     // point.
     for (unsigned op = 0, ope = I->getNumOperands(); op < ope; op++) {
       auto O = I->getOperand(op);
-      auto ai = dyn_cast<AllocActivationInst>(O.first);
+      // Find the origin of the operand.
+      Value *ai = getAllocationOrigin(O.first);
       if (!ai) {
         continue;
       }
@@ -274,7 +285,7 @@ static void shareBuffers(Module &M) {
     // alive.
     for (unsigned op = 0, ope = I->getNumOperands(); op < ope; op++) {
       auto O = I->getOperand(op);
-      auto ai = dyn_cast<AllocActivationInst>(O.first);
+      auto ai = getAllocationOrigin(O.first);
       if (!ai) {
         continue;
       }
