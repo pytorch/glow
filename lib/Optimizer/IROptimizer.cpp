@@ -76,17 +76,21 @@ static void hoistDealloc(Module &M) {
   for (auto it = instrs.begin(), e = instrs.end(); it != e;
        /* increment below */) {
     auto curr = it;
+    ++it;
     auto *da = dyn_cast<DeallocActivationInst>(*curr);
     if (!da) {
-      ++it;
       continue;
     }
 
     auto *alloc = cast<AllocActivationInst>(da->getOperand(0).first);
-
-    it = M.removeInstruction(curr);
-    auto &where = lastUser[alloc];
-    where++;
+    auto where = lastUser[alloc];
+    if (std::next(where) == curr) {
+      // No need to move the instruction, because the last use was
+      // right before the deallocation.
+      continue;
+    }
+    ++where;
+    M.removeInstruction(da);
     M.insertInstruction(where, da);
   }
 }
