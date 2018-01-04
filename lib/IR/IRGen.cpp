@@ -123,8 +123,8 @@ public:
       auto *in = valueForNode(P->getInput());
       Instruction *V = nullptr;
       if (P->getMode() == PoolNode::Mode::Max) {
-        V = builder_.createPoolMaxOp(in, P->getKernel(), P->getStride(),
-                                     P->getPad());
+        V = builder_.createPoolMaxWithXYOp(in, P->getKernel(), P->getStride(),
+                                           P->getPad());
         nodeToInstr_[N] = V;
       } else {
         V = builder_.createPoolAvgOp(in, P->getKernel(), P->getStride(),
@@ -150,11 +150,11 @@ public:
         // Find the original pool instruction.
         assert(nodeToInstr_.count(poolOut) &&
                "Pool IRgen did not register itself");
-        auto *PI = cast<PoolMaxInst>(nodeToInstr_[poolOut.getNode()]);
+        auto *PI = cast<PoolMaxWithXYInst>(nodeToInstr_[poolOut.getNode()]);
 
-        builder_.createPoolMaxGradInst(N->getName(), outW, PI->getSrcXY(), outG,
-                                       inG, PG->getKernel(), PG->getStride(),
-                                       PG->getPad());
+        builder_.createPoolMaxWithXYGradInst(N->getName(), outW, PI->getSrcXY(),
+                                             outG, inG, PG->getKernel(),
+                                             PG->getStride(), PG->getPad());
         registerIR(PG->getGradOfInputNamedInput(), inG);
         break;
       } else {
@@ -229,7 +229,7 @@ public:
       auto *SM = cast<SoftMaxNode>(N);
       auto *in = valueForNode(SM->getInput());
       auto *select = valueForNode(SM->getSelected());
-      auto *V = builder_.createSoftMaxOp(in, select);
+      auto *V = builder_.createSoftMaxWithEOp(in, select);
       V->setName(N->getName());
       registerIR(N, V->getDest());
       nodeToInstr_[N] = V;
@@ -245,11 +245,11 @@ public:
       auto originalNodeResult = SMG->getOriginalOutputForResult();
       assert(nodeToInstr_.count(originalNodeResult.getNode()) &&
              "Unknown original node");
-      auto *SM = cast<SoftMaxInst>(nodeToInstr_[originalNodeResult]);
+      auto *SM = cast<SoftMaxWithEInst>(nodeToInstr_[originalNodeResult]);
       auto *srcGrad = builder_.createAllocActivationInst("softmax.res.grad",
                                                          outGrad->getType());
 
-      auto *SMGI = builder_.createSoftMaxGradInst(
+      auto *SMGI = builder_.createSoftMaxWithEGradInst(
           N->getName(), origIn, SM->getE(), origSelect, srcGrad);
 
       registerIR(SMG->getGradOfInputNamedInput(), SMGI->getSrcGrad());

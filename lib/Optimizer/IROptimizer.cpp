@@ -1,7 +1,9 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 #define DEBUG_TYPE "ir-optimizer"
 
+#include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
+#include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/Optimizer.h"
 
@@ -785,8 +787,51 @@ static void performDebugInstrumentation(Module &M) {
   }
 }
 
+/// Try to use non-caching versions of some IR instructions like PoolMax and
+/// SoftMax.
+void optimizeUsingNonCachingInstructions(Module &M) {
+  auto &instrs = M.getInstrs();
+  IRBuilder B(&M);
+  for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
+    auto cur = it;
+    it = std::next(it);
+    if (auto *PMI = dyn_cast<PoolMaxWithXYInst>(*cur)) {
+      auto *SrcXY = PMI->getSrcXY();
+      // Optimize only if the cache is an allocation and
+      // it has exactly 2 users: the current instruction and
+      // a deallocation.
+      if (!isa<AllocActivationInst>(SrcXY) || SrcXY->getNumUsers() != 2)
+        continue;
+
+      auto *NewPMI = B.createPoolMaxInst(PMI->getName(), PMI->getDest(),
+                                         PMI->getSrc(), PMI->getKernel(),
+                                         PMI->getStride(), PMI->getPad());
+      M.moveInstruction(cur, NewPMI);
+      M.eraseInstruction(cur);
+      continue;
+    }
+
+    if (auto *SMI = dyn_cast<SoftMaxWithEInst>(*cur)) {
+      auto *E = SMI->getE();
+      // Optimize only if the cache is an allocation and
+      // it has exactly 2 users: the current instruction and
+      // a deallocation.
+      if (!isa<AllocActivationInst>(E) || E->getNumUsers() != 2)
+        continue;
+
+      auto *NewSMI = B.createSoftMaxInst(SMI->getName(), SMI->getDest(),
+                                         SMI->getSrc(), SMI->getSelected());
+      M.moveInstruction(cur, NewSMI);
+      M.eraseInstruction(cur);
+      continue;
+    }
+  }
+}
+
 void glow::optimize(Module &M, CompilationMode mode) {
   M.verify();
+
+  optimizeUsingNonCachingInstructions(M);
 
   // Reuse buffers from previous operations.
   shareBuffers(M);

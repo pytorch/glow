@@ -63,14 +63,23 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Depth")
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
 
-  BB.newInstr("PoolMax")
+  // PoolMax version caching XY coordinates to speedup gradient-based
+  // computations.
+  BB.newInstr("PoolMaxWithXY")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addOperand("SrcXY", OperandKind::InOut)
+      .addOperand("SrcXY", OperandKind::Out)
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
       .addMember(MemberType::SizeT, "Pad")
       .addGradientInstr({"Dest", "SrcXY"}, {"Dest", "Src"});
+
+  BB.newInstr("PoolMax")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::SizeT, "Kernel")
+      .addMember(MemberType::SizeT, "Stride")
+      .addMember(MemberType::SizeT, "Pad");
 
   BB.newInstr("PoolAvg")
       .addOperand("Dest", OperandKind::Out)
@@ -120,13 +129,20 @@ int main(int argc, char **argv) {
   //                      Loss operations
   //===--------------------------------------------------------------------===//
 
-  BB.newInstr("SoftMax")
+  // SoftMax version caching Expected to speedup gradient-based computations.
+  BB.newInstr("SoftMaxWithE")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("E", OperandKind::InOut)
       .addOperand("Selected", OperandKind::In)
       .inplaceOperand({"Dest", "Src"})
       .addGradientInstr({"Src", "E", "Selected"}, {"Src"});
+
+  BB.newInstr("SoftMax")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Selected", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"});
 
   //===--------------------------------------------------------------------===//
   //                      Arithmetic

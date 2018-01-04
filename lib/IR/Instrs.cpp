@@ -79,6 +79,21 @@ void ConvolutionInst::verify() const {
 void PoolMaxInst::verify() const {
   Value *dest = getOperand(0).first;
   Value *src = getOperand(1).first;
+  ShapeNHWC idim = ShapeNHWC(src->getType()->dims());
+  ShapeNHWC odim = ShapeNHWC(dest->getType()->dims());
+  (void)odim;
+  assert(idim.w >= Kernel_ && idim.h >= Kernel_ &&
+         "buffer too small for selected stride");
+
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, Pad_, Kernel_, Stride_);
+  ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
+  (void)exp;
+  assert(exp == odim && "Unexpected output dimensions");
+}
+
+void PoolMaxWithXYInst::verify() const {
+  Value *dest = getOperand(0).first;
+  Value *src = getOperand(1).first;
   Value *srcXY = getOperand(2).first;
   (void)srcXY;
   ShapeNHWC idim = ShapeNHWC(src->getType()->dims());
@@ -173,6 +188,10 @@ void SigmoidInst::verify() const {
 }
 void TanhInst::verify() const { checkSameType(getOperand(0), getOperand(1)); }
 void SoftMaxInst::verify() const {
+  checkSameType(getOperand(0), getOperand(1));
+}
+
+void SoftMaxWithEInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
 }
 
@@ -341,10 +360,10 @@ void DeallocActivationInst::verify() const {
 #define NOVERIFY(ClassName)                                                    \
   void ClassName ::verify() const {}
 NOVERIFY(ConvolutionGradInst)
-NOVERIFY(PoolMaxGradInst)
+NOVERIFY(PoolMaxWithXYGradInst)
 NOVERIFY(PoolAvgGradInst)
 NOVERIFY(BatchNormalizationGradInst)
 NOVERIFY(LocalResponseNormalizationGradInst)
-NOVERIFY(SoftMaxGradInst)
+NOVERIFY(SoftMaxWithEGradInst)
 NOVERIFY(DebugPrintInst)
 #undef NOVERIFY

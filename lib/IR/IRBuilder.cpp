@@ -69,6 +69,21 @@ PoolMaxInst *IRBuilder::createPoolMaxOp(Value *input, size_t kernel,
 
   auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
 
+  Value *dest =
+      createAllocActivationInst("pool.res", ElemKind::FloatTy,
+                                {idim.n, outSz.first, outSz.second, idim.c});
+
+  return createPoolMaxInst("pool", dest, input, kernel, stride, pad);
+}
+
+PoolMaxWithXYInst *IRBuilder::createPoolMaxWithXYOp(Value *input, size_t kernel,
+                                                    size_t stride, size_t pad) {
+  ShapeNHWC idim = ShapeNHWC(input->dims());
+  assert(idim.w >= kernel && idim.h >= kernel &&
+         "buffer too small for selected stride");
+
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
+
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
   Value *srcXY =
@@ -78,9 +93,9 @@ PoolMaxInst *IRBuilder::createPoolMaxOp(Value *input, size_t kernel,
       createAllocActivationInst("pool.res", ElemKind::FloatTy,
                                 {idim.n, outSz.first, outSz.second, idim.c});
 
-  return createPoolMaxInst("pool", dest, input, srcXY, kernel, stride, pad);
+  return createPoolMaxWithXYInst("pool", dest, input, srcXY, kernel, stride,
+                                 pad);
 }
-
 PoolAvgInst *IRBuilder::createPoolAvgOp(Value *input, size_t kernel,
                                         size_t stride, size_t pad) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
@@ -108,8 +123,14 @@ TanhInst *IRBuilder::createTanhOp(Value *input) {
 
 SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input, Value *selected) {
   auto *res = createAllocActivationInst("softmax.res", input->getType());
+  return createSoftMaxInst("softmax", res, input, selected);
+}
+
+SoftMaxWithEInst *IRBuilder::createSoftMaxWithEOp(Value *input,
+                                                  Value *selected) {
+  auto *res = createAllocActivationInst("softmax.res", input->getType());
   auto *E = createAllocActivationInst("e_cache", input->getType());
-  return createSoftMaxInst("softmax", res, input, E, selected);
+  return createSoftMaxWithEInst("softmax", res, input, E, selected);
 }
 
 ReshapeInst *IRBuilder::createReshapeOp(Value *input,
