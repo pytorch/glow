@@ -143,6 +143,11 @@ void Module::insertInstruction(InstListTy::iterator where,
   I->setParent(this);
 }
 
+void Module::moveInstruction(InstListTy::iterator where, glow::Instruction *I) {
+  I->getParent()->removeInstruction(I);
+  insertInstruction(where, I);
+}
+
 Module::~Module() { clear(); }
 
 void Module::clear() {
