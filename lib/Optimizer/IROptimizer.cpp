@@ -802,14 +802,14 @@ static void performDebugInstrumentation(Module &M) {
   }
 }
 
-/// Try to use non-caching versions of some IR instructions like PoolMax and
-/// SoftMax.
-void optimizeUsingNonCachingInstructions(Module &M) {
+/// Perform peephole optimizations.
+void performPeepholeOptimizations(Module &M) {
   auto &instrs = M.getInstrs();
   IRBuilder B(&M);
   for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
     auto cur = it;
     it = std::next(it);
+    // PoolMaxWithXYInst -> PoolMaxInst.
     if (auto *PMI = dyn_cast<PoolMaxWithXYInst>(*cur)) {
       auto *SrcXY = PMI->getSrcXY();
       // Optimize only if the cache is an allocation and
@@ -826,6 +826,7 @@ void optimizeUsingNonCachingInstructions(Module &M) {
       continue;
     }
 
+    // SoftMaxWithXYInst -> SoftMaxInst.
     if (auto *SMI = dyn_cast<SoftMaxWithEInst>(*cur)) {
       auto *E = SMI->getE();
       // Optimize only if the cache is an allocation and
@@ -840,13 +841,41 @@ void optimizeUsingNonCachingInstructions(Module &M) {
       M.eraseInstruction(cur);
       continue;
     }
+
+    // ReshapeInst -> TensorViewInst. 
+    if (auto *RI = dyn_cast<ReshapeInst>(*cur)) {
+      auto *Dest = RI->getDest();
+      if (!isa<AllocActivationInst>(Dest))
+        continue;
+      // Check if there is only one write for the Dest.
+      // If this is the case, then it is only written by
+      // the current instruction and can be replaced by
+      // a tensorview.
+      size_t WritesNum = 0;
+      for (auto U : Dest->getUsers()) {
+        if (U.getOperand().second == OperandKind::In)
+          continue;
+        if (isa<DeallocActivationInst>(U.get()))
+          continue;
+        if (++WritesNum >= 2)
+          break;
+      }
+      if (WritesNum >= 2)
+        continue;
+      auto *TVI =
+          B.createTensorViewInst(RI->getName(), RI->getSrc(), Dest->getType());
+      M.moveInstruction(cur, TVI);
+      replaceAllNonDeallocUsersWith(Dest, TVI);
+      M.eraseInstruction(cur);
+      continue;
+    }
   }
 }
 
 void glow::optimize(Module &M, CompilationMode mode) {
   M.verify();
 
-  optimizeUsingNonCachingInstructions(M);
+  performPeepholeOptimizations(M);
 
   // Reuse buffers from previous operations.
   shareBuffers(M);
