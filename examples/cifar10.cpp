@@ -118,7 +118,7 @@ void testCIFAR10() {
     unsigned score = 0;
 
     for (unsigned int i = 0; i < 100 / minibatchSize; i++) {
-      Tensor sample(ElemKind::FloatTy, {minibatchSize, 3, 32, 32});
+      Tensor sample(ElemKind::FloatTy, {minibatchSize, 32, 32, 3});
       sample.copyConsecutiveSlices(&images, minibatchSize * i);
       EE.run({A}, {&sample});
       result->getOutput();
@@ -140,7 +140,7 @@ void testCIFAR10() {
 
     timer.stopTimer();
 
-    llvm::outs() << "Batch #" << iter << " score: " << score << "%\n";
+    llvm::outs() << "Iteration #" << iter << " score: " << score << "%\n";
   }
 }
 
