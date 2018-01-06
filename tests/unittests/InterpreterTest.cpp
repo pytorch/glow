@@ -218,7 +218,7 @@ TEST(Interpreter, learnXor) {
   }
 }
 
-unsigned numSamples = 100;
+unsigned numSamples = 230;
 
 /// Generate data in two classes. The circle of dots that's close to the axis is
 /// L0, and the rest of the dots, away from the axis are L1.
@@ -259,17 +259,19 @@ TEST(Network, circle) {
   EE.getConfig().momentum = 0.9;
   EE.getConfig().learningRate = 0.01;
 
+  unsigned minibatchSize = 11;
+
   auto &G = EE.getGraph();
   G.setName("circle");
-  auto *A = G.createVariable(ElemKind::FloatTy, {1, 2}, "A");
-  auto *S = G.createVariable(ElemKind::IndexTy, {1, 1}, "S",
+  auto *A = G.createVariable(ElemKind::FloatTy, {minibatchSize, 2}, "A");
+  auto *S = G.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, "S",
                              Variable::InitKind::Extern);
 
   auto *FCL0 = G.createFullyConnected("fc1", A, 8);
-  auto *RL0 = G.createRELU("relu1", FCL0);
-  auto *FCL1 = G.createFullyConnected("fc2", RL0, 2);
-  auto *RL1 = G.createRELU("relu2", FCL1);
-  auto *SM = G.createSoftMax("soft", RL1, S);
+  auto *T0 = G.createTanh("tanh1", FCL0);
+  auto *FCL1 = G.createFullyConnected("fc2", T0, 2);
+  auto *T1 = G.createTanh("tanh2", FCL1);
+  auto *SM = G.createSoftMax("soft", T1, S);
   auto *result = G.createSave("ret", SM);
 
   EE.compile(CompilationMode::Train);
@@ -284,11 +286,13 @@ TEST(Network, circle) {
   EE.compile(CompilationMode::Infer);
 
   // Print a diagram that depicts the network decision on a grid.
+  Tensor sample(ElemKind::FloatTy, {minibatchSize, 2});
+  sample.zero();
   for (int x = -10; x < 10; x++) {
     for (int y = -10; y < 10; y++) {
       // Load the inputs:
-      Tensor sample(ElemKind::FloatTy, {1, 2});
-      sample.getHandle<>() = {float(x) / 10, float(y) / 10};
+      sample.getHandle<>().at({0, 0}) = float(x) / 10;
+      sample.getHandle<>().at({0, 1}) = float(y) / 10;
 
       EE.run({A}, {&sample});
 
@@ -310,27 +314,25 @@ TEST(Network, circle) {
   llvm::outs() << "\n";
 
   {
-    // The dot in the middle must be zero.
-    Tensor sample(ElemKind::FloatTy, {1, 2});
-    sample.getHandle<>() = {0., 0.};
+    // The dot in the middle must be one.
+    sample.getHandle<>().at({0, 0}) = 0;
+    sample.getHandle<>().at({0, 1}) = 0;
     EE.run({A}, {&sample});
     auto SMH = result->getVariable()->getPayload().getHandle<>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
-    EXPECT_LE(A, 0.1);
-    EXPECT_GE(B, 0.9);
+    EXPECT_TRUE(B > (A + 0.2));
   }
 
   {
-    // Far away dot must be one.
-    Tensor sample(ElemKind::FloatTy, {1, 2});
-    sample.getHandle<>() = {1., 1.};
+    // Far away dot must be zero.
+    sample.getHandle<>().at({0, 0}) = 1;
+    sample.getHandle<>().at({0, 1}) = 1;
     EE.run({A}, {&sample});
     auto SMH = result->getVariable()->getPayload().getHandle<>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
-    EXPECT_GE(A, 0.9);
-    EXPECT_LE(B, 0.1);
+    EXPECT_TRUE(A > (B + 0.2));
   }
 }
 
