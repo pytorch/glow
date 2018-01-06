@@ -969,7 +969,7 @@ void Interpreter::fwdElementCmpLTEInst(bool isTrain,
 void Interpreter::fwdElementSelectInst(bool isTrain,
                                        const glow::ElementSelectInst *I) {
   auto outW = getWeightHandle(I->getDest());
-  auto condW = getWeightHandle(I->getDest());
+  auto condW = getWeightHandle(I->getCond());
   auto LHSW = getWeightHandle(I->getLHS());
   auto RHSW = getWeightHandle(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
