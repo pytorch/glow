@@ -168,9 +168,9 @@ TEST(Interpreter, learnXor) {
   auto *Ex = G.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
 
   Node *O = G.createFullyConnected("fc1", A, 6);
-  O = G.createRELU("relu1", O);
+  O = G.createTanh("tanh1", O);
   O = G.createFullyConnected("fc2", O, 1);
-  O = G.createRELU("relu2", O);
+  O = G.createTanh("tanh2", O);
   O = G.createRegression("reg", O, Ex);
   auto *result = G.createSave("ret", O);
 
