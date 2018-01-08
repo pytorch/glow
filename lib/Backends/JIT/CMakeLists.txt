@@ -5,5 +5,6 @@ target_link_libraries(JIT
                       PRIVATE
                         Optimizer
                         Base
-                        Graph)
+                        Graph
+                        LLVMCore)
 

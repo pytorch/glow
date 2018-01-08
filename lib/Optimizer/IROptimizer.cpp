@@ -842,7 +842,7 @@ void performPeepholeOptimizations(Module &M) {
       continue;
     }
 
-    // ReshapeInst -> TensorViewInst. 
+    // ReshapeInst -> TensorViewInst.
     if (auto *RI = dyn_cast<ReshapeInst>(*cur)) {
       auto *Dest = RI->getDest();
       if (!isa<AllocActivationInst>(Dest))

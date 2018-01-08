@@ -16,7 +16,21 @@ JITBackend::~JITBackend() { clear(); }
 
 void JITBackend::clear() { M_->clear(); }
 
-void JITBackend::init() { llvm_unreachable("Unimplemented."); }
+void JITBackend::init() {
+  // Notice that we can't use std::make_unique here because it's only available
+  // in c++14.
+  llmodule_ = std::unique_ptr<llvm::Module>(new llvm::Module("program", ctx_));
+
+  llvm::Type *void_type = llvm::Type::getVoidTy(ctx_);
+  llvm::FunctionType *jit_func_type =
+      llvm::FunctionType::get(void_type, {}, false);
+  func_ = llvm::Function::Create(jit_func_type, llvm::Function::ExternalLinkage,
+                                 "main", llmodule_.get());
+
+  llvm::BasicBlock *entry_bb = llvm::BasicBlock::Create(ctx_, "entry", func_);
+  llvm::IRBuilder<> builder(entry_bb);
+}
+
 void JITBackend::doForwardPass(bool isTrain) {
   llvm_unreachable("Unimplemented.");
 }
