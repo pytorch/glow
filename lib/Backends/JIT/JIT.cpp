@@ -17,9 +17,7 @@ JITBackend::~JITBackend() { clear(); }
 void JITBackend::clear() { M_->clear(); }
 
 void JITBackend::init() {
-  // Notice that we can't use std::make_unique here because it's only available
-  // in c++14.
-  llmodule_ = std::unique_ptr<llvm::Module>(new llvm::Module("program", ctx_));
+  llmodule_.reset(new llvm::Module("program", ctx_));
 
   llvm::Type *void_type = llvm::Type::getVoidTy(ctx_);
   llvm::FunctionType *jit_func_type =
