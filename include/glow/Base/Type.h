@@ -43,9 +43,7 @@ struct ShapeNHWC {
     return ShapeNHWC(shape[0], shape[1], 1, 1);
   }
 
-  static ShapeNHWC empty() {
-    return ShapeNHWC(0, 0, 0, 0);
-  }
+  static ShapeNHWC empty() { return ShapeNHWC(0, 0, 0, 0); }
 
   explicit ShapeNHWC(size_t samples, size_t height, size_t width,
                      size_t channels)
