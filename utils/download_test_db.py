@@ -17,10 +17,10 @@ except ImportError:
     from urllib2 import URLError
 
 
-Dataset = collections.namedtuple('Dataset', 'filename, url, handler')
+Dataset = collections.namedtuple('Dataset', 'filename, url, handler, dest_path')
 
 
-def handle_mnist(filename):
+def handle_mnist(filename, dest_path):
     print('Extracting {} ...'.format(filename))
     with gzip.open(filename, 'rb') as file:
         training_set, _, _ = pickle.load(file)
@@ -36,10 +36,10 @@ def handle_mnist(filename):
         labels_file.close()
 
 
-def untar(filename):
+def untar(filename, dest_path):
     print('Extracting {} ...'.format(filename))
     tar = tarfile.open(filename, "r:gz")
-    tar.extractall()
+    tar.extractall(dest_path)
     tar.close()
 
 
@@ -48,16 +48,19 @@ DATASETS = dict(
         'mnist.pkl.gz',
         'http://www.iro.umontreal.ca/~lisa/deep/data/mnist/mnist.pkl.gz',
         handle_mnist,
+        '.',
     ),
     cifar10=Dataset(
         'cifar-10.binary.tar.gz',
         'http://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz',
         untar,
+        '.',
     ),
     ptb=Dataset(
         'ptb.tgz',
         'http://www.fit.vutbr.cz/~imikolov/rnnlm/simple-examples.tgz',
         untar,
+        'ptb',
     ),
 )
 DATASET_NAMES = list(DATASETS.keys())
@@ -110,7 +113,7 @@ def main():
         for name in datasets:
             dataset = DATASETS[name]
             download_dataset(dataset)
-            dataset.handler(dataset.filename)
+            dataset.handler(dataset.filename, dataset.dest_path)
         print('Done.')
     except KeyboardInterrupt:
         print('Interrupted')
