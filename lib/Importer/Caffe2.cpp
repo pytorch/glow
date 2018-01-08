@@ -256,10 +256,18 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *bias = getTensorByName(op.input(2));
     auto *mean = getTensorByName(op.input(3));
     auto *var = getTensorByName(op.input(4));
-    float epsilon = loadFloat(dict["epsilon"]);
+    float epsilon = 1e-5f; //default
+    auto epsilonIt = dict.find("epsilon");
+    if (epsilonIt != dict.end()) {
+      epsilon = loadFloat(epsilonIt->second);
+    }
 
     unsigned channel = 0;
-    auto order = loadStr(dict["order"]);
+    std::string order = "NCHW"; //default
+    auto orderIt = dict.find("order");
+    if (orderIt != dict.end()) {
+      order = loadStr(orderIt->second);
+    }
     if (order == "NHWC") {
       channel = 3;
     } else if (order == "NCHW") {
