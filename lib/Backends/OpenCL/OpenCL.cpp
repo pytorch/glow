@@ -285,7 +285,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
       setKernelArg(kernel, 5, offset);
       enqueueKernel(commands_, kernel, deviceId_, {idim.n});
       kernels.push_back(kernel);
-      
+
       continue;
     }
 

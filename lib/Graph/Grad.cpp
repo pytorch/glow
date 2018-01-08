@@ -162,7 +162,8 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
     }
 
     if (N->getKind() == Kind::SplatNodeKind)
-      // Constant nodes don't have inputs therefore don't need grad calculations.
+      // Constant nodes don't have inputs therefore don't need grad
+      // calculations.
       continue;
 
     llvm_unreachable("Invalid instruction type.");
