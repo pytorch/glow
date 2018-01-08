@@ -70,11 +70,13 @@ void ConvolutionInst::verify() const {
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");
 
-  llvm::ArrayRef<size_t> filterDims = {Depth_, Kernel_, Kernel_, idim.c};
-  assert(filter->getType()->dims() == filterDims && "Invalid filter dims");
+  auto filterDims = {Depth_, Kernel_, Kernel_, idim.c};
+  assert(filter->getType()->dims().equals(filterDims) &&
+         "Invalid filter dims");
 
-  llvm::ArrayRef<size_t> biasDims = {Depth_};
-  assert(bias->getType()->dims() == biasDims && "Invalid bias dims");
+  auto biasDims = {Depth_};
+  assert(bias->getType()->dims().equals(biasDims) &&
+         "Invalid bias dims");
 }
 
 void PoolMaxInst::verify() const {
@@ -110,8 +112,9 @@ void PoolMaxWithXYInst::verify() const {
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
-  llvm::ArrayRef<size_t> E = {idim.n, outSz.first, outSz.second, idim.c, 2};
-  assert(srcXY->getType()->dims() == E && "Invalid srcXY dims");
+  auto E = {idim.n, outSz.first, outSz.second, idim.c, 2UL};
+  assert(srcXY->getType()->dims().equals(E) &&
+         "Invalid srcXY dims");
 }
 
 void PoolAvgInst::verify() const {
@@ -220,7 +223,7 @@ void TransposeInst::verify() const {
     shape.push_back(dims[Shuffle_[i]]);
   }
 
-  assert(dest->dims() == llvm::ArrayRef<size_t>(shape) &&
+  assert(dest->dims().equals(shape) &&
          "Invalid transpose dims");
 }
 
@@ -266,11 +269,15 @@ void BatchNormalizationInst::verify() const {
   // Figure out how many channels are in the tensor.
   size_t channels = getOperand(0).first->dims()[ChannelIdx_];
 
-  llvm::ArrayRef<size_t> exp = {channels};
-  assert(getOperand(2).first->getType()->dims() == exp && "Invalid bias dim");
-  assert(getOperand(3).first->getType()->dims() == exp && "Invalid scale dim");
-  assert(getOperand(4).first->getType()->dims() == exp && "Invalid mean dim");
-  assert(getOperand(5).first->getType()->dims() == exp && "Invalid var dim");
+  auto exp = {channels};
+  assert(getOperand(2).first->getType()->dims().equals(exp) &&
+         "Invalid bias dim");
+  assert(getOperand(3).first->getType()->dims().equals(exp) &&
+         "Invalid scale dim");
+  assert(getOperand(4).first->getType()->dims().equals(exp) &&
+         "Invalid mean dim");
+  assert(getOperand(5).first->getType()->dims().equals(exp) &&
+         "Invalid var dim");
 }
 
 void LocalResponseNormalizationInst::verify() const {
