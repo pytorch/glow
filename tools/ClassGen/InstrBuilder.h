@@ -28,6 +28,7 @@ inline OperandKind negateOperandKind(OperandKind CC) {
   case OperandKind::InOut:
     return OperandKind::InOut;
   }
+  llvm_unreachable("Invalid operand kind.");
 }
 
 inline const char *getOperandKindStr(OperandKind CC) {
