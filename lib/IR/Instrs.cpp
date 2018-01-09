@@ -71,12 +71,12 @@ void ConvolutionInst::verify() const {
   assert(exp == odim && "Invalid output dimensions");
 
   auto filterDims = {Depth_, Kernel_, Kernel_, idim.c};
-  assert(filter->getType()->dims().equals(filterDims) &&
-         "Invalid filter dims");
+  assert(filter->getType()->dims().equals(filterDims) && "Invalid filter dims");
+  (void)filterDims;
 
   auto biasDims = {Depth_};
-  assert(bias->getType()->dims().equals(biasDims) &&
-         "Invalid bias dims");
+  assert(bias->getType()->dims().equals(biasDims) && "Invalid bias dims");
+  (void)biasDims;
 }
 
 void PoolMaxInst::verify() const {
@@ -113,8 +113,8 @@ void PoolMaxWithXYInst::verify() const {
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
   auto E = {idim.n, outSz.first, outSz.second, idim.c, 2UL};
-  assert(srcXY->getType()->dims().equals(E) &&
-         "Invalid srcXY dims");
+  assert(srcXY->getType()->dims().equals(E) && "Invalid srcXY dims");
+  (void)E;
 }
 
 void PoolAvgInst::verify() const {
@@ -223,8 +223,7 @@ void TransposeInst::verify() const {
     shape.push_back(dims[Shuffle_[i]]);
   }
 
-  assert(dest->dims().equals(shape) &&
-         "Invalid transpose dims");
+  assert(dest->dims().equals(shape) && "Invalid transpose dims");
 }
 
 void SplatInst::verify() const {}
@@ -270,6 +269,7 @@ void BatchNormalizationInst::verify() const {
   size_t channels = getOperand(0).first->dims()[ChannelIdx_];
 
   auto exp = {channels};
+  (void)exp;
   assert(getOperand(2).first->getType()->dims().equals(exp) &&
          "Invalid bias dim");
   assert(getOperand(3).first->getType()->dims().equals(exp) &&
