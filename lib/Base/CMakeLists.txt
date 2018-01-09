@@ -14,14 +14,6 @@ add_custom_command(OUTPUT
                     DEPENDS InstrGen
                     COMMENT "InstrGen: Generating instructions." VERBATIM)
 
-add_library(AutoGenInstr
-            ${INSTR_HDR}
-            ${INSTR_SRC}
-            ${INSTR_DEF}
-            ${INSTR_BLD})
-
-target_link_libraries(AutoGenInstr PUBLIC Support)
-
 # AutoGenNodes
 set(NODES_HDR ${GLOW_BINARY_DIR}/AutoGenNodes.h)
 set(NODES_SRC ${GLOW_BINARY_DIR}/AutoGenNodes.cpp)
@@ -35,13 +27,16 @@ add_custom_command(OUTPUT
                    DEPENDS NodeGen
                    COMMENT "NodeGen: Generating nodes." VERBATIM)
 
-add_library(AutoGenNodes
+add_library(AutoGenFiles
             ${NODES_HDR}
             ${NODES_SRC}
             ${NODES_DEF}
-            ${NODES_BLD})
-
-target_link_libraries(AutoGenNodes PUBLIC Support)
+            ${NODES_BLD}
+            ${INSTR_HDR}
+            ${INSTR_SRC}
+            ${INSTR_DEF}
+            ${INSTR_BLD})
+target_link_libraries(AutoGenFiles PUBLIC Support)
 
 # Base
 add_library(Base
@@ -52,8 +47,7 @@ add_library(Base
 target_link_libraries(Base
                       PUBLIC
                         Support
-                        AutoGenInstr
-                        AutoGenNodes)
+                        AutoGenFiles)
 if(PNG_FOUND)
   target_compile_definitions(Base
                              PRIVATE
