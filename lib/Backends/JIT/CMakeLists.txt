@@ -20,7 +20,19 @@ target_link_libraries(JIT
                         Optimizer
                         Base
                         Graph
-                        LLVMCore)
+                        LLVMAnalysis
+                        LLVMCodeGen
+                        LLVMCore
+                        LLVMipo
+                        LLVMIRReader
+                        LLVMInstCombine
+                        LLVMMC
+                        LLVMScalarOpts
+                        LLVMSupport
+                        LLVMTarget
+                        LLVMTransformUtils
+                        LLVMVectorize
+                        LLVMPasses)
 
 add_custom_target(
   generate-libjitbc
