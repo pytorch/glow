@@ -1,4 +1,8 @@
-
+add_library(testMain
+            testMain.cpp)
+target_link_libraries(testMain
+                      PRIVATE
+                        gtest)
 
 add_executable(tensorsTest
                tensorsTest.cpp)
@@ -7,7 +11,7 @@ target_link_libraries(tensorsTest
                         Base
                         Support
                         gtest
-                        gtest_main)
+                        testMain)
 add_test(tensorsTest ${GLOW_BINARY_DIR}/tests/tensorsTest)
 
 add_executable(gradCheckTest
@@ -18,7 +22,7 @@ target_link_libraries(gradCheckTest
                         ExecutionEngine
                         IR
                         gtest
-                        gtest_main)
+                        testMain)
 add_test(gradCheckTest ${GLOW_BINARY_DIR}/tests/gradCheckTest)
 
 add_executable(IROptTest
@@ -28,7 +32,7 @@ target_link_libraries(IROptTest
                         Backends
                         IR
                         gtest
-                        gtest_main)
+                        testMain)
 add_test(IROptTest ${GLOW_BINARY_DIR}/tests/IROptTest)
 
 add_executable(basicIRTest
@@ -38,7 +42,7 @@ target_link_libraries(basicIRTest
                         Backends
                         IR
                         gtest
-                        gtest_main)
+                        testMain)
 add_test(basicIRTest ${GLOW_BINARY_DIR}/tests/basicIRTest)
 
 add_executable(interpreterTest
@@ -49,7 +53,7 @@ target_link_libraries(interpreterTest
                         IR
                         ExecutionEngine
                         gtest
-                        gtest_main)
+                        testMain)
 add_test(interpreterTest ${GLOW_BINARY_DIR}/tests/interpreterTest)
 
 add_executable(operatorTest
@@ -60,7 +64,7 @@ target_link_libraries(operatorTest
                         IR
                         ExecutionEngine
                         gtest
-                        gtest_main)
+                        testMain)
 add_test(operatorTest ${GLOW_BINARY_DIR}/tests/operatorTest)
 
 
@@ -72,7 +76,7 @@ target_link_libraries(graphTest
                         IR
                         Backends
                         gtest
-                        gtest_main)
+                        testMain)
 add_test(graphTest ${GLOW_BINARY_DIR}/tests/graphTest)
 
 add_executable(graphGradTest
@@ -84,7 +88,7 @@ target_link_libraries(graphGradTest
                         Backends
                         ExecutionEngine
                         gtest
-                        gtest_main)
+                        testMain)
 add_test(graphGradTest ${GLOW_BINARY_DIR}/tests/graphGradTest)
 
 
@@ -96,7 +100,7 @@ target_link_libraries(graphOptzTest
                         IR
                         Backends
                         gtest
-                        gtest_main)
+                        testMain)
 add_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest)
 
 if(OpenCL_FOUND)
@@ -108,7 +112,7 @@ target_link_libraries(OCLTest
                         IR
                         ExecutionEngine
                         gtest
-                        gtest_main)
+                        testMain)
 add_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest)
 endif()
 
@@ -119,6 +123,6 @@ target_link_libraries(memoryAllocatorTest
                         Backends
                         IR
                         gtest
-                        gtest_main)
+                        testMain)
 add_test(memoryAllocatorTest ${GLOW_BINARY_DIR}/tests/memoryAllocatorTest)
 
