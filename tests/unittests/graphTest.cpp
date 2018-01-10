@@ -29,8 +29,8 @@ TEST(Graph, simpleTest) {
     K = G.createSoftMax("SoftMax", K, S);
     G.dump();
     G.dumpDAG();
-    lower(G, glow::CompilationMode::Train);
-    ::glow::optimize(G, glow::CompilationMode::Train);
+    lower(G, CompilationMode::Train);
+    ::glow::optimize(G, CompilationMode::Train);
     M.generateIR(CompilationMode::Train);
     M.dump();
   }
@@ -51,10 +51,35 @@ TEST(Graph, simpleTest) {
     G.dump();
     G.dumpDAG();
     lower(G, glow::CompilationMode::Train);
-    ::glow::optimize(G, glow::CompilationMode::Train);
+    ::glow::optimize(G, CompilationMode::Train);
     M.generateIR(CompilationMode::Train);
     M.dump();
   }
+}
+
+/// Insert QuantizationProfile nodes directly.
+/// Actual generation of QuantizationProfile nodes are done through
+/// tests involving ExecutionEngine when `profile` llvm cli option enabled.
+TEST(Graph, QuantizationProfileNodes) {
+  unsigned numInputs = 10;
+  Graph G;
+  Module M(&G);
+
+  auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
+  auto *Ex = G.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
+
+  Node *O = G.createFullyConnected("FC1", A, 6);
+  G.createQuantizationProfile("QP", O);
+  O = G.createRELU("RELU1", O);
+  O = G.createFullyConnected("FC2", O, 1);
+  O = G.createRELU("RELU2", O);
+  G.createRegression("Regression", O, Ex);
+
+  lower(G, glow::CompilationMode::Train);
+  ::glow::optimize(G, CompilationMode::Train);
+  M.generateIR(CompilationMode::Train);
+  G.dumpDAG();
+  M.dump();
 }
 
 TEST(Graph, multipleReturnType) {

@@ -284,6 +284,10 @@ int main(int argc, char **argv) {
   //             Instructions used for debugging/profiling/printing
   //===--------------------------------------------------------------------===//
 
+  BB.newInstr("QuantizationProfile")
+      .addOperand("InputTensor", OperandKind::In)
+      .addOperand("Statistics", OperandKind::InOut);
+
   BB.newInstr("DebugPrint").addOperand("Src", OperandKind::In);
 
   return 0;

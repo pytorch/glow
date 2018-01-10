@@ -76,7 +76,8 @@ public:
   caffe2ModelLoader(const std::string &netDescFilename,
                     const std::string &netWeightFilename,
                     llvm::ArrayRef<const char *> names,
-                    llvm::ArrayRef<Tensor *> tensors, ExecutionEngine &IP);
+                    llvm::ArrayRef<Tensor *> tensors, ExecutionEngine &IP,
+                    const std::string &quantizationProfileFile);
 
   ~caffe2ModelLoader();
 

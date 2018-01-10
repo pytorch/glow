@@ -363,6 +363,16 @@ SplatNode *Graph::createSplat(llvm::StringRef name, TypeRef ty, float value) {
   return addNode(new SplatNode(name, ty, value));
 }
 
+QuantizationProfileNode *Graph::createQuantizationProfile(llvm::StringRef name,
+                                                          NodeValue input) {
+  // TODO: this size is going to be refined. Just a placeholder now.
+  const size_t bucketNumber = 2000U;
+
+  auto *statVar = createVariable(ElemKind::FloatTy, {bucketNumber},
+                                 "statistics", Variable::InitKind::Extern);
+  return addNode(new QuantizationProfileNode(name, input, statVar));
+}
+
 BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,
                                               NodeValue LHS, NodeValue RHS) {
   auto LT = LHS.getType();

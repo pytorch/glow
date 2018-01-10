@@ -65,7 +65,7 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
 
   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
     Node *N = *it;
-    if (isa<Variable>(N)) {
+    if (!N->shouldGenerateGradNode()) {
       continue;
     }
 
@@ -160,11 +160,6 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
       }
       continue;
     }
-
-    if (N->getKind() == Kind::SplatNodeKind)
-      // Constant nodes don't have inputs therefore don't need grad
-      // calculations.
-      continue;
 
     llvm_unreachable("Invalid instruction type.");
   } // End of the for-each instr loop.

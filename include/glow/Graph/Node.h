@@ -137,7 +137,9 @@ public:
   unsigned getNumInputs() const;
   llvm::StringRef getInputName(unsigned idx) const;
   NodeValue getInputNode(unsigned idx) const;
-  llvm::StringRef getOutputName(unsigned idx);
+  llvm::StringRef getOutputName(unsigned idx) const;
+  /// \returns whether gradient node needs to be generated for this node.
+  bool shouldGenerateGradNode() const;
 
   /// \returns a textual description of the node.
   std::string getDebugDesc() const;

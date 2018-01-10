@@ -161,6 +161,11 @@ llvm::cl::opt<bool>
                          "takes for the program to execute"),
           llvm::cl::Optional);
 
+llvm::cl::opt<std::string> QuantizationProfileFile(
+    "profile",
+    llvm::cl::desc("Perform quantization profiling for a given graph "
+                   "and save result to the file."),
+    llvm::cl::value_desc("file.json"), llvm::cl::Optional);
 } // namespace
 
 int main(int argc, char **argv) {
@@ -186,7 +191,8 @@ int main(int argc, char **argv) {
   {
     caffe2ModelLoader LD(NetDescFilename, NetWeightFilename,
                          {"data", "gpu_0/data", "softmax_expected"},
-                         {&data, &data, &expected_softmax}, EE);
+                         {&data, &data, &expected_softmax}, EE,
+                         QuantizationProfileFile);
     SM = LD.getRoot();
     i0 = llvm::cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
     i1 = llvm::cast<Variable>(LD.getOrCreateNodeByName("data"));

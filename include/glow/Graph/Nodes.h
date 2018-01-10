@@ -67,7 +67,7 @@ public:
   llvm::StringRef getInputName(unsigned idx) const;
   NodeValue getInputNode(unsigned idx) const;
   llvm::StringRef getOutputName(unsigned idx) const;
-
+  bool shouldGenerateGradNode() const;
   std::string getDebugDesc() const;
 
   void visit(Node *parent, NodeWalker *visitor);

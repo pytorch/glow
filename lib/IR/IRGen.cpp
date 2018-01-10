@@ -211,6 +211,15 @@ public:
       registerIR(N, dest);
       break;
     }
+    case glow::Kinded::Kind::QuantizationProfileNodeKind: {
+      auto *quantizationProfileNode = cast<QuantizationProfileNode>(N);
+      auto *inputTensor = valueForNode(quantizationProfileNode->getInput());
+      auto *stats = valueForNode(quantizationProfileNode->getVariable());
+      builder_.createQuantizationProfileInst(quantizationProfileNode->getName(),
+                                             inputTensor, stats);
+
+      break;
+    }
     case glow::Kinded::Kind::SigmoidNodeKind: {
       auto *S = cast<SigmoidNode>(N);
       auto *V = builder_.createSigmoidOp(valueForNode(S->getInput()));
