@@ -113,7 +113,6 @@ void JITBackend::doForwardPass(bool isTrain) {
 
   llvm_unreachable("Unimplemented.");
 }
-void JITBackend::registerGraphTensor(const Value *v, Tensor *t) {}
 
 void JITBackend::allocateActivationsAndWeights() {
   // Use a memory allocator with no upper bound on how much memory we can

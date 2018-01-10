@@ -22,7 +22,7 @@ public:
   /// Dtor.
   virtual ~Backend() = default;
 
-  /// Wipe out the state of the interpreter.
+  /// Wipe out the state of the backend.
   virtual void clear() = 0;
 
   /// Prepare the interpreter for execution of new code.
@@ -31,10 +31,6 @@ public:
   /// Perform a single forward scan of the network, interpreting all of the
   /// instructions.
   virtual void doForwardPass(bool isTrain) = 0;
-
-  /// Registers the external tensor \p t, that's owned by the graph, as mapped
-  /// to the value \p v.
-  virtual void registerGraphTensor(const Value *v, Tensor *t) = 0;
 };
 
 /// Create a backend of kind \p kind, to run the module \p M.

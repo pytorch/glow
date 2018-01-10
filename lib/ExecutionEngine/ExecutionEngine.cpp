@@ -99,10 +99,5 @@ void ExecutionEngine::compile(CompilationMode mode) {
   M_->generateIR(mode);
   ::glow::optimize(*M_, mode);
 
-  for (auto &v : G_->getVars()) {
-    auto *w = M_->getWeightForNode(v);
-    IP_->registerGraphTensor(w, &v->getPayload());
-  }
-
   IP_->init();
 }
