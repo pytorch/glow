@@ -563,12 +563,13 @@ void OCLBackend::copyWeightsFromDevice() {
   clFinish(commands_);
 }
 
-void OCLBackend::registerGraphTensor(const Value *v, Tensor *t) {
-  assert(!externalTensors_.count(v) && "The tensor is already registered");
-  externalTensors_[v] = t;
-}
-
 void OCLBackend::init() {
+  for (auto &v : M_->getGraph()->getVars()) {
+    auto *w = M_->getWeightForNode(v);
+    assert(!externalTensors_.count(w) && "The tensor is already registered");
+    externalTensors_[w] = &v->getPayload();
+  }
+
   // Assign device-space addresses to the weights.
   for (auto it : externalTensors_) {
     Tensor *T = it.second;

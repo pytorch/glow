@@ -61,8 +61,6 @@ public:
   void init() override;
 
   void doForwardPass(bool isTrain) override;
-
-  void registerGraphTensor(const Value *v, Tensor *t) override;
   /// @}
 };
 

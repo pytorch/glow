@@ -25,6 +25,12 @@ void Interpreter::clear() {
 }
 
 void Interpreter::init() {
+  for (auto &v : M_->getGraph()->getVars()) {
+    auto *w = M_->getWeightForNode(v);
+    assert(!externalTensors_.count(w) && "The tensor is already registered");
+    externalTensors_[w] = &v->getPayload();
+  }
+
   for (auto *W : M_->getWeights()) {
     getOrCreateTensor(W);
   }
@@ -39,11 +45,6 @@ Tensor *Interpreter::getTensor(const Value *v) const {
   auto it = tensors_.find(v);
   assert(it != tensors_.end() && "Unknown key Value.");
   return it->second;
-}
-
-void Interpreter::registerGraphTensor(const Value *v, Tensor *t) {
-  assert(!externalTensors_.count(v) && "The tensor is already registered");
-  externalTensors_[v] = t;
 }
 
 Handle<float> Interpreter::getWeightHandle(Value *v) const {
