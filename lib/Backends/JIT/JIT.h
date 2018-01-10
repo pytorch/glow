@@ -31,9 +31,21 @@ class JITBackend final : public Backend {
   llvm::DenseMap<Value *, void *> allocatedAddressed_;
   // This represents the heap, that stores the activations at runtime.
   std::vector<uint8_t> heap_{};
+
   /// Assign memory addresses to activations, allocate the heap and register all
   /// weights and activations into the address-map.
   void allocateActivationsAndWeights();
+
+  /// Generates LLVM IR that computes the address of \p val using \p builder.
+  /// The address type is "i8*".
+  llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder, glow::Value *val);
+  /// Generates LLVM IR that computes the size of the tensor of \p val using
+  /// \p builder. The size type is native to the machine (size_t).
+  llvm::Value *emitValueSize(llvm::IRBuilder<> &builder, glow::Value *val);
+  /// Generates LLVM IR that materializes the constant \p val.
+  llvm::Value *emitConst(llvm::IRBuilder<> &builder, float val);
+  /// Generates LLVM IR that materializes the constant \p val.
+  llvm::Value *emitConst(llvm::IRBuilder<> &builder, size_t val);
 
 public:
   /// Ctor.
