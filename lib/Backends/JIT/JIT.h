@@ -27,6 +27,13 @@ class JITBackend final : public Backend {
   /// Points to the main function in the jitted code. The function is owned by
   /// the LLVM module.
   llvm::Function *func_{nullptr};
+  /// Maps Values in the module to their memory addresses.
+  llvm::DenseMap<Value *, void *> allocatedAddressed_;
+  // This represents the heap, that stores the activations at runtime.
+  std::vector<uint8_t> heap_{};
+  /// Assign memory addresses to activations, allocate the heap and register all
+  /// weights and activations into the address-map.
+  void allocateActivationsAndWeights();
 
 public:
   /// Ctor.
