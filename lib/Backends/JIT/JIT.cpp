@@ -24,6 +24,27 @@ JITBackend::~JITBackend() { clear(); }
 
 void JITBackend::clear() { M_->clear(); }
 
+llvm::Value *JITBackend::emitValueAddress(llvm::IRBuilder<> &builder,
+                                          glow::Value *val) {
+  void *ptr = allocatedAddressed_[val];
+  auto *offset = emitConst(builder, (size_t)ptr);
+  return builder.CreateIntToPtr(offset,
+                                llvm::Type::getInt8Ty(ctx_)->getPointerTo());
+}
+
+llvm::Value *JITBackend::emitValueSize(llvm::IRBuilder<> &builder,
+                                       glow::Value *val) {
+  return builder.getIntN(sizeof(size_t) * 8, val->getType()->size());
+}
+
+llvm::Value *JITBackend::emitConst(llvm::IRBuilder<> &builder, float val) {
+  return llvm::ConstantFP::get(llvm::Type::getFloatTy(ctx_), val);
+}
+
+llvm::Value *JITBackend::emitConst(llvm::IRBuilder<> &builder, size_t val) {
+  return builder.getIntN(sizeof(size_t) * 8, val);
+}
+
 void JITBackend::init() {
   llvm::SMDiagnostic Err;
   // Load the jit library as a new module.
@@ -49,40 +70,23 @@ void JITBackend::init() {
     switch (I->getKind()) {
     case Kinded::Kind::SplatInstKind: {
       SplatInst *SI = llvm::cast<SplatInst>(I);
-
-      void *ptr = allocatedAddressed_[SI->getDest()];
-      auto *addr = builder.CreateIntToPtr(builder.getInt64((size_t)ptr),
-                                          llvm::Type::getInt8Ty(ctx_));
-
-      auto cnt =
-          builder.getIntN(sizeof(size_t) * 8, SI->getDest()->getType()->size());
-      auto *val =
-          llvm::ConstantFP::get(llvm::Type::getFloatTy(ctx_), SI->getValue());
-
+      auto *addr = emitValueAddress(builder, SI->getDest());
+      auto cnt = emitValueSize(builder, SI->getDest());
+      auto *val = emitConst(builder, SI->getValue());
       auto *F = llmodule_->getFunction("splat_f");
       assert(F && "Unable to load the function");
-
       builder.CreateCall(F, {addr, cnt, val});
       break;
     }
     case Kinded::Kind::ElementMaxInstKind: {
       ElementMaxInst *EM = llvm::cast<ElementMaxInst>(I);
-      void *ptr0 = allocatedAddressed_[EM->getDest()];
-      auto *addr0 = builder.CreateIntToPtr(builder.getInt64((size_t)ptr0),
-                                           llvm::Type::getInt8Ty(ctx_));
-      void *ptr1 = allocatedAddressed_[EM->getLHS()];
-      auto *addr1 = builder.CreateIntToPtr(builder.getInt64((size_t)ptr1),
-                                           llvm::Type::getInt8Ty(ctx_));
-      void *ptr2 = allocatedAddressed_[EM->getRHS()];
-      auto *addr2 = builder.CreateIntToPtr(builder.getInt64((size_t)ptr2),
-                                           llvm::Type::getInt8Ty(ctx_));
-      auto cnt =
-          builder.getIntN(sizeof(size_t) * 8, EM->getDest()->getType()->size());
-
+      auto *destPtr = emitValueAddress(builder, EM->getDest());
+      auto *LHSPtr = emitValueAddress(builder, EM->getLHS());
+      auto *RHSPtr = emitValueAddress(builder, EM->getRHS());
+      auto cnt = emitValueSize(builder, EM->getDest());
       auto *F = llmodule_->getFunction("elementmax_f");
       assert(F && "Unable to load the function");
-
-      builder.CreateCall(F, {addr0, addr1, addr2, cnt});
+      builder.CreateCall(F, {destPtr, LHSPtr, RHSPtr, cnt});
       break;
     }
       // Alloc and Dealloc instructions are handled by the memory allocator.
