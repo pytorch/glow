@@ -10,8 +10,10 @@
 #include "llvm/ADT/DenseMap.h"
 
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/SourceMgr.h"
@@ -98,6 +100,10 @@ void JITBackend::init() {
       llvm_unreachable("ERROR: Cannot select the instruction.");
     }
   }
+
+  // Terminate the function.
+  builder.CreateRetVoid();
+  assert(!llvm::verifyFunction(*func_, &llvm::errs()) && "Verification failed");
 }
 
 void JITBackend::doForwardPass(bool isTrain) {
