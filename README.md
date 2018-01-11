@@ -23,6 +23,7 @@ the project outside of the source directory.
   mkdir build_Debug
   cd build_Debug
   cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug ../glow
+  ninja all
   ```
 
 It's possible to configure and build the compiler with any CMake generator,
