@@ -1,6 +1,8 @@
 #ifndef GLOW_BACKENDS_JIT_JIT_H
 #define GLOW_BACKENDS_JIT_JIT_H
 
+#include "GlowJIT.h"
+
 #include "glow/Backends/Backend.h"
 #include "glow/Base/Tensor.h"
 
@@ -29,8 +31,11 @@ class JITBackend final : public Backend {
   llvm::Function *func_{nullptr};
   /// Maps Values in the module to their memory addresses.
   llvm::DenseMap<Value *, void *> allocatedAddressed_;
-  // This represents the heap, that stores the activations at runtime.
+  /// This represents the heap, that stores the activations at runtime.
   std::vector<uint8_t> heap_{};
+  /// The LLVM JIT engine. The jit must be initialized after the ctor
+  /// initializes the LLVM backends.
+  std::unique_ptr<llvm::orc::GlowJIT> JIT_{nullptr};
 
   /// Assign memory addresses to activations, allocate the heap and register all
   /// weights and activations into the address-map.
@@ -49,7 +54,7 @@ class JITBackend final : public Backend {
 
 public:
   /// Ctor.
-  explicit JITBackend(Module *M) : M_(M) {}
+  explicit JITBackend(Module *M);
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.

@@ -32,6 +32,13 @@ target_link_libraries(JIT
                         LLVMTarget
                         LLVMTransformUtils
                         LLVMVectorize
+                        LLVMX86CodeGen
+                        LLVMX86Desc
+                        LLVMX86Info
+                        LLVMCore
+                        LLVMExecutionEngine
+                        LLVMInterpreter
+                        LLVMSupport
                         LLVMPasses)
 
 add_custom_target(

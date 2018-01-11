@@ -12,17 +12,46 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 using namespace glow;
 using llvm::isa;
 
-JITBackend::~JITBackend() { clear(); }
+/// Optimize the module that contain the function \p F.
+static void optimizeLLVMModule(llvm::Function *F) {
+  llvm::PassManagerBuilder PMB;
+  PMB.OptLevel = 3;
+  PMB.SizeLevel = 0;
+  PMB.LoopVectorize = true;
+  PMB.SLPVectorize = true;
+
+  llvm::legacy::FunctionPassManager FPM(F->getParent());
+  llvm::legacy::PassManager PM;
+  PMB.populateFunctionPassManager(FPM);
+  PMB.populateModulePassManager(PM);
+  FPM.doInitialization();
+  FPM.run(*F);
+  PM.run(*F->getParent());
+}
+
+JITBackend::JITBackend(Module *M) : M_(M) {
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmPrinter();
+  JIT_ = llvm::make_unique<llvm::orc::GlowJIT>();
+}
+
+JITBackend::~JITBackend() {
+  clear();
+  llvm::llvm_shutdown();
+}
 
 void JITBackend::clear() { M_->clear(); }
 
@@ -52,6 +81,9 @@ void JITBackend::init() {
   // Load the jit library as a new module.
   llmodule_ = llvm::parseIRFile("libjit.bc", Err, ctx_);
   GLOW_ASSERT(llmodule_.get() && "Unable to load the JIT library.");
+
+  // Assign the target information to the module.
+  llmodule_->setDataLayout(JIT_->getTargetMachine().createDataLayout());
 
   // Create the 'main' function into the LLVM module.
   llvm::Type *void_type = llvm::Type::getVoidTy(ctx_);
@@ -104,14 +136,19 @@ void JITBackend::init() {
   // Terminate the function.
   builder.CreateRetVoid();
   assert(!llvm::verifyFunction(*func_, &llvm::errs()) && "Verification failed");
+
+  // Optimize the module.
+  optimizeLLVMModule(func_);
+  // And pass the ownership to the JIT.
+  JIT_->addModule(std::move(llmodule_));
 }
 
 void JITBackend::doForwardPass(bool isTrain) {
-  // We can't call dump() directly because of a bug in LLVM 5.0 that results in
-  // a linkage error. Call print of errs() instead.
-  llmodule_->print(llvm::errs(), nullptr);
-
-  llvm_unreachable("Unimplemented.");
+  auto sym = JIT_->findSymbol("main");
+  assert(sym && "Unable to JIT the code!");
+  using JitFuncType = void (*)(void);
+  JitFuncType funcPtr = reinterpret_cast<JitFuncType>(sym.getAddress().get());
+  funcPtr();
 }
 
 void JITBackend::allocateActivationsAndWeights() {
