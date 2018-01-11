@@ -96,7 +96,7 @@ After building Glow in Release-mode run the following command to download the
 cifar10, mnist and ptb database:
 
 ```
-python ../glow/utils/download_test_db.py
+python ../glow/utils/download_test_db.py --all
 ```
 
 Next, after downloading and extracting the mnist and cifar10 database
