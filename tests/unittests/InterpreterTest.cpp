@@ -152,7 +152,6 @@ TEST(Interpreter, simpleRegression) {
 
 TEST(Interpreter, learnXor) {
   unsigned numInputs = 10;
-  unsigned numTests = 10;
 
   // Learning the Xor function.
   ExecutionEngine EE;
@@ -176,12 +175,10 @@ TEST(Interpreter, learnXor) {
 
   // Prepare the training set and the testing set.
   Tensor trainingSet(ElemKind::FloatTy, {numInputs, 2});
-  Tensor testingSet(ElemKind::FloatTy, {numInputs, 2});
   Tensor trainingLabels(ElemKind::FloatTy, {numInputs, 1});
 
   auto TS = trainingSet.getHandle<>();
   auto TL = trainingLabels.getHandle<>();
-  auto TT = testingSet.getHandle<>();
 
   // Prepare the training data:
   for (unsigned i = 0; i < numInputs; i++) {
@@ -200,16 +197,18 @@ TEST(Interpreter, learnXor) {
   EE.compile(CompilationMode::Infer);
 
   // Prepare the testing tensor:
-  for (unsigned i = 0; i < numTests; i++) {
-    TT.at({i, 0}) = i % 2;
-    TT.at({i, 1}) = (i >> 1) % 2;
+  for (unsigned i = 0; i < numInputs; i++) {
+    int a = (numInputs - i) % 2;
+    int b = ((numInputs - i) >> 1) % 2;
+    TS.at({i, 0}) = a;
+    TS.at({i, 1}) = b;
   }
 
   EE.run({A}, {&trainingSet});
   auto resH = result->getVariable()->getPayload().getHandle<>();
 
   // Test the output:
-  for (size_t i = 0; i < numTests; i++) {
+  for (size_t i = 0; i < numInputs; i++) {
     int a = TS.at({i, 0});
     int b = TS.at({i, 1});
     llvm::outs() << "a = " << a << " b = " << b << " => " << resH.at({i, 0})
@@ -410,7 +409,7 @@ TEST(Network, concatVectors) {
     I2.getHandle<size_t>().at({i + 10}) = i + 20;
     I3.getHandle<size_t>().at({i}) = i + 30;
     I3.getHandle<size_t>().at({i + 10}) = i + 40;
-    I3.getHandle<size_t>().at({i + 20}) = i + 40;
+    I3.getHandle<size_t>().at({i + 20}) = i + 50;
   }
 
   EE.compile(CompilationMode::Infer);
@@ -420,7 +419,7 @@ TEST(Network, concatVectors) {
   auto RNWH = result->getVariable()->getPayload().getHandle<size_t>();
   (void)RNWH;
 
-  for (size_t i = 0; i < 50; i++) {
+  for (size_t i = 0; i < 60; i++) {
     EXPECT_NEAR(RNWH.at({i}), i, 0.001);
   }
 }
@@ -541,6 +540,8 @@ TEST(Network, trainASimpleRNN) {
   // Values for the input and output variables.
   Tensor inputs(ElemKind::FloatTy, {1, 3, 4});
   Tensor expected(ElemKind::FloatTy, {1, 3});
+  inputs.zero();
+  expected.zero();
   for (size_t i = 0; i < 3; i++) {
     inputs.getHandle<float_t>().at({0, i, 1}) = i;
     expected.getHandle<float_t>().at({0, i}) = i;
