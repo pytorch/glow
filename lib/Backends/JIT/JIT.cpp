@@ -17,12 +17,15 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 using namespace glow;
+using llvm::StringRef;
 using llvm::isa;
 
 /// Optimize the module that contain the function \p F.
@@ -76,10 +79,35 @@ llvm::Value *JITBackend::emitConst(llvm::IRBuilder<> &builder, size_t val) {
   return builder.getIntN(sizeof(size_t) * 8, val);
 }
 
-void JITBackend::init() {
+// Search for the standard library bitcode file on disk and load it into an
+// LLVM module. We search for the standard library around the current executable
+// and also in the current directory.
+static std::unique_ptr<llvm::Module> loadStandardLibrary(llvm::LLVMContext *ctx,
+                                                         StringRef filename) {
+  using llvm::sys::path::append;
+  using llvm::sys::path::parent_path;
+
   llvm::SMDiagnostic Err;
+  auto mainExec =
+      llvm::sys::fs::getMainExecutable(nullptr, (void *)&loadStandardLibrary);
+  StringRef basePath = parent_path(mainExec);
+
+  for (int i = 0; i < 3; i++) {
+    llvm::SmallString<256> libPath(basePath);
+    append(libPath, filename);
+    if (llvm::sys::fs::exists(libPath)) {
+      return llvm::parseIRFile(libPath, Err, *ctx);
+    }
+
+    basePath = parent_path(basePath);
+  }
+
+  return llvm::parseIRFile(filename, Err, *ctx);
+}
+
+void JITBackend::init() {
   // Load the jit library as a new module.
-  llmodule_ = llvm::parseIRFile("libjit.bc", Err, ctx_);
+  llmodule_ = loadStandardLibrary(&ctx_, "libjit.bc");
   GLOW_ASSERT(llmodule_.get() && "Unable to load the JIT library.");
 
   // Assign the target information to the module.
