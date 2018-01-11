@@ -60,10 +60,30 @@ void JITBackend::clear() { M_->clear(); }
 
 llvm::Value *JITBackend::emitValueAddress(llvm::IRBuilder<> &builder,
                                           glow::Value *val) {
+  assert(allocatedAddressed_.count(val) && "Value address was not allocated");
   void *ptr = allocatedAddressed_[val];
   auto *offset = emitConst(builder, (size_t)ptr);
   return builder.CreateIntToPtr(offset,
                                 llvm::Type::getInt8Ty(ctx_)->getPointerTo());
+}
+
+llvm::Value *JITBackend::emitValueDims(llvm::IRBuilder<> &builder,
+                                       glow::Value *val) {
+  auto dims = val->dims();
+  auto SizeTType = builder.getIntNTy(sizeof(size_t) * 8);
+
+  std::vector<llvm::Constant *> elems;
+  for (auto I : dims) {
+    elems.push_back(llvm::ConstantInt::get(SizeTType, I));
+  }
+  auto *arr = llvm::ConstantArray::get(
+      llvm::ArrayType::get(SizeTType, elems.size()), elems);
+
+  auto *M = builder.GetInsertBlock()->getModule();
+
+  auto *G = new llvm::GlobalVariable(*M, arr->getType(), true,
+                                     llvm::GlobalValue::CommonLinkage, arr);
+  return builder.CreateBitCast(G, SizeTType->getPointerTo());
 }
 
 llvm::Value *JITBackend::emitValueSize(llvm::IRBuilder<> &builder,
@@ -151,9 +171,43 @@ void JITBackend::init() {
       builder.CreateCall(F, {destPtr, LHSPtr, RHSPtr, cnt});
       break;
     }
+    case Kinded::Kind::BatchedMatMulInstKind: {
+      BatchedMatMulInst *BMM = llvm::cast<BatchedMatMulInst>(I);
+      auto *destPtr = emitValueAddress(builder, BMM->getDest());
+      auto *LHSPtr = emitValueAddress(builder, BMM->getLHS());
+      auto *RHSPtr = emitValueAddress(builder, BMM->getRHS());
+
+      auto *destDims = emitValueDims(builder, BMM->getDest());
+      auto *LHSDims = emitValueDims(builder, BMM->getLHS());
+      auto *RHSDims = emitValueDims(builder, BMM->getRHS());
+
+      auto *F = llmodule_->getFunction("batchedmatmul_f");
+      assert(F && "Unable to load the function");
+      builder.CreateCall(F,
+                         {destPtr, LHSPtr, RHSPtr, destDims, LHSDims, RHSDims});
+      break;
+    }
+
+    case Kinded::Kind::BatchedAddInstKind: {
+      BatchedAddInst *BA = llvm::cast<BatchedAddInst>(I);
+      auto *destPtr = emitValueAddress(builder, BA->getDest());
+      auto *batchPtr = emitValueAddress(builder, BA->getBatch());
+      auto *slicePtr = emitValueAddress(builder, BA->getSlice());
+
+      auto bdim = flattenCdr(BA->getBatch()->dims());
+      auto *numSlice = emitConst(builder, bdim.first);
+      auto *sliceSize = emitConst(builder, bdim.second);
+
+      auto *F = llmodule_->getFunction("batchedadd_f");
+      assert(F && "Unable to load the function");
+      builder.CreateCall(F, {destPtr, batchPtr, slicePtr, numSlice, sliceSize});
+      break;
+    }
+
       // Alloc and Dealloc instructions are handled by the memory allocator.
     case Kinded::Kind::AllocActivationInstKind:
     case Kinded::Kind::DeallocActivationInstKind:
+    case Kinded::Kind::TensorViewInstKind:
       break;
 
     default:
@@ -183,9 +237,16 @@ void JITBackend::allocateActivationsAndWeights() {
   // Use a memory allocator with no upper bound on how much memory we can
   // allocate.
   MemoryAllocator allocator(0);
+  allocatedAddressed_.clear();
 
   // Maps activations and views to some offset within the heap.
   llvm::DenseMap<Value *, size_t> activationAddr;
+
+  // Register the addresses of the tensor payload.
+  for (auto &v : M_->getGraph()->getVars()) {
+    auto *w = M_->getWeightForNode(v);
+    allocatedAddressed_[w] = v->getPayload().getUnsafePtr();
+  }
 
   // Assign device-space addresses to the activations.
   for (auto &I : M_->getInstrs()) {
@@ -198,8 +259,16 @@ void JITBackend::allocateActivationsAndWeights() {
     }
 
     if (auto *TV = llvm::dyn_cast<TensorViewInst>(I)) {
-      assert(!activationAddr.count(TV) && "Allocation already made!");
-      activationAddr[TV] = activationAddr[TV->getSrc()];
+      // If the source is heap allocated then add it to the 'heap' map.
+      if (activationAddr.count(TV->getSrc())) {
+        assert(!activationAddr.count(TV) && "Allocation already made!");
+        assert(activationAddr.count(TV->getSrc()) && "Can't find TV source");
+        activationAddr[TV] = activationAddr[TV->getSrc()];
+      } else {
+        assert(allocatedAddressed_.count(TV->getSrc()) &&
+               "Can't find the Weight address");
+        allocatedAddressed_[TV] = allocatedAddressed_[TV->getSrc()];
+      }
       continue;
     }
 
@@ -213,16 +282,9 @@ void JITBackend::allocateActivationsAndWeights() {
 
   // Allocate the heap to match the max memory usage.
   heap_.resize(allocator.getMaxMemoryUsage());
-  allocatedAddressed_.clear();
 
   // Register specific addresses within the heap to activations.
   for (auto &A : activationAddr) {
     allocatedAddressed_[A.first] = &heap_[0] + A.second;
-  }
-
-  // Register the addresses of the tensor payload.
-  for (auto &v : M_->getGraph()->getVars()) {
-    auto *w = M_->getWeightForNode(v);
-    allocatedAddressed_[w] = v->getPayload().getUnsafePtr();
   }
 }
