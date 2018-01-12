@@ -6,11 +6,14 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/raw_ostream.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
+
+namespace llvm {
+class raw_ostream;
+}
 
 namespace glow {
 struct Type;
