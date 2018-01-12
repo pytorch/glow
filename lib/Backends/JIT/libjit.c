@@ -51,7 +51,7 @@ void batchedmatmul_f(uint8_t *dest, uint8_t *LHS, uint8_t *RHS,
           sum +=
               LHSF[getXYZ(lhsDims, ln, i, x)] * RHSF[getXYZ(rhsDims, rn, y, i)];
         }
-        dest[getXYZ(destDims, n, x, y)] = sum;
+        destF[getXYZ(destDims, n, x, y)] = sum;
       }
     }
   } // N
