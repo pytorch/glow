@@ -30,8 +30,8 @@ void elementmax_f(float *dest, float *LHS, float *RHS, size_t sz) {
   }
 }
 
-void batchedmatmul_f(float *dest, float *LHS, float *RHS,
-                     size_t *destDims, size_t *lhsDims, size_t *rhsDims) {
+void batchedmatmul_f(float *dest, float *LHS, float *RHS, size_t *destDims,
+                     size_t *lhsDims, size_t *rhsDims) {
   // For each layer in the batch:
   for (size_t n = 0; n < destDims[0]; n++) {
     // Broadcast tensors with a batch size of 1 by selecting the right slice.
@@ -54,8 +54,8 @@ void batchedmatmul_f(float *dest, float *LHS, float *RHS,
   } // N
 }
 
-void batchedadd_f(float *dest, float *batch, float *slice,
-                  size_t numSlice, size_t sliceSize) {
+void batchedadd_f(float *dest, float *batch, float *slice, size_t numSlice,
+                  size_t sliceSize) {
   // For each layer in the batch:
   for (size_t n = 0; n < numSlice; n++) {
     size_t base = n * sliceSize;
@@ -69,5 +69,35 @@ void batchedadd_f(float *dest, float *batch, float *slice,
 void copy_buffer(uint8_t *dest, uint8_t *src, size_t bytes) {
   for (int i = 0; i < bytes; i++) {
     dest[i] = src[i];
+  }
+}
+
+void element_cmp_lte_f(float *dest, float *LHS, float *RHS, size_t numElem) {
+  for (size_t i = 0; i < numElem; i++) {
+    dest[i] = LHS[i] < RHS[i];
+  }
+}
+
+void element_sub_f(float *dest, float *LHS, float *RHS, size_t numElem) {
+  for (size_t i = 0; i < numElem; i++) {
+    dest[i] = LHS[i] - RHS[i];
+  }
+}
+
+void element_add_f(float *dest, float *LHS, float *RHS, size_t numElem) {
+  for (size_t i = 0; i < numElem; i++) {
+    dest[i] = LHS[i] + RHS[i];
+  }
+}
+
+void element_div_f(float *dest, float *LHS, float *RHS, size_t numElem) {
+  for (size_t i = 0; i < numElem; i++) {
+    dest[i] = LHS[i] / RHS[i];
+  }
+}
+
+void element_mul_f(float *dest, float *LHS, float *RHS, size_t numElem) {
+  for (size_t i = 0; i < numElem; i++) {
+    dest[i] = LHS[i] * RHS[i];
   }
 }

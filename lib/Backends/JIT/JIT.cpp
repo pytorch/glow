@@ -242,6 +242,49 @@ void JITBackend::init() {
       break;
     }
 
+    case Kinded::Kind::ElementDivInstKind:
+    case Kinded::Kind::ElementMulInstKind:
+    case Kinded::Kind::ElementAddInstKind:
+    case Kinded::Kind::ElementSubInstKind:
+    case Kinded::Kind::ElementCmpLTEInstKind: {
+      // Generate code for the op parameters.
+      auto *dest = I->getOperand(0).first;
+      auto *lhs = I->getOperand(1).first;
+      auto *rhs = I->getOperand(2).first;
+      auto *destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
+      auto *lhsPtr = emitValueAddress(builder, lhs, ElemKind::FloatTy);
+      auto *rhsPtr = emitValueAddress(builder, rhs, ElemKind::FloatTy);
+      auto numElem = dest->getType()->size();
+      auto *numElemVal = emitConst(builder, numElem);
+
+      // Select the correct kernel from the library.
+      const char *funcName = "";
+      switch (I->getKind()) {
+      case Kinded::Kind::ElementDivInstKind:
+        funcName = "element_div_f";
+        break;
+      case Kinded::Kind::ElementMulInstKind:
+        funcName = "element_mul_f";
+        break;
+      case Kinded::Kind::ElementAddInstKind:
+        funcName = "element_add_f";
+        break;
+      case Kinded::Kind::ElementSubInstKind:
+        funcName = "element_sub_f";
+        break;
+      case Kinded::Kind::ElementCmpLTEInstKind:
+        funcName = "element_cmp_lte_f";
+        break;
+      default:
+        llvm_unreachable("Invalid node kind");
+      }
+
+      auto *F = llmodule_->getFunction(funcName);
+      assert(F && "Unable to load the function");
+      builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, numElemVal});
+      break;
+    }
+
       // Alloc and Dealloc instructions are handled by the memory allocator.
     case Kinded::Kind::AllocActivationInstKind:
     case Kinded::Kind::DeallocActivationInstKind:
