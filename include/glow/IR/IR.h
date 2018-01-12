@@ -318,6 +318,13 @@ public:
   Module &getModule() { return M_; }
 };
 
+/// Get the allocation corrsponding to th value \p V. It can look through
+/// tensorview instructions. \returns found allocation or nullptr.
+Value *getAllocationOrigin(Value *V);
+
+/// \returns peels off the layers of tensorviews from a value \p V.
+Value *getOrigin(Value *V);
+
 } // namespace glow
 
 #endif // GLOW_IR_IR_H

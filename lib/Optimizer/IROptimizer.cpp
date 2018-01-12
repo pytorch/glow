@@ -39,14 +39,6 @@ using LiveIntervalsMap = std::unordered_map<Value *, Intervals>;
 /// Set of instruction numbers.
 using InstructionNumbers = std::unordered_set<size_t>;
 
-static AllocActivationInst *getAllocationOrigin(Value *V) {
-  if (auto *AI = dyn_cast<AllocActivationInst>(V))
-    return AI;
-  if (auto *TVI = dyn_cast<TensorViewInst>(V))
-    return getAllocationOrigin(TVI->getSrc());
-  return nullptr;
-}
-
 /// Hoists Dealloc instructions right after their last use.
 static void hoistDealloc(Module &M) {
   // Maps activation instructions to their last non-dealloc user.
