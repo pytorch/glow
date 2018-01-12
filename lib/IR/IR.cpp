@@ -417,17 +417,7 @@ static void dumpUsers(const Value *V, llvm::raw_ostream &out,
       out << ", ";
     }
 
-    switch (U->getOperand().second) {
-    case OperandKind::In:
-      out << "@in ";
-      break;
-    case OperandKind::InOut:
-      out << "@inout ";
-      break;
-    case OperandKind::Out:
-      out << "@out ";
-      break;
-    }
+    out << getOperandKindStr(U->getOperand().second) << " ";
 
     auto InstrNum = IN.getInstrNumber(I);
     assert(InstrNum >= 0);
