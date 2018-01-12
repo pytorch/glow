@@ -78,7 +78,7 @@ static void hoistDealloc(Module &M) {
       continue;
     }
 
-    auto *alloc = cast<AllocActivationInst>(da->getOperand(0).first);
+    auto *alloc = cast<AllocActivationInst>(getOrigin(da->getOperand(0).first));
     auto where = lastUser[alloc];
     if (std::next(where) == curr) {
       // No need to move the instruction, because the last use was
@@ -86,8 +86,7 @@ static void hoistDealloc(Module &M) {
       continue;
     }
     ++where;
-    M.removeInstruction(da);
-    M.insertInstruction(where, da);
+    M.moveInstruction(where, da);
   }
 }
 
