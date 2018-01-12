@@ -4,6 +4,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
+#include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/Optimizer.h"
 
@@ -303,7 +304,7 @@ static void shareBuffers(Module &M) {
 /// nullptr if the number of writers is not exactly one.
 static Instruction *getSingleWriter(const Value *V) {
   Instruction *singleUser = nullptr;
-  for (auto U : V->getUsers()) {
+  for (const auto &U : ValueUses(V)) {
     Instruction *user = U.get();
 
     // Ignore deallocs.
@@ -333,7 +334,7 @@ void makeWeightsConst(Module &M) {
   for (auto *W : M.getWeights()) {
     bool readOnly = true;
     // For each instruction that uses the weight:
-    for (auto &U : W->getUsers()) {
+    for (const auto &U : ValueUses(W)) {
       auto kind = U.getOperand().second;
       // Check if all of the users are read-only.
       if (kind != OperandKind::In) {
