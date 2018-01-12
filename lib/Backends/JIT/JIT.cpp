@@ -188,6 +188,19 @@ void JITBackend::init() {
       break;
     }
 
+    case Kinded::Kind::CopyInstKind: {
+      CopyInst *CI = llvm::cast<CopyInst>(I);
+      auto *destPtr = emitValueAddress(builder, CI->getDest());
+      auto *srcPtr = emitValueAddress(builder, CI->getSrc());
+      auto sizeInBytes = CI->getDest()->getType()->getSizeInBytes();
+      auto *bytes = emitConst(builder, sizeInBytes);
+
+      auto *F = llmodule_->getFunction("copy_buffer");
+      assert(F && "Unable to load the function");
+      builder.CreateCall(F, {destPtr, srcPtr, bytes});
+      break;
+    }
+
     case Kinded::Kind::BatchedAddInstKind: {
       BatchedAddInst *BA = llvm::cast<BatchedAddInst>(I);
       auto *destPtr = emitValueAddress(builder, BA->getDest());

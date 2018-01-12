@@ -71,3 +71,9 @@ void batchedadd_f(uint8_t *dest, uint8_t *batch, uint8_t *slice,
     }
   }
 }
+
+void copy_buffer(uint8_t *dest, uint8_t *src, size_t bytes) {
+  for (int i = 0; i < bytes; i++) {
+    dest[i] = src[i];
+  }
+}
