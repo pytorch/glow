@@ -138,6 +138,19 @@ static void deleteDeadAllocs(Module &M) {
   auto &instrs = M.getInstrs();
 
   llvm::SmallVector<Instruction *, 16> ErasedInstructions{};
+
+  // Remove all unused tenstorviews.
+  std::copy_if(instrs.begin(), instrs.end(),
+               std::back_inserter(ErasedInstructions),
+               [](const Instruction *I) -> bool {
+                 return (isa<TensorViewInst>(I) && I->getNumUsers() == 0);
+               });
+
+  for (auto I : ErasedInstructions) {
+    M.eraseInstruction(I);
+  }
+  ErasedInstructions.clear();
+
   // Remove all of the DeallocActivationInst that close unused allocs.
   std::copy_if(
       instrs.begin(), instrs.end(), std::back_inserter(ErasedInstructions),
