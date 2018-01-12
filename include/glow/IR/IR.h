@@ -32,6 +32,7 @@ inline const char *getOperandKindStr(OperandKind CC) {
 }
 
 using InstructionOperand = std::pair<Value *, OperandKind>;
+using ConstInstructionOperand = const std::pair<const Value *, OperandKind>;
 
 /// A 'Use' is a use-list representation of an instruction operand. It maps to a
 /// specific operand in an instruction.
@@ -55,6 +56,7 @@ struct Use {
   void setOperand(Value *other);
   /// \returns the operand of the user instruction.
   InstructionOperand getOperand();
+  ConstInstructionOperand getOperand() const;
 };
 
 class Value : public Named,
