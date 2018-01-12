@@ -398,13 +398,21 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
 
   // Compute the [start..end) intervals for each alloc activation in our basic
   // block. Notice that we ignore Dealloc instructions in our analysis.
-  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it, ++instIdx) {
+  for (auto it = instrs.begin(), e = instrs.end(); it != e;
+       ++it, instIdx += InstructionNumbering::MAX_SLOT) {
+    auto *I = *it;
     // Ignore deallocations in our liveness calculation.
-    if (isa<DeallocActivationInst>(*it)) {
+    if (isa<DeallocActivationInst>(I)) {
       continue;
     }
 
-    auto InstOperands = (*it)->getOperands();
+    // Ignore tensorview instructions, because they are just aliases
+    // and do not represent a read or write, even though formally they
+    // are reads due to the @in src parameter.
+    if (isa<TensorViewInst>(I))
+      continue;
+
+    auto InstOperands = I->getOperands();
     llvm::SmallVector<Instruction::Operand, 8> SortedOperands(
         InstOperands.begin(), InstOperands.end());
 
@@ -419,39 +427,45 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
     for (int i = 0, e = SortedOperands.size(); i < e; i++) {
       auto op = SortedOperands[i].first;
       auto opKind = SortedOperands[i].second;
-      Value *loc = dyn_cast<AllocActivationInst>(op);
+      // Look through tensorviews. As a result, all operations
+      // on tensorviews are accounted as operations on their
+      // origins.
+      auto opOrigin = getOrigin(op);
+      Value *loc = dyn_cast<AllocActivationInst>(opOrigin);
       if (!loc) {
-        loc = dyn_cast<WeightVar>(op);
-        // No need to track constants. They are always read-only.
-        if (loc && dyn_cast<WeightVar>(op)->getMutability() ==
-                       WeightVar::MutabilityKind::Constant)
-          continue;
+        loc = dyn_cast<WeightVar>(opOrigin);
       }
       // Bail if the operand is not an AllocActivationInst or a WeightVar.
       if (!loc) {
         continue;
       }
 
-      auto I = liveness.find(loc);
-      if (I == liveness.end()) {
+      auto opIdx = instIdx;
+      if (opKind == OperandKind::Out) {
+        opIdx = InstructionNumbering::getInstrWriteSlotNumber(instIdx);
+      } else {
+        opIdx = InstructionNumbering::getInstrReadSlotNumber(instIdx);
+      }
+
+      auto found = liveness.find(loc);
+      if (found == liveness.end()) {
         // Create a new interval.
-        liveness[loc].push_back({instIdx, instIdx});
+        liveness[loc].push_back({opIdx, opIdx + 1});
         // If it is a first use, it should be either an input variable or
         // a write.
         // FIXME: Remove InOut!
-        assert((isa<TensorViewInst>(*it) || isa<WeightVar>(op) ||
+        assert((isa<TensorViewInst>(I) || isa<WeightVar>(opOrigin) ||
                 opKind == OperandKind::Out || opKind == OperandKind::InOut) &&
                "First reference inside a live interval should be either an "
                "input variable or a write");
         continue;
       }
 
-      auto &Intervals = I->second;
+      auto &Intervals = found->second;
       // Extend the interval but only if current use is not a write or
       // if it is a write, but we have seen a read before.
-      if (opKind != OperandKind::Out ||
-          Intervals.back().second != Intervals.back().first)
-        Intervals.back().second = instIdx;
+      if (opKind != OperandKind::Out)
+        Intervals.back().second = opIdx + 1;
 
       // No need to create a new interval unless it is a write.
       if (opKind == OperandKind::In || opKind == OperandKind::InOut)
@@ -460,7 +474,7 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
       // This instruction modifies the memory location.
       // Therefore, end the current active live interval
       // for this memory location and begin a new one.
-      Intervals.push_back({instIdx, instIdx});
+      Intervals.push_back({opIdx, opIdx + 1});
     }
   }
 
@@ -481,7 +495,7 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
 static Intervals::iterator getEnclosingInterval(Intervals &LiveIntervals,
                                                 size_t instIdx) {
   for (auto I = LiveIntervals.begin(), E = LiveIntervals.end(); I != E; ++I) {
-    if (I->first <= instIdx && instIdx <= I->second)
+    if (I->first <= instIdx && instIdx < I->second)
       return I;
   }
   return LiveIntervals.end();
