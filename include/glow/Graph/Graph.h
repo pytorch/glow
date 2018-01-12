@@ -26,7 +26,6 @@ public:
     Created,
     Differentiated,
     Lowered,
-    Optimized,
     IRGenerated,
   };
 
