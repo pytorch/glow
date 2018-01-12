@@ -2,6 +2,7 @@
 
 #include "glow/IR/IR.h"
 #include "glow/Graph/Graph.h"
+#include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Support.h"
 
@@ -15,6 +16,7 @@
 
 using namespace glow;
 using llvm::dyn_cast;
+using llvm::isa;
 
 //===----------------------------------------------------------------------===//
 //                       General IR operations
@@ -42,6 +44,9 @@ Value *glow::getOrigin(Value *V) {
   }
   return V;
 }
+
+bool glow::isTensorView(glow::Value *v) { return isa<TensorViewInst>(v); }
+
 bool Instruction::classof(const Value *V) {
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)
