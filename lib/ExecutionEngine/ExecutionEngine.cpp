@@ -17,6 +17,11 @@ ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
   IP_ = std::unique_ptr<Backend>(createBackend(backendKind, &*M_));
 }
 
+// Set the code generator kind to \p backendKind.
+void ExecutionEngine::setBackend(BackendKind backendKind) {
+  IP_ = std::unique_ptr<Backend>(createBackend(backendKind, &*M_));
+}
+
 ExecutionEngine::~ExecutionEngine() = default;
 
 void ExecutionEngine::run(llvm::ArrayRef<Variable *> vars,

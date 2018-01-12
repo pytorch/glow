@@ -38,6 +38,10 @@ public:
 
   ~ExecutionEngine();
 
+  // Set the code generator kind to \p backendKind. New code will be generated
+  // using this backend.
+  void setBackend(BackendKind backendKind);
+
   /// \returns the internal module.
   Module &getModule() { return *M_; }
 
