@@ -123,6 +123,8 @@ static void sinkAllocas(Module &M) {
       }
       allocs.erase(A);
       M.insertInstruction(it, aa);
+      if (allocs.empty())
+        return;
     }
   }
 
