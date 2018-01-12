@@ -12,14 +12,14 @@
 using namespace glow;
 
 ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
-  G_ = std::unique_ptr<Graph>(new Graph());
-  M_ = std::unique_ptr<Module>(new Module(&*G_));
-  IP_ = std::unique_ptr<Backend>(createBackend(backendKind, &*M_));
+  G_.reset(new Graph());
+  M_.reset(new Module(&*G_));
+  IP_.reset(createBackend(backendKind, &*M_));
 }
 
 // Set the code generator kind to \p backendKind.
 void ExecutionEngine::setBackend(BackendKind backendKind) {
-  IP_ = std::unique_ptr<Backend>(createBackend(backendKind, &*M_));
+  IP_.reset(createBackend(backendKind, &*M_));
 }
 
 ExecutionEngine::~ExecutionEngine() = default;
