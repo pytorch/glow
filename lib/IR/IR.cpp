@@ -34,6 +34,10 @@ void Use::setOperand(Value *other) { use_->setOperand(idx_, other); }
 
 InstructionOperand Use::getOperand() { return use_->getOperand(idx_); }
 
+ConstInstructionOperand Use::getOperand() const {
+  return use_->getOperand(idx_);
+}
+
 void Instruction::pushOperand(Operand op) {
   ops_.emplace_back(nullptr, op.second);
   setOperand(ops_.size() - 1, op.first);
@@ -86,7 +90,7 @@ void Value::verify(const Module &M) const {}
 void Value::verifyUseList(const Module &M) const {
   auto Users = getUsers();
   auto Instrs = M.getInstrs();
-  for (auto Use : Users) {
+  for (const auto &Use : Users) {
     auto *I = Use.get();
     (void)I;
     // Every instruction using this value should be in the instruction list.
@@ -348,7 +352,7 @@ static void dumpIRInContext(const Value *V, llvm::raw_ostream &out) {
   if (const auto *I = dyn_cast<const Instruction>(V)) {
     if (I->getNumOperands() > 0)
       out << "Operands:\n";
-    for (auto &Op : I->getOperands()) {
+    for (const auto &Op : I->getOperands()) {
       out << "\t";
       Op.first->dump(out);
       out << "\n";

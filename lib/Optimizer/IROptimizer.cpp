@@ -309,7 +309,7 @@ static void shareBuffers(Module &M) {
 
 /// \returns the pointer to the single writer that writes into this value, or
 /// nullptr if the number of writers is not exactly one.
-static Instruction *getSingleWriter(Value *V) {
+static Instruction *getSingleWriter(const Value *V) {
   Instruction *singleUser = nullptr;
   for (auto U : V->getUsers()) {
     Instruction *user = U.get();
@@ -364,10 +364,10 @@ void makeWeightsConst(Module &M) {
 static void LLVM_ATTRIBUTE_UNUSED dump(Module &M,
                                        LiveIntervalsMap &IntervalsMap) {
   llvm::outs() << "\nDumping live intervals map:\n";
-  for (auto &I : IntervalsMap) {
+  for (const auto &I : IntervalsMap) {
     llvm::outs() << "\nValue " << I.first->getName();
     llvm::outs() << "\n";
-    for (auto &Interval : I.second) {
+    for (const auto &Interval : I.second) {
       llvm::outs() << " (" << Interval.first << ", " << Interval.second << ")";
     }
     llvm::outs() << "\n";
@@ -781,7 +781,7 @@ static void performDebugInstrumentation(Module &M) {
       continue;
     }
     auto instrName = (*it)->getName();
-    for (auto const &Op : (*it)->getOperands()) {
+    for (const auto &Op : (*it)->getOperands()) {
       // Dump inputs of the current instruction before the instruction.
       if (Op.second != OperandKind::Out) {
         std::string name = "debug_print.before.";
