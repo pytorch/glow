@@ -59,12 +59,29 @@ JITBackend::~JITBackend() {
 void JITBackend::clear() { M_->clear(); }
 
 llvm::Value *JITBackend::emitValueAddress(llvm::IRBuilder<> &builder,
-                                          glow::Value *val) {
+                                          glow::Value *val, ElemKind ptrTy) {
   assert(allocatedAddressed_.count(val) && "Value address was not allocated");
   void *ptr = allocatedAddressed_[val];
   auto *offset = emitConst(builder, (size_t)ptr);
-  return builder.CreateIntToPtr(offset,
-                                llvm::Type::getInt8Ty(ctx_)->getPointerTo());
+
+  llvm::Type *T = nullptr;
+
+  switch (ptrTy) {
+  case ElemKind::FloatTy:
+    T = llvm::Type::getFloatTy(ctx_)->getPointerTo();
+    break;
+  case ElemKind::Int8Ty:
+    T = llvm::Type::getInt8Ty(ctx_)->getPointerTo();
+    break;
+  case ElemKind::IndexTy:
+    T = builder.getIntNTy(sizeof(size_t) * 8)->getPointerTo();
+    break;
+  default:
+    llvm_unreachable("Unimplemented");
+    break;
+  }
+
+  return builder.CreateIntToPtr(offset, T);
 }
 
 llvm::Value *JITBackend::emitValueDims(llvm::IRBuilder<> &builder,
@@ -152,7 +169,7 @@ void JITBackend::init() {
     switch (I->getKind()) {
     case Kinded::Kind::SplatInstKind: {
       SplatInst *SI = llvm::cast<SplatInst>(I);
-      auto *addr = emitValueAddress(builder, SI->getDest());
+      auto *addr = emitValueAddress(builder, SI->getDest(), ElemKind::FloatTy);
       auto cnt = emitValueSize(builder, SI->getDest());
       auto *val = emitConst(builder, SI->getValue());
       auto *F = llmodule_->getFunction("splat_f");
@@ -162,9 +179,10 @@ void JITBackend::init() {
     }
     case Kinded::Kind::ElementMaxInstKind: {
       ElementMaxInst *EM = llvm::cast<ElementMaxInst>(I);
-      auto *destPtr = emitValueAddress(builder, EM->getDest());
-      auto *LHSPtr = emitValueAddress(builder, EM->getLHS());
-      auto *RHSPtr = emitValueAddress(builder, EM->getRHS());
+      auto *destPtr =
+          emitValueAddress(builder, EM->getDest(), ElemKind::FloatTy);
+      auto *LHSPtr = emitValueAddress(builder, EM->getLHS(), ElemKind::FloatTy);
+      auto *RHSPtr = emitValueAddress(builder, EM->getRHS(), ElemKind::FloatTy);
       auto cnt = emitValueSize(builder, EM->getDest());
       auto *F = llmodule_->getFunction("elementmax_f");
       assert(F && "Unable to load the function");
@@ -173,9 +191,12 @@ void JITBackend::init() {
     }
     case Kinded::Kind::BatchedMatMulInstKind: {
       BatchedMatMulInst *BMM = llvm::cast<BatchedMatMulInst>(I);
-      auto *destPtr = emitValueAddress(builder, BMM->getDest());
-      auto *LHSPtr = emitValueAddress(builder, BMM->getLHS());
-      auto *RHSPtr = emitValueAddress(builder, BMM->getRHS());
+      auto *destPtr =
+          emitValueAddress(builder, BMM->getDest(), ElemKind::FloatTy);
+      auto *LHSPtr =
+          emitValueAddress(builder, BMM->getLHS(), ElemKind::FloatTy);
+      auto *RHSPtr =
+          emitValueAddress(builder, BMM->getRHS(), ElemKind::FloatTy);
 
       auto *destDims = emitValueDims(builder, BMM->getDest());
       auto *LHSDims = emitValueDims(builder, BMM->getLHS());
@@ -190,8 +211,9 @@ void JITBackend::init() {
 
     case Kinded::Kind::CopyInstKind: {
       CopyInst *CI = llvm::cast<CopyInst>(I);
-      auto *destPtr = emitValueAddress(builder, CI->getDest());
-      auto *srcPtr = emitValueAddress(builder, CI->getSrc());
+      auto *destPtr =
+          emitValueAddress(builder, CI->getDest(), ElemKind::FloatTy);
+      auto *srcPtr = emitValueAddress(builder, CI->getSrc(), ElemKind::FloatTy);
       auto sizeInBytes = CI->getDest()->getType()->getSizeInBytes();
       auto *bytes = emitConst(builder, sizeInBytes);
 
@@ -203,9 +225,12 @@ void JITBackend::init() {
 
     case Kinded::Kind::BatchedAddInstKind: {
       BatchedAddInst *BA = llvm::cast<BatchedAddInst>(I);
-      auto *destPtr = emitValueAddress(builder, BA->getDest());
-      auto *batchPtr = emitValueAddress(builder, BA->getBatch());
-      auto *slicePtr = emitValueAddress(builder, BA->getSlice());
+      auto *destPtr =
+          emitValueAddress(builder, BA->getDest(), ElemKind::FloatTy);
+      auto *batchPtr =
+          emitValueAddress(builder, BA->getBatch(), ElemKind::FloatTy);
+      auto *slicePtr =
+          emitValueAddress(builder, BA->getSlice(), ElemKind::FloatTy);
 
       auto bdim = flattenCdr(BA->getBatch()->dims());
       auto *numSlice = emitConst(builder, bdim.first);
@@ -234,6 +259,7 @@ void JITBackend::init() {
 
   // Optimize the module.
   optimizeLLVMModule(func_);
+  llmodule_->print(llvm::errs(), nullptr);
   // And pass the ownership to the JIT.
   JIT_->addModule(std::move(llmodule_));
 }
