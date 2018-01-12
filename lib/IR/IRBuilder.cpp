@@ -130,6 +130,8 @@ SoftMaxWithEInst *IRBuilder::createSoftMaxWithEOp(Value *input,
                                                   Value *selected) {
   auto *res = createAllocActivationInst("softmax.res", input->getType());
   auto *E = createAllocActivationInst("e_cache", input->getType());
+  // Initialize E, because it is an inout parameter.
+  createSplatInst("zero", E, 0.0);
   return createSoftMaxWithEInst("softmax", res, input, E, selected);
 }
 
