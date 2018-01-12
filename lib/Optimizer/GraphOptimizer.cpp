@@ -546,8 +546,6 @@ static void OptimizeSliceOfSplat(Graph &G) {
 }
 
 void glow::optimize(Graph &G, CompilationMode mode) {
-  G.advanceState(Graph::State::Optimized);
-
   // Sink transpose operations in an attempt to cancel them out.
   sinkCode(G);
 
