@@ -153,6 +153,8 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
   TypeRef T = input.getType();
   auto idim = flattenCdr(input.dims());
 
+  // TODO: add assertions to check inputs' dims
+
   auto OT = uniqueType(T->getElementType(), {idim.first, outDepth});
   return addNode(new FullyConnectedNode(name, OT, input, W, B, outDepth));
 }

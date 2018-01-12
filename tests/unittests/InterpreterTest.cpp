@@ -495,9 +495,11 @@ TEST(Network, trainASimpleRNN) {
   auto *Y = G.createVariable(ElemKind::FloatTy, {1, 3}, "Y",
                              Variable::InitKind::Extern);
 
+  const unsigned hiddenDepth = 5;
+
   // Initialize the state to zero.
-  auto *HInit = G.createVariable(ElemKind::FloatTy, {1, 3}, "initial_state",
-                                 Variable::InitKind::Extern);
+  auto *HInit = G.createVariable(ElemKind::FloatTy, {1, hiddenDepth},
+                                 "initial_state", Variable::InitKind::Extern);
   HInit->getPayload().zero();
 
   // Extract a slice for each input.
@@ -509,8 +511,6 @@ TEST(Network, trainASimpleRNN) {
   auto *Y1 = G.createSlice("Y1", Y, {0, 0}, {1, 1});
   auto *Y2 = G.createSlice("Y2", Y, {0, 1}, {1, 2});
   auto *Y3 = G.createSlice("Y3", Y, {0, 2}, {1, 3});
-
-  const unsigned hiddenDepth = 5;
 
   // Create the first block in the RNN
   auto *FC11 = G.createFullyConnected("fc11", HInit, hiddenDepth);
