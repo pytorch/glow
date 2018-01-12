@@ -212,8 +212,8 @@ void JITBackend::init() {
     case Kinded::Kind::CopyInstKind: {
       CopyInst *CI = llvm::cast<CopyInst>(I);
       auto *destPtr =
-          emitValueAddress(builder, CI->getDest(), ElemKind::FloatTy);
-      auto *srcPtr = emitValueAddress(builder, CI->getSrc(), ElemKind::FloatTy);
+          emitValueAddress(builder, CI->getDest(), ElemKind::Int8Ty);
+      auto *srcPtr = emitValueAddress(builder, CI->getSrc(), ElemKind::Int8Ty);
       auto sizeInBytes = CI->getDest()->getType()->getSizeInBytes();
       auto *bytes = emitConst(builder, sizeInBytes);
 
