@@ -805,9 +805,10 @@ void performPeepholeOptimizations(Module &M) {
   IRBuilder B(&M);
   for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
     auto cur = it;
+    auto *I = *cur;
     it = std::next(it);
     // PoolMaxWithXYInst -> PoolMaxInst.
-    if (auto *PMI = dyn_cast<PoolMaxWithXYInst>(*cur)) {
+    if (auto *PMI = dyn_cast<PoolMaxWithXYInst>(I)) {
       auto *SrcXY = PMI->getSrcXY();
       // Optimize only if the cache is an allocation and
       // it has exactly 2 users: the current instruction and
@@ -818,13 +819,13 @@ void performPeepholeOptimizations(Module &M) {
       auto *NewPMI = B.createPoolMaxInst(PMI->getName(), PMI->getDest(),
                                          PMI->getSrc(), PMI->getKernel(),
                                          PMI->getStride(), PMI->getPad());
-      M.moveInstruction(cur, NewPMI);
+      it = M.moveInstruction(cur, NewPMI);
       M.eraseInstruction(cur);
       continue;
     }
 
     // SoftMaxWithXYInst -> SoftMaxInst.
-    if (auto *SMI = dyn_cast<SoftMaxWithEInst>(*cur)) {
+    if (auto *SMI = dyn_cast<SoftMaxWithEInst>(I)) {
       auto *E = SMI->getE();
       // Optimize only if the cache is an allocation and
       // it has exactly 2 users: the current instruction and
@@ -834,36 +835,78 @@ void performPeepholeOptimizations(Module &M) {
 
       auto *NewSMI = B.createSoftMaxInst(SMI->getName(), SMI->getDest(),
                                          SMI->getSrc(), SMI->getSelected());
-      M.moveInstruction(cur, NewSMI);
+      it = M.moveInstruction(cur, NewSMI);
       M.eraseInstruction(cur);
       continue;
     }
 
-    // ReshapeInst -> TensorViewInst.
-    if (auto *RI = dyn_cast<ReshapeInst>(*cur)) {
-      auto *Dest = RI->getDest();
-      if (!isa<AllocActivationInst>(Dest))
-        continue;
-      // Check if there is only one write for the Dest.
-      // If this is the case, then it is only written by
-      // the current instruction and can be replaced by
-      // a tensorview.
-      size_t WritesNum = 0;
-      for (auto U : Dest->getUsers()) {
-        if (U.getOperand().second == OperandKind::In)
-          continue;
-        if (isa<DeallocActivationInst>(U.get()))
-          continue;
-        if (++WritesNum >= 2)
-          break;
-      }
-      if (WritesNum >= 2)
-        continue;
-      auto *TVI =
-          B.createTensorViewInst(RI->getName(), RI->getSrc(), Dest->getType());
-      M.moveInstruction(cur, TVI);
-      replaceAllNonDeallocUsersWith(Dest, TVI);
+    // reshape -> tensorview, copy
+    if (auto *RI = dyn_cast<ReshapeInst>(I)) {
+      auto *TVI = B.createTensorViewInst(RI->getName(), RI->getSrc(),
+                                         RI->getDest()->getType());
+      it = M.moveInstruction(cur, TVI);
+      auto *CI = B.createCopyInst(RI->getName(), RI->getDest(), TVI);
+      M.moveInstruction(cur, CI);
       M.eraseInstruction(cur);
+      continue;
+    }
+
+    // tranpose dest, splat (src), ... -> copy dest, tensorview (splat (src))
+    // This is safe, because transpose of a splat does not change any elements.
+    // It changes only types.
+    if (auto *TI = dyn_cast<TransposeInst>(I)) {
+      auto Src = TI->getSrc();
+      auto Dest = TI->getDest();
+      if (auto W = getSingleWriter(Src)) {
+        if (isa<SplatInst>(W)) {
+          if (Src->getType() != Dest->getType()) {
+            auto *TVI =
+                B.createTensorViewInst(TI->getName(), Src, Dest->getType());
+            M.moveInstruction(cur, TVI);
+            Src = TVI;
+          }
+          auto *CI = B.createCopyInst(TI->getName(), TI->getDest(), Src);
+          it = M.moveInstruction(cur, CI);
+          M.eraseInstruction(cur);
+          continue;
+        }
+      }
+    }
+
+    // Convert element_max instruction into a canonical form,
+    // where the splat (i.e. the constant) argument is the last one.
+    if (auto *EM = dyn_cast<ElementMaxInst>(I)) {
+      auto *LHS = EM->getLHS();
+      auto *RHS = EM->getRHS();
+      auto *WLHS = getSingleWriter(LHS);
+      if (!WLHS)
+        continue;
+      if (!isa<SplatInst>(WLHS))
+        continue;
+      // If RHS is a splat already, there is nothing to do.
+      auto *WRHS = getSingleWriter(RHS);
+      if (WRHS && isa<SplatInst>(WRHS))
+        continue;
+      auto *NewEM =
+          B.createElementMaxInst(EM->getName(), EM->getDest(), RHS, LHS);
+      it = M.moveInstruction(cur, NewEM);
+      M.eraseInstruction(cur);
+      continue;
+    }
+
+    // tensorview that does not change the type is equivalent to its source
+    // operand.
+    if (auto *TV = dyn_cast<TensorViewInst>(I)) {
+      if (TV->getType() == TV->getSrc()->getType()) {
+        replaceAllNonDeallocUsersWith(TV, TV->getSrc());
+      }
+      continue;
+    }
+
+    // Remove useless copies.
+    if (auto *CI = dyn_cast<CopyInst>(I)) {
+      if (getOrigin(CI->getSrc()) == getOrigin(CI->getDest()))
+        M.eraseInstruction(cur);
       continue;
     }
   }
@@ -892,6 +935,8 @@ void glow::optimize(Module &M, CompilationMode mode) {
 
   // Perform copy propagation.
   copyPropagation(M);
+
+  performPeepholeOptimizations(M);
 
   deleteDeadAllocs(M);
 
