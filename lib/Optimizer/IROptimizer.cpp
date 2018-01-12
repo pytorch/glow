@@ -39,6 +39,8 @@ using LivenessMap = std::unordered_map<Value *, Interval>;
 using LiveIntervalsMap = std::unordered_map<Value *, Intervals>;
 /// Set of instruction numbers.
 using InstructionNumbers = std::unordered_set<size_t>;
+// Set of instructions.
+using Instructions = std::unordered_set<Instruction *>;
 
 /// Hoists Dealloc instructions right after their last use.
 static void hoistDealloc(Module &M) {
@@ -501,16 +503,14 @@ static void replaceAllUsesWith(Value *val, Value *with, Interval &I, Module &M,
   }
 }
 
-static void eraseInstructions(Module &M,
-                              InstructionNumbers &ErasedInstructions) {
-  auto &instrs = M.getInstrs();
-  size_t instIdx = 0;
-  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++instIdx) {
-    if (ErasedInstructions.count(instIdx) == 0) {
-      ++it;
-      continue;
-    }
-    it = M.eraseInstruction(it);
+/// Erase all instructions from the \p ErasedInstructions set.
+/// If \p forceErase is true, no additional checks are performed.
+/// Otherwise, copies into weight variables cannot be erased.
+static void eraseInstructions(Module &M, Instructions &ErasedInstructions) {
+  for (auto it : ErasedInstructions) {
+    DEBUG(llvm::dbgs() << "Deleting instruction :"; it->dump(llvm::dbgs());
+          llvm::dbgs() << "\n");
+    M.eraseInstruction(it);
   }
 }
 
@@ -518,7 +518,7 @@ static void eraseInstructions(Module &M,
 void copyPropagation(Module &M) {
   auto &instrs = M.getInstrs();
 
-  InstructionNumbers ErasedInstructions;
+  Instructions ErasedInstructions;
   // Build a list of live intervals for each memory location
   // which is either a WeightVar or a an Allocation.
   LiveIntervalsMap IntervalsMap;
@@ -570,7 +570,7 @@ void copyPropagation(Module &M) {
       // There is only one write into Dest and it is this copy instruction.
       // Therefore it is safe to replace all uses of Dest by Src.
       replaceAllNonDeallocUsersWith(Dest, Src);
-      ErasedInstructions.insert(instIdx);
+      ErasedInstructions.insert(ci);
       DEBUG(llvm::outs() << "Can replace this copy by forward "
                             "propagating its value\n");
       ++it;
@@ -677,7 +677,7 @@ void copyPropagation(Module &M) {
                                             "instruction should be the same "
                                             "after copy propagation");
     // Remove the obsolete copy instruction.
-    ErasedInstructions.insert(instIdx);
+    ErasedInstructions.insert(ci);
     ++it;
   }
 
@@ -685,76 +685,87 @@ void copyPropagation(Module &M) {
   eraseInstructions(M, ErasedInstructions);
 }
 
-/// Get a set of operands updated by an instruction.
-static void
-getUpdatedOperands(InstrIterator I,
-                   llvm::SmallVectorImpl<Instruction::Operand> &Operands) {
-  assert(Operands.empty());
-  for (int i = 0, e = (*I)->getNumOperands(); i < e; i++) {
-    auto Op = (*I)->getOperand(i);
-    // Collect only operands that are updated.
-    if (Op.second == OperandKind::In)
-      continue;
-    // Add to the set if it is not present there yet.
-    if (std::find(Operands.begin(), Operands.end(), Op) == Operands.end())
-      Operands.push_back(Op);
-  }
-}
-
 /// Dead Store Elimination.
+///
+/// Perform a backwards pass:
+/// - For each location remember the last seen read.
+/// - When a write is detected:
+///   - If there is no last seen read, it is safe to remove this write
+///   - Remember this last seen write, reset the last seen read.
+/// A single pass is enough because currently there is just a single basic
+/// basic block.
 static void eliminateDeadStores(Module &M) {
-  InstructionNumbers ErasedInstructions;
-  // Build a list of live intervals for each memory location
-  // which is either a WeightVar or a an Allocation.
-  InstructionNumbering InstrNumbering(M);
-  LiveIntervalsMap IntervalsMap;
-  calculateLiveIntervals(M, IntervalsMap);
+  auto &instrs = M.getInstrs();
+  // Instructions to be erased.
+  Instructions ErasedInstructions;
+  /// Representation of the analysis state.
+  struct MemoryLocationState {
+    /// Instruction that contained a last seen read.
+    Instruction *lastSeenRead_{nullptr};
+    /// Instruction that contained a last seen write.
+    Instruction *lastSeenWrite_{nullptr};
+  };
 
-  // For each memory location from the intervals map
-  // - Find intervals which whose start and end are the same and the first
-  // instruction is a write. It means that they are only written to, but
-  // never read.
-  // - If this first instruction writes only into the memory location in
-  // question and does not write/update any other memory locations,
-  // this instruction can be removed.
-  for (auto const &Entry : IntervalsMap) {
-    auto *ML = Entry.first;
-    (void)ML;
-    auto &IL = Entry.second;
-    for (auto &LI : IL) {
-      auto IntervalBegin = LI.first;
-      auto IntervalEnd = LI.second;
-      if (IntervalBegin != IntervalEnd)
-        continue;
-      // Get the defining instruction for this interval.
-      auto I = InstrNumbering.getInstr(IntervalBegin);
-      if (isa<AllocActivationInst>(*I) || isa<DeallocActivationInst>(*I))
-        continue;
-      // Check which memory locations are being changed by this instruction.
-      llvm::SmallVector<Instruction::Operand, 8> Operands;
-      getUpdatedOperands(I, Operands);
-      if (Operands.size() > 1) {
-        // Instruction updates more than one memory location.
-        // TODO: If none of those locations are used afterwards, then it is fine
-        // to remove it.
-        continue;
+  // Maps each memory location to its analysis state.
+  std::unordered_map<Value *, MemoryLocationState> memoryState;
+
+  // Create a fake last read for each of the weight variables,
+  // to indicate that WeightVars are live at the end of the BB.
+  // This ensures that last stored into WeightVars are not
+  // eliminated.
+  for (auto *WV : M.getWeights()) {
+    memoryState[WV].lastSeenRead_ = *std::prev(instrs.end());
+  }
+
+  // Iterate over instructions in reversed order.
+  for (auto it = instrs.rbegin(), e = instrs.rend(); it != e; ++it) {
+    auto *I = *it;
+    if (isa<DeallocActivationInst>(I) || isa<AllocActivationInst>(I) ||
+        isa<TensorViewInst>(I))
+      continue;
+    size_t NumMutatedOperands = 0;
+    size_t NumNonReadMutatedOperands = 0;
+    // Process all operand writes.
+    for (const auto &Op : I->getOperands()) {
+      auto OpOrigin = getOrigin(Op.first);
+      auto OpKind = Op.second;
+      auto &State = memoryState[OpOrigin];
+      if (OpKind != OperandKind::In) {
+        NumMutatedOperands++;
+        // If it a write that was not read and it is not a last write into
+        // a WeightVar (i.e. an observable effect), then is can be eliminated.
+        // If there are multiple writes in this instruction, all of them
+        // should satisfy this property for the instruction to be removed.
+        if (!State.lastSeenRead_) {
+          NumNonReadMutatedOperands++;
+        }
+        State.lastSeenWrite_ = I;
+        State.lastSeenRead_ = nullptr;
       }
-      DEBUG(llvm::dbgs() << "Found a dead store into " << ML->getName().str()
-                         << ": ";
-            (*I)->dump(llvm::dbgs()); llvm::dbgs() << "\n";
-            llvm::dbgs() << "Operand being updated is: "
-                         << Operands[0].first->getName().str() << "\n";
-            llvm::dbgs() << "Interval is: "
-                         << "(" << IntervalBegin << ", " << IntervalEnd << ")"
-                         << "\n");
-      assert(Operands[0].first == ML);
-      // Only the current memory location is being updated by this instruction.
-      ErasedInstructions.insert(IntervalBegin);
+    }
+
+    // It is safe to remove an instruction if all of its mutated operands
+    // are not read afterwards.
+    if (NumMutatedOperands > 0 &&
+        NumMutatedOperands == NumNonReadMutatedOperands) {
+      ErasedInstructions.insert(I);
+      // Do not process any reads of operands, because
+      // this instruction will be eliminated.
+      continue;
+    }
+
+    // Process all operand reads.
+    for (const auto &Op : I->getOperands()) {
+      auto OpOrigin = getOrigin(Op.first);
+      auto OpKind = Op.second;
+      auto &State = memoryState[OpOrigin];
+      if (OpKind != OperandKind::Out) {
+        State.lastSeenRead_ = I;
+      }
     }
   }
-  if (!ErasedInstructions.empty()) {
-    eraseInstructions(M, ErasedInstructions);
-  }
+
+  eraseInstructions(M, ErasedInstructions);
 }
 
 /// Instrument the code to make it easier to debug issues.
