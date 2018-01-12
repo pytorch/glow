@@ -26,19 +26,17 @@ unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
   std::vector<std::string> words;
   std::string line;
 
-  if (ptbInput.is_open()) {
-    while (getline(ptbInput, line)) {
-      std::istringstream ss(line);
-      std::string token;
-      while (getline(ss, token, ' ')) {
-        if (!token.empty()) {
-          words.push_back(token);
-        }
+  while (getline(ptbInput, line)) {
+    std::istringstream ss(line);
+    std::string token;
+    while (getline(ss, token, ' ')) {
+      if (!token.empty()) {
+        words.push_back(token);
       }
-      words.push_back("<eos>");
     }
-    ptbInput.close();
+    words.push_back("<eos>");
   }
+  ptbInput.close();
 
   // We limit the number of words to 50,000 otherwise things will be slower.
   words = std::vector<std::string>(words.begin(), words.begin() + maxNumWords);
@@ -56,9 +54,8 @@ unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
   }
 
   // Sort the counter
-  std::vector<std::pair<std::string, int>> counter_v;
-  copy(counter.begin(), counter.end(),
-       std::back_inserter<std::vector<std::pair<std::string, int>>>(counter_v));
+  std::vector<std::pair<std::string, int>> counter_v(counter.begin(),
+                                                     counter.end());
 
   sort(counter_v.begin(), counter_v.end(),
        [](const std::pair<std::string, int> &lhs,
@@ -122,18 +119,17 @@ void debug(Node *node) {
 ///
 /// The results for the perplexity are expected to look as:
 ///
-/// Iteration 1: 104.985069275
-/// Iteration 2: 82.1509094238
-/// Iteration 4: 70.623085022
-/// Iteration 6: 63.8728675842
-/// Iteration 8: 58.5050888062
-/// Iteration 10: 53.9333686829
-/// Iteration 12: 49.9019050598
-/// Iteration 14: 46.4357528687
-/// Iteration 14: 46.4357528687
-/// Iteration 16: 46.4357528687
-/// Iteration 18: 40.8589134216
-/// Iteration 20: 38.6190299988
+/// Iteration 1: 105.041900635
+/// Iteration 2: 82.2057647705
+/// Iteration 4: 70.7041549683
+/// Iteration 6: 63.9953918457
+/// Iteration 8: 58.681804657
+/// Iteration 10: 54.0125465393
+/// Iteration 12: 49.9519844055
+/// Iteration 14: 46.4922065735
+/// Iteration 16: 43.5101737976
+/// Iteration 18: 40.9120101929
+/// Iteration 20: 38.6976051331
 ///
 /// For reference, we expect the usage of an LSTM instead of the current
 /// simple RNN block will improve the perplexity to ~20.
@@ -172,13 +168,15 @@ void testPTB() {
   Variable *Y = G.createVariable(ElemKind::IndexTy, {minibatchSize, numSteps},
                                  "selected", Variable::InitKind::Extern);
 
-  auto *HtInit =
+  // Initialize internal memory variable H:
+  Variable *HtInit =
       G.createVariable(ElemKind::FloatTy, {minibatchSize, hiddenSize},
-                       "initial_state", Variable::InitKind::Broadcast, 0);
+                       "initial_state", Variable::InitKind::Extern);
+  HtInit->getPayload().zero();
 
   std::vector<Node *> outputNodes;
   std::vector<Node *> targetNodes;
-  TanhNode *HtLast;
+  Node *HtLast = HtInit;
 
   float b = 0.1;
   auto *Whh = G.createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
@@ -209,12 +207,8 @@ void testPTB() {
                              {minibatchSize, (t + 1) * vocabSize});
     auto *Yt = G.createSlice(YtName, Y, {0, t}, {minibatchSize, t + 1});
 
-    FullyConnectedNode *FC1t;
-    if (t == 0) {
-      FC1t = G.createFullyConnected(FC1tName, HtInit, Whh, Bh1, hiddenSize);
-    } else {
-      FC1t = G.createFullyConnected(FC1tName, HtLast, Whh, Bh1, hiddenSize);
-    }
+    FullyConnectedNode *FC1t =
+        G.createFullyConnected(FC1tName, HtLast, Whh, Bh1, hiddenSize);
     auto *FC2t = G.createFullyConnected(FC2tName, Xt, Wxh, Bh2, hiddenSize);
     auto *At =
         G.createArithmetic(FCtName, FC1t, FC2t, ArithmeticNode::Mode::Add);

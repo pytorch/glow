@@ -8,6 +8,7 @@
 
 #include "gtest/gtest.h"
 
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <cassert>
@@ -496,7 +497,8 @@ TEST(Network, trainASimpleRNN) {
 
   // Initialize the state to zero.
   auto *HInit = G.createVariable(ElemKind::FloatTy, {1, 3}, "initial_state",
-                                 Variable::InitKind::Broadcast, 0);
+                                 Variable::InitKind::Extern);
+  HInit->getPayload().zero();
 
   // Extract a slice for each input.
   auto *X1 = G.createSlice("X1", X, {0, 0, 0}, {1, 1, 4});
@@ -508,32 +510,45 @@ TEST(Network, trainASimpleRNN) {
   auto *Y2 = G.createSlice("Y2", Y, {0, 1}, {1, 2});
   auto *Y3 = G.createSlice("Y3", Y, {0, 2}, {1, 3});
 
+  const unsigned hiddenDepth = 5;
+
   // Create the first block in the RNN
-  auto *FC11 = G.createFullyConnected("fc11", HInit, 5);
-  auto *FC12 = G.createFullyConnected("fc12", X1, 5);
+  auto *FC11 = G.createFullyConnected("fc11", HInit, hiddenDepth);
+  auto *FC12 = G.createFullyConnected("fc12", X1, hiddenDepth);
   auto *A1 = G.createArithmetic("fc1", FC11, FC12, ArithmeticNode::Mode::Add);
   auto *H1 = G.createTanh("tan1", A1);
   auto *O1 = G.createFullyConnected("O1", H1, 1);
   auto *R1 = G.createRegression("reg1", O1, Y1);
 
+  // FC11, FC12 and O1 define weight variables, which are later used in next 2
+  // recurrent steps.
+  Variable *Whh = llvm::cast<Variable>(FC11->getFilter().getNode());
+  Variable *Bhh = llvm::cast<Variable>(FC11->getBias().getNode());
+  Variable *Wxh = llvm::cast<Variable>(FC12->getFilter().getNode());
+  Variable *Bxh = llvm::cast<Variable>(FC12->getBias().getNode());
+  Variable *Why = llvm::cast<Variable>(O1->getFilter().getNode());
+  Variable *Bhy = llvm::cast<Variable>(O1->getBias().getNode());
+
   // Create the second block in the RNN
-  auto *FC21 = G.createFullyConnected("fc21", H1, 5);
-  auto *FC22 = G.createFullyConnected("fc22", X2, 5);
+  auto *FC21 = G.createFullyConnected("fc21", H1, Whh, Bhh, hiddenDepth);
+  auto *FC22 = G.createFullyConnected("fc22", X2, Wxh, Bxh, hiddenDepth);
   auto *A2 = G.createArithmetic("fc2", FC21, FC22, ArithmeticNode::Mode::Add);
   auto *H2 = G.createTanh("tan2", A2);
-  auto *O2 = G.createFullyConnected("O2", H2, 1);
+  auto *O2 = G.createFullyConnected("O2", H2, Why, Bhy, 1);
   auto *R2 = G.createRegression("reg2", O2, Y2);
 
   // Create the third block in the RNN
-  auto *FC31 = G.createFullyConnected("fc31", H2, 5);
-  auto *FC32 = G.createFullyConnected("fc32", X3, 5);
+  auto *FC31 = G.createFullyConnected("fc31", H2, Whh, Bhh, hiddenDepth);
+  auto *FC32 = G.createFullyConnected("fc32", X3, Wxh, Bxh, hiddenDepth);
   auto *A3 = G.createArithmetic("fc3", FC31, FC32, ArithmeticNode::Mode::Add);
   auto *H3 = G.createTanh("tan3", A3);
-  auto *O3 = G.createFullyConnected("O3", H3, 1);
+  auto *O3 = G.createFullyConnected("O3", H3, Why, Bhy, 1);
   auto *R3 = G.createRegression("reg3", O3, Y3);
 
   auto *R = G.createConcat("O", {R1, R2, R3}, 1);
   auto *result = G.createSave("result", R);
+
+  EXPECT_EQ(G.getVars().size(), 10);
 
   EE.compile(CompilationMode::Train);
 
