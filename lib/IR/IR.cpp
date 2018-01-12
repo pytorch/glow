@@ -94,7 +94,7 @@ void Value::verifyUseList(const Module &M) const {
   }
 }
 
-InstrIterator Module::eraseInstruction(InstListTy::iterator it) {
+InstrIterator Module::eraseInstruction(InstrIterator it) {
   auto *I = *it;
   assert(std::find(instrs_.begin(), instrs_.end(), I) != instrs_.end() &&
          "Cannot erase an instruction not belonging to a module");
@@ -113,7 +113,7 @@ void Module::eraseInstruction(glow::Instruction *I) {
   eraseInstruction(it);
 }
 
-InstrIterator Module::removeInstruction(InstListTy::iterator it) {
+InstrIterator Module::removeInstruction(InstrIterator it) {
   auto *I = *it;
   (void)I;
   assert(std::find(instrs_.begin(), instrs_.end(), I) != instrs_.end() &&
@@ -137,15 +137,35 @@ void Module::insertInstruction(glow::Instruction *I) {
   I->setParent(this);
 }
 
-void Module::insertInstruction(InstListTy::iterator where,
-                               glow::Instruction *I) {
-  instrs_.insert(where, I);
+InstrIterator Module::insertInstruction(InstrIterator where,
+                                        glow::Instruction *I) {
   I->setParent(this);
+  return instrs_.insert(where, I);
 }
 
-void Module::moveInstruction(InstListTy::iterator where, glow::Instruction *I) {
+InstrIterator Module::moveInstruction(InstrIterator where,
+                                      glow::Instruction *I) {
   I->getParent()->removeInstruction(I);
-  insertInstruction(where, I);
+  return insertInstruction(where, I);
+}
+
+InstrIterator Module::moveInstruction(const Instruction *where,
+                                      glow::Instruction *I) {
+  I->getParent()->removeInstruction(I);
+  return insertInstruction(getInstrIterator(where), I);
+}
+
+InstrIterator Module::getInstrIterator(const Instruction *I) {
+  auto it = std::find(instrs_.begin(), instrs_.end(), I);
+  assert(it != instrs_.end() && "Instruction should be present");
+  return it;
+}
+
+Module::InstListTy::const_iterator
+Module::getInstrIterator(const Instruction *I) const {
+  auto it = std::find(instrs_.begin(), instrs_.end(), I);
+  assert(it != instrs_.end() && "Instruction should be present");
+  return it;
 }
 
 Module::~Module() { clear(); }

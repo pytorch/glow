@@ -179,6 +179,8 @@ class Module final {
 public:
   using VariableMap = std::unordered_map<const Node *, Value *>;
   using InstListTy = std::list<Instruction *>;
+  using InstrIterator = InstListTy::iterator;
+  using InstrConstIterator = InstListTy::const_iterator;
   using WeightVarListTy = std::list<WeightVar *>;
 
 private:
@@ -252,27 +254,38 @@ public:
   void eraseInstruction(Instruction *I);
 
   /// Erase the instruction from the module.
-  InstListTy::iterator eraseInstruction(InstListTy::iterator it);
+  InstrIterator eraseInstruction(InstrIterator it);
 
   /// Remove the instruction from the module.
   void removeInstruction(Instruction *I);
 
   /// Remove the instruction from the module.
-  InstListTy::iterator removeInstruction(InstListTy::iterator it);
+  InstrIterator removeInstruction(InstrIterator it);
 
   /// Inserts an instruction at the place described by \where.
-  void insertInstruction(InstListTy::iterator where, Instruction *I);
+  InstrIterator insertInstruction(InstrIterator where, Instruction *I);
 
   /// Moves an instruction belonging to a module to the place described by
   /// \where.
-  void moveInstruction(InstListTy::iterator where, Instruction *I);
+  InstrIterator moveInstruction(InstrIterator where, Instruction *I);
+
+  /// Moves an instruction belonging to a module to the place described by
+  /// \where.
+  InstrIterator moveInstruction(const Instruction *where, Instruction *I);
 
   /// Inserts an instruction at the end of the instructions list.
   void insertInstruction(Instruction *I);
+
+  /// \returns instruction's list iterator corresponding to the instruction.
+  InstrIterator getInstrIterator(const Instruction *I);
+
+  /// \returns instruction's list iterator corresponding to the instruction.
+  InstrConstIterator getInstrIterator(const Instruction *I) const;
 };
 
 /// Iterator over inteructions.
-using InstrIterator = Module::InstListTy::iterator;
+using InstrIterator = Module::InstrIterator;
+using InstrConstIterator = Module::InstrConstIterator;
 
 /// A helper class used for instructions numbering.
 class InstructionNumbering {
