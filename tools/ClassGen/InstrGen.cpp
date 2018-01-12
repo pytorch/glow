@@ -46,7 +46,8 @@ int main(int argc, char **argv) {
   BB.newInstr("Copy")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .setType("Src->getType()");
+      .setType("Src->getType()")
+      .inplaceOperand({"Dest", "Src"});
 
   //===--------------------------------------------------------------------===//
   //                   Convolution / Pool / FC
