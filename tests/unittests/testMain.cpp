@@ -1,7 +1,7 @@
 // Copyright 2018 Facebook Inc.  All Rights Reserved.
 
-#include "gtest/gtest.h"
 #include "llvm/Support/CommandLine.h"
+#include "gtest/gtest.h"
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

@@ -21,10 +21,9 @@ static llvm::cl::opt<bool>
     instrumentDebug("instrument-debug",
                     llvm::cl::desc("Instrument the IR for debugging"),
                     llvm::cl::init(false), llvm::cl::Hidden);
-static llvm::cl::opt<bool>
-    optimizeIR("optimize-ir",
-                    llvm::cl::desc("Enable IR optimizations"),
-                    llvm::cl::init(true), llvm::cl::Hidden);
+static llvm::cl::opt<bool> optimizeIR("optimize-ir",
+                                      llvm::cl::desc("Enable IR optimizations"),
+                                      llvm::cl::init(true), llvm::cl::Hidden);
 
 using namespace glow;
 
