@@ -1,14 +1,15 @@
 #ifndef GLOW_BASE_TENSOR_H
 #define GLOW_BASE_TENSOR_H
 
+#include <cassert>
+#include <vector>
+
 #include "glow/Base/Type.h"
 #include "glow/Support/Compiler.h"
 #include "glow/Support/Random.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/PointerUnion.h"
-
-#include <cassert>
 
 namespace glow {
 
