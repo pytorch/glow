@@ -20,13 +20,13 @@ TEST(Operator, matmul) {
 
   auto &G = EE.getGraph();
 
-  auto *batch = G.createVariable(ElemKind::FloatTy, {1, 2, 3}, "batch");
-  auto *filter = G.createVariable(ElemKind::FloatTy, {1, 3, 2}, "filter");
-  auto *result = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "result");
-  batch->getPayload().getHandle() = {1, 2, 3, 4, 5, 6};
-  filter->getPayload().getHandle() = {7, 8, 9, 10, 11, 12};
+  auto *lhs = G.createVariable(ElemKind::FloatTy, {1, 3, 2}, "lhs");
+  auto *rhs = G.createVariable(ElemKind::FloatTy, {1, 2, 1}, "rhs");
+  auto *result = G.createVariable(ElemKind::FloatTy, {1, 3, 1}, "result");
+  lhs->getPayload().getHandle() = {1, 2, 3, 4, 5, 6};
+  rhs->getPayload().getHandle() = {7, 10};
 
-  auto R = G.createBatchedMatMul("MM", batch, filter);
+  auto R = G.createBatchedMatMul("MM", lhs, rhs);
 
   G.createSave("save", R, result);
 
@@ -35,10 +35,9 @@ TEST(Operator, matmul) {
   EE.run({}, {});
 
   auto H = result->getPayload().getHandle();
-  EXPECT_NEAR(H.at({0, 0, 0}), 39, 0.001);
-  EXPECT_NEAR(H.at({0, 0, 1}), 49, 0.001);
-  EXPECT_NEAR(H.at({0, 1, 0}), 54, 0.001);
-  EXPECT_NEAR(H.at({0, 1, 1}), 68, 0.001);
+  EXPECT_NEAR(H.at({0, 0, 0}), 27, 0.001);
+  EXPECT_NEAR(H.at({0, 1, 0}), 61, 0.001);
+  EXPECT_NEAR(H.at({0, 2, 0}), 95, 0.001);
 }
 
 TEST(Operator, batchedReduceAdd) {

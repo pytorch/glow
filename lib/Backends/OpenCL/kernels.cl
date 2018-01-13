@@ -57,8 +57,8 @@ __kernel void batchedmatmulK(__global float *dest, __global float *lhs,
 
   // Perform DOT on the row an column.
   float sum = 0;
-  for (size_t i = 0; i < rdim.w; i++) {
-    sum += lhs[getNHWC(ldim, ln, i, x, 0)] * rhs[getNHWC(rdim, rn, y, i, 0)];
+  for (size_t i = 0; i < ldim.w; i++) {
+    sum += lhs[getNHWC(ldim, ln, x, i, 0)] * rhs[getNHWC(rdim, rn, i, y, 0)];
   }
 
   dest[getNHWC(ddim, n, x, y, 0)] = sum;

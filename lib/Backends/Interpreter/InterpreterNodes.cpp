@@ -999,8 +999,8 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
 
         // Perform DOT on the row an column.
         float sum = 0;
-        for (size_t i = 0; i < rhsDim[2]; i++) {
-          sum += lhs.at({ln, i, x}) * rhs.at({rn, y, i});
+        for (size_t i = 0; i < lhsDim[2]; i++) {
+          sum += lhs.at({ln, x, i}) * rhs.at({rn, i, y});
         }
         dest.at({n, x, y}) = sum;
       }

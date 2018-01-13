@@ -44,9 +44,9 @@ void batchedmatmul_f(float *dest, float *LHS, float *RHS, size_t *destDims,
 
         // Perform DOT on the row an column.
         float sum = 0;
-        for (size_t i = 0; i < rhsDims[2]; i++) {
+        for (size_t i = 0; i < lhsDims[2]; i++) {
           sum +=
-              LHS[getXYZ(lhsDims, ln, i, x)] * RHS[getXYZ(rhsDims, rn, y, i)];
+              LHS[getXYZ(lhsDims, ln, x, i)] * RHS[getXYZ(rhsDims, rn, i, y)];
         }
         dest[getXYZ(destDims, n, x, y)] = sum;
       }
