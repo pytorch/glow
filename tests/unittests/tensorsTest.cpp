@@ -254,3 +254,81 @@ TEST(Tensor, nonOwnedTensor) {
   // Check that T1 is still alive
   H1.dump();
 }
+
+TEST(Tensor, broadcastDir0) {
+  const unsigned dimX = 3;
+  const unsigned dimY = 4;
+  const unsigned broadcastDim = 5;
+  Tensor X(ElemKind::FloatTy, {dimX, dimY});
+  auto H = X.getHandle<>();
+  H = {
+    100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111
+  };
+
+  Tensor broadcastedX;
+  const unsigned direction = 0;
+  X.getHandle<>().broadcastOneDimension(&broadcastedX, broadcastDim, direction);
+
+  auto broadcastedXHandle = broadcastedX.getHandle<>();
+
+  for (size_t i = 0; i < dimX; i++) {
+    for (size_t j = 0; j < dimY; j++) {
+      const float origVal = H.at({i, j});
+      for (size_t k = 0; k < broadcastDim; k++) {
+        EXPECT_EQ(origVal, broadcastedXHandle.at({k, i, j}));
+      }
+    }
+  }
+}
+
+TEST(Tensor, broadcastDir1) {
+  const unsigned dimX = 3;
+  const unsigned dimY = 4;
+  const unsigned broadcastDim = 5;
+  Tensor X(ElemKind::FloatTy, {dimX, dimY});
+  auto H = X.getHandle<>();
+  H = {
+    100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111
+  };
+
+  Tensor broadcastedX;
+  const unsigned direction = 1;
+  X.getHandle<>().broadcastOneDimension(&broadcastedX, broadcastDim, direction);
+
+  auto broadcastedXHandle = broadcastedX.getHandle<>();
+
+  for (size_t i = 0; i < dimX; i++) {
+    for (size_t j = 0; j < dimY; j++) {
+      const float origVal = H.at({i, j});
+      for (size_t k = 0; k < broadcastDim; k++) {
+        EXPECT_EQ(origVal, broadcastedXHandle.at({i, k, j}));
+      }
+    }
+  }
+}
+
+TEST(Tensor, broadcastDir2) {
+  const unsigned dimX = 3;
+  const unsigned dimY = 4;
+  const unsigned broadcastDim = 5;
+  Tensor X(ElemKind::FloatTy, {dimX, dimY});
+  auto H = X.getHandle<>();
+  H = {
+    100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111
+  };
+
+  Tensor broadcastedX;
+  const unsigned direction = 2;
+  X.getHandle<>().broadcastOneDimension(&broadcastedX, broadcastDim, direction);
+
+  auto broadcastedXHandle = broadcastedX.getHandle<>();
+
+  for (size_t i = 0; i < dimX; i++) {
+    for (size_t j = 0; j < dimY; j++) {
+      const float origVal = H.at({i, j});
+      for (size_t k = 0; k < broadcastDim; k++) {
+        EXPECT_EQ(origVal, broadcastedXHandle.at({i, j, k}));
+      }
+    }
+  }
+}
