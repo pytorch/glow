@@ -852,10 +852,15 @@ void performPeepholeOptimizations(Module &M) {
     // SoftMaxWithXYInst -> SoftMaxInst.
     if (auto *SMI = dyn_cast<SoftMaxWithEInst>(I)) {
       auto *E = SMI->getE();
-      // Optimize only if the cache is an allocation and
-      // it has exactly 2 users: the current instruction and
-      // a deallocation.
-      if (!isa<AllocActivationInst>(E) || E->getNumUsers() != 2)
+      // Optimize only if the cache is read exactly once,
+      // namely by this instruction.
+      bool isUsedE = false;
+      for (auto &U : ValueUses(getOrigin(E))) {
+        if (U.getOperand().second != OperandKind::Out && U.get() != SMI) {
+          isUsedE = true;
+        }
+      }
+      if (isUsedE)
         continue;
 
       auto *NewSMI = B.createSoftMaxInst(SMI->getName(), SMI->getDest(),
