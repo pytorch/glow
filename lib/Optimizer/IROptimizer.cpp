@@ -857,6 +857,7 @@ void performPeepholeOptimizations(Module &M) {
       for (auto &U : ValueUses(getOrigin(E))) {
         if (U.getOperand().second != OperandKind::Out && U.get() != SMI) {
           isUsedE = true;
+          break;
         }
       }
       if (isUsedE)
