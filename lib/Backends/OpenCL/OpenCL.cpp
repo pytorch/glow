@@ -461,8 +461,8 @@ void OCLBackend::doForwardPass(bool isTrain) {
     if (auto *TR = dyn_cast<TransposeInst>(I)) {
       // This is a naive implementation that parallelizes using one dimension,
       // the N (batch size).
-      GLOW_ASSERT(TR->getShuffle().size() == 4 &&
-                  "This code supports only 4-dim transposes");
+      GLOW_ASSERT(TR->getShuffle().size() <= 4 &&
+                  "This code supports only 4 and lower dimensional transposes");
 
       cl_kernel kernel = createKernel(program_, kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
@@ -472,13 +472,24 @@ void OCLBackend::doForwardPass(bool isTrain) {
         setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
       }
 
-      auto odim = ShapeNHWC(TR->getDest()->getType()->dims());
-      auto idim = ShapeNHWC(TR->getSrc()->getType()->dims());
+      // Temporary hack to support 3-dim transposes.
+      // TODO: support any dimensional transposes.
+      std::vector<size_t> odim_vec = TR->getDest()->getType()->dims();
+      std::vector<size_t> idim_vec = TR->getSrc()->getType()->dims();
+      std::vector<unsigned> mask = TR->getShuffle();
+      while (mask.size() < 4) {
+        odim_vec.push_back(1);
+        idim_vec.push_back(1);
+        mask.push_back(mask.size());
+        continue;
+      }
+
+      auto odim = ShapeNHWC(odim_vec);
+      auto idim = ShapeNHWC(idim_vec);
 
       setKernelArg(kernel, 3, odim);
       setKernelArg(kernel, 4, idim);
 
-      auto mask = TR->getShuffle();
       ShapeNHWC shuff(mask[0], mask[1], mask[2], mask[3]);
       setKernelArg(kernel, 5, shuff);
 

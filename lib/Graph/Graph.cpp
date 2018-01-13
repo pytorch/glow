@@ -389,13 +389,13 @@ BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,
   // the RHS.
   size_t N = (a0 != 1 ? a0 : b0);
 
-  assert(a1 == b2 && "Column of LHS is not equal to the row of RHS.");
+  assert(a2 == b1 && "Row size of LHS is not equal to the column size of RHS.");
   (void)a1;
   (void)a2;
   (void)b1;
   (void)b2;
 
-  auto Ty = Type(LHS.getType()->getElementType(), {N, a2, b1});
+  auto Ty = Type(LHS.getType()->getElementType(), {N, a1, b2});
 
   return addNode(new BatchedMatMulNode(name, uniqueType(Ty), LHS, RHS));
 }

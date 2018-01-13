@@ -172,10 +172,8 @@ void BatchedMatMulInst::verify() const {
   size_t N = (a0 != 1 ? a0 : b0);
   assert(N == c0);
 
-  assert(a1 == b2 && "Column of LHS is not equal to the row of RHS.");
+  assert(a2 == b1 && "Row size of LHS is not equal to the column size of RHS.");
 
-  assert(a1 == b2 && "Column of A is not equal to the row of A.");
-  assert(c1 == a2 && c2 == b1 && "Invalid size of output matrix");
   (void)a0;
   (void)a1;
   (void)a2;

@@ -113,10 +113,11 @@ void lowerFullyConnectedNode(Graph &graph, FullyConnectedNode &FC) {
   auto fdim = FC.getFilter().dims();
 
   auto *lhs = graph.createReshape("fc.cast", FC.getInput(),
-                                  {idim.first, idim.second, 1});
+                                  {1, idim.first, idim.second});
 
-  auto *rhs =
-      graph.createReshape("fc.cast", FC.getFilter(), {1, fdim[0], fdim[1]});
+  Node *rhs =
+      graph.createReshape("fc.reshape", FC.getFilter(), {1, fdim[0], fdim[1]});
+  rhs = graph.createTranspose("fc.transpose", rhs, {0, 2, 1});
 
   auto *mul = graph.createBatchedMatMul("fc.dot", lhs, rhs);
 
@@ -133,22 +134,23 @@ void lowerFullyConnectedGradNode(Graph &graph, FullyConnectedGradNode &FCG) {
   TypeRef T = FCG.getInput().getType();
   auto fDims = FCG.getFilter().dims();
   auto doDims = FCG.getGradOfOriginalOutputNamedOutput().dims();
-  auto f3d = graph.createReshape("fcg.filter", FCG.getFilter(),
-                                 {1, fDims[0], fDims[1]});
+  auto *f3d = graph.createReshape("fcg.filter", FCG.getFilter(),
+                                  {1, fDims[0], fDims[1]});
   auto outG3d =
       graph.createReshape("fcg.outG", FCG.getGradOfOriginalOutputNamedOutput(),
-                          {doDims[0], 1, doDims[1]});
-  auto *dx3d = graph.createBatchedMatMul("fc.dot", f3d, outG3d);
+                          {1, doDims[0], doDims[1]});
+  auto *dx3d = graph.createBatchedMatMul("fc.dot", outG3d, f3d);
   auto dx = graph.createReshape("fcg.dx", dx3d, T->dims());
 
   // inG = Filter * outG.
   FCG.getGradOfInputNamedInput().replaceAllUsesOfWith(dx);
 
   auto inDims = flattenCdr(FCG.getInput().dims());
-  auto in3d = graph.createReshape("fcg.in", FCG.getInput(),
-                                  {inDims.first, inDims.second, 1});
+  Node *in3d = graph.createReshape("fcg.in", FCG.getInput(),
+                                   {1, inDims.first, inDims.second});
+  auto outG3d_transposed = graph.createTranspose("fcg.in", outG3d, {0, 2, 1});
 
-  auto *df3d = graph.createBatchedMatMul("fc.dot", outG3d, in3d);
+  auto *df3d = graph.createBatchedMatMul("fc.dot", outG3d_transposed, in3d);
   auto *df = graph.createBatchedReduce("fc.filter.reduce",
                                        BatchedReduceNode::Mode::Add, df3d);
   // FilterG = reduce(outG * in).
