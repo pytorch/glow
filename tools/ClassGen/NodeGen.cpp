@@ -228,6 +228,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "Value")
       .addExtraParam("TypeRef", "outTy")
       .addResult("outTy")
+      .setGenerateGradNode(false)
       .setDocstring("Generate a tensor of a specific type filled with 'Value'");
 
   BB.newNode("SGD")
@@ -239,6 +240,20 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "LearningRate")
       .addMember(MemberType::Float, "Momentum")
       .addMember(MemberType::Unsigned, "BatchSize");
+
+  //===--------------------------------------------------------------------===//
+  //                Nodes used by quantization.
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("QuantizationProfile")
+      .addInput("Input")
+      .addInput("Statistics")
+      .addExtraMethod("Variable *getVariable() const { return "
+                      "llvm::cast<Variable>(Statistics_.getNode()); };")
+      .setGenerateGradNode(false)
+      .setDocstring(
+          "Generate profile (distribution of values) of an Input tensor. "
+          "This data is used for quantization of the tensor later on.");
 
   //===--------------------------------------------------------------------===//
   //                Nodes used by unit tests.

@@ -471,7 +471,8 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
                                      const std::string &netWeightFilename,
                                      llvm::ArrayRef<const char *> names,
                                      llvm::ArrayRef<Tensor *> tensors,
-                                     ExecutionEngine &EE)
+                                     ExecutionEngine &EE,
+                                     const std::string &quantizationProfileFile)
     : EE_(EE) {
   // Verify that the version of the library that we linked against is
   // compatible with the version of the headers we compiled against.
@@ -502,6 +503,9 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   loadWeights(weightsDef);
   loadNetwork(networkDef);
 
+  if (!quantizationProfileFile.empty()) {
+    ::glow::profileQuantization(G);
+  }
   // Emit IR for the graph.
   EE.compile(CompilationMode::Infer);
 }

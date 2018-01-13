@@ -31,6 +31,9 @@ class NodeBuilder {
   std::vector<std::pair<std::string, std::string>> extraParams_;
   /// Stores the body of a new public method that will be added to the class.
   std::vector<std::string> extraMethods_;
+  /// Whether gradient node needs to be generated for this node.
+  /// By default it's generated.
+  bool shouldGenerateGradNode_{true};
   /// Header file stream.
   std::ofstream &hStream;
   /// CPP file stream.
@@ -89,6 +92,12 @@ public:
   /// Set the documentation string. Each line will be prepended with "/// ".
   NodeBuilder &setDocstring(const std::string &docstring) {
     docstring_ = docstring;
+    return *this;
+  }
+
+  /// Set whether gradient node needs to be generated.
+  NodeBuilder &setGenerateGradNode(bool shouldGenerateGradNode) {
+    shouldGenerateGradNode_ = shouldGenerateGradNode;
     return *this;
   }
 

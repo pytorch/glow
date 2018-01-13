@@ -210,7 +210,7 @@ void TensorViewInst::verify() const {
   assert(getOperand(0).first->getType()->size() == getType()->size() &&
          "TensorView view size should be the same as Src size");
   assert(getOperand(0).first->getElementType() == getType()->getElementType() &&
-         "TensorView view element type should be the same as Src size");
+         "TensorView view element type should be the same as Src type");
 }
 
 void TransposeInst::verify() const {
@@ -375,4 +375,5 @@ NOVERIFY(BatchNormalizationGradInst)
 NOVERIFY(LocalResponseNormalizationGradInst)
 NOVERIFY(SoftMaxWithEGradInst)
 NOVERIFY(DebugPrintInst)
+NOVERIFY(QuantizationProfileInst)
 #undef NOVERIFY

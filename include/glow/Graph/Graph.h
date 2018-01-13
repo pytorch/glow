@@ -155,6 +155,11 @@ public:
   ArithmeticNode *createArithmetic(llvm::StringRef name, NodeValue LHS,
                                    NodeValue RHS, ArithmeticNode::Mode op);
 
+  /// Create quantization profile node named \p name for the output tensor from
+  /// \p input.
+  QuantizationProfileNode *createQuantizationProfile(llvm::StringRef name,
+                                                     NodeValue input);
+
   SelectNode *createSelect(llvm::StringRef name, NodeValue Cond, NodeValue LHS,
                            NodeValue RHS);
 
