@@ -15,6 +15,7 @@
 #include <string>
 
 using namespace glow;
+using llvm::isa;
 
 TEST(Interpreter, interpret) {
   ExecutionEngine EE;
@@ -596,9 +597,8 @@ TEST(Optimizer, copyPropagation) {
   // Check that all copy instructions are eliminated.
   auto &instrs = EE.getModule().getInstrs();
   EXPECT_TRUE(std::none_of(
-      instrs.begin(), instrs.end(), [](const Instruction *I) -> bool {
-        return I->getKind() == Instruction::Kind::CopyInstKind;
-      }));
+      instrs.begin(), instrs.end(),
+      [](const Instruction *I) -> bool { return isa<CopyInst>(I); }));
 }
 
 /// Learn the square root of two.
