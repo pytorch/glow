@@ -18,26 +18,19 @@ class NetDef;
 
 namespace glow {
 
-class IRBuilder;
-class Instruction;
-class ExecutionEngine;
 class Tensor;
 class Value;
 
 /// Loads caffe2 models.
 class caffe2ModelLoader {
-  /// The ExecutionEngine that runs the program.
-  ExecutionEngine &EE_;
+  /// The graph that we are constructing.
+  Graph &G_;
   /// Saves network nodes by name.
   std::unordered_map<std::string, Node *> nodeByName_;
   /// A list of weight tensors indexed by name.
   std::unordered_map<std::string, Tensor *> tensors_;
   /// The external output of the network.
   SaveNode *root_{nullptr};
-  /// A list of handles to keep some variables alive during the lifetime of the
-  /// loader. This is used for preventing the optimizer from deleting variables
-  /// that the loader expects as inputs.
-  std::vector<NodeValue> keepAlive_;
 
   /// Load the weight tensors from the 'init' file and register them in the map
   /// \p tensors.
@@ -76,7 +69,7 @@ public:
   caffe2ModelLoader(const std::string &netDescFilename,
                     const std::string &netWeightFilename,
                     llvm::ArrayRef<const char *> names,
-                    llvm::ArrayRef<Tensor *> tensors, ExecutionEngine &IP);
+                    llvm::ArrayRef<Tensor *> tensors, Graph &G);
 
   ~caffe2ModelLoader();
 

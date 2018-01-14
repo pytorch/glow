@@ -2,12 +2,8 @@
 
 #include "glow/Importer/Caffe2.h"
 #include "glow/Base/Tensor.h"
-#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
-#include "glow/IR/IR.h"
-#include "glow/IR/IRBuilder.h"
-#include "glow/IR/Instrs.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
@@ -119,14 +115,13 @@ Node *caffe2ModelLoader::getNodeByName(const std::string &name) {
 }
 
 Node *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
-  auto &G = EE_.getGraph();
   auto it = nodeByName_.find(name);
   if (it != nodeByName_.end()) {
     return it->second;
   }
 
   Tensor *T = getTensorByName(name);
-  auto *V = G.createVariable(T->getElementType(), T->dims(), name,
+  auto *V = G_.createVariable(T->getElementType(), T->dims(), name,
                              Variable::InitKind::Broadcast);
   V->copyFrom(T);
   nodeByName_[name] = V;
@@ -139,8 +134,6 @@ bool caffe2ModelLoader::hasNodeByName(const std::string &name) const {
 }
 
 void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
-  auto &G = EE_.getGraph();
-
   ArgumentDictionaryTy dict = loadArgumentMap(op);
 
   const std::string &typeName = op.type();
@@ -149,7 +142,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Load the inputs:
     auto *in = getOrCreateNodeByName(op.input(0));
     // Create the RELU:
-    auto *R = G.createRELU(op.name(), in);
+    auto *R = G_.createRELU(op.name(), in);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = R;
@@ -191,8 +184,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       }
     }
 
-    auto *tr = G.createTranspose(op.name(), in, NCHW2NHWC);
-    auto *node = G.createConv(op.name(), tr, numFilters, kernel, stride, pad);
+    auto *tr = G_.createTranspose(op.name(), in, NCHW2NHWC);
+    auto *node = G_.createConv(op.name(), tr, numFilters, kernel, stride, pad);
 
     cast<Variable>(node->getFilter())->copyFrom(&wtag);
 
@@ -204,7 +197,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       cast<Variable>(node->getBias())->getPayload().zero();
     }
 
-    auto *N = G.createTranspose(op.name(), node, NHWC2NCHW);
+    auto *N = G_.createTranspose(op.name(), node, NHWC2NCHW);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = N;
@@ -222,7 +215,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     int pad = dict.count("pad") ? loadInt(dict["pad"]) : 0;
     size_t kernel = loadInt(dict["kernel"]);
 
-    auto *tr = G.createTranspose(op.name(), in, NCHW2NHWC);
+    auto *tr = G_.createTranspose(op.name(), in, NCHW2NHWC);
 
     // If 'global_pooling' is set then the operation will pool over the size of
     // the input by doing: kernel = height/width.
@@ -231,8 +224,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       kernel = Ty->dims()[3];
     }
 
-    auto *node = G.createPool(op.name(), tr, opk, kernel, stride, pad);
-    auto *N = G.createTranspose(op.name(), node, NHWC2NCHW);
+    auto *node = G_.createPool(op.name(), tr, opk, kernel, stride, pad);
+    auto *N = G_.createTranspose(op.name(), node, NHWC2NCHW);
 
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
@@ -276,7 +269,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       GLOW_ASSERT(false && "Invalid order field");
     }
 
-    auto *node = G.createBatchNormalization(op.name(), in, channel, epsilon);
+    auto *node = G_.createBatchNormalization(op.name(), in, channel, epsilon);
 
     // Load the weights.
     cast<Variable>(node->getScale())->copyFrom(scale);
@@ -304,7 +297,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       GLOW_ASSERT(false && "Invalid order field");
     }
 
-    Node *node = G.createConcat(op.name(), {lhs, rhs}, channel);
+    Node *node = G_.createConcat(op.name(), {lhs, rhs}, channel);
 
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;
@@ -315,7 +308,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *in0 = getOrCreateNodeByName(op.input(0));
     auto *in1 = getOrCreateNodeByName(op.input(1));
     auto *node =
-        G.createArithmetic(op.name(), in0, in1, ArithmeticNode::Mode::Add);
+        G_.createArithmetic(op.name(), in0, in1, ArithmeticNode::Mode::Add);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;
@@ -332,9 +325,9 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Caffe2 allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
     // softmax function. This is similar to a bitcast operation.
     auto flatten = flattenCdr(in->getType()->dims());
-    in = G.createReshape("reshape", in, {flatten.first, flatten.second});
+    in = G_.createReshape("reshape", in, {flatten.first, flatten.second});
 
-    auto *node = G.createSoftMax(op.name(), in, softmaxExpected);
+    auto *node = G_.createSoftMax(op.name(), in, softmaxExpected);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;
@@ -346,7 +339,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *in = getOrCreateNodeByName(op.input(0));
     Tensor *w = getTensorByName(op.input(1));
     Tensor *b = getTensorByName(op.input(2));
-    auto *FC = G.createFullyConnected(op.name(), in, b->size());
+    auto *FC = G_.createFullyConnected(op.name(), in, b->size());
 
     // Load weights.
     cast<Variable>(FC->getFilter())->getPayload().copyFrom(w);
@@ -366,12 +359,12 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     float beta = loadFloat(dict["beta"]);
     float k = loadFloat(dict["bias"]);
 
-    auto *tr = G.createTranspose(op.name(), in, NCHW2NHWC);
+    auto *tr = G_.createTranspose(op.name(), in, NCHW2NHWC);
 
-    auto *node = G.createLocalResponseNormalization(op.name(), tr, size / 2,
+    auto *node = G_.createLocalResponseNormalization(op.name(), tr, size / 2,
                                                     alpha, beta, k);
 
-    auto *N = G.createTranspose(op.name(), node, NHWC2NCHW);
+    auto *N = G_.createTranspose(op.name(), node, NHWC2NCHW);
 
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
@@ -391,7 +384,7 @@ void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   }
 
   auto *r = getNodeByName(net.external_output(0));
-  root_ = EE_.getGraph().createSave("output", r);
+  root_ = G_.createSave("output", r);
 }
 
 void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
@@ -471,13 +464,11 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
                                      const std::string &netWeightFilename,
                                      llvm::ArrayRef<const char *> names,
                                      llvm::ArrayRef<Tensor *> tensors,
-                                     ExecutionEngine &EE)
-    : EE_(EE) {
+                                     Graph &G)
+    : G_(G) {
   // Verify that the version of the library that we linked against is
   // compatible with the version of the headers we compiled against.
   GOOGLE_PROTOBUF_VERIFY_VERSION;
-
-  auto &G = EE_.getGraph();
 
   // The caffe2 weights that we are deserializing.
   caffe2::NetDef weightsDef;
@@ -487,23 +478,16 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   assert(names.size() == tensors.size() && "Invalid initialization list");
   for (unsigned i = 0; i < names.size(); i++) {
     auto *T = tensors[i];
-    auto *V = G.createVariable(T->getElementType(), T->dims(), names[i],
+    auto *V = G_.createVariable(T->getElementType(), T->dims(), names[i],
                                Variable::InitKind::Extern);
     V->copyFrom(T);
     nodeByName_[names[i]] = V;
-
-    // Keep this variable alive to prevent the optimizer from deleting it. This
-    // variable is used as an interface so we better not delete it.
-    keepAlive_.emplace_back(V);
   }
 
   loadProtoFile(networkDef, netDescFilename);
   loadProtoFile(weightsDef, netWeightFilename);
   loadWeights(weightsDef);
   loadNetwork(networkDef);
-
-  // Emit IR for the graph.
-  EE.compile(CompilationMode::Infer);
 }
 
 caffe2ModelLoader::~caffe2ModelLoader() {
