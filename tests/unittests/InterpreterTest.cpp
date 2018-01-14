@@ -496,10 +496,10 @@ TEST(Network, trainASimpleRNN) {
   auto *Y = G.createVariable(ElemKind::FloatTy, {1, 3}, "Y",
                              Variable::InitKind::Extern);
 
-  const unsigned hiddenDepth = 5;
+  const unsigned hiddenSize = 5;
 
   // Initialize the state to zero.
-  auto *HInit = G.createVariable(ElemKind::FloatTy, {1, hiddenDepth},
+  auto *HInit = G.createVariable(ElemKind::FloatTy, {1, hiddenSize},
                                  "initial_state", Variable::InitKind::Extern);
   HInit->getPayload().zero();
 
@@ -514,8 +514,8 @@ TEST(Network, trainASimpleRNN) {
   auto *Y3 = G.createSlice("Y3", Y, {0, 2}, {1, 3});
 
   // Create the first block in the RNN
-  auto *FC11 = G.createFullyConnected("fc11", HInit, hiddenDepth);
-  auto *FC12 = G.createFullyConnected("fc12", X1, hiddenDepth);
+  auto *FC11 = G.createFullyConnected("fc11", HInit, hiddenSize);
+  auto *FC12 = G.createFullyConnected("fc12", X1, hiddenSize);
   auto *A1 = G.createArithmetic("fc1", FC11, FC12, ArithmeticNode::Mode::Add);
   auto *H1 = G.createTanh("tan1", A1);
   auto *O1 = G.createFullyConnected("O1", H1, 1);
@@ -531,16 +531,16 @@ TEST(Network, trainASimpleRNN) {
   Variable *Bhy = llvm::cast<Variable>(O1->getBias().getNode());
 
   // Create the second block in the RNN
-  auto *FC21 = G.createFullyConnected("fc21", H1, Whh, Bhh, hiddenDepth);
-  auto *FC22 = G.createFullyConnected("fc22", X2, Wxh, Bxh, hiddenDepth);
+  auto *FC21 = G.createFullyConnected("fc21", H1, Whh, Bhh, hiddenSize);
+  auto *FC22 = G.createFullyConnected("fc22", X2, Wxh, Bxh, hiddenSize);
   auto *A2 = G.createArithmetic("fc2", FC21, FC22, ArithmeticNode::Mode::Add);
   auto *H2 = G.createTanh("tan2", A2);
   auto *O2 = G.createFullyConnected("O2", H2, Why, Bhy, 1);
   auto *R2 = G.createRegression("reg2", O2, Y2);
 
   // Create the third block in the RNN
-  auto *FC31 = G.createFullyConnected("fc31", H2, Whh, Bhh, hiddenDepth);
-  auto *FC32 = G.createFullyConnected("fc32", X3, Wxh, Bxh, hiddenDepth);
+  auto *FC31 = G.createFullyConnected("fc31", H2, Whh, Bhh, hiddenSize);
+  auto *FC32 = G.createFullyConnected("fc32", X3, Wxh, Bxh, hiddenSize);
   auto *A3 = G.createArithmetic("fc3", FC31, FC32, ArithmeticNode::Mode::Add);
   auto *H3 = G.createTanh("tan3", A3);
   auto *O3 = G.createFullyConnected("O3", H3, Why, Bhy, 1);
