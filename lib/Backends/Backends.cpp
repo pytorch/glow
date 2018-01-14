@@ -18,13 +18,14 @@ Backend *glow::createBackend(BackendKind backendKind, Module *M) {
   switch (backendKind) {
   case BackendKind::Interpreter:
     return createInterpreter(M);
- #ifdef WITH_OPENCL
+#ifdef WITH_OPENCL
   case BackendKind::OpenCL:
     return createOCLBackend(M);
-  #endif
+#endif
+#ifdef WITH_JIT
   case BackendKind::JIT:
     return createJIT(M);
-
+#endif
   default:
     // Unknown execution backend.
     llvm_unreachable("Invalid backend kind.");
