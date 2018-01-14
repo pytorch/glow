@@ -10,8 +10,6 @@
 
 #include <unordered_map>
 
-#if WITH_OPENCL
-
 #if defined(__APPLE__) || defined(__MACOSX)
 #include "OpenCL/opencl.h"
 #else
@@ -70,8 +68,6 @@ private:
 };
 
 } // namespace glow
-
-#endif // WITH_OPENCL
 
 namespace glow {
 
