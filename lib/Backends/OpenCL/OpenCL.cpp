@@ -16,8 +16,6 @@ using namespace glow;
 using llvm::dyn_cast;
 using llvm::isa;
 
-#if WITH_OPENCL
-
 // This defines the string "SHADER_CODE".
 #include "kernels.cl"
 
@@ -626,10 +624,3 @@ Tensor *OCLBackend::getTensor(const Value *v) const {
   return ie->second;
 }
 
-#else
-
-Backend *glow::createOCLBackend(Module *M) {
-  GLOW_ASSERT(false && "Glow is compiled without OpenCL support");
-}
-
-#endif // WITH_OPENCL
