@@ -45,6 +45,9 @@ void NodeValue::setOperand(Node *v, unsigned resNo) {
 }
 
 void NodeValue::replaceAllUsesOfWith(NodeValue v) {
+  if (v.getNode()) {
+    assert(getType() == v.getType() && "Replacing value with the wrong type");
+  }
   auto &users = node_->getUsers();
   llvm::SmallVector<NodeUse, 4> usersVec(users.begin(), users.end());
   for (auto &U : usersVec) {
