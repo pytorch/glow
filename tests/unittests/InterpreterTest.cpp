@@ -497,6 +497,7 @@ TEST(Network, trainASimpleRNN) {
                              Variable::InitKind::Extern);
 
   const unsigned hiddenSize = 5;
+  const unsigned inputSize = 4;
 
   // Initialize the state to zero.
   auto *HInit = G.createVariable(ElemKind::FloatTy, {1, hiddenSize},
@@ -513,22 +514,28 @@ TEST(Network, trainASimpleRNN) {
   auto *Y2 = G.createSlice("Y2", Y, {0, 1}, {1, 2});
   auto *Y3 = G.createSlice("Y3", Y, {0, 2}, {1, 3});
 
+  float b = 0.0;
+  auto *Whh = G.createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
+                               "Whh", Variable::InitKind::Xavier, hiddenSize);
+  auto *Bhh = G.createVariable(ElemKind::FloatTy, {hiddenSize}, "Bhh",
+                               Variable::InitKind::Broadcast, b);
+  auto *Wxh = G.createVariable(ElemKind::FloatTy, {hiddenSize, inputSize},
+                               "Wxh", Variable::InitKind::Xavier, inputSize);
+  auto *Bxh = G.createVariable(ElemKind::FloatTy, {hiddenSize}, "Bxh",
+                               Variable::InitKind::Broadcast, b);
+  auto *Why = G.createVariable(ElemKind::FloatTy, {1, hiddenSize},
+                               "Why", Variable::InitKind::Xavier, hiddenSize);
+  auto *Bhy = G.createVariable(ElemKind::FloatTy, {1}, "Bhy",
+                              Variable::InitKind::Broadcast, b);
+
+
   // Create the first block in the RNN
-  auto *FC11 = G.createFullyConnected("fc11", HInit, hiddenSize);
-  auto *FC12 = G.createFullyConnected("fc12", X1, hiddenSize);
+  auto *FC11 = G.createFullyConnected("fc11", HInit, Whh, Bhh, hiddenSize);
+  auto *FC12 = G.createFullyConnected("fc12", X1, Wxh, Bxh, hiddenSize);
   auto *A1 = G.createArithmetic("fc1", FC11, FC12, ArithmeticNode::Mode::Add);
   auto *H1 = G.createTanh("tan1", A1);
-  auto *O1 = G.createFullyConnected("O1", H1, 1);
+  auto *O1 = G.createFullyConnected("O1", H1, Why, Bhy, 1);
   auto *R1 = G.createRegression("reg1", O1, Y1);
-
-  // FC11, FC12 and O1 define weight variables, which are later used in next 2
-  // recurrent steps.
-  Variable *Whh = llvm::cast<Variable>(FC11->getFilter().getNode());
-  Variable *Bhh = llvm::cast<Variable>(FC11->getBias().getNode());
-  Variable *Wxh = llvm::cast<Variable>(FC12->getFilter().getNode());
-  Variable *Bxh = llvm::cast<Variable>(FC12->getBias().getNode());
-  Variable *Why = llvm::cast<Variable>(O1->getFilter().getNode());
-  Variable *Bhy = llvm::cast<Variable>(O1->getBias().getNode());
 
   // Create the second block in the RNN
   auto *FC21 = G.createFullyConnected("fc21", H1, Whh, Bhh, hiddenSize);
