@@ -122,7 +122,7 @@ Node *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
 
   Tensor *T = getTensorByName(name);
   auto *V = G_.createVariable(T->getElementType(), T->dims(), name,
-                             Variable::InitKind::Broadcast);
+                              Variable::InitKind::Broadcast);
   V->copyFrom(T);
   nodeByName_[name] = V;
   return V;
@@ -341,8 +341,12 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Tensor *b = getTensorByName(op.input(2));
     auto *FC = G_.createFullyConnected(op.name(), in, b->size());
 
+    // Caffe2 stores the transposed W matrix. In here we transpose W back.
+    Tensor wtag;
+    w->getHandle<>().transpose(&wtag, {1, 0});
+
     // Load weights.
-    cast<Variable>(FC->getFilter())->getPayload().copyFrom(w);
+    cast<Variable>(FC->getFilter())->getPayload().copyFrom(&wtag);
     cast<Variable>(FC->getBias())->getPayload().copyFrom(b);
 
     // Save the outputs:
@@ -362,7 +366,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *tr = G_.createTranspose(op.name(), in, NCHW2NHWC);
 
     auto *node = G_.createLocalResponseNormalization(op.name(), tr, size / 2,
-                                                    alpha, beta, k);
+                                                     alpha, beta, k);
 
     auto *N = G_.createTranspose(op.name(), node, NHWC2NCHW);
 
@@ -463,8 +467,7 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
 caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
                                      const std::string &netWeightFilename,
                                      llvm::ArrayRef<const char *> names,
-                                     llvm::ArrayRef<Tensor *> tensors,
-                                     Graph &G)
+                                     llvm::ArrayRef<Tensor *> tensors, Graph &G)
     : G_(G) {
   // Verify that the version of the library that we linked against is
   // compatible with the version of the headers we compiled against.
@@ -479,7 +482,7 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   for (unsigned i = 0; i < names.size(); i++) {
     auto *T = tensors[i];
     auto *V = G_.createVariable(T->getElementType(), T->dims(), names[i],
-                               Variable::InitKind::Extern);
+                                Variable::InitKind::Extern);
     V->copyFrom(T);
     nodeByName_[names[i]] = V;
   }
