@@ -341,8 +341,12 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Tensor *b = getTensorByName(op.input(2));
     auto *FC = G_.createFullyConnected(op.name(), in, b->size());
 
+    // Caffe2 stores the transposed W matrix. In here we transpose W back.
+    Tensor wtag;
+    w->getHandle<>().transpose(&wtag, {1, 0});
+
     // Load weights.
-    cast<Variable>(FC->getFilter())->getPayload().copyFrom(w);
+    cast<Variable>(FC->getFilter())->getPayload().copyFrom(&wtag);
     cast<Variable>(FC->getBias())->getPayload().copyFrom(b);
 
     // Save the outputs:

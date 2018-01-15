@@ -184,12 +184,12 @@ void testPTB() {
   auto *Bh1 = G.createVariable(ElemKind::FloatTy, {hiddenSize}, "bh1",
                                Variable::InitKind::Broadcast, b);
 
-  auto *Wxh = G.createVariable(ElemKind::FloatTy, {hiddenSize, vocabSize},
+  auto *Wxh = G.createVariable(ElemKind::FloatTy, {vocabSize, hiddenSize},
                                "Wxh", Variable::InitKind::Xavier, vocabSize);
   auto *Bh2 = G.createVariable(ElemKind::FloatTy, {hiddenSize}, "bh2",
                                Variable::InitKind::Broadcast, b);
 
-  auto *Why = G.createVariable(ElemKind::FloatTy, {vocabSize, hiddenSize},
+  auto *Why = G.createVariable(ElemKind::FloatTy, {hiddenSize, vocabSize},
                                "Why", Variable::InitKind::Xavier, hiddenSize);
   auto *By = G.createVariable(ElemKind::FloatTy, {vocabSize}, "by",
                               Variable::InitKind::Broadcast, b);

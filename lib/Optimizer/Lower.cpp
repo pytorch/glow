@@ -108,59 +108,48 @@ void lowerRegressionGradNode(Graph &graph, RegressionGradNode &node) {
 }
 
 void lowerFullyConnectedNode(Graph &graph, FullyConnectedNode &FC) {
-  TypeRef T = FC.getInput().getType();
-  auto idim = flattenCdr(T->dims());
-  auto fdim = FC.getFilter().dims();
-
-  auto *lhs = graph.createReshape("fc.cast", FC.getInput(),
-                                  {1, idim.first, idim.second});
-
-  Node *rhs =
-      graph.createReshape("fc.reshape", FC.getFilter(), {1, fdim[0], fdim[1]});
-  rhs = graph.createTranspose("fc.transpose", rhs, {0, 2, 1});
-
-  auto *mul = graph.createBatchedMatMul("fc.dot", lhs, rhs);
-
-  auto *mulFlat =
-      graph.createReshape("fc.cast2", mul, {idim.first, FC.getDepth()});
-
+  auto xDim = flattenCdr(FC.getInput().getType()->dims());
+  auto wDim = FC.getFilter().dims();
+  auto *X =
+      graph.createReshape("fc.1X", FC.getInput(), {1, xDim.first, xDim.second});
+  Node *W = graph.createReshape("fc.1W", FC.getFilter(), {1, wDim[0], wDim[1]});
+  auto *mul = graph.createBatchedMatMul("fc.dot", X, W);
+  auto *mulFlat = graph.createReshape("fc.cast2", mul, {xDim.first, wDim[1]});
   auto add = graph.createBatchedArithmetic(
       "fc.add.bias", BatchedArithmeticNode::Mode::Add, mulFlat, FC.getBias());
-
   FC.getOutput().replaceAllUsesOfWith(add);
 }
 
 void lowerFullyConnectedGradNode(Graph &graph, FullyConnectedGradNode &FCG) {
-  TypeRef T = FCG.getInput().getType();
+  // Follow the lowering from here:
+  // https://github.com/huyouare/CS231n/blob/master/assignment2/cs231n/layers.py#L53
+  auto out = FCG.getGradOfOriginalOutputNamedOutput();
+  auto xDims = flattenCdr(FCG.getInput().dims());
+  auto outDims = out.dims();
   auto fDims = FCG.getFilter().dims();
-  auto doDims = FCG.getGradOfOriginalOutputNamedOutput().dims();
-  auto *f3d = graph.createReshape("fcg.filter", FCG.getFilter(),
-                                  {1, fDims[0], fDims[1]});
-  auto outG3d =
-      graph.createReshape("fcg.outG", FCG.getGradOfOriginalOutputNamedOutput(),
-                          {1, doDims[0], doDims[1]});
-  auto *dx3d = graph.createBatchedMatMul("fc.dot", outG3d, f3d);
-  auto dx = graph.createReshape("fcg.dx", dx3d, T->dims());
 
-  // inG = Filter * outG.
+  // dx = dout * w.T
+  auto dout = graph.createReshape("fcg.outG", out, {1, outDims[0], outDims[1]});
+  auto *w =
+      graph.createReshape("fcg.w", FCG.getFilter(), {1, fDims[0], fDims[1]});
+  auto *wT = graph.createTranspose("fcg.wT", w, {0, 2, 1});
+  auto *dx2 = graph.createBatchedMatMul("fcg.dot", dout, wT);
+  auto *dx =
+      graph.createReshape("fcg.inG", dx2, FCG.getInput().getType()->dims());
   FCG.getGradOfInputNamedInput().replaceAllUsesOfWith(dx);
 
-  auto inDims = flattenCdr(FCG.getInput().dims());
-  Node *in3d = graph.createReshape("fcg.in", FCG.getInput(),
-                                   {1, inDims.first, inDims.second});
-  auto outG3d_transposed = graph.createTranspose("fcg.in", outG3d, {0, 2, 1});
+  // dw = xT * dout.
+  Node *x2 = graph.createReshape("fcg.x", FCG.getInput(),
+                                 {1, xDims.first, xDims.second});
+  auto *x2T = graph.createTranspose("fcg.xT", x2, {0, 2, 1});
+  auto *dw = graph.createBatchedMatMul("fcg.dot", x2T, dout);
+  Node *dw2 = graph.createReshape("fcg.dw2", dw, fDims);
+  FCG.getGradOfInputNamedFilter().replaceAllUsesOfWith(dw2);
 
-  auto *df3d = graph.createBatchedMatMul("fc.dot", outG3d_transposed, in3d);
-  auto *df = graph.createBatchedReduce("fc.filter.reduce",
-                                       BatchedReduceNode::Mode::Add, df3d);
-  // FilterG = reduce(outG * in).
-  FCG.getGradOfInputNamedFilter().replaceAllUsesOfWith(df);
-
-  auto in = FCG.getGradOfOriginalOutputNamedOutput();
-  auto *biasG = graph.createBatchedReduce("fc.bias.reduce",
-                                          BatchedReduceNode::Mode::Add, in);
-  // BiasG = reduce(in).
-  FCG.getGradOfInputNamedBias().replaceAllUsesOfWith(biasG);
+  // db = reduce(dout).
+  auto *db = graph.createBatchedReduce("fc.bias.reduce",
+                                       BatchedReduceNode::Mode::Add, out);
+  FCG.getGradOfInputNamedBias().replaceAllUsesOfWith(db);
 }
 
 void lowerReluGradNode(Graph &graph, ReluGradNode &RG) {
@@ -200,7 +189,7 @@ void lowerSigmoidGradNode(Graph &graph, SigmoidGradNode &THG) {
   // inG = outW * (1 - outW) * outG;
 
   auto outW = THG.getOriginalOutputForResult();
-  auto *one = graph.createSplat("zero", THG.getInput().getType(), 1.0);
+  auto *one = graph.createSplat("one", THG.getInput().getType(), 1.0);
 
   // (1 - W)
   auto *onew =

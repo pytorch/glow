@@ -167,7 +167,7 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
 
   size_t fanIn = idim.second;
 
-  auto *W = createVariable(T->getElementType(), {outDepth, idim.second},
+  auto *W = createVariable(T->getElementType(), {idim.second, outDepth},
                            "weights", Variable::InitKind::Xavier, fanIn);
 
   auto *B = createVariable(T->getElementType(), {outDepth}, "bias",
