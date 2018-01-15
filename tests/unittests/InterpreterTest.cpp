@@ -503,16 +503,17 @@ TEST(Network, trainASimpleRNN) {
   auto *HInit = G.createVariable(ElemKind::FloatTy, {1, hiddenSize},
                                  "initial_state", Variable::InitKind::Extern);
   HInit->getPayload().zero();
+  Node *Ht = HInit;
 
   // Extract a slice for each input.
-  auto *X1 = G.createSlice("X1", X, {0, 0, 0}, {1, 1, 4});
-  auto *X2 = G.createSlice("X2", X, {0, 1, 0}, {1, 2, 4});
-  auto *X3 = G.createSlice("X3", X, {0, 2, 0}, {1, 3, 4});
+  std::vector<Node *> XSliced = {G.createSlice("X1", X, {0, 0, 0}, {1, 1, 4}),
+                                 G.createSlice("X2", X, {0, 1, 0}, {1, 2, 4}),
+                                 G.createSlice("X3", X, {0, 2, 0}, {1, 3, 4})};
 
   // Extract a slice for each output.
-  auto *Y1 = G.createSlice("Y1", Y, {0, 0}, {1, 1});
-  auto *Y2 = G.createSlice("Y2", Y, {0, 1}, {1, 2});
-  auto *Y3 = G.createSlice("Y3", Y, {0, 2}, {1, 3});
+  std::vector<Node *> YSliced = {G.createSlice("Y1", Y, {0, 0}, {1, 1}),
+                                 G.createSlice("Y2", Y, {0, 1}, {1, 2}),
+                                 G.createSlice("Y3", Y, {0, 2}, {1, 3})};
 
   float b = 0.0;
   auto *Whh = G.createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
@@ -528,32 +529,21 @@ TEST(Network, trainASimpleRNN) {
   auto *Bhy = G.createVariable(ElemKind::FloatTy, {1}, "Bhy",
                               Variable::InitKind::Broadcast, b);
 
+  std::vector<Node *> regressionNodes;
+  // Un-roll backpropogation through time as a loop with the shared parameters.
+  for (unsigned t = 0; t < 3; t++) {
+      auto *FC1 = G.createFullyConnected("", Ht, Whh, Bhh, hiddenSize);
+      auto *FC2 = G.createFullyConnected("", XSliced[t], Wxh, Bxh, hiddenSize);
+      auto *A = G.createArithmetic("", FC1, FC2, ArithmeticNode::Mode::Add);
+      auto *H = G.createTanh("", A);
+      auto *O = G.createFullyConnected("", H, Why, Bhy, 1);
+      auto *R = G.createRegression("", O, YSliced[t]);
+      regressionNodes.push_back(R);
 
-  // Create the first block in the RNN
-  auto *FC11 = G.createFullyConnected("fc11", HInit, Whh, Bhh, hiddenSize);
-  auto *FC12 = G.createFullyConnected("fc12", X1, Wxh, Bxh, hiddenSize);
-  auto *A1 = G.createArithmetic("fc1", FC11, FC12, ArithmeticNode::Mode::Add);
-  auto *H1 = G.createTanh("tan1", A1);
-  auto *O1 = G.createFullyConnected("O1", H1, Why, Bhy, 1);
-  auto *R1 = G.createRegression("reg1", O1, Y1);
+      Ht = H;
+  };
 
-  // Create the second block in the RNN
-  auto *FC21 = G.createFullyConnected("fc21", H1, Whh, Bhh, hiddenSize);
-  auto *FC22 = G.createFullyConnected("fc22", X2, Wxh, Bxh, hiddenSize);
-  auto *A2 = G.createArithmetic("fc2", FC21, FC22, ArithmeticNode::Mode::Add);
-  auto *H2 = G.createTanh("tan2", A2);
-  auto *O2 = G.createFullyConnected("O2", H2, Why, Bhy, 1);
-  auto *R2 = G.createRegression("reg2", O2, Y2);
-
-  // Create the third block in the RNN
-  auto *FC31 = G.createFullyConnected("fc31", H2, Whh, Bhh, hiddenSize);
-  auto *FC32 = G.createFullyConnected("fc32", X3, Wxh, Bxh, hiddenSize);
-  auto *A3 = G.createArithmetic("fc3", FC31, FC32, ArithmeticNode::Mode::Add);
-  auto *H3 = G.createTanh("tan3", A3);
-  auto *O3 = G.createFullyConnected("O3", H3, Why, Bhy, 1);
-  auto *R3 = G.createRegression("reg3", O3, Y3);
-
-  auto *R = G.createConcat("O", {R1, R2, R3}, 1);
+  auto *R = G.createConcat("O", regressionNodes, 1);
   auto *result = G.createSave("result", R);
 
   EXPECT_EQ(G.getVars().size(), 10);
