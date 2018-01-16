@@ -241,6 +241,19 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "BatchSize");
 
   //===--------------------------------------------------------------------===//
+  //                Nodes used by quantization.
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("QuantizationProfile")
+      .addInput("Input")
+      .addInput("Statistics")
+      .addExtraMethod("Variable *getVariable() const { return "
+                      "llvm::cast<Variable>(Statistics_.getNode()); };")
+      .setDocstring(
+          "Generate profile (distribution of values) of the Input tensor. "
+          "This data is used for quantization of the tensor later on.");
+
+  //===--------------------------------------------------------------------===//
   //                Nodes used by unit tests.
   //===--------------------------------------------------------------------===//
 

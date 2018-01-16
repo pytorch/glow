@@ -363,6 +363,12 @@ void DeallocActivationInst::verify() const {
   assert(isa<AllocActivationInst>(getOperand(0).first) && "Invalid operand");
 }
 
+void QuantizationProfileInst::verify() const {
+  assert(getOperand(0).first->getElementType() == ElemKind::FloatTy ||
+         getOperand(0).first->getElementType() == ElemKind::DoubleTy &&
+             "Floating point type is expected");
+}
+
 // TODO: verify the gradient instructions.
 #define NOVERIFY(ClassName)                                                    \
   void ClassName ::verify() const {}

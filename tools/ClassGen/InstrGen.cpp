@@ -286,5 +286,9 @@ int main(int argc, char **argv) {
 
   BB.newInstr("DebugPrint").addOperand("Src", OperandKind::In);
 
+  BB.newInstr("QuantizationProfile")
+      .addOperand("InputTensor", OperandKind::In)
+      .addOperand("Histogram", OperandKind::InOut);
+
   return 0;
 }

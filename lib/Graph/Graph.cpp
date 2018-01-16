@@ -429,6 +429,15 @@ SaveNode *Graph::createSave(llvm::StringRef name, NodeValue input,
   return addNode(new SaveNode(name, input, output));
 }
 
+QuantizationProfileNode *Graph::createQuantizationProfile(llvm::StringRef name,
+                                                          NodeValue input) {
+  // TODO: this size is going to be refined. Just a placeholder now.
+  const size_t numberOfBuckets = 2000U;
+  auto *statVar = createVariable(ElemKind::FloatTy, {numberOfBuckets}, name,
+                                 Variable::InitKind::Extern);
+  return addNode(new QuantizationProfileNode(name, input, statVar));
+}
+
 //===----------------------------------------------------------------------===//
 //                   Graph dumping and printing
 //===----------------------------------------------------------------------===//

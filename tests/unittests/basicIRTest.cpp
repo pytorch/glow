@@ -118,6 +118,7 @@ TEST(IR, allInstrs) {
                                          0.9);
     builder.createElementMulInst("", I1, I0, I0);
     builder.createDebugPrintInst("", I0);
+    builder.createQuantizationProfileInst("", I0, B0);
   }
   M.verify();
 }
