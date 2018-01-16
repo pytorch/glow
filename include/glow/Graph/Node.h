@@ -137,7 +137,8 @@ public:
   unsigned getNumInputs() const;
   llvm::StringRef getInputName(unsigned idx) const;
   NodeValue getInputNode(unsigned idx) const;
-  llvm::StringRef getOutputName(unsigned idx);
+  llvm::StringRef getOutputName(unsigned idx) const;
+  bool hasSideEffects() const;
 
   /// \returns a textual description of the node.
   std::string getDebugDesc() const;

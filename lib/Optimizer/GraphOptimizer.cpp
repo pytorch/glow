@@ -15,17 +15,12 @@ using llvm::cast;
 using llvm::dyn_cast;
 
 static bool shouldDeleteNode(CompilationMode mode, Node *N) {
-  // We need the SGD nodes in training modes.
-  if (mode != CompilationMode::Infer) {
-    if (llvm::isa<SGDNode>(N)) {
+  // In general, nodes who have side effects are retained.
+  if (N->hasSideEffects()) {
+    // SGD nodes could potentially be removed in Infer mode.
+    if (!llvm::isa<SGDNode>(N) || mode != CompilationMode::Infer) {
       return false;
     }
-  }
-
-  // We don't delete Save/QuantizationProfile nodes because they have side
-  // effects.
-  if (llvm::isa<SaveNode>(N) || llvm::isa<QuantizationProfileNode>(N)) {
-    return false;
   }
 
   // Don't delete nodes that have users.
