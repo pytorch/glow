@@ -515,7 +515,7 @@ TEST(Network, trainASimpleRNN) {
                                  G.createSlice("Y2", Y, {0, 1}, {1, 2}),
                                  G.createSlice("Y3", Y, {0, 2}, {1, 3})};
 
-  float b = 0.0;
+  float b = 0.1;
   auto *Whh = G.createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
                                "Whh", Variable::InitKind::Xavier, hiddenSize);
   auto *Bhh = G.createVariable(ElemKind::FloatTy, {hiddenSize}, "Bhh",
