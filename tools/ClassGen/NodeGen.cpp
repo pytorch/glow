@@ -25,9 +25,12 @@ int main(int argc, char **argv) {
 
   BB.declareNode("Variable");
 
-  BB.newNode("Save").addInput("Input").addInput("Output").addExtraMethod(
-      "Variable *getVariable() const { return "
-      "llvm::cast<Variable>(Output_.getNode()); };");
+  BB.newNode("Save")
+      .addInput("Input")
+      .addInput("Output")
+      .addExtraMethod("Variable *getVariable() const { return "
+                      "llvm::cast<Variable>(Output_.getNode()); };")
+      .setHasSideEffects(true);
   //===--------------------------------------------------------------------===//
   //                   Convolution / Pool / FC
   //===--------------------------------------------------------------------===//
@@ -238,7 +241,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "L2Decay")
       .addMember(MemberType::Float, "LearningRate")
       .addMember(MemberType::Float, "Momentum")
-      .addMember(MemberType::Unsigned, "BatchSize");
+      .addMember(MemberType::Unsigned, "BatchSize")
+      .setHasSideEffects(true);
 
   //===--------------------------------------------------------------------===//
   //                Nodes used by quantization.
@@ -251,7 +255,8 @@ int main(int argc, char **argv) {
                       "llvm::cast<Variable>(Statistics_.getNode()); };")
       .setDocstring(
           "Generate profile (distribution of values) of the Input tensor. "
-          "This data is used for quantization of the tensor later on.");
+          "This data is used for quantization of the tensor later on.")
+      .setHasSideEffects(true);
 
   //===--------------------------------------------------------------------===//
   //                Nodes used by unit tests.

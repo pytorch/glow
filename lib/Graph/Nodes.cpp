@@ -289,7 +289,7 @@ llvm::StringRef Variable::getOutputName(unsigned idx) const {
   }
   llvm_unreachable("Invalid index");
 }
-
+bool Variable::hasSideEffects() const { return false; }
 //===----------------------------------------------------------------------===//
 //                     Debug description methods
 //===----------------------------------------------------------------------===//
@@ -325,11 +325,22 @@ NodeValue Node::getInputNode(unsigned idx) const {
   }
 }
 
-llvm::StringRef Node::getOutputName(unsigned idx) {
+llvm::StringRef Node::getOutputName(unsigned idx) const {
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<const CLASS *>(this)->getOutputName(idx);
+#include "AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+}
+
+bool Node::hasSideEffects() const {
+  switch (getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<const CLASS *>(this)->hasSideEffects();
 #include "AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");

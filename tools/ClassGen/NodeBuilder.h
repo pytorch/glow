@@ -39,6 +39,8 @@ class NodeBuilder {
   std::ofstream &dStream;
   /// Documentation string printed with the class definition.
   std::string docstring_;
+  /// Whether node has side effects. By default there are no side effects.
+  bool hasSideEffects_{false};
 
 public:
   NodeBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
@@ -89,6 +91,12 @@ public:
   /// Set the documentation string. Each line will be prepended with "/// ".
   NodeBuilder &setDocstring(const std::string &docstring) {
     docstring_ = docstring;
+    return *this;
+  }
+
+  /// Set whether node has side effects.
+  NodeBuilder &setHasSideEffects(bool hasSideEffects) {
+    hasSideEffects_ = hasSideEffects;
     return *this;
   }
 
