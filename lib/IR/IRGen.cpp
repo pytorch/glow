@@ -513,6 +513,14 @@ public:
                              S->getMomentum(), S->getBatchSize());
       break;
     }
+    case glow::Kinded::Kind::QuantizationProfileNodeKind: {
+      auto *quantizationProfileNode = cast<QuantizationProfileNode>(N);
+      auto *inputTensor = valueForNode(quantizationProfileNode->getInput());
+      auto *stats = valueForNode(quantizationProfileNode->getVariable());
+      builder_.createQuantizationProfileInst(quantizationProfileNode->getName(),
+                                             inputTensor, stats);
+      break;
+    }
 
     case glow::Kinded::Kind::TanhGradNodeKind:
     case glow::Kinded::Kind::SigmoidGradNodeKind:

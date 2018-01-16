@@ -22,8 +22,9 @@ static bool shouldDeleteNode(CompilationMode mode, Node *N) {
     }
   }
 
-  // We don't delete Save nodes because they have side effects.
-  if (llvm::isa<SaveNode>(N)) {
+  // We don't delete Save/QuantizationProfile nodes because they have side
+  // effects.
+  if (llvm::isa<SaveNode>(N) || llvm::isa<QuantizationProfileNode>(N)) {
     return false;
   }
 

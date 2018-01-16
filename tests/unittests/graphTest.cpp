@@ -17,7 +17,6 @@
 using namespace glow;
 
 TEST(Graph, simpleTest) {
-
   {
     Graph G;
     Module M(&G);
@@ -29,8 +28,8 @@ TEST(Graph, simpleTest) {
     K = G.createSoftMax("SoftMax", K, S);
     G.dump();
     G.dumpDAG();
-    lower(G, glow::CompilationMode::Train);
-    ::glow::optimize(G, glow::CompilationMode::Train);
+    lower(G, CompilationMode::Train);
+    ::optimize(G, CompilationMode::Train);
     M.generateIR(CompilationMode::Train);
     M.dump();
   }
@@ -50,15 +49,14 @@ TEST(Graph, simpleTest) {
     G.createRegression("Regression", O, Ex);
     G.dump();
     G.dumpDAG();
-    lower(G, glow::CompilationMode::Train);
-    ::glow::optimize(G, glow::CompilationMode::Train);
+    lower(G, CompilationMode::Train);
+    ::optimize(G, CompilationMode::Train);
     M.generateIR(CompilationMode::Train);
     M.dump();
   }
 }
 
 TEST(Graph, multipleReturnType) {
-
   {
     Graph G;
     Module M(&G);
@@ -72,4 +70,22 @@ TEST(Graph, multipleReturnType) {
     G.dump();
     G.dumpDAG();
   }
+}
+
+TEST(Graph, QuantizationProfileNodes) {
+  unsigned numInputs = 10;
+  Graph G;
+  Module M(&G);
+
+  auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
+  auto *Ex = G.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
+
+  Node *O = G.createFullyConnected("FC1", A, 6);
+  G.createQuantizationProfile("QP", O);
+  O = G.createRELU("RELU1", O);
+  G.createRegression("Regression", O, Ex);
+
+  lower(G, CompilationMode::Infer);
+  ::optimize(G, CompilationMode::Infer);
+  M.generateIR(CompilationMode::Infer);
 }

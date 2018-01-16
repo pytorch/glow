@@ -1124,3 +1124,8 @@ void Interpreter::fwdDebugPrintInst(bool isTrain, const DebugPrintInst *I) {
   dumpImpl(getTensor(V));
   llvm::outs() << "\n";
 }
+
+void Interpreter::fwdQuantizationProfileInst(
+    bool isTrain, const glow::QuantizationProfileInst *I) {
+  // TODO: implement actual calculations of statistics.
+}
