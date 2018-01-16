@@ -261,9 +261,7 @@ TEST(Tensor, broadcastDir0) {
   const unsigned broadcastDim = 5;
   Tensor X(ElemKind::FloatTy, {dimX, dimY});
   auto H = X.getHandle<>();
-  H = {
-    100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111
-  };
+  H = {100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111};
 
   Tensor broadcastedX;
   const unsigned direction = 0;
@@ -287,9 +285,7 @@ TEST(Tensor, broadcastDir1) {
   const unsigned broadcastDim = 5;
   Tensor X(ElemKind::FloatTy, {dimX, dimY});
   auto H = X.getHandle<>();
-  H = {
-    100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111
-  };
+  H = {100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111};
 
   Tensor broadcastedX;
   const unsigned direction = 1;
@@ -313,9 +309,7 @@ TEST(Tensor, broadcastDir2) {
   const unsigned broadcastDim = 5;
   Tensor X(ElemKind::FloatTy, {dimX, dimY});
   auto H = X.getHandle<>();
-  H = {
-    100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111
-  };
+  H = {100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111};
 
   Tensor broadcastedX;
   const unsigned direction = 2;

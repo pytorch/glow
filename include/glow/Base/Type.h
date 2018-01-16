@@ -57,7 +57,7 @@ struct ShapeNHWC {
   }
 };
 
-/// Colllapse a tensor shape into two sizes: the first dimension and the size of
+/// Collapse a tensor shape into two sizes: the first dimension and the size of
 /// the rest of the dimensions.
 /// For example, [7, 3, 4, 2] -> [7, 24]
 inline std::pair<size_t, size_t> flattenCdr(llvm::ArrayRef<size_t> dims) {

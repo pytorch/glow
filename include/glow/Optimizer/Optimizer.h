@@ -7,10 +7,11 @@ class Module;
 class Graph;
 
 enum class CompilationMode {
-  TrainDebug, /// Compiler the graph for training and add extra instrumentation
-              /// that enable unit testing and debugging.
+  TrainDebug, /// Compile the graph for training and add extra instrumentation
+              /// that enable unit testing and debugging, e.g., saving gradient
+              /// results.
   Train,      /// Compile the graph in preperation for training.
-  Infer,      /// Compiler the graph for inference. Notice that this operation
+  Infer,      /// Compile the graph for inference. Notice that this operation
               /// changes the graph in a way that is not reversible.
 };
 
