@@ -161,6 +161,12 @@ llvm::cl::opt<bool>
                          "takes for the program to execute"),
           llvm::cl::Optional);
 
+llvm::cl::opt<std::string> QuantizationProfileFile(
+    "profile",
+    llvm::cl::desc("Perform quantization profiling for a given graph "
+                   "and save result to the file."),
+    llvm::cl::value_desc("profile.json"), llvm::cl::Optional);
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -192,6 +198,10 @@ int main(int argc, char **argv) {
     SM = LD.getRoot();
     i0 = llvm::cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
     i1 = llvm::cast<Variable>(LD.getOrCreateNodeByName("data"));
+  }
+
+  if (!QuantizationProfileFile.empty()) {
+    ::profileQuantization(G);
   }
 
   // Hold a reference to i0 and i1 to prevent the optimizer from deleting them.

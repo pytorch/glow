@@ -57,7 +57,7 @@ static const std::string &loadStr(const caffe2::Argument *arg) {
   return arg->s();
 }
 
-/// Loda the 'shape' record into a vector of sizes.
+/// Load the 'shape' record into a vector of sizes.
 std::vector<size_t> getShape(const ::caffe2::Argument *arg) {
   std::vector<size_t> dim;
   for (auto i : arg->ints()) {
