@@ -531,7 +531,8 @@ public:
 
   /// Broadcast the current Handle's tensor in \p direction of length \p
   /// newDimLen into Tensor \p dest.
-  void broadcastOneDimension(Tensor *dest, unsigned newDimLen, unsigned direction) {
+  void broadcastOneDimension(Tensor *dest, unsigned newDimLen,
+                             unsigned direction) {
     auto origDims = dims();
     assert(direction <= origDims.size() &&
            "Direction must be in range [0-size] inclusive");
@@ -542,14 +543,17 @@ public:
     size_t newDims[max_tensor_dimensions];
     unsigned shift = 0;
     for (int i = 0; i < origDims.size(); ++i) {
-      if (i == direction) shift = 1;
+      if (i == direction)
+        shift = 1;
       newDims[i + shift] = origDims[i];
     }
     newDims[direction] = newDimLen;
-    dest->reset(getElementType(), llvm::ArrayRef<size_t>(newDims, origDims.size() + 1));
+    dest->reset(getElementType(),
+                llvm::ArrayRef<size_t>(newDims, origDims.size() + 1));
 
     size_t currNewIdxsArr[max_tensor_dimensions];
-    auto currNewIdxs = llvm::MutableArrayRef<size_t>(currNewIdxsArr, origDims.size() + 1);
+    auto currNewIdxs =
+        llvm::MutableArrayRef<size_t>(currNewIdxsArr, origDims.size() + 1);
     size_t currIdxsArr[max_tensor_dimensions] = {0};
     auto currIdxs = llvm::MutableArrayRef<size_t>(currIdxsArr, origDims.size());
 
@@ -558,17 +562,17 @@ public:
       // New indices using current from original Tensor, plus new dimension.
       unsigned shift = 0;
       for (int i = 0; i < origDims.size(); ++i) {
-        if (i == direction) shift = 1;
+        if (i == direction)
+          shift = 1;
         currNewIdxs[i + shift] = currIdxs[i];
       }
 
       // Copy all values in the new broadcast direction dimension.
-      for (currNewIdxs[direction] = 0;
-           currNewIdxs[direction] < newDimLen;
+      for (currNewIdxs[direction] = 0; currNewIdxs[direction] < newDimLen;
            currNewIdxs[direction]++) {
         dest->getHandle<ElemTy>().at(currNewIdxs) = at(currIdxs);
       }
-    } while(!incrementIndicesAndCheckFinished(currIdxs));
+    } while (!incrementIndicesAndCheckFinished(currIdxs));
   }
 
 private:
@@ -630,7 +634,8 @@ private:
   /// Takes an array of indices \p currIdxs and increments it with respect to
   /// the Tensor's dims(), allowing for iterating over all of a Tensor's
   /// elements without statically knowing its shape.
-  bool incrementIndicesAndCheckFinished(llvm::MutableArrayRef<size_t> currIdxs) {
+  bool
+  incrementIndicesAndCheckFinished(llvm::MutableArrayRef<size_t> currIdxs) {
     auto origDims = dims();
     assert(origDims.size() == currIdxs.size() &&
            "Set of indices should have same shape as Tensor");
@@ -644,7 +649,7 @@ private:
       }
     }
 
-    assert(currIdxs[origDims.size()-1] == 0 &&
+    assert(currIdxs[origDims.size() - 1] == 0 &&
            "Should have overflowed highest index if complete");
     return true;
   }

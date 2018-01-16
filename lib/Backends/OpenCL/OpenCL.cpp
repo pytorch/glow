@@ -634,4 +634,3 @@ Tensor *OCLBackend::getTensor(const Value *v) const {
   auto ie = externalTensors_.find(v);
   return ie->second;
 }
-

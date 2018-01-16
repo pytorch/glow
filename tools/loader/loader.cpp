@@ -198,8 +198,8 @@ int main(int argc, char **argv) {
   // One of the nodes, 'gpu' or 'data' is unused and we don't want the optimizer
   // to delete the nodes because it makes it easier for us to initialize the
   // network.
-  NodeValue ref0(i0,0);
-  NodeValue ref1(i1,0);
+  NodeValue ref0(i0, 0);
+  NodeValue ref1(i1, 0);
 
   // Emit IR for the graph.
   EE.compile(CompilationMode::Infer);
