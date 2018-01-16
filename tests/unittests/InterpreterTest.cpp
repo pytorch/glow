@@ -524,23 +524,23 @@ TEST(Network, trainASimpleRNN) {
                                "Wxh", Variable::InitKind::Xavier, inputSize);
   auto *Bxh = G.createVariable(ElemKind::FloatTy, {hiddenSize}, "Bxh",
                                Variable::InitKind::Broadcast, b);
-  auto *Why = G.createVariable(ElemKind::FloatTy, {1, hiddenSize},
-                               "Why", Variable::InitKind::Xavier, hiddenSize);
+  auto *Why = G.createVariable(ElemKind::FloatTy, {1, hiddenSize}, "Why",
+                               Variable::InitKind::Xavier, hiddenSize);
   auto *Bhy = G.createVariable(ElemKind::FloatTy, {1}, "Bhy",
-                              Variable::InitKind::Broadcast, b);
+                               Variable::InitKind::Broadcast, b);
 
   std::vector<Node *> regressionNodes;
   // Un-roll backpropogation through time as a loop with the shared parameters.
   for (unsigned t = 0; t < 3; t++) {
-      auto *FC1 = G.createFullyConnected("", Ht, Whh, Bhh, hiddenSize);
-      auto *FC2 = G.createFullyConnected("", XSliced[t], Wxh, Bxh, hiddenSize);
-      auto *A = G.createArithmetic("", FC1, FC2, ArithmeticNode::Mode::Add);
-      auto *H = G.createTanh("", A);
-      auto *O = G.createFullyConnected("", H, Why, Bhy, 1);
-      auto *R = G.createRegression("", O, YSliced[t]);
-      regressionNodes.push_back(R);
+    auto *FC1 = G.createFullyConnected("", Ht, Whh, Bhh, hiddenSize);
+    auto *FC2 = G.createFullyConnected("", XSliced[t], Wxh, Bxh, hiddenSize);
+    auto *A = G.createArithmetic("", FC1, FC2, ArithmeticNode::Mode::Add);
+    auto *H = G.createTanh("", A);
+    auto *O = G.createFullyConnected("", H, Why, Bhy, 1);
+    auto *R = G.createRegression("", O, YSliced[t]);
+    regressionNodes.push_back(R);
 
-      Ht = H;
+    Ht = H;
   };
 
   auto *R = G.createConcat("O", regressionNodes, 1);
