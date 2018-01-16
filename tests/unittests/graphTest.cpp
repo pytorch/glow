@@ -80,12 +80,24 @@ TEST(Graph, QuantizationProfileNodes) {
   auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
   auto *Ex = G.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
 
+  // Create two nodes reading from the same variable.
+  // Only one Quantization Profile node should be created for the output
+  // from the variable.
   Node *O = G.createFullyConnected("FC1", A, 6);
-  G.createQuantizationProfile("QP", O);
+  Node *C = G.createFullyConnected("FC2", A, 6);
+  (void)C;
   O = G.createRELU("RELU1", O);
   G.createRegression("Regression", O, Ex);
 
+  ::glow::profileQuantization(G);
   lower(G, CompilationMode::Infer);
   ::optimize(G, CompilationMode::Infer);
   M.generateIR(CompilationMode::Infer);
+
+  size_t numberOfProfileNodes =
+      std::count_if(G.getNodes().begin(), G.getNodes().end(), [](Node *node) {
+        return llvm::isa<QuantizationProfileNode>(node);
+      });
+
+  EXPECT_EQ(8, numberOfProfileNodes);
 }

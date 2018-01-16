@@ -22,6 +22,10 @@ void optimize(Graph &G, CompilationMode mode);
 /// operators.
 void lower(Graph &G, CompilationMode mode);
 
+/// Instrument graph \p G by inserting quantization profile nodes
+/// for capturing stats for quantization.
+void profileQuantization(Graph &G);
+
 } // namespace glow
 
 #endif // GLOW_OPTIMIZER_OPTIMIZER_H
