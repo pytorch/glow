@@ -301,6 +301,25 @@ void JITBackend::init() {
       break;
     }
 
+    case Kinded::Kind::PoolMaxInstKind: {
+      PoolMaxInst *PM = llvm::cast<PoolMaxInst>(I);
+      auto *destPtr =
+          emitValueAddress(builder, PM->getDest(), ElemKind::FloatTy);
+      auto *srcPtr = emitValueAddress(builder, PM->getSrc(), ElemKind::FloatTy);
+      auto *destDims = emitValueDims(builder, PM->getDest());
+      auto *srcDims = emitValueDims(builder, PM->getSrc());
+
+      auto *kernel = emitConst(builder, PM->getKernel());
+      auto *stride = emitConst(builder, PM->getStride());
+      auto *pad = emitConst(builder, PM->getPad());
+
+      auto *F = llmodule_->getFunction("pool_max_f");
+      assert(F && "Unable to load the function");
+      builder.CreateCall(
+          F, {srcPtr, destPtr, srcDims, destDims, kernel, pad, stride});
+      break;
+    }
+
     case Kinded::Kind::ElementDivInstKind:
     case Kinded::Kind::ElementMulInstKind:
     case Kinded::Kind::ElementAddInstKind:
