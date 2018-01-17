@@ -142,13 +142,58 @@ void convolution_f(float *inW, float *outW, float *filterW, float *biasW,
             }
           }
 
-          // sum += biasW.at({d});
-          // outW.at({n, ax, ay, d}) = sum;
-
-          sum += biasW[];
+          sum += biasW[d];
           outW[getXYZW(outWdims, n, ax, ay, d)] = sum;
         } // W
       }   // H
+    }     // C
+  }       // N
+}
+
+void pool_max_f(float *inW, float *outW, size_t *inWdims, size_t *outWdims,
+                size_t pad, size_t filterSize, size_t stride) {
+
+  // For each input in the batch:
+  for (size_t n = 0; n < outWdims[0]; n++) {
+
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < inWdims[3]; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t x = -(ssize_t)pad;
+      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+        ssize_t y = -(ssize_t)pad;
+        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+          size_t maxX = x;
+          size_t maxY = y;
+
+          int first = 1;
+          float max = 0;
+
+          for (size_t fx = 0; fx < filterSize; fx++) {
+            for (size_t fy = 0; fy < filterSize; fy++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
+                  oy >= (ssize_t)inWdims[2]) {
+                continue;
+              }
+
+              float val = inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, z)];
+
+              if (first || (val >= max)) {
+                first = 0;
+                max = val;
+                maxX = ox;
+                maxY = oy;
+              }
+            }
+          }
+
+          outW[getXYZW(outWdims, n, ax, ay, z)] = max;
+        } // H
+      }   // W
     }     // C
   }       // N
 }
