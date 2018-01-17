@@ -88,6 +88,8 @@ TEST(IR, allInstrs) {
     auto *I6 = builder.createWeightVar(ElemKind::FloatTy, {2, 12, 12, 64});
     auto *I7 = builder.createWeightVar(T1, "I7");
     auto *I8 = builder.createWeightVar(ElemKind::FloatTy, {1, 24, 3, 24}, "I8");
+    auto *ComputationInfo =
+        builder.createWeightVar(ElemKind::FloatTy, {2}, "ComputationInfo");
 
     auto *XY = builder.createWeightVar(ElemKind::IndexTy, {1, 12, 12, 3, 2});
     auto *B0 = builder.createWeightVar(T2, "B0");
@@ -118,7 +120,7 @@ TEST(IR, allInstrs) {
                                          0.9);
     builder.createElementMulInst("", I1, I0, I0);
     builder.createDebugPrintInst("", I0);
-    builder.createQuantizationProfileInst("", I0, B0);
+    builder.createQuantizationProfileInst("", I0, B0, ComputationInfo);
   }
   M.verify();
 }
