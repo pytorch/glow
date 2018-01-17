@@ -458,6 +458,198 @@ QuantizationProfileNode *Graph::createQuantizationProfile(llvm::StringRef name,
       new QuantizationProfileNode(name, input, histogram, computationInfo));
 }
 
+void Graph::createSimpleRNN(llvm::StringRef namePrefix,
+                            llvm::ArrayRef<Node *> inputs, unsigned hiddenSize,
+                            unsigned outputSize, std::vector<Node *> &outputs) {
+  const unsigned timeSteps = inputs.size();
+  assert(timeSteps > 0 && "empty input");
+  const unsigned inputSize = inputs.front()->dims().back();
+  assert(inputSize > 0 && "input dimensionality is zero");
+
+  // Initialize the state to zero.
+  auto *HInit = createVariable(ElemKind::FloatTy, {1, hiddenSize},
+                               (namePrefix + ".initial_state").str(),
+                               Variable::InitKind::Extern);
+  HInit->getPayload().zero();
+  Node *Ht = HInit;
+
+  float b = 0.1;
+  auto *Whh = createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
+                             (namePrefix + ".Whh").str(),
+                             Variable::InitKind::Xavier, hiddenSize);
+  auto *Bhh = createVariable(ElemKind::FloatTy, {hiddenSize},
+                             (namePrefix + ".Bhh").str(),
+                             Variable::InitKind::Broadcast, b);
+  auto *Wxh = createVariable(ElemKind::FloatTy, {inputSize, hiddenSize},
+                             (namePrefix + ".Wxh").str(),
+                             Variable::InitKind::Xavier, inputSize);
+  auto *Bxh = createVariable(ElemKind::FloatTy, {hiddenSize},
+                             (namePrefix + ".Bxh").str(),
+                             Variable::InitKind::Broadcast, b);
+  auto *Why = createVariable(ElemKind::FloatTy, {hiddenSize, outputSize},
+                             (namePrefix + ".Why").str(),
+                             Variable::InitKind::Xavier, hiddenSize);
+  auto *Bhy = createVariable(ElemKind::FloatTy, {outputSize},
+                             (namePrefix + ".Bhy").str(),
+                             Variable::InitKind::Broadcast, b);
+
+  // Un-roll backpropogation through time as a loop with the shared parameters.
+  for (unsigned t = 0; t < timeSteps; t++) {
+    auto fc1Name = (namePrefix + ".fc1." + std::to_string(t)).str();
+    auto *FC1 = createFullyConnected(fc1Name, Ht, Whh, Bhh, hiddenSize);
+    auto fc2Name = (namePrefix + ".fc2." + std::to_string(t)).str();
+    auto *FC2 = createFullyConnected(fc2Name, inputs[t], Wxh, Bxh, hiddenSize);
+    auto aName = (namePrefix + ".add." + std::to_string(t)).str();
+    auto *A = createArithmetic(aName, FC1, FC2, ArithmeticNode::Mode::Add);
+    auto tanhName = (namePrefix + ".tanh." + std::to_string(t)).str();
+    auto *H = createTanh(tanhName, A);
+    auto outName = (namePrefix + ".out." + std::to_string(t)).str();
+    auto *O = createFullyConnected(outName, H, Why, Bhy, outputSize);
+    outputs.push_back(O);
+
+    Ht = H;
+  };
+}
+
+void Graph::createGRU(llvm::StringRef namePrefix, llvm::ArrayRef<Node *> inputs,
+                      unsigned hiddenSize, unsigned outputSize,
+                      std::vector<Node *> &outputs) {
+  const unsigned timeSteps = inputs.size();
+  assert(timeSteps > 0 && "empty input");
+  const unsigned inputSize = inputs.front()->dims().back();
+  assert(inputSize > 0 && "input dimensionality is zero");
+
+  // Initialize the state to zero.
+  auto *HInit = createVariable(ElemKind::FloatTy, {1, hiddenSize},
+                               "initial_state", Variable::InitKind::Extern);
+  HInit->getPayload().zero();
+  Node *Ht = HInit;
+
+  // Update gate:
+  //    Z <- sigmoid(Wxz * x + Whz * h + bz)
+  // Reset gate:
+  //    R <- sigmoid(Wxr * x + Whr * h + br)
+  // Hidden state:
+  //    h <- Z . h + (1 - Z) tanh (Wxh * x + Whh * (R . h) + bh)
+
+  // update gate
+  float bUpdate = 0.1;
+  auto *Wxz = createVariable(ElemKind::FloatTy, {inputSize, hiddenSize},
+                             (namePrefix + ".Wxz").str(),
+                             Variable::InitKind::Xavier, inputSize);
+  auto *Whz = createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
+                             (namePrefix + ".Whz").str(),
+                             Variable::InitKind::Xavier, hiddenSize);
+  auto *Bz1 = createVariable(ElemKind::FloatTy, {hiddenSize},
+                             (namePrefix + ".bz1").str(),
+                             Variable::InitKind::Broadcast, bUpdate);
+  auto *Bz2 = createVariable(ElemKind::FloatTy, {hiddenSize},
+                             (namePrefix + ".bz2").str(),
+                             Variable::InitKind::Broadcast, bUpdate);
+  float bReset = -10.0;
+  // reset gate
+  auto *Wxr = createVariable(ElemKind::FloatTy, {inputSize, hiddenSize},
+                             (namePrefix + ".Wxr").str(),
+                             Variable::InitKind::Xavier, inputSize);
+  auto *Whr = createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
+                             (namePrefix + ".Whr").str(),
+                             Variable::InitKind::Xavier, hiddenSize);
+  auto *Br1 = createVariable(ElemKind::FloatTy, {hiddenSize},
+                             (namePrefix + ".br1").str(),
+                             Variable::InitKind::Broadcast, bReset);
+  auto *Br2 = createVariable(ElemKind::FloatTy, {hiddenSize},
+                             (namePrefix + ".br2").str(),
+                             Variable::InitKind::Broadcast, bReset);
+
+  // hidden state
+  float b = 0.1;
+  auto *Wxh = createVariable(ElemKind::FloatTy, {inputSize, hiddenSize},
+                             (namePrefix + ".Wxh").str(),
+                             Variable::InitKind::Xavier, inputSize);
+  auto *Whh = createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
+                             (namePrefix + ".Whh").str(),
+                             Variable::InitKind::Xavier, hiddenSize);
+  auto *Bh1 = createVariable(ElemKind::FloatTy, {hiddenSize},
+                             (namePrefix + ".bh1").str(),
+                             Variable::InitKind::Broadcast, b);
+  auto *Bh2 = createVariable(ElemKind::FloatTy, {hiddenSize},
+                             (namePrefix + ".bh2").str(),
+                             Variable::InitKind::Broadcast, b);
+
+  // output layer
+  auto *Why = createVariable(ElemKind::FloatTy, {hiddenSize, outputSize},
+                             (namePrefix + ".Why").str(),
+                             Variable::InitKind::Xavier, hiddenSize);
+  auto *By = createVariable(ElemKind::FloatTy, {outputSize},
+                            (namePrefix + ".by").str(),
+                            Variable::InitKind::Broadcast, b);
+
+  auto *Ones =
+      createVariable(ElemKind::FloatTy, {1, hiddenSize},
+                     (namePrefix + ".ones").str(), Variable::InitKind::Extern);
+  Ones->getPayload().getHandle().clear(1.0);
+
+  std::vector<Node *> outputNodes;
+  for (unsigned t = 0; t < timeSteps; t++) {
+    auto fc1Name = (namePrefix + ".fc1." + std::to_string(t)).str();
+    auto fc2Name = (namePrefix + ".fc2." + std::to_string(t)).str();
+    auto add1Name = (namePrefix + ".add1." + std::to_string(t)).str();
+    auto sigmoid1Name = (namePrefix + ".sigmoid1." + std::to_string(t)).str();
+
+    auto *Zt = createSigmoid(
+        sigmoid1Name,
+        createArithmetic(
+            add1Name, createFullyConnected(fc1Name, Ht, Whz, Bz1, hiddenSize),
+            createFullyConnected(fc2Name, inputs[t], Wxz, Bz2, hiddenSize),
+            ArithmeticNode::Mode::Add));
+
+    auto fc3Name = (namePrefix + ".fc3." + std::to_string(t)).str();
+    auto fc4Name = (namePrefix + ".fc4." + std::to_string(t)).str();
+    auto add2Name = (namePrefix + ".add2." + std::to_string(t)).str();
+    auto sigmoid2Name = (namePrefix + ".sigmoid2." + std::to_string(t)).str();
+
+    auto *Rt = createSigmoid(
+        sigmoid2Name,
+        createArithmetic(
+            add2Name, createFullyConnected(fc3Name, Ht, Whr, Br1, hiddenSize),
+            createFullyConnected(fc4Name, inputs[t], Wxr, Br2, hiddenSize),
+            ArithmeticNode::Mode::Add));
+
+    auto zhtName = (namePrefix + ".zh." + std::to_string(t)).str();
+    auto *ZHt = createArithmetic(zhtName, Zt, Ht, ArithmeticNode::Mode::Mul);
+
+    auto oneMinusZtName = (namePrefix + ".1-z." + std::to_string(t)).str();
+    auto *OneMinusZt =
+        createArithmetic(oneMinusZtName, Ones, Zt, ArithmeticNode::Mode::Sub);
+
+    auto rhtName = (namePrefix + ".rh." + std::to_string(t)).str();
+    auto *RHt = createArithmetic(rhtName, Rt, Ht, ArithmeticNode::Mode::Mul);
+
+    auto fc5Name = (namePrefix + ".fc5." + std::to_string(t)).str();
+    auto fc6Name = (namePrefix + ".fc6." + std::to_string(t)).str();
+    auto add3Name = (namePrefix + ".add3." + std::to_string(t)).str();
+    auto tanh1Name = (namePrefix + ".tanh1." + std::to_string(t)).str();
+
+    auto *Ut = createTanh(
+        tanh1Name,
+        createArithmetic(
+            add3Name, createFullyConnected(fc5Name, RHt, Whh, Bh1, hiddenSize),
+            createFullyConnected(fc6Name, inputs[t], Wxh, Bh2, hiddenSize),
+            ArithmeticNode::Mode::Add));
+
+    auto oneMinusZtUtName = (namePrefix + "1.-zu." + std::to_string(t)).str();
+    auto *OneMinusZtUt = createArithmetic(oneMinusZtUtName, OneMinusZt, Ut,
+                                          ArithmeticNode::Mode::Mul);
+
+    auto htName = (namePrefix + ".H." + std::to_string(t)).str();
+    Ht = createArithmetic(htName, ZHt, OneMinusZtUt, ArithmeticNode::Mode::Add);
+
+    auto outName = (namePrefix + ".out." + std::to_string(t)).str();
+    auto *O = createFullyConnected(outName, Ht, Why, By, outputSize);
+    outputs.push_back(O);
+  }
+};
+
 //===----------------------------------------------------------------------===//
 //                   Graph dumping and printing
 //===----------------------------------------------------------------------===//
