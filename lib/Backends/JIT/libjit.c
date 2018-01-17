@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/types.h>
@@ -196,4 +197,30 @@ void pool_max_f(float *inW, float *outW, size_t *inWdims, size_t *outWdims,
       }   // W
     }     // C
   }       // N
+}
+
+void softmax_f(float *inW, float *outW, size_t *idim, size_t *odim) {
+
+  for (size_t n = 0; n < idim[0]; n++) {
+    float max = inW[getXY(idim, n, 0)];
+
+    // Find Max.
+    for (size_t i = 0; i < idim[1]; i++) {
+      max = MAX(max, inW[getXY(idim, n, 1)]);
+    }
+
+    float sum = 0;
+
+    // Compute exp.
+    for (size_t i = 0; i < idim[1]; i++) {
+      float e = expf(inW[getXY(idim, n, 1)] - max);
+      sum += e;
+      outW[getXY(odim, n, i)] = e;
+    }
+
+    // Normalize the output.
+    for (size_t i = 0; i < idim[1]; i++) {
+      outW[getXY(odim, n, i)] = outW[getXY(odim, n, i)] / sum;
+    }
+  } // N
 }

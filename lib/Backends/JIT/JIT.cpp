@@ -320,6 +320,20 @@ void JITBackend::init() {
       break;
     }
 
+    case Kinded::Kind::SoftMaxInstKind: {
+      SoftMaxInst *SM = llvm::cast<SoftMaxInst>(I);
+      auto *destPtr =
+          emitValueAddress(builder, SM->getDest(), ElemKind::FloatTy);
+      auto *srcPtr = emitValueAddress(builder, SM->getSrc(), ElemKind::FloatTy);
+      auto *destDims = emitValueDims(builder, SM->getDest());
+      auto *srcDims = emitValueDims(builder, SM->getSrc());
+
+      auto *F = llmodule_->getFunction("softmax_f");
+      assert(F && "Unable to load the function");
+      builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims});
+      break;
+    }
+
     case Kinded::Kind::ElementDivInstKind:
     case Kinded::Kind::ElementMulInstKind:
     case Kinded::Kind::ElementAddInstKind:
