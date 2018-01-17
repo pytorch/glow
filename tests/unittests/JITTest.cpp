@@ -30,7 +30,6 @@ TEST(JITCorrectnessTest, reluTest) {
   EXPECT_TRUE(H1.isEqual(H2));
 }
 
-
 TEST(JITCorrectnessTest, convOps) {
   Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});
   inputs.getHandle().randomize(1);

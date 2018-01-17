@@ -46,13 +46,13 @@ class caffe2ModelLoader {
   /// in the network.
   void loadOperator(const caffe2::OperatorDef &op);
 
-  /// Loads a intrinsic operator \p op into the network.  The node created cannot
-  /// be used for later code generation.
+  /// Loads a intrinsic operator \p op into the network.  The node created
+  /// cannot be used for later code generation.
   void loadIntrinsicOperator(const caffe2::OperatorDef &op);
 
-  /// Loads a intrinsic operator \p op into the network.  This operator must not have
-  /// any inputs.  Like other intrinsic operators, it generated node cannot be used
-  /// for later code generation.
+  /// Loads a intrinsic operator \p op into the network.  This operator must not
+  /// have any inputs.  Like other intrinsic operators, it generated node cannot
+  /// be used for later code generation.
   void loadIntrinsicWeight(const caffe2::OperatorDef &op);
 
   /// Reads a network (weights or structure) from the serialized protocol buffer

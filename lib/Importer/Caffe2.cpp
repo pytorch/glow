@@ -137,21 +137,21 @@ void caffe2ModelLoader::loadIntrinsicWeight(const caffe2::OperatorDef &op) {
   assert(op.input().size() == 0 && "Unknown weights do not support inputs.");
 
   std::vector<TypeRef> outputs;
-  for (const auto& output : op.output()) {
+  for (const auto &output : op.output()) {
     auto *T = new Tensor();
     outputs.emplace_back(G_.getVoidTy());
     tensors_[output] = T;
   }
 
-  Node *node = G_.createIntrinsicNode(op.name(), {}, outputs, (void*)&op);
+  Node *node = G_.createIntrinsicNode(op.name(), {}, outputs, (void *)&op);
   for (int i = 0, e = op.output_size(); i < e; i++) {
     nodeByName_[op.output(i)] = node;
   }
 }
 
 void caffe2ModelLoader::loadIntrinsicOperator(const caffe2::OperatorDef &op) {
-  std::vector<Node*> inputs;
-  for (const auto& input : op.input()) {
+  std::vector<Node *> inputs;
+  for (const auto &input : op.input()) {
     inputs.emplace_back(getOrCreateNodeByName(input));
   }
   std::vector<TypeRef> outputs;
@@ -159,7 +159,8 @@ void caffe2ModelLoader::loadIntrinsicOperator(const caffe2::OperatorDef &op) {
     outputs.emplace_back(G_.getVoidTy());
   }
 
-  Node *node = G_.createIntrinsicNode(op.name(), llvm::ArrayRef<Node*>(inputs), outputs, (void*)&op);
+  Node *node = G_.createIntrinsicNode(op.name(), llvm::ArrayRef<Node *>(inputs),
+                                      outputs, (void *)&op);
   for (int i = 0, e = op.output_size(); i < e; i++) {
     nodeByName_[op.output(i)] = node;
   }
@@ -419,7 +420,8 @@ void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
     loadOperator(op);
   }
 
-  assert(net.external_output_size() && "Network needs external outputs defined.");
+  assert(net.external_output_size() &&
+         "Network needs external outputs defined.");
   auto *r = getNodeByName(net.external_output(0));
   root_ = G_.createSave("output", r);
 }
