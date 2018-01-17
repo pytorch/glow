@@ -239,15 +239,15 @@ void softmax_f(float *inW, float *outW, size_t *idim, size_t *odim) {
     float max = inW[getXY(idim, n, 0)];
 
     // Find Max.
-    for (size_t i = 0; i < idim[1]; i++) {
-      max = MAX(max, inW[getXY(idim, n, 1)]);
+    for (size_t i = 1; i < idim[1]; i++) {
+      max = MAX(max, inW[getXY(idim, n, i)]);
     }
 
     float sum = 0;
 
     // Compute exp.
     for (size_t i = 0; i < idim[1]; i++) {
-      float e = expf(inW[getXY(idim, n, 1)] - max);
+      float e = expf(inW[getXY(idim, n, i)] - max);
       sum += e;
       outW[getXY(odim, n, i)] = e;
     }
