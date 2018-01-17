@@ -318,7 +318,7 @@ void JITBackend::init() {
       auto *F = llmodule_->getFunction("pool_max_f");
       assert(F && "Unable to load the function");
       builder.CreateCall(
-          F, {srcPtr, destPtr, srcDims, destDims, kernel, pad, stride});
+          F, {srcPtr, destPtr, srcDims, destDims, pad, kernel, stride});
       break;
     }
     case Kinded::Kind::PoolAvgInstKind: {
@@ -336,7 +336,7 @@ void JITBackend::init() {
       auto *F = llmodule_->getFunction("pool_avg_f");
       assert(F && "Unable to load the function");
       builder.CreateCall(
-          F, {srcPtr, destPtr, srcDims, destDims, kernel, pad, stride});
+          F, {srcPtr, destPtr, srcDims, destDims, pad, kernel, stride});
       break;
     }
 
