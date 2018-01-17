@@ -41,6 +41,9 @@ class NodeBuilder {
   std::string docstring_;
   /// Whether node has side effects. By default there are no side effects.
   bool hasSideEffects_{false};
+  /// Whether the node has an intrinsic set of outputs.  By default there
+  /// are no intrinsic outputs.
+  bool hasIntrinsicOutput_{false};
 
 public:
   NodeBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
@@ -60,6 +63,11 @@ public:
   /// For example: "Filter".
   NodeBuilder &addMember(MemberType type, const std::string &name) {
     members_.push_back({type, name});
+    return *this;
+  }
+
+  NodeBuilder &addIntrinsicOutput() {
+    hasIntrinsicOutput_ = true;
     return *this;
   }
 

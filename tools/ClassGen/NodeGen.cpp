@@ -259,6 +259,14 @@ int main(int argc, char **argv) {
       .setHasSideEffects(true);
 
   //===--------------------------------------------------------------------===//
+  //                Nodes used by generic transformations
+  //===--------------------------------------------------------------------===//
+  BB.newNode("Intrinsic")
+      .addMember(MemberType::VectorNodeValue, "Inputs")
+      .addIntrinsicOutput()
+      .addExtraParam("void *", "saved");
+
+  //===--------------------------------------------------------------------===//
   //                Nodes used by unit tests.
   //===--------------------------------------------------------------------===//
 

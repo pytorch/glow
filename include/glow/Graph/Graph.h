@@ -130,6 +130,8 @@ public:
   TransposeNode *createTranspose(llvm::StringRef name, NodeValue input,
                                  llvm::ArrayRef<unsigned> shuffle);
 
+  IntrinsicNode *createIntrinsicNode(llvm::StringRef name, llvm::ArrayRef<Node *> inputs, llvm::ArrayRef<TypeRef> outputs, void *saved);
+
   ConcatNode *createConcat(llvm::StringRef name, llvm::ArrayRef<Node *> inputs,
                            unsigned dimension);
 
