@@ -28,10 +28,6 @@ TEST(JITCorrectnessTest, reluTest) {
   auto H2 = out2.getHandle();
 
   EXPECT_TRUE(H1.isEqual(H2));
-  if (!H1.isEqual(H2)) {
-    H1.dump();
-    H2.dump();
-  }
 }
 
 
@@ -47,10 +43,6 @@ TEST(JITCorrectnessTest, convOps) {
   auto H2 = out2.getHandle();
 
   EXPECT_TRUE(H1.isEqual(H2));
-  if (!H1.isEqual(H2)) {
-    H1.dump();
-    H2.dump();
-  }
 }
 
 TEST(JITCorrectnessTest, basicFCNet) {
@@ -65,8 +57,4 @@ TEST(JITCorrectnessTest, basicFCNet) {
   auto H2 = out2.getHandle();
 
   EXPECT_TRUE(H1.isEqual(H2));
-  if (!H1.isEqual(H2)) {
-    H1.dump();
-    H2.dump();
-  }
 }

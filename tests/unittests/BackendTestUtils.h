@@ -7,7 +7,6 @@
 void inferReluNet(glow::Tensor *inputs, glow::Tensor *out,
                   glow::BackendKind kind);
 
-// Test a simple RELU network. 
 void inferBasicConvNet(glow::Tensor *inputs, glow::Tensor *out,
                        glow::BackendKind kind);
 
