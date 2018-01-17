@@ -265,10 +265,10 @@ void transpose_f(float *inW, float *outW, size_t *idim, size_t *odim,
   size_t SC[4];
 
   if (numDims == 4) {
-    for (size_t x = 0; x < idim[0]; x++)
-      for (size_t y = 0; y < idim[1]; y++)
-        for (size_t z = 0; z < idim[2]; z++)
-          for (size_t w = 0; w < idim[3]; w++) {
+    for (size_t x = 0; x < odim[0]; x++)
+      for (size_t y = 0; y < odim[1]; y++)
+        for (size_t z = 0; z < odim[2]; z++)
+          for (size_t w = 0; w < odim[3]; w++) {
             SC[shuffle[0]] = x;
             SC[shuffle[1]] = y;
             SC[shuffle[2]] = z;
