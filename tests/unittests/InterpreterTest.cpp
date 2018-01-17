@@ -520,11 +520,11 @@ TEST(Network, trainASimpleRNN) {
                                "Whh", Variable::InitKind::Xavier, hiddenSize);
   auto *Bhh = G.createVariable(ElemKind::FloatTy, {hiddenSize}, "Bhh",
                                Variable::InitKind::Broadcast, b);
-  auto *Wxh = G.createVariable(ElemKind::FloatTy, {hiddenSize, inputSize},
+  auto *Wxh = G.createVariable(ElemKind::FloatTy, {inputSize, hiddenSize},
                                "Wxh", Variable::InitKind::Xavier, inputSize);
   auto *Bxh = G.createVariable(ElemKind::FloatTy, {hiddenSize}, "Bxh",
                                Variable::InitKind::Broadcast, b);
-  auto *Why = G.createVariable(ElemKind::FloatTy, {1, hiddenSize}, "Why",
+  auto *Why = G.createVariable(ElemKind::FloatTy, {hiddenSize, 1}, "Why",
                                Variable::InitKind::Xavier, hiddenSize);
   auto *Bhy = G.createVariable(ElemKind::FloatTy, {1}, "Bhy",
                                Variable::InitKind::Broadcast, b);
