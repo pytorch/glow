@@ -274,6 +274,33 @@ void JITBackend::init() {
       break;
     }
 
+    case Kinded::Kind::ConvolutionInstKind: {
+      ConvolutionInst *CI = llvm::cast<ConvolutionInst>(I);
+      auto *destPtr =
+          emitValueAddress(builder, CI->getDest(), ElemKind::FloatTy);
+      auto *srcPtr = emitValueAddress(builder, CI->getSrc(), ElemKind::FloatTy);
+      auto *filterPtr =
+          emitValueAddress(builder, CI->getFilter(), ElemKind::FloatTy);
+      auto *biasPtr =
+          emitValueAddress(builder, CI->getBias(), ElemKind::FloatTy);
+
+      auto *destDims = emitValueDims(builder, CI->getDest());
+      auto *srcDims = emitValueDims(builder, CI->getSrc());
+      auto *filterDims = emitValueDims(builder, CI->getFilter());
+      auto *biasDims = emitValueDims(builder, CI->getBias());
+
+      auto *kernel = emitConst(builder, CI->getKernel());
+      auto *stride = emitConst(builder, CI->getStride());
+      auto *pad = emitConst(builder, CI->getPad());
+
+      auto *F = llmodule_->getFunction("convolution_f");
+      assert(F && "Unable to load the function");
+      builder.CreateCall(F,
+                         {srcPtr, destPtr, filterPtr, biasPtr, srcDims,
+                          destDims, filterDims, biasDims, kernel, pad, stride});
+      break;
+    }
+
     case Kinded::Kind::ElementDivInstKind:
     case Kinded::Kind::ElementMulInstKind:
     case Kinded::Kind::ElementAddInstKind:
