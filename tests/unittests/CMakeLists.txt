@@ -117,6 +117,20 @@ target_link_libraries(OCLTest
 add_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest)
 endif()
 
+if(GLOW_WITH_JIT)
+add_executable(JITTest
+               BackendTestUtils.cpp
+               JITTest.cpp)
+target_link_libraries(JITTest
+                      PRIVATE
+                        Backends
+                        IR
+                        ExecutionEngine
+                        gtest
+                        testMain)
+add_test(JITTest ${GLOW_BINARY_DIR}/tests/JITTest)
+endif()
+
 add_executable(memoryAllocatorTest
                memoryAllocatorTest.cpp)
 target_link_libraries(memoryAllocatorTest
