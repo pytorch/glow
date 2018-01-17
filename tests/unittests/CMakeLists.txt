@@ -105,6 +105,7 @@ add_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest)
 
 if(OpenCL_FOUND)
 add_executable(OCLTest
+               BackendTestUtils.cpp
                OCLTest.cpp)
 target_link_libraries(OCLTest
                       PRIVATE
