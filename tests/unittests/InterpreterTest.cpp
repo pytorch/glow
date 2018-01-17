@@ -480,14 +480,28 @@ TEST(Network, sliceVectors) {
   }
 }
 
-TEST(Network, trainASimpleRNN) {
+void buildGRU(Graph &G, const std::vector<Node *> &slicesX, unsigned hiddenSize,
+              unsigned outputSize, std::vector<Node *> &outputs) {
+  return G.createGRU("GRU", slicesX, hiddenSize, outputSize, outputs);
+};
+
+void buildRNN(Graph &G, const std::vector<Node *> &slicesX, unsigned hiddenSize,
+              unsigned outputSize, std::vector<Node *> &outputs) {
+  return G.createSimpleRNN("SimpleRNN", slicesX, hiddenSize, outputSize,
+                           outputs);
+};
+
+using TCellGenerator = void (*)(Graph &, const std::vector<Node *> &, unsigned,
+                                unsigned, std::vector<Node *> &);
+
+void testRNNCell(TCellGenerator cell) {
   ExecutionEngine EE;
   // Learning a single input vector.
   EE.getConfig().maxNumThreads = 1;
   EE.getConfig().learningRate = 0.05;
 
   auto &G = EE.getGraph();
-  G.setName("trainASimpleRNN");
+  G.setName("testRNNCell");
 
   // Create a variable with 1 input, which is 3 consecutive vectors
   // of 4 elements each.
@@ -495,15 +509,6 @@ TEST(Network, trainASimpleRNN) {
                              Variable::InitKind::Extern);
   auto *Y = G.createVariable(ElemKind::FloatTy, {1, 3}, "Y",
                              Variable::InitKind::Extern);
-
-  const unsigned hiddenSize = 5;
-  const unsigned inputSize = 4;
-
-  // Initialize the state to zero.
-  auto *HInit = G.createVariable(ElemKind::FloatTy, {1, hiddenSize},
-                                 "initial_state", Variable::InitKind::Extern);
-  HInit->getPayload().zero();
-  Node *Ht = HInit;
 
   // Extract a slice for each input.
   std::vector<Node *> XSliced = {G.createSlice("X1", X, {0, 0, 0}, {1, 1, 4}),
@@ -515,38 +520,20 @@ TEST(Network, trainASimpleRNN) {
                                  G.createSlice("Y2", Y, {0, 1}, {1, 2}),
                                  G.createSlice("Y3", Y, {0, 2}, {1, 3})};
 
-  float b = 0.1;
-  auto *Whh = G.createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
-                               "Whh", Variable::InitKind::Xavier, hiddenSize);
-  auto *Bhh = G.createVariable(ElemKind::FloatTy, {hiddenSize}, "Bhh",
-                               Variable::InitKind::Broadcast, b);
-  auto *Wxh = G.createVariable(ElemKind::FloatTy, {inputSize, hiddenSize},
-                               "Wxh", Variable::InitKind::Xavier, inputSize);
-  auto *Bxh = G.createVariable(ElemKind::FloatTy, {hiddenSize}, "Bxh",
-                               Variable::InitKind::Broadcast, b);
-  auto *Why = G.createVariable(ElemKind::FloatTy, {hiddenSize, 1}, "Why",
-                               Variable::InitKind::Xavier, hiddenSize);
-  auto *Bhy = G.createVariable(ElemKind::FloatTy, {1}, "Bhy",
-                               Variable::InitKind::Broadcast, b);
+  const unsigned hiddenSize = 5;
+  const unsigned outputSize = 1;
+
+  std::vector<Node *> outputNodes;
+  cell(G, XSliced, hiddenSize, outputSize, outputNodes);
 
   std::vector<Node *> regressionNodes;
-  // Un-roll backpropogation through time as a loop with the shared parameters.
   for (unsigned t = 0; t < 3; t++) {
-    auto *FC1 = G.createFullyConnected("", Ht, Whh, Bhh, hiddenSize);
-    auto *FC2 = G.createFullyConnected("", XSliced[t], Wxh, Bxh, hiddenSize);
-    auto *A = G.createArithmetic("", FC1, FC2, ArithmeticNode::Mode::Add);
-    auto *H = G.createTanh("", A);
-    auto *O = G.createFullyConnected("", H, Why, Bhy, 1);
-    auto *R = G.createRegression("", O, YSliced[t]);
-    regressionNodes.push_back(R);
-
-    Ht = H;
+    regressionNodes.push_back(
+        G.createRegression("", outputNodes[t], YSliced[t]));
   };
 
   auto *R = G.createConcat("O", regressionNodes, 1);
   auto *result = G.createSave("result", R);
-
-  EXPECT_EQ(G.getVars().size(), 10);
 
   EE.compile(CompilationMode::Train);
 
@@ -574,7 +561,11 @@ TEST(Network, trainASimpleRNN) {
   EXPECT_NEAR(RNWH.at({0, 0}), 0, 0.05);
   EXPECT_NEAR(RNWH.at({0, 1}), 1, 0.05);
   EXPECT_NEAR(RNWH.at({0, 2}), 2, 0.05);
-}
+};
+
+TEST(Network, trainASimpleRNN) { testRNNCell(buildRNN); };
+
+TEST(Network, trainGRU) { testRNNCell(buildGRU); };
 
 TEST(Optimizer, copyPropagation) {
   ExecutionEngine EE;
