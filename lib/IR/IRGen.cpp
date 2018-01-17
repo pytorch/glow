@@ -516,9 +516,9 @@ public:
     case glow::Kinded::Kind::QuantizationProfileNodeKind: {
       auto *quantizationProfileNode = cast<QuantizationProfileNode>(N);
       auto *inputTensor = valueForNode(quantizationProfileNode->getInput());
-      auto *stats = valueForNode(quantizationProfileNode->getVariable());
+      auto *histogram = valueForNode(quantizationProfileNode->getVariable());
       builder_.createQuantizationProfileInst(quantizationProfileNode->getName(),
-                                             inputTensor, stats);
+                                             inputTensor, histogram);
       break;
     }
 

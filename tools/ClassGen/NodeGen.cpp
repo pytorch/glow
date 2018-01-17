@@ -250,9 +250,9 @@ int main(int argc, char **argv) {
 
   BB.newNode("QuantizationProfile")
       .addInput("Input")
-      .addInput("Statistics")
+      .addInput("Histogram")
       .addExtraMethod("Variable *getVariable() const { return "
-                      "llvm::cast<Variable>(Statistics_.getNode()); };")
+                      "llvm::cast<Variable>(Histogram_.getNode()); };")
       .setDocstring(
           "Generate profile (distribution of values) of the Input tensor. "
           "This data is used for quantization of the tensor later on.")
