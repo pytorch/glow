@@ -43,6 +43,9 @@ struct Interval {
   /// due to @inout use.
   bool sameValue_{true};
 
+  Interval(size_t begin, size_t end, bool sameValue = true)
+      : begin_(begin), end_(end), sameValue_(sameValue) {}
+
   bool operator==(const Interval &other) const {
     return begin_ == other.begin_ && end_ == other.end_ &&
            sameValue_ == other.sameValue_;
@@ -379,7 +382,7 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
       auto found = liveness.find(loc);
       if (found == liveness.end()) {
         // Create a new interval.
-        liveness[loc].push_back({opIdx, opIdx + 1});
+        liveness[loc].push_back(Interval(opIdx, opIdx + 1));
         // If it is a first use, it should be either an input variable or
         // a write.
         // FIXME: Remove InOut!
@@ -416,7 +419,7 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
       // This instruction modifies the memory location.
       // Therefore, end the current active live interval
       // for this memory location and begin a new one.
-      Intervals.push_back({opIdx, opIdx + 1});
+      Intervals.push_back(Interval(opIdx, opIdx + 1));
     }
   }
 
