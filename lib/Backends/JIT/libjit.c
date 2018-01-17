@@ -1,5 +1,6 @@
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
@@ -100,4 +101,54 @@ void element_mul_f(float *dest, float *LHS, float *RHS, size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     dest[i] = LHS[i] * RHS[i];
   }
+}
+
+void convolution_f(float *inW, float *outW, float *filterW, float *biasW,
+                   size_t *inWdims, size_t *outWdims, size_t *filterWdims,
+                   size_t *biasWdims, size_t filterSize, size_t pad,
+                   size_t stride) {
+
+  size_t inChannels = inWdims[3];
+
+  // For each input in the batch:
+  for (size_t n = 0; n < inWdims[0]; n++) {
+
+    // For each layer in the output tensor:
+    for (size_t d = 0; d < outWdims[3]; d++) {
+
+      // For each convolution 'jump' in the input tensor:
+      ssize_t x = -(ssize_t)pad;
+      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+        ssize_t y = -(ssize_t)pad;
+        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+
+          // For each element in the convolution-filter:
+          float sum = 0;
+          for (size_t fx = 0; fx < filterSize; fx++) {
+            for (size_t fy = 0; fy < filterSize; fy++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
+                  oy >= (ssize_t)inWdims[2]) {
+                continue;
+              }
+#pragma clang loop interleave_count(8)
+              for (size_t fd = 0; fd < inChannels; fd++) {
+                sum += filterW[getXYZW(filterWdims, d, fx, fy, fd)] *
+                       inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+              }
+            }
+          }
+
+          // sum += biasW.at({d});
+          // outW.at({n, ax, ay, d}) = sum;
+
+          sum += biasW[];
+          outW[getXYZW(outWdims, n, ax, ay, d)] = sum;
+        } // W
+      }   // H
+    }     // C
+  }       // N
 }
