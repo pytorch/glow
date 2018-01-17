@@ -364,9 +364,16 @@ void DeallocActivationInst::verify() const {
 }
 
 void QuantizationProfileInst::verify() const {
+  // Make sure that input tensor is a floating point type.
   assert(getOperand(0).first->getElementType() == ElemKind::FloatTy ||
          getOperand(0).first->getElementType() == ElemKind::DoubleTy &&
              "Floating point type is expected");
+
+  // Check computation info has proper size.
+  assert(getOperand(2).first->dims().size() == 1 &&
+         "Computation info should be 1 dimensional");
+  assert(getOperand(2).first->dims()[0] == 2 &&
+         "Computation info should contain Min and Max value only");
 }
 
 // TODO: verify the gradient instructions.

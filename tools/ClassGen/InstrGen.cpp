@@ -288,7 +288,8 @@ int main(int argc, char **argv) {
 
   BB.newInstr("QuantizationProfile")
       .addOperand("InputTensor", OperandKind::In)
-      .addOperand("Histogram", OperandKind::InOut);
+      .addOperand("Histogram", OperandKind::InOut)
+      .addOperand("ComputationInfo", OperandKind::InOut);
 
   return 0;
 }

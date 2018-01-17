@@ -251,8 +251,11 @@ int main(int argc, char **argv) {
   BB.newNode("QuantizationProfile")
       .addInput("Input")
       .addInput("Histogram")
-      .addExtraMethod("Variable *getVariable() const { return "
+      .addInput("ComputationInfo")
+      .addExtraMethod("Variable *getHistogramVar() const { return "
                       "llvm::cast<Variable>(Histogram_.getNode()); };")
+      .addExtraMethod("Variable *getComputationInfoVar() const { return "
+                      "llvm::cast<Variable>(ComputationInfo_.getNode()); };")
       .setDocstring(
           "Generate profile (distribution of values) of the Input tensor. "
           "This data is used for quantization of the tensor later on.")
