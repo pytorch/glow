@@ -1,8 +1,12 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "Interpreter/Interpreter.h"
+#if defined(GLOW_WITH_JIT)
 #include "JIT/JIT.h"
+#endif
+#if defined(GLOW_WITH_OPENCL)
 #include "OpenCL/OpenCL.h"
+#endif
 
 #include "glow/Backends/Backend.h"
 #include "glow/Graph/Graph.h"
