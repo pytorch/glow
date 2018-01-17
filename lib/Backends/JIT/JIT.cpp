@@ -7,8 +7,9 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/Optimizer.h"
-#include "llvm/ADT/DenseMap.h"
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
@@ -116,13 +117,11 @@ llvm::Value *JITBackend::emitValueAddress(llvm::IRBuilder<> &builder,
   return builder.CreateIntToPtr(offset, T);
 }
 
-llvm::Value *JITBackend::emitValueDims(llvm::IRBuilder<> &builder,
-                                       glow::Value *val) {
-  auto dims = val->dims();
+llvm::Value *JITBackend::emitConstArray(llvm::IRBuilder<> &builder,
+                                        llvm::ArrayRef<size_t> vals) {
   auto SizeTType = builder.getIntNTy(sizeof(size_t) * 8);
-
   std::vector<llvm::Constant *> elems;
-  for (auto I : dims) {
+  for (auto I : vals) {
     elems.push_back(llvm::ConstantInt::get(SizeTType, I));
   }
   auto *arr = llvm::ConstantArray::get(
@@ -133,6 +132,12 @@ llvm::Value *JITBackend::emitValueDims(llvm::IRBuilder<> &builder,
   auto *G = new llvm::GlobalVariable(*M, arr->getType(), true,
                                      llvm::GlobalValue::CommonLinkage, arr);
   return builder.CreateBitCast(G, SizeTType->getPointerTo());
+}
+
+llvm::Value *JITBackend::emitValueDims(llvm::IRBuilder<> &builder,
+                                       glow::Value *val) {
+  auto dims = val->dims();
+  return emitConstArray(builder, dims);
 }
 
 llvm::Value *JITBackend::emitValueSize(llvm::IRBuilder<> &builder,
@@ -331,6 +336,32 @@ void JITBackend::init() {
       auto *F = llmodule_->getFunction("softmax_f");
       assert(F && "Unable to load the function");
       builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims});
+      break;
+    }
+
+    case Kinded::Kind::TransposeInstKind: {
+      TransposeInst *TI = llvm::cast<TransposeInst>(I);
+      auto *destPtr =
+          emitValueAddress(builder, TI->getDest(), ElemKind::FloatTy);
+      auto *srcPtr = emitValueAddress(builder, TI->getSrc(), ElemKind::FloatTy);
+      auto *destDims = emitValueDims(builder, TI->getDest());
+      auto *srcDims = emitValueDims(builder, TI->getSrc());
+
+      // Convert the mask to size_t type.
+      llvm::SmallVector<size_t, 6> shuffSizeT;
+      for (auto D : TI->getShuffle()) {
+        shuffSizeT.push_back((size_t)D);
+      }
+
+      auto *shuffle = emitConstArray(builder, shuffSizeT);
+      auto *len = emitConst(builder, TI->getShuffle().size());
+
+      // void transpose_f(float *inW, float *outW, size_t *idim, size_t *odim,
+      // size_t *shuffle, size_t numDims) {
+
+      auto *F = llmodule_->getFunction("transpose_f");
+      assert(F && "Unable to load the function");
+      builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims, shuffle, len});
       break;
     }
 

@@ -52,6 +52,9 @@ class JITBackend final : public Backend {
   llvm::Value *emitConst(llvm::IRBuilder<> &builder, float val);
   /// Generates LLVM IR that materializes the constant \p val.
   llvm::Value *emitConst(llvm::IRBuilder<> &builder, size_t val);
+  /// Generates LLVM IR that materializes the constant array \p vals.
+  llvm::Value *emitConstArray(llvm::IRBuilder<> &builder,
+                              llvm::ArrayRef<size_t> vals);
   /// Generates LLVM IR that computes the dimensions of \p val using \p builder.
   /// The result type is "size_t*".
   llvm::Value *emitValueDims(llvm::IRBuilder<> &builder, glow::Value *val);
