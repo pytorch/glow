@@ -84,10 +84,7 @@ JITBackend::JITBackend(Module *M) : M_(M) {
   JIT_ = llvm::make_unique<llvm::orc::GlowJIT>();
 }
 
-JITBackend::~JITBackend() {
-  clear();
-  llvm::llvm_shutdown();
-}
+JITBackend::~JITBackend() { clear(); }
 
 void JITBackend::clear() { M_->clear(); }
 
@@ -373,9 +370,6 @@ void JITBackend::init() {
 
       auto *shuffle = emitConstArray(builder, shuffSizeT);
       auto *len = emitConst(builder, TI->getShuffle().size());
-
-      // void transpose_f(float *inW, float *outW, size_t *idim, size_t *odim,
-      // size_t *shuffle, size_t numDims) {
 
       auto *F = llmodule_->getFunction("transpose_f");
       assert(F && "Unable to load the function");
