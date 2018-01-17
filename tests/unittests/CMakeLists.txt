@@ -103,7 +103,7 @@ target_link_libraries(graphOptzTest
                         testMain)
 add_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest)
 
-if(OpenCL_FOUND)
+if(GLOW_WITH_OPENCL)
 add_executable(OCLTest
                BackendTestUtils.cpp
                OCLTest.cpp)
