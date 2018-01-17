@@ -200,7 +200,6 @@ void pool_max_f(float *inW, float *outW, size_t *inWdims, size_t *outWdims,
 }
 
 void softmax_f(float *inW, float *outW, size_t *idim, size_t *odim) {
-
   for (size_t n = 0; n < idim[0]; n++) {
     float max = inW[getXY(idim, n, 0)];
 
@@ -223,4 +222,47 @@ void softmax_f(float *inW, float *outW, size_t *idim, size_t *odim) {
       outW[getXY(odim, n, i)] = outW[getXY(odim, n, i)] / sum;
     }
   } // N
+}
+
+void transpose_f(float *inW, float *outW, size_t *idim, size_t *odim,
+                 size_t *shuffle, size_t numDims) {
+  // Source coordinate.
+  size_t SC[4];
+
+  if (numDims == 4) {
+    for (size_t x = 0; x < idim[0]; x++)
+      for (size_t y = 0; y < idim[1]; y++)
+        for (size_t z = 0; z < idim[2]; z++)
+          for (size_t w = 0; w < idim[3]; w++) {
+            SC[shuffle[0]] = x;
+            SC[shuffle[1]] = y;
+            SC[shuffle[2]] = z;
+            SC[shuffle[3]] = w;
+            inW[getXYZW(idim, SC[0], SC[1], SC[2], SC[3])] =
+                outW[getXYZW(odim, x, y, z, w)];
+          }
+    return;
+  }
+
+  if (numDims == 3) {
+    for (size_t x = 0; x < idim[0]; x++)
+      for (size_t y = 0; y < idim[1]; y++)
+        for (size_t z = 0; z < idim[2]; z++) {
+          SC[shuffle[0]] = x;
+          SC[shuffle[1]] = y;
+          SC[shuffle[2]] = z;
+          inW[getXYZ(idim, SC[0], SC[1], SC[2])] = outW[getXYZ(odim, x, y, z)];
+        }
+    return;
+  }
+
+  if (numDims == 2) {
+    for (size_t x = 0; x < idim[0]; x++)
+      for (size_t y = 0; y < idim[1]; y++) {
+        SC[shuffle[0]] = x;
+        SC[shuffle[1]] = y;
+        inW[getXY(idim, SC[0], SC[1])] = outW[getXY(odim, x, y)];
+      }
+    return;
+  }
 }
