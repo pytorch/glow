@@ -273,30 +273,28 @@ void transpose_f(float *inW, float *outW, size_t *idim, size_t *odim,
             SC[shuffle[1]] = y;
             SC[shuffle[2]] = z;
             SC[shuffle[3]] = w;
-            inW[getXYZW(idim, SC[0], SC[1], SC[2], SC[3])] =
-                outW[getXYZW(odim, x, y, z, w)];
+            outW[getXYZW(odim, x, y, z, w)] =
+                inW[getXYZW(idim, SC[0], SC[1], SC[2], SC[3])];
           }
     return;
   }
-
   if (numDims == 3) {
-    for (size_t x = 0; x < idim[0]; x++)
-      for (size_t y = 0; y < idim[1]; y++)
-        for (size_t z = 0; z < idim[2]; z++) {
+    for (size_t x = 0; x < odim[0]; x++)
+      for (size_t y = 0; y < odim[1]; y++)
+        for (size_t z = 0; z < odim[2]; z++) {
           SC[shuffle[0]] = x;
           SC[shuffle[1]] = y;
           SC[shuffle[2]] = z;
-          inW[getXYZ(idim, SC[0], SC[1], SC[2])] = outW[getXYZ(odim, x, y, z)];
+          outW[getXYZ(odim, x, y, z)] = inW[getXYZ(idim, SC[0], SC[1], SC[2])];
         }
     return;
   }
-
   if (numDims == 2) {
-    for (size_t x = 0; x < idim[0]; x++)
-      for (size_t y = 0; y < idim[1]; y++) {
+    for (size_t x = 0; x < odim[0]; x++)
+      for (size_t y = 0; y < odim[1]; y++) {
         SC[shuffle[0]] = x;
         SC[shuffle[1]] = y;
-        inW[getXY(idim, SC[0], SC[1])] = outW[getXY(odim, x, y)];
+        outW[getXY(odim, x, y)] = inW[getXY(idim, SC[0], SC[1])];
       }
     return;
   }
