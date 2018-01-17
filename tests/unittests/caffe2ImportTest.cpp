@@ -25,4 +25,3 @@ TEST(caffe2, import) {
   ::glow::optimize(G, CompilationMode::Infer);
   EXPECT_EQ(G.getNodes().size(), numNodes - 1);
 }
-

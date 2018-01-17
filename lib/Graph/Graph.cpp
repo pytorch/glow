@@ -247,7 +247,10 @@ static bool sameSameShapeExceptDim(TypeRef T1, TypeRef T2, unsigned dim) {
   return true;
 }
 
-IntrinsicNode *Graph::createIntrinsicNode(llvm::StringRef name, llvm::ArrayRef<Node *> inputs, llvm::ArrayRef<TypeRef> outputs, void *saved) {
+IntrinsicNode *Graph::createIntrinsicNode(llvm::StringRef name,
+                                          llvm::ArrayRef<Node *> inputs,
+                                          llvm::ArrayRef<TypeRef> outputs,
+                                          void *saved) {
   std::vector<NodeValue> ops;
   ops.reserve(inputs.size());
   for (auto &I : inputs) {

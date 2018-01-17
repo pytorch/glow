@@ -27,7 +27,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
   }
 
   if (hasIntrinsicOutput_) {
-   os << ", std::vector<TypeRef> intrinsicOutputs";
+    os << ", std::vector<TypeRef> intrinsicOutputs";
   }
 
   // The operands of the graph node:
