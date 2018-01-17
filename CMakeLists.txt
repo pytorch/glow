@@ -7,6 +7,7 @@ project(Glow)
 enable_testing()
 
 option(GLOW_WITH_JIT "Build the LLVM-based JIT backend" OFF)
+option(GLOW_WITH_OPENCL "Build the OpenCL backend" ON)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CXX_STANDARD_REQUIRED ON)
@@ -38,7 +39,10 @@ file(GLOB_RECURSE header_files include/*.h tools/*.h src/*.h)
 add_custom_target(CollectHeaders SOURCES ${header_files})
 
 find_package(PNG)
-find_package(OpenCL)
+
+if (GLOW_WITH_OPENCL)
+  find_package(OpenCL REQUIRED)
+endif ()
 
 find_package(LLVM CONFIG)
 if (NOT LLVM_FOUND)

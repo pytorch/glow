@@ -2,7 +2,7 @@ add_library(Backends Backends.cpp)
 
 add_subdirectory(Interpreter)
 
-if(OpenCL_FOUND)
+if(GLOW_WITH_OPENCL)
   target_compile_definitions(Backends PRIVATE WITH_OPENCL=1)
   add_subdirectory(OpenCL)
   LIST(APPEND linked_backends OpenCL)
