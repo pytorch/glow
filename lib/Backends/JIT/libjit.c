@@ -163,9 +163,6 @@ void pool_max_f(float *inW, float *outW, size_t *inWdims, size_t *outWdims,
       for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
         ssize_t y = -(ssize_t)pad;
         for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
-          size_t maxX = x;
-          size_t maxY = y;
-
           int first = 1;
           float max = 0;
 
@@ -185,8 +182,6 @@ void pool_max_f(float *inW, float *outW, size_t *inWdims, size_t *outWdims,
               if (first || (val >= max)) {
                 first = 0;
                 max = val;
-                maxX = ox;
-                maxY = oy;
               }
             }
           }
