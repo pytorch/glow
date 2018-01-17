@@ -26,6 +26,10 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
     os << ", Mode mode";
   }
 
+  if (hasIntrinsicOutput_) {
+   os << ", std::vector<TypeRef> intrinsicOutputs";
+  }
+
   // The operands of the graph node:
   for (const auto &op : nodeInputs_) {
     os << ", NodeValue " << op;
@@ -55,10 +59,19 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
   }
 
   // The constructor body:
-  os << " {";
+  os << " {\n";
   for (auto &RT : nodeOutputs_) {
     os << "\taddResult(" << RT.first << ");\n";
   }
+
+  // Instantiate outputs passed in at runtime for the
+  // case of intrinsic output.
+  if (hasIntrinsicOutput_) {
+    os << "\tfor (const auto& output : intrinsicOutputs) {";
+    os << "\t\taddResult(output);\n";
+    os << "\t}\n\n";
+  }
+
   os << "}\n\n";
 }
 

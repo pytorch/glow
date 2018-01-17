@@ -133,6 +133,38 @@ bool caffe2ModelLoader::hasNodeByName(const std::string &name) const {
   return (it != nodeByName_.end());
 }
 
+void caffe2ModelLoader::loadIntrinsicWeight(const caffe2::OperatorDef &op) {
+  assert(op.input().size() == 0 && "Unknown weights do not support inputs.");
+
+  std::vector<TypeRef> outputs;
+  for (const auto& output : op.output()) {
+    auto *T = new Tensor();
+    outputs.emplace_back(G_.getVoidTy());
+    tensors_[output] = T;
+  }
+
+  Node *node = G_.createIntrinsicNode(op.name(), {}, outputs, (void*)&op);
+  for (int i = 0, e = op.output_size(); i < e; i++) {
+    nodeByName_[op.output(i)] = node;
+  }
+}
+
+void caffe2ModelLoader::loadIntrinsicOperator(const caffe2::OperatorDef &op) {
+  std::vector<Node*> inputs;
+  for (const auto& input : op.input()) {
+    inputs.emplace_back(getOrCreateNodeByName(input));
+  }
+  std::vector<TypeRef> outputs;
+  for (int i = 0; i < op.output().size(); ++i) {
+    outputs.emplace_back(G_.getVoidTy());
+  }
+
+  Node *node = G_.createIntrinsicNode(op.name(), llvm::ArrayRef<Node*>(inputs), outputs, (void*)&op);
+  for (int i = 0, e = op.output_size(); i < e; i++) {
+    nodeByName_[op.output(i)] = node;
+  }
+}
+
 void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
 
@@ -377,7 +409,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
-  unexpectedNodeError(op, "Could not load the operator.");
+  loadIntrinsicOperator(op);
 }
 
 void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
@@ -387,6 +419,7 @@ void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
     loadOperator(op);
   }
 
+  assert(net.external_output_size() && "Network needs external outputs defined.");
   auto *r = getNodeByName(net.external_output(0));
   root_ = G_.createSave("output", r);
 }
@@ -460,7 +493,7 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
       continue;
     }
 
-    unexpectedNodeError(op, "Unknown node found.");
+    loadIntrinsicWeight(op);
   }
 }
 
