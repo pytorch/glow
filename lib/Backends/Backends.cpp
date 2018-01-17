@@ -22,11 +22,11 @@ Backend *glow::createBackend(BackendKind backendKind, Module *M) {
   switch (backendKind) {
   case BackendKind::Interpreter:
     return createInterpreter(M);
-#ifdef WITH_OPENCL
+#if defined(GLOW_WITH_OPENCL)
   case BackendKind::OpenCL:
     return createOCLBackend(M);
 #endif
-#ifdef WITH_JIT
+#if defined(GLOW_WITH_JIT)
   case BackendKind::JIT:
     return createJIT(M);
 #endif
