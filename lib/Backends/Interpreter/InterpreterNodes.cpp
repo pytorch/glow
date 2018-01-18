@@ -1129,3 +1129,7 @@ void Interpreter::fwdQuantizationProfileInst(
     bool isTrain, const glow::QuantizationProfileInst *I) {
   // TODO: implement actual calculations of statistics.
 }
+
+void Interpreter::fwdIntrinsicInst(bool isTrain, const glow::IntrinsicInst *I) {
+  llvm_unreachable("The interpreter should not handle intrinsic instructions");
+}
