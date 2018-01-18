@@ -12,7 +12,7 @@
 
 using namespace glow;
 
-/// Compute the regression loss for the tensor \p X with regard to Y.
+/// \returns the regression loss for the tensor \p X with regard to \p Y.
 float computeL2Loss(Tensor *X, Tensor *Y) {
   assert(X->dims() == Y->dims() && "Invalid input dims");
   auto xH = X->getHandle<>();
@@ -34,19 +34,34 @@ float gradDiff(float G1, float G2) {
 
 Variable *getGrad(Graph &G, Variable *V) { return G.getGradientVariable(V); }
 
+/// Performs gradient check by comparing analytical and numerical gradients.
+/// Numeric grad is calculated based on: f(x-delta) and f(x+delta) values.
+/// Analytical grad is based on the gradient output calculated during back
+/// propagation.
+///
+/// \param IP Execution engine to compile/run network.
+/// \param result Node that contains result of f(x).
+/// \param inputVar Variable which gradient is assessed.
+/// \param expVar Variable with expected value, only used during the training.
+/// \param inputs Tensor for \p inputVar variable.
+/// \param outputs Tensor for \p expVar variable.
+/// \param allowedError allowed delta between analytical and numerical
+///                     gradients.
 void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
                       Variable *expVar, Tensor *inputs, Tensor *outputs,
                       float delta, float allowedError) {
-  auto inputsH = inputs->getHandle<>();
-
-  // Train the network.
+  // Compile network in TrainDebug mode to generate and save gradients.
+  IP.compile(CompilationMode::TrainDebug);
+  // Run training to calculate gradient values.
   IP.runBatch(300, {inputVar, expVar}, {inputs, outputs});
-  Graph &G = IP.getGraph();
 
-  // Remove the SGD nodes by compiling in Inference mode. This compilation will
-  // keep the "grad" nodes.
+  // Remove the SGD nodes by compiling in Infer mode,
+  // nodes removed as part of the DCE optimization.
+  // Compilation keeps the "grad" nodes as IP is already compiled in
+  // TrainDebug mode which created "grad" nodes.
   IP.compile(CompilationMode::Infer);
 
+  Graph &G = IP.getGraph();
   // Clear the gradients of the first layer.
   auto gradVar = getGrad(G, inputVar);
   gradVar->getPayload().zero();
@@ -58,19 +73,22 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
   Tensor gradCopy = gradVar->getPayload().clone();
   auto analyticalGradsH = gradCopy.getHandle();
 
+  auto inputsH = inputs->getHandle<>();
   for (size_t i = 0; i < analyticalGradsH.size(); i++) {
     auto old = inputsH.raw(i);
+    Tensor &res = result->getVariable()->getPayload();
 
     // Calculate f(x+e):
     inputsH.raw(i) = old + delta;
     IP.run({inputVar}, {inputs});
-    Tensor &res = result->getVariable()->getPayload();
     auto plusLoss = computeL2Loss(outputs, &res);
 
     // Calculate f(x-e):
     inputsH.raw(i) = old - delta;
     IP.run({inputVar}, {inputs});
     auto minusLoss = computeL2Loss(outputs, &res);
+
+    // Restore value back.
     inputsH.raw(i) = old;
 
     auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
@@ -110,8 +128,6 @@ TEST(Network, gradientCheckFCConcatRELU) {
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createSave("ret", O);
 
-  IP.compile(CompilationMode::TrainDebug);
-
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
 
@@ -147,8 +163,6 @@ TEST(Network, gradientCheckConv) {
   O = G.createRegression("reg", O, Ex);
   auto *result = G.createSave("ret", O);
 
-  IP.compile(CompilationMode::TrainDebug);
-
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
 
@@ -182,8 +196,6 @@ TEST(Network, gradientCheckAvgPool) {
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createSave("ret", O);
 
-  IP.compile(CompilationMode::TrainDebug);
-
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
 
@@ -216,8 +228,6 @@ TEST(Network, gradientCheckBatchNorm) {
   O = G.createReshape("reshape", O, {1, numDim * numDim * 3});
   O = G.createRegression("reg", O, Ex);
   auto result = G.createSave("ret", O);
-
-  IP.compile(CompilationMode::TrainDebug);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 3});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
@@ -255,7 +265,6 @@ TEST(Network, gradientCheckArithmeticDiv) {
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createSave("ret", O);
 
-  IP.compile(CompilationMode::TrainDebug);
   Tensor inputs(ElemKind::FloatTy, {1, numDim});
   Tensor outputs(ElemKind::FloatTy, {1, numDim});
   A->getPayload().getHandle().randomize(1);
@@ -290,7 +299,9 @@ TEST(Network, gradientCheckArithmetic) {
                              Variable::TrainKind::None, 0.1);
   auto *E = G.createVariable(ElemKind::FloatTy, {1, numDim}, "E",
                              Variable::VisibilityKind::Public,
-                             Variable::TrainKind::Broadcast, 0.1);
+                             Variable::TrainKind::None);
+  // Randomize E to avoid div by zero.
+  E->getPayload().getHandle().randomize(1);
 
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
                                Variable::VisibilityKind::Public,
@@ -302,8 +313,6 @@ TEST(Network, gradientCheckArithmetic) {
   O = G.createArithmetic("div", O, E, ArithmeticNode::Mode::Div);
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createSave("ret", O);
-
-  IP.compile(CompilationMode::TrainDebug);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim});
   Tensor outputs(ElemKind::FloatTy, {1, numDim});
@@ -338,8 +347,6 @@ TEST(Network, gradientCheckFCConcatTanh) {
   FA = G.createRegression("reg", FA, Exp);
   auto *result = G.createSave("ret", FA);
 
-  IP.compile(CompilationMode::TrainDebug);
-
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
 
@@ -369,8 +376,6 @@ TEST(Network, gradientCheckFC) {
   Node *FA = G.createFullyConnected("fc", A, numOutputElem);
   FA = G.createRegression("reg", FA, Exp);
   auto *result = G.createSave("ret", FA);
-
-  IP.compile(CompilationMode::TrainDebug);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -404,8 +409,6 @@ TEST(Network, gradientCheckSigmoid) {
   FA = G.createRegression("reg", FA, Exp);
   auto *result = G.createSave("ret", FA);
 
-  IP.compile(CompilationMode::TrainDebug);
-
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
 
@@ -438,8 +441,6 @@ TEST(Network, gradientCheckRelu) {
   FA = G.createRegression("reg", FA, Exp);
   auto *result = G.createSave("ret", FA);
 
-  IP.compile(CompilationMode::TrainDebug);
-
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
 
@@ -470,8 +471,6 @@ TEST(Network, gradientCheckTranspose) {
   TA = G.createFullyConnected("fc", TA, numOutputElem);
   TA = G.createRegression("regress", TA, Exp);
   auto *result = G.createSave("ret", TA);
-
-  IP.compile(CompilationMode::TrainDebug);
 
   Tensor inputs(ElemKind::FloatTy, {1, 5, 10, 5});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
