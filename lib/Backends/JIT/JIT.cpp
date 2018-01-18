@@ -32,9 +32,10 @@ using namespace glow;
 using llvm::StringRef;
 using llvm::isa;
 
-static llvm::cl::opt<bool> optimizeIR("dump-llvm-ir",
-                                      llvm::cl::desc("Dump the LLVM-IR during the JIT compilation phase"),
-                                      llvm::cl::init(false), llvm::cl::Hidden);
+static llvm::cl::opt<bool>
+    dumpIR("dump-llvm-ir",
+           llvm::cl::desc("Dump the LLVM-IR during the JIT compilation phase"),
+           llvm::cl::init(false), llvm::cl::Hidden);
 
 /// Optimize the module that contain the function \p F.
 static void optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM) {
@@ -80,7 +81,7 @@ static void optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM) {
   FPM.doFinalization();
   PM.run(*F->getParent());
 
-  if (optimizeIR) {
+  if (dumpIR) {
     M->print(llvm::errs(), nullptr);
   }
 }
