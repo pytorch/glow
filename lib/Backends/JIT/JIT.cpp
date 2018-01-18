@@ -32,6 +32,10 @@ using namespace glow;
 using llvm::StringRef;
 using llvm::isa;
 
+static llvm::cl::opt<bool> optimizeIR("dump-llvm-ir",
+                                      llvm::cl::desc("Dump the LLVM-IR during the JIT compilation phase"),
+                                      llvm::cl::init(false), llvm::cl::Hidden);
+
 /// Optimize the module that contain the function \p F.
 static void optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM) {
   auto *M = F->getParent();
@@ -75,7 +79,10 @@ static void optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM) {
   }
   FPM.doFinalization();
   PM.run(*F->getParent());
-  M->print(llvm::errs(), nullptr);
+
+  if (optimizeIR) {
+    M->print(llvm::errs(), nullptr);
+  }
 }
 
 JITBackend::JITBackend(Module *M) : M_(M) {
@@ -437,7 +444,6 @@ void JITBackend::init() {
 
   // Optimize the module.
   optimizeLLVMModule(func_, JIT_->getTargetMachine());
-  llmodule_->print(llvm::errs(), nullptr);
   // And pass the ownership to the JIT.
   JIT_->addModule(std::move(llmodule_));
 }
