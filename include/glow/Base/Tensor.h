@@ -529,31 +529,77 @@ public:
     insertTensorsImpl(sliceCoor, fusedCoor, slice, false, offset, 0);
   }
 
-  /// Broadcast the current Handle's tensor in \p direction of length \p
-  /// newDimLen into Tensor \p dest.
-  void broadcastOneDimension(Tensor *dest, unsigned newDimLen,
-                             unsigned direction) {
+  /// Broadcast the current Tensor to a new shape based on \p otherDims and
+  /// place it in \p dest.
+  void broadcastToNewShape(Tensor *dest, llvm::ArrayRef<size_t> otherDims) {
     auto origDims = dims();
-    assert(direction <= origDims.size() &&
-           "Direction must be in range [0-size] inclusive");
-    assert(origDims.size() != max_tensor_dimensions &&
-           "Cannot broadcast tensor already at max dimensions");
+    assert(otherDims.size() >= origDims.size() &&
+           "Dimensions to broadcast to must be equal or greater size.");
+
+    Tensor intermediate;
+    intermediate.copyFrom(this->tensor_);
+
+    for (int i = 0; i < origDims.size(); i++) {
+      if (origDims[i] == otherDims[i]) {
+        // Keep original dimensions; they are compatible.
+      } else if (origDims[i] == 1) {
+        // Broadcast this dimension to size from otherDims.
+        Tensor tmp;
+        const bool addingNewDim = false;
+        intermediate.getHandle<ElemTy>().broadcastOneDimension(
+            &tmp, otherDims[i], i, addingNewDim);
+        intermediate.copyFrom(&tmp);
+      } else {
+        // Incompatible dimensions for broadcasting
+        assert(false && "Cannot broadcast with these dimensions.");
+      }
+    }
+
+    // Fill in the rest of the dimensions with the other Tensor's dimensions.
+    for (int i = origDims.size(); i < otherDims.size(); ++i) {
+      Tensor tmp;
+      const bool addingNewDim = true;
+      intermediate.getHandle<ElemTy>().broadcastOneDimension(&tmp, otherDims[i],
+                                                             i, addingNewDim);
+      intermediate.copyFrom(&tmp);
+    }
+    dest->copyFrom(&intermediate);
+  }
+
+  /// Broadcast the current Handle's tensor in \p direction of length \p
+  /// newDimLen into Tensor \p dest. If not \p addingNewDim then the dimension
+  /// being extended should be size 1.
+  void broadcastOneDimension(Tensor *dest, unsigned newDimLen,
+                             unsigned direction, bool addingNewDim) {
+    auto origDims = dims();
+    if (addingNewDim) {
+      assert(direction <= origDims.size() &&
+             "Adding new dimension requires direction >= 0 && <= size]");
+      assert(origDims.size() != max_tensor_dimensions &&
+             "Cannot broadcast tensor already at max dimensions");
+    } else {
+      assert(direction <= origDims.size() &&
+             "Extending existing dimension requires direction >= 0 && < size");
+      assert(origDims[direction] == 1 &&
+             "Can only extend an existing dimension if size == 1");
+    }
 
     // Reset size of dest to accomodate new broadcast dimension.
     size_t newDims[max_tensor_dimensions];
     unsigned shift = 0;
     for (int i = 0; i < origDims.size(); ++i) {
-      if (i == direction)
+      if (addingNewDim && (i == direction)) {
         shift = 1;
+      }
       newDims[i + shift] = origDims[i];
     }
     newDims[direction] = newDimLen;
-    dest->reset(getElementType(),
-                llvm::ArrayRef<size_t>(newDims, origDims.size() + 1));
+    const int newDimsSize = origDims.size() + (addingNewDim ? 1 : 0);
+    dest->reset(getElementType(), llvm::ArrayRef<size_t>(newDims, newDimsSize));
 
     size_t currNewIdxsArr[max_tensor_dimensions];
     auto currNewIdxs =
-        llvm::MutableArrayRef<size_t>(currNewIdxsArr, origDims.size() + 1);
+        llvm::MutableArrayRef<size_t>(currNewIdxsArr, newDimsSize);
     size_t currIdxsArr[max_tensor_dimensions] = {0};
     auto currIdxs = llvm::MutableArrayRef<size_t>(currIdxsArr, origDims.size());
 
@@ -562,8 +608,9 @@ public:
       // New indices using current from original Tensor, plus new dimension.
       unsigned shift = 0;
       for (int i = 0; i < origDims.size(); ++i) {
-        if (i == direction)
+        if (addingNewDim && (i == direction)) {
           shift = 1;
+        }
         currNewIdxs[i + shift] = currIdxs[i];
       }
 
