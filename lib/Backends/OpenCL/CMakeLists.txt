@@ -7,13 +7,7 @@ target_link_libraries(OpenCL
                       Graph
                       CodeGen)
 
-if(OpenCL_FOUND)
-  target_compile_definitions(OpenCL
-                             PRIVATE
-                             WITH_OPENCL=1)
-
-  target_link_libraries(OpenCL
-                        PRIVATE
-                        OpenCL::OpenCL)
-endif()
+target_link_libraries(OpenCL
+                      PRIVATE
+                      OpenCL::OpenCL)
 
