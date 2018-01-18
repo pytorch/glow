@@ -151,4 +151,6 @@ target_link_libraries(caffe2ImportTest
                         Backends
                         gtest
                         testMain)
-add_test(caffe2ImportTest ${GLOW_BINARY_DIR}/tests/caffe2ImportTest)
+add_test(NAME caffe2ImportTest
+         COMMAND ${GLOW_BINARY_DIR}/tests/caffe2ImportTest
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
