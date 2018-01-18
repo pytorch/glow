@@ -51,6 +51,22 @@ TEST(Tensor, maxArg) {
   }
 }
 
+TEST(Tensor, minMaxArg) {
+  {
+    Tensor T = {1, 10, 20, -1, 30};
+    auto res = T.getHandle().minMaxArg();
+    EXPECT_EQ(3, res.first);
+    EXPECT_EQ(4, res.second);
+  }
+
+  {
+    Tensor T = {1, 1, 1, 1, 1, 1};
+    auto res = T.getHandle().minMaxArg();
+    EXPECT_EQ(0, res.first);
+    EXPECT_EQ(0, res.second);
+  }
+}
+
 TEST(Tensor, isZero) {
   {
     Tensor T = {4, 0, 0, 0, 0};
