@@ -265,7 +265,9 @@ TEST(Tensor, broadcastDir0) {
 
   Tensor broadcastedX;
   const unsigned direction = 0;
-  X.getHandle<>().broadcastOneDimension(&broadcastedX, broadcastDim, direction);
+  const bool addingNewDim = true;
+  X.getHandle<>().broadcastOneDimension(&broadcastedX, broadcastDim, direction,
+                                        addingNewDim);
 
   auto broadcastedXHandle = broadcastedX.getHandle<>();
 
@@ -289,7 +291,9 @@ TEST(Tensor, broadcastDir1) {
 
   Tensor broadcastedX;
   const unsigned direction = 1;
-  X.getHandle<>().broadcastOneDimension(&broadcastedX, broadcastDim, direction);
+  const bool addingNewDim = true;
+  X.getHandle<>().broadcastOneDimension(&broadcastedX, broadcastDim, direction,
+                                        addingNewDim);
 
   auto broadcastedXHandle = broadcastedX.getHandle<>();
 
@@ -313,7 +317,9 @@ TEST(Tensor, broadcastDir2) {
 
   Tensor broadcastedX;
   const unsigned direction = 2;
-  X.getHandle<>().broadcastOneDimension(&broadcastedX, broadcastDim, direction);
+  const bool addingNewDim = true;
+  X.getHandle<>().broadcastOneDimension(&broadcastedX, broadcastDim, direction,
+                                        addingNewDim);
 
   auto broadcastedXHandle = broadcastedX.getHandle<>();
 
@@ -322,6 +328,48 @@ TEST(Tensor, broadcastDir2) {
       const float origVal = H.at({i, j});
       for (size_t k = 0; k < broadcastDim; k++) {
         EXPECT_EQ(origVal, broadcastedXHandle.at({i, j, k}));
+      }
+    }
+  }
+}
+
+TEST(Tensor, broadcastNewShape) {
+  const unsigned dimX_A = 2;
+  const unsigned dimY_A = 2;
+  const unsigned dimZ_A = 2;
+  const unsigned dimW_A = 3;
+  Tensor X_A(ElemKind::FloatTy, {dimX_A, dimY_A, dimZ_A, dimW_A});
+  auto H_A = X_A.getHandle<>();
+  H_A = {100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111,
+         112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123};
+
+  const unsigned dimX_B = 1;
+  const unsigned dimY_B = 2;
+  Tensor X_B(ElemKind::FloatTy, {dimX_B, dimY_B});
+  auto H_B = X_B.getHandle<>();
+  H_B = {200, 201};
+
+  Tensor broadcastedB;
+  X_B.getHandle<>().broadcastToNewShape(&broadcastedB, H_A.dims());
+
+  auto broadcastedBHandle = broadcastedB.getHandle<>();
+
+  // Verify broadcasted B has same shape.
+  EXPECT_EQ(H_A.dims().size(), broadcastedBHandle.dims().size());
+  for (int i = 0; i < H_A.dims().size(); i++) {
+    EXPECT_EQ(H_A.dims()[i], broadcastedBHandle.dims()[i]);
+  }
+
+  // Verify values were broadcasted correctly.
+  const size_t i_B = 0;
+  for (size_t j_B = 0; j_B < dimY_B; ++j_B) {
+    const float origVal = H_B.at({i_B, j_B});
+    const size_t j_A = j_B; // This dim was not broadcasted.
+    for (size_t i_A = 0; i_A < dimX_A; ++i_A) {
+      for (size_t k_A = 0; k_A < dimZ_A; ++k_A) {
+        for (size_t l_A = 0; l_A < dimW_A; ++l_A) {
+          EXPECT_EQ(origVal, broadcastedBHandle.at({i_A, j_A, k_A, l_A}));
+        }
       }
     }
   }
