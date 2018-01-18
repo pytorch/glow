@@ -1,5 +1,7 @@
 # Glow
 
+[![Build Status](https://travis-ci.com/facebookexternal/Glow.svg?token=UwQBGB2pxogBqjigi7Nh&branch=master)](https://travis-ci.com/facebookexternal/Glow)
+
 Glow is a machine learning compiler and inference engine for hardware
 accelerators. This library is designed to be used as a backend for some machine
 learning framework. The compiler is designed to allow state of the art compiler
