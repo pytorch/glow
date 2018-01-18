@@ -4,13 +4,26 @@ sudo: required
 language: cpp
 compiler: clang
 
-before_install:
-  - sudo apt-get -qq update
-  - sudo apt-get install -y ninja-build llvm ocl-icd-opencl-dev libprotobuf-dev protobuf-compiler libpng-dev
-install:
- - mkdir build && cd build
- - cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF ../
- - ninja all
+matrix:
+  include:
+    - os: osx
+      before_install:
+        - brew update
+        - brew install ninja llvm protobuf libpng
+      install:
+        - mkdir build && cd build
+        - cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF -DCMAKE_PREFIX_PATH=/usr/local/Cellar/llvm/5.0.1/lib/cmake/llvm/ ../
+      compiler: clang
+    - os: linux
+      before_install:
+        - sudo apt-get -qq update
+        - sudo apt-get install -y ninja-build llvm ocl-icd-opencl-dev libprotobuf-dev protobuf-compiler libpng-dev
+      install:
+        - mkdir build && cd build
+        - cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF ../
+      dist: trusty
+      compiler: clang
 
 script:
+ - ninja all
  - ninja test
