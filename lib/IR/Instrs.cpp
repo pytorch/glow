@@ -376,6 +376,10 @@ void QuantizationProfileInst::verify() const {
          "Computation info should contain Min and Max value only");
 }
 
+void IntrinsicInst::verify() const {
+  assert(getName().size() && "Name must not be empty");
+}
+
 // TODO: verify the gradient instructions.
 #define NOVERIFY(ClassName)                                                    \
   void ClassName ::verify() const {}

@@ -291,5 +291,11 @@ int main(int argc, char **argv) {
       .addOperand("Histogram", OperandKind::InOut)
       .addOperand("ComputationInfo", OperandKind::InOut);
 
+  //===--------------------------------------------------------------------===//
+  //             Intrinsics for supporting target-specific transforms
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("Intrinsic").addMember(MemberType::String, "Name");
+
   return 0;
 }
