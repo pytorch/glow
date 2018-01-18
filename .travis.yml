@@ -5,7 +5,7 @@ language: cpp
 compiler: clang
 before_install:
   - sudo apt-get -qq update
-  - sudo apt-get install -y ninja-build llvm ocl-icd-opencl-dev libprotobuf-dev protobuf-compiler
+  - sudo apt-get install -y ninja-build llvm ocl-icd-opencl-dev libprotobuf-dev protobuf-compiler libpng-dev
 install:
  - mkdir build && cd build
  - cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF ../
