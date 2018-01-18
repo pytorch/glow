@@ -432,6 +432,29 @@ public:
     return idx;
   }
 
+  /// \returns the raw indices of a min and max values from the tensor.
+  /// In case of multiple min or max, the smallest index is returned.
+  std::pair<size_t, size_t> minMaxArg() const {
+    ElemTy max = raw(0);
+    ElemTy min = raw(0);
+
+    size_t maxIdx = 0;
+    size_t minIdx = 0;
+
+    for (size_t i = 1, e = size(); i < e; i++) {
+      ElemTy val = raw(i);
+      if (val > max) {
+        max = val;
+        maxIdx = i;
+      } else if (val < min) {
+        min = val;
+        minIdx = i;
+      }
+    }
+
+    return std::make_pair(minIdx, maxIdx);
+  }
+
   /// \returns true if tensor contains only elements equal to zero.
   bool isZero() const {
     for (size_t i = 0, e = size(); i < e; ++i) {

@@ -1,6 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "Interpreter.h"
+#include "Quantization/Quantization.h"
 
 #include "glow/IR/Instrs.h"
 
@@ -1127,7 +1128,16 @@ void Interpreter::fwdDebugPrintInst(bool isTrain, const DebugPrintInst *I) {
 
 void Interpreter::fwdQuantizationProfileInst(
     bool isTrain, const glow::QuantizationProfileInst *I) {
-  // TODO: implement actual calculations of statistics.
+  auto inputTensor = getWeightHandle(I->getInputTensor());
+  auto currentHistogram = getWeightHandle(I->getHistogram());
+  auto computationInfo = getWeightHandle(I->getComputationInfo());
+
+  float &min = computationInfo.raw(0);
+  float &max = computationInfo.raw(1);
+
+  // Update current histogram, min and max based on the inputTensor data.
+  quantization::generateTensorHistogram(inputTensor, currentHistogram, min,
+                                        max);
 }
 
 void Interpreter::fwdIntrinsicInst(bool isTrain, const glow::IntrinsicInst *I) {
