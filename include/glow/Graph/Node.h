@@ -133,6 +133,9 @@ public:
   /// \returns the number of results that the node has.
   unsigned getNumRes() const { return numRes_; }
 
+  /// \returns the \p idx result of the node.
+  NodeValue getResult(unsigned idx);
+
   /// Getters to access Node's inputs and outputs.
   unsigned getNumInputs() const;
   llvm::StringRef getInputName(unsigned idx) const;
