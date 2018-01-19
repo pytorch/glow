@@ -552,8 +552,8 @@ class DottyPrinterPass {
     visitedNodes_.insert(N);
 
     for (size_t i = 0; i < N->getNumInputs(); i++) {
-      Node *to = N->getInputNode(i).getNode();
-      size_t resNo = N->getInputNode(i).getResNo();
+      Node *to = N->getNthInput(i).getNode();
+      size_t resNo = N->getNthInput(i).getResNo();
 
       std::ostringstream edge;
       edge << uniqueNodeName(to) << ":" << to->getOutputName(resNo).str()
@@ -689,9 +689,9 @@ void Graph::verify() const {
   // Any node referenced by one of the graph nodes should be part of the Graph.
   for (auto *N : nodes_) {
     for (size_t idx = 0, e = N->getNumInputs(); idx < e; ++idx) {
-      assert((std::find(nodes_.begin(), nodes_.end(), N->getInputNode(idx)) !=
+      assert((std::find(nodes_.begin(), nodes_.end(), N->getNthInput(idx)) !=
                   nodes_.end() ||
-              std::find(vars_.begin(), vars_.end(), N->getInputNode(idx)) !=
+              std::find(vars_.begin(), vars_.end(), N->getNthInput(idx)) !=
                   vars_.end()) &&
              "Every node referenced by one of the graph"
              " nodes should be part of the graph");

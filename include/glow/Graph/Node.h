@@ -134,12 +134,12 @@ public:
   unsigned getNumResults() const { return numRes_; }
 
   /// \returns the \p idx result of the node.
-  NodeValue getResultNode(unsigned idx);
+  NodeValue getNthResult(unsigned idx);
 
   /// Getters to access Node's inputs and outputs.
   unsigned getNumInputs() const;
   llvm::StringRef getInputName(unsigned idx) const;
-  NodeValue getInputNode(unsigned idx) const;
+  NodeValue getNthInput(unsigned idx) const;
   llvm::StringRef getOutputName(unsigned idx) const;
   bool hasSideEffects() const;
 
