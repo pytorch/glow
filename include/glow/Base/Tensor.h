@@ -75,7 +75,7 @@ public:
   Tensor() = default;
 
   /// Initialize from a list of float literals.
-  Tensor(const std::initializer_list<double> &vec) {
+  Tensor(const std::initializer_list<float> &vec) {
     reset(ElemKind::FloatTy, {vec.size()});
     auto *data = getRawDataPointer<float>();
     int i = 0;
@@ -384,7 +384,7 @@ public:
   }
 
   /// Extract a smaller dimension tensor from a specific slice (that has to be
-  /// the first dimention).
+  /// the first dimension).
   Tensor extractSlice(size_t idx) const {
     auto sizes = tensor_->dims();
     assert(sizes.size() > 1 && "Tensor has only one dimension");
@@ -475,7 +475,7 @@ public:
 
     size_t newSizes[max_tensor_dimensions];
 
-    // Generate the swizzeled dimensions.
+    // Generate the swizzled dimensions.
     auto origDims = dims();
     for (unsigned i = 0; i < numDims_; i++) {
       newSizes[i] = origDims[shuffle[i]];
