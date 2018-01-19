@@ -63,6 +63,10 @@ class JITBackend final : public Backend {
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
   void generateLLVMIRForInstr(llvm::IRBuilder<> &builder, glow::Instruction *I);
 
+  /// Optimize the function \p F and the module that owns it. Use the target
+  /// information from the \p TM target machine.
+  void optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM);
+
 public:
   /// Ctor.
   explicit JITBackend(Module *M);

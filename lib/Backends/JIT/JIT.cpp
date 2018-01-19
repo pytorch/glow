@@ -33,60 +33,6 @@ using llvm::StringRef;
 using llvm::dyn_cast;
 using llvm::isa;
 
-static llvm::cl::opt<bool>
-    dumpIR("dump-llvm-ir",
-           llvm::cl::desc("Dump the LLVM-IR during the JIT compilation phase"),
-           llvm::cl::init(false), llvm::cl::Hidden);
-
-/// Optimize the module that contain the function \p F.
-static void optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM) {
-  auto *M = F->getParent();
-
-  // Make all of the functions except for 'main' internal and optimizable.
-  auto preserveMain = [=](const llvm::GlobalValue &GV) {
-    return GV.getName() == "main";
-  };
-  llvm::internalizeModule(*M, preserveMain);
-
-  llvm::PassManagerBuilder PMB;
-  PMB.OptLevel = 3;
-  PMB.SizeLevel = 0;
-  PMB.LoopVectorize = true;
-  PMB.SLPVectorize = true;
-  PMB.Inliner = llvm::createFunctionInliningPass();
-
-  M->setTargetTriple(TM.getTargetTriple().normalize());
-  M->setDataLayout(TM.createDataLayout());
-
-  // Replace the target-specific machine code attributes that were attached by
-  // the frontend.
-  llvm::AttributeList AL;
-  for (auto &FF : *M) {
-    FF.setAttributes(AL);
-  }
-
-  llvm::legacy::FunctionPassManager FPM(F->getParent());
-  llvm::legacy::PassManager PM;
-
-  // Add internal analysis passes from the target machine.
-  PM.add(createTargetTransformInfoWrapperPass(TM.getTargetIRAnalysis()));
-  FPM.add(createTargetTransformInfoWrapperPass(TM.getTargetIRAnalysis()));
-
-  PMB.populateFunctionPassManager(FPM);
-  PMB.populateModulePassManager(PM);
-  FPM.doInitialization();
-  PM.run(*F->getParent());
-  for (auto &FF : *M) {
-    FPM.run(FF);
-  }
-  FPM.doFinalization();
-  PM.run(*F->getParent());
-
-  if (dumpIR) {
-    M->print(llvm::errs(), nullptr);
-  }
-}
-
 JITBackend::JITBackend(Module *M) : M_(M) {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();

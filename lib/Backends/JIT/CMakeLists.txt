@@ -14,6 +14,7 @@ add_custom_command(OUTPUT
                    COMMENT "Clang: Generating runtime bytecode library." VERBATIM)
 add_library(JIT
             GlowJIT.cpp
+            Pipeline.cpp
             Transforms.cpp
             LLVMIRGen.cpp
             JIT.cpp)
