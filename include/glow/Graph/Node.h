@@ -131,10 +131,10 @@ public:
   Node(Kinded::Kind k, llvm::StringRef name) : Named(name), Kinded(k) {}
 
   /// \returns the number of results that the node has.
-  unsigned getNumRes() const { return numRes_; }
+  unsigned getNumResults() const { return numRes_; }
 
   /// \returns the \p idx result of the node.
-  NodeValue getResult(unsigned idx);
+  NodeValue getResultNode(unsigned idx);
 
   /// Getters to access Node's inputs and outputs.
   unsigned getNumInputs() const;
@@ -162,7 +162,7 @@ public:
   /// users. This allows us to deconstruct the graph in an arbitrary order.
   void releaseUsers() {
     NodeValue nop(nullptr);
-    for (unsigned i = 0; i < getNumRes(); i++) {
+    for (unsigned i = 0; i < getNumResults(); i++) {
       NodeValue(this, i).replaceAllUsesOfWith(nop);
     }
   }

@@ -325,8 +325,8 @@ NodeValue Node::getInputNode(unsigned idx) const {
   }
 }
 
-NodeValue Node::getResult(unsigned idx) {
-  assert(idx < getNumRes());
+NodeValue Node::getResultNode(unsigned idx) {
+  assert(idx < getNumResults());
   return NodeValue(this, idx);
 }
 
