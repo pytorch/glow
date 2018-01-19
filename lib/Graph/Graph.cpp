@@ -545,7 +545,7 @@ void Graph::createGRU(llvm::StringRef namePrefix, llvm::ArrayRef<Node *> inputs,
   auto *Bz2 = createVariable(ElemKind::FloatTy, {hiddenSize},
                              (namePrefix + ".bz2").str(),
                              Variable::InitKind::Broadcast, bUpdate);
-  float bReset = -10.0;
+  float bReset = -1.0;
   // reset gate
   auto *Wxr = createVariable(ElemKind::FloatTy, {inputSize, hiddenSize},
                              (namePrefix + ".Wxr").str(),
