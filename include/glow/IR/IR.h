@@ -102,11 +102,10 @@ private:
   Instruction(const Instruction &I) = delete;
   Instruction &operator=(const Instruction &I) = delete;
 
-protected:
+public:
   /// Adds a new operand \p op at the end of the operand list.
   void pushOperand(Operand op);
 
-public:
   Instruction(Module *M, llvm::StringRef name, Kinded::Kind k, TypeRef Ty)
       : Value(name, Ty, k), M(M) {}
 

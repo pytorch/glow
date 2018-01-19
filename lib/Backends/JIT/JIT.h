@@ -73,6 +73,8 @@ public:
   void init() override;
 
   void doForwardPass(bool isTrain) override;
+
+  bool transform(Graph &G) override;
   /// @}
 };
 

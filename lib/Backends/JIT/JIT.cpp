@@ -30,6 +30,7 @@
 
 using namespace glow;
 using llvm::StringRef;
+using llvm::dyn_cast;
 using llvm::isa;
 
 static llvm::cl::opt<bool>
@@ -385,6 +386,23 @@ void JITBackend::init() {
       break;
     }
 
+    case Kinded::Kind::IntrinsicInstKind: {
+      IntrinsicInst *II = llvm::cast<IntrinsicInst>(I);
+      if (II->getIdentifier().equals("jit.max0")) {
+        auto *dest = II->getOperand(0).first;
+        auto *src = II->getOperand(1).first;
+        auto *destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
+        auto *LHSPtr = emitValueAddress(builder, src, ElemKind::FloatTy);
+        auto cnt = emitValueSize(builder, dest);
+        auto *F = llmodule_->getFunction("elementmax0_f");
+        assert(F && "Unable to load the function");
+        builder.CreateCall(F, {destPtr, LHSPtr, cnt});
+        break;
+      }
+
+      llvm_unreachable("Unknown intrinsic");
+    }
+
     case Kinded::Kind::ElementDivInstKind:
     case Kinded::Kind::ElementMulInstKind:
     case Kinded::Kind::ElementAddInstKind:
@@ -511,4 +529,38 @@ void JITBackend::allocateActivationsAndWeights() {
   for (auto &A : activationAddr) {
     allocatedAddressed_[A.first] = &heap_[0] + A.second;
   }
+}
+
+static bool isZeroNode(NodeValue N) {
+  SplatNode *splat = dyn_cast<SplatNode>(N);
+  if (!splat)
+    return false;
+
+  return splat->getValue() == 0;
+}
+
+bool JITBackend::transform(Graph &G) {
+  bool changed = false;
+  for (auto node : G.getNodes()) {
+    if (auto *AN = dyn_cast<ArithmeticNode>(node)) {
+      if (AN->getMode() == ArithmeticNode::Mode::Max) {
+        if (isZeroNode(AN->getLHS())) {
+          auto I = G.createIntrinsicNode(AN->getName(), "jit.max0",
+                                         {AN->getRHS()}, {AN->getType()}, 0);
+          NodeValue(node, 0).replaceAllUsesOfWith(I);
+          changed = true;
+          continue;
+        }
+        if (isZeroNode(AN->getRHS())) {
+          auto I = G.createIntrinsicNode(AN->getName(), "jit.max0",
+                                         {AN->getLHS()}, {AN->getType()}, 0);
+          NodeValue(node, 0).replaceAllUsesOfWith(I);
+          changed = true;
+          continue;
+        }
+      }
+    }
+  }
+
+  return changed;
 }

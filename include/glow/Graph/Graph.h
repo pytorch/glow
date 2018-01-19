@@ -131,6 +131,7 @@ public:
                                  llvm::ArrayRef<unsigned> shuffle);
 
   IntrinsicNode *createIntrinsicNode(llvm::StringRef name,
+                                     llvm::StringRef identifier,
                                      llvm::ArrayRef<Node *> inputs,
                                      llvm::ArrayRef<TypeRef> outputs,
                                      void *saved);
