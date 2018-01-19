@@ -325,6 +325,11 @@ NodeValue Node::getInputNode(unsigned idx) const {
   }
 }
 
+NodeValue Node::getResult(unsigned idx) {
+  assert(idx < getNumRes());
+  return NodeValue(this, idx);
+}
+
 llvm::StringRef Node::getOutputName(unsigned idx) const {
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
