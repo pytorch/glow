@@ -16,13 +16,13 @@ void NodeUse::setOperand(NodeValue &other) {
 }
 
 NodeValue::NodeValue(Node *N) {
-  assert((!N || (N->getNumRes() == 1)) &&
+  assert((!N || (N->getNumResults() == 1)) &&
          "Constructing a value for a multi-res node");
   setOperand(N, 0);
 }
 
 NodeValue::NodeValue(Node *N, unsigned resNo) {
-  assert(resNo < N->getNumRes() && "Invalid result number");
+  assert(resNo < N->getNumResults() && "Invalid result number");
   setOperand(N, resNo);
 }
 
@@ -280,7 +280,7 @@ unsigned Variable::getNumInputs() const { return 0; }
 llvm::StringRef Variable::getInputName(unsigned idx) const {
   llvm_unreachable("Invalid index");
 }
-NodeValue Variable::getInputNode(unsigned idx) const {
+NodeValue Variable::getNthInput(unsigned idx) const {
   llvm_unreachable("Invalid index");
 }
 llvm::StringRef Variable::getOutputName(unsigned idx) const {
@@ -314,18 +314,18 @@ llvm::StringRef Node::getInputName(unsigned idx) const {
     llvm_unreachable("Unhandled node");
   }
 }
-NodeValue Node::getInputNode(unsigned idx) const {
+NodeValue Node::getNthInput(unsigned idx) const {
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
-    return static_cast<const CLASS *>(this)->getInputNode(idx);
+    return static_cast<const CLASS *>(this)->getNthInput(idx);
 #include "AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");
   }
 }
 
-NodeValue Node::getResultNode(unsigned idx) {
+NodeValue Node::getNthResult(unsigned idx) {
   assert(idx < getNumResults());
   return NodeValue(this, idx);
 }

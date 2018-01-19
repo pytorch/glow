@@ -494,7 +494,7 @@ struct CSEVisitor : NodeWalker {
     assert(N->isEqual(*FoundN));
     for (unsigned i = 0; i < N->getNumResults(); i++) {
       NodeValue FV(FoundN, i);
-      N->getResultNode(i).replaceAllUsesOfWith(FV);
+      N->getNthResult(i).replaceAllUsesOfWith(FV);
     }
     // TODO: Erase N during CSE? If we don't do it here,
     // DCE will remove it later anyways.
