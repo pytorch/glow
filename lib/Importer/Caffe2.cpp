@@ -143,7 +143,8 @@ void caffe2ModelLoader::loadIntrinsicWeight(const caffe2::OperatorDef &op) {
     tensors_[output] = T;
   }
 
-  Node *node = G_.createIntrinsicNode(op.name(), {}, outputs, (void *)&op);
+  Node *node = G_.createIntrinsicNode(op.name(), "caffe2.opaque", {}, outputs,
+                                      (void *)&op);
   for (int i = 0, e = op.output_size(); i < e; i++) {
     nodeByName_[op.output(i)] = node;
   }
@@ -159,8 +160,9 @@ void caffe2ModelLoader::loadIntrinsicOperator(const caffe2::OperatorDef &op) {
     outputs.emplace_back(G_.getVoidTy());
   }
 
-  Node *node = G_.createIntrinsicNode(op.name(), llvm::ArrayRef<Node *>(inputs),
-                                      outputs, (void *)&op);
+  Node *node = G_.createIntrinsicNode(op.name(), "caffe2.opaque",
+                                      llvm::ArrayRef<Node *>(inputs), outputs,
+                                      (void *)&op);
   for (int i = 0, e = op.output_size(); i < e; i++) {
     nodeByName_[op.output(i)] = node;
   }
