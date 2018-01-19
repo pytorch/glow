@@ -267,8 +267,8 @@ int main(int argc, char **argv) {
   BB.newNode("Intrinsic")
       .addMember(MemberType::VectorNodeValue, "Inputs")
       .addMember(MemberType::String, "Identifier")
+      .addMember(MemberType::VoidStar, "Saved")
       .addIntrinsicOutput()
-      .addExtraParam("void *", "saved")
       .setDocstring(
           "This is a general intrinsic node that represents an opaque "
           "unknown operation. The node is variadic, which means that "

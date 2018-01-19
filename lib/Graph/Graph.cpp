@@ -257,7 +257,7 @@ IntrinsicNode *Graph::createIntrinsicNode(llvm::StringRef name,
   for (auto &I : inputs) {
     ops.emplace_back(I);
   }
-  return addNode(new IntrinsicNode(name, saved, outputs, ops, identifier));
+  return addNode(new IntrinsicNode(name, outputs, ops, identifier, saved));
 }
 
 ConcatNode *Graph::createConcat(llvm::StringRef name,
