@@ -685,6 +685,18 @@ void Graph::verify() const {
     dump();
     llvm_unreachable("Multiple nodes with the same name");
   }
+
+  // Any node referenced by one of the graph nodes should be part of the Graph.
+  for (auto *N : nodes_) {
+    for (size_t idx = 0, e = N->getNumInputs(); idx < e; ++idx) {
+      assert((std::find(nodes_.begin(), nodes_.end(), N->getInputNode(idx)) !=
+                  nodes_.end() ||
+              std::find(vars_.begin(), vars_.end(), N->getInputNode(idx)) !=
+                  vars_.end()) &&
+             "Every node referenced by one of the graph"
+             " nodes should be part of the graph");
+    }
+  }
 }
 
 void Graph::resetState() { state_ = State::Created; }

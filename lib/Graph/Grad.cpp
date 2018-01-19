@@ -153,6 +153,7 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
       unsigned dim = CC->getDim();
       for (auto &N : inputs) {
         auto *X = new SliceNode("extract", N.getType(), outputG, offsets);
+        toAppend.push_back(X);
         // We are stacking the tensors along a specific dimension. This means
         // that we increase the size of the tensor along this dimension.
         offsets[dim] += N.dims()[dim];
