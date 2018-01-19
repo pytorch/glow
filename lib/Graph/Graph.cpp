@@ -507,9 +507,9 @@ class DottyPrinterPass {
       os_ << "|";
     }
     os_ << "{" << escapeDottyString(N->getDebugDesc()) << "}";
-    if (N->getNumRes()) {
+    if (N->getNumResults()) {
       os_ << "|";
-      std::vector<std::string> names(N->getNumRes());
+      std::vector<std::string> names(N->getNumResults());
       for (size_t i = 0; i < names.size(); i++) {
         names[i] = N->getOutputName(i).str();
       }

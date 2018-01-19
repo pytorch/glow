@@ -492,9 +492,9 @@ struct CSEVisitor : NodeWalker {
     // Replace current node by a found node, which is
     // equivalent to it.
     assert(N->isEqual(*FoundN));
-    for (unsigned i = 0; i < N->getNumRes(); i++) {
+    for (unsigned i = 0; i < N->getNumResults(); i++) {
       NodeValue FV(FoundN, i);
-      NodeValue(N, i).replaceAllUsesOfWith(FV);
+      N->getResultNode(i).replaceAllUsesOfWith(FV);
     }
     // TODO: Erase N during CSE? If we don't do it here,
     // DCE will remove it later anyways.
