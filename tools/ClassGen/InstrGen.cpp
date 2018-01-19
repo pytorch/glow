@@ -295,7 +295,7 @@ int main(int argc, char **argv) {
   //             Intrinsics for supporting target-specific transforms
   //===--------------------------------------------------------------------===//
 
-  BB.newInstr("Intrinsic").addMember(MemberType::String, "Name");
+  BB.newInstr("Intrinsic").addMember(MemberType::String, "Identifier");
 
   return 0;
 }

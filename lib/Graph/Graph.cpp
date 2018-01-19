@@ -248,6 +248,7 @@ static bool sameSameShapeExceptDim(TypeRef T1, TypeRef T2, unsigned dim) {
 }
 
 IntrinsicNode *Graph::createIntrinsicNode(llvm::StringRef name,
+                                          llvm::StringRef identifier,
                                           llvm::ArrayRef<Node *> inputs,
                                           llvm::ArrayRef<TypeRef> outputs,
                                           void *saved) {
@@ -256,7 +257,7 @@ IntrinsicNode *Graph::createIntrinsicNode(llvm::StringRef name,
   for (auto &I : inputs) {
     ops.emplace_back(I);
   }
-  return addNode(new IntrinsicNode(name, saved, outputs, ops));
+  return addNode(new IntrinsicNode(name, saved, outputs, ops, identifier));
 }
 
 ConcatNode *Graph::createConcat(llvm::StringRef name,
