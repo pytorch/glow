@@ -529,8 +529,12 @@ public:
     insertTensorsImpl(sliceCoor, fusedCoor, slice, false, offset, 0);
   }
 
-  /// Broadcast the current Tensor to a new shape based on \p otherDims and
-  /// place it in \p dest.
+  /// Broadcast the current Tensor to a new shape specified by \p otherDims and
+  /// place it in \p dest. Values in the new dimension(s) are copied from the
+  /// original Tensor. Compared to numpy's broadcasting, this only allows
+  /// broadcasting one tensor Tensor A to some new shape specified by \p
+  /// otherDims. For example, numpy allows broadcasting two Tensors of shapes
+  /// (3,1) and (1,4) to both be (3,4), while this implementation does not.
   void broadcastToNewShape(Tensor *dest, llvm::ArrayRef<size_t> otherDims) {
     auto origDims = dims();
     assert(otherDims.size() >= origDims.size() &&
@@ -594,7 +598,7 @@ public:
       newDims[i + shift] = origDims[i];
     }
     newDims[direction] = newDimLen;
-    const int newDimsSize = origDims.size() + (addingNewDim ? 1 : 0);
+    const unsigned newDimsSize = origDims.size() + (addingNewDim ? 1 : 0);
     dest->reset(getElementType(), llvm::ArrayRef<size_t>(newDims, newDimsSize));
 
     size_t currNewIdxsArr[max_tensor_dimensions];

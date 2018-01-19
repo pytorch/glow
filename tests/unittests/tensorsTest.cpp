@@ -333,34 +333,40 @@ TEST(Tensor, broadcastDir2) {
   }
 }
 
+/// Broadcast a Tensor of shape (2,1) to (3,2,2,2).
 TEST(Tensor, broadcastNewShape) {
-  const unsigned dimX_A = 2;
-  const unsigned dimY_A = 2;
-  const unsigned dimZ_A = 2;
-  const unsigned dimW_A = 3;
-  Tensor X_A(ElemKind::FloatTy, {dimX_A, dimY_A, dimZ_A, dimW_A});
-  auto H_A = X_A.getHandle<>();
-  H_A = {100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111,
-         112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123};
+  const size_t numDims_A = 4;
 
-  const unsigned dimX_B = 1;
-  const unsigned dimY_B = 2;
+  const size_t dimX_A = 2;
+  const size_t dimY_A = 2;
+  const size_t dimZ_A = 2;
+  const size_t dimW_A = 3;
+
+  size_t dims_A[numDims_A];
+  dims_A[0] = dimX_A;
+  dims_A[1] = dimY_A;
+  dims_A[2] = dimZ_A;
+  dims_A[3] = dimW_A;
+
+  const size_t dimX_B = 1;
+  const size_t dimY_B = 2;
   Tensor X_B(ElemKind::FloatTy, {dimX_B, dimY_B});
   auto H_B = X_B.getHandle<>();
   H_B = {200, 201};
 
   Tensor broadcastedB;
-  X_B.getHandle<>().broadcastToNewShape(&broadcastedB, H_A.dims());
+  X_B.getHandle<>().broadcastToNewShape(&broadcastedB, dims_A);
 
   auto broadcastedBHandle = broadcastedB.getHandle<>();
 
   // Verify broadcasted B has same shape.
-  EXPECT_EQ(H_A.dims().size(), broadcastedBHandle.dims().size());
-  for (int i = 0; i < H_A.dims().size(); i++) {
-    EXPECT_EQ(H_A.dims()[i], broadcastedBHandle.dims()[i]);
+  EXPECT_EQ(numDims_A, broadcastedBHandle.dims().size());
+  for (int i = 0; i < numDims_A; i++) {
+    EXPECT_EQ(dims_A[i], broadcastedBHandle.dims()[i]);
   }
 
-  // Verify values were broadcasted correctly.
+  // Look at the two values in X_B (in dimension Y) and verify in the three
+  // dimensions it was broadcasted that the values were correctly broadcasted.
   const size_t i_B = 0;
   for (size_t j_B = 0; j_B < dimY_B; ++j_B) {
     const float origVal = H_B.at({i_B, j_B});
