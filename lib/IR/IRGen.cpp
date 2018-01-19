@@ -88,7 +88,7 @@ public:
       llvm::SmallVector<Value *, 4> dest;
 
       // Create the result buffers:
-      for (int i = 0, e = II->getNumRes(); i < e; i++) {
+      for (int i = 0, e = II->getNumResults(); i < e; i++) {
         auto *out0 = builder_.createAllocActivationInst(
             "dest", NodeValue(II, i)->getType());
         dest.push_back(out0);
@@ -106,7 +106,7 @@ public:
 
       // Add the inputs.
       for (int i = 0, e = II->glow::Node::getNumInputs(); i < e; i++) {
-        auto *in = valueForNode(II->glow::Node::getInputNode(i));
+        auto *in = valueForNode(II->glow::Node::getNthInput(i));
         instr->pushOperand({in, OperandKind::In});
       }
 
