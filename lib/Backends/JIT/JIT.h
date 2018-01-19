@@ -18,6 +18,7 @@ class Module;
 class Value;
 class Tensor;
 class Variable;
+class Instruction;
 
 class JITBackend final : public Backend {
   /// The Module that holds the glow IR. This does not own the module.
@@ -58,6 +59,9 @@ class JITBackend final : public Backend {
   /// Generates LLVM IR that computes the dimensions of \p val using \p builder.
   /// The result type is "size_t*".
   llvm::Value *emitValueDims(llvm::IRBuilder<> &builder, glow::Value *val);
+
+  /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
+  void generateLLVMIRForInstr(llvm::IRBuilder<> &builder, glow::Instruction *I);
 
 public:
   /// Ctor.
