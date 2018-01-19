@@ -99,11 +99,22 @@ void ExecutionEngine::compile(CompilationMode mode) {
     generateGradientNodes(*G_, getConfig(), mode);
   }
 
+  // Optimized the graph.
   ::glow::optimize(*G_, mode);
-  ::glow::lower(*G_, mode);
-  ::glow::optimize(*G_, mode);
-  M_->generateIR(mode);
-  ::glow::optimize(*M_, mode);
 
+  // Lower the graph into a sequence of low-level linear algebra operations.
+  ::glow::lower(*G_, mode);
+
+  // Optimized the graph again.
+  ::glow::optimize(*G_, mode);
+
+  // Allow the backend to transform the graph.
+  IP_->transform(*G_);
+
+  // Generate IR from the graph.
+  M_->generateIR(mode);
+
+  // Optimize the generated IR.
+  ::glow::optimize(*M_, mode);
   IP_->init();
 }

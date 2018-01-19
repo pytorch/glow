@@ -8,6 +8,7 @@ class Module;
 class Value;
 class Tensor;
 class Variable;
+class Graph;
 
 enum class BackendKind {
   Interpreter, // Execute the network with the built-in interpreter.
@@ -31,6 +32,13 @@ public:
   /// Perform a single forward scan of the network, interpreting all of the
   /// instructions.
   virtual void doForwardPass(bool isTrain) = 0;
+
+  /// This method is called by the compiler before code generation and gives
+  /// the backend an opportunity to transform the graph before IRGen. The
+  /// backend may insert target specific nodes. The backend is responsible for
+  /// cleaning up after itself.
+  /// \returns True if the graph was modified.
+  virtual bool transform(Graph &G) { return false; }
 };
 
 /// Create a backend of kind \p kind, to run the module \p M.
