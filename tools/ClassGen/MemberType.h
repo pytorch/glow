@@ -15,6 +15,7 @@ enum class MemberType : unsigned {
   VectorUnsigned,
   VectorSizeT,
   VectorNodeValue,
+  VoidStar,
 };
 
 inline const char *getReturnTypename(MemberType type) {
@@ -27,6 +28,7 @@ inline const char *getReturnTypename(MemberType type) {
                                "llvm::ArrayRef<unsigned>",
                                "llvm::ArrayRef<size_t>",
                                "llvm::ArrayRef<NodeValue>",
+                               "void*",
                                nullptr};
   return returnTypes[(int)type];
 }
@@ -41,6 +43,7 @@ inline const char *getStorageTypename(MemberType type) {
                                 "std::vector<unsigned>",
                                 "std::vector<size_t>",
                                 "std::vector<NodeValue>",
+                                "void*",
                                 nullptr};
   return storageTypes[(int)type];
 }
