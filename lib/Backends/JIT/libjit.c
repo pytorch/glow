@@ -260,18 +260,15 @@ void softmax_f(float *inW, float *outW, size_t *idim, size_t *odim) {
 }
 
 void sigmoid_f(float *inW, float *outW, size_t *idim, size_t *odim) {
-  for (size_t n = 0; n < idim[0]; ++n) {
-    for (size_t i = 0; i < idim[1]; ++i) {
-      float e = expf(inW[getXY(idim, n, i)]);
-      outW[getXY(odim, n, i)] = e / (e + 1);
-    }
+  for (size_t n = 0; n < odim[0]; ++n) {
+    float e = expf(inW[n]);
+    outW[n] = e / (e + 1);
   } // N
 }
 
 void tanh_f(float *inW, float *outW, size_t *idim, size_t *odim) {
-  for (size_t n = 0; n < idim[0]; ++n) {
-    for (size_t i = 0; i < idim[1]; ++i) {
-      outW[getXY(odim, n, i)] = tanhf(inW[getXY(idim, n, i)]);
+  for (size_t n = 0; n < odim[0]; ++n) {
+      outW[n] = tanhf(inW[n]);
     }
   } // N
 }
