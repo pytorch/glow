@@ -9,7 +9,7 @@ set(LIBJITSRC ${CMAKE_CURRENT_SOURCE_DIR}/libjit.c)
 
 add_custom_command(OUTPUT
                    ${LIBJITBC}
-                   COMMAND ${CLANG_EXECUTABLE} -Os -emit-llvm -o ${LIBJITBC} -c ${LIBJITSRC}
+                   COMMAND ${CLANG_EXECUTABLE} -Os -ffast-math -emit-llvm -o ${LIBJITBC} -c ${LIBJITSRC}
                    DEPENDS ${LIBJITSRC}
                    COMMENT "Clang: Generating runtime bytecode library." VERBATIM)
 add_library(JIT
