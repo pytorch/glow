@@ -231,6 +231,20 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::TanhInstKind: {
+    TanhInst *TI = llvm::cast<TanhInst>(I);
+    auto *destPtr =
+        emitValueAddress(builder, TI->getDest(), ElemKind::FloatTy);
+    auto *srcPtr = emitValueAddress(builder, TI->getSrc(), ElemKind::FloatTy);
+    auto *destDims = emitValueDims(builder, TI->getDest());
+    auto *srcDims = emitValueDims(builder, TI->getSrc());
+
+    auto *F = llmodule_->getFunction("tanh_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims});
+    break;
+  }
+
   case Kinded::Kind::TransposeInstKind: {
     TransposeInst *TI = llvm::cast<TransposeInst>(I);
     auto *destPtr = emitValueAddress(builder, TI->getDest(), ElemKind::FloatTy);

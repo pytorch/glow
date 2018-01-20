@@ -268,6 +268,14 @@ void sigmoid_f(float *inW, float *outW, size_t *idim, size_t *odim) {
   } // N
 }
 
+void tanh_f(float *inW, float *outW, size_t *idim, size_t *odim) {
+  for (size_t n = 0; n < idim[0]; ++n) {
+    for (size_t i = 0; i < idim[1]; ++i) {
+      outW[getXY(odim, n, i)] = tanhf(inW[getXY(idim, n, i)]);
+    }
+  } // N
+}
+
 void transpose_f(float *inW, float *outW, size_t *idim, size_t *odim,
                  size_t *shuffle, size_t numDims) {
   // Source coordinate.
