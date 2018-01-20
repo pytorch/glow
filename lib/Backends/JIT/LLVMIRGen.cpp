@@ -217,6 +217,20 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::SigmoidInstKind: {
+    SigmoidInst *SI = llvm::cast<SigmoidInst>(I);
+    auto *destPtr =
+        emitValueAddress(builder, SI->getDest(), ElemKind::FloatTy);
+    auto *srcPtr = emitValueAddress(builder, SI->getSrc(), ElemKind::FloatTy);
+    auto *destDims = emitValueDims(builder, SI->getDest());
+    auto *srcDims = emitValueDims(builder, SI->getSrc());
+
+    auto *F = llmodule_->getFunction("sigmoid_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims});
+    break;
+  }
+
   case Kinded::Kind::TransposeInstKind: {
     TransposeInst *TI = llvm::cast<TransposeInst>(I);
     auto *destPtr = emitValueAddress(builder, TI->getDest(), ElemKind::FloatTy);

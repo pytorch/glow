@@ -259,6 +259,15 @@ void softmax_f(float *inW, float *outW, size_t *idim, size_t *odim) {
   } // N
 }
 
+void sigmoid_f(float *inW, float *outW, size_t *idim, size_t *odim) {
+  for (size_t n = 0; n < idim[0]; ++n) {
+    for (size_t i = 0; i < idim[1]; ++i) {
+      float e = expf(inW[getXY(idim, n, i)]);
+      outW[getXY(odim, n, i)] = e / (e + 1);
+    }
+  } // N
+}
+
 void transpose_f(float *inW, float *outW, size_t *idim, size_t *odim,
                  size_t *shuffle, size_t numDims) {
   // Source coordinate.
