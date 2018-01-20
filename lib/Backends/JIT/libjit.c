@@ -141,7 +141,6 @@ void convolution_f(float *inW, float *outW, float *filterW, float *biasW,
                   oy >= (ssize_t)inWdims[2]) {
                 continue;
               }
-#pragma clang loop interleave_count(8)
               for (size_t fd = 0; fd < inChannels; fd++) {
                 sum += filterW[getXYZW(filterWdims, d, fx, fy, fd)] *
                        inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
