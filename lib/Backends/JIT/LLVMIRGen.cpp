@@ -219,29 +219,23 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::SigmoidInstKind: {
     SigmoidInst *SI = llvm::cast<SigmoidInst>(I);
-    auto *destPtr =
-        emitValueAddress(builder, SI->getDest(), ElemKind::FloatTy);
+    auto *destPtr = emitValueAddress(builder, SI->getDest(), ElemKind::FloatTy);
     auto *srcPtr = emitValueAddress(builder, SI->getSrc(), ElemKind::FloatTy);
-    auto *destDims = emitValueDims(builder, SI->getDest());
-    auto *srcDims = emitValueDims(builder, SI->getSrc());
-
+    auto *numElemVal = emitConst(builder, SI->getDest()->getType()->size());
     auto *F = llmodule_->getFunction("sigmoid_f");
     assert(F && "Unable to load the function");
-    builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims});
+    builder.CreateCall(F, {srcPtr, destPtr, numElemVal});
     break;
   }
 
   case Kinded::Kind::TanhInstKind: {
     TanhInst *TI = llvm::cast<TanhInst>(I);
-    auto *destPtr =
-        emitValueAddress(builder, TI->getDest(), ElemKind::FloatTy);
+    auto *destPtr = emitValueAddress(builder, TI->getDest(), ElemKind::FloatTy);
     auto *srcPtr = emitValueAddress(builder, TI->getSrc(), ElemKind::FloatTy);
-    auto *destDims = emitValueDims(builder, TI->getDest());
-    auto *srcDims = emitValueDims(builder, TI->getSrc());
-
+    auto *numElemVal = emitConst(builder, TI->getDest()->getType()->size());
     auto *F = llmodule_->getFunction("tanh_f");
     assert(F && "Unable to load the function");
-    builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims});
+    builder.CreateCall(F, {srcPtr, destPtr, numElemVal});
     break;
   }
 
