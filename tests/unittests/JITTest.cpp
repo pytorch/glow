@@ -45,6 +45,20 @@ TEST(JITCorrectnessTest, sigmoidTest) {
   EXPECT_TRUE(H1.isEqual(H2));
 }
 
+TEST(JITCorrectnessTest, tanhTest) {
+  Tensor inputs(ElemKind::FloatTy, {4, 7, 3, 3});
+  inputs.getHandle().randomize(1);
+  Tensor out1;
+  Tensor out2;
+
+  inferTanhNet(&inputs, &out1, BackendKind::JIT);
+  inferTanhNet(&inputs, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
 TEST(JITCorrectnessTest, convOps) {
   Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});
   inputs.getHandle().randomize(1);
