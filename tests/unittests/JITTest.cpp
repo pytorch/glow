@@ -1,5 +1,6 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
+#include "AutoGenInferFunc.h"
 #include "BackendTestUtils.h"
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
@@ -24,6 +25,20 @@ TEST(JITCorrectnessTest, reluTest) {
 
   inferReluNet(&inputs, &out1, BackendKind::JIT);
   inferReluNet(&inputs, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
+TEST(JITCorrectnessTest, sigmoidTest) {
+  Tensor inputs(ElemKind::FloatTy, {11, 4, 5, 2});
+  inputs.getHandle().randomize(1);
+  Tensor out1;
+  Tensor out2;
+
+  inferSigmoidNet(&inputs, &out1, BackendKind::JIT);
+  inferSigmoidNet(&inputs, &out2, BackendKind::Interpreter);
   auto H1 = out1.getHandle();
   auto H2 = out2.getHandle();
 

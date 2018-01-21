@@ -259,18 +259,17 @@ void softmax_f(float *inW, float *outW, size_t *idim, size_t *odim) {
   } // N
 }
 
-void sigmoid_f(float *inW, float *outW, size_t *idim, size_t *odim) {
-  for (size_t n = 0; n < odim[0]; ++n) {
-    float e = expf(inW[n]);
-    outW[n] = e / (e + 1);
-  } // N
+void sigmoid_f(float *inW, float *outW, size_t numElem) {
+  for (size_t i = 0; i < numElem; ++i) {
+    float e = expf(inW[i]);
+    outW[i] = e / (e + 1);
+  }
 }
 
-void tanh_f(float *inW, float *outW, size_t *idim, size_t *odim) {
-  for (size_t n = 0; n < odim[0]; ++n) {
-      outW[n] = tanhf(inW[n]);
-    }
-  } // N
+void tanh_f(float *inW, float *outW, size_t numElem) {
+  for (size_t i = 0; i < numElem; ++i) {
+    outW[i] = tanhf(inW[i]);
+  }
 }
 
 void transpose_f(float *inW, float *outW, size_t *idim, size_t *odim,

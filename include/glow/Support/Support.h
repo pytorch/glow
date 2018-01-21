@@ -44,6 +44,17 @@ inline std::string tolower(const std::string &in) {
   return data;
 }
 
+/// \returns the content of the string \p in after conversion to sentence case.
+inline std::string tosentence(const std::string &in) {
+  std::string data = in;
+  if (data.length() > 0) {
+    auto itr = ++data.begin();
+    std::transform(data.begin(), itr, data.begin(), ::toupper);
+    std::transform(itr, data.end(), itr, ::tolower);
+  }
+  return data;
+}
+
 template <typename E> std::string listToString_impl(E v) {
   return std::to_string(v);
 }
