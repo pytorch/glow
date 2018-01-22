@@ -9,6 +9,42 @@
 using namespace glow;
 using llvm::cast;
 
+void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &G = EE.getGraph();
+  auto *var =
+      G.createVariable(inputs->getElementType(), inputs->dims(), "input");
+  auto *relu = G.createRELU("relu", var);
+  auto result = G.createSave("ret", relu);
+  EE.compile(CompilationMode::Infer);
+  EE.run({var}, {inputs});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
+void inferSigmoidNet(Tensor *inputs, Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &G = EE.getGraph();
+  auto *var =
+      G.createVariable(inputs->getElementType(), inputs->dims(), "input");
+  auto *sigmoid = G.createSigmoid("sigmoid", var);
+  auto result = G.createSave("ret", sigmoid);
+  EE.compile(CompilationMode::Infer);
+  EE.run({var}, {inputs});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
+void inferTanhNet(Tensor *inputs, Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &G = EE.getGraph();
+  auto *var =
+      G.createVariable(inputs->getElementType(), inputs->dims(), "input");
+  auto *tanh = G.createTanh("tanh", var);
+  auto result = G.createSave("ret", tanh);
+  EE.compile(CompilationMode::Infer);
+  EE.run({var}, {inputs});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &G = EE.getGraph();
