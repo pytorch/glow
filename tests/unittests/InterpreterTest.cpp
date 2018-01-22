@@ -56,6 +56,24 @@ TEST(Interpreter, interpret) {
   EE.run({input}, {&inputs});
 }
 
+TEST(Interpreter, profileQuantizationForANetwork) {
+  ExecutionEngine EE;
+  auto &G = EE.getGraph();
+  Tensor inputs(ElemKind::FloatTy, {1, 4});
+
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, 4}, "A");
+  auto *Ex = G.createVariable(ElemKind::FloatTy, {1, 4}, "E");
+  Node *O = G.createFullyConnected("fc", A, 4);
+  O = G.createRELU("relu", O);
+  O = G.createRegression("reg", O, Ex);
+
+  ::glow::profileQuantization(G);
+
+  EE.compile(CompilationMode::Infer);
+
+  EE.run({A}, {&inputs});
+}
+
 TEST(Interpreter, trainASimpleNetwork) {
   ExecutionEngine EE;
   // Learning a single input vector.

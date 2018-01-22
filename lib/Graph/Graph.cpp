@@ -446,13 +446,15 @@ QuantizationProfileNode *Graph::createQuantizationProfile(llvm::StringRef name,
                                                           NodeValue input) {
   // TODO: this size is going to be refined. Just a placeholder now.
   const size_t numberOfBuckets = 2000U;
-  auto *histogram = createVariable(ElemKind::FloatTy, {numberOfBuckets},
-                                   "histogram", Variable::InitKind::Extern);
+  auto *histogram =
+      createVariable(ElemKind::FloatTy, {numberOfBuckets}, "histogram",
+                     Variable::InitKind::Broadcast, 0);
   // Intermediate data used for histogram calculations.
   // Min tensor value seen so far is kept on the first position.
   // Max tensor value seen so far is kept on the second position.
-  auto *computationInfo = createVariable(
-      ElemKind::FloatTy, {2}, "computationInfo", Variable::InitKind::Extern);
+  auto *computationInfo =
+      createVariable(ElemKind::FloatTy, {2}, "computationInfo",
+                     Variable::InitKind::Broadcast, 0);
 
   return addNode(
       new QuantizationProfileNode(name, input, histogram, computationInfo));
