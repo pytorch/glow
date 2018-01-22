@@ -139,7 +139,8 @@ public:
   /// Getters to access Node's inputs and outputs.
   unsigned getNumInputs() const;
   llvm::StringRef getInputName(unsigned idx) const;
-  NodeValue getNthInput(unsigned idx) const;
+  NodeValue &getNthInput(unsigned idx);
+  const NodeValue &getNthInput(unsigned idx) const;
   llvm::StringRef getOutputName(unsigned idx) const;
   bool hasSideEffects() const;
 
