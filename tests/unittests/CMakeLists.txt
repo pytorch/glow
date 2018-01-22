@@ -1,20 +1,3 @@
-
-# AutoGenInferFunc
-set(TESTGEN_HDR ${GLOW_BINARY_DIR}/AutoGenInferFunc.h)
-set(TESTGEN_SRC ${GLOW_BINARY_DIR}/AutoGenInferFunc.cpp)
-
-add_custom_command(OUTPUT
-                    "${TESTGEN_HDR}"
-                    "${TESTGEN_SRC}"
-                    COMMAND BackendTestGen ${TESTGEN_HDR} ${TESTGEN_SRC}
-                    DEPENDS BackendTestGen
-                    COMMENT "BackendTestGen: Generating inference functions." VERBATIM)
-
-add_library(AutoGenInferFunc
-            ${TESTGEN_HDR}
-            ${TESTGEN_SRC})
-target_link_libraries(AutoGenInferFunc PUBLIC Support)
-
 add_library(testMain
             testMain.cpp)
 target_link_libraries(testMain
@@ -126,7 +109,6 @@ add_executable(OCLTest
                OCLTest.cpp)
 target_link_libraries(OCLTest
                       PRIVATE
-                        AutoGenInferFunc
                         Backends
                         IR
                         ExecutionEngine
@@ -141,7 +123,6 @@ add_executable(JITTest
                JITTest.cpp)
 target_link_libraries(JITTest
                       PRIVATE
-                        AutoGenInferFunc
                         Backends
                         IR
                         ExecutionEngine
