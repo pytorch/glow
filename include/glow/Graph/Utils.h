@@ -1,6 +1,7 @@
 #ifndef GLOW_GRAPH_UTILS_H
 #define GLOW_GRAPH_UTILS_H
 
+#include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -37,6 +38,30 @@ public:
 
   /// \returns the order.
   llvm::ArrayRef<Node *> getPostOrder() { return postOrder_; }
+};
+
+/// A helper class for ordering Graph nodes in a post-order order.
+class GraphPostOrderVisitor : public PostOrderVisitor {
+  const Graph &G;
+  void visit() {
+    for (const auto *V : G.getVars()) {
+      V->visit(nullptr, this);
+    }
+    // Start visiting all root nodes, i.e. nodes that do not have any users.
+    for (auto *N : G.getNodes()) {
+      if (N->getNumUsers() == 0)
+        N->visit(nullptr, this);
+    }
+  }
+
+public:
+  explicit GraphPostOrderVisitor(const Graph &G) : G(G) {}
+  /// \returns the order.
+  llvm::ArrayRef<Node *> getPostOrder() {
+    if (postOrder_.empty())
+      visit();
+    return postOrder_;
+  }
 };
 
 } // namespace glow
