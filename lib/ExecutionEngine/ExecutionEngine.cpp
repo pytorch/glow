@@ -109,7 +109,11 @@ void ExecutionEngine::compile(CompilationMode mode) {
   ::glow::optimize(*G_, mode);
 
   // Allow the backend to transform the graph.
-  IP_->transform(*G_);
+  if (IP_->transform(*G_)) {
+    // Optimize the graph again after the backend transformation.
+    // In particular, DCE is very likely to be useful.
+    ::glow::optimize(*G_, mode);
+  }
 
   // Generate IR from the graph.
   M_->generateIR(mode);

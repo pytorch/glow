@@ -39,6 +39,35 @@ TEST(Tensor, clone) {
   EXPECT_EQ(int(vH.at({1})), 12);
 }
 
+TEST(Tensor, maxArg) {
+  {
+    Tensor T = {1, 14, -2, 13, 8, 14};
+    EXPECT_EQ(1, T.getHandle<>().maxArg());
+  }
+
+  {
+    Tensor T = {55, 1, 4, 3, 4, -10};
+    EXPECT_EQ(0, T.getHandle<>().maxArg());
+  }
+}
+
+TEST(Tensor, isZero) {
+  {
+    Tensor T = {4, 0, 0, 0, 0};
+    EXPECT_FALSE(T.getHandle<>().isZero());
+  }
+
+  {
+    Tensor T = {0, 0, 0, 0, 0};
+    EXPECT_TRUE(T.getHandle<>().isZero());
+  }
+
+  {
+    Tensor T = {0, 0, 0, 0, 0, 5};
+    EXPECT_FALSE(T.getHandle<>().isZero());
+  }
+}
+
 TEST(Tensor, assignment) {
   // Testing some tensor operations.
   Tensor T(ElemKind::FloatTy, {320, 200, 64});

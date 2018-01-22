@@ -273,6 +273,14 @@ void Variable::visit(Node *parent, NodeWalker *visitor) {
   visitor->post(parent, this);
 }
 
+void Variable::visit(const Node *parent, NodeWalker *visitor) const {
+  if (!visitor->shouldVisit(parent, this)) {
+    return;
+  }
+  visitor->pre(parent, this);
+  visitor->post(parent, this);
+}
+
 //===----------------------------------------------------------------------===//
 //                     Edge getters methods
 //===----------------------------------------------------------------------===//
@@ -280,7 +288,7 @@ unsigned Variable::getNumInputs() const { return 0; }
 llvm::StringRef Variable::getInputName(unsigned idx) const {
   llvm_unreachable("Invalid index");
 }
-NodeValue Variable::getNthInput(unsigned idx) const {
+NodeValue &Variable::getNthInput(unsigned idx) {
   llvm_unreachable("Invalid index");
 }
 llvm::StringRef Variable::getOutputName(unsigned idx) const {
@@ -314,11 +322,22 @@ llvm::StringRef Node::getInputName(unsigned idx) const {
     llvm_unreachable("Unhandled node");
   }
 }
-NodeValue Node::getNthInput(unsigned idx) const {
+NodeValue &Node::getNthInput(unsigned idx) {
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
-    return static_cast<const CLASS *>(this)->getNthInput(idx);
+    return static_cast<CLASS *>(this)->getNthInput(idx);
+#include "AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+}
+
+const NodeValue &Node::getNthInput(unsigned idx) const {
+  switch (getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<CLASS *>(const_cast<Node *>(this))->getNthInput(idx);
 #include "AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");
@@ -328,6 +347,11 @@ NodeValue Node::getNthInput(unsigned idx) const {
 NodeValue Node::getNthResult(unsigned idx) {
   assert(idx < getNumResults());
   return NodeValue(this, idx);
+}
+
+const NodeValue Node::getNthResult(unsigned idx) const {
+  assert(idx < getNumResults());
+  return NodeValue(const_cast<Node *>(this), idx);
 }
 
 llvm::StringRef Node::getOutputName(unsigned idx) const {

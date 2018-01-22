@@ -135,11 +135,13 @@ public:
 
   /// \returns the \p idx result of the node.
   NodeValue getNthResult(unsigned idx);
+  const NodeValue getNthResult(unsigned idx) const;
 
   /// Getters to access Node's inputs and outputs.
   unsigned getNumInputs() const;
   llvm::StringRef getInputName(unsigned idx) const;
-  NodeValue getNthInput(unsigned idx) const;
+  NodeValue &getNthInput(unsigned idx);
+  const NodeValue &getNthInput(unsigned idx) const;
   llvm::StringRef getOutputName(unsigned idx) const;
   bool hasSideEffects() const;
 
@@ -156,6 +158,8 @@ public:
   /// to bottom. The visitor \p visitor is sent by the parent node \p parent,
   /// or nullptr if this is the first node to be visited.
   void visit(Node *parent, NodeWalker *visitor);
+
+  void visit(const Node *parent, NodeWalker *visitor) const;
 
   /// Replace all uses of this node with null. This method is used by the
   /// destruction sequence. When the node is deleted we need to unregister all
@@ -188,13 +192,16 @@ class NodeWalker {
 public:
   /// This callback is called before visiting the children of \p N.
   virtual void pre(Node *parent, Node *N) {}
+  virtual void pre(const Node *parent, const Node *N) {}
 
   /// This callback is called after visiting the children of \p N.
   virtual void post(Node *parent, Node *N) {}
+  virtual void post(const Node *parent, const Node *N) {}
 
   /// This callback is called before processing the graph. If the method returns
   /// false then we skip this node.
   virtual bool shouldVisit(Node *parent, Node *N) { return true; }
+  virtual bool shouldVisit(const Node *parent, const Node *N) { return true; }
 
   /// Dtor.
   virtual ~NodeWalker() = default;

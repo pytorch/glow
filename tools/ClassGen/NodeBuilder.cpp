@@ -162,7 +162,7 @@ void NodeBuilder::emitEdges(std::ostream &os) const {
   os << "  llvm_unreachable(\"Invalid index\");\n"
      << "}\n";
 
-  os << "\nNodeValue " << name_ << "Node::getNthInput(unsigned idx) const {\n";
+  os << "\nNodeValue &" << name_ << "Node::getNthInput(unsigned idx) {\n";
   for (size_t i = 0; i < nodeInputs_.size(); i++) {
     os << "  if (idx == " << i << ") { return " << nodeInputs_[i] << "_; }\n";
   }
@@ -329,7 +329,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
 
   os << "  unsigned getNumInputs() const;\n"
      << "  llvm::StringRef getInputName(unsigned idx) const;\n"
-     << "  NodeValue getNthInput(unsigned idx) const;\n"
+     << "  NodeValue &getNthInput(unsigned idx);\n"
      << "  llvm::StringRef getOutputName(unsigned idx) const;\n"
      << "  bool hasSideEffects() const { return " << hasSideEffects_ << "; }\n"
      << "  std::string getDebugDesc() const;\n"

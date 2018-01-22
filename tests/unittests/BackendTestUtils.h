@@ -7,6 +7,12 @@
 void inferReluNet(glow::Tensor *inputs, glow::Tensor *out,
                   glow::BackendKind kind);
 
+void inferSigmoidNet(glow::Tensor *inputs, glow::Tensor *out,
+                     glow::BackendKind kind);
+
+void inferTanhNet(glow::Tensor *inputs, glow::Tensor *out,
+                  glow::BackendKind kind);
+
 void inferBasicConvNet(glow::Tensor *inputs, glow::Tensor *out,
                        glow::BackendKind kind);
 
