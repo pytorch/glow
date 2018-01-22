@@ -546,15 +546,12 @@ public:
       break;
     }
     case glow::Kinded::Kind::QuantizationProfileNodeKind: {
-      auto *quantizationProfileNode = cast<QuantizationProfileNode>(N);
-      auto *inputTensor = valueForNode(quantizationProfileNode->getInput());
-      auto *histogram =
-          valueForNode(quantizationProfileNode->getHistogramVar());
-      auto *computationInfo =
-          valueForNode(quantizationProfileNode->getComputationInfoVar());
-      builder_.createQuantizationProfileInst(quantizationProfileNode->getName(),
-                                             inputTensor, histogram,
-                                             computationInfo);
+      auto *QPN = cast<QuantizationProfileNode>(N);
+      auto *inputTensor = valueForNode(QPN->getInput());
+      auto *histogram = valueForNode(QPN->getHistogramVar());
+      auto *computationInfo = valueForNode(QPN->getComputationInfoVar());
+      builder_.createQuantizationProfileInst(QPN->getName(), inputTensor,
+                                             histogram, computationInfo);
       break;
     }
 
