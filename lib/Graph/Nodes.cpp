@@ -273,6 +273,14 @@ void Variable::visit(Node *parent, NodeWalker *visitor) {
   visitor->post(parent, this);
 }
 
+void Variable::visit(const Node *parent, NodeWalker *visitor) const {
+  if (!visitor->shouldVisit(parent, this)) {
+    return;
+  }
+  visitor->pre(parent, this);
+  visitor->post(parent, this);
+}
+
 //===----------------------------------------------------------------------===//
 //                     Edge getters methods
 //===----------------------------------------------------------------------===//
@@ -339,6 +347,11 @@ const NodeValue &Node::getNthInput(unsigned idx) const {
 NodeValue Node::getNthResult(unsigned idx) {
   assert(idx < getNumResults());
   return NodeValue(this, idx);
+}
+
+const NodeValue Node::getNthResult(unsigned idx) const {
+  assert(idx < getNumResults());
+  return NodeValue(const_cast<Node *>(this), idx);
 }
 
 llvm::StringRef Node::getOutputName(unsigned idx) const {

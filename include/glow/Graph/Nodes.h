@@ -71,6 +71,7 @@ public:
   std::string getDebugDesc() const;
 
   void visit(Node *parent, NodeWalker *visitor);
+  void visit(const Node *parent, NodeWalker *visitor) const;
 
   bool isEqual(const Variable &other) const;
 

@@ -231,12 +231,16 @@ public:
   /// \returns the list of nodes that the graph owns.
   NodesList &getNodes() { return nodes_; }
 
+  const NodesList &getNodes() const { return nodes_; }
+
   /// \returns a pointer to the first variable with the name \p name or nullptr
   /// if no node has this name.
   Variable *getVariableByName(llvm::StringRef name);
 
   /// \returns the list of variables that the graph owns.
   VariablesList &getVars() { return vars_; }
+
+  const VariablesList &getVars() const { return vars_; }
 
   /// Associates a gradient variable \p GradV with the variable \p V.
   void addGradientVariable(Variable *V, Variable *GradV);
