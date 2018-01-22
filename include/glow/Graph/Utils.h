@@ -15,18 +15,23 @@ struct PostOrderVisitor : NodeWalker {
   /// A post-order list of nodes.
   std::vector<Node *> postOrder_;
   /// A set of visited nodes.
-  std::unordered_set<Node *> visited;
+  std::unordered_set<const Node *> visited_;
 
 public:
   bool shouldVisit(Node *parent, Node *N) override {
     // Don't revisit nodes that we've already processed.
-    return !visited.count(N);
+    return !visited_.count(N);
+  }
+
+  bool shouldVisit(const Node *parent, const Node *N) override {
+    // Don't revisit nodes that we've already processed.
+    return !visited_.count(N);
   }
 
   explicit PostOrderVisitor() = default;
 
   void post(Node *parent, Node *N) override {
-    visited.insert(N);
+    visited_.insert(N);
     postOrder_.push_back(N);
   }
 
