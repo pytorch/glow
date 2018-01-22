@@ -168,62 +168,26 @@ void testPTB() {
   Variable *Y = G.createVariable(ElemKind::IndexTy, {minibatchSize, numSteps},
                                  "selected", Variable::InitKind::Extern);
 
-  // Initialize internal memory variable H:
-  Variable *HtInit =
-      G.createVariable(ElemKind::FloatTy, {minibatchSize, hiddenSize},
-                       "initial_state", Variable::InitKind::Extern);
-  HtInit->getPayload().zero();
-
-  std::vector<Node *> outputNodes;
-  std::vector<Node *> targetNodes;
-  Node *HtLast = HtInit;
-
-  float b = 0.1;
-  auto *Whh = G.createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
-                               "Whh", Variable::InitKind::Xavier, hiddenSize);
-  auto *Bh1 = G.createVariable(ElemKind::FloatTy, {hiddenSize}, "bh1",
-                               Variable::InitKind::Broadcast, b);
-
-  auto *Wxh = G.createVariable(ElemKind::FloatTy, {vocabSize, hiddenSize},
-                               "Wxh", Variable::InitKind::Xavier, vocabSize);
-  auto *Bh2 = G.createVariable(ElemKind::FloatTy, {hiddenSize}, "bh2",
-                               Variable::InitKind::Broadcast, b);
-
-  auto *Why = G.createVariable(ElemKind::FloatTy, {hiddenSize, vocabSize},
-                               "Why", Variable::InitKind::Xavier, hiddenSize);
-  auto *By = G.createVariable(ElemKind::FloatTy, {vocabSize}, "by",
-                              Variable::InitKind::Broadcast, b);
+  std::vector<Node *> slicesX, slicesY;
 
   for (unsigned t = 0; t < numSteps; t++) {
-    const std::string XtName = "x" + std::to_string(t);
-    const std::string YtName = "y" + std::to_string(t);
-    const std::string FC1tName = "fc1" + std::to_string(t);
-    const std::string FC2tName = "fc2" + std::to_string(t);
-    const std::string FCtName = "fc" + std::to_string(t);
-    const std::string TanhtName = "tanh" + std::to_string(t);
-    const std::string OtName = "o" + std::to_string(t);
-
+    auto XtName = "X." + std::to_string(t);
     auto *Xt = G.createSlice(XtName, X, {0, t * vocabSize},
                              {minibatchSize, (t + 1) * vocabSize});
+    slicesX.push_back(Xt);
+    auto YtName = "Y." + std::to_string(t);
     auto *Yt = G.createSlice(YtName, Y, {0, t}, {minibatchSize, t + 1});
-
-    FullyConnectedNode *FC1t =
-        G.createFullyConnected(FC1tName, HtLast, Whh, Bh1, hiddenSize);
-    auto *FC2t = G.createFullyConnected(FC2tName, Xt, Wxh, Bh2, hiddenSize);
-    auto *At =
-        G.createArithmetic(FCtName, FC1t, FC2t, ArithmeticNode::Mode::Add);
-    auto *Ht = G.createTanh(TanhtName, At);
-    HtLast = Ht;
-    auto *Ot = G.createFullyConnected(OtName, Ht, Why, By, vocabSize);
-    // Ot has shape {minibatchSize, vocabSize}
-    outputNodes.push_back(Ot);
-    // Yt has shape {minibatchSize, 1}
-    targetNodes.push_back(Yt);
+    slicesY.push_back(Yt);
   }
+
+  std::vector<Node *> outputNodes;
+  G.createSimpleRNN("rnn", slicesX, minibatchSize, hiddenSize, vocabSize,
+                    outputNodes);
+
   // O has a shape of {numSteps * minibatchSize, vocabSize}
   Node *O = G.createConcat("output", outputNodes, 0);
   // T has shape of {numSteps * minibatchSize, 1}
-  Node *T = G.createConcat("target", targetNodes, 0);
+  Node *T = G.createConcat("target", slicesY, 0);
 
   auto *SM = G.createSoftMax("softmax", O, T);
   auto *result = G.createSave("result", SM);
