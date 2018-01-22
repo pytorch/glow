@@ -1,4 +1,5 @@
-// Copyright 2017 Facebook Inc.  All Rights Reserved.
+// Copyright 2017 Facebook, Inc. All Rights Reserved.
+
 #include "InstrBuilder.h"
 #include "glow/Support/Compiler.h"
 
@@ -13,7 +14,7 @@ unsigned InstrBuilder::getOperandIndexByName(llvm::StringRef name) const {
 }
 
 void InstrBuilder::emitCtor(std::ostream &os) const {
-  os << "\t" << name_ << "Inst(Module *M, llvm::StringRef name";
+  os << "  " << name_ << "Inst(Module *M, llvm::StringRef name";
 
   // The operands of the instruction class:
   for (const auto &op : operands_) {
@@ -26,20 +27,19 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
   }
 
   // Initialize the base clases:
-  os << "):\n\t Instruction(M, name, Kinded::Kind::" << name_ << "InstKind, "
-     << ty_ << ",{\n";
+  os << ")\n      : Instruction(M, name, Kinded::Kind::" << name_
+     << "InstKind, " << ty_ << ", {\n";
 
   // The operands of the instruction class:
   for (const auto &op : operands_) {
-    os << "\t\t{" << op.first
+    os << "          {" << op.first
        << ", OperandKind::" << getOperandKindStr(op.second) << "},\n";
   }
-
-  os << "\t})";
+  os << "      })";
 
   // Initialize the members:
   for (const auto &op : members_) {
-    os << ", " << op.second << "_(" << op.second << ") ";
+    os << ", " << op.second << "_(" << op.second << ")";
   }
 
   // Empty constructor body.
@@ -47,7 +47,7 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
 }
 
 void InstrBuilder::emitIRBuilderMethods(std::ostream &os) const {
-  os << name_ << "Inst *create" << name_ << "Inst(llvm::StringRef name";
+  os << "\n" << name_ << "Inst *create" << name_ << "Inst(llvm::StringRef name";
 
   // The operands of the instruction class:
   for (const auto &op : operands_) {
@@ -61,7 +61,7 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &os) const {
 
   // Initialize the base clases:
   os << ") {\n";
-  os << "auto *A = new " << name_ << "Inst(&getModule(), name ";
+  os << "  auto *A = new " << name_ << "Inst(&getModule(), name ";
 
   // The operands of the instruction class:
   for (const auto &op : operands_) {
@@ -72,37 +72,35 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &os) const {
     os << ", " << op.second;
   }
   os << ");\n";
-  os << "M_->pushInstr(A);\nreturn A;\n}\n\n";
+  os << "  M_->pushInstr(A);\n  return A;\n}\n";
 }
 
 void InstrBuilder::emitInplaceMethod(std::ostream &os) const {
-  os << "\tbool isInplaceOp(unsigned dstIdx, unsigned srcIdx) const {\n";
+  os << "\n  bool isInplaceOp(unsigned dstIdx, unsigned srcIdx) const {\n";
   if (!inplaceOperands_.empty()) {
     assert(inplaceOperands_.size() > 1 &&
            "We don't have a pair of inplace args");
     for (int i = 1, e = inplaceOperands_.size(); i < e; i++) {
       auto F0 = getOperandIndexByName(inplaceOperands_[0]);
       auto F1 = getOperandIndexByName(inplaceOperands_[i]);
-      os << "\tif (" << F0 << " == dstIdx && " << F1
-         << " == srcIdx) {return true;}\n";
+      os << "  if (" << F0 << " == dstIdx && " << F1
+         << " == srcIdx) { return true; }\n";
     }
   }
-  os << "\t\treturn false;\n";
-  os << "}\n";
+  os << "    return false;\n  }\n";
 }
 
 void InstrBuilder::emitClassMembers(std::ostream &os) const {
   // Emit class members:
   for (const auto &op : members_) {
-    os << "\t" << getStorageTypename(op.first) << " " << op.second << "_;\n";
+    os << "  " << getStorageTypename(op.first) << " " << op.second << "_;\n";
   }
-  os << "\n";
 }
 
 void InstrBuilder::emitOperandGetter(std::ostream &os, const std::string &name,
                                      int index) const {
   // Synthesize the general operand getter.
-  os << "\tValue *get" << name << "() const { return getOperand(" << index
+  os << "  Value *get" << name << "() const { return getOperand(" << index
      << ").first; }\n";
 }
 
@@ -110,7 +108,7 @@ void InstrBuilder::emitMemberGetter(std::ostream &os, MemberType type,
                                     const std::string &name) const {
   // Synthesize the general getter.
   auto returnTypeStr = getReturnTypename(type);
-  os << "\t" << returnTypeStr << " get" << name << "() const { return " << name
+  os << "  " << returnTypeStr << " get" << name << "() const { return " << name
      << "_; }\n";
 }
 
@@ -126,52 +124,48 @@ void InstrBuilder::emitSettersGetters(std::ostream &os) const {
   }
 
   // Synthesize the 'classof' method that enables the non-rtti polymorphism.
-  os << "\n\tstatic bool classof(const Kinded *k) { return k->getKind() == "
-        "Kinded::Kind::"
-     << name_ << "InstKind; }\n";
+  os << "\n  static bool classof(const Kinded *k) {\n"
+     << "    return k->getKind() == Kinded::Kind::" << name_ << "InstKind;\n"
+     << "  }\n";
 }
 
 void InstrBuilder::emitPrettyPrinter(std::ostream &os) const {
-  os << "void " << name_ << "Inst::dump(llvm::raw_ostream &os) const {\n";
-  os << "\tos << \"%\" << (std::string) getName() "
-        "<< \" = \" << getKindName() << "
-        "\" \";\n";
-  os << "\tdumpOperands(os);\n";
+  os << "\nvoid " << name_ << "Inst::dump(llvm::raw_ostream &os) const {\n";
+  os << "  os << \"%\" << (std::string) getName() << \" = \" << getKindName()"
+     << " << \" \";\n  dumpOperands(os);\n";
 
   if (!members_.empty()) {
-    os << "\tos << \" {\";\n";
+    os << "  os << \" {\"\n";
     bool first = true;
     for (const auto &mem : members_) {
-      os << "\tos << \"" << (first ? " " : ", ") << mem.second << ": \" << "
-         << "get" << mem.second << "();\n";
+      os << "     << \"" << (first ? " " : ", ") << mem.second << ": \" << "
+         << "get" << mem.second << "()\n";
       first = false;
     }
-    os << "\tos << \"}\";\n";
+    os << "     << \"}\";\n";
   }
-  os << "\n}\n";
+  os << "}\n";
 }
 
 void InstrBuilder::emitClass(std::ostream &os) const {
-  os << "namespace glow {\nclass " << name_
+  os << "\nnamespace glow {\nclass " << name_
      << "Inst final : public Instruction {\n";
 
   emitClassMembers(os);
 
-  os << "\tpublic:\n";
+  os << "\n public:\n";
 
   emitCtor(os);
-
   emitSettersGetters(os);
-
   emitInplaceMethod(os);
 
   for (const auto &m : extraMethods_) {
-    os << "\t" << m << "\n";
+    os << "  " << m << "\n";
   }
 
-  os << "\t void dump(llvm::raw_ostream &os) const;\n";
-  os << "\t void verify() const;\n";
-  os << "};\n\n} // namespace glow\n";
+  os << "\n  void dump(llvm::raw_ostream &os) const;\n";
+  os << "  void verify() const;\n";
+  os << "};\n} // namespace glow\n";
 }
 
 void InstrBuilder::emitCppMethods(std::ostream &os) const {
