@@ -459,15 +459,16 @@ QuantizationProfileNode *Graph::createQuantizationProfile(llvm::StringRef name,
 }
 
 void Graph::createSimpleRNN(llvm::StringRef namePrefix,
-                            llvm::ArrayRef<Node *> inputs, unsigned hiddenSize,
-                            unsigned outputSize, std::vector<Node *> &outputs) {
+                            llvm::ArrayRef<Node *> inputs, unsigned batchSize,
+                            unsigned hiddenSize, unsigned outputSize,
+                            std::vector<Node *> &outputs) {
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");
   const unsigned inputSize = inputs.front()->dims().back();
   assert(inputSize > 0 && "input dimensionality is zero");
 
   // Initialize the state to zero.
-  auto *HInit = createVariable(ElemKind::FloatTy, {1, hiddenSize},
+  auto *HInit = createVariable(ElemKind::FloatTy, {batchSize, hiddenSize},
                                (namePrefix + ".initial_state").str(),
                                Variable::InitKind::Extern);
   HInit->getPayload().zero();
@@ -512,15 +513,15 @@ void Graph::createSimpleRNN(llvm::StringRef namePrefix,
 }
 
 void Graph::createGRU(llvm::StringRef namePrefix, llvm::ArrayRef<Node *> inputs,
-                      unsigned hiddenSize, unsigned outputSize,
-                      std::vector<Node *> &outputs) {
+                      unsigned batchSize, unsigned hiddenSize,
+                      unsigned outputSize, std::vector<Node *> &outputs) {
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");
   const unsigned inputSize = inputs.front()->dims().back();
   assert(inputSize > 0 && "input dimensionality is zero");
 
   // Initialize the state to zero.
-  auto *HInit = createVariable(ElemKind::FloatTy, {1, hiddenSize},
+  auto *HInit = createVariable(ElemKind::FloatTy, {batchSize, hiddenSize},
                                "initial_state", Variable::InitKind::Extern);
   HInit->getPayload().zero();
   Node *Ht = HInit;
@@ -585,7 +586,7 @@ void Graph::createGRU(llvm::StringRef namePrefix, llvm::ArrayRef<Node *> inputs,
                             Variable::InitKind::Broadcast, b);
 
   auto *Ones =
-      createVariable(ElemKind::FloatTy, {1, hiddenSize},
+      createVariable(ElemKind::FloatTy, {batchSize, hiddenSize},
                      (namePrefix + ".ones").str(), Variable::InitKind::Extern);
   Ones->getPayload().getHandle().clear(1.0);
 

@@ -482,12 +482,12 @@ TEST(Network, sliceVectors) {
 
 void buildGRU(Graph &G, const std::vector<Node *> &slicesX, unsigned hiddenSize,
               unsigned outputSize, std::vector<Node *> &outputs) {
-  return G.createGRU("GRU", slicesX, hiddenSize, outputSize, outputs);
+  return G.createGRU("GRU", slicesX, 1, hiddenSize, outputSize, outputs);
 };
 
 void buildRNN(Graph &G, const std::vector<Node *> &slicesX, unsigned hiddenSize,
               unsigned outputSize, std::vector<Node *> &outputs) {
-  return G.createSimpleRNN("SimpleRNN", slicesX, hiddenSize, outputSize,
+  return G.createSimpleRNN("SimpleRNN", slicesX, 1, hiddenSize, outputSize,
                            outputs);
 };
 
