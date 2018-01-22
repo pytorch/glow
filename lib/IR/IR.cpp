@@ -513,6 +513,7 @@ void Module::dump() {
     Value *V = it;
     sb << "  ";
     dumpIR(V, sb);
+    sb << " // size: " << V->getType()->getSizeInBytes();
     dumpUsers(V, sb, InstrNumbering);
     sb << "\n";
 
@@ -533,6 +534,11 @@ void Module::dump() {
     assert(InstrNum >= 0);
     sb << InstrNum << " ";
     dumpIR(II, sb);
+    if (isa<AllocActivationInst>(II))
+      sb << " // size: " << II->getType()->getSizeInBytes();
+    if (isa<DeallocActivationInst>(II))
+      sb << " // size: "
+         << II->getOperand(0).first->getType()->getSizeInBytes();
     if (hasResultValue(II))
       dumpUsers(II, sb, InstrNumbering);
     sb << "\n";
