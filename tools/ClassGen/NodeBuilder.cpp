@@ -163,7 +163,7 @@ void NodeBuilder::emitEdges(std::ostream &os) const {
   os << "\t\tllvm_unreachable(\"Invalid index\");\n"
      << "}\n";
 
-  os << "NodeValue " << name_ << "Node::getNthInput(unsigned idx) const {\n";
+  os << "NodeValue &" << name_ << "Node::getNthInput(unsigned idx) {\n";
   for (size_t i = 0; i < nodeInputs_.size(); i++) {
     os << "\t\tif (idx == " << i << ") { return " << nodeInputs_[i] << "_; }\n";
   }
@@ -337,7 +337,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
 
   os << "\tllvm::StringRef getInputName(unsigned idx) const;\n";
 
-  os << "\tNodeValue getNthInput(unsigned idx) const;\n";
+  os << "\tNodeValue &getNthInput(unsigned idx);\n";
 
   os << "\tllvm::StringRef getOutputName(unsigned idx) const;\n";
 
