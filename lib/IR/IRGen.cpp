@@ -576,13 +576,12 @@ public:
 void Module::generateIR(CompilationMode mode) {
   G_->advanceState(Graph::State::IRGenerated);
   G_->verify();
+  // Schedule the nodes.
+  NodesList ScheduledNodes;
+  scheduleGraph(ScheduledNodes);
   IRGenVisitor irgen(this);
 
-  for (auto &N : G_->getVars()) {
-    N->visit(nullptr, &irgen);
-  }
-
-  for (auto &N : G_->getNodes()) {
+  for (auto &N : ScheduledNodes) {
     N->visit(nullptr, &irgen);
   }
 }
