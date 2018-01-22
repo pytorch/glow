@@ -203,6 +203,10 @@ private:
   /// Assign the instructions in the module a unique name.
   void nameInstructions();
 
+  /// Perform scheduling on the graph.
+  /// \returns computed schedule in the \p Schedule parameter.
+  void scheduleGraph(std::list<Node *> &Schedule);
+
 public:
   /// Add an instruction to the instr stream.
   void pushInstr(Instruction *I) { instrs_.push_back(I); }
