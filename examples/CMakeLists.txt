@@ -28,3 +28,13 @@ target_link_libraries(ptb
                         Graph
                         IR
                         Support)
+
+add_executable(fr2en
+               fr2en.cpp)
+target_link_libraries(fr2en
+                      PRIVATE
+                        Backends
+                        ExecutionEngine
+                        Graph
+                        IR
+                        Support)
