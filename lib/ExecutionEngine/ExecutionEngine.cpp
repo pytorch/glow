@@ -31,6 +31,8 @@ void ExecutionEngine::run(llvm::ArrayRef<Variable *> vars,
 
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
+    assert(vars[i]->getVisibilityKind() == Variable::VisibilityKind::Public &&
+           "Trying to update a private variable");
     loadValueFromTensor(vars[i], inputs[i]);
   }
 
