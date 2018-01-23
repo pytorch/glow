@@ -54,6 +54,12 @@ public:
     initPayload();
   }
 
+  Variable(llvm::StringRef name, Tensor &&payload)
+      : Node(Kinded::Kind::VariableNodeKind, name), val_(0.0),
+        train_(TrainKind::None), payload_(std::move(payload)) {
+    addResult(&payload_.getType());
+  }
+
   /// \returns True if the Variable is initialized to be in training mode.
   bool isTraining() const { return train_ != TrainKind::None; }
 

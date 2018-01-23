@@ -155,11 +155,14 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
                                                 NodeValue input, Variable *W,
                                                 Variable *B, size_t outDepth) {
   TypeRef T = input.getType();
-  auto idim = flattenCdr(input.dims());
+  TypeRef OT = getVoidTy();
 
-  // TODO: add assertions to check inputs' dims
+  // if \p input is of type void, we cannot calculate the dimensions
+  if (T != getVoidTy()) {
+    auto idim = flattenCdr(input.dims());
+    OT = uniqueType(T->getElementType(), {idim.first, outDepth});
+  }
 
-  auto OT = uniqueType(T->getElementType(), {idim.first, outDepth});
   return addNode(new FullyConnectedNode(name, OT, input, W, B, outDepth));
 }
 
@@ -167,6 +170,9 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
                                                 NodeValue input,
                                                 size_t outDepth) {
   TypeRef T = input.getType();
+  assert(
+      T != getVoidTy() &&
+      "cannot initialize untrained fully connected node with void input type");
   auto idim = flattenCdr(input.dims());
 
   size_t fanIn = idim.second;
