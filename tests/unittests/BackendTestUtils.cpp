@@ -12,8 +12,8 @@ using llvm::cast;
 void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &G = EE.getGraph();
-  auto *var =
-      G.createVariable(inputs->getElementType(), inputs->dims(), "input");
+  auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
+                               "input", Variable::VisibilityKind::Public);
   auto *relu = G.createRELU("relu", var);
   auto result = G.createSave("ret", relu);
   EE.compile(CompilationMode::Infer);
@@ -24,8 +24,8 @@ void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind) {
 void inferSigmoidNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &G = EE.getGraph();
-  auto *var =
-      G.createVariable(inputs->getElementType(), inputs->dims(), "input");
+  auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
+                               "input", Variable::VisibilityKind::Public);
   auto *sigmoid = G.createSigmoid("sigmoid", var);
   auto result = G.createSave("ret", sigmoid);
   EE.compile(CompilationMode::Infer);
@@ -36,8 +36,8 @@ void inferSigmoidNet(Tensor *inputs, Tensor *out, BackendKind kind) {
 void inferTanhNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &G = EE.getGraph();
-  auto *var =
-      G.createVariable(inputs->getElementType(), inputs->dims(), "input");
+  auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
+                               "input", Variable::VisibilityKind::Public);
   auto *tanh = G.createTanh("tanh", var);
   auto result = G.createSave("ret", tanh);
   EE.compile(CompilationMode::Infer);
@@ -48,8 +48,8 @@ void inferTanhNet(Tensor *inputs, Tensor *out, BackendKind kind) {
 void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &G = EE.getGraph();
-  auto *var =
-      G.createVariable(inputs->getElementType(), inputs->dims(), "input");
+  auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
+                               "input", Variable::VisibilityKind::Public);
   auto *tr = G.createTranspose("tr", var, {0, 2, 3, 1});
   auto *conv = G.createConv("conv", tr, 4, 5, 2, 1);
   cast<Variable>(conv->getFilter())->getHandle().clear(2);
@@ -64,8 +64,8 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind) {
 void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &G = EE.getGraph();
-  auto *var =
-      G.createVariable(inputs->getElementType(), inputs->dims(), "input");
+  auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
+                               "input", Variable::VisibilityKind::Public);
   auto *tr = G.createTranspose("tr", var, {0, 2, 3, 1});
   auto *fc = G.createFullyConnected("fc", tr, 16);
   auto *rl0 = G.createRELU("relu", fc);
@@ -82,8 +82,8 @@ void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
 void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &G = EE.getGraph();
-  auto *var =
-      G.createVariable(inputs->getElementType(), inputs->dims(), "input");
+  auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
+                               "input", Variable::VisibilityKind::Public);
   auto *selected = G.createVariable(ElemKind::IndexTy, {2, 1}, "selected");
 
   auto *tr = G.createTranspose("tr", var, {0, 2, 3, 1});

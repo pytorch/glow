@@ -24,7 +24,8 @@ TEST(Interpreter, interpret) {
 
   auto &G = EE.getGraph();
   G.setName("interpret");
-  auto *input = G.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input");
+  auto *input = G.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input",
+                                 Variable::VisibilityKind::Public);
 
   auto *ex = G.createVariable(ElemKind::IndexTy, {1, 1}, "exp");
 
@@ -61,8 +62,10 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   auto &G = EE.getGraph();
   Tensor inputs(ElemKind::FloatTy, {1, 4});
 
-  auto *A = G.createVariable(ElemKind::FloatTy, {1, 4}, "A");
-  auto *Ex = G.createVariable(ElemKind::FloatTy, {1, 4}, "E");
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, 4}, "A",
+                             Variable::VisibilityKind::Public);
+  auto *Ex = G.createVariable(ElemKind::FloatTy, {1, 4}, "E",
+                              Variable::VisibilityKind::Public);
   Node *O = G.createFullyConnected("fc", A, 4);
   O = G.createRELU("relu", O);
   O = G.createRegression("reg", O, Ex);
@@ -84,8 +87,10 @@ TEST(Interpreter, trainASimpleNetwork) {
   G.setName("trainASimpleNetwork");
 
   // Create a variable with 1 input, which is a vector of 4 elements.
-  auto *A = G.createVariable(ElemKind::FloatTy, {1, 4}, "A");
-  auto *E = G.createVariable(ElemKind::FloatTy, {1, 4}, "E");
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, 4}, "A",
+                             Variable::VisibilityKind::Public);
+  auto *E = G.createVariable(ElemKind::FloatTy, {1, 4}, "E",
+                             Variable::VisibilityKind::Public);
 
   Node *O = G.createFullyConnected("fc1", A, 10);
   O = G.createSigmoid("sig1", O);
@@ -134,8 +139,10 @@ TEST(Interpreter, simpleRegression) {
 
   auto &G = EE.getGraph();
   G.setName("simpleRegression");
-  auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputs}, "A");
-  auto *Ex = G.createVariable(ElemKind::FloatTy, {1, numInputs}, "E");
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputs}, "A",
+                             Variable::VisibilityKind::Public);
+  auto *Ex = G.createVariable(ElemKind::FloatTy, {1, numInputs}, "E",
+                              Variable::VisibilityKind::Public);
   Node *O = G.createFullyConnected("fc", A, 4);
   O = G.createRELU("relu", O);
   O = G.createRegression("reg", O, Ex);
@@ -183,7 +190,8 @@ TEST(Interpreter, learnXor) {
   auto &G = EE.getGraph();
   G.setName("learnXor");
 
-  auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
+  auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A",
+                             Variable::VisibilityKind::Public);
   auto *Ex = G.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
 
   Node *O = G.createFullyConnected("fc1", A, 6);
@@ -282,7 +290,8 @@ TEST(Network, circle) {
 
   auto &G = EE.getGraph();
   G.setName("circle");
-  auto *A = G.createVariable(ElemKind::FloatTy, {minibatchSize, 2}, "A");
+  auto *A = G.createVariable(ElemKind::FloatTy, {minibatchSize, 2}, "A",
+                             Variable::VisibilityKind::Public);
   auto *S = G.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, "S",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -368,15 +377,18 @@ TEST(Network, learnSingleValueConcat) {
   auto &G = EE.getGraph();
   G.setName("learnSingleValueConcat");
 
-  auto *Ex = G.createVariable(ElemKind::FloatTy, {1, width * 2}, "Ex");
+  auto *Ex = G.createVariable(ElemKind::FloatTy, {1, width * 2}, "Ex",
+                              Variable::VisibilityKind::Public);
 
   // Left side of the network:
-  auto *A = G.createVariable(ElemKind::FloatTy, {1, width}, "A");
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, width}, "A",
+                             Variable::VisibilityKind::Public);
   Node *L = G.createFullyConnected("fc1", A, width);
   L = G.createSigmoid("", L);
 
   // Right side of the network:
-  auto *B = G.createVariable(ElemKind::FloatTy, {1, width}, "B");
+  auto *B = G.createVariable(ElemKind::FloatTy, {1, width}, "B",
+                             Variable::VisibilityKind::Public);
   Node *R = G.createFullyConnected("fc2", B, width);
   R = G.createSigmoid("sig", R);
 
@@ -412,9 +424,12 @@ TEST(Network, concatVectors) {
   auto &G = EE.getGraph();
   G.setName("concatVectors");
 
-  auto *V1 = G.createVariable(ElemKind::IndexTy, {10}, "V1");
-  auto *V2 = G.createVariable(ElemKind::IndexTy, {20}, "V2");
-  auto *V3 = G.createVariable(ElemKind::IndexTy, {30}, "V3");
+  auto *V1 = G.createVariable(ElemKind::IndexTy, {10}, "V1",
+                              Variable::VisibilityKind::Public);
+  auto *V2 = G.createVariable(ElemKind::IndexTy, {20}, "V2",
+                              Variable::VisibilityKind::Public);
+  auto *V3 = G.createVariable(ElemKind::IndexTy, {30}, "V3",
+                              Variable::VisibilityKind::Public);
 
   Node *L = G.createConcat("concat", {V1, V2, V3}, 0);
   auto *result = G.createSave("ret", L);
@@ -451,7 +466,8 @@ TEST(Network, sliceVectors) {
   auto &G = EE.getGraph();
   G.setName("sliceVectors");
 
-  auto *V = G.createVariable(ElemKind::IndexTy, {3, 30}, "V");
+  auto *V = G.createVariable(ElemKind::IndexTy, {3, 30}, "V",
+                             Variable::VisibilityKind::Public);
 
   Node *S1 = G.createSlice("slice1", V, {0, 10}, {3, 13});
   Node *S2 = G.createSlice("slice2", V, {1, 10}, {2, 30});
