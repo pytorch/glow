@@ -4,6 +4,12 @@
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 
+void inferMaxNet(glow::Tensor *inputs1, glow::Tensor *inputs2,
+                 glow::Tensor *out, glow::BackendKind kind);
+
+void inferMinNet(glow::Tensor *inputs1, glow::Tensor *inputs2,
+                 glow::Tensor *out, glow::BackendKind kind);
+
 void inferReluNet(glow::Tensor *inputs, glow::Tensor *out,
                   glow::BackendKind kind);
 

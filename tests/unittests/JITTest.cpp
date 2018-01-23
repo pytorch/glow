@@ -16,6 +16,38 @@
 using namespace glow;
 using llvm::cast;
 
+TEST(JITCorrectnessTest, maxTest) {
+  Tensor inputs1(ElemKind::FloatTy, {3, 8, 2});
+  Tensor inputs2(ElemKind::FloatTy, {3, 8, 2});
+  inputs1.getHandle().randomize(1);
+  inputs2.getHandle().randomize(1);
+  Tensor out1;
+  Tensor out2;
+
+  inferMaxNet(&inputs1, &inputs2, &out1, BackendKind::JIT);
+  inferMaxNet(&inputs1, &inputs2, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
+TEST(JITCorrectnessTest, minTest) {
+  Tensor inputs1(ElemKind::FloatTy, {10, 3, 12, 8});
+  Tensor inputs2(ElemKind::FloatTy, {10, 3, 12, 8});
+  inputs1.getHandle().randomize(1);
+  inputs2.getHandle().randomize(1);
+  Tensor out1;
+  Tensor out2;
+
+  inferMinNet(&inputs1, &inputs2, &out1, BackendKind::JIT);
+  inferMinNet(&inputs1, &inputs2, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
 TEST(JITCorrectnessTest, reluTest) {
   Tensor inputs(ElemKind::FloatTy, {2, 16});
   inputs.getHandle().randomize(1);
