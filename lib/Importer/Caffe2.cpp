@@ -520,7 +520,7 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   for (unsigned i = 0; i < names.size(); i++) {
     auto *T = tensors[i];
     auto *V = G_.createVariable(T->getElementType(), T->dims(), names[i],
-                                Variable::VisibilityKind::Private,
+                                Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
     V->copyFrom(T);
     nodeByName_[names[i]] = V;
