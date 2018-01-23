@@ -16,23 +16,28 @@
 
 using namespace glow;
 
-TEST(Graph, simpleTest) {
-  {
-    Graph G;
-    Module M(&G);
-    Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-    Node *S = G.createVariable(ElemKind::IndexTy, {4, 1}, "select");
+#include <stdlib.h>
+#include <vector>
 
-    K = G.createConv("Conv1", K, 16, 3, 2, 3);
-    K = G.createRELU("Relu", K);
-    K = G.createSoftMax("SoftMax", K, S);
-    G.dump();
-    G.dumpDAG();
-    lower(G, CompilationMode::Train);
-    ::optimize(G, CompilationMode::Train);
-    M.generateIR(CompilationMode::Train);
-    M.dump();
-  }
+using namespace std;
+
+struct ArrayRef {
+    const int *Data;
+    size_t Length;
+    ArrayRef() : Data(0), Length(0) {}
+    ArrayRef(const vector<int> &Vec) : Data(Vec.data()),
+      Length(Vec.size())
+    {}
+};
+
+struct R {
+    ArrayRef E;
+} Record;
+
+
+TEST(Graph, simpleTest) {
+  vector<int> V;
+  Record.E = V;
 
   {
     unsigned numInputs = 10;
@@ -47,6 +52,22 @@ TEST(Graph, simpleTest) {
     O = G.createFullyConnected("FC2", O, 1);
     O = G.createRELU("RELU2", O);
     G.createRegression("Regression", O, Ex);
+    G.dump();
+    G.dumpDAG();
+    lower(G, CompilationMode::Train);
+    ::optimize(G, CompilationMode::Train);
+    //M.generateIR(CompilationMode::Train);
+    M.dump();
+  }
+  {
+    Graph G;
+    Module M(&G);
+    Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+    Node *S = G.createVariable(ElemKind::IndexTy, {4, 1}, "select");
+
+    K = G.createConv("Conv1", K, 16, 3, 2, 3);
+    K = G.createRELU("Relu", K);
+    K = G.createSoftMax("SoftMax", K, S);
     G.dump();
     G.dumpDAG();
     lower(G, CompilationMode::Train);
