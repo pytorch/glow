@@ -509,6 +509,12 @@ void buildRNN(Graph &G, const std::vector<Node *> &slicesX, unsigned hiddenSize,
                            outputs);
 };
 
+void buildLSTM(Graph &G, const std::vector<Node *> &slicesX,
+               unsigned hiddenSize, unsigned outputSize,
+               std::vector<Node *> &outputs) {
+  return G.createLSTM("LSTM", slicesX, 1, hiddenSize, outputSize, outputs);
+};
+
 using TCellGenerator = void (*)(Graph &, const std::vector<Node *> &, unsigned,
                                 unsigned, std::vector<Node *> &);
 
@@ -584,6 +590,8 @@ void testRNNCell(TCellGenerator cell) {
 TEST(Network, trainASimpleRNN) { testRNNCell(buildRNN); };
 
 TEST(Network, trainGRU) { testRNNCell(buildGRU); };
+
+TEST(Network, trainLSTM) { testRNNCell(buildLSTM); };
 
 TEST(Optimizer, copyPropagation) {
   ExecutionEngine EE;
