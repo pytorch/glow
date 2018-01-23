@@ -376,7 +376,7 @@ std::string Node::getDebugDesc() const {
 }
 
 static const char *getVariableTrainKindStr(Variable::TrainKind kind) {
-  const char *names[] = {"extern", "broadcast", "xavier", nullptr};
+  const char *names[] = {"none", "broadcast", "xavier", nullptr};
   return names[static_cast<int>(kind)];
 }
 
