@@ -12,18 +12,32 @@ namespace glow {
 
 class Variable final : public Node {
 public:
-  enum class InitKind {
-    Extern,    // No initialization.
+  /// Specifies the kind of training and initialization for the variable.
+  /// Nodes that are marked as 'none' are not modified during the training
+  /// process. Other nodes are trained with the inititial value specified by
+  /// this enum.
+  enum class TrainKind {
+    None,      // The variable is not trainable. It is initialized to zero.
     Broadcast, // Broadcast a single value to all elements.
-    Xavier,    // Init the tensor with random values using the Xavier method.
+    Xavier,    // Init the variable with random values using the Xavier method.
+  };
+
+  /// Specifies the visibility of the variable. Public nodes can't be
+  /// optimized because they are visibile to external users that may hold
+  /// a reference or handles.
+  enum class VisibilityKind {
+    Public,  // The variable is visibile from outside the graph.
+    Private, // The variable isn't visibile from outside the graph.
   };
 
 private:
   /// The value to use during initialization. This can be the value to splat or
   /// a parameter to specify the range of the random values.
   float val_;
-  /// The initialization mode.
-  InitKind initKind_;
+  /// Specifies if the variable is trainable and how it's initialized.
+  TrainKind train_;
+  /// Specifies the visibility of the variable.
+  VisibilityKind visibility_;
   /// The tensor payload that the variable holds.
   Tensor payload_;
 
@@ -32,24 +46,23 @@ private:
   void initPayload();
 
 public:
-  Variable(llvm::StringRef name, TypeRef Ty, InitKind initKind, float val)
-      : Node(Kinded::Kind::VariableNodeKind, name), val_(val),
-        initKind_(initKind) {
+  Variable(llvm::StringRef name, TypeRef Ty, VisibilityKind visibility,
+           TrainKind train, float val)
+      : Node(Kinded::Kind::VariableNodeKind, name), val_(val), train_(train),
+        visibility_(visibility) {
     addResult(Ty);
     initPayload();
   }
 
   /// \returns True if the Variable is initialized to be in training mode.
-  bool isTraining() const {
-    return initKind_ == InitKind::Broadcast || initKind_ == InitKind::Xavier;
-  }
+  bool isTraining() const { return train_ != TrainKind::None; }
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::VariableNodeKind;
   }
 
-  /// \returns the original initialization mode of the variable.
-  InitKind getInitKind() const { return initKind_; }
+  /// \returns the original training mode of the variable.
+  TrainKind getTrainKind() const { return train_; }
 
   Tensor &getPayload() { return payload_; }
 

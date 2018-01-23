@@ -162,11 +162,12 @@ void testPTB() {
   auto &G = EE.getGraph();
   std::cout << "Building" << std::endl;
 
-  Variable *X =
-      G.createVariable(ElemKind::FloatTy, {minibatchSize, vocabSize * numSteps},
-                       "input", Variable::InitKind::Extern);
+  Variable *X = G.createVariable(
+      ElemKind::FloatTy, {minibatchSize, vocabSize * numSteps}, "input",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
   Variable *Y = G.createVariable(ElemKind::IndexTy, {minibatchSize, numSteps},
-                                 "selected", Variable::InitKind::Extern);
+                                 "selected", Variable::VisibilityKind::Public,
+                                 Variable::TrainKind::None);
 
   std::vector<Node *> slicesX, slicesY;
 

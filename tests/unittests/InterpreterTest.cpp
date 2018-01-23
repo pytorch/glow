@@ -284,7 +284,8 @@ TEST(Network, circle) {
   G.setName("circle");
   auto *A = G.createVariable(ElemKind::FloatTy, {minibatchSize, 2}, "A");
   auto *S = G.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, "S",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
 
   auto *FCL0 = G.createFullyConnected("fc1", A, 8);
   auto *T0 = G.createTanh("tanh1", FCL0);
@@ -524,9 +525,11 @@ void testRNNCell(TCellGenerator cell) {
   // Create a variable with 1 input, which is 3 consecutive vectors
   // of 4 elements each.
   auto *X = G.createVariable(ElemKind::FloatTy, {1, 3, 4}, "X",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   auto *Y = G.createVariable(ElemKind::FloatTy, {1, 3}, "Y",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
 
   // Extract a slice for each input.
   std::vector<Node *> XSliced = {G.createSlice("X1", X, {0, 0, 0}, {1, 1, 4}),
@@ -617,9 +620,11 @@ TEST(Interpreter, learnSqrt2) {
   G.setName("Square root of 2");
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1}, "A",
-                             Variable::InitKind::Broadcast, 1);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::Broadcast, 1);
   auto *Ex = G.createVariable(ElemKind::FloatTy, {1}, "Ex",
-                              Variable::InitKind::Broadcast, 2);
+                              Variable::VisibilityKind::Public,
+                              Variable::TrainKind::Broadcast, 2);
 
   Node *O = G.createArithmetic("Mult", A, A, ArithmeticNode::Mode::Mul);
   O = G.createRegression("reg", O, Ex);
@@ -662,9 +667,11 @@ TEST(LinearRegression, trainSimpleLinearRegression) {
 
   // Create a variable with 1 input, which is a real number.
   auto *inputX = G.createVariable(ElemKind::FloatTy, {numSamples, 1}, "input",
-                                  Variable::InitKind::Extern);
-  auto *expectedY = G.createVariable(ElemKind::FloatTy, {numSamples, 1},
-                                     "expected", Variable::InitKind::Extern);
+                                  Variable::VisibilityKind::Public,
+                                  Variable::TrainKind::None);
+  auto *expectedY = G.createVariable(
+      ElemKind::FloatTy, {numSamples, 1}, "expected",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
 
   FullyConnectedNode *FC = G.createFullyConnected("fc", inputX, 1);
   Node *coef =

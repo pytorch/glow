@@ -93,9 +93,11 @@ TEST(Network, gradientCheckFCConcatRELU) {
   auto &G = IP.getGraph();
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
-                               Variable::InitKind::Extern);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
 
   Node *FA = G.createFullyConnected("fc1", A, numOutputElem / 2);
   FA = G.createRELU("relu1", FA);
@@ -132,9 +134,11 @@ TEST(Network, gradientCheckConv) {
   auto &G = IP.getGraph();
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   auto *Ex = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
-                              Variable::InitKind::Extern);
+                              Variable::VisibilityKind::Public,
+                              Variable::TrainKind::None);
 
   Node *O = G.createConv("conv", A, 4, 5, 1, 2);
   O = G.createPool("pool", O, PoolNode::Mode::Max, 3, 3, 0);
@@ -167,9 +171,11 @@ TEST(Network, gradientCheckAvgPool) {
   auto &G = IP.getGraph();
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
-                               Variable::InitKind::Extern);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
 
   Node *O = G.createPool("pool", A, PoolNode::Mode::Avg, 3, 3, 0);
   O = G.createFullyConnected("fc", O, numOutputElem);
@@ -200,9 +206,11 @@ TEST(Network, gradientCheckBatchNorm) {
   auto &G = IP.getGraph();
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 3}, "A",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   auto *Ex = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
-                              Variable::InitKind::Extern);
+                              Variable::VisibilityKind::Public,
+                              Variable::TrainKind::None);
 
   Node *O = G.createBatchNormalization("batch", A, 3, 0.0001, 0.9);
   O = G.createReshape("reshape", O, {1, numDim * numDim * 3});
@@ -235,11 +243,14 @@ TEST(Network, gradientCheckArithmeticDiv) {
 
   auto &G = IP.getGraph();
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   auto *B = G.createVariable(ElemKind::FloatTy, {1, numDim}, "B",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
-                               Variable::InitKind::Extern);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   Node *O = G.createArithmetic("div", A, B, ArithmeticNode::Mode::Div);
   O = G.createRegression("reg", O, Exp);
   auto *result = G.createSave("ret", O);
@@ -266,18 +277,24 @@ TEST(Network, gradientCheckArithmetic) {
   auto &G = IP.getGraph();
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   auto *B = G.createVariable(ElemKind::FloatTy, {1, numDim}, "B",
-                             Variable::InitKind::Extern, 0.1);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None, 0.1);
   auto *C = G.createVariable(ElemKind::FloatTy, {1, numDim}, "C",
-                             Variable::InitKind::Extern, 0.1);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None, 0.1);
   auto *D = G.createVariable(ElemKind::FloatTy, {1, numDim}, "D",
-                             Variable::InitKind::Extern, 0.1);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None, 0.1);
   auto *E = G.createVariable(ElemKind::FloatTy, {1, numDim}, "E",
-                             Variable::InitKind::Broadcast, 0.1);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::Broadcast, 0.1);
 
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
-                               Variable::InitKind::Extern);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
 
   Node *O = G.createArithmetic("mul", A, B, ArithmeticNode::Mode::Mul);
   O = G.createArithmetic("add", O, C, ArithmeticNode::Mode::Add);
@@ -310,9 +327,11 @@ TEST(Network, gradientCheckFCConcatTanh) {
 
   auto &G = IP.getGraph();
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
-                               Variable::InitKind::Extern);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
 
   Node *FA = G.createFullyConnected("fc", A, numOutputElem);
   FA = G.createTanh("tanh", FA);
@@ -341,9 +360,11 @@ TEST(Network, gradientCheckFC) {
 
   auto &G = IP.getGraph();
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
-                               Variable::InitKind::Extern);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
 
   Node *FA = G.createFullyConnected("fc", A, numOutputElem);
   FA = G.createRegression("reg", FA, Exp);
@@ -372,9 +393,11 @@ TEST(Network, gradientCheckSigmoid) {
 
   auto &G = IP.getGraph();
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
-                               Variable::InitKind::Extern);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   G.createSave("ret", A);
 
   Node *FA = G.createSigmoid("sig", Exp);
@@ -404,9 +427,11 @@ TEST(Network, gradientCheckRelu) {
 
   auto &G = IP.getGraph();
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
-                               Variable::InitKind::Extern);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   G.createSave("ret", A);
 
   Node *FA = G.createRELU("relu", Exp);
@@ -436,9 +461,11 @@ TEST(Network, gradientCheckTranspose) {
   auto &G = IP.getGraph();
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 5}, "input",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
-                               Variable::InitKind::Extern);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   Node *TA = G.createTranspose("transpose", A, {0, 3, 1, 2});
   TA = G.createFullyConnected("fc", TA, numOutputElem);
   TA = G.createRegression("regress", TA, Exp);

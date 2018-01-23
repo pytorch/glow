@@ -70,7 +70,8 @@ TEST(GraphOptz, optimizeBatchNormAfterConv) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   Node *CV = G.createConv("conv", A, 16, 5, 1, 2);
   Node *BN = G.createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   G.createSave("ret", BN);
@@ -85,7 +86,8 @@ TEST(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   Node *CV = G.createConv("conv", A, 16, 5, 1, 2);
   Node *BN = G.createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   G.createSave("ret", BN);
@@ -100,7 +102,9 @@ TEST(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
+
   Node *CV = G.createConv("conv", A, 16, 5, 1, 2);
   Node *BN = G.createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   G.createSave("ret", BN);
@@ -116,7 +120,8 @@ TEST(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   Node *T = G.createTranspose("transpose", A, {0, 3, 1, 2});
   Node *BN = G.createBatchNormalization("batch", T, 3, 0.0001, 0.9);
   Node *O = G.createSave("ret", BN);
@@ -137,7 +142,8 @@ TEST(GraphOptz, sinkTransposeBelowRELU) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   Node *T = G.createTranspose("transpose", A, {0, 3, 1, 2});
   Node *K = G.createRELU("relu", T);
   Node *O = G.createSave("ret", K);
@@ -158,7 +164,8 @@ TEST(GraphOptz, sinkTransposeBelowSigmoid) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   Node *T = G.createTranspose("transpose", A, {0, 3, 1, 2});
   Node *SI = G.createSigmoid("sigmoid", T);
   Node *O = G.createSave("ret", SI);
@@ -179,7 +186,8 @@ TEST(GraphOptz, sinkTransposeBelowTanh) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   Node *T = G.createTranspose("transpose", A, {0, 3, 1, 2});
   Node *TN = G.createTanh("tanh", T);
   Node *O = G.createSave("ret", TN);
@@ -200,7 +208,8 @@ TEST(GraphOptz, cancelTwoTransposes) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   Node *T1 = G.createTranspose("transpose", A, {0, 2, 3, 1});
   Node *T2 = G.createTranspose("transpose", T1, {0, 3, 1, 2});
   Node *K = G.createRELU("relu", T2);
@@ -217,7 +226,8 @@ TEST(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   Node *T1 = G.createTranspose("transpose", A, {0, 2, 3, 1});
   Node *T2 = G.createTranspose("transpose", T1, {0, 1, 2, 3});
   Node *K = G.createRELU("relu", T2);
@@ -234,9 +244,11 @@ TEST(GraphOptz, sinkTransposeBelowArithmeticNodes) {
   Graph G;
   Module M(&G);
   Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                              Variable::InitKind::Extern);
+                              Variable::VisibilityKind::Public,
+                              Variable::TrainKind::None);
   Node *A2 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                              Variable::InitKind::Extern);
+                              Variable::VisibilityKind::Public,
+                              Variable::TrainKind::None);
   Node *T1 = G.createTranspose("transpose1", A1, {0, 3, 1, 2});
   Node *T2 = G.createTranspose("transpose2", A2, {0, 3, 1, 2});
   Node *K = G.createArithmetic("arith", T1, T2, ArithmeticNode::Mode::Add);
@@ -258,9 +270,11 @@ TEST(GraphOptz, sinkReluBelowConcatNodes) {
   Graph G;
   Module M(&G);
   Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                              Variable::InitKind::Extern);
+                              Variable::VisibilityKind::Public,
+                              Variable::TrainKind::None);
   Node *A2 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                              Variable::InitKind::Extern);
+                              Variable::VisibilityKind::Public,
+                              Variable::TrainKind::None);
   Node *R1 = G.createRELU("relu1", A1);
   Node *R2 = G.createRELU("relu2", A2);
   Node *CN = G.createConcat("concat", {R1, R2}, 1);
@@ -281,9 +295,11 @@ TEST(GraphOptz, sinkTransposeBelowConcatNodes) {
   Graph G;
   Module M(&G);
   Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                              Variable::InitKind::Extern);
+                              Variable::VisibilityKind::Public,
+                              Variable::TrainKind::None);
   Node *A2 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                              Variable::InitKind::Extern);
+                              Variable::VisibilityKind::Public,
+                              Variable::TrainKind::None);
   Node *T1 = G.createTranspose("transpose", A1, {0, 2, 3, 1});
   Node *T2 = G.createTranspose("transpose", A2, {0, 2, 3, 1});
   Node *CN = G.createConcat("concat", {T1, T2}, 1);
@@ -305,7 +321,8 @@ TEST(GraphOptz, poolBelowReluSwapped) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   Node *R = G.createRELU("relu", A);
   Node *PL = G.createPool("pool", R, PoolNode::Mode::Max, 1, 10, 20);
   Node *O = G.createSave("ret", PL);
@@ -325,7 +342,8 @@ TEST(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   Node *R = G.createRELU("relu", A);
   Node *PL = G.createPool("pool", R, PoolNode::Mode::Avg, 1, 10, 20);
   Node *O = G.createSave("ret", PL);
@@ -345,7 +363,8 @@ TEST(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
   Graph G;
   Module M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
   Node *R = G.createRELU("relu", A);
   Node *PL = G.createPool("pool", R, PoolNode::Mode::Max, 1, 10, 20);
   Node *O = G.createSave("ret", PL);
@@ -366,13 +385,17 @@ TEST(GraphOptz, mergeConcatNodes) {
   Graph G;
   Module M(&G);
   Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                              Variable::InitKind::Extern);
+                              Variable::VisibilityKind::Public,
+                              Variable::TrainKind::None);
   Node *A2 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                              Variable::InitKind::Extern);
+                              Variable::VisibilityKind::Public,
+                              Variable::TrainKind::None);
   Node *A3 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input3",
-                              Variable::InitKind::Extern);
+                              Variable::VisibilityKind::Public,
+                              Variable::TrainKind::None);
   Node *A4 = G.createVariable(ElemKind::FloatTy, {1, 1, 10, 15}, "input4",
-                              Variable::InitKind::Extern);
+                              Variable::VisibilityKind::Public,
+                              Variable::TrainKind::None);
 
   Node *CN1 = G.createConcat("concat1", {A1, A2}, 1);
   Node *CN2 = G.createConcat("concat2", {A1, CN1}, 1);
@@ -423,9 +446,11 @@ TEST(GraphOptz, CSE) {
   Graph G;
   Module M(&G);
   Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                              Variable::InitKind::Extern);
+                              Variable::VisibilityKind::Public,
+                              Variable::TrainKind::None);
   Node *A2 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                              Variable::InitKind::Extern);
+                              Variable::VisibilityKind::Public,
+                              Variable::TrainKind::None);
 
   Node *CN1 = G.createConcat("concat1", {A1, A2}, 1);
   Node *CN2 = G.createConcat("concat2", {A1, A2}, 1);

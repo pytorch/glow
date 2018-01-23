@@ -181,11 +181,11 @@ llvm::ArrayRef<size_t> NodeValue::dims() const { return getType()->dims(); }
 void Variable::initPayload() {
   payload_.reset(*getType());
 
-  switch (getInitKind()) {
-  case InitKind::Extern:
+  switch (getTrainKind()) {
+  case TrainKind::None:
     break;
 
-  case InitKind::Broadcast: {
+  case TrainKind::Broadcast: {
     switch (payload_.getElementType()) {
     case ElemKind::FloatTy: {
       payload_.getHandle<float>().clear(val_);
@@ -211,7 +211,7 @@ void Variable::initPayload() {
     break;
   }
 
-  case InitKind::Xavier: {
+  case TrainKind::Xavier: {
     switch (payload_.getElementType()) {
     case ElemKind::FloatTy: {
       payload_.getHandle<float>().randomize(val_);
@@ -246,7 +246,7 @@ bool Variable::isEqual(const Variable &other) const {
 }
 
 llvm::hash_code Variable::getHash() const {
-  return llvm::hash_combine(getName(), getInitKind(), getType(),
+  return llvm::hash_combine(getName(), getTrainKind(), getType(),
                             toBinary(val_));
 }
 //===----------------------------------------------------------------------===//
@@ -375,8 +375,13 @@ std::string Node::getDebugDesc() const {
   }
 }
 
-static const char *getVariableInitKindStr(Variable::InitKind kind) {
+static const char *getVariableTrainKindStr(Variable::TrainKind kind) {
   const char *names[] = {"extern", "broadcast", "xavier", nullptr};
+  return names[static_cast<int>(kind)];
+}
+
+static const char *getVariableVisibilityKindStr(Variable::VisibilityKind kind) {
+  const char *names[] = {"public", "private", nullptr};
   return names[static_cast<int>(kind)];
 }
 
@@ -384,8 +389,9 @@ std::string Variable::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
       .addParam("output", *getType())
-      .addParam("init", getVariableInitKindStr(initKind_));
-  if (initKind_ != Variable::InitKind::Extern) {
+      .addParam("visibility", getVariableVisibilityKindStr(visibility_))
+      .addParam("init", getVariableTrainKindStr(train_));
+  if (train_ != Variable::TrainKind::None) {
     db.addParam("val", val_);
   }
   db.addParam("users", getNumUsers());
