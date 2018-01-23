@@ -38,6 +38,12 @@ void elementmax0_f(float *dest, float *LHS, size_t sz) {
   }
 }
 
+void elementmin_f(float *dest, float *LHS, float *RHS, size_t sz) {
+  for (size_t i = 0; i < sz; ++i) {
+    dest[i] = MIN(LHS[i], RHS[i]);
+  }
+}
+
 void batchedmatmul_f(float *dest, float *LHS, float *RHS, size_t *destDims,
                      size_t *lhsDims, size_t *rhsDims) {
   // For each layer in the batch:

@@ -84,6 +84,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     builder.CreateCall(F, {addr, cnt, val});
     break;
   }
+
   case Kinded::Kind::ElementMaxInstKind: {
     ElementMaxInst *EM = llvm::cast<ElementMaxInst>(I);
     auto *destPtr = emitValueAddress(builder, EM->getDest(), ElemKind::FloatTy);
@@ -95,6 +96,19 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     builder.CreateCall(F, {destPtr, LHSPtr, RHSPtr, cnt});
     break;
   }
+
+  case Kinded::Kind::ElementMinInstKind: {
+    ElementMinInst *EM = llvm::cast<ElementMinInst>(I);
+    auto *destPtr = emitValueAddress(builder, EM->getDest(), ElemKind::FloatTy);
+    auto *LHSPtr = emitValueAddress(builder, EM->getLHS(), ElemKind::FloatTy);
+    auto *RHSPtr = emitValueAddress(builder, EM->getRHS(), ElemKind::FloatTy);
+    auto cnt = emitValueSize(builder, EM->getDest());
+    auto *F = llmodule_->getFunction("elementmin_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {destPtr, LHSPtr, RHSPtr, cnt});
+    break;
+  }
+
   case Kinded::Kind::BatchedMatMulInstKind: {
     BatchedMatMulInst *BMM = llvm::cast<BatchedMatMulInst>(I);
     auto *destPtr =
@@ -186,6 +200,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
         F, {srcPtr, destPtr, srcDims, destDims, pad, kernel, stride});
     break;
   }
+
   case Kinded::Kind::PoolAvgInstKind: {
     PoolAvgInst *PM = llvm::cast<PoolAvgInst>(I);
     auto *destPtr = emitValueAddress(builder, PM->getDest(), ElemKind::FloatTy);
