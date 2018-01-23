@@ -16,7 +16,29 @@
 
 using namespace glow;
 
+#include <stdlib.h>
+#include <vector>
+
+using namespace std;
+
+struct ArrayRef {
+    const int *Data;
+    size_t Length;
+    ArrayRef() : Data(0), Length(0) {}
+    ArrayRef(const vector<int> &Vec) : Data(Vec.data()),
+      Length(Vec.size())
+    {}
+};
+
+struct R {
+    ArrayRef E;
+} Record;
+
+
 TEST(Graph, simpleTest) {
+  vector<int> V;
+  Record.E = V;
+
   {
     unsigned numInputs = 10;
     Graph G;
@@ -34,7 +56,7 @@ TEST(Graph, simpleTest) {
     G.dumpDAG();
     lower(G, CompilationMode::Train);
     ::optimize(G, CompilationMode::Train);
-    M.generateIR(CompilationMode::Train);
+    //M.generateIR(CompilationMode::Train);
     M.dump();
   }
   {
@@ -50,7 +72,7 @@ TEST(Graph, simpleTest) {
     G.dumpDAG();
     lower(G, CompilationMode::Train);
     ::optimize(G, CompilationMode::Train);
-    //M.generateIR(CompilationMode::Train);
+    M.generateIR(CompilationMode::Train);
     M.dump();
   }
 }
