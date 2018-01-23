@@ -54,6 +54,20 @@ lowered into the mid-level IR in a phase that's called "IRGen" (stands for IR
 generation). This is a one-to-many translation where each operator is translated
 into one or more instructions.
 
+### Variable Visibility
+
+Variables are persistent tensors that live across different executions of the ML
+network.  Variables are annotated with Public or Private labels. These labels
+specify whether the node is visible outside of the graph, or not. If the node is
+public, then it means that C++ code from outside the graph may access the
+variable directly and change it's content before or after the execution of the
+program.  This means that the optimizer is not allowed to delete unused public
+variables or change their dimensions. On the other hand, in the case of private
+variables, the optimizer is allowed to delete unused variables, transpose,
+perform constant propagation, etc. The semantics of variables in the program,
+both private and public, is that all writes must happen before the end of the
+execution of the program.
+
 ### Mid-level Graph
 
 The low-level IR enables a different kind of target independent optimizations
