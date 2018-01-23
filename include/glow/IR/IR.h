@@ -117,7 +117,7 @@ public:
     }
   }
 
-  ~Instruction() {
+  virtual ~Instruction() {
     for (unsigned idx = 0, e = ops_.size(); idx < e; ++idx) {
       setOperand(idx, nullptr);
     }
