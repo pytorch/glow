@@ -519,11 +519,9 @@ public:
       break;
     }
     case glow::Kinded::Kind::VariableNodeKind: {
-      using MK = WeightVar::MutabilityKind;
       auto *V = cast<Variable>(N);
-      bool isConst = V->getInitKind() == Variable::InitKind::Extern;
       auto *W = builder_.createWeightVar(V->getType(), V->getName(),
-                                         isConst ? MK::Constant : MK::Mutable);
+                                         WeightVar::MutabilityKind::Mutable);
       W->setName(N->getName());
       registerIR(N, W);
       break;
