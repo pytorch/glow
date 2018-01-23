@@ -527,3 +527,18 @@ TEST(GraphOptz, SliceOfSplatNodeChain) {
     EXPECT_EQ(G.getNodes().size(), shouldReverse ? 3 : 2);
   }
 }
+
+TEST(GraphOptz, DCEPublicVars) {
+  Graph G;
+  Module M(&G);
+  G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input",
+                   Variable::VisibilityKind::Public);
+
+  EXPECT_EQ(G.getVars().size(), 1);
+
+  // Optimize all of the dead code.
+  ::glow::optimize(G, CompilationMode::Infer);
+
+  //  Public nodes should not be deleted.
+  EXPECT_EQ(G.getVars().size(), 1);
+}
