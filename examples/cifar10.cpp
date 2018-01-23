@@ -78,7 +78,8 @@ void testCIFAR10() {
   auto *A =
       G.createVariable(ElemKind::FloatTy, {minibatchSize, 32, 32, 3}, "input");
   auto *E = G.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, "expected",
-                             Variable::InitKind::Extern);
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
 
   // Create the rest of the network.
   auto *CV0 = G.createConv("conv", A, 16, 5, 1, 2);

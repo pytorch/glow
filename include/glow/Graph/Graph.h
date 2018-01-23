@@ -88,15 +88,17 @@ public:
   /// @name High-level, operation-level IRBuilder.
   ///@{
 
-  Variable *
-  createVariable(TypeRef T, llvm::StringRef name,
-                 Variable::InitKind initKind = Variable::InitKind::Broadcast,
-                 float val = 0.0);
+  Variable *createVariable(
+      TypeRef T, llvm::StringRef name,
+      Variable::VisibilityKind visibility = Variable::VisibilityKind::Private,
+      Variable::TrainKind train = Variable::TrainKind::Broadcast,
+      float val = 0.0);
 
-  Variable *
-  createVariable(ElemKind T, UnsignedArrayRef dims, llvm::StringRef name,
-                 Variable::InitKind initKind = Variable::InitKind::Broadcast,
-                 float val = 0.0);
+  Variable *createVariable(
+      ElemKind T, UnsignedArrayRef dims, llvm::StringRef name,
+      Variable::VisibilityKind visibility = Variable::VisibilityKind::Private,
+      Variable::TrainKind train = Variable::TrainKind::Broadcast,
+      float val = 0.0);
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               size_t depth, size_t kernel, size_t stride,

@@ -24,7 +24,8 @@ TEST(GraphAutoGrad, autoGrad) {
   auto &G = EE.getGraph();
 
   Variable *A = G.createVariable(ElemKind::FloatTy, {10, 28, 28, 1}, "input",
-                                 Variable::InitKind::Extern);
+                                 Variable::VisibilityKind::Public,
+                                 Variable::TrainKind::None);
 
   auto *CV0 = G.createConv("conv1", A, 16, 5, 1, 2);
   auto *RL0 = G.createRELU("relu1", CV0);
@@ -37,7 +38,8 @@ TEST(GraphAutoGrad, autoGrad) {
   auto *FCL1 = G.createFullyConnected("fc3", MP1, 10);
   auto *RL2 = G.createRELU("relu3", FCL1);
   Variable *selected = G.createVariable(ElemKind::IndexTy, {10, 1}, "selected",
-                                        Variable::InitKind::Extern);
+                                        Variable::VisibilityKind::Public,
+                                        Variable::TrainKind::None);
 
   auto *SM = G.createSoftMax("sm", RL2, selected);
 
@@ -59,12 +61,14 @@ TEST(GraphAutoGrad, checkLRNGen) {
   auto &G = EE.getGraph();
 
   Variable *A = G.createVariable(ElemKind::FloatTy, {10, 28, 28, 1}, "input",
-                                 Variable::InitKind::Extern);
+                                 Variable::VisibilityKind::Public,
+                                 Variable::TrainKind::None);
   auto *CV0 = G.createLocalResponseNormalization("LRN", A);
   auto *FCL1 = G.createFullyConnected("fc3", CV0, 10);
   auto *RL2 = G.createRELU("relu3", FCL1);
   Variable *selected = G.createVariable(ElemKind::IndexTy, {10, 1}, "selected",
-                                        Variable::InitKind::Extern);
+                                        Variable::VisibilityKind::Public,
+                                        Variable::TrainKind::None);
 
   auto *SM = G.createSoftMax("sm", RL2, selected);
 

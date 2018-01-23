@@ -122,7 +122,8 @@ Node *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
 
   Tensor *T = getTensorByName(name);
   auto *V = G_.createVariable(T->getElementType(), T->dims(), name,
-                              Variable::InitKind::Broadcast);
+                              Variable::VisibilityKind::Private,
+                              Variable::TrainKind::Broadcast);
   V->copyFrom(T);
   nodeByName_[name] = V;
   return V;
@@ -519,7 +520,8 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   for (unsigned i = 0; i < names.size(); i++) {
     auto *T = tensors[i];
     auto *V = G_.createVariable(T->getElementType(), T->dims(), names[i],
-                                Variable::InitKind::Extern);
+                                Variable::VisibilityKind::Private,
+                                Variable::TrainKind::None);
     V->copyFrom(T);
     nodeByName_[names[i]] = V;
   }

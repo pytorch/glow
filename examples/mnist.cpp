@@ -82,7 +82,8 @@ void testMNIST() {
   auto &G = EE.getGraph();
 
   Variable *A = G.createVariable(ElemKind::FloatTy, {minibatchSize, 28, 28, 1},
-                                 "input", Variable::InitKind::Extern);
+                                 "input", Variable::VisibilityKind::Public,
+                                 Variable::TrainKind::None);
 
   auto *CV0 = G.createConv("conv", A, 16, 5, 1, 2);
   auto *RL0 = G.createRELU("relu", CV0);
@@ -94,9 +95,9 @@ void testMNIST() {
 
   auto *FCL1 = G.createFullyConnected("fc", MP1, 10);
   auto *RL2 = G.createRELU("fc", FCL1);
-  Variable *selected =
-      G.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, +"selected",
-                       Variable::InitKind::Extern);
+  Variable *selected = G.createVariable(
+      ElemKind::IndexTy, {minibatchSize, 1}, +"selected",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
   auto *SM = G.createSoftMax("sm", RL2, selected);
 
   auto *result = G.createSave("return", SM);
