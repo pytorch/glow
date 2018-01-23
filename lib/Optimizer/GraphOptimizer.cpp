@@ -28,6 +28,13 @@ static bool shouldDeleteNode(CompilationMode mode, Node *N) {
     return false;
   }
 
+  if (Variable *V = dyn_cast<Variable>(N)) {
+    // We don't want to delete unused public variables because they are
+    // accessible to the outside world that may hold a reference to them.
+    if (V->getVisibilityKind() == Variable::VisibilityKind::Public)
+      return false;
+  }
+
   return true;
 }
 
@@ -65,7 +72,7 @@ static void DCE(Graph &G, CompilationMode mode) {
 
   // Delete unused variables.
   for (auto it = vars.begin(), e = vars.end(); it != e;) {
-    if ((*it)->hasUsers()) {
+    if (!shouldDeleteNode(mode, *it)) {
       ++it;
       continue;
     }
