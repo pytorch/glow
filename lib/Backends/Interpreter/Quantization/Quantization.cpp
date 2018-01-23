@@ -60,7 +60,7 @@ void generateTensorHistogram(const Handle<float> inputTensor,
 
       // Calculate how much we need to redistribute.
       uint64_t dstBinCnt = static_cast<uint64_t>(std::min(
-          round(static_cast<float>((destBinEnd - srcBinBegin) / srcBinWidth *
+          static_cast<float>(round((destBinEnd - srcBinBegin) / srcBinWidth *
                                    existingHistogram.raw(i))),
           existingHistogram.raw(i)));
 
