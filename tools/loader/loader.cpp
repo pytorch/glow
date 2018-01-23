@@ -167,6 +167,14 @@ llvm::cl::opt<std::string> QuantizationProfileFile(
                    "and save result to the file."),
     llvm::cl::value_desc("profile.json"), llvm::cl::Optional);
 
+llvm::cl::opt<BackendKind> ExecutionBackend(
+    llvm::cl::desc("Backend to use:"),
+    llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
+                                "Use interpreter"),
+                     clEnumValN(BackendKind::JIT, "jit", "Use JIT"),
+                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
+    llvm::cl::init(BackendKind::Interpreter));
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -185,7 +193,7 @@ int main(int argc, char **argv) {
     NetWeightFilename.setValue(NetDirectory + "/init_net.pb");
   }
 
-  ExecutionEngine EE(BackendKind::Interpreter);
+  ExecutionEngine EE(ExecutionBackend);
   auto &G = EE.getGraph();
   auto &M = EE.getModule();
   SaveNode *SM;
