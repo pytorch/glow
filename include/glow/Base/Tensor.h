@@ -418,7 +418,7 @@ public:
   /// \returns the index of the highest value.
   /// \returns the lowest index of a max element if there are multiple
   /// elements with the same max value.
-  size_t maxArg() {
+  size_t maxArg() const {
     ElemTy max = at({0});
     size_t idx = 0;
 
@@ -433,7 +433,7 @@ public:
   }
 
   /// \returns true if tensor contains only elements equal to zero.
-  bool isZero() {
+  bool isZero() const {
     for (size_t i = 0, e = size(); i < e; ++i) {
       if (raw(i) != 0)
         return false;
