@@ -48,10 +48,6 @@ public:
     return k->getKind() == Kinded::Kind::VariableNodeKind;
   }
 
-  const char *getInitKindStr() const;
-
-  static const char *getInitKindStr(InitKind kind);
-
   /// \returns the original initialization mode of the variable.
   InitKind getInitKind() const { return initKind_; }
 

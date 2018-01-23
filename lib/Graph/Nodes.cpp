@@ -178,18 +178,6 @@ bool UnownedNodeValueMap::count(NodeValue from) {
 
 llvm::ArrayRef<size_t> NodeValue::dims() const { return getType()->dims(); }
 
-const char *Variable::getInitKindStr(InitKind kind) {
-  // extern: No initialization.
-  // broadcast: Broadcast a single value to all elements.
-  // xavier: Init the tensor with random values using the Xavier method.
-  const char *names[] = {"extern", "broadcast", "xavier", nullptr};
-  return names[static_cast<int>(kind)];
-}
-
-const char *Variable::getInitKindStr() const {
-  return getInitKindStr(initKind_);
-}
-
 void Variable::initPayload() {
   payload_.reset(*getType());
 
@@ -387,11 +375,16 @@ std::string Node::getDebugDesc() const {
   }
 }
 
+static const char *getVariableInitKindStr(Variable::InitKind kind) {
+  const char *names[] = {"extern", "broadcast", "xavier", nullptr};
+  return names[static_cast<int>(kind)];
+}
+
 std::string Variable::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
       .addParam("output", *getType())
-      .addParam("init", Variable::getInitKindStr(initKind_));
+      .addParam("init", getVariableInitKindStr(initKind_));
   if (initKind_ != Variable::InitKind::Extern) {
     db.addParam("val", val_);
   }
