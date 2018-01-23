@@ -125,11 +125,26 @@ void Value::verifyUseList(const Module &M) const {
   }
 }
 
+void Module::destroyInstruction(Instruction *I) {
+  switch (I->getKind()) {
+  default:
+    llvm_unreachable("Unknown value kind");
+    break;
+#define DEF_INSTR(CLASS, NAME)                                                 \
+  case Kinded::Kind::CLASS##Kind: {                                            \
+    delete llvm::cast<CLASS>(I);                                               \
+    break;                                                                     \
+  }
+#define DEF_VALUE(CLASS, NAME)
+#include "AutoGenInstr.def"
+  }
+}
+
 InstrIterator Module::eraseInstruction(InstrIterator it) {
   auto *I = *it;
   assert(std::find(instrs_.begin(), instrs_.end(), I) != instrs_.end() &&
          "Cannot erase an instruction not belonging to a module");
-  delete I;
+  destroyInstruction(I);
   auto result = instrs_.erase(it);
   assert(std::find(instrs_.begin(), instrs_.end(), I) == instrs_.end() &&
          "Instruction should be erased");
@@ -208,7 +223,7 @@ void Module::clear() {
   // Delete all of the instructions, in reverse order, to make sure that
   // we delete the users before the instructions.
   for (auto it = instrs_.rbegin(), e = instrs_.rend(); it != e; ++it) {
-    delete *it;
+    destroyInstruction(*it);
   }
 
   // Delete all of the weights.
