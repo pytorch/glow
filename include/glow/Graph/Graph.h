@@ -212,6 +212,20 @@ public:
                  const llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                  unsigned hiddenSize, unsigned outputSize,
                  std::vector<Node *> &outputs);
+
+  /// Create an unrolled single-layer LSTM cell with \p hiddenSize
+  /// dimensionality of the hidden state and \p outputSize dimensionality of the
+  /// output state. \p inputs define the input for the cell at each time step
+  /// and the number of time steps is equal to the size of the \p inputs. The
+  /// names of the created variables are prefixed by \p namePrefix.
+  /// The output variables are written to \p outputs, they represent the
+  /// activation of the output layer, unrolled over time.
+  // The dimensionality of the output variables is \p batchSize x \p outputSize.
+  void createLSTM(llvm::StringRef namePrefix,
+                  const llvm::ArrayRef<Node *> inputs, unsigned batchSize,
+                  unsigned hiddenSize, unsigned outputSize,
+                  std::vector<Node *> &outputs);
+
   /// @}
 
   /// Erase a variable from the graph.
