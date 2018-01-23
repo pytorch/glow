@@ -8,13 +8,15 @@ matrix:
   fast_finish: true
   include:
     - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-6
       before_install:
         - sudo apt-get -qq update
         - sudo apt-get install -y ninja-build llvm ocl-icd-opencl-dev libprotobuf-dev protobuf-compiler libpng-dev
-        - sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
-        - sudo apt-get update -q
-        - sudo apt-get install gcc-4.9 -y
-        - sudo apt-get install g++-4.9 -y
       install:
         - mkdir build && cd build
         - cmake -G Ninja -DGLOW_USE_SANITIZER="Address;Undefined" -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF ../
