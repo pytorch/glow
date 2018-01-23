@@ -102,6 +102,15 @@ private:
   Instruction(const Instruction &I) = delete;
   Instruction &operator=(const Instruction &I) = delete;
 
+protected:
+  /// Prevent the destruction of a derived object via a base-class pointer.
+  /// Use Module::destroyInstruction instead.
+  ~Instruction() {
+    for (unsigned idx = 0, e = ops_.size(); idx < e; ++idx) {
+      setOperand(idx, nullptr);
+    }
+  }
+
 public:
   /// Adds a new operand \p op at the end of the operand list.
   void pushOperand(Operand op);
@@ -114,12 +123,6 @@ public:
       : Value(name, Ty, k), M(M) {
     for (auto &op : ops) {
       pushOperand(op);
-    }
-  }
-
-  ~Instruction() {
-    for (unsigned idx = 0, e = ops_.size(); idx < e; ++idx) {
-      setOperand(idx, nullptr);
     }
   }
 
@@ -266,6 +269,9 @@ public:
 
   /// Remove the instruction from the module.
   InstrIterator removeInstruction(InstrIterator it);
+
+  /// Destroy an instruction.
+  void destroyInstruction(Instruction *I);
 
   /// Inserts an instruction at the place described by \where.
   InstrIterator insertInstruction(InstrIterator where, Instruction *I);
