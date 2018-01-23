@@ -26,12 +26,12 @@ TEST(Graph, simpleTest) {
     K = G.createConv("Conv1", K, 16, 3, 2, 3);
     K = G.createRELU("Relu", K);
     K = G.createSoftMax("SoftMax", K, S);
-    // G.dump();
-    // G.dumpDAG();
+    G.dump();
+    G.dumpDAG();
     lower(G, CompilationMode::Train);
     //::optimize(G, CompilationMode::Train);
-    //M.generateIR(CompilationMode::Train);
-    // M.dump();
+    M.generateIR(CompilationMode::Train);
+    M.dump();
   }
 
   {
@@ -47,12 +47,12 @@ TEST(Graph, simpleTest) {
     O = G.createFullyConnected("FC2", O, 1);
     O = G.createRELU("RELU2", O);
     G.createRegression("Regression", O, Ex);
-    // G.dump();
-    // G.dumpDAG();
+    G.dump();
+    G.dumpDAG();
     lower(G, CompilationMode::Train);
     //::optimize(G, CompilationMode::Train);
-    //M.generateIR(CompilationMode::Train);
-    // M.dump();
+    M.generateIR(CompilationMode::Train);
+    M.dump();
   }
 }
 

@@ -25,4 +25,4 @@ matrix:
 script:
  - ninja all
  - ninja test
- - gdb tests/graphTest -batch -ex "r" -ex "bt"
+ - cat Testing/Temporary/LastTest.log
