@@ -408,8 +408,8 @@ void NodeBuilder::addGradient() {
   // Register the result of the new node as the gradients of the original node
   // inputs.
   for (const std::string &in : nodeInputs_) {
-    ss << "  builder.addGradient(get" << in
-       << "(), x->getGradOfInputNamed" << in << "());\n";
+    ss << "  builder.addGradient(get" << in << "(), x->getGradOfInputNamed"
+       << in << "());\n";
   }
   ss << "  return x;\n}\n";
   addExtraMethod(ss.str());
