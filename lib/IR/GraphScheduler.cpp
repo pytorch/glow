@@ -47,7 +47,7 @@ public:
 ///
 /// The idea is to give more priority and schedule earlier those child nodes
 /// that free more memory after their computation.
-class ChildMemSizeBasedScheduler : Scheduler {
+class ChildMemSizeBasedScheduler : public Scheduler {
   /// Required number of bytes to hold the results of a given node.
   std::unordered_map<const Node *, int> resultMemSize_;
   /// Max number of bytes required during the computation of a given node.
@@ -170,8 +170,6 @@ public:
     computeNodeComputationMaxMemorySize();
     scheduleNodes();
   }
-
-  NodesList &getSchedule() { return Scheduled_; }
 };
 
 void Module::scheduleGraph(NodesList &Schedule) {
@@ -179,9 +177,9 @@ void Module::scheduleGraph(NodesList &Schedule) {
   for (auto &N : G_->getVars()) {
     Schedule.push_back(N);
   }
-  ChildMemSizeBasedScheduler CWBScheduler(*G_, Schedule);
-  CWBScheduler.schedule();
-  assert(CWBScheduler.getSchedule().size() ==
+  ChildMemSizeBasedScheduler CMSBScheduler(*G_, Schedule);
+  CMSBScheduler.schedule();
+  assert(CMSBScheduler.getSchedule().size() ==
              G_->getNodes().size() + G_->getVars().size() &&
          "All graph nodes have to be scheduled");
 }
