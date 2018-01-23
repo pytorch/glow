@@ -175,15 +175,15 @@ public:
 };
 
 void Module::scheduleGraph(NodesList &Schedule) {
-    Schedule.clear();
-    for (auto &N : G_->getVars()) {
-      Schedule.push_back(N);
-    }
-    ChildMemSizeBasedScheduler CWBScheduler(*G_, Schedule);
-    CWBScheduler.schedule();
-    assert(CWBScheduler.getSchedule().size() ==
-               G_->getNodes().size() + G_->getVars().size() &&
-           "All graph nodes have to be scheduled");
+  Schedule.clear();
+  for (auto &N : G_->getVars()) {
+    Schedule.push_back(N);
+  }
+  ChildMemSizeBasedScheduler CWBScheduler(*G_, Schedule);
+  CWBScheduler.schedule();
+  assert(CWBScheduler.getSchedule().size() ==
+             G_->getNodes().size() + G_->getVars().size() &&
+         "All graph nodes have to be scheduled");
 }
 
 } // namespace glow
