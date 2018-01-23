@@ -403,12 +403,61 @@ TEST(Tensor, broadcastNewShape) {
   const size_t i_B = 0;
   for (size_t j_B = 0; j_B < dimY_B; ++j_B) {
     const float origVal = H_B.at({i_B, j_B});
-    const size_t j_A = j_B; // This dim was not broadcasted.
+    const size_t j_A = j_B; // This dim was not broadcasted (dims equal).
     for (size_t i_A = 0; i_A < dimX_A; ++i_A) {
       for (size_t k_A = 0; k_A < dimZ_A; ++k_A) {
         for (size_t l_A = 0; l_A < dimW_A; ++l_A) {
           EXPECT_EQ(origVal, broadcastedBHandle.at({i_A, j_A, k_A, l_A}));
         }
+      }
+    }
+  }
+}
+
+/// Broadcast a Tensor of shape (2,1) to (3,2,2,2) with axis 1, resulting in
+/// new shape of (3,2,2)
+TEST(Tensor, broadcastNewShapeWithAxis) {
+  const size_t numDims_A = 4;
+
+  const size_t dimX_A = 2;
+  const size_t dimY_A = 2;
+  const size_t dimZ_A = 2;
+  const size_t dimW_A = 3;
+
+  size_t dims_A[numDims_A];
+  dims_A[0] = dimX_A;
+  dims_A[1] = dimY_A;
+  dims_A[2] = dimZ_A;
+  dims_A[3] = dimW_A;
+
+  const size_t dimX_B = 1;
+  const size_t dimY_B = 2;
+  Tensor X_B(ElemKind::FloatTy, {dimX_B, dimY_B});
+  auto H_B = X_B.getHandle<>();
+  H_B = {200, 201};
+
+  Tensor broadcastedB;
+  const unsigned axis = 1;
+  X_B.getHandle<>().broadcastToNewShape(&broadcastedB, dims_A, axis);
+
+  auto broadcastedBHandle = broadcastedB.getHandle<>();
+
+  // Verify broadcasted B has same shape, starting from axis.
+  EXPECT_EQ(numDims_A - axis, broadcastedBHandle.dims().size());
+  for (int i = 0; i < broadcastedBHandle.dims().size(); i++) {
+    const int otherIdx = i + axis;
+    EXPECT_EQ(dims_A[otherIdx], broadcastedBHandle.dims()[i]);
+  }
+
+  // Look at the two values in X_B and verify in the two dimensions it was
+  // broadcasted that the values were correctly broadcasted.
+  const size_t i_B = 0;
+  for (size_t j_B = 0; j_B < dimY_B; ++j_B) {
+    const float origVal = H_B.at({i_B, j_B});
+    const size_t j_A = j_B; // This dim was not broadcasted (dims equal).
+    for (size_t i_A = 0; i_A < dimX_A; ++i_A) {
+      for (size_t k_A = 0; k_A < dimZ_A; ++k_A) {
+        EXPECT_EQ(origVal, broadcastedBHandle.at({i_A, j_A, k_A}));
       }
     }
   }

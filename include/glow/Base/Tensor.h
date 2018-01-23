@@ -549,27 +549,32 @@ public:
 
   /// Broadcast the current Tensor to a new shape specified by \p otherDims and
   /// place it in \p dest. Values in the new dimension(s) are copied from the
-  /// original Tensor. Compared to numpy's broadcasting, this only allows
-  /// broadcasting one tensor Tensor A to some new shape specified by \p
-  /// otherDims. For example, numpy allows broadcasting two Tensors of shapes
-  /// (3,1) and (1,4) to both be (3,4), while this implementation does not.
-  void broadcastToNewShape(Tensor *dest, llvm::ArrayRef<size_t> otherDims) {
+  /// original Tensor. The \p axis defines the dimension to start broadcasting
+  /// from. Compared to numpy's broadcasting, this only allows broadcasting one
+  /// tensor Tensor A to some new shape specified by \p otherDims. For example,
+  /// numpy allows broadcasting two Tensors of shapes (3,1) and (1,4) to both be
+  /// (3,4), while this implementation does not.
+  void broadcastToNewShape(Tensor *dest, llvm::ArrayRef<size_t> otherDims,
+                           int axis = 0) {
     auto origDims = dims();
     assert(otherDims.size() >= origDims.size() &&
            "Dimensions to broadcast to must be equal or greater size.");
+    assert(axis >= 0 && (axis + origDims.size()) <= otherDims.size() &&
+           "Axis must >= 0, && axis + nDims of orig Tensor <= newShape nDims");
 
     Tensor intermediate;
     intermediate.copyFrom(this->tensor_);
 
     for (int i = 0; i < origDims.size(); i++) {
-      if (origDims[i] == otherDims[i]) {
+      const int otherIdx = i + axis;
+      if (origDims[i] == otherDims[otherIdx]) {
         // Keep original dimensions; they are compatible.
       } else if (origDims[i] == 1) {
         // Broadcast this dimension to size from otherDims.
         Tensor tmp;
         const bool addingNewDim = false;
         intermediate.getHandle<ElemTy>().broadcastOneDimension(
-            &tmp, otherDims[i], i, addingNewDim);
+            &tmp, otherDims[otherIdx], i, addingNewDim);
         intermediate.copyFrom(&tmp);
       } else {
         // Incompatible dimensions for broadcasting
@@ -578,11 +583,12 @@ public:
     }
 
     // Fill in the rest of the dimensions with the other Tensor's dimensions.
-    for (int i = origDims.size(); i < otherDims.size(); ++i) {
+    for (int i = origDims.size(); i < otherDims.size() - axis; ++i) {
+      const int otherIdx = i + axis;
       Tensor tmp;
       const bool addingNewDim = true;
-      intermediate.getHandle<ElemTy>().broadcastOneDimension(&tmp, otherDims[i],
-                                                             i, addingNewDim);
+      intermediate.getHandle<ElemTy>().broadcastOneDimension(
+          &tmp, otherDims[otherIdx], i, addingNewDim);
       intermediate.copyFrom(&tmp);
     }
     dest->copyFrom(&intermediate);
