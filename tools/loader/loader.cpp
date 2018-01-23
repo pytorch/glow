@@ -208,16 +208,12 @@ int main(int argc, char **argv) {
     i1 = llvm::cast<Variable>(LD.getOrCreateNodeByName("data"));
   }
 
+  assert(i0->getVisibilityKind() == Variable::VisibilityKind::Public);
+  assert(i1->getVisibilityKind() == Variable::VisibilityKind::Public);
+
   if (!QuantizationProfileFile.empty()) {
     ::profileQuantization(G);
   }
-
-  // Hold a reference to i0 and i1 to prevent the optimizer from deleting them.
-  // One of the nodes, 'gpu' or 'data' is unused and we don't want the optimizer
-  // to delete the nodes because it makes it easier for us to initialize the
-  // network.
-  NodeValue ref0(i0, 0);
-  NodeValue ref1(i1, 0);
 
   // Emit IR for the graph.
   EE.compile(CompilationMode::Infer);
