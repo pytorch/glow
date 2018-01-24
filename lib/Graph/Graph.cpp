@@ -16,6 +16,7 @@
 
 using namespace glow;
 using llvm::dyn_cast;
+using llvm::isa;
 
 Graph::~Graph() {
   // Delete all of the nodes and the variables.
@@ -974,6 +975,9 @@ class DottyPrinterPass {
       std::ostringstream edge;
       edge << uniqueNodeName(to) << ":" << to->getOutputName(resNo).str()
            << " -> " << uniqueNodeName(N) << ":" << N->getInputName(i).str();
+      if (isa<Variable>(to)) {
+        edge<<"[style=bold, color=pink]";
+      }
       nodeEdges_.push_back(edge.str());
 
       visitNode(to);
