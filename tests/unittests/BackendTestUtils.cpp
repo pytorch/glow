@@ -51,6 +51,19 @@ void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+void inferReshapeNet(Tensor *inputs, llvm::ArrayRef<size_t> shape, Tensor *out,
+                     BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &G = EE.getGraph();
+  auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
+                               "input", Variable::VisibilityKind::Public);
+  auto *reshape = G.createReshape("reshape", var, shape);
+  auto result = G.createSave("ret", reshape);
+  EE.compile(CompilationMode::Infer);
+  EE.run({var}, {inputs});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 void inferSelectNet(Tensor *cond, Tensor *inputs1, Tensor *inputs2, Tensor *out,
                     BackendKind kind) {
   ExecutionEngine EE(kind);
