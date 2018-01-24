@@ -7,5 +7,6 @@ target_link_libraries(loader
                         Importer
                         ExecutionEngine
                         IR
-                        Support)
+                        Support
+                        Quantization)
 
