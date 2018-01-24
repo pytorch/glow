@@ -62,6 +62,12 @@ DATASETS = dict(
         untar,
         'ptb',
     ),
+    fr2en=Dataset(
+        'fr2en.tar.gz',
+        'http://fb-glow-assets.s3.amazonaws.com/models/fr2en.tar.gz',
+        untar,
+        'fr2en',
+    ),
 )
 DATASET_NAMES = list(DATASETS.keys())
 
