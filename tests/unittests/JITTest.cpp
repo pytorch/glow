@@ -63,6 +63,20 @@ TEST(JITCorrectnessTest, reluTest) {
   EXPECT_TRUE(H1.isEqual(H2));
 }
 
+TEST(JITCorrectnessTest, reshapeTest) {
+  Tensor inputs(ElemKind::FloatTy, {12, 6, 8, 12});
+  inputs.getHandle().randomize(1);
+  Tensor out1;
+  Tensor out2;
+
+  inferReshapeNet(&inputs, {18, 4, 24, 4}, &out1, BackendKind::JIT);
+  inferReshapeNet(&inputs, {18, 4, 24, 4}, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
 TEST(JITCorrectnessTest, selectTest) {
   Tensor cond(ElemKind::FloatTy, {5, 3, 9, 2});
   Tensor inputs1(ElemKind::FloatTy, {5, 3, 9, 2});
