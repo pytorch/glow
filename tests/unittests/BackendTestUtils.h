@@ -13,6 +13,10 @@ void inferMinNet(glow::Tensor *inputs1, glow::Tensor *inputs2,
 void inferReluNet(glow::Tensor *inputs, glow::Tensor *out,
                   glow::BackendKind kind);
 
+void inferSelectNet(glow::Tensor *cond, glow::Tensor *inputs1,
+                    glow::Tensor *inputs2, glow::Tensor *out,
+                    glow::BackendKind kind);
+
 void inferSigmoidNet(glow::Tensor *inputs, glow::Tensor *out,
                      glow::BackendKind kind);
 

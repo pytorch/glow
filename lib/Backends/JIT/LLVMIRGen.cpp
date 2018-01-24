@@ -109,6 +109,19 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::ElementSelectInstKind: {
+    ElementSelectInst *ES = llvm::cast<ElementSelectInst>(I);
+    auto *destPtr = emitValueAddress(builder, ES->getDest(), ElemKind::FloatTy);
+    auto *condPtr = emitValueAddress(builder, ES->getCond(), ElemKind::FloatTy);
+    auto *LHSPtr = emitValueAddress(builder, ES->getLHS(), ElemKind::FloatTy);
+    auto *RHSPtr = emitValueAddress(builder, ES->getRHS(), ElemKind::FloatTy);
+    auto cnt = emitValueSize(builder, ES->getDest());
+    auto *F = llmodule_->getFunction("elementselect_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {destPtr, condPtr, LHSPtr, RHSPtr, cnt});
+    break;
+  }
+
   case Kinded::Kind::BatchedMatMulInstKind: {
     BatchedMatMulInst *BMM = llvm::cast<BatchedMatMulInst>(I);
     auto *destPtr =
