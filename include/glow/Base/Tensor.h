@@ -415,15 +415,15 @@ public:
 
   void dumpAscii() const { dumpAsciiImpl(tensor_); }
 
-  /// \returns the index of the highest value.
+  /// \returns the index of the max value in a tensor.
   /// \returns the lowest index of a max element if there are multiple
   /// elements with the same max value.
   size_t maxArg() const {
-    ElemTy max = at({0});
+    ElemTy max = raw(0);
     size_t idx = 0;
 
     for (size_t i = 1, e = size(); i < e; i++) {
-      ElemTy val = at({i});
+      ElemTy val = raw(i);
       if (val > max) {
         max = val;
         idx = i;
