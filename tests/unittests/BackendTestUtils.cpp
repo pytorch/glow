@@ -13,10 +13,10 @@ void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                  BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &G = EE.getGraph();
-  auto *var1 =
-      G.createVariable(inputs1->getElementType(), inputs1->dims(), "input1");
-  auto *var2 =
-      G.createVariable(inputs2->getElementType(), inputs2->dims(), "input2");
+  auto *var1 = G.createVariable(inputs1->getElementType(), inputs1->dims(),
+                                "input1", Variable::VisibilityKind::Public);
+  auto *var2 = G.createVariable(inputs2->getElementType(), inputs2->dims(),
+                                "input2", Variable::VisibilityKind::Public);
   auto *max = G.createArithmetic("max", var1, var2, ArithmeticNode::Mode::Max);
   auto result = G.createSave("ret", max);
   EE.compile(CompilationMode::Infer);
@@ -28,10 +28,10 @@ void inferMinNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                  BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &G = EE.getGraph();
-  auto *var1 =
-      G.createVariable(inputs1->getElementType(), inputs1->dims(), "input1");
-  auto *var2 =
-      G.createVariable(inputs2->getElementType(), inputs2->dims(), "input2");
+  auto *var1 = G.createVariable(inputs1->getElementType(), inputs1->dims(),
+                                "input1", Variable::VisibilityKind::Public);
+  auto *var2 = G.createVariable(inputs2->getElementType(), inputs2->dims(),
+                                "input2", Variable::VisibilityKind::Public);
   auto *min = G.createArithmetic("min", var1, var2, ArithmeticNode::Mode::Min);
   auto result = G.createSave("ret", min);
   EE.compile(CompilationMode::Infer);
