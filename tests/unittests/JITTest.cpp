@@ -7,6 +7,7 @@
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Support/Random.h"
 
 #include "gtest/gtest.h"
 
@@ -56,6 +57,27 @@ TEST(JITCorrectnessTest, reluTest) {
 
   inferReluNet(&inputs, &out1, BackendKind::JIT);
   inferReluNet(&inputs, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
+TEST(JITCorrectnessTest, selectTest) {
+  Tensor cond(ElemKind::FloatTy, {5, 3, 9, 2});
+  Tensor inputs1(ElemKind::FloatTy, {5, 3, 9, 2});
+  Tensor inputs2(ElemKind::FloatTy, {5, 3, 9, 2});
+  auto condH = cond.getHandle();
+  for (size_t i = 0; i < 5 * 3 * 9 * 2; ++i) {
+    condH.raw(i) = nextRandInt01();
+  }
+  inputs1.getHandle().randomize(1);
+  inputs2.getHandle().randomize(1);
+  Tensor out1;
+  Tensor out2;
+
+  inferSelectNet(&cond, &inputs1, &inputs2, &out1, BackendKind::JIT);
+  inferSelectNet(&cond, &inputs1, &inputs2, &out2, BackendKind::Interpreter);
   auto H1 = out1.getHandle();
   auto H2 = out2.getHandle();
 

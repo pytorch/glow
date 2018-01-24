@@ -44,6 +44,13 @@ void elementmin_f(float *dest, float *LHS, float *RHS, size_t sz) {
   }
 }
 
+void elementselect_f(float *dest, float *cond, float *LHS, float *RHS,
+                     size_t sz) {
+  for (size_t i = 0; i < sz; ++i) {
+    dest[i] = (cond[i] != 0.0) ? LHS[i] : RHS[i];
+  }
+}
+
 void batchedmatmul_f(float *dest, float *LHS, float *RHS, size_t *destDims,
                      size_t *lhsDims, size_t *rhsDims) {
   // For each layer in the batch:
