@@ -413,3 +413,31 @@ TEST(Tensor, broadcastNewShape) {
     }
   }
 }
+
+TEST(Tensor, integerTensors) {
+  Tensor X;
+  // Integer tensors must have scale and offset.
+  Type I32Ty(ElemKind::Int32Ty, {1, 3}, 0.1, 0.2);
+  Type I8Ty(ElemKind::Int8Ty, {3, 3}, 0.5, 0.25);
+
+  Type I8Ty2(ElemKind::Int8Ty, {3, 3}, 4, 4);
+  Type I8Ty3(ElemKind::Int8Ty, {3, 3}, 4, 4);
+
+  // Float tensors must not have scale and offsets.
+  Type FlTy(ElemKind::FloatTy, {1, 3});
+
+  // Check that basic operations work.
+  Tensor I(I8Ty);
+  auto H = I.getHandle<int8_t>();
+  H.at({0, 2}) = 3;
+
+  EXPECT_EQ(H.at({0, 2}), 3);
+  EXPECT_EQ(0.5, I.getType().getScale());
+  EXPECT_EQ(0.25, I.getType().getOffset());
+
+  // These types have a different scale and offset.
+  EXPECT_FALSE(I8Ty.isEqual(I8Ty2));
+
+  // These types have the same scale and offset.
+  EXPECT_TRUE(I8Ty2.isEqual(I8Ty3));
+}

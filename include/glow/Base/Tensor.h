@@ -90,9 +90,16 @@ public:
   /// Allocate and initialize a new tensor.
   explicit Tensor(const Type &ty) : data_(nullptr), type_(ty) { reset(ty); }
 
-  /// Allocate and initialize a new tensor.
+  /// Allocate and initialize a float new tensor.
   Tensor(ElemKind elemTy, llvm::ArrayRef<size_t> dims)
       : data_(nullptr), type_(elemTy, dims) {
+    reset(elemTy, dims);
+  }
+
+  /// Allocate and initialize a new integer tensor with \p scale and \p offset.
+  Tensor(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
+         float offset)
+      : data_(nullptr), type_(elemTy, dims, scale, offset) {
     reset(elemTy, dims);
   }
 
