@@ -152,6 +152,9 @@ public:
   TransposeNode *createTranspose(llvm::StringRef name, NodeValue input,
                                  llvm::ArrayRef<unsigned> shuffle);
 
+  BroadcastNode *createBroadcast(llvm::StringRef name, NodeValue input,
+                                 UnsignedArrayRef shape, unsigned axis);
+
   IntrinsicNode *createIntrinsicNode(llvm::StringRef name,
                                      llvm::StringRef identifier,
                                      llvm::ArrayRef<Node *> inputs,

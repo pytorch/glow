@@ -203,6 +203,13 @@ int main(int argc, char **argv) {
       .addExtraParam("TypeRef", "outTy")
       .addResult("outTy");
 
+  BB.newNode("Broadcast")
+      .addInput("Input")
+      .addMember(MemberType::VectorSizeT, "Shape")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addExtraParam("TypeRef", "outTy")
+      .addResult("outTy");
+
   BB.newNode("Concat")
       .addMember(MemberType::VectorNodeValue, "Inputs")
       .addMember(MemberType::SizeT, "Dim")

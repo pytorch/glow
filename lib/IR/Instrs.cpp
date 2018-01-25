@@ -233,6 +233,15 @@ void TransposeInst::verify() const {
   assert(dest->dims().equals(shape) && "Invalid transpose dims");
 }
 
+void BroadcastInst::verify() const {
+  auto *dest = getOperand(0).first;
+  auto shape = getShape();
+  (void)shape;
+  (void)dest;
+
+  assert(dest->dims().equals(shape) && "Broadcast new shape incorrect");
+}
+
 void SplatInst::verify() const {}
 
 void InsertTensorInst::verify() const {

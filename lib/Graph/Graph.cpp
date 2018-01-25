@@ -276,6 +276,13 @@ TransposeNode *Graph::createTranspose(llvm::StringRef name, NodeValue input,
   return addNode(new TransposeNode(name, NT, input, shuffle.vec()));
 }
 
+BroadcastNode *Graph::createBroadcast(llvm::StringRef name, NodeValue input,
+                                      llvm::ArrayRef<size_t> shape,
+                                      unsigned axis) {
+  auto TR = uniqueType(input.getType()->getElementType(), shape);
+  return addNode(new BroadcastNode(name, TR, input, shape.vec(), axis));
+}
+
 /// \returns true if \p T1 and T2 has the exact same type except for dimension
 /// \p dim.
 static bool sameSameShapeExceptDim(TypeRef T1, TypeRef T2, unsigned dim) {

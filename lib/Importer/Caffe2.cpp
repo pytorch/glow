@@ -419,6 +419,38 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "Mul" || typeName == "Add") {
+    auto *in0 = getOrCreateNodeByName(op.input(0));
+    auto *in1 = getOrCreateNodeByName(op.input(1));
+
+    int broadcast = loadInt(dict["broadcast"]);
+
+    Node *finalIn1 = nullptr;
+    if (broadcast == 1) {
+      int axis = loadInt(dict["axis"]);
+      // In Caffe2, if axis == -1 then it sets the axis so that the
+      // trailing-most dimensions are aligned like this.
+      if (axis == -1) {
+        axis = in0->dims().size() - in1->dims().size();
+      }
+      finalIn1 = G_.createBroadcast(op.name(), in1, in0->dims(), axis);
+    } else {
+      finalIn1 = in1;
+    }
+
+    auto *node =
+        G_.createArithmetic(op.name(), in0, finalIn1,
+                            (typeName == "Mul") ? ArithmeticNode::Mode::Mul
+                                                : ArithmeticNode::Mode::Add);
+    // Save the outputs:
+    for (int i = 0, e = op.output_size(); i < e; i++) {
+      nodeByName_[op.output(i)] = node;
+    }
+    return;
+  }
+
+  fprintf(stderr, "Warning: Unsupported: %s\n", typeName.c_str());
+
   loadIntrinsicOperator(op);
 }
 

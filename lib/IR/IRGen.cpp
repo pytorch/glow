@@ -296,6 +296,14 @@ public:
       registerIR(N, V->getDest());
       break;
     }
+    case glow::Kinded::Kind::BroadcastNodeKind: {
+      auto *B = cast<BroadcastNode>(N);
+      auto *in = valueForNode(B->getInput());
+      auto *V = builder_.createBroadcastOp(in, B->getShape(), B->getAxis());
+      V->setName(N->getName());
+      registerIR(N, V->getDest());
+      break;
+    }
     case glow::Kinded::Kind::ReshapeNodeKind: {
       auto *RS = cast<ReshapeNode>(N);
       auto *in = valueForNode(RS->getInput());
