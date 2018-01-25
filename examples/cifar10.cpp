@@ -127,7 +127,7 @@ void testCIFAR10() {
 
       for (unsigned int iter = 0; iter < minibatchSize; iter++) {
         auto T = res.getHandle<>().extractSlice(iter);
-        size_t guess = T.getHandle<>().maxArg();
+        size_t guess = T.getHandle<>().minMaxArg().second;
         size_t correct = labelsH.at({minibatchSize * i + iter, 0});
         score += guess == correct;
 

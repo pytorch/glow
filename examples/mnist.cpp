@@ -137,7 +137,7 @@ void testMNIST() {
 
   for (unsigned int iter = 0; iter < minibatchSize; iter++) {
     auto T = res.getHandle<>().extractSlice(iter);
-    size_t guess = T.getHandle<>().maxArg();
+    size_t guess = T.getHandle<>().minMaxArg().second;
 
     size_t correct = LIH.at({iter, 0});
     rightAnswer += (guess == correct);

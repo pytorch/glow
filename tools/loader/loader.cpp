@@ -245,7 +245,7 @@ int main(int argc, char **argv) {
     Tensor slice = H.extractSlice(i);
     auto SH = slice.getHandle<>();
     llvm::outs() << " File: " << InputImageFilenames[i]
-                 << " Result:" << SH.maxArg() << "\n";
+                 << " Result:" << SH.minMaxArg().second << "\n";
   }
   return 0;
 }

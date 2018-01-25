@@ -281,7 +281,8 @@ void translate(Encoder *encoder, Decoder *decoder, llvm::StringRef sentense,
                       .getHandle()
                       .extractSlice(0)
                       .getHandle()
-                      .maxArg();
+                      .minMaxArg()
+                      .second;
 
     if (prevWordIdx == decoder->L.word2index_["EOS"])
       break;

@@ -415,23 +415,6 @@ public:
 
   void dumpAscii() const { dumpAsciiImpl(tensor_); }
 
-  /// \returns the index of the max value in a tensor.
-  /// \returns the lowest index of a max element if there are multiple
-  /// elements with the same max value.
-  size_t maxArg() const {
-    ElemTy max = raw(0);
-    size_t idx = 0;
-
-    for (size_t i = 1, e = size(); i < e; i++) {
-      ElemTy val = raw(i);
-      if (val > max) {
-        max = val;
-        idx = i;
-      }
-    }
-    return idx;
-  }
-
   /// \returns the raw indices of a min and max values from the tensor.
   /// In case of multiple min or max, the smallest index is returned.
   std::pair<size_t, size_t> minMaxArg() const {
