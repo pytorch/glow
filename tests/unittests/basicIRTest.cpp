@@ -41,7 +41,7 @@ TEST(IR, uniqueTypes) {
   }
 
   // Check the uniqueing of quantized tensors.
-  Type T4(ElemKind::Int8Ty, {1, 2}, 0.4, 0.9);
+  Type T4(ElemKind::Int8QTy, {1, 2}, 0.4, 0.9);
   auto *t4 = G.uniqueType(T4);
   auto *u4 = G.uniqueTypeWithNewShape(&T4, {2, 1});
   auto *q4 = G.uniqueTypeWithNewShape(u4, {1, 2});

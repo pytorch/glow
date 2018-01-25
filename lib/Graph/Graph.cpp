@@ -41,7 +41,7 @@ TypeRef Graph::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
 }
 
 TypeRef Graph::uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims) {
-  if (T->isIntegerType()) {
+  if (T->isQuantizedType()) {
     return uniqueType(
         Type(T->getElementType(), dims, T->getScale(), T->getOffset()));
 
