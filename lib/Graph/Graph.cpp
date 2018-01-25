@@ -35,6 +35,21 @@ TypeRef Graph::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims) {
   return uniqueType(Type(elemTy, dims));
 }
 
+TypeRef Graph::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
+                          float scale, float offset) {
+  return uniqueType(Type(elemTy, dims, scale, offset));
+}
+
+TypeRef Graph::uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims) {
+  if (T->isIntegerType()) {
+    return uniqueType(
+        Type(T->getElementType(), dims, T->getScale(), T->getOffset()));
+
+  } else {
+    return uniqueType(Type(T->getElementType(), dims));
+  }
+}
+
 TypeRef Graph::uniqueType(const Type &T) {
   for (auto &tp : types_) {
     if (T.isEqual(tp)) {
@@ -214,7 +229,7 @@ RegressionNode *Graph::createRegression(llvm::StringRef name, NodeValue input,
 
 ReshapeNode *Graph::createReshape(llvm::StringRef name, NodeValue input,
                                   llvm::ArrayRef<size_t> shape) {
-  auto TR = uniqueType(input.getType()->getElementType(), shape);
+  auto TR = uniqueTypeWithNewShape(input.getType(), shape);
   assert(TR->size() == input.getType()->size() &&
          "Reshape to a different size");
   return addNode(new ReshapeNode(name, TR, input, shape.vec()));
@@ -228,7 +243,7 @@ TransposeNode *Graph::createTranspose(llvm::StringRef name, NodeValue input,
     shape.push_back(dims[shuffle[i]]);
   }
 
-  auto NT = uniqueType(input.getElementType(), shape);
+  auto NT = uniqueTypeWithNewShape(input.getType(), shape);
   return addNode(new TransposeNode(name, NT, input, shuffle.vec()));
 }
 
@@ -324,8 +339,8 @@ SliceNode *Graph::createSlice(llvm::StringRef name, NodeValue input,
     begin_v.push_back(begin_i);
     shape.push_back(end_i - begin_i);
   }
-  auto NT = uniqueType(input.getType()->getElementType(), shape);
 
+  auto NT = uniqueTypeWithNewShape(input.getType(), shape);
   return addNode(new SliceNode(name, NT, input, begin_v));
 }
 
@@ -976,7 +991,7 @@ class DottyPrinterPass {
       edge << uniqueNodeName(to) << ":" << to->getOutputName(resNo).str()
            << " -> " << uniqueNodeName(N) << ":" << N->getInputName(i).str();
       if (isa<Variable>(to)) {
-        edge<<"[style=bold, color=pink]";
+        edge << "[style=bold, color=pink]";
       }
       nodeEdges_.push_back(edge.str());
 
