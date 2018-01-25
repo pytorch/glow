@@ -472,6 +472,15 @@ void Interpreter::fwdTransposeInst(bool isTrain, const TransposeInst *I) {
   inW.transpose(outW, I->getShuffle());
 }
 
+void Interpreter::fwdBroadcastInst(bool isTrain, const BroadcastInst *I) {
+  auto inW = getWeightHandle(I->getSrc());
+  auto outW = getTensor(I->getDest());
+  auto shape = I->getShape();
+  auto axis = I->getAxis();
+
+  inW.broadcastToNewShape(outW, shape, axis);
+}
+
 void Interpreter::fwdReshapeInst(bool isTrain, const ReshapeInst *I) {
   auto inT = getTensor(I->getSrc());
   auto outT = getTensor(I->getDest());

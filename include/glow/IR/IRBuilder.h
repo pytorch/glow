@@ -55,6 +55,9 @@ public:
   TransposeInst *createTransposeOp(Value *input,
                                    llvm::ArrayRef<unsigned> shuffle);
 
+  BroadcastInst *createBroadcastOp(Value *input, llvm::ArrayRef<size_t> shape,
+                                   unsigned axis);
+
   BatchNormalizationInst *createBatchNormalizationOp(Value *input,
                                                      size_t channelIdx = 0,
                                                      float epsilon = 1e-5,

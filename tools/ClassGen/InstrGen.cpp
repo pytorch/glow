@@ -250,6 +250,12 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::VectorUnsigned, "Shuffle");
 
+  BB.newInstr("Broadcast")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::VectorSizeT, "Shape")
+      .addMember(MemberType::Unsigned, "Axis");
+
   BB.newInstr("Splat")
       .addMember(MemberType::Float, "Value")
       .addOperand("Dest", OperandKind::Out);

@@ -139,6 +139,14 @@ TransposeInst *IRBuilder::createTransposeOp(Value *input,
   return createTransposeInst("transp", res, input, shuffle);
 }
 
+BroadcastInst *IRBuilder::createBroadcastOp(Value *input,
+                                            llvm::ArrayRef<size_t> shape,
+                                            unsigned axis) {
+  auto *res = createAllocActivationInst("broadcast.res",
+                                        input->getElementType(), shape);
+  return createBroadcastInst("broadcast", res, input, shape, axis);
+}
+
 BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(
     Value *input, Value *beta, Value *gamma, Value *mean, Value *var,
     size_t channelIdx, float epsilon, float momentum) {
