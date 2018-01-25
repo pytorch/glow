@@ -376,6 +376,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Load weights.
     Tensor *w = getTensorByName(op.input(1));
     Tensor *b = getTensorByName(op.input(2));
+    auto FCdepth = b->size();
 
     // Caffe2 stores the transposed W matrix. In here we transpose W back.
     Tensor wtag;
@@ -383,7 +384,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     auto W = G_.addVar(new Variable("weights", std::move(wtag)));
     auto B = G_.addVar(new Variable("biases", std::move(*b)));
-    auto *FC = G_.createFullyConnected(op.name(), in, W, B, b->size());
+    auto *FC = G_.createFullyConnected(op.name(), in, W, B, FCdepth);
 
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
