@@ -39,18 +39,6 @@ TEST(Tensor, clone) {
   EXPECT_EQ(int(vH.at({1})), 12);
 }
 
-TEST(Tensor, maxArg) {
-  {
-    Tensor T = {1, 14, -2, 13, 8, 14};
-    EXPECT_EQ(1, T.getHandle<>().maxArg());
-  }
-
-  {
-    Tensor T = {55, 1, 4, 3, 4, -10};
-    EXPECT_EQ(0, T.getHandle<>().maxArg());
-  }
-}
-
 TEST(Tensor, minMaxArg) {
   {
     Tensor T = {1, 10, 20, -1, 30};
