@@ -160,7 +160,7 @@ public:
   // Move ctor.
   Tensor(Tensor &&other) noexcept {
     std::swap(data_, other.data_);
-    std::swap(type_, type_);
+    std::swap(type_, other.type_);
   }
 
   /// Move assignment operator.
