@@ -78,8 +78,8 @@ inline bool operator==(const ShapeNHWC &LHS, const ShapeNHWC &RHS) {
 enum class ElemKind : unsigned char {
   FloatTy,
   DoubleTy,
-  Int8Ty,
-  Int32Ty,
+  Int8QTy,
+  Int32QTy,
   IndexTy,
 };
 
@@ -104,13 +104,13 @@ struct Type final {
   /// Initialize a new integer type with \p scale and \p offset.
   Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale, float offset)
       : scale_(scale), offset_(offset), elementType_(elemTy) {
-    assert(isIntegerType() && "Only Integer types have a scale and offset");
+    assert(isQuantizedType() && "Only Integer types have a scale and offset");
     initDims(dims);
   }
 
   /// Initialize a new float type.
   Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims) : elementType_(elemTy) {
-    assert(!isIntegerType() &&
+    assert(!isQuantizedType() &&
            "Can't initialize Integer types without scale and offset");
     initDims(dims);
   }
@@ -122,12 +122,12 @@ struct Type final {
   bool isEqual(TypeRef other) const { return isEqual(*other); }
 
   float getScale() const {
-    assert(isIntegerType() && "Can't get the scale of a float type");
+    assert(isQuantizedType() && "Can't get the scale of a float type");
     return scale_;
   }
 
   float getOffset() const {
-    assert(isIntegerType() && "Can't get the offset of a float type");
+    assert(isQuantizedType() && "Can't get the offset of a float type");
     return offset_;
   }
 
@@ -149,7 +149,7 @@ struct Type final {
     }
 
     // Compare the scale and offset of integers.
-    if (isIntegerType()) {
+    if (isQuantizedType()) {
       if (scale_ != other.scale_ || offset_ != other.offset_) {
         return false;
       }
@@ -190,9 +190,9 @@ struct Type final {
       return std::is_same<ElemTy, float>::value;
     case ElemKind::DoubleTy:
       return std::is_same<ElemTy, double>::value;
-    case ElemKind::Int8Ty:
+    case ElemKind::Int8QTy:
       return std::is_same<ElemTy, int8_t>::value;
-    case ElemKind::Int32Ty:
+    case ElemKind::Int32QTy:
       return std::is_same<ElemTy, int32_t>::value;
     case ElemKind::IndexTy:
       return std::is_same<ElemTy, size_t>::value;
@@ -203,7 +203,7 @@ struct Type final {
   /// \returns true if the type of this Tensor is one of the integer types.
   /// Notice that we don't consider IndexTy as an integer because we are not
   /// performing calculations on this type.
-  bool isIntegerType() const { return isType<int8_t>() || isType<int32_t>(); }
+  bool isQuantizedType() const { return isType<int8_t>() || isType<int32_t>(); }
 
   /// \return the size of the type element.
   unsigned getElementSize() const { return getElementSize(elementType_); }
@@ -218,9 +218,9 @@ struct Type final {
       return sizeof(float);
     case ElemKind::DoubleTy:
       return sizeof(double);
-    case ElemKind::Int8Ty:
+    case ElemKind::Int8QTy:
       return sizeof(int8_t);
-    case ElemKind::Int32Ty:
+    case ElemKind::Int32QTy:
       return sizeof(int32_t);
     case ElemKind::IndexTy:
       return sizeof(size_t);

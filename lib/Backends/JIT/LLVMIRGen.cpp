@@ -21,7 +21,7 @@ llvm::Value *JITBackend::emitValueAddress(llvm::IRBuilder<> &builder,
   case ElemKind::FloatTy:
     T = llvm::Type::getFloatTy(ctx_)->getPointerTo();
     break;
-  case ElemKind::Int8Ty:
+  case ElemKind::Int8QTy:
     T = llvm::Type::getInt8Ty(ctx_)->getPointerTo();
     break;
   case ElemKind::IndexTy:
@@ -142,8 +142,8 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::CopyInstKind: {
     CopyInst *CI = llvm::cast<CopyInst>(I);
-    auto *destPtr = emitValueAddress(builder, CI->getDest(), ElemKind::Int8Ty);
-    auto *srcPtr = emitValueAddress(builder, CI->getSrc(), ElemKind::Int8Ty);
+    auto *destPtr = emitValueAddress(builder, CI->getDest(), ElemKind::Int8QTy);
+    auto *srcPtr = emitValueAddress(builder, CI->getSrc(), ElemKind::Int8QTy);
     auto sizeInBytes = CI->getDest()->getType()->getSizeInBytes();
     auto *bytes = emitConst(builder, sizeInBytes);
 

@@ -178,9 +178,9 @@ void glow::dumpAsciiImpl(Tensor *T) {
     return dumpAsciiGenericImpl(T->getHandle<float>());
   case ElemKind::DoubleTy:
     return dumpAsciiGenericImpl(T->getHandle<double>());
-  case ElemKind::Int8Ty:
+  case ElemKind::Int8QTy:
     return dumpAsciiGenericImpl(T->getHandle<int8_t>());
-  case ElemKind::Int32Ty:
+  case ElemKind::Int32QTy:
     return dumpAsciiGenericImpl(T->getHandle<int32_t>());
   case ElemKind::IndexTy:
     return dumpAsciiGenericImpl(T->getHandle<size_t>());
@@ -193,9 +193,9 @@ void glow::dumpImpl(Tensor *T) {
     return dumpGenericImpl(T->getHandle<float>());
   case ElemKind::DoubleTy:
     return dumpGenericImpl(T->getHandle<double>());
-  case ElemKind::Int8Ty:
+  case ElemKind::Int8QTy:
     return dumpGenericImpl(T->getHandle<int8_t>());
-  case ElemKind::Int32Ty:
+  case ElemKind::Int32QTy:
     return dumpGenericImpl(T->getHandle<int32_t>());
   case ElemKind::IndexTy:
     return dumpGenericImpl(T->getHandle<size_t>());
