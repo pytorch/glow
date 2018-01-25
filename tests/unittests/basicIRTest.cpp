@@ -39,6 +39,15 @@ TEST(IR, uniqueTypes) {
   for (int i = 0; i < 10; i++) {
     EXPECT_EQ(u1, G.uniqueType(T1));
   }
+
+  // Check the uniqueing of quantized tensors.
+  Type T4(ElemKind::Int8Ty, {1, 2}, 0.4, 0.9);
+  auto *t4 = G.uniqueType(T4);
+  auto *u4 = G.uniqueTypeWithNewShape(&T4, {2, 1});
+  auto *q4 = G.uniqueTypeWithNewShape(u4, {1, 2});
+
+  EXPECT_NE(t4, u4);
+  EXPECT_EQ(t4, q4);
 }
 
 TEST(IR, basicUseList) {

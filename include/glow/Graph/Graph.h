@@ -80,7 +80,15 @@ public:
   TypeRef uniqueType(const Type &T);
 
   /// Return a pointer to a uniqued type \p t in the current module.
-  TypeRef uniqueType(ElemKind elemTy, UnsignedArrayRef dims);
+  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims);
+
+  /// Return a pointer to a uniqued type \p t in the current module.
+  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
+                     float offset);
+
+  /// Return a pointer to a uniqued type \p t in the current module.
+  /// The new type is identical to \p T, with a new shape \p dims.
+  TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims);
 
   /// Return the void type.
   TypeRef getVoidTy();
