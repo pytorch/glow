@@ -668,9 +668,12 @@ TEST(Interpreter, learnSqrt2) {
 TEST(LinearRegression, trainSimpleLinearRegression) {
   // Given 1-D vectors x and y, find real numbers m and b such that
   // m * x + b is approximately equal to y.
+  unsigned numSamples = 500;
+
   ExecutionEngine EE;
   EE.getConfig().maxNumThreads = 1;
   EE.getConfig().learningRate = 0.1;
+  EE.getConfig().batchSize = numSamples;
 
   auto &G = EE.getGraph();
   G.setName("Gradient descent solution for simple linear regression");
@@ -679,7 +682,6 @@ TEST(LinearRegression, trainSimpleLinearRegression) {
   float referenceM = 3.0;
   float referenceB = 6.0;
 
-  unsigned numSamples = 500;
   Tensor tensorX(ElemKind::FloatTy, {numSamples, 1});
   Tensor tensorY(ElemKind::FloatTy, {numSamples, 1});
   for (unsigned i = 0; i < numSamples; i++) {
@@ -698,13 +700,7 @@ TEST(LinearRegression, trainSimpleLinearRegression) {
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
 
   FullyConnectedNode *FC = G.createFullyConnected("fc", inputX, 1);
-  Node *coef =
-      G.createSplat("coef", FC->getType(), 1.0 / sqrt((double)numSamples));
-  Node *normX =
-      G.createArithmetic("normX", FC, coef, ArithmeticNode::Mode::Mul);
-  Node *normY =
-      G.createArithmetic("normY", expectedY, coef, ArithmeticNode::Mode::Mul);
-  Node *R = G.createRegression("reg", normX, normY);
+  Node *R = G.createRegression("reg", FC, expectedY);
   G.createSave("return", R);
 
   Variable *M = llvm::cast<Variable>(FC->getFilter());
