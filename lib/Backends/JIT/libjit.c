@@ -123,6 +123,72 @@ void element_mul_f(float *dest, float *LHS, float *RHS, size_t numElem) {
   }
 }
 
+void convolution_f_unroll_k4(float *inW, float *outW, float *filterW,
+                             float *biasW, size_t *inWdims, size_t *outWdims,
+                             size_t *filterWdims, size_t *biasWdims,
+                             size_t filterSize, size_t pad, size_t stride) {
+  size_t inChannels = inWdims[3];
+
+  // For each input in the batch:
+  for (size_t n = 0; n < inWdims[0]; n++) {
+
+    // For each layer in the output tensor:
+    for (size_t d = 0; d < outWdims[3]; d += 4) {
+
+      // For each convolution 'jump' in the input tensor:
+      ssize_t x = -(ssize_t)pad;
+      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+        ssize_t y = -(ssize_t)pad;
+        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+
+          // For each element in the convolution-filter:
+          float sum0 = 0;
+          float sum1 = 0;
+          float sum2 = 0;
+          float sum3 = 0;
+          for (size_t fx = 0; fx < filterSize; fx++) {
+            for (size_t fy = 0; fy < filterSize; fy++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
+                  oy >= (ssize_t)inWdims[2]) {
+                continue;
+              }
+              for (size_t fd = 0; fd < inChannels; fd++) {
+                float in = inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+                sum0 += filterW[getXYZW(filterWdims, d + 0, fx, fy, fd)] * in;
+              }
+              for (size_t fd = 0; fd < inChannels; fd++) {
+                float in = inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+                sum1 += filterW[getXYZW(filterWdims, d + 1, fx, fy, fd)] * in;
+              }
+              for (size_t fd = 0; fd < inChannels; fd++) {
+                float in = inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+                sum2 += filterW[getXYZW(filterWdims, d + 2, fx, fy, fd)] * in;
+              }
+              for (size_t fd = 0; fd < inChannels; fd++) {
+                float in = inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+                sum3 += filterW[getXYZW(filterWdims, d + 3, fx, fy, fd)] * in;
+              }
+            }
+          }
+
+          sum0 += biasW[d + 0];
+          sum1 += biasW[d + 1];
+          sum2 += biasW[d + 2];
+          sum3 += biasW[d + 3];
+          outW[getXYZW(outWdims, n, ax, ay, d + 0)] = sum0;
+          outW[getXYZW(outWdims, n, ax, ay, d + 1)] = sum1;
+          outW[getXYZW(outWdims, n, ax, ay, d + 2)] = sum2;
+          outW[getXYZW(outWdims, n, ax, ay, d + 3)] = sum3;
+        } // W
+      }   // H
+    }     // C
+  }       // N
+}
+
 void convolution_f(float *inW, float *outW, float *filterW, float *biasW,
                    size_t *inWdims, size_t *outWdims, size_t *filterWdims,
                    size_t *biasWdims, size_t filterSize, size_t pad,
