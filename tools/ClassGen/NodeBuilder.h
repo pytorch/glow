@@ -29,8 +29,9 @@ class NodeBuilder {
   std::vector<std::string> enum_;
   /// A list of extra parameters that are passed to the constructor.
   std::vector<std::pair<std::string, std::string>> extraParams_;
-  /// Stores the body of a new public method that will be added to the class.
-  std::vector<std::string> extraMethods_;
+  /// Stores the decl and body of a new public method that will be added to the
+  /// class.
+  std::vector<std::pair<std::string, std::string>> extraMethods_;
   /// Header file stream.
   std::ofstream &hStream;
   /// CPP file stream.
@@ -72,9 +73,12 @@ public:
     return *this;
   }
 
-  /// Adds the body of a new public method to the class.
-  NodeBuilder &addExtraMethod(const std::string &body) {
-    extraMethods_.push_back(body);
+  /// Adds the body of a new public method to the class. \p decl is the
+  /// decleration that goes in the header file. \p body is the implementation
+  /// that goes in the cpp file.
+  NodeBuilder &addExtraMethod(const std::string &decl,
+                              const std::string &body) {
+    extraMethods_.push_back(std::make_pair(decl, body));
     return *this;
   }
 

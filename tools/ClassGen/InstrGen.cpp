@@ -39,9 +39,10 @@ int main(int argc, char **argv) {
 
   BB.newInstr("DeallocActivation")
       .addOperand("Src", OperandKind::Out)
-      .addExtraMethod("AllocActivationInst *getAlloc() const { return "
-                      "llvm::cast<AllocActivationInst>(getOperand(0)."
-                      "first); }")
+      .addExtraMethod("AllocActivationInst *getAlloc() const; ",
+                      "AllocActivationInst *DeallocActivationInst::getAlloc() "
+                      "const { return  "
+                      "llvm::cast<AllocActivationInst>(getOperand(0).first); }")
       .setType("Src->getType()");
 
   BB.newInstr("Copy")

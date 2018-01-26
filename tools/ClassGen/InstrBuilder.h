@@ -45,8 +45,9 @@ class InstrBuilder {
   std::vector<std::pair<std::string, OperandKind>> operands_;
   /// A list of instruction members. Format: (type, name).
   std::vector<std::pair<MemberType, std::string>> members_;
-  /// Stores the body of a new public method that will be added to the class.
-  std::vector<std::string> extraMethods_;
+  /// Stores the decl and body of a new public method that will be added to the
+  /// class.
+  std::vector<std::pair<std::string, std::string>> extraMethods_;
   /// A list of operands that are declared as 'inplace' operands.
   std::vector<std::string> inplaceOperands_;
 
@@ -96,9 +97,12 @@ public:
     return *this;
   }
 
-  /// Adds the body of a new public method to the class.
-  InstrBuilder &addExtraMethod(const std::string &body) {
-    extraMethods_.push_back(body);
+  /// Adds the body of a new public method to the class. \p decl is the
+  /// decleration that goes in the header file. \p body is the implementation
+  /// that goes in the cpp file.
+  InstrBuilder &addExtraMethod(const std::string &decl,
+                               const std::string &body) {
+    extraMethods_.push_back(std::make_pair(decl, body));
     return *this;
   }
 

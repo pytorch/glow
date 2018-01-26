@@ -160,7 +160,7 @@ void InstrBuilder::emitClass(std::ostream &os) const {
   emitInplaceMethod(os);
 
   for (const auto &m : extraMethods_) {
-    os << "  " << m << "\n";
+    os << "  " << m.first << "\n";
   }
 
   os << "\n  void dump(llvm::raw_ostream &os) const;\n";
@@ -170,6 +170,11 @@ void InstrBuilder::emitClass(std::ostream &os) const {
 
 void InstrBuilder::emitCppMethods(std::ostream &os) const {
   emitPrettyPrinter(os);
+
+  // Emit the "extra" method bodies.
+  for (const auto &m : extraMethods_) {
+    os << "  " << m.second << "\n";
+  }
 }
 
 InstrBuilder::~InstrBuilder() {
