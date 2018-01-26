@@ -200,8 +200,8 @@ void SoftMaxInst::verify() const {
 void SoftMaxGradInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
   checkSameType(getOperand(0), getOperand(3));
-  auto destShape = getDest()->dims();
-  assert(destShape == getSrc()->dims() && "Invalid shape");
+  auto destShape = getOrigDest()->dims();
+  assert(destShape == getOrigSrc()->dims() && "Invalid shape");
   assert(destShape == getSrcGrad()->dims() && "Invalid shape");
   (void)destShape;
 }

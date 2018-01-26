@@ -51,7 +51,7 @@ public:
 
   TanhInst *createTanhOp(Value *input);
 
-  SoftMaxInst *createSoftMaxOp(Value *input, Value *selected);
+  SoftMaxInst *createSoftMaxOp(Value *input);
 
   ReshapeInst *createReshapeOp(Value *input, llvm::ArrayRef<size_t> shape);
 

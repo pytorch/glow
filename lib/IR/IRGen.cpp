@@ -260,8 +260,7 @@ public:
     case glow::Kinded::Kind::SoftMaxNodeKind: {
       auto *SM = cast<SoftMaxNode>(N);
       auto *in = valueForNode(SM->getInput());
-      auto *select = valueForNode(SM->getSelected());
-      auto *V = builder_.createSoftMaxOp(in, select);
+      auto *V = builder_.createSoftMaxOp(in);
       V->setName(N->getName());
       registerIR(N, V->getDest());
       nodeToInstr_[N] = V;

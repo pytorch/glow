@@ -128,15 +128,19 @@ int main(int argc, char **argv) {
       .addGradientInstr({"Dest", "Src", "Scale"}, {"Dest", "Src"});
 
   //===--------------------------------------------------------------------===//
-  //                      Loss operations
+  //                      Loss functions
   //===--------------------------------------------------------------------===//
 
   BB.newInstr("SoftMax")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"});
+
+  BB.newInstr("SoftMaxGrad")
+      .addOperand("OrigDest", OperandKind::In)
+      .addOperand("OrigSrc", OperandKind::In)
       .addOperand("Selected", OperandKind::In)
-      .inplaceOperand({"Dest", "Src"})
-      .addGradientInstr({"Dest", "Src", "Selected"}, {"Src"});
+      .addOperand("SrcGrad", OperandKind::Out);
 
   //===--------------------------------------------------------------------===//
   //                      Arithmetic

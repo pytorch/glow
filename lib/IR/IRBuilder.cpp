@@ -121,9 +121,9 @@ TanhInst *IRBuilder::createTanhOp(Value *input) {
   return createTanhInst("tanh", res, input);
 }
 
-SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input, Value *selected) {
+SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input) {
   auto *res = createAllocActivationInst("softmax.res", input->getType());
-  return createSoftMaxInst("softmax", res, input, selected);
+  return createSoftMaxInst("softmax", res, input);
 }
 
 ReshapeInst *IRBuilder::createReshapeOp(Value *input,
