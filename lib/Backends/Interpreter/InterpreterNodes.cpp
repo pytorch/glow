@@ -444,7 +444,7 @@ void Interpreter::fwdSoftMaxInst(bool isTrain, const SoftMaxInst *I) {
 void Interpreter::fwdSoftMaxGradInst(bool isTrain, const SoftMaxGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto idim = inG.dims();
-  auto outW = getWeightHandle(I->getDest());
+  auto outW = getWeightHandle(I->getOrigDest());
   auto selectedH = getTensor(I->getSelected())->getHandle<size_t>();
 
   inG.clear();
