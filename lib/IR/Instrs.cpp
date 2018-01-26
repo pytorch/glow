@@ -189,13 +189,21 @@ void BatchedMatMulInst::verify() const {
 void SigmoidInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
 }
+
 void TanhInst::verify() const { checkSameType(getOperand(0), getOperand(1)); }
+
 void SoftMaxInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
+  assert(getDest()->dims() == getSrc()->dims() && "Invalid shape");
 }
 
-void SoftMaxWithEInst::verify() const {
+void SoftMaxGradInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
+  checkSameType(getOperand(0), getOperand(3));
+  auto destShape = getDest()->dims();
+  assert(destShape == getSrc()->dims() && "Invalid shape");
+  assert(destShape == getSrcGrad()->dims() && "Invalid shape");
+  (void)destShape;
 }
 
 void ReshapeInst::verify() const {
@@ -388,6 +396,5 @@ NOVERIFY(PoolMaxWithXYGradInst)
 NOVERIFY(PoolAvgGradInst)
 NOVERIFY(BatchNormalizationGradInst)
 NOVERIFY(LocalResponseNormalizationGradInst)
-NOVERIFY(SoftMaxWithEGradInst)
 NOVERIFY(DebugPrintInst)
 #undef NOVERIFY

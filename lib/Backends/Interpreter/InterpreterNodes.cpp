@@ -414,56 +414,37 @@ void Interpreter::fwdTanhInst(bool isTrain, const TanhInst *I) {
 //                        Loss Functions (Softmax/regression/...)
 //===----------------------------------------------------------------------===//
 
-static void fwdSoftMax(Handle<float> inW, Handle<float> outW,
-                       Handle<float> *EH) {
+void Interpreter::fwdSoftMaxInst(bool isTrain, const SoftMaxInst *I) {
+  auto inW = getWeightHandle(I->getSrc());
+  auto outW = getWeightHandle(I->getDest());
   auto idim = inW.dims();
 
   for (size_t n = 0; n < idim[0]; n++) {
-    float max = inW.at({n, 0});
-
     // Find Max.
-    for (size_t i = 0; i < idim[1]; i++) {
+    float max = inW.at({n, 0});
+    for (size_t i = 1; i < idim[1]; i++) {
       max = std::max(max, inW.at({n, i}));
     }
 
-    float sum = 0;
-
     // Compute exp.
+    float sum = 0;
     for (size_t i = 0; i < idim[1]; i++) {
       float e = std::exp(inW.at({n, i}) - max);
       sum += e;
-      // EH.at({n, i}) = e;
       outW.at({n, i}) = e;
     }
 
     // Normalize the output.
     for (size_t i = 0; i < idim[1]; i++) {
       outW.at({n, i}) = outW.at({n, i}) / sum;
-      if (EH)
-        EH->at({n, i}) = outW.at({n, i});
     }
   } // N
 }
 
-void Interpreter::fwdSoftMaxInst(bool isTrain, const SoftMaxInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-  fwdSoftMax(inW, outW, nullptr);
-}
-
-void Interpreter::fwdSoftMaxWithEInst(bool isTrain, const SoftMaxWithEInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-  auto EH = getWeightHandle(I->getE());
-  fwdSoftMax(inW, outW, &EH);
-}
-
-void Interpreter::fwdSoftMaxWithEGradInst(bool isTrain,
-                                          const SoftMaxWithEGradInst *I) {
+void Interpreter::fwdSoftMaxGradInst(bool isTrain, const SoftMaxGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
-
   auto idim = inG.dims();
-  auto EH = getTensor(I->getE())->getHandle<>();
+  auto outW = getWeightHandle(I->getDest());
   auto selectedH = getTensor(I->getSelected())->getHandle<size_t>();
 
   inG.clear();
@@ -473,7 +454,7 @@ void Interpreter::fwdSoftMaxWithEGradInst(bool isTrain,
   for (size_t n = 0; n < idim[0]; n++) {
     for (size_t i = 0; i < idim[1]; i++) {
       float delta = (selectedH.at({n, 0}) == i);
-      float sigma = (EH.at({n, i}) - delta);
+      float sigma = outW.at({n, i}) - delta;
       inG.at({n, i}) += sigma;
     }
   }

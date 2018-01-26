@@ -126,15 +126,6 @@ SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input, Value *selected) {
   return createSoftMaxInst("softmax", res, input, selected);
 }
 
-SoftMaxWithEInst *IRBuilder::createSoftMaxWithEOp(Value *input,
-                                                  Value *selected) {
-  auto *res = createAllocActivationInst("softmax.res", input->getType());
-  auto *E = createAllocActivationInst("e_cache", input->getType());
-  // Initialize E, because it is an inout parameter.
-  createSplatInst("zero", E, 0.0);
-  return createSoftMaxWithEInst("softmax", res, input, E, selected);
-}
-
 ReshapeInst *IRBuilder::createReshapeOp(Value *input,
                                         llvm::ArrayRef<size_t> shape) {
   auto *res =
