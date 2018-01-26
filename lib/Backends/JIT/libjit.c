@@ -39,14 +39,14 @@ void elementmax0_f(float *dest, float *LHS, size_t sz) {
 }
 
 void elementmin_f(float *dest, float *LHS, float *RHS, size_t sz) {
-  for (size_t i = 0; i < sz; ++i) {
+  for (size_t i = 0; i < sz; i++) {
     dest[i] = MIN(LHS[i], RHS[i]);
   }
 }
 
 void elementselect_f(float *dest, float *cond, float *LHS, float *RHS,
                      size_t sz) {
-  for (size_t i = 0; i < sz; ++i) {
+  for (size_t i = 0; i < sz; i++) {
     dest[i] = (cond[i] != 0.0) ? LHS[i] : RHS[i];
   }
 }
@@ -83,6 +83,19 @@ void batchedadd_f(float *dest, float *batch, float *slice, size_t numSlice,
     // For each element in the slice.
     for (size_t i = 0; i < sliceSize; i++) {
       dest[base + i] = batch[base + i] + slice[i];
+    }
+  }
+}
+
+void batchedreduceadd_f(float *dest, float *batch, size_t destSize,
+                        size_t numSlice, size_t sliceSize) {
+  for (size_t i = 0; i < destSize; i++) {
+    dest[i] = 0.0;
+  }
+  for (size_t n = 0; n < numSlice; n++) {
+    size_t base = n * sliceSize;
+    for (size_t i = 0; i < sliceSize; i++) {
+      dest[i] += batch[base + i];
     }
   }
 }
@@ -273,14 +286,14 @@ void softmax_f(float *inW, float *outW, size_t *idim, size_t *odim) {
 }
 
 void sigmoid_f(float *inW, float *outW, size_t numElem) {
-  for (size_t i = 0; i < numElem; ++i) {
+  for (size_t i = 0; i < numElem; i++) {
     float e = expf(inW[i]);
     outW[i] = e / (e + 1);
   }
 }
 
 void tanh_f(float *inW, float *outW, size_t numElem) {
-  for (size_t i = 0; i < numElem; ++i) {
+  for (size_t i = 0; i < numElem; i++) {
     outW[i] = tanhf(inW[i]);
   }
 }
