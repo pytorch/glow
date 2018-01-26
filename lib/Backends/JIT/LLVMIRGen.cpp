@@ -171,6 +171,23 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::BatchedReduceAddInstKind: {
+    BatchedReduceAddInst *BR = llvm::cast<BatchedReduceAddInst>(I);
+    auto *destPtr = emitValueAddress(builder, BR->getDest(), ElemKind::FloatTy);
+    auto *batchPtr =
+        emitValueAddress(builder, BR->getBatch(), ElemKind::FloatTy);
+
+    auto *destSize = emitConst(builder, BR->getDest()->getType()->size());
+    auto bdim = flattenCdr(BR->getBatch()->dims());
+    auto *numSlice = emitConst(builder, bdim.first);
+    auto *sliceSize = emitConst(builder, bdim.second);
+
+    auto *F = llmodule_->getFunction("batchedreduceadd_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {destPtr, batchPtr, destSize, numSlice, sliceSize});
+    break;
+  }
+
   case Kinded::Kind::ConvolutionInstKind: {
     ConvolutionInst *CI = llvm::cast<ConvolutionInst>(I);
     auto *destPtr = emitValueAddress(builder, CI->getDest(), ElemKind::FloatTy);
