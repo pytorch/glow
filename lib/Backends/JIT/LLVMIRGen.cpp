@@ -205,7 +205,15 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *stride = emitConst(builder, CI->getStride());
     auto *pad = emitConst(builder, CI->getPad());
 
-    auto *F = llmodule_->getFunction("convolution_f");
+    const char *kernelName = "convolution_f";
+
+    // Use a special version of the kernel for the case where K (the depth of
+    // the convolution) is a multiple of 4.
+    if ((CI->getDest()->dims()[3] % 4) == 0) {
+      kernelName = "convolution_f_unroll_k4";
+    }
+
+    auto *F = llmodule_->getFunction(kernelName);
     assert(F && "Unable to load the function");
     builder.CreateCall(F,
                        {srcPtr, destPtr, filterPtr, biasPtr, srcDims, destDims,
