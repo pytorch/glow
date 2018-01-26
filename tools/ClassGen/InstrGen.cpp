@@ -1,4 +1,5 @@
-// Copyright 2017 Facebook Inc.  All Rights Reserved.
+// Copyright 2017 Facebook Inc. All Rights Reserved.
+
 #include "InstrBuilder.h"
 
 #include <fstream>
@@ -130,20 +131,12 @@ int main(int argc, char **argv) {
   //                      Loss operations
   //===--------------------------------------------------------------------===//
 
-  // SoftMax version caching Expected to speedup gradient-based computations.
-  BB.newInstr("SoftMaxWithE")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .addOperand("E", OperandKind::InOut)
-      .addOperand("Selected", OperandKind::In)
-      .inplaceOperand({"Dest", "Src"})
-      .addGradientInstr({"Src", "E", "Selected"}, {"Src"});
-
   BB.newInstr("SoftMax")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("Selected", OperandKind::In)
-      .inplaceOperand({"Dest", "Src"});
+      .inplaceOperand({"Dest", "Src"})
+      .addGradientInstr({"Dest", "Src", "Selected"}, {"Src"});
 
   //===--------------------------------------------------------------------===//
   //                      Arithmetic

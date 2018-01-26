@@ -53,8 +53,6 @@ public:
 
   SoftMaxInst *createSoftMaxOp(Value *input, Value *selected);
 
-  SoftMaxWithEInst *createSoftMaxWithEOp(Value *input, Value *selected);
-
   ReshapeInst *createReshapeOp(Value *input, llvm::ArrayRef<size_t> shape);
 
   TensorViewInst *createTensorView(ElemKind elemKind,

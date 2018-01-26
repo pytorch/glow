@@ -261,7 +261,7 @@ public:
       auto *SM = cast<SoftMaxNode>(N);
       auto *in = valueForNode(SM->getInput());
       auto *select = valueForNode(SM->getSelected());
-      auto *V = builder_.createSoftMaxWithEOp(in, select);
+      auto *V = builder_.createSoftMaxOp(in, select);
       V->setName(N->getName());
       registerIR(N, V->getDest());
       nodeToInstr_[N] = V;
@@ -277,12 +277,11 @@ public:
       auto originalNodeResult = SMG->getOriginalOutputForResult();
       assert(nodeToInstr_.count(originalNodeResult.getNode()) &&
              "Unknown original node");
-      auto *SM = cast<SoftMaxWithEInst>(nodeToInstr_[originalNodeResult]);
+      auto *origOut = valueForNode(originalNodeResult);
       auto *srcGrad = builder_.createAllocActivationInst("softmax.res.grad",
                                                          outGrad->getType());
-
-      auto *SMGI = builder_.createSoftMaxWithEGradInst(
-          N->getName(), origIn, SM->getE(), origSelect, srcGrad);
+      auto *SMGI = builder_.createSoftMaxGradInst(N->getName(), origOut, origIn,
+                                                  origSelect, srcGrad);
 
       registerIR(SMG->getGradOfInputNamedInput(), SMGI->getSrcGrad());
       break;
