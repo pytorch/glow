@@ -20,6 +20,9 @@ void glow::profileQuantization(Graph &G) {
     // Add Quantization Profile node to parent's output linked to the
     // i-th input of the current node.
     for (unsigned i = 0; i < node->getNumInputs(); ++i) {
+      if (node->getNthInput(i).getElementType() != ElemKind::FloatTy) {
+        continue;
+      }
       nodesToInstrument.insert(node->getNthInput(i));
     }
   }
