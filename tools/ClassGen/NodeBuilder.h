@@ -66,6 +66,7 @@ public:
     return *this;
   }
 
+  /// Marks this instruction as having non-fixed number of return types.
   NodeBuilder &addIntrinsicOutput() {
     hasIntrinsicOutput_ = true;
     return *this;
