@@ -69,7 +69,15 @@ void JITBackend::optimizeLLVMModule(llvm::Function *F,
   // the frontend.
   llvm::AttributeList AL;
   for (auto &FF : *M) {
+    // Check for no-inline attribute.
+    bool dontInline = FF.hasFnAttribute(llvm::Attribute::AttrKind::NoInline);
+    // Clear all attributes.
     FF.setAttributes(AL);
+
+    // Force inline all non-no-inline functions.
+    if (!dontInline) {
+      FF.addFnAttr(llvm::Attribute::AttrKind::AlwaysInline);
+    }
   }
 
   llvm::legacy::FunctionPassManager FPM(F->getParent());
