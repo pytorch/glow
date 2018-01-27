@@ -56,7 +56,7 @@ void JITBackend::optimizeLLVMModule(llvm::Function *F,
   llvm::internalizeModule(*M, preserveMain);
 
   llvm::PassManagerBuilder PMB;
-  PMB.OptLevel = 3;
+  PMB.OptLevel = 2;
   PMB.SizeLevel = 0;
   PMB.LoopVectorize = true;
   PMB.SLPVectorize = true;
