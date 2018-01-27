@@ -53,23 +53,27 @@ void elementselect_f(float *dest, float *cond, float *LHS, float *RHS,
 
 void batchedmatmul_f(float *dest, float *LHS, float *RHS, size_t *destDims,
                      size_t *lhsDims, size_t *rhsDims) {
+  size_t destSize = destDims[0] * destDims[1] * destDims[2];
+  for (size_t i = 0; i < destSize; ++i)
+    dest[i] = 0;
+
   // For each layer in the batch:
   for (size_t n = 0; n < destDims[0]; n++) {
     // Broadcast tensors with a batch size of 1 by selecting the right slice.
     size_t ln = (lhsDims[0] == 1 ? 0 : n);
     size_t rn = (rhsDims[0] == 1 ? 0 : n);
 
-    // For each (x,y) in the destination matrix:
-    for (size_t x = 0; x < destDims[1]; x++) {
-      for (size_t y = 0; y < destDims[2]; y++) {
-
-        // Perform DOT on the row an column.
-        float sum = 0;
-        for (size_t i = 0; i < lhsDims[2]; i++) {
-          sum +=
+    for (size_t i = 0; i < lhsDims[2]; i++) {
+      // For each (x,y) in the destination matrix:
+      for (size_t x = 0; x < destDims[1]; x++) {
+        for (size_t y = 0; y < destDims[2]; y++) {
+          // This loop order is very cache friendly.
+          // dest and rhs are accessed sequentially.
+          // lhs access is invariant inside the inner-most loop and can be
+          // hoisted.
+          dest[getXYZ(destDims, n, x, y)] +=
               LHS[getXYZ(lhsDims, ln, x, i)] * RHS[getXYZ(rhsDims, rn, i, y)];
         }
-        dest[getXYZ(destDims, n, x, y)] = sum;
       }
     }
   } // N
