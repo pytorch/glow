@@ -968,6 +968,8 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
   auto destDim = dest.dims();
   auto lhsDim = lhs.dims();
   auto rhsDim = rhs.dims();
+  
+  dest.clear(0);
 
   // For each layer in the batch:
   for (size_t n = 0; n < destDim[0]; n++) {
@@ -975,16 +977,16 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
     size_t ln = (lhsDim[0] == 1 ? 0 : n);
     size_t rn = (rhsDim[0] == 1 ? 0 : n);
 
-    // For each (x,y) in the destination matrix:
-    for (size_t x = 0; x < destDim[1]; x++) {
-      for (size_t y = 0; y < destDim[2]; y++) {
-
-        // Perform DOT on the row an column.
-        float sum = 0;
-        for (size_t i = 0; i < lhsDim[2]; i++) {
-          sum += lhs.at({ln, x, i}) * rhs.at({rn, i, y});
+    for (size_t i = 0; i < lhsDim[2]; i++) {
+      // For each (x,y) in the destination matrix:
+      for (size_t x = 0; x < destDim[1]; x++) {
+        for (size_t y = 0; y < destDim[2]; y++) {
+          // This loop order is very cache friendly.
+          // dest and rhs are accessed sequentially.
+          // lhs access is invariant inside the inner-most loop and can be
+          // hoisted.
+          dest.at({n, x, y}) += lhs.at({ln, x, i}) * rhs.at({rn, i, y});
         }
-        dest.at({n, x, y}) = sum;
       }
     }
   } // N
