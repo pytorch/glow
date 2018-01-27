@@ -15,8 +15,12 @@ enum class CompilationMode {
               /// changes the graph in a way that is not reversible.
 };
 
-void optimize(Module &M, CompilationMode mode);
-void optimize(Graph &G, CompilationMode mode);
+/// Optimize the module.
+/// \returns true if anything was changed by the optimizer.
+bool optimize(Module &M, CompilationMode mode);
+/// Optimize the graph.
+/// \returns true if anything was changed by the optimizer.
+bool optimize(Graph &G, CompilationMode mode);
 
 /// Lower the high-level neural network operators into low-level lineal algebra
 /// operators.
