@@ -40,11 +40,6 @@ using llvm::StringRef;
 using llvm::dyn_cast;
 using llvm::isa;
 
-static llvm::cl::opt<bool>
-    dumpIR("dump-llvm-ir",
-           llvm::cl::desc("Dump the LLVM-IR during the JIT compilation phase"),
-           llvm::cl::init(false), llvm::cl::Hidden);
-
 void JITBackend::optimizeLLVMModule(llvm::Function *F,
                                     llvm::TargetMachine &TM) {
   auto *M = F->getParent();
@@ -96,8 +91,4 @@ void JITBackend::optimizeLLVMModule(llvm::Function *F,
   }
   FPM.doFinalization();
   PM.run(*F->getParent());
-
-  if (dumpIR) {
-    M->print(llvm::errs(), nullptr);
-  }
 }
