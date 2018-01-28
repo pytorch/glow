@@ -33,6 +33,16 @@ using llvm::StringRef;
 using llvm::dyn_cast;
 using llvm::isa;
 
+static llvm::cl::opt<bool>
+    dumpIR("dump-llvm-ir",
+           llvm::cl::desc("Dump the LLVM-IR of the jitted code"),
+           llvm::cl::init(false));
+
+static llvm::cl::opt<bool>
+    dumpJitAsm("dump-llvm-asm",
+               llvm::cl::desc("Dump the textual assembly of the jitted code"),
+               llvm::cl::init(false));
+
 JITBackend::JITBackend(Module *M) : M_(M) {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
@@ -102,6 +112,21 @@ void JITBackend::init() {
   // Optimize the module.
   optimizeLLVMModule(func_, JIT_->getTargetMachine());
   // And pass the ownership to the JIT.
+
+  if (dumpIR) {
+    llmodule_->print(llvm::outs(), nullptr);
+  }
+
+  if (dumpJitAsm) {
+    llvm::SmallVector<char, 0> asmBuffer;
+    llvm::raw_svector_ostream asmStream(asmBuffer);
+    llvm::legacy::PassManager PM;
+    JIT_->getTargetMachine().addPassesToEmitFile(
+        PM, asmStream, llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
+    PM.run(*llmodule_);
+    llvm::outs() << asmStream.str();
+  }
+
   JIT_->addModule(std::move(llmodule_));
 }
 

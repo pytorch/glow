@@ -968,7 +968,7 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
   auto destDim = dest.dims();
   auto lhsDim = lhs.dims();
   auto rhsDim = rhs.dims();
-  
+
   dest.clear(0);
 
   // For each layer in the batch:
