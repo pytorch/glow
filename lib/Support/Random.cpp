@@ -18,4 +18,16 @@ int nextRandInt01() {
   return distribution(generator);
 }
 
+int nextRandInt(int n) {
+  static std::default_random_engine generator;
+  static std::uniform_int_distribution<> distribution(0);
+  int max = distribution.max() / n;
+  max *= n;
+  int m = distribution(generator);
+  while (m >= max) {
+    m = distribution(generator);
+  }
+  return m % n;
+}
+
 } // namespace glow

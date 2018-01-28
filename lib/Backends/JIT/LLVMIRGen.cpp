@@ -257,6 +257,25 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::SGDInstKind: {
+    SGDInst *SGD = llvm::cast<SGDInst>(I);
+    auto *W = emitValueAddress(builder, SGD->getWeight(), ElemKind::FloatTy);
+    auto *G = emitValueAddress(builder, SGD->getGradient(), ElemKind::FloatTy);
+    auto *Gsum = emitValueAddress(builder, SGD->getGsum(), ElemKind::FloatTy);
+    auto *L1Decay = emitConst(builder, SGD->getL1Decay());
+    auto *L2Decay = emitConst(builder, SGD->getL2Decay());
+    auto *learningRate = emitConst(builder, SGD->getLearningRate());
+    auto *momentum = emitConst(builder, SGD->getMomentum());
+    auto *batchSize = emitConst(builder, (size_t)SGD->getBatchSize());
+    auto *Wsize = emitConst(builder, SGD->getWeight()->getType()->size());
+
+    auto *F = llmodule_->getFunction("sgd_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {W, G, Gsum, L1Decay, L2Decay, learningRate, momentum,
+                           batchSize, Wsize});
+    break;
+  }
+
   case Kinded::Kind::SoftMaxInstKind: {
     SoftMaxInst *SM = llvm::cast<SoftMaxInst>(I);
     auto *destPtr = emitValueAddress(builder, SM->getDest(), ElemKind::FloatTy);
@@ -267,6 +286,22 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *F = llmodule_->getFunction("softmax_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims});
+    break;
+  }
+
+  case Kinded::Kind::SoftMaxGradInstKind: {
+    SoftMaxGradInst *SMG = llvm::cast<SoftMaxGradInst>(I);
+    auto *srcGradPtr =
+        emitValueAddress(builder, SMG->getSrcGrad(), ElemKind::FloatTy);
+    auto *destPtr =
+        emitValueAddress(builder, SMG->getOrigDest(), ElemKind::FloatTy);
+    auto *selectedPtr =
+        emitValueAddress(builder, SMG->getSelected(), ElemKind::IndexTy);
+    auto *srcGradDims = emitValueDims(builder, SMG->getSrcGrad());
+
+    auto *F = llmodule_->getFunction("softmaxgrad_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {srcGradPtr, destPtr, selectedPtr, srcGradDims});
     break;
   }
 

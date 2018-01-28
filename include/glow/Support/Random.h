@@ -9,6 +9,9 @@ double nextRand();
 /// \returns the next uniform random integer that is either 0 or 1.
 int nextRandInt01();
 
+/// \returns the next uniform random integer that is between 0 and n - 1.
+int nextRandInt(int n);
+
 } // namespace glow
 
 #endif // GLOW_SUPPORT_RANDOM_H

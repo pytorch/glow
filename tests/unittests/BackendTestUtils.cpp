@@ -122,6 +122,43 @@ void inferSigmoidNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+void inferSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
+                     BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &G = EE.getGraph();
+  auto *var1 = G.createVariable(inputs->getElementType(), inputs->dims(),
+                                "input", Variable::VisibilityKind::Public);
+  auto *var2 = G.createVariable(selected->getElementType(), selected->dims(),
+                                "selected", Variable::VisibilityKind::Public);
+  auto *softmax = G.createSoftMax("softmax", var1, var2);
+  auto result = G.createSave("ret", softmax);
+  EE.compile(CompilationMode::Infer);
+  EE.run({var1, var2}, {inputs, selected});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
+void trainSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
+                     BackendKind kind) {
+  ExecutionEngine EE(kind);
+  EE.getConfig().learningRate = 0.003;
+  EE.getConfig().maxNumThreads = 1;
+  EE.getConfig().momentum = 0.7;
+  EE.getConfig().L2Decay = 0.001;
+  auto &G = EE.getGraph();
+  auto *var1 = G.createVariable(inputs->getElementType(), inputs->dims(),
+                                "input", Variable::VisibilityKind::Public);
+  auto *var2 = G.createVariable(selected->getElementType(), selected->dims(),
+                                "selected", Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
+  auto *softmax = G.createSoftMax("softmax", var1, var2);
+  auto result = G.createSave("ret", softmax);
+  EE.compile(CompilationMode::Train);
+  EE.runBatch(50, {var1, var2}, {inputs, selected});
+  EE.compile(CompilationMode::Infer);
+  EE.run({var1}, {inputs});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 void inferTanhNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &G = EE.getGraph();
