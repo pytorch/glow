@@ -29,6 +29,12 @@ void inferSelectNet(glow::Tensor *cond, glow::Tensor *inputs1,
 void inferSigmoidNet(glow::Tensor *inputs, glow::Tensor *out,
                      glow::BackendKind kind);
 
+void inferSoftMaxNet(glow::Tensor *inputs, glow::Tensor *selected,
+                     glow::Tensor *out, glow::BackendKind kind);
+
+void trainSoftMaxNet(glow::Tensor *inputs, glow::Tensor *selected,
+                     glow::Tensor *out, glow::BackendKind kind);
+
 void inferTanhNet(glow::Tensor *inputs, glow::Tensor *out,
                   glow::BackendKind kind);
 

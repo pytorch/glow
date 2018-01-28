@@ -142,6 +142,44 @@ TEST(JITCorrectnessTest, sigmoidTest) {
   EXPECT_TRUE(H1.isEqual(H2));
 }
 
+TEST(JITCorrectnessTest, softmaxTest) {
+  Tensor inputs(ElemKind::FloatTy, {14, 19});
+  Tensor selected(ElemKind::IndexTy, {14, 1});
+  inputs.getHandle().randomize(2);
+  auto selectedH = selected.getHandle<size_t>();
+  for (size_t i = 0; i < 14; i++) {
+    selectedH.raw(i) = nextRandInt(19);
+  }
+  Tensor out1;
+  Tensor out2;
+
+  inferSoftMaxNet(&inputs, &selected, &out1, BackendKind::JIT);
+  inferSoftMaxNet(&inputs, &selected, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
+TEST(JITCorrectnessTest, softmaxgradTest) {
+  Tensor inputs(ElemKind::FloatTy, {8, 23});
+  Tensor selected(ElemKind::IndexTy, {8, 1});
+  inputs.getHandle().randomize(1);
+  auto selectedH = selected.getHandle<size_t>();
+  for (size_t i = 0; i < 8; i++) {
+    selectedH.raw(i) = nextRandInt(23);
+  }
+  Tensor out1(ElemKind::FloatTy, {8, 23});
+  Tensor out2(ElemKind::FloatTy, {8, 23});
+
+  trainSoftMaxNet(&inputs, &selected, &out1, BackendKind::JIT);
+  trainSoftMaxNet(&inputs, &selected, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
 TEST(JITCorrectnessTest, tanhTest) {
   Tensor inputs(ElemKind::FloatTy, {4, 7, 3, 3});
   inputs.getHandle().randomize(1);

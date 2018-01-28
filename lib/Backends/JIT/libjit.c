@@ -330,6 +330,23 @@ void pool_avg_f(float *inW, float *outW, size_t *inWdims, size_t *outWdims,
   }       // N
 }
 
+void sgd_f(float *W, float *G, float *Gsum, float L1Decay, float L2Decay,
+           float learningRate, float momentum, size_t batchSize, size_t Wsize) {
+  for (size_t i = 0; i < Wsize; i++) {
+    float L1Grad = L1Decay * (W[i] > 0 ? 1 : -1);
+    float L2Grad = L2Decay * W[i];
+    float Gij = (L2Grad + L1Grad + G[i]) / batchSize;
+
+    if (momentum > 0.0) {
+      float dx = momentum * Gsum[i] - learningRate * Gij;
+      Gsum[i] = dx;
+      W[i] += dx;
+    } else {
+      W[i] -= learningRate * Gij;
+    }
+  }
+}
+
 void softmax_f(float *inW, float *outW, size_t *idim, size_t *odim) {
   for (size_t n = 0; n < idim[0]; n++) {
     float max = inW[getXY(idim, n, 0)];
@@ -353,6 +370,15 @@ void softmax_f(float *inW, float *outW, size_t *idim, size_t *odim) {
       outW[getXY(odim, n, i)] = outW[getXY(odim, n, i)] / sum;
     }
   } // N
+}
+
+void softmaxgrad_f(float *inG, float *outW, size_t *selectedW, size_t *idim) {
+  for (size_t n = 0; n < idim[0]; n++) {
+    for (size_t i = 0; i < idim[1]; i++) {
+      float delta = (selectedW[getXY(idim, n, 0)] == i);
+      inG[getXY(idim, n, i)] = outW[getXY(idim, n, i)] - delta;
+    }
+  }
 }
 
 void sigmoid_f(float *inW, float *outW, size_t numElem) {
