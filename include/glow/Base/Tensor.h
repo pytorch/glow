@@ -96,10 +96,11 @@ public:
     reset(elemTy, dims);
   }
 
-  /// Allocate and initialize a new integer tensor with \p scale and \p offset.
-  Tensor(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
-         float offset)
-      : data_(nullptr), type_(elemTy, dims, scale, offset) {
+  /// Allocate and initialize a new integer tensor which covers a range 
+  /// between \p min and \p max when converted to a floating point.
+  Tensor(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float min,
+         float max)
+      : data_(nullptr), type_(elemTy, dims, min, max) {
     reset(elemTy, dims);
   }
 

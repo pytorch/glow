@@ -93,25 +93,27 @@ struct Type final {
   /// Contains the number of dimensions used by the tensor.
   unsigned char numSizes_{0};
 
-  /// On quantized tensors, this represents the scale of the values.
-  float scale_{0};
-  /// On quantized tensors, this represents the offset of the values.
-  float offset_{0};
+  /// On quantized tensors, this shows min floating point value
+  /// that can be represented by this tensor.
+  float min_{0};
+  /// On quantized tensors, this shows max floating point value
+  /// that can be represented by this tensor.
+  float max_{0};
 
   /// Specifies the element type of the tensor.
   ElemKind elementType_{ElemKind::IndexTy};
 
-  /// Initialize a new integer type with \p scale and \p offset.
-  Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale, float offset)
-      : scale_(scale), offset_(offset), elementType_(elemTy) {
-    assert(isQuantizedType() && "Only Integer types have a scale and offset");
+  /// Initialize a new integer type covering floating point range of \p min and \p max.
+  Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float min, float max)
+      : min_(min), max_(max), elementType_(elemTy) {
+    assert(isQuantizedType() && "Only Integer types have min and max");
     initDims(dims);
   }
 
   /// Initialize a new float type.
   Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims) : elementType_(elemTy) {
     assert(!isQuantizedType() &&
-           "Can't initialize Integer types without scale and offset");
+           "Can't initialize Integer types without min and max");
     initDims(dims);
   }
 
@@ -121,14 +123,14 @@ struct Type final {
   /// \returns true if \p other is the same type.
   bool isEqual(TypeRef other) const { return isEqual(*other); }
 
-  float getScale() const {
-    assert(isQuantizedType() && "Can't get the scale of a float type");
-    return scale_;
+  float getMin() const {
+    assert(isQuantizedType() && "Can't get the min of a float type");
+    return min_;
   }
 
-  float getOffset() const {
-    assert(isQuantizedType() && "Can't get the offset of a float type");
-    return offset_;
+  float getMax() const {
+    assert(isQuantizedType() && "Can't get the max of a float type");
+    return max_;
   }
 
   /// \returns true if \p other is the same type.
@@ -148,9 +150,9 @@ struct Type final {
       }
     }
 
-    // Compare the scale and offset of integers.
+    // Compare min and max of floating point values.
     if (isQuantizedType()) {
-      if (scale_ != other.scale_ || offset_ != other.offset_) {
+      if (min_ != other.min_ || max_ != other.max_) {
         return false;
       }
     }
