@@ -5,16 +5,22 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/IR/IR.h"
 #include "glow/Importer/Caffe2.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Timer.h"
-#include "llvm/Support/raw_ostream.h"
 
-#include <iostream>
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Timer.h"
+#include "llvm/Support/YAMLParser.h"
+#include "llvm/Support/YAMLTraits.h"
+#include "llvm/Support/raw_ostream.h"
 
 #define DEFAULT_CAFFE2_HEIGHT 224
 #define DEFAULT_CAFFE2_WIDTH 224
 
 using namespace glow;
+
+using llvm::yaml::IO;
+using llvm::yaml::MappingTraits;
+using llvm::yaml::Output;
 
 enum class ImageNormalizationMode {
   k0to1,     // Values are in the range: 0 and 1.
@@ -177,6 +183,75 @@ llvm::cl::opt<BackendKind> ExecutionBackend(
 
 } // namespace
 
+struct TensorQuantizationParams {
+  float scale_;
+  float zeroPoint_;
+};
+
+struct NodeQuantizationInfo {
+  std::string nodeName_;
+  TensorQuantizationParams tensorQuantizationParams_;
+
+  NodeQuantizationInfo() {}
+  NodeQuantizationInfo(const std::string &nodeName,
+                       const TensorQuantizationParams &tensorQuantizationParams)
+      : nodeName_(nodeName),
+        tensorQuantizationParams_(tensorQuantizationParams) {}
+
+  float Scale() { return tensorQuantizationParams_.scale_; }
+  float ZeroPoint() { return tensorQuantizationParams_.zeroPoint_; }
+};
+
+/// Mapping for NodeQuantizationInfo yaml serializer.
+template <> struct MappingTraits<NodeQuantizationInfo> {
+  static void mapping(IO &io, NodeQuantizationInfo &info) {
+    io.mapRequired("nodeOutputName", info.nodeName_);
+    float scale = info.Scale();
+    float zeroPoint = info.ZeroPoint();
+    io.mapRequired("scale", scale);
+    io.mapRequired("zeroPoint", zeroPoint);
+  }
+};
+
+/// Yaml serializer for vector of NodeQuantizationInfo.
+LLVM_YAML_IS_SEQUENCE_VECTOR(NodeQuantizationInfo);
+
+/// Dump quantization parameters for a given graph \p G to \p fileName file
+/// in yaml format.
+void dumpQuantizationProfileNodes(const Graph &G, llvm::StringRef fileName) {
+  std::vector<NodeQuantizationInfo> dataToSerialize;
+
+  for (auto *node : G.getNodes()) {
+    auto *QPN = llvm::dyn_cast<QuantizationProfileNode>(node);
+
+    if (QPN) {
+      auto CI = QPN->getComputationInfoVar()->getHandle<float>();
+      float min = CI.raw(0);
+      float max = CI.raw(1);
+
+      NodeValue &observedNodeValue = node->getNthInput(0);
+      unsigned resNum = observedNodeValue.getResNo();
+      Node *observedNode = observedNodeValue.getNode();
+
+      std::string nodeName =
+          observedNode->getName().str() + ":" + std::to_string(resNum);
+
+      // TODO: calculate TensorQuantizationParams based on the histogram,
+      // min and max values.
+      // Just dump min and max for now.
+      TensorQuantizationParams TQP{min, max};
+      dataToSerialize.emplace_back(nodeName, TQP);
+    }
+  }
+
+  std::error_code EC;
+  llvm::raw_fd_ostream outputStream(fileName, EC, llvm::sys::fs::F_None);
+  GLOW_ASSERT(!EC && "Unable to create output stream");
+
+  Output yout(outputStream);
+  yout << dataToSerialize;
+}
+
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(
       argc, argv,
@@ -237,6 +312,10 @@ int main(int argc, char **argv) {
   EE.run({i0, i1}, {&data, &data});
   if (Timer)
     timer.stopTimer();
+
+  if (!QuantizationProfileFile.empty()) {
+    dumpQuantizationProfileNodes(G, QuantizationProfileFile);
+  }
 
   Tensor &res = SM->getVariable()->getPayload();
   auto H = res.getHandle<>();
