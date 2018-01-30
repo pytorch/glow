@@ -8,8 +8,11 @@
 #include "llvm/Support/YAMLTraits.h"
 #include "llvm/Support/raw_ostream.h"
 
+namespace llvm {
+namespace yaml {
+
 /// Mapping for NodeQuantizationInfo yaml serializer.
-template <> struct llvm::yaml::MappingTraits<glow::NodeQuantizationInfo> {
+template <> struct MappingTraits<glow::NodeQuantizationInfo> {
   static void mapping(IO &io, glow::NodeQuantizationInfo &info) {
     io.mapRequired("nodeOutputName", info.nodeName_);
     float scale = info.Scale();
@@ -18,6 +21,9 @@ template <> struct llvm::yaml::MappingTraits<glow::NodeQuantizationInfo> {
     io.mapRequired("offset", offset);
   }
 };
+
+} // end namespace yaml
+} // end namespace llvm
 
 /// Yaml serializer for vector of NodeQuantizationInfo.
 LLVM_YAML_IS_SEQUENCE_VECTOR(glow::NodeQuantizationInfo);
