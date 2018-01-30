@@ -29,8 +29,8 @@ struct NodeQuantizationInfo {
       : nodeName_(nodeName),
         tensorQuantizationParams_(tensorQuantizationParams) {}
 
-  float Scale() { return tensorQuantizationParams_.scale_; }
-  float Offset() { return tensorQuantizationParams_.offset_; }
+  float Scale() const { return tensorQuantizationParams_.scale_; }
+  float Offset() const { return tensorQuantizationParams_.offset_; }
 };
 
 /// Generate NodeQuantizationInfo for all required nodes from graph \p G.
