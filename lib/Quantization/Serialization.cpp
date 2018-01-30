@@ -15,10 +15,8 @@ namespace yaml {
 template <> struct MappingTraits<glow::NodeQuantizationInfo> {
   static void mapping(IO &io, glow::NodeQuantizationInfo &info) {
     io.mapRequired("nodeOutputName", info.nodeName_);
-    float scale = info.Scale();
-    float offset = info.Offset();
-    io.mapRequired("scale", scale);
-    io.mapRequired("offset", offset);
+    io.mapRequired("scale", info.tensorQuantizationParams_.scale_);
+    io.mapRequired("offset", info.tensorQuantizationParams_.offset_);
   }
 };
 
@@ -41,6 +39,23 @@ void serializeToYaml(llvm::StringRef fileName,
   // Explicitly use a separate vector to allow serialization.
   std::vector<NodeQuantizationInfo> info = quantizationInfos;
   yout << info;
+}
+
+std::vector<NodeQuantizationInfo>
+deserializeFromYaml(llvm::StringRef fileName) {
+  std::vector<NodeQuantizationInfo> result;
+
+  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> text =
+      llvm::MemoryBuffer::getFileAsStream(fileName);
+  GLOW_ASSERT(!text.getError() && "Unable to open file");
+
+  std::unique_ptr<llvm::MemoryBuffer> buffer = std::move(*text);
+  llvm::yaml::Input yin(buffer->getBuffer());
+  yin >> result;
+
+  GLOW_ASSERT(!yin.error() && "Error reading yaml file");
+
+  return result;
 }
 
 } // namespace glow

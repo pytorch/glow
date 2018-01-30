@@ -9,8 +9,12 @@
 
 namespace glow {
 
+/// Serialize \p quantizationInfos into the file named \p fileName.
 void serializeToYaml(llvm::StringRef fileName,
                      llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos);
+
+/// Deserialize quantization infos from the file \p fileName.
+std::vector<NodeQuantizationInfo> deserializeFromYaml(llvm::StringRef fileName);
 
 } // namespace glow
 
