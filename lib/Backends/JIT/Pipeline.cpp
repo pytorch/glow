@@ -66,12 +66,18 @@ void JITBackend::optimizeLLVMModule(llvm::Function *F,
   for (auto &FF : *M) {
     // Check for no-inline attribute.
     bool dontInline = FF.hasFnAttribute(llvm::Attribute::AttrKind::NoInline);
+    bool alwaysInline =
+        FF.hasFnAttribute(llvm::Attribute::AttrKind::AlwaysInline);
     // Clear all attributes.
     FF.setAttributes(AL);
 
     // Force inline all non-no-inline functions.
-    if (!dontInline) {
+    if (alwaysInline) {
       FF.addFnAttr(llvm::Attribute::AttrKind::AlwaysInline);
+    }
+
+    if (dontInline) {
+      FF.addFnAttr(llvm::Attribute::AttrKind::NoInline);
     }
   }
 
