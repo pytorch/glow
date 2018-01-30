@@ -60,6 +60,9 @@ class JITBackend final : public Backend {
   /// The result type is "size_t*".
   llvm::Value *emitValueDims(llvm::IRBuilder<> &builder, glow::Value *val);
 
+  /// Get a function with a given name from the llmodule_.
+  llvm::Function *getFunction(const std::string &name);
+
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
   void generateLLVMIRForInstr(llvm::IRBuilder<> &builder, glow::Instruction *I);
 

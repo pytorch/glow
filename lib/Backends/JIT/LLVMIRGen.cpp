@@ -71,6 +71,10 @@ llvm::Value *JITBackend::emitConst(llvm::IRBuilder<> &builder, size_t val) {
   return builder.getIntN(sizeof(size_t) * 8, val);
 }
 
+llvm::Function *JITBackend::getFunction(const std::string &name) {
+  return llmodule_->getFunction(name);
+}
+
 void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                                         glow::Instruction *I) {
   switch (I->getKind()) {
@@ -79,7 +83,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *addr = emitValueAddress(builder, SI->getDest(), ElemKind::FloatTy);
     auto cnt = emitValueSize(builder, SI->getDest());
     auto *val = emitConst(builder, SI->getValue());
-    auto *F = llmodule_->getFunction("splat_f");
+    auto *F = getFunction("splat_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {addr, cnt, val});
     break;
@@ -91,7 +95,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *LHSPtr = emitValueAddress(builder, EM->getLHS(), ElemKind::FloatTy);
     auto *RHSPtr = emitValueAddress(builder, EM->getRHS(), ElemKind::FloatTy);
     auto cnt = emitValueSize(builder, EM->getDest());
-    auto *F = llmodule_->getFunction("elementmax_f");
+    auto *F = getFunction("elementmax_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, LHSPtr, RHSPtr, cnt});
     break;
@@ -103,7 +107,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *LHSPtr = emitValueAddress(builder, EM->getLHS(), ElemKind::FloatTy);
     auto *RHSPtr = emitValueAddress(builder, EM->getRHS(), ElemKind::FloatTy);
     auto cnt = emitValueSize(builder, EM->getDest());
-    auto *F = llmodule_->getFunction("elementmin_f");
+    auto *F = getFunction("elementmin_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, LHSPtr, RHSPtr, cnt});
     break;
@@ -116,7 +120,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *LHSPtr = emitValueAddress(builder, ES->getLHS(), ElemKind::FloatTy);
     auto *RHSPtr = emitValueAddress(builder, ES->getRHS(), ElemKind::FloatTy);
     auto cnt = emitValueSize(builder, ES->getDest());
-    auto *F = llmodule_->getFunction("elementselect_f");
+    auto *F = getFunction("elementselect_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, condPtr, LHSPtr, RHSPtr, cnt});
     break;
@@ -128,13 +132,13 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
         emitValueAddress(builder, BMM->getDest(), ElemKind::FloatTy);
     auto *LHSPtr = emitValueAddress(builder, BMM->getLHS(), ElemKind::FloatTy);
     auto *RHSPtr = emitValueAddress(builder, BMM->getRHS(), ElemKind::FloatTy);
+    auto *F = getFunction("batchedmatmul_f");
+    assert(F && "Unable to load the function");
 
     auto *destDims = emitValueDims(builder, BMM->getDest());
     auto *LHSDims = emitValueDims(builder, BMM->getLHS());
     auto *RHSDims = emitValueDims(builder, BMM->getRHS());
 
-    auto *F = llmodule_->getFunction("batchedmatmul_f");
-    assert(F && "Unable to load the function");
     builder.CreateCall(F,
                        {destPtr, LHSPtr, RHSPtr, destDims, LHSDims, RHSDims});
     break;
@@ -147,7 +151,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto sizeInBytes = CI->getDest()->getType()->getSizeInBytes();
     auto *bytes = emitConst(builder, sizeInBytes);
 
-    auto *F = llmodule_->getFunction("copy_buffer");
+    auto *F = getFunction("copy_buffer");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, srcPtr, bytes});
     break;
@@ -165,7 +169,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *numSlice = emitConst(builder, bdim.first);
     auto *sliceSize = emitConst(builder, bdim.second);
 
-    auto *F = llmodule_->getFunction("batchedadd_f");
+    auto *F = getFunction("batchedadd_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, batchPtr, slicePtr, numSlice, sliceSize});
     break;
@@ -182,7 +186,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *numSlice = emitConst(builder, bdim.first);
     auto *sliceSize = emitConst(builder, bdim.second);
 
-    auto *F = llmodule_->getFunction("batchedreduceadd_f");
+    auto *F = getFunction("batchedreduceadd_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, batchPtr, destSize, numSlice, sliceSize});
     break;
@@ -213,7 +217,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       kernelName = "convolution_f_unroll_k4";
     }
 
-    auto *F = llmodule_->getFunction(kernelName);
+    auto *F = getFunction(kernelName);
     assert(F && "Unable to load the function");
     builder.CreateCall(F,
                        {srcPtr, destPtr, filterPtr, biasPtr, srcDims, destDims,
@@ -232,7 +236,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *stride = emitConst(builder, PM->getStride());
     auto *pad = emitConst(builder, PM->getPad());
 
-    auto *F = llmodule_->getFunction("pool_max_f");
+    auto *F = getFunction("pool_max_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(
         F, {srcPtr, destPtr, srcDims, destDims, pad, kernel, stride});
@@ -250,7 +254,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *stride = emitConst(builder, PM->getStride());
     auto *pad = emitConst(builder, PM->getPad());
 
-    auto *F = llmodule_->getFunction("pool_avg_f");
+    auto *F = getFunction("pool_avg_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(
         F, {srcPtr, destPtr, srcDims, destDims, pad, kernel, stride});
@@ -264,7 +268,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, SM->getDest());
     auto *srcDims = emitValueDims(builder, SM->getSrc());
 
-    auto *F = llmodule_->getFunction("softmax_f");
+    auto *F = getFunction("softmax_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims});
     break;
@@ -275,7 +279,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destPtr = emitValueAddress(builder, SI->getDest(), ElemKind::FloatTy);
     auto *srcPtr = emitValueAddress(builder, SI->getSrc(), ElemKind::FloatTy);
     auto *numElemVal = emitConst(builder, SI->getDest()->getType()->size());
-    auto *F = llmodule_->getFunction("sigmoid_f");
+    auto *F = getFunction("sigmoid_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, numElemVal});
     break;
@@ -286,7 +290,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destPtr = emitValueAddress(builder, TI->getDest(), ElemKind::FloatTy);
     auto *srcPtr = emitValueAddress(builder, TI->getSrc(), ElemKind::FloatTy);
     auto *numElemVal = emitConst(builder, TI->getDest()->getType()->size());
-    auto *F = llmodule_->getFunction("tanh_f");
+    auto *F = getFunction("tanh_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, numElemVal});
     break;
@@ -308,7 +312,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *shuffle = emitConstArray(builder, shuffSizeT);
     auto *len = emitConst(builder, TI->getShuffle().size());
 
-    auto *F = llmodule_->getFunction("transpose_f");
+    auto *F = getFunction("transpose_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims, shuffle, len});
     break;
@@ -322,7 +326,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
       auto *LHSPtr = emitValueAddress(builder, src, ElemKind::FloatTy);
       auto cnt = emitValueSize(builder, dest);
-      auto *F = llmodule_->getFunction("elementmax0_f");
+      auto *F = getFunction("elementmax0_f");
       assert(F && "Unable to load the function");
       builder.CreateCall(F, {destPtr, LHSPtr, cnt});
       break;
@@ -368,7 +372,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       llvm_unreachable("Invalid node kind");
     }
 
-    auto *F = llmodule_->getFunction(funcName);
+    auto *F = getFunction(funcName);
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, numElemVal});
     break;
