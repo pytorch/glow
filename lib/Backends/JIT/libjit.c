@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#define ALWAYS_INLINE __attribute__((always_inline))
+
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
@@ -51,8 +53,9 @@ void elementselect_f(float *dest, float *cond, float *LHS, float *RHS,
   }
 }
 
-void batchedmatmul_f(float *dest, float *LHS, float *RHS, size_t *destDims,
-                     size_t *lhsDims, size_t *rhsDims) {
+ALWAYS_INLINE void batchedmatmul_f(float *dest, float *LHS, float *RHS,
+                                   size_t *destDims, size_t *lhsDims,
+                                   size_t *rhsDims) {
   size_t destSize = destDims[0] * destDims[1] * destDims[2];
   for (size_t i = 0; i < destSize; ++i)
     dest[i] = 0;
@@ -140,10 +143,12 @@ void element_mul_f(float *dest, float *LHS, float *RHS, size_t numElem) {
   }
 }
 
-void convolution_f_unroll_k4(float *inW, float *outW, float *filterW,
-                             float *biasW, size_t *inWdims, size_t *outWdims,
-                             size_t *filterWdims, size_t *biasWdims,
-                             size_t filterSize, size_t pad, size_t stride) {
+ALWAYS_INLINE void convolution_f_unroll_k4(float *inW, float *outW,
+                                           float *filterW, float *biasW,
+                                           size_t *inWdims, size_t *outWdims,
+                                           size_t *filterWdims,
+                                           size_t *biasWdims, size_t filterSize,
+                                           size_t pad, size_t stride) {
   size_t inChannels = inWdims[3];
 
   // For each input in the batch:
@@ -206,10 +211,11 @@ void convolution_f_unroll_k4(float *inW, float *outW, float *filterW,
   }       // N
 }
 
-void convolution_f(float *inW, float *outW, float *filterW, float *biasW,
-                   size_t *inWdims, size_t *outWdims, size_t *filterWdims,
-                   size_t *biasWdims, size_t filterSize, size_t pad,
-                   size_t stride) {
+ALWAYS_INLINE void convolution_f(float *inW, float *outW, float *filterW,
+                                 float *biasW, size_t *inWdims,
+                                 size_t *outWdims, size_t *filterWdims,
+                                 size_t *biasWdims, size_t filterSize,
+                                 size_t pad, size_t stride) {
 
   size_t inChannels = inWdims[3];
 
