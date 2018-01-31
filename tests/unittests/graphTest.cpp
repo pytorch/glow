@@ -1,7 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
-#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
@@ -143,4 +143,3 @@ TEST(Graph, simpleQuant) {
   G.createSave("ret", O);
   EE.compile(CompilationMode::Infer);
 }
-
