@@ -1,6 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "glow/Base/Type.h"
+#include "llvm/Support/NativeFormatting.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace glow {
@@ -9,7 +10,17 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Type &type) {
     return os << "<void>";
   }
 
-  os << type.getElementName() << '<';
+  os << type.getElementName();
+
+  if (type.isQuantizedType()) {
+    os << "[scale:";
+    llvm::write_double(os, type.getScale(), llvm::FloatStyle::Fixed, 3);
+    os << " offset:";
+    llvm::write_double(os, type.getOffset(), llvm::FloatStyle::Fixed, 3);
+    os << ']';
+  }
+
+  os << '<';
   for (unsigned i = 0; i < type.numSizes_; ++i) {
     if (i) {
       os << " x ";
