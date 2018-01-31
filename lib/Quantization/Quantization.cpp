@@ -16,11 +16,6 @@ static TensorQuantizationParams chooseQuantizationParams(float min, float max) {
   const int32_t qmin = -128;
   const int32_t qmax = 127;
 
-  if (min < 0 && max > 0) {
-    max = std::max(std::fabs(min), std::fabs(max));
-    min = -max;
-  }
-
   double scale =
       (std::max(max, 0.f) - std::min(min, 0.f)) / ((double)qmax - qmin);
 
@@ -31,11 +26,6 @@ static TensorQuantizationParams chooseQuantizationParams(float min, float max) {
     scale = 0.1;
 
   assert(scale > 0 && "Scale must be non negative");
-
-  if (min < 0 && max > 0) {
-    max = std::max(std::fabs(min), std::fabs(max));
-    min = -max;
-  }
 
   // We extend the [min, max] interval to ensure that it contains 0.
   // Otherwise, we would not meet the requirement that 0 be an exactly
