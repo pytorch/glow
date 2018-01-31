@@ -79,6 +79,19 @@ target_link_libraries(graphTest
                         testMain)
 add_test(graphTest ${GLOW_BINARY_DIR}/tests/graphTest)
 
+
+add_executable(quantizeTest
+               quantizeTest.cpp)
+target_link_libraries(quantizeTest
+                      PRIVATE
+                        ExecutionEngine
+                        Graph
+                        IR
+                        Backends
+                        gtest
+                        testMain)
+add_test(quantizeTest ${GLOW_BINARY_DIR}/tests/quantizeTest)
+
 add_executable(graphGradTest
                graphGradTest.cpp)
 target_link_libraries(graphGradTest

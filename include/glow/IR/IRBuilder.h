@@ -109,10 +109,7 @@ public:
 
   AllocActivationInst *createAllocActivationInst(llvm::StringRef name,
                                                  ElemKind elemTy,
-                                                 llvm::ArrayRef<size_t> dims) {
-    auto T = M_->getGraph()->uniqueType(elemTy, dims);
-    return createAllocActivationInst(name, T);
-  }
+                                                 llvm::ArrayRef<size_t> dims);
 
 // Import the auto-generated instruction creation methods:
 #include "AutoGenIRBuilder.h"

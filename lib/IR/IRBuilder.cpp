@@ -128,8 +128,8 @@ SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input) {
 
 ReshapeInst *IRBuilder::createReshapeOp(Value *input,
                                         llvm::ArrayRef<size_t> shape) {
-  auto *res =
-      createAllocActivationInst("reshape.res", input->getElementType(), shape);
+  auto ty = M_->getGraph()->uniqueTypeWithNewShape(input->getType(), shape);
+  auto *res = createAllocActivationInst("reshape.res", ty);
   return createReshapeInst("reshape", res, input, shape);
 }
 
@@ -269,3 +269,9 @@ WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
   return A;
 }
 
+AllocActivationInst *
+IRBuilder::createAllocActivationInst(llvm::StringRef name, ElemKind elemTy,
+                                     llvm::ArrayRef<size_t> dims) {
+  auto T = M_->getGraph()->uniqueType(elemTy, dims);
+  return createAllocActivationInst(name, T);
+}

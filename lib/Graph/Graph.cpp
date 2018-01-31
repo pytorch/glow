@@ -80,6 +80,14 @@ Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
   return createVariable(FT, name, visibility, train, val);
 }
 
+Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
+                                float scale, float offset, llvm::StringRef name,
+                                Variable::VisibilityKind visibility,
+                                Variable::TrainKind train, float val) {
+  auto FT = uniqueType(T, dims, scale, offset);
+  return createVariable(FT, name, visibility, train, val);
+}
+
 /// Form a unique name based on the original non-uniqued \p Name.
 ///
 /// This is done by taking the original non-uniqued name
@@ -176,7 +184,7 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
   // if \p input is of type void, we cannot calculate the dimensions
   if (T != getVoidTy()) {
     auto idim = flattenCdr(input.dims());
-    OT = uniqueType(T->getElementType(), {idim.first, outDepth});
+    OT = uniqueTypeWithNewShape(T, {idim.first, outDepth});
   }
 
   return addNode(new FullyConnectedNode(name, OT, input, W, B, outDepth));
@@ -440,9 +448,8 @@ BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,
   (void)b1;
   (void)b2;
 
-  auto Ty = Type(LHS.getType()->getElementType(), {N, a1, b2});
-
-  return addNode(new BatchedMatMulNode(name, uniqueType(Ty), LHS, RHS));
+  auto Ty = uniqueTypeWithNewShape(LHS.getType(), {N, a1, b2});
+  return addNode(new BatchedMatMulNode(name, Ty, LHS, RHS));
 }
 
 BatchedReduceNode *Graph::createBatchedReduce(llvm::StringRef name,
