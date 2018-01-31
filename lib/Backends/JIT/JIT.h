@@ -32,6 +32,10 @@ class JITBackend final : public Backend {
   llvm::Function *func_{nullptr};
   /// Maps Values in the module to their memory addresses.
   llvm::DenseMap<Value *, void *> allocatedAddressed_;
+  /// Maps constant arrays to the constant expressions representing size_t
+  /// pointers to these arrays. This is done to ensure the proper uniqueness
+  /// semantics of such pointers just like it is done for llvm::Constants.
+  llvm::DenseMap<llvm::Constant *, llvm::Value *> constArrayPtrs_;
   /// This represents the heap, that stores the activations at runtime.
   std::vector<uint8_t> heap_{};
   /// The LLVM JIT engine. The jit must be initialized after the ctor
@@ -70,6 +74,9 @@ class JITBackend final : public Backend {
   /// Optimize the function \p F and the module that owns it. Use the target
   /// information from the \p TM target machine.
   void optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM);
+
+  /// Performs specialization of operations based on constant parameters.
+  void performSpecialization();
 
 public:
   /// Ctor.
