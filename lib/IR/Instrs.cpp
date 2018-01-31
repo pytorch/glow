@@ -234,12 +234,17 @@ void TransposeInst::verify() const {
 }
 
 void BroadcastInst::verify() const {
+  auto *src = getOperand(1).first;
   auto *dest = getOperand(0).first;
   auto shape = getShape();
-  (void)shape;
+  (void)src;
   (void)dest;
+  (void)shape;
 
-  assert(dest->dims().equals(shape) && "Broadcast new shape incorrect");
+  assert(src->dims().size() <= dest->dims().size() &&
+         "Source being broadcasted must have <= number dims of result shape.");
+  assert(dest->dims().equals(shape) &&
+         "New broadcasted shape does not match shape to broadcast to.");
 }
 
 void SplatInst::verify() const {}

@@ -208,7 +208,12 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorSizeT, "Shape")
       .addMember(MemberType::Unsigned, "Axis")
       .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy");
+      .addResult("outTy")
+      .setDocstring("Performs broadcasting on the Input tensor so that its "
+                    "shape matches the provided Shape. The provided Axis "
+                    "represents the offset of the Input's shape (from the "
+                    "leading dimension) when comparing dimensions to the "
+                    "destination Shape.");
 
   BB.newNode("Concat")
       .addMember(MemberType::VectorNodeValue, "Inputs")
