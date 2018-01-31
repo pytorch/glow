@@ -50,6 +50,10 @@ void JITBackend::optimizeLLVMModule(llvm::Function *F,
   };
   llvm::internalizeModule(*M, preserveMain);
 
+  // Perform specialization of functions for constant arguments before anything
+  // else.
+  performSpecialization();
+
   llvm::PassManagerBuilder PMB;
   PMB.OptLevel = 2;
   PMB.SizeLevel = 0;
@@ -68,10 +72,12 @@ void JITBackend::optimizeLLVMModule(llvm::Function *F,
     bool dontInline = FF.hasFnAttribute(llvm::Attribute::AttrKind::NoInline);
     // Clear all attributes.
     FF.setAttributes(AL);
-
     // Force inline all non-no-inline functions.
     if (!dontInline) {
       FF.addFnAttr(llvm::Attribute::AttrKind::AlwaysInline);
+    }
+    if (dontInline) {
+      FF.addFnAttr(llvm::Attribute::AttrKind::NoInline);
     }
   }
 

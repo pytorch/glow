@@ -6,6 +6,7 @@
 
 using namespace glow;
 using llvm::StringRef;
+using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
@@ -44,12 +45,20 @@ llvm::Value *JITBackend::emitConstArray(llvm::IRBuilder<> &builder,
   }
   auto *arr = llvm::ConstantArray::get(
       llvm::ArrayType::get(SizeTType, elems.size()), elems);
+  // Ensure that the same casted global variable is used for the equivalent
+  // const arrays. This is important for the later function specialization pass.
+  // LLVM does not do it automatically for this code pattern involving global
+  // variables. It also reduces the number of variables.
+  auto &constArrayVar = constArrayPtrs_[arr];
+  if (constArrayVar)
+    return constArrayVar;
 
   auto *M = builder.GetInsertBlock()->getModule();
 
   auto *G = new llvm::GlobalVariable(*M, arr->getType(), true,
                                      llvm::GlobalValue::CommonLinkage, arr);
-  return builder.CreateBitCast(G, SizeTType->getPointerTo());
+  constArrayVar = builder.CreateBitCast(G, SizeTType->getPointerTo());
+  return constArrayVar;
 }
 
 llvm::Value *JITBackend::emitValueDims(llvm::IRBuilder<> &builder,
