@@ -31,13 +31,6 @@ public:
   /// @name High-level, operation-level IRBuilder.
   ///@{
 
-  ConvolutionInst *createConvOp(Value *input, size_t depth, size_t kernel,
-                                size_t stride, size_t pad);
-
-  ConvolutionInst *createConvOp(Value *input, Value *filter, Value *bias,
-                                size_t depth, size_t kernel, size_t stride,
-                                size_t pad);
-
   PoolMaxInst *createPoolMaxOp(Value *input, size_t kernel, size_t stride,
                                size_t pad);
 
