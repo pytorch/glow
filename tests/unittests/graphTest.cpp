@@ -143,3 +143,20 @@ TEST(Graph, simpleQuant) {
   G.createSave("ret", O);
   EE.compile(CompilationMode::Infer);
 }
+
+TEST(Graph, quantizeDequantizeNodes) {
+  ExecutionEngine EE;
+  auto &G = EE.getGraph();
+
+  auto *input = G.createVariable(ElemKind::FloatTy, {1, 3}, "Input");
+  auto qType = G.uniqueType(ElemKind::Int8QTy, {1, 3}, 0.3, 0.5);
+
+  auto *Q = G.createQuantize("quantize", input, qType);
+
+  auto transform = G.uniqueType(ElemKind::Int8QTy, {1, 3}, 1.4, 3);
+  auto *A = G.createRescaleQuantized("rescale", Q, transform);
+
+  auto *D = G.createDequantize("dequantize", A);
+  G.createSave("ret", D);
+  EE.compile(CompilationMode::Infer);
+}

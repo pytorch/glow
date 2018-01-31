@@ -1184,6 +1184,20 @@ void Interpreter::fwdQuantizationProfileInst(
                                         max);
 }
 
+void Interpreter::fwdQuantizeInst(bool isTrain, const glow::QuantizeInst *I) {
+  llvm_unreachable("Not implemented");
+}
+
+void Interpreter::fwdDequantizeInst(bool isTrain,
+                                    const glow::DequantizeInst *I) {
+  llvm_unreachable("Not implemented");
+}
+
+void Interpreter::fwdRescaleQuantizedInst(bool isTrain,
+                                          const glow::RescaleQuantizedInst *I) {
+  llvm_unreachable("Not implemented");
+}
+
 void Interpreter::fwdIntrinsicInst(bool isTrain, const glow::IntrinsicInst *I) {
   llvm_unreachable("The interpreter should not handle intrinsic instructions");
 }

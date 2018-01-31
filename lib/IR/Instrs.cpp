@@ -40,6 +40,14 @@ static void checkSameType(Instruction::Operand A, Instruction::Operand B) {
   assert(A.first->getType() == B.first->getType() && "Invalid type");
 }
 
+static void checkType(Instruction::Operand A, ElemKind expectedType) {
+  assert(A.first->getElementType() == expectedType && "Invalid type");
+}
+
+static void checkSameDims(Instruction::Operand A, Instruction::Operand B) {
+  assert(A.first->dims().equals(B.first->dims()) && "Dimensions mismatch");
+}
+
 void CopyInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
   auto *op0 = getOperand(0).first;
@@ -404,6 +412,30 @@ void QuantizationProfileInst::verify() const {
          "Computation info should be 1 dimensional");
   assert(getOperand(2).first->dims()[0] == 2 &&
          "Computation info should contain Min and Max value only");
+}
+
+void QuantizeInst::verify() const {
+  // Dest must be quantized.
+  checkType(getOperand(0), ElemKind::Int8QTy);
+  // Src must be float.
+  checkType(getOperand(1), ElemKind::FloatTy);
+  checkSameDims(getOperand(0), getOperand(1));
+}
+
+void DequantizeInst::verify() const {
+  // Dest must be float.
+  checkType(getOperand(0), ElemKind::FloatTy);
+  // Src must be quantized.
+  checkType(getOperand(1), ElemKind::Int8QTy);
+  checkSameDims(getOperand(0), getOperand(1));
+}
+
+void RescaleQuantizedInst::verify() const {
+  // Dest must be quantized.
+  checkType(getOperand(0), ElemKind::Int8QTy);
+  // Src must be quantized.
+  checkType(getOperand(1), ElemKind::Int8QTy);
+  checkSameDims(getOperand(0), getOperand(1));
 }
 
 void TopKInst::verify() const {

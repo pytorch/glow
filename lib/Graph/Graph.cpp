@@ -558,6 +558,38 @@ GatherNode *Graph::createGather(llvm::StringRef name, NodeValue data,
       name, uniqueType(data->getElementType(), outDims), data, indices));
 }
 
+QuantizeNode *Graph::createQuantize(llvm::StringRef name, NodeValue input,
+                                    TypeRef outTy) {
+  assert(input.getElementType() == ElemKind::FloatTy &&
+         "Input must be a floating type");
+  assert(outTy->getElementType() == ElemKind::Int8QTy &&
+         "Output must be a quantized type");
+  assert(input->dims().equals(outTy->dims()) &&
+         "Different dimensions for input and output");
+
+  return addNode(new QuantizeNode(name, outTy, input));
+}
+
+DequantizeNode *Graph::createDequantize(llvm::StringRef name, NodeValue input) {
+  assert(input.getElementType() == ElemKind::Int8QTy &&
+         "Input must be a quantized type");
+  TypeRef outTy = uniqueType(Type(ElemKind::FloatTy, input.dims()));
+  return addNode(new DequantizeNode(name, outTy, input));
+}
+
+RescaleQuantizedNode *Graph::createRescaleQuantized(llvm::StringRef name,
+                                                    NodeValue input,
+                                                    TypeRef outTy) {
+  assert(input.getElementType() == ElemKind::Int8QTy &&
+         "Input must be a quantized type");
+  assert(outTy->getElementType() == ElemKind::Int8QTy &&
+         "Output must be a quantized type");
+  assert(input->dims().equals(outTy->dims()) &&
+         "Different dimensions for input and output");
+
+  return addNode(new RescaleQuantizedNode(name, outTy, input));
+}
+
 void Graph::createSimpleRNN(llvm::StringRef namePrefix,
                             llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                             unsigned hiddenSize, unsigned outputSize,
