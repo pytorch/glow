@@ -289,6 +289,31 @@ int main(int argc, char **argv) {
           "This data is used for quantization of the tensor later on.")
       .setHasSideEffects(true);
 
+  BB.newNode("Quantize")
+      .addInput("Input")
+      .addExtraParam("TypeRef", "outTy")
+      .addResult("outTy")
+      .setDocstring("Quantize floating point tensor. This operation converts "
+                    "floating point numbers to integers based on the given "
+                    "Scale and Offset. Scale and Offset are deduced from the"
+                    "type of the output."
+                    "x_q = clip(round(x/Scale) + Offset, -128, 127)");
+
+  BB.newNode("Dequantize")
+      .addInput("Input")
+      .addExtraParam("TypeRef", "outTy")
+      .addResult("outTy")
+      .setDocstring(
+          "Convert quantized input tensor into the float representation. "
+          "x = Scale * (x_q - Offset).");
+
+  BB.newNode("RescaleQuantized")
+      .addInput("Input")
+      .addExtraParam("TypeRef", "outTy")
+      .addResult("outTy")
+      .setDocstring(
+          "Rescale input quantized tensor to a new Scale and Offset.");
+
   //===--------------------------------------------------------------------===//
   //                Nodes used by generic transformations
   //===--------------------------------------------------------------------===//

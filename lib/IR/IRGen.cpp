@@ -555,6 +555,33 @@ public:
       V->setName(N->getName());
       break;
     }
+    case glow::Kinded::Kind::QuantizeNodeKind: {
+      auto *QN = cast<QuantizeNode>(N);
+      auto *inputTensor = valueForNode(QN->getInput());
+      auto *AC = builder_.createAllocActivationInst(N->getName(),
+                                                    QN->getResult()->getType());
+      builder_.createQuantizeInst(N->getName(), AC, inputTensor);
+      registerIR(N, AC);
+      break;
+    }
+    case glow::Kinded::Kind::DequantizeNodeKind: {
+      auto *QN = cast<DequantizeNode>(N);
+      auto *inputTensor = valueForNode(QN->getInput());
+      auto *AC = builder_.createAllocActivationInst(N->getName(),
+                                                    QN->getResult()->getType());
+      builder_.createDequantizeInst(N->getName(), AC, inputTensor);
+      registerIR(N, AC);
+      break;
+    }
+    case glow::Kinded::Kind::RescaleQuantizedNodeKind: {
+      auto *QN = cast<RescaleQuantizedNode>(N);
+      auto *inputTensor = valueForNode(QN->getInput());
+      auto *AC = builder_.createAllocActivationInst(N->getName(),
+                                                    QN->getResult()->getType());
+      builder_.createRescaleQuantizedInst(N->getName(), AC, inputTensor);
+      registerIR(N, AC);
+      break;
+    }
 
     case glow::Kinded::Kind::TanhGradNodeKind:
     case glow::Kinded::Kind::SigmoidGradNodeKind:

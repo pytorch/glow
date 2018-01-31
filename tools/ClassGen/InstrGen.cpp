@@ -295,10 +295,26 @@ int main(int argc, char **argv) {
 
   BB.newInstr("DebugPrint").addOperand("Src", OperandKind::In);
 
+  //===--------------------------------------------------------------------===//
+  //             Instructions used for quantization
+  //===--------------------------------------------------------------------===//
+
   BB.newInstr("QuantizationProfile")
       .addOperand("InputTensor", OperandKind::In)
       .addOperand("Histogram", OperandKind::InOut)
       .addOperand("ComputationInfo", OperandKind::InOut);
+
+  BB.newInstr("Quantize")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In);
+
+  BB.newInstr("Dequantize")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In);
+
+  BB.newInstr("RescaleQuantized")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In);
 
   //===--------------------------------------------------------------------===//
   //             Intrinsics for supporting target-specific transforms

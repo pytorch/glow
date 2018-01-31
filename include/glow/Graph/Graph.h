@@ -215,6 +215,22 @@ public:
   GatherNode *createGather(llvm::StringRef name, NodeValue data,
                            NodeValue indices);
 
+  /// Create quantization node which transforms floating point tensor to a
+  /// quantized one with given Scale and Offset. Scale and Offset params are
+  /// part of the \p outTy.
+  QuantizeNode *createQuantize(llvm::StringRef name, NodeValue input,
+                               TypeRef outTy);
+
+  /// Create dequantization node which transforms quantized tensor to a
+  /// floating point one with given Scale and Offset. Scale and Offset params
+  /// are part of the \p input.
+  DequantizeNode *createDequantize(llvm::StringRef name, NodeValue input);
+
+  /// Create transformation for quantized tensors to rescale based on the new
+  /// Scale and Offset.
+  RescaleQuantizedNode *createRescaleQuantized(llvm::StringRef name,
+                                               NodeValue input, TypeRef outTy);
+
   /// Create an unrolled single-layer Simple RNN cell with \p hiddenSize
   /// dimensionality of the hidden state and \p outputSize dimensionality of the
   /// output state. \p inputs define the input for the cell at each time step
