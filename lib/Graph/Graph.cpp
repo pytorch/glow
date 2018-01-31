@@ -160,6 +160,25 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
                                      stride, pad, depth));
 }
 
+ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
+                                   NodeValue filter, NodeValue bias,
+                                   TypeRef outTy, size_t depth, size_t kernel,
+                                   size_t stride, size_t pad) {
+  ShapeNHWC idim = ShapeNHWC(input.dims());
+  assert(idim.w >= kernel && idim.h >= kernel &&
+         "buffer too small for selected stride");
+
+  auto filterDims = filter->dims();
+  assert(filterDims[0] == depth && filterDims[1] == kernel &&
+         filterDims[2] == kernel && filterDims[3] == idim.c &&
+         "Invalid filter dims");
+  (void)filterDims;
+
+  assert(bias->getType()->size() == depth && "Invalid bias size");
+  return addNode(new ConvolutionNode(name, outTy, input, filter, bias, kernel,
+                                     stride, pad, depth));
+}
+
 PoolNode *Graph::createPool(llvm::StringRef name, NodeValue input,
                             PoolNode::Mode mode, size_t kernel, size_t stride,
                             size_t pad) {

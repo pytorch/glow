@@ -118,9 +118,12 @@ public:
       auto *in = valueForNode(C->getInput());
       auto *filter = valueForNode(C->getFilter());
       auto *bias = valueForNode(C->getBias());
-      auto *V =
-          builder_.createConvOp(in, filter, bias, C->getDepth(), C->getKernel(),
-                                C->getStride(), C->getPad());
+      Value *dest = builder_.createAllocActivationInst(
+          "conv.res", C->getResult()->getType());
+
+      auto *V = builder_.createConvolutionInst("conv", dest, in, filter, bias,
+                                               C->getKernel(), C->getStride(),
+                                               C->getPad(), C->getDepth());
       V->setName(N->getName());
       registerIR(N, V->getDest());
       break;

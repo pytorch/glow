@@ -41,26 +41,6 @@ void IRBuilder::deallocateActiveInstrs() {
 //                        High level operators.
 //===----------------------------------------------------------------------===//
 
-ConvolutionInst *IRBuilder::createConvOp(Value *input, Value *filter,
-                                         Value *bias, size_t depth,
-                                         size_t kernel, size_t stride,
-                                         size_t pad) {
-  ShapeNHWC idim = ShapeNHWC(input->dims());
-  assert(idim.w >= kernel && idim.h >= kernel &&
-         "buffer too small for selected stride");
-
-  // Calculate the size and allocate the output buffer.
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
-
-  llvm::SmallVector<size_t, 4> outDims = {idim.n, outSz.first, outSz.second,
-                                          depth};
-  auto TR = M_->getGraph()->uniqueType(ElemKind::FloatTy, outDims);
-  Value *dest = createAllocActivationInst("conv.res", TR);
-
-  return createConvolutionInst("conv", dest, input, filter, bias, kernel,
-                               stride, pad, depth);
-}
-
 PoolMaxInst *IRBuilder::createPoolMaxOp(Value *input, size_t kernel,
                                         size_t stride, size_t pad) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
