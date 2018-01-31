@@ -230,6 +230,19 @@ ElementSelectInst *IRBuilder::createSelectOp(Value *Cond, Value *LHS,
   return createElementSelectInst("select", res, Cond, LHS, RHS);
 }
 
+TopKInst *IRBuilder::createTopKOp(Value *input, size_t k) {
+  auto inDims = input->dims();
+  assert(inDims.size() > 0);
+  assert(k <= inDims.back());
+  llvm::SmallVector<size_t, 6> outDims(inDims.begin(), inDims.end());
+  outDims.back() = k;
+  auto *values = createAllocActivationInst("topk.values",
+                                           input->getElementType(), outDims);
+  auto *indices =
+      createAllocActivationInst("topk.indices", ElemKind::IndexTy, outDims);
+  return createTopKInst("topk", values, indices, input, k);
+}
+
 Value *IRBuilder::createReturnOp(Value *input) {
   auto *W = createWeightVar(input->getType(), "result",
                             WeightVar::MutabilityKind::Mutable);

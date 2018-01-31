@@ -398,6 +398,12 @@ void QuantizationProfileInst::verify() const {
          "Computation info should contain Min and Max value only");
 }
 
+void TopKInst::verify() const {
+  assert(getOperand(0).first->getElementType() == ElemKind::FloatTy);
+  assert(getOperand(2).first->getElementType() == ElemKind::FloatTy);
+  assert(getOperand(0).first->dims() == getOperand(1).first->dims());
+}
+
 void IntrinsicInst::verify() const {
   assert(getName().size() && "Name must not be empty");
 }

@@ -302,5 +302,22 @@ int main(int argc, char **argv) {
       .addResult("Input.getType()", "Left")
       .addResult("Input.getType()", "Right");
 
+  //===--------------------------------------------------------------------===//
+  //                Nodes used by RNN
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("TopK")
+      .addInput("Input")
+      .addMember(MemberType::SizeT, "K")
+      .addExtraParam("TypeRef", "outTy1")
+      .addExtraParam("TypeRef", "outTy2")
+      .addResult("outTy1", "Values")
+      .addResult("outTy2", "Indices")
+      .setDocstring(
+          "Finds the top K maximal elements for each vector in the tensor. "
+          "Vectors are defined as the last dimension in the tensor. "
+          "The input shape {D_0, D_1, ... D_n} results in the outputs "
+          "{D_0, D_1, ... D_n-1, K}, sorted in non-decreasing order.");
+
   return 0;
 }

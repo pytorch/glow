@@ -89,6 +89,8 @@ public:
 
   ElementSelectInst *createSelectOp(Value *Cond, Value *LHS, Value *RHS);
 
+  TopKInst *createTopKOp(Value *input, size_t k);
+
   Value *createReturnOp(Value *input);
 
   ///@}

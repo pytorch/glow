@@ -536,6 +536,16 @@ public:
                                              histogram, computationInfo);
       break;
     }
+    case glow::Kinded::Kind::TopKNodeKind: {
+      auto *TKN = cast<TopKNode>(N);
+      auto *inputTensor = valueForNode(TKN->getInput());
+      auto k = TKN->getK();
+      auto *V = builder_.createTopKOp(inputTensor, k);
+      registerIR(TKN->getValues(), V->getValues());
+      registerIR(TKN->getIndices(), V->getIndices());
+      V->setName(N->getName());
+      break;
+    }
 
     case glow::Kinded::Kind::TanhGradNodeKind:
     case glow::Kinded::Kind::SigmoidGradNodeKind:
