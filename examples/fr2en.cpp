@@ -223,7 +223,8 @@ struct Decoder : Model {
 
     Node *FC = G.createFullyConnected("decoder.outFC", hidden, out_w, out_b,
                                       L.index2word_.size());
-    G.createSave("decoder.output", FC, output);
+    Node *topK = G.createTopK("decoder.topK", FC, 1);
+    G.createSave("decoder.output", {topK, 1}, output);
     G.createSave("decoder.hiddenOutput", hidden, hiddenOutput);
 
     EE.compile(CompilationMode::Infer);
@@ -277,12 +278,7 @@ void translate(Encoder *encoder, Decoder *decoder, llvm::StringRef sentense,
     decoder->hiddenInput->getPayload().copyFrom(
         &decoder->hiddenOutput->getPayload());
 
-    prevWordIdx = decoder->output->getPayload()
-                      .getHandle()
-                      .extractSlice(0)
-                      .getHandle()
-                      .minMaxArg()
-                      .second;
+    prevWordIdx = decoder->output->getPayload().getHandle().raw(0);
 
     if (prevWordIdx == decoder->L.word2index_["EOS"])
       break;

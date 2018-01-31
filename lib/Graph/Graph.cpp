@@ -528,6 +528,17 @@ QuantizationProfileNode *Graph::createQuantizationProfile(llvm::StringRef name,
       new QuantizationProfileNode(name, input, histogram, computationInfo));
 }
 
+TopKNode *Graph::createTopK(llvm::StringRef name, NodeValue input, size_t k) {
+  auto inDims = input.dims();
+  assert(inDims.size() > 0);
+  assert(k <= inDims.back());
+  llvm::SmallVector<size_t, 6> outDims(inDims.begin(), inDims.end());
+  outDims.back() = k;
+  return addNode(
+      new TopKNode(name, uniqueType(input->getElementType(), outDims),
+                   uniqueType(ElemKind::IndexTy, outDims), input, k));
+}
+
 void Graph::createSimpleRNN(llvm::StringRef namePrefix,
                             llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                             unsigned hiddenSize, unsigned outputSize,

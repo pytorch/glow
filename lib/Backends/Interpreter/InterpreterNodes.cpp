@@ -1092,6 +1092,41 @@ void Interpreter::fwdSGDInst(bool isTrain, const glow::SGDInst *I) {
 }
 
 //===----------------------------------------------------------------------===//
+//                Instructions used by RNN
+//===----------------------------------------------------------------------===//
+
+void Interpreter::fwdTopKInst(bool isTrain, const TopKInst *I) {
+  auto in = getTensor(I->getInput())->getHandle();
+  size_t k = I->getK();
+  size_t n = in.dims().back();
+  auto values = getTensor(I->getValues())->getHandle();
+  auto indices = getTensor(I->getIndices())->getHandle<size_t>();
+
+  size_t in_p = 0, out_p = 0;
+  size_t tensor_end = in.size();
+  using pairType = std::pair<float, size_t>;
+  std::vector<pairType> buf(n);
+
+  while (in_p < tensor_end) {
+    for (size_t i = 0; i < n; i++) {
+      buf[i].first = in.raw(in_p++);
+      buf[i].second = i;
+    }
+    // NOTE: it's possible to do N + KlogK, while this version is NlogN
+    std::sort(buf.begin(), buf.end(), [](const pairType &a, const pairType &b) {
+      if (a.first != b.first)
+        return a.first > b.first;
+      return a.second < b.second;
+    });
+    for (size_t i = 0; i < k; i++) {
+      values.raw(out_p) = buf[i].first;
+      indices.raw(out_p) = buf[i].second;
+      out_p++;
+    }
+  }
+}
+
+//===----------------------------------------------------------------------===//
 //                  Tensor allocation operations
 //===----------------------------------------------------------------------===//
 

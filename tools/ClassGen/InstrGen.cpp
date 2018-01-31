@@ -301,5 +301,15 @@ int main(int argc, char **argv) {
 
   BB.newInstr("Intrinsic").addMember(MemberType::String, "Identifier");
 
+  //===--------------------------------------------------------------------===//
+  //                Instructions used by RNN
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("TopK")
+      .addOperand("Values", OperandKind::Out)
+      .addOperand("Indices", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addMember(MemberType::SizeT, "K");
+
   return 0;
 }

@@ -147,3 +147,50 @@ TEST(Operator, broadcast) {
     }
   }
 }
+
+TEST(Operator, TopK) {
+  ExecutionEngine EE;
+
+  auto &G = EE.getGraph();
+
+  auto *inp = G.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
+  auto *values = G.createVariable(ElemKind::FloatTy, {3, 1, 3}, "values");
+  auto *indices = G.createVariable(ElemKind::IndexTy, {3, 1, 3}, "indices");
+
+  inp->getPayload().getHandle() = {
+      28, 4, 411, 19, 42, 0.4, 0.4, 0.4, -0.4, 0.45, 7, 5, 9, 8, 100,
+  };
+
+  auto R = G.createTopK("TopK", inp, 3);
+
+  G.createSave("save.values", {R, 0}, values);
+  G.createSave("save.indices", {R, 1}, indices);
+
+  EE.compile(CompilationMode::Infer);
+
+  EE.run({}, {});
+
+  auto V = values->getPayload().getHandle();
+  auto I = indices->getPayload().getHandle<size_t>();
+
+  EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 411);
+  EXPECT_EQ(I.at({0, 0, 0}), 2);
+  EXPECT_FLOAT_EQ(V.at({0, 0, 1}), 42);
+  EXPECT_EQ(I.at({0, 0, 1}), 4);
+  EXPECT_FLOAT_EQ(V.at({0, 0, 2}), 28);
+  EXPECT_EQ(I.at({0, 0, 2}), 0);
+
+  EXPECT_FLOAT_EQ(V.at({1, 0, 0}), 0.45);
+  EXPECT_EQ(I.at({1, 0, 0}), 4);
+  EXPECT_FLOAT_EQ(V.at({1, 0, 1}), 0.4);
+  EXPECT_EQ(I.at({1, 0, 1}), 0);
+  EXPECT_FLOAT_EQ(V.at({1, 0, 2}), 0.4);
+  EXPECT_EQ(I.at({1, 0, 2}), 1);
+
+  EXPECT_FLOAT_EQ(V.at({2, 0, 0}), 100);
+  EXPECT_EQ(I.at({2, 0, 0}), 4);
+  EXPECT_FLOAT_EQ(V.at({2, 0, 1}), 9);
+  EXPECT_EQ(I.at({2, 0, 1}), 2);
+  EXPECT_FLOAT_EQ(V.at({2, 0, 2}), 8);
+  EXPECT_EQ(I.at({2, 0, 2}), 3);
+}
