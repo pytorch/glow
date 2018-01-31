@@ -61,6 +61,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   ExecutionEngine EE;
   auto &G = EE.getGraph();
   Tensor inputs(ElemKind::FloatTy, {1, 4});
+  inputs.getHandle() = {1, 1.2, 0.5, 1.3};
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, 4}, "A",
                              Variable::VisibilityKind::Public);
@@ -74,7 +75,38 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   EE.compile(CompilationMode::Infer);
 
+  // TODO: Verify histogram itself, for now just verify min and max.
+  // Run inference first time and capture tensor stats.
   EE.run({A}, {&inputs});
+
+  QuantizationProfileNode *profile{nullptr};
+  // Find QPN for node A.
+  for (auto node : G.getNodes()) {
+    if (QuantizationProfileNode *QPN =
+            llvm::dyn_cast<QuantizationProfileNode>(node)) {
+      Node *observedNode = node->getNthInput(0).getNode();
+      if (observedNode == A) {
+        profile = QPN;
+        break;
+      }
+    }
+  }
+
+  EXPECT_TRUE(profile != nullptr);
+
+  auto CI = profile->getComputationInfoVar()->getHandle<float>();
+  float min = CI.raw(0);
+  float max = CI.raw(1);
+  EXPECT_NEAR(0.5, min, 0.00001);
+  EXPECT_NEAR(1.3, max, 0.00001);
+
+  // Run inference for the second time with new min and max.
+  inputs.getHandle() = {0.2, 1.6, 0.5, 1.3};
+  EE.run({A}, {&inputs});
+  min = CI.raw(0);
+  max = CI.raw(1);
+  EXPECT_NEAR(0.2, min, 0.00001);
+  EXPECT_NEAR(1.6, max, 0.00001);
 }
 
 TEST(Interpreter, trainASimpleNetwork) {
