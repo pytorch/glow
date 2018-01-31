@@ -181,6 +181,10 @@ void Interpreter::fwdConvolutionGradInst(bool isTrain,
   }       // N
 }
 
+void Interpreter::fwdConvolutionQInst(bool isTrain, const ConvolutionQInst *I) {
+  llvm_unreachable("Unimplemented");
+}
+
 //===----------------------------------------------------------------------===//
 //                       Pooling
 //===----------------------------------------------------------------------===//

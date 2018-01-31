@@ -161,10 +161,11 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
                                      stride, pad, depth));
 }
 
-ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
-                                   NodeValue filter, NodeValue bias,
-                                   TypeRef outTy, size_t depth, size_t kernel,
-                                   size_t stride, size_t pad) {
+/// Check that the dimensions that are passed in when the convolution is
+/// constructed are correct.
+static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
+                           size_t depth, size_t kernel, size_t stride,
+                           size_t pad) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
@@ -177,8 +178,25 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
   (void)filterDims;
 
   assert(bias->getType()->size() == depth && "Invalid bias size");
+}
+
+ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
+                                   NodeValue filter, NodeValue bias,
+                                   TypeRef outTy, size_t depth, size_t kernel,
+                                   size_t stride, size_t pad) {
+  assertConvDims(input, filter, bias, depth, kernel, stride, pad);
   return addNode(new ConvolutionNode(name, outTy, input, filter, bias, kernel,
                                      stride, pad, depth));
+}
+
+ConvolutionQNode *Graph::createConvQ(llvm::StringRef name, NodeValue input,
+                                     NodeValue filter, NodeValue bias,
+                                     TypeRef outTy, size_t depth, size_t kernel,
+                                     size_t stride, size_t pad, float scale,
+                                     float offset) {
+  assertConvDims(input, filter, bias, depth, kernel, stride, pad);
+  return addNode(new ConvolutionQNode(name, outTy, input, filter, bias, kernel,
+                                      stride, pad, depth, scale, offset));
 }
 
 PoolNode *Graph::createPool(llvm::StringRef name, NodeValue input,

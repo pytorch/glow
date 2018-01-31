@@ -48,6 +48,22 @@ int main(int argc, char **argv) {
       .addResult("outTy")
       .addGradient();
 
+  BB.newNode("ConvolutionQ")
+      .addInput("Input")
+      .addInput("Filter")
+      .addInput("Bias")
+      .addMember(MemberType::SizeT, "Kernel")
+      .addMember(MemberType::SizeT, "Stride")
+      .addMember(MemberType::SizeT, "Pad")
+      .addMember(MemberType::SizeT, "Depth")
+      .addMember(MemberType::Float, "Scale")
+      .addMember(MemberType::Float, "Offset")
+      .addExtraParam("TypeRef", "outTy")
+      .addResult("outTy")
+      .setDocstring("Defines the quantized convolution. This convolution "
+                    "applies the scale and offset on 32-bit values before "
+                    "saturating them to 8-bit numbers. ");
+
   BB.newNode("Pool")
       .addEnumCase("Max")
       .addEnumCase("Avg")
