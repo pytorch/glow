@@ -198,41 +198,46 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Transpose the weights to the right format. Glow expects to read the
     // weights in the format CRSK. Caffe2 stores the operators as KCRS.
     // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
-
-    // TODO: need to test this code with a large batch size to verify that the
-    // conversion is correct.
     Tensor wtag;
     w->getHandle<>().transpose(&wtag, {0, 2, 3, 1});
 
     // The structure of the conv weigts is: NHWC. We take the C, which is the
     // number of filters. We use this value to calculate the size of the bias
     // if it is not specified.
-    size_t numFilters = wtag.dims()[0];
+    size_t depth = wtag.dims()[0];
 
-    // Load the bias vector:
-    Tensor *b = nullptr;
+    // Construct the Filter field.
+    Variable *filter = G_.createVariable(&wtag.getType(), "conv.filter");
+    filter->getPayload().copyFrom(&wtag);
+
+    // Construct the Bias field.
+    Variable *bias = G_.createVariable(ElemKind::FloatTy, {depth}, "conv.bias");
+    bias->getPayload().zero();
 
     // Check if we have a serialized bias vector.
     if (op.input_size() > 2) {
       auto &biasTensorName = op.input(2);
       if (tensors_.count(biasTensorName)) {
-        b = getTensorByName(biasTensorName);
+        // Load the serialized bias vector.
+        Tensor *b = getTensorByName(biasTensorName);
+        bias->copyFrom(b);
       }
     }
 
+    // Caffe passes the input as NCHW, and we expect the input to be NHWC.
     auto *tr = G_.createTranspose(op.name(), in, NCHW2NHWC);
-    auto *node = G_.createConv(op.name(), tr, numFilters, kernel, stride, pad);
 
-    cast<Variable>(node->getFilter())->copyFrom(&wtag);
+    // Calculate the size and allocate the output buffer.
+    ShapeNHWC idim = ShapeNHWC(tr->dims());
+    auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
+    std::array<size_t, 4> outDims = {
+        {idim.n, outSz.first, outSz.second, depth}};
+    auto outTy = G_.uniqueType(ElemKind::FloatTy, outDims);
 
-    // If we don't have a bias vector then create one that matches the weight
-    // size and fill it with zeros.
-    if (b) {
-      cast<Variable>(node->getBias())->copyFrom(b);
-    } else {
-      cast<Variable>(node->getBias())->getPayload().zero();
-    }
+    auto *node = G_.createConv(op.name(), tr, filter, bias, outTy, depth,
+                               kernel, stride, pad);
 
+    // Transpose the output back.
     auto *N = G_.createTranspose(op.name(), node, NHWC2NCHW);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {

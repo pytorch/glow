@@ -69,7 +69,8 @@ TypeRef Graph::getVoidTy() { return uniqueType(Type()); }
 Variable *Graph::createVariable(TypeRef T, llvm::StringRef name,
                                 Variable::VisibilityKind visibility,
                                 Variable::TrainKind train, float val) {
-  return addVar(new Variable(name, T, visibility, train, val));
+  auto FT = uniqueType(*T);
+  return addVar(new Variable(name, FT, visibility, train, val));
 }
 
 Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
@@ -167,6 +168,7 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
   ShapeNHWC idim = ShapeNHWC(input.dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
+  (void)idim;
 
   auto filterDims = filter->dims();
   assert(filterDims[0] == depth && filterDims[1] == kernel &&
