@@ -182,7 +182,7 @@ struct Decoder : Model {
         ElemKind::FloatTy, {1, EMBEDDING_SIZE}, "decoder.selfInput",
         Variable::VisibilityKind::Public, Variable::TrainKind::None);
     output = G.createVariable(
-        ElemKind::FloatTy, {1, L.index2word_.size()}, "decoder.output",
+        ElemKind::IndexTy, {1, 1}, "decoder.output",
         Variable::VisibilityKind::Public, Variable::TrainKind::None);
     hiddenInput = G.createVariable(
         ElemKind::FloatTy, {1, EMBEDDING_SIZE}, "decoder.hiddenInput",
@@ -278,7 +278,7 @@ void translate(Encoder *encoder, Decoder *decoder, llvm::StringRef sentense,
     decoder->hiddenInput->getPayload().copyFrom(
         &decoder->hiddenOutput->getPayload());
 
-    prevWordIdx = decoder->output->getPayload().getHandle().raw(0);
+    prevWordIdx = decoder->output->getPayload().getHandle<size_t>().raw(0);
 
     if (prevWordIdx == decoder->L.word2index_["EOS"])
       break;
