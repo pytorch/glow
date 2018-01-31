@@ -518,8 +518,17 @@ public:
 
     ElemTy sumErr = 0;
     for (size_t i = 0, e = size(); i < e; i++) {
-      ElemTy delta = raw(i) - other.raw(i);
-      sumErr += delta * delta;
+      // Separate handling for nan values
+      if(isnan(raw(i)) || isnan(other.raw(i))) {
+        if(isnan(raw(i)) != isnan(other.raw(i))) {
+          return false;
+        }
+        // else do nothing, nan==nan adds 0 to sumErr
+      }
+      else {
+        ElemTy delta = raw(i) - other.raw(i);
+        sumErr += delta * delta;
+      }
     }
 
     return sumErr < allowedError;
