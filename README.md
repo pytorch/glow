@@ -16,10 +16,10 @@ C++ compiler that supports C++11, on CMake, protocol buffer, and libpng.
 
 ### Building the Compiler
 
-Next, create a build directory and run cmake on the source directory. It is a
-good idea to build two configurations (Release and Debug) because some programs
-take a really long time to run in Debug mode. It's also a good idea to build
-the project outside of the source directory.
+To build the compiler, create a build directory and run cmake on the source
+directory. It's a good idea to build two configurations (Release and Debug)
+because some programs take a really long time to run in Debug mode. It's also a
+good idea to build the project outside of the source directory.
 
   ```
   mkdir build_Debug
@@ -35,14 +35,13 @@ like GNU Makefiles, Ninja and Xcode build.
 
 By default, Glow will use a system provided LLVM.  Note that Glow requires LLVM
 5.0. If LLVM is not available on your system you'll need to build it manually.
-You may find the script './utils/build\_llvm.sh"' useful. You will need to
+You may find the script './utils/build\_llvm.sh' useful. You will need to
 configure Glow with the flag '-DCMAKE\_PREFIX\_PATH' to tell the build system
 where to find LLVM.
 
 For more platform-specific build instructions and advance options, such as
 building with Address-Sanitizers refer to this guide:
-[Contributing](docs/Building.md)
-
+[Building the compiler](docs/Building.md)
 
 ## Testing and Running
 
