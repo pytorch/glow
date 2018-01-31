@@ -288,31 +288,6 @@ public:
       registerIR(SMG->getGradOfInputNamedInput(), SMGI->getSrcGrad());
       break;
     }
-    case glow::Kinded::Kind::RegressionNodeKind: {
-      auto *RR = cast<RegressionNode>(N);
-      auto *in = valueForNode(RR->getInput());
-      registerIR(N, in);
-      break;
-    }
-    case glow::Kinded::Kind::RegressionGradNodeKind: {
-      auto *RG = cast<RegressionGradNode>(N);
-      // Original inputs:
-      auto *origIn = valueForNode(RG->getInput());
-      auto *origExpected = valueForNode(RG->getExpected());
-      // Values related to the output of the node.
-      auto *srcGrad = builder_.createAllocActivationInst("regression.res.grad",
-                                                         origIn->getType());
-      auto *expGrad = builder_.createAllocActivationInst("expected.res.grad",
-                                                         origIn->getType());
-
-      builder_.createElementSubInst(N->getName(), srcGrad, origIn,
-                                    origExpected);
-      builder_.createSplatInst(N->getName(), expGrad, 0);
-
-      registerIR(RG->getGradOfInputNamedInput(), srcGrad);
-      registerIR(RG->getGradOfInputNamedExpected(), expGrad);
-      break;
-    }
     case glow::Kinded::Kind::TransposeNodeKind: {
       auto *TT = cast<TransposeNode>(N);
       auto *in = valueForNode(TT->getInput());
@@ -560,7 +535,9 @@ public:
     case glow::Kinded::Kind::ReluNodeKind:
     case glow::Kinded::Kind::ReluGradNodeKind:
     case glow::Kinded::Kind::FullyConnectedNodeKind:
-    case glow::Kinded::Kind::FullyConnectedGradNodeKind: {
+    case glow::Kinded::Kind::FullyConnectedGradNodeKind:
+    case glow::Kinded::Kind::RegressionNodeKind:
+    case glow::Kinded::Kind::RegressionGradNodeKind: {
       llvm_unreachable("Node should have been lowered to low-level nodes");
     }
     }
