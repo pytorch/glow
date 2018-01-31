@@ -159,22 +159,6 @@ TransposeInst *IRBuilder::createTransposeOp(Value *input,
   return createTransposeInst("transp", res, input, shuffle);
 }
 
-/*
-ConcatInst *IRBuilder::createConcatOp(Value *LHS, Value *RHS,
-                                      unsigned dimension) {
-  assert(LHS->getType() == RHS->getType() && "Invalid dims");
-  auto inDim = LHS->dims();
-
-  llvm::SmallVector<size_t, 6> shape(inDim.begin(), inDim.end());
-  // We are stacking the tensors along a specific dimension. This means that we
-  // increase the size of the tensor along this dimension.
-  shape[dimension] *= 2;
-
-  auto *res =
-      createAllocActivationInst("concat.res", LHS->getElementType(), shape);
-  return createConcatInst("concat", res, LHS, RHS, dimension);
-}*/
-
 BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(
     Value *input, Value *beta, Value *gamma, Value *mean, Value *var,
     size_t channelIdx, float epsilon, float momentum) {
@@ -284,3 +268,4 @@ WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
   A->setName(name);
   return A;
 }
+
