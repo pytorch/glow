@@ -23,11 +23,11 @@ public:
   };
 
   /// Specifies the visibility of the variable. Public nodes can't be
-  /// optimized because they are visibile to external users that may hold
+  /// optimized because they are visible to external users that may hold
   /// a reference or handles.
   enum class VisibilityKind {
-    Public,  // The variable is visibile from outside the graph.
-    Private, // The variable isn't visibile from outside the graph.
+    Public,  // The variable is visible from outside the graph.
+    Private, // The variable isn't visible from outside the graph.
   };
 
 private:
@@ -41,7 +41,8 @@ private:
   /// The tensor payload that the variable holds.
   Tensor payload_;
 
-  /// Initialize the content of the tensor. If an 'extern' is set then the user
+  /// Initialize the content of the tensor.
+  /// Payload is initialized to zero for 'None' TrainKind, and user
   /// of the graph is responsible for updating the tensor externally.
   void initPayload();
 
@@ -79,7 +80,7 @@ public:
     return getPayload().getHandle<ElemTy>();
   }
 
-  void copyFrom(Tensor *t) { payload_.copyFrom(t); }
+  void copyFrom(const Tensor *t) { payload_.copyFrom(t); }
 
   unsigned getNumInputs() const;
   llvm::StringRef getInputName(unsigned idx) const;
