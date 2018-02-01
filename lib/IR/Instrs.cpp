@@ -79,28 +79,9 @@ void ConvolutionInst::verify() const {
   Value *filter = getOperand(2).first;
   Value *bias = getOperand(3).first;
 
-  // TODO: once we implement lowering of convolutions we need to change this
-  // check to verify that all types are floats. Integers are handled with the
-  // ConvQ instruction.
   assert(src->getElementType() == dest->getElementType() && "Invalid Type");
   assert(src->getElementType() == filter->getElementType() && "Invalid Type");
   assert(src->getElementType() == bias->getElementType() && "Invalid Type");
-
-  ShapeNHWC idim(src->getType()->dims());
-  ShapeNHWC odim(dest->getType()->dims());
-  verifyConvDims(idim, odim, Kernel_, Stride_, Pad_, Depth_, filter, bias);
-}
-
-void ConvolutionQInst::verify() const {
-  Value *dest = getOperand(0).first;
-  Value *src = getOperand(1).first;
-  Value *filter = getOperand(2).first;
-  Value *bias = getOperand(3).first;
-
-  assert(src->getElementType() == ElemKind::Int8QTy && "Invalid Type");
-  assert(dest->getElementType() == ElemKind::Int8QTy && "Invalid Type");
-  assert(filter->getElementType() == ElemKind::Int8QTy && "Invalid Type");
-  assert(bias->getElementType() == ElemKind::Int8QTy && "Invalid Type");
 
   ShapeNHWC idim(src->getType()->dims());
   ShapeNHWC odim(dest->getType()->dims());

@@ -124,11 +124,6 @@ public:
                               size_t depth, size_t kernel, size_t stride,
                               size_t pad);
 
-  ConvolutionQNode *createConvQ(llvm::StringRef name, NodeValue input,
-                                NodeValue filter, NodeValue bias, TypeRef outTy,
-                                size_t depth, size_t kernel, size_t stride,
-                                size_t pad, float scale, float offset);
-
   PoolNode *createPool(llvm::StringRef name, NodeValue input,
                        PoolNode::Mode mode, size_t kernel, size_t stride,
                        size_t pad);

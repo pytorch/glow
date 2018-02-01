@@ -189,16 +189,6 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
                                      stride, pad, depth));
 }
 
-ConvolutionQNode *Graph::createConvQ(llvm::StringRef name, NodeValue input,
-                                     NodeValue filter, NodeValue bias,
-                                     TypeRef outTy, size_t depth, size_t kernel,
-                                     size_t stride, size_t pad, float scale,
-                                     float offset) {
-  assertConvDims(input, filter, bias, depth, kernel, stride, pad);
-  return addNode(new ConvolutionQNode(name, outTy, input, filter, bias, kernel,
-                                      stride, pad, depth, scale, offset));
-}
-
 PoolNode *Graph::createPool(llvm::StringRef name, NodeValue input,
                             PoolNode::Mode mode, size_t kernel, size_t stride,
                             size_t pad) {

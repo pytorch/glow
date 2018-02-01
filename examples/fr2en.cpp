@@ -181,9 +181,9 @@ struct Decoder : Model {
     input = G.createVariable(
         ElemKind::FloatTy, {1, EMBEDDING_SIZE}, "decoder.selfInput",
         Variable::VisibilityKind::Public, Variable::TrainKind::None);
-    output = G.createVariable(
-        ElemKind::IndexTy, {1, 1}, "decoder.output",
-        Variable::VisibilityKind::Public, Variable::TrainKind::None);
+    output = G.createVariable(ElemKind::IndexTy, {1, 1}, "decoder.output",
+                              Variable::VisibilityKind::Public,
+                              Variable::TrainKind::None);
     hiddenInput = G.createVariable(
         ElemKind::FloatTy, {1, EMBEDDING_SIZE}, "decoder.hiddenInput",
         Variable::VisibilityKind::Public, Variable::TrainKind::None);
