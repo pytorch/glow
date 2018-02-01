@@ -252,6 +252,17 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorSizeT, "Start")
       .addResult("Big.getType()");
 
+  BB.newNode("Gather")
+      .addInput("Data")
+      .addInput("Indices")
+      .addExtraParam("TypeRef", "outTy")
+      .addResult("outTy")
+      .setDocstring(
+          "Gathers entries of the outer-most dimension of Data indexed by "
+          "Indices, and concatenates them. Output tensor will have dimensions: "
+          "{I_0, I_1, ... I_n, D_1, D_2, ... D_m}, where D_i and I_j denote "
+          "Data and Indices dimensions respectively.");
+
   //===--------------------------------------------------------------------===//
   //                Nodes used for network training
   //===--------------------------------------------------------------------===//

@@ -282,6 +282,11 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::VectorSizeT, "Offsets");
 
+  BB.newInstr("Gather")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Indices", OperandKind::In);
+
   //===--------------------------------------------------------------------===//
   //             Instructions used for network training
   //===--------------------------------------------------------------------===//

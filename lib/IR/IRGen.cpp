@@ -560,6 +560,15 @@ public:
       V->setName(N->getName());
       break;
     }
+    case glow::Kinded::Kind::GatherNodeKind: {
+      auto *GN = cast<GatherNode>(N);
+      auto *dataTensor = valueForNode(GN->getData());
+      auto *indicesTensor = valueForNode(GN->getIndices());
+      auto *V = builder_.createGatherOp(dataTensor, indicesTensor);
+      registerIR(GN->getResult(), V->getDest());
+      V->setName(N->getName());
+      break;
+    }
 
     case glow::Kinded::Kind::TanhGradNodeKind:
     case glow::Kinded::Kind::SigmoidGradNodeKind:

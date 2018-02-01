@@ -194,3 +194,73 @@ TEST(Operator, TopK) {
   EXPECT_FLOAT_EQ(V.at({2, 0, 2}), 8);
   EXPECT_EQ(I.at({2, 0, 2}), 3);
 }
+
+TEST(Operator, Gather) {
+  /*
+    DATA  = [
+        [1.0, 1.2],
+        [2.3, 3.4],
+        [4.5, 5.7],
+    ]
+    INDICES = [
+        [0, 1, 0, 1],
+        [1, 2, 2, 0],
+    ]
+    OUTPUT = [
+        [
+            [1.0, 1.2],
+            [2.3, 3.4],
+            [1.0, 1.2],
+            [2.3, 3.4],
+        ],
+        [
+            [2.3, 3.4],
+            [4.5, 5.7],
+            [4.5, 5.7],
+            [1.0, 1.2],
+        ],
+    ]
+  */
+  ExecutionEngine EE;
+
+  auto &G = EE.getGraph();
+
+  auto *data = G.createVariable(ElemKind::FloatTy, {3, 2}, "data");
+  auto *indices = G.createVariable(ElemKind::IndexTy, {2, 4}, "indices");
+  auto *result = G.createVariable(ElemKind::FloatTy, {2, 4, 2}, "result");
+
+  data->getPayload().getHandle() = {
+      1.0, 1.2, 2.3, 3.4, 4.5, 5.7,
+  };
+  indices->getPayload().getHandle<size_t>() = {
+      0, 1, 0, 1, 1, 2, 2, 0,
+  };
+
+  auto R = G.createGather("gather", data, indices);
+
+  G.createSave("save", R, result);
+
+  EE.compile(CompilationMode::Infer);
+
+  EE.run({}, {});
+
+  auto H = result->getPayload().getHandle();
+
+  EXPECT_FLOAT_EQ(H.at({0, 0, 0}), 1.0);
+  EXPECT_FLOAT_EQ(H.at({0, 0, 1}), 1.2);
+  EXPECT_FLOAT_EQ(H.at({0, 1, 0}), 2.3);
+  EXPECT_FLOAT_EQ(H.at({0, 1, 1}), 3.4);
+  EXPECT_FLOAT_EQ(H.at({0, 2, 0}), 1.0);
+  EXPECT_FLOAT_EQ(H.at({0, 2, 1}), 1.2);
+  EXPECT_FLOAT_EQ(H.at({0, 3, 0}), 2.3);
+  EXPECT_FLOAT_EQ(H.at({0, 3, 1}), 3.4);
+
+  EXPECT_FLOAT_EQ(H.at({1, 0, 0}), 2.3);
+  EXPECT_FLOAT_EQ(H.at({1, 0, 1}), 3.4);
+  EXPECT_FLOAT_EQ(H.at({1, 1, 0}), 4.5);
+  EXPECT_FLOAT_EQ(H.at({1, 1, 1}), 5.7);
+  EXPECT_FLOAT_EQ(H.at({1, 2, 0}), 4.5);
+  EXPECT_FLOAT_EQ(H.at({1, 2, 1}), 5.7);
+  EXPECT_FLOAT_EQ(H.at({1, 3, 0}), 1.0);
+  EXPECT_FLOAT_EQ(H.at({1, 3, 1}), 1.2);
+}
