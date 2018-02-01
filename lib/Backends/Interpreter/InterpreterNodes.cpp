@@ -541,6 +541,23 @@ void Interpreter::fwdExtractTensorInst(bool isTrain,
 #undef TYPED_INSERT
 }
 
+void Interpreter::fwdGatherInst(bool isTrain, const glow::GatherInst *I) {
+  Tensor *dataT = getTensor(I->getData());
+  Tensor *indicesT = getTensor(I->getIndices());
+  Tensor *outT = getTensor(I->getDest());
+
+  size_t out_p = 0;
+  size_t dataSliceSize =
+      dataT->size() / dataT->dims()[0] * dataT->getType().getElementSize();
+  for (size_t i = 0, end = indicesT->size(); i < end; i++) {
+    size_t slice = indicesT->getHandle<size_t>().raw(i);
+    std::copy(&dataT->getUnsafePtr()[dataSliceSize * slice],
+              &dataT->getUnsafePtr()[dataSliceSize * (slice + 1)],
+              &outT->getUnsafePtr()[out_p]);
+    out_p += dataSliceSize;
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                      Batch Normalization
 //===----------------------------------------------------------------------===//

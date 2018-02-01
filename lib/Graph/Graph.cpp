@@ -539,6 +539,17 @@ TopKNode *Graph::createTopK(llvm::StringRef name, NodeValue input, size_t k) {
                    uniqueType(ElemKind::IndexTy, outDims), input, k));
 }
 
+GatherNode *Graph::createGather(llvm::StringRef name, NodeValue data,
+                                NodeValue indices) {
+  auto dDims = data.dims();
+  auto iDims = indices.dims();
+  assert(dDims.size() > 0);
+  llvm::SmallVector<size_t, 6> outDims(iDims.begin(), iDims.end());
+  outDims.insert(outDims.end(), dDims.begin() + 1, dDims.end());
+  return addNode(new GatherNode(
+      name, uniqueType(data->getElementType(), outDims), data, indices));
+}
+
 void Graph::createSimpleRNN(llvm::StringRef namePrefix,
                             llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                             unsigned hiddenSize, unsigned outputSize,

@@ -404,13 +404,22 @@ void TopKInst::verify() const {
   assert(getOperand(0).first->dims() == getOperand(1).first->dims());
 }
 
+void GatherInst::verify() const {
+  assert(getOperand(0).first->getElementType() ==
+         getOperand(1).first->getElementType());
+  assert(getOperand(2).first->getElementType() == ElemKind::IndexTy);
+  assert(getOperand(0).first->dims().size() ==
+         getOperand(1).first->dims().size() +
+             getOperand(2).first->dims().size() - 1);
+}
+
 void IntrinsicInst::verify() const {
   assert(getName().size() && "Name must not be empty");
 }
 
 // TODO: verify the gradient instructions.
 #define NOVERIFY(ClassName)                                                    \
-  void ClassName ::verify() const {}
+  void ClassName::verify() const {}
 NOVERIFY(ConvolutionGradInst)
 NOVERIFY(PoolMaxWithXYGradInst)
 NOVERIFY(PoolAvgGradInst)
