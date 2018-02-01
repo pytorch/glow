@@ -66,18 +66,6 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Depth")
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
 
-  BB.newInstr("ConvolutionQ")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .addOperand("Filter", OperandKind::In)
-      .addOperand("Bias", OperandKind::In)
-      .addMember(MemberType::SizeT, "Kernel")
-      .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::SizeT, "Pad")
-      .addMember(MemberType::SizeT, "Depth")
-      .addMember(MemberType::Float, "Scale")
-      .addMember(MemberType::Float, "Offset");
-
   // PoolMax version caching XY coordinates to speedup gradient-based
   // computations.
   BB.newInstr("PoolMaxWithXY")

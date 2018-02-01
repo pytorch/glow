@@ -128,20 +128,6 @@ public:
       registerIR(N, V->getDest());
       break;
     }
-    case glow::Kinded::Kind::ConvolutionQNodeKind: {
-      auto *CQ = cast<ConvolutionQNode>(N);
-      auto *in = valueForNode(CQ->getInput());
-      auto *filter = valueForNode(CQ->getFilter());
-      auto *bias = valueForNode(CQ->getBias());
-      Value *dest = builder_.createAllocActivationInst(
-          "convq.res", CQ->getResult()->getType());
-      auto *V = builder_.createConvolutionQInst(
-          "convq", dest, in, filter, bias, CQ->getKernel(), CQ->getStride(),
-          CQ->getPad(), CQ->getDepth(), CQ->getScale(), CQ->getOffset());
-      V->setName(N->getName());
-      registerIR(N, V->getDest());
-      break;
-    }
     case glow::Kinded::Kind::ConvolutionGradNodeKind: {
       auto *CG = cast<ConvolutionGradNode>(N);
 
