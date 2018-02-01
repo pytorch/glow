@@ -60,12 +60,28 @@ class JITBackend final : public Backend {
   /// The result type is "size_t*".
   llvm::Value *emitValueDims(llvm::IRBuilder<> &builder, glow::Value *val);
 
+  /// Get a function with a given name from the llmodule_.
+  llvm::Function *getFunction(const std::string &name);
+
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
   void generateLLVMIRForInstr(llvm::IRBuilder<> &builder, glow::Instruction *I);
 
   /// Optimize the function \p F and the module that owns it. Use the target
   /// information from the \p TM target machine.
   void optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM);
+
+  /// Specialize function \p F for a provided set of constant arguments \p
+  /// constParams. The specialized function is marked as noinline and simply
+  /// invokes the original function \p F with constant arguments. This call
+  /// later gets inlined and optimized. Use \p constArgsEmitter to emit the
+  /// arguments inside the specialized function. \returns a specialized version
+  /// of the function for provided parameters.
+  llvm::Function *getOrCreateSpecializedFunction(
+      llvm::Function *F, llvm::SmallVectorImpl<size_t> &constParams,
+      std::function<void(llvm::IRBuilder<> &builder,
+                         llvm::SmallVectorImpl<llvm::Value *> &args,
+                         bool emitAllArgs)>
+          constArgsEmitter);
 
 public:
   /// Ctor.
