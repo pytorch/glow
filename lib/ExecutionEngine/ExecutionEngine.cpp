@@ -28,6 +28,7 @@ void ExecutionEngine::run(llvm::ArrayRef<Variable *> vars,
                           llvm::ArrayRef<Tensor *> inputs) {
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
+  assert(!M_->getInstrs().empty() && "Running a Module with no instructions.");
 
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
@@ -47,6 +48,7 @@ void ExecutionEngine::runBatch(size_t iterations,
   assert(!inputs.empty() && "No inputs");
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
+  assert(!M_->getInstrs().empty() && "Running a Module with no instructions.");
 
   // This is the size of one batch (the number of samples in the batch).
   size_t batchSize = vars[0]->getType()->dims()[0];

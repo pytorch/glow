@@ -195,11 +195,11 @@ void Variable::initPayload() {
       payload_.getHandle<double>().clear(val_);
       break;
     }
-    case ElemKind::Int8Ty: {
+    case ElemKind::Int8QTy: {
       payload_.getHandle<int8_t>().clear(val_);
       break;
     };
-    case ElemKind::Int32Ty: {
+    case ElemKind::Int32QTy: {
       payload_.getHandle<int32_t>().clear(val_);
       break;
     }
@@ -221,11 +221,11 @@ void Variable::initPayload() {
       payload_.getHandle<double>().randomize(val_);
       break;
     }
-    case ElemKind::Int8Ty: {
+    case ElemKind::Int8QTy: {
       payload_.getHandle<int8_t>().randomize(val_);
       break;
     };
-    case ElemKind::Int32Ty: {
+    case ElemKind::Int32QTy: {
       payload_.getHandle<int32_t>().randomize(val_);
       break;
     }

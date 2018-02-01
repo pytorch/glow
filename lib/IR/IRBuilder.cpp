@@ -41,26 +41,6 @@ void IRBuilder::deallocateActiveInstrs() {
 //                        High level operators.
 //===----------------------------------------------------------------------===//
 
-ConvolutionInst *IRBuilder::createConvOp(Value *input, Value *filter,
-                                         Value *bias, size_t depth,
-                                         size_t kernel, size_t stride,
-                                         size_t pad) {
-  ShapeNHWC idim = ShapeNHWC(input->dims());
-  assert(idim.w >= kernel && idim.h >= kernel &&
-         "buffer too small for selected stride");
-
-  // Calculate the size and allocate the output buffer.
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
-
-  llvm::SmallVector<size_t, 4> outDims = {idim.n, outSz.first, outSz.second,
-                                          depth};
-  auto TR = M_->getGraph()->uniqueType(ElemKind::FloatTy, outDims);
-  Value *dest = createAllocActivationInst("conv.res", TR);
-
-  return createConvolutionInst("conv", dest, input, filter, bias, kernel,
-                               stride, pad, depth);
-}
-
 PoolMaxInst *IRBuilder::createPoolMaxOp(Value *input, size_t kernel,
                                         size_t stride, size_t pad) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
@@ -121,24 +101,15 @@ TanhInst *IRBuilder::createTanhOp(Value *input) {
   return createTanhInst("tanh", res, input);
 }
 
-SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input, Value *selected) {
+SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input) {
   auto *res = createAllocActivationInst("softmax.res", input->getType());
-  return createSoftMaxInst("softmax", res, input, selected);
-}
-
-SoftMaxWithEInst *IRBuilder::createSoftMaxWithEOp(Value *input,
-                                                  Value *selected) {
-  auto *res = createAllocActivationInst("softmax.res", input->getType());
-  auto *E = createAllocActivationInst("e_cache", input->getType());
-  // Initialize E, because it is an inout parameter.
-  createSplatInst("zero", E, 0.0);
-  return createSoftMaxWithEInst("softmax", res, input, E, selected);
+  return createSoftMaxInst("softmax", res, input);
 }
 
 ReshapeInst *IRBuilder::createReshapeOp(Value *input,
                                         llvm::ArrayRef<size_t> shape) {
-  auto *res =
-      createAllocActivationInst("reshape.res", input->getElementType(), shape);
+  auto ty = M_->getGraph()->uniqueTypeWithNewShape(input->getType(), shape);
+  auto *res = createAllocActivationInst("reshape.res", ty);
   return createReshapeInst("reshape", res, input, shape);
 }
 
@@ -168,21 +139,13 @@ TransposeInst *IRBuilder::createTransposeOp(Value *input,
   return createTransposeInst("transp", res, input, shuffle);
 }
 
-/*
-ConcatInst *IRBuilder::createConcatOp(Value *LHS, Value *RHS,
-                                      unsigned dimension) {
-  assert(LHS->getType() == RHS->getType() && "Invalid dims");
-  auto inDim = LHS->dims();
-
-  llvm::SmallVector<size_t, 6> shape(inDim.begin(), inDim.end());
-  // We are stacking the tensors along a specific dimension. This means that we
-  // increase the size of the tensor along this dimension.
-  shape[dimension] *= 2;
-
-  auto *res =
-      createAllocActivationInst("concat.res", LHS->getElementType(), shape);
-  return createConcatInst("concat", res, LHS, RHS, dimension);
-}*/
+BroadcastInst *IRBuilder::createBroadcastOp(Value *input,
+                                            llvm::ArrayRef<size_t> shape,
+                                            unsigned axis) {
+  auto *res = createAllocActivationInst("broadcast.res",
+                                        input->getElementType(), shape);
+  return createBroadcastInst("broadcast", res, input, shape, axis);
+}
 
 BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(
     Value *input, Value *beta, Value *gamma, Value *mean, Value *var,
@@ -267,6 +230,19 @@ ElementSelectInst *IRBuilder::createSelectOp(Value *Cond, Value *LHS,
   return createElementSelectInst("select", res, Cond, LHS, RHS);
 }
 
+TopKInst *IRBuilder::createTopKOp(Value *input, size_t k) {
+  auto inDims = input->dims();
+  assert(inDims.size() > 0);
+  assert(k <= inDims.back());
+  llvm::SmallVector<size_t, 6> outDims(inDims.begin(), inDims.end());
+  outDims.back() = k;
+  auto *values = createAllocActivationInst("topk.values",
+                                           input->getElementType(), outDims);
+  auto *indices =
+      createAllocActivationInst("topk.indices", ElemKind::IndexTy, outDims);
+  return createTopKInst("topk", values, indices, input, k);
+}
+
 Value *IRBuilder::createReturnOp(Value *input) {
   auto *W = createWeightVar(input->getType(), "result",
                             WeightVar::MutabilityKind::Mutable);
@@ -292,4 +268,11 @@ WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
   M_->getWeights().push_back(A);
   A->setName(name);
   return A;
+}
+
+AllocActivationInst *
+IRBuilder::createAllocActivationInst(llvm::StringRef name, ElemKind elemTy,
+                                     llvm::ArrayRef<size_t> dims) {
+  auto T = M_->getGraph()->uniqueType(elemTy, dims);
+  return createAllocActivationInst(name, T);
 }

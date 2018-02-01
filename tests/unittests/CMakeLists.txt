@@ -72,6 +72,7 @@ add_executable(graphTest
                graphTest.cpp)
 target_link_libraries(graphTest
                       PRIVATE
+                        ExecutionEngine
                         Graph
                         IR
                         Backends
@@ -91,7 +92,6 @@ target_link_libraries(graphGradTest
                         testMain)
 add_test(graphGradTest ${GLOW_BINARY_DIR}/tests/graphGradTest)
 
-
 add_executable(graphOptzTest
                graphOptzTest.cpp)
 target_link_libraries(graphOptzTest
@@ -102,6 +102,18 @@ target_link_libraries(graphOptzTest
                         gtest
                         testMain)
 add_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest)
+
+add_executable(quantizationTest
+               quantizationTest.cpp)
+target_link_libraries(quantizationTest
+                      PRIVATE
+                        Graph
+                        Quantization
+                        gtest
+                        testMain)
+add_test(quantizationTest ${GLOW_BINARY_DIR}/tests/quantizationTest)
+
+
 
 if(GLOW_WITH_OPENCL)
 add_executable(OCLTest

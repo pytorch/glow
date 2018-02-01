@@ -949,28 +949,6 @@ void performPeepholeOptimizations(Module &M) {
       continue;
     }
 
-    // SoftMaxWithXYInst -> SoftMaxInst.
-    if (auto *SMI = dyn_cast<SoftMaxWithEInst>(I)) {
-      auto *E = SMI->getE();
-      // Optimize only if the cache is read exactly once,
-      // namely by this instruction.
-      bool isUsedE = false;
-      for (auto &U : ValueUses(getOrigin(E))) {
-        if (U.getOperand().second != OperandKind::Out && U.get() != SMI) {
-          isUsedE = true;
-          break;
-        }
-      }
-      if (isUsedE)
-        continue;
-
-      auto *NewSMI = B.createSoftMaxInst(SMI->getName(), SMI->getDest(),
-                                         SMI->getSrc(), SMI->getSelected());
-      it = M.moveInstruction(cur, NewSMI);
-      M.eraseInstruction(cur);
-      continue;
-    }
-
     // reshape -> tensorview, copy
     if (auto *RI = dyn_cast<ReshapeInst>(I)) {
       auto *TVI = B.createTensorViewInst(RI->getName(), RI->getSrc(),

@@ -366,14 +366,14 @@ TEST(Tensor, broadcastDir2) {
   }
 }
 
-/// Broadcast a Tensor of shape (2,1) to (3,2,2,2).
+/// Broadcast a Tensor of shape (2,1) to (3,2,4,2) with axis 1.
 TEST(Tensor, broadcastNewShape) {
   const size_t numDims_A = 4;
 
-  const size_t dimX_A = 2;
+  const size_t dimX_A = 3;
   const size_t dimY_A = 2;
-  const size_t dimZ_A = 2;
-  const size_t dimW_A = 3;
+  const size_t dimZ_A = 4;
+  const size_t dimW_A = 2;
 
   size_t dims_A[numDims_A];
   dims_A[0] = dimX_A;
@@ -381,29 +381,30 @@ TEST(Tensor, broadcastNewShape) {
   dims_A[2] = dimZ_A;
   dims_A[3] = dimW_A;
 
-  const size_t dimX_B = 1;
   const size_t dimY_B = 2;
-  Tensor X_B(ElemKind::FloatTy, {dimX_B, dimY_B});
+  const size_t dimZ_B = 1;
+  Tensor X_B(ElemKind::FloatTy, {dimY_B, dimZ_B});
   auto H_B = X_B.getHandle<>();
   H_B = {200, 201};
 
   Tensor broadcastedB;
-  X_B.getHandle<>().broadcastToNewShape(&broadcastedB, dims_A);
+  const unsigned axis = 1;
+  X_B.getHandle<>().broadcastToNewShape(&broadcastedB, dims_A, axis);
 
   auto broadcastedBHandle = broadcastedB.getHandle<>();
 
   // Verify broadcasted B has same shape.
   EXPECT_EQ(numDims_A, broadcastedBHandle.dims().size());
-  for (int i = 0; i < numDims_A; i++) {
+  for (int i = 0; i < broadcastedBHandle.dims().size(); i++) {
     EXPECT_EQ(dims_A[i], broadcastedBHandle.dims()[i]);
   }
 
-  // Look at the two values in X_B (in dimension Y) and verify in the three
-  // dimensions it was broadcasted that the values were correctly broadcasted.
-  const size_t i_B = 0;
+  // Look at the two values in X_B and verify in the three dimensions it was
+  // broadcasted that the values were correctly broadcasted.
+  const size_t k_B = 0;
   for (size_t j_B = 0; j_B < dimY_B; ++j_B) {
-    const float origVal = H_B.at({i_B, j_B});
-    const size_t j_A = j_B; // This dim was not broadcasted.
+    const float origVal = H_B.at({j_B, k_B});
+    const size_t j_A = j_B; // This dim was not broadcasted (dims were equal).
     for (size_t i_A = 0; i_A < dimX_A; ++i_A) {
       for (size_t k_A = 0; k_A < dimZ_A; ++k_A) {
         for (size_t l_A = 0; l_A < dimW_A; ++l_A) {
@@ -412,4 +413,32 @@ TEST(Tensor, broadcastNewShape) {
       }
     }
   }
+}
+
+TEST(Tensor, integerTensors) {
+  Tensor X;
+  // Integer tensors must have scale and offset.
+  Type I32Ty(ElemKind::Int32QTy, {1, 3}, 0.1, 0.2);
+  Type I8Ty(ElemKind::Int8QTy, {3, 3}, 0.5, 0.25);
+
+  Type I8Ty2(ElemKind::Int8QTy, {3, 3}, 4, 4);
+  Type I8Ty3(ElemKind::Int8QTy, {3, 3}, 4, 4);
+
+  // Float tensors must not have scale and offsets.
+  Type FlTy(ElemKind::FloatTy, {1, 3});
+
+  // Check that basic operations work.
+  Tensor I(I8Ty);
+  auto H = I.getHandle<int8_t>();
+  H.at({0, 2}) = 3;
+
+  EXPECT_EQ(H.at({0, 2}), 3);
+  EXPECT_EQ(0.5, I.getType().getScale());
+  EXPECT_EQ(0.25, I.getType().getOffset());
+
+  // These types have a different scale and offset.
+  EXPECT_FALSE(I8Ty.isEqual(I8Ty2));
+
+  // These types have the same scale and offset.
+  EXPECT_TRUE(I8Ty2.isEqual(I8Ty3));
 }

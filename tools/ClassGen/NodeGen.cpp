@@ -28,7 +28,8 @@ int main(int argc, char **argv) {
   BB.newNode("Save")
       .addInput("Input")
       .addInput("Output")
-      .addExtraMethod("Variable *getVariable() const { return "
+      .addExtraMethod("Variable *getVariable() const;",
+                      "Variable *SaveNode::getVariable() const { return "
                       "llvm::cast<Variable>(Output_.getNode()); };")
       .setHasSideEffects(true);
   //===--------------------------------------------------------------------===//
@@ -46,6 +47,22 @@ int main(int argc, char **argv) {
       .addExtraParam("TypeRef", "outTy")
       .addResult("outTy")
       .addGradient();
+
+  BB.newNode("ConvolutionQ")
+      .addInput("Input")
+      .addInput("Filter")
+      .addInput("Bias")
+      .addMember(MemberType::SizeT, "Kernel")
+      .addMember(MemberType::SizeT, "Stride")
+      .addMember(MemberType::SizeT, "Pad")
+      .addMember(MemberType::SizeT, "Depth")
+      .addMember(MemberType::Float, "Scale")
+      .addMember(MemberType::Float, "Offset")
+      .addExtraParam("TypeRef", "outTy")
+      .addResult("outTy")
+      .setDocstring("Defines the quantized convolution. This convolution "
+                    "applies the scale and offset on 32-bit values before "
+                    "saturating them to 8-bit numbers. ");
 
   BB.newNode("Pool")
       .addEnumCase("Max")
@@ -202,6 +219,18 @@ int main(int argc, char **argv) {
       .addExtraParam("TypeRef", "outTy")
       .addResult("outTy");
 
+  BB.newNode("Broadcast")
+      .addInput("Input")
+      .addMember(MemberType::VectorSizeT, "Shape")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addExtraParam("TypeRef", "outTy")
+      .addResult("outTy")
+      .setDocstring("Performs broadcasting on the Input tensor so that its "
+                    "shape matches the provided Shape. The provided Axis "
+                    "represents the offset of the Input's shape (from the "
+                    "leading dimension) when comparing dimensions to the "
+                    "destination Shape.");
+
   BB.newNode("Concat")
       .addMember(MemberType::VectorNodeValue, "Inputs")
       .addMember(MemberType::SizeT, "Dim")
@@ -252,10 +281,14 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addInput("Histogram")
       .addInput("ComputationInfo")
-      .addExtraMethod("Variable *getHistogramVar() const { return "
+      .addExtraMethod("Variable *getHistogramVar() const ;",
+                      "Variable *QuantizationProfileNode::getHistogramVar() "
+                      "const { return "
                       "llvm::cast<Variable>(Histogram_.getNode()); };")
-      .addExtraMethod("Variable *getComputationInfoVar() const { return "
-                      "llvm::cast<Variable>(ComputationInfo_.getNode()); };")
+      .addExtraMethod(
+          "Variable *getComputationInfoVar() const;",
+          "Variable *QuantizationProfileNode::getComputationInfoVar() const { "
+          "return llvm::cast<Variable>(ComputationInfo_.getNode()); };")
       .setDocstring(
           "Generate profile (distribution of values) of the Input tensor. "
           "This data is used for quantization of the tensor later on.")
@@ -284,6 +317,23 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addResult("Input.getType()", "Left")
       .addResult("Input.getType()", "Right");
+
+  //===--------------------------------------------------------------------===//
+  //                Nodes used by RNN
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("TopK")
+      .addInput("Input")
+      .addMember(MemberType::SizeT, "K")
+      .addExtraParam("TypeRef", "outTy1")
+      .addExtraParam("TypeRef", "outTy2")
+      .addResult("outTy1", "Values")
+      .addResult("outTy2", "Indices")
+      .setDocstring(
+          "Finds the top K maximal elements for each vector in the tensor. "
+          "Vectors are defined as the last dimension in the tensor. "
+          "The input shape {D_0, D_1, ... D_n} results in the outputs "
+          "{D_0, D_1, ... D_n-1, K}, sorted in non-decreasing order.");
 
   return 0;
 }

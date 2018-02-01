@@ -1,4 +1,5 @@
-// Copyright 2017 Facebook Inc.  All Rights Reserved.
+// Copyright 2017 Facebook Inc. All Rights Reserved.
+
 #include "InstrBuilder.h"
 
 #include <fstream>
@@ -38,9 +39,10 @@ int main(int argc, char **argv) {
 
   BB.newInstr("DeallocActivation")
       .addOperand("Src", OperandKind::Out)
-      .addExtraMethod("AllocActivationInst *getAlloc() const { return "
-                      "llvm::cast<AllocActivationInst>(getOperand(0)."
-                      "first); }")
+      .addExtraMethod("AllocActivationInst *getAlloc() const; ",
+                      "AllocActivationInst *DeallocActivationInst::getAlloc() "
+                      "const { return  "
+                      "llvm::cast<AllocActivationInst>(getOperand(0).first); }")
       .setType("Src->getType()");
 
   BB.newInstr("Copy")
@@ -63,6 +65,18 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Pad")
       .addMember(MemberType::SizeT, "Depth")
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
+
+  BB.newInstr("ConvolutionQ")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Filter", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addMember(MemberType::SizeT, "Kernel")
+      .addMember(MemberType::SizeT, "Stride")
+      .addMember(MemberType::SizeT, "Pad")
+      .addMember(MemberType::SizeT, "Depth")
+      .addMember(MemberType::Float, "Scale")
+      .addMember(MemberType::Float, "Offset");
 
   // PoolMax version caching XY coordinates to speedup gradient-based
   // computations.
@@ -127,23 +141,19 @@ int main(int argc, char **argv) {
       .addGradientInstr({"Dest", "Src", "Scale"}, {"Dest", "Src"});
 
   //===--------------------------------------------------------------------===//
-  //                      Loss operations
+  //                      Loss functions
   //===--------------------------------------------------------------------===//
-
-  // SoftMax version caching Expected to speedup gradient-based computations.
-  BB.newInstr("SoftMaxWithE")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .addOperand("E", OperandKind::InOut)
-      .addOperand("Selected", OperandKind::In)
-      .inplaceOperand({"Dest", "Src"})
-      .addGradientInstr({"Src", "E", "Selected"}, {"Src"});
 
   BB.newInstr("SoftMax")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addOperand("Selected", OperandKind::In)
       .inplaceOperand({"Dest", "Src"});
+
+  BB.newInstr("SoftMaxGrad")
+      .addOperand("OrigDest", OperandKind::In)
+      .addOperand("OrigSrc", OperandKind::In)
+      .addOperand("Selected", OperandKind::In)
+      .addOperand("SrcGrad", OperandKind::Out);
 
   //===--------------------------------------------------------------------===//
   //                      Arithmetic
@@ -252,6 +262,12 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::VectorUnsigned, "Shuffle");
 
+  BB.newInstr("Broadcast")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::VectorSizeT, "Shape")
+      .addMember(MemberType::Unsigned, "Axis");
+
   BB.newInstr("Splat")
       .addMember(MemberType::Float, "Value")
       .addOperand("Dest", OperandKind::Out);
@@ -296,6 +312,16 @@ int main(int argc, char **argv) {
   //===--------------------------------------------------------------------===//
 
   BB.newInstr("Intrinsic").addMember(MemberType::String, "Identifier");
+
+  //===--------------------------------------------------------------------===//
+  //                Instructions used by RNN
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("TopK")
+      .addOperand("Values", OperandKind::Out)
+      .addOperand("Indices", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addMember(MemberType::SizeT, "K");
 
   return 0;
 }

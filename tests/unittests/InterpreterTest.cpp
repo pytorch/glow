@@ -61,6 +61,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   ExecutionEngine EE;
   auto &G = EE.getGraph();
   Tensor inputs(ElemKind::FloatTy, {1, 4});
+  inputs.getHandle() = {1, 1.2, 0.5, 1.3};
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, 4}, "A",
                              Variable::VisibilityKind::Public);
@@ -74,7 +75,38 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   EE.compile(CompilationMode::Infer);
 
+  // TODO: Verify histogram itself, for now just verify min and max.
+  // Run inference first time and capture tensor stats.
   EE.run({A}, {&inputs});
+
+  QuantizationProfileNode *profile{nullptr};
+  // Find QPN for node A.
+  for (auto node : G.getNodes()) {
+    if (QuantizationProfileNode *QPN =
+            llvm::dyn_cast<QuantizationProfileNode>(node)) {
+      Node *observedNode = node->getNthInput(0).getNode();
+      if (observedNode == A) {
+        profile = QPN;
+        break;
+      }
+    }
+  }
+
+  EXPECT_TRUE(profile != nullptr);
+
+  auto CI = profile->getComputationInfoVar()->getHandle<float>();
+  float min = CI.raw(0);
+  float max = CI.raw(1);
+  EXPECT_NEAR(0.5, min, 0.00001);
+  EXPECT_NEAR(1.3, max, 0.00001);
+
+  // Run inference for the second time with new min and max.
+  inputs.getHandle() = {0.2, 1.6, 0.5, 1.3};
+  EE.run({A}, {&inputs});
+  min = CI.raw(0);
+  max = CI.raw(1);
+  EXPECT_NEAR(0.2, min, 0.00001);
+  EXPECT_NEAR(1.6, max, 0.00001);
 }
 
 TEST(Interpreter, trainASimpleNetwork) {
@@ -668,9 +700,12 @@ TEST(Interpreter, learnSqrt2) {
 TEST(LinearRegression, trainSimpleLinearRegression) {
   // Given 1-D vectors x and y, find real numbers m and b such that
   // m * x + b is approximately equal to y.
+  unsigned numSamples = 500;
+
   ExecutionEngine EE;
   EE.getConfig().maxNumThreads = 1;
   EE.getConfig().learningRate = 0.1;
+  EE.getConfig().batchSize = numSamples;
 
   auto &G = EE.getGraph();
   G.setName("Gradient descent solution for simple linear regression");
@@ -679,7 +714,6 @@ TEST(LinearRegression, trainSimpleLinearRegression) {
   float referenceM = 3.0;
   float referenceB = 6.0;
 
-  unsigned numSamples = 500;
   Tensor tensorX(ElemKind::FloatTy, {numSamples, 1});
   Tensor tensorY(ElemKind::FloatTy, {numSamples, 1});
   for (unsigned i = 0; i < numSamples; i++) {
@@ -698,13 +732,7 @@ TEST(LinearRegression, trainSimpleLinearRegression) {
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
 
   FullyConnectedNode *FC = G.createFullyConnected("fc", inputX, 1);
-  Node *coef =
-      G.createSplat("coef", FC->getType(), 1.0 / sqrt((double)numSamples));
-  Node *normX =
-      G.createArithmetic("normX", FC, coef, ArithmeticNode::Mode::Mul);
-  Node *normY =
-      G.createArithmetic("normY", expectedY, coef, ArithmeticNode::Mode::Mul);
-  Node *R = G.createRegression("reg", normX, normY);
+  Node *R = G.createRegression("reg", FC, expectedY);
   G.createSave("return", R);
 
   Variable *M = llvm::cast<Variable>(FC->getFilter());

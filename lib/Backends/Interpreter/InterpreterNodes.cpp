@@ -181,6 +181,10 @@ void Interpreter::fwdConvolutionGradInst(bool isTrain,
   }       // N
 }
 
+void Interpreter::fwdConvolutionQInst(bool isTrain, const ConvolutionQInst *I) {
+  llvm_unreachable("Unimplemented");
+}
+
 //===----------------------------------------------------------------------===//
 //                       Pooling
 //===----------------------------------------------------------------------===//
@@ -414,56 +418,37 @@ void Interpreter::fwdTanhInst(bool isTrain, const TanhInst *I) {
 //                        Loss Functions (Softmax/regression/...)
 //===----------------------------------------------------------------------===//
 
-static void fwdSoftMax(Handle<float> inW, Handle<float> outW,
-                       Handle<float> *EH) {
+void Interpreter::fwdSoftMaxInst(bool isTrain, const SoftMaxInst *I) {
+  auto inW = getWeightHandle(I->getSrc());
+  auto outW = getWeightHandle(I->getDest());
   auto idim = inW.dims();
 
   for (size_t n = 0; n < idim[0]; n++) {
-    float max = inW.at({n, 0});
-
     // Find Max.
-    for (size_t i = 0; i < idim[1]; i++) {
+    float max = inW.at({n, 0});
+    for (size_t i = 1; i < idim[1]; i++) {
       max = std::max(max, inW.at({n, i}));
     }
 
-    float sum = 0;
-
     // Compute exp.
+    float sum = 0;
     for (size_t i = 0; i < idim[1]; i++) {
       float e = std::exp(inW.at({n, i}) - max);
       sum += e;
-      // EH.at({n, i}) = e;
       outW.at({n, i}) = e;
     }
 
     // Normalize the output.
     for (size_t i = 0; i < idim[1]; i++) {
       outW.at({n, i}) = outW.at({n, i}) / sum;
-      if (EH)
-        EH->at({n, i}) = outW.at({n, i});
     }
   } // N
 }
 
-void Interpreter::fwdSoftMaxInst(bool isTrain, const SoftMaxInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-  fwdSoftMax(inW, outW, nullptr);
-}
-
-void Interpreter::fwdSoftMaxWithEInst(bool isTrain, const SoftMaxWithEInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-  auto EH = getWeightHandle(I->getE());
-  fwdSoftMax(inW, outW, &EH);
-}
-
-void Interpreter::fwdSoftMaxWithEGradInst(bool isTrain,
-                                          const SoftMaxWithEGradInst *I) {
+void Interpreter::fwdSoftMaxGradInst(bool isTrain, const SoftMaxGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
-
   auto idim = inG.dims();
-  auto EH = getTensor(I->getE())->getHandle<>();
+  auto outW = getWeightHandle(I->getOrigDest());
   auto selectedH = getTensor(I->getSelected())->getHandle<size_t>();
 
   inG.clear();
@@ -473,7 +458,7 @@ void Interpreter::fwdSoftMaxWithEGradInst(bool isTrain,
   for (size_t n = 0; n < idim[0]; n++) {
     for (size_t i = 0; i < idim[1]; i++) {
       float delta = (selectedH.at({n, 0}) == i);
-      float sigma = (EH.at({n, i}) - delta);
+      float sigma = outW.at({n, i}) - delta;
       inG.at({n, i}) += sigma;
     }
   }
@@ -489,6 +474,15 @@ void Interpreter::fwdTransposeInst(bool isTrain, const TransposeInst *I) {
 
   assert(outW->size() == inW.size() && "Invalid tensor dimensions");
   inW.transpose(outW, I->getShuffle());
+}
+
+void Interpreter::fwdBroadcastInst(bool isTrain, const BroadcastInst *I) {
+  auto inW = getWeightHandle(I->getSrc());
+  auto outW = getTensor(I->getDest());
+  auto shape = I->getShape();
+  auto axis = I->getAxis();
+
+  inW.broadcastToNewShape(outW, shape, axis);
 }
 
 void Interpreter::fwdReshapeInst(bool isTrain, const ReshapeInst *I) {
@@ -988,22 +982,24 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
   auto lhsDim = lhs.dims();
   auto rhsDim = rhs.dims();
 
+  dest.clear(0);
+
   // For each layer in the batch:
   for (size_t n = 0; n < destDim[0]; n++) {
     // Broadcast tensors with a batch size of 1 by selecting the right slice.
     size_t ln = (lhsDim[0] == 1 ? 0 : n);
     size_t rn = (rhsDim[0] == 1 ? 0 : n);
 
-    // For each (x,y) in the destination matrix:
-    for (size_t x = 0; x < destDim[1]; x++) {
-      for (size_t y = 0; y < destDim[2]; y++) {
-
-        // Perform DOT on the row an column.
-        float sum = 0;
-        for (size_t i = 0; i < lhsDim[2]; i++) {
-          sum += lhs.at({ln, x, i}) * rhs.at({rn, i, y});
+    for (size_t i = 0; i < lhsDim[2]; i++) {
+      // For each (x,y) in the destination matrix:
+      for (size_t x = 0; x < destDim[1]; x++) {
+        for (size_t y = 0; y < destDim[2]; y++) {
+          // This loop order is very cache friendly.
+          // dest and rhs are accessed sequentially.
+          // lhs access is invariant inside the inner-most loop and can be
+          // hoisted.
+          dest.at({n, x, y}) += lhs.at({ln, x, i}) * rhs.at({rn, i, y});
         }
-        dest.at({n, x, y}) = sum;
       }
     }
   } // N
@@ -1095,6 +1091,41 @@ void Interpreter::fwdSGDInst(bool isTrain, const glow::SGDInst *I) {
     } else {
       // Use regular SGD:
       W.raw(x) -= learningRate * gij;
+    }
+  }
+}
+
+//===----------------------------------------------------------------------===//
+//                Instructions used by RNN
+//===----------------------------------------------------------------------===//
+
+void Interpreter::fwdTopKInst(bool isTrain, const TopKInst *I) {
+  auto in = getTensor(I->getInput())->getHandle();
+  size_t k = I->getK();
+  size_t n = in.dims().back();
+  auto values = getTensor(I->getValues())->getHandle();
+  auto indices = getTensor(I->getIndices())->getHandle<size_t>();
+
+  size_t in_p = 0, out_p = 0;
+  size_t tensor_end = in.size();
+  using pairType = std::pair<float, size_t>;
+  std::vector<pairType> buf(n);
+
+  while (in_p < tensor_end) {
+    for (size_t i = 0; i < n; i++) {
+      buf[i].first = in.raw(in_p++);
+      buf[i].second = i;
+    }
+    // NOTE: it's possible to do N + KlogK, while this version is NlogN
+    std::sort(buf.begin(), buf.end(), [](const pairType &a, const pairType &b) {
+      if (a.first != b.first)
+        return a.first > b.first;
+      return a.second < b.second;
+    });
+    for (size_t i = 0; i < k; i++) {
+      values.raw(out_p) = buf[i].first;
+      indices.raw(out_p) = buf[i].second;
+      out_p++;
     }
   }
 }

@@ -7,5 +7,6 @@ add_subdirectory(Graph)
 add_subdirectory(IR)
 add_subdirectory(Importer)
 add_subdirectory(Optimizer)
+add_subdirectory(Quantization)
 add_subdirectory(Support)
 

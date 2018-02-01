@@ -31,13 +31,6 @@ public:
   /// @name High-level, operation-level IRBuilder.
   ///@{
 
-  ConvolutionInst *createConvOp(Value *input, size_t depth, size_t kernel,
-                                size_t stride, size_t pad);
-
-  ConvolutionInst *createConvOp(Value *input, Value *filter, Value *bias,
-                                size_t depth, size_t kernel, size_t stride,
-                                size_t pad);
-
   PoolMaxInst *createPoolMaxOp(Value *input, size_t kernel, size_t stride,
                                size_t pad);
 
@@ -51,9 +44,7 @@ public:
 
   TanhInst *createTanhOp(Value *input);
 
-  SoftMaxInst *createSoftMaxOp(Value *input, Value *selected);
-
-  SoftMaxWithEInst *createSoftMaxWithEOp(Value *input, Value *selected);
+  SoftMaxInst *createSoftMaxOp(Value *input);
 
   ReshapeInst *createReshapeOp(Value *input, llvm::ArrayRef<size_t> shape);
 
@@ -63,6 +54,9 @@ public:
 
   TransposeInst *createTransposeOp(Value *input,
                                    llvm::ArrayRef<unsigned> shuffle);
+
+  BroadcastInst *createBroadcastOp(Value *input, llvm::ArrayRef<size_t> shape,
+                                   unsigned axis);
 
   BatchNormalizationInst *createBatchNormalizationOp(Value *input,
                                                      size_t channelIdx = 0,
@@ -95,6 +89,8 @@ public:
 
   ElementSelectInst *createSelectOp(Value *Cond, Value *LHS, Value *RHS);
 
+  TopKInst *createTopKOp(Value *input, size_t k);
+
   Value *createReturnOp(Value *input);
 
   ///@}
@@ -111,10 +107,7 @@ public:
 
   AllocActivationInst *createAllocActivationInst(llvm::StringRef name,
                                                  ElemKind elemTy,
-                                                 llvm::ArrayRef<size_t> dims) {
-    auto T = M_->getGraph()->uniqueType(elemTy, dims);
-    return createAllocActivationInst(name, T);
-  }
+                                                 llvm::ArrayRef<size_t> dims);
 
 // Import the auto-generated instruction creation methods:
 #include "AutoGenIRBuilder.h"

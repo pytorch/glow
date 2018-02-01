@@ -78,8 +78,8 @@ inline bool operator==(const ShapeNHWC &LHS, const ShapeNHWC &RHS) {
 enum class ElemKind : unsigned char {
   FloatTy,
   DoubleTy,
-  Int8Ty,
-  Int32Ty,
+  Int8QTy,
+  Int32QTy,
   IndexTy,
 };
 
@@ -93,18 +93,26 @@ struct Type final {
   /// Contains the number of dimensions used by the tensor.
   unsigned char numSizes_{0};
 
+  /// On quantized tensors, this represents the scale of the values.
+  float scale_{0};
+  /// On quantized tensors, this represents the offset of the values.
+  float offset_{0};
+
   /// Specifies the element type of the tensor.
   ElemKind elementType_{ElemKind::IndexTy};
 
-  /// Initialize a new type.
-  Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims) : elementType_(elemTy) {
-    assert(dims.size() < max_tensor_dimensions && "Too many indices");
+  /// Initialize a new integer type with \p scale and \p offset.
+  Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale, float offset)
+      : scale_(scale), offset_(offset), elementType_(elemTy) {
+    assert(isQuantizedType() && "Only Integer types have a scale and offset");
+    initDims(dims);
+  }
 
-    // Update the tensor sizes.
-    for (size_t i = 0, e = dims.size(); i < e; i++) {
-      sizes_[i] = dims[i];
-    }
-    numSizes_ = dims.size();
+  /// Initialize a new float type.
+  Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims) : elementType_(elemTy) {
+    assert(!isQuantizedType() &&
+           "Can't initialize Integer types without scale and offset");
+    initDims(dims);
   }
 
   /// An empty type.
@@ -112,6 +120,16 @@ struct Type final {
 
   /// \returns true if \p other is the same type.
   bool isEqual(TypeRef other) const { return isEqual(*other); }
+
+  float getScale() const {
+    assert(isQuantizedType() && "Can't get the scale of a float type");
+    return scale_;
+  }
+
+  float getOffset() const {
+    assert(isQuantizedType() && "Can't get the offset of a float type");
+    return offset_;
+  }
 
   /// \returns true if \p other is the same type.
   bool isEqual(const Type &other) const {
@@ -126,6 +144,13 @@ struct Type final {
     // Sizes must be the same.
     for (size_t i = 0; i < numSizes_; i++) {
       if (sizes_[i] != other.sizes_[i]) {
+        return false;
+      }
+    }
+
+    // Compare the scale and offset of integers.
+    if (isQuantizedType()) {
+      if (scale_ != other.scale_ || offset_ != other.offset_) {
         return false;
       }
     }
@@ -165,15 +190,20 @@ struct Type final {
       return std::is_same<ElemTy, float>::value;
     case ElemKind::DoubleTy:
       return std::is_same<ElemTy, double>::value;
-    case ElemKind::Int8Ty:
+    case ElemKind::Int8QTy:
       return std::is_same<ElemTy, int8_t>::value;
-    case ElemKind::Int32Ty:
+    case ElemKind::Int32QTy:
       return std::is_same<ElemTy, int32_t>::value;
     case ElemKind::IndexTy:
       return std::is_same<ElemTy, size_t>::value;
     }
     llvm_unreachable("Invalid type.");
   }
+
+  /// \returns true if the type of this Tensor is one of the integer types.
+  /// Notice that we don't consider IndexTy as an integer because we are not
+  /// performing calculations on this type.
+  bool isQuantizedType() const { return isType<int8_t>() || isType<int32_t>(); }
 
   /// \return the size of the type element.
   unsigned getElementSize() const { return getElementSize(elementType_); }
@@ -188,9 +218,9 @@ struct Type final {
       return sizeof(float);
     case ElemKind::DoubleTy:
       return sizeof(double);
-    case ElemKind::Int8Ty:
+    case ElemKind::Int8QTy:
       return sizeof(int8_t);
-    case ElemKind::Int32Ty:
+    case ElemKind::Int32QTy:
       return sizeof(int32_t);
     case ElemKind::IndexTy:
       return sizeof(size_t);
@@ -209,6 +239,18 @@ struct Type final {
         "float", "double", "i8", "i32", "index",
     };
     return names[(int)Ty];
+  }
+
+private:
+  /// Setup the internals of type that store the dimensions. This method is used
+  /// by the constructor.
+  void initDims(llvm::ArrayRef<size_t> dims) {
+    assert(dims.size() < max_tensor_dimensions && "Too many indices");
+    // Update the tensor sizes.
+    for (size_t i = 0, e = dims.size(); i < e; i++) {
+      sizes_[i] = dims[i];
+    }
+    numSizes_ = dims.size();
   }
 };
 

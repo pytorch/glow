@@ -80,7 +80,15 @@ public:
   TypeRef uniqueType(const Type &T);
 
   /// Return a pointer to a uniqued type \p t in the current module.
-  TypeRef uniqueType(ElemKind elemTy, UnsignedArrayRef dims);
+  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims);
+
+  /// Return a pointer to a uniqued type \p t in the current module.
+  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
+                     float offset);
+
+  /// Return a pointer to a uniqued type \p t in the current module.
+  /// The new type is identical to \p T, with a new shape \p dims.
+  TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims);
 
   /// Return the void type.
   TypeRef getVoidTy();
@@ -95,7 +103,14 @@ public:
       float val = 0.0);
 
   Variable *createVariable(
-      ElemKind T, UnsignedArrayRef dims, llvm::StringRef name,
+      ElemKind T, llvm::ArrayRef<size_t> dims, llvm::StringRef name,
+      Variable::VisibilityKind visibility = Variable::VisibilityKind::Private,
+      Variable::TrainKind train = Variable::TrainKind::Broadcast,
+      float val = 0.0);
+
+  Variable *createVariable(
+      ElemKind T, llvm::ArrayRef<size_t> dims, float scale, float offset,
+      llvm::StringRef name,
       Variable::VisibilityKind visibility = Variable::VisibilityKind::Private,
       Variable::TrainKind train = Variable::TrainKind::Broadcast,
       float val = 0.0);
@@ -103,6 +118,16 @@ public:
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               size_t depth, size_t kernel, size_t stride,
                               size_t pad);
+
+  ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
+                              NodeValue filter, NodeValue bias, TypeRef outTy,
+                              size_t depth, size_t kernel, size_t stride,
+                              size_t pad);
+
+  ConvolutionQNode *createConvQ(llvm::StringRef name, NodeValue input,
+                                NodeValue filter, NodeValue bias, TypeRef outTy,
+                                size_t depth, size_t kernel, size_t stride,
+                                size_t pad, float scale, float offset);
 
   PoolNode *createPool(llvm::StringRef name, NodeValue input,
                        PoolNode::Mode mode, size_t kernel, size_t stride,
@@ -131,6 +156,9 @@ public:
 
   TransposeNode *createTranspose(llvm::StringRef name, NodeValue input,
                                  llvm::ArrayRef<unsigned> shuffle);
+
+  BroadcastNode *createBroadcast(llvm::StringRef name, NodeValue input,
+                                 UnsignedArrayRef shape, unsigned axis);
 
   IntrinsicNode *createIntrinsicNode(llvm::StringRef name,
                                      llvm::StringRef identifier,
@@ -186,6 +214,8 @@ public:
   /// \p input.
   QuantizationProfileNode *createQuantizationProfile(llvm::StringRef name,
                                                      NodeValue input);
+
+  TopKNode *createTopK(llvm::StringRef name, NodeValue input, size_t k);
 
   /// Create an unrolled single-layer Simple RNN cell with \p hiddenSize
   /// dimensionality of the hidden state and \p outputSize dimensionality of the

@@ -118,9 +118,26 @@ public:
       auto *in = valueForNode(C->getInput());
       auto *filter = valueForNode(C->getFilter());
       auto *bias = valueForNode(C->getBias());
-      auto *V =
-          builder_.createConvOp(in, filter, bias, C->getDepth(), C->getKernel(),
-                                C->getStride(), C->getPad());
+      Value *dest = builder_.createAllocActivationInst(
+          "conv.res", C->getResult()->getType());
+
+      auto *V = builder_.createConvolutionInst("conv", dest, in, filter, bias,
+                                               C->getKernel(), C->getStride(),
+                                               C->getPad(), C->getDepth());
+      V->setName(N->getName());
+      registerIR(N, V->getDest());
+      break;
+    }
+    case glow::Kinded::Kind::ConvolutionQNodeKind: {
+      auto *CQ = cast<ConvolutionQNode>(N);
+      auto *in = valueForNode(CQ->getInput());
+      auto *filter = valueForNode(CQ->getFilter());
+      auto *bias = valueForNode(CQ->getBias());
+      Value *dest = builder_.createAllocActivationInst(
+          "convq.res", CQ->getResult()->getType());
+      auto *V = builder_.createConvolutionQInst(
+          "convq", dest, in, filter, bias, CQ->getKernel(), CQ->getStride(),
+          CQ->getPad(), CQ->getDepth(), CQ->getScale(), CQ->getOffset());
       V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
@@ -260,8 +277,7 @@ public:
     case glow::Kinded::Kind::SoftMaxNodeKind: {
       auto *SM = cast<SoftMaxNode>(N);
       auto *in = valueForNode(SM->getInput());
-      auto *select = valueForNode(SM->getSelected());
-      auto *V = builder_.createSoftMaxWithEOp(in, select);
+      auto *V = builder_.createSoftMaxOp(in);
       V->setName(N->getName());
       registerIR(N, V->getDest());
       nodeToInstr_[N] = V;
@@ -277,45 +293,27 @@ public:
       auto originalNodeResult = SMG->getOriginalOutputForResult();
       assert(nodeToInstr_.count(originalNodeResult.getNode()) &&
              "Unknown original node");
-      auto *SM = cast<SoftMaxWithEInst>(nodeToInstr_[originalNodeResult]);
+      auto *origOut = valueForNode(originalNodeResult);
       auto *srcGrad = builder_.createAllocActivationInst("softmax.res.grad",
                                                          outGrad->getType());
-
-      auto *SMGI = builder_.createSoftMaxWithEGradInst(
-          N->getName(), origIn, SM->getE(), origSelect, srcGrad);
+      auto *SMGI = builder_.createSoftMaxGradInst(N->getName(), origOut, origIn,
+                                                  origSelect, srcGrad);
 
       registerIR(SMG->getGradOfInputNamedInput(), SMGI->getSrcGrad());
-      break;
-    }
-    case glow::Kinded::Kind::RegressionNodeKind: {
-      auto *RR = cast<RegressionNode>(N);
-      auto *in = valueForNode(RR->getInput());
-      registerIR(N, in);
-      break;
-    }
-    case glow::Kinded::Kind::RegressionGradNodeKind: {
-      auto *RG = cast<RegressionGradNode>(N);
-      // Original inputs:
-      auto *origIn = valueForNode(RG->getInput());
-      auto *origExpected = valueForNode(RG->getExpected());
-      // Values related to the output of the node.
-      auto *srcGrad = builder_.createAllocActivationInst("regression.res.grad",
-                                                         origIn->getType());
-      auto *expGrad = builder_.createAllocActivationInst("expected.res.grad",
-                                                         origIn->getType());
-
-      builder_.createElementSubInst(N->getName(), srcGrad, origIn,
-                                    origExpected);
-      builder_.createSplatInst(N->getName(), expGrad, 0);
-
-      registerIR(RG->getGradOfInputNamedInput(), srcGrad);
-      registerIR(RG->getGradOfInputNamedExpected(), expGrad);
       break;
     }
     case glow::Kinded::Kind::TransposeNodeKind: {
       auto *TT = cast<TransposeNode>(N);
       auto *in = valueForNode(TT->getInput());
       auto *V = builder_.createTransposeOp(in, TT->getShuffle());
+      V->setName(N->getName());
+      registerIR(N, V->getDest());
+      break;
+    }
+    case glow::Kinded::Kind::BroadcastNodeKind: {
+      auto *B = cast<BroadcastNode>(N);
+      auto *in = valueForNode(B->getInput());
+      auto *V = builder_.createBroadcastOp(in, B->getShape(), B->getAxis());
       V->setName(N->getName());
       registerIR(N, V->getDest());
       break;
@@ -552,6 +550,16 @@ public:
                                              histogram, computationInfo);
       break;
     }
+    case glow::Kinded::Kind::TopKNodeKind: {
+      auto *TKN = cast<TopKNode>(N);
+      auto *inputTensor = valueForNode(TKN->getInput());
+      auto k = TKN->getK();
+      auto *V = builder_.createTopKOp(inputTensor, k);
+      registerIR(TKN->getValues(), V->getValues());
+      registerIR(TKN->getIndices(), V->getIndices());
+      V->setName(N->getName());
+      break;
+    }
 
     case glow::Kinded::Kind::TanhGradNodeKind:
     case glow::Kinded::Kind::SigmoidGradNodeKind:
@@ -559,7 +567,9 @@ public:
     case glow::Kinded::Kind::ReluNodeKind:
     case glow::Kinded::Kind::ReluGradNodeKind:
     case glow::Kinded::Kind::FullyConnectedNodeKind:
-    case glow::Kinded::Kind::FullyConnectedGradNodeKind: {
+    case glow::Kinded::Kind::FullyConnectedGradNodeKind:
+    case glow::Kinded::Kind::RegressionNodeKind:
+    case glow::Kinded::Kind::RegressionGradNodeKind: {
       llvm_unreachable("Node should have been lowered to low-level nodes");
     }
     }

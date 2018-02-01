@@ -52,32 +52,59 @@ void CopyInst::verify() const {
   assert(isa<AllocActivationInst>(op1) || isa<WeightVar>(op1) ||
          isa<TensorViewInst>(op1));
 }
+
+static void verifyConvDims(ShapeNHWC idim, ShapeNHWC odim, size_t kernel,
+                           size_t stride, size_t pad, size_t depth,
+                           Value *filter, Value *bias) {
+  assert(idim.w >= kernel && idim.h >= kernel &&
+         "buffer too small for selected stride");
+
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
+  ShapeNHWC exp(idim.n, outSz.first, outSz.second, depth);
+  (void)exp;
+  assert(exp == odim && "Invalid output dimensions");
+
+  auto filterDims = {depth, kernel, kernel, idim.c};
+  assert(filter->getType()->dims().equals(filterDims) && "Invalid filter dims");
+  (void)filterDims;
+
+  auto biasDims = {depth};
+  assert(bias->getType()->dims().equals(biasDims) && "Invalid bias dims");
+  (void)biasDims;
+}
+
 void ConvolutionInst::verify() const {
   Value *dest = getOperand(0).first;
   Value *src = getOperand(1).first;
   Value *filter = getOperand(2).first;
   Value *bias = getOperand(3).first;
-  (void)filter;
-  (void)bias;
+
+  // TODO: once we implement lowering of convolutions we need to change this
+  // check to verify that all types are floats. Integers are handled with the
+  // ConvQ instruction.
+  assert(src->getElementType() == dest->getElementType() && "Invalid Type");
+  assert(src->getElementType() == filter->getElementType() && "Invalid Type");
+  assert(src->getElementType() == bias->getElementType() && "Invalid Type");
 
   ShapeNHWC idim(src->getType()->dims());
   ShapeNHWC odim(dest->getType()->dims());
-  (void)odim;
-  assert(idim.w >= Kernel_ && idim.h >= Kernel_ &&
-         "buffer too small for selected stride");
+  verifyConvDims(idim, odim, Kernel_, Stride_, Pad_, Depth_, filter, bias);
+}
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, Pad_, Kernel_, Stride_);
-  ShapeNHWC exp(idim.n, outSz.first, outSz.second, Depth_);
-  (void)exp;
-  assert(exp == odim && "Invalid output dimensions");
+void ConvolutionQInst::verify() const {
+  Value *dest = getOperand(0).first;
+  Value *src = getOperand(1).first;
+  Value *filter = getOperand(2).first;
+  Value *bias = getOperand(3).first;
 
-  auto filterDims = {Depth_, Kernel_, Kernel_, idim.c};
-  assert(filter->getType()->dims().equals(filterDims) && "Invalid filter dims");
-  (void)filterDims;
+  assert(src->getElementType() == ElemKind::Int8QTy && "Invalid Type");
+  assert(dest->getElementType() == ElemKind::Int8QTy && "Invalid Type");
+  assert(filter->getElementType() == ElemKind::Int8QTy && "Invalid Type");
+  assert(bias->getElementType() == ElemKind::Int8QTy && "Invalid Type");
 
-  auto biasDims = {Depth_};
-  assert(bias->getType()->dims().equals(biasDims) && "Invalid bias dims");
-  (void)biasDims;
+  ShapeNHWC idim(src->getType()->dims());
+  ShapeNHWC odim(dest->getType()->dims());
+  verifyConvDims(idim, odim, Kernel_, Stride_, Pad_, Depth_, filter, bias);
 }
 
 void PoolMaxInst::verify() const {
@@ -189,13 +216,21 @@ void BatchedMatMulInst::verify() const {
 void SigmoidInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
 }
+
 void TanhInst::verify() const { checkSameType(getOperand(0), getOperand(1)); }
+
 void SoftMaxInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
+  assert(getDest()->dims() == getSrc()->dims() && "Invalid shape");
 }
 
-void SoftMaxWithEInst::verify() const {
+void SoftMaxGradInst::verify() const {
   checkSameType(getOperand(0), getOperand(1));
+  checkSameType(getOperand(0), getOperand(3));
+  auto destShape = getOrigDest()->dims();
+  assert(destShape == getOrigSrc()->dims() && "Invalid shape");
+  assert(destShape == getSrcGrad()->dims() && "Invalid shape");
+  (void)destShape;
 }
 
 void ReshapeInst::verify() const {
@@ -223,6 +258,20 @@ void TransposeInst::verify() const {
   }
 
   assert(dest->dims().equals(shape) && "Invalid transpose dims");
+}
+
+void BroadcastInst::verify() const {
+  auto *src = getOperand(1).first;
+  auto *dest = getOperand(0).first;
+  auto shape = getShape();
+  (void)src;
+  (void)dest;
+  (void)shape;
+
+  assert(src->dims().size() <= dest->dims().size() &&
+         "Source being broadcasted must have <= number dims of result shape.");
+  assert(dest->dims().equals(shape) &&
+         "New broadcasted shape does not match shape to broadcast to.");
 }
 
 void SplatInst::verify() const {}
@@ -376,6 +425,12 @@ void QuantizationProfileInst::verify() const {
          "Computation info should contain Min and Max value only");
 }
 
+void TopKInst::verify() const {
+  assert(getOperand(0).first->getElementType() == ElemKind::FloatTy);
+  assert(getOperand(2).first->getElementType() == ElemKind::FloatTy);
+  assert(getOperand(0).first->dims() == getOperand(1).first->dims());
+}
+
 void IntrinsicInst::verify() const {
   assert(getName().size() && "Name must not be empty");
 }
@@ -388,6 +443,5 @@ NOVERIFY(PoolMaxWithXYGradInst)
 NOVERIFY(PoolAvgGradInst)
 NOVERIFY(BatchNormalizationGradInst)
 NOVERIFY(LocalResponseNormalizationGradInst)
-NOVERIFY(SoftMaxWithEGradInst)
 NOVERIFY(DebugPrintInst)
 #undef NOVERIFY

@@ -9,6 +9,35 @@
 using namespace glow;
 using llvm::cast;
 
+void inferBatchedAddNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
+                        BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &G = EE.getGraph();
+  auto *var1 = G.createVariable(inputs1->getElementType(), inputs1->dims(),
+                                "input1", Variable::VisibilityKind::Public);
+  auto *var2 = G.createVariable(inputs2->getElementType(), inputs2->dims(),
+                                "input2", Variable::VisibilityKind::Public);
+  auto *batchedadd = G.createBatchedArithmetic(
+      "batchedadd", BatchedArithmeticNode::Mode::Add, var1, var2);
+  auto result = G.createSave("ret", batchedadd);
+  EE.compile(CompilationMode::Infer);
+  EE.run({var1, var2}, {inputs1, inputs2});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
+void inferBatchedReduceAddNet(Tensor *inputs1, Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &G = EE.getGraph();
+  auto *var1 = G.createVariable(inputs1->getElementType(), inputs1->dims(),
+                                "input1", Variable::VisibilityKind::Public);
+  auto *batchedreduce = G.createBatchedReduce(
+      "batchedreduce", BatchedReduceNode::Mode::Add, var1);
+  auto result = G.createSave("ret", batchedreduce);
+  EE.compile(CompilationMode::Infer);
+  EE.run({var1}, {inputs1});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                  BackendKind kind) {
   ExecutionEngine EE(kind);

@@ -40,11 +40,6 @@ using llvm::StringRef;
 using llvm::dyn_cast;
 using llvm::isa;
 
-static llvm::cl::opt<bool>
-    dumpIR("dump-llvm-ir",
-           llvm::cl::desc("Dump the LLVM-IR during the JIT compilation phase"),
-           llvm::cl::init(false), llvm::cl::Hidden);
-
 void JITBackend::optimizeLLVMModule(llvm::Function *F,
                                     llvm::TargetMachine &TM) {
   auto *M = F->getParent();
@@ -56,7 +51,7 @@ void JITBackend::optimizeLLVMModule(llvm::Function *F,
   llvm::internalizeModule(*M, preserveMain);
 
   llvm::PassManagerBuilder PMB;
-  PMB.OptLevel = 3;
+  PMB.OptLevel = 2;
   PMB.SizeLevel = 0;
   PMB.LoopVectorize = true;
   PMB.SLPVectorize = true;
@@ -69,7 +64,15 @@ void JITBackend::optimizeLLVMModule(llvm::Function *F,
   // the frontend.
   llvm::AttributeList AL;
   for (auto &FF : *M) {
+    // Check for no-inline attribute.
+    bool dontInline = FF.hasFnAttribute(llvm::Attribute::AttrKind::NoInline);
+    // Clear all attributes.
     FF.setAttributes(AL);
+
+    // Force inline all non-no-inline functions.
+    if (!dontInline) {
+      FF.addFnAttr(llvm::Attribute::AttrKind::AlwaysInline);
+    }
   }
 
   llvm::legacy::FunctionPassManager FPM(F->getParent());
@@ -88,8 +91,4 @@ void JITBackend::optimizeLLVMModule(llvm::Function *F,
   }
   FPM.doFinalization();
   PM.run(*F->getParent());
-
-  if (dumpIR) {
-    M->print(llvm::errs(), nullptr);
-  }
 }

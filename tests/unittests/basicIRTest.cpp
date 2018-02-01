@@ -39,6 +39,15 @@ TEST(IR, uniqueTypes) {
   for (int i = 0; i < 10; i++) {
     EXPECT_EQ(u1, G.uniqueType(T1));
   }
+
+  // Check the uniqueing of quantized tensors.
+  Type T4(ElemKind::Int8QTy, {1, 2}, 0.4, 0.9);
+  auto *t4 = G.uniqueType(T4);
+  auto *u4 = G.uniqueTypeWithNewShape(&T4, {2, 1});
+  auto *q4 = G.uniqueTypeWithNewShape(u4, {1, 2});
+
+  EXPECT_NE(t4, u4);
+  EXPECT_EQ(t4, q4);
 }
 
 TEST(IR, basicUseList) {
@@ -86,7 +95,6 @@ TEST(IR, allInstrs) {
     auto *I3 = builder.createWeightVar(ElemKind::FloatTy, {1, 12, 12, 64});
     auto *I4 = builder.createWeightVar(ElemKind::FloatTy, {1, 12, 12, 3});
     auto *I6 = builder.createWeightVar(ElemKind::FloatTy, {2, 12, 12, 64});
-    auto *I7 = builder.createWeightVar(T1, "I7");
     auto *I8 = builder.createWeightVar(ElemKind::FloatTy, {1, 24, 3, 24}, "I8");
     auto *ComputationInfo =
         builder.createWeightVar(ElemKind::FloatTy, {2}, "ComputationInfo");
@@ -112,7 +120,7 @@ TEST(IR, allInstrs) {
     builder.createPoolMaxInst("", I4, I0, 7, 2, 3);
     builder.createSigmoidInst("", I1, I0);
     builder.createTanhInst("", I1, I0);
-    builder.createSoftMaxInst("", I1, I0, I7);
+    builder.createSoftMaxInst("", I1, I0);
     builder.createTransposeInst("", I8, I2, {0, 3, 1, 2});
     builder.createTensorView(ElemKind::FloatTy, {1, 24, 3, 24}, I2, "I2_view");
     builder.createInsertTensorInst("", I6, I3, {0, 0, 0, 0});

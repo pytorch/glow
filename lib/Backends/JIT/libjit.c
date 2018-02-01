@@ -39,37 +39,41 @@ void elementmax0_f(float *dest, float *LHS, size_t sz) {
 }
 
 void elementmin_f(float *dest, float *LHS, float *RHS, size_t sz) {
-  for (size_t i = 0; i < sz; ++i) {
+  for (size_t i = 0; i < sz; i++) {
     dest[i] = MIN(LHS[i], RHS[i]);
   }
 }
 
 void elementselect_f(float *dest, float *cond, float *LHS, float *RHS,
                      size_t sz) {
-  for (size_t i = 0; i < sz; ++i) {
+  for (size_t i = 0; i < sz; i++) {
     dest[i] = (cond[i] != 0.0) ? LHS[i] : RHS[i];
   }
 }
 
 void batchedmatmul_f(float *dest, float *LHS, float *RHS, size_t *destDims,
                      size_t *lhsDims, size_t *rhsDims) {
+  size_t destSize = destDims[0] * destDims[1] * destDims[2];
+  for (size_t i = 0; i < destSize; ++i)
+    dest[i] = 0;
+
   // For each layer in the batch:
   for (size_t n = 0; n < destDims[0]; n++) {
     // Broadcast tensors with a batch size of 1 by selecting the right slice.
     size_t ln = (lhsDims[0] == 1 ? 0 : n);
     size_t rn = (rhsDims[0] == 1 ? 0 : n);
 
-    // For each (x,y) in the destination matrix:
-    for (size_t x = 0; x < destDims[1]; x++) {
-      for (size_t y = 0; y < destDims[2]; y++) {
-
-        // Perform DOT on the row an column.
-        float sum = 0;
-        for (size_t i = 0; i < lhsDims[2]; i++) {
-          sum +=
+    for (size_t i = 0; i < lhsDims[2]; i++) {
+      // For each (x,y) in the destination matrix:
+      for (size_t x = 0; x < destDims[1]; x++) {
+        for (size_t y = 0; y < destDims[2]; y++) {
+          // This loop order is very cache friendly.
+          // dest and rhs are accessed sequentially.
+          // lhs access is invariant inside the inner-most loop and can be
+          // hoisted.
+          dest[getXYZ(destDims, n, x, y)] +=
               LHS[getXYZ(lhsDims, ln, x, i)] * RHS[getXYZ(rhsDims, rn, i, y)];
         }
-        dest[getXYZ(destDims, n, x, y)] = sum;
       }
     }
   } // N
@@ -83,6 +87,19 @@ void batchedadd_f(float *dest, float *batch, float *slice, size_t numSlice,
     // For each element in the slice.
     for (size_t i = 0; i < sliceSize; i++) {
       dest[base + i] = batch[base + i] + slice[i];
+    }
+  }
+}
+
+void batchedreduceadd_f(float *dest, float *batch, size_t destSize,
+                        size_t numSlice, size_t sliceSize) {
+  for (size_t i = 0; i < destSize; i++) {
+    dest[i] = 0.0;
+  }
+  for (size_t n = 0; n < numSlice; n++) {
+    size_t base = n * sliceSize;
+    for (size_t i = 0; i < sliceSize; i++) {
+      dest[i] += batch[base + i];
     }
   }
 }
@@ -121,6 +138,72 @@ void element_mul_f(float *dest, float *LHS, float *RHS, size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     dest[i] = LHS[i] * RHS[i];
   }
+}
+
+void convolution_f_unroll_k4(float *inW, float *outW, float *filterW,
+                             float *biasW, size_t *inWdims, size_t *outWdims,
+                             size_t *filterWdims, size_t *biasWdims,
+                             size_t filterSize, size_t pad, size_t stride) {
+  size_t inChannels = inWdims[3];
+
+  // For each input in the batch:
+  for (size_t n = 0; n < inWdims[0]; n++) {
+
+    // For each layer in the output tensor:
+    for (size_t d = 0; d < outWdims[3]; d += 4) {
+
+      // For each convolution 'jump' in the input tensor:
+      ssize_t x = -(ssize_t)pad;
+      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+        ssize_t y = -(ssize_t)pad;
+        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+
+          // For each element in the convolution-filter:
+          float sum0 = 0;
+          float sum1 = 0;
+          float sum2 = 0;
+          float sum3 = 0;
+          for (size_t fx = 0; fx < filterSize; fx++) {
+            for (size_t fy = 0; fy < filterSize; fy++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
+                  oy >= (ssize_t)inWdims[2]) {
+                continue;
+              }
+              for (size_t fd = 0; fd < inChannels; fd++) {
+                float in = inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+                sum0 += filterW[getXYZW(filterWdims, d + 0, fx, fy, fd)] * in;
+              }
+              for (size_t fd = 0; fd < inChannels; fd++) {
+                float in = inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+                sum1 += filterW[getXYZW(filterWdims, d + 1, fx, fy, fd)] * in;
+              }
+              for (size_t fd = 0; fd < inChannels; fd++) {
+                float in = inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+                sum2 += filterW[getXYZW(filterWdims, d + 2, fx, fy, fd)] * in;
+              }
+              for (size_t fd = 0; fd < inChannels; fd++) {
+                float in = inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+                sum3 += filterW[getXYZW(filterWdims, d + 3, fx, fy, fd)] * in;
+              }
+            }
+          }
+
+          sum0 += biasW[d + 0];
+          sum1 += biasW[d + 1];
+          sum2 += biasW[d + 2];
+          sum3 += biasW[d + 3];
+          outW[getXYZW(outWdims, n, ax, ay, d + 0)] = sum0;
+          outW[getXYZW(outWdims, n, ax, ay, d + 1)] = sum1;
+          outW[getXYZW(outWdims, n, ax, ay, d + 2)] = sum2;
+          outW[getXYZW(outWdims, n, ax, ay, d + 3)] = sum3;
+        } // W
+      }   // H
+    }     // C
+  }       // N
 }
 
 void convolution_f(float *inW, float *outW, float *filterW, float *biasW,
@@ -273,14 +356,14 @@ void softmax_f(float *inW, float *outW, size_t *idim, size_t *odim) {
 }
 
 void sigmoid_f(float *inW, float *outW, size_t numElem) {
-  for (size_t i = 0; i < numElem; ++i) {
+  for (size_t i = 0; i < numElem; i++) {
     float e = expf(inW[i]);
     outW[i] = e / (e + 1);
   }
 }
 
 void tanh_f(float *inW, float *outW, size_t numElem) {
-  for (size_t i = 0; i < numElem; ++i) {
+  for (size_t i = 0; i < numElem; i++) {
     outW[i] = tanhf(inW[i]);
   }
 }

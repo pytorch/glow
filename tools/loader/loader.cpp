@@ -5,11 +5,11 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/IR/IR.h"
 #include "glow/Importer/Caffe2.h"
+#include "glow/Quantization/Serialization.h"
+
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
-
-#include <iostream>
 
 #define DEFAULT_CAFFE2_HEIGHT 224
 #define DEFAULT_CAFFE2_WIDTH 224
@@ -237,6 +237,11 @@ int main(int argc, char **argv) {
   EE.run({i0, i1}, {&data, &data});
   if (Timer)
     timer.stopTimer();
+
+  if (!QuantizationProfileFile.empty()) {
+    std::vector<NodeQuantizationInfo> QI = generateNodeQuantizationInfos(G);
+    serializeToYaml(QuantizationProfileFile, QI);
+  }
 
   Tensor &res = SM->getVariable()->getPayload();
   auto H = res.getHandle<>();

@@ -178,8 +178,7 @@ __kernel void elementdivW(__global void *mem, size_t dest, size_t LHS,
 }
 
 __kernel void softmaxK(__global float *dest, __global float *src,
-                       __global float *e_cache, __global unsigned *selected,
-                       size_t sliceSize) {
+                       __global float *e_cache, size_t sliceSize) {
   size_t i = get_global_id(0);
   float max_ = src[i * sliceSize];
   for (size_t j = 0; j < sliceSize; j++) {
@@ -199,15 +198,8 @@ __kernel void softmaxK(__global float *dest, __global float *src,
 }
 
 __kernel void softmaxW(__global void *mem, size_t dest, size_t src,
-                       size_t selected, size_t sliceSize) {
-  softmaxK(&mem[dest], &mem[src], (__global float *)0,
-           (__global unsigned *)&mem[selected], sliceSize);
-}
-
-__kernel void softmaxwitheW(__global void *mem, size_t dest, size_t src,
-                            size_t e_cache, size_t selected, size_t sliceSize) {
-  softmaxK(&mem[dest], &mem[src], &mem[e_cache],
-          (__global unsigned *)&mem[selected], sliceSize);
+                       size_t sliceSize) {
+  softmaxK(&mem[dest], &mem[src], (__global float *)0, sliceSize);
 }
 
 __kernel void convolutionK(__global float *dest, __global float *src,

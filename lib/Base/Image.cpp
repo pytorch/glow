@@ -73,7 +73,7 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   }
 
   png_read_image(png_ptr, row_pointers);
-  fclose(fp);
+  png_read_end(png_ptr, info_ptr);
 
   T->reset(ElemKind::FloatTy, {width, height, 3});
   auto H = T->getHandle<>();
@@ -96,6 +96,8 @@ bool glow::readPngImage(Tensor *T, const char *filename,
     free(row_pointers[y]);
   }
   free(row_pointers);
+  png_destroy_read_struct(&png_ptr, &info_ptr, (png_infopp)NULL);
+  fclose(fp);
 
   return false;
 }
@@ -183,6 +185,7 @@ bool glow::writePngImage(Tensor *T, const char *filename,
     free(row_pointers[y]);
   }
   free(row_pointers);
+  png_destroy_read_struct(&png_ptr, &info_ptr, (png_infopp)NULL);
   fclose(fp);
   return false;
 }
