@@ -7,6 +7,7 @@
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/Optimizer.h"
+#include "glow/Optimizer/OptimizerUtils.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -17,6 +18,9 @@
 #include <unordered_map>
 #include <unordered_set>
 
+using namespace glow;
+
+namespace {
 static llvm::cl::opt<bool>
     instrumentDebug("instrument-debug",
                     llvm::cl::desc("Instrument the IR for debugging"),
@@ -25,7 +29,7 @@ static llvm::cl::opt<bool> optimizeIR("optimize-ir",
                                       llvm::cl::desc("Enable IR optimizations"),
                                       llvm::cl::init(true), llvm::cl::Hidden);
 
-using namespace glow;
+} // namespace
 
 using llvm::cast;
 using llvm::dyn_cast;
@@ -74,7 +78,9 @@ using LiveIntervalsMap = std::unordered_map<Value *, Intervals>;
 using Instructions = std::unordered_set<Instruction *>;
 
 /// Hoists Dealloc instructions right after their last use.
-static void hoistDealloc(Module &M) {
+static bool hoistDealloc(Module &M) {
+  static ChangeManager ChangeMgr("ir-hoist-deallocs");
+  ChangeMgr.startPass();
   // Maps activation instructions to their last non-dealloc user.
   std::unordered_map<Value *, InstrIterator> lastUser;
   auto &instrs = M.getInstrs();
@@ -120,12 +126,17 @@ static void hoistDealloc(Module &M) {
       continue;
     }
     ++where;
+    if (!ChangeMgr.tryToChange())
+      continue;
     M.moveInstruction(where, da);
   }
+  return ChangeMgr.isChanged();
 }
 
 /// Sink Alloc instructions right before their first use.
-static void sinkAllocas(Module &M) {
+static bool sinkAllocas(Module &M) {
+  static ChangeManager ChangeMgr("ir-sink-allocs");
+  ChangeMgr.startPass();
   /// A list of allocas to reschedule.
   std::unordered_set<AllocActivationInst *> allocs;
   auto &instrs = M.getInstrs();
@@ -155,18 +166,24 @@ static void sinkAllocas(Module &M) {
       if (A == allocs.end()) {
         continue;
       }
+      if (!ChangeMgr.tryToChange())
+        continue;
       allocs.erase(A);
       M.insertInstruction(it, aa);
       if (allocs.empty())
-        return;
+        return ChangeMgr.isChanged();
     }
   }
 
   assert(allocs.empty() && "Forgot to insert some allocas!");
+  return ChangeMgr.isChanged();
 }
 
 /// Delete alloc instructions that have no readers or writers.
-static void deleteDeadAllocs(Module &M) {
+static bool deleteDeadAllocs(Module &M) {
+  static ChangeManager ChangeMgr("ir-delete-dead-allocs");
+  ChangeMgr.startPass();
+
   auto &instrs = M.getInstrs();
 
   llvm::SmallVector<Instruction *, 16> ErasedInstructions{};
@@ -179,7 +196,9 @@ static void deleteDeadAllocs(Module &M) {
                });
 
   for (auto I : ErasedInstructions) {
-    M.eraseInstruction(I);
+    if (ChangeMgr.tryToChange()) {
+      M.eraseInstruction(I);
+    }
   }
   ErasedInstructions.clear();
 
@@ -194,7 +213,9 @@ static void deleteDeadAllocs(Module &M) {
       });
 
   for (auto I : ErasedInstructions) {
-    M.eraseInstruction(I);
+    if (ChangeMgr.tryToChange()) {
+      M.eraseInstruction(I);
+    }
   }
 
   ErasedInstructions.clear();
@@ -209,8 +230,11 @@ static void deleteDeadAllocs(Module &M) {
                });
 
   for (auto I : ErasedInstructions) {
-    M.eraseInstruction(I);
+    if (ChangeMgr.tryToChange()) {
+      M.eraseInstruction(I);
+    }
   }
+  return ChangeMgr.isChanged();
 }
 
 // Replace all users of some value with another value, but don't touch the
@@ -276,7 +300,10 @@ static Instruction *getSingleWriter(const Value *V) {
   return singleUser;
 }
 
-void makeWeightsConst(Module &M) {
+bool makeWeightsConst(Module &M) {
+  static ChangeManager ChangeMgr("ir-make-weights-const");
+  ChangeMgr.startPass();
+
   // For each weight:
   for (auto *W : M.getWeights()) {
     bool readOnly = true;
@@ -290,6 +317,8 @@ void makeWeightsConst(Module &M) {
       }
     }
 
+    if (!ChangeMgr.tryToChange())
+      continue;
     // Mark the variable as read only.
     if (readOnly) {
       W->setMutability(WeightVar::MutabilityKind::Constant);
@@ -297,6 +326,7 @@ void makeWeightsConst(Module &M) {
       W->setMutability(WeightVar::MutabilityKind::Mutable);
     }
   }
+  return ChangeMgr.isChanged();
 }
 
 #ifndef NDEBUG
@@ -582,9 +612,12 @@ static void reuseBufferInsideInterval(Value *oldBuffer, Value *newBuffer,
 /// The only exception is the copy instruction, where the live interval
 /// of the X may be enclosed into a live interval of Y because they have
 /// the same value after the copy instruction.
-static void tryToShareBuffersForInstr(LiveIntervalsMap &IntervalsMap,
+static bool tryToShareBuffersForInstr(LiveIntervalsMap &IntervalsMap,
                                       InstructionNumbering &InstrNumbering,
                                       Instruction *I, int InstIdx) {
+  static ChangeManager ChangeMgr("ir-share-buffers");
+  ChangeMgr.startPass();
+
   Module &M = *I->getParent();
   for (unsigned first = 0, e = I->getNumOperands(); first < e; first++) {
     auto destOp = I->getOperand(first);
@@ -604,7 +637,7 @@ static void tryToShareBuffersForInstr(LiveIntervalsMap &IntervalsMap,
       if (dest == src) {
         // Bail if operands are the same and are combined already.
         if (Instruction::isInplaceOp(I, first, second))
-          return;
+          return false;
         continue;
       }
 
@@ -739,6 +772,9 @@ static void tryToShareBuffersForInstr(LiveIntervalsMap &IntervalsMap,
       if (!bufferToReuse)
         continue;
 
+      if (!ChangeMgr.tryToChange())
+        continue;
+
       // TODO: May be disallow usage of dest interval for src?
       // This would avoid extending dest lifetime to start earlier.
       // But it would also miss some opportunities for sharing buffers.
@@ -750,14 +786,15 @@ static void tryToShareBuffersForInstr(LiveIntervalsMap &IntervalsMap,
         // shareBuffers will fix it once it's done.
         reuseBufferInsideInterval(srcOrigin, dest, srcInterval, M,
                                   InstrNumbering, srcIntervals, destIntervals);
-        return;
+        return ChangeMgr.isChanged();
       }
 
       reuseBufferInsideInterval(destOrigin, src, destInterval, M,
                                 InstrNumbering, destIntervals, srcIntervals);
-      return;
+      return ChangeMgr.isChanged();
     }
   }
+  return ChangeMgr.isChanged();
 }
 
 /// Sharing of buffers
@@ -770,7 +807,8 @@ static void tryToShareBuffersForInstr(LiveIntervalsMap &IntervalsMap,
 /// do not need to be observable. Typically, two live intervals are considred as
 /// candidates for sharing if they occur in the same instruction, but it is not
 /// strictly necessary.
-static void shareBuffers(Module &M) {
+static bool shareBuffers(Module &M) {
+  bool Changed = false;
   Instructions ErasedInstructions;
   // Build a list of live intervals for each memory location
   // which is either a WeightVar or a an Allocation.
@@ -790,13 +828,17 @@ static void shareBuffers(Module &M) {
     if (instIdx < 0)
       continue;
     // Try to reuse the operand memory buffers.
-    tryToShareBuffersForInstr(IntervalsMap, InstrNumbering, I, instIdx);
+    Changed |=
+        tryToShareBuffersForInstr(IntervalsMap, InstrNumbering, I, instIdx);
   }
 
-  // Fix eventual issues with allocs and deallocs that shareBuffers may
-  // introduce by extending live interval lifetimes.
-  hoistDealloc(M);
-  sinkAllocas(M);
+  if (Changed) {
+    // Fix eventual issues with allocs and deallocs that shareBuffers may
+    // introduce by extending live interval lifetimes.
+    hoistDealloc(M);
+    sinkAllocas(M);
+  }
+  return Changed;
 }
 
 /// Dead Store Elimination.
@@ -808,7 +850,10 @@ static void shareBuffers(Module &M) {
 ///   - Remember this last seen write, reset the last seen read.
 /// A single pass is enough because currently there is just a single basic
 /// basic block.
-static void eliminateDeadStores(Module &M) {
+static bool eliminateDeadStores(Module &M) {
+  static ChangeManager ChangeMgr("ir-dead-store-elim");
+  ChangeMgr.startPass();
+
   auto &instrs = M.getInstrs();
   // Instructions to be erased.
   Instructions ErasedInstructions;
@@ -862,10 +907,12 @@ static void eliminateDeadStores(Module &M) {
     // are not read afterwards.
     if (NumMutatedOperands > 0 &&
         NumMutatedOperands == NumNonReadMutatedOperands) {
-      ErasedInstructions.insert(I);
-      // Do not process any reads of operands, because
-      // this instruction will be eliminated.
-      continue;
+      if (ChangeMgr.tryToChange()) {
+        ErasedInstructions.insert(I);
+        // Do not process any reads of operands, because
+        // this instruction will be eliminated.
+        continue;
+      }
     }
 
     // Process all operand reads.
@@ -880,15 +927,19 @@ static void eliminateDeadStores(Module &M) {
   }
 
   eraseInstructions(M, ErasedInstructions);
+  return ChangeMgr.isChanged();
 }
 
 /// Instrument the code to make it easier to debug issues.
 /// Add dumping of inputs before each instruction and
 /// dumping of outputs after each instruction.
 /// For each input/output tensor its name and its value are dumped.
-static void performDebugInstrumentation(Module &M) {
+static bool performDebugInstrumentation(Module &M) {
+  static ChangeManager ChangeMgr("ir-peephole");
+  ChangeMgr.startPass();
+
   if (!instrumentDebug)
-    return;
+    return ChangeMgr.isChanged();
 
   auto &instrs = M.getInstrs();
   for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
@@ -898,6 +949,9 @@ static void performDebugInstrumentation(Module &M) {
       it = next;
       continue;
     }
+
+    if (!ChangeMgr.tryToChange())
+      continue;
     auto instrName = (*it)->getName();
     for (const auto &Op : (*it)->getOperands()) {
       // Dump inputs of the current instruction before the instruction.
@@ -922,10 +976,14 @@ static void performDebugInstrumentation(Module &M) {
     }
     it = next;
   }
+  return ChangeMgr.isChanged();
 }
 
 /// Perform peephole optimizations.
-void performPeepholeOptimizations(Module &M) {
+bool performPeepholeOptimizations(Module &M) {
+  static ChangeManager ChangeMgr("ir-peephole");
+  ChangeMgr.startPass();
+
   auto &instrs = M.getInstrs();
   IRBuilder B(&M);
   for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
@@ -940,6 +998,8 @@ void performPeepholeOptimizations(Module &M) {
       // a deallocation.
       if (!isa<AllocActivationInst>(SrcXY) || SrcXY->getNumUsers() != 2)
         continue;
+      if (!ChangeMgr.tryToChange())
+        continue;
 
       auto *NewPMI = B.createPoolMaxInst(PMI->getName(), PMI->getDest(),
                                          PMI->getSrc(), PMI->getKernel(),
@@ -951,6 +1011,8 @@ void performPeepholeOptimizations(Module &M) {
 
     // reshape -> tensorview, copy
     if (auto *RI = dyn_cast<ReshapeInst>(I)) {
+      if (!ChangeMgr.tryToChange())
+        continue;
       auto *TVI = B.createTensorViewInst(RI->getName(), RI->getSrc(),
                                          RI->getDest()->getType());
       it = M.moveInstruction(cur, TVI);
@@ -968,6 +1030,8 @@ void performPeepholeOptimizations(Module &M) {
       auto Dest = TI->getDest();
       if (auto W = getSingleWriter(Src)) {
         if (isa<SplatInst>(W)) {
+          if (!ChangeMgr.tryToChange())
+            continue;
           if (Src->getType() != Dest->getType()) {
             auto *TVI =
                 B.createTensorViewInst(TI->getName(), Src, Dest->getType());
@@ -996,6 +1060,8 @@ void performPeepholeOptimizations(Module &M) {
       auto *WRHS = getSingleWriter(RHS);
       if (WRHS && isa<SplatInst>(WRHS))
         continue;
+      if (!ChangeMgr.tryToChange())
+        continue;
       auto *NewEM =
           B.createElementMaxInst(EM->getName(), EM->getDest(), RHS, LHS);
       it = M.moveInstruction(cur, NewEM);
@@ -1007,6 +1073,8 @@ void performPeepholeOptimizations(Module &M) {
     // operand.
     if (auto *TV = dyn_cast<TensorViewInst>(I)) {
       if (TV->getType() == TV->getSrc()->getType()) {
+        if (!ChangeMgr.tryToChange())
+          continue;
         replaceAllNonDeallocUsersWith(TV, TV->getSrc());
       }
       continue;
@@ -1014,41 +1082,46 @@ void performPeepholeOptimizations(Module &M) {
 
     // Remove useless copies.
     if (auto *CI = dyn_cast<CopyInst>(I)) {
+      if (!ChangeMgr.tryToChange())
+        continue;
       if (getOrigin(CI->getSrc()) == getOrigin(CI->getDest()))
         M.eraseInstruction(cur);
       continue;
     }
   }
+  return ChangeMgr.isChanged();
 }
 
-void glow::optimize(Module &M, CompilationMode mode) {
+bool glow::optimize(Module &M, CompilationMode mode) {
+  bool Changed = false;
   M.verify();
   if (!optimizeIR)
-    return;
+    return Changed;
 
-  performPeepholeOptimizations(M);
+  Changed |= performPeepholeOptimizations(M);
 
-  eliminateDeadStores(M);
+  Changed |= eliminateDeadStores(M);
 
   // Reuse buffers from previous operations.
-  shareBuffers(M);
+  Changed |= shareBuffers(M);
 
-  performPeepholeOptimizations(M);
+  Changed |= performPeepholeOptimizations(M);
 
   // Shorten the lifetime of buffers.
-  hoistDealloc(M);
-  sinkAllocas(M);
+  Changed |= hoistDealloc(M);
+  Changed |= sinkAllocas(M);
 
   // Perform Dead Store Elimination.
-  eliminateDeadStores(M);
+  Changed |= eliminateDeadStores(M);
 
-  deleteDeadAllocs(M);
+  Changed |= deleteDeadAllocs(M);
 
   // Turn read-only weights into constant weights.
-  makeWeightsConst(M);
+  Changed |= makeWeightsConst(M);
 
   // Perform a debug instrumentation if required.
-  performDebugInstrumentation(M);
+  Changed |= performDebugInstrumentation(M);
 
   M.verify();
+  return Changed;
 }

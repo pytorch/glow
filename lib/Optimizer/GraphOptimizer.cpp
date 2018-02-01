@@ -4,6 +4,7 @@
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Optimizer/Optimizer.h"
+#include "glow/Optimizer/OptimizerUtils.h"
 
 #include "llvm/Support/Casting.h"
 
@@ -39,7 +40,10 @@ static bool shouldDeleteNode(CompilationMode mode, Node *N) {
 }
 
 /// Dead code elimination.
-static void DCE(Graph &G, CompilationMode mode) {
+static bool DCE(Graph &G, CompilationMode mode) {
+  static ChangeManager ChangeMgr("graph-dce");
+  ChangeMgr.startPass();
+
   auto &nodes = G.getNodes();
   auto &vars = G.getVars();
 
@@ -53,6 +57,11 @@ static void DCE(Graph &G, CompilationMode mode) {
     changedLocally = false;
     for (auto it = nodes.begin(), e = nodes.end(); it != e;) {
       if (!shouldDeleteNode(mode, *it)) {
+        ++it;
+        continue;
+      }
+
+      if (!ChangeMgr.tryToChange()) {
         ++it;
         continue;
       }
@@ -85,6 +94,7 @@ static void DCE(Graph &G, CompilationMode mode) {
     G.eraseVariable(it);
     erasedVars.pop_back();
   }
+  return ChangeMgr.isChanged();
 }
 
 /// \returns true if the masks \p shuffle1 and shuffle2 are
@@ -108,7 +118,10 @@ static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle1,
 }
 
 /// Code Sinking.
-static void sinkCode(Graph &G) {
+static bool sinkCode(Graph &G) {
+  static ChangeManager ChangeMgr("graph-sink-code");
+  ChangeMgr.startPass();
+
   auto &nodes = G.getNodes();
 
   // For each node:
@@ -120,6 +133,9 @@ static void sinkCode(Graph &G) {
       if (!TR) {
         continue;
       }
+
+      if (!ChangeMgr.tryToChange())
+        continue;
 
       // Figure out where we transposed the channel index for batch
       // normalization.
@@ -143,6 +159,8 @@ static void sinkCode(Graph &G) {
       if (!TR) {
         continue;
       }
+      if (!ChangeMgr.tryToChange())
+        continue;
 
       auto *NRL = G.createRELU(RL->getName(), TR->getInput());
       auto *newTR = G.createTranspose(TR->getName(), NRL, TR->getShuffle());
@@ -158,6 +176,9 @@ static void sinkCode(Graph &G) {
         continue;
       }
 
+      if (!ChangeMgr.tryToChange())
+        continue;
+
       auto *NSI = G.createSigmoid(SI->getName(), TR->getInput());
       auto *newTR = G.createTranspose(TR->getName(), NSI, TR->getShuffle());
       SI->getResult().replaceAllUsesOfWith(newTR);
@@ -172,6 +193,9 @@ static void sinkCode(Graph &G) {
         continue;
       }
 
+      if (!ChangeMgr.tryToChange())
+        continue;
+
       auto *NTN = G.createTanh(TN->getName(), TR->getInput());
       auto *newTR = G.createTranspose(TR->getName(), NTN, TR->getShuffle());
       TN->getResult().replaceAllUsesOfWith(newTR);
@@ -185,6 +209,9 @@ static void sinkCode(Graph &G) {
       if (!TR2) {
         continue;
       }
+
+      if (!ChangeMgr.tryToChange())
+        continue;
 
       auto mask1 = TR1->getShuffle();
       auto mask2 = TR2->getShuffle();
@@ -211,6 +238,9 @@ static void sinkCode(Graph &G) {
         continue;
       }
 
+      if (!ChangeMgr.tryToChange())
+        continue;
+
       auto *newAN = G.createArithmetic(AN->getName(), LTR->getInput(),
                                        RTR->getInput(), AN->getMode());
       auto *newTR = G.createTranspose(LTR->getName(), newAN, LTR->getShuffle());
@@ -228,6 +258,8 @@ static void sinkCode(Graph &G) {
       auto *R = dyn_cast<ReluNode>(RInput);
 
       if (L && R) {
+        if (!ChangeMgr.tryToChange())
+          continue;
         auto *newCN = G.createConcat(
             CN->getName(), {L->getInput(), R->getInput()}, CN->getDim());
         auto *newRL = G.createRELU(L->getName(), newCN);
@@ -255,6 +287,9 @@ static void sinkCode(Graph &G) {
         continue;
       }
 
+      if (!ChangeMgr.tryToChange())
+        continue;
+
       // Figure out where we transposed the channel index for batch
       // normalization.
       unsigned idx = CN->getDim();
@@ -267,10 +302,13 @@ static void sinkCode(Graph &G) {
     }
 
   } // For all nodes in the graph.
+  return ChangeMgr.isChanged();
 }
 
 /// Pool optimization.
-static void OptimizePool(Graph &G) {
+static bool OptimizePool(Graph &G) {
+  static ChangeManager ChangeMgr("graph-opt-pool");
+  ChangeMgr.startPass();
   auto &nodes = G.getNodes();
 
   // For each node:
@@ -300,6 +338,9 @@ static void OptimizePool(Graph &G) {
         continue;
       }
 
+      if (!ChangeMgr.tryToChange())
+        continue;
+
       auto *NPL = G.createPool(PL->getName(), RL->getInput(), PL->getMode(),
                                PL->getKernel(), PL->getStride(), PL->getPad());
       auto *NRL = G.createRELU(RL->getName(), NPL);
@@ -307,9 +348,12 @@ static void OptimizePool(Graph &G) {
       continue;
     }
   } // For all nodes in the graph.
+  return ChangeMgr.isChanged();
 }
 
-static void OptimizeBatchNorm(Graph &G) {
+static bool OptimizeBatchNorm(Graph &G) {
+  static ChangeManager ChangeMgr("graph-opt-batch-norm");
+  ChangeMgr.startPass();
   auto &nodes = G.getNodes();
 
   // For each node:
@@ -326,6 +370,9 @@ static void OptimizeBatchNorm(Graph &G) {
       if (!CV->hasOneUse()) {
         continue;
       }
+
+      if (!ChangeMgr.tryToChange())
+        continue;
 
       // First, BN computation can be phrased as follows:
       //
@@ -399,23 +446,31 @@ static void OptimizeBatchNorm(Graph &G) {
       BN->getResult().replaceAllUsesOfWith(CV);
     }
   } // For all nodes in the graph.
+  return ChangeMgr.isChanged();
 }
 
-static void OptimizeRegression(Graph &G) {
+static bool OptimizeRegression(Graph &G) {
+  static ChangeManager ChangeMgr("graph-opt-regression");
+  ChangeMgr.startPass();
   auto &nodes = G.getNodes();
   // For each node:
   for (auto const &node : nodes) {
     // In inference mode Regression nodes simply forward their inputs.
     if (auto *R = dyn_cast<RegressionNode>(node)) {
+      if (!ChangeMgr.tryToChange())
+        continue;
       R->getResult().replaceAllUsesOfWith(R->getInput());
     }
   } // For all nodes in the graph.
+  return ChangeMgr.isChanged();
 }
 
 /// Concat nodes merging.
 /// concat(dim1, concat(dim2, X, Y), Z) -> concat(dim1, X, Y, Z)
 /// but only if dim1 == dim2
-static void optimizeConcatNodes(Graph &G) {
+static bool optimizeConcatNodes(Graph &G) {
+  static ChangeManager ChangeMgr("graph-opt-concat");
+  ChangeMgr.startPass();
   auto &nodes = G.getNodes();
 
   // For each node:
@@ -432,6 +487,8 @@ static void optimizeConcatNodes(Graph &G) {
         // dimension.
         if (!CNI || CNI->getDim() != CN->getDim())
           continue;
+        if (!ChangeMgr.tryToChange())
+          continue;
 
         Changed = true;
         // Replace current input by its own inputs, i.e. merge them into the
@@ -446,6 +503,7 @@ static void optimizeConcatNodes(Graph &G) {
       CN->getResult().replaceAllUsesOfWith(NewCN);
     }
   }
+  return ChangeMgr.isChanged();
 }
 
 namespace {
@@ -471,6 +529,7 @@ struct CSEVisitor : NodeWalker {
   std::unordered_map<Node *, Node *, NodeHasher, NodeEq> CSENodes;
   // Set of visited nodes.
   std::unordered_set<Node *> VisitedNodes;
+  bool Changed = false;
 
   /// This callback is called before visiting the children of \p N.
   void pre(Node *parent, Node *N) override {
@@ -482,6 +541,8 @@ struct CSEVisitor : NodeWalker {
   /// This callback is called after visiting the children of \p N.
   /// It means that all of its dependencies are processed already.
   void post(Node *parent, Node *N) override {
+    static ChangeManager ChangeMgr("graph-opt-cse");
+    ChangeMgr.startPass();
     // Try to find a node equivalent to the current one.
     auto FoundI = CSENodes.find(N);
     if (FoundI == CSENodes.end()) {
@@ -496,6 +557,9 @@ struct CSEVisitor : NodeWalker {
     // Bail if the equivalent node is the same node.
     if (FoundN == N)
       return;
+    if (!ChangeMgr.tryToChange())
+      return;
+    Changed = true;
     // Replace current node by a found node, which is
     // equivalent to it.
     assert(N->isEqual(*FoundN));
@@ -516,7 +580,7 @@ struct CSEVisitor : NodeWalker {
 } // namespace
 
 /// Common Subexpression Elimination.
-static void CSE(Graph &G) {
+static bool CSE(Graph &G) {
   CSEVisitor Visitor;
 
   // No need to perform CSE on variables because
@@ -530,11 +594,14 @@ static void CSE(Graph &G) {
   for (auto const &N : G.getNodes()) {
     N->visit(nullptr, &Visitor);
   }
+  return Visitor.Changed;
 }
 
 /// Eliminate SliceNode when the input is SplatNode.
 /// Slice(Splat(args)) -> Splat(args')
-static void OptimizeSliceOfSplat(Graph &G) {
+static bool OptimizeSliceOfSplat(Graph &G) {
+  static ChangeManager ChangeMgr("graph-opt-slice-of-splat");
+  ChangeMgr.startPass();
   for (const auto &node : G.getNodes()) {
     auto *sliceNode = dyn_cast<SliceNode>(node);
     if (!sliceNode)
@@ -542,40 +609,45 @@ static void OptimizeSliceOfSplat(Graph &G) {
     auto *splatNode = dyn_cast<SplatNode>(sliceNode->getInput());
     if (!splatNode)
       continue;
+    if (!ChangeMgr.tryToChange())
+      continue;
     auto *newSplatNode = G.createSplat(
         sliceNode->getName(), sliceNode->getType(), splatNode->getValue());
     sliceNode->getResult().replaceAllUsesOfWith(newSplatNode);
   }
+  return ChangeMgr.isChanged();
 }
 
-void glow::optimize(Graph &G, CompilationMode mode) {
+bool glow::optimize(Graph &G, CompilationMode mode) {
+  bool Changed = false;
   // Sink transpose operations in an attempt to cancel them out.
-  sinkCode(G);
+  Changed |= sinkCode(G);
 
   // Optimize the pooling operation.
-  OptimizePool(G);
+  Changed |= OptimizePool(G);
 
   // Perform Common Subexpression Elimination.
-  CSE(G);
+  Changed |= CSE(G);
 
   // Perform Dead Code Elimination.
-  DCE(G, mode);
+  Changed |= DCE(G, mode);
 
   if (mode == CompilationMode::Infer) {
     // Merge batch normalization operations.
-    OptimizeBatchNorm(G);
+    Changed |= OptimizeBatchNorm(G);
 
-    OptimizeRegression(G);
+    Changed |= OptimizeRegression(G);
   }
 
   // Perform Common Subexpression Elimination.
-  CSE(G);
+  Changed |= CSE(G);
 
-  optimizeConcatNodes(G);
+  Changed |= optimizeConcatNodes(G);
 
   // Slice(Splat(dims, value)) -> Splat(dims', value)
-  OptimizeSliceOfSplat(G);
+  Changed |= OptimizeSliceOfSplat(G);
 
   // Perform Dead Code Elimination.
-  DCE(G, mode);
+  Changed |= DCE(G, mode);
+  return Changed;
 }
