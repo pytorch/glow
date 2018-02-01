@@ -576,24 +576,34 @@ void testRNNCell(TCellGenerator cell) {
   auto &G = EE.getGraph();
   G.setName("testRNNCell");
 
+  const unsigned NumVectors = 3;
+  const unsigned NumElements = 4;
   // Create a variable with 1 input, which is 3 consecutive vectors
   // of 4 elements each.
-  auto *X = G.createVariable(ElemKind::FloatTy, {1, 3, 4}, "X",
-                             Variable::VisibilityKind::Public,
+  auto *X = G.createVariable(ElemKind::FloatTy, {1, NumVectors, NumElements},
+                             "X", Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
-  auto *Y = G.createVariable(ElemKind::FloatTy, {1, 3}, "Y",
+  auto *Y = G.createVariable(ElemKind::FloatTy, {1, NumVectors}, "Y",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
 
   // Extract a slice for each input.
-  std::vector<Node *> XSliced = {G.createSlice("X1", X, {0, 0, 0}, {1, 1, 4}),
-                                 G.createSlice("X2", X, {0, 1, 0}, {1, 2, 4}),
-                                 G.createSlice("X3", X, {0, 2, 0}, {1, 3, 4})};
+  std::vector<Node *> XSliced;
+
+  for (unsigned i = 0; i < NumVectors; ++i) {
+    std::string Name{"X"};
+    Name.append(std::to_string(i + 1));
+    XSliced.push_back(G.createSlice(Name, X, {0, i, 0}, {1, i + 1, 4}));
+  }
 
   // Extract a slice for each output.
-  std::vector<Node *> YSliced = {G.createSlice("Y1", Y, {0, 0}, {1, 1}),
-                                 G.createSlice("Y2", Y, {0, 1}, {1, 2}),
-                                 G.createSlice("Y3", Y, {0, 2}, {1, 3})};
+  std::vector<Node *> YSliced;
+
+  for (unsigned i = 0; i < NumVectors; ++i) {
+    std::string Name{"Y"};
+    Name.append(std::to_string(i + 1));
+    YSliced.push_back(G.createSlice(Name, Y, {0, i}, {1, i + 1}));
+  }
 
   const unsigned hiddenSize = 5;
   const unsigned outputSize = 1;
@@ -602,7 +612,7 @@ void testRNNCell(TCellGenerator cell) {
   cell(G, XSliced, hiddenSize, outputSize, outputNodes);
 
   std::vector<Node *> regressionNodes;
-  for (unsigned t = 0; t < 3; t++) {
+  for (unsigned t = 0; t < NumVectors; t++) {
     regressionNodes.push_back(
         G.createRegression("", outputNodes[t], YSliced[t]));
   };
@@ -613,11 +623,11 @@ void testRNNCell(TCellGenerator cell) {
   EE.compile(CompilationMode::Train);
 
   // Values for the input and output variables.
-  Tensor inputs(ElemKind::FloatTy, {1, 3, 4});
-  Tensor expected(ElemKind::FloatTy, {1, 3});
+  Tensor inputs(ElemKind::FloatTy, {1, NumVectors, NumElements});
+  Tensor expected(ElemKind::FloatTy, {1, NumVectors});
   inputs.zero();
   expected.zero();
-  for (size_t i = 0; i < 3; i++) {
+  for (size_t i = 0; i < NumVectors; i++) {
     inputs.getHandle<float_t>().at({0, i, 1}) = i;
     expected.getHandle<float_t>().at({0, i}) = i;
   }
@@ -633,9 +643,9 @@ void testRNNCell(TCellGenerator cell) {
   (void)RNWH;
 
   // Test the output:
-  EXPECT_NEAR(RNWH.at({0, 0}), 0, 0.05);
-  EXPECT_NEAR(RNWH.at({0, 1}), 1, 0.05);
-  EXPECT_NEAR(RNWH.at({0, 2}), 2, 0.05);
+  for (size_t t = 0; t < NumVectors; ++t) {
+    EXPECT_NEAR(RNWH.at({0, t}), t, 0.05);
+  }
 };
 
 TEST(Network, trainASimpleRNN) { testRNNCell(buildRNN); };
