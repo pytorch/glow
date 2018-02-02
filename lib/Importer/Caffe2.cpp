@@ -326,9 +326,9 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Concat") {
     const unsigned numInputs = op.input_size();
-    Node *inputs[numInputs];
+    llvm::SmallVector<Node *, 4> inputs;
     for (int i = 0; i < numInputs; i++) {
-      inputs[i] = getOrCreateNodeByName(op.input(i));
+      inputs.push_back(getOrCreateNodeByName(op.input(i)));
     }
 
     unsigned channel = 0;
@@ -341,8 +341,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       GLOW_ASSERT(false && "Invalid order field");
     }
 
-    Node *node = G_.createConcat(
-        op.name(), llvm::ArrayRef<Node *>(inputs, numInputs), channel);
+    Node *node = G_.createConcat(op.name(), inputs, channel);
 
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;
