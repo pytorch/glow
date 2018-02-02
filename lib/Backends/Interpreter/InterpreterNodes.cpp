@@ -454,8 +454,7 @@ void Interpreter::fwdSoftMaxGradInst(bool isTrain, const SoftMaxGradInst *I) {
   for (size_t n = 0; n < idim[0]; n++) {
     for (size_t i = 0; i < idim[1]; i++) {
       float delta = (selectedH.at({n, 0}) == i);
-      float sigma = outW.at({n, i}) - delta;
-      inG.at({n, i}) += sigma;
+      inG.at({n, i}) = outW.at({n, i}) - delta;
     }
   }
 }
