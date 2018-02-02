@@ -17,8 +17,10 @@ can install these dependencies using the brew package manager:
 On Ubuntu you would need to install a few dependencies. The following command should install the required dependencies.
 
   ```
-  sudo apt-get install graphviz clang cmake  wget ninja-build llvm ocl-icd-opencl-dev libprotobuf-dev protobuf-compiler 
+  sudo apt-get install graphviz clang cmake wget ninja-build llvm-5.0 libprotobuf-dev protobuf-compiler 
   ```
+
+Note, that OpenCL support is not trivial on Linux. We suggest to build without OpenCL for the first time.
 
 ## Building with the Sanitizers
 
