@@ -327,7 +327,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "Concat") {
     const unsigned numInputs = op.input_size();
     llvm::SmallVector<Node *, 4> inputs;
-    for (int i = 0; i < numInputs; i++) {
+    inputs.reserve(numInputs);
+    for (unsigned i = 0; i < numInputs; i++) {
       inputs.push_back(getOrCreateNodeByName(op.input(i)));
     }
 
