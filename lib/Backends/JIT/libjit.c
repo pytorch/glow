@@ -372,10 +372,11 @@ void softmax_f(float *inW, float *outW, size_t *idim, size_t *odim) {
   } // N
 }
 
-void softmaxgrad_f(float *inG, float *outW, size_t *selectedW, size_t *idim) {
+void softmaxgrad_f(float *inG, float *outW, size_t *selectedW, size_t *idim,
+                   size_t *selectdim) {
   for (size_t n = 0; n < idim[0]; n++) {
     for (size_t i = 0; i < idim[1]; i++) {
-      float delta = (selectedW[getXY(idim, n, 0)] == i);
+      float delta = (selectedW[getXY(selectdim, n, 0)] == i);
       inG[getXY(idim, n, i)] = outW[getXY(idim, n, i)] - delta;
     }
   }

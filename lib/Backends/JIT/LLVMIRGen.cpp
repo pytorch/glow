@@ -298,10 +298,11 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *selectedPtr =
         emitValueAddress(builder, SMG->getSelected(), ElemKind::IndexTy);
     auto *srcGradDims = emitValueDims(builder, SMG->getSrcGrad());
-
+    auto *selectedDims = emitValueDims(builder, SMG->getSelected());
     auto *F = llmodule_->getFunction("softmaxgrad_f");
     assert(F && "Unable to load the function");
-    builder.CreateCall(F, {srcGradPtr, destPtr, selectedPtr, srcGradDims});
+    builder.CreateCall(
+        F, {srcGradPtr, destPtr, selectedPtr, srcGradDims, selectedDims});
     break;
   }
 
