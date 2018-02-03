@@ -12,14 +12,24 @@
 using namespace glow;
 
 ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
+  backendKind_ = backendKind;
   G_.reset(new Graph());
   M_.reset(new Module(&*G_));
-  IP_.reset(createBackend(backendKind, &*M_));
+  IP_.reset(createBackend(backendKind_, &*M_));
 }
 
 // Set the code generator kind to \p backendKind.
 void ExecutionEngine::setBackend(BackendKind backendKind) {
+  backendKind_ = backendKind;
   IP_.reset(createBackend(backendKind, &*M_));
+}
+
+void ExecutionEngine::reset() {
+  if (M_)
+    M_->clear();
+  IP_.reset(createBackend(backendKind_, &*M_));
+  if (G_)
+    G_->resetState();
 }
 
 ExecutionEngine::~ExecutionEngine() = default;
@@ -94,10 +104,8 @@ void ExecutionEngine::loadValueFromTensor(Variable *v, Tensor *input) {
 }
 
 void ExecutionEngine::compile(CompilationMode mode) {
-  // Wipe out the module and start a new compilation process.
-  M_->clear();
-  IP_->clear();
-  G_->resetState();
+  // Reset the engine and start a new compilation process.
+  reset();
 
   if (mode != CompilationMode::Infer) {
     generateGradientNodes(*G_, getConfig(), mode);
