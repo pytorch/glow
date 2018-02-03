@@ -1,5 +1,6 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
+#define DEBUG_TYPE "jit"
 #include "JIT.h"
 
 #include "glow/CodeGen/MemoryAllocator.h"
@@ -19,6 +20,7 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/SourceMgr.h"
@@ -192,4 +194,16 @@ void JITBackend::allocateActivationsAndWeights() {
   for (auto &A : activationAddr) {
     allocatedAddressed_[A.first] = &heap_[0] + A.second;
   }
+
+  DEBUG(for (auto &A
+             : allocatedAddressed_) {
+    llvm::errs() << "Allocated " << A.first->getName()
+                 << " size: " << A.first->getType()->getSizeInBytes()
+                 << "  address range:  [" << allocatedAddressed_[A.first]
+                 << ", "
+                 << static_cast<void *>(
+                        (static_cast<char *>(allocatedAddressed_[A.first]) +
+                         A.first->getType()->getSizeInBytes()))
+                 << "]\n";
+  });
 }
