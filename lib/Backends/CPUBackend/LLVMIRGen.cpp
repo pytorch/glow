@@ -803,6 +803,44 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   case Kinded::Kind::DeallocActivationInstKind:
   case Kinded::Kind::TensorViewInstKind:
     break;
+  case Kinded::Kind::InsertTensorInstKind: {
+    InsertTensorInst *ITI = llvm::cast<InsertTensorInst>(I);
+    auto dest = ITI->getDest();
+    auto src = ITI->getSrc();
+    auto offsets = ITI->getOffsets();
+    auto *destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
+    auto *srcPtr = emitValueAddress(builder, src, ElemKind::FloatTy);
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
+    auto *destDimsSize = emitConst(builder, dest->getType()->dims().size());
+    auto *srcDimsSize = emitConst(builder, src->getType()->dims().size());
+    auto *offsetsPtr = emitConstArray(builder, offsets);
+    auto *offsetsArraySize = emitConst(builder, offsets.size());
+    auto *F = getFunction("libjit_insert_tensor_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {destPtr, srcPtr, offsetsPtr, destDims, srcDims,
+                           destDimsSize, srcDimsSize, offsetsArraySize});
+    break;
+  }
+  case Kinded::Kind::ExtractTensorInstKind: {
+    ExtractTensorInst *ITI = llvm::cast<ExtractTensorInst>(I);
+    auto dest = ITI->getDest();
+    auto src = ITI->getSrc();
+    auto offsets = ITI->getOffsets();
+    auto *destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
+    auto *srcPtr = emitValueAddress(builder, src, ElemKind::FloatTy);
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
+    auto *destDimsSize = emitConst(builder, dest->getType()->dims().size());
+    auto *srcDimsSize = emitConst(builder, src->getType()->dims().size());
+    auto *offsetsPtr = emitConstArray(builder, offsets);
+    auto *offsetsArraySize = emitConst(builder, offsets.size());
+    auto *F = getFunction("libjit_extract_tensor_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {srcPtr, destPtr, offsetsPtr, srcDims, destDims,
+                           srcDimsSize, destDimsSize, offsetsArraySize});
+    break;
+  }
 
   default:
     llvm_unreachable("ERROR: Cannot select the instruction.");
