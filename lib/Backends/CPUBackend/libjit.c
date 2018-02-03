@@ -711,3 +711,81 @@ void libjit_transpose_f(const float *inW, float *outW, const size_t *idim,
     return;
   }
 }
+
+#define AT(tensor, dims, numDims, indices, numIndices)                         \
+  tensor[get_element_ptr(tensor, dims, numDims, indices, numIndices)]
+
+static size_t get_element_ptr(float *tensor, size_t *dims, size_t numDims,
+                              size_t *indices, size_t numIndices) {
+  size_t index = 0;
+  size_t subdimensionSize = 1;
+  for (size_t i = numDims; i > 0; i--) {
+    size_t curIndicesValue = (i <= numIndices) ? indices[i - 1] : 0;
+    index += subdimensionSize * curIndicesValue;
+    subdimensionSize *= dims[i - 1];
+  }
+  return index;
+}
+
+static void libjit_insert_tensor_impl(float *tensor, float *slice,
+                                      size_t *offset, size_t *sliceCoor,
+                                      size_t *fusedCoor, size_t *tensorDim,
+                                      size_t *sliceDim, size_t numDimsTensor,
+                                      size_t numDimsSliceCoor,
+                                      size_t numDimsFusedCoor,
+                                      unsigned isInsert, unsigned d) {
+  unsigned isDone = (d == numDimsSliceCoor);
+
+  if (isDone) {
+    if (isInsert) {
+      AT(tensor, tensorDim, numDimsTensor, fusedCoor, numDimsFusedCoor) =
+          AT(slice, sliceDim, numDimsSliceCoor, sliceCoor, numDimsSliceCoor);
+    } else {
+      AT(slice, sliceDim, numDimsSliceCoor, sliceCoor, numDimsSliceCoor) =
+          AT(tensor, tensorDim, numDimsTensor, fusedCoor, numDimsFusedCoor);
+    }
+    return;
+  }
+
+  for (size_t i = 0, e = sliceDim[d]; i < e; i++) {
+    // Construct the coordinates for the slice and for the joint shape.
+    // Add the 'offset' to the dimension that we concat the shapes on.
+    sliceCoor[d] = i;
+    fusedCoor[d] = i + offset[d];
+    libjit_insert_tensor_impl(
+        tensor, slice, offset, sliceCoor, fusedCoor, tensorDim, sliceDim,
+        numDimsTensor, numDimsSliceCoor, numDimsFusedCoor, isInsert, d + 1);
+  }
+}
+
+void libjit_insert_tensor_f(float *tensor, float *slice, size_t *offset,
+                            size_t *tensorDim, size_t *sliceDim,
+                            size_t numDimsTensor, size_t numDimsSlice,
+                            size_t offsetDim) {
+  // Reserve statically enough memory to avoid dynamic memory allocation.
+  size_t sliceCoor[10];
+  size_t fusedCoor[10];
+  libjit_copy_buffer((uint8_t *)sliceCoor, (uint8_t *)sliceDim,
+                     sizeof(*sliceDim) * numDimsSlice);
+  libjit_copy_buffer((uint8_t *)fusedCoor, (uint8_t *)tensorDim,
+                     sizeof(*tensorDim) * numDimsTensor);
+  libjit_insert_tensor_impl(tensor, slice, offset, sliceCoor, fusedCoor,
+                            tensorDim, sliceDim, numDimsTensor, numDimsSlice,
+                            offsetDim, 1, 0);
+}
+
+void libjit_extract_tensor_f(float *tensor, float *slice, size_t *offset,
+                             size_t *tensorDim, size_t *sliceDim,
+                             size_t numDimsTensor, size_t numDimsSlice,
+                             size_t offsetDim) {
+  // Reserve statically enough memory to avoid dynamic memory allocation.
+  size_t sliceCoor[10];
+  size_t fusedCoor[10];
+  libjit_copy_buffer((uint8_t *)sliceCoor, (uint8_t *)sliceDim,
+                     sizeof(*sliceDim) * numDimsSlice);
+  libjit_copy_buffer((uint8_t *)fusedCoor, (uint8_t *)tensorDim,
+                     sizeof(*tensorDim) * numDimsTensor);
+  libjit_insert_tensor_impl(tensor, slice, offset, sliceCoor, fusedCoor,
+                            tensorDim, sliceDim, numDimsTensor, numDimsSlice,
+                            offsetDim, 0, 0);
+}
