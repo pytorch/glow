@@ -11,8 +11,8 @@
 namespace glow {
 
 /// Main attributes of a quantized tensor.
-/// Scale and Offset allow quantization of a float tensor
-/// and dequantization of integer tensor back to float one.
+/// Scale and Offset allow quantization of a float tensor and dequantization of
+/// integer tensor back to float one.
 struct TensorQuantizationParams {
   float scale_;
   float offset_;
@@ -23,7 +23,7 @@ struct NodeQuantizationInfo {
   std::string nodeName_;
   TensorQuantizationParams tensorQuantizationParams_;
 
-  NodeQuantizationInfo() {}
+  NodeQuantizationInfo() = default;
   NodeQuantizationInfo(const std::string &nodeName,
                        const TensorQuantizationParams &tensorQuantizationParams)
       : nodeName_(nodeName),
