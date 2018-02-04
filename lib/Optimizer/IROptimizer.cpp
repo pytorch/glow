@@ -172,41 +172,37 @@ static void deleteDeadAllocs(Module &M) {
   llvm::SmallVector<Instruction *, 16> erasedInstructions{};
 
   // Remove all unused tenstorviews.
-  std::copy_if(instrs.begin(), instrs.end(),
-               std::back_inserter(erasedInstructions),
-               [](const Instruction *I) -> bool {
-                 return (isa<TensorViewInst>(I) && I->getNumUsers() == 0);
-               });
+  for (auto &I : instrs) {
+    if (isa<TensorViewInst>(I) && I->getNumUsers() == 0) {
+      erasedInstructions.push_back(I);
+    }
+  }
 
   for (auto I : erasedInstructions) {
     M.eraseInstruction(I);
   }
+
   erasedInstructions.clear();
 
   // Remove all of the DeallocActivationInst that close unused allocs.
-  std::copy_if(
-      instrs.begin(), instrs.end(), std::back_inserter(erasedInstructions),
-      [](const Instruction *I) -> bool {
-        if (const auto *DA = dyn_cast<const DeallocActivationInst>(I)) {
-          return DA->getAlloc()->getNumUsers() < 2;
-        }
-        return false;
-      });
+  for (auto &I : instrs) {
+    const auto *DA = dyn_cast<const DeallocActivationInst>(I);
+    if (DA && DA->getAlloc()->getNumUsers() < 2) {
+      erasedInstructions.push_back(I);
+    }
+  }
 
   for (auto I : erasedInstructions) {
     M.eraseInstruction(I);
   }
-
   erasedInstructions.clear();
+
   // Remove the unused allocs.
-  std::copy_if(instrs.begin(), instrs.end(),
-               std::back_inserter(erasedInstructions),
-               [](const Instruction *I) -> bool {
-                 if (isa<const AllocActivationInst>(I)) {
-                   return I->getNumUsers() < 2;
-                 }
-                 return false;
-               });
+  for (auto &I : instrs) {
+    if (isa<const AllocActivationInst>(I) && I->getNumUsers() < 2) {
+      erasedInstructions.push_back(I);
+    }
+  }
 
   for (auto I : erasedInstructions) {
     M.eraseInstruction(I);
