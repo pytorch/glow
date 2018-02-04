@@ -221,3 +221,25 @@ TEST(JITCorrectnessTest, basicFCNet) {
 
   EXPECT_TRUE(H1.isEqual(H2));
 }
+
+TEST(JITCorrectnessTest, complexNet1) {
+  Tensor inputs1(ElemKind::FloatTy, {8, 7, 14, 11});
+  Tensor inputs2(ElemKind::FloatTy, {8, 4, 7, 9});
+  Tensor inputs3(ElemKind::FloatTy, {8, 7, 14, 11});
+  Tensor inputs4(ElemKind::FloatTy, {8, 8, 7, 4});
+  inputs1.getHandle().randomize(1);
+  inputs2.getHandle().randomize(1);
+  inputs3.getHandle().randomize(1);
+  inputs4.getHandle().randomize(1);
+  Tensor out1;
+  Tensor out2;
+
+  inferComplexNet1(&inputs1, &inputs2, &inputs3, &inputs4, &out1,
+                   BackendKind::JIT);
+  inferComplexNet1(&inputs1, &inputs2, &inputs3, &inputs4, &out2,
+                   BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
