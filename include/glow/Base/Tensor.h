@@ -472,7 +472,7 @@ public:
   /// \returns the mean and variance of the tensor.
   std::pair<ElemTy, ElemTy> calculateMeanVariance() const {
     size_t n = size();
-    assert(n > 1 && "Input must haev at least 2 elements.");
+    assert(n > 1 && "Input must have at least 2 elements.");
 
     // Calculate mean.
     ElemTy sum = 0;

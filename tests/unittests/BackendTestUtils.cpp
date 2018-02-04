@@ -25,16 +25,16 @@ void inferBatchedAddNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
-void inferBatchedReduceAddNet(Tensor *inputs1, Tensor *out, BackendKind kind) {
+void inferBatchedReduceAddNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &G = EE.getGraph();
-  auto *var1 = G.createVariable(inputs1->getElementType(), inputs1->dims(),
-                                "input1", Variable::VisibilityKind::Public);
-  auto *batchedreduce = G.createBatchedReduce(
-      "batchedreduce", BatchedReduceNode::Mode::Add, var1);
+  auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
+                               "input", Variable::VisibilityKind::Public);
+  auto *batchedreduce =
+      G.createBatchedReduce("batchedreduce", BatchedReduceNode::Mode::Add, var);
   auto result = G.createSave("ret", batchedreduce);
   EE.compile(CompilationMode::Infer);
-  EE.run({var1}, {inputs1});
+  EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
