@@ -7,18 +7,20 @@
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
 /// \returns the index of the element at x,y,z,w.
-size_t getXYZW(size_t *dims, size_t x, size_t y, size_t z, size_t w) {
+size_t getXYZW(const size_t *dims, size_t x, size_t y, size_t z, size_t w) {
   return (x * dims[1] * dims[2] * dims[3]) + (y * dims[2] * dims[3]) +
          (z * dims[3]) + w;
 }
 
 /// \returns the index of the element at x,y,z.
-size_t getXYZ(size_t *dims, size_t x, size_t y, size_t z) {
+size_t getXYZ(const size_t *dims, size_t x, size_t y, size_t z) {
   return (x * dims[1] * dims[2]) + (y * dims[2]) + z;
 }
 
 /// \returns the index of the element at x,y.
-size_t getXY(size_t *dims, size_t x, size_t y) { return (x * dims[1]) + y; }
+size_t getXY(const size_t *dims, size_t x, size_t y) {
+  return (x * dims[1]) + y;
+}
 
 void splat_f(float *buffer, size_t sz, float val) {
   for (size_t i = 0; i < sz; i++) {
@@ -26,33 +28,34 @@ void splat_f(float *buffer, size_t sz, float val) {
   }
 }
 
-void elementmax_f(float *dest, float *LHS, float *RHS, size_t sz) {
+void elementmax_f(float *dest, const float *LHS, const float *RHS, size_t sz) {
   for (size_t i = 0; i < sz; i++) {
     dest[i] = MAX(LHS[i], RHS[i]);
   }
 }
 
-void elementmax0_f(float *dest, float *LHS, size_t sz) {
+void elementmax0_f(float *dest, const float *LHS, size_t sz) {
   for (size_t i = 0; i < sz; i++) {
     dest[i] = MAX(LHS[i], 0);
   }
 }
 
-void elementmin_f(float *dest, float *LHS, float *RHS, size_t sz) {
+void elementmin_f(float *dest, const float *LHS, const float *RHS, size_t sz) {
   for (size_t i = 0; i < sz; i++) {
     dest[i] = MIN(LHS[i], RHS[i]);
   }
 }
 
-void elementselect_f(float *dest, float *cond, float *LHS, float *RHS,
-                     size_t sz) {
+void elementselect_f(float *dest, const float *cond, const float *LHS,
+                     const float *RHS, size_t sz) {
   for (size_t i = 0; i < sz; i++) {
     dest[i] = (cond[i] != 0.0) ? LHS[i] : RHS[i];
   }
 }
 
-void batchedmatmul_f(float *dest, float *LHS, float *RHS, size_t *destDims,
-                     size_t *lhsDims, size_t *rhsDims) {
+void batchedmatmul_f(float *dest, const float *LHS, const float *RHS,
+                     const size_t *destDims, const size_t *lhsDims,
+                     const size_t *rhsDims) {
   size_t destSize = destDims[0] * destDims[1] * destDims[2];
   for (size_t i = 0; i < destSize; ++i)
     dest[i] = 0;
@@ -79,8 +82,8 @@ void batchedmatmul_f(float *dest, float *LHS, float *RHS, size_t *destDims,
   } // N
 }
 
-void batchedadd_f(float *dest, float *batch, float *slice, size_t numSlice,
-                  size_t sliceSize) {
+void batchedadd_f(float *dest, const float *batch, const float *slice,
+                  size_t numSlice, size_t sliceSize) {
   // For each layer in the batch:
   for (size_t n = 0; n < numSlice; n++) {
     size_t base = n * sliceSize;
@@ -91,7 +94,7 @@ void batchedadd_f(float *dest, float *batch, float *slice, size_t numSlice,
   }
 }
 
-void batchedreduceadd_f(float *dest, float *batch, size_t destSize,
+void batchedreduceadd_f(float *dest, const float *batch, size_t destSize,
                         size_t numSlice, size_t sliceSize) {
   for (size_t i = 0; i < destSize; i++) {
     dest[i] = 0.0;
@@ -110,39 +113,45 @@ void copy_buffer(uint8_t *dest, uint8_t *src, size_t bytes) {
   }
 }
 
-void element_cmp_lte_f(float *dest, float *LHS, float *RHS, size_t numElem) {
+void element_cmp_lte_f(float *dest, const float *LHS, const float *RHS,
+                       size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     dest[i] = LHS[i] < RHS[i];
   }
 }
 
-void element_sub_f(float *dest, float *LHS, float *RHS, size_t numElem) {
+void element_sub_f(float *dest, const float *LHS, const float *RHS,
+                   size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     dest[i] = LHS[i] - RHS[i];
   }
 }
 
-void element_add_f(float *dest, float *LHS, float *RHS, size_t numElem) {
+void element_add_f(float *dest, const float *LHS, const float *RHS,
+                   size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     dest[i] = LHS[i] + RHS[i];
   }
 }
 
-void element_div_f(float *dest, float *LHS, float *RHS, size_t numElem) {
+void element_div_f(float *dest, const float *LHS, const float *RHS,
+                   size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     dest[i] = LHS[i] / RHS[i];
   }
 }
 
-void element_mul_f(float *dest, float *LHS, float *RHS, size_t numElem) {
+void element_mul_f(float *dest, const float *LHS, const float *RHS,
+                   size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     dest[i] = LHS[i] * RHS[i];
   }
 }
 
-void convolution_f_unroll_k4(float *inW, float *outW, float *filterW,
-                             float *biasW, size_t *inWdims, size_t *outWdims,
-                             size_t *filterWdims, size_t *biasWdims,
+void convolution_f_unroll_k4(const float *inW, float *outW,
+                             const float *filterW, const float *biasW,
+                             const size_t *inWdims, const size_t *outWdims,
+                             const size_t *filterWdims, const size_t *biasWdims,
                              size_t filterSize, size_t pad, size_t stride) {
   size_t inChannels = inWdims[3];
 
@@ -206,9 +215,10 @@ void convolution_f_unroll_k4(float *inW, float *outW, float *filterW,
   }       // N
 }
 
-void convolution_f(float *inW, float *outW, float *filterW, float *biasW,
-                   size_t *inWdims, size_t *outWdims, size_t *filterWdims,
-                   size_t *biasWdims, size_t filterSize, size_t pad,
+void convolution_f(const float *inW, float *outW, const float *filterW,
+                   const float *biasW, const size_t *inWdims,
+                   const size_t *outWdims, const size_t *filterWdims,
+                   const size_t *biasWdims, size_t filterSize, size_t pad,
                    size_t stride) {
 
   size_t inChannels = inWdims[3];
@@ -252,8 +262,9 @@ void convolution_f(float *inW, float *outW, float *filterW, float *biasW,
   }       // N
 }
 
-void pool_max_f(float *inW, float *outW, size_t *inWdims, size_t *outWdims,
-                size_t pad, size_t filterSize, size_t stride) {
+void pool_max_f(const float *inW, float *outW, const size_t *inWdims,
+                const size_t *outWdims, size_t pad, size_t filterSize,
+                size_t stride) {
   // For each input in the batch:
   for (size_t n = 0; n < outWdims[0]; n++) {
 
@@ -294,8 +305,9 @@ void pool_max_f(float *inW, float *outW, size_t *inWdims, size_t *outWdims,
   }       // N
 }
 
-void pool_avg_f(float *inW, float *outW, size_t *inWdims, size_t *outWdims,
-                size_t pad, size_t filterSize, size_t stride) {
+void pool_avg_f(const float *inW, float *outW, const size_t *inWdims,
+                const size_t *outWdims, size_t pad, size_t filterSize,
+                size_t stride) {
   float filterArea = filterSize * filterSize;
   // For each input in the batch:
   for (size_t n = 0; n < outWdims[0]; n++) {
@@ -330,7 +342,7 @@ void pool_avg_f(float *inW, float *outW, size_t *inWdims, size_t *outWdims,
   }       // N
 }
 
-void sgd_f(float *W, float *G, float *Gsum, float L1Decay, float L2Decay,
+void sgd_f(float *W, const float *G, float *Gsum, float L1Decay, float L2Decay,
            float learningRate, float momentum, size_t batchSize, size_t Wsize) {
   for (size_t i = 0; i < Wsize; i++) {
     float L1Grad = L1Decay * (W[i] > 0 ? 1 : -1);
@@ -347,7 +359,8 @@ void sgd_f(float *W, float *G, float *Gsum, float L1Decay, float L2Decay,
   }
 }
 
-void softmax_f(float *inW, float *outW, size_t *idim, size_t *odim) {
+void softmax_f(const float *inW, float *outW, const size_t *idim,
+               const size_t *odim) {
   for (size_t n = 0; n < idim[0]; n++) {
     float max = inW[getXY(idim, n, 0)];
 
@@ -372,8 +385,8 @@ void softmax_f(float *inW, float *outW, size_t *idim, size_t *odim) {
   } // N
 }
 
-void softmaxgrad_f(float *inG, float *outW, size_t *selectedW, size_t *idim,
-                   size_t *selectdim) {
+void softmaxgrad_f(float *inG, float *outW, const size_t *selectedW,
+                   const size_t *idim, const size_t *selectdim) {
   for (size_t n = 0; n < idim[0]; n++) {
     for (size_t i = 0; i < idim[1]; i++) {
       float delta = (selectedW[getXY(selectdim, n, 0)] == i);
@@ -382,21 +395,21 @@ void softmaxgrad_f(float *inG, float *outW, size_t *selectedW, size_t *idim,
   }
 }
 
-void sigmoid_f(float *inW, float *outW, size_t numElem) {
+void sigmoid_f(const float *inW, float *outW, size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     float e = expf(inW[i]);
     outW[i] = e / (e + 1);
   }
 }
 
-void tanh_f(float *inW, float *outW, size_t numElem) {
+void tanh_f(const float *inW, float *outW, size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     outW[i] = tanhf(inW[i]);
   }
 }
 
-void transpose_f(float *inW, float *outW, size_t *idim, size_t *odim,
-                 size_t *shuffle, size_t numDims) {
+void transpose_f(const float *inW, float *outW, const size_t *idim,
+                 const size_t *odim, const size_t *shuffle, size_t numDims) {
   // Source coordinate.
   size_t SC[4];
 
