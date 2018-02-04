@@ -413,7 +413,7 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
         Intervals.back().sameValue_ = false;
 
       // No need to create a new interval if it is not a write.
-      if (opKind != OperandKind::Out) //|| opKind == OperandKind::InOut)
+      if (opKind != OperandKind::Out)
         continue;
       opIdx = InstructionNumbering::getInstrWriteSlotNumber(instIdx);
       // This instruction modifies the memory location.
@@ -486,20 +486,20 @@ static void moveInterval(Intervals &from, Intervals &to, Interval &interval) {
 static void
 replaceAllUsesInsideIntervalWith(Value *val, Value *with,
                                  Interval &liveInterval, Module &M,
-                                 InstructionNumbering &InstrNumbering) {
+                                 InstructionNumbering &instrNumbering) {
   auto &instrs = M.getInstrs();
   auto valOrigin = getOrigin(val);
   auto withOrigin = getOrigin(with);
   int instIdx = 0;
   IRBuilder B(&M);
-  for (auto it = InstrNumbering.getInstr(liveInterval.begin_), e = instrs.end();
+  for (auto it = instrNumbering.getInstr(liveInterval.begin_), e = instrs.end();
        it != e && instIdx <= liveInterval.end_; ++it) {
     auto *I = *it;
     if (isa<DeallocActivationInst>(I))
       continue;
     // Ignore any new instructions which were not present as the instruction
     // numbering was performed.
-    auto instNum = InstrNumbering.getInstrNumber(I);
+    auto instNum = instrNumbering.getInstrNumber(I);
     if (instNum >= 0)
       instIdx = instNum;
     if (instNum < 0)
@@ -545,8 +545,8 @@ replaceAllUsesInsideIntervalWith(Value *val, Value *with,
 /// Erase all instructions from the \p ErasedInstructions set.
 /// If \p forceErase is true, no additional checks are performed.
 /// Otherwise, copies into weight variables cannot be erased.
-static void eraseInstructions(Module &M, Instructions &ErasedInstructions) {
-  for (auto it : ErasedInstructions) {
+static void eraseInstructions(Module &M, Instructions &erasedInstructions) {
+  for (auto it : erasedInstructions) {
     DEBUG(llvm::dbgs() << "Deleting instruction :"; it->dump(llvm::dbgs());
           llvm::dbgs() << "\n");
     M.eraseInstruction(it);
@@ -561,7 +561,7 @@ static bool isObservable(Value *V) { return isa<WeightVar>(getOrigin(V)); }
 /// \p oldInterval.
 static void reuseBufferInsideInterval(Value *oldBuffer, Value *newBuffer,
                                       Interval oldInterval, Module &M,
-                                      InstructionNumbering &InstrNumbering,
+                                      InstructionNumbering &instrNumbering,
                                       Intervals &oldIntervals,
                                       Intervals &newIntervals) {
   DEBUG(llvm::dbgs() << "\n\nReuse buffers: use buffer of "
@@ -570,7 +570,7 @@ static void reuseBufferInsideInterval(Value *oldBuffer, Value *newBuffer,
                      << "in live interval " << oldInterval << "\n");
   // Replace src by dest.
   replaceAllUsesInsideIntervalWith(oldBuffer, newBuffer, oldInterval, M,
-                                   InstrNumbering);
+                                   instrNumbering);
   // srcInterval does not belong to srcIntervals anymore. It should belong
   // to destIntervals now.
   moveInterval(oldIntervals, newIntervals, oldInterval);
@@ -582,9 +582,9 @@ static void reuseBufferInsideInterval(Value *oldBuffer, Value *newBuffer,
 /// The only exception is the copy instruction, where the live interval
 /// of the X may be enclosed into a live interval of Y because they have
 /// the same value after the copy instruction.
-static void tryToShareBuffersForInstr(LiveIntervalsMap &IntervalsMap,
-                                      InstructionNumbering &InstrNumbering,
-                                      Instruction *I, int InstIdx) {
+static void tryToShareBuffersForInstr(LiveIntervalsMap &intervalsMap,
+                                      InstructionNumbering &instrNumbering,
+                                      Instruction *I, int instIdx) {
   Module &M = *I->getParent();
   for (unsigned first = 0, e = I->getNumOperands(); first < e; first++) {
     auto destOp = I->getOperand(first);
@@ -616,8 +616,8 @@ static void tryToShareBuffersForInstr(LiveIntervalsMap &IntervalsMap,
       auto srcOrigin = getOrigin(src);
       auto destOrigin = getOrigin(dest);
 
-      auto &srcIntervals = IntervalsMap[srcOrigin];
-      auto &destIntervals = IntervalsMap[destOrigin];
+      auto &srcIntervals = intervalsMap[srcOrigin];
+      auto &destIntervals = intervalsMap[destOrigin];
 
       // Bail if information about live intervals is not known.
       assert(!srcIntervals.empty() &&
@@ -627,7 +627,7 @@ static void tryToShareBuffersForInstr(LiveIntervalsMap &IntervalsMap,
 
       // Find the Src live interval that encloses instIdx.
       auto srcIntervalIt = getEnclosingInterval(
-          srcIntervals, InstructionNumbering::getInstrReadSlotNumber(InstIdx));
+          srcIntervals, InstructionNumbering::getInstrReadSlotNumber(instIdx));
       assert(srcIntervalIt != srcIntervals.end() &&
              "Cannot share buffers: cannot "
              "find enclosing src interval");
@@ -635,7 +635,7 @@ static void tryToShareBuffersForInstr(LiveIntervalsMap &IntervalsMap,
       // Find the Dest live interval that encloses instIdx.
       auto destIntervalIt = getEnclosingInterval(
           destIntervals,
-          InstructionNumbering::getInstrWriteSlotNumber(InstIdx));
+          InstructionNumbering::getInstrWriteSlotNumber(instIdx));
       assert(destIntervalIt != destIntervals.end() &&
              "Cannot share buffers: cannot "
              "find enclosing src interval");
@@ -749,12 +749,12 @@ static void tryToShareBuffersForInstr(LiveIntervalsMap &IntervalsMap,
         // This operation may extend the lifetime of dest's buffer.
         // shareBuffers will fix it once it's done.
         reuseBufferInsideInterval(srcOrigin, dest, srcInterval, M,
-                                  InstrNumbering, srcIntervals, destIntervals);
+                                  instrNumbering, srcIntervals, destIntervals);
         return;
       }
 
       reuseBufferInsideInterval(destOrigin, src, destInterval, M,
-                                InstrNumbering, destIntervals, srcIntervals);
+                                instrNumbering, destIntervals, srcIntervals);
       return;
     }
   }
@@ -771,12 +771,12 @@ static void tryToShareBuffersForInstr(LiveIntervalsMap &IntervalsMap,
 /// candidates for sharing if they occur in the same instruction, but it is not
 /// strictly necessary.
 static void shareBuffers(Module &M) {
-  Instructions ErasedInstructions;
+  Instructions erasedInstructions;
   // Build a list of live intervals for each memory location
   // which is either a WeightVar or a an Allocation.
-  LiveIntervalsMap IntervalsMap;
-  calculateLiveIntervals(M, IntervalsMap);
-  InstructionNumbering InstrNumbering(M);
+  LiveIntervalsMap intervalsMap;
+  calculateLiveIntervals(M, intervalsMap);
+  InstructionNumbering instrNumbering(M);
 
   // Get the source of the copy. This memory location may have been
   // modified by any instruction that used it as an @out or @inout
@@ -786,11 +786,11 @@ static void shareBuffers(Module &M) {
   // For each instruction, in reverse order.
   for (auto it = instrs.rbegin(), e = instrs.rend(); it != e; ++it) {
     Instruction *I = *it;
-    auto instIdx = InstrNumbering.getInstrNumber(I);
+    auto instIdx = instrNumbering.getInstrNumber(I);
     if (instIdx < 0)
       continue;
     // Try to reuse the operand memory buffers.
-    tryToShareBuffersForInstr(IntervalsMap, InstrNumbering, I, instIdx);
+    tryToShareBuffersForInstr(intervalsMap, instrNumbering, I, instIdx);
   }
 
   // Fix eventual issues with allocs and deallocs that shareBuffers may
