@@ -1,4 +1,4 @@
-// Copyright 2017 Facebook Inc.  All Rights Reserved.
+// Copyright 2017-2018 Facebook. All Rights Reserved.
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
@@ -46,3 +46,7 @@ void inferBasicFCNet(glow::Tensor *inputs, glow::Tensor *out,
 
 void inferMixedNet(glow::Tensor *inputs, glow::Tensor *out,
                    glow::BackendKind kind);
+
+void inferComplexNet1(glow::Tensor *inputs1, glow::Tensor *inputs2,
+                      glow::Tensor *inputs3, glow::Tensor *inputs4,
+                      glow::Tensor *out, glow::BackendKind kind);

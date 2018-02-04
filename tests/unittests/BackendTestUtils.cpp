@@ -1,4 +1,4 @@
-// Copyright 2017 Facebook Inc.  All Rights Reserved.
+// Copyright 2017-2018 Facebook. All Rights Reserved.
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
@@ -228,5 +228,50 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
 
   EE.compile(CompilationMode::Infer);
   EE.run({var}, {inputs});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
+void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
+                      Tensor *inputs4, Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &G = EE.getGraph();
+  auto *var1 = G.createVariable(inputs1->getElementType(), inputs1->dims(),
+                                "inputs1", Variable::VisibilityKind::Public);
+  auto *var2 = G.createVariable(inputs2->getElementType(), inputs2->dims(),
+                                "inputs2", Variable::VisibilityKind::Public);
+  auto *var3 = G.createVariable(inputs3->getElementType(), inputs3->dims(),
+                                "inputs3", Variable::VisibilityKind::Public);
+  auto *var4 = G.createVariable(inputs4->getElementType(), inputs4->dims(),
+                                "inputs4", Variable::VisibilityKind::Public);
+  auto *conv1 = G.createConv("conv1", var1, 6, 4, 1, 2);
+  cast<Variable>(conv1->getFilter())->getHandle().clear(0.5);
+  cast<Variable>(conv1->getBias())->getHandle().clear(0.7);
+  auto *sigmoid1 = G.createSigmoid("sigmoid1", conv1);
+  auto *fc1 = G.createFullyConnected("fc1", var2, 2352);
+  cast<Variable>(fc1->getFilter())->getHandle().clear(0.6);
+  auto *reshape1 = G.createReshape("reshape1", fc1, {8, 14, 28, 6});
+  auto *relu1 = G.createRELU("relu1", reshape1);
+  auto *pool1 = G.createPool("pool1", relu1, PoolNode::Mode::Max, 2, 2, 1);
+  auto *add =
+      G.createArithmetic("add", sigmoid1, pool1, ArithmeticNode::Mode::Add);
+  auto *tanh = G.createTanh("tanh", add);
+  auto *fc2 = G.createFullyConnected("fc2", var3, 720);
+  cast<Variable>(fc2->getFilter())->getHandle().clear(1.1);
+  auto *reshape2 = G.createReshape("reshape2", fc2, {8, 8, 15, 6});
+  auto *mul =
+      G.createArithmetic("mul", tanh, reshape2, ArithmeticNode::Mode::Mul);
+  auto *sigmoid2 = G.createSigmoid("sigmoid2", mul);
+  auto *conv2 = G.createConv("conv2", sigmoid2, 7, 3, 2, 1);
+  cast<Variable>(conv2->getFilter())->getHandle().clear(0.3);
+  cast<Variable>(conv2->getBias())->getHandle().clear(1.3);
+  auto *reshape3 = G.createReshape("reshape3", conv2, {8, 8, 7, 4});
+  auto *sub =
+      G.createArithmetic("sub", reshape3, var4, ArithmeticNode::Mode::Sub);
+  auto *relu2 = G.createRELU("relu2", sub);
+  auto *pool2 = G.createPool("pool2", relu2, PoolNode::Mode::Avg, 3, 2, 1);
+  auto *sigmoid3 = G.createSigmoid("sigmoid3", pool2);
+  auto result = G.createSave("ret", sigmoid3);
+  EE.compile(CompilationMode::Infer);
+  EE.run({var1, var2, var3, var4}, {inputs1, inputs2, inputs3, inputs4});
   out->copyFrom(&result->getVariable()->getPayload());
 }
