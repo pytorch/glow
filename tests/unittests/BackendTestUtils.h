@@ -7,7 +7,7 @@
 void inferBatchedAddNet(glow::Tensor *inputs1, glow::Tensor *inputs2,
                         glow::Tensor *out, glow::BackendKind kind);
 
-void inferBatchedReduceAddNet(glow::Tensor *inputs1, glow::Tensor *out,
+void inferBatchedReduceAddNet(glow::Tensor *inputs, glow::Tensor *out,
                               glow::BackendKind kind);
 
 void inferMaxNet(glow::Tensor *inputs1, glow::Tensor *inputs2,

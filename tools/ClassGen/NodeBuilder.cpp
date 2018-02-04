@@ -340,7 +340,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
   }
 
   for (const auto &m : extraMethods_) {
-    os << "  " << m.first << "\n";
+    os << "  " << m.first;
   }
 
   os << "};\n} // namespace glow\n";
@@ -358,7 +358,7 @@ void NodeBuilder::emitCppMethods(std::ostream &os) const {
 
   // Emit the "extra" method bodies.
   for (const auto &m : extraMethods_) {
-    os << m.second << "\n";
+    os << m.second;
   }
 }
 
@@ -386,10 +386,10 @@ void NodeBuilder::addGradient() {
   // Construct a factory method that builds the new grad node and add
   // it to the current non-grad instruction.
 
-  std::string decl = name_ + "GradNode *getGrad(GraphGradMapper &builder);";
+  std::string decl = name_ + "GradNode *getGrad(GraphGradMapper &builder);\n";
   std::stringstream ss;
-  ss << name_ + "GradNode *" + name_ +
-            "Node::getGrad(GraphGradMapper &builder) {\n"
+  ss << "\n" + name_ + "GradNode *" + name_
+     << "Node::getGrad(GraphGradMapper &builder) {\n"
      << "  auto *x = new " + name_ + "GradNode(getName()";
 
   if (enum_.size()) {

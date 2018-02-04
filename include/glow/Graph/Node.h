@@ -16,16 +16,15 @@ class Node;
 class NodeWalker;
 
 /// Unlike LLVM values, graph nodes may return multiple values as the result of
-/// a computation. Gradient-calculating nodes, such as conv-grad return
-/// multiple values. As such, each use of a node computation must indicate the
-/// node that computes it as well as which return value to use from that node.
-/// This pair of information is represented in this class. This class also
-/// manages the node use-def chain, by registering and removing the address of
-/// the value from the use-list. This data structure is similar to LLVM's
-/// SDValue.
+/// a computation. Gradient-calculating nodes such as conv-grad return multiple
+/// values. As such, each use of a node computation must indicate the node that
+/// computes it as well as which return value to use from that node. This pair
+/// of information is represented in this class. This class also manages the
+/// node use-def chain, by registering and removing the address of the value
+/// from the use-list. This data structure is similar to LLVM's SDValue.
 struct NodeValue {
 private:
-  /// A pointer the the node (owned by the graph).
+  /// A pointer to the node (owned by the graph).
   Node *node_{nullptr};
   /// Specifies the node result number to use.
   unsigned resNo_{0};
