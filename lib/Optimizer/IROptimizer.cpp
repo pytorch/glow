@@ -169,23 +169,23 @@ static void sinkAllocas(Module &M) {
 static void deleteDeadAllocs(Module &M) {
   auto &instrs = M.getInstrs();
 
-  llvm::SmallVector<Instruction *, 16> ErasedInstructions{};
+  llvm::SmallVector<Instruction *, 16> erasedInstructions{};
 
   // Remove all unused tenstorviews.
   std::copy_if(instrs.begin(), instrs.end(),
-               std::back_inserter(ErasedInstructions),
+               std::back_inserter(erasedInstructions),
                [](const Instruction *I) -> bool {
                  return (isa<TensorViewInst>(I) && I->getNumUsers() == 0);
                });
 
-  for (auto I : ErasedInstructions) {
+  for (auto I : erasedInstructions) {
     M.eraseInstruction(I);
   }
-  ErasedInstructions.clear();
+  erasedInstructions.clear();
 
   // Remove all of the DeallocActivationInst that close unused allocs.
   std::copy_if(
-      instrs.begin(), instrs.end(), std::back_inserter(ErasedInstructions),
+      instrs.begin(), instrs.end(), std::back_inserter(erasedInstructions),
       [](const Instruction *I) -> bool {
         if (const auto *DA = dyn_cast<const DeallocActivationInst>(I)) {
           return DA->getAlloc()->getNumUsers() < 2;
@@ -193,14 +193,14 @@ static void deleteDeadAllocs(Module &M) {
         return false;
       });
 
-  for (auto I : ErasedInstructions) {
+  for (auto I : erasedInstructions) {
     M.eraseInstruction(I);
   }
 
-  ErasedInstructions.clear();
+  erasedInstructions.clear();
   // Remove the unused allocs.
   std::copy_if(instrs.begin(), instrs.end(),
-               std::back_inserter(ErasedInstructions),
+               std::back_inserter(erasedInstructions),
                [](const Instruction *I) -> bool {
                  if (isa<const AllocActivationInst>(I)) {
                    return I->getNumUsers() < 2;
@@ -208,7 +208,7 @@ static void deleteDeadAllocs(Module &M) {
                  return false;
                });
 
-  for (auto I : ErasedInstructions) {
+  for (auto I : erasedInstructions) {
     M.eraseInstruction(I);
   }
 }
@@ -302,9 +302,9 @@ void makeWeightsConst(Module &M) {
 #ifndef NDEBUG
 /// Dump a live intervals map.
 static void LLVM_ATTRIBUTE_UNUSED dump(Module &M,
-                                       LiveIntervalsMap &IntervalsMap) {
+                                       LiveIntervalsMap &intervalsMap) {
   llvm::outs() << "\nDumping live intervals map:\n";
-  for (const auto &I : IntervalsMap) {
+  for (const auto &I : intervalsMap) {
     llvm::outs() << "\nValue " << I.first->getName();
     llvm::outs() << "\n";
     for (const auto &Interval : I.second) {
@@ -344,9 +344,9 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
     if (isa<TensorViewInst>(I))
       continue;
 
-    auto InstOperands = I->getOperands();
-    llvm::SmallVector<Instruction::Operand, 8> SortedOperands(
-        InstOperands.begin(), InstOperands.end());
+    auto instOperands = I->getOperands();
+    llvm::SmallVector<Instruction::Operand, 8> sortedOperands(
+        instOperands.begin(), instOperands.end());
 
     // Sort operands so that:
     // - all operands referencing the same Value are grouped together.
@@ -354,11 +354,11 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
     // order: In, InOut, Out.
     //
     // This ordering ensures that we process reads before writes.
-    std::sort(SortedOperands.begin(), SortedOperands.end());
+    std::sort(sortedOperands.begin(), sortedOperands.end());
 
-    for (int i = 0, e = SortedOperands.size(); i < e; i++) {
-      auto op = SortedOperands[i].first;
-      auto opKind = SortedOperands[i].second;
+    for (int i = 0, e = sortedOperands.size(); i < e; i++) {
+      auto op = sortedOperands[i].first;
+      auto opKind = sortedOperands[i].second;
       // Look through tensorviews. As a result, all operations
       // on tensorviews are accounted as operations on their
       // origins.
