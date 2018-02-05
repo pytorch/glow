@@ -1,4 +1,5 @@
 add_library(Quantization
+              Profile.cpp
               Serialization.cpp
               Quantization.cpp)
 

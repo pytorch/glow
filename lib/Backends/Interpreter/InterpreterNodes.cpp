@@ -1,9 +1,9 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "Interpreter.h"
-#include "Quantization/Quantization.h"
 
 #include "glow/IR/Instrs.h"
+#include "glow/Quantization/Profile.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"

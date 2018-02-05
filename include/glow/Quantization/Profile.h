@@ -1,7 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
-#ifndef GLOW_QUANTIZATION_QUANTIZATION_H
-#define GLOW_QUANTIZATION_QUANTIZATION_H
+#ifndef GLOW_QUANTIZATION_PROFILE_H
+#define GLOW_QUANTIZATION_PROFILE_H
 
 #include "glow/Base/Tensor.h"
 
