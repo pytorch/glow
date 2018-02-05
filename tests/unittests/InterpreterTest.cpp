@@ -109,6 +109,28 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   EXPECT_NEAR(1.6, max, 0.00001);
 }
 
+TEST(Interpreter, QuantizeAndDequantize) {
+  ExecutionEngine EE;
+  auto &G = EE.getGraph();
+  Tensor inputs(ElemKind::FloatTy, {1, 4});
+  inputs.getHandle() = {1, 1.2, 0.5, 1.3};
+
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, 4}, "A",
+                             Variable::VisibilityKind::Public);
+
+  auto qType = G.uniqueType(ElemKind::Int8QTy, {1, 4}, 0.05, -138);
+  auto *quantize = G.createQuantize("quantize", A, qType);
+  auto *dequantize = G.createDequantize("dequantize", quantize);
+  auto *result = G.createSave("save", dequantize);
+
+  EE.compile(CompilationMode::Infer);
+  EE.run({A}, {&inputs});
+
+  auto resultHandle = result->getVariable()->getHandle();
+  auto expectedHandle = inputs.getHandle();
+  EXPECT_TRUE(expectedHandle.isEqual(resultHandle));
+}
+
 TEST(Interpreter, trainASimpleNetwork) {
   ExecutionEngine EE;
   // Learning a single input vector.
