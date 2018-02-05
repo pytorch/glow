@@ -67,7 +67,7 @@ static void verifyConvDims(ShapeNHWC idim, ShapeNHWC odim, size_t kernel,
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, depth);
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");
@@ -105,7 +105,7 @@ void PoolMaxInst::verify() const {
   assert(idim.w >= Kernel_ && idim.h >= Kernel_ &&
          "buffer too small for selected stride");
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, Pad_, Kernel_, Stride_);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, Kernel_, Stride_, Pad_);
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
   (void)exp;
   assert(exp == odim && "Unexpected output dimensions");
@@ -122,7 +122,7 @@ void PoolMaxWithXYInst::verify() const {
   assert(idim.w >= Kernel_ && idim.h >= Kernel_ &&
          "buffer too small for selected stride");
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, Pad_, Kernel_, Stride_);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, Kernel_, Stride_, Pad_);
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
   (void)exp;
   assert(exp == odim && "Unexpected output dimensions");
@@ -143,7 +143,7 @@ void PoolAvgInst::verify() const {
   assert(idim.w >= Kernel_ && idim.h >= Kernel_ &&
          "buffer too small for selected stride");
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, Pad_, Kernel_, Stride_);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, Kernel_, Stride_, Pad_);
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
   (void)exp;
   assert(exp == odim && "Unexpected output dimensions");

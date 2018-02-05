@@ -21,12 +21,12 @@ void Interpreter::fwdCopyInst(bool isTrain, const CopyInst *I) {
   outT->copyRawFrom(inT);
 }
 
-template <bool SpecializeFPS, size_t filterX, size_t padX, size_t strideX,
+template <bool SpecializeFPS, size_t filterX, size_t strideX, size_t padX,
           bool SpecializeChannel, size_t channelX>
 [[gnu::noinline]] void
 fwdConvolutionInst_Impl(Handle<float> inW, Handle<float> outW,
                         Handle<float> filterW, Handle<float> biasW,
-                        size_t filterSize, size_t pad, size_t stride) {
+                        size_t filterSize, size_t stride, size_t pad) {
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
 
@@ -95,27 +95,27 @@ void Interpreter::fwdConvolutionInst(bool isTrain, const ConvolutionInst *I) {
 
   ShapeNHWC idim(inW.dims());
 
-#define SPECIALIZE_CONV_FPS(F, P, S)                                           \
+#define SPECIALIZE_CONV_FPS(F, S, P)                                           \
   if (filterSize == F && pad == P && stride == S)                              \
-    return fwdConvolutionInst_Impl<true, F, P, S, false, 0>(                   \
+    return fwdConvolutionInst_Impl<true, F, S, P, false, 0>(                   \
         inW, outW, filterW, biasW, 0, 0, 0);
 
-#define SPECIALIZE_CONV_FPSC(F, P, S, C)                                       \
+#define SPECIALIZE_CONV_FPSC(F, S, P, C)                                       \
   if (filterSize == F && pad == P && stride == S && idim.c == C)               \
-    return fwdConvolutionInst_Impl<true, F, P, S, true, C>(inW, outW, filterW, \
+    return fwdConvolutionInst_Impl<true, F, S, P, true, C>(inW, outW, filterW, \
                                                            biasW, 0, 0, 0);
 
   // Specialize the convolution on popular Conv kernels:
-  SPECIALIZE_CONV_FPSC(7, 3, 2, 3)
-  SPECIALIZE_CONV_FPS(7, 3, 2)
-  SPECIALIZE_CONV_FPS(7, 4, 2)
-  SPECIALIZE_CONV_FPS(3, 1, 2)
-  SPECIALIZE_CONV_FPS(1, 0, 1)
-  SPECIALIZE_CONV_FPS(1, 0, 2)
+  SPECIALIZE_CONV_FPSC(7, 2, 3, 3)
+  SPECIALIZE_CONV_FPS(7, 2, 3)
+  SPECIALIZE_CONV_FPS(7, 2, 4)
+  SPECIALIZE_CONV_FPS(3, 2, 1)
+  SPECIALIZE_CONV_FPS(1, 1, 0)
+  SPECIALIZE_CONV_FPS(1, 2, 0)
   SPECIALIZE_CONV_FPS(3, 1, 1)
 
   fwdConvolutionInst_Impl<false, 0, 0, 0, false, 0>(inW, outW, filterW, biasW,
-                                                    filterSize, pad, stride);
+                                                    filterSize, stride, pad);
 }
 
 void Interpreter::fwdConvolutionGradInst(bool isTrain,
@@ -186,8 +186,8 @@ void Interpreter::fwdConvolutionGradInst(bool isTrain,
 //===----------------------------------------------------------------------===//
 
 static void fwdPoolMax(Handle<float> inW, Handle<float> outW,
-                       Handle<size_t> *SXY, size_t pad, size_t filterSize,
-                       size_t stride) {
+                       Handle<size_t> *SXY, size_t filterSize, size_t stride,
+                       size_t pad) {
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
 
@@ -244,7 +244,7 @@ static void fwdPoolMax(Handle<float> inW, Handle<float> outW,
 void Interpreter::fwdPoolMaxInst(bool isTrain, const PoolMaxInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
-  fwdPoolMax(inW, outW, nullptr, I->getPad(), I->getKernel(), I->getStride());
+  fwdPoolMax(inW, outW, nullptr, I->getKernel(), I->getStride(), I->getPad());
 }
 
 void Interpreter::fwdPoolMaxWithXYInst(bool isTrain,
@@ -252,7 +252,7 @@ void Interpreter::fwdPoolMaxWithXYInst(bool isTrain,
   auto inW = getWeightHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
   auto SXY = getTensor(I->getSrcXY())->getHandle<size_t>();
-  fwdPoolMax(inW, outW, &SXY, I->getPad(), I->getKernel(), I->getStride());
+  fwdPoolMax(inW, outW, &SXY, I->getKernel(), I->getStride(), I->getPad());
 }
 
 void Interpreter::fwdPoolAvgInst(bool isTrain, const PoolAvgInst *I) {

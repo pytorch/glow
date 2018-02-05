@@ -152,7 +152,7 @@ void convolution_f_unroll_k4(const float *inW, float *outW,
                              const float *filterW, const float *biasW,
                              const size_t *inWdims, const size_t *outWdims,
                              const size_t *filterWdims, const size_t *biasWdims,
-                             size_t filterSize, size_t pad, size_t stride) {
+                             size_t filterSize, size_t stride, size_t pad) {
   size_t inChannels = inWdims[3];
 
   // For each input in the batch:
@@ -218,8 +218,8 @@ void convolution_f_unroll_k4(const float *inW, float *outW,
 void convolution_f(const float *inW, float *outW, const float *filterW,
                    const float *biasW, const size_t *inWdims,
                    const size_t *outWdims, const size_t *filterWdims,
-                   const size_t *biasWdims, size_t filterSize, size_t pad,
-                   size_t stride) {
+                   const size_t *biasWdims, size_t filterSize, size_t stride,
+                   size_t pad) {
 
   size_t inChannels = inWdims[3];
 
@@ -263,8 +263,8 @@ void convolution_f(const float *inW, float *outW, const float *filterW,
 }
 
 void pool_max_f(const float *inW, float *outW, const size_t *inWdims,
-                const size_t *outWdims, size_t pad, size_t filterSize,
-                size_t stride) {
+                const size_t *outWdims, size_t filterSize, size_t stride,
+                size_t pad) {
   // For each input in the batch:
   for (size_t n = 0; n < outWdims[0]; n++) {
 
@@ -306,8 +306,8 @@ void pool_max_f(const float *inW, float *outW, const size_t *inWdims,
 }
 
 void pool_avg_f(const float *inW, float *outW, const size_t *inWdims,
-                const size_t *outWdims, size_t pad, size_t filterSize,
-                size_t stride) {
+                const size_t *outWdims, size_t filterSize, size_t stride,
+                size_t pad) {
   float filterArea = filterSize * filterSize;
   // For each input in the batch:
   for (size_t n = 0; n < outWdims[0]; n++) {

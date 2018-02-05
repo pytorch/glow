@@ -230,7 +230,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     assert(F && "Unable to load the function");
     builder.CreateCall(F,
                        {srcPtr, destPtr, filterPtr, biasPtr, srcDims, destDims,
-                        filterDims, biasDims, kernel, pad, stride});
+                        filterDims, biasDims, kernel, stride, pad});
     break;
   }
 
@@ -248,7 +248,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *F = getFunction("pool_max_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(
-        F, {srcPtr, destPtr, srcDims, destDims, pad, kernel, stride});
+        F, {srcPtr, destPtr, srcDims, destDims, kernel, stride, pad});
     break;
   }
 
@@ -266,7 +266,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *F = getFunction("pool_avg_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(
-        F, {srcPtr, destPtr, srcDims, destDims, pad, kernel, stride});
+        F, {srcPtr, destPtr, srcDims, destDims, kernel, stride, pad});
     break;
   }
 

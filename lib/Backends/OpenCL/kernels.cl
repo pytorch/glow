@@ -204,7 +204,7 @@ __kernel void softmaxW(__global void *mem, size_t dest, size_t src,
 
 __kernel void convolutionK(__global float *dest, __global float *src,
                            __global float *filter, __global float *bias,
-                           size_t filterSize, size_t pad, size_t stride,
+                           size_t filterSize, size_t stride, size_t pad,
                            ShapeNHWC odim, ShapeNHWC idim,
                            ShapeNHWC filterDim) {
   size_t ax = get_global_id(0);
@@ -246,15 +246,15 @@ __kernel void convolutionK(__global float *dest, __global float *src,
 
 __kernel void convolutionW(__global void *mem, size_t dest, size_t src,
                            size_t filter, size_t bias, size_t filterSize,
-                           size_t pad, size_t stride, ShapeNHWC odim,
+                           size_t stride, size_t pad, ShapeNHWC odim,
                            ShapeNHWC idim, ShapeNHWC filterDim) {
-  convolutionK(&mem[dest], &mem[src], &mem[filter], &mem[bias], filterSize, pad,
-               stride, odim, idim, filterDim);
+  convolutionK(&mem[dest], &mem[src], &mem[filter], &mem[bias], filterSize,
+               stride, pad, odim, idim, filterDim);
 }
 
 __kernel void poolmaxK(__global float *dest, __global float *src,
-                       size_t filterSize, size_t pad,
-                       size_t stride, ShapeNHWC odim, ShapeNHWC idim) {
+                       size_t filterSize, size_t stride, size_t pad,
+                       ShapeNHWC odim, ShapeNHWC idim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
   size_t d = get_global_id(2);
@@ -294,15 +294,14 @@ __kernel void poolmaxK(__global float *dest, __global float *src,
 }
 
 __kernel void poolmaxW(__global void *mem, size_t dest, size_t src,
-                       size_t filterSize, size_t pad,
-                       size_t stride, ShapeNHWC odim, ShapeNHWC idim) {
-  poolmaxK(&mem[dest], &mem[src], filterSize, pad, stride, odim,
-           idim);
+                       size_t filterSize, size_t stride, size_t pad,
+                       ShapeNHWC odim, ShapeNHWC idim) {
+  poolmaxK(&mem[dest], &mem[src], filterSize, stride, pad, odim, idim);
 }
 
 __kernel void poolmaxwithxyK(__global float *dest, __global float *src,
                              __global float *srcXY, size_t filterSize,
-                             size_t pad, size_t stride, ShapeNHWC odim,
+                             size_t stride, size_t pad, ShapeNHWC odim,
                              ShapeNHWC idim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
@@ -343,14 +342,14 @@ __kernel void poolmaxwithxyK(__global float *dest, __global float *src,
 }
 
 __kernel void poolmaxwithxyW(__global void *mem, size_t dest, size_t src,
-                             size_t srcXY, size_t filterSize, size_t pad,
-                             size_t stride, ShapeNHWC odim, ShapeNHWC idim) {
-  poolmaxwithxyK(&mem[dest], &mem[src], &mem[srcXY], filterSize, pad, stride,
+                             size_t srcXY, size_t filterSize, size_t stride,
+                             size_t pad, ShapeNHWC odim, ShapeNHWC idim) {
+  poolmaxwithxyK(&mem[dest], &mem[src], &mem[srcXY], filterSize, stride, pad,
                  odim, idim);
 }
 
 __kernel void poolavgK(__global float *dest, __global float *src,
-                       size_t filterSize, size_t pad, size_t stride,
+                       size_t filterSize, size_t stride, size_t pad,
                        ShapeNHWC odim, ShapeNHWC idim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
@@ -386,9 +385,9 @@ __kernel void poolavgK(__global float *dest, __global float *src,
 }
 
 __kernel void poolavgW(__global void *mem, size_t dest, size_t src,
-                       size_t filterSize, size_t pad, size_t stride,
+                       size_t filterSize, size_t stride, size_t pad,
                        ShapeNHWC odim, ShapeNHWC idim) {
-  poolavgK(&mem[dest], &mem[src], filterSize, pad, stride, odim, idim);
+  poolavgK(&mem[dest], &mem[src], filterSize, stride, pad, odim, idim);
 }
 
 __kernel void transposeK(__global float *dest, __global float *src,

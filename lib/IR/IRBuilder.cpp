@@ -47,7 +47,7 @@ PoolMaxInst *IRBuilder::createPoolMaxOp(Value *input, size_t kernel,
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
 
   Value *dest =
       createAllocActivationInst("pool.res", ElemKind::FloatTy,
@@ -62,7 +62,7 @@ PoolMaxWithXYInst *IRBuilder::createPoolMaxWithXYOp(Value *input, size_t kernel,
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
@@ -82,7 +82,7 @@ PoolAvgInst *IRBuilder::createPoolAvgOp(Value *input, size_t kernel,
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
 
   Value *dest =
       createAllocActivationInst("pool.res", ElemKind::FloatTy,
