@@ -4,6 +4,7 @@
 
 #include "glow/IR/Instrs.h"
 #include "glow/Quantization/Profile.h"
+#include "glow/Quantization/Quantization.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -1169,6 +1170,10 @@ void Interpreter::fwdDebugPrintInst(bool isTrain, const DebugPrintInst *I) {
   llvm::outs() << "\n";
 }
 
+//===----------------------------------------------------------------------===//
+//                Instructions used by Quantization
+//===----------------------------------------------------------------------===//
+
 void Interpreter::fwdQuantizationProfileInst(
     bool isTrain, const glow::QuantizationProfileInst *I) {
   auto inputTensor = getWeightHandle(I->getInputTensor());
@@ -1182,14 +1187,34 @@ void Interpreter::fwdQuantizationProfileInst(
   quantization::generateTensorHistogram(inputTensor, currentHistogram, min,
                                         max);
 }
-
+/// Quantize floating point tensor. Scale and Offset are based on return type
+/// of the instruction \p I.
 void Interpreter::fwdQuantizeInst(bool isTrain, const glow::QuantizeInst *I) {
-  llvm_unreachable("Not implemented");
-}
+  auto srcHandle = getWeightHandle(I->getSrc());
+  auto *destTensor = getTensor(I->getDest());
 
+  TensorQuantizationParams params{destTensor->getType().getScale(),
+                                  destTensor->getType().getOffset()};
+
+  auto destHandle = destTensor->getHandle<int8_t>();
+  for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
+    destHandle.raw(i) = quantize(srcHandle.raw(i), params);
+  }
+}
+/// Dequantize integer tensor. Scale and Offset are based
+/// on the source tensor type.
 void Interpreter::fwdDequantizeInst(bool isTrain,
                                     const glow::DequantizeInst *I) {
-  llvm_unreachable("Not implemented");
+  auto *srcTensor = getTensor(I->getSrc());
+  auto destHandle = getWeightHandle(I->getDest());
+
+  TensorQuantizationParams params{srcTensor->getType().getScale(),
+                                  srcTensor->getType().getOffset()};
+
+  auto srcHandle = srcTensor->getHandle<int8_t>();
+  for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
+    destHandle.raw(i) = dequantize(srcHandle.raw(i), params);
+  }
 }
 
 void Interpreter::fwdRescaleQuantizedInst(bool isTrain,

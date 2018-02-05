@@ -40,7 +40,7 @@ std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(const Graph &G);
 /// A data structure that represents the 32-bit to 8-bit quantization
 /// scaling operation. This data structure represents the transformation:
 /// (((input >> pre) * scale) + rtn) >> post + offset.
-struct QuantizationTransform32To8 {
+class QuantizationTransform32To8 {
   int pre_;
   int post_;
   int scale_;
@@ -73,6 +73,14 @@ public:
 /// This scales a 32-bit signed integer word into an 8-bit signed integer.
 /// \returns transformation parameters.
 QuantizationTransform32To8 quantizeScaleOffset32To8(float scale, float offset);
+
+/// Converts floating point value to int8 based on the quantization
+/// parameters \p TQP.
+int8_t quantize(float input, const TensorQuantizationParams &TQP);
+
+/// Converts int8 quantized value back to floating point number based on
+/// the quantization parameters \p TQP.
+float dequantize(int8_t input, const TensorQuantizationParams &TQP);
 
 } // namespace glow
 

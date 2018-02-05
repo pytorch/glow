@@ -325,4 +325,13 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale, float offset) {
                                     std::round(offset));
 }
 
+int8_t quantize(float input, const TensorQuantizationParams &TQP) {
+  float result = input / TQP.scale_ + TQP.offset_;
+  return QuantizationTransform32To8::clip(round(result));
+}
+
+float dequantize(int8_t input, const TensorQuantizationParams &TQP) {
+  return TQP.scale_ * (input - TQP.offset_);
+}
+
 } // namespace glow
