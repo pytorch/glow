@@ -102,9 +102,9 @@ using VariableNode = Variable;
 /// Calculate the size of the output tensor based on the convolution
 /// parameters.
 inline std::pair<size_t, size_t> calculateConvOutputDims(size_t sx, size_t sy,
-                                                         size_t pad,
                                                          size_t filterSize,
-                                                         size_t stride) {
+                                                         size_t stride,
+                                                         size_t pad) {
   size_t outsx = ((sx + pad * 2 - filterSize) / stride + 1);
   size_t outsy = ((sy + pad * 2 - filterSize) / stride + 1);
   return {outsx, outsy};

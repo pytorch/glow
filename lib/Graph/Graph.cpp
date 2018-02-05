@@ -140,7 +140,7 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
          "buffer too small for selected stride");
 
   // Calculate the size and allocate the output buffer.
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
 
   std::array<size_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
 
@@ -196,7 +196,7 @@ PoolNode *Graph::createPool(llvm::StringRef name, NodeValue input,
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, pad, kernel, stride);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
 
   auto OT = uniqueType(ElemKind::FloatTy,
                        {idim.n, outSz.first, outSz.second, idim.c});

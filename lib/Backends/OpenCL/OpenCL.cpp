@@ -341,8 +341,8 @@ void OCLBackend::doForwardPass(bool isTrain) {
       auto idim = ShapeNHWC(CC->getSrc()->getType()->dims());
 
       setKernelArg<size_t>(kernel, 5, CC->getKernel());
-      setKernelArg(kernel, 6, CC->getPad());
-      setKernelArg(kernel, 7, CC->getStride());
+      setKernelArg(kernel, 6, CC->getStride());
+      setKernelArg(kernel, 7, CC->getPad());
       setKernelArg(kernel, 8, odim);
       setKernelArg(kernel, 9, idim);
       setKernelArg(kernel, 10, ShapeNHWC(CC->getFilter()->getType()->dims()));
@@ -371,8 +371,8 @@ void OCLBackend::doForwardPass(bool isTrain) {
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
 
       setKernelArg<size_t>(kernel, numArgs + 1, PM->getKernel());
-      setKernelArg(kernel, numArgs + 2, PM->getPad());
-      setKernelArg(kernel, numArgs + 3, PM->getStride());
+      setKernelArg(kernel, numArgs + 2, PM->getStride());
+      setKernelArg(kernel, numArgs + 3, PM->getPad());
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
 
@@ -396,8 +396,8 @@ void OCLBackend::doForwardPass(bool isTrain) {
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
 
       setKernelArg<size_t>(kernel, numArgs + 1, PM->getKernel());
-      setKernelArg(kernel, numArgs + 2, PM->getPad());
-      setKernelArg(kernel, numArgs + 3, PM->getStride());
+      setKernelArg(kernel, numArgs + 2, PM->getStride());
+      setKernelArg(kernel, numArgs + 3, PM->getPad());
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
 
@@ -421,8 +421,8 @@ void OCLBackend::doForwardPass(bool isTrain) {
       auto idim = ShapeNHWC(PA->getSrc()->getType()->dims());
 
       setKernelArg<size_t>(kernel, 3, PA->getKernel());
-      setKernelArg(kernel, 4, PA->getPad());
-      setKernelArg(kernel, 5, PA->getStride());
+      setKernelArg(kernel, 4, PA->getStride());
+      setKernelArg(kernel, 5, PA->getPad());
       setKernelArg(kernel, 6, odim);
       setKernelArg(kernel, 7, idim);
 
