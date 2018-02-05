@@ -987,6 +987,51 @@ void Interpreter::fwdElementSelectInst(bool isTrain,
 
 void Interpreter::fwdBatchedMatMulInst(bool isTrain,
                                        const glow::BatchedMatMulInst *I) {
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    auto lhs = getTensor(I->getLHS())->getHandle<int8_t>();
+    auto rhs = getTensor(I->getRHS())->getHandle<int8_t>();
+
+    auto dest = getTensor(I->getDest())->getHandle<int8_t>();
+
+    auto destDim = dest.dims();
+    auto lhsDim = lhs.dims();
+    auto rhsDim = rhs.dims();
+
+    auto destTy = I->getDest()->getType();
+    auto lhsTy = I->getLHS()->getType();
+    auto rhsTy = I->getRHS()->getType();
+
+    dest.clear(0);
+
+    // For matrix multiplication, if the offset is equal to zero the scale
+    // is defined as the formular (L.scale * R.scale / D.scale).
+    // In here we assume that the offset for all buffers is zero.
+    float scale = lhsTy->getScale() * rhsTy->getScale() / destTy->getScale();
+    auto TR = quantizeScaleOffset32To8(scale, 0);
+
+    // For each layer in the batch:
+    for (size_t n = 0; n < destDim[0]; n++) {
+      // Broadcast tensors with a batch size of 1 by selecting the right slice.
+      size_t ln = (lhsDim[0] == 1 ? 0 : n);
+      size_t rn = (rhsDim[0] == 1 ? 0 : n);
+
+      // For each (x,y) in the destination matrix:
+      for (size_t x = 0; x < destDim[1]; x++) {
+        for (size_t y = 0; y < destDim[2]; y++) {
+
+          // Perform DOT on the row an column.
+          uint32_t sum = 0;
+          for (size_t i = 0; i < lhsDim[2]; i++) {
+            sum += lhs.at({ln, x, i}) * rhs.at({rn, i, y});
+          }
+
+          dest.at({n, x, y}) = TR.transform(sum);
+        }
+      }
+    } // N
+    return;
+  }
+
   auto lhs = getWeightHandle(I->getLHS());
   auto rhs = getWeightHandle(I->getRHS());
   auto dest = getWeightHandle(I->getDest());
@@ -1003,16 +1048,16 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
     size_t ln = (lhsDim[0] == 1 ? 0 : n);
     size_t rn = (rhsDim[0] == 1 ? 0 : n);
 
-    for (size_t i = 0; i < lhsDim[2]; i++) {
-      // For each (x,y) in the destination matrix:
-      for (size_t x = 0; x < destDim[1]; x++) {
-        for (size_t y = 0; y < destDim[2]; y++) {
-          // This loop order is very cache friendly.
-          // dest and rhs are accessed sequentially.
-          // lhs access is invariant inside the inner-most loop and can be
-          // hoisted.
-          dest.at({n, x, y}) += lhs.at({ln, x, i}) * rhs.at({rn, i, y});
+    // For each (x,y) in the destination matrix:
+    for (size_t x = 0; x < destDim[1]; x++) {
+      for (size_t y = 0; y < destDim[2]; y++) {
+
+        // Perform DOT on the row an column.
+        float sum = 0;
+        for (size_t i = 0; i < lhsDim[2]; i++) {
+          sum += lhs.at({ln, x, i}) * rhs.at({rn, i, y});
         }
+        dest.at({n, x, y}) = sum;
       }
     }
   } // N

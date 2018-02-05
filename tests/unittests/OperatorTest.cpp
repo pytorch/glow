@@ -264,3 +264,24 @@ TEST(Operator, Gather) {
   EXPECT_FLOAT_EQ(H.at({1, 3, 0}), 1.0);
   EXPECT_FLOAT_EQ(H.at({1, 3, 1}), 1.2);
 }
+
+TEST(Operator, IntMatMul) {
+  ExecutionEngine EE;
+  auto &G = EE.getGraph();
+  Type resTy(ElemKind::Int8QTy, {1, 30, 30}, 0.5, 0);
+
+  auto *lhs = G.createVariable(ElemKind::Int8QTy, {1, 30, 30}, 0.12, 0, "lhs");
+  auto *rhs = G.createVariable(ElemKind::Int8QTy, {1, 30, 30}, 0.05, 0, "rhs");
+  auto *res = G.createVariable(&resTy, "res");
+
+  lhs->getHandle<int8_t>().randomize(-12, 12);
+  rhs->getHandle<int8_t>().randomize(-5, 5);
+
+  auto R = G.createBatchedMatMul("matmul", &resTy, lhs, rhs);
+
+  G.createSave("save", R, res);
+
+  EE.compile(CompilationMode::Infer);
+
+  EE.run({}, {});
+}
