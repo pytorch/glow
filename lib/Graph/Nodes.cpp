@@ -214,23 +214,23 @@ void Variable::initPayload() {
   case TrainKind::Xavier: {
     switch (payload_.getElementType()) {
     case ElemKind::FloatTy: {
-      payload_.getHandle<float>().randomize(val_);
+      payload_.getHandle<float>().initXavier(val_);
       break;
     }
     case ElemKind::DoubleTy: {
-      payload_.getHandle<double>().randomize(val_);
+      payload_.getHandle<double>().initXavier(val_);
       break;
     }
     case ElemKind::Int8QTy: {
-      payload_.getHandle<int8_t>().randomize(val_);
+      payload_.getHandle<int8_t>().initXavier(val_);
       break;
     };
     case ElemKind::Int32QTy: {
-      payload_.getHandle<int32_t>().randomize(val_);
+      payload_.getHandle<int32_t>().initXavier(val_);
       break;
     }
     case ElemKind::IndexTy: {
-      payload_.getHandle<size_t>().randomize(val_);
+      payload_.getHandle<size_t>().initXavier(val_);
       break;
     }
     }

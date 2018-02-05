@@ -18,7 +18,7 @@ using llvm::cast;
 
 TEST(OpenCLCorrectnessTest, reluTest) {
   Tensor inputs(ElemKind::FloatTy, {2, 16});
-  inputs.getHandle().randomize(1);
+  inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
@@ -32,7 +32,7 @@ TEST(OpenCLCorrectnessTest, reluTest) {
 
 TEST(OpenCLCorrectnessTest, convOps) {
   Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});
-  inputs.getHandle().randomize(1);
+  inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
@@ -46,7 +46,7 @@ TEST(OpenCLCorrectnessTest, convOps) {
 
 TEST(OpenCLCorrectnessTest, basicFCNet) {
   Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});
-  inputs.getHandle().randomize(1);
+  inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
@@ -60,7 +60,7 @@ TEST(OpenCLCorrectnessTest, basicFCNet) {
 
 TEST(OpenCLCorrectnessTest, inferMixedNet) {
   Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});
-  inputs.getHandle().randomize(1);
+  inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 

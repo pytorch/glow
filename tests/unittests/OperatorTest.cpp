@@ -264,3 +264,4 @@ TEST(Operator, Gather) {
   EXPECT_FLOAT_EQ(H.at({1, 3, 0}), 1.0);
   EXPECT_FLOAT_EQ(H.at({1, 3, 1}), 1.2);
 }
+
