@@ -20,8 +20,8 @@ using llvm::cast;
 TEST(JITCorrectnessTest, batchedAddTest) {
   Tensor inputs1(ElemKind::FloatTy, {8, 3, 3, 6});
   Tensor inputs2(ElemKind::FloatTy, {3, 3, 6});
-  inputs1.getHandle().randomize(1);
-  inputs2.getHandle().randomize(1);
+  inputs1.getHandle().initXavier(1);
+  inputs2.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
@@ -35,7 +35,7 @@ TEST(JITCorrectnessTest, batchedAddTest) {
 
 TEST(JITCorrectnessTest, batchedReduceAddTest) {
   Tensor inputs1(ElemKind::FloatTy, {7, 5, 9, 2});
-  inputs1.getHandle().randomize(1);
+  inputs1.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
@@ -50,8 +50,8 @@ TEST(JITCorrectnessTest, batchedReduceAddTest) {
 TEST(JITCorrectnessTest, maxTest) {
   Tensor inputs1(ElemKind::FloatTy, {3, 8, 2});
   Tensor inputs2(ElemKind::FloatTy, {3, 8, 2});
-  inputs1.getHandle().randomize(1);
-  inputs2.getHandle().randomize(1);
+  inputs1.getHandle().initXavier(1);
+  inputs2.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
@@ -66,8 +66,8 @@ TEST(JITCorrectnessTest, maxTest) {
 TEST(JITCorrectnessTest, minTest) {
   Tensor inputs1(ElemKind::FloatTy, {10, 3, 12, 8});
   Tensor inputs2(ElemKind::FloatTy, {10, 3, 12, 8});
-  inputs1.getHandle().randomize(1);
-  inputs2.getHandle().randomize(1);
+  inputs1.getHandle().initXavier(1);
+  inputs2.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
@@ -81,7 +81,7 @@ TEST(JITCorrectnessTest, minTest) {
 
 TEST(JITCorrectnessTest, reluTest) {
   Tensor inputs(ElemKind::FloatTy, {2, 16});
-  inputs.getHandle().randomize(1);
+  inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
@@ -95,7 +95,7 @@ TEST(JITCorrectnessTest, reluTest) {
 
 TEST(JITCorrectnessTest, reshapeTest) {
   Tensor inputs(ElemKind::FloatTy, {12, 6, 8, 12});
-  inputs.getHandle().randomize(1);
+  inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
@@ -115,8 +115,8 @@ TEST(JITCorrectnessTest, selectTest) {
   for (size_t i = 0; i < 5 * 3 * 9 * 2; ++i) {
     condH.raw(i) = nextRandInt01();
   }
-  inputs1.getHandle().randomize(1);
-  inputs2.getHandle().randomize(1);
+  inputs1.getHandle().initXavier(1);
+  inputs2.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
@@ -130,7 +130,7 @@ TEST(JITCorrectnessTest, selectTest) {
 
 TEST(JITCorrectnessTest, sigmoidTest) {
   Tensor inputs(ElemKind::FloatTy, {11, 4, 5, 2});
-  inputs.getHandle().randomize(1);
+  inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
@@ -145,7 +145,7 @@ TEST(JITCorrectnessTest, sigmoidTest) {
 TEST(JITCorrectnessTest, softmaxTest) {
   Tensor inputs(ElemKind::FloatTy, {14, 19});
   Tensor selected(ElemKind::IndexTy, {14, 1});
-  inputs.getHandle().randomize(2);
+  inputs.getHandle().initXavier(2);
   auto selectedH = selected.getHandle<size_t>();
   for (size_t i = 0; i < 14; i++) {
     selectedH.raw(i) = nextRandInt(19);
@@ -164,7 +164,7 @@ TEST(JITCorrectnessTest, softmaxTest) {
 TEST(JITCorrectnessTest, softmaxgradTest) {
   Tensor inputs(ElemKind::FloatTy, {8, 23});
   Tensor selected(ElemKind::IndexTy, {8, 1});
-  inputs.getHandle().randomize(1);
+  inputs.getHandle().initXavier(1);
   auto selectedH = selected.getHandle<size_t>();
   for (size_t i = 0; i < 8; i++) {
     selectedH.raw(i) = nextRandInt(23);
@@ -182,7 +182,7 @@ TEST(JITCorrectnessTest, softmaxgradTest) {
 
 TEST(JITCorrectnessTest, tanhTest) {
   Tensor inputs(ElemKind::FloatTy, {4, 7, 3, 3});
-  inputs.getHandle().randomize(1);
+  inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
@@ -196,7 +196,7 @@ TEST(JITCorrectnessTest, tanhTest) {
 
 TEST(JITCorrectnessTest, convOps) {
   Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});
-  inputs.getHandle().randomize(1);
+  inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
@@ -210,7 +210,7 @@ TEST(JITCorrectnessTest, convOps) {
 
 TEST(JITCorrectnessTest, basicFCNet) {
   Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});
-  inputs.getHandle().randomize(1);
+  inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
@@ -227,10 +227,10 @@ TEST(JITCorrectnessTest, complexNet1) {
   Tensor inputs2(ElemKind::FloatTy, {8, 4, 7, 9});
   Tensor inputs3(ElemKind::FloatTy, {8, 7, 14, 11});
   Tensor inputs4(ElemKind::FloatTy, {8, 8, 7, 4});
-  inputs1.getHandle().randomize(1);
-  inputs2.getHandle().randomize(1);
-  inputs3.getHandle().randomize(1);
-  inputs4.getHandle().randomize(1);
+  inputs1.getHandle().initXavier(1);
+  inputs2.getHandle().initXavier(1);
+  inputs3.getHandle().initXavier(1);
+  inputs4.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 

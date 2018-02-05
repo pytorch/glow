@@ -134,8 +134,8 @@ TEST(Network, gradientCheckFCConcatRELU) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.randomize(100);
-  outputsH.randomize(100);
+  inputsH.initXavier(100);
+  outputsH.initXavier(100);
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.001, 0.001);
 }
@@ -169,8 +169,8 @@ TEST(Network, gradientCheckConv) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.randomize(1);
-  outputsH.randomize(1);
+  inputsH.initXavier(1);
+  outputsH.initXavier(1);
 
   performGradCheck(IP, result, A, Ex, &inputs, &outputs, 0.001, 0.004);
 }
@@ -202,8 +202,8 @@ TEST(Network, gradientCheckAvgPool) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.randomize(1);
-  outputsH.randomize(1);
+  inputsH.initXavier(1);
+  outputsH.initXavier(1);
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.001, 0.004);
 }
@@ -235,8 +235,8 @@ TEST(Network, gradientCheckBatchNorm) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.randomize(1);
-  outputsH.randomize(1);
+  inputsH.initXavier(1);
+  outputsH.initXavier(1);
 
   for (int i = 0, e = inputsH.size(); i < e; i++) {
     inputsH.raw(i) *= 6;
@@ -267,12 +267,12 @@ TEST(Network, gradientCheckArithmeticDiv) {
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim});
   Tensor outputs(ElemKind::FloatTy, {1, numDim});
-  A->getPayload().getHandle().randomize(1);
-  B->getPayload().getHandle().randomize(1);
+  A->getPayload().getHandle().initXavier(1);
+  B->getPayload().getHandle().initXavier(1);
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
-  inputsH.randomize(1);
-  outputsH.randomize(1);
+  inputsH.initXavier(1);
+  outputsH.initXavier(1);
 
   performGradCheck(IP, result, B, Exp, &inputs, &outputs, 0.001, 0.006);
 }
@@ -301,7 +301,7 @@ TEST(Network, gradientCheckArithmetic) {
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
   // Randomize E to avoid div by zero.
-  E->getPayload().getHandle().randomize(1);
+  E->getPayload().getHandle().initXavier(1);
 
   auto *Exp = G.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
                                Variable::VisibilityKind::Public,
@@ -320,8 +320,8 @@ TEST(Network, gradientCheckArithmetic) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.randomize(1);
-  outputsH.randomize(1);
+  inputsH.initXavier(1);
+  outputsH.initXavier(1);
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.01, 0.004);
 }
@@ -353,8 +353,8 @@ TEST(Network, gradientCheckFCConcatTanh) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.randomize(100);
-  outputsH.randomize(100);
+  inputsH.initXavier(100);
+  outputsH.initXavier(100);
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
@@ -383,8 +383,8 @@ TEST(Network, gradientCheckFC) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.randomize(100);
-  outputsH.randomize(100);
+  inputsH.initXavier(100);
+  outputsH.initXavier(100);
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.0001);
 }
@@ -415,8 +415,8 @@ TEST(Network, gradientCheckSigmoid) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.randomize(100);
-  outputsH.randomize(100);
+  inputsH.initXavier(100);
+  outputsH.initXavier(100);
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
@@ -447,8 +447,8 @@ TEST(Network, gradientCheckRelu) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.randomize(100);
-  outputsH.randomize(100);
+  inputsH.initXavier(100);
+  outputsH.initXavier(100);
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
@@ -478,8 +478,8 @@ TEST(Network, gradientCheckTranspose) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.randomize(100);
-  outputsH.randomize(100);
+  inputsH.initXavier(100);
+  outputsH.initXavier(100);
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
