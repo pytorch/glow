@@ -253,8 +253,18 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Load the inputs:
     auto *in = getOrCreateNodeByName(op.input(0));
     int stride = loadInt(dict["stride"]);
-    int pad = dict.count("pad") ? loadInt(dict["pad"]) : 0;
     size_t kernel = loadInt(dict["kernel"]);
+    int pad = 0;
+    auto padIt = dict.find("pad");
+    if (padIt != dict.end()) {
+      pad = loadInt(padIt->second);
+    } else {
+      assert(dict.find("pad_l") == dict.end() &&
+             dict.find("pad_r") == dict.end() &&
+             dict.find("pad_t") == dict.end() &&
+             dict.find("pad_b") == dict.end() &&
+             "Use of pad_[lrtb] is currently unsupported.");
+    }
 
     auto *tr = G_.createTranspose(op.name(), in, NCHW2NHWC);
 
