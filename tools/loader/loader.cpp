@@ -41,7 +41,7 @@ std::pair<float, float> normModeToRange(ImageNormalizationMode mode) {
   case ImageNormalizationMode::k0to256:
     return {0., 256.0};
   case ImageNormalizationMode::k128to127:
-    return {-128., 128.};
+    return {-128., 127.};
   }
 
   GLOW_ASSERT(false && "Unknown image format");
