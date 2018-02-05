@@ -100,7 +100,7 @@ public:
   Tensor(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
          float offset)
       : data_(nullptr), type_(elemTy, dims, scale, offset) {
-    reset(elemTy, dims);
+    reset(type_);
   }
 
   Tensor(const Tensor &other) = delete;
@@ -466,6 +466,16 @@ public:
     double scale = std::sqrt(3.0 / double(filterSize));
     for (size_t i = 0, e = size(); i < e; ++i) {
       raw(i) = (nextRand()) * scale;
+    }
+  }
+
+  /// Fill the tensor with uniformly distributed values in the range
+  /// [low .. high].
+  void randomize(float low, float high) {
+    assert(low < high && "invalid range");
+    float range = (high - low);
+    for (size_t i = 0, e = size(); i < e; ++i) {
+      raw(i) = (std::abs(nextRand())) * range + low;
     }
   }
 
