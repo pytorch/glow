@@ -168,38 +168,33 @@ void BatchedMatMulInst::verify() const {
   assert(lhs->getType()->getElementType() == elem);
   assert(rhs->getType()->getElementType() == elem);
 
-  size_t a0 = LDims[0];
-  size_t a1 = LDims[1];
-  size_t a2 = LDims[2];
+  auto outDims =
+      calculateMatMulOutputDims(LDims[1], LDims[2], RDims[1], RDims[2]);
 
-  size_t b0 = RDims[0];
-  size_t b1 = RDims[1];
-  size_t b2 = RDims[2];
+  size_t aN = LDims[0];
+  size_t bN = RDims[0];
+  size_t cN = DDims[0];
 
-  size_t c0 = DDims[0];
-  size_t c1 = DDims[1];
-  size_t c2 = DDims[2];
+  size_t cx = DDims[1];
+  size_t cy = DDims[2];
 
-  assert(((a0 == 1) || (b0 == 1) || (a0 == b0)) &&
+  assert(((aN == 1) || (bN == 1) || (aN == bN)) &&
          "Batch size must be broadcasted or identical");
 
   // Select the batch size. If the left operand is broadcast (value 1), select
   // the RHS.
-  size_t N = (a0 != 1 ? a0 : b0);
-  assert(N == c0);
+  size_t N = (aN != 1 ? aN : bN);
+  assert(N == cN);
 
-  assert(a2 == b1 && "Row size of LHS is not equal to the column size of RHS.");
+  assert(outDims.first == cx && outDims.second == cy && "Invalid matrix dims");
 
-  (void)a0;
-  (void)a1;
-  (void)a2;
-  (void)b0;
-  (void)b1;
-  (void)b2;
-  (void)c0;
-  (void)c1;
-  (void)c2;
+  (void)aN;
+  (void)bN;
+  (void)cN;
+  (void)cx;
+  (void)cy;
   (void)N;
+  (void)outDims;
 }
 
 void SigmoidInst::verify() const {

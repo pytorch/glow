@@ -191,8 +191,11 @@ public:
 
   SplatNode *createSplat(llvm::StringRef name, TypeRef ty, float value);
 
-  BatchedMatMulNode *createBatchedMatMul(llvm::StringRef name, NodeValue batch,
-                                         NodeValue filter);
+  BatchedMatMulNode *createBatchedMatMul(llvm::StringRef name, NodeValue lhs,
+                                         NodeValue rhs);
+
+  BatchedMatMulNode *createBatchedMatMul(llvm::StringRef name, TypeRef outTy,
+                                         NodeValue lhs, NodeValue rhs);
 
   BatchedReduceNode *createBatchedReduce(llvm::StringRef name,
                                          BatchedReduceNode::Mode mode,

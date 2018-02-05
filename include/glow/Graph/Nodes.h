@@ -99,8 +99,7 @@ public:
 
 using VariableNode = Variable;
 
-/// Calculate the size of the output tensor based on the convolution
-/// parameters.
+/// Calculate the size of the output tensor based on the convolution parameters.
 inline std::pair<size_t, size_t> calculateConvOutputDims(size_t sx, size_t sy,
                                                          size_t filterSize,
                                                          size_t stride,
@@ -108,6 +107,13 @@ inline std::pair<size_t, size_t> calculateConvOutputDims(size_t sx, size_t sy,
   size_t outsx = ((sx + pad * 2 - filterSize) / stride + 1);
   size_t outsy = ((sy + pad * 2 - filterSize) / stride + 1);
   return {outsx, outsy};
+}
+
+/// Calculate the size of the output tensor based on the matmul parameters.
+inline std::pair<size_t, size_t>
+calculateMatMulOutputDims(size_t ax, size_t ay, size_t bx, size_t by) {
+  assert(ay == bx && "Row size of LHS is not equal to the column size of RHS.");
+  return {ax, by};
 }
 
 /// Support for hashing the Nodes. This is required for using

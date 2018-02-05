@@ -453,15 +453,21 @@ SplatNode *Graph::createSplat(llvm::StringRef name, TypeRef ty, float value) {
 }
 
 BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,
-                                              NodeValue LHS, NodeValue RHS) {
-  auto LT = LHS.getType();
-  auto RT = RHS.getType();
+                                              TypeRef outTy, NodeValue lhs,
+                                              NodeValue rhs) {
+  return addNode(new BatchedMatMulNode(name, uniqueType(*outTy), lhs, rhs));
+}
+
+BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,
+                                              NodeValue lhs, NodeValue rhs) {
+  auto LT = lhs.getType();
+  auto RT = rhs.getType();
   auto LDims = LT->dims();
   auto RDims = RT->dims();
 
   assert(LDims.size() == 3);
   assert(RDims.size() == 3);
-  assert(LHS.getType()->getElementType() == RHS->getElementType());
+  assert(lhs.getType()->getElementType() == rhs->getElementType());
 
   size_t a0 = LDims[0];
   size_t a1 = LDims[1];
@@ -484,8 +490,8 @@ BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,
   (void)b1;
   (void)b2;
 
-  auto Ty = uniqueTypeWithNewShape(LHS.getType(), {N, a1, b2});
-  return addNode(new BatchedMatMulNode(name, Ty, LHS, RHS));
+  auto ty = uniqueTypeWithNewShape(lhs.getType(), {N, a1, b2});
+  return createBatchedMatMul(name, ty, lhs, rhs);
 }
 
 BatchedReduceNode *Graph::createBatchedReduce(llvm::StringRef name,
