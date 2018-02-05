@@ -1,15 +1,13 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
-#include "glow/Support/Support.h"
 
 #include <algorithm>
-#include <cassert>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
-#include <map>
 #include <sstream>
 #include <string>
+#include <vector>
+#include <unordered_map>
 
 using namespace glow;
 
@@ -43,7 +41,9 @@ void loadMatrixFromFile(llvm::StringRef filename, Tensor &result) {
   std::ifstream file(filename.str(), std::ios::binary);
   if (!file.read((char *)result.getRawDataPointer<float>(),
                  result.size() * sizeof(float))) {
-    std::cout << "Error reading file: " << filename.str() << '\n';
+    std::cout << "Error reading file: " << filename.str() << '\n'
+              << "Need to be downloaded by calling:\n"
+              << "python ../Glow/utils/download_test_db.py -d fr2en\n";
     exit(1);
   }
 }
@@ -93,218 +93,213 @@ Node *createPyTorchGRUCell(Graph *G, Node *input, Node *hidden, Variable *w_ih,
       ArithmeticNode::Mode::Add);
 }
 
-/// Represents a single RNN model: either encoder or decoder.
-/// Stores vocabulary, compiled Graph (ready to be executed), embedding and
+/// Represents a single RNN model: encoder combined with decoder.
+/// Stores vocabulary, compiled Graph (ready to be executed), and
 /// few references to input/output Variables.
 struct Model {
   ExecutionEngine EE;
-  Vocabulary L;
+  Vocabulary en, fr;
   Variable *input;
-
-  void loadLanguage(llvm::StringRef lang_prefix) {
-    L.loadVocabularyFromFile("fr2en/" + lang_prefix.str() + "_vocabulary.txt");
-    embedding = EE.getGraph().createVariable(
-        ElemKind::FloatTy, {L.index2word_.size(), EMBEDDING_SIZE}, "embedding",
-        Variable::VisibilityKind::Private, Variable::TrainKind::None);
-    loadMatrixFromFile("fr2en/" + lang_prefix.str() + "_embedding.bin",
-                       embedding->getPayload());
-  }
-
-protected:
-  Variable *embedding;
-};
-
-/// RNN representing Encoder. Remembers input sentense into hidden layer.
-/// \p input is Variable representing the sentense. MAX_LENGTH x EMBEDDING_SIZE
-/// \p hiddenOutput is Variable representing hidden layer states over time.
-/// MAX_LENGTH x EMBEDDING_SIZE
-struct Encoder : Model {
-  Variable *hiddenOutput;
-
-  void loadEncoder() {
-    Graph &G = EE.getGraph();
-    input = G.createVariable(
-        ElemKind::IndexTy, {MAX_LENGTH}, "encoder.inputSentense",
-        Variable::VisibilityKind::Public, Variable::TrainKind::None);
-    Variable *hiddenInit = G.createVariable(
-        ElemKind::FloatTy, {1, EMBEDDING_SIZE}, "encoder.hiddenInit",
-        Variable::VisibilityKind::Public, Variable::TrainKind::None);
-    hiddenInit->getPayload().zero();
-    hiddenOutput = G.createVariable(
-        ElemKind::FloatTy, {MAX_LENGTH, EMBEDDING_SIZE}, "encoder.hiddenOutput",
-        Variable::VisibilityKind::Public, Variable::TrainKind::None);
-
-    Node *hidden = hiddenInit;
-
-    Variable *w_ih = G.createVariable(
-        ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "encoder.w_ih",
-        Variable::VisibilityKind::Private, Variable::TrainKind::None);
-    Variable *b_ih = G.createVariable(
-        ElemKind::FloatTy, {HIDDEN_SIZE}, "encoder.b_ih",
-        Variable::VisibilityKind::Private, Variable::TrainKind::None);
-    Variable *w_hh = G.createVariable(
-        ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "encoder.w_hh",
-        Variable::VisibilityKind::Private, Variable::TrainKind::None);
-    Variable *b_hh = G.createVariable(
-        ElemKind::FloatTy, {HIDDEN_SIZE}, "encoder.b_hh",
-        Variable::VisibilityKind::Private, Variable::TrainKind::None);
-    loadMatrixFromFile("fr2en/encoder_w_ih.bin", w_ih->getPayload());
-    loadMatrixFromFile("fr2en/encoder_b_ih.bin", b_ih->getPayload());
-    loadMatrixFromFile("fr2en/encoder_w_hh.bin", w_hh->getPayload());
-    loadMatrixFromFile("fr2en/encoder_b_hh.bin", b_hh->getPayload());
-
-    Node *inputEmbedded = G.createGather("encoder.embedding", embedding, input);
-
-    std::vector<Node *> outputs;
-    for (unsigned step = 0; step < MAX_LENGTH; step++) {
-      Node *inputSlice =
-          G.createSlice("encoder." + std::to_string(step) + ".inputSlice",
-                        inputEmbedded, {step, 0}, {step + 1, EMBEDDING_SIZE});
-      hidden =
-          createPyTorchGRUCell(&G, inputSlice, hidden, w_ih, b_ih, w_hh, b_hh);
-      outputs.push_back(hidden);
-    }
-
-    Node *output = G.createConcat("encoder.output", outputs, 0);
-    G.createSave("encoder.saveOutput", output, hiddenOutput);
-
-    EE.compile(CompilationMode::Infer);
-  }
-};
-
-/// Decoder model, currently not a RNN. Graph contains one step of the net,
-/// \p input contains last word of translation. 1 x EMBEDDING_SIZE
-/// \p hiddenInput contains hidden layer from previous step. 1 x EMBEDDING_SIZE
-/// \p output saves resulting word from current step. 1 x vocabularySize
-/// \p hiddenOutput saves hidden layer from current step. 1 x EMBEDDING_SIZE
-struct Decoder : Model {
-  Variable *hiddenInput;
+  Variable *seqLength;
   Variable *output;
 
-  void loadDecoder() {
-    Graph &G = EE.getGraph();
-    input = G.createVariable(ElemKind::IndexTy, {1}, "decoder.input",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
-    output = G.createVariable(ElemKind::IndexTy, {MAX_LENGTH}, "decoder.output",
-                              Variable::VisibilityKind::Public,
-                              Variable::TrainKind::None);
-    hiddenInput = G.createVariable(
-        ElemKind::FloatTy, {1, EMBEDDING_SIZE}, "decoder.hiddenInput",
-        Variable::VisibilityKind::Public, Variable::TrainKind::None);
+  void loadLanguages();
+  void loadEncoder();
+  void loadDecoder();
 
-    Variable *w_ih = G.createVariable(
-        ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "decoder.w_ih",
-        Variable::VisibilityKind::Private, Variable::TrainKind::None);
-    Variable *b_ih = G.createVariable(
-        ElemKind::FloatTy, {HIDDEN_SIZE}, "decoder.b_ih",
-        Variable::VisibilityKind::Private, Variable::TrainKind::None);
-    Variable *w_hh = G.createVariable(
-        ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "decoder.w_hh",
-        Variable::VisibilityKind::Private, Variable::TrainKind::None);
-    Variable *b_hh = G.createVariable(
-        ElemKind::FloatTy, {HIDDEN_SIZE}, "decoder.b_hh",
-        Variable::VisibilityKind::Private, Variable::TrainKind::None);
-    Variable *out_w = G.createVariable(
-        ElemKind::FloatTy, {EMBEDDING_SIZE, L.index2word_.size()},
-        "decoder.out_w", Variable::VisibilityKind::Public,
+private:
+  Variable *embedding_fr, *embedding_en;
+  Node *encoderHiddenOutput;
+
+  Variable *loadEmbedding(llvm::StringRef lang_prefix, size_t lang_size) {
+    Variable *result = EE.getGraph().createVariable(
+        ElemKind::FloatTy, {lang_size, EMBEDDING_SIZE},
+        "embedding." + lang_prefix.str(), Variable::VisibilityKind::Private,
         Variable::TrainKind::None);
-    Variable *out_b = G.createVariable(
-        ElemKind::FloatTy, {L.index2word_.size()}, "decoder.out_b",
-        Variable::VisibilityKind::Public, Variable::TrainKind::None);
-    loadMatrixFromFile("fr2en/decoder_w_ih.bin", w_ih->getPayload());
-    loadMatrixFromFile("fr2en/decoder_b_ih.bin", b_ih->getPayload());
-    loadMatrixFromFile("fr2en/decoder_w_hh.bin", w_hh->getPayload());
-    loadMatrixFromFile("fr2en/decoder_b_hh.bin", b_hh->getPayload());
-    loadMatrixFromFile("fr2en/decoder_out_w.bin", out_w->getPayload());
-    loadMatrixFromFile("fr2en/decoder_out_b.bin", out_b->getPayload());
-
-    Node *hidden = hiddenInput;
-    Node *lastWordIdx = input;
-
-    std::vector<Node *> outputs;
-    for (unsigned step = 0; step < MAX_LENGTH; step++) {
-      // Use last translated word as an input at the current step.
-      Node *embedded = G.createGather(
-          "decoder.embedding." + std::to_string(step), embedding, lastWordIdx);
-
-      Node *relu = G.createRELU("decoder.relu", embedded);
-      hidden = createPyTorchGRUCell(&G, relu, hidden, w_ih, b_ih, w_hh, b_hh);
-
-      Node *FC = G.createFullyConnected("decoder.outFC", hidden, out_w, out_b,
-                                        L.index2word_.size());
-      Node *topK = G.createTopK("decoder.topK", FC, 1);
-
-      lastWordIdx = G.createReshape("decoder.reshape", {topK, 1}, {1});
-      outputs.push_back(lastWordIdx);
-    }
-
-    Node *concat = G.createConcat("decoder.output", outputs, 0);
-    G.createSave("decoder.output", concat, output);
-
-    EE.compile(CompilationMode::Infer);
+    loadMatrixFromFile("fr2en/" + lang_prefix.str() + "_embedding.bin",
+                       result->getPayload());
+    return result;
   }
 };
 
+void Model::loadLanguages() {
+  fr.loadVocabularyFromFile("fr2en/fr_vocabulary.txt");
+  en.loadVocabularyFromFile("fr2en/en_vocabulary.txt");
+  embedding_fr = loadEmbedding("fr", fr.index2word_.size());
+  embedding_en = loadEmbedding("en", en.index2word_.size());
+}
+
+/// Model part representing Encoder. Remembers input sentence into hidden layer.
+/// \p input is Variable representing the sentence.
+/// \p seqLength is Variable representing the length of sentence.
+/// \p encoderHiddenOutput saves resulting hidden layer.
+void Model::loadEncoder() {
+  Graph &G = EE.getGraph();
+  input = G.createVariable(
+      ElemKind::IndexTy, {MAX_LENGTH}, "encoder.inputsentence",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
+  seqLength = G.createVariable(ElemKind::IndexTy, {1}, "encoder.seqLength",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
+
+  Variable *hiddenInit = G.createVariable(
+      ElemKind::FloatTy, {1, EMBEDDING_SIZE}, "encoder.hiddenInit",
+      Variable::VisibilityKind::Private, Variable::TrainKind::None);
+  hiddenInit->getPayload().zero();
+
+  Node *hidden = hiddenInit;
+
+  Variable *w_ih = G.createVariable(
+      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "encoder.w_ih",
+      Variable::VisibilityKind::Private, Variable::TrainKind::None);
+  Variable *b_ih = G.createVariable(
+      ElemKind::FloatTy, {HIDDEN_SIZE}, "encoder.b_ih",
+      Variable::VisibilityKind::Private, Variable::TrainKind::None);
+  Variable *w_hh = G.createVariable(
+      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "encoder.w_hh",
+      Variable::VisibilityKind::Private, Variable::TrainKind::None);
+  Variable *b_hh = G.createVariable(
+      ElemKind::FloatTy, {HIDDEN_SIZE}, "encoder.b_hh",
+      Variable::VisibilityKind::Private, Variable::TrainKind::None);
+  loadMatrixFromFile("fr2en/encoder_w_ih.bin", w_ih->getPayload());
+  loadMatrixFromFile("fr2en/encoder_b_ih.bin", b_ih->getPayload());
+  loadMatrixFromFile("fr2en/encoder_w_hh.bin", w_hh->getPayload());
+  loadMatrixFromFile("fr2en/encoder_b_hh.bin", b_hh->getPayload());
+
+  Node *inputEmbedded =
+      G.createGather("encoder.embedding", embedding_fr, input);
+
+  // TODO: encoder does exactly MAX_LENGTH steps, while input size is smaller.
+  // We could use control flow here.
+  std::vector<Node *> outputs;
+  for (unsigned step = 0; step < MAX_LENGTH; step++) {
+    Node *inputSlice =
+        G.createSlice("encoder." + std::to_string(step) + ".inputSlice",
+                      inputEmbedded, {step, 0}, {step + 1, EMBEDDING_SIZE});
+    hidden =
+        createPyTorchGRUCell(&G, inputSlice, hidden, w_ih, b_ih, w_hh, b_hh);
+    outputs.push_back(hidden);
+  }
+
+  Node *output = G.createConcat("encoder.output", outputs, 0);
+  encoderHiddenOutput = G.createGather("encoder.outputNth", output, seqLength);
+}
+
+/// Model part representing Decoder.
+/// Uses \p encoderHiddenOutput as final state from Encoder.
+/// Resulting translation is put into \p output Variable.
+void Model::loadDecoder() {
+  Graph &G = EE.getGraph();
+  Variable *input = G.createVariable(ElemKind::IndexTy, {1}, "decoder.input",
+                                     Variable::VisibilityKind::Public,
+                                     Variable::TrainKind::None);
+  input->getPayload().getHandle<size_t>().at({0}) = en.word2index_["SOS"];
+
+  Variable *w_ih = G.createVariable(
+      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "decoder.w_ih",
+      Variable::VisibilityKind::Private, Variable::TrainKind::None);
+  Variable *b_ih = G.createVariable(
+      ElemKind::FloatTy, {HIDDEN_SIZE}, "decoder.b_ih",
+      Variable::VisibilityKind::Private, Variable::TrainKind::None);
+  Variable *w_hh = G.createVariable(
+      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "decoder.w_hh",
+      Variable::VisibilityKind::Private, Variable::TrainKind::None);
+  Variable *b_hh = G.createVariable(
+      ElemKind::FloatTy, {HIDDEN_SIZE}, "decoder.b_hh",
+      Variable::VisibilityKind::Private, Variable::TrainKind::None);
+  Variable *out_w = G.createVariable(
+      ElemKind::FloatTy, {EMBEDDING_SIZE, en.index2word_.size()},
+      "decoder.out_w", Variable::VisibilityKind::Public,
+      Variable::TrainKind::None);
+  Variable *out_b = G.createVariable(
+      ElemKind::FloatTy, {en.index2word_.size()}, "decoder.out_b",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
+  loadMatrixFromFile("fr2en/decoder_w_ih.bin", w_ih->getPayload());
+  loadMatrixFromFile("fr2en/decoder_b_ih.bin", b_ih->getPayload());
+  loadMatrixFromFile("fr2en/decoder_w_hh.bin", w_hh->getPayload());
+  loadMatrixFromFile("fr2en/decoder_b_hh.bin", b_hh->getPayload());
+  loadMatrixFromFile("fr2en/decoder_out_w.bin", out_w->getPayload());
+  loadMatrixFromFile("fr2en/decoder_out_b.bin", out_b->getPayload());
+
+  Node *hidden = encoderHiddenOutput;
+  Node *lastWordIdx = input;
+
+  std::vector<Node *> outputs;
+  // TODO: decoder does exactly MAX_LENGTH steps, while translation could be
+  // smaller. We could use control flow here.
+  for (unsigned step = 0; step < MAX_LENGTH; step++) {
+    // Use last translated word as an input at the current step.
+    Node *embedded = G.createGather("decoder.embedding." + std::to_string(step),
+                                    embedding_en, lastWordIdx);
+
+    Node *relu = G.createRELU("decoder.relu", embedded);
+    hidden = createPyTorchGRUCell(&G, relu, hidden, w_ih, b_ih, w_hh, b_hh);
+
+    Node *FC = G.createFullyConnected("decoder.outFC", hidden, out_w, out_b,
+                                      en.index2word_.size());
+    Node *topK = G.createTopK("decoder.topK", FC, 1);
+
+    lastWordIdx = G.createReshape("decoder.reshape", {topK, 1}, {1});
+    outputs.push_back(lastWordIdx);
+  }
+
+  Node *concat = G.createConcat("decoder.output", outputs, 0);
+
+  output = G.createVariable(ElemKind::IndexTy, {MAX_LENGTH}, "decoder.output",
+                            Variable::VisibilityKind::Public,
+                            Variable::TrainKind::None);
+  G.createSave("decoder.output", concat, output);
+
+  EE.compile(CompilationMode::Infer);
+}
+
 /// Translation has 2 stages:
-/// 1) Input sentense is fed into Encoder model word by word.
+/// 1) Input sentence is fed into Encoder word by word.
 /// 2) "Memory" of Encoder is written into memory of Decoder.
 ///    Now Decoder streams resulting translation word by word.
-void translate(Encoder *encoder, Decoder *decoder, llvm::StringRef sentense,
-               llvm::StringRef translation) {
-  std::istringstream iss(sentense);
+void translate(Model *seq2seq, llvm::StringRef sentence) {
+  std::istringstream iss(sentence);
   std::vector<std::string> words;
   std::string word;
   while (iss >> word)
     words.push_back(word);
   words.push_back("EOS");
 
-  GLOW_ASSERT(words.size() <= MAX_LENGTH && "Sentense is too long.");
+  GLOW_ASSERT(words.size() <= MAX_LENGTH && "sentence is too long.");
 
-  // TODO: this function must become a single EE.run() call.
+  Tensor input(ElemKind::IndexTy, {MAX_LENGTH});
+  Tensor seqLength(ElemKind::IndexTy, {1});
 
+  input.zero();
   for (size_t i = 0; i < words.size(); i++) {
-    auto iter = encoder->L.word2index_.find(words[i]);
-    GLOW_ASSERT(iter != encoder->L.word2index_.end() && "Unknown word.");
-    encoder->input->getPayload().getHandle<size_t>().at({i}) = iter->second;
+    auto iter = seq2seq->fr.word2index_.find(words[i]);
+    GLOW_ASSERT(iter != seq2seq->fr.word2index_.end() && "Unknown word.");
+    input.getHandle<size_t>().at({i}) = iter->second;
   }
+  seqLength.getHandle<size_t>().at({0}) = words.size() - 1;
 
-  // TODO: encoder does exactly MAX_LENGTH steps, while input size is smaller.
-  // We could use control flow here.
-  encoder->EE.run({}, {});
+  seq2seq->EE.run({seq2seq->input, seq2seq->seqLength}, {&input, &seqLength});
 
-  for (unsigned j = 0; j < EMBEDDING_SIZE; j++)
-    decoder->hiddenInput->getPayload().getHandle().at({0, j}) =
-        encoder->hiddenOutput->getHandle().at({words.size() - 1, j});
-
-  decoder->input->getPayload().getHandle<size_t>().at({0}) =
-      decoder->L.word2index_["SOS"];
-
-  decoder->EE.run({}, {});
-
-  auto OH = decoder->output->getPayload().getHandle<size_t>();
+  auto OH = seq2seq->output->getPayload().getHandle<size_t>();
   for (unsigned i = 0; i < MAX_LENGTH; i++) {
     size_t wordIdx = OH.at({i});
-    if (wordIdx == decoder->L.word2index_["EOS"])
+    if (wordIdx == seq2seq->en.word2index_["EOS"])
       break;
 
     if (i)
       std::cout << ' ';
-    std::cout << decoder->L.index2word_[wordIdx];
+    std::cout << seq2seq->en.index2word_[wordIdx];
   }
-  std::cout << '\n';
+  std::cout << "\n\n";
 }
 
 int main() {
-  Encoder encoder;
-  encoder.loadLanguage("fr");
-  encoder.loadEncoder();
+  Model seq2seq;
+  seq2seq.loadLanguages();
+  seq2seq.loadEncoder();
+  seq2seq.loadDecoder();
 
-  Decoder decoder;
-  decoder.loadLanguage("en");
-  decoder.loadDecoder();
-
-  std::cout << "Please enter a sentense in French, such that it's English "
+  std::cout << "Please enter a sentence in French, such that it's English "
             << "translation starts with one of the following:\n"
             << "\ti am\n"
             << "\the is\n"
@@ -320,10 +315,9 @@ int main() {
             << "j y songe encore .\n"
             << "je suis maintenant a l aeroport .\n\n";
 
-  std::string sentense, translation;
-  while (getline(std::cin, sentense)) {
-    translate(&encoder, &decoder, sentense, translation);
-    std::cout << translation << '\n';
+  std::string sentence;
+  while (getline(std::cin, sentence)) {
+    translate(&seq2seq, sentence);
   }
 
   return 0;
