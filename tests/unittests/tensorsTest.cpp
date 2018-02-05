@@ -22,6 +22,17 @@ TEST(Tensor, init) {
   H.dump();
 }
 
+TEST(Tensor, randomizeInt) {
+  Tensor T(ElemKind::Int8QTy, {10, 10}, 1.0, 0);
+  auto H = T.getHandle<int8_t>();
+  H.randomize(-50, 50);
+
+  // Check that all of the numbers fall in the range -50 to 50.
+  for (size_t i = 0, e = H.size(); i < e; i++) {
+    EXPECT_NEAR(H.raw(0), 0, 50);
+  }
+}
+
 TEST(Tensor, clone) {
   Tensor T = {1.2, 12.1, 51.0, 1515.2};
   auto H = T.getHandle<>();
