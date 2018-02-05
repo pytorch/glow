@@ -1,6 +1,6 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
-#include "Quantization.h"
+#include "glow/Quantization/Profile.h"
 
 #include <cmath>
 

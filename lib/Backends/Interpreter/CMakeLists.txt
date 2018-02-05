@@ -1,11 +1,11 @@
 
 add_library(Interpreter
               Interpreter.cpp
-              InterpreterNodes.cpp
-              Quantization/Quantization.cpp)
+              InterpreterNodes.cpp)
 target_link_libraries(Interpreter
                       PRIVATE
                         Optimizer
                         Base
-                        Graph)
+                        Graph
+                        Quantization)
 
