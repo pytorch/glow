@@ -24,4 +24,5 @@ TEST(caffe2, import) {
   auto numNodes = G.getNodes().size();
   ::glow::optimize(G, CompilationMode::Infer);
   EXPECT_EQ(G.getNodes().size(), numNodes - 1);
+  (void)SM;
 }

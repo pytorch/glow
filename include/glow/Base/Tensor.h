@@ -592,8 +592,8 @@ public:
     // new shape (no action taken) or == 1 (broadcast in that direction). Else
     // the original shape had no dimensions here (after considering axis), so
     // add the new dimension and broadcast in that direction.
-    for (int i = 0; i < otherDims.size(); i++) {
-      if (i >= axis && i < origDims.size() + axis) {
+    for (int i = 0; i < (int)otherDims.size(); i++) {
+      if (i >= axis && i < (int)origDims.size() + axis) {
         const int origIdx = i - axis;
         if (origDims[origIdx] == otherDims[i]) {
           // Keep original dimensions; they are compatible.
@@ -641,7 +641,7 @@ public:
     // Reset size of dest to accomodate new broadcast dimension.
     size_t newDims[max_tensor_dimensions];
     unsigned shift = 0;
-    for (int i = 0; i < origDims.size(); ++i) {
+    for (unsigned i = 0; i < origDims.size(); ++i) {
       if (addingNewDim && (i == direction)) {
         shift = 1;
       }
@@ -661,7 +661,7 @@ public:
     do {
       // New indices using current from original Tensor, plus new dimension.
       unsigned shift = 0;
-      for (int i = 0; i < origDims.size(); ++i) {
+      for (unsigned i = 0; i < origDims.size(); ++i) {
         if (addingNewDim && (i == direction)) {
           shift = 1;
         }

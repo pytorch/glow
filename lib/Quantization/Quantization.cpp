@@ -175,7 +175,7 @@ calculateTensorQuantizationParams(const Handle<float> &bins, float min,
   }
 
   double totalSum = 0;
-  for (int i = 0; i < bins.size(); ++i) {
+  for (size_t i = 0; i < bins.size(); ++i) {
     totalSum += bins.raw(i);
   }
   double selectedSum = 0;

@@ -69,7 +69,7 @@ public:
       for (; it_ == end_;) {
         // Reached the end of uses for the current value.
         // Try to iterate over another value if available.
-        if (++idx_ >= vals_.size()) {
+        if (++idx_ >= (int)vals_.size()) {
           // Form the end iterator.
           *this = ValueUsesIterator{vals_[0], 1};
           return *this;
