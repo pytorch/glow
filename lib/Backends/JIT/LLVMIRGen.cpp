@@ -270,6 +270,25 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::PoolAvgGradInstKind: {
+    PoolAvgGradInst *PAG = llvm::cast<PoolAvgGradInst>(I);
+    auto *srcGradPtr =
+        emitValueAddress(builder, PAG->getSrcGrad(), ElemKind::FloatTy);
+    auto *destGradPtr =
+        emitValueAddress(builder, PAG->getDestGrad(), ElemKind::FloatTy);
+    auto *srcGradDims = emitValueDims(builder, PAG->getSrcGrad());
+    auto *destDims = emitValueDims(builder, PAG->getDest());
+    auto *kernel = emitConst(builder, PAG->getKernel());
+    auto *stride = emitConst(builder, PAG->getStride());
+    auto *pad = emitConst(builder, PAG->getPad());
+
+    auto *F = llmodule_->getFunction("pool_avg_grad_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {srcGradPtr, destGradPtr, srcGradDims, destDims,
+                           kernel, stride, pad});
+    break;
+  }
+
   case Kinded::Kind::SGDInstKind: {
     SGDInst *SGD = llvm::cast<SGDInst>(I);
     auto *W = emitValueAddress(builder, SGD->getWeight(), ElemKind::FloatTy);
