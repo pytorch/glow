@@ -567,22 +567,20 @@ public:
   /// Broadcast the current Tensor to a new shape specified by \p otherDims and
   /// place it in \p dest. Values in the new dimension(s) are copied from the
   /// original Tensor. The \p axis defines the offset from the leading dimension
-  /// under which broadcasting is performed; default is comparison starting from
-  /// trailing dimensions. Compared to numpy's broadcasting, this implementation
-  /// only allows broadcasting one Tensor to some new shape specified by \p
-  /// otherDims. For example, numpy allows broadcasting two Tensors of shapes
-  /// (3,1) and (1,4) to both be (3,4), while this implementation does not.
+  /// under which broadcasting is performed. Compared to numpy's broadcasting,
+  /// this implementation only allows broadcasting one Tensor to some new shape
+  /// specified by \p otherDims. For example, numpy allows broadcasting two
+  /// Tensors of shapes (3,1) and (1,4) to both be (3,4), while this
+  /// implementation does not.
   void broadcastToNewShape(Tensor *dest, llvm::ArrayRef<size_t> otherDims,
-                           int axis = -1) {
+                           unsigned axis) {
     auto origDims = dims();
     const int dimDifference = otherDims.size() - origDims.size();
-    if (axis == -1) {
-      axis = dimDifference;
-    }
+
     assert(otherDims.size() >= origDims.size() &&
            "Dimensions to broadcast to must be equal or greater size.");
-    assert(axis >= 0 && axis <= dimDifference &&
-           "Axis must >= 0, && axis + nDims of orig Tensor <= newShape nDims");
+    assert(axis <= dimDifference &&
+           "Axis + nDims of orig Tensor must be <= newShape nDims");
 
     Tensor intermediate;
     intermediate.copyFrom(this->tensor_);
@@ -592,8 +590,8 @@ public:
     // new shape (no action taken) or == 1 (broadcast in that direction). Else
     // the original shape had no dimensions here (after considering axis), so
     // add the new dimension and broadcast in that direction.
-    for (int i = 0; i < (int)otherDims.size(); i++) {
-      if (i >= axis && i < (int)origDims.size() + axis) {
+    for (size_t i = 0; i < otherDims.size(); i++) {
+      if (i >= axis && i < origDims.size() + axis) {
         const int origIdx = i - axis;
         if (origDims[origIdx] == otherDims[i]) {
           // Keep original dimensions; they are compatible.
