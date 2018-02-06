@@ -14,15 +14,11 @@ TEST(caffe2, import) {
   std::string NetDescFilename("tests/models/caffe2ImportTest/predictNet.pb");
   std::string NetWeightFilename("tests/models/caffe2ImportTest/initNet.pb");
 
-  SaveNode *SM;
-  {
-    caffe2ModelLoader LD(NetDescFilename, NetWeightFilename, {}, {}, G);
-    SM = LD.getRoot();
-  }
+  // Make sure to destroy loader as soon as Graph is loaded.
+  { caffe2ModelLoader LD(NetDescFilename, NetWeightFilename, {}, {}, G); }
 
   // Optimize all of the dead code, removing one GenericNode
   auto numNodes = G.getNodes().size();
   ::glow::optimize(G, CompilationMode::Infer);
   EXPECT_EQ(G.getNodes().size(), numNodes - 1);
-  (void)SM;
 }
