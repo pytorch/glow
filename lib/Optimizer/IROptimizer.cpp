@@ -35,12 +35,15 @@ using llvm::isa;
 /// It represents a sequence of instructions [begin, end) where this buffer
 /// holds a value.
 struct Interval {
-  /// Index of the interval begin.
+  /// Index of the interval begin. Typically this is the index of the
+  /// instruction, which overwrites the buffer.
   size_t begin_;
-  /// Index of the interval end.
+  /// Index of the interval end. Typically, it is the last use of the current
+  /// value held in the buffer.
   size_t end_;
   /// True if the value may change between begin and end, e.g.
-  /// due to @inout use.
+  /// due to @inout use. In most cases, the value does not change for the
+  /// duration of a single live interval.
   bool sameValue_{true};
 
   Interval(size_t begin, size_t end, bool sameValue = true)
@@ -59,6 +62,92 @@ struct Interval {
   }
 };
 
+/// A helper class used for instructions numbering used by live intervals.
+/// It follows the LLVM's linear scan register allocator approach and assigns
+/// different numbers to read and write slots of the same instruction, which
+/// allows for an easy construction of a very precise set of live intervals.
+class LiveIntervalsInstructionNumbering {
+  using NumberedInstructionMap = std::vector<InstrIterator>;
+  using InstructionNumbersMap = std::unordered_map<Instruction *, size_t>;
+  /// Maps the number to an instruction.
+  NumberedInstructionMap numToInstr_;
+  /// Maps an instruction to its number.
+  InstructionNumbersMap instrToNum_;
+
+public:
+  /// Virtual slot number to be used for instructions numbering. It helps to
+  /// distinguish reads from writes and makes comparision of live intervals
+  /// easier. LLVM used a similar approach for the linear scan register
+  /// allocator.
+  ///
+  /// For an instruction with number N, its @in operands would be considered
+  /// to be at (N+READ_SLOT), its @out operands would be at (N+WRITE_SLOT).
+  enum SLOTS {
+    READ_SLOT = 0,
+    WRITE_SLOT = 2,
+    MAX_SLOT = 4,
+  };
+
+  LiveIntervalsInstructionNumbering(Module &M) {
+    auto &instrs = M.getInstrs();
+    size_t instIdx = 0;
+    for (auto it = instrs.begin(), e = instrs.end(); it != e;
+         instIdx += MAX_SLOT, ++it) {
+      numToInstr_.push_back(it);
+      instrToNum_[*it] = instIdx;
+    }
+  }
+
+  /// \returns the base number of the instruction.
+  /// It is the same for all slots of a given instruction.
+  static int64_t getInstrBaseNumber(int64_t idx) {
+    return idx / MAX_SLOT * MAX_SLOT;
+  }
+
+  /// \returns true if \p idx is the instruction number of the read slot of the
+  /// instruction.
+  static bool isReadSlotNumber(int64_t idx) {
+    return idx % MAX_SLOT == READ_SLOT;
+  }
+
+  /// \returns true if \p idx is the instruction number of a write slot of the
+  /// instruction.
+  static bool isWriteSlotNumber(int64_t idx) {
+    return idx % MAX_SLOT == WRITE_SLOT;
+  }
+
+  /// \returns the instruction number of a read slot of instruction with number
+  /// \p idx.
+  static int64_t getInstrReadSlotNumber(int64_t idx) {
+    return getInstrBaseNumber(idx) + READ_SLOT;
+  }
+
+  /// \returns the instruction number of a write slot of instruction with number
+  /// \p idx.
+  static int64_t getInstrWriteSlotNumber(int64_t idx) {
+    return getInstrBaseNumber(idx) + WRITE_SLOT;
+  }
+
+  /// \returns the number of the instruction, or -1 if the instruction is not
+  /// numbered.
+  int64_t getInstrNumber(Instruction *I) const {
+    auto Result = instrToNum_.find(I);
+    if (Result == instrToNum_.end())
+      return -1;
+    return (int64_t)Result->second;
+  }
+
+  /// \returns the number of the instruction, or -1 if the instruction is not
+  /// numbered.
+  int64_t getInstrNumber(InstrIterator IT) const { return getInstrNumber(*IT); }
+
+  /// \returns the instruction with a given number.
+  InstrIterator getInstr(size_t InstrNumber) const {
+    assert(InstrNumber / MAX_SLOT < numToInstr_.size());
+    return numToInstr_[InstrNumber / MAX_SLOT];
+  }
+};
+
 #ifndef NDEBUG
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Interval &I) {
   os << I.str();
@@ -66,9 +155,11 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Interval &I) {
 }
 #endif
 
-/// Set of intervals.
+/// Set of intervals for a single memory buffer. If there is only one write into
+/// a memory buffer, it would contain a single interval. If there are multiple
+/// writes, it would contain multiple live intervals, one per write.
 using Intervals = llvm::SmallVector<Interval, 4>;
-/// Maping from a value to its live intervals.
+/// Maping from a memory buffer to its live intervals.
 using LiveIntervalsMap = std::unordered_map<Value *, Intervals>;
 /// Set of instructions.
 using Instructions = std::unordered_set<Instruction *>;
@@ -272,6 +363,7 @@ static Instruction *getSingleWriter(const Value *V) {
   return singleUser;
 }
 
+/// Marks non-mutable weights as constants.
 void makeWeightsConst(Module &M) {
   // For each weight:
   for (auto *W : M.getWeights()) {
@@ -327,7 +419,7 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
   // Compute the [start..end) intervals for each alloc activation in our basic
   // block. Notice that we ignore Dealloc instructions in our analysis.
   for (auto it = instrs.begin(), e = instrs.end(); it != e;
-       ++it, instIdx += InstructionNumbering::MAX_SLOT) {
+       ++it, instIdx += LiveIntervalsInstructionNumbering::MAX_SLOT) {
     auto *I = *it;
     // Ignore deallocations in our liveness calculation.
     if (isa<DeallocActivationInst>(I)) {
@@ -370,9 +462,11 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
 
       auto opIdx = instIdx;
       if (opKind == OperandKind::Out) {
-        opIdx = InstructionNumbering::getInstrWriteSlotNumber(instIdx);
+        opIdx =
+            LiveIntervalsInstructionNumbering::getInstrWriteSlotNumber(instIdx);
       } else {
-        opIdx = InstructionNumbering::getInstrReadSlotNumber(instIdx);
+        opIdx =
+            LiveIntervalsInstructionNumbering::getInstrReadSlotNumber(instIdx);
       }
 
       auto found = liveness.find(loc);
@@ -411,7 +505,8 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
       // No need to create a new interval if it is not a write.
       if (opKind != OperandKind::Out)
         continue;
-      opIdx = InstructionNumbering::getInstrWriteSlotNumber(instIdx);
+      opIdx =
+          LiveIntervalsInstructionNumbering::getInstrWriteSlotNumber(instIdx);
       // This instruction modifies the memory location.
       // Therefore, end the current active live interval
       // for this memory location and begin a new one.
@@ -479,10 +574,9 @@ static void moveInterval(Intervals &from, Intervals &to, Interval &interval) {
 }
 
 /// Replace all uses of \p val by \p with inside interval \p liveInterval.
-static void
-replaceAllUsesInsideIntervalWith(Value *val, Value *with,
-                                 Interval &liveInterval, Module &M,
-                                 InstructionNumbering &instrNumbering) {
+static void replaceAllUsesInsideIntervalWith(
+    Value *val, Value *with, Interval &liveInterval, Module &M,
+    LiveIntervalsInstructionNumbering &instrNumbering) {
   auto &instrs = M.getInstrs();
   auto valOrigin = getOrigin(val);
   auto withOrigin = getOrigin(with);
@@ -510,9 +604,12 @@ replaceAllUsesInsideIntervalWith(Value *val, Value *with,
       // Is the operand the value we are looking for?
       if (opOrigin != valOrigin)
         continue;
-      auto opIdx = (opKind == OperandKind::In)
-                       ? InstructionNumbering::getInstrReadSlotNumber(instIdx)
-                       : InstructionNumbering::getInstrWriteSlotNumber(instIdx);
+      size_t opIdx = static_cast<size_t>(
+          (opKind == OperandKind::In)
+              ? LiveIntervalsInstructionNumbering::getInstrReadSlotNumber(
+                    instIdx)
+              : LiveIntervalsInstructionNumbering::getInstrWriteSlotNumber(
+                    instIdx));
       // Skip operands outside of the interval.
       if (opIdx < liveInterval.begin_ || opIdx >= liveInterval.end_)
         continue;
@@ -555,11 +652,11 @@ static bool isObservable(Value *V) { return isa<WeightVar>(getOrigin(V)); }
 
 /// Substitute all uses of \p oldBuffer by \p newBuffer inside the
 /// \p oldInterval.
-static void reuseBufferInsideInterval(Value *oldBuffer, Value *newBuffer,
-                                      Interval oldInterval, Module &M,
-                                      InstructionNumbering &instrNumbering,
-                                      Intervals &oldIntervals,
-                                      Intervals &newIntervals) {
+static void
+reuseBufferInsideInterval(Value *oldBuffer, Value *newBuffer,
+                          Interval oldInterval, Module &M,
+                          LiveIntervalsInstructionNumbering &instrNumbering,
+                          Intervals &oldIntervals, Intervals &newIntervals) {
   DEBUG(llvm::dbgs() << "\n\nReuse buffers: use buffer of "
                      << newBuffer->getName() << " as a buffer for "
                      << oldBuffer->getName() << "\n"
@@ -572,16 +669,213 @@ static void reuseBufferInsideInterval(Value *oldBuffer, Value *newBuffer,
   moveInterval(oldIntervals, newIntervals, oldInterval);
 }
 
+/// A helper class for performing a sharing of buffers used by a given
+/// instruction.
+class BufferSharingOptimizer {
+  /// Current module.
+  Module &M_;
+  /// The instruction numbering to be used.
+  LiveIntervalsInstructionNumbering &instrNumbering_;
+  /// Current instruction.
+  Instruction *instr_;
+  /// The number of the current instruction.
+  size_t instrIdx_;
+  /// The source argument.
+  Value *src_;
+  /// The destination argument.
+  Value *dest_;
+  /// The origin of the source argument.
+  Value *srcOrigin_;
+  /// The origin of the destination argument.
+  Value *destOrigin_;
+
+  /// List of live intervals for the source buffer.
+  Intervals &srcIntervals_;
+  /// List of live intervals for the destination buffer.
+  Intervals &destIntervals_;
+  /// The live interval of the source buffer, which covers the current
+  /// instruction.
+  Interval *srcInterval_;
+  /// The live interval of the destination buffer, which covers the current
+  /// instruction.
+  Interval *destInterval_;
+
+  /// Pick the buffer that can be reused. To make a decision, check
+  /// which intervals intersect with each other. In most cases, the buffers
+  /// can be combined if their live intervals do not overlap.
+  ///
+  /// \returns the buffer that can be
+  /// reused, or nullptr if none of the buffers can be reused.
+  Value *getBufferToBeReused() {
+    // Do not try to combine observables.
+    if (isObservable(destOrigin_) && isObservable(srcOrigin_))
+      return nullptr;
+
+    // Check if dest or src live interval is the last live interval of
+    // an observable memory location.
+    bool isDestLastIntervalOfObservable =
+        isObservable(destOrigin_) && *destInterval_ == destIntervals_.back();
+    bool isSrcLastIntervalOfObservable =
+        isObservable(srcOrigin_) && *srcInterval_ == srcIntervals_.back();
+
+    // A value X cannot reuse the buffer of another value Y,
+    // if the live interval of X overlaps with any live intervals of Y.
+    // The only exception is the copy instruction, where the live interval
+    // of the destination may be enclosed into a live interval of the source,
+    // because they have the same value.
+    bool canCopyPropagate = isa<CopyInst>(instr_) &&
+                            isEnclosedInside(*srcInterval_, *destInterval_) &&
+                            srcInterval_->sameValue_;
+    // If dest interval overlaps with any srcIntervals, it cannot be replaced.
+    bool destIntvalCannotBeReplaced =
+        !canCopyPropagate &&
+        hasOverlappingIntervals(srcIntervals_, *destInterval_);
+    // If src interval overlaps with any dest Intervals, it cannot be replaced.
+    bool srcIntervalCannotBeReplaced =
+        hasOverlappingIntervals(destIntervals_, *srcInterval_);
+
+    if (!isDestLastIntervalOfObservable && !isSrcLastIntervalOfObservable &&
+        !destIntvalCannotBeReplaced && !srcIntervalCannotBeReplaced) {
+      // There are no restrictions and intervals can be combined on any
+      // order. Try to use a heuristic to pick the right way to combine
+      // them.
+
+      // Try to reuse the interval of an observable memory location, because
+      // it does not increase the memory usage.
+      // TODO: If it would introduce a last write into an observable, do not
+      // do it.
+      if (isObservable(srcOrigin_) && !isObservable(destOrigin_)) {
+        // Use src buffer for dest.
+        return srcOrigin_;
+      }
+
+      if (isObservable(destOrigin_) && !isObservable(srcOrigin_)) {
+        // Use dest buffer for src.
+        return destOrigin_;
+      }
+
+      // Avoid sharing a buffer if there is a single
+      // live interval in the interval list. After replacement
+      // this whole buffer can be eliminated.
+      if (srcIntervals_.size() == 1 && destIntervals_.size() != 1) {
+        // Use dest buffer for src.
+        return destOrigin_;
+      }
+
+      if (destIntervals_.size() == 1 && srcIntervals_.size() != 1) {
+        // Use src buffer for dest.
+        return srcOrigin_;
+      }
+
+      // Just use src buffer for dest by default.
+      return srcOrigin_;
+    }
+
+    // Try to check if buffers can be shared by using
+    // src instead of dest inside the live interval of dest.
+    // This is possible if src is not live after the current instruction and
+    // until the end of the current Dest's live interval.
+    if (isDestLastIntervalOfObservable || destIntvalCannotBeReplaced) {
+      // Dest cannot be replaced by src because src is being mutated while
+      // dest is alive or because dest contains the last write into
+      // an observable memory location.
+
+      // Try to replace src by dest in the live interval of src.
+      // This is possible if Src is not live anywhere inside the current
+      // Dest's live interval ending at the current instruction.
+
+      // Bail, because src cannot be replaced by dest because dest is being
+      // mutated while src is alive or because src contains the last write
+      // into an observable memory location.
+      if (isSrcLastIntervalOfObservable || srcIntervalCannotBeReplaced)
+        return nullptr;
+      return destOrigin_;
+    }
+
+    return srcOrigin_;
+  }
+
+public:
+  /// Initialize the state of the shared buffers optimizer.
+  BufferSharingOptimizer(Module &M, LiveIntervalsMap &intervalsMap,
+                         LiveIntervalsInstructionNumbering &instrNumbering,
+                         Instruction *instr, size_t instrIdx, Value *dest,
+                         Value *src)
+      : M_(M), instrNumbering_(instrNumbering), instr_(instr),
+        instrIdx_(instrIdx), src_(src), dest_(dest), srcOrigin_(getOrigin(src)),
+        destOrigin_(getOrigin(dest)), srcIntervals_(intervalsMap[srcOrigin_]),
+        destIntervals_(intervalsMap[destOrigin_]) {
+    // Bail if information about live intervals is not known.
+    assert(!srcIntervals_.empty() &&
+           "Set of live intervals for a memory buffer cannot be empty");
+    assert(!destIntervals_.empty() &&
+           "Set of live intervals for a memory buffer cannot be empty");
+    // Find the Src live interval that encloses the current instruction.
+    auto srcIntervalIt = getEnclosingInterval(
+        srcIntervals_,
+        LiveIntervalsInstructionNumbering::getInstrReadSlotNumber(instrIdx_));
+    assert(srcIntervalIt != srcIntervals_.end() &&
+           "Cannot share buffers: cannot "
+           "find enclosing src interval");
+
+    // Find the Dest live interval that encloses the current instruction.
+    auto destIntervalIt = getEnclosingInterval(
+        destIntervals_,
+        LiveIntervalsInstructionNumbering::getInstrWriteSlotNumber(instrIdx_));
+    assert(destIntervalIt != destIntervals_.end() &&
+           "Cannot share buffers: cannot "
+           "find enclosing src interval");
+
+    // Remember the found src and dest intervals.
+    srcInterval_ = srcIntervalIt;
+    destInterval_ = destIntervalIt;
+  }
+
+  /// Try to share buffers used by src and dest.
+  /// \returns true, if it was possible to reuse buffers.
+  bool tryToShareBuffers() {
+    // Pick the buffer that can be reused. It can be either the src or the dest
+    // buffer.
+    auto *bufferToReuse = getBufferToBeReused();
+    // Bail if none of the buffers can be reused.
+    if (!bufferToReuse)
+      return false;
+
+    // TODO: May be disallow usage of dest interval for src?
+    // This would avoid extending dest lifetime to start earlier.
+    // But it would also miss some opportunities for sharing buffers.
+    // if (bufferToReuse == destOrigin)
+    //   continue;
+
+    // Check if it is the destination buffer that can be reused.
+    if (bufferToReuse == destOrigin_) {
+      // This operation may extend the lifetime of dest's buffer.
+      // shareBuffers will fix it once it's done.
+      reuseBufferInsideInterval(srcOrigin_, dest_, *srcInterval_, M_,
+                                instrNumbering_, srcIntervals_, destIntervals_);
+      return true;
+    }
+
+    // Source buffer can be reused.
+    reuseBufferInsideInterval(destOrigin_, src_, *destInterval_, M_,
+                              instrNumbering_, destIntervals_, srcIntervals_);
+    return true;
+  }
+};
+
 /// Tries to share a buffer for two operands of the same instruction.
 /// An operand X cannot reuse the buffer of another operand Y,
 /// if the live interval of X overlaps with any live intervals of Y.
 /// The only exception is the copy instruction, where the live interval
 /// of the X may be enclosed into a live interval of Y because they have
 /// the same value after the copy instruction.
-static void tryToShareBuffersForInstr(LiveIntervalsMap &intervalsMap,
-                                      InstructionNumbering &instrNumbering,
-                                      Instruction *I, unsigned instIdx) {
+static void
+tryToShareBuffersForInstr(LiveIntervalsMap &intervalsMap,
+                          LiveIntervalsInstructionNumbering &instrNumbering,
+                          Instruction *I, unsigned instIdx) {
   Module &M = *I->getParent();
+  // Consider all pair of operands. Check if their respective buffers can be
+  // reused in principle.
   for (unsigned first = 0, e = I->getNumOperands(); first < e; first++) {
     auto destOp = I->getOperand(first);
     Value *dest = getAllocationOrigin(destOp.first);
@@ -608,157 +902,18 @@ static void tryToShareBuffersForInstr(LiveIntervalsMap &intervalsMap,
       if (!Instruction::isInplaceOp(I, first, second)) {
         continue;
       }
-
-      auto srcOrigin = getOrigin(src);
-      auto destOrigin = getOrigin(dest);
-
-      auto &srcIntervals = intervalsMap[srcOrigin];
-      auto &destIntervals = intervalsMap[destOrigin];
-
-      // Bail if information about live intervals is not known.
-      assert(!srcIntervals.empty() &&
-             "Set of live intervals for a memory buffer cannot be empty");
-      assert(!destIntervals.empty() &&
-             "Set of live intervals for a memory buffer cannot be empty");
-
-      // Find the Src live interval that encloses instIdx.
-      auto srcIntervalIt = getEnclosingInterval(
-          srcIntervals, InstructionNumbering::getInstrReadSlotNumber(instIdx));
-      assert(srcIntervalIt != srcIntervals.end() &&
-             "Cannot share buffers: cannot "
-             "find enclosing src interval");
-
-      // Find the Dest live interval that encloses instIdx.
-      auto destIntervalIt = getEnclosingInterval(
-          destIntervals,
-          InstructionNumbering::getInstrWriteSlotNumber(instIdx));
-      assert(destIntervalIt != destIntervals.end() &&
-             "Cannot share buffers: cannot "
-             "find enclosing src interval");
-
-      auto &srcInterval = *srcIntervalIt;
-      auto &destInterval = *destIntervalIt;
-
-      // Live interval destInterval is adjacent to live interval srcInterval,
-      // because they are connected via the current instruction.
-
-      // A helper logic for selecting which buffer can be reused for the other
-      // one. Returns a buffer that can be reused or nullptr, if reuse is not
-      // possible.
-      auto GetBufferToBeReused = [&]() -> Value * {
-        // Do not try to combine observables.
-        if (isObservable(destOrigin) && isObservable(srcOrigin))
-          return nullptr;
-        // Check if dest or src live interval is the last live interval of
-        // an observable memory location.
-        bool isDestLastIntervalOfObservable =
-            isObservable(destOrigin) && destInterval == destIntervals.back();
-        bool isSrcLastIntervalOfObservable =
-            isObservable(srcOrigin) && srcInterval == srcIntervals.back();
-
-        // A value X cannot reuse the buffer of another value Y,
-        // if the live interval of X overlaps with any live intervals of Y.
-        // The only exception is the copy instruction, where the live interval
-        // of the destination may be enclosed into a live interval of the source
-        // because they have the same value.
-        bool canCopyPropagate = isa<CopyInst>(I) &&
-                                isEnclosedInside(srcInterval, destInterval) &&
-                                srcInterval.sameValue_;
-        bool destIntvalCannotBeReplaced =
-            !canCopyPropagate &&
-            hasOverlappingIntervals(srcIntervals, destInterval);
-        bool srcIntervalCannotBeReplaced =
-            hasOverlappingIntervals(destIntervals, srcInterval);
-
-        if (!isDestLastIntervalOfObservable && !isSrcLastIntervalOfObservable &&
-            !destIntvalCannotBeReplaced && !srcIntervalCannotBeReplaced) {
-          // There are no restrictions and intervals can be combined on any
-          // order. Try to use a heuristic to pick the right way to combine
-          // them.
-
-          // Try to reuse the interval of an observable memory location, because
-          // it does not increase the memory usage.
-          // TODO: If it would introduce a last write into an observable, do not
-          // do it.
-          if (isObservable(srcOrigin) && !isObservable(destOrigin)) {
-            // Use src buffer for dest.
-            return srcOrigin;
-          }
-
-          if (isObservable(destOrigin) && !isObservable(srcOrigin)) {
-            // Use dest buffer for src.
-            return destOrigin;
-          }
-
-          // Avoid sharing a buffer if there is a single
-          // live interval in the interval list. After replacement
-          // this whole buffer can be eliminated.
-          if (srcIntervals.size() == 1 && destIntervals.size() != 1) {
-            // Use dest buffer for src.
-            return destOrigin;
-          }
-
-          if (destIntervals.size() == 1 && srcIntervals.size() != 1) {
-            // Use src buffer for dest.
-            return srcOrigin;
-          }
-
-          // Just use src buffer for dest by default.
-          return srcOrigin;
-        }
-
-        // Try to check if buffers can be shared by using
-        // src instead of dst inside the live interval of dest.
-        // This is possible if src is not live after the current instruction and
-        // until the end of the current Dest's live interval.
-        if (isDestLastIntervalOfObservable || destIntvalCannotBeReplaced) {
-          // Dest cannot be replaced by src because src is being mutated while
-          // dest is alive or because dest contains the last write into
-          // an observable memory location.
-
-          // Try to replace src by dest in the live interval of src.
-          // This is possible if Src is not live anywhere inside the current
-          // Dest's live interval ending at the current instruction.
-
-          // Bail, because src cannot be replaced by dest because dest is being
-          // mutated while src is alive or because src contains the last write
-          // into an observable memory location.
-          if (isSrcLastIntervalOfObservable || srcIntervalCannotBeReplaced)
-            return nullptr;
-          return destOrigin;
-        }
-
-        return srcOrigin;
-      };
-
-      auto *bufferToReuse = GetBufferToBeReused();
-      if (!bufferToReuse)
-        continue;
-
-      // TODO: May be disallow usage of dest interval for src?
-      // This would avoid extending dest lifetime to start earlier.
-      // But it would also miss some opportunities for sharing buffers.
-      // if (bufferToReuse == destOrigin)
-      //   continue;
-
-      if (bufferToReuse == destOrigin) {
-        // This operation may extend the lifetime of dest's buffer.
-        // shareBuffers will fix it once it's done.
-        reuseBufferInsideInterval(srcOrigin, dest, srcInterval, M,
-                                  instrNumbering, srcIntervals, destIntervals);
+      // The buffers can be reused in principle, thus try to share the buffers.
+      BufferSharingOptimizer Opt(M, intervalsMap, instrNumbering, I, instIdx,
+                                 dest, src);
+      if (Opt.tryToShareBuffers())
         return;
-      }
-
-      reuseBufferInsideInterval(destOrigin, src, destInterval, M,
-                                instrNumbering, destIntervals, srcIntervals);
-      return;
     }
   }
 }
 
 /// Sharing of buffers
 ///
-/// The purpose of this optimization is to reuse memory usage by
+/// The purpose of this optimization is to reduce the memory usage by
 /// reusing memory buffers as much as possible.
 ///
 /// The overall idea is that it is fine to combine storage for two live
@@ -772,7 +927,7 @@ static void shareBuffers(Module &M) {
   // which is either a WeightVar or a an Allocation.
   LiveIntervalsMap intervalsMap;
   calculateLiveIntervals(M, intervalsMap);
-  InstructionNumbering instrNumbering(M);
+  LiveIntervalsInstructionNumbering instrNumbering(M);
 
   // Get the source of the copy. This memory location may have been
   // modified by any instruction that used it as an @out or @inout
