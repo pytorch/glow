@@ -140,10 +140,11 @@ int main(int argc, char **argv) {
                     "instruction, and is target- and type-specific.");
 
   BB.newNode("BatchedArithmetic")
+      .addEnumCase("Add")
       .addInput("Batch")
       .addInput("Slice")
-      .addEnumCase("Add")
-      .addResult("Batch.getType()")
+      .addResult("outTy")
+      .addExtraParam("TypeRef", "outTy")
       .setDocstring(
           "Adds the 'Slice' operand to each one of the slices in the batch.");
 

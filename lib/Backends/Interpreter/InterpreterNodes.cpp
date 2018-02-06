@@ -1031,7 +1031,7 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
             sum += (L - lhsOffset) * (R - rhsOffset);
           }
 
-          dest.at({n, x, y}) = (scale * sum) + destOffset;
+          dest.at({n, x, y}) = std::round(scale * sum + destOffset);
         }
       }
     } // N
@@ -1071,6 +1071,51 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
 
 void Interpreter::fwdBatchedAddInst(bool isTrain,
                                     const glow::BatchedAddInst *I) {
+  if (getTensor(I->getBatch())->getType().isQuantizedType()) {
+    auto batch = getTensor(I->getBatch())->getHandle<int8_t>();
+    auto slice = getTensor(I->getSlice())->getHandle<int8_t>();
+    auto dest = getTensor(I->getDest())->getHandle<int8_t>();
+
+    auto batchTy = I->getBatch()->getType();
+    auto sliceTy = I->getSlice()->getType();
+    auto destTy = I->getDest()->getType();
+
+    float sliceScale = sliceTy->getScale();
+    float batchScale = batchTy->getScale();
+    float destScale = destTy->getScale();
+
+    int32_t sliceOffset = sliceTy->getOffset();
+    int32_t batchOffset = batchTy->getOffset();
+    int32_t destOffset = destTy->getOffset();
+
+    auto bdim = flattenCdr(batch.dims());
+    assert(slice.size() == bdim.second && "Invalid slice size");
+    assert(batch.dims().drop_front() == slice.dims() && "Invalid batch size");
+
+    // For each layer in the batch:
+    for (size_t n = 0; n < bdim.first; n++) {
+      size_t base = batch.getElementPtr({n});
+
+      // For each element in the slice.
+      for (size_t i = 0; i < bdim.second; i++) {
+        int32_t batchVal = batch.raw(base + i);
+        int32_t sliceVal = slice.raw(i);
+        // We increase the size of the integer up to 16 bits for more accurate
+        // arithmetic.
+        const float largeScale = float(1) / (1 << 15);
+        // Scale both sides from 8-bit to 16-bits.
+        int32_t B = std::round(float(batchVal - batchOffset) *
+                               (batchScale / largeScale));
+        int32_t S = std::round(float(sliceVal - sliceOffset) *
+                               (sliceScale / largeScale));
+        int32_t R = B + S;
+        dest.raw(base + i) =
+            std::round(float(R) * (largeScale / destScale) + destOffset);
+      }
+    }
+    return;
+  }
+
   auto batch = getWeightHandle(I->getBatch());
   auto slice = getWeightHandle(I->getSlice());
   auto dest = getWeightHandle(I->getDest());
