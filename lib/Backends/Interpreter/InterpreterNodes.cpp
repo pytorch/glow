@@ -1007,7 +1007,7 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
     // is defined as the formular (L.scale * R.scale / D.scale).
     // In here we assume that the offset for all buffers is zero.
     float scale = lhsTy->getScale() * rhsTy->getScale() / destTy->getScale();
-    auto TR = quantizeScaleOffset32To8(scale, 0);
+    float offset = 0;
 
     // For each layer in the batch:
     for (size_t n = 0; n < destDim[0]; n++) {
@@ -1020,12 +1020,12 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
         for (size_t y = 0; y < destDim[2]; y++) {
 
           // Perform DOT on the row an column.
-          uint32_t sum = 0;
+          int32_t sum = 0;
           for (size_t i = 0; i < lhsDim[2]; i++) {
-            sum += lhs.at({ln, x, i}) * rhs.at({rn, i, y});
+            sum += (int32_t)lhs.at({ln, x, i}) * (int32_t)rhs.at({rn, i, y});
           }
 
-          dest.at({n, x, y}) = TR.transform(sum);
+          dest.at({n, x, y}) = (scale * sum) + offset;
         }
       }
     } // N

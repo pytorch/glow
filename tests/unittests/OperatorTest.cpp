@@ -268,20 +268,54 @@ TEST(Operator, Gather) {
 TEST(Operator, IntMatMul) {
   ExecutionEngine EE;
   auto &G = EE.getGraph();
-  Type resTy(ElemKind::Int8QTy, {1, 30, 30}, 0.5, 0);
 
-  auto *lhs = G.createVariable(ElemKind::Int8QTy, {1, 30, 30}, 0.12, 0, "lhs");
-  auto *rhs = G.createVariable(ElemKind::Int8QTy, {1, 30, 30}, 0.05, 0, "rhs");
-  auto *res = G.createVariable(&resTy, "res");
+  // The scaling factor 1.4x was carefully selected to make sure we don't
+  // overflow or underflow the calculation.
+  Type resTy(ElemKind::Int8QTy, {1, 3, 3}, 1.4, 0);
+  Type lhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.1, 0);
+  Type rhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.1, 0);
 
-  lhs->getHandle<int8_t>().randomize(-12, 12);
-  rhs->getHandle<int8_t>().randomize(-5, 5);
+  auto *lhs = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "lhs");
+  auto *rhs = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "rhs");
+  auto *res = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "res");
 
-  auto R = G.createBatchedMatMul("matmul", &resTy, lhs, rhs);
+  lhs->getPayload().getHandle() = {
+      1.0, 2.0, 3.0, 4.0, 5.0, -5.0, -4.0, -3.0, 9.0,
+  };
 
-  G.createSave("save", R, res);
+  rhs->getPayload().getHandle() = {
+      0.1, -0.2, 0.3, 9.0, -8.0, 7.0, 6.0, 5.0, 9.0,
+  };
 
+  llvm::errs() << "\n\n";
+
+  auto *lhsq = G.createQuantize("lhs.q", lhs, &lhsTy);
+  auto *rhsq = G.createQuantize("rhs.q", rhs, &rhsTy);
+
+  auto *matmulq = G.createBatchedMatMul("matmul.q", &resTy, lhsq, rhsq);
+
+  auto *rq = G.createDequantize("dequant", matmulq);
+
+  G.createSave("save", rq, res);
   EE.compile(CompilationMode::Infer);
 
   EE.run({}, {});
+
+  /*
+   Test the following matrix multiplication:
+   A =   [[[1.0, 2.0, 3.0], [4.0, 5.0, -5.0], [-4.0, -3.0, 9.0]]]
+   B =   [[[0.1, -0.2, 0.3], [9.0, -8.0, 7.0], [6.0, 5.0, 9.0]]]
+   A * B = [ 36.1,  -1.2,  41.3], [ 15.4, -65.8,  -8.8], [ 26.6,  69.8,  58.8]]
+   */
+
+  auto H = res->getPayload().getHandle();
+  EXPECT_FLOAT_EQ(H.at({0, 0, 0}), 35.0);
+  EXPECT_FLOAT_EQ(H.at({0, 0, 1}), 0);
+  EXPECT_FLOAT_EQ(H.at({0, 0, 2}), 40.6);
+  EXPECT_FLOAT_EQ(H.at({0, 1, 0}), 15.4);
+  EXPECT_FLOAT_EQ(H.at({0, 1, 1}), -65.8);
+  EXPECT_FLOAT_EQ(H.at({0, 1, 2}), -8.4);
+  EXPECT_FLOAT_EQ(H.at({0, 2, 0}), 26.6);
+  EXPECT_FLOAT_EQ(H.at({0, 2, 1}), 68.6);
+  EXPECT_FLOAT_EQ(H.at({0, 2, 2}), 58.8);
 }
