@@ -184,7 +184,7 @@ int main(int argc, char **argv) {
       "Glow is a compiler for neural network accelerators.\n");
 
   Tensor data;
-  Tensor expected_softmax(ElemKind::IndexTy, {1, 1});
+  Tensor expectedSoftmax(ElemKind::IndexTy, {1, 1});
 
   loadImagesAndPreprocess(InputImageFilenames, &data, ImageMode);
 
@@ -202,7 +202,7 @@ int main(int argc, char **argv) {
   {
     caffe2ModelLoader LD(NetDescFilename, NetWeightFilename,
                          {"data", "gpu_0/data", "softmax_expected"},
-                         {&data, &data, &expected_softmax}, G);
+                         {&data, &data, &expectedSoftmax}, G);
     SM = LD.getRoot();
     i0 = llvm::cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
     i1 = llvm::cast<Variable>(LD.getOrCreateNodeByName("data"));

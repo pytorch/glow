@@ -130,9 +130,7 @@ public:
 
   /// Reset the shape and type of this tensor to match the shape and type of
   /// \p other.
-  void reset(const Tensor *other) {
-    reset(other->getElementType(), other->dims());
-  }
+  void reset(const Tensor *other) { reset(other->getType()); }
 
   void reset(ElemKind elemTy, llvm::ArrayRef<size_t> shape) {
     Type t(elemTy, shape);
