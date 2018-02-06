@@ -59,6 +59,56 @@ struct Interval {
   }
 };
 
+/// A helper class used for instructions numbering.
+class LiveIntervalsInstructionNumbering : public InstructionNumbering {
+public:
+  /// Virtual slot number to be used for instructions numbering. It helps to
+  /// distinguish reads from writes and makes comparision of live intervals
+  /// easier. LLVM used a similar approach for the linear scan register
+  /// allocator.
+  ///
+  /// For an instruction with number N, its @in operands would be considered
+  /// to be at (N+READ_SLOT), its @out operands would be at (N+WRITE_SLOT).
+  enum SLOTS {
+    READ_SLOT = 0,
+    WRITE_SLOT = 2,
+    MAX_SLOT = 4,
+  };
+
+  LiveIntervalsInstructionNumbering(Module &M)
+      : InstructionNumbering(M, MAX_SLOT) {}
+
+  /// \returns the base number of the instruction.
+  /// It is the same for all slots of a given instruction.
+  static int64_t getInstrBaseNumber(int64_t idx) {
+    return idx / MAX_SLOT * MAX_SLOT;
+  }
+
+  /// \returns true if \p idx is the instruction number of the read slot of the
+  /// instruction.
+  static bool isReadSlotNumber(int64_t idx) {
+    return idx % MAX_SLOT == READ_SLOT;
+  }
+
+  /// \returns true if \p idx is the instruction number of a write slot of the
+  /// instruction.
+  static bool isWriteSlotNumber(int64_t idx) {
+    return idx % MAX_SLOT == WRITE_SLOT;
+  }
+
+  /// \returns the instruction number of a read slot of instruction with number
+  /// \p idx.
+  static int64_t getInstrReadSlotNumber(int64_t idx) {
+    return getInstrBaseNumber(idx) + READ_SLOT;
+  }
+
+  /// \returns the instruction number of a write slot of instruction with number
+  /// \p idx.
+  static int64_t getInstrWriteSlotNumber(int64_t idx) {
+    return getInstrBaseNumber(idx) + WRITE_SLOT;
+  }
+};
+
 #ifndef NDEBUG
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Interval &I) {
   os << I.str();
@@ -327,7 +377,7 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
   // Compute the [start..end) intervals for each alloc activation in our basic
   // block. Notice that we ignore Dealloc instructions in our analysis.
   for (auto it = instrs.begin(), e = instrs.end(); it != e;
-       ++it, instIdx += InstructionNumbering::MAX_SLOT) {
+       ++it, instIdx += LiveIntervalsInstructionNumbering::MAX_SLOT) {
     auto *I = *it;
     // Ignore deallocations in our liveness calculation.
     if (isa<DeallocActivationInst>(I)) {
@@ -370,9 +420,11 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
 
       auto opIdx = instIdx;
       if (opKind == OperandKind::Out) {
-        opIdx = InstructionNumbering::getInstrWriteSlotNumber(instIdx);
+        opIdx =
+            LiveIntervalsInstructionNumbering::getInstrWriteSlotNumber(instIdx);
       } else {
-        opIdx = InstructionNumbering::getInstrReadSlotNumber(instIdx);
+        opIdx =
+            LiveIntervalsInstructionNumbering::getInstrReadSlotNumber(instIdx);
       }
 
       auto found = liveness.find(loc);
@@ -411,7 +463,8 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
       // No need to create a new interval if it is not a write.
       if (opKind != OperandKind::Out)
         continue;
-      opIdx = InstructionNumbering::getInstrWriteSlotNumber(instIdx);
+      opIdx =
+          LiveIntervalsInstructionNumbering::getInstrWriteSlotNumber(instIdx);
       // This instruction modifies the memory location.
       // Therefore, end the current active live interval
       // for this memory location and begin a new one.
@@ -510,9 +563,12 @@ replaceAllUsesInsideIntervalWith(Value *val, Value *with,
       // Is the operand the value we are looking for?
       if (opOrigin != valOrigin)
         continue;
-      auto opIdx = (opKind == OperandKind::In)
-                       ? InstructionNumbering::getInstrReadSlotNumber(instIdx)
-                       : InstructionNumbering::getInstrWriteSlotNumber(instIdx);
+      auto opIdx =
+          (opKind == OperandKind::In)
+              ? LiveIntervalsInstructionNumbering::getInstrReadSlotNumber(
+                    instIdx)
+              : LiveIntervalsInstructionNumbering::getInstrWriteSlotNumber(
+                    instIdx);
       // Skip operands outside of the interval.
       if (opIdx < liveInterval.begin_ || opIdx >= liveInterval.end_)
         continue;
@@ -623,7 +679,8 @@ static void tryToShareBuffersForInstr(LiveIntervalsMap &intervalsMap,
 
       // Find the Src live interval that encloses instIdx.
       auto srcIntervalIt = getEnclosingInterval(
-          srcIntervals, InstructionNumbering::getInstrReadSlotNumber(instIdx));
+          srcIntervals,
+          LiveIntervalsInstructionNumbering::getInstrReadSlotNumber(instIdx));
       assert(srcIntervalIt != srcIntervals.end() &&
              "Cannot share buffers: cannot "
              "find enclosing src interval");
@@ -631,7 +688,7 @@ static void tryToShareBuffersForInstr(LiveIntervalsMap &intervalsMap,
       // Find the Dest live interval that encloses instIdx.
       auto destIntervalIt = getEnclosingInterval(
           destIntervals,
-          InstructionNumbering::getInstrWriteSlotNumber(instIdx));
+          LiveIntervalsInstructionNumbering::getInstrWriteSlotNumber(instIdx));
       assert(destIntervalIt != destIntervals.end() &&
              "Cannot share buffers: cannot "
              "find enclosing src interval");
@@ -772,7 +829,7 @@ static void shareBuffers(Module &M) {
   // which is either a WeightVar or a an Allocation.
   LiveIntervalsMap intervalsMap;
   calculateLiveIntervals(M, intervalsMap);
-  InstructionNumbering instrNumbering(M);
+  LiveIntervalsInstructionNumbering instrNumbering(M);
 
   // Get the source of the copy. This memory location may have been
   // modified by any instruction that used it as an @out or @inout
