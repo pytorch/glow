@@ -70,8 +70,7 @@ static TensorQuantizationParams chooseQuantizationParams(float min, float max) {
     nudgedZeroPoint = static_cast<int32_t>(round(initialZeroPoint));
   }
 
-  TensorQuantizationParams result{static_cast<float>(scale),
-                                  static_cast<float>(nudgedZeroPoint)};
+  TensorQuantizationParams result{static_cast<float>(scale), nudgedZeroPoint};
   return result;
 }
 
@@ -220,7 +219,8 @@ generateNodeQuantizationInfos(const Graph &G) {
   return quantizationInfos;
 }
 
-QuantizationTransform32To8 quantizeScaleOffset32To8(float scale, float offset) {
+QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
+                                                    int32_t offset) {
   // In this function we compute an efficient way to convert signed 32-bit
   // integers into signed 8-bit integers without the use of floating-point
   // multiplication. Instead, we represent the original calculation:
@@ -322,7 +322,7 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale, float offset) {
   }
 
   return QuantizationTransform32To8(preShift, postShift, std::round(scale),
-                                    std::round(offset));
+                                    offset);
 }
 
 int8_t quantize(float input, const TensorQuantizationParams &TQP) {
