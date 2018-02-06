@@ -339,6 +339,9 @@ void BatchedAddInst::verify() const {
   assert(getBatch()->dims() == getDest()->dims() && "Invalid dest type");
   (void)batchShape;
   (void)rhsShape;
+  assert(getBatch()->getType()->getElementType() ==
+             getSlice()->getType()->getElementType() &&
+         "Mismatched element types");
 }
 
 void BatchedReduceAddInst::verify() const {
