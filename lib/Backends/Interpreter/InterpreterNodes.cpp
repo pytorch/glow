@@ -1007,7 +1007,9 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
     // is defined as the formular (L.scale * R.scale / D.scale).
     // In here we assume that the offset for all buffers is zero.
     float scale = lhsTy->getScale() * rhsTy->getScale() / destTy->getScale();
-    float offset = 0;
+    int32_t lhsOffset = lhsTy->getOffset();
+    int32_t rhsOffset = rhsTy->getOffset();
+    int32_t destOffset = destTy->getOffset();
 
     // For each layer in the batch:
     for (size_t n = 0; n < destDim[0]; n++) {
@@ -1022,10 +1024,14 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
           // Perform DOT on the row an column.
           int32_t sum = 0;
           for (size_t i = 0; i < lhsDim[2]; i++) {
-            sum += (int32_t)lhs.at({ln, x, i}) * (int32_t)rhs.at({rn, i, y});
+            int32_t L = lhs.at({ln, x, i});
+            int32_t R = rhs.at({rn, i, y});
+            // We represent the element multiplication with offset as
+            // (value - offset).
+            sum += (L - lhsOffset) * (R - rhsOffset);
           }
 
-          dest.at({n, x, y}) = (scale * sum) + offset;
+          dest.at({n, x, y}) = (scale * sum) + destOffset;
         }
       }
     } // N
