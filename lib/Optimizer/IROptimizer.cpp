@@ -36,14 +36,14 @@ using llvm::isa;
 /// holds a value.
 struct Interval {
   /// Index of the interval begin.
-  size_t begin_;
+  int64_t begin_;
   /// Index of the interval end.
-  size_t end_;
+  int64_t end_;
   /// True if the value may change between begin and end, e.g.
   /// due to @inout use.
   bool sameValue_{true};
 
-  Interval(size_t begin, size_t end, bool sameValue = true)
+  Interval(int64_t begin, int64_t end, bool sameValue = true)
       : begin_(begin), end_(end), sameValue_(sameValue) {}
 
   bool operator==(const Interval &other) const {
@@ -434,7 +434,7 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
 /// Provided a set of intervals, return the interval covering
 /// a given instruction.
 static Intervals::iterator getEnclosingInterval(Intervals &LiveIntervals,
-                                                size_t instIdx) {
+                                                int64_t instIdx) {
   for (auto I = LiveIntervals.begin(), E = LiveIntervals.end(); I != E; ++I) {
     if (I->begin_ <= instIdx && instIdx < I->end_)
       return I;
