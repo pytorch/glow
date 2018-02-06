@@ -271,9 +271,9 @@ TEST(Operator, IntMatMul) {
 
   // The scaling factor 1.4x was carefully selected to make sure we don't
   // overflow or underflow the calculation.
-  Type resTy(ElemKind::Int8QTy, {1, 3, 3}, 1.4, 0);
-  Type lhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.1, 0);
-  Type rhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.1, 0);
+  Type resTy(ElemKind::Int8QTy, {1, 3, 3}, 1.4, -4.0);
+  Type lhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.1, 2.0);
+  Type rhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.1, -1.0);
 
   auto *lhs = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "lhs");
   auto *rhs = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "rhs");
