@@ -98,7 +98,7 @@ public:
 
   /// Allocate and initialize a new integer tensor with \p scale and \p offset.
   Tensor(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
-         float offset)
+         int32_t offset)
       : data_(nullptr), type_(elemTy, dims, scale, offset) {
     reset(type_);
   }

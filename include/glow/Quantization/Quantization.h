@@ -16,7 +16,7 @@ namespace glow {
 /// integer tensor back to float one.
 struct TensorQuantizationParams {
   float scale_;
-  float offset_;
+  int32_t offset_;
 };
 
 /// Tensor quantization parameters for a given node.
@@ -31,7 +31,7 @@ struct NodeQuantizationInfo {
         tensorQuantizationParams_(tensorQuantizationParams) {}
 
   float Scale() const { return tensorQuantizationParams_.scale_; }
-  float Offset() const { return tensorQuantizationParams_.offset_; }
+  int32_t Offset() const { return tensorQuantizationParams_.offset_; }
 };
 
 /// Generate NodeQuantizationInfo for all required nodes from graph \p G.
@@ -72,7 +72,8 @@ public:
 /// result = ((input >> pre) * scale) >> post + offset.
 /// This scales a 32-bit signed integer word into an 8-bit signed integer.
 /// \returns transformation parameters.
-QuantizationTransform32To8 quantizeScaleOffset32To8(float scale, float offset);
+QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
+                                                    int32_t offset);
 
 /// Converts floating point value to int8 based on the quantization
 /// parameters \p TQP.

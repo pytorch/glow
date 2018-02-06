@@ -84,7 +84,7 @@ public:
 
   /// Return a pointer to a uniqued type \p t in the current module.
   TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
-                     float offset);
+                     int32_t offset);
 
   /// Return a pointer to a uniqued type \p t in the current module.
   /// The new type is identical to \p T, with a new shape \p dims.
@@ -109,7 +109,7 @@ public:
       float val = 0.0);
 
   Variable *createVariable(
-      ElemKind T, llvm::ArrayRef<size_t> dims, float scale, float offset,
+      ElemKind T, llvm::ArrayRef<size_t> dims, float scale, int32_t offset,
       llvm::StringRef name,
       Variable::VisibilityKind visibility = Variable::VisibilityKind::Private,
       Variable::TrainKind train = Variable::TrainKind::Broadcast,

@@ -117,28 +117,27 @@ TEST(Graph, simpleQuant) {
   unsigned step = 1;
   unsigned width = 224;
 
-  auto *input =
-      G.createVariable(ElemKind::Int8QTy, {1, width, width, 3}, 0.4, 0.2,
-                       "Input", Variable::VisibilityKind::Public);
+  auto *input = G.createVariable(ElemKind::Int8QTy, {1, width, width, 3}, 0.4,
+                                 2, "Input", Variable::VisibilityKind::Public);
 
   // Calculate the size and allocate the output buffer.
   std::array<size_t, 4> filterDim = {{depth, kernel, kernel, 3}};
-  auto *filter = G.createVariable(ElemKind::Int8QTy, filterDim, 3.3, 0.4, "F",
+  auto *filter = G.createVariable(ElemKind::Int8QTy, filterDim, 3.3, 4, "F",
                                   Variable::VisibilityKind::Private);
-  auto *bias = G.createVariable(ElemKind::Int8QTy, {depth}, 1.3, 5.6, "B",
+  auto *bias = G.createVariable(ElemKind::Int8QTy, {depth}, 1.3, 5, "B",
                                 Variable::VisibilityKind::Private);
 
   // Calculate the size and allocate the output buffer.
   auto outSz = calculateConvOutputDims(width, width, kernel, step, pad);
   std::array<size_t, 4> outDims = {{1, outSz.first, outSz.second, 16}};
-  auto t = G.uniqueType(glow::ElemKind::Int8QTy, outDims, 1.5, 6.7);
+  auto t = G.uniqueType(glow::ElemKind::Int8QTy, outDims, 1.5, 6);
 
   auto *conv =
       G.createConv("conv", input, filter, bias, t, depth, kernel, step, pad);
 
   auto s = conv->getType()->size();
-  auto *fcFilter = G.createVariable(ElemKind::Int8QTy, {s, 6}, 0.4, 0.2, "F");
-  auto *fcBias = G.createVariable(ElemKind::Int8QTy, {6}, 0.4, 0.2, "B");
+  auto *fcFilter = G.createVariable(ElemKind::Int8QTy, {s, 6}, 0.4, 2, "F");
+  auto *fcBias = G.createVariable(ElemKind::Int8QTy, {6}, 0.4, 2, "B");
   Node *O = G.createFullyConnected("fc1", conv, fcFilter, fcBias, 6);
   G.createSave("ret", O);
   EE.compile(CompilationMode::Infer);
@@ -149,7 +148,7 @@ TEST(Graph, quantizeDequantizeNodes) {
   auto &G = EE.getGraph();
 
   auto *input = G.createVariable(ElemKind::FloatTy, {1, 3}, "Input");
-  auto qType = G.uniqueType(ElemKind::Int8QTy, {1, 3}, 0.3, 0.5);
+  auto qType = G.uniqueType(ElemKind::Int8QTy, {1, 3}, 0.3, 5);
 
   auto *Q = G.createQuantize("quantize", input, qType);
 

@@ -96,13 +96,14 @@ struct Type final {
   /// On quantized tensors, this represents the scale of the values.
   float scale_{0};
   /// On quantized tensors, this represents the offset of the values.
-  float offset_{0};
+  int32_t offset_{0};
 
   /// Specifies the element type of the tensor.
   ElemKind elementType_{ElemKind::IndexTy};
 
   /// Initialize a new integer type with \p scale and \p offset.
-  Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale, float offset)
+  Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
+       int32_t offset)
       : scale_(scale), offset_(offset), elementType_(elemTy) {
     assert(isQuantizedType() && "Only Integer types have a scale and offset");
     initDims(dims);
@@ -126,7 +127,7 @@ struct Type final {
     return scale_;
   }
 
-  float getOffset() const {
+  int32_t getOffset() const {
     assert(isQuantizedType() && "Can't get the offset of a float type");
     return offset_;
   }

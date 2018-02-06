@@ -36,7 +36,7 @@ TypeRef Graph::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims) {
 }
 
 TypeRef Graph::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
-                          float scale, float offset) {
+                          float scale, int32_t offset) {
   return uniqueType(Type(elemTy, dims, scale, offset));
 }
 
@@ -82,7 +82,8 @@ Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
 }
 
 Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
-                                float scale, float offset, llvm::StringRef name,
+                                float scale, int32_t offset,
+                                llvm::StringRef name,
                                 Variable::VisibilityKind visibility,
                                 Variable::TrainKind train, float val) {
   auto FT = uniqueType(T, dims, scale, offset);
