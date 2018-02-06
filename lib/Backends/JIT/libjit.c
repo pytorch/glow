@@ -342,6 +342,43 @@ void pool_avg_f(const float *inW, float *outW, const size_t *inWdims,
   }       // N
 }
 
+void pool_avg_grad_f(float *inG, const float *outG, const size_t *inGdims,
+                     const size_t *outWdims, size_t kernel, size_t stride,
+                     size_t pad) {
+  float kernelArea = kernel * kernel;
+
+  // NHWC format is assumed
+  for (size_t n = 0; n < outWdims[0]; n++) {
+    for (size_t z = 0; z < outWdims[3]; z++) {
+      // Clear inG
+      for (size_t x = 0; x < inGdims[1]; x++) {
+        for (size_t y = 0; y < inGdims[2]; y++) {
+          inG[getXYZW(inGdims, n, x, y, z)] = 0.0;
+        }
+      }
+
+      ssize_t x = -(ssize_t)pad;
+      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+        ssize_t y = -(ssize_t)pad;
+        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+          float df = outG[getXYZW(outWdims, n, ax, ay, z)] / kernelArea;
+          for (size_t kx = 0; kx < kernel; kx++) {
+            for (size_t ky = 0; ky < kernel; ky++) {
+              ssize_t ox = x + kx;
+              ssize_t oy = y + ky;
+              if (ox < 0 || oy < 0 || ox >= (ssize_t)inGdims[1] ||
+                  oy >= (ssize_t)inGdims[2]) {
+                continue;
+              }
+              inG[getXYZW(inGdims, n, (size_t)ox, (size_t)oy, z)] += df;
+            }
+          }
+        } // W
+      }   // H
+    }     // C
+  }       // N
+}
+
 void sgd_f(float *W, const float *G, float *Gsum, float L1Decay, float L2Decay,
            float learningRate, float momentum, size_t batchSize, size_t Wsize) {
   for (size_t i = 0; i < Wsize; i++) {

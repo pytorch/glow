@@ -16,6 +16,13 @@ void inferMaxNet(glow::Tensor *inputs1, glow::Tensor *inputs2,
 void inferMinNet(glow::Tensor *inputs1, glow::Tensor *inputs2,
                  glow::Tensor *out, glow::BackendKind kind);
 
+void inferPoolAvgNet(glow::Tensor *inputs, glow::Tensor *out,
+                     glow::BackendKind kind);
+
+void trainPoolAvgNet(glow::Tensor *inputs, glow::Tensor *selected,
+                     llvm::ArrayRef<size_t> shape, glow::Tensor *out,
+                     glow::BackendKind kind);
+
 void inferReluNet(glow::Tensor *inputs, glow::Tensor *out,
                   glow::BackendKind kind);
 

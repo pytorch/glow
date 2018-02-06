@@ -79,6 +79,40 @@ TEST(JITCorrectnessTest, minTest) {
   EXPECT_TRUE(H1.isEqual(H2));
 }
 
+TEST(JITCorrectnessTest, poolAvgTest) {
+  Tensor inputs(ElemKind::FloatTy, {14, 12, 19, 7});
+  inputs.getHandle().initXavier(1);
+  Tensor out1;
+  Tensor out2;
+
+  inferPoolAvgNet(&inputs, &out1, BackendKind::JIT);
+  inferPoolAvgNet(&inputs, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
+TEST(JITCorrectnessTest, poolAvgGradTest) {
+  Tensor inputs(ElemKind::FloatTy, {15, 21, 17, 11});
+  Tensor selected(ElemKind::IndexTy, {15, 1});
+  inputs.getHandle().initXavier(1);
+  auto selectedH = selected.getHandle<size_t>();
+  for (size_t i = 0; i < 15; i++) {
+    selectedH.raw(i) = nextRandInt(880);
+  }
+  Tensor out1(ElemKind::FloatTy, {15, 880});
+  Tensor out2(ElemKind::FloatTy, {15, 880});
+
+  trainPoolAvgNet(&inputs, &selected, {15, 880}, &out1, BackendKind::JIT);
+  trainPoolAvgNet(&inputs, &selected, {15, 880}, &out2,
+                  BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
 TEST(JITCorrectnessTest, reluTest) {
   Tensor inputs(ElemKind::FloatTy, {2, 16});
   inputs.getHandle().initXavier(1);
