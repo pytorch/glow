@@ -576,7 +576,7 @@ public:
                            unsigned axis) {
     auto origDims = dims();
     const int dimDifference = otherDims.size() - origDims.size();
-
+    (void)dimDifference;
     assert(otherDims.size() >= origDims.size() &&
            "Dimensions to broadcast to must be equal or greater size.");
     assert(axis <= dimDifference &&
