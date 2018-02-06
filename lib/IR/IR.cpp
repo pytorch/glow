@@ -246,6 +246,7 @@ static void LLVM_ATTRIBUTE_UNUSED verifyOperandsAccess(Instruction *I) {
       if (auto *W = llvm::dyn_cast<WeightVar>(OpValue)) {
         assert(W->getMutability() != WeightVar::MutabilityKind::Constant &&
                "Constant weights cannot be updated");
+        (void)W;
       }
     }
     // If the same operand is used multiple times by an instruction,

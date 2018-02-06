@@ -486,7 +486,7 @@ replaceAllUsesInsideIntervalWith(Value *val, Value *with,
   auto &instrs = M.getInstrs();
   auto valOrigin = getOrigin(val);
   auto withOrigin = getOrigin(with);
-  int instIdx = 0;
+  unsigned instIdx = 0;
   IRBuilder B(&M);
   for (auto it = instrNumbering.getInstr(liveInterval.begin_), e = instrs.end();
        it != e && instIdx <= liveInterval.end_; ++it) {
@@ -580,7 +580,7 @@ static void reuseBufferInsideInterval(Value *oldBuffer, Value *newBuffer,
 /// the same value after the copy instruction.
 static void tryToShareBuffersForInstr(LiveIntervalsMap &intervalsMap,
                                       InstructionNumbering &instrNumbering,
-                                      Instruction *I, int instIdx) {
+                                      Instruction *I, unsigned instIdx) {
   Module &M = *I->getParent();
   for (unsigned first = 0, e = I->getNumOperands(); first < e; first++) {
     auto destOp = I->getOperand(first);

@@ -20,7 +20,10 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   }
 
   // Validate signature.
-  fread(header, 1, 8, fp);
+  size_t fread_ret = fread(header, 1, 8, fp);
+  if (fread_ret != 8) {
+    return true;
+  }
   if (png_sig_cmp(header, 0, 8)) {
     return true;
   }

@@ -49,9 +49,9 @@ public:
 /// that free more memory after their computation.
 class ChildMemSizeBasedScheduler : public Scheduler {
   /// Required number of bytes to hold the results of a given node.
-  std::unordered_map<const Node *, int> resultMemSize_;
+  std::unordered_map<const Node *, size_t> resultMemSize_;
   /// Max number of bytes required during the computation of a given node.
-  std::unordered_map<const Node *, int> maxMemSize_;
+  std::unordered_map<const Node *, size_t> maxMemSize_;
 
   /// \returns true if a node \p N is scheduled already.
   bool isScheduled(const Node *N) const {

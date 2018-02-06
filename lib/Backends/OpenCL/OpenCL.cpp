@@ -475,6 +475,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
       assert(tensors_[TV] == tensors_[TV->getSrc()] &&
              "Memory address for a tensor_view should be the same as the "
              "address of its origin");
+      (void)TV;
       continue;
     }
 

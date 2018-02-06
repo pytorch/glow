@@ -406,7 +406,7 @@ TEST(Tensor, broadcastNewShape) {
 
   // Verify broadcasted B has same shape.
   EXPECT_EQ(numDims_A, broadcastedBHandle.dims().size());
-  for (int i = 0; i < broadcastedBHandle.dims().size(); i++) {
+  for (size_t i = 0; i < broadcastedBHandle.dims().size(); i++) {
     EXPECT_EQ(dims_A[i], broadcastedBHandle.dims()[i]);
   }
 
