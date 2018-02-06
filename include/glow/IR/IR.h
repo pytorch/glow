@@ -307,22 +307,11 @@ class InstructionNumbering {
   /// Maps an instruction to its number.
   InstructionNumbersMap InstrToNum_;
   Module &M_;
+  /// Step to be used for instruction numbering.
+  size_t step_;
 
 public:
-  /// Virtual slot number to be used for instructions numbering. It helps to
-  /// distinguish reads from writes and makes comparision of live intervals
-  /// easier. LLVM used a similar approach for the linear scan register
-  /// allocator.
-  ///
-  /// For an instruction with number N, its @in operands would be considered
-  /// to be at (N+READ_SLOT), its @out operands would be at (N+WRITE_SLOT).
-  enum SLOTS {
-    READ_SLOT = 0,
-    WRITE_SLOT = 2,
-    MAX_SLOT = 4,
-  };
-
-  InstructionNumbering(Module &M);
+  InstructionNumbering(Module &M, size_t step = 1);
 
   /// Return the instruction with a given number or
   /// M.getInstrs().end() if this instruction is not assigned any number.
@@ -335,36 +324,6 @@ public:
   /// Return the number of an instruction or a negative value if no number
   /// was assigned to this instruction.
   int64_t getInstrNumber(Instruction *I) const;
-
-  /// \returns the base number of the instruction.
-  /// It is the same for all slots of a given instruction.
-  static int64_t getInstrBaseNumber(int64_t idx) {
-    return idx / MAX_SLOT * MAX_SLOT;
-  }
-
-  /// \returns true if \p idx is the instruction number of the read slot of the
-  /// instruction.
-  static bool isReadSlotNumber(int64_t idx) {
-    return idx % MAX_SLOT == READ_SLOT;
-  }
-
-  /// \returns true if \p idx is the instruction number of a write slot of the
-  /// instruction.
-  static bool isWriteSlotNumber(int64_t idx) {
-    return idx % MAX_SLOT == WRITE_SLOT;
-  }
-
-  /// \returns the instruction number of a read slot of instruction with number
-  /// \p idx.
-  static int64_t getInstrReadSlotNumber(int64_t idx) {
-    return getInstrBaseNumber(idx) + READ_SLOT;
-  }
-
-  /// \returns the instruction number of a write slot of instruction with number
-  /// \p idx.
-  static int64_t getInstrWriteSlotNumber(int64_t idx) {
-    return getInstrBaseNumber(idx) + WRITE_SLOT;
-  }
 
   /// Return the module
   Module &getModule() { return M_; }
