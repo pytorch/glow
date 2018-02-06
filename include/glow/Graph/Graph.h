@@ -206,6 +206,11 @@ public:
                           BatchedArithmeticNode::Mode mode, NodeValue batch,
                           NodeValue sample);
 
+  BatchedArithmeticNode *
+  createBatchedArithmetic(llvm::StringRef name, TypeRef outTy,
+                          BatchedArithmeticNode::Mode mode, NodeValue batch,
+                          NodeValue sample);
+
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
   SaveNode *createSave(llvm::StringRef name, NodeValue input, Variable *output);
   /// Create quantization profile node named \p name for the output tensor from

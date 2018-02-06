@@ -506,7 +506,15 @@ BatchedArithmeticNode *
 Graph::createBatchedArithmetic(llvm::StringRef name,
                                BatchedArithmeticNode::Mode mode,
                                NodeValue batch, NodeValue sample) {
-  return addNode(new BatchedArithmeticNode(name, mode, batch, sample));
+  return addNode(
+      new BatchedArithmeticNode(name, batch.getType(), mode, batch, sample));
+}
+
+BatchedArithmeticNode *
+Graph::createBatchedArithmetic(llvm::StringRef name, TypeRef outTy,
+                               BatchedArithmeticNode::Mode mode,
+                               NodeValue batch, NodeValue sample) {
+  return addNode(new BatchedArithmeticNode(name, outTy, mode, batch, sample));
 }
 
 SaveNode *Graph::createSave(llvm::StringRef name, NodeValue input) {

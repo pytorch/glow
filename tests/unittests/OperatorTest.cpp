@@ -275,9 +275,9 @@ TEST(Operator, IntMatMul) {
   Type lhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.1, 2.0);
   Type rhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.1, -1.0);
 
+  auto *res = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "res");
   auto *lhs = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "lhs");
   auto *rhs = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "rhs");
-  auto *res = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "res");
 
   lhs->getPayload().getHandle() = {
       1.0, 2.0, 3.0, 4.0, 5.0, -5.0, -4.0, -3.0, 9.0,
@@ -286,8 +286,6 @@ TEST(Operator, IntMatMul) {
   rhs->getPayload().getHandle() = {
       0.1, -0.2, 0.3, 9.0, -8.0, 7.0, 6.0, 5.0, 9.0,
   };
-
-  llvm::errs() << "\n\n";
 
   auto *lhsq = G.createQuantize("lhs.q", lhs, &lhsTy);
   auto *rhsq = G.createQuantize("rhs.q", rhs, &rhsTy);
@@ -318,4 +316,52 @@ TEST(Operator, IntMatMul) {
   EXPECT_FLOAT_EQ(H.at({0, 2, 0}), 26.6);
   EXPECT_FLOAT_EQ(H.at({0, 2, 1}), 68.6);
   EXPECT_FLOAT_EQ(H.at({0, 2, 2}), 58.8);
+}
+
+TEST(Operator, IntBatchedArith) {
+  ExecutionEngine EE;
+  auto &G = EE.getGraph();
+
+  Type resTy(ElemKind::Int8QTy, {1, 3, 3}, 0.10, 1.0);
+  Type lhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.11, 4.0);
+  Type rhsTy(ElemKind::Int8QTy, {3, 3}, 0.14, -2.0);
+
+  auto *res = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "res");
+  auto *lhs = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "lhs");
+  auto *rhs = G.createVariable(ElemKind::FloatTy, {3, 3}, "rhs");
+
+  lhs->getPayload().getHandle() = {
+      8.7, 6.5, 4.3, 2.1, 1.0, -5.1, -4.0, -12.0, 0.2,
+  };
+
+  rhs->getPayload().getHandle() = {
+      -9.1, -0.4, 1.3, 2.2, -8.1, 7.6, -6.4, 10.0, 9.1,
+  };
+
+  auto *lhsq = G.createQuantize("lhs.q", lhs, &lhsTy);
+  auto *rhsq = G.createQuantize("rhs.q", rhs, &rhsTy);
+
+  auto *matmulq = G.createBatchedArithmetic(
+      "add", &resTy, BatchedArithmeticNode::Mode::Add, lhsq, rhsq);
+
+  auto *rq = G.createDequantize("dequant", matmulq);
+
+  G.createSave("save", rq, res);
+  EE.compile(CompilationMode::Infer);
+
+  EE.run({}, {});
+
+  // A = [8.7, 6.5, 4.3, 2.1, 1.0, -5.1, -4.0, -12.0, 0.2]
+  // B = [-9.1, -0.4, 1.3, 2.2, -8.1, 7.6, -6.4, 10.0, 9.1]
+  // A + B = [-0.4, 6.1, 5.6, 4.3, -7.1, 2.5, -10.4, -2. , 9.3]
+  auto H = res->getPayload().getHandle();
+  EXPECT_NEAR(H.at({0, 0, 0}), -0.4, 0.1);
+  EXPECT_NEAR(H.at({0, 0, 1}), 6.1, 0.1);
+  EXPECT_NEAR(H.at({0, 0, 2}), 5.6, 0.1);
+  EXPECT_NEAR(H.at({0, 1, 0}), 4.3, 0.1);
+  EXPECT_NEAR(H.at({0, 1, 1}), -7.1, 0.1);
+  EXPECT_NEAR(H.at({0, 1, 2}), 2.5, 0.1);
+  EXPECT_NEAR(H.at({0, 2, 0}), -10.4, 0.1);
+  EXPECT_NEAR(H.at({0, 2, 1}), -2, 0.1);
+  EXPECT_NEAR(H.at({0, 2, 2}), 9.3, 0.1);
 }
