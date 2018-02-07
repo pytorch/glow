@@ -199,6 +199,14 @@ void SoftMaxGradInst::verify() const {
   (void)destShape;
 }
 
+void CrossEntropyLossInst::verify() const {
+  assert(getP()->dims()[0] == getLabels()->dims()[0] && "Invalid shape");
+}
+
+void CrossEntropyLossGradInst::verify() const {
+  assert(getPgrad()->dims()[0] == getLabels()->dims()[0] && "Invaild shape");
+}
+
 void ReshapeInst::verify() const {
   assert(getOperand(0).first->getType()->size() ==
              getOperand(1).first->getType()->size() &&

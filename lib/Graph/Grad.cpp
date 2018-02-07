@@ -81,6 +81,7 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
     CONVERT_TO_GRAD_NODE(BatchNormalizationNode)
     CONVERT_TO_GRAD_NODE(LocalResponseNormalizationNode)
     CONVERT_TO_GRAD_NODE(SoftMaxNode)
+    CONVERT_TO_GRAD_NODE(CrossEntropyLossNode)
     CONVERT_TO_GRAD_NODE(RegressionNode)
     CONVERT_TO_GRAD_NODE(ArithmeticNode)
     CONVERT_TO_GRAD_NODE(ReluNode)

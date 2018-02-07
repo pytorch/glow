@@ -284,8 +284,35 @@ public:
                                                          outGrad->getType());
       auto *SMGI = builder_.createSoftMaxGradInst(N->getName(), origOut, origIn,
                                                   origSelect, srcGrad);
-
       registerIR(SMG->getGradOfInputNamedInput(), SMGI->getSrcGrad());
+      break;
+    }
+    case glow::Kinded::Kind::CrossEntropyLossNodeKind: {
+      auto *CELoss = cast<CrossEntropyLossNode>(N);
+      auto *P = valueForNode(CELoss->getP());
+      auto *Labels = valueForNode(CELoss->getLabels());
+      auto *V = builder_.createCrossEntropyLossOp(P, Labels);
+      V->setName(N->getName());
+      registerIR(N, V->getCE());
+      nodeToInstr_[N] = V;
+      break;
+    }
+    case glow::Kinded::Kind::CrossEntropyLossGradNodeKind: {
+      auto *CELossG = cast<CrossEntropyLossGradNode>(N);
+      // Forward pass inputs.
+      auto *P = valueForNode(CELossG->getP());
+      auto *Y = valueForNode(CELossG->getLabels());
+      // Backward pass gradient dL/dY.
+      auto *dY = valueForNode(CELossG->getGradOfOriginalOutputNamedResult());
+      auto *pGrad = builder_.createAllocActivationInst(
+          "celoss.p.grad", P->getElementType(), P->dims());
+      auto *yGrad = builder_.createAllocActivationInst("celoss.labels.grad",
+                                                       Y->getType());
+      auto *CELossGI = builder_.createCrossEntropyLossGradInst(
+          N->getName(), dY, P, Y, pGrad, yGrad);
+      registerIR(CELossG->getGradOfInputNamedP(), CELossGI->getPgrad());
+      registerIR(CELossG->getGradOfInputNamedLabels(),
+                 CELossGI->getLabelsgrad());
       break;
     }
     case glow::Kinded::Kind::TransposeNodeKind: {

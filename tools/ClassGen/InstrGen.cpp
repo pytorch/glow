@@ -143,6 +143,18 @@ int main(int argc, char **argv) {
       .addOperand("Selected", OperandKind::In)
       .addOperand("SrcGrad", OperandKind::Out);
 
+  BB.newInstr("CrossEntropyLoss")
+      .addOperand("P", OperandKind::In)
+      .addOperand("Labels", OperandKind::In)
+      .addOperand("CE", OperandKind::Out);
+
+  BB.newInstr("CrossEntropyLossGrad")
+      .addOperand("CEGrad", OperandKind::In)
+      .addOperand("P", OperandKind::In)
+      .addOperand("Labels", OperandKind::In)
+      .addOperand("Pgrad", OperandKind::Out)
+      .addOperand("Labelsgrad", OperandKind::Out);
+
   //===--------------------------------------------------------------------===//
   //                      Arithmetic
   //===--------------------------------------------------------------------===//

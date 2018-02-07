@@ -106,6 +106,12 @@ SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input) {
   return createSoftMaxInst("softmax", res, input);
 }
 
+CrossEntropyLossInst *IRBuilder::createCrossEntropyLossOp(Value *p,
+                                                          Value *labels) {
+  auto *res = createAllocActivationInst("celoss.res", ElemKind::FloatTy, {1});
+  return createCrossEntropyLossInst("celoss", p, labels, res);
+}
+
 ReshapeInst *IRBuilder::createReshapeOp(Value *input,
                                         llvm::ArrayRef<size_t> shape) {
   auto ty = M_->getGraph()->uniqueTypeWithNewShape(input->getType(), shape);

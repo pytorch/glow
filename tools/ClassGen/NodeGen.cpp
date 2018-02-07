@@ -104,6 +104,14 @@ int main(int argc, char **argv) {
       .addResult("Input.getType()")
       .addGradient();
 
+  BB.newNode("CrossEntropyLoss")
+      .addInput("P")
+      .addInput("Labels")
+      .addExtraParam("TypeRef", "CE")
+      .addResult("CE")
+      .setDocstring("Computes the average cross entropy loss of the input.")
+      .addGradient();
+
   BB.newNode("Regression")
       .addInput("Input")
       .addInput("Expected")

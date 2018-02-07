@@ -473,3 +473,59 @@ TEST(Network, gradientCheckTranspose) {
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
+
+TEST(Network, gradientcheckCrossEntropyLoss) {
+  ExecutionEngine IP;
+  const int batchSize = 6;
+  const int testSamples = 5;
+  const float stepSize = 1e-4;
+  const float delta = 1e-2;
+
+  auto &G = IP.getGraph();
+
+  auto *P = G.createVariable(ElemKind::FloatTy, {batchSize, 4}, "P",
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
+  auto *Y = G.createVariable(ElemKind::IndexTy, {batchSize}, "Labels",
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
+  auto *L = G.createVariable(ElemKind::FloatTy, {1}, "L",
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
+  Node *CE = G.createCrossEntropyLoss("celoss", P, Y);
+  G.createSave("ret", CE, L);
+
+  Tensor inputs(ElemKind::FloatTy, {batchSize, 4});
+  Tensor outputs(ElemKind::IndexTy, {batchSize});
+
+  auto inputsH = inputs.getHandle();
+  auto outputsH = outputs.getHandle<size_t>();
+
+  inputsH.randomize(0.0, 1.0);
+  outputsH.at({0}) = 2;
+  outputsH.at({1}) = 0;
+  outputsH.at({2}) = 1;
+
+  IP.compile(glow::CompilationMode::TrainDebug);
+  auto gradP = getGrad(G, P)->getHandle();
+  for (int i = 0; i < testSamples; ++i) {
+    inputsH.randomize(0.0, 1.0);
+    for (int j = 0; j < inputsH.size(); ++j) {
+      IP.run({P, Y}, {&inputs, &outputs});
+      L->getPayload().zero();
+      auto x = inputsH.raw(j);
+      auto g = gradP.raw(j);
+      inputsH.raw(j) = x + stepSize;
+      IP.run({P, Y}, {&inputs, &outputs});
+      auto lp = L->getHandle().raw(0);
+      inputsH.raw(j) = x - stepSize;
+      L->getPayload().zero();
+      IP.run({P, Y}, {&inputs, &outputs});
+      auto lm = L->getHandle().raw(0);
+      auto diff = (lp - lm) / (2 * stepSize);
+      inputsH.raw(j) = x;
+      IP.run({P, Y}, {&inputs, &outputs});
+      EXPECT_NEAR(diff, g, delta);
+    }
+  }
+}
