@@ -352,8 +352,7 @@ Value *Module::getWeightForNode(const Node *V) const {
 InstructionNumbering::InstructionNumbering(Module &M) : M_(M) {
   auto &instrs = M.getInstrs();
   size_t instIdx = 0;
-  for (auto it = instrs.begin(), e = instrs.end(); it != e;
-       instIdx += MAX_SLOT, ++it) {
+  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++instIdx, ++it) {
     NumToInstr_.push_back(it);
     InstrToNum_[*it] = instIdx;
   }
@@ -371,8 +370,8 @@ int64_t InstructionNumbering::getInstrNumber(InstrIterator IT) const {
 }
 
 InstrIterator InstructionNumbering::getInstr(size_t InstrNumber) const {
-  assert(InstrNumber / MAX_SLOT < NumToInstr_.size());
-  return NumToInstr_[InstrNumber / MAX_SLOT];
+  assert(InstrNumber < NumToInstr_.size());
+  return NumToInstr_[InstrNumber];
 }
 
 //===----------------------------------------------------------------------===//
