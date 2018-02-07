@@ -252,6 +252,45 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::PoolMaxWithXYInstKind: {
+    PoolMaxWithXYInst *PMXY = llvm::cast<PoolMaxWithXYInst>(I);
+    auto *destPtr =
+        emitValueAddress(builder, PMXY->getDest(), ElemKind::FloatTy);
+    auto *srcPtr = emitValueAddress(builder, PMXY->getSrc(), ElemKind::FloatTy);
+    auto *srcXYPtr =
+        emitValueAddress(builder, PMXY->getSrcXY(), ElemKind::IndexTy);
+    auto *destDims = emitValueDims(builder, PMXY->getDest());
+    auto *srcDims = emitValueDims(builder, PMXY->getSrc());
+
+    auto *kernel = emitConst(builder, PMXY->getKernel());
+    auto *stride = emitConst(builder, PMXY->getStride());
+    auto *pad = emitConst(builder, PMXY->getPad());
+
+    auto *F = getFunction("pool_max_xy_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(
+        F, {srcPtr, destPtr, srcXYPtr, srcDims, destDims, kernel, stride, pad});
+    break;
+  }
+
+  case Kinded::Kind::PoolMaxWithXYGradInstKind: {
+    PoolMaxWithXYGradInst *PMG = llvm::cast<PoolMaxWithXYGradInst>(I);
+    auto *srcGradPtr =
+        emitValueAddress(builder, PMG->getSrcGrad(), ElemKind::FloatTy);
+    auto *destGradPtr =
+        emitValueAddress(builder, PMG->getDestGrad(), ElemKind::FloatTy);
+    auto *srcXYPtr =
+        emitValueAddress(builder, PMG->getSrcXY(), ElemKind::IndexTy);
+    auto *srcGradDims = emitValueDims(builder, PMG->getSrcGrad());
+    auto *destDims = emitValueDims(builder, PMG->getDest());
+
+    auto *F = getFunction("pool_max_xy_grad_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(
+        F, {srcGradPtr, destGradPtr, srcXYPtr, srcGradDims, destDims});
+    break;
+  }
+
   case Kinded::Kind::PoolAvgInstKind: {
     PoolAvgInst *PM = llvm::cast<PoolAvgInst>(I);
     auto *destPtr = emitValueAddress(builder, PM->getDest(), ElemKind::FloatTy);
@@ -282,7 +321,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *stride = emitConst(builder, PAG->getStride());
     auto *pad = emitConst(builder, PAG->getPad());
 
-    auto *F = llmodule_->getFunction("pool_avg_grad_f");
+    auto *F = getFunction("pool_avg_grad_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcGradPtr, destGradPtr, srcGradDims, destDims,
                            kernel, stride, pad});
@@ -301,7 +340,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *batchSize = emitConst(builder, (size_t)SGD->getBatchSize());
     auto *Wsize = emitConst(builder, SGD->getWeight()->getType()->size());
 
-    auto *F = llmodule_->getFunction("sgd_f");
+    auto *F = getFunction("sgd_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {W, G, Gsum, l1Decay, l2Decay, learningRate, momentum,
                            batchSize, Wsize});
@@ -331,7 +370,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
         emitValueAddress(builder, SMG->getSelected(), ElemKind::IndexTy);
     auto *srcGradDims = emitValueDims(builder, SMG->getSrcGrad());
     auto *selectedDims = emitValueDims(builder, SMG->getSelected());
-    auto *F = llmodule_->getFunction("softmaxgrad_f");
+    auto *F = getFunction("softmaxgrad_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(
         F, {srcGradPtr, destPtr, selectedPtr, srcGradDims, selectedDims});

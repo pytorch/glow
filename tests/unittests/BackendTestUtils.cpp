@@ -105,6 +105,43 @@ void trainPoolAvgNet(Tensor *inputs, Tensor *selected,
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+void inferPoolMaxNet(Tensor *inputs, Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &G = EE.getGraph();
+  auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
+                               "input", Variable::VisibilityKind::Public);
+  auto *pool = G.createPool("pool", var, PoolNode::Mode::Max, 4, 2, 3);
+  auto result = G.createSave("ret", pool);
+  EE.compile(CompilationMode::Infer);
+  EE.run({var}, {inputs});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
+void trainPoolMaxNet(Tensor *inputs, Tensor *selected,
+                     llvm::ArrayRef<size_t> shape, Tensor *out,
+                     BackendKind kind) {
+  ExecutionEngine EE(kind);
+  EE.getConfig().learningRate = 0.03;
+  EE.getConfig().maxNumThreads = 1;
+  EE.getConfig().momentum = 0.3;
+  EE.getConfig().L2Decay = 0.003;
+  auto &G = EE.getGraph();
+  auto *var1 = G.createVariable(inputs->getElementType(), inputs->dims(),
+                                "input", Variable::VisibilityKind::Public);
+  auto *var2 = G.createVariable(selected->getElementType(), selected->dims(),
+                                "selected", Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
+  auto *pool = G.createPool("pool", var1, PoolNode::Mode::Max, 5, 3, 4);
+  auto *reshape = G.createReshape("reshape", pool, shape);
+  auto *softmax = G.createSoftMax("softmax", reshape, var2);
+  auto result = G.createSave("ret", softmax);
+  EE.compile(CompilationMode::Train);
+  EE.runBatch(20, {var1, var2}, {inputs, selected});
+  EE.compile(CompilationMode::Infer);
+  EE.runBatch(1, {var1, var2}, {inputs, selected});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &G = EE.getGraph();
