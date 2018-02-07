@@ -15,7 +15,9 @@ enum class CompilationMode {
               /// changes the graph in a way that is not reversible.
 };
 
+/// Perform optimizations on the IR representation.
 void optimize(Module &M, CompilationMode mode);
+/// Perform optimizations on the graph representation.
 void optimize(Graph &G, CompilationMode mode);
 
 /// Lower the high-level neural network operators into low-level lineal algebra
