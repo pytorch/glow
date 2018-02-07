@@ -261,7 +261,7 @@ template <class ElemTy> class Handle final {
 
   /// Contains the multiplication of the sizes from current position to end.
   /// For example, for index (w,z,y,z):  [x * y * z, y * z, z, 1]
-  size_t sizeIntegral[max_tensor_dimensions] = {
+  size_t sizeIntegral_[max_tensor_dimensions] = {
       0,
   };
 
@@ -293,7 +293,7 @@ public:
     // the program on a few compilers.
     size_t index = 0;
     for (size_t i = 0, e = indices.size(); i < e; i++) {
-      index += size_t(sizeIntegral[i]) * size_t(indices[i]);
+      index += size_t(sizeIntegral_[i]) * size_t(indices[i]);
     }
 
     return index;
@@ -302,7 +302,7 @@ public:
   /// \returns the value of the n'th dimension \p dim, for the raw index \p idx.
   size_t getDimForPtr(size_t dim, size_t idx) const {
     assert(dim < numDims_ && "Invalid dimension");
-    auto R = idx / sizeIntegral[dim];
+    auto R = idx / sizeIntegral_[dim];
     return R % sizes_[dim];
   }
 
@@ -324,7 +324,7 @@ public:
 
     size_t pi = 1;
     for (int i = numDims_ - 1; i >= 0; i--) {
-      sizeIntegral[i] = pi;
+      sizeIntegral_[i] = pi;
       assert(sizes_[i] > 0 && "invalid dim size");
       pi *= sizes_[i];
     }
@@ -346,7 +346,7 @@ public:
   /// function returns the size of that tensor.
   size_t sliceSize(unsigned dimIdx) const {
     assert(dimIdx < max_tensor_dimensions);
-    return sizeIntegral[dimIdx];
+    return sizeIntegral_[dimIdx];
   }
 
   bool isInBounds(llvm::ArrayRef<size_t> indices) const {
@@ -398,10 +398,10 @@ public:
     Tensor slice(elemTy, sizes.slice(1));
 
     // Extract the whole slice.
-    size_t startIdx = sizeIntegral[0] * idx;
+    size_t startIdx = sizeIntegral_[0] * idx;
     ElemTy *base = tensor_->getRawDataPointer<ElemTy>() + startIdx;
     auto *dest = slice.getRawDataPointer<ElemTy>();
-    std::copy(base, base + sizeIntegral[0], dest);
+    std::copy(base, base + sizeIntegral_[0], dest);
 
     return slice;
   }

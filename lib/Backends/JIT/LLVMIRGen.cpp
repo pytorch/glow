@@ -101,24 +101,24 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   case Kinded::Kind::ElementMaxInstKind: {
     ElementMaxInst *EM = llvm::cast<ElementMaxInst>(I);
     auto *destPtr = emitValueAddress(builder, EM->getDest(), ElemKind::FloatTy);
-    auto *LHSPtr = emitValueAddress(builder, EM->getLHS(), ElemKind::FloatTy);
-    auto *RHSPtr = emitValueAddress(builder, EM->getRHS(), ElemKind::FloatTy);
+    auto *lhsPtr = emitValueAddress(builder, EM->getLHS(), ElemKind::FloatTy);
+    auto *rhsPtr = emitValueAddress(builder, EM->getRHS(), ElemKind::FloatTy);
     auto cnt = emitValueSize(builder, EM->getDest());
     auto *F = getFunction("elementmax_f");
     assert(F && "Unable to load the function");
-    builder.CreateCall(F, {destPtr, LHSPtr, RHSPtr, cnt});
+    builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, cnt});
     break;
   }
 
   case Kinded::Kind::ElementMinInstKind: {
     ElementMinInst *EM = llvm::cast<ElementMinInst>(I);
     auto *destPtr = emitValueAddress(builder, EM->getDest(), ElemKind::FloatTy);
-    auto *LHSPtr = emitValueAddress(builder, EM->getLHS(), ElemKind::FloatTy);
-    auto *RHSPtr = emitValueAddress(builder, EM->getRHS(), ElemKind::FloatTy);
+    auto *lhsPtr = emitValueAddress(builder, EM->getLHS(), ElemKind::FloatTy);
+    auto *rhsPtr = emitValueAddress(builder, EM->getRHS(), ElemKind::FloatTy);
     auto cnt = emitValueSize(builder, EM->getDest());
     auto *F = getFunction("elementmin_f");
     assert(F && "Unable to load the function");
-    builder.CreateCall(F, {destPtr, LHSPtr, RHSPtr, cnt});
+    builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, cnt});
     break;
   }
 
@@ -126,12 +126,12 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     ElementSelectInst *ES = llvm::cast<ElementSelectInst>(I);
     auto *destPtr = emitValueAddress(builder, ES->getDest(), ElemKind::FloatTy);
     auto *condPtr = emitValueAddress(builder, ES->getCond(), ElemKind::FloatTy);
-    auto *LHSPtr = emitValueAddress(builder, ES->getLHS(), ElemKind::FloatTy);
-    auto *RHSPtr = emitValueAddress(builder, ES->getRHS(), ElemKind::FloatTy);
+    auto *lhsPtr = emitValueAddress(builder, ES->getLHS(), ElemKind::FloatTy);
+    auto *rhsPtr = emitValueAddress(builder, ES->getRHS(), ElemKind::FloatTy);
     auto cnt = emitValueSize(builder, ES->getDest());
     auto *F = getFunction("elementselect_f");
     assert(F && "Unable to load the function");
-    builder.CreateCall(F, {destPtr, condPtr, LHSPtr, RHSPtr, cnt});
+    builder.CreateCall(F, {destPtr, condPtr, lhsPtr, rhsPtr, cnt});
     break;
   }
 
@@ -139,17 +139,17 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     BatchedMatMulInst *BMM = llvm::cast<BatchedMatMulInst>(I);
     auto *destPtr =
         emitValueAddress(builder, BMM->getDest(), ElemKind::FloatTy);
-    auto *LHSPtr = emitValueAddress(builder, BMM->getLHS(), ElemKind::FloatTy);
-    auto *RHSPtr = emitValueAddress(builder, BMM->getRHS(), ElemKind::FloatTy);
+    auto *lhsPtr = emitValueAddress(builder, BMM->getLHS(), ElemKind::FloatTy);
+    auto *rhsPtr = emitValueAddress(builder, BMM->getRHS(), ElemKind::FloatTy);
     auto *F = getFunction("batchedmatmul_f");
     assert(F && "Unable to load the function");
 
     auto *destDims = emitValueDims(builder, BMM->getDest());
-    auto *LHSDims = emitValueDims(builder, BMM->getLHS());
-    auto *RHSDims = emitValueDims(builder, BMM->getRHS());
+    auto *lhsDims = emitValueDims(builder, BMM->getLHS());
+    auto *rhsDims = emitValueDims(builder, BMM->getRHS());
 
     builder.CreateCall(F,
-                       {destPtr, LHSPtr, RHSPtr, destDims, LHSDims, RHSDims});
+                       {destPtr, lhsPtr, rhsPtr, destDims, lhsDims, rhsDims});
     break;
   }
 
@@ -294,8 +294,8 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *W = emitValueAddress(builder, SGD->getWeight(), ElemKind::FloatTy);
     auto *G = emitValueAddress(builder, SGD->getGradient(), ElemKind::FloatTy);
     auto *Gsum = emitValueAddress(builder, SGD->getGsum(), ElemKind::FloatTy);
-    auto *L1Decay = emitConst(builder, SGD->getL1Decay());
-    auto *L2Decay = emitConst(builder, SGD->getL2Decay());
+    auto *l1Decay = emitConst(builder, SGD->getL1Decay());
+    auto *l2Decay = emitConst(builder, SGD->getL2Decay());
     auto *learningRate = emitConst(builder, SGD->getLearningRate());
     auto *momentum = emitConst(builder, SGD->getMomentum());
     auto *batchSize = emitConst(builder, (size_t)SGD->getBatchSize());
@@ -303,7 +303,7 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *F = llmodule_->getFunction("sgd_f");
     assert(F && "Unable to load the function");
-    builder.CreateCall(F, {W, G, Gsum, L1Decay, L2Decay, learningRate, momentum,
+    builder.CreateCall(F, {W, G, Gsum, l1Decay, l2Decay, learningRate, momentum,
                            batchSize, Wsize});
     break;
   }
@@ -388,11 +388,11 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *dest = II->getOperand(0).first;
       auto *src = II->getOperand(1).first;
       auto *destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
-      auto *LHSPtr = emitValueAddress(builder, src, ElemKind::FloatTy);
+      auto *lhsPtr = emitValueAddress(builder, src, ElemKind::FloatTy);
       auto cnt = emitValueSize(builder, dest);
       auto *F = getFunction("elementmax0_f");
       assert(F && "Unable to load the function");
-      builder.CreateCall(F, {destPtr, LHSPtr, cnt});
+      builder.CreateCall(F, {destPtr, lhsPtr, cnt});
       break;
     }
 

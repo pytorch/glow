@@ -421,29 +421,29 @@ static void optimizeConcatNodes(Graph &G) {
   // For each node:
   for (auto const &node : nodes) {
     if (auto *CN = dyn_cast<ConcatNode>(node)) {
-      auto Inputs = CN->getInputs();
+      auto inputs = CN->getInputs();
       // Check if any of the inputs is a ConcatNode.
-      llvm::SmallVector<Node *, 16> NewInputs;
-      bool Changed = false;
-      for (auto input : Inputs) {
-        NewInputs.push_back(input);
+      llvm::SmallVector<Node *, 16> newInputs;
+      bool changed = false;
+      for (auto input : inputs) {
+        newInputs.push_back(input);
         auto *CNI = dyn_cast<ConcatNode>(input);
         // Bail if it is not a ConcatNode or it is a concat node with a diffrent
         // dimension.
         if (!CNI || CNI->getDim() != CN->getDim())
           continue;
 
-        Changed = true;
+        changed = true;
         // Replace current input by its own inputs, i.e. merge them into the
         // parent concat node.
-        NewInputs.pop_back();
-        NewInputs.append(CNI->getInputs().begin(), CNI->getInputs().end());
+        newInputs.pop_back();
+        newInputs.append(CNI->getInputs().begin(), CNI->getInputs().end());
       }
-      if (!Changed)
+      if (!changed)
         continue;
       // Create a new Concat node.
-      auto NewCN = G.createConcat(CN->getName(), NewInputs, CN->getDim());
-      CN->getResult().replaceAllUsesOfWith(NewCN);
+      auto newCN = G.createConcat(CN->getName(), newInputs, CN->getDim());
+      CN->getResult().replaceAllUsesOfWith(newCN);
     }
   }
 }
@@ -459,8 +459,8 @@ struct NodeHasher {
 /// A helper type implementing the Node equality predicate that can be used
 /// when Node pointers are used as keys in hash maps.
 struct NodeEq {
-  bool operator()(const Node *LHS, const Node *RHS) const {
-    return LHS->isEqual(*RHS);
+  bool operator()(const Node *lhs, const Node *rhs) const {
+    return lhs->isEqual(*rhs);
   }
 };
 
@@ -468,39 +468,39 @@ struct NodeEq {
 /// perform a common subexpression evaluation.
 struct CSEVisitor : NodeWalker {
   // Mapping from the original node to its canonical representation under CSE.
-  std::unordered_map<Node *, Node *, NodeHasher, NodeEq> CSENodes;
+  std::unordered_map<Node *, Node *, NodeHasher, NodeEq> cseNodes_;
   // Set of visited nodes.
-  std::unordered_set<Node *> VisitedNodes;
+  std::unordered_set<Node *> visitedNodes_;
 
   /// This callback is called before visiting the children of \p N.
   void pre(Node *parent, Node *N) override {
     // Put the node into a visited set to make sure it is visited
     // only once.
-    VisitedNodes.insert(N);
+    visitedNodes_.insert(N);
   }
 
   /// This callback is called after visiting the children of \p N.
   /// It means that all of its dependencies are processed already.
   void post(Node *parent, Node *N) override {
     // Try to find a node equivalent to the current one.
-    auto FoundI = CSENodes.find(N);
-    if (FoundI == CSENodes.end()) {
+    auto FoundI = cseNodes_.find(N);
+    if (FoundI == cseNodes_.end()) {
       // No node CSE-equivalent to the current one has been seen yet.
       // Remember this node, so that the next occurrence can be
       // replaced by this one.
-      CSENodes.insert({N, N});
-      assert(CSENodes.find(N) != CSENodes.end());
+      cseNodes_.insert({N, N});
+      assert(cseNodes_.find(N) != cseNodes_.end());
       return;
     }
-    Node *FoundN = FoundI->second;
+    Node *foundN = FoundI->second;
     // Bail if the equivalent node is the same node.
-    if (FoundN == N)
+    if (foundN == N)
       return;
     // Replace current node by a found node, which is
     // equivalent to it.
-    assert(N->isEqual(*FoundN));
+    assert(N->isEqual(*foundN));
     for (unsigned i = 0; i < N->getNumResults(); i++) {
-      NodeValue FV(FoundN, i);
+      NodeValue FV(foundN, i);
       N->getNthResult(i).replaceAllUsesOfWith(FV);
     }
     // TODO: Erase N during CSE? If we don't do it here,
@@ -509,7 +509,7 @@ struct CSEVisitor : NodeWalker {
 
   /// Make sure that each node is processed only once.
   bool shouldVisit(Node *parent, Node *N) override {
-    return VisitedNodes.count(N) == 0;
+    return visitedNodes_.count(N) == 0;
   }
 };
 
@@ -517,7 +517,7 @@ struct CSEVisitor : NodeWalker {
 
 /// Common Subexpression Elimination.
 static void CSE(Graph &G) {
-  CSEVisitor Visitor;
+  CSEVisitor visitor;
 
   // No need to perform CSE on variables because
   // all variables are distinct from each other.
@@ -528,7 +528,7 @@ static void CSE(Graph &G) {
   // This code may need to be updated if we allow for non-linear control flow
   // in the future.
   for (auto const &N : G.getNodes()) {
-    N->visit(nullptr, &Visitor);
+    N->visit(nullptr, &visitor);
   }
 }
 

@@ -39,8 +39,8 @@ llvm::Value *getConstantValue(llvm::Value *v) {
   // const. This pattern is produced by the IRGen for the const arrays
   // containing dimensions.
   if (auto *GV = dyn_cast<llvm::GlobalVariable>(v)) {
-    auto *Init = GV->getInitializer();
-    if (!GV->isConstant() || !Init)
+    auto *init = GV->getInitializer();
+    if (!GV->isConstant() || !init)
       return nullptr;
     return v;
   }
@@ -76,7 +76,7 @@ class FunctionSpecializer {
     // Bail if there is nothing to do
     if (!jitSpecializeAllArguments_ && !jitSpecializeDims)
       return F;
-    llvm::LLVMContext &Ctx = F->getContext();
+    llvm::LLVMContext &ctx = F->getContext();
     llvm::Module *M = F->getParent();
 
     SpecializationKey key{call, argsToBeSpecialized};
@@ -111,7 +111,7 @@ class FunctionSpecializer {
 
     // Setup the entry basic block and initialize the IR builder.
     llvm::BasicBlock *entryBB =
-        llvm::BasicBlock::Create(Ctx, "entry", specializedF);
+        llvm::BasicBlock::Create(ctx, "entry", specializedF);
     llvm::IRBuilder<> builder(entryBB);
 
     // Arguments to be used for the invocation of the original function.

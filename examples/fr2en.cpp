@@ -97,36 +97,36 @@ Node *createPyTorchGRUCell(Graph *G, Node *input, Node *hidden, Variable *w_ih,
 /// Stores vocabulary, compiled Graph (ready to be executed), and
 /// few references to input/output Variables.
 struct Model {
-  ExecutionEngine EE;
-  Vocabulary en, fr;
-  Variable *input;
-  Variable *seqLength;
-  Variable *output;
+  ExecutionEngine EE_;
+  Vocabulary en_, fr_;
+  Variable *input_;
+  Variable *seqLength_;
+  Variable *output_;
 
   void loadLanguages();
   void loadEncoder();
   void loadDecoder();
 
 private:
-  Variable *embedding_fr, *embedding_en;
-  Node *encoderHiddenOutput;
+  Variable *embedding_fr_, *embedding_en_;
+  Node *encoderHiddenOutput_;
 
-  Variable *loadEmbedding(llvm::StringRef lang_prefix, size_t lang_size) {
-    Variable *result = EE.getGraph().createVariable(
-        ElemKind::FloatTy, {lang_size, EMBEDDING_SIZE},
-        "embedding." + lang_prefix.str(), Variable::VisibilityKind::Private,
+  Variable *loadEmbedding(llvm::StringRef langPrefix, size_t langSize) {
+    Variable *result = EE_.getGraph().createVariable(
+        ElemKind::FloatTy, {langSize, EMBEDDING_SIZE},
+        "embedding." + langPrefix.str(), Variable::VisibilityKind::Private,
         Variable::TrainKind::None);
-    loadMatrixFromFile("fr2en/" + lang_prefix.str() + "_embedding.bin",
+    loadMatrixFromFile("fr2en/" + langPrefix.str() + "_embedding.bin",
                        result->getPayload());
     return result;
   }
 };
 
 void Model::loadLanguages() {
-  fr.loadVocabularyFromFile("fr2en/fr_vocabulary.txt");
-  en.loadVocabularyFromFile("fr2en/en_vocabulary.txt");
-  embedding_fr = loadEmbedding("fr", fr.index2word_.size());
-  embedding_en = loadEmbedding("en", en.index2word_.size());
+  fr_.loadVocabularyFromFile("fr2en/fr_vocabulary.txt");
+  en_.loadVocabularyFromFile("fr2en/en_vocabulary.txt");
+  embedding_fr_ = loadEmbedding("fr", fr_.index2word_.size());
+  embedding_en_ = loadEmbedding("en", en_.index2word_.size());
 }
 
 /// Model part representing Encoder. Remembers input sentence into hidden layer.
@@ -134,13 +134,13 @@ void Model::loadLanguages() {
 /// \p seqLength is Variable representing the length of sentence.
 /// \p encoderHiddenOutput saves resulting hidden layer.
 void Model::loadEncoder() {
-  Graph &G = EE.getGraph();
-  input = G.createVariable(
+  Graph &G = EE_.getGraph();
+  input_ = G.createVariable(
       ElemKind::IndexTy, {MAX_LENGTH}, "encoder.inputsentence",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
-  seqLength = G.createVariable(ElemKind::IndexTy, {1}, "encoder.seqLength",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
+  seqLength_ = G.createVariable(ElemKind::IndexTy, {1}, "encoder.seqLength",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
 
   Variable *hiddenInit = G.createVariable(
       ElemKind::FloatTy, {1, EMBEDDING_SIZE}, "encoder.hiddenInit",
@@ -167,7 +167,7 @@ void Model::loadEncoder() {
   loadMatrixFromFile("fr2en/encoder_b_hh.bin", b_hh->getPayload());
 
   Node *inputEmbedded =
-      G.createGather("encoder.embedding", embedding_fr, input);
+      G.createGather("encoder.embedding", embedding_fr_, input_);
 
   // TODO: encoder does exactly MAX_LENGTH steps, while input size is smaller.
   // We could use control flow here.
@@ -182,18 +182,19 @@ void Model::loadEncoder() {
   }
 
   Node *output = G.createConcat("encoder.output", outputs, 0);
-  encoderHiddenOutput = G.createGather("encoder.outputNth", output, seqLength);
+  encoderHiddenOutput_ =
+      G.createGather("encoder.outputNth", output, seqLength_);
 }
 
 /// Model part representing Decoder.
 /// Uses \p encoderHiddenOutput as final state from Encoder.
 /// Resulting translation is put into \p output Variable.
 void Model::loadDecoder() {
-  Graph &G = EE.getGraph();
+  Graph &G = EE_.getGraph();
   Variable *input = G.createVariable(ElemKind::IndexTy, {1}, "decoder.input",
                                      Variable::VisibilityKind::Public,
                                      Variable::TrainKind::None);
-  input->getPayload().getHandle<size_t>().at({0}) = en.word2index_["SOS"];
+  input->getPayload().getHandle<size_t>().at({0}) = en_.word2index_["SOS"];
 
   Variable *w_ih = G.createVariable(
       ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "decoder.w_ih",
@@ -208,11 +209,11 @@ void Model::loadDecoder() {
       ElemKind::FloatTy, {HIDDEN_SIZE}, "decoder.b_hh",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
   Variable *out_w = G.createVariable(
-      ElemKind::FloatTy, {EMBEDDING_SIZE, en.index2word_.size()},
+      ElemKind::FloatTy, {EMBEDDING_SIZE, en_.index2word_.size()},
       "decoder.out_w", Variable::VisibilityKind::Public,
       Variable::TrainKind::None);
   Variable *out_b = G.createVariable(
-      ElemKind::FloatTy, {en.index2word_.size()}, "decoder.out_b",
+      ElemKind::FloatTy, {en_.index2word_.size()}, "decoder.out_b",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
   loadMatrixFromFile("fr2en/decoder_w_ih.bin", w_ih->getPayload());
   loadMatrixFromFile("fr2en/decoder_b_ih.bin", b_ih->getPayload());
@@ -221,7 +222,7 @@ void Model::loadDecoder() {
   loadMatrixFromFile("fr2en/decoder_out_w.bin", out_w->getPayload());
   loadMatrixFromFile("fr2en/decoder_out_b.bin", out_b->getPayload());
 
-  Node *hidden = encoderHiddenOutput;
+  Node *hidden = encoderHiddenOutput_;
   Node *lastWordIdx = input;
 
   std::vector<Node *> outputs;
@@ -230,13 +231,13 @@ void Model::loadDecoder() {
   for (unsigned step = 0; step < MAX_LENGTH; step++) {
     // Use last translated word as an input at the current step.
     Node *embedded = G.createGather("decoder.embedding." + std::to_string(step),
-                                    embedding_en, lastWordIdx);
+                                    embedding_en_, lastWordIdx);
 
     Node *relu = G.createRELU("decoder.relu", embedded);
     hidden = createPyTorchGRUCell(&G, relu, hidden, w_ih, b_ih, w_hh, b_hh);
 
     Node *FC = G.createFullyConnected("decoder.outFC", hidden, out_w, out_b,
-                                      en.index2word_.size());
+                                      en_.index2word_.size());
     Node *topK = G.createTopK("decoder.topK", FC, 1);
 
     lastWordIdx = G.createReshape("decoder.reshape", {topK, 1}, {1});
@@ -245,12 +246,12 @@ void Model::loadDecoder() {
 
   Node *concat = G.createConcat("decoder.output", outputs, 0);
 
-  output = G.createVariable(ElemKind::IndexTy, {MAX_LENGTH}, "decoder.output",
-                            Variable::VisibilityKind::Public,
-                            Variable::TrainKind::None);
-  G.createSave("decoder.output", concat, output);
+  output_ = G.createVariable(ElemKind::IndexTy, {MAX_LENGTH}, "decoder.output",
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
+  G.createSave("decoder.output", concat, output_);
 
-  EE.compile(CompilationMode::Infer);
+  EE_.compile(CompilationMode::Infer);
 }
 
 /// Translation has 2 stages:
@@ -272,23 +273,24 @@ void translate(Model *seq2seq, llvm::StringRef sentence) {
 
   input.zero();
   for (size_t i = 0; i < words.size(); i++) {
-    auto iter = seq2seq->fr.word2index_.find(words[i]);
-    GLOW_ASSERT(iter != seq2seq->fr.word2index_.end() && "Unknown word.");
+    auto iter = seq2seq->fr_.word2index_.find(words[i]);
+    GLOW_ASSERT(iter != seq2seq->fr_.word2index_.end() && "Unknown word.");
     input.getHandle<size_t>().at({i}) = iter->second;
   }
   seqLength.getHandle<size_t>().at({0}) = words.size() - 1;
 
-  seq2seq->EE.run({seq2seq->input, seq2seq->seqLength}, {&input, &seqLength});
+  seq2seq->EE_.run({seq2seq->input_, seq2seq->seqLength_},
+                   {&input, &seqLength});
 
-  auto OH = seq2seq->output->getPayload().getHandle<size_t>();
+  auto OH = seq2seq->output_->getPayload().getHandle<size_t>();
   for (unsigned i = 0; i < MAX_LENGTH; i++) {
     size_t wordIdx = OH.at({i});
-    if (wordIdx == seq2seq->en.word2index_["EOS"])
+    if (wordIdx == seq2seq->en_.word2index_["EOS"])
       break;
 
     if (i)
       std::cout << ' ';
-    std::cout << seq2seq->en.index2word_[wordIdx];
+    std::cout << seq2seq->en_.index2word_[wordIdx];
   }
   std::cout << "\n\n";
 }
