@@ -488,41 +488,22 @@ void BatchedMatMulNode::verify() const {
   auto LDims = lhs.dims();
   auto RDims = rhs.dims();
   auto DDims = dest.dims();
-  assert(LDims.size() == 3);
-  assert(RDims.size() == 3);
+  (void)DDims;
   assert(DDims.size() == 3);
   auto elem = dest.getType()->getElementType();
   (void)elem;
   assert(lhs.getType()->getElementType() == elem);
   assert(rhs.getType()->getElementType() == elem);
 
-  auto outDims =
-      calculateMatMulOutputDims(LDims[1], LDims[2], RDims[1], RDims[2]);
+  size_t N, X, Y;
+  std::tie(N, X, Y) = calculateMatMulOutputDims(LDims, RDims);
 
-  size_t aN = LDims[0];
-  size_t bN = RDims[0];
-  size_t cN = DDims[0];
-
-  size_t cx = DDims[1];
-  size_t cy = DDims[2];
-
-  assert(((aN == 1) || (bN == 1) || (aN == bN)) &&
-         "Batch size must be broadcasted or identical");
-
-  // Select the batch size. If the left operand is broadcast (value 1), select
-  // the RHS.
-  size_t N = (aN != 1 ? aN : bN);
-  assert(N == cN);
-
-  assert(outDims.first == cx && outDims.second == cy && "Invalid matrix dims");
-
-  (void)aN;
-  (void)bN;
-  (void)cN;
-  (void)cx;
-  (void)cy;
+  assert(N == DDims[0] && "Invalid matrix dims");
+  assert(X == DDims[1] && "Invalid matrix dims");
+  assert(Y == DDims[2] && "Invalid matrix dims");
   (void)N;
-  (void)outDims;
+  (void)X;
+  (void)Y;
 }
 
 void SigmoidNode::verify() const { checkSameType(getResult(), getInput()); }
@@ -731,7 +712,6 @@ NOVERIFY(ArithmeticGradNode)
 NOVERIFY(ReluGradNode)
 NOVERIFY(TanhGradNode)
 NOVERIFY(RegressionNode)
-NOVERIFY(DistributeNode)
 NOVERIFY(ConcatNode)
 #undef NOVERIFY
 

@@ -8,6 +8,8 @@
 #include "llvm/ADT/Hashing.h"
 #include "llvm/Support/Casting.h"
 
+#include <tuple>
+
 namespace glow {
 
 class Variable final : public Node {
@@ -109,11 +111,25 @@ inline std::pair<size_t, size_t> calculateConvOutputDims(size_t sx, size_t sy,
   return {outsx, outsy};
 }
 
-/// Calculate the size of the output tensor based on the matmul parameters.
-inline std::pair<size_t, size_t>
-calculateMatMulOutputDims(size_t ax, size_t ay, size_t bx, size_t by) {
-  assert(ay == bx && "Row size of LHS is not equal to the column size of RHS.");
-  return {ax, by};
+/// Calculate the size of the output tensor based on the batched matmul
+/// parameters \p A and \b B. This calculation assumed that we support
+/// broadcasting of one of the operands in case the batch parameters does not
+/// match.
+inline std::tuple<size_t, size_t, size_t>
+calculateMatMulOutputDims(llvm::ArrayRef<size_t> A, llvm::ArrayRef<size_t> B) {
+  assert(A.size() == 3);
+  assert(B.size() == 3);
+
+  assert(((A[0] == 1) || (B[0] == 1) || (A[0] == B[0])) &&
+         "Batch size must be broadcasted or identical");
+
+  // Select the batch size. If the left operand is a possible broadcast
+  // (value of 1) then select the other side batch size (which may also be 1).
+  size_t N = (A[0] != 1 ? A[0] : B[0]);
+
+  assert(A[2] == B[1] &&
+         "Row size of LHS is not equal to the column size of RHS.");
+  return std::make_tuple(N, A[1], B[2]);
 }
 
 /// Support for hashing the Nodes. This is required for using
