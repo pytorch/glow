@@ -236,8 +236,8 @@ static void fwdPoolMax(Handle<float> inW, Handle<float> outW,
             SXY->at({n, ax, ay, z, 0}) = maxX;
             SXY->at({n, ax, ay, z, 1}) = maxY;
           }
-        } // H
-      }   // W
+        } // W
+      }   // H
     }     // C
   }       // N
 }
@@ -299,8 +299,8 @@ void Interpreter::fwdPoolAvgInst(bool isTrain, const PoolAvgInst *I) {
             }
           }
           outW.at({n, ax, ay, z}) = sum / filterArea;
-        } // H
-      }   // W
+        } // W
+      }   // H
     }     // C
   }       // N
 }
@@ -333,8 +333,8 @@ void Interpreter::fwdPoolMaxWithXYGradInst(bool isTrain,
           size_t maxY = SXY.at({n, ax, ay, z, 1});
 
           inG.at({n, maxX, maxY, z}) += chainGrad;
-        } // H
-      }   // W
+        } // W
+      }   // H
     }     // C
   }       // N
 }
@@ -381,8 +381,8 @@ void Interpreter::fwdPoolAvgGradInst(bool isTrain, const PoolAvgGradInst *I) {
               inG.at({n, (size_t)ox, (size_t)oy, z}) += dy;
             }
           }
-        } // H
-      }   // W
+        } // W
+      }   // H
     }     // C
   }       // N
 }
