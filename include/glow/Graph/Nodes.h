@@ -129,6 +129,7 @@ calculateMatMulOutputDims(llvm::ArrayRef<size_t> A, llvm::ArrayRef<size_t> B) {
 
   assert(A[2] == B[1] &&
          "Row size of LHS is not equal to the column size of RHS.");
+
   return std::make_tuple(N, A[1], B[2]);
 }
 
