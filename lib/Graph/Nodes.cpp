@@ -147,12 +147,12 @@ ElemKind NodeValue::getElementType() const {
 }
 
 void UnownedNodeValueMap::insert(NodeValue from, NodeValue to) {
-  entries.push_front(
+  entries_.push_front(
       {{from.getNode(), from.getResNo()}, {to.getNode(), to.getResNo()}});
 }
 
 NodeValue UnownedNodeValueMap::get(NodeValue from) {
-  for (auto &E : entries) {
+  for (auto &E : entries_) {
     auto &F = E.first;
     auto &T = E.second;
 
@@ -166,7 +166,7 @@ NodeValue UnownedNodeValueMap::get(NodeValue from) {
 }
 
 bool UnownedNodeValueMap::count(NodeValue from) {
-  for (auto &E : entries) {
+  for (auto &E : entries_) {
     auto &F = E.first;
     if (F.first == from.getNode() && F.second == from.getResNo()) {
       return true;

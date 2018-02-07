@@ -912,65 +912,65 @@ void Interpreter::fwdLocalResponseNormalizationGradInst(
 
 void Interpreter::fwdElementAddInst(bool isTrain, const ElementAddInst *I) {
   auto outW = getWeightHandle(I->getDest());
-  auto LHSW = getWeightHandle(I->getLHS());
-  auto RHSW = getWeightHandle(I->getRHS());
+  auto lhsW = getWeightHandle(I->getLHS());
+  auto rhsW = getWeightHandle(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = LHSW.raw(i) + RHSW.raw(i);
+    outW.raw(i) = lhsW.raw(i) + rhsW.raw(i);
   }
 }
 
 void Interpreter::fwdElementSubInst(bool isTrain, const ElementSubInst *I) {
   auto outW = getWeightHandle(I->getDest());
-  auto LHSW = getWeightHandle(I->getLHS());
-  auto RHSW = getWeightHandle(I->getRHS());
+  auto lhsW = getWeightHandle(I->getLHS());
+  auto rhsW = getWeightHandle(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = LHSW.raw(i) - RHSW.raw(i);
+    outW.raw(i) = lhsW.raw(i) - rhsW.raw(i);
   }
 }
 
 void Interpreter::fwdElementMulInst(bool isTrain, const ElementMulInst *I) {
   auto outW = getWeightHandle(I->getDest());
-  auto LHSW = getWeightHandle(I->getLHS());
-  auto RHSW = getWeightHandle(I->getRHS());
+  auto lhsW = getWeightHandle(I->getLHS());
+  auto rhsW = getWeightHandle(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = LHSW.raw(i) * RHSW.raw(i);
+    outW.raw(i) = lhsW.raw(i) * rhsW.raw(i);
   }
 }
 
 void Interpreter::fwdElementDivInst(bool isTrain, const ElementDivInst *I) {
   auto outW = getWeightHandle(I->getDest());
-  auto LHSW = getWeightHandle(I->getLHS());
-  auto RHSW = getWeightHandle(I->getRHS());
+  auto lhsW = getWeightHandle(I->getLHS());
+  auto rhsW = getWeightHandle(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = LHSW.raw(i) / RHSW.raw(i);
+    outW.raw(i) = lhsW.raw(i) / rhsW.raw(i);
   }
 }
 
 void Interpreter::fwdElementMaxInst(bool isTrain, const ElementMaxInst *I) {
   auto outW = getWeightHandle(I->getDest());
-  auto LHSW = getWeightHandle(I->getLHS());
-  auto RHSW = getWeightHandle(I->getRHS());
+  auto lhsW = getWeightHandle(I->getLHS());
+  auto rhsW = getWeightHandle(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = std::max(LHSW.raw(i), RHSW.raw(i));
+    outW.raw(i) = std::max(lhsW.raw(i), rhsW.raw(i));
   }
 }
 
 void Interpreter::fwdElementMinInst(bool isTrain, const ElementMinInst *I) {
   auto outW = getWeightHandle(I->getDest());
-  auto LHSW = getWeightHandle(I->getLHS());
-  auto RHSW = getWeightHandle(I->getRHS());
+  auto lhsW = getWeightHandle(I->getLHS());
+  auto rhsW = getWeightHandle(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = std::min(LHSW.raw(i), RHSW.raw(i));
+    outW.raw(i) = std::min(lhsW.raw(i), rhsW.raw(i));
   }
 }
 
 void Interpreter::fwdElementCmpLTEInst(bool isTrain,
                                        const ElementCmpLTEInst *I) {
   auto outW = getWeightHandle(I->getDest());
-  auto LHSW = getWeightHandle(I->getLHS());
-  auto RHSW = getWeightHandle(I->getRHS());
+  auto lhsW = getWeightHandle(I->getLHS());
+  auto rhsW = getWeightHandle(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = LHSW.raw(i) <= RHSW.raw(i) ? 1.0 : 0.0;
+    outW.raw(i) = lhsW.raw(i) <= rhsW.raw(i) ? 1.0 : 0.0;
   }
 }
 
@@ -978,10 +978,10 @@ void Interpreter::fwdElementSelectInst(bool isTrain,
                                        const glow::ElementSelectInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto condW = getWeightHandle(I->getCond());
-  auto LHSW = getWeightHandle(I->getLHS());
-  auto RHSW = getWeightHandle(I->getRHS());
+  auto lhsW = getWeightHandle(I->getLHS());
+  auto rhsW = getWeightHandle(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = (condW.raw(i) != 0.0) ? LHSW.raw(i) : RHSW.raw(i);
+    outW.raw(i) = (condW.raw(i) != 0.0) ? lhsW.raw(i) : rhsW.raw(i);
   }
 }
 

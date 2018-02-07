@@ -131,10 +131,10 @@ public:
   /// \returns the number of the instruction, or -1 if the instruction is not
   /// numbered.
   int64_t getInstrNumber(Instruction *I) const {
-    auto Result = instrToNum_.find(I);
-    if (Result == instrToNum_.end())
+    auto result = instrToNum_.find(I);
+    if (result == instrToNum_.end())
       return -1;
-    return (int64_t)Result->second;
+    return (int64_t)result->second;
   }
 
   /// \returns the number of the instruction, or -1 if the instruction is not
@@ -142,9 +142,9 @@ public:
   int64_t getInstrNumber(InstrIterator IT) const { return getInstrNumber(*IT); }
 
   /// \returns the instruction with a given number.
-  InstrIterator getInstr(size_t InstrNumber) const {
-    assert(InstrNumber / MAX_SLOT < numToInstr_.size());
-    return numToInstr_[InstrNumber / MAX_SLOT];
+  InstrIterator getInstr(size_t instrNumber) const {
+    assert(instrNumber / MAX_SLOT < numToInstr_.size());
+    return numToInstr_[instrNumber / MAX_SLOT];
   }
 };
 
@@ -483,11 +483,11 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
         continue;
       }
 
-      auto &Intervals = found->second;
+      auto &intervals = found->second;
       // Extend the interval but only if current use is not a write or
       // if it is a write, but we have seen a read before.
       if (opKind != OperandKind::Out)
-        Intervals.back().end_ = opIdx + 1;
+        intervals.back().end_ = opIdx + 1;
 
       // How @inout operands should be handled?
       // They cannot be treated as an end of an interval and a beginning of a
@@ -500,7 +500,7 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
       // flag is set to false to indicate that the value is not guaranteed to be
       // the same inside the interval.
       if (opKind == OperandKind::InOut)
-        Intervals.back().sameValue_ = false;
+        intervals.back().sameValue_ = false;
 
       // No need to create a new interval if it is not a write.
       if (opKind != OperandKind::Out)
@@ -510,7 +510,7 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
       // This instruction modifies the memory location.
       // Therefore, end the current active live interval
       // for this memory location and begin a new one.
-      Intervals.push_back(Interval(opIdx, opIdx + 1));
+      intervals.push_back(Interval(opIdx, opIdx + 1));
     }
   }
 
@@ -528,24 +528,24 @@ static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
 
 /// Provided a set of intervals, return the interval covering
 /// a given instruction.
-static Intervals::iterator getEnclosingInterval(Intervals &LiveIntervals,
+static Intervals::iterator getEnclosingInterval(Intervals &liveIntervals,
                                                 size_t instIdx) {
-  for (auto I = LiveIntervals.begin(), E = LiveIntervals.end(); I != E; ++I) {
+  for (auto I = liveIntervals.begin(), E = liveIntervals.end(); I != E; ++I) {
     if (I->begin_ <= instIdx && instIdx < I->end_)
       return I;
   }
-  return LiveIntervals.end();
+  return liveIntervals.end();
 }
 
 /// Returns true if RHS is enclosed inside LHS.
-static bool isEnclosedInside(Interval &LHS, Interval &RHS) {
-  return LHS.begin_ < RHS.begin_ && RHS.end_ <= LHS.end_;
+static bool isEnclosedInside(Interval &lhs, Interval &rhs) {
+  return lhs.begin_ < rhs.begin_ && rhs.end_ <= lhs.end_;
 }
 
 /// \returns true of any intervals from \p Ints overlap with interval \p I.
-static bool hasOverlappingIntervals(Intervals &Ints, Interval I) {
-  for (const auto &CurI : Ints) {
-    if (std::max(CurI.begin_, I.begin_) < std::min(CurI.end_, I.end_))
+static bool hasOverlappingIntervals(Intervals &intervals, Interval I) {
+  for (const auto &curI : intervals) {
+    if (std::max(curI.begin_, I.begin_) < std::min(curI.end_, I.end_))
       return true;
   }
   return false;
@@ -903,9 +903,9 @@ tryToShareBuffersForInstr(LiveIntervalsMap &intervalsMap,
         continue;
       }
       // The buffers can be reused in principle, thus try to share the buffers.
-      BufferSharingOptimizer Opt(M, intervalsMap, instrNumbering, I, instIdx,
+      BufferSharingOptimizer opt(M, intervalsMap, instrNumbering, I, instIdx,
                                  dest, src);
-      if (Opt.tryToShareBuffers())
+      if (opt.tryToShareBuffers())
         return;
     }
   }
@@ -962,7 +962,7 @@ static void shareBuffers(Module &M) {
 static void eliminateDeadStores(Module &M) {
   auto &instrs = M.getInstrs();
   // Instructions to be erased.
-  Instructions ErasedInstructions;
+  Instructions erasedInstructions;
   /// Representation of the analysis state.
   struct MemoryLocationState {
     /// Instruction that contained a last seen read.
@@ -988,21 +988,21 @@ static void eliminateDeadStores(Module &M) {
     if (isa<DeallocActivationInst>(I) || isa<AllocActivationInst>(I) ||
         isa<TensorViewInst>(I))
       continue;
-    size_t NumMutatedOperands = 0;
-    size_t NumNonReadMutatedOperands = 0;
+    size_t numMutatedOperands = 0;
+    size_t numNonReadMutatedOperands = 0;
     // Process all operand writes.
     for (const auto &Op : I->getOperands()) {
       auto OpOrigin = getOrigin(Op.first);
       auto OpKind = Op.second;
       auto &State = memoryState[OpOrigin];
       if (OpKind != OperandKind::In) {
-        NumMutatedOperands++;
+        numMutatedOperands++;
         // If it a write that was not read and it is not a last write into
         // a WeightVar (i.e. an observable effect), then is can be eliminated.
         // If there are multiple writes in this instruction, all of them
         // should satisfy this property for the instruction to be removed.
         if (!State.lastSeenRead_) {
-          NumNonReadMutatedOperands++;
+          numNonReadMutatedOperands++;
         }
         State.lastSeenWrite_ = I;
         State.lastSeenRead_ = nullptr;
@@ -1011,9 +1011,9 @@ static void eliminateDeadStores(Module &M) {
 
     // It is safe to remove an instruction if all of its mutated operands
     // are not read afterwards.
-    if (NumMutatedOperands > 0 &&
-        NumMutatedOperands == NumNonReadMutatedOperands) {
-      ErasedInstructions.insert(I);
+    if (numMutatedOperands > 0 &&
+        numMutatedOperands == numNonReadMutatedOperands) {
+      erasedInstructions.insert(I);
       // Do not process any reads of operands, because
       // this instruction will be eliminated.
       continue;
@@ -1021,16 +1021,16 @@ static void eliminateDeadStores(Module &M) {
 
     // Process all operand reads.
     for (const auto &Op : I->getOperands()) {
-      auto OpOrigin = getOrigin(Op.first);
-      auto OpKind = Op.second;
-      auto &State = memoryState[OpOrigin];
-      if (OpKind != OperandKind::Out) {
-        State.lastSeenRead_ = I;
+      auto opOrigin = getOrigin(Op.first);
+      auto opKind = Op.second;
+      auto &state = memoryState[opOrigin];
+      if (opKind != OperandKind::Out) {
+        state.lastSeenRead_ = I;
       }
     }
   }
 
-  eraseInstructions(M, ErasedInstructions);
+  eraseInstructions(M, erasedInstructions);
 }
 
 /// Instrument the code to make it easier to debug issues.
@@ -1115,17 +1115,17 @@ void performPeepholeOptimizations(Module &M) {
     // This is safe, because transpose of a splat does not change any elements.
     // It changes only types.
     if (auto *TI = dyn_cast<TransposeInst>(I)) {
-      auto Src = TI->getSrc();
-      auto Dest = TI->getDest();
-      if (auto W = getSingleWriter(Src)) {
+      auto src = TI->getSrc();
+      auto dest = TI->getDest();
+      if (auto W = getSingleWriter(src)) {
         if (isa<SplatInst>(W)) {
-          if (Src->getType() != Dest->getType()) {
+          if (src->getType() != dest->getType()) {
             auto *TVI =
-                B.createTensorViewInst(TI->getName(), Src, Dest->getType());
+                B.createTensorViewInst(TI->getName(), src, dest->getType());
             M.moveInstruction(cur, TVI);
-            Src = TVI;
+            src = TVI;
           }
-          auto *CI = B.createCopyInst(TI->getName(), TI->getDest(), Src);
+          auto *CI = B.createCopyInst(TI->getName(), TI->getDest(), src);
           it = M.moveInstruction(cur, CI);
           M.eraseInstruction(cur);
           continue;
@@ -1136,20 +1136,20 @@ void performPeepholeOptimizations(Module &M) {
     // Convert element_max instruction into a canonical form,
     // where the splat (i.e. the constant) argument is the last one.
     if (auto *EM = dyn_cast<ElementMaxInst>(I)) {
-      auto *LHS = EM->getLHS();
-      auto *RHS = EM->getRHS();
-      auto *WLHS = getSingleWriter(LHS);
-      if (!WLHS)
+      auto *lhs = EM->getLHS();
+      auto *rhs = EM->getRHS();
+      auto *wlhs = getSingleWriter(lhs);
+      if (!wlhs)
         continue;
-      if (!isa<SplatInst>(WLHS))
+      if (!isa<SplatInst>(wlhs))
         continue;
       // If RHS is a splat already, there is nothing to do.
-      auto *WRHS = getSingleWriter(RHS);
-      if (WRHS && isa<SplatInst>(WRHS))
+      auto *wrhs = getSingleWriter(rhs);
+      if (wrhs && isa<SplatInst>(wrhs))
         continue;
-      auto *NewEM =
-          B.createElementMaxInst(EM->getName(), EM->getDest(), RHS, LHS);
-      it = M.moveInstruction(cur, NewEM);
+      auto *newEM =
+          B.createElementMaxInst(EM->getName(), EM->getDest(), rhs, lhs);
+      it = M.moveInstruction(cur, newEM);
       M.eraseInstruction(cur);
       continue;
     }

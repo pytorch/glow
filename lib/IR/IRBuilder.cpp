@@ -159,75 +159,75 @@ BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(
 
 LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationOp(
     Value *input, size_t halfWindowSize, float alpha, float beta, float k) {
-  auto Ty = input->getType();
-  auto *scale = createAllocActivationInst("scale", Ty);
+  auto ty = input->getType();
+  auto *scale = createAllocActivationInst("scale", ty);
 
   // The output tensor is of the same shape as the input tensor.
-  auto *res = createAllocActivationInst("LRN.res", Ty);
+  auto *res = createAllocActivationInst("LRN.res", ty);
   return createLocalResponseNormalizationInst("LRN", res, input, scale,
                                               halfWindowSize, alpha, beta, k);
 }
 
-ElementAddInst *IRBuilder::createElementAddOp(Value *LHS, Value *RHS) {
-  assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
+ElementAddInst *IRBuilder::createElementAddOp(Value *lhs, Value *rhs) {
+  assert(lhs->dims() == rhs->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
-  auto *res = createAllocActivationInst("add.res", LHS->getType());
-  return createElementAddInst("add", res, LHS, RHS);
+  auto *res = createAllocActivationInst("add.res", lhs->getType());
+  return createElementAddInst("add", res, lhs, rhs);
 }
 
-ElementSubInst *IRBuilder::createElementSubOp(Value *LHS, Value *RHS) {
-  assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
+ElementSubInst *IRBuilder::createElementSubOp(Value *lhs, Value *rhs) {
+  assert(lhs->dims() == rhs->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
-  auto *res = createAllocActivationInst("sub.res", LHS->getType());
-  return createElementSubInst("sub", res, LHS, RHS);
+  auto *res = createAllocActivationInst("sub.res", lhs->getType());
+  return createElementSubInst("sub", res, lhs, rhs);
 }
 
-ElementMulInst *IRBuilder::createElementMulOp(Value *LHS, Value *RHS) {
-  assert(LHS->dims() == RHS->dims() && "Invalid operand shapes");
+ElementMulInst *IRBuilder::createElementMulOp(Value *lhs, Value *rhs) {
+  assert(lhs->dims() == rhs->dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
-  auto *res = createAllocActivationInst("mul.res", LHS->getType());
-  return createElementMulInst("mul", res, LHS, RHS);
+  auto *res = createAllocActivationInst("mul.res", lhs->getType());
+  return createElementMulInst("mul", res, lhs, rhs);
 }
 
-ElementDivInst *IRBuilder::createElementDivOp(Value *LHS, Value *RHS) {
-  assert(LHS->dims() == RHS->dims() &&
+ElementDivInst *IRBuilder::createElementDivOp(Value *lhs, Value *rhs) {
+  assert(lhs->dims() == rhs->dims() &&
          "Input and Output dimensions are different");
 
-  auto *res = createAllocActivationInst("div.res", LHS->getType());
-  return createElementDivInst("div", res, LHS, RHS);
+  auto *res = createAllocActivationInst("div.res", lhs->getType());
+  return createElementDivInst("div", res, lhs, rhs);
 }
 
-ElementMaxInst *IRBuilder::createElementMaxOp(Value *LHS, Value *RHS) {
-  assert(LHS->dims() == RHS->dims() &&
+ElementMaxInst *IRBuilder::createElementMaxOp(Value *lhs, Value *rhs) {
+  assert(lhs->dims() == rhs->dims() &&
          "Input and Output dimensions are different");
 
-  auto *res = createAllocActivationInst("max.res", LHS->getType());
-  return createElementMaxInst("max", res, LHS, RHS);
+  auto *res = createAllocActivationInst("max.res", lhs->getType());
+  return createElementMaxInst("max", res, lhs, rhs);
 }
 
-ElementMinInst *IRBuilder::createElementMinOp(Value *LHS, Value *RHS) {
-  assert(LHS->dims() == RHS->dims() &&
+ElementMinInst *IRBuilder::createElementMinOp(Value *lhs, Value *rhs) {
+  assert(lhs->dims() == rhs->dims() &&
          "Input and Output dimensions are different");
 
-  auto *res = createAllocActivationInst("min.res", LHS->getType());
-  return createElementMinInst("min", res, LHS, RHS);
+  auto *res = createAllocActivationInst("min.res", lhs->getType());
+  return createElementMinInst("min", res, lhs, rhs);
 }
 
-ElementCmpLTEInst *IRBuilder::createElementCmpLTEOp(Value *LHS, Value *RHS) {
-  assert(LHS->dims() == RHS->dims() &&
+ElementCmpLTEInst *IRBuilder::createElementCmpLTEOp(Value *lhs, Value *rhs) {
+  assert(lhs->dims() == rhs->dims() &&
          "Input and Output dimensions are different");
-  auto *res = createAllocActivationInst("cmp.lte.res", LHS->getType());
-  return createElementCmpLTEInst("cmp.lte", res, LHS, RHS);
+  auto *res = createAllocActivationInst("cmp.lte.res", lhs->getType());
+  return createElementCmpLTEInst("cmp.lte", res, lhs, rhs);
 }
 
-ElementSelectInst *IRBuilder::createSelectOp(Value *Cond, Value *LHS,
-                                             Value *RHS) {
-  assert(LHS->dims() == RHS->dims() &&
+ElementSelectInst *IRBuilder::createSelectOp(Value *cond, Value *lhs,
+                                             Value *rhs) {
+  assert(lhs->dims() == rhs->dims() &&
          "Input and Output dimensions are different");
-  assert(Cond->dims() == RHS->dims() &&
+  assert(cond->dims() == rhs->dims() &&
          "Input and Output dimensions are different");
-  auto *res = createAllocActivationInst("select.res", LHS->getType());
-  return createElementSelectInst("select", res, Cond, LHS, RHS);
+  auto *res = createAllocActivationInst("select.res", lhs->getType());
+  return createElementSelectInst("select", res, cond, lhs, rhs);
 }
 
 TopKInst *IRBuilder::createTopKOp(Value *input, size_t k) {

@@ -30,15 +30,14 @@ using kernelSrcEnum = struct {
 static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 #ifndef NDEBUG
   // Determine the size of the log.
-  size_t log_size;
-  clGetProgramBuildInfo(prog, dev, CL_PROGRAM_BUILD_LOG, 0, nullptr, &log_size);
+  size_t logSize;
+  clGetProgramBuildInfo(prog, dev, CL_PROGRAM_BUILD_LOG, 0, nullptr, &logSize);
 
   // Allocate memory for the log.
-  auto *log = (char *)malloc(log_size);
+  auto *log = (char *)malloc(logSize);
 
   // Get the log.
-  clGetProgramBuildInfo(prog, dev, CL_PROGRAM_BUILD_LOG, log_size, log,
-                        nullptr);
+  clGetProgramBuildInfo(prog, dev, CL_PROGRAM_BUILD_LOG, logSize, log, nullptr);
 
   // Print the log.
   llvm::outs() << log << "\n";

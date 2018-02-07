@@ -32,11 +32,11 @@ static llvm::StringRef getHostCpuName() {
 }
 
 GlowJIT::GlowJIT()
-    : TM(EngineBuilder().selectTarget(llvm::Triple(), "", getHostCpuName(),
-                                      getMachineAttributes())),
-      DL(TM->createDataLayout()),
-      ObjectLayer([]() { return std::make_shared<SectionMemoryManager>(); }),
-      CompileLayer(ObjectLayer, SimpleCompiler(*TM)) {
+    : TM_(EngineBuilder().selectTarget(llvm::Triple(), "", getHostCpuName(),
+                                       getMachineAttributes())),
+      DL_(TM_->createDataLayout()),
+      objectLayer_([]() { return std::make_shared<SectionMemoryManager>(); }),
+      compileLayer_(objectLayer_, SimpleCompiler(*TM_)) {
   llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
 }
 
@@ -45,30 +45,30 @@ GlowJIT::ModuleHandle GlowJIT::addModule(std::unique_ptr<Module> M) {
   // Lambda 1: Look back into the JIT itself to find symbols that are part of
   //           the same "logical dylib".
   // Lambda 2: Search for external symbols in the host process.
-  auto Resolver = createLambdaResolver(
-      [&](const std::string &Name) {
-        if (auto Sym = CompileLayer.findSymbol(Name, false))
-          return Sym;
+  auto resolver = createLambdaResolver(
+      [&](const std::string &name) {
+        if (auto sym = compileLayer_.findSymbol(name, false))
+          return sym;
         return JITSymbol(nullptr);
       },
-      [](const std::string &Name) {
-        if (auto SymAddr = RTDyldMemoryManager::getSymbolAddressInProcess(Name))
-          return JITSymbol(SymAddr, JITSymbolFlags::Exported);
+      [](const std::string &name) {
+        if (auto symAddr = RTDyldMemoryManager::getSymbolAddressInProcess(name))
+          return JITSymbol(symAddr, JITSymbolFlags::Exported);
         return JITSymbol(nullptr);
       });
 
   // Add the set to the JIT with the resolver we created above and a newly
   // created SectionMemoryManager.
-  return cantFail(CompileLayer.addModule(std::move(M), std::move(Resolver)));
+  return cantFail(compileLayer_.addModule(std::move(M), std::move(resolver)));
 }
 
-llvm::JITSymbol GlowJIT::findSymbol(const std::string Name) {
-  std::string MangledName;
-  raw_string_ostream MangledNameStream(MangledName);
-  Mangler::getNameWithPrefix(MangledNameStream, Name, DL);
-  return CompileLayer.findSymbol(MangledNameStream.str(), true);
+llvm::JITSymbol GlowJIT::findSymbol(const std::string name) {
+  std::string mangledName;
+  raw_string_ostream MangledNameStream(mangledName);
+  Mangler::getNameWithPrefix(MangledNameStream, name, DL_);
+  return compileLayer_.findSymbol(MangledNameStream.str(), true);
 }
 
 void GlowJIT::removeModule(GlowJIT::ModuleHandle H) {
-  cantFail(CompileLayer.removeModule(H));
+  cantFail(compileLayer_.removeModule(H));
 }

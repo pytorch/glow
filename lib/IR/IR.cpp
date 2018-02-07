@@ -218,7 +218,7 @@ Module::~Module() { clear(); }
 
 void Module::clear() {
   // Remove the mapping between the graph nodes and the IR that we are deleting.
-  variableMap.clear();
+  variableMap_.clear();
 
   // Delete all of the instructions, in reverse order, to make sure that
   // we delete the users before the instructions.
@@ -327,7 +327,7 @@ void Module::verify() const {
 
   verifyLiveness(*this);
 
-  for (auto p : variableMap) {
+  for (auto p : variableMap_) {
     (void)p;
     assert(p.first->getType() == p.second->getType() &&
            "Weight and variable must have the same type");
@@ -337,8 +337,8 @@ void Module::verify() const {
 }
 
 Value *Module::getWeightForNode(const Node *V) const {
-  auto it = variableMap.find(V);
-  if (it == variableMap.end()) {
+  auto it = variableMap_.find(V);
+  if (it == variableMap_.end()) {
     return nullptr;
   }
 

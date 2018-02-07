@@ -85,7 +85,7 @@ public:
   using Entry = std::pair<ValRef, ValRef>;
 
 private:
-  std::list<Entry> entries;
+  std::list<Entry> entries_;
 
 public:
   /// \register the node \p from as mapping to \p to.

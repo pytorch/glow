@@ -92,7 +92,7 @@ public:
 
 private:
   /// Parent module.
-  Module *M;
+  Module *M_;
 
   /// A list of operands that the instruction has. This is typically a very
   /// short list.
@@ -116,11 +116,11 @@ public:
   void pushOperand(Operand op);
 
   Instruction(Module *M, llvm::StringRef name, Kinded::Kind k, TypeRef Ty)
-      : Value(name, Ty, k), M(M) {}
+      : Value(name, Ty, k), M_(M) {}
 
   Instruction(Module *M, llvm::StringRef name, Kinded::Kind k, TypeRef Ty,
               llvm::ArrayRef<Operand> ops)
-      : Value(name, Ty, k), M(M) {
+      : Value(name, Ty, k), M_(M) {
     for (auto &op : ops) {
       pushOperand(op);
     }
@@ -153,10 +153,10 @@ public:
                           unsigned srcIdx);
 
   /// \returns parent of current instruction.
-  Module *getParent() const { return M; }
+  Module *getParent() const { return M_; }
 
   /// Sets a parent for the current instruction.
-  void setParent(Module *Mod) { M = Mod; }
+  void setParent(Module *Mod) { M_ = Mod; }
 
   /// Erases instruction from its parent and destroy it.
   void eraseFromParent();
@@ -201,7 +201,7 @@ private:
 
   /// Maps Variable nodes in the original graph to the weight values that
   /// represent them in the lower IR.
-  VariableMap variableMap{};
+  VariableMap variableMap_{};
 
   /// Assign the instructions in the module a unique name.
   void nameInstructions();
@@ -244,7 +244,7 @@ public:
   void dumpDAG();
 
   /// \returns the variable map.
-  VariableMap &getVariableMap() { return variableMap; }
+  VariableMap &getVariableMap() { return variableMap_; }
 
   /// \returns the weight that the variable \p v is lowered into, or null if the
   /// variable is unknown.
