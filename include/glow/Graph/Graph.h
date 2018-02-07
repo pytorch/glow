@@ -132,10 +132,14 @@ public:
                                            NodeValue input, Variable *W,
                                            Variable *B, size_t outDepth);
 
+  /// Create a fully connected node with the specified output type.
+  /// Note, outputDepth is infered based on the output type.
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
-                                           NodeValue input, Variable *W,
-                                           Variable *B, TypeRef outTy);
+                                           NodeValue input, Node *W, Node *B,
+                                           TypeRef outTy);
 
+  /// Create a fully connected node with the given \p name, \p input and \p
+  /// output depth. Trainable weight and bias variables are created implicitly.
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, size_t outDepth);
 

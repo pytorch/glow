@@ -107,6 +107,7 @@ add_executable(quantizationTest
                quantizationTest.cpp)
 target_link_libraries(quantizationTest
                       PRIVATE
+                        ExecutionEngine
                         Graph
                         Quantization
                         gtest

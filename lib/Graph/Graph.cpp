@@ -221,8 +221,8 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
 }
 
 FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
-                                                NodeValue input, Variable *W,
-                                                Variable *B, TypeRef outTy) {
+                                                NodeValue input, Node *W,
+                                                Node *B, TypeRef outTy) {
   assert(outTy->dims().size() == 2 && "Invalid number of dimensions");
   assert(outTy->dims()[0] == input.dims()[0] && "Invalid dimensions");
 

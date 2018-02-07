@@ -14,7 +14,7 @@ namespace yaml {
 /// Mapping for NodeQuantizationInfo yaml serializer.
 template <> struct MappingTraits<glow::NodeQuantizationInfo> {
   static void mapping(IO &io, glow::NodeQuantizationInfo &info) {
-    io.mapRequired("nodeOutputName", info.nodeName_);
+    io.mapRequired("nodeOutputName", info.nodeOutputName_);
     io.mapRequired("scale", info.tensorQuantizationParams_.scale_);
     io.mapRequired("offset", info.tensorQuantizationParams_.offset_);
   }
