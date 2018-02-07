@@ -779,3 +779,87 @@ TEST(LinearRegression, trainSimpleLinearRegression) {
   EXPECT_NEAR(M->getPayload().getHandle<>().at({0, 0}), referenceM, 0.01);
   EXPECT_NEAR(B->getPayload().getHandle<>().at({0}), referenceB, 0.01);
 }
+
+enum class Sport : size_t { BASKETBALL = 0, SOCCER = 1 };
+
+void generatePlayerData(Tensor &players, Tensor &labels,
+                        unsigned numTrainPlayers) {
+  auto P = players.getHandle<>();
+  auto L = labels.getHandle<size_t>();
+
+  // Auto generate height/weights for basketball players.
+  for (size_t i = 0; i < numTrainPlayers / 2; i++) {
+    auto heightInches = nextRandInt(19) + 70;                 // [70, 88]
+    auto weightLbs = 4 * heightInches - 85 + nextRandInt(31); // [195, 297]
+    P.at({i, 0}) = heightInches;
+    P.at({i, 1}) = weightLbs;
+    L.at({i, 0}) = static_cast<size_t>(Sport::BASKETBALL);
+  }
+
+  // Auto generate height/weights for soccer players.
+  for (size_t i = numTrainPlayers / 2; i < numTrainPlayers; i++) {
+    auto heightInches = nextRandInt(17) + 60; // [60, 76]
+    auto weightLbs = static_cast<unsigned>(2 * heightInches) + 20 +
+                     nextRandInt(31); // [140, 202]
+    P.at({i, 0}) = heightInches;
+    P.at({i, 1}) = weightLbs;
+    L.at({i, 0}) = static_cast<size_t>(Sport::SOCCER);
+  }
+}
+
+// Given a player's height and weight, classify them as a basketball or
+// soccer player.
+TEST(LinearClassifier, classifyPlayerSport) {
+  ExecutionEngine EE;
+  EE.getConfig().learningRate = 0.05;
+
+  auto &G = EE.getGraph();
+  G.setName("classifyPlayers");
+
+  const unsigned numTrainPlayers = 200;
+  const size_t numFeatures = 2;
+  const size_t numClasses = 2;
+
+  auto *A = G.createVariable(ElemKind::FloatTy, {numTrainPlayers, numFeatures},
+                             "A", Variable::VisibilityKind::Public);
+  auto *S = G.createVariable(ElemKind::IndexTy, {numTrainPlayers, 1}, "S",
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
+
+  auto *FC = G.createFullyConnected("fc", A, numClasses);
+  auto *SM = G.createSoftMax("softmax", FC, S);
+  auto *result = G.createSave("result", SM);
+
+  EE.compile(CompilationMode::Train);
+
+  Tensor players(ElemKind::FloatTy, {numTrainPlayers, numFeatures});
+  Tensor labels(ElemKind::IndexTy, {numTrainPlayers, 1});
+  generatePlayerData(players, labels, numTrainPlayers);
+
+  // Training:
+  EE.runBatch(2000, {A, S}, {&players, &labels});
+
+  EE.compile(CompilationMode::Infer);
+
+  std::vector<std::tuple<unsigned, unsigned, Sport>> testPlayers;
+  testPlayers.emplace_back(82, 240, Sport::BASKETBALL);
+  testPlayers.emplace_back(86, 260, Sport::BASKETBALL);
+  testPlayers.emplace_back(90, 270, Sport::BASKETBALL);
+  testPlayers.emplace_back(60, 160, Sport::SOCCER);
+  testPlayers.emplace_back(63, 155, Sport::SOCCER);
+  testPlayers.emplace_back(66, 170, Sport::SOCCER);
+
+  Tensor testPlayersTensor(ElemKind::FloatTy, {numTrainPlayers, numFeatures});
+  for (size_t i = 0; i < testPlayers.size(); i++) {
+    testPlayersTensor.getHandle<>().at({i, 0}) = std::get<0>(testPlayers[i]);
+    testPlayersTensor.getHandle<>().at({i, 1}) = std::get<1>(testPlayers[i]);
+  }
+
+  EE.run({A}, {&testPlayersTensor});
+
+  for (size_t i = 0; i < testPlayers.size(); i++) {
+    auto SMH = result->getVariable()->getPayload().getHandle<>();
+    const size_t sport = static_cast<size_t>(std::get<2>(testPlayers[i]));
+    EXPECT_NEAR(SMH.at({i, sport}), 1.0, 0.1);
+  }
+}
