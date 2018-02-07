@@ -115,13 +115,13 @@ void Instruction::verify() const {
 void Value::verify(const Module &M) const {}
 
 void Value::verifyUseList(const Module &M) const {
-  auto Users = getUsers();
-  auto Instrs = M.getInstrs();
-  for (const auto &Use : Users) {
-    auto *I = Use.get();
+  auto users = getUsers();
+  auto instrs = M.getInstrs();
+  for (const auto &use : users) {
+    auto *I = use.get();
     (void)I;
     // Every instruction using this value should be in the instruction list.
-    assert(std::find(Instrs.begin(), Instrs.end(), I) != Instrs.end());
+    assert(std::find(instrs.begin(), instrs.end(), I) != instrs.end());
   }
 }
 
@@ -238,12 +238,12 @@ static void LLVM_ATTRIBUTE_UNUSED verifyOperandsAccess(Instruction *I) {
   if (llvm::isa<CopyInst>(I))
     return;
   for (size_t opIdx = 0, e = I->getNumOperands(); opIdx < e; ++opIdx) {
-    auto Op = I->getOperand(opIdx);
-    auto OpKind = Op.second;
-    auto OpValue = Op.first;
+    auto op = I->getOperand(opIdx);
+    auto opKind = op.second;
+    auto opValue = op.first;
     // Check that an instruction never tries to update a constant argument.
-    if (OpKind != OperandKind::In) {
-      if (auto *W = llvm::dyn_cast<WeightVar>(OpValue)) {
+    if (opKind != OperandKind::In) {
+      if (auto *W = llvm::dyn_cast<WeightVar>(opValue)) {
         assert(W->getMutability() != WeightVar::MutabilityKind::Constant &&
                "Constant weights cannot be updated");
         (void)W;
@@ -252,24 +252,24 @@ static void LLVM_ATTRIBUTE_UNUSED verifyOperandsAccess(Instruction *I) {
     // If the same operand is used multiple times by an instruction,
     // check that it is a valid access pattern.
     for (size_t nextOpIdx = opIdx + 1; nextOpIdx < e; ++nextOpIdx) {
-      auto NextOp = I->getOperand(nextOpIdx);
-      auto NextOpKind = NextOp.second;
-      auto NextOpValue = NextOp.first;
+      auto nextOp = I->getOperand(nextOpIdx);
+      auto nextOpKind = nextOp.second;
+      auto nextOpValue = nextOp.first;
       // Bail if it is a different value.
-      if (OpValue != NextOpValue)
+      if (opValue != nextOpValue)
         continue;
       // It is OK to write into the same buffer if the instruction permits such
       // an inplace update.
-      if (OpKind == OperandKind::In && NextOpKind != OperandKind::In &&
+      if (opKind == OperandKind::In && nextOpKind != OperandKind::In &&
           Instruction::isInplaceOp(I, nextOpIdx, opIdx))
         continue;
-      if (OpKind != OperandKind::In && NextOpKind == OperandKind::In &&
+      if (opKind != OperandKind::In && nextOpKind == OperandKind::In &&
           Instruction::isInplaceOp(I, opIdx, nextOpIdx))
         continue;
       // If an operand is used as @out or @inout it cannot be used
       // for anything else.
       // It is OK to use the same operand as input multiple times.
-      assert(OpKind == OperandKind::In && NextOpKind == OperandKind::In &&
+      assert(opKind == OperandKind::In && nextOpKind == OperandKind::In &&
              "Conflicting uses of the same operand by the same instruction");
     }
   }
@@ -353,14 +353,14 @@ InstructionNumbering::InstructionNumbering(Module &M) : M_(M) {
   auto &instrs = M.getInstrs();
   size_t instIdx = 0;
   for (auto it = instrs.begin(), e = instrs.end(); it != e; ++instIdx, ++it) {
-    NumToInstr_.push_back(it);
-    InstrToNum_[*it] = instIdx;
+    numToInstr_.push_back(it);
+    instrToNum_[*it] = instIdx;
   }
 }
 
 int64_t InstructionNumbering::getInstrNumber(Instruction *I) const {
-  auto Result = InstrToNum_.find(I);
-  if (Result == InstrToNum_.end())
+  auto Result = instrToNum_.find(I);
+  if (Result == instrToNum_.end())
     return -1;
   return (int64_t)Result->second;
 }
@@ -369,9 +369,9 @@ int64_t InstructionNumbering::getInstrNumber(InstrIterator IT) const {
   return getInstrNumber(*IT);
 }
 
-InstrIterator InstructionNumbering::getInstr(size_t InstrNumber) const {
-  assert(InstrNumber < NumToInstr_.size());
-  return NumToInstr_[InstrNumber];
+InstrIterator InstructionNumbering::getInstr(size_t instrNumber) const {
+  assert(instrNumber < numToInstr_.size());
+  return numToInstr_[instrNumber];
 }
 
 //===----------------------------------------------------------------------===//
@@ -431,19 +431,19 @@ static void dumpUsers(const Value *V, llvm::raw_ostream &out,
   if (V->getNumUsers() == 0)
     return;
   out << " // Users: ";
-  bool IsFirst = true;
+  bool isFirst = true;
   for (auto U = V->getUsers().rbegin(), E = V->getUsers().rend(); U != E; ++U) {
     auto *I = U->get();
-    if (!IsFirst) {
+    if (!isFirst) {
       out << ", ";
     }
 
     out << getOperandKindStr(U->getOperand().second) << " ";
 
-    auto InstrNum = IN.getInstrNumber(I);
-    assert(InstrNum >= 0);
-    out << InstrNum;
-    IsFirst = false;
+    auto instrNum = IN.getInstrNumber(I);
+    assert(instrNum >= 0);
+    out << instrNum;
+    isFirst = false;
   }
 }
 
@@ -471,11 +471,11 @@ bool Instruction::isInplaceOp(const Instruction *I, unsigned dstIdx,
 void Instruction::dumpOperands(llvm::raw_ostream &os) const {
   for (size_t i = 0, e = getNumOperands(); i < e; i++) {
     auto op = getOperand(i);
-    auto CC = getOperandKindStr(op.second);
+    auto cc = getOperandKindStr(op.second);
     if (i) {
       os << ", ";
     }
-    os << CC << " %" << op.first->getName().str();
+    os << cc << " %" << op.first->getName().str();
   }
 }
 

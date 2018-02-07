@@ -303,9 +303,9 @@ class InstructionNumbering {
   using NumberedInstructionMap = std::vector<InstrIterator>;
   using InstructionNumbersMap = std::unordered_map<Instruction *, size_t>;
   /// Maps the number to an instruction.
-  NumberedInstructionMap NumToInstr_;
+  NumberedInstructionMap numToInstr_;
   /// Maps an instruction to its number.
-  InstructionNumbersMap InstrToNum_;
+  InstructionNumbersMap instrToNum_;
   Module &M_;
 
 public:
