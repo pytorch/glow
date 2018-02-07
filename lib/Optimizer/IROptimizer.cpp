@@ -1172,6 +1172,7 @@ void performPeepholeOptimizations(Module &M) {
   }
 }
 
+/// Perform optimizations on the IR representation.
 void glow::optimize(Module &M, CompilationMode mode) {
   M.verify();
   if (!optimizeIR)
