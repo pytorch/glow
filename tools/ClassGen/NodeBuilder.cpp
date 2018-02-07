@@ -335,7 +335,8 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
      << "  std::string getDebugDesc() const;\n"
      << "  bool isEqual(const " << name_ << "Node &other) const;\n"
      << "  llvm::hash_code getHash() const;\n"
-     << "  void visit(Node *parent, NodeWalker *visitor);\n";
+     << "  void visit(Node *parent, NodeWalker *visitor);\n"
+     << "  void verify() const;\n";
 
   if (!enum_.empty()) {
     os << "  const char *getModeStr() const { return getModeStr(mode_); }\n"

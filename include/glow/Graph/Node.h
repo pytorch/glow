@@ -160,6 +160,9 @@ public:
 
   void visit(const Node *parent, NodeWalker *visitor) const;
 
+  /// Verify node.
+  void verify() const;
+
   /// Replace all uses of this node with null. This method is used by the
   /// destruction sequence. When the node is deleted we need to unregister all
   /// users. This allows us to deconstruct the graph in an arbitrary order.
