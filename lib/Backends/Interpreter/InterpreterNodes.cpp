@@ -1004,7 +1004,7 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
     dest.clear(0);
 
     // For matrix multiplication, if the offset is equal to zero the scale
-    // is defined as the formular (L.scale * R.scale / D.scale).
+    // is defined as the formula (L.scale * R.scale / D.scale).
     // In here we assume that the offset for all buffers is zero.
     float scale = lhsTy->getScale() * rhsTy->getScale() / destTy->getScale();
     int32_t lhsOffset = lhsTy->getOffset();
