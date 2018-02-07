@@ -401,9 +401,8 @@ void DeallocActivationInst::verify() const {
 
 void QuantizationProfileInst::verify() const {
   // Make sure that input tensor is a floating point type.
-  assert(getOperand(0).first->getElementType() == ElemKind::FloatTy ||
-         getOperand(0).first->getElementType() == ElemKind::DoubleTy &&
-             "Floating point type is expected");
+  assert(getOperand(0).first->getElementType() == ElemKind::FloatTy &&
+         "Floating point type is expected");
 
   // Check computation info has proper size.
   assert(getOperand(2).first->dims().size() == 1 &&

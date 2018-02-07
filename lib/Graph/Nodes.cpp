@@ -191,10 +191,6 @@ void Variable::initPayload() {
       payload_.getHandle<float>().clear(val_);
       break;
     }
-    case ElemKind::DoubleTy: {
-      payload_.getHandle<double>().clear(val_);
-      break;
-    }
     case ElemKind::Int8QTy: {
       payload_.getHandle<int8_t>().clear(val_);
       break;
@@ -215,10 +211,6 @@ void Variable::initPayload() {
     switch (payload_.getElementType()) {
     case ElemKind::FloatTy: {
       payload_.getHandle<float>().initXavier(val_);
-      break;
-    }
-    case ElemKind::DoubleTy: {
-      payload_.getHandle<double>().initXavier(val_);
       break;
     }
     case ElemKind::Int8QTy: {
@@ -654,9 +646,8 @@ void SGDNode::verify() const {
 
 void QuantizationProfileNode::verify() const {
   // Make sure that input tensor is a floating point type.
-  assert(getInput().getElementType() == ElemKind::FloatTy ||
-         getInput().getElementType() == ElemKind::DoubleTy &&
-             "Floating point type is expected");
+  assert(getInput().getElementType() == ElemKind::FloatTy &&
+         "Floating point type is expected");
 
   // Check computation info has proper size.
   assert(getComputationInfo().dims().size() == 1 &&

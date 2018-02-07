@@ -77,7 +77,6 @@ inline bool operator==(const ShapeNHWC &LHS, const ShapeNHWC &RHS) {
 
 enum class ElemKind : unsigned char {
   FloatTy,
-  DoubleTy,
   Int8QTy,
   Int32QTy,
   IndexTy,
@@ -189,8 +188,6 @@ struct Type final {
     switch (Ty) {
     case ElemKind::FloatTy:
       return std::is_same<ElemTy, float>::value;
-    case ElemKind::DoubleTy:
-      return std::is_same<ElemTy, double>::value;
     case ElemKind::Int8QTy:
       return std::is_same<ElemTy, int8_t>::value;
     case ElemKind::Int32QTy:
@@ -217,8 +214,6 @@ struct Type final {
     switch (Ty) {
     case ElemKind::FloatTy:
       return sizeof(float);
-    case ElemKind::DoubleTy:
-      return sizeof(double);
     case ElemKind::Int8QTy:
       return sizeof(int8_t);
     case ElemKind::Int32QTy:
@@ -237,7 +232,10 @@ struct Type final {
   /// \return the textual name of the element \p Ty.
   static llvm::StringRef getElementName(ElemKind Ty) {
     static const char *names[] = {
-        "float", "double", "i8", "i32", "index",
+        "float",
+        "i8",
+        "i32",
+        "index",
     };
     return names[(int)Ty];
   }
