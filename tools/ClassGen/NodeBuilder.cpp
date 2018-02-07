@@ -115,8 +115,11 @@ void NodeBuilder::emitSettersGetters(std::ostream &os) const {
 
   unsigned idx = 0;
   for (const auto &op : nodeOutputs_) {
-    os << "  NodeValue get" << op.second << "() { return NodeValue(this, "
-       << idx++ << "); }\n";
+    os << "  NodeValue get" << op.second << "() { return getNthResult(" << idx
+       << "); }\n";
+    os << "  const NodeValue get" << op.second
+       << "() const { return getNthResult(" << idx << "); }\n";
+    idx++;
   }
 
   for (const auto &op : members_) {
