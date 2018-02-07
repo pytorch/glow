@@ -131,6 +131,13 @@ void NodeBuilder::emitSettersGetters(std::ostream &os) const {
      << "    return k->getKind() == Kinded::Kind::" << name_ << "NodeKind;\n"
      << "  }\n\n";
 
+  os << "\n  bool isOverwrittenNthInput(unsigned idx) const {\n";
+  for (const auto &overwrittenInput : nodeOverwrittenInputs_) {
+    os << "    if (idx == " << overwrittenInput << ") return true;\n";
+  }
+  os << "    return false;\n";
+  os << "  }\n\n";
+
   if (!enum_.empty()) {
     os << "  Mode getMode() const { return mode_; }\n";
   }

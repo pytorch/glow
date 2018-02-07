@@ -356,6 +356,17 @@ bool Node::hasSideEffects() const {
   }
 }
 
+bool Node::isOverwrittenNthInput(unsigned idx) const {
+  switch (getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<const CLASS *>(this)->isOverwrittenNthInput(idx);
+#include "AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+}
+
 std::string Node::getDebugDesc() const {
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
