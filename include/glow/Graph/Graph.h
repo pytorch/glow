@@ -152,6 +152,10 @@ public:
   SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input,
                              NodeValue selected);
 
+  CrossEntropyLossNode *createCrossEntropyLoss(llvm::StringRef name,
+                                               NodeValue input,
+                                               NodeValue labels);
+
   RegressionNode *createRegression(llvm::StringRef name, NodeValue input,
                                    NodeValue expected);
 

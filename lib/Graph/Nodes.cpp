@@ -534,6 +534,11 @@ void SoftMaxNode::verify() const {
   assert(getResult().dims() == getInput().dims() && "Invalid shape");
 }
 
+void CrossEntropyLossNode::verify() const {
+  assert(getP()->getElementType() == getResult()->getElementType());
+  assert(getP().dims()[0] == getLabels().dims()[0] && "Invalid shape");
+}
+
 void ReshapeNode::verify() const {
   assert(getResult().getType()->size() == getInput().getType()->size() &&
          "Reshape into a different size");
@@ -721,6 +726,7 @@ NOVERIFY(PoolGradNode)
 NOVERIFY(BatchNormalizationGradNode)
 NOVERIFY(LocalResponseNormalizationGradNode)
 NOVERIFY(SoftMaxGradNode)
+NOVERIFY(CrossEntropyLossGradNode)
 NOVERIFY(ReluNode)
 NOVERIFY(RegressionGradNode)
 NOVERIFY(FullyConnectedNode)

@@ -269,6 +269,13 @@ SoftMaxNode *Graph::createSoftMax(llvm::StringRef name, NodeValue input,
   return addNode(new SoftMaxNode(name, input, selected));
 }
 
+CrossEntropyLossNode *Graph::createCrossEntropyLoss(llvm::StringRef name,
+                                                    NodeValue input,
+                                                    NodeValue labels) {
+  auto ty = uniqueTypeWithNewShape(input.getType(), {1});
+  return addNode(new CrossEntropyLossNode(name, ty, input, labels));
+}
+
 RegressionNode *Graph::createRegression(llvm::StringRef name, NodeValue input,
                                         NodeValue expected) {
   return addNode(new RegressionNode(name, input, expected));

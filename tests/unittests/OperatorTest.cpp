@@ -462,3 +462,21 @@ TEST(Operator, IntFC) {
     EXPECT_NEAR(H.raw(i), 0, 0.2);
   }
 }
+
+TEST(Operator, CrossEntropyLossTest) {
+  ExecutionEngine EE;
+  auto &G = EE.getGraph();
+
+  auto *P = G.createVariable(ElemKind::FloatTy, {2, 3}, "P");
+  auto *Y = G.createVariable(ElemKind::IndexTy, {2}, "Y");
+  auto *L = G.createVariable(ElemKind::FloatTy, {1}, "L");
+
+  P->getPayload().getHandle() = {0.2, 0.5, 0.3, 0.4, 0.3, 0.3};
+  Y->getPayload().getHandle<size_t>() = {1, 2};
+  auto *ceLoss = G.createCrossEntropyLoss("CELoss", P, Y);
+  G.createSave("save", ceLoss, L);
+  EE.compile(CompilationMode::Infer);
+  EE.run({}, {});
+  auto R = L->getPayload().getHandle();
+  EXPECT_NEAR(R.at({0}), -log(0.5) - log(0.3), 0.1);
+}

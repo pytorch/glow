@@ -518,6 +518,32 @@ void Interpreter::fwdSoftMaxGradInst(bool isTrain, const SoftMaxGradInst *I) {
   }
 }
 
+void Interpreter::fwdCrossEntropyLossInst(bool isTrain,
+                                          const CrossEntropyLossInst *I) {
+  auto P = getWeightHandle(I->getP());
+  auto labels = getTensor(I->getLabels())->getHandle<size_t>();
+  auto CE = getWeightHandle(I->getCE());
+  auto dims = P.dims();
+  for (size_t n = 0; n < dims[0]; ++n) {
+    auto y = labels.raw(n);
+    auto p_n = P.at({n, y});
+    CE.at({0}) -= log(p_n);
+  }
+}
+
+void Interpreter::fwdCrossEntropyLossGradInst(
+    bool isTrain, const CrossEntropyLossGradInst *I) {
+  auto P = getWeightHandle(I->getP());
+  auto Labels = getTensor(I->getLabels())->getHandle<size_t>();
+  auto PGrad = getWeightHandle(I->getPgrad());
+  auto dims = PGrad.dims();
+  PGrad.clear();
+  for (size_t n = 0; n < dims[0]; ++n) {
+    auto y = Labels.raw(n);
+    PGrad.at({n, y}) = -1 / P.at({n, y}); // * CEGrad.at({0})
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                       Tensor shape (transpose/reshape/concat/...)
 //===----------------------------------------------------------------------===//
@@ -1089,7 +1115,8 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
             sum += (L - lhsOffset) * (R - rhsOffset);
           }
 
-          dest.at({n, x, y}) = QuantizationTransform32To8::clip(std::round(scale * sum + destOffset));
+          dest.at({n, x, y}) = QuantizationTransform32To8::clip(
+              std::round(scale * sum + destOffset));
         }
       }
     } // N

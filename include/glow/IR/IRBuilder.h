@@ -46,6 +46,8 @@ public:
 
   SoftMaxInst *createSoftMaxOp(Value *input);
 
+  CrossEntropyLossInst *createCrossEntropyLossOp(Value *P, Value *labels);
+
   ReshapeInst *createReshapeOp(Value *input, llvm::ArrayRef<size_t> shape);
 
   TensorViewInst *createTensorView(ElemKind elemKind,
