@@ -113,10 +113,25 @@ void lowerFullyConnectedNode(Graph &graph, FullyConnectedNode &FC) {
   auto *X =
       graph.createReshape("fc.1X", FC.getInput(), {1, xDim.first, xDim.second});
   Node *W = graph.createReshape("fc.1W", FC.getFilter(), {1, wDim[0], wDim[1]});
-  auto *mul = graph.createBatchedMatMul("fc.dot", X, W);
+
+  auto elemTy = W->getType()->getElementType();
+
+  TypeRef outTy = nullptr;
+  if (W->getType()->isQuantizedType()) {
+    // We pick ascale that reduces the error of the matrix multiplication.
+    float scale = W->getType()->getScale() * X->getType()->getScale();
+    outTy = graph.uniqueType(elemTy, {1, xDim.first, wDim[1]}, scale, 0);
+  } else {
+    outTy = graph.uniqueType(elemTy, {1, xDim.first, wDim[1]});
+  }
+  auto *mul = graph.createBatchedMatMul("fc.dot", outTy, X, W);
+
   auto *mulFlat = graph.createReshape("fc.cast2", mul, {xDim.first, wDim[1]});
-  auto add = graph.createBatchedArithmetic(
-      "fc.add.bias", BatchedArithmeticNode::Mode::Add, mulFlat, FC.getBias());
+  auto add =
+      graph.createBatchedArithmetic("fc.add.bias", FC.getOutput()->getType(),
+                                    BatchedArithmeticNode::Mode::Add,
+
+                                    mulFlat, FC.getBias());
   FC.getOutput().replaceAllUsesOfWith(add);
 }
 
