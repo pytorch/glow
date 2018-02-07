@@ -1244,6 +1244,10 @@ void Graph::verify() const {
              " nodes should be part of the graph");
     }
   }
+
+  for (const auto *N : nodes_) {
+    N->verify();
+  }
 }
 
 void Graph::resetState() { state_ = State::Created; }

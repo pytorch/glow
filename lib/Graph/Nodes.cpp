@@ -399,6 +399,343 @@ std::string Variable::getDebugDesc() const {
 }
 
 //===----------------------------------------------------------------------===//
+//                       Nodes verification
+//===----------------------------------------------------------------------===//
+
+void Node::verify() const {
+  switch (getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<const CLASS *>(this)->verify();
+#include "AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+}
+
+/// Check that the type of the first operand matches the type of the second
+/// operand.
+static void checkSameType(NodeValue A, NodeValue B) {
+  assert(A.getType() == B.getType() && "Invalid type");
+}
+
+static void checkType(NodeValue A, ElemKind expectedType) {
+  assert(A.getElementType() == expectedType && "Invalid type");
+}
+
+static void checkSameDims(NodeValue A, NodeValue B) {
+  assert(A.dims().equals(B.dims()) && "Dimensions mismatch");
+}
+
+static void verifyConvDims(ShapeNHWC idim, ShapeNHWC odim, size_t kernel,
+                           size_t stride, size_t pad, size_t depth,
+                           NodeValue filter, NodeValue bias) {
+  assert(idim.w >= kernel && idim.h >= kernel &&
+         "buffer too small for selected stride");
+
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
+  ShapeNHWC exp(idim.n, outSz.first, outSz.second, depth);
+  (void)exp;
+  assert(exp == odim && "Invalid output dimensions");
+
+  auto filterDims = {depth, kernel, kernel, idim.c};
+  assert(filter.getType()->dims().equals(filterDims) && "Invalid filter dims");
+  (void)filterDims;
+
+  auto biasDims = {depth};
+  assert(bias.getType()->dims().equals(biasDims) && "Invalid bias dims");
+  (void)biasDims;
+}
+
+void ConvolutionNode::verify() const {
+  auto dest = getResult();
+  auto src = getInput();
+  auto filter = getFilter();
+  auto bias = getBias();
+
+  assert(src.getElementType() == dest.getElementType() && "Invalid Type");
+  assert(src.getElementType() == filter.getElementType() && "Invalid Type");
+  assert(src.getElementType() == bias.getElementType() && "Invalid Type");
+
+  ShapeNHWC idim(src.getType()->dims());
+  ShapeNHWC odim(dest.getType()->dims());
+  verifyConvDims(idim, odim, Kernel_, Stride_, Pad_, Depth_, filter, bias);
+}
+
+void PoolNode::verify() const {
+  auto dest = getResult();
+  auto src = getInput();
+  ShapeNHWC idim = ShapeNHWC(src.getType()->dims());
+  ShapeNHWC odim = ShapeNHWC(dest.getType()->dims());
+  (void)odim;
+  assert(idim.w >= Kernel_ && idim.h >= Kernel_ &&
+         "buffer too small for selected stride");
+
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, Kernel_, Stride_, Pad_);
+  ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
+  (void)exp;
+  assert(exp == odim && "Unexpected output dimensions");
+}
+
+void BatchedMatMulNode::verify() const {
+  auto dest = getResult();
+  auto lhs = getLHS();
+  auto rhs = getRHS();
+  (void)dest;
+  (void)lhs;
+  (void)rhs;
+
+  auto LDims = lhs.dims();
+  auto RDims = rhs.dims();
+  auto DDims = dest.dims();
+  assert(LDims.size() == 3);
+  assert(RDims.size() == 3);
+  assert(DDims.size() == 3);
+  auto elem = dest.getType()->getElementType();
+  (void)elem;
+  assert(lhs.getType()->getElementType() == elem);
+  assert(rhs.getType()->getElementType() == elem);
+
+  auto outDims =
+      calculateMatMulOutputDims(LDims[1], LDims[2], RDims[1], RDims[2]);
+
+  size_t aN = LDims[0];
+  size_t bN = RDims[0];
+  size_t cN = DDims[0];
+
+  size_t cx = DDims[1];
+  size_t cy = DDims[2];
+
+  assert(((aN == 1) || (bN == 1) || (aN == bN)) &&
+         "Batch size must be broadcasted or identical");
+
+  // Select the batch size. If the left operand is broadcast (value 1), select
+  // the RHS.
+  size_t N = (aN != 1 ? aN : bN);
+  assert(N == cN);
+
+  assert(outDims.first == cx && outDims.second == cy && "Invalid matrix dims");
+
+  (void)aN;
+  (void)bN;
+  (void)cN;
+  (void)cx;
+  (void)cy;
+  (void)N;
+  (void)outDims;
+}
+
+void SigmoidNode::verify() const { checkSameType(getResult(), getInput()); }
+
+void TanhNode::verify() const { checkSameType(getResult(), getInput()); }
+
+void SoftMaxNode::verify() const {
+  checkSameType(getResult(), getInput());
+  assert(getResult().dims() == getInput().dims() && "Invalid shape");
+}
+
+void ReshapeNode::verify() const {
+  assert(getResult().getType()->size() == getInput().getType()->size() &&
+         "Reshape into a different size");
+}
+
+void TransposeNode::verify() const {
+  auto dest = getResult();
+  auto src = getInput();
+  (void)dest;
+  llvm::SmallVector<size_t, 6> shape;
+
+  auto dims = src.dims();
+  for (size_t i = 0; i < dims.size(); i++) {
+    shape.push_back(dims[Shuffle_[i]]);
+  }
+
+  assert(dest.dims().equals(shape) && "Invalid transpose dims");
+}
+
+void BroadcastNode::verify() const {
+  auto src = getInput();
+  auto dest = getResult();
+  auto shape = getShape();
+  (void)src;
+  (void)dest;
+  (void)shape;
+
+  assert(src.dims().size() <= dest.dims().size() &&
+         "Source being broadcasted must have <= number dims of result shape.");
+  assert(dest.dims().equals(shape) &&
+         "New broadcasted shape does not match shape to broadcast to.");
+}
+
+void SplatNode::verify() const {}
+
+void InsertTensorNode::verify() const {
+  auto dest = getBig();
+  auto src = getSmall();
+  auto offsets = getStart();
+  unsigned numDims = dest.dims().size();
+  (void)numDims;
+  (void)dest;
+  (void)src;
+  (void)offsets;
+  assert(numDims == src.dims().size() && numDims == offsets.size() &&
+         "Invalid number of dimensions");
+
+  for (unsigned i = 0; i < numDims; i++) {
+    assert(src.dims()[i] + offsets[i] <= dest.dims()[i] && "out of bounds");
+  }
+}
+
+void SliceNode::verify() const {
+  auto dest = getResult();
+  auto src = getInput();
+  auto offsets = getStart();
+  unsigned numDims = dest.dims().size();
+  (void)numDims;
+  (void)dest;
+  (void)src;
+  (void)offsets;
+  assert(numDims == src.dims().size() && numDims == offsets.size() &&
+         "Invalid number of dimensions");
+
+  for (unsigned i = 0; i < numDims; i++) {
+    assert(dest.dims()[i] + offsets[i] <= src.dims()[i] && "out of bounds");
+  }
+}
+
+void BatchNormalizationNode::verify() const {
+  checkSameType(getResult(), getInput());
+
+  // Figure out how many channels are in the tensor.
+  size_t channels = getInput().dims()[ChannelIdx_];
+
+  auto exp = {channels};
+  (void)exp;
+  assert(getBias().getType()->dims().equals(exp) && "Invalid bias dim");
+  assert(getScale().getType()->dims().equals(exp) && "Invalid scale dim");
+  assert(getMean().getType()->dims().equals(exp) && "Invalid mean dim");
+  assert(getVar().getType()->dims().equals(exp) && "Invalid var dim");
+}
+
+void LocalResponseNormalizationNode::verify() const {
+  checkSameType(getResult(), getInput());
+}
+
+void ArithmeticNode::verify() const {
+  checkSameType(getNthResult(0), getLHS());
+  checkSameType(getLHS(), getRHS());
+}
+
+void BatchedArithmeticNode::verify() const {
+  auto batchShape = getBatch().dims();
+  auto rhsShape = getSlice().dims();
+  assert(batchShape.drop_front() == rhsShape && "Invalid shape");
+  assert(getBatch().dims() == getResult().dims() && "Invalid dest type");
+  (void)batchShape;
+  (void)rhsShape;
+  assert(getBatch().getType()->getElementType() ==
+             getSlice().getType()->getElementType() &&
+         "Mismatched element types");
+}
+
+void BatchedReduceNode::verify() const {
+  assert(getBatch().dims().size() > 1 && "Invalid shape");
+}
+
+void SGDNode::verify() const {
+  if (Momentum_ > 0.0) {
+    assert(getGradient().getType() == getGsum().getType() &&
+           "Invalid gsum type");
+  }
+
+  assert(getGradient().getType() == getWeight().getType() &&
+         "Invalid weight or gradient type");
+}
+
+void QuantizationProfileNode::verify() const {
+  // Make sure that input tensor is a floating point type.
+  assert(getInput().getElementType() == ElemKind::FloatTy ||
+         getInput().getElementType() == ElemKind::DoubleTy &&
+             "Floating point type is expected");
+
+  // Check computation info has proper size.
+  assert(getComputationInfo().dims().size() == 1 &&
+         "Computation info should be 1 dimensional");
+  assert(getComputationInfo().dims()[0] == 2 &&
+         "Computation info should contain Min and Max value only");
+}
+
+void QuantizeNode::verify() const {
+  // Dest must be quantized.
+  checkType(getResult(), ElemKind::Int8QTy);
+  // Src must be float.
+  checkType(getInput(), ElemKind::FloatTy);
+  checkSameDims(getResult(), getInput());
+}
+
+void DequantizeNode::verify() const {
+  // Dest must be float.
+  checkType(getResult(), ElemKind::FloatTy);
+  // Src must be quantized.
+  checkType(getInput(), ElemKind::Int8QTy);
+  checkSameDims(getResult(), getInput());
+}
+
+void RescaleQuantizedNode::verify() const {
+  // Dest must be quantized.
+  checkType(getResult(), ElemKind::Int8QTy);
+  // Src must be quantized.
+  checkType(getInput(), ElemKind::Int8QTy);
+  checkSameDims(getResult(), getInput());
+}
+
+void TopKNode::verify() const {
+  assert(getInput().getElementType() == ElemKind::FloatTy);
+  assert(getValues().getElementType() == ElemKind::FloatTy);
+  assert(getValues().dims() == getIndices().dims());
+}
+
+void GatherNode::verify() const {
+  assert(getResult().getElementType() == getData().getElementType());
+  assert(getIndices().getElementType() == ElemKind::IndexTy);
+  assert(getResult().dims().size() ==
+         getData().dims().size() + getIndices().dims().size() - 1);
+}
+
+void IntrinsicNode::verify() const {
+  assert(getName().size() && "Name must not be empty");
+}
+
+void SaveNode::verify() const { checkSameType(getInput(), getOutput()); }
+
+void SelectNode::verify() const {
+  checkSameType(getResult(), getCond());
+  checkSameType(getResult(), getLHS());
+  checkSameType(getResult(), getRHS());
+}
+
+// TODO: verify more kinds of nodes.
+#define NOVERIFY(ClassName)                                                    \
+  void ClassName::verify() const {}
+NOVERIFY(ConvolutionGradNode)
+NOVERIFY(PoolGradNode)
+NOVERIFY(BatchNormalizationGradNode)
+NOVERIFY(LocalResponseNormalizationGradNode)
+NOVERIFY(SoftMaxGradNode)
+NOVERIFY(ReluNode)
+NOVERIFY(RegressionGradNode)
+NOVERIFY(FullyConnectedNode)
+NOVERIFY(FullyConnectedGradNode)
+NOVERIFY(SigmoidGradNode)
+NOVERIFY(ArithmeticGradNode)
+NOVERIFY(ReluGradNode)
+NOVERIFY(TanhGradNode)
+NOVERIFY(RegressionNode)
+NOVERIFY(DistributeNode)
+NOVERIFY(ConcatNode)
+#undef NOVERIFY
+
+//===----------------------------------------------------------------------===//
 //                     Node hashing support
 //===----------------------------------------------------------------------===//
 
