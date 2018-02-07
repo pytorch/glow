@@ -3,6 +3,7 @@
 #include "glow/Quantization/Quantization.h"
 
 #include <cmath>
+#include <unordered_set>
 #include <vector>
 
 namespace glow {
@@ -207,12 +208,11 @@ generateNodeQuantizationInfos(const Graph &G) {
       unsigned resNum = observedNodeValue.getResNo();
       Node *observedNode = observedNodeValue.getNode();
 
-      std::string nodeName =
-          observedNode->getName().str() + ":" + std::to_string(resNum);
-
+      std::string fullOutputName = NodeQuantizationInfo::generateNodeOutputName(
+          observedNode->getName().str(), resNum);
       TensorQuantizationParams TQP =
           calculateTensorQuantizationParams(histogram, min, max);
-      quantizationInfos.emplace_back(nodeName, TQP);
+      quantizationInfos.emplace_back(fullOutputName, TQP);
     }
   }
 
@@ -332,6 +332,105 @@ int8_t quantize(float input, const TensorQuantizationParams &TQP) {
 
 float dequantize(int8_t input, const TensorQuantizationParams &TQP) {
   return TQP.scale_ * (input - TQP.offset_);
+}
+
+/// \returns true if \p node should be quantized.
+static bool shouldQuantize(const Node *node) {
+  return llvm::isa<FullyConnectedNode>(node);
+}
+
+/// \returns quantized FullyConnected node based on the floating point
+/// version \p FC. Scale and Offset are taken from \p TQP.
+static Node *quantizeFullyConnected(Graph &G, FullyConnectedNode *FC,
+                                    llvm::ArrayRef<Node *> quantizedInputs,
+                                    const TensorQuantizationParams &TQP) {
+  assert(quantizedInputs.size() == 3 && "Invalid number of inputs");
+
+  auto QT = G.uniqueType(ElemKind::Int8QTy, FC->getOutput()->dims(), TQP.scale_,
+                         TQP.offset_);
+  return G.createFullyConnected(FC->getName(), quantizedInputs[0],
+                                quantizedInputs[1], quantizedInputs[2], QT);
+}
+
+/// Quantize all inputs for \p node and return back pointers to the newly
+/// created qunatization nodes.
+static llvm::SmallVector<Node *, 6>
+quantizeInputs(Graph &G, Node *node,
+               const std::unordered_map<std::string, TensorQuantizationParams>
+                   &nodeToTQP) {
+  llvm::SmallVector<Node *, 6> quantizedInputs;
+
+  for (unsigned i = 0, e = node->getNumInputs(); i < e; ++i) {
+    NodeValue &NV = node->getNthInput(i);
+    std::string nodeOutputName = NodeQuantizationInfo::generateNodeOutputName(
+        NV->getName(), NV.getResNo());
+    assert(nodeToTQP.find(nodeOutputName) != nodeToTQP.end() &&
+           "Missing quantization params for a node");
+
+    const TensorQuantizationParams &TQP =
+        nodeToTQP.find(nodeOutputName)->second;
+    auto QT =
+        G.uniqueType(ElemKind::Int8QTy, NV->dims(), TQP.scale_, TQP.offset_);
+
+    Node *quantizeNode = G.createQuantize("quantize", NV, QT);
+    quantizedInputs.push_back(quantizeNode);
+  }
+
+  return quantizedInputs;
+}
+
+void generateQuantizedGraph(
+    Graph &G, llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos) {
+  // Build a mapping between node name and TensorQuantizatonParams.
+  std::unordered_map<std::string, TensorQuantizationParams> nodeToTQP;
+  for (const auto &quantizationInfo : quantizationInfos) {
+    nodeToTQP.emplace(quantizationInfo.nodeOutputName_,
+                      quantizationInfo.tensorQuantizationParams_);
+  }
+
+  std::unordered_set<Node *> addedNodes;
+  // For every unprocessed node in the graph we keep the invariant of having
+  // all inputs to be float typed.
+  for (auto *node : G.getNodes()) {
+    if (!shouldQuantize(node) || addedNodes.count(node)) {
+      continue;
+    }
+
+    // 1) Quantize all of the inputs based on the profiles.
+    llvm::SmallVector<Node *, 6> quantizedInputs =
+        quantizeInputs(G, node, nodeToTQP);
+
+    // 2) Quantize node itself.
+    const std::string nodeOutputName =
+        NodeQuantizationInfo::generateNodeOutputName(node->getName());
+    assert(nodeToTQP.find(nodeOutputName) != nodeToTQP.end() &&
+           "Missing quantization params for a node");
+    const TensorQuantizationParams &TQP = nodeToTQP[nodeOutputName];
+
+    Node *quantizedNode{};
+    if (FullyConnectedNode *FC = llvm::dyn_cast<FullyConnectedNode>(node)) {
+      quantizedNode = quantizeFullyConnected(G, FC, quantizedInputs, TQP);
+    } else {
+      llvm_unreachable("The node type is not supported for quantization");
+    }
+    // Just insert newly quantized node into added set. Quantize and Dequantize
+    // nodes are not eligible for quantization anyway.
+    addedNodes.insert(quantizedNode);
+
+    // 3) Dequantize output of the node so that invariant is kept.
+    assert(quantizedNode != nullptr && "Node must be quantized");
+    auto *dequantized = G.createDequantize("dequantize", quantizedNode);
+
+    // Note, there is an assumption that converted node has only single output.
+    // 4) Replace all usages of old floating point node by the dequantized
+    // node to maintain the invariant.
+    node->getNthResult(0).replaceAllUsesOfWith(dequantized);
+
+    // 5) Make sure that TQP is not lost after addition of intermediate
+    // dequantized node.
+    nodeToTQP[NodeQuantizationInfo::generateNodeOutputName(
+        dequantized->getName())] = TQP;
+  }
 }
 
 } // namespace glow

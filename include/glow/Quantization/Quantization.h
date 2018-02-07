@@ -21,17 +21,24 @@ struct TensorQuantizationParams {
 
 /// Tensor quantization parameters for a given node.
 struct NodeQuantizationInfo {
-  std::string nodeName_;
+  std::string nodeOutputName_;
   TensorQuantizationParams tensorQuantizationParams_;
 
   NodeQuantizationInfo() = default;
-  NodeQuantizationInfo(const std::string &nodeName,
+  NodeQuantizationInfo(const std::string &nodeOutputName,
                        const TensorQuantizationParams &tensorQuantizationParams)
-      : nodeName_(nodeName),
+      : nodeOutputName_(nodeOutputName),
         tensorQuantizationParams_(tensorQuantizationParams) {}
 
   float Scale() const { return tensorQuantizationParams_.scale_; }
   int32_t Offset() const { return tensorQuantizationParams_.offset_; }
+
+  /// Get the full node output name based on the node name and output number.
+  /// The following format is used: nodename:outputNumber
+  static std::string generateNodeOutputName(const std::string &nodeName,
+                                            unsigned outputNumber = 0) {
+    return nodeName + ":" + std::to_string(outputNumber);
+  }
 };
 
 /// Generate NodeQuantizationInfo for all required nodes from graph \p G.
@@ -82,6 +89,12 @@ int8_t quantize(float input, const TensorQuantizationParams &TQP);
 /// Converts int8 quantized value back to floating point number based on
 /// the quantization parameters \p TQP.
 float dequantize(int8_t input, const TensorQuantizationParams &TQP);
+
+/// Converts floating point graph to a quantized one.
+/// Note, if not all operators have a conversion support,
+/// graph ends up being hybrid.
+void generateQuantizedGraph(
+    Graph &G, llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos);
 
 } // namespace glow
 

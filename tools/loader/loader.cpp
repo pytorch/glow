@@ -165,7 +165,12 @@ llvm::cl::opt<std::string> QuantizationProfileFile(
     "profile",
     llvm::cl::desc("Perform quantization profiling for a given graph "
                    "and save result to the file."),
-    llvm::cl::value_desc("profile.json"), llvm::cl::Optional);
+    llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional);
+
+llvm::cl::opt<std::string> LoadProfileFile(
+    "load_profile",
+    llvm::cl::desc("Load quantization profile file and quantize the graph"),
+    llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional);
 
 llvm::cl::opt<BackendKind> ExecutionBackend(
     llvm::cl::desc("Backend to use:"),
@@ -211,8 +216,15 @@ int main(int argc, char **argv) {
   assert(i0->getVisibilityKind() == Variable::VisibilityKind::Public);
   assert(i1->getVisibilityKind() == Variable::VisibilityKind::Public);
 
+  // Instrument the graph to capture profiles for nodes' outputs.
   if (!QuantizationProfileFile.empty()) {
     ::profileQuantization(G);
+  }
+
+  // Quantize the graph based on the captured profile.
+  if (!LoadProfileFile.empty()) {
+    auto quantizationInfos = deserializeFromYaml(LoadProfileFile);
+    ::generateQuantizedGraph(G, quantizationInfos);
   }
 
   // Emit IR for the graph.

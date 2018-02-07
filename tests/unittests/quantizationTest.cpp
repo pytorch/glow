@@ -1,6 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "glow/Quantization/Quantization.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Quantization/Serialization.h"
 
 #include "gtest/gtest.h"
@@ -14,7 +15,7 @@ namespace glow {
 bool operator==(const NodeQuantizationInfo &lhs,
                 const NodeQuantizationInfo &rhs) {
   return lhs.Scale() == rhs.Scale() && lhs.Offset() == rhs.Offset() &&
-         lhs.nodeName_ == rhs.nodeName_;
+         lhs.nodeOutputName_ == rhs.nodeOutputName_;
 }
 
 void testSerialization(const std::vector<NodeQuantizationInfo> &expected) {
@@ -74,6 +75,36 @@ TEST(Quantization, quantScaleOffset) {
       EXPECT_NEAR(input, computed, 1);
     }
   }
+}
+
+TEST(Quantization, quantizeGraph) {
+  ExecutionEngine EE;
+  auto &G = EE.getGraph();
+
+  auto *input = G.createVariable(ElemKind::FloatTy, {1, 3}, "input");
+  auto *W = G.createVariable(ElemKind::FloatTy, {3, 3}, "weights",
+                             Variable::VisibilityKind::Private,
+                             Variable::TrainKind::Xavier, 3);
+  auto *B = G.createVariable(ElemKind::FloatTy, {3}, "bias",
+                             Variable::VisibilityKind::Private,
+                             Variable::TrainKind::Broadcast, 0.1);
+  auto *FC = G.createFullyConnected("FC", input, W, B, 3);
+  G.createSave("ret", FC);
+
+  std::vector<NodeQuantizationInfo> QI{
+      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+       {0.2, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(W->getName()), {0.3, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(B->getName()), {0.4, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6, 0}},
+  };
+
+  glow::generateQuantizedGraph(G, QI);
+
+  // Make sure that graph can be compiled and run.
+  EE.compile(CompilationMode::Infer);
+  G.dumpDAG();
+  EE.run({}, {});
 }
 
 } // namespace glow
