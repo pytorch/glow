@@ -731,7 +731,6 @@ NOVERIFY(ArithmeticGradNode)
 NOVERIFY(ReluGradNode)
 NOVERIFY(TanhGradNode)
 NOVERIFY(RegressionNode)
-NOVERIFY(DistributeNode)
 NOVERIFY(ConcatNode)
 #undef NOVERIFY
 
