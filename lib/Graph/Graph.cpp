@@ -465,33 +465,12 @@ BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,
   auto RT = rhs.getType();
   auto LDims = LT->dims();
   auto RDims = RT->dims();
-
-  assert(LDims.size() == 3);
-  assert(RDims.size() == 3);
   assert(lhs.getType()->getElementType() == rhs->getElementType());
 
-  size_t a0 = LDims[0];
-  size_t a1 = LDims[1];
-  size_t a2 = LDims[2];
+  size_t N, X, Y;
+  std::tie(N, X, Y) = calculateMatMulOutputDims(LDims, RDims);
 
-  size_t b0 = RDims[0];
-  size_t b1 = RDims[1];
-  size_t b2 = RDims[2];
-
-  assert(((a0 == 1) || (b0 == 1) || (a0 == b0)) &&
-         "Batch size must be broadcasted or identical");
-
-  // Select the batch size. If the left operand is broadcast (value 1), select
-  // the RHS.
-  size_t N = (a0 != 1 ? a0 : b0);
-
-  assert(a2 == b1 && "Row size of LHS is not equal to the column size of RHS.");
-  (void)a1;
-  (void)a2;
-  (void)b1;
-  (void)b2;
-
-  auto ty = uniqueTypeWithNewShape(lhs.getType(), {N, a1, b2});
+  auto ty = uniqueTypeWithNewShape(lhs.getType(), {N, X, Y});
   return createBatchedMatMul(name, ty, lhs, rhs);
 }
 
