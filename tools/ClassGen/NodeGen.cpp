@@ -31,6 +31,7 @@ int main(int argc, char **argv) {
       .addExtraMethod("Variable *getVariable() const;",
                       "Variable *SaveNode::getVariable() const { return "
                       "llvm::cast<Variable>(Output_.getNode()); };")
+      .addOverwrittenInput("Output")
       .setHasSideEffects(true);
   //===--------------------------------------------------------------------===//
   //                   Convolution / Pool / FC
@@ -267,6 +268,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "LearningRate")
       .addMember(MemberType::Float, "Momentum")
       .addMember(MemberType::Unsigned, "BatchSize")
+      .addOverwrittenInput("Weight")
       .setHasSideEffects(true);
 
   //===--------------------------------------------------------------------===//
@@ -288,6 +290,8 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Generate profile (distribution of values) of the Input tensor. "
           "This data is used for quantization of the tensor later on.")
+      .addOverwrittenInput("ComputationInfo")
+      .addOverwrittenInput("Histogram")
       .setHasSideEffects(true);
 
   BB.newNode("Quantize")

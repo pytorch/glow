@@ -21,6 +21,9 @@ class NodeBuilder {
   std::string name_;
   /// The node operands.
   std::vector<std::string> nodeInputs_;
+  /// A list of node inputs that are overwritten, i.e. are @out parameters
+  /// essentially.
+  std::vector<unsigned> nodeOverwrittenInputs_;
   /// Initializes the return types of the nodes. Format: (type, name)
   std::vector<std::pair<std::string, std::string>> nodeOutputs_;
   /// A list of node members. Format: (type, name).
@@ -111,6 +114,18 @@ public:
   NodeBuilder &setHasSideEffects(bool hasSideEffects) {
     hasSideEffects_ = hasSideEffects;
     return *this;
+  }
+
+  NodeBuilder &addOverwrittenInput(const std::string &name) {
+    // Find the index of the overwritten input.
+    for (unsigned idx = 0, e = nodeInputs_.size(); idx < e; ++idx) {
+      if (nodeInputs_[idx] == name) {
+        nodeOverwrittenInputs_.push_back(idx);
+        return *this;
+      }
+    }
+    llvm_unreachable("Cannot register an overwritten input that is not a known "
+                     "input of a node");
   }
 
   /// Constructs a new gradient node that is based on the current node that we

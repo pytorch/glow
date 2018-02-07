@@ -144,6 +144,9 @@ public:
   llvm::StringRef getOutputName(unsigned idx) const;
   bool hasSideEffects() const;
 
+  /// \returns true if this input is being overwritten by the node.
+  bool isOverwrittenNthInput(unsigned idx) const;
+
   /// \returns a textual description of the node.
   std::string getDebugDesc() const;
 
