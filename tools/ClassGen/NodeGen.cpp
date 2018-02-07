@@ -330,16 +330,6 @@ int main(int argc, char **argv) {
           "node has an identifier to identify the kind of node.");
 
   //===--------------------------------------------------------------------===//
-  //                Nodes used by unit tests.
-  //===--------------------------------------------------------------------===//
-
-  /// This is a test node that's used by the node unittests.
-  BB.newNode("Distribute")
-      .addInput("Input")
-      .addResult("Input.getType()", "Left")
-      .addResult("Input.getType()", "Right");
-
-  //===--------------------------------------------------------------------===//
   //                Nodes used by RNN
   //===--------------------------------------------------------------------===//
 
