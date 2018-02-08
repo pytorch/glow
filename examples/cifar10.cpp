@@ -132,7 +132,6 @@ void testCIFAR10() {
         score += guess == correct;
 
         if ((iter < 10) && i == 0) {
-          // T.getHandle<FloatTy>().dump("softmax: "," ");
           llvm::outs() << iter << ") Expected: " << textualLabels[correct]
                        << " Got: " << textualLabels[guess] << "\n";
         }

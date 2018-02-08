@@ -7,14 +7,12 @@
 
 #include <cassert>
 #include <fstream>
-#include <iostream>
 
 using namespace glow;
 
 const size_t mnistNumImages = 50000;
 
 unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
-
   /// Load the MNIST database into two 4d tensors for images and labels.
   imageInputs.reset(ElemKind::FloatTy, {50000, 28, 28, 1});
   labelInputs.reset(ElemKind::IndexTy, {50000u, 1});
