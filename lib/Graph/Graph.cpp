@@ -213,11 +213,20 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
 
   // if \p input is of type void, we cannot calculate the dimensions
   if (T != getVoidTy()) {
-    auto idim = flattenCdr(input.dims());
-    OT = uniqueTypeWithNewShape(T, {idim.first, outDepth});
+    OT = uniqueTypeWithNewShape(T, {input.dims()[0], outDepth});
   }
 
   return addNode(new FullyConnectedNode(name, OT, input, W, B, outDepth));
+}
+
+FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
+                                                NodeValue input, Variable *W,
+                                                Variable *B, TypeRef outTy) {
+  assert(outTy->dims().size() == 2 && "Invalid number of dimensions");
+  assert(outTy->dims()[0] == input.dims()[0] && "Invalid dimensions");
+
+  return addNode(
+      new FullyConnectedNode(name, outTy, input, W, B, outTy->dims()[1]));
 }
 
 FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,

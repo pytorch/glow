@@ -131,6 +131,11 @@ public:
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, Variable *W,
                                            Variable *B, size_t outDepth);
+
+  FullyConnectedNode *createFullyConnected(llvm::StringRef name,
+                                           NodeValue input, Variable *W,
+                                           Variable *B, TypeRef outTy);
+
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, size_t outDepth);
 
