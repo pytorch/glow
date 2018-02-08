@@ -1081,8 +1081,15 @@ class DottyPrinterPass {
       std::ostringstream edge;
       edge << uniqueNodeName(to) << ":" << to->getOutputName(resNo).str()
            << " -> " << uniqueNodeName(N) << ":" << N->getInputName(i).str();
+      if (N->isOverwrittenNthInput(i)) {
+        edge << " [dir=\"both\"]";
+      }
       if (isa<Variable>(to)) {
-        edge << "[style=bold, color=pink]";
+        if (!N->isOverwrittenNthInput(i)) {
+          edge << "[style=bold, color=pink]";
+        } else {
+          edge << "[style=bold, color=blue]";
+        }
       }
       nodeEdges_.push_back(edge.str());
 
