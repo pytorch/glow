@@ -79,6 +79,13 @@ private:
 #define DEF_INSTR(CLASS, NAME) void fwd##CLASS(bool isTrain, const CLASS *I);
 #include "AutoGenInstr.def"
 
+  void fwdConvolutionInst_I8Impl(Value *inV, Value *outV, Value *filterV,
+                                 Value *biasV, size_t filterSize, size_t stride,
+                                 size_t pad);
+  void fwdConvolutionInst_FloatImpl(Value *inV, Value *outV, Value *filterV,
+                                    Value *biasV, size_t filterSize,
+                                    size_t stride, size_t pad);
+
   void fwdBatchNormalizationInst_infer(const BatchNormalizationInst *I);
   void fwdBatchNormalizationInst_train(const BatchNormalizationInst *I);
   ///@}

@@ -365,3 +365,54 @@ TEST(Operator, IntBatchedArith) {
   EXPECT_NEAR(H.at({0, 2, 1}), -2, 0.1);
   EXPECT_NEAR(H.at({0, 2, 2}), 9.3, 0.1);
 }
+
+TEST(Operator, IntConvolution) {
+  ExecutionEngine EE;
+  auto &G = EE.getGraph();
+
+  // In this test we generate a Floating-point based convolution and an integer
+  // convolution. We pass the same values and then subtract the results. We
+  // check that the results are below some known delta.
+
+  // In this test the output of the convolution is in the range [-256 ... 256].
+  // The inputs (specified below) are in the range [-1 .. 1],
+
+  auto *input = G.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
+  auto *conv = G.createConv("conv", input, 10, 5, 1, 0);
+  auto *res = G.createVariable(ElemKind::FloatTy, conv->dims(), "res");
+
+  auto filter = conv->getFilter();
+  auto bias = conv->getBias();
+
+  input->getPayload().getHandle().randomize(-1.0, 1.0);
+  llvm::cast<Variable>(bias)->getPayload().getHandle().randomize(-2.0, 2.0);
+
+  Type resTy(ElemKind::Int8QTy, res->dims(), 0.08, 0.0);
+  Type inputTy(ElemKind::Int8QTy, input->dims(), 0.01, 0.0);
+  Type filterTy(ElemKind::Int8QTy, filter.dims(), 0.01, 0.0);
+  Type biasTy(ElemKind::Int8QTy, bias.dims(), 0.04, 0.0);
+
+  auto *inputq = G.createQuantize("input.q", input, &inputTy);
+  auto *filterq = G.createQuantize("filter.q", filter, &filterTy);
+  auto *biasq = G.createQuantize("bias.q", bias, &biasTy);
+
+  auto *convq =
+      G.createConv("convq", inputq, filterq, biasq, &resTy, conv->getDepth(),
+                   conv->getKernel(), conv->getStride(), conv->getPad());
+  auto *dequantRes = G.createDequantize("dequant", convq);
+
+  // Subtract the results of the convolution from the quantized convolution.
+  auto *sub = G.createArithmetic("compare", dequantRes, conv,
+                                 ArithmeticNode::Mode::Sub);
+
+  G.createSave("save", sub, res);
+  EE.compile(CompilationMode::Infer);
+
+  EE.run({}, {});
+  auto H = res->getPayload().getHandle();
+
+  // Check that the difference in the results is less than 0.1.
+  for (int i = 0, e = H.size(); i < e; i++) {
+    EXPECT_NEAR(H.raw(i), 0, 0.1);
+  }
+}
