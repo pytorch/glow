@@ -55,7 +55,7 @@ unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
 
   // Sort the counter
   std::vector<std::pair<std::string, int>> counters(counter.begin(),
-                                                     counter.end());
+                                                    counter.end());
 
   sort(counters.begin(), counters.end(),
        [](const std::pair<std::string, int> &lhs,
