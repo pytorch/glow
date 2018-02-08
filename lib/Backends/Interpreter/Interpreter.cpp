@@ -47,10 +47,6 @@ Tensor *Interpreter::getTensor(const Value *v) const {
   return it->second;
 }
 
-Handle<float> Interpreter::getWeightHandle(Value *v) const {
-  return getTensor(v)->getHandle<>();
-}
-
 Tensor *Interpreter::getOrCreateTensor(const Value *v) {
   auto ie = externalTensors_.find(v);
   if (ie != externalTensors_.end()) {
