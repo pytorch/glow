@@ -22,27 +22,21 @@ void Interpreter::fwdCopyInst(bool isTrain, const CopyInst *I) {
   outT->copyRawFrom(inT);
 }
 
-template <bool SpecializeFPS, size_t filterX, size_t strideX, size_t padX,
-          bool SpecializeChannel, size_t channelX>
-[[gnu::noinline]] void
-fwdConvolutionInst_Impl(Handle<float> inW, Handle<float> outW,
-                        Handle<float> filterW, Handle<float> biasW,
-                        size_t filterSize, size_t stride, size_t pad) {
+// This is the floating point implementation of Convolution.
+void Interpreter::fwdConvolutionInst_FloatImpl(Value *inV, Value *outV,
+                                               Value *filterV, Value *biasV,
+                                               size_t filterSize, size_t stride,
+                                               size_t pad) {
+
+  auto inW = getWeightHandle(inV);
+  auto outW = getWeightHandle(outV);
+  auto filterW = getWeightHandle(filterV);
+  auto biasW = getWeightHandle(biasV);
+
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
 
-  // If the method is specialized then we can override the parameters with the
-  // specialized constant values.
-  if (SpecializeFPS) {
-    filterSize = filterX;
-    pad = padX;
-    stride = strideX;
-  }
-
   size_t inChannels = idim.c;
-  if (SpecializeChannel) {
-    inChannels = channelX;
-  }
 
   // For each input in the batch:
   for (size_t n = 0; n < idim.n; n++) {
@@ -68,7 +62,6 @@ fwdConvolutionInst_Impl(Handle<float> inW, Handle<float> outW,
                   oy >= ssize_t(idim.w)) {
                 continue;
               }
-#pragma clang loop interleave_count(8)
               for (size_t fd = 0; fd < inChannels; fd++) {
                 sum += filterW.at({d, fx, fy, fd}) *
                        inW.at({n, (size_t)ox, (size_t)oy, fd});
@@ -84,39 +77,104 @@ fwdConvolutionInst_Impl(Handle<float> inW, Handle<float> outW,
   }       // N
 }
 
-void Interpreter::fwdConvolutionInst(bool isTrain, const ConvolutionInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-  auto filterW = getWeightHandle(I->getFilter());
-  auto biasW = getWeightHandle(I->getBias());
+// This is the quantized i8 implementation of Convolution.
+void Interpreter::fwdConvolutionInst_I8Impl(Value *inV, Value *outV,
+                                            Value *filterV, Value *biasV,
+                                            size_t filterSize, size_t stride,
+                                            size_t pad) {
+  auto inW = getWeightHandle<int8_t>(inV);
+  auto outW = getWeightHandle<int8_t>(outV);
+  auto filterW = getWeightHandle<int8_t>(filterV);
+  auto biasW = getWeightHandle<int8_t>(biasV);
 
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
+
+  auto outTy = outV->getType();
+  auto inTy = inV->getType();
+  auto filterTy = filterV->getType();
+  auto biasTy = biasV->getType();
+
+  int32_t outOffset = outTy->getOffset();
+  int32_t inOffset = inTy->getOffset();
+  int32_t filterOffset = filterTy->getOffset();
+  int32_t biasOffset = biasTy->getOffset();
+
+  float outScale = outTy->getScale();
+  float inScale = inTy->getScale();
+  float filterScale = filterTy->getScale();
+  float biasScale = biasTy->getScale();
+
+  // Calculate the scale of the values that come out of the matrix
+  // multiplication part of the calculation.
+  float matMulScale = inScale * filterScale;
+
+  size_t inChannels = idim.c;
+
+  // For each input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+
+    // For each layer in the output tensor:
+    for (size_t d = 0; d < odim.c; d++) {
+
+      // For each convolution 'jump' in the input tensor:
+      ssize_t x = -ssize_t(pad);
+      for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+        ssize_t y = -ssize_t(pad);
+        for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+
+          // For each element in the convolution-filter:
+          int32_t sum = 0;
+          for (size_t fx = 0; fx < filterSize; fx++) {
+            for (size_t fy = 0; fy < filterSize; fy++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                  oy >= ssize_t(idim.w)) {
+                continue;
+              }
+              for (size_t fd = 0; fd < inChannels; fd++) {
+
+                int32_t F = filterW.at({d, fx, fy, fd});
+                int32_t I = inW.at({n, (size_t)ox, (size_t)oy, fd});
+                // We represent the element multiplication with offset as
+                // (value - offset).
+                sum += (F - filterOffset) * (I - inOffset);
+              }
+            }
+          }
+
+          // Scale the bias to match the scale of the matrix multiplication.
+          int32_t B = std::round(float(biasW.at({d}) - biasOffset) *
+                                 (biasScale / matMulScale));
+
+          // Add the bias:
+          sum += B;
+
+          // Scale the result back to the expected destination scale.
+          outW.at({n, ax, ay, d}) =
+              std::round(float(sum) * (matMulScale / outScale) + outOffset);
+        } // W
+      }   // H
+    }     // C
+  }       // N
+}
+
+void Interpreter::fwdConvolutionInst(bool isTrain, const ConvolutionInst *I) {
   size_t filterSize = I->getKernel();
   size_t pad = I->getPad();
   size_t stride = I->getStride();
 
-  ShapeNHWC idim(inW.dims());
+  if (I->getSrc()->getType()->isQuantizedType()) {
+    fwdConvolutionInst_I8Impl(I->getSrc(), I->getDest(), I->getFilter(),
+                              I->getBias(), filterSize, stride, pad);
+    return;
+  }
 
-#define SPECIALIZE_CONV_FPS(F, S, P)                                           \
-  if (filterSize == F && pad == P && stride == S)                              \
-    return fwdConvolutionInst_Impl<true, F, S, P, false, 0>(                   \
-        inW, outW, filterW, biasW, 0, 0, 0);
-
-#define SPECIALIZE_CONV_FPSC(F, S, P, C)                                       \
-  if (filterSize == F && pad == P && stride == S && idim.c == C)               \
-    return fwdConvolutionInst_Impl<true, F, S, P, true, C>(inW, outW, filterW, \
-                                                           biasW, 0, 0, 0);
-
-  // Specialize the convolution on popular Conv kernels:
-  SPECIALIZE_CONV_FPSC(7, 2, 3, 3)
-  SPECIALIZE_CONV_FPS(7, 2, 3)
-  SPECIALIZE_CONV_FPS(7, 2, 4)
-  SPECIALIZE_CONV_FPS(3, 2, 1)
-  SPECIALIZE_CONV_FPS(1, 1, 0)
-  SPECIALIZE_CONV_FPS(1, 2, 0)
-  SPECIALIZE_CONV_FPS(3, 1, 1)
-
-  fwdConvolutionInst_Impl<false, 0, 0, 0, false, 0>(inW, outW, filterW, biasW,
-                                                    filterSize, stride, pad);
+  fwdConvolutionInst_FloatImpl(I->getSrc(), I->getDest(), I->getFilter(),
+                               I->getBias(), filterSize, stride, pad);
 }
 
 void Interpreter::fwdConvolutionGradInst(bool isTrain,
