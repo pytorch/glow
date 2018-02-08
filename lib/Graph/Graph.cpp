@@ -186,7 +186,8 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
                                    TypeRef outTy, size_t depth, size_t kernel,
                                    size_t stride, size_t pad) {
   assertConvDims(input, filter, bias, depth, kernel, stride, pad);
-  return addNode(new ConvolutionNode(name, outTy, input, filter, bias, kernel,
+  auto OT = uniqueType(*outTy);
+  return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernel,
                                      stride, pad, depth));
 }
 
