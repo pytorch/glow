@@ -65,8 +65,11 @@ private:
   /// If a tensor is allocated for \p v then delete it.
   void deleteTensor(const Value *v);
 
-  /// \returns a float-handle to the tensor that is stored at \p v.
-  Handle<float> getWeightHandle(Value *v) const;
+  /// \returns a typed handle to the tensor that is stored at \p v.
+  template <class ElemTy = float>
+  Handle<ElemTy> getWeightHandle(Value *v) const {
+    return getTensor(v)->getHandle<ElemTy>();
+  }
 
   /// @name Interpreter methods. This is a list of method declerations that are
   /// used by the interpreter to dispatch different instructions.
