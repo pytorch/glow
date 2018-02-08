@@ -118,7 +118,7 @@ void lowerFullyConnectedNode(Graph &graph, FullyConnectedNode &FC) {
 
   TypeRef outTy = nullptr;
   if (W->getType()->isQuantizedType()) {
-    // We pick ascale that reduces the error of the matrix multiplication.
+    // We pick a scale that reduces the error of the matrix multiplication.
     float scale = W->getType()->getScale() * X->getType()->getScale();
     outTy = graph.uniqueType(elemTy, {1, xDim.first, wDim[1]}, scale, 0);
   } else {
