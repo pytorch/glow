@@ -54,10 +54,10 @@ unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
   }
 
   // Sort the counter
-  std::vector<std::pair<std::string, int>> counter_v(counter.begin(),
+  std::vector<std::pair<std::string, int>> counters(counter.begin(),
                                                      counter.end());
 
-  sort(counter_v.begin(), counter_v.end(),
+  sort(counters.begin(), counters.end(),
        [](const std::pair<std::string, int> &lhs,
           const std::pair<std::string, int> &rhs) {
          if (lhs.second == rhs.second) {
@@ -67,10 +67,10 @@ unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
        });
 
   // Build the word to id map
-  std::map<std::string, int> word_to_id;
-  for (unsigned i = 0; i < counter_v.size(); i++) {
-    auto const &word = counter_v[i].first;
-    word_to_id[word] = std::min<size_t>(i, vocabSize - 1);
+  std::map<std::string, int> wordToId;
+  for (unsigned i = 0; i < counters.size(); i++) {
+    auto const &word = counters[i].first;
+    wordToId[word] = std::min<size_t>(i, vocabSize - 1);
   }
 
   // Load the PTB database into two 3d tensors for word inputs and targets.
@@ -89,23 +89,15 @@ unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
     for (unsigned iter = 0; iter < numBatches; iter++) {
       size_t sequence = batch + iter * minibatchSize;
       for (unsigned step = 0; step < numSteps; step++) {
-        int word_counter_id = step + iter * numSteps + batch * batchLength;
-        const std::string word1 = words[word_counter_id];
-        const std::string word2 = words[word_counter_id + 1];
-        IIH.at({sequence, step * vocabSize + word_to_id[word1]}) = 1;
-        TIH.at({sequence, step}) = word_to_id[word2];
+        int wordCounterId = step + iter * numSteps + batch * batchLength;
+        const std::string word1 = words[wordCounterId];
+        const std::string word2 = words[wordCounterId + 1];
+        IIH.at({sequence, step * vocabSize + wordToId[word1]}) = 1;
+        TIH.at({sequence, step}) = wordToId[word2];
       }
     }
   }
   return numWords;
-}
-
-void debug(Node *node) {
-  std::cout << (std::string)node->getName();
-  for (size_t i = 0; i < node->dims().size(); i++) {
-    std::cout << " " << node->dims()[i];
-  }
-  std::cout << std::endl;
 }
 
 /// This test builds a RNN language model on the Penn TreeBank dataset.
