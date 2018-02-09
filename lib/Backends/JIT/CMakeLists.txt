@@ -20,6 +20,12 @@ add_library(JIT
             LLVMIRGen.cpp
             JIT.cpp)
 
+if(${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "aarch64")
+  set(LLVM_ARCH_LIBS LLVMAArch64CodeGen LLVMAArch64Desc LLVMAArch64Info)
+else()
+  set(LLVM_ARCH_LIBS LLVMX86CodeGen LLVMX86Desc LLVMX86Info)
+endif()
+
 target_link_libraries(JIT
                       PRIVATE
                         Optimizer
@@ -37,9 +43,7 @@ target_link_libraries(JIT
                         LLVMTarget
                         LLVMTransformUtils
                         LLVMVectorize
-                        LLVMX86CodeGen
-                        LLVMX86Desc
-                        LLVMX86Info
+                        ${LLVM_ARCH_LIBS}
                         LLVMCore
                         LLVMExecutionEngine
                         LLVMInterpreter
