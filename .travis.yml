@@ -30,5 +30,5 @@ matrix:
 
 script:
  - ninja all
- - ninja test
+ - CTEST_PARALLEL_LEVEL=2 ninja test
  - cat Testing/Temporary/LastTest.log
