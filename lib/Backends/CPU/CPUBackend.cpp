@@ -6,6 +6,7 @@
 #include "glow/IR/Instrs.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/Constants.h"
@@ -21,6 +22,8 @@ using llvm::StringRef;
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
+
+static llvm::cl::opt<std::string> target("target", llvm::cl::desc("target"));
 
 CPUBackend::CPUBackend(IRFunction *F)
     : F_(F), irgen_(F_, allocationsInfo_, "") {}
@@ -98,7 +101,8 @@ void CPUBackend::performJITMemoryAllocation() {
 }
 
 void CPUBackend::init() {
-  irgen_.initTargetMachine(llvm::CodeModel::Model::Large);
+  irgen_.initTargetMachine(target.empty() ? "" : target.getValue(),
+                           llvm::CodeModel::Model::Large);
   JIT_ = llvm::make_unique<llvm::orc::GlowJIT>(irgen_.getTargetMachine());
   irgen_.initCodeGen();
   // Perform the address assignment for activations and WeightVars.
@@ -265,7 +269,8 @@ void CPUBackend::performBundleMemoryAllocation() {
 
 void CPUBackend::save(llvm::StringRef outputDir) {
   // Object files generation works properly only in small mode.
-  irgen_.initTargetMachine(llvm::CodeModel::Model::Small);
+  irgen_.initTargetMachine(target.empty() ? "" : target.getValue(),
+                           llvm::CodeModel::Model::Small);
   irgen_.setMainEntryName(F_->getGraph()->getName());
   irgen_.getTargetMachine();
   irgen_.initCodeGen();

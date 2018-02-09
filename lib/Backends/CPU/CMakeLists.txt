@@ -21,12 +21,7 @@ add_library(CPUBackend
             LLVMIRGen.cpp
             CPUBackend.cpp)
 
-if(${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "aarch64")
-  set(LLVM_ARCH_LIBS LLVMAArch64CodeGen LLVMAArch64Desc LLVMAArch64Info)
-else()
-  set(LLVM_ARCH_LIBS LLVMX86CodeGen LLVMX86Desc LLVMX86Info)
-endif()
-
+llvm_map_components_to_libnames(LLVM_TARGET_LIBRARIES ${LLVM_TARGETS_TO_BUILD})
 target_link_libraries(CPUBackend
                       PRIVATE
                         Optimizer
@@ -44,7 +39,7 @@ target_link_libraries(CPUBackend
                         LLVMTarget
                         LLVMTransformUtils
                         LLVMVectorize
-                        ${LLVM_ARCH_LIBS}
+                        ${LLVM_TARGET_LIBRARIES}
                         LLVMCore
                         LLVMExecutionEngine
                         LLVMInterpreter

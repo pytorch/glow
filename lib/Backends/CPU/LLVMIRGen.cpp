@@ -62,21 +62,23 @@ static llvm::StringRef getHostCpuName() {
   return cpu_name;
 }
 
-/// Initialize LLVM native target related data structures.
-static void LLVMInitializeNative() {
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmPrinter();
-}
-
 LLVMIRGen::LLVMIRGen(IRFunction *F, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName)
     : F_(F), allocationsInfo_(allocationsInfo), mainEntryName_(mainEntryName) {}
 
-void LLVMIRGen::initTargetMachine(llvm::CodeModel::Model codeModel) {
-  TM_.reset(
-      (LLVMInitializeNative(),
-       llvm::EngineBuilder().setCodeModel(codeModel).selectTarget(
-           llvm::Triple(), "", getHostCpuName(), getMachineAttributes())));
+void LLVMIRGen::initTargetMachine(StringRef T,
+                                  llvm::CodeModel::Model codeModel) {
+  llvm::InitializeAllTargets();
+  llvm::InitializeAllTargetMCs();
+  llvm::InitializeAllAsmPrinters();
+
+
+  if (T.empty())
+    TM_.reset(llvm::EngineBuilder().setCodeModel(codeModel).selectTarget(
+        llvm::Triple(), "", getHostCpuName(), getMachineAttributes()));
+  else
+    TM_.reset(llvm::EngineBuilder().setCodeModel(codeModel).selectTarget(
+        llvm::Triple(T), "", "", llvm::SmallVector<std::string, 0>()));
 }
 
 std::string LLVMIRGen::getMainEntryName() const {

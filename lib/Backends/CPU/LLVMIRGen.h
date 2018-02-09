@@ -78,8 +78,8 @@ public:
   explicit LLVMIRGen(IRFunction *M, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName);
 
-  /// Init the TargetMachine using a given code model.
-  void initTargetMachine(llvm::CodeModel::Model codeModel);
+  /// Init the TargetMachine using a given target and code model.
+  void initTargetMachine(llvm::StringRef T, llvm::CodeModel::Model CM);
 
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
   void generateLLVMIRForInstr(llvm::IRBuilder<> &builder, glow::Instruction *I);
