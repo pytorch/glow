@@ -863,3 +863,73 @@ TEST(LinearClassifier, classifyPlayerSport) {
     EXPECT_NEAR(SMH.at({i, sport}), 1.0, 0.1);
   }
 }
+
+TEST(Interpreter, learnSinus) {
+  // Try to learn the sin(x) function.
+  float epsilon = 0.1;
+  unsigned numSamples = 150;
+
+  ExecutionEngine EE;
+  EE.getConfig().maxNumThreads = 1;
+  EE.getConfig().learningRate = 0.2;
+  EE.getConfig().batchSize = numSamples;
+
+  auto &G = EE.getGraph();
+  G.setName("Gradient descent solution for sin(x)");
+
+  // Function that should be learned by the NN
+  auto F = [](float x) -> float {
+    // Return a shifted sin(x) value, so that it is in the range [0, 1].
+    return (sin(x) + 1) / 2;
+  };
+
+  Tensor tensorX(ElemKind::FloatTy, {numSamples, 1});
+  Tensor tensorY(ElemKind::FloatTy, {numSamples, 1});
+
+  for (unsigned i = 0; i < numSamples; i++) {
+    // Scale x to cover the range [0, 4] as this leads to a good convergence
+    // during training.
+    float x = i / (numSamples / 4.0);
+    float y = F(x);
+    tensorX.getHandle<>().at({i, 0}) = x;
+    tensorY.getHandle<>().at({i, 0}) = y;
+  }
+
+  auto *inputX = G.createVariable(ElemKind::FloatTy, {numSamples, 1}, "input",
+                                  Variable::VisibilityKind::Public,
+                                  Variable::TrainKind::None);
+
+  auto *expectedY = G.createVariable(
+      ElemKind::FloatTy, {numSamples, 1}, "expected",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
+
+  FullyConnectedNode *FC1 = G.createFullyConnected("fc1", inputX, 10);
+  Node *O = G.createSigmoid("sigmoid1", FC1);
+  FullyConnectedNode *FC2 = G.createFullyConnected("fc2", O, 1);
+  Node *R = G.createRegression("reg", FC2, expectedY);
+  auto *result = G.createSave("return", R);
+
+  EE.compile(CompilationMode::Train);
+
+  // Learn on numSamples samples.
+  EE.runBatch(2700, {inputX, expectedY}, {&tensorX, &tensorY});
+
+  // Create a test set, which is similar, but different from the training set.
+  for (unsigned i = 0; i < numSamples; i++) {
+    // Scale x to cover the range [0, 4.2] as this leads to a good convergence
+    // during training.
+    float x = i / (numSamples / 4.2) + 0.123456;
+    float y = F(x);
+    tensorX.getHandle<>().at({i, 0}) = x;
+    tensorY.getHandle<>().at({i, 0}) = y;
+  }
+
+  EE.compile(CompilationMode::Infer);
+  EE.run({inputX}, {&tensorX});
+  auto resH = result->getVariable()->getPayload().getHandle<>();
+
+  for (size_t i = 0; i < numSamples; i++) {
+    float x = tensorX.getHandle().at({i, 0});
+    EXPECT_NEAR(resH.at({i, 0}), F(x), epsilon);
+  }
+}
