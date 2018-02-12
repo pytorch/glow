@@ -38,7 +38,7 @@ inline const char *getStorageTypename(MemberType type) {
                                 "float",
                                 "unsigned",
                                 "size_t",
-                                "llvm::StringRef",
+                                "std::string",
                                 "std::vector<float>",
                                 "std::vector<unsigned>",
                                 "std::vector<size_t>",
