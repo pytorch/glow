@@ -204,12 +204,8 @@ generateNodeQuantizationInfos(const Graph &G) {
       float min = CI.raw(0);
       float max = CI.raw(1);
 
-      NodeValue &observedNodeValue = node->getNthInput(0);
-      unsigned resNum = observedNodeValue.getResNo();
-      Node *observedNode = observedNodeValue.getNode();
-
       std::string fullOutputName = NodeQuantizationInfo::generateNodeOutputName(
-          observedNode->getName().str(), resNum);
+          QPN->getProfiledNodeName());
       TensorQuantizationParams TQP =
           calculateTensorQuantizationParams(histogram, min, max);
       quantizationInfos.emplace_back(fullOutputName, TQP);

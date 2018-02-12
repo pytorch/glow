@@ -279,6 +279,7 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addInput("Histogram")
       .addInput("ComputationInfo")
+      .addMember(MemberType::String, "ProfiledNodeName")
       .addExtraMethod("Variable *getHistogramVar() const ;",
                       "Variable *QuantizationProfileNode::getHistogramVar() "
                       "const { return "
