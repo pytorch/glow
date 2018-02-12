@@ -62,7 +62,8 @@ void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
   // for processing
   for (unsigned n = 0; n < filenames.size(); n++) {
     Tensor localCopy;
-    readPngImage(&localCopy, filenames[n].c_str(), range);
+    bool loadSuccess = !readPngImage(&localCopy, filenames[n].c_str(), range);
+    GLOW_ASSERT(loadSuccess && "Error reading input image.");
     auto imageH = localCopy.getHandle<>();
 
     auto dims = localCopy.dims();
