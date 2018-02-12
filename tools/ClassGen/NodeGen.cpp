@@ -159,7 +159,7 @@ int main(int argc, char **argv) {
                     "of the matrices has a batch size of one then the matrix "
                     "is broadcasted to match the batch size of the other one."
                     "The result is a three dimensional tensor."
-                    "Example: (1, Z, A) x (N, B, Z) => (N, A, B)");
+                    "Example: (1, A, Z) x (N, Z, B) => (N, A, B)");
 
   BB.newNode("BatchedReduce")
       .addInput("Batch")
