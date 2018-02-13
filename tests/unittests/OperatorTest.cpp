@@ -416,3 +416,49 @@ TEST(Operator, IntConvolution) {
     EXPECT_NEAR(H.raw(i), 0, 0.1);
   }
 }
+
+TEST(Operator, IntFC) {
+  ExecutionEngine EE;
+  auto &G = EE.getGraph();
+
+  // In this test we subtract the outputs of a quantized FC and a floating-point
+  // FC and ensure that the error is below some low value.
+
+  auto *input = G.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
+  auto *fc = G.createFullyConnected("FC", input, 30);
+  auto *res = G.createVariable(ElemKind::FloatTy, fc->dims(), "res");
+
+  auto filter = fc->getFilter();
+  auto bias = fc->getBias();
+
+  input->getPayload().getHandle().randomize(-1.2, 1.2);
+  llvm::cast<Variable>(bias)->getPayload().getHandle().randomize(0, 0.00001);
+  llvm::cast<Variable>(filter)->getPayload().getHandle().randomize(-1.2, 1.2);
+
+  Type resTy(ElemKind::Int8QTy, res->dims(), 0.15, 4);
+  Type inputTy(ElemKind::Int8QTy, input->dims(), 0.01, 0);
+  Type filterTy(ElemKind::Int8QTy, filter.dims(), 0.01, 2);
+  Type biasTy(ElemKind::Int8QTy, bias.dims(), 0.02, 1);
+
+  auto *inputq = G.createQuantize("input.q", input, &inputTy);
+  auto *filterq = G.createQuantize("filter.q", filter, &filterTy);
+  auto *biasq = G.createQuantize("bias.q", bias, &biasTy);
+
+  auto *fcq = G.createFullyConnected("fcq", inputq, filterq, biasq, &resTy);
+  auto *dequantRes = G.createDequantize("dequant", fcq);
+
+  // Subtract the results of the convolution from the quantized fc.
+  auto *sub =
+      G.createArithmetic("compare", dequantRes, fc, ArithmeticNode::Mode::Sub);
+
+  G.createSave("save", sub, res);
+  EE.compile(CompilationMode::Infer);
+
+  EE.run({}, {});
+
+  auto H = res->getPayload().getHandle();
+  // Check that the difference in the results is less than 0.1.
+  for (int i = 0, e = H.size(); i < e; i++) {
+    EXPECT_NEAR(H.raw(i), 0, 0.2);
+  }
+}
