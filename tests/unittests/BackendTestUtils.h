@@ -19,15 +19,19 @@ void inferMinNet(glow::Tensor *inputs1, glow::Tensor *inputs2,
 void inferPoolAvgNet(glow::Tensor *inputs, glow::Tensor *out,
                      glow::BackendKind kind);
 
-void trainPoolAvgNet(glow::Tensor *inputs, glow::Tensor *selected,
-                     llvm::ArrayRef<size_t> shape, glow::Tensor *out,
+void trainPoolAvgNet(glow::Tensor *inputs, glow::Tensor *weights,
+                     glow::Tensor *bias, glow::Tensor *selected,
+                     llvm::ArrayRef<size_t> shape1,
+                     llvm::ArrayRef<size_t> shape2, glow::Tensor *out,
                      glow::BackendKind kind);
 
 void inferPoolMaxNet(glow::Tensor *inputs, glow::Tensor *out,
                      glow::BackendKind kind);
 
-void trainPoolMaxNet(glow::Tensor *inputs, glow::Tensor *selected,
-                     llvm::ArrayRef<size_t> shape, glow::Tensor *out,
+void trainPoolMaxNet(glow::Tensor *inputs, glow::Tensor *weights,
+                     glow::Tensor *bias, glow::Tensor *selected,
+                     llvm::ArrayRef<size_t> shape1,
+                     llvm::ArrayRef<size_t> shape2, glow::Tensor *out,
                      glow::BackendKind kind);
 
 void inferReluNet(glow::Tensor *inputs, glow::Tensor *out,
@@ -46,7 +50,8 @@ void inferSigmoidNet(glow::Tensor *inputs, glow::Tensor *out,
 void inferSoftMaxNet(glow::Tensor *inputs, glow::Tensor *selected,
                      glow::Tensor *out, glow::BackendKind kind);
 
-void trainSoftMaxNet(glow::Tensor *inputs, glow::Tensor *selected,
+void trainSoftMaxNet(glow::Tensor *inputs, glow::Tensor *weights,
+                     glow::Tensor *bias, glow::Tensor *selected,
                      glow::Tensor *out, glow::BackendKind kind);
 
 void inferTanhNet(glow::Tensor *inputs, glow::Tensor *out,
