@@ -18,7 +18,6 @@ struct TrainingConfig {
   float L2Decay{0};
   float learningRate{0.01};
   float momentum{0.0};
-  unsigned maxNumThreads{256};
   unsigned batchSize{1};
 };
 

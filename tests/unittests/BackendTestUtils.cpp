@@ -85,7 +85,6 @@ void trainPoolAvgNet(Tensor *inputs, Tensor *selected,
                      BackendKind kind) {
   ExecutionEngine EE(kind);
   EE.getConfig().learningRate = 0.01;
-  EE.getConfig().maxNumThreads = 1;
   EE.getConfig().momentum = 0.4;
   EE.getConfig().L2Decay = 0.01;
   auto &G = EE.getGraph();
@@ -122,7 +121,6 @@ void trainPoolMaxNet(Tensor *inputs, Tensor *selected,
                      BackendKind kind) {
   ExecutionEngine EE(kind);
   EE.getConfig().learningRate = 0.03;
-  EE.getConfig().maxNumThreads = 1;
   EE.getConfig().momentum = 0.3;
   EE.getConfig().L2Decay = 0.003;
   auto &G = EE.getGraph();
@@ -215,7 +213,6 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
                      BackendKind kind) {
   ExecutionEngine EE(kind);
   EE.getConfig().learningRate = 0.003;
-  EE.getConfig().maxNumThreads = 1;
   EE.getConfig().momentum = 0.7;
   EE.getConfig().L2Decay = 0.001;
   auto &G = EE.getGraph();
