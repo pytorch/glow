@@ -103,7 +103,6 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
 
 TEST(Network, gradientCheckFCConcatRELU) {
   ExecutionEngine IP;
-  IP.getConfig().maxNumThreads = 1;
 
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
@@ -142,7 +141,6 @@ TEST(Network, gradientCheckFCConcatRELU) {
 
 TEST(Network, gradientCheckConv) {
   ExecutionEngine IP;
-  IP.getConfig().maxNumThreads = 1;
 
   size_t numDim = 10;
   size_t numOutputElem = 10;
@@ -177,7 +175,6 @@ TEST(Network, gradientCheckConv) {
 
 TEST(Network, gradientCheckAvgPool) {
   ExecutionEngine IP;
-  IP.getConfig().maxNumThreads = 1;
 
   size_t numDim = 10;
   size_t numOutputElem = 10;
@@ -210,7 +207,6 @@ TEST(Network, gradientCheckAvgPool) {
 
 TEST(Network, gradientCheckBatchNorm) {
   ExecutionEngine IP;
-  IP.getConfig().maxNumThreads = 1;
 
   size_t numDim = 5;
   size_t numOutputElem = numDim * numDim * 3;
@@ -248,7 +244,6 @@ TEST(Network, gradientCheckBatchNorm) {
 
 TEST(Network, gradientCheckArithmeticDiv) {
   ExecutionEngine IP;
-  IP.getConfig().maxNumThreads = 1;
   size_t numDim = 10;
 
   auto &G = IP.getGraph();
@@ -279,7 +274,6 @@ TEST(Network, gradientCheckArithmeticDiv) {
 
 TEST(Network, gradientCheckArithmetic) {
   ExecutionEngine IP;
-  IP.getConfig().maxNumThreads = 1;
 
   size_t numDim = 20;
 
@@ -329,7 +323,6 @@ TEST(Network, gradientCheckArithmetic) {
 TEST(Network, gradientCheckFCConcatTanh) {
   // Using the same gradient check test setup as gradientCheck_FC_Concat_RELU
   ExecutionEngine IP;
-  IP.getConfig().maxNumThreads = 1;
 
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
@@ -391,7 +384,6 @@ TEST(Network, gradientCheckFC) {
 
 TEST(Network, gradientCheckSigmoid) {
   ExecutionEngine IP;
-  IP.getConfig().maxNumThreads = 1;
 
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
@@ -423,7 +415,6 @@ TEST(Network, gradientCheckSigmoid) {
 
 TEST(Network, gradientCheckRelu) {
   ExecutionEngine IP;
-  IP.getConfig().maxNumThreads = 1;
 
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
@@ -456,7 +447,6 @@ TEST(Network, gradientCheckRelu) {
 TEST(Network, gradientCheckTranspose) {
   // Using the same gradient check test setup as gradientCheck_FC_Concat_RELU
   ExecutionEngine IP;
-  IP.getConfig().maxNumThreads = 1;
   size_t numOutputElem = 10;
 
   auto &G = IP.getGraph();

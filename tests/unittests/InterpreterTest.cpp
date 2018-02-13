@@ -134,7 +134,6 @@ TEST(Interpreter, QuantizeAndDequantize) {
 TEST(Interpreter, trainASimpleNetwork) {
   ExecutionEngine EE;
   // Learning a single input vector.
-  EE.getConfig().maxNumThreads = 1;
   EE.getConfig().learningRate = 0.05;
 
   auto &G = EE.getGraph();
@@ -185,7 +184,6 @@ TEST(Interpreter, simpleRegression) {
   ExecutionEngine EE;
 
   // Learning a single input vector.
-  EE.getConfig().maxNumThreads = 1;
   EE.getConfig().learningRate = 0.05;
 
   Tensor inputs(ElemKind::FloatTy, {1, numInputs});
@@ -238,7 +236,6 @@ TEST(Interpreter, learnXor) {
   ExecutionEngine EE;
 
   // Learning a single input vector.
-  EE.getConfig().maxNumThreads = 1;
   EE.getConfig().learningRate = 0.05;
 
   auto &G = EE.getGraph();
@@ -336,7 +333,6 @@ TEST(Network, circle) {
   ExecutionEngine EE;
 
   // Learning a single input vector.
-  EE.getConfig().maxNumThreads = 1;
   EE.getConfig().momentum = 0.9;
   EE.getConfig().learningRate = 0.01;
 
@@ -424,7 +420,6 @@ TEST(Network, learnSingleValueConcat) {
   unsigned width = 6;
 
   // Learning a single input vector.
-  EE.getConfig().maxNumThreads = 1;
   EE.getConfig().momentum = 0.9;
   EE.getConfig().learningRate = 0.01;
 
@@ -592,7 +587,6 @@ using TCellGenerator = void (*)(Graph &, const std::vector<Node *> &, unsigned,
 void testRNNCell(TCellGenerator cell) {
   ExecutionEngine EE;
   // Learning a single input vector.
-  EE.getConfig().maxNumThreads = 1;
   EE.getConfig().learningRate = 0.05;
 
   auto &G = EE.getGraph();
@@ -735,7 +729,6 @@ TEST(LinearRegression, trainSimpleLinearRegression) {
   unsigned numSamples = 500;
 
   ExecutionEngine EE;
-  EE.getConfig().maxNumThreads = 1;
   EE.getConfig().learningRate = 0.1;
   EE.getConfig().batchSize = numSamples;
 
@@ -870,7 +863,6 @@ TEST(Interpreter, learnSinus) {
   unsigned numSamples = 150;
 
   ExecutionEngine EE;
-  EE.getConfig().maxNumThreads = 1;
   EE.getConfig().learningRate = 0.2;
   EE.getConfig().batchSize = numSamples;
 
