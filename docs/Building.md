@@ -22,6 +22,15 @@ On Ubuntu you would need to install a few dependencies. The following command sh
 
 Note, that OpenCL support is not trivial on Linux. We suggest to build without OpenCL for the first time.
 
+## Building with JIT/OpenCL Backends
+
+By default Glow builds with only the interpreter backend enabled.  To enable
+support for the JIT and/or OpenCL backends, pass additional options to cmake:
+
+  ```
+  -DGLOW_WITH_JIT=1 -DGLOW_WITH_OPENCL=1
+  ```
+
 ## Building with the Sanitizers
 
 The clang-sanitizer project provides a number of libraries which can be used with
