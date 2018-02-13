@@ -48,8 +48,10 @@ TEST(JITCorrectnessTest, batchedReduceAddTest) {
 }
 
 TEST(JITCorrectnessTest, maxTest) {
-  Tensor inputs1(ElemKind::FloatTy, {3, 8, 2});
-  Tensor inputs2(ElemKind::FloatTy, {3, 8, 2});
+  std::array<size_t, 3> S{{3, 8, 2}};
+  llvm::ArrayRef<size_t> shape(S);
+  Tensor inputs1(ElemKind::FloatTy, shape);
+  Tensor inputs2(ElemKind::FloatTy, shape);
   inputs1.getHandle().initXavier(1);
   inputs2.getHandle().initXavier(1);
   Tensor out1;
@@ -64,8 +66,10 @@ TEST(JITCorrectnessTest, maxTest) {
 }
 
 TEST(JITCorrectnessTest, minTest) {
-  Tensor inputs1(ElemKind::FloatTy, {10, 3, 12, 8});
-  Tensor inputs2(ElemKind::FloatTy, {10, 3, 12, 8});
+  std::array<size_t, 4> S{{10, 3, 12, 8}};
+  llvm::ArrayRef<size_t> shape(S);
+  Tensor inputs1(ElemKind::FloatTy, shape);
+  Tensor inputs2(ElemKind::FloatTy, shape);
   inputs1.getHandle().initXavier(1);
   inputs2.getHandle().initXavier(1);
   Tensor out1;
@@ -94,18 +98,27 @@ TEST(JITCorrectnessTest, poolAvgTest) {
 }
 
 TEST(JITCorrectnessTest, poolAvgGradTest) {
-  Tensor inputs(ElemKind::FloatTy, {15, 21, 17, 11});
-  Tensor selected(ElemKind::IndexTy, {15, 1});
+  Tensor inputs(ElemKind::FloatTy, {5, 7, 6, 3});
+  Tensor weights(ElemKind::FloatTy, {126, 72});
+  Tensor bias(ElemKind::FloatTy, {72});
+  Tensor selected(ElemKind::IndexTy, {5, 1});
   inputs.getHandle().initXavier(1);
+  weights.getHandle().randomize(-0.3, 0.6);
+  bias.getHandle().randomize(-0.2, 0.1);
   auto selectedH = selected.getHandle<size_t>();
-  for (size_t i = 0; i < 15; i++) {
-    selectedH.raw(i) = nextRandInt(880);
+  for (size_t i = 0; i < 5; i++) {
+    selectedH.raw(i) = nextRandInt(18);
   }
-  Tensor out1(ElemKind::FloatTy, {15, 880});
-  Tensor out2(ElemKind::FloatTy, {15, 880});
+  std::array<size_t, 4> S1{{5, 6, 4, 3}};
+  llvm::ArrayRef<size_t> shape1(S1);
+  std::array<size_t, 2> S2{{5, 18}};
+  llvm::ArrayRef<size_t> shape2(S2);
+  Tensor out1(ElemKind::FloatTy, shape2);
+  Tensor out2(ElemKind::FloatTy, shape2);
 
-  trainPoolAvgNet(&inputs, &selected, {15, 880}, &out1, BackendKind::JIT);
-  trainPoolAvgNet(&inputs, &selected, {15, 880}, &out2,
+  trainPoolAvgNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out1,
+                  BackendKind::JIT);
+  trainPoolAvgNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
                   BackendKind::Interpreter);
   auto H1 = out1.getHandle();
   auto H2 = out2.getHandle();
@@ -128,18 +141,27 @@ TEST(JITCorrectnessTest, poolMaxTest) {
 }
 
 TEST(JITCorrectnessTest, poolMaxGradTest) {
-  Tensor inputs(ElemKind::FloatTy, {10, 43, 52, 2});
-  Tensor selected(ElemKind::IndexTy, {10, 1});
+  Tensor inputs(ElemKind::FloatTy, {4, 8, 7, 2});
+  Tensor weights(ElemKind::FloatTy, {112, 84});
+  Tensor bias(ElemKind::FloatTy, {84});
+  Tensor selected(ElemKind::IndexTy, {4, 1});
   inputs.getHandle().initXavier(1);
+  weights.getHandle().randomize(-0.1, 0.7);
+  bias.getHandle().randomize(-0.3, 0.1);
   auto selectedH = selected.getHandle<size_t>();
-  for (size_t i = 0; i < 10; i++) {
-    selectedH.raw(i) = nextRandInt(608);
+  for (size_t i = 0; i < 4; i++) {
+    selectedH.raw(i) = nextRandInt(32);
   }
-  Tensor out1(ElemKind::FloatTy, {10, 608});
-  Tensor out2(ElemKind::FloatTy, {10, 608});
+  std::array<size_t, 4> S1{{4, 6, 7, 2}};
+  llvm::ArrayRef<size_t> shape1(S1);
+  std::array<size_t, 2> S2{{4, 32}};
+  llvm::ArrayRef<size_t> shape2(S2);
+  Tensor out1(ElemKind::FloatTy, shape2);
+  Tensor out2(ElemKind::FloatTy, shape2);
 
-  trainPoolMaxNet(&inputs, &selected, {10, 608}, &out1, BackendKind::JIT);
-  trainPoolMaxNet(&inputs, &selected, {10, 608}, &out2,
+  trainPoolMaxNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out1,
+                  BackendKind::JIT);
+  trainPoolMaxNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
                   BackendKind::Interpreter);
   auto H1 = out1.getHandle();
   auto H2 = out2.getHandle();
@@ -164,11 +186,13 @@ TEST(JITCorrectnessTest, reluTest) {
 TEST(JITCorrectnessTest, reshapeTest) {
   Tensor inputs(ElemKind::FloatTy, {12, 6, 8, 12});
   inputs.getHandle().initXavier(1);
+  std::array<size_t, 4> S{{18, 4, 24, 4}};
+  llvm::ArrayRef<size_t> shape(S);
   Tensor out1;
   Tensor out2;
 
-  inferReshapeNet(&inputs, {18, 4, 24, 4}, &out1, BackendKind::JIT);
-  inferReshapeNet(&inputs, {18, 4, 24, 4}, &out2, BackendKind::Interpreter);
+  inferReshapeNet(&inputs, shape, &out1, BackendKind::JIT);
+  inferReshapeNet(&inputs, shape, &out2, BackendKind::Interpreter);
   auto H1 = out1.getHandle();
   auto H2 = out2.getHandle();
 
@@ -176,11 +200,13 @@ TEST(JITCorrectnessTest, reshapeTest) {
 }
 
 TEST(JITCorrectnessTest, selectTest) {
-  Tensor cond(ElemKind::FloatTy, {5, 3, 9, 2});
-  Tensor inputs1(ElemKind::FloatTy, {5, 3, 9, 2});
-  Tensor inputs2(ElemKind::FloatTy, {5, 3, 9, 2});
+  std::array<size_t, 4> S{{5, 3, 9, 2}};
+  llvm::ArrayRef<size_t> shape(S);
+  Tensor cond(ElemKind::FloatTy, shape);
+  Tensor inputs1(ElemKind::FloatTy, shape);
+  Tensor inputs2(ElemKind::FloatTy, shape);
   auto condH = cond.getHandle();
-  for (size_t i = 0; i < 5 * 3 * 9 * 2; ++i) {
+  for (size_t i = 0; i < 270; ++i) {
     condH.raw(i) = nextRandInt01();
   }
   inputs1.getHandle().initXavier(1);
@@ -213,7 +239,7 @@ TEST(JITCorrectnessTest, sigmoidTest) {
 TEST(JITCorrectnessTest, softmaxTest) {
   Tensor inputs(ElemKind::FloatTy, {14, 19});
   Tensor selected(ElemKind::IndexTy, {14, 1});
-  inputs.getHandle().initXavier(2);
+  inputs.getHandle().initXavier(1);
   auto selectedH = selected.getHandle<size_t>();
   for (size_t i = 0; i < 14; i++) {
     selectedH.raw(i) = nextRandInt(19);
@@ -229,19 +255,26 @@ TEST(JITCorrectnessTest, softmaxTest) {
   EXPECT_TRUE(H1.isEqual(H2));
 }
 
-TEST(JITCorrectnessTest, softmaxgradTest) {
-  Tensor inputs(ElemKind::FloatTy, {8, 23});
+TEST(JITCorrectnessTest, softmaxGradTest) {
+  std::array<size_t, 2> S{{8, 23}};
+  llvm::ArrayRef<size_t> shape(S);
+  Tensor inputs(ElemKind::FloatTy, shape);
+  Tensor weights(ElemKind::FloatTy, {23, 23});
+  Tensor bias(ElemKind::FloatTy, {23});
   Tensor selected(ElemKind::IndexTy, {8, 1});
   inputs.getHandle().initXavier(1);
+  weights.getHandle().randomize(0.0, 0.5);
+  bias.getHandle().randomize(-0.2, 0.0);
   auto selectedH = selected.getHandle<size_t>();
   for (size_t i = 0; i < 8; i++) {
     selectedH.raw(i) = nextRandInt(23);
   }
-  Tensor out1(ElemKind::FloatTy, {8, 23});
-  Tensor out2(ElemKind::FloatTy, {8, 23});
+  Tensor out1(ElemKind::FloatTy, shape);
+  Tensor out2(ElemKind::FloatTy, shape);
 
-  trainSoftMaxNet(&inputs, &selected, &out1, BackendKind::JIT);
-  trainSoftMaxNet(&inputs, &selected, &out2, BackendKind::Interpreter);
+  trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out1, BackendKind::JIT);
+  trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out2,
+                  BackendKind::Interpreter);
   auto H1 = out1.getHandle();
   auto H2 = out2.getHandle();
 
@@ -291,9 +324,11 @@ TEST(JITCorrectnessTest, basicFCNet) {
 }
 
 TEST(JITCorrectnessTest, complexNet1) {
-  Tensor inputs1(ElemKind::FloatTy, {8, 7, 14, 11});
+  std::array<size_t, 4> S{{8, 7, 14, 11}};
+  llvm::ArrayRef<size_t> shape(S);
+  Tensor inputs1(ElemKind::FloatTy, shape);
   Tensor inputs2(ElemKind::FloatTy, {8, 4, 7, 9});
-  Tensor inputs3(ElemKind::FloatTy, {8, 7, 14, 11});
+  Tensor inputs3(ElemKind::FloatTy, shape);
   Tensor inputs4(ElemKind::FloatTy, {8, 8, 7, 4});
   inputs1.getHandle().initXavier(1);
   inputs2.getHandle().initXavier(1);

@@ -80,8 +80,9 @@ void inferPoolAvgNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
-void trainPoolAvgNet(Tensor *inputs, Tensor *selected,
-                     llvm::ArrayRef<size_t> shape, Tensor *out,
+void trainPoolAvgNet(Tensor *inputs, Tensor *weights, Tensor *bias,
+                     Tensor *selected, llvm::ArrayRef<size_t> shape1,
+                     llvm::ArrayRef<size_t> shape2, Tensor *out,
                      BackendKind kind) {
   ExecutionEngine EE(kind);
   EE.getConfig().learningRate = 0.01;
@@ -93,12 +94,16 @@ void trainPoolAvgNet(Tensor *inputs, Tensor *selected,
   auto *var2 = G.createVariable(selected->getElementType(), selected->dims(),
                                 "selected", Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  auto *pool = G.createPool("pool", var1, PoolNode::Mode::Avg, 2, 2, 0);
-  auto *reshape = G.createReshape("reshape", pool, shape);
-  auto *softmax = G.createSoftMax("softmax", reshape, var2);
+  auto *fc = G.createFullyConnected("fc", var1, bias->dims()[0]);
+  cast<Variable>(fc->getFilter())->copyFrom(weights);
+  cast<Variable>(fc->getBias())->copyFrom(bias);
+  auto *reshape1 = G.createReshape("reshape1", fc, shape1);
+  auto *pool = G.createPool("pool", reshape1, PoolNode::Mode::Avg, 2, 2, 0);
+  auto *reshape2 = G.createReshape("reshape2", pool, shape2);
+  auto *softmax = G.createSoftMax("softmax", reshape2, var2);
   auto result = G.createSave("ret", softmax);
   EE.compile(CompilationMode::Train);
-  EE.runBatch(25, {var1, var2}, {inputs, selected});
+  EE.runBatch(10, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer);
   EE.run({var1, var2}, {inputs, selected});
   out->copyFrom(&result->getVariable()->getPayload());
@@ -116,8 +121,9 @@ void inferPoolMaxNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
-void trainPoolMaxNet(Tensor *inputs, Tensor *selected,
-                     llvm::ArrayRef<size_t> shape, Tensor *out,
+void trainPoolMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
+                     Tensor *selected, llvm::ArrayRef<size_t> shape1,
+                     llvm::ArrayRef<size_t> shape2, Tensor *out,
                      BackendKind kind) {
   ExecutionEngine EE(kind);
   EE.getConfig().learningRate = 0.03;
@@ -129,12 +135,16 @@ void trainPoolMaxNet(Tensor *inputs, Tensor *selected,
   auto *var2 = G.createVariable(selected->getElementType(), selected->dims(),
                                 "selected", Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  auto *pool = G.createPool("pool", var1, PoolNode::Mode::Max, 5, 3, 4);
-  auto *reshape = G.createReshape("reshape", pool, shape);
-  auto *softmax = G.createSoftMax("softmax", reshape, var2);
+  auto *fc = G.createFullyConnected("fc", var1, bias->dims()[0]);
+  cast<Variable>(fc->getFilter())->copyFrom(weights);
+  cast<Variable>(fc->getBias())->copyFrom(bias);
+  auto *reshape1 = G.createReshape("reshape1", fc, shape1);
+  auto *pool = G.createPool("pool", reshape1, PoolNode::Mode::Max, 5, 3, 4);
+  auto *reshape2 = G.createReshape("reshape2", pool, shape2);
+  auto *softmax = G.createSoftMax("softmax", reshape2, var2);
   auto result = G.createSave("ret", softmax);
   EE.compile(CompilationMode::Train);
-  EE.runBatch(20, {var1, var2}, {inputs, selected});
+  EE.runBatch(7, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer);
   EE.runBatch(1, {var1, var2}, {inputs, selected});
   out->copyFrom(&result->getVariable()->getPayload());
@@ -209,8 +219,8 @@ void inferSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
-void trainSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
-                     BackendKind kind) {
+void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
+                     Tensor *selected, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   EE.getConfig().learningRate = 0.003;
   EE.getConfig().momentum = 0.7;
@@ -221,12 +231,15 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
   auto *var2 = G.createVariable(selected->getElementType(), selected->dims(),
                                 "selected", Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  auto *softmax = G.createSoftMax("softmax", var1, var2);
+  auto *fc = G.createFullyConnected("fc", var1, bias->dims()[0]);
+  cast<Variable>(fc->getFilter())->copyFrom(weights);
+  cast<Variable>(fc->getBias())->copyFrom(bias);
+  auto *softmax = G.createSoftMax("softmax", fc, var2);
   auto result = G.createSave("ret", softmax);
   EE.compile(CompilationMode::Train);
-  EE.runBatch(50, {var1, var2}, {inputs, selected});
+  EE.runBatch(30, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer);
-  EE.run({var1}, {inputs});
+  EE.run({var1, var2}, {inputs, selected});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
