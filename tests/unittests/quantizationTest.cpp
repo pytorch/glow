@@ -103,8 +103,77 @@ TEST(Quantization, quantizeGraph) {
 
   // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer);
-  G.dumpDAG();
   EE.run({}, {});
+}
+
+/// Builds a simple graph, returns back input var and save node through refs.
+void createSimpleGraphForQuantization(ExecutionEngine &EE, Variable *&input,
+                                      SaveNode *&saveNode, Variable *W,
+                                      Variable *B) {
+  auto &G = EE.getGraph();
+  auto *A = G.createVariable(ElemKind::FloatTy, {1, 2}, "A",
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
+  input = A;
+  Node *O = G.createFullyConnected("fc", A, W, B, 2);
+  saveNode = G.createSave("save", O);
+}
+
+// This test is currently disabled as quantized graph does not produce
+// sufficiently good results.
+TEST(Quantization, DISABLED_end2end) {
+  Tensor inputs(ElemKind::FloatTy, {1, 2});
+  inputs.getHandle() = {1, 2};
+
+  ExecutionEngine E1, E2;
+  SaveNode *result1, *result2;
+  Variable *input1, *input2;
+
+  auto *W1 = E1.getGraph().createVariable(ElemKind::FloatTy, {2, 2}, "weights",
+                                          Variable::VisibilityKind::Private,
+                                          Variable::TrainKind::Xavier, 1);
+  auto *B1 = E1.getGraph().createVariable(ElemKind::FloatTy, {2}, "bias",
+                                          Variable::VisibilityKind::Private,
+                                          Variable::TrainKind::Xavier, 1);
+  createSimpleGraphForQuantization(E1, input1, result1, W1, B1);
+
+  glow::profileQuantization(E1.getGraph());
+  E1.compile(CompilationMode::Infer);
+
+  // Run graph to capture profile.
+  E1.run({input1}, {&inputs});
+
+  // Get quantization infos and build new quantized graph.
+  std::vector<NodeQuantizationInfo> QI =
+      generateNodeQuantizationInfos(E1.getGraph());
+  auto *W2 = E2.getGraph().createVariable(ElemKind::FloatTy, {2, 2}, "weights",
+                                          Variable::VisibilityKind::Private,
+                                          Variable::TrainKind::Xavier, 1);
+  auto *B2 = E2.getGraph().createVariable(ElemKind::FloatTy, {2}, "bias",
+                                          Variable::VisibilityKind::Private,
+                                          Variable::TrainKind::Xavier, 1);
+
+  // Make sure we are testing with the same input tensors.
+  W2->getPayload().copyFrom(&W1->getPayload());
+  B2->getPayload().copyFrom(&B1->getPayload());
+  createSimpleGraphForQuantization(E2, input2, result2, W2, B2);
+
+  glow::generateQuantizedGraph(E2.getGraph(), QI);
+  E2.compile(CompilationMode::Infer);
+  E2.getGraph().dumpDAG();
+  E2.run({input2}, {&inputs});
+
+  auto result2Handle = result2->getVariable()->getHandle();
+  auto result1Handle = result1->getVariable()->getHandle();
+
+  EXPECT_EQ(result1Handle.size(), result2Handle.size());
+  for (int i = 0, e = result1Handle.size(); i < e; ++i) {
+    double diff = std::fabs(result2Handle.raw(i) - result1Handle.raw(i)) /
+                  result1Handle.raw(i);
+
+    // Allow 5% difference.
+    EXPECT_NEAR(diff, 0, 0.05);
+  }
 }
 
 } // namespace glow
