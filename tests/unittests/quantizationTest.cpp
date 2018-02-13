@@ -160,7 +160,6 @@ TEST(Quantization, DISABLED_end2end) {
 
   glow::generateQuantizedGraph(E2.getGraph(), QI);
   E2.compile(CompilationMode::Infer);
-  E2.getGraph().dumpDAG();
   E2.run({input2}, {&inputs});
 
   auto result2Handle = result2->getVariable()->getHandle();

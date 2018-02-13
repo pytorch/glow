@@ -75,122 +75,6 @@ static TensorQuantizationParams chooseQuantizationParams(float min, float max) {
   return result;
 }
 
-/// \returns the norm.
-static double GetNorm(double begin, double end, double density) {
-  double norm = (end * end * end - begin * begin * begin) / 3;
-  return norm * density;
-}
-
-/// Calculate TensorQuantizationParams based on the histogram, min and max.
-static TensorQuantizationParams
-calculateTensorQuantizationParams(const Handle<float> &bins, float min,
-                                  float max) {
-  const int precision = 8;
-  int nBins = bins.size();
-  double binWidth = (max - min) / nBins;
-  int zeroBin = round(-min / binWidth);
-  int dstNbins = 1 << precision;
-
-  std::vector<std::pair<int, double>> bestStartBins(nBins + 1);
-
-  // Look at mapping [startBin, startBin + nbinsSelected) to
-  // [0, 1 << precision) for every (startBin, nbinsSelected) combination and
-  // pick the one with smallest L2 quantization error
-  for (int nbinsSelected = 1; nbinsSelected <= nBins; ++nbinsSelected) {
-    double normMin = std::numeric_limits<double>::max();
-    int bestStartBin = 0;
-
-    int startBinBegin = 0, startBinEnd = nBins - nbinsSelected + 1;
-    if (min == 0) {
-      startBinBegin = 0;
-      startBinEnd = 1;
-    } else {
-      startBinBegin = zeroBin - nbinsSelected / 2;
-      startBinEnd = startBinBegin + 1;
-    }
-    double dstBinWidth = binWidth * nbinsSelected / dstNbins;
-
-    int startBin;
-    for (startBin = startBinBegin; startBin < startBinEnd; ++startBin) {
-      double norm = 0;
-
-      // Go over each histogram bin and accumulate errors
-      for (int srcBin = 0; srcBin < nBins; ++srcBin) {
-        // Distances from the beginning of first dstBin to the beginning and
-        // end of srcBin
-        double srcBinBegin = (srcBin - startBin) * binWidth;
-        double srcBinEnd = srcBinBegin + binWidth;
-
-        // Which dstBins the beginning and end of srcBin belong to?
-        int dstBinOfBegin =
-            std::min((1 << precision) - 1.,
-                     std::max(0., floor(srcBinBegin / dstBinWidth)));
-        int dstBinOfEnd =
-            std::min((1 << precision) - 1.,
-                     std::max(0., floor(srcBinEnd / dstBinWidth)));
-
-        double dstBinOfBeginCenter =
-            dstBinOfBegin * dstBinWidth + dstBinWidth / 2;
-        double density = bins.raw(srcBin) / binWidth;
-
-        if (dstBinOfBegin == dstBinOfEnd) {
-          // if srcBin is entirely within 1 dstBin
-          double deltaBegin = srcBinBegin - dstBinOfBeginCenter;
-          double deltaEnd = srcBinEnd - dstBinOfBeginCenter;
-          norm += GetNorm(deltaBegin, deltaEnd, density);
-        } else {
-          double deltaBegin = srcBinBegin - dstBinOfBeginCenter;
-          double deltaEnd = dstBinWidth / 2;
-          norm += GetNorm(deltaBegin, deltaEnd, density);
-
-          norm += (dstBinOfEnd - dstBinOfBegin - 1) *
-                  GetNorm(-dstBinWidth / 2, dstBinWidth / 2, density);
-
-          double dst_bin_of_end_center =
-              dstBinOfEnd * dstBinWidth + dstBinWidth / 2;
-          deltaBegin = -dstBinWidth / 2;
-          deltaEnd = srcBinEnd - dst_bin_of_end_center;
-          norm += GetNorm(deltaBegin, deltaEnd, density);
-        }
-      }
-
-      if (norm < normMin) {
-        normMin = norm;
-        bestStartBin = startBin;
-      }
-    } // for each startBin
-
-    bestStartBins[nbinsSelected] = {bestStartBin, normMin};
-  } // for each nbinsSelected
-
-  double normMin = std::numeric_limits<double>::max();
-  int bestNbinsSelected = 1, bestStartBin = 0;
-  for (int nbinsSelected = 1; nbinsSelected <= nBins; ++nbinsSelected) {
-    double norm = bestStartBins[nbinsSelected].second;
-    if (norm < normMin) {
-      normMin = norm;
-      bestStartBin = bestStartBins[nbinsSelected].first;
-      bestNbinsSelected = nbinsSelected;
-    }
-  }
-
-  double totalSum = 0;
-  for (size_t i = 0; i < bins.size(); ++i) {
-    totalSum += bins.raw(i);
-  }
-  double selectedSum = 0;
-  int iBegin = std::max(0, bestStartBin);
-  int iEnd = std::min(nBins, bestStartBin + bestNbinsSelected);
-  for (int i = iBegin; i < iEnd; ++i) {
-    selectedSum += bins.raw(i);
-  }
-
-  float newMin = min + binWidth * bestStartBin;
-  float newMax = min + binWidth * (bestStartBin + bestNbinsSelected);
-
-  return chooseQuantizationParams(newMin, newMax);
-}
-
 std::vector<NodeQuantizationInfo>
 generateNodeQuantizationInfos(const Graph &G) {
   std::vector<NodeQuantizationInfo> quantizationInfos;
@@ -206,8 +90,12 @@ generateNodeQuantizationInfos(const Graph &G) {
 
       std::string fullOutputName = NodeQuantizationInfo::generateNodeOutputName(
           QPN->getProfiledNodeName());
-      TensorQuantizationParams TQP =
-          calculateTensorQuantizationParams(histogram, min, max);
+
+      // TODO: Ideally tensor quantization params should be calculated
+      // based on the histogram distribution. Use simplistic approach for now.
+      (void)histogram;
+      TensorQuantizationParams TQP = chooseQuantizationParams(min, max);
+
       quantizationInfos.emplace_back(fullOutputName, TQP);
     }
   }
