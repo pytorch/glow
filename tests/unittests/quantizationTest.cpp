@@ -119,9 +119,7 @@ void createSimpleGraphForQuantization(ExecutionEngine &EE, Variable *&input,
   saveNode = G.createSave("save", O);
 }
 
-// This test is currently disabled as quantized graph does not produce
-// sufficiently good results.
-TEST(Quantization, DISABLED_end2end) {
+TEST(Quantization, end2end) {
   Tensor inputs(ElemKind::FloatTy, {1, 2});
   inputs.getHandle() = {1, 2};
 

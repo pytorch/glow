@@ -1188,8 +1188,7 @@ void Interpreter::fwdBatchedAddInst(bool isTrain,
 
     // For each element in the slice.
     for (size_t i = 0; i < bdim.second; i++) {
-      dest.raw(base + i) =
-          QuantizationTransform32To8::clip(batch.raw(base + i) + slice.raw(i));
+      dest.raw(base + i) = batch.raw(base + i) + slice.raw(i);
     }
   }
 }
