@@ -1089,7 +1089,7 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
             sum += (L - lhsOffset) * (R - rhsOffset);
           }
 
-          dest.at({n, x, y}) = std::round(scale * sum + destOffset);
+          dest.at({n, x, y}) = QuantizationTransform32To8::clip(std::round(scale * sum + destOffset));
         }
       }
     } // N
