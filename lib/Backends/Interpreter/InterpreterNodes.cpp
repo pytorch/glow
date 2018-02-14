@@ -154,8 +154,8 @@ void Interpreter::fwdConvolutionInst_I8Impl(Value *inV, Value *outV,
           sum += B;
 
           // Scale the result back to the expected destination scale.
-          outW.at({n, ax, ay, d}) =
-              std::round(float(sum) * (matMulScale / outScale) + outOffset);
+          outW.at({n, ax, ay, d}) = QuantizationTransform32To8::clip(
+              std::round(float(sum) * (matMulScale / outScale) + outOffset));
         } // W
       }   // H
     }     // C
@@ -1167,8 +1167,8 @@ void Interpreter::fwdBatchedAddInst(bool isTrain,
         int32_t S = std::round(float(sliceVal - sliceOffset) *
                                (sliceScale / largeScale));
         int32_t R = B + S;
-        dest.raw(base + i) =
-            std::round(float(R) * (largeScale / destScale) + destOffset);
+        dest.raw(base + i) = QuantizationTransform32To8::clip(
+            std::round(float(R) * (largeScale / destScale) + destOffset));
       }
     }
     return;
@@ -1188,7 +1188,8 @@ void Interpreter::fwdBatchedAddInst(bool isTrain,
 
     // For each element in the slice.
     for (size_t i = 0; i < bdim.second; i++) {
-      dest.raw(base + i) = batch.raw(base + i) + slice.raw(i);
+      dest.raw(base + i) =
+          QuantizationTransform32To8::clip(batch.raw(base + i) + slice.raw(i));
     }
   }
 }
