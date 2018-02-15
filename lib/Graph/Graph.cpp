@@ -208,16 +208,16 @@ PoolNode *Graph::createPool(llvm::StringRef name, NodeValue input,
 
 FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
                                                 NodeValue input, Variable *W,
-                                                Variable *B, size_t outDepth) {
+                                                Variable *B) {
   TypeRef T = input.getType();
   TypeRef OT = getVoidTy();
 
   // if \p input is of type void, we cannot calculate the dimensions
   if (T != getVoidTy()) {
-    OT = uniqueTypeWithNewShape(T, {input.dims()[0], outDepth});
+    OT = uniqueTypeWithNewShape(T, {input.dims()[0], B->getType()->dims()[0]});
   }
 
-  return addNode(new FullyConnectedNode(name, OT, input, W, B, outDepth));
+  return addNode(new FullyConnectedNode(name, OT, input, W, B));
 }
 
 FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
@@ -226,8 +226,7 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
   assert(outTy->dims().size() == 2 && "Invalid number of dimensions");
   assert(outTy->dims()[0] == input.dims()[0] && "Invalid dimensions");
 
-  return addNode(
-      new FullyConnectedNode(name, outTy, input, W, B, outTy->dims()[1]));
+  return addNode(new FullyConnectedNode(name, outTy, input, W, B));
 }
 
 FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
@@ -250,7 +249,7 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
                            Variable::TrainKind::Broadcast, 0.1);
 
   auto OT = uniqueType(T->getElementType(), {idim.first, outDepth});
-  return addNode(new FullyConnectedNode(name, OT, input, W, B, outDepth));
+  return addNode(new FullyConnectedNode(name, OT, input, W, B));
 }
 
 ReluNode *Graph::createRELU(llvm::StringRef name, NodeValue input) {
@@ -637,15 +636,15 @@ void Graph::createSimpleRNN(llvm::StringRef namePrefix,
   // Un-roll backpropogation through time as a loop with the shared parameters.
   for (unsigned t = 0; t < timeSteps; t++) {
     auto fc1Name = (namePrefix + ".fc1." + std::to_string(t)).str();
-    auto *FC1 = createFullyConnected(fc1Name, Ht, Whh, Bhh, hiddenSize);
+    auto *FC1 = createFullyConnected(fc1Name, Ht, Whh, Bhh);
     auto fc2Name = (namePrefix + ".fc2." + std::to_string(t)).str();
-    auto *FC2 = createFullyConnected(fc2Name, inputs[t], Wxh, Bxh, hiddenSize);
+    auto *FC2 = createFullyConnected(fc2Name, inputs[t], Wxh, Bxh);
     auto aName = (namePrefix + ".add." + std::to_string(t)).str();
     auto *A = createArithmetic(aName, FC1, FC2, ArithmeticNode::Mode::Add);
     auto tanhName = (namePrefix + ".tanh." + std::to_string(t)).str();
     auto *H = createTanh(tanhName, A);
     auto outName = (namePrefix + ".out." + std::to_string(t)).str();
-    auto *O = createFullyConnected(outName, H, Why, Bhy, outputSize);
+    auto *O = createFullyConnected(outName, H, Why, Bhy);
     outputs.push_back(O);
 
     Ht = H;
@@ -753,10 +752,9 @@ void Graph::createGRU(llvm::StringRef namePrefix, llvm::ArrayRef<Node *> inputs,
 
     auto *Zt = createSigmoid(
         sigmoid1Name,
-        createArithmetic(
-            add1Name, createFullyConnected(fc1Name, Ht, Whz, Bz1, hiddenSize),
-            createFullyConnected(fc2Name, inputs[t], Wxz, Bz2, hiddenSize),
-            ArithmeticNode::Mode::Add));
+        createArithmetic(add1Name, createFullyConnected(fc1Name, Ht, Whz, Bz1),
+                         createFullyConnected(fc2Name, inputs[t], Wxz, Bz2),
+                         ArithmeticNode::Mode::Add));
 
     auto fc3Name = (namePrefix + ".fc3." + std::to_string(t)).str();
     auto fc4Name = (namePrefix + ".fc4." + std::to_string(t)).str();
@@ -765,10 +763,9 @@ void Graph::createGRU(llvm::StringRef namePrefix, llvm::ArrayRef<Node *> inputs,
 
     auto *Rt = createSigmoid(
         sigmoid2Name,
-        createArithmetic(
-            add2Name, createFullyConnected(fc3Name, Ht, Whr, Br1, hiddenSize),
-            createFullyConnected(fc4Name, inputs[t], Wxr, Br2, hiddenSize),
-            ArithmeticNode::Mode::Add));
+        createArithmetic(add2Name, createFullyConnected(fc3Name, Ht, Whr, Br1),
+                         createFullyConnected(fc4Name, inputs[t], Wxr, Br2),
+                         ArithmeticNode::Mode::Add));
 
     auto zhtName = (namePrefix + ".zh." + std::to_string(t)).str();
     auto *ZHt = createArithmetic(zhtName, Zt, Ht, ArithmeticNode::Mode::Mul);
@@ -787,10 +784,9 @@ void Graph::createGRU(llvm::StringRef namePrefix, llvm::ArrayRef<Node *> inputs,
 
     auto *Ut = createTanh(
         tanh1Name,
-        createArithmetic(
-            add3Name, createFullyConnected(fc5Name, RHt, Whh, Bh1, hiddenSize),
-            createFullyConnected(fc6Name, inputs[t], Wxh, Bh2, hiddenSize),
-            ArithmeticNode::Mode::Add));
+        createArithmetic(add3Name, createFullyConnected(fc5Name, RHt, Whh, Bh1),
+                         createFullyConnected(fc6Name, inputs[t], Wxh, Bh2),
+                         ArithmeticNode::Mode::Add));
 
     auto oneMinusZtUtName = (namePrefix + "1.-zu." + std::to_string(t)).str();
     auto *OneMinusZtUt = createArithmetic(oneMinusZtUtName, OneMinusZt, Ut,
@@ -800,7 +796,7 @@ void Graph::createGRU(llvm::StringRef namePrefix, llvm::ArrayRef<Node *> inputs,
     Ht = createArithmetic(htName, ZHt, OneMinusZtUt, ArithmeticNode::Mode::Add);
 
     auto outName = (namePrefix + ".out." + std::to_string(t)).str();
-    auto *O = createFullyConnected(outName, Ht, Why, By, outputSize);
+    auto *O = createFullyConnected(outName, Ht, Why, By);
     outputs.push_back(O);
   }
 };
@@ -930,10 +926,9 @@ void Graph::createLSTM(llvm::StringRef namePrefix,
 
     auto *Ft = createSigmoid(
         sigmoid1Name,
-        createArithmetic(
-            add1Name, createFullyConnected(fc1Name, Ht, Whf, Bf1, hiddenSize),
-            createFullyConnected(fc2Name, inputs[t], Wxf, Bf2, hiddenSize),
-            ArithmeticNode::Mode::Add));
+        createArithmetic(add1Name, createFullyConnected(fc1Name, Ht, Whf, Bf1),
+                         createFullyConnected(fc2Name, inputs[t], Wxf, Bf2),
+                         ArithmeticNode::Mode::Add));
 
     auto fc3Name = (namePrefix + ".fc3." + std::to_string(t)).str();
     auto fc4Name = (namePrefix + ".fc4." + std::to_string(t)).str();
@@ -942,10 +937,9 @@ void Graph::createLSTM(llvm::StringRef namePrefix,
 
     auto *It = createSigmoid(
         sigmoid2Name,
-        createArithmetic(
-            add2Name, createFullyConnected(fc3Name, Ht, Whi, Bi1, hiddenSize),
-            createFullyConnected(fc4Name, inputs[t], Wxi, Bi2, hiddenSize),
-            ArithmeticNode::Mode::Add));
+        createArithmetic(add2Name, createFullyConnected(fc3Name, Ht, Whi, Bi1),
+                         createFullyConnected(fc4Name, inputs[t], Wxi, Bi2),
+                         ArithmeticNode::Mode::Add));
 
     auto fc5Name = (namePrefix + ".fc5." + std::to_string(t)).str();
     auto fc6Name = (namePrefix + ".fc6." + std::to_string(t)).str();
@@ -954,10 +948,9 @@ void Graph::createLSTM(llvm::StringRef namePrefix,
 
     auto *Ot = createSigmoid(
         sigmoid3Name,
-        createArithmetic(
-            add3Name, createFullyConnected(fc5Name, Ht, Who, Bo1, hiddenSize),
-            createFullyConnected(fc6Name, inputs[t], Wxo, Bo2, hiddenSize),
-            ArithmeticNode::Mode::Add));
+        createArithmetic(add3Name, createFullyConnected(fc5Name, Ht, Who, Bo1),
+                         createFullyConnected(fc6Name, inputs[t], Wxo, Bo2),
+                         ArithmeticNode::Mode::Add));
 
     auto fc7Name = (namePrefix + ".fc7." + std::to_string(t)).str();
     auto fc8Name = (namePrefix + ".fc8." + std::to_string(t)).str();
@@ -966,10 +959,9 @@ void Graph::createLSTM(llvm::StringRef namePrefix,
 
     auto *CRt = createTanh(
         tanh1Name,
-        createArithmetic(
-            add4Name, createFullyConnected(fc7Name, Ht, Whc, Bc1, hiddenSize),
-            createFullyConnected(fc8Name, inputs[t], Wxc, Bc2, hiddenSize),
-            ArithmeticNode::Mode::Add));
+        createArithmetic(add4Name, createFullyConnected(fc7Name, Ht, Whc, Bc1),
+                         createFullyConnected(fc8Name, inputs[t], Wxc, Bc2),
+                         ArithmeticNode::Mode::Add));
 
     auto mul1Name = (namePrefix + ".mul1." + std::to_string(t)).str();
     auto mul2Name = (namePrefix + ".mul2." + std::to_string(t)).str();
@@ -985,7 +977,7 @@ void Graph::createLSTM(llvm::StringRef namePrefix,
                           ArithmeticNode::Mode::Mul);
 
     auto outName = (namePrefix + ".out." + std::to_string(t)).str();
-    auto *O = createFullyConnected(outName, Ht, Why, By, outputSize);
+    auto *O = createFullyConnected(outName, Ht, Why, By);
     outputs.push_back(O);
   }
 };
