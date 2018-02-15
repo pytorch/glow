@@ -18,8 +18,8 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
   os << "  " << name_ << "Node(llvm::StringRef name";
 
   // Constructor non-standard parameter list:
-  for (const auto &op : extraParams_) {
-    os << ", " << op.first << " " << op.second << " ";
+  for (const auto &paramName : ctorTypeParams_) {
+    os << ", TypeRef " << paramName << " ";
   }
 
   // The enum 'Mode' parameter:

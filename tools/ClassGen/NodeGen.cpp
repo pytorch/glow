@@ -45,8 +45,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Stride")
       .addMember(MemberType::SizeT, "Pad")
       .addMember(MemberType::SizeT, "Depth")
-      .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy")
+      .addResultFromCtorArg()
       .addGradient();
 
   BB.newNode("Pool")
@@ -56,8 +55,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
       .addMember(MemberType::SizeT, "Pad")
-      .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy")
+      .addResultFromCtorArg()
       .addGradient();
 
   BB.newNode("FullyConnected")
@@ -65,8 +63,7 @@ int main(int argc, char **argv) {
       .addInput("Filter")
       .addInput("Bias")
       .addMember(MemberType::SizeT, "Depth")
-      .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy", "Output")
+      .addResultFromCtorArg("Output")
       .addGradient();
 
   //===--------------------------------------------------------------------===//
@@ -144,16 +141,14 @@ int main(int argc, char **argv) {
       .addEnumCase("Add")
       .addInput("Batch")
       .addInput("Slice")
-      .addResult("outTy")
-      .addExtraParam("TypeRef", "outTy")
+      .addResultFromCtorArg()
       .setDocstring(
           "Adds the 'Slice' operand to each one of the slices in the batch.");
 
   BB.newNode("BatchedMatMul")
       .addInput("LHS")
       .addInput("RHS")
-      .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy")
+      .addResultFromCtorArg()
       .setDocstring("Performs matrix multiplication between the LHS RHS. The "
                     "operands are a stack of two dimensional matrices. If one "
                     "of the matrices has a batch size of one then the matrix "
@@ -164,8 +159,7 @@ int main(int argc, char **argv) {
   BB.newNode("BatchedReduce")
       .addInput("Batch")
       .addEnumCase("Add")
-      .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy")
+      .addResultFromCtorArg()
       .setDocstring("Accumulates all of the layers in the batch and produce a "
                     "tensor that has the same dimensions as the input tensor "
                     "without the first dimension.");
@@ -196,21 +190,18 @@ int main(int argc, char **argv) {
   BB.newNode("Reshape")
       .addInput("Input")
       .addMember(MemberType::VectorSizeT, "Dims")
-      .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy");
+      .addResultFromCtorArg();
 
   BB.newNode("Transpose")
       .addInput("Input")
       .addMember(MemberType::VectorUnsigned, "Shuffle")
-      .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy");
+      .addResultFromCtorArg();
 
   BB.newNode("Broadcast")
       .addInput("Input")
       .addMember(MemberType::VectorSizeT, "Shape")
       .addMember(MemberType::Unsigned, "Axis")
-      .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy")
+      .addResultFromCtorArg()
       .setDocstring("Performs broadcasting on the Input tensor so that its "
                     "shape matches the provided Shape. The provided Axis "
                     "represents the offset of the Input's shape (from the "
@@ -220,8 +211,7 @@ int main(int argc, char **argv) {
   BB.newNode("Concat")
       .addMember(MemberType::VectorNodeValue, "Inputs")
       .addMember(MemberType::SizeT, "Dim")
-      .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy")
+      .addResultFromCtorArg()
       .setDocstring("The concat operator adds two tensors together.\nThe "
                     "parameter 'dim' specifies the dimension to use when "
                     "joining the tensors.");
@@ -229,8 +219,7 @@ int main(int argc, char **argv) {
   BB.newNode("Slice")
       .addInput("Input")
       .addMember(MemberType::VectorSizeT, "Start")
-      .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy");
+      .addResultFromCtorArg();
 
   BB.newNode("InsertTensor")
       .addInput("Big")
@@ -241,8 +230,7 @@ int main(int argc, char **argv) {
   BB.newNode("Gather")
       .addInput("Data")
       .addInput("Indices")
-      .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy")
+      .addResultFromCtorArg()
       .setDocstring(
           "Gathers entries of the outer-most dimension of Data indexed by "
           "Indices, and concatenates them. Output tensor will have dimensions: "
@@ -255,8 +243,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("Splat")
       .addMember(MemberType::Float, "Value")
-      .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy")
+      .addResultFromCtorArg()
       .setDocstring("Generate a tensor of a specific type filled with 'Value'");
 
   BB.newNode("SGD")
@@ -297,8 +284,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("Quantize")
       .addInput("Input")
-      .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy")
+      .addResultFromCtorArg()
       .setDocstring("Quantize floating point tensor. This operation converts "
                     "floating point numbers to integers based on the given "
                     "Scale and Offset. Scale and Offset are deduced from the"
@@ -307,16 +293,14 @@ int main(int argc, char **argv) {
 
   BB.newNode("Dequantize")
       .addInput("Input")
-      .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy")
+      .addResultFromCtorArg()
       .setDocstring(
           "Convert quantized input tensor into the float representation. "
           "x = Scale * (x_q - Offset).");
 
   BB.newNode("RescaleQuantized")
       .addInput("Input")
-      .addExtraParam("TypeRef", "outTy")
-      .addResult("outTy")
+      .addResultFromCtorArg()
       .setDocstring(
           "Rescale input quantized tensor to a new Scale and Offset.");
 
@@ -341,10 +325,8 @@ int main(int argc, char **argv) {
   BB.newNode("TopK")
       .addInput("Input")
       .addMember(MemberType::SizeT, "K")
-      .addExtraParam("TypeRef", "outTy1")
-      .addExtraParam("TypeRef", "outTy2")
-      .addResult("outTy1", "Values")
-      .addResult("outTy2", "Indices")
+      .addResultFromCtorArg("Values")
+      .addResultFromCtorArg("Indices")
       .setDocstring(
           "Finds the top K maximal elements for each vector in the tensor. "
           "Vectors are defined as the last dimension in the tensor. "
