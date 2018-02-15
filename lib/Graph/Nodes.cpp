@@ -535,7 +535,7 @@ void SoftMaxNode::verify() const {
 }
 
 void CrossEntropyLossNode::verify() const {
-  assert(getP()->getElementType() == getResult()->getElementType());
+  assert(getP()->getElementType() == getCE()->getElementType());
   assert(getP().dims()[0] == getLabels().dims()[0] && "Invalid shape");
 }
 

@@ -303,7 +303,7 @@ public:
       auto *P = valueForNode(CELossG->getP());
       auto *Y = valueForNode(CELossG->getLabels());
       // Backward pass gradient dL/dY.
-      auto *dY = valueForNode(CELossG->getGradOfOriginalOutputNamedResult());
+      auto *dY = valueForNode(CELossG->getGradOfOriginalOutputNamedCE());
       auto *pGrad = builder_.createAllocActivationInst(
           "celoss.p.grad", P->getElementType(), P->dims());
       auto *yGrad = builder_.createAllocActivationInst("celoss.labels.grad",
