@@ -234,6 +234,35 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::ConvolutionGradInstKind: {
+    ConvolutionGradInst *CG = llvm::cast<ConvolutionGradInst>(I);
+    auto *srcGradPtr =
+        emitValueAddress(builder, CG->getSrcGrad(), ElemKind::FloatTy);
+    auto *destGradPtr =
+        emitValueAddress(builder, CG->getDestGrad(), ElemKind::FloatTy);
+    auto *srcPtr = emitValueAddress(builder, CG->getSrc(), ElemKind::FloatTy);
+    auto *kernelGradPtr =
+        emitValueAddress(builder, CG->getFilterGrad(), ElemKind::FloatTy);
+    auto *biasGradPtr =
+        emitValueAddress(builder, CG->getBiasGrad(), ElemKind::FloatTy);
+    auto *kernelPtr =
+        emitValueAddress(builder, CG->getFilter(), ElemKind::FloatTy);
+    auto *destGradDims = emitValueDims(builder, CG->getDestGrad());
+    auto *srcDims = emitValueDims(builder, CG->getSrc());
+    auto *kernelGradDims = emitValueDims(builder, CG->getFilterGrad());
+
+    auto *kernel = emitConst(builder, CG->getKernel());
+    auto *stride = emitConst(builder, CG->getStride());
+    auto *pad = emitConst(builder, CG->getPad());
+
+    auto *F = getFunction("convolution_grad_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {srcGradPtr, destGradPtr, srcPtr, kernelGradPtr,
+                           biasGradPtr, kernelPtr, destGradDims, srcDims,
+                           kernelGradDims, kernel, stride, pad});
+    break;
+  }
+
   case Kinded::Kind::PoolMaxInstKind: {
     PoolMaxInst *PM = llvm::cast<PoolMaxInst>(I);
     auto *destPtr = emitValueAddress(builder, PM->getDest(), ElemKind::FloatTy);

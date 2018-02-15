@@ -38,6 +38,48 @@ void inferBatchedReduceAddNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+void inferConvNet(Tensor *inputs, Tensor *kernel, Tensor *bias, Tensor *out,
+                  BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &G = EE.getGraph();
+  auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
+                               "input", Variable::VisibilityKind::Public);
+  auto *conv = G.createConv("conv", var, 8, 5, 3, 4);
+  cast<Variable>(conv->getFilter())->copyFrom(kernel);
+  cast<Variable>(conv->getBias())->copyFrom(bias);
+  auto result = G.createSave("ret", conv);
+  EE.compile(CompilationMode::Infer);
+  EE.run({var}, {inputs});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
+void trainConvNet(Tensor *inputs, Tensor *kernel, Tensor *bias,
+                  Tensor *selected, llvm::ArrayRef<size_t> shape, Tensor *out,
+                  BackendKind kind) {
+  ExecutionEngine EE(kind);
+  EE.getConfig().learningRate = 0.03;
+  EE.getConfig().momentum = 0.3;
+  EE.getConfig().L2Decay = 0.01;
+  auto &G = EE.getGraph();
+  auto *var1 = G.createVariable(inputs->getElementType(), inputs->dims(),
+                                "input", Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
+  auto *var2 = G.createVariable(selected->getElementType(), selected->dims(),
+                                "selected", Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
+  auto *conv = G.createConv("conv", var1, 3, 3, 2, 1);
+  cast<Variable>(conv->getFilter())->copyFrom(kernel);
+  cast<Variable>(conv->getBias())->copyFrom(bias);
+  auto *reshape = G.createReshape("reshape", conv, shape);
+  auto *softmax = G.createSoftMax("softmax", reshape, var2);
+  auto result = G.createSave("ret", softmax);
+  EE.compile(CompilationMode::Train);
+  EE.runBatch(8, {var1, var2}, {inputs, selected});
+  EE.compile(CompilationMode::Infer);
+  EE.run({var1, var2}, {inputs, selected});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                  BackendKind kind) {
   ExecutionEngine EE(kind);

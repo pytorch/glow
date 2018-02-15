@@ -47,6 +47,51 @@ TEST(JITCorrectnessTest, batchedReduceAddTest) {
   EXPECT_TRUE(H1.isEqual(H2));
 }
 
+TEST(JITCorrectnessTest, convTest) {
+  Tensor inputs(ElemKind::FloatTy, {20, 41, 32, 6});
+  Tensor kernel(ElemKind::FloatTy, {8, 5, 5, 6});
+  Tensor bias(ElemKind::FloatTy, {8});
+  inputs.getHandle().initXavier(1);
+  kernel.getHandle().randomize(-3.0, 3.0);
+  bias.getHandle().randomize(-0.5, 0.5);
+  Tensor out1;
+  Tensor out2;
+
+  inferConvNet(&inputs, &kernel, &bias, &out1, BackendKind::JIT);
+  inferConvNet(&inputs, &kernel, &bias, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
+TEST(JITCorrectnessTest, convGradTest) {
+  Tensor inputs(ElemKind::FloatTy, {9, 8, 9, 4});
+  Tensor kernel(ElemKind::FloatTy, {3, 3, 3, 4});
+  Tensor bias(ElemKind::FloatTy, {3});
+  Tensor selected(ElemKind::IndexTy, {9, 1});
+  inputs.getHandle().initXavier(1);
+  kernel.getHandle().randomize(-2.0, 2.0);
+  bias.getHandle().randomize(-1.0, 1.0);
+  auto selectedH = selected.getHandle<size_t>();
+  for (size_t i = 0; i < 9; i++) {
+    selectedH.raw(i) = nextRandInt(60);
+  }
+  std::array<size_t, 2> S{{9, 60}};
+  llvm::ArrayRef<size_t> shape(S);
+  Tensor out1(ElemKind::FloatTy, shape);
+  Tensor out2(ElemKind::FloatTy, shape);
+
+  trainConvNet(&inputs, &kernel, &bias, &selected, shape, &out1,
+               BackendKind::JIT);
+  trainConvNet(&inputs, &kernel, &bias, &selected, shape, &out2,
+               BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
 TEST(JITCorrectnessTest, maxTest) {
   std::array<size_t, 3> S{{3, 8, 2}};
   llvm::ArrayRef<size_t> shape(S);
