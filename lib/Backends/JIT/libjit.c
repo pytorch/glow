@@ -262,6 +262,74 @@ void convolution_f(const float *inW, float *outW, const float *filterW,
   }       // N
 }
 
+void convolution_grad_f(float *inG, const float *outG, const float *inW,
+                        float *filterG, float *biasG, const float *filterW,
+                        const size_t *outGdims, const size_t *inWdims,
+                        const size_t *filterGdims, const size_t kernel,
+                        const size_t stride, const size_t pad) {
+  // NHWC format is assumed
+  // Clear inG
+  for (size_t n = 0; n < inWdims[0]; n++) {
+    for (size_t h = 0; h < inWdims[1]; h++) {
+      for (size_t w = 0; w < inWdims[2]; w++) {
+        for (size_t c = 0; c < inWdims[3]; c++) {
+          inG[getXYZW(inWdims, n, h, w, c)] = 0.0;
+        }
+      }
+    }
+  }
+
+  // Clear filterG
+  for (size_t d = 0; d < outGdims[3]; d++) {
+    for (size_t h = 0; h < kernel; h++) {
+      for (size_t w = 0; w < kernel; w++) {
+        for (size_t c = 0; c < inWdims[3]; c++) {
+          filterG[getXYZW(filterGdims, d, h, w, c)] = 0.0;
+        }
+      }
+    }
+  }
+
+  // Clear biasG
+  for (size_t d = 0; d < outGdims[3]; d++) {
+    biasG[d] = 0.0;
+  }
+
+  // For each input in the batch:
+  for (size_t n = 0; n < outGdims[0]; n++) {
+    for (size_t d = 0; d < outGdims[3]; d++) {
+      ssize_t x = -(ssize_t)pad;
+      for (size_t bx = 0; bx < outGdims[1]; bx++, x += stride) {
+        ssize_t y = -(ssize_t)pad;
+        for (size_t by = 0; by < outGdims[2]; by++, y += stride) {
+          float grad = outG[getXYZW(outGdims, n, bx, by, d)];
+
+          for (size_t kx = 0; kx < kernel; kx++) {
+            for (size_t ky = 0; ky < kernel; ky++) {
+              ssize_t ax = x + kx;
+              ssize_t ay = y + ky;
+
+              if (ax < 0 || ay < 0 || ax >= (ssize_t)inWdims[1] ||
+                  ay >= (ssize_t)inWdims[2]) {
+                continue;
+              }
+
+              for (size_t c = 0; c < inWdims[3]; c++) {
+                inG[getXYZW(inWdims, n, (size_t)ax, (size_t)ay, c)] +=
+                    filterW[getXYZW(filterGdims, d, kx, ky, c)] * grad;
+                filterG[getXYZW(filterGdims, d, kx, ky, c)] +=
+                    inW[getXYZW(inWdims, n, (size_t)ax, (size_t)ay, c)] * grad;
+              }
+            }
+          }
+
+          biasG[d] += grad;
+        } // W
+      }   // H
+    }     // C
+  }       // N
+}
+
 void pool_max_f(const float *inW, float *outW, const size_t *inWdims,
                 const size_t *outWdims, size_t filterSize, size_t stride,
                 size_t pad) {
