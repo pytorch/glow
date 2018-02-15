@@ -154,16 +154,3 @@ target_link_libraries(memoryAllocatorTest
                         testMain)
 add_test(memoryAllocatorTest ${GLOW_BINARY_DIR}/tests/memoryAllocatorTest)
 
-add_executable(caffe2ImportTest
-               caffe2ImportTest.cpp)
-target_link_libraries(caffe2ImportTest
-                      PRIVATE
-                        Graph
-                        IR
-                        Importer
-                        Backends
-                        gtest
-                        testMain)
-add_test(NAME caffe2ImportTest
-         COMMAND ${GLOW_BINARY_DIR}/tests/caffe2ImportTest
-         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

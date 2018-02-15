@@ -316,7 +316,6 @@ int main(int argc, char **argv) {
   BB.newNode("Intrinsic")
       .addMember(MemberType::VectorNodeValue, "Inputs")
       .addMember(MemberType::String, "Identifier")
-      .addMember(MemberType::VoidStar, "Saved")
       .addIntrinsicOutput()
       .setDocstring(
           "This is a general intrinsic node that represents an opaque "

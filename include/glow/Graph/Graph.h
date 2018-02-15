@@ -171,8 +171,7 @@ public:
   IntrinsicNode *createIntrinsicNode(llvm::StringRef name,
                                      llvm::StringRef identifier,
                                      llvm::ArrayRef<Node *> inputs,
-                                     llvm::ArrayRef<TypeRef> outputs,
-                                     void *saved);
+                                     llvm::ArrayRef<TypeRef> outputs);
 
   ConcatNode *createConcat(llvm::StringRef name, llvm::ArrayRef<Node *> inputs,
                            unsigned dimension);

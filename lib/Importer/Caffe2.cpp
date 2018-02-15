@@ -33,7 +33,7 @@ using ArgumentDictionaryTy =
 /// Prints a single serialized protocol buffer node. This method is useful for
 /// debugging the network and printing errors.
 template <typename T>
-void unexpectedNodeError(const T &node, const std::string &message) {
+void unexpectedNodeError(const T &node, llvm::StringRef message) {
   std::string str;
   google::protobuf::TextFormat::PrintToString(node, &str);
   llvm::outs() << message << "\n" << str << "\n";
@@ -132,41 +132,6 @@ Node *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
 bool caffe2ModelLoader::hasNodeByName(const std::string &name) const {
   auto it = nodeByName_.find(name);
   return (it != nodeByName_.end());
-}
-
-void caffe2ModelLoader::loadIntrinsicWeight(const caffe2::OperatorDef &op) {
-  assert(op.input().size() == 0 && "Unknown weights do not support inputs.");
-
-  std::vector<TypeRef> outputs;
-  for (const auto &output : op.output()) {
-    auto *T = new Tensor();
-    outputs.emplace_back(G_.getVoidTy());
-    tensors_[output] = T;
-  }
-
-  Node *node = G_.createIntrinsicNode(op.name(), "caffe2.opaque", {}, outputs,
-                                      (void *)&op);
-  for (int i = 0, e = op.output_size(); i < e; i++) {
-    nodeByName_[op.output(i)] = node;
-  }
-}
-
-void caffe2ModelLoader::loadIntrinsicOperator(const caffe2::OperatorDef &op) {
-  std::vector<Node *> inputs;
-  for (const auto &input : op.input()) {
-    inputs.emplace_back(getOrCreateNodeByName(input));
-  }
-  std::vector<TypeRef> outputs;
-  for (int i = 0; i < op.output().size(); ++i) {
-    outputs.emplace_back(G_.getVoidTy());
-  }
-
-  Node *node = G_.createIntrinsicNode(op.name(), "caffe2.opaque",
-                                      llvm::ArrayRef<Node *>(inputs), outputs,
-                                      (void *)&op);
-  for (int i = 0, e = op.output_size(); i < e; i++) {
-    nodeByName_[op.output(i)] = node;
-  }
 }
 
 void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
@@ -462,9 +427,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
-  fprintf(stderr, "Warning: Unsupported: %s\n", typeName.c_str());
-
-  loadIntrinsicOperator(op);
+  unexpectedNodeError(op, "Unsupported operator.");
 }
 
 void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
@@ -549,7 +512,7 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
       continue;
     }
 
-    loadIntrinsicWeight(op);
+    unexpectedNodeError(op, "Unsupported weight kind");
   }
 }
 
