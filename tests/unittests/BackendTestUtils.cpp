@@ -95,7 +95,7 @@ void trainPoolAvgNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                                 "selected", Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
   auto *fc = G.createFullyConnected("fc", var1, bias->dims()[0]);
-  cast<Variable>(fc->getFilter())->copyFrom(weights);
+  cast<Variable>(fc->getWeights())->copyFrom(weights);
   cast<Variable>(fc->getBias())->copyFrom(bias);
   auto *reshape1 = G.createReshape("reshape1", fc, shape1);
   auto *pool = G.createPool("pool", reshape1, PoolNode::Mode::Avg, 2, 2, 0);
@@ -136,7 +136,7 @@ void trainPoolMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                                 "selected", Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
   auto *fc = G.createFullyConnected("fc", var1, bias->dims()[0]);
-  cast<Variable>(fc->getFilter())->copyFrom(weights);
+  cast<Variable>(fc->getWeights())->copyFrom(weights);
   cast<Variable>(fc->getBias())->copyFrom(bias);
   auto *reshape1 = G.createReshape("reshape1", fc, shape1);
   auto *pool = G.createPool("pool", reshape1, PoolNode::Mode::Max, 5, 3, 4);
@@ -232,7 +232,7 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                                 "selected", Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
   auto *fc = G.createFullyConnected("fc", var1, bias->dims()[0]);
-  cast<Variable>(fc->getFilter())->copyFrom(weights);
+  cast<Variable>(fc->getWeights())->copyFrom(weights);
   cast<Variable>(fc->getBias())->copyFrom(bias);
   auto *softmax = G.createSoftMax("softmax", fc, var2);
   auto result = G.createSave("ret", softmax);
@@ -281,8 +281,8 @@ void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *rl0 = G.createRELU("relu", fc);
   auto *fc2 = G.createFullyConnected("fc2", rl0, 8);
   auto *rl1 = G.createRELU("relu", fc);
-  cast<Variable>(fc->getFilter())->getHandle().clear(0.8);
-  cast<Variable>(fc2->getFilter())->getHandle().clear(1.5);
+  cast<Variable>(fc->getWeights())->getHandle().clear(0.8);
+  cast<Variable>(fc2->getWeights())->getHandle().clear(1.5);
   auto result = G.createSave("ret", rl1);
   EE.compile(CompilationMode::Infer);
   EE.run({var}, {inputs});
@@ -307,8 +307,8 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *SM = G.createSoftMax("SM", R, selected);
   auto result = G.createSave("ret", SM);
 
-  cast<Variable>(fc->getFilter())->getHandle().clear(0.4);
-  cast<Variable>(fc2->getFilter())->getHandle().clear(3.5);
+  cast<Variable>(fc->getWeights())->getHandle().clear(0.4);
+  cast<Variable>(fc2->getWeights())->getHandle().clear(3.5);
 
   EE.compile(CompilationMode::Infer);
   EE.run({var}, {inputs});
@@ -332,7 +332,7 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
   cast<Variable>(conv1->getBias())->getHandle().clear(0.7);
   auto *sigmoid1 = G.createSigmoid("sigmoid1", conv1);
   auto *fc1 = G.createFullyConnected("fc1", var2, 2352);
-  cast<Variable>(fc1->getFilter())->getHandle().clear(0.6);
+  cast<Variable>(fc1->getWeights())->getHandle().clear(0.6);
   auto *reshape1 = G.createReshape("reshape1", fc1, {8, 14, 28, 6});
   auto *relu1 = G.createRELU("relu1", reshape1);
   auto *pool1 = G.createPool("pool1", relu1, PoolNode::Mode::Max, 2, 2, 1);
@@ -340,7 +340,7 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
       G.createArithmetic("add", sigmoid1, pool1, ArithmeticNode::Mode::Add);
   auto *tanh = G.createTanh("tanh", add);
   auto *fc2 = G.createFullyConnected("fc2", var3, 720);
-  cast<Variable>(fc2->getFilter())->getHandle().clear(1.1);
+  cast<Variable>(fc2->getWeights())->getHandle().clear(1.1);
   auto *reshape2 = G.createReshape("reshape2", fc2, {8, 8, 15, 6});
   auto *mul =
       G.createArithmetic("mul", tanh, reshape2, ArithmeticNode::Mode::Mul);

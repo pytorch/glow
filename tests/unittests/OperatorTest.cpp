@@ -428,7 +428,7 @@ TEST(Operator, IntFC) {
   auto *fc = G.createFullyConnected("FC", input, 30);
   auto *res = G.createVariable(ElemKind::FloatTy, fc->dims(), "res");
 
-  auto filter = fc->getFilter();
+  auto filter = fc->getWeights();
   auto bias = fc->getBias();
 
   input->getPayload().getHandle().randomize(-1.2, 1.2);

@@ -760,7 +760,7 @@ TEST(LinearRegression, trainSimpleLinearRegression) {
   Node *R = G.createRegression("reg", FC, expectedY);
   G.createSave("return", R);
 
-  Variable *M = llvm::cast<Variable>(FC->getFilter());
+  Variable *M = llvm::cast<Variable>(FC->getWeights());
   Variable *B = llvm::cast<Variable>(FC->getBias());
 
   EE.compile(CompilationMode::Train);

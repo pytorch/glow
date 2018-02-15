@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("FullyConnected")
       .addInput("Input")
-      .addInput("Filter")
+      .addInput("Weights")
       .addInput("Bias")
       .addMember(MemberType::SizeT, "Depth")
       .addResultFromCtorArg("Output")
