@@ -88,7 +88,7 @@ TEST(Quantization, quantizeGraph) {
   auto *B = G.createVariable(ElemKind::FloatTy, {3}, "bias",
                              Variable::VisibilityKind::Private,
                              Variable::TrainKind::Broadcast, 0.1);
-  auto *FC = G.createFullyConnected("FC", input, W, B, 3);
+  auto *FC = G.createFullyConnected("FC", input, W, B);
   G.createSave("ret", FC);
 
   std::vector<NodeQuantizationInfo> QI{
@@ -115,7 +115,7 @@ void createSimpleGraphForQuantization(ExecutionEngine &EE, Variable *&input,
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
   input = A;
-  Node *O = G.createFullyConnected("fc", A, W, B, 2);
+  Node *O = G.createFullyConnected("fc", A, W, B);
   saveNode = G.createSave("save", O);
 }
 

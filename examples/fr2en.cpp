@@ -52,10 +52,8 @@ Node *createPyTorchGRUCell(Graph *G, Node *input, Node *hidden, Variable *w_ih,
                            Variable *b_ih, Variable *w_hh, Variable *b_hh) {
   // reference implementation:
   // https://github.com/pytorch/pytorch/blob/dd5c195646b941d3e20a72847ac48c41e272b8b2/torch/nn/_functions/rnn.py#L46
-  Node *gi =
-      G->createFullyConnected("pytorch.GRU.gi", input, w_ih, b_ih, HIDDEN_SIZE);
-  Node *gh = G->createFullyConnected("pytorch.GRU.gh", hidden, w_hh, b_hh,
-                                     HIDDEN_SIZE);
+  Node *gi = G->createFullyConnected("pytorch.GRU.gi", input, w_ih, b_ih);
+  Node *gh = G->createFullyConnected("pytorch.GRU.gh", hidden, w_hh, b_hh);
 
   Node *i_r =
       G->createSlice("pytorch.GRU.i_r", gi, {0, 0}, {1, EMBEDDING_SIZE});
@@ -236,8 +234,7 @@ void Model::loadDecoder() {
     Node *relu = G.createRELU("decoder.relu", embedded);
     hidden = createPyTorchGRUCell(&G, relu, hidden, w_ih, b_ih, w_hh, b_hh);
 
-    Node *FC = G.createFullyConnected("decoder.outFC", hidden, out_w, out_b,
-                                      en_.index2word_.size());
+    Node *FC = G.createFullyConnected("decoder.outFC", hidden, out_w, out_b);
     Node *topK = G.createTopK("decoder.topK", FC, 1);
 
     lastWordIdx = G.createReshape("decoder.reshape", {topK, 1}, {1});

@@ -122,7 +122,7 @@ TEST(Graph, simpleQuant) {
   auto s = conv->getType()->size();
   auto *fcFilter = G.createVariable(ElemKind::Int8QTy, {s, 6}, 0.4, 2, "F");
   auto *fcBias = G.createVariable(ElemKind::Int8QTy, {6}, 0.4, 2, "B");
-  Node *O = G.createFullyConnected("fc1", conv, fcFilter, fcBias, 6);
+  Node *O = G.createFullyConnected("fc1", conv, fcFilter, fcBias);
   G.createSave("ret", O);
   EE.compile(CompilationMode::Infer);
 }

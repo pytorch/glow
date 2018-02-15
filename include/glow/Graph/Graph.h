@@ -130,7 +130,7 @@ public:
 
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, Variable *W,
-                                           Variable *B, size_t outDepth);
+                                           Variable *B);
 
   /// Create a fully connected node with the specified output type.
   /// Note, outputDepth is infered based on the output type.
