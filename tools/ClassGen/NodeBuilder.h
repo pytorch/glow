@@ -138,7 +138,7 @@ public:
   /// input. The rule is that each output becomes an input (named "Output", to
   /// preserve the original name) and each input becomes a gradient output with
   /// the same name.
-  void addGradient();
+  NodeBuilder &addGradient();
 
   ~NodeBuilder();
 

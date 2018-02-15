@@ -32,7 +32,12 @@ int main(int argc, char **argv) {
                       "Variable *SaveNode::getVariable() const { return "
                       "llvm::cast<Variable>(Output_.getNode()); };")
       .addOverwrittenInput("Output")
-      .setHasSideEffects(true);
+      .setHasSideEffects(true)
+      .setDocstring("Specifies a node whose Input will be copied to Output."
+                    "This node prevents graph optimizations from eliminating "
+                    "this node and all of its ancestor nodes. Generally "
+                    "intended to save the final result of a network.");
+
   //===--------------------------------------------------------------------===//
   //                   Convolution / Pool / FC
   //===--------------------------------------------------------------------===//
@@ -46,7 +51,10 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Pad")
       .addMember(MemberType::SizeT, "Depth")
       .addResultFromCtorArg()
-      .addGradient();
+      .addGradient()
+      .setDocstring("Performs Convolution using a given Input, Filter, and "
+                    "Bias tensors, as well as provided Kernel, Stride, Pad, "
+                    "and Depth.");
 
   BB.newNode("Pool")
       .addEnumCase("Max")
@@ -56,14 +64,19 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Stride")
       .addMember(MemberType::SizeT, "Pad")
       .addResultFromCtorArg()
-      .addGradient();
+      .addGradient()
+      .setDocstring("Performs a Pool operation (either Max or Avg) on the "
+                    "Input given provided Kernel, Stride, and Pad.");
 
   BB.newNode("FullyConnected")
       .addInput("Input")
       .addInput("Weights")
       .addInput("Bias")
       .addResultFromCtorArg()
-      .addGradient();
+      .addGradient()
+      .setDocstring("Creates a FullyConnected node where the Input tensor and "
+                    "Weights tensor are multiplied, and then the Bias tensor "
+                    "is added to it, producing the Output.");
 
   //===--------------------------------------------------------------------===//
   //                     Normalization
@@ -79,7 +92,10 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "Epsilon")
       .addMember(MemberType::Float, "Momentum")
       .addResult("Input.getType()")
-      .addGradient();
+      .addGradient()
+      .setDocstring("Performs batch normalization on the Input tensor with the "
+                    "provided Scale, Bias, Mean, Var, ChannelIdx, Epsilon, and "
+                    "Momentum. Similar to Caffe2 SpatialBN.");
 
   BB.newNode("LocalResponseNormalization")
       .addInput("Input")
@@ -88,7 +104,10 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "Beta")
       .addMember(MemberType::Float, "K")
       .addResult("Input.getType()")
-      .addGradient();
+      .addGradient()
+      .setDocstring("Performs local response normalization on the Input tensor "
+                    "with the provided Scale, Bias, Mean, Var, ChannelIdx, "
+                    "Epsilon, and Momentum. Similar to Caffe2 LRN.");
 
   //===--------------------------------------------------------------------===//
   //                      Loss operations
@@ -98,20 +117,23 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addInput("Selected")
       .addResult("Input.getType()")
-      .addGradient();
+      .addGradient()
+      .setDocstring("Performs SoftMax normalization on the Input tensor.");
 
   BB.newNode("CrossEntropyLoss")
       .addInput("P")
       .addInput("Labels")
       .addResultFromCtorArg("CE")
-      .setDocstring("Computes the average cross entropy loss of the input.")
-      .addGradient();
+      .addGradient()
+      .setDocstring("Computes the average cross entropy loss of the input.");
 
   BB.newNode("Regression")
       .addInput("Input")
       .addInput("Expected")
       .addResult("Input.getType()")
-      .addGradient();
+      .addGradient()
+      .setDocstring(
+          "Takes an Input tensor and creates a regression output layer.");
 
   //===--------------------------------------------------------------------===//
   //                      Arithmetic
@@ -128,11 +150,11 @@ int main(int argc, char **argv) {
       .addInput("LHS")
       .addInput("RHS")
       .addResult("LHS.getType()")
+      .addGradient()
       .setDocstring("Performs arithmetic operations on the LHS and RHS "
                     "operands. The Compare operations generates a mask that's "
                     "consumed by the select instruction. The format of the "
-                    "result is target- and type-specific.")
-      .addGradient();
+                    "result is target- and type-specific.");
 
   BB.newNode("Select")
       .addInput("Cond")
@@ -177,17 +199,23 @@ int main(int argc, char **argv) {
   BB.newNode("Relu")
       .addInput("Input")
       .addResult("Input.getType()")
-      .addGradient();
+      .addGradient()
+      .setDocstring(
+          "Applies ReLU, max(0, x), to each element in the Input tensor.");
 
   BB.newNode("Sigmoid")
       .addInput("Input")
       .addResult("Input.getType()")
-      .addGradient();
+      .addGradient()
+      .setDocstring("Applies Sigmoid, 1 / (1 + exp(-x)), to each element in "
+                    "the Input tensor.");
 
   BB.newNode("Tanh")
       .addInput("Input")
       .addResult("Input.getType()")
-      .addGradient();
+      .addGradient()
+      .setDocstring("Applies hyperbolic tangent to each element in the Input "
+                    "tensor.");
 
   //===--------------------------------------------------------------------===//
   //                Shape transformations
@@ -196,12 +224,15 @@ int main(int argc, char **argv) {
   BB.newNode("Reshape")
       .addInput("Input")
       .addMember(MemberType::VectorSizeT, "Dims")
-      .addResultFromCtorArg();
+      .addResultFromCtorArg()
+      .setDocstring("Reshape the Input tensor to shape Dims.");
 
   BB.newNode("Transpose")
       .addInput("Input")
       .addMember(MemberType::VectorUnsigned, "Shuffle")
-      .addResultFromCtorArg();
+      .addResultFromCtorArg()
+      .setDocstring("Transpose the Input tensor based on the vector Shuffle, "
+                    "which assigns a new axis for each dimension in Input.");
 
   BB.newNode("Broadcast")
       .addInput("Input")
@@ -225,23 +256,30 @@ int main(int argc, char **argv) {
   BB.newNode("Slice")
       .addInput("Input")
       .addMember(MemberType::VectorSizeT, "Start")
-      .addResultFromCtorArg();
+      .addResultFromCtorArg()
+      .setDocstring("Produces a slice of the Input tensor. The Start vector "
+                    "defines the starting indices for each dimension from "
+                    "which the slice should be taken. The end index for each "
+                    "dimension is determined from the input type's shape.");
 
   BB.newNode("InsertTensor")
       .addInput("Big")
       .addInput("Small")
       .addMember(MemberType::VectorSizeT, "Start")
-      .addResult("Big.getType()");
+      .addResult("Big.getType()")
+      .setDocstring("Insert a tensor Small into tensor Big given indices "
+                    "Start. The resulting Tensor will have the same type as "
+                    "the input Big tensor.");
 
   BB.newNode("Gather")
       .addInput("Data")
       .addInput("Indices")
       .addResultFromCtorArg()
-      .setDocstring(
-          "Gathers entries of the outer-most dimension of Data indexed by "
-          "Indices, and concatenates them. Output tensor will have dimensions: "
-          "{I_0, I_1, ... I_n, D_1, D_2, ... D_m}, where D_i and I_j denote "
-          "Data and Indices dimensions respectively.");
+      .setDocstring("Gathers entries of the outer-most dimension of Data  "
+                    "indexed by Indices, and concatenates them. Output tensor  "
+                    "will have dimensions: "
+                    "{I_0, I_1, ... I_n, D_1, D_2, ... D_m}, where D_i and I_j "
+                    "denote Data and Indices dimensions respectively.");
 
   //===--------------------------------------------------------------------===//
   //                Nodes used for network training
@@ -262,7 +300,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "Momentum")
       .addMember(MemberType::Unsigned, "BatchSize")
       .addOverwrittenInput("Weight")
-      .setHasSideEffects(true);
+      .setHasSideEffects(true)
+      .setDocstring("Stochastic Gradient Descent node used during training.");
 
   //===--------------------------------------------------------------------===//
   //                Nodes used by quantization.
@@ -281,12 +320,12 @@ int main(int argc, char **argv) {
           "Variable *getComputationInfoVar() const;",
           "Variable *QuantizationProfileNode::getComputationInfoVar() const { "
           "return llvm::cast<Variable>(ComputationInfo_.getNode()); };")
-      .setDocstring(
-          "Generate profile (distribution of values) of the Input tensor. "
-          "This data is used for quantization of the tensor later on.")
       .addOverwrittenInput("ComputationInfo")
       .addOverwrittenInput("Histogram")
-      .setHasSideEffects(true);
+      .setHasSideEffects(true)
+      .setDocstring("Generate profile (distribution of values) of the Input"
+                    "tensor. This data is used for quantization of the tensor "
+                    "later on.");
 
   BB.newNode("Quantize")
       .addInput("Input")
@@ -300,15 +339,14 @@ int main(int argc, char **argv) {
   BB.newNode("Dequantize")
       .addInput("Input")
       .addResultFromCtorArg()
-      .setDocstring(
-          "Convert quantized input tensor into the float representation. "
-          "x = Scale * (x_q - Offset).");
+      .setDocstring("Convert quantized input tensor into the float "
+                    "representation. x = Scale * (x_q - Offset).");
 
   BB.newNode("RescaleQuantized")
       .addInput("Input")
       .addResultFromCtorArg()
-      .setDocstring(
-          "Rescale input quantized tensor to a new Scale and Offset.");
+      .setDocstring("Rescale input quantized tensor to a new Scale and "
+                    "Offset.");
 
   //===--------------------------------------------------------------------===//
   //                Nodes used by generic transformations
@@ -317,11 +355,11 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorNodeValue, "Inputs")
       .addMember(MemberType::String, "Identifier")
       .addIntrinsicOutput()
-      .setDocstring(
-          "This is a general intrinsic node that represents an opaque "
-          "unknown operation. The node is variadic, which means that "
-          "it has an unspecified number of inputs and outputs. The "
-          "node has an identifier to identify the kind of node.");
+      .setDocstring("This is a general intrinsic node that represents an "
+                    "opaque unknown operation. The node is variadic, which "
+                    "means that it has an unspecified number of inputs and "
+                    "outputs. The node has an identifier to identify the kind "
+                    "of node.");
 
   //===--------------------------------------------------------------------===//
   //                Nodes used by RNN
@@ -332,11 +370,11 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "K")
       .addResultFromCtorArg("Values")
       .addResultFromCtorArg("Indices")
-      .setDocstring(
-          "Finds the top K maximal elements for each vector in the tensor. "
-          "Vectors are defined as the last dimension in the tensor. "
-          "The input shape {D_0, D_1, ... D_n} results in the outputs "
-          "{D_0, D_1, ... D_n-1, K}, sorted in non-decreasing order.");
+      .setDocstring("Finds the top K maximal elements for each vector in the "
+                    "tensor. Vectors are defined as the last dimension in the "
+                    "tensor. The input shape {D_0, D_1, ... D_n} results in "
+                    "theoutputs {D_0, D_1, ... D_n-1, K}, sorted in "
+                    "non-decreasing order.");
 
   return 0;
 }
