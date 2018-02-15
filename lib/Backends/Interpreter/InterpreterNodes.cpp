@@ -226,7 +226,7 @@ void Interpreter::fwdConvolutionGradInst(bool isTrain,
 
               for (size_t fd = 0; fd < idim.c; fd++) {
                 filterG.at({d, fx, fy, fd}) +=
-                    inW.at({0u, (size_t)ox, (size_t)oy, fd}) * chainGrad;
+                    inW.at({n, (size_t)ox, (size_t)oy, fd}) * chainGrad;
                 inG.at({n, (size_t)ox, (size_t)oy, fd}) +=
                     filterW.at({d, fx, fy, fd}) * chainGrad;
               }
