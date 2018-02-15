@@ -1,3 +1,5 @@
+## This is a helper script that generates simple Caffe2 models.
+
 from caffe2.proto import caffe2_pb2
 from caffe2.python import utils
 
