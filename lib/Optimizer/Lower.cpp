@@ -109,10 +109,11 @@ void lowerRegressionGradNode(Graph &graph, RegressionGradNode &node) {
 
 void lowerFullyConnectedNode(Graph &graph, FullyConnectedNode &FC) {
   auto xDim = flattenCdr(FC.getInput().getType()->dims());
-  auto wDim = FC.getFilter().dims();
+  auto wDim = FC.getWeights().dims();
   auto *X =
       graph.createReshape("fc.1X", FC.getInput(), {1, xDim.first, xDim.second});
-  Node *W = graph.createReshape("fc.1W", FC.getFilter(), {1, wDim[0], wDim[1]});
+  Node *W =
+      graph.createReshape("fc.1W", FC.getWeights(), {1, wDim[0], wDim[1]});
 
   auto elemTy = W->getType()->getElementType();
 
@@ -141,12 +142,12 @@ void lowerFullyConnectedGradNode(Graph &graph, FullyConnectedGradNode &FCG) {
   auto out = FCG.getGradOfOriginalOutputNamedOutput();
   auto xDims = flattenCdr(FCG.getInput().dims());
   auto outDims = out.dims();
-  auto fDims = FCG.getFilter().dims();
+  auto fDims = FCG.getWeights().dims();
 
   // dx = dout * w.T
   auto dout = graph.createReshape("fcg.outG", out, {1, outDims[0], outDims[1]});
   auto *w =
-      graph.createReshape("fcg.w", FCG.getFilter(), {1, fDims[0], fDims[1]});
+      graph.createReshape("fcg.w", FCG.getWeights(), {1, fDims[0], fDims[1]});
   auto *wT = graph.createTranspose("fcg.wT", w, {0, 2, 1});
   auto *dx2 = graph.createBatchedMatMul("fcg.dot", dout, wT);
   auto *dx =
@@ -159,7 +160,7 @@ void lowerFullyConnectedGradNode(Graph &graph, FullyConnectedGradNode &FCG) {
   auto *x2T = graph.createTranspose("fcg.xT", x2, {0, 2, 1});
   auto *dw = graph.createBatchedMatMul("fcg.dot", x2T, dout);
   Node *dw2 = graph.createReshape("fcg.dw2", dw, fDims);
-  FCG.getGradOfInputNamedFilter().replaceAllUsesOfWith(dw2);
+  FCG.getGradOfInputNamedWeights().replaceAllUsesOfWith(dw2);
 
   // db = reduce(dout).
   auto *db = graph.createBatchedReduce("fc.bias.reduce",
