@@ -188,7 +188,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Conv") {
     // Load the inputs:
-    int stride = loadInt(dict["stride"]);
+    int stride = dict.count("stride") ? loadInt(dict["stride"]) : 1;
     int pad = dict.count("pad") ? loadInt(dict["pad"]) : 0;
     int kernel = loadInt(dict["kernel"]);
 

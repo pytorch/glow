@@ -9,6 +9,43 @@ using namespace glow;
 #if WITH_PNG
 #include <png.h>
 
+std::tuple<size_t, size_t, bool> glow::getPngInfo(const char *filename) {
+  // open file and test for it being a png.
+  FILE *fp = fopen(filename, "rb");
+  GLOW_ASSERT(fp && "Can't open image file.");
+
+  unsigned char header[8];
+  size_t fread_ret = fread(header, 1, 8, fp);
+  GLOW_ASSERT(fread_ret == 8 && !png_sig_cmp(header, 0, 8) &&
+              "Invalid image file signature.");
+
+  // Initialize stuff.
+  png_structp png_ptr =
+      png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+  GLOW_ASSERT(png_ptr && "Image initialization failed.");
+
+  png_infop info_ptr = png_create_info_struct(png_ptr);
+  GLOW_ASSERT(info_ptr && "Could not get png info.");
+
+  int sjmpGetPtr = setjmp(png_jmpbuf(png_ptr));
+  GLOW_ASSERT(!sjmpGetPtr && "Failed getting png_ptr.");
+
+  png_init_io(png_ptr, fp);
+  png_set_sig_bytes(png_ptr, 8);
+  png_read_info(png_ptr, info_ptr);
+
+  size_t height = png_get_image_height(png_ptr, info_ptr);
+  size_t width = png_get_image_width(png_ptr, info_ptr);
+  png_byte color_type = png_get_color_type(png_ptr, info_ptr);
+
+  const bool isGray = color_type == PNG_COLOR_TYPE_GRAY;
+
+  png_destroy_read_struct(&png_ptr, &info_ptr, (png_infopp)NULL);
+  fclose(fp);
+
+  return std::make_tuple(height, width, isGray);
+}
+
 bool glow::readPngImage(Tensor *T, const char *filename,
                         std::pair<float, float> range) {
   unsigned char header[8];
@@ -52,10 +89,14 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   size_t height = png_get_image_height(png_ptr, info_ptr);
   int color_type = png_get_color_type(png_ptr, info_ptr);
   int bit_depth = png_get_bit_depth(png_ptr, info_ptr);
+
+  const bool isGray = color_type == PNG_COLOR_TYPE_GRAY;
+  const size_t numChannels = isGray ? 1 : 3;
+
   (void)bit_depth;
   assert(bit_depth == 8 && "Invalid image");
   assert((color_type == PNG_COLOR_TYPE_RGB_ALPHA ||
-          color_type == PNG_COLOR_TYPE_RGB) &&
+          color_type == PNG_COLOR_TYPE_RGB || isGray) &&
          "Invalid image");
   bool hasAlpha = (color_type == PNG_COLOR_TYPE_RGB_ALPHA);
 
@@ -78,7 +119,7 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   png_read_image(png_ptr, row_pointers);
   png_read_end(png_ptr, info_ptr);
 
-  T->reset(ElemKind::FloatTy, {width, height, 3});
+  T->reset(ElemKind::FloatTy, {width, height, numChannels});
   auto H = T->getHandle<>();
 
   float scale = ((range.second - range.first) / 255.0);
@@ -87,11 +128,15 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   for (size_t row_n = 0; row_n < height; row_n++) {
     png_byte *row = row_pointers[row_n];
     for (size_t col_n = 0; col_n < width; col_n++) {
-      png_byte *ptr = &(row[col_n * (hasAlpha ? 4 : 3)]);
-
-      H.at({row_n, col_n, 0}) = float(ptr[0]) * scale + bias;
-      H.at({row_n, col_n, 1}) = float(ptr[1]) * scale + bias;
-      H.at({row_n, col_n, 2}) = float(ptr[2]) * scale + bias;
+      png_byte *ptr =
+          &(row[col_n * (hasAlpha ? (numChannels + 1) : numChannels)]);
+      if (isGray) {
+        H.at({row_n, col_n, 0}) = float(ptr[0]) * scale + bias;
+      } else {
+        H.at({row_n, col_n, 0}) = float(ptr[0]) * scale + bias;
+        H.at({row_n, col_n, 1}) = float(ptr[1]) * scale + bias;
+        H.at({row_n, col_n, 2}) = float(ptr[2]) * scale + bias;
+      }
     }
   }
 

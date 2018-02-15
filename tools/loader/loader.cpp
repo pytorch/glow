@@ -11,9 +11,6 @@
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 
-#define DEFAULT_CAFFE2_HEIGHT 224
-#define DEFAULT_CAFFE2_WIDTH 224
-
 using namespace glow;
 
 enum class ImageNormalizationMode {
@@ -54,9 +51,16 @@ void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
          "There must be at least one filename in filenames");
   auto range = normModeToRange(normMode);
   unsigned numImages = filenames.size();
+
+  // Get first image's dimensions and check if grayscale or color.
+  size_t imgHeight, imgWidth;
+  bool isGray;
+  std::tie(imgHeight, imgWidth, isGray) = getPngInfo(filenames[0].c_str());
+  const size_t numChannels = isGray ? 1 : 3;
+
   // N x C x H x W
   result->reset(ElemKind::FloatTy,
-                {numImages, 3, DEFAULT_CAFFE2_HEIGHT, DEFAULT_CAFFE2_WIDTH});
+                {numImages, numChannels, imgHeight, imgWidth});
   auto RH = result->getHandle<>();
   // We iterate over all the png files, reading them all into our result tensor
   // for processing
@@ -67,15 +71,16 @@ void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
     auto imageH = localCopy.getHandle<>();
 
     auto dims = localCopy.dims();
-    assert(
-        (dims[0] == DEFAULT_CAFFE2_HEIGHT && dims[1] == DEFAULT_CAFFE2_WIDTH) &&
-        "All images must have the same Height and Width");
+    assert((dims[0] == imgHeight && dims[1] == imgWidth) &&
+           "All images must have the same Height and Width");
+    assert(dims[2] == numChannels &&
+           "All images must have the same number of channels");
 
     // Convert to BGR, as this is what Caffe2 is expecting.
-    for (unsigned z = 0; z < 3; z++) {
+    for (unsigned z = 0; z < numChannels; z++) {
       for (unsigned y = 0; y < dims[1]; y++) {
         for (unsigned x = 0; x < dims[0]; x++) {
-          RH.at({n, 2 - z, x, y}) = (imageH.at({x, y, z}));
+          RH.at({n, numChannels - 1 - z, x, y}) = (imageH.at({x, y, z}));
         }
       }
     }
