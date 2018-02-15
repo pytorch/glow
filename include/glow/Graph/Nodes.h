@@ -90,6 +90,7 @@ public:
   llvm::StringRef getOutputName(unsigned idx) const;
   bool hasSideEffects() const;
   std::string getDebugDesc() const;
+  Node *clone() const;
 
   void visit(Node *parent, NodeWalker *visitor);
   void visit(const Node *parent, NodeWalker *visitor) const;

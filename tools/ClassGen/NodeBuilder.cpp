@@ -17,7 +17,7 @@ void NodeBuilder::emitEnumModePrinters(std::ostream &os) const {
 void NodeBuilder::emitCtor(std::ostream &os) const {
   os << "  " << name_ << "Node(llvm::StringRef name";
 
-  // Constructor non-standard parameter list:
+  // Generate the external type parameters:
   for (const auto &paramName : ctorTypeParams_) {
     os << ", TypeRef " << paramName << " ";
   }
@@ -230,6 +230,44 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
   os << "  return db;\n}\n";
 }
 
+void NodeBuilder::emitCloner(std::ostream &os) const {
+  os << "\nNode* " << name_ << "Node::clone() const {\n";
+
+  if (hasIntrinsicOutput_) {
+    os << "  std::vector<TypeRef> nodeVAResultTypes;\n";
+    os << "  for (unsigned i = 0, e = getNumResults(); i < e; i++) {\n";
+    os << "    nodeVAResultTypes.push_back(getNthResult(i).getType());\n}\n";
+  }
+
+  os << "  return new " << name_ << "Node(getName()";
+
+  // Pass the external type arguments:
+  for (const auto &paramName : ctorTypeParams_) {
+    os << ", get" << paramName << "().getType()";
+  }
+
+  // The enum 'Mode' parameter:
+  if (!enum_.empty()) {
+    os << ", getMode()";
+  }
+
+  if (hasIntrinsicOutput_) {
+    os << ", nodeVAResultTypes";
+  }
+
+  // The operands of the graph node:
+  for (const auto &op : nodeInputs_) {
+    os << ", get" << op << "()";
+  }
+
+  // Extra class members:
+  for (const auto &op : members_) {
+    os << ", get" << op.second << "()";
+  }
+
+  os << ");\n}\n";
+}
+
 void NodeBuilder::emitEquator(std::ostream &os) const {
   os << "\nbool " << name_ << "Node::isEqual(const " << name_
      << "Node &other) const {\n  return true";
@@ -343,7 +381,8 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
      << "  bool isEqual(const " << name_ << "Node &other) const;\n"
      << "  llvm::hash_code getHash() const;\n"
      << "  void visit(Node *parent, NodeWalker *visitor);\n"
-     << "  void verify() const;\n";
+     << "  void verify() const;\n"
+     << "  Node* clone() const;\n";
 
   if (!enum_.empty()) {
     os << "  const char *getModeStr() const { return getModeStr(mode_); }\n"
@@ -362,6 +401,7 @@ void NodeBuilder::emitCppMethods(std::ostream &os) const {
   emitPrettyPrinter(os);
   emitVisitor(os);
   emitEquator(os);
+  emitCloner(os);
   emitHasher(os);
   if (!enum_.empty()) {
     emitEnumModePrinters(os);
