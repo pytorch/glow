@@ -24,14 +24,17 @@ class NodeBuilder {
   /// A list of node inputs that are overwritten, i.e. are @out parameters
   /// essentially.
   std::vector<unsigned> nodeOverwrittenInputs_;
-  /// Initializes the return types of the nodes. Format: (type, name)
+  /// Initializes the result types of the nodes. The first argument is the c++
+  /// expression that computes the type. For example "X->getType(). The second
+  /// argument is the name of the return type. Format: (type, name)
   std::vector<std::pair<std::string, std::string>> nodeOutputs_;
   /// A list of node members. Format: (type, name).
   std::vector<std::pair<MemberType, std::string>> members_;
   /// The node enum cases.
   std::vector<std::string> enum_;
-  /// A list of extra parameters that are passed to the constructor.
-  std::vector<std::pair<std::string, std::string>> extraParams_;
+  /// A list of extra parameter that are declared in the node constructor. The
+  /// arguments are used when creating the result types of the node.
+  std::vector<std::string> ctorTypeParams_;
   /// Stores the decl and body of a new public method that will be added to the
   /// class.
   std::vector<std::pair<std::string, std::string>> extraMethods_;
@@ -98,9 +101,11 @@ public:
     nodeOutputs_.push_back({ty, name});
     return *this;
   }
-  /// Add a parameter to the constructor. For example "TypeRef" "outTy".
-  NodeBuilder &addExtraParam(const std::string &type, const std::string &name) {
-    extraParams_.push_back({type, name});
+  /// Add a TypeRef parameter to the constructor and use this argument to add
+  /// a result type to the node.
+  NodeBuilder &addResultFromCtorArg(const std::string &name = "Result") {
+    ctorTypeParams_.push_back(name + "Ty");
+    nodeOutputs_.push_back({name + "Ty", name});
     return *this;
   }
 
