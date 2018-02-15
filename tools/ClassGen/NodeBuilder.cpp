@@ -413,7 +413,7 @@ void NodeBuilder::emitCppMethods(std::ostream &os) const {
   }
 }
 
-void NodeBuilder::addGradient() {
+NodeBuilder &NodeBuilder::addGradient() {
   NodeBuilder GN(hStream, cStream, dStream, name_ + "Grad");
 
   // The new 'Grad' class will have all of the fields of the current class.
@@ -472,6 +472,8 @@ void NodeBuilder::addGradient() {
   }
   ss << "  return x;\n}\n";
   addExtraMethod(decl, ss.str());
+
+  return *this;
 }
 
 NodeBuilder::~NodeBuilder() {
