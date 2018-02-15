@@ -103,8 +103,7 @@ int main(int argc, char **argv) {
   BB.newNode("CrossEntropyLoss")
       .addInput("P")
       .addInput("Labels")
-      .addExtraParam("TypeRef", "CE")
-      .addResult("CE")
+      .addResultFromCtorArg()
       .setDocstring("Computes the average cross entropy loss of the input.")
       .addGradient();
 
