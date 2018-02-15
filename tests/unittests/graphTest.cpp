@@ -143,3 +143,21 @@ TEST(Graph, quantizeDequantizeNodes) {
   G.createSave("ret", D);
   EE.compile(CompilationMode::Infer);
 }
+
+TEST(Graph, cloneTest) {
+  Graph G;
+  Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+  Node *S = G.createVariable(ElemKind::IndexTy, {4, 1}, "select");
+  Node *conv = G.createConv("Conv1", K, 16, 3, 2, 3);
+  Node *relu = G.createRELU("Relu", conv);
+  Node *SM = G.createSoftMax("SoftMax", relu, S);
+  G.createSave("Save", SM);
+
+  auto *newConv = G.addNode(conv->clone());
+  auto *newRelu = G.addNode(relu->clone());
+  auto *newSM = G.addNode(SM->clone());
+
+  EXPECT_TRUE(newConv != conv && conv->isEqual(*newConv));
+  EXPECT_TRUE(newRelu != relu && relu->isEqual(*newRelu));
+  EXPECT_TRUE(newSM != SM && SM->isEqual(*newSM));
+}

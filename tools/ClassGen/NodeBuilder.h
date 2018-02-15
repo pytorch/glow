@@ -25,7 +25,7 @@ class NodeBuilder {
   /// essentially.
   std::vector<unsigned> nodeOverwrittenInputs_;
   /// Initializes the result types of the nodes. The first argument is the c++
-  /// expression that computes the type. For example "X->getType(). The second
+  /// expression that computes the type. For example "X->getType()". The second
   /// argument is the name of the return type. Format: (type, name)
   std::vector<std::pair<std::string, std::string>> nodeOutputs_;
   /// A list of node members. Format: (type, name).
@@ -104,8 +104,8 @@ public:
   /// Add a TypeRef parameter to the constructor and use this argument to add
   /// a result type to the node.
   NodeBuilder &addResultFromCtorArg(const std::string &name = "Result") {
-    ctorTypeParams_.push_back(name + "Ty");
-    nodeOutputs_.push_back({name + "Ty", name});
+    ctorTypeParams_.push_back(name);
+    nodeOutputs_.push_back({name, name});
     return *this;
   }
 
@@ -167,6 +167,9 @@ private:
 
   /// Emit the isEqual method that performs node comparisons.
   void emitEquator(std::ostream &os) const;
+
+  /// Emit the clone() method copies the node.
+  void emitCloner(std::ostream &os) const;
 
   /// Emit the getHash method that computes a hash of a node.
   void emitHasher(std::ostream &os) const;

@@ -278,6 +278,11 @@ llvm::StringRef Variable::getOutputName(unsigned idx) const {
   llvm_unreachable("Invalid index");
 }
 bool Variable::hasSideEffects() const { return false; }
+
+Node *Variable::clone() const {
+  llvm_unreachable("variables can't be cloned.");
+}
+
 //===----------------------------------------------------------------------===//
 //                     Debug description methods
 //===----------------------------------------------------------------------===//
@@ -372,6 +377,17 @@ std::string Node::getDebugDesc() const {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<const CLASS *>(this)->getDebugDesc();
+#include "AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+}
+
+Node *Node::clone() const {
+  switch (getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<const CLASS *>(this)->clone();
 #include "AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");

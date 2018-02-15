@@ -150,6 +150,11 @@ public:
   /// \returns a textual description of the node.
   std::string getDebugDesc() const;
 
+  /// \returns copy of the current node. Notice that the new node is not
+  /// inserted into any DAG. The caller of this method should add it to some
+  /// node-list.
+  Node *clone() const;
+
   /// \returns true if the node is equal to the other node.
   bool isEqual(const Node &other) const;
 
