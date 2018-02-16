@@ -6,6 +6,8 @@
 #include <unordered_set>
 #include <vector>
 
+using llvm::cast;
+
 namespace glow {
 
 /// Calculate TensorQuantizationParams based on the clipped min and max float
@@ -223,19 +225,6 @@ static bool shouldQuantize(const Node *node) {
   return llvm::isa<FullyConnectedNode>(node);
 }
 
-/// \returns quantized FullyConnected node based on the floating point
-/// version \p FC. Scale and Offset are taken from \p TQP.
-static Node *quantizeFullyConnected(Graph &G, FullyConnectedNode *FC,
-                                    llvm::ArrayRef<Node *> quantizedInputs,
-                                    const TensorQuantizationParams &TQP) {
-  assert(quantizedInputs.size() == 3 && "Invalid number of inputs");
-
-  auto QT = G.uniqueType(ElemKind::Int8QTy, FC->getOutput()->dims(), TQP.scale_,
-                         TQP.offset_);
-  return G.createFullyConnected(FC->getName(), quantizedInputs[0],
-                                quantizedInputs[1], quantizedInputs[2], QT);
-}
-
 /// Quantize all inputs for \p node and return back pointers to the newly
 /// created qunatization nodes.
 static llvm::SmallVector<Node *, 6>
@@ -292,11 +281,23 @@ void generateQuantizedGraph(
     const TensorQuantizationParams &TQP = nodeToTQP[nodeOutputName];
 
     Node *quantizedNode{};
-    if (FullyConnectedNode *FC = llvm::dyn_cast<FullyConnectedNode>(node)) {
-      quantizedNode = quantizeFullyConnected(G, FC, quantizedInputs, TQP);
-    } else {
+
+    switch (node->getKind()) {
+    case Kinded::Kind::FullyConnectedNodeKind: {
+      auto *FC = cast<FullyConnectedNode>(node);
+      assert(quantizedInputs.size() == 3 && "Invalid number of inputs");
+      auto QT = G.uniqueType(ElemKind::Int8QTy, FC->getOutput()->dims(),
+                             TQP.scale_, TQP.offset_);
+      quantizedNode =
+          G.createFullyConnected(FC->getName(), quantizedInputs[0],
+                                 quantizedInputs[1], quantizedInputs[2], QT);
+      break;
+    }
+
+    default:
       llvm_unreachable("The node type is not supported for quantization");
     }
+
     // Just insert newly quantized node into added set. Quantize and Dequantize
     // nodes are not eligible for quantization anyway.
     addedNodes.insert(quantizedNode);
