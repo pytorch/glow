@@ -41,7 +41,7 @@ static bool shouldDeleteNode(CompilationMode mode, Node *N) {
 /// Dead code elimination.
 static void DCE(Graph &G, CompilationMode mode) {
   auto &nodes = G.getNodes();
-  auto &vars = G.getVars();
+  auto &vars = G.getParent().getVars();
 
   std::vector<VariablesList::iterator> erasedVars{};
   std::vector<NodesList::iterator> erasedNodes{};
@@ -82,7 +82,7 @@ static void DCE(Graph &G, CompilationMode mode) {
 
   while (!erasedVars.empty()) {
     auto it = erasedVars.back();
-    G.eraseVariable(it);
+    G.getParent().eraseVariable(it);
     erasedVars.pop_back();
   }
 }

@@ -54,7 +54,7 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
   // Generate the gradient nodes for each one of the nodes in the function.
 
   PostOrderVisitor pov;
-  for (auto &N : G.getVars()) {
+  for (auto &N : G.getParent().getVars()) {
     N->visit(nullptr, &pov);
   }
   for (auto &N : G.getNodes()) {
@@ -171,14 +171,14 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
     llvm_unreachable("Invalid instruction type.");
   } // End of the for-each instr loop.
 
-  for (auto &V : G.getVars()) {
+  for (auto &V : G.getParent().getVars()) {
     // In TrainDebug mode we save a copy of the last gradient
     if (mode == CompilationMode::TrainDebug && map.hasGradient(V)) {
       std::string nodeName = "_grad_" + V->getName().str();
       // Save the gradient and return the destination variable.
       auto *saveNode = G.createSave(nodeName, map.getGradient(V));
       auto *GradV = llvm::dyn_cast<Variable>(saveNode->getOutput().getNode());
-      G.addGradientVariable(V, GradV);
+      G.getParent().addGradientVariable(V, GradV);
     }
 
     // Don't update nodes that are not in training mode.
@@ -203,6 +203,6 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
     G.addNode(I);
   }
   for (auto &I : newVars) {
-    G.addVar(I);
+    G.getParent().addVar(I);
   }
 }

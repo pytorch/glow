@@ -43,6 +43,11 @@ Module::~Module() {
   for (auto *F : functions_) {
     delete F;
   }
+
+  for (auto it = vars_.begin(), e = vars_.end(); it != e;) {
+    auto cur = it++;
+    eraseVariable(*cur);
+  }
 }
 
 Graph::~Graph() {
@@ -50,11 +55,6 @@ Graph::~Graph() {
   for (auto it = nodes_.begin(), e = nodes_.end(); it != e;) {
     auto cur = it++;
     eraseNode(*cur);
-  }
-
-  for (auto it = vars_.begin(), e = vars_.end(); it != e;) {
-    auto cur = it++;
-    eraseVariable(*cur);
   }
 }
 
@@ -93,27 +93,27 @@ TypeRef Module::getVoidTy() { return uniqueType(Type()); }
 //                       Node builders
 //===----------------------------------------------------------------------===//
 
-Variable *Graph::createVariable(TypeRef T, llvm::StringRef name,
-                                Variable::VisibilityKind visibility,
-                                Variable::TrainKind train, float val) {
-  auto FT = getParent().uniqueType(*T);
+Variable *Module::createVariable(TypeRef T, llvm::StringRef name,
+                                 Variable::VisibilityKind visibility,
+                                 Variable::TrainKind train, float val) {
+  auto FT = uniqueType(*T);
   return addVar(new Variable(name, FT, visibility, train, val));
 }
 
-Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
-                                llvm::StringRef name,
-                                Variable::VisibilityKind visibility,
-                                Variable::TrainKind train, float val) {
-  auto FT = getParent().uniqueType(T, dims);
+Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
+                                 llvm::StringRef name,
+                                 Variable::VisibilityKind visibility,
+                                 Variable::TrainKind train, float val) {
+  auto FT = uniqueType(T, dims);
   return createVariable(FT, name, visibility, train, val);
 }
 
-Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
-                                float scale, int32_t offset,
-                                llvm::StringRef name,
-                                Variable::VisibilityKind visibility,
-                                Variable::TrainKind train, float val) {
-  auto FT = getParent().uniqueType(T, dims, scale, offset);
+Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
+                                 float scale, int32_t offset,
+                                 llvm::StringRef name,
+                                 Variable::VisibilityKind visibility,
+                                 Variable::TrainKind train, float val) {
+  auto FT = uniqueType(T, dims, scale, offset);
   return createVariable(FT, name, visibility, train, val);
 }
 
@@ -131,7 +131,7 @@ Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
 /// never add any suffix anywhere after "__", because it will get
 /// stripped by uniqueName. Instead, all such auto-generated pieces of
 /// a name should be added somewhere before "__", e.g. as a prefix.
-std::string Graph::uniqueName(llvm::StringRef name) {
+std::string Module::uniqueName(llvm::StringRef name) {
   // First, remove everything starting with the __ delimiter.
   auto delimPos = name.find("__", 0);
   if (delimPos != llvm::StringRef::npos) {
@@ -144,13 +144,13 @@ std::string Graph::uniqueName(llvm::StringRef name) {
   return UniqueName;
 }
 
-void Graph::uniqueNames(Node *N) { N->setName(uniqueName(N->getName())); }
+void Module::uniqueNames(Node *N) { N->setName(uniqueName(N->getName())); }
 
-void Graph::addGradientVariable(Variable *V, Variable *GradV) {
+void Module::addGradientVariable(Variable *V, Variable *GradV) {
   grads_.push_back({V, GradV});
 }
 
-Variable *Graph::getGradientVariable(Variable *V) {
+Variable *Module::getGradientVariable(Variable *V) {
   for (auto &p : grads_) {
     if (p.first == V) {
       return p.second;
@@ -174,13 +174,13 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
   // Allocate the Filter and Bias tensors.
   std::array<size_t, 4> filterDim = {{depth, kernel, kernel, idim.c}};
   size_t fanIn = kernel * kernel * idim.c;
-  auto *filter = createVariable(ElemKind::FloatTy, filterDim, "filter",
-                                Variable::VisibilityKind::Private,
-                                Variable::TrainKind::Xavier, fanIn);
+  auto *filter = getParent().createVariable(
+      ElemKind::FloatTy, filterDim, "filter", Variable::VisibilityKind::Private,
+      Variable::TrainKind::Xavier, fanIn);
 
-  auto *bias = createVariable(ElemKind::FloatTy, {depth}, "bias",
-                              Variable::VisibilityKind::Private,
-                              Variable::TrainKind::Broadcast, 0.1);
+  auto *bias = getParent().createVariable(ElemKind::FloatTy, {depth}, "bias",
+                                          Variable::VisibilityKind::Private,
+                                          Variable::TrainKind::Broadcast, 0.1);
 
   auto OT = getParent().uniqueType(ElemKind::FloatTy, outDims);
 
@@ -260,13 +260,13 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
 
   size_t fanIn = idim.second;
 
-  auto *W = createVariable(T->getElementType(), {idim.second, outDepth},
-                           "weights", Variable::VisibilityKind::Private,
-                           Variable::TrainKind::Xavier, fanIn);
+  auto *W = getParent().createVariable(
+      T->getElementType(), {idim.second, outDepth}, "weights",
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier, fanIn);
 
-  auto *B = createVariable(T->getElementType(), {outDepth}, "bias",
-                           Variable::VisibilityKind::Private,
-                           Variable::TrainKind::Broadcast, 0.1);
+  auto *B = getParent().createVariable(T->getElementType(), {outDepth}, "bias",
+                                       Variable::VisibilityKind::Private,
+                                       Variable::TrainKind::Broadcast, 0.1);
 
   auto OT = getParent().uniqueType(T->getElementType(), {idim.first, outDepth});
   return addNode(new FullyConnectedNode(name, OT, input, W, B));
@@ -433,19 +433,19 @@ BatchNormalizationNode *Graph::createBatchNormalization(llvm::StringRef name,
   size_t channels = input.dims()[channelIdx];
 
   // Allocate the learnable parameters beta and gamma.
-  auto *beta = createVariable(ElemKind::FloatTy, {channels}, "beta",
-                              Variable::VisibilityKind::Private,
-                              Variable::TrainKind::Broadcast, 0.);
-  auto *gamma = createVariable(ElemKind::FloatTy, {channels}, "gamma",
-                               Variable::VisibilityKind::Private,
-                               Variable::TrainKind::Broadcast, 1.0);
+  auto *beta = getParent().createVariable(ElemKind::FloatTy, {channels}, "beta",
+                                          Variable::VisibilityKind::Private,
+                                          Variable::TrainKind::Broadcast, 0.);
+  auto *gamma = getParent().createVariable(
+      ElemKind::FloatTy, {channels}, "gamma", Variable::VisibilityKind::Private,
+      Variable::TrainKind::Broadcast, 1.0);
 
-  auto *mean = createVariable(ElemKind::FloatTy, {channels}, "mean",
-                              Variable::VisibilityKind::Private,
-                              Variable::TrainKind::None);
-  auto *variance = createVariable(ElemKind::FloatTy, {channels}, "variance",
-                                  Variable::VisibilityKind::Private,
-                                  Variable::TrainKind::None);
+  auto *mean = getParent().createVariable(ElemKind::FloatTy, {channels}, "mean",
+                                          Variable::VisibilityKind::Private,
+                                          Variable::TrainKind::None);
+  auto *variance = getParent().createVariable(
+      ElemKind::FloatTy, {channels}, "variance",
+      Variable::VisibilityKind::Private, Variable::TrainKind::None);
 
   return createBatchNormalization(name, input, beta, gamma, mean, variance,
                                   channelIdx, epsilon, momentum);
@@ -535,9 +535,9 @@ Graph::createBatchedArithmetic(llvm::StringRef name, TypeRef outTy,
 }
 
 SaveNode *Graph::createSave(llvm::StringRef name, NodeValue input) {
-  auto *dest =
-      createVariable(input.getType(), name, Variable::VisibilityKind::Private,
-                     Variable::TrainKind::None);
+  auto *dest = getParent().createVariable(input.getType(), name,
+                                          Variable::VisibilityKind::Private,
+                                          Variable::TrainKind::None);
 
   std::string nodeName{"_save_"};
   nodeName += name;
@@ -553,13 +553,13 @@ QuantizationProfileNode *Graph::createQuantizationProfile(llvm::StringRef name,
                                                           NodeValue input) {
   // TODO: this size is going to be refined. Just a placeholder now.
   const size_t numberOfBuckets = 2000U;
-  auto *histogram = createVariable(
+  auto *histogram = getParent().createVariable(
       ElemKind::FloatTy, {numberOfBuckets}, "histogram",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
   // Intermediate data used for histogram calculations.
   // Min tensor value seen so far is kept on the first position.
   // Max tensor value seen so far is kept on the second position.
-  auto *computationInfo = createVariable(
+  auto *computationInfo = getParent().createVariable(
       ElemKind::FloatTy, {2}, "computationInfo",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
 
@@ -632,33 +632,33 @@ void Graph::createSimpleRNN(llvm::StringRef namePrefix,
   assert(inputSize > 0 && "input dimensionality is zero");
 
   // Initialize the state to zero.
-  auto *HInit = createVariable(ElemKind::FloatTy, {batchSize, hiddenSize},
-                               (namePrefix + ".initial_state").str(),
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
+  auto *HInit = getParent().createVariable(
+      ElemKind::FloatTy, {batchSize, hiddenSize},
+      (namePrefix + ".initial_state").str(), Variable::VisibilityKind::Public,
+      Variable::TrainKind::None);
   HInit->getPayload().zero();
   Node *Ht = HInit;
 
   float b = 0.1;
-  auto *Whh = createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
-                             (namePrefix + ".Whh").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bhh = createVariable(
+  auto *Whh = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whh").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      hiddenSize);
+  auto *Bhh = getParent().createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".Bhh").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
-  auto *Wxh = createVariable(ElemKind::FloatTy, {inputSize, hiddenSize},
-                             (namePrefix + ".Wxh").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, inputSize);
-  auto *Bxh = createVariable(
+  auto *Wxh = getParent().createVariable(
+      ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxh").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      inputSize);
+  auto *Bxh = getParent().createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".Bxh").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
-  auto *Why = createVariable(ElemKind::FloatTy, {hiddenSize, outputSize},
-                             (namePrefix + ".Why").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bhy = createVariable(
+  auto *Why = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize, outputSize}, (namePrefix + ".Why").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      hiddenSize);
+  auto *Bhy = getParent().createVariable(
       ElemKind::FloatTy, {outputSize}, (namePrefix + ".Bhy").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
 
@@ -689,7 +689,7 @@ void Graph::createGRU(llvm::StringRef namePrefix, llvm::ArrayRef<Node *> inputs,
   assert(inputSize > 0 && "input dimensionality is zero");
 
   // Initialize the state to zero.
-  auto *HInit = createVariable(
+  auto *HInit = getParent().createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize}, "initial_state",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
 
@@ -705,68 +705,68 @@ void Graph::createGRU(llvm::StringRef namePrefix, llvm::ArrayRef<Node *> inputs,
 
   // update gate
   float bUpdate = 0.1;
-  auto *Wxz = createVariable(ElemKind::FloatTy, {inputSize, hiddenSize},
-                             (namePrefix + ".Wxz").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, inputSize);
-  auto *Whz = createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
-                             (namePrefix + ".Whz").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bz1 = createVariable(ElemKind::FloatTy, {hiddenSize},
-                             (namePrefix + ".bz1").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Broadcast, bUpdate);
-  auto *Bz2 = createVariable(ElemKind::FloatTy, {hiddenSize},
-                             (namePrefix + ".bz2").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Broadcast, bUpdate);
+  auto *Wxz = getParent().createVariable(
+      ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxz").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      inputSize);
+  auto *Whz = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whz").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      hiddenSize);
+  auto *Bz1 = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bz1").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
+      bUpdate);
+  auto *Bz2 = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bz2").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
+      bUpdate);
   float bReset = -1.0;
   // reset gate
-  auto *Wxr = createVariable(ElemKind::FloatTy, {inputSize, hiddenSize},
-                             (namePrefix + ".Wxr").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, inputSize);
-  auto *Whr = createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
-                             (namePrefix + ".Whr").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, hiddenSize);
-  auto *Br1 = createVariable(ElemKind::FloatTy, {hiddenSize},
-                             (namePrefix + ".br1").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Broadcast, bReset);
-  auto *Br2 = createVariable(ElemKind::FloatTy, {hiddenSize},
-                             (namePrefix + ".br2").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Broadcast, bReset);
+  auto *Wxr = getParent().createVariable(
+      ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxr").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      inputSize);
+  auto *Whr = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whr").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      hiddenSize);
+  auto *Br1 = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".br1").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
+      bReset);
+  auto *Br2 = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".br2").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
+      bReset);
 
   // hidden state
   float b = 0.1;
-  auto *Wxh = createVariable(ElemKind::FloatTy, {inputSize, hiddenSize},
-                             (namePrefix + ".Wxh").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, inputSize);
-  auto *Whh = createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
-                             (namePrefix + ".Whh").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bh1 = createVariable(
+  auto *Wxh = getParent().createVariable(
+      ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxh").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      inputSize);
+  auto *Whh = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whh").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      hiddenSize);
+  auto *Bh1 = getParent().createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bh1").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
-  auto *Bh2 = createVariable(
+  auto *Bh2 = getParent().createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bh2").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
 
   // output layer
-  auto *Why = createVariable(ElemKind::FloatTy, {hiddenSize, outputSize},
-                             (namePrefix + ".Why").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, hiddenSize);
-  auto *By = createVariable(
+  auto *Why = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize, outputSize}, (namePrefix + ".Why").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      hiddenSize);
+  auto *By = getParent().createVariable(
       ElemKind::FloatTy, {outputSize}, (namePrefix + ".by").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
 
-  auto *Ones = createVariable(
+  auto *Ones = getParent().createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize}, (namePrefix + ".ones").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
 
@@ -840,13 +840,13 @@ void Graph::createLSTM(llvm::StringRef namePrefix,
   assert(inputSize > 0 && "input dimensionality is zero");
 
   // Initialize the hidden and cell states to zero.
-  auto *HInit = createVariable(
+  auto *HInit = getParent().createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize}, "initial_hidden_state",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
   HInit->getPayload().zero();
   Node *Ht = HInit;
 
-  auto *CInit = createVariable(
+  auto *CInit = getParent().createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize}, "initial_cell_state",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
   CInit->getPayload().zero();
@@ -865,84 +865,84 @@ void Graph::createLSTM(llvm::StringRef namePrefix,
 
   // forget gate
   float bForget = 1.0;
-  auto *Wxf = createVariable(ElemKind::FloatTy, {inputSize, hiddenSize},
-                             (namePrefix + ".Wxf").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, inputSize);
-  auto *Whf = createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
-                             (namePrefix + ".Whf").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bf1 = createVariable(ElemKind::FloatTy, {hiddenSize},
-                             (namePrefix + ".bf1").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Broadcast, bForget);
-  auto *Bf2 = createVariable(ElemKind::FloatTy, {hiddenSize},
-                             (namePrefix + ".bf2").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Broadcast, bForget);
+  auto *Wxf = getParent().createVariable(
+      ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxf").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      inputSize);
+  auto *Whf = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whf").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      hiddenSize);
+  auto *Bf1 = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bf1").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
+      bForget);
+  auto *Bf2 = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bf2").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
+      bForget);
   // input gate
   float bInput = 0.1;
-  auto *Wxi = createVariable(ElemKind::FloatTy, {inputSize, hiddenSize},
-                             (namePrefix + ".Wxi").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, inputSize);
-  auto *Whi = createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
-                             (namePrefix + ".Whi").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bi1 = createVariable(ElemKind::FloatTy, {hiddenSize},
-                             (namePrefix + ".bi1").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Broadcast, bInput);
-  auto *Bi2 = createVariable(ElemKind::FloatTy, {hiddenSize},
-                             (namePrefix + ".bi2").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Broadcast, bInput);
+  auto *Wxi = getParent().createVariable(
+      ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxi").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      inputSize);
+  auto *Whi = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whi").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      hiddenSize);
+  auto *Bi1 = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bi1").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
+      bInput);
+  auto *Bi2 = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bi2").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
+      bInput);
 
   // output gate
   float bOutput = 0.1;
-  auto *Wxo = createVariable(ElemKind::FloatTy, {inputSize, hiddenSize},
-                             (namePrefix + ".Wxo").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, inputSize);
-  auto *Who = createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
-                             (namePrefix + ".Who").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bo1 = createVariable(ElemKind::FloatTy, {hiddenSize},
-                             (namePrefix + ".bo1").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Broadcast, bOutput);
-  auto *Bo2 = createVariable(ElemKind::FloatTy, {hiddenSize},
-                             (namePrefix + ".bo2").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Broadcast, bOutput);
+  auto *Wxo = getParent().createVariable(
+      ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxo").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      inputSize);
+  auto *Who = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Who").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      hiddenSize);
+  auto *Bo1 = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bo1").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
+      bOutput);
+  auto *Bo2 = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bo2").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
+      bOutput);
 
   // cell state
   float bCell = 0.1;
-  auto *Wxc = createVariable(ElemKind::FloatTy, {inputSize, hiddenSize},
-                             (namePrefix + ".Wxc").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, inputSize);
-  auto *Whc = createVariable(ElemKind::FloatTy, {hiddenSize, hiddenSize},
-                             (namePrefix + ".Whc").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bc1 = createVariable(
+  auto *Wxc = getParent().createVariable(
+      ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxc").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      inputSize);
+  auto *Whc = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whc").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      hiddenSize);
+  auto *Bc1 = getParent().createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bc1").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, bCell);
-  auto *Bc2 = createVariable(
+  auto *Bc2 = getParent().createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bc2").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, bCell);
 
   // output layer
   float b = 0.1;
-  auto *Why = createVariable(ElemKind::FloatTy, {hiddenSize, outputSize},
-                             (namePrefix + ".Why").str(),
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, hiddenSize);
-  auto *By = createVariable(
+  auto *Why = getParent().createVariable(
+      ElemKind::FloatTy, {hiddenSize, outputSize}, (namePrefix + ".Why").str(),
+      Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
+      hiddenSize);
+  auto *By = getParent().createVariable(
       ElemKind::FloatTy, {outputSize}, (namePrefix + ".by").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
 
@@ -1017,7 +1017,7 @@ void Graph::createLSTM(llvm::StringRef namePrefix,
 
 void Graph::dump() const {
   llvm::outs() << "Graph structure " << getName() << ":\n";
-  for (auto v : vars_) {
+  for (auto v : getParent().getVars()) {
     llvm::outs() << v->getDebugDesc() << "\n";
   }
 
@@ -1176,7 +1176,7 @@ void Graph::dumpDAG(const char *dotFilename) {
   myfile.close();
 }
 
-void Graph::eraseVariable(VariablesList::iterator I) {
+void Module::eraseVariable(VariablesList::iterator I) {
   if (I == vars_.end())
     return;
   delete *I;
@@ -1199,7 +1199,7 @@ void Graph::eraseNode(NodesList::iterator I) {
   nodes_.erase(I);
 }
 
-Variable *Graph::getVariableByName(llvm::StringRef name) {
+Variable *Module::getVariableByName(llvm::StringRef name) {
   for (auto *V : getVars()) {
     if (V->getName() == name)
       return V;
@@ -1207,14 +1207,15 @@ Variable *Graph::getVariableByName(llvm::StringRef name) {
   return nullptr;
 }
 
-void Graph::eraseVariable(Variable *N) {
-  auto I = std::find(vars_.begin(), vars_.end(), N);
+void Module::eraseVariable(Variable *N) {
+  auto vars = getVars();
+  auto I = std::find(vars.begin(), vars.end(), N);
   eraseVariable(I);
 }
 
 void Graph::eraseNode(Node *N) {
   if (Variable *V = dyn_cast<Variable>(N)) {
-    return eraseVariable(V);
+    return getParent().eraseVariable(V);
   }
   auto I = std::find(nodes_.begin(), nodes_.end(), N);
   assert(I != nodes_.end() && "Could not find node to delete!");
@@ -1224,7 +1225,7 @@ void Graph::eraseNode(Node *N) {
 void Graph::verify() const {
   std::unordered_map<std::string, Node *> NameToNode;
 
-  for (auto *V : vars_) {
+  for (auto *V : getParent().getVars()) {
     if (NameToNode.insert({V->getName(), V}).second)
       continue;
     /// Output extra information helping to find the error.
@@ -1250,13 +1251,15 @@ void Graph::verify() const {
     llvm_unreachable("Multiple nodes with the same name");
   }
 
+  auto vars = getParent().getVars();
+
   // Any node referenced by one of the graph nodes should be part of the Graph.
   for (auto *N : nodes_) {
     for (size_t idx = 0, e = N->getNumInputs(); idx < e; ++idx) {
       assert((std::find(nodes_.begin(), nodes_.end(), N->getNthInput(idx)) !=
                   nodes_.end() ||
-              std::find(vars_.begin(), vars_.end(), N->getNthInput(idx)) !=
-                  vars_.end()) &&
+              std::find(vars.begin(), vars.end(), N->getNthInput(idx)) !=
+                  vars.end()) &&
              "Every node referenced by one of the graph"
              " nodes should be part of the graph");
     }

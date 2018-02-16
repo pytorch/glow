@@ -27,10 +27,33 @@ class Module final {
   /// their addresses.
   TypesList types_{};
 
+  /// A list of variables that the graph owns.
+  VariablesList vars_;
+
+  /// A list of (var, grad_var) pairs associating variables with their
+  /// gradient variables.
+  VariableGradientsList grads_;
+
+  /// Unique index for producing unique names.
+  size_t uniqueIdx_{1};
+
+  /// \returns unique name with a prefix \p Name.
+  std::string uniqueName(llvm::StringRef Name);
+
 public:
   Module() = default;
 
   ~Module();
+
+  /// Inserts the variable \p V to the list of variables.
+  Variable *addVar(Variable *V) {
+    uniqueNames(V);
+    vars_.push_back(V);
+    return V;
+  }
+
+  /// Unique names defined by node \p N.
+  void uniqueNames(Node *N);
 
   /// Return a pointer to a uniqued type \p T.
   TypeRef uniqueType(const Type &T);
@@ -55,58 +78,29 @@ public:
   Graph *getFunction(llvm::StringRef name);
   /// \returns a new function with the name \p name.
   Graph *createFunction(llvm::StringRef name);
-};
 
-/// Represents the compute graph.
-class Graph final : public Named {
-  /// A uniqued list of types. Types in this list can be equated
-  /// by comparing their addresses.
-  TypesList types_{};
+  /// Erase a variable from the graph.
+  void eraseVariable(Variable *N);
+  void eraseVariable(VariablesList::iterator I);
 
-  /// A list of nodes that the graph owns.
-  NodesList nodes_;
-  /// A list of variables that the graph owns.
-  VariablesList vars_;
+  /// \returns a pointer to the first variable with the name \p name or nullptr
+  /// if no node has this name.
+  Variable *getVariableByName(llvm::StringRef name);
 
-  /// A list of (var, grad_var) pairs associating variables with their
-  /// gradient variables.
-  VariableGradientsList grads_;
+  /// \returns the list of variables that the graph owns.
+  VariablesList &getVars() { return vars_; }
 
-  /// Unique index for producing unique names.
-  size_t uniqueIdx_{1};
+  const VariablesList &getVars() const { return vars_; }
 
-  /// \returns unique name with a prefix \p Name.
-  std::string uniqueName(llvm::StringRef Name);
+  /// Associates a gradient variable \p GradV with the variable \p V.
+  void addGradientVariable(Variable *V, Variable *GradV);
 
-  /// Unique names defined by node \p N.
-  void uniqueNames(Node *N);
+  /// \returns a gradient variable associated with \p V.
+  /// Returns nullptr if there is no gradient variable
+  /// related to this variable.
+  Variable *getGradientVariable(Variable *V);
 
-  /// A reference to the owner of the function.
-  Module &parent_;
-
-public:
-  Graph(Module &parent, llvm::StringRef Name = {})
-      : Named(Name), parent_(parent) {}
-
-  ~Graph();
-
-  Module &getParent() { return parent_; }
-
-  /// Inserts the node \p N to the list of nodes, and returns the inserted node.
-  template <class NodeTy> NodeTy *addNode(NodeTy *N) {
-    uniqueNames(N);
-    nodes_.push_back(N);
-    return N;
-  }
-
-  /// Inserts the variable \p V to the list of variables.
-  Variable *addVar(Variable *V) {
-    uniqueNames(V);
-    vars_.push_back(V);
-    return V;
-  }
-
-  /// @name High-level, operation-level IRBuilder.
+  /// @name High-level Variable builders.
   ///@{
 
   Variable *createVariable(
@@ -127,6 +121,40 @@ public:
       Variable::VisibilityKind visibility = Variable::VisibilityKind::Private,
       Variable::TrainKind train = Variable::TrainKind::Broadcast,
       float val = 0.0);
+
+  ///@}
+};
+
+/// Represents the compute graph.
+class Graph final : public Named {
+  /// A uniqued list of types. Types in this list can be equated
+  /// by comparing their addresses.
+  TypesList types_{};
+
+  /// A list of nodes that the graph owns.
+  NodesList nodes_;
+
+  /// A reference to the owner of the function.
+  Module &parent_;
+
+public:
+  Graph(Module &parent, llvm::StringRef Name = {})
+      : Named(Name), parent_(parent) {}
+
+  ~Graph();
+
+  Module &getParent() { return parent_; }
+  const Module &getParent() const { return parent_; }
+
+  /// Inserts the node \p N to the list of nodes, and returns the inserted node.
+  template <class NodeTy> NodeTy *addNode(NodeTy *N) {
+    getParent().uniqueNames(N);
+    nodes_.push_back(N);
+    return N;
+  }
+
+  /// @name High-level, operation-level IRBuilder.
+  ///@{
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               size_t depth, size_t kernel, size_t stride,
@@ -306,10 +334,6 @@ public:
 
   /// @}
 
-  /// Erase a variable from the graph.
-  void eraseVariable(Variable *N);
-  void eraseVariable(VariablesList::iterator I);
-
   /// Erase a node from the graph.
   void eraseNode(Node *N);
   void eraseNode(NodesList::iterator I);
@@ -330,23 +354,6 @@ public:
   NodesList &getNodes() { return nodes_; }
 
   const NodesList &getNodes() const { return nodes_; }
-
-  /// \returns a pointer to the first variable with the name \p name or nullptr
-  /// if no node has this name.
-  Variable *getVariableByName(llvm::StringRef name);
-
-  /// \returns the list of variables that the graph owns.
-  VariablesList &getVars() { return vars_; }
-
-  const VariablesList &getVars() const { return vars_; }
-
-  /// Associates a gradient variable \p GradV with the variable \p V.
-  void addGradientVariable(Variable *V, Variable *GradV);
-
-  /// \returns a gradient variable associated with \p V.
-  /// Returns nullptr if there is no gradient variable
-  /// related to this variable.
-  Variable *getGradientVariable(Variable *V);
 };
 
 struct TrainingConfig;

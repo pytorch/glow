@@ -151,15 +151,16 @@ void testPTB() {
   EE.getConfig().momentum = 0;
   EE.getConfig().batchSize = minibatchSize;
 
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   std::cout << "Building" << std::endl;
 
-  Variable *X = G.createVariable(
+  Variable *X = mod.createVariable(
       ElemKind::FloatTy, {minibatchSize, vocabSize * numSteps}, "input",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
-  Variable *Y = G.createVariable(ElemKind::IndexTy, {minibatchSize, numSteps},
-                                 "selected", Variable::VisibilityKind::Public,
-                                 Variable::TrainKind::None);
+  Variable *Y = mod.createVariable(ElemKind::IndexTy, {minibatchSize, numSteps},
+                                   "selected", Variable::VisibilityKind::Public,
+                                   Variable::TrainKind::None);
 
   std::vector<Node *> slicesX, slicesY;
 

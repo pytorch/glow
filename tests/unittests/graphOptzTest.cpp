@@ -21,7 +21,7 @@ TEST(GraphOptz, DCE) {
   Module mod;
   Graph &G = *mod.createFunction("foo");
   IRFunction M(&G);
-  Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+  Node *K = mod.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
 
   for (int i = 0; i < 40; i++) {
     K = G.createRELU("relu", K);
@@ -38,7 +38,7 @@ TEST(GraphOptz, DCE) {
 
   //  All of the nodes are gone.
   EXPECT_EQ(G.getNodes().size(), 0);
-  EXPECT_EQ(G.getVars().size(), 0);
+  EXPECT_EQ(mod.getVars().size(), 0);
 }
 
 TEST(GraphOptz, liveCodeNotEliminated) {
@@ -46,8 +46,8 @@ TEST(GraphOptz, liveCodeNotEliminated) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  auto *Ex = G.createVariable(ElemKind::IndexTy, {4, 1}, "Ex");
+  Node *K = mod.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+  auto *Ex = mod.createVariable(ElemKind::IndexTy, {4, 1}, "Ex");
 
   for (int i = 0; i < 40; i++) {
     K = G.createRELU("relu", K);
@@ -64,7 +64,7 @@ TEST(GraphOptz, liveCodeNotEliminated) {
 
   //  Nothing got optimized.
   EXPECT_EQ(G.getNodes().size(), 82);
-  EXPECT_EQ(G.getVars().size(), 3);
+  EXPECT_EQ(mod.getVars().size(), 3);
 }
 
 TEST(GraphOptz, optimizeBatchNormAfterConv) {
@@ -72,9 +72,9 @@ TEST(GraphOptz, optimizeBatchNormAfterConv) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A = G.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   Node *CV = G.createConv("conv", A, 16, 5, 1, 2);
   Node *BN = G.createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   G.createSave("ret", BN);
@@ -90,9 +90,9 @@ TEST(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A = G.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   Node *CV = G.createConv("conv", A, 16, 5, 1, 2);
   Node *BN = G.createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   G.createSave("ret", BN);
@@ -108,9 +108,9 @@ TEST(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A = G.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
 
   Node *CV = G.createConv("conv", A, 16, 5, 1, 2);
   Node *BN = G.createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
@@ -128,9 +128,9 @@ TEST(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   Node *T = G.createTranspose("transpose", A, {0, 3, 1, 2});
   Node *BN = G.createBatchNormalization("batch", T, 3, 0.0001, 0.9);
   Node *O = G.createSave("ret", BN);
@@ -152,9 +152,9 @@ TEST(GraphOptz, sinkTransposeBelowRELU) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   Node *T = G.createTranspose("transpose", A, {0, 3, 1, 2});
   Node *K = G.createRELU("relu", T);
   Node *O = G.createSave("ret", K);
@@ -176,9 +176,9 @@ TEST(GraphOptz, sinkTransposeBelowSigmoid) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   Node *T = G.createTranspose("transpose", A, {0, 3, 1, 2});
   Node *SI = G.createSigmoid("sigmoid", T);
   Node *O = G.createSave("ret", SI);
@@ -200,9 +200,9 @@ TEST(GraphOptz, sinkTransposeBelowTanh) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   Node *T = G.createTranspose("transpose", A, {0, 3, 1, 2});
   Node *TN = G.createTanh("tanh", T);
   Node *O = G.createSave("ret", TN);
@@ -224,9 +224,9 @@ TEST(GraphOptz, cancelTwoTransposes) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   Node *T1 = G.createTranspose("transpose", A, {0, 2, 3, 1});
   Node *T2 = G.createTranspose("transpose", T1, {0, 3, 1, 2});
   Node *K = G.createRELU("relu", T2);
@@ -244,9 +244,9 @@ TEST(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   Node *T1 = G.createTranspose("transpose", A, {0, 2, 3, 1});
   Node *T2 = G.createTranspose("transpose", T1, {0, 1, 2, 3});
   Node *K = G.createRELU("relu", T2);
@@ -264,12 +264,12 @@ TEST(GraphOptz, sinkTransposeBelowArithmeticNodes) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                              Variable::VisibilityKind::Public,
-                              Variable::TrainKind::None);
-  Node *A2 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                              Variable::VisibilityKind::Public,
-                              Variable::TrainKind::None);
+  Node *A1 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
+  Node *A2 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
   Node *T1 = G.createTranspose("transpose1", A1, {0, 3, 1, 2});
   Node *T2 = G.createTranspose("transpose2", A2, {0, 3, 1, 2});
   Node *K = G.createArithmetic("arith", T1, T2, ArithmeticNode::Mode::Add);
@@ -292,12 +292,12 @@ TEST(GraphOptz, sinkReluBelowConcatNodes) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                              Variable::VisibilityKind::Public,
-                              Variable::TrainKind::None);
-  Node *A2 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                              Variable::VisibilityKind::Public,
-                              Variable::TrainKind::None);
+  Node *A1 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
+  Node *A2 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
   Node *R1 = G.createRELU("relu1", A1);
   Node *R2 = G.createRELU("relu2", A2);
   Node *CN = G.createConcat("concat", {R1, R2}, 1);
@@ -319,12 +319,12 @@ TEST(GraphOptz, sinkTransposeBelowConcatNodes) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                              Variable::VisibilityKind::Public,
-                              Variable::TrainKind::None);
-  Node *A2 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                              Variable::VisibilityKind::Public,
-                              Variable::TrainKind::None);
+  Node *A1 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
+  Node *A2 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
   Node *T1 = G.createTranspose("transpose", A1, {0, 2, 3, 1});
   Node *T2 = G.createTranspose("transpose", A2, {0, 2, 3, 1});
   Node *CN = G.createConcat("concat", {T1, T2}, 1);
@@ -347,9 +347,9 @@ TEST(GraphOptz, poolBelowReluSwapped) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   Node *R = G.createRELU("relu", A);
   Node *PL = G.createPool("pool", R, PoolNode::Mode::Max, 1, 10, 20);
   Node *O = G.createSave("ret", PL);
@@ -370,9 +370,9 @@ TEST(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   Node *R = G.createRELU("relu", A);
   Node *PL = G.createPool("pool", R, PoolNode::Mode::Avg, 1, 10, 20);
   Node *O = G.createSave("ret", PL);
@@ -393,9 +393,9 @@ TEST(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   Node *R = G.createRELU("relu", A);
   Node *PL = G.createPool("pool", R, PoolNode::Mode::Max, 1, 10, 20);
   Node *O = G.createSave("ret", PL);
@@ -417,18 +417,18 @@ TEST(GraphOptz, mergeConcatNodes) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                              Variable::VisibilityKind::Public,
-                              Variable::TrainKind::None);
-  Node *A2 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                              Variable::VisibilityKind::Public,
-                              Variable::TrainKind::None);
-  Node *A3 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input3",
-                              Variable::VisibilityKind::Public,
-                              Variable::TrainKind::None);
-  Node *A4 = G.createVariable(ElemKind::FloatTy, {1, 1, 10, 15}, "input4",
-                              Variable::VisibilityKind::Public,
-                              Variable::TrainKind::None);
+  Node *A1 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
+  Node *A2 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
+  Node *A3 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input3",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
+  Node *A4 = mod.createVariable(ElemKind::FloatTy, {1, 1, 10, 15}, "input4",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
 
   Node *CN1 = G.createConcat("concat1", {A1, A2}, 1);
   Node *CN2 = G.createConcat("concat2", {A1, CN1}, 1);
@@ -480,12 +480,12 @@ TEST(GraphOptz, CSE) {
   Graph &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
-  Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                              Variable::VisibilityKind::Public,
-                              Variable::TrainKind::None);
-  Node *A2 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                              Variable::VisibilityKind::Public,
-                              Variable::TrainKind::None);
+  Node *A1 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
+  Node *A2 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
 
   Node *CN1 = G.createConcat("concat1", {A1, A2}, 1);
   Node *CN2 = G.createConcat("concat2", {A1, A2}, 1);
@@ -571,14 +571,14 @@ TEST(GraphOptz, DCEPublicVars) {
   Module mod;
   auto &G = *mod.createFunction("main");
   IRFunction M(&G);
-  G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input",
-                   Variable::VisibilityKind::Public);
+  mod.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input",
+                     Variable::VisibilityKind::Public);
 
-  EXPECT_EQ(G.getVars().size(), 1);
+  EXPECT_EQ(mod.getVars().size(), 1);
 
   // Optimize all of the dead code.
   ::glow::optimize(G, CompilationMode::Infer);
 
   //  Public nodes should not be deleted.
-  EXPECT_EQ(G.getVars().size(), 1);
+  EXPECT_EQ(mod.getVars().size(), 1);
 }

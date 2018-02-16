@@ -22,12 +22,13 @@ TEST(Interpreter, interpret) {
 
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
 
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   G.setName("interpret");
-  auto *input = G.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input",
-                                 Variable::VisibilityKind::Public);
+  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input",
+                                   Variable::VisibilityKind::Public);
 
-  auto *ex = G.createVariable(ElemKind::IndexTy, {1, 1}, "exp");
+  auto *ex = mod.createVariable(ElemKind::IndexTy, {1, 1}, "exp");
 
   auto *CV0 = G.createConv("conv1", input, 16, 5, 1, 2);
   auto *RL0 = G.createRELU("relu1", CV0);
@@ -59,14 +60,15 @@ TEST(Interpreter, interpret) {
 
 TEST(Interpreter, profileQuantizationForANetwork) {
   ExecutionEngine EE;
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   Tensor inputs(ElemKind::FloatTy, {1, 4});
   inputs.getHandle() = {1, 1.2, 0.5, 1.3};
 
-  auto *A = G.createVariable(ElemKind::FloatTy, {1, 4}, "A",
-                             Variable::VisibilityKind::Public);
-  auto *Ex = G.createVariable(ElemKind::FloatTy, {1, 4}, "E",
-                              Variable::VisibilityKind::Public);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {1, 4}, "A",
+                               Variable::VisibilityKind::Public);
+  auto *Ex = mod.createVariable(ElemKind::FloatTy, {1, 4}, "E",
+                                Variable::VisibilityKind::Public);
   Node *O = G.createFullyConnected("fc", A, 4);
   O = G.createRELU("relu", O);
   O = G.createRegression("reg", O, Ex);
@@ -116,8 +118,8 @@ TEST(Interpreter, QuantizeAndDequantize) {
   Tensor inputs(ElemKind::FloatTy, {1, 4});
   inputs.getHandle() = {1, 1.2, 0.5, 1.3};
 
-  auto *A = G.createVariable(ElemKind::FloatTy, {1, 4}, "A",
-                             Variable::VisibilityKind::Public);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {1, 4}, "A",
+                               Variable::VisibilityKind::Public);
 
   auto qType = mod.uniqueType(ElemKind::Int8QTy, {1, 4}, 0.05, -138);
   auto *quantize = G.createQuantize("quantize", A, qType);
@@ -137,14 +139,15 @@ TEST(Interpreter, trainASimpleNetwork) {
   // Learning a single input vector.
   EE.getConfig().learningRate = 0.05;
 
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   G.setName("trainASimpleNetwork");
 
   // Create a variable with 1 input, which is a vector of 4 elements.
-  auto *A = G.createVariable(ElemKind::FloatTy, {1, 4}, "A",
-                             Variable::VisibilityKind::Public);
-  auto *E = G.createVariable(ElemKind::FloatTy, {1, 4}, "E",
-                             Variable::VisibilityKind::Public);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {1, 4}, "A",
+                               Variable::VisibilityKind::Public);
+  auto *E = mod.createVariable(ElemKind::FloatTy, {1, 4}, "E",
+                               Variable::VisibilityKind::Public);
 
   Node *O = G.createFullyConnected("fc1", A, 10);
   O = G.createSigmoid("sig1", O);
@@ -190,12 +193,13 @@ TEST(Interpreter, simpleRegression) {
   Tensor inputs(ElemKind::FloatTy, {1, numInputs});
   Tensor expected(ElemKind::FloatTy, {1, numInputs});
 
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   G.setName("simpleRegression");
-  auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputs}, "A",
-                             Variable::VisibilityKind::Public);
-  auto *Ex = G.createVariable(ElemKind::FloatTy, {1, numInputs}, "E",
-                              Variable::VisibilityKind::Public);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {1, numInputs}, "A",
+                               Variable::VisibilityKind::Public);
+  auto *Ex = mod.createVariable(ElemKind::FloatTy, {1, numInputs}, "E",
+                                Variable::VisibilityKind::Public);
   Node *O = G.createFullyConnected("fc", A, 4);
   O = G.createRELU("relu", O);
   O = G.createRegression("reg", O, Ex);
@@ -239,12 +243,13 @@ TEST(Interpreter, learnXor) {
   // Learning a single input vector.
   EE.getConfig().learningRate = 0.05;
 
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   G.setName("learnXor");
 
-  auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A",
-                             Variable::VisibilityKind::Public);
-  auto *Ex = G.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
+  auto *A = mod.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A",
+                               Variable::VisibilityKind::Public);
+  auto *Ex = mod.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
 
   Node *O = G.createFullyConnected("fc1", A, 6);
   O = G.createTanh("tanh1", O);
@@ -339,13 +344,14 @@ TEST(Network, circle) {
 
   unsigned minibatchSize = 11;
 
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   G.setName("circle");
-  auto *A = G.createVariable(ElemKind::FloatTy, {minibatchSize, 2}, "A",
-                             Variable::VisibilityKind::Public);
-  auto *S = G.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, "S",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {minibatchSize, 2}, "A",
+                               Variable::VisibilityKind::Public);
+  auto *S = mod.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, "S",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
 
   auto *FCL0 = G.createFullyConnected("fc1", A, 8);
   auto *T0 = G.createTanh("tanh1", FCL0);
@@ -424,21 +430,22 @@ TEST(Network, learnSingleValueConcat) {
   EE.getConfig().momentum = 0.9;
   EE.getConfig().learningRate = 0.01;
 
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   G.setName("learnSingleValueConcat");
 
-  auto *Ex = G.createVariable(ElemKind::FloatTy, {1, width * 2}, "Ex",
-                              Variable::VisibilityKind::Public);
+  auto *Ex = mod.createVariable(ElemKind::FloatTy, {1, width * 2}, "Ex",
+                                Variable::VisibilityKind::Public);
 
   // Left side of the network:
-  auto *A = G.createVariable(ElemKind::FloatTy, {1, width}, "A",
-                             Variable::VisibilityKind::Public);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {1, width}, "A",
+                               Variable::VisibilityKind::Public);
   Node *L = G.createFullyConnected("fc1", A, width);
   L = G.createSigmoid("", L);
 
   // Right side of the network:
-  auto *B = G.createVariable(ElemKind::FloatTy, {1, width}, "B",
-                             Variable::VisibilityKind::Public);
+  auto *B = mod.createVariable(ElemKind::FloatTy, {1, width}, "B",
+                               Variable::VisibilityKind::Public);
   Node *R = G.createFullyConnected("fc2", B, width);
   R = G.createSigmoid("sig", R);
 
@@ -471,15 +478,16 @@ TEST(Network, learnSingleValueConcat) {
 TEST(Network, concatVectors) {
   ExecutionEngine EE;
 
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   G.setName("concatVectors");
 
-  auto *V1 = G.createVariable(ElemKind::IndexTy, {10}, "V1",
-                              Variable::VisibilityKind::Public);
-  auto *V2 = G.createVariable(ElemKind::IndexTy, {20}, "V2",
-                              Variable::VisibilityKind::Public);
-  auto *V3 = G.createVariable(ElemKind::IndexTy, {30}, "V3",
-                              Variable::VisibilityKind::Public);
+  auto *V1 = mod.createVariable(ElemKind::IndexTy, {10}, "V1",
+                                Variable::VisibilityKind::Public);
+  auto *V2 = mod.createVariable(ElemKind::IndexTy, {20}, "V2",
+                                Variable::VisibilityKind::Public);
+  auto *V3 = mod.createVariable(ElemKind::IndexTy, {30}, "V3",
+                                Variable::VisibilityKind::Public);
 
   Node *L = G.createConcat("concat", {V1, V2, V3}, 0);
   auto *result = G.createSave("ret", L);
@@ -513,11 +521,12 @@ TEST(Network, concatVectors) {
 TEST(Network, sliceVectors) {
   ExecutionEngine EE;
 
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   G.setName("sliceVectors");
 
-  auto *V = G.createVariable(ElemKind::IndexTy, {3, 30}, "V",
-                             Variable::VisibilityKind::Public);
+  auto *V = mod.createVariable(ElemKind::IndexTy, {3, 30}, "V",
+                               Variable::VisibilityKind::Public);
 
   Node *S1 = G.createSlice("slice1", V, {0, 10}, {3, 13});
   Node *S2 = G.createSlice("slice2", V, {1, 10}, {2, 30});
@@ -590,19 +599,20 @@ void testRNNCell(TCellGenerator cell) {
   // Learning a single input vector.
   EE.getConfig().learningRate = 0.05;
 
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   G.setName("testRNNCell");
 
   const unsigned NumVectors = 3;
   const unsigned NumElements = 4;
   // Create a variable with 1 input, which is 3 consecutive vectors
   // of 4 elements each.
-  auto *X = G.createVariable(ElemKind::FloatTy, {1, NumVectors, NumElements},
-                             "X", Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
-  auto *Y = G.createVariable(ElemKind::FloatTy, {1, NumVectors}, "Y",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  auto *X = mod.createVariable(ElemKind::FloatTy, {1, NumVectors, NumElements},
+                               "X", Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
+  auto *Y = mod.createVariable(ElemKind::FloatTy, {1, NumVectors}, "Y",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
 
   // Extract a slice for each input.
   std::vector<Node *> XSliced;
@@ -674,11 +684,12 @@ TEST(Network, trainLSTM) { testRNNCell(buildLSTM); };
 TEST(Optimizer, copyPropagation) {
   ExecutionEngine EE;
 
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   G.setName("CopyPropagation");
 
-  Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  Node *S = G.createVariable(ElemKind::IndexTy, {4, 1}, "select");
+  Node *K = mod.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+  Node *S = mod.createVariable(ElemKind::IndexTy, {4, 1}, "select");
 
   K = G.createConv("Conv1", K, 16, 3, 2, 3);
   K = G.createRELU("Relu", K);
@@ -699,15 +710,16 @@ TEST(Interpreter, learnSqrt2) {
 
   EE.getConfig().learningRate = 0.03;
 
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   G.setName("Square root of 2");
 
-  auto *A = G.createVariable(ElemKind::FloatTy, {1}, "A",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::Broadcast, 1);
-  auto *Ex = G.createVariable(ElemKind::FloatTy, {1}, "Ex",
-                              Variable::VisibilityKind::Public,
-                              Variable::TrainKind::Broadcast, 2);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {1}, "A",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::Broadcast, 1);
+  auto *Ex = mod.createVariable(ElemKind::FloatTy, {1}, "Ex",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::Broadcast, 2);
 
   Node *O = G.createArithmetic("Mult", A, A, ArithmeticNode::Mode::Mul);
   O = G.createRegression("reg", O, Ex);
@@ -733,7 +745,8 @@ TEST(LinearRegression, trainSimpleLinearRegression) {
   EE.getConfig().learningRate = 0.1;
   EE.getConfig().batchSize = numSamples;
 
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   G.setName("Gradient descent solution for simple linear regression");
 
   // These m and b are only used to generate training data.
@@ -750,10 +763,10 @@ TEST(LinearRegression, trainSimpleLinearRegression) {
   }
 
   // Create a variable with 1 input, which is a real number.
-  auto *inputX = G.createVariable(ElemKind::FloatTy, {numSamples, 1}, "input",
-                                  Variable::VisibilityKind::Public,
-                                  Variable::TrainKind::None);
-  auto *expectedY = G.createVariable(
+  auto *inputX = mod.createVariable(ElemKind::FloatTy, {numSamples, 1}, "input",
+                                    Variable::VisibilityKind::Public,
+                                    Variable::TrainKind::None);
+  auto *expectedY = mod.createVariable(
       ElemKind::FloatTy, {numSamples, 1}, "expected",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
 
@@ -807,18 +820,20 @@ TEST(LinearClassifier, classifyPlayerSport) {
   ExecutionEngine EE;
   EE.getConfig().learningRate = 0.05;
 
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   G.setName("classifyPlayers");
 
   const unsigned numTrainPlayers = 200;
   const size_t numFeatures = 2;
   const size_t numClasses = 2;
 
-  auto *A = G.createVariable(ElemKind::FloatTy, {numTrainPlayers, numFeatures},
-                             "A", Variable::VisibilityKind::Public);
-  auto *S = G.createVariable(ElemKind::IndexTy, {numTrainPlayers, 1}, "S",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  auto *A =
+      mod.createVariable(ElemKind::FloatTy, {numTrainPlayers, numFeatures}, "A",
+                         Variable::VisibilityKind::Public);
+  auto *S = mod.createVariable(ElemKind::IndexTy, {numTrainPlayers, 1}, "S",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
 
   auto *FC = G.createFullyConnected("fc", A, numClasses);
   auto *SM = G.createSoftMax("softmax", FC, S);
@@ -867,7 +882,8 @@ TEST(Interpreter, learnSinus) {
   EE.getConfig().learningRate = 0.2;
   EE.getConfig().batchSize = numSamples;
 
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   G.setName("Gradient descent solution for sin(x)");
 
   // Function that should be learned by the NN
@@ -888,11 +904,11 @@ TEST(Interpreter, learnSinus) {
     tensorY.getHandle<>().at({i, 0}) = y;
   }
 
-  auto *inputX = G.createVariable(ElemKind::FloatTy, {numSamples, 1}, "input",
-                                  Variable::VisibilityKind::Public,
-                                  Variable::TrainKind::None);
+  auto *inputX = mod.createVariable(ElemKind::FloatTy, {numSamples, 1}, "input",
+                                    Variable::VisibilityKind::Public,
+                                    Variable::TrainKind::None);
 
-  auto *expectedY = G.createVariable(
+  auto *expectedY = mod.createVariable(
       ElemKind::FloatTy, {numSamples, 1}, "expected",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
 

@@ -22,8 +22,8 @@ TEST(Graph, simpleTest) {
     Module MD;
     Graph &G = *MD.createFunction("F");
     IRFunction M(&G);
-    Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-    Node *S = G.createVariable(ElemKind::IndexTy, {4, 1}, "select");
+    Node *K = MD.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+    Node *S = MD.createVariable(ElemKind::IndexTy, {4, 1}, "select");
 
     K = G.createConv("Conv1", K, 16, 3, 2, 3);
     K = G.createRELU("Relu", K);
@@ -44,8 +44,8 @@ TEST(Graph, simpleTest) {
     Graph &G = *MD.createFunction("F");
     IRFunction M(&G);
 
-    auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
-    auto *Ex = G.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
+    auto *A = MD.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
+    auto *Ex = MD.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
 
     Node *O = G.createFullyConnected("FC1", A, 6);
     O = G.createRELU("RELU1", O);
@@ -69,8 +69,8 @@ TEST(Graph, QuantizationProfileNodes) {
   Graph &G = *MD.createFunction("F");
   IRFunction M(&G);
 
-  auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
-  auto *Ex = G.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
+  auto *A = MD.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
+  auto *Ex = MD.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
 
   // Create two nodes reading from the same variable.
   // Only one Quantization Profile node should be created for the output
@@ -96,7 +96,8 @@ TEST(Graph, QuantizationProfileNodes) {
 
 TEST(Graph, simpleQuant) {
   ExecutionEngine EE;
-  auto &G = *EE.getModule().createFunction("main");
+  auto &MD = EE.getModule();
+  auto &G = *MD.createFunction("main");
 
   unsigned depth = 16;
   unsigned kernel = 5;
@@ -104,15 +105,15 @@ TEST(Graph, simpleQuant) {
   unsigned step = 1;
   unsigned width = 224;
 
-  auto *input = G.createVariable(ElemKind::Int8QTy, {1, width, width, 3}, 0.4,
-                                 2, "Input", Variable::VisibilityKind::Public);
+  auto *input = MD.createVariable(ElemKind::Int8QTy, {1, width, width, 3}, 0.4,
+                                  2, "Input", Variable::VisibilityKind::Public);
 
   // Calculate the size and allocate the output buffer.
   std::array<size_t, 4> filterDim = {{depth, kernel, kernel, 3}};
-  auto *filter = G.createVariable(ElemKind::Int8QTy, filterDim, 3.3, 4, "F",
-                                  Variable::VisibilityKind::Private);
-  auto *bias = G.createVariable(ElemKind::Int8QTy, {depth}, 1.3, 5, "B",
-                                Variable::VisibilityKind::Private);
+  auto *filter = MD.createVariable(ElemKind::Int8QTy, filterDim, 3.3, 4, "F",
+                                   Variable::VisibilityKind::Private);
+  auto *bias = MD.createVariable(ElemKind::Int8QTy, {depth}, 1.3, 5, "B",
+                                 Variable::VisibilityKind::Private);
 
   // Calculate the size and allocate the output buffer.
   auto outSz = calculateConvOutputDims(width, width, kernel, step, pad);
@@ -123,8 +124,8 @@ TEST(Graph, simpleQuant) {
       G.createConv("conv", input, filter, bias, t, depth, kernel, step, pad);
 
   auto s = conv->getType()->size();
-  auto *fcFilter = G.createVariable(ElemKind::Int8QTy, {s, 6}, 0.4, 2, "F");
-  auto *fcBias = G.createVariable(ElemKind::Int8QTy, {6}, 0.4, 2, "B");
+  auto *fcFilter = MD.createVariable(ElemKind::Int8QTy, {s, 6}, 0.4, 2, "F");
+  auto *fcBias = MD.createVariable(ElemKind::Int8QTy, {6}, 0.4, 2, "B");
   Node *O = G.createFullyConnected("fc1", conv, fcFilter, fcBias);
   G.createSave("ret", O);
   EE.compile(CompilationMode::Infer, &G);
@@ -132,9 +133,10 @@ TEST(Graph, simpleQuant) {
 
 TEST(Graph, quantizeDequantizeNodes) {
   ExecutionEngine EE;
-  auto &G = *EE.getModule().createFunction("main");
+  auto &MD = EE.getModule();
+  auto &G = *MD.createFunction("main");
 
-  auto *input = G.createVariable(ElemKind::FloatTy, {1, 3}, "Input");
+  auto *input = MD.createVariable(ElemKind::FloatTy, {1, 3}, "Input");
   auto qType = G.getParent().uniqueType(ElemKind::Int8QTy, {1, 3}, 0.3, 5);
 
   auto *Q = G.createQuantize("quantize", input, qType);
@@ -151,8 +153,8 @@ TEST(Graph, cloneTest) {
   Module M;
 
   Graph &G = *M.createFunction("main");
-  Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  Node *S = G.createVariable(ElemKind::IndexTy, {4, 1}, "select");
+  Node *K = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+  Node *S = M.createVariable(ElemKind::IndexTy, {4, 1}, "select");
   Node *conv = G.createConv("Conv1", K, 16, 3, 2, 3);
   Node *relu = G.createRELU("Relu", conv);
   Node *SM = G.createSoftMax("SoftMax", relu, S);
@@ -169,10 +171,10 @@ TEST(Graph, cloneTest) {
 
 TEST(Graph, moduleTest) {
   Module M;
-  auto *F1 = M.createFunction("one");
-  auto *F2 = M.createFunction("two");
-  F1->createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V1");
-  F2->createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V2");
+  M.createFunction("one");
+  M.createFunction("two");
+  M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V1");
+  M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V2");
   EXPECT_TRUE(M.hasFunction("one"));
   EXPECT_TRUE(M.hasFunction("two"));
   EXPECT_FALSE(M.hasFunction("four"));
