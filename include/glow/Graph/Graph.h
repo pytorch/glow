@@ -79,6 +79,10 @@ public:
   Function *getFunction(llvm::StringRef name);
   /// \returns a new function with the name \p name.
   Function *createFunction(llvm::StringRef name);
+  /// \returns the list of Functions that the Module owns.
+  FunctionList &getFunctions() { return functions_; }
+
+  const FunctionList &getFunctions() const { return functions_; }
 
   /// Erase the variable \p N from the graph.
   void eraseVariable(Variable *N);
