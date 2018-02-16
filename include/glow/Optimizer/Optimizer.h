@@ -3,7 +3,7 @@
 
 namespace glow {
 
-class Module;
+class IRFunction;
 class Graph;
 
 enum class CompilationMode {
@@ -16,7 +16,7 @@ enum class CompilationMode {
 };
 
 /// Perform optimizations on the IR representation.
-void optimize(Module &M, CompilationMode mode);
+void optimize(IRFunction &M, CompilationMode mode);
 /// Perform optimizations on the graph representation.
 void optimize(Graph &G, CompilationMode mode);
 

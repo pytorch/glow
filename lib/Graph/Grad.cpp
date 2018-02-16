@@ -51,7 +51,7 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
   // A list of vars to add to the graph.
   std::vector<Variable *> newVars;
 
-  // Generate the gradient nodes for each one of the nodes in the module.
+  // Generate the gradient nodes for each one of the nodes in the function.
 
   PostOrderVisitor pov;
   for (auto &N : G.getVars()) {

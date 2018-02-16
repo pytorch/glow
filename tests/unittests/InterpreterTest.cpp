@@ -50,7 +50,7 @@ TEST(Interpreter, interpret) {
 
   /// Add a debug_action instruction to check that it can be
   /// processed by the interpreter.
-  auto &M = EE.getModule();
+  auto &M = EE.getIR();
   IRBuilder builder(&M);
   builder.createDebugPrintInst("print1", *M.getWeights().begin());
 
@@ -686,7 +686,7 @@ TEST(Optimizer, copyPropagation) {
   EE.compile(CompilationMode::Infer);
 
   // Check that all copy instructions are eliminated.
-  auto &instrs = EE.getModule().getInstrs();
+  auto &instrs = EE.getIR().getInstrs();
   EXPECT_TRUE(std::none_of(
       instrs.begin(), instrs.end(),
       [](const Instruction *I) -> bool { return isa<CopyInst>(I); }));

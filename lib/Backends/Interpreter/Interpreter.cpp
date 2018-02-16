@@ -15,7 +15,7 @@ using llvm::isa;
 Interpreter::~Interpreter() { clear(); }
 
 void Interpreter::clear() {
-  // Delete the tensors that are owned by this module.
+  // Delete the tensors that are owned by this backend.
   for (auto p : tensors_) {
     delete p.second;
   }
@@ -25,13 +25,13 @@ void Interpreter::clear() {
 }
 
 void Interpreter::init() {
-  for (auto &v : M_->getGraph()->getVars()) {
-    auto *w = M_->getWeightForNode(v);
+  for (auto &v : F_->getGraph()->getVars()) {
+    auto *w = F_->getWeightForNode(v);
     assert(!externalTensors_.count(w) && "The tensor is already registered");
     externalTensors_[w] = &v->getPayload();
   }
 
-  for (auto *W : M_->getWeights()) {
+  for (auto *W : F_->getWeights()) {
     getOrCreateTensor(W);
   }
 }
@@ -100,7 +100,7 @@ void Interpreter::doForwardPass(bool isTrain) {
     break;                                                                     \
   }
   // Dispatch the interpreter on each instruction in the program:
-  for (auto *I : M_->getInstrs()) {
+  for (auto *I : F_->getInstrs()) {
     switch (I->getKind()) {
 #include "AutoGenInstr.def"
 

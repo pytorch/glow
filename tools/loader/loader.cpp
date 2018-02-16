@@ -206,7 +206,6 @@ int main(int argc, char **argv) {
 
   ExecutionEngine EE(ExecutionBackend);
   auto &G = EE.getGraph();
-  auto &M = EE.getModule();
   SaveNode *SM;
   Variable *i0;
   Variable *i1;
@@ -243,10 +242,10 @@ int main(int argc, char **argv) {
     G.dumpDAG(DumpGraphDAGFile.c_str());
   }
   if (DumpIR) {
-    M.dump();
+    EE.getIR().dump();
   }
   if (!DumpIRDAGFile.empty()) {
-    M.dumpDAG(DumpIRDAGFile.c_str());
+    EE.getIR().dumpDAG(DumpIRDAGFile.c_str());
   }
 
   llvm::Timer timer("Infer", "Infer");

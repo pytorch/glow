@@ -19,7 +19,7 @@ using llvm::isa;
 // This defines the string "SHADER_CODE".
 #include "kernels.cl"
 
-Backend *glow::createOCLBackend(Module *M) { return new OCLBackend(M); }
+Backend *glow::createOCLBackend(IRFunction *F) { return new OCLBackend(F); }
 
 using Kind = Kinded::Kind;
 using kernelSrcEnum = struct {
@@ -45,7 +45,7 @@ static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 #endif
 }
 
-OCLBackend::OCLBackend(Module *M) : M_(M), allocator_(0xFFFFFFFF) {
+OCLBackend::OCLBackend(IRFunction *F) : F_(F), allocator_(0xFFFFFFFF) {
   cl_int err =
       clGetDeviceIDs(nullptr, CL_DEVICE_TYPE_DEFAULT, 1, &deviceId_, nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
@@ -147,7 +147,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
   copyWeightsToDevice();
   std::vector<cl_kernel> kernels;
 
-  for (auto &I : M_->getInstrs()) {
+  for (auto &I : F_->getInstrs()) {
     // The kernels are named after the name of the instruction, plus the "W"
     // suffix to prevent name colissions for functions like 'tanh' that are also
     // a part of the OpenCL runtime.
@@ -548,8 +548,8 @@ void OCLBackend::copyWeightsFromDevice() {
 }
 
 void OCLBackend::init() {
-  for (auto &v : M_->getGraph()->getVars()) {
-    auto *w = M_->getWeightForNode(v);
+  for (auto &v : F_->getGraph()->getVars()) {
+    auto *w = F_->getWeightForNode(v);
     assert(!externalTensors_.count(w) && "The tensor is already registered");
     externalTensors_[w] = &v->getPayload();
   }
@@ -564,7 +564,7 @@ void OCLBackend::init() {
   }
 
   // Assign device-space addresses to the activations.
-  for (auto &I : M_->getInstrs()) {
+  for (auto &I : F_->getInstrs()) {
     if (auto *A = llvm::dyn_cast<AllocActivationInst>(I)) {
       auto numBytes = I->getType()->getSizeInBytes();
       size_t addr = allocator_.allocate(numBytes);

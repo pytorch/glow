@@ -112,9 +112,9 @@ void Instruction::verify() const {
 #include "AutoGenInstr.def"
 }
 
-void Value::verify(const Module &M) const {}
+void Value::verify(const IRFunction &M) const {}
 
-void Value::verifyUseList(const Module &M) const {
+void Value::verifyUseList(const IRFunction &M) const {
   auto users = getUsers();
   auto instrs = M.getInstrs();
   for (const auto &use : users) {
@@ -125,7 +125,7 @@ void Value::verifyUseList(const Module &M) const {
   }
 }
 
-void Module::destroyInstruction(Instruction *I) {
+void IRFunction::destroyInstruction(Instruction *I) {
   switch (I->getKind()) {
   default:
     llvm_unreachable("Unknown value kind");
@@ -140,10 +140,10 @@ void Module::destroyInstruction(Instruction *I) {
   }
 }
 
-InstrIterator Module::eraseInstruction(InstrIterator it) {
+InstrIterator IRFunction::eraseInstruction(InstrIterator it) {
   auto *I = *it;
   assert(std::find(instrs_.begin(), instrs_.end(), I) != instrs_.end() &&
-         "Cannot erase an instruction not belonging to a module");
+         "Cannot erase an instruction not belonging to a function");
   destroyInstruction(I);
   auto result = instrs_.erase(it);
   assert(std::find(instrs_.begin(), instrs_.end(), I) == instrs_.end() &&
@@ -151,72 +151,72 @@ InstrIterator Module::eraseInstruction(InstrIterator it) {
   return result;
 }
 
-void Module::eraseInstruction(glow::Instruction *I) {
-  // find the instruction inside the module.
+void IRFunction::eraseInstruction(glow::Instruction *I) {
+  // find the instruction inside the function.
   auto it = std::find(instrs_.begin(), instrs_.end(), I);
   assert(it != instrs_.end() &&
-         "Cannot erase an instruction not belonging to a module");
+         "Cannot erase an instruction not belonging to a function");
   eraseInstruction(it);
 }
 
-InstrIterator Module::removeInstruction(InstrIterator it) {
+InstrIterator IRFunction::removeInstruction(InstrIterator it) {
   auto *I = *it;
   (void)I;
   assert(std::find(instrs_.begin(), instrs_.end(), I) != instrs_.end() &&
-         "Cannot remove an instruction not belonging to a module");
+         "Cannot remove an instruction not belonging to a function");
   auto result = instrs_.erase(it);
   assert(std::find(instrs_.begin(), instrs_.end(), I) == instrs_.end() &&
          "Instruction should be removed");
   return result;
 }
 
-void Module::removeInstruction(glow::Instruction *I) {
-  // find the instruction inside the module.
+void IRFunction::removeInstruction(glow::Instruction *I) {
+  // find the instruction inside the function.
   auto it = std::find(instrs_.begin(), instrs_.end(), I);
   assert(it != instrs_.end() &&
-         "Cannot remove an instruction not belonging to a module");
+         "Cannot remove an instruction not belonging to a function");
   removeInstruction(it);
 }
 
-void Module::insertInstruction(glow::Instruction *I) {
+void IRFunction::insertInstruction(glow::Instruction *I) {
   instrs_.push_back(I);
   I->setParent(this);
 }
 
-InstrIterator Module::insertInstruction(InstrIterator where,
-                                        glow::Instruction *I) {
+InstrIterator IRFunction::insertInstruction(InstrIterator where,
+                                            glow::Instruction *I) {
   I->setParent(this);
   return instrs_.insert(where, I);
 }
 
-InstrIterator Module::moveInstruction(InstrIterator where,
-                                      glow::Instruction *I) {
+InstrIterator IRFunction::moveInstruction(InstrIterator where,
+                                          glow::Instruction *I) {
   I->getParent()->removeInstruction(I);
   return insertInstruction(where, I);
 }
 
-InstrIterator Module::moveInstruction(const Instruction *where,
-                                      glow::Instruction *I) {
+InstrIterator IRFunction::moveInstruction(const Instruction *where,
+                                          glow::Instruction *I) {
   I->getParent()->removeInstruction(I);
   return insertInstruction(getInstrIterator(where), I);
 }
 
-InstrIterator Module::getInstrIterator(const Instruction *I) {
+InstrIterator IRFunction::getInstrIterator(const Instruction *I) {
   auto it = std::find(instrs_.begin(), instrs_.end(), I);
   assert(it != instrs_.end() && "Instruction should be present");
   return it;
 }
 
-Module::InstListTy::const_iterator
-Module::getInstrIterator(const Instruction *I) const {
+IRFunction::InstListTy::const_iterator
+IRFunction::getInstrIterator(const Instruction *I) const {
   auto it = std::find(instrs_.begin(), instrs_.end(), I);
   assert(it != instrs_.end() && "Instruction should be present");
   return it;
 }
 
-Module::~Module() { clear(); }
+IRFunction::~IRFunction() { clear(); }
 
-void Module::clear() {
+void IRFunction::clear() {
   // Remove the mapping between the graph nodes and the IR that we are deleting.
   variableMap_.clear();
 
@@ -278,7 +278,7 @@ static void LLVM_ATTRIBUTE_UNUSED verifyOperandsAccess(Instruction *I) {
 /// Verify that liveness constraints are satisfied.
 /// There should be no uses of an allocation after
 /// it was deallocated or before it is allocated.
-static void verifyLiveness(const Module &M) {
+static void verifyLiveness(const IRFunction &M) {
   // The live set stores allocations that are known to be live.
   std::unordered_map<Value *, bool> liveBuffers;
   for (auto *I : M.getInstrs()) {
@@ -317,7 +317,7 @@ static void verifyLiveness(const Module &M) {
   }
 }
 
-void Module::verify() const {
+void IRFunction::verify() const {
   assert(!instrs_.empty() && "Instruction list is empty!");
   for (auto it : instrs_) {
     it->verifyUseList();
@@ -336,7 +336,7 @@ void Module::verify() const {
   }
 }
 
-Value *Module::getWeightForNode(const Node *V) const {
+Value *IRFunction::getWeightForNode(const Node *V) const {
   auto it = variableMap_.find(V);
   if (it == variableMap_.end()) {
     return nullptr;
@@ -349,7 +349,7 @@ Value *Module::getWeightForNode(const Node *V) const {
 //                    Instruction numbering
 //===----------------------------------------------------------------------===//
 
-InstructionNumbering::InstructionNumbering(Module &M) : M_(M) {
+InstructionNumbering::InstructionNumbering(IRFunction &M) {
   auto &instrs = M.getInstrs();
   size_t instIdx = 0;
   for (auto it = instrs.begin(), e = instrs.end(); it != e; ++instIdx, ++it) {
@@ -497,14 +497,14 @@ static void nameInstr(std::unordered_set<std::string> &usedNames, Named *named,
   named->setName(tempName);
 }
 
-Module::Module(Graph *G) : G_(G), name_(G->getName()) {}
+IRFunction::IRFunction(Graph *G) : G_(G), name_(G->getName()) {}
 
 static bool hasResultValue(Instruction *I) {
   return I->getKind() == Instruction::Kind::AllocActivationInstKind ||
          I->getKind() == Instruction::Kind::TensorViewInstKind;
 }
 
-void Module::nameInstructions() {
+void IRFunction::nameInstructions() {
   std::unordered_set<std::string> usedNames;
   for (auto &v : weights_) {
     nameInstr(usedNames, v, v->getKindName());
@@ -514,13 +514,13 @@ void Module::nameInstructions() {
   }
 }
 
-void Module::dump() {
+void IRFunction::dump() {
   nameInstructions();
   InstructionNumbering InstrNumbering(*this);
   // Print all of the variables:
   std::string s;
   llvm::raw_string_ostream sb{s};
-  sb << "module " << G_->getName().str() << "\n";
+  sb << "function " << G_->getName().str() << "\n";
 
   size_t sizeInBytes = 0;
   sb << "declare {\n";
@@ -539,7 +539,7 @@ void Module::dump() {
   sb << "\n  ; size = " << sizeInBytes << " bytes\n";
 
   sb << "}\n\n";
-  sb << "program {\n";
+  sb << "code {\n";
 
   // Print all of the instructions:
   for (auto it : instrs_) {
@@ -617,15 +617,15 @@ static const char *getDottyArrowForCC(OperandKind k) {
   llvm_unreachable("Invalid operand kind.");
 }
 
-void Module::dumpDAG() {
+void IRFunction::dumpDAG() {
   std::string buffer;
   llvm::raw_string_ostream stream(buffer);
   stream << "dotty_ir_dump_" << this << ".dot";
   dumpDAG(stream.str().c_str());
 }
 
-/// Dump a dotty graph that depicts the module.
-void Module::dumpDAG(const char *dotFilename) {
+/// Dump a dotty graph that depicts the function.
+void IRFunction::dumpDAG(const char *dotFilename) {
   std::string filename = dotFilename;
   llvm::outs() << "Writing dotty graph to: " << filename << '\n';
 

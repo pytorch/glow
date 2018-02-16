@@ -88,7 +88,7 @@ public:
     MAX_SLOT = 4,
   };
 
-  LiveIntervalsInstructionNumbering(Module &M) {
+  LiveIntervalsInstructionNumbering(IRFunction &M) {
     auto &instrs = M.getInstrs();
     size_t instIdx = 0;
     for (auto it = instrs.begin(), e = instrs.end(); it != e;
@@ -165,7 +165,7 @@ using LiveIntervalsMap = std::unordered_map<Value *, Intervals>;
 using Instructions = std::unordered_set<Instruction *>;
 
 /// Hoists Dealloc instructions right after their last use.
-static void hoistDealloc(Module &M) {
+static void hoistDealloc(IRFunction &M) {
   // Maps activation instructions to their last non-dealloc user.
   std::unordered_map<Value *, InstrIterator> lastUser;
   auto &instrs = M.getInstrs();
@@ -216,7 +216,7 @@ static void hoistDealloc(Module &M) {
 }
 
 /// Sink Alloc instructions right before their first use.
-static void sinkAllocas(Module &M) {
+static void sinkAllocas(IRFunction &M) {
   /// A list of allocas to reschedule.
   std::unordered_set<AllocActivationInst *> allocs;
   auto &instrs = M.getInstrs();
@@ -257,7 +257,7 @@ static void sinkAllocas(Module &M) {
 }
 
 /// Delete alloc instructions that have no readers or writers.
-static void deleteDeadAllocs(Module &M) {
+static void deleteDeadAllocs(IRFunction &M) {
   auto &instrs = M.getInstrs();
 
   llvm::SmallVector<Instruction *, 16> erasedInstructions{};
@@ -364,7 +364,7 @@ static Instruction *getSingleWriter(const Value *V) {
 }
 
 /// Marks non-mutable weights as constants.
-void makeWeightsConst(Module &M) {
+void makeWeightsConst(IRFunction &M) {
   // For each weight:
   for (auto *W : M.getWeights()) {
     bool readOnly = true;
@@ -389,7 +389,7 @@ void makeWeightsConst(Module &M) {
 
 #ifndef NDEBUG
 /// Dump a live intervals map.
-static void LLVM_ATTRIBUTE_UNUSED dump(Module &M,
+static void LLVM_ATTRIBUTE_UNUSED dump(IRFunction &M,
                                        LiveIntervalsMap &intervalsMap) {
   llvm::outs() << "\nDumping live intervals map:\n";
   for (const auto &I : intervalsMap) {
@@ -410,7 +410,7 @@ static void LLVM_ATTRIBUTE_UNUSED dump(Module &M,
 /// of the current value, which is assigned at the beginning of the current
 /// interval. If there are multiple writes to the same mutable memory
 /// location, then each such assignment would result in a new interval.
-static void calculateLiveIntervals(Module &M, LiveIntervalsMap &liveness) {
+static void calculateLiveIntervals(IRFunction &M, LiveIntervalsMap &liveness) {
   assert(liveness.empty() &&
          "This function should be called with empty liveness map");
   auto &instrs = M.getInstrs();
@@ -575,7 +575,7 @@ static void moveInterval(Intervals &from, Intervals &to, Interval &interval) {
 
 /// Replace all uses of \p val by \p with inside interval \p liveInterval.
 static void replaceAllUsesInsideIntervalWith(
-    Value *val, Value *with, Interval &liveInterval, Module &M,
+    Value *val, Value *with, Interval &liveInterval, IRFunction &M,
     LiveIntervalsInstructionNumbering &instrNumbering) {
   auto &instrs = M.getInstrs();
   auto valOrigin = getOrigin(val);
@@ -638,7 +638,7 @@ static void replaceAllUsesInsideIntervalWith(
 /// Erase all instructions from the \p ErasedInstructions set.
 /// If \p forceErase is true, no additional checks are performed.
 /// Otherwise, copies into weight variables cannot be erased.
-static void eraseInstructions(Module &M, Instructions &erasedInstructions) {
+static void eraseInstructions(IRFunction &M, Instructions &erasedInstructions) {
   for (auto it : erasedInstructions) {
     DEBUG(llvm::dbgs() << "Deleting instruction :"; it->dump(llvm::dbgs());
           llvm::dbgs() << "\n");
@@ -654,7 +654,7 @@ static bool isObservable(Value *V) { return isa<WeightVar>(getOrigin(V)); }
 /// \p oldInterval.
 static void
 reuseBufferInsideInterval(Value *oldBuffer, Value *newBuffer,
-                          Interval oldInterval, Module &M,
+                          Interval oldInterval, IRFunction &M,
                           LiveIntervalsInstructionNumbering &instrNumbering,
                           Intervals &oldIntervals, Intervals &newIntervals) {
   DEBUG(llvm::dbgs() << "\n\nReuse buffers: use buffer of "
@@ -672,8 +672,8 @@ reuseBufferInsideInterval(Value *oldBuffer, Value *newBuffer,
 /// A helper class for performing a sharing of buffers used by a given
 /// instruction.
 class BufferSharingOptimizer {
-  /// Current module.
-  Module &M_;
+  /// Current function.
+  IRFunction &M_;
   /// The instruction numbering to be used.
   LiveIntervalsInstructionNumbering &instrNumbering_;
   /// Current instruction.
@@ -797,7 +797,7 @@ class BufferSharingOptimizer {
 
 public:
   /// Initialize the state of the shared buffers optimizer.
-  BufferSharingOptimizer(Module &M, LiveIntervalsMap &intervalsMap,
+  BufferSharingOptimizer(IRFunction &M, LiveIntervalsMap &intervalsMap,
                          LiveIntervalsInstructionNumbering &instrNumbering,
                          Instruction *instr, size_t instrIdx, Value *dest,
                          Value *src)
@@ -873,7 +873,7 @@ static void
 tryToShareBuffersForInstr(LiveIntervalsMap &intervalsMap,
                           LiveIntervalsInstructionNumbering &instrNumbering,
                           Instruction *I, unsigned instIdx) {
-  Module &M = *I->getParent();
+  IRFunction &M = *I->getParent();
   // Consider all pair of operands. Check if their respective buffers can be
   // reused in principle.
   for (unsigned first = 0, e = I->getNumOperands(); first < e; first++) {
@@ -921,7 +921,7 @@ tryToShareBuffersForInstr(LiveIntervalsMap &intervalsMap,
 /// do not need to be observable. Typically, two live intervals are considred as
 /// candidates for sharing if they occur in the same instruction, but it is not
 /// strictly necessary.
-static void shareBuffers(Module &M) {
+static void shareBuffers(IRFunction &M) {
   Instructions erasedInstructions;
   // Build a list of live intervals for each memory location
   // which is either a WeightVar or a an Allocation.
@@ -959,7 +959,7 @@ static void shareBuffers(Module &M) {
 ///   - Remember this last seen write, reset the last seen read.
 /// A single pass is enough because currently there is just a single basic
 /// basic block.
-static void eliminateDeadStores(Module &M) {
+static void eliminateDeadStores(IRFunction &M) {
   auto &instrs = M.getInstrs();
   // Instructions to be erased.
   Instructions erasedInstructions;
@@ -1037,7 +1037,7 @@ static void eliminateDeadStores(Module &M) {
 /// Add dumping of inputs before each instruction and
 /// dumping of outputs after each instruction.
 /// For each input/output tensor its name and its value are dumped.
-static void performDebugInstrumentation(Module &M) {
+static void performDebugInstrumentation(IRFunction &M) {
   if (!instrumentDebug)
     return;
 
@@ -1076,7 +1076,7 @@ static void performDebugInstrumentation(Module &M) {
 }
 
 /// Perform peephole optimizations.
-void performPeepholeOptimizations(Module &M) {
+void performPeepholeOptimizations(IRFunction &M) {
   auto &instrs = M.getInstrs();
   IRBuilder B(&M);
   for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
@@ -1173,7 +1173,7 @@ void performPeepholeOptimizations(Module &M) {
 }
 
 /// Perform optimizations on the IR representation.
-void glow::optimize(Module &M, CompilationMode mode) {
+void glow::optimize(IRFunction &M, CompilationMode mode) {
   M.verify();
   if (!optimizeIR)
     return;

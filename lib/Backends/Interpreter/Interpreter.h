@@ -11,7 +11,7 @@
 namespace glow {
 
 class Context;
-class Module;
+class IRFunction;
 class Value;
 class Tensor;
 class Variable;
@@ -25,7 +25,7 @@ class Variable;
 /// execute the instructions one at a time.
 class Interpreter final : public Backend {
   /// The Module that holds the IR. This does not own the module.
-  Module *M_;
+  IRFunction *F_;
   /// Maps values to Tensors, that are owned by this class.
   std::unordered_map<const Value *, Tensor *> tensors_;
 
@@ -34,7 +34,7 @@ class Interpreter final : public Backend {
 
 public:
   /// Ctor.
-  explicit Interpreter(Module *M) : M_(M) {}
+  explicit Interpreter(IRFunction *F) : F_(F) {}
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
@@ -92,7 +92,7 @@ private:
 };
 
 /// Create a new instance of the Interpreter backend.
-inline Backend *createInterpreter(Module *M) { return new Interpreter(M); }
+inline Backend *createInterpreter(IRFunction *M) { return new Interpreter(M); }
 
 } // namespace glow
 

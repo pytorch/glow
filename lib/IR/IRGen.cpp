@@ -37,9 +37,9 @@ struct IRGenVisitor : NodeWalker {
   /// that do not exist at the graph level. Not all variables are representible.
   NodeToInstrTy nodeToInstr_;
 
-  /// The module that we are building.
-  Module *M_;
-  /// The builder that adds instructions into the module.
+  /// The function that we are building.
+  IRFunction *F_;
+  /// The builder that adds instructions into the function.
   IRBuilder builder_;
 
 public:
@@ -48,12 +48,12 @@ public:
     return !visited_.count(N);
   }
 
-  explicit IRGenVisitor(Module *M) : M_(M), builder_(M_) {}
+  explicit IRGenVisitor(IRFunction *M) : F_(M), builder_(F_) {}
 
   /// \returns the generated instruction for the node \p N.
   Value *valueForNode(NodeValue N) {
     if (auto *V = dyn_cast<Variable>(N)) {
-      auto &map = M_->getVariableMap();
+      auto &map = F_->getVariableMap();
       return map[V];
     }
     auto it = generatedNodeDest_.find(N);
@@ -64,7 +64,7 @@ public:
   /// Saves the generated IR in \p v for the node \p N.
   void registerIR(NodeValue N, Value *v) {
     if (auto *V = dyn_cast<Variable>(N)) {
-      auto &map = M_->getVariableMap();
+      auto &map = F_->getVariableMap();
       map[V] = v;
       return;
     }
@@ -627,7 +627,7 @@ public:
 
 } // namespace
 
-void Module::generateIR(CompilationMode mode) {
+void IRFunction::generateIR(CompilationMode mode) {
   G_->advanceState(Graph::State::IRGenerated);
   G_->verify();
   // Schedule the nodes.

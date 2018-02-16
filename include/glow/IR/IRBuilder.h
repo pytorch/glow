@@ -10,22 +10,22 @@
 
 namespace glow {
 
-/// The IRBuilder create the IR in the module.
+/// The IRBuilder constructs the IR in the function.
 class IRBuilder {
   using MutabilityKind = WeightVar::MutabilityKind;
 
-  /// The module that we are building.
-  Module *M_;
+  /// The function that we are building.
+  IRFunction *F_;
 
 public:
-  explicit IRBuilder(Module *M) : M_(M) {}
+  explicit IRBuilder(IRFunction *F) : F_(F) {}
 
   ~IRBuilder();
 
-  /// \returns Module of the current builder.
-  Module &getModule() {
-    assert(M_);
-    return *M_;
+  /// \returns the function of the current builder.
+  IRFunction &getIRFunction() {
+    assert(F_);
+    return *F_;
   }
 
   /// @name High-level, operation-level IRBuilder.
