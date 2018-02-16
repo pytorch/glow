@@ -15,9 +15,27 @@ namespace glow {
 
 using TypesList = std::list<Type>;
 using NodesList = std::list<Node *>;
+using FunctionList = std::list<Graph *>;
 using VariablesList = std::list<Variable *>;
 using VariableGradientsList = std::list<std::pair<Variable *, Variable *>>;
 using UnsignedArrayRef = llvm::ArrayRef<size_t>;
+
+class Module final {
+  /// Stores the functions in the module.
+  FunctionList functions_;
+
+public:
+  Module() = default;
+
+  ~Module();
+
+  /// \returns True if a function by the name \p name exists in the module.
+  bool hasFunction(llvm::StringRef name);
+  /// \returns the function with the name \p name, or nullptr if the function does not exist.
+  Graph *getFunction(llvm::StringRef name);
+  /// \returns a new function with the name \p name.
+  Graph *createFunction(llvm::StringRef name);
+};
 
 /// Represents the compute graph.
 class Graph final : public Named {

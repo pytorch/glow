@@ -18,6 +18,33 @@ using namespace glow;
 using llvm::dyn_cast;
 using llvm::isa;
 
+
+bool Module::hasFunction(llvm::StringRef name) {
+  return getFunction(name);
+}
+
+Graph *Module::getFunction(llvm::StringRef name) {
+  for (auto *F : functions_) {
+    if (F->getName() == name) {
+      return F;
+    }
+  }
+  return nullptr;
+}
+
+Graph *Module::createFunction(llvm::StringRef name) {
+  assert(!hasFunction(name) && "A function with this name already exists");
+  Graph *F = new Graph(name);
+  functions_.push_back(F);
+  return F;
+}
+
+Module::~Module() {
+  for (auto *F : functions_) {
+    delete F;
+  }
+}
+
 Graph::~Graph() {
   // Delete all of the nodes and the variables.
   for (auto it = nodes_.begin(), e = nodes_.end(); it != e;) {
