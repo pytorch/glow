@@ -161,3 +161,15 @@ TEST(Graph, cloneTest) {
   EXPECT_TRUE(newRelu != relu && relu->isEqual(*newRelu));
   EXPECT_TRUE(newSM != SM && SM->isEqual(*newSM));
 }
+
+TEST(Graph, moduleTest) {
+  Module M;
+  auto *F1 = M.createFunction("one");
+  auto *F2 = M.createFunction("two");
+  F1->createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V1");
+  F2->createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V2");
+  EXPECT_TRUE(M.hasFunction("one"));
+  EXPECT_TRUE(M.hasFunction("two"));
+  EXPECT_FALSE(M.hasFunction("four"));
+}
+
