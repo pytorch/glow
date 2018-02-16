@@ -93,7 +93,7 @@ public:
 
   void doForwardPass(bool isTrain) override;
 
-  bool transform(Graph &G) override;
+  bool transform(Function &G) override;
   /// @}
 };
 

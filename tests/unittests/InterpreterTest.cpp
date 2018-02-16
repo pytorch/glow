@@ -574,25 +574,27 @@ TEST(Network, sliceVectors) {
   }
 }
 
-void buildGRU(Graph &G, const std::vector<Node *> &slicesX, unsigned hiddenSize,
-              unsigned outputSize, std::vector<Node *> &outputs) {
+void buildGRU(Function &G, const std::vector<Node *> &slicesX,
+              unsigned hiddenSize, unsigned outputSize,
+              std::vector<Node *> &outputs) {
   return G.createGRU("GRU", slicesX, 1, hiddenSize, outputSize, outputs);
 };
 
-void buildRNN(Graph &G, const std::vector<Node *> &slicesX, unsigned hiddenSize,
-              unsigned outputSize, std::vector<Node *> &outputs) {
+void buildRNN(Function &G, const std::vector<Node *> &slicesX,
+              unsigned hiddenSize, unsigned outputSize,
+              std::vector<Node *> &outputs) {
   return G.createSimpleRNN("SimpleRNN", slicesX, 1, hiddenSize, outputSize,
                            outputs);
 };
 
-void buildLSTM(Graph &G, const std::vector<Node *> &slicesX,
+void buildLSTM(Function &G, const std::vector<Node *> &slicesX,
                unsigned hiddenSize, unsigned outputSize,
                std::vector<Node *> &outputs) {
   return G.createLSTM("LSTM", slicesX, 1, hiddenSize, outputSize, outputs);
 };
 
-using TCellGenerator = void (*)(Graph &, const std::vector<Node *> &, unsigned,
-                                unsigned, std::vector<Node *> &);
+using TCellGenerator = void (*)(Function &, const std::vector<Node *> &,
+                                unsigned, unsigned, std::vector<Node *> &);
 
 void testRNNCell(TCellGenerator cell) {
   ExecutionEngine EE;

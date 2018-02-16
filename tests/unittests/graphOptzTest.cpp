@@ -19,7 +19,7 @@ using namespace glow;
 
 TEST(GraphOptz, DCE) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
   IRFunction M(&G);
   Node *K = mod.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
 
@@ -43,7 +43,7 @@ TEST(GraphOptz, DCE) {
 
 TEST(GraphOptz, liveCodeNotEliminated) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *K = mod.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
@@ -69,7 +69,7 @@ TEST(GraphOptz, liveCodeNotEliminated) {
 
 TEST(GraphOptz, optimizeBatchNormAfterConv) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A = mod.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
@@ -87,7 +87,7 @@ TEST(GraphOptz, optimizeBatchNormAfterConv) {
 
 TEST(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A = mod.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
@@ -105,7 +105,7 @@ TEST(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
 
 TEST(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A = mod.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
@@ -125,7 +125,7 @@ TEST(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
 
 TEST(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
@@ -149,7 +149,7 @@ TEST(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
 
 TEST(GraphOptz, sinkTransposeBelowRELU) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
@@ -173,7 +173,7 @@ TEST(GraphOptz, sinkTransposeBelowRELU) {
 
 TEST(GraphOptz, sinkTransposeBelowSigmoid) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
@@ -197,7 +197,7 @@ TEST(GraphOptz, sinkTransposeBelowSigmoid) {
 
 TEST(GraphOptz, sinkTransposeBelowTanh) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
@@ -221,7 +221,7 @@ TEST(GraphOptz, sinkTransposeBelowTanh) {
 
 TEST(GraphOptz, cancelTwoTransposes) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
@@ -241,7 +241,7 @@ TEST(GraphOptz, cancelTwoTransposes) {
 
 TEST(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
@@ -261,7 +261,7 @@ TEST(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
 
 TEST(GraphOptz, sinkTransposeBelowArithmeticNodes) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A1 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
@@ -289,7 +289,7 @@ TEST(GraphOptz, sinkTransposeBelowArithmeticNodes) {
 
 TEST(GraphOptz, sinkReluBelowConcatNodes) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A1 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
@@ -316,7 +316,7 @@ TEST(GraphOptz, sinkReluBelowConcatNodes) {
 
 TEST(GraphOptz, sinkTransposeBelowConcatNodes) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A1 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
@@ -344,7 +344,7 @@ TEST(GraphOptz, sinkTransposeBelowConcatNodes) {
 
 TEST(GraphOptz, poolBelowReluSwapped) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
@@ -367,7 +367,7 @@ TEST(GraphOptz, poolBelowReluSwapped) {
 
 TEST(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
@@ -390,7 +390,7 @@ TEST(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
 
 TEST(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
@@ -414,7 +414,7 @@ TEST(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
 
 TEST(GraphOptz, mergeConcatNodes) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A1 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
@@ -477,7 +477,7 @@ TEST(GraphOptz, mergeConcatNodes) {
 
 TEST(GraphOptz, CSE) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Node *A1 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
@@ -518,7 +518,7 @@ TEST(GraphOptz, CSE) {
 
 TEST(GraphOptz, SliceOfSplatNode) {
   Module mod;
-  Graph &G = *mod.createFunction("foo");
+  Function &G = *mod.createFunction("foo");
 
   IRFunction M(&G);
   Type t(ElemKind::FloatTy, {1000, 1000, 1000});
@@ -543,7 +543,7 @@ TEST(GraphOptz, SliceOfSplatNode) {
 TEST(GraphOptz, SliceOfSplatNodeChain) {
   for (int shouldReverse = 0; shouldReverse <= 1; shouldReverse++) {
     Module mod;
-    Graph &G = *mod.createFunction("foo");
+    Function &G = *mod.createFunction("foo");
 
     IRFunction M(&G);
     Type t(ElemKind::FloatTy, {1000, 1000, 1000});

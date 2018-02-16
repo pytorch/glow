@@ -32,7 +32,7 @@ float gradDiff(float G1, float G2) {
   return std::abs(G1 - G2) / std::abs(G1 + G2 + 1);
 }
 
-Variable *getGrad(Graph &G, Variable *V) {
+Variable *getGrad(Function &G, Variable *V) {
   return G.getParent().getGradientVariable(V);
 }
 

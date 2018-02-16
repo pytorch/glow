@@ -78,7 +78,7 @@ static TensorQuantizationParams chooseQuantizationParams(float min, float max) {
 }
 
 std::vector<NodeQuantizationInfo>
-generateNodeQuantizationInfos(const Graph &G) {
+generateNodeQuantizationInfos(const Function &G) {
   std::vector<NodeQuantizationInfo> quantizationInfos;
 
   for (auto *node : G.getNodes()) {
@@ -229,7 +229,7 @@ static bool shouldQuantize(const Node *node) {
 /// Quantize all inputs for \p node and return back pointers to the newly
 /// created qunatization nodes.
 static llvm::SmallVector<Node *, 6>
-quantizeInputs(Graph &G, Node *node,
+quantizeInputs(Function &G, Node *node,
                const std::unordered_map<std::string, TensorQuantizationParams>
                    &nodeToTQP) {
   llvm::SmallVector<Node *, 6> quantizedInputs;
@@ -254,7 +254,7 @@ quantizeInputs(Graph &G, Node *node,
 }
 
 void generateQuantizedGraph(
-    Graph &G, llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos) {
+    Function &G, llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos) {
   // Build a mapping between node name and TensorQuantizatonParams.
   std::unordered_map<std::string, TensorQuantizationParams> nodeToTQP;
   for (const auto &quantizationInfo : quantizationInfos) {

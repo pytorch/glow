@@ -12,7 +12,7 @@
 
 namespace glow {
 
-class Graph;
+class Function;
 class Node;
 class Interpreter;
 class Variable;
@@ -55,7 +55,7 @@ public:
   Module &getModule() { return *M_; }
 
   /// Optimize the graph, generate IR, and optimize the IR.
-  void compile(CompilationMode mode, Graph *F);
+  void compile(CompilationMode mode, Function *F);
 
   /// Provides access to the training configuration.
   TrainingConfig &getConfig() { return config_; }

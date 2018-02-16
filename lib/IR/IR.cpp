@@ -499,7 +499,7 @@ static void nameInstr(std::unordered_set<std::string> &usedNames, Named *named,
   named->setName(tempName);
 }
 
-IRFunction::IRFunction(Graph *G) : G_(G) {}
+IRFunction::IRFunction(Function *G) : G_(G) {}
 
 static bool hasResultValue(Instruction *I) {
   return I->getKind() == Instruction::Kind::AllocActivationInstKind ||

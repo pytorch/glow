@@ -24,7 +24,7 @@ class Value;
 /// Loads caffe2 models.
 class caffe2ModelLoader {
   /// The graph that we are constructing.
-  Graph &G_;
+  Function &G_;
   /// Saves network nodes by name.
   std::unordered_map<std::string, Node *> nodeByName_;
   /// A list of weight tensors indexed by name.
@@ -69,7 +69,7 @@ public:
   caffe2ModelLoader(const std::string &netDescFilename,
                     const std::string &netWeightFilename,
                     llvm::ArrayRef<const char *> names,
-                    llvm::ArrayRef<Tensor *> tensors, Graph &G);
+                    llvm::ArrayRef<Tensor *> tensors, Function &G);
 
   ~caffe2ModelLoader();
 

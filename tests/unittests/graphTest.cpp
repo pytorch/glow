@@ -20,7 +20,7 @@ using namespace glow;
 TEST(Graph, simpleTest) {
   {
     Module MD;
-    Graph &G = *MD.createFunction("F");
+    Function &G = *MD.createFunction("F");
     IRFunction M(&G);
     Node *K = MD.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
     Node *S = MD.createVariable(ElemKind::IndexTy, {4, 1}, "select");
@@ -41,7 +41,7 @@ TEST(Graph, simpleTest) {
   {
     unsigned numInputs = 10;
     Module MD;
-    Graph &G = *MD.createFunction("F");
+    Function &G = *MD.createFunction("F");
     IRFunction M(&G);
 
     auto *A = MD.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
@@ -66,7 +66,7 @@ TEST(Graph, simpleTest) {
 TEST(Graph, QuantizationProfileNodes) {
   unsigned numInputs = 10;
   Module MD;
-  Graph &G = *MD.createFunction("F");
+  Function &G = *MD.createFunction("F");
   IRFunction M(&G);
 
   auto *A = MD.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
@@ -152,7 +152,7 @@ TEST(Graph, quantizeDequantizeNodes) {
 TEST(Graph, cloneTest) {
   Module M;
 
-  Graph &G = *M.createFunction("main");
+  Function &G = *M.createFunction("main");
   Node *K = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
   Node *S = M.createVariable(ElemKind::IndexTy, {4, 1}, "select");
   Node *conv = G.createConv("Conv1", K, 16, 3, 2, 3);

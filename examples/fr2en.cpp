@@ -48,8 +48,9 @@ void loadMatrixFromFile(llvm::StringRef filename, Tensor &result) {
   }
 }
 
-Node *createPyTorchGRUCell(Graph *G, Node *input, Node *hidden, Variable *w_ih,
-                           Variable *b_ih, Variable *w_hh, Variable *b_hh) {
+Node *createPyTorchGRUCell(Function *G, Node *input, Node *hidden,
+                           Variable *w_ih, Variable *b_ih, Variable *w_hh,
+                           Variable *b_hh) {
   // reference implementation:
   // https://github.com/pytorch/pytorch/blob/dd5c195646b941d3e20a72847ac48c41e272b8b2/torch/nn/_functions/rnn.py#L46
   Node *gi = G->createFullyConnected("pytorch.GRU.gi", input, w_ih, b_ih);

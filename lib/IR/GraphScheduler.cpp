@@ -27,12 +27,12 @@ using llvm::isa;
 class Scheduler {
 protected:
   /// Graph being processed.
-  const Graph &G_;
+  const Function &G_;
   /// Scheduled nodes.
   NodesList &scheduled_;
 
 public:
-  Scheduler(const Graph &G, NodesList &scheduled)
+  Scheduler(const Function &G, NodesList &scheduled)
       : G_(G), scheduled_(scheduled) {}
   // Create a linear execution schedule for a graph.
   virtual void schedule() = 0;
@@ -162,7 +162,7 @@ class ChildMemSizeBasedScheduler : public Scheduler {
   }
 
 public:
-  ChildMemSizeBasedScheduler(const Graph &G, NodesList &Schedule)
+  ChildMemSizeBasedScheduler(const Function &G, NodesList &Schedule)
       : Scheduler(G, Schedule) {}
 
   void schedule() override {

@@ -17,7 +17,7 @@
 namespace glow {
 class Instruction;
 class IRFunction;
-class Graph;
+class Function;
 class Value;
 
 enum class OperandKind : unsigned char {
@@ -189,7 +189,7 @@ public:
 
 private:
   /// A pointer to the graph structure. The function does not own the graph.
-  Graph *G_{};
+  Function *G_{};
 
   /// A list of weights. Weights are shared between all execution context.
   std::list<WeightVar *> weights_{};
@@ -212,7 +212,7 @@ public:
   /// Add an instruction to the instr stream.
   void pushInstr(Instruction *I) { instrs_.push_back(I); }
 
-  explicit IRFunction(Graph *G = nullptr);
+  explicit IRFunction(Function *G = nullptr);
 
   ~IRFunction();
 
@@ -225,10 +225,10 @@ public:
   void clear();
 
   /// \returns a reference to the high-level graph.
-  Graph *getGraph() { return G_; }
+  Function *getGraph() { return G_; }
 
   /// \returns a reference to the high-level graph.
-  void setGraph(Graph *F) { G_ = F; }
+  void setGraph(Function *F) { G_ = F; }
 
   /// Verify the correctness of the function.
   void verify() const;
