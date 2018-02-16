@@ -18,10 +18,7 @@ using namespace glow;
 using llvm::dyn_cast;
 using llvm::isa;
 
-
-bool Module::hasFunction(llvm::StringRef name) {
-  return getFunction(name);
-}
+bool Module::hasFunction(llvm::StringRef name) { return getFunction(name); }
 
 Graph *Module::getFunction(llvm::StringRef name) {
   for (auto *F : functions_) {
@@ -48,6 +45,28 @@ Module::~Module() {
     auto cur = it++;
     eraseVariable(*cur);
   }
+}
+
+void Module::verify() const {
+  for (auto *F : functions_) {
+    F->verify();
+  }
+}
+
+void Module::dump() const {
+  llvm::outs() << "Module structure:\n";
+  for (auto v : getVars()) {
+    llvm::outs() << v->getDebugDesc() << "\n";
+  }
+
+  for (auto f : functions_) {
+    llvm::outs() << "Function:" << f->getName() << "\n";
+  }
+}
+
+void Module::dumpDAG() {
+  // TODO: Implement graph dumping.
+  llvm_unreachable("unimplemented");
 }
 
 Graph::~Graph() {
@@ -1017,10 +1036,6 @@ void Graph::createLSTM(llvm::StringRef namePrefix,
 
 void Graph::dump() const {
   llvm::outs() << "Graph structure " << getName() << ":\n";
-  for (auto v : getParent().getVars()) {
-    llvm::outs() << v->getDebugDesc() << "\n";
-  }
-
   for (auto n : nodes_) {
     llvm::outs() << n->getDebugDesc() << "\n";
   }

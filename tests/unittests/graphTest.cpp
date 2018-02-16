@@ -179,4 +179,3 @@ TEST(Graph, moduleTest) {
   EXPECT_TRUE(M.hasFunction("two"));
   EXPECT_FALSE(M.hasFunction("four"));
 }
-
