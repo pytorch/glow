@@ -138,10 +138,6 @@ public:
 
 /// Represents the compute graph.
 class Function final : public Named {
-  /// A uniqued list of types. Types in this list can be equated
-  /// by comparing their addresses.
-  TypesList types_{};
-
   /// A list of nodes that the graph owns.
   NodesList nodes_;
 
