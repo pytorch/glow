@@ -14,10 +14,11 @@ void inferConvNet(glow::Tensor *inputs, glow::Tensor *kernel,
                   glow::Tensor *bias, glow::Tensor *out,
                   glow::BackendKind kind);
 
-void trainConvNet(glow::Tensor *inputs, glow::Tensor *kernel,
-                  glow::Tensor *bias, glow::Tensor *selected,
-                  llvm::ArrayRef<size_t> shape, glow::Tensor *out,
-                  glow::BackendKind kind);
+void trainConvNet(glow::Tensor *inputs, glow::Tensor *kernel1,
+                  glow::Tensor *bias1, glow::Tensor *kernel2,
+                  glow::Tensor *bias2, glow::Tensor *selected,
+                  llvm::ArrayRef<size_t> shape1, llvm::ArrayRef<size_t> shape2,
+                  glow::Tensor *out, glow::BackendKind kind);
 
 void inferMaxNet(glow::Tensor *inputs1, glow::Tensor *inputs2,
                  glow::Tensor *out, glow::BackendKind kind);
