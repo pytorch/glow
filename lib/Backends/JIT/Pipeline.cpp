@@ -44,11 +44,21 @@ void JITBackend::optimizeLLVMModule(llvm::Function *F,
                                     llvm::TargetMachine &TM) {
   auto *M = F->getParent();
 
-  // Make all of the functions except for 'main' internal and optimizable.
-  auto preserveMain = [=](const llvm::GlobalValue &GV) {
-    return GV.getName() == "main";
+  // Make all of the definitions from libjit and unnamed symbols internal and
+  // optimizable. Everything else should be preserved as is.
+  auto preserveSymbols = [=](const llvm::GlobalValue &GV) {
+    auto name = GV.getName();
+    // Do not internalize declarations.
+    if (GV.isDeclaration())
+      return true;
+    // Do not preserve any internal symbols, which typically have no name or
+    // start with jit_
+    if (name.empty() || name.startswith("libjit_"))
+      return false;
+    return true;
   };
-  llvm::internalizeModule(*M, preserveMain);
+
+  llvm::internalizeModule(*M, preserveSymbols);
 
   // Perform specialization of functions for constant arguments before anything
   // else.
