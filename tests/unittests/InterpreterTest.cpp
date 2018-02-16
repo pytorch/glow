@@ -296,8 +296,6 @@ TEST(Interpreter, learnXor) {
   for (size_t i = 0; i < numInputs; i++) {
     int a = TS.at({i, 0});
     int b = TS.at({i, 1});
-    llvm::outs() << "a = " << a << " b = " << b << " => " << resH.at({i, 0})
-                 << "\n";
     EXPECT_NEAR(resH.at({i, 0}), (a ^ b), 0.1);
   }
 }
