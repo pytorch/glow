@@ -628,7 +628,6 @@ public:
 } // namespace
 
 void IRFunction::generateIR(CompilationMode mode) {
-  G_->advanceState(Graph::State::IRGenerated);
   G_->verify();
   // Schedule the nodes.
   NodesList ScheduledNodes;

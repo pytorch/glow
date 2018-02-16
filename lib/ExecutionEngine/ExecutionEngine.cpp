@@ -28,8 +28,6 @@ void ExecutionEngine::reset() {
   if (IR_)
     IR_->clear();
   IP_.reset(createBackend(backendKind_, &*IR_));
-  if (G_)
-    G_->resetState();
 }
 
 ExecutionEngine::~ExecutionEngine() = default;
