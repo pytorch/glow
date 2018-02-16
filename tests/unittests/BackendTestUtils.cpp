@@ -43,14 +43,15 @@ void inferBatchedReduceAddNet(Tensor *inputs, Tensor *out, BackendKind kind) {
 void inferConvNet(Tensor *inputs, Tensor *kernel, Tensor *bias, Tensor *out,
                   BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
-  auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
-                               "input", Variable::VisibilityKind::Public);
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
+  auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
+                                 "input", Variable::VisibilityKind::Public);
   auto *conv = G.createConv("conv", var, 8, 5, 3, 4);
   cast<Variable>(conv->getFilter())->copyFrom(kernel);
   cast<Variable>(conv->getBias())->copyFrom(bias);
   auto result = G.createSave("ret", conv);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
@@ -63,13 +64,15 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   EE.getConfig().learningRate = 0.03;
   EE.getConfig().momentum = 0.3;
   EE.getConfig().L2Decay = 0.01;
-  auto &G = EE.getGraph();
-  auto *var1 = G.createVariable(inputs->getElementType(), inputs->dims(),
-                                "input", Variable::VisibilityKind::Public,
-                                Variable::TrainKind::None);
-  auto *var2 = G.createVariable(selected->getElementType(), selected->dims(),
-                                "selected", Variable::VisibilityKind::Public,
-                                Variable::TrainKind::None);
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
+
+  auto *var1 = mod.createVariable(inputs->getElementType(), inputs->dims(),
+                                  "input", Variable::VisibilityKind::Public,
+                                  Variable::TrainKind::None);
+  auto *var2 = mod.createVariable(selected->getElementType(), selected->dims(),
+                                  "selected", Variable::VisibilityKind::Public,
+                                  Variable::TrainKind::None);
   auto *conv1 = G.createConv("conv1", var1, 3, 3, 2, 1);
   cast<Variable>(conv1->getFilter())->copyFrom(kernel1);
   cast<Variable>(conv1->getBias())->copyFrom(bias1);
@@ -80,9 +83,9 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   auto *reshape2 = G.createReshape("reshape2", conv2, shape2);
   auto *softmax = G.createSoftMax("softmax", reshape2, var2);
   auto result = G.createSave("ret", softmax);
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
   EE.runBatch(8, {var1, var2}, {inputs, selected});
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var1, var2}, {inputs, selected});
   out->copyFrom(&result->getVariable()->getPayload());
 }
