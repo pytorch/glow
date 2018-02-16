@@ -1,6 +1,7 @@
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 #include <sys/types.h>
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
@@ -268,32 +269,11 @@ void convolution_grad_f(float *inG, const float *outG, const float *inW,
                         const size_t *filterGdims, const size_t kernel,
                         const size_t stride, const size_t pad) {
   // NHWC format is assumed
-  // Clear inG
-  for (size_t n = 0; n < inWdims[0]; n++) {
-    for (size_t h = 0; h < inWdims[1]; h++) {
-      for (size_t w = 0; w < inWdims[2]; w++) {
-        for (size_t c = 0; c < inWdims[3]; c++) {
-          inG[getXYZW(inWdims, n, h, w, c)] = 0.0;
-        }
-      }
-    }
-  }
-
-  // Clear filterG
-  for (size_t d = 0; d < outGdims[3]; d++) {
-    for (size_t h = 0; h < kernel; h++) {
-      for (size_t w = 0; w < kernel; w++) {
-        for (size_t c = 0; c < inWdims[3]; c++) {
-          filterG[getXYZW(filterGdims, d, h, w, c)] = 0.0;
-        }
-      }
-    }
-  }
-
-  // Clear biasG
-  for (size_t d = 0; d < outGdims[3]; d++) {
-    biasG[d] = 0.0;
-  }
+  // Clear inG, filterG, and biasG
+  size_t p = sizeof(float) * inWdims[3];
+  memset(inG, 0, inWdims[0] * inWdims[1] * inWdims[2] * p);
+  memset(filterG, 0, outGdims[3] * kernel * kernel * p);
+  memset(biasG, 0, sizeof(float) * outGdims[3]);
 
   // For each input in the batch:
   for (size_t n = 0; n < outGdims[0]; n++) {
