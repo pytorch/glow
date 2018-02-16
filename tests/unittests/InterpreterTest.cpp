@@ -952,3 +952,64 @@ TEST(Interpreter, learnSinus) {
     EXPECT_NEAR(resH.at({i, 0}), F(x), epsilon);
   }
 }
+
+TEST(Interpreter, nonLinearClassifier) {
+  // Test non-linear classification on a set of 2d points.  Generate x and y in
+  // (-1, 1) and classify according to XOR of the sign bit.
+  unsigned batchSize = 11;
+  unsigned numSamples = 230;
+
+  ExecutionEngine EE;
+  EE.getConfig().momentum = 0.9;
+  EE.getConfig().learningRate = 0.01;
+
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
+  G.setName("nonLinearClassifier");
+
+  auto *A = mod.createVariable(ElemKind::FloatTy, {batchSize, 2}, "A",
+                               Variable::VisibilityKind::Public);
+  auto *S = mod.createVariable(ElemKind::IndexTy, {batchSize, 1}, "S",
+                             Variable::VisibilityKind::Public,
+                             Variable::TrainKind::None);
+
+  auto *FCL0 = G.createFullyConnected("fc1", A, 8);
+  auto *T0 = G.createTanh("tanh1", FCL0);
+  auto *FCL1 = G.createFullyConnected("fc2", T0, 2);
+  auto *T1 = G.createTanh("tanh2", FCL1);
+  auto *SM = G.createSoftMax("soft", T1, S);
+  auto *result = G.createSave("ret", SM);
+
+  Function *TF = glow::differentiate(&G, EE.getConfig());
+  EE.compile(CompilationMode::Train, TF);
+
+  Tensor samples(ElemKind::FloatTy, {numSamples, 2});
+  Tensor labels(ElemKind::IndexTy, {numSamples, 1});
+
+  for (size_t i = 0; i < numSamples; i++) {
+    float x = nextRand();
+    float y = nextRand();
+    size_t label = (x < 0.0) ^ (y < 0.0);
+    samples.getHandle<>().at({i, 0}) = x;
+    samples.getHandle<>().at({i, 1}) = y;
+    labels.getHandle<size_t>().at({i, 0}) = label;
+  }
+
+  EE.runBatch(4000, {A, S}, {&samples, &labels});
+
+  EE.compile(CompilationMode::Infer, &G);
+
+  std::vector<std::tuple<float, float, size_t>> tests;
+  tests.emplace_back(-0.8, -0.8, 0);
+  tests.emplace_back(0.8, -0.8, 1);
+  tests.emplace_back(-0.8, 0.8, 1);
+  tests.emplace_back(0.8, 0.8, 0);
+  for (size_t i = 0; i < tests.size(); i++) {
+    Tensor T(ElemKind::FloatTy, {batchSize, 2});
+    T.getHandle<>().at({0, 0}) = std::get<0>(tests[i]);
+    T.getHandle<>().at({0, 1}) = std::get<1>(tests[i]);
+    EE.run({A}, {&T});
+    auto RH = result->getVariable()->getPayload().getHandle<>();
+    EXPECT_NEAR(RH.at({0, std::get<2>(tests[i])}), 1.0, 0.2);
+  }
+}
