@@ -67,25 +67,31 @@ TEST(JITCorrectnessTest, convTest) {
 
 TEST(JITCorrectnessTest, convGradTest) {
   Tensor inputs(ElemKind::FloatTy, {9, 8, 9, 4});
-  Tensor kernel(ElemKind::FloatTy, {3, 3, 3, 4});
-  Tensor bias(ElemKind::FloatTy, {3});
+  Tensor kernel1(ElemKind::FloatTy, {3, 3, 3, 4});
+  Tensor bias1(ElemKind::FloatTy, {3});
+  Tensor kernel2(ElemKind::FloatTy, {2, 2, 2, 1});
+  Tensor bias2(ElemKind::FloatTy, {2});
   Tensor selected(ElemKind::IndexTy, {9, 1});
   inputs.getHandle().initXavier(1);
-  kernel.getHandle().randomize(-2.0, 2.0);
-  bias.getHandle().randomize(-1.0, 1.0);
+  kernel1.getHandle().randomize(-1.0, 1.4);
+  bias1.getHandle().randomize(-0.2, 0.5);
+  kernel2.getHandle().randomize(-1.8, 2.3);
+  bias2.getHandle().randomize(-0.5, 1.0);
   auto selectedH = selected.getHandle<size_t>();
   for (size_t i = 0; i < 9; i++) {
-    selectedH.raw(i) = nextRandInt(60);
+    selectedH.raw(i) = nextRandInt(30);
   }
-  std::array<size_t, 2> S{{9, 60}};
-  llvm::ArrayRef<size_t> shape(S);
-  Tensor out1(ElemKind::FloatTy, shape);
-  Tensor out2(ElemKind::FloatTy, shape);
+  std::array<size_t, 4> S1{{9, 6, 10, 1}};
+  llvm::ArrayRef<size_t> shape1(S1);
+  std::array<size_t, 2> S2{{9, 30}};
+  llvm::ArrayRef<size_t> shape2(S2);
+  Tensor out1(ElemKind::FloatTy, shape2);
+  Tensor out2(ElemKind::FloatTy, shape2);
 
-  trainConvNet(&inputs, &kernel, &bias, &selected, shape, &out1,
-               BackendKind::JIT);
-  trainConvNet(&inputs, &kernel, &bias, &selected, shape, &out2,
-               BackendKind::Interpreter);
+  trainConvNet(&inputs, &kernel1, &bias1, &kernel2, &bias2, &selected, shape1,
+               shape2, &out1, BackendKind::JIT);
+  trainConvNet(&inputs, &kernel1, &bias1, &kernel2, &bias2, &selected, shape1,
+               shape2, &out2, BackendKind::Interpreter);
   auto H1 = out1.getHandle();
   auto H2 = out2.getHandle();
 

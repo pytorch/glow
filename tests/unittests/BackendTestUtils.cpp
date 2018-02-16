@@ -53,9 +53,10 @@ void inferConvNet(Tensor *inputs, Tensor *kernel, Tensor *bias, Tensor *out,
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
-void trainConvNet(Tensor *inputs, Tensor *kernel, Tensor *bias,
-                  Tensor *selected, llvm::ArrayRef<size_t> shape, Tensor *out,
-                  BackendKind kind) {
+void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
+                  Tensor *kernel2, Tensor *bias2, Tensor *selected,
+                  llvm::ArrayRef<size_t> shape1, llvm::ArrayRef<size_t> shape2,
+                  Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   EE.getConfig().learningRate = 0.03;
   EE.getConfig().momentum = 0.3;
@@ -67,11 +68,15 @@ void trainConvNet(Tensor *inputs, Tensor *kernel, Tensor *bias,
   auto *var2 = G.createVariable(selected->getElementType(), selected->dims(),
                                 "selected", Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  auto *conv = G.createConv("conv", var1, 3, 3, 2, 1);
-  cast<Variable>(conv->getFilter())->copyFrom(kernel);
-  cast<Variable>(conv->getBias())->copyFrom(bias);
-  auto *reshape = G.createReshape("reshape", conv, shape);
-  auto *softmax = G.createSoftMax("softmax", reshape, var2);
+  auto *conv1 = G.createConv("conv1", var1, 3, 3, 2, 1);
+  cast<Variable>(conv1->getFilter())->copyFrom(kernel1);
+  cast<Variable>(conv1->getBias())->copyFrom(bias1);
+  auto *reshape1 = G.createReshape("reshape1", conv1, shape1);
+  auto *conv2 = G.createConv("conv2", reshape1, 2, 2, 2, 0);
+  cast<Variable>(conv2->getFilter())->copyFrom(kernel2);
+  cast<Variable>(conv2->getBias())->copyFrom(bias2);
+  auto *reshape2 = G.createReshape("reshape2", conv2, shape2);
+  auto *softmax = G.createSoftMax("softmax", reshape2, var2);
   auto result = G.createSave("ret", softmax);
   EE.compile(CompilationMode::Train);
   EE.runBatch(8, {var1, var2}, {inputs, selected});
