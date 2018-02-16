@@ -111,17 +111,21 @@ TEST(Quantization, quantizeGraph) {
 void createSimpleGraphForQuantization(Function &G, Variable *&input,
                                       SaveNode *&saveNode, Variable *W,
                                       Variable *B) {
-  auto *A = G.getParent().createVariable(ElemKind::FloatTy, {1, 2}, "A",
+  auto *A = G.getParent().createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "A",
                                          Variable::VisibilityKind::Public,
                                          Variable::TrainKind::None);
   input = A;
-  Node *O = G.createFullyConnected("fc", A, W, B);
+  auto *CV = G.createConv("conv", A, 16, 5, 1, 2);
+  auto *RL = G.createRELU("relu", CV);
+  auto *AP = G.createPool("pool", RL, PoolNode::Mode::Avg, 2, 2, 0);
+
+  Node *O = G.createFullyConnected("fc", AP, W, B);
   saveNode = G.createSave("save", O);
 }
 
 TEST(Quantization, end2end) {
-  Tensor inputs(ElemKind::FloatTy, {1, 2});
-  inputs.getHandle() = {1, 2};
+  Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
+  inputs.getHandle().randomize(0, 2.0);
 
   ExecutionEngine E1, E2;
   SaveNode *result1, *result2;
@@ -133,7 +137,7 @@ TEST(Quantization, end2end) {
   auto &G1 = *mod1.createFunction("collect_profile");
   auto &G2 = *mod2.createFunction("use_profile");
 
-  auto *W1 = mod1.createVariable(ElemKind::FloatTy, {2, 2}, "weights",
+  auto *W1 = mod1.createVariable(ElemKind::FloatTy, {4096, 2}, "weights",
                                  Variable::VisibilityKind::Private,
                                  Variable::TrainKind::Xavier, 1);
   auto *B1 = mod1.createVariable(ElemKind::FloatTy, {2}, "bias",
@@ -149,7 +153,7 @@ TEST(Quantization, end2end) {
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI = generateNodeQuantizationInfos(G1);
-  auto *W2 = mod2.createVariable(ElemKind::FloatTy, {2, 2}, "weights",
+  auto *W2 = mod2.createVariable(ElemKind::FloatTy, {4096, 2}, "weights",
                                  Variable::VisibilityKind::Private,
                                  Variable::TrainKind::Xavier, 1);
   auto *B2 = mod2.createVariable(ElemKind::FloatTy, {2}, "bias",
@@ -173,8 +177,8 @@ TEST(Quantization, end2end) {
     double diff = std::fabs(result2Handle.raw(i) - result1Handle.raw(i)) /
                   result1Handle.raw(i);
 
-    // Allow 5% difference.
-    EXPECT_NEAR(diff, 0, 0.05);
+    // Allow 3% difference.
+    EXPECT_NEAR(diff, 0, 0.03);
   }
 }
 
