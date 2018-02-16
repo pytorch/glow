@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addInput("Weights")
       .addInput("Bias")
-      .addResultFromCtorArg("Output")
+      .addResultFromCtorArg()
       .addGradient();
 
   //===--------------------------------------------------------------------===//

@@ -121,7 +121,7 @@ void lowerFullyConnectedNode(Graph &graph, FullyConnectedNode &FC) {
   if (W->getType()->isQuantizedType()) {
     // We use the scale and offset from the output of the FC for both the matrix
     // multiplication node and the batched-add node.
-    auto FCT = FC.getOutput()->getType();
+    auto FCT = FC.getResult()->getType();
     outTy = graph.getParent().uniqueType(elemTy, {1, xDim.first, wDim[1]},
                                          FCT->getScale(), FCT->getOffset());
   } else {
@@ -131,15 +131,15 @@ void lowerFullyConnectedNode(Graph &graph, FullyConnectedNode &FC) {
 
   auto *mulFlat = graph.createReshape("fc.cast2", mul, {xDim.first, wDim[1]});
   auto add = graph.createBatchedArithmetic(
-      "fc.add.bias", FC.getOutput()->getType(),
+      "fc.add.bias", FC.getResult()->getType(),
       BatchedArithmeticNode::Mode::Add, mulFlat, FC.getBias());
-  FC.getOutput().replaceAllUsesOfWith(add);
+  FC.getResult().replaceAllUsesOfWith(add);
 }
 
 void lowerFullyConnectedGradNode(Graph &graph, FullyConnectedGradNode &FCG) {
   // Follow the lowering from here:
   // https://github.com/huyouare/CS231n/blob/master/assignment2/cs231n/layers.py#L53
-  auto out = FCG.getGradOfOriginalOutputNamedOutput();
+  auto out = FCG.getGradOfOriginalOutputNamedResult();
   auto xDims = flattenCdr(FCG.getInput().dims());
   auto outDims = out.dims();
   auto fDims = FCG.getWeights().dims();

@@ -288,7 +288,7 @@ void generateQuantizedGraph(
       auto *FC = cast<FullyConnectedNode>(node);
       assert(quantizedInputs.size() == 3 && "Invalid number of inputs");
       auto QT = G.getParent().uniqueType(
-          ElemKind::Int8QTy, FC->getOutput()->dims(), TQP.scale_, TQP.offset_);
+          ElemKind::Int8QTy, FC->getResult()->dims(), TQP.scale_, TQP.offset_);
       quantizedNode =
           G.createFullyConnected(FC->getName(), quantizedInputs[0],
                                  quantizedInputs[1], quantizedInputs[2], QT);
