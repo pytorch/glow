@@ -5,6 +5,7 @@
 #include "glow/IR/IR.h"
 #include "glow/Support/Support.h"
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -15,6 +16,7 @@
 #include <unordered_set>
 
 using namespace glow;
+using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
@@ -1239,6 +1241,47 @@ void Function::eraseNode(Node *N) {
   auto I = std::find(nodes_.begin(), nodes_.end(), N);
   assert(I != nodes_.end() && "Could not find node to delete!");
   eraseNode(I);
+}
+
+/// Clone the current function into a new function with the name \p newName.
+/// \returns a new function that is a copy of the current function.
+Function *Function::clone(llvm::StringRef newName) {
+  Module &M = getParent();
+  auto *newF = M.createFunction(newName);
+
+  // Maps current nodes to new nodes.
+  llvm::DenseMap<Node *, Node *> currToNew;
+
+  // Clone all of the nodes in the function.
+  for (auto *N : getNodes()) {
+    Node *copy = N->clone();
+    // Record the copy relationship between the graphs.
+    currToNew[N] = copy;
+    newF->addNode(copy);
+  }
+
+  // At this point we have a new invalid function that points into nodes in the
+  // original function. Here we update the links between the nodes in the new
+  // function.
+  for (auto *N : newF->getNodes()) {
+    // Fix each one of the inputs of this node.
+    for (unsigned inp = 0, e = N->getNumInputs(); inp < e; inp++) {
+      NodeValue &input = N->getNthInput(inp);
+
+      auto it = currToNew.find(input.getNode());
+      if (it == currToNew.end()) {
+        assert(cast<Variable>(input.getNode()) &&
+               "Could not find a mapping for some node!");
+        continue;
+      }
+
+      // Update the node with the edge to the current graph.
+      input.setOperand(it->second, input.getResNo());
+    }
+  }
+
+  assert(newF->getNodes().size() == getNodes().size() && "Invalid func size");
+  return newF;
 }
 
 void Function::verify() const {
