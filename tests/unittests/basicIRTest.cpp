@@ -51,7 +51,7 @@ TEST(IR, uniqueTypes) {
 
 TEST(IR, basicUseList) {
   Module mod;
-  Graph &G = *mod.createFunction("main");
+  Function &G = *mod.createFunction("main");
   IRFunction M(&G);
   {
     IRBuilder builder(&M);
@@ -78,7 +78,7 @@ TEST(IR, allInstrs) {
   using MK = WeightVar::MutabilityKind;
 
   Module mod;
-  Graph &G = *mod.createFunction("main");
+  Function &G = *mod.createFunction("main");
   IRFunction M(&G);
   auto T1 = mod.uniqueType(ElemKind::FloatTy, {1, 24, 24, 3});
   auto T2 = mod.uniqueType(ElemKind::FloatTy, {64});
@@ -136,7 +136,7 @@ TEST(IR, allInstrs) {
 
 TEST(IR, casting) {
   Module mod;
-  Graph &G = *mod.createFunction("main");
+  Function &G = *mod.createFunction("main");
   IRFunction M(&G);
   {
     IRBuilder bb(&M);

@@ -21,7 +21,7 @@ static bool isZeroNode(NodeValue N) {
   return splat->getValue() == 0;
 }
 
-bool JITBackend::transform(Graph &G) {
+bool JITBackend::transform(Function &G) {
   bool changed = false;
   for (auto node : G.getNodes()) {
     if (auto *AN = dyn_cast<ArithmeticNode>(node)) {

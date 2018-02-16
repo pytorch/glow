@@ -20,7 +20,7 @@ using llvm::isa;
 
 bool Module::hasFunction(llvm::StringRef name) { return getFunction(name); }
 
-Graph *Module::getFunction(llvm::StringRef name) {
+Function *Module::getFunction(llvm::StringRef name) {
   for (auto *F : functions_) {
     if (F->getName() == name) {
       return F;
@@ -29,9 +29,9 @@ Graph *Module::getFunction(llvm::StringRef name) {
   return nullptr;
 }
 
-Graph *Module::createFunction(llvm::StringRef name) {
+Function *Module::createFunction(llvm::StringRef name) {
   assert(!hasFunction(name) && "A function with this name already exists");
-  Graph *F = new Graph(*this, name);
+  Function *F = new Function(*this, name);
   functions_.push_back(F);
   return F;
 }
@@ -69,7 +69,7 @@ void Module::dumpDAG() {
   llvm_unreachable("unimplemented");
 }
 
-Graph::~Graph() {
+Function::~Function() {
   // Delete all of the nodes and the variables.
   for (auto it = nodes_.begin(), e = nodes_.end(); it != e;) {
     auto cur = it++;
@@ -178,9 +178,9 @@ Variable *Module::getGradientVariable(Variable *V) {
   return nullptr;
 }
 
-ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
-                                   size_t depth, size_t kernel, size_t stride,
-                                   size_t pad) {
+ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
+                                      size_t depth, size_t kernel,
+                                      size_t stride, size_t pad) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
@@ -226,19 +226,20 @@ static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
   assert(bias->getType()->size() == depth && "Invalid bias size");
 }
 
-ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
-                                   NodeValue filter, NodeValue bias,
-                                   TypeRef outTy, size_t depth, size_t kernel,
-                                   size_t stride, size_t pad) {
+ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
+                                      NodeValue filter, NodeValue bias,
+                                      TypeRef outTy, size_t depth,
+                                      size_t kernel, size_t stride,
+                                      size_t pad) {
   assertConvDims(input, filter, bias, depth, kernel, stride, pad);
   auto OT = getParent().uniqueType(*outTy);
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernel,
                                      stride, pad, depth));
 }
 
-PoolNode *Graph::createPool(llvm::StringRef name, NodeValue input,
-                            PoolNode::Mode mode, size_t kernel, size_t stride,
-                            size_t pad) {
+PoolNode *Function::createPool(llvm::StringRef name, NodeValue input,
+                               PoolNode::Mode mode, size_t kernel,
+                               size_t stride, size_t pad) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
@@ -251,9 +252,9 @@ PoolNode *Graph::createPool(llvm::StringRef name, NodeValue input,
   return addNode(new PoolNode(name, OT, mode, input, kernel, stride, pad));
 }
 
-FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
-                                                NodeValue input, Variable *W,
-                                                Variable *B) {
+FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
+                                                   NodeValue input, Variable *W,
+                                                   Variable *B) {
   TypeRef T = input.getType();
   TypeRef OT = getParent().uniqueTypeWithNewShape(
       T, {input.dims()[0], B->getType()->dims()[0]});
@@ -261,18 +262,18 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
   return addNode(new FullyConnectedNode(name, OT, input, W, B));
 }
 
-FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
-                                                NodeValue input, Node *W,
-                                                Node *B, TypeRef outTy) {
+FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
+                                                   NodeValue input, Node *W,
+                                                   Node *B, TypeRef outTy) {
   assert(outTy->dims().size() == 2 && "Invalid number of dimensions");
   assert(outTy->dims()[0] == input.dims()[0] && "Invalid dimensions");
 
   return addNode(new FullyConnectedNode(name, outTy, input, W, B));
 }
 
-FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
-                                                NodeValue input,
-                                                size_t outDepth) {
+FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
+                                                   NodeValue input,
+                                                   size_t outDepth) {
   TypeRef T = input.getType();
   auto idim = flattenCdr(input.dims());
 
@@ -290,45 +291,46 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
   return addNode(new FullyConnectedNode(name, OT, input, W, B));
 }
 
-ReluNode *Graph::createRELU(llvm::StringRef name, NodeValue input) {
+ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input) {
   return addNode(new ReluNode(name, input));
 }
 
-SigmoidNode *Graph::createSigmoid(llvm::StringRef name, NodeValue input) {
+SigmoidNode *Function::createSigmoid(llvm::StringRef name, NodeValue input) {
   return addNode(new SigmoidNode(name, input));
 }
 
-TanhNode *Graph::createTanh(llvm::StringRef name, NodeValue input) {
+TanhNode *Function::createTanh(llvm::StringRef name, NodeValue input) {
   return addNode(new TanhNode(name, input));
 }
 
-SoftMaxNode *Graph::createSoftMax(llvm::StringRef name, NodeValue input,
-                                  NodeValue selected) {
+SoftMaxNode *Function::createSoftMax(llvm::StringRef name, NodeValue input,
+                                     NodeValue selected) {
   return addNode(new SoftMaxNode(name, input, selected));
 }
 
-CrossEntropyLossNode *Graph::createCrossEntropyLoss(llvm::StringRef name,
-                                                    NodeValue input,
-                                                    NodeValue labels) {
+CrossEntropyLossNode *Function::createCrossEntropyLoss(llvm::StringRef name,
+                                                       NodeValue input,
+                                                       NodeValue labels) {
   auto ty = getParent().uniqueTypeWithNewShape(input.getType(), {1});
   return addNode(new CrossEntropyLossNode(name, ty, input, labels));
 }
 
-RegressionNode *Graph::createRegression(llvm::StringRef name, NodeValue input,
-                                        NodeValue expected) {
+RegressionNode *Function::createRegression(llvm::StringRef name,
+                                           NodeValue input,
+                                           NodeValue expected) {
   return addNode(new RegressionNode(name, input, expected));
 }
 
-ReshapeNode *Graph::createReshape(llvm::StringRef name, NodeValue input,
-                                  llvm::ArrayRef<size_t> shape) {
+ReshapeNode *Function::createReshape(llvm::StringRef name, NodeValue input,
+                                     llvm::ArrayRef<size_t> shape) {
   auto TR = getParent().uniqueTypeWithNewShape(input.getType(), shape);
   assert(TR->size() == input.getType()->size() &&
          "Reshape to a different size");
   return addNode(new ReshapeNode(name, TR, input, shape.vec()));
 }
 
-TransposeNode *Graph::createTranspose(llvm::StringRef name, NodeValue input,
-                                      llvm::ArrayRef<unsigned> shuffle) {
+TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
+                                         llvm::ArrayRef<unsigned> shuffle) {
   llvm::SmallVector<size_t, 6> shape;
   auto dims = input.dims();
   for (size_t i = 0; i < dims.size(); i++) {
@@ -339,9 +341,9 @@ TransposeNode *Graph::createTranspose(llvm::StringRef name, NodeValue input,
   return addNode(new TransposeNode(name, NT, input, shuffle.vec()));
 }
 
-BroadcastNode *Graph::createBroadcast(llvm::StringRef name, NodeValue input,
-                                      llvm::ArrayRef<size_t> shape,
-                                      unsigned axis) {
+BroadcastNode *Function::createBroadcast(llvm::StringRef name, NodeValue input,
+                                         llvm::ArrayRef<size_t> shape,
+                                         unsigned axis) {
   auto TR = getParent().uniqueType(input.getType()->getElementType(), shape);
   return addNode(new BroadcastNode(name, TR, input, shape.vec(), axis));
 }
@@ -374,10 +376,10 @@ static bool sameSameShapeExceptDim(TypeRef T1, TypeRef T2, unsigned dim) {
   return true;
 }
 
-IntrinsicNode *Graph::createIntrinsicNode(llvm::StringRef name,
-                                          llvm::StringRef identifier,
-                                          llvm::ArrayRef<Node *> inputs,
-                                          llvm::ArrayRef<TypeRef> outputs) {
+IntrinsicNode *Function::createIntrinsicNode(llvm::StringRef name,
+                                             llvm::StringRef identifier,
+                                             llvm::ArrayRef<Node *> inputs,
+                                             llvm::ArrayRef<TypeRef> outputs) {
   std::vector<NodeValue> ops;
   ops.reserve(inputs.size());
   for (auto &I : inputs) {
@@ -386,9 +388,9 @@ IntrinsicNode *Graph::createIntrinsicNode(llvm::StringRef name,
   return addNode(new IntrinsicNode(name, outputs, ops, identifier));
 }
 
-ConcatNode *Graph::createConcat(llvm::StringRef name,
-                                llvm::ArrayRef<Node *> inputs,
-                                unsigned dimension) {
+ConcatNode *Function::createConcat(llvm::StringRef name,
+                                   llvm::ArrayRef<Node *> inputs,
+                                   unsigned dimension) {
   for (int i = 0, e = inputs.size(); i < e; i++) {
     assert(sameSameShapeExceptDim(inputs[i]->getType(), inputs[0]->getType(),
                                   dimension) &&
@@ -415,9 +417,9 @@ ConcatNode *Graph::createConcat(llvm::StringRef name,
   return addNode(new ConcatNode(name, NT, ops, dimension));
 }
 
-SliceNode *Graph::createSlice(llvm::StringRef name, NodeValue input,
-                              llvm::ArrayRef<size_t> begin,
-                              llvm::ArrayRef<size_t> end) {
+SliceNode *Function::createSlice(llvm::StringRef name, NodeValue input,
+                                 llvm::ArrayRef<size_t> begin,
+                                 llvm::ArrayRef<size_t> end) {
 
   std::vector<size_t> begin_v, shape;
   auto dims = input.dims();
@@ -442,11 +444,11 @@ SliceNode *Graph::createSlice(llvm::StringRef name, NodeValue input,
   return addNode(new SliceNode(name, NT, input, begin_v));
 }
 
-BatchNormalizationNode *Graph::createBatchNormalization(llvm::StringRef name,
-                                                        NodeValue input,
-                                                        size_t channelIdx,
-                                                        float epsilon,
-                                                        float momentum) {
+BatchNormalizationNode *Function::createBatchNormalization(llvm::StringRef name,
+                                                           NodeValue input,
+                                                           size_t channelIdx,
+                                                           float epsilon,
+                                                           float momentum) {
   // Figure out how many channels are in the tensor.
   size_t channels = input.dims()[channelIdx];
 
@@ -469,52 +471,51 @@ BatchNormalizationNode *Graph::createBatchNormalization(llvm::StringRef name,
                                   channelIdx, epsilon, momentum);
 }
 
-BatchNormalizationNode *
-Graph::createBatchNormalization(llvm::StringRef name, NodeValue input,
-                                NodeValue beta, NodeValue gamma, NodeValue mean,
-                                NodeValue var, size_t channelIdx, float epsilon,
-                                float momentum) {
+BatchNormalizationNode *Function::createBatchNormalization(
+    llvm::StringRef name, NodeValue input, NodeValue beta, NodeValue gamma,
+    NodeValue mean, NodeValue var, size_t channelIdx, float epsilon,
+    float momentum) {
   return addNode(new BatchNormalizationNode(name, input, gamma, beta, mean, var,
                                             channelIdx, epsilon, momentum));
 }
 
-LocalResponseNormalizationNode *
-Graph::createLocalResponseNormalization(llvm::StringRef name, NodeValue input,
-                                        size_t halfWindowSize, float alpha,
-                                        float beta, float k) {
+LocalResponseNormalizationNode *Function::createLocalResponseNormalization(
+    llvm::StringRef name, NodeValue input, size_t halfWindowSize, float alpha,
+    float beta, float k) {
   // The output tensor is of the same shape as the input tensor.
   return addNode(new LocalResponseNormalizationNode(name, input, halfWindowSize,
                                                     alpha, beta, k));
 }
 
-ArithmeticNode *Graph::createArithmetic(llvm::StringRef name, NodeValue LHS,
-                                        NodeValue RHS,
-                                        ArithmeticNode::Mode op) {
+ArithmeticNode *Function::createArithmetic(llvm::StringRef name, NodeValue LHS,
+                                           NodeValue RHS,
+                                           ArithmeticNode::Mode op) {
   assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
   // The output tensor is of the same shape as the input tensor.
   return addNode(new ArithmeticNode(name, op, LHS, RHS));
 }
 
-SelectNode *Graph::createSelect(llvm::StringRef name, NodeValue Cond,
-                                NodeValue LHS, NodeValue RHS) {
+SelectNode *Function::createSelect(llvm::StringRef name, NodeValue Cond,
+                                   NodeValue LHS, NodeValue RHS) {
   assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
   assert(Cond.dims() == RHS.dims() && "Invalid operand shapes");
   return addNode(new SelectNode(name, Cond, LHS, RHS));
 }
 
-SplatNode *Graph::createSplat(llvm::StringRef name, TypeRef ty, float value) {
+SplatNode *Function::createSplat(llvm::StringRef name, TypeRef ty,
+                                 float value) {
   return addNode(new SplatNode(name, ty, value));
 }
 
-BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,
-                                              TypeRef outTy, NodeValue lhs,
-                                              NodeValue rhs) {
+BatchedMatMulNode *Function::createBatchedMatMul(llvm::StringRef name,
+                                                 TypeRef outTy, NodeValue lhs,
+                                                 NodeValue rhs) {
   return addNode(
       new BatchedMatMulNode(name, getParent().uniqueType(*outTy), lhs, rhs));
 }
 
-BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,
-                                              NodeValue lhs, NodeValue rhs) {
+BatchedMatMulNode *Function::createBatchedMatMul(llvm::StringRef name,
+                                                 NodeValue lhs, NodeValue rhs) {
   auto LT = lhs.getType();
   auto RT = rhs.getType();
   auto LDims = LT->dims();
@@ -528,9 +529,9 @@ BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,
   return createBatchedMatMul(name, ty, lhs, rhs);
 }
 
-BatchedReduceNode *Graph::createBatchedReduce(llvm::StringRef name,
-                                              BatchedReduceNode::Mode mode,
-                                              NodeValue batch) {
+BatchedReduceNode *Function::createBatchedReduce(llvm::StringRef name,
+                                                 BatchedReduceNode::Mode mode,
+                                                 NodeValue batch) {
   auto BT = batch.getType();
   auto RT = Type(BT->getElementType(), BT->dims().drop_front());
   return addNode(
@@ -538,21 +539,21 @@ BatchedReduceNode *Graph::createBatchedReduce(llvm::StringRef name,
 }
 
 BatchedArithmeticNode *
-Graph::createBatchedArithmetic(llvm::StringRef name,
-                               BatchedArithmeticNode::Mode mode,
-                               NodeValue batch, NodeValue sample) {
+Function::createBatchedArithmetic(llvm::StringRef name,
+                                  BatchedArithmeticNode::Mode mode,
+                                  NodeValue batch, NodeValue sample) {
   return addNode(
       new BatchedArithmeticNode(name, batch.getType(), mode, batch, sample));
 }
 
 BatchedArithmeticNode *
-Graph::createBatchedArithmetic(llvm::StringRef name, TypeRef outTy,
-                               BatchedArithmeticNode::Mode mode,
-                               NodeValue batch, NodeValue sample) {
+Function::createBatchedArithmetic(llvm::StringRef name, TypeRef outTy,
+                                  BatchedArithmeticNode::Mode mode,
+                                  NodeValue batch, NodeValue sample) {
   return addNode(new BatchedArithmeticNode(name, outTy, mode, batch, sample));
 }
 
-SaveNode *Graph::createSave(llvm::StringRef name, NodeValue input) {
+SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest = getParent().createVariable(input.getType(), name,
                                           Variable::VisibilityKind::Private,
                                           Variable::TrainKind::None);
@@ -562,13 +563,13 @@ SaveNode *Graph::createSave(llvm::StringRef name, NodeValue input) {
   return addNode(new SaveNode(nodeName, input, dest));
 }
 
-SaveNode *Graph::createSave(llvm::StringRef name, NodeValue input,
-                            Variable *output) {
+SaveNode *Function::createSave(llvm::StringRef name, NodeValue input,
+                               Variable *output) {
   return addNode(new SaveNode(name, input, output));
 }
 
-QuantizationProfileNode *Graph::createQuantizationProfile(llvm::StringRef name,
-                                                          NodeValue input) {
+QuantizationProfileNode *
+Function::createQuantizationProfile(llvm::StringRef name, NodeValue input) {
   // TODO: this size is going to be refined. Just a placeholder now.
   const size_t numberOfBuckets = 2000U;
   auto *histogram = getParent().createVariable(
@@ -585,7 +586,8 @@ QuantizationProfileNode *Graph::createQuantizationProfile(llvm::StringRef name,
       name, input, histogram, computationInfo, input->getName().str()));
 }
 
-TopKNode *Graph::createTopK(llvm::StringRef name, NodeValue input, size_t k) {
+TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
+                               size_t k) {
   auto inDims = input.dims();
   assert(inDims.size() > 0);
   assert(k <= inDims.back());
@@ -596,8 +598,8 @@ TopKNode *Graph::createTopK(llvm::StringRef name, NodeValue input, size_t k) {
       getParent().uniqueType(ElemKind::IndexTy, outDims), input, k));
 }
 
-GatherNode *Graph::createGather(llvm::StringRef name, NodeValue data,
-                                NodeValue indices) {
+GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
+                                   NodeValue indices) {
   auto dDims = data.dims();
   auto iDims = indices.dims();
   assert(dDims.size() > 0);
@@ -608,8 +610,8 @@ GatherNode *Graph::createGather(llvm::StringRef name, NodeValue data,
       indices));
 }
 
-QuantizeNode *Graph::createQuantize(llvm::StringRef name, NodeValue input,
-                                    TypeRef outTy) {
+QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
+                                       TypeRef outTy) {
   assert(input.getElementType() == ElemKind::FloatTy &&
          "Input must be a floating type");
   assert(outTy->getElementType() == ElemKind::Int8QTy &&
@@ -620,16 +622,17 @@ QuantizeNode *Graph::createQuantize(llvm::StringRef name, NodeValue input,
   return addNode(new QuantizeNode(name, outTy, input));
 }
 
-DequantizeNode *Graph::createDequantize(llvm::StringRef name, NodeValue input) {
+DequantizeNode *Function::createDequantize(llvm::StringRef name,
+                                           NodeValue input) {
   assert(input.getElementType() == ElemKind::Int8QTy &&
          "Input must be a quantized type");
   TypeRef outTy = getParent().uniqueType(Type(ElemKind::FloatTy, input.dims()));
   return addNode(new DequantizeNode(name, outTy, input));
 }
 
-RescaleQuantizedNode *Graph::createRescaleQuantized(llvm::StringRef name,
-                                                    NodeValue input,
-                                                    TypeRef outTy) {
+RescaleQuantizedNode *Function::createRescaleQuantized(llvm::StringRef name,
+                                                       NodeValue input,
+                                                       TypeRef outTy) {
   assert(input.getElementType() == ElemKind::Int8QTy &&
          "Input must be a quantized type");
   assert(outTy->getElementType() == ElemKind::Int8QTy &&
@@ -640,10 +643,11 @@ RescaleQuantizedNode *Graph::createRescaleQuantized(llvm::StringRef name,
   return addNode(new RescaleQuantizedNode(name, outTy, input));
 }
 
-void Graph::createSimpleRNN(llvm::StringRef namePrefix,
-                            llvm::ArrayRef<Node *> inputs, unsigned batchSize,
-                            unsigned hiddenSize, unsigned outputSize,
-                            std::vector<Node *> &outputs) {
+void Function::createSimpleRNN(llvm::StringRef namePrefix,
+                               llvm::ArrayRef<Node *> inputs,
+                               unsigned batchSize, unsigned hiddenSize,
+                               unsigned outputSize,
+                               std::vector<Node *> &outputs) {
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");
   const unsigned inputSize = inputs.front()->dims().back();
@@ -698,9 +702,10 @@ void Graph::createSimpleRNN(llvm::StringRef namePrefix,
   };
 }
 
-void Graph::createGRU(llvm::StringRef namePrefix, llvm::ArrayRef<Node *> inputs,
-                      unsigned batchSize, unsigned hiddenSize,
-                      unsigned outputSize, std::vector<Node *> &outputs) {
+void Function::createGRU(llvm::StringRef namePrefix,
+                         llvm::ArrayRef<Node *> inputs, unsigned batchSize,
+                         unsigned hiddenSize, unsigned outputSize,
+                         std::vector<Node *> &outputs) {
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");
   const unsigned inputSize = inputs.front()->dims().back();
@@ -848,10 +853,10 @@ void Graph::createGRU(llvm::StringRef namePrefix, llvm::ArrayRef<Node *> inputs,
   }
 };
 
-void Graph::createLSTM(llvm::StringRef namePrefix,
-                       llvm::ArrayRef<Node *> inputs, unsigned batchSize,
-                       unsigned hiddenSize, unsigned outputSize,
-                       std::vector<Node *> &outputs) {
+void Function::createLSTM(llvm::StringRef namePrefix,
+                          llvm::ArrayRef<Node *> inputs, unsigned batchSize,
+                          unsigned hiddenSize, unsigned outputSize,
+                          std::vector<Node *> &outputs) {
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");
   const unsigned inputSize = inputs.front()->dims().back();
@@ -1033,7 +1038,7 @@ void Graph::createLSTM(llvm::StringRef namePrefix,
 //                   Graph dumping and printing
 //===----------------------------------------------------------------------===//
 
-void Graph::dump() const {
+void Function::dump() const {
   llvm::outs() << "Graph structure " << getName() << ":\n";
   for (auto n : nodes_) {
     llvm::outs() << n->getDebugDesc() << "\n";
@@ -1145,7 +1150,7 @@ class DottyPrinterPass {
 public:
   explicit DottyPrinterPass(std::ostream &os) : os_(os) {}
 
-  void visitGraph(Graph *G) {
+  void visitGraph(Function *G) {
     for (auto N : G->getNodes()) {
       visitNode(N);
     }
@@ -1168,14 +1173,14 @@ public:
   }
 };
 
-void Graph::dumpDAG() {
+void Function::dumpDAG() {
   std::string buffer;
   llvm::raw_string_ostream stream(buffer);
   stream << "dotty_graph_dump_" << this << ".dot";
   dumpDAG(stream.str().c_str());
 }
 
-void Graph::dumpDAG(const char *dotFilename) {
+void Function::dumpDAG(const char *dotFilename) {
   std::string filename = dotFilename;
   llvm::outs() << "Writing dotty graph to: " << filename << '\n';
 
@@ -1197,7 +1202,7 @@ void Module::eraseVariable(VariablesList::iterator I) {
   vars_.erase(I);
 }
 
-void Graph::eraseNode(NodesList::iterator I) {
+void Function::eraseNode(NodesList::iterator I) {
   Node *N = *I;
   switch (N->getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
@@ -1227,7 +1232,7 @@ void Module::eraseVariable(Variable *N) {
   eraseVariable(I);
 }
 
-void Graph::eraseNode(Node *N) {
+void Function::eraseNode(Node *N) {
   if (Variable *V = dyn_cast<Variable>(N)) {
     return getParent().eraseVariable(V);
   }
@@ -1236,7 +1241,7 @@ void Graph::eraseNode(Node *N) {
   eraseNode(I);
 }
 
-void Graph::verify() const {
+void Function::verify() const {
   std::unordered_map<std::string, Node *> NameToNode;
 
   for (auto *V : getParent().getVars()) {

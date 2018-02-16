@@ -39,7 +39,7 @@ static bool shouldDeleteNode(CompilationMode mode, Node *N) {
 }
 
 /// Dead code elimination.
-static void DCE(Graph &G, CompilationMode mode) {
+static void DCE(Function &G, CompilationMode mode) {
   auto &nodes = G.getNodes();
   auto &vars = G.getParent().getVars();
 
@@ -108,7 +108,7 @@ static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle1,
 }
 
 /// Code Sinking.
-static void sinkCode(Graph &G) {
+static void sinkCode(Function &G) {
   auto &nodes = G.getNodes();
 
   // For each node:
@@ -270,7 +270,7 @@ static void sinkCode(Graph &G) {
 }
 
 /// Pool optimization.
-static void OptimizePool(Graph &G) {
+static void OptimizePool(Function &G) {
   auto &nodes = G.getNodes();
 
   // For each node:
@@ -309,7 +309,7 @@ static void OptimizePool(Graph &G) {
   } // For all nodes in the graph.
 }
 
-static void OptimizeBatchNorm(Graph &G) {
+static void OptimizeBatchNorm(Function &G) {
   auto &nodes = G.getNodes();
 
   // For each node:
@@ -401,7 +401,7 @@ static void OptimizeBatchNorm(Graph &G) {
   } // For all nodes in the graph.
 }
 
-static void OptimizeRegression(Graph &G) {
+static void OptimizeRegression(Function &G) {
   auto &nodes = G.getNodes();
   // For each node:
   for (auto const &node : nodes) {
@@ -415,7 +415,7 @@ static void OptimizeRegression(Graph &G) {
 /// Concat nodes merging.
 /// concat(dim1, concat(dim2, X, Y), Z) -> concat(dim1, X, Y, Z)
 /// but only if dim1 == dim2
-static void optimizeConcatNodes(Graph &G) {
+static void optimizeConcatNodes(Function &G) {
   auto &nodes = G.getNodes();
 
   // For each node:
@@ -516,7 +516,7 @@ struct CSEVisitor : NodeWalker {
 } // namespace
 
 /// Common Subexpression Elimination.
-static void CSE(Graph &G) {
+static void CSE(Function &G) {
   CSEVisitor visitor;
 
   // No need to perform CSE on variables because
@@ -534,7 +534,7 @@ static void CSE(Graph &G) {
 
 /// Eliminate SliceNode when the input is SplatNode.
 /// Slice(Splat(args)) -> Splat(args')
-static void OptimizeSliceOfSplat(Graph &G) {
+static void OptimizeSliceOfSplat(Function &G) {
   for (const auto &node : G.getNodes()) {
     auto *sliceNode = dyn_cast<SliceNode>(node);
     if (!sliceNode)
@@ -548,7 +548,7 @@ static void OptimizeSliceOfSplat(Graph &G) {
   }
 }
 
-void glow::optimize(Graph &G, CompilationMode mode) {
+void glow::optimize(Function &G, CompilationMode mode) {
   // Sink transpose operations in an attempt to cancel them out.
   sinkCode(G);
 

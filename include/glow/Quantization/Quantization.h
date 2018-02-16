@@ -42,7 +42,8 @@ struct NodeQuantizationInfo {
 };
 
 /// Generate NodeQuantizationInfo for all required nodes from graph \p G.
-std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(const Graph &G);
+std::vector<NodeQuantizationInfo>
+generateNodeQuantizationInfos(const Function &G);
 
 /// A data structure that represents the 32-bit to 8-bit quantization
 /// scaling operation. This data structure represents the transformation:
@@ -94,7 +95,7 @@ float dequantize(int8_t input, const TensorQuantizationParams &TQP);
 /// Note, if not all operators have a conversion support,
 /// graph ends up being hybrid.
 void generateQuantizedGraph(
-    Graph &G, llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos);
+    Function &G, llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos);
 
 } // namespace glow
 

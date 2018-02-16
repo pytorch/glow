@@ -103,7 +103,7 @@ void ExecutionEngine::loadValueFromTensor(Variable *v, Tensor *input) {
   t.copyFrom(input);
 }
 
-void ExecutionEngine::compile(CompilationMode mode, Graph *F) {
+void ExecutionEngine::compile(CompilationMode mode, Function *F) {
   // Reset the engine and start a new compilation process.
   reset();
 

@@ -108,7 +108,7 @@ TEST(Quantization, quantizeGraph) {
 }
 
 /// Builds a simple graph, returns back input var and save node through refs.
-void createSimpleGraphForQuantization(Graph &G, Variable *&input,
+void createSimpleGraphForQuantization(Function &G, Variable *&input,
                                       SaveNode *&saveNode, Variable *W,
                                       Variable *B) {
   auto *A = G.getParent().createVariable(ElemKind::FloatTy, {1, 2}, "A",

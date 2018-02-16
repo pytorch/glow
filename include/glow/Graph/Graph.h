@@ -15,7 +15,7 @@ namespace glow {
 
 using TypesList = std::list<Type>;
 using NodesList = std::list<Node *>;
-using FunctionList = std::list<Graph *>;
+using FunctionList = std::list<Function *>;
 using VariablesList = std::list<Variable *>;
 using VariableGradientsList = std::list<std::pair<Variable *, Variable *>>;
 using UnsignedArrayRef = llvm::ArrayRef<size_t>;
@@ -76,9 +76,9 @@ public:
   bool hasFunction(llvm::StringRef name);
   /// \returns the function with the name \p name, or nullptr if the function
   /// does not exist.
-  Graph *getFunction(llvm::StringRef name);
+  Function *getFunction(llvm::StringRef name);
   /// \returns a new function with the name \p name.
-  Graph *createFunction(llvm::StringRef name);
+  Function *createFunction(llvm::StringRef name);
 
   /// Erase the variable \p N from the graph.
   void eraseVariable(Variable *N);
@@ -137,7 +137,7 @@ public:
 };
 
 /// Represents the compute graph.
-class Graph final : public Named {
+class Function final : public Named {
   /// A uniqued list of types. Types in this list can be equated
   /// by comparing their addresses.
   TypesList types_{};
@@ -149,10 +149,10 @@ class Graph final : public Named {
   Module &parent_;
 
 public:
-  Graph(Module &parent, llvm::StringRef Name = {})
+  Function(Module &parent, llvm::StringRef Name = {})
       : Named(Name), parent_(parent) {}
 
-  ~Graph();
+  ~Function();
 
   Module &getParent() { return parent_; }
   const Module &getParent() const { return parent_; }
@@ -371,13 +371,13 @@ struct TrainingConfig;
 
 /// Mutate the inference graph and turn it into a training graph by inserting
 /// training (gradient calculation) nodes.
-void generateGradientNodes(Graph &G, TrainingConfig &config,
+void generateGradientNodes(Function &G, TrainingConfig &config,
                            CompilationMode mode);
 
 /// \returns a variable that accumulates the gradients that update \p V.
 /// Given the variable \p V, find the SGD node that trains it and record the
 /// gradients that flow into V.
-Variable *generateRecordGradientNode(Graph &G, Variable *V);
+Variable *generateRecordGradientNode(Function &G, Variable *V);
 
 } // namespace glow
 

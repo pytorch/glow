@@ -42,7 +42,7 @@ public:
 
 /// A helper class for ordering Graph nodes in a post-order order.
 class GraphPostOrderVisitor : public PostOrderVisitor {
-  const Graph &G;
+  const Function &G;
   void visit() {
     for (const auto *V : G.getParent().getVars()) {
       V->visit(nullptr, this);
@@ -55,7 +55,7 @@ class GraphPostOrderVisitor : public PostOrderVisitor {
   }
 
 public:
-  explicit GraphPostOrderVisitor(const Graph &G) : G(G) {}
+  explicit GraphPostOrderVisitor(const Function &G) : G(G) {}
   /// \returns the order.
   llvm::ArrayRef<Node *> getPostOrder() {
     if (postOrder_.empty())

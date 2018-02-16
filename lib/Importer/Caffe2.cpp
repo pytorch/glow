@@ -521,7 +521,8 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
 caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
                                      const std::string &netWeightFilename,
                                      llvm::ArrayRef<const char *> names,
-                                     llvm::ArrayRef<Tensor *> tensors, Graph &G)
+                                     llvm::ArrayRef<Tensor *> tensors,
+                                     Function &G)
     : G_(G) {
   // Verify that the version of the library that we linked against is
   // compatible with the version of the headers we compiled against.

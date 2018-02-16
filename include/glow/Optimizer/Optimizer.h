@@ -4,7 +4,7 @@
 namespace glow {
 
 class IRFunction;
-class Graph;
+class Function;
 
 enum class CompilationMode {
   TrainDebug, /// Compile the graph for training and add extra instrumentation
@@ -18,15 +18,15 @@ enum class CompilationMode {
 /// Perform optimizations on the IR representation.
 void optimize(IRFunction &M, CompilationMode mode);
 /// Perform optimizations on the graph representation.
-void optimize(Graph &G, CompilationMode mode);
+void optimize(Function &G, CompilationMode mode);
 
 /// Lower the high-level neural network operators into low-level lineal algebra
 /// operators.
-void lower(Graph &G, CompilationMode mode);
+void lower(Function &G, CompilationMode mode);
 
 /// Instrument graph \p G by inserting quantization profile nodes
 /// for capturing stats for quantization.
-void profileQuantization(Graph &G);
+void profileQuantization(Function &G);
 
 } // namespace glow
 
