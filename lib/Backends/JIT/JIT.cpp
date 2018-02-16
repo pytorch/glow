@@ -136,8 +136,13 @@ void JITBackend::doForwardPass(bool isTrain) {
   auto sym = JIT_->findSymbol("main");
   assert(sym && "Unable to JIT the code!");
   using JitFuncType = void (*)(void);
-  JitFuncType funcPtr = reinterpret_cast<JitFuncType>(sym.getAddress().get());
-  funcPtr();
+  auto address = sym.getAddress();
+  if (address) {
+    JitFuncType funcPtr = reinterpret_cast<JitFuncType>(address.get());
+    funcPtr();
+  } else {
+    GLOW_ASSERT(false && "Error getting address.");
+  }
 }
 
 void JITBackend::allocateActivationsAndWeights() {
