@@ -874,7 +874,7 @@ TEST(LinearClassifier, classifyPlayerSport) {
 TEST(Interpreter, learnSinus) {
   // Try to learn the sin(x) function.
   float epsilon = 0.1;
-  unsigned numSamples = 150;
+  unsigned numSamples = 50;
 
   ExecutionEngine EE;
   EE.getConfig().learningRate = 0.2;
