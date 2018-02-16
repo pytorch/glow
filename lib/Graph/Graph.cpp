@@ -163,7 +163,7 @@ std::string Module::uniqueName(llvm::StringRef name) {
   return UniqueName;
 }
 
-void Module::uniqueNames(Node *N) { N->setName(uniqueName(N->getName())); }
+void Module::assignUniqueName(Node *N) { N->setName(uniqueName(N->getName())); }
 
 void Module::addGradientVariable(Variable *V, Variable *GradV) {
   grads_.push_back({V, GradV});

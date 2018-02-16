@@ -47,13 +47,13 @@ public:
 
   /// Inserts the variable \p V to the list of variables.
   Variable *addVar(Variable *V) {
-    uniqueNames(V);
+    assignUniqueName(V);
     vars_.push_back(V);
     return V;
   }
 
-  /// Unique names defined by node \p N.
-  void uniqueNames(Node *N);
+  /// Assign unique name to node \p N.
+  void assignUniqueName(Node *N);
 
   /// Return a pointer to a uniqued type \p T.
   TypeRef uniqueType(const Type &T);
@@ -159,7 +159,7 @@ public:
 
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
-    getParent().uniqueNames(N);
+    getParent().assignUniqueName(N);
     nodes_.push_back(N);
     return N;
   }
