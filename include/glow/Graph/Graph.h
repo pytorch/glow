@@ -23,61 +23,14 @@ using UnsignedArrayRef = llvm::ArrayRef<size_t>;
 class Module final {
   /// Stores the functions in the module.
   FunctionList functions_;
+  /// A uniqued list of types. Types in this list can be equated by comparing
+  /// their addresses.
+  TypesList types_{};
 
 public:
   Module() = default;
 
   ~Module();
-
-  /// \returns True if a function by the name \p name exists in the module.
-  bool hasFunction(llvm::StringRef name);
-  /// \returns the function with the name \p name, or nullptr if the function does not exist.
-  Graph *getFunction(llvm::StringRef name);
-  /// \returns a new function with the name \p name.
-  Graph *createFunction(llvm::StringRef name);
-};
-
-/// Represents the compute graph.
-class Graph final : public Named {
-  /// A uniqued list of types. Types in this list can be equated
-  /// by comparing their addresses.
-  TypesList types_{};
-  /// A list of nodes that the graph owns.
-  NodesList nodes_;
-  /// A list of variables that the graph owns.
-  VariablesList vars_;
-
-  /// A list of (var, grad_var) pairs associating variables with their
-  /// gradient variables.
-  VariableGradientsList grads_;
-
-  /// Unique index for producing unique names.
-  size_t uniqueIdx_;
-
-  /// \returns unique name with a prefix \p Name.
-  std::string uniqueName(llvm::StringRef Name);
-
-  /// Unique names defined by node \p N.
-  void uniqueNames(Node *N);
-
-public:
-  Graph(llvm::StringRef Name = {}) : Named(Name), uniqueIdx_(1) {}
-
-  ~Graph();
-
-  /// Inserts the node \p N to the list of nodes, and returns the inserted node.
-  template <class NodeTy> NodeTy *addNode(NodeTy *N) {
-    uniqueNames(N);
-    nodes_.push_back(N);
-    return N;
-  }
-
-  /// Inserts the variable \p V to the list of variables.
-  Variable *addVar(Variable *V) {
-    uniqueNames(V);
-    vars_.push_back(V);
-    return V;
-  }
 
   /// Return a pointer to a uniqued type \p T.
   TypeRef uniqueType(const Type &T);
@@ -95,6 +48,63 @@ public:
 
   /// Return the void type.
   TypeRef getVoidTy();
+
+  /// \returns True if a function by the name \p name exists in the module.
+  bool hasFunction(llvm::StringRef name);
+  /// \returns the function with the name \p name, or nullptr if the function does not exist.
+  Graph *getFunction(llvm::StringRef name);
+  /// \returns a new function with the name \p name.
+  Graph *createFunction(llvm::StringRef name);
+};
+
+/// Represents the compute graph.
+class Graph final : public Named {
+  /// A uniqued list of types. Types in this list can be equated
+  /// by comparing their addresses.
+  TypesList types_{};
+
+  /// A list of nodes that the graph owns.
+  NodesList nodes_;
+  /// A list of variables that the graph owns.
+  VariablesList vars_;
+
+  /// A list of (var, grad_var) pairs associating variables with their
+  /// gradient variables.
+  VariableGradientsList grads_;
+
+  /// Unique index for producing unique names.
+  size_t uniqueIdx_{1};
+
+  /// \returns unique name with a prefix \p Name.
+  std::string uniqueName(llvm::StringRef Name);
+
+  /// Unique names defined by node \p N.
+  void uniqueNames(Node *N);
+
+  /// A reference to the owner of the function.
+  Module &parent_;
+
+public:
+  Graph(Module &parent, llvm::StringRef Name = {})
+      : Named(Name), parent_(parent) {}
+
+  ~Graph();
+
+  Module &getParent() { return parent_; }
+
+  /// Inserts the node \p N to the list of nodes, and returns the inserted node.
+  template <class NodeTy> NodeTy *addNode(NodeTy *N) {
+    uniqueNames(N);
+    nodes_.push_back(N);
+    return N;
+  }
+
+  /// Inserts the variable \p V to the list of variables.
+  Variable *addVar(Variable *V) {
+    uniqueNames(V);
+    vars_.push_back(V);
+    return V;
+  }
 
   /// @name High-level, operation-level IRBuilder.
   ///@{

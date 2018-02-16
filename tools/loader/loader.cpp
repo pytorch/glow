@@ -205,7 +205,7 @@ int main(int argc, char **argv) {
   }
 
   ExecutionEngine EE(ExecutionBackend);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction(NetDirectory);
   SaveNode *SM;
   Variable *i0;
   Variable *i1;
@@ -233,7 +233,7 @@ int main(int argc, char **argv) {
   }
 
   // Emit IR for the graph.
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   if (DumpGraph) {
     G.dump();

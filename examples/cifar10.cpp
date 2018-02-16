@@ -72,7 +72,7 @@ void testCIFAR10() {
   EE.getConfig().L2Decay = 0.0001;
   EE.getConfig().batchSize = minibatchSize;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   // Create the input layer:
   auto *A =
@@ -99,7 +99,7 @@ void testCIFAR10() {
   auto *SM = G.createSoftMax("softmax", RL3, E);
   auto *result = G.createSave("ret", SM);
 
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
 
   // Report progress every this number of training iterations.
   int reportRate = 256;

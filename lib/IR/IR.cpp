@@ -232,6 +232,8 @@ void IRFunction::clear() {
   }
   instrs_.clear();
   weights_.clear();
+
+  G_ = nullptr;
 }
 
 static void LLVM_ATTRIBUTE_UNUSED verifyOperandsAccess(Instruction *I) {
@@ -497,7 +499,7 @@ static void nameInstr(std::unordered_set<std::string> &usedNames, Named *named,
   named->setName(tempName);
 }
 
-IRFunction::IRFunction(Graph *G) : G_(G), name_(G->getName()) {}
+IRFunction::IRFunction(Graph *G) : G_(G) {}
 
 static bool hasResultValue(Instruction *I) {
   return I->getKind() == Instruction::Kind::AllocActivationInstKind ||

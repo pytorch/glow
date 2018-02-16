@@ -21,7 +21,7 @@ TEST(GraphAutoGrad, autoGrad) {
   EE.getConfig().momentum = 0.9;
   EE.getConfig().L2Decay = 0.001;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   Variable *A = G.createVariable(ElemKind::FloatTy, {10, 28, 28, 1}, "input",
                                  Variable::VisibilityKind::Public,
@@ -46,8 +46,8 @@ TEST(GraphAutoGrad, autoGrad) {
   auto *result = G.createSave("return", SM);
   (void)result;
 
-  EE.compile(CompilationMode::Train);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Train, &G);
+  EE.compile(CompilationMode::Infer, &G);
 }
 
 TEST(GraphAutoGrad, checkLRNGen) {
@@ -58,7 +58,7 @@ TEST(GraphAutoGrad, checkLRNGen) {
   EE.getConfig().momentum = 0.9;
   EE.getConfig().L2Decay = 0.001;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   Variable *A = G.createVariable(ElemKind::FloatTy, {10, 28, 28, 1}, "input",
                                  Variable::VisibilityKind::Public,
@@ -74,6 +74,6 @@ TEST(GraphAutoGrad, checkLRNGen) {
 
   auto *result = G.createSave("return", SM);
   (void)result;
-  EE.compile(CompilationMode::Train);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Train, &G);
+  EE.compile(CompilationMode::Infer, &G);
 }

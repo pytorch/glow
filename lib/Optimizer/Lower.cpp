@@ -122,10 +122,10 @@ void lowerFullyConnectedNode(Graph &graph, FullyConnectedNode &FC) {
     // We use the scale and offset from the output of the FC for both the matrix
     // multiplication node and the batched-add node.
     auto FCT = FC.getOutput()->getType();
-    outTy = graph.uniqueType(elemTy, {1, xDim.first, wDim[1]}, FCT->getScale(),
-                             FCT->getOffset());
+    outTy = graph.getParent().uniqueType(elemTy, {1, xDim.first, wDim[1]},
+                                         FCT->getScale(), FCT->getOffset());
   } else {
-    outTy = graph.uniqueType(elemTy, {1, xDim.first, wDim[1]});
+    outTy = graph.getParent().uniqueType(elemTy, {1, xDim.first, wDim[1]});
   }
   auto *mul = graph.createBatchedMatMul("fc.dot", outTy, X, W);
 

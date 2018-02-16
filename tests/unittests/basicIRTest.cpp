@@ -23,35 +23,35 @@ using llvm::dyn_cast;
 using llvm::isa;
 
 TEST(IR, uniqueTypes) {
-  Graph G;
-  IRFunction M(&G);
+  Module mod;
   Type T1(ElemKind::FloatTy, {320, 200});
   Type T2(ElemKind::FloatTy, {320, 200});
   Type T3(ElemKind::FloatTy, {1, 2});
 
-  auto *u1 = G.uniqueType(T1);
-  auto *u2 = G.uniqueType(T2);
-  auto *u3 = G.uniqueType(T3);
+  auto *u1 = mod.uniqueType(T1);
+  auto *u2 = mod.uniqueType(T2);
+  auto *u3 = mod.uniqueType(T3);
 
   EXPECT_EQ(u1, u2);
   EXPECT_NE(u1, u3);
 
   for (int i = 0; i < 10; i++) {
-    EXPECT_EQ(u1, G.uniqueType(T1));
+    EXPECT_EQ(u1, mod.uniqueType(T1));
   }
 
   // Check the uniqueing of quantized tensors.
   Type T4(ElemKind::Int8QTy, {1, 2}, 0.4, 2);
-  auto *t4 = G.uniqueType(T4);
-  auto *u4 = G.uniqueTypeWithNewShape(&T4, {2, 1});
-  auto *q4 = G.uniqueTypeWithNewShape(u4, {1, 2});
+  auto *t4 = mod.uniqueType(T4);
+  auto *u4 = mod.uniqueTypeWithNewShape(&T4, {2, 1});
+  auto *q4 = mod.uniqueTypeWithNewShape(u4, {1, 2});
 
   EXPECT_NE(t4, u4);
   EXPECT_EQ(t4, q4);
 }
 
 TEST(IR, basicUseList) {
-  Graph G;
+  Module mod;
+  Graph &G = *mod.createFunction("main");
   IRFunction M(&G);
   {
     IRBuilder builder(&M);
@@ -77,12 +77,13 @@ TEST(IR, basicUseList) {
 TEST(IR, allInstrs) {
   using MK = WeightVar::MutabilityKind;
 
-  Graph G;
+  Module mod;
+  Graph &G = *mod.createFunction("main");
   IRFunction M(&G);
-  auto T1 = G.uniqueType(ElemKind::FloatTy, {1, 24, 24, 3});
-  auto T2 = G.uniqueType(ElemKind::FloatTy, {64});
-  auto T4 = G.uniqueType(ElemKind::IndexTy, {1, 1});
-  auto T5 = G.uniqueType(ElemKind::FloatTy, {3});
+  auto T1 = mod.uniqueType(ElemKind::FloatTy, {1, 24, 24, 3});
+  auto T2 = mod.uniqueType(ElemKind::FloatTy, {64});
+  auto T4 = mod.uniqueType(ElemKind::IndexTy, {1, 1});
+  auto T5 = mod.uniqueType(ElemKind::FloatTy, {3});
 
   {
     IRBuilder builder(&M);
@@ -134,7 +135,8 @@ TEST(IR, allInstrs) {
 }
 
 TEST(IR, casting) {
-  Graph G;
+  Module mod;
+  Graph &G = *mod.createFunction("main");
   IRFunction M(&G);
   {
     IRBuilder bb(&M);

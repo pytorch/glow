@@ -50,8 +50,10 @@ Variable *getGrad(Graph &G, Variable *V) { return G.getGradientVariable(V); }
 void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
                       Variable *expVar, Tensor *inputs, Tensor *outputs,
                       float delta, float allowedError) {
+  auto &G = *IP.getModule().getFunction("main");
+
   // Compile network in TrainDebug mode to generate and save gradients.
-  IP.compile(CompilationMode::TrainDebug);
+  IP.compile(CompilationMode::TrainDebug, &G);
   // Run training to calculate gradient values.
   IP.runBatch(300, {inputVar, expVar}, {inputs, outputs});
 
@@ -59,9 +61,8 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
   // nodes removed as part of the DCE optimization.
   // Compilation keeps the "grad" nodes as IP is already compiled in
   // TrainDebug mode which created "grad" nodes.
-  IP.compile(CompilationMode::Infer);
+  IP.compile(CompilationMode::Infer, &G);
 
-  Graph &G = IP.getGraph();
   // Clear the gradients of the first layer.
   auto gradVar = getGrad(G, inputVar);
   gradVar->getPayload().zero();
@@ -107,7 +108,7 @@ TEST(Network, gradientCheckFCConcatRELU) {
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  auto &G = IP.getGraph();
+  auto &G = *IP.getModule().createFunction("main");
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
                              Variable::VisibilityKind::Public,
@@ -145,7 +146,7 @@ TEST(Network, gradientCheckConv) {
   size_t numDim = 10;
   size_t numOutputElem = 10;
 
-  auto &G = IP.getGraph();
+  auto &G = *IP.getModule().createFunction("main");
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
                              Variable::VisibilityKind::Public,
@@ -179,7 +180,7 @@ TEST(Network, gradientCheckAvgPool) {
   size_t numDim = 10;
   size_t numOutputElem = 10;
 
-  auto &G = IP.getGraph();
+  auto &G = *IP.getModule().createFunction("main");
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
                              Variable::VisibilityKind::Public,
@@ -211,7 +212,7 @@ TEST(Network, gradientCheckBatchNorm) {
   size_t numDim = 5;
   size_t numOutputElem = numDim * numDim * 3;
 
-  auto &G = IP.getGraph();
+  auto &G = *IP.getModule().createFunction("main");
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 3}, "A",
                              Variable::VisibilityKind::Public,
@@ -246,7 +247,7 @@ TEST(Network, gradientCheckArithmeticDiv) {
   ExecutionEngine IP;
   size_t numDim = 10;
 
-  auto &G = IP.getGraph();
+  auto &G = *IP.getModule().createFunction("main");
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -277,7 +278,7 @@ TEST(Network, gradientCheckArithmetic) {
 
   size_t numDim = 20;
 
-  auto &G = IP.getGraph();
+  auto &G = *IP.getModule().createFunction("main");
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
                              Variable::VisibilityKind::Public,
@@ -327,7 +328,7 @@ TEST(Network, gradientCheckFCConcatTanh) {
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  auto &G = IP.getGraph();
+  auto &G = *IP.getModule().createFunction("main");
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -358,7 +359,7 @@ TEST(Network, gradientCheckFC) {
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  auto &G = IP.getGraph();
+  auto &G = *IP.getModule().createFunction("main");
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -388,7 +389,7 @@ TEST(Network, gradientCheckSigmoid) {
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  auto &G = IP.getGraph();
+  auto &G = *IP.getModule().createFunction("main");
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -419,7 +420,7 @@ TEST(Network, gradientCheckRelu) {
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  auto &G = IP.getGraph();
+  auto &G = *IP.getModule().createFunction("main");
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -449,7 +450,7 @@ TEST(Network, gradientCheckTranspose) {
   ExecutionEngine IP;
   size_t numOutputElem = 10;
 
-  auto &G = IP.getGraph();
+  auto &G = *IP.getModule().createFunction("main");
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 5}, "input",
                              Variable::VisibilityKind::Public,
@@ -481,7 +482,7 @@ TEST(Network, gradientcheckCrossEntropyLoss) {
   const float stepSize = 1e-4;
   const float delta = 1e-2;
 
-  auto &G = IP.getGraph();
+  auto &G = *IP.getModule().createFunction("main");
 
   auto *P = G.createVariable(ElemKind::FloatTy, {batchSize, 4}, "P",
                              Variable::VisibilityKind::Public,
@@ -506,7 +507,7 @@ TEST(Network, gradientcheckCrossEntropyLoss) {
   outputsH.at({1}) = 0;
   outputsH.at({2}) = 1;
 
-  IP.compile(glow::CompilationMode::TrainDebug);
+  IP.compile(glow::CompilationMode::TrainDebug, &G);
   auto gradP = getGrad(G, P)->getHandle();
   for (int i = 0; i < testSamples; ++i) {
     inputsH.randomize(0.0, 1.0);

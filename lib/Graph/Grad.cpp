@@ -186,7 +186,7 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
       continue;
     }
 
-    TypeRef Ty = conf.momentum > 0 ? V->getType() : G.getVoidTy();
+    TypeRef Ty = conf.momentum > 0 ? V->getType() : G.getParent().getVoidTy();
     Variable *gsum = new Variable("gsum", Ty, Variable::VisibilityKind::Private,
                                   Variable::TrainKind::Broadcast, 0);
 

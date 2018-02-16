@@ -12,7 +12,7 @@ using llvm::cast;
 void inferBatchedAddNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                         BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var1 = G.createVariable(inputs1->getElementType(), inputs1->dims(),
                                 "input1", Variable::VisibilityKind::Public);
   auto *var2 = G.createVariable(inputs2->getElementType(), inputs2->dims(),
@@ -20,20 +20,20 @@ void inferBatchedAddNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
   auto *batchedadd = G.createBatchedArithmetic(
       "batchedadd", BatchedArithmeticNode::Mode::Add, var1, var2);
   auto result = G.createSave("ret", batchedadd);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var1, var2}, {inputs1, inputs2});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
 void inferBatchedReduceAddNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
                                "input", Variable::VisibilityKind::Public);
   auto *batchedreduce =
       G.createBatchedReduce("batchedreduce", BatchedReduceNode::Mode::Add, var);
   auto result = G.createSave("ret", batchedreduce);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
@@ -88,14 +88,14 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
 void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                  BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var1 = G.createVariable(inputs1->getElementType(), inputs1->dims(),
                                 "input1", Variable::VisibilityKind::Public);
   auto *var2 = G.createVariable(inputs2->getElementType(), inputs2->dims(),
                                 "input2", Variable::VisibilityKind::Public);
   auto *max = G.createArithmetic("max", var1, var2, ArithmeticNode::Mode::Max);
   auto result = G.createSave("ret", max);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var1, var2}, {inputs1, inputs2});
   out->copyFrom(&result->getVariable()->getPayload());
 }
@@ -103,26 +103,26 @@ void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
 void inferMinNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                  BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var1 = G.createVariable(inputs1->getElementType(), inputs1->dims(),
                                 "input1", Variable::VisibilityKind::Public);
   auto *var2 = G.createVariable(inputs2->getElementType(), inputs2->dims(),
                                 "input2", Variable::VisibilityKind::Public);
   auto *min = G.createArithmetic("min", var1, var2, ArithmeticNode::Mode::Min);
   auto result = G.createSave("ret", min);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var1, var2}, {inputs1, inputs2});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
 void inferPoolAvgNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
                                "input", Variable::VisibilityKind::Public);
   auto *pool = G.createPool("pool", var, PoolNode::Mode::Avg, 3, 3, 1);
   auto result = G.createSave("ret", pool);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
@@ -135,7 +135,7 @@ void trainPoolAvgNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   EE.getConfig().learningRate = 0.01;
   EE.getConfig().momentum = 0.4;
   EE.getConfig().L2Decay = 0.01;
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var1 = G.createVariable(inputs->getElementType(), inputs->dims(),
                                 "input", Variable::VisibilityKind::Public);
   auto *var2 = G.createVariable(selected->getElementType(), selected->dims(),
@@ -149,21 +149,21 @@ void trainPoolAvgNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *reshape2 = G.createReshape("reshape2", pool, shape2);
   auto *softmax = G.createSoftMax("softmax", reshape2, var2);
   auto result = G.createSave("ret", softmax);
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
   EE.runBatch(10, {var1, var2}, {inputs, selected});
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var1, var2}, {inputs, selected});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
 void inferPoolMaxNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
                                "input", Variable::VisibilityKind::Public);
   auto *pool = G.createPool("pool", var, PoolNode::Mode::Max, 4, 2, 3);
   auto result = G.createSave("ret", pool);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
@@ -176,7 +176,7 @@ void trainPoolMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   EE.getConfig().learningRate = 0.03;
   EE.getConfig().momentum = 0.3;
   EE.getConfig().L2Decay = 0.003;
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var1 = G.createVariable(inputs->getElementType(), inputs->dims(),
                                 "input", Variable::VisibilityKind::Public);
   auto *var2 = G.createVariable(selected->getElementType(), selected->dims(),
@@ -190,21 +190,21 @@ void trainPoolMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *reshape2 = G.createReshape("reshape2", pool, shape2);
   auto *softmax = G.createSoftMax("softmax", reshape2, var2);
   auto result = G.createSave("ret", softmax);
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
   EE.runBatch(7, {var1, var2}, {inputs, selected});
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.runBatch(1, {var1, var2}, {inputs, selected});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
 void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
                                "input", Variable::VisibilityKind::Public);
   auto *relu = G.createRELU("relu", var);
   auto result = G.createSave("ret", relu);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
@@ -212,12 +212,12 @@ void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind) {
 void inferReshapeNet(Tensor *inputs, llvm::ArrayRef<size_t> shape, Tensor *out,
                      BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
                                "input", Variable::VisibilityKind::Public);
   auto *reshape = G.createReshape("reshape", var, shape);
   auto result = G.createSave("ret", reshape);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
@@ -225,7 +225,7 @@ void inferReshapeNet(Tensor *inputs, llvm::ArrayRef<size_t> shape, Tensor *out,
 void inferSelectNet(Tensor *cond, Tensor *inputs1, Tensor *inputs2, Tensor *out,
                     BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var1 = G.createVariable(cond->getElementType(), cond->dims(), "cond",
                                 Variable::VisibilityKind::Public);
   auto *var2 = G.createVariable(inputs1->getElementType(), inputs1->dims(),
@@ -234,19 +234,19 @@ void inferSelectNet(Tensor *cond, Tensor *inputs1, Tensor *inputs2, Tensor *out,
                                 "input2", Variable::VisibilityKind::Public);
   auto *select = G.createSelect("cond", var1, var2, var3);
   auto result = G.createSave("ret", select);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var1, var2, var3}, {cond, inputs1, inputs2});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
 void inferSigmoidNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
                                "input", Variable::VisibilityKind::Public);
   auto *sigmoid = G.createSigmoid("sigmoid", var);
   auto result = G.createSave("ret", sigmoid);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
@@ -254,14 +254,14 @@ void inferSigmoidNet(Tensor *inputs, Tensor *out, BackendKind kind) {
 void inferSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
                      BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var1 = G.createVariable(inputs->getElementType(), inputs->dims(),
                                 "input", Variable::VisibilityKind::Public);
   auto *var2 = G.createVariable(selected->getElementType(), selected->dims(),
                                 "selected", Variable::VisibilityKind::Public);
   auto *softmax = G.createSoftMax("softmax", var1, var2);
   auto result = G.createSave("ret", softmax);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var1, var2}, {inputs, selected});
   out->copyFrom(&result->getVariable()->getPayload());
 }
@@ -272,7 +272,7 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   EE.getConfig().learningRate = 0.003;
   EE.getConfig().momentum = 0.7;
   EE.getConfig().L2Decay = 0.001;
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var1 = G.createVariable(inputs->getElementType(), inputs->dims(),
                                 "input", Variable::VisibilityKind::Public);
   auto *var2 = G.createVariable(selected->getElementType(), selected->dims(),
@@ -283,28 +283,28 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   cast<Variable>(fc->getBias())->copyFrom(bias);
   auto *softmax = G.createSoftMax("softmax", fc, var2);
   auto result = G.createSave("ret", softmax);
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
   EE.runBatch(30, {var1, var2}, {inputs, selected});
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var1, var2}, {inputs, selected});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
 void inferTanhNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
                                "input", Variable::VisibilityKind::Public);
   auto *tanh = G.createTanh("tanh", var);
   auto result = G.createSave("ret", tanh);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
 void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
                                "input", Variable::VisibilityKind::Public);
   auto *tr = G.createTranspose("tr", var, {0, 2, 3, 1});
@@ -313,14 +313,14 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   cast<Variable>(conv->getBias())->getHandle().clear(2);
   auto *pool = G.createPool("pool", conv, PoolNode::Mode::Max, 2, 2, 0);
   auto result = G.createSave("ret", pool);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
 void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
                                "input", Variable::VisibilityKind::Public);
   auto *tr = G.createTranspose("tr", var, {0, 2, 3, 1});
@@ -331,14 +331,14 @@ void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   cast<Variable>(fc->getWeights())->getHandle().clear(0.8);
   cast<Variable>(fc2->getWeights())->getHandle().clear(1.5);
   auto result = G.createSave("ret", rl1);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
 void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var = G.createVariable(inputs->getElementType(), inputs->dims(),
                                "input", Variable::VisibilityKind::Public);
   auto *selected = G.createVariable(ElemKind::IndexTy, {2, 1}, "selected");
@@ -357,7 +357,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   cast<Variable>(fc->getWeights())->getHandle().clear(0.4);
   cast<Variable>(fc2->getWeights())->getHandle().clear(3.5);
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
@@ -365,7 +365,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
 void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
                       Tensor *inputs4, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   auto *var1 = G.createVariable(inputs1->getElementType(), inputs1->dims(),
                                 "inputs1", Variable::VisibilityKind::Public);
   auto *var2 = G.createVariable(inputs2->getElementType(), inputs2->dims(),
@@ -402,7 +402,7 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
   auto *pool2 = G.createPool("pool2", relu2, PoolNode::Mode::Avg, 3, 2, 1);
   auto *sigmoid3 = G.createSigmoid("sigmoid3", pool2);
   auto result = G.createSave("ret", sigmoid3);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({var1, var2, var3, var4}, {inputs1, inputs2, inputs3, inputs4});
   out->copyFrom(&result->getVariable()->getPayload());
 }
