@@ -2,7 +2,7 @@
 
 #include "OpenCL.h"
 
-#include "glow/Graph/Graph.h"
+#include "glow/Graph/Function.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/Optimizer.h"
@@ -548,7 +548,7 @@ void OCLBackend::copyWeightsFromDevice() {
 }
 
 void OCLBackend::init() {
-  for (auto &v : M_->getGraph()->getVars()) {
+  for (auto &v : M_->getFunction()->getGraph()->getVars()) {
     auto *w = M_->getWeightForNode(v);
     assert(!externalTensors_.count(w) && "The tensor is already registered");
     externalTensors_[w] = &v->getPayload();

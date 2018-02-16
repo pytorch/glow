@@ -1,7 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "glow/IR/IR.h"
-#include "glow/Graph/Graph.h"
+#include "glow/Graph/Function.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Support.h"
@@ -497,7 +497,7 @@ static void nameInstr(std::unordered_set<std::string> &usedNames, Named *named,
   named->setName(tempName);
 }
 
-Module::Module(Graph *G) : G_(G), name_(G->getName()) {}
+Module::Module(Function *F) : F_(F), name_(F->getName()) {}
 
 static bool hasResultValue(Instruction *I) {
   return I->getKind() == Instruction::Kind::AllocActivationInstKind ||
@@ -520,7 +520,7 @@ void Module::dump() {
   // Print all of the variables:
   std::string s;
   llvm::raw_string_ostream sb{s};
-  sb << "module " << G_->getName().str() << "\n";
+  sb << "module " << F_->getName().str() << "\n";
 
   size_t sizeInBytes = 0;
   sb << "declare {\n";

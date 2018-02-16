@@ -3,7 +3,7 @@
 #ifndef GLOW_QUANTIZATION_QUANTIZATION_H
 #define GLOW_QUANTIZATION_QUANTIZATION_H
 
-#include "glow/Graph/Graph.h"
+#include "glow/Graph/Function.h"
 
 #include <string>
 #include <tuple>
@@ -42,7 +42,7 @@ struct NodeQuantizationInfo {
 };
 
 /// Generate NodeQuantizationInfo for all required nodes from graph \p G.
-std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(const Graph &G);
+std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(const Function &G);
 
 /// A data structure that represents the 32-bit to 8-bit quantization
 /// scaling operation. This data structure represents the transformation:
@@ -93,8 +93,8 @@ float dequantize(int8_t input, const TensorQuantizationParams &TQP);
 /// Converts floating point graph to a quantized one.
 /// Note, if not all operators have a conversion support,
 /// graph ends up being hybrid.
-void generateQuantizedGraph(
-    Graph &G, llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos);
+void generateQuantizedFunction(
+    Function &G, llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos);
 
 } // namespace glow
 

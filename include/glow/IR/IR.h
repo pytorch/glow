@@ -17,7 +17,7 @@
 namespace glow {
 class Instruction;
 class Module;
-class Graph;
+class Function;
 class Value;
 
 enum class OperandKind : unsigned char {
@@ -189,7 +189,7 @@ public:
 
 private:
   /// A pointer to the graph structure. The Module does not own the graph.
-  Graph *G_;
+  Function *F_;
   /// Name of the module.
   llvm::StringRef name_;
 
@@ -214,7 +214,7 @@ public:
   /// Add an instruction to the instr stream.
   void pushInstr(Instruction *I) { instrs_.push_back(I); }
 
-  explicit Module(Graph *G);
+  explicit Module(Function *G);
 
   ~Module();
 
@@ -227,7 +227,7 @@ public:
   void clear();
 
   /// \returns a reference to the original graph.
-  Graph *getGraph() { return G_; }
+  Function *getFunction() { return F_; }
 
   llvm::StringRef getName() const { return name_; }
 

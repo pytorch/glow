@@ -1,6 +1,6 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
-#include "glow/Graph/Graph.h"
+#include "glow/Graph/Function.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Optimizer/Optimizer.h"
@@ -10,7 +10,7 @@
 using namespace glow;
 using llvm::dyn_cast;
 
-void lowerArithmeticNode(Graph &graph, ArithmeticGradNode &node) {
+void lowerArithmeticNode(Function &graph, ArithmeticGradNode &node) {
   switch (node.getMode()) {
   case ArithmeticGradNode::Mode::Add: {
     /// The chain rule for addition:
@@ -95,7 +95,7 @@ void lowerRegressionNode(RegressionNode &node) {
   node.getResult().replaceAllUsesOfWith(outG);
 }
 
-void lowerRegressionGradNode(Graph &graph, RegressionGradNode &node) {
+void lowerRegressionGradNode(Function &graph, RegressionGradNode &node) {
   auto outG = node.getInput();
 
   auto inputG =
@@ -107,7 +107,7 @@ void lowerRegressionGradNode(Graph &graph, RegressionGradNode &node) {
   node.getGradOfInputNamedExpected().replaceAllUsesOfWith(expG);
 }
 
-void lowerFullyConnectedNode(Graph &graph, FullyConnectedNode &FC) {
+void lowerFullyConnectedNode(Function &graph, FullyConnectedNode &FC) {
   auto xDim = flattenCdr(FC.getInput().getType()->dims());
   auto wDim = FC.getFilter().dims();
   auto *X =
@@ -121,10 +121,10 @@ void lowerFullyConnectedNode(Graph &graph, FullyConnectedNode &FC) {
     // We use the scale and offset from the output of the FC for both the matrix
     // multiplication node and the batched-add node.
     auto FCT = FC.getOutput()->getType();
-    outTy = graph.uniqueType(elemTy, {1, xDim.first, wDim[1]}, FCT->getScale(),
+    outTy = graph.getGraph()->uniqueType(elemTy, {1, xDim.first, wDim[1]}, FCT->getScale(),
                              FCT->getOffset());
   } else {
-    outTy = graph.uniqueType(elemTy, {1, xDim.first, wDim[1]});
+    outTy = graph.getGraph()->uniqueType(elemTy, {1, xDim.first, wDim[1]});
   }
   auto *mul = graph.createBatchedMatMul("fc.dot", outTy, X, W);
 
@@ -135,7 +135,7 @@ void lowerFullyConnectedNode(Graph &graph, FullyConnectedNode &FC) {
   FC.getOutput().replaceAllUsesOfWith(add);
 }
 
-void lowerFullyConnectedGradNode(Graph &graph, FullyConnectedGradNode &FCG) {
+void lowerFullyConnectedGradNode(Function &graph, FullyConnectedGradNode &FCG) {
   // Follow the lowering from here:
   // https://github.com/huyouare/CS231n/blob/master/assignment2/cs231n/layers.py#L53
   auto out = FCG.getGradOfOriginalOutputNamedOutput();
@@ -167,7 +167,7 @@ void lowerFullyConnectedGradNode(Graph &graph, FullyConnectedGradNode &FCG) {
   FCG.getGradOfInputNamedBias().replaceAllUsesOfWith(db);
 }
 
-void lowerReluGradNode(Graph &graph, ReluGradNode &RG) {
+void lowerReluGradNode(Function &graph, ReluGradNode &RG) {
   // ReluGrad: if the input value is greater than zero then let the gradient
   // pass.
   auto *zero = graph.createSplat("zero", RG.getInput().getType(), 0.0);
@@ -179,7 +179,7 @@ void lowerReluGradNode(Graph &graph, ReluGradNode &RG) {
   RG.getGradOfInputNamedInput().replaceAllUsesOfWith(res);
 }
 
-void lowerTanhGradNode(Graph &graph, TanhGradNode &THG) {
+void lowerTanhGradNode(Function &graph, TanhGradNode &THG) {
   // Tanh grad is calculated as:
   // inG = (1 - outW * outW) * outG
 
@@ -199,7 +199,7 @@ void lowerTanhGradNode(Graph &graph, TanhGradNode &THG) {
   THG.getGradOfInputNamedInput().replaceAllUsesOfWith(grad);
 }
 
-void lowerSigmoidGradNode(Graph &graph, SigmoidGradNode &THG) {
+void lowerSigmoidGradNode(Function &graph, SigmoidGradNode &THG) {
   // Sigmoid grad is calculated as:
   // inG = outW * (1 - outW) * outG;
 
@@ -220,7 +220,7 @@ void lowerSigmoidGradNode(Graph &graph, SigmoidGradNode &THG) {
   THG.getGradOfInputNamedInput().replaceAllUsesOfWith(grad);
 }
 
-void lowerReluNode(Graph &graph, ReluNode &R) {
+void lowerReluNode(Function &graph, ReluNode &R) {
   // Relu is a max between zero and the input value.
   auto *zero = graph.createSplat("zero", R.getType(), 0.0);
   auto *relu = graph.createArithmetic("relu", zero, R.getInput(),
@@ -228,8 +228,8 @@ void lowerReluNode(Graph &graph, ReluNode &R) {
   R.getResult().replaceAllUsesOfWith(relu);
 }
 
-void glow::lower(Graph &G, CompilationMode mode) {
-  G.advanceState(Graph::State::Lowered);
+void glow::lower(Function &G, CompilationMode mode) {
+  G.advanceState(Function::State::Lowered);
   auto &nodes = G.getNodes();
 
   for (auto const &node : nodes) {

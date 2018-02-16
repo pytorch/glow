@@ -1,6 +1,6 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
-#include "glow/Graph/Graph.h"
+#include "glow/Graph/Function.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Optimizer/Optimizer.h"
@@ -39,9 +39,9 @@ static bool shouldDeleteNode(CompilationMode mode, Node *N) {
 }
 
 /// Dead code elimination.
-static void DCE(Graph &G, CompilationMode mode) {
+static void DCE(Function &G, CompilationMode mode) {
   auto &nodes = G.getNodes();
-  auto &vars = G.getVars();
+  auto &vars = G.getGraph()->getVars();
 
   std::vector<VariablesList::iterator> erasedVars{};
   std::vector<NodesList::iterator> erasedNodes{};
@@ -82,7 +82,7 @@ static void DCE(Graph &G, CompilationMode mode) {
 
   while (!erasedVars.empty()) {
     auto it = erasedVars.back();
-    G.eraseVariable(it);
+    G.getGraph()->eraseVariable(it);
     erasedVars.pop_back();
   }
 }
@@ -108,7 +108,7 @@ static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle1,
 }
 
 /// Code Sinking.
-static void sinkCode(Graph &G) {
+static void sinkCode(Function &G) {
   auto &nodes = G.getNodes();
 
   // For each node:
@@ -266,11 +266,11 @@ static void sinkCode(Graph &G) {
       CN->getResult().replaceAllUsesOfWith(newTR);
     }
 
-  } // For all nodes in the graph.
+  } // For all nodes in the Function.
 }
 
 /// Pool optimization.
-static void OptimizePool(Graph &G) {
+static void OptimizePool(Function &G) {
   auto &nodes = G.getNodes();
 
   // For each node:
@@ -306,10 +306,10 @@ static void OptimizePool(Graph &G) {
       PL->getResult().replaceAllUsesOfWith(NRL);
       continue;
     }
-  } // For all nodes in the graph.
+  } // For all nodes in the Function.
 }
 
-static void OptimizeBatchNorm(Graph &G) {
+static void OptimizeBatchNorm(Function &G) {
   auto &nodes = G.getNodes();
 
   // For each node:
@@ -398,10 +398,10 @@ static void OptimizeBatchNorm(Graph &G) {
 
       BN->getResult().replaceAllUsesOfWith(CV);
     }
-  } // For all nodes in the graph.
+  } // For all nodes in the Function.
 }
 
-static void OptimizeRegression(Graph &G) {
+static void OptimizeRegression(Function &G) {
   auto &nodes = G.getNodes();
   // For each node:
   for (auto const &node : nodes) {
@@ -409,13 +409,13 @@ static void OptimizeRegression(Graph &G) {
     if (auto *R = dyn_cast<RegressionNode>(node)) {
       R->getResult().replaceAllUsesOfWith(R->getInput());
     }
-  } // For all nodes in the graph.
+  } // For all nodes in the Function.
 }
 
 /// Concat nodes merging.
 /// concat(dim1, concat(dim2, X, Y), Z) -> concat(dim1, X, Y, Z)
 /// but only if dim1 == dim2
-static void optimizeConcatNodes(Graph &G) {
+static void optimizeConcatNodes(Function &G) {
   auto &nodes = G.getNodes();
 
   // For each node:
@@ -516,7 +516,7 @@ struct CSEVisitor : NodeWalker {
 } // namespace
 
 /// Common Subexpression Elimination.
-static void CSE(Graph &G) {
+static void CSE(Function &G) {
   CSEVisitor visitor;
 
   // No need to perform CSE on variables because
@@ -534,7 +534,7 @@ static void CSE(Graph &G) {
 
 /// Eliminate SliceNode when the input is SplatNode.
 /// Slice(Splat(args)) -> Splat(args')
-static void OptimizeSliceOfSplat(Graph &G) {
+static void OptimizeSliceOfSplat(Function &G) {
   for (const auto &node : G.getNodes()) {
     auto *sliceNode = dyn_cast<SliceNode>(node);
     if (!sliceNode)
@@ -548,7 +548,7 @@ static void OptimizeSliceOfSplat(Graph &G) {
   }
 }
 
-void glow::optimize(Graph &G, CompilationMode mode) {
+void glow::optimize(Function &G, CompilationMode mode) {
   // Sink transpose operations in an attempt to cancel them out.
   sinkCode(G);
 

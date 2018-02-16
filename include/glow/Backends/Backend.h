@@ -8,7 +8,7 @@ class Module;
 class Value;
 class Tensor;
 class Variable;
-class Graph;
+class Function;
 
 enum class BackendKind {
   Interpreter, // Execute the network with the built-in interpreter.
@@ -38,7 +38,7 @@ public:
   /// backend may insert target specific nodes. The backend is responsible for
   /// cleaning up after itself.
   /// \returns True if the graph was modified.
-  virtual bool transform(Graph &G) { return false; }
+  virtual bool transform(Function &G) { return false; }
 };
 
 /// Create a backend of kind \p kind, to run the module \p M.

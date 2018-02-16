@@ -2,7 +2,7 @@
 
 #include "glow/Graph/Grad.h"
 #include "glow/Base/Train.h"
-#include "glow/Graph/Graph.h"
+#include "glow/Graph/Function.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/Utils.h"
 #include "glow/IR/IR.h"
@@ -41,7 +41,7 @@ NodeValue GraphGradMapper::getGradient(NodeValue activation) {
 //        Code for automatically generating the back propagation code.
 //===----------------------------------------------------------------------===//
 
-void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
+void glow::generateGradientNodes(Function &G, TrainingConfig &conf,
                                  CompilationMode mode) {
   using Kind = glow::Kinded::Kind;
   GraphGradMapper map(G);
@@ -54,7 +54,7 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
   // Generate the gradient nodes for each one of the nodes in the module.
 
   PostOrderVisitor pov;
-  for (auto &N : G.getVars()) {
+  for (auto &N : G.getGraph()->getVars()) {
     N->visit(nullptr, &pov);
   }
   for (auto &N : G.getNodes()) {
@@ -170,7 +170,7 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
     llvm_unreachable("Invalid instruction type.");
   } // End of the for-each instr loop.
 
-  for (auto &V : G.getVars()) {
+  for (auto &V : G.getGraph()->getVars()) {
     // In TrainDebug mode we save a copy of the last gradient
     if (mode == CompilationMode::TrainDebug && map.hasGradient(V)) {
       std::string nodeName = "_grad_" + V->getName().str();
@@ -185,7 +185,7 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
       continue;
     }
 
-    TypeRef Ty = conf.momentum > 0 ? V->getType() : G.getVoidTy();
+    TypeRef Ty = conf.momentum > 0 ? V->getType() : G.getGraph()->getVoidTy();
     Variable *gsum = new Variable("gsum", Ty, Variable::VisibilityKind::Private,
                                   Variable::TrainKind::Broadcast, 0);
 
@@ -202,6 +202,6 @@ void glow::generateGradientNodes(Graph &G, TrainingConfig &conf,
     G.addNode(I);
   }
   for (auto &I : newVars) {
-    G.addVar(I);
+    G.getGraph()->addVar(I);
   }
 }

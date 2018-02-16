@@ -1,5 +1,5 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
-#define DEBUG_TYPE "graph-scheduler"
+#define DEBUF_TYPE "graph-scheduler"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/Utils.h"
@@ -26,15 +26,15 @@ using llvm::isa;
 
 class Scheduler {
 protected:
-  /// Graph being processed.
-  const Graph &G_;
+  /// Function being processed.
+  const Function &F_;
   /// Scheduled nodes.
   NodesList &scheduled_;
 
 public:
-  Scheduler(const Graph &G, NodesList &scheduled)
-      : G_(G), scheduled_(scheduled) {}
-  // Create a linear execution schedule for a graph.
+  Scheduler(const Function &G, NodesList &scheduled)
+      : F_(G), scheduled_(scheduled) {}
+  // Create a linear execution schedule for a Function.
   virtual void schedule() = 0;
 
   NodesList &getSchedule() { return scheduled_; }
@@ -62,7 +62,7 @@ class ChildMemSizeBasedScheduler : public Scheduler {
   /// Computes the amount of memory required to keep the result
   /// of each node.
   void computeNodeResultsMemorySize() {
-    for (auto *N : G_.getNodes()) {
+    for (auto *N : F_.getNodes()) {
       size_t resultSize = 0;
       for (size_t idx = 0, e = N->getNumResults(); idx < e; ++idx) {
         resultSize += N->getType(idx)->getSizeInBytes();
@@ -78,7 +78,7 @@ class ChildMemSizeBasedScheduler : public Scheduler {
   void computeNodeComputationMaxMemorySize() {
     // Traverse nodes in such a way, that dependnecies are processed
     // before the node using them.
-    GraphPostOrderVisitor visitor(G_);
+    GraphPostOrderVisitor visitor(F_);
     for (auto *N : visitor.getPostOrder()) {
       size_t maxSize = (N->getNumInputs() > 0)
                            ? std::max(resultMemSize_[N->getNthInput(0)],
@@ -155,14 +155,14 @@ class ChildMemSizeBasedScheduler : public Scheduler {
 
   void scheduleNodes() {
     /// Try to schedule all root nodes.
-    for (auto *N : G_.getNodes()) {
+    for (auto *N : F_.getNodes()) {
       if (N->getNumUsers() == 0)
         orderChildNodesAndSchedule(N);
     }
   }
 
 public:
-  ChildMemSizeBasedScheduler(const Graph &G, NodesList &Schedule)
+  ChildMemSizeBasedScheduler(const Function &G, NodesList &Schedule)
       : Scheduler(G, Schedule) {}
 
   void schedule() override {
@@ -174,14 +174,14 @@ public:
 
 void Module::scheduleGraph(NodesList &Schedule) {
   Schedule.clear();
-  for (auto &N : G_->getVars()) {
+  for (auto &N : F_->getGraph()->getVars()) {
     Schedule.push_back(N);
   }
-  ChildMemSizeBasedScheduler CMSBScheduler(*G_, Schedule);
+  ChildMemSizeBasedScheduler CMSBScheduler(*F_, Schedule);
   CMSBScheduler.schedule();
   assert(CMSBScheduler.getSchedule().size() ==
-             G_->getNodes().size() + G_->getVars().size() &&
-         "All graph nodes have to be scheduled");
+             F_->getNodes().size() + F_->getGraph()->getVars().size() &&
+         "All Function nodes have to be scheduled");
 }
 
 } // namespace glow

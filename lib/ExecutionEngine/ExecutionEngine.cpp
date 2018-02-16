@@ -3,6 +3,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 
 #include "glow/Backends/Backend.h"
+#include "glow/Graph/Function.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
@@ -14,7 +15,9 @@ using namespace glow;
 ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
   backendKind_ = backendKind;
   G_.reset(new Graph());
-  M_.reset(new Module(&*G_));
+  F_.reset(new Function("main"));
+  G_->storeFunction("main", &*F_);
+  M_.reset(new Module(&*F_));
   IP_.reset(createBackend(backendKind_, &*M_));
 }
 
@@ -28,8 +31,8 @@ void ExecutionEngine::reset() {
   if (M_)
     M_->clear();
   IP_.reset(createBackend(backendKind_, &*M_));
-  if (G_)
-    G_->resetState();
+  if (F_)
+    F_->resetState();
 }
 
 ExecutionEngine::~ExecutionEngine() = default;
@@ -108,26 +111,26 @@ void ExecutionEngine::compile(CompilationMode mode) {
   reset();
 
   if (mode != CompilationMode::Infer) {
-    generateGradientNodes(*G_, getConfig(), mode);
+    generateGradientNodes(*F_, getConfig(), mode);
   }
 
-  // Optimized the graph.
-  ::glow::optimize(*G_, mode);
+  // Optimized the function.
+  ::glow::optimize(*F_, mode);
 
-  // Lower the graph into a sequence of low-level linear algebra operations.
-  ::glow::lower(*G_, mode);
+  // Lower the function into a sequence of low-level linear algebra operations.
+  ::glow::lower(*F_, mode);
 
-  // Optimized the graph again.
-  ::glow::optimize(*G_, mode);
+  // Optimized the function again.
+  ::glow::optimize(*F_, mode);
 
-  // Allow the backend to transform the graph.
-  if (IP_->transform(*G_)) {
-    // Optimize the graph again after the backend transformation.
+  // Allow the backend to transform the function.
+  if (IP_->transform(*F_)) {
+    // Optimize the function again after the backend transformation.
     // In particular, DCE is very likely to be useful.
-    ::glow::optimize(*G_, mode);
+    ::glow::optimize(*F_, mode);
   }
 
-  // Generate IR from the graph.
+  // Generate IR from the function.
   M_->generateIR(mode);
 
   // Optimize the generated IR.

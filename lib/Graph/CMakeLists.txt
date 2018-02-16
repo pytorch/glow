@@ -37,6 +37,7 @@ add_library(Graph
             ${INSTR_BLD}
             Nodes.cpp
             Graph.cpp
+            Function.cpp
             Grad.cpp)
 
 target_link_libraries(Graph

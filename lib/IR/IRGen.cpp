@@ -1,6 +1,6 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
-#include "glow/Graph/Graph.h"
+#include "glow/Graph/Function.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
@@ -601,8 +601,8 @@ public:
 } // namespace
 
 void Module::generateIR(CompilationMode mode) {
-  G_->advanceState(Graph::State::IRGenerated);
-  G_->verify();
+  F_->advanceState(Function::State::IRGenerated);
+  F_->verify();
   // Schedule the nodes.
   NodesList ScheduledNodes;
   scheduleGraph(ScheduledNodes);

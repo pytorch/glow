@@ -76,7 +76,7 @@ static TensorQuantizationParams chooseQuantizationParams(float min, float max) {
 }
 
 std::vector<NodeQuantizationInfo>
-generateNodeQuantizationInfos(const Graph &G) {
+generateNodeQuantizationInfos(const Function &G) {
   std::vector<NodeQuantizationInfo> quantizationInfos;
 
   for (auto *node : G.getNodes()) {
@@ -225,12 +225,12 @@ static bool shouldQuantize(const Node *node) {
 
 /// \returns quantized FullyConnected node based on the floating point
 /// version \p FC. Scale and Offset are taken from \p TQP.
-static Node *quantizeFullyConnected(Graph &G, FullyConnectedNode *FC,
+static Node *quantizeFullyConnected(Function &G, FullyConnectedNode *FC,
                                     llvm::ArrayRef<Node *> quantizedInputs,
                                     const TensorQuantizationParams &TQP) {
   assert(quantizedInputs.size() == 3 && "Invalid number of inputs");
 
-  auto QT = G.uniqueType(ElemKind::Int8QTy, FC->getOutput()->dims(), TQP.scale_,
+  auto QT = G.getGraph()->uniqueType(ElemKind::Int8QTy, FC->getOutput()->dims(), TQP.scale_,
                          TQP.offset_);
   return G.createFullyConnected(FC->getName(), quantizedInputs[0],
                                 quantizedInputs[1], quantizedInputs[2], QT);
@@ -239,7 +239,7 @@ static Node *quantizeFullyConnected(Graph &G, FullyConnectedNode *FC,
 /// Quantize all inputs for \p node and return back pointers to the newly
 /// created qunatization nodes.
 static llvm::SmallVector<Node *, 6>
-quantizeInputs(Graph &G, Node *node,
+quantizeInputs(Function &G, Node *node,
                const std::unordered_map<std::string, TensorQuantizationParams>
                    &nodeToTQP) {
   llvm::SmallVector<Node *, 6> quantizedInputs;
@@ -254,7 +254,7 @@ quantizeInputs(Graph &G, Node *node,
     const TensorQuantizationParams &TQP =
         nodeToTQP.find(nodeOutputName)->second;
     auto QT =
-        G.uniqueType(ElemKind::Int8QTy, NV->dims(), TQP.scale_, TQP.offset_);
+        G.getGraph()->uniqueType(ElemKind::Int8QTy, NV->dims(), TQP.scale_, TQP.offset_);
 
     Node *quantizeNode = G.createQuantize("quantize", NV, QT);
     quantizedInputs.push_back(quantizeNode);
@@ -263,8 +263,8 @@ quantizeInputs(Graph &G, Node *node,
   return quantizedInputs;
 }
 
-void generateQuantizedGraph(
-    Graph &G, llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos) {
+void generateQuantizedFunction(
+    Function &G, llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos) {
   // Build a mapping between node name and TensorQuantizatonParams.
   std::unordered_map<std::string, TensorQuantizationParams> nodeToTQP;
   for (const auto &quantizationInfo : quantizationInfos) {

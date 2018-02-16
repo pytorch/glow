@@ -13,6 +13,7 @@
 namespace glow {
 
 class Graph;
+class Function;
 class Node;
 class Interpreter;
 class Variable;
@@ -26,6 +27,8 @@ class Value;
 class ExecutionEngine final {
   /// The Graph that represents the high-level program.
   std::unique_ptr<Graph> G_;
+  /// The Function that represents the high-level program.
+  std::unique_ptr<Function> F_;
   /// The Module that holds the IR.
   std::unique_ptr<Module> M_;
   /// The network interpreter

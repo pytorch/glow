@@ -7,18 +7,18 @@
 
 namespace glow {
 
-class Graph;
+class Function;
 
 /// A Helper class that manages the mapping between gradients and activations,
 /// and helps to accumulate gradients into variables.
 class GraphGradMapper {
-  /// The graph that we mutate.
-  Graph &G_;
+  /// The Function that we mutate.
+  Function &G_;
   /// Maps activation values to their gradient values.
   UnownedNodeValueMap map_;
 
 public:
-  GraphGradMapper(Graph &G) : G_(G) {}
+  GraphGradMapper(Function &G) : G_(G) {}
 
   /// \register the node \p grad as the grad of \p activation. If the node is
   /// already registered then create an 'add' node that accumulates the gradient

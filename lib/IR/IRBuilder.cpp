@@ -1,6 +1,6 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
-#include "glow/Graph/Graph.h"
+#include "glow/Graph/Function.h"
 
 #include "glow/IR/IRBuilder.h"
 
@@ -108,7 +108,7 @@ SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input) {
 
 ReshapeInst *IRBuilder::createReshapeOp(Value *input,
                                         llvm::ArrayRef<size_t> shape) {
-  auto ty = M_->getGraph()->uniqueTypeWithNewShape(input->getType(), shape);
+  auto ty = M_->getFunction()->getGraph()->uniqueTypeWithNewShape(input->getType(), shape);
   auto *res = createAllocActivationInst("reshape.res", ty);
   return createReshapeInst("reshape", res, input, shape);
 }
@@ -122,7 +122,7 @@ ReshapeInst *IRBuilder::createReshapeOp(Value *input,
 TensorViewInst *IRBuilder::createTensorView(ElemKind elemKind,
                                             llvm::ArrayRef<size_t> dims,
                                             Value *src, llvm::StringRef name) {
-  auto ty = getModule().getGraph()->uniqueType(Type(elemKind, dims));
+  auto ty = M_->getFunction()->getGraph()->uniqueType(Type(elemKind, dims));
   return createTensorViewInst(name, src, ty);
 }
 
@@ -269,7 +269,7 @@ WeightVar *IRBuilder::createWeightVar(ElemKind elemTy,
                                       llvm::ArrayRef<size_t> dims,
                                       llvm::StringRef name,
                                       WeightVar::MutabilityKind k) {
-  auto T = M_->getGraph()->uniqueType(elemTy, dims);
+  auto T = M_->getFunction()->getGraph()->uniqueType(elemTy, dims);
   return createWeightVar(T, name, k);
 }
 
@@ -284,6 +284,6 @@ WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
 AllocActivationInst *
 IRBuilder::createAllocActivationInst(llvm::StringRef name, ElemKind elemTy,
                                      llvm::ArrayRef<size_t> dims) {
-  auto T = M_->getGraph()->uniqueType(elemTy, dims);
+  auto T = M_->getFunction()->getGraph()->uniqueType(elemTy, dims);
   return createAllocActivationInst(name, T);
 }
