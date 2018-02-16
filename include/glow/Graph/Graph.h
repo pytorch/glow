@@ -345,9 +345,15 @@ public:
 
   /// @}
 
-  /// Erase a node from the graph.
+  /// Erase the node \p N from the graph.
   void eraseNode(Node *N);
+
+  /// Erase the node \p I from the graph.
   void eraseNode(NodesList::iterator I);
+
+  /// Clone the current function into a new function with the name \p newName.
+  /// \returns a new function that is a copy of the current function.
+  Function *clone(llvm::StringRef newName);
 
   /// Verify the correctness of the graph.
   void verify() const;

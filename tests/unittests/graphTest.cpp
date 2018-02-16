@@ -179,3 +179,22 @@ TEST(Graph, moduleTest) {
   EXPECT_TRUE(M.hasFunction("two"));
   EXPECT_FALSE(M.hasFunction("four"));
 }
+
+TEST(Graph, cloneTest2) {
+  Module M;
+
+  auto *F = M.createFunction("main");
+  Node *K = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+  Node *S = M.createVariable(ElemKind::IndexTy, {4, 1}, "select");
+  Node *conv = F->createConv("Conv1", K, 16, 3, 2, 3);
+  Node *relu = F->createRELU("Relu", conv);
+  Node *concat = F->createConcat("concat", {relu, relu, relu}, 0);
+
+  Node *SM = F->createSoftMax("SoftMax", concat, S);
+  F->createSave("Save", SM);
+
+  auto *newF = F->clone("new_main");
+  newF->verify();
+  EXPECT_EQ(newF->getNodes().size(), F->getNodes().size());
+  EXPECT_EQ(&newF->getParent(), &F->getParent());
+}
