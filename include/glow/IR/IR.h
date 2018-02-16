@@ -16,7 +16,7 @@
 
 namespace glow {
 class Instruction;
-class Module;
+class IRFunction;
 class Graph;
 class Value;
 
@@ -67,10 +67,10 @@ public:
   Value(llvm::StringRef name, TypeRef T, Kinded::Kind k)
       : Named(name), Typed(T), Kinded(k) {}
 
-  void verifyUseList(const Module &M) const;
+  void verifyUseList(const IRFunction &M) const;
 
   /// Verify the correctness of the instruction parameters.
-  void verify(const Module &M) const;
+  void verify(const IRFunction &M) const;
 
   /// Print value.
   void dump(llvm::raw_ostream &out) const;
@@ -91,8 +91,8 @@ public:
   using Operand = InstructionOperand;
 
 private:
-  /// Parent module.
-  Module *M_;
+  /// Parent function.
+  IRFunction *F_;
 
   /// A list of operands that the instruction has. This is typically a very
   /// short list.
@@ -104,7 +104,7 @@ private:
 
 protected:
   /// Prevent the destruction of a derived object via a base-class pointer.
-  /// Use Module::destroyInstruction instead.
+  /// Use IRFunction::destroyInstruction instead.
   ~Instruction() {
     for (unsigned idx = 0, e = ops_.size(); idx < e; ++idx) {
       setOperand(idx, nullptr);
@@ -115,12 +115,12 @@ public:
   /// Adds a new operand \p op at the end of the operand list.
   void pushOperand(Operand op);
 
-  Instruction(Module *M, llvm::StringRef name, Kinded::Kind k, TypeRef Ty)
-      : Value(name, Ty, k), M_(M) {}
+  Instruction(IRFunction *M, llvm::StringRef name, Kinded::Kind k, TypeRef Ty)
+      : Value(name, Ty, k), F_(M) {}
 
-  Instruction(Module *M, llvm::StringRef name, Kinded::Kind k, TypeRef Ty,
+  Instruction(IRFunction *M, llvm::StringRef name, Kinded::Kind k, TypeRef Ty,
               llvm::ArrayRef<Operand> ops)
-      : Value(name, Ty, k), M_(M) {
+      : Value(name, Ty, k), F_(M) {
     for (auto &op : ops) {
       pushOperand(op);
     }
@@ -153,10 +153,10 @@ public:
                           unsigned srcIdx);
 
   /// \returns parent of current instruction.
-  Module *getParent() const { return M_; }
+  IRFunction *getParent() const { return F_; }
 
   /// Sets a parent for the current instruction.
-  void setParent(Module *Mod) { M_ = Mod; }
+  void setParent(IRFunction *Mod) { F_ = Mod; }
 
   /// Erases instruction from its parent and destroy it.
   void eraseFromParent();
@@ -178,8 +178,8 @@ class WeightVar;
 class Value;
 class Node;
 
-/// A module that represents the compilation unit.
-class Module final {
+/// A function that represents the compilation unit.
+class IRFunction final {
 public:
   using VariableMap = std::unordered_map<const Node *, Value *>;
   using InstListTy = std::list<Instruction *>;
@@ -188,9 +188,9 @@ public:
   using WeightVarListTy = std::list<WeightVar *>;
 
 private:
-  /// A pointer to the graph structure. The Module does not own the graph.
+  /// A pointer to the graph structure. The function does not own the graph.
   Graph *G_;
-  /// Name of the module.
+  /// Name of the function.
   llvm::StringRef name_;
 
   /// A list of weights. Weights are shared between all execution context.
@@ -203,7 +203,7 @@ private:
   /// represent them in the lower IR.
   VariableMap variableMap_{};
 
-  /// Assign the instructions in the module a unique name.
+  /// Assign the instructions in the function a unique name.
   void nameInstructions();
 
   /// Perform scheduling on the graph.
@@ -214,15 +214,15 @@ public:
   /// Add an instruction to the instr stream.
   void pushInstr(Instruction *I) { instrs_.push_back(I); }
 
-  explicit Module(Graph *G);
+  explicit IRFunction(Graph *G);
 
-  ~Module();
+  ~IRFunction();
 
   /// Generate IR from the graph nodes. If the compilation mode is 'training'
   /// then this procedure will also generate the code for the backward pass.
   void generateIR(CompilationMode mode);
 
-  /// Wipe out the content of the module. This allows the module to be used
+  /// Wipe out the content of the function. This allows the function to be used
   /// again for another round of code generation.
   void clear();
 
@@ -231,16 +231,16 @@ public:
 
   llvm::StringRef getName() const { return name_; }
 
-  /// Verify the correctness of the module.
+  /// Verify the correctness of the function.
   void verify() const;
 
-  /// Dump a textual representation of the module.
+  /// Dump a textual representation of the function.
   void dump();
 
-  /// Dump a dotty graph that depicts the module.
+  /// Dump a dotty graph that depicts the function.
   void dumpDAG(const char *dotFilename);
 
-  /// Dump a dotty graph that depicts the module.
+  /// Dump a dotty graph that depicts the function.
   void dumpDAG();
 
   /// \returns the variable map.
@@ -258,16 +258,16 @@ public:
   /// \returns the list of weights.
   WeightVarListTy &getWeights() { return weights_; }
 
-  /// Erase the instruction from the module.
+  /// Erase the instruction from the function.
   void eraseInstruction(Instruction *I);
 
-  /// Erase the instruction from the module.
+  /// Erase the instruction from the function.
   InstrIterator eraseInstruction(InstrIterator it);
 
-  /// Remove the instruction from the module.
+  /// Remove the instruction from the function.
   void removeInstruction(Instruction *I);
 
-  /// Remove the instruction from the module.
+  /// Remove the instruction from the function.
   InstrIterator removeInstruction(InstrIterator it);
 
   /// Destroy an instruction.
@@ -276,11 +276,11 @@ public:
   /// Inserts an instruction at the place described by \where.
   InstrIterator insertInstruction(InstrIterator where, Instruction *I);
 
-  /// Moves an instruction belonging to a module to the place described by
+  /// Moves an instruction belonging to a function to the place described by
   /// \where.
   InstrIterator moveInstruction(InstrIterator where, Instruction *I);
 
-  /// Moves an instruction belonging to a module to the place described by
+  /// Moves an instruction belonging to a function to the place described by
   /// \where.
   InstrIterator moveInstruction(const Instruction *where, Instruction *I);
 
@@ -295,8 +295,8 @@ public:
 };
 
 /// Iterator over inteructions.
-using InstrIterator = Module::InstrIterator;
-using InstrConstIterator = Module::InstrConstIterator;
+using InstrIterator = IRFunction::InstrIterator;
+using InstrConstIterator = IRFunction::InstrConstIterator;
 
 /// A helper class used for instructions numbering.
 class InstructionNumbering {
@@ -306,10 +306,9 @@ class InstructionNumbering {
   NumberedInstructionMap numToInstr_;
   /// Maps an instruction to its number.
   InstructionNumbersMap instrToNum_;
-  Module &M_;
 
 public:
-  InstructionNumbering(Module &M);
+  InstructionNumbering(IRFunction &M);
 
   /// Return the instruction with a given number or
   /// M.getInstrs().end() if this instruction is not assigned any number.
@@ -322,9 +321,6 @@ public:
   /// Return the number of an instruction or a negative value if no number
   /// was assigned to this instruction.
   int64_t getInstrNumber(Instruction *I) const;
-
-  /// Return the module
-  Module &getModule() { return M_; }
 };
 
 /// Get the allocation corrsponding to th value \p V. It can look through

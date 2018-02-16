@@ -14,7 +14,7 @@
 namespace glow {
 
 class Context;
-class Module;
+class IRFunction;
 class Value;
 class Tensor;
 class Variable;
@@ -22,7 +22,7 @@ class Instruction;
 
 class JITBackend final : public Backend {
   /// The Module that holds the glow IR. This does not own the module.
-  Module *M_;
+  IRFunction *M_;
   /// The LLVM context.
   llvm::LLVMContext ctx_;
   /// The LLVM IR module.
@@ -80,7 +80,7 @@ class JITBackend final : public Backend {
 
 public:
   /// Ctor.
-  explicit JITBackend(Module *M);
+  explicit JITBackend(IRFunction *M);
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
@@ -98,7 +98,7 @@ public:
 };
 
 /// Create a new instance of the JITBackend backend.
-inline Backend *createJIT(Module *M) { return new JITBackend(M); }
+inline Backend *createJIT(IRFunction *M) { return new JITBackend(M); }
 
 } // namespace glow
 

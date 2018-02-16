@@ -25,7 +25,7 @@ using llvm::isa;
 /// Basic test of DSE (Dead Store Elimination)
 TEST(Optimizer, dseBasic) {
   Graph G("DeadStoreElimination");
-  Module M(&G);
+  IRFunction M(&G);
   IRBuilder bb(&M);
 
   auto *input1 = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input1",
@@ -49,7 +49,7 @@ TEST(Optimizer, dseBasic) {
 /// Check that DSE does not remove the last write into a WeightVar.
 TEST(Optimizer, dseDoNotRemloveLastWriteIntoWeightVar) {
   Graph G("DeadStoreElimination");
-  Module M(&G);
+  IRFunction M(&G);
   IRBuilder bb(&M);
 
   auto *input1 = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input1",
@@ -74,7 +74,7 @@ TEST(Optimizer, dseDoNotRemloveLastWriteIntoWeightVar) {
 
 TEST(Optimizer, shareBuffers) {
   Graph G("ShareBuffers");
-  Module M(&G);
+  IRFunction M(&G);
   IRBuilder bb(&M);
 
   auto *input = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input",
@@ -108,7 +108,7 @@ TEST(Optimizer, shareBuffers) {
 
 TEST(Optimizer, copyPropagation) {
   Graph G("ShareBuffers");
-  Module M(&G);
+  IRFunction M(&G);
   IRBuilder bb(&M);
 
   auto *input = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input",
@@ -144,7 +144,7 @@ TEST(Optimizer, copyPropagation) {
 
 TEST(Optimizer, copyPropagationSimple) {
   Graph G("ShareBuffers");
-  Module M(&G);
+  IRFunction M(&G);
   IRBuilder bb(&M);
 
   auto *input = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input",
@@ -176,7 +176,7 @@ TEST(Optimizer, copyPropagationSimple) {
 
 TEST(Optimizer, copyPropagationTranspose) {
   Graph G("ShareBuffers");
-  Module M(&G);
+  IRFunction M(&G);
   IRBuilder bb(&M);
 
   auto *output1 =

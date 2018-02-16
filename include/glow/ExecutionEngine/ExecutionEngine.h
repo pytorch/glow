@@ -20,14 +20,14 @@ class Tensor;
 class Value;
 
 /// This is the ExecutionEngine. It owns the Graph, the IR, and the backends.
-/// The Graph, Module, etc in this class are defined as pointers, in order to
+/// The Graph, IR, etc in this class are defined as pointers, in order to
 /// erase the type and prevent the internal types from leaking out to the
 /// users of this class.
 class ExecutionEngine final {
   /// The Graph that represents the high-level program.
   std::unique_ptr<Graph> G_;
-  /// The Module that holds the IR.
-  std::unique_ptr<Module> M_;
+  /// The IR function that represents the program.
+  std::unique_ptr<IRFunction> IR_;
   /// The network interpreter
   std::unique_ptr<Backend> IP_;
   /// The training configuration.
@@ -47,8 +47,8 @@ public:
   /// Reset the execution engine.
   void reset();
 
-  /// \returns the internal module.
-  Module &getModule() { return *M_; }
+  /// \returns the internal IR function.
+  IRFunction &getIR() { return *IR_; }
 
   /// \returns the internal graph.
   Graph &getGraph() { return *G_; }

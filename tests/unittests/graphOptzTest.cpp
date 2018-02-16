@@ -20,7 +20,7 @@ using namespace glow;
 TEST(GraphOptz, DCE) {
 
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
 
   for (int i = 0; i < 40; i++) {
@@ -44,7 +44,7 @@ TEST(GraphOptz, DCE) {
 TEST(GraphOptz, liveCodeNotEliminated) {
 
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
   auto *Ex = G.createVariable(ElemKind::IndexTy, {4, 1}, "Ex");
 
@@ -68,7 +68,7 @@ TEST(GraphOptz, liveCodeNotEliminated) {
 
 TEST(GraphOptz, optimizeBatchNormAfterConv) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -84,7 +84,7 @@ TEST(GraphOptz, optimizeBatchNormAfterConv) {
 
 TEST(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -100,7 +100,7 @@ TEST(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
 
 TEST(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -118,7 +118,7 @@ TEST(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
 
 TEST(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -140,7 +140,7 @@ TEST(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
 
 TEST(GraphOptz, sinkTransposeBelowRELU) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -162,7 +162,7 @@ TEST(GraphOptz, sinkTransposeBelowRELU) {
 
 TEST(GraphOptz, sinkTransposeBelowSigmoid) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -184,7 +184,7 @@ TEST(GraphOptz, sinkTransposeBelowSigmoid) {
 
 TEST(GraphOptz, sinkTransposeBelowTanh) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -206,7 +206,7 @@ TEST(GraphOptz, sinkTransposeBelowTanh) {
 
 TEST(GraphOptz, cancelTwoTransposes) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -224,7 +224,7 @@ TEST(GraphOptz, cancelTwoTransposes) {
 
 TEST(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -242,7 +242,7 @@ TEST(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
 
 TEST(GraphOptz, sinkTransposeBelowArithmeticNodes) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
                               Variable::VisibilityKind::Public,
                               Variable::TrainKind::None);
@@ -268,7 +268,7 @@ TEST(GraphOptz, sinkTransposeBelowArithmeticNodes) {
 
 TEST(GraphOptz, sinkReluBelowConcatNodes) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
                               Variable::VisibilityKind::Public,
                               Variable::TrainKind::None);
@@ -293,7 +293,7 @@ TEST(GraphOptz, sinkReluBelowConcatNodes) {
 
 TEST(GraphOptz, sinkTransposeBelowConcatNodes) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
                               Variable::VisibilityKind::Public,
                               Variable::TrainKind::None);
@@ -319,7 +319,7 @@ TEST(GraphOptz, sinkTransposeBelowConcatNodes) {
 
 TEST(GraphOptz, poolBelowReluSwapped) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -340,7 +340,7 @@ TEST(GraphOptz, poolBelowReluSwapped) {
 
 TEST(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -361,7 +361,7 @@ TEST(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
 
 TEST(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -383,7 +383,7 @@ TEST(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
 
 TEST(GraphOptz, mergeConcatNodes) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
                               Variable::VisibilityKind::Public,
                               Variable::TrainKind::None);
@@ -444,7 +444,7 @@ TEST(GraphOptz, mergeConcatNodes) {
 
 TEST(GraphOptz, CSE) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Node *A1 = G.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
                               Variable::VisibilityKind::Public,
                               Variable::TrainKind::None);
@@ -483,7 +483,7 @@ TEST(GraphOptz, CSE) {
 
 TEST(GraphOptz, SliceOfSplatNode) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   Type t(ElemKind::FloatTy, {1000, 1000, 1000});
   Node *Z = G.createSplat("zero", &t, 0.);
   Node *S = G.createSlice("slice", Z, {5, 15, 42}, {99, 88, 77});
@@ -506,7 +506,7 @@ TEST(GraphOptz, SliceOfSplatNode) {
 TEST(GraphOptz, SliceOfSplatNodeChain) {
   for (int shouldReverse = 0; shouldReverse <= 1; shouldReverse++) {
     Graph G;
-    Module M(&G);
+    IRFunction M(&G);
     Type t(ElemKind::FloatTy, {1000, 1000, 1000});
     Node *Z = G.createSplat("zero", &t, 0.);
     Node *S1 = G.createSlice("slice1", Z, {5, 15, 42}, {99, 88, 77});
@@ -530,7 +530,7 @@ TEST(GraphOptz, SliceOfSplatNodeChain) {
 
 TEST(GraphOptz, DCEPublicVars) {
   Graph G;
-  Module M(&G);
+  IRFunction M(&G);
   G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input",
                    Variable::VisibilityKind::Public);
 

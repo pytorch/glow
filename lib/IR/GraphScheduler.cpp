@@ -172,7 +172,7 @@ public:
   }
 };
 
-void Module::scheduleGraph(NodesList &Schedule) {
+void IRFunction::scheduleGraph(NodesList &Schedule) {
   Schedule.clear();
   for (auto &N : G_->getVars()) {
     Schedule.push_back(N);

@@ -14,20 +14,20 @@ using namespace glow;
 ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
   backendKind_ = backendKind;
   G_.reset(new Graph());
-  M_.reset(new Module(&*G_));
-  IP_.reset(createBackend(backendKind_, &*M_));
+  IR_.reset(new IRFunction(&*G_));
+  IP_.reset(createBackend(backendKind_, &*IR_));
 }
 
 // Set the code generator kind to \p backendKind.
 void ExecutionEngine::setBackend(BackendKind backendKind) {
   backendKind_ = backendKind;
-  IP_.reset(createBackend(backendKind, &*M_));
+  IP_.reset(createBackend(backendKind, &*IR_));
 }
 
 void ExecutionEngine::reset() {
-  if (M_)
-    M_->clear();
-  IP_.reset(createBackend(backendKind_, &*M_));
+  if (IR_)
+    IR_->clear();
+  IP_.reset(createBackend(backendKind_, &*IR_));
   if (G_)
     G_->resetState();
 }
@@ -38,7 +38,8 @@ void ExecutionEngine::run(llvm::ArrayRef<Variable *> vars,
                           llvm::ArrayRef<Tensor *> inputs) {
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
-  assert(!M_->getInstrs().empty() && "Running a Module with no instructions.");
+  assert(!IR_->getInstrs().empty() &&
+         "Running a function with no instructions.");
 
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
@@ -58,7 +59,8 @@ void ExecutionEngine::runBatch(size_t iterations,
   assert(!inputs.empty() && "No inputs");
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
-  assert(!M_->getInstrs().empty() && "Running a Module with no instructions.");
+  assert(!IR_->getInstrs().empty() &&
+         "Running a function with no instructions.");
 
   // This is the size of one batch (the number of samples in the batch).
   size_t batchSize = vars[0]->getType()->dims()[0];
@@ -128,9 +130,9 @@ void ExecutionEngine::compile(CompilationMode mode) {
   }
 
   // Generate IR from the graph.
-  M_->generateIR(mode);
+  IR_->generateIR(mode);
 
   // Optimize the generated IR.
-  ::glow::optimize(*M_, mode);
+  ::glow::optimize(*IR_, mode);
   IP_->init();
 }

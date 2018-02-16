@@ -18,17 +18,17 @@
 
 using namespace glow;
 
-Backend *glow::createBackend(BackendKind backendKind, Module *M) {
+Backend *glow::createBackend(BackendKind backendKind, IRFunction *F) {
   switch (backendKind) {
   case BackendKind::Interpreter:
-    return createInterpreter(M);
+    return createInterpreter(F);
 #if defined(GLOW_WITH_OPENCL)
   case BackendKind::OpenCL:
-    return createOCLBackend(M);
+    return createOCLBackend(F);
 #endif
 #if defined(GLOW_WITH_JIT)
   case BackendKind::JIT:
-    return createJIT(M);
+    return createJIT(F);
 #endif
   default:
     // Unknown execution backend.

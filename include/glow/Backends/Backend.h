@@ -4,7 +4,7 @@
 namespace glow {
 
 class Context;
-class Module;
+class IRFunction;
 class Value;
 class Tensor;
 class Variable;
@@ -41,8 +41,8 @@ public:
   virtual bool transform(Graph &G) { return false; }
 };
 
-/// Create a backend of kind \p kind, to run the module \p M.
-Backend *createBackend(BackendKind backendKind, Module *M);
+/// Create a backend of kind \p kind, to run the IR function \p M.
+Backend *createBackend(BackendKind backendKind, IRFunction *M);
 
 } // namespace glow
 

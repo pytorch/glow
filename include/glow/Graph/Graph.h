@@ -32,7 +32,7 @@ public:
 private:
   /// A current state of the graph.
   State state_{State::Created};
-  /// A uniqued list of types in the module. Types in this list can be equated
+  /// A uniqued list of types. Types in this list can be equated
   /// by comparing their addresses.
   TypesList types_{};
   /// A list of nodes that the graph owns.
@@ -76,17 +76,17 @@ public:
     return V;
   }
 
-  /// Return a pointer to a uniqued type \p t in the current module.
+  /// Return a pointer to a uniqued type \p T.
   TypeRef uniqueType(const Type &T);
 
-  /// Return a pointer to a uniqued type \p t in the current module.
+  /// Return a pointer to a uniqued type \p T.
   TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims);
 
-  /// Return a pointer to a uniqued type \p t in the current module.
+  /// Return a pointer to a uniqued type \p T.
   TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
                      int32_t offset);
 
-  /// Return a pointer to a uniqued type \p t in the current module.
+  /// Return a pointer to a uniqued type \p T.
   /// The new type is identical to \p T, with a new shape \p dims.
   TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims);
 
@@ -307,10 +307,10 @@ public:
   /// Dumps the textual representation of the network.
   void dump() const;
 
-  /// Dump a dotty graph that depicts the module.
+  /// Dump a dotty graph that depicts the function.
   void dumpDAG();
 
-  /// Dump a dotty graph that depicts the module.
+  /// Dump a dotty graph that depicts the function.
   void dumpDAG(const char *dotFilename);
 
   /// \returns the list of nodes that the graph owns.

@@ -45,7 +45,7 @@ static llvm::cl::opt<bool>
                llvm::cl::desc("Dump the textual assembly of the jitted code"),
                llvm::cl::init(false));
 
-JITBackend::JITBackend(Module *M) : M_(M) {
+JITBackend::JITBackend(IRFunction *M) : M_(M) {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
   JIT_ = llvm::make_unique<llvm::orc::GlowJIT>();

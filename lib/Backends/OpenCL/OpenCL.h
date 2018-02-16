@@ -17,13 +17,13 @@
 #endif
 
 namespace glow {
-class Module;
+class IRFunction;
 class Backend;
 
 /// This is the OpenCL backend.
 class OCLBackend final : public Backend {
   /// The Module that holds the IR. This does not own the module.
-  Module *M_;
+  IRFunction *F_;
   /// The allocator assigns device memory addresses to the buffers.
   MemoryAllocator allocator_;
   /// Maps values to on-device buffers. This list includes both weights and
@@ -44,7 +44,7 @@ class OCLBackend final : public Backend {
 
 public:
   /// Ctor.
-  explicit OCLBackend(Module *M);
+  explicit OCLBackend(IRFunction *M);
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
@@ -71,7 +71,7 @@ private:
 
 namespace glow {
 
-Backend *createOCLBackend(Module *M);
+Backend *createOCLBackend(IRFunction *M);
 
 } // namespace glow
 
