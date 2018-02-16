@@ -22,7 +22,7 @@ TEST(Interpreter, interpret) {
 
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   G.setName("interpret");
   auto *input = G.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input",
                                  Variable::VisibilityKind::Public);
@@ -46,7 +46,7 @@ TEST(Interpreter, interpret) {
   auto *SM = G.createSoftMax("sm", RL3, ex);
   G.createSave("ret", SM);
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   /// Add a debug_action instruction to check that it can be
   /// processed by the interpreter.
@@ -59,7 +59,7 @@ TEST(Interpreter, interpret) {
 
 TEST(Interpreter, profileQuantizationForANetwork) {
   ExecutionEngine EE;
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   Tensor inputs(ElemKind::FloatTy, {1, 4});
   inputs.getHandle() = {1, 1.2, 0.5, 1.3};
 
@@ -73,7 +73,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   ::glow::profileQuantization(G);
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   // TODO: Verify histogram itself, for now just verify min and max.
   // Run inference first time and capture tensor stats.
@@ -111,19 +111,20 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
 TEST(Interpreter, QuantizeAndDequantize) {
   ExecutionEngine EE;
-  auto &G = EE.getGraph();
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
   Tensor inputs(ElemKind::FloatTy, {1, 4});
   inputs.getHandle() = {1, 1.2, 0.5, 1.3};
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1, 4}, "A",
                              Variable::VisibilityKind::Public);
 
-  auto qType = G.uniqueType(ElemKind::Int8QTy, {1, 4}, 0.05, -138);
+  auto qType = mod.uniqueType(ElemKind::Int8QTy, {1, 4}, 0.05, -138);
   auto *quantize = G.createQuantize("quantize", A, qType);
   auto *dequantize = G.createDequantize("dequantize", quantize);
   auto *result = G.createSave("save", dequantize);
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({A}, {&inputs});
 
   auto resultHandle = result->getVariable()->getHandle();
@@ -136,7 +137,7 @@ TEST(Interpreter, trainASimpleNetwork) {
   // Learning a single input vector.
   EE.getConfig().learningRate = 0.05;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   G.setName("trainASimpleNetwork");
 
   // Create a variable with 1 input, which is a vector of 4 elements.
@@ -158,14 +159,14 @@ TEST(Interpreter, trainASimpleNetwork) {
   inputs.getHandle<>() = {0.15, 0.15, 0.15, 0.15};
   expected.getHandle<>() = {0.9, 0.9, 0.9, 0.9};
 
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
 
   // Train the network. Learn 1000 batches.
   EE.runBatch(1000, {A, E}, {&inputs, &expected});
 
   // Testing the output vector.
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({A}, {&inputs});
   auto RNWH = result->getVariable()->getPayload().getHandle<>();
   (void)RNWH;
@@ -189,7 +190,7 @@ TEST(Interpreter, simpleRegression) {
   Tensor inputs(ElemKind::FloatTy, {1, numInputs});
   Tensor expected(ElemKind::FloatTy, {1, numInputs});
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   G.setName("simpleRegression");
   auto *A = G.createVariable(ElemKind::FloatTy, {1, numInputs}, "A",
                              Variable::VisibilityKind::Public);
@@ -203,7 +204,7 @@ TEST(Interpreter, simpleRegression) {
   auto I = inputs.getHandle<>();
   auto E = expected.getHandle<>();
 
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
 
   // Train the network:
   for (int iter = 0; iter < 1000; iter++) {
@@ -214,7 +215,7 @@ TEST(Interpreter, simpleRegression) {
   }
 
   // Verify the result of the regression layer.
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   // Test the output:
   for (int iter = 0; iter < 5; iter++) {
@@ -238,7 +239,7 @@ TEST(Interpreter, learnXor) {
   // Learning a single input vector.
   EE.getConfig().learningRate = 0.05;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   G.setName("learnXor");
 
   auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A",
@@ -268,12 +269,12 @@ TEST(Interpreter, learnXor) {
     TL.at({i, 0}) = a ^ b;
   }
 
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
 
   // Train the network:
   EE.runBatch(2500, {A, Ex}, {&trainingSet, &trainingLabels});
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   // Prepare the testing tensor:
   for (unsigned i = 0; i < numInputs; i++) {
@@ -338,7 +339,7 @@ TEST(Network, circle) {
 
   unsigned minibatchSize = 11;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   G.setName("circle");
   auto *A = G.createVariable(ElemKind::FloatTy, {minibatchSize, 2}, "A",
                              Variable::VisibilityKind::Public);
@@ -353,7 +354,7 @@ TEST(Network, circle) {
   auto *SM = G.createSoftMax("soft", T1, S);
   auto *result = G.createSave("ret", SM);
 
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
   Tensor labels(ElemKind::IndexTy, {numSamples, 1});
@@ -362,7 +363,7 @@ TEST(Network, circle) {
   // Training:
   EE.runBatch(4000, {A, S}, {&coordinates, &labels});
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   // Print a diagram that depicts the network decision on a grid.
   Tensor sample(ElemKind::FloatTy, {minibatchSize, 2});
@@ -423,7 +424,7 @@ TEST(Network, learnSingleValueConcat) {
   EE.getConfig().momentum = 0.9;
   EE.getConfig().learningRate = 0.01;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   G.setName("learnSingleValueConcat");
 
   auto *Ex = G.createVariable(ElemKind::FloatTy, {1, width * 2}, "Ex",
@@ -451,12 +452,12 @@ TEST(Network, learnSingleValueConcat) {
   inputs.getHandle<>().clear(0.15);
   expected.getHandle<>().clear(0.9);
 
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
 
   // Train the network:
   EE.runBatch(1000, {A, B, Ex}, {&inputs, &inputs, &expected});
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   // Testing the output vector.
   EE.run({A}, {&inputs});
@@ -470,7 +471,7 @@ TEST(Network, learnSingleValueConcat) {
 TEST(Network, concatVectors) {
   ExecutionEngine EE;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   G.setName("concatVectors");
 
   auto *V1 = G.createVariable(ElemKind::IndexTy, {10}, "V1",
@@ -497,7 +498,7 @@ TEST(Network, concatVectors) {
     I3.getHandle<size_t>().at({i + 20}) = i + 50;
   }
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   // Testing the output vector.
   EE.run({V1, V2, V3}, {&I1, &I2, &I3});
@@ -512,7 +513,7 @@ TEST(Network, concatVectors) {
 TEST(Network, sliceVectors) {
   ExecutionEngine EE;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   G.setName("sliceVectors");
 
   auto *V = G.createVariable(ElemKind::IndexTy, {3, 30}, "V",
@@ -534,7 +535,7 @@ TEST(Network, sliceVectors) {
     I.getHandle<size_t>().at({2, j}) = j + 60;
   }
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   // Testing the output slices.
   EE.run({V}, {&I});
@@ -589,7 +590,7 @@ void testRNNCell(TCellGenerator cell) {
   // Learning a single input vector.
   EE.getConfig().learningRate = 0.05;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   G.setName("testRNNCell");
 
   const unsigned NumVectors = 3;
@@ -636,7 +637,7 @@ void testRNNCell(TCellGenerator cell) {
   auto *R = G.createConcat("O", regressionNodes, 1);
   auto *result = G.createSave("result", R);
 
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
 
   // Values for the input and output variables.
   Tensor inputs(ElemKind::FloatTy, {1, NumVectors, NumElements});
@@ -652,7 +653,7 @@ void testRNNCell(TCellGenerator cell) {
   EE.runBatch(1000, {X, Y}, {&inputs, &expected});
 
   // Testing the output vector.
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   EE.run({X}, {&inputs});
   auto RNWH = result->getVariable()->getPayload().getHandle<>();
@@ -673,7 +674,7 @@ TEST(Network, trainLSTM) { testRNNCell(buildLSTM); };
 TEST(Optimizer, copyPropagation) {
   ExecutionEngine EE;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   G.setName("CopyPropagation");
 
   Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
@@ -683,7 +684,7 @@ TEST(Optimizer, copyPropagation) {
   K = G.createRELU("Relu", K);
   K = G.createSoftMax("SoftMax", K, S);
   K = G.createSave("result", K);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   // Check that all copy instructions are eliminated.
   auto &instrs = EE.getIR().getInstrs();
@@ -698,7 +699,7 @@ TEST(Interpreter, learnSqrt2) {
 
   EE.getConfig().learningRate = 0.03;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   G.setName("Square root of 2");
 
   auto *A = G.createVariable(ElemKind::FloatTy, {1}, "A",
@@ -712,7 +713,7 @@ TEST(Interpreter, learnSqrt2) {
   O = G.createRegression("reg", O, Ex);
   G.createSave("ret", O);
 
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
 
   // Train the network:
   for (int i = 0; i < 50; i++) {
@@ -732,7 +733,7 @@ TEST(LinearRegression, trainSimpleLinearRegression) {
   EE.getConfig().learningRate = 0.1;
   EE.getConfig().batchSize = numSamples;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   G.setName("Gradient descent solution for simple linear regression");
 
   // These m and b are only used to generate training data.
@@ -763,7 +764,7 @@ TEST(LinearRegression, trainSimpleLinearRegression) {
   Variable *M = llvm::cast<Variable>(FC->getWeights());
   Variable *B = llvm::cast<Variable>(FC->getBias());
 
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
 
   // Train the network doing 100 steps. Learn on 500 samples.
   EE.runBatch(100, {inputX, expectedY}, {&tensorX, &tensorY});
@@ -806,7 +807,7 @@ TEST(LinearClassifier, classifyPlayerSport) {
   ExecutionEngine EE;
   EE.getConfig().learningRate = 0.05;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   G.setName("classifyPlayers");
 
   const unsigned numTrainPlayers = 200;
@@ -823,7 +824,7 @@ TEST(LinearClassifier, classifyPlayerSport) {
   auto *SM = G.createSoftMax("softmax", FC, S);
   auto *result = G.createSave("result", SM);
 
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
 
   Tensor players(ElemKind::FloatTy, {numTrainPlayers, numFeatures});
   Tensor labels(ElemKind::IndexTy, {numTrainPlayers, 1});
@@ -832,7 +833,7 @@ TEST(LinearClassifier, classifyPlayerSport) {
   // Training:
   EE.runBatch(2000, {A, S}, {&players, &labels});
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   std::vector<std::tuple<unsigned, unsigned, Sport>> testPlayers;
   testPlayers.emplace_back(82, 240, Sport::BASKETBALL);
@@ -866,7 +867,7 @@ TEST(Interpreter, learnSinus) {
   EE.getConfig().learningRate = 0.2;
   EE.getConfig().batchSize = numSamples;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   G.setName("Gradient descent solution for sin(x)");
 
   // Function that should be learned by the NN
@@ -901,7 +902,7 @@ TEST(Interpreter, learnSinus) {
   Node *R = G.createRegression("reg", FC2, expectedY);
   auto *result = G.createSave("return", R);
 
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
 
   // Learn on numSamples samples.
   EE.runBatch(2700, {inputX, expectedY}, {&tensorX, &tensorY});
@@ -916,7 +917,7 @@ TEST(Interpreter, learnSinus) {
     tensorY.getHandle<>().at({i, 0}) = y;
   }
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({inputX}, {&tensorX});
   auto resH = result->getVariable()->getPayload().getHandle<>();
 

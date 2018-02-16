@@ -151,7 +151,7 @@ void testPTB() {
   EE.getConfig().momentum = 0;
   EE.getConfig().batchSize = minibatchSize;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
   std::cout << "Building" << std::endl;
 
   Variable *X = G.createVariable(
@@ -187,7 +187,7 @@ void testPTB() {
 
   std::cout << "Dumping graph" << std::endl;
 
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
 
   G.dumpDAG("DAG.dot");
 

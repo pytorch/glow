@@ -189,9 +189,7 @@ public:
 
 private:
   /// A pointer to the graph structure. The function does not own the graph.
-  Graph *G_;
-  /// Name of the function.
-  llvm::StringRef name_;
+  Graph *G_{};
 
   /// A list of weights. Weights are shared between all execution context.
   std::list<WeightVar *> weights_{};
@@ -214,7 +212,7 @@ public:
   /// Add an instruction to the instr stream.
   void pushInstr(Instruction *I) { instrs_.push_back(I); }
 
-  explicit IRFunction(Graph *G);
+  explicit IRFunction(Graph *G = nullptr);
 
   ~IRFunction();
 
@@ -226,10 +224,11 @@ public:
   /// again for another round of code generation.
   void clear();
 
-  /// \returns a reference to the original graph.
+  /// \returns a reference to the high-level graph.
   Graph *getGraph() { return G_; }
 
-  llvm::StringRef getName() const { return name_; }
+  /// \returns a reference to the high-level graph.
+  void setGraph(Graph *F) { G_ = F; }
 
   /// Verify the correctness of the function.
   void verify() const;

@@ -19,7 +19,8 @@ using namespace glow;
 
 TEST(Graph, simpleTest) {
   {
-    Graph G;
+    Module MD;
+    Graph &G = *MD.createFunction("F");
     IRFunction M(&G);
     Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
     Node *S = G.createVariable(ElemKind::IndexTy, {4, 1}, "select");
@@ -39,7 +40,8 @@ TEST(Graph, simpleTest) {
 
   {
     unsigned numInputs = 10;
-    Graph G;
+    Module MD;
+    Graph &G = *MD.createFunction("F");
     IRFunction M(&G);
 
     auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
@@ -63,7 +65,8 @@ TEST(Graph, simpleTest) {
 
 TEST(Graph, QuantizationProfileNodes) {
   unsigned numInputs = 10;
-  Graph G;
+  Module MD;
+  Graph &G = *MD.createFunction("F");
   IRFunction M(&G);
 
   auto *A = G.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
@@ -93,7 +96,7 @@ TEST(Graph, QuantizationProfileNodes) {
 
 TEST(Graph, simpleQuant) {
   ExecutionEngine EE;
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   unsigned depth = 16;
   unsigned kernel = 5;
@@ -114,7 +117,7 @@ TEST(Graph, simpleQuant) {
   // Calculate the size and allocate the output buffer.
   auto outSz = calculateConvOutputDims(width, width, kernel, step, pad);
   std::array<size_t, 4> outDims = {{1, outSz.first, outSz.second, 16}};
-  auto t = G.uniqueType(glow::ElemKind::Int8QTy, outDims, 1.5, 6);
+  auto t = G.getParent().uniqueType(glow::ElemKind::Int8QTy, outDims, 1.5, 6);
 
   auto *conv =
       G.createConv("conv", input, filter, bias, t, depth, kernel, step, pad);
@@ -124,28 +127,30 @@ TEST(Graph, simpleQuant) {
   auto *fcBias = G.createVariable(ElemKind::Int8QTy, {6}, 0.4, 2, "B");
   Node *O = G.createFullyConnected("fc1", conv, fcFilter, fcBias);
   G.createSave("ret", O);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 }
 
 TEST(Graph, quantizeDequantizeNodes) {
   ExecutionEngine EE;
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   auto *input = G.createVariable(ElemKind::FloatTy, {1, 3}, "Input");
-  auto qType = G.uniqueType(ElemKind::Int8QTy, {1, 3}, 0.3, 5);
+  auto qType = G.getParent().uniqueType(ElemKind::Int8QTy, {1, 3}, 0.3, 5);
 
   auto *Q = G.createQuantize("quantize", input, qType);
 
-  auto transform = G.uniqueType(ElemKind::Int8QTy, {1, 3}, 1.4, 3);
+  auto transform = G.getParent().uniqueType(ElemKind::Int8QTy, {1, 3}, 1.4, 3);
   auto *A = G.createRescaleQuantized("rescale", Q, transform);
 
   auto *D = G.createDequantize("dequantize", A);
   G.createSave("ret", D);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 }
 
 TEST(Graph, cloneTest) {
-  Graph G;
+  Module M;
+
+  Graph &G = *M.createFunction("main");
   Node *K = G.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
   Node *S = G.createVariable(ElemKind::IndexTy, {4, 1}, "select");
   Node *conv = G.createConv("Conv1", K, 16, 3, 2, 3);

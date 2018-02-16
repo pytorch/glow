@@ -77,7 +77,7 @@ void testMNIST() {
   EE.getConfig().L2Decay = 0.001;
   EE.getConfig().batchSize = minibatchSize;
 
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   Variable *A = G.createVariable(ElemKind::FloatTy, {minibatchSize, 28, 28, 1},
                                  "input", Variable::VisibilityKind::Public,
@@ -100,7 +100,7 @@ void testMNIST() {
 
   auto *result = G.createSave("return", SM);
 
-  EE.compile(CompilationMode::Train);
+  EE.compile(CompilationMode::Train, &G);
 
   // Report progress every this number of training iterations.
   constexpr int reportRate = 30;
@@ -120,7 +120,7 @@ void testMNIST() {
     timer.stopTimer();
   }
   llvm::outs() << "Validating.\n";
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   auto LIH = labelInputs.getHandle<size_t>();
 

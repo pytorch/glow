@@ -13,8 +13,8 @@ using namespace glow;
 
 ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
   backendKind_ = backendKind;
-  G_.reset(new Graph());
-  IR_.reset(new IRFunction(&*G_));
+  M_.reset(new Module());
+  IR_.reset(new IRFunction());
   IP_.reset(createBackend(backendKind_, &*IR_));
 }
 
@@ -103,29 +103,32 @@ void ExecutionEngine::loadValueFromTensor(Variable *v, Tensor *input) {
   t.copyFrom(input);
 }
 
-void ExecutionEngine::compile(CompilationMode mode) {
+void ExecutionEngine::compile(CompilationMode mode, Graph *F) {
   // Reset the engine and start a new compilation process.
   reset();
 
   if (mode != CompilationMode::Infer) {
-    generateGradientNodes(*G_, getConfig(), mode);
+    generateGradientNodes(*F, getConfig(), mode);
   }
 
   // Optimized the graph.
-  ::glow::optimize(*G_, mode);
+  ::glow::optimize(*F, mode);
 
   // Lower the graph into a sequence of low-level linear algebra operations.
-  ::glow::lower(*G_, mode);
+  ::glow::lower(*F, mode);
 
   // Optimized the graph again.
-  ::glow::optimize(*G_, mode);
+  ::glow::optimize(*F, mode);
 
   // Allow the backend to transform the graph.
-  if (IP_->transform(*G_)) {
+  if (IP_->transform(*F)) {
     // Optimize the graph again after the backend transformation.
     // In particular, DCE is very likely to be useful.
-    ::glow::optimize(*G_, mode);
+    ::glow::optimize(*F, mode);
   }
+
+  /// Prepare the IR container to handle our function.
+  IR_->setGraph(F);
 
   // Generate IR from the graph.
   IR_->generateIR(mode);

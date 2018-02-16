@@ -105,12 +105,15 @@ struct Model {
   void loadEncoder();
   void loadDecoder();
 
+  Model() { EE_.getModule().createFunction("main"); }
+
 private:
   Variable *embedding_fr_, *embedding_en_;
   Node *encoderHiddenOutput_;
 
   Variable *loadEmbedding(llvm::StringRef langPrefix, size_t langSize) {
-    Variable *result = EE_.getGraph().createVariable(
+    auto *F = EE_.getModule().getFunction("main");
+    Variable *result = F->createVariable(
         ElemKind::FloatTy, {langSize, EMBEDDING_SIZE},
         "embedding." + langPrefix.str(), Variable::VisibilityKind::Private,
         Variable::TrainKind::None);
@@ -132,7 +135,7 @@ void Model::loadLanguages() {
 /// \p seqLength is Variable representing the length of sentence.
 /// \p encoderHiddenOutput saves resulting hidden layer.
 void Model::loadEncoder() {
-  Graph &G = EE_.getGraph();
+  auto &G = *EE_.getModule().getFunction("main");
   input_ = G.createVariable(
       ElemKind::IndexTy, {MAX_LENGTH}, "encoder.inputsentence",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
@@ -188,7 +191,7 @@ void Model::loadEncoder() {
 /// Uses \p encoderHiddenOutput as final state from Encoder.
 /// Resulting translation is put into \p output Variable.
 void Model::loadDecoder() {
-  Graph &G = EE_.getGraph();
+  auto &G = *EE_.getModule().getFunction("main");
   Variable *input = G.createVariable(ElemKind::IndexTy, {1}, "decoder.input",
                                      Variable::VisibilityKind::Public,
                                      Variable::TrainKind::None);
@@ -248,7 +251,7 @@ void Model::loadDecoder() {
                              Variable::TrainKind::None);
   G.createSave("decoder.output", concat, output_);
 
-  EE_.compile(CompilationMode::Infer);
+  EE_.compile(CompilationMode::Infer, &G);
 }
 
 /// Translation has 2 stages:

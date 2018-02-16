@@ -24,7 +24,8 @@ using llvm::isa;
 
 /// Basic test of DSE (Dead Store Elimination)
 TEST(Optimizer, dseBasic) {
-  Graph G("DeadStoreElimination");
+  Module mod;
+  auto &G = *mod.createFunction("DeadStoreElimination");
   IRFunction M(&G);
   IRBuilder bb(&M);
 
@@ -48,7 +49,8 @@ TEST(Optimizer, dseBasic) {
 
 /// Check that DSE does not remove the last write into a WeightVar.
 TEST(Optimizer, dseDoNotRemloveLastWriteIntoWeightVar) {
-  Graph G("DeadStoreElimination");
+  Module mod;
+  auto &G = *mod.createFunction("DeadStoreElimination");
   IRFunction M(&G);
   IRBuilder bb(&M);
 
@@ -63,7 +65,7 @@ TEST(Optimizer, dseDoNotRemloveLastWriteIntoWeightVar) {
   // no instruction that reads it, because it is an observable side-effect.
   bb.createElementAddInst("elem_add", output, input1, input2);
   bb.createTensorViewInst(
-      "cast", output, G.uniqueType(Type(glow::ElemKind::FloatTy, {1, 1, 1})));
+      "cast", output, mod.uniqueType(Type(glow::ElemKind::FloatTy, {1, 1, 1})));
 
   optimize(M, CompilationMode::Infer);
 
@@ -73,7 +75,8 @@ TEST(Optimizer, dseDoNotRemloveLastWriteIntoWeightVar) {
 }
 
 TEST(Optimizer, shareBuffers) {
-  Graph G("ShareBuffers");
+  Module mod;
+  auto &G = *mod.createFunction("ShareBuffers");
   IRFunction M(&G);
   IRBuilder bb(&M);
 
@@ -107,7 +110,8 @@ TEST(Optimizer, shareBuffers) {
 }
 
 TEST(Optimizer, copyPropagation) {
-  Graph G("ShareBuffers");
+  Module mod;
+  auto &G = *mod.createFunction("ShareBuffers");
   IRFunction M(&G);
   IRBuilder bb(&M);
 
@@ -143,7 +147,8 @@ TEST(Optimizer, copyPropagation) {
 }
 
 TEST(Optimizer, copyPropagationSimple) {
-  Graph G("ShareBuffers");
+  Module mod;
+  auto &G = *mod.createFunction("ShareBuffers");
   IRFunction M(&G);
   IRBuilder bb(&M);
 
@@ -175,7 +180,8 @@ TEST(Optimizer, copyPropagationSimple) {
 }
 
 TEST(Optimizer, copyPropagationTranspose) {
-  Graph G("ShareBuffers");
+  Module mod;
+  auto &G = *mod.createFunction("ShareBuffers");
   IRFunction M(&G);
   IRBuilder bb(&M);
 

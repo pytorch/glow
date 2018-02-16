@@ -79,7 +79,7 @@ TEST(Quantization, quantScaleOffset) {
 
 TEST(Quantization, quantizeGraph) {
   ExecutionEngine EE;
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   auto *input = G.createVariable(ElemKind::FloatTy, {1, 3}, "input");
   auto *W = G.createVariable(ElemKind::FloatTy, {3, 3}, "weights",
@@ -102,15 +102,14 @@ TEST(Quantization, quantizeGraph) {
   glow::generateQuantizedGraph(G, QI);
 
   // Make sure that graph can be compiled and run.
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({}, {});
 }
 
 /// Builds a simple graph, returns back input var and save node through refs.
-void createSimpleGraphForQuantization(ExecutionEngine &EE, Variable *&input,
+void createSimpleGraphForQuantization(Graph &G, Variable *&input,
                                       SaveNode *&saveNode, Variable *W,
                                       Variable *B) {
-  auto &G = EE.getGraph();
   auto *A = G.createVariable(ElemKind::FloatTy, {1, 2}, "A",
                              Variable::VisibilityKind::Public,
                              Variable::TrainKind::None);
@@ -127,37 +126,39 @@ TEST(Quantization, end2end) {
   SaveNode *result1, *result2;
   Variable *input1, *input2;
 
-  auto *W1 = E1.getGraph().createVariable(ElemKind::FloatTy, {2, 2}, "weights",
-                                          Variable::VisibilityKind::Private,
-                                          Variable::TrainKind::Xavier, 1);
-  auto *B1 = E1.getGraph().createVariable(ElemKind::FloatTy, {2}, "bias",
-                                          Variable::VisibilityKind::Private,
-                                          Variable::TrainKind::Xavier, 1);
-  createSimpleGraphForQuantization(E1, input1, result1, W1, B1);
+  auto &G1 = *E1.getModule().createFunction("collect_profile");
+  auto &G2 = *E2.getModule().createFunction("use_profile");
 
-  glow::profileQuantization(E1.getGraph());
-  E1.compile(CompilationMode::Infer);
+  auto *W1 = G1.createVariable(ElemKind::FloatTy, {2, 2}, "weights",
+                               Variable::VisibilityKind::Private,
+                               Variable::TrainKind::Xavier, 1);
+  auto *B1 = G1.createVariable(ElemKind::FloatTy, {2}, "bias",
+                               Variable::VisibilityKind::Private,
+                               Variable::TrainKind::Xavier, 1);
+  createSimpleGraphForQuantization(G1, input1, result1, W1, B1);
+
+  glow::profileQuantization(G1);
+  E1.compile(CompilationMode::Infer, &G1);
 
   // Run graph to capture profile.
   E1.run({input1}, {&inputs});
 
   // Get quantization infos and build new quantized graph.
-  std::vector<NodeQuantizationInfo> QI =
-      generateNodeQuantizationInfos(E1.getGraph());
-  auto *W2 = E2.getGraph().createVariable(ElemKind::FloatTy, {2, 2}, "weights",
-                                          Variable::VisibilityKind::Private,
-                                          Variable::TrainKind::Xavier, 1);
-  auto *B2 = E2.getGraph().createVariable(ElemKind::FloatTy, {2}, "bias",
-                                          Variable::VisibilityKind::Private,
-                                          Variable::TrainKind::Xavier, 1);
+  std::vector<NodeQuantizationInfo> QI = generateNodeQuantizationInfos(G1);
+  auto *W2 = G2.createVariable(ElemKind::FloatTy, {2, 2}, "weights",
+                               Variable::VisibilityKind::Private,
+                               Variable::TrainKind::Xavier, 1);
+  auto *B2 = G2.createVariable(ElemKind::FloatTy, {2}, "bias",
+                               Variable::VisibilityKind::Private,
+                               Variable::TrainKind::Xavier, 1);
 
   // Make sure we are testing with the same input tensors.
   W2->getPayload().copyFrom(&W1->getPayload());
   B2->getPayload().copyFrom(&B1->getPayload());
-  createSimpleGraphForQuantization(E2, input2, result2, W2, B2);
+  createSimpleGraphForQuantization(G2, input2, result2, W2, B2);
 
-  glow::generateQuantizedGraph(E2.getGraph(), QI);
-  E2.compile(CompilationMode::Infer);
+  glow::generateQuantizedGraph(G2, QI);
+  E2.compile(CompilationMode::Infer, &G2);
   E2.run({input2}, {&inputs});
 
   auto result2Handle = result2->getVariable()->getHandle();

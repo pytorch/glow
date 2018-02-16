@@ -17,6 +17,7 @@ class Node;
 class Interpreter;
 class Variable;
 class Tensor;
+class Module;
 class Value;
 
 /// This is the ExecutionEngine. It owns the Graph, the IR, and the backends.
@@ -24,8 +25,8 @@ class Value;
 /// erase the type and prevent the internal types from leaking out to the
 /// users of this class.
 class ExecutionEngine final {
-  /// The Graph that represents the high-level program.
-  std::unique_ptr<Graph> G_;
+  /// The Module that represents the high-level program.
+  std::unique_ptr<Module> M_;
   /// The IR function that represents the program.
   std::unique_ptr<IRFunction> IR_;
   /// The network interpreter
@@ -51,10 +52,10 @@ public:
   IRFunction &getIR() { return *IR_; }
 
   /// \returns the internal graph.
-  Graph &getGraph() { return *G_; }
+  Module &getModule() { return *M_; }
 
   /// Optimize the graph, generate IR, and optimize the IR.
-  void compile(CompilationMode mode);
+  void compile(CompilationMode mode, Graph *F);
 
   /// Provides access to the training configuration.
   TrainingConfig &getConfig() { return config_; }

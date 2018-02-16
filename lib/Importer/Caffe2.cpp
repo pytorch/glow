@@ -197,7 +197,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
-    auto outTy = G_.uniqueType(ElemKind::FloatTy, outDims);
+    auto outTy = G_.getParent().uniqueType(ElemKind::FloatTy, outDims);
 
     auto *node = G_.createConv(op.name(), tr, filter, bias, outTy, depth,
                                kernel, stride, pad);

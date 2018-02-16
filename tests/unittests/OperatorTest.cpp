@@ -17,8 +17,7 @@ using namespace glow;
 
 TEST(Operator, matmul) {
   ExecutionEngine EE;
-
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   auto *lhs = G.createVariable(ElemKind::FloatTy, {1, 3, 2}, "lhs");
   auto *rhs = G.createVariable(ElemKind::FloatTy, {1, 2, 1}, "rhs");
@@ -30,7 +29,7 @@ TEST(Operator, matmul) {
 
   G.createSave("save", R, result);
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   EE.run({}, {});
 
@@ -42,8 +41,7 @@ TEST(Operator, matmul) {
 
 TEST(Operator, batchedReduceAdd) {
   ExecutionEngine EE;
-
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   auto *batch = G.createVariable(ElemKind::FloatTy, {2, 4}, "batch");
   auto *result = G.createVariable(ElemKind::FloatTy, {4}, "result");
@@ -54,7 +52,7 @@ TEST(Operator, batchedReduceAdd) {
 
   G.createSave("save", R, result);
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   EE.run({}, {});
 
@@ -67,8 +65,7 @@ TEST(Operator, batchedReduceAdd) {
 
 TEST(Operator, batchedBatchedAdd) {
   ExecutionEngine EE;
-
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   auto *batch = G.createVariable(ElemKind::FloatTy, {2, 3, 3}, "batch");
   auto *added = G.createVariable(ElemKind::FloatTy, {3, 3}, "added");
@@ -82,7 +79,7 @@ TEST(Operator, batchedBatchedAdd) {
       "batch.add", BatchedArithmeticNode::Mode::Add, batch, added);
   G.createSave("save", R, result);
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   EE.run({}, {});
 
@@ -96,8 +93,7 @@ TEST(Operator, batchedBatchedAdd) {
 /// Broadcast a Tensor of shape (2,1) to (3,2,4,2) with axis 1.
 TEST(Operator, broadcast) {
   ExecutionEngine EE;
-
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   const size_t numDims_A = 4;
   const size_t dimX_A = 3;
@@ -121,7 +117,7 @@ TEST(Operator, broadcast) {
   auto *broadcasted = G.createVariable(ElemKind::FloatTy, dims_A, "A");
   G.createSave("save", R, broadcasted);
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   EE.run({}, {});
 
@@ -150,8 +146,7 @@ TEST(Operator, broadcast) {
 
 TEST(Operator, TopK) {
   ExecutionEngine EE;
-
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   auto *inp = G.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
   auto *values = G.createVariable(ElemKind::FloatTy, {3, 1, 3}, "values");
@@ -166,7 +161,7 @@ TEST(Operator, TopK) {
   G.createSave("save.values", {R, 0}, values);
   G.createSave("save.indices", {R, 1}, indices);
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   EE.run({}, {});
 
@@ -222,8 +217,7 @@ TEST(Operator, Gather) {
     ]
   */
   ExecutionEngine EE;
-
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   auto *data = G.createVariable(ElemKind::FloatTy, {3, 2}, "data");
   auto *indices = G.createVariable(ElemKind::IndexTy, {2, 4}, "indices");
@@ -240,7 +234,7 @@ TEST(Operator, Gather) {
 
   G.createSave("save", R, result);
 
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   EE.run({}, {});
 
@@ -267,7 +261,7 @@ TEST(Operator, Gather) {
 
 TEST(Operator, IntMatMul) {
   ExecutionEngine EE;
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   // The scaling factor 1.4x was carefully selected to make sure we don't
   // overflow or underflow the calculation.
@@ -295,7 +289,7 @@ TEST(Operator, IntMatMul) {
   auto *rq = G.createDequantize("dequant", matmulq);
 
   G.createSave("save", rq, res);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   EE.run({}, {});
 
@@ -320,7 +314,7 @@ TEST(Operator, IntMatMul) {
 
 TEST(Operator, IntBatchedArith) {
   ExecutionEngine EE;
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   Type resTy(ElemKind::Int8QTy, {1, 3, 3}, 0.10, 1.0);
   Type lhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.11, 4.0);
@@ -347,7 +341,7 @@ TEST(Operator, IntBatchedArith) {
   auto *rq = G.createDequantize("dequant", matmulq);
 
   G.createSave("save", rq, res);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   EE.run({}, {});
 
@@ -368,7 +362,7 @@ TEST(Operator, IntBatchedArith) {
 
 TEST(Operator, IntConvolution) {
   ExecutionEngine EE;
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   // In this test we generate a Floating-point based convolution and an integer
   // convolution. We pass the same values and then subtract the results. We
@@ -406,7 +400,7 @@ TEST(Operator, IntConvolution) {
                                  ArithmeticNode::Mode::Sub);
 
   G.createSave("save", sub, res);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   EE.run({}, {});
   auto H = res->getPayload().getHandle();
@@ -419,7 +413,7 @@ TEST(Operator, IntConvolution) {
 
 TEST(Operator, IntFC) {
   ExecutionEngine EE;
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   // In this test we subtract the outputs of a quantized FC and a floating-point
   // FC and ensure that the error is below some low value.
@@ -452,7 +446,7 @@ TEST(Operator, IntFC) {
       G.createArithmetic("compare", dequantRes, fc, ArithmeticNode::Mode::Sub);
 
   G.createSave("save", sub, res);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
 
   EE.run({}, {});
 
@@ -465,7 +459,7 @@ TEST(Operator, IntFC) {
 
 TEST(Operator, CrossEntropyLossTest) {
   ExecutionEngine EE;
-  auto &G = EE.getGraph();
+  auto &G = *EE.getModule().createFunction("main");
 
   auto *P = G.createVariable(ElemKind::FloatTy, {2, 3}, "P");
   auto *Y = G.createVariable(ElemKind::IndexTy, {2}, "Y");
@@ -475,7 +469,7 @@ TEST(Operator, CrossEntropyLossTest) {
   Y->getPayload().getHandle<size_t>() = {1, 2};
   auto *ceLoss = G.createCrossEntropyLoss("CELoss", P, Y);
   G.createSave("save", ceLoss, L);
-  EE.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer, &G);
   EE.run({}, {});
   auto R = L->getPayload().getHandle();
   EXPECT_NEAR(R.at({0}), -log(0.5) - log(0.3), 0.1);

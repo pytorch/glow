@@ -34,7 +34,7 @@ Graph *Module::getFunction(llvm::StringRef name) {
 
 Graph *Module::createFunction(llvm::StringRef name) {
   assert(!hasFunction(name) && "A function with this name already exists");
-  Graph *F = new Graph(name);
+  Graph *F = new Graph(*this, name);
   functions_.push_back(F);
   return F;
 }
@@ -58,16 +58,16 @@ Graph::~Graph() {
   }
 }
 
-TypeRef Graph::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims) {
+TypeRef Module::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims) {
   return uniqueType(Type(elemTy, dims));
 }
 
-TypeRef Graph::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
-                          float scale, int32_t offset) {
+TypeRef Module::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
+                           float scale, int32_t offset) {
   return uniqueType(Type(elemTy, dims, scale, offset));
 }
 
-TypeRef Graph::uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims) {
+TypeRef Module::uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims) {
   if (T->isQuantizedType()) {
     return uniqueType(
         Type(T->getElementType(), dims, T->getScale(), T->getOffset()));
@@ -77,7 +77,7 @@ TypeRef Graph::uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims) {
   }
 }
 
-TypeRef Graph::uniqueType(const Type &T) {
+TypeRef Module::uniqueType(const Type &T) {
   for (auto &tp : types_) {
     if (T.isEqual(tp)) {
       return &tp;
@@ -87,7 +87,7 @@ TypeRef Graph::uniqueType(const Type &T) {
   return &*types_.insert(types_.begin(), T);
 }
 
-TypeRef Graph::getVoidTy() { return uniqueType(Type()); }
+TypeRef Module::getVoidTy() { return uniqueType(Type()); }
 
 //===----------------------------------------------------------------------===//
 //                       Node builders
@@ -96,7 +96,7 @@ TypeRef Graph::getVoidTy() { return uniqueType(Type()); }
 Variable *Graph::createVariable(TypeRef T, llvm::StringRef name,
                                 Variable::VisibilityKind visibility,
                                 Variable::TrainKind train, float val) {
-  auto FT = uniqueType(*T);
+  auto FT = getParent().uniqueType(*T);
   return addVar(new Variable(name, FT, visibility, train, val));
 }
 
@@ -104,7 +104,7 @@ Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
                                 llvm::StringRef name,
                                 Variable::VisibilityKind visibility,
                                 Variable::TrainKind train, float val) {
-  auto FT = uniqueType(T, dims);
+  auto FT = getParent().uniqueType(T, dims);
   return createVariable(FT, name, visibility, train, val);
 }
 
@@ -113,7 +113,7 @@ Variable *Graph::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
                                 llvm::StringRef name,
                                 Variable::VisibilityKind visibility,
                                 Variable::TrainKind train, float val) {
-  auto FT = uniqueType(T, dims, scale, offset);
+  auto FT = getParent().uniqueType(T, dims, scale, offset);
   return createVariable(FT, name, visibility, train, val);
 }
 
@@ -182,7 +182,7 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
                               Variable::VisibilityKind::Private,
                               Variable::TrainKind::Broadcast, 0.1);
 
-  auto OT = uniqueType(ElemKind::FloatTy, outDims);
+  auto OT = getParent().uniqueType(ElemKind::FloatTy, outDims);
 
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernel,
                                      stride, pad, depth));
@@ -212,7 +212,7 @@ ConvolutionNode *Graph::createConv(llvm::StringRef name, NodeValue input,
                                    TypeRef outTy, size_t depth, size_t kernel,
                                    size_t stride, size_t pad) {
   assertConvDims(input, filter, bias, depth, kernel, stride, pad);
-  auto OT = uniqueType(*outTy);
+  auto OT = getParent().uniqueType(*outTy);
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernel,
                                      stride, pad, depth));
 }
@@ -226,8 +226,8 @@ PoolNode *Graph::createPool(llvm::StringRef name, NodeValue input,
 
   auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
 
-  auto OT = uniqueType(ElemKind::FloatTy,
-                       {idim.n, outSz.first, outSz.second, idim.c});
+  auto OT = getParent().uniqueType(ElemKind::FloatTy,
+                                   {idim.n, outSz.first, outSz.second, idim.c});
 
   return addNode(new PoolNode(name, OT, mode, input, kernel, stride, pad));
 }
@@ -236,12 +236,9 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
                                                 NodeValue input, Variable *W,
                                                 Variable *B) {
   TypeRef T = input.getType();
-  TypeRef OT = getVoidTy();
-
   // if \p input is of type void, we cannot calculate the dimensions
-  if (T != getVoidTy()) {
-    OT = uniqueTypeWithNewShape(T, {input.dims()[0], B->getType()->dims()[0]});
-  }
+  TypeRef OT = getParent().uniqueTypeWithNewShape(
+      T, {input.dims()[0], B->getType()->dims()[0]});
 
   return addNode(new FullyConnectedNode(name, OT, input, W, B));
 }
@@ -259,9 +256,6 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
                                                 NodeValue input,
                                                 size_t outDepth) {
   TypeRef T = input.getType();
-  assert(
-      T != getVoidTy() &&
-      "cannot initialize untrained fully connected node with void input type");
   auto idim = flattenCdr(input.dims());
 
   size_t fanIn = idim.second;
@@ -274,7 +268,7 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
                            Variable::VisibilityKind::Private,
                            Variable::TrainKind::Broadcast, 0.1);
 
-  auto OT = uniqueType(T->getElementType(), {idim.first, outDepth});
+  auto OT = getParent().uniqueType(T->getElementType(), {idim.first, outDepth});
   return addNode(new FullyConnectedNode(name, OT, input, W, B));
 }
 
@@ -298,7 +292,7 @@ SoftMaxNode *Graph::createSoftMax(llvm::StringRef name, NodeValue input,
 CrossEntropyLossNode *Graph::createCrossEntropyLoss(llvm::StringRef name,
                                                     NodeValue input,
                                                     NodeValue labels) {
-  auto ty = uniqueTypeWithNewShape(input.getType(), {1});
+  auto ty = getParent().uniqueTypeWithNewShape(input.getType(), {1});
   return addNode(new CrossEntropyLossNode(name, ty, input, labels));
 }
 
@@ -309,7 +303,7 @@ RegressionNode *Graph::createRegression(llvm::StringRef name, NodeValue input,
 
 ReshapeNode *Graph::createReshape(llvm::StringRef name, NodeValue input,
                                   llvm::ArrayRef<size_t> shape) {
-  auto TR = uniqueTypeWithNewShape(input.getType(), shape);
+  auto TR = getParent().uniqueTypeWithNewShape(input.getType(), shape);
   assert(TR->size() == input.getType()->size() &&
          "Reshape to a different size");
   return addNode(new ReshapeNode(name, TR, input, shape.vec()));
@@ -323,14 +317,14 @@ TransposeNode *Graph::createTranspose(llvm::StringRef name, NodeValue input,
     shape.push_back(dims[shuffle[i]]);
   }
 
-  auto NT = uniqueTypeWithNewShape(input.getType(), shape);
+  auto NT = getParent().uniqueTypeWithNewShape(input.getType(), shape);
   return addNode(new TransposeNode(name, NT, input, shuffle.vec()));
 }
 
 BroadcastNode *Graph::createBroadcast(llvm::StringRef name, NodeValue input,
                                       llvm::ArrayRef<size_t> shape,
                                       unsigned axis) {
-  auto TR = uniqueType(input.getType()->getElementType(), shape);
+  auto TR = getParent().uniqueType(input.getType()->getElementType(), shape);
   return addNode(new BroadcastNode(name, TR, input, shape.vec(), axis));
 }
 
@@ -394,7 +388,7 @@ ConcatNode *Graph::createConcat(llvm::StringRef name,
     shape[dimension] += I->getType()->dims()[dimension];
   }
 
-  auto NT = uniqueType(inputs[0]->getElementType(), shape);
+  auto NT = getParent().uniqueType(inputs[0]->getElementType(), shape);
   std::vector<NodeValue> ops;
   ops.reserve(inputs.size());
   for (auto &I : inputs) {
@@ -426,7 +420,7 @@ SliceNode *Graph::createSlice(llvm::StringRef name, NodeValue input,
     shape.push_back(end_i - begin_i);
   }
 
-  auto NT = uniqueTypeWithNewShape(input.getType(), shape);
+  auto NT = getParent().uniqueTypeWithNewShape(input.getType(), shape);
   return addNode(new SliceNode(name, NT, input, begin_v));
 }
 
@@ -497,7 +491,8 @@ SplatNode *Graph::createSplat(llvm::StringRef name, TypeRef ty, float value) {
 BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,
                                               TypeRef outTy, NodeValue lhs,
                                               NodeValue rhs) {
-  return addNode(new BatchedMatMulNode(name, uniqueType(*outTy), lhs, rhs));
+  return addNode(
+      new BatchedMatMulNode(name, getParent().uniqueType(*outTy), lhs, rhs));
 }
 
 BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,
@@ -511,7 +506,7 @@ BatchedMatMulNode *Graph::createBatchedMatMul(llvm::StringRef name,
   size_t N, X, Y;
   std::tie(N, X, Y) = calculateMatMulOutputDims(LDims, RDims);
 
-  auto ty = uniqueTypeWithNewShape(lhs.getType(), {N, X, Y});
+  auto ty = getParent().uniqueTypeWithNewShape(lhs.getType(), {N, X, Y});
   return createBatchedMatMul(name, ty, lhs, rhs);
 }
 
@@ -520,7 +515,8 @@ BatchedReduceNode *Graph::createBatchedReduce(llvm::StringRef name,
                                               NodeValue batch) {
   auto BT = batch.getType();
   auto RT = Type(BT->getElementType(), BT->dims().drop_front());
-  return addNode(new BatchedReduceNode(name, uniqueType(RT), mode, batch));
+  return addNode(
+      new BatchedReduceNode(name, getParent().uniqueType(RT), mode, batch));
 }
 
 BatchedArithmeticNode *
@@ -577,9 +573,9 @@ TopKNode *Graph::createTopK(llvm::StringRef name, NodeValue input, size_t k) {
   assert(k <= inDims.back());
   llvm::SmallVector<size_t, 6> outDims(inDims.begin(), inDims.end());
   outDims.back() = k;
-  return addNode(
-      new TopKNode(name, uniqueType(input->getElementType(), outDims),
-                   uniqueType(ElemKind::IndexTy, outDims), input, k));
+  return addNode(new TopKNode(
+      name, getParent().uniqueType(input->getElementType(), outDims),
+      getParent().uniqueType(ElemKind::IndexTy, outDims), input, k));
 }
 
 GatherNode *Graph::createGather(llvm::StringRef name, NodeValue data,
@@ -590,7 +586,8 @@ GatherNode *Graph::createGather(llvm::StringRef name, NodeValue data,
   llvm::SmallVector<size_t, 6> outDims(iDims.begin(), iDims.end());
   outDims.insert(outDims.end(), dDims.begin() + 1, dDims.end());
   return addNode(new GatherNode(
-      name, uniqueType(data->getElementType(), outDims), data, indices));
+      name, getParent().uniqueType(data->getElementType(), outDims), data,
+      indices));
 }
 
 QuantizeNode *Graph::createQuantize(llvm::StringRef name, NodeValue input,
@@ -608,7 +605,7 @@ QuantizeNode *Graph::createQuantize(llvm::StringRef name, NodeValue input,
 DequantizeNode *Graph::createDequantize(llvm::StringRef name, NodeValue input) {
   assert(input.getElementType() == ElemKind::Int8QTy &&
          "Input must be a quantized type");
-  TypeRef outTy = uniqueType(Type(ElemKind::FloatTy, input.dims()));
+  TypeRef outTy = getParent().uniqueType(Type(ElemKind::FloatTy, input.dims()));
   return addNode(new DequantizeNode(name, outTy, input));
 }
 
