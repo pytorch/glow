@@ -230,7 +230,6 @@ void lowerReluNode(Graph &graph, ReluNode &R) {
 }
 
 void glow::lower(Graph &G, CompilationMode mode) {
-  G.advanceState(Graph::State::Lowered);
   auto &nodes = G.getNodes();
 
   for (auto const &node : nodes) {

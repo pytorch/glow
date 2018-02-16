@@ -147,7 +147,6 @@ std::string Graph::uniqueName(llvm::StringRef name) {
 void Graph::uniqueNames(Node *N) { N->setName(uniqueName(N->getName())); }
 
 void Graph::addGradientVariable(Variable *V, Variable *GradV) {
-  advanceState(State::Differentiated);
   grads_.push_back({V, GradV});
 }
 
@@ -1269,11 +1268,4 @@ void Graph::verify() const {
   for (const auto *N : nodes_) {
     N->verify();
   }
-}
-
-void Graph::resetState() { state_ = State::Created; }
-
-void Graph::advanceState(State s) {
-  assert(state_ <= s && "Wrong order of actions with a graph.");
-  state_ = s;
 }

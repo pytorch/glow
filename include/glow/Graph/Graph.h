@@ -39,17 +39,6 @@ public:
 
 /// Represents the compute graph.
 class Graph final : public Named {
-public:
-  enum class State {
-    Created,
-    Differentiated,
-    Lowered,
-    IRGenerated,
-  };
-
-private:
-  /// A current state of the graph.
-  State state_{State::Created};
   /// A uniqued list of types. Types in this list can be equated
   /// by comparing their addresses.
   TypesList types_{};
@@ -78,8 +67,6 @@ public:
 
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
-    assert(state_ < State::IRGenerated &&
-           "Trying to add Node when IR is already generated.");
     uniqueNames(N);
     nodes_.push_back(N);
     return N;
@@ -87,8 +74,6 @@ public:
 
   /// Inserts the variable \p V to the list of variables.
   Variable *addVar(Variable *V) {
-    assert(state_ < State::IRGenerated &&
-           "Trying to add Variable when IR is already generated.");
     uniqueNames(V);
     vars_.push_back(V);
     return V;
@@ -352,13 +337,6 @@ public:
   /// Returns nullptr if there is no gradient variable
   /// related to this variable.
   Variable *getGradientVariable(Variable *V);
-
-  /// Resets current state to Created.
-  void resetState();
-
-  /// Verifies that current state of the graph is not later then \p s
-  /// and assigns current state to be \p s.
-  void advanceState(State s);
 };
 
 struct TrainingConfig;
