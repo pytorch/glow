@@ -74,13 +74,16 @@ public:
 
   /// \returns True if a function by the name \p name exists in the module.
   bool hasFunction(llvm::StringRef name);
-  /// \returns the function with the name \p name, or nullptr if the function does not exist.
+  /// \returns the function with the name \p name, or nullptr if the function
+  /// does not exist.
   Graph *getFunction(llvm::StringRef name);
   /// \returns a new function with the name \p name.
   Graph *createFunction(llvm::StringRef name);
 
-  /// Erase a variable from the graph.
+  /// Erase the variable \p N from the graph.
   void eraseVariable(Variable *N);
+
+  /// Erase the variable \p I from the graph.
   void eraseVariable(VariablesList::iterator I);
 
   /// \returns a pointer to the first variable with the name \p name or nullptr
@@ -121,8 +124,16 @@ public:
       Variable::VisibilityKind visibility = Variable::VisibilityKind::Private,
       Variable::TrainKind train = Variable::TrainKind::Broadcast,
       float val = 0.0);
-
   ///@}
+
+  /// Verify the correctness of the graph.
+  void verify() const;
+
+  /// Dumps the textual representation of the network.
+  void dump() const;
+
+  /// Dump a dotty graph that depicts the function.
+  void dumpDAG();
 };
 
 /// Represents the compute graph.
