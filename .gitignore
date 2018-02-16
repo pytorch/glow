@@ -18,5 +18,5 @@ external/googletest/
 external/llvm/
 .vscode/
 .vim/
-
+.idea/
 
