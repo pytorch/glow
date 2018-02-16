@@ -255,7 +255,6 @@ FullyConnectedNode *Graph::createFullyConnected(llvm::StringRef name,
                                                 NodeValue input, Variable *W,
                                                 Variable *B) {
   TypeRef T = input.getType();
-  // if \p input is of type void, we cannot calculate the dimensions
   TypeRef OT = getParent().uniqueTypeWithNewShape(
       T, {input.dims()[0], B->getType()->dims()[0]});
 
