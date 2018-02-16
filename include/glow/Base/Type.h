@@ -5,7 +5,6 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/ErrorHandling.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -195,7 +194,7 @@ struct Type final {
     case ElemKind::IndexTy:
       return std::is_same<ElemTy, size_t>::value;
     }
-    llvm_unreachable("Invalid type.");
+    GLOW_UNREACHABLE("Invalid type.");
   }
 
   /// \returns true if the type of this Tensor is one of the integer types.
@@ -221,7 +220,7 @@ struct Type final {
     case ElemKind::IndexTy:
       return sizeof(size_t);
     }
-    llvm_unreachable("Invalid type.");
+    GLOW_UNREACHABLE("Invalid type.");
   }
 
   /// \return the textual name of the element.
