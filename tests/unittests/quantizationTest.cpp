@@ -79,15 +79,16 @@ TEST(Quantization, quantScaleOffset) {
 
 TEST(Quantization, quantizeGraph) {
   ExecutionEngine EE;
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
 
-  auto *input = G.createVariable(ElemKind::FloatTy, {1, 3}, "input");
-  auto *W = G.createVariable(ElemKind::FloatTy, {3, 3}, "weights",
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Xavier, 3);
-  auto *B = G.createVariable(ElemKind::FloatTy, {3}, "bias",
-                             Variable::VisibilityKind::Private,
-                             Variable::TrainKind::Broadcast, 0.1);
+  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 3}, "input");
+  auto *W = mod.createVariable(ElemKind::FloatTy, {3, 3}, "weights",
+                               Variable::VisibilityKind::Private,
+                               Variable::TrainKind::Xavier, 3);
+  auto *B = mod.createVariable(ElemKind::FloatTy, {3}, "bias",
+                               Variable::VisibilityKind::Private,
+                               Variable::TrainKind::Broadcast, 0.1);
   auto *FC = G.createFullyConnected("FC", input, W, B);
   G.createSave("ret", FC);
 
@@ -110,9 +111,9 @@ TEST(Quantization, quantizeGraph) {
 void createSimpleGraphForQuantization(Graph &G, Variable *&input,
                                       SaveNode *&saveNode, Variable *W,
                                       Variable *B) {
-  auto *A = G.createVariable(ElemKind::FloatTy, {1, 2}, "A",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  auto *A = G.getParent().createVariable(ElemKind::FloatTy, {1, 2}, "A",
+                                         Variable::VisibilityKind::Public,
+                                         Variable::TrainKind::None);
   input = A;
   Node *O = G.createFullyConnected("fc", A, W, B);
   saveNode = G.createSave("save", O);
@@ -126,15 +127,18 @@ TEST(Quantization, end2end) {
   SaveNode *result1, *result2;
   Variable *input1, *input2;
 
-  auto &G1 = *E1.getModule().createFunction("collect_profile");
-  auto &G2 = *E2.getModule().createFunction("use_profile");
+  auto &mod1 = E1.getModule();
+  auto &mod2 = E2.getModule();
 
-  auto *W1 = G1.createVariable(ElemKind::FloatTy, {2, 2}, "weights",
-                               Variable::VisibilityKind::Private,
-                               Variable::TrainKind::Xavier, 1);
-  auto *B1 = G1.createVariable(ElemKind::FloatTy, {2}, "bias",
-                               Variable::VisibilityKind::Private,
-                               Variable::TrainKind::Xavier, 1);
+  auto &G1 = *mod1.createFunction("collect_profile");
+  auto &G2 = *mod2.createFunction("use_profile");
+
+  auto *W1 = mod1.createVariable(ElemKind::FloatTy, {2, 2}, "weights",
+                                 Variable::VisibilityKind::Private,
+                                 Variable::TrainKind::Xavier, 1);
+  auto *B1 = mod1.createVariable(ElemKind::FloatTy, {2}, "bias",
+                                 Variable::VisibilityKind::Private,
+                                 Variable::TrainKind::Xavier, 1);
   createSimpleGraphForQuantization(G1, input1, result1, W1, B1);
 
   glow::profileQuantization(G1);
@@ -145,12 +149,12 @@ TEST(Quantization, end2end) {
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI = generateNodeQuantizationInfos(G1);
-  auto *W2 = G2.createVariable(ElemKind::FloatTy, {2, 2}, "weights",
-                               Variable::VisibilityKind::Private,
-                               Variable::TrainKind::Xavier, 1);
-  auto *B2 = G2.createVariable(ElemKind::FloatTy, {2}, "bias",
-                               Variable::VisibilityKind::Private,
-                               Variable::TrainKind::Xavier, 1);
+  auto *W2 = mod2.createVariable(ElemKind::FloatTy, {2, 2}, "weights",
+                                 Variable::VisibilityKind::Private,
+                                 Variable::TrainKind::Xavier, 1);
+  auto *B2 = mod2.createVariable(ElemKind::FloatTy, {2}, "bias",
+                                 Variable::VisibilityKind::Private,
+                                 Variable::TrainKind::Xavier, 1);
 
   // Make sure we are testing with the same input tensors.
   W2->getPayload().copyFrom(&W1->getPayload());

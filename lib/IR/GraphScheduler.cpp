@@ -174,13 +174,13 @@ public:
 
 void IRFunction::scheduleGraph(NodesList &Schedule) {
   Schedule.clear();
-  for (auto &N : G_->getVars()) {
+  for (auto &N : G_->getParent().getVars()) {
     Schedule.push_back(N);
   }
   ChildMemSizeBasedScheduler CMSBScheduler(*G_, Schedule);
   CMSBScheduler.schedule();
   assert(CMSBScheduler.getSchedule().size() ==
-             G_->getNodes().size() + G_->getVars().size() &&
+             G_->getNodes().size() + G_->getParent().getVars().size() &&
          "All graph nodes have to be scheduled");
 }
 

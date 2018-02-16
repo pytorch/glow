@@ -44,7 +44,7 @@ public:
 class GraphPostOrderVisitor : public PostOrderVisitor {
   const Graph &G;
   void visit() {
-    for (const auto *V : G.getVars()) {
+    for (const auto *V : G.getParent().getVars()) {
       V->visit(nullptr, this);
     }
     // Start visiting all root nodes, i.e. nodes that do not have any users.

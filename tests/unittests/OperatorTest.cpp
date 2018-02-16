@@ -17,11 +17,12 @@ using namespace glow;
 
 TEST(Operator, matmul) {
   ExecutionEngine EE;
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
 
-  auto *lhs = G.createVariable(ElemKind::FloatTy, {1, 3, 2}, "lhs");
-  auto *rhs = G.createVariable(ElemKind::FloatTy, {1, 2, 1}, "rhs");
-  auto *result = G.createVariable(ElemKind::FloatTy, {1, 3, 1}, "result");
+  auto *lhs = mod.createVariable(ElemKind::FloatTy, {1, 3, 2}, "lhs");
+  auto *rhs = mod.createVariable(ElemKind::FloatTy, {1, 2, 1}, "rhs");
+  auto *result = mod.createVariable(ElemKind::FloatTy, {1, 3, 1}, "result");
   lhs->getPayload().getHandle() = {1, 2, 3, 4, 5, 6};
   rhs->getPayload().getHandle() = {7, 10};
 
@@ -41,10 +42,11 @@ TEST(Operator, matmul) {
 
 TEST(Operator, batchedReduceAdd) {
   ExecutionEngine EE;
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
 
-  auto *batch = G.createVariable(ElemKind::FloatTy, {2, 4}, "batch");
-  auto *result = G.createVariable(ElemKind::FloatTy, {4}, "result");
+  auto *batch = mod.createVariable(ElemKind::FloatTy, {2, 4}, "batch");
+  auto *result = mod.createVariable(ElemKind::FloatTy, {4}, "result");
   batch->getPayload().getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
 
   auto R =
@@ -65,11 +67,12 @@ TEST(Operator, batchedReduceAdd) {
 
 TEST(Operator, batchedBatchedAdd) {
   ExecutionEngine EE;
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
 
-  auto *batch = G.createVariable(ElemKind::FloatTy, {2, 3, 3}, "batch");
-  auto *added = G.createVariable(ElemKind::FloatTy, {3, 3}, "added");
-  auto *result = G.createVariable(ElemKind::FloatTy, {2, 3, 3}, "result");
+  auto *batch = mod.createVariable(ElemKind::FloatTy, {2, 3, 3}, "batch");
+  auto *added = mod.createVariable(ElemKind::FloatTy, {3, 3}, "added");
+  auto *result = mod.createVariable(ElemKind::FloatTy, {2, 3, 3}, "result");
 
   batch->getPayload().getHandle() = {9, 8, 7, 6, 5,  4,  3,  4,  5,
                                      6, 7, 8, 9, 10, 11, 12, 13, 14};
@@ -93,7 +96,8 @@ TEST(Operator, batchedBatchedAdd) {
 /// Broadcast a Tensor of shape (2,1) to (3,2,4,2) with axis 1.
 TEST(Operator, broadcast) {
   ExecutionEngine EE;
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
 
   const size_t numDims_A = 4;
   const size_t dimX_A = 3;
@@ -107,14 +111,14 @@ TEST(Operator, broadcast) {
   const size_t dimZ_B = 1;
   const size_t dims_B[numDims_B] = {dimY_B, dimZ_B};
 
-  auto *B = G.createVariable(ElemKind::FloatTy, dims_B, "B");
+  auto *B = mod.createVariable(ElemKind::FloatTy, dims_B, "B");
   auto H_B = B->getPayload().getHandle();
   H_B = {20, 10};
 
   const unsigned axis = 1;
 
   auto R = G.createBroadcast("broadcasted", B, dims_A, axis);
-  auto *broadcasted = G.createVariable(ElemKind::FloatTy, dims_A, "A");
+  auto *broadcasted = mod.createVariable(ElemKind::FloatTy, dims_A, "A");
   G.createSave("save", R, broadcasted);
 
   EE.compile(CompilationMode::Infer, &G);
@@ -146,11 +150,12 @@ TEST(Operator, broadcast) {
 
 TEST(Operator, TopK) {
   ExecutionEngine EE;
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
 
-  auto *inp = G.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
-  auto *values = G.createVariable(ElemKind::FloatTy, {3, 1, 3}, "values");
-  auto *indices = G.createVariable(ElemKind::IndexTy, {3, 1, 3}, "indices");
+  auto *inp = mod.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
+  auto *values = mod.createVariable(ElemKind::FloatTy, {3, 1, 3}, "values");
+  auto *indices = mod.createVariable(ElemKind::IndexTy, {3, 1, 3}, "indices");
 
   inp->getPayload().getHandle() = {
       28, 4, 411, 19, 42, 0.4, 0.4, 0.4, -0.4, 0.45, 7, 5, 9, 8, 100,
@@ -217,11 +222,12 @@ TEST(Operator, Gather) {
     ]
   */
   ExecutionEngine EE;
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
 
-  auto *data = G.createVariable(ElemKind::FloatTy, {3, 2}, "data");
-  auto *indices = G.createVariable(ElemKind::IndexTy, {2, 4}, "indices");
-  auto *result = G.createVariable(ElemKind::FloatTy, {2, 4, 2}, "result");
+  auto *data = mod.createVariable(ElemKind::FloatTy, {3, 2}, "data");
+  auto *indices = mod.createVariable(ElemKind::IndexTy, {2, 4}, "indices");
+  auto *result = mod.createVariable(ElemKind::FloatTy, {2, 4, 2}, "result");
 
   data->getPayload().getHandle() = {
       1.0, 1.2, 2.3, 3.4, 4.5, 5.7,
@@ -261,7 +267,8 @@ TEST(Operator, Gather) {
 
 TEST(Operator, IntMatMul) {
   ExecutionEngine EE;
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
 
   // The scaling factor 1.4x was carefully selected to make sure we don't
   // overflow or underflow the calculation.
@@ -269,9 +276,9 @@ TEST(Operator, IntMatMul) {
   Type lhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.075, -2);
   Type rhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.075, 2);
 
-  auto *res = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "res");
-  auto *lhs = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "lhs");
-  auto *rhs = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "rhs");
+  auto *res = mod.createVariable(ElemKind::FloatTy, {1, 3, 3}, "res");
+  auto *lhs = mod.createVariable(ElemKind::FloatTy, {1, 3, 3}, "lhs");
+  auto *rhs = mod.createVariable(ElemKind::FloatTy, {1, 3, 3}, "rhs");
 
   lhs->getPayload().getHandle() = {
       1.0, 2.0, 3.0, 4.0, 5.0, -5.0, -4.0, -3.0, 9.0,
@@ -314,15 +321,16 @@ TEST(Operator, IntMatMul) {
 
 TEST(Operator, IntBatchedArith) {
   ExecutionEngine EE;
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
 
   Type resTy(ElemKind::Int8QTy, {1, 3, 3}, 0.10, 1.0);
   Type lhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.11, 4.0);
   Type rhsTy(ElemKind::Int8QTy, {3, 3}, 0.14, -2.0);
 
-  auto *res = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "res");
-  auto *lhs = G.createVariable(ElemKind::FloatTy, {1, 3, 3}, "lhs");
-  auto *rhs = G.createVariable(ElemKind::FloatTy, {3, 3}, "rhs");
+  auto *res = mod.createVariable(ElemKind::FloatTy, {1, 3, 3}, "res");
+  auto *lhs = mod.createVariable(ElemKind::FloatTy, {1, 3, 3}, "lhs");
+  auto *rhs = mod.createVariable(ElemKind::FloatTy, {3, 3}, "rhs");
 
   lhs->getPayload().getHandle() = {
       8.7, 6.5, 4.3, 2.1, 1.0, -5.1, -4.0, -12.0, 0.2,
@@ -362,7 +370,8 @@ TEST(Operator, IntBatchedArith) {
 
 TEST(Operator, IntConvolution) {
   ExecutionEngine EE;
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
 
   // In this test we generate a Floating-point based convolution and an integer
   // convolution. We pass the same values and then subtract the results. We
@@ -371,9 +380,9 @@ TEST(Operator, IntConvolution) {
   // In this test the output of the convolution is in the range [-256 ... 256].
   // The inputs (specified below) are in the range [-1 .. 1],
 
-  auto *input = G.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
+  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
   auto *conv = G.createConv("conv", input, 10, 5, 1, 0);
-  auto *res = G.createVariable(ElemKind::FloatTy, conv->dims(), "res");
+  auto *res = mod.createVariable(ElemKind::FloatTy, conv->dims(), "res");
 
   auto filter = conv->getFilter();
   auto bias = conv->getBias();
@@ -413,14 +422,15 @@ TEST(Operator, IntConvolution) {
 
 TEST(Operator, IntFC) {
   ExecutionEngine EE;
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
 
   // In this test we subtract the outputs of a quantized FC and a floating-point
   // FC and ensure that the error is below some low value.
 
-  auto *input = G.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
+  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
   auto *fc = G.createFullyConnected("FC", input, 30);
-  auto *res = G.createVariable(ElemKind::FloatTy, fc->dims(), "res");
+  auto *res = mod.createVariable(ElemKind::FloatTy, fc->dims(), "res");
 
   auto filter = fc->getWeights();
   auto bias = fc->getBias();
@@ -459,11 +469,12 @@ TEST(Operator, IntFC) {
 
 TEST(Operator, CrossEntropyLossTest) {
   ExecutionEngine EE;
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
 
-  auto *P = G.createVariable(ElemKind::FloatTy, {2, 3}, "P");
-  auto *Y = G.createVariable(ElemKind::IndexTy, {2}, "Y");
-  auto *L = G.createVariable(ElemKind::FloatTy, {1}, "L");
+  auto *P = mod.createVariable(ElemKind::FloatTy, {2, 3}, "P");
+  auto *Y = mod.createVariable(ElemKind::IndexTy, {2}, "Y");
+  auto *L = mod.createVariable(ElemKind::FloatTy, {1}, "L");
 
   P->getPayload().getHandle() = {0.2, 0.5, 0.3, 0.4, 0.3, 0.3};
   Y->getPayload().getHandle<size_t>() = {1, 2};

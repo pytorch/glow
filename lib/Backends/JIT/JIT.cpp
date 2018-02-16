@@ -155,7 +155,7 @@ void JITBackend::allocateActivationsAndWeights() {
   llvm::DenseMap<Value *, size_t> activationAddr;
 
   // Register the addresses of the tensor payload.
-  for (auto &v : M_->getGraph()->getVars()) {
+  for (auto &v : M_->getGraph()->getParent().getVars()) {
     auto *w = M_->getWeightForNode(v);
     allocatedAddressed_[w] = v->getPayload().getUnsafePtr();
   }

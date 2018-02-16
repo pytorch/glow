@@ -77,11 +77,12 @@ void testMNIST() {
   EE.getConfig().L2Decay = 0.001;
   EE.getConfig().batchSize = minibatchSize;
 
-  auto &G = *EE.getModule().createFunction("main");
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
 
-  Variable *A = G.createVariable(ElemKind::FloatTy, {minibatchSize, 28, 28, 1},
-                                 "input", Variable::VisibilityKind::Public,
-                                 Variable::TrainKind::None);
+  Variable *A = mod.createVariable(
+      ElemKind::FloatTy, {minibatchSize, 28, 28, 1}, "input",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
 
   auto *CV0 = G.createConv("conv", A, 16, 5, 1, 2);
   auto *RL0 = G.createRELU("relu", CV0);
@@ -93,7 +94,7 @@ void testMNIST() {
 
   auto *FCL1 = G.createFullyConnected("fc", MP1, 10);
   auto *RL2 = G.createRELU("fc", FCL1);
-  Variable *selected = G.createVariable(
+  Variable *selected = mod.createVariable(
       ElemKind::IndexTy, {minibatchSize, 1}, +"selected",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
   auto *SM = G.createSoftMax("sm", RL2, selected);

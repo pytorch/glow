@@ -112,8 +112,8 @@ private:
   Node *encoderHiddenOutput_;
 
   Variable *loadEmbedding(llvm::StringRef langPrefix, size_t langSize) {
-    auto *F = EE_.getModule().getFunction("main");
-    Variable *result = F->createVariable(
+    auto &mod = EE_.getModule();
+    Variable *result = mod.createVariable(
         ElemKind::FloatTy, {langSize, EMBEDDING_SIZE},
         "embedding." + langPrefix.str(), Variable::VisibilityKind::Private,
         Variable::TrainKind::None);
@@ -135,31 +135,32 @@ void Model::loadLanguages() {
 /// \p seqLength is Variable representing the length of sentence.
 /// \p encoderHiddenOutput saves resulting hidden layer.
 void Model::loadEncoder() {
-  auto &G = *EE_.getModule().getFunction("main");
-  input_ = G.createVariable(
+  auto &mod = EE_.getModule();
+  auto &G = *mod.getFunction("main");
+  input_ = mod.createVariable(
       ElemKind::IndexTy, {MAX_LENGTH}, "encoder.inputsentence",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
-  seqLength_ = G.createVariable(ElemKind::IndexTy, {1}, "encoder.seqLength",
-                                Variable::VisibilityKind::Public,
-                                Variable::TrainKind::None);
+  seqLength_ = mod.createVariable(ElemKind::IndexTy, {1}, "encoder.seqLength",
+                                  Variable::VisibilityKind::Public,
+                                  Variable::TrainKind::None);
 
-  Variable *hiddenInit = G.createVariable(
+  Variable *hiddenInit = mod.createVariable(
       ElemKind::FloatTy, {1, EMBEDDING_SIZE}, "encoder.hiddenInit",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
   hiddenInit->getPayload().zero();
 
   Node *hidden = hiddenInit;
 
-  Variable *w_ih = G.createVariable(
+  Variable *w_ih = mod.createVariable(
       ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "encoder.w_ih",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
-  Variable *b_ih = G.createVariable(
+  Variable *b_ih = mod.createVariable(
       ElemKind::FloatTy, {HIDDEN_SIZE}, "encoder.b_ih",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
-  Variable *w_hh = G.createVariable(
+  Variable *w_hh = mod.createVariable(
       ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "encoder.w_hh",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
-  Variable *b_hh = G.createVariable(
+  Variable *b_hh = mod.createVariable(
       ElemKind::FloatTy, {HIDDEN_SIZE}, "encoder.b_hh",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
   loadMatrixFromFile("fr2en/encoder_w_ih.bin", w_ih->getPayload());
@@ -191,29 +192,30 @@ void Model::loadEncoder() {
 /// Uses \p encoderHiddenOutput as final state from Encoder.
 /// Resulting translation is put into \p output Variable.
 void Model::loadDecoder() {
-  auto &G = *EE_.getModule().getFunction("main");
-  Variable *input = G.createVariable(ElemKind::IndexTy, {1}, "decoder.input",
-                                     Variable::VisibilityKind::Public,
-                                     Variable::TrainKind::None);
+  auto &mod = EE_.getModule();
+  auto &G = *mod.getFunction("main");
+  Variable *input = mod.createVariable(ElemKind::IndexTy, {1}, "decoder.input",
+                                       Variable::VisibilityKind::Public,
+                                       Variable::TrainKind::None);
   input->getPayload().getHandle<size_t>().at({0}) = en_.word2index_["SOS"];
 
-  Variable *w_ih = G.createVariable(
+  Variable *w_ih = mod.createVariable(
       ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "decoder.w_ih",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
-  Variable *b_ih = G.createVariable(
+  Variable *b_ih = mod.createVariable(
       ElemKind::FloatTy, {HIDDEN_SIZE}, "decoder.b_ih",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
-  Variable *w_hh = G.createVariable(
+  Variable *w_hh = mod.createVariable(
       ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "decoder.w_hh",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
-  Variable *b_hh = G.createVariable(
+  Variable *b_hh = mod.createVariable(
       ElemKind::FloatTy, {HIDDEN_SIZE}, "decoder.b_hh",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
-  Variable *out_w = G.createVariable(
+  Variable *out_w = mod.createVariable(
       ElemKind::FloatTy, {EMBEDDING_SIZE, en_.index2word_.size()},
       "decoder.out_w", Variable::VisibilityKind::Public,
       Variable::TrainKind::None);
-  Variable *out_b = G.createVariable(
+  Variable *out_b = mod.createVariable(
       ElemKind::FloatTy, {en_.index2word_.size()}, "decoder.out_b",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
   loadMatrixFromFile("fr2en/decoder_w_ih.bin", w_ih->getPayload());
@@ -246,9 +248,9 @@ void Model::loadDecoder() {
 
   Node *concat = G.createConcat("decoder.output", outputs, 0);
 
-  output_ = G.createVariable(ElemKind::IndexTy, {MAX_LENGTH}, "decoder.output",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+  output_ = mod.createVariable(
+      ElemKind::IndexTy, {MAX_LENGTH}, "decoder.output",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
   G.createSave("decoder.output", concat, output_);
 
   EE_.compile(CompilationMode::Infer, &G);
