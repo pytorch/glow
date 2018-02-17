@@ -1031,25 +1031,28 @@ void Interpreter::fwdElementDivInst(bool isTrain, const ElementDivInst *I) {
   }
 }
 
-void Interpreter::fwdElementMaxInst(bool isTrain, const ElementMaxInst *I) {
-  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
-    auto outW = getTensor(I->getDest())->getHandle<int8_t>();
-    auto lhsW = getTensor(I->getLHS())->getHandle<int8_t>();
-    auto rhsW = getTensor(I->getRHS())->getHandle<int8_t>();
+template <class T>
+static void elementMaxInst(Tensor *lhs, Tensor *rhs, Tensor *out) {
+    auto outW = out->getHandle<T>();
+    auto lhsW = lhs->getHandle<T>();
+    auto rhsW = rhs->getHandle<T>();
 
     for (size_t i = 0, e = outW.size(); i < e; i++) {
       outW.raw(i) = std::max(lhsW.raw(i), rhsW.raw(i));
     }
+}
 
+void Interpreter::fwdElementMaxInst(bool isTrain, const ElementMaxInst *I) {
+  auto *lhs = getTensor(I->getLHS());
+  auto *rhs = getTensor(I->getRHS());
+  auto *out = getTensor(I->getDest());
+
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    elementMaxInst<int8_t>(lhs, rhs, out);
     return;
   }
 
-  auto outW = getWeightHandle(I->getDest());
-  auto lhsW = getWeightHandle(I->getLHS());
-  auto rhsW = getWeightHandle(I->getRHS());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = std::max(lhsW.raw(i), rhsW.raw(i));
-  }
+  elementMaxInst<float>(lhs, rhs, out);
 }
 
 void Interpreter::fwdElementMinInst(bool isTrain, const ElementMinInst *I) {
