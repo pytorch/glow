@@ -247,7 +247,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("Concat")
       .addMember(MemberType::VectorNodeValue, "Inputs")
-      .addMember(MemberType::SizeT, "Dim")
+      .addMember(MemberType::Unsigned, "Dim")
       .addResultFromCtorArg()
       .setDocstring("The concat operator adds two tensors together.\nThe "
                     "parameter 'dim' specifies the dimension to use when "
