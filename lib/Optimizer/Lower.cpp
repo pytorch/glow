@@ -223,7 +223,13 @@ void lowerSigmoidGradNode(Function &graph, SigmoidGradNode &THG) {
 
 void lowerReluNode(Function &graph, ReluNode &R) {
   // Relu is a max between zero and the input value.
-  auto *zero = graph.createSplat("zero", R.getType(), 0.0);
+  SplatNode *zero;
+  if (R.getType()->isQuantizedType()) {
+    zero = graph.createSplat("zero", R.getType(), R.getType()->getOffset());
+  } else {
+    zero = graph.createSplat("zero", R.getType(), 0.0);
+  }
+
   auto *relu = graph.createArithmetic("relu", zero, R.getInput(),
                                       ArithmeticNode::Mode::Max);
   R.getResult().replaceAllUsesOfWith(relu);

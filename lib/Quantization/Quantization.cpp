@@ -223,7 +223,7 @@ float dequantize(int8_t input, const TensorQuantizationParams &TQP) {
 /// \returns true if \p node should be quantized.
 static bool shouldQuantize(const Node *node) {
   return llvm::isa<FullyConnectedNode>(node) ||
-         llvm::isa<ConvolutionNode>(node);
+         llvm::isa<ConvolutionNode>(node) || llvm::isa<ReluNode>(node);
 }
 
 /// Quantize all inputs for \p node and return back pointers to the newly
@@ -304,6 +304,13 @@ void generateQuantizedGraph(
           G.createConv(CV->getName(), quantizedInputs[0], quantizedInputs[1],
                        quantizedInputs[2], QT, CV->getDepth(), CV->getKernel(),
                        CV->getStride(), CV->getPad());
+      break;
+    }
+    case Kinded::Kind::ReluNodeKind: {
+      auto *R = cast<ReluNode>(node);
+      assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+      quantizedNode = G.createRELU(R->getName(), quantizedInputs[0]);
+
       break;
     }
 
