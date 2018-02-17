@@ -111,6 +111,9 @@ void ExecutionEngine::compile(CompilationMode mode, Function *F) {
     generateGradientNodes(*F, getConfig(), mode);
   }
 
+  // Verify the function pre-optimization/lowering.
+  F->verify();
+
   // Optimized the graph.
   ::glow::optimize(*F, mode);
 
