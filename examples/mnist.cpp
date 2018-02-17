@@ -101,7 +101,10 @@ void testMNIST() {
 
   auto *result = G.createSave("return", SM);
 
-  EE.compile(CompilationMode::Train, &G);
+  Function *T = glow::differentiate(&G, EE.getConfig(), CompilationMode::Train,
+                                    "train");
+
+  EE.compile(CompilationMode::Train, T);
 
   // Report progress every this number of training iterations.
   constexpr int reportRate = 30;

@@ -107,10 +107,6 @@ void ExecutionEngine::compile(CompilationMode mode, Function *F) {
   // Reset the engine and start a new compilation process.
   reset();
 
-  if (mode != CompilationMode::Infer) {
-    generateGradientNodes(*F, getConfig(), mode);
-  }
-
   // Verify the function pre-optimization/lowering.
   F->verify();
 

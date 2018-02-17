@@ -101,7 +101,9 @@ void testCIFAR10() {
   auto *SM = G.createSoftMax("softmax", RL3, E);
   auto *result = G.createSave("ret", SM);
 
-  EE.compile(CompilationMode::Train, &G);
+  Function *TF =
+      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  EE.compile(CompilationMode::Train, TF);
 
   // Report progress every this number of training iterations.
   int reportRate = 256;

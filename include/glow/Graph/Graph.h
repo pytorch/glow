@@ -378,10 +378,13 @@ public:
 
 struct TrainingConfig;
 
-/// Mutate the inference graph and turn it into a training graph by inserting
-/// training (gradient calculation) nodes.
-void generateGradientNodes(Function &G, TrainingConfig &config,
-                           CompilationMode mode);
+/// Create a new graph that 'trains' the input graph. We differentiate the nodes
+/// and insert and code to update the weights based on the \p config parameters.
+/// The parameter \p mode selects the kind of differentiation (regular or extra
+/// instrumentation for unit tests).
+/// \returns a new function with the name \p newFuncName.
+Function *differentiate(Function *F, TrainingConfig &config,
+                        CompilationMode mode, llvm::StringRef newFuncName);
 
 /// \returns a variable that accumulates the gradients that update \p V.
 /// Given the variable \p V, find the SGD node that trains it and record the
