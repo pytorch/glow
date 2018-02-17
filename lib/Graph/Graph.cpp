@@ -1233,6 +1233,7 @@ class FunctionDottyPrinter : public AbstractDottyPrinter {
       std::ostringstream edge;
       edge << uniqueVertexName(to) << ":" << to->getOutputName(resNo).str()
            << " -> " << uniqueVertexName(N) << ":" << N->getInputName(i).str();
+      dumpEdgeStyle(N, i, to, edge);
       edges_.push_back(edge.str());
 
       visitNode(to);
