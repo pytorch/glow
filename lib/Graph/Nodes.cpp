@@ -445,9 +445,16 @@ static void checkSameDims(NodeValue A, NodeValue B) {
   assert(A.dims().equals(B.dims()) && "Dimensions mismatch");
 }
 
-static void verifyConvDims(ShapeNHWC idim, ShapeNHWC odim, size_t kernel,
-                           size_t stride, size_t pad, size_t depth,
-                           NodeValue filter, NodeValue bias) {
+static void verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
+                              NodeValue bias, size_t kernel, size_t stride,
+                              size_t pad, size_t depth) {
+  assert(src.getElementType() == dest.getElementType() && "Invalid Type");
+  assert(src.getElementType() == filter.getElementType() && "Invalid Type");
+  assert(src.getElementType() == bias.getElementType() && "Invalid Type");
+
+  ShapeNHWC idim(src.getType()->dims());
+  ShapeNHWC odim(dest.getType()->dims());
+
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
@@ -465,34 +472,105 @@ static void verifyConvDims(ShapeNHWC idim, ShapeNHWC odim, size_t kernel,
   (void)biasDims;
 }
 
-void ConvolutionNode::verify() const {
-  auto dest = getResult();
-  auto src = getInput();
-  auto filter = getFilter();
-  auto bias = getBias();
+static void verifyFullyConnected(NodeValue src, NodeValue weights,
+                                 NodeValue bias, NodeValue dest) {
+  assert(src.dims()[0] == dest.dims()[0] &&
+         flattenCdr(src.dims()).second == weights.dims()[0] &&
+         "Mismatch on expected source dimensions");
 
-  assert(src.getElementType() == dest.getElementType() && "Invalid Type");
-  assert(src.getElementType() == filter.getElementType() && "Invalid Type");
-  assert(src.getElementType() == bias.getElementType() && "Invalid Type");
-
-  ShapeNHWC idim(src.getType()->dims());
-  ShapeNHWC odim(dest.getType()->dims());
-  verifyConvDims(idim, odim, Kernel_, Stride_, Pad_, Depth_, filter, bias);
+  assert(bias.dims()[0] == weights.dims()[1] &&
+         weights.dims()[1] == dest.dims()[1] &&
+         "Inconsistent bias/weights/dest sizes.");
 }
 
-void PoolNode::verify() const {
-  auto dest = getResult();
-  auto src = getInput();
+static void verifyPool(NodeValue src, NodeValue dest, size_t kernel,
+                       size_t stride, size_t pad) {
   ShapeNHWC idim = ShapeNHWC(src.getType()->dims());
   ShapeNHWC odim = ShapeNHWC(dest.getType()->dims());
   (void)odim;
-  assert(idim.w >= Kernel_ && idim.h >= Kernel_ &&
+  assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, Kernel_, Stride_, Pad_);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
   (void)exp;
   assert(exp == odim && "Unexpected output dimensions");
+}
+
+static void verifyBatchNormalization(NodeValue src, NodeValue dest,
+                                     NodeValue bias, NodeValue scale,
+                                     NodeValue mean, NodeValue var,
+                                     size_t channel) {
+  checkSameType(dest, src);
+
+  // Figure out how many channels are in the tensor.
+  size_t channels = src.dims()[channel];
+
+  auto exp = {channels};
+  (void)exp;
+  assert(bias.getType()->dims().equals(exp) && "Invalid bias dim");
+  assert(scale.getType()->dims().equals(exp) && "Invalid scale dim");
+  assert(mean.getType()->dims().equals(exp) && "Invalid mean dim");
+  assert(var.getType()->dims().equals(exp) && "Invalid var dim");
+}
+
+static void verifySigmoid(NodeValue src, NodeValue dest) {
+  checkSameType(src, dest);
+}
+
+static void verifyTanh(NodeValue src, NodeValue dest) {
+  checkSameType(src, dest);
+}
+
+static void verifySoftMax(NodeValue src, NodeValue dest) {
+  checkSameType(src, dest);
+  assert(src.dims() == dest.dims() && "Invalid shape");
+}
+
+static void verifyCrossEntropyLoss(NodeValue P, NodeValue CE,
+                                   NodeValue labels) {
+  assert(P.getElementType() == CE->getElementType());
+  assert(P.dims()[0] == labels.dims()[0] && "Invalid shape");
+}
+
+static void verifyLocalResponseNormalization(NodeValue src, NodeValue dest) {
+  checkSameType(src, dest);
+}
+
+static void verifyArithmetic(NodeValue LHS, NodeValue RHS, NodeValue res) {
+  checkSameType(res, LHS);
+  checkSameType(LHS, RHS);
+}
+
+static void verifyRelu(NodeValue src, NodeValue dest) {
+  checkSameType(src, dest);
+}
+
+static void verifyRegression(NodeValue src, NodeValue dest,
+                             NodeValue expected) {
+  checkSameType(src, dest);
+  checkSameType(dest, expected);
+}
+
+void ConvolutionNode::verify() const {
+  verifyConvolution(getInput(), getResult(), getFilter(), getBias(), Kernel_,
+                    Stride_, Pad_, Depth_);
+}
+
+void ConvolutionGradNode::verify() const {
+  verifyConvolution(getGradOfInputNamedInput(),
+                    getGradOfOriginalOutputNamedResult(),
+                    getGradOfInputNamedFilter(), getGradOfInputNamedBias(),
+                    Kernel_, Stride_, Pad_, Depth_);
+}
+
+void PoolNode::verify() const {
+  verifyPool(getInput(), getResult(), Kernel_, Stride_, Pad_);
+}
+
+void PoolGradNode::verify() const {
+  verifyPool(getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
+             Kernel_, Stride_, Pad_);
 }
 
 void BatchedMatMulNode::verify() const {
@@ -524,18 +602,34 @@ void BatchedMatMulNode::verify() const {
   (void)Y;
 }
 
-void SigmoidNode::verify() const { checkSameType(getResult(), getInput()); }
+void SigmoidNode::verify() const { verifySigmoid(getInput(), getResult()); }
 
-void TanhNode::verify() const { checkSameType(getResult(), getInput()); }
+void SigmoidGradNode::verify() const {
+  verifySigmoid(getGradOfInputNamedInput(),
+                getGradOfOriginalOutputNamedResult());
+}
 
-void SoftMaxNode::verify() const {
-  checkSameType(getResult(), getInput());
-  assert(getResult().dims() == getInput().dims() && "Invalid shape");
+void TanhNode::verify() const { verifyTanh(getInput(), getResult()); }
+
+void TanhGradNode::verify() const {
+  verifyTanh(getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult());
+}
+
+void SoftMaxNode::verify() const { verifySoftMax(getInput(), getResult()); }
+
+void SoftMaxGradNode::verify() const {
+  verifySoftMax(getGradOfInputNamedInput(),
+                getGradOfOriginalOutputNamedResult());
 }
 
 void CrossEntropyLossNode::verify() const {
-  assert(getP()->getElementType() == getCE()->getElementType());
-  assert(getP().dims()[0] == getLabels().dims()[0] && "Invalid shape");
+  verifyCrossEntropyLoss(getP(), getCE(), getLabels());
+}
+
+void CrossEntropyLossGradNode::verify() const {
+  verifyCrossEntropyLoss(getGradOfInputNamedP(),
+                         getGradOfOriginalOutputNamedCE(),
+                         getGradOfInputNamedLabels());
 }
 
 void ReshapeNode::verify() const {
@@ -608,26 +702,33 @@ void SliceNode::verify() const {
 }
 
 void BatchNormalizationNode::verify() const {
-  checkSameType(getResult(), getInput());
+  verifyBatchNormalization(getInput(), getResult(), getBias(), getScale(),
+                           getMean(), getVar(), ChannelIdx_);
+}
 
-  // Figure out how many channels are in the tensor.
-  size_t channels = getInput().dims()[ChannelIdx_];
-
-  auto exp = {channels};
-  (void)exp;
-  assert(getBias().getType()->dims().equals(exp) && "Invalid bias dim");
-  assert(getScale().getType()->dims().equals(exp) && "Invalid scale dim");
-  assert(getMean().getType()->dims().equals(exp) && "Invalid mean dim");
-  assert(getVar().getType()->dims().equals(exp) && "Invalid var dim");
+void BatchNormalizationGradNode::verify() const {
+  verifyBatchNormalization(
+      getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
+      getGradOfInputNamedBias(), getGradOfInputNamedScale(),
+      getGradOfInputNamedMean(), getGradOfInputNamedVar(), ChannelIdx_);
 }
 
 void LocalResponseNormalizationNode::verify() const {
-  checkSameType(getResult(), getInput());
+  verifyLocalResponseNormalization(getInput(), getResult());
+}
+
+void LocalResponseNormalizationGradNode::verify() const {
+  verifyLocalResponseNormalization(getGradOfInputNamedInput(),
+                                   getGradOfOriginalOutputNamedResult());
 }
 
 void ArithmeticNode::verify() const {
-  checkSameType(getNthResult(0), getLHS());
-  checkSameType(getLHS(), getRHS());
+  verifyArithmetic(getLHS(), getRHS(), getNthResult(0));
+}
+
+void ArithmeticGradNode::verify() const {
+  verifyArithmetic(getGradOfInputNamedLHS(), getGradOfInputNamedRHS(),
+                   getGradOfOriginalOutputNamedResult());
 }
 
 void BatchedArithmeticNode::verify() const {
@@ -717,26 +818,47 @@ void SelectNode::verify() const {
   checkSameType(getResult(), getRHS());
 }
 
-// TODO: verify more kinds of nodes.
-#define NOVERIFY(ClassName)                                                    \
-  void ClassName::verify() const {}
-NOVERIFY(ConvolutionGradNode)
-NOVERIFY(PoolGradNode)
-NOVERIFY(BatchNormalizationGradNode)
-NOVERIFY(LocalResponseNormalizationGradNode)
-NOVERIFY(SoftMaxGradNode)
-NOVERIFY(CrossEntropyLossGradNode)
-NOVERIFY(ReluNode)
-NOVERIFY(RegressionGradNode)
-NOVERIFY(FullyConnectedNode)
-NOVERIFY(FullyConnectedGradNode)
-NOVERIFY(SigmoidGradNode)
-NOVERIFY(ArithmeticGradNode)
-NOVERIFY(ReluGradNode)
-NOVERIFY(TanhGradNode)
-NOVERIFY(RegressionNode)
-NOVERIFY(ConcatNode)
-#undef NOVERIFY
+void ReluNode::verify() const { verifyRelu(getResult(), getInput()); }
+
+void ReluGradNode::verify() const {
+  verifyRelu(getGradOfOriginalOutputNamedResult(), getInput());
+}
+
+void RegressionNode::verify() const {
+  verifyRegression(getInput(), getResult(), getExpected());
+}
+
+void RegressionGradNode::verify() const {
+  verifyRegression(getGradOfInputNamedInput(),
+                   getGradOfOriginalOutputNamedResult(),
+                   getGradOfInputNamedExpected());
+}
+
+void FullyConnectedNode::verify() const {
+  verifyFullyConnected(getInput(), getWeights(), getBias(), getResult());
+}
+
+void FullyConnectedGradNode::verify() const {
+  verifyFullyConnected(getGradOfInputNamedInput(), getGradOfInputNamedWeights(),
+                       getGradOfInputNamedBias(),
+                       getGradOfOriginalOutputNamedResult());
+}
+
+void ConcatNode::verify() const {
+  auto inputs = getInputs();
+  auto dimension = getDim();
+  (void)inputs;
+  (void)dimension;
+
+  for (int i = 1; i < inputs.size(); i++) {
+    for (int j = 0; j < inputs[0].dims().size(); j++) {
+      if (j == dimension) {
+        continue;
+      }
+      assert(inputs[0].dims()[j] == inputs[i].dims()[j]);
+    }
+  }
+}
 
 //===----------------------------------------------------------------------===//
 //                     Node hashing support
