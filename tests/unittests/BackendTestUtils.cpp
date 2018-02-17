@@ -66,7 +66,6 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   EE.getConfig().L2Decay = 0.01;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-
   auto *var1 = mod.createVariable(inputs->getElementType(), inputs->dims(),
                                   "input", Variable::VisibilityKind::Public,
                                   Variable::TrainKind::None);
@@ -90,6 +89,20 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   EE.runBatch(8, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer, F);
   EE.run({var1, var2}, {inputs, selected});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
+void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
+                                        BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  auto &G = *mod.createFunction("main");
+  auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
+                                 "input", Variable::VisibilityKind::Public);
+  auto *lrn = G.createLocalResponseNormalization("lrn", var, 5, 3.0, 0.5, 1.5);
+  auto result = G.createSave("ret", lrn);
+  EE.compile(CompilationMode::Infer, &G);
+  EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
