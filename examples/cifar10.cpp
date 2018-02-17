@@ -77,7 +77,8 @@ void testCIFAR10() {
 
   // Create the input layer:
   auto *A = mod.createVariable(ElemKind::FloatTy, {minibatchSize, 32, 32, 3},
-                               "input");
+                               "input", Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   auto *E = mod.createVariable(ElemKind::IndexTy, {minibatchSize, 1},
                                "expected", Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
