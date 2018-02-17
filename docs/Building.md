@@ -31,6 +31,14 @@ support for the JIT and/or OpenCL backends, pass additional options to cmake:
   -DGLOW_WITH_CPU=1 -DGLOW_WITH_OPENCL=1
   ```
 
+### Supporting multiple targets
+
+The JIT is able to target all environments supported by LLVM.  If the
+`build_llvm.sh` script is used to build LLVM for Glow, all the currently stable
+architectures will be enabled.  If you wish to control which architectures are
+built, you can use the `LLVM_TARGETS_TO_BUILD` parameter to CMake, which is a
+list of architectures to support, to enable the desired targets.
+
 ## Building with the Sanitizers
 
 The clang-sanitizer project provides a number of libraries which can be used with
