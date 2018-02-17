@@ -586,6 +586,7 @@ void Interpreter::fwdSplatInst(bool isTrain, const glow::SplatInst *I) {
 
   TYPED_SPLAT(size_t, ElemKind::IndexTy);
   TYPED_SPLAT(float, ElemKind::FloatTy);
+  TYPED_SPLAT(int8_t, ElemKind::Int8QTy);
 #undef TYPED_SPLAT
 
   llvm_unreachable("Unsupported tensor type");
@@ -1031,6 +1032,18 @@ void Interpreter::fwdElementDivInst(bool isTrain, const ElementDivInst *I) {
 }
 
 void Interpreter::fwdElementMaxInst(bool isTrain, const ElementMaxInst *I) {
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    auto outW = getTensor(I->getDest())->getHandle<int8_t>();
+    auto lhsW = getTensor(I->getLHS())->getHandle<int8_t>();
+    auto rhsW = getTensor(I->getRHS())->getHandle<int8_t>();
+
+    for (size_t i = 0, e = outW.size(); i < e; i++) {
+      outW.raw(i) = std::max(lhsW.raw(i), rhsW.raw(i));
+    }
+
+    return;
+  }
+
   auto outW = getWeightHandle(I->getDest());
   auto lhsW = getWeightHandle(I->getLHS());
   auto rhsW = getWeightHandle(I->getRHS());
