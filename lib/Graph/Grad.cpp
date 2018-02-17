@@ -41,10 +41,13 @@ NodeValue GraphGradMapper::getGradient(NodeValue activation) {
 //        Code for automatically generating the back propagation code.
 //===----------------------------------------------------------------------===//
 
-void glow::generateGradientNodes(Function &G, TrainingConfig &conf,
-                                 CompilationMode mode) {
+Function *glow::differentiate(Function *F, TrainingConfig &conf,
+                              CompilationMode mode,
+                              llvm::StringRef newFuncName) {
+  Function *G = F->clone(newFuncName);
+
   using Kind = glow::Kinded::Kind;
-  GraphGradMapper map(G);
+  GraphGradMapper map(*G);
 
   // A list of nodes to add to the graph.
   std::vector<Node *> toAppend;
@@ -54,10 +57,10 @@ void glow::generateGradientNodes(Function &G, TrainingConfig &conf,
   // Generate the gradient nodes for each one of the nodes in the function.
 
   PostOrderVisitor pov;
-  for (auto &N : G.getParent().getVars()) {
+  for (auto &N : G->getParent().getVars()) {
     N->visit(nullptr, &pov);
   }
-  for (auto &N : G.getNodes()) {
+  for (auto &N : G->getNodes()) {
     N->visit(nullptr, &pov);
   }
 
@@ -171,14 +174,14 @@ void glow::generateGradientNodes(Function &G, TrainingConfig &conf,
     llvm_unreachable("Invalid instruction type.");
   } // End of the for-each instr loop.
 
-  for (auto &V : G.getParent().getVars()) {
+  for (auto &V : G->getParent().getVars()) {
     // In TrainDebug mode we save a copy of the last gradient
     if (mode == CompilationMode::TrainDebug && map.hasGradient(V)) {
       std::string nodeName = "_grad_" + V->getName().str();
       // Save the gradient and return the destination variable.
-      auto *saveNode = G.createSave(nodeName, map.getGradient(V));
+      auto *saveNode = G->createSave(nodeName, map.getGradient(V));
       auto *GradV = llvm::dyn_cast<Variable>(saveNode->getOutput().getNode());
-      G.getParent().addGradientVariable(V, GradV);
+      G->getParent().addGradientVariable(V, GradV);
     }
 
     // Don't update nodes that are not in training mode.
@@ -186,7 +189,7 @@ void glow::generateGradientNodes(Function &G, TrainingConfig &conf,
       continue;
     }
 
-    TypeRef Ty = conf.momentum > 0 ? V->getType() : G.getParent().getVoidTy();
+    TypeRef Ty = conf.momentum > 0 ? V->getType() : G->getParent().getVoidTy();
     Variable *gsum = new Variable("gsum", Ty, Variable::VisibilityKind::Private,
                                   Variable::TrainKind::Broadcast, 0);
 
@@ -200,9 +203,11 @@ void glow::generateGradientNodes(Function &G, TrainingConfig &conf,
 
   // Add all of the new variables and instructions.
   for (auto &I : toAppend) {
-    G.addNode(I);
+    G->addNode(I);
   }
   for (auto &I : newVars) {
-    G.getParent().addVar(I);
+    G->getParent().addVar(I);
   }
+
+  return G;
 }

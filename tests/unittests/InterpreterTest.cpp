@@ -162,7 +162,9 @@ TEST(Interpreter, trainASimpleNetwork) {
   inputs.getHandle<>() = {0.15, 0.15, 0.15, 0.15};
   expected.getHandle<>() = {0.9, 0.9, 0.9, 0.9};
 
-  EE.compile(CompilationMode::Train, &G);
+  Function *TF =
+      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  EE.compile(CompilationMode::Train, TF);
 
   // Train the network. Learn 1000 batches.
   EE.runBatch(1000, {A, E}, {&inputs, &expected});
@@ -208,7 +210,9 @@ TEST(Interpreter, simpleRegression) {
   auto I = inputs.getHandle<>();
   auto E = expected.getHandle<>();
 
-  EE.compile(CompilationMode::Train, &G);
+  Function *TF =
+      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  EE.compile(CompilationMode::Train, TF);
 
   // Train the network:
   for (int iter = 0; iter < 1000; iter++) {
@@ -274,7 +278,9 @@ TEST(Interpreter, learnXor) {
     TL.at({i, 0}) = a ^ b;
   }
 
-  EE.compile(CompilationMode::Train, &G);
+  Function *TF =
+      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  EE.compile(CompilationMode::Train, TF);
 
   // Train the network:
   EE.runBatch(2500, {A, Ex}, {&trainingSet, &trainingLabels});
@@ -358,7 +364,9 @@ TEST(Network, circle) {
   auto *SM = G.createSoftMax("soft", T1, S);
   auto *result = G.createSave("ret", SM);
 
-  EE.compile(CompilationMode::Train, &G);
+  Function *TF =
+      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  EE.compile(CompilationMode::Train, TF);
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
   Tensor labels(ElemKind::IndexTy, {numSamples, 1});
@@ -457,7 +465,9 @@ TEST(Network, learnSingleValueConcat) {
   inputs.getHandle<>().clear(0.15);
   expected.getHandle<>().clear(0.9);
 
-  EE.compile(CompilationMode::Train, &G);
+  Function *TF =
+      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  EE.compile(CompilationMode::Train, TF);
 
   // Train the network:
   EE.runBatch(1000, {A, B, Ex}, {&inputs, &inputs, &expected});
@@ -647,7 +657,9 @@ void testRNNCell(TCellGenerator cell) {
   auto *R = G.createConcat("O", regressionNodes, 1);
   auto *result = G.createSave("result", R);
 
-  EE.compile(CompilationMode::Train, &G);
+  Function *TF =
+      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  EE.compile(CompilationMode::Train, TF);
 
   // Values for the input and output variables.
   Tensor inputs(ElemKind::FloatTy, {1, NumVectors, NumElements});
@@ -725,7 +737,9 @@ TEST(Interpreter, learnSqrt2) {
   O = G.createRegression("reg", O, Ex);
   G.createSave("ret", O);
 
-  EE.compile(CompilationMode::Train, &G);
+  Function *TF =
+      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  EE.compile(CompilationMode::Train, TF);
 
   // Train the network:
   for (int i = 0; i < 50; i++) {
@@ -777,7 +791,9 @@ TEST(LinearRegression, trainSimpleLinearRegression) {
   Variable *M = llvm::cast<Variable>(FC->getWeights());
   Variable *B = llvm::cast<Variable>(FC->getBias());
 
-  EE.compile(CompilationMode::Train, &G);
+  Function *TF =
+      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  EE.compile(CompilationMode::Train, TF);
 
   // Train the network doing 100 steps. Learn on 500 samples.
   EE.runBatch(100, {inputX, expectedY}, {&tensorX, &tensorY});
@@ -839,7 +855,9 @@ TEST(LinearClassifier, classifyPlayerSport) {
   auto *SM = G.createSoftMax("softmax", FC, S);
   auto *result = G.createSave("result", SM);
 
-  EE.compile(CompilationMode::Train, &G);
+  Function *TF =
+      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  EE.compile(CompilationMode::Train, TF);
 
   Tensor players(ElemKind::FloatTy, {numTrainPlayers, numFeatures});
   Tensor labels(ElemKind::IndexTy, {numTrainPlayers, 1});
@@ -918,7 +936,9 @@ TEST(Interpreter, learnSinus) {
   Node *R = G.createRegression("reg", FC2, expectedY);
   auto *result = G.createSave("return", R);
 
-  EE.compile(CompilationMode::Train, &G);
+  Function *TF =
+      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  EE.compile(CompilationMode::Train, TF);
 
   // Learn on numSamples samples.
   EE.runBatch(2700, {inputX, expectedY}, {&tensorX, &tensorY});

@@ -188,7 +188,10 @@ void testPTB() {
 
   std::cout << "Dumping graph" << std::endl;
 
-  EE.compile(CompilationMode::Train, &G);
+  Function *TF =
+      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+
+  EE.compile(CompilationMode::Train, TF);
 
   G.dumpDAG("DAG.dot");
 

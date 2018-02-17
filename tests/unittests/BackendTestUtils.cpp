@@ -83,7 +83,11 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   auto *reshape2 = G.createReshape("reshape2", conv2, shape2);
   auto *softmax = G.createSoftMax("softmax", reshape2, var2);
   auto result = G.createSave("ret", softmax);
-  EE.compile(CompilationMode::Train, &G);
+
+  Function *TF =
+      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  EE.compile(CompilationMode::Train, TF);
+
   EE.runBatch(8, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer, &G);
   EE.run({var1, var2}, {inputs, selected});
@@ -158,7 +162,11 @@ void trainPoolAvgNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *reshape2 = G.createReshape("reshape2", pool, shape2);
   auto *softmax = G.createSoftMax("softmax", reshape2, var2);
   auto result = G.createSave("ret", softmax);
-  EE.compile(CompilationMode::Train, &G);
+
+  Function *TF =
+      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  EE.compile(CompilationMode::Train, TF);
+
   EE.runBatch(10, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer, &G);
   EE.run({var1, var2}, {inputs, selected});
@@ -201,7 +209,11 @@ void trainPoolMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *reshape2 = G.createReshape("reshape2", pool, shape2);
   auto *softmax = G.createSoftMax("softmax", reshape2, var2);
   auto result = G.createSave("ret", softmax);
-  EE.compile(CompilationMode::Train, &G);
+
+  Function *TF =
+      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  EE.compile(CompilationMode::Train, TF);
+
   EE.runBatch(7, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer, &G);
   EE.runBatch(1, {var1, var2}, {inputs, selected});
@@ -300,7 +312,11 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   cast<Variable>(fc->getBias())->copyFrom(bias);
   auto *softmax = G.createSoftMax("softmax", fc, var2);
   auto result = G.createSave("ret", softmax);
-  EE.compile(CompilationMode::Train, &G);
+
+  Function *TF =
+      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  EE.compile(CompilationMode::Train, TF);
+
   EE.runBatch(30, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer, &G);
   EE.run({var1, var2}, {inputs, selected});
