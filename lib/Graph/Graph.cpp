@@ -66,9 +66,174 @@ void Module::dump() const {
   }
 }
 
+/// A helper class for visiting and generating the dotty graph file.
+class AbstractDottyPrinter {
+protected:
+  // List of generated vertices.
+  std::vector<std::string> vertices_{};
+  // List of generated edges.
+  std::vector<std::string> edges_{};
+
+  /// Dumps label for a input/output row, given port names.
+  /// E.g. {"LHS", "RHS"} will produce {<LHS>LHS|<RHS>RHS}
+  void dumpLabelForRow(llvm::ArrayRef<std::string> names, std::ostream &os) {
+    os << "{";
+    for (size_t i = 0; i < names.size(); i++) {
+      if (i) {
+        os << "|";
+      }
+      os << "<" << names[i] << ">" << names[i];
+    }
+    os << "}";
+  }
+
+  void dumpLabel(Node *N, std::ostream &os) {
+    os << "{";
+    if (N->getNumInputs()) {
+      std::vector<std::string> names(N->getNumInputs());
+      for (size_t i = 0; i < names.size(); i++) {
+        names[i] = N->getInputName(i).str();
+      }
+      dumpLabelForRow(names, os);
+      os << "|";
+    }
+    os << "{" << escapeDottyString(N->getDebugDesc()) << "}";
+    if (N->getNumResults()) {
+      os << "|";
+      std::vector<std::string> names(N->getNumResults());
+      for (size_t i = 0; i < names.size(); i++) {
+        names[i] = N->getOutputName(i).str();
+      }
+      dumpLabelForRow(names, os);
+    }
+    os << "}";
+  }
+
+  void dumpNode(Node *N) {
+    if (!N) {
+      return;
+    }
+    std::ostringstream os;
+    // Print a node descriptor that looks like this:
+    // "0xf7fc43e01" [ shape = "record" label = "{...}" ];
+    // where 0xf7fc43e01 is address of node.
+    os << uniqueVertexName(N) << "[\n";
+    os << "\tlabel = \"";
+    dumpLabel(N, os);
+    os << "\"\n";
+    os << "\tshape = \"record\"\n";
+    if (llvm::isa<Variable>(N)) {
+      os << "\tfillcolor=pink,style=filled\n";
+    }
+    os << "];\n";
+
+    vertices_.push_back(os.str());
+  }
+
+  void dumpEdgeStyle(Node *N, size_t i, Node *to, std::ostream &os) {
+    if (N->isOverwrittenNthInput(i)) {
+      os << " [dir=\"both\"]";
+    }
+    if (isa<Variable>(to)) {
+      if (!N->isOverwrittenNthInput(i)) {
+        os << "[style=bold, color=pink]";
+      } else {
+        os << "[style=bold, color=blue]";
+      }
+    }
+  }
+
+  std::string uniqueVertexName(void *N) {
+    std::string buffer;
+    llvm::raw_string_ostream stream(buffer);
+    stream << '"' << N << '"';
+    return stream.str();
+  }
+
+public:
+  void dumpAll(std::ostream &os) {
+    os << "digraph DAG {\n\trankdir=TB;\n";
+
+    // Dump vertices:
+    for (auto &v : vertices_) {
+      os << v << "\n";
+    }
+
+    // Dump edges:
+    for (auto &e : edges_) {
+      os << e << ";\n";
+    }
+
+    os << "}";
+  }
+};
+
+class ModuleDottyPrinter : public AbstractDottyPrinter {
+  /// Dump Function as a vertix. Then iterate through Variables, used in the
+  /// function, and create corresponding edges.
+  void visitFunction(Function *F) {
+    std::ostringstream os;
+    // Print a Function descriptor that looks like this:
+    // "0xf7fc43e01" [ label = "{...}" ];
+    // where 0xf7fc43e01 is address of Function.
+    os << uniqueVertexName(F) << "[\n"
+       << "\tlabel = \"Function\\l"
+       << "name : " << F->getName().str() << "\\l"
+       << "node count : " << F->getNodes().size()
+       << "\"\n"
+       << "\tshape = box\n"
+       << "];\n";
+    vertices_.push_back(os.str());
+
+    for (Node *N : F->getNodes()) {
+      for (size_t i = 0; i < N->getNumInputs(); i++) {
+        Node *to = N->getNthInput(i).getNode();
+        size_t resNo = N->getNthInput(i).getResNo();
+
+        if (!isa<Variable>(to))
+          continue;
+
+        std::ostringstream edge;
+        edge << uniqueVertexName(to) << ":" << to->getOutputName(resNo).str()
+             << " -> " << uniqueVertexName(F);
+        dumpEdgeStyle(N, i, to, edge);
+        edges_.push_back(edge.str());
+      }
+    }
+  }
+
+public:
+  void visitModule(Module *M) {
+    for (auto N : M->getVars()) {
+      dumpNode(N);
+    }
+
+    for (auto F : M->getFunctions()) {
+      visitFunction(F);
+    }
+  }
+};
+
+// TODO: consider refactoring boilerplate code to new trait: DottyPrintable<ADP>
 void Module::dumpDAG() {
-  // TODO: Implement graph dumping.
-  llvm_unreachable("unimplemented");
+  std::string buffer;
+  llvm::raw_string_ostream stream(buffer);
+  stream << "dotty_graph_dump_" << this << ".dot";
+  dumpDAG(stream.str().c_str());
+}
+
+void Module::dumpDAG(const char *dotFilename) {
+  std::string filename = dotFilename;
+  llvm::outs() << "Writing dotty graph for Module to: " << filename << '\n';
+
+  ModuleDottyPrinter DP;
+
+  DP.visitModule(this);
+
+  std::ofstream myfile;
+  myfile.open(filename);
+  DP.dumpAll(myfile);
+  myfile.close();
 }
 
 Function::~Function() {
@@ -1047,76 +1212,11 @@ void Function::dump() const {
   }
 }
 
-/// A helper class for visiting and generating the dotty file from the graph.
 /// We can't use NodeWalker here, because it ignores result indices, which
 /// are critical in generating detailed debug output.
-class DottyPrinterPass {
-  // The output stream for writing the dotty descriptor.
-  std::ostream &os_;
+class FunctionDottyPrinter : public AbstractDottyPrinter {
   // A set of already visited (during graph walk) nodes.
   std::unordered_set<Node *> visitedNodes_{};
-  // List of generated edges.
-  std::vector<std::string> nodeEdges_{};
-
-  /// Dumps label for a input/output row, given port names.
-  /// E.g. {"LHS", "RHS"} will produce {<LHS>LHS|<RHS>RHS}
-  void dumpLabelForRow(llvm::ArrayRef<std::string> names) {
-    os_ << "{";
-    for (size_t i = 0; i < names.size(); i++) {
-      if (i) {
-        os_ << "|";
-      }
-      os_ << "<" << names[i] << ">" << names[i];
-    }
-    os_ << "}";
-  }
-
-  void dumpLabel(Node *N) {
-    os_ << "{";
-    if (N->getNumInputs()) {
-      std::vector<std::string> names(N->getNumInputs());
-      for (size_t i = 0; i < names.size(); i++) {
-        names[i] = N->getInputName(i).str();
-      }
-      dumpLabelForRow(names);
-      os_ << "|";
-    }
-    os_ << "{" << escapeDottyString(N->getDebugDesc()) << "}";
-    if (N->getNumResults()) {
-      os_ << "|";
-      std::vector<std::string> names(N->getNumResults());
-      for (size_t i = 0; i < names.size(); i++) {
-        names[i] = N->getOutputName(i).str();
-      }
-      dumpLabelForRow(names);
-    }
-    os_ << "}";
-  }
-
-  void dumpNode(Node *N) {
-    if (!N) {
-      return;
-    }
-    // Print a node descriptor that looks like this:
-    // "0xf7fc43e01" [ shape = "record" label = "{...}" ];
-    // where 0xf7fc43e01 is address of node.
-    os_ << uniqueNodeName(N) << "[\n";
-    os_ << "\tlabel = \"";
-    dumpLabel(N);
-    os_ << "\"\n";
-    os_ << "\tshape = \"record\"\n";
-    if (llvm::isa<Variable>(N)) {
-      os_ << "\tfillcolor=pink,style=filled\n";
-    }
-    os_ << "];\n\n";
-  }
-
-  std::string uniqueNodeName(Node *N) {
-    std::string buffer;
-    llvm::raw_string_ostream stream(buffer);
-    stream << '"' << N << '"';
-    return stream.str();
-  }
 
   /// Recursively traverses inputs of node \p N using Deep First Search.
   /// Each node will be visited no more than once. The method also dumps
@@ -1131,47 +1231,23 @@ class DottyPrinterPass {
       size_t resNo = N->getNthInput(i).getResNo();
 
       std::ostringstream edge;
-      edge << uniqueNodeName(to) << ":" << to->getOutputName(resNo).str()
-           << " -> " << uniqueNodeName(N) << ":" << N->getInputName(i).str();
-      if (N->isOverwrittenNthInput(i)) {
-        edge << " [dir=\"both\"]";
-      }
-      if (isa<Variable>(to)) {
-        if (!N->isOverwrittenNthInput(i)) {
-          edge << "[style=bold, color=pink]";
-        } else {
-          edge << "[style=bold, color=blue]";
-        }
-      }
-      nodeEdges_.push_back(edge.str());
+      edge << uniqueVertexName(to) << ":" << to->getOutputName(resNo).str()
+           << " -> " << uniqueVertexName(N) << ":" << N->getInputName(i).str();
+      edges_.push_back(edge.str());
 
       visitNode(to);
     }
   }
 
 public:
-  explicit DottyPrinterPass(std::ostream &os) : os_(os) {}
-
-  void visitGraph(Function *G) {
-    for (auto N : G->getNodes()) {
+  void visitGraph(Function *F) {
+    for (auto N : F->getNodes()) {
       visitNode(N);
     }
-  }
 
-  void dumpAll() {
-    os_ << "digraph finite_state_machine {\n\trankdir=TB;\n";
-
-    // Dump nodes:
-    for (auto e : visitedNodes_) {
-      dumpNode(e);
+    for (auto N : visitedNodes_) {
+      dumpNode(N);
     }
-
-    // Dump edges:
-    for (auto &e : nodeEdges_) {
-      os_ << e << ";\n";
-    }
-
-    os_ << "}";
   }
 };
 
@@ -1184,16 +1260,15 @@ void Function::dumpDAG() {
 
 void Function::dumpDAG(const char *dotFilename) {
   std::string filename = dotFilename;
-  llvm::outs() << "Writing dotty graph to: " << filename << '\n';
+  llvm::outs() << "Writing dotty graph for Function to: " << filename << '\n';
 
-  std::ofstream myfile;
-  myfile.open(filename);
-
-  DottyPrinterPass DP(myfile);
+  FunctionDottyPrinter DP;
 
   DP.visitGraph(this);
 
-  DP.dumpAll();
+  std::ofstream myfile;
+  myfile.open(filename);
+  DP.dumpAll(myfile);
   myfile.close();
 }
 
