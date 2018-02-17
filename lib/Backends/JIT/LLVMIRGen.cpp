@@ -501,6 +501,29 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::LocalResponseNormalizationInstKind: {
+    LocalResponseNormalizationInst *LRN =
+        llvm::cast<LocalResponseNormalizationInst>(I);
+    auto *destPtr =
+        emitValueAddress(builder, LRN->getDest(), ElemKind::FloatTy);
+    auto *srcPtr = emitValueAddress(builder, LRN->getSrc(), ElemKind::FloatTy);
+    auto *scalePtr =
+        emitValueAddress(builder, LRN->getScale(), ElemKind::FloatTy);
+    auto *destDims = emitValueDims(builder, LRN->getDest());
+    auto *srcDims = emitValueDims(builder, LRN->getSrc());
+
+    auto *halfWindow = emitConst(builder, LRN->getHalfWindowSize());
+    auto *alpha = emitConst(builder, LRN->getAlpha());
+    auto *beta = emitConst(builder, LRN->getBeta());
+    auto *k = emitConst(builder, LRN->getK());
+
+    auto *F = getFunction("libjit_local_response_normalization_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {destPtr, srcPtr, scalePtr, destDims, srcDims,
+                           halfWindow, alpha, beta, k});
+    break;
+  }
+
   case Kinded::Kind::PoolMaxInstKind: {
     PoolMaxInst *PM = llvm::cast<PoolMaxInst>(I);
     auto *destPtr = emitValueAddress(builder, PM->getDest(), ElemKind::FloatTy);

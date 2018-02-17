@@ -98,6 +98,20 @@ TEST(JITCorrectnessTest, convGradTest) {
   EXPECT_TRUE(H1.isEqual(H2));
 }
 
+TEST(JITCorrectnessTest, localResponseNormalizationTest) {
+  Tensor inputs(ElemKind::FloatTy, {8, 15, 13, 30});
+  inputs.getHandle().initXavier(1);
+  Tensor out1;
+  Tensor out2;
+
+  inferLocalResponseNormalizationNet(&inputs, &out1, BackendKind::JIT);
+  inferLocalResponseNormalizationNet(&inputs, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
 TEST(JITCorrectnessTest, maxTest) {
   std::array<size_t, 3> S{{3, 8, 2}};
   llvm::ArrayRef<size_t> shape(S);

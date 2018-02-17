@@ -20,6 +20,9 @@ void trainConvNet(glow::Tensor *inputs, glow::Tensor *kernel1,
                   llvm::ArrayRef<size_t> shape1, llvm::ArrayRef<size_t> shape2,
                   glow::Tensor *out, glow::BackendKind kind);
 
+void inferLocalResponseNormalizationNet(glow::Tensor *inputs, glow::Tensor *out,
+                                        glow::BackendKind kind);
+
 void inferMaxNet(glow::Tensor *inputs1, glow::Tensor *inputs2,
                  glow::Tensor *out, glow::BackendKind kind);
 
