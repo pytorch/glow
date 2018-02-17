@@ -178,4 +178,24 @@ TEST(Graph, moduleTest) {
   EXPECT_TRUE(M.hasFunction("one"));
   EXPECT_TRUE(M.hasFunction("two"));
   EXPECT_FALSE(M.hasFunction("four"));
+  M.dumpDAG();
+}
+
+TEST(Graph, functionDependenciesTest) {
+  Module M;
+  auto F1 = M.createFunction("one");
+  auto F2 = M.createFunction("two");
+  auto V1 = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V1");
+  auto V2 = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V2");
+  auto V3 = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V3");
+  M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V4");
+
+  auto sum = F1->createArithmetic("1_sub_2", V1, V2, ArithmeticNode::Mode::Sub);
+  F1->createSave("sv", sum, V1);
+  F2->createSave("sv", V3, V2);
+
+  EXPECT_TRUE(M.hasFunction("one"));
+  EXPECT_TRUE(M.hasFunction("two"));
+  EXPECT_FALSE(M.hasFunction("four"));
+  M.dumpDAG();
 }

@@ -130,14 +130,17 @@ public:
       float val = 0.0);
   ///@}
 
-  /// Verify the correctness of the graph.
+  /// Verify the correctness of the Module.
   void verify() const;
 
   /// Dumps the textual representation of the network.
   void dump() const;
 
-  /// Dump a dotty graph that depicts the function.
+  /// Dump a dotty graph that depicts the Module.
   void dumpDAG();
+
+  /// Dump a dotty graph that depicts the Module.
+  void dumpDAG(const char *dotFilename);
 };
 
 /// Represents the compute graph.
