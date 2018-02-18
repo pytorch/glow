@@ -722,7 +722,7 @@ Function::createBatchedArithmetic(llvm::StringRef name, TypeRef outTy,
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest = getParent().createVariable(input.getType(), name,
-                                          Variable::VisibilityKind::Private,
+                                          Variable::VisibilityKind::Public,
                                           Variable::TrainKind::None);
 
   std::string nodeName{"_save_"};
