@@ -84,8 +84,7 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   auto *softmax = G.createSoftMax("softmax", reshape2, var2);
   auto result = G.createSave("ret", softmax);
 
-  Function *TF =
-      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  Function *TF = glow::differentiate(&G, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   EE.runBatch(8, {var1, var2}, {inputs, selected});
@@ -163,8 +162,7 @@ void trainPoolAvgNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *softmax = G.createSoftMax("softmax", reshape2, var2);
   auto result = G.createSave("ret", softmax);
 
-  Function *TF =
-      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  Function *TF = glow::differentiate(&G, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   EE.runBatch(10, {var1, var2}, {inputs, selected});
@@ -210,8 +208,7 @@ void trainPoolMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *softmax = G.createSoftMax("softmax", reshape2, var2);
   auto result = G.createSave("ret", softmax);
 
-  Function *TF =
-      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  Function *TF = glow::differentiate(&G, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   EE.runBatch(7, {var1, var2}, {inputs, selected});
@@ -313,8 +310,7 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *softmax = G.createSoftMax("softmax", fc, var2);
   auto result = G.createSave("ret", softmax);
 
-  Function *TF =
-      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  Function *TF = glow::differentiate(&G, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   EE.runBatch(30, {var1, var2}, {inputs, selected});

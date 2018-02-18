@@ -55,8 +55,8 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
   auto &G = *IP.getModule().getFunction("main");
 
   // Compile network in TrainDebug mode to generate and save gradients.
-  Function *TF = glow::differentiate(&G, IP.getConfig(),
-                                     CompilationMode::TrainDebug, "train");
+  Function *TF =
+      glow::differentiate(&G, IP.getConfig(), CompilationMode::TrainDebug);
   IP.compile(CompilationMode::TrainDebug, TF);
 
   // Run training to calculate gradient values.
@@ -517,9 +517,8 @@ TEST(Network, gradientcheckCrossEntropyLoss) {
   outputsH.at({1}) = 0;
   outputsH.at({2}) = 1;
 
-  Function *TF = glow::differentiate(&G, IP.getConfig(),
-                                     CompilationMode::TrainDebug,
-                                     "train");
+  Function *TF =
+      glow::differentiate(&G, IP.getConfig(), CompilationMode::TrainDebug);
   IP.compile(CompilationMode::TrainDebug, TF);
 
   auto gradP = getGrad(G, P)->getHandle();
