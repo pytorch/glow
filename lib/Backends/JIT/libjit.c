@@ -29,34 +29,36 @@ void splat_f(float *buffer, size_t sz, float val) {
   }
 }
 
-void elementmax_f(float *dest, const float *LHS, const float *RHS, size_t sz) {
+void libjit_elementmax_f(float *dest, const float *LHS, const float *RHS,
+                         size_t sz) {
   for (size_t i = 0; i < sz; i++) {
     dest[i] = MAX(LHS[i], RHS[i]);
   }
 }
 
-void elementmax0_f(float *dest, const float *LHS, size_t sz) {
+void libjit_elementmax0_f(float *dest, const float *LHS, size_t sz) {
   for (size_t i = 0; i < sz; i++) {
     dest[i] = MAX(LHS[i], 0);
   }
 }
 
-void elementmin_f(float *dest, const float *LHS, const float *RHS, size_t sz) {
+void libjit_elementmin_f(float *dest, const float *LHS, const float *RHS,
+                         size_t sz) {
   for (size_t i = 0; i < sz; i++) {
     dest[i] = MIN(LHS[i], RHS[i]);
   }
 }
 
-void elementselect_f(float *dest, const float *cond, const float *LHS,
-                     const float *RHS, size_t sz) {
+void libjit_elementselect_f(float *dest, const float *cond, const float *LHS,
+                            const float *RHS, size_t sz) {
   for (size_t i = 0; i < sz; i++) {
     dest[i] = (cond[i] != 0.0) ? LHS[i] : RHS[i];
   }
 }
 
-void batchedmatmul_f(float *dest, const float *LHS, const float *RHS,
-                     const size_t *destDims, const size_t *lhsDims,
-                     const size_t *rhsDims) {
+void libjit_batchedmatmul_f(float *dest, const float *LHS, const float *RHS,
+                            const size_t *destDims, const size_t *lhsDims,
+                            const size_t *rhsDims) {
   size_t destSize = destDims[0] * destDims[1] * destDims[2];
   for (size_t i = 0; i < destSize; ++i)
     dest[i] = 0;
@@ -83,8 +85,8 @@ void batchedmatmul_f(float *dest, const float *LHS, const float *RHS,
   } // N
 }
 
-void batchedadd_f(float *dest, const float *batch, const float *slice,
-                  size_t numSlice, size_t sliceSize) {
+void libjit_batchedadd_f(float *dest, const float *batch, const float *slice,
+                         size_t numSlice, size_t sliceSize) {
   // For each layer in the batch:
   for (size_t n = 0; n < numSlice; n++) {
     size_t base = n * sliceSize;
@@ -95,8 +97,8 @@ void batchedadd_f(float *dest, const float *batch, const float *slice,
   }
 }
 
-void batchedreduceadd_f(float *dest, const float *batch, size_t destSize,
-                        size_t numSlice, size_t sliceSize) {
+void libjit_batchedreduceadd_f(float *dest, const float *batch, size_t destSize,
+                               size_t numSlice, size_t sliceSize) {
   for (size_t i = 0; i < destSize; i++) {
     dest[i] = 0.0;
   }
@@ -108,52 +110,51 @@ void batchedreduceadd_f(float *dest, const float *batch, size_t destSize,
   }
 }
 
-void copy_buffer(uint8_t *dest, uint8_t *src, size_t bytes) {
+void libjit_copy_buffer(uint8_t *dest, uint8_t *src, size_t bytes) {
   for (int i = 0; i < bytes; i++) {
     dest[i] = src[i];
   }
 }
 
-void element_cmp_lte_f(float *dest, const float *LHS, const float *RHS,
-                       size_t numElem) {
+void libjit_element_cmp_lte_f(float *dest, const float *LHS, const float *RHS,
+                              size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     dest[i] = LHS[i] < RHS[i];
   }
 }
 
-void element_sub_f(float *dest, const float *LHS, const float *RHS,
-                   size_t numElem) {
+void libjit_element_sub_f(float *dest, const float *LHS, const float *RHS,
+                          size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     dest[i] = LHS[i] - RHS[i];
   }
 }
 
-void element_add_f(float *dest, const float *LHS, const float *RHS,
-                   size_t numElem) {
+void libjit_element_add_f(float *dest, const float *LHS, const float *RHS,
+                          size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     dest[i] = LHS[i] + RHS[i];
   }
 }
 
-void element_div_f(float *dest, const float *LHS, const float *RHS,
-                   size_t numElem) {
+void libjit_element_div_f(float *dest, const float *LHS, const float *RHS,
+                          size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     dest[i] = LHS[i] / RHS[i];
   }
 }
 
-void element_mul_f(float *dest, const float *LHS, const float *RHS,
-                   size_t numElem) {
+void libjit_element_mul_f(float *dest, const float *LHS, const float *RHS,
+                          size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     dest[i] = LHS[i] * RHS[i];
   }
 }
 
-void convolution_f_unroll_k4(const float *inW, float *outW,
-                             const float *filterW, const float *biasW,
-                             const size_t *inWdims, const size_t *outWdims,
-                             const size_t *filterWdims, const size_t *biasWdims,
-                             size_t filterSize, size_t stride, size_t pad) {
+void libjit_convolution_f_unroll_k4(
+    const float *inW, float *outW, const float *filterW, const float *biasW,
+    const size_t *inWdims, const size_t *outWdims, const size_t *filterWdims,
+    const size_t *biasWdims, size_t filterSize, size_t stride, size_t pad) {
   size_t inChannels = inWdims[3];
 
   // For each input in the batch:
@@ -216,12 +217,11 @@ void convolution_f_unroll_k4(const float *inW, float *outW,
   }       // N
 }
 
-void convolution_f(const float *inW, float *outW, const float *filterW,
-                   const float *biasW, const size_t *inWdims,
-                   const size_t *outWdims, const size_t *filterWdims,
-                   const size_t *biasWdims, size_t filterSize, size_t stride,
-                   size_t pad) {
-
+void libjit_convolution_f(const float *inW, float *outW, const float *filterW,
+                          const float *biasW, const size_t *inWdims,
+                          const size_t *outWdims, const size_t *filterWdims,
+                          const size_t *biasWdims, size_t filterSize,
+                          size_t stride, size_t pad) {
   size_t inChannels = inWdims[3];
 
   // For each input in the batch:
@@ -263,11 +263,12 @@ void convolution_f(const float *inW, float *outW, const float *filterW,
   }       // N
 }
 
-void convolution_grad_f(float *inG, const float *outG, const float *inW,
-                        float *filterG, float *biasG, const float *filterW,
-                        const size_t *outGdims, const size_t *inWdims,
-                        const size_t *filterGdims, const size_t kernel,
-                        const size_t stride, const size_t pad) {
+void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
+                               float *filterG, float *biasG,
+                               const float *filterW, const size_t *outGdims,
+                               const size_t *inWdims, const size_t *filterGdims,
+                               const size_t kernel, const size_t stride,
+                               const size_t pad) {
   // NHWC format is assumed
   // Clear inG, filterG, and biasG
   size_t p = sizeof(float) * inWdims[3];
@@ -310,9 +311,9 @@ void convolution_grad_f(float *inG, const float *outG, const float *inW,
   }       // N
 }
 
-void pool_max_f(const float *inW, float *outW, const size_t *inWdims,
-                const size_t *outWdims, size_t filterSize, size_t stride,
-                size_t pad) {
+void libjit_pool_max_f(const float *inW, float *outW, const size_t *inWdims,
+                       const size_t *outWdims, size_t filterSize, size_t stride,
+                       size_t pad) {
   // For each input in the batch:
   for (size_t n = 0; n < outWdims[0]; n++) {
 
@@ -353,9 +354,9 @@ void pool_max_f(const float *inW, float *outW, const size_t *inWdims,
   }       // N
 }
 
-void pool_max_xy_f(const float *inW, float *outW, size_t *inXY,
-                   const size_t *inWdims, const size_t *outWdims, size_t kernel,
-                   size_t stride, size_t pad) {
+void libjit_pool_max_xy_f(const float *inW, float *outW, size_t *inXY,
+                          const size_t *inWdims, const size_t *outWdims,
+                          size_t kernel, size_t stride, size_t pad) {
   // For each input in the batch:
   for (size_t n = 0; n < outWdims[0]; n++) {
     // For each channel in the input:
@@ -401,8 +402,9 @@ void pool_max_xy_f(const float *inW, float *outW, size_t *inXY,
   }       // N
 }
 
-void pool_max_xy_grad_f(float *inG, const float *outG, const size_t *inXY,
-                        const size_t *inGdims, const size_t *outWdims) {
+void libjit_pool_max_xy_grad_f(float *inG, const float *outG,
+                               const size_t *inXY, const size_t *inGdims,
+                               const size_t *outWdims) {
   // NHWC format is assumed
   for (size_t n = 0; n < outWdims[0]; n++) {
     for (size_t z = 0; z < outWdims[3]; z++) {
@@ -429,9 +431,9 @@ void pool_max_xy_grad_f(float *inG, const float *outG, const size_t *inXY,
   }       // N
 }
 
-void pool_avg_f(const float *inW, float *outW, const size_t *inWdims,
-                const size_t *outWdims, size_t filterSize, size_t stride,
-                size_t pad) {
+void libjit_pool_avg_f(const float *inW, float *outW, const size_t *inWdims,
+                       const size_t *outWdims, size_t filterSize, size_t stride,
+                       size_t pad) {
   float filterArea = filterSize * filterSize;
   // For each input in the batch:
   for (size_t n = 0; n < outWdims[0]; n++) {
@@ -466,9 +468,9 @@ void pool_avg_f(const float *inW, float *outW, const size_t *inWdims,
   }       // N
 }
 
-void pool_avg_grad_f(float *inG, const float *outG, const size_t *inGdims,
-                     const size_t *outWdims, size_t kernel, size_t stride,
-                     size_t pad) {
+void libjit_pool_avg_grad_f(float *inG, const float *outG,
+                            const size_t *inGdims, const size_t *outWdims,
+                            size_t kernel, size_t stride, size_t pad) {
   float kernelArea = kernel * kernel;
 
   // NHWC format is assumed
@@ -503,8 +505,9 @@ void pool_avg_grad_f(float *inG, const float *outG, const size_t *inGdims,
   }       // N
 }
 
-void sgd_f(float *W, const float *G, float *Gsum, float L1Decay, float L2Decay,
-           float learningRate, float momentum, size_t batchSize, size_t Wsize) {
+void libjit_sgd_f(float *W, const float *G, float *Gsum, float L1Decay,
+                  float L2Decay, float learningRate, float momentum,
+                  size_t batchSize, size_t Wsize) {
   for (size_t i = 0; i < Wsize; i++) {
     float L1Grad = L1Decay * (W[i] > 0 ? 1 : -1);
     float L2Grad = L2Decay * W[i];
@@ -520,8 +523,8 @@ void sgd_f(float *W, const float *G, float *Gsum, float L1Decay, float L2Decay,
   }
 }
 
-void softmax_f(const float *inW, float *outW, const size_t *idim,
-               const size_t *odim) {
+void libjit_softmax_f(const float *inW, float *outW, const size_t *idim,
+                      const size_t *odim) {
   for (size_t n = 0; n < idim[0]; n++) {
     float max = inW[getXY(idim, n, 0)];
 
@@ -546,8 +549,8 @@ void softmax_f(const float *inW, float *outW, const size_t *idim,
   } // N
 }
 
-void softmaxgrad_f(float *inG, float *outW, const size_t *selectedW,
-                   const size_t *idim, const size_t *selectdim) {
+void libjit_softmaxgrad_f(float *inG, float *outW, const size_t *selectedW,
+                          const size_t *idim, const size_t *selectdim) {
   for (size_t n = 0; n < idim[0]; n++) {
     for (size_t i = 0; i < idim[1]; i++) {
       float delta = (selectedW[getXY(selectdim, n, 0)] == i);
@@ -556,21 +559,22 @@ void softmaxgrad_f(float *inG, float *outW, const size_t *selectedW,
   }
 }
 
-void sigmoid_f(const float *inW, float *outW, size_t numElem) {
+void libjit_sigmoid_f(const float *inW, float *outW, size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     float e = expf(inW[i]);
     outW[i] = e / (e + 1);
   }
 }
 
-void tanh_f(const float *inW, float *outW, size_t numElem) {
+void libjit_tanh_f(const float *inW, float *outW, size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     outW[i] = tanhf(inW[i]);
   }
 }
 
-void transpose_f(const float *inW, float *outW, const size_t *idim,
-                 const size_t *odim, const size_t *shuffle, size_t numDims) {
+void libjit_transpose_f(const float *inW, float *outW, const size_t *idim,
+                        const size_t *odim, const size_t *shuffle,
+                        size_t numDims) {
   // Source coordinate.
   size_t SC[4];
 
