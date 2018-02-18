@@ -68,6 +68,9 @@ void JITBackend::optimizeLLVMModule(llvm::Function *F,
   // the frontend.
   llvm::AttributeList AL;
   for (auto &FF : *M) {
+    if (FF.isDeclaration()) {
+      continue;
+    }
     // Check for no-inline attribute.
     bool dontInline = FF.hasFnAttribute(llvm::Attribute::AttrKind::NoInline);
     // Clear all attributes.
