@@ -122,8 +122,12 @@ protected:
     dumpLabel(N, os);
     os << "\"\n";
     os << "\tshape = \"record\"\n";
-    if (llvm::isa<Variable>(N)) {
-      os << "\tfillcolor=pink,style=filled\n";
+    if (auto V = llvm::dyn_cast<Variable>(N)) {
+      if (V->getVisibilityKind() == Variable::VisibilityKind::Public) {
+        os << "\tfillcolor=SlateGray1,style=filled\n";
+      } else {
+        os << "\tfillcolor=thistle2,style=filled\n";
+      }
     }
     os << "];\n";
 
@@ -136,9 +140,9 @@ protected:
     }
     if (isa<Variable>(to)) {
       if (!N->isOverwrittenNthInput(i)) {
-        os << "[style=bold, color=pink]";
+        os << "[style=bold, color=SlateBlue4]";
       } else {
-        os << "[style=bold, color=blue]";
+        os << "[style=bold, color=RoyalBlue4]";
       }
     }
   }
@@ -179,9 +183,9 @@ class ModuleDottyPrinter : public AbstractDottyPrinter {
     os << uniqueVertexName(F) << "[\n"
        << "\tlabel = \"Function\\l"
        << "name : " << F->getName().str() << "\\l"
-       << "node count : " << F->getNodes().size()
-       << "\"\n"
+       << "node count : " << F->getNodes().size() << "\"\n"
        << "\tshape = box\n"
+       << "\rstyle=rounded"
        << "];\n";
     vertices_.push_back(os.str());
 
