@@ -19,9 +19,27 @@ this graph in a direct translation of one operator to one node.  It's a simple
 graph that allows basic transformations such as swapping the order of nodes and
 removing nodes. The graph is strongly typed, which means that inputs and output
 have a known tensor type (dimension and element type), and that the types must
-match. This compile has a debug method for dumping a graphical representation of
-the graph into a dotty file. The method is called 'dumpDAG'. The textual
-representation of the graph is less informative and it looks like this:
+match.
+
+The Glow graph is structured as a Module that contains multiple functions that
+contain a multiple nodes. Variables, which are similar to global variables in C
+programs, are shared between the functions. Nodes inside functions are able to
+reference variables, which are owned by the module. The picture below depicts a
+module that contains two functions.  One of the functions does the training of
+the weights, and the other function runs the inference.
+
+![](module.png)
+
+Glow functions contain nodes that represent the different operations of a neural
+network. The function owns the nodes and has access to the variables in the
+module. The picture below depicts a small part of a function.
+
+![](nodes.png)
+
+The compiler has a debug method for dumping a graphical representation of the
+graph into a dotty file. The method is called 'dumpDAG'. The pictures above were
+generated with this method. The textual representation of the graph is less
+informative and it looks like this:
 
   ```
   pool
