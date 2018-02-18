@@ -384,7 +384,8 @@ struct TrainingConfig;
 /// instrumentation for unit tests).
 /// \returns a new function with the name \p newFuncName.
 Function *differentiate(Function *F, TrainingConfig &config,
-                        CompilationMode mode, llvm::StringRef newFuncName);
+                        CompilationMode mode = CompilationMode::Train,
+                        llvm::StringRef newFuncName = "");
 
 /// \returns a variable that accumulates the gradients that update \p V.
 /// Given the variable \p V, find the SGD node that trains it and record the

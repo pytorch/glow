@@ -162,8 +162,7 @@ TEST(Interpreter, trainASimpleNetwork) {
   inputs.getHandle<>() = {0.15, 0.15, 0.15, 0.15};
   expected.getHandle<>() = {0.9, 0.9, 0.9, 0.9};
 
-  Function *TF =
-      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  Function *TF = glow::differentiate(&G, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Train the network. Learn 1000 batches.
@@ -210,8 +209,7 @@ TEST(Interpreter, simpleRegression) {
   auto I = inputs.getHandle<>();
   auto E = expected.getHandle<>();
 
-  Function *TF =
-      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  Function *TF = glow::differentiate(&G, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Train the network:
@@ -278,8 +276,7 @@ TEST(Interpreter, learnXor) {
     TL.at({i, 0}) = a ^ b;
   }
 
-  Function *TF =
-      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  Function *TF = glow::differentiate(&G, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Train the network:
@@ -364,8 +361,7 @@ TEST(Network, circle) {
   auto *SM = G.createSoftMax("soft", T1, S);
   auto *result = G.createSave("ret", SM);
 
-  Function *TF =
-      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  Function *TF = glow::differentiate(&G, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
@@ -465,8 +461,7 @@ TEST(Network, learnSingleValueConcat) {
   inputs.getHandle<>().clear(0.15);
   expected.getHandle<>().clear(0.9);
 
-  Function *TF =
-      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  Function *TF = glow::differentiate(&G, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Train the network:
@@ -657,8 +652,7 @@ void testRNNCell(TCellGenerator cell) {
   auto *R = G.createConcat("O", regressionNodes, 1);
   auto *result = G.createSave("result", R);
 
-  Function *TF =
-      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  Function *TF = glow::differentiate(&G, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Values for the input and output variables.
@@ -737,8 +731,7 @@ TEST(Interpreter, learnSqrt2) {
   O = G.createRegression("reg", O, Ex);
   G.createSave("ret", O);
 
-  Function *TF =
-      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  Function *TF = glow::differentiate(&G, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Train the network:
@@ -791,8 +784,7 @@ TEST(LinearRegression, trainSimpleLinearRegression) {
   Variable *M = llvm::cast<Variable>(FC->getWeights());
   Variable *B = llvm::cast<Variable>(FC->getBias());
 
-  Function *TF =
-      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  Function *TF = glow::differentiate(&G, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Train the network doing 100 steps. Learn on 500 samples.
@@ -855,8 +847,7 @@ TEST(LinearClassifier, classifyPlayerSport) {
   auto *SM = G.createSoftMax("softmax", FC, S);
   auto *result = G.createSave("result", SM);
 
-  Function *TF =
-      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  Function *TF = glow::differentiate(&G, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   Tensor players(ElemKind::FloatTy, {numTrainPlayers, numFeatures});
@@ -936,8 +927,7 @@ TEST(Interpreter, learnSinus) {
   Node *R = G.createRegression("reg", FC2, expectedY);
   auto *result = G.createSave("return", R);
 
-  Function *TF =
-      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  Function *TF = glow::differentiate(&G, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Learn on numSamples samples.

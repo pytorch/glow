@@ -101,8 +101,7 @@ void testMNIST() {
 
   auto *result = G.createSave("return", SM);
 
-  Function *T = glow::differentiate(&G, EE.getConfig(), CompilationMode::Train,
-                                    "train");
+  Function *T = glow::differentiate(&G, EE.getConfig());
 
   EE.compile(CompilationMode::Train, T);
 

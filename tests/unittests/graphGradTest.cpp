@@ -47,8 +47,7 @@ TEST(GraphAutoGrad, autoGrad) {
   auto *result = G.createSave("return", SM);
   (void)result;
 
-  Function *TF =
-      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  Function *TF = glow::differentiate(&G, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
   EE.compile(CompilationMode::Infer, &G);
 }
@@ -78,8 +77,7 @@ TEST(GraphAutoGrad, checkLRNGen) {
 
   auto *result = G.createSave("return", SM);
   (void)result;
-  Function *TF =
-      glow::differentiate(&G, EE.getConfig(), CompilationMode::Train, "train");
+  Function *TF = glow::differentiate(&G, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
   EE.compile(CompilationMode::Infer, &G);
 }

@@ -44,6 +44,14 @@ NodeValue GraphGradMapper::getGradient(NodeValue activation) {
 Function *glow::differentiate(Function *F, TrainingConfig &conf,
                               CompilationMode mode,
                               llvm::StringRef newFuncName) {
+  // Create a new name for the differentiated function, if none is given.
+  std::string tmpName;
+  if (newFuncName.empty()) {
+    tmpName = std::string(F->getName()) + "_grad";
+    newFuncName = tmpName;
+  }
+
+  // Clone the function.
   Function *G = F->clone(newFuncName);
 
   using Kind = glow::Kinded::Kind;
