@@ -1033,13 +1033,13 @@ void Interpreter::fwdElementDivInst(bool isTrain, const ElementDivInst *I) {
 
 template <class T>
 static void elementMaxInst(Tensor *lhs, Tensor *rhs, Tensor *out) {
-    auto outW = out->getHandle<T>();
-    auto lhsW = lhs->getHandle<T>();
-    auto rhsW = rhs->getHandle<T>();
+  auto outW = out->getHandle<T>();
+  auto lhsW = lhs->getHandle<T>();
+  auto rhsW = rhs->getHandle<T>();
 
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
-      outW.raw(i) = std::max(lhsW.raw(i), rhsW.raw(i));
-    }
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = std::max(lhsW.raw(i), rhsW.raw(i));
+  }
 }
 
 void Interpreter::fwdElementMaxInst(bool isTrain, const ElementMaxInst *I) {
