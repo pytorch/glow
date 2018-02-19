@@ -72,7 +72,7 @@ protected:
   // List of generated vertices.
   std::vector<std::string> vertices_{};
   // List of generated edges.
-  std::vector<std::string> edges_{};
+  std::unordered_set<std::string> edges_{};
 
   /// Dumps label for a input/output row, given port names.
   /// E.g. {"LHS", "RHS"} will produce {<LHS>LHS|<RHS>RHS}
@@ -122,12 +122,16 @@ protected:
     dumpLabel(N, os);
     os << "\"\n";
     os << "\tshape = \"record\"\n";
+    os << "\tstyle=\"filled,rounded\"\n";
+
     if (auto V = llvm::dyn_cast<Variable>(N)) {
       if (V->getVisibilityKind() == Variable::VisibilityKind::Public) {
-        os << "\tfillcolor=SlateGray1,style=filled\n";
+        os << "\tfillcolor=thistle1\n";
       } else {
-        os << "\tfillcolor=thistle2,style=filled\n";
+        os << "\tfillcolor=thistle3\n";
       }
+    } else {
+      os << "\tfillcolor=seashell1\n";
     }
     os << "];\n";
 
@@ -140,9 +144,9 @@ protected:
     }
     if (isa<Variable>(to)) {
       if (!N->isOverwrittenNthInput(i)) {
-        os << "[style=bold, color=SlateBlue4]";
+        os << "[color=SlateBlue4]";
       } else {
-        os << "[style=bold, color=RoyalBlue4]";
+        os << "[color=RoyalBlue4]";
       }
     }
   }
@@ -185,7 +189,8 @@ class ModuleDottyPrinter : public AbstractDottyPrinter {
        << "name : " << F->getName().str() << "\\l"
        << "node count : " << F->getNodes().size() << "\"\n"
        << "\tshape = box\n"
-       << "\rstyle=rounded"
+       << "\tfillcolor=gray89, style=\"filled,rounded\"\n"
+       << "\t\n"
        << "];\n";
     vertices_.push_back(os.str());
 
@@ -201,7 +206,7 @@ class ModuleDottyPrinter : public AbstractDottyPrinter {
         edge << uniqueVertexName(to) << ":" << to->getOutputName(resNo).str()
              << " -> " << uniqueVertexName(F);
         dumpEdgeStyle(N, i, to, edge);
-        edges_.push_back(edge.str());
+        edges_.insert(edge.str());
       }
     }
   }
@@ -1238,7 +1243,7 @@ class FunctionDottyPrinter : public AbstractDottyPrinter {
       edge << uniqueVertexName(to) << ":" << to->getOutputName(resNo).str()
            << " -> " << uniqueVertexName(N) << ":" << N->getInputName(i).str();
       dumpEdgeStyle(N, i, to, edge);
-      edges_.push_back(edge.str());
+      edges_.insert(edge.str());
 
       visitNode(to);
     }
