@@ -379,13 +379,14 @@ public:
 struct TrainingConfig;
 
 /// Create a new graph that 'trains' the input graph. We differentiate the nodes
-/// and insert and code to update the weights based on the \p config parameters.
-/// The parameter \p mode selects the kind of differentiation (regular or extra
-/// instrumentation for unit tests).
+/// and insert code to update the weights based on the \p config parameters.
+/// If \p onlyRecordGrads is set then instead of inserting code to update the
+/// weights, the procedure adds code to record the last gradient value. This
+/// feature is used by the gradient-check unit tests.
 /// \returns a new function with the name \p newFuncName.
 Function *differentiate(Function *F, TrainingConfig &config,
-                        CompilationMode mode = CompilationMode::Train,
-                        llvm::StringRef newFuncName = "");
+                        llvm::StringRef newFuncName = "",
+                        bool onlyRecordGrads = false);
 
 /// \returns a variable that accumulates the gradients that update \p V.
 /// Given the variable \p V, find the SGD node that trains it and record the

@@ -42,8 +42,8 @@ NodeValue GraphGradMapper::getGradient(NodeValue activation) {
 //===----------------------------------------------------------------------===//
 
 Function *glow::differentiate(Function *F, TrainingConfig &conf,
-                              CompilationMode mode,
-                              llvm::StringRef newFuncName) {
+                              llvm::StringRef newFuncName,
+                              bool onlyRecordGrads) {
   // Create a new name for the differentiated function, if none is given.
   std::string tmpName;
   if (newFuncName.empty()) {
@@ -183,8 +183,9 @@ Function *glow::differentiate(Function *F, TrainingConfig &conf,
   } // End of the for-each instr loop.
 
   for (auto &V : G->getParent().getVars()) {
-    // In TrainDebug mode we save a copy of the last gradient
-    if (mode == CompilationMode::TrainDebug && map.hasGradient(V)) {
+    // In this special compilation mode we record the last gradient value
+    // without performing the SGD update. This mode is used by the unit tests.
+    if (onlyRecordGrads && map.hasGradient(V)) {
       std::string nodeName = "_grad_" + V->getName().str();
       // Save the gradient and return the destination variable.
       auto *saveNode = G->createSave(nodeName, map.getGradient(V));
@@ -192,8 +193,9 @@ Function *glow::differentiate(Function *F, TrainingConfig &conf,
       G->getParent().addGradientVariable(V, GradV);
     }
 
-    // Don't update nodes that are not in training mode.
-    if (!V->isTraining()) {
+    // Don't update nodes that are not marked as trainable, or if no nodes are
+    // being trained.
+    if (!V->isTraining() || onlyRecordGrads) {
       continue;
     }
 
