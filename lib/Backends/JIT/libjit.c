@@ -8,22 +8,23 @@
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
 /// \returns the index of the element at x,y,z,w.
-size_t getXYZW(const size_t *dims, size_t x, size_t y, size_t z, size_t w) {
+size_t libjit_getXYZW(const size_t *dims, size_t x, size_t y, size_t z,
+                      size_t w) {
   return (x * dims[1] * dims[2] * dims[3]) + (y * dims[2] * dims[3]) +
          (z * dims[3]) + w;
 }
 
 /// \returns the index of the element at x,y,z.
-size_t getXYZ(const size_t *dims, size_t x, size_t y, size_t z) {
+size_t libjit_getXYZ(const size_t *dims, size_t x, size_t y, size_t z) {
   return (x * dims[1] * dims[2]) + (y * dims[2]) + z;
 }
 
 /// \returns the index of the element at x,y.
-size_t getXY(const size_t *dims, size_t x, size_t y) {
+size_t libjit_getXY(const size_t *dims, size_t x, size_t y) {
   return (x * dims[1]) + y;
 }
 
-void splat_f(float *buffer, size_t sz, float val) {
+void libjit_splat_f(float *buffer, size_t sz, float val) {
   for (size_t i = 0; i < sz; i++) {
     ((float *)buffer)[i] = val;
   }
@@ -77,8 +78,9 @@ void libjit_batchedmatmul_f(float *dest, const float *LHS, const float *RHS,
           // dest and rhs are accessed sequentially.
           // lhs access is invariant inside the inner-most loop and can be
           // hoisted.
-          dest[getXYZ(destDims, n, x, y)] +=
-              LHS[getXYZ(lhsDims, ln, x, i)] * RHS[getXYZ(rhsDims, rn, i, y)];
+          dest[libjit_getXYZ(destDims, n, x, y)] +=
+              LHS[libjit_getXYZ(lhsDims, ln, x, i)] *
+              RHS[libjit_getXYZ(rhsDims, rn, i, y)];
         }
       }
     }
@@ -185,20 +187,32 @@ void libjit_convolution_f_unroll_k4(
                 continue;
               }
               for (size_t fd = 0; fd < inChannels; fd++) {
-                float in = inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
-                sum0 += filterW[getXYZW(filterWdims, d + 0, fx, fy, fd)] * in;
+                float in =
+                    inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+                sum0 +=
+                    filterW[libjit_getXYZW(filterWdims, d + 0, fx, fy, fd)] *
+                    in;
               }
               for (size_t fd = 0; fd < inChannels; fd++) {
-                float in = inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
-                sum1 += filterW[getXYZW(filterWdims, d + 1, fx, fy, fd)] * in;
+                float in =
+                    inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+                sum1 +=
+                    filterW[libjit_getXYZW(filterWdims, d + 1, fx, fy, fd)] *
+                    in;
               }
               for (size_t fd = 0; fd < inChannels; fd++) {
-                float in = inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
-                sum2 += filterW[getXYZW(filterWdims, d + 2, fx, fy, fd)] * in;
+                float in =
+                    inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+                sum2 +=
+                    filterW[libjit_getXYZW(filterWdims, d + 2, fx, fy, fd)] *
+                    in;
               }
               for (size_t fd = 0; fd < inChannels; fd++) {
-                float in = inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
-                sum3 += filterW[getXYZW(filterWdims, d + 3, fx, fy, fd)] * in;
+                float in =
+                    inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+                sum3 +=
+                    filterW[libjit_getXYZW(filterWdims, d + 3, fx, fy, fd)] *
+                    in;
               }
             }
           }
@@ -207,10 +221,10 @@ void libjit_convolution_f_unroll_k4(
           sum1 += biasW[d + 1];
           sum2 += biasW[d + 2];
           sum3 += biasW[d + 3];
-          outW[getXYZW(outWdims, n, ax, ay, d + 0)] = sum0;
-          outW[getXYZW(outWdims, n, ax, ay, d + 1)] = sum1;
-          outW[getXYZW(outWdims, n, ax, ay, d + 2)] = sum2;
-          outW[getXYZW(outWdims, n, ax, ay, d + 3)] = sum3;
+          outW[libjit_getXYZW(outWdims, n, ax, ay, d + 0)] = sum0;
+          outW[libjit_getXYZW(outWdims, n, ax, ay, d + 1)] = sum1;
+          outW[libjit_getXYZW(outWdims, n, ax, ay, d + 2)] = sum2;
+          outW[libjit_getXYZW(outWdims, n, ax, ay, d + 3)] = sum3;
         } // W
       }   // H
     }     // C
@@ -249,14 +263,15 @@ void libjit_convolution_f(const float *inW, float *outW, const float *filterW,
                 continue;
               }
               for (size_t fd = 0; fd < inChannels; fd++) {
-                sum += filterW[getXYZW(filterWdims, d, fx, fy, fd)] *
-                       inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+                sum +=
+                    filterW[libjit_getXYZW(filterWdims, d, fx, fy, fd)] *
+                    inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
               }
             }
           }
 
           sum += biasW[d];
-          outW[getXYZW(outWdims, n, ax, ay, d)] = sum;
+          outW[libjit_getXYZW(outWdims, n, ax, ay, d)] = sum;
         } // W
       }   // H
     }     // C
@@ -283,7 +298,7 @@ void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
       for (size_t bx = 0; bx < outGdims[1]; bx++, x += stride) {
         ssize_t y = -(ssize_t)pad;
         for (size_t by = 0; by < outGdims[2]; by++, y += stride) {
-          float grad = outG[getXYZW(outGdims, n, bx, by, d)];
+          float grad = outG[libjit_getXYZW(outGdims, n, bx, by, d)];
 
           for (size_t kx = 0; kx < kernel; kx++) {
             for (size_t ky = 0; ky < kernel; ky++) {
@@ -296,10 +311,11 @@ void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
               }
 
               for (size_t c = 0; c < inWdims[3]; c++) {
-                inG[getXYZW(inWdims, n, (size_t)ax, (size_t)ay, c)] +=
-                    filterW[getXYZW(filterGdims, d, kx, ky, c)] * grad;
-                filterG[getXYZW(filterGdims, d, kx, ky, c)] +=
-                    inW[getXYZW(inWdims, n, (size_t)ax, (size_t)ay, c)] * grad;
+                inG[libjit_getXYZW(inWdims, n, (size_t)ax, (size_t)ay, c)] +=
+                    filterW[libjit_getXYZW(filterGdims, d, kx, ky, c)] * grad;
+                filterG[libjit_getXYZW(filterGdims, d, kx, ky, c)] +=
+                    inW[libjit_getXYZW(inWdims, n, (size_t)ax, (size_t)ay, c)] *
+                    grad;
               }
             }
           }
@@ -338,7 +354,8 @@ void libjit_pool_max_f(const float *inW, float *outW, const size_t *inWdims,
                 continue;
               }
 
-              float val = inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, z)];
+              float val =
+                  inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, z)];
 
               if (first || (val >= max)) {
                 first = 0;
@@ -347,7 +364,7 @@ void libjit_pool_max_f(const float *inW, float *outW, const size_t *inWdims,
             }
           }
 
-          outW[getXYZW(outWdims, n, ax, ay, z)] = max;
+          outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = max;
         } // W
       }   // H
     }     // C
@@ -380,7 +397,8 @@ void libjit_pool_max_xy_f(const float *inW, float *outW, size_t *inXY,
                 continue;
               }
 
-              float val = inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, z)];
+              float val =
+                  inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, z)];
               if (first || (val >= max)) {
                 first = 0;
                 max = val;
@@ -390,10 +408,10 @@ void libjit_pool_max_xy_f(const float *inW, float *outW, size_t *inXY,
             }
           }
 
-          outW[getXYZW(outWdims, n, ax, ay, z)] = max;
+          outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = max;
           // For the x and y argmax's, we use a 5-dimensional
           // tensor whose fifth dimension has size 2:
-          size_t ix = 2 * getXYZW(outWdims, n, ax, ay, z);
+          size_t ix = 2 * libjit_getXYZW(outWdims, n, ax, ay, z);
           inXY[ix] = maxX;
           inXY[ix + 1] = maxY;
         } // W
@@ -411,7 +429,7 @@ void libjit_pool_max_xy_grad_f(float *inG, const float *outG,
       // Clear inG
       for (size_t x = 0; x < inGdims[1]; x++) {
         for (size_t y = 0; y < inGdims[2]; y++) {
-          inG[getXYZW(inGdims, n, x, y, z)] = 0.0;
+          inG[libjit_getXYZW(inGdims, n, x, y, z)] = 0.0;
         }
       }
 
@@ -419,12 +437,12 @@ void libjit_pool_max_xy_grad_f(float *inG, const float *outG,
         for (size_t ay = 0; ay < outWdims[2]; ay++) {
           // For the x and y argmax's, we use a 5-dimensional
           // tensor whose fifth dimension has size 2:
-          size_t ix = 2 * getXYZW(outWdims, n, ax, ay, z);
+          size_t ix = 2 * libjit_getXYZW(outWdims, n, ax, ay, z);
           size_t maxX = inXY[ix];
           size_t maxY = inXY[ix + 1];
 
-          float df = outG[getXYZW(outWdims, n, ax, ay, z)];
-          inG[getXYZW(inGdims, n, maxX, maxY, z)] += df;
+          float df = outG[libjit_getXYZW(outWdims, n, ax, ay, z)];
+          inG[libjit_getXYZW(inGdims, n, maxX, maxY, z)] += df;
         } // W
       }   // H
     }     // C
@@ -457,11 +475,11 @@ void libjit_pool_avg_f(const float *inW, float *outW, const size_t *inWdims,
                 continue;
               }
 
-              sum += inW[getXYZW(inWdims, n, (size_t)ox, (size_t)oy, z)];
+              sum += inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, z)];
             }
           }
 
-          outW[getXYZW(outWdims, n, ax, ay, z)] = sum / filterArea;
+          outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = sum / filterArea;
         } // W
       }   // H
     }     // C
@@ -479,7 +497,7 @@ void libjit_pool_avg_grad_f(float *inG, const float *outG,
       // Clear inG
       for (size_t x = 0; x < inGdims[1]; x++) {
         for (size_t y = 0; y < inGdims[2]; y++) {
-          inG[getXYZW(inGdims, n, x, y, z)] = 0.0;
+          inG[libjit_getXYZW(inGdims, n, x, y, z)] = 0.0;
         }
       }
 
@@ -487,7 +505,7 @@ void libjit_pool_avg_grad_f(float *inG, const float *outG,
       for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
         ssize_t y = -(ssize_t)pad;
         for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
-          float df = outG[getXYZW(outWdims, n, ax, ay, z)] / kernelArea;
+          float df = outG[libjit_getXYZW(outWdims, n, ax, ay, z)] / kernelArea;
           for (size_t kx = 0; kx < kernel; kx++) {
             for (size_t ky = 0; ky < kernel; ky++) {
               ssize_t ox = x + kx;
@@ -496,7 +514,7 @@ void libjit_pool_avg_grad_f(float *inG, const float *outG,
                   oy >= (ssize_t)inGdims[2]) {
                 continue;
               }
-              inG[getXYZW(inGdims, n, (size_t)ox, (size_t)oy, z)] += df;
+              inG[libjit_getXYZW(inGdims, n, (size_t)ox, (size_t)oy, z)] += df;
             }
           }
         } // W
@@ -526,25 +544,25 @@ void libjit_sgd_f(float *W, const float *G, float *Gsum, float L1Decay,
 void libjit_softmax_f(const float *inW, float *outW, const size_t *idim,
                       const size_t *odim) {
   for (size_t n = 0; n < idim[0]; n++) {
-    float max = inW[getXY(idim, n, 0)];
+    float max = inW[libjit_getXY(idim, n, 0)];
 
     // Find Max.
     for (size_t i = 1; i < idim[1]; i++) {
-      max = MAX(max, inW[getXY(idim, n, i)]);
+      max = MAX(max, inW[libjit_getXY(idim, n, i)]);
     }
 
     float sum = 0;
 
     // Compute exp.
     for (size_t i = 0; i < idim[1]; i++) {
-      float e = expf(inW[getXY(idim, n, i)] - max);
+      float e = expf(inW[libjit_getXY(idim, n, i)] - max);
       sum += e;
-      outW[getXY(odim, n, i)] = e;
+      outW[libjit_getXY(odim, n, i)] = e;
     }
 
     // Normalize the output.
     for (size_t i = 0; i < idim[1]; i++) {
-      outW[getXY(odim, n, i)] = outW[getXY(odim, n, i)] / sum;
+      outW[libjit_getXY(odim, n, i)] = outW[libjit_getXY(odim, n, i)] / sum;
     }
   } // N
 }
@@ -553,8 +571,8 @@ void libjit_softmaxgrad_f(float *inG, float *outW, const size_t *selectedW,
                           const size_t *idim, const size_t *selectdim) {
   for (size_t n = 0; n < idim[0]; n++) {
     for (size_t i = 0; i < idim[1]; i++) {
-      float delta = (selectedW[getXY(selectdim, n, 0)] == i);
-      inG[getXY(idim, n, i)] = outW[getXY(idim, n, i)] - delta;
+      float delta = (selectedW[libjit_getXY(selectdim, n, 0)] == i);
+      inG[libjit_getXY(idim, n, i)] = outW[libjit_getXY(idim, n, i)] - delta;
     }
   }
 }
@@ -587,8 +605,8 @@ void libjit_transpose_f(const float *inW, float *outW, const size_t *idim,
             SC[shuffle[1]] = y;
             SC[shuffle[2]] = z;
             SC[shuffle[3]] = w;
-            outW[getXYZW(odim, x, y, z, w)] =
-                inW[getXYZW(idim, SC[0], SC[1], SC[2], SC[3])];
+            outW[libjit_getXYZW(odim, x, y, z, w)] =
+                inW[libjit_getXYZW(idim, SC[0], SC[1], SC[2], SC[3])];
           }
     return;
   }
@@ -599,7 +617,8 @@ void libjit_transpose_f(const float *inW, float *outW, const size_t *idim,
           SC[shuffle[0]] = x;
           SC[shuffle[1]] = y;
           SC[shuffle[2]] = z;
-          outW[getXYZ(odim, x, y, z)] = inW[getXYZ(idim, SC[0], SC[1], SC[2])];
+          outW[libjit_getXYZ(odim, x, y, z)] =
+              inW[libjit_getXYZ(idim, SC[0], SC[1], SC[2])];
         }
     return;
   }
@@ -608,7 +627,7 @@ void libjit_transpose_f(const float *inW, float *outW, const size_t *idim,
       for (size_t y = 0; y < odim[1]; y++) {
         SC[shuffle[0]] = x;
         SC[shuffle[1]] = y;
-        outW[getXY(odim, x, y)] = inW[getXY(idim, SC[0], SC[1])];
+        outW[libjit_getXY(odim, x, y)] = inW[libjit_getXY(idim, SC[0], SC[1])];
       }
     return;
   }
