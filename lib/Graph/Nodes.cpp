@@ -408,10 +408,9 @@ std::string Variable::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
       .addParam("output", *getType())
-      .addParam("visibility", getVariableVisibilityKindStr(visibility_))
-      .addParam("init", getVariableTrainKindStr(train_));
+      .addParam("visibility", getVariableVisibilityKindStr(visibility_));
   if (train_ != Variable::TrainKind::None) {
-    db.addParam("val", val_);
+    db.addParam("init", getVariableTrainKindStr(train_)).addParam("val", val_);
   }
   db.addParam("users", getNumUsers());
   return db;
