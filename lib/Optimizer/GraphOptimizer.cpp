@@ -14,13 +14,10 @@ using namespace glow;
 using llvm::cast;
 using llvm::dyn_cast;
 
-static bool shouldDeleteNode(CompilationMode mode, Node *N) {
+static bool shouldDeleteNode(Node *N) {
   // In general, nodes who have side effects are retained.
   if (N->hasSideEffects()) {
-    // SGD nodes could potentially be removed in Infer mode.
-    if (!llvm::isa<SGDNode>(N) || mode != CompilationMode::Infer) {
-      return false;
-    }
+    return false;
   }
 
   // Don't delete nodes that have users.
@@ -39,7 +36,7 @@ static bool shouldDeleteNode(CompilationMode mode, Node *N) {
 }
 
 /// Dead code elimination.
-static void DCE(Function &G, CompilationMode mode) {
+static void DCE(Function &G) {
   auto &nodes = G.getNodes();
   auto &vars = G.getParent().getVars();
 
@@ -52,7 +49,7 @@ static void DCE(Function &G, CompilationMode mode) {
   do {
     changedLocally = false;
     for (auto it = nodes.begin(), e = nodes.end(); it != e;) {
-      if (!shouldDeleteNode(mode, *it)) {
+      if (!shouldDeleteNode(*it)) {
         ++it;
         continue;
       }
@@ -72,7 +69,7 @@ static void DCE(Function &G, CompilationMode mode) {
 
   // Delete unused variables.
   for (auto it = vars.begin(), e = vars.end(); it != e;) {
-    if (!shouldDeleteNode(mode, *it)) {
+    if (!shouldDeleteNode(*it)) {
       ++it;
       continue;
     }
@@ -559,7 +556,7 @@ void glow::optimize(Function &G, CompilationMode mode) {
   CSE(G);
 
   // Perform Dead Code Elimination.
-  DCE(G, mode);
+  DCE(G);
 
   if (mode == CompilationMode::Infer) {
     // Merge batch normalization operations.
@@ -577,5 +574,5 @@ void glow::optimize(Function &G, CompilationMode mode) {
   OptimizeSliceOfSplat(G);
 
   // Perform Dead Code Elimination.
-  DCE(G, mode);
+  DCE(G);
 }
