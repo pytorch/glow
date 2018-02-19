@@ -54,19 +54,17 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
                       float delta, float allowedError) {
   auto &G = *IP.getModule().getFunction("main");
 
-  // Compile network in TrainDebug mode to generate and save gradients.
-  Function *TF =
-      glow::differentiate(&G, IP.getConfig(), CompilationMode::TrainDebug);
-  IP.compile(CompilationMode::TrainDebug, TF);
+  // Create a function that trains the network.
+  Function *TF = glow::differentiate(&G, IP.getConfig());
+  IP.compile(CompilationMode::Train, TF);
 
-  // Run training to calculate gradient values.
+  // Train the network until we reach some stable local minimum.
   IP.runBatch(300, {inputVar, expVar}, {inputs, outputs});
 
-  // Remove the SGD nodes by compiling in Infer mode,
-  // nodes removed as part of the DCE optimization.
-  // Compilation keeps the "grad" nodes as IP is already compiled in
-  // TrainDebug mode which created "grad" nodes.
-  IP.compile(CompilationMode::Infer, TF);
+  // Create a version of the network that records the gradients to some side
+  // table instead of updating them.
+  Function *recordNet = glow::differentiate(&G, IP.getConfig(), "record", true);
+  IP.compile(CompilationMode::Train, recordNet);
 
   // Clear the gradients of the first layer.
   auto gradVar = getGrad(G, inputVar);
@@ -517,11 +515,11 @@ TEST(Network, gradientcheckCrossEntropyLoss) {
   outputsH.at({1}) = 0;
   outputsH.at({2}) = 1;
 
-  Function *TF =
-      glow::differentiate(&G, IP.getConfig(), CompilationMode::TrainDebug);
-  IP.compile(CompilationMode::TrainDebug, TF);
+  Function *TF = glow::differentiate(&G, IP.getConfig(), "record", true);
+  IP.compile(CompilationMode::Train, TF);
 
   auto gradP = getGrad(G, P)->getHandle();
+
   for (int i = 0; i < testSamples; ++i) {
     inputsH.randomize(0.0, 1.0);
     for (int j = 0; j < inputsH.size(); ++j) {

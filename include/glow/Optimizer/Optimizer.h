@@ -7,9 +7,6 @@ class IRFunction;
 class Function;
 
 enum class CompilationMode {
-  TrainDebug, /// Compile the graph for training and add extra instrumentation
-              /// that enable unit testing and debugging, e.g., saving gradient
-              /// results.
   Train,      /// Compile the graph in preperation for training.
   Infer,      /// Compile the graph for inference. Notice that this operation
               /// changes the graph in a way that is not reversible.
