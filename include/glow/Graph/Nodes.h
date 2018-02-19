@@ -57,9 +57,10 @@ public:
     initPayload();
   }
 
-  Variable(llvm::StringRef name, Tensor &&payload)
+  Variable(llvm::StringRef name, VisibilityKind visibility, Tensor &&payload)
       : Node(Kinded::Kind::VariableNodeKind, name), val_(0.0),
-        train_(TrainKind::None), payload_(std::move(payload)) {
+        train_(TrainKind::None), visibility_(visibility),
+        payload_(std::move(payload)) {
     addResult(&payload_.getType());
   }
 
