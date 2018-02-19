@@ -367,8 +367,10 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Tensor wtag;
     w->getHandle<>().transpose(&wtag, {1, 0});
 
-    auto W = G_.getParent()->addVar(new Variable("weights", std::move(wtag)));
-    auto B = G_.getParent()->addVar(new Variable("biases", std::move(*b)));
+    auto W = G_.getParent()->addVar(new Variable(
+        "weights", Variable::VisibilityKind::Private, std::move(wtag)));
+    auto B = G_.getParent()->addVar(new Variable(
+        "biases", Variable::VisibilityKind::Private, std::move(*b)));
     auto *FC = G_.createFullyConnected(op.name(), in, W, B);
 
     // Save the outputs:
