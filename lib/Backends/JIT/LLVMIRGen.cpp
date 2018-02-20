@@ -12,9 +12,14 @@ using llvm::isa;
 
 llvm::Value *JITBackend::emitValueAddress(llvm::IRBuilder<> &builder,
                                           glow::Value *val, ElemKind ptrTy) {
-  assert(allocatedAddressed_.count(val) && "Value address was not allocated");
-  void *ptr = allocatedAddressed_[val];
-  auto *offset = emitConst(builder, (size_t)ptr);
+  val = getOrigin(val);
+  assert(allocationsInfo_.allocatedAddressed_.count(val) &&
+         "Value address was not allocated");
+  size_t addr = allocationsInfo_.allocatedAddressed_[val];
+  if (isa<AllocActivationInst>(val)) {
+    addr += reinterpret_cast<size_t>(allocationsInfo_.baseActivationsAddress_);
+  }
+  auto *offset = emitConst(builder, addr);
 
   llvm::Type *T = nullptr;
 
