@@ -36,29 +36,27 @@ void WeightVar::dump(llvm::raw_ostream &os) const {
 
 /// Check that the type of the first operand matches the type of the second
 /// operand.
-static void checkSameType(Instruction::Operand A, Instruction::Operand B) {
-  assert(A.first->getType() == B.first->getType() && "Invalid type");
+static void checkSameType(Value *A, Value *B) {
+  assert(A->getType() == B->getType() && "Invalid type");
 }
 
-static void checkType(Instruction::Operand A, ElemKind expectedType) {
-  assert(A.first->getElementType() == expectedType && "Invalid type");
+static void checkType(Value *A, ElemKind expectedType) {
+  assert(A->getElementType() == expectedType && "Invalid type");
 }
 
-static void checkSameDims(Instruction::Operand A, Instruction::Operand B) {
-  assert(A.first->dims().equals(B.first->dims()) && "Dimensions mismatch");
+static void checkSameDims(Value *A, Value *B) {
+  assert(A->dims().equals(B->dims()) && "Dimensions mismatch");
 }
 
 void CopyInst::verify() const {
-  checkSameType(getOperand(0), getOperand(1));
-  auto *op0 = getOperand(0).first;
-  auto *op1 = getOperand(1).first;
-  (void)op0;
-  (void)op1;
+  auto *dest = getDest();
+  auto *src = getSrc();
+  checkSameType(dest, src);
   // The operands of the copy instruction must be variables.
-  assert(isa<AllocActivationInst>(op0) || isa<WeightVar>(op0) ||
-         isa<TensorViewInst>(op0));
-  assert(isa<AllocActivationInst>(op1) || isa<WeightVar>(op1) ||
-         isa<TensorViewInst>(op1));
+  assert(isa<AllocActivationInst>(dest) || isa<WeightVar>(dest) ||
+         isa<TensorViewInst>(dest));
+  assert(isa<AllocActivationInst>(src) || isa<WeightVar>(src) ||
+         isa<TensorViewInst>(src));
 }
 
 static void verifyConvDims(ShapeNHWC idim, ShapeNHWC odim, size_t kernel,
@@ -82,10 +80,10 @@ static void verifyConvDims(ShapeNHWC idim, ShapeNHWC odim, size_t kernel,
 }
 
 void ConvolutionInst::verify() const {
-  Value *dest = getOperand(0).first;
-  Value *src = getOperand(1).first;
-  Value *filter = getOperand(2).first;
-  Value *bias = getOperand(3).first;
+  Value *dest = getDest();
+  Value *src = getSrc();
+  Value *filter = getFilter();
+  Value *bias = getBias();
 
   assert(src->getElementType() == dest->getElementType() && "Invalid Type");
   assert(src->getElementType() == filter->getElementType() && "Invalid Type");
@@ -97,8 +95,8 @@ void ConvolutionInst::verify() const {
 }
 
 void PoolMaxInst::verify() const {
-  Value *dest = getOperand(0).first;
-  Value *src = getOperand(1).first;
+  Value *dest = getDest();
+  Value *src = getSrc();
   ShapeNHWC idim = ShapeNHWC(src->getType()->dims());
   ShapeNHWC odim = ShapeNHWC(dest->getType()->dims());
   (void)odim;
@@ -112,9 +110,9 @@ void PoolMaxInst::verify() const {
 }
 
 void PoolMaxWithXYInst::verify() const {
-  Value *dest = getOperand(0).first;
-  Value *src = getOperand(1).first;
-  Value *srcXY = getOperand(2).first;
+  Value *dest = getDest();
+  Value *src = getSrc();
+  Value *srcXY = getSrcXY();
   (void)srcXY;
   ShapeNHWC idim = ShapeNHWC(src->getType()->dims());
   ShapeNHWC odim = ShapeNHWC(dest->getType()->dims());
@@ -135,8 +133,8 @@ void PoolMaxWithXYInst::verify() const {
 }
 
 void PoolAvgInst::verify() const {
-  Value *dest = getOperand(0).first;
-  Value *src = getOperand(1).first;
+  Value *dest = getDest();
+  Value *src = getSrc();
   ShapeNHWC idim = ShapeNHWC(src->getType()->dims());
   ShapeNHWC odim = ShapeNHWC(dest->getType()->dims());
   (void)odim;
@@ -153,9 +151,6 @@ void BatchedMatMulInst::verify() const {
   Value *dest = getDest();
   Value *lhs = getLHS();
   Value *rhs = getRHS();
-  (void)dest;
-  (void)lhs;
-  (void)rhs;
 
   auto LDims = lhs->dims();
   auto RDims = rhs->dims();
@@ -179,20 +174,18 @@ void BatchedMatMulInst::verify() const {
   (void)Y;
 }
 
-void SigmoidInst::verify() const {
-  checkSameType(getOperand(0), getOperand(1));
-}
+void SigmoidInst::verify() const { checkSameType(getDest(), getSrc()); }
 
-void TanhInst::verify() const { checkSameType(getOperand(0), getOperand(1)); }
+void TanhInst::verify() const { checkSameType(getDest(), getSrc()); }
 
 void SoftMaxInst::verify() const {
-  checkSameType(getOperand(0), getOperand(1));
+  checkSameType(getDest(), getSrc());
   assert(getDest()->dims() == getSrc()->dims() && "Invalid shape");
 }
 
 void SoftMaxGradInst::verify() const {
-  checkSameType(getOperand(0), getOperand(1));
-  checkSameType(getOperand(0), getOperand(3));
+  checkSameType(getOrigDest(), getOrigSrc());
+  checkSameType(getOrigDest(), getSrcGrad());
   auto destShape = getOrigDest()->dims();
   assert(destShape == getOrigSrc()->dims() && "Invalid shape");
   assert(destShape == getSrcGrad()->dims() && "Invalid shape");
@@ -208,21 +201,20 @@ void CrossEntropyLossGradInst::verify() const {
 }
 
 void ReshapeInst::verify() const {
-  assert(getOperand(0).first->getType()->size() ==
-             getOperand(1).first->getType()->size() &&
+  assert(getDest()->getType()->size() == getSrc()->getType()->size() &&
          "Reshape into a different size");
 }
 
 void TensorViewInst::verify() const {
-  assert(getOperand(0).first->getType()->size() == getType()->size() &&
+  assert(getSrc()->getType()->size() == getType()->size() &&
          "TensorView view size should be the same as Src size");
-  assert(getOperand(0).first->getElementType() == getType()->getElementType() &&
+  assert(getSrc()->getElementType() == getType()->getElementType() &&
          "TensorView view element type should be the same as Src type");
 }
 
 void TransposeInst::verify() const {
-  auto *dest = getOperand(0).first;
-  auto *src = getOperand(1).first;
+  auto *dest = getDest();
+  auto *src = getSrc();
   (void)dest;
   llvm::SmallVector<size_t, 6> shape;
 
@@ -235,8 +227,8 @@ void TransposeInst::verify() const {
 }
 
 void BroadcastInst::verify() const {
-  auto *src = getOperand(1).first;
-  auto *dest = getOperand(0).first;
+  auto *src = getSrc();
+  auto *dest = getDest();
   auto shape = getShape();
   (void)src;
   (void)dest;
@@ -285,41 +277,37 @@ void ExtractTensorInst::verify() const {
 }
 
 void BatchNormalizationInst::verify() const {
-  checkSameType(getOperand(0), getOperand(1));
+  checkSameType(getDest(), getSrc());
 
   // Figure out how many channels are in the tensor.
-  size_t channels = getOperand(0).first->dims()[ChannelIdx_];
+  size_t channels = getDest()->dims()[ChannelIdx_];
 
   auto exp = {channels};
   (void)exp;
-  assert(getOperand(2).first->getType()->dims().equals(exp) &&
-         "Invalid bias dim");
-  assert(getOperand(3).first->getType()->dims().equals(exp) &&
-         "Invalid scale dim");
-  assert(getOperand(4).first->getType()->dims().equals(exp) &&
-         "Invalid mean dim");
-  assert(getOperand(5).first->getType()->dims().equals(exp) &&
-         "Invalid var dim");
+  assert(getScale()->getType()->dims().equals(exp) && "Invalid bias dim");
+  assert(getBias()->getType()->dims().equals(exp) && "Invalid scale dim");
+  assert(getMean()->getType()->dims().equals(exp) && "Invalid mean dim");
+  assert(getVar()->getType()->dims().equals(exp) && "Invalid var dim");
 }
 
 void LocalResponseNormalizationInst::verify() const {
-  checkSameType(getOperand(0), getOperand(1));
-  checkSameType(getOperand(0), getOperand(2));
+  checkSameType(getDest(), getSrc());
+  checkSameType(getDest(), getScale());
 }
 
 void ElementAddInst::verify() const {
-  checkSameType(getOperand(0), getOperand(1));
-  checkSameType(getOperand(0), getOperand(2));
+  checkSameType(getDest(), getLHS());
+  checkSameType(getDest(), getRHS());
 }
 
 void ElementMulInst::verify() const {
-  checkSameType(getOperand(0), getOperand(1));
-  checkSameType(getOperand(0), getOperand(2));
+  checkSameType(getDest(), getLHS());
+  checkSameType(getDest(), getRHS());
 }
 
 void ElementSubInst::verify() const {
-  checkSameType(getOperand(0), getOperand(1));
-  checkSameType(getOperand(0), getOperand(2));
+  checkSameType(getDest(), getLHS());
+  checkSameType(getDest(), getRHS());
 }
 
 void BatchedAddInst::verify() const {
@@ -339,29 +327,29 @@ void BatchedReduceAddInst::verify() const {
 }
 
 void ElementDivInst::verify() const {
-  checkSameType(getOperand(0), getOperand(1));
-  checkSameType(getOperand(0), getOperand(2));
+  checkSameType(getDest(), getLHS());
+  checkSameType(getDest(), getRHS());
 }
 
 void ElementMaxInst::verify() const {
-  checkSameType(getOperand(0), getOperand(1));
-  checkSameType(getOperand(0), getOperand(2));
+  checkSameType(getDest(), getLHS());
+  checkSameType(getDest(), getRHS());
 }
 
 void ElementMinInst::verify() const {
-  checkSameType(getOperand(0), getOperand(1));
-  checkSameType(getOperand(0), getOperand(2));
+  checkSameType(getDest(), getLHS());
+  checkSameType(getDest(), getRHS());
 }
 
 void ElementCmpLTEInst::verify() const {
-  checkSameType(getOperand(0), getOperand(1));
-  checkSameType(getOperand(0), getOperand(2));
+  checkSameType(getDest(), getLHS());
+  checkSameType(getDest(), getRHS());
 }
 
 void ElementSelectInst::verify() const {
-  checkSameType(getOperand(0), getOperand(1));
-  checkSameType(getOperand(0), getOperand(2));
-  checkSameType(getOperand(0), getOperand(3));
+  checkSameType(getDest(), getCond());
+  checkSameType(getDest(), getLHS());
+  checkSameType(getDest(), getRHS());
 }
 
 void AllocActivationInst::verify() const {
@@ -386,58 +374,48 @@ void SGDInst::verify() const {
 
 void DeallocActivationInst::verify() const {
   // The operand of this instruction needs to be an AllocActivationInst.
-  assert(isa<AllocActivationInst>(getOperand(0).first) && "Invalid operand");
+  assert(isa<AllocActivationInst>(getSrc()) && "Invalid operand");
 }
 
 void QuantizationProfileInst::verify() const {
-  // Make sure that input tensor is a floating point type.
-  assert(getOperand(0).first->getElementType() == ElemKind::FloatTy &&
+  assert(getInputTensor()->getElementType() == ElemKind::FloatTy &&
          "Floating point type is expected");
 
-  // Check computation info has proper size.
-  assert(getOperand(2).first->dims().size() == 1 &&
+  assert(getComputationInfo()->dims().size() == 1 &&
          "Computation info should be 1 dimensional");
-  assert(getOperand(2).first->dims()[0] == 2 &&
+  assert(getComputationInfo()->dims()[0] == 2 &&
          "Computation info should contain Min and Max value only");
 }
 
 void QuantizeInst::verify() const {
-  // Dest must be quantized.
-  checkType(getOperand(0), ElemKind::Int8QTy);
-  // Src must be float.
-  checkType(getOperand(1), ElemKind::FloatTy);
-  checkSameDims(getOperand(0), getOperand(1));
+  checkType(getDest(), ElemKind::Int8QTy);
+  checkType(getSrc(), ElemKind::FloatTy);
+  checkSameDims(getDest(), getSrc());
 }
 
 void DequantizeInst::verify() const {
-  // Dest must be float.
-  checkType(getOperand(0), ElemKind::FloatTy);
-  // Src must be quantized.
-  checkType(getOperand(1), ElemKind::Int8QTy);
-  checkSameDims(getOperand(0), getOperand(1));
+  checkType(getDest(), ElemKind::FloatTy);
+  checkType(getSrc(), ElemKind::Int8QTy);
+  checkSameDims(getDest(), getSrc());
 }
 
 void RescaleQuantizedInst::verify() const {
-  // Dest must be quantized.
-  checkType(getOperand(0), ElemKind::Int8QTy);
-  // Src must be quantized.
-  checkType(getOperand(1), ElemKind::Int8QTy);
-  checkSameDims(getOperand(0), getOperand(1));
+  checkType(getDest(), ElemKind::Int8QTy);
+  checkType(getSrc(), ElemKind::Int8QTy);
+  checkSameDims(getDest(), getSrc());
 }
 
 void TopKInst::verify() const {
-  assert(getOperand(0).first->getElementType() == ElemKind::FloatTy);
-  assert(getOperand(2).first->getElementType() == ElemKind::FloatTy);
-  assert(getOperand(0).first->dims() == getOperand(1).first->dims());
+  assert(getValues()->getElementType() == ElemKind::FloatTy);
+  assert(getInput()->getElementType() == ElemKind::FloatTy);
+  assert(getValues()->dims() == getIndices()->dims());
 }
 
 void GatherInst::verify() const {
-  assert(getOperand(0).first->getElementType() ==
-         getOperand(1).first->getElementType());
-  assert(getOperand(2).first->getElementType() == ElemKind::IndexTy);
-  assert(getOperand(0).first->dims().size() ==
-         getOperand(1).first->dims().size() +
-             getOperand(2).first->dims().size() - 1);
+  assert(getDest()->getElementType() == getData()->getElementType());
+  assert(getIndices()->getElementType() == ElemKind::IndexTy);
+  assert(getDest()->dims().size() ==
+         getData()->dims().size() + getIndices()->dims().size() - 1);
 }
 
 void IntrinsicInst::verify() const {
