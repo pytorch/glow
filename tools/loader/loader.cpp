@@ -205,14 +205,14 @@ int main(int argc, char **argv) {
   }
 
   ExecutionEngine EE(ExecutionBackend);
-  auto &G = *EE.getModule().createFunction(NetDirectory);
+  Function *F = EE.getModule().createFunction(NetDirectory);
   SaveNode *SM;
   Variable *i0;
   Variable *i1;
   {
     caffe2ModelLoader LD(NetDescFilename, NetWeightFilename,
                          {"data", "gpu_0/data", "softmax_expected"},
-                         {&data, &data, &expectedSoftmax}, G);
+                         {&data, &data, &expectedSoftmax}, *F);
     SM = LD.getRoot();
     i0 = llvm::cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
     i1 = llvm::cast<Variable>(LD.getOrCreateNodeByName("data"));
@@ -223,23 +223,23 @@ int main(int argc, char **argv) {
 
   // Instrument the graph to capture profiles for nodes' outputs.
   if (!QuantizationProfileFile.empty()) {
-    ::profileQuantization(G);
+    ::profileQuantization(*F);
   }
 
   // Quantize the graph based on the captured profile.
   if (!LoadProfileFile.empty()) {
     auto quantizationInfos = deserializeFromYaml(LoadProfileFile);
-    ::generateQuantizedGraph(G, quantizationInfos);
+    ::generateQuantizedGraph(F, quantizationInfos);
   }
 
   // Emit IR for the graph.
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   if (DumpGraph) {
-    G.dump();
+    F->dump();
   }
   if (!DumpGraphDAGFile.empty()) {
-    G.dumpDAG(DumpGraphDAGFile.c_str());
+    F->dumpDAG(DumpGraphDAGFile.c_str());
   }
   if (DumpIR) {
     EE.getIR().dump();
@@ -256,7 +256,7 @@ int main(int argc, char **argv) {
     timer.stopTimer();
 
   if (!QuantizationProfileFile.empty()) {
-    std::vector<NodeQuantizationInfo> QI = generateNodeQuantizationInfos(G);
+    std::vector<NodeQuantizationInfo> QI = generateNodeQuantizationInfos(F);
     serializeToYaml(QuantizationProfileFile, QI);
   }
 
