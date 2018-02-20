@@ -1,6 +1,7 @@
 #ifndef GLOW_BACKENDS_JIT_JIT_H
 #define GLOW_BACKENDS_JIT_JIT_H
 
+#include "AllocationsInfo.h"
 #include "GlowJIT.h"
 
 #include "glow/Backends/Backend.h"
@@ -30,22 +31,17 @@ class JITBackend final : public Backend {
   /// Points to the main function in the jitted code. The function is owned by
   /// the LLVM module.
   llvm::Function *func_{nullptr};
-  /// Maps Values in the module to their memory addresses.
-  llvm::DenseMap<Value *, void *> allocatedAddressed_;
   /// Maps constant arrays to the constant expressions representing size_t
   /// pointers to these arrays. This is done to ensure the proper uniqueness
   /// semantics of such pointers just like it is done for llvm::Constants.
   llvm::DenseMap<llvm::Constant *, llvm::Value *> constArrayPtrs_;
   /// This represents the heap, that stores the activations at runtime.
   std::vector<uint8_t> heap_{};
+  /// Information about allocations.
+  AllocationsInfo allocationsInfo_;
   /// The LLVM JIT engine. The jit must be initialized after the ctor
   /// initializes the LLVM backends.
   std::unique_ptr<llvm::orc::GlowJIT> JIT_{nullptr};
-
-  /// Assign memory addresses to activations, allocate the heap and register all
-  /// weights and activations into the address-map.
-  void allocateActivationsAndWeights();
-
   /// Generates LLVM IR that computes the address of \p val using \p builder.
   /// The address type is specified by \p ptrTy.
   llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder, glow::Value *val,
@@ -77,7 +73,10 @@ class JITBackend final : public Backend {
 
   /// Performs specialization of operations based on constant parameters.
   void performSpecialization();
-
+  
+  /// Perform memory allocation for a JIT execution.
+  void performJITMemoryAllocation();
+  
 public:
   /// Ctor.
   explicit JITBackend(IRFunction *M);

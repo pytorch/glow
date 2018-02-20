@@ -81,6 +81,17 @@ static std::unique_ptr<llvm::Module> loadStandardLibrary(llvm::LLVMContext *ctx,
   return llvm::parseIRFile(filename, Err, *ctx);
 }
 
+void JITBackend::performJITMemoryAllocation() {
+  allocationsInfo_.clear();
+  allocationsInfo_.numberValues(M_);
+  allocationsInfo_.allocateActivations(M_);
+  // Tell the allocateWeightVars to reuse existing addresses for weights.
+  allocationsInfo_.allocateWeightVars(M_, true);
+  // Allocate the heap to match the max memory usage for activations.
+  heap_.resize(allocationsInfo_.activationsMemSize_);
+  allocationsInfo_.baseActivationsAddress_ = &heap_[0];
+}
+
 void JITBackend::init() {
   // Load the jit library as a new module.
   llmodule_ = loadStandardLibrary(&ctx_, "libjit.bc");
@@ -100,7 +111,7 @@ void JITBackend::init() {
   llvm::BasicBlock *entry_bb = llvm::BasicBlock::Create(ctx_, "entry", func_);
   llvm::IRBuilder<> builder(entry_bb);
 
-  allocateActivationsAndWeights();
+  performJITMemoryAllocation();
 
   // For each instruction in the module:
   for (auto &I : M_->getInstrs()) {
@@ -145,70 +156,3 @@ void JITBackend::doForwardPass(bool isTrain) {
   }
 }
 
-void JITBackend::allocateActivationsAndWeights() {
-  // Use a memory allocator with no upper bound on how much memory we can
-  // allocate.
-  MemoryAllocator allocator(0);
-  allocatedAddressed_.clear();
-
-  // Maps activations and views to some offset within the heap.
-  llvm::DenseMap<Value *, size_t> activationAddr;
-
-  // Register the addresses of the tensor payload.
-  for (auto &v : M_->getGraph()->getParent()->getVars()) {
-    auto *w = M_->getWeightForNode(v);
-    allocatedAddressed_[w] = v->getPayload().getUnsafePtr();
-  }
-
-  // Assign device-space addresses to the activations.
-  for (auto &I : M_->getInstrs()) {
-    if (auto *A = llvm::dyn_cast<AllocActivationInst>(I)) {
-      auto numBytes = I->getType()->getSizeInBytes();
-      size_t addr = allocator.allocate(numBytes);
-      assert(!activationAddr.count(A) && "Allocation already made!");
-      activationAddr[A] = addr;
-      continue;
-    }
-
-    if (auto *TV = llvm::dyn_cast<TensorViewInst>(I)) {
-      // If the source is heap allocated then add it to the 'heap' map.
-      if (activationAddr.count(TV->getSrc())) {
-        assert(!activationAddr.count(TV) && "Allocation already made!");
-        assert(activationAddr.count(TV->getSrc()) && "Can't find TV source");
-        activationAddr[TV] = activationAddr[TV->getSrc()];
-      } else {
-        assert(allocatedAddressed_.count(TV->getSrc()) &&
-               "Can't find the Weight address");
-        allocatedAddressed_[TV] = allocatedAddressed_[TV->getSrc()];
-      }
-      continue;
-    }
-
-    if (auto *D = llvm::dyn_cast<DeallocActivationInst>(I)) {
-      auto *A = D->getAlloc();
-      assert(activationAddr.count(A) && "Invalid deallocation!");
-      allocator.deallocate(activationAddr[A]);
-      continue;
-    }
-  }
-
-  // Allocate the heap to match the max memory usage.
-  heap_.resize(allocator.getMaxMemoryUsage());
-
-  // Register specific addresses within the heap to activations.
-  for (auto &A : activationAddr) {
-    allocatedAddressed_[A.first] = &heap_[0] + A.second;
-  }
-
-  DEBUG(for (auto &A
-             : allocatedAddressed_) {
-    llvm::errs() << "Allocated " << A.first->getName()
-                 << " size: " << A.first->getType()->getSizeInBytes()
-                 << "  address range:  [" << allocatedAddressed_[A.first]
-                 << ", "
-                 << static_cast<void *>(
-                        (static_cast<char *>(allocatedAddressed_[A.first]) +
-                         A.first->getType()->getSizeInBytes()))
-                 << "]\n";
-  });
-}
