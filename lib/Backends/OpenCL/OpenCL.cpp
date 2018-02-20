@@ -548,7 +548,7 @@ void OCLBackend::copyWeightsFromDevice() {
 }
 
 void OCLBackend::init() {
-  for (auto &v : F_->getGraph()->getParent().getVars()) {
+  for (auto &v : F_->getGraph()->getParent()->getVars()) {
     auto *w = F_->getWeightForNode(v);
     assert(!externalTensors_.count(w) && "The tensor is already registered");
     externalTensors_[w] = &v->getPayload();

@@ -243,7 +243,7 @@ quantizeInputs(Function &G, Node *node,
 
     const TensorQuantizationParams &TQP =
         nodeToTQP.find(nodeOutputName)->second;
-    auto QT = G.getParent().uniqueType(ElemKind::Int8QTy, NV->dims(),
+    auto QT = G.getParent()->uniqueType(ElemKind::Int8QTy, NV->dims(),
                                        TQP.scale_, TQP.offset_);
 
     Node *quantizeNode = G.createQuantize("quantize", NV, QT);
@@ -287,7 +287,7 @@ void generateQuantizedGraph(
     case Kinded::Kind::FullyConnectedNodeKind: {
       auto *FC = cast<FullyConnectedNode>(node);
       assert(quantizedInputs.size() == 3 && "Invalid number of inputs");
-      auto QT = G.getParent().uniqueType(
+      auto QT = G.getParent()->uniqueType(
           ElemKind::Int8QTy, FC->getResult()->dims(), TQP.scale_, TQP.offset_);
       quantizedNode =
           G.createFullyConnected(FC->getName(), quantizedInputs[0],
@@ -298,7 +298,7 @@ void generateQuantizedGraph(
     case Kinded::Kind::ConvolutionNodeKind: {
       auto *CV = cast<ConvolutionNode>(node);
       assert(quantizedInputs.size() == 3 && "Invalid number of inputs");
-      auto QT = G.getParent().uniqueType(
+      auto QT = G.getParent()->uniqueType(
           ElemKind::Int8QTy, CV->getResult()->dims(), TQP.scale_, TQP.offset_);
       quantizedNode =
           G.createConv(CV->getName(), quantizedInputs[0], quantizedInputs[1],

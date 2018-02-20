@@ -118,7 +118,7 @@ TEST(Graph, simpleQuant) {
   // Calculate the size and allocate the output buffer.
   auto outSz = calculateConvOutputDims(width, width, kernel, step, pad);
   std::array<size_t, 4> outDims = {{1, outSz.first, outSz.second, 16}};
-  auto t = G.getParent().uniqueType(glow::ElemKind::Int8QTy, outDims, 1.5, 6);
+  auto t = G.getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims, 1.5, 6);
 
   auto *conv =
       G.createConv("conv", input, filter, bias, t, depth, kernel, step, pad);
@@ -137,11 +137,11 @@ TEST(Graph, quantizeDequantizeNodes) {
   auto &G = *MD.createFunction("main");
 
   auto *input = MD.createVariable(ElemKind::FloatTy, {1, 3}, "Input");
-  auto qType = G.getParent().uniqueType(ElemKind::Int8QTy, {1, 3}, 0.3, 5);
+  auto qType = G.getParent()->uniqueType(ElemKind::Int8QTy, {1, 3}, 0.3, 5);
 
   auto *Q = G.createQuantize("quantize", input, qType);
 
-  auto transform = G.getParent().uniqueType(ElemKind::Int8QTy, {1, 3}, 1.4, 3);
+  auto transform = G.getParent()->uniqueType(ElemKind::Int8QTy, {1, 3}, 1.4, 3);
   auto *A = G.createRescaleQuantized("rescale", Q, transform);
 
   auto *D = G.createDequantize("dequantize", A);
@@ -216,5 +216,5 @@ TEST(Graph, cloneTest2) {
   auto *newF = F->clone("new_main");
   newF->verify();
   EXPECT_EQ(newF->getNodes().size(), F->getNodes().size());
-  EXPECT_EQ(&newF->getParent(), &F->getParent());
+  EXPECT_EQ(newF->getParent(), F->getParent());
 }

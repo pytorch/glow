@@ -20,8 +20,8 @@ using llvm::isa;
 void GraphGradMapper::addGradient(NodeValue activation, NodeValue grad) {
   if (map_.count(activation)) {
     auto curr = map_.get(activation);
-    auto *sum = G_.createArithmetic("updateGrad", curr, grad,
-                                    ArithmeticNode::Mode::Add);
+    auto *sum = F_->createArithmetic("updateGrad", curr, grad,
+                                     ArithmeticNode::Mode::Add);
     map_.insert(activation, sum);
     return;
   }
@@ -55,7 +55,7 @@ Function *glow::differentiate(Function *F, TrainingConfig &conf,
   Function *G = F->clone(newFuncName);
 
   using Kind = glow::Kinded::Kind;
-  GraphGradMapper map(*G);
+  GraphGradMapper map(G);
 
   // A list of nodes to add to the graph.
   std::vector<Node *> toAppend;
@@ -65,7 +65,7 @@ Function *glow::differentiate(Function *F, TrainingConfig &conf,
   // Generate the gradient nodes for each one of the nodes in the function.
 
   PostOrderVisitor pov;
-  for (auto &N : G->getParent().getVars()) {
+  for (auto &N : G->getParent()->getVars()) {
     N->visit(nullptr, &pov);
   }
   for (auto &N : G->getNodes()) {
@@ -182,7 +182,7 @@ Function *glow::differentiate(Function *F, TrainingConfig &conf,
     llvm_unreachable("Invalid instruction type.");
   } // End of the for-each instr loop.
 
-  for (auto &V : G->getParent().getVars()) {
+  for (auto &V : G->getParent()->getVars()) {
     // In this special compilation mode we record the last gradient value
     // without performing the SGD update. This mode is used by the unit tests.
     if (onlyRecordGrads && map.hasGradient(V)) {
@@ -190,7 +190,7 @@ Function *glow::differentiate(Function *F, TrainingConfig &conf,
       // Save the gradient and return the destination variable.
       auto *saveNode = G->createSave(nodeName, map.getGradient(V));
       auto *GradV = llvm::dyn_cast<Variable>(saveNode->getOutput().getNode());
-      G->getParent().addGradientVariable(V, GradV);
+      G->getParent()->addGradientVariable(V, GradV);
     }
 
     // Don't update nodes that are not marked as trainable, or if no nodes are
@@ -199,7 +199,7 @@ Function *glow::differentiate(Function *F, TrainingConfig &conf,
       continue;
     }
 
-    TypeRef Ty = conf.momentum > 0 ? V->getType() : G->getParent().getVoidTy();
+    TypeRef Ty = conf.momentum > 0 ? V->getType() : G->getParent()->getVoidTy();
     Variable *gsum = new Variable("gsum", Ty, Variable::VisibilityKind::Private,
                                   Variable::TrainKind::Broadcast, 0);
 
@@ -216,7 +216,7 @@ Function *glow::differentiate(Function *F, TrainingConfig &conf,
     G->addNode(I);
   }
   for (auto &I : newVars) {
-    G->getParent().addVar(I);
+    G->getParent()->addVar(I);
   }
 
   return G;

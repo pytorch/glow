@@ -114,7 +114,7 @@ CrossEntropyLossInst *IRBuilder::createCrossEntropyLossOp(Value *p,
 
 ReshapeInst *IRBuilder::createReshapeOp(Value *input,
                                         llvm::ArrayRef<size_t> shape) {
-  auto ty = F_->getGraph()->getParent().uniqueTypeWithNewShape(input->getType(),
+  auto ty = F_->getGraph()->getParent()->uniqueTypeWithNewShape(input->getType(),
                                                                shape);
   auto *res = createAllocActivationInst("reshape.res", ty);
   return createReshapeInst("reshape", res, input, shape);
@@ -130,7 +130,7 @@ TensorViewInst *IRBuilder::createTensorView(ElemKind elemKind,
                                             llvm::ArrayRef<size_t> dims,
                                             Value *src, llvm::StringRef name) {
   auto ty =
-      getIRFunction().getGraph()->getParent().uniqueType(Type(elemKind, dims));
+      getIRFunction().getGraph()->getParent()->uniqueType(Type(elemKind, dims));
   return createTensorViewInst(name, src, ty);
 }
 
@@ -277,7 +277,7 @@ WeightVar *IRBuilder::createWeightVar(ElemKind elemTy,
                                       llvm::ArrayRef<size_t> dims,
                                       llvm::StringRef name,
                                       WeightVar::MutabilityKind k) {
-  auto T = F_->getGraph()->getParent().uniqueType(elemTy, dims);
+  auto T = F_->getGraph()->getParent()->uniqueType(elemTy, dims);
   return createWeightVar(T, name, k);
 }
 
@@ -292,6 +292,6 @@ WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
 AllocActivationInst *
 IRBuilder::createAllocActivationInst(llvm::StringRef name, ElemKind elemTy,
                                      llvm::ArrayRef<size_t> dims) {
-  auto T = F_->getGraph()->getParent().uniqueType(elemTy, dims);
+  auto T = F_->getGraph()->getParent()->uniqueType(elemTy, dims);
   return createAllocActivationInst(name, T);
 }

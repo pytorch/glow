@@ -38,7 +38,7 @@ static bool shouldDeleteNode(Node *N) {
 /// Dead code elimination.
 static void DCE(Function &G) {
   auto &nodes = G.getNodes();
-  auto &vars = G.getParent().getVars();
+  auto &vars = G.getParent()->getVars();
 
   std::vector<VariablesList::iterator> erasedVars{};
   std::vector<NodesList::iterator> erasedNodes{};
@@ -79,7 +79,7 @@ static void DCE(Function &G) {
 
   while (!erasedVars.empty()) {
     auto it = erasedVars.back();
-    G.getParent().eraseVariable(it);
+    G.getParent()->eraseVariable(it);
     erasedVars.pop_back();
   }
 }

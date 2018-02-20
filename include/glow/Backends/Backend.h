@@ -38,7 +38,7 @@ public:
   /// backend may insert target specific nodes. The backend is responsible for
   /// cleaning up after itself.
   /// \returns True if the graph was modified.
-  virtual bool transform(Function &G) { return false; }
+  virtual bool transform(Function *F) { return false; }
 };
 
 /// Create a backend of kind \p kind, to run the IR function \p M.
