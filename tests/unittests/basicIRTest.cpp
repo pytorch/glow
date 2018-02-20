@@ -64,9 +64,9 @@ TEST(IR, basicUseList) {
     CC->verifyUseList();
 
     // Check the getOperand and setOperand functions.
-    EXPECT_EQ(CC->getOperand(0).first, V1);
+    EXPECT_EQ(CC->getDest(), V1);
     CC->setOperand(0, V2);
-    EXPECT_EQ(CC->getOperand(0).first, V2);
+    EXPECT_EQ(CC->getDest(), V2);
     CC->verifyUseList();
   }
 
@@ -143,7 +143,7 @@ TEST(IR, casting) {
 
     auto *input = bb.createWeightVar(ElemKind::FloatTy, {1, 224, 224, 3});
     auto *sig = bb.createSigmoidOp(input);
-    auto *pool = bb.createPoolMaxOp(sig->getOperand(0).first, 7, 2, 3);
+    auto *pool = bb.createPoolMaxOp(sig->getDest(), 7, 2, 3);
 
     EXPECT_EQ(isa<PoolMaxInst>(pool), true);
     EXPECT_EQ(isa<PoolMaxInst>(input), false);

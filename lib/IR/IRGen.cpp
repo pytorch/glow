@@ -157,17 +157,22 @@ public:
       auto *P = cast<PoolNode>(N);
       auto *in = valueForNode(P->getInput());
       Instruction *V = nullptr;
+      Value *dest;
       if (P->getMode() == PoolNode::Mode::Max) {
-        V = builder_.createPoolMaxWithXYOp(in, P->getKernel(), P->getStride(),
-                                           P->getPad());
+        auto *tmpInst = builder_.createPoolMaxWithXYOp(
+            in, P->getKernel(), P->getStride(), P->getPad());
+        dest = tmpInst->getDest();
+        V = tmpInst;
         nodeToInstr_[N] = V;
       } else {
-        V = builder_.createPoolAvgOp(in, P->getKernel(), P->getStride(),
-                                     P->getPad());
+        auto *tmpInst = builder_.createPoolAvgOp(in, P->getKernel(),
+                                                 P->getStride(), P->getPad());
+        dest = tmpInst->getDest();
+        V = tmpInst;
       }
 
       V->setName(N->getName());
-      registerIR(N, V->getOperand(0).first);
+      registerIR(N, dest);
       break;
     }
 
@@ -477,38 +482,53 @@ public:
       auto *R = valueForNode(AR->getRHS());
 
       Instruction *instruction = nullptr;
+      Value *dest;
       switch (AR->getMode()) {
       case glow::ArithmeticNode::Mode::Add: {
-        instruction = builder_.createElementAddOp(L, R);
+        auto *tmpInst = builder_.createElementAddOp(L, R);
+        dest = tmpInst->getDest();
+        instruction = tmpInst;
         break;
       }
       case glow::ArithmeticNode::Mode::Mul: {
-        instruction = builder_.createElementMulOp(L, R);
+        auto *tmpInst = builder_.createElementMulOp(L, R);
+        dest = tmpInst->getDest();
+        instruction = tmpInst;
         break;
       }
       case glow::ArithmeticNode::Mode::Sub: {
-        instruction = builder_.createElementSubOp(L, R);
+        auto *tmpInst = builder_.createElementSubOp(L, R);
+        dest = tmpInst->getDest();
+        instruction = tmpInst;
         break;
       }
       case glow::ArithmeticNode::Mode::Div: {
-        instruction = builder_.createElementDivOp(L, R);
+        auto *tmpInst = builder_.createElementDivOp(L, R);
+        dest = tmpInst->getDest();
+        instruction = tmpInst;
         break;
       }
       case glow::ArithmeticNode::Mode::Max: {
-        instruction = builder_.createElementMaxOp(L, R);
+        auto *tmpInst = builder_.createElementMaxOp(L, R);
+        dest = tmpInst->getDest();
+        instruction = tmpInst;
         break;
       }
       case glow::ArithmeticNode::Mode::Min: {
-        instruction = builder_.createElementMinOp(L, R);
+        auto *tmpInst = builder_.createElementMinOp(L, R);
+        dest = tmpInst->getDest();
+        instruction = tmpInst;
         break;
       }
       case glow::ArithmeticNode::Mode::CmpLTE: {
-        instruction = builder_.createElementCmpLTEOp(L, R);
+        auto *tmpInst = builder_.createElementCmpLTEOp(L, R);
+        dest = tmpInst->getDest();
+        instruction = tmpInst;
         break;
       }
       }
       instruction->setName(N->getName());
-      registerIR(N, instruction->getOperand(0).first);
+      registerIR(N, dest);
       break;
     }
     case glow::Kinded::Kind::SelectNodeKind: {
