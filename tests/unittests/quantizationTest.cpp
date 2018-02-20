@@ -80,7 +80,7 @@ TEST(Quantization, quantScaleOffset) {
 TEST(Quantization, quantizeGraph) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
 
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 3}, "input");
   auto *W = mod.createVariable(ElemKind::FloatTy, {3, 3}, "weights",
@@ -89,8 +89,8 @@ TEST(Quantization, quantizeGraph) {
   auto *B = mod.createVariable(ElemKind::FloatTy, {3}, "bias",
                                Variable::VisibilityKind::Private,
                                Variable::TrainKind::Broadcast, 0.1);
-  auto *FC = G.createFullyConnected("FC", input, W, B);
-  G.createSave("ret", FC);
+  auto *FC = F->createFullyConnected("FC", input, W, B);
+  F->createSave("ret", FC);
 
   std::vector<NodeQuantizationInfo> QI{
       {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
@@ -100,10 +100,10 @@ TEST(Quantization, quantizeGraph) {
       {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6, 0}},
   };
 
-  glow::generateQuantizedGraph(G, QI);
+  glow::generateQuantizedGraph(F, QI);
 
   // Make sure that graph can be compiled and run.
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
   EE.run({}, {});
 }
 
@@ -134,8 +134,8 @@ TEST(Quantization, end2end) {
   auto &mod1 = E1.getModule();
   auto &mod2 = E2.getModule();
 
-  auto &G1 = *mod1.createFunction("collect_profile");
-  auto &G2 = *mod2.createFunction("use_profile");
+  Function *F1 = mod1.createFunction("collect_profile");
+  Function *F2 = mod2.createFunction("use_profile");
 
   auto *W1 = mod1.createVariable(ElemKind::FloatTy, {4096, 2}, "weights",
                                  Variable::VisibilityKind::Private,
@@ -143,16 +143,16 @@ TEST(Quantization, end2end) {
   auto *B1 = mod1.createVariable(ElemKind::FloatTy, {2}, "bias",
                                  Variable::VisibilityKind::Private,
                                  Variable::TrainKind::Xavier, 1);
-  createSimpleGraphForQuantization(G1, input1, result1, W1, B1);
+  createSimpleGraphForQuantization(*F1, input1, result1, W1, B1);
 
-  glow::profileQuantization(G1);
-  E1.compile(CompilationMode::Infer, &G1);
+  glow::profileQuantization(*F1);
+  E1.compile(CompilationMode::Infer, F1);
 
   // Run graph to capture profile.
   E1.run({input1}, {&inputs});
 
   // Get quantization infos and build new quantized graph.
-  std::vector<NodeQuantizationInfo> QI = generateNodeQuantizationInfos(G1);
+  std::vector<NodeQuantizationInfo> QI = generateNodeQuantizationInfos(F1);
   auto *W2 = mod2.createVariable(ElemKind::FloatTy, {4096, 2}, "weights",
                                  Variable::VisibilityKind::Private,
                                  Variable::TrainKind::Xavier, 1);
@@ -163,10 +163,10 @@ TEST(Quantization, end2end) {
   // Make sure we are testing with the same input tensors.
   W2->getPayload().copyFrom(&W1->getPayload());
   B2->getPayload().copyFrom(&B1->getPayload());
-  createSimpleGraphForQuantization(G2, input2, result2, W2, B2);
+  createSimpleGraphForQuantization(*F2, input2, result2, W2, B2);
 
-  glow::generateQuantizedGraph(G2, QI);
-  E2.compile(CompilationMode::Infer, &G2);
+  glow::generateQuantizedGraph(F2, QI);
+  E2.compile(CompilationMode::Infer, F2);
   E2.run({input2}, {&inputs});
 
   auto result2Handle = result2->getVariable()->getHandle();
