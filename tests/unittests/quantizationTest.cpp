@@ -118,8 +118,9 @@ void createSimpleGraphForQuantization(Function *F, Variable *&input,
   auto *CV = F->createConv("conv", A, 16, 5, 1, 2);
   auto *RL = F->createRELU("relu", CV);
   auto *AP = F->createPool("pool", RL, PoolNode::Mode::Avg, 2, 2, 0);
-
-  Node *O = F->createFullyConnected("fc", AP, W, B);
+  // Just add noop transpose.
+  auto *T = F->createTranspose("transpose", AP, {0, 1, 2, 3});
+  Node *O = F->createFullyConnected("fc", T, W, B);
   saveNode = F->createSave("save", O);
 }
 
