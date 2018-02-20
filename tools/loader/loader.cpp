@@ -229,7 +229,7 @@ int main(int argc, char **argv) {
   // Quantize the graph based on the captured profile.
   if (!LoadProfileFile.empty()) {
     auto quantizationInfos = deserializeFromYaml(LoadProfileFile);
-    ::generateQuantizedGraph(F, quantizationInfos);
+    quantization::generateQuantizedGraph(F, quantizationInfos);
   }
 
   // Emit IR for the graph.
@@ -256,7 +256,8 @@ int main(int argc, char **argv) {
     timer.stopTimer();
 
   if (!QuantizationProfileFile.empty()) {
-    std::vector<NodeQuantizationInfo> QI = generateNodeQuantizationInfos(F);
+    std::vector<NodeQuantizationInfo> QI =
+        quantization::generateNodeQuantizationInfos(F);
     serializeToYaml(QuantizationProfileFile, QI);
   }
 

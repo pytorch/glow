@@ -41,10 +41,6 @@ struct NodeQuantizationInfo {
   }
 };
 
-/// Generate NodeQuantizationInfo for all required nodes from graph \p G.
-std::vector<NodeQuantizationInfo>
-generateNodeQuantizationInfos(const Function *F);
-
 /// A data structure that represents the 32-bit to 8-bit quantization
 /// scaling operation. This data structure represents the transformation:
 /// (((input >> pre) * scale) + rtn) >> post + offset.
@@ -59,13 +55,6 @@ public:
   QuantizationTransform32To8(int pre, int post, int scale, int offset)
       : pre_(pre), post_(post), scale_(scale), offset_(offset) {}
 
-  /// \returns the value \p in as clipped to the range [-128..127].
-  static int8_t clip(int32_t in) {
-    auto mx = std::numeric_limits<int8_t>::max();
-    auto mn = std::numeric_limits<int8_t>::min();
-    return std::max<int32_t>(mn, std::min<int32_t>(mx, in));
-  }
-
   /// \returns the scaled integer.
   int32_t transform(int32_t input) {
     // The operation x >> y is rounded down to negative infinity. To get to
@@ -74,6 +63,12 @@ public:
     return ((((input >> pre_) * scale_) + rtn) >> post_) + offset_;
   }
 };
+
+namespace quantization {
+
+/// Generate NodeQuantizationInfo for all required nodes from graph \p G.
+std::vector<NodeQuantizationInfo>
+generateNodeQuantizationInfos(const Function *F);
 
 /// Convert the floating point quantization parameters \p scale and \p offset
 /// into the integer sequence of:
@@ -91,11 +86,16 @@ int8_t quantize(float input, const TensorQuantizationParams &TQP);
 /// the quantization parameters \p TQP.
 float dequantize(int8_t input, const TensorQuantizationParams &TQP);
 
+/// \returns the value \p in as clipped to the range [-128..127].
+int8_t clip(int32_t in);
+
 /// Converts floating point graph to a quantized one.
 /// Note, if not all operators have a conversion support,
 /// graph ends up being hybrid.
 void generateQuantizedGraph(
     Function *F, llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos);
+
+} // namespace quantization
 
 } // namespace glow
 
