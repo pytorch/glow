@@ -549,6 +549,7 @@ void Interpreter::fwdCrossEntropyLossGradInst(
 //===----------------------------------------------------------------------===//
 void Interpreter::fwdTransposeInst(bool isTrain, const TransposeInst *I) {
   auto inTensor = getTensor(I->getSrc());
+  (void)inTensor;
   auto outW = getTensor(I->getDest());
 
   assert(outW->size() == inTensor->size() && "Invalid tensor dimensions");
