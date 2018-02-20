@@ -86,8 +86,14 @@ int8_t quantize(float input, const TensorQuantizationParams &TQP);
 /// the quantization parameters \p TQP.
 float dequantize(int8_t input, const TensorQuantizationParams &TQP);
 
-/// \returns the value \p in as clipped to the range [-128..127].
-int8_t clip(int32_t in);
+/// \returns the value \p in as clipped to the range of \p DestTy.
+template <class SrcTy, class DestTy> DestTy clip(SrcTy in) {
+  assert(sizeof(SrcTy) >= sizeof(DestTy) && "Invalid types");
+
+  auto mx = std::numeric_limits<DestTy>::max();
+  auto mn = std::numeric_limits<DestTy>::min();
+  return std::max<SrcTy>(mn, std::min<SrcTy>(mx, in));
+}
 
 /// Converts floating point graph to a quantized one.
 /// Note, if not all operators have a conversion support,

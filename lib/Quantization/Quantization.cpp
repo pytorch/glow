@@ -213,15 +213,9 @@ generateNodeQuantizationInfos(const Function *F) {
   return quantizationInfos;
 }
 
-int8_t clip(int32_t in) {
-  auto mx = std::numeric_limits<int8_t>::max();
-  auto mn = std::numeric_limits<int8_t>::min();
-  return std::max<int32_t>(mn, std::min<int32_t>(mx, in));
-}
-
 int8_t quantize(float input, const TensorQuantizationParams &TQP) {
   float result = input / TQP.scale_ + TQP.offset_;
-  return quantization::clip(round(result));
+  return quantization::clip<int32_t, int8_t>(round(result));
 }
 
 float dequantize(int8_t input, const TensorQuantizationParams &TQP) {
