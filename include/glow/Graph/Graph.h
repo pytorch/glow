@@ -6,6 +6,7 @@
 #include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 
 #include <list>
 #include <unordered_map>
@@ -355,8 +356,11 @@ public:
   void eraseNode(NodesList::iterator I);
 
   /// Clone the current function into a new function with the name \p newName.
+  /// If \p map is non-null then the procedure records the mapping between the
+  /// old node to the new node in \p map.
   /// \returns a new function that is a copy of the current function.
-  Function *clone(llvm::StringRef newName);
+  Function *clone(llvm::StringRef newName,
+                  llvm::DenseMap<Node *, Node *> *map = nullptr);
 
   /// Verify the correctness of the graph.
   void verify() const;

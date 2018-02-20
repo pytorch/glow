@@ -1328,9 +1328,8 @@ void Function::eraseNode(Node *N) {
   eraseNode(I);
 }
 
-/// Clone the current function into a new function with the name \p newName.
-/// \returns a new function that is a copy of the current function.
-Function *Function::clone(llvm::StringRef newName) {
+Function *Function::clone(llvm::StringRef newName,
+                          llvm::DenseMap<Node *, Node *> *map) {
   Module &M = getParent();
   auto *newF = M.createFunction(newName);
 
@@ -1362,6 +1361,14 @@ Function *Function::clone(llvm::StringRef newName) {
 
       // Update the node with the edge to the current graph.
       input.setOperand(it->second, input.getResNo());
+    }
+  }
+
+  // Record the node mapping into the external map.
+  if (map) {
+    assert(map->empty() && "The external map must be empty");
+    for (auto it : currToNew) {
+      map->insert(it);
     }
   }
 
