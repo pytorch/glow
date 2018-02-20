@@ -154,7 +154,7 @@ void Interpreter::fwdConvolutionInst_I8Impl(Value *inV, Value *outV,
           sum += B;
 
           // Scale the result back to the expected destination scale.
-          outW.at({n, ax, ay, d}) = QuantizationTransform32To8::clip(
+          outW.at({n, ax, ay, d}) = quantization::clip(
               std::round(float(sum) * (matMulScale / outScale) + outOffset));
         } // W
       }   // H
@@ -1136,8 +1136,8 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
             sum += (L - lhsOffset) * (R - rhsOffset);
           }
 
-          dest.at({n, x, y}) = QuantizationTransform32To8::clip(
-              std::round(scale * sum + destOffset));
+          dest.at({n, x, y}) =
+              quantization::clip(std::round(scale * sum + destOffset));
         }
       }
     } // N
@@ -1215,7 +1215,7 @@ void Interpreter::fwdBatchedAddInst(bool isTrain,
         int32_t S = std::round(float(sliceVal - sliceOffset) *
                                (sliceScale / largeScale));
         int32_t R = B + S;
-        dest.raw(base + i) = QuantizationTransform32To8::clip(
+        dest.raw(base + i) = quantization::clip(
             std::round(float(R) * (largeScale / destScale) + destOffset));
       }
     }
@@ -1400,7 +1400,7 @@ void Interpreter::fwdQuantizeInst(bool isTrain, const glow::QuantizeInst *I) {
 
   auto destHandle = destTensor->getHandle<int8_t>();
   for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
-    destHandle.raw(i) = quantize(srcHandle.raw(i), params);
+    destHandle.raw(i) = quantization::quantize(srcHandle.raw(i), params);
   }
 }
 /// Dequantize integer tensor. Scale and Offset are based
@@ -1415,7 +1415,7 @@ void Interpreter::fwdDequantizeInst(bool isTrain,
 
   auto srcHandle = srcTensor->getHandle<int8_t>();
   for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
-    destHandle.raw(i) = dequantize(srcHandle.raw(i), params);
+    destHandle.raw(i) = quantization::dequantize(srcHandle.raw(i), params);
   }
 }
 

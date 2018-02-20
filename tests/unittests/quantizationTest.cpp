@@ -69,7 +69,7 @@ TEST(Quantization, quantScaleOffset) {
     for (int8_t input = -128; input < 127; input++) {
       int32_t sum32num = round(input / scale);
 
-      auto TR = quantizeScaleOffset32To8(scale, 0);
+      auto TR = quantization::quantizeScaleOffset32To8(scale, 0);
       int32_t computed = TR.transform(sum32num);
 
       EXPECT_NEAR(input, computed, 1);
@@ -100,7 +100,7 @@ TEST(Quantization, quantizeGraph) {
       {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6, 0}},
   };
 
-  glow::generateQuantizedGraph(F, QI);
+  quantization::generateQuantizedGraph(F, QI);
 
   // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer, F);
@@ -153,7 +153,8 @@ TEST(Quantization, end2end) {
   E1.run({input1}, {&inputs});
 
   // Get quantization infos and build new quantized graph.
-  std::vector<NodeQuantizationInfo> QI = generateNodeQuantizationInfos(F1);
+  std::vector<NodeQuantizationInfo> QI =
+      quantization::generateNodeQuantizationInfos(F1);
   auto *W2 = mod2.createVariable(ElemKind::FloatTy, {4096, 2}, "weights",
                                  Variable::VisibilityKind::Private,
                                  Variable::TrainKind::Xavier, 1);
@@ -166,7 +167,7 @@ TEST(Quantization, end2end) {
   B2->getPayload().copyFrom(&B1->getPayload());
   createSimpleGraphForQuantization(F2, input2, result2, W2, B2);
 
-  glow::generateQuantizedGraph(F2, QI);
+  quantization::generateQuantizedGraph(F2, QI);
   E2.compile(CompilationMode::Infer, F2);
   E2.run({input2}, {&inputs});
 

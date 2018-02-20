@@ -77,33 +77,7 @@ static TensorQuantizationParams chooseQuantizationParams(float min, float max) {
   return result;
 }
 
-std::vector<NodeQuantizationInfo>
-generateNodeQuantizationInfos(const Function *F) {
-  std::vector<NodeQuantizationInfo> quantizationInfos;
-
-  for (auto *node : F->getNodes()) {
-    auto *QPN = llvm::dyn_cast<QuantizationProfileNode>(node);
-
-    if (QPN) {
-      auto CI = QPN->getComputationInfoVar()->getHandle<float>();
-      auto histogram = QPN->getHistogramVar()->getHandle<float>();
-      float min = CI.raw(0);
-      float max = CI.raw(1);
-
-      std::string fullOutputName = NodeQuantizationInfo::generateNodeOutputName(
-          QPN->getProfiledNodeName());
-
-      // TODO: Ideally tensor quantization params should be calculated
-      // based on the histogram distribution. Use simplistic approach for now.
-      (void)histogram;
-      TensorQuantizationParams TQP = chooseQuantizationParams(min, max);
-
-      quantizationInfos.emplace_back(fullOutputName, TQP);
-    }
-  }
-
-  return quantizationInfos;
-}
+namespace quantization {
 
 QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                                     int32_t offset) {
@@ -211,9 +185,43 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                     offset);
 }
 
+std::vector<NodeQuantizationInfo>
+generateNodeQuantizationInfos(const Function *F) {
+  std::vector<NodeQuantizationInfo> quantizationInfos;
+
+  for (auto *node : F->getNodes()) {
+    auto *QPN = llvm::dyn_cast<QuantizationProfileNode>(node);
+
+    if (QPN) {
+      auto CI = QPN->getComputationInfoVar()->getHandle<float>();
+      auto histogram = QPN->getHistogramVar()->getHandle<float>();
+      float min = CI.raw(0);
+      float max = CI.raw(1);
+
+      std::string fullOutputName = NodeQuantizationInfo::generateNodeOutputName(
+          QPN->getProfiledNodeName());
+
+      // TODO: Ideally tensor quantization params should be calculated
+      // based on the histogram distribution. Use simplistic approach for now.
+      (void)histogram;
+      TensorQuantizationParams TQP = chooseQuantizationParams(min, max);
+
+      quantizationInfos.emplace_back(fullOutputName, TQP);
+    }
+  }
+
+  return quantizationInfos;
+}
+
+int8_t clip(int32_t in) {
+  auto mx = std::numeric_limits<int8_t>::max();
+  auto mn = std::numeric_limits<int8_t>::min();
+  return std::max<int32_t>(mn, std::min<int32_t>(mx, in));
+}
+
 int8_t quantize(float input, const TensorQuantizationParams &TQP) {
   float result = input / TQP.scale_ + TQP.offset_;
-  return QuantizationTransform32To8::clip(round(result));
+  return quantization::clip(round(result));
 }
 
 float dequantize(int8_t input, const TensorQuantizationParams &TQP) {
@@ -346,5 +354,7 @@ void generateQuantizedGraph(
         dequantized->getName())] = TQP;
   }
 }
+
+} // namespace quantization
 
 } // namespace glow
