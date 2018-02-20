@@ -111,19 +111,19 @@ void ExecutionEngine::compile(CompilationMode mode, Function *F) {
   F->verify();
 
   // Optimized the graph.
-  ::glow::optimize(*F, mode);
+  ::glow::optimize(F, mode);
 
   // Lower the graph into a sequence of low-level linear algebra operations.
   ::glow::lower(*F, mode);
 
   // Optimized the graph again.
-  ::glow::optimize(*F, mode);
+  ::glow::optimize(F, mode);
 
   // Allow the backend to transform the graph.
   if (IP_->transform(F)) {
     // Optimize the graph again after the backend transformation.
     // In particular, DCE is very likely to be useful.
-    ::glow::optimize(*F, mode);
+    ::glow::optimize(F, mode);
   }
 
   /// Prepare the IR container to handle our function.

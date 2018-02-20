@@ -32,7 +32,7 @@ TEST(Graph, simpleTest) {
     G.dump();
     G.dumpDAG();
     lower(G, CompilationMode::Train);
-    ::optimize(G, CompilationMode::Train);
+    ::optimize(&G, CompilationMode::Train);
     M.generateIR(CompilationMode::Train);
     M.dump();
     EXPECT_GT(M.getInstrs().size(), 0);
@@ -56,7 +56,7 @@ TEST(Graph, simpleTest) {
     G.dump();
     G.dumpDAG();
     lower(G, CompilationMode::Train);
-    ::optimize(G, CompilationMode::Train);
+    ::optimize(&G, CompilationMode::Train);
     M.generateIR(CompilationMode::Train);
     M.dump();
     EXPECT_GT(M.getInstrs().size(), 0);
@@ -83,7 +83,7 @@ TEST(Graph, QuantizationProfileNodes) {
 
   ::glow::profileQuantization(G);
   lower(G, CompilationMode::Infer);
-  ::optimize(G, CompilationMode::Infer);
+  ::optimize(&G, CompilationMode::Infer);
   M.generateIR(CompilationMode::Infer);
 
   size_t numberOfProfileNodes =
