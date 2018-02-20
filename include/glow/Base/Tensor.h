@@ -519,7 +519,13 @@ public:
     }
 
     // Resize the tensor to the transposed shape.
-    dest->reset(getElementType(), llvm::ArrayRef<size_t>(newSizes, numDims_));
+    auto destType = tensor_->getType().isQuantizedType()
+                        ? Type(getElementType(), {newSizes, numDims_},
+                               tensor_->getType().getScale(),
+                               tensor_->getType().getOffset())
+                        : Type(getElementType(), {newSizes, numDims_});
+
+    dest->reset(destType);
 
     size_t srcCoor[max_tensor_dimensions];
     size_t destCoor[max_tensor_dimensions];

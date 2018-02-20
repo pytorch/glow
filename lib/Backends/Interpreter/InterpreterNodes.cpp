@@ -547,13 +547,17 @@ void Interpreter::fwdCrossEntropyLossGradInst(
 //===----------------------------------------------------------------------===//
 //                       Tensor shape (transpose/reshape/concat/...)
 //===----------------------------------------------------------------------===//
-
 void Interpreter::fwdTransposeInst(bool isTrain, const TransposeInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
+  auto inTensor = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
 
-  assert(outW->size() == inW.size() && "Invalid tensor dimensions");
-  inW.transpose(outW, I->getShuffle());
+  assert(outW->size() == inTensor->size() && "Invalid tensor dimensions");
+
+  if (I->getSrc()->getType()->isQuantizedType()) {
+    getWeightHandle<int8_t>(I->getSrc()).transpose(outW, I->getShuffle());
+  } else {
+    getWeightHandle<float>(I->getSrc()).transpose(outW, I->getShuffle());
+  }
 }
 
 void Interpreter::fwdBroadcastInst(bool isTrain, const BroadcastInst *I) {

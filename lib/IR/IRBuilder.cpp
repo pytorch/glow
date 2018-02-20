@@ -142,8 +142,9 @@ TransposeInst *IRBuilder::createTransposeOp(Value *input,
     shape.push_back(dims[shuffle[i]]);
   }
 
-  auto *res =
-      createAllocActivationInst("transp.res", input->getElementType(), shape);
+  auto ty = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
+      input->getType(), shape);
+  auto *res = createAllocActivationInst("transp.res", ty);
   return createTransposeInst("transp", res, input, shuffle);
 }
 
