@@ -150,20 +150,20 @@ class Function final : public Named {
   NodesList nodes_;
 
   /// A reference to the owner of the function.
-  Module &parent_;
+  Module *parent_;
 
 public:
-  Function(Module &parent, llvm::StringRef Name = {})
+  Function(Module *parent, llvm::StringRef Name = {})
       : Named(Name), parent_(parent) {}
 
   ~Function();
 
-  Module &getParent() { return parent_; }
-  const Module &getParent() const { return parent_; }
+  Module *getParent() { return parent_; }
+  const Module *getParent() const { return parent_; }
 
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
-    getParent().assignUniqueName(N);
+    getParent()->assignUniqueName(N);
     nodes_.push_back(N);
     return N;
   }

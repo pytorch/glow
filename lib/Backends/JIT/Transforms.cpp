@@ -21,20 +21,20 @@ static bool isZeroNode(NodeValue N) {
   return splat->getValue() == 0;
 }
 
-bool JITBackend::transform(Function &G) {
+bool JITBackend::transform(Function *F) {
   bool changed = false;
-  for (auto node : G.getNodes()) {
+  for (auto node : F->getNodes()) {
     if (auto *AN = dyn_cast<ArithmeticNode>(node)) {
       if (AN->getMode() == ArithmeticNode::Mode::Max) {
         if (isZeroNode(AN->getLHS())) {
-          auto I = G.createIntrinsicNode(AN->getName(), "jit.max0",
+          auto I = F->createIntrinsicNode(AN->getName(), "jit.max0",
                                          {AN->getRHS()}, {AN->getType()});
           NodeValue(node, 0).replaceAllUsesOfWith(I);
           changed = true;
           continue;
         }
         if (isZeroNode(AN->getRHS())) {
-          auto I = G.createIntrinsicNode(AN->getName(), "jit.max0",
+          auto I = F->createIntrinsicNode(AN->getName(), "jit.max0",
                                          {AN->getLHS()}, {AN->getType()});
           NodeValue(node, 0).replaceAllUsesOfWith(I);
           changed = true;

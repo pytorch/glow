@@ -13,12 +13,12 @@ class Function;
 /// and helps to accumulate gradients into variables.
 class GraphGradMapper {
   /// The graph that we mutate.
-  Function &G_;
+  Function *F_;
   /// Maps activation values to their gradient values.
   UnownedNodeValueMap map_;
 
 public:
-  GraphGradMapper(Function &G) : G_(G) {}
+  GraphGradMapper(Function *F) : F_(F) {}
 
   /// \register the node \p grad as the grad of \p activation. If the node is
   /// already registered then create an 'add' node that accumulates the gradient

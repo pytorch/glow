@@ -33,7 +33,7 @@ Function *Module::getFunction(llvm::StringRef name) {
 
 Function *Module::createFunction(llvm::StringRef name) {
   assert(!hasFunction(name) && "A function with this name already exists");
-  Function *F = new Function(*this, name);
+  Function *F = new Function(this, name);
   functions_.push_back(F);
   return F;
 }
@@ -369,15 +369,15 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
   // Allocate the Filter and Bias tensors.
   std::array<size_t, 4> filterDim = {{depth, kernel, kernel, idim.c}};
   size_t fanIn = kernel * kernel * idim.c;
-  auto *filter = getParent().createVariable(
+  auto *filter = getParent()->createVariable(
       ElemKind::FloatTy, filterDim, "filter", Variable::VisibilityKind::Private,
       Variable::TrainKind::Xavier, fanIn);
 
-  auto *bias = getParent().createVariable(ElemKind::FloatTy, {depth}, "bias",
+  auto *bias = getParent()->createVariable(ElemKind::FloatTy, {depth}, "bias",
                                           Variable::VisibilityKind::Private,
                                           Variable::TrainKind::Broadcast, 0.1);
 
-  auto OT = getParent().uniqueType(ElemKind::FloatTy, outDims);
+  auto OT = getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernel,
                                      stride, pad, depth));
@@ -408,7 +408,7 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       size_t kernel, size_t stride,
                                       size_t pad) {
   assertConvDims(input, filter, bias, depth, kernel, stride, pad);
-  auto OT = getParent().uniqueType(*outTy);
+  auto OT = getParent()->uniqueType(*outTy);
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernel,
                                      stride, pad, depth));
 }
@@ -422,7 +422,7 @@ PoolNode *Function::createPool(llvm::StringRef name, NodeValue input,
 
   auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
 
-  auto OT = getParent().uniqueType(ElemKind::FloatTy,
+  auto OT = getParent()->uniqueType(ElemKind::FloatTy,
                                    {idim.n, outSz.first, outSz.second, idim.c});
 
   return addNode(new PoolNode(name, OT, mode, input, kernel, stride, pad));
@@ -432,7 +432,7 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
                                                    NodeValue input, Variable *W,
                                                    Variable *B) {
   TypeRef T = input.getType();
-  TypeRef OT = getParent().uniqueTypeWithNewShape(
+  TypeRef OT = getParent()->uniqueTypeWithNewShape(
       T, {input.dims()[0], B->getType()->dims()[0]});
 
   return addNode(new FullyConnectedNode(name, OT, input, W, B));
@@ -455,15 +455,15 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
 
   size_t fanIn = idim.second;
 
-  auto *W = getParent().createVariable(
+  auto *W = getParent()->createVariable(
       T->getElementType(), {idim.second, outDepth}, "weights",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier, fanIn);
 
-  auto *B = getParent().createVariable(T->getElementType(), {outDepth}, "bias",
+  auto *B = getParent()->createVariable(T->getElementType(), {outDepth}, "bias",
                                        Variable::VisibilityKind::Private,
                                        Variable::TrainKind::Broadcast, 0.1);
 
-  auto OT = getParent().uniqueType(T->getElementType(), {idim.first, outDepth});
+  auto OT = getParent()->uniqueType(T->getElementType(), {idim.first, outDepth});
   return addNode(new FullyConnectedNode(name, OT, input, W, B));
 }
 
@@ -487,7 +487,7 @@ SoftMaxNode *Function::createSoftMax(llvm::StringRef name, NodeValue input,
 CrossEntropyLossNode *Function::createCrossEntropyLoss(llvm::StringRef name,
                                                        NodeValue input,
                                                        NodeValue labels) {
-  auto ty = getParent().uniqueTypeWithNewShape(input.getType(), {1});
+  auto ty = getParent()->uniqueTypeWithNewShape(input.getType(), {1});
   return addNode(new CrossEntropyLossNode(name, ty, input, labels));
 }
 
@@ -499,7 +499,7 @@ RegressionNode *Function::createRegression(llvm::StringRef name,
 
 ReshapeNode *Function::createReshape(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<size_t> shape) {
-  auto TR = getParent().uniqueTypeWithNewShape(input.getType(), shape);
+  auto TR = getParent()->uniqueTypeWithNewShape(input.getType(), shape);
   assert(TR->size() == input.getType()->size() &&
          "Reshape to a different size");
   return addNode(new ReshapeNode(name, TR, input, shape.vec()));
@@ -513,14 +513,14 @@ TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
     shape.push_back(dims[shuffle[i]]);
   }
 
-  auto NT = getParent().uniqueTypeWithNewShape(input.getType(), shape);
+  auto NT = getParent()->uniqueTypeWithNewShape(input.getType(), shape);
   return addNode(new TransposeNode(name, NT, input, shuffle.vec()));
 }
 
 BroadcastNode *Function::createBroadcast(llvm::StringRef name, NodeValue input,
                                          llvm::ArrayRef<size_t> shape,
                                          unsigned axis) {
-  auto TR = getParent().uniqueType(input.getType()->getElementType(), shape);
+  auto TR = getParent()->uniqueType(input.getType()->getElementType(), shape);
   return addNode(new BroadcastNode(name, TR, input, shape.vec(), axis));
 }
 
@@ -584,7 +584,7 @@ ConcatNode *Function::createConcat(llvm::StringRef name,
     shape[dimension] += I->getType()->dims()[dimension];
   }
 
-  auto NT = getParent().uniqueType(inputs[0]->getElementType(), shape);
+  auto NT = getParent()->uniqueType(inputs[0]->getElementType(), shape);
   std::vector<NodeValue> ops;
   ops.reserve(inputs.size());
   for (auto &I : inputs) {
@@ -616,7 +616,7 @@ SliceNode *Function::createSlice(llvm::StringRef name, NodeValue input,
     shape.push_back(end_i - begin_i);
   }
 
-  auto NT = getParent().uniqueTypeWithNewShape(input.getType(), shape);
+  auto NT = getParent()->uniqueTypeWithNewShape(input.getType(), shape);
   return addNode(new SliceNode(name, NT, input, begin_v));
 }
 
@@ -629,17 +629,17 @@ BatchNormalizationNode *Function::createBatchNormalization(llvm::StringRef name,
   size_t channels = input.dims()[channelIdx];
 
   // Allocate the learnable parameters beta and gamma.
-  auto *beta = getParent().createVariable(ElemKind::FloatTy, {channels}, "beta",
+  auto *beta = getParent()->createVariable(ElemKind::FloatTy, {channels}, "beta",
                                           Variable::VisibilityKind::Private,
                                           Variable::TrainKind::Broadcast, 0.);
-  auto *gamma = getParent().createVariable(
+  auto *gamma = getParent()->createVariable(
       ElemKind::FloatTy, {channels}, "gamma", Variable::VisibilityKind::Private,
       Variable::TrainKind::Broadcast, 1.0);
 
-  auto *mean = getParent().createVariable(ElemKind::FloatTy, {channels}, "mean",
+  auto *mean = getParent()->createVariable(ElemKind::FloatTy, {channels}, "mean",
                                           Variable::VisibilityKind::Private,
                                           Variable::TrainKind::None);
-  auto *variance = getParent().createVariable(
+  auto *variance = getParent()->createVariable(
       ElemKind::FloatTy, {channels}, "variance",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
 
@@ -687,7 +687,7 @@ BatchedMatMulNode *Function::createBatchedMatMul(llvm::StringRef name,
                                                  TypeRef outTy, NodeValue lhs,
                                                  NodeValue rhs) {
   return addNode(
-      new BatchedMatMulNode(name, getParent().uniqueType(*outTy), lhs, rhs));
+      new BatchedMatMulNode(name, getParent()->uniqueType(*outTy), lhs, rhs));
 }
 
 BatchedMatMulNode *Function::createBatchedMatMul(llvm::StringRef name,
@@ -701,7 +701,7 @@ BatchedMatMulNode *Function::createBatchedMatMul(llvm::StringRef name,
   size_t N, X, Y;
   std::tie(N, X, Y) = calculateMatMulOutputDims(LDims, RDims);
 
-  auto ty = getParent().uniqueTypeWithNewShape(lhs.getType(), {N, X, Y});
+  auto ty = getParent()->uniqueTypeWithNewShape(lhs.getType(), {N, X, Y});
   return createBatchedMatMul(name, ty, lhs, rhs);
 }
 
@@ -711,7 +711,7 @@ BatchedReduceNode *Function::createBatchedReduce(llvm::StringRef name,
   auto BT = batch.getType();
   auto RT = Type(BT->getElementType(), BT->dims().drop_front());
   return addNode(
-      new BatchedReduceNode(name, getParent().uniqueType(RT), mode, batch));
+      new BatchedReduceNode(name, getParent()->uniqueType(RT), mode, batch));
 }
 
 BatchedArithmeticNode *
@@ -730,7 +730,7 @@ Function::createBatchedArithmetic(llvm::StringRef name, TypeRef outTy,
 }
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
-  auto *dest = getParent().createVariable(input.getType(), name,
+  auto *dest = getParent()->createVariable(input.getType(), name,
                                           Variable::VisibilityKind::Public,
                                           Variable::TrainKind::None);
 
@@ -748,13 +748,13 @@ QuantizationProfileNode *
 Function::createQuantizationProfile(llvm::StringRef name, NodeValue input) {
   // TODO: this size is going to be refined. Just a placeholder now.
   const size_t numberOfBuckets = 2000U;
-  auto *histogram = getParent().createVariable(
+  auto *histogram = getParent()->createVariable(
       ElemKind::FloatTy, {numberOfBuckets}, "histogram",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
   // Intermediate data used for histogram calculations.
   // Min tensor value seen so far is kept on the first position.
   // Max tensor value seen so far is kept on the second position.
-  auto *computationInfo = getParent().createVariable(
+  auto *computationInfo = getParent()->createVariable(
       ElemKind::FloatTy, {2}, "computationInfo",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
 
@@ -770,8 +770,8 @@ TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
   llvm::SmallVector<size_t, 6> outDims(inDims.begin(), inDims.end());
   outDims.back() = k;
   return addNode(new TopKNode(
-      name, getParent().uniqueType(input->getElementType(), outDims),
-      getParent().uniqueType(ElemKind::IndexTy, outDims), input, k));
+      name, getParent()->uniqueType(input->getElementType(), outDims),
+      getParent()->uniqueType(ElemKind::IndexTy, outDims), input, k));
 }
 
 GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
@@ -782,7 +782,7 @@ GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
   llvm::SmallVector<size_t, 6> outDims(iDims.begin(), iDims.end());
   outDims.insert(outDims.end(), dDims.begin() + 1, dDims.end());
   return addNode(new GatherNode(
-      name, getParent().uniqueType(data->getElementType(), outDims), data,
+      name, getParent()->uniqueType(data->getElementType(), outDims), data,
       indices));
 }
 
@@ -802,7 +802,7 @@ DequantizeNode *Function::createDequantize(llvm::StringRef name,
                                            NodeValue input) {
   assert(input.getElementType() == ElemKind::Int8QTy &&
          "Input must be a quantized type");
-  TypeRef outTy = getParent().uniqueType(Type(ElemKind::FloatTy, input.dims()));
+  TypeRef outTy = getParent()->uniqueType(Type(ElemKind::FloatTy, input.dims()));
   return addNode(new DequantizeNode(name, outTy, input));
 }
 
@@ -830,7 +830,7 @@ void Function::createSimpleRNN(llvm::StringRef namePrefix,
   assert(inputSize > 0 && "input dimensionality is zero");
 
   // Initialize the state to zero.
-  auto *HInit = getParent().createVariable(
+  auto *HInit = getParent()->createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize},
       (namePrefix + ".initial_state").str(), Variable::VisibilityKind::Public,
       Variable::TrainKind::None);
@@ -838,25 +838,25 @@ void Function::createSimpleRNN(llvm::StringRef namePrefix,
   Node *Ht = HInit;
 
   float b = 0.1;
-  auto *Whh = getParent().createVariable(
+  auto *Whh = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whh").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
-  auto *Bhh = getParent().createVariable(
+  auto *Bhh = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".Bhh").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
-  auto *Wxh = getParent().createVariable(
+  auto *Wxh = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxh").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       inputSize);
-  auto *Bxh = getParent().createVariable(
+  auto *Bxh = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".Bxh").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
-  auto *Why = getParent().createVariable(
+  auto *Why = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, outputSize}, (namePrefix + ".Why").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
-  auto *Bhy = getParent().createVariable(
+  auto *Bhy = getParent()->createVariable(
       ElemKind::FloatTy, {outputSize}, (namePrefix + ".Bhy").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
 
@@ -888,7 +888,7 @@ void Function::createGRU(llvm::StringRef namePrefix,
   assert(inputSize > 0 && "input dimensionality is zero");
 
   // Initialize the state to zero.
-  auto *HInit = getParent().createVariable(
+  auto *HInit = getParent()->createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize}, "initial_state",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
 
@@ -904,68 +904,68 @@ void Function::createGRU(llvm::StringRef namePrefix,
 
   // update gate
   float bUpdate = 0.1;
-  auto *Wxz = getParent().createVariable(
+  auto *Wxz = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxz").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       inputSize);
-  auto *Whz = getParent().createVariable(
+  auto *Whz = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whz").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
-  auto *Bz1 = getParent().createVariable(
+  auto *Bz1 = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bz1").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bUpdate);
-  auto *Bz2 = getParent().createVariable(
+  auto *Bz2 = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bz2").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bUpdate);
   float bReset = -1.0;
   // reset gate
-  auto *Wxr = getParent().createVariable(
+  auto *Wxr = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxr").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       inputSize);
-  auto *Whr = getParent().createVariable(
+  auto *Whr = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whr").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
-  auto *Br1 = getParent().createVariable(
+  auto *Br1 = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".br1").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bReset);
-  auto *Br2 = getParent().createVariable(
+  auto *Br2 = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".br2").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bReset);
 
   // hidden state
   float b = 0.1;
-  auto *Wxh = getParent().createVariable(
+  auto *Wxh = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxh").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       inputSize);
-  auto *Whh = getParent().createVariable(
+  auto *Whh = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whh").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
-  auto *Bh1 = getParent().createVariable(
+  auto *Bh1 = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bh1").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
-  auto *Bh2 = getParent().createVariable(
+  auto *Bh2 = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bh2").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
 
   // output layer
-  auto *Why = getParent().createVariable(
+  auto *Why = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, outputSize}, (namePrefix + ".Why").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
-  auto *By = getParent().createVariable(
+  auto *By = getParent()->createVariable(
       ElemKind::FloatTy, {outputSize}, (namePrefix + ".by").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
 
-  auto *Ones = getParent().createVariable(
+  auto *Ones = getParent()->createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize}, (namePrefix + ".ones").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
 
@@ -1039,13 +1039,13 @@ void Function::createLSTM(llvm::StringRef namePrefix,
   assert(inputSize > 0 && "input dimensionality is zero");
 
   // Initialize the hidden and cell states to zero.
-  auto *HInit = getParent().createVariable(
+  auto *HInit = getParent()->createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize}, "initial_hidden_state",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
   HInit->getPayload().zero();
   Node *Ht = HInit;
 
-  auto *CInit = getParent().createVariable(
+  auto *CInit = getParent()->createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize}, "initial_cell_state",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
   CInit->getPayload().zero();
@@ -1064,84 +1064,84 @@ void Function::createLSTM(llvm::StringRef namePrefix,
 
   // forget gate
   float bForget = 1.0;
-  auto *Wxf = getParent().createVariable(
+  auto *Wxf = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxf").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       inputSize);
-  auto *Whf = getParent().createVariable(
+  auto *Whf = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whf").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
-  auto *Bf1 = getParent().createVariable(
+  auto *Bf1 = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bf1").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bForget);
-  auto *Bf2 = getParent().createVariable(
+  auto *Bf2 = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bf2").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bForget);
   // input gate
   float bInput = 0.1;
-  auto *Wxi = getParent().createVariable(
+  auto *Wxi = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxi").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       inputSize);
-  auto *Whi = getParent().createVariable(
+  auto *Whi = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whi").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
-  auto *Bi1 = getParent().createVariable(
+  auto *Bi1 = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bi1").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bInput);
-  auto *Bi2 = getParent().createVariable(
+  auto *Bi2 = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bi2").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bInput);
 
   // output gate
   float bOutput = 0.1;
-  auto *Wxo = getParent().createVariable(
+  auto *Wxo = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxo").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       inputSize);
-  auto *Who = getParent().createVariable(
+  auto *Who = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Who").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
-  auto *Bo1 = getParent().createVariable(
+  auto *Bo1 = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bo1").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bOutput);
-  auto *Bo2 = getParent().createVariable(
+  auto *Bo2 = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bo2").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bOutput);
 
   // cell state
   float bCell = 0.1;
-  auto *Wxc = getParent().createVariable(
+  auto *Wxc = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxc").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       inputSize);
-  auto *Whc = getParent().createVariable(
+  auto *Whc = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whc").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
-  auto *Bc1 = getParent().createVariable(
+  auto *Bc1 = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bc1").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, bCell);
-  auto *Bc2 = getParent().createVariable(
+  auto *Bc2 = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bc2").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, bCell);
 
   // output layer
   float b = 0.1;
-  auto *Why = getParent().createVariable(
+  auto *Why = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, outputSize}, (namePrefix + ".Why").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
-  auto *By = getParent().createVariable(
+  auto *By = getParent()->createVariable(
       ElemKind::FloatTy, {outputSize}, (namePrefix + ".by").str(),
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
 
@@ -1321,7 +1321,7 @@ void Module::eraseVariable(Variable *N) {
 
 void Function::eraseNode(Node *N) {
   if (Variable *V = dyn_cast<Variable>(N)) {
-    return getParent().eraseVariable(V);
+    return getParent()->eraseVariable(V);
   }
   auto I = std::find(nodes_.begin(), nodes_.end(), N);
   assert(I != nodes_.end() && "Could not find node to delete!");
@@ -1330,8 +1330,8 @@ void Function::eraseNode(Node *N) {
 
 Function *Function::clone(llvm::StringRef newName,
                           llvm::DenseMap<Node *, Node *> *map) {
-  Module &M = getParent();
-  auto *newF = M.createFunction(newName);
+  Module *M = getParent();
+  auto *newF = M->createFunction(newName);
 
   // Maps current nodes to new nodes.
   llvm::DenseMap<Node *, Node *> currToNew;
@@ -1379,7 +1379,7 @@ Function *Function::clone(llvm::StringRef newName,
 void Function::verify() const {
   std::unordered_map<std::string, Node *> NameToNode;
 
-  for (auto *V : getParent().getVars()) {
+  for (auto *V : getParent()->getVars()) {
     if (NameToNode.insert({V->getName(), V}).second)
       continue;
     /// Output extra information helping to find the error.
@@ -1405,7 +1405,7 @@ void Function::verify() const {
     llvm_unreachable("Multiple nodes with the same name");
   }
 
-  auto vars = getParent().getVars();
+  auto vars = getParent()->getVars();
 
   // Any node referenced by one of the graph nodes should be part of the Graph.
   for (auto *N : nodes_) {

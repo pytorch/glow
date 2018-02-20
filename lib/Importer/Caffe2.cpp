@@ -121,7 +121,7 @@ Node *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
   }
 
   Tensor *T = getTensorByName(name);
-  auto *V = G_.getParent().createVariable(T->getElementType(), T->dims(), name,
+  auto *V = G_.getParent()->createVariable(T->getElementType(), T->dims(), name,
                                           Variable::VisibilityKind::Private,
                                           Variable::TrainKind::Broadcast);
   V->copyFrom(T);
@@ -173,12 +173,12 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     // Construct the Filter field.
     Variable *filter =
-        G_.getParent().createVariable(&wtag.getType(), "conv.filter");
+        G_.getParent()->createVariable(&wtag.getType(), "conv.filter");
     filter->getPayload().copyFrom(&wtag);
 
     // Construct the Bias field.
     Variable *bias =
-        G_.getParent().createVariable(ElemKind::FloatTy, {depth}, "conv.bias");
+        G_.getParent()->createVariable(ElemKind::FloatTy, {depth}, "conv.bias");
     bias->getPayload().zero();
 
     // Check if we have a serialized bias vector.
@@ -199,7 +199,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
-    auto outTy = G_.getParent().uniqueType(ElemKind::FloatTy, outDims);
+    auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
     auto *node = G_.createConv(op.name(), tr, filter, bias, outTy, depth,
                                kernel, stride, pad);
@@ -367,8 +367,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Tensor wtag;
     w->getHandle<>().transpose(&wtag, {1, 0});
 
-    auto W = G_.getParent().addVar(new Variable("weights", std::move(wtag)));
-    auto B = G_.getParent().addVar(new Variable("biases", std::move(*b)));
+    auto W = G_.getParent()->addVar(new Variable("weights", std::move(wtag)));
+    auto B = G_.getParent()->addVar(new Variable("biases", std::move(*b)));
     auto *FC = G_.createFullyConnected(op.name(), in, W, B);
 
     // Save the outputs:
@@ -536,7 +536,7 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   assert(names.size() == tensors.size() && "Invalid initialization list");
   for (unsigned i = 0; i < names.size(); i++) {
     auto *T = tensors[i];
-    auto *V = G_.getParent().createVariable(
+    auto *V = G_.getParent()->createVariable(
         T->getElementType(), T->dims(), names[i],
         Variable::VisibilityKind::Public, Variable::TrainKind::None);
     V->copyFrom(T);

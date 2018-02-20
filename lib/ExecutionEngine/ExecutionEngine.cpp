@@ -120,7 +120,7 @@ void ExecutionEngine::compile(CompilationMode mode, Function *F) {
   ::glow::optimize(*F, mode);
 
   // Allow the backend to transform the graph.
-  if (IP_->transform(*F)) {
+  if (IP_->transform(F)) {
     // Optimize the graph again after the backend transformation.
     // In particular, DCE is very likely to be useful.
     ::glow::optimize(*F, mode);

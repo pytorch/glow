@@ -111,7 +111,7 @@ TEST(Quantization, quantizeGraph) {
 void createSimpleGraphForQuantization(Function &G, Variable *&input,
                                       SaveNode *&saveNode, Variable *W,
                                       Variable *B) {
-  auto *A = G.getParent().createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "A",
+  auto *A = G.getParent()->createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "A",
                                          Variable::VisibilityKind::Public,
                                          Variable::TrainKind::None);
   input = A;
