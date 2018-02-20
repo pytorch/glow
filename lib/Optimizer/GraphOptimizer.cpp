@@ -267,7 +267,7 @@ static void sinkCode(Function &G) {
 }
 
 /// Pool optimization.
-static void OptimizePool(Function &G) {
+static void optimizePool(Function &G) {
   auto &nodes = G.getNodes();
 
   // For each node:
@@ -306,7 +306,7 @@ static void OptimizePool(Function &G) {
   } // For all nodes in the graph.
 }
 
-static void OptimizeBatchNorm(Function &G) {
+static void optimizeBatchNorm(Function &G) {
   auto &nodes = G.getNodes();
 
   // For each node:
@@ -398,7 +398,7 @@ static void OptimizeBatchNorm(Function &G) {
   } // For all nodes in the graph.
 }
 
-static void OptimizeRegression(Function &G) {
+static void optimizeRegression(Function &G) {
   auto &nodes = G.getNodes();
   // For each node:
   for (auto const &node : nodes) {
@@ -531,7 +531,7 @@ static void CSE(Function &G) {
 
 /// Eliminate SliceNode when the input is SplatNode.
 /// Slice(Splat(args)) -> Splat(args')
-static void OptimizeSliceOfSplat(Function &G) {
+static void optimizeSliceOfSplat(Function &G) {
   for (const auto &node : G.getNodes()) {
     auto *sliceNode = dyn_cast<SliceNode>(node);
     if (!sliceNode)
@@ -550,7 +550,7 @@ void glow::optimize(Function &G, CompilationMode mode) {
   sinkCode(G);
 
   // Optimize the pooling operation.
-  OptimizePool(G);
+  optimizePool(G);
 
   // Perform Common Subexpression Elimination.
   CSE(G);
@@ -560,9 +560,9 @@ void glow::optimize(Function &G, CompilationMode mode) {
 
   if (mode == CompilationMode::Infer) {
     // Merge batch normalization operations.
-    OptimizeBatchNorm(G);
+    optimizeBatchNorm(G);
 
-    OptimizeRegression(G);
+    optimizeRegression(G);
   }
 
   // Perform Common Subexpression Elimination.
@@ -571,7 +571,7 @@ void glow::optimize(Function &G, CompilationMode mode) {
   optimizeConcatNodes(G);
 
   // Slice(Splat(dims, value)) -> Splat(dims', value)
-  OptimizeSliceOfSplat(G);
+  optimizeSliceOfSplat(G);
 
   // Perform Dead Code Elimination.
   DCE(G);
