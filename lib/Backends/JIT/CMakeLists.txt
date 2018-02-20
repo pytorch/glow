@@ -13,6 +13,7 @@ add_custom_command(OUTPUT
                    DEPENDS ${LIBJITSRC}
                    COMMENT "Clang: Generating runtime bytecode library." VERBATIM)
 add_library(JIT
+            AllocationsInfo.cpp
             FunctionSpecializer.cpp
             GlowJIT.cpp
             Pipeline.cpp
