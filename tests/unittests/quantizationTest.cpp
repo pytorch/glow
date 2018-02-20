@@ -108,19 +108,19 @@ TEST(Quantization, quantizeGraph) {
 }
 
 /// Builds a simple graph, returns back input var and save node through refs.
-void createSimpleGraphForQuantization(Function &G, Variable *&input,
+void createSimpleGraphForQuantization(Function *F, Variable *&input,
                                       SaveNode *&saveNode, Variable *W,
                                       Variable *B) {
-  auto *A = G.getParent()->createVariable(ElemKind::FloatTy, {1, 32, 32, 3},
+  auto *A = F->getParent()->createVariable(ElemKind::FloatTy, {1, 32, 32, 3},
                                           "A", Variable::VisibilityKind::Public,
                                           Variable::TrainKind::None);
   input = A;
-  auto *CV = G.createConv("conv", A, 16, 5, 1, 2);
-  auto *RL = G.createRELU("relu", CV);
-  auto *AP = G.createPool("pool", RL, PoolNode::Mode::Avg, 2, 2, 0);
+  auto *CV = F->createConv("conv", A, 16, 5, 1, 2);
+  auto *RL = F->createRELU("relu", CV);
+  auto *AP = F->createPool("pool", RL, PoolNode::Mode::Avg, 2, 2, 0);
 
-  Node *O = G.createFullyConnected("fc", AP, W, B);
-  saveNode = G.createSave("save", O);
+  Node *O = F->createFullyConnected("fc", AP, W, B);
+  saveNode = F->createSave("save", O);
 }
 
 TEST(Quantization, end2end) {
@@ -143,7 +143,7 @@ TEST(Quantization, end2end) {
   auto *B1 = mod1.createVariable(ElemKind::FloatTy, {2}, "bias",
                                  Variable::VisibilityKind::Private,
                                  Variable::TrainKind::Xavier, 1);
-  createSimpleGraphForQuantization(*F1, input1, result1, W1, B1);
+  createSimpleGraphForQuantization(F1, input1, result1, W1, B1);
 
   glow::profileQuantization(*F1);
   E1.compile(CompilationMode::Infer, F1);
@@ -163,7 +163,7 @@ TEST(Quantization, end2end) {
   // Make sure we are testing with the same input tensors.
   W2->getPayload().copyFrom(&W1->getPayload());
   B2->getPayload().copyFrom(&B1->getPayload());
-  createSimpleGraphForQuantization(*F2, input2, result2, W2, B2);
+  createSimpleGraphForQuantization(F2, input2, result2, W2, B2);
 
   glow::generateQuantizedGraph(F2, QI);
   E2.compile(CompilationMode::Infer, F2);
