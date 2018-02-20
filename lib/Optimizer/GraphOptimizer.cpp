@@ -209,8 +209,9 @@ static void sinkCode(Function *F) {
       }
 
       auto *newAN = F->createArithmetic(AN->getName(), LTR->getInput(),
-                                       RTR->getInput(), AN->getMode());
-      auto *newTR = F->createTranspose(LTR->getName(), newAN, LTR->getShuffle());
+                                        RTR->getInput(), AN->getMode());
+      auto *newTR =
+          F->createTranspose(LTR->getName(), newAN, LTR->getShuffle());
       AN->getResult().replaceAllUsesOfWith(newTR);
     }
 
@@ -298,7 +299,7 @@ static void optimizePool(Function *F) {
       }
 
       auto *NPL = F->createPool(PL->getName(), RL->getInput(), PL->getMode(),
-                               PL->getKernel(), PL->getStride(), PL->getPad());
+                                PL->getKernel(), PL->getStride(), PL->getPad());
       auto *NRL = F->createRELU(RL->getName(), NPL);
       PL->getResult().replaceAllUsesOfWith(NRL);
       continue;
