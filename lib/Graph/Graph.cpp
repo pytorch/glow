@@ -374,8 +374,8 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
       Variable::TrainKind::Xavier, fanIn);
 
   auto *bias = getParent()->createVariable(ElemKind::FloatTy, {depth}, "bias",
-                                          Variable::VisibilityKind::Private,
-                                          Variable::TrainKind::Broadcast, 0.1);
+                                           Variable::VisibilityKind::Private,
+                                           Variable::TrainKind::Broadcast, 0.1);
 
   auto OT = getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
@@ -422,8 +422,8 @@ PoolNode *Function::createPool(llvm::StringRef name, NodeValue input,
 
   auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
 
-  auto OT = getParent()->uniqueType(ElemKind::FloatTy,
-                                   {idim.n, outSz.first, outSz.second, idim.c});
+  auto OT = getParent()->uniqueType(
+      ElemKind::FloatTy, {idim.n, outSz.first, outSz.second, idim.c});
 
   return addNode(new PoolNode(name, OT, mode, input, kernel, stride, pad));
 }
@@ -460,10 +460,11 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier, fanIn);
 
   auto *B = getParent()->createVariable(T->getElementType(), {outDepth}, "bias",
-                                       Variable::VisibilityKind::Private,
-                                       Variable::TrainKind::Broadcast, 0.1);
+                                        Variable::VisibilityKind::Private,
+                                        Variable::TrainKind::Broadcast, 0.1);
 
-  auto OT = getParent()->uniqueType(T->getElementType(), {idim.first, outDepth});
+  auto OT =
+      getParent()->uniqueType(T->getElementType(), {idim.first, outDepth});
   return addNode(new FullyConnectedNode(name, OT, input, W, B));
 }
 
@@ -629,16 +630,16 @@ BatchNormalizationNode *Function::createBatchNormalization(llvm::StringRef name,
   size_t channels = input.dims()[channelIdx];
 
   // Allocate the learnable parameters beta and gamma.
-  auto *beta = getParent()->createVariable(ElemKind::FloatTy, {channels}, "beta",
-                                          Variable::VisibilityKind::Private,
-                                          Variable::TrainKind::Broadcast, 0.);
+  auto *beta = getParent()->createVariable(
+      ElemKind::FloatTy, {channels}, "beta", Variable::VisibilityKind::Private,
+      Variable::TrainKind::Broadcast, 0.);
   auto *gamma = getParent()->createVariable(
       ElemKind::FloatTy, {channels}, "gamma", Variable::VisibilityKind::Private,
       Variable::TrainKind::Broadcast, 1.0);
 
-  auto *mean = getParent()->createVariable(ElemKind::FloatTy, {channels}, "mean",
-                                          Variable::VisibilityKind::Private,
-                                          Variable::TrainKind::None);
+  auto *mean = getParent()->createVariable(
+      ElemKind::FloatTy, {channels}, "mean", Variable::VisibilityKind::Private,
+      Variable::TrainKind::None);
   auto *variance = getParent()->createVariable(
       ElemKind::FloatTy, {channels}, "variance",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
@@ -731,8 +732,8 @@ Function::createBatchedArithmetic(llvm::StringRef name, TypeRef outTy,
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest = getParent()->createVariable(input.getType(), name,
-                                          Variable::VisibilityKind::Public,
-                                          Variable::TrainKind::None);
+                                           Variable::VisibilityKind::Public,
+                                           Variable::TrainKind::None);
 
   std::string nodeName{"_save_"};
   nodeName += name;
@@ -802,7 +803,8 @@ DequantizeNode *Function::createDequantize(llvm::StringRef name,
                                            NodeValue input) {
   assert(input.getElementType() == ElemKind::Int8QTy &&
          "Input must be a quantized type");
-  TypeRef outTy = getParent()->uniqueType(Type(ElemKind::FloatTy, input.dims()));
+  TypeRef outTy =
+      getParent()->uniqueType(Type(ElemKind::FloatTy, input.dims()));
   return addNode(new DequantizeNode(name, outTy, input));
 }
 

@@ -111,9 +111,9 @@ TEST(Quantization, quantizeGraph) {
 void createSimpleGraphForQuantization(Function &G, Variable *&input,
                                       SaveNode *&saveNode, Variable *W,
                                       Variable *B) {
-  auto *A = G.getParent()->createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "A",
-                                         Variable::VisibilityKind::Public,
-                                         Variable::TrainKind::None);
+  auto *A = G.getParent()->createVariable(ElemKind::FloatTy, {1, 32, 32, 3},
+                                          "A", Variable::VisibilityKind::Public,
+                                          Variable::TrainKind::None);
   input = A;
   auto *CV = G.createConv("conv", A, 16, 5, 1, 2);
   auto *RL = G.createRELU("relu", CV);

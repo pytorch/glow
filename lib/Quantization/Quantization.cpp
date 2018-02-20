@@ -244,7 +244,7 @@ quantizeInputs(Function &G, Node *node,
     const TensorQuantizationParams &TQP =
         nodeToTQP.find(nodeOutputName)->second;
     auto QT = G.getParent()->uniqueType(ElemKind::Int8QTy, NV->dims(),
-                                       TQP.scale_, TQP.offset_);
+                                        TQP.scale_, TQP.offset_);
 
     Node *quantizeNode = G.createQuantize("quantize", NV, QT);
     quantizedInputs.push_back(quantizeNode);

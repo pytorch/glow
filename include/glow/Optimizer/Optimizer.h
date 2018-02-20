@@ -7,9 +7,9 @@ class IRFunction;
 class Function;
 
 enum class CompilationMode {
-  Train,      /// Compile the graph in preperation for training.
-  Infer,      /// Compile the graph for inference. Notice that this operation
-              /// changes the graph in a way that is not reversible.
+  Train, /// Compile the graph in preperation for training.
+  Infer, /// Compile the graph for inference. Notice that this operation
+         /// changes the graph in a way that is not reversible.
 };
 
 /// Perform optimizations on the IR representation.

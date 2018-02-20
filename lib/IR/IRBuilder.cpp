@@ -114,8 +114,8 @@ CrossEntropyLossInst *IRBuilder::createCrossEntropyLossOp(Value *p,
 
 ReshapeInst *IRBuilder::createReshapeOp(Value *input,
                                         llvm::ArrayRef<size_t> shape) {
-  auto ty = F_->getGraph()->getParent()->uniqueTypeWithNewShape(input->getType(),
-                                                               shape);
+  auto ty = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
+      input->getType(), shape);
   auto *res = createAllocActivationInst("reshape.res", ty);
   return createReshapeInst("reshape", res, input, shape);
 }

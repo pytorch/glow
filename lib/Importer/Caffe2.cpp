@@ -122,8 +122,8 @@ Node *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
 
   Tensor *T = getTensorByName(name);
   auto *V = G_.getParent()->createVariable(T->getElementType(), T->dims(), name,
-                                          Variable::VisibilityKind::Private,
-                                          Variable::TrainKind::Broadcast);
+                                           Variable::VisibilityKind::Private,
+                                           Variable::TrainKind::Broadcast);
   V->copyFrom(T);
   nodeByName_[name] = V;
   return V;

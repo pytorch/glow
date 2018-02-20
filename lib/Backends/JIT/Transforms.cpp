@@ -28,14 +28,14 @@ bool JITBackend::transform(Function *F) {
       if (AN->getMode() == ArithmeticNode::Mode::Max) {
         if (isZeroNode(AN->getLHS())) {
           auto I = F->createIntrinsicNode(AN->getName(), "jit.max0",
-                                         {AN->getRHS()}, {AN->getType()});
+                                          {AN->getRHS()}, {AN->getType()});
           NodeValue(node, 0).replaceAllUsesOfWith(I);
           changed = true;
           continue;
         }
         if (isZeroNode(AN->getRHS())) {
           auto I = F->createIntrinsicNode(AN->getName(), "jit.max0",
-                                         {AN->getLHS()}, {AN->getType()});
+                                          {AN->getLHS()}, {AN->getType()});
           NodeValue(node, 0).replaceAllUsesOfWith(I);
           changed = true;
           continue;

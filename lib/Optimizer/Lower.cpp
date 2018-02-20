@@ -123,7 +123,7 @@ void lowerFullyConnectedNode(Function &graph, FullyConnectedNode &FC) {
     // multiplication node and the batched-add node.
     auto FCT = FC.getResult()->getType();
     outTy = graph.getParent()->uniqueType(elemTy, {1, xDim.first, wDim[1]},
-                                         FCT->getScale(), FCT->getOffset());
+                                          FCT->getScale(), FCT->getOffset());
   } else {
     outTy = graph.getParent()->uniqueType(elemTy, {1, xDim.first, wDim[1]});
   }
