@@ -34,7 +34,7 @@ TEST(GraphOptz, DCE) {
   EXPECT_EQ(G.getNodes().size(), 80);
 
   // Optimize all of the dead code.
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
 
   //  All of the nodes are gone.
   EXPECT_EQ(G.getNodes().size(), 0);
@@ -60,7 +60,7 @@ TEST(GraphOptz, liveCodeNotEliminated) {
   EXPECT_EQ(G.getNodes().size(), 82);
 
   // This should not optimize code because none is dead.
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
 
   //  Nothing got optimized.
   EXPECT_EQ(G.getNodes().size(), 82);
@@ -81,7 +81,7 @@ TEST(GraphOptz, optimizeBatchNormAfterConv) {
 
   EXPECT_EQ(G.getNodes().size(), 3);
 
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
   EXPECT_EQ(G.getNodes().size(), 2);
 }
 
@@ -99,7 +99,7 @@ TEST(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
 
   EXPECT_EQ(G.getNodes().size(), 3);
 
-  ::glow::optimize(G, CompilationMode::Train);
+  ::glow::optimize(&G, CompilationMode::Train);
   EXPECT_EQ(G.getNodes().size(), 3);
 }
 
@@ -119,7 +119,7 @@ TEST(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
 
   EXPECT_EQ(G.getNodes().size(), 4);
 
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
   EXPECT_EQ(G.getNodes().size(), 4);
 }
 
@@ -137,7 +137,7 @@ TEST(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
 
   EXPECT_EQ(G.getNodes().size(), 3);
 
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than BN->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
@@ -161,7 +161,7 @@ TEST(GraphOptz, sinkTransposeBelowRELU) {
 
   EXPECT_EQ(G.getNodes().size(), 3);
 
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than RELU->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
@@ -185,7 +185,7 @@ TEST(GraphOptz, sinkTransposeBelowSigmoid) {
 
   EXPECT_EQ(G.getNodes().size(), 3);
 
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than Sigmoid->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
@@ -209,7 +209,7 @@ TEST(GraphOptz, sinkTransposeBelowTanh) {
 
   EXPECT_EQ(G.getNodes().size(), 3);
 
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than Sigmoid->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
@@ -234,7 +234,7 @@ TEST(GraphOptz, cancelTwoTransposes) {
 
   EXPECT_EQ(G.getNodes().size(), 4);
 
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
 
   EXPECT_EQ(G.getNodes().size(), 2);
 }
@@ -254,7 +254,7 @@ TEST(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
 
   EXPECT_EQ(G.getNodes().size(), 4);
 
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
 
   EXPECT_EQ(G.getNodes().size(), 4);
 }
@@ -277,7 +277,7 @@ TEST(GraphOptz, sinkTransposeBelowArithmeticNodes) {
 
   EXPECT_EQ(G.getNodes().size(), 4);
 
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than Add->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
@@ -305,7 +305,7 @@ TEST(GraphOptz, sinkReluBelowConcatNodes) {
 
   EXPECT_EQ(G.getNodes().size(), 4);
 
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
 
   // Expecting RELU->Output rather than Concat->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
@@ -332,7 +332,7 @@ TEST(GraphOptz, sinkTransposeBelowConcatNodes) {
 
   EXPECT_EQ(G.getNodes().size(), 4);
 
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than Concat->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
@@ -356,7 +356,7 @@ TEST(GraphOptz, poolBelowReluSwapped) {
 
   EXPECT_EQ(G.getNodes().size(), 3);
 
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
 
   // Expecting RELU->Output rather than Pool->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
@@ -379,7 +379,7 @@ TEST(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
 
   EXPECT_EQ(G.getNodes().size(), 3);
 
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
 
   // Expecting Pool->Output (no swap).
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
@@ -403,7 +403,7 @@ TEST(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
 
   EXPECT_EQ(G.getNodes().size(), 4);
 
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
 
   // Expecting Pool->Output (no swap).
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
@@ -438,7 +438,7 @@ TEST(GraphOptz, mergeConcatNodes) {
 
   EXPECT_EQ(G.getNodes().size(), 5);
 
-  ::glow::optimize(G, CompilationMode::Train);
+  ::glow::optimize(&G, CompilationMode::Train);
 
   // It is expected that the optimization transforms
   // concat4(1, A3, concat2(1, A1, concat1(1, A1, A2)), concat3(2, A4))
@@ -494,7 +494,7 @@ TEST(GraphOptz, CSE) {
 
   EXPECT_EQ(G.getNodes().size(), 4);
 
-  ::glow::optimize(G, CompilationMode::Train);
+  ::glow::optimize(&G, CompilationMode::Train);
 
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
 
@@ -528,7 +528,7 @@ TEST(GraphOptz, SliceOfSplatNode) {
 
   EXPECT_EQ(G.getNodes().size(), 3);
 
-  ::glow::optimize(G, CompilationMode::Train);
+  ::glow::optimize(&G, CompilationMode::Train);
 
   EXPECT_EQ(G.getNodes().size(), 2);
 
@@ -559,7 +559,7 @@ TEST(GraphOptz, SliceOfSplatNodeChain) {
 
     EXPECT_EQ(G.getNodes().size(), 4);
 
-    ::glow::optimize(G, CompilationMode::Train);
+    ::glow::optimize(&G, CompilationMode::Train);
 
     // This test illustrates some inconsistency in the optimization.
     // Chain splats are not guaranteed to be optimized.
@@ -577,7 +577,7 @@ TEST(GraphOptz, DCEPublicVars) {
   EXPECT_EQ(mod.getVars().size(), 1);
 
   // Optimize all of the dead code.
-  ::glow::optimize(G, CompilationMode::Infer);
+  ::glow::optimize(&G, CompilationMode::Infer);
 
   //  Public nodes should not be deleted.
   EXPECT_EQ(mod.getVars().size(), 1);

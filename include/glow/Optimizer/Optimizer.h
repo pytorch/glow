@@ -15,7 +15,7 @@ enum class CompilationMode {
 /// Perform optimizations on the IR representation.
 void optimize(IRFunction &M, CompilationMode mode);
 /// Perform optimizations on the graph representation.
-void optimize(Function &G, CompilationMode mode);
+void optimize(Function *F, CompilationMode mode);
 
 /// Lower the high-level neural network operators into low-level lineal algebra
 /// operators.

@@ -36,9 +36,9 @@ static bool shouldDeleteNode(Node *N) {
 }
 
 /// Dead code elimination.
-static void DCE(Function &G) {
-  auto &nodes = G.getNodes();
-  auto &vars = G.getParent()->getVars();
+static void DCE(Function *F) {
+  auto &nodes = F->getNodes();
+  auto &vars = F->getParent()->getVars();
 
   std::vector<VariablesList::iterator> erasedVars{};
   std::vector<NodesList::iterator> erasedNodes{};
@@ -61,7 +61,7 @@ static void DCE(Function &G) {
 
     while (!erasedNodes.empty()) {
       auto it = erasedNodes.back();
-      G.eraseNode(it);
+      F->eraseNode(it);
       erasedNodes.pop_back();
     }
 
@@ -79,7 +79,7 @@ static void DCE(Function &G) {
 
   while (!erasedVars.empty()) {
     auto it = erasedVars.back();
-    G.getParent()->eraseVariable(it);
+    F->getParent()->eraseVariable(it);
     erasedVars.pop_back();
   }
 }
@@ -105,8 +105,8 @@ static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle1,
 }
 
 /// Code Sinking.
-static void sinkCode(Function &G) {
-  auto &nodes = G.getNodes();
+static void sinkCode(Function *F) {
+  auto &nodes = F->getNodes();
 
   // For each node:
   for (auto const &node : nodes) {
@@ -123,11 +123,11 @@ static void sinkCode(Function &G) {
       unsigned idx = BN->getChannelIdx();
       unsigned newChannelIdx = TR->getShuffle()[idx];
 
-      auto *NewBN = G.createBatchNormalization(
+      auto *NewBN = F->createBatchNormalization(
           BN->getName(), TR->getInput(), BN->getBias(), BN->getScale(),
           BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
           BN->getMomentum());
-      auto *newTR = G.createTranspose(TR->getName(), NewBN, TR->getShuffle());
+      auto *newTR = F->createTranspose(TR->getName(), NewBN, TR->getShuffle());
 
       BN->getResult().replaceAllUsesOfWith(newTR);
       continue;
@@ -141,8 +141,8 @@ static void sinkCode(Function &G) {
         continue;
       }
 
-      auto *NRL = G.createRELU(RL->getName(), TR->getInput());
-      auto *newTR = G.createTranspose(TR->getName(), NRL, TR->getShuffle());
+      auto *NRL = F->createRELU(RL->getName(), TR->getInput());
+      auto *newTR = F->createTranspose(TR->getName(), NRL, TR->getShuffle());
       RL->getResult().replaceAllUsesOfWith(newTR);
       continue;
     }
@@ -155,8 +155,8 @@ static void sinkCode(Function &G) {
         continue;
       }
 
-      auto *NSI = G.createSigmoid(SI->getName(), TR->getInput());
-      auto *newTR = G.createTranspose(TR->getName(), NSI, TR->getShuffle());
+      auto *NSI = F->createSigmoid(SI->getName(), TR->getInput());
+      auto *newTR = F->createTranspose(TR->getName(), NSI, TR->getShuffle());
       SI->getResult().replaceAllUsesOfWith(newTR);
       continue;
     }
@@ -169,8 +169,8 @@ static void sinkCode(Function &G) {
         continue;
       }
 
-      auto *NTN = G.createTanh(TN->getName(), TR->getInput());
-      auto *newTR = G.createTranspose(TR->getName(), NTN, TR->getShuffle());
+      auto *NTN = F->createTanh(TN->getName(), TR->getInput());
+      auto *newTR = F->createTranspose(TR->getName(), NTN, TR->getShuffle());
       TN->getResult().replaceAllUsesOfWith(newTR);
       continue;
     }
@@ -208,9 +208,9 @@ static void sinkCode(Function &G) {
         continue;
       }
 
-      auto *newAN = G.createArithmetic(AN->getName(), LTR->getInput(),
+      auto *newAN = F->createArithmetic(AN->getName(), LTR->getInput(),
                                        RTR->getInput(), AN->getMode());
-      auto *newTR = G.createTranspose(LTR->getName(), newAN, LTR->getShuffle());
+      auto *newTR = F->createTranspose(LTR->getName(), newAN, LTR->getShuffle());
       AN->getResult().replaceAllUsesOfWith(newTR);
     }
 
@@ -225,9 +225,9 @@ static void sinkCode(Function &G) {
       auto *R = dyn_cast<ReluNode>(RInput);
 
       if (L && R) {
-        auto *newCN = G.createConcat(
+        auto *newCN = F->createConcat(
             CN->getName(), {L->getInput(), R->getInput()}, CN->getDim());
-        auto *newRL = G.createRELU(L->getName(), newCN);
+        auto *newRL = F->createRELU(L->getName(), newCN);
         CN->getResult().replaceAllUsesOfWith(newRL);
       }
     }
@@ -257,9 +257,9 @@ static void sinkCode(Function &G) {
       unsigned idx = CN->getDim();
       unsigned newChannelIdx = L->getShuffle()[idx];
 
-      auto *newCN = G.createConcat(
+      auto *newCN = F->createConcat(
           CN->getName(), {L->getInput(), R->getInput()}, newChannelIdx);
-      auto *newTR = G.createTranspose(L->getName(), newCN, L->getShuffle());
+      auto *newTR = F->createTranspose(L->getName(), newCN, L->getShuffle());
       CN->getResult().replaceAllUsesOfWith(newTR);
     }
 
@@ -267,8 +267,8 @@ static void sinkCode(Function &G) {
 }
 
 /// Pool optimization.
-static void optimizePool(Function &G) {
-  auto &nodes = G.getNodes();
+static void optimizePool(Function *F) {
+  auto &nodes = F->getNodes();
 
   // For each node:
   for (auto const &node : nodes) {
@@ -297,17 +297,17 @@ static void optimizePool(Function &G) {
         continue;
       }
 
-      auto *NPL = G.createPool(PL->getName(), RL->getInput(), PL->getMode(),
+      auto *NPL = F->createPool(PL->getName(), RL->getInput(), PL->getMode(),
                                PL->getKernel(), PL->getStride(), PL->getPad());
-      auto *NRL = G.createRELU(RL->getName(), NPL);
+      auto *NRL = F->createRELU(RL->getName(), NPL);
       PL->getResult().replaceAllUsesOfWith(NRL);
       continue;
     }
   } // For all nodes in the graph.
 }
 
-static void optimizeBatchNorm(Function &G) {
-  auto &nodes = G.getNodes();
+static void optimizeBatchNorm(Function *F) {
+  auto &nodes = F->getNodes();
 
   // For each node:
   for (auto const &node : nodes) {
@@ -398,8 +398,8 @@ static void optimizeBatchNorm(Function &G) {
   } // For all nodes in the graph.
 }
 
-static void optimizeRegression(Function &G) {
-  auto &nodes = G.getNodes();
+static void optimizeRegression(Function *F) {
+  auto &nodes = F->getNodes();
   // For each node:
   for (auto const &node : nodes) {
     // In inference mode Regression nodes simply forward their inputs.
@@ -412,8 +412,8 @@ static void optimizeRegression(Function &G) {
 /// Concat nodes merging.
 /// concat(dim1, concat(dim2, X, Y), Z) -> concat(dim1, X, Y, Z)
 /// but only if dim1 == dim2
-static void optimizeConcatNodes(Function &G) {
-  auto &nodes = G.getNodes();
+static void optimizeConcatNodes(Function *F) {
+  auto &nodes = F->getNodes();
 
   // For each node:
   for (auto const &node : nodes) {
@@ -439,7 +439,7 @@ static void optimizeConcatNodes(Function &G) {
       if (!changed)
         continue;
       // Create a new Concat node.
-      auto newCN = G.createConcat(CN->getName(), newInputs, CN->getDim());
+      auto newCN = F->createConcat(CN->getName(), newInputs, CN->getDim());
       CN->getResult().replaceAllUsesOfWith(newCN);
     }
   }
@@ -513,7 +513,7 @@ struct CSEVisitor : NodeWalker {
 } // namespace
 
 /// Common Subexpression Elimination.
-static void CSE(Function &G) {
+static void CSE(Function *F) {
   CSEVisitor visitor;
 
   // No need to perform CSE on variables because
@@ -524,55 +524,55 @@ static void CSE(Function &G) {
   // TODO: Make sure that nodes are visited after nodes that dominate them.
   // This code may need to be updated if we allow for non-linear control flow
   // in the future.
-  for (auto const &N : G.getNodes()) {
+  for (auto const &N : F->getNodes()) {
     N->visit(nullptr, &visitor);
   }
 }
 
 /// Eliminate SliceNode when the input is SplatNode.
 /// Slice(Splat(args)) -> Splat(args')
-static void optimizeSliceOfSplat(Function &G) {
-  for (const auto &node : G.getNodes()) {
+static void optimizeSliceOfSplat(Function *F) {
+  for (const auto &node : F->getNodes()) {
     auto *sliceNode = dyn_cast<SliceNode>(node);
     if (!sliceNode)
       continue;
     auto *splatNode = dyn_cast<SplatNode>(sliceNode->getInput());
     if (!splatNode)
       continue;
-    auto *newSplatNode = G.createSplat(
+    auto *newSplatNode = F->createSplat(
         sliceNode->getName(), sliceNode->getType(), splatNode->getValue());
     sliceNode->getResult().replaceAllUsesOfWith(newSplatNode);
   }
 }
 
-void glow::optimize(Function &G, CompilationMode mode) {
+void glow::optimize(Function *F, CompilationMode mode) {
   // Sink transpose operations in an attempt to cancel them out.
-  sinkCode(G);
+  sinkCode(F);
 
   // Optimize the pooling operation.
-  optimizePool(G);
+  optimizePool(F);
 
   // Perform Common Subexpression Elimination.
-  CSE(G);
+  CSE(F);
 
   // Perform Dead Code Elimination.
-  DCE(G);
+  DCE(F);
 
   if (mode == CompilationMode::Infer) {
     // Merge batch normalization operations.
-    optimizeBatchNorm(G);
+    optimizeBatchNorm(F);
 
-    optimizeRegression(G);
+    optimizeRegression(F);
   }
 
   // Perform Common Subexpression Elimination.
-  CSE(G);
+  CSE(F);
 
-  optimizeConcatNodes(G);
+  optimizeConcatNodes(F);
 
   // Slice(Splat(dims, value)) -> Splat(dims', value)
-  optimizeSliceOfSplat(G);
+  optimizeSliceOfSplat(F);
 
   // Perform Dead Code Elimination.
-  DCE(G);
+  DCE(F);
 }
