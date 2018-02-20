@@ -555,7 +555,7 @@ IntrinsicNode *Function::createIntrinsicNode(llvm::StringRef name,
 ConcatNode *Function::createConcat(llvm::StringRef name,
                                    llvm::ArrayRef<Node *> inputs,
                                    unsigned dimension) {
-  for (int i = 0, e = inputs.size(); i < e; i++) {
+  for (int i = 1, e = inputs.size(); i < e; i++) {
     assert(sameSameShapeExceptDim(inputs[i]->getType(), inputs[0]->getType(),
                                   dimension) &&
            "Invalid type");
