@@ -15,6 +15,7 @@
 #include <unordered_set>
 
 using namespace glow;
+using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
@@ -553,9 +554,13 @@ void IRFunction::dump() {
     dumpIR(II, sb);
     if (isa<AllocActivationInst>(II))
       sb << " // size: " << II->getType()->getSizeInBytes();
-    if (isa<DeallocActivationInst>(II))
+    if (isa<DeallocActivationInst>(II)) {
       sb << " // size: "
-         << II->getOperand(0).first->getType()->getSizeInBytes();
+         << cast<DeallocActivationInst>(II)
+                ->getSrc()
+                ->getType()
+                ->getSizeInBytes();
+    }
     if (hasResultValue(II))
       dumpUsers(II, sb, InstrNumbering);
     sb << "\n";

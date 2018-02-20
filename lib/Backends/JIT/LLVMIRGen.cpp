@@ -478,36 +478,63 @@ void JITBackend::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   case Kinded::Kind::ElementSubInstKind:
   case Kinded::Kind::ElementCmpLTEInstKind: {
     // Generate code for the op parameters.
-    auto *dest = I->getOperand(0).first;
-    auto *lhs = I->getOperand(1).first;
-    auto *rhs = I->getOperand(2).first;
-    auto *destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
-    auto *lhsPtr = emitValueAddress(builder, lhs, ElemKind::FloatTy);
-    auto *rhsPtr = emitValueAddress(builder, rhs, ElemKind::FloatTy);
-    auto numElem = dest->getType()->size();
-    auto *numElemVal = emitConst(builder, numElem);
+    Value *dest;
+    llvm::Value *destPtr, *lhsPtr, *rhsPtr;
 
     // Select the correct kernel from the library.
     const char *funcName = "";
     switch (I->getKind()) {
-    case Kinded::Kind::ElementDivInstKind:
+    case Kinded::Kind::ElementDivInstKind: {
+      auto *tmpInst = llvm::cast<ElementDivInst>(I);
+      dest = tmpInst->getDest();
+      destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
+      lhsPtr = emitValueAddress(builder, tmpInst->getLHS(), ElemKind::FloatTy);
+      rhsPtr = emitValueAddress(builder, tmpInst->getRHS(), ElemKind::FloatTy);
       funcName = "libjit_element_div_f";
       break;
-    case Kinded::Kind::ElementMulInstKind:
+    }
+    case Kinded::Kind::ElementMulInstKind: {
+      auto *tmpInst = llvm::cast<ElementMulInst>(I);
+      dest = tmpInst->getDest();
+      destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
+      lhsPtr = emitValueAddress(builder, tmpInst->getLHS(), ElemKind::FloatTy);
+      rhsPtr = emitValueAddress(builder, tmpInst->getRHS(), ElemKind::FloatTy);
       funcName = "libjit_element_mul_f";
       break;
-    case Kinded::Kind::ElementAddInstKind:
+    }
+    case Kinded::Kind::ElementAddInstKind: {
+      auto *tmpInst = llvm::cast<ElementAddInst>(I);
+      dest = tmpInst->getDest();
+      destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
+      lhsPtr = emitValueAddress(builder, tmpInst->getLHS(), ElemKind::FloatTy);
+      rhsPtr = emitValueAddress(builder, tmpInst->getRHS(), ElemKind::FloatTy);
       funcName = "libjit_element_add_f";
       break;
-    case Kinded::Kind::ElementSubInstKind:
+    }
+    case Kinded::Kind::ElementSubInstKind: {
+      auto *tmpInst = llvm::cast<ElementSubInst>(I);
+      dest = tmpInst->getDest();
+      destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
+      lhsPtr = emitValueAddress(builder, tmpInst->getLHS(), ElemKind::FloatTy);
+      rhsPtr = emitValueAddress(builder, tmpInst->getRHS(), ElemKind::FloatTy);
       funcName = "libjit_element_sub_f";
       break;
-    case Kinded::Kind::ElementCmpLTEInstKind:
+    }
+    case Kinded::Kind::ElementCmpLTEInstKind: {
+      auto *tmpInst = llvm::cast<ElementCmpLTEInst>(I);
+      dest = tmpInst->getDest();
+      destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
+      lhsPtr = emitValueAddress(builder, tmpInst->getLHS(), ElemKind::FloatTy);
+      rhsPtr = emitValueAddress(builder, tmpInst->getRHS(), ElemKind::FloatTy);
       funcName = "libjit_element_cmp_lte_f";
       break;
+    }
     default:
       llvm_unreachable("Invalid node kind");
     }
+
+    auto numElem = dest->getType()->size();
+    auto *numElemVal = emitConst(builder, numElem);
 
     auto *F = getFunction(funcName);
     assert(F && "Unable to load the function");

@@ -13,6 +13,7 @@
 
 using namespace glow;
 
+using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
@@ -171,7 +172,28 @@ void OCLBackend::doForwardPass(bool isTrain) {
       }
 
       // Figure out how many element-wise elements are there to process:
-      size_t global = I->getOperand(0).first->getType()->size();
+      size_t global;
+      if (auto *tmpInst = dyn_cast<SigmoidInst>(I)) {
+        global = tmpInst->getDest()->getType()->size();
+      } else if (auto *tmpInst = dyn_cast<TanhInst>(I)) {
+        global = tmpInst->getDest()->getType()->size();
+      } else if (auto *tmpInst = dyn_cast<ElementAddInst>(I)) {
+        global = tmpInst->getDest()->getType()->size();
+      } else if (auto *tmpInst = dyn_cast<ElementSubInst>(I)) {
+        global = tmpInst->getDest()->getType()->size();
+      } else if (auto *tmpInst = dyn_cast<ElementMaxInst>(I)) {
+        global = tmpInst->getDest()->getType()->size();
+      } else if (auto *tmpInst = dyn_cast<ElementMinInst>(I)) {
+        global = tmpInst->getDest()->getType()->size();
+      } else if (auto *tmpInst = dyn_cast<ElementCmpLTEInst>(I)) {
+        global = tmpInst->getDest()->getType()->size();
+      } else if (auto *tmpInst = dyn_cast<ElementMulInst>(I)) {
+        global = tmpInst->getDest()->getType()->size();
+      } else if (auto *tmpInst = dyn_cast<ElementDivInst>(I)) {
+        global = tmpInst->getDest()->getType()->size();
+      } else {
+        GLOW_UNREACHABLE("Invalid instruction.");
+      }
 
       enqueueKernel(commands_, kernel, deviceId_, {global});
       kernels.push_back(kernel);
@@ -192,7 +214,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
       setKernelArg(kernel, numArgs + 1, SI->getValue());
 
       // Figure out how many element-wise elements are there to process:
-      size_t global = I->getOperand(0).first->getType()->size();
+      size_t global = SI->getDest()->getType()->size();
 
       enqueueKernel(commands_, kernel, deviceId_, {global});
       kernels.push_back(kernel);
@@ -479,8 +501,16 @@ void OCLBackend::doForwardPass(bool isTrain) {
     }
 
     if (isa<CopyInst>(I) || isa<ReshapeInst>(I)) {
-      auto *dest = I->getOperand(0).first;
-      auto *src = I->getOperand(1).first;
+      Value *dest, *src;
+      if (isa<CopyInst>(I)) {
+        auto *tmpInst = cast<CopyInst>(I);
+        dest = tmpInst->getDest();
+        src = tmpInst->getSrc();
+      } else {
+        auto *tmpInst = cast<ReshapeInst>(I);
+        dest = tmpInst->getDest();
+        src = tmpInst->getSrc();
+      }
       if (src == dest) {
         continue;
       }

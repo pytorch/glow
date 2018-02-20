@@ -203,7 +203,7 @@ static void hoistDealloc(IRFunction &M) {
       continue;
     }
 
-    auto *alloc = cast<AllocActivationInst>(getOrigin(da->getOperand(0).first));
+    auto *alloc = cast<AllocActivationInst>(getOrigin(da->getSrc()));
     auto where = lastUser[alloc];
     if (std::next(where) == curr) {
       // No need to move the instruction, because the last use was

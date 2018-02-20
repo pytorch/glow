@@ -1356,7 +1356,7 @@ void Interpreter::fwdAllocActivationInst(bool isTrain,
 
 void Interpreter::fwdDeallocActivationInst(bool isTrain,
                                            const DeallocActivationInst *I) {
-  deleteTensor(I->getOperand(0).first);
+  deleteTensor(I->getSrc());
 }
 
 /// Prints a value of the instruction's operand.
