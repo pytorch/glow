@@ -111,9 +111,9 @@ TEST(Quantization, quantizeGraph) {
 void createSimpleGraphForQuantization(Function *F, Variable *&input,
                                       SaveNode *&saveNode, Variable *W,
                                       Variable *B) {
-  auto *A = F->getParent()->createVariable(ElemKind::FloatTy, {1, 32, 32, 3},
-                                          "A", Variable::VisibilityKind::Public,
-                                          Variable::TrainKind::None);
+  auto *A = F->getParent()->createVariable(
+      ElemKind::FloatTy, {1, 32, 32, 3}, "A", Variable::VisibilityKind::Public,
+      Variable::TrainKind::None);
   input = A;
   auto *CV = F->createConv("conv", A, 16, 5, 1, 2);
   auto *RL = F->createRELU("relu", CV);

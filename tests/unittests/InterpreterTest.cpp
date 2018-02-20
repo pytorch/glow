@@ -970,8 +970,8 @@ TEST(Interpreter, nonLinearClassifier) {
   auto *A = mod.createVariable(ElemKind::FloatTy, {batchSize, 2}, "A",
                                Variable::VisibilityKind::Public);
   auto *S = mod.createVariable(ElemKind::IndexTy, {batchSize, 1}, "S",
-                             Variable::VisibilityKind::Public,
-                             Variable::TrainKind::None);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
 
   auto *FCL0 = G.createFullyConnected("fc1", A, 8);
   auto *T0 = G.createTanh("tanh1", FCL0);
