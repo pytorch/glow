@@ -339,58 +339,23 @@ void libjit_local_response_normalization_f(float *outW, const float *inW,
   for (size_t n = 0; n < inWdims[0]; n++) {
     for (size_t h = 0; h < inWdims[1]; h++) {
       for (size_t w = 0; w < inWdims[2]; w++) {
-        // Prepare right half of sliding window based at c = 0
-        float m2 = 0.0;
-        for (size_t i = 0; i < MIN(halfWindow, inWdims[3]); i++) {
-          float val = inW[libjit_getXYZW(inWdims, n, h, w, i)];
-          m2 += val * val;
-        }
-
-        // Beginning section: Process c = 0 to c = halfWindow
-        for (size_t c = 0; c < MIN(halfWindow + 1, inWdims[3]); c++) {
-          size_t r = c + halfWindow;
-          if (r < inWdims[3]) {
-            float val = inW[libjit_getXYZW(inWdims, n, h, w, r)];
+        for (size_t c = 0; c < inWdims[3]; c++) {
+          float m2 = 0.0;
+          for (size_t i = (c >= halfWindow ? c - halfWindow : 0);
+               i <= MIN(c + halfWindow, inWdims[3] - 1); i++) {
+            float val = inW[libjit_getXYZW(inWdims, n, h, w, i)];
             m2 += val * val;
           }
-          float scale = k + normedAlpha * m2;
-          scaleCache[libjit_getXYZW(inWdims, n, h, w, c)] = scale;
-          float normFactor = pow(scale, -beta);
-          outW[libjit_getXYZW(outWdims, n, h, w, c)] =
-              inW[libjit_getXYZW(inWdims, n, h, w, c)] * normFactor;
-        }
 
-        // Main section: Process c = halfWindow + 1 to
-        // c = inWdims[3] - halfWindow - 1
-        for (size_t c = halfWindow + 1; c < inWdims[3] - halfWindow; c++) {
-          float l = inW[libjit_getXYZW(inWdims, n, h, w, c - halfWindow - 1)];
-          m2 -= l * l;
-          float r = inW[libjit_getXYZW(inWdims, n, h, w, c + halfWindow)];
-          m2 += r * r;
           float scale = k + normedAlpha * m2;
           scaleCache[libjit_getXYZW(inWdims, n, h, w, c)] = scale;
           float normFactor = pow(scale, -beta);
           outW[libjit_getXYZW(outWdims, n, h, w, c)] =
               inW[libjit_getXYZW(inWdims, n, h, w, c)] * normFactor;
-        }
-
-        // Final section: Process
-        // c = MAX(halfWindow + 1, inWdims[3] - halfWindow) to
-        // c = inWdims[3] - 1
-        for (size_t c = (inWdims[3] > 2 * halfWindow ? inWdims[3] - halfWindow
-                                                     : halfWindow + 1);
-             c < inWdims[3]; c++) {
-          float val = inW[libjit_getXYZW(inWdims, n, h, w, c - halfWindow - 1)];
-          m2 -= val * val;
-          float scale = k + normedAlpha * m2;
-          scaleCache[libjit_getXYZW(inWdims, n, h, w, c)] = scale;
-          float normFactor = pow(scale, -beta);
-          outW[libjit_getXYZW(outWdims, n, h, w, c)] =
-              inW[libjit_getXYZW(inWdims, n, h, w, c)] * normFactor;
-        }
-      } // W
-    }   // H
-  }     // N
+        } // C
+      }   // W
+    }     // H
+  }       // N
 }
 
 void libjit_pool_max_f(const float *inW, float *outW, const size_t *inWdims,
