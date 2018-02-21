@@ -226,7 +226,7 @@ float dequantize(int8_t input, const TensorQuantizationParams &TQP) {
 static bool shouldQuantize(const Node *node) {
   return llvm::isa<FullyConnectedNode>(node) ||
          llvm::isa<ConvolutionNode>(node) || llvm::isa<ReluNode>(node) ||
-         llvm::isa<TransposeNode>(node);
+         llvm::isa<TransposeNode>(node) || llvm::isa<ReshapeNode>(node);
 }
 
 /// Quantize all inputs for \p node and return back pointers to the newly
@@ -313,7 +313,6 @@ void generateQuantizedGraph(
       auto *R = cast<ReluNode>(node);
       assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
       quantizedNode = F->createRELU(R->getName(), quantizedInputs[0]);
-
       break;
     }
     case Kinded::Kind::TransposeNodeKind: {
@@ -321,7 +320,13 @@ void generateQuantizedGraph(
       assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
       quantizedNode =
           F->createTranspose(T->getName(), quantizedInputs[0], T->getShuffle());
-
+      break;
+    }
+    case Kinded::Kind::ReshapeNodeKind: {
+      auto *R = cast<ReshapeNode>(node);
+      assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+      quantizedNode =
+          F->createReshape(R->getName(), quantizedInputs[0], R->getDims());
       break;
     }
 
