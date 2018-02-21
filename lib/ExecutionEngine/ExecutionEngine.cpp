@@ -103,7 +103,7 @@ void ExecutionEngine::loadValueFromTensor(Variable *v, Tensor *input) {
   t.copyFrom(input);
 }
 
-void ExecutionEngine::compile(CompilationMode mode, Function *F) {
+void ExecutionEngine::generateIR(CompilationMode mode, Function *F) {
   // Reset the engine and start a new compilation process.
   reset();
 
@@ -134,5 +134,15 @@ void ExecutionEngine::compile(CompilationMode mode, Function *F) {
 
   // Optimize the generated IR.
   ::glow::optimize(*IR_, mode);
+}
+
+void ExecutionEngine::compile(CompilationMode mode, Function *F) {
+  generateIR(mode, F);
   IP_->init();
+}
+
+void ExecutionEngine::save(CompilationMode mode, Function *F,
+                           llvm::StringRef outputDir) {
+  generateIR(mode, F);
+  IP_->save(outputDir);
 }

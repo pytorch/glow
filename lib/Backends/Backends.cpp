@@ -36,3 +36,7 @@ Backend *glow::createBackend(BackendKind backendKind, IRFunction *F) {
     break;
   }
 }
+
+void Backend::save(llvm::StringRef outputDir) {
+  llvm_unreachable("Saving a bundle is not supported by the backend");
+}

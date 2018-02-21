@@ -50,6 +50,7 @@ void JITBackend::emitJitMain() {
 
   // Prepare arguments for the "main" function.
   llvm::SmallVector<llvm::Value *, 4> initFunctionCallArgs;
+  // Get the integer type having the same size in bits as size_t.
   auto *sizeTType = builder.getIntNTy(sizeof(size_t) * 8);
   auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen_.getLLVMContext());
 
@@ -120,4 +121,159 @@ void JITBackend::doForwardPass(bool isTrain) {
   } else {
     GLOW_ASSERT(false && "Error getting address.");
   }
+}
+
+//===----------------------------------------------------------------------===//
+//                   Functions for saving bundles
+//===----------------------------------------------------------------------===//
+
+void JITBackend::saveWeights(llvm::StringRef weightsFileName) {
+  std::error_code EC;
+  llvm::raw_fd_ostream weightsFile(weightsFileName, EC, llvm::sys::fs::F_None);
+  GLOW_ASSERT(!EC &&
+              "Could not open the output file for saving the bundle weights");
+  // Serialize only constant weights.
+  // Do not serialize mutable weights representing inputs and outputs, because
+  // it should be configurable and set by the client.
+  size_t pos = 0;
+  for (auto &v : F_->getGraph()->getParent()->getVars()) {
+    auto *w = llvm::cast<WeightVar>(F_->getWeightForNode(v));
+    if (v->getVisibilityKind() == Variable::VisibilityKind::Public)
+      continue;
+    auto numBytes = w->getType()->getSizeInBytes();
+    auto payload = v->getPayload().getUnsafePtr();
+    auto addr = allocationsInfo_.allocatedAddressed_[getOrigin(w)];
+    if (addr < pos) {
+      // The payload was written already. It aliases something we have seen
+      // already.
+      continue;
+    }
+    weightsFile.seek(addr);
+    weightsFile.write(payload, numBytes);
+    pos = addr + numBytes;
+  }
+  weightsFile.close();
+}
+
+void JITBackend::produceBundle(llvm::StringRef outputDir) {
+  // Emit the config for the bundle.
+  emitBundleConfig();
+
+  auto &M = irgen_.getModule();
+  auto bundleName = irgen_.getMainEntryName();
+  auto bundleCodeOutput = outputDir + "/" + bundleName + ".o";
+  auto bundleWeightsOutput = outputDir + "/" + bundleName + ".weights";
+  DEBUG(llvm::outs() << "Producing a bundle:\n"
+                     << "bundle name: " << bundleName << "\n"
+                     << "bundle code: " << bundleCodeOutput << "\n"
+                     << "bundle weights:" << bundleWeightsOutput << "\n");
+  llvm::StringRef fileName = bundleCodeOutput.str();
+  std::error_code EC;
+  llvm::raw_fd_ostream outputFile(fileName, EC, llvm::sys::fs::F_None);
+  GLOW_ASSERT(!EC &&
+              "Could not open the output file for saving the bundle code");
+  if (fileName.endswith(".bc")) {
+    // Emit the bitcode file.
+    llvm::WriteBitcodeToFile(&M, outputFile);
+  } else if (fileName.endswith(".o")) {
+    // Emit the object file.
+    llvm::legacy::PassManager PM;
+    auto &TM = irgen_.getTargetMachine();
+    TM.addPassesToEmitFile(
+        PM, outputFile, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
+    PM.run(M);
+  }
+  outputFile.close();
+  // Output weights.
+  saveWeights(bundleWeightsOutput.str());
+}
+
+/// Emit the entry function for the bundle. It simply calls the main entry of
+/// the module and forwards its arguments to it. As the last argument it
+/// provides the constant array of offsets. Since these offsets are constants,
+/// the LLVM optimizer will constant propagate them into relative addressing
+/// computations and the like and produce a very efficient code that uses
+/// absolute addressing whenever possible.
+void JITBackend::emitBundleEntryFunction() {
+  // The bundle entry point has the following API:
+  // void entry(uint8_t *baseConstantWeightVars, uint8_t *baseInoutWeightVars,
+  // uint8_t *baseActivations);
+  llvm::Type *voidTy = llvm::Type::getVoidTy(irgen_.getLLVMContext());
+  auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen_.getLLVMContext());
+  llvm::FunctionType *bundleFuncTy =
+      llvm::FunctionType::get(voidTy, {int8PtrTy, int8PtrTy, int8PtrTy}, false);
+  auto *func =
+      llvm::Function::Create(bundleFuncTy, llvm::Function::ExternalLinkage,
+                             irgen_.getMainEntryName(), &irgen_.getModule());
+  llvm::BasicBlock *entry_bb =
+      llvm::BasicBlock::Create(irgen_.getLLVMContext(), "entry", func);
+  llvm::IRBuilder<> builder(entry_bb);
+
+  // Prepare arguments for the "main" function.
+  llvm::SmallVector<llvm::Value *, 4> initFunctionCallArgs;
+  initFunctionCallArgs.push_back(func->args().begin());
+  initFunctionCallArgs.push_back(func->args().begin() + 1);
+  initFunctionCallArgs.push_back(func->args().begin() + 2);
+  // Now form the offsets array and pass it as the last argument.
+  auto offsetsArray = irgen_.emitConstOffsetsArray(builder, allocationsInfo_);
+  initFunctionCallArgs.push_back(offsetsArray);
+  // Invoke the main entry with constant arguments and let LLVM optimizer make
+  // use of it.
+  auto *entryF = irgen_.getModule().getFunction("main");
+  entryF->setLinkage(llvm::Function::InternalLinkage);
+  builder.CreateCall(entryF, initFunctionCallArgs);
+  // Terminate the function.
+  builder.CreateRetVoid();
+}
+
+// Create a config for this network. It will be exposed to the clients,
+// so that they know how much memory they need to allocate, etc.
+// Config consists of 3 fields.
+// struct BundleConfig {
+//   size_t constantWeightVarsMemSize;
+//   size_t mutableWeightVarsMemSize;
+//   size_t activationsMemSize;
+// };
+void JITBackend::emitBundleConfig() {
+  // Get the integer type having the same size in bits as size_t.
+  auto *SizeTType = irgen_.getBuilder().getIntNTy(sizeof(size_t) * 8);
+  auto *bundleConfigTy = llvm::StructType::get(
+      irgen_.getLLVMContext(), {SizeTType, SizeTType, SizeTType});
+  auto config = new llvm::GlobalVariable(
+      irgen_.getModule(), bundleConfigTy, /* isConst */ true,
+      llvm::GlobalValue::LinkageTypes::ExternalLinkage, nullptr,
+      irgen_.getMainEntryName() + "_config");
+  config->setInitializer(llvm::ConstantStruct::get(
+      bundleConfigTy,
+      llvm::ConstantInt::get(
+          SizeTType, irgen_.getAllocationsInfo().constantWeightVarsMemSize_),
+      llvm::ConstantInt::get(
+          SizeTType, irgen_.getAllocationsInfo().mutableWeightVarsMemSize_),
+      llvm::ConstantInt::get(SizeTType,
+                             irgen_.getAllocationsInfo().activationsMemSize_)));
+}
+
+void JITBackend::performBundleMemoryAllocation() {
+  allocationsInfo_.clear();
+  allocationsInfo_.numberValues(F_);
+  allocationsInfo_.allocateActivations(F_);
+  // Tell the allocateWeightVars to not reuse any existing addresses for weights
+  // and to assign new ones.
+  allocationsInfo_.allocateWeightVars(F_, false);
+}
+
+void JITBackend::save(llvm::StringRef outputDir) {
+  // Object files generation works properly only in small mode.
+  irgen_.initTargetMachine(llvm::CodeModel::Model::Small);
+  irgen_.setMainEntryName(F_->getGraph()->getName());
+  irgen_.getTargetMachine();
+  irgen_.initCodeGen();
+  // Perform the address assignment for activations and WeightVars.
+  performBundleMemoryAllocation();
+  // Create the bundle entry function.
+  emitBundleEntryFunction();
+  // Emit the code for the body of the entry function.
+  irgen_.performCodeGen();
+  // Produce the bundle.
+  produceBundle(outputDir);
 }
