@@ -36,6 +36,9 @@ class ExecutionEngine final {
   /// The kind of the backend being currently used.
   BackendKind backendKind_;
 
+  /// Optimize the graph, generate IR, and optimize the IR.
+  void generateIR(CompilationMode mode, Function *F);
+
 public:
   ExecutionEngine(BackendKind backendKind = BackendKind::Interpreter);
 
@@ -54,8 +57,14 @@ public:
   /// \returns the internal graph.
   Module &getModule() { return *M_; }
 
-  /// Optimize the graph, generate IR, and optimize the IR.
+  /// Optimize the graph, generate IR, optimize IR and compile it for a
+  /// specific target. This method should be invoked before the run method.
   void compile(CompilationMode mode, Function *F);
+
+  /// Save a bundle for a standalone execution. This method takes care of
+  /// everything when preparing the bundle for saving. There is no need to
+  /// invoke the compile method before it.
+  void save(CompilationMode mode, Function *F, llvm::StringRef outputDir);
 
   /// Provides access to the training configuration.
   TrainingConfig &getConfig() { return config_; }

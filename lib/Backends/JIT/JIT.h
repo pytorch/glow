@@ -40,6 +40,16 @@ class JITBackend final : public Backend {
   void emitJitMain();
   /// Perform memory allocation for a JIT execution.
   void performJITMemoryAllocation();
+  /// Perform memory allocation for a bundle.
+  void performBundleMemoryAllocation();
+  /// Save weights for the bundle.
+  void saveWeights(llvm::StringRef weightsFileName);
+  /// Produce a bundle.
+  void produceBundle(llvm::StringRef outputDir);
+  /// Emit config for a bundle.
+  void emitBundleConfig();
+  /// Emit the entry function for the bundle.
+  void emitBundleEntryFunction();
 
 public:
   /// Ctor.
@@ -53,6 +63,8 @@ public:
   void clear() override;
 
   void init() override;
+
+  void save(llvm::StringRef outputDir) override;
 
   void doForwardPass(bool isTrain) override;
 

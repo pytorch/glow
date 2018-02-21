@@ -186,6 +186,10 @@ llvm::cl::opt<BackendKind> ExecutionBackend(
                      clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
     llvm::cl::init(BackendKind::Interpreter));
 
+/// Emit a bundle into the specified output directory.
+llvm::cl::opt<std::string>
+    emitBundle("emit-bundle",
+               llvm::cl::desc("Output directory for the bundle serialization"));
 } // namespace
 
 int main(int argc, char **argv) {
@@ -232,8 +236,13 @@ int main(int argc, char **argv) {
     quantization::generateQuantizedGraph(F, quantizationInfos);
   }
 
-  // Emit IR for the graph.
-  EE.compile(CompilationMode::Infer, F);
+  if (!emitBundle.empty()) {
+    // Emit IR for the graph, compile it and save as a bundle.
+    EE.save(CompilationMode::Infer, F, emitBundle);
+  } else {
+    // Emit IR for the graph and compile it.
+    EE.compile(CompilationMode::Infer, F);
+  }
 
   if (DumpGraph) {
     F->dump();
@@ -246,6 +255,11 @@ int main(int argc, char **argv) {
   }
   if (!DumpIRDAGFile.empty()) {
     EE.getIR().dumpDAG(DumpIRDAGFile.c_str());
+  }
+
+  // No inference is performed in the bundle generation mode.
+  if (!emitBundle.empty()) {
+    return 0;
   }
 
   llvm::Timer timer("Infer", "Infer");

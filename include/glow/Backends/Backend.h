@@ -1,6 +1,8 @@
 #ifndef GLOW_BACKENDS_BACKEND_H
 #define GLOW_BACKENDS_BACKEND_H
 
+#include <llvm/ADT/StringRef.h>
+
 namespace glow {
 
 class Context;
@@ -28,6 +30,9 @@ public:
 
   /// Prepare the interpreter for execution of new code.
   virtual void init() = 0;
+
+  /// Save the bundle for a later standalone execution.
+  virtual void save(llvm::StringRef outputDir);
 
   /// Perform a single forward scan of the network, interpreting all of the
   /// instructions.
