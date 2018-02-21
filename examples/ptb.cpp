@@ -152,7 +152,7 @@ void testPTB() {
   EE.getConfig().batchSize = minibatchSize;
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
   std::cout << "Building" << std::endl;
 
   Variable *X = mod.createVariable(
@@ -166,33 +166,33 @@ void testPTB() {
 
   for (unsigned t = 0; t < numSteps; t++) {
     auto XtName = "X." + std::to_string(t);
-    auto *Xt = G.createSlice(XtName, X, {0, t * vocabSize},
-                             {minibatchSize, (t + 1) * vocabSize});
+    auto *Xt = F->createSlice(XtName, X, {0, t * vocabSize},
+                              {minibatchSize, (t + 1) * vocabSize});
     slicesX.push_back(Xt);
     auto YtName = "Y." + std::to_string(t);
-    auto *Yt = G.createSlice(YtName, Y, {0, t}, {minibatchSize, t + 1});
+    auto *Yt = F->createSlice(YtName, Y, {0, t}, {minibatchSize, t + 1});
     slicesY.push_back(Yt);
   }
 
   std::vector<Node *> outputNodes;
-  G.createSimpleRNN("rnn", slicesX, minibatchSize, hiddenSize, vocabSize,
-                    outputNodes);
+  F->createSimpleRNN("rnn", slicesX, minibatchSize, hiddenSize, vocabSize,
+                     outputNodes);
 
   // O has a shape of {numSteps * minibatchSize, vocabSize}
-  Node *O = G.createConcat("output", outputNodes, 0);
+  Node *O = F->createConcat("output", outputNodes, 0);
   // T has shape of {numSteps * minibatchSize, 1}
-  Node *T = G.createConcat("target", slicesY, 0);
+  Node *T = F->createConcat("target", slicesY, 0);
 
-  auto *SM = G.createSoftMax("softmax", O, T);
-  auto *result = G.createSave("result", SM);
+  auto *SM = F->createSoftMax("softmax", O, T);
+  auto *result = F->createSave("result", SM);
 
   std::cout << "Dumping graph" << std::endl;
 
-  Function *TF = glow::differentiate(&G, EE.getConfig());
+  Function *TF = glow::differentiate(F, EE.getConfig());
 
   EE.compile(CompilationMode::Train, TF);
 
-  G.dumpDAG("DAG.dot");
+  F->dumpDAG("DAG.dot");
 
   size_t numBatches = (numWords / minibatchSize - 1) / numSteps;
 

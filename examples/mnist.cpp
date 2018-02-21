@@ -78,32 +78,34 @@ void testMNIST() {
   EE.getConfig().batchSize = minibatchSize;
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
 
   Variable *A = mod.createVariable(
       ElemKind::FloatTy, {minibatchSize, 28, 28, 1}, "input",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
 
-  auto *CV0 = G.createConv("conv", A, 16, 5, 1, 2);
-  auto *RL0 = G.createRELU("relu", CV0);
-  auto *MP0 = G.createPool("pool", RL0, PoolNode::Mode::Max, 3, 3, 0);
+  auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2);
+  auto *RL0 = F->createRELU("relu", CV0);
+  auto *MP0 = F->createPool("pool", RL0, PoolNode::Mode::Max, 3, 3, 0);
 
-  auto *CV1 = G.createConv("conv", MP0, 16, 5, 1, 2);
-  auto *RL1 = G.createRELU("conv", CV1);
-  auto *MP1 = G.createPool("pool", RL1, PoolNode::Mode::Max, 3, 3, 0);
+  auto *CV1 = F->createConv("conv", MP0, 16, 5, 1, 2);
+  auto *RL1 = F->createRELU("conv", CV1);
+  auto *MP1 = F->createPool("pool", RL1, PoolNode::Mode::Max, 3, 3, 0);
 
-  auto *FCL1 = G.createFullyConnected("fc", MP1, 10);
-  auto *RL2 = G.createRELU("fc", FCL1);
+  auto *FCL1 = F->createFullyConnected("fc", MP1, 10);
+  auto *RL2 = F->createRELU("fc", FCL1);
   Variable *selected = mod.createVariable(
       ElemKind::IndexTy, {minibatchSize, 1}, +"selected",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
-  auto *SM = G.createSoftMax("sm", RL2, selected);
+  auto *SM = F->createSoftMax("sm", RL2, selected);
 
-  auto *result = G.createSave("return", SM);
+  auto *result = F->createSave("return", SM);
 
-  Function *T = glow::differentiate(&G, EE.getConfig());
+  Function *T = glow::differentiate(F, EE.getConfig());
 
   EE.compile(CompilationMode::Train, T);
+
+  T->dumpDAG();
 
   // Report progress every this number of training iterations.
   constexpr int reportRate = 30;
@@ -123,7 +125,7 @@ void testMNIST() {
     timer.stopTimer();
   }
   llvm::outs() << "Validating.\n";
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   auto LIH = labelInputs.getHandle<size_t>();
 

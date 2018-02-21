@@ -569,15 +569,15 @@ TEST(GraphOptz, SliceOfSplatNodeChain) {
 
 TEST(GraphOptz, DCEPublicVars) {
   Module mod;
-  auto &G = *mod.createFunction("main");
-  IRFunction M(&G);
+  Function *F = mod.createFunction("main");
+  IRFunction M(F);
   mod.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input",
                      Variable::VisibilityKind::Public);
 
   EXPECT_EQ(mod.getVars().size(), 1);
 
   // Optimize all of the dead code.
-  ::glow::optimize(&G, CompilationMode::Infer);
+  ::glow::optimize(F, CompilationMode::Infer);
 
   //  Public nodes should not be deleted.
   EXPECT_EQ(mod.getVars().size(), 1);

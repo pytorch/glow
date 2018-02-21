@@ -119,7 +119,7 @@ TEST(Network, gradientCheckFCConcatRELU) {
   size_t numOutputElem = 10;
 
   auto &mod = IP.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
@@ -127,16 +127,16 @@ TEST(Network, gradientCheckFCConcatRELU) {
                                  Variable::VisibilityKind::Public,
                                  Variable::TrainKind::None);
 
-  Node *FA = G.createFullyConnected("fc1", A, numOutputElem / 2);
-  FA = G.createRELU("relu1", FA);
+  Node *FA = F->createFullyConnected("fc1", A, numOutputElem / 2);
+  FA = F->createRELU("relu1", FA);
 
   auto *B = mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "B");
-  Node *FB = G.createFullyConnected("fc2", B, numOutputElem / 2);
-  FB = G.createRELU("relu2", FB);
+  Node *FB = F->createFullyConnected("fc2", B, numOutputElem / 2);
+  FB = F->createRELU("relu2", FB);
 
-  Node *O = G.createConcat("concat", {FA, FB}, 1);
-  O = G.createRegression("reg", O, Exp);
-  auto *result = G.createSave("ret", O);
+  Node *O = F->createConcat("concat", {FA, FB}, 1);
+  O = F->createRegression("reg", O, Exp);
+  auto *result = F->createSave("ret", O);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -157,7 +157,7 @@ TEST(Network, gradientCheckConv) {
   size_t numOutputElem = 10;
 
   auto &mod = IP.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
@@ -165,12 +165,12 @@ TEST(Network, gradientCheckConv) {
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
 
-  Node *O = G.createConv("conv", A, 4, 5, 1, 2);
-  O = G.createPool("pool", O, PoolNode::Mode::Max, 3, 3, 0);
-  O = G.createFullyConnected("fc", O, numOutputElem);
-  O = G.createRELU("relu", O);
-  O = G.createRegression("reg", O, Ex);
-  auto *result = G.createSave("ret", O);
+  Node *O = F->createConv("conv", A, 4, 5, 1, 2);
+  O = F->createPool("pool", O, PoolNode::Mode::Max, 3, 3, 0);
+  O = F->createFullyConnected("fc", O, numOutputElem);
+  O = F->createRELU("relu", O);
+  O = F->createRegression("reg", O, Ex);
+  auto *result = F->createSave("ret", O);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
@@ -191,7 +191,7 @@ TEST(Network, gradientCheckAvgPool) {
   size_t numOutputElem = 10;
 
   auto &mod = IP.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
@@ -199,10 +199,10 @@ TEST(Network, gradientCheckAvgPool) {
                                  Variable::VisibilityKind::Public,
                                  Variable::TrainKind::None);
 
-  Node *O = G.createPool("pool", A, PoolNode::Mode::Avg, 3, 3, 0);
-  O = G.createFullyConnected("fc", O, numOutputElem);
-  O = G.createRegression("reg", O, Exp);
-  auto *result = G.createSave("ret", O);
+  Node *O = F->createPool("pool", A, PoolNode::Mode::Avg, 3, 3, 0);
+  O = F->createFullyConnected("fc", O, numOutputElem);
+  O = F->createRegression("reg", O, Exp);
+  auto *result = F->createSave("ret", O);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
@@ -223,7 +223,7 @@ TEST(Network, gradientCheckBatchNorm) {
   size_t numOutputElem = numDim * numDim * 3;
 
   auto &mod = IP.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 3}, "A",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
@@ -231,10 +231,10 @@ TEST(Network, gradientCheckBatchNorm) {
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
 
-  Node *O = G.createBatchNormalization("batch", A, 3, 0.0001, 0.9);
-  O = G.createReshape("reshape", O, {1, numDim * numDim * 3});
-  O = G.createRegression("reg", O, Ex);
-  auto result = G.createSave("ret", O);
+  Node *O = F->createBatchNormalization("batch", A, 3, 0.0001, 0.9);
+  O = F->createReshape("reshape", O, {1, numDim * numDim * 3});
+  O = F->createRegression("reg", O, Ex);
+  auto result = F->createSave("ret", O);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 3});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
@@ -258,7 +258,7 @@ TEST(Network, gradientCheckArithmeticDiv) {
   size_t numDim = 10;
 
   auto &mod = IP.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
@@ -268,9 +268,9 @@ TEST(Network, gradientCheckArithmeticDiv) {
   auto *Exp = mod.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
                                  Variable::VisibilityKind::Public,
                                  Variable::TrainKind::None);
-  Node *O = G.createArithmetic("div", A, B, ArithmeticNode::Mode::Div);
-  O = G.createRegression("reg", O, Exp);
-  auto *result = G.createSave("ret", O);
+  Node *O = F->createArithmetic("div", A, B, ArithmeticNode::Mode::Div);
+  O = F->createRegression("reg", O, Exp);
+  auto *result = F->createSave("ret", O);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim});
   Tensor outputs(ElemKind::FloatTy, {1, numDim});
@@ -290,7 +290,7 @@ TEST(Network, gradientCheckArithmetic) {
   size_t numDim = 20;
 
   auto &mod = IP.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
@@ -313,12 +313,12 @@ TEST(Network, gradientCheckArithmetic) {
                                  Variable::VisibilityKind::Public,
                                  Variable::TrainKind::None);
 
-  Node *O = G.createArithmetic("mul", A, B, ArithmeticNode::Mode::Mul);
-  O = G.createArithmetic("add", O, C, ArithmeticNode::Mode::Add);
-  O = G.createArithmetic("sub", D, O, ArithmeticNode::Mode::Sub);
-  O = G.createArithmetic("div", O, E, ArithmeticNode::Mode::Div);
-  O = G.createRegression("reg", O, Exp);
-  auto *result = G.createSave("ret", O);
+  Node *O = F->createArithmetic("mul", A, B, ArithmeticNode::Mode::Mul);
+  O = F->createArithmetic("add", O, C, ArithmeticNode::Mode::Add);
+  O = F->createArithmetic("sub", D, O, ArithmeticNode::Mode::Sub);
+  O = F->createArithmetic("div", O, E, ArithmeticNode::Mode::Div);
+  O = F->createRegression("reg", O, Exp);
+  auto *result = F->createSave("ret", O);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim});
   Tensor outputs(ElemKind::FloatTy, {1, numDim});
@@ -340,7 +340,7 @@ TEST(Network, gradientCheckFCConcatTanh) {
   size_t numOutputElem = 10;
 
   auto &mod = IP.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
@@ -348,10 +348,10 @@ TEST(Network, gradientCheckFCConcatTanh) {
                                  Variable::VisibilityKind::Public,
                                  Variable::TrainKind::None);
 
-  Node *FA = G.createFullyConnected("fc", A, numOutputElem);
-  FA = G.createTanh("tanh", FA);
-  FA = G.createRegression("reg", FA, Exp);
-  auto *result = G.createSave("ret", FA);
+  Node *FA = F->createFullyConnected("fc", A, numOutputElem);
+  FA = F->createTanh("tanh", FA);
+  FA = F->createRegression("reg", FA, Exp);
+  auto *result = F->createSave("ret", FA);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -372,7 +372,7 @@ TEST(Network, gradientCheckFC) {
   size_t numOutputElem = 10;
 
   auto &mod = IP.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
@@ -380,9 +380,9 @@ TEST(Network, gradientCheckFC) {
                                  Variable::VisibilityKind::Public,
                                  Variable::TrainKind::None);
 
-  Node *FA = G.createFullyConnected("fc", A, numOutputElem);
-  FA = G.createRegression("reg", FA, Exp);
-  auto *result = G.createSave("ret", FA);
+  Node *FA = F->createFullyConnected("fc", A, numOutputElem);
+  FA = F->createRegression("reg", FA, Exp);
+  auto *result = F->createSave("ret", FA);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -403,18 +403,18 @@ TEST(Network, gradientCheckSigmoid) {
   size_t numOutputElem = 10;
 
   auto &mod = IP.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
   auto *Exp = mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
                                  Variable::VisibilityKind::Public,
                                  Variable::TrainKind::None);
-  G.createSave("ret", A);
+  F->createSave("ret", A);
 
-  Node *FA = G.createSigmoid("sig", Exp);
-  FA = G.createRegression("reg", FA, Exp);
-  auto *result = G.createSave("ret", FA);
+  Node *FA = F->createSigmoid("sig", Exp);
+  FA = F->createRegression("reg", FA, Exp);
+  auto *result = F->createSave("ret", FA);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -435,18 +435,18 @@ TEST(Network, gradientCheckRelu) {
   size_t numOutputElem = 10;
 
   auto &mod = IP.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
   auto *Exp = mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
                                  Variable::VisibilityKind::Public,
                                  Variable::TrainKind::None);
-  G.createSave("ret", A);
+  F->createSave("ret", A);
 
-  Node *FA = G.createRELU("relu", Exp);
-  FA = G.createRegression("reg", FA, Exp);
-  auto *result = G.createSave("ret", FA);
+  Node *FA = F->createRELU("relu", Exp);
+  FA = F->createRegression("reg", FA, Exp);
+  auto *result = F->createSave("ret", FA);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -466,17 +466,17 @@ TEST(Network, gradientCheckTranspose) {
   size_t numOutputElem = 10;
 
   auto &mod = IP.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 5}, "input",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
   auto *Exp = mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
                                  Variable::VisibilityKind::Public,
                                  Variable::TrainKind::None);
-  Node *TA = G.createTranspose("transpose", A, {0, 3, 1, 2});
-  TA = G.createFullyConnected("fc", TA, numOutputElem);
-  TA = G.createRegression("regress", TA, Exp);
-  auto *result = G.createSave("ret", TA);
+  Node *TA = F->createTranspose("transpose", A, {0, 3, 1, 2});
+  TA = F->createFullyConnected("fc", TA, numOutputElem);
+  TA = F->createRegression("regress", TA, Exp);
+  auto *result = F->createSave("ret", TA);
 
   Tensor inputs(ElemKind::FloatTy, {1, 5, 10, 5});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
@@ -498,7 +498,7 @@ TEST(Network, gradientcheckCrossEntropyLoss) {
   const float delta = 1e-2;
 
   auto &mod = IP.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
   auto *P = mod.createVariable(ElemKind::FloatTy, {batchSize, 4}, "P",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
@@ -508,8 +508,8 @@ TEST(Network, gradientcheckCrossEntropyLoss) {
   auto *L = mod.createVariable(ElemKind::FloatTy, {1}, "L",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
-  Node *CE = G.createCrossEntropyLoss("celoss", P, Y);
-  G.createSave("ret", CE, L);
+  Node *CE = F->createCrossEntropyLoss("celoss", P, Y);
+  F->createSave("ret", CE, L);
 
   Tensor inputs(ElemKind::FloatTy, {batchSize, 4});
   Tensor outputs(ElemKind::IndexTy, {batchSize});
@@ -523,7 +523,7 @@ TEST(Network, gradientcheckCrossEntropyLoss) {
   outputsH.at({2}) = 1;
 
   VariableGradientsList varGrads;
-  Function *TF = glow::differentiate(&G, IP.getConfig(), "record", &varGrads);
+  Function *TF = glow::differentiate(F, IP.getConfig(), "record", &varGrads);
   IP.compile(CompilationMode::Train, TF);
 
   auto gradP = getGrad(varGrads, P)->getHandle();

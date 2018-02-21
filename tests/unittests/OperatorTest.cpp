@@ -18,7 +18,7 @@ using namespace glow;
 TEST(Operator, matmul) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
 
   auto *lhs = mod.createVariable(ElemKind::FloatTy, {1, 3, 2}, "lhs");
   auto *rhs = mod.createVariable(ElemKind::FloatTy, {1, 2, 1}, "rhs");
@@ -26,11 +26,11 @@ TEST(Operator, matmul) {
   lhs->getPayload().getHandle() = {1, 2, 3, 4, 5, 6};
   rhs->getPayload().getHandle() = {7, 10};
 
-  auto R = G.createBatchedMatMul("MM", lhs, rhs);
+  auto R = F->createBatchedMatMul("MM", lhs, rhs);
 
-  G.createSave("save", R, result);
+  F->createSave("save", R, result);
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run({}, {});
 
@@ -43,18 +43,18 @@ TEST(Operator, matmul) {
 TEST(Operator, batchedReduceAdd) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
 
   auto *batch = mod.createVariable(ElemKind::FloatTy, {2, 4}, "batch");
   auto *result = mod.createVariable(ElemKind::FloatTy, {4}, "result");
   batch->getPayload().getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
 
   auto R =
-      G.createBatchedReduce("reduce.add", BatchedReduceNode::Mode::Add, batch);
+      F->createBatchedReduce("reduce.add", BatchedReduceNode::Mode::Add, batch);
 
-  G.createSave("save", R, result);
+  F->createSave("save", R, result);
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run({}, {});
 
@@ -68,7 +68,7 @@ TEST(Operator, batchedReduceAdd) {
 TEST(Operator, batchedBatchedAdd) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
 
   auto *batch = mod.createVariable(ElemKind::FloatTy, {2, 3, 3}, "batch");
   auto *added = mod.createVariable(ElemKind::FloatTy, {3, 3}, "added");
@@ -78,11 +78,11 @@ TEST(Operator, batchedBatchedAdd) {
                                      6, 7, 8, 9, 10, 11, 12, 13, 14};
   added->getPayload().getHandle().clear(1.0);
 
-  auto R = G.createBatchedArithmetic(
+  auto R = F->createBatchedArithmetic(
       "batch.add", BatchedArithmeticNode::Mode::Add, batch, added);
-  G.createSave("save", R, result);
+  F->createSave("save", R, result);
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run({}, {});
 
@@ -97,7 +97,7 @@ TEST(Operator, batchedBatchedAdd) {
 TEST(Operator, broadcast) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
 
   const size_t numDims_A = 4;
   const size_t dimX_A = 3;
@@ -117,11 +117,11 @@ TEST(Operator, broadcast) {
 
   const unsigned axis = 1;
 
-  auto R = G.createBroadcast("broadcasted", B, dims_A, axis);
+  auto R = F->createBroadcast("broadcasted", B, dims_A, axis);
   auto *broadcasted = mod.createVariable(ElemKind::FloatTy, dims_A, "A");
-  G.createSave("save", R, broadcasted);
+  F->createSave("save", R, broadcasted);
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run({}, {});
 
@@ -151,7 +151,7 @@ TEST(Operator, broadcast) {
 TEST(Operator, TopK) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
 
   auto *inp = mod.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
   auto *values = mod.createVariable(ElemKind::FloatTy, {3, 1, 3}, "values");
@@ -161,12 +161,12 @@ TEST(Operator, TopK) {
       28, 4, 411, 19, 42, 0.4, 0.4, 0.4, -0.4, 0.45, 7, 5, 9, 8, 100,
   };
 
-  auto R = G.createTopK("TopK", inp, 3);
+  auto R = F->createTopK("TopK", inp, 3);
 
-  G.createSave("save.values", {R, 0}, values);
-  G.createSave("save.indices", {R, 1}, indices);
+  F->createSave("save.values", {R, 0}, values);
+  F->createSave("save.indices", {R, 1}, indices);
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run({}, {});
 
@@ -223,7 +223,7 @@ TEST(Operator, Gather) {
   */
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
 
   auto *data = mod.createVariable(ElemKind::FloatTy, {3, 2}, "data");
   auto *indices = mod.createVariable(ElemKind::IndexTy, {2, 4}, "indices");
@@ -236,11 +236,11 @@ TEST(Operator, Gather) {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
-  auto R = G.createGather("gather", data, indices);
+  auto R = F->createGather("gather", data, indices);
 
-  G.createSave("save", R, result);
+  F->createSave("save", R, result);
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run({}, {});
 
@@ -268,7 +268,7 @@ TEST(Operator, Gather) {
 TEST(Operator, IntMatMul) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
 
   // The scaling factor 1.4x was carefully selected to make sure we don't
   // overflow or underflow the calculation.
@@ -288,15 +288,15 @@ TEST(Operator, IntMatMul) {
       0.1, -0.2, 0.3, 9.0, -8.0, 7.0, 6.0, 5.0, 9.0,
   };
 
-  auto *lhsq = G.createQuantize("lhs.q", lhs, &lhsTy);
-  auto *rhsq = G.createQuantize("rhs.q", rhs, &rhsTy);
+  auto *lhsq = F->createQuantize("lhs.q", lhs, &lhsTy);
+  auto *rhsq = F->createQuantize("rhs.q", rhs, &rhsTy);
 
-  auto *matmulq = G.createBatchedMatMul("matmul.q", &resTy, lhsq, rhsq);
+  auto *matmulq = F->createBatchedMatMul("matmul.q", &resTy, lhsq, rhsq);
 
-  auto *rq = G.createDequantize("dequant", matmulq);
+  auto *rq = F->createDequantize("dequant", matmulq);
 
-  G.createSave("save", rq, res);
-  EE.compile(CompilationMode::Infer, &G);
+  F->createSave("save", rq, res);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run({}, {});
 
@@ -322,7 +322,7 @@ TEST(Operator, IntMatMul) {
 TEST(Operator, IntBatchedArith) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
 
   Type resTy(ElemKind::Int8QTy, {1, 3, 3}, 0.10, 1.0);
   Type lhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.11, 4.0);
@@ -340,16 +340,16 @@ TEST(Operator, IntBatchedArith) {
       -9.1, -0.4, 1.3, 2.2, -8.1, 7.6, -6.4, 10.0, 9.1,
   };
 
-  auto *lhsq = G.createQuantize("lhs.q", lhs, &lhsTy);
-  auto *rhsq = G.createQuantize("rhs.q", rhs, &rhsTy);
+  auto *lhsq = F->createQuantize("lhs.q", lhs, &lhsTy);
+  auto *rhsq = F->createQuantize("rhs.q", rhs, &rhsTy);
 
-  auto *matmulq = G.createBatchedArithmetic(
+  auto *matmulq = F->createBatchedArithmetic(
       "add", &resTy, BatchedArithmeticNode::Mode::Add, lhsq, rhsq);
 
-  auto *rq = G.createDequantize("dequant", matmulq);
+  auto *rq = F->createDequantize("dequant", matmulq);
 
-  G.createSave("save", rq, res);
-  EE.compile(CompilationMode::Infer, &G);
+  F->createSave("save", rq, res);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run({}, {});
 
@@ -371,7 +371,7 @@ TEST(Operator, IntBatchedArith) {
 TEST(Operator, IntConvolution) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
 
   // In this test we generate a Floating-point based convolution and an integer
   // convolution. We pass the same values and then subtract the results. We
@@ -381,7 +381,7 @@ TEST(Operator, IntConvolution) {
   // The inputs (specified below) are in the range [-1 .. 1],
 
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
-  auto *conv = G.createConv("conv", input, 10, 5, 1, 0);
+  auto *conv = F->createConv("conv", input, 10, 5, 1, 0);
   auto *res = mod.createVariable(ElemKind::FloatTy, conv->dims(), "res");
 
   auto filter = conv->getFilter();
@@ -395,21 +395,21 @@ TEST(Operator, IntConvolution) {
   Type filterTy(ElemKind::Int8QTy, filter.dims(), 0.01, 0.0);
   Type biasTy(ElemKind::Int8QTy, bias.dims(), 0.04, 0.0);
 
-  auto *inputq = G.createQuantize("input.q", input, &inputTy);
-  auto *filterq = G.createQuantize("filter.q", filter, &filterTy);
-  auto *biasq = G.createQuantize("bias.q", bias, &biasTy);
+  auto *inputq = F->createQuantize("input.q", input, &inputTy);
+  auto *filterq = F->createQuantize("filter.q", filter, &filterTy);
+  auto *biasq = F->createQuantize("bias.q", bias, &biasTy);
 
   auto *convq =
-      G.createConv("convq", inputq, filterq, biasq, &resTy, conv->getDepth(),
-                   conv->getKernel(), conv->getStride(), conv->getPad());
-  auto *dequantRes = G.createDequantize("dequant", convq);
+      F->createConv("convq", inputq, filterq, biasq, &resTy, conv->getDepth(),
+                    conv->getKernel(), conv->getStride(), conv->getPad());
+  auto *dequantRes = F->createDequantize("dequant", convq);
 
   // Subtract the results of the convolution from the quantized convolution.
-  auto *sub = G.createArithmetic("compare", dequantRes, conv,
-                                 ArithmeticNode::Mode::Sub);
+  auto *sub = F->createArithmetic("compare", dequantRes, conv,
+                                  ArithmeticNode::Mode::Sub);
 
-  G.createSave("save", sub, res);
-  EE.compile(CompilationMode::Infer, &G);
+  F->createSave("save", sub, res);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run({}, {});
   auto H = res->getPayload().getHandle();
@@ -423,13 +423,13 @@ TEST(Operator, IntConvolution) {
 TEST(Operator, IntFC) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
 
   // In this test we subtract the outputs of a quantized FC and a floating-point
   // FC and ensure that the error is below some low value.
 
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
-  auto *fc = G.createFullyConnected("FC", input, 30);
+  auto *fc = F->createFullyConnected("FC", input, 30);
   auto *res = mod.createVariable(ElemKind::FloatTy, fc->dims(), "res");
 
   auto filter = fc->getWeights();
@@ -444,19 +444,19 @@ TEST(Operator, IntFC) {
   Type filterTy(ElemKind::Int8QTy, filter.dims(), 0.01, 2);
   Type biasTy(ElemKind::Int8QTy, bias.dims(), 0.02, 1);
 
-  auto *inputq = G.createQuantize("input.q", input, &inputTy);
-  auto *filterq = G.createQuantize("filter.q", filter, &filterTy);
-  auto *biasq = G.createQuantize("bias.q", bias, &biasTy);
+  auto *inputq = F->createQuantize("input.q", input, &inputTy);
+  auto *filterq = F->createQuantize("filter.q", filter, &filterTy);
+  auto *biasq = F->createQuantize("bias.q", bias, &biasTy);
 
-  auto *fcq = G.createFullyConnected("fcq", inputq, filterq, biasq, &resTy);
-  auto *dequantRes = G.createDequantize("dequant", fcq);
+  auto *fcq = F->createFullyConnected("fcq", inputq, filterq, biasq, &resTy);
+  auto *dequantRes = F->createDequantize("dequant", fcq);
 
   // Subtract the results of the convolution from the quantized fc.
   auto *sub =
-      G.createArithmetic("compare", dequantRes, fc, ArithmeticNode::Mode::Sub);
+      F->createArithmetic("compare", dequantRes, fc, ArithmeticNode::Mode::Sub);
 
-  G.createSave("save", sub, res);
-  EE.compile(CompilationMode::Infer, &G);
+  F->createSave("save", sub, res);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run({}, {});
 
@@ -470,7 +470,7 @@ TEST(Operator, IntFC) {
 TEST(Operator, CrossEntropyLossTest) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
 
   auto *P = mod.createVariable(ElemKind::FloatTy, {2, 3}, "P");
   auto *Y = mod.createVariable(ElemKind::IndexTy, {2}, "Y");
@@ -478,9 +478,9 @@ TEST(Operator, CrossEntropyLossTest) {
 
   P->getPayload().getHandle() = {0.2, 0.5, 0.3, 0.4, 0.3, 0.3};
   Y->getPayload().getHandle<size_t>() = {1, 2};
-  auto *ceLoss = G.createCrossEntropyLoss("CELoss", P, Y);
-  G.createSave("save", ceLoss, L);
-  EE.compile(CompilationMode::Infer, &G);
+  auto *ceLoss = F->createCrossEntropyLoss("CELoss", P, Y);
+  F->createSave("save", ceLoss, L);
+  EE.compile(CompilationMode::Infer, F);
   EE.run({}, {});
   auto R = L->getPayload().getHandle();
   EXPECT_NEAR(R.at({0}), -log(0.5) - log(0.3), 0.1);
