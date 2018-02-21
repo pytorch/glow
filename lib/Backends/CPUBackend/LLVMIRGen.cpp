@@ -524,6 +524,31 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::LocalResponseNormalizationGradInstKind: {
+    LocalResponseNormalizationGradInst *LRNG =
+        llvm::cast<LocalResponseNormalizationGradInst>(I);
+    auto *srcGradPtr =
+        emitValueAddress(builder, LRNG->getSrcGrad(), ElemKind::FloatTy);
+    auto *destGradPtr =
+        emitValueAddress(builder, LRNG->getDestGrad(), ElemKind::FloatTy);
+    auto *srcPtr = emitValueAddress(builder, LRNG->getSrc(), ElemKind::FloatTy);
+    auto *destPtr =
+        emitValueAddress(builder, LRNG->getDest(), ElemKind::FloatTy);
+    auto *scalePtr =
+        emitValueAddress(builder, LRNG->getScale(), ElemKind::FloatTy);
+    auto *destDims = emitValueDims(builder, LRNG->getDest());
+
+    auto *halfWindow = emitConst(builder, LRNG->getHalfWindowSize());
+    auto *alpha = emitConst(builder, LRNG->getAlpha());
+    auto *beta = emitConst(builder, LRNG->getBeta());
+
+    auto *F = getFunction("libjit_local_response_normalization_grad_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {srcGradPtr, destGradPtr, srcPtr, destPtr, scalePtr,
+                           destDims, halfWindow, alpha, beta});
+    break;
+  }
+
   case Kinded::Kind::PoolMaxInstKind: {
     PoolMaxInst *PM = cast<PoolMaxInst>(I);
     auto *destPtr = emitValueAddress(builder, PM->getDest(), ElemKind::FloatTy);

@@ -358,6 +358,54 @@ void libjit_local_response_normalization_f(float *outW, const float *inW,
   }       // N
 }
 
+void libjit_local_response_normalization_grad_f(
+    float *inG, const float *outG, const float *inW, const float *outW,
+    const float *scaleCache, const size_t *outWdims, size_t halfWindow,
+    float alpha, float beta) {
+  size_t window = 2 * halfWindow + 1;
+  float normedAlpha = alpha / window;
+  float coeff = 2 * normedAlpha * beta;
+
+  for (size_t n = 0; n < outWdims[0]; n++) {
+    for (size_t h = 0; h < outWdims[1]; h++) {
+      for (size_t w = 0; w < outWdims[2]; w++) {
+        // Prepare right half of sliding window based at c = 0
+        float sum = 0.0;
+        for (size_t i = 0; i < MIN(halfWindow, outWdims[3]); i++) {
+          float outg = outG[libjit_getXYZW(outWdims, n, h, w, i)];
+          float outw = outW[libjit_getXYZW(outWdims, n, h, w, i)];
+          float scale = scaleCache[libjit_getXYZW(outWdims, n, h, w, i)];
+          sum += outg * (outw / scale);
+        }
+
+        for (size_t c = 0; c < outWdims[3]; c++) {
+          if (c > halfWindow) {
+            size_t j = c - halfWindow - 1;
+            float outg = outG[libjit_getXYZW(outWdims, n, h, w, j)];
+            float outw = outW[libjit_getXYZW(outWdims, n, h, w, j)];
+            float scale = scaleCache[libjit_getXYZW(outWdims, n, h, w, j)];
+            sum -= outg * (outw / scale);
+          }
+
+          size_t j = c + halfWindow;
+          if (j < outWdims[3]) {
+            float outg = outG[libjit_getXYZW(outWdims, n, h, w, j)];
+            float outw = outW[libjit_getXYZW(outWdims, n, h, w, j)];
+            float scale = scaleCache[libjit_getXYZW(outWdims, n, h, w, j)];
+            sum += outg * (outw / scale);
+          }
+
+          float outg = outG[libjit_getXYZW(outWdims, n, h, w, c)];
+          float inw = inW[libjit_getXYZW(outWdims, n, h, w, c)];
+          float scale = scaleCache[libjit_getXYZW(outWdims, n, h, w, c)];
+          inG[libjit_getXYZW(outWdims, n, h, w, c)] =
+              outg * pow(scale, -beta) - 2 * normedAlpha * beta * inw * sum;
+        }
+      } // W
+    }   // H
+  }     // N
+}
+
 void libjit_pool_max_f(const float *inW, float *outW, const size_t *inWdims,
                        const size_t *outWdims, size_t filterSize, size_t stride,
                        size_t pad) {

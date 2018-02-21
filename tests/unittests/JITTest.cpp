@@ -112,6 +112,36 @@ TEST(JITCorrectnessTest, localResponseNormalizationTest) {
   EXPECT_TRUE(H1.isEqual(H2));
 }
 
+TEST(JITCorrectnessTest, localResponseNormalizationGradTest) {
+  Tensor inputs(ElemKind::FloatTy, {5, 4, 7, 3});
+  Tensor weights(ElemKind::FloatTy, {84, 180});
+  Tensor bias(ElemKind::FloatTy, {180});
+  Tensor selected(ElemKind::IndexTy, {5, 1});
+  inputs.getHandle().initXavier(1);
+  weights.getHandle().randomize(-2.0, 3.0);
+  bias.getHandle().randomize(-1.0, 1.3);
+  auto selectedH = selected.getHandle<size_t>();
+  for (size_t i = 0; i < 5; i++) {
+    selectedH.raw(i) = nextRandInt(180);
+  }
+  std::array<size_t, 4> S1{{5, 2, 2, 45}};
+  llvm::ArrayRef<size_t> shape1(S1);
+  std::array<size_t, 2> S2{{5, 180}};
+  llvm::ArrayRef<size_t> shape2(S2);
+  Tensor out1(ElemKind::FloatTy, shape2);
+  Tensor out2(ElemKind::FloatTy, shape1);
+
+  trainLocalResponseNormalizationNet(&inputs, &weights, &bias, &selected,
+                                     shape1, shape2, &out1, BackendKind::JIT);
+  trainLocalResponseNormalizationNet(&inputs, &weights, &bias, &selected,
+                                     shape1, shape2, &out2,
+                                     BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
 TEST(JITCorrectnessTest, maxTest) {
   std::array<size_t, 3> S{{3, 8, 2}};
   llvm::ArrayRef<size_t> shape(S);
