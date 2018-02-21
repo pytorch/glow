@@ -32,8 +32,13 @@ float gradDiff(float G1, float G2) {
   return std::abs(G1 - G2) / std::abs(G1 + G2 + 1);
 }
 
-Variable *getGrad(Function *F, Variable *V) {
-  return F->getParent()->getGradientVariable(V);
+Variable *getGrad(const VariableGradientsList &grads, Variable *V) {
+  for (auto &p : grads) {
+    if (p.first == V) {
+      return p.second;
+    }
+  }
+  return nullptr;
 }
 
 /// Performs gradient check by comparing analytical and numerical gradients.
@@ -63,11 +68,13 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
 
   // Create a version of the network that records the gradients to some side
   // table instead of updating them.
-  Function *recordNet = glow::differentiate(&G, IP.getConfig(), "record", true);
+  VariableGradientsList varGrads;
+  Function *recordNet =
+      glow::differentiate(&G, IP.getConfig(), "record", &varGrads);
   IP.compile(CompilationMode::Train, recordNet);
 
   // Clear the gradients of the first layer.
-  auto gradVar = getGrad(&G, inputVar);
+  auto gradVar = getGrad(varGrads, inputVar);
   gradVar->getPayload().zero();
 
   // Train the network just once to calculate the grads.
@@ -515,14 +522,15 @@ TEST(Network, gradientcheckCrossEntropyLoss) {
   outputsH.at({1}) = 0;
   outputsH.at({2}) = 1;
 
-  Function *TF = glow::differentiate(&G, IP.getConfig(), "record", true);
+  VariableGradientsList varGrads;
+  Function *TF = glow::differentiate(&G, IP.getConfig(), "record", &varGrads);
   IP.compile(CompilationMode::Train, TF);
 
-  auto gradP = getGrad(&G, P)->getHandle();
+  auto gradP = getGrad(varGrads, P)->getHandle();
 
   for (int i = 0; i < testSamples; ++i) {
     inputsH.randomize(0.0, 1.0);
-    for (int j = 0; j < inputsH.size(); ++j) {
+    for (size_t j = 0; j < inputsH.size(); ++j) {
       IP.run({P, Y}, {&inputs, &outputs});
       L->getPayload().zero();
       auto x = inputsH.raw(j);

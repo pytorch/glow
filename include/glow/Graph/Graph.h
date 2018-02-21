@@ -18,7 +18,6 @@ using TypesList = std::list<Type>;
 using NodesList = std::list<Node *>;
 using FunctionList = std::list<Function *>;
 using VariablesList = std::list<Variable *>;
-using VariableGradientsList = std::list<std::pair<Variable *, Variable *>>;
 using UnsignedArrayRef = llvm::ArrayRef<size_t>;
 
 class Module final {
@@ -28,12 +27,8 @@ class Module final {
   /// their addresses.
   TypesList types_{};
 
-  /// A list of variables that the graph owns.
+  /// A list of variables that the Module owns.
   VariablesList vars_;
-
-  /// A list of (var, grad_var) pairs associating variables with their
-  /// gradient variables.
-  VariableGradientsList grads_;
 
   /// Unique index for producing unique names.
   size_t uniqueIdx_{1};
@@ -85,28 +80,20 @@ public:
 
   const FunctionList &getFunctions() const { return functions_; }
 
-  /// Erase the variable \p N from the graph.
+  /// Erase the variable \p N from the Module.
   void eraseVariable(Variable *N);
 
-  /// Erase the variable \p I from the graph.
+  /// Erase the variable \p I from the Module.
   void eraseVariable(VariablesList::iterator I);
 
   /// \returns a pointer to the first variable with the name \p name or nullptr
   /// if no node has this name.
   Variable *getVariableByName(llvm::StringRef name);
 
-  /// \returns the list of variables that the graph owns.
+  /// \returns the list of variables that the Module owns.
   VariablesList &getVars() { return vars_; }
 
   const VariablesList &getVars() const { return vars_; }
-
-  /// Associates a gradient variable \p GradV with the variable \p V.
-  void addGradientVariable(Variable *V, Variable *GradV);
-
-  /// \returns a gradient variable associated with \p V.
-  /// Returns nullptr if there is no gradient variable
-  /// related to this variable.
-  Variable *getGradientVariable(Variable *V);
 
   /// @name High-level Variable builders.
   ///@{
@@ -146,7 +133,7 @@ public:
 
 /// Represents the compute graph.
 class Function final : public Named {
-  /// A list of nodes that the graph owns.
+  /// A list of nodes that the Function owns.
   NodesList nodes_;
 
   /// A reference to the owner of the function.
@@ -349,10 +336,10 @@ public:
 
   /// @}
 
-  /// Erase the node \p N from the graph.
+  /// Erase the node \p N from the Function.
   void eraseNode(Node *N);
 
-  /// Erase the node \p I from the graph.
+  /// Erase the node \p I from the Function.
   void eraseNode(NodesList::iterator I);
 
   /// Clone the current function into a new function with the name \p newName.
@@ -362,7 +349,7 @@ public:
   Function *clone(llvm::StringRef newName,
                   llvm::DenseMap<Node *, Node *> *map = nullptr);
 
-  /// Verify the correctness of the graph.
+  /// Verify the correctness of the Function.
   void verify() const;
 
   /// Dumps the textual representation of the network.
@@ -374,7 +361,7 @@ public:
   /// Dump a dotty graph that depicts the function.
   void dumpDAG(const char *dotFilename);
 
-  /// \returns the list of nodes that the graph owns.
+  /// \returns the list of nodes that the Function owns.
   NodesList &getNodes() { return nodes_; }
 
   const NodesList &getNodes() const { return nodes_; }
@@ -382,15 +369,19 @@ public:
 
 struct TrainingConfig;
 
-/// Create a new graph that 'trains' the input graph. We differentiate the nodes
-/// and insert code to update the weights based on the \p config parameters.
-/// If \p onlyRecordGrads is set then instead of inserting code to update the
-/// weights, the procedure adds code to record the last gradient value. This
-/// feature is used by the gradient-check unit tests.
+using VariableGradientsList = std::list<std::pair<Variable *, Variable *>>;
+
+/// Create a new Function that 'trains' the input Function. We differentiate the
+/// nodes and insert code to update the weights based on the \p config
+/// parameters.
+/// If \p varGrads is set then instead of inserting code to update the weights,
+/// the procedure adds code to record the last gradient value: a list of
+/// (var, grad_var) pairs associating variables with their gradient variables.
+/// This feature is used by the gradient-check unit tests.
 /// \returns a new function with the name \p newFuncName.
 Function *differentiate(Function *F, TrainingConfig &config,
                         llvm::StringRef newFuncName = "",
-                        bool onlyRecordGrads = false);
+                        VariableGradientsList *varGrads = nullptr);
 
 /// \returns a variable that accumulates the gradients that update \p V.
 /// Given the variable \p V, find the SGD node that trains it and record the
