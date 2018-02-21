@@ -53,9 +53,10 @@ PoolMaxWithXYInst *IRBuilder::createPoolMaxWithXYOp(Value *input, size_t kernel,
   Value *srcXY =
       createAllocActivationInst("srcXY", ElemKind::IndexTy,
                                 {idim.n, outSz.first, outSz.second, idim.c, 2});
-  Value *dest =
-      createAllocActivationInst("pool.res", ElemKind::FloatTy,
-                                {idim.n, outSz.first, outSz.second, idim.c});
+
+  auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
+      input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
+  Value *dest = createAllocActivationInst("pool.res", outTy);
 
   return createPoolMaxWithXYInst("pool", dest, input, srcXY, kernel, stride,
                                  pad);

@@ -243,12 +243,13 @@ void Interpreter::fwdConvolutionGradInst(bool isTrain,
 //===----------------------------------------------------------------------===//
 //                       Pooling
 //===----------------------------------------------------------------------===//
-
-static void fwdPoolMax(Handle<float> inW, Handle<float> outW,
-                       Handle<size_t> *SXY, size_t filterSize, size_t stride,
-                       size_t pad) {
-  ShapeNHWC odim(outW.dims());
-  ShapeNHWC idim(inW.dims());
+template <class T>
+static void fwdPoolMax(Tensor *inW, Tensor *outW, Handle<size_t> *SXY,
+                       size_t filterSize, size_t stride, size_t pad) {
+  ShapeNHWC odim(outW->dims());
+  ShapeNHWC idim(inW->dims());
+  Handle<T> inHandle = inW->getHandle<T>();
+  Handle<T> outHandle = outW->getHandle<T>();
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
@@ -264,7 +265,7 @@ static void fwdPoolMax(Handle<float> inW, Handle<float> outW,
           size_t maxY = y;
 
           bool first = true;
-          float max = 0;
+          T max_value = 0;
 
           for (size_t fx = 0; fx < filterSize; fx++) {
             for (size_t fy = 0; fy < filterSize; fy++) {
@@ -277,11 +278,10 @@ static void fwdPoolMax(Handle<float> inW, Handle<float> outW,
                 continue;
               }
 
-              float val = inW.at({n, (size_t)ox, (size_t)oy, z});
-
-              if (first || (val >= max)) {
+              T val = inHandle.at({n, (size_t)ox, (size_t)oy, z});
+              if (first || (val >= max_value)) {
                 first = false;
-                max = val;
+                max_value = val;
                 maxX = ox;
                 maxY = oy;
               }
@@ -289,7 +289,8 @@ static void fwdPoolMax(Handle<float> inW, Handle<float> outW,
           }
 
           assert(!first && "Max value is uninitialized");
-          outW.at({n, ax, ay, z}) = max;
+          outHandle.at({n, ax, ay, z}) = max_value;
+
           if (SXY) {
             SXY->at({n, ax, ay, z, 0}) = maxX;
             SXY->at({n, ax, ay, z, 1}) = maxY;
@@ -301,17 +302,31 @@ static void fwdPoolMax(Handle<float> inW, Handle<float> outW,
 }
 
 void Interpreter::fwdPoolMaxInst(bool isTrain, const PoolMaxInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-  fwdPoolMax(inW, outW, nullptr, I->getKernel(), I->getStride(), I->getPad());
+  auto inW = getTensor(I->getSrc());
+  auto outW = getTensor(I->getDest());
+
+  if (inW->getType().isQuantizedType()) {
+    fwdPoolMax<int8_t>(inW, outW, nullptr, I->getKernel(), I->getStride(),
+                       I->getPad());
+  } else {
+    fwdPoolMax<float>(inW, outW, nullptr, I->getKernel(), I->getStride(),
+                      I->getPad());
+  }
 }
 
 void Interpreter::fwdPoolMaxWithXYInst(bool isTrain,
                                        const PoolMaxWithXYInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
+  auto inW = getTensor(I->getSrc());
+  auto outW = getTensor(I->getDest());
   auto SXY = getTensor(I->getSrcXY())->getHandle<size_t>();
-  fwdPoolMax(inW, outW, &SXY, I->getKernel(), I->getStride(), I->getPad());
+
+  if (inW->getType().isQuantizedType()) {
+    fwdPoolMax<int8_t>(inW, outW, &SXY, I->getKernel(), I->getStride(),
+                       I->getPad());
+  } else {
+    fwdPoolMax<float>(inW, outW, &SXY, I->getKernel(), I->getStride(),
+                      I->getPad());
+  }
 }
 
 void Interpreter::fwdPoolAvgInst(bool isTrain, const PoolAvgInst *I) {

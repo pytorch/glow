@@ -414,9 +414,8 @@ PoolNode *Function::createPool(llvm::StringRef name, NodeValue input,
          "buffer too small for selected stride");
 
   auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
-
-  auto OT = getParent()->uniqueType(
-      ElemKind::FloatTy, {idim.n, outSz.first, outSz.second, idim.c});
+  auto OT = getParent()->uniqueTypeWithNewShape(
+      input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
 
   return addNode(new PoolNode(name, OT, mode, input, kernel, stride, pad));
 }
