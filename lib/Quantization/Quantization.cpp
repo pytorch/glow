@@ -224,10 +224,21 @@ float dequantize(int8_t input, const TensorQuantizationParams &TQP) {
 
 /// \returns true if \p node should be quantized.
 static bool shouldQuantize(const Node *node) {
-  return llvm::isa<FullyConnectedNode>(node) ||
-         llvm::isa<ConvolutionNode>(node) || llvm::isa<ReluNode>(node) ||
-         llvm::isa<TransposeNode>(node) || llvm::isa<ReshapeNode>(node) ||
-         llvm::isa<ArithmeticNode>(node);
+  bool canQuantize =
+      llvm::isa<FullyConnectedNode>(node) || llvm::isa<ConvolutionNode>(node) ||
+      llvm::isa<ReluNode>(node) || llvm::isa<TransposeNode>(node) ||
+      llvm::isa<ReshapeNode>(node) || llvm::isa<ArithmeticNode>(node);
+  if (canQuantize) {
+    return true;
+  }
+
+  // TODO: Add support for Avg pool operation.
+  if (llvm::isa<PoolNode>(node) &&
+      llvm::dyn_cast<PoolNode>(node)->getMode() == PoolNode::Mode::Max) {
+    return true;
+  }
+
+  return false;
 }
 
 /// Quantize all inputs for \p node and return back pointers to the newly
@@ -331,6 +342,15 @@ void generateQuantizedGraph(
           F->createReshape(R->getName(), quantizedInputs[0], R->getDims());
       break;
     }
+    case Kinded::Kind::PoolNodeKind: {
+      auto *P = cast<PoolNode>(node);
+      assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+
+      quantizedNode =
+          F->createPool(node->getName(), quantizedInputs[0], P->getMode(),
+                        P->getKernel(), P->getStride(), P->getPad());
+      break;
+    }
 
     case Kinded::Kind::ArithmeticNodeKind: {
       auto *AN = cast<ArithmeticNode>(node);
@@ -355,8 +375,13 @@ void generateQuantizedGraph(
       // profile from RELU.
       auto outTy = F->getParent()->uniqueType(
           ElemKind::Int8QTy, quantizedNode->dims(), TQP.scale_, TQP.offset_);
-      quantizedNode =
-          F->createRescaleQuantized("rescaled", quantizedNode, outTy);
+      quantizedNode = F->createRescaleQuantized(quantizedNode->getName(),
+                                                quantizedNode, outTy);
+    } else if (node->getKind() == Kinded::Kind::PoolNodeKind) {
+      auto outTy = F->getParent()->uniqueType(
+          ElemKind::Int8QTy, quantizedNode->dims(), TQP.scale_, TQP.offset_);
+      quantizedNode = F->createRescaleQuantized(quantizedNode->getName(),
+                                                quantizedNode, outTy);
     }
 
     // 3) Dequantize output of the node so that invariant is kept.
