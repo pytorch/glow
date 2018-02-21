@@ -59,9 +59,16 @@ void CopyInst::verify() const {
          isa<TensorViewInst>(src));
 }
 
-static void verifyConvDims(ShapeNHWC idim, ShapeNHWC odim, size_t kernel,
-                           size_t stride, size_t pad, size_t depth,
-                           Value *filter, Value *bias) {
+static void verifyConvolution(Value *src, Value *dest, Value *filter,
+                              Value *bias, size_t kernel, size_t stride,
+                              size_t pad, size_t depth) {
+  assert(src->getElementType() == dest->getElementType() && "Invalid Type");
+  assert(src->getElementType() == filter->getElementType() && "Invalid Type");
+  assert(src->getElementType() == bias->getElementType() && "Invalid Type");
+
+  ShapeNHWC idim(src->getType()->dims());
+  ShapeNHWC odim(dest->getType()->dims());
+
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
@@ -79,19 +86,73 @@ static void verifyConvDims(ShapeNHWC idim, ShapeNHWC odim, size_t kernel,
   (void)biasDims;
 }
 
+static void verifyPoolMaxWithXY(Value *src, Value *dest, Value *srcXY,
+                                size_t kernel, size_t stride, size_t pad) {
+  (void)srcXY;
+  ShapeNHWC idim = ShapeNHWC(src->getType()->dims());
+  ShapeNHWC odim = ShapeNHWC(dest->getType()->dims());
+  (void)odim;
+  assert(idim.w >= kernel && idim.h >= kernel &&
+         "buffer too small for selected stride");
+
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
+  ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
+  (void)exp;
+  assert(exp == odim && "Unexpected output dimensions");
+
+  // Allocate cache arrays that store the x and y coordinates of the incoming
+  // gradient for each max element.
+  auto E = {idim.n, outSz.first, outSz.second, idim.c, 2UL};
+  assert(srcXY->getType()->dims().equals(E) && "Invalid srcXY dims");
+  (void)E;
+}
+
+static void verifyPoolAvg(Value *src, Value *dest, size_t kernel, size_t stride,
+                          size_t pad) {
+  ShapeNHWC idim = ShapeNHWC(src->getType()->dims());
+  ShapeNHWC odim = ShapeNHWC(dest->getType()->dims());
+  (void)odim;
+  assert(idim.w >= kernel && idim.h >= kernel &&
+         "buffer too small for selected stride");
+
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
+  ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
+  (void)exp;
+  assert(exp == odim && "Unexpected output dimensions");
+}
+
+static void verifyBatchNormalization(Value *src, Value *dest, Value *scale,
+                                     Value *bias, Value *mean, Value *var,
+                                     size_t channel) {
+  checkSameType(dest, src);
+
+  // Figure out how many channels are in the tensor.
+  size_t channels = dest->dims()[channel];
+
+  auto exp = {channels};
+  (void)exp;
+  assert(scale->getType()->dims().equals(exp) && "Invalid bias dim");
+  assert(bias->getType()->dims().equals(exp) && "Invalid scale dim");
+  assert(mean->getType()->dims().equals(exp) && "Invalid mean dim");
+  assert(var->getType()->dims().equals(exp) && "Invalid var dim");
+}
+
 void ConvolutionInst::verify() const {
   Value *dest = getDest();
   Value *src = getSrc();
   Value *filter = getFilter();
   Value *bias = getBias();
 
-  assert(src->getElementType() == dest->getElementType() && "Invalid Type");
-  assert(src->getElementType() == filter->getElementType() && "Invalid Type");
-  assert(src->getElementType() == bias->getElementType() && "Invalid Type");
+  verifyConvolution(src, dest, filter, bias, Kernel_, Stride_, Pad_, Depth_);
+}
 
-  ShapeNHWC idim(src->getType()->dims());
-  ShapeNHWC odim(dest->getType()->dims());
-  verifyConvDims(idim, odim, Kernel_, Stride_, Pad_, Depth_, filter, bias);
+void ConvolutionGradInst::verify() const {
+  Value *dest = getDestGrad();
+  Value *src = getSrcGrad();
+  Value *filter = getFilterGrad();
+  Value *bias = getBiasGrad();
+
+  verifyConvolution(src, dest, filter, bias, Kernel_, Stride_, Pad_, Depth_);
 }
 
 void PoolMaxInst::verify() const {
@@ -113,38 +174,30 @@ void PoolMaxWithXYInst::verify() const {
   Value *dest = getDest();
   Value *src = getSrc();
   Value *srcXY = getSrcXY();
-  (void)srcXY;
-  ShapeNHWC idim = ShapeNHWC(src->getType()->dims());
-  ShapeNHWC odim = ShapeNHWC(dest->getType()->dims());
-  (void)odim;
-  assert(idim.w >= Kernel_ && idim.h >= Kernel_ &&
-         "buffer too small for selected stride");
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, Kernel_, Stride_, Pad_);
-  ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
-  (void)exp;
-  assert(exp == odim && "Unexpected output dimensions");
+  verifyPoolMaxWithXY(src, dest, srcXY, Kernel_, Stride_, Pad_);
+}
 
-  // Allocate cache arrays that store the x and y coordinates of the incoming
-  // gradient for each max element.
-  auto E = {idim.n, outSz.first, outSz.second, idim.c, 2UL};
-  assert(srcXY->getType()->dims().equals(E) && "Invalid srcXY dims");
-  (void)E;
+void PoolMaxWithXYGradInst::verify() const {
+  Value *dest = getDestGrad();
+  Value *src = getSrcGrad();
+  Value *srcXY = getSrcXY();
+
+  verifyPoolMaxWithXY(src, dest, srcXY, Kernel_, Stride_, Pad_);
 }
 
 void PoolAvgInst::verify() const {
   Value *dest = getDest();
   Value *src = getSrc();
-  ShapeNHWC idim = ShapeNHWC(src->getType()->dims());
-  ShapeNHWC odim = ShapeNHWC(dest->getType()->dims());
-  (void)odim;
-  assert(idim.w >= Kernel_ && idim.h >= Kernel_ &&
-         "buffer too small for selected stride");
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, Kernel_, Stride_, Pad_);
-  ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
-  (void)exp;
-  assert(exp == odim && "Unexpected output dimensions");
+  verifyPoolAvg(src, dest, Kernel_, Stride_, Pad_);
+}
+
+void PoolAvgGradInst::verify() const {
+  Value *dest = getDestGrad();
+  Value *src = getSrcGrad();
+
+  verifyPoolAvg(src, dest, Kernel_, Stride_, Pad_);
 }
 
 void BatchedMatMulInst::verify() const {
@@ -277,22 +330,35 @@ void ExtractTensorInst::verify() const {
 }
 
 void BatchNormalizationInst::verify() const {
-  checkSameType(getDest(), getSrc());
+  Value *src = getSrc();
+  Value *dest = getDest();
+  Value *scale = getScale();
+  Value *bias = getBias();
+  Value *mean = getMean();
+  Value *var = getVar();
 
-  // Figure out how many channels are in the tensor.
-  size_t channels = getDest()->dims()[ChannelIdx_];
+  verifyBatchNormalization(src, dest, scale, bias, mean, var, ChannelIdx_);
+}
 
-  auto exp = {channels};
-  (void)exp;
-  assert(getScale()->getType()->dims().equals(exp) && "Invalid bias dim");
-  assert(getBias()->getType()->dims().equals(exp) && "Invalid scale dim");
-  assert(getMean()->getType()->dims().equals(exp) && "Invalid mean dim");
-  assert(getVar()->getType()->dims().equals(exp) && "Invalid var dim");
+void BatchNormalizationGradInst::verify() const {
+  Value *src = getSrcGrad();
+  Value *dest = getDestGrad();
+  Value *scale = getScaleGrad();
+  Value *bias = getBiasGrad();
+  Value *mean = getMean();
+  Value *var = getVar();
+
+  verifyBatchNormalization(src, dest, scale, bias, mean, var, ChannelIdx_);
 }
 
 void LocalResponseNormalizationInst::verify() const {
   checkSameType(getDest(), getSrc());
   checkSameType(getDest(), getScale());
+}
+
+void LocalResponseNormalizationGradInst::verify() const {
+  checkSameType(getDestGrad(), getSrcGrad());
+  checkSameType(getDestGrad(), getScale());
 }
 
 void ElementAddInst::verify() const {
@@ -422,13 +488,6 @@ void IntrinsicInst::verify() const {
   assert(getName().size() && "Name must not be empty");
 }
 
-// TODO: verify the gradient instructions.
-#define NOVERIFY(ClassName)                                                    \
-  void ClassName::verify() const {}
-NOVERIFY(ConvolutionGradInst)
-NOVERIFY(PoolMaxWithXYGradInst)
-NOVERIFY(PoolAvgGradInst)
-NOVERIFY(BatchNormalizationGradInst)
-NOVERIFY(LocalResponseNormalizationGradInst)
-NOVERIFY(DebugPrintInst)
-#undef NOVERIFY
+void DebugPrintInst::verify() const {
+  // Nothing to verify.
+}
