@@ -124,16 +124,29 @@ protected:
     os << "\tshape = \"record\"\n";
     os << "\tstyle=\"filled,rounded\"\n";
 
+    // Pick a color based on the node kind.
+    unsigned colorIdx = llvm::hash_value(llvm::StringRef(N->getKindName()));
+
+    static const char *colorNames[] = {
+        "AliceBlue",      "CadetBlue1",   "Coral",      "DarkOliveGreen1",
+        "DarkSeaGreen1",  "GhostWhite",   "Khaki1",     "LavenderBlush1",
+        "LemonChiffon1",  "LightSkyBlue", "MistyRose1", "MistyRose2",
+        "PaleTurquoise2", "PeachPuff1",   "PowderBlue", "Salmon",
+        "Thistle1",       "Thistle3",     "Wheat1",     "Yellow2",
+    };
+    unsigned arrayLen = sizeof(colorNames) / sizeof(colorNames[0]);
+    auto nodeColor = colorNames[colorIdx % arrayLen];
+
     if (auto V = llvm::dyn_cast<Variable>(N)) {
       if (V->getVisibilityKind() == Variable::VisibilityKind::Public) {
-        os << "\tfillcolor=thistle1\n";
+        os << "\tfillcolor=Snow2; color=DarkOliveGreen4\n";
       } else {
-        os << "\tfillcolor=thistle3\n";
+        os << "\tfillcolor=Snow3; color=DeepSkyBlue4\n";
       }
     } else {
-      os << "\tfillcolor=seashell1\n";
+      os << "\tfillcolor=" << nodeColor << "\n";
     }
-    os << "];\n";
+    os << "penwidth = 2];\n";
 
     vertices_.push_back(os.str());
   }
@@ -141,13 +154,6 @@ protected:
   void dumpEdgeStyle(Node *N, size_t i, Node *to, std::ostream &os) {
     if (N->isOverwrittenNthInput(i)) {
       os << " [dir=\"both\"]";
-    }
-    if (isa<Variable>(to)) {
-      if (!N->isOverwrittenNthInput(i)) {
-        os << "[color=SlateBlue4]";
-      } else {
-        os << "[color=RoyalBlue4]";
-      }
     }
   }
 
