@@ -65,9 +65,6 @@ Function *glow::differentiate(Function *F, TrainingConfig &conf,
   // Generate the gradient nodes for each one of the nodes in the function.
 
   PostOrderVisitor pov;
-  for (auto &N : G->getParent()->getVars()) {
-    N->visit(nullptr, &pov);
-  }
   for (auto &N : G->getNodes()) {
     N->visit(nullptr, &pov);
   }
@@ -182,7 +179,13 @@ Function *glow::differentiate(Function *F, TrainingConfig &conf,
     llvm_unreachable("Invalid instruction type.");
   } // End of the for-each instr loop.
 
-  for (auto &V : G->getParent()->getVars()) {
+  for (auto N : nodes) {
+    // Iterate only through Variables used by the Function.
+    // These are inserted during the post-order walk.
+    Variable *V = llvm::dyn_cast<Variable>(N);
+    if (!V)
+      continue;
+
     // In this special differentiation mode we record the last gradient value
     // without performing the SGD update. This mode is used by the unit tests.
     if (varGrads) {

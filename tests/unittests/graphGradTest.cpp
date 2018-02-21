@@ -81,3 +81,47 @@ TEST(GraphAutoGrad, checkLRNGen) {
   EE.compile(CompilationMode::Train, TF);
   EE.compile(CompilationMode::Infer, F);
 }
+
+TEST(GraphAutoGrad, cloneAndDiff) {
+  // The test ensures that unused variables are not touched in differentiation.
+  ExecutionEngine EE;
+
+  Module M;
+
+  auto *F = M.createFunction("main");
+  Node *A = M.createVariable(ElemKind::FloatTy, {1}, "A",
+                             Variable::VisibilityKind::Private);
+  Node *B = M.createVariable(ElemKind::FloatTy, {1}, "B",
+                             Variable::VisibilityKind::Private);
+  Node *AplusB_F =
+      F->createArithmetic("AplusB", A, B, ArithmeticNode::Mode::Add);
+
+  EXPECT_EQ(M.getVars().size(), 2);
+
+  auto *G = F->clone("G");
+
+  EXPECT_EQ(M.getVars().size(), 2);
+  EXPECT_EQ(G->getNodes().size(), 1);
+
+  Node *C = M.createVariable(ElemKind::FloatTy, {1}, "C",
+                             Variable::VisibilityKind::Private);
+  Node *AplusB_G = G->getNodes().back();
+  G->createArithmetic("totalSum", AplusB_G, C, ArithmeticNode::Mode::Add);
+
+  EXPECT_EQ(M.getVars().size(), 3);
+
+  Node *label = M.createVariable(ElemKind::FloatTy, {1}, "label",
+                                 Variable::VisibilityKind::Public,
+                                 Variable::TrainKind::None);
+  Node *reg = F->createRegression("reg", AplusB_F, label);
+  F->createSave("return", reg);
+
+  EXPECT_EQ(M.getVars().size(), 5);
+
+  auto *diffF = differentiate(F, EE.getConfig());
+
+  diffF->verify();
+
+  EXPECT_EQ(M.getFunctions().size(), 3);
+  EXPECT_EQ(M.getVars().size(), 7);
+}
