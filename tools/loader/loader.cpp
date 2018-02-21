@@ -115,7 +115,7 @@ llvm::cl::alias NetWeightFileNameA("w", llvm::cl::desc("Alias for -weight"),
 llvm::cl::opt<std::string> NetDirectory(
     "directory",
     llvm::cl::desc("Specify the directory with the network structure "
-                   "<init_net.pb> and weight <predict_net.pb> files"),
+                   "<predict_net.pb> and weight <init_net.pb> files"),
     llvm::cl::value_desc("netDirectory"), llvm::cl::cat(ModelInputCat),
     llvm::cl::Optional);
 llvm::cl::alias NetDirectoryA("d", llvm::cl::desc("Alias for -directory"),
