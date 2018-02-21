@@ -4,39 +4,10 @@
 
 using GlowJIT = llvm::orc::GlowJIT;
 
-/// Generate the LLVM MAttr list of attributes.
-static llvm::SmallVector<std::string, 0> getMachineAttributes() {
-  llvm::SmallVector<std::string, 0> result;
-  llvm::StringMap<bool> hostFeatures;
-  if (llvm::sys::getHostCPUFeatures(hostFeatures)) {
-    for (auto &feature : hostFeatures) {
-      if (feature.second) {
-        llvm::StringRef fn = feature.first();
-        // Skip avx512 because LLVM does not support it well.
-        if (fn.startswith("avx512")) {
-          continue;
-        }
-        result.push_back(fn);
-      }
-    }
-  }
-  return result;
-}
-
-/// Returns the CPU hostname.
-static llvm::StringRef getHostCpuName() {
-  auto cpu_name = llvm::sys::getHostCPUName();
-  // Skip avx512 because LLVM does not support it well.
-  cpu_name.consume_back("-avx512");
-  return cpu_name;
-}
-
-GlowJIT::GlowJIT()
-    : TM_(EngineBuilder().selectTarget(llvm::Triple(), "", getHostCpuName(),
-                                       getMachineAttributes())),
-      DL_(TM_->createDataLayout()),
+GlowJIT::GlowJIT(llvm::TargetMachine &TM)
+    : TM_(TM), DL_(TM_.createDataLayout()),
       objectLayer_([]() { return std::make_shared<SectionMemoryManager>(); }),
-      compileLayer_(objectLayer_, SimpleCompiler(*TM_)) {
+      compileLayer_(objectLayer_, SimpleCompiler(TM)) {
   llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
 }
 

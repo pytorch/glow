@@ -40,8 +40,7 @@ using llvm::StringRef;
 using llvm::dyn_cast;
 using llvm::isa;
 
-void JITBackend::optimizeLLVMModule(llvm::Function *F,
-                                    llvm::TargetMachine &TM) {
+void LLVMIRGen::optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM) {
   auto *M = F->getParent();
 
   // Make all of the definitions from libjit and unnamed symbols internal and
@@ -94,7 +93,7 @@ void JITBackend::optimizeLLVMModule(llvm::Function *F,
     }
   }
 
-  llvm::legacy::FunctionPassManager FPM(F->getParent());
+  llvm::legacy::FunctionPassManager FPM(M);
   llvm::legacy::PassManager PM;
 
   // Add internal analysis passes from the target machine.
@@ -104,10 +103,10 @@ void JITBackend::optimizeLLVMModule(llvm::Function *F,
   PMB.populateFunctionPassManager(FPM);
   PMB.populateModulePassManager(PM);
   FPM.doInitialization();
-  PM.run(*F->getParent());
+  PM.run(*M);
   for (auto &FF : *M) {
     FPM.run(FF);
   }
   FPM.doFinalization();
-  PM.run(*F->getParent());
+  PM.run(*M);
 }
