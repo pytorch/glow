@@ -23,31 +23,31 @@ TEST(Interpreter, interpret) {
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
-  G.setName("interpret");
+  Function *F = mod.createFunction("main");
+  F->setName("interpret");
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input",
                                    Variable::VisibilityKind::Public);
 
   auto *ex = mod.createVariable(ElemKind::IndexTy, {1, 1}, "exp");
 
-  auto *CV0 = G.createConv("conv1", input, 16, 5, 1, 2);
-  auto *RL0 = G.createRELU("relu1", CV0);
-  auto *MP0 = G.createPool("pool1", RL0, PoolNode::Mode::Max, 2, 2, 0);
+  auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2);
+  auto *RL0 = F->createRELU("relu1", CV0);
+  auto *MP0 = F->createPool("pool1", RL0, PoolNode::Mode::Max, 2, 2, 0);
 
-  auto *CV1 = G.createConv("conv2", MP0, 20, 5, 1, 2);
-  auto *RL1 = G.createRELU("relu2", CV1);
-  auto *MP1 = G.createPool("pool2", RL1, PoolNode::Mode::Max, 2, 2, 0);
+  auto *CV1 = F->createConv("conv2", MP0, 20, 5, 1, 2);
+  auto *RL1 = F->createRELU("relu2", CV1);
+  auto *MP1 = F->createPool("pool2", RL1, PoolNode::Mode::Max, 2, 2, 0);
 
-  auto *CV2 = G.createConv("conv3", MP1, 20, 5, 1, 2);
-  auto *RL2 = G.createRELU("relu3", CV2);
-  auto *MP2 = G.createPool("pool3", RL2, PoolNode::Mode::Max, 2, 2, 0);
+  auto *CV2 = F->createConv("conv3", MP1, 20, 5, 1, 2);
+  auto *RL2 = F->createRELU("relu3", CV2);
+  auto *MP2 = F->createPool("pool3", RL2, PoolNode::Mode::Max, 2, 2, 0);
 
-  auto *FCL1 = G.createFullyConnected("fc", MP2, 10);
-  auto *RL3 = G.createRELU("relu4", FCL1);
-  auto *SM = G.createSoftMax("sm", RL3, ex);
-  G.createSave("ret", SM);
+  auto *FCL1 = F->createFullyConnected("fc", MP2, 10);
+  auto *RL3 = F->createRELU("relu4", FCL1);
+  auto *SM = F->createSoftMax("sm", RL3, ex);
+  F->createSave("ret", SM);
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   /// Add a debug_action instruction to check that it can be
   /// processed by the interpreter.
@@ -61,7 +61,7 @@ TEST(Interpreter, interpret) {
 TEST(Interpreter, profileQuantizationForANetwork) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
   Tensor inputs(ElemKind::FloatTy, {1, 4});
   inputs.getHandle() = {1, 1.2, 0.5, 1.3};
 
@@ -69,13 +69,13 @@ TEST(Interpreter, profileQuantizationForANetwork) {
                                Variable::VisibilityKind::Public);
   auto *Ex = mod.createVariable(ElemKind::FloatTy, {1, 4}, "E",
                                 Variable::VisibilityKind::Public);
-  Node *O = G.createFullyConnected("fc", A, 4);
-  O = G.createRELU("relu", O);
-  O = G.createRegression("reg", O, Ex);
+  Node *O = F->createFullyConnected("fc", A, 4);
+  O = F->createRELU("relu", O);
+  O = F->createRegression("reg", O, Ex);
 
-  ::glow::profileQuantization(G);
+  ::glow::profileQuantization(*F);
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   // TODO: Verify histogram itself, for now just verify min and max.
   // Run inference first time and capture tensor stats.
@@ -83,7 +83,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   QuantizationProfileNode *profile{nullptr};
   // Find QPN for node A.
-  for (auto node : G.getNodes()) {
+  for (auto node : F->getNodes()) {
     if (QuantizationProfileNode *QPN =
             llvm::dyn_cast<QuantizationProfileNode>(node)) {
       Node *observedNode = node->getNthInput(0).getNode();
@@ -114,7 +114,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 TEST(Interpreter, QuantizeAndDequantize) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
   Tensor inputs(ElemKind::FloatTy, {1, 4});
   inputs.getHandle() = {1, 1.2, 0.5, 1.3};
 
@@ -122,11 +122,11 @@ TEST(Interpreter, QuantizeAndDequantize) {
                                Variable::VisibilityKind::Public);
 
   auto qType = mod.uniqueType(ElemKind::Int8QTy, {1, 4}, 0.05, -138);
-  auto *quantize = G.createQuantize("quantize", A, qType);
-  auto *dequantize = G.createDequantize("dequantize", quantize);
-  auto *result = G.createSave("save", dequantize);
+  auto *quantize = F->createQuantize("quantize", A, qType);
+  auto *dequantize = F->createDequantize("dequantize", quantize);
+  auto *result = F->createSave("save", dequantize);
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
   EE.run({A}, {&inputs});
 
   auto resultHandle = result->getVariable()->getHandle();
@@ -140,8 +140,8 @@ TEST(Interpreter, trainASimpleNetwork) {
   EE.getConfig().learningRate = 0.05;
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
-  G.setName("trainASimpleNetwork");
+  Function *F = mod.createFunction("main");
+  F->setName("trainASimpleNetwork");
 
   // Create a variable with 1 input, which is a vector of 4 elements.
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, 4}, "A",
@@ -149,12 +149,12 @@ TEST(Interpreter, trainASimpleNetwork) {
   auto *E = mod.createVariable(ElemKind::FloatTy, {1, 4}, "E",
                                Variable::VisibilityKind::Public);
 
-  Node *O = G.createFullyConnected("fc1", A, 10);
-  O = G.createSigmoid("sig1", O);
-  O = G.createFullyConnected("fc2", O, 4);
-  O = G.createSigmoid("sig2", O);
-  O = G.createRegression("reg", O, E);
-  auto *result = G.createSave("return", O);
+  Node *O = F->createFullyConnected("fc1", A, 10);
+  O = F->createSigmoid("sig1", O);
+  O = F->createFullyConnected("fc2", O, 4);
+  O = F->createSigmoid("sig2", O);
+  O = F->createRegression("reg", O, E);
+  auto *result = F->createSave("return", O);
 
   // Values for the input and output variables.
   Tensor inputs(ElemKind::FloatTy, {1, 4});
@@ -162,7 +162,7 @@ TEST(Interpreter, trainASimpleNetwork) {
   inputs.getHandle<>() = {0.15, 0.15, 0.15, 0.15};
   expected.getHandle<>() = {0.9, 0.9, 0.9, 0.9};
 
-  Function *TF = glow::differentiate(&G, EE.getConfig());
+  Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Train the network. Learn 1000 batches.
@@ -170,7 +170,7 @@ TEST(Interpreter, trainASimpleNetwork) {
 
   // Testing the output vector.
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
   EE.run({A}, {&inputs});
   auto RNWH = result->getVariable()->getPayload().getHandle<>();
   (void)RNWH;
@@ -195,21 +195,21 @@ TEST(Interpreter, simpleRegression) {
   Tensor expected(ElemKind::FloatTy, {1, numInputs});
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
-  G.setName("simpleRegression");
+  Function *F = mod.createFunction("main");
+  F->setName("simpleRegression");
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, numInputs}, "A",
                                Variable::VisibilityKind::Public);
   auto *Ex = mod.createVariable(ElemKind::FloatTy, {1, numInputs}, "E",
                                 Variable::VisibilityKind::Public);
-  Node *O = G.createFullyConnected("fc", A, 4);
-  O = G.createRELU("relu", O);
-  O = G.createRegression("reg", O, Ex);
-  auto *result = G.createSave("result", O);
+  Node *O = F->createFullyConnected("fc", A, 4);
+  O = F->createRELU("relu", O);
+  O = F->createRegression("reg", O, Ex);
+  auto *result = F->createSave("result", O);
 
   auto I = inputs.getHandle<>();
   auto E = expected.getHandle<>();
 
-  Function *TF = glow::differentiate(&G, EE.getConfig());
+  Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Train the network:
@@ -221,7 +221,7 @@ TEST(Interpreter, simpleRegression) {
   }
 
   // Verify the result of the regression layer.
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   // Test the output:
   for (int iter = 0; iter < 5; iter++) {
@@ -246,19 +246,19 @@ TEST(Interpreter, learnXor) {
   EE.getConfig().learningRate = 0.05;
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
-  G.setName("learnXor");
+  Function *F = mod.createFunction("main");
+  F->setName("learnXor");
 
   auto *A = mod.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A",
                                Variable::VisibilityKind::Public);
   auto *Ex = mod.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
 
-  Node *O = G.createFullyConnected("fc1", A, 6);
-  O = G.createTanh("tanh1", O);
-  O = G.createFullyConnected("fc2", O, 1);
-  O = G.createTanh("tanh2", O);
-  O = G.createRegression("reg", O, Ex);
-  auto *result = G.createSave("ret", O);
+  Node *O = F->createFullyConnected("fc1", A, 6);
+  O = F->createTanh("tanh1", O);
+  O = F->createFullyConnected("fc2", O, 1);
+  O = F->createTanh("tanh2", O);
+  O = F->createRegression("reg", O, Ex);
+  auto *result = F->createSave("ret", O);
 
   // Prepare the training set and the testing set.
   Tensor trainingSet(ElemKind::FloatTy, {numInputs, 2});
@@ -276,13 +276,13 @@ TEST(Interpreter, learnXor) {
     TL.at({i, 0}) = a ^ b;
   }
 
-  Function *TF = glow::differentiate(&G, EE.getConfig());
+  Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Train the network:
   EE.runBatch(2500, {A, Ex}, {&trainingSet, &trainingLabels});
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   // Prepare the testing tensor:
   for (unsigned i = 0; i < numInputs; i++) {
@@ -346,22 +346,22 @@ TEST(Network, circle) {
   unsigned minibatchSize = 11;
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
-  G.setName("circle");
+  Function *F = mod.createFunction("main");
+  F->setName("circle");
   auto *A = mod.createVariable(ElemKind::FloatTy, {minibatchSize, 2}, "A",
                                Variable::VisibilityKind::Public);
   auto *S = mod.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, "S",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
 
-  auto *FCL0 = G.createFullyConnected("fc1", A, 8);
-  auto *T0 = G.createTanh("tanh1", FCL0);
-  auto *FCL1 = G.createFullyConnected("fc2", T0, 2);
-  auto *T1 = G.createTanh("tanh2", FCL1);
-  auto *SM = G.createSoftMax("soft", T1, S);
-  auto *result = G.createSave("ret", SM);
+  auto *FCL0 = F->createFullyConnected("fc1", A, 8);
+  auto *T0 = F->createTanh("tanh1", FCL0);
+  auto *FCL1 = F->createFullyConnected("fc2", T0, 2);
+  auto *T1 = F->createTanh("tanh2", FCL1);
+  auto *SM = F->createSoftMax("soft", T1, S);
+  auto *result = F->createSave("ret", SM);
 
-  Function *TF = glow::differentiate(&G, EE.getConfig());
+  Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
@@ -371,7 +371,7 @@ TEST(Network, circle) {
   // Training:
   EE.runBatch(4000, {A, S}, {&coordinates, &labels});
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   // Print a diagram that depicts the network decision on a grid.
   Tensor sample(ElemKind::FloatTy, {minibatchSize, 2});
@@ -433,8 +433,8 @@ TEST(Network, learnSingleValueConcat) {
   EE.getConfig().learningRate = 0.01;
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
-  G.setName("learnSingleValueConcat");
+  Function *F = mod.createFunction("main");
+  F->setName("learnSingleValueConcat");
 
   auto *Ex = mod.createVariable(ElemKind::FloatTy, {1, width * 2}, "Ex",
                                 Variable::VisibilityKind::Public);
@@ -442,32 +442,32 @@ TEST(Network, learnSingleValueConcat) {
   // Left side of the network:
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, width}, "A",
                                Variable::VisibilityKind::Public);
-  Node *L = G.createFullyConnected("fc1", A, width);
-  L = G.createSigmoid("", L);
+  Node *L = F->createFullyConnected("fc1", A, width);
+  L = F->createSigmoid("", L);
 
   // Right side of the network:
   auto *B = mod.createVariable(ElemKind::FloatTy, {1, width}, "B",
                                Variable::VisibilityKind::Public);
-  Node *R = G.createFullyConnected("fc2", B, width);
-  R = G.createSigmoid("sig", R);
+  Node *R = F->createFullyConnected("fc2", B, width);
+  R = F->createSigmoid("sig", R);
 
   // Concat:
-  auto *C = G.createConcat("con", {L, R}, 1);
-  auto *RN = G.createRegression("reg", C, Ex);
-  auto *result = G.createSave("ret", RN);
+  auto *C = F->createConcat("con", {L, R}, 1);
+  auto *RN = F->createRegression("reg", C, Ex);
+  auto *result = F->createSave("ret", RN);
 
   Tensor inputs(ElemKind::FloatTy, {1, width});
   Tensor expected(ElemKind::FloatTy, {1, width * 2});
   inputs.getHandle<>().clear(0.15);
   expected.getHandle<>().clear(0.9);
 
-  Function *TF = glow::differentiate(&G, EE.getConfig());
+  Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Train the network:
   EE.runBatch(1000, {A, B, Ex}, {&inputs, &inputs, &expected});
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   // Testing the output vector.
   EE.run({A}, {&inputs});
@@ -482,8 +482,8 @@ TEST(Network, concatVectors) {
   ExecutionEngine EE;
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
-  G.setName("concatVectors");
+  Function *F = mod.createFunction("main");
+  F->setName("concatVectors");
 
   auto *V1 = mod.createVariable(ElemKind::IndexTy, {10}, "V1",
                                 Variable::VisibilityKind::Public);
@@ -492,8 +492,8 @@ TEST(Network, concatVectors) {
   auto *V3 = mod.createVariable(ElemKind::IndexTy, {30}, "V3",
                                 Variable::VisibilityKind::Public);
 
-  Node *L = G.createConcat("concat", {V1, V2, V3}, 0);
-  auto *result = G.createSave("ret", L);
+  Node *L = F->createConcat("concat", {V1, V2, V3}, 0);
+  auto *result = F->createSave("ret", L);
 
   Tensor I1(ElemKind::IndexTy, {10});
   Tensor I2(ElemKind::IndexTy, {20});
@@ -509,7 +509,7 @@ TEST(Network, concatVectors) {
     I3.getHandle<size_t>().at({i + 20}) = i + 50;
   }
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   // Testing the output vector.
   EE.run({V1, V2, V3}, {&I1, &I2, &I3});
@@ -525,19 +525,19 @@ TEST(Network, sliceVectors) {
   ExecutionEngine EE;
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
-  G.setName("sliceVectors");
+  Function *F = mod.createFunction("main");
+  F->setName("sliceVectors");
 
   auto *V = mod.createVariable(ElemKind::IndexTy, {3, 30}, "V",
                                Variable::VisibilityKind::Public);
 
-  Node *S1 = G.createSlice("slice1", V, {0, 10}, {3, 13});
-  Node *S2 = G.createSlice("slice2", V, {1, 10}, {2, 30});
-  Node *S3 = G.createSlice("slice3", V, {2, 10}, {3, 12});
+  Node *S1 = F->createSlice("slice1", V, {0, 10}, {3, 13});
+  Node *S2 = F->createSlice("slice2", V, {1, 10}, {2, 30});
+  Node *S3 = F->createSlice("slice3", V, {2, 10}, {3, 12});
 
-  auto *result1 = G.createSave("ret1", S1);
-  auto *result2 = G.createSave("ret2", S2);
-  auto *result3 = G.createSave("ret3", S3);
+  auto *result1 = F->createSave("ret1", S1);
+  auto *result2 = F->createSave("ret2", S2);
+  auto *result3 = F->createSave("ret3", S3);
 
   Tensor I(ElemKind::IndexTy, {3, 30});
 
@@ -547,7 +547,7 @@ TEST(Network, sliceVectors) {
     I.getHandle<size_t>().at({2, j}) = j + 60;
   }
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   // Testing the output slices.
   EE.run({V}, {&I});
@@ -577,26 +577,26 @@ TEST(Network, sliceVectors) {
   }
 }
 
-void buildGRU(Function &G, const std::vector<Node *> &slicesX,
+void buildGRU(Function *F, const std::vector<Node *> &slicesX,
               unsigned hiddenSize, unsigned outputSize,
               std::vector<Node *> &outputs) {
-  return G.createGRU("GRU", slicesX, 1, hiddenSize, outputSize, outputs);
+  return F->createGRU("GRU", slicesX, 1, hiddenSize, outputSize, outputs);
 };
 
-void buildRNN(Function &G, const std::vector<Node *> &slicesX,
+void buildRNN(Function *F, const std::vector<Node *> &slicesX,
               unsigned hiddenSize, unsigned outputSize,
               std::vector<Node *> &outputs) {
-  return G.createSimpleRNN("SimpleRNN", slicesX, 1, hiddenSize, outputSize,
-                           outputs);
+  return F->createSimpleRNN("SimpleRNN", slicesX, 1, hiddenSize, outputSize,
+                            outputs);
 };
 
-void buildLSTM(Function &G, const std::vector<Node *> &slicesX,
+void buildLSTM(Function *F, const std::vector<Node *> &slicesX,
                unsigned hiddenSize, unsigned outputSize,
                std::vector<Node *> &outputs) {
-  return G.createLSTM("LSTM", slicesX, 1, hiddenSize, outputSize, outputs);
+  return F->createLSTM("LSTM", slicesX, 1, hiddenSize, outputSize, outputs);
 };
 
-using TCellGenerator = void (*)(Function &, const std::vector<Node *> &,
+using TCellGenerator = void (*)(Function *, const std::vector<Node *> &,
                                 unsigned, unsigned, std::vector<Node *> &);
 
 void testRNNCell(TCellGenerator cell) {
@@ -605,8 +605,8 @@ void testRNNCell(TCellGenerator cell) {
   EE.getConfig().learningRate = 0.05;
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
-  G.setName("testRNNCell");
+  Function *F = mod.createFunction("main");
+  F->setName("testRNNCell");
 
   const unsigned NumVectors = 3;
   const unsigned NumElements = 4;
@@ -625,7 +625,7 @@ void testRNNCell(TCellGenerator cell) {
   for (unsigned i = 0; i < NumVectors; ++i) {
     std::string Name{"X"};
     Name.append(std::to_string(i + 1));
-    XSliced.push_back(G.createSlice(Name, X, {0, i, 0}, {1, i + 1, 4}));
+    XSliced.push_back(F->createSlice(Name, X, {0, i, 0}, {1, i + 1, 4}));
   }
 
   // Extract a slice for each output.
@@ -634,25 +634,25 @@ void testRNNCell(TCellGenerator cell) {
   for (unsigned i = 0; i < NumVectors; ++i) {
     std::string Name{"Y"};
     Name.append(std::to_string(i + 1));
-    YSliced.push_back(G.createSlice(Name, Y, {0, i}, {1, i + 1}));
+    YSliced.push_back(F->createSlice(Name, Y, {0, i}, {1, i + 1}));
   }
 
   const unsigned hiddenSize = 5;
   const unsigned outputSize = 1;
 
   std::vector<Node *> outputNodes;
-  cell(G, XSliced, hiddenSize, outputSize, outputNodes);
+  cell(F, XSliced, hiddenSize, outputSize, outputNodes);
 
   std::vector<Node *> regressionNodes;
   for (unsigned t = 0; t < NumVectors; t++) {
     regressionNodes.push_back(
-        G.createRegression("", outputNodes[t], YSliced[t]));
+        F->createRegression("", outputNodes[t], YSliced[t]));
   };
 
-  auto *R = G.createConcat("O", regressionNodes, 1);
-  auto *result = G.createSave("result", R);
+  auto *R = F->createConcat("O", regressionNodes, 1);
+  auto *result = F->createSave("result", R);
 
-  Function *TF = glow::differentiate(&G, EE.getConfig());
+  Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Values for the input and output variables.
@@ -669,7 +669,7 @@ void testRNNCell(TCellGenerator cell) {
   EE.runBatch(1000, {X, Y}, {&inputs, &expected});
 
   // Testing the output vector.
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run({X}, {&inputs});
   auto RNWH = result->getVariable()->getPayload().getHandle<>();
@@ -691,17 +691,17 @@ TEST(Optimizer, copyPropagation) {
   ExecutionEngine EE;
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
-  G.setName("CopyPropagation");
+  Function *F = mod.createFunction("main");
+  F->setName("CopyPropagation");
 
   Node *K = mod.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
   Node *S = mod.createVariable(ElemKind::IndexTy, {4, 1}, "select");
 
-  K = G.createConv("Conv1", K, 16, 3, 2, 3);
-  K = G.createRELU("Relu", K);
-  K = G.createSoftMax("SoftMax", K, S);
-  K = G.createSave("result", K);
-  EE.compile(CompilationMode::Infer, &G);
+  K = F->createConv("Conv1", K, 16, 3, 2, 3);
+  K = F->createRELU("Relu", K);
+  K = F->createSoftMax("SoftMax", K, S);
+  K = F->createSave("result", K);
+  EE.compile(CompilationMode::Infer, F);
 
   // Check that all copy instructions are eliminated.
   auto &instrs = EE.getIR().getInstrs();
@@ -717,8 +717,8 @@ TEST(Interpreter, learnSqrt2) {
   EE.getConfig().learningRate = 0.03;
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
-  G.setName("Square root of 2");
+  Function *F = mod.createFunction("main");
+  F->setName("Square root of 2");
 
   auto *A = mod.createVariable(ElemKind::FloatTy, {1}, "A",
                                Variable::VisibilityKind::Public,
@@ -727,11 +727,11 @@ TEST(Interpreter, learnSqrt2) {
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::Broadcast, 2);
 
-  Node *O = G.createArithmetic("Mult", A, A, ArithmeticNode::Mode::Mul);
-  O = G.createRegression("reg", O, Ex);
-  G.createSave("ret", O);
+  Node *O = F->createArithmetic("Mult", A, A, ArithmeticNode::Mode::Mul);
+  O = F->createRegression("reg", O, Ex);
+  F->createSave("ret", O);
 
-  Function *TF = glow::differentiate(&G, EE.getConfig());
+  Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Train the network:
@@ -753,8 +753,8 @@ TEST(LinearRegression, trainSimpleLinearRegression) {
   EE.getConfig().batchSize = numSamples;
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
-  G.setName("Gradient descent solution for simple linear regression");
+  Function *F = mod.createFunction("main");
+  F->setName("Gradient descent solution for simple linear regression");
 
   // These m and b are only used to generate training data.
   float referenceM = 3.0;
@@ -777,14 +777,14 @@ TEST(LinearRegression, trainSimpleLinearRegression) {
       ElemKind::FloatTy, {numSamples, 1}, "expected",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
 
-  FullyConnectedNode *FC = G.createFullyConnected("fc", inputX, 1);
-  Node *R = G.createRegression("reg", FC, expectedY);
-  G.createSave("return", R);
+  FullyConnectedNode *FC = F->createFullyConnected("fc", inputX, 1);
+  Node *R = F->createRegression("reg", FC, expectedY);
+  F->createSave("return", R);
 
   Variable *M = llvm::cast<Variable>(FC->getWeights());
   Variable *B = llvm::cast<Variable>(FC->getBias());
 
-  Function *TF = glow::differentiate(&G, EE.getConfig());
+  Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Train the network doing 100 steps. Learn on 500 samples.
@@ -829,8 +829,8 @@ TEST(LinearClassifier, classifyPlayerSport) {
   EE.getConfig().learningRate = 0.05;
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
-  G.setName("classifyPlayers");
+  Function *F = mod.createFunction("main");
+  F->setName("classifyPlayers");
 
   const unsigned numTrainPlayers = 200;
   const size_t numFeatures = 2;
@@ -843,11 +843,11 @@ TEST(LinearClassifier, classifyPlayerSport) {
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
 
-  auto *FC = G.createFullyConnected("fc", A, numClasses);
-  auto *SM = G.createSoftMax("softmax", FC, S);
-  auto *result = G.createSave("result", SM);
+  auto *FC = F->createFullyConnected("fc", A, numClasses);
+  auto *SM = F->createSoftMax("softmax", FC, S);
+  auto *result = F->createSave("result", SM);
 
-  Function *TF = glow::differentiate(&G, EE.getConfig());
+  Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   Tensor players(ElemKind::FloatTy, {numTrainPlayers, numFeatures});
@@ -857,7 +857,7 @@ TEST(LinearClassifier, classifyPlayerSport) {
   // Training:
   EE.runBatch(2000, {A, S}, {&players, &labels});
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   std::vector<std::tuple<unsigned, unsigned, Sport>> testPlayers;
   testPlayers.emplace_back(82, 240, Sport::BASKETBALL);
@@ -892,11 +892,11 @@ TEST(Interpreter, learnSinus) {
   EE.getConfig().batchSize = numSamples;
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
-  G.setName("Gradient descent solution for sin(x)");
+  Function *F = mod.createFunction("main");
+  F->setName("Gradient descent solution for sin(x)");
 
   // Function that should be learned by the NN
-  auto F = [](float x) -> float {
+  auto FF = [](float x) -> float {
     // Return a shifted sin(x) value, so that it is in the range [0, 1].
     return (sin(x) + 1) / 2;
   };
@@ -908,7 +908,7 @@ TEST(Interpreter, learnSinus) {
     // Scale x to cover the range [0, 4] as this leads to a good convergence
     // during training.
     float x = i / (numSamples / 4.0);
-    float y = F(x);
+    float y = FF(x);
     tensorX.getHandle<>().at({i, 0}) = x;
     tensorY.getHandle<>().at({i, 0}) = y;
   }
@@ -921,13 +921,13 @@ TEST(Interpreter, learnSinus) {
       ElemKind::FloatTy, {numSamples, 1}, "expected",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
 
-  FullyConnectedNode *FC1 = G.createFullyConnected("fc1", inputX, 10);
-  Node *O = G.createSigmoid("sigmoid1", FC1);
-  FullyConnectedNode *FC2 = G.createFullyConnected("fc2", O, 1);
-  Node *R = G.createRegression("reg", FC2, expectedY);
-  auto *result = G.createSave("return", R);
+  FullyConnectedNode *FC1 = F->createFullyConnected("fc1", inputX, 10);
+  Node *O = F->createSigmoid("sigmoid1", FC1);
+  FullyConnectedNode *FC2 = F->createFullyConnected("fc2", O, 1);
+  Node *R = F->createRegression("reg", FC2, expectedY);
+  auto *result = F->createSave("return", R);
 
-  Function *TF = glow::differentiate(&G, EE.getConfig());
+  Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Learn on numSamples samples.
@@ -938,18 +938,18 @@ TEST(Interpreter, learnSinus) {
     // Scale x to cover the range [0, 4.2] as this leads to a good convergence
     // during training.
     float x = i / (numSamples / 4.2) + 0.123456;
-    float y = F(x);
+    float y = FF(x);
     tensorX.getHandle<>().at({i, 0}) = x;
     tensorY.getHandle<>().at({i, 0}) = y;
   }
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
   EE.run({inputX}, {&tensorX});
   auto resH = result->getVariable()->getPayload().getHandle<>();
 
   for (size_t i = 0; i < numSamples; i++) {
     float x = tensorX.getHandle().at({i, 0});
-    EXPECT_NEAR(resH.at({i, 0}), F(x), epsilon);
+    EXPECT_NEAR(resH.at({i, 0}), FF(x), epsilon);
   }
 }
 
@@ -964,8 +964,8 @@ TEST(Interpreter, nonLinearClassifier) {
   EE.getConfig().learningRate = 0.01;
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
-  G.setName("nonLinearClassifier");
+  Function *F = mod.createFunction("main");
+  F->setName("nonLinearClassifier");
 
   auto *A = mod.createVariable(ElemKind::FloatTy, {batchSize, 2}, "A",
                                Variable::VisibilityKind::Public);
@@ -973,14 +973,14 @@ TEST(Interpreter, nonLinearClassifier) {
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
 
-  auto *FCL0 = G.createFullyConnected("fc1", A, 8);
-  auto *T0 = G.createTanh("tanh1", FCL0);
-  auto *FCL1 = G.createFullyConnected("fc2", T0, 2);
-  auto *T1 = G.createTanh("tanh2", FCL1);
-  auto *SM = G.createSoftMax("soft", T1, S);
-  auto *result = G.createSave("ret", SM);
+  auto *FCL0 = F->createFullyConnected("fc1", A, 8);
+  auto *T0 = F->createTanh("tanh1", FCL0);
+  auto *FCL1 = F->createFullyConnected("fc2", T0, 2);
+  auto *T1 = F->createTanh("tanh2", FCL1);
+  auto *SM = F->createSoftMax("soft", T1, S);
+  auto *result = F->createSave("ret", SM);
 
-  Function *TF = glow::differentiate(&G, EE.getConfig());
+  Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   Tensor samples(ElemKind::FloatTy, {numSamples, 2});
@@ -997,7 +997,7 @@ TEST(Interpreter, nonLinearClassifier) {
 
   EE.runBatch(4000, {A, S}, {&samples, &labels});
 
-  EE.compile(CompilationMode::Infer, &G);
+  EE.compile(CompilationMode::Infer, F);
 
   std::vector<std::tuple<float, float, size_t>> tests;
   tests.emplace_back(-0.8, -0.8, 0);

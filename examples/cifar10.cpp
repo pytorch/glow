@@ -73,7 +73,7 @@ void testCIFAR10() {
   EE.getConfig().batchSize = minibatchSize;
 
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
 
   // Create the input layer:
   auto *A = mod.createVariable(ElemKind::FloatTy, {minibatchSize, 32, 32, 3},
@@ -84,24 +84,24 @@ void testCIFAR10() {
                                Variable::TrainKind::None);
 
   // Create the rest of the network.
-  auto *CV0 = G.createConv("conv", A, 16, 5, 1, 2);
-  auto *RL0 = G.createRELU("relu", CV0);
-  auto *MP0 = G.createPool("pool", RL0, PoolNode::Mode::Max, 2, 2, 0);
+  auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2);
+  auto *RL0 = F->createRELU("relu", CV0);
+  auto *MP0 = F->createPool("pool", RL0, PoolNode::Mode::Max, 2, 2, 0);
 
-  auto *CV1 = G.createConv("conv", MP0, 20, 5, 1, 2);
-  auto *RL1 = G.createRELU("relu", CV1);
-  auto *MP1 = G.createPool("pool", RL1, PoolNode::Mode::Max, 2, 2, 0);
+  auto *CV1 = F->createConv("conv", MP0, 20, 5, 1, 2);
+  auto *RL1 = F->createRELU("relu", CV1);
+  auto *MP1 = F->createPool("pool", RL1, PoolNode::Mode::Max, 2, 2, 0);
 
-  auto *CV2 = G.createConv("conv", MP1, 20, 5, 1, 2);
-  auto *RL2 = G.createRELU("relu", CV2);
-  auto *MP2 = G.createPool("pool", RL2, PoolNode::Mode::Max, 2, 2, 0);
+  auto *CV2 = F->createConv("conv", MP1, 20, 5, 1, 2);
+  auto *RL2 = F->createRELU("relu", CV2);
+  auto *MP2 = F->createPool("pool", RL2, PoolNode::Mode::Max, 2, 2, 0);
 
-  auto *FCL1 = G.createFullyConnected("fc", MP2, 10);
-  auto *RL3 = G.createRELU("relu", FCL1);
-  auto *SM = G.createSoftMax("softmax", RL3, E);
-  auto *result = G.createSave("ret", SM);
+  auto *FCL1 = F->createFullyConnected("fc", MP2, 10);
+  auto *RL3 = F->createRELU("relu", FCL1);
+  auto *SM = F->createSoftMax("softmax", RL3, E);
+  auto *result = F->createSave("ret", SM);
 
-  Function *TF = glow::differentiate(&G, EE.getConfig());
+  Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
 
   // Report progress every this number of training iterations.

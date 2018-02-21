@@ -137,7 +137,7 @@ void Model::loadLanguages() {
 /// \p encoderHiddenOutput saves resulting hidden layer.
 void Model::loadEncoder() {
   auto &mod = EE_.getModule();
-  auto &G = *mod.getFunction("main");
+  Function *F = mod.getFunction("main");
   input_ = mod.createVariable(
       ElemKind::IndexTy, {MAX_LENGTH}, "encoder.inputsentence",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
@@ -170,23 +170,23 @@ void Model::loadEncoder() {
   loadMatrixFromFile("fr2en/encoder_b_hh.bin", b_hh->getPayload());
 
   Node *inputEmbedded =
-      G.createGather("encoder.embedding", embedding_fr_, input_);
+      F->createGather("encoder.embedding", embedding_fr_, input_);
 
   // TODO: encoder does exactly MAX_LENGTH steps, while input size is smaller.
   // We could use control flow here.
   std::vector<Node *> outputs;
   for (unsigned step = 0; step < MAX_LENGTH; step++) {
     Node *inputSlice =
-        G.createSlice("encoder." + std::to_string(step) + ".inputSlice",
-                      inputEmbedded, {step, 0}, {step + 1, EMBEDDING_SIZE});
+        F->createSlice("encoder." + std::to_string(step) + ".inputSlice",
+                       inputEmbedded, {step, 0}, {step + 1, EMBEDDING_SIZE});
     hidden =
-        createPyTorchGRUCell(&G, inputSlice, hidden, w_ih, b_ih, w_hh, b_hh);
+        createPyTorchGRUCell(F, inputSlice, hidden, w_ih, b_ih, w_hh, b_hh);
     outputs.push_back(hidden);
   }
 
-  Node *output = G.createConcat("encoder.output", outputs, 0);
+  Node *output = F->createConcat("encoder.output", outputs, 0);
   encoderHiddenOutput_ =
-      G.createGather("encoder.outputNth", output, seqLength_);
+      F->createGather("encoder.outputNth", output, seqLength_);
 }
 
 /// Model part representing Decoder.
@@ -194,7 +194,7 @@ void Model::loadEncoder() {
 /// Resulting translation is put into \p output Variable.
 void Model::loadDecoder() {
   auto &mod = EE_.getModule();
-  auto &G = *mod.getFunction("main");
+  Function *F = mod.getFunction("main");
   Variable *input = mod.createVariable(ElemKind::IndexTy, {1}, "decoder.input",
                                        Variable::VisibilityKind::Public,
                                        Variable::TrainKind::None);
@@ -234,27 +234,28 @@ void Model::loadDecoder() {
   // smaller. We could use control flow here.
   for (unsigned step = 0; step < MAX_LENGTH; step++) {
     // Use last translated word as an input at the current step.
-    Node *embedded = G.createGather("decoder.embedding." + std::to_string(step),
-                                    embedding_en_, lastWordIdx);
+    Node *embedded =
+        F->createGather("decoder.embedding." + std::to_string(step),
+                        embedding_en_, lastWordIdx);
 
-    Node *relu = G.createRELU("decoder.relu", embedded);
-    hidden = createPyTorchGRUCell(&G, relu, hidden, w_ih, b_ih, w_hh, b_hh);
+    Node *relu = F->createRELU("decoder.relu", embedded);
+    hidden = createPyTorchGRUCell(F, relu, hidden, w_ih, b_ih, w_hh, b_hh);
 
-    Node *FC = G.createFullyConnected("decoder.outFC", hidden, out_w, out_b);
-    Node *topK = G.createTopK("decoder.topK", FC, 1);
+    Node *FC = F->createFullyConnected("decoder.outFC", hidden, out_w, out_b);
+    Node *topK = F->createTopK("decoder.topK", FC, 1);
 
-    lastWordIdx = G.createReshape("decoder.reshape", {topK, 1}, {1});
+    lastWordIdx = F->createReshape("decoder.reshape", {topK, 1}, {1});
     outputs.push_back(lastWordIdx);
   }
 
-  Node *concat = G.createConcat("decoder.output", outputs, 0);
+  Node *concat = F->createConcat("decoder.output", outputs, 0);
 
   output_ = mod.createVariable(
       ElemKind::IndexTy, {MAX_LENGTH}, "decoder.output",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
-  G.createSave("decoder.output", concat, output_);
+  F->createSave("decoder.output", concat, output_);
 
-  EE_.compile(CompilationMode::Infer, &G);
+  EE_.compile(CompilationMode::Infer, F);
 }
 
 /// Translation has 2 stages:
