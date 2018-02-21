@@ -341,19 +341,6 @@ std::string Module::uniqueName(llvm::StringRef name) {
 
 void Module::assignUniqueName(Node *N) { N->setName(uniqueName(N->getName())); }
 
-void Module::addGradientVariable(Variable *V, Variable *GradV) {
-  grads_.push_back({V, GradV});
-}
-
-Variable *Module::getGradientVariable(Variable *V) {
-  for (auto &p : grads_) {
-    if (p.first == V) {
-      return p.second;
-    }
-  }
-  return nullptr;
-}
-
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       size_t depth, size_t kernel,
                                       size_t stride, size_t pad) {
