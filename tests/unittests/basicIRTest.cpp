@@ -143,15 +143,15 @@ TEST(IR, casting) {
 
     auto *input = bb.createWeightVar(ElemKind::FloatTy, {1, 224, 224, 3});
     auto *sig = bb.createSigmoidOp(input);
-    auto *pool = bb.createPoolMaxOp(sig->getDest(), 7, 2, 3);
+    auto *pool = bb.createPoolAvgOp(sig->getDest(), 7, 2, 3);
 
-    EXPECT_EQ(isa<PoolMaxInst>(pool), true);
-    EXPECT_EQ(isa<PoolMaxInst>(input), false);
+    EXPECT_EQ(isa<PoolAvgInst>(pool), true);
+    EXPECT_EQ(isa<PoolAvgInst>(input), false);
     EXPECT_EQ(isa<SigmoidInst>(sig), true);
     EXPECT_EQ(isa<SigmoidInst>(pool), false);
 
-    EXPECT_NE(dyn_cast<PoolMaxInst>(pool), nullptr);
-    EXPECT_EQ(dyn_cast<PoolMaxInst>(pool), pool);
+    EXPECT_NE(dyn_cast<PoolAvgInst>(pool), nullptr);
+    EXPECT_EQ(dyn_cast<PoolAvgInst>(pool), pool);
 
     EXPECT_NE(dyn_cast<WeightVar>(input), nullptr);
     EXPECT_EQ(dyn_cast<WeightVar>(input), input);
