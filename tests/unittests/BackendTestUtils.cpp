@@ -106,6 +106,41 @@ void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
+                                        Tensor *bias, Tensor *selected,
+                                        llvm::ArrayRef<size_t> shape1,
+                                        llvm::ArrayRef<size_t> shape2,
+                                        Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  EE.getConfig().learningRate = 0.06;
+  EE.getConfig().momentum = 0.1;
+  EE.getConfig().L2Decay = 0.01;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *var1 = mod.createVariable(inputs->getElementType(), inputs->dims(),
+                                  "input", Variable::VisibilityKind::Public);
+  auto *var2 = mod.createVariable(selected->getElementType(), selected->dims(),
+                                  "selected", Variable::VisibilityKind::Public,
+                                  Variable::TrainKind::None);
+  auto *fc = F->createFullyConnected("fc", var1, bias->dims()[0]);
+  cast<Variable>(fc->getWeights())->copyFrom(weights);
+  cast<Variable>(fc->getBias())->copyFrom(bias);
+  auto *reshape1 = F->createReshape("reshape1", fc, shape1);
+  auto *lrn =
+      F->createLocalResponseNormalization("lrn", reshape1, 2, 2.0, 0.5, 1.0);
+  auto *reshape2 = F->createReshape("reshape2", lrn, shape2);
+  auto *softmax = F->createSoftMax("softmax", reshape2, var2);
+  auto result = F->createSave("ret", softmax);
+
+  Function *TF = glow::differentiate(F, EE.getConfig());
+  EE.compile(CompilationMode::Train, TF);
+  EE.runBatch(8, {var1, var2}, {inputs, selected});
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.runBatch(1, {var1, var2}, {inputs, selected});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                  BackendKind kind) {
   ExecutionEngine EE(kind);
