@@ -46,7 +46,9 @@ llvm::Value *getConstantValue(llvm::Value *v) {
   }
   if (isa<llvm::Constant>(v))
     return v;
-  llvm_unreachable("Unknown type of const parameter");
+  if (isa<llvm::IntToPtrInst>(v))
+    return nullptr;
+  return v;
 }
 
 /// Specialize functions for constant arguments. Such specialized functions are
@@ -193,8 +195,8 @@ class FunctionSpecializer {
     const auto *caller = call->getFunction();
     const auto *callee = call->getCalledFunction();
     // Specialized only calls inside main.
-    assert(caller->getName().equals("main") &&
-           "Only calls inside main are specialized");
+    assert(caller == entryF_ &&
+           "Only calls inside the entry function are specialized");
     (void)caller;
     // Do not specialize noinline functions, because it does not improve
     // anything.
@@ -203,12 +205,16 @@ class FunctionSpecializer {
   }
 
 public:
-  void run(llvm::Module *M) {
+  FunctionSpecializer(llvm::Function *entryF) : entryF_(entryF) {}
+  void run() {
+    // Bail if there is nothing to be specialized.
+    if (!jitSpecializeDims && !jitSpecializeAllArguments_)
+      return;
     // Collect calls that were replaced by specialized calls and can be erased.
     // The removal should happen after all specializations are done, because
     // these call instructions are used by the keys in Specializations_ map.
     llvm::SmallVector<llvm::Instruction *, 32> erasedInstructions;
-    auto *F = M->getFunction("main");
+    auto *F = entryF_;
     // Collect all eligable calls in the current function.
     llvm::SmallVector<llvm::CallInst *, 64> calls;
     for (auto &BB : *F) {
@@ -295,6 +301,8 @@ private:
     }
   };
 
+  /// The entry function of the module.
+  llvm::Function *entryF_;
   /// Mapping from specialization keys to the specialized functions.
   std::unordered_map<SpecializationKey, llvm::Function *,
                      SpecializationKeyHasher, SpecializationKeyEq>
@@ -311,6 +319,6 @@ private:
 } // namespace
 
 void LLVMIRGen::performSpecialization() {
-  FunctionSpecializer FuncSpecializer;
-  FuncSpecializer.run(llmodule_.get());
+  FunctionSpecializer FuncSpecializer(llmodule_->getFunction("main"));
+  FuncSpecializer.run();
 }

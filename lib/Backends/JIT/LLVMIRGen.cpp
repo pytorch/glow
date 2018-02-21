@@ -199,30 +199,49 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   val = getOrigin(val);
   assert(allocationsInfo_.allocatedAddressed_.count(val) &&
          "Value address was not allocated");
-  size_t addr = allocationsInfo_.allocatedAddressed_[val];
-  if (isa<AllocActivationInst>(val)) {
-    addr += reinterpret_cast<size_t>(allocationsInfo_.baseActivationsAddress_);
-  }
-  auto *offset = emitConst(builder, addr);
-
+  auto sizeTTy = builder.getIntNTy(sizeof(size_t) * 8);
   llvm::Type *T = nullptr;
 
   switch (ptrTy) {
   case ElemKind::FloatTy:
-    T = llvm::Type::getFloatTy(ctx_)->getPointerTo();
+    T = llvm::Type::getFloatPtrTy(ctx_);
     break;
   case ElemKind::Int8QTy:
-    T = llvm::Type::getInt8Ty(ctx_)->getPointerTo();
+    T = llvm::Type::getInt8PtrTy(ctx_);
     break;
   case ElemKind::IndexTy:
-    T = builder.getIntNTy(sizeof(size_t) * 8)->getPointerTo();
+    T = sizeTTy->getPointerTo();
     break;
   default:
     llvm_unreachable("Unimplemented");
     break;
   }
 
-  return builder.CreateIntToPtr(offset, T);
+  assert(allocationsInfo_.valueNumbers_.count(val));
+  auto &kindAndValue = allocationsInfo_.valueNumbers_[val];
+
+  // Get the required base address.
+  llvm::Value *baseAddrValue = nullptr;
+  switch (kindAndValue.first) {
+  case AllocationsInfo::ValueKind::Activation:
+    baseAddrValue = baseActivationsAddr_;
+    break;
+  case AllocationsInfo::ValueKind::ConstantWeight:
+    baseAddrValue = baseConstantWeightVarsAddr_;
+    break;
+  case AllocationsInfo::ValueKind::MutableWeight:
+    baseAddrValue = baseMutableWeightVarsAddr_;
+    break;
+  }
+
+  // Use relative addressing.
+  // Get offset.
+  auto valueIdx = llvm::ConstantInt::get(sizeTTy, kindAndValue.second);
+  auto offsetAddr = builder.CreateGEP(sizeTTy, offsetsArray_, valueIdx);
+  auto offsetValue = builder.CreateLoad(sizeTTy, offsetAddr);
+  // Add offset to the base address.
+  llvm::Value *addr = builder.CreateAdd(baseAddrValue, offsetValue);
+  return builder.CreateIntToPtr(addr, T);
 }
 
 llvm::Value *
