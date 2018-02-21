@@ -105,8 +105,6 @@ void testMNIST() {
 
   EE.compile(CompilationMode::Train, T);
 
-  T->dumpDAG();
-
   // Report progress every this number of training iterations.
   constexpr int reportRate = 30;
 
