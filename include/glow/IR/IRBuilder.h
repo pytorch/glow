@@ -31,9 +31,6 @@ public:
   /// @name High-level, operation-level IRBuilder.
   ///@{
 
-  PoolMaxInst *createPoolMaxOp(Value *input, size_t kernel, size_t stride,
-                               size_t pad);
-
   PoolMaxWithXYInst *createPoolMaxWithXYOp(Value *input, size_t kernel,
                                            size_t stride, size_t pad);
 

@@ -40,22 +40,6 @@ void IRBuilder::deallocateActiveInstrs() {
 //===----------------------------------------------------------------------===//
 //                        High level operators.
 //===----------------------------------------------------------------------===//
-
-PoolMaxInst *IRBuilder::createPoolMaxOp(Value *input, size_t kernel,
-                                        size_t stride, size_t pad) {
-  ShapeNHWC idim = ShapeNHWC(input->dims());
-  assert(idim.w >= kernel && idim.h >= kernel &&
-         "buffer too small for selected stride");
-
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
-
-  Value *dest =
-      createAllocActivationInst("pool.res", ElemKind::FloatTy,
-                                {idim.n, outSz.first, outSz.second, idim.c});
-
-  return createPoolMaxInst("pool", dest, input, kernel, stride, pad);
-}
-
 PoolMaxWithXYInst *IRBuilder::createPoolMaxWithXYOp(Value *input, size_t kernel,
                                                     size_t stride, size_t pad) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
