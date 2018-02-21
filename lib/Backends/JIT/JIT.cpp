@@ -2,91 +2,92 @@
 
 #define DEBUG_TYPE "jit"
 #include "JIT.h"
-
-#include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/Graph/Graph.h"
-#include "glow/Graph/Nodes.h"
 #include "glow/IR/Instrs.h"
-#include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/Verifier.h"
-#include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Transforms/IPO.h"
-#include "llvm/Transforms/IPO/Internalize.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 using namespace glow;
 using llvm::StringRef;
 using llvm::dyn_cast;
 using llvm::isa;
 
-static llvm::cl::opt<bool>
-    dumpIR("dump-llvm-ir",
-           llvm::cl::desc("Dump the LLVM-IR of the jitted code"),
-           llvm::cl::init(false));
-
-static llvm::cl::opt<bool>
-    dumpJitAsm("dump-llvm-asm",
-               llvm::cl::desc("Dump the textual assembly of the jitted code"),
-               llvm::cl::init(false));
-
-JITBackend::JITBackend(IRFunction *M) : M_(M) {
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmPrinter();
-  JIT_ = llvm::make_unique<llvm::orc::GlowJIT>();
-}
+JITBackend::JITBackend(IRFunction *F)
+    : F_(F), irgen_(F_, allocationsInfo_, "") {}
 
 JITBackend::~JITBackend() { clear(); }
 
-void JITBackend::clear() { M_->clear(); }
+void JITBackend::clear() { F_->clear(); }
 
-// Search for the standard library bitcode file on disk and load it into an
-// LLVM module. We search for the standard library around the current executable
-// and also in the current directory.
-static std::unique_ptr<llvm::Module> loadStandardLibrary(llvm::LLVMContext *ctx,
-                                                         StringRef filename) {
-  using llvm::sys::path::append;
-  using llvm::sys::path::parent_path;
+//===----------------------------------------------------------------------===//
+//                   Functions for executing code using JIT
+//===----------------------------------------------------------------------===//
 
-  llvm::SMDiagnostic Err;
-  auto mainExec =
-      llvm::sys::fs::getMainExecutable(nullptr, (void *)&loadStandardLibrary);
-  StringRef basePath = parent_path(mainExec);
+/// Emit the entry point for JIT called "jitmain". It simply calls the main
+/// entry of the module with the constant concrete addresses of all the memory
+/// areas. Since these addresses are constants, the LLVM optimizer will constant
+/// propagate them into relative addressing computations and the like and
+/// produce a very efficient code that uses absolute addressing whenever
+/// possible.
+void JITBackend::emitJitMain() {
+  llvm::Type *voidTy = llvm::Type::getVoidTy(irgen_.getLLVMContext());
+  llvm::FunctionType *jitFuncTy = llvm::FunctionType::get(voidTy, {}, false);
+  auto *func =
+      llvm::Function::Create(jitFuncTy, llvm::Function::ExternalLinkage,
+                             "jitmain", &irgen_.getModule());
+  llvm::BasicBlock *entry_bb =
+      llvm::BasicBlock::Create(irgen_.getLLVMContext(), "entry", func);
+  llvm::IRBuilder<> builder(entry_bb);
 
-  for (int i = 0; i < 3; i++) {
-    llvm::SmallString<256> libPath(basePath);
-    append(libPath, filename);
-    if (llvm::sys::fs::exists(libPath)) {
-      return llvm::parseIRFile(libPath, Err, *ctx);
-    }
+  // Prepare arguments for the "main" function.
+  llvm::SmallVector<llvm::Value *, 4> initFunctionCallArgs;
+  auto *sizeTType = builder.getIntNTy(sizeof(size_t) * 8);
+  auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen_.getLLVMContext());
 
-    basePath = parent_path(basePath);
-  }
-
-  return llvm::parseIRFile(filename, Err, *ctx);
+  initFunctionCallArgs.push_back(builder.CreateIntToPtr(
+      llvm::ConstantInt::get(
+          sizeTType, reinterpret_cast<size_t>(
+                         allocationsInfo_.baseConstantWeightVarsAddress_)),
+      int8PtrTy));
+  initFunctionCallArgs.push_back(builder.CreateIntToPtr(
+      llvm::ConstantInt::get(
+          sizeTType, reinterpret_cast<size_t>(
+                         allocationsInfo_.baseMutableWeightVarsAddress_)),
+      int8PtrTy));
+  initFunctionCallArgs.push_back(builder.CreateIntToPtr(
+      llvm::ConstantInt::get(
+          sizeTType,
+          reinterpret_cast<size_t>(allocationsInfo_.baseActivationsAddress_)),
+      int8PtrTy));
+  // Now form the offsets array and pass it as the last argument.
+  auto offsetsArray =
+      irgen_.emitConstOffsetsArray(irgen_.getBuilder(), allocationsInfo_);
+  initFunctionCallArgs.push_back(offsetsArray);
+  // Invoke the main entry with constant arguments and let LLVM optimizer make
+  // use of it.
+  auto *entryF = irgen_.getModule().getFunction(irgen_.getMainEntryName());
+  entryF->setLinkage(llvm::Function::InternalLinkage);
+  builder.CreateCall(entryF, initFunctionCallArgs);
+  // Terminate the function.
+  builder.CreateRetVoid();
 }
 
 void JITBackend::performJITMemoryAllocation() {
   allocationsInfo_.clear();
-  allocationsInfo_.numberValues(M_);
-  allocationsInfo_.allocateActivations(M_);
+  allocationsInfo_.numberValues(F_);
+  allocationsInfo_.allocateActivations(F_);
   // Tell the allocateWeightVars to reuse existing addresses for weights.
-  allocationsInfo_.allocateWeightVars(M_, true);
+  allocationsInfo_.allocateWeightVars(F_, true);
+
   // Allocate the heap to match the max memory usage for activations.
   if (allocationsInfo_.activationsMemSize_ > 0) {
     heap_.resize(allocationsInfo_.activationsMemSize_);
@@ -95,58 +96,21 @@ void JITBackend::performJITMemoryAllocation() {
 }
 
 void JITBackend::init() {
-  // Load the jit library as a new module.
-  llmodule_ = loadStandardLibrary(&ctx_, "libjit.bc");
-  GLOW_ASSERT(llmodule_.get() && "Unable to load the JIT library.");
-
-  // Assign the target information to the module.
-  llmodule_->setDataLayout(JIT_->getTargetMachine().createDataLayout());
-
-  // Create the 'main' function into the LLVM module.
-  llvm::Type *void_type = llvm::Type::getVoidTy(ctx_);
-  llvm::FunctionType *jit_func_type =
-      llvm::FunctionType::get(void_type, {}, false);
-  func_ = llvm::Function::Create(jit_func_type, llvm::Function::ExternalLinkage,
-                                 "main", llmodule_.get());
-
-  // Setup the entry basic block and initialize the IR builder.
-  llvm::BasicBlock *entry_bb = llvm::BasicBlock::Create(ctx_, "entry", func_);
-  llvm::IRBuilder<> builder(entry_bb);
-
+  irgen_.initTargetMachine(llvm::CodeModel::Model::Large);
+  JIT_ = llvm::make_unique<llvm::orc::GlowJIT>(irgen_.getTargetMachine());
+  irgen_.initCodeGen();
+  // Perform the address assignment for activations and WeightVars.
   performJITMemoryAllocation();
-
-  // For each instruction in the module:
-  for (auto &I : M_->getInstrs()) {
-    generateLLVMIRForInstr(builder, I);
-  }
-
-  // Terminate the function.
-  builder.CreateRetVoid();
-  assert(!llvm::verifyFunction(*func_, &llvm::errs()) && "Verification failed");
-
-  // Optimize the module.
-  optimizeLLVMModule(func_, JIT_->getTargetMachine());
-  // And pass the ownership to the JIT.
-
-  if (dumpIR) {
-    llmodule_->print(llvm::outs(), nullptr);
-  }
-
-  if (dumpJitAsm) {
-    llvm::SmallVector<char, 0> asmBuffer;
-    llvm::raw_svector_ostream asmStream(asmBuffer);
-    llvm::legacy::PassManager PM;
-    JIT_->getTargetMachine().addPassesToEmitFile(
-        PM, asmStream, llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
-    PM.run(*llmodule_);
-    llvm::outs() << asmStream.str();
-  }
-
-  JIT_->addModule(std::move(llmodule_));
+  // Create the jitmain function to be invoked by JIT.
+  emitJitMain();
+  // Emit the code for the body of the entry function.
+  irgen_.performCodeGen();
+  // Hand over the module to JIT for the machine code generation.
+  JIT_->addModule(irgen_.borrowModule());
 }
 
 void JITBackend::doForwardPass(bool isTrain) {
-  auto sym = JIT_->findSymbol("main");
+  auto sym = JIT_->findSymbol("jitmain");
   assert(sym && "Unable to JIT the code!");
   using JitFuncType = void (*)(void);
   auto address = sym.getAddress();

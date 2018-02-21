@@ -310,7 +310,7 @@ private:
 
 } // namespace
 
-void JITBackend::performSpecialization() {
+void LLVMIRGen::performSpecialization() {
   FunctionSpecializer FuncSpecializer;
   FuncSpecializer.run(llmodule_.get());
 }

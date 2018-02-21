@@ -27,7 +27,7 @@ namespace orc {
 // KaleidoscopeJIT example in the LLVM tree.
 class GlowJIT {
 private:
-  std::unique_ptr<TargetMachine> TM_;
+  TargetMachine &TM_;
   const DataLayout DL_;
   RTDyldObjectLinkingLayer objectLayer_;
   IRCompileLayer<decltype(objectLayer_), SimpleCompiler> compileLayer_;
@@ -35,9 +35,9 @@ private:
 public:
   using ModuleHandle = decltype(compileLayer_)::ModuleHandleT;
 
-  GlowJIT();
+  GlowJIT(llvm::TargetMachine &TM);
 
-  TargetMachine &getTargetMachine() { return *TM_; }
+  TargetMachine &getTargetMachine() { return TM_; }
 
   ModuleHandle addModule(std::unique_ptr<Module> M);
 
