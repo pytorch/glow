@@ -40,7 +40,7 @@ class JITBackend final : public Backend {
   void emitJitMain();
   /// Perform memory allocation for a JIT execution.
   void performJITMemoryAllocation();
-  
+
 public:
   /// Ctor.
   explicit JITBackend(IRFunction *M);

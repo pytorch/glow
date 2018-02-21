@@ -120,7 +120,10 @@ void createSimpleGraphForQuantization(Function *F, Variable *&input,
   auto *AP = F->createPool("pool", RL, PoolNode::Mode::Avg, 2, 2, 0);
   // Just add noop transpose.
   auto *T = F->createTranspose("transpose", AP, {0, 1, 2, 3});
-  Node *O = F->createFullyConnected("fc", T, W, B);
+  // Noop reshape.
+  auto *R = F->createReshape("reshape", T, T->getResult().dims());
+
+  Node *O = F->createFullyConnected("fc", R, W, B);
   saveNode = F->createSave("save", O);
 }
 

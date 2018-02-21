@@ -121,4 +121,3 @@ void JITBackend::doForwardPass(bool isTrain) {
     GLOW_ASSERT(false && "Error getting address.");
   }
 }
-
