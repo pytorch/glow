@@ -161,13 +161,13 @@ void JITBackend::produceBundle(llvm::StringRef outputDir) {
 
   auto &M = irgen_.getModule();
   auto bundleName = irgen_.getMainEntryName();
-  auto bundleCodeOutput = outputDir + "/" + bundleName + ".o";
-  auto bundleWeightsOutput = outputDir + "/" + bundleName + ".weights";
+  auto bundleCodeOutput = (outputDir + "/" + bundleName + ".o").str();
+  auto bundleWeightsOutput = (outputDir + "/" + bundleName + ".weights").str();
   DEBUG(llvm::outs() << "Producing a bundle:\n"
                      << "bundle name: " << bundleName << "\n"
                      << "bundle code: " << bundleCodeOutput << "\n"
                      << "bundle weights:" << bundleWeightsOutput << "\n");
-  llvm::StringRef fileName = bundleCodeOutput.str();
+  llvm::StringRef fileName = bundleCodeOutput;
   std::error_code EC;
   llvm::raw_fd_ostream outputFile(fileName, EC, llvm::sys::fs::F_None);
   GLOW_ASSERT(!EC &&
@@ -185,7 +185,7 @@ void JITBackend::produceBundle(llvm::StringRef outputDir) {
   }
   outputFile.close();
   // Output weights.
-  saveWeights(bundleWeightsOutput.str());
+  saveWeights(bundleWeightsOutput);
 }
 
 /// Emit the entry function for the bundle. It simply calls the main entry of
