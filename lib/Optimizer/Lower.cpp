@@ -216,6 +216,71 @@ void lowerReluNode(Function *F, ReluNode &R) {
   R.getResult().replaceAllUsesOfWith(relu);
 }
 
+void lowerSGDNode(Function *F, SGDNode &SGD) {
+  assert(SGD.getUsers().size() == 0 && "SGDNode must not have users");
+
+  NodeValue W = SGD.getWeight();
+  NodeValue G = SGD.getGradient();
+  NodeValue Gsum = SGD.getGsum();
+
+  /// Described in the paper: Alex Krizhevsky [2014]
+  // "One weird trick for parallelizing convolutional neural networks"
+
+  float momentum = SGD.getMomentum();
+
+  assert(W.dims() == G.dims() && "Invalid variables sizes for SGDNode");
+
+  float L1Decay = SGD.getL1Decay();
+  float L2Decay = SGD.getL2Decay();
+  float learningRate = SGD.getLearningRate();
+  float batchSize = SGD.getBatchSize();
+
+  // All computations here are within the same type.
+  auto type = G.getType();
+
+  NodeValue gij = G;
+  if (L1Decay) {
+    auto L1DecaySplat = F->createSplat("L1DecaySplat", type, L1Decay);
+    auto zeroSplat = F->createSplat("zeroSplat", type, 0);
+    auto oneSplat = F->createSplat("oneSplat", type, 1);
+    auto minusOneSplat = F->createSplat("minusOneSplat", type, -1);
+
+    auto Wcmp = F->createArithmetic("Wcmp", zeroSplat, W, ArithmeticNode::Mode::CmpLTE);
+    auto Wdir = F->createSelect("Wdir", Wcmp, oneSplat, minusOneSplat);
+    auto L1Grad = F->createArithmetic("L1Grad", L1DecaySplat, Wdir, ArithmeticNode::Mode::Mul);
+
+    gij = F->createArithmetic("gij_with_l1", gij, L1Grad, ArithmeticNode::Mode::Add);
+  }
+  if (L2Decay) {
+    auto L2DecaySplat = F->createSplat("L2DecaySplat", type, L2Decay);
+
+    auto L2Grad = F->createArithmetic("L2Grad", L2DecaySplat, W, ArithmeticNode::Mode::Mul);
+
+    gij = F->createArithmetic("gij_with_l2", gij, L2Grad, ArithmeticNode::Mode::Add);
+  }
+  if (batchSize > 1) {
+    auto batchSizeSplat = F->createSplat("batchSizeSplat", type, batchSize);
+    gij = F->createArithmetic("gij_div_batchSz", gij, batchSizeSplat, ArithmeticNode::Mode::Div);
+  }
+
+  auto negLearningRateSplat = F->createSplat("learningRateSplat", type, -learningRate);
+  auto dx = F->createArithmetic("dx", negLearningRateSplat, gij, ArithmeticNode::Mode::Mul);
+
+  // Use the momentum to improve the gradient descent:
+  // http://ufldl.stanford.edu/tutorial/supervised/
+  // OptimizationStochasticGradientDescent/
+  if (momentum > 0.0) {
+    auto momentumSplat = F->createSplat("learningRateSplat", type, momentum);
+    auto GsumMult = F->createArithmetic("GsumMult", momentumSplat, Gsum, ArithmeticNode::Mode::Mul);
+
+    dx = F->createArithmetic("dx_with_momentum", GsumMult, dx, ArithmeticNode::Mode::Add);
+    F->createSave("saveGsum", dx, llvm::cast<Variable>(Gsum.getNode()));
+  }
+
+  auto newW = F->createArithmetic("newW", W, dx, ArithmeticNode::Mode::Add);
+  F->createSave("saveW", newW, llvm::cast<Variable>(W.getNode()));
+}
+
 void glow::lower(Function *F, CompilationMode mode) {
   auto &nodes = F->getNodes();
 
@@ -238,6 +303,14 @@ void glow::lower(Function *F, CompilationMode mode) {
       lowerTanhGradNode(F, *THG);
     } else if (auto *SG = dyn_cast<SigmoidGradNode>(node)) {
       lowerSigmoidGradNode(F, *SG);
+    } else if (auto *SGD = dyn_cast<SGDNode>(node)) {
+      lowerSGDNode(F, *SGD);
     }
+  }
+
+  for (auto it = F->getNodes().begin(), e = F->getNodes().end(); it != e;) {
+    auto cur = *(it++);
+    if (dyn_cast<SGDNode>(cur))
+      F->eraseNode(cur);
   }
 }
