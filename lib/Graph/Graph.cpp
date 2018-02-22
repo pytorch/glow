@@ -660,9 +660,14 @@ LocalResponseNormalizationNode *Function::createLocalResponseNormalization(
 ArithmeticNode *Function::createArithmetic(llvm::StringRef name, NodeValue LHS,
                                            NodeValue RHS,
                                            ArithmeticNode::Mode op) {
+  return createArithmetic(name, LHS.getType(), LHS, RHS, op);
+}
+
+ArithmeticNode *Function::createArithmetic(llvm::StringRef name, TypeRef T,
+                                           NodeValue LHS, NodeValue RHS,
+                                           ArithmeticNode::Mode op) {
   assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
-  // The output tensor is of the same shape as the input tensor.
-  return addNode(new ArithmeticNode(name, op, LHS, RHS));
+  return addNode(new ArithmeticNode(name, T, op, LHS, RHS));
 }
 
 SelectNode *Function::createSelect(llvm::StringRef name, NodeValue Cond,
