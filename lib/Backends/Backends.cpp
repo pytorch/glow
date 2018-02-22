@@ -28,7 +28,7 @@ Backend *glow::createBackend(BackendKind backendKind, IRFunction *F) {
 #endif
 #if defined(GLOW_WITH_JIT)
   case BackendKind::JIT:
-    return createJIT(F);
+    return createCPUBackend(F);
 #endif
   default:
     // Unknown execution backend.

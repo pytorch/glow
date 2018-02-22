@@ -22,12 +22,12 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-JITBackend::JITBackend(IRFunction *F)
+CPUBackend::CPUBackend(IRFunction *F)
     : F_(F), irgen_(F_, allocationsInfo_, "") {}
 
-JITBackend::~JITBackend() { clear(); }
+CPUBackend::~CPUBackend() { clear(); }
 
-void JITBackend::clear() { F_->clear(); }
+void CPUBackend::clear() { F_->clear(); }
 
 //===----------------------------------------------------------------------===//
 //                   Functions for executing code using JIT
@@ -39,7 +39,7 @@ void JITBackend::clear() { F_->clear(); }
 /// propagate them into relative addressing computations and the like and
 /// produce a very efficient code that uses absolute addressing whenever
 /// possible.
-void JITBackend::emitJitMain() {
+void CPUBackend::emitJitMain() {
   llvm::Type *voidTy = llvm::Type::getVoidTy(irgen_.getLLVMContext());
   llvm::FunctionType *jitFuncTy = llvm::FunctionType::get(voidTy, {}, false);
   auto *func =
@@ -83,7 +83,7 @@ void JITBackend::emitJitMain() {
   builder.CreateRetVoid();
 }
 
-void JITBackend::performJITMemoryAllocation() {
+void CPUBackend::performJITMemoryAllocation() {
   allocationsInfo_.clear();
   allocationsInfo_.numberValues(F_);
   allocationsInfo_.allocateActivations(F_);
@@ -97,7 +97,7 @@ void JITBackend::performJITMemoryAllocation() {
   }
 }
 
-void JITBackend::init() {
+void CPUBackend::init() {
   irgen_.initTargetMachine(llvm::CodeModel::Model::Large);
   JIT_ = llvm::make_unique<llvm::orc::GlowJIT>(irgen_.getTargetMachine());
   irgen_.initCodeGen();
@@ -111,7 +111,7 @@ void JITBackend::init() {
   JIT_->addModule(irgen_.borrowModule());
 }
 
-void JITBackend::doForwardPass(bool isTrain) {
+void CPUBackend::doForwardPass(bool isTrain) {
   auto sym = JIT_->findSymbol("jitmain");
   assert(sym && "Unable to JIT the code!");
   using JitFuncType = void (*)(void);
@@ -128,7 +128,7 @@ void JITBackend::doForwardPass(bool isTrain) {
 //                   Functions for saving bundles
 //===----------------------------------------------------------------------===//
 
-void JITBackend::saveWeights(llvm::StringRef weightsFileName) {
+void CPUBackend::saveWeights(llvm::StringRef weightsFileName) {
   std::error_code EC;
   llvm::raw_fd_ostream weightsFile(weightsFileName, EC, llvm::sys::fs::F_None);
   GLOW_ASSERT(!EC &&
@@ -156,7 +156,7 @@ void JITBackend::saveWeights(llvm::StringRef weightsFileName) {
   weightsFile.close();
 }
 
-void JITBackend::produceBundle(llvm::StringRef outputDir) {
+void CPUBackend::produceBundle(llvm::StringRef outputDir) {
   // Emit the config for the bundle.
   emitBundleConfig();
 
@@ -195,7 +195,7 @@ void JITBackend::produceBundle(llvm::StringRef outputDir) {
 /// the LLVM optimizer will constant propagate them into relative addressing
 /// computations and the like and produce a very efficient code that uses
 /// absolute addressing whenever possible.
-void JITBackend::emitBundleEntryFunction() {
+void CPUBackend::emitBundleEntryFunction() {
   // The bundle entry point has the following API:
   // void entry(uint8_t *baseConstantWeightVars, uint8_t *baseInoutWeightVars,
   // uint8_t *baseActivations);
@@ -235,7 +235,7 @@ void JITBackend::emitBundleEntryFunction() {
 //   size_t mutableWeightVarsMemSize;
 //   size_t activationsMemSize;
 // };
-void JITBackend::emitBundleConfig() {
+void CPUBackend::emitBundleConfig() {
   // Get the integer type having the same size in bits as size_t.
   auto *SizeTType = irgen_.getBuilder().getIntNTy(sizeof(size_t) * 8);
   auto *bundleConfigTy = llvm::StructType::get(
@@ -254,7 +254,7 @@ void JITBackend::emitBundleConfig() {
                              irgen_.getAllocationsInfo().activationsMemSize_)));
 }
 
-void JITBackend::performBundleMemoryAllocation() {
+void CPUBackend::performBundleMemoryAllocation() {
   allocationsInfo_.clear();
   allocationsInfo_.numberValues(F_);
   allocationsInfo_.allocateActivations(F_);
@@ -263,7 +263,7 @@ void JITBackend::performBundleMemoryAllocation() {
   allocationsInfo_.allocateWeightVars(F_, false);
 }
 
-void JITBackend::save(llvm::StringRef outputDir) {
+void CPUBackend::save(llvm::StringRef outputDir) {
   // Object files generation works properly only in small mode.
   irgen_.initTargetMachine(llvm::CodeModel::Model::Small);
   irgen_.setMainEntryName(F_->getGraph()->getName());
