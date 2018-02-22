@@ -446,6 +446,45 @@ static void optimizeConcatNodes(Function *F) {
   }
 }
 
+/// Private helper for generic transpose.
+static void transposeGeneric(Variable *src, Variable *dst,
+                             llvm::ArrayRef<unsigned> shuffle) {
+  switch (src->getPayload().getElementType()) {
+  case ElemKind::FloatTy:
+    return src->getHandle<float>().transpose(&dst->getPayload(), shuffle);
+  case ElemKind::Int8QTy:
+    return src->getHandle<int8_t>().transpose(&dst->getPayload(), shuffle);
+  case ElemKind::Int32QTy:
+    return src->getHandle<int32_t>().transpose(&dst->getPayload(), shuffle);
+  case ElemKind::IndexTy:
+    return src->getHandle<size_t>().transpose(&dst->getPayload(), shuffle);
+  }
+}
+
+/// Statically transpose private variables.
+static void optimizeTranspose(Function *F) {
+  auto &nodes = F->getNodes();
+
+  for (auto const &node : nodes) {
+    auto *TN = dyn_cast<TransposeNode>(node);
+    if (!TN) {
+      continue;
+    }
+    auto *V = dyn_cast<Variable>(TN->getInput());
+    // V must have a single use and be private.
+    if (!V || !V->hasOneUse() || !V->isPrivate()) {
+      continue;
+    }
+    // Create a new variable NV to hold the transposed result.
+    auto *NV = F->getParent()->createVariable(
+        TN->getType(), V->getName(), V->getVisibilityKind(), V->getTrainKind());
+    // Transpose the value of V into NV.
+    transposeGeneric(V, NV, TN->getShuffle());
+    // Rewrite uses of TN to reference NV.
+    TN->getResult().replaceAllUsesOfWith(NV);
+  }
+}
+
 namespace {
 
 /// A helper type for hasing Node pointers when they are used as keys in hash
@@ -562,6 +601,9 @@ void glow::optimize(Function *F, CompilationMode mode) {
   if (mode == CompilationMode::Infer) {
     // Merge batch normalization operations.
     optimizeBatchNorm(F);
+
+    // Constant-fold transpose operations.
+    optimizeTranspose(F);
 
     optimizeRegression(F);
   }

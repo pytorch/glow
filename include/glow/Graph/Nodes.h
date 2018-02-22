@@ -67,6 +67,9 @@ public:
   /// \returns True if the Variable is initialized to be in training mode.
   bool isTraining() const { return train_ != TrainKind::None; }
 
+  /// \returns True if the Variable is private.
+  bool isPrivate() const { return visibility_ == VisibilityKind::Private; }
+
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::VariableNodeKind;
   }
