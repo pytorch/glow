@@ -167,7 +167,7 @@ static void loadImagesAndPreprocess(const std::vector<std::string> &filenames,
     size_t dims[3];
     bool loadSuccess = !readPngImage(filenames[n].c_str(), range, imageT, dims);
     assert(loadSuccess && "Error reading input image.");
-    (void) loadSuccess;
+    (void)loadSuccess;
 
     assert((dims[0] == DEFAULT_HEIGHT && dims[1] == DEFAULT_WIDTH) &&
            "All images must have the same Height and Width");
