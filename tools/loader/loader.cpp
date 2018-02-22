@@ -225,14 +225,27 @@ int main(int argc, char **argv) {
   assert(i0->getVisibilityKind() == Variable::VisibilityKind::Public);
   assert(i1->getVisibilityKind() == Variable::VisibilityKind::Public);
 
-  // Instrument the graph to capture profiles for nodes' outputs.
+  // Handle the request to profile the graph in preperation for quantization.
   if (!QuantizationProfileFile.empty()) {
+    // Perform the high-level optimizations before instrumenting the graph. This
+    // optimization phase will remove stuff like repetitive transpose operations
+    // perform CSE, etc.
+    ::optimize(F, glow::CompilationMode::Infer);
+
+    // Instrument the graph to capture profiles for nodes' outputs.
     ::profileQuantization(*F);
   }
 
-  // Quantize the graph based on the captured profile.
+  // Load the quantization profile and transform the graph.
   if (!LoadProfileFile.empty()) {
+    // The profiled graph was optimized before it was instrumentated. In this
+    // part of the code we repeat the same transformation in order to create
+    // the same graph structure.
+    ::optimize(F, glow::CompilationMode::Infer);
+
     auto quantizationInfos = deserializeFromYaml(LoadProfileFile);
+
+    // Quantize the graph based on the captured profile.
     quantization::generateQuantizedGraph(F, quantizationInfos);
   }
 
