@@ -585,6 +585,32 @@ static void optimizeSliceOfSplat(Function *F) {
   }
 }
 
+/// Eliminate node sequences that are related to quantization.
+static void optimizeQuantization(Function *F) {
+  for (const auto &node : F->getNodes()) {
+
+    /// Quantize(Dequantize(X)) -> RescaleQuantized(X)
+    if (auto *Q = dyn_cast<QuantizeNode>(node)) {
+      auto *DQ = dyn_cast<DequantizeNode>(Q->getInput());
+      if (!DQ) {
+        continue;
+      }
+
+      // If the quantization-dequantization sequence does not change the type
+      // then we can simply drop them without adding a requantization node.
+      if (DQ->getInput()->getType() == Q->getType()) {
+        Q->getResult().replaceAllUsesOfWith(DQ->getInput());
+        continue;
+      }
+
+      auto RS =
+          F->createRescaleQuantized(Q->getName(), DQ->getInput(), Q->getType());
+      Q->getResult().replaceAllUsesOfWith(RS);
+      continue;
+    }
+  }
+}
+
 void glow::optimize(Function *F, CompilationMode mode) {
   // Sink transpose operations in an attempt to cancel them out.
   sinkCode(F);
@@ -611,10 +637,14 @@ void glow::optimize(Function *F, CompilationMode mode) {
   // Perform Common Subexpression Elimination.
   CSE(F);
 
+  // Optimize Concat nodes.
   optimizeConcatNodes(F);
 
-  // Slice(Splat(dims, value)) -> Splat(dims', value)
+  // Optimize Tensor shape transformations.
   optimizeSliceOfSplat(F);
+
+  // Optimize things that are related to quantization.
+  optimizeQuantization(F);
 
   // Perform Dead Code Elimination.
   DCE(F);
