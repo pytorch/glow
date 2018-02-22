@@ -312,7 +312,14 @@ void generateQuantizedGraph(
     case Kinded::Kind::ReluNodeKind: {
       auto *R = cast<ReluNode>(node);
       assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
-      quantizedNode = F->createRELU(R->getName(), quantizedInputs[0]);
+
+      auto *RELU = F->createRELU(R->getName(), quantizedInputs[0]);
+      // Relu does not change {S,O} of the output, it uses the same {S,O} as
+      // the input. Make sure that rescale is applied to comply with the taken
+      // profile from RELU.
+      auto outTy = F->getParent()->uniqueType(ElemKind::Int8QTy, RELU->dims(),
+                                              TQP.scale_, TQP.offset_);
+      quantizedNode = F->createRescaleQuantized("rescaled", RELU, outTy);
       break;
     }
     case Kinded::Kind::TransposeNodeKind: {
