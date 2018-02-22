@@ -226,7 +226,8 @@ float dequantize(int8_t input, const TensorQuantizationParams &TQP) {
 static bool shouldQuantize(const Node *node) {
   return llvm::isa<FullyConnectedNode>(node) ||
          llvm::isa<ConvolutionNode>(node) || llvm::isa<ReluNode>(node) ||
-         llvm::isa<TransposeNode>(node) || llvm::isa<ReshapeNode>(node);
+         llvm::isa<TransposeNode>(node) || llvm::isa<ReshapeNode>(node) ||
+         llvm::isa<ArithmeticNode>(node);
 }
 
 /// Quantize all inputs for \p node and return back pointers to the newly
@@ -327,6 +328,14 @@ void generateQuantizedGraph(
       assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
       quantizedNode =
           F->createReshape(R->getName(), quantizedInputs[0], R->getDims());
+      break;
+    }
+
+    case Kinded::Kind::ArithmeticNodeKind: {
+      auto *AN = cast<ArithmeticNode>(node);
+      assert(quantizedInputs.size() == 2 && "Invalid number of inputs");
+      quantizedNode = F->createArithmetic(AN->getName(), quantizedInputs[0],
+                                          quantizedInputs[1], AN->getMode());
       break;
     }
 
