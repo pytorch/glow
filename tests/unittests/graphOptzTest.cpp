@@ -597,3 +597,23 @@ TEST(GraphOptz, DCEPublicVars) {
   //  Public nodes should not be deleted.
   EXPECT_EQ(mod.getVars().size(), 1);
 }
+
+TEST(GraphOptz, quantizeToRescale) {
+  // Check that we are combining quantization-dequantization pairs.
+  Module mod;
+  Function *F = mod.createFunction("foo");
+  Node *input = mod.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11, "input",
+                                   Variable::VisibilityKind::Public,
+                                   Variable::TrainKind::Broadcast, 15);
+  auto *D = F->createDequantize("dequantize", input);
+
+  auto qType = mod.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.03, 5);
+  auto *Q = F->createQuantize("quantize", D, qType);
+
+  F->createSave("ret", Q);
+
+  EXPECT_EQ(F->getNodes().size(), 3);
+
+  ::glow::optimize(F, CompilationMode::Infer);
+  EXPECT_EQ(F->getNodes().size(), 2);
+}

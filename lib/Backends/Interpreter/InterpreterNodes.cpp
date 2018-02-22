@@ -1435,7 +1435,6 @@ void Interpreter::fwdRescaleQuantizedInst(bool isTrain,
   for (size_t i = 0, e = destH.size(); i < e; ++i) {
     float val = quantization::dequantize(srcH.raw(i), srcQ);
     destH.raw(i) = quantization::quantize(val, destQ);
-    ;
   }
 }
 
