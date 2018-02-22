@@ -85,6 +85,21 @@ TEST(GraphOptz, optimizeBatchNormAfterConv) {
   EXPECT_EQ(G.getNodes().size(), 2);
 }
 
+TEST(GraphOptz, transposePrivateVariable) {
+  Module mod;
+  Function *F = mod.createFunction("foo");
+
+  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                               Variable::VisibilityKind::Private,
+                               Variable::TrainKind::None);
+  Node *T = F->createTranspose("transpose", A, {0, 3, 1, 2});
+  F->createSave("ret", T);
+  EXPECT_EQ(F->getNodes().size(), 2);
+
+  ::glow::optimize(F, CompilationMode::Infer);
+  EXPECT_EQ(F->getNodes().size(), 1);
+}
+
 TEST(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
   Module mod;
   Function &G = *mod.createFunction("foo");
