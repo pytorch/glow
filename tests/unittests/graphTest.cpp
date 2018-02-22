@@ -1,7 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
-#include "glow/Graph/Graph.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
@@ -217,4 +217,25 @@ TEST(Graph, cloneTest2) {
   newF->verify();
   EXPECT_EQ(newF->getNodes().size(), F->getNodes().size());
   EXPECT_EQ(newF->getParent(), F->getParent());
+}
+
+TEST(Graph, NodeValue) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *inputX = mod.createVariable(ElemKind::FloatTy, {1}, "input",
+                                    Variable::VisibilityKind::Public,
+                                    Variable::TrainKind::Broadcast, 3.0);
+  NodeValue a =
+      F->createArithmetic("x2", inputX, inputX, ArithmeticNode::Mode::Add);
+  a = F->createArithmetic("x4", a, a, ArithmeticNode::Mode::Add);
+  a = F->createArithmetic("x8", a, a, ArithmeticNode::Mode::Add);
+  auto S = F->createSave("Save", a);
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+
+  EXPECT_EQ(
+      llvm::cast<Variable>(S->getOutput())->getPayload().getHandle().raw(0),
+      24);
 }
