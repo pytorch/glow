@@ -312,6 +312,7 @@ void generateQuantizedGraph(
     case Kinded::Kind::ReluNodeKind: {
       auto *R = cast<ReluNode>(node);
       assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+
       quantizedNode = F->createRELU(R->getName(), quantizedInputs[0]);
       break;
     }
@@ -334,9 +335,20 @@ void generateQuantizedGraph(
       llvm_unreachable("The node type is not supported for quantization");
     }
 
-    // Just insert newly quantized node into added set. Quantize and Dequantize
-    // nodes are not eligible for quantization anyway.
+    // Just insert newly quantized node into added set. Quantize, Dequantize,
+    // RescaleQuantized nodes are not eligible for quantization anyway.
     addedNodes.insert(quantizedNode);
+
+    // Some of the quantized nodes need additional post processing.
+    if (node->getKind() == Kinded::Kind::ReluNodeKind) {
+      // Relu does not change {S,O} of the output, it uses the same {S,O} as
+      // the input. Make sure that rescale is applied to comply with the taken
+      // profile from RELU.
+      auto outTy = F->getParent()->uniqueType(
+          ElemKind::Int8QTy, quantizedNode->dims(), TQP.scale_, TQP.offset_);
+      quantizedNode =
+          F->createRescaleQuantized("rescaled", quantizedNode, outTy);
+    }
 
     // 3) Dequantize output of the node so that invariant is kept.
     assert(quantizedNode != nullptr && "Node must be quantized");
