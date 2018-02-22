@@ -485,3 +485,37 @@ TEST(Operator, CrossEntropyLossTest) {
   auto R = L->getPayload().getHandle();
   EXPECT_NEAR(R.at({0}), -log(0.5) - log(0.3), 0.1);
 }
+
+TEST(Operator, RescaleNode) {
+  // Check the outputs of the RescaleQuantized operation.
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input = mod.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11, "input",
+                                   Variable::VisibilityKind::Public,
+                                   Variable::TrainKind::Broadcast, 15);
+
+  auto *output = mod.createVariable(ElemKind::Int8QTy, {4, 10}, 0.05, -3,
+                                    "output", Variable::VisibilityKind::Public,
+                                    Variable::TrainKind::None);
+
+  auto T1 = mod.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.3, 5);
+  auto T2 = mod.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.002, -4);
+
+  // Test a sequence of rescale operations that the optimizer may try to
+  // optimize at some point.
+  auto *X = F->createRescaleQuantized("R1", input, T1);
+  auto *Y = F->createRescaleQuantized("R2", X, T2);
+  auto *Z = F->createRescaleQuantized("R3", Y, output->getType());
+
+  F->createSave("save", Z, output);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+
+  auto RI = input->getPayload().getHandle<int8_t>();
+  auto RO = output->getPayload().getHandle<int8_t>();
+
+  EXPECT_EQ(RI.raw(0), 15);
+  EXPECT_EQ(RO.raw(0), 2);
+}

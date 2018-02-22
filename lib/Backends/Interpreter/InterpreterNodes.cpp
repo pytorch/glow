@@ -1421,7 +1421,22 @@ void Interpreter::fwdDequantizeInst(bool isTrain,
 
 void Interpreter::fwdRescaleQuantizedInst(bool isTrain,
                                           const glow::RescaleQuantizedInst *I) {
-  llvm_unreachable("Not implemented");
+  auto src = I->getSrc();
+  auto dest = I->getDest();
+  auto srcTy = src->getType();
+  auto destTy = dest->getType();
+
+  TensorQuantizationParams srcQ{srcTy->getScale(), srcTy->getOffset()};
+  TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
+
+  auto srcH = getWeightHandle<int8_t>(src);
+  auto destH = getWeightHandle<int8_t>(dest);
+
+  for (size_t i = 0, e = destH.size(); i < e; ++i) {
+    float val = quantization::dequantize(srcH.raw(i), srcQ);
+    destH.raw(i) = quantization::quantize(val, destQ);
+    ;
+  }
 }
 
 void Interpreter::fwdIntrinsicInst(bool isTrain, const glow::IntrinsicInst *I) {
