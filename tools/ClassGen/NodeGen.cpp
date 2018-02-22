@@ -149,7 +149,7 @@ int main(int argc, char **argv) {
       .addEnumCase("CmpLTE")
       .addInput("LHS")
       .addInput("RHS")
-      .addResult("LHS.getType()")
+      .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs arithmetic operations on the LHS and RHS "
                     "operands. The Compare operations generates a mask that's "

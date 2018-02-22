@@ -241,6 +241,10 @@ public:
   ArithmeticNode *createArithmetic(llvm::StringRef name, NodeValue LHS,
                                    NodeValue RHS, ArithmeticNode::Mode op);
 
+  ArithmeticNode *createArithmetic(llvm::StringRef name, TypeRef Ty,
+                                   NodeValue LHS, NodeValue RHS,
+                                   ArithmeticNode::Mode op);
+
   SelectNode *createSelect(llvm::StringRef name, NodeValue Cond, NodeValue LHS,
                            NodeValue RHS);
 
