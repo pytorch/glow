@@ -437,6 +437,12 @@ static void checkSameType(NodeValue A, NodeValue B) {
   assert(A.getType() == B.getType() && "Invalid type");
 }
 
+/// Check that the shape of the first operand matches the shape of the second
+/// operand.
+static void checkSameShape(NodeValue A, NodeValue B) {
+  assert(A.dims() == B.dims() && "Invalid shape");
+}
+
 static void checkType(NodeValue A, ElemKind expectedType) {
   assert(A.getElementType() == expectedType && "Invalid type");
 }
@@ -538,8 +544,8 @@ static void verifyLocalResponseNormalization(NodeValue src, NodeValue dest) {
 }
 
 static void verifyArithmetic(NodeValue LHS, NodeValue RHS, NodeValue res) {
-  checkSameType(res, LHS);
-  checkSameType(LHS, RHS);
+    checkSameShape(res, LHS);
+    checkSameShape(LHS, RHS);
 }
 
 static void verifyRelu(NodeValue src, NodeValue dest) {
