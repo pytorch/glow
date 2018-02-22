@@ -326,7 +326,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                                        glow::Instruction *I) {
   switch (I->getKind()) {
   case Kinded::Kind::SplatInstKind: {
-    SplatInst *SI = llvm::cast<SplatInst>(I);
+    SplatInst *SI = cast<SplatInst>(I);
     auto *addr = emitValueAddress(builder, SI->getDest(), ElemKind::FloatTy);
     auto cnt = emitValueSize(builder, SI->getDest());
     auto *val = emitConst(builder, SI->getValue());
@@ -337,7 +337,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::ElementMaxInstKind: {
-    ElementMaxInst *EM = llvm::cast<ElementMaxInst>(I);
+    ElementMaxInst *EM = cast<ElementMaxInst>(I);
     auto *destPtr = emitValueAddress(builder, EM->getDest(), ElemKind::FloatTy);
     auto *lhsPtr = emitValueAddress(builder, EM->getLHS(), ElemKind::FloatTy);
     auto *rhsPtr = emitValueAddress(builder, EM->getRHS(), ElemKind::FloatTy);
@@ -349,7 +349,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::ElementMinInstKind: {
-    ElementMinInst *EM = llvm::cast<ElementMinInst>(I);
+    ElementMinInst *EM = cast<ElementMinInst>(I);
     auto *destPtr = emitValueAddress(builder, EM->getDest(), ElemKind::FloatTy);
     auto *lhsPtr = emitValueAddress(builder, EM->getLHS(), ElemKind::FloatTy);
     auto *rhsPtr = emitValueAddress(builder, EM->getRHS(), ElemKind::FloatTy);
@@ -361,7 +361,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::ElementSelectInstKind: {
-    ElementSelectInst *ES = llvm::cast<ElementSelectInst>(I);
+    ElementSelectInst *ES = cast<ElementSelectInst>(I);
     auto *destPtr = emitValueAddress(builder, ES->getDest(), ElemKind::FloatTy);
     auto *condPtr = emitValueAddress(builder, ES->getCond(), ElemKind::FloatTy);
     auto *lhsPtr = emitValueAddress(builder, ES->getLHS(), ElemKind::FloatTy);
@@ -374,7 +374,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::BatchedMatMulInstKind: {
-    BatchedMatMulInst *BMM = llvm::cast<BatchedMatMulInst>(I);
+    BatchedMatMulInst *BMM = cast<BatchedMatMulInst>(I);
     auto *destPtr =
         emitValueAddress(builder, BMM->getDest(), ElemKind::FloatTy);
     auto *lhsPtr = emitValueAddress(builder, BMM->getLHS(), ElemKind::FloatTy);
@@ -392,7 +392,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::CopyInstKind: {
-    CopyInst *CI = llvm::cast<CopyInst>(I);
+    CopyInst *CI = cast<CopyInst>(I);
     auto *destPtr = emitValueAddress(builder, CI->getDest(), ElemKind::Int8QTy);
     auto *srcPtr = emitValueAddress(builder, CI->getSrc(), ElemKind::Int8QTy);
     auto sizeInBytes = CI->getDest()->getType()->getSizeInBytes();
@@ -405,7 +405,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::BatchedAddInstKind: {
-    BatchedAddInst *BA = llvm::cast<BatchedAddInst>(I);
+    BatchedAddInst *BA = cast<BatchedAddInst>(I);
     auto *destPtr = emitValueAddress(builder, BA->getDest(), ElemKind::FloatTy);
     auto *batchPtr =
         emitValueAddress(builder, BA->getBatch(), ElemKind::FloatTy);
@@ -423,7 +423,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::BatchedReduceAddInstKind: {
-    BatchedReduceAddInst *BR = llvm::cast<BatchedReduceAddInst>(I);
+    BatchedReduceAddInst *BR = cast<BatchedReduceAddInst>(I);
     auto *destPtr = emitValueAddress(builder, BR->getDest(), ElemKind::FloatTy);
     auto *batchPtr =
         emitValueAddress(builder, BR->getBatch(), ElemKind::FloatTy);
@@ -440,7 +440,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::ConvolutionInstKind: {
-    ConvolutionInst *CI = llvm::cast<ConvolutionInst>(I);
+    ConvolutionInst *CI = cast<ConvolutionInst>(I);
     auto *destPtr = emitValueAddress(builder, CI->getDest(), ElemKind::FloatTy);
     auto *srcPtr = emitValueAddress(builder, CI->getSrc(), ElemKind::FloatTy);
     auto *filterPtr =
@@ -473,7 +473,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::ConvolutionGradInstKind: {
-    ConvolutionGradInst *CG = llvm::cast<ConvolutionGradInst>(I);
+    ConvolutionGradInst *CG = cast<ConvolutionGradInst>(I);
     auto *srcGradPtr =
         emitValueAddress(builder, CG->getSrcGrad(), ElemKind::FloatTy);
     auto *destGradPtr =
@@ -503,7 +503,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::LocalResponseNormalizationInstKind: {
     LocalResponseNormalizationInst *LRN =
-        llvm::cast<LocalResponseNormalizationInst>(I);
+        cast<LocalResponseNormalizationInst>(I);
     auto *destPtr =
         emitValueAddress(builder, LRN->getDest(), ElemKind::FloatTy);
     auto *srcPtr = emitValueAddress(builder, LRN->getSrc(), ElemKind::FloatTy);
@@ -525,7 +525,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::PoolMaxInstKind: {
-    PoolMaxInst *PM = llvm::cast<PoolMaxInst>(I);
+    PoolMaxInst *PM = cast<PoolMaxInst>(I);
     auto *destPtr = emitValueAddress(builder, PM->getDest(), ElemKind::FloatTy);
     auto *srcPtr = emitValueAddress(builder, PM->getSrc(), ElemKind::FloatTy);
     auto *destDims = emitValueDims(builder, PM->getDest());
@@ -543,7 +543,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::PoolMaxWithXYInstKind: {
-    PoolMaxWithXYInst *PMXY = llvm::cast<PoolMaxWithXYInst>(I);
+    PoolMaxWithXYInst *PMXY = cast<PoolMaxWithXYInst>(I);
     auto *destPtr =
         emitValueAddress(builder, PMXY->getDest(), ElemKind::FloatTy);
     auto *srcPtr = emitValueAddress(builder, PMXY->getSrc(), ElemKind::FloatTy);
@@ -564,7 +564,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::PoolMaxWithXYGradInstKind: {
-    PoolMaxWithXYGradInst *PMG = llvm::cast<PoolMaxWithXYGradInst>(I);
+    PoolMaxWithXYGradInst *PMG = cast<PoolMaxWithXYGradInst>(I);
     auto *srcGradPtr =
         emitValueAddress(builder, PMG->getSrcGrad(), ElemKind::FloatTy);
     auto *destGradPtr =
@@ -582,7 +582,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::PoolAvgInstKind: {
-    PoolAvgInst *PM = llvm::cast<PoolAvgInst>(I);
+    PoolAvgInst *PM = cast<PoolAvgInst>(I);
     auto *destPtr = emitValueAddress(builder, PM->getDest(), ElemKind::FloatTy);
     auto *srcPtr = emitValueAddress(builder, PM->getSrc(), ElemKind::FloatTy);
     auto *destDims = emitValueDims(builder, PM->getDest());
@@ -600,7 +600,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::PoolAvgGradInstKind: {
-    PoolAvgGradInst *PAG = llvm::cast<PoolAvgGradInst>(I);
+    PoolAvgGradInst *PAG = cast<PoolAvgGradInst>(I);
     auto *srcGradPtr =
         emitValueAddress(builder, PAG->getSrcGrad(), ElemKind::FloatTy);
     auto *destGradPtr =
@@ -619,7 +619,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::SGDInstKind: {
-    SGDInst *SGD = llvm::cast<SGDInst>(I);
+    SGDInst *SGD = cast<SGDInst>(I);
     auto *W = emitValueAddress(builder, SGD->getWeight(), ElemKind::FloatTy);
     auto *G = emitValueAddress(builder, SGD->getGradient(), ElemKind::FloatTy);
     auto *Gsum = emitValueAddress(builder, SGD->getGsum(), ElemKind::FloatTy);
@@ -638,7 +638,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::SoftMaxInstKind: {
-    SoftMaxInst *SM = llvm::cast<SoftMaxInst>(I);
+    SoftMaxInst *SM = cast<SoftMaxInst>(I);
     auto *destPtr = emitValueAddress(builder, SM->getDest(), ElemKind::FloatTy);
     auto *srcPtr = emitValueAddress(builder, SM->getSrc(), ElemKind::FloatTy);
     auto *destDims = emitValueDims(builder, SM->getDest());
@@ -651,7 +651,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::SoftMaxGradInstKind: {
-    SoftMaxGradInst *SMG = llvm::cast<SoftMaxGradInst>(I);
+    SoftMaxGradInst *SMG = cast<SoftMaxGradInst>(I);
     auto *srcGradPtr =
         emitValueAddress(builder, SMG->getSrcGrad(), ElemKind::FloatTy);
     auto *destPtr =
@@ -668,7 +668,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::SigmoidInstKind: {
-    SigmoidInst *SI = llvm::cast<SigmoidInst>(I);
+    SigmoidInst *SI = cast<SigmoidInst>(I);
     auto *destPtr = emitValueAddress(builder, SI->getDest(), ElemKind::FloatTy);
     auto *srcPtr = emitValueAddress(builder, SI->getSrc(), ElemKind::FloatTy);
     auto *numElemVal = emitConst(builder, SI->getDest()->getType()->size());
@@ -679,7 +679,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::TanhInstKind: {
-    TanhInst *TI = llvm::cast<TanhInst>(I);
+    TanhInst *TI = cast<TanhInst>(I);
     auto *destPtr = emitValueAddress(builder, TI->getDest(), ElemKind::FloatTy);
     auto *srcPtr = emitValueAddress(builder, TI->getSrc(), ElemKind::FloatTy);
     auto *numElemVal = emitConst(builder, TI->getDest()->getType()->size());
@@ -690,7 +690,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::TransposeInstKind: {
-    TransposeInst *TI = llvm::cast<TransposeInst>(I);
+    TransposeInst *TI = cast<TransposeInst>(I);
     auto *destPtr = emitValueAddress(builder, TI->getDest(), ElemKind::FloatTy);
     auto *srcPtr = emitValueAddress(builder, TI->getSrc(), ElemKind::FloatTy);
     auto *destDims = emitValueDims(builder, TI->getDest());
@@ -712,7 +712,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::IntrinsicInstKind: {
-    IntrinsicInst *II = llvm::cast<IntrinsicInst>(I);
+    IntrinsicInst *II = cast<IntrinsicInst>(I);
     if (II->getIdentifier().equals("jit.max0")) {
       auto *dest = II->getOperand(0).first;
       auto *src = II->getOperand(1).first;
@@ -741,7 +741,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     const char *funcName = "";
     switch (I->getKind()) {
     case Kinded::Kind::ElementDivInstKind: {
-      auto *tmpInst = llvm::cast<ElementDivInst>(I);
+      auto *tmpInst = cast<ElementDivInst>(I);
       dest = tmpInst->getDest();
       destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
       lhsPtr = emitValueAddress(builder, tmpInst->getLHS(), ElemKind::FloatTy);
@@ -750,7 +750,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       break;
     }
     case Kinded::Kind::ElementMulInstKind: {
-      auto *tmpInst = llvm::cast<ElementMulInst>(I);
+      auto *tmpInst = cast<ElementMulInst>(I);
       dest = tmpInst->getDest();
       destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
       lhsPtr = emitValueAddress(builder, tmpInst->getLHS(), ElemKind::FloatTy);
@@ -759,7 +759,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       break;
     }
     case Kinded::Kind::ElementAddInstKind: {
-      auto *tmpInst = llvm::cast<ElementAddInst>(I);
+      auto *tmpInst = cast<ElementAddInst>(I);
       dest = tmpInst->getDest();
       destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
       lhsPtr = emitValueAddress(builder, tmpInst->getLHS(), ElemKind::FloatTy);
@@ -768,7 +768,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       break;
     }
     case Kinded::Kind::ElementSubInstKind: {
-      auto *tmpInst = llvm::cast<ElementSubInst>(I);
+      auto *tmpInst = cast<ElementSubInst>(I);
       dest = tmpInst->getDest();
       destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
       lhsPtr = emitValueAddress(builder, tmpInst->getLHS(), ElemKind::FloatTy);
@@ -777,7 +777,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       break;
     }
     case Kinded::Kind::ElementCmpLTEInstKind: {
-      auto *tmpInst = llvm::cast<ElementCmpLTEInst>(I);
+      auto *tmpInst = cast<ElementCmpLTEInst>(I);
       dest = tmpInst->getDest();
       destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
       lhsPtr = emitValueAddress(builder, tmpInst->getLHS(), ElemKind::FloatTy);

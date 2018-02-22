@@ -18,6 +18,7 @@
 
 using namespace glow;
 using llvm::StringRef;
+using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
@@ -137,7 +138,7 @@ void JITBackend::saveWeights(llvm::StringRef weightsFileName) {
   // it should be configurable and set by the client.
   size_t pos = 0;
   for (auto &v : F_->getGraph()->getParent()->getVars()) {
-    auto *w = llvm::cast<WeightVar>(F_->getWeightForNode(v));
+    auto *w = cast<WeightVar>(F_->getWeightForNode(v));
     if (v->getVisibilityKind() == Variable::VisibilityKind::Public)
       continue;
     auto numBytes = w->getType()->getSizeInBytes();
