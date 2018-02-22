@@ -170,6 +170,81 @@ template <class ElemTy> void dumpAsciiGenericImpl(Handle<ElemTy> handle) {
   }
 }
 
+/// This is a slow generic transpose. This method performs a single for loop
+/// over a single dimension, or if we've reached the last dimension perform a
+/// single copy of a single element.
+template <class ElemTy>
+void transposeGenericImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
+                          size_t *srcCoor, size_t *destCoor,
+                          llvm::ArrayRef<unsigned> shuffle,
+                          unsigned depth = 0) {
+  if (depth == shuffle.size()) {
+    auto srcIdx = llvm::ArrayRef<size_t>(srcCoor, depth);
+    auto destIdx = llvm::ArrayRef<size_t>(destCoor, depth);
+    dest.at(destIdx) = src.at(srcIdx);
+    return;
+  }
+
+  // Iterate over one dimension and continue recursively to the next dim.
+  for (size_t x = 0, e = dest.dims()[depth]; x < e; x++) {
+    unsigned swizzledDepth = shuffle[depth];
+    srcCoor[swizzledDepth] = x;
+    destCoor[depth] = x;
+    transposeGenericImpl(src, dest, srcCoor, destCoor, shuffle, depth + 1);
+  }
+}
+
+/// Faster function for transposing a tensor for important/common tensor
+/// shapes. If a transpose successfully occurs, the function \returns true;
+/// otherwise it \returns false, representing no transpose occurred and some
+/// other transpose function (e.g. transposeGenericImpl) must be called. \p
+/// dest is the tensor to transpose, and \p shuffle defines how to transpose.
+template <class ElemTy>
+bool tryTransposeFastImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
+                          llvm::ArrayRef<unsigned> shuffle) {
+  const size_t numDims = dest.dims().size();
+  size_t srcCoorArr[numDims];
+  size_t destCoorArr[numDims];
+  auto srcCoor = llvm::ArrayRef<size_t>(srcCoorArr, numDims);
+  auto destCoor = llvm::ArrayRef<size_t>(destCoorArr, numDims);
+
+  /// This defines a single depth of the for loop used to iterate over the
+  /// source and destination tensors for transposing.
+#define TRANSPOSE_LOOP_LEVEL(DEPTH_)                                           \
+  for (srcCoorArr[shuffle[DEPTH_]] = 0, destCoorArr[DEPTH_] = 0;               \
+       destCoorArr[DEPTH_] < dest.dims()[DEPTH_];                              \
+       srcCoorArr[shuffle[DEPTH_]]++, destCoorArr[DEPTH_]++)
+
+  switch (numDims) {
+  case 2:
+    TRANSPOSE_LOOP_LEVEL(1) {
+      TRANSPOSE_LOOP_LEVEL(0) { dest.at(destCoor) = src.at(srcCoor); }
+    }
+    return true;
+  case 4:
+    TRANSPOSE_LOOP_LEVEL(1) {
+      TRANSPOSE_LOOP_LEVEL(2) {
+        TRANSPOSE_LOOP_LEVEL(0) {
+          TRANSPOSE_LOOP_LEVEL(3) { dest.at(destCoor) = src.at(srcCoor); }
+        }
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+template <class ElemTy>
+void transposeSelectImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
+                         llvm::ArrayRef<unsigned> shuffle) {
+  bool transposeOccurred = tryTransposeFastImpl(src, dest, shuffle);
+  if (!transposeOccurred) {
+    size_t srcCoor[max_tensor_dimensions];
+    size_t destCoor[max_tensor_dimensions];
+    transposeGenericImpl(src, dest, srcCoor, destCoor, shuffle);
+  }
+}
+
 } // namespace
 
 void glow::dumpAsciiImpl(Tensor *T) {
@@ -195,5 +270,54 @@ void glow::dumpImpl(Tensor *T) {
     return dumpGenericImpl(T->getHandle<int32_t>());
   case ElemKind::IndexTy:
     return dumpGenericImpl(T->getHandle<size_t>());
+  }
+}
+
+void glow::transposeImpl(Tensor *src, Tensor *dest,
+                         llvm::ArrayRef<unsigned> shuffle) {
+  assert(src->dims().size() == shuffle.size() && "Invalid dimensions");
+
+  size_t newSizes[max_tensor_dimensions];
+
+  // Generate the swizzled dimensions.
+  auto origDims = src->dims();
+  for (unsigned i = 0; i < origDims.size(); i++) {
+    newSizes[i] = origDims[shuffle[i]];
+  }
+
+  // Resize the tensor to the transposed shape.
+  auto destType =
+      src->getType().isQuantizedType()
+          ? Type(src->getElementType(), {newSizes, origDims.size()},
+                 src->getType().getScale(), src->getType().getOffset())
+          : Type(src->getElementType(), {newSizes, origDims.size()});
+
+  dest->reset(destType);
+
+  switch (src->getElementType()) {
+  case ElemKind::FloatTy: {
+    auto srcH = src->getHandle<float>();
+    auto destH = dest->getHandle<float>();
+    transposeSelectImpl(srcH, destH, shuffle);
+    return;
+  }
+  case ElemKind::Int8QTy: {
+    auto srcH = src->getHandle<int8_t>();
+    auto destH = dest->getHandle<int8_t>();
+    transposeSelectImpl(srcH, destH, shuffle);
+    return;
+  }
+  case ElemKind::Int32QTy: {
+    auto srcH = src->getHandle<int32_t>();
+    auto destH = dest->getHandle<int32_t>();
+    transposeSelectImpl(srcH, destH, shuffle);
+    return;
+  }
+  case ElemKind::IndexTy: {
+    auto srcH = src->getHandle<size_t>();
+    auto destH = dest->getHandle<size_t>();
+    transposeSelectImpl(srcH, destH, shuffle);
+    return;
+  }
   }
 }
