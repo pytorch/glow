@@ -1,6 +1,6 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
-#include "JIT.h"
+#include "CPUBackend.h"
 
 #include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/Graph/Graph.h"

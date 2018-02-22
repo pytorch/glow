@@ -12,14 +12,14 @@ add_custom_command(OUTPUT
                    COMMAND ${CLANG_EXECUTABLE} -Os -ffast-math -emit-llvm -o ${LIBJITBC} -c ${LIBJITSRC}
                    DEPENDS ${LIBJITSRC}
                    COMMENT "Clang: Generating runtime bytecode library." VERBATIM)
-add_library(JIT
+add_library(CPUBackend
             AllocationsInfo.cpp
             FunctionSpecializer.cpp
             GlowJIT.cpp
             Pipeline.cpp
             Transforms.cpp
             LLVMIRGen.cpp
-            JIT.cpp)
+            CPUBackend.cpp)
 
 if(${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "aarch64")
   set(LLVM_ARCH_LIBS LLVMAArch64CodeGen LLVMAArch64Desc LLVMAArch64Info)
@@ -27,7 +27,7 @@ else()
   set(LLVM_ARCH_LIBS LLVMX86CodeGen LLVMX86Desc LLVMX86Info)
 endif()
 
-target_link_libraries(JIT
+target_link_libraries(CPUBackend
                       PRIVATE
                         Optimizer
                         Base
@@ -55,5 +55,5 @@ add_custom_target(
   generate-libjitbc
   DEPENDS ${LIBJITBC}
   )
-add_dependencies(JIT generate-libjitbc)
+add_dependencies(CPUBackend generate-libjitbc)
 

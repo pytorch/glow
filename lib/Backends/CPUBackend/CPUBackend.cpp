@@ -1,7 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #define DEBUG_TYPE "jit"
-#include "JIT.h"
+#include "CPUBackend.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/Instrs.h"
 

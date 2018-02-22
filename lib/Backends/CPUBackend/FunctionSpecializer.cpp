@@ -1,7 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 #define DEBUG_TYPE "ir-function-specializer"
 
-#include "JIT.h"
+#include "CPUBackend.h"
 #include "glow/IR/Instrs.h"
 
 #include "llvm/ADT/Statistic.h"
