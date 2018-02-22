@@ -44,7 +44,7 @@ static void checkType(Value *A, ElemKind expectedType) {
   assert(A->getElementType() == expectedType && "Invalid type");
 }
 
-static void checkSameDims(Value *A, Value *B) {
+static void checkSameShape(Value *A, Value *B) {
   assert(A->dims().equals(B->dims()) && "Dimensions mismatch");
 }
 
@@ -362,13 +362,13 @@ void LocalResponseNormalizationGradInst::verify() const {
 }
 
 void ElementAddInst::verify() const {
-  checkSameType(getDest(), getLHS());
-  checkSameType(getDest(), getRHS());
+  checkSameShape(getDest(), getLHS());
+  checkSameShape(getDest(), getRHS());
 }
 
 void ElementMulInst::verify() const {
-  checkSameType(getDest(), getLHS());
-  checkSameType(getDest(), getRHS());
+  checkSameShape(getDest(), getLHS());
+  checkSameShape(getDest(), getRHS());
 }
 
 void ElementSubInst::verify() const {
@@ -393,29 +393,29 @@ void BatchedReduceAddInst::verify() const {
 }
 
 void ElementDivInst::verify() const {
-  checkSameType(getDest(), getLHS());
-  checkSameType(getDest(), getRHS());
+  checkSameShape(getDest(), getLHS());
+  checkSameShape(getDest(), getRHS());
 }
 
 void ElementMaxInst::verify() const {
-  checkSameType(getDest(), getLHS());
-  checkSameType(getDest(), getRHS());
+  checkSameShape(getDest(), getLHS());
+  checkSameShape(getDest(), getRHS());
 }
 
 void ElementMinInst::verify() const {
-  checkSameType(getDest(), getLHS());
-  checkSameType(getDest(), getRHS());
+  checkSameShape(getDest(), getLHS());
+  checkSameShape(getDest(), getRHS());
 }
 
 void ElementCmpLTEInst::verify() const {
-  checkSameType(getDest(), getLHS());
-  checkSameType(getDest(), getRHS());
+  checkSameShape(getDest(), getLHS());
+  checkSameShape(getDest(), getRHS());
 }
 
 void ElementSelectInst::verify() const {
-  checkSameType(getDest(), getCond());
-  checkSameType(getDest(), getLHS());
-  checkSameType(getDest(), getRHS());
+  checkSameShape(getDest(), getCond());
+  checkSameShape(getDest(), getLHS());
+  checkSameShape(getDest(), getRHS());
 }
 
 void AllocActivationInst::verify() const {
@@ -456,19 +456,19 @@ void QuantizationProfileInst::verify() const {
 void QuantizeInst::verify() const {
   checkType(getDest(), ElemKind::Int8QTy);
   checkType(getSrc(), ElemKind::FloatTy);
-  checkSameDims(getDest(), getSrc());
+  checkSameShape(getDest(), getSrc());
 }
 
 void DequantizeInst::verify() const {
   checkType(getDest(), ElemKind::FloatTy);
   checkType(getSrc(), ElemKind::Int8QTy);
-  checkSameDims(getDest(), getSrc());
+  checkSameShape(getDest(), getSrc());
 }
 
 void RescaleQuantizedInst::verify() const {
   checkType(getDest(), ElemKind::Int8QTy);
   checkType(getSrc(), ElemKind::Int8QTy);
-  checkSameDims(getDest(), getSrc());
+  checkSameShape(getDest(), getSrc());
 }
 
 void TopKInst::verify() const {
