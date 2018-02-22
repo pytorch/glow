@@ -23,7 +23,7 @@ class Instruction;
 class WeightVar;
 struct AllocationsInfo;
 
-class JITBackend final : public Backend {
+class CPUBackend final : public Backend {
   /// The Module that holds the glow IR. This does not own the module.
   IRFunction *F_;
   /// Information about allocations.
@@ -53,12 +53,12 @@ class JITBackend final : public Backend {
 
 public:
   /// Ctor.
-  explicit JITBackend(IRFunction *M);
+  explicit CPUBackend(IRFunction *M);
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
   ///@{
-  ~JITBackend() override;
+  ~CPUBackend() override;
 
   void clear() override;
 
@@ -73,7 +73,7 @@ public:
 };
 
 /// Create a new instance of the JITBackend backend.
-inline Backend *createJIT(IRFunction *M) { return new JITBackend(M); }
+inline Backend *createCPUBackend(IRFunction *M) { return new CPUBackend(M); }
 
 } // namespace glow
 
