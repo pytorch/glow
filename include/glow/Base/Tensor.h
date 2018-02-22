@@ -527,11 +527,13 @@ public:
 
     dest->reset(destType);
 
-    size_t srcCoor[max_tensor_dimensions];
-    size_t destCoor[max_tensor_dimensions];
-
     auto DH = dest->getHandle<ElemTy>();
-    transposeImpl(DH, srcCoor, destCoor, shuffle, 0);
+    bool transposeOccurred = tryTransposeFastImpl(DH, shuffle);
+    if (!transposeOccurred) {
+      size_t srcCoor[max_tensor_dimensions];
+      size_t destCoor[max_tensor_dimensions];
+      transposeGenericImpl(DH, srcCoor, destCoor, shuffle);
+    }
   }
 
   /// \returns true if the content of the other handle \p other is identical to
@@ -686,8 +688,9 @@ private:
   /// This is a slow generic transpose. This method performs a single for loop
   /// over a single dimension, or if we've reached the last dimension perform a
   /// single copy of a single element.
-  void transposeImpl(Handle<ElemTy> &dest, size_t *srcCoor, size_t *destCoor,
-                     llvm::ArrayRef<unsigned> shuffle, unsigned depth) {
+  void transposeGenericImpl(Handle<ElemTy> &dest, size_t *srcCoor,
+                            size_t *destCoor, llvm::ArrayRef<unsigned> shuffle,
+                            unsigned depth = 0) {
     if (depth == shuffle.size()) {
       auto srcIdx = llvm::ArrayRef<size_t>(srcCoor, depth);
       auto destIdx = llvm::ArrayRef<size_t>(destCoor, depth);
@@ -700,8 +703,47 @@ private:
       unsigned swizzledDepth = shuffle[depth];
       srcCoor[swizzledDepth] = x;
       destCoor[depth] = x;
-      transposeImpl(dest, srcCoor, destCoor, shuffle, depth + 1);
+      transposeGenericImpl(dest, srcCoor, destCoor, shuffle, depth + 1);
     }
+  }
+
+  /// Faster function for transposing a tensor for important/common tensor
+  /// shapes. If a transpose successfully occurs, the function \returns true;
+  /// otherwise it \returns false, representing no transpose occurred and some
+  /// other transpose function (e.g. transposeGenericImpl) must be called. \p
+  /// dest is the tensor to transpose, and \p shuffle defines how to transpose.
+  bool tryTransposeFastImpl(Handle<ElemTy> &dest,
+                            llvm::ArrayRef<unsigned> shuffle) {
+    const size_t numDims = dims().size();
+    size_t srcCoorArr[numDims];
+    size_t destCoorArr[numDims];
+    auto srcCoor = llvm::ArrayRef<size_t>(srcCoorArr, numDims);
+    auto destCoor = llvm::ArrayRef<size_t>(destCoorArr, numDims);
+
+    /// This defines a single depth of the for loop used to iterate over the
+    /// source and destination tensors for transposing.
+#define TRANSPOSE_LOOP_LEVEL(DEPTH_)                                           \
+  for (srcCoorArr[shuffle[DEPTH_]] = 0, destCoorArr[DEPTH_] = 0;               \
+       destCoorArr[DEPTH_] < dest.dims()[DEPTH_];                              \
+       srcCoorArr[shuffle[DEPTH_]]++, destCoorArr[DEPTH_]++)
+
+    switch (numDims) {
+    case 2:
+      TRANSPOSE_LOOP_LEVEL(1) {
+        TRANSPOSE_LOOP_LEVEL(0) { dest.at(destCoor) = at(srcCoor); }
+      }
+      return true;
+    case 4:
+      TRANSPOSE_LOOP_LEVEL(1) {
+        TRANSPOSE_LOOP_LEVEL(2) {
+          TRANSPOSE_LOOP_LEVEL(0) {
+            TRANSPOSE_LOOP_LEVEL(3) { dest.at(destCoor) = at(srcCoor); }
+          }
+        }
+      }
+      return true;
+    }
+    return false;
   }
 
   /// Concats or splits tensors.
