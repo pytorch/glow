@@ -37,14 +37,14 @@ void Interpreter::init() {
 }
 
 Tensor *Interpreter::getTensor(const Value *v) const {
-  auto ie = externalTensors_.find(v);
-  if (ie != externalTensors_.end()) {
-    return ie->second;
+  auto it = tensors_.find(v);
+  if (it != tensors_.end()) {
+    return it->second;
   }
 
-  auto it = tensors_.find(v);
-  assert(it != tensors_.end() && "Unknown key Value.");
-  return it->second;
+  auto ie = externalTensors_.find(v);
+  assert(ie != tensors_.end() && "Unknown key Value.");
+  return ie->second;
 }
 
 Tensor *Interpreter::getOrCreateTensor(const Value *v) {
