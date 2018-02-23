@@ -194,8 +194,8 @@ llvm::cl::opt<std::string>
 
 static bool commandLineIsInvalid() {
   if (!DumpProfileFile.empty() && !LoadProfileFile.empty()) {
-    llvm::errs() << "loader: the -" << DumpProfileFile.ArgStr
-                 << " and -" << LoadProfileFile.ArgStr
+    llvm::errs() << "loader: the -" << DumpProfileFile.ArgStr << " and -"
+                 << LoadProfileFile.ArgStr
                  << " options may not be specified together.\n";
     return true;
   }
