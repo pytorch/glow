@@ -2,6 +2,8 @@
 
 #include "LLVMIRGen.h"
 
+#include "CommandLine.h"
+
 #include "glow/Graph/Graph.h"
 #include "glow/IR/Instrs.h"
 
@@ -21,15 +23,19 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
+llvm::cl::OptionCategory CPUBackendCat("Glow CPU Backend Options");
+
 static llvm::cl::opt<bool>
     dumpIR("dump-llvm-ir",
            llvm::cl::desc("Dump the LLVM-IR of the jitted code"),
-           llvm::cl::init(false));
+           llvm::cl::init(false),
+           llvm::cl::cat(CPUBackendCat));
 
 static llvm::cl::opt<bool>
     dumpJitAsm("dump-llvm-asm",
                llvm::cl::desc("Dump the textual assembly of the jitted code"),
-               llvm::cl::init(false));
+               llvm::cl::init(false),
+               llvm::cl::cat(CPUBackendCat));
 
 /// Generate the LLVM MAttr list of attributes.
 static llvm::SmallVector<std::string, 0> getMachineAttributes() {
