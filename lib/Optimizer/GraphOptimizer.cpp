@@ -446,21 +446,6 @@ static void optimizeConcatNodes(Function *F) {
   }
 }
 
-/// Private helper for generic transpose.
-static void transposeGeneric(Variable *src, Variable *dst,
-                             llvm::ArrayRef<unsigned> shuffle) {
-  switch (src->getPayload().getElementType()) {
-  case ElemKind::FloatTy:
-    return src->getHandle<float>().transpose(&dst->getPayload(), shuffle);
-  case ElemKind::Int8QTy:
-    return src->getHandle<int8_t>().transpose(&dst->getPayload(), shuffle);
-  case ElemKind::Int32QTy:
-    return src->getHandle<int32_t>().transpose(&dst->getPayload(), shuffle);
-  case ElemKind::IndexTy:
-    return src->getHandle<size_t>().transpose(&dst->getPayload(), shuffle);
-  }
-}
-
 /// Statically transpose private variables.
 static void optimizeTranspose(Function *F) {
   auto &nodes = F->getNodes();
@@ -479,7 +464,7 @@ static void optimizeTranspose(Function *F) {
     auto *NV = F->getParent()->createVariable(
         TN->getType(), V->getName(), V->getVisibilityKind(), V->getTrainKind());
     // Transpose the value of V into NV.
-    transposeGeneric(V, NV, TN->getShuffle());
+    genericTranspose(&V->getPayload(), &NV->getPayload(), TN->getShuffle());
     // Rewrite uses of TN to reference NV.
     TN->getResult().replaceAllUsesOfWith(NV);
   }

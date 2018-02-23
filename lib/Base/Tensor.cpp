@@ -406,8 +406,8 @@ void glow::dumpImpl(Tensor *T) {
   }
 }
 
-void glow::transposeImpl(Tensor *src, Tensor *dest,
-                         llvm::ArrayRef<unsigned> shuffle) {
+void glow::genericTranspose(Tensor *src, Tensor *dest,
+                            llvm::ArrayRef<unsigned> shuffle) {
   assert(src->dims().size() == shuffle.size() && "Invalid dimensions");
 
   size_t newSizes[max_tensor_dimensions];

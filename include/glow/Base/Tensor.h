@@ -255,7 +255,7 @@ void dumpAsciiImpl(Tensor *T);
 
 void dumpImpl(Tensor *T);
 
-void transposeImpl(Tensor *src, Tensor *dest, llvm::ArrayRef<unsigned> shuffle);
+void genericTranspose(Tensor *src, Tensor *dest, llvm::ArrayRef<unsigned> shuffle);
 
 void broadcastToNewShapeImpl(Tensor *src, Tensor *dest,
                              llvm::ArrayRef<size_t> otherDims, unsigned axis);
@@ -513,7 +513,7 @@ public:
   /// Transpose the tensor \p src into the empty tensor \p dest. Shuffle the
   /// axis based on the list \p shuffle, where each element is the src index.
   void transpose(Tensor *dest, llvm::ArrayRef<unsigned> shuffle) {
-    transposeImpl(tensor_, dest, shuffle);
+    genericTranspose(tensor_, dest, shuffle);
   }
 
   /// \returns true if the content of the other handle \p other is identical to
