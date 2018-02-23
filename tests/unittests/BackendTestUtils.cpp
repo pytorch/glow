@@ -265,6 +265,22 @@ void trainPoolMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+void inferQuantizeNet(Tensor *inputs, float scale, int32_t offset, Tensor *out,
+                      BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
+                                 "input", Variable::VisibilityKind::Public);
+  auto QT = F->getParent()->uniqueType(ElemKind::Int8QTy, inputs->dims(), scale,
+                                       offset);
+  auto *quantize = F->createQuantize("quantize", var, QT);
+  auto result = F->createSave("ret", quantize);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({var}, {inputs});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();

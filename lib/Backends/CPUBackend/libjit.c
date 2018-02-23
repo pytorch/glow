@@ -602,6 +602,15 @@ void libjit_pool_avg_grad_f(float *inG, const float *outG,
   }       // N
 }
 
+void libjit_quantize_f(int8_t *outW, const float *inW, size_t numElem,
+                       float scale, size_t offset_u64) {
+  int32_t offset = (int32_t)offset_u64;
+  for (size_t i = 0; i < numElem; i++) {
+    int32_t result = (int32_t)roundf(inW[i] / scale + offset);
+    outW[i] = MAX(INT8_MIN, MIN(INT8_MAX, result));
+  }
+}
+
 void libjit_sgd_f(float *W, const float *G, float *Gsum, float L1Decay,
                   float L2Decay, float learningRate, float momentum,
                   size_t batchSize, size_t Wsize) {
