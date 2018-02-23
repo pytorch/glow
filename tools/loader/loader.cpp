@@ -145,8 +145,11 @@ llvm::cl::opt<std::string> DumpIRDAGFile(
 llvm::cl::opt<bool> DumpIR("dumpIR", llvm::cl::desc("Prints IR to stdout"),
                            llvm::cl::cat(ModelExportCat));
 
+llvm::cl::OptionCategory loaderCat("Image Loader Options");
+
 llvm::cl::opt<ImageNormalizationMode> ImageMode(
     "image_mode", llvm::cl::desc("Specify the image mode:"), llvm::cl::Required,
+    llvm::cl::cat(loaderCat),
     llvm::cl::values(clEnumValN(ImageNormalizationMode::k0to1, "0to1",
                                 "Values are in the range: 0 and 1"),
                      clEnumValN(ImageNormalizationMode::k0to256, "0to256",
@@ -154,29 +157,32 @@ llvm::cl::opt<ImageNormalizationMode> ImageMode(
                      clEnumValN(ImageNormalizationMode::k128to127, "128to127",
                                 "Values are in the range: -128 .. 127")));
 llvm::cl::alias ImageModeA("i", llvm::cl::desc("Alias for -image_mode"),
-                           llvm::cl::aliasopt(ImageMode));
+                           llvm::cl::aliasopt(ImageMode),
+                           llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<bool>
     Verbose("verbose",
             llvm::cl::desc("Specify whether to run with verbose output"),
-            llvm::cl::Optional);
+            llvm::cl::Optional, llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<bool>
     Timer("timer",
           llvm::cl::desc("Print timer output to stderr detailing how long it "
                          "takes for the program to execute"),
-          llvm::cl::Optional);
+          llvm::cl::Optional, llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<std::string> DumpProfileFile(
     "dump_profile",
     llvm::cl::desc("Perform quantization profiling for a given graph "
                    "and dump result to the file."),
-    llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional);
+    llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional,
+    llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<std::string> LoadProfileFile(
     "load_profile",
     llvm::cl::desc("Load quantization profile file and quantize the graph"),
-    llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional);
+    llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional,
+    llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<BackendKind> ExecutionBackend(
     llvm::cl::desc("Backend to use:"),
@@ -184,12 +190,13 @@ llvm::cl::opt<BackendKind> ExecutionBackend(
                                 "Use interpreter"),
                      clEnumValN(BackendKind::JIT, "jit", "Use JIT"),
                      clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
-    llvm::cl::init(BackendKind::Interpreter));
+    llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(loaderCat));
 
 /// Emit a bundle into the specified output directory.
 llvm::cl::opt<std::string>
     emitBundle("emit-bundle",
-               llvm::cl::desc("Output directory for the bundle serialization"));
+               llvm::cl::desc("Output directory for the bundle serialization"),
+               llvm::cl::cat(loaderCat));
 } // namespace
 
 static bool commandLineIsInvalid() {
