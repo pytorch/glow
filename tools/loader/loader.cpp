@@ -167,10 +167,10 @@ llvm::cl::opt<bool>
                          "takes for the program to execute"),
           llvm::cl::Optional);
 
-llvm::cl::opt<std::string> QuantizationProfileFile(
-    "profile",
+llvm::cl::opt<std::string> DumpProfileFile(
+    "dump_profile",
     llvm::cl::desc("Perform quantization profiling for a given graph "
-                   "and save result to the file."),
+                   "and dump result to the file."),
     llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional);
 
 llvm::cl::opt<std::string> LoadProfileFile(
@@ -193,8 +193,8 @@ llvm::cl::opt<std::string>
 } // namespace
 
 static bool commandLineIsInvalid() {
-  if (!QuantizationProfileFile.empty() && !LoadProfileFile.empty()) {
-    llvm::errs() << "loader: the -" << QuantizationProfileFile.ArgStr
+  if (!DumpProfileFile.empty() && !LoadProfileFile.empty()) {
+    llvm::errs() << "loader: the -" << DumpProfileFile.ArgStr
                  << " and -" << LoadProfileFile.ArgStr
                  << " options may not be specified together.\n";
     return true;
@@ -240,7 +240,7 @@ int main(int argc, char **argv) {
   assert(i1->getVisibilityKind() == Variable::VisibilityKind::Public);
 
   // Handle the request to profile the graph in preperation for quantization.
-  if (!QuantizationProfileFile.empty()) {
+  if (!DumpProfileFile.empty()) {
     // Perform the high-level optimizations before instrumenting the graph. This
     // optimization phase will remove stuff like repetitive transpose operations
     // perform CSE, etc.
@@ -296,10 +296,10 @@ int main(int argc, char **argv) {
   if (Timer)
     timer.stopTimer();
 
-  if (!QuantizationProfileFile.empty()) {
+  if (!DumpProfileFile.empty()) {
     std::vector<NodeQuantizationInfo> QI =
         quantization::generateNodeQuantizationInfos(F);
-    serializeToYaml(QuantizationProfileFile, QI);
+    serializeToYaml(DumpProfileFile, QI);
   }
 
   Tensor &res = SM->getVariable()->getPayload();
