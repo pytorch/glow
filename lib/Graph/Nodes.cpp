@@ -544,8 +544,8 @@ static void verifyLocalResponseNormalization(NodeValue src, NodeValue dest) {
 }
 
 static void verifyArithmetic(NodeValue LHS, NodeValue RHS, NodeValue res) {
-    checkSameShape(res, LHS);
-    checkSameShape(LHS, RHS);
+  checkSameShape(res, LHS);
+  checkSameShape(LHS, RHS);
 }
 
 static void verifyRelu(NodeValue src, NodeValue dest) {
