@@ -1069,28 +1069,40 @@ void Interpreter::fwdElementDivInst(bool isTrain, const ElementDivInst *I) {
   }
 }
 
-template <class T>
-static void elementMaxInst(Tensor *lhs, Tensor *rhs, Tensor *out) {
-  auto outW = out->getHandle<T>();
-  auto lhsW = lhs->getHandle<T>();
-  auto rhsW = rhs->getHandle<T>();
-
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = std::max(lhsW.raw(i), rhsW.raw(i));
-  }
-}
-
 void Interpreter::fwdElementMaxInst(bool isTrain, const ElementMaxInst *I) {
-  auto *lhs = getTensor(I->getLHS());
-  auto *rhs = getTensor(I->getRHS());
-  auto *out = getTensor(I->getDest());
-
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
-    elementMaxInst<int8_t>(lhs, rhs, out);
+    auto lhsTy = I->getLHS()->getType();
+    auto rhsTy = I->getRHS()->getType();
+    auto destTy = I->getDest()->getType();
+
+    TensorQuantizationParams lhsQ{lhsTy->getScale(), lhsTy->getOffset()};
+    TensorQuantizationParams rhsQ{rhsTy->getScale(), rhsTy->getOffset()};
+    TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
+
+    auto outW = getWeightHandle<int8_t>(I->getDest());
+    auto lhsW = getWeightHandle<int8_t>(I->getLHS());
+    auto rhsW = getWeightHandle<int8_t>(I->getRHS());
+    for (size_t i = 0, e = outW.size(); i < e; i++) {
+      // Convert both sides to the destination scale and perform a regular
+      // comparison.
+      int8_t L = quantization::quantize(
+          quantization::dequantize(lhsW.raw(i), lhsQ), destQ);
+      int8_t R = quantization::quantize(
+          quantization::dequantize(rhsW.raw(i), rhsQ), destQ);
+      outW.raw(i) = std::max(L, R);
+    }
     return;
   }
 
-  elementMaxInst<float>(lhs, rhs, out);
+  auto *lhs = getTensor(I->getLHS());
+  auto *rhs = getTensor(I->getRHS());
+  auto *out = getTensor(I->getDest());
+  auto outW = out->getHandle();
+  auto lhsW = lhs->getHandle();
+  auto rhsW = rhs->getHandle();
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = std::max(lhsW.raw(i), rhsW.raw(i));
+  }
 }
 
 void Interpreter::fwdElementMinInst(bool isTrain, const ElementMinInst *I) {
