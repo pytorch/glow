@@ -43,7 +43,7 @@ Tensor *Interpreter::getTensor(const Value *v) const {
   }
 
   auto ie = externalTensors_.find(v);
-  assert(ie != tensors_.end() && "Unknown key Value.");
+  assert(ie != externalTensors_.end() && "Unknown key Value.");
   return ie->second;
 }
 
