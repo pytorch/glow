@@ -111,17 +111,17 @@ unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
 ///
 /// The results for the perplexity are expected to look as:
 ///
-/// Iteration 1: 105.041900635
-/// Iteration 2: 82.2057647705
-/// Iteration 4: 70.7041549683
-/// Iteration 6: 63.9953918457
-/// Iteration 8: 58.681804657
-/// Iteration 10: 54.0125465393
-/// Iteration 12: 49.9519844055
-/// Iteration 14: 46.4922065735
-/// Iteration 16: 43.5101737976
-/// Iteration 18: 40.9120101929
-/// Iteration 20: 38.6976051331
+/// Iteration 1: 105.457855225
+/// Iteration 2: 82.3274154663
+/// Iteration 4: 70.8093948364
+/// Iteration 6: 63.8546295166
+/// Iteration 8: 58.4329605103
+/// Iteration 10: 53.7942848206
+/// Iteration 12: 49.7213783264
+/// Iteration 14: 46.1715202332
+/// Iteration 16: 43.1473731995
+/// Iteration 18: 40.5604858398
+/// Iteration 20: 38.2837104797
 ///
 /// For reference, we expect the usage of an LSTM instead of the current
 /// simple RNN block will improve the perplexity to ~20.
