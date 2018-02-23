@@ -192,11 +192,25 @@ llvm::cl::opt<std::string>
                llvm::cl::desc("Output directory for the bundle serialization"));
 } // namespace
 
+static bool commandLineIsInvalid() {
+  if (!QuantizationProfileFile.empty() && !LoadProfileFile.empty()) {
+    llvm::errs() << "loader: the -" << QuantizationProfileFile.ArgStr
+                 << " and -" << LoadProfileFile.ArgStr
+                 << " options may not be specified together.\n";
+    return true;
+  }
+  return false;
+}
+
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(
       argc, argv,
       " The Glow compiler\n\n"
       "Glow is a compiler for neural network accelerators.\n");
+
+  if (commandLineIsInvalid()) {
+    return 1;
+  }
 
   Tensor data;
   Tensor expectedSoftmax(ElemKind::IndexTy, {1, 1});
