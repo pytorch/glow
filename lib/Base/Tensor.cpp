@@ -48,7 +48,7 @@ template <class ElemTy> static char valueToChar(ElemTy val) {
   return ch;
 }
 
-template <class ElemTy> void dumpGenericImpl(Handle<ElemTy> handle) {
+template <class ElemTy> static void dumpGenericImpl(Handle<ElemTy> handle) {
   auto shape = handle.dims();
   size_t numDims = shape.size();
 
@@ -131,7 +131,8 @@ template <class ElemTy> void dumpGenericImpl(Handle<ElemTy> handle) {
   llvm::outs() << "]\n";
 }
 
-template <class ElemTy> void dumpAsciiGenericImpl(Handle<ElemTy> handle) {
+template <class ElemTy>
+static void dumpAsciiGenericImpl(Handle<ElemTy> handle) {
   auto d = handle.dims();
 
   if (d.size() == 2) {
@@ -174,10 +175,10 @@ template <class ElemTy> void dumpAsciiGenericImpl(Handle<ElemTy> handle) {
 /// over a single dimension, or if we've reached the last dimension perform a
 /// single copy of a single element.
 template <class ElemTy>
-void transposeGenericImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
-                          size_t *srcCoor, size_t *destCoor,
-                          llvm::ArrayRef<unsigned> shuffle,
-                          unsigned depth = 0) {
+static void transposeGenericImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
+                                 size_t *srcCoor, size_t *destCoor,
+                                 llvm::ArrayRef<unsigned> shuffle,
+                                 unsigned depth = 0) {
   if (depth == shuffle.size()) {
     auto srcIdx = llvm::ArrayRef<size_t>(srcCoor, depth);
     auto destIdx = llvm::ArrayRef<size_t>(destCoor, depth);
@@ -200,8 +201,8 @@ void transposeGenericImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
 /// other transpose function (e.g. transposeGenericImpl) must be called. \p
 /// dest is the tensor to transpose, and \p shuffle defines how to transpose.
 template <class ElemTy>
-bool tryTransposeFastImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
-                          llvm::ArrayRef<unsigned> shuffle) {
+static bool tryTransposeFastImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
+                                 llvm::ArrayRef<unsigned> shuffle) {
   const size_t numDims = dest.dims().size();
   size_t srcCoorArr[numDims];
   size_t destCoorArr[numDims];
@@ -235,8 +236,8 @@ bool tryTransposeFastImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
 }
 
 template <class ElemTy>
-void transposeSelectImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
-                         llvm::ArrayRef<unsigned> shuffle) {
+static void transposeSelectImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
+                                llvm::ArrayRef<unsigned> shuffle) {
   bool transposeOccurred = tryTransposeFastImpl(src, dest, shuffle);
   if (!transposeOccurred) {
     size_t srcCoor[max_tensor_dimensions];
@@ -248,8 +249,9 @@ void transposeSelectImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
 /// Takes an array of indices \p currIdxs and increments it with respect to
 /// the Tensor's dims(), allowing for iterating over all of a Tensor's
 /// elements without statically knowing its shape.
-bool incrementIndicesAndCheckFinished(llvm::MutableArrayRef<size_t> currIdxs,
-                                      llvm::ArrayRef<size_t> origDims) {
+static bool
+incrementIndicesAndCheckFinished(llvm::MutableArrayRef<size_t> currIdxs,
+                                 llvm::ArrayRef<size_t> origDims) {
   assert(origDims.size() == currIdxs.size() &&
          "Set of indices should have same shape as Tensor");
 
@@ -271,8 +273,9 @@ bool incrementIndicesAndCheckFinished(llvm::MutableArrayRef<size_t> currIdxs,
 /// newDimLen into Tensor \p dest. If not \p addingNewDim then the dimension
 /// being extended should be size 1.
 template <class ElemTy>
-void broadcastOneDimensionGeneric(Tensor *src, Tensor *dest, unsigned newDimLen,
-                                  unsigned direction, bool addingNewDim) {
+static void broadcastOneDimensionGeneric(Tensor *src, Tensor *dest,
+                                         unsigned newDimLen, unsigned direction,
+                                         bool addingNewDim) {
   auto origDims = src->dims();
 
   if (addingNewDim) {
@@ -329,9 +332,9 @@ void broadcastOneDimensionGeneric(Tensor *src, Tensor *dest, unsigned newDimLen,
 }
 
 template <class ElemTy>
-void broadcastToNewShapeGenericImpl(Tensor *src, Tensor *dest,
-                                    llvm::ArrayRef<size_t> otherDims,
-                                    unsigned axis) {
+static void broadcastToNewShapeGenericImpl(Tensor *src, Tensor *dest,
+                                           llvm::ArrayRef<size_t> otherDims,
+                                           unsigned axis) {
   auto origDims = src->dims();
   const int dimDifference = otherDims.size() - origDims.size();
   (void)dimDifference;
