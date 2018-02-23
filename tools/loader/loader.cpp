@@ -90,64 +90,64 @@ void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
 namespace {
 
 llvm::cl::list<std::string>
-    InputImageFilenames(llvm::cl::Positional,
+    inputImageFilenames(llvm::cl::Positional,
                         llvm::cl::desc("<input image files>"),
                         llvm::cl::OneOrMore);
 
-llvm::cl::OptionCategory ModelInputCat("How to input the models",
+llvm::cl::OptionCategory modelInputCat("How to input the models",
                                        "These control the caffe2 model paths");
 llvm::cl::opt<std::string>
-    NetDescFilename("network",
-                    llvm::cl::desc("Specify the network structure file"),
-                    llvm::cl::value_desc("netDescFilename"),
-                    llvm::cl::cat(ModelInputCat), llvm::cl::Optional);
-llvm::cl::alias NetDescFileNameA("n", llvm::cl::desc("Alias for -network"),
-                                 llvm::cl::aliasopt(NetDescFilename),
-                                 llvm::cl::cat(ModelInputCat));
+    netDescFilenameOpt("network",
+                       llvm::cl::desc("Specify the network structure file"),
+                       llvm::cl::value_desc("netDescFilename"),
+                       llvm::cl::cat(modelInputCat), llvm::cl::Optional);
+llvm::cl::alias netDescFilenameAOpt("n", llvm::cl::desc("Alias for -network"),
+                                    llvm::cl::aliasopt(netDescFilenameOpt),
+                                    llvm::cl::cat(modelInputCat));
 llvm::cl::opt<std::string>
-    NetWeightFilename("weight",
-                      llvm::cl::desc("Specify the network weight file"),
-                      llvm::cl::value_desc("netWeightFilename"),
-                      llvm::cl::cat(ModelInputCat), llvm::cl::Optional);
-llvm::cl::alias NetWeightFileNameA("w", llvm::cl::desc("Alias for -weight"),
-                                   llvm::cl::aliasopt(NetWeightFilename),
-                                   llvm::cl::cat(ModelInputCat));
-llvm::cl::opt<std::string> NetDirectory(
+    netWeightFilenameOpt("weight",
+                         llvm::cl::desc("Specify the network weight file"),
+                         llvm::cl::value_desc("netWeightFilename"),
+                         llvm::cl::cat(modelInputCat), llvm::cl::Optional);
+llvm::cl::alias netWeightFileNameAOpt("w", llvm::cl::desc("Alias for -weight"),
+                                      llvm::cl::aliasopt(netWeightFilenameOpt),
+                                      llvm::cl::cat(modelInputCat));
+llvm::cl::opt<std::string> netDirectoryOpt(
     "directory",
     llvm::cl::desc("Specify the directory with the network structure "
                    "<predict_net.pb> and weight <init_net.pb> files"),
-    llvm::cl::value_desc("netDirectory"), llvm::cl::cat(ModelInputCat),
+    llvm::cl::value_desc("netDirectory"), llvm::cl::cat(modelInputCat),
     llvm::cl::Optional);
 llvm::cl::alias NetDirectoryA("d", llvm::cl::desc("Alias for -directory"),
-                              llvm::cl::aliasopt(NetDirectory),
-                              llvm::cl::cat(ModelInputCat));
+                              llvm::cl::aliasopt(netDirectoryOpt),
+                              llvm::cl::cat(modelInputCat));
 
 llvm::cl::OptionCategory
-    ModelExportCat("How to export the Glow Intermediate Representation/Graphs",
+    modelExportCat("How to export the Glow Intermediate Representation/Graphs",
                    "These options are for debugging the "
                    "graphs by writing the IR/Graphs to "
                    "given files/stdout");
 
-llvm::cl::opt<std::string> DumpGraphDAGFile(
+llvm::cl::opt<std::string> dumpGraphDAGFileOpt(
     "dumpGraphDAG",
     llvm::cl::desc("Specify the file to export the Graph in DOT format"),
-    llvm::cl::value_desc("file.dot"), llvm::cl::cat(ModelExportCat));
+    llvm::cl::value_desc("file.dot"), llvm::cl::cat(modelExportCat));
 
-llvm::cl::opt<bool> DumpGraph("dumpGraph",
-                              llvm::cl::desc("Prints Graph to stdout"),
-                              llvm::cl::cat(ModelExportCat));
+llvm::cl::opt<bool> dumpGraphOpt("dumpGraph",
+                                 llvm::cl::desc("Prints Graph to stdout"),
+                                 llvm::cl::cat(modelExportCat));
 
-llvm::cl::opt<std::string> DumpIRDAGFile(
+llvm::cl::opt<std::string> dumpIRDAGFileOpt(
     "dumpIRDAG",
     llvm::cl::desc("Specify the file to export the IR in DOT format"),
-    llvm::cl::value_desc("file.dot"), llvm::cl::cat(ModelExportCat));
+    llvm::cl::value_desc("file.dot"), llvm::cl::cat(modelExportCat));
 
-llvm::cl::opt<bool> DumpIR("dumpIR", llvm::cl::desc("Prints IR to stdout"),
-                           llvm::cl::cat(ModelExportCat));
+llvm::cl::opt<bool> dumpIROpt("dumpIR", llvm::cl::desc("Prints IR to stdout"),
+                              llvm::cl::cat(modelExportCat));
 
 llvm::cl::OptionCategory loaderCat("Image Loader Options");
 
-llvm::cl::opt<ImageNormalizationMode> ImageMode(
+llvm::cl::opt<ImageNormalizationMode> imageMode(
     "image_mode", llvm::cl::desc("Specify the image mode:"), llvm::cl::Required,
     llvm::cl::cat(loaderCat),
     llvm::cl::values(clEnumValN(ImageNormalizationMode::k0to1, "0to1",
@@ -156,29 +156,29 @@ llvm::cl::opt<ImageNormalizationMode> ImageMode(
                                 "Values are in the range: 0 and 256"),
                      clEnumValN(ImageNormalizationMode::k128to127, "128to127",
                                 "Values are in the range: -128 .. 127")));
-llvm::cl::alias ImageModeA("i", llvm::cl::desc("Alias for -image_mode"),
-                           llvm::cl::aliasopt(ImageMode),
+llvm::cl::alias imageModeA("i", llvm::cl::desc("Alias for -image_mode"),
+                           llvm::cl::aliasopt(imageMode),
                            llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<bool>
-    Verbose("verbose",
+    verbose("verbose",
             llvm::cl::desc("Specify whether to run with verbose output"),
             llvm::cl::Optional, llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<bool>
-    Timer("timer",
-          llvm::cl::desc("Print timer output to stderr detailing how long it "
-                         "takes for the program to execute"),
-          llvm::cl::Optional, llvm::cl::cat(loaderCat));
+    timeOpt("time",
+            llvm::cl::desc("Print timer output to stderr detailing how long it "
+                           "takes for the program to execute"),
+            llvm::cl::Optional, llvm::cl::cat(loaderCat));
 
-llvm::cl::opt<std::string> DumpProfileFile(
+llvm::cl::opt<std::string> dumpProfileFileOpt(
     "dump_profile",
     llvm::cl::desc("Perform quantization profiling for a given graph "
                    "and dump result to the file."),
     llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional,
     llvm::cl::cat(loaderCat));
 
-llvm::cl::opt<std::string> LoadProfileFile(
+llvm::cl::opt<std::string> loadProfileFileOpt(
     "load_profile",
     llvm::cl::desc("Load quantization profile file and quantize the graph"),
     llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional,
@@ -200,9 +200,9 @@ llvm::cl::opt<std::string>
 } // namespace
 
 static bool commandLineIsInvalid() {
-  if (!DumpProfileFile.empty() && !LoadProfileFile.empty()) {
-    llvm::errs() << "loader: the -" << DumpProfileFile.ArgStr << " and -"
-                 << LoadProfileFile.ArgStr
+  if (!dumpProfileFileOpt.empty() && !loadProfileFileOpt.empty()) {
+    llvm::errs() << "loader: the -" << dumpProfileFileOpt.ArgStr << " and -"
+                 << loadProfileFileOpt.ArgStr
                  << " options may not be specified together.\n";
     return true;
   }
@@ -222,20 +222,20 @@ int main(int argc, char **argv) {
   Tensor data;
   Tensor expectedSoftmax(ElemKind::IndexTy, {1, 1});
 
-  loadImagesAndPreprocess(InputImageFilenames, &data, ImageMode);
+  loadImagesAndPreprocess(inputImageFilenames, &data, imageMode);
 
-  if (!NetDirectory.empty()) {
-    NetDescFilename.setValue(NetDirectory + "/predict_net.pb");
-    NetWeightFilename.setValue(NetDirectory + "/init_net.pb");
+  if (!netDirectoryOpt.empty()) {
+    netDescFilenameOpt.setValue(netDirectoryOpt + "/predict_net.pb");
+    netWeightFilenameOpt.setValue(netDirectoryOpt + "/init_net.pb");
   }
 
   ExecutionEngine EE(ExecutionBackend);
-  Function *F = EE.getModule().createFunction(NetDirectory);
+  Function *F = EE.getModule().createFunction(netDirectoryOpt);
   SaveNode *SM;
   Variable *i0;
   Variable *i1;
   {
-    caffe2ModelLoader LD(NetDescFilename, NetWeightFilename,
+    caffe2ModelLoader LD(netDescFilenameOpt, netWeightFilenameOpt,
                          {"data", "gpu_0/data", "softmax_expected"},
                          {&data, &data, &expectedSoftmax}, *F);
     SM = LD.getRoot();
@@ -247,7 +247,7 @@ int main(int argc, char **argv) {
   assert(i1->getVisibilityKind() == Variable::VisibilityKind::Public);
 
   // Handle the request to profile the graph in preperation for quantization.
-  if (!DumpProfileFile.empty()) {
+  if (!dumpProfileFileOpt.empty()) {
     // Perform the high-level optimizations before instrumenting the graph. This
     // optimization phase will remove stuff like repetitive transpose operations
     // perform CSE, etc.
@@ -258,13 +258,13 @@ int main(int argc, char **argv) {
   }
 
   // Load the quantization profile and transform the graph.
-  if (!LoadProfileFile.empty()) {
+  if (!loadProfileFileOpt.empty()) {
     // The profiled graph was optimized before it was instrumentated. In this
     // part of the code we repeat the same transformation in order to create
     // the same graph structure.
     ::optimize(F, glow::CompilationMode::Infer);
 
-    auto quantizationInfos = deserializeFromYaml(LoadProfileFile);
+    auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
 
     // Quantize the graph based on the captured profile.
     quantization::generateQuantizedGraph(F, quantizationInfos);
@@ -278,17 +278,17 @@ int main(int argc, char **argv) {
     EE.compile(CompilationMode::Infer, F);
   }
 
-  if (DumpGraph) {
+  if (dumpGraphOpt) {
     F->dump();
   }
-  if (!DumpGraphDAGFile.empty()) {
-    F->dumpDAG(DumpGraphDAGFile.c_str());
+  if (!dumpGraphDAGFileOpt.empty()) {
+    F->dumpDAG(dumpGraphDAGFileOpt.c_str());
   }
-  if (DumpIR) {
+  if (dumpIROpt) {
     EE.getIR().dump();
   }
-  if (!DumpIRDAGFile.empty()) {
-    EE.getIR().dumpDAG(DumpIRDAGFile.c_str());
+  if (!dumpIRDAGFileOpt.empty()) {
+    EE.getIR().dumpDAG(dumpIRDAGFileOpt.c_str());
   }
 
   // No inference is performed in the bundle generation mode.
@@ -297,25 +297,25 @@ int main(int argc, char **argv) {
   }
 
   llvm::Timer timer("Infer", "Infer");
-  if (Timer)
+  if (timeOpt)
     timer.startTimer();
   EE.run({i0, i1}, {&data, &data});
-  if (Timer)
+  if (timeOpt)
     timer.stopTimer();
 
-  if (!DumpProfileFile.empty()) {
+  if (!dumpProfileFileOpt.empty()) {
     std::vector<NodeQuantizationInfo> QI =
         quantization::generateNodeQuantizationInfos(F);
-    serializeToYaml(DumpProfileFile, QI);
+    serializeToYaml(dumpProfileFileOpt, QI);
   }
 
   Tensor &res = SM->getVariable()->getPayload();
   auto H = res.getHandle<>();
-  llvm::outs() << "Model: " << NetDescFilename << "\n";
-  for (unsigned i = 0; i < InputImageFilenames.size(); i++) {
+  llvm::outs() << "Model: " << netDescFilenameOpt << "\n";
+  for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
     Tensor slice = H.extractSlice(i);
     auto SH = slice.getHandle<>();
-    llvm::outs() << " File: " << InputImageFilenames[i]
+    llvm::outs() << " File: " << inputImageFilenames[i]
                  << " Result:" << SH.minMaxArg().second << "\n";
   }
   return 0;
