@@ -519,3 +519,48 @@ TEST(Operator, RescaleNode) {
   EXPECT_EQ(RI.raw(0), 15);
   EXPECT_EQ(RO.raw(0), 2);
 }
+
+TEST(Operator, QuantizedMaxNode) {
+  const int len = 100;
+  // In this test we check the correctness of the quantized MAX operator.
+
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *A = mod.createVariable(ElemKind::FloatTy, {len}, "A",
+                               Variable::VisibilityKind::Public);
+  auto *B = mod.createVariable(ElemKind::FloatTy, {len}, "B",
+                               Variable::VisibilityKind::Public);
+  auto *O = mod.createVariable(ElemKind::FloatTy, {len}, "Out",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
+
+  auto AH = A->getPayload().getHandle();
+  auto BH = B->getPayload().getHandle();
+  auto OH = O->getPayload().getHandle();
+
+  AH.randomize(-100, 100);
+  BH.randomize(-10, 10);
+
+  auto TA = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
+  auto TB = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.1, 0);
+  auto TO = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
+
+  auto *QA = F->createQuantize("QA", A, TA);
+  auto *QB = F->createQuantize("QB", B, TB);
+
+  auto *max = F->createArithmetic("MX", TO, QA, QB, ArithmeticNode::Mode::Max);
+
+  auto *DQ = F->createDequantize("DQ", max);
+
+  // Test a sequence of rescale operations t
+  F->createSave("save", DQ, O);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+
+  for (size_t i = 0; i < len; i++) {
+    auto mx = std::max(AH.at({i}), BH.at({i}));
+    EXPECT_NEAR(mx, OH.at({i}), 1.0);
+  }
+}
