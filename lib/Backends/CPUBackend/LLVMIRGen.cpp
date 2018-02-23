@@ -647,6 +647,21 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::QuantizeInstKind: {
+    QuantizeInst *QI = cast<QuantizeInst>(I);
+    auto *destPtr = emitValueAddress(builder, QI->getDest(), ElemKind::Int8QTy);
+    auto *srcPtr = emitValueAddress(builder, QI->getSrc(), ElemKind::FloatTy);
+    auto *numElem = emitConst(builder, QI->getDest()->getType()->size());
+    auto *scale = emitConst(builder, QI->getDest()->getType()->getScale());
+    auto *offset =
+        emitConst(builder, (size_t)QI->getDest()->getType()->getOffset());
+
+    auto *F = getFunction("libjit_quantize_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {destPtr, srcPtr, numElem, scale, offset});
+    break;
+  }
+
   case Kinded::Kind::SGDInstKind: {
     SGDInst *SGD = cast<SGDInst>(I);
     auto *W = emitValueAddress(builder, SGD->getWeight(), ElemKind::FloatTy);

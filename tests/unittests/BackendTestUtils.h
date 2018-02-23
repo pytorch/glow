@@ -52,6 +52,9 @@ void trainPoolMaxNet(glow::Tensor *inputs, glow::Tensor *weights,
                      llvm::ArrayRef<size_t> shape2, glow::Tensor *out,
                      glow::BackendKind kind);
 
+void inferQuantizeNet(glow::Tensor *inputs, float scale, int32_t offset,
+                      glow::Tensor *out, glow::BackendKind kind);
+
 void inferReluNet(glow::Tensor *inputs, glow::Tensor *out,
                   glow::BackendKind kind);
 
