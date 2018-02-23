@@ -131,9 +131,9 @@ final_image = transposed_image
 
 print("Shape of final_image: " + str(np.array(final_image).shape))
 
-with open(MODEL_ROOT + "/init_net.pb") as f:
+with open(MODEL_ROOT + "/init_net.pb", "rb") as f:
     init_net = f.read()
-with open(MODEL_ROOT + "/predict_net.pb") as f:
+with open(MODEL_ROOT + "/predict_net.pb", "rb") as f:
     predict_net = f.read()
 
 workspace.ResetWorkspace()
