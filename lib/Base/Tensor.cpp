@@ -245,6 +245,136 @@ void transposeSelectImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
   }
 }
 
+/// Takes an array of indices \p currIdxs and increments it with respect to
+/// the Tensor's dims(), allowing for iterating over all of a Tensor's
+/// elements without statically knowing its shape.
+bool incrementIndicesAndCheckFinished(llvm::MutableArrayRef<size_t> currIdxs,
+                                      llvm::ArrayRef<size_t> origDims) {
+  assert(origDims.size() == currIdxs.size() &&
+         "Set of indices should have same shape as Tensor");
+
+  for (unsigned i = 0; i < currIdxs.size(); i++) {
+    currIdxs[i] += 1;
+    if (currIdxs[i] == origDims[i]) {
+      currIdxs[i] = 0;
+    } else {
+      return false;
+    }
+  }
+
+  assert(currIdxs[origDims.size() - 1] == 0 &&
+         "Should have overflowed highest index if complete");
+  return true;
+}
+
+/// Broadcast the current Handle's tensor in \p direction of length \p
+/// newDimLen into Tensor \p dest. If not \p addingNewDim then the dimension
+/// being extended should be size 1.
+template <class ElemTy>
+void broadcastOneDimensionGeneric(Tensor *src, Tensor *dest, unsigned newDimLen,
+                                  unsigned direction, bool addingNewDim) {
+  auto origDims = src->dims();
+
+  if (addingNewDim) {
+    assert(direction <= origDims.size() &&
+           "Adding new dimension requires direction >= 0 && <= size]");
+    assert(origDims.size() != max_tensor_dimensions &&
+           "Cannot broadcast tensor already at max dimensions");
+  } else {
+    assert(direction <= origDims.size() &&
+           "Extending existing dimension requires direction >= 0 && < size");
+    assert(origDims[direction] == 1 &&
+           "Can only extend an existing dimension if size == 1");
+  }
+
+  // Reset size of dest to accomodate new broadcast dimension.
+  size_t newDims[max_tensor_dimensions];
+  unsigned shift = 0;
+  for (unsigned i = 0; i < origDims.size(); ++i) {
+    if (addingNewDim && (i == direction)) {
+      shift = 1;
+    }
+    newDims[i + shift] = origDims[i];
+  }
+  newDims[direction] = newDimLen;
+  const unsigned newDimsSize = origDims.size() + (addingNewDim ? 1 : 0);
+  dest->reset(src->getElementType(),
+              llvm::ArrayRef<size_t>(newDims, newDimsSize));
+
+  size_t currNewIdxsArr[max_tensor_dimensions];
+  auto currNewIdxs = llvm::MutableArrayRef<size_t>(currNewIdxsArr, newDimsSize);
+  size_t currIdxsArr[max_tensor_dimensions] = {0};
+  auto currIdxs = llvm::MutableArrayRef<size_t>(currIdxsArr, origDims.size());
+
+  auto srcH = src->getHandle<ElemTy>();
+  auto destH = dest->getHandle<ElemTy>();
+
+  // Iterate over all locations in the original Tensor.
+  do {
+    // New indices using current from original Tensor, plus new dimension.
+    unsigned shift = 0;
+    for (unsigned i = 0; i < origDims.size(); ++i) {
+      if (addingNewDim && (i == direction)) {
+        shift = 1;
+      }
+      currNewIdxs[i + shift] = currIdxs[i];
+    }
+
+    // Copy all values in the new broadcast direction dimension.
+    for (currNewIdxs[direction] = 0; currNewIdxs[direction] < newDimLen;
+         currNewIdxs[direction]++) {
+      destH.at(currNewIdxs) = srcH.at(currIdxs);
+    }
+  } while (!incrementIndicesAndCheckFinished(currIdxs, origDims));
+}
+
+template <class ElemTy>
+void broadcastToNewShapeGenericImpl(Tensor *src, Tensor *dest,
+                                    llvm::ArrayRef<size_t> otherDims,
+                                    unsigned axis) {
+  auto origDims = src->dims();
+  const int dimDifference = otherDims.size() - origDims.size();
+  (void)dimDifference;
+  assert(otherDims.size() >= origDims.size() &&
+         "Dimensions to broadcast to must be equal or greater size.");
+  assert(axis <= dimDifference &&
+         "Axis + nDims of orig Tensor must be <= newShape nDims");
+
+  Tensor intermediate;
+  intermediate.copyFrom(src);
+
+  // Iterate over the new shape; if the original shape had a dimension here
+  // (when considering the axis) then verify the dimension either matches the
+  // new shape (no action taken) or == 1 (broadcast in that direction). Else
+  // the original shape had no dimensions here (after considering axis), so
+  // add the new dimension and broadcast in that direction.
+  for (size_t i = 0; i < otherDims.size(); i++) {
+    if (i >= axis && i < origDims.size() + axis) {
+      const int origIdx = i - axis;
+      if (origDims[origIdx] == otherDims[i]) {
+        // Keep original dimensions; they are compatible.
+      } else if (origDims[origIdx] == 1) {
+        // Broadcast this dimension to size from otherDims.
+        Tensor tmp;
+        const bool addingNewDim = false;
+        broadcastOneDimensionGeneric<ElemTy>(&intermediate, &tmp, otherDims[i],
+                                             i, addingNewDim);
+        intermediate.copyFrom(&tmp);
+      } else {
+        // Incompatible dimensions for broadcasting
+        assert(false && "Cannot broadcast with these dimensions.");
+      }
+    } else {
+      Tensor tmp;
+      const bool addingNewDim = true;
+      broadcastOneDimensionGeneric<ElemTy>(&intermediate, &tmp, otherDims[i], i,
+                                           addingNewDim);
+      intermediate.copyFrom(&tmp);
+    }
+  }
+
+  dest->copyFrom(&intermediate);
+}
 } // namespace
 
 void glow::dumpAsciiImpl(Tensor *T) {
@@ -317,6 +447,29 @@ void glow::transposeImpl(Tensor *src, Tensor *dest,
     auto srcH = src->getHandle<size_t>();
     auto destH = dest->getHandle<size_t>();
     transposeSelectImpl(srcH, destH, shuffle);
+    return;
+  }
+  }
+}
+
+void glow::broadcastToNewShapeImpl(Tensor *src, Tensor *dest,
+                                   llvm::ArrayRef<size_t> otherDims,
+                                   unsigned axis) {
+  switch (src->getElementType()) {
+  case ElemKind::FloatTy: {
+    broadcastToNewShapeGenericImpl<float>(src, dest, otherDims, axis);
+    return;
+  }
+  case ElemKind::Int8QTy: {
+    broadcastToNewShapeGenericImpl<int8_t>(src, dest, otherDims, axis);
+    return;
+  }
+  case ElemKind::Int32QTy: {
+    broadcastToNewShapeGenericImpl<int32_t>(src, dest, otherDims, axis);
+    return;
+  }
+  case ElemKind::IndexTy: {
+    broadcastToNewShapeGenericImpl<size_t>(src, dest, otherDims, axis);
     return;
   }
   }

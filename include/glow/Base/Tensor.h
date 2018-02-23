@@ -257,6 +257,9 @@ void dumpImpl(Tensor *T);
 
 void transposeImpl(Tensor *src, Tensor *dest, llvm::ArrayRef<unsigned> shuffle);
 
+void broadcastToNewShapeImpl(Tensor *src, Tensor *dest,
+                             llvm::ArrayRef<size_t> otherDims, unsigned axis);
+
 /// A class that provides indexed access to a tensor. This class has value
 /// semantics and it's copied around. One of the reasons for making this class
 /// value semantics is to allow efficient index calculation that the compiler
@@ -561,104 +564,7 @@ public:
   /// implementation does not.
   void broadcastToNewShape(Tensor *dest, llvm::ArrayRef<size_t> otherDims,
                            unsigned axis) {
-    auto origDims = dims();
-    const int dimDifference = otherDims.size() - origDims.size();
-    (void)dimDifference;
-    assert(otherDims.size() >= origDims.size() &&
-           "Dimensions to broadcast to must be equal or greater size.");
-    assert(axis <= dimDifference &&
-           "Axis + nDims of orig Tensor must be <= newShape nDims");
-
-    Tensor intermediate;
-    intermediate.copyFrom(this->tensor_);
-
-    // Iterate over the new shape; if the original shape had a dimension here
-    // (when considering the axis) then verify the dimension either matches the
-    // new shape (no action taken) or == 1 (broadcast in that direction). Else
-    // the original shape had no dimensions here (after considering axis), so
-    // add the new dimension and broadcast in that direction.
-    for (size_t i = 0; i < otherDims.size(); i++) {
-      if (i >= axis && i < origDims.size() + axis) {
-        const int origIdx = i - axis;
-        if (origDims[origIdx] == otherDims[i]) {
-          // Keep original dimensions; they are compatible.
-        } else if (origDims[origIdx] == 1) {
-          // Broadcast this dimension to size from otherDims.
-          Tensor tmp;
-          const bool addingNewDim = false;
-          intermediate.getHandle<ElemTy>().broadcastOneDimension(
-              &tmp, otherDims[i], i, addingNewDim);
-          intermediate.copyFrom(&tmp);
-        } else {
-          // Incompatible dimensions for broadcasting
-          assert(false && "Cannot broadcast with these dimensions.");
-        }
-      } else {
-        Tensor tmp;
-        const bool addingNewDim = true;
-        intermediate.getHandle<ElemTy>().broadcastOneDimension(
-            &tmp, otherDims[i], i, addingNewDim);
-        intermediate.copyFrom(&tmp);
-      }
-    }
-
-    dest->copyFrom(&intermediate);
-  }
-
-  /// Broadcast the current Handle's tensor in \p direction of length \p
-  /// newDimLen into Tensor \p dest. If not \p addingNewDim then the dimension
-  /// being extended should be size 1.
-  void broadcastOneDimension(Tensor *dest, unsigned newDimLen,
-                             unsigned direction, bool addingNewDim) {
-    auto origDims = dims();
-    if (addingNewDim) {
-      assert(direction <= origDims.size() &&
-             "Adding new dimension requires direction >= 0 && <= size]");
-      assert(origDims.size() != max_tensor_dimensions &&
-             "Cannot broadcast tensor already at max dimensions");
-    } else {
-      assert(direction <= origDims.size() &&
-             "Extending existing dimension requires direction >= 0 && < size");
-      assert(origDims[direction] == 1 &&
-             "Can only extend an existing dimension if size == 1");
-    }
-
-    // Reset size of dest to accomodate new broadcast dimension.
-    size_t newDims[max_tensor_dimensions];
-    unsigned shift = 0;
-    for (unsigned i = 0; i < origDims.size(); ++i) {
-      if (addingNewDim && (i == direction)) {
-        shift = 1;
-      }
-      newDims[i + shift] = origDims[i];
-    }
-    newDims[direction] = newDimLen;
-    const unsigned newDimsSize = origDims.size() + (addingNewDim ? 1 : 0);
-    dest->reset(getElementType(), llvm::ArrayRef<size_t>(newDims, newDimsSize));
-
-    size_t currNewIdxsArr[max_tensor_dimensions];
-    auto currNewIdxs =
-        llvm::MutableArrayRef<size_t>(currNewIdxsArr, newDimsSize);
-    size_t currIdxsArr[max_tensor_dimensions] = {0};
-    auto currIdxs = llvm::MutableArrayRef<size_t>(currIdxsArr, origDims.size());
-
-    // Iterate over all locations in the original Tensor.
-    do {
-      // New indices using current from original Tensor, plus new dimension.
-      unsigned shift = 0;
-      for (unsigned i = 0; i < origDims.size(); ++i) {
-        if (addingNewDim && (i == direction)) {
-          shift = 1;
-        }
-        currNewIdxs[i + shift] = currIdxs[i];
-      }
-
-      // Copy all values in the new broadcast direction dimension.
-      for (currNewIdxs[direction] = 0; currNewIdxs[direction] < newDimLen;
-           currNewIdxs[direction]++) {
-        dest->getHandle<ElemTy>().at(currNewIdxs) = at(currIdxs);
-      }
-    } while (!incrementIndicesAndCheckFinished(currIdxs));
+    broadcastToNewShapeImpl(tensor_, dest, otherDims, axis);
   }
 
 private:
@@ -694,29 +600,6 @@ private:
       fusedCoor[d] = i + offset[d];
       insertTensorsImpl(sliceCoor, fusedCoor, slice, isInsert, offset, d + 1);
     }
-  }
-
-  /// Takes an array of indices \p currIdxs and increments it with respect to
-  /// the Tensor's dims(), allowing for iterating over all of a Tensor's
-  /// elements without statically knowing its shape.
-  bool
-  incrementIndicesAndCheckFinished(llvm::MutableArrayRef<size_t> currIdxs) {
-    auto origDims = dims();
-    assert(origDims.size() == currIdxs.size() &&
-           "Set of indices should have same shape as Tensor");
-
-    for (unsigned i = 0; i < currIdxs.size(); i++) {
-      currIdxs[i] += 1;
-      if (currIdxs[i] == origDims[i]) {
-        currIdxs[i] = 0;
-      } else {
-        return false;
-      }
-    }
-
-    assert(currIdxs[origDims.size() - 1] == 0 &&
-           "Should have overflowed highest index if complete");
-    return true;
   }
 };
 
