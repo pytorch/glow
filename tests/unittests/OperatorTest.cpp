@@ -612,9 +612,13 @@ TEST(Operator, TestQuantizedRescaleSequence) {
   auto T5 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.3, -3);
 
   Node *R = F->createQuantize("R", A, T1);
+  // Check that a sequence of type conversions does not change the result.
   R = F->createRescaleQuantized("R", R, T1);
   R = F->createRescaleQuantized("R", R, T2);
   R = F->createRescaleQuantized("R", R, T3);
+  // Check that adding the quantized zero does not change the result.
+  auto *G = F->createSplat("splatZero", T3, 0.0);
+  R = F->createArithmetic("addZero", G, R, ArithmeticNode::Mode::Add);
   R = F->createRescaleQuantized("R", R, T4);
   R = F->createRescaleQuantized("R", R, T5);
   R = F->createRescaleQuantized("R", R, T1);
