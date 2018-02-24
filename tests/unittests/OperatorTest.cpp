@@ -564,3 +564,51 @@ TEST(Operator, QuantizedMaxNode) {
     EXPECT_NEAR(mx, OH.at({i}), 1.0);
   }
 }
+
+TEST(Operator, TestQuantizedRescaleSequence) {
+  const int len = 100;
+
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *A = mod.createVariable(ElemKind::FloatTy, {len}, "A",
+                               Variable::VisibilityKind::Public);
+  auto *O = mod.createVariable(ElemKind::FloatTy, {len}, "Out",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
+
+  auto AH = A->getPayload().getHandle();
+  auto OH = O->getPayload().getHandle();
+
+  // Notice that the range below is the an approximation of the scale factors in
+  // T3 and T4. If we increase the size of the range we may start losing some
+  // values.
+  AH.randomize(-12, 12);
+
+  auto T1 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
+  auto T2 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 2);
+  auto T3 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.1, -3);
+  auto T4 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.1, 7);
+  auto T5 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.3, -3);
+
+  Node *R = F->createQuantize("R", A, T1);
+  R = F->createRescaleQuantized("R", R, T1);
+  R = F->createRescaleQuantized("R", R, T2);
+  R = F->createRescaleQuantized("R", R, T3);
+  R = F->createRescaleQuantized("R", R, T4);
+  R = F->createRescaleQuantized("R", R, T5);
+  R = F->createRescaleQuantized("R", R, T1);
+  auto *DQ = F->createDequantize("DQ", R);
+
+  // Test a sequence of rescale operations t
+  F->createSave("save", DQ, O);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+
+  F->dumpDAG();
+
+  for (size_t i = 0; i < len; i++) {
+    EXPECT_NEAR(AH.at({i}), OH.at({i}), 1.0);
+  }
+}
