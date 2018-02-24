@@ -12,6 +12,8 @@
 
 namespace glow {
 
+using llvm::cast;
+
 bool operator==(const NodeQuantizationInfo &lhs,
                 const NodeQuantizationInfo &rhs) {
   return lhs.Scale() == rhs.Scale() && lhs.Offset() == rhs.Offset() &&
@@ -107,15 +109,33 @@ TEST(Quantization, quantizeGraph) {
   EE.run({}, {});
 }
 
+/// Fills the tensor \p H with some stable random data with the seed \p seed
+/// and the range [-scale .. scale].
+static void fillStableRandomData(Handle<float> H, size_t seed,
+                                 float scale = 1) {
+  for (size_t i = 0, e = H.size(); i < e; i++) {
+    H.raw(i) = scale * (float((int(i * 1921 + seed) % 100) - 50) / 50);
+  }
+}
+
 /// Builds a simple graph, returns back input var and save node through refs.
-void createSimpleGraphForQuantization(Function *F, Variable *&input,
-                                      SaveNode *&saveNode, Variable *W,
-                                      Variable *B) {
+static std::pair<Function *, SaveNode *>
+createSimpleGraphForQuantization(Module *M) {
+
+  Function *F = M->createFunction("main");
+
   auto *A = F->getParent()->createVariable(
       ElemKind::FloatTy, {1, 32, 32, 3}, "A", Variable::VisibilityKind::Public,
       Variable::TrainKind::None);
-  input = A;
-  auto *CV = F->createConv("conv", A, 16, 5, 1, 2);
+  fillStableRandomData(A->getPayload().getHandle(), 1100, 1);
+
+  ConvolutionNode *CV = F->createConv("conv", A, 16, 5, 1, 2);
+  Variable *bias = cast<Variable>(CV->getBias());
+  Variable *filter = cast<Variable>(CV->getFilter());
+
+  fillStableRandomData(bias->getPayload().getHandle(), 2001, 1);
+  fillStableRandomData(filter->getPayload().getHandle(), 1000, 1);
+
   auto *RL = F->createRELU("relu", CV);
   auto *AP = F->createPool("pool", RL, PoolNode::Mode::Avg, 2, 2, 0);
   // Just add noop transpose.
@@ -123,64 +143,53 @@ void createSimpleGraphForQuantization(Function *F, Variable *&input,
   // Noop reshape.
   auto *R = F->createReshape("reshape", T, T->getResult().dims());
 
-  Node *O = F->createFullyConnected("fc", R, W, B);
-  saveNode = F->createSave("save", O);
+  FullyConnectedNode *O = F->createFullyConnected("fc", R, 10);
+  Variable *bias2 = cast<Variable>(O->getBias());
+  Variable *filter2 = cast<Variable>(O->getWeights());
+
+  fillStableRandomData(bias2->getPayload().getHandle(), 3001, 1);
+  fillStableRandomData(filter2->getPayload().getHandle(), 4000, 1);
+
+  SaveNode *SN = F->createSave("save", O);
+  return {F, SN};
 }
 
 TEST(Quantization, end2end) {
-  Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
-  inputs.getHandle().randomize(0, 2.0);
-
-  ExecutionEngine E1, E2;
-  SaveNode *result1, *result2;
-  Variable *input1, *input2;
-
-  auto &mod1 = E1.getModule();
-  auto &mod2 = E2.getModule();
-
-  Function *F1 = mod1.createFunction("collect_profile");
-  Function *F2 = mod2.createFunction("use_profile");
-
-  auto *W1 = mod1.createVariable(ElemKind::FloatTy, {4096, 2}, "weights",
-                                 Variable::VisibilityKind::Private,
-                                 Variable::TrainKind::Xavier, 1);
-  auto *B1 = mod1.createVariable(ElemKind::FloatTy, {2}, "bias",
-                                 Variable::VisibilityKind::Private,
-                                 Variable::TrainKind::Xavier, 1);
-  createSimpleGraphForQuantization(F1, input1, result1, W1, B1);
+  // STEP1 - Generate the first network to record the quantization parameters.
+  ExecutionEngine EE;
+  auto res = createSimpleGraphForQuantization(&EE.getModule());
+  Function *F1 = res.first;
+  SaveNode *result1 = res.second;
 
   glow::profileQuantization(*F1);
-  E1.compile(CompilationMode::Infer, F1);
+  EE.compile(CompilationMode::Infer, F1);
 
   // Run graph to capture profile.
-  E1.run({input1}, {&inputs});
+  EE.run({}, {});
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
       quantization::generateNodeQuantizationInfos(F1);
-  auto *W2 = mod2.createVariable(ElemKind::FloatTy, {4096, 2}, "weights",
-                                 Variable::VisibilityKind::Private,
-                                 Variable::TrainKind::Xavier, 1);
-  auto *B2 = mod2.createVariable(ElemKind::FloatTy, {2}, "bias",
-                                 Variable::VisibilityKind::Private,
-                                 Variable::TrainKind::Xavier, 1);
 
-  // Make sure we are testing with the same input tensors.
-  W2->getPayload().copyFrom(&W1->getPayload());
-  B2->getPayload().copyFrom(&B1->getPayload());
-  createSimpleGraphForQuantization(F2, input2, result2, W2, B2);
+  // STEP2 - Use the profile to quantize a network.
+  ExecutionEngine EE2;
+  auto res2 = createSimpleGraphForQuantization(&EE2.getModule());
+  Function *F2 = res2.first;
+  SaveNode *result2 = res2.second;
 
   quantization::generateQuantizedGraph(F2, QI);
-  E2.compile(CompilationMode::Infer, F2);
-  E2.run({input2}, {&inputs});
+  EE2.compile(CompilationMode::Infer, F2);
+  EE2.run({}, {});
 
-  auto result2Handle = result2->getVariable()->getHandle();
+  // STEP2 - Compare the results of the original and quantized functions.
   auto result1Handle = result1->getVariable()->getHandle();
+  auto result2Handle = result2->getVariable()->getHandle();
 
   EXPECT_EQ(result1Handle.size(), result2Handle.size());
+
   for (int i = 0, e = result1Handle.size(); i < e; ++i) {
-    double diff = std::fabs(result2Handle.raw(i) - result1Handle.raw(i)) /
-                  result1Handle.raw(i);
+    float mx = result2Handle.raw(result2Handle.minMaxArg().second);
+    double diff = std::fabs(result2Handle.raw(i) - result1Handle.raw(i)) / mx;
 
     // Allow 3% difference.
     EXPECT_NEAR(diff, 0, 0.03);
