@@ -272,9 +272,9 @@ TEST(Operator, IntMatMul) {
 
   // The scaling factor 1.4x was carefully selected to make sure we don't
   // overflow or underflow the calculation.
-  Type resTy(ElemKind::Int8QTy, {1, 3, 3}, 0.60, 4);
-  Type lhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.075, -2);
-  Type rhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.075, 2);
+  TypeRef resTy = mod.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.60, 4);
+  TypeRef lhsTy = mod.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.075, -2);
+  TypeRef rhsTy = mod.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.075, 2);
 
   auto *res = mod.createVariable(ElemKind::FloatTy, {1, 3, 3}, "res");
   auto *lhs = mod.createVariable(ElemKind::FloatTy, {1, 3, 3}, "lhs");
@@ -288,10 +288,10 @@ TEST(Operator, IntMatMul) {
       0.1, -0.2, 0.3, 9.0, -8.0, 7.0, 6.0, 5.0, 9.0,
   };
 
-  auto *lhsq = F->createQuantize("lhs.q", lhs, &lhsTy);
-  auto *rhsq = F->createQuantize("rhs.q", rhs, &rhsTy);
+  auto *lhsq = F->createQuantize("lhs.q", lhs, lhsTy);
+  auto *rhsq = F->createQuantize("rhs.q", rhs, rhsTy);
 
-  auto *matmulq = F->createBatchedMatMul("matmul.q", &resTy, lhsq, rhsq);
+  auto *matmulq = F->createBatchedMatMul("matmul.q", resTy, lhsq, rhsq);
 
   auto *rq = F->createDequantize("dequant", matmulq);
 
@@ -324,9 +324,9 @@ TEST(Operator, IntBatchedArith) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  Type resTy(ElemKind::Int8QTy, {1, 3, 3}, 0.10, 1.0);
-  Type lhsTy(ElemKind::Int8QTy, {1, 3, 3}, 0.11, 4.0);
-  Type rhsTy(ElemKind::Int8QTy, {3, 3}, 0.14, -2.0);
+  TypeRef resTy = mod.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.10, 1.0);
+  TypeRef lhsTy = mod.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.11, 4.0);
+  TypeRef rhsTy = mod.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.14, -2.0);
 
   auto *res = mod.createVariable(ElemKind::FloatTy, {1, 3, 3}, "res");
   auto *lhs = mod.createVariable(ElemKind::FloatTy, {1, 3, 3}, "lhs");
@@ -340,11 +340,11 @@ TEST(Operator, IntBatchedArith) {
       -9.1, -0.4, 1.3, 2.2, -8.1, 7.6, -6.4, 10.0, 9.1,
   };
 
-  auto *lhsq = F->createQuantize("lhs.q", lhs, &lhsTy);
-  auto *rhsq = F->createQuantize("rhs.q", rhs, &rhsTy);
+  auto *lhsq = F->createQuantize("lhs.q", lhs, lhsTy);
+  auto *rhsq = F->createQuantize("rhs.q", rhs, rhsTy);
 
   auto *matmulq = F->createBatchedArithmetic(
-      "add", &resTy, BatchedArithmeticNode::Mode::Add, lhsq, rhsq);
+      "add", resTy, BatchedArithmeticNode::Mode::Add, lhsq, rhsq);
 
   auto *rq = F->createDequantize("dequant", matmulq);
 
