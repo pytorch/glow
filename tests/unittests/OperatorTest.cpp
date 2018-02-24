@@ -492,16 +492,16 @@ TEST(Operator, RescaleNode) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  auto *input = mod.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11, "input",
+  auto *input = mod.createVariable(ElemKind::Int8QTy, {4, 10}, 0.4, -3, "input",
                                    Variable::VisibilityKind::Public,
-                                   Variable::TrainKind::Broadcast, 15);
+                                   Variable::TrainKind::Broadcast, 40);
 
-  auto *output = mod.createVariable(ElemKind::Int8QTy, {4, 10}, 0.05, -3,
+  auto *output = mod.createVariable(ElemKind::Int8QTy, {4, 10}, 0.4, -3,
                                     "output", Variable::VisibilityKind::Public,
                                     Variable::TrainKind::None);
 
-  auto T1 = mod.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.3, 5);
-  auto T2 = mod.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.002, -4);
+  auto T1 = mod.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.7, 5);
+  auto T2 = mod.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.3, -4);
 
   // Test a sequence of rescale operations that the optimizer may try to
   // optimize at some point.
@@ -516,8 +516,8 @@ TEST(Operator, RescaleNode) {
   auto RI = input->getPayload().getHandle<int8_t>();
   auto RO = output->getPayload().getHandle<int8_t>();
 
-  EXPECT_EQ(RI.raw(0), 15);
-  EXPECT_EQ(RO.raw(0), 2);
+  EXPECT_EQ(RI.raw(0), 40);
+  EXPECT_NEAR(RO.raw(0), 40, 1);
 }
 
 TEST(Operator, QuantizedMaxNode) {
