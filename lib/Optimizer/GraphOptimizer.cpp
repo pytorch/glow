@@ -4,6 +4,7 @@
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Optimizer/Optimizer.h"
+#include "glow/Quantization/Quantization.h"
 
 #include "llvm/Support/Casting.h"
 
@@ -665,8 +666,22 @@ static void optimizeQuantization(Function *F) {
         Q->getResult().replaceAllUsesOfWith(newRS);
         continue;
       }
-    }
-  }
+
+      // Merge splat and rescale nodes.
+      // Rescale(Splat()) -> Splat()
+      if (auto *SP = dyn_cast<SplatNode>(Q->getInput())) {
+        auto destTy = Q->getType();
+        TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
+        int8_t val = quantization::quantize(SP->getValue(), destQ);
+        auto *newRS = F->createSplat(SP->getName(), Q->getType(), val);
+
+        worklist.push_back(newRS);
+        Q->getResult().replaceAllUsesOfWith(newRS);
+        continue;
+      }
+
+    } // Handle RescaleQuantizedNode
+  }   // For each item in the worklist.
 }
 
 void glow::optimize(Function *F, CompilationMode mode) {
