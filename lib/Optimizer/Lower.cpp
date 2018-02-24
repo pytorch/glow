@@ -223,16 +223,7 @@ void lowerSigmoidGradNode(Function &graph, SigmoidGradNode &THG) {
 
 void lowerReluNode(Function &graph, ReluNode &R) {
   // Relu is a max between zero and the input value.
-  SplatNode *zero;
-  if (R.getType()->isQuantizedType()) {
-    // Offset represents zero for quantized type.
-    // floating value = scale * (X - Offset). X must be equal to offset in order
-    // to get 0f.
-    zero = graph.createSplat("zero", R.getType(), R.getType()->getOffset());
-  } else {
-    zero = graph.createSplat("zero", R.getType(), 0.0);
-  }
-
+  SplatNode *zero = graph.createSplat("zero", R.getType(), 0.0);
   auto *relu = graph.createArithmetic("relu", zero, R.getInput(),
                                       ArithmeticNode::Mode::Max);
   R.getResult().replaceAllUsesOfWith(relu);
