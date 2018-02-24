@@ -599,15 +599,22 @@ void Interpreter::fwdSplatInst(bool isTrain, const glow::SplatInst *I) {
   auto *T = getTensor(I->getDest());
   ElemKind k = T->getElementType();
 
-#define TYPED_SPLAT(TY, TYPEKIND)                                              \
-  if (k == TYPEKIND) {                                                         \
-    return T->getHandle<TY>().clear(I->getValue());                            \
+  if (k == ElemKind::IndexTy) {
+    return T->getHandle<size_t>().clear(I->getValue());
   }
 
-  TYPED_SPLAT(size_t, ElemKind::IndexTy);
-  TYPED_SPLAT(float, ElemKind::FloatTy);
-  TYPED_SPLAT(int8_t, ElemKind::Int8QTy);
-#undef TYPED_SPLAT
+  if (k == ElemKind::FloatTy) {
+    return T->getHandle<float>().clear(I->getValue());
+  }
+
+  if (k == ElemKind::Int8QTy) {
+    // Quantize the requested floating point splat value into the correct
+    // integer representation.
+    auto destTy = I->getDest()->getType();
+    TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
+    float val = I->getValue();
+    return T->getHandle<int8_t>().clear(quantization::quantize(val, destQ));
+  }
 
   llvm_unreachable("Unsupported tensor type");
 }
