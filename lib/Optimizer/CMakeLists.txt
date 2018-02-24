@@ -7,5 +7,6 @@ add_library(Optimizer
 
 target_link_libraries(Optimizer
                       PRIVATE
+                        Quantization
                         IR)
 
