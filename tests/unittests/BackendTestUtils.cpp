@@ -96,12 +96,12 @@ void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
                                         BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
-  auto &G = *mod.createFunction("main");
+  Function *F = mod.createFunction("main");
   auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
                                  "input", Variable::VisibilityKind::Public);
-  auto *lrn = G.createLocalResponseNormalization("lrn", var, 5, 3.0, 0.5, 1.5);
-  auto result = G.createSave("ret", lrn);
-  EE.compile(CompilationMode::Infer, &G);
+  auto *lrn = F->createLocalResponseNormalization("lrn", var, 5, 3.0, 0.5, 1.5);
+  auto result = F->createSave("ret", lrn);
+  EE.compile(CompilationMode::Infer, F);
   EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());
 }

@@ -25,8 +25,8 @@ using llvm::isa;
 /// Basic test of DSE (Dead Store Elimination)
 TEST(Optimizer, dseBasic) {
   Module mod;
-  auto &G = *mod.createFunction("DeadStoreElimination");
-  IRFunction M(&G);
+  Function *F = mod.createFunction("DeadStoreElimination");
+  IRFunction M(F);
   IRBuilder bb(&M);
 
   auto *input1 = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input1",
@@ -50,8 +50,8 @@ TEST(Optimizer, dseBasic) {
 /// Check that DSE does not remove the last write into a WeightVar.
 TEST(Optimizer, dseDoNotRemloveLastWriteIntoWeightVar) {
   Module mod;
-  auto &G = *mod.createFunction("DeadStoreElimination");
-  IRFunction M(&G);
+  Function *F = mod.createFunction("DeadStoreElimination");
+  IRFunction M(F);
   IRBuilder bb(&M);
 
   auto *input1 = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input1",
@@ -76,8 +76,8 @@ TEST(Optimizer, dseDoNotRemloveLastWriteIntoWeightVar) {
 
 TEST(Optimizer, shareBuffers) {
   Module mod;
-  auto &G = *mod.createFunction("ShareBuffers");
-  IRFunction M(&G);
+  Function *F = mod.createFunction("ShareBuffers");
+  IRFunction M(F);
   IRBuilder bb(&M);
 
   auto *input = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input",
@@ -111,8 +111,8 @@ TEST(Optimizer, shareBuffers) {
 
 TEST(Optimizer, copyPropagation) {
   Module mod;
-  auto &G = *mod.createFunction("ShareBuffers");
-  IRFunction M(&G);
+  Function *F = mod.createFunction("ShareBuffers");
+  IRFunction M(F);
   IRBuilder bb(&M);
 
   auto *input = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input",
@@ -148,8 +148,8 @@ TEST(Optimizer, copyPropagation) {
 
 TEST(Optimizer, copyPropagationSimple) {
   Module mod;
-  auto &G = *mod.createFunction("ShareBuffers");
-  IRFunction M(&G);
+  auto *F = mod.createFunction("ShareBuffers");
+  IRFunction M(F);
   IRBuilder bb(&M);
 
   auto *input = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input",
@@ -181,8 +181,8 @@ TEST(Optimizer, copyPropagationSimple) {
 
 TEST(Optimizer, copyPropagationTranspose) {
   Module mod;
-  auto &G = *mod.createFunction("ShareBuffers");
-  IRFunction M(&G);
+  Function *F = mod.createFunction("ShareBuffers");
+  IRFunction M(F);
   IRBuilder bb(&M);
 
   auto *output1 =
