@@ -14,10 +14,17 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Type &type) {
 
   if (type.isQuantizedType()) {
     os << "[scale:";
-    llvm::write_double(os, type.getScale(), llvm::FloatStyle::Fixed, 6);
+    llvm::write_double(os, type.getScale(), llvm::FloatStyle::Fixed, 4);
     os << " offset:";
     os << type.getOffset();
     os << ']';
+    float low = (-128 - type.getOffset()) * type.getScale();
+    float high = (127 - type.getOffset()) * type.getScale();
+    os << "[ ";
+    llvm::write_double(os, low, llvm::FloatStyle::Fixed, 3);
+    os << "...";
+    llvm::write_double(os, high, llvm::FloatStyle::Fixed, 3);
+    os << "]";
   }
 
   os << '<';
