@@ -13,6 +13,7 @@
 using namespace glow;
 using llvm::cast;
 using llvm::dyn_cast;
+using llvm::isa;
 
 static bool shouldDeleteNode(Node *N) {
   // In general, nodes who have side effects are retained.
@@ -572,10 +573,24 @@ static void optimizeSliceOfSplat(Function *F) {
 
 /// Eliminate node sequences that are related to quantization.
 static void optimizeQuantization(Function *F) {
-  for (const auto &node : F->getNodes()) {
+  // A worklist that contains the nodes to process.
+  std::vector<Node *> worklist;
 
-    /// Quantize(Dequantize(X)) -> RescaleQuantized(X)
+  // Add all of the interesting nodes to the worklist.
+  for (auto *node : F->getNodes()) {
+    if (isa<QuantizeNode>(node) || isa<DequantizeNode>(node) ||
+        isa<RescaleQuantizedNode>(node)) {
+      worklist.push_back(node);
+    }
+  }
+
+  while (!worklist.empty()) {
+    // Take a node from the worklist.
+    Node *node = worklist.back();
+    worklist.pop_back();
+
     if (auto *Q = dyn_cast<QuantizeNode>(node)) {
+      /// Quantize(Dequantize(X)) -> RescaleQuantized(X)
       auto *DQ = dyn_cast<DequantizeNode>(Q->getInput());
       if (!DQ) {
         continue;
@@ -588,10 +603,68 @@ static void optimizeQuantization(Function *F) {
         continue;
       }
 
-      auto RS =
+      auto *RS =
           F->createRescaleQuantized(Q->getName(), DQ->getInput(), Q->getType());
       Q->getResult().replaceAllUsesOfWith(RS);
+
+      // We may be able to optimize this rescale node. Remember to visit this
+      // new node and try to optimize it later.
+      worklist.push_back(RS);
       continue;
+    }
+
+    if (auto *Q = dyn_cast<RescaleQuantizedNode>(node)) {
+      if (auto *AN = dyn_cast<ArithmeticNode>(Q->getInput())) {
+
+        // Rescale(MAX(X, Y)) -> MAX(Rescale(X), Rescale(Y)).
+        // It's okay to rescale the operands because even if the output range is
+        // smaller then truncation would have happened during the rescale. On
+        // values that are outside of the range we just moved the truncation to
+        // a different location.
+        if (AN->getMode() == ArithmeticNode::Mode::Max) {
+          auto name = Q->getName();
+          auto *L = F->createRescaleQuantized(name, AN->getLHS(), Q->getType());
+          auto *R = F->createRescaleQuantized(name, AN->getRHS(), Q->getType());
+          auto *newAN = F->createArithmetic(AN->getName(), L, R, AN->getMode());
+          worklist.push_back(L);
+          worklist.push_back(R);
+          Q->getResult().replaceAllUsesOfWith(newAN);
+          continue;
+        }
+
+        // Fold the rescale into the Add.
+        // Rescale(add(X, Y)) -> Add(X, Y)
+        if (AN->getMode() == ArithmeticNode::Mode::Add) {
+          auto *newAN =
+              F->createArithmetic(AN->getName(), Q->getType(), AN->getLHS(),
+                                  AN->getRHS(), AN->getMode());
+          Q->getResult().replaceAllUsesOfWith(newAN);
+          continue;
+        }
+      }
+
+      // Merge the rescale node into the convolution.
+      // Rescale(Conv()) -> Conv()
+      if (auto *CN = dyn_cast<ConvolutionNode>(Q->getInput())) {
+        // Create the exact same convolution but with a different scaling
+        // return type.
+        auto *newCN =
+            F->createConv(CN->getName(), CN->getInput(), CN->getFilter(),
+                          CN->getBias(), Q->getType(), CN->getDepth(),
+                          CN->getKernel(), CN->getStride(), CN->getPad());
+        Q->getResult().replaceAllUsesOfWith(newCN);
+        continue;
+      }
+
+      // Fold the rescale into the previous rescale.
+      // Rescale(Rescale()) -> Rescale()
+      if (auto *RS = dyn_cast<RescaleQuantizedNode>(Q->getInput())) {
+        auto *newRS = F->createRescaleQuantized(Q->getName(), RS->getInput(),
+                                                Q->getType());
+        worklist.push_back(newRS);
+        Q->getResult().replaceAllUsesOfWith(newRS);
+        continue;
+      }
     }
   }
 }
