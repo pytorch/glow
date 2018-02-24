@@ -522,7 +522,9 @@ TEST(Operator, RescaleNode) {
 
 TEST(Operator, QuantizedMaxNode) {
   const int len = 100;
-  // In this test we check the correctness of the quantized MAX operator.
+
+  // In this test we check the correctness of the quantized MAX and ADD
+  // nodes as well as how they interact with the rescaling node.
 
   ExecutionEngine EE;
   auto &mod = EE.getModule();
@@ -532,36 +534,53 @@ TEST(Operator, QuantizedMaxNode) {
                                Variable::VisibilityKind::Public);
   auto *B = mod.createVariable(ElemKind::FloatTy, {len}, "B",
                                Variable::VisibilityKind::Public);
-  auto *O = mod.createVariable(ElemKind::FloatTy, {len}, "Out",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
+  auto *O1 = mod.createVariable(ElemKind::FloatTy, {len}, "Out1",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
+  auto *O2 = mod.createVariable(ElemKind::FloatTy, {len}, "Out2",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
 
   auto AH = A->getPayload().getHandle();
   auto BH = B->getPayload().getHandle();
-  auto OH = O->getPayload().getHandle();
+  auto O1H = O1->getPayload().getHandle();
+  auto O2H = O2->getPayload().getHandle();
 
   AH.randomize(-100, 100);
   BH.randomize(-10, 10);
 
   auto TA = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
   auto TB = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.1, 0);
-  auto TO = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
+  auto TO1 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
+  auto TO2 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 0);
+  auto TO3 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.1, 0);
+  auto TO4 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.2, 0);
 
   auto *QA = F->createQuantize("QA", A, TA);
   auto *QB = F->createQuantize("QB", B, TB);
 
-  auto *max = F->createArithmetic("MX", TO, QA, QB, ArithmeticNode::Mode::Max);
+  Node *max = F->createArithmetic("MX", TO1, QA, QB, ArithmeticNode::Mode::Max);
+  Node *add = F->createArithmetic("MX", TO2, QA, QB, ArithmeticNode::Mode::Add);
 
-  auto *DQ = F->createDequantize("DQ", max);
+  max = F->createRescaleQuantized("Rescale", max, TO3);
+  add = F->createRescaleQuantized("Rescale", add, TO4);
+
+  auto *addQ = F->createDequantize("addQ", add);
+  auto *maxQ = F->createDequantize("maxW", max);
 
   // Test a sequence of rescale operations t
-  F->createSave("save", DQ, O);
+  F->createSave("save_add", addQ, O1);
+  F->createSave("save_max", maxQ, O2);
+
   EE.compile(CompilationMode::Infer, F);
   EE.run({}, {});
 
   for (size_t i = 0; i < len; i++) {
-    auto mx = std::max(AH.at({i}), BH.at({i}));
-    EXPECT_NEAR(mx, OH.at({i}), 1.0);
+    auto max = std::max(AH.at({i}), BH.at({i}));
+    auto add = AH.at({i}) + BH.at({i});
+
+    EXPECT_NEAR(add, O1H.at({i}), 1.0);
+    EXPECT_NEAR(max, O2H.at({i}), 1.0);
   }
 }
 
@@ -605,8 +624,6 @@ TEST(Operator, TestQuantizedRescaleSequence) {
   F->createSave("save", DQ, O);
   EE.compile(CompilationMode::Infer, F);
   EE.run({}, {});
-
-  F->dumpDAG();
 
   for (size_t i = 0; i < len; i++) {
     EXPECT_NEAR(AH.at({i}), OH.at({i}), 1.0);
