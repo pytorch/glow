@@ -390,17 +390,17 @@ TEST(Operator, IntConvolution) {
   input->getPayload().getHandle().randomize(-1.0, 1.0);
   llvm::cast<Variable>(bias)->getPayload().getHandle().randomize(-2.0, 2.0);
 
-  Type resTy(ElemKind::Int8QTy, res->dims(), 0.08, 0.0);
-  Type inputTy(ElemKind::Int8QTy, input->dims(), 0.01, 0.0);
-  Type filterTy(ElemKind::Int8QTy, filter.dims(), 0.01, 0.0);
-  Type biasTy(ElemKind::Int8QTy, bias.dims(), 0.04, 0.0);
+  TypeRef resTy = mod.uniqueType(ElemKind::Int8QTy, res->dims(), 0.08, 0.0);
+  TypeRef inputTy = mod.uniqueType(ElemKind::Int8QTy, input->dims(), 0.01, 0.0);
+  TypeRef filterTy = mod.uniqueType(ElemKind::Int8QTy, filter.dims(), 0.01, 0.);
+  TypeRef biasTy = mod.uniqueType(ElemKind::Int8QTy, bias.dims(), 0.04, 0.0);
 
-  auto *inputq = F->createQuantize("input.q", input, &inputTy);
-  auto *filterq = F->createQuantize("filter.q", filter, &filterTy);
-  auto *biasq = F->createQuantize("bias.q", bias, &biasTy);
+  auto *inputq = F->createQuantize("input.q", input, inputTy);
+  auto *filterq = F->createQuantize("filter.q", filter, filterTy);
+  auto *biasq = F->createQuantize("bias.q", bias, biasTy);
 
   auto *convq =
-      F->createConv("convq", inputq, filterq, biasq, &resTy, conv->getDepth(),
+      F->createConv("convq", inputq, filterq, biasq, resTy, conv->getDepth(),
                     conv->getKernel(), conv->getStride(), conv->getPad());
   auto *dequantRes = F->createDequantize("dequant", convq);
 
@@ -439,16 +439,16 @@ TEST(Operator, IntFC) {
   llvm::cast<Variable>(bias)->getPayload().getHandle().randomize(0, 0.00001);
   llvm::cast<Variable>(filter)->getPayload().getHandle().randomize(-1.2, 1.2);
 
-  Type resTy(ElemKind::Int8QTy, res->dims(), 0.15, 4);
-  Type inputTy(ElemKind::Int8QTy, input->dims(), 0.01, 0);
-  Type filterTy(ElemKind::Int8QTy, filter.dims(), 0.01, 2);
-  Type biasTy(ElemKind::Int8QTy, bias.dims(), 0.02, 1);
+  TypeRef resTy = mod.uniqueType(ElemKind::Int8QTy, res->dims(), 0.15, 4);
+  TypeRef inputTy = mod.uniqueType(ElemKind::Int8QTy, input->dims(), 0.01, 0);
+  TypeRef filterTy = mod.uniqueType(ElemKind::Int8QTy, filter.dims(), 0.01, 2);
+  TypeRef biasTy = mod.uniqueType(ElemKind::Int8QTy, bias.dims(), 0.02, 1);
 
-  auto *inputq = F->createQuantize("input.q", input, &inputTy);
-  auto *filterq = F->createQuantize("filter.q", filter, &filterTy);
-  auto *biasq = F->createQuantize("bias.q", bias, &biasTy);
+  auto *inputq = F->createQuantize("input.q", input, inputTy);
+  auto *filterq = F->createQuantize("filter.q", filter, filterTy);
+  auto *biasq = F->createQuantize("bias.q", bias, biasTy);
 
-  auto *fcq = F->createFullyConnected("fcq", inputq, filterq, biasq, &resTy);
+  auto *fcq = F->createFullyConnected("fcq", inputq, filterq, biasq, resTy);
   auto *dequantRes = F->createDequantize("dequant", fcq);
 
   // Subtract the results of the convolution from the quantized fc.
