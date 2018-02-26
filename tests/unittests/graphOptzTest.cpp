@@ -53,8 +53,8 @@ TEST(GraphOptz, liveCodeNotEliminated) {
     K = F->createRELU("relu", K);
     K = F->createArithmetic("arith", K, K, ArithmeticNode::Mode::Add);
   }
-  K = F->createSoftMax("Regression", K, Ex);
-  F->createSave("ret", K);
+  auto *SM = F->createSoftMaxWithLoss("Regression", K, Ex);
+  F->createSave("ret", SM->getResult());
 
   // Check that we know how many nodes we've created.
   EXPECT_EQ(F->getNodes().size(), 82);

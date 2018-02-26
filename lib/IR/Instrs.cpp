@@ -231,12 +231,12 @@ void SigmoidInst::verify() const { checkSameType(getDest(), getSrc()); }
 
 void TanhInst::verify() const { checkSameType(getDest(), getSrc()); }
 
-void SoftMaxInst::verify() const {
+void SoftMaxWithLossInst::verify() const {
   checkSameType(getDest(), getSrc());
   assert(getDest()->dims() == getSrc()->dims() && "Invalid shape");
 }
 
-void SoftMaxGradInst::verify() const {
+void SoftMaxWithLossGradInst::verify() const {
   checkSameType(getOrigDest(), getOrigSrc());
   checkSameType(getOrigDest(), getSrcGrad());
   auto destShape = getOrigDest()->dims();

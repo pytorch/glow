@@ -192,8 +192,9 @@ public:
 
   TanhNode *createTanh(llvm::StringRef name, NodeValue input);
 
-  SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input,
-                             NodeValue selected);
+  SoftMaxWithLossNode *createSoftMaxWithLoss(llvm::StringRef name,
+                                             NodeValue input,
+                                             NodeValue selected);
 
   CrossEntropyLossNode *createCrossEntropyLoss(llvm::StringRef name,
                                                NodeValue input,

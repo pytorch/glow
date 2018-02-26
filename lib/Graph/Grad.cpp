@@ -88,18 +88,17 @@ Function *glow::differentiate(Function *F, TrainingConfig &conf,
     CONVERT_TO_GRAD_NODE(FullyConnectedNode)
     CONVERT_TO_GRAD_NODE(BatchNormalizationNode)
     CONVERT_TO_GRAD_NODE(LocalResponseNormalizationNode)
-    CONVERT_TO_GRAD_NODE(SoftMaxNode)
+    CONVERT_TO_GRAD_NODE(SoftMaxWithLossNode)
     CONVERT_TO_GRAD_NODE(CrossEntropyLossNode)
     CONVERT_TO_GRAD_NODE(RegressionNode)
     CONVERT_TO_GRAD_NODE(ArithmeticNode)
     CONVERT_TO_GRAD_NODE(ReluNode)
     CONVERT_TO_GRAD_NODE(SigmoidNode)
     CONVERT_TO_GRAD_NODE(TanhNode)
-
     if (N->getKind() == Kind::SaveNodeKind) {
       // Swap the src and dest. Send the Zero value as gradient for both sides.
       auto *X = new SplatNode(N->getName(),
-                              cast<SaveNode>(N)->getInput()->getType(), 0);
+                              cast<SaveNode>(N)->getInput().getType(), 0);
       toAppend.push_back(X);
       map.addGradient(cast<SaveNode>(N)->getInput(), X);
       map.addGradient(cast<SaveNode>(N)->getVariable(), X);

@@ -42,9 +42,10 @@ TEST(GraphAutoGrad, autoGrad) {
       ElemKind::IndexTy, {10, 1}, "selected", Variable::VisibilityKind::Public,
       Variable::TrainKind::None);
 
-  auto *SM = F->createSoftMax("sm", RL2, selected);
+  auto *SM = F->createSoftMaxWithLoss("sm", RL2, selected);
 
-  auto *result = F->createSave("return", SM);
+  auto *result = F->createSave("return", SM->getResult());
+  F->createSave("ce_loss", SM->getCELoss());
   (void)result;
 
   Function *TF = glow::differentiate(F, EE.getConfig());
@@ -73,9 +74,10 @@ TEST(GraphAutoGrad, checkLRNGen) {
       ElemKind::IndexTy, {10, 1}, "selected", Variable::VisibilityKind::Public,
       Variable::TrainKind::None);
 
-  auto *SM = F->createSoftMax("sm", RL2, selected);
+  auto *SM = F->createSoftMaxWithLoss("sm", RL2, selected);
 
-  auto *result = F->createSave("return", SM);
+  auto *result = F->createSave("return", SM->getResult());
+  F->createSave("ce_loss", SM->getCELoss());
   (void)result;
   Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);

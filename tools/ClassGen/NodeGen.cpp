@@ -113,12 +113,15 @@ int main(int argc, char **argv) {
   //                      Loss operations
   //===--------------------------------------------------------------------===//
 
-  BB.newNode("SoftMax")
+  BB.newNode("SoftMaxWithLoss")
       .addInput("Input")
       .addInput("Selected")
       .addResult("Input.getType()")
+      .addResultFromCtorArg("CELoss")
       .addGradient()
-      .setDocstring("Performs SoftMax normalization on the Input tensor.");
+      .setDocstring(
+          "Computes softmax activations and the average cross entropy on the "
+          "Input tensor.");
 
   BB.newNode("CrossEntropyLoss")
       .addInput("P")

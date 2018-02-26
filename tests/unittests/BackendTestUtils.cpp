@@ -80,7 +80,7 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   cast<Variable>(conv2->getFilter())->copyFrom(kernel2);
   cast<Variable>(conv2->getBias())->copyFrom(bias2);
   auto *reshape2 = F->createReshape("reshape2", conv2, shape2);
-  auto *softmax = F->createSoftMax("softmax", reshape2, var2);
+  auto *softmax = F->createSoftMaxWithLoss("softmax", reshape2, var2);
   auto result = F->createSave("ret", softmax);
 
   Function *TF = glow::differentiate(F, EE.getConfig());
@@ -129,8 +129,8 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
   auto *lrn =
       F->createLocalResponseNormalization("lrn", reshape1, 2, 2.0, 0.5, 1.0);
   auto *reshape2 = F->createReshape("reshape2", lrn, shape2);
-  auto *softmax = F->createSoftMax("softmax", reshape2, var2);
-  auto result = F->createSave("ret", softmax);
+  auto *softmax = F->createSoftMaxWithLoss("softmax", reshape2, var2);
+  auto result = F->createSave("ret", softmax->getResult());
 
   Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
@@ -207,7 +207,7 @@ void trainPoolAvgNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *reshape1 = F->createReshape("reshape1", fc, shape1);
   auto *pool = F->createPool("pool", reshape1, PoolNode::Mode::Avg, 2, 2, 0);
   auto *reshape2 = F->createReshape("reshape2", pool, shape2);
-  auto *softmax = F->createSoftMax("softmax", reshape2, var2);
+  auto *softmax = F->createSoftMaxWithLoss("softmax", reshape2, var2);
   auto result = F->createSave("ret", softmax);
 
   Function *TF = glow::differentiate(F, EE.getConfig());
@@ -253,7 +253,7 @@ void trainPoolMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *reshape1 = F->createReshape("reshape1", fc, shape1);
   auto *pool = F->createPool("pool", reshape1, PoolNode::Mode::Max, 5, 3, 4);
   auto *reshape2 = F->createReshape("reshape2", pool, shape2);
-  auto *softmax = F->createSoftMax("softmax", reshape2, var2);
+  auto *softmax = F->createSoftMaxWithLoss("softmax", reshape2, var2);
   auto result = F->createSave("ret", softmax);
 
   Function *TF = glow::differentiate(F, EE.getConfig());
@@ -349,7 +349,7 @@ void inferSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
                                   "input", Variable::VisibilityKind::Public);
   auto *var2 = mod.createVariable(selected->getElementType(), selected->dims(),
                                   "selected", Variable::VisibilityKind::Public);
-  auto *softmax = F->createSoftMax("softmax", var1, var2);
+  auto *softmax = F->createSoftMaxWithLoss("softmax", var1, var2);
   auto result = F->createSave("ret", softmax);
   EE.compile(CompilationMode::Infer, F);
   EE.run({var1, var2}, {inputs, selected});
@@ -372,7 +372,7 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *fc = F->createFullyConnected("fc", var1, bias->dims()[0]);
   cast<Variable>(fc->getWeights())->copyFrom(weights);
   cast<Variable>(fc->getBias())->copyFrom(bias);
-  auto *softmax = F->createSoftMax("softmax", fc, var2);
+  auto *softmax = F->createSoftMaxWithLoss("softmax", fc, var2);
   auto result = F->createSave("ret", softmax);
 
   Function *TF = glow::differentiate(F, EE.getConfig());
@@ -449,8 +449,8 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *fc2 = F->createFullyConnected("fc2", A1, 16);
 
   auto *R = F->createRegression("reg", fc2, fc2);
-  auto *SM = F->createSoftMax("SM", R, selected);
-  auto result = F->createSave("ret", SM);
+  auto *SM = F->createSoftMaxWithLoss("SM", R, selected);
+  auto result = F->createSave("ret", SM->getResult());
 
   cast<Variable>(fc->getWeights())->getHandle().clear(0.4);
   cast<Variable>(fc2->getWeights())->getHandle().clear(3.5);

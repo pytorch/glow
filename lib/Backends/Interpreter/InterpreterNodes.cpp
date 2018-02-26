@@ -488,11 +488,16 @@ void Interpreter::fwdTanhInst(bool isTrain, const TanhInst *I) {
 //                        Loss Functions (Softmax/regression/...)
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdSoftMaxInst(bool isTrain, const SoftMaxInst *I) {
+void Interpreter::fwdSoftMaxWithLossInst(bool isTrain,
+                                         const SoftMaxWithLossInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
+  auto ceW = getWeightHandle(I->getCELoss());
+  auto selected = getTensor((I->getSelected()))->getHandle<size_t>();
+
   auto idim = inW.dims();
 
+  ceW.clear();
   for (size_t n = 0; n < idim[0]; n++) {
     // Find Max.
     float max = inW.at({n, 0});
@@ -512,10 +517,14 @@ void Interpreter::fwdSoftMaxInst(bool isTrain, const SoftMaxInst *I) {
     for (size_t i = 0; i < idim[1]; i++) {
       outW.at({n, i}) = outW.at({n, i}) / sum;
     }
+    auto y = selected.raw(n);
+    auto p_n = outW.at({n, y});
+    ceW.at({0}) -= log(p_n);
   } // N
 }
 
-void Interpreter::fwdSoftMaxGradInst(bool isTrain, const SoftMaxGradInst *I) {
+void Interpreter::fwdSoftMaxWithLossGradInst(
+    bool isTrain, const glow::SoftMaxWithLossGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto idim = inG.dims();
   auto outW = getWeightHandle(I->getOrigDest());

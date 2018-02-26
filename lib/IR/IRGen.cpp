@@ -265,17 +265,19 @@ public:
       registerIR(N, V->getDest());
       break;
     }
-    case glow::Kinded::Kind::SoftMaxNodeKind: {
-      auto *SM = cast<SoftMaxNode>(N);
+    case glow::Kinded::Kind::SoftMaxWithLossNodeKind: {
+      auto *SM = cast<SoftMaxWithLossNode>(N);
       auto *in = valueForNode(SM->getInput());
-      auto *V = builder_.createSoftMaxOp(in);
+      auto *labels = valueForNode(SM->getSelected());
+      auto *V = builder_.createSoftMaxWithLossOp(in, labels);
+      registerIR(SM->getResult(), V->getDest());
+      registerIR(SM->getCELoss(), V->getCELoss());
       V->setName(N->getName());
-      registerIR(N, V->getDest());
       nodeToInstr_[N] = V;
       break;
     }
-    case glow::Kinded::Kind::SoftMaxGradNodeKind: {
-      auto *SMG = cast<SoftMaxGradNode>(N);
+    case glow::Kinded::Kind::SoftMaxWithLossGradNodeKind: {
+      auto *SMG = cast<SoftMaxWithLossGradNode>(N);
       // Original inputs:
       auto *origIn = valueForNode(SMG->getInput());
       auto *origSelect = valueForNode(SMG->getSelected());
@@ -287,8 +289,8 @@ public:
       auto *origOut = valueForNode(originalNodeResult);
       auto *srcGrad = builder_.createAllocActivationInst("softmax.res.grad",
                                                          outGrad->getType());
-      auto *SMGI = builder_.createSoftMaxGradInst(N->getName(), origOut, origIn,
-                                                  origSelect, srcGrad);
+      auto *SMGI = builder_.createSoftMaxWithLossGradInst(
+          N->getName(), origOut, origIn, origSelect, srcGrad);
       registerIR(SMG->getGradOfInputNamedInput(), SMGI->getSrcGrad());
       break;
     }

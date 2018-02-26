@@ -86,9 +86,12 @@ TanhInst *IRBuilder::createTanhOp(Value *input) {
   return createTanhInst("tanh", res, input);
 }
 
-SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input) {
-  auto *res = createAllocActivationInst("softmax.res", input->getType());
-  return createSoftMaxInst("softmax", res, input);
+SoftMaxWithLossInst *IRBuilder::createSoftMaxWithLossOp(glow::Value *input,
+                                                        glow::Value *labels) {
+  auto *sm = createAllocActivationInst("smloss.res", input->getType());
+  auto *celoss =
+      createAllocActivationInst("smloss.loss", ElemKind::FloatTy, {1});
+  return createSoftMaxWithLossInst("smloss", sm, celoss, input, labels);
 }
 
 CrossEntropyLossInst *IRBuilder::createCrossEntropyLossOp(Value *p,

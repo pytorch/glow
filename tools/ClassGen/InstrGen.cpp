@@ -132,12 +132,14 @@ int main(int argc, char **argv) {
   //                      Loss functions
   //===--------------------------------------------------------------------===//
 
-  BB.newInstr("SoftMax")
+  BB.newInstr("SoftMaxWithLoss")
       .addOperand("Dest", OperandKind::Out)
+      .addOperand("CELoss", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
+      .addOperand("Selected", OperandKind::In)
       .inplaceOperand({"Dest", "Src"});
 
-  BB.newInstr("SoftMaxGrad")
+  BB.newInstr("SoftMaxWithLossGrad")
       .addOperand("OrigDest", OperandKind::In)
       .addOperand("OrigSrc", OperandKind::In)
       .addOperand("Selected", OperandKind::In)

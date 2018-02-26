@@ -183,8 +183,9 @@ void testPTB() {
   // T has shape of {numSteps * minibatchSize, 1}
   Node *T = F->createConcat("target", slicesY, 0);
 
-  auto *SM = F->createSoftMax("softmax", O, T);
-  auto *result = F->createSave("result", SM);
+  auto *SM = F->createSoftMaxWithLoss("softmax", O, T);
+  auto *result = F->createSave("result", SM->getResult());
+  F->createSave("celoss", SM->getCELoss());
 
   std::cout << "Dumping graph" << std::endl;
 
