@@ -611,6 +611,14 @@ void libjit_quantize_f(int8_t *outW, const float *inW, size_t numElem,
   }
 }
 
+void libjit_dequantize_f(float *outW, const int8_t *inW, size_t numElem,
+                         float scale, size_t offset_u64) {
+  int32_t offset = (int32_t)offset_u64;
+  for (size_t i = 0; i < numElem; i++) {
+    outW[i] = scale * (inW[i] - offset);
+  }
+}
+
 void libjit_sgd_f(float *W, const float *G, float *Gsum, float L1Decay,
                   float L2Decay, float learningRate, float momentum,
                   size_t batchSize, size_t Wsize) {
