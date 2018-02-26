@@ -486,6 +486,13 @@ public:
     }
   }
 
+  /// Fill the tensor with uniformly distributed values in the range -128..127.
+  void randomizeInt8() {
+    for (size_t i = 0, e = size(); i < e; i++) {
+      raw(i) = nextRandInt8();
+    }
+  }
+
   /// \returns the mean and variance of the tensor.
   std::pair<ElemTy, ElemTy> calculateMeanVariance() const {
     size_t n = size();

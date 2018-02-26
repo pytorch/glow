@@ -9,6 +9,9 @@ double nextRand();
 /// \returns the next uniform random integer that is either 0 or 1.
 int nextRandInt01();
 
+/// \returns the next uniform random integer in the range -128..127.
+int nextRandInt8();
+
 /// \returns the next uniform random integer that is between 0 and n - 1.
 int nextRandInt(int n);
 
