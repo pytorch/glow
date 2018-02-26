@@ -14,8 +14,8 @@ void lowerArithmeticNode(Function &graph, ArithmeticGradNode &node) {
   switch (node.getMode()) {
   case ArithmeticGradNode::Mode::Add: {
     /// The chain rule for addition:
-    /// LHS' = OUT'
-    /// RHS' = OUT'
+    /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
+    /// delta(RHS) = dF/dRHS * delta(OUT) = 1 * delta(OUT)
     auto outG = node.getGradOfOriginalOutputNamedResult();
     node.getGradOfInputNamedLHS().replaceAllUsesOfWith(outG);
     node.getGradOfInputNamedRHS().replaceAllUsesOfWith(outG);
@@ -24,8 +24,8 @@ void lowerArithmeticNode(Function &graph, ArithmeticGradNode &node) {
 
   case ArithmeticGradNode::Mode::Mul: {
     /// The chain rule for multiplication:
-    /// LHS' = RHS * OUT'
-    /// RHS' = LHS * OUT'
+    /// delta(LHS) = dF/dLHS * delta(OUT) = RHS * delta(OUT)
+    /// delta(RHS) = dF/dRHS * delta(OUT) = LHS * delta(OUT)
     auto outG = node.getGradOfOriginalOutputNamedResult();
     NodeValue LHS = node.getLHS();
     NodeValue RHS = node.getRHS();
@@ -41,8 +41,8 @@ void lowerArithmeticNode(Function &graph, ArithmeticGradNode &node) {
 
   case ArithmeticGradNode::Mode::Sub: {
     /// The chain rule for subtraction:
-    /// LHS' = OUT'
-    /// RHS' = -OUT'
+    /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
+    /// delta(RHS) = dF/dRHS * delta(OUT) = -1 * delta(OUT)
     auto outG = node.getGradOfOriginalOutputNamedResult();
     auto zero = graph.createSplat("zero", outG.getType(), 0);
     auto sub = graph.createArithmetic("sub.grad", zero, outG,
@@ -54,8 +54,8 @@ void lowerArithmeticNode(Function &graph, ArithmeticGradNode &node) {
 
   case ArithmeticGradNode::Mode::Div: {
     /// The chain rule for division:
-    /// LHS' = OUT' / RHS
-    /// RHS' = - LHS * OUT' / (RHS * RHS)
+    /// delta(LHS) = dF/dLHS * delta(OUT) = (1 / RHS) * delta(OUT)
+    /// delta(RHS) = dF/dRHS * delta(OUT) = (-LHS / (RHS ^ 2)) * delta(OUT)
     auto outG = node.getGradOfOriginalOutputNamedResult();
     NodeValue LHS = node.getLHS();
     NodeValue RHS = node.getRHS();
