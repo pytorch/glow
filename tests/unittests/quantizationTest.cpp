@@ -121,7 +121,6 @@ static void fillStableRandomData(Handle<float> H, size_t seed,
 /// Builds a simple graph, returns back input var and save node through refs.
 static std::pair<Function *, SaveNode *>
 createSimpleGraphForQuantization(Module *M) {
-
   Function *F = M->createFunction("main");
 
   auto *A = F->getParent()->createVariable(
@@ -137,7 +136,7 @@ createSimpleGraphForQuantization(Module *M) {
   fillStableRandomData(filter->getPayload().getHandle(), 1000, 1);
 
   auto *RL = F->createRELU("relu", CV);
-  auto *AP = F->createPool("pool", RL, PoolNode::Mode::Avg, 2, 2, 0);
+  auto *AP = F->createPool("pool", RL, PoolNode::Mode::Max, 2, 2, 0);
   // Just add noop transpose.
   auto *T = F->createTranspose("transpose", AP, {0, 1, 2, 3});
   // Noop reshape.
@@ -181,7 +180,7 @@ TEST(Quantization, end2end) {
   EE2.compile(CompilationMode::Infer, F2);
   EE2.run({}, {});
 
-  // STEP2 - Compare the results of the original and quantized functions.
+  // STEP3 - Compare the results of the original and quantized functions.
   auto result1Handle = result1->getVariable()->getHandle();
   auto result2Handle = result2->getVariable()->getHandle();
 
