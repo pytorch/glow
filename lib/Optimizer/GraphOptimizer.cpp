@@ -487,13 +487,14 @@ static void foldQuantize(Function *F) {
       continue;
     }
     // Create a new variable NV to hold the quantized result.
-    auto *NV = F->getParent()->createVariable(
-      QN->getType(), V->getName(), V->getVisibilityKind(), V->getTrainKind(), 1.0);
+    auto *NV = F->getParent()->createVariable(QN->getType(), V->getName(),
+                                              V->getVisibilityKind(),
+                                              V->getTrainKind(), 1.0);
     // Quantize V into NV.
     auto srcHandle = V->getHandle();
     auto destHandle = NV->getHandle<int8_t>();
     TensorQuantizationParams params{QN->getType()->getScale(),
-        QN->getType()->getOffset()};
+                                    QN->getType()->getOffset()};
     for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
       destHandle.raw(i) = quantization::quantize(srcHandle.raw(i), params);
     }
