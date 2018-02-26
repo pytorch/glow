@@ -265,19 +265,19 @@ TEST(JITCorrectnessTest, poolMaxGradTest) {
 }
 
 TEST(JITCorrectnessTest, quantizeTest) {
-  std::array<size_t, 4> S{{48, 53, 37, 40}};
+  std::array<size_t, 4> S{{26, 51, 29, 32}};
   llvm::ArrayRef<size_t> shape(S);
   Tensor inputs(ElemKind::FloatTy, shape);
-  inputs.getHandle().randomize(-5000.0, 10000.0);
-  float scale{5000.0 / 128};
-  int32_t offset{2500};
-  Tensor out1(ElemKind::Int8QTy, shape, scale, offset);
-  Tensor out2(ElemKind::Int8QTy, shape, scale, offset);
+  inputs.getHandle().randomize(-10000.0, 5000.0);
+  float scale{4500.0 / 128};
+  int32_t offset{-2500};
+  Tensor out1(ElemKind::FloatTy, shape);
+  Tensor out2(ElemKind::FloatTy, shape);
 
   inferQuantizeNet(&inputs, scale, offset, &out1, BackendKind::JIT);
   inferQuantizeNet(&inputs, scale, offset, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle<int8_t>();
-  auto H2 = out2.getHandle<int8_t>();
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
 
   EXPECT_TRUE(H1.isEqual(H2));
 }

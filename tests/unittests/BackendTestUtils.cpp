@@ -275,7 +275,8 @@ void inferQuantizeNet(Tensor *inputs, float scale, int32_t offset, Tensor *out,
   auto QT = F->getParent()->uniqueType(ElemKind::Int8QTy, inputs->dims(), scale,
                                        offset);
   auto *quantize = F->createQuantize("quantize", var, QT);
-  auto result = F->createSave("ret", quantize);
+  auto *dequantize = F->createDequantize("dequantize", quantize);
+  auto result = F->createSave("ret", dequantize);
   EE.compile(CompilationMode::Infer, F);
   EE.run({var}, {inputs});
   out->copyFrom(&result->getVariable()->getPayload());

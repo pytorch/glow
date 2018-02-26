@@ -653,10 +653,28 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcPtr = emitValueAddress(builder, QI->getSrc(), ElemKind::FloatTy);
     auto *numElem = emitConst(builder, QI->getDest()->getType()->size());
     auto *scale = emitConst(builder, QI->getDest()->getType()->getScale());
+    // TODO(hegemanjwh2): Fix generated integer type for offset.
     auto *offset =
         emitConst(builder, (size_t)QI->getDest()->getType()->getOffset());
 
     auto *F = getFunction("libjit_quantize_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {destPtr, srcPtr, numElem, scale, offset});
+    break;
+  }
+
+  case Kinded::Kind::DequantizeInstKind: {
+    DequantizeInst *DQI = cast<DequantizeInst>(I);
+    auto *destPtr =
+        emitValueAddress(builder, DQI->getDest(), ElemKind::FloatTy);
+    auto *srcPtr = emitValueAddress(builder, DQI->getSrc(), ElemKind::Int8QTy);
+    auto *numElem = emitConst(builder, DQI->getDest()->getType()->size());
+    auto *scale = emitConst(builder, DQI->getSrc()->getType()->getScale());
+    // TODO(hegemanjwh2): Fix generated integer type for offset.
+    auto *offset =
+        emitConst(builder, (size_t)DQI->getSrc()->getType()->getOffset());
+
+    auto *F = getFunction("libjit_dequantize_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, srcPtr, numElem, scale, offset});
     break;
