@@ -20,9 +20,9 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Type &type) {
     os << ']';
     float low = (-128 - type.getOffset()) * type.getScale();
     float high = (127 - type.getOffset()) * type.getScale();
-    os << "[ ";
+    os << "[";
     llvm::write_double(os, low, llvm::FloatStyle::Fixed, 3);
-    os << "...";
+    os << ";";
     llvm::write_double(os, high, llvm::FloatStyle::Fixed, 3);
     os << "]";
   }
