@@ -18,6 +18,12 @@ int nextRandInt01() {
   return distribution(generator);
 }
 
+int nextRandInt8() {
+  static std::mt19937 generator;
+  static std::uniform_int_distribution<> distribution(-128, 127);
+  return distribution(generator);
+}
+
 int nextRandInt(int n) {
   static std::mt19937 generator;
   static std::uniform_int_distribution<> distribution(0);
