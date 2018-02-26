@@ -50,6 +50,28 @@ profile information to convert the network into a quantized form. We convert
 portions of the network into islands of integer computation and aim to generate
 outputs in the range that the original floating point network produces.
 
+### How to perform NN conversion
+
+Glow loader provides options to execute both profiling and conversion of a NN graph.
+
+```dump_profile=profile.yaml``` option is used to dump per node's output profile data
+into the ```file.yaml``` file.
+This information can be used in the process of quantized conversion.
+For example, you can run the following command to capture profile for Resnet50.
+```
+./bin/loader tests/images/*.png -image_mode=0to1 -d=resnet50 -dump_profile="profile.yaml"
+```
+
+```load_profile=profile.yaml``` option is used to quantize graph based on the
+captured profile in ```profile.yaml``` file. Important note, graph structure
+should not be changed between a step of capturing profile and a step of quantizing
+the graph.
+For example, you can run the following command to load the profile and quantize
+the graph.
+```
+./bin/loader tests/images/*.png -image_mode=0to1 -d=resnet50 -load_profile="profile"
+```
+
 ## Compiler Optimizations
 
 Glow features a number of compiler optimizations that transform the compute
@@ -72,10 +94,4 @@ hardware implementations of the quantized operations. For example, consider the
 'max' operations.  By converting both sides of the 'max' into the same scale we
 allow the hardware to perform a simple comparison. By normalizing both sides of
 the 'max' operation to the same scale we enable this efficient optimization.
-
-
-
-
-
-
 

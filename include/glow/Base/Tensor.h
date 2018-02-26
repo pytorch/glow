@@ -255,7 +255,8 @@ void dumpAsciiImpl(Tensor *T);
 
 void dumpImpl(Tensor *T);
 
-void genericTranspose(Tensor *src, Tensor *dest, llvm::ArrayRef<unsigned> shuffle);
+void genericTranspose(Tensor *src, Tensor *dest,
+                      llvm::ArrayRef<unsigned> shuffle);
 
 void broadcastToNewShapeImpl(Tensor *src, Tensor *dest,
                              llvm::ArrayRef<size_t> otherDims, unsigned axis);
