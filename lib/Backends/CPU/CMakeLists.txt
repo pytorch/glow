@@ -5,9 +5,10 @@ endif()
 
 add_library(CPURuntime
             OBJECT
-              libjit.c)
+              libjit.cpp)
 target_compile_options(CPURuntime
                        PRIVATE
+                         -std=c++11
                          -ffast-math
                          -emit-llvm
                          -Os)
