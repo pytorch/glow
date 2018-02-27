@@ -472,36 +472,6 @@ static void optimizeTranspose(Function *F) {
   }
 }
 
-/// Constant-fold quantize operations.
-static void foldQuantize(Function *F) {
-  auto &nodes = F->getNodes();
-
-  for (auto const &node : nodes) {
-    auto *QN = dyn_cast<QuantizeNode>(node);
-    if (!QN) {
-      continue;
-    }
-    auto *V = dyn_cast<Variable>(QN->getInput());
-    // V must have a single use and be private.
-    if (!V || !V->hasOneUse() || !V->isPrivate()) {
-      continue;
-    }
-    // Create a new variable NV to hold the quantized result.
-    auto *NV = F->getParent()->createVariable(QN->getType(), V->getName(),
-                                              V->getVisibilityKind(),
-                                              V->getTrainKind(), 1.0);
-    // Quantize V into NV.
-    auto srcHandle = V->getHandle();
-    auto destHandle = NV->getHandle<int8_t>();
-    TensorQuantizationParams params{QN->getType()->getScale(),
-                                    QN->getType()->getOffset()};
-    for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
-      destHandle.raw(i) = quantization::quantize(srcHandle.raw(i), params);
-    }
-    QN->getResult().replaceAllUsesOfWith(NV);
-  }
-}
-
 namespace {
 
 /// A helper type for hasing Node pointers when they are used as keys in hash
@@ -621,27 +591,47 @@ static void optimizeQuantization(Function *F) {
     worklist.pop_back();
 
     if (auto *Q = dyn_cast<QuantizeNode>(node)) {
-      /// Quantize(Dequantize(X)) -> RescaleQuantized(X)
-      auto *DQ = dyn_cast<DequantizeNode>(Q->getInput());
-      if (!DQ) {
+      if (auto *DQ = dyn_cast<DequantizeNode>(Q->getInput())) {
+
+        // Quantize(Dequantize(X)) -> RescaleQuantized(X)
+        // If the quantization-dequantization sequence does not change the type
+        // then we can simply drop them without adding a requantization node.
+        if (DQ->getInput()->getType() == Q->getType()) {
+          Q->getResult().replaceAllUsesOfWith(DQ->getInput());
+          continue;
+        }
+
+        auto *RS = F->createRescaleQuantized(Q->getName(), DQ->getInput(),
+                                             Q->getType());
+        Q->getResult().replaceAllUsesOfWith(RS);
+
+        // We may be able to optimize this rescale node. Remember to visit this
+        // new node and try to optimize it later.
+        worklist.push_back(RS);
         continue;
       }
 
-      // If the quantization-dequantization sequence does not change the type
-      // then we can simply drop them without adding a requantization node.
-      if (DQ->getInput()->getType() == Q->getType()) {
-        Q->getResult().replaceAllUsesOfWith(DQ->getInput());
-        continue;
+      if (auto *V = dyn_cast<Variable>(Q->getInput())) {
+
+        // Quantize(Variable) -> Variable
+        // V must have a single use and be private.
+        if (!V || !V->hasOneUse() || !V->isPrivate()) {
+          continue;
+        }
+        // Create a new variable NV to hold the quantized result.
+        auto *NV = F->getParent()->createVariable(Q->getType(), V->getName(),
+                                                  V->getVisibilityKind(),
+                                                  V->getTrainKind(), 1.0);
+        // Quantize V into NV.
+        auto srcHandle = V->getHandle();
+        auto destHandle = NV->getHandle<int8_t>();
+        TensorQuantizationParams params{Q->getType()->getScale(),
+                                        Q->getType()->getOffset()};
+        for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
+          destHandle.raw(i) = quantization::quantize(srcHandle.raw(i), params);
+        }
+        Q->getResult().replaceAllUsesOfWith(NV);
       }
-
-      auto *RS =
-          F->createRescaleQuantized(Q->getName(), DQ->getInput(), Q->getType());
-      Q->getResult().replaceAllUsesOfWith(RS);
-
-      // We may be able to optimize this rescale node. Remember to visit this
-      // new node and try to optimize it later.
-      worklist.push_back(RS);
-      continue;
     }
 
     if (auto *Q = dyn_cast<RescaleQuantizedNode>(node)) {
@@ -740,9 +730,6 @@ void glow::optimize(Function *F, CompilationMode mode) {
 
     // Constant-fold transpose operations.
     optimizeTranspose(F);
-
-    // Constant-fold quantize operations.
-    foldQuantize(F);
 
     optimizeRegression(F);
   }
