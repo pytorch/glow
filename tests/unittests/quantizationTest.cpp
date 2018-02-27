@@ -195,4 +195,25 @@ TEST(Quantization, end2end) {
   }
 }
 
+TEST(Quantization, rescaleSameType) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("foo");
+  auto *input = mod.createVariable(ElemKind::Int8QTy, {1, 1}, 0.5, 11, "input",
+                                   Variable::VisibilityKind::Public,
+                                   Variable::TrainKind::Broadcast, 21);
+  auto *Q = F->createRescaleQuantized(
+      "rescale", input, mod.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.5, 11));
+  auto *D = F->createDequantize("dequantize", Q);
+  auto *result = F->createSave("ret", D);
+
+  EXPECT_EQ(F->getNodes().size(), 3);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+  EXPECT_EQ(F->getNodes().size(), 2);
+
+  auto RH = result->getVariable()->getHandle();
+  EXPECT_NEAR(RH.at({0, 0}), 5.0, 0.001);
+}
+
 } // namespace glow
