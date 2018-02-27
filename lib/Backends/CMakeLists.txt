@@ -11,7 +11,7 @@ endif()
 
 if(GLOW_WITH_JIT)
   target_compile_definitions(Backends PRIVATE GLOW_WITH_JIT=1)
-  add_subdirectory(CPUBackend)
+  add_subdirectory(CPU)
   LIST(APPEND linked_backends CPUBackend)
 endif()
 
