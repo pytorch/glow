@@ -10,7 +10,7 @@
 using namespace glow;
 using llvm::dyn_cast;
 
-void lowerArithmeticNode(Function &graph, ArithmeticGradNode &node) {
+void lowerArithmeticNode(Function *F, ArithmeticGradNode &node) {
   switch (node.getMode()) {
   case ArithmeticGradNode::Mode::Add: {
     /// The chain rule for addition:
@@ -30,10 +30,10 @@ void lowerArithmeticNode(Function &graph, ArithmeticGradNode &node) {
     NodeValue LHS = node.getLHS();
     NodeValue RHS = node.getRHS();
 
-    auto lhsResult = graph.createArithmetic("mul.grad.rhs", outG, RHS,
-                                            ArithmeticNode::Mode::Mul);
-    auto rhsResult = graph.createArithmetic("mul.grad.lhs", outG, LHS,
-                                            ArithmeticNode::Mode::Mul);
+    auto lhsResult = F->createArithmetic("mul.grad.rhs", outG, RHS,
+                                         ArithmeticNode::Mode::Mul);
+    auto rhsResult = F->createArithmetic("mul.grad.lhs", outG, LHS,
+                                         ArithmeticNode::Mode::Mul);
     node.getGradOfInputNamedLHS().replaceAllUsesOfWith(lhsResult);
     node.getGradOfInputNamedRHS().replaceAllUsesOfWith(rhsResult);
     break;
@@ -44,9 +44,9 @@ void lowerArithmeticNode(Function &graph, ArithmeticGradNode &node) {
     /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
     /// delta(RHS) = dF/dRHS * delta(OUT) = -1 * delta(OUT)
     auto outG = node.getGradOfOriginalOutputNamedResult();
-    auto zero = graph.createSplat("zero", outG.getType(), 0);
-    auto sub = graph.createArithmetic("sub.grad", zero, outG,
-                                      ArithmeticNode::Mode::Sub);
+    auto zero = F->createSplat("zero", outG.getType(), 0);
+    auto sub =
+        F->createArithmetic("sub.grad", zero, outG, ArithmeticNode::Mode::Sub);
     node.getGradOfInputNamedLHS().replaceAllUsesOfWith(outG);
     node.getGradOfInputNamedRHS().replaceAllUsesOfWith(sub);
     break;
@@ -60,19 +60,19 @@ void lowerArithmeticNode(Function &graph, ArithmeticGradNode &node) {
     NodeValue LHS = node.getLHS();
     NodeValue RHS = node.getRHS();
 
-    auto lhsResult = graph.createArithmetic("div.grad.rhs", outG, RHS,
-                                            ArithmeticNode::Mode::Div);
+    auto lhsResult = F->createArithmetic("div.grad.rhs", outG, RHS,
+                                         ArithmeticNode::Mode::Div);
 
-    auto zero = graph.createSplat("zero", outG.getType(), 0);
-    auto subGrad = graph.createArithmetic("sub.grad", zero, outG,
-                                          ArithmeticNode::Mode::Sub);
-    auto mulLhsGrad = graph.createArithmetic("mul.sub.grad.lhs", subGrad, LHS,
-                                             ArithmeticNode::Mode::Mul);
+    auto zero = F->createSplat("zero", outG.getType(), 0);
+    auto subGrad =
+        F->createArithmetic("sub.grad", zero, outG, ArithmeticNode::Mode::Sub);
+    auto mulLhsGrad = F->createArithmetic("mul.sub.grad.lhs", subGrad, LHS,
+                                          ArithmeticNode::Mode::Mul);
 
-    auto squareRhs = graph.createArithmetic("square.rhs", RHS, RHS,
-                                            ArithmeticNode::Mode::Mul);
-    auto rhsResult = graph.createArithmetic("div.grad", mulLhsGrad, squareRhs,
-                                            ArithmeticNode::Mode::Div);
+    auto squareRhs =
+        F->createArithmetic("square.rhs", RHS, RHS, ArithmeticNode::Mode::Mul);
+    auto rhsResult = F->createArithmetic("div.grad", mulLhsGrad, squareRhs,
+                                         ArithmeticNode::Mode::Div);
 
     node.getGradOfInputNamedLHS().replaceAllUsesOfWith(lhsResult);
     node.getGradOfInputNamedRHS().replaceAllUsesOfWith(rhsResult);
@@ -95,38 +95,37 @@ void lowerRegressionNode(RegressionNode &node) {
   node.getResult().replaceAllUsesOfWith(outG);
 }
 
-void lowerRegressionGradNode(Function &graph, RegressionGradNode &node) {
+void lowerRegressionGradNode(Function *F, RegressionGradNode &node) {
   auto outG = node.getInput();
 
   auto inputG =
-      graph.createArithmetic("rgn.grad", node.getInput(), node.getExpected(),
-                             ArithmeticNode::Mode::Sub);
-  auto expG = graph.createSplat("exp.grad", node.getExpected().getType(), 0);
+      F->createArithmetic("rgn.grad", node.getInput(), node.getExpected(),
+                          ArithmeticNode::Mode::Sub);
+  auto expG = F->createSplat("exp.grad", node.getExpected().getType(), 0);
 
   node.getGradOfInputNamedInput().replaceAllUsesOfWith(inputG);
   node.getGradOfInputNamedExpected().replaceAllUsesOfWith(expG);
 }
 
-void lowerFullyConnectedNode(Function &graph, FullyConnectedNode &FC) {
+void lowerFullyConnectedNode(Function *F, FullyConnectedNode &FC) {
   auto xDim = flattenCdr(FC.getInput().getType()->dims());
   auto wDim = FC.getWeights().dims();
   auto *X =
-      graph.createReshape("fc.1X", FC.getInput(), {1, xDim.first, xDim.second});
-  Node *W =
-      graph.createReshape("fc.1W", FC.getWeights(), {1, wDim[0], wDim[1]});
+      F->createReshape("fc.1X", FC.getInput(), {1, xDim.first, xDim.second});
+  Node *W = F->createReshape("fc.1W", FC.getWeights(), {1, wDim[0], wDim[1]});
 
-  TypeRef outTy = graph.getParent()->uniqueTypeWithNewShape(
+  TypeRef outTy = F->getParent()->uniqueTypeWithNewShape(
       FC.getResult()->getType(), {1, xDim.first, wDim[1]});
-  auto *mul = graph.createBatchedMatMul("fc.dot", outTy, X, W);
+  auto *mul = F->createBatchedMatMul("fc.dot", outTy, X, W);
 
-  auto *mulFlat = graph.createReshape("fc.cast2", mul, {xDim.first, wDim[1]});
-  auto add = graph.createBatchedArithmetic(
+  auto *mulFlat = F->createReshape("fc.cast2", mul, {xDim.first, wDim[1]});
+  auto add = F->createBatchedArithmetic(
       "fc.add.bias", FC.getResult()->getType(),
       BatchedArithmeticNode::Mode::Add, mulFlat, FC.getBias());
   FC.getResult().replaceAllUsesOfWith(add);
 }
 
-void lowerFullyConnectedGradNode(Function &graph, FullyConnectedGradNode &FCG) {
+void lowerFullyConnectedGradNode(Function *F, FullyConnectedGradNode &FCG) {
   // Follow the lowering from here:
   // https://github.com/huyouare/CS231n/blob/master/assignment2/cs231n/layers.py#L53
   auto out = FCG.getGradOfOriginalOutputNamedResult();
@@ -135,112 +134,110 @@ void lowerFullyConnectedGradNode(Function &graph, FullyConnectedGradNode &FCG) {
   auto fDims = FCG.getWeights().dims();
 
   // dx = dout * w.T
-  auto dout = graph.createReshape("fcg.outG", out, {1, outDims[0], outDims[1]});
+  auto dout = F->createReshape("fcg.outG", out, {1, outDims[0], outDims[1]});
   auto *w =
-      graph.createReshape("fcg.w", FCG.getWeights(), {1, fDims[0], fDims[1]});
-  auto *wT = graph.createTranspose("fcg.wT", w, {0, 2, 1});
-  auto *dx2 = graph.createBatchedMatMul("fcg.dot", dout, wT);
-  auto *dx =
-      graph.createReshape("fcg.inG", dx2, FCG.getInput().getType()->dims());
+      F->createReshape("fcg.w", FCG.getWeights(), {1, fDims[0], fDims[1]});
+  auto *wT = F->createTranspose("fcg.wT", w, {0, 2, 1});
+  auto *dx2 = F->createBatchedMatMul("fcg.dot", dout, wT);
+  auto *dx = F->createReshape("fcg.inG", dx2, FCG.getInput().getType()->dims());
   FCG.getGradOfInputNamedInput().replaceAllUsesOfWith(dx);
 
   // dw = xT * dout.
-  Node *x2 = graph.createReshape("fcg.x", FCG.getInput(),
-                                 {1, xDims.first, xDims.second});
-  auto *x2T = graph.createTranspose("fcg.xT", x2, {0, 2, 1});
-  auto *dw = graph.createBatchedMatMul("fcg.dot", x2T, dout);
-  Node *dw2 = graph.createReshape("fcg.dw2", dw, fDims);
+  Node *x2 =
+      F->createReshape("fcg.x", FCG.getInput(), {1, xDims.first, xDims.second});
+  auto *x2T = F->createTranspose("fcg.xT", x2, {0, 2, 1});
+  auto *dw = F->createBatchedMatMul("fcg.dot", x2T, dout);
+  Node *dw2 = F->createReshape("fcg.dw2", dw, fDims);
   FCG.getGradOfInputNamedWeights().replaceAllUsesOfWith(dw2);
 
   // db = reduce(dout).
-  auto *db = graph.createBatchedReduce("fc.bias.reduce",
-                                       BatchedReduceNode::Mode::Add, out);
+  auto *db = F->createBatchedReduce("fc.bias.reduce",
+                                    BatchedReduceNode::Mode::Add, out);
   FCG.getGradOfInputNamedBias().replaceAllUsesOfWith(db);
 }
 
-void lowerReluGradNode(Function &graph, ReluGradNode &RG) {
+void lowerReluGradNode(Function *F, ReluGradNode &RG) {
   // ReluGrad: if the input value is greater than zero then let the gradient
   // pass.
-  auto *zero = graph.createSplat("zero", RG.getInput().getType(), 0.0);
-  auto *cond =
-      graph.createArithmetic("relugrad", RG.getOriginalOutputForResult(), zero,
-                             ArithmeticNode::Mode::CmpLTE);
-  auto *res = graph.createSelect("relugrad", cond, zero,
-                                 RG.getGradOfOriginalOutputNamedResult());
+  auto *zero = F->createSplat("zero", RG.getInput().getType(), 0.0);
+  auto *cond = F->createArithmetic("relugrad", RG.getOriginalOutputForResult(),
+                                   zero, ArithmeticNode::Mode::CmpLTE);
+  auto *res = F->createSelect("relugrad", cond, zero,
+                              RG.getGradOfOriginalOutputNamedResult());
   RG.getGradOfInputNamedInput().replaceAllUsesOfWith(res);
 }
 
-void lowerTanhGradNode(Function &graph, TanhGradNode &THG) {
+void lowerTanhGradNode(Function *F, TanhGradNode &THG) {
   // Tanh grad is calculated as:
   // inG = (1 - outW * outW) * outG
 
   // (W * W)
   auto outW = THG.getOriginalOutputForResult();
   auto *sq =
-      graph.createArithmetic("tanh.in2", outW, outW, ArithmeticNode::Mode::Mul);
+      F->createArithmetic("tanh.in2", outW, outW, ArithmeticNode::Mode::Mul);
 
-  auto *one = graph.createSplat("tanh.one", THG.getInput().getType(), 1.0);
+  auto *one = F->createSplat("tanh.one", THG.getInput().getType(), 1.0);
   // (1 - W * W)
   auto *oneSubsq =
-      graph.createArithmetic("tanh.one.sq", one, sq, ArithmeticNode::Mode::Sub);
+      F->createArithmetic("tanh.one.sq", one, sq, ArithmeticNode::Mode::Sub);
 
-  auto *grad = graph.createArithmetic("tanh.one.sq", oneSubsq,
-                                      THG.getGradOfOriginalOutputNamedResult(),
-                                      ArithmeticNode::Mode::Mul);
+  auto *grad = F->createArithmetic("tanh.one.sq", oneSubsq,
+                                   THG.getGradOfOriginalOutputNamedResult(),
+                                   ArithmeticNode::Mode::Mul);
   THG.getGradOfInputNamedInput().replaceAllUsesOfWith(grad);
 }
 
-void lowerSigmoidGradNode(Function &graph, SigmoidGradNode &THG) {
+void lowerSigmoidGradNode(Function *F, SigmoidGradNode &THG) {
   // Sigmoid grad is calculated as:
   // inG = outW * (1 - outW) * outG;
 
   auto outW = THG.getOriginalOutputForResult();
-  auto *one = graph.createSplat("one", THG.getInput().getType(), 1.0);
+  auto *one = F->createSplat("one", THG.getInput().getType(), 1.0);
 
   // (1 - W)
   auto *onew =
-      graph.createArithmetic("sig.1w", one, outW, ArithmeticNode::Mode::Sub);
+      F->createArithmetic("sig.1w", one, outW, ArithmeticNode::Mode::Sub);
 
   // (1 - W) * W
   auto *expr1 =
-      graph.createArithmetic("sig.1ww", onew, outW, ArithmeticNode::Mode::Mul);
+      F->createArithmetic("sig.1ww", onew, outW, ArithmeticNode::Mode::Mul);
 
-  auto *grad = graph.createArithmetic("sigg.one.sq", expr1,
-                                      THG.getGradOfOriginalOutputNamedResult(),
-                                      ArithmeticNode::Mode::Mul);
+  auto *grad = F->createArithmetic("sigg.one.sq", expr1,
+                                   THG.getGradOfOriginalOutputNamedResult(),
+                                   ArithmeticNode::Mode::Mul);
   THG.getGradOfInputNamedInput().replaceAllUsesOfWith(grad);
 }
 
-void lowerReluNode(Function &graph, ReluNode &R) {
+void lowerReluNode(Function *F, ReluNode &R) {
   // Relu is a max between zero and the input value.
-  SplatNode *zero = graph.createSplat("zero", R.getType(), 0.0);
-  auto *relu = graph.createArithmetic("relu", zero, R.getInput(),
-                                      ArithmeticNode::Mode::Max);
+  SplatNode *zero = F->createSplat("zero", R.getType(), 0.0);
+  auto *relu = F->createArithmetic("relu", zero, R.getInput(),
+                                   ArithmeticNode::Mode::Max);
   R.getResult().replaceAllUsesOfWith(relu);
 }
 
-void glow::lower(Function &G, CompilationMode mode) {
-  auto &nodes = G.getNodes();
+void glow::lower(Function *F, CompilationMode mode) {
+  auto &nodes = F->getNodes();
 
   for (auto const &node : nodes) {
     if (auto *RN = dyn_cast<RegressionNode>(node)) {
       lowerRegressionNode(*RN);
     } else if (auto *RGN = dyn_cast<RegressionGradNode>(node)) {
-      lowerRegressionGradNode(G, *RGN);
+      lowerRegressionGradNode(F, *RGN);
     } else if (auto *EMG = dyn_cast<ArithmeticGradNode>(node)) {
-      lowerArithmeticNode(G, *EMG);
+      lowerArithmeticNode(F, *EMG);
     } else if (auto *FC = dyn_cast<FullyConnectedNode>(node)) {
-      lowerFullyConnectedNode(G, *FC);
+      lowerFullyConnectedNode(F, *FC);
     } else if (auto *FCG = dyn_cast<FullyConnectedGradNode>(node)) {
-      lowerFullyConnectedGradNode(G, *FCG);
+      lowerFullyConnectedGradNode(F, *FCG);
     } else if (auto *RG = dyn_cast<ReluGradNode>(node)) {
-      lowerReluGradNode(G, *RG);
+      lowerReluGradNode(F, *RG);
     } else if (auto *R = dyn_cast<ReluNode>(node)) {
-      lowerReluNode(G, *R);
+      lowerReluNode(F, *R);
     } else if (auto *THG = dyn_cast<TanhGradNode>(node)) {
-      lowerTanhGradNode(G, *THG);
+      lowerTanhGradNode(F, *THG);
     } else if (auto *SG = dyn_cast<SigmoidGradNode>(node)) {
-      lowerSigmoidGradNode(G, *SG);
+      lowerSigmoidGradNode(F, *SG);
     }
   }
 }
