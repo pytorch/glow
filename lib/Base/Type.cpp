@@ -13,9 +13,9 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Type &type) {
   os << type.getElementName();
 
   if (type.isQuantizedType()) {
-    os << "[scale:";
+    os << "[S:";
     llvm::write_double(os, type.getScale(), llvm::FloatStyle::Fixed, 4);
-    os << " offset:";
+    os << " O:";
     os << type.getOffset();
     os << ']';
     float low = (-128 - type.getOffset()) * type.getScale();
