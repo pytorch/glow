@@ -27,9 +27,9 @@ float computeL2Loss(Tensor *X, Tensor *Y) {
   return loss;
 }
 
-/// \returns the error rate when comparing two grads.
+/// \returns the error when comparing two grads: absolute or relative.
 float gradDiff(float G1, float G2) {
-  return std::abs(G1 - G2) / std::abs(G1 + G2 + 1);
+  return std::min(std::abs(G1 - G2), std::abs(G1 - G2) / std::abs(G1 + G2 + 1));
 }
 
 Variable *getGrad(const VariableGradientsList &grads, Variable *V) {
@@ -57,10 +57,10 @@ Variable *getGrad(const VariableGradientsList &grads, Variable *V) {
 void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
                       Variable *expVar, Tensor *inputs, Tensor *outputs,
                       float delta, float allowedError) {
-  auto &G = *IP.getModule().getFunction("main");
+  auto &F = *IP.getModule().getFunction("main");
 
   // Create a function that trains the network.
-  Function *TF = glow::differentiate(&G, IP.getConfig());
+  Function *TF = glow::differentiate(&F, IP.getConfig());
   IP.compile(CompilationMode::Train, TF);
 
   // Train the network until we reach some stable local minimum.
@@ -70,7 +70,7 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
   // table instead of updating them.
   VariableGradientsList varGrads;
   Function *recordNet =
-      glow::differentiate(&G, IP.getConfig(), "record", &varGrads);
+      glow::differentiate(&F, IP.getConfig(), "record", &varGrads);
   IP.compile(CompilationMode::Train, recordNet);
 
   // Clear the gradients of the first layer.
@@ -254,6 +254,9 @@ TEST(Network, gradientCheckBatchNorm) {
 }
 
 TEST(Network, gradientCheckArithmeticDiv) {
+  // The test creates a net: A / B = Exp. Where A is trainable weight,
+  // B and Exp are external data (initialized randomly once). SGD will find
+  // correct value for A, and then gradient check will be performed.
   ExecutionEngine IP;
   size_t numDim = 10;
 
@@ -261,7 +264,7 @@ TEST(Network, gradientCheckArithmeticDiv) {
   Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
                                Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
+                               Variable::TrainKind::Xavier, 1);
   auto *B = mod.createVariable(ElemKind::FloatTy, {1, numDim}, "B",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
@@ -272,16 +275,14 @@ TEST(Network, gradientCheckArithmeticDiv) {
   O = F->createRegression("reg", O, Exp);
   auto *result = F->createSave("ret", O);
 
-  Tensor inputs(ElemKind::FloatTy, {1, numDim});
-  Tensor outputs(ElemKind::FloatTy, {1, numDim});
-  A->getPayload().getHandle().initXavier(1);
-  B->getPayload().getHandle().initXavier(1);
-  auto inputsH = inputs.getHandle<>();
-  auto outputsH = outputs.getHandle<>();
-  inputsH.initXavier(1);
-  outputsH.initXavier(1);
+  Tensor BValues(ElemKind::FloatTy, {1, numDim});
+  Tensor ExpValues(ElemKind::FloatTy, {1, numDim});
+  // Random values are in the range, so that all intermediate computations are
+  // not too small and not too large.
+  BValues.getHandle().randomize(0.1, 1);
+  ExpValues.getHandle().randomize(0.1, 1);
 
-  performGradCheck(IP, result, B, Exp, &inputs, &outputs, 0.001, 0.006);
+  performGradCheck(IP, result, B, Exp, &BValues, &ExpValues, 0.0001, 0.001);
 }
 
 TEST(Network, gradientCheckArithmetic) {
