@@ -49,18 +49,40 @@ TEST(JITCorrectnessTest, batchedReduceAddTest) {
 
 TEST(JITCorrectnessTest, convTest) {
   Tensor inputs(ElemKind::FloatTy, {20, 41, 32, 6});
-  Tensor kernel(ElemKind::FloatTy, {8, 5, 5, 6});
-  Tensor bias(ElemKind::FloatTy, {8});
+  Tensor kernel(ElemKind::FloatTy, {10, 5, 5, 6});
+  Tensor bias(ElemKind::FloatTy, {10});
   inputs.getHandle().initXavier(1);
   kernel.getHandle().randomize(-3.0, 3.0);
   bias.getHandle().randomize(-0.5, 0.5);
-  Tensor out1;
-  Tensor out2;
+  std::array<size_t, 4> S{{20, 15, 12, 10}};
+  llvm::ArrayRef<size_t> shape(S);
+  Tensor out1(ElemKind::FloatTy, shape);
+  Tensor out2(ElemKind::FloatTy, shape);
 
   inferConvNet(&inputs, &kernel, &bias, &out1, BackendKind::JIT);
   inferConvNet(&inputs, &kernel, &bias, &out2, BackendKind::Interpreter);
   auto H1 = out1.getHandle();
   auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
+TEST(JITCorrectnessTest, quantizedConvTest) {
+  Tensor inputs(ElemKind::Int8QTy, {20, 41, 32, 6}, 3.25, -7);
+  Tensor kernel(ElemKind::Int8QTy, {10, 5, 5, 6}, 2.0, 3);
+  Tensor bias(ElemKind::Int8QTy, {10}, 6.5, -4);
+  inputs.getHandle<int8_t>().randomize(-129, 128);
+  kernel.getHandle<int8_t>().randomize(-129, 128);
+  bias.getHandle<int8_t>().randomize(-11, 8);
+  std::array<size_t, 4> S{{20, 15, 12, 10}};
+  llvm::ArrayRef<size_t> shape(S);
+  Tensor out1(ElemKind::Int8QTy, shape, 6.5, -17);
+  Tensor out2(ElemKind::Int8QTy, shape, 6.5, -17);
+
+  inferConvNet(&inputs, &kernel, &bias, &out1, BackendKind::JIT);
+  inferConvNet(&inputs, &kernel, &bias, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle<int8_t>();
+  auto H2 = out2.getHandle<int8_t>();
 
   EXPECT_TRUE(H1.isEqual(H2));
 }
