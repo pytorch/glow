@@ -2,6 +2,7 @@
 
 #include "glow/Support/Random.h"
 
+#include <cassert>
 #include <random>
 
 namespace glow {
@@ -12,28 +13,11 @@ double nextRand() {
   return distribution(generator);
 }
 
-int nextRandInt01() {
-  static std::mt19937 generator;
-  static std::uniform_int_distribution<> distribution(0, 1);
-  return distribution(generator);
-}
-
-int nextRandInt8() {
-  static std::mt19937 generator;
-  static std::uniform_int_distribution<> distribution(-128, 127);
-  return distribution(generator);
-}
-
-int nextRandInt(int n) {
-  static std::mt19937 generator;
-  static std::uniform_int_distribution<> distribution(0);
-  int max = distribution.max() / n;
-  max *= n;
-  int m = distribution(generator);
-  while (m >= max) {
-    m = distribution(generator);
-  }
-  return m % n;
+int nextRandInt(int a, int b) {
+  assert(a <= b && "Invalid bounds");
+  double x = nextRand() + 1.0;
+  int r = (b - a + 1) * x;
+  return r / 2 + a;
 }
 
 } // namespace glow

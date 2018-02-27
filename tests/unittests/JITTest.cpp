@@ -79,7 +79,7 @@ TEST(JITCorrectnessTest, convGradTest) {
   bias2.getHandle().randomize(-0.5, 1.0);
   auto selectedH = selected.getHandle<size_t>();
   for (size_t i = 0; i < 9; i++) {
-    selectedH.raw(i) = nextRandInt(30);
+    selectedH.raw(i) = nextRandInt(0, 29);
   }
   std::array<size_t, 4> S1{{9, 6, 10, 1}};
   llvm::ArrayRef<size_t> shape1(S1);
@@ -122,7 +122,7 @@ TEST(JITCorrectnessTest, localResponseNormalizationGradTest) {
   bias.getHandle().randomize(-1.0, 1.3);
   auto selectedH = selected.getHandle<size_t>();
   for (size_t i = 0; i < 5; i++) {
-    selectedH.raw(i) = nextRandInt(180);
+    selectedH.raw(i) = nextRandInt(0, 179);
   }
   std::array<size_t, 4> S1{{5, 2, 2, 45}};
   llvm::ArrayRef<size_t> shape1(S1);
@@ -202,7 +202,7 @@ TEST(JITCorrectnessTest, poolAvgGradTest) {
   bias.getHandle().randomize(-0.2, 0.1);
   auto selectedH = selected.getHandle<size_t>();
   for (size_t i = 0; i < 5; i++) {
-    selectedH.raw(i) = nextRandInt(18);
+    selectedH.raw(i) = nextRandInt(0, 17);
   }
   std::array<size_t, 4> S1{{5, 6, 4, 3}};
   llvm::ArrayRef<size_t> shape1(S1);
@@ -245,7 +245,7 @@ TEST(JITCorrectnessTest, poolMaxGradTest) {
   bias.getHandle().randomize(-0.3, 0.1);
   auto selectedH = selected.getHandle<size_t>();
   for (size_t i = 0; i < 4; i++) {
-    selectedH.raw(i) = nextRandInt(32);
+    selectedH.raw(i) = nextRandInt(0, 31);
   }
   std::array<size_t, 4> S1{{4, 6, 7, 2}};
   llvm::ArrayRef<size_t> shape1(S1);
@@ -320,7 +320,7 @@ TEST(JITCorrectnessTest, selectTest) {
   Tensor inputs2(ElemKind::FloatTy, shape);
   auto condH = cond.getHandle();
   for (size_t i = 0; i < 270; i++) {
-    condH.raw(i) = nextRandInt01();
+    condH.raw(i) = nextRandInt(0, 1);
   }
   inputs1.getHandle().initXavier(1);
   inputs2.getHandle().initXavier(1);
@@ -355,7 +355,7 @@ TEST(JITCorrectnessTest, softmaxTest) {
   inputs.getHandle().initXavier(1);
   auto selectedH = selected.getHandle<size_t>();
   for (size_t i = 0; i < 14; i++) {
-    selectedH.raw(i) = nextRandInt(19);
+    selectedH.raw(i) = nextRandInt(0, 18);
   }
   Tensor out1;
   Tensor out2;
@@ -380,7 +380,7 @@ TEST(JITCorrectnessTest, softmaxGradTest) {
   bias.getHandle().randomize(-0.2, 0.0);
   auto selectedH = selected.getHandle<size_t>();
   for (size_t i = 0; i < 8; i++) {
-    selectedH.raw(i) = nextRandInt(23);
+    selectedH.raw(i) = nextRandInt(0, 22);
   }
   Tensor out1(ElemKind::FloatTy, shape);
   Tensor out2(ElemKind::FloatTy, shape);

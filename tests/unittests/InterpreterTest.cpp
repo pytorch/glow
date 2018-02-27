@@ -804,8 +804,8 @@ void generatePlayerData(Tensor &players, Tensor &labels,
 
   // Auto generate height/weights for basketball players.
   for (size_t i = 0; i < numTrainPlayers / 2; i++) {
-    auto heightInches = nextRandInt(19) + 70;                 // [70, 88]
-    auto weightLbs = 4 * heightInches - 85 + nextRandInt(31); // [195, 297]
+    auto heightInches = nextRandInt(70, 88);
+    auto weightLbs = 4 * heightInches + nextRandInt(-85, -55); // [195, 297]
     P.at({i, 0}) = heightInches;
     P.at({i, 1}) = weightLbs;
     L.at({i, 0}) = static_cast<size_t>(Sport::BASKETBALL);
@@ -813,9 +813,9 @@ void generatePlayerData(Tensor &players, Tensor &labels,
 
   // Auto generate height/weights for soccer players.
   for (size_t i = numTrainPlayers / 2; i < numTrainPlayers; i++) {
-    auto heightInches = nextRandInt(17) + 60; // [60, 76]
-    auto weightLbs = static_cast<unsigned>(2 * heightInches) + 20 +
-                     nextRandInt(31); // [140, 202]
+    auto heightInches = nextRandInt(60, 76);
+    auto weightLbs = static_cast<unsigned>(2 * heightInches) +
+                     nextRandInt(20, 50); // [140, 202]
     P.at({i, 0}) = heightInches;
     P.at({i, 1}) = weightLbs;
     L.at({i, 0}) = static_cast<size_t>(Sport::SOCCER);
