@@ -211,9 +211,8 @@ static bool commandLineIsInvalid() {
 
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(
-      argc, argv,
-      " The Glow compiler\n\n"
-      "Glow is a compiler for neural network accelerators.\n");
+      argc, argv, " The Glow compiler\n\n"
+                  "Glow is a compiler for neural network accelerators.\n");
 
   if (commandLineIsInvalid()) {
     return 1;

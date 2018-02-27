@@ -1,8 +1,8 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 #define DEBUG_TYPE "ir-optimizer"
 
-#include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
+#include "glow/Graph/Graph.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"

@@ -861,7 +861,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-    // Alloc and Dealloc instructions are handled by the memory allocator.
+  // Alloc and Dealloc instructions are handled by the memory allocator.
   case Kinded::Kind::AllocActivationInstKind:
   case Kinded::Kind::DeallocActivationInstKind:
   case Kinded::Kind::TensorViewInstKind:
