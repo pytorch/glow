@@ -209,8 +209,8 @@ static bool tryTransposeFastImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
   auto srcCoor = llvm::ArrayRef<size_t>(srcCoorArr, numDims);
   auto destCoor = llvm::ArrayRef<size_t>(destCoorArr, numDims);
 
-  /// This defines a single depth of the for loop used to iterate over the
-  /// source and destination tensors for transposing.
+/// This defines a single depth of the for loop used to iterate over the
+/// source and destination tensors for transposing.
 #define TRANSPOSE_LOOP_LEVEL(DEPTH_)                                           \
   for (srcCoorArr[shuffle[DEPTH_]] = 0, destCoorArr[DEPTH_] = 0;               \
        destCoorArr[DEPTH_] < dest.dims()[DEPTH_];                              \

@@ -231,10 +231,7 @@ struct Type final {
   /// \return the textual name of the element \p Ty.
   static llvm::StringRef getElementName(ElemKind Ty) {
     static const char *names[] = {
-        "float",
-        "i8",
-        "i32",
-        "index",
+        "float", "i8", "i32", "index",
     };
     return names[(int)Ty];
   }

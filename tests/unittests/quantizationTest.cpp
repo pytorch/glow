@@ -1,7 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
-#include "glow/Quantization/Quantization.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"
 
 #include "gtest/gtest.h"
