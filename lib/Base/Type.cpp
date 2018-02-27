@@ -22,7 +22,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Type &type) {
     float high = (127 - type.getOffset()) * type.getScale();
     os << "[";
     llvm::write_double(os, low, llvm::FloatStyle::Fixed, 3);
-    os << ";";
+    os << ",";
     llvm::write_double(os, high, llvm::FloatStyle::Fixed, 3);
     os << "]";
   }
