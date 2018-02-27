@@ -455,7 +455,7 @@ public:
 
   /// \returns true if tensor contains only elements equal to zero.
   bool isZero() const {
-    for (size_t i = 0, e = size(); i < e; ++i) {
+    for (size_t i = 0, e = size(); i < e; i++) {
       if (raw(i) != 0)
         return false;
     }
@@ -472,7 +472,7 @@ public:
   void initXavier(size_t filterSize) {
     assert(filterSize > 0 && "invalid filter size");
     double scale = std::sqrt(3.0 / double(filterSize));
-    for (size_t i = 0, e = size(); i < e; ++i) {
+    for (size_t i = 0, e = size(); i < e; i++) {
       raw(i) = (nextRand()) * scale;
     }
   }
@@ -482,7 +482,7 @@ public:
   void randomize(float low, float high) {
     assert(low < high && "invalid range");
     float range = (high - low);
-    for (size_t i = 0, e = size(); i < e; ++i) {
+    for (size_t i = 0, e = size(); i < e; i++) {
       raw(i) = (std::abs(nextRand())) * range + low;
     }
   }

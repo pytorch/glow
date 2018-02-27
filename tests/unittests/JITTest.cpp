@@ -34,13 +34,13 @@ TEST(JITCorrectnessTest, batchedAddTest) {
 }
 
 TEST(JITCorrectnessTest, batchedReduceAddTest) {
-  Tensor inputs1(ElemKind::FloatTy, {7, 5, 9, 2});
-  inputs1.getHandle().initXavier(1);
+  Tensor inputs(ElemKind::FloatTy, {7, 5, 9, 2});
+  inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
-  inferBatchedReduceAddNet(&inputs1, &out1, BackendKind::JIT);
-  inferBatchedReduceAddNet(&inputs1, &out2, BackendKind::Interpreter);
+  inferBatchedReduceAddNet(&inputs, &out1, BackendKind::JIT);
+  inferBatchedReduceAddNet(&inputs, &out2, BackendKind::Interpreter);
   auto H1 = out1.getHandle();
   auto H2 = out2.getHandle();
 
@@ -319,7 +319,7 @@ TEST(JITCorrectnessTest, selectTest) {
   Tensor inputs1(ElemKind::FloatTy, shape);
   Tensor inputs2(ElemKind::FloatTy, shape);
   auto condH = cond.getHandle();
-  for (size_t i = 0; i < 270; ++i) {
+  for (size_t i = 0; i < 270; i++) {
     condH.raw(i) = nextRandInt01();
   }
   inputs1.getHandle().initXavier(1);
