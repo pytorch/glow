@@ -953,31 +953,33 @@ TEST(Interpreter, learnSinus) {
   }
 }
 
-TEST(Interpreter, DISABLED_nonLinearClassifier) {
+TEST(Interpreter, nonLinearClassifier) {
   // Test non-linear classification on a set of 2d points. Generate x and y in
   // (-1, 1) and classify according to XOR of the sign bit.
-  unsigned batchSize = 11;
+  unsigned batchSize = 46;
   unsigned numSamples = 230;
 
   ExecutionEngine EE;
-  EE.getConfig().momentum = 0.9;
   EE.getConfig().learningRate = 0.01;
+  EE.getConfig().batchSize = batchSize;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   F->setName("nonLinearClassifier");
 
   auto *A = mod.createVariable(ElemKind::FloatTy, {batchSize, 2}, "A",
-                               Variable::VisibilityKind::Public);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   auto *S = mod.createVariable(ElemKind::IndexTy, {batchSize, 1}, "S",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
 
   auto *FCL0 = F->createFullyConnected("fc1", A, 8);
   auto *T0 = F->createTanh("tanh1", FCL0);
-  auto *FCL1 = F->createFullyConnected("fc2", T0, 2);
+  auto *FCL1 = F->createFullyConnected("fc2", T0, 8);
   auto *T1 = F->createTanh("tanh2", FCL1);
-  auto *SM = F->createSoftMax("soft", T1, S);
+  auto *FCL2 = F->createFullyConnected("fc2", T1, 2);
+  auto *SM = F->createSoftMax("soft", FCL2, S);
   auto *result = F->createSave("ret", SM);
 
   Function *TF = glow::differentiate(F, EE.getConfig());
