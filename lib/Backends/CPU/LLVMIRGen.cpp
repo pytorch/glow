@@ -72,7 +72,6 @@ void LLVMIRGen::initTargetMachine(StringRef T,
   llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmPrinters();
 
-
   if (T.empty())
     TM_.reset(llvm::EngineBuilder().setCodeModel(codeModel).selectTarget(
         llvm::Triple(), "", getHostCpuName(), getMachineAttributes()));
