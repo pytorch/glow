@@ -1,7 +1,7 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "Interpreter/Interpreter.h"
-#if defined(GLOW_WITH_JIT)
+#if defined(GLOW_WITH_CPU)
 #include "CPU/CPUBackend.h"
 #endif
 #if defined(GLOW_WITH_OPENCL)
@@ -26,7 +26,7 @@ Backend *glow::createBackend(BackendKind backendKind, IRFunction *F) {
   case BackendKind::OpenCL:
     return createOCLBackend(F);
 #endif
-#if defined(GLOW_WITH_JIT)
+#if defined(GLOW_WITH_CPU)
   case BackendKind::JIT:
     return createCPUBackend(F);
 #endif

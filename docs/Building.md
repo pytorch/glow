@@ -28,7 +28,7 @@ By default Glow builds with only the interpreter backend enabled.  To enable
 support for the JIT and/or OpenCL backends, pass additional options to cmake:
 
   ```
-  -DGLOW_WITH_JIT=1 -DGLOW_WITH_OPENCL=1
+  -DGLOW_WITH_CPU=1 -DGLOW_WITH_OPENCL=1
   ```
 
 ## Building with the Sanitizers
