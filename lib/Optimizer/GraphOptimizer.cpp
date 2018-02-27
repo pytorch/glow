@@ -645,6 +645,13 @@ static void optimizeQuantization(Function *F) {
     }
 
     if (auto *Q = dyn_cast<RescaleQuantizedNode>(node)) {
+      if (Q->getInput()->getType() == Q->getType()) {
+
+        // If rescale does not change the type, then simply drop it.
+        Q->getResult().replaceAllUsesOfWith(Q->getInput());
+        continue;
+      }
+
       if (auto *AN = dyn_cast<ArithmeticNode>(Q->getInput())) {
 
         // Rescale(MAX(X, Y)) -> MAX(Rescale(X), Rescale(Y)).
