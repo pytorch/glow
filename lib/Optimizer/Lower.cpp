@@ -115,18 +115,8 @@ void lowerFullyConnectedNode(Function &graph, FullyConnectedNode &FC) {
   Node *W =
       graph.createReshape("fc.1W", FC.getWeights(), {1, wDim[0], wDim[1]});
 
-  auto elemTy = W->getType()->getElementType();
-
-  TypeRef outTy = nullptr;
-  if (W->getType()->isQuantizedType()) {
-    // We use the scale and offset from the output of the FC for both the matrix
-    // multiplication node and the batched-add node.
-    auto FCT = FC.getResult()->getType();
-    outTy = graph.getParent()->uniqueType(elemTy, {1, xDim.first, wDim[1]},
-                                          FCT->getScale(), FCT->getOffset());
-  } else {
-    outTy = graph.getParent()->uniqueType(elemTy, {1, xDim.first, wDim[1]});
-  }
+  TypeRef outTy = graph.getParent()->uniqueTypeWithNewShape(
+      FC.getResult()->getType(), {1, xDim.first, wDim[1]});
   auto *mul = graph.createBatchedMatMul("fc.dot", outTy, X, W);
 
   auto *mulFlat = graph.createReshape("fc.cast2", mul, {xDim.first, wDim[1]});
