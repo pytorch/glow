@@ -2,7 +2,7 @@
 
 #include "Interpreter/Interpreter.h"
 #if defined(GLOW_WITH_JIT)
-#include "CPUBackend/CPUBackend.h"
+#include "CPU/CPUBackend.h"
 #endif
 #if defined(GLOW_WITH_OPENCL)
 #include "OpenCL/OpenCL.h"
