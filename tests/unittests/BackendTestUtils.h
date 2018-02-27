@@ -11,7 +11,7 @@ void inferBatchedAddNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
 
 void inferBatchedReduceAddNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void inferConvNet(Tensor *inputs, Tensor *kernel, Tensor *bias, Tensor *out,
+void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
                   BackendKind kind);
 
 void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,

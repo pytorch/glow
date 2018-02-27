@@ -39,19 +39,51 @@ void inferBatchedReduceAddNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
-void inferConvNet(Tensor *inputs, Tensor *kernel, Tensor *bias, Tensor *out,
+void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
                   BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                 "input", Variable::VisibilityKind::Public);
-  auto *conv = F->createConv("conv", var, 8, 5, 3, 4);
-  cast<Variable>(conv->getFilter())->copyFrom(kernel);
-  cast<Variable>(conv->getBias())->copyFrom(bias);
-  auto result = F->createSave("ret", conv);
+  Variable *inputVar;
+  Variable *filterVar;
+  Variable *biasVar;
+  Variable *outVar;
+  TypeRef OT;
+  if (inputs->getType().isQuantizedType()) {
+    auto &inputType = inputs->getType();
+    auto &filterType = filter->getType();
+    auto &biasType = bias->getType();
+    auto &outType = out->getType();
+    inputVar = mod.createVariable(inputs->getElementType(), inputs->dims(),
+                                  inputType.getScale(), inputType.getOffset(),
+                                  "input", Variable::VisibilityKind::Public);
+    filterVar = mod.createVariable(
+        filter->getElementType(), filter->dims(), filterType.getScale(),
+        filterType.getOffset(), "filter", Variable::VisibilityKind::Public);
+    biasVar = mod.createVariable(bias->getElementType(), bias->dims(),
+                                 biasType.getScale(), biasType.getOffset(),
+                                 "bias", Variable::VisibilityKind::Public);
+    outVar = mod.createVariable(out->getElementType(), out->dims(),
+                                outType.getScale(), outType.getOffset(), "out",
+                                Variable::VisibilityKind::Public);
+    OT = F->getParent()->uniqueType(out->getElementType(), out->dims(),
+                                    outType.getScale(), outType.getOffset());
+  } else {
+    inputVar = mod.createVariable(inputs->getElementType(), inputs->dims(),
+                                  "input", Variable::VisibilityKind::Public);
+    filterVar = mod.createVariable(filter->getElementType(), filter->dims(),
+                                   "filter", Variable::VisibilityKind::Public);
+    biasVar = mod.createVariable(bias->getElementType(), bias->dims(), "bias",
+                                 Variable::VisibilityKind::Public);
+    outVar = mod.createVariable(out->getElementType(), out->dims(), "out",
+                                Variable::VisibilityKind::Public);
+    OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
+  }
+  auto *conv =
+      F->createConv("conv", inputVar, filterVar, biasVar, OT, 10, 5, 3, 4);
+  auto result = F->createSave("ret", conv, outVar);
   EE.compile(CompilationMode::Infer, F);
-  EE.run({var}, {inputs});
+  EE.run({inputVar, filterVar, biasVar}, {inputs, filter, bias});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 

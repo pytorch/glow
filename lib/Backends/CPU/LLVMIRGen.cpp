@@ -517,9 +517,30 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     }
 
     auto *F = getFunction(kernelName, dest->getElementType());
-    builder.CreateCall(F,
-                       {srcPtr, destPtr, filterPtr, biasPtr, srcDims, destDims,
-                        filterDims, biasDims, kernel, stride, pad});
+
+    if (src->getType()->isQuantizedType()) {
+      auto *destTy = dest->getType();
+      auto *srcTy = src->getType();
+      auto *filterTy = filter->getType();
+      auto *biasTy = bias->getType();
+      auto *destScale = emitConstF32(builder, destTy->getScale());
+      auto *srcScale = emitConstF32(builder, srcTy->getScale());
+      auto *filterScale = emitConstF32(builder, filterTy->getScale());
+      auto *biasScale = emitConstF32(builder, biasTy->getScale());
+      auto *destOffset = emitConstI32(builder, destTy->getOffset());
+      auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
+      auto *filterOffset = emitConstI32(builder, filterTy->getOffset());
+      auto *biasOffset = emitConstI32(builder, biasTy->getOffset());
+
+      builder.CreateCall(F, {destPtr, srcPtr, filterPtr, biasPtr, destDims,
+                             srcDims, filterDims, biasDims, kernel, stride, pad,
+                             destScale, srcScale, filterScale, biasScale,
+                             destOffset, srcOffset, filterOffset, biasOffset});
+    } else {
+      builder.CreateCall(F,
+                         {destPtr, srcPtr, filterPtr, biasPtr, destDims,
+                          srcDims, filterDims, biasDims, kernel, stride, pad});
+    }
     break;
   }
 
