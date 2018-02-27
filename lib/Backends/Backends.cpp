@@ -32,7 +32,7 @@ Backend *glow::createBackend(BackendKind backendKind, IRFunction *F) {
 #endif
   default:
     // Unknown execution backend.
-    llvm_unreachable("Invalid backend kind.");
+    GLOW_UNREACHABLE("Invalid backend kind.");
     break;
   }
 }
