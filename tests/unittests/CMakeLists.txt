@@ -130,7 +130,7 @@ target_link_libraries(OCLTest
 add_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest)
 endif()
 
-if(GLOW_WITH_JIT)
+if(GLOW_WITH_CPU)
 add_executable(JITTest
                BackendTestUtils.cpp
                JITTest.cpp)
