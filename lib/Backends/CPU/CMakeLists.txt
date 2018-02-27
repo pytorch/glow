@@ -1,17 +1,35 @@
-find_program(CLANG_EXECUTABLE NAMES clang DOC "Path to the clang front-end.")
 
-if(NOT CLANG_EXECUTABLE)
-  message(FATAL_ERROR "clang is required to build the JIT library.")
+if(NOT "${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
+  message(SEND_ERROR "clang is required to build the JIT library")
 endif()
 
-set(LIBJITBC ${GLOW_BINARY_DIR}/libjit.bc)
-set(LIBJITSRC ${CMAKE_CURRENT_SOURCE_DIR}/libjit.c)
+add_library(CPURuntime
+            OBJECT
+              libjit.c)
+target_compile_options(CPURuntime
+                       PRIVATE
+                         -ffast-math
+                         -emit-llvm
+                         -Os)
+
+find_program(LLVM_LINK_BIN llvm-link)
 
 add_custom_command(OUTPUT
-                   ${LIBJITBC}
-                   COMMAND ${CLANG_EXECUTABLE} -Os -ffast-math -emit-llvm -o ${LIBJITBC} -c ${LIBJITSRC}
-                   DEPENDS ${LIBJITSRC}
-                   COMMENT "Clang: Generating runtime bytecode library." VERBATIM)
+                     ${CMAKE_BINARY_DIR}/libjit.bc
+                   DEPENDS
+                     $<TARGET_OBJECTS:CPURuntime>
+                     CPURuntime
+                   COMMAND
+                     echo \"$<TARGET_OBJECTS:CPURuntime>\" | tr '$<SEMICOLON>' ' ' | xargs -- ${LLVM_LINK_BIN} -o ${CMAKE_BINARY_DIR}/libjit.bc)
+get_target_property(CPURuntime_SOURCES CPURuntime SOURCES)
+add_custom_target(GlowCPURuntime
+                  ALL
+                  DEPENDS
+                    ${CMAKE_BINARY_DIR}/libjit.bc
+                  SOURCES
+                    ${CPURuntime_SOURCES}
+                    $<TARGET_OBJECTS:CPURuntime>)
+
 add_library(CPUBackend
             AllocationsInfo.cpp
             FunctionSpecializer.cpp
@@ -45,10 +63,5 @@ target_link_libraries(CPUBackend
                         LLVMInterpreter
                         LLVMSupport
                         LLVMPasses)
-
-add_custom_target(
-  generate-libjitbc
-  DEPENDS ${LIBJITBC}
-  )
-add_dependencies(CPUBackend generate-libjitbc)
+add_dependencies(CPUBackend GlowCPURuntime)
 
