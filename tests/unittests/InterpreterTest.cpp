@@ -953,8 +953,8 @@ TEST(Interpreter, learnSinus) {
   }
 }
 
-TEST(Interpreter, nonLinearClassifier) {
-  // Test non-linear classification on a set of 2d points.  Generate x and y in
+TEST(Interpreter, DISABLED_nonLinearClassifier) {
+  // Test non-linear classification on a set of 2d points. Generate x and y in
   // (-1, 1) and classify according to XOR of the sign bit.
   unsigned batchSize = 11;
   unsigned numSamples = 230;
