@@ -478,6 +478,26 @@ public:
       break;
     }
 
+    case glow::Kinded::Kind::SoftMaxNodeKind: {
+      auto *SM = cast<SoftMaxNode>(N);
+      auto *X = valueForNode(SM->getInput());
+      auto *V = builder_.createSoftMaxOp(X);
+      registerIR(SM->getResult(), V->getDest());
+      V->setName(N->getName());
+      break;
+    }
+
+    case glow::Kinded::Kind::SoftMaxGradNodeKind: {
+      auto *SMG = cast<SoftMaxGradNode>(N);
+      auto *Y = valueForNode(SMG->getOriginalOutputForResult());
+      auto *dY = valueForNode(SMG->getGradOfOriginalOutputNamedResult());
+      auto *dX =
+          builder_.createAllocActivationInst("softmax.res.grad", dY->getType());
+      auto *SMGI = builder_.createSoftMaxGradInst(N->getName(), Y, dY, dX);
+      registerIR(SMG->getGradOfInputNamedInput(), SMGI->getSrcGrad());
+      break;
+    }
+
     case glow::Kinded::Kind::ArithmeticNodeKind: {
       auto *AR = cast<ArithmeticNode>(N);
       auto *L = valueForNode(AR->getLHS());

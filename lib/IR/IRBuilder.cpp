@@ -86,6 +86,11 @@ TanhInst *IRBuilder::createTanhOp(Value *input) {
   return createTanhInst("tanh", res, input);
 }
 
+SoftMaxInst *IRBuilder::createSoftMaxOp(glow::Value *input) {
+  auto *sm = createAllocActivationInst("smloss.res", input->getType());
+  return createSoftMaxInst("sm", sm, input);
+}
+
 SoftMaxWithLossInst *IRBuilder::createSoftMaxWithLossOp(glow::Value *input,
                                                         glow::Value *labels) {
   auto *sm = createAllocActivationInst("smloss.res", input->getType());

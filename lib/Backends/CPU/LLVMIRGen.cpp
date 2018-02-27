@@ -713,8 +713,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::SoftMaxGradInstKind: {
-    SoftMaxGradInst *SMG = cast<SoftMaxGradInst>(I);
+  case Kinded::Kind::SoftMaxWithLossGradInstKind: {
+    SoftMaxWithLossGradInst *SMG = cast<SoftMaxWithLossGradInst>(I);
     auto *srcGradPtr =
         emitValueAddress(builder, SMG->getSrcGrad(), ElemKind::FloatTy);
     auto *destPtr =

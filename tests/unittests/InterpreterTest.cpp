@@ -358,9 +358,10 @@ TEST(Network, circle) {
   auto *T0 = F->createTanh("tanh1", FCL0);
   auto *FCL1 = F->createFullyConnected("fc2", T0, 2);
   auto *T1 = F->createTanh("tanh2", FCL1);
-  auto *SM = F->createSoftMaxWithLoss("soft", T1, S);
-  auto *result = F->createSave("ret", SM->getResult());
-  F->createSave("ret", SM->getCELoss());
+  auto *SM = F->createSoftMax("soft", T1);
+  auto *CE = F->createCrossEntropyLoss("celoss", SM, S);
+  auto *result = F->createSave("ret", SM);
+  F->createSave("ce", CE);
 
   Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
@@ -980,7 +981,8 @@ TEST(Interpreter, nonLinearClassifier) {
   auto *T0 = F->createTanh("tanh1", FCL0);
   auto *FCL1 = F->createFullyConnected("fc2", T0, 8);
   auto *T1 = F->createTanh("tanh2", FCL1);
-  auto *SM = F->createSoftMaxWithLoss("soft", T1, S);
+  auto *FCL2 = F->createFullyConnected("fc2", T1, 2);
+  auto *SM = F->createSoftMaxWithLoss("soft", FCL2, S);
   auto *result = F->createSave("ret", SM->getResult());
   F->createSave("ret2", SM->getCELoss());
 

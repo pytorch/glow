@@ -621,6 +621,13 @@ void TanhGradNode::verify() const {
   verifyTanh(getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult());
 }
 
+void SoftMaxNode::verify() const { verifySoftMax(getInput(), getResult()); }
+
+void SoftMaxGradNode::verify() const {
+  verifySoftMax(getGradOfInputNamedInput(),
+                getGradOfOriginalOutputNamedResult());
+};
+
 void SoftMaxWithLossNode::verify() const {
   verifySoftMax(getInput(), getResult());
 }

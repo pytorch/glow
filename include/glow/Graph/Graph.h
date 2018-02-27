@@ -239,6 +239,8 @@ public:
       llvm::StringRef name, NodeValue input, size_t halfWindowSize = 2,
       float alpha = 1e-4, float beta = 0.75, float k = 2.0);
 
+  SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input);
+
   ArithmeticNode *createArithmetic(llvm::StringRef name, NodeValue LHS,
                                    NodeValue RHS, ArithmeticNode::Mode op);
 

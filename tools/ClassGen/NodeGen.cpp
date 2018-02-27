@@ -109,6 +109,12 @@ int main(int argc, char **argv) {
                     "with the provided Scale, Bias, Mean, Var, ChannelIdx, "
                     "Epsilon, and Momentum. Similar to Caffe2 LRN.");
 
+  BB.newNode("SoftMax")
+      .addInput("Input")
+      .addResult("Input.getType()")
+      .addGradient()
+      .setDocstring("Computes softmax activations of the input tensor.");
+
   //===--------------------------------------------------------------------===//
   //                      Loss operations
   //===--------------------------------------------------------------------===//

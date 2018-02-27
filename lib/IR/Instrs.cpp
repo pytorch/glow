@@ -137,6 +137,20 @@ static void verifyBatchNormalization(Value *src, Value *dest, Value *scale,
   assert(var->getType()->dims().equals(exp) && "Invalid var dim");
 }
 
+static void verifySoftMax(Value *X, Value *Y) {
+  checkSameType(X, Y);
+  assert(X->dims() == Y->dims() && "Invalid shape");
+}
+
+static void verifySoftMaxGradient(Value *X, Value *Y, Value *dX) {
+  checkSameType(X, Y);
+  checkSameType(Y, dX);
+  auto yShape = Y->dims();
+  assert(yShape == X->dims() && "Invalid shape");
+  assert(yShape == dX->dims() && "Invalid shape");
+  (void)yShape;
+}
+
 void ConvolutionInst::verify() const {
   Value *dest = getDest();
   Value *src = getSrc();
@@ -231,10 +245,13 @@ void SigmoidInst::verify() const { checkSameType(getDest(), getSrc()); }
 
 void TanhInst::verify() const { checkSameType(getDest(), getSrc()); }
 
-void SoftMaxWithLossInst::verify() const {
-  checkSameType(getDest(), getSrc());
-  assert(getDest()->dims() == getSrc()->dims() && "Invalid shape");
+void SoftMaxInst::verify() const { verifySoftMax(getSrc(), getDest()); }
+
+void SoftMaxGradInst::verify() const {
+  verifySoftMax(getSrcGrad(), getDestGrad());
 }
+
+void SoftMaxWithLossInst::verify() const { verifySoftMax(getSrc(), getDest()); }
 
 void SoftMaxWithLossGradInst::verify() const {
   checkSameType(getOrigDest(), getOrigSrc());
@@ -243,6 +260,7 @@ void SoftMaxWithLossGradInst::verify() const {
   assert(destShape == getOrigSrc()->dims() && "Invalid shape");
   assert(destShape == getSrcGrad()->dims() && "Invalid shape");
   (void)destShape;
+  verifySoftMaxGradient(getOrigSrc(), getOrigDest(), getSrcGrad());
 }
 
 void CrossEntropyLossInst::verify() const {

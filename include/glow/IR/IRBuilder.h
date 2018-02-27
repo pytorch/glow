@@ -41,6 +41,8 @@ public:
 
   TanhInst *createTanhOp(Value *input);
 
+  SoftMaxInst *createSoftMaxOp(Value *input);
+
   SoftMaxWithLossInst *createSoftMaxWithLossOp(Value *input, Value *labels);
 
   CrossEntropyLossInst *createCrossEntropyLossOp(Value *P, Value *labels);

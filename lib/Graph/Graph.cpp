@@ -658,6 +658,11 @@ LocalResponseNormalizationNode *Function::createLocalResponseNormalization(
                                                     alpha, beta, k));
 }
 
+SoftMaxNode *Function::createSoftMax(llvm::StringRef name,
+                                     glow::NodeValue input) {
+  return addNode(new SoftMaxNode(name, input));
+}
+
 ArithmeticNode *Function::createArithmetic(llvm::StringRef name, NodeValue LHS,
                                            NodeValue RHS,
                                            ArithmeticNode::Mode op) {

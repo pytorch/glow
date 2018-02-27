@@ -97,10 +97,11 @@ void testMNIST() {
   Variable *selected = mod.createVariable(
       ElemKind::IndexTy, {minibatchSize, 1}, +"selected",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
-  auto *SM = F->createSoftMaxWithLoss("sm", RL2, selected);
+  auto *SM = F->createSoftMax("sm", RL2);
+  auto *CE = F->createCrossEntropyLoss("ce", SM, selected);
 
-  auto *result = F->createSave("return", SM->getResult());
-  auto *celoss = F->createSave("celoss", SM->getCELoss());
+  auto *result = F->createSave("return", SM);
+  auto *celoss = F->createSave("celoss", CE);
 
   Function *T = glow::differentiate(F, EE.getConfig());
 

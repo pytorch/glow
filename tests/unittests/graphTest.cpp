@@ -27,8 +27,8 @@ TEST(Graph, simpleTest) {
 
     K = F->createConv("Conv1", K, 16, 3, 2, 3);
     K = F->createRELU("Relu", K);
-    K = F->createSoftMaxWithLoss("SoftMax", K, S);
-    F->createSave("Save", K);
+    auto *SM = F->createSoftMaxWithLoss("SoftMax", K, S);
+    F->createSave("Save", SM->getResult());
     F->dump();
     F->dumpDAG();
     lower(F, CompilationMode::Train);
@@ -156,25 +156,14 @@ TEST(Graph, cloneTest) {
   Function *F = M.createFunction("main");
   Node *K = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
   Node *S = M.createVariable(ElemKind::IndexTy, {4, 1}, "select");
-<<<<<<< HEAD
   Node *conv = F->createConv("Conv1", K, 16, 3, 2, 3);
   Node *relu = F->createRELU("Relu", conv);
-  Node *SM = F->createSoftMax("SoftMax", relu, S);
-  F->createSave("Save", SM);
+  auto *SM = F->createSoftMaxWithLoss("SoftMax", relu, S);
+  F->createSave("Save", SM->getResult());
 
   auto *newConv = F->addNode(conv->clone());
   auto *newRelu = F->addNode(relu->clone());
-  auto *newSM = F->addNode(SM->clone());
-=======
-  auto *conv = G.createConv("Conv1", K, 16, 3, 2, 3);
-  auto *relu = G.createRELU("Relu", conv);
-  auto *SM = G.createSoftMaxWithLoss("SoftMax", relu, S);
-  G.createSave("Save", SM->getResult());
-
-  auto *newConv = static_cast<ConvolutionNode *>(G.addNode(conv->clone()));
-  auto *newRelu = static_cast<ReluNode *>(G.addNode(relu->clone()));
-  auto *newSM = static_cast<SoftMaxWithLossNode *>(G.addNode(SM->clone()));
->>>>>>> Refactor softmax to produce probabilities and loss values.
+  auto *newSM = static_cast<SoftMaxWithLossNode*>(F->addNode(SM->clone()));
 
   EXPECT_TRUE(newConv != conv && conv->isEqual(*newConv));
   EXPECT_TRUE(newRelu != relu && relu->isEqual(*newRelu));
