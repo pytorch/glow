@@ -144,8 +144,8 @@ TEST(Network, gradientCheckFCConcatRELU) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(100);
-  outputsH.initXavier(100);
+  inputsH.initXavier(1);
+  outputsH.initXavier(1);
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.001, 0.001);
 }
