@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.7)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
-project(Glow)
+project(Glow C CXX)
 enable_testing()
 
 option(GLOW_WITH_JIT "Build the LLVM-based JIT backend" OFF)

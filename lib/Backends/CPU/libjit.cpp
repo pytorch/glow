@@ -7,6 +7,8 @@
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
+extern "C" {
+
 /// \returns the index of the element at x,y,z,w.
 size_t libjit_getXYZW(const size_t *dims, size_t x, size_t y, size_t z,
                       size_t w) {
@@ -806,3 +808,5 @@ void libjit_extract_tensor_f(float *tensor, float *slice, size_t *offset,
                             tensorDim, sliceDim, numDimsTensor, numDimsSlice,
                             offsetDim, 0, 0);
 }
+
+} // extern "C"
