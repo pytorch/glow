@@ -6,7 +6,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 project(Glow)
 enable_testing()
 
-option(GLOW_WITH_JIT "Build the LLVM-based JIT backend" OFF)
+option(GLOW_WITH_CPU "Build the LLVM-based JIT CPU backend" OFF)
 option(GLOW_WITH_OPENCL "Build the OpenCL backend" ON)
 
 set(CMAKE_CXX_STANDARD 14)
@@ -66,4 +66,3 @@ add_subdirectory(lib)
 add_subdirectory(examples)
 add_subdirectory(tools)
 add_subdirectory(tests)
-

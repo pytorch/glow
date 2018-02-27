@@ -1,5 +1,5 @@
 // Copyright 2017 Facebook Inc. All Rights Reserved.
-
+#include "BackendInstrs.h"
 #include "InstrBuilder.h"
 
 #include <fstream>
@@ -343,6 +343,12 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::Out)
       .addOperand("Input", OperandKind::In)
       .addMember(MemberType::SizeT, "K");
+
+  //===--------------------------------------------------------------------===//
+  //                Backend-Specific Instructions
+  //===--------------------------------------------------------------------===//
+
+  addBackendSpecificInstrs(BB);
 
   return 0;
 }

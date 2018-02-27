@@ -1,0 +1,8 @@
+#ifndef DEF_BACKEND
+#error The macro DEF_BACKEND was not declared.
+#endif
+
+DEF_BACKEND(CPUBackend, GLOW_WITH_CPU)
+DEF_BACKEND(OpenCL, GLOW_WITH_OPENCL)
+
+#undef DEF_BACKEND
