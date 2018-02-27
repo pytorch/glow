@@ -160,7 +160,7 @@ TEST(Quantization, end2end) {
   Function *F1 = res.first;
   SaveNode *result1 = res.second;
 
-  glow::profileQuantization(*F1);
+  glow::profileQuantization(F1);
   EE.compile(CompilationMode::Infer, F1);
 
   // Run graph to capture profile.

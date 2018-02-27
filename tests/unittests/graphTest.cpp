@@ -20,19 +20,19 @@ using namespace glow;
 TEST(Graph, simpleTest) {
   {
     Module MD;
-    Function &G = *MD.createFunction("F");
-    IRFunction M(&G);
+    Function *F = MD.createFunction("F");
+    IRFunction M(F);
     Node *K = MD.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
     Node *S = MD.createVariable(ElemKind::IndexTy, {4, 1}, "select");
 
-    K = G.createConv("Conv1", K, 16, 3, 2, 3);
-    K = G.createRELU("Relu", K);
-    K = G.createSoftMax("SoftMax", K, S);
-    G.createSave("Save", K);
-    G.dump();
-    G.dumpDAG();
-    lower(G, CompilationMode::Train);
-    ::optimize(&G, CompilationMode::Train);
+    K = F->createConv("Conv1", K, 16, 3, 2, 3);
+    K = F->createRELU("Relu", K);
+    K = F->createSoftMax("SoftMax", K, S);
+    F->createSave("Save", K);
+    F->dump();
+    F->dumpDAG();
+    lower(F, CompilationMode::Train);
+    ::optimize(F, CompilationMode::Train);
     M.generateIR(CompilationMode::Train);
     M.dump();
     EXPECT_GT(M.getInstrs().size(), 0);
@@ -41,22 +41,22 @@ TEST(Graph, simpleTest) {
   {
     unsigned numInputs = 10;
     Module MD;
-    Function &G = *MD.createFunction("F");
-    IRFunction M(&G);
+    Function *F = MD.createFunction("F");
+    IRFunction M(F);
 
     auto *A = MD.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
     auto *Ex = MD.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
 
-    Node *O = G.createFullyConnected("FC1", A, 6);
-    O = G.createRELU("RELU1", O);
-    O = G.createFullyConnected("FC2", O, 1);
-    O = G.createRELU("RELU2", O);
-    O = G.createRegression("Regression", O, Ex);
-    G.createSave("Save", O);
-    G.dump();
-    G.dumpDAG();
-    lower(G, CompilationMode::Train);
-    ::optimize(&G, CompilationMode::Train);
+    Node *O = F->createFullyConnected("FC1", A, 6);
+    O = F->createRELU("RELU1", O);
+    O = F->createFullyConnected("FC2", O, 1);
+    O = F->createRELU("RELU2", O);
+    O = F->createRegression("Regression", O, Ex);
+    F->createSave("Save", O);
+    F->dump();
+    F->dumpDAG();
+    lower(F, CompilationMode::Train);
+    ::optimize(F, CompilationMode::Train);
     M.generateIR(CompilationMode::Train);
     M.dump();
     EXPECT_GT(M.getInstrs().size(), 0);
@@ -66,8 +66,8 @@ TEST(Graph, simpleTest) {
 TEST(Graph, QuantizationProfileNodes) {
   unsigned numInputs = 10;
   Module MD;
-  Function &G = *MD.createFunction("F");
-  IRFunction M(&G);
+  Function *F = MD.createFunction("F");
+  IRFunction M(F);
 
   auto *A = MD.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
   auto *Ex = MD.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
@@ -75,19 +75,19 @@ TEST(Graph, QuantizationProfileNodes) {
   // Create two nodes reading from the same variable.
   // Only one Quantization Profile node should be created for the output
   // from the variable.
-  Node *O = G.createFullyConnected("FC1", A, 6);
-  Node *C = G.createFullyConnected("FC2", A, 6);
+  Node *O = F->createFullyConnected("FC1", A, 6);
+  Node *C = F->createFullyConnected("FC2", A, 6);
   (void)C;
-  O = G.createRELU("RELU1", O);
-  G.createRegression("Regression", O, Ex);
+  O = F->createRELU("RELU1", O);
+  F->createRegression("Regression", O, Ex);
 
-  ::glow::profileQuantization(G);
-  lower(G, CompilationMode::Infer);
-  ::optimize(&G, CompilationMode::Infer);
+  ::glow::profileQuantization(F);
+  lower(F, CompilationMode::Infer);
+  ::optimize(F, CompilationMode::Infer);
   M.generateIR(CompilationMode::Infer);
 
   size_t numberOfProfileNodes =
-      std::count_if(G.getNodes().begin(), G.getNodes().end(), [](Node *node) {
+      std::count_if(F->getNodes().begin(), F->getNodes().end(), [](Node *node) {
         return llvm::isa<QuantizationProfileNode>(node);
       });
 
@@ -97,7 +97,7 @@ TEST(Graph, QuantizationProfileNodes) {
 TEST(Graph, simpleQuant) {
   ExecutionEngine EE;
   auto &MD = EE.getModule();
-  auto &G = *MD.createFunction("main");
+  auto *F = MD.createFunction("main");
 
   unsigned depth = 16;
   unsigned kernel = 5;
@@ -118,51 +118,52 @@ TEST(Graph, simpleQuant) {
   // Calculate the size and allocate the output buffer.
   auto outSz = calculateConvOutputDims(width, width, kernel, step, pad);
   std::array<size_t, 4> outDims = {{1, outSz.first, outSz.second, 16}};
-  auto t = G.getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims, 1.5, 6);
+  auto t = F->getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims, 1.5, 6);
 
   auto *conv =
-      G.createConv("conv", input, filter, bias, t, depth, kernel, step, pad);
+      F->createConv("conv", input, filter, bias, t, depth, kernel, step, pad);
 
   auto s = conv->getType()->size();
   auto *fcFilter = MD.createVariable(ElemKind::Int8QTy, {s, 6}, 0.4, 2, "F");
   auto *fcBias = MD.createVariable(ElemKind::Int8QTy, {6}, 0.4, 2, "B");
-  Node *O = G.createFullyConnected("fc1", conv, fcFilter, fcBias);
-  G.createSave("ret", O);
-  EE.compile(CompilationMode::Infer, &G);
+  Node *O = F->createFullyConnected("fc1", conv, fcFilter, fcBias);
+  F->createSave("ret", O);
+  EE.compile(CompilationMode::Infer, F);
 }
 
 TEST(Graph, quantizeDequantizeNodes) {
   ExecutionEngine EE;
   auto &MD = EE.getModule();
-  auto &G = *MD.createFunction("main");
+  auto F = MD.createFunction("main");
 
   auto *input = MD.createVariable(ElemKind::FloatTy, {1, 3}, "Input");
-  auto qType = G.getParent()->uniqueType(ElemKind::Int8QTy, {1, 3}, 0.3, 5);
+  auto qType = F->getParent()->uniqueType(ElemKind::Int8QTy, {1, 3}, 0.3, 5);
 
-  auto *Q = G.createQuantize("quantize", input, qType);
+  auto *Q = F->createQuantize("quantize", input, qType);
 
-  auto transform = G.getParent()->uniqueType(ElemKind::Int8QTy, {1, 3}, 1.4, 3);
-  auto *A = G.createRescaleQuantized("rescale", Q, transform);
+  auto transform =
+      F->getParent()->uniqueType(ElemKind::Int8QTy, {1, 3}, 1.4, 3);
+  auto *A = F->createRescaleQuantized("rescale", Q, transform);
 
-  auto *D = G.createDequantize("dequantize", A);
-  G.createSave("ret", D);
-  EE.compile(CompilationMode::Infer, &G);
+  auto *D = F->createDequantize("dequantize", A);
+  F->createSave("ret", D);
+  EE.compile(CompilationMode::Infer, F);
 }
 
 TEST(Graph, cloneTest) {
   Module M;
 
-  Function &G = *M.createFunction("main");
+  Function *F = M.createFunction("main");
   Node *K = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
   Node *S = M.createVariable(ElemKind::IndexTy, {4, 1}, "select");
-  Node *conv = G.createConv("Conv1", K, 16, 3, 2, 3);
-  Node *relu = G.createRELU("Relu", conv);
-  Node *SM = G.createSoftMax("SoftMax", relu, S);
-  G.createSave("Save", SM);
+  Node *conv = F->createConv("Conv1", K, 16, 3, 2, 3);
+  Node *relu = F->createRELU("Relu", conv);
+  Node *SM = F->createSoftMax("SoftMax", relu, S);
+  F->createSave("Save", SM);
 
-  auto *newConv = G.addNode(conv->clone());
-  auto *newRelu = G.addNode(relu->clone());
-  auto *newSM = G.addNode(SM->clone());
+  auto *newConv = F->addNode(conv->clone());
+  auto *newRelu = F->addNode(relu->clone());
+  auto *newSM = F->addNode(SM->clone());
 
   EXPECT_TRUE(newConv != conv && conv->isEqual(*newConv));
   EXPECT_TRUE(newRelu != relu && relu->isEqual(*newRelu));

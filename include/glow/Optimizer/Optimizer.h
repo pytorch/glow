@@ -19,11 +19,11 @@ void optimize(Function *F, CompilationMode mode);
 
 /// Lower the high-level neural network operators into low-level lineal algebra
 /// operators.
-void lower(Function &G, CompilationMode mode);
+void lower(Function *F, CompilationMode mode);
 
-/// Instrument graph \p G by inserting quantization profile nodes
+/// Instrument function \p F by inserting quantization profile nodes
 /// for capturing stats for quantization.
-void profileQuantization(Function &G);
+void profileQuantization(Function *F);
 
 } // namespace glow
 

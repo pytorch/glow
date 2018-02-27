@@ -254,7 +254,7 @@ int main(int argc, char **argv) {
     ::optimize(F, glow::CompilationMode::Infer);
 
     // Instrument the graph to capture profiles for nodes' outputs.
-    ::profileQuantization(*F);
+    ::profileQuantization(F);
   }
 
   // Load the quantization profile and transform the graph.

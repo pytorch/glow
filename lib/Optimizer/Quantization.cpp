@@ -8,15 +8,15 @@
 
 using namespace glow;
 
-/// Instrument graph \p G with Quantization Profile nodes.
-/// Nodes should only be added when Graph is compiled in
+/// Instrument function \p F with Quantization Profile nodes.
+/// Nodes should only be added when function is compiled in
 /// the Inference mode.
-void glow::profileQuantization(Function &G) {
+void glow::profileQuantization(Function *F) {
   // Iterate over all nodes in the graph and insert QuantizationProfile nodes
   // to observe tensor values from every node's output.
   std::unordered_set<NodeValue> nodesToInstrument;
 
-  for (const auto &node : G.getNodes()) {
+  for (const auto &node : F->getNodes()) {
     // Add Quantization Profile node to parent's output linked to the
     // i-th input of the current node.
     for (unsigned i = 0, e = node->getNumInputs(); i < e; ++i) {
@@ -28,6 +28,6 @@ void glow::profileQuantization(Function &G) {
   }
 
   for (const auto &node : nodesToInstrument) {
-    G.createQuantizationProfile("QuantizationProfile", node);
+    F->createQuantizationProfile("QuantizationProfile", node);
   }
 }
