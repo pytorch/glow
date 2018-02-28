@@ -197,6 +197,7 @@ public:
 #include "AutoGenNodes.def"
 
 #define DEF_INSTR(CLASS, NAME) case glow::Kinded::Kind::CLASS##Kind:
+#define DEF_INTRINSIC_INSTR(CLASS, NAME) case glow::Kinded::Kind::CLASS##Kind:
 #define DEF_VALUE(CLASS, NAME) case glow::Kinded::Kind::CLASS##Kind:
 #include "AutoGenInstr.def"
 

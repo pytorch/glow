@@ -112,7 +112,6 @@ public:
 
       break;
     }
-
     case glow::Kinded::Kind::ConvolutionNodeKind: {
       auto *C = cast<ConvolutionNode>(N);
       auto *in = valueForNode(C->getInput());
@@ -629,7 +628,20 @@ public:
       registerIR(N, AC);
       break;
     }
-
+#if GLOW_WITH_CPU == 1
+    case glow::Kinded::Kind::CPUBackend__MaxZeroNodeKind: {
+      auto *MZ = cast<CPUBackend__MaxZeroNode>(N);
+      auto *in = valueForNode(MZ->getInput());
+      auto *res = builder_.createAllocActivationInst("cpubackend__maxzero.res",
+                                                     in->getType());
+      auto *V = builder_.createCPUBackend__MaxZeroInst("cpubackend__maxzero",
+                                                       res, in);
+      V->setName(N->getName());
+      registerIR(N, V->getDest());
+      nodeToInstr_[N] = V;
+      break;
+    }
+#endif // GLOW_WITH_CPU == 1
     case glow::Kinded::Kind::TanhGradNodeKind:
     case glow::Kinded::Kind::SigmoidGradNodeKind:
     case glow::Kinded::Kind::ArithmeticGradNodeKind:

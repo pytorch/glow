@@ -66,11 +66,12 @@ class InstrBuilder {
 
 public:
   InstrBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
-               std::ofstream &B, const std::string &name)
+               std::ofstream &B, const std::string &name,
+               bool isBackendSpecific = false)
       : name_(name), headerStream(H), cppStream(C), defStream(D),
         builderStream(B) {
-    defStream << "DEF_INSTR(" << name << "Inst, " << glow::tolower(name)
-              << ")\n";
+    defStream << (isBackendSpecific ? "DEF_INTRINSIC_INSTR(" : "DEF_INSTR(")
+              << name << "Inst, " << glow::tolower(name) << ")\n";
   }
 
   /// Add an operand to the instruction. The name should start with a capital
@@ -188,8 +189,11 @@ public:
                  "using namespace glow;\n";
     defStream
         << "#ifndef DEF_INSTR\n#error The macro DEF_INSTR was not declared.\n"
-           "#endif\n#ifndef DEF_VALUE\n#error The macro DEF_VALUE was not "
-           "declared.\n"
+           "#endif\n"
+           "#ifndef DEF_VALUE\n#error The macro DEF_VALUE was not declared.\n"
+           "#endif\n"
+           "#ifndef DEF_INTRINSIC_INSTR\n#error The macro DEF_INTRINSIC_INSTR "
+           "was not declared.\n"
            "#endif\n"
            "#ifndef DEF_INSTR_RANGE\n"
            "#define DEF_INSTR_RANGE(ID, FIRST, LAST)\n"
@@ -203,6 +207,7 @@ public:
 
     defStream << "#undef DEF_INSTR_RANGE\n"
                  "#undef DEF_INSTR\n"
+                 "#undef DEF_INTRINSIC_INSTR\n"
                  "#undef DEF_VALUE";
   }
 
@@ -213,6 +218,16 @@ public:
     lastInstr = name;
     return InstrBuilder(headerStream, cppStream, defStream, builderStream,
                         name);
+  }
+
+  /// Declare a new backend-specific instruction and generate code for it.
+  InstrBuilder newBackendSpecificInstr(const std::string &name) {
+    if (firstInstr.empty())
+      firstInstr = name;
+    lastInstr = name;
+    const bool isBackendSpecific = true;
+    return InstrBuilder(headerStream, cppStream, defStream, builderStream, name,
+                        isBackendSpecific);
   }
 
   /// Declare the instruction in the def file but don't generate code for it.
