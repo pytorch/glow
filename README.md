@@ -2,10 +2,25 @@
 
 [![Build Status](https://travis-ci.com/facebookexternal/Glow.svg?token=UwQBGB2pxogBqjigi7Nh&branch=master)](https://travis-ci.com/facebookexternal/Glow)
 
-Glow is a machine learning compiler and inference engine for hardware
-accelerators. This library is designed to be used as a backend for some machine
-learning framework. The compiler is designed to allow state of the art compiler
-optimizations on neural network graphs.
+Glow is a machine learning compiler and execution engine for hardware
+accelerators. This library is designed to be used as a backend for the Caffe2
+machine learning framework. The compiler is designed to allow state of the art
+compiler optimizations and code generation of neural network graphs.  This
+library is experimental and in active development.
+
+## How does it work?
+
+The Glow compiler has three different
+[intermediate representations](./docs/IR.md) at different phases of the
+compilation pipe. The first representation is a high-level graph that resembles
+the original neural network. This representation allows the compiler to perform
+high-level domain specific optimizations. The next level, is a low-level
+bytecode, that represents memory explicitly and allows the compiler to perform
+low-level memory optimizations that are not possible at higher levels.  And
+finally, the target specific intermediate representation that the code
+generators can use to generate efficient machine code.
+
+![](./docs/3LevelIR.png)
 
 ## Getting Started
 
