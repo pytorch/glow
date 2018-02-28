@@ -233,7 +233,7 @@ TEST(Quantization, optimizeRescaleQuantize) {
   EXPECT_EQ(F->getNodes().size(), 4);
   EE.compile(CompilationMode::Infer, F);
   EE.run({}, {});
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F->getNodes().size(), 1);
 
   auto RH = result->getVariable()->getHandle();
   EXPECT_NEAR(RH.at({0, 0}), 21.0, 0.001);
