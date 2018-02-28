@@ -634,15 +634,15 @@ static void optimizeQuantization(Function *F) {
       }
     }
 
-    if (auto *Q = dyn_cast<RescaleQuantizedNode>(node)) {
-      if (Q->getInput()->getType() == Q->getType()) {
+    if (auto *RS = dyn_cast<RescaleQuantizedNode>(node)) {
+      if (RS->getInput()->getType() == RS->getType()) {
 
         // If rescale does not change the type, then simply drop it.
-        Q->getResult().replaceAllUsesOfWith(Q->getInput());
+        RS->getResult().replaceAllUsesOfWith(RS->getInput());
         continue;
       }
 
-      if (auto *AN = dyn_cast<ArithmeticNode>(Q->getInput())) {
+      if (auto *AN = dyn_cast<ArithmeticNode>(RS->getInput())) {
 
         // Rescale(MAX(X, Y)) -> MAX(Rescale(X), Rescale(Y)).
         // It's okay to rescale the operands because even if the output range is
@@ -650,13 +650,13 @@ static void optimizeQuantization(Function *F) {
         // values that are outside of the range we just moved the truncation to
         // a different location.
         if (AN->getMode() == ArithmeticNode::Mode::Max) {
-          auto name = Q->getName();
-          auto *L = F->createRescaleQuantized(name, AN->getLHS(), Q->getType());
-          auto *R = F->createRescaleQuantized(name, AN->getRHS(), Q->getType());
+          auto name = RS->getName();
+          auto *L = F->createRescaleQuantized(name, AN->getLHS(), RS->getType());
+          auto *R = F->createRescaleQuantized(name, AN->getRHS(), RS->getType());
           auto *newAN = F->createArithmetic(AN->getName(), L, R, AN->getMode());
           worklist.push_back(L);
           worklist.push_back(R);
-          Q->getResult().replaceAllUsesOfWith(newAN);
+          RS->getResult().replaceAllUsesOfWith(newAN);
           continue;
         }
 
@@ -664,56 +664,56 @@ static void optimizeQuantization(Function *F) {
         // Rescale(add(X, Y)) -> Add(X, Y)
         if (AN->getMode() == ArithmeticNode::Mode::Add) {
           auto *newAN =
-              F->createArithmetic(AN->getName(), Q->getType(), AN->getLHS(),
+              F->createArithmetic(AN->getName(), RS->getType(), AN->getLHS(),
                                   AN->getRHS(), AN->getMode());
-          Q->getResult().replaceAllUsesOfWith(newAN);
+          RS->getResult().replaceAllUsesOfWith(newAN);
           continue;
         }
       }
 
       // Merge the rescale node into the convolution.
       // Rescale(Conv()) -> Conv()
-      if (auto *CN = dyn_cast<ConvolutionNode>(Q->getInput())) {
+      if (auto *CN = dyn_cast<ConvolutionNode>(RS->getInput())) {
         // Create the exact same convolution but with a different scaling
         // return type.
         auto *newCN =
             F->createConv(CN->getName(), CN->getInput(), CN->getFilter(),
-                          CN->getBias(), Q->getType(), CN->getDepth(),
+                          CN->getBias(), RS->getType(), CN->getDepth(),
                           CN->getKernel(), CN->getStride(), CN->getPad());
-        Q->getResult().replaceAllUsesOfWith(newCN);
+        RS->getResult().replaceAllUsesOfWith(newCN);
         continue;
       }
 
       // Fold the rescale into the previous rescale.
       // Rescale(Rescale()) -> Rescale()
-      if (auto *RS = dyn_cast<RescaleQuantizedNode>(Q->getInput())) {
-        auto *newRS = F->createRescaleQuantized(Q->getName(), RS->getInput(),
-                                                Q->getType());
+      if (auto *RS2 = dyn_cast<RescaleQuantizedNode>(RS->getInput())) {
+        auto *newRS = F->createRescaleQuantized(RS->getName(), RS2->getInput(),
+                                                RS->getType());
         worklist.push_back(newRS);
-        Q->getResult().replaceAllUsesOfWith(newRS);
+        RS->getResult().replaceAllUsesOfWith(newRS);
         continue;
       }
 
       // Merge splat and rescale nodes.
       // Rescale(Splat()) -> Splat()
-      if (auto *SP = dyn_cast<SplatNode>(Q->getInput())) {
-        auto destTy = Q->getType();
+      if (auto *SP = dyn_cast<SplatNode>(RS->getInput())) {
+        auto destTy = RS->getType();
         TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
         int8_t val = quantization::quantize(SP->getValue(), destQ);
-        auto *newRS = F->createSplat(SP->getName(), Q->getType(), val);
+        auto *newRS = F->createSplat(SP->getName(), RS->getType(), val);
 
         worklist.push_back(newRS);
-        Q->getResult().replaceAllUsesOfWith(newRS);
+        RS->getResult().replaceAllUsesOfWith(newRS);
         continue;
       }
 
       // Fold the rescale into the previous quantize.
       // Rescale(Quantize()) -> Quantize()
-      if (auto *QN = dyn_cast<QuantizeNode>(Q->getInput())) {
+      if (auto *QN = dyn_cast<QuantizeNode>(RS->getInput())) {
         auto *newQ =
-            F->createQuantize(QN->getName(), QN->getInput(), Q->getType());
+            F->createQuantize(QN->getName(), QN->getInput(), RS->getType());
         worklist.push_back(newQ);
-        Q->getResult().replaceAllUsesOfWith(newQ);
+        RS->getResult().replaceAllUsesOfWith(newQ);
         continue;
       }
     } // Handle RescaleQuantizedNode
