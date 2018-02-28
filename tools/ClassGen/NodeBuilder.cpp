@@ -218,17 +218,25 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
   }
   os << "    .addParam(\"users\", getNumUsers());\n";
 
+  // clang-format off
   for (const auto &mem : members_) {
     if (mem.first != MemberType::VectorNodeValue) {
       continue;
     }
 
+    os << "  unsigned mIndex = 0;\n";
     os << "  for (auto II : get" << mem.second << "()) {\n"
-       << "    db.addParam(\"" << mem.second << "\", *II->getType());\n  }\n";
+       << "    db.addParam(\"" << mem.second << "\"+std::to_string(mIndex++), *II->getType());\n"
+       << "  }\n";
+  }
+
+  for (const auto &op : nodeOutputs_) {
+    os << "db.addParam(\"" << op.second << "\", *(get" << op.second << "().getType()));\n";
   }
 
   os << "  return db;\n}\n";
 }
+// clang-format on
 
 void NodeBuilder::emitCloner(std::ostream &os) const {
   os << "\nNode* " << name_ << "Node::clone() const {\n";
