@@ -631,6 +631,16 @@ static void optimizeQuantization(Function *F) {
           destHandle.raw(i) = quantization::quantize(srcHandle.raw(i), params);
         }
         Q->getResult().replaceAllUsesOfWith(NV);
+        continue;
+      }
+    }
+
+    if (auto *DQ = dyn_cast<DequantizeNode>(node)) {
+      if (auto *Q = dyn_cast<QuantizeNode>(DQ->getInput())) {
+
+        // Dequantize(Quantize(X)) -> X
+        DQ->getResult().replaceAllUsesOfWith(Q->getInput());
+        continue;
       }
     }
 
