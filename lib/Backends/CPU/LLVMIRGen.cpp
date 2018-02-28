@@ -702,27 +702,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::SGDInstKind: {
-    SGDInst *SGD = cast<SGDInst>(I);
-    auto *weight = SGD->getWeight();
-    auto *W = emitValueAddress(builder, weight);
-    auto *G = emitValueAddress(builder, SGD->getGradient());
-    auto *Gsum = emitValueAddress(builder, SGD->getGsum());
-
-    auto *l1Decay = emitConst(builder, SGD->getL1Decay());
-    auto *l2Decay = emitConst(builder, SGD->getL2Decay());
-    auto *learningRate = emitConst(builder, SGD->getLearningRate());
-    auto *momentum = emitConst(builder, SGD->getMomentum());
-    auto *batchSize = emitConst(builder, (size_t)SGD->getBatchSize());
-    auto *Wsize = emitConst(builder, weight->getType()->size());
-
-    auto *F = getFunction("libjit_sgd_f");
-    assert(F && "Unable to load the function");
-    builder.CreateCall(F, {W, G, Gsum, l1Decay, l2Decay, learningRate, momentum,
-                           batchSize, Wsize});
-    break;
-  }
-
   case Kinded::Kind::SoftMaxInstKind: {
     SoftMaxInst *SM = cast<SoftMaxInst>(I);
     auto *dest = SM->getDest();

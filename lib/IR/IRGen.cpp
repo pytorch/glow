@@ -564,16 +564,6 @@ public:
       registerIR(N, AC);
       break;
     }
-    case glow::Kinded::Kind::SGDNodeKind: {
-      auto *S = cast<SGDNode>(N);
-      assert(S->getGradient().getType() == S->getWeight().getType());
-      builder_.createSGDInst(N->getName(), valueForNode(S->getGradient()),
-                             valueForNode(S->getWeight()),
-                             valueForNode(S->getGsum()), S->getL1Decay(),
-                             S->getL2Decay(), S->getLearningRate(),
-                             S->getMomentum(), S->getBatchSize());
-      break;
-    }
     case glow::Kinded::Kind::QuantizationProfileNodeKind: {
       auto *QPN = cast<QuantizationProfileNode>(N);
       auto *inputTensor = valueForNode(QPN->getInput());

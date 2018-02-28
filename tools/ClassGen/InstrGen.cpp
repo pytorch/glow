@@ -288,20 +288,6 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::In);
 
   //===--------------------------------------------------------------------===//
-  //             Instructions used for network training
-  //===--------------------------------------------------------------------===//
-
-  BB.newInstr("SGD")
-      .addOperand("Gradient", OperandKind::In)
-      .addOperand("Weight", OperandKind::InOut)
-      .addOperand("Gsum", OperandKind::InOut)
-      .addMember(MemberType::Float, "L1Decay")
-      .addMember(MemberType::Float, "L2Decay")
-      .addMember(MemberType::Float, "LearningRate")
-      .addMember(MemberType::Float, "Momentum")
-      .addMember(MemberType::Unsigned, "BatchSize");
-
-  //===--------------------------------------------------------------------===//
   //             Instructions used for debugging/profiling/printing
   //===--------------------------------------------------------------------===//
 
