@@ -111,17 +111,17 @@ unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
 ///
 /// The results for the perplexity are expected to look as:
 ///
-/// Iteration 1: 105.457855225
-/// Iteration 2: 82.3274154663
-/// Iteration 4: 70.8093948364
-/// Iteration 6: 63.8546295166
-/// Iteration 8: 58.4329605103
-/// Iteration 10: 53.7942848206
-/// Iteration 12: 49.7213783264
-/// Iteration 14: 46.1715202332
-/// Iteration 16: 43.1473731995
-/// Iteration 18: 40.5604858398
-/// Iteration 20: 38.2837104797
+/// Iteration 1: 105.4579
+/// Iteration 2: 82.3274
+/// Iteration 4: 70.8094
+/// Iteration 6: 63.8546
+/// Iteration 8: 58.4330
+/// Iteration 10: 53.7943
+/// Iteration 12: 49.7214
+/// Iteration 14: 46.1715
+/// Iteration 16: 43.1474
+/// Iteration 18: 40.5605
+/// Iteration 20: 38.2837
 ///
 /// For reference, we expect the usage of an LSTM instead of the current
 /// simple RNN block will improve the perplexity to ~20.
@@ -131,13 +131,13 @@ void testPTB() {
   Tensor inputWords;
   Tensor targetWords;
 
-  size_t minibatchSize = 10;
-  size_t numSteps = 10;
-  size_t numEpochs = 20;
+  const size_t minibatchSize = 10;
+  const size_t numSteps = 10;
+  const size_t numEpochs = 20;
 
-  size_t hiddenSize = 20;
-  size_t vocabSize = 500;
-  size_t maxNumWords = 10000;
+  const size_t hiddenSize = 20;
+  const size_t vocabSize = 500;
+  const size_t maxNumWords = 10000;
 
   float learningRate = .1;
 
@@ -198,6 +198,8 @@ void testPTB() {
 
   std::cout << "Training for " << numBatches << " rounds" << std::endl;
 
+  float metricValues[numEpochs];
+
   for (size_t iter = 0; iter < numEpochs; iter++) {
     std::cout << "Training - iteration #" << (iter + 1) << std::endl;
 
@@ -235,14 +237,26 @@ void testPTB() {
                   << std::exp(perplexity / perplexityWordsCount) << std::endl;
       }
     }
-    std::cout << "perplexity: " << std::exp(perplexity / perplexityWordsCount)
-              << std::endl;
+    metricValues[iter] = std::exp(perplexity / perplexityWordsCount);
+    std::cout << "perplexity: " << metricValues[iter] << std::endl << std::endl;
+
     timer.stopTimer();
   }
+
+  std::cout << "Perplexity scores in copy-pastable format:\n";
+  for (size_t iter = 0; iter < numEpochs; iter++) {
+    if (iter != 0 && iter % 2 == 0)
+      continue;
+    std::cout << "/// Iteration " << iter + 1 << ": " << metricValues[iter]
+              << std::endl;
+  }
+  std::cout << "Note, that small 1E-4 error is considered acceptable and may "
+            << "be coming from fast math optimizations.\n";
 }
 
 int main() {
-  std::cout << std::setprecision(12);
+  std::cout.setf(std::ios::fixed);
+  std::cout << std::setprecision(4);
   testPTB();
 
   return 0;
