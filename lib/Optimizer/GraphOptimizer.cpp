@@ -707,6 +707,15 @@ static void optimizeQuantization(Function *F) {
         continue;
       }
 
+      // Fold the rescale into the previous quantize.
+      // Rescale(Quantize()) -> Quantize()
+      if (auto *QN = dyn_cast<QuantizeNode>(Q->getInput())) {
+        auto *newQ =
+            F->createQuantize(QN->getName(), QN->getInput(), Q->getType());
+        worklist.push_back(newQ);
+        Q->getResult().replaceAllUsesOfWith(newQ);
+        continue;
+      }
     } // Handle RescaleQuantizedNode
   }   // For each item in the worklist.
 }
