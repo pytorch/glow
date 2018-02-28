@@ -1330,55 +1330,6 @@ void Interpreter::fwdBatchedReduceAddInst(bool isTrain,
 }
 
 //===----------------------------------------------------------------------===//
-//                       Training Instructions
-//===----------------------------------------------------------------------===//
-
-void Interpreter::fwdSGDInst(bool isTrain, const glow::SGDInst *I) {
-  auto W = getWeightHandle(I->getWeight());
-  auto G = getWeightHandle(I->getGradient());
-  auto Gsum = Handle<float>::createInvalidHandle();
-
-  /// Described in the paper: Alex Krizhevsky [2014]
-  // "One weird trick for parallelizing convolutional neural networks"
-
-  if (I->getMomentum() > 0.0) {
-    Gsum = getWeightHandle(I->getGsum());
-  }
-
-  assert(W.dims() == G.dims() && "Invalid tensor sizes");
-
-  float L1Decay = I->getL1Decay();
-  float L2Decay = I->getL2Decay();
-  float learningRate = I->getLearningRate();
-  float momentum = I->getMomentum();
-  float batchSize = I->getBatchSize();
-  auto sz = W.size();
-
-  // For each weight/gradient pair:
-  for (size_t x = 0; x < sz; x++) {
-    // Do a simple SGD update:
-    float L1Grad = L1Decay * (W.raw(x) > 0 ? 1 : -1);
-    float L2Grad = L2Decay * (W.raw(x));
-    float gij = (L2Grad + L1Grad + G.raw(x)) / batchSize;
-
-    // Use the momentum to improve the gradient descent:
-    // http://ufldl.stanford.edu/tutorial/supervised/
-    // OptimizationStochasticGradientDescent/
-    if (momentum > 0.0) {
-      // Momentum update:
-      float dx = momentum * Gsum.raw(x) - learningRate * gij;
-      // Save this value for the next iteration:
-      Gsum.raw(x) = dx;
-      // Apply the gradient.
-      W.raw(x) += dx;
-    } else {
-      // Use regular SGD:
-      W.raw(x) -= learningRate * gij;
-    }
-  }
-}
-
-//===----------------------------------------------------------------------===//
 //                Instructions used by RNN
 //===----------------------------------------------------------------------===//
 

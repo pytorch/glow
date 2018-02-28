@@ -623,24 +623,6 @@ void libjit_dequantize_f(float *outW, const int8_t *inW, size_t numElem,
   }
 }
 
-void libjit_sgd_f(float *W, const float *G, float *Gsum, float L1Decay,
-                  float L2Decay, float learningRate, float momentum,
-                  size_t batchSize, size_t Wsize) {
-  for (size_t i = 0; i < Wsize; i++) {
-    float L1Grad = L1Decay * (W[i] > 0 ? 1 : -1);
-    float L2Grad = L2Decay * W[i];
-    float Gij = (L2Grad + L1Grad + G[i]) / batchSize;
-
-    if (momentum > 0.0) {
-      float dx = momentum * Gsum[i] - learningRate * Gij;
-      Gsum[i] = dx;
-      W[i] += dx;
-    } else {
-      W[i] -= learningRate * Gij;
-    }
-  }
-}
-
 void libjit_softmax_f(const float *inW, float *outW, const size_t *idim,
                       const size_t *odim) {
   for (size_t n = 0; n < idim[0]; n++) {
