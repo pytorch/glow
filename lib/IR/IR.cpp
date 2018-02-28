@@ -51,6 +51,7 @@ bool glow::isTensorView(glow::Value *v) { return isa<TensorViewInst>(v); }
 bool Instruction::classof(const Value *V) {
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)
+#define DEF_INTRINSIC_INSTR(CLASS, NAME)
 #define DEF_INSTR_RANGE(CLASS, FIRST, LAST)                                    \
   constexpr auto First_##CLASS = Kinded::Kind::FIRST##Kind;                    \
   constexpr auto Last_##CLASS = Kinded::Kind::LAST##Kind;
@@ -109,6 +110,9 @@ void Instruction::verify() const {
 #define DEF_INSTR(CLASS, NAME)                                                 \
   if (auto *X = dyn_cast<const CLASS>(this))                                   \
     X->verify();
+#define DEF_INTRINSIC_INSTR(CLASS, NAME)                                       \
+  if (auto *X = dyn_cast<const CLASS>(this))                                   \
+    X->verify();
 #define DEF_VALUE(CLASS, NAME)
 #include "AutoGenInstr.def"
 }
@@ -132,6 +136,11 @@ void IRFunction::destroyInstruction(Instruction *I) {
     llvm_unreachable("Unknown value kind");
     break;
 #define DEF_INSTR(CLASS, NAME)                                                 \
+  case Kinded::Kind::CLASS##Kind: {                                            \
+    delete llvm::cast<CLASS>(I);                                               \
+    break;                                                                     \
+  }
+#define DEF_INTRINSIC_INSTR(CLASS, NAME)                                       \
   case Kinded::Kind::CLASS##Kind: {                                            \
     delete llvm::cast<CLASS>(I);                                               \
     break;                                                                     \
@@ -392,6 +401,12 @@ static void dumpIR(const Value *V, llvm::raw_ostream &out) {
     X->dump(out);                                                              \
     break;                                                                     \
   }
+#define DEF_INTRINSIC_INSTR(CLASS, NAME)                                       \
+  case Kinded::Kind::CLASS##Kind: {                                            \
+    auto *X = llvm::cast<const CLASS>(V);                                      \
+    X->dump(out);                                                              \
+    break;                                                                     \
+  }
 #define DEF_VALUE(CLASS, NAME)                                                 \
   case Kinded::Kind::CLASS##Kind: {                                            \
     auto *X = llvm::cast<const CLASS>(V);                                      \
@@ -463,6 +478,9 @@ void Value::dumpInContext() const { dumpInContext(llvm::outs()); }
 bool Instruction::isInplaceOp(const Instruction *I, unsigned dstIdx,
                               unsigned srcIdx) {
 #define DEF_INSTR(CLASS, NAME)                                                 \
+  if (const auto *X = dyn_cast<const CLASS>(I))                                \
+    return X->isInplaceOp(dstIdx, srcIdx);
+#define DEF_INTRINSIC_INSTR(CLASS, NAME)                                       \
   if (const auto *X = dyn_cast<const CLASS>(I))                                \
     return X->isInplaceOp(dstIdx, srcIdx);
 #define DEF_VALUE(CLASS, NAME)

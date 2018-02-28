@@ -99,6 +99,7 @@ void Interpreter::doForwardPass(bool isTrain) {
     fwd##CLASS(isTrain, llvm::cast<CLASS>(I));                                 \
     break;                                                                     \
   }
+#define DEF_INTRINSIC_INSTR(CLASS, NAME)
   // Dispatch the interpreter on each instruction in the program:
   for (auto *I : F_->getInstrs()) {
     switch (I->getKind()) {

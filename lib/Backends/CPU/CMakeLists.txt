@@ -37,7 +37,9 @@ add_library(CPUBackend
             Pipeline.cpp
             Transforms.cpp
             LLVMIRGen.cpp
-            CPUBackend.cpp)
+            CPUBackend.cpp
+            NodeVerify.cpp
+            InstrVerify.cpp)
 
 llvm_map_components_to_libnames(LLVM_TARGET_LIBRARIES ${LLVM_TARGETS_TO_BUILD})
 target_link_libraries(CPUBackend
@@ -64,4 +66,3 @@ target_link_libraries(CPUBackend
                         LLVMSupport
                         LLVMPasses)
 add_dependencies(CPUBackend GlowCPURuntime)
-

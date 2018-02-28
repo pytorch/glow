@@ -774,20 +774,18 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::IntrinsicInstKind: {
-    IntrinsicInst *II = cast<IntrinsicInst>(I);
-    if (II->getIdentifier().equals("jit.max0")) {
-      auto *dest = II->getOperand(0).first;
-      auto *src = II->getOperand(1).first;
-      auto *destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
-      auto *lhsPtr = emitValueAddress(builder, src, ElemKind::FloatTy);
-      auto cnt = emitValueSize(builder, dest);
-      auto *F = getFunction("libjit_elementmax0_f");
-      assert(F && "Unable to load the function");
-      builder.CreateCall(F, {destPtr, lhsPtr, cnt});
-      break;
-    }
+  case Kinded::Kind::CPUBackend__MaxZeroInstKind: {
+    CPUBackend__MaxZeroInst *MZ = cast<CPUBackend__MaxZeroInst>(I);
+    auto *destPtr = emitValueAddress(builder, MZ->getDest(), ElemKind::FloatTy);
+    auto *lhsPtr = emitValueAddress(builder, MZ->getSrc(), ElemKind::FloatTy);
+    auto cnt = emitValueSize(builder, MZ->getDest());
+    auto *F = getFunction("libjit_elementmax0_f");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {destPtr, lhsPtr, cnt});
+    break;
+  }
 
+  case Kinded::Kind::IntrinsicInstKind: {
     llvm_unreachable("Unknown intrinsic");
   }
 

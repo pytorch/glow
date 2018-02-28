@@ -47,6 +47,7 @@ class Kinded {
 public:
   enum class Kind {
 #define DEF_INSTR(CLASS, NAME) CLASS##Kind,
+#define DEF_INTRINSIC_INSTR(CLASS, NAME) CLASS##Kind,
 #define DEF_VALUE(CLASS, NAME) CLASS##Kind,
 #include "AutoGenInstr.def"
 #define DEF_NODE(CLASS, NAME) CLASS##Kind,
@@ -56,6 +57,7 @@ public:
   static const char *getKindName(Kind IK) {
     const char *names[] = {
 #define DEF_INSTR(CLASS, NAME) #NAME,
+#define DEF_INTRINSIC_INSTR(CLASS, NAME) #NAME,
 #define DEF_VALUE(CLASS, NAME) #NAME,
 #include "AutoGenInstr.def"
 #define DEF_NODE(CLASS, NAME) #NAME,
