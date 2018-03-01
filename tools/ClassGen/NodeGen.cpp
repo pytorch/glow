@@ -56,17 +56,25 @@ int main(int argc, char **argv) {
                     "Bias tensors, as well as provided Kernel, Stride, Pad, "
                     "and Depth.");
 
-  BB.newNode("Pool")
-      .addEnumCase("Max")
-      .addEnumCase("Avg")
+  BB.newNode("PoolMax")
       .addInput("Input")
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
       .addMember(MemberType::SizeT, "Pad")
       .addResultFromCtorArg()
       .addGradient()
-      .setDocstring("Performs a Pool operation (either Max or Avg) on the "
-                    "Input given provided Kernel, Stride, and Pad.");
+      .setDocstring("Performs a Max Pool operation on the Input given provided "
+                    "Kernel, Stride, and Pad.");
+
+  BB.newNode("PoolAvg")
+      .addInput("Input")
+      .addMember(MemberType::SizeT, "Kernel")
+      .addMember(MemberType::SizeT, "Stride")
+      .addMember(MemberType::SizeT, "Pad")
+      .addResultFromCtorArg()
+      .addGradient()
+      .setDocstring("Performs an Average Pool operation on the Input given "
+                    "provided Kernel, Stride, and Pad.");
 
   BB.newNode("FullyConnected")
       .addInput("Input")

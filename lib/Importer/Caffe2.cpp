@@ -214,9 +214,6 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "MaxPool" || typeName == "AveragePool") {
-    using OpKind = PoolNode::Mode;
-    OpKind opk = (typeName == "MaxPool") ? OpKind::Max : OpKind::Avg;
-
     // Load the inputs:
     auto *in = getOrCreateNodeByName(op.input(0));
     int stride = loadInt(dict["stride"]);
@@ -242,7 +239,12 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       kernel = Ty->dims()[3];
     }
 
-    auto *node = G_.createPool(op.name(), tr, opk, kernel, stride, pad);
+    Node *node = nullptr;
+    if (typeName == "MaxPool") {
+      node = G_.createPoolMax(op.name(), tr, kernel, stride, pad);
+    } else {
+      node = G_.createPoolAvg(op.name(), tr, kernel, stride, pad);
+    }
     auto *N = G_.createTranspose(op.name(), node, NHWC2NCHW);
 
     // Save the outputs:

@@ -179,7 +179,7 @@ void inferPoolAvgNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   Function *F = mod.createFunction("main");
   auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
                                  "input", Variable::VisibilityKind::Public);
-  auto *pool = F->createPool("pool", var, PoolNode::Mode::Avg, 3, 3, 1);
+  auto *pool = F->createPoolAvg("pool", var, 3, 3, 1);
   auto result = F->createSave("ret", pool);
   EE.compile(CompilationMode::Infer, F);
   EE.run({var}, {inputs});
@@ -205,7 +205,7 @@ void trainPoolAvgNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   cast<Variable>(fc->getWeights())->copyFrom(weights);
   cast<Variable>(fc->getBias())->copyFrom(bias);
   auto *reshape1 = F->createReshape("reshape1", fc, shape1);
-  auto *pool = F->createPool("pool", reshape1, PoolNode::Mode::Avg, 2, 2, 0);
+  auto *pool = F->createPoolAvg("pool", reshape1, 2, 2, 0);
   auto *reshape2 = F->createReshape("reshape2", pool, shape2);
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
   auto result = F->createSave("ret", softmax);
@@ -225,7 +225,7 @@ void inferPoolMaxNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   Function *F = mod.createFunction("main");
   auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
                                  "input", Variable::VisibilityKind::Public);
-  auto *pool = F->createPool("pool", var, PoolNode::Mode::Max, 4, 2, 3);
+  auto *pool = F->createPoolMax("pool", var, 4, 2, 3);
   auto result = F->createSave("ret", pool);
   EE.compile(CompilationMode::Infer, F);
   EE.run({var}, {inputs});
@@ -251,7 +251,7 @@ void trainPoolMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   cast<Variable>(fc->getWeights())->copyFrom(weights);
   cast<Variable>(fc->getBias())->copyFrom(bias);
   auto *reshape1 = F->createReshape("reshape1", fc, shape1);
-  auto *pool = F->createPool("pool", reshape1, PoolNode::Mode::Max, 5, 3, 4);
+  auto *pool = F->createPoolMax("pool", reshape1, 5, 3, 4);
   auto *reshape2 = F->createReshape("reshape2", pool, shape2);
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
   auto result = F->createSave("ret", softmax);
@@ -407,7 +407,7 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *conv = F->createConv("conv", tr, 4, 5, 2, 1);
   cast<Variable>(conv->getFilter())->getHandle().clear(2);
   cast<Variable>(conv->getBias())->getHandle().clear(2);
-  auto *pool = F->createPool("pool", conv, PoolNode::Mode::Max, 2, 2, 0);
+  auto *pool = F->createPoolMax("pool", conv, 2, 2, 0);
   auto result = F->createSave("ret", pool);
   EE.compile(CompilationMode::Infer, F);
   EE.run({var}, {inputs});
@@ -481,7 +481,7 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
   cast<Variable>(fc1->getWeights())->getHandle().clear(0.6);
   auto *reshape1 = F->createReshape("reshape1", fc1, {8, 14, 28, 6});
   auto *relu1 = F->createRELU("relu1", reshape1);
-  auto *pool1 = F->createPool("pool1", relu1, PoolNode::Mode::Max, 2, 2, 1);
+  auto *pool1 = F->createPoolMax("pool1", relu1, 2, 2, 1);
   auto *add =
       F->createArithmetic("add", sigmoid1, pool1, ArithmeticNode::Mode::Add);
   auto *tanh = F->createTanh("tanh", add);
@@ -498,7 +498,7 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
   auto *sub =
       F->createArithmetic("sub", reshape3, var4, ArithmeticNode::Mode::Sub);
   auto *relu2 = F->createRELU("relu2", sub);
-  auto *pool2 = F->createPool("pool2", relu2, PoolNode::Mode::Avg, 3, 2, 1);
+  auto *pool2 = F->createPoolAvg("pool2", relu2, 3, 2, 1);
   auto *sigmoid3 = F->createSigmoid("sigmoid3", pool2);
   auto result = F->createSave("ret", sigmoid3);
   EE.compile(CompilationMode::Infer, F);

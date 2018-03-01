@@ -86,11 +86,11 @@ void testMNIST() {
 
   auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2);
   auto *RL0 = F->createRELU("relu", CV0);
-  auto *MP0 = F->createPool("pool", RL0, PoolNode::Mode::Max, 3, 3, 0);
+  auto *MP0 = F->createPoolMax("pool", RL0, 3, 3, 0);
 
   auto *CV1 = F->createConv("conv", MP0, 16, 5, 1, 2);
   auto *RL1 = F->createRELU("relu", CV1);
-  auto *MP1 = F->createPool("pool", RL1, PoolNode::Mode::Max, 3, 3, 0);
+  auto *MP1 = F->createPoolMax("pool", RL1, 3, 3, 0);
 
   auto *FCL1 = F->createFullyConnected("fc", MP1, 10);
   Variable *selected = mod.createVariable(

@@ -153,31 +153,30 @@ public:
       registerIR(CG->getGradOfInputNamedBias(), biasG);
       break;
     }
-    case glow::Kinded::Kind::PoolNodeKind: {
-      auto *P = cast<PoolNode>(N);
+    case glow::Kinded::Kind::PoolMaxNodeKind: {
+      auto *P = cast<PoolMaxNode>(N);
       auto *in = valueForNode(P->getInput());
-      Instruction *V = nullptr;
-      Value *dest;
-      if (P->getMode() == PoolNode::Mode::Max) {
-        auto *tmpInst = builder_.createPoolMaxWithXYOp(
-            in, P->getKernel(), P->getStride(), P->getPad());
-        dest = tmpInst->getDest();
-        V = tmpInst;
-        nodeToInstr_[N] = V;
-      } else {
-        auto *tmpInst = builder_.createPoolAvgOp(in, P->getKernel(),
-                                                 P->getStride(), P->getPad());
-        dest = tmpInst->getDest();
-        V = tmpInst;
-      }
-
+      auto *V = builder_.createPoolMaxWithXYOp(in, P->getKernel(),
+                                               P->getStride(), P->getPad());
+      Value *dest = V->getDest();
+      nodeToInstr_[N] = V;
+      V->setName(N->getName());
+      registerIR(N, dest);
+      break;
+    }
+    case glow::Kinded::Kind::PoolAvgNodeKind: {
+      auto *P = cast<PoolAvgNode>(N);
+      auto *in = valueForNode(P->getInput());
+      auto *V = builder_.createPoolAvgOp(in, P->getKernel(), P->getStride(),
+                                         P->getPad());
+      Value *dest = V->getDest();
       V->setName(N->getName());
       registerIR(N, dest);
       break;
     }
 
-    case glow::Kinded::Kind::PoolGradNodeKind: {
-      auto *PG = cast<PoolGradNode>(N);
+    case glow::Kinded::Kind::PoolMaxGradNodeKind: {
+      auto *PG = cast<PoolMaxGradNode>(N);
 
       auto poolOut = PG->getOriginalOutputForResult();
       auto *outW = valueForNode(poolOut);
@@ -186,24 +185,32 @@ public:
       auto *inG = builder_.createAllocActivationInst("pool.outG",
                                                      PG->getInput()->getType());
 
-      if (PG->getMode() == PoolGradNode::Mode::Max) {
-        // Find the original pool instruction.
-        assert(nodeToInstr_.count(poolOut) &&
-               "Pool IRgen did not register itself");
-        auto *PI = cast<PoolMaxWithXYInst>(nodeToInstr_[poolOut.getNode()]);
+      // Find the original pool instruction.
+      assert(nodeToInstr_.count(poolOut) &&
+             "Pool IRgen did not register itself");
+      auto *PI = cast<PoolMaxWithXYInst>(nodeToInstr_[poolOut.getNode()]);
 
-        builder_.createPoolMaxWithXYGradInst(N->getName(), outW, PI->getSrcXY(),
-                                             outG, inG, PG->getKernel(),
-                                             PG->getStride(), PG->getPad());
-        registerIR(PG->getGradOfInputNamedInput(), inG);
-        break;
-      } else {
-        builder_.createPoolAvgGradInst(N->getName(), outW, outG, inG,
-                                       PG->getKernel(), PG->getStride(),
-                                       PG->getPad());
-        registerIR(PG->getGradOfInputNamedInput(), inG);
-        break;
-      }
+      builder_.createPoolMaxWithXYGradInst(N->getName(), outW, PI->getSrcXY(),
+                                           outG, inG, PG->getKernel(),
+                                           PG->getStride(), PG->getPad());
+      registerIR(PG->getGradOfInputNamedInput(), inG);
+      break;
+    }
+    case glow::Kinded::Kind::PoolAvgGradNodeKind: {
+      auto *PG = cast<PoolAvgGradNode>(N);
+
+      auto poolOut = PG->getOriginalOutputForResult();
+      auto *outW = valueForNode(poolOut);
+      auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
+
+      auto *inG = builder_.createAllocActivationInst("pool.outG",
+                                                     PG->getInput()->getType());
+
+      builder_.createPoolAvgGradInst(N->getName(), outW, outG, inG,
+                                     PG->getKernel(), PG->getStride(),
+                                     PG->getPad());
+      registerIR(PG->getGradOfInputNamedInput(), inG);
+      break;
     }
     case glow::Kinded::Kind::BatchedMatMulNodeKind: {
       auto *BMM = cast<BatchedMatMulNode>(N);

@@ -166,7 +166,7 @@ TEST(Network, gradientCheckConv) {
                                 Variable::TrainKind::None);
 
   Node *O = F->createConv("conv", A, 4, 5, 1, 2);
-  O = F->createPool("pool", O, PoolNode::Mode::Max, 3, 3, 0);
+  O = F->createPoolMax("pool", O, 3, 3, 0);
   O = F->createFullyConnected("fc", O, numOutputElem);
   O = F->createRELU("relu", O);
   O = F->createRegression("reg", O, Ex);
@@ -199,7 +199,7 @@ TEST(Network, gradientCheckAvgPool) {
                                  Variable::VisibilityKind::Public,
                                  Variable::TrainKind::None);
 
-  Node *O = F->createPool("pool", A, PoolNode::Mode::Avg, 3, 3, 0);
+  Node *O = F->createPoolAvg("pool", A, 3, 3, 0);
   O = F->createFullyConnected("fc", O, numOutputElem);
   O = F->createRegression("reg", O, Exp);
   auto *result = F->createSave("ret", O);
