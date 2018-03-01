@@ -1,6 +1,8 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 
+#include "llvm/Support/CommandLine.h"
+
 #include <algorithm>
 #include <fstream>
 #include <iostream>
@@ -105,6 +107,10 @@ struct Model {
   void loadLanguages();
   void loadEncoder();
   void loadDecoder();
+
+  void dumpGraphDAG(const char *filename) {
+    EE_.getModule().getFunction("main")->dumpDAG(filename);
+  }
 
   Model() { EE_.getModule().createFunction("main"); }
 
@@ -299,13 +305,28 @@ void translate(Model *seq2seq, llvm::StringRef sentence) {
   std::cout << "\n\n";
 }
 
-int main() {
+llvm::cl::OptionCategory debugCat("Glow Debugging Options");
+
+llvm::cl::opt<std::string> dumpGraphDAGFileOpt(
+    "dumpGraphDAG",
+    llvm::cl::desc("Dump the graph to the given file in DOT format."),
+    llvm::cl::value_desc("file.dot"), llvm::cl::cat(debugCat));
+
+int main(int argc, char **argv) {
+  llvm::cl::HideUnrelatedOptions({debugCat});
+  llvm::cl::ParseCommandLineOptions(
+      argc, argv, "Translate sentences from French to English");
+
   Model seq2seq;
   seq2seq.loadLanguages();
   seq2seq.loadEncoder();
   seq2seq.loadDecoder();
 
-  std::cout << "Please enter a sentence in French, such that it's English "
+  if (!dumpGraphDAGFileOpt.empty()) {
+    seq2seq.dumpGraphDAG(dumpGraphDAGFileOpt.c_str());
+  }
+
+  std::cout << "Please enter a sentence in French, such that its English "
             << "translation starts with one of the following:\n"
             << "\ti am\n"
             << "\the is\n"
@@ -313,13 +334,14 @@ int main() {
             << "\tyou are\n"
             << "\twe are\n"
             << "\tthey are\n"
+            << "\n"
             << "Here are some examples:\n"
-            << "nous sommes desormais en securite .\n"
-            << "vous etes puissantes .\n"
-            << "il etudie l histoire a l universite .\n"
-            << "je ne suis pas timide .\n"
-            << "j y songe encore .\n"
-            << "je suis maintenant a l aeroport .\n\n";
+            << "\tnous sommes desormais en securite .\n"
+            << "\tvous etes puissantes .\n"
+            << "\til etudie l histoire a l universite .\n"
+            << "\tje ne suis pas timide .\n"
+            << "\tj y songe encore .\n"
+            << "\tje suis maintenant a l aeroport .\n\n";
 
   std::string sentence;
   while (getline(std::cin, sentence)) {
