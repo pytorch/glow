@@ -86,6 +86,18 @@ perform constant propagation, etc. The semantics of variables in the program,
 both private and public, is that all writes must happen before the end of the
 execution of the program.
 
+### Predicates
+
+Predicates are boolean variables that control the execution of some node or
+instruction. If the value of the predicate at runtime is set to 'false' then the
+predicated node or instructions may return any value. The program should know to
+ignore the output of the predicated instruction because it could be zeros or
+uninitialized memory. Predication is a way to accelerate the performance of the
+network by avoiding some computation. The type of the predicate must be a
+scalar, or a vector that matches the batch size.
+
+![](pred.png)
+
 ### Mid-level Graph
 
 The low-level IR enables a different kind of target independent optimizations
