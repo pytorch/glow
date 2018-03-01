@@ -224,22 +224,10 @@ float dequantize(int8_t input, const TensorQuantizationParams &TQP) {
 
 /// \returns true if \p node should be quantized.
 static bool shouldQuantize(const Node *node) {
-  bool canQuantize =
-      llvm::isa<FullyConnectedNode>(node) || llvm::isa<ConvolutionNode>(node) ||
-      llvm::isa<ReluNode>(node) || llvm::isa<TransposeNode>(node) ||
-      llvm::isa<ReshapeNode>(node) || llvm::isa<ArithmeticNode>(node) ||
-      llvm::isa<ConcatNode>(node);
-  if (canQuantize) {
-    return true;
-  }
-
-  // TODO: Add support for Avg pool operation.
-  if (llvm::isa<PoolNode>(node) &&
-      llvm::dyn_cast<PoolNode>(node)->getMode() == PoolNode::Mode::Max) {
-    return true;
-  }
-
-  return false;
+  return llvm::isa<FullyConnectedNode>(node) ||
+         llvm::isa<ConvolutionNode>(node) || llvm::isa<ReluNode>(node) ||
+         llvm::isa<TransposeNode>(node) || llvm::isa<ReshapeNode>(node) ||
+         llvm::isa<ArithmeticNode>(node) || llvm::isa<ConcatNode>(node);
 }
 
 /// Quantize all inputs for \p node and return back pointers to the newly
