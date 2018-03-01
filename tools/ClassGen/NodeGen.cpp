@@ -191,9 +191,8 @@ int main(int argc, char **argv) {
                     "The result is a three dimensional tensor."
                     "Example: (1, A, Z) x (N, Z, B) => (N, A, B)");
 
-  BB.newNode("BatchedReduce")
+  BB.newNode("BatchedReduceAdd")
       .addInput("Batch")
-      .addEnumCase("Add")
       .addResultFromCtorArg()
       .setDocstring("Accumulates all of the layers in the batch and produce a "
                     "tensor that has the same dimensions as the input tensor "

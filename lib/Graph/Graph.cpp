@@ -727,13 +727,12 @@ BatchedMatMulNode *Function::createBatchedMatMul(llvm::StringRef name,
   return createBatchedMatMul(name, ty, lhs, rhs);
 }
 
-BatchedReduceNode *Function::createBatchedReduce(llvm::StringRef name,
-                                                 BatchedReduceNode::Mode mode,
-                                                 NodeValue batch) {
+BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
+                                                       NodeValue batch) {
   auto BT = batch.getType();
   auto RT = Type(BT->getElementType(), BT->dims().drop_front());
   return addNode(
-      new BatchedReduceNode(name, getParent()->uniqueType(RT), mode, batch));
+      new BatchedReduceAddNode(name, getParent()->uniqueType(RT), batch));
 }
 
 BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name,
