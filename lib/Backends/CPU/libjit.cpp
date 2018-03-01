@@ -401,7 +401,7 @@ void libjit_local_response_normalization_grad_f(
           float inw = inW[libjit_getXYZW(outWdims, n, h, w, c)];
           float scale = scaleCache[libjit_getXYZW(outWdims, n, h, w, c)];
           inG[libjit_getXYZW(outWdims, n, h, w, c)] =
-              outg * pow(scale, -beta) - 2 * normedAlpha * beta * inw * sum;
+              outg * pow(scale, -beta) - coeff * inw * sum;
         }
       } // W
     }   // H
