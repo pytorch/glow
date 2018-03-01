@@ -43,6 +43,8 @@ public:
 
   SoftMaxInst *createSoftMaxOp(Value *input);
 
+  SoftMaxWithLossInst *createSoftMaxWithLossOp(Value *input, Value *labels);
+
   CrossEntropyLossInst *createCrossEntropyLossOp(Value *P, Value *labels);
 
   ReshapeInst *createReshapeOp(Value *input, llvm::ArrayRef<size_t> shape);

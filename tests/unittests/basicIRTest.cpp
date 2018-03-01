@@ -97,6 +97,7 @@ TEST(IR, allInstrs) {
     auto *I4 = builder.createWeightVar(ElemKind::FloatTy, {1, 12, 12, 3});
     auto *I6 = builder.createWeightVar(ElemKind::FloatTy, {2, 12, 12, 64});
     auto *I8 = builder.createWeightVar(ElemKind::FloatTy, {1, 24, 3, 24}, "I8");
+    auto *I9 = builder.createWeightVar(T1, "I4");
     auto *ComputationInfo =
         builder.createWeightVar(ElemKind::FloatTy, {2}, "ComputationInfo");
 
@@ -121,7 +122,7 @@ TEST(IR, allInstrs) {
     builder.createPoolMaxInst("", I4, I0, 7, 2, 3);
     builder.createSigmoidInst("", I1, I0);
     builder.createTanhInst("", I1, I0);
-    builder.createSoftMaxInst("", I1, I0);
+    builder.createSoftMaxWithLossInst("", I1, I9, I0, I2);
     builder.createTransposeInst("", I8, I2, {0, 3, 1, 2});
     builder.createTensorView(ElemKind::FloatTy, {1, 24, 3, 24}, I2, "I2_view");
     builder.createInsertTensorInst("", I6, I3, {0, 0, 0, 0});

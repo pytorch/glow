@@ -221,7 +221,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
       continue;
     }
 
-    if (auto *SM = dyn_cast<SoftMaxInst>(I)) {
+    if (auto *SM = dyn_cast<SoftMaxWithLossInst>(I)) {
       // Implement Softmax by parallelizing the batch dimension. Each sample in
       // the batch is processed by a different parallel 'thread'.
       cl_kernel kernel = createKernel(program_, kernelName);

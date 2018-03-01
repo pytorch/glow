@@ -338,18 +338,17 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
-  if (typeName == "Softmax") {
-    auto *softmaxExpected = getOrCreateNodeByName("softmax_expected");
-
+  if (typeName == "SoftmaxWithLoss") {
     // Load the inputs:
     Node *in = getOrCreateNodeByName(op.input(0));
+    Node *labels = getOrCreateNodeByName(op.input(1));
 
     // Caffe2 allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
     // softmax function. This is similar to a bitcast operation.
     auto flatten = flattenCdr(in->getType()->dims());
     in = G_.createReshape("reshape", in, {flatten.first, flatten.second});
 
-    auto *node = G_.createSoftMax(op.name(), in, softmaxExpected);
+    auto *node = G_.createSoftMaxWithLoss(op.name(), in, labels);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;

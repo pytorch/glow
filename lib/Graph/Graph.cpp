@@ -472,9 +472,11 @@ TanhNode *Function::createTanh(llvm::StringRef name, NodeValue input) {
   return addNode(new TanhNode(name, input));
 }
 
-SoftMaxNode *Function::createSoftMax(llvm::StringRef name, NodeValue input,
-                                     NodeValue selected) {
-  return addNode(new SoftMaxNode(name, input, selected));
+SoftMaxWithLossNode *Function::createSoftMaxWithLoss(llvm::StringRef name,
+                                                     glow::NodeValue input,
+                                                     glow::NodeValue selected) {
+  auto ty = getParent()->uniqueTypeWithNewShape(input.getType(), {1});
+  return addNode(new SoftMaxWithLossNode(name, ty, input, selected));
 }
 
 CrossEntropyLossNode *Function::createCrossEntropyLoss(llvm::StringRef name,
@@ -654,6 +656,11 @@ LocalResponseNormalizationNode *Function::createLocalResponseNormalization(
   // The output tensor is of the same shape as the input tensor.
   return addNode(new LocalResponseNormalizationNode(name, input, halfWindowSize,
                                                     alpha, beta, k));
+}
+
+SoftMaxNode *Function::createSoftMax(llvm::StringRef name,
+                                     glow::NodeValue input) {
+  return addNode(new SoftMaxNode(name, input));
 }
 
 ArithmeticNode *Function::createArithmetic(llvm::StringRef name, NodeValue LHS,

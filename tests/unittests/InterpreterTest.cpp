@@ -44,8 +44,8 @@ TEST(Interpreter, interpret) {
 
   auto *FCL1 = F->createFullyConnected("fc", MP2, 10);
   auto *RL3 = F->createRELU("relu4", FCL1);
-  auto *SM = F->createSoftMax("sm", RL3, ex);
-  F->createSave("ret", SM);
+  auto *SM = F->createSoftMaxWithLoss("sm", RL3, ex);
+  F->createSave("ret", SM->getResult());
 
   EE.compile(CompilationMode::Infer, F);
 
@@ -358,8 +358,10 @@ TEST(Network, circle) {
   auto *T0 = F->createTanh("tanh1", FCL0);
   auto *FCL1 = F->createFullyConnected("fc2", T0, 2);
   auto *T1 = F->createTanh("tanh2", FCL1);
-  auto *SM = F->createSoftMax("soft", T1, S);
+  auto *SM = F->createSoftMax("soft", T1);
+  auto *CE = F->createCrossEntropyLoss("celoss", SM, S);
   auto *result = F->createSave("ret", SM);
+  F->createSave("ce", CE);
 
   Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
@@ -697,10 +699,10 @@ TEST(Optimizer, copyPropagation) {
   Node *K = mod.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
   Node *S = mod.createVariable(ElemKind::IndexTy, {4, 1}, "select");
 
-  K = F->createConv("Conv1", K, 16, 3, 2, 3);
-  K = F->createRELU("Relu", K);
-  K = F->createSoftMax("SoftMax", K, S);
-  K = F->createSave("result", K);
+  auto *CV1 = F->createConv("Conv1", K, 16, 3, 2, 3);
+  auto *RL1 = F->createRELU("Relu", CV1);
+  auto *SM = F->createSoftMaxWithLoss("SoftMax", RL1, S);
+  F->createSave("result", SM->getResult());
   EE.compile(CompilationMode::Infer, F);
 
   // Check that all copy instructions are eliminated.
@@ -844,8 +846,9 @@ TEST(LinearClassifier, classifyPlayerSport) {
                                Variable::TrainKind::None);
 
   auto *FC = F->createFullyConnected("fc", A, numClasses);
-  auto *SM = F->createSoftMax("softmax", FC, S);
-  auto *result = F->createSave("result", SM);
+  auto *SM = F->createSoftMaxWithLoss("softmax", FC, S);
+  auto *result = F->createSave("result", SM->getResult());
+  F->createSave("ce_loss", SM->getCELoss());
 
   Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
@@ -979,8 +982,9 @@ TEST(Interpreter, nonLinearClassifier) {
   auto *FCL1 = F->createFullyConnected("fc2", T0, 8);
   auto *T1 = F->createTanh("tanh2", FCL1);
   auto *FCL2 = F->createFullyConnected("fc2", T1, 2);
-  auto *SM = F->createSoftMax("soft", FCL2, S);
-  auto *result = F->createSave("ret", SM);
+  auto *SM = F->createSoftMaxWithLoss("soft", FCL2, S);
+  auto *result = F->createSave("ret", SM->getResult());
+  F->createSave("ret2", SM->getCELoss());
 
   Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);

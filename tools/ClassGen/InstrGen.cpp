@@ -128,16 +128,23 @@ int main(int argc, char **argv) {
       })
       .addGradientInstr({"Dest", "Src", "Scale"}, {"Dest", "Src"});
 
+  BB.newInstr("SoftMax")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addGradientInstr({"Dest"}, {"Dest", "Src"});
+
   //===--------------------------------------------------------------------===//
   //                      Loss functions
   //===--------------------------------------------------------------------===//
 
-  BB.newInstr("SoftMax")
+  BB.newInstr("SoftMaxWithLoss")
       .addOperand("Dest", OperandKind::Out)
+      .addOperand("CELoss", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
+      .addOperand("Selected", OperandKind::In)
       .inplaceOperand({"Dest", "Src"});
 
-  BB.newInstr("SoftMaxGrad")
+  BB.newInstr("SoftMaxWithLossGrad")
       .addOperand("OrigDest", OperandKind::In)
       .addOperand("OrigSrc", OperandKind::In)
       .addOperand("Selected", OperandKind::In)

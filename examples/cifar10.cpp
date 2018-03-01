@@ -98,8 +98,11 @@ void testCIFAR10() {
 
   auto *FCL1 = F->createFullyConnected("fc", MP2, 10);
   auto *RL3 = F->createRELU("relu", FCL1);
-  auto *SM = F->createSoftMax("softmax", RL3, E);
-  auto *result = F->createSave("ret", SM);
+  auto *SM = F->createSoftMaxWithLoss("softmax", RL3, E);
+  auto *result = F->createSave("ret", SM->getResult());
+  auto *celoss = F->createSave("celoss", SM->getCELoss());
+
+  Tensor &loss = celoss->getVariable()->getPayload();
 
   Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
@@ -110,14 +113,15 @@ void testCIFAR10() {
   llvm::outs() << "Training.\n";
 
   for (int iter = 0; iter < 100000; iter++) {
-    llvm::outs() << "Training - iteration #" << iter << "\n";
-
     llvm::Timer timer("Training", "Training");
     timer.startTimer();
 
     // Bind the images tensor to the input array A, and the labels tensor
     // to the softmax node SM.
     EE.runBatch(reportRate, {A, E}, {&images, &labels});
+
+    llvm::outs() << "Training - iteration #" << iter
+                 << ", CELoss : " << loss.getHandle().at({0}) << "\n";
 
     unsigned score = 0;
 

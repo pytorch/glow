@@ -487,35 +487,62 @@ void Interpreter::fwdTanhInst(bool isTrain, const TanhInst *I) {
 //===----------------------------------------------------------------------===//
 //                        Loss Functions (Softmax/regression/...)
 //===----------------------------------------------------------------------===//
-
-void Interpreter::fwdSoftMaxInst(bool isTrain, const SoftMaxInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-  auto idim = inW.dims();
-
+template <typename T, typename S, bool ComputeLoss = true>
+static void computeSoftMaxImpl(const Handle<T> *X, const Handle<S> *L,
+                               Handle<T> *Y, Handle<T> *CELoss) {
+  auto idim = X->dims();
   for (size_t n = 0; n < idim[0]; n++) {
     // Find Max.
-    float max = inW.at({n, 0});
+    float max = X->at({n, 0});
     for (size_t i = 1; i < idim[1]; i++) {
-      max = std::max(max, inW.at({n, i}));
+      max = std::max(max, X->at({n, i}));
     }
 
     // Compute exp.
     float sum = 0;
     for (size_t i = 0; i < idim[1]; i++) {
-      float e = std::exp(inW.at({n, i}) - max);
+      float e = std::exp(X->at({n, i}) - max);
       sum += e;
-      outW.at({n, i}) = e;
+      Y->at({n, i}) = e;
     }
 
     // Normalize the output.
     for (size_t i = 0; i < idim[1]; i++) {
-      outW.at({n, i}) = outW.at({n, i}) / sum;
+      Y->at({n, i}) = Y->at({n, i}) / sum;
     }
+
+    if (ComputeLoss) {
+      auto y = L->raw(n);
+      auto p_n = Y->at({n, y});
+      CELoss->at({0}) -= log(p_n);
+    }
+
   } // N
 }
 
-void Interpreter::fwdSoftMaxGradInst(bool isTrain, const SoftMaxGradInst *I) {
+template <typename T, typename S>
+static void computeSoftMaxwithLoss(const Handle<T> &X, const Handle<S> &L,
+                                   Handle<T> &Y, Handle<T> &CELoss) {
+  computeSoftMaxImpl<T, S, true>(&X, &L, &Y, &CELoss);
+}
+
+template <typename T, typename S = size_t>
+static void computeSoftMax(const Handle<T> &X, Handle<T> &Y) {
+  computeSoftMaxImpl<T, S, false>(&X, nullptr, &Y, nullptr);
+}
+
+void Interpreter::fwdSoftMaxWithLossInst(bool isTrain,
+                                         const SoftMaxWithLossInst *I) {
+  auto inW = getWeightHandle(I->getSrc());
+  auto outW = getWeightHandle(I->getDest());
+  auto ceW = getWeightHandle(I->getCELoss());
+  auto selected = getTensor((I->getSelected()))->getHandle<size_t>();
+  ceW.clear();
+  computeSoftMaxwithLoss(inW, selected, outW, ceW);
+}
+
+void Interpreter::fwdSoftMaxWithLossGradInst(
+    bool isTrain, const glow::SoftMaxWithLossGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto idim = inG.dims();
   auto outW = getWeightHandle(I->getOrigDest());
@@ -533,12 +560,44 @@ void Interpreter::fwdSoftMaxGradInst(bool isTrain, const SoftMaxGradInst *I) {
   }
 }
 
+void Interpreter::fwdSoftMaxInst(bool isTrain, const glow::SoftMaxInst *I) {
+  auto inW = getWeightHandle(I->getSrc());
+  auto outW = getWeightHandle(I->getDest());
+  computeSoftMax(inW, outW);
+}
+
+void Interpreter::fwdSoftMaxGradInst(bool isTrain,
+                                     const glow::SoftMaxGradInst *I) {
+  auto dX = getWeightHandle(I->getSrcGrad());
+  auto dY = getWeightHandle(I->getDestGrad());
+  auto Y = getWeightHandle(I->getDest());
+  auto dims = Y.dims();
+  dX.clear();
+  for (size_t n = 0; n < dims[0]; ++n) {
+   // The gradient is computed as the followig:
+   // dX_{n, i} = \sum_{j \ne i} - Yj * dYj + Y_i *(1-Y_i) * dY_i
+   // Below we compute the sum for all j then substract i== j case for each i.
+   double S = 0;
+    for (size_t j = 0; j < dims[1]; ++j) {
+      const auto Yj = Y.at({n, j});
+      const auto dYj = dY.at({n, j});
+      S += Yj * dYj;
+    }
+    for (size_t i = 0; i < dims[1]; ++i) {
+      const auto Yi = Y.at({n, i});
+      const auto dYi = dY.at({n, i});
+      dX.at({n, i}) = -Yi * (S - Yi * dYi) + Yi * (1 - Yi) * dYi;
+    }
+  }
+}
+
 void Interpreter::fwdCrossEntropyLossInst(bool isTrain,
                                           const CrossEntropyLossInst *I) {
   auto P = getWeightHandle(I->getP());
   auto labels = getTensor(I->getLabels())->getHandle<size_t>();
   auto CE = getWeightHandle(I->getCE());
   auto dims = P.dims();
+  CE.clear();
   for (size_t n = 0; n < dims[0]; ++n) {
     auto y = labels.raw(n);
     auto p_n = P.at({n, y});

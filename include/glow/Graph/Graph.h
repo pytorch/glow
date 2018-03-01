@@ -192,8 +192,9 @@ public:
 
   TanhNode *createTanh(llvm::StringRef name, NodeValue input);
 
-  SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input,
-                             NodeValue selected);
+  SoftMaxWithLossNode *createSoftMaxWithLoss(llvm::StringRef name,
+                                             NodeValue input,
+                                             NodeValue selected);
 
   CrossEntropyLossNode *createCrossEntropyLoss(llvm::StringRef name,
                                                NodeValue input,
@@ -237,6 +238,8 @@ public:
   LocalResponseNormalizationNode *createLocalResponseNormalization(
       llvm::StringRef name, NodeValue input, size_t halfWindowSize = 2,
       float alpha = 1e-4, float beta = 0.75, float k = 2.0);
+
+  SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input);
 
   ArithmeticNode *createArithmetic(llvm::StringRef name, NodeValue LHS,
                                    NodeValue RHS, ArithmeticNode::Mode op);

@@ -177,8 +177,9 @@ __kernel void elementdivW(__global void *mem, size_t dest, size_t LHS,
   elementdivK(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
-__kernel void softmaxK(__global float *dest, __global float *src,
-                       __global float *e_cache, size_t sliceSize) {
+__kernel void softmaxwithlossK(__global float *dest, __global float *celoss,
+                               __global float *src, __global size_t *select,
+                               __global float *e_cache, size_t sliceSize) {
   size_t i = get_global_id(0);
   float max_ = src[i * sliceSize];
   for (size_t j = 0; j < sliceSize; j++) {
@@ -194,12 +195,15 @@ __kernel void softmaxK(__global float *dest, __global float *src,
     dest[i * sliceSize + j] /= sum;
     if (e_cache)
       e_cache[i * sliceSize + j] = dest[i * sliceSize + j];
+    float pi = dest[i * sliceSize + j];
+    celoss[i] -= log(pi); 
   }
 }
 
-__kernel void softmaxW(__global void *mem, size_t dest, size_t src,
-                       size_t sliceSize) {
-  softmaxK(&mem[dest], &mem[src], (__global float *)0, sliceSize);
+__kernel void softmaxwithlossW(__global void *mem, size_t dest, size_t celoss,
+                               size_t src, size_t select, size_t sliceSize) {
+  softmaxwithlossK(&mem[dest], &mem[celoss], &mem[src], &mem[select], 
+                   (__global float *)0, sliceSize);
 }
 
 __kernel void convolutionK(__global float *dest, __global float *src,

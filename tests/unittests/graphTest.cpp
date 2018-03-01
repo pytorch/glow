@@ -27,8 +27,8 @@ TEST(Graph, simpleTest) {
 
     K = F->createConv("Conv1", K, 16, 3, 2, 3);
     K = F->createRELU("Relu", K);
-    K = F->createSoftMax("SoftMax", K, S);
-    F->createSave("Save", K);
+    auto *SM = F->createSoftMaxWithLoss("SoftMax", K, S);
+    F->createSave("Save", SM->getResult());
     F->dump();
     F->dumpDAG();
     lower(F, CompilationMode::Train);
@@ -158,12 +158,12 @@ TEST(Graph, cloneTest) {
   Node *S = M.createVariable(ElemKind::IndexTy, {4, 1}, "select");
   Node *conv = F->createConv("Conv1", K, 16, 3, 2, 3);
   Node *relu = F->createRELU("Relu", conv);
-  Node *SM = F->createSoftMax("SoftMax", relu, S);
-  F->createSave("Save", SM);
+  auto *SM = F->createSoftMaxWithLoss("SoftMax", relu, S);
+  F->createSave("Save", SM->getResult());
 
   auto *newConv = F->addNode(conv->clone());
   auto *newRelu = F->addNode(relu->clone());
-  auto *newSM = F->addNode(SM->clone());
+  auto *newSM = static_cast<SoftMaxWithLossNode*>(F->addNode(SM->clone()));
 
   EXPECT_TRUE(newConv != conv && conv->isEqual(*newConv));
   EXPECT_TRUE(newRelu != relu && relu->isEqual(*newRelu));
@@ -211,8 +211,8 @@ TEST(Graph, cloneTest2) {
   Node *relu = F->createRELU("Relu", conv);
   Node *concat = F->createConcat("concat", {relu, relu, relu}, 0);
 
-  Node *SM = F->createSoftMax("SoftMax", concat, S);
-  F->createSave("Save", SM);
+  auto *SM = F->createSoftMaxWithLoss("SoftMax", concat, S);
+  F->createSave("Save", SM->getResult());
 
   auto *newF = F->clone("new_main");
   newF->verify();

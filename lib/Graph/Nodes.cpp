@@ -626,6 +626,15 @@ void SoftMaxNode::verify() const { verifySoftMax(getInput(), getResult()); }
 void SoftMaxGradNode::verify() const {
   verifySoftMax(getGradOfInputNamedInput(),
                 getGradOfOriginalOutputNamedResult());
+};
+
+void SoftMaxWithLossNode::verify() const {
+  verifySoftMax(getInput(), getResult());
+}
+
+void SoftMaxWithLossGradNode::verify() const {
+  verifySoftMax(getGradOfInputNamedInput(),
+                getGradOfOriginalOutputNamedResult());
 }
 
 void CrossEntropyLossNode::verify() const {

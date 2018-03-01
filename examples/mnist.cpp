@@ -97,9 +97,11 @@ void testMNIST() {
   Variable *selected = mod.createVariable(
       ElemKind::IndexTy, {minibatchSize, 1}, +"selected",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
-  auto *SM = F->createSoftMax("sm", RL2, selected);
+  auto *SM = F->createSoftMax("sm", RL2);
+  auto *CE = F->createCrossEntropyLoss("ce", SM, selected);
 
   auto *result = F->createSave("return", SM);
+  auto *celoss = F->createSave("celoss", CE);
 
   Function *T = glow::differentiate(F, EE.getConfig());
 
@@ -110,9 +112,9 @@ void testMNIST() {
 
   llvm::outs() << "Training.\n";
 
-  for (int iter = 0; iter < 60; iter++) {
-    llvm::outs() << "Training - iteration #" << iter << "\n";
+  Tensor &loss = celoss->getVariable()->getPayload();
 
+  for (int iter = 0; iter < 60; iter++) {
     timer.startTimer();
 
     // On each training iteration take an input from imageInputs and update
@@ -121,6 +123,9 @@ void testMNIST() {
     EE.runBatch(reportRate, {A, selected}, {&imageInputs, &labelInputs});
 
     timer.stopTimer();
+
+    llvm::outs() << "Training - iteration #" << iter
+                 << ", CELoss : " << loss.getHandle().at({0}) << "\n";
   }
   llvm::outs() << "Validating.\n";
   EE.compile(CompilationMode::Infer, F);

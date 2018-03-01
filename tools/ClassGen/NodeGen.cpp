@@ -109,16 +109,25 @@ int main(int argc, char **argv) {
                     "with the provided Scale, Bias, Mean, Var, ChannelIdx, "
                     "Epsilon, and Momentum. Similar to Caffe2 LRN.");
 
+  BB.newNode("SoftMax")
+      .addInput("Input")
+      .addResult("Input.getType()")
+      .addGradient()
+      .setDocstring("Computes softmax activations of the input tensor.");
+
   //===--------------------------------------------------------------------===//
   //                      Loss operations
   //===--------------------------------------------------------------------===//
 
-  BB.newNode("SoftMax")
+  BB.newNode("SoftMaxWithLoss")
       .addInput("Input")
       .addInput("Selected")
       .addResult("Input.getType()")
+      .addResultFromCtorArg("CELoss")
       .addGradient()
-      .setDocstring("Performs SoftMax normalization on the Input tensor.");
+      .setDocstring(
+          "Computes softmax activations and the average cross entropy on the "
+          "Input tensor.");
 
   BB.newNode("CrossEntropyLoss")
       .addInput("P")
