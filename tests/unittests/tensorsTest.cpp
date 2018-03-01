@@ -307,7 +307,8 @@ TEST(Tensor, externallyManagedPayload) {
 
   {
     // Work with an existing payload buffer by means of the Tensor APIs.
-    Tensor T1(payload.data(), ElemKind::FloatTy, {2, 2});
+    Type ty(ElemKind::FloatTy, {2, 2});
+    Tensor T1(payload.data(), &ty);
 
     auto H1 = T1.getHandle<>();
     H1.dump();
