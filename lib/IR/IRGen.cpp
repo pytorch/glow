@@ -347,8 +347,8 @@ public:
     case glow::Kinded::Kind::ConcatNodeKind: {
       auto *CC = cast<ConcatNode>(N);
 
-      auto *dest = builder_.createAllocActivationInst(
-          CC->getName(), CC->getElementType(), CC->dims());
+      auto *dest =
+          builder_.createAllocActivationInst(CC->getName(), CC->getType());
       builder_.createSplatInst(CC->getName(), dest, 0);
       auto inputs = CC->getInputs();
 

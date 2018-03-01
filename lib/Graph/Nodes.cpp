@@ -856,12 +856,22 @@ void ConcatNode::verify() const {
   (void)inputs;
   (void)dimension;
 
-  for (int i = 1; i < inputs.size(); i++) {
-    for (int j = 0; j < inputs[0].dims().size(); j++) {
+  for (size_t i = 1; i < inputs.size(); i++) {
+    for (size_t j = 0; j < inputs[0].dims().size(); j++) {
       if (j == dimension) {
         continue;
       }
       assert(inputs[0].dims()[j] == inputs[i].dims()[j]);
+    }
+  }
+
+  for (size_t i = 0; i < inputs.size(); i++) {
+    checkType(inputs[i], getResult()->getElementType());
+    if (getResult()->getType()->isQuantizedType()) {
+      assert(inputs[i]->getType()->getScale() ==
+             getResult()->getType()->getScale());
+      assert(inputs[i]->getType()->getOffset() ==
+             getResult()->getType()->getOffset());
     }
   }
 }

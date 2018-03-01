@@ -227,7 +227,8 @@ static bool shouldQuantize(const Node *node) {
   bool canQuantize =
       llvm::isa<FullyConnectedNode>(node) || llvm::isa<ConvolutionNode>(node) ||
       llvm::isa<ReluNode>(node) || llvm::isa<TransposeNode>(node) ||
-      llvm::isa<ReshapeNode>(node) || llvm::isa<ArithmeticNode>(node);
+      llvm::isa<ReshapeNode>(node) || llvm::isa<ArithmeticNode>(node) ||
+      llvm::isa<ConcatNode>(node);
   if (canQuantize) {
     return true;
   }
@@ -351,12 +352,31 @@ void generateQuantizedGraph(
                         P->getKernel(), P->getStride(), P->getPad());
       break;
     }
-
     case Kinded::Kind::ArithmeticNodeKind: {
       auto *AN = cast<ArithmeticNode>(node);
       assert(quantizedInputs.size() == 2 && "Invalid number of inputs");
       quantizedNode = F->createArithmetic(AN->getName(), quantizedInputs[0],
                                           quantizedInputs[1], AN->getMode());
+      break;
+    }
+    case Kinded::Kind::ConcatNodeKind: {
+      auto *C = cast<ConcatNode>(node);
+
+      // Concat just moves tensors around, make sure that all tensors have the
+      // same {S,O} params.
+      for (size_t qi = 0, e = quantizedInputs.size(); qi < e; qi++) {
+        auto argOutTy = F->getParent()->uniqueType(ElemKind::Int8QTy,
+                                                   quantizedInputs[qi]->dims(),
+                                                   TQP.scale_, TQP.offset_);
+
+        quantizedInputs[qi] = F->createRescaleQuantized(
+            quantizedInputs[qi]->getName(), quantizedInputs[qi], argOutTy);
+      }
+
+      auto outTy = F->getParent()->uniqueType(
+          ElemKind::Int8QTy, C->getResult()->dims(), TQP.scale_, TQP.offset_);
+      quantizedNode =
+          F->createConcat(node->getName(), quantizedInputs, C->getDim(), outTy);
       break;
     }
 

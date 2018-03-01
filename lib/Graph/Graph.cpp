@@ -577,13 +577,25 @@ ConcatNode *Function::createConcat(llvm::StringRef name,
     shape[dimension] += I->getType()->dims()[dimension];
   }
 
-  auto NT = getParent()->uniqueType(inputs[0]->getElementType(), shape);
+  auto NT = getParent()->uniqueTypeWithNewShape(inputs[0]->getType(), shape);
   std::vector<NodeValue> ops;
   ops.reserve(inputs.size());
-  for (auto &I : inputs) {
+  for (auto I : inputs) {
     ops.emplace_back(I);
   }
   return addNode(new ConcatNode(name, NT, ops, dimension));
+}
+
+ConcatNode *Function::createConcat(llvm::StringRef name,
+                                   llvm::ArrayRef<Node *> inputs,
+                                   unsigned dimension, TypeRef outTy) {
+  std::vector<NodeValue> ops;
+  ops.reserve(inputs.size());
+  for (auto I : inputs) {
+    ops.emplace_back(I);
+  }
+
+  return addNode(new ConcatNode(name, outTy, ops, dimension));
 }
 
 SliceNode *Function::createSlice(llvm::StringRef name, NodeValue input,
