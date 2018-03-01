@@ -197,8 +197,11 @@ void NodeBuilder::emitEdges(std::ostream &os) const {
 void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
   os << "\nstd::string " << name_ << "Node::getDebugDesc() const {\n"
      << "  DescriptionBuilder db(getKindName());\n"
-     << "  db.addParam(\"name\", getName())\n";
+     << "  db.addParam(\"name\", getName());\n";
 
+  os << "  if (hasPredicate()) db.addParam(\"Predicate\", \"Yes\");\n";
+
+  os << "  db\n";
   if (!enum_.empty()) {
     os << "    .addParam(\"Mode\", getModeStr())\n";
   }
@@ -342,7 +345,8 @@ void NodeBuilder::emitVisitor(std::ostream &os) const {
   os << "\nvoid " << name_
      << "Node::visit(Node *parent, NodeWalker *visitor) {\n"
      << "  if (!visitor->shouldVisit(parent, this)) { return; }\n"
-     << "  visitor->pre(parent, this);\n";
+     << "  visitor->pre(parent, this);\n"
+     << "  if (hasPredicate()) getPredicate()->visit(this, visitor);\n";
 
   for (const auto &op : nodeInputs_) {
     os << "  get" << op << "()->visit(this, visitor);\n";

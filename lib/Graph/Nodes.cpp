@@ -59,7 +59,12 @@ void NodeValue::replaceAllUsesOfWith(NodeValue v) {
   }
 }
 
-/// \returns the n'th result type of the node.
+const NodeValue &Node::getPredicate() const { return predicate_; }
+
+void Node::setPredicate(Variable *P) { predicate_ = P; }
+
+bool Node::hasPredicate() const { return predicate_.getNode(); }
+
 TypeRef Node::getType(unsigned idx) const {
   if (idx == (unsigned)-1) {
     assert(numRes_ == 1 && "Did not specify the result number for a node "
@@ -421,6 +426,21 @@ std::string Variable::getDebugDesc() const {
 //===----------------------------------------------------------------------===//
 
 void Node::verify() const {
+  // Verify the shared members of the node.
+
+  // Verify the predicate field.
+  if (hasPredicate()) {
+    auto pred = getPredicate();
+    assert(pred.getNode() && "Invalid predicate");
+    auto Ty = pred.getType();
+    (void)Ty;
+    assert(Ty->dims().size() == 1 && Ty->dims()[0] == 1 &&
+           "Predicate must be a boolean tensor");
+    assert(Ty->getElementType() == ElemKind::IndexTy &&
+           "Predicates are booleans");
+  }
+
+  // Verify node-specific properties:
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \

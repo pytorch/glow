@@ -14,6 +14,7 @@ namespace glow {
 
 class Node;
 class NodeWalker;
+class Variable;
 
 /// Unlike LLVM values, graph nodes may return multiple values as the result of
 /// a computation. Gradient-calculating nodes such as conv-grad return multiple
@@ -125,7 +126,7 @@ struct NodeUse {
 class Node : public Named,
              public Kinded,
              public UseDef<Node, NodeValue, NodeUse> {
-public:
+protected:
   /// This is the maximum number of results that a node may have.
   static constexpr unsigned max_node_resno = 6;
 
@@ -133,14 +134,25 @@ public:
   std::array<TypeRef, max_node_resno> types_;
   /// The number of results that the node has.
   unsigned numRes_{0};
+  /// A nullable reference to some tensor value that may predicate the execution
+  /// of the current node.
+  NodeValue predicate_{nullptr};
 
+public:
   Node(Kinded::Kind k, llvm::StringRef name) : Named(name), Kinded(k) {}
+
+  /// \returns the nullable predicate of the current node.
+  const NodeValue &getPredicate() const;
+  /// Assigns a nullable predicate to the current node.
+  void setPredicate(Variable *P);
+  /// Checks if a predicate is assigned to the current node.
+  bool hasPredicate() const;
 
   /// \returns the number of results that the node has.
   unsigned getNumResults() const { return numRes_; }
-
   /// \returns the \p idx result of the node.
   NodeValue getNthResult(unsigned idx);
+  /// \returns the n'th result type of the node.
   const NodeValue getNthResult(unsigned idx) const;
 
   /// Getters to access Node's inputs and outputs.
