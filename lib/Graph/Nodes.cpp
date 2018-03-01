@@ -590,11 +590,20 @@ void ConvolutionGradNode::verify() const {
                     Kernel_, Stride_, Pad_, Depth_);
 }
 
-void PoolNode::verify() const {
+void PoolMaxNode::verify() const {
   verifyPool(getInput(), getResult(), Kernel_, Stride_, Pad_);
 }
 
-void PoolGradNode::verify() const {
+void PoolAvgNode::verify() const {
+  verifyPool(getInput(), getResult(), Kernel_, Stride_, Pad_);
+}
+
+void PoolMaxGradNode::verify() const {
+  verifyPool(getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
+             Kernel_, Stride_, Pad_);
+}
+
+void PoolAvgGradNode::verify() const {
   verifyPool(getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
              Kernel_, Stride_, Pad_);
 }

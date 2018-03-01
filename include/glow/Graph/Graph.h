@@ -167,9 +167,11 @@ public:
                               size_t depth, size_t kernel, size_t stride,
                               size_t pad);
 
-  PoolNode *createPool(llvm::StringRef name, NodeValue input,
-                       PoolNode::Mode mode, size_t kernel, size_t stride,
-                       size_t pad);
+  PoolMaxNode *createPoolMax(llvm::StringRef name, NodeValue input,
+                             size_t kernel, size_t stride, size_t pad);
+
+  PoolAvgNode *createPoolAvg(llvm::StringRef name, NodeValue input,
+                             size_t kernel, size_t stride, size_t pad);
 
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, Variable *W,

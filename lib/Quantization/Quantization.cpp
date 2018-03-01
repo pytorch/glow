@@ -331,13 +331,22 @@ void generateQuantizedGraph(
           F->createReshape(R->getName(), quantizedInputs[0], R->getDims());
       break;
     }
-    case Kinded::Kind::PoolNodeKind: {
-      auto *P = cast<PoolNode>(node);
+    case Kinded::Kind::PoolMaxNodeKind: {
+      auto *P = cast<PoolMaxNode>(node);
       assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
 
       quantizedNode =
-          F->createPool(node->getName(), quantizedInputs[0], P->getMode(),
-                        P->getKernel(), P->getStride(), P->getPad());
+          F->createPoolMax(node->getName(), quantizedInputs[0], P->getKernel(),
+                           P->getStride(), P->getPad());
+      break;
+    }
+    case Kinded::Kind::PoolAvgNodeKind: {
+      auto *P = cast<PoolAvgNode>(node);
+      assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+
+      quantizedNode =
+          F->createPoolAvg(node->getName(), quantizedInputs[0], P->getKernel(),
+                           P->getStride(), P->getPad());
       break;
     }
     case Kinded::Kind::ArithmeticNodeKind: {
@@ -385,7 +394,8 @@ void generateQuantizedGraph(
           ElemKind::Int8QTy, quantizedNode->dims(), TQP.scale_, TQP.offset_);
       quantizedNode = F->createRescaleQuantized(quantizedNode->getName(),
                                                 quantizedNode, outTy);
-    } else if (node->getKind() == Kinded::Kind::PoolNodeKind) {
+    } else if (node->getKind() == Kinded::Kind::PoolMaxNodeKind ||
+               node->getKind() == Kinded::Kind::PoolAvgNodeKind) {
       auto outTy = F->getParent()->uniqueType(
           ElemKind::Int8QTy, quantizedNode->dims(), TQP.scale_, TQP.offset_);
       quantizedNode = F->createRescaleQuantized(quantizedNode->getName(),

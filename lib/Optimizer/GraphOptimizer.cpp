@@ -281,15 +281,10 @@ static void optimizePool(Function *F) {
     // nodes does not give us much. However, reordering the buffers allows us to
     // reuse the memory buffer of the pool operation and potentially save
     // memory.
-    if (auto *PL = dyn_cast<PoolNode>(node)) {
+    if (auto *PL = dyn_cast<PoolMaxNode>(node)) {
       auto *RL = dyn_cast<ReluNode>(PL->getInput());
 
       if (!RL) {
-        continue;
-      }
-
-      // This optimization is only valid on max pooling.
-      if (PL->getMode() != PoolNode::Mode::Max) {
         continue;
       }
 
@@ -300,8 +295,9 @@ static void optimizePool(Function *F) {
         continue;
       }
 
-      auto *NPL = F->createPool(PL->getName(), RL->getInput(), PL->getMode(),
-                                PL->getKernel(), PL->getStride(), PL->getPad());
+      auto *NPL =
+          F->createPoolMax(PL->getName(), RL->getInput(), PL->getKernel(),
+                           PL->getStride(), PL->getPad());
       auto *NRL = F->createRELU(RL->getName(), NPL);
       PL->getResult().replaceAllUsesOfWith(NRL);
       continue;

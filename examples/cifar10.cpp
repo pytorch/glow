@@ -86,15 +86,15 @@ void testCIFAR10() {
   // Create the rest of the network.
   auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2);
   auto *RL0 = F->createRELU("relu", CV0);
-  auto *MP0 = F->createPool("pool", RL0, PoolNode::Mode::Max, 2, 2, 0);
+  auto *MP0 = F->createPoolMax("pool", RL0, 2, 2, 0);
 
   auto *CV1 = F->createConv("conv", MP0, 20, 5, 1, 2);
   auto *RL1 = F->createRELU("relu", CV1);
-  auto *MP1 = F->createPool("pool", RL1, PoolNode::Mode::Max, 2, 2, 0);
+  auto *MP1 = F->createPoolMax("pool", RL1, 2, 2, 0);
 
   auto *CV2 = F->createConv("conv", MP1, 20, 5, 1, 2);
   auto *RL2 = F->createRELU("relu", CV2);
-  auto *MP2 = F->createPool("pool", RL2, PoolNode::Mode::Max, 2, 2, 0);
+  auto *MP2 = F->createPoolMax("pool", RL2, 2, 2, 0);
 
   auto *FCL1 = F->createFullyConnected("fc", MP2, 10);
   auto *RL3 = F->createRELU("relu", FCL1);

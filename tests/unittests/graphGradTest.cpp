@@ -30,11 +30,11 @@ TEST(GraphAutoGrad, autoGrad) {
 
   auto *CV0 = F->createConv("conv1", A, 16, 5, 1, 2);
   auto *RL0 = F->createRELU("relu1", CV0);
-  auto *MP0 = F->createPool("pool1", RL0, PoolNode::Mode::Max, 3, 3, 0);
+  auto *MP0 = F->createPoolMax("pool1", RL0, 3, 3, 0);
 
   auto *CV1 = F->createConv("conv2", MP0, 16, 5, 1, 2);
   auto *RL1 = F->createRELU("conv23", CV1);
-  auto *MP1 = F->createPool("pool2", RL1, PoolNode::Mode::Max, 3, 3, 0);
+  auto *MP1 = F->createPoolMax("pool2", RL1, 3, 3, 0);
 
   auto *FCL1 = F->createFullyConnected("fc3", MP1, 10);
   auto *RL2 = F->createRELU("relu3", FCL1);

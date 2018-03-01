@@ -366,7 +366,7 @@ TEST(GraphOptz, poolBelowReluSwapped) {
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
   Node *R = F->createRELU("relu", A);
-  Node *PL = F->createPool("pool", R, PoolNode::Mode::Max, 1, 10, 20);
+  Node *PL = F->createPoolMax("pool", R, 1, 10, 20);
   Node *O = F->createSave("ret", PL);
 
   EXPECT_EQ(F->getNodes().size(), 3);
@@ -389,7 +389,7 @@ TEST(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
   Node *R = F->createRELU("relu", A);
-  Node *PL = F->createPool("pool", R, PoolNode::Mode::Avg, 1, 10, 20);
+  Node *PL = F->createPoolAvg("pool", R, 1, 10, 20);
   Node *O = F->createSave("ret", PL);
 
   EXPECT_EQ(F->getNodes().size(), 3);
@@ -398,7 +398,7 @@ TEST(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
 
   // Expecting Pool->Output (no swap).
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
-  EXPECT_TRUE(llvm::isa<PoolNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
+  EXPECT_TRUE(llvm::isa<PoolAvgNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
   EXPECT_EQ(F->getNodes().size(), 3);
 }
@@ -412,7 +412,7 @@ TEST(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
   Node *R = F->createRELU("relu", A);
-  Node *PL = F->createPool("pool", R, PoolNode::Mode::Max, 1, 10, 20);
+  Node *PL = F->createPoolMax("pool", R, 1, 10, 20);
   Node *O = F->createSave("ret", PL);
   F->createSave("ret", R);
 
@@ -422,7 +422,7 @@ TEST(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
 
   // Expecting Pool->Output (no swap).
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
-  EXPECT_TRUE(llvm::isa<PoolNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
+  EXPECT_TRUE(llvm::isa<PoolMaxNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
   EXPECT_EQ(F->getNodes().size(), 4);
 }
