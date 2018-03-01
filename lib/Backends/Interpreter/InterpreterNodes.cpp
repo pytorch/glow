@@ -330,24 +330,73 @@ void Interpreter::fwdPoolMaxWithXYInst(bool isTrain,
 }
 
 void Interpreter::fwdPoolAvgInst(bool isTrain, const PoolAvgInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-
-  ShapeNHWC odim(outW.dims());
-  ShapeNHWC idim(inW.dims());
+  ShapeNHWC odim(I->getDest()->dims());
+  ShapeNHWC idim(I->getSrc()->dims());
 
   auto pad = I->getPad();
   auto filterSize = I->getKernel();
   auto stride = I->getStride();
-
   // Implement the avg pooling operation as defined here:
   // https://arxiv.org/abs/1312.4400
-
   float filterArea = filterSize * filterSize;
+
+  if (I->getSrc()->getType()->isQuantizedType()) {
+    auto inW = getWeightHandle<int8_t>(I->getSrc());
+    auto outW = getWeightHandle<int8_t>(I->getDest());
+    TensorQuantizationParams inQP{I->getSrc()->getType()->getScale(),
+                                  I->getSrc()->getType()->getOffset()};
+    TensorQuantizationParams outQP{I->getDest()->getType()->getScale(),
+                                   I->getDest()->getType()->getOffset()};
+
+    // For each input in the batch:
+    for (size_t n = 0; n < odim.n; n++) {
+      // For each layer in the output tensor:
+      for (size_t z = 0; z < idim.c; z++) {
+        // For each convolution 'jump' in the input tensor:
+        ssize_t x = -ssize_t(pad);
+        for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+          ssize_t y = -ssize_t(pad);
+          for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+            int32_t sum = 0;
+
+            for (size_t fx = 0; fx < filterSize; fx++) {
+              for (size_t fy = 0; fy < filterSize; fy++) {
+                ssize_t ox = x + fx;
+                ssize_t oy = y + fy;
+
+                // Ignore index access below zero (this is due to padding).
+                if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                    oy >= ssize_t(idim.w)) {
+                  continue;
+                }
+
+                sum += inW.at({n, (size_t)ox, (size_t)oy, z}) - inQP.offset_;
+              }
+            }
+            // Instead of dividing by filterArea, just change scale later on.
+            outW.at({n, ax, ay, z}) = sum + inQP.offset_;
+          } // W
+        }   // H
+      }     // C
+    }       // N
+
+    // Each element of out{N, H, W, C} should be div by filterArea, which
+    // in case of quantized operations would mean just different scale.
+    // Make sure that result is calculated in the required {S,O}.
+    TensorQuantizationParams currentTQP{inQP.scale_ / filterArea, inQP.offset_};
+    for (size_t i = 0; i < outW.size(); i++) {
+      outW.raw(i) = quantization::quantize(
+          quantization::dequantize(outW.raw(i), currentTQP), outQP);
+    }
+
+    return;
+  }
+
+  auto inW = getWeightHandle(I->getSrc());
+  auto outW = getWeightHandle(I->getDest());
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
-
     // For each layer in the output tensor:
     for (size_t z = 0; z < idim.c; z++) {
       // For each convolution 'jump' in the input tensor:

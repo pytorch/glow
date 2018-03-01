@@ -68,10 +68,9 @@ PoolAvgInst *IRBuilder::createPoolAvgOp(Value *input, size_t kernel,
          "buffer too small for selected stride");
 
   auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
-
-  Value *dest =
-      createAllocActivationInst("pool.res", ElemKind::FloatTy,
-                                {idim.n, outSz.first, outSz.second, idim.c});
+  auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
+      input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
+  Value *dest = createAllocActivationInst("pool.res", outTy);
 
   return createPoolAvgInst("pool", dest, input, kernel, stride, pad);
 }
