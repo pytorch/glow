@@ -3,6 +3,7 @@
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/Timer.h"
 
 #include <algorithm>
@@ -14,6 +15,8 @@
 #include <string>
 
 using namespace glow;
+using llvm::format;
+
 namespace {
 llvm::cl::OptionCategory ptbCat("PTB Options");
 llvm::cl::opt<BackendKind> executionBackend(
@@ -137,7 +140,7 @@ unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
 /// For reference, we expect the usage of an LSTM instead of the current
 /// simple RNN block will improve the perplexity to ~20.
 void testPTB() {
-  std::cout << "Loading the ptb database.\n";
+  llvm::outs() << "Loading the ptb database.\n";
 
   Tensor inputWords;
   Tensor targetWords;
@@ -154,8 +157,7 @@ void testPTB() {
 
   unsigned numWords = loadPTB(inputWords, targetWords, numSteps, vocabSize,
                               minibatchSize, maxNumWords);
-  std::cout << "Loaded " << numWords << " words.\n";
-  ExecutionEngine EE;
+  llvm::outs() << "Loaded " << numWords << " words.\n";
   ExecutionEngine EE(executionBackend);
 
   // Construct the network:
@@ -165,7 +167,7 @@ void testPTB() {
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  std::cout << "Building" << std::endl;
+  llvm::outs() << "Building\n";
 
   Variable *X = mod.createVariable(
       ElemKind::FloatTy, {minibatchSize, vocabSize * numSteps}, "input",
@@ -198,7 +200,7 @@ void testPTB() {
   auto *SM = F->createSoftMax("softmax", O, T);
   auto *result = F->createSave("result", SM);
 
-  std::cout << "Dumping graph" << std::endl;
+  llvm::outs() << "Dumping graph\n";
 
   Function *TF = glow::differentiate(F, EE.getConfig());
 
@@ -208,12 +210,12 @@ void testPTB() {
 
   size_t numBatches = (numWords / minibatchSize - 1) / numSteps;
 
-  std::cout << "Training for " << numBatches << " rounds" << std::endl;
+  llvm::outs() << "Training for " << numBatches << " rounds\n";
 
   float metricValues[numEpochs];
 
   for (size_t iter = 0; iter < numEpochs; iter++) {
-    std::cout << "Training - iteration #" << (iter + 1) << std::endl;
+    llvm::outs() << "Training - iteration #" << (iter + 1) << "\n";
 
     llvm::Timer timer("Training", "Training");
     timer.startTimer();
@@ -245,25 +247,29 @@ void testPTB() {
         }
       }
       if (batch % 10 == 1) {
-        std::cout << "perplexity: "
-                  << std::exp(perplexity / perplexityWordsCount) << std::endl;
+        llvm::outs() << "perplexity: "
+                     << format("%0.4f",
+                               std::exp(perplexity / perplexityWordsCount))
+                     << "\n";
       }
     }
     metricValues[iter] = std::exp(perplexity / perplexityWordsCount);
-    std::cout << "perplexity: " << metricValues[iter] << std::endl << std::endl;
+    llvm::outs() << "perplexity: " << format("%0.4f", metricValues[iter])
+                 << "\n\n";
 
     timer.stopTimer();
   }
 
-  std::cout << "Perplexity scores in copy-pastable format:\n";
+  llvm::outs() << "Perplexity scores in copy-pastable format:\n";
   for (size_t iter = 0; iter < numEpochs; iter++) {
     if (iter != 0 && iter % 2 == 0)
       continue;
-    std::cout << "/// Iteration " << iter + 1 << ": " << metricValues[iter]
-              << std::endl;
+    llvm::outs() << "/// Iteration " << iter + 1 << ": "
+                 << format("%0.4f", metricValues[iter]) << "\n";
   }
-  std::cout << "Note, that small 1E-4 error is considered acceptable and may "
-            << "be coming from fast math optimizations.\n";
+  llvm::outs()
+      << "Note, that small 1E-4 error is considered acceptable and may "
+      << "be coming from fast math optimizations.\n";
 }
 
 int main(int argc, char **argv) {
