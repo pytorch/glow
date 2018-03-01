@@ -299,6 +299,29 @@ TEST(Tensor, nonOwnedTensor) {
   H1.dump();
 }
 
+TEST(Tensor, externallyManagedPayload) {
+  // Allocate and initialize payload "externally", without using the Tensor API.
+  // For example the data may come from a different library, be read from a
+  // file, etc.
+  std::vector<float> payload{1.2, 12.1, 51.0, 1515.2};
+
+  {
+    // Work with an existing payload buffer by means of the Tensor APIs.
+    Tensor T1(payload.data(), ElemKind::FloatTy, {2, 2});
+
+    auto H1 = T1.getHandle<>();
+    H1.dump();
+    EXPECT_EQ(int(H1.at({0, 0})), 1);
+
+    H1.at({1, 1}) = 30.3;
+  }
+
+  // Check that modifications through T1 and H1 changed
+  // payload as well, i.e. T1/H1 were acting like a view
+  // on the payload.
+  EXPECT_EQ(int(payload[3]), 30);
+}
+
 /// Broadcast a Tensor of shape (2,1) to (3,2,4,2) with axis 1.
 TEST(Tensor, broadcastNewShape) {
   const size_t numDims_A = 4;
