@@ -223,19 +223,12 @@ public:
       break;
     }
 
-    case glow::Kinded::Kind::BatchedReduceNodeKind: {
-      auto *BR = cast<BatchedReduceNode>(N);
+    case glow::Kinded::Kind::BatchedReduceAddNodeKind: {
+      auto *BR = cast<BatchedReduceAddNode>(N);
       auto *batch = valueForNode(BR->getBatch());
       auto *dest = builder_.createAllocActivationInst(
           "br.res", BR->getResult().getType());
-
-      switch (BR->getMode()) {
-      case BatchedReduceNode::Mode::Add: {
-        builder_.createBatchedReduceAddInst(N->getName(), dest, batch);
-        break;
-      }
-      }
-
+      builder_.createBatchedReduceAddInst(N->getName(), dest, batch);
       registerIR(N, dest);
       break;
     }

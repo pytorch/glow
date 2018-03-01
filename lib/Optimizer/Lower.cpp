@@ -150,8 +150,7 @@ void lowerFullyConnectedGradNode(Function *F, FullyConnectedGradNode &FCG) {
   FCG.getGradOfInputNamedWeights().replaceAllUsesOfWith(dw2);
 
   // db = reduce(dout).
-  auto *db = F->createBatchedReduce("fc.bias.reduce",
-                                    BatchedReduceNode::Mode::Add, out);
+  auto *db = F->createBatchedReduceAdd("fc.bias.reduce", out);
   FCG.getGradOfInputNamedBias().replaceAllUsesOfWith(db);
 }
 

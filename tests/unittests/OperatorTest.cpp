@@ -49,8 +49,7 @@ TEST(Operator, batchedReduceAdd) {
   auto *result = mod.createVariable(ElemKind::FloatTy, {4}, "result");
   batch->getPayload().getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
 
-  auto R =
-      F->createBatchedReduce("reduce.add", BatchedReduceNode::Mode::Add, batch);
+  auto R = F->createBatchedReduceAdd("reduce.add", batch);
 
   F->createSave("save", R, result);
 

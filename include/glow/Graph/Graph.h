@@ -263,9 +263,8 @@ public:
   BatchedMatMulNode *createBatchedMatMul(llvm::StringRef name, TypeRef outTy,
                                          NodeValue lhs, NodeValue rhs);
 
-  BatchedReduceNode *createBatchedReduce(llvm::StringRef name,
-                                         BatchedReduceNode::Mode mode,
-                                         NodeValue batch);
+  BatchedReduceAddNode *createBatchedReduceAdd(llvm::StringRef name,
+                                               NodeValue batch);
 
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, NodeValue batch,
                                    NodeValue sample);

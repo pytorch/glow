@@ -778,7 +778,7 @@ void BatchedAddNode::verify() const {
          "Mismatched element types");
 }
 
-void BatchedReduceNode::verify() const {
+void BatchedReduceAddNode::verify() const {
   assert(getBatch().dims().size() > 1 && "Invalid shape");
 }
 
