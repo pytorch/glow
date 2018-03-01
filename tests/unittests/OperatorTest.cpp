@@ -421,6 +421,41 @@ TEST(Operator, IntConvolution) {
   }
 }
 
+TEST(Operator, IntConcat) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto A = mod.createVariable(ElemKind::FloatTy, {3, 3}, "A");
+  auto B = mod.createVariable(ElemKind::FloatTy, {2, 3}, "B");
+  A->getHandle().randomize(-1.0, 1.0);
+  B->getHandle().randomize(-1.0, 1.0);
+
+  auto ATy = mod.uniqueType(ElemKind::Int8QTy, A->dims(), 0.01, 0);
+  auto BTy = mod.uniqueType(ElemKind::Int8QTy, B->dims(), 0.01, 0);
+  auto outTy = mod.uniqueType(ElemKind::Int8QTy, {5, 3}, 0.01, 0);
+
+  auto QA = F->createQuantize("QA", A, ATy);
+  auto QB = F->createQuantize("QB", B, BTy);
+
+  auto C = F->createConcat("concat", {A, B}, 0);
+  auto CQ = F->createConcat("concatQ", {QA, QB}, 0, outTy);
+  auto DCQ = F->createDequantize("DQ", CQ);
+
+  // Subtract the results of the Concat from the quantized Concat.
+  auto sub = F->createArithmetic("compare", C, DCQ, ArithmeticNode::Mode::Sub);
+
+  auto res = F->createSave("save", sub);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+
+  auto R = res->getVariable()->getHandle();
+  // Check that the difference in the results is less than 0.2.
+  for (int i = 0, e = R.size(); i < e; i++) {
+    EXPECT_NEAR(R.raw(i), 0, 0.2);
+  }
+}
+
 TEST(Operator, IntFC) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
@@ -462,7 +497,7 @@ TEST(Operator, IntFC) {
   EE.run({}, {});
 
   auto H = res->getPayload().getHandle();
-  // Check that the difference in the results is less than 0.1.
+  // Check that the difference in the results is less than 0.2.
   for (int i = 0, e = H.size(); i < e; i++) {
     EXPECT_NEAR(H.raw(i), 0, 0.2);
   }
