@@ -13,7 +13,15 @@ target_compile_options(CPURuntime
                          -emit-llvm
                          -Os)
 
-find_program(LLVM_LINK_BIN llvm-link)
+set(llvm_link_bin_paths)
+foreach(PATH ${CMAKE_PREFIX_PATH})
+  list(APPEND llvm_link_bin_paths ${PATH}/bin)
+endforeach()
+find_program(LLVM_LINK_BIN
+             NAMES
+               llvm-link
+             PATHS
+               ${llvm_link_bin_paths})
 
 add_custom_command(OUTPUT
                      ${CMAKE_BINARY_DIR}/libjit.bc
