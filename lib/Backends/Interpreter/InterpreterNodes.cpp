@@ -633,6 +633,7 @@ void Interpreter::fwdInsertTensorInst(bool isTrain,
 
   TYPED_INSERT(size_t, ElemKind::IndexTy);
   TYPED_INSERT(float, ElemKind::FloatTy);
+  TYPED_INSERT(int8_t, ElemKind::Int8QTy);
 #undef TYPED_INSERT
 }
 

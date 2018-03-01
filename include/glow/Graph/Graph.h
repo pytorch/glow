@@ -216,8 +216,13 @@ public:
                                      llvm::ArrayRef<Node *> inputs,
                                      llvm::ArrayRef<TypeRef> outputs);
 
+  /// Create concat node which concatenates input tensors along \p dimension.
   ConcatNode *createConcat(llvm::StringRef name, llvm::ArrayRef<Node *> inputs,
                            unsigned dimension);
+
+  /// Create concat node with the given return type \p outTy.
+  ConcatNode *createConcat(llvm::StringRef name, llvm::ArrayRef<Node *> inputs,
+                           unsigned dimension, TypeRef outTy);
 
   SliceNode *createSlice(llvm::StringRef name, NodeValue input,
                          UnsignedArrayRef begin, UnsignedArrayRef end);
