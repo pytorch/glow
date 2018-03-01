@@ -6,21 +6,23 @@
 #include <iostream>
 
 int main(int argc, char **argv) {
-  if (argc != 5) {
+  if (argc != 6) {
     std::cerr << "Usage: " << argv[0]
-              << " header.h impl.cpp enums.def irbuilder.h\n";
+              << " header.h impl.cpp enums.def irbuilder.h irgen.h\n";
     return -1;
   }
 
   std::cout << "Writing instr descriptors to:\n\t" << argv[1] << "\n\t"
-            << argv[2] << "\n\t" << argv[3] << "\n\t" << argv[4] << "\n";
+            << argv[2] << "\n\t" << argv[3] << "\n\t" << argv[4] << "\n\t"
+            << argv[5] << "\n";
 
   std::ofstream headerStream(argv[1]);
   std::ofstream cppStream(argv[2]);
   std::ofstream defStream(argv[3]);
   std::ofstream builderStream(argv[4]);
+  std::ofstream irGenStream(argv[5]);
 
-  Builder BB(headerStream, cppStream, defStream, builderStream);
+  Builder BB(headerStream, cppStream, defStream, builderStream, irGenStream);
 
   //===--------------------------------------------------------------------===//
   //               Memory / Buffer Management
@@ -135,7 +137,8 @@ int main(int argc, char **argv) {
   BB.newInstr("SoftMax")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .inplaceOperand({"Dest", "Src"});
+      .inplaceOperand({"Dest", "Src"})
+      .autoIRGen();
 
   BB.newInstr("SoftMaxGrad")
       .addOperand("OrigDest", OperandKind::In)

@@ -76,6 +76,14 @@ public:
 
   void post(Node *parent, Node *N) override {
     visited_.insert(N);
+
+    bool autoGenIRSuccess = false;
+#define GEN_SUCCESS autoGenIRSuccess
+#include "AutoGenIRGen.h"
+    if (autoGenIRSuccess) {
+      return;
+    }
+
     switch (N->getKind()) {
     default:
       // Unknown node kind.
@@ -263,15 +271,6 @@ public:
       auto *V = builder_.createTanhOp(valueForNode(T->getInput()));
       V->setName(N->getName());
       registerIR(N, V->getDest());
-      break;
-    }
-    case glow::Kinded::Kind::SoftMaxNodeKind: {
-      auto *SM = cast<SoftMaxNode>(N);
-      auto *in = valueForNode(SM->getInput());
-      auto *V = builder_.createSoftMaxOp(in);
-      V->setName(N->getName());
-      registerIR(N, V->getDest());
-      nodeToInstr_[N] = V;
       break;
     }
     case glow::Kinded::Kind::SoftMaxGradNodeKind: {
@@ -629,7 +628,9 @@ public:
       registerIR(N, AC);
       break;
     }
-
+    case glow::Kinded::Kind::SoftMaxNodeKind: {
+      llvm_unreachable("Node should have generated IR via AutoGenIRGen.h");
+    }
     case glow::Kinded::Kind::TanhGradNodeKind:
     case glow::Kinded::Kind::SigmoidGradNodeKind:
     case glow::Kinded::Kind::ArithmeticGradNodeKind:

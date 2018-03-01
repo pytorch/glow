@@ -187,7 +187,7 @@ void InstrBuilder::addGradientInstr(
     llvm::ArrayRef<llvm::StringRef> originalFields,
     llvm::ArrayRef<llvm::StringRef> gradFields) {
   InstrBuilder GI(headerStream, cppStream, defStream, builderStream,
-                  name_ + "Grad");
+                  irGenStream, name_ + "Grad");
 
   // The new 'Grad' class will have all of the fields of the current class.
   GI.ty_ = ty_;
