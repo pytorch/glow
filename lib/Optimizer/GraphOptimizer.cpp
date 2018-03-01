@@ -661,8 +661,10 @@ static void optimizeQuantization(Function *F) {
         // a different location.
         if (AN->getMode() == ArithmeticNode::Mode::Max) {
           auto name = RS->getName();
-          auto *L = F->createRescaleQuantized(name, AN->getLHS(), RS->getType());
-          auto *R = F->createRescaleQuantized(name, AN->getRHS(), RS->getType());
+          auto *L =
+              F->createRescaleQuantized(name, AN->getLHS(), RS->getType());
+          auto *R =
+              F->createRescaleQuantized(name, AN->getRHS(), RS->getType());
           auto *newAN = F->createArithmetic(AN->getName(), L, R, AN->getMode());
           worklist.push_back(L);
           worklist.push_back(R);
