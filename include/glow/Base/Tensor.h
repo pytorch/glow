@@ -99,8 +99,7 @@ public:
   /// Construct an unowned tensor provided an existing payload buffer.
   /// This constructor can be used when there is a need to work with
   /// "externally" managed payload buffers using Tensor APIs.
-  Tensor(void *data, ElemKind elemTy, llvm::ArrayRef<size_t> dims)
-      : data_(data), type_(elemTy, dims) {
+  Tensor(void *data, TypeRef ty) : data_(data), type_(*ty) {
     // Mark as unowned.
     data_.setInt(1);
   }
