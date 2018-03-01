@@ -920,8 +920,19 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcDimsSize = emitConst(builder, src->getType()->dims().size());
     auto *offsetsPtr = emitConstArray(builder, offsets);
     auto *offsetsArraySize = emitConst(builder, offsets.size());
-
-    auto *F = getFunction("libjit_insert_tensor_f");
+    llvm::StringRef kernelName;
+    switch (dest->getElementType()) {
+    default:
+      GLOW_UNREACHABLE("Unsupported type of kernel");
+      break;
+    case ElemKind::FloatTy:
+      kernelName = "libjit_insert_tensor_f";
+      break;
+    case ElemKind::IndexTy:
+      kernelName = "libjit_insert_tensor_i";
+      break;
+    }
+    auto *F = getFunction(kernelName);
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, srcPtr, offsetsPtr, destDims, srcDims,
                            destDimsSize, srcDimsSize, offsetsArraySize});
@@ -943,8 +954,19 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcDimsSize = emitConst(builder, src->getType()->dims().size());
     auto *offsetsPtr = emitConstArray(builder, offsets);
     auto *offsetsArraySize = emitConst(builder, offsets.size());
-
-    auto *F = getFunction("libjit_extract_tensor_f");
+    llvm::StringRef kernelName;
+    switch (dest->getElementType()) {
+    default:
+      GLOW_UNREACHABLE("Unsupported type of kernel");
+      break;
+    case ElemKind::FloatTy:
+      kernelName = "libjit_extract_tensor_f";
+      break;
+    case ElemKind::IndexTy:
+      kernelName = "libjit_extract_tensor_i";
+      break;
+    }
+    auto *F = getFunction(kernelName);
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, offsetsPtr, srcDims, destDims,
                            srcDimsSize, destDimsSize, offsetsArraySize});
