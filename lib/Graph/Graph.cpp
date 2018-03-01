@@ -612,9 +612,9 @@ SliceNode *Function::createSlice(llvm::StringRef name, NodeValue input,
     size_t end_i = end[i];
     size_t dim_i = dims[i];
     (void)dim_i;
-    assert(begin_i >= 0 && "Illegal Begin  indices");
+    assert(begin_i >= 0 && "Illegal Begin indices");
     assert(end_i > 0 && "Illegal End indices");
-    assert(begin_i < dim_i && "Illegal Begin  indices");
+    assert(begin_i < dim_i && "Illegal Begin indices");
     assert(end_i <= dim_i && "Illegal End indices");
     assert(end_i > begin_i && "Illegal Begin and End indices");
     begin_v.push_back(begin_i);

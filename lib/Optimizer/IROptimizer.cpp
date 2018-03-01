@@ -262,7 +262,7 @@ static void deleteDeadAllocs(IRFunction &M) {
 
   llvm::SmallVector<Instruction *, 16> erasedInstructions{};
 
-  // Remove all unused tenstorviews.
+  // Remove all unused tensorviews.
   for (auto &I : instrs) {
     if (isa<TensorViewInst>(I) && I->getNumUsers() == 0) {
       erasedInstructions.push_back(I);
