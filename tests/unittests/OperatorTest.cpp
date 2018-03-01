@@ -403,8 +403,7 @@ TEST(Operator, IntConvolution) {
   auto *dequantRes = F->createDequantize("dequant", convq);
 
   // Subtract the results of the convolution from the quantized convolution.
-  auto *sub = F->createArithmetic("compare", dequantRes, conv,
-                                  ArithmeticNode::Mode::Sub);
+  auto *sub = F->createSub("compare", dequantRes, conv);
 
   F->createSave("save", sub, res);
   EE.compile(CompilationMode::Infer, F);
@@ -440,7 +439,7 @@ TEST(Operator, IntConcat) {
   auto DCQ = F->createDequantize("DQ", CQ);
 
   // Subtract the results of the Concat from the quantized Concat.
-  auto sub = F->createArithmetic("compare", C, DCQ, ArithmeticNode::Mode::Sub);
+  auto sub = F->createSub("compare", C, DCQ);
 
   auto res = F->createSave("save", sub);
   EE.compile(CompilationMode::Infer, F);
@@ -486,8 +485,7 @@ TEST(Operator, IntFC) {
   auto *dequantRes = F->createDequantize("dequant", fcq);
 
   // Subtract the results of the convolution from the quantized fc.
-  auto *sub =
-      F->createArithmetic("compare", dequantRes, fc, ArithmeticNode::Mode::Sub);
+  auto *sub = F->createSub("compare", dequantRes, fc);
 
   F->createSave("save", sub, res);
   EE.compile(CompilationMode::Infer, F);
@@ -592,8 +590,8 @@ TEST(Operator, QuantizedMaxNode) {
   auto *QA = F->createQuantize("QA", A, TA);
   auto *QB = F->createQuantize("QB", B, TB);
 
-  Node *max = F->createArithmetic("MX", TO1, QA, QB, ArithmeticNode::Mode::Max);
-  Node *add = F->createArithmetic("MX", TO2, QA, QB, ArithmeticNode::Mode::Add);
+  Node *max = F->createMax("MX", TO1, QA, QB);
+  Node *add = F->createAdd("MX", TO2, QA, QB);
 
   max = F->createRescaleQuantized("Rescale", max, TO3);
   add = F->createRescaleQuantized("Rescale", add, TO4);
@@ -651,7 +649,7 @@ TEST(Operator, TestQuantizedRescaleSequence) {
   R = F->createRescaleQuantized("R", R, T3);
   // Check that adding the quantized zero does not change the result.
   auto *G = F->createSplat("splatZero", T3, 0.0);
-  R = F->createArithmetic("addZero", G, R, ArithmeticNode::Mode::Add);
+  R = F->createAdd("addZero", G, R);
   R = F->createRescaleQuantized("R", R, T4);
   R = F->createRescaleQuantized("R", R, T5);
   R = F->createRescaleQuantized("R", R, T1);

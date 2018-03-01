@@ -191,7 +191,7 @@ TEST(Graph, functionDependenciesTest) {
   auto V3 = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V3");
   M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V4");
 
-  auto sum = F1->createArithmetic("1_sub_2", V1, V2, ArithmeticNode::Mode::Sub);
+  auto sum = F1->createSub("1_sub_2", V1, V2);
   F1->createSave("sv", sum, V1);
   F2->createSave("sv", V3, V2);
 
@@ -227,10 +227,9 @@ TEST(Graph, NodeValue) {
   auto *inputX = mod.createVariable(ElemKind::FloatTy, {1}, "input",
                                     Variable::VisibilityKind::Public,
                                     Variable::TrainKind::Broadcast, 3.0);
-  NodeValue a =
-      F->createArithmetic("x2", inputX, inputX, ArithmeticNode::Mode::Add);
-  a = F->createArithmetic("x4", a, a, ArithmeticNode::Mode::Add);
-  a = F->createArithmetic("x8", a, a, ArithmeticNode::Mode::Add);
+  NodeValue a = F->createAdd("x2", inputX, inputX);
+  a = F->createAdd("x4", a, a);
+  a = F->createAdd("x8", a, a);
   auto S = F->createSave("Save", a);
 
   EE.compile(CompilationMode::Infer, F);

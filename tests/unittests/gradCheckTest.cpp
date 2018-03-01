@@ -271,7 +271,7 @@ TEST(Network, gradientCheckArithmeticDiv) {
   auto *Exp = mod.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
                                  Variable::VisibilityKind::Public,
                                  Variable::TrainKind::None);
-  Node *O = F->createArithmetic("div", A, B, ArithmeticNode::Mode::Div);
+  Node *O = F->createDiv("div", A, B);
   O = F->createRegression("reg", O, Exp);
   auto *result = F->createSave("ret", O);
 
@@ -314,10 +314,10 @@ TEST(Network, gradientCheckArithmetic) {
                                  Variable::VisibilityKind::Public,
                                  Variable::TrainKind::None);
 
-  Node *O = F->createArithmetic("mul", A, B, ArithmeticNode::Mode::Mul);
-  O = F->createArithmetic("add", O, C, ArithmeticNode::Mode::Add);
-  O = F->createArithmetic("sub", D, O, ArithmeticNode::Mode::Sub);
-  O = F->createArithmetic("div", O, E, ArithmeticNode::Mode::Div);
+  Node *O = F->createMul("mul", A, B);
+  O = F->createAdd("add", O, C);
+  O = F->createSub("sub", D, O);
+  O = F->createDiv("div", O, E);
   O = F->createRegression("reg", O, Exp);
   auto *result = F->createSave("ret", O);
 

@@ -727,7 +727,7 @@ TEST(Interpreter, learnSqrt2) {
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::Broadcast, 2);
 
-  Node *O = F->createArithmetic("Mult", A, A, ArithmeticNode::Mode::Mul);
+  Node *O = F->createMul("Mult", A, A);
   O = F->createRegression("reg", O, Ex);
   F->createSave("ret", O);
 

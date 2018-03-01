@@ -93,8 +93,7 @@ TEST(GraphAutoGrad, cloneAndDiff) {
                              Variable::VisibilityKind::Private);
   Node *B = M.createVariable(ElemKind::FloatTy, {1}, "B",
                              Variable::VisibilityKind::Private);
-  Node *AplusB_F =
-      F->createArithmetic("AplusB", A, B, ArithmeticNode::Mode::Add);
+  Node *AplusB_F = F->createAdd("AplusB", A, B);
 
   EXPECT_EQ(M.getVars().size(), 2);
 
@@ -106,7 +105,7 @@ TEST(GraphAutoGrad, cloneAndDiff) {
   Node *C = M.createVariable(ElemKind::FloatTy, {1}, "C",
                              Variable::VisibilityKind::Private);
   Node *AplusB_G = G->getNodes().back();
-  G->createArithmetic("totalSum", AplusB_G, C, ArithmeticNode::Mode::Add);
+  G->createAdd("totalSum", AplusB_G, C);
 
   EXPECT_EQ(M.getVars().size(), 3);
 

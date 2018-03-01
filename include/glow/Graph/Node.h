@@ -161,6 +161,7 @@ public:
   const NodeValue &getNthInput(unsigned idx) const;
   llvm::StringRef getOutputName(unsigned idx) const;
   bool hasSideEffects() const;
+  bool isArithmetic() const;
 
   /// \returns true if this input is being overwritten by the node.
   bool isOverwrittenNthInput(unsigned idx) const;

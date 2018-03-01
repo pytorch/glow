@@ -148,7 +148,7 @@ void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                                   "input1", Variable::VisibilityKind::Public);
   auto *var2 = mod.createVariable(inputs2->getElementType(), inputs2->dims(),
                                   "input2", Variable::VisibilityKind::Public);
-  auto *max = F->createArithmetic("max", var1, var2, ArithmeticNode::Mode::Max);
+  auto *max = F->createMax("max", var1, var2);
   auto result = F->createSave("ret", max);
   EE.compile(CompilationMode::Infer, F);
   EE.run({var1, var2}, {inputs1, inputs2});
@@ -164,7 +164,7 @@ void inferMinNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                                   "input1", Variable::VisibilityKind::Public);
   auto *var2 = mod.createVariable(inputs2->getElementType(), inputs2->dims(),
                                   "input2", Variable::VisibilityKind::Public);
-  auto *min = F->createArithmetic("min", var1, var2, ArithmeticNode::Mode::Min);
+  auto *min = F->createMin("min", var1, var2);
   auto result = F->createSave("ret", min);
   EE.compile(CompilationMode::Infer, F);
   EE.run({var1, var2}, {inputs1, inputs2});
@@ -443,7 +443,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *fc = F->createFullyConnected("fc", tr, 16);
   auto *th0 = F->createTanh("tanh", fc);
   auto *sg0 = F->createSigmoid("sig", fc);
-  auto *A1 = F->createArithmetic("add", th0, sg0, ArithmeticNode::Mode::Add);
+  auto *A1 = F->createAdd("add", th0, sg0);
   auto *fc2 = F->createFullyConnected("fc2", A1, 16);
 
   auto *R = F->createRegression("reg", fc2, fc2);
@@ -480,21 +480,18 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
   auto *reshape1 = F->createReshape("reshape1", fc1, {8, 14, 28, 6});
   auto *relu1 = F->createRELU("relu1", reshape1);
   auto *pool1 = F->createPoolMax("pool1", relu1, 2, 2, 1);
-  auto *add =
-      F->createArithmetic("add", sigmoid1, pool1, ArithmeticNode::Mode::Add);
+  auto *add = F->createAdd("add", sigmoid1, pool1);
   auto *tanh = F->createTanh("tanh", add);
   auto *fc2 = F->createFullyConnected("fc2", var3, 720);
   cast<Variable>(fc2->getWeights())->getHandle().clear(1.1);
   auto *reshape2 = F->createReshape("reshape2", fc2, {8, 8, 15, 6});
-  auto *mul =
-      F->createArithmetic("mul", tanh, reshape2, ArithmeticNode::Mode::Mul);
+  auto *mul = F->createMul("mul", tanh, reshape2);
   auto *sigmoid2 = F->createSigmoid("sigmoid2", mul);
   auto *conv2 = F->createConv("conv2", sigmoid2, 7, 3, 2, 1);
   cast<Variable>(conv2->getFilter())->getHandle().clear(0.3);
   cast<Variable>(conv2->getBias())->getHandle().clear(1.3);
   auto *reshape3 = F->createReshape("reshape3", conv2, {8, 8, 7, 4});
-  auto *sub =
-      F->createArithmetic("sub", reshape3, var4, ArithmeticNode::Mode::Sub);
+  auto *sub = F->createSub("sub", reshape3, var4);
   auto *relu2 = F->createRELU("relu2", sub);
   auto *pool2 = F->createPoolAvg("pool2", relu2, 3, 2, 1);
   auto *sigmoid3 = F->createSigmoid("sigmoid3", pool2);

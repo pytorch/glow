@@ -680,18 +680,25 @@ LocalResponseNormalizationNode *Function::createLocalResponseNormalization(
                                                     alpha, beta, k));
 }
 
-ArithmeticNode *Function::createArithmetic(llvm::StringRef name, NodeValue LHS,
-                                           NodeValue RHS,
-                                           ArithmeticNode::Mode op) {
-  return createArithmetic(name, LHS.getType(), LHS, RHS, op);
-}
+#define ARITHMETIC_FUN_DEF(NODE_NAME_)                                         \
+  NODE_NAME_##Node *Function::create##NODE_NAME_(                              \
+      llvm::StringRef name, NodeValue LHS, NodeValue RHS) {                    \
+    return create##NODE_NAME_(name, LHS.getType(), LHS, RHS);                  \
+  }                                                                            \
+  NODE_NAME_##Node *Function::create##NODE_NAME_(                              \
+      llvm::StringRef name, TypeRef T, NodeValue LHS, NodeValue RHS) {         \
+    assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");              \
+    return addNode(new NODE_NAME_##Node(name, T, LHS, RHS));                   \
+  }
 
-ArithmeticNode *Function::createArithmetic(llvm::StringRef name, TypeRef T,
-                                           NodeValue LHS, NodeValue RHS,
-                                           ArithmeticNode::Mode op) {
-  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
-  return addNode(new ArithmeticNode(name, T, op, LHS, RHS));
-}
+ARITHMETIC_FUN_DEF(Add);
+ARITHMETIC_FUN_DEF(Mul);
+ARITHMETIC_FUN_DEF(Sub);
+ARITHMETIC_FUN_DEF(Div);
+ARITHMETIC_FUN_DEF(Max);
+ARITHMETIC_FUN_DEF(Min);
+ARITHMETIC_FUN_DEF(CmpLTE);
+#undef ARITHMETIC_FUN_DEF
 
 SelectNode *Function::createSelect(llvm::StringRef name, NodeValue Cond,
                                    NodeValue LHS, NodeValue RHS) {
@@ -884,7 +891,7 @@ void Function::createSimpleRNN(llvm::StringRef namePrefix,
     auto fc2Name = (namePrefix + ".fc2." + std::to_string(t)).str();
     auto *FC2 = createFullyConnected(fc2Name, inputs[t], Wxh, Bxh);
     auto aName = (namePrefix + ".add." + std::to_string(t)).str();
-    auto *A = createArithmetic(aName, FC1, FC2, ArithmeticNode::Mode::Add);
+    auto *A = createAdd(aName, FC1, FC2);
     auto tanhName = (namePrefix + ".tanh." + std::to_string(t)).str();
     auto *H = createTanh(tanhName, A);
     auto outName = (namePrefix + ".out." + std::to_string(t)).str();
@@ -997,9 +1004,8 @@ void Function::createGRU(llvm::StringRef namePrefix,
 
     auto *Zt = createSigmoid(
         sigmoid1Name,
-        createArithmetic(add1Name, createFullyConnected(fc1Name, Ht, Whz, Bz1),
-                         createFullyConnected(fc2Name, inputs[t], Wxz, Bz2),
-                         ArithmeticNode::Mode::Add));
+        createAdd(add1Name, createFullyConnected(fc1Name, Ht, Whz, Bz1),
+                  createFullyConnected(fc2Name, inputs[t], Wxz, Bz2)));
 
     auto fc3Name = (namePrefix + ".fc3." + std::to_string(t)).str();
     auto fc4Name = (namePrefix + ".fc4." + std::to_string(t)).str();
@@ -1008,19 +1014,17 @@ void Function::createGRU(llvm::StringRef namePrefix,
 
     auto *Rt = createSigmoid(
         sigmoid2Name,
-        createArithmetic(add2Name, createFullyConnected(fc3Name, Ht, Whr, Br1),
-                         createFullyConnected(fc4Name, inputs[t], Wxr, Br2),
-                         ArithmeticNode::Mode::Add));
+        createAdd(add2Name, createFullyConnected(fc3Name, Ht, Whr, Br1),
+                  createFullyConnected(fc4Name, inputs[t], Wxr, Br2)));
 
     auto zhtName = (namePrefix + ".zh." + std::to_string(t)).str();
-    auto *ZHt = createArithmetic(zhtName, Zt, Ht, ArithmeticNode::Mode::Mul);
+    auto *ZHt = createMul(zhtName, Zt, Ht);
 
     auto oneMinusZtName = (namePrefix + ".1-z." + std::to_string(t)).str();
-    auto *OneMinusZt =
-        createArithmetic(oneMinusZtName, Ones, Zt, ArithmeticNode::Mode::Sub);
+    auto *OneMinusZt = createSub(oneMinusZtName, Ones, Zt);
 
     auto rhtName = (namePrefix + ".rh." + std::to_string(t)).str();
-    auto *RHt = createArithmetic(rhtName, Rt, Ht, ArithmeticNode::Mode::Mul);
+    auto *RHt = createMul(rhtName, Rt, Ht);
 
     auto fc5Name = (namePrefix + ".fc5." + std::to_string(t)).str();
     auto fc6Name = (namePrefix + ".fc6." + std::to_string(t)).str();
@@ -1029,16 +1033,14 @@ void Function::createGRU(llvm::StringRef namePrefix,
 
     auto *Ut = createTanh(
         tanh1Name,
-        createArithmetic(add3Name, createFullyConnected(fc5Name, RHt, Whh, Bh1),
-                         createFullyConnected(fc6Name, inputs[t], Wxh, Bh2),
-                         ArithmeticNode::Mode::Add));
+        createAdd(add3Name, createFullyConnected(fc5Name, RHt, Whh, Bh1),
+                  createFullyConnected(fc6Name, inputs[t], Wxh, Bh2)));
 
     auto oneMinusZtUtName = (namePrefix + "1.-zu." + std::to_string(t)).str();
-    auto *OneMinusZtUt = createArithmetic(oneMinusZtUtName, OneMinusZt, Ut,
-                                          ArithmeticNode::Mode::Mul);
+    auto *OneMinusZtUt = createMul(oneMinusZtUtName, OneMinusZt, Ut);
 
     auto htName = (namePrefix + ".H." + std::to_string(t)).str();
-    Ht = createArithmetic(htName, ZHt, OneMinusZtUt, ArithmeticNode::Mode::Add);
+    Ht = createAdd(htName, ZHt, OneMinusZtUt);
 
     auto outName = (namePrefix + ".out." + std::to_string(t)).str();
     auto *O = createFullyConnected(outName, Ht, Why, By);
@@ -1171,9 +1173,8 @@ void Function::createLSTM(llvm::StringRef namePrefix,
 
     auto *Ft = createSigmoid(
         sigmoid1Name,
-        createArithmetic(add1Name, createFullyConnected(fc1Name, Ht, Whf, Bf1),
-                         createFullyConnected(fc2Name, inputs[t], Wxf, Bf2),
-                         ArithmeticNode::Mode::Add));
+        createAdd(add1Name, createFullyConnected(fc1Name, Ht, Whf, Bf1),
+                  createFullyConnected(fc2Name, inputs[t], Wxf, Bf2)));
 
     auto fc3Name = (namePrefix + ".fc3." + std::to_string(t)).str();
     auto fc4Name = (namePrefix + ".fc4." + std::to_string(t)).str();
@@ -1182,9 +1183,8 @@ void Function::createLSTM(llvm::StringRef namePrefix,
 
     auto *It = createSigmoid(
         sigmoid2Name,
-        createArithmetic(add2Name, createFullyConnected(fc3Name, Ht, Whi, Bi1),
-                         createFullyConnected(fc4Name, inputs[t], Wxi, Bi2),
-                         ArithmeticNode::Mode::Add));
+        createAdd(add2Name, createFullyConnected(fc3Name, Ht, Whi, Bi1),
+                  createFullyConnected(fc4Name, inputs[t], Wxi, Bi2)));
 
     auto fc5Name = (namePrefix + ".fc5." + std::to_string(t)).str();
     auto fc6Name = (namePrefix + ".fc6." + std::to_string(t)).str();
@@ -1193,9 +1193,8 @@ void Function::createLSTM(llvm::StringRef namePrefix,
 
     auto *Ot = createSigmoid(
         sigmoid3Name,
-        createArithmetic(add3Name, createFullyConnected(fc5Name, Ht, Who, Bo1),
-                         createFullyConnected(fc6Name, inputs[t], Wxo, Bo2),
-                         ArithmeticNode::Mode::Add));
+        createAdd(add3Name, createFullyConnected(fc5Name, Ht, Who, Bo1),
+                  createFullyConnected(fc6Name, inputs[t], Wxo, Bo2)));
 
     auto fc7Name = (namePrefix + ".fc7." + std::to_string(t)).str();
     auto fc8Name = (namePrefix + ".fc8." + std::to_string(t)).str();
@@ -1204,22 +1203,17 @@ void Function::createLSTM(llvm::StringRef namePrefix,
 
     auto *CRt = createTanh(
         tanh1Name,
-        createArithmetic(add4Name, createFullyConnected(fc7Name, Ht, Whc, Bc1),
-                         createFullyConnected(fc8Name, inputs[t], Wxc, Bc2),
-                         ArithmeticNode::Mode::Add));
+        createAdd(add4Name, createFullyConnected(fc7Name, Ht, Whc, Bc1),
+                  createFullyConnected(fc8Name, inputs[t], Wxc, Bc2)));
 
     auto mul1Name = (namePrefix + ".mul1." + std::to_string(t)).str();
     auto mul2Name = (namePrefix + ".mul2." + std::to_string(t)).str();
-    Ct = createArithmetic(
-        (namePrefix + ".C." + std::to_string(t)).str(),
-        createArithmetic(mul1Name, Ft, Ct, ArithmeticNode::Mode::Mul),
-        createArithmetic(mul2Name, It, CRt, ArithmeticNode::Mode::Mul),
-        ArithmeticNode::Mode::Add);
+    Ct = createAdd((namePrefix + ".C." + std::to_string(t)).str(),
+                   createMul(mul1Name, Ft, Ct), createMul(mul2Name, It, CRt));
 
     auto htName = (namePrefix + ".H." + std::to_string(t)).str();
     auto tanh2Name = (namePrefix + ".tanh2." + std::to_string(t)).str();
-    Ht = createArithmetic(htName, Ot, createTanh(tanh2Name, Ct),
-                          ArithmeticNode::Mode::Mul);
+    Ht = createMul(htName, Ot, createTanh(tanh2Name, Ct));
 
     auto outName = (namePrefix + ".out." + std::to_string(t)).str();
     auto *O = createFullyConnected(outName, Ht, Why, By);
