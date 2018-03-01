@@ -200,14 +200,14 @@ void LLVMIRGen::performCodeGen() {
 }
 
 llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
-                                         glow::Value *val, ElemKind ptrTy) {
+                                         glow::Value *val) {
   val = getOrigin(val);
   assert(allocationsInfo_.allocatedAddressed_.count(val) &&
          "Value address was not allocated");
   auto sizeTTy = builder.getIntNTy(sizeof(size_t) * 8);
   llvm::Type *T = nullptr;
 
-  switch (ptrTy) {
+  switch (val->getElementType()) {
   case ElemKind::FloatTy:
     T = llvm::Type::getFloatPtrTy(ctx_);
     break;
@@ -332,21 +332,25 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   switch (I->getKind()) {
   case Kinded::Kind::SplatInstKind: {
     SplatInst *SI = cast<SplatInst>(I);
-    auto *addr = emitValueAddress(builder, SI->getDest(), ElemKind::FloatTy);
-    auto cnt = emitValueSize(builder, SI->getDest());
+    auto *dest = SI->getDest();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto cnt = emitValueSize(builder, dest);
     auto *val = emitConst(builder, SI->getValue());
+
     auto *F = getFunction("libjit_splat_f");
     assert(F && "Unable to load the function");
-    builder.CreateCall(F, {addr, cnt, val});
+    builder.CreateCall(F, {destPtr, cnt, val});
     break;
   }
 
   case Kinded::Kind::ElementMaxInstKind: {
     ElementMaxInst *EM = cast<ElementMaxInst>(I);
-    auto *destPtr = emitValueAddress(builder, EM->getDest(), ElemKind::FloatTy);
-    auto *lhsPtr = emitValueAddress(builder, EM->getLHS(), ElemKind::FloatTy);
-    auto *rhsPtr = emitValueAddress(builder, EM->getRHS(), ElemKind::FloatTy);
-    auto cnt = emitValueSize(builder, EM->getDest());
+    auto *dest = EM->getDest();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *lhsPtr = emitValueAddress(builder, EM->getLHS());
+    auto *rhsPtr = emitValueAddress(builder, EM->getRHS());
+    auto cnt = emitValueSize(builder, dest);
+
     auto *F = getFunction("libjit_elementmax_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, cnt});
@@ -355,10 +359,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::ElementMinInstKind: {
     ElementMinInst *EM = cast<ElementMinInst>(I);
-    auto *destPtr = emitValueAddress(builder, EM->getDest(), ElemKind::FloatTy);
-    auto *lhsPtr = emitValueAddress(builder, EM->getLHS(), ElemKind::FloatTy);
-    auto *rhsPtr = emitValueAddress(builder, EM->getRHS(), ElemKind::FloatTy);
-    auto cnt = emitValueSize(builder, EM->getDest());
+    auto *dest = EM->getDest();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *lhsPtr = emitValueAddress(builder, EM->getLHS());
+    auto *rhsPtr = emitValueAddress(builder, EM->getRHS());
+    auto cnt = emitValueSize(builder, dest);
+
     auto *F = getFunction("libjit_elementmin_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, cnt});
@@ -367,11 +373,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::ElementSelectInstKind: {
     ElementSelectInst *ES = cast<ElementSelectInst>(I);
-    auto *destPtr = emitValueAddress(builder, ES->getDest(), ElemKind::FloatTy);
-    auto *condPtr = emitValueAddress(builder, ES->getCond(), ElemKind::FloatTy);
-    auto *lhsPtr = emitValueAddress(builder, ES->getLHS(), ElemKind::FloatTy);
-    auto *rhsPtr = emitValueAddress(builder, ES->getRHS(), ElemKind::FloatTy);
-    auto cnt = emitValueSize(builder, ES->getDest());
+    auto *dest = ES->getDest();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *condPtr = emitValueAddress(builder, ES->getCond());
+    auto *lhsPtr = emitValueAddress(builder, ES->getLHS());
+    auto *rhsPtr = emitValueAddress(builder, ES->getRHS());
+    auto cnt = emitValueSize(builder, dest);
+
     auto *F = getFunction("libjit_elementselect_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, condPtr, lhsPtr, rhsPtr, cnt});
@@ -380,17 +388,19 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::BatchedMatMulInstKind: {
     BatchedMatMulInst *BMM = cast<BatchedMatMulInst>(I);
-    auto *destPtr =
-        emitValueAddress(builder, BMM->getDest(), ElemKind::FloatTy);
-    auto *lhsPtr = emitValueAddress(builder, BMM->getLHS(), ElemKind::FloatTy);
-    auto *rhsPtr = emitValueAddress(builder, BMM->getRHS(), ElemKind::FloatTy);
+    auto *dest = BMM->getDest();
+    auto *lhs = BMM->getLHS();
+    auto *rhs = BMM->getRHS();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *lhsPtr = emitValueAddress(builder, lhs);
+    auto *rhsPtr = emitValueAddress(builder, rhs);
+
+    auto *destDims = emitValueDims(builder, dest);
+    auto *lhsDims = emitValueDims(builder, lhs);
+    auto *rhsDims = emitValueDims(builder, rhs);
+
     auto *F = getFunction("libjit_batchedmatmul_f");
     assert(F && "Unable to load the function");
-
-    auto *destDims = emitValueDims(builder, BMM->getDest());
-    auto *lhsDims = emitValueDims(builder, BMM->getLHS());
-    auto *rhsDims = emitValueDims(builder, BMM->getRHS());
-
     builder.CreateCall(F,
                        {destPtr, lhsPtr, rhsPtr, destDims, lhsDims, rhsDims});
     break;
@@ -398,12 +408,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::CopyInstKind: {
     CopyInst *CI = cast<CopyInst>(I);
-    auto *destPtr = emitValueAddress(builder, CI->getDest(), ElemKind::Int8QTy);
-    auto *srcPtr = emitValueAddress(builder, CI->getSrc(), ElemKind::Int8QTy);
-    auto sizeInBytes = CI->getDest()->getType()->getSizeInBytes();
-    auto *bytes = emitConst(builder, sizeInBytes);
+    auto *dest = CI->getDest();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, CI->getSrc());
+    auto *bytes = emitConst(builder, dest->getType()->getSizeInBytes());
 
-    auto *F = getFunction("libjit_copy_buffer");
+    auto *F = getFunction("libjit_copy_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, srcPtr, bytes});
     break;
@@ -411,13 +421,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::BatchedAddInstKind: {
     BatchedAddInst *BA = cast<BatchedAddInst>(I);
-    auto *destPtr = emitValueAddress(builder, BA->getDest(), ElemKind::FloatTy);
-    auto *batchPtr =
-        emitValueAddress(builder, BA->getBatch(), ElemKind::FloatTy);
-    auto *slicePtr =
-        emitValueAddress(builder, BA->getSlice(), ElemKind::FloatTy);
+    auto *batch = BA->getBatch();
+    auto *destPtr = emitValueAddress(builder, BA->getDest());
+    auto *batchPtr = emitValueAddress(builder, batch);
+    auto *slicePtr = emitValueAddress(builder, BA->getSlice());
 
-    auto bdim = flattenCdr(BA->getBatch()->dims());
+    auto bdim = flattenCdr(batch->dims());
     auto *numSlice = emitConst(builder, bdim.first);
     auto *sliceSize = emitConst(builder, bdim.second);
 
@@ -429,12 +438,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::BatchedReduceAddInstKind: {
     BatchedReduceAddInst *BR = cast<BatchedReduceAddInst>(I);
-    auto *destPtr = emitValueAddress(builder, BR->getDest(), ElemKind::FloatTy);
-    auto *batchPtr =
-        emitValueAddress(builder, BR->getBatch(), ElemKind::FloatTy);
+    auto *dest = BR->getDest();
+    auto *batch = BR->getBatch();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *batchPtr = emitValueAddress(builder, batch);
 
-    auto *destSize = emitConst(builder, BR->getDest()->getType()->size());
-    auto bdim = flattenCdr(BR->getBatch()->dims());
+    auto *destSize = emitConst(builder, dest->getType()->size());
+    auto bdim = flattenCdr(batch->dims());
     auto *numSlice = emitConst(builder, bdim.first);
     auto *sliceSize = emitConst(builder, bdim.second);
 
@@ -446,26 +456,28 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::ConvolutionInstKind: {
     ConvolutionInst *CI = cast<ConvolutionInst>(I);
-    auto *destPtr = emitValueAddress(builder, CI->getDest(), ElemKind::FloatTy);
-    auto *srcPtr = emitValueAddress(builder, CI->getSrc(), ElemKind::FloatTy);
-    auto *filterPtr =
-        emitValueAddress(builder, CI->getFilter(), ElemKind::FloatTy);
-    auto *biasPtr = emitValueAddress(builder, CI->getBias(), ElemKind::FloatTy);
+    auto *dest = CI->getDest();
+    auto *src = CI->getSrc();
+    auto *filter = CI->getFilter();
+    auto *bias = CI->getBias();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *filterPtr = emitValueAddress(builder, filter);
+    auto *biasPtr = emitValueAddress(builder, bias);
 
-    auto *destDims = emitValueDims(builder, CI->getDest());
-    auto *srcDims = emitValueDims(builder, CI->getSrc());
-    auto *filterDims = emitValueDims(builder, CI->getFilter());
-    auto *biasDims = emitValueDims(builder, CI->getBias());
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
+    auto *filterDims = emitValueDims(builder, filter);
+    auto *biasDims = emitValueDims(builder, bias);
 
     auto *kernel = emitConst(builder, CI->getKernel());
     auto *stride = emitConst(builder, CI->getStride());
     auto *pad = emitConst(builder, CI->getPad());
 
     const char *kernelName = "libjit_convolution_f";
-
     // Use a special version of the kernel for the case where K (the depth of
     // the convolution) is a multiple of 4.
-    if ((CI->getDest()->dims()[3] % 4) == 0) {
+    if (dest->dims()[3] % 4 == 0) {
       kernelName = "libjit_convolution_f_unroll_k4";
     }
 
@@ -479,20 +491,20 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::ConvolutionGradInstKind: {
     ConvolutionGradInst *CG = cast<ConvolutionGradInst>(I);
-    auto *srcGradPtr =
-        emitValueAddress(builder, CG->getSrcGrad(), ElemKind::FloatTy);
-    auto *destGradPtr =
-        emitValueAddress(builder, CG->getDestGrad(), ElemKind::FloatTy);
-    auto *srcPtr = emitValueAddress(builder, CG->getSrc(), ElemKind::FloatTy);
-    auto *kernelGradPtr =
-        emitValueAddress(builder, CG->getFilterGrad(), ElemKind::FloatTy);
-    auto *biasGradPtr =
-        emitValueAddress(builder, CG->getBiasGrad(), ElemKind::FloatTy);
-    auto *kernelPtr =
-        emitValueAddress(builder, CG->getFilter(), ElemKind::FloatTy);
-    auto *destGradDims = emitValueDims(builder, CG->getDestGrad());
-    auto *srcDims = emitValueDims(builder, CG->getSrc());
-    auto *kernelGradDims = emitValueDims(builder, CG->getFilterGrad());
+    auto *srcGrad = CG->getSrcGrad();
+    auto *destGrad = CG->getDestGrad();
+    auto *src = CG->getSrc();
+    auto *filterGrad = CG->getFilterGrad();
+    auto *srcGradPtr = emitValueAddress(builder, srcGrad);
+    auto *destGradPtr = emitValueAddress(builder, destGrad);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *filterGradPtr = emitValueAddress(builder, filterGrad);
+    auto *biasGradPtr = emitValueAddress(builder, CG->getBiasGrad());
+    auto *filterPtr = emitValueAddress(builder, CG->getFilter());
+
+    auto *destGradDims = emitValueDims(builder, destGrad);
+    auto *srcDims = emitValueDims(builder, src);
+    auto *filterGradDims = emitValueDims(builder, filterGrad);
 
     auto *kernel = emitConst(builder, CG->getKernel());
     auto *stride = emitConst(builder, CG->getStride());
@@ -500,23 +512,23 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *F = getFunction("libjit_convolution_grad_f");
     assert(F && "Unable to load the function");
-    builder.CreateCall(F, {srcGradPtr, destGradPtr, srcPtr, kernelGradPtr,
-                           biasGradPtr, kernelPtr, destGradDims, srcDims,
-                           kernelGradDims, kernel, stride, pad});
+    builder.CreateCall(F, {srcGradPtr, destGradPtr, srcPtr, filterGradPtr,
+                           biasGradPtr, filterPtr, destGradDims, srcDims,
+                           filterGradDims, kernel, stride, pad});
     break;
   }
 
   case Kinded::Kind::LocalResponseNormalizationInstKind: {
     LocalResponseNormalizationInst *LRN =
         cast<LocalResponseNormalizationInst>(I);
-    auto *destPtr =
-        emitValueAddress(builder, LRN->getDest(), ElemKind::FloatTy);
-    auto *srcPtr = emitValueAddress(builder, LRN->getSrc(), ElemKind::FloatTy);
-    auto *scalePtr =
-        emitValueAddress(builder, LRN->getScale(), ElemKind::FloatTy);
-    auto *destDims = emitValueDims(builder, LRN->getDest());
-    auto *srcDims = emitValueDims(builder, LRN->getSrc());
+    auto *dest = LRN->getDest();
+    auto *src = LRN->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *scalePtr = emitValueAddress(builder, LRN->getScale());
 
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
     auto *halfWindow = emitConst(builder, LRN->getHalfWindowSize());
     auto *alpha = emitConst(builder, LRN->getAlpha());
     auto *beta = emitConst(builder, LRN->getBeta());
@@ -532,16 +544,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   case Kinded::Kind::LocalResponseNormalizationGradInstKind: {
     LocalResponseNormalizationGradInst *LRNG =
         llvm::cast<LocalResponseNormalizationGradInst>(I);
-    auto *srcGradPtr =
-        emitValueAddress(builder, LRNG->getSrcGrad(), ElemKind::FloatTy);
-    auto *destGradPtr =
-        emitValueAddress(builder, LRNG->getDestGrad(), ElemKind::FloatTy);
-    auto *srcPtr = emitValueAddress(builder, LRNG->getSrc(), ElemKind::FloatTy);
-    auto *destPtr =
-        emitValueAddress(builder, LRNG->getDest(), ElemKind::FloatTy);
-    auto *scalePtr =
-        emitValueAddress(builder, LRNG->getScale(), ElemKind::FloatTy);
-    auto *destDims = emitValueDims(builder, LRNG->getDest());
+    auto *dest = LRNG->getDest();
+    auto *srcGradPtr = emitValueAddress(builder, LRNG->getSrcGrad());
+    auto *destGradPtr = emitValueAddress(builder, LRNG->getDestGrad());
+    auto *srcPtr = emitValueAddress(builder, LRNG->getSrc());
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *scalePtr = emitValueAddress(builder, LRNG->getScale());
+
+    auto *destDims = emitValueDims(builder, dest);
 
     auto *halfWindow = emitConst(builder, LRNG->getHalfWindowSize());
     auto *alpha = emitConst(builder, LRNG->getAlpha());
@@ -556,10 +566,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::PoolMaxInstKind: {
     PoolMaxInst *PM = cast<PoolMaxInst>(I);
-    auto *destPtr = emitValueAddress(builder, PM->getDest(), ElemKind::FloatTy);
-    auto *srcPtr = emitValueAddress(builder, PM->getSrc(), ElemKind::FloatTy);
-    auto *destDims = emitValueDims(builder, PM->getDest());
-    auto *srcDims = emitValueDims(builder, PM->getSrc());
+    auto *dest = PM->getDest();
+    auto *src = PM->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
 
     auto *kernel = emitConst(builder, PM->getKernel());
     auto *stride = emitConst(builder, PM->getStride());
@@ -574,13 +587,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::PoolMaxWithXYInstKind: {
     PoolMaxWithXYInst *PMXY = cast<PoolMaxWithXYInst>(I);
-    auto *destPtr =
-        emitValueAddress(builder, PMXY->getDest(), ElemKind::FloatTy);
-    auto *srcPtr = emitValueAddress(builder, PMXY->getSrc(), ElemKind::FloatTy);
-    auto *srcXYPtr =
-        emitValueAddress(builder, PMXY->getSrcXY(), ElemKind::IndexTy);
-    auto *destDims = emitValueDims(builder, PMXY->getDest());
-    auto *srcDims = emitValueDims(builder, PMXY->getSrc());
+    auto *dest = PMXY->getDest();
+    auto *src = PMXY->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *srcXYPtr = emitValueAddress(builder, PMXY->getSrcXY());
+
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
 
     auto *kernel = emitConst(builder, PMXY->getKernel());
     auto *stride = emitConst(builder, PMXY->getStride());
@@ -595,13 +609,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::PoolMaxWithXYGradInstKind: {
     PoolMaxWithXYGradInst *PMG = cast<PoolMaxWithXYGradInst>(I);
-    auto *srcGradPtr =
-        emitValueAddress(builder, PMG->getSrcGrad(), ElemKind::FloatTy);
-    auto *destGradPtr =
-        emitValueAddress(builder, PMG->getDestGrad(), ElemKind::FloatTy);
-    auto *srcXYPtr =
-        emitValueAddress(builder, PMG->getSrcXY(), ElemKind::IndexTy);
-    auto *srcGradDims = emitValueDims(builder, PMG->getSrcGrad());
+    auto *srcGrad = PMG->getSrcGrad();
+    auto *srcGradPtr = emitValueAddress(builder, srcGrad);
+    auto *destGradPtr = emitValueAddress(builder, PMG->getDestGrad());
+    auto *srcXYPtr = emitValueAddress(builder, PMG->getSrcXY());
+
+    auto *srcGradDims = emitValueDims(builder, srcGrad);
     auto *destDims = emitValueDims(builder, PMG->getDest());
 
     auto *F = getFunction("libjit_pool_max_xy_grad_f");
@@ -613,10 +626,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::PoolAvgInstKind: {
     PoolAvgInst *PM = cast<PoolAvgInst>(I);
-    auto *destPtr = emitValueAddress(builder, PM->getDest(), ElemKind::FloatTy);
-    auto *srcPtr = emitValueAddress(builder, PM->getSrc(), ElemKind::FloatTy);
-    auto *destDims = emitValueDims(builder, PM->getDest());
-    auto *srcDims = emitValueDims(builder, PM->getSrc());
+    auto *dest = PM->getDest();
+    auto *src = PM->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
 
     auto *kernel = emitConst(builder, PM->getKernel());
     auto *stride = emitConst(builder, PM->getStride());
@@ -631,12 +647,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::PoolAvgGradInstKind: {
     PoolAvgGradInst *PAG = cast<PoolAvgGradInst>(I);
-    auto *srcGradPtr =
-        emitValueAddress(builder, PAG->getSrcGrad(), ElemKind::FloatTy);
-    auto *destGradPtr =
-        emitValueAddress(builder, PAG->getDestGrad(), ElemKind::FloatTy);
-    auto *srcGradDims = emitValueDims(builder, PAG->getSrcGrad());
+    auto *srcGrad = PAG->getSrcGrad();
+    auto *srcGradPtr = emitValueAddress(builder, srcGrad);
+    auto *destGradPtr = emitValueAddress(builder, PAG->getDestGrad());
+
+    auto *srcGradDims = emitValueDims(builder, srcGrad);
     auto *destDims = emitValueDims(builder, PAG->getDest());
+
     auto *kernel = emitConst(builder, PAG->getKernel());
     auto *stride = emitConst(builder, PAG->getStride());
     auto *pad = emitConst(builder, PAG->getPad());
@@ -650,13 +667,15 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::QuantizeInstKind: {
     QuantizeInst *QI = cast<QuantizeInst>(I);
-    auto *destPtr = emitValueAddress(builder, QI->getDest(), ElemKind::Int8QTy);
-    auto *srcPtr = emitValueAddress(builder, QI->getSrc(), ElemKind::FloatTy);
-    auto *numElem = emitConst(builder, QI->getDest()->getType()->size());
-    auto *scale = emitConst(builder, QI->getDest()->getType()->getScale());
+    auto *dest = QI->getDest();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, QI->getSrc());
+
+    auto *destType = dest->getType();
+    auto *numElem = emitConst(builder, destType->size());
+    auto *scale = emitConst(builder, destType->getScale());
     // TODO(hegemanjwh2): Fix generated integer type for offset.
-    auto *offset =
-        emitConst(builder, (size_t)QI->getDest()->getType()->getOffset());
+    auto *offset = emitConst(builder, (size_t)destType->getOffset());
 
     auto *F = getFunction("libjit_quantize_f");
     assert(F && "Unable to load the function");
@@ -666,14 +685,16 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::DequantizeInstKind: {
     DequantizeInst *DQI = cast<DequantizeInst>(I);
-    auto *destPtr =
-        emitValueAddress(builder, DQI->getDest(), ElemKind::FloatTy);
-    auto *srcPtr = emitValueAddress(builder, DQI->getSrc(), ElemKind::Int8QTy);
-    auto *numElem = emitConst(builder, DQI->getDest()->getType()->size());
-    auto *scale = emitConst(builder, DQI->getSrc()->getType()->getScale());
+    auto *dest = DQI->getDest();
+    auto *src = DQI->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+
+    auto *srcType = src->getType();
+    auto *numElem = emitConst(builder, dest->getType()->size());
+    auto *scale = emitConst(builder, srcType->getScale());
     // TODO(hegemanjwh2): Fix generated integer type for offset.
-    auto *offset =
-        emitConst(builder, (size_t)DQI->getSrc()->getType()->getOffset());
+    auto *offset = emitConst(builder, (size_t)srcType->getOffset());
 
     auto *F = getFunction("libjit_dequantize_f");
     assert(F && "Unable to load the function");
@@ -683,15 +704,17 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::SGDInstKind: {
     SGDInst *SGD = cast<SGDInst>(I);
-    auto *W = emitValueAddress(builder, SGD->getWeight(), ElemKind::FloatTy);
-    auto *G = emitValueAddress(builder, SGD->getGradient(), ElemKind::FloatTy);
-    auto *Gsum = emitValueAddress(builder, SGD->getGsum(), ElemKind::FloatTy);
+    auto *weight = SGD->getWeight();
+    auto *W = emitValueAddress(builder, weight);
+    auto *G = emitValueAddress(builder, SGD->getGradient());
+    auto *Gsum = emitValueAddress(builder, SGD->getGsum());
+
     auto *l1Decay = emitConst(builder, SGD->getL1Decay());
     auto *l2Decay = emitConst(builder, SGD->getL2Decay());
     auto *learningRate = emitConst(builder, SGD->getLearningRate());
     auto *momentum = emitConst(builder, SGD->getMomentum());
     auto *batchSize = emitConst(builder, (size_t)SGD->getBatchSize());
-    auto *Wsize = emitConst(builder, SGD->getWeight()->getType()->size());
+    auto *Wsize = emitConst(builder, weight->getType()->size());
 
     auto *F = getFunction("libjit_sgd_f");
     assert(F && "Unable to load the function");
@@ -702,10 +725,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::SoftMaxInstKind: {
     SoftMaxInst *SM = cast<SoftMaxInst>(I);
-    auto *destPtr = emitValueAddress(builder, SM->getDest(), ElemKind::FloatTy);
-    auto *srcPtr = emitValueAddress(builder, SM->getSrc(), ElemKind::FloatTy);
-    auto *destDims = emitValueDims(builder, SM->getDest());
-    auto *srcDims = emitValueDims(builder, SM->getSrc());
+    auto *dest = SM->getDest();
+    auto *src = SM->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
 
     auto *F = getFunction("libjit_softmax_f");
     assert(F && "Unable to load the function");
@@ -715,14 +741,15 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::SoftMaxGradInstKind: {
     SoftMaxGradInst *SMG = cast<SoftMaxGradInst>(I);
-    auto *srcGradPtr =
-        emitValueAddress(builder, SMG->getSrcGrad(), ElemKind::FloatTy);
-    auto *destPtr =
-        emitValueAddress(builder, SMG->getOrigDest(), ElemKind::FloatTy);
-    auto *selectedPtr =
-        emitValueAddress(builder, SMG->getSelected(), ElemKind::IndexTy);
-    auto *srcGradDims = emitValueDims(builder, SMG->getSrcGrad());
-    auto *selectedDims = emitValueDims(builder, SMG->getSelected());
+    auto *srcGrad = SMG->getSrcGrad();
+    auto *selected = SMG->getSelected();
+    auto *srcGradPtr = emitValueAddress(builder, srcGrad);
+    auto *destPtr = emitValueAddress(builder, SMG->getOrigDest());
+    auto *selectedPtr = emitValueAddress(builder, selected);
+
+    auto *srcGradDims = emitValueDims(builder, srcGrad);
+    auto *selectedDims = emitValueDims(builder, selected);
+
     auto *F = getFunction("libjit_softmaxgrad_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(
@@ -732,9 +759,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::SigmoidInstKind: {
     SigmoidInst *SI = cast<SigmoidInst>(I);
-    auto *destPtr = emitValueAddress(builder, SI->getDest(), ElemKind::FloatTy);
-    auto *srcPtr = emitValueAddress(builder, SI->getSrc(), ElemKind::FloatTy);
-    auto *numElemVal = emitConst(builder, SI->getDest()->getType()->size());
+    auto *dest = SI->getDest();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, SI->getSrc());
+
+    auto *numElemVal = emitConst(builder, dest->getType()->size());
+
     auto *F = getFunction("libjit_sigmoid_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, numElemVal});
@@ -743,9 +773,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::TanhInstKind: {
     TanhInst *TI = cast<TanhInst>(I);
-    auto *destPtr = emitValueAddress(builder, TI->getDest(), ElemKind::FloatTy);
-    auto *srcPtr = emitValueAddress(builder, TI->getSrc(), ElemKind::FloatTy);
-    auto *numElemVal = emitConst(builder, TI->getDest()->getType()->size());
+    auto *dest = TI->getDest();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, TI->getSrc());
+
+    auto *numElemVal = emitConst(builder, dest->getType()->size());
+
     auto *F = getFunction("libjit_tanh_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, numElemVal});
@@ -754,10 +787,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::TransposeInstKind: {
     TransposeInst *TI = cast<TransposeInst>(I);
-    auto *destPtr = emitValueAddress(builder, TI->getDest(), ElemKind::FloatTy);
-    auto *srcPtr = emitValueAddress(builder, TI->getSrc(), ElemKind::FloatTy);
-    auto *destDims = emitValueDims(builder, TI->getDest());
-    auto *srcDims = emitValueDims(builder, TI->getSrc());
+    auto *dest = TI->getDest();
+    auto *src = TI->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
 
     // Convert the mask to size_t type.
     llvm::SmallVector<size_t, 6> shuffSizeT;
@@ -779,9 +815,11 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     if (II->getIdentifier().equals("jit.max0")) {
       auto *dest = II->getOperand(0).first;
       auto *src = II->getOperand(1).first;
-      auto *destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
-      auto *lhsPtr = emitValueAddress(builder, src, ElemKind::FloatTy);
+      auto *destPtr = emitValueAddress(builder, dest);
+      auto *lhsPtr = emitValueAddress(builder, src);
+
       auto cnt = emitValueSize(builder, dest);
+
       auto *F = getFunction("libjit_elementmax0_f");
       assert(F && "Unable to load the function");
       builder.CreateCall(F, {destPtr, lhsPtr, cnt});
@@ -806,45 +844,45 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     case Kinded::Kind::ElementDivInstKind: {
       auto *tmpInst = cast<ElementDivInst>(I);
       dest = tmpInst->getDest();
-      destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
-      lhsPtr = emitValueAddress(builder, tmpInst->getLHS(), ElemKind::FloatTy);
-      rhsPtr = emitValueAddress(builder, tmpInst->getRHS(), ElemKind::FloatTy);
+      destPtr = emitValueAddress(builder, dest);
+      lhsPtr = emitValueAddress(builder, tmpInst->getLHS());
+      rhsPtr = emitValueAddress(builder, tmpInst->getRHS());
       funcName = "libjit_element_div_f";
       break;
     }
     case Kinded::Kind::ElementMulInstKind: {
       auto *tmpInst = cast<ElementMulInst>(I);
       dest = tmpInst->getDest();
-      destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
-      lhsPtr = emitValueAddress(builder, tmpInst->getLHS(), ElemKind::FloatTy);
-      rhsPtr = emitValueAddress(builder, tmpInst->getRHS(), ElemKind::FloatTy);
+      destPtr = emitValueAddress(builder, dest);
+      lhsPtr = emitValueAddress(builder, tmpInst->getLHS());
+      rhsPtr = emitValueAddress(builder, tmpInst->getRHS());
       funcName = "libjit_element_mul_f";
       break;
     }
     case Kinded::Kind::ElementAddInstKind: {
       auto *tmpInst = cast<ElementAddInst>(I);
       dest = tmpInst->getDest();
-      destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
-      lhsPtr = emitValueAddress(builder, tmpInst->getLHS(), ElemKind::FloatTy);
-      rhsPtr = emitValueAddress(builder, tmpInst->getRHS(), ElemKind::FloatTy);
+      destPtr = emitValueAddress(builder, dest);
+      lhsPtr = emitValueAddress(builder, tmpInst->getLHS());
+      rhsPtr = emitValueAddress(builder, tmpInst->getRHS());
       funcName = "libjit_element_add_f";
       break;
     }
     case Kinded::Kind::ElementSubInstKind: {
       auto *tmpInst = cast<ElementSubInst>(I);
       dest = tmpInst->getDest();
-      destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
-      lhsPtr = emitValueAddress(builder, tmpInst->getLHS(), ElemKind::FloatTy);
-      rhsPtr = emitValueAddress(builder, tmpInst->getRHS(), ElemKind::FloatTy);
+      destPtr = emitValueAddress(builder, dest);
+      lhsPtr = emitValueAddress(builder, tmpInst->getLHS());
+      rhsPtr = emitValueAddress(builder, tmpInst->getRHS());
       funcName = "libjit_element_sub_f";
       break;
     }
     case Kinded::Kind::ElementCmpLTEInstKind: {
       auto *tmpInst = cast<ElementCmpLTEInst>(I);
       dest = tmpInst->getDest();
-      destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
-      lhsPtr = emitValueAddress(builder, tmpInst->getLHS(), ElemKind::FloatTy);
-      rhsPtr = emitValueAddress(builder, tmpInst->getRHS(), ElemKind::FloatTy);
+      destPtr = emitValueAddress(builder, dest);
+      lhsPtr = emitValueAddress(builder, tmpInst->getLHS());
+      rhsPtr = emitValueAddress(builder, tmpInst->getRHS());
       funcName = "libjit_element_cmp_lte_f";
       break;
     }
@@ -866,38 +904,46 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   case Kinded::Kind::DeallocActivationInstKind:
   case Kinded::Kind::TensorViewInstKind:
     break;
+
   case Kinded::Kind::InsertTensorInstKind: {
     InsertTensorInst *ITI = llvm::cast<InsertTensorInst>(I);
     auto dest = ITI->getDest();
     auto src = ITI->getSrc();
     auto offsets = ITI->getOffsets();
-    auto *destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
-    auto *srcPtr = emitValueAddress(builder, src, ElemKind::FloatTy);
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
+
     auto *destDimsSize = emitConst(builder, dest->getType()->dims().size());
     auto *srcDimsSize = emitConst(builder, src->getType()->dims().size());
     auto *offsetsPtr = emitConstArray(builder, offsets);
     auto *offsetsArraySize = emitConst(builder, offsets.size());
+
     auto *F = getFunction("libjit_insert_tensor_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, srcPtr, offsetsPtr, destDims, srcDims,
                            destDimsSize, srcDimsSize, offsetsArraySize});
     break;
   }
+
   case Kinded::Kind::ExtractTensorInstKind: {
     ExtractTensorInst *ITI = llvm::cast<ExtractTensorInst>(I);
     auto dest = ITI->getDest();
     auto src = ITI->getSrc();
     auto offsets = ITI->getOffsets();
-    auto *destPtr = emitValueAddress(builder, dest, ElemKind::FloatTy);
-    auto *srcPtr = emitValueAddress(builder, src, ElemKind::FloatTy);
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
+
     auto *destDimsSize = emitConst(builder, dest->getType()->dims().size());
     auto *srcDimsSize = emitConst(builder, src->getType()->dims().size());
     auto *offsetsPtr = emitConstArray(builder, offsets);
     auto *offsetsArraySize = emitConst(builder, offsets.size());
+
     auto *F = getFunction("libjit_extract_tensor_f");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, offsetsPtr, srcDims, destDims,
