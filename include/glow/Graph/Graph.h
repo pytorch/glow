@@ -267,15 +267,11 @@ public:
                                          BatchedReduceNode::Mode mode,
                                          NodeValue batch);
 
-  BatchedArithmeticNode *
-  createBatchedArithmetic(llvm::StringRef name,
-                          BatchedArithmeticNode::Mode mode, NodeValue batch,
-                          NodeValue sample);
+  BatchedAddNode *createBatchedAdd(llvm::StringRef name, NodeValue batch,
+                                   NodeValue sample);
 
-  BatchedArithmeticNode *
-  createBatchedArithmetic(llvm::StringRef name, TypeRef outTy,
-                          BatchedArithmeticNode::Mode mode, NodeValue batch,
-                          NodeValue sample);
+  BatchedAddNode *createBatchedAdd(llvm::StringRef name, TypeRef outTy,
+                                   NodeValue batch, NodeValue sample);
 
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
   SaveNode *createSave(llvm::StringRef name, NodeValue input, Variable *output);

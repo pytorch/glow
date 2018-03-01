@@ -119,9 +119,8 @@ void lowerFullyConnectedNode(Function *F, FullyConnectedNode &FC) {
   auto *mul = F->createBatchedMatMul("fc.dot", outTy, X, W);
 
   auto *mulFlat = F->createReshape("fc.cast2", mul, {xDim.first, wDim[1]});
-  auto add = F->createBatchedArithmetic(
-      "fc.add.bias", FC.getResult()->getType(),
-      BatchedArithmeticNode::Mode::Add, mulFlat, FC.getBias());
+  auto add = F->createBatchedAdd("fc.add.bias", FC.getResult()->getType(),
+                                 mulFlat, FC.getBias());
   FC.getResult().replaceAllUsesOfWith(add);
 }
 

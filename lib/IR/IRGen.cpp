@@ -240,20 +240,15 @@ public:
       break;
     }
 
-    case glow::Kinded::Kind::BatchedArithmeticNodeKind: {
-      auto *BA = cast<BatchedArithmeticNode>(N);
+    case glow::Kinded::Kind::BatchedAddNodeKind: {
+      auto *BA = cast<BatchedAddNode>(N);
       auto *batch = valueForNode(BA->getBatch());
       auto *sample = valueForNode(BA->getSlice());
 
       auto *dest = builder_.createAllocActivationInst(
           "br.res", BA->getResult().getType());
 
-      switch (BA->getMode()) {
-      case BatchedArithmeticNode::Mode::Add: {
-        builder_.createBatchedAddInst(N->getName(), dest, batch, sample);
-        break;
-      }
-      }
+      builder_.createBatchedAddInst(N->getName(), dest, batch, sample);
 
       registerIR(N, dest);
       break;

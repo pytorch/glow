@@ -736,19 +736,14 @@ BatchedReduceNode *Function::createBatchedReduce(llvm::StringRef name,
       new BatchedReduceNode(name, getParent()->uniqueType(RT), mode, batch));
 }
 
-BatchedArithmeticNode *
-Function::createBatchedArithmetic(llvm::StringRef name,
-                                  BatchedArithmeticNode::Mode mode,
-                                  NodeValue batch, NodeValue sample) {
-  return addNode(
-      new BatchedArithmeticNode(name, batch.getType(), mode, batch, sample));
+BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name,
+                                           NodeValue batch, NodeValue sample) {
+  return addNode(new BatchedAddNode(name, batch.getType(), batch, sample));
 }
 
-BatchedArithmeticNode *
-Function::createBatchedArithmetic(llvm::StringRef name, TypeRef outTy,
-                                  BatchedArithmeticNode::Mode mode,
-                                  NodeValue batch, NodeValue sample) {
-  return addNode(new BatchedArithmeticNode(name, outTy, mode, batch, sample));
+BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name, TypeRef outTy,
+                                           NodeValue batch, NodeValue sample) {
+  return addNode(new BatchedAddNode(name, outTy, batch, sample));
 }
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
