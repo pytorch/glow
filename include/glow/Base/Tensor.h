@@ -96,6 +96,15 @@ public:
     reset(elemTy, dims);
   }
 
+  /// Construct an unowned tensor provided an existing payload buffer.
+  /// This constructor can be used when there is a need to work with
+  /// "externally" managed payload buffers using Tensor APIs.
+  Tensor(void *data, ElemKind elemTy, llvm::ArrayRef<size_t> dims)
+      : data_(data), type_(elemTy, dims) {
+    // Mark as unowned.
+    data_.setInt(1);
+  }
+
   /// Allocate and initialize a new integer tensor with \p scale and \p offset.
   Tensor(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
          int32_t offset)
