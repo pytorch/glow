@@ -80,15 +80,6 @@ public:
     return *this;
   }
 
-  /// Adds two operands to the instruction: the operand and the gradient of the
-  /// operand. This API is used for building instructions that perform the
-  /// backward propagation pass.
-  InstrBuilder &addOperandWithGrad(const std::string &op) {
-    addOperand(op, OperandKind::InOut);
-    addOperand(op + "Grad", OperandKind::InOut);
-    return *this;
-  }
-
   /// Add a member to the instruction. Format: type, name.
   /// The name should start with a capital letter.
   /// For example: "Filter".
