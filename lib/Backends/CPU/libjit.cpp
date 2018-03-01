@@ -114,9 +114,11 @@ void libjit_batchedreduceadd_f(float *dest, const float *batch, size_t destSize,
   }
 }
 
-void libjit_copy_buffer(uint8_t *dest, uint8_t *src, size_t bytes) {
+void libjit_copy_f(float *dest, const float *src, size_t bytes) {
+  uint8_t *buf_d = (uint8_t *)dest;
+  const uint8_t *buf_s = (const uint8_t *)src;
   for (int i = 0; i < bytes; i++) {
-    dest[i] = src[i];
+    buf_d[i] = buf_s[i];
   }
 }
 
@@ -784,10 +786,8 @@ void libjit_insert_tensor_f(float *tensor, float *slice, size_t *offset,
   // Reserve statically enough memory to avoid dynamic memory allocation.
   size_t sliceCoor[10];
   size_t fusedCoor[10];
-  libjit_copy_buffer((uint8_t *)sliceCoor, (uint8_t *)sliceDim,
-                     sizeof(*sliceDim) * numDimsSlice);
-  libjit_copy_buffer((uint8_t *)fusedCoor, (uint8_t *)tensorDim,
-                     sizeof(*tensorDim) * numDimsTensor);
+  memcpy(sliceCoor, sliceDim, sizeof(*sliceDim) * numDimsSlice);
+  memcpy(fusedCoor, tensorDim, sizeof(*tensorDim) * numDimsTensor);
   libjit_insert_tensor_impl(tensor, slice, offset, sliceCoor, fusedCoor,
                             tensorDim, sliceDim, numDimsTensor, numDimsSlice,
                             offsetDim, 1, 0);
@@ -800,10 +800,8 @@ void libjit_extract_tensor_f(float *tensor, float *slice, size_t *offset,
   // Reserve statically enough memory to avoid dynamic memory allocation.
   size_t sliceCoor[10];
   size_t fusedCoor[10];
-  libjit_copy_buffer((uint8_t *)sliceCoor, (uint8_t *)sliceDim,
-                     sizeof(*sliceDim) * numDimsSlice);
-  libjit_copy_buffer((uint8_t *)fusedCoor, (uint8_t *)tensorDim,
-                     sizeof(*tensorDim) * numDimsTensor);
+  memcpy(sliceCoor, sliceDim, sizeof(*sliceDim) * numDimsSlice);
+  memcpy(fusedCoor, tensorDim, sizeof(*tensorDim) * numDimsTensor);
   libjit_insert_tensor_impl(tensor, slice, offset, sliceCoor, fusedCoor,
                             tensorDim, sliceDim, numDimsTensor, numDimsSlice,
                             offsetDim, 0, 0);

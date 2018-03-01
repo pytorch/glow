@@ -52,8 +52,7 @@ class LLVMIRGen {
 
   /// Generates LLVM IR that computes the address of \p val using \p builder.
   /// The address type is specified by \p ptrTy.
-  llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder, glow::Value *val,
-                                ElemKind ptrTy);
+  llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder, glow::Value *val);
   /// Generates LLVM IR that computes the size of the tensor of \p val using
   /// \p builder. The size type is native to the machine (size_t).
   llvm::Value *emitValueSize(llvm::IRBuilder<> &builder, glow::Value *val);
