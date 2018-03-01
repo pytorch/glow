@@ -240,3 +240,37 @@ TEST(Graph, NodeValue) {
       llvm::cast<Variable>(S->getOutput())->getPayload().getHandle().raw(0),
       24);
 }
+
+TEST(Graph, nodesWithPredicates) {
+  ExecutionEngine EE;
+
+  Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  F->setName("interpret");
+  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input",
+                                   Variable::VisibilityKind::Public);
+
+  auto *ex = mod.createVariable(ElemKind::IndexTy, {1, 1}, "exp");
+
+  Variable *pred = mod.createVariable(ElemKind::IndexTy, {1}, "predicate",
+                                      Variable::VisibilityKind::Private,
+                                      Variable::TrainKind::None);
+
+  auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2);
+  auto *RL0 = F->createRELU("relu1", CV0);
+  auto *MP0 = F->createPool("pool1", RL0, PoolNode::Mode::Max, 2, 2, 0);
+
+  CV0->setPredicate(pred);
+  RL0->setPredicate(pred);
+  MP0->setPredicate(pred);
+
+  auto *FCL1 = F->createFullyConnected("fc", MP0, 10);
+  auto *RL3 = F->createRELU("relu4", FCL1);
+  auto *SM = F->createSoftMax("sm", RL3, ex);
+  F->createSave("ret", SM);
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({input}, {&inputs});
+}

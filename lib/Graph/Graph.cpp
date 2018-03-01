@@ -1246,6 +1246,18 @@ class FunctionDottyPrinter : public AbstractDottyPrinter {
       return;
     visitedNodes_.insert(N);
 
+    // Print edges for the predicate field, if it's used.
+    if (N->hasPredicate()) {
+      auto pred = N->getPredicate();
+      size_t resNo = pred.getResNo();
+      std::ostringstream edge;
+      edge << uniqueVertexName(pred) << ":" << pred->getOutputName(resNo).str()
+           << " -> " << uniqueVertexName(N) << ":w";
+      dumpEdgeStyle(N, 0, pred, edge);
+      edges_.insert(edge.str());
+      visitNode(pred);
+    }
+
     for (size_t i = 0; i < N->getNumInputs(); i++) {
       Node *to = N->getNthInput(i).getNode();
       size_t resNo = N->getNthInput(i).getResNo();
