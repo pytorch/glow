@@ -18,8 +18,7 @@ void inferBatchedAddNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                                   "input1", Variable::VisibilityKind::Public);
   auto *var2 = mod.createVariable(inputs2->getElementType(), inputs2->dims(),
                                   "input2", Variable::VisibilityKind::Public);
-  auto *batchedadd = F->createBatchedArithmetic(
-      "batchedadd", BatchedArithmeticNode::Mode::Add, var1, var2);
+  auto *batchedadd = F->createBatchedAdd("batchedadd", var1, var2);
   auto result = F->createSave("ret", batchedadd);
   EE.compile(CompilationMode::Infer, F);
   EE.run({var1, var2}, {inputs1, inputs2});

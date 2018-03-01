@@ -766,7 +766,7 @@ void ArithmeticGradNode::verify() const {
                    getGradOfOriginalOutputNamedResult());
 }
 
-void BatchedArithmeticNode::verify() const {
+void BatchedAddNode::verify() const {
   auto batchShape = getBatch().dims();
   auto rhsShape = getSlice().dims();
   assert(batchShape.drop_front() == rhsShape && "Invalid shape");

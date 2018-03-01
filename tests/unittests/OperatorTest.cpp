@@ -78,8 +78,7 @@ TEST(Operator, batchedBatchedAdd) {
                                      6, 7, 8, 9, 10, 11, 12, 13, 14};
   added->getPayload().getHandle().clear(1.0);
 
-  auto R = F->createBatchedArithmetic(
-      "batch.add", BatchedArithmeticNode::Mode::Add, batch, added);
+  auto R = F->createBatchedAdd("batch.add", batch, added);
   F->createSave("save", R, result);
 
   EE.compile(CompilationMode::Infer, F);
@@ -343,8 +342,7 @@ TEST(Operator, IntBatchedArith) {
   auto *lhsq = F->createQuantize("lhs.q", lhs, lhsTy);
   auto *rhsq = F->createQuantize("rhs.q", rhs, rhsTy);
 
-  auto *matmulq = F->createBatchedArithmetic(
-      "add", resTy, BatchedArithmeticNode::Mode::Add, lhsq, rhsq);
+  auto *matmulq = F->createBatchedAdd("add", resTy, lhsq, rhsq);
 
   auto *rq = F->createDequantize("dequant", matmulq);
 
