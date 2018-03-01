@@ -61,7 +61,7 @@ void NodeValue::replaceAllUsesOfWith(NodeValue v) {
 
 const NodeValue &Node::getPredicate() const { return predicate_; }
 
-void Node::setPredicate(Variable *P) { predicate_ = P; }
+void Node::setPredicate(const NodeValue &P) { predicate_ = P; }
 
 bool Node::hasPredicate() const { return predicate_.getNode(); }
 
