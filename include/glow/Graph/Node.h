@@ -144,7 +144,7 @@ public:
   /// \returns the nullable predicate of the current node.
   const NodeValue &getPredicate() const;
   /// Assigns a nullable predicate to the current node.
-  void setPredicate(Variable *P);
+  void setPredicate(const NodeValue &P);
   /// Checks if a predicate is assigned to the current node.
   bool hasPredicate() const;
 
@@ -152,7 +152,7 @@ public:
   unsigned getNumResults() const { return numRes_; }
   /// \returns the \p idx result of the node.
   NodeValue getNthResult(unsigned idx);
-  /// \returns the n'th result type of the node.
+  /// \returns the n'th result of the node.
   const NodeValue getNthResult(unsigned idx) const;
 
   /// Getters to access Node's inputs and outputs.
