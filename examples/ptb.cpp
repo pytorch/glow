@@ -2,6 +2,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Support/Support.h"
 
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Timer.h"
 
 #include <algorithm>
@@ -13,6 +14,16 @@
 #include <string>
 
 using namespace glow;
+namespace {
+llvm::cl::OptionCategory ptbCat("PTB Options");
+llvm::cl::opt<BackendKind> executionBackend(
+    llvm::cl::desc("Backend to use:"),
+    llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
+                                "Use interpreter"),
+                     clEnumValN(BackendKind::JIT, "jit", "Use JIT"),
+                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
+    llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(ptbCat));
+} // namespace
 
 unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
                  size_t vocabSize, size_t minibatchSize, size_t maxNumWords) {
@@ -145,6 +156,7 @@ void testPTB() {
                               minibatchSize, maxNumWords);
   std::cout << "Loaded " << numWords << " words.\n";
   ExecutionEngine EE;
+  ExecutionEngine EE(executionBackend);
 
   // Construct the network:
   EE.getConfig().learningRate = learningRate;
@@ -254,9 +266,8 @@ void testPTB() {
             << "be coming from fast math optimizations.\n";
 }
 
-int main() {
-  std::cout.setf(std::ios::fixed);
-  std::cout << std::setprecision(4);
+int main(int argc, char **argv) {
+  llvm::cl::ParseCommandLineOptions(argc, argv, " The PTB test\n\n");
   testPTB();
 
   return 0;
