@@ -7,7 +7,7 @@
 
 namespace glow {
 
-/// \returns true if the value \v is a tenstor view.
+/// \returns true if the value \v is a tensor view.
 bool isTensorView(Value *v);
 
 /// A helper class to iterate over all uses of a given Value.
@@ -86,7 +86,7 @@ public:
       }
       // If it is a tensorview instruction, add it is the set of
       // values to be procssed, because all uses of a tensorview
-      // are considered to be uses of the tenstorview's original
+      // are considered to be uses of the tensorview's original
       // allocation.
       if (isTensorView(it_->get()) && vals_.back() != it_->get()) {
         vals_.push_back(it_->get());
