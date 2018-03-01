@@ -245,12 +245,19 @@ public:
       llvm::StringRef name, NodeValue input, size_t halfWindowSize = 2,
       float alpha = 1e-4, float beta = 0.75, float k = 2.0);
 
-  ArithmeticNode *createArithmetic(llvm::StringRef name, NodeValue LHS,
-                                   NodeValue RHS, ArithmeticNode::Mode op);
-
-  ArithmeticNode *createArithmetic(llvm::StringRef name, TypeRef Ty,
-                                   NodeValue LHS, NodeValue RHS,
-                                   ArithmeticNode::Mode op);
+#define ARITHMETIC_FUN_DECL(NODE_NAME_)                                        \
+  NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, NodeValue LHS,    \
+                                       NodeValue RHS);                         \
+  NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, TypeRef Ty,       \
+                                       NodeValue LHS, NodeValue RHS);
+  ARITHMETIC_FUN_DECL(Add);
+  ARITHMETIC_FUN_DECL(Mul);
+  ARITHMETIC_FUN_DECL(Sub);
+  ARITHMETIC_FUN_DECL(Div);
+  ARITHMETIC_FUN_DECL(Max);
+  ARITHMETIC_FUN_DECL(Min);
+  ARITHMETIC_FUN_DECL(CmpLTE);
+#undef ARITHMETIC_FUN_DECL
 
   SelectNode *createSelect(llvm::StringRef name, NodeValue Cond, NodeValue LHS,
                            NodeValue RHS);

@@ -72,26 +72,18 @@ Node *createPyTorchGRUCell(Function *G, Node *input, Node *hidden,
   Node *h_n = G->createSlice("pytorch.GRU.h_n", gh, {0, 2 * EMBEDDING_SIZE},
                              {1, 3 * EMBEDDING_SIZE});
 
-  Node *resetgate = G->createSigmoid(
-      "pytorch.GRU.resetgate",
-      G->createArithmetic("i_r_plus_h_r", i_r, h_r, ArithmeticNode::Mode::Add));
-  Node *inputgate = G->createSigmoid(
-      "pytorch.GRU.inputgate",
-      G->createArithmetic("i_i_plus_h_i", i_i, h_i, ArithmeticNode::Mode::Add));
-  Node *newgate = G->createTanh(
-      "pytorch.GRU.newgate",
-      G->createArithmetic("i_n_plus_rg_mult_h_n", i_n,
-                          G->createArithmetic("rg_mult_h_n", resetgate, h_n,
-                                              ArithmeticNode::Mode::Mul),
-                          ArithmeticNode::Mode::Add));
-  return G->createArithmetic(
+  Node *resetgate = G->createSigmoid("pytorch.GRU.resetgate",
+                                     G->createAdd("i_r_plus_h_r", i_r, h_r));
+  Node *inputgate = G->createSigmoid("pytorch.GRU.inputgate",
+                                     G->createAdd("i_i_plus_h_i", i_i, h_i));
+  Node *newgate =
+      G->createTanh("pytorch.GRU.newgate",
+                    G->createAdd("i_n_plus_rg_mult_h_n", i_n,
+                                 G->createMul("rg_mult_h_n", resetgate, h_n)));
+  return G->createAdd(
       "pytorch.GRU.hy", newgate,
-      G->createArithmetic("ig_mult_hmng", inputgate,
-                          G->createArithmetic("hidden_minus_newgate", hidden,
-                                              newgate,
-                                              ArithmeticNode::Mode::Sub),
-                          ArithmeticNode::Mode::Mul),
-      ArithmeticNode::Mode::Add);
+      G->createMul("ig_mult_hmng", inputgate,
+                   G->createSub("hidden_minus_newgate", hidden, newgate)));
 }
 
 /// Represents a single RNN model: encoder combined with decoder.

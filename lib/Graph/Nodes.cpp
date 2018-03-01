@@ -366,6 +366,23 @@ bool Node::hasSideEffects() const {
   }
 }
 
+// NOTE: This is used in conjunction with assuming the 1st input is LHS, and 2nd
+// input is RHS. If adding a new Arithmetic inst, ensure this is the case.
+bool Node::isArithmetic() const {
+  switch (getKind()) {
+  case glow::Kinded::Kind::AddNodeKind:
+  case glow::Kinded::Kind::MulNodeKind:
+  case glow::Kinded::Kind::SubNodeKind:
+  case glow::Kinded::Kind::DivNodeKind:
+  case glow::Kinded::Kind::MaxNodeKind:
+  case glow::Kinded::Kind::MinNodeKind:
+  case glow::Kinded::Kind::CmpLTENodeKind:
+    return true;
+  default:
+    return false;
+  }
+}
+
 bool Node::isOverwrittenNthInput(unsigned idx) const {
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
@@ -757,14 +774,32 @@ void LocalResponseNormalizationGradNode::verify() const {
                                    getGradOfOriginalOutputNamedResult());
 }
 
-void ArithmeticNode::verify() const {
-  verifyArithmetic(getLHS(), getRHS(), getNthResult(0));
-}
+#define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
+  void NODE_NAME_##Node::verify() const {                                      \
+    verifyArithmetic(getLHS(), getRHS(), getNthResult(0));                     \
+  }
+VERIFY_ARITHMETIC(Add);
+VERIFY_ARITHMETIC(Mul);
+VERIFY_ARITHMETIC(Sub);
+VERIFY_ARITHMETIC(Div);
+VERIFY_ARITHMETIC(Max);
+VERIFY_ARITHMETIC(Min);
+VERIFY_ARITHMETIC(CmpLTE);
+#undef VERIFY_ARITHMETIC
 
-void ArithmeticGradNode::verify() const {
-  verifyArithmetic(getGradOfInputNamedLHS(), getGradOfInputNamedRHS(),
-                   getGradOfOriginalOutputNamedResult());
-}
+#define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
+  void NODE_NAME_##Node::verify() const {                                      \
+    verifyArithmetic(getGradOfInputNamedLHS(), getGradOfInputNamedRHS(),       \
+                     getGradOfOriginalOutputNamedResult());                    \
+  }
+VERIFY_ARITHMETIC(AddGrad);
+VERIFY_ARITHMETIC(MulGrad);
+VERIFY_ARITHMETIC(SubGrad);
+VERIFY_ARITHMETIC(DivGrad);
+VERIFY_ARITHMETIC(MaxGrad);
+VERIFY_ARITHMETIC(MinGrad);
+VERIFY_ARITHMETIC(CmpLTEGrad);
+#undef VERIFY_ARITHMETIC
 
 void BatchedAddNode::verify() const {
   auto batchShape = getBatch().dims();

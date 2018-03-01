@@ -10,84 +10,56 @@
 using namespace glow;
 using llvm::dyn_cast;
 
-void lowerArithmeticNode(Function *F, ArithmeticGradNode &node) {
-  switch (node.getMode()) {
-  case ArithmeticGradNode::Mode::Add: {
-    /// The chain rule for addition:
-    /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
-    /// delta(RHS) = dF/dRHS * delta(OUT) = 1 * delta(OUT)
-    auto outG = node.getGradOfOriginalOutputNamedResult();
-    node.getGradOfInputNamedLHS().replaceAllUsesOfWith(outG);
-    node.getGradOfInputNamedRHS().replaceAllUsesOfWith(outG);
-    break;
-  }
+void lowerAddGradNode(Function *F, AddGradNode &node) {
+  /// The chain rule for addition:
+  /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
+  /// delta(RHS) = dF/dRHS * delta(OUT) = 1 * delta(OUT)
+  auto outG = node.getGradOfOriginalOutputNamedResult();
+  node.getGradOfInputNamedLHS().replaceAllUsesOfWith(outG);
+  node.getGradOfInputNamedRHS().replaceAllUsesOfWith(outG);
+}
+void lowerMulGradNode(Function *F, MulGradNode &node) {
+  /// The chain rule for multiplication:
+  /// delta(LHS) = dF/dLHS * delta(OUT) = RHS * delta(OUT)
+  /// delta(RHS) = dF/dRHS * delta(OUT) = LHS * delta(OUT)
+  auto outG = node.getGradOfOriginalOutputNamedResult();
+  NodeValue LHS = node.getLHS();
+  NodeValue RHS = node.getRHS();
 
-  case ArithmeticGradNode::Mode::Mul: {
-    /// The chain rule for multiplication:
-    /// delta(LHS) = dF/dLHS * delta(OUT) = RHS * delta(OUT)
-    /// delta(RHS) = dF/dRHS * delta(OUT) = LHS * delta(OUT)
-    auto outG = node.getGradOfOriginalOutputNamedResult();
-    NodeValue LHS = node.getLHS();
-    NodeValue RHS = node.getRHS();
+  auto lhsResult = F->createMul("mul.grad.rhs", outG, RHS);
+  auto rhsResult = F->createMul("mul.grad.lhs", outG, LHS);
+  node.getGradOfInputNamedLHS().replaceAllUsesOfWith(lhsResult);
+  node.getGradOfInputNamedRHS().replaceAllUsesOfWith(rhsResult);
+}
+void lowerSubGradNode(Function *F, SubGradNode &node) {
+  /// The chain rule for subtraction:
+  /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
+  /// delta(RHS) = dF/dRHS * delta(OUT) = -1 * delta(OUT)
+  auto outG = node.getGradOfOriginalOutputNamedResult();
+  auto zero = F->createSplat("zero", outG.getType(), 0);
+  auto sub = F->createSub("sub.grad", zero, outG);
+  node.getGradOfInputNamedLHS().replaceAllUsesOfWith(outG);
+  node.getGradOfInputNamedRHS().replaceAllUsesOfWith(sub);
+}
+void lowerDivGradNode(Function *F, DivGradNode &node) {
+  /// The chain rule for division:
+  /// delta(LHS) = dF/dLHS * delta(OUT) = (1 / RHS) * delta(OUT)
+  /// delta(RHS) = dF/dRHS * delta(OUT) = (-LHS / (RHS ^ 2)) * delta(OUT)
+  auto outG = node.getGradOfOriginalOutputNamedResult();
+  NodeValue LHS = node.getLHS();
+  NodeValue RHS = node.getRHS();
 
-    auto lhsResult = F->createArithmetic("mul.grad.rhs", outG, RHS,
-                                         ArithmeticNode::Mode::Mul);
-    auto rhsResult = F->createArithmetic("mul.grad.lhs", outG, LHS,
-                                         ArithmeticNode::Mode::Mul);
-    node.getGradOfInputNamedLHS().replaceAllUsesOfWith(lhsResult);
-    node.getGradOfInputNamedRHS().replaceAllUsesOfWith(rhsResult);
-    break;
-  }
+  auto lhsResult = F->createDiv("div.grad.rhs", outG, RHS);
 
-  case ArithmeticGradNode::Mode::Sub: {
-    /// The chain rule for subtraction:
-    /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
-    /// delta(RHS) = dF/dRHS * delta(OUT) = -1 * delta(OUT)
-    auto outG = node.getGradOfOriginalOutputNamedResult();
-    auto zero = F->createSplat("zero", outG.getType(), 0);
-    auto sub =
-        F->createArithmetic("sub.grad", zero, outG, ArithmeticNode::Mode::Sub);
-    node.getGradOfInputNamedLHS().replaceAllUsesOfWith(outG);
-    node.getGradOfInputNamedRHS().replaceAllUsesOfWith(sub);
-    break;
-  }
+  auto zero = F->createSplat("zero", outG.getType(), 0);
+  auto subGrad = F->createSub("sub.grad", zero, outG);
+  auto mulLhsGrad = F->createMul("mul.sub.grad.lhs", subGrad, LHS);
 
-  case ArithmeticGradNode::Mode::Div: {
-    /// The chain rule for division:
-    /// delta(LHS) = dF/dLHS * delta(OUT) = (1 / RHS) * delta(OUT)
-    /// delta(RHS) = dF/dRHS * delta(OUT) = (-LHS / (RHS ^ 2)) * delta(OUT)
-    auto outG = node.getGradOfOriginalOutputNamedResult();
-    NodeValue LHS = node.getLHS();
-    NodeValue RHS = node.getRHS();
+  auto squareRhs = F->createMul("square.rhs", RHS, RHS);
+  auto rhsResult = F->createDiv("div.grad", mulLhsGrad, squareRhs);
 
-    auto lhsResult = F->createArithmetic("div.grad.rhs", outG, RHS,
-                                         ArithmeticNode::Mode::Div);
-
-    auto zero = F->createSplat("zero", outG.getType(), 0);
-    auto subGrad =
-        F->createArithmetic("sub.grad", zero, outG, ArithmeticNode::Mode::Sub);
-    auto mulLhsGrad = F->createArithmetic("mul.sub.grad.lhs", subGrad, LHS,
-                                          ArithmeticNode::Mode::Mul);
-
-    auto squareRhs =
-        F->createArithmetic("square.rhs", RHS, RHS, ArithmeticNode::Mode::Mul);
-    auto rhsResult = F->createArithmetic("div.grad", mulLhsGrad, squareRhs,
-                                         ArithmeticNode::Mode::Div);
-
-    node.getGradOfInputNamedLHS().replaceAllUsesOfWith(lhsResult);
-    node.getGradOfInputNamedRHS().replaceAllUsesOfWith(rhsResult);
-    break;
-  }
-  case ArithmeticGradNode::Mode::CmpLTE: {
-    llvm_unreachable("Unable to differentiate the CmpLT function");
-  }
-  case ArithmeticGradNode::Mode::Max: {
-    llvm_unreachable("Unable to differentiate the Max function");
-  }
-  case ArithmeticGradNode::Mode::Min: {
-    llvm_unreachable("Unable to differentiate the Min function");
-  }
-  }
+  node.getGradOfInputNamedLHS().replaceAllUsesOfWith(lhsResult);
+  node.getGradOfInputNamedRHS().replaceAllUsesOfWith(rhsResult);
 }
 
 void lowerRegressionNode(RegressionNode &node) {
@@ -98,9 +70,7 @@ void lowerRegressionNode(RegressionNode &node) {
 void lowerRegressionGradNode(Function *F, RegressionGradNode &node) {
   auto outG = node.getInput();
 
-  auto inputG =
-      F->createArithmetic("rgn.grad", node.getInput(), node.getExpected(),
-                          ArithmeticNode::Mode::Sub);
+  auto inputG = F->createSub("rgn.grad", node.getInput(), node.getExpected());
   auto expG = F->createSplat("exp.grad", node.getExpected().getType(), 0);
 
   node.getGradOfInputNamedInput().replaceAllUsesOfWith(inputG);
@@ -158,8 +128,8 @@ void lowerReluGradNode(Function *F, ReluGradNode &RG) {
   // ReluGrad: if the input value is greater than zero then let the gradient
   // pass.
   auto *zero = F->createSplat("zero", RG.getInput().getType(), 0.0);
-  auto *cond = F->createArithmetic("relugrad", RG.getOriginalOutputForResult(),
-                                   zero, ArithmeticNode::Mode::CmpLTE);
+  auto *cond =
+      F->createCmpLTE("relugrad", RG.getOriginalOutputForResult(), zero);
   auto *res = F->createSelect("relugrad", cond, zero,
                               RG.getGradOfOriginalOutputNamedResult());
   RG.getGradOfInputNamedInput().replaceAllUsesOfWith(res);
@@ -171,17 +141,14 @@ void lowerTanhGradNode(Function *F, TanhGradNode &THG) {
 
   // (W * W)
   auto outW = THG.getOriginalOutputForResult();
-  auto *sq =
-      F->createArithmetic("tanh.in2", outW, outW, ArithmeticNode::Mode::Mul);
+  auto *sq = F->createMul("tanh.in2", outW, outW);
 
   auto *one = F->createSplat("tanh.one", THG.getInput().getType(), 1.0);
   // (1 - W * W)
-  auto *oneSubsq =
-      F->createArithmetic("tanh.one.sq", one, sq, ArithmeticNode::Mode::Sub);
+  auto *oneSubsq = F->createSub("tanh.one.sq", one, sq);
 
-  auto *grad = F->createArithmetic("tanh.one.sq", oneSubsq,
-                                   THG.getGradOfOriginalOutputNamedResult(),
-                                   ArithmeticNode::Mode::Mul);
+  auto *grad = F->createMul("tanh.one.sq", oneSubsq,
+                            THG.getGradOfOriginalOutputNamedResult());
   THG.getGradOfInputNamedInput().replaceAllUsesOfWith(grad);
 }
 
@@ -193,24 +160,20 @@ void lowerSigmoidGradNode(Function *F, SigmoidGradNode &THG) {
   auto *one = F->createSplat("one", THG.getInput().getType(), 1.0);
 
   // (1 - W)
-  auto *onew =
-      F->createArithmetic("sig.1w", one, outW, ArithmeticNode::Mode::Sub);
+  auto *onew = F->createSub("sig.1w", one, outW);
 
   // (1 - W) * W
-  auto *expr1 =
-      F->createArithmetic("sig.1ww", onew, outW, ArithmeticNode::Mode::Mul);
+  auto *expr1 = F->createMul("sig.1ww", onew, outW);
 
-  auto *grad = F->createArithmetic("sigg.one.sq", expr1,
-                                   THG.getGradOfOriginalOutputNamedResult(),
-                                   ArithmeticNode::Mode::Mul);
+  auto *grad = F->createMul("sigg.one.sq", expr1,
+                            THG.getGradOfOriginalOutputNamedResult());
   THG.getGradOfInputNamedInput().replaceAllUsesOfWith(grad);
 }
 
 void lowerReluNode(Function *F, ReluNode &R) {
   // Relu is a max between zero and the input value.
   SplatNode *zero = F->createSplat("zero", R.getType(), 0.0);
-  auto *relu = F->createArithmetic("relu", zero, R.getInput(),
-                                   ArithmeticNode::Mode::Max);
+  auto *relu = F->createMax("relu", zero, R.getInput());
   R.getResult().replaceAllUsesOfWith(relu);
 }
 
@@ -297,8 +260,20 @@ void glow::lower(Function *F, CompilationMode mode) {
       lowerRegressionNode(*RN);
     } else if (auto *RGN = dyn_cast<RegressionGradNode>(node)) {
       lowerRegressionGradNode(F, *RGN);
-    } else if (auto *EMG = dyn_cast<ArithmeticGradNode>(node)) {
-      lowerArithmeticNode(F, *EMG);
+    } else if (auto *EMG = dyn_cast<AddGradNode>(node)) {
+      lowerAddGradNode(F, *EMG);
+    } else if (auto *EMG = dyn_cast<MulGradNode>(node)) {
+      lowerMulGradNode(F, *EMG);
+    } else if (auto *EMG = dyn_cast<SubGradNode>(node)) {
+      lowerSubGradNode(F, *EMG);
+    } else if (auto *EMG = dyn_cast<DivGradNode>(node)) {
+      lowerDivGradNode(F, *EMG);
+    } else if (auto *EMG = dyn_cast<MaxGradNode>(node)) {
+      llvm_unreachable("Unable to differentiate the Max function");
+    } else if (auto *EMG = dyn_cast<MinGradNode>(node)) {
+      llvm_unreachable("Unable to differentiate the Min function");
+    } else if (auto *EMG = dyn_cast<CmpLTEGradNode>(node)) {
+      llvm_unreachable("Unable to differentiate the CmpLTE function");
     } else if (auto *FC = dyn_cast<FullyConnectedNode>(node)) {
       lowerFullyConnectedNode(F, *FC);
     } else if (auto *FCG = dyn_cast<FullyConnectedGradNode>(node)) {

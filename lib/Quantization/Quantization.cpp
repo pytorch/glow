@@ -227,7 +227,7 @@ static bool shouldQuantize(const Node *node) {
   return llvm::isa<FullyConnectedNode>(node) ||
          llvm::isa<ConvolutionNode>(node) || llvm::isa<ReluNode>(node) ||
          llvm::isa<TransposeNode>(node) || llvm::isa<ReshapeNode>(node) ||
-         llvm::isa<ArithmeticNode>(node) || llvm::isa<ConcatNode>(node);
+         node->isArithmetic() || llvm::isa<ConcatNode>(node);
 }
 
 /// Quantize all inputs for \p node and return back pointers to the newly
@@ -349,13 +349,22 @@ void generateQuantizedGraph(
                            P->getStride(), P->getPad());
       break;
     }
-    case Kinded::Kind::ArithmeticNodeKind: {
-      auto *AN = cast<ArithmeticNode>(node);
-      assert(quantizedInputs.size() == 2 && "Invalid number of inputs");
-      quantizedNode = F->createArithmetic(AN->getName(), quantizedInputs[0],
-                                          quantizedInputs[1], AN->getMode());
-      break;
-    }
+#define CASE_QUANTIZE_NODE(NODE_NAME_)                                         \
+  case Kinded::Kind::NODE_NAME_##NodeKind: {                                   \
+    auto *AN = cast<NODE_NAME_##Node>(node);                                   \
+    assert(quantizedInputs.size() == 2 && "Invalid number of inputs");         \
+    quantizedNode = F->create##NODE_NAME_(AN->getName(), quantizedInputs[0],   \
+                                          quantizedInputs[1]);                 \
+    break;                                                                     \
+  }
+      CASE_QUANTIZE_NODE(Add);
+      CASE_QUANTIZE_NODE(Mul);
+      CASE_QUANTIZE_NODE(Sub);
+      CASE_QUANTIZE_NODE(Div);
+      CASE_QUANTIZE_NODE(Max);
+      CASE_QUANTIZE_NODE(Min);
+      CASE_QUANTIZE_NODE(CmpLTE);
+#undef CASE_QUANTIZE_NODE
     case Kinded::Kind::ConcatNodeKind: {
       auto *C = cast<ConcatNode>(node);
 
@@ -407,8 +416,8 @@ void generateQuantizedGraph(
     auto *dequantized = F->createDequantize("dequantize", quantizedNode);
 
     // Note, there is an assumption that converted node has only single output.
-    // 4) Replace all usages of old floating point node by the dequantized
-    // node to maintain the invariant.
+    // 4) Replace all usages of old floating point node by the dequantized node
+    // to maintain the invariant.
     node->getNthResult(0).replaceAllUsesOfWith(dequantized);
 
     // 5) Make sure that TQP is not lost after addition of intermediate

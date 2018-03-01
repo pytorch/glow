@@ -197,10 +197,16 @@ static void sinkCode(Function *F) {
       }
     }
 
-    // Sink Transpose below Arithmetic nodes.
-    if (auto *AN = dyn_cast<ArithmeticNode>(node)) {
-      auto *LTR = dyn_cast<TransposeNode>(AN->getLHS());
-      auto *RTR = dyn_cast<TransposeNode>(AN->getRHS());
+    // Sink Transpose below Arithmetic nodes. Note: For simplicity, we
+    // assume for the arithmetic node, LHS is the 0th input, RHS is 1st, and
+    // Result is 0th result.
+    if (node->isArithmetic()) {
+#define GET_LHS(NODE_) NODE_->getNthInput(0)
+#define GET_RHS(NODE_) NODE_->getNthInput(1)
+      TransposeNode *LTR = dyn_cast<TransposeNode>(GET_LHS(node));
+      TransposeNode *RTR = dyn_cast<TransposeNode>(GET_RHS(node));
+#undef GET_LHS
+#undef GET_RHS
 
       if (!LTR || !RTR) {
         continue;
@@ -210,11 +216,32 @@ static void sinkCode(Function *F) {
         continue;
       }
 
-      auto *newAN = F->createArithmetic(AN->getName(), LTR->getInput(),
-                                        RTR->getInput(), AN->getMode());
+      Node *newAN = nullptr;
+
+#define ARITHMETIC_CASE(NODE_NAME_)                                            \
+  case glow::Kinded::Kind::NODE_NAME_##NodeKind:                               \
+    newAN = F->create##NODE_NAME_(node->getName(), LTR->getInput(),            \
+                                  RTR->getInput());                            \
+    break;
+
+      switch (node->getKind()) {
+        ARITHMETIC_CASE(Add);
+        ARITHMETIC_CASE(Mul);
+        ARITHMETIC_CASE(Sub);
+        ARITHMETIC_CASE(Div);
+        ARITHMETIC_CASE(Max);
+        ARITHMETIC_CASE(Min);
+        ARITHMETIC_CASE(CmpLTE);
+      default:
+        llvm_unreachable("Unhandled node");
+      }
+#undef ARITHMETIC_CASE
+
       auto *newTR =
           F->createTranspose(LTR->getName(), newAN, LTR->getShuffle());
-      AN->getResult().replaceAllUsesOfWith(newTR);
+#define GET_RESULT(NODE_) NODE_->getNthResult(0)
+      GET_RESULT(node).replaceAllUsesOfWith(newTR);
+#undef GET_RESULT
     }
 
     // Sink RELU below batch concat nodes.
@@ -648,35 +675,28 @@ static void optimizeQuantization(Function *F) {
         continue;
       }
 
-      if (auto *AN = dyn_cast<ArithmeticNode>(RS->getInput())) {
+      if (auto *MN = dyn_cast<MaxNode>(RS->getInput())) {
 
         // Rescale(MAX(X, Y)) -> MAX(Rescale(X), Rescale(Y)).
         // It's okay to rescale the operands because even if the output range is
         // smaller then truncation would have happened during the rescale. On
         // values that are outside of the range we just moved the truncation to
         // a different location.
-        if (AN->getMode() == ArithmeticNode::Mode::Max) {
-          auto name = RS->getName();
-          auto *L =
-              F->createRescaleQuantized(name, AN->getLHS(), RS->getType());
-          auto *R =
-              F->createRescaleQuantized(name, AN->getRHS(), RS->getType());
-          auto *newAN = F->createArithmetic(AN->getName(), L, R, AN->getMode());
-          worklist.push_back(L);
-          worklist.push_back(R);
-          RS->getResult().replaceAllUsesOfWith(newAN);
-          continue;
-        }
+        auto name = RS->getName();
+        auto *L = F->createRescaleQuantized(name, MN->getLHS(), RS->getType());
+        auto *R = F->createRescaleQuantized(name, MN->getRHS(), RS->getType());
+        auto *newMN = F->createMax(MN->getName(), L, R);
+        worklist.push_back(L);
+        worklist.push_back(R);
+        RS->getResult().replaceAllUsesOfWith(newMN);
+        continue;
+      }
 
-        // Fold the rescale into the Add.
-        // Rescale(add(X, Y)) -> Add(X, Y)
-        if (AN->getMode() == ArithmeticNode::Mode::Add) {
-          auto *newAN =
-              F->createArithmetic(AN->getName(), RS->getType(), AN->getLHS(),
-                                  AN->getRHS(), AN->getMode());
-          RS->getResult().replaceAllUsesOfWith(newAN);
-          continue;
-        }
+      if (auto *AN = dyn_cast<AddNode>(RS->getInput())) {
+        auto *newAN = F->createAdd(AN->getName(), RS->getType(), AN->getLHS(),
+                                   AN->getRHS());
+        RS->getResult().replaceAllUsesOfWith(newAN);
+        continue;
       }
 
       // Merge the rescale node into the convolution.

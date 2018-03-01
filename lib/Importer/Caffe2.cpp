@@ -331,8 +331,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "Sum") {
     auto *in0 = getOrCreateNodeByName(op.input(0));
     auto *in1 = getOrCreateNodeByName(op.input(1));
-    auto *node =
-        G_.createArithmetic(op.name(), in0, in1, ArithmeticNode::Mode::Add);
+    auto *node = G_.createAdd(op.name(), in0, in1);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;
@@ -422,10 +421,13 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       finalIn1 = in1;
     }
 
-    auto *node =
-        G_.createArithmetic(op.name(), in0, finalIn1,
-                            (typeName == "Mul") ? ArithmeticNode::Mode::Mul
-                                                : ArithmeticNode::Mode::Add);
+    Node *node = nullptr;
+    if (typeName == "Mul") {
+      node = G_.createMul(op.name(), in0, finalIn1);
+    } else {
+      node = G_.createAdd(op.name(), in0, finalIn1);
+    }
+
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;

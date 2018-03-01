@@ -27,7 +27,7 @@ TEST(GraphOptz, DCE) {
     K = F->createRELU("relu", K);
     // Add a graph structure that diverges and converges, to catch algorithms
     // that perform a dump recursive scan.
-    K = F->createArithmetic("arith", K, K, ArithmeticNode::Mode::Add);
+    K = F->createAdd("arith", K, K);
   }
 
   // Check that we know how many nodes we've created.
@@ -51,7 +51,7 @@ TEST(GraphOptz, liveCodeNotEliminated) {
 
   for (int i = 0; i < 40; i++) {
     K = F->createRELU("relu", K);
-    K = F->createArithmetic("arith", K, K, ArithmeticNode::Mode::Add);
+    K = F->createAdd("arith", K, K);
   }
   K = F->createSoftMax("Regression", K, Ex);
   F->createSave("ret", K);
@@ -287,7 +287,7 @@ TEST(GraphOptz, sinkTransposeBelowArithmeticNodes) {
                                 Variable::TrainKind::None);
   Node *T1 = F->createTranspose("transpose1", A1, {0, 3, 1, 2});
   Node *T2 = F->createTranspose("transpose2", A2, {0, 3, 1, 2});
-  Node *K = F->createArithmetic("arith", T1, T2, ArithmeticNode::Mode::Add);
+  Node *K = F->createAdd("arith", T1, T2);
   Node *O = F->createSave("ret", K);
 
   EXPECT_EQ(F->getNodes().size(), 4);

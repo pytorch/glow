@@ -471,61 +471,25 @@ public:
       break;
     }
 
-    case glow::Kinded::Kind::ArithmeticNodeKind: {
-      auto *AR = cast<ArithmeticNode>(N);
-      auto *L = valueForNode(AR->getLHS());
-      auto *R = valueForNode(AR->getRHS());
+#define ARITHMETIC_CASE(NODE_NAME_)                                            \
+  case glow::Kinded::Kind::NODE_NAME_##NodeKind: {                             \
+    auto *AR = cast<NODE_NAME_##Node>(N);                                      \
+    auto *L = valueForNode(AR->getLHS());                                      \
+    auto *R = valueForNode(AR->getRHS());                                      \
+    auto *inst = builder_.createElement##NODE_NAME_##Op(L, R);                 \
+    inst->setName(N->getName());                                               \
+    registerIR(N, inst->getDest());                                            \
+    break;                                                                     \
+  }
+      ARITHMETIC_CASE(Add);
+      ARITHMETIC_CASE(Mul);
+      ARITHMETIC_CASE(Sub);
+      ARITHMETIC_CASE(Div);
+      ARITHMETIC_CASE(Max);
+      ARITHMETIC_CASE(Min);
+      ARITHMETIC_CASE(CmpLTE);
+#undef ARITHMETIC_CASE
 
-      Instruction *instruction = nullptr;
-      Value *dest;
-      switch (AR->getMode()) {
-      case glow::ArithmeticNode::Mode::Add: {
-        auto *tmpInst = builder_.createElementAddOp(L, R);
-        dest = tmpInst->getDest();
-        instruction = tmpInst;
-        break;
-      }
-      case glow::ArithmeticNode::Mode::Mul: {
-        auto *tmpInst = builder_.createElementMulOp(L, R);
-        dest = tmpInst->getDest();
-        instruction = tmpInst;
-        break;
-      }
-      case glow::ArithmeticNode::Mode::Sub: {
-        auto *tmpInst = builder_.createElementSubOp(L, R);
-        dest = tmpInst->getDest();
-        instruction = tmpInst;
-        break;
-      }
-      case glow::ArithmeticNode::Mode::Div: {
-        auto *tmpInst = builder_.createElementDivOp(L, R);
-        dest = tmpInst->getDest();
-        instruction = tmpInst;
-        break;
-      }
-      case glow::ArithmeticNode::Mode::Max: {
-        auto *tmpInst = builder_.createElementMaxOp(L, R);
-        dest = tmpInst->getDest();
-        instruction = tmpInst;
-        break;
-      }
-      case glow::ArithmeticNode::Mode::Min: {
-        auto *tmpInst = builder_.createElementMinOp(L, R);
-        dest = tmpInst->getDest();
-        instruction = tmpInst;
-        break;
-      }
-      case glow::ArithmeticNode::Mode::CmpLTE: {
-        auto *tmpInst = builder_.createElementCmpLTEOp(L, R);
-        dest = tmpInst->getDest();
-        instruction = tmpInst;
-        break;
-      }
-      }
-      instruction->setName(N->getName());
-      registerIR(N, dest);
-      break;
-    }
     case glow::Kinded::Kind::SelectNodeKind: {
       auto *S = cast<SelectNode>(N);
       auto *cond = valueForNode(S->getCond());
@@ -617,7 +581,13 @@ public:
 
     case glow::Kinded::Kind::TanhGradNodeKind:
     case glow::Kinded::Kind::SigmoidGradNodeKind:
-    case glow::Kinded::Kind::ArithmeticGradNodeKind:
+    case glow::Kinded::Kind::AddGradNodeKind:
+    case glow::Kinded::Kind::MulGradNodeKind:
+    case glow::Kinded::Kind::SubGradNodeKind:
+    case glow::Kinded::Kind::DivGradNodeKind:
+    case glow::Kinded::Kind::MaxGradNodeKind:
+    case glow::Kinded::Kind::MinGradNodeKind:
+    case glow::Kinded::Kind::CmpLTEGradNodeKind:
     case glow::Kinded::Kind::ReluNodeKind:
     case glow::Kinded::Kind::ReluGradNodeKind:
     case glow::Kinded::Kind::FullyConnectedNodeKind:

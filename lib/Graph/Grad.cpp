@@ -20,8 +20,7 @@ using llvm::isa;
 void GraphGradMapper::addGradient(NodeValue activation, NodeValue grad) {
   if (map_.count(activation)) {
     auto curr = map_.get(activation);
-    auto *sum = F_->createArithmetic("updateGrad", curr, grad,
-                                     ArithmeticNode::Mode::Add);
+    auto *sum = F_->createAdd("updateGrad", curr, grad);
     map_.insert(activation, sum);
     return;
   }
@@ -92,7 +91,13 @@ Function *glow::differentiate(Function *F, TrainingConfig &conf,
     CONVERT_TO_GRAD_NODE(SoftMaxNode)
     CONVERT_TO_GRAD_NODE(CrossEntropyLossNode)
     CONVERT_TO_GRAD_NODE(RegressionNode)
-    CONVERT_TO_GRAD_NODE(ArithmeticNode)
+    CONVERT_TO_GRAD_NODE(AddNode)
+    CONVERT_TO_GRAD_NODE(MulNode)
+    CONVERT_TO_GRAD_NODE(SubNode)
+    CONVERT_TO_GRAD_NODE(DivNode)
+    CONVERT_TO_GRAD_NODE(MaxNode)
+    CONVERT_TO_GRAD_NODE(MinNode)
+    CONVERT_TO_GRAD_NODE(CmpLTENode)
     CONVERT_TO_GRAD_NODE(ReluNode)
     CONVERT_TO_GRAD_NODE(SigmoidNode)
     CONVERT_TO_GRAD_NODE(TanhNode)
