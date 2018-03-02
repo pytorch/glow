@@ -527,7 +527,7 @@ public:
 
   /// \returns true if the content of the other handle \p other is identical to
   /// this one.
-  bool isEqual(Handle<ElemTy> &other, float allowedError = 0.0001) const {
+  bool isEqual(Handle<ElemTy> other, float allowedError = 0.0001) const {
     if (other.dims() != dims()) {
       return false;
     }

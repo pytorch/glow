@@ -83,6 +83,35 @@ TEST(Tensor, isZero) {
   }
 }
 
+TEST(Tensor, inBounds) {
+  Tensor A(ElemKind::FloatTy, {15, 5, 3});
+
+  EXPECT_TRUE(A.isInBounds({14, 4, 2}));
+  EXPECT_TRUE(A.isInBounds({0, 0, 0}));
+  EXPECT_FALSE(A.isInBounds({15, 4, 2}));
+  EXPECT_FALSE(A.isInBounds({5, 4, 3}));
+}
+
+TEST(Tensor, equalHandles) {
+  {
+    Tensor A = {1.0, 20};
+    Tensor B = {1.0};
+    EXPECT_FALSE(A.getHandle().isEqual(B.getHandle()));
+  }
+
+  {
+    Tensor A = {1.0, 20};
+    Tensor B = {1.0, 20};
+    EXPECT_TRUE(A.getHandle().isEqual(B.getHandle()));
+  }
+
+  {
+    Tensor A = {1.0, 20};
+    Tensor B = {1.0, 30};
+    EXPECT_FALSE(A.getHandle().isEqual(B.getHandle()));
+  }
+}
+
 TEST(Tensor, assignment) {
   // Testing some tensor operations.
   Tensor T(ElemKind::FloatTy, {320, 200, 64});
