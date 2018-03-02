@@ -323,6 +323,19 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, size_t val) {
   return builder.getIntN(sizeof(size_t) * 8, val);
 }
 
+llvm::Value *LLVMIRGen::emitStringConst(llvm::IRBuilder<> &builder,
+                                        llvm::StringRef str) {
+  llvm::GlobalVariable *gvarStr =
+      new llvm::GlobalVariable(*llmodule_, builder.getInt8Ty(), true,
+                               llvm::GlobalValue::PrivateLinkage, 0, ".str");
+  gvarStr->setAlignment(1);
+
+  llvm::Constant *constStrArray =
+      llvm::ConstantDataArray::getString(ctx_, str, true);
+  gvarStr->setInitializer(constStrArray);
+  return gvarStr;
+}
+
 llvm::Function *LLVMIRGen::getFunction(const std::string &name) {
   return llmodule_->getFunction(name);
 }
@@ -960,6 +973,22 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, offsetsPtr, srcDims, destDims,
                            srcDimsSize, destDimsSize, offsetsArraySize});
+    break;
+  }
+
+  case Kinded::Kind::DebugPrintInstKind: {
+    DebugPrintInst *DPI = llvm::cast<DebugPrintInst>(I);
+    auto src = DPI->getSrc();
+    auto *srcPtr = emitValueAddress(builder, src);
+    srcPtr = builder.CreateBitCast(srcPtr, builder.getInt8PtrTy());
+    auto *srcDims = emitValueDims(builder, src);
+    auto *srcDimsSize = emitConst(builder, src->getType()->dims().size());
+    auto *srcElemKind =
+        emitConst(builder, static_cast<size_t>(src->getElementType()));
+    auto *name = emitStringConst(builder, I->getName());
+    auto *F = getFunction("libjit_dump_tensor");
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {srcPtr, srcDims, srcDimsSize, srcElemKind, name});
     break;
   }
 
