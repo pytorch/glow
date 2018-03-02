@@ -337,7 +337,23 @@ llvm::Value *LLVMIRGen::emitStringConst(llvm::IRBuilder<> &builder,
 }
 
 llvm::Function *LLVMIRGen::getFunction(const std::string &name) {
-  return llmodule_->getFunction(name);
+  return llmodule_->getFunction("libjit_" + name);
+}
+
+llvm::Function *LLVMIRGen::getFunction(const std::string &name,
+                                       ElemKind elemTy) {
+  switch (elemTy) {
+  case ElemKind::FloatTy:
+    return llmodule_->getFunction("libjit_" + name + "_f");
+  case ElemKind::Int8QTy:
+    return llmodule_->getFunction("libjit_" + name + "_i8");
+  case ElemKind::Int32QTy:
+    return llmodule_->getFunction("libjit_" + name + "_i32");
+  case ElemKind::IndexTy:
+    return llmodule_->getFunction("libjit_" + name + "_u");
+  default:
+    GLOW_ASSERT("Unsupported element type");
+  }
 }
 
 void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
@@ -349,19 +365,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destPtr = emitValueAddress(builder, dest);
     auto cnt = emitValueSize(builder, dest);
     auto *val = emitConst(builder, SI->getValue());
-    llvm::StringRef kernelName;
-    switch (dest->getElementType()) {
-    default:
-      GLOW_UNREACHABLE("Unsupported type of kernel");
-      break;
-    case ElemKind::FloatTy:
-      kernelName = "libjit_splat_f";
-      break;
-    case ElemKind::IndexTy:
-      kernelName = "libjit_splat_i";
-      break;
-    }
-    auto *F = getFunction(kernelName);
+
+    auto *F = getFunction("splat", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, cnt, val});
     break;
@@ -375,7 +380,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *rhsPtr = emitValueAddress(builder, EM->getRHS());
     auto cnt = emitValueSize(builder, dest);
 
-    auto *F = getFunction("libjit_elementmax_f");
+    auto *F = getFunction("elementmax", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, cnt});
     break;
@@ -389,7 +394,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *rhsPtr = emitValueAddress(builder, EM->getRHS());
     auto cnt = emitValueSize(builder, dest);
 
-    auto *F = getFunction("libjit_elementmin_f");
+    auto *F = getFunction("elementmin", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, cnt});
     break;
@@ -404,7 +409,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *rhsPtr = emitValueAddress(builder, ES->getRHS());
     auto cnt = emitValueSize(builder, dest);
 
-    auto *F = getFunction("libjit_elementselect_f");
+    auto *F = getFunction("elementselect", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, condPtr, lhsPtr, rhsPtr, cnt});
     break;
@@ -423,7 +428,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *lhsDims = emitValueDims(builder, lhs);
     auto *rhsDims = emitValueDims(builder, rhs);
 
-    auto *F = getFunction("libjit_batchedmatmul_f");
+    auto *F = getFunction("batchedmatmul", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F,
                        {destPtr, lhsPtr, rhsPtr, destDims, lhsDims, rhsDims});
@@ -437,7 +442,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcPtr = emitValueAddress(builder, CI->getSrc());
     auto *bytes = emitConst(builder, dest->getType()->getSizeInBytes());
 
-    auto *F = getFunction("libjit_copy_f");
+    auto *F = getFunction("copy", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, srcPtr, bytes});
     break;
@@ -445,8 +450,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::BatchedAddInstKind: {
     BatchedAddInst *BA = cast<BatchedAddInst>(I);
+    auto *dest = BA->getDest();
     auto *batch = BA->getBatch();
-    auto *destPtr = emitValueAddress(builder, BA->getDest());
+    auto *destPtr = emitValueAddress(builder, dest);
     auto *batchPtr = emitValueAddress(builder, batch);
     auto *slicePtr = emitValueAddress(builder, BA->getSlice());
 
@@ -454,7 +460,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *numSlice = emitConst(builder, bdim.first);
     auto *sliceSize = emitConst(builder, bdim.second);
 
-    auto *F = getFunction("libjit_batchedadd_f");
+    auto *F = getFunction("batchedadd", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, batchPtr, slicePtr, numSlice, sliceSize});
     break;
@@ -472,7 +478,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *numSlice = emitConst(builder, bdim.first);
     auto *sliceSize = emitConst(builder, bdim.second);
 
-    auto *F = getFunction("libjit_batchedreduceadd_f");
+    auto *F = getFunction("batchedreduceadd", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, batchPtr, destSize, numSlice, sliceSize});
     break;
@@ -498,14 +504,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *stride = emitConst(builder, CI->getStride());
     auto *pad = emitConst(builder, CI->getPad());
 
-    const char *kernelName = "libjit_convolution_f";
+    const char *kernelName = "convolution";
     // Use a special version of the kernel for the case where K (the depth of
     // the convolution) is a multiple of 4.
     if (dest->dims()[3] % 4 == 0) {
-      kernelName = "libjit_convolution_f_unroll_k4";
+      kernelName = "convolution_unroll_k4";
     }
 
-    auto *F = getFunction(kernelName);
+    auto *F = getFunction(kernelName, dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F,
                        {srcPtr, destPtr, filterPtr, biasPtr, srcDims, destDims,
@@ -534,7 +540,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *stride = emitConst(builder, CG->getStride());
     auto *pad = emitConst(builder, CG->getPad());
 
-    auto *F = getFunction("libjit_convolution_grad_f");
+    auto *F = getFunction("convolution_grad", srcGrad->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcGradPtr, destGradPtr, srcPtr, filterGradPtr,
                            biasGradPtr, filterPtr, destGradDims, srcDims,
@@ -558,7 +564,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *beta = emitConst(builder, LRN->getBeta());
     auto *k = emitConst(builder, LRN->getK());
 
-    auto *F = getFunction("libjit_local_response_normalization_f");
+    auto *F =
+        getFunction("local_response_normalization", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, srcPtr, scalePtr, destDims, srcDims,
                            halfWindow, alpha, beta, k});
@@ -568,8 +575,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   case Kinded::Kind::LocalResponseNormalizationGradInstKind: {
     LocalResponseNormalizationGradInst *LRNG =
         llvm::cast<LocalResponseNormalizationGradInst>(I);
+    auto *srcGrad = LRNG->getSrcGrad();
     auto *dest = LRNG->getDest();
-    auto *srcGradPtr = emitValueAddress(builder, LRNG->getSrcGrad());
+    auto *srcGradPtr = emitValueAddress(builder, srcGrad);
     auto *destGradPtr = emitValueAddress(builder, LRNG->getDestGrad());
     auto *srcPtr = emitValueAddress(builder, LRNG->getSrc());
     auto *destPtr = emitValueAddress(builder, dest);
@@ -581,7 +589,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *alpha = emitConst(builder, LRNG->getAlpha());
     auto *beta = emitConst(builder, LRNG->getBeta());
 
-    auto *F = getFunction("libjit_local_response_normalization_grad_f");
+    auto *F = getFunction("local_response_normalization_grad",
+                          srcGrad->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcGradPtr, destGradPtr, srcPtr, destPtr, scalePtr,
                            destDims, halfWindow, alpha, beta});
@@ -602,7 +611,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *stride = emitConst(builder, PM->getStride());
     auto *pad = emitConst(builder, PM->getPad());
 
-    auto *F = getFunction("libjit_pool_max_f");
+    auto *F = getFunction("pool_max", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(
         F, {srcPtr, destPtr, srcDims, destDims, kernel, stride, pad});
@@ -624,7 +633,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *stride = emitConst(builder, PMXY->getStride());
     auto *pad = emitConst(builder, PMXY->getPad());
 
-    auto *F = getFunction("libjit_pool_max_xy_f");
+    auto *F = getFunction("pool_max_xy", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(
         F, {srcPtr, destPtr, srcXYPtr, srcDims, destDims, kernel, stride, pad});
@@ -641,7 +650,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcGradDims = emitValueDims(builder, srcGrad);
     auto *destDims = emitValueDims(builder, PMG->getDest());
 
-    auto *F = getFunction("libjit_pool_max_xy_grad_f");
+    auto *F = getFunction("pool_max_xy_grad", srcGrad->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(
         F, {srcGradPtr, destGradPtr, srcXYPtr, srcGradDims, destDims});
@@ -662,7 +671,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *stride = emitConst(builder, PM->getStride());
     auto *pad = emitConst(builder, PM->getPad());
 
-    auto *F = getFunction("libjit_pool_avg_f");
+    auto *F = getFunction("pool_avg", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(
         F, {srcPtr, destPtr, srcDims, destDims, kernel, stride, pad});
@@ -682,7 +691,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *stride = emitConst(builder, PAG->getStride());
     auto *pad = emitConst(builder, PAG->getPad());
 
-    auto *F = getFunction("libjit_pool_avg_grad_f");
+    auto *F = getFunction("pool_avg_grad", srcGrad->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcGradPtr, destGradPtr, srcGradDims, destDims,
                            kernel, stride, pad});
@@ -701,7 +710,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     // TODO(hegemanjwh2): Fix generated integer type for offset.
     auto *offset = emitConst(builder, (size_t)destType->getOffset());
 
-    auto *F = getFunction("libjit_quantize_f");
+    auto *F = getFunction("quantize", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, srcPtr, numElem, scale, offset});
     break;
@@ -720,7 +729,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     // TODO(hegemanjwh2): Fix generated integer type for offset.
     auto *offset = emitConst(builder, (size_t)srcType->getOffset());
 
-    auto *F = getFunction("libjit_dequantize_f");
+    auto *F = getFunction("dequantize", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, srcPtr, numElem, scale, offset});
     break;
@@ -736,7 +745,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *F = getFunction("libjit_softmax_f");
+    auto *F = getFunction("softmax", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims});
     break;
@@ -753,7 +762,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcGradDims = emitValueDims(builder, srcGrad);
     auto *selectedDims = emitValueDims(builder, selected);
 
-    auto *F = getFunction("libjit_softmaxgrad_f");
+    auto *F = getFunction("softmax_grad", srcGrad->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(
         F, {srcGradPtr, destPtr, selectedPtr, srcGradDims, selectedDims});
@@ -768,7 +777,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *numElemVal = emitConst(builder, dest->getType()->size());
 
-    auto *F = getFunction("libjit_sigmoid_f");
+    auto *F = getFunction("sigmoid", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, numElemVal});
     break;
@@ -782,7 +791,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *numElemVal = emitConst(builder, dest->getType()->size());
 
-    auto *F = getFunction("libjit_tanh_f");
+    auto *F = getFunction("tanh", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, numElemVal});
     break;
@@ -807,7 +816,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *shuffle = emitConstArray(builder, shuffSizeT);
     auto *len = emitConst(builder, TI->getShuffle().size());
 
-    auto *F = getFunction("libjit_transpose_f");
+    auto *F = getFunction("transpose", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims, shuffle, len});
     break;
@@ -823,7 +832,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
       auto cnt = emitValueSize(builder, dest);
 
-      auto *F = getFunction("libjit_elementmax0_f");
+      auto *F = getFunction("elementmax0", dest->getElementType());
       assert(F && "Unable to load the function");
       builder.CreateCall(F, {destPtr, lhsPtr, cnt});
       break;
@@ -850,7 +859,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       destPtr = emitValueAddress(builder, dest);
       lhsPtr = emitValueAddress(builder, tmpInst->getLHS());
       rhsPtr = emitValueAddress(builder, tmpInst->getRHS());
-      funcName = "libjit_element_div_f";
+      funcName = "element_div";
       break;
     }
     case Kinded::Kind::ElementMulInstKind: {
@@ -859,7 +868,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       destPtr = emitValueAddress(builder, dest);
       lhsPtr = emitValueAddress(builder, tmpInst->getLHS());
       rhsPtr = emitValueAddress(builder, tmpInst->getRHS());
-      funcName = "libjit_element_mul_f";
+      funcName = "element_mul";
       break;
     }
     case Kinded::Kind::ElementAddInstKind: {
@@ -868,7 +877,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       destPtr = emitValueAddress(builder, dest);
       lhsPtr = emitValueAddress(builder, tmpInst->getLHS());
       rhsPtr = emitValueAddress(builder, tmpInst->getRHS());
-      funcName = "libjit_element_add_f";
+      funcName = "element_add";
       break;
     }
     case Kinded::Kind::ElementSubInstKind: {
@@ -877,7 +886,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       destPtr = emitValueAddress(builder, dest);
       lhsPtr = emitValueAddress(builder, tmpInst->getLHS());
       rhsPtr = emitValueAddress(builder, tmpInst->getRHS());
-      funcName = "libjit_element_sub_f";
+      funcName = "element_sub";
       break;
     }
     case Kinded::Kind::ElementCmpLTEInstKind: {
@@ -886,7 +895,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       destPtr = emitValueAddress(builder, dest);
       lhsPtr = emitValueAddress(builder, tmpInst->getLHS());
       rhsPtr = emitValueAddress(builder, tmpInst->getRHS());
-      funcName = "libjit_element_cmp_lte_f";
+      funcName = "element_cmp_lte";
       break;
     }
     default:
@@ -896,7 +905,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto numElem = dest->getType()->size();
     auto *numElemVal = emitConst(builder, numElem);
 
-    auto *F = getFunction(funcName);
+    auto *F = getFunction(funcName, dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, numElemVal});
     break;
@@ -910,8 +919,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::InsertTensorInstKind: {
     InsertTensorInst *ITI = llvm::cast<InsertTensorInst>(I);
-    auto dest = ITI->getDest();
-    auto src = ITI->getSrc();
+    auto *dest = ITI->getDest();
+    auto *src = ITI->getSrc();
     auto offsets = ITI->getOffsets();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, src);
@@ -923,19 +932,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcDimsSize = emitConst(builder, src->getType()->dims().size());
     auto *offsetsPtr = emitConstArray(builder, offsets);
     auto *offsetsArraySize = emitConst(builder, offsets.size());
-    llvm::StringRef kernelName;
-    switch (dest->getElementType()) {
-    default:
-      GLOW_UNREACHABLE("Unsupported type of kernel");
-      break;
-    case ElemKind::FloatTy:
-      kernelName = "libjit_insert_tensor_f";
-      break;
-    case ElemKind::IndexTy:
-      kernelName = "libjit_insert_tensor_i";
-      break;
-    }
-    auto *F = getFunction(kernelName);
+
+    auto *F = getFunction("insert_tensor", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, srcPtr, offsetsPtr, destDims, srcDims,
                            destDimsSize, srcDimsSize, offsetsArraySize});
@@ -944,8 +942,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::ExtractTensorInstKind: {
     ExtractTensorInst *ITI = llvm::cast<ExtractTensorInst>(I);
-    auto dest = ITI->getDest();
-    auto src = ITI->getSrc();
+    auto *dest = ITI->getDest();
+    auto *src = ITI->getSrc();
     auto offsets = ITI->getOffsets();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, src);
@@ -957,19 +955,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcDimsSize = emitConst(builder, src->getType()->dims().size());
     auto *offsetsPtr = emitConstArray(builder, offsets);
     auto *offsetsArraySize = emitConst(builder, offsets.size());
-    llvm::StringRef kernelName;
-    switch (dest->getElementType()) {
-    default:
-      GLOW_UNREACHABLE("Unsupported type of kernel");
-      break;
-    case ElemKind::FloatTy:
-      kernelName = "libjit_extract_tensor_f";
-      break;
-    case ElemKind::IndexTy:
-      kernelName = "libjit_extract_tensor_i";
-      break;
-    }
-    auto *F = getFunction(kernelName);
+
+    auto *F = getFunction("extract_tensor", dest->getElementType());
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, offsetsPtr, srcDims, destDims,
                            srcDimsSize, destDimsSize, offsetsArraySize});
@@ -978,7 +965,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::DebugPrintInstKind: {
     DebugPrintInst *DPI = llvm::cast<DebugPrintInst>(I);
-    auto src = DPI->getSrc();
+    auto *src = DPI->getSrc();
     auto *srcPtr = emitValueAddress(builder, src);
     srcPtr = builder.CreateBitCast(srcPtr, builder.getInt8PtrTy());
     auto *srcDims = emitValueDims(builder, src);
@@ -986,7 +973,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcElemKind =
         emitConst(builder, static_cast<size_t>(src->getElementType()));
     auto *name = emitStringConst(builder, I->getName());
-    auto *F = getFunction("libjit_dump_tensor");
+
+    auto *F = getFunction("dump_tensor");
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, srcDims, srcDimsSize, srcElemKind, name});
     break;

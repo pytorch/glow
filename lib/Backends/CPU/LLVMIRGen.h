@@ -68,7 +68,6 @@ class LLVMIRGen {
   /// Generates LLVM IR that computes the dimensions of \p val using \p builder.
   /// The result type is "size_t*".
   llvm::Value *emitValueDims(llvm::IRBuilder<> &builder, glow::Value *val);
-
   /// Load base addresses of different memory areas (activations, const
   /// weightvars, mutable weight vars) so that they can be reused inside the
   /// body of the function.
@@ -84,9 +83,10 @@ public:
 
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
   void generateLLVMIRForInstr(llvm::IRBuilder<> &builder, glow::Instruction *I);
-  /// \returns a function from the module that we are building on nullptr if
-  /// none was found.
+  /// \returns a libjit API function by name.
   llvm::Function *getFunction(const std::string &name);
+  /// \returns a libjit API function by name and tensor element type.
+  llvm::Function *getFunction(const std::string &name, glow::ElemKind elemTy);
   /// Creates global variables for the base addresses of different memory areas
   /// and invokes a library function to set their values.
   void
