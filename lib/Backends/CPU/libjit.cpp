@@ -201,7 +201,7 @@ void libjit_splat_f(float *buffer, size_t sz, float val) {
   }
 }
 
-void libjit_splat_i(size_t *buffer, size_t sz, float val) {
+void libjit_splat_u(size_t *buffer, size_t sz, float val) {
   for (size_t i = 0; i < sz; i++) {
     ((size_t *)buffer)[i] = val;
   }
@@ -332,7 +332,7 @@ void libjit_element_mul_f(float *dest, const float *LHS, const float *RHS,
   }
 }
 
-void libjit_convolution_f_unroll_k4(
+void libjit_convolution_unroll_k4_f(
     const float *inW, float *outW, const float *filterW, const float *biasW,
     const size_t *inWdims, const size_t *outWdims, const size_t *filterWdims,
     const size_t *biasWdims, size_t filterSize, size_t stride, size_t pad) {
@@ -781,8 +781,8 @@ void libjit_pool_avg_grad_f(float *inG, const float *outG,
   }       // N
 }
 
-void libjit_quantize_f(int8_t *outW, const float *inW, size_t numElem,
-                       float scale, size_t offset_u64) {
+void libjit_quantize_i8(int8_t *outW, const float *inW, size_t numElem,
+                        float scale, size_t offset_u64) {
   int32_t offset = (int32_t)offset_u64;
   for (size_t i = 0; i < numElem; i++) {
     int32_t result = (int32_t)roundf(inW[i] / scale + offset);
@@ -824,8 +824,8 @@ void libjit_softmax_f(const float *inW, float *outW, const size_t *idim,
   } // N
 }
 
-void libjit_softmaxgrad_f(float *inG, float *outW, const size_t *selectedW,
-                          const size_t *idim, const size_t *selectdim) {
+void libjit_softmax_grad_f(float *inG, float *outW, const size_t *selectedW,
+                           const size_t *idim, const size_t *selectdim) {
   for (size_t n = 0; n < idim[0]; n++) {
     for (size_t i = 0; i < idim[1]; i++) {
       float delta = (selectedW[libjit_getXY(selectdim, n, 0)] == i);
@@ -906,7 +906,7 @@ void libjit_extract_tensor_f(float *tensor, float *slice, size_t *offset,
                         numDimsTensor, numDimsSlice, offsetDim);
 }
 
-void libjit_insert_tensor_i(size_t *tensor, size_t *slice, size_t *offset,
+void libjit_insert_tensor_u(size_t *tensor, size_t *slice, size_t *offset,
                             size_t *tensorDim, size_t *sliceDim,
                             size_t numDimsTensor, size_t numDimsSlice,
                             size_t offsetDim) {
@@ -914,7 +914,7 @@ void libjit_insert_tensor_i(size_t *tensor, size_t *slice, size_t *offset,
                        numDimsTensor, numDimsSlice, offsetDim);
 }
 
-void libjit_extract_tensor_i(size_t *tensor, size_t *slice, size_t *offset,
+void libjit_extract_tensor_u(size_t *tensor, size_t *slice, size_t *offset,
                              size_t *tensorDim, size_t *sliceDim,
                              size_t numDimsTensor, size_t numDimsSlice,
                              size_t offsetDim) {
