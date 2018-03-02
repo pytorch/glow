@@ -1,6 +1,7 @@
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
 
@@ -8,6 +9,94 @@
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
 namespace {
+template <class ElemTy>
+static void libjit_dump_tensor_impl(ElemTy *tensor, size_t *dims,
+                                    size_t numDims) {
+  // Check for empty tensor.
+  if (!numDims) {
+    printf("[ Empty tensor ]\n");
+    return;
+  }
+
+  // Output shape.
+  printf("shape: ( ");
+  for (int i = 0; i < numDims; ++i) {
+    printf("%zu ", dims[i]);
+  }
+  printf(")\n");
+
+  ElemTy mx = tensor[0];
+  ElemTy mn = tensor[0];
+
+  size_t size = 1;
+  size_t sliceSize[numDims];
+  for (int i = 0; i < numDims; ++i) {
+    size *= dims[i];
+  }
+
+  for (int i = numDims - 1, curSliceSize = 1; i >= 0; --i) {
+    sliceSize[i] = curSliceSize;
+    curSliceSize *= dims[i];
+  }
+
+  for (size_t i = 0, e = size; i < e; i++) {
+    mx = MAX(mx, tensor[i]);
+    mn = MIN(mn, tensor[i]);
+  }
+
+  // Check for zero tensor.
+  if (mn == .0 && mx == .0) {
+    printf("[ Zero tensor ]\n");
+    return;
+  }
+
+  // Output max and min.
+  printf("max: %.3f  min: %.3f\n", (float)mx, (float)mn);
+
+  const unsigned maxNumElem = 100;
+
+  printf("[");
+
+  for (size_t i = 0, e = MIN(maxNumElem, size); i < e; i++) {
+
+    // Print one open brace at the beginning of every row, slice, and tensor.
+    for (size_t j = 0, e = numDims - 1; numDims > 1 && j < e; j++) {
+      if (i % sliceSize[j] == 0) {
+        // This iteration of outer loop is a new row, slice or tensor.
+        printf("[");
+      }
+    }
+
+    // Print the value at the current index.
+    printf("%.3f", (float)tensor[i]);
+
+    // Print one closed brace at the end of every row, slice, or tensor.
+    for (size_t j = 0, e = numDims - 1; numDims > 1 && j < e; j++) {
+      size_t next_index = i + 1;
+      if (next_index % sliceSize[j] == 0u) {
+        printf("]");
+      }
+    }
+
+    printf(", ");
+
+    // Print one newline at the end of every row, slice, or tensor.
+    for (size_t j = 0, e = numDims - 1; numDims > 1 && j < e; j++) {
+      size_t next_index = i + 1;
+      if (next_index % sliceSize[j] == 0u) {
+        // Next iteration of outer loop will be a new row, slice or tensor.
+        printf("\n");
+      }
+    }
+  }
+
+  if (size > maxNumElem) {
+    printf("...");
+  }
+
+  printf("]\n");
+}
+
 #define AT(tensor, dims, numDims, indices, numIndices)                         \
   tensor[get_element_ptr(tensor, dims, numDims, indices, numIndices)]
 
@@ -831,5 +920,30 @@ void libjit_extract_tensor_i(size_t *tensor, size_t *slice, size_t *offset,
                              size_t offsetDim) {
   libjit_extract_tensor(tensor, slice, offset, tensorDim, sliceDim,
                         numDimsTensor, numDimsSlice, offsetDim);
+}
+
+__attribute__((noinline)) void
+libjit_dump_tensor(uint8_t *tensor, size_t *tensorDim, size_t numDimsTensor,
+                   size_t elemKind, const char *name) {
+  printf("%s\n", name);
+  /// This definition should match the defintion in Glow.
+  enum ElemKind {
+    FloatTy,
+    Int8QTy,
+    Int32QTy,
+    IndexTy,
+  };
+  // Dump the content of a tensor.
+  switch (elemKind) {
+  case FloatTy:
+    libjit_dump_tensor_impl((float *)tensor, tensorDim, numDimsTensor);
+    break;
+  case IndexTy:
+    libjit_dump_tensor_impl((size_t *)tensor, tensorDim, numDimsTensor);
+    break;
+  default:
+    printf("Dumping this type of payload is not supported: %zu\n", elemKind);
+    break;
+  }
 }
 } // extern "C"
