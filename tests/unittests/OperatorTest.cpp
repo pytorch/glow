@@ -610,8 +610,9 @@ TEST(Operator, QuantizedMaxNode) {
     auto max = std::max(AH.at({i}), BH.at({i}));
     auto add = AH.at({i}) + BH.at({i});
 
-    EXPECT_NEAR(add, O1H.at({i}), 1.0);
-    EXPECT_NEAR(max, O2H.at({i}), 1.0);
+    // We generate numbers up to 110, so a difference of 2 (~2%) is reasonable.
+    EXPECT_NEAR(add, O1H.at({i}), 2.0);
+    EXPECT_NEAR(max, O2H.at({i}), 2.0);
   }
 }
 
