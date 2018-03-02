@@ -227,7 +227,8 @@ static bool shouldQuantize(const Node *node) {
   return llvm::isa<FullyConnectedNode>(node) ||
          llvm::isa<ConvolutionNode>(node) || llvm::isa<ReluNode>(node) ||
          llvm::isa<TransposeNode>(node) || llvm::isa<ReshapeNode>(node) ||
-         node->isArithmetic() || llvm::isa<ConcatNode>(node);
+         node->isArithmetic() || llvm::isa<ConcatNode>(node) ||
+         llvm::isa<PoolMaxNode>(node) || llvm::isa<PoolAvgNode>(node);
 }
 
 /// Quantize all inputs for \p node and return back pointers to the newly
