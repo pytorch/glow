@@ -201,54 +201,45 @@ void lowerSGDNode(Function *F, SGDNode &SGD) {
 
   NodeValue gij = G;
   if (L1Decay) {
-    auto L1DecaySplat = F->createSplat("L1DecaySplat", type, L1Decay);
-    auto zeroSplat = F->createSplat("zeroSplat", type, 0);
-    auto oneSplat = F->createSplat("oneSplat", type, 1);
-    auto minusOneSplat = F->createSplat("minusOneSplat", type, -1);
+    auto *L1DecaySplat = F->createSplat("L1DecaySplat", type, L1Decay);
+    auto *zeroSplat = F->createSplat("zeroSplat", type, 0);
+    auto *oneSplat = F->createSplat("oneSplat", type, 1);
+    auto *minusOneSplat = F->createSplat("minusOneSplat", type, -1);
 
-    auto Wcmp =
-        F->createArithmetic("Wcmp", zeroSplat, W, ArithmeticNode::Mode::CmpLTE);
-    auto Wdir = F->createSelect("Wdir", Wcmp, oneSplat, minusOneSplat);
-    auto L1Grad = F->createArithmetic("L1Grad", L1DecaySplat, Wdir,
-                                      ArithmeticNode::Mode::Mul);
+    auto *Wcmp = F->createCmpLTE("Wcmp", zeroSplat, W);
+    auto *Wdir = F->createSelect("Wdir", Wcmp, oneSplat, minusOneSplat);
+    auto *L1Grad = F->createMul("L1Grad", L1DecaySplat, Wdir);
 
-    gij = F->createArithmetic("gij_with_l1", gij, L1Grad,
-                              ArithmeticNode::Mode::Add);
+    gij = F->createAdd("gij_with_l1", gij, L1Grad);
   }
   if (L2Decay) {
-    auto L2DecaySplat = F->createSplat("L2DecaySplat", type, L2Decay);
+    auto *L2DecaySplat = F->createSplat("L2DecaySplat", type, L2Decay);
 
-    auto L2Grad = F->createArithmetic("L2Grad", L2DecaySplat, W,
-                                      ArithmeticNode::Mode::Mul);
+    auto *L2Grad = F->createMul("L2Grad", L2DecaySplat, W);
 
-    gij = F->createArithmetic("gij_with_l2", gij, L2Grad,
-                              ArithmeticNode::Mode::Add);
+    gij = F->createAdd("gij_with_l2", gij, L2Grad);
   }
   if (batchSize > 1) {
-    auto batchSizeSplat = F->createSplat("batchSizeSplat", type, batchSize);
-    gij = F->createArithmetic("gij_div_batchSz", gij, batchSizeSplat,
-                              ArithmeticNode::Mode::Div);
+    auto *batchSizeSplat = F->createSplat("batchSizeSplat", type, batchSize);
+    gij = F->createDiv("gij_div_batchSz", gij, batchSizeSplat);
   }
 
-  auto negLearningRateSplat =
+  auto *negLearningRateSplat =
       F->createSplat("learningRateSplat", type, -learningRate);
-  auto dx = F->createArithmetic("dx", negLearningRateSplat, gij,
-                                ArithmeticNode::Mode::Mul);
+  Node *dx = F->createMul("dx", negLearningRateSplat, gij);
 
   // Use the momentum to improve the gradient descent:
   // http://ufldl.stanford.edu/tutorial/supervised/
   // OptimizationStochasticGradientDescent/
   if (momentum > 0.0) {
-    auto momentumSplat = F->createSplat("learningRateSplat", type, momentum);
-    auto GsumMult = F->createArithmetic("GsumMult", momentumSplat, Gsum,
-                                        ArithmeticNode::Mode::Mul);
+    auto *momentumSplat = F->createSplat("learningRateSplat", type, momentum);
+    auto *GsumMult = F->createMul("GsumMult", momentumSplat, Gsum);
 
-    dx = F->createArithmetic("dx_with_momentum", GsumMult, dx,
-                             ArithmeticNode::Mode::Add);
+    dx = F->createAdd("dx_with_momentum", GsumMult, dx);
     F->createSave("saveGsum", dx, llvm::cast<Variable>(Gsum.getNode()));
   }
 
-  auto newW = F->createArithmetic("newW", W, dx, ArithmeticNode::Mode::Add);
+  auto *newW = F->createAdd("newW", W, dx);
   F->createSave("saveW", newW, llvm::cast<Variable>(W.getNode()));
 }
 
