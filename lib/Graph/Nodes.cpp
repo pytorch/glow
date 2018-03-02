@@ -86,7 +86,7 @@ llvm::ArrayRef<size_t> Node::dims(unsigned resNo) const {
 }
 
 void Node::addResult(TypeRef T) {
-  assert(numRes_ < max_node_resno && "Too many results");
+  assert(numRes_ < maxNodeResno_ && "Too many results");
   types_[numRes_++] = T;
 }
 
