@@ -136,8 +136,8 @@ static void dumpAsciiGenericImpl(Handle<ElemTy> handle) {
   auto d = handle.dims();
 
   if (d.size() == 2) {
-    for (size_t y = 0; y < d[1]; y++) {
-      for (size_t x = 0; x < d[0]; x++) {
+    for (size_t x = 0; x < d[0]; x++) {
+      for (size_t y = 0; y < d[1]; y++) {
         auto val = handle.at({x, y});
         llvm::outs() << valueToChar(val);
       }
@@ -146,8 +146,8 @@ static void dumpAsciiGenericImpl(Handle<ElemTy> handle) {
   } else if (d.size() == 3) {
     // Print monochrome (one-color channel) tensors:
     if (d[2] == 1) {
-      for (size_t y = 0; y < d[1]; y++) {
-        for (size_t x = 0; x < d[0]; x++) {
+      for (size_t x = 0; x < d[0]; x++) {
+        for (size_t y = 0; y < d[1]; y++) {
           auto val = handle.at({x, y, 0});
           llvm::outs() << valueToChar(val);
         }
@@ -156,8 +156,8 @@ static void dumpAsciiGenericImpl(Handle<ElemTy> handle) {
     } else {
       for (size_t z = 0; z < d[2]; z++) {
         llvm::outs() << "\n";
-        for (size_t y = 0; y < d[1]; y++) {
-          for (size_t x = 0; x < d[0]; x++) {
+        for (size_t x = 0; x < d[0]; x++) {
+          for (size_t y = 0; y < d[1]; y++) {
             auto val = handle.at({x, y, z});
             llvm::outs() << valueToChar(val);
           }
