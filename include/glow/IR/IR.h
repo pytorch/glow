@@ -93,6 +93,8 @@ public:
 private:
   /// Parent function.
   IRFunction *F_;
+  /// A nullable reference to some value that may predicate this instruction.
+  Value *predicate_{nullptr};
 
   /// A list of operands that the instruction has. This is typically a very
   /// short list.
@@ -112,6 +114,13 @@ protected:
   }
 
 public:
+  /// \returns the nullable predicate of the current node.
+  Value *getPredicate() const;
+  /// Assigns a nullable predicate to the current node.
+  void setPredicate(Value *p);
+  /// Checks if a predicate is assigned to the current node.
+  bool hasPredicate() const;
+
   /// Adds a new operand \p op at the end of the operand list.
   void pushOperand(Operand op);
 

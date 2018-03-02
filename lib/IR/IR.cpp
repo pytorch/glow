@@ -67,6 +67,12 @@ ConstInstructionOperand Use::getOperand() const {
   return use_->getOperand(idx_);
 }
 
+Value *Instruction::getPredicate() const { return predicate_; }
+
+void Instruction::setPredicate(Value *p) { predicate_ = p; }
+
+bool Instruction::hasPredicate() const { return predicate_; }
+
 void Instruction::pushOperand(Operand op) {
   ops_.emplace_back(nullptr, op.second);
   setOperand(ops_.size() - 1, op.first);
@@ -472,6 +478,13 @@ bool Instruction::isInplaceOp(const Instruction *I, unsigned dstIdx,
 }
 
 void Instruction::dumpOperands(llvm::raw_ostream &os) const {
+  // Dump the predicate of the instruction:
+  if (hasPredicate()) {
+    Value *pred = getPredicate();
+    os << "[ pred: " << pred->getName() << " ] ";
+  }
+
+  // Dump the operands of the instruction:
   for (size_t i = 0, e = getNumOperands(); i < e; i++) {
     auto op = getOperand(i);
     auto cc = getOperandKindStr(op.second);
@@ -677,6 +690,9 @@ void IRFunction::dumpDAG(const char *dotFilename) {
       auto op = I->getOperand(i);
       stream << '"' << I << "\":f" << i << "->\"" << op.first
              << "\"[dir=" << getDottyArrowForCC(op.second) << "];\n";
+    }
+    if (auto *pred = I->getPredicate()) {
+      stream << '"' << pred << "\"->\"" << I << "\":n;\n";
     }
   }
 

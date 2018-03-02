@@ -158,3 +158,22 @@ TEST(IR, casting) {
     EXPECT_EQ(dyn_cast<WeightVar>(input), input);
   }
 }
+
+TEST(IR, predicateIR) {
+  Module mod;
+  Function *F = mod.createFunction("predicated");
+  IRFunction M(F);
+  {
+    IRBuilder builder(&M);
+    auto *V1 = builder.createWeightVar(ElemKind::FloatTy, {320, 200});
+    auto *V2 = builder.createWeightVar(ElemKind::FloatTy, {320, 200});
+    auto *P = builder.createWeightVar(ElemKind::IndexTy, {320}, "p1");
+
+    // Check that we can construct a new instruction.
+    auto *CC = builder.createCopyInst("C", V1, V2);
+    // Set the predicate.
+    CC->setPredicate(P);
+    CC->verifyUseList();
+    M.verify();
+  }
+}
