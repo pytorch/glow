@@ -243,7 +243,7 @@ TEST(Tensor, copySlice) {
   auto AH = A.getHandle<>();
   auto BH = B.getHandle<>();
 
-  AH.initXavier(1);
+  AH.randomize(-2.0, 2.0);
 
   B.copySlice(&A, 0);
 
@@ -275,7 +275,7 @@ TEST(Tensor, transpose) {
 TEST(Tensor, transpose2) {
   Tensor X(ElemKind::FloatTy, {10, 6, 3});
   auto H = X.getHandle<>();
-  H.initXavier(10);
+  H.randomize(-2.0, 2.0);
 
   Tensor Xhat;
   X.getHandle<>().transpose(&Xhat, {1, 2, 0});

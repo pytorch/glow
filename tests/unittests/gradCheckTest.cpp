@@ -147,7 +147,7 @@ TEST(Network, gradientCheckFCConcatRELU) {
   inputsH.initXavier(1);
   outputsH.initXavier(1);
 
-  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.001, 0.001);
+  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
 
 TEST(Network, gradientCheckConv) {
@@ -360,8 +360,8 @@ TEST(Network, gradientCheckFCConcatTanh) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(100);
-  outputsH.initXavier(100);
+  inputsH.initXavier(1);
+  outputsH.initXavier(1);
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
@@ -391,8 +391,8 @@ TEST(Network, gradientCheckFC) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(100);
-  outputsH.initXavier(100);
+  inputsH.initXavier(1);
+  outputsH.initXavier(1);
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.0001);
 }
@@ -423,8 +423,8 @@ TEST(Network, gradientCheckSigmoid) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(100);
-  outputsH.initXavier(100);
+  inputsH.initXavier(1);
+  outputsH.initXavier(1);
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
@@ -455,8 +455,8 @@ TEST(Network, gradientCheckRelu) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(100);
-  outputsH.initXavier(100);
+  inputsH.initXavier(1);
+  outputsH.initXavier(1);
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
@@ -485,13 +485,13 @@ TEST(Network, gradientCheckTranspose) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(100);
-  outputsH.initXavier(100);
+  inputsH.randomize(-1, 1);
+  outputsH.randomize(-1, 1);
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
 
-TEST(Network, gradientcheckCrossEntropyLoss) {
+TEST(Network, gradientCheckCrossEntropyLoss) {
   ExecutionEngine IP;
   const int batchSize = 6;
   const int testSamples = 5;
