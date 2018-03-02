@@ -13,8 +13,8 @@ using namespace glow;
 const size_t mnistNumImages = 50000;
 
 unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
-  /// Load the MNIST database into two 4d tensors for images and labels.
-  imageInputs.reset(ElemKind::FloatTy, {50000, 28, 28, 1});
+  /// Load the MNIST database into 4D tensor of images and 2D tensor of labels.
+  imageInputs.reset(ElemKind::FloatTy, {50000u, 28, 28, 1});
   labelInputs.reset(ElemKind::IndexTy, {50000u, 1});
 
   std::ifstream imgInput("mnist_images.bin", std::ios::binary);
@@ -45,8 +45,8 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
 
   for (unsigned w = 0; w < mnistNumImages; w++) {
     LIH.at({w, 0}) = labels[w];
-    for (unsigned y = 0; y < 28; y++) {
-      for (unsigned x = 0; x < 28; x++) {
+    for (unsigned x = 0; x < 28; x++) {
+      for (unsigned y = 0; y < 28; y++) {
         IIH.at({w, x, y, 0}) = imagesAsFloatPtr[idx++];
       }
     }
@@ -93,11 +93,10 @@ void testMNIST() {
   auto *MP1 = F->createPool("pool", RL1, PoolNode::Mode::Max, 3, 3, 0);
 
   auto *FCL1 = F->createFullyConnected("fc", MP1, 10);
-  auto *RL2 = F->createRELU("relu", FCL1);
   Variable *selected = mod.createVariable(
-      ElemKind::IndexTy, {minibatchSize, 1}, +"selected",
+      ElemKind::IndexTy, {minibatchSize, 1}, "selected",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
-  auto *SM = F->createSoftMax("sm", RL2, selected);
+  auto *SM = F->createSoftMax("sm", FCL1, selected);
 
   auto *result = F->createSave("return", SM);
 
@@ -105,20 +104,19 @@ void testMNIST() {
 
   EE.compile(CompilationMode::Train, T);
 
-  // Report progress every this number of training iterations.
-  constexpr int reportRate = 30;
+  const int numIterations = 30;
 
   llvm::outs() << "Training.\n";
 
-  for (int iter = 0; iter < 60; iter++) {
-    llvm::outs() << "Training - iteration #" << iter << "\n";
+  for (int epoch = 0; epoch < 60; epoch++) {
+    llvm::outs() << "Training - epoch #" << epoch << "\n";
 
     timer.startTimer();
 
-    // On each training iteration take an input from imageInputs and update
-    // the input variable A, and add take a corresponding label and update the
-    // softmax layer.
-    EE.runBatch(reportRate, {A, selected}, {&imageInputs, &labelInputs});
+    // On each training iteration take a slice of imageInputs and labelInputs
+    // and put them into variables A and B, then run forward and backward passes
+    // and update weights.
+    EE.runBatch(numIterations, {A, selected}, {&imageInputs, &labelInputs});
 
     timer.stopTimer();
   }
@@ -127,35 +125,42 @@ void testMNIST() {
 
   auto LIH = labelInputs.getHandle<size_t>();
 
-  // Check how many digits out of ten we can classify correctly.
+  // Check how many examples out of eighty previously unseen digits we can
+  // classify correctly.
   int rightAnswer = 0;
 
   Tensor sample(ElemKind::FloatTy, {minibatchSize, 28, 28, 1});
-  sample.copyConsecutiveSlices(&imageInputs, 0);
-  EE.run({A}, {&sample});
 
-  Tensor &res = result->getVariable()->getPayload();
+  for (int iter = numIterations; iter < numIterations + 10; iter++) {
+    sample.copyConsecutiveSlices(&imageInputs, minibatchSize * iter);
+    EE.run({A}, {&sample});
 
-  for (unsigned int iter = 0; iter < minibatchSize; iter++) {
-    auto T = res.getHandle<>().extractSlice(iter);
-    size_t guess = T.getHandle<>().minMaxArg().second;
+    Tensor &res = result->getVariable()->getPayload();
 
-    size_t correct = LIH.at({iter, 0});
-    rightAnswer += (guess == correct);
+    for (unsigned i = 0; i < minibatchSize; i++) {
+      auto T = res.getHandle<>().extractSlice(i);
+      size_t guess = T.getHandle<>().minMaxArg().second;
 
-    auto I = sample.getHandle<>().extractSlice(iter);
+      size_t correct = LIH.at({minibatchSize * iter + i, 0});
+      rightAnswer += (guess == correct);
 
-    llvm::outs() << "MNIST Input";
-    I.getHandle<>().dumpAscii();
-    llvm::outs() << "Expected: " << correct << " Guessed: " << guess << "\n";
+      if (iter == numIterations) {
+        auto I = sample.getHandle<>().extractSlice(i);
 
-    T.getHandle<>().dump();
-    llvm::outs() << "\n-------------\n";
+        llvm::outs() << "MNIST Input";
+        I.getHandle<>().dumpAscii();
+        llvm::outs() << "Expected: " << correct << " Guessed: " << guess
+                     << "\n";
+
+        T.getHandle<>().dump();
+        llvm::outs() << "\n-------------\n";
+      }
+    }
   }
 
   llvm::outs() << "Results: guessed/total:" << rightAnswer << "/"
-               << minibatchSize << "\n";
-  GLOW_ASSERT(rightAnswer >= 6 &&
+               << minibatchSize * 10 << "\n";
+  GLOW_ASSERT(rightAnswer >= 74 &&
               "Did not classify as many digits as expected");
 }
 
