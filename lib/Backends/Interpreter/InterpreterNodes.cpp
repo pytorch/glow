@@ -373,21 +373,15 @@ void Interpreter::fwdPoolAvgInst(bool isTrain, const PoolAvgInst *I) {
                 sum += inW.at({n, (size_t)ox, (size_t)oy, z}) - inQP.offset_;
               }
             }
-            // Instead of dividing by filterArea, just change scale later on.
-            outW.at({n, ax, ay, z}) = sum + inQP.offset_;
+            // Instead of dividing by filterArea, just change scale.
+            outW.at({n, ax, ay, z}) =
+                quantization::clip<int32_t, int8_t>(std::round(
+                    float(sum) * (inQP.scale_ / outQP.scale_ / filterArea) +
+                    outQP.offset_));
           } // W
         }   // H
       }     // C
     }       // N
-
-    // Each element of out{N, H, W, C} should be div by filterArea, which
-    // in case of quantized operations would mean just different scale.
-    // Make sure that result is calculated in the required {S,O}.
-    TensorQuantizationParams currentTQP{inQP.scale_ / filterArea, inQP.offset_};
-    for (size_t i = 0; i < outW.size(); i++) {
-      outW.raw(i) = quantization::quantize(
-          quantization::dequantize(outW.raw(i), currentTQP), outQP);
-    }
 
     return;
   }
