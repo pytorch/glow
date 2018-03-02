@@ -475,8 +475,12 @@ public:
 
   /// Fill the array with random data that's close to zero using the
   /// Xavier method, based on the paper [Bengio and Glorot 2010].
-  /// The parameter \p filterSize is the number of elements in the
-  /// tensor (or the relevant slice).
+  /// This type of initialization facilitates better training performance.
+  /// The parameter \p filterSize is the number of "input" neurons in the
+  /// tensor (or the relevant slice). For example, consider case of MatMul:
+  /// NxM (\p input) * MxK (\p weights) == NxK (\p result)
+  /// Correct \p filterSize for weights tensor is M, so that norm for each
+  /// row of \p input equals to norm of corresponding row of \p result.
   void initXavier(size_t filterSize) {
     assert(filterSize > 0 && "invalid filter size");
     double scale = std::sqrt(3.0 / double(filterSize));
