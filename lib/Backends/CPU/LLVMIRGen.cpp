@@ -336,8 +336,19 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destPtr = emitValueAddress(builder, dest);
     auto cnt = emitValueSize(builder, dest);
     auto *val = emitConst(builder, SI->getValue());
-
-    auto *F = getFunction("libjit_splat_f");
+    llvm::StringRef kernelName;
+    switch (dest->getElementType()) {
+    default:
+      GLOW_UNREACHABLE("Unsupported type of kernel");
+      break;
+    case ElemKind::FloatTy:
+      kernelName = "libjit_splat_f";
+      break;
+    case ElemKind::IndexTy:
+      kernelName = "libjit_splat_i";
+      break;
+    }
+    auto *F = getFunction(kernelName);
     assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, cnt, val});
     break;
