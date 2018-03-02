@@ -14,7 +14,6 @@ namespace glow {
 
 class Node;
 class NodeWalker;
-class Variable;
 
 /// Unlike LLVM values, graph nodes may return multiple values as the result of
 /// a computation. Gradient-calculating nodes such as conv-grad return multiple
@@ -128,10 +127,10 @@ class Node : public Named,
              public UseDef<Node, NodeValue, NodeUse> {
 protected:
   /// This is the maximum number of results that a node may have.
-  static constexpr unsigned max_node_resno = 6;
+  static constexpr unsigned maxNodeResno_ = 6;
 
   /// The output types for the results of the node.
-  std::array<TypeRef, max_node_resno> types_;
+  std::array<TypeRef, maxNodeResno_> types_;
   /// The number of results that the node has.
   unsigned numRes_{0};
   /// A nullable reference to some tensor value that may predicate the execution
