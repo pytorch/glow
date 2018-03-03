@@ -136,12 +136,12 @@ createSimpleGraphForQuantization(Module *M) {
   fillStableRandomData(filter->getPayload().getHandle(), 1000, 1);
 
   auto *RL = F->createRELU("relu", CV);
-  auto *MP = F->createPoolMax("maxPool", RL, 2, 2, 0);
+  auto *MP = F->createPoolMax("maxPool", RL, 2, 2, 1);
   // Just add noop transpose.
   auto *T = F->createTranspose("transpose", MP, {0, 1, 2, 3});
   // Noop reshape.
   auto *R = F->createReshape("reshape", T, T->getResult().dims());
-  auto *AP = F->createPoolAvg("avgPool", R, 2, 2, 0);
+  auto *AP = F->createPoolAvg("avgPool", R, 2, 2, 1);
 
   FullyConnectedNode *O = F->createFullyConnected("fc", AP, 10);
   Variable *bias2 = cast<Variable>(O->getBias());
