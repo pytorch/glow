@@ -76,11 +76,16 @@ public:
 
   void post(Node *parent, Node *N) override {
     visited_.insert(N);
+
     switch (N->getKind()) {
     default:
       // Unknown node kind.
       llvm_unreachable("Unhandled node kind");
       break;
+
+      // Include all automatically generated cases:
+#include "AutoGenIRGen.h"
+
     case glow::Kinded::Kind::IntrinsicNodeKind: {
       auto *II = cast<IntrinsicNode>(N);
 
@@ -110,22 +115,6 @@ public:
         instr->pushOperand({in, OperandKind::In});
       }
 
-      break;
-    }
-
-    case glow::Kinded::Kind::ConvolutionNodeKind: {
-      auto *C = cast<ConvolutionNode>(N);
-      auto *in = valueForNode(C->getInput());
-      auto *filter = valueForNode(C->getFilter());
-      auto *bias = valueForNode(C->getBias());
-      Value *dest = builder_.createAllocActivationInst(
-          "conv.res", C->getResult()->getType());
-
-      auto *V = builder_.createConvolutionInst("conv", dest, in, filter, bias,
-                                               C->getKernel(), C->getStride(),
-                                               C->getPad(), C->getDepth());
-      V->setName(N->getName());
-      registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::ConvolutionGradNodeKind: {
@@ -164,17 +153,6 @@ public:
       registerIR(N, dest);
       break;
     }
-    case glow::Kinded::Kind::PoolAvgNodeKind: {
-      auto *P = cast<PoolAvgNode>(N);
-      auto *in = valueForNode(P->getInput());
-      auto *V = builder_.createPoolAvgOp(in, P->getKernel(), P->getStride(),
-                                         P->getPad());
-      Value *dest = V->getDest();
-      V->setName(N->getName());
-      registerIR(N, dest);
-      break;
-    }
-
     case glow::Kinded::Kind::PoolMaxGradNodeKind: {
       auto *PG = cast<PoolMaxGradNode>(N);
 
@@ -210,63 +188,6 @@ public:
                                      PG->getKernel(), PG->getStride(),
                                      PG->getPad());
       registerIR(PG->getGradOfInputNamedInput(), inG);
-      break;
-    }
-    case glow::Kinded::Kind::BatchedMatMulNodeKind: {
-      auto *BMM = cast<BatchedMatMulNode>(N);
-      auto *lhs = valueForNode(BMM->getLHS());
-      auto *rhs = valueForNode(BMM->getRHS());
-      auto *dest = builder_.createAllocActivationInst(
-          "bmm.res", BMM->getResult().getType());
-      builder_.createBatchedMatMulInst("bmm", dest, lhs, rhs);
-      registerIR(N, dest);
-      break;
-    }
-
-    case glow::Kinded::Kind::BatchedReduceAddNodeKind: {
-      auto *BR = cast<BatchedReduceAddNode>(N);
-      auto *batch = valueForNode(BR->getBatch());
-      auto *dest = builder_.createAllocActivationInst(
-          "br.res", BR->getResult().getType());
-      builder_.createBatchedReduceAddInst(N->getName(), dest, batch);
-      registerIR(N, dest);
-      break;
-    }
-
-    case glow::Kinded::Kind::BatchedAddNodeKind: {
-      auto *BA = cast<BatchedAddNode>(N);
-      auto *batch = valueForNode(BA->getBatch());
-      auto *sample = valueForNode(BA->getSlice());
-
-      auto *dest = builder_.createAllocActivationInst(
-          "br.res", BA->getResult().getType());
-
-      builder_.createBatchedAddInst(N->getName(), dest, batch, sample);
-
-      registerIR(N, dest);
-      break;
-    }
-    case glow::Kinded::Kind::SigmoidNodeKind: {
-      auto *S = cast<SigmoidNode>(N);
-      auto *V = builder_.createSigmoidOp(valueForNode(S->getInput()));
-      V->setName(N->getName());
-      registerIR(N, V->getDest());
-      break;
-    }
-    case glow::Kinded::Kind::TanhNodeKind: {
-      auto *T = cast<TanhNode>(N);
-      auto *V = builder_.createTanhOp(valueForNode(T->getInput()));
-      V->setName(N->getName());
-      registerIR(N, V->getDest());
-      break;
-    }
-    case glow::Kinded::Kind::SoftMaxNodeKind: {
-      auto *SM = cast<SoftMaxNode>(N);
-      auto *in = valueForNode(SM->getInput());
-      auto *V = builder_.createSoftMaxOp(in);
-      V->setName(N->getName());
-      registerIR(N, V->getDest());
-      nodeToInstr_[N] = V;
       break;
     }
     case glow::Kinded::Kind::SoftMaxGradNodeKind: {
@@ -315,30 +236,6 @@ public:
                  CELossGI->getLabelsgrad());
       break;
     }
-    case glow::Kinded::Kind::TransposeNodeKind: {
-      auto *TT = cast<TransposeNode>(N);
-      auto *in = valueForNode(TT->getInput());
-      auto *V = builder_.createTransposeOp(in, TT->getShuffle());
-      V->setName(N->getName());
-      registerIR(N, V->getDest());
-      break;
-    }
-    case glow::Kinded::Kind::BroadcastNodeKind: {
-      auto *B = cast<BroadcastNode>(N);
-      auto *in = valueForNode(B->getInput());
-      auto *V = builder_.createBroadcastOp(in, B->getShape(), B->getAxis());
-      V->setName(N->getName());
-      registerIR(N, V->getDest());
-      break;
-    }
-    case glow::Kinded::Kind::ReshapeNodeKind: {
-      auto *RS = cast<ReshapeNode>(N);
-      auto *in = valueForNode(RS->getInput());
-      auto *V = builder_.createReshapeOp(in, RS->getDims());
-      V->setName(N->getName());
-      registerIR(N, V->getDest());
-      break;
-    }
     case glow::Kinded::Kind::ConcatNodeKind: {
       auto *CC = cast<ConcatNode>(N);
 
@@ -381,22 +278,6 @@ public:
       builder_.createCopyInst("copy.insert", dest, big);
       builder_.createInsertTensorInst("insert", dest, small, start);
       registerIR(N, dest);
-      break;
-    }
-
-    case glow::Kinded::Kind::BatchNormalizationNodeKind: {
-      auto *BN = cast<BatchNormalizationNode>(N);
-      auto *in = valueForNode(BN->getInput());
-      auto *beta = valueForNode(BN->getBias());
-      auto *gamma = valueForNode(BN->getScale());
-      auto *mean = valueForNode(BN->getMean());
-      auto *var = valueForNode(BN->getVar());
-
-      auto *V = builder_.createBatchNormalizationOp(
-          in, beta, gamma, mean, var, BN->getChannelIdx(), BN->getEpsilon(),
-          BN->getMomentum());
-      V->setName(N->getName());
-      registerIR(N, V->getDest());
       break;
     }
     case glow::Kinded::Kind::BatchNormalizationGradNodeKind: {
@@ -470,36 +351,6 @@ public:
       registerIR(LRG->getGradOfInputNamedInput(), srcGrad);
       break;
     }
-
-#define ARITHMETIC_CASE(NODE_NAME_)                                            \
-  case glow::Kinded::Kind::NODE_NAME_##NodeKind: {                             \
-    auto *AR = cast<NODE_NAME_##Node>(N);                                      \
-    auto *L = valueForNode(AR->getLHS());                                      \
-    auto *R = valueForNode(AR->getRHS());                                      \
-    auto *inst = builder_.createElement##NODE_NAME_##Op(L, R);                 \
-    inst->setName(N->getName());                                               \
-    registerIR(N, inst->getDest());                                            \
-    break;                                                                     \
-  }
-      ARITHMETIC_CASE(Add);
-      ARITHMETIC_CASE(Mul);
-      ARITHMETIC_CASE(Sub);
-      ARITHMETIC_CASE(Div);
-      ARITHMETIC_CASE(Max);
-      ARITHMETIC_CASE(Min);
-      ARITHMETIC_CASE(CmpLTE);
-#undef ARITHMETIC_CASE
-
-    case glow::Kinded::Kind::SelectNodeKind: {
-      auto *S = cast<SelectNode>(N);
-      auto *cond = valueForNode(S->getCond());
-      auto *lhs = valueForNode(S->getLHS());
-      auto *rhs = valueForNode(S->getRHS());
-      auto *V = builder_.createSelectOp(cond, lhs, rhs);
-      registerIR(S->getResult(), V->getDest());
-      V->setName(N->getName());
-      break;
-    }
     case glow::Kinded::Kind::SaveNodeKind: {
       auto *R = cast<SaveNode>(N);
       auto *src = valueForNode(R->getInput());
@@ -514,13 +365,6 @@ public:
                                          WeightVar::MutabilityKind::Mutable);
       W->setName(N->getName());
       registerIR(N, W);
-      break;
-    }
-    case glow::Kinded::Kind::SplatNodeKind: {
-      auto *Z = cast<SplatNode>(N);
-      auto *AC = builder_.createAllocActivationInst(Z->getName(), Z->getType());
-      builder_.createSplatInst(N->getName(), AC, Z->getValue());
-      registerIR(N, AC);
       break;
     }
     case glow::Kinded::Kind::QuantizationProfileNodeKind: {
@@ -551,34 +395,7 @@ public:
       V->setName(N->getName());
       break;
     }
-    case glow::Kinded::Kind::QuantizeNodeKind: {
-      auto *QN = cast<QuantizeNode>(N);
-      auto *inputTensor = valueForNode(QN->getInput());
-      auto *AC = builder_.createAllocActivationInst(N->getName(),
-                                                    QN->getResult()->getType());
-      builder_.createQuantizeInst(N->getName(), AC, inputTensor);
-      registerIR(N, AC);
-      break;
-    }
-    case glow::Kinded::Kind::DequantizeNodeKind: {
-      auto *QN = cast<DequantizeNode>(N);
-      auto *inputTensor = valueForNode(QN->getInput());
-      auto *AC = builder_.createAllocActivationInst(N->getName(),
-                                                    QN->getResult()->getType());
-      builder_.createDequantizeInst(N->getName(), AC, inputTensor);
-      registerIR(N, AC);
-      break;
-    }
-    case glow::Kinded::Kind::RescaleQuantizedNodeKind: {
-      auto *QN = cast<RescaleQuantizedNode>(N);
-      auto *inputTensor = valueForNode(QN->getInput());
-      auto *AC = builder_.createAllocActivationInst(N->getName(),
-                                                    QN->getResult()->getType());
-      builder_.createRescaleQuantizedInst(N->getName(), AC, inputTensor);
-      registerIR(N, AC);
-      break;
-    }
-
+    case glow::Kinded::Kind::SGDNodeKind:
     case glow::Kinded::Kind::TanhGradNodeKind:
     case glow::Kinded::Kind::SigmoidGradNodeKind:
     case glow::Kinded::Kind::AddGradNodeKind:

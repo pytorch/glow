@@ -142,7 +142,8 @@ TEST(IR, casting) {
     IRBuilder bb(&M);
 
     auto *input = bb.createWeightVar(ElemKind::FloatTy, {1, 224, 224, 3});
-    auto *sig = bb.createSigmoidOp(input);
+    auto *res = bb.createAllocActivationInst("sigmoid.res", input->getType());
+    auto *sig = bb.createSigmoidInst("sigmoid", res, input);
     auto *pool = bb.createPoolAvgOp(sig->getDest(), 7, 2, 3);
 
     EXPECT_EQ(isa<PoolAvgInst>(pool), true);

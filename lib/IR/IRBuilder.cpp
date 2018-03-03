@@ -75,33 +75,10 @@ PoolAvgInst *IRBuilder::createPoolAvgOp(Value *input, size_t kernel,
   return createPoolAvgInst("pool", dest, input, kernel, stride, pad);
 }
 
-SigmoidInst *IRBuilder::createSigmoidOp(Value *input) {
-  auto *res = createAllocActivationInst("sigmoid.res", input->getType());
-  return createSigmoidInst("sigmoid", res, input);
-}
-
-TanhInst *IRBuilder::createTanhOp(Value *input) {
-  auto *res = createAllocActivationInst("tanh.res", input->getType());
-  return createTanhInst("tanh", res, input);
-}
-
-SoftMaxInst *IRBuilder::createSoftMaxOp(Value *input) {
-  auto *res = createAllocActivationInst("softmax.res", input->getType());
-  return createSoftMaxInst("softmax", res, input);
-}
-
 CrossEntropyLossInst *IRBuilder::createCrossEntropyLossOp(Value *p,
                                                           Value *labels) {
   auto *res = createAllocActivationInst("celoss.res", ElemKind::FloatTy, {1});
   return createCrossEntropyLossInst("celoss", p, labels, res);
-}
-
-ReshapeInst *IRBuilder::createReshapeOp(Value *input,
-                                        llvm::ArrayRef<size_t> shape) {
-  auto ty = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
-      input->getType(), shape);
-  auto *res = createAllocActivationInst("reshape.res", ty);
-  return createReshapeInst("reshape", res, input, shape);
 }
 
 /// Creates a tensorview instruction with the following parameters:
@@ -118,38 +95,6 @@ TensorViewInst *IRBuilder::createTensorView(ElemKind elemKind,
   return createTensorViewInst(name, src, ty);
 }
 
-TransposeInst *IRBuilder::createTransposeOp(Value *input,
-                                            llvm::ArrayRef<unsigned> shuffle) {
-  llvm::SmallVector<size_t, 6> shape;
-  auto dims = input->dims();
-  for (size_t i = 0; i < dims.size(); i++) {
-    shape.push_back(dims[shuffle[i]]);
-  }
-
-  auto ty = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
-      input->getType(), shape);
-  auto *res = createAllocActivationInst("transp.res", ty);
-  return createTransposeInst("transp", res, input, shuffle);
-}
-
-BroadcastInst *IRBuilder::createBroadcastOp(Value *input,
-                                            llvm::ArrayRef<size_t> shape,
-                                            unsigned axis) {
-  auto *res = createAllocActivationInst("broadcast.res",
-                                        input->getElementType(), shape);
-  return createBroadcastInst("broadcast", res, input, shape, axis);
-}
-
-BatchNormalizationInst *IRBuilder::createBatchNormalizationOp(
-    Value *input, Value *beta, Value *gamma, Value *mean, Value *var,
-    size_t channelIdx, float epsilon, float momentum) {
-  // The output tensor is of the same shape as the input tensor.
-  auto *dest = createAllocActivationInst("BN.res", input->getType());
-
-  return createBatchNormalizationInst("BN", dest, input, gamma, beta, mean, var,
-                                      channelIdx, epsilon, momentum);
-}
-
 LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationOp(
     Value *input, size_t halfWindowSize, float alpha, float beta, float k) {
   auto ty = input->getType();
@@ -159,68 +104,6 @@ LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationOp(
   auto *res = createAllocActivationInst("LRN.res", ty);
   return createLocalResponseNormalizationInst("LRN", res, input, scale,
                                               halfWindowSize, alpha, beta, k);
-}
-
-ElementAddInst *IRBuilder::createElementAddOp(Value *lhs, Value *rhs) {
-  assert(lhs->dims() == rhs->dims() && "Invalid operand shapes");
-  // The output tensor is of the same shape as the input tensor.
-  auto *res = createAllocActivationInst("add.res", lhs->getType());
-  return createElementAddInst("add", res, lhs, rhs);
-}
-
-ElementSubInst *IRBuilder::createElementSubOp(Value *lhs, Value *rhs) {
-  assert(lhs->dims() == rhs->dims() && "Invalid operand shapes");
-  // The output tensor is of the same shape as the input tensor.
-  auto *res = createAllocActivationInst("sub.res", lhs->getType());
-  return createElementSubInst("sub", res, lhs, rhs);
-}
-
-ElementMulInst *IRBuilder::createElementMulOp(Value *lhs, Value *rhs) {
-  assert(lhs->dims() == rhs->dims() && "Invalid operand shapes");
-  // The output tensor is of the same shape as the input tensor.
-  auto *res = createAllocActivationInst("mul.res", lhs->getType());
-  return createElementMulInst("mul", res, lhs, rhs);
-}
-
-ElementDivInst *IRBuilder::createElementDivOp(Value *lhs, Value *rhs) {
-  assert(lhs->dims() == rhs->dims() &&
-         "Input and Output dimensions are different");
-
-  auto *res = createAllocActivationInst("div.res", lhs->getType());
-  return createElementDivInst("div", res, lhs, rhs);
-}
-
-ElementMaxInst *IRBuilder::createElementMaxOp(Value *lhs, Value *rhs) {
-  assert(lhs->dims() == rhs->dims() &&
-         "Input and Output dimensions are different");
-
-  auto *res = createAllocActivationInst("max.res", lhs->getType());
-  return createElementMaxInst("max", res, lhs, rhs);
-}
-
-ElementMinInst *IRBuilder::createElementMinOp(Value *lhs, Value *rhs) {
-  assert(lhs->dims() == rhs->dims() &&
-         "Input and Output dimensions are different");
-
-  auto *res = createAllocActivationInst("min.res", lhs->getType());
-  return createElementMinInst("min", res, lhs, rhs);
-}
-
-ElementCmpLTEInst *IRBuilder::createElementCmpLTEOp(Value *lhs, Value *rhs) {
-  assert(lhs->dims() == rhs->dims() &&
-         "Input and Output dimensions are different");
-  auto *res = createAllocActivationInst("cmp.lte.res", lhs->getType());
-  return createElementCmpLTEInst("cmp.lte", res, lhs, rhs);
-}
-
-ElementSelectInst *IRBuilder::createSelectOp(Value *cond, Value *lhs,
-                                             Value *rhs) {
-  assert(lhs->dims() == rhs->dims() &&
-         "Input and Output dimensions are different");
-  assert(cond->dims() == rhs->dims() &&
-         "Input and Output dimensions are different");
-  auto *res = createAllocActivationInst("select.res", lhs->getType());
-  return createElementSelectInst("select", res, cond, lhs, rhs);
 }
 
 TopKInst *IRBuilder::createTopKOp(Value *input, size_t k) {

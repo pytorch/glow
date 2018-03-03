@@ -66,7 +66,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Stride")
       .addMember(MemberType::SizeT, "Pad")
       .addMember(MemberType::SizeT, "Depth")
-      .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
+      .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"})
+      .autoIRGen();
 
   // PoolMax version caching XY coordinates to speedup gradient-based
   // computations.
@@ -92,7 +93,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
       .addMember(MemberType::SizeT, "Pad")
-      .addGradientInstr({"Dest"}, {"Dest", "Src"});
+      .addGradientInstr({"Dest"}, {"Dest", "Src"})
+      .autoIRGen();
 
   //===--------------------------------------------------------------------===//
   //                     Normalization
@@ -113,7 +115,8 @@ int main(int argc, char **argv) {
           "Src",
       })
       .addGradientInstr({"Src", "Scale", "Mean", "Var"},
-                        {"Dest", "Src", "Scale", "Bias"});
+                        {"Dest", "Src", "Scale", "Bias"})
+      .autoIRGen();
 
   BB.newInstr("LocalResponseNormalization")
       .addOperand("Dest", OperandKind::Out)
@@ -137,7 +140,8 @@ int main(int argc, char **argv) {
   BB.newInstr("SoftMax")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .inplaceOperand({"Dest", "Src"});
+      .inplaceOperand({"Dest", "Src"})
+      .autoIRGen();
 
   BB.newInstr("SoftMaxGrad")
       .addOperand("OrigDest", OperandKind::In)
@@ -166,69 +170,80 @@ int main(int argc, char **argv) {
   BB.newInstr("BatchedMatMul")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
-      .addOperand("RHS", OperandKind::In);
+      .addOperand("RHS", OperandKind::In)
+      .autoIRGen();
 
   /// Accumulates all of the layers in the batch and produce a tensor that has
   /// the same dimensions as the input tensor without the first dimension.
   BB.newInstr("BatchedReduceAdd")
       .addOperand("Dest", OperandKind::Out)
-      .addOperand("Batch", OperandKind::In);
+      .addOperand("Batch", OperandKind::In)
+      .autoIRGen();
 
   /// Adds the 'Slice' operand to each one of the slices in the batch.
   BB.newInstr("BatchedAdd")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Batch", OperandKind::In)
       .addOperand("Slice", OperandKind::In)
-      .inplaceOperand({"Dest", "Batch"});
+      .inplaceOperand({"Dest", "Batch"})
+      .autoIRGen();
 
   BB.newInstr("ElementAdd")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .inplaceOperand({"Dest", "LHS", "RHS"});
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .autoIRGen("Add");
 
   BB.newInstr("ElementSub")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .inplaceOperand({"Dest", "LHS", "RHS"});
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .autoIRGen("Sub");
 
   BB.newInstr("ElementMul")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .inplaceOperand({"Dest", "LHS", "RHS"});
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .autoIRGen("Mul");
 
   BB.newInstr("ElementDiv")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .inplaceOperand({"Dest", "LHS", "RHS"});
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .autoIRGen("Div");
 
   BB.newInstr("ElementMax")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .inplaceOperand({"Dest", "LHS", "RHS"});
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .autoIRGen("Max");
 
   BB.newInstr("ElementMin")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .inplaceOperand({"Dest", "LHS", "RHS"});
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .autoIRGen("Min");
 
   BB.newInstr("ElementCmpLTE")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .inplaceOperand({"Dest", "LHS", "RHS"});
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .autoIRGen("CmpLTE");
 
   BB.newInstr("ElementSelect")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Cond", OperandKind::In)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .inplaceOperand({"Dest", "LHS", "RHS", "Cond"});
+      .inplaceOperand({"Dest", "LHS", "RHS", "Cond"})
+      .autoIRGen("Select");
 
   //===--------------------------------------------------------------------===//
   //                Non-linearities
@@ -240,7 +255,8 @@ int main(int argc, char **argv) {
       .inplaceOperand({
           "Dest",
           "Src",
-      });
+      })
+      .autoIRGen();
 
   BB.newInstr("Tanh")
       .addOperand("Dest", OperandKind::Out)
@@ -248,7 +264,8 @@ int main(int argc, char **argv) {
       .inplaceOperand({
           "Dest",
           "Src",
-      });
+      })
+      .autoIRGen();
 
   //===--------------------------------------------------------------------===//
   //                Shape transformations
@@ -257,22 +274,26 @@ int main(int argc, char **argv) {
   BB.newInstr("Reshape")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addMember(MemberType::VectorSizeT, "Dims");
+      .addMember(MemberType::VectorSizeT, "Dims")
+      .autoIRGen();
 
   BB.newInstr("Transpose")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addMember(MemberType::VectorUnsigned, "Shuffle");
+      .addMember(MemberType::VectorUnsigned, "Shuffle")
+      .autoIRGen();
 
   BB.newInstr("Broadcast")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::VectorSizeT, "Shape")
-      .addMember(MemberType::Unsigned, "Axis");
+      .addMember(MemberType::Unsigned, "Axis")
+      .autoIRGen();
 
   BB.newInstr("Splat")
       .addMember(MemberType::Float, "Value")
-      .addOperand("Dest", OperandKind::Out);
+      .addOperand("Dest", OperandKind::Out)
+      .autoIRGen();
 
   BB.newInstr("InsertTensor")
       .addOperand("Dest", OperandKind::InOut)
@@ -306,15 +327,18 @@ int main(int argc, char **argv) {
 
   BB.newInstr("Quantize")
       .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In);
+      .addOperand("Src", OperandKind::In)
+      .autoIRGen();
 
   BB.newInstr("Dequantize")
       .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In);
+      .addOperand("Src", OperandKind::In)
+      .autoIRGen();
 
   BB.newInstr("RescaleQuantized")
       .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In);
+      .addOperand("Src", OperandKind::In)
+      .autoIRGen();
 
   //===--------------------------------------------------------------------===//
   //             Intrinsics for supporting target-specific transforms
