@@ -629,9 +629,8 @@ void Interpreter::fwdBroadcastInst(bool isTrain, const BroadcastInst *I) {
 }
 
 void Interpreter::fwdReshapeInst(bool isTrain, const ReshapeInst *I) {
-  auto inT = getTensor(I->getSrc());
-  auto outT = getTensor(I->getDest());
-  outT->copyRawFrom(inT);
+  llvm_unreachable(
+      "reshape is optimized away as a sequence of tensor_view and copy");
 }
 
 void Interpreter::fwdTensorViewInst(bool isTrain, const TensorViewInst *I) {
