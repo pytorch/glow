@@ -37,56 +37,16 @@ public:
   PoolAvgInst *createPoolAvgOp(Value *input, size_t kernel, size_t stride,
                                size_t pad);
 
-  SigmoidInst *createSigmoidOp(Value *input);
-
-  TanhInst *createTanhOp(Value *input);
-
-  SoftMaxInst *createSoftMaxOp(Value *input);
-
   CrossEntropyLossInst *createCrossEntropyLossOp(Value *P, Value *labels);
-
-  ReshapeInst *createReshapeOp(Value *input, llvm::ArrayRef<size_t> shape);
 
   TensorViewInst *createTensorView(ElemKind elemKind,
                                    llvm::ArrayRef<size_t> dims, Value *src,
                                    llvm::StringRef name);
 
-  TransposeInst *createTransposeOp(Value *input,
-                                   llvm::ArrayRef<unsigned> shuffle);
-
-  BroadcastInst *createBroadcastOp(Value *input, llvm::ArrayRef<size_t> shape,
-                                   unsigned axis);
-
-  BatchNormalizationInst *createBatchNormalizationOp(Value *input,
-                                                     size_t channelIdx = 0,
-                                                     float epsilon = 1e-5,
-                                                     float momentum = 0.9);
-
-  BatchNormalizationInst *
-  createBatchNormalizationOp(Value *input, Value *beta, Value *gamma,
-                             Value *mean, Value *var, size_t channelIdx = 0,
-                             float epsilon = 1e-5, float momentum = 0.9);
-
   LocalResponseNormalizationInst *
   createLocalResponseNormalizationOp(Value *input, size_t halfWindowSize = 2,
                                      float alpha = 1e-4, float beta = 0.75,
                                      float k = 2.0);
-
-  ElementAddInst *createElementAddOp(Value *LHS, Value *RHS);
-
-  ElementSubInst *createElementSubOp(Value *LHS, Value *RHS);
-
-  ElementMulInst *createElementMulOp(Value *LHS, Value *RHS);
-
-  ElementDivInst *createElementDivOp(Value *LHS, Value *RHS);
-
-  ElementMaxInst *createElementMaxOp(Value *LHS, Value *RHS);
-
-  ElementMinInst *createElementMinOp(Value *LHS, Value *RHS);
-
-  ElementCmpLTEInst *createElementCmpLTEOp(Value *LHS, Value *RHS);
-
-  ElementSelectInst *createSelectOp(Value *Cond, Value *LHS, Value *RHS);
 
   TopKInst *createTopKOp(Value *input, size_t k);
 
