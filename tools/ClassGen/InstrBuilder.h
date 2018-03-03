@@ -59,6 +59,8 @@ class InstrBuilder {
   std::ofstream &defStream;
   /// The IRBuilder stream.
   std::ofstream &builderStream;
+  /// The IRGen stream.
+  std::ofstream &irGenStream;
 
   /// \returns the index of the operand with the name \p name. Aborts if no such
   /// name.
@@ -66,9 +68,9 @@ class InstrBuilder {
 
 public:
   InstrBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
-               std::ofstream &B, const std::string &name)
+               std::ofstream &B, std::ofstream &I, const std::string &name)
       : name_(name), headerStream(H), cppStream(C), defStream(D),
-        builderStream(B) {
+        builderStream(B), irGenStream(I) {
     defStream << "DEF_INSTR(" << name << "Inst, " << glow::tolower(name)
               << ")\n";
   }
@@ -116,8 +118,12 @@ public:
 
   /// Constructs a new gradient instruction that is based on the current
   /// instruction that we are building.
-  void addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
-                        llvm::ArrayRef<llvm::StringRef> gradFields);
+  InstrBuilder &addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
+                                 llvm::ArrayRef<llvm::StringRef> gradFields);
+
+  /// Adds a case to AutoIRGen for generating this Instr from a Node. Creates
+  /// the Instr for the Node \p name (if empty, defaults to same name as Instr).
+  InstrBuilder &autoIRGen(const std::string &name = "");
 
   ~InstrBuilder();
 
@@ -161,6 +167,7 @@ class Builder {
   std::ofstream &cppStream;
   std::ofstream &defStream;
   std::ofstream &builderStream;
+  std::ofstream &irGenStream;
   // First defined instruction.
   std::string firstInstr;
   // Last defined instruction.
@@ -170,8 +177,9 @@ public:
   /// Create a new top-level builder that holds the three output streams that
   /// point to the header file, cpp file and enum definition file.
   Builder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
-          std::ofstream &B)
-      : headerStream(H), cppStream(C), defStream(D), builderStream(B) {
+          std::ofstream &B, std::ofstream &I)
+      : headerStream(H), cppStream(C), defStream(D), builderStream(B),
+        irGenStream(I) {
     cppStream << "#include \"glow/IR/IR.h\"\n"
                  "#include \"glow/IR/Instrs.h\"\n"
                  "#include \"glow/Base/Type.h\"\n"
@@ -203,7 +211,7 @@ public:
       firstInstr = name;
     lastInstr = name;
     return InstrBuilder(headerStream, cppStream, defStream, builderStream,
-                        name);
+                        irGenStream, name);
   }
 
   /// Declare the instruction in the def file but don't generate code for it.
