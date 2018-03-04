@@ -791,8 +791,7 @@ void libjit_pool_avg_grad_f(float *inG, const float *outG,
 }
 
 void libjit_quantize_i8(int8_t *outW, const float *inW, size_t numElem,
-                        float scale, size_t offset_u64) {
-  int32_t offset = (int32_t)offset_u64;
+                        float scale, int32_t offset) {
   for (size_t i = 0; i < numElem; i++) {
     int32_t result = (int32_t)roundf(inW[i] / scale + offset);
     outW[i] = MAX(INT8_MIN, MIN(INT8_MAX, result));
@@ -800,8 +799,7 @@ void libjit_quantize_i8(int8_t *outW, const float *inW, size_t numElem,
 }
 
 void libjit_dequantize_f(float *outW, const int8_t *inW, size_t numElem,
-                         float scale, size_t offset_u64) {
-  int32_t offset = (int32_t)offset_u64;
+                         float scale, int32_t offset) {
   for (size_t i = 0; i < numElem; i++) {
     outW[i] = scale * (inW[i] - offset);
   }

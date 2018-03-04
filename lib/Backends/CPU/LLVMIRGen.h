@@ -57,9 +57,11 @@ class LLVMIRGen {
   /// \p builder. The size type is native to the machine (size_t).
   llvm::Value *emitValueSize(llvm::IRBuilder<> &builder, glow::Value *val);
   /// Generates LLVM IR that materializes the constant \p val.
-  llvm::Value *emitConst(llvm::IRBuilder<> &builder, float val);
+  llvm::Value *emitConstF32(llvm::IRBuilder<> &builder, float val);
   /// Generates LLVM IR that materializes the constant \p val.
-  llvm::Value *emitConst(llvm::IRBuilder<> &builder, size_t val);
+  llvm::Value *emitConstI32(llvm::IRBuilder<> &builder, int32_t val);
+  /// Generates LLVM IR that materializes the constant \p val.
+  llvm::Value *emitConstST(llvm::IRBuilder<> &builder, size_t val);
   /// Generates LLVM IR that materializes the string literal \p str.
   llvm::Value *emitStringConst(llvm::IRBuilder<> &builder, llvm::StringRef str);
   /// Generates LLVM IR that materializes the constant array \p vals.
