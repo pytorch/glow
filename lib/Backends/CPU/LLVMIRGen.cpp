@@ -315,11 +315,15 @@ llvm::Value *LLVMIRGen::emitValueSize(llvm::IRBuilder<> &builder,
   return builder.getIntN(sizeof(size_t) * 8, val->getType()->size());
 }
 
-llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val) {
+llvm::Value *LLVMIRGen::emitConstF32(llvm::IRBuilder<> &builder, float val) {
   return llvm::ConstantFP::get(llvm::Type::getFloatTy(ctx_), val);
 }
 
-llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, size_t val) {
+llvm::Value *LLVMIRGen::emitConstI32(llvm::IRBuilder<> &builder, int32_t val) {
+  return builder.getInt32(val);
+}
+
+llvm::Value *LLVMIRGen::emitConstST(llvm::IRBuilder<> &builder, size_t val) {
   return builder.getIntN(sizeof(size_t) * 8, val);
 }
 
@@ -371,7 +375,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *dest = SI->getDest();
     auto *destPtr = emitValueAddress(builder, dest);
     auto cnt = emitValueSize(builder, dest);
-    auto *val = emitConst(builder, SI->getValue());
+    auto *val = emitConstF32(builder, SI->getValue());
 
     auto *F = getFunction("splat", dest->getElementType());
     builder.CreateCall(F, {destPtr, cnt, val});
@@ -442,7 +446,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *dest = CI->getDest();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, CI->getSrc());
-    auto *bytes = emitConst(builder, dest->getType()->getSizeInBytes());
+    auto *bytes = emitConstST(builder, dest->getType()->getSizeInBytes());
 
     auto *F = getFunction("copy", dest->getElementType());
     builder.CreateCall(F, {destPtr, srcPtr, bytes});
@@ -458,8 +462,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *slicePtr = emitValueAddress(builder, BA->getSlice());
 
     auto bdim = flattenCdr(batch->dims());
-    auto *numSlice = emitConst(builder, bdim.first);
-    auto *sliceSize = emitConst(builder, bdim.second);
+    auto *numSlice = emitConstST(builder, bdim.first);
+    auto *sliceSize = emitConstST(builder, bdim.second);
 
     auto *F = getFunction("batchedadd", dest->getElementType());
     builder.CreateCall(F, {destPtr, batchPtr, slicePtr, numSlice, sliceSize});
@@ -473,10 +477,10 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destPtr = emitValueAddress(builder, dest);
     auto *batchPtr = emitValueAddress(builder, batch);
 
-    auto *destSize = emitConst(builder, dest->getType()->size());
+    auto *destSize = emitConstST(builder, dest->getType()->size());
     auto bdim = flattenCdr(batch->dims());
-    auto *numSlice = emitConst(builder, bdim.first);
-    auto *sliceSize = emitConst(builder, bdim.second);
+    auto *numSlice = emitConstST(builder, bdim.first);
+    auto *sliceSize = emitConstST(builder, bdim.second);
 
     auto *F = getFunction("batchedreduceadd", dest->getElementType());
     builder.CreateCall(F, {destPtr, batchPtr, destSize, numSlice, sliceSize});
@@ -499,9 +503,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *filterDims = emitValueDims(builder, filter);
     auto *biasDims = emitValueDims(builder, bias);
 
-    auto *kernel = emitConst(builder, CI->getKernel());
-    auto *stride = emitConst(builder, CI->getStride());
-    auto *pad = emitConst(builder, CI->getPad());
+    auto *kernel = emitConstST(builder, CI->getKernel());
+    auto *stride = emitConstST(builder, CI->getStride());
+    auto *pad = emitConstST(builder, CI->getPad());
 
     const char *kernelName = "convolution";
     // Use a special version of the kernel for the case where K (the depth of
@@ -534,9 +538,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcDims = emitValueDims(builder, src);
     auto *filterGradDims = emitValueDims(builder, filterGrad);
 
-    auto *kernel = emitConst(builder, CG->getKernel());
-    auto *stride = emitConst(builder, CG->getStride());
-    auto *pad = emitConst(builder, CG->getPad());
+    auto *kernel = emitConstST(builder, CG->getKernel());
+    auto *stride = emitConstST(builder, CG->getStride());
+    auto *pad = emitConstST(builder, CG->getPad());
 
     auto *F = getFunction("convolution_grad", srcGrad->getElementType());
     builder.CreateCall(F, {srcGradPtr, destGradPtr, srcPtr, filterGradPtr,
@@ -556,10 +560,10 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
-    auto *halfWindow = emitConst(builder, LRN->getHalfWindowSize());
-    auto *alpha = emitConst(builder, LRN->getAlpha());
-    auto *beta = emitConst(builder, LRN->getBeta());
-    auto *k = emitConst(builder, LRN->getK());
+    auto *halfWindow = emitConstST(builder, LRN->getHalfWindowSize());
+    auto *alpha = emitConstF32(builder, LRN->getAlpha());
+    auto *beta = emitConstF32(builder, LRN->getBeta());
+    auto *k = emitConstF32(builder, LRN->getK());
 
     auto *F =
         getFunction("local_response_normalization", dest->getElementType());
@@ -581,9 +585,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *destDims = emitValueDims(builder, dest);
 
-    auto *halfWindow = emitConst(builder, LRNG->getHalfWindowSize());
-    auto *alpha = emitConst(builder, LRNG->getAlpha());
-    auto *beta = emitConst(builder, LRNG->getBeta());
+    auto *halfWindow = emitConstST(builder, LRNG->getHalfWindowSize());
+    auto *alpha = emitConstF32(builder, LRNG->getAlpha());
+    auto *beta = emitConstF32(builder, LRNG->getBeta());
 
     auto *F = getFunction("local_response_normalization_grad",
                           srcGrad->getElementType());
@@ -602,9 +606,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *kernel = emitConst(builder, PM->getKernel());
-    auto *stride = emitConst(builder, PM->getStride());
-    auto *pad = emitConst(builder, PM->getPad());
+    auto *kernel = emitConstST(builder, PM->getKernel());
+    auto *stride = emitConstST(builder, PM->getStride());
+    auto *pad = emitConstST(builder, PM->getPad());
 
     auto *F = getFunction("pool_max", dest->getElementType());
     builder.CreateCall(
@@ -623,9 +627,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *kernel = emitConst(builder, PMXY->getKernel());
-    auto *stride = emitConst(builder, PMXY->getStride());
-    auto *pad = emitConst(builder, PMXY->getPad());
+    auto *kernel = emitConstST(builder, PMXY->getKernel());
+    auto *stride = emitConstST(builder, PMXY->getStride());
+    auto *pad = emitConstST(builder, PMXY->getPad());
 
     auto *F = getFunction("pool_max_xy", dest->getElementType());
     builder.CreateCall(
@@ -659,9 +663,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *kernel = emitConst(builder, PM->getKernel());
-    auto *stride = emitConst(builder, PM->getStride());
-    auto *pad = emitConst(builder, PM->getPad());
+    auto *kernel = emitConstST(builder, PM->getKernel());
+    auto *stride = emitConstST(builder, PM->getStride());
+    auto *pad = emitConstST(builder, PM->getPad());
 
     auto *F = getFunction("pool_avg", dest->getElementType());
     builder.CreateCall(
@@ -678,9 +682,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcGradDims = emitValueDims(builder, srcGrad);
     auto *destDims = emitValueDims(builder, PAG->getDest());
 
-    auto *kernel = emitConst(builder, PAG->getKernel());
-    auto *stride = emitConst(builder, PAG->getStride());
-    auto *pad = emitConst(builder, PAG->getPad());
+    auto *kernel = emitConstST(builder, PAG->getKernel());
+    auto *stride = emitConstST(builder, PAG->getStride());
+    auto *pad = emitConstST(builder, PAG->getPad());
 
     auto *F = getFunction("pool_avg_grad", srcGrad->getElementType());
     builder.CreateCall(F, {srcGradPtr, destGradPtr, srcGradDims, destDims,
@@ -695,10 +699,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcPtr = emitValueAddress(builder, QI->getSrc());
 
     auto *destType = dest->getType();
-    auto *numElem = emitConst(builder, destType->size());
-    auto *scale = emitConst(builder, destType->getScale());
-    // TODO(hegemanjwh2): Fix generated integer type for offset.
-    auto *offset = emitConst(builder, (size_t)destType->getOffset());
+    auto *numElem = emitConstST(builder, destType->size());
+    auto *scale = emitConstF32(builder, destType->getScale());
+    auto *offset = emitConstI32(builder, destType->getOffset());
 
     auto *F = getFunction("quantize", dest->getElementType());
     builder.CreateCall(F, {destPtr, srcPtr, numElem, scale, offset});
@@ -713,10 +716,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcPtr = emitValueAddress(builder, src);
 
     auto *srcType = src->getType();
-    auto *numElem = emitConst(builder, dest->getType()->size());
-    auto *scale = emitConst(builder, srcType->getScale());
-    // TODO(hegemanjwh2): Fix generated integer type for offset.
-    auto *offset = emitConst(builder, (size_t)srcType->getOffset());
+    auto *numElem = emitConstST(builder, dest->getType()->size());
+    auto *scale = emitConstF32(builder, srcType->getScale());
+    auto *offset = emitConstI32(builder, srcType->getOffset());
 
     auto *F = getFunction("dequantize", dest->getElementType());
     builder.CreateCall(F, {destPtr, srcPtr, numElem, scale, offset});
@@ -761,7 +763,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, SI->getSrc());
 
-    auto *numElemVal = emitConst(builder, dest->getType()->size());
+    auto *numElemVal = emitConstST(builder, dest->getType()->size());
 
     auto *F = getFunction("sigmoid", dest->getElementType());
     builder.CreateCall(F, {srcPtr, destPtr, numElemVal});
@@ -774,7 +776,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, TI->getSrc());
 
-    auto *numElemVal = emitConst(builder, dest->getType()->size());
+    auto *numElemVal = emitConstST(builder, dest->getType()->size());
 
     auto *F = getFunction("tanh", dest->getElementType());
     builder.CreateCall(F, {srcPtr, destPtr, numElemVal});
@@ -798,7 +800,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     }
 
     auto *shuffle = emitConstArray(builder, shuffSizeT);
-    auto *len = emitConst(builder, TI->getShuffle().size());
+    auto *len = emitConstST(builder, TI->getShuffle().size());
 
     auto *F = getFunction("transpose", dest->getElementType());
     builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims, shuffle, len});
@@ -885,7 +887,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     }
 
     auto numElem = dest->getType()->size();
-    auto *numElemVal = emitConst(builder, numElem);
+    auto *numElemVal = emitConstST(builder, numElem);
 
     auto *F = getFunction(funcName, dest->getElementType());
     builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, numElemVal});
@@ -909,10 +911,10 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *destDimsSize = emitConst(builder, dest->getType()->dims().size());
-    auto *srcDimsSize = emitConst(builder, src->getType()->dims().size());
+    auto *destDimsSize = emitConstST(builder, dest->getType()->dims().size());
+    auto *srcDimsSize = emitConstST(builder, src->getType()->dims().size());
     auto *offsetsPtr = emitConstArray(builder, offsets);
-    auto *offsetsArraySize = emitConst(builder, offsets.size());
+    auto *offsetsArraySize = emitConstST(builder, offsets.size());
 
     auto *F = getFunction("insert_tensor", dest->getElementType());
     builder.CreateCall(F, {destPtr, srcPtr, offsetsPtr, destDims, srcDims,
@@ -931,10 +933,10 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *destDimsSize = emitConst(builder, dest->getType()->dims().size());
-    auto *srcDimsSize = emitConst(builder, src->getType()->dims().size());
+    auto *destDimsSize = emitConstST(builder, dest->getType()->dims().size());
+    auto *srcDimsSize = emitConstST(builder, src->getType()->dims().size());
     auto *offsetsPtr = emitConstArray(builder, offsets);
-    auto *offsetsArraySize = emitConst(builder, offsets.size());
+    auto *offsetsArraySize = emitConstST(builder, offsets.size());
 
     auto *F = getFunction("extract_tensor", dest->getElementType());
     builder.CreateCall(F, {srcPtr, destPtr, offsetsPtr, srcDims, destDims,
@@ -952,11 +954,11 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *dataPtr = emitValueAddress(builder, data);
     auto *indicesPtr = emitValueAddress(builder, indices);
 
-    auto *indicesSize = emitConst(builder, indices->getType()->size());
+    auto *indicesSize = emitConstST(builder, indices->getType()->size());
 
     auto *dataType = data->getType();
     auto *sliceSize =
-        emitConst(builder, dataType->size() / dataType->dims()[0]);
+        emitConstST(builder, dataType->size() / dataType->dims()[0]);
 
     auto *F = getFunction("gather", dest->getElementType());
     builder.CreateCall(F,
@@ -970,9 +972,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcPtr = emitValueAddress(builder, src);
     srcPtr = builder.CreateBitCast(srcPtr, builder.getInt8PtrTy());
     auto *srcDims = emitValueDims(builder, src);
-    auto *srcDimsSize = emitConst(builder, src->getType()->dims().size());
+    auto *srcDimsSize = emitConstST(builder, src->getType()->dims().size());
     auto *srcElemKind =
-        emitConst(builder, static_cast<size_t>(src->getElementType()));
+        emitConstST(builder, static_cast<size_t>(src->getElementType()));
     auto *name = emitStringConst(builder, I->getName());
 
     auto *F = getFunction("dump_tensor");
