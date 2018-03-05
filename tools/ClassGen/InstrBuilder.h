@@ -62,17 +62,23 @@ class InstrBuilder {
   /// The IRGen stream.
   std::ofstream &irGenStream;
 
+  /// Specifies if this Instr is backend specific.
+  bool isBackendSpecific_{false};
+
   /// \returns the index of the operand with the name \p name. Aborts if no such
   /// name.
   unsigned getOperandIndexByName(llvm::StringRef name) const;
 
 public:
   InstrBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
-               std::ofstream &B, std::ofstream &I, const std::string &name)
+               std::ofstream &B, std::ofstream &I, const std::string &name,
+               bool isBackendSpecific)
       : name_(name), headerStream(H), cppStream(C), defStream(D),
-        builderStream(B), irGenStream(I) {
-    defStream << "DEF_INSTR(" << name << "Inst, " << glow::tolower(name)
-              << ")\n";
+        builderStream(B), irGenStream(I),
+        isBackendSpecific_(isBackendSpecific) {
+    defStream << (isBackendSpecific_ ? "DEF_BACKEND_SPECIFIC_INSTR("
+                                     : "DEF_INSTR(")
+              << name << "Inst, " << glow::tolower(name) << ")\n";
   }
 
   /// Add an operand to the instruction. The name should start with a capital
@@ -187,8 +193,12 @@ public:
                  "using namespace glow;\n";
     defStream
         << "#ifndef DEF_INSTR\n#error The macro DEF_INSTR was not declared.\n"
-           "#endif\n#ifndef DEF_VALUE\n#error The macro DEF_VALUE was not "
-           "declared.\n"
+           "#endif\n"
+           "#ifndef DEF_VALUE\n#error The macro DEF_VALUE was not declared.\n"
+           "#endif\n"
+           "#ifndef DEF_BACKEND_SPECIFIC_INSTR\n#error The macro "
+           "DEF_BACKEND_SPECIFIC_INSTR "
+           "was not declared.\n"
            "#endif\n"
            "#ifndef DEF_INSTR_RANGE\n"
            "#define DEF_INSTR_RANGE(ID, FIRST, LAST)\n"
@@ -202,6 +212,7 @@ public:
 
     defStream << "#undef DEF_INSTR_RANGE\n"
                  "#undef DEF_INSTR\n"
+                 "#undef DEF_BACKEND_SPECIFIC_INSTR\n"
                  "#undef DEF_VALUE";
   }
 
@@ -210,8 +221,19 @@ public:
     if (firstInstr.empty())
       firstInstr = name;
     lastInstr = name;
+    const bool isBackendSpecific = false;
     return InstrBuilder(headerStream, cppStream, defStream, builderStream,
-                        irGenStream, name);
+                        irGenStream, name, isBackendSpecific);
+  }
+
+  /// Declare a new backend-specific instruction and generate code for it.
+  InstrBuilder newBackendSpecificInstr(const std::string &name) {
+    if (firstInstr.empty())
+      firstInstr = name;
+    lastInstr = name;
+    const bool isBackendSpecific = true;
+    return InstrBuilder(headerStream, cppStream, defStream, builderStream,
+                        irGenStream, name, isBackendSpecific);
   }
 
   /// Declare the instruction in the def file but don't generate code for it.

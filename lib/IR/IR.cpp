@@ -51,6 +51,7 @@ bool glow::isTensorView(glow::Value *v) { return isa<TensorViewInst>(v); }
 bool Instruction::classof(const Value *V) {
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)
+#define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME)
 #define DEF_INSTR_RANGE(CLASS, FIRST, LAST)                                    \
   constexpr auto First_##CLASS = Kinded::Kind::FIRST##Kind;                    \
   constexpr auto Last_##CLASS = Kinded::Kind::LAST##Kind;
@@ -109,6 +110,7 @@ void Instruction::verify() const {
 #define DEF_INSTR(CLASS, NAME)                                                 \
   if (auto *X = dyn_cast<const CLASS>(this))                                   \
     X->verify();
+#define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME) DEF_INSTR(CLASS, NAME)
 #define DEF_VALUE(CLASS, NAME)
 #include "AutoGenInstr.def"
 }
@@ -136,6 +138,7 @@ void IRFunction::destroyInstruction(Instruction *I) {
     delete llvm::cast<CLASS>(I);                                               \
     break;                                                                     \
   }
+#define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME) DEF_INSTR(CLASS, NAME)
 #define DEF_VALUE(CLASS, NAME)
 #include "AutoGenInstr.def"
   }
@@ -392,12 +395,8 @@ static void dumpIR(const Value *V, llvm::raw_ostream &out) {
     X->dump(out);                                                              \
     break;                                                                     \
   }
-#define DEF_VALUE(CLASS, NAME)                                                 \
-  case Kinded::Kind::CLASS##Kind: {                                            \
-    auto *X = llvm::cast<const CLASS>(V);                                      \
-    X->dump(out);                                                              \
-    break;                                                                     \
-  }
+#define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME) DEF_INSTR(CLASS, NAME)
+#define DEF_VALUE(CLASS, NAME) DEF_INSTR(CLASS, NAME)
 #include "AutoGenInstr.def"
   }
 }
@@ -465,6 +464,7 @@ bool Instruction::isInplaceOp(const Instruction *I, unsigned dstIdx,
 #define DEF_INSTR(CLASS, NAME)                                                 \
   if (const auto *X = dyn_cast<const CLASS>(I))                                \
     return X->isInplaceOp(dstIdx, srcIdx);
+#define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME) DEF_INSTR(CLASS, NAME)
 #define DEF_VALUE(CLASS, NAME)
 #include "AutoGenInstr.def"
 

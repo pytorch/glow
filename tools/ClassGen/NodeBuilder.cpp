@@ -396,8 +396,16 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
      << "  bool isEqual(const " << name_ << "Node &other) const;\n"
      << "  llvm::hash_code getHash() const;\n"
      << "  void visit(Node *parent, NodeWalker *visitor);\n"
-     << "  void verify() const;\n"
      << "  Node* clone() const;\n";
+
+  // If the Node is backend specific then we generate an empty verifier for now
+  // to avoid having the Graph depend on the backends.
+  os << "  void verify() const";
+  if (isBackendSpecific_) {
+    os << " {}\n";
+  } else {
+    os << ";\n";
+  }
 
   if (!enum_.empty()) {
     os << "  const char *getModeStr() const { return getModeStr(mode_); }\n"
@@ -429,7 +437,7 @@ void NodeBuilder::emitCppMethods(std::ostream &os) const {
 }
 
 NodeBuilder &NodeBuilder::addGradient() {
-  NodeBuilder GN(hStream, cStream, dStream, name_ + "Grad");
+  NodeBuilder GN(hStream, cStream, dStream, name_ + "Grad", isBackendSpecific_);
 
   // The new 'Grad' class will have all of the fields of the current class.
   GN.members_ = members_;

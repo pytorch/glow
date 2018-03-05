@@ -164,7 +164,14 @@ void InstrBuilder::emitClass(std::ostream &os) const {
   }
 
   os << "\n  void dump(llvm::raw_ostream &os) const;\n";
-  os << "  void verify() const;\n";
+  // If the Instr is backend specific then we generate an empty verifier for now
+  // to avoid having the IR depend on the backends.
+  os << "  void verify() const";
+  if (isBackendSpecific_) {
+    os << " {}\n";
+  } else {
+    os << ";\n";
+  }
   os << "};\n} // namespace glow\n";
 }
 
@@ -187,7 +194,7 @@ InstrBuilder &
 InstrBuilder::addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
                                llvm::ArrayRef<llvm::StringRef> gradFields) {
   InstrBuilder GI(headerStream, cppStream, defStream, builderStream,
-                  irGenStream, name_ + "Grad");
+                  irGenStream, name_ + "Grad", isBackendSpecific_);
 
   // The new 'Grad' class will have all of the fields of the current class.
   GI.ty_ = ty_;

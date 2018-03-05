@@ -19,6 +19,7 @@ class Variable;
 // Forward declare all of the classes.
 #define DEF_VALUE(CLASS, NAME) class CLASS;
 #define DEF_INSTR(CLASS, NAME) class CLASS;
+#define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME)
 #include "AutoGenInstr.def"
 
 /// This is the IR-interpreter. It owns the IR, and the heap, and is able to
@@ -77,6 +78,7 @@ private:
 
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME) void fwd##CLASS(bool isTrain, const CLASS *I);
+#define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME)
 #include "AutoGenInstr.def"
 
   void fwdConvolutionInst_I8Impl(Value *inV, Value *outV, Value *filterV,

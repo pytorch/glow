@@ -40,7 +40,12 @@ add_custom_target(CollectHeaders SOURCES ${header_files})
 
 find_package(PNG)
 
+if(GLOW_WITH_CPU)
+  add_definitions(-DGLOW_WITH_CPU=1)
+endif ()
+
 if (GLOW_WITH_OPENCL)
+  add_definitions(-DGLOW_WITH_OPENCL=1)
   find_package(OpenCL REQUIRED)
 endif ()
 
@@ -66,4 +71,3 @@ add_subdirectory(lib)
 add_subdirectory(examples)
 add_subdirectory(tools)
 add_subdirectory(tests)
-

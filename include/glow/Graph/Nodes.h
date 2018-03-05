@@ -197,7 +197,8 @@ public:
 #include "AutoGenNodes.def"
 
 #define DEF_INSTR(CLASS, NAME) case glow::Kinded::Kind::CLASS##Kind:
-#define DEF_VALUE(CLASS, NAME) case glow::Kinded::Kind::CLASS##Kind:
+#define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME) DEF_INSTR(CLASS, NAME)
+#define DEF_VALUE(CLASS, NAME) DEF_INSTR(CLASS, NAME)
 #include "AutoGenInstr.def"
 
       llvm_unreachable(

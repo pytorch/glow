@@ -52,10 +52,14 @@ class NodeBuilder {
   /// are no intrinsic outputs.
   bool hasIntrinsicOutput_{false};
 
+  /// Specifies if this Node is backend specific.
+  bool isBackendSpecific_{false};
+
 public:
   NodeBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
-              const std::string &name)
-      : name_(name), hStream(H), cStream(C), dStream(D) {
+              const std::string &name, bool isBackendSpecific)
+      : name_(name), hStream(H), cStream(C), dStream(D),
+        isBackendSpecific_(isBackendSpecific) {
     dStream << "DEF_NODE(" << name << "Node, " << name << ")\n";
   }
 
@@ -210,7 +214,14 @@ public:
 
   /// Declare a new node and generate code for it.
   NodeBuilder newNode(const std::string &name) {
-    return NodeBuilder(hStream, cStream, dStream, name);
+    const bool isBackendSpecific = false;
+    return NodeBuilder(hStream, cStream, dStream, name, isBackendSpecific);
+  }
+
+  /// Declare a new backend specific node and generate code for it.
+  NodeBuilder newBackendSpecificNode(const std::string &name) {
+    const bool isBackendSpecific = true;
+    return NodeBuilder(hStream, cStream, dStream, name, isBackendSpecific);
   }
 
   /// Declare the node in the def file but don't generate code for it.
