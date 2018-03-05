@@ -91,6 +91,23 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+void inferGatherNet(Tensor *data, Tensor *indices, Tensor *dest,
+                    BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *dataV = mod.createVariable(data->getElementType(), data->dims(), "data",
+                                   Variable::VisibilityKind::Public);
+  auto *indicesV =
+      mod.createVariable(indices->getElementType(), indices->dims(), "indices",
+                         Variable::VisibilityKind::Public);
+  auto *gather = F->createGather("gather", dataV, indicesV);
+  auto *result = F->createSave("ret", gather);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({dataV, indicesV}, {data, indices});
+  dest->copyFrom(&result->getVariable()->getPayload());
+}
+
 void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
                                         BackendKind kind) {
   ExecutionEngine EE(kind);

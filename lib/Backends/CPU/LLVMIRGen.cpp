@@ -942,6 +942,28 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::GatherInstKind: {
+    GatherInst *GI = llvm::cast<GatherInst>(I);
+    auto *dest = GI->getDest();
+    auto *data = GI->getData();
+    auto *indices = GI->getIndices();
+
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *dataPtr = emitValueAddress(builder, data);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+
+    auto *indicesSize = emitConst(builder, indices->getType()->size());
+
+    auto *dataType = data->getType();
+    auto *sliceSize =
+        emitConst(builder, dataType->size() / dataType->dims()[0]);
+
+    auto *F = getFunction("gather", dest->getElementType());
+    builder.CreateCall(F,
+                       {destPtr, dataPtr, indicesPtr, indicesSize, sliceSize});
+    break;
+  }
+
   case Kinded::Kind::DebugPrintInstKind: {
     DebugPrintInst *DPI = llvm::cast<DebugPrintInst>(I);
     auto *src = DPI->getSrc();
