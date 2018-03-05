@@ -551,12 +551,11 @@ TEST(Operator, RescaleNode) {
   EXPECT_NEAR(RO.raw(0), 40, 1);
 }
 
-TEST(Operator, QuantizedMaxNode) {
+TEST(Operator, QuantizedArithmeticNode) {
   const int len = 100;
 
-  // In this test we check the correctness of the quantized MAX and ADD
-  // nodes as well as how they interact with the rescaling node.
-
+  // In this test we check the correctness of the quantized MAX, ADD,
+  // MIN nodes as well as how they interact with the rescaling node.
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -565,17 +564,21 @@ TEST(Operator, QuantizedMaxNode) {
                                Variable::VisibilityKind::Public);
   auto *B = mod.createVariable(ElemKind::FloatTy, {len}, "B",
                                Variable::VisibilityKind::Public);
-  auto *O1 = mod.createVariable(ElemKind::FloatTy, {len}, "Out1",
+  auto *O1 = mod.createVariable(ElemKind::FloatTy, {len}, "OutSum",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  auto *O2 = mod.createVariable(ElemKind::FloatTy, {len}, "Out2",
+  auto *O2 = mod.createVariable(ElemKind::FloatTy, {len}, "OutMax",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
+  auto *O3 = mod.createVariable(ElemKind::FloatTy, {len}, "OutMin",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
 
-  auto AH = A->getPayload().getHandle();
-  auto BH = B->getPayload().getHandle();
-  auto O1H = O1->getPayload().getHandle();
-  auto O2H = O2->getPayload().getHandle();
+  auto AH = A->getHandle();
+  auto BH = B->getHandle();
+  auto O1H = O1->getHandle();
+  auto O2H = O2->getHandle();
+  auto O3H = O3->getHandle();
 
   AH.randomize(-100, 100);
   BH.randomize(-10, 10);
@@ -587,21 +590,27 @@ TEST(Operator, QuantizedMaxNode) {
   auto TO3 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.1, 0);
   auto TO4 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.2, 0);
 
+  // Quantize input vars and apply max/add/min quantized.
   auto *QA = F->createQuantize("QA", A, TA);
   auto *QB = F->createQuantize("QB", B, TB);
+  Node *max = F->createMax("max", TO1, QA, QB);
+  Node *add = F->createAdd("add", TO2, QA, QB);
+  Node *min = F->createMin("min", TO1, QA, QB);
 
-  Node *max = F->createMax("MX", TO1, QA, QB);
-  Node *add = F->createAdd("MX", TO2, QA, QB);
+  // Rescale quantized results.
+  max = F->createRescaleQuantized("rescaleMax", max, TO3);
+  add = F->createRescaleQuantized("rescaleAdd", add, TO4);
+  min = F->createRescaleQuantized("rescaleMin", min, TO3);
 
-  max = F->createRescaleQuantized("Rescale", max, TO3);
-  add = F->createRescaleQuantized("Rescale", add, TO4);
+  // Dequantize results back to fp.
+  add = F->createDequantize("addDq", add);
+  max = F->createDequantize("maxDq", max);
+  min = F->createDequantize("minDq", min);
 
-  auto *addQ = F->createDequantize("addQ", add);
-  auto *maxQ = F->createDequantize("maxW", max);
-
-  // Test a sequence of rescale operations t
-  F->createSave("save_add", addQ, O1);
-  F->createSave("save_max", maxQ, O2);
+  // Save results of the operations.
+  F->createSave("saveAdd", add, O1);
+  F->createSave("saveMax", max, O2);
+  F->createSave("saveMin", min, O3);
 
   EE.compile(CompilationMode::Infer, F);
   EE.run({}, {});
@@ -609,10 +618,12 @@ TEST(Operator, QuantizedMaxNode) {
   for (size_t i = 0; i < len; i++) {
     auto max = std::max(AH.at({i}), BH.at({i}));
     auto add = AH.at({i}) + BH.at({i});
+    auto min = std::min(AH.at({i}), BH.at({i}));
 
     // We generate numbers up to 110, so a difference of 2 (~2%) is reasonable.
     EXPECT_NEAR(add, O1H.at({i}), 2.0);
     EXPECT_NEAR(max, O2H.at({i}), 2.0);
+    EXPECT_NEAR(min, O3H.at({i}), 2.0);
   }
 }
 

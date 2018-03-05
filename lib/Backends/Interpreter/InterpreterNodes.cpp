@@ -1175,6 +1175,30 @@ void Interpreter::fwdElementMaxInst(bool isTrain, const ElementMaxInst *I) {
 }
 
 void Interpreter::fwdElementMinInst(bool isTrain, const ElementMinInst *I) {
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    auto lhsTy = I->getLHS()->getType();
+    auto rhsTy = I->getRHS()->getType();
+    auto destTy = I->getDest()->getType();
+
+    TensorQuantizationParams lhsQ{lhsTy->getScale(), lhsTy->getOffset()};
+    TensorQuantizationParams rhsQ{rhsTy->getScale(), rhsTy->getOffset()};
+    TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
+
+    auto outW = getWeightHandle<int8_t>(I->getDest());
+    auto lhsW = getWeightHandle<int8_t>(I->getLHS());
+    auto rhsW = getWeightHandle<int8_t>(I->getRHS());
+    for (size_t i = 0, e = outW.size(); i < e; i++) {
+      // Convert both sides to the destination scale and perform a regular
+      // comparison.
+      int8_t L = quantization::quantize(
+          quantization::dequantize(lhsW.raw(i), lhsQ), destQ);
+      int8_t R = quantization::quantize(
+          quantization::dequantize(rhsW.raw(i), rhsQ), destQ);
+      outW.raw(i) = std::min(L, R);
+    }
+    return;
+  }
+
   auto outW = getWeightHandle(I->getDest());
   auto lhsW = getWeightHandle(I->getLHS());
   auto rhsW = getWeightHandle(I->getRHS());
