@@ -98,6 +98,30 @@ TEST(JITCorrectnessTest, convGradTest) {
   EXPECT_TRUE(H1.isEqual(H2));
 }
 
+TEST(JITCorrectnessTest, gatherTest) {
+  constexpr size_t nSlices = 16;
+  constexpr size_t nGathered = 8;
+
+  Tensor data(ElemKind::FloatTy, {nSlices, 16, 3, 2});
+  data.getHandle().initXavier(1);
+
+  Tensor indices(ElemKind::IndexTy, {nGathered});
+  auto indicesH = indices.getHandle<size_t>();
+  for (size_t i = 0; i < nGathered; i++) {
+    indicesH.raw(i) = nextRandInt(0, nSlices - 1);
+  }
+
+  Tensor out1(ElemKind::FloatTy, {nGathered, 16, 3, 2});
+  Tensor out2(ElemKind::FloatTy, {nGathered, 16, 3, 2});
+
+  inferGatherNet(&data, &indices, &out1, BackendKind::JIT);
+  inferGatherNet(&data, &indices, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
 TEST(JITCorrectnessTest, localResponseNormalizationTest) {
   Tensor inputs(ElemKind::FloatTy, {8, 15, 13, 30});
   inputs.getHandle().initXavier(1);

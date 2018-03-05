@@ -506,6 +506,15 @@ void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
   }       // N
 }
 
+void libjit_gather_f(float *dest, const float *data, const size_t *indices,
+                     size_t numIndices, size_t sliceSize) {
+  for (size_t i = 0; i < numIndices; i++) {
+    size_t slice = indices[i];
+    memcpy(dest + i * sliceSize, data + slice * sliceSize,
+           sliceSize * sizeof(float));
+  }
+}
+
 void libjit_local_response_normalization_f(float *outW, const float *inW,
                                            float *scaleCache,
                                            const size_t *outWdims,

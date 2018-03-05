@@ -19,6 +19,9 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
                   llvm::ArrayRef<size_t> shape1, llvm::ArrayRef<size_t> shape2,
                   Tensor *out, BackendKind kind);
 
+void inferGatherNet(Tensor *data, Tensor *indices, Tensor *dest,
+                    BackendKind kind);
+
 void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
                                         BackendKind kind);
 
