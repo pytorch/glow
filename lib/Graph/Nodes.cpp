@@ -105,7 +105,8 @@ bool Node::isEqual(const Node &other) const {
 #include "AutoGenNodes.def"
 
 #define DEF_INSTR(CLASS, NAME) case glow::Kinded::Kind::CLASS##Kind:
-#define DEF_VALUE(CLASS, NAME) case glow::Kinded::Kind::CLASS##Kind:
+#define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME) DEF_INSTR(CLASS, NAME)
+#define DEF_VALUE(CLASS, NAME) DEF_INSTR(CLASS, NAME)
 #include "AutoGenInstr.def"
 
     llvm_unreachable(
@@ -879,9 +880,7 @@ void IntrinsicNode::verify() const {
 
 void SaveNode::verify() const { checkSameType(getInput(), getOutput()); }
 
-void PowNode::verify() const {
-  checkSameType(getResult(), getBase());
-}
+void PowNode::verify() const { checkSameType(getResult(), getBase()); }
 
 void SelectNode::verify() const {
   checkSameType(getResult(), getCond());
