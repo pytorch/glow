@@ -267,11 +267,12 @@ void generateQuantizedGraph(
                       quantizationInfo.tensorQuantizationParams_);
   }
 
-  std::unordered_set<Node *> addedNodes;
   // For every unprocessed node in the graph we keep the invariant of having
   // all inputs to be float typed.
-  for (auto *node : F->getNodes()) {
-    if (!shouldQuantize(node) || addedNodes.count(node)) {
+  for (auto nodeIt = F->getNodes().rbegin(), e = F->getNodes().rend();
+       nodeIt != e; ++nodeIt) {
+    Node *node = *nodeIt;
+    if (!shouldQuantize(node)) {
       continue;
     }
 
@@ -390,10 +391,6 @@ void generateQuantizedGraph(
     default:
       llvm_unreachable("The node type is not supported for quantization");
     }
-
-    // Just insert newly quantized node into added set. Quantize, Dequantize,
-    // RescaleQuantized nodes are not eligible for quantization anyway.
-    addedNodes.insert(quantizedNode);
 
     // Some of the quantized nodes need additional post processing.
     if (node->getKind() == Kinded::Kind::ReluNodeKind) {
