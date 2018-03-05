@@ -126,7 +126,12 @@ createSimpleGraphForQuantization(Module *M) {
   auto *A = F->getParent()->createVariable(
       ElemKind::FloatTy, {1, 32, 32, 3}, "A", Variable::VisibilityKind::Public,
       Variable::TrainKind::None);
-  fillStableRandomData(A->getPayload().getHandle(), 1100, 1);
+  fillStableRandomData(A->getHandle(), 1100, 1);
+
+  auto *B = F->getParent()->createVariable(ElemKind::FloatTy, {10, 10}, "B",
+                                           Variable::VisibilityKind::Public,
+                                           Variable::TrainKind::None);
+  fillStableRandomData(B->getHandle(), 2001, 1);
 
   ConvolutionNode *CV = F->createConv("conv", A, 16, 5, 1, 2);
   Variable *bias = cast<Variable>(CV->getBias());
@@ -143,13 +148,14 @@ createSimpleGraphForQuantization(Module *M) {
   auto *R = F->createReshape("reshape", T, T->getResult().dims());
   auto *AP = F->createPoolAvg("avgPool", R, 2, 2, 1);
 
-  FullyConnectedNode *O = F->createFullyConnected("fc", AP, 10);
-  Variable *bias2 = cast<Variable>(O->getBias());
-  Variable *filter2 = cast<Variable>(O->getWeights());
+  FullyConnectedNode *FC = F->createFullyConnected("fc", AP, 10);
+  Variable *bias2 = cast<Variable>(FC->getBias());
+  Variable *filter2 = cast<Variable>(FC->getWeights());
 
   fillStableRandomData(bias2->getPayload().getHandle(), 3001, 1);
   fillStableRandomData(filter2->getPayload().getHandle(), 4000, 1);
 
+  auto *O = F->createConcat("concat", {FC, B}, 0);
   SaveNode *SN = F->createSave("save", O);
   return {F, SN};
 }
