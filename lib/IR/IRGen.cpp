@@ -117,31 +117,6 @@ public:
 
       break;
     }
-    case glow::Kinded::Kind::ConvolutionGradNodeKind: {
-      auto *CG = cast<ConvolutionGradNode>(N);
-
-      auto *input = valueForNode(CG->getInput());
-      auto *filter = valueForNode(CG->getFilter());
-      auto *bias = valueForNode(CG->getBias());
-
-      auto *outGrad = valueForNode(CG->getGradOfOriginalOutputNamedResult());
-
-      auto *inG =
-          builder_.createAllocActivationInst("conv.input.G", input->getType());
-      auto *biasG =
-          builder_.createAllocActivationInst("conv.bias.G", bias->getType());
-      auto *filterG = builder_.createAllocActivationInst("conv.filter.G",
-                                                         filter->getType());
-
-      builder_.createConvolutionGradInst(
-          N->getName(), input, filter, outGrad, inG, filterG, biasG,
-          CG->getKernel(), CG->getStride(), CG->getPad(), CG->getDepth());
-
-      registerIR(CG->getGradOfInputNamedInput(), inG);
-      registerIR(CG->getGradOfInputNamedFilter(), filterG);
-      registerIR(CG->getGradOfInputNamedBias(), biasG);
-      break;
-    }
     case glow::Kinded::Kind::PoolMaxNodeKind: {
       auto *P = cast<PoolMaxNode>(N);
       auto *in = valueForNode(P->getInput());
@@ -171,22 +146,6 @@ public:
       builder_.createPoolMaxWithXYGradInst(N->getName(), outW, PI->getSrcXY(),
                                            outG, inG, PG->getKernel(),
                                            PG->getStride(), PG->getPad());
-      registerIR(PG->getGradOfInputNamedInput(), inG);
-      break;
-    }
-    case glow::Kinded::Kind::PoolAvgGradNodeKind: {
-      auto *PG = cast<PoolAvgGradNode>(N);
-
-      auto poolOut = PG->getOriginalOutputForResult();
-      auto *outW = valueForNode(poolOut);
-      auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
-
-      auto *inG = builder_.createAllocActivationInst("pool.outG",
-                                                     PG->getInput()->getType());
-
-      builder_.createPoolAvgGradInst(N->getName(), outW, outG, inG,
-                                     PG->getKernel(), PG->getStride(),
-                                     PG->getPad());
       registerIR(PG->getGradOfInputNamedInput(), inG);
       break;
     }
@@ -278,41 +237,6 @@ public:
       builder_.createCopyInst("copy.insert", dest, big);
       builder_.createInsertTensorInst("insert", dest, small, start);
       registerIR(N, dest);
-      break;
-    }
-    case glow::Kinded::Kind::BatchNormalizationGradNodeKind: {
-      auto *BN = cast<BatchNormalizationGradNode>(N);
-      auto *in = valueForNode(BN->getInput());
-      auto *beta = valueForNode(BN->getBias());
-      auto *gamma = valueForNode(BN->getScale());
-      auto *mean = valueForNode(BN->getMean());
-      auto *var = valueForNode(BN->getVar());
-
-      auto *outG = valueForNode(BN->getGradOfOriginalOutputNamedResult());
-
-      auto *inG =
-          builder_.createAllocActivationInst("bn.input.G", in->getType());
-      auto *scaleG =
-          builder_.createAllocActivationInst("bn.scale.G", gamma->getType());
-      auto *biasG =
-          builder_.createAllocActivationInst("bn.bias.G", beta->getType());
-
-      auto *meanG =
-          builder_.createAllocActivationInst("bn.mean.G", mean->getType());
-      auto *varG =
-          builder_.createAllocActivationInst("bn.var.G", var->getType());
-
-      builder_.createSplatInst("bn.zero.mean.G", meanG, 0);
-      builder_.createSplatInst("bn.zero.var.G", varG, 0);
-
-      builder_.createBatchNormalizationGradInst(
-          N->getName(), in, gamma, mean, var, outG, inG, scaleG, biasG,
-          BN->getChannelIdx(), BN->getEpsilon(), BN->getMomentum());
-      registerIR(BN->getGradOfInputNamedInput(), inG);
-      registerIR(BN->getGradOfInputNamedBias(), biasG);
-      registerIR(BN->getGradOfInputNamedScale(), scaleG);
-      registerIR(BN->getGradOfInputNamedMean(), meanG);
-      registerIR(BN->getGradOfInputNamedVar(), varG);
       break;
     }
 

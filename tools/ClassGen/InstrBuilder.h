@@ -124,8 +124,8 @@ public:
 
   /// Constructs a new gradient instruction that is based on the current
   /// instruction that we are building.
-  InstrBuilder &addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
-                                 llvm::ArrayRef<llvm::StringRef> gradFields);
+  void addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
+                        llvm::ArrayRef<llvm::StringRef> gradFields);
 
   // Set the autoIRGenNodeName; default is the name of the Instr. If not empty,
   // it means that autoIRGen should proceed.

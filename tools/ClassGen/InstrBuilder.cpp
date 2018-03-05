@@ -186,9 +186,9 @@ InstrBuilder::~InstrBuilder() {
   emitIRGenCase();
 }
 
-InstrBuilder &
-InstrBuilder::addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
-                               llvm::ArrayRef<llvm::StringRef> gradFields) {
+void InstrBuilder::addGradientInstr(
+    llvm::ArrayRef<llvm::StringRef> originalFields,
+    llvm::ArrayRef<llvm::StringRef> gradFields) {
   const bool isGradInst = true;
   InstrBuilder GI(headerStream, cppStream, defStream, builderStream,
                   irGenStream, name_ + "Grad", isGradInst);
