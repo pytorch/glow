@@ -3,6 +3,8 @@
 #include "InstrBuilder.h"
 #include "glow/Support/Compiler.h"
 
+#include "llvm/ADT/SmallVector.h"
+
 unsigned InstrBuilder::getOperandIndexByName(llvm::StringRef name) const {
   for (unsigned i = 0; i < operands_.size(); i++) {
     if (name == operands_[i].first) {
@@ -181,18 +183,25 @@ InstrBuilder::~InstrBuilder() {
   emitClass(headerStream);
   emitCppMethods(cppStream);
   emitIRBuilderMethods(builderStream);
+  emitIRGenCase();
 }
 
-InstrBuilder &
-InstrBuilder::addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
-                               llvm::ArrayRef<llvm::StringRef> gradFields) {
+void InstrBuilder::addGradientInstr(
+    llvm::ArrayRef<llvm::StringRef> originalFields,
+    llvm::ArrayRef<llvm::StringRef> gradFields) {
+  const bool isGradInst = true;
   InstrBuilder GI(headerStream, cppStream, defStream, builderStream,
-                  irGenStream, name_ + "Grad");
+                  irGenStream, name_ + "Grad", isGradInst);
 
   // The new 'Grad' class will have all of the fields of the current class.
   GI.ty_ = ty_;
   GI.members_ = members_;
   GI.extraMethods_ = extraMethods_;
+
+  // If the current class was autoIRGen'd, then we also autoIRGen the gradient.
+  if (!autoIRGenNodeName_.empty()) {
+    GI.autoIRGenNodeName_ = autoIRGenNodeName_ + "Grad";
+  }
 
   // Add the operands that we'll use in the grad instruction.
   for (const auto &op : operands_) {
@@ -212,55 +221,113 @@ InstrBuilder::addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
       }
     }
   }
-  return *this;
 }
 
-InstrBuilder &InstrBuilder::autoIRGen(const std::string &name) {
-  const std::string &nodeName = (name.empty() ? name_ : name);
-  irGenStream << "case glow::Kinded::Kind::" << nodeName << "NodeKind: {\n";
-  irGenStream << "  auto *CN__ = cast<" << nodeName << "Node>(N);\n";
-
-  // Note: The convention is for Nodes to have 'Input's and 'Output's, and for
-  // Instrs to have 'Src's and 'Dest's. Thus we map between the two below.
-  std::string destOpName = "";
-  std::string resNodeName = "";
-  for (const auto &opPair : operands_) {
-    if (opPair.second == OperandKind::In) {
-      const std::string opNodeName =
-          (opPair.first == "Src") ? "Input" : opPair.first;
-      irGenStream << "  auto *" << opPair.first << " = valueForNode(CN__->get"
-                  << opNodeName << "());\n";
-    } else if (opPair.second == OperandKind::Out) {
-      assert(resNodeName.empty() && destOpName.empty() &&
-             "Must have multiple results; don't support autogen yet.");
-      resNodeName = (opPair.first == "Dest") ? "Result" : opPair.first;
-      destOpName = opPair.first;
-    }
+bool isGradOp(const std::string &name) {
+  const std::string gradStr = "Grad";
+  const unsigned gradLen = 4;
+  return name.length() >= gradLen &&
+         name.compare(name.length() - gradLen, gradLen, gradStr) == 0;
+}
+std::string checkSrcToInput(const std::string &name) {
+  return (name == "Src") ? "Input" : name;
+}
+std::string getBaseName(const std::string &name) {
+  if (name == "Src" || name == "SrcGrad") {
+    return "Input";
+  } else if (name == "Dest" || name == "DestGrad") {
+    return "Result";
+  } else if (isGradOp(name)) {
+    const unsigned gradLen = 4;
+    return name.substr(0, name.size() - gradLen);
   }
+  return name;
+}
 
-  assert(!resNodeName.empty() && !destOpName.empty() &&
-         "Didn't find a result; Maybe using InOut which isn't yet supported");
+InstrBuilder &InstrBuilder::emitIRGenCase() {
+  if (!autoIRGenNodeName_.empty()) {
+    irGenStream << "case glow::Kinded::Kind::" << autoIRGenNodeName_
+                << "NodeKind: {\n";
+    irGenStream << "  auto *CN__ = cast<" << autoIRGenNodeName_
+                << "Node>(N);\n";
 
-  irGenStream << "  auto *dest__ = builder_.createAllocActivationInst(\""
-              << nodeName << ".res\", CN__->get" << resNodeName
-              << "()->getType());\n";
-  irGenStream << "  auto *V = builder_.create" << name_ << "Inst(\"" << nodeName
-              << "\", dest__";
-  for (const auto &opPair : operands_) {
-    if (opPair.second == OperandKind::In) {
+    // Note: The convention is for Nodes to have 'Input's and 'Output's, and
+    // for Instrs to have 'Src's and 'Dest's. Thus we map between the two
+    // below.
+
+    // Non-gradient operands which have no gradient operand version need to
+    // have a zero splat created for them.
+    llvm::SmallVector<std::string, 6> needsSplat;
+    for (const auto &opPair : operands_) {
+      if (isGradInst_ && opPair.first != "Dest" && !isGradOp(opPair.first)) {
+        needsSplat.push_back(checkSrcToInput(opPair.first));
+      }
+      if (opPair.second == OperandKind::In) {
+        irGenStream << "  auto *" << opPair.first << " = valueForNode(";
+        if (opPair.first == "DestGrad") {
+          irGenStream << "CN__->getGradOfOriginalOutputNamedResult());\n";
+        } else if (opPair.first == "Dest") {
+          irGenStream << "CN__->getOriginalOutputForResult());\n";
+        } else {
+          irGenStream << "CN__->get" << checkSrcToInput(opPair.first)
+                      << "());\n";
+        }
+      } else if (opPair.second == OperandKind::Out) {
+        const std::string outName = getBaseName(opPair.first);
+        irGenStream << "  auto *" << opPair.first
+                    << " = builder_.createAllocActivationInst(\""
+                    << autoIRGenNodeName_ << "." << opPair.first << ".out"
+                    << (isGradInst_ ? "G" : "") << "\", CN__->get" << outName
+                    << "()->getType());\n";
+        if (isGradInst_) {
+          irGenStream << "  registerIR(CN__->getGradOfInputNamed" << outName
+                      << "(), " << opPair.first << ");";
+        }
+      }
+    }
+
+    if (isGradInst_) {
+      for (const auto &opPair : operands_) {
+        if (isGradOp(opPair.first)) {
+          const auto it = find(needsSplat.begin(), needsSplat.end(),
+                               getBaseName(opPair.first));
+          if (it != needsSplat.end()) {
+            needsSplat.erase(it);
+          }
+        }
+      }
+      for (const auto &name : needsSplat) {
+        irGenStream << "  auto *" << name << "Grad"
+                    << " = builder_.createAllocActivationInst(\""
+                    << autoIRGenNodeName_ << "." << name << ".outG\", CN__->get"
+                    << name << "()->getType());\n";
+        irGenStream << "builder_.createSplatInst(\"" << autoIRGenNodeName_
+                    << ".zero." << name << ".G\", " << name << "Grad, 0);\n";
+        irGenStream << "  registerIR(CN__->getGradOfInputNamed" << name
+                    << "(), " << name << "Grad);";
+      }
+    }
+
+    if (!isGradInst_) {
+      irGenStream << "auto *V = ";
+    }
+    irGenStream << "builder_.create" << name_ << "Inst(N->getName()";
+    for (const auto &opPair : operands_) {
       irGenStream << ", " << opPair.first;
     }
-  }
-  for (const auto &memPair : members_) {
-    irGenStream << ", CN__->get" << memPair.second << "()";
-  }
-  irGenStream << ");\n";
+    for (const auto &memPair : members_) {
+      irGenStream << ", CN__->get" << memPair.second << "()";
+    }
+    irGenStream << ");\n";
 
-  irGenStream << "  V->setName(N->getName());\n";
-  irGenStream << "  registerIR(N, V->get" << destOpName << "());\n";
-  irGenStream << "  nodeToInstr_[N] = V;\n";
-  irGenStream << "  break;\n";
-  irGenStream << "}\n";
+    if (!isGradInst_) {
+      irGenStream << "  registerIR(N, V->getDest());\n";
+      irGenStream << "  V->setName(N->getName());\n";
+      irGenStream << "  nodeToInstr_[N] = V;\n";
+    }
 
+    irGenStream << "  break;\n";
+    irGenStream << "}\n";
+  }
   return *this;
 }

@@ -62,15 +62,21 @@ class InstrBuilder {
   /// The IRGen stream.
   std::ofstream &irGenStream;
 
+  // If non-empty, an IRGen case will be generated using this name.
+  std::string autoIRGenNodeName_;
+  // Used by emitIRGenCase to properly generate IRGen for Gradient instructions.
+  bool isGradInst_;
+
   /// \returns the index of the operand with the name \p name. Aborts if no such
   /// name.
   unsigned getOperandIndexByName(llvm::StringRef name) const;
 
 public:
   InstrBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
-               std::ofstream &B, std::ofstream &I, const std::string &name)
+               std::ofstream &B, std::ofstream &I, const std::string &name,
+               bool isGradInst = false)
       : name_(name), headerStream(H), cppStream(C), defStream(D),
-        builderStream(B), irGenStream(I) {
+        builderStream(B), irGenStream(I), isGradInst_(isGradInst) {
     defStream << "DEF_INSTR(" << name << "Inst, " << glow::tolower(name)
               << ")\n";
   }
@@ -118,12 +124,19 @@ public:
 
   /// Constructs a new gradient instruction that is based on the current
   /// instruction that we are building.
-  InstrBuilder &addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
-                                 llvm::ArrayRef<llvm::StringRef> gradFields);
+  void addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
+                        llvm::ArrayRef<llvm::StringRef> gradFields);
+
+  // Set the autoIRGenNodeName; default is the name of the Instr. If not empty,
+  // it means that autoIRGen should proceed.
+  InstrBuilder &autoIRGen(const std::string &name = "") {
+    autoIRGenNodeName_ = (name.empty() ? name_ : name);
+    return *this;
+  }
 
   /// Adds a case to AutoIRGen for generating this Instr from a Node. Creates
   /// the Instr for the Node \p name (if empty, defaults to same name as Instr).
-  InstrBuilder &autoIRGen(const std::string &name = "");
+  InstrBuilder &emitIRGenCase();
 
   ~InstrBuilder();
 
