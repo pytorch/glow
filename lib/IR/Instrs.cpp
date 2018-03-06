@@ -412,6 +412,10 @@ void ElementCmpLTEInst::verify() const {
   checkSameShape(getDest(), getRHS());
 }
 
+void ElementPowInst::verify() const {
+  checkSameShape(getDest(), getBase());
+}
+
 void ElementSelectInst::verify() const {
   checkSameShape(getDest(), getCond());
   checkSameShape(getDest(), getLHS());

@@ -1217,6 +1217,16 @@ void Interpreter::fwdElementCmpLTEInst(bool isTrain,
   }
 }
 
+void Interpreter::fwdElementPowInst(bool isTrain,
+                                    const glow::ElementPowInst *I) {
+  auto baseW = getWeightHandle(I->getBase());
+  float exp = I->getExp();
+  auto outW = getWeightHandle(I->getDest());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = pow(baseW.raw(i), exp);
+  }
+}
+
 void Interpreter::fwdElementSelectInst(bool isTrain,
                                        const glow::ElementSelectInst *I) {
   auto outW = getWeightHandle(I->getDest());

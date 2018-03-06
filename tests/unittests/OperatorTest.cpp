@@ -15,6 +15,36 @@
 
 using namespace glow;
 
+TEST(Operator, pow) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *X = mod.createVariable(ElemKind::FloatTy, {1, 1, 3}, "X");
+  auto *Y = mod.createVariable(ElemKind::FloatTy, {2}, "Y");
+  X->getPayload().getHandle() = {5, 0.1, -3};
+  Y->getPayload().getHandle() = {2, 100};
+
+  auto *Pow1 = F->createPow("Pow1", X, 2.0);
+  auto *Pow2 = F->createPow("Pow2", Y, 0.5);
+
+  auto *Save1 = F->createSave("save", Pow1);
+  auto *Save2 = F->createSave("save", Pow2);
+
+  EE.compile(CompilationMode::Infer, F);
+
+  EE.run({}, {});
+
+  auto HX = llvm::cast<Variable>(Save1->getOutput())->getPayload().getHandle();
+  EXPECT_NEAR(HX.at({0, 0, 0}), 25, 1E-5);
+  EXPECT_NEAR(HX.at({0, 0, 1}), 0.01, 1E-5);
+  EXPECT_NEAR(HX.at({0, 0, 2}), 9, 1E-5);
+
+  auto HY = llvm::cast<Variable>(Save2->getOutput())->getPayload().getHandle();
+  EXPECT_NEAR(HY.at({0}), sqrt(2.0), 1E-5);
+  EXPECT_NEAR(HY.at({1}), 10, 1E-5);
+}
+
 TEST(Operator, matmul) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();

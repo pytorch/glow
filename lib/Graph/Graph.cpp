@@ -700,6 +700,10 @@ ARITHMETIC_FUN_DEF(Min);
 ARITHMETIC_FUN_DEF(CmpLTE);
 #undef ARITHMETIC_FUN_DEF
 
+PowNode *Function::createPow(llvm::StringRef name, NodeValue Base, float exp) {
+  return addNode(new PowNode(name, Base.getType(), Base, exp));
+}
+
 SelectNode *Function::createSelect(llvm::StringRef name, NodeValue Cond,
                                    NodeValue LHS, NodeValue RHS) {
   assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
