@@ -497,7 +497,7 @@ TEST(Network, gradientCheckCrossEntropyLoss) {
   const int batchSize = 6;
   const int testSamples = 5;
   const float stepSize = 1e-4;
-  const float delta = 1e-2;
+  const float delta = 0.015;
 
   auto &mod = IP.getModule();
   Function *F = mod.createFunction("main");
