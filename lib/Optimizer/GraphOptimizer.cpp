@@ -540,9 +540,9 @@ struct CSEVisitor : NodeWalker {
       return;
     }
     Node *foundN = FoundI->second;
-    // Bail if the equivalent node is the same node.
-    if (foundN == N)
-      return;
+
+    // Same node cannot be visited.
+    assert(N != foundN);
     // Replace current node by a found node, which is
     // equivalent to it.
     assert(N->isEqual(*foundN));
