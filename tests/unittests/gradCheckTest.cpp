@@ -199,7 +199,8 @@ TEST(Network, gradientCheckAvgPool) {
                                  Variable::VisibilityKind::Public,
                                  Variable::TrainKind::None);
 
-  Node *O = F->createPoolAvg("pool", A, 3, 3, 0);
+  Node *O = F->createPoolAvg("pool", A, 3, 3, 1);
+  O = F->createTanh("tanh", O);
   O = F->createFullyConnected("fc", O, numOutputElem);
   O = F->createRegression("reg", O, Exp);
   auto *result = F->createSave("ret", O);
