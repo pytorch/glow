@@ -337,20 +337,27 @@ llvm::Value *LLVMIRGen::emitStringConst(llvm::IRBuilder<> &builder,
 }
 
 llvm::Function *LLVMIRGen::getFunction(const std::string &name) {
-  return llmodule_->getFunction("libjit_" + name);
+  auto *F = llmodule_->getFunction("libjit_" + name);
+  assert(F && "Unable to load the function");
+  return F;
 }
 
 llvm::Function *LLVMIRGen::getFunction(const std::string &name,
                                        ElemKind elemTy) {
+  auto get = [this](llvm::StringRef funcName) {
+    auto *F = llmodule_->getFunction(funcName);
+    assert(F && "Unable to load the function");
+    return F;
+  };
   switch (elemTy) {
   case ElemKind::FloatTy:
-    return llmodule_->getFunction("libjit_" + name + "_f");
+    return get("libjit_" + name + "_f");
   case ElemKind::Int8QTy:
-    return llmodule_->getFunction("libjit_" + name + "_i8");
+    return get("libjit_" + name + "_i8");
   case ElemKind::Int32QTy:
-    return llmodule_->getFunction("libjit_" + name + "_i32");
+    return get("libjit_" + name + "_i32");
   case ElemKind::IndexTy:
-    return llmodule_->getFunction("libjit_" + name + "_u");
+    return get("libjit_" + name + "_u");
   default:
     GLOW_ASSERT("Unsupported element type");
   }
@@ -367,7 +374,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *val = emitConst(builder, SI->getValue());
 
     auto *F = getFunction("splat", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, cnt, val});
     break;
   }
@@ -381,7 +387,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto cnt = emitValueSize(builder, dest);
 
     auto *F = getFunction("elementmax", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, cnt});
     break;
   }
@@ -395,7 +400,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto cnt = emitValueSize(builder, dest);
 
     auto *F = getFunction("elementmin", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, cnt});
     break;
   }
@@ -410,7 +414,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto cnt = emitValueSize(builder, dest);
 
     auto *F = getFunction("elementselect", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, condPtr, lhsPtr, rhsPtr, cnt});
     break;
   }
@@ -429,7 +432,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *rhsDims = emitValueDims(builder, rhs);
 
     auto *F = getFunction("batchedmatmul", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F,
                        {destPtr, lhsPtr, rhsPtr, destDims, lhsDims, rhsDims});
     break;
@@ -443,7 +445,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *bytes = emitConst(builder, dest->getType()->getSizeInBytes());
 
     auto *F = getFunction("copy", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, srcPtr, bytes});
     break;
   }
@@ -461,7 +462,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *sliceSize = emitConst(builder, bdim.second);
 
     auto *F = getFunction("batchedadd", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, batchPtr, slicePtr, numSlice, sliceSize});
     break;
   }
@@ -479,7 +479,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *sliceSize = emitConst(builder, bdim.second);
 
     auto *F = getFunction("batchedreduceadd", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, batchPtr, destSize, numSlice, sliceSize});
     break;
   }
@@ -512,7 +511,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     }
 
     auto *F = getFunction(kernelName, dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F,
                        {srcPtr, destPtr, filterPtr, biasPtr, srcDims, destDims,
                         filterDims, biasDims, kernel, stride, pad});
@@ -541,7 +539,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *pad = emitConst(builder, CG->getPad());
 
     auto *F = getFunction("convolution_grad", srcGrad->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcGradPtr, destGradPtr, srcPtr, filterGradPtr,
                            biasGradPtr, filterPtr, destGradDims, srcDims,
                            filterGradDims, kernel, stride, pad});
@@ -566,7 +563,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *F =
         getFunction("local_response_normalization", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, srcPtr, scalePtr, destDims, srcDims,
                            halfWindow, alpha, beta, k});
     break;
@@ -591,7 +587,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *F = getFunction("local_response_normalization_grad",
                           srcGrad->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcGradPtr, destGradPtr, srcPtr, destPtr, scalePtr,
                            destDims, halfWindow, alpha, beta});
     break;
@@ -612,7 +607,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *pad = emitConst(builder, PM->getPad());
 
     auto *F = getFunction("pool_max", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(
         F, {srcPtr, destPtr, srcDims, destDims, kernel, stride, pad});
     break;
@@ -634,7 +628,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *pad = emitConst(builder, PMXY->getPad());
 
     auto *F = getFunction("pool_max_xy", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(
         F, {srcPtr, destPtr, srcXYPtr, srcDims, destDims, kernel, stride, pad});
     break;
@@ -651,7 +644,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, PMG->getDest());
 
     auto *F = getFunction("pool_max_xy_grad", srcGrad->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(
         F, {srcGradPtr, destGradPtr, srcXYPtr, srcGradDims, destDims});
     break;
@@ -672,7 +664,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *pad = emitConst(builder, PM->getPad());
 
     auto *F = getFunction("pool_avg", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(
         F, {srcPtr, destPtr, srcDims, destDims, kernel, stride, pad});
     break;
@@ -692,7 +683,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *pad = emitConst(builder, PAG->getPad());
 
     auto *F = getFunction("pool_avg_grad", srcGrad->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcGradPtr, destGradPtr, srcGradDims, destDims,
                            kernel, stride, pad});
     break;
@@ -711,7 +701,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *offset = emitConst(builder, (size_t)destType->getOffset());
 
     auto *F = getFunction("quantize", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, srcPtr, numElem, scale, offset});
     break;
   }
@@ -730,7 +719,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *offset = emitConst(builder, (size_t)srcType->getOffset());
 
     auto *F = getFunction("dequantize", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, srcPtr, numElem, scale, offset});
     break;
   }
@@ -746,7 +734,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcDims = emitValueDims(builder, src);
 
     auto *F = getFunction("softmax", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims});
     break;
   }
@@ -763,7 +750,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *selectedDims = emitValueDims(builder, selected);
 
     auto *F = getFunction("softmax_grad", srcGrad->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(
         F, {srcGradPtr, destPtr, selectedPtr, srcGradDims, selectedDims});
     break;
@@ -778,7 +764,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *numElemVal = emitConst(builder, dest->getType()->size());
 
     auto *F = getFunction("sigmoid", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, numElemVal});
     break;
   }
@@ -792,7 +777,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *numElemVal = emitConst(builder, dest->getType()->size());
 
     auto *F = getFunction("tanh", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, numElemVal});
     break;
   }
@@ -817,7 +801,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *len = emitConst(builder, TI->getShuffle().size());
 
     auto *F = getFunction("transpose", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims, shuffle, len});
     break;
   }
@@ -833,7 +816,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto cnt = emitValueSize(builder, dest);
 
       auto *F = getFunction("elementmax0", dest->getElementType());
-      assert(F && "Unable to load the function");
       builder.CreateCall(F, {destPtr, lhsPtr, cnt});
       break;
     }
@@ -906,7 +888,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *numElemVal = emitConst(builder, numElem);
 
     auto *F = getFunction(funcName, dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, numElemVal});
     break;
   }
@@ -934,7 +915,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *offsetsArraySize = emitConst(builder, offsets.size());
 
     auto *F = getFunction("insert_tensor", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, srcPtr, offsetsPtr, destDims, srcDims,
                            destDimsSize, srcDimsSize, offsetsArraySize});
     break;
@@ -957,7 +937,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *offsetsArraySize = emitConst(builder, offsets.size());
 
     auto *F = getFunction("extract_tensor", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, destPtr, offsetsPtr, srcDims, destDims,
                            srcDimsSize, destDimsSize, offsetsArraySize});
     break;
@@ -975,7 +954,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *name = emitStringConst(builder, I->getName());
 
     auto *F = getFunction("dump_tensor");
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {srcPtr, srcDims, srcDimsSize, srcElemKind, name});
     break;
   }
