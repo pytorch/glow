@@ -676,3 +676,41 @@ TEST(Operator, TestQuantizedRescaleSequence) {
     EXPECT_NEAR(AH.at({i}), OH.at({i}), 1.0);
   }
 }
+
+TEST(Network, FCGradientCheck) {
+  // Create net representing A*X+Y=B, where X and Y are trainable, while
+  // A and B are fixed. Record gradients for X and Y after 3 steps and compare
+  // with reference values.
+  ExecutionEngine EE;
+
+  auto &mod = EE.getModule();
+  auto *A = mod.createVariable(ElemKind::FloatTy, {2, 1}, "A",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
+  auto *B = mod.createVariable(ElemKind::FloatTy, {2, 1}, "B",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
+  auto *X = mod.createVariable(ElemKind::FloatTy, {1, 1}, "X",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::Broadcast, -1.26274);
+  auto *Y = mod.createVariable(ElemKind::FloatTy, {1}, "Y",
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::Broadcast, 0.10000);
+  Function *F = mod.createFunction("main");
+  auto *FC = F->createFullyConnected("fc", A, X, Y);
+  auto *S = F->createRegression("reg", FC, B);
+  F->createSave("ret", S);
+
+  Tensor initA(ElemKind::FloatTy, {2, 1});
+  Tensor initB(ElemKind::FloatTy, {2, 1});
+  initA.getHandle() = {4.2, 9.875};
+  initB.getHandle() = {-13.1, 3.14};
+
+  Function *DF = glow::differentiate(F, EE.getConfig(), "d_main");
+  EE.compile(CompilationMode::Train, DF);
+
+  EE.runBatch(3, {A, B}, {&initA, &initB});
+
+  EXPECT_NEAR(X->getPayload().getHandle().raw(0), -0.21294, 1E-5);
+  EXPECT_NEAR(Y->getPayload().getHandle().raw(0), 0.01656, 1E-5);
+}
