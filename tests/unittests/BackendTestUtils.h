@@ -4,89 +4,78 @@
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 
-void inferBatchedAddNet(glow::Tensor *inputs1, glow::Tensor *inputs2,
-                        glow::Tensor *out, glow::BackendKind kind);
+namespace glow {
 
-void inferBatchedReduceAddNet(glow::Tensor *inputs, glow::Tensor *out,
-                              glow::BackendKind kind);
+void inferBatchedAddNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
+                        BackendKind kind);
 
-void inferConvNet(glow::Tensor *inputs, glow::Tensor *kernel,
-                  glow::Tensor *bias, glow::Tensor *out,
-                  glow::BackendKind kind);
+void inferBatchedReduceAddNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void trainConvNet(glow::Tensor *inputs, glow::Tensor *kernel1,
-                  glow::Tensor *bias1, glow::Tensor *kernel2,
-                  glow::Tensor *bias2, glow::Tensor *selected,
+void inferConvNet(Tensor *inputs, Tensor *kernel, Tensor *bias, Tensor *out,
+                  BackendKind kind);
+
+void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
+                  Tensor *kernel2, Tensor *bias2, Tensor *selected,
                   llvm::ArrayRef<size_t> shape1, llvm::ArrayRef<size_t> shape2,
-                  glow::Tensor *out, glow::BackendKind kind);
+                  Tensor *out, BackendKind kind);
 
-void inferLocalResponseNormalizationNet(glow::Tensor *inputs, glow::Tensor *out,
-                                        glow::BackendKind kind);
+void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
+                                        BackendKind kind);
 
-void trainLocalResponseNormalizationNet(
-    glow::Tensor *inputs, glow::Tensor *weights, glow::Tensor *bias,
-    glow::Tensor *selected, llvm::ArrayRef<size_t> shape1,
-    llvm::ArrayRef<size_t> shape2, glow::Tensor *out, glow::BackendKind kind);
+void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
+                                        Tensor *bias, Tensor *selected,
+                                        llvm::ArrayRef<size_t> shape1,
+                                        llvm::ArrayRef<size_t> shape2,
+                                        Tensor *out, BackendKind kind);
 
-void inferMaxNet(glow::Tensor *inputs1, glow::Tensor *inputs2,
-                 glow::Tensor *out, glow::BackendKind kind);
+void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
+                 BackendKind kind);
 
-void inferMinNet(glow::Tensor *inputs1, glow::Tensor *inputs2,
-                 glow::Tensor *out, glow::BackendKind kind);
+void inferMinNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
+                 BackendKind kind);
 
-void inferPoolAvgNet(glow::Tensor *inputs, glow::Tensor *out,
-                     glow::BackendKind kind);
+void inferPoolAvgNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void trainPoolAvgNet(glow::Tensor *inputs, glow::Tensor *weights,
-                     glow::Tensor *bias, glow::Tensor *selected,
-                     llvm::ArrayRef<size_t> shape1,
-                     llvm::ArrayRef<size_t> shape2, glow::Tensor *out,
-                     glow::BackendKind kind);
+void trainPoolAvgNet(Tensor *inputs, Tensor *weights, Tensor *bias,
+                     Tensor *selected, llvm::ArrayRef<size_t> shape1,
+                     llvm::ArrayRef<size_t> shape2, Tensor *out,
+                     BackendKind kind);
 
-void inferPoolMaxNet(glow::Tensor *inputs, glow::Tensor *out,
-                     glow::BackendKind kind);
+void inferPoolMaxNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void trainPoolMaxNet(glow::Tensor *inputs, glow::Tensor *weights,
-                     glow::Tensor *bias, glow::Tensor *selected,
-                     llvm::ArrayRef<size_t> shape1,
-                     llvm::ArrayRef<size_t> shape2, glow::Tensor *out,
-                     glow::BackendKind kind);
+void trainPoolMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
+                     Tensor *selected, llvm::ArrayRef<size_t> shape1,
+                     llvm::ArrayRef<size_t> shape2, Tensor *out,
+                     BackendKind kind);
 
-void inferQuantizeNet(glow::Tensor *inputs, float scale, int32_t offset,
-                      glow::Tensor *out, glow::BackendKind kind);
+void inferQuantizeNet(Tensor *inputs, float scale, int32_t offset, Tensor *out,
+                      BackendKind kind);
 
-void inferReluNet(glow::Tensor *inputs, glow::Tensor *out,
-                  glow::BackendKind kind);
+void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void inferReshapeNet(glow::Tensor *inputs, llvm::ArrayRef<size_t> shape,
-                     glow::Tensor *out, glow::BackendKind kind);
+void inferReshapeNet(Tensor *inputs, llvm::ArrayRef<size_t> shape, Tensor *out,
+                     BackendKind kind);
 
-void inferSelectNet(glow::Tensor *cond, glow::Tensor *inputs1,
-                    glow::Tensor *inputs2, glow::Tensor *out,
-                    glow::BackendKind kind);
+void inferSelectNet(Tensor *cond, Tensor *inputs1, Tensor *inputs2, Tensor *out,
+                    BackendKind kind);
 
-void inferSigmoidNet(glow::Tensor *inputs, glow::Tensor *out,
-                     glow::BackendKind kind);
+void inferSigmoidNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void inferSoftMaxNet(glow::Tensor *inputs, glow::Tensor *selected,
-                     glow::Tensor *out, glow::BackendKind kind);
+void inferSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
+                     BackendKind kind);
 
-void trainSoftMaxNet(glow::Tensor *inputs, glow::Tensor *weights,
-                     glow::Tensor *bias, glow::Tensor *selected,
-                     glow::Tensor *out, glow::BackendKind kind);
+void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
+                     Tensor *selected, Tensor *out, BackendKind kind);
 
-void inferTanhNet(glow::Tensor *inputs, glow::Tensor *out,
-                  glow::BackendKind kind);
+void inferTanhNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void inferBasicConvNet(glow::Tensor *inputs, glow::Tensor *out,
-                       glow::BackendKind kind);
+void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void inferBasicFCNet(glow::Tensor *inputs, glow::Tensor *out,
-                     glow::BackendKind kind);
+void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void inferMixedNet(glow::Tensor *inputs, glow::Tensor *out,
-                   glow::BackendKind kind);
+void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void inferComplexNet1(glow::Tensor *inputs1, glow::Tensor *inputs2,
-                      glow::Tensor *inputs3, glow::Tensor *inputs4,
-                      glow::Tensor *out, glow::BackendKind kind);
+void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
+                      Tensor *inputs4, Tensor *out, BackendKind kind);
+
+} // namespace glow
