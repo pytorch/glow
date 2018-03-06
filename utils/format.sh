@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR/.."
+
 if [ $(which clang-format) ]; then
   FILES=`find lib tests/unittests/ tools/ include examples -name \*.h -print -o -name \*.cpp -print`
 
