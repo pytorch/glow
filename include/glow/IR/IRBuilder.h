@@ -50,8 +50,6 @@ public:
 
   TopKInst *createTopKOp(Value *input, size_t k);
 
-  GatherInst *createGatherOp(Value *data, Value *indices);
-
   Value *createReturnOp(Value *input);
 
   ///@}
