@@ -179,21 +179,18 @@ int main(int argc, char **argv) {
       .addInput("LHS")
       .addInput("RHS")
       .addResultFromCtorArg()
-      .addGradient()
       .setDocstring("Performs Max on the LHS and RHS operands.");
 
   BB.newNode("Min")
       .addInput("LHS")
       .addInput("RHS")
       .addResultFromCtorArg()
-      .addGradient()
       .setDocstring("Performs Min on the LHS and RHS operands.");
 
   BB.newNode("CmpLTE")
       .addInput("LHS")
       .addInput("RHS")
       .addResultFromCtorArg()
-      .addGradient()
       .setDocstring("Performs CmpLTE on the LHS and RHS operands. Generates a "
                     "mask that's consumed by the select instruction. The "
                     "format of the result is target- and type-specific.");

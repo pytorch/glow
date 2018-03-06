@@ -402,9 +402,6 @@ public:
     case glow::Kinded::Kind::MulGradNodeKind:
     case glow::Kinded::Kind::SubGradNodeKind:
     case glow::Kinded::Kind::DivGradNodeKind:
-    case glow::Kinded::Kind::MaxGradNodeKind:
-    case glow::Kinded::Kind::MinGradNodeKind:
-    case glow::Kinded::Kind::CmpLTEGradNodeKind:
     case glow::Kinded::Kind::ReluNodeKind:
     case glow::Kinded::Kind::ReluGradNodeKind:
     case glow::Kinded::Kind::FullyConnectedNodeKind:

@@ -259,12 +259,6 @@ void glow::lower(Function *F, CompilationMode mode) {
       lowerSubGradNode(F, *EMG);
     } else if (auto *EMG = dyn_cast<DivGradNode>(node)) {
       lowerDivGradNode(F, *EMG);
-    } else if (auto *EMG = dyn_cast<MaxGradNode>(node)) {
-      llvm_unreachable("Unable to differentiate the Max function");
-    } else if (auto *EMG = dyn_cast<MinGradNode>(node)) {
-      llvm_unreachable("Unable to differentiate the Min function");
-    } else if (auto *EMG = dyn_cast<CmpLTEGradNode>(node)) {
-      llvm_unreachable("Unable to differentiate the CmpLTE function");
     } else if (auto *FC = dyn_cast<FullyConnectedNode>(node)) {
       lowerFullyConnectedNode(F, *FC);
     } else if (auto *FCG = dyn_cast<FullyConnectedGradNode>(node)) {

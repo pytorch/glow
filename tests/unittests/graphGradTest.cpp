@@ -20,6 +20,7 @@ TEST(GraphAutoGrad, autoGrad) {
   EE.getConfig().learningRate = 0.001;
   EE.getConfig().momentum = 0.9;
   EE.getConfig().L2Decay = 0.001;
+  EE.getConfig().L1Decay = 0.001;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");

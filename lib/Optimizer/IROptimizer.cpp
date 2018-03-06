@@ -91,6 +91,8 @@ public:
   LiveIntervalsInstructionNumbering(IRFunction &M) {
     auto &instrs = M.getInstrs();
     size_t instIdx = 0;
+    numToInstr_.reserve(instrs.size());
+  
     for (auto it = instrs.begin(), e = instrs.end(); it != e;
          instIdx += MAX_SLOT, ++it) {
       numToInstr_.push_back(it);
