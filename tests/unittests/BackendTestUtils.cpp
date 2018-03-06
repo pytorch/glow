@@ -6,7 +6,8 @@
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
 
-using namespace glow;
+namespace glow {
+
 using llvm::cast;
 
 void inferBatchedAddNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
@@ -500,3 +501,5 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
   EE.run({var1, var2, var3, var4}, {inputs1, inputs2, inputs3, inputs4});
   out->copyFrom(&result->getVariable()->getPayload());
 }
+
+} // namespace glow
