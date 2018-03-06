@@ -126,17 +126,6 @@ Value *IRBuilder::createReturnOp(Value *input) {
   return W;
 }
 
-GatherInst *IRBuilder::createGatherOp(Value *data, Value *indices) {
-  auto dDims = data->dims();
-  auto iDims = indices->dims();
-  assert(dDims.size() > 0);
-  llvm::SmallVector<size_t, 6> outDims(iDims.begin(), iDims.end());
-  outDims.insert(outDims.end(), dDims.begin() + 1, dDims.end());
-  auto *res =
-      createAllocActivationInst("gather.res", data->getElementType(), outDims);
-  return createGatherInst("gather", res, data, indices);
-}
-
 //===----------------------------------------------------------------------===//
 //                     Low level instructions.
 //===----------------------------------------------------------------------===//

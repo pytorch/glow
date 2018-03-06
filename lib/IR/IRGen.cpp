@@ -390,7 +390,10 @@ public:
       auto *GN = cast<GatherNode>(N);
       auto *dataTensor = valueForNode(GN->getData());
       auto *indicesTensor = valueForNode(GN->getIndices());
-      auto *V = builder_.createGatherOp(dataTensor, indicesTensor);
+      auto *res =
+          builder_.createAllocActivationInst("gather.res", GN->getType());
+      auto *V =
+          builder_.createGatherInst("gather", res, dataTensor, indicesTensor);
       registerIR(GN->getResult(), V->getDest());
       V->setName(N->getName());
       break;

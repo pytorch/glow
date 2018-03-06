@@ -150,6 +150,19 @@ TEST(Graph, quantizeDequantizeNodes) {
   EE.compile(CompilationMode::Infer, F);
 }
 
+TEST(Graph, quantizeGather) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  auto *input = mod.createVariable(ElemKind::Int8QTy, {2, 2}, 0.4, 2, "input",
+                                   Variable::VisibilityKind::Public);
+  auto *indices = mod.createVariable(ElemKind::IndexTy, {1}, "index",
+                                     Variable::VisibilityKind::Public);
+  auto *gather = F->createGather("gather", input, indices);
+  F->createSave("ret", gather);
+  EE.compile(CompilationMode::Infer, F);
+}
+
 TEST(Graph, cloneTest) {
   Module M;
 

@@ -805,7 +805,7 @@ GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
   llvm::SmallVector<size_t, 6> outDims(iDims.begin(), iDims.end());
   outDims.insert(outDims.end(), dDims.begin() + 1, dDims.end());
   return addNode(new GatherNode(
-      name, getParent()->uniqueType(data->getElementType(), outDims), data,
+      name, getParent()->uniqueTypeWithNewShape(data->getType(), outDims), data,
       indices));
 }
 
