@@ -237,6 +237,13 @@ int main(int argc, char **argv) {
       .inplaceOperand({"Dest", "LHS", "RHS"})
       .autoIRGen("CmpLTE");
 
+  BB.newInstr("ElementPow")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Base", OperandKind::In)
+      .addMember(MemberType::Float, "Exp")
+      .inplaceOperand({"Dest", "Base"})
+      .autoIRGen("Pow");
+
   BB.newInstr("ElementSelect")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Cond", OperandKind::In)
