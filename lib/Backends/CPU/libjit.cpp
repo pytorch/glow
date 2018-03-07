@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <sys/types.h>
 
@@ -853,6 +854,41 @@ void libjit_sigmoid_f(const float *inW, float *outW, size_t numElem) {
 void libjit_tanh_f(const float *inW, float *outW, size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
     outW[i] = tanhf(inW[i]);
+  }
+}
+
+namespace {
+struct value_index {
+  float value;
+  size_t index;
+};
+
+int value_index_sort(const void *va, const void *vb) {
+  value_index *a = (value_index *)va;
+  value_index *b = (value_index *)vb;
+  if (a->value != b->value)
+    return a->value > b->value ? -1 : 1;
+  return a->index < b->index ? -1 : 1;
+}
+} // namespace
+
+void libjit_topk_f(const float *input, float *values, size_t *indices,
+                   size_t *scratch, size_t k, size_t n, size_t size) {
+  size_t in = 0;
+  size_t out = 0;
+
+  value_index *buf = (value_index *)scratch;
+  while (in < size) {
+    for (size_t i = 0; i < n; i++) {
+      buf[i].value = input[in++];
+      buf[i].index = i;
+    }
+    qsort(buf, n, sizeof(value_index), value_index_sort);
+    for (size_t i = 0; i < k; i++) {
+      values[out] = buf[i].value;
+      indices[out] = buf[i].index;
+      out++;
+    }
   }
 }
 

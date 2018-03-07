@@ -355,6 +355,7 @@ int main(int argc, char **argv) {
       .addOperand("Values", OperandKind::Out)
       .addOperand("Indices", OperandKind::Out)
       .addOperand("Input", OperandKind::In)
+      .addOperand("Scratch", OperandKind::InOut)
       .addMember(MemberType::SizeT, "K");
 
   //===--------------------------------------------------------------------===//
