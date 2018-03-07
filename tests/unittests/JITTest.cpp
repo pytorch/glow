@@ -336,6 +336,25 @@ TEST(JITCorrectnessTest, reshapeTest) {
   EXPECT_TRUE(H1.isEqual(H2));
 }
 
+TEST(JITCorrectnessTest, reshapeIndexTest) {
+  Tensor inputs(ElemKind::IndexTy, {12, 6, 8, 12});
+  auto H = inputs.getHandle<size_t>();
+  for (size_t i = 0; i < H.size(); i++) {
+    H.raw(i) = i;
+  }
+  std::array<size_t, 4> S{{18, 4, 24, 4}};
+  llvm::ArrayRef<size_t> shape(S);
+  Tensor out1;
+  Tensor out2;
+
+  inferReshapeNet(&inputs, shape, &out1, BackendKind::JIT);
+  inferReshapeNet(&inputs, shape, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle<size_t>();
+  auto H2 = out2.getHandle<size_t>();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
 TEST(JITCorrectnessTest, selectTest) {
   std::array<size_t, 4> S{{5, 3, 9, 2}};
   llvm::ArrayRef<size_t> shape(S);

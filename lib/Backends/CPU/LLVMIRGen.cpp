@@ -445,10 +445,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     CopyInst *CI = cast<CopyInst>(I);
     auto *dest = CI->getDest();
     auto *destPtr = emitValueAddress(builder, dest);
+    destPtr = builder.CreateBitCast(destPtr, builder.getInt8PtrTy());
     auto *srcPtr = emitValueAddress(builder, CI->getSrc());
+    srcPtr = builder.CreateBitCast(srcPtr, builder.getInt8PtrTy());
     auto *bytes = emitConstST(builder, dest->getType()->getSizeInBytes());
 
-    auto *F = getFunction("copy", dest->getElementType());
+    auto *F = getFunction("copy");
     builder.CreateCall(F, {destPtr, srcPtr, bytes});
     break;
   }
