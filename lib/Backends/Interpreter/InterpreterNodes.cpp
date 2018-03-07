@@ -1557,7 +1557,3 @@ void Interpreter::fwdRescaleQuantizedInst(bool isTrain,
     destH.raw(i) = quantization::quantize(val, destQ);
   }
 }
-
-void Interpreter::fwdIntrinsicInst(bool isTrain, const glow::IntrinsicInst *I) {
-  llvm_unreachable("The interpreter should not handle intrinsic instructions");
-}

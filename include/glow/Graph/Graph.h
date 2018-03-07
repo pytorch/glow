@@ -213,11 +213,6 @@ public:
   BroadcastNode *createBroadcast(llvm::StringRef name, NodeValue input,
                                  UnsignedArrayRef shape, unsigned axis);
 
-  IntrinsicNode *createIntrinsicNode(llvm::StringRef name,
-                                     llvm::StringRef identifier,
-                                     llvm::ArrayRef<Node *> inputs,
-                                     llvm::ArrayRef<TypeRef> outputs);
-
   /// Create concat node which concatenates input tensors along \p dimension.
   ConcatNode *createConcat(llvm::StringRef name, llvm::ArrayRef<Node *> inputs,
                            unsigned dimension);

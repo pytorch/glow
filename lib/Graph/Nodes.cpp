@@ -874,10 +874,6 @@ void GatherNode::verify() const {
          getData().dims().size() + getIndices().dims().size() - 1);
 }
 
-void IntrinsicNode::verify() const {
-  assert(getName().size() && "Name must not be empty");
-}
-
 void SaveNode::verify() const { checkSameType(getInput(), getOutput()); }
 
 void PowNode::verify() const { checkSameType(getResult(), getBase()); }
