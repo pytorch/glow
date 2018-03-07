@@ -243,6 +243,133 @@ void lowerSGDNode(Function *F, SGDNode &SGD) {
   F->createSave("saveW", newW, llvm::cast<Variable>(W.getNode()));
 }
 
+void lowerBatchNormalizationNodeForInference(Function *F,
+                                             BatchNormalizationNode &BN) {
+  auto in = BN.getInput();
+  auto out = BN.getResult();
+
+  auto beta = BN.getBias();
+  auto gamma = BN.getScale();
+  auto var = BN.getVar();
+  auto mean = BN.getMean();
+
+  // http://cthorey.github.io/backpropagation/
+  //
+  // mu = 1/N*np.sum(h,axis =0)
+  // sigma2 = 1/N*np.sum((h-mu)**2)
+  // hath = (h-mu)*(sigma2+epsilon)**(-1./2.)
+  // y = gamma*hath+beta
+
+  // In inference mode just apply the transformation:
+  // y[i] = (x - mu) * gamma / stdvar + beta;
+
+  auto channelIdx = BN.getChannelIdx();
+  auto epsilon = BN.getEpsilon();
+
+  auto epsilonSplat = F->createSplat("epsSplat", var.getType(), epsilon);
+  Node* coef = F->createAdd("var_plus_eps", var, epsilonSplat);
+  coef = F->createPow("sqrt_var_plus_eps", coef, 0.5);
+  coef = F->createDiv("inverse_sqrt_var_plus_eps", gamma, coef);
+
+  // Apply: out := (in - mean) * coef + beta
+  // in and out are of the same size, while others must be broadcasted.
+  auto meanB = F->createBroadcast("muBroadcasted", mean, in.dims(), channelIdx);
+  auto coefB = F->createBroadcast("coefBroadcasted", coef, in.dims(), channelIdx);
+  auto betaB = F->createBroadcast("betaBroadcasted", beta, in.dims(), channelIdx);
+  
+  Node* newResult = F->createSub("in_minus_mean", in, meanB);
+  newResult = F->createMul("mul_coef", newResult, coefB);
+  newResult = F->createAdd("result", newResult, betaB);
+
+  BN.getResult().replaceAllUsesOfWith(newResult);
+}
+
+void computeBatchNormalizationWeights(Function *F,
+                                      BatchNormalizationNode &BN) {
+  auto in = BN.getInput();
+
+  auto mean = BN.getMean();
+  auto var = BN.getVar();
+
+  auto channelIdx = BN.getChannelIdx();
+  auto momentum = BN.getMomentum();
+
+  // The number of different channels.
+  const size_t numChannels = in.dims()[channelIdx];
+  // The number of elements that each channel holds.
+  const size_t samplesPerChannel = in.getType()->size() / numChannels;
+
+  // Input tensor can have arbitrary shape:
+  // {d_1, d_2, ..., d[channelIdx], ... d_n}
+  // We need to compute Mean and Variance for each channel, 2 tensors of shape:
+  // {d[channelIdx]} (which is {numChannels})
+  // That is, some sort of aggregation needs to happen for each channel.
+  NodeValue inPrep = in;
+  if (channelIdx + 1 != in.dims().size()) {
+    // If channelIdx is not the last, transform input tensor to shape:
+    // {d_1, d_2, ... d_n, numChannels}
+    std::vector<unsigned> perm(in.dims().size());
+    for (size_t i = 0; i < perm.size(); i++)
+      perm[i] = i;
+    std::swap(perm[channelIdx], perm[perm.size() - 1]);
+    inPrep = F->createTranspose("in.transpose", in, perm);
+  }
+  // Reshape input tensor to form:
+  // {samplesPerChannel, numChannels}
+  Node* inFlat = F->createReshape("in.flat", inPrep,
+                                  {samplesPerChannel, numChannels});
+
+  // Calculate Mean:
+
+  // sum(in[i])
+  // reduce the tensor by the first dimension, to get {numChannels}
+  Node* localMean = F->createBatchedReduceAdd("in.sum", inFlat);
+  // Mean = sum(in[i]) / N
+  auto samplesPerChannelSplat = F->createSplat(
+      "samplesPerChannelSplat", localMean->getType(), samplesPerChannel);
+  localMean = F->createDiv("localMean", localMean, samplesPerChannelSplat);
+
+  // Calculate Variance:
+
+  // sum((x - mu) ^ 2)
+  auto localMeanB = F->createBroadcast(
+      "new_mean_broadcasted",
+      localMean, inFlat->dims(), 1);
+
+  Node* localVar = F->createSub("x_mu", inFlat, localMeanB);
+  localVar = F->createPow("x_mu2", localVar, 2);
+  localVar = F->createBatchedReduceAdd("x_mu2.sum", localVar);
+  // Var = sum((x - mu) ^ 2) / N
+  localVar = F->createDiv("localVar", localVar, samplesPerChannelSplat);
+
+  // Update the global variance and mean:
+  auto momentumSplat = F->createSplat(
+      "momentumSplat", localMean->getType(), momentum);
+  auto oneMinusMomentumSplat = F->createSplat(
+      "oneMinusMomentumSplat", localMean->getType(), 1 - momentum);
+
+  // newMean := P * localMean + (1 - P) * oldMean
+  auto newMean = F->createAdd(
+    "newMean",
+    F->createMul("momentum_by_localMean", momentumSplat, localMean),
+    F->createMul("1_momentum_by_oldMean", oneMinusMomentumSplat, mean));
+  // newVar := P * localVar + (1 - P) * oldVar
+  auto newVar = F->createAdd(
+    "newVar",
+    F->createMul("momentum_by_localVar", momentumSplat, localVar),
+    F->createMul("1_momentum_by_oldVar", oneMinusMomentumSplat, var));
+  
+  // TODO: don't rely on operands' indices
+  assert(BN.getInputName(3) == "Mean");
+  assert(BN.getInputName(4) == "Var");
+  BN.getNthInput(3).setOperand(newMean, 0);
+  BN.getNthInput(4).setOperand(newVar, 0);
+  // TODO: also consider updating corresponding BatchNormalizationGradNode
+
+  F->createSave("saveMean", newMean, llvm::cast<Variable>(mean.getNode()));
+  F->createSave("saveVar", newVar, llvm::cast<Variable>(var.getNode()));
+}
+
 void glow::lower(Function *F, CompilationMode mode) {
   auto &nodes = F->getNodes();
 
@@ -273,6 +400,10 @@ void glow::lower(Function *F, CompilationMode mode) {
       lowerSigmoidGradNode(F, *SG);
     } else if (auto *SGD = dyn_cast<SGDNode>(node)) {
       lowerSGDNode(F, *SGD);
+    } else if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
+      if (mode == CompilationMode::Train)
+        computeBatchNormalizationWeights(F, *BN);
+      lowerBatchNormalizationNodeForInference(F, *BN);
     }
   }
 
