@@ -366,7 +366,7 @@ int main(int argc, char **argv) {
       .addOverwrittenInput("ComputationInfo")
       .addOverwrittenInput("Histogram")
       .setHasSideEffects(true)
-      .setDocstring("Generate profile (distribution of values) of the Input"
+      .setDocstring("Generate profile (distribution of values) of the Input "
                     "tensor. This data is used for quantization of the tensor "
                     "later on.");
 
@@ -375,7 +375,7 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .setDocstring("Quantize floating point tensor. This operation converts "
                     "floating point numbers to integers based on the given "
-                    "Scale and Offset. Scale and Offset are deduced from the"
+                    "Scale and Offset. Scale and Offset are deduced from the "
                     "type of the output."
                     "x_q = clip(round(x/Scale) + Offset, -128, 127)");
 
@@ -403,7 +403,7 @@ int main(int argc, char **argv) {
       .setDocstring("Finds the top K maximal elements for each vector in the "
                     "tensor. Vectors are defined as the last dimension in the "
                     "tensor. The input shape {D_0, D_1, ... D_n} results in "
-                    "theoutputs {D_0, D_1, ... D_n-1, K}, sorted in "
+                    "the outputs {D_0, D_1, ... D_n-1, K}, sorted in "
                     "non-decreasing order.");
 
   //===--------------------------------------------------------------------===//
