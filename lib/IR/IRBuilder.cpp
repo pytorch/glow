@@ -112,11 +112,15 @@ TopKInst *IRBuilder::createTopKOp(Value *input, size_t k) {
   assert(k <= inDims.back());
   llvm::SmallVector<size_t, 6> outDims(inDims.begin(), inDims.end());
   outDims.back() = k;
+  // Allocate enough scratch space to hold N values and N indices.
+  auto *scratch = createAllocActivationInst("topk.scratch", ElemKind::IndexTy,
+                                            {inDims.back() * 2});
+  createSplatInst("topk.zero.scratch", scratch, 0);
   auto *values = createAllocActivationInst("topk.values",
                                            input->getElementType(), outDims);
   auto *indices =
       createAllocActivationInst("topk.indices", ElemKind::IndexTy, outDims);
-  return createTopKInst("topk", values, indices, input, k);
+  return createTopKInst("topk", values, indices, input, scratch, k);
 }
 
 Value *IRBuilder::createReturnOp(Value *input) {

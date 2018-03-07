@@ -783,6 +783,25 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::TopKInstKind: {
+    TopKInst *TI = cast<TopKInst>(I);
+
+    auto *input = TI->getInput();
+    auto *valuesPtr = emitValueAddress(builder, TI->getValues());
+    auto *indicesPtr = emitValueAddress(builder, TI->getIndices());
+    auto *scratchPtr = emitValueAddress(builder, TI->getScratch());
+    auto *inputPtr = emitValueAddress(builder, input);
+
+    auto *k = emitConstST(builder, TI->getK());
+    auto *n = emitConstST(builder, input->dims().back());
+    auto *size = emitConstST(builder, input->getType()->size());
+
+    auto *F = getFunction("topk", input->getElementType());
+    builder.CreateCall(
+        F, {inputPtr, valuesPtr, indicesPtr, scratchPtr, k, n, size});
+    break;
+  }
+
   case Kinded::Kind::TransposeInstKind: {
     TransposeInst *TI = cast<TransposeInst>(I);
     auto *dest = TI->getDest();
