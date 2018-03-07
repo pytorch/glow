@@ -24,18 +24,16 @@ static bool isZeroNode(NodeValue N) {
 bool CPUBackend::transform(Function *F) {
   bool changed = false;
   for (auto node : F->getNodes()) {
-    if (auto *AN = dyn_cast<MaxNode>(node)) {
-      if (isZeroNode(AN->getLHS())) {
-        auto I = F->createIntrinsicNode(AN->getName(), "jit.max0",
-                                        {AN->getRHS()}, {AN->getType()});
-        NodeValue(node, 0).replaceAllUsesOfWith(I);
+    if (auto *MN = dyn_cast<MaxNode>(node)) {
+      if (isZeroNode(MN->getLHS())) {
+        auto MZN = F->addNode(new CPUMaxZeroNode(MN->getName(), MN->getRHS()));
+        NodeValue(node, 0).replaceAllUsesOfWith(MZN);
         changed = true;
         continue;
       }
-      if (isZeroNode(AN->getRHS())) {
-        auto I = F->createIntrinsicNode(AN->getName(), "jit.max0",
-                                        {AN->getLHS()}, {AN->getType()});
-        NodeValue(node, 0).replaceAllUsesOfWith(I);
+      if (isZeroNode(MN->getRHS())) {
+        auto MZN = F->addNode(new CPUMaxZeroNode(MN->getName(), MN->getRHS()));
+        NodeValue(node, 0).replaceAllUsesOfWith(MZN);
         changed = true;
         continue;
       }

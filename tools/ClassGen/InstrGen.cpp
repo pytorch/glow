@@ -363,5 +363,11 @@ int main(int argc, char **argv) {
       .addOperand("Input", OperandKind::In)
       .addMember(MemberType::SizeT, "K");
 
+  //===--------------------------------------------------------------------===//
+  //                Backend-Specific Instructions
+  //===--------------------------------------------------------------------===//
+
+#include "Backends/CPU/CPUSpecificInstrs.h"
+
   return 0;
 }
