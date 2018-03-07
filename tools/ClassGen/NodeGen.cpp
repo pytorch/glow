@@ -419,5 +419,11 @@ int main(int argc, char **argv) {
                     "theoutputs {D_0, D_1, ... D_n-1, K}, sorted in "
                     "non-decreasing order.");
 
+  //===--------------------------------------------------------------------===//
+  //                Backend-Specific Nodes
+  //===--------------------------------------------------------------------===//
+
+#include "Backends/CPU/CPUSpecificNodes.h"
+
   return 0;
 }

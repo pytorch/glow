@@ -805,21 +805,22 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::CPUMaxZeroInstKind: {
+    CPUMaxZeroInst *MZ = cast<CPUMaxZeroInst>(I);
+    auto *dest = MZ->getDest();
+    auto *src = MZ->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *lhsPtr = emitValueAddress(builder, src);
+
+    auto cnt = emitValueSize(builder, dest);
+
+    auto *F = getFunction("elementmax0", dest->getElementType());
+    assert(F && "Unable to load the function");
+    builder.CreateCall(F, {destPtr, lhsPtr, cnt});
+    break;
+  }
+
   case Kinded::Kind::IntrinsicInstKind: {
-    IntrinsicInst *II = cast<IntrinsicInst>(I);
-    if (II->getIdentifier().equals("jit.max0")) {
-      auto *dest = II->getOperand(0).first;
-      auto *src = II->getOperand(1).first;
-      auto *destPtr = emitValueAddress(builder, dest);
-      auto *lhsPtr = emitValueAddress(builder, src);
-
-      auto cnt = emitValueSize(builder, dest);
-
-      auto *F = getFunction("elementmax0", dest->getElementType());
-      builder.CreateCall(F, {destPtr, lhsPtr, cnt});
-      break;
-    }
-
     llvm_unreachable("Unknown intrinsic");
   }
 
