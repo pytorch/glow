@@ -68,7 +68,7 @@ public:
 
   void doForwardPass(bool isTrain) override;
 
-  bool transform(Function *F) override;
+  bool transformPostLowering(Function *F) override;
   /// @}
 };
 
