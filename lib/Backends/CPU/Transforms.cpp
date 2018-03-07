@@ -21,7 +21,7 @@ static bool isZeroNode(NodeValue N) {
   return splat->getValue() == 0;
 }
 
-bool CPUBackend::transform(Function *F) {
+bool CPUBackend::transformPostLowering(Function *F) {
   bool changed = false;
   for (auto node : F->getNodes()) {
     if (auto *MN = dyn_cast<MaxNode>(node)) {

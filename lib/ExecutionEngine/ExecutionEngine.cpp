@@ -113,14 +113,21 @@ void ExecutionEngine::generateIR(CompilationMode mode, Function *F) {
   // Optimized the graph.
   ::glow::optimize(F, mode);
 
+  // Allow the backend to transform the graph prior to lowering.
+  if (IP_->transformPreLowering(F)) {
+    // Optimize the graph again after the backend transformation.
+    // In particular, DCE is very likely to be useful.
+    ::glow::optimize(F, mode);
+  }
+
   // Lower the graph into a sequence of low-level linear algebra operations.
   ::glow::lower(F, mode);
 
   // Optimized the graph again.
   ::glow::optimize(F, mode);
 
-  // Allow the backend to transform the graph.
-  if (IP_->transform(F)) {
+  // Allow the backend to transform the graph after lowering.
+  if (IP_->transformPostLowering(F)) {
     // Optimize the graph again after the backend transformation.
     // In particular, DCE is very likely to be useful.
     ::glow::optimize(F, mode);
