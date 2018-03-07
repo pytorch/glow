@@ -879,9 +879,7 @@ void IntrinsicNode::verify() const {
 
 void SaveNode::verify() const { checkSameType(getInput(), getOutput()); }
 
-void PowNode::verify() const {
-  checkSameType(getResult(), getBase());
-}
+void PowNode::verify() const { checkSameType(getResult(), getBase()); }
 
 void SelectNode::verify() const {
   checkSameType(getResult(), getCond());

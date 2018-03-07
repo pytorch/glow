@@ -1121,6 +1121,27 @@ void Interpreter::fwdElementSubInst(bool isTrain, const ElementSubInst *I) {
 }
 
 void Interpreter::fwdElementMulInst(bool isTrain, const ElementMulInst *I) {
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    auto lhsTy = I->getLHS()->getType();
+    auto rhsTy = I->getRHS()->getType();
+    auto destTy = I->getDest()->getType();
+
+    TensorQuantizationParams lhsQ{lhsTy->getScale(), lhsTy->getOffset()};
+    TensorQuantizationParams rhsQ{rhsTy->getScale(), rhsTy->getOffset()};
+    TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
+
+    auto outW = getWeightHandle<int8_t>(I->getDest());
+    auto lhsW = getWeightHandle<int8_t>(I->getLHS());
+    auto rhsW = getWeightHandle<int8_t>(I->getRHS());
+    float scale = lhsQ.scale_ * rhsQ.scale_ / destQ.scale_;
+    for (size_t i = 0, e = outW.size(); i < e; i++) {
+      int32_t mul = (lhsW.raw(i) - lhsQ.offset_) * (rhsW.raw(i) - rhsQ.offset_);
+      outW.raw(i) = quantization::clip<int32_t, int8_t>(
+          std::round(mul * scale) + destQ.offset_);
+    }
+    return;
+  }
+
   auto outW = getWeightHandle(I->getDest());
   auto lhsW = getWeightHandle(I->getLHS());
   auto rhsW = getWeightHandle(I->getRHS());
