@@ -603,29 +603,34 @@ TEST(Operator, QuantizedArithmeticNode) {
   auto *O3 = mod.createVariable(ElemKind::FloatTy, {len}, "OutMin",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
+  auto *O4 = mod.createVariable(ElemKind::FloatTy, {len}, "OutMul",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
 
   auto AH = A->getHandle();
   auto BH = B->getHandle();
   auto O1H = O1->getHandle();
   auto O2H = O2->getHandle();
   auto O3H = O3->getHandle();
+  auto O4H = O4->getHandle();
 
-  AH.randomize(-100, 100);
+  AH.randomize(-10, 10);
   BH.randomize(-10, 10);
 
-  auto TA = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
+  auto TA = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.2, 0);
   auto TB = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.1, 0);
   auto TO1 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
   auto TO2 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 0);
   auto TO3 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.1, 0);
   auto TO4 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.2, 0);
 
-  // Quantize input vars and apply max/add/min quantized.
+  // Quantize input vars and apply max/add/min/mul quantized.
   auto *QA = F->createQuantize("QA", A, TA);
   auto *QB = F->createQuantize("QB", B, TB);
   Node *max = F->createMax("max", TO1, QA, QB);
   Node *add = F->createAdd("add", TO2, QA, QB);
   Node *min = F->createMin("min", TO1, QA, QB);
+  Node *mul = F->createMul("mul", TO1, QA, QB);
 
   // Rescale quantized results.
   max = F->createRescaleQuantized("rescaleMax", max, TO3);
@@ -636,11 +641,13 @@ TEST(Operator, QuantizedArithmeticNode) {
   add = F->createDequantize("addDq", add);
   max = F->createDequantize("maxDq", max);
   min = F->createDequantize("minDq", min);
+  mul = F->createDequantize("mulDq", mul);
 
   // Save results of the operations.
   F->createSave("saveAdd", add, O1);
   F->createSave("saveMax", max, O2);
   F->createSave("saveMin", min, O3);
+  F->createSave("saveMul", mul, O4);
 
   EE.compile(CompilationMode::Infer, F);
   EE.run({}, {});
@@ -649,11 +656,13 @@ TEST(Operator, QuantizedArithmeticNode) {
     auto max = std::max(AH.at({i}), BH.at({i}));
     auto add = AH.at({i}) + BH.at({i});
     auto min = std::min(AH.at({i}), BH.at({i}));
+    auto mul = AH.at({i}) * BH.at({i});
 
     // We generate numbers up to 110, so a difference of 2 (~2%) is reasonable.
     EXPECT_NEAR(add, O1H.at({i}), 2.0);
     EXPECT_NEAR(max, O2H.at({i}), 2.0);
     EXPECT_NEAR(min, O3H.at({i}), 2.0);
+    EXPECT_NEAR(mul, O4H.at({i}), 2.0);
   }
 }
 

@@ -73,7 +73,8 @@ TEST(Graph, QuantizationProfileNodes) {
   auto *Ex = MD.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
 
   // Add non float operation, which should not be profiled.
-  auto *outQTy = F->getParent()->uniqueType(glow::ElemKind::Int8QTy, {numInputs, 2}, 1.5, 6);
+  auto *outQTy = F->getParent()->uniqueType(glow::ElemKind::Int8QTy,
+                                            {numInputs, 2}, 1.5, 6);
   F->createQuantize("quantize", A, outQTy);
 
   // Create two nodes reading from the same variable.
