@@ -292,12 +292,8 @@ void libjit_batchedreduceadd_f(float *dest, const float *batch, size_t destSize,
   }
 }
 
-void libjit_copy_f(float *dest, const float *src, size_t bytes) {
-  uint8_t *buf_d = (uint8_t *)dest;
-  const uint8_t *buf_s = (const uint8_t *)src;
-  for (int i = 0; i < bytes; i++) {
-    buf_d[i] = buf_s[i];
-  }
+void libjit_copy(void *dest, const void *src, size_t bytes) {
+  memcpy(dest, src, bytes);
 }
 
 void libjit_element_cmp_lte_f(float *dest, const float *LHS, const float *RHS,
