@@ -392,19 +392,6 @@ int main(int argc, char **argv) {
                     "Offset.");
 
   //===--------------------------------------------------------------------===//
-  //                Nodes used by generic transformations
-  //===--------------------------------------------------------------------===//
-  BB.newNode("Intrinsic")
-      .addMember(MemberType::VectorNodeValue, "Inputs")
-      .addMember(MemberType::String, "Identifier")
-      .addIntrinsicOutput()
-      .setDocstring("This is a general intrinsic node that represents an "
-                    "opaque unknown operation. The node is variadic, which "
-                    "means that it has an unspecified number of inputs and "
-                    "outputs. The node has an identifier to identify the kind "
-                    "of node.");
-
-  //===--------------------------------------------------------------------===//
   //                Nodes used by RNN
   //===--------------------------------------------------------------------===//
 

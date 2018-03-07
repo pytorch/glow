@@ -557,18 +557,6 @@ static bool sameSameShapeExceptDim(TypeRef T1, TypeRef T2, unsigned dim) {
   return true;
 }
 
-IntrinsicNode *Function::createIntrinsicNode(llvm::StringRef name,
-                                             llvm::StringRef identifier,
-                                             llvm::ArrayRef<Node *> inputs,
-                                             llvm::ArrayRef<TypeRef> outputs) {
-  std::vector<NodeValue> ops;
-  ops.reserve(inputs.size());
-  for (auto &I : inputs) {
-    ops.emplace_back(I);
-  }
-  return addNode(new IntrinsicNode(name, outputs, ops, identifier));
-}
-
 ConcatNode *Function::createConcat(llvm::StringRef name,
                                    llvm::ArrayRef<Node *> inputs,
                                    unsigned dimension) {

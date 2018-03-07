@@ -86,37 +86,6 @@ public:
       // Include all automatically generated cases:
 #include "AutoGenIRGen.h"
 
-    case glow::Kinded::Kind::IntrinsicNodeKind: {
-      auto *II = cast<IntrinsicNode>(N);
-
-      // A list of destination buffers.
-      llvm::SmallVector<Value *, 4> dest;
-
-      // Create the result buffers:
-      for (int i = 0, e = II->getNumResults(); i < e; i++) {
-        auto *out0 = builder_.createAllocActivationInst(
-            "dest", NodeValue(II, i)->getType());
-        dest.push_back(out0);
-      }
-
-      // Generate the intrinsic instruction.
-      auto *instr =
-          builder_.createIntrinsicInst(II->getName(), II->getIdentifier());
-
-      // Add the results to the instruction.
-      for (int i = 0, e = dest.size(); i < e; i++) {
-        instr->pushOperand({dest[i], OperandKind::Out});
-        registerIR(NodeValue(II, i), dest[i]);
-      }
-
-      // Add the inputs.
-      for (int i = 0, e = II->glow::Node::getNumInputs(); i < e; i++) {
-        auto *in = valueForNode(II->glow::Node::getNthInput(i));
-        instr->pushOperand({in, OperandKind::In});
-      }
-
-      break;
-    }
     case glow::Kinded::Kind::ConvolutionGradNodeKind: {
       auto *CG = cast<ConvolutionGradNode>(N);
 

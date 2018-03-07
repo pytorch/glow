@@ -48,9 +48,6 @@ class NodeBuilder {
   std::string docstring_;
   /// Whether node has side effects. By default there are no side effects.
   bool hasSideEffects_{false};
-  /// Whether the node has an intrinsic set of outputs.  By default there
-  /// are no intrinsic outputs.
-  bool hasIntrinsicOutput_{false};
 
   /// Specifies if this Node is backend specific.
   bool isBackendSpecific_{false};
@@ -74,12 +71,6 @@ public:
   /// For example: "Filter".
   NodeBuilder &addMember(MemberType type, const std::string &name) {
     members_.push_back({type, name});
-    return *this;
-  }
-
-  /// Marks this instruction as having non-fixed number of return types.
-  NodeBuilder &addIntrinsicOutput() {
-    hasIntrinsicOutput_ = true;
     return *this;
   }
 

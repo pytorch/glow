@@ -27,10 +27,6 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
     os << ", Mode mode";
   }
 
-  if (hasIntrinsicOutput_) {
-    os << ", std::vector<TypeRef> intrinsicOutputs";
-  }
-
   // The operands of the graph node:
   for (const auto &op : nodeInputs_) {
     os << ", NodeValue " << op;
@@ -63,14 +59,6 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
   os << " {\n";
   for (auto &RT : nodeOutputs_) {
     os << "    addResult(" << RT.first << ");\n";
-  }
-
-  // Instantiate outputs passed in at runtime for the
-  // case of intrinsic output.
-  if (hasIntrinsicOutput_) {
-    os << "    for (const auto& output : intrinsicOutputs) {\n";
-    os << "      addResult(output);\n";
-    os << "    }\n";
   }
 
   os << "  }\n";
@@ -247,12 +235,6 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
 void NodeBuilder::emitCloner(std::ostream &os) const {
   os << "\nNode* " << name_ << "Node::clone() const {\n";
 
-  if (hasIntrinsicOutput_) {
-    os << "  std::vector<TypeRef> nodeVAResultTypes;\n";
-    os << "  for (unsigned i = 0, e = getNumResults(); i < e; i++) {\n";
-    os << "    nodeVAResultTypes.push_back(getNthResult(i).getType());\n}\n";
-  }
-
   os << "  return new " << name_ << "Node(getName()";
 
   // Pass the external type arguments:
@@ -263,10 +245,6 @@ void NodeBuilder::emitCloner(std::ostream &os) const {
   // The enum 'Mode' parameter:
   if (!enum_.empty()) {
     os << ", getMode()";
-  }
-
-  if (hasIntrinsicOutput_) {
-    os << ", nodeVAResultTypes";
   }
 
   // The operands of the graph node:

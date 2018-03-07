@@ -476,10 +476,6 @@ void GatherInst::verify() const {
          getData()->dims().size() + getIndices()->dims().size() - 1);
 }
 
-void IntrinsicInst::verify() const {
-  assert(getName().size() && "Name must not be empty");
-}
-
 void DebugPrintInst::verify() const {
   // Nothing to verify.
 }

@@ -821,10 +821,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::IntrinsicInstKind: {
-    llvm_unreachable("Unknown intrinsic");
-  }
-
   case Kinded::Kind::ElementDivInstKind:
   case Kinded::Kind::ElementMulInstKind:
   case Kinded::Kind::ElementAddInstKind:
