@@ -176,6 +176,32 @@ TEST(Operator, broadcast) {
   }
 }
 
+TEST(Operator, minElem) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  unsigned len = 5;
+
+  auto *LHS = mod.createVariable(ElemKind::FloatTy, {len}, "lhs");
+  auto *RHS = mod.createVariable(ElemKind::FloatTy, {len}, "rhs");
+  auto *min = F->createMin("min", LHS, RHS);
+  auto *save = F->createSave("min", min);
+
+  LHS->getHandle().randomize(-10, 10);
+  RHS->getHandle().randomize(-10, 10);
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+
+  auto resultH = save->getVariable()->getHandle();
+  auto LHSH = LHS->getHandle();
+  auto RHSH = RHS->getHandle();
+
+  for (size_t i = 0; i < len; i++) {
+    EXPECT_EQ(resultH.raw(i), std::min(LHSH.raw(i), RHSH.raw(i)));
+  }
+}
+
 TEST(Operator, TopK) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
