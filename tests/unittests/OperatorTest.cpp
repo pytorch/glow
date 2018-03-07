@@ -293,6 +293,29 @@ TEST(Operator, Gather) {
   EXPECT_FLOAT_EQ(H.at({1, 3, 1}), 1.2);
 }
 
+TEST(Interpreter, QuantizeAndDequantize) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  Tensor inputs(ElemKind::FloatTy, {1, 4});
+  inputs.getHandle() = {1, 1.2, 0.5, 1.3};
+
+  auto *A = mod.createVariable(ElemKind::FloatTy, {1, 4}, "A",
+                               Variable::VisibilityKind::Public);
+
+  auto qType = mod.uniqueType(ElemKind::Int8QTy, {1, 4}, 0.05, -138);
+  auto *quantize = F->createQuantize("quantize", A, qType);
+  auto *dequantize = F->createDequantize("dequantize", quantize);
+  auto *result = F->createSave("save", dequantize);
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({A}, {&inputs});
+
+  auto resultHandle = result->getVariable()->getHandle();
+  auto expectedHandle = inputs.getHandle();
+  EXPECT_TRUE(expectedHandle.isEqual(resultHandle));
+}
+
 TEST(Operator, IntMatMul) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
@@ -752,4 +775,103 @@ TEST(Network, FCGradientCheck) {
 
   EXPECT_NEAR(X->getPayload().getHandle().raw(0), -0.21294, 1E-5);
   EXPECT_NEAR(Y->getPayload().getHandle().raw(0), 0.01656, 1E-5);
+}
+
+TEST(Network, concatVectors) {
+  ExecutionEngine EE;
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  F->setName("concatVectors");
+
+  auto *V1 = mod.createVariable(ElemKind::IndexTy, {10}, "V1",
+                                Variable::VisibilityKind::Public);
+  auto *V2 = mod.createVariable(ElemKind::IndexTy, {20}, "V2",
+                                Variable::VisibilityKind::Public);
+  auto *V3 = mod.createVariable(ElemKind::IndexTy, {30}, "V3",
+                                Variable::VisibilityKind::Public);
+
+  Node *L = F->createConcat("concat", {V1, V2, V3}, 0);
+  auto *result = F->createSave("ret", L);
+
+  Tensor I1(ElemKind::IndexTy, {10});
+  Tensor I2(ElemKind::IndexTy, {20});
+  Tensor I3(ElemKind::IndexTy, {30});
+
+  for (size_t i = 0; i < 10; i++) {
+    I1.getHandle<size_t>().at({i}) = i;
+
+    I2.getHandle<size_t>().at({i}) = i + 10;
+    I2.getHandle<size_t>().at({i + 10}) = i + 20;
+    I3.getHandle<size_t>().at({i}) = i + 30;
+    I3.getHandle<size_t>().at({i + 10}) = i + 40;
+    I3.getHandle<size_t>().at({i + 20}) = i + 50;
+  }
+
+  EE.compile(CompilationMode::Infer, F);
+
+  // Testing the output vector.
+  EE.run({V1, V2, V3}, {&I1, &I2, &I3});
+  auto RNWH = result->getVariable()->getPayload().getHandle<size_t>();
+  (void)RNWH;
+
+  for (size_t i = 0; i < 60; i++) {
+    EXPECT_NEAR(RNWH.at({i}), i, 0.001);
+  }
+}
+
+TEST(Network, sliceVectors) {
+  ExecutionEngine EE;
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  F->setName("sliceVectors");
+
+  auto *V = mod.createVariable(ElemKind::IndexTy, {3, 30}, "V",
+                               Variable::VisibilityKind::Public);
+
+  Node *S1 = F->createSlice("slice1", V, {0, 10}, {3, 13});
+  Node *S2 = F->createSlice("slice2", V, {1, 10}, {2, 30});
+  Node *S3 = F->createSlice("slice3", V, {2, 10}, {3, 12});
+
+  auto *result1 = F->createSave("ret1", S1);
+  auto *result2 = F->createSave("ret2", S2);
+  auto *result3 = F->createSave("ret3", S3);
+
+  Tensor I(ElemKind::IndexTy, {3, 30});
+
+  for (size_t j = 0; j < 30; j++) {
+    I.getHandle<size_t>().at({0, j}) = j;
+    I.getHandle<size_t>().at({1, j}) = j + 30;
+    I.getHandle<size_t>().at({2, j}) = j + 60;
+  }
+
+  EE.compile(CompilationMode::Infer, F);
+
+  // Testing the output slices.
+  EE.run({V}, {&I});
+  auto RNWH1 = result1->getVariable()->getPayload().getHandle<size_t>();
+  (void)RNWH1;
+  auto RNWH2 = result2->getVariable()->getPayload().getHandle<size_t>();
+  (void)RNWH2;
+  auto RNWH3 = result3->getVariable()->getPayload().getHandle<size_t>();
+  (void)RNWH3;
+
+  EXPECT_EQ(3, RNWH1.dims()[0]);
+  EXPECT_EQ(3, RNWH1.dims()[1]);
+  for (size_t i = 0; i < 3; i++) {
+    for (size_t j = 10; j < 13; j++) {
+      EXPECT_NEAR(RNWH1.at({i, j - 10}), j + i * 30, 0.001);
+    }
+  }
+  EXPECT_EQ(1, RNWH2.dims()[0]);
+  EXPECT_EQ(20, RNWH2.dims()[1]);
+  for (size_t j = 10; j < 30; j++) {
+    EXPECT_NEAR(RNWH2.at({0, j - 10}), j + 30, 0.001);
+  }
+  EXPECT_EQ(1, RNWH3.dims()[0]);
+  EXPECT_EQ(2, RNWH3.dims()[1]);
+  for (size_t j = 10; j < 12; j++) {
+    EXPECT_NEAR(RNWH3.at({0, j - 10}), j + 60, 0.001);
+  }
 }
