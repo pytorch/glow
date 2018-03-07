@@ -815,7 +815,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto cnt = emitValueSize(builder, dest);
 
     auto *F = getFunction("elementmax0", dest->getElementType());
-    assert(F && "Unable to load the function");
     builder.CreateCall(F, {destPtr, lhsPtr, cnt});
     break;
   }
