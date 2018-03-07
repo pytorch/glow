@@ -1381,7 +1381,7 @@ Function *Function::clone(llvm::StringRef newName,
 
       auto it = currToNew.find(input.getNode());
       if (it == currToNew.end()) {
-        assert(cast<Variable>(input.getNode()) &&
+        assert(isa<Variable>(input.getNode()) &&
                "Could not find a mapping for some node!");
         continue;
       }
