@@ -38,13 +38,16 @@ public:
   /// instructions.
   virtual void doForwardPass(bool isTrain) = 0;
 
+  /// @name Backend transform methods for different phases.
   /// These methods are called by the compiler before code generation and gives
   /// the backend an opportunity to transform the graph before IRGen. The
   /// backend may insert target specific nodes. The backend is responsible for
   /// cleaning up after itself.
   /// \returns True if the graph was modified.
+  ///@{
   virtual bool transformPreLowering(Function *F) { return false; }
   virtual bool transformPostLowering(Function *F) { return false; }
+  /// @}
 };
 
 /// Create a backend of kind \p kind, to run the IR function \p M.
