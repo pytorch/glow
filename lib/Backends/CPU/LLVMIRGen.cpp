@@ -1000,6 +1000,11 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   default:
+#ifndef NDEBUG
+    llvm::errs() << "Cannot select the instruction:\n";
+    I->dump(llvm::errs());
+    llvm::errs() << "\n";
+#endif
     llvm_unreachable("ERROR: Cannot select the instruction.");
   }
 }
