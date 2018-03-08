@@ -1,14 +1,35 @@
-#include <math.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
+#include <cassert>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <sys/types.h>
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#define AT(tensor, dims, numDims, indices, numIndices)                         \
+  tensor[get_element_ptr(tensor, dims, numDims, indices, numIndices)]
 
 namespace {
+
+/// \returns the index of the element at x,y,z,w.
+size_t libjit_getXYZW(const size_t *dims, size_t x, size_t y, size_t z,
+                      size_t w) {
+  return (x * dims[1] * dims[2] * dims[3]) + (y * dims[2] * dims[3]) +
+         (z * dims[3]) + w;
+}
+
+/// \returns the index of the element at x,y,z.
+size_t libjit_getXYZ(const size_t *dims, size_t x, size_t y, size_t z) {
+  return (x * dims[1] * dims[2]) + (y * dims[2]) + z;
+}
+
+/// \returns the index of the element at x,y.
+size_t libjit_getXY(const size_t *dims, size_t x, size_t y) {
+  return (x * dims[1]) + y;
+}
+
 template <class ElemTy>
 static void libjit_dump_tensor_impl(ElemTy *tensor, size_t *dims,
                                     size_t numDims) {
@@ -97,9 +118,6 @@ static void libjit_dump_tensor_impl(ElemTy *tensor, size_t *dims,
   printf("]\n");
 }
 
-#define AT(tensor, dims, numDims, indices, numIndices)                         \
-  tensor[get_element_ptr(tensor, dims, numDims, indices, numIndices)]
-
 template <typename ElemTy>
 static size_t get_element_ptr(ElemTy *tensor, size_t *dims, size_t numDims,
                               size_t *indices, size_t numIndices) {
@@ -174,26 +192,10 @@ void libjit_extract_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
                             tensorDim, sliceDim, numDimsTensor, numDimsSlice,
                             offsetDim, 0, 0);
 }
+
 } // namespace
 
 extern "C" {
-
-/// \returns the index of the element at x,y,z,w.
-size_t libjit_getXYZW(const size_t *dims, size_t x, size_t y, size_t z,
-                      size_t w) {
-  return (x * dims[1] * dims[2] * dims[3]) + (y * dims[2] * dims[3]) +
-         (z * dims[3]) + w;
-}
-
-/// \returns the index of the element at x,y,z.
-size_t libjit_getXYZ(const size_t *dims, size_t x, size_t y, size_t z) {
-  return (x * dims[1] * dims[2]) + (y * dims[2]) + z;
-}
-
-/// \returns the index of the element at x,y.
-size_t libjit_getXY(const size_t *dims, size_t x, size_t y) {
-  return (x * dims[1]) + y;
-}
 
 void libjit_splat_f(float *buffer, size_t sz, float val) {
   for (size_t i = 0; i < sz; i++) {
