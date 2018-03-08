@@ -15,7 +15,12 @@
 
 using namespace glow;
 
-TEST(Operator, pow) {
+class Operator : public ::testing::TestWithParam<BackendKind> {
+ protected:
+  ExecutionEngine EE{GetParam()};
+};
+
+TEST(OperatorInterpOnly, pow) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -45,8 +50,7 @@ TEST(Operator, pow) {
   EXPECT_NEAR(HY.at({1}), 10, 1E-5);
 }
 
-TEST(Operator, matmul) {
-  ExecutionEngine EE;
+TEST_P(Operator, matmul) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -70,8 +74,7 @@ TEST(Operator, matmul) {
   EXPECT_NEAR(H.at({0, 2, 0}), 95, 0.001);
 }
 
-TEST(Operator, batchedReduceAdd) {
-  ExecutionEngine EE;
+TEST_P(Operator, batchedReduceAdd) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -94,8 +97,7 @@ TEST(Operator, batchedReduceAdd) {
   EXPECT_NEAR(H.at({3}), 44, 0.001);
 }
 
-TEST(Operator, batchedBatchedAdd) {
-  ExecutionEngine EE;
+TEST_P(Operator, batchedBatchedAdd) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -122,7 +124,7 @@ TEST(Operator, batchedBatchedAdd) {
 }
 
 /// Broadcast a Tensor of shape (2,1) to (3,2,4,2) with axis 1.
-TEST(Operator, broadcast) {
+TEST(OperatorInterpOnly, broadcast) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -176,8 +178,7 @@ TEST(Operator, broadcast) {
   }
 }
 
-TEST(Operator, minElem) {
-  ExecutionEngine EE;
+TEST_P(Operator, minElem) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   unsigned len = 5;
@@ -202,8 +203,7 @@ TEST(Operator, minElem) {
   }
 }
 
-TEST(Operator, TopK) {
-  ExecutionEngine EE;
+TEST_P(Operator, TopK) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -249,7 +249,7 @@ TEST(Operator, TopK) {
   EXPECT_EQ(I.at({2, 0, 2}), 3);
 }
 
-TEST(Operator, Gather) {
+TEST_P(Operator, Gather) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -275,7 +275,6 @@ TEST(Operator, Gather) {
         ],
     ]
   */
-  ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -342,7 +341,7 @@ TEST(Interpreter, QuantizeAndDequantize) {
   EXPECT_TRUE(expectedHandle.isEqual(resultHandle));
 }
 
-TEST(Operator, IntMatMul) {
+TEST(OperatorInterpOnly, IntMatMul) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -396,7 +395,7 @@ TEST(Operator, IntMatMul) {
   EXPECT_NEAR(H.at({0, 2, 2}), 58.8, 1.0);
 }
 
-TEST(Operator, IntBatchedArith) {
+TEST(OperatorInterpOnly, IntBatchedArith) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -444,7 +443,7 @@ TEST(Operator, IntBatchedArith) {
   EXPECT_NEAR(H.at({0, 2, 2}), 9.3, 0.1);
 }
 
-TEST(Operator, IntConvolution) {
+TEST(OperatorInterpOnly, IntConvolution) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -496,7 +495,7 @@ TEST(Operator, IntConvolution) {
   }
 }
 
-TEST(Operator, IntConcat) {
+TEST(OperatorInterpOnly, IntConcat) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -596,7 +595,7 @@ TEST(Operator, CrossEntropyLossTest) {
   EXPECT_NEAR(R.at({0}), -log(0.5) - log(0.3), 0.1);
 }
 
-TEST(Operator, RescaleNode) {
+TEST(OperatorInterpOnly, RescaleNode) {
   // Check the outputs of the RescaleQuantized operation.
   ExecutionEngine EE;
   auto &mod = EE.getModule();
@@ -630,7 +629,7 @@ TEST(Operator, RescaleNode) {
   EXPECT_NEAR(RO.raw(0), 40, 1);
 }
 
-TEST(Operator, QuantizedArithmeticNode) {
+TEST(OperatorInterpOnly, QuantizedArithmeticNode) {
   const int len = 100;
 
   // In this test we check the correctness of the quantized MAX, ADD,
@@ -715,7 +714,7 @@ TEST(Operator, QuantizedArithmeticNode) {
   }
 }
 
-TEST(Operator, TestQuantizedRescaleSequence) {
+TEST(OperatorInterpOnly, TestQuantizedRescaleSequence) {
   const int len = 100;
 
   ExecutionEngine EE;
@@ -901,3 +900,9 @@ TEST(Network, sliceVectors) {
     EXPECT_NEAR(RNWH3.at({0, j - 10}), j + 60, 0.001);
   }
 }
+
+INSTANTIATE_TEST_CASE_P(Interpreter, Operator, ::testing::Values(BackendKind::Interpreter));
+
+#ifdef GLOW_WITH_CPU
+INSTANTIATE_TEST_CASE_P(JIT, Operator, ::testing::Values(BackendKind::JIT));
+#endif // GLOW_WITH_CPU
