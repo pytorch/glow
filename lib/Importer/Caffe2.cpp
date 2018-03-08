@@ -76,6 +76,21 @@ static ArgumentDictionaryTy loadArgumentMap(const caffe2::OperatorDef &op) {
   return dict;
 }
 
+/// Translates the "order" field of dictionary \p dict into a channel number.
+static unsigned getChannel(const ArgumentDictionaryTy& dict) {
+  std::string order = "NCHW"; // default
+  auto orderIt = dict.find("order");
+  if (orderIt != dict.end()) {
+    order = loadStr(orderIt->second);
+  }
+  if (order == "NHWC") {
+    return 3;
+  } else if (order == "NCHW") {
+    return 1;
+  }
+  GLOW_ASSERT(false && "Invalid order field");
+}
+
 bool caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
                                       const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
@@ -275,20 +290,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       epsilon = loadFloat(epsilonIt->second);
     }
 
-    unsigned channel = 0;
-    std::string order = "NCHW"; // default
-    auto orderIt = dict.find("order");
-    if (orderIt != dict.end()) {
-      order = loadStr(orderIt->second);
-    }
-    if (order == "NHWC") {
-      channel = 3;
-    } else if (order == "NCHW") {
-      channel = 1;
-    } else {
-      GLOW_ASSERT(false && "Invalid order field");
-    }
-
+    auto channel = getChannel(dict);
     auto *node = G_.createBatchNormalization(op.name(), in, channel, epsilon);
 
     // Load the weights.
@@ -311,16 +313,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       inputs.push_back(getOrCreateNodeByName(op.input(i)));
     }
 
-    unsigned channel = 0;
-    auto order = loadStr(dict["order"]);
-    if (order == "NHWC") {
-      channel = 3;
-    } else if (order == "NCHW") {
-      channel = 1;
-    } else {
-      GLOW_ASSERT(false && "Invalid order field");
-    }
-
+    auto channel = getChannel(dict);
     Node *node = G_.createConcat(op.name(), inputs, channel);
 
     for (int i = 0, e = op.output_size(); i < e; i++) {
