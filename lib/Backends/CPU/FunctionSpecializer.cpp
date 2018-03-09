@@ -199,6 +199,9 @@ class FunctionSpecializer {
     assert(caller == entryF_ &&
            "Only calls inside the entry function are specialized");
     (void)caller;
+    // Do not specialize any LLVM internal functions.
+    if (callee && callee->getName().startswith("llvm."))
+      return false;
     // Do not specialize noinline functions, because it does not improve
     // anything.
     return callee != nullptr &&
