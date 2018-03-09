@@ -47,9 +47,9 @@ llvm::Value *getConstantValue(llvm::Value *v) {
   }
   if (isa<llvm::Constant>(v))
     return v;
-  if (isa<llvm::IntToPtrInst>(v))
-    return nullptr;
-  return v;
+  // This is an unknown pattern. Be conservative and assume it is not a
+  // constant.
+  return nullptr;
 }
 
 /// Specialize functions for constant arguments. Such specialized functions are
