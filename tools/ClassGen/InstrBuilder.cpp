@@ -147,6 +147,14 @@ void InstrBuilder::emitPrettyPrinter(std::ostream &os) const {
   os << "}\n";
 }
 
+std::string getOpElementType(const std::string &name) {
+  const std::string elemKindPrefix = "ElemKind::";
+  if (name.substr(0, elemKindPrefix.size()) == elemKindPrefix) {
+    return name;
+  }
+  return "get" + name + "()->getElementType()";
+}
+
 void InstrBuilder::emitClass(std::ostream &os) const {
   os << "\nnamespace glow {\nclass " << name_
      << "Inst final : public Instruction {\n";
@@ -164,7 +172,45 @@ void InstrBuilder::emitClass(std::ostream &os) const {
   }
 
   os << "\n  void dump(llvm::raw_ostream &os) const;\n";
-  os << "  void verify() const;\n";
+
+  // If there is no auto-verification then we assume verification is manually
+  // provided.
+  if (autoVerificationPairs_.empty()) {
+    os << "  void verify() const;\n";
+  } else {
+    os << "  void verify() const {\n";
+    for (auto &pair : autoVerificationPairs_) {
+      switch (pair.first) {
+      case VerifyKind::SameType: {
+        for (size_t i = 1, e = pair.second.size(); i < e; i++) {
+          os << "    assert(get" << pair.second[0] << "()->getType() == get"
+             << pair.second[i] << "()->getType() && \"Invalid Type\");\n";
+        }
+        break;
+      }
+      case VerifyKind::SameShape: {
+        for (size_t i = 1, e = pair.second.size(); i < e; i++) {
+          os << "    assert(get" << pair.second[0] << "()->dims().equals(get"
+             << pair.second[i] << "()->dims()) && \"Invalid Shape\");\n";
+        }
+        break;
+      }
+      case VerifyKind::SameElementType: {
+        auto firstOp = getOpElementType(pair.second[0]);
+        for (size_t i = 1, e = pair.second.size(); i < e; i++) {
+          os << "    assert(" << firstOp
+             << " == " << getOpElementType(pair.second[i])
+             << " && \"Invalid Element Type\");\n";
+        }
+        break;
+      }
+      default:
+        assert(false && "Unknown verification kind.");
+        break;
+      }
+    }
+    os << "  }\n";
+  }
   os << "};\n} // namespace glow\n";
 }
 
