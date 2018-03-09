@@ -217,16 +217,12 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Adds the 'Slice' operand to each one of the slices in the batch.");
 
-  BB.newNode("BatchedMatMul")
+  BB.newNode("MatMul")
       .addInput("LHS")
       .addInput("RHS")
       .addResultFromCtorArg()
-      .setDocstring("Performs matrix multiplication between the LHS RHS. The "
-                    "operands are a stack of two dimensional matrices. If one "
-                    "of the matrices has a batch size of one then the matrix "
-                    "is broadcasted to match the batch size of the other one."
-                    "The result is a three dimensional tensor."
-                    "Example: (1, A, Z) x (N, Z, B) => (N, A, B)");
+      .setDocstring("Performs matrix multiplication between the LHS RHS."
+                    "Example: (A, Z) x (Z, B) => (A, B)");
 
   BB.newNode("BatchedReduceAdd")
       .addInput("Batch")

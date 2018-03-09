@@ -41,33 +41,27 @@ __kernel void batchedaddW(__global void *mem, size_t dest, size_t batch,
   batchedaddK(&mem[dest], &mem[batch], &mem[slice], numSlice, sliceSize);
 }
 
-__kernel void batchedmatmulK(__global float *dest, __global float *lhs,
+__kernel void matmulK(__global float *dest, __global float *lhs,
                              __global float *rhs, ShapeNHWC ddim,
                              ShapeNHWC ldim, ShapeNHWC rdim) {
-  // For each layer in the batch.
-  size_t n = get_global_id(0);
   // For each X in the destination matrix.
-  size_t x = get_global_id(1);
+  size_t x = get_global_id(0);
   // For each Y in the destination matrix.
-  size_t y = get_global_id(2);
-
-  // Broadcast tensors with a batch size of 1 by selecting the right slice.
-  size_t ln = (ldim.n == 1 ? 0 : n);
-  size_t rn = (rdim.n == 1 ? 0 : n);
+  size_t y = get_global_id(1);
 
   // Perform DOT on the row an column.
   float sum = 0;
-  for (size_t i = 0; i < ldim.w; i++) {
-    sum += lhs[getNHWC(ldim, ln, x, i, 0)] * rhs[getNHWC(rdim, rn, i, y, 0)];
+  for (size_t i = 0; i < ldim.h; i++) {
+    sum += lhs[getNHWC(ldim, x, i, 0, 0)] * rhs[getNHWC(rdim, i, y, 0, 0)];
   }
 
-  dest[getNHWC(ddim, n, x, y, 0)] = sum;
+  dest[getNHWC(ddim, x, y, 0, 0)] = sum;
 }
 
-__kernel void batchedmatmulW(__global void *mem, size_t dest, size_t lhs,
+__kernel void matmulW(__global void *mem, size_t dest, size_t lhs,
                              size_t rhs, ShapeNHWC ddim, ShapeNHWC ldim,
                              ShapeNHWC rdim) {
-  batchedmatmulK(&mem[dest], &mem[lhs], &mem[rhs], ddim, ldim, rdim);
+  matmulK(&mem[dest], &mem[lhs], &mem[rhs], ddim, ldim, rdim);
 }
 
 __kernel void splatK(__global float *dest, float val) {

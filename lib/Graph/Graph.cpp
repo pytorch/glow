@@ -704,26 +704,23 @@ SplatNode *Function::createSplat(llvm::StringRef name, TypeRef ty,
   return addNode(new SplatNode(name, ty, value));
 }
 
-BatchedMatMulNode *Function::createBatchedMatMul(llvm::StringRef name,
-                                                 TypeRef outTy, NodeValue lhs,
-                                                 NodeValue rhs) {
+MatMulNode *Function::createMatMul(llvm::StringRef name, TypeRef outTy,
+                                   NodeValue lhs, NodeValue rhs) {
   return addNode(
-      new BatchedMatMulNode(name, getParent()->uniqueType(*outTy), lhs, rhs));
+      new MatMulNode(name, getParent()->uniqueType(*outTy), lhs, rhs));
 }
 
-BatchedMatMulNode *Function::createBatchedMatMul(llvm::StringRef name,
-                                                 NodeValue lhs, NodeValue rhs) {
+MatMulNode *Function::createMatMul(llvm::StringRef name, NodeValue lhs,
+                                   NodeValue rhs) {
   auto LT = lhs.getType();
   auto RT = rhs.getType();
   auto LDims = LT->dims();
   auto RDims = RT->dims();
-  assert(lhs.getType()->getElementType() == rhs->getElementType());
+  assert(lhs.getType()->getElementType() == rhs.getType()->getElementType());
 
-  size_t N, X, Y;
-  std::tie(N, X, Y) = calculateMatMulOutputDims(LDims, RDims);
-
-  auto ty = getParent()->uniqueTypeWithNewShape(lhs.getType(), {N, X, Y});
-  return createBatchedMatMul(name, ty, lhs, rhs);
+  auto ty =
+      getParent()->uniqueTypeWithNewShape(lhs.getType(), {LDims[0], RDims[1]});
+  return createMatMul(name, ty, lhs, rhs);
 }
 
 BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,

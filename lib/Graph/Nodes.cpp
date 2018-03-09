@@ -626,33 +626,25 @@ void PoolAvgGradNode::verify() const {
              Kernel_, Stride_, Pad_);
 }
 
-void BatchedMatMulNode::verify() const {
-  auto dest = getResult();
+void MatMulNode::verify() const {
   auto lhs = getLHS();
   auto rhs = getRHS();
-  (void)dest;
-  (void)lhs;
-  (void)rhs;
+  auto dest = getResult();
 
   auto LDims = lhs.dims();
   auto RDims = rhs.dims();
   auto DDims = dest.dims();
+  (void)LDims;
+  (void)RDims;
   (void)DDims;
-  assert(DDims.size() == 3);
+  assert(DDims.size() == 2);
   auto elem = dest.getType()->getElementType();
   (void)elem;
   assert(lhs.getType()->getElementType() == elem);
   assert(rhs.getType()->getElementType() == elem);
 
-  size_t N, X, Y;
-  std::tie(N, X, Y) = calculateMatMulOutputDims(LDims, RDims);
-
-  assert(N == DDims[0] && "Invalid matrix dims");
-  assert(X == DDims[1] && "Invalid matrix dims");
-  assert(Y == DDims[2] && "Invalid matrix dims");
-  (void)N;
-  (void)X;
-  (void)Y;
+  assert(LDims[0] == DDims[0] && "Invalid matrix dims");
+  assert(RDims[1] == DDims[1] && "Invalid matrix dims");
 }
 
 void SigmoidNode::verify() const { verifySigmoid(getInput(), getResult()); }

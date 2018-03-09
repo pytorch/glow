@@ -80,47 +80,38 @@ void lowerRegressionGradNode(Function *F, RegressionGradNode &node) {
 void lowerFullyConnectedNode(Function *F, FullyConnectedNode &FC) {
   auto xDim = flattenCdr(FC.getInput().getType()->dims());
   auto wDim = FC.getWeights().dims();
-  auto *X =
-      F->createReshape("fc.1X", FC.getInput(), {1, xDim.first, xDim.second});
-  Node *W = F->createReshape("fc.1W", FC.getWeights(), {1, wDim[0], wDim[1]});
+  auto *X = F->createReshape("fc.1X", FC.getInput(), {xDim.first, xDim.second});
 
   TypeRef outTy = F->getParent()->uniqueTypeWithNewShape(
-      FC.getResult()->getType(), {1, xDim.first, wDim[1]});
-  auto *mul = F->createBatchedMatMul("fc.dot", outTy, X, W);
+      FC.getResult()->getType(), {xDim.first, wDim[1]});
+  auto *mul = F->createMatMul("fc.dot", outTy, X, FC.getWeights());
 
-  auto *mulFlat = F->createReshape("fc.cast2", mul, {xDim.first, wDim[1]});
-  auto add = F->createBatchedAdd("fc.add.bias", FC.getResult()->getType(),
-                                 mulFlat, FC.getBias());
+  auto add = F->createBatchedAdd("fc.add.bias", FC.getResult()->getType(), mul,
+                                 FC.getBias());
   FC.getResult().replaceAllUsesOfWith(add);
 }
 
 void lowerFullyConnectedGradNode(Function *F, FullyConnectedGradNode &FCG) {
   // Follow the lowering from here:
   // https://github.com/huyouare/CS231n/blob/master/assignment2/cs231n/layers.py#L53
-  auto out = FCG.getGradOfOriginalOutputNamedResult();
+  auto dout = FCG.getGradOfOriginalOutputNamedResult();
   auto xDims = flattenCdr(FCG.getInput().dims());
-  auto outDims = out.dims();
-  auto fDims = FCG.getWeights().dims();
 
   // dx = dout * w.T
-  auto dout = F->createReshape("fcg.outG", out, {1, outDims[0], outDims[1]});
-  auto *w =
-      F->createReshape("fcg.w", FCG.getWeights(), {1, fDims[0], fDims[1]});
-  auto *wT = F->createTranspose("fcg.wT", w, {0, 2, 1});
-  auto *dx2 = F->createBatchedMatMul("fcg.dot", dout, wT);
+  auto *wT = F->createTranspose("fcg.wT", FCG.getWeights(), {1, 0});
+  auto *dx2 = F->createMatMul("fcg.dot", dout, wT);
   auto *dx = F->createReshape("fcg.inG", dx2, FCG.getInput().getType()->dims());
   FCG.getGradOfInputNamedInput().replaceAllUsesOfWith(dx);
 
   // dw = xT * dout.
   Node *x2 =
-      F->createReshape("fcg.x", FCG.getInput(), {1, xDims.first, xDims.second});
-  auto *x2T = F->createTranspose("fcg.xT", x2, {0, 2, 1});
-  auto *dw = F->createBatchedMatMul("fcg.dot", x2T, dout);
-  Node *dw2 = F->createReshape("fcg.dw2", dw, fDims);
-  FCG.getGradOfInputNamedWeights().replaceAllUsesOfWith(dw2);
+      F->createReshape("fcg.x", FCG.getInput(), {xDims.first, xDims.second});
+  auto *x2T = F->createTranspose("fcg.xT", x2, {1, 0});
+  auto *dw = F->createMatMul("fcg.dot", x2T, dout);
+  FCG.getGradOfInputNamedWeights().replaceAllUsesOfWith(dw);
 
   // db = reduce(dout).
-  auto *db = F->createBatchedReduceAdd("fc.bias.reduce", out);
+  auto *db = F->createBatchedReduceAdd("fc.bias.reduce", dout);
   FCG.getGradOfInputNamedBias().replaceAllUsesOfWith(db);
 }
 
