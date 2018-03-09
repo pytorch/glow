@@ -485,10 +485,6 @@ static void checkType(NodeValue A, ElemKind expectedType) {
   assert(A.getElementType() == expectedType && "Invalid type");
 }
 
-static void checkSameDims(NodeValue A, NodeValue B) {
-  assert(A.dims().equals(B.dims()) && "Dimensions mismatch");
-}
-
 static void verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
                               NodeValue bias, size_t kernel, size_t stride,
                               size_t pad, size_t depth) {
@@ -842,7 +838,7 @@ void QuantizeNode::verify() const {
   checkType(getResult(), ElemKind::Int8QTy);
   // Src must be float.
   checkType(getInput(), ElemKind::FloatTy);
-  checkSameDims(getResult(), getInput());
+  checkSameShape(getResult(), getInput());
 }
 
 void DequantizeNode::verify() const {
@@ -850,7 +846,7 @@ void DequantizeNode::verify() const {
   checkType(getResult(), ElemKind::FloatTy);
   // Src must be quantized.
   checkType(getInput(), ElemKind::Int8QTy);
-  checkSameDims(getResult(), getInput());
+  checkSameShape(getResult(), getInput());
 }
 
 void RescaleQuantizedNode::verify() const {
@@ -858,7 +854,7 @@ void RescaleQuantizedNode::verify() const {
   checkType(getResult(), ElemKind::Int8QTy);
   // Src must be quantized.
   checkType(getInput(), ElemKind::Int8QTy);
-  checkSameDims(getResult(), getInput());
+  checkSameShape(getResult(), getInput());
 }
 
 void TopKNode::verify() const {
