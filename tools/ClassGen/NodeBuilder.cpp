@@ -374,16 +374,8 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
      << "  bool isEqual(const " << name_ << "Node &other) const;\n"
      << "  llvm::hash_code getHash() const;\n"
      << "  void visit(Node *parent, NodeWalker *visitor);\n"
-     << "  Node* clone() const;\n";
-
-  // If the Node is backend specific then we generate an empty verifier for now
-  // to avoid having the Graph depend on the backends.
-  os << "  void verify() const";
-  if (isBackendSpecific_) {
-    os << " {}\n";
-  } else {
-    os << ";\n";
-  }
+     << "  Node* clone() const;\n"
+     << "  void verify() const;\n";
 
   if (!enum_.empty()) {
     os << "  const char *getModeStr() const { return getModeStr(mode_); }\n"

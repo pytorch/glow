@@ -1,4 +1,3 @@
-
 add_executable(NodeGen
                  NodeGen.cpp
                  NodeBuilder.cpp)
@@ -14,3 +13,7 @@ target_link_libraries(NodeGen
 target_link_libraries(InstrGen
                       PUBLIC
                         Support)
+
+if(GLOW_WITH_CPU)
+  add_subdirectory(Backends/CPU)
+endif()
