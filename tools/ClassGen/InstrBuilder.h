@@ -19,6 +19,12 @@ enum class OperandKind : unsigned char {
   InOut,
 };
 
+enum class VerifyKind : unsigned char {
+  SameShape,
+  SameType,
+  SameElementType,
+};
+
 inline OperandKind negateOperandKind(OperandKind CC) {
   switch (CC) {
   case OperandKind::In:
@@ -50,6 +56,10 @@ class InstrBuilder {
   std::vector<std::pair<std::string, std::string>> extraMethods_;
   /// A list of operands that are declared as 'inplace' operands.
   std::vector<std::string> inplaceOperands_;
+  /// A list of (VerifyKind, {op1, op2, ...}) pairs. Each pair represents a
+  /// specific kind of verification to apply on the list of operands.
+  std::vector<std::pair<VerifyKind, std::vector<std::string>>>
+      autoVerificationPairs_;
 
   /// Header file stream.
   std::ofstream &headerStream;
@@ -130,6 +140,17 @@ public:
   /// Adds a case to AutoIRGen for generating this Instr from a Node. Creates
   /// the Instr for the Node \p name (if empty, defaults to same name as Instr).
   InstrBuilder &autoIRGen(const std::string &name = "");
+
+  /// Automatically generates verification of type \p verif
+  InstrBuilder &autoVerify(VerifyKind verif,
+                           llvm::ArrayRef<llvm::StringRef> operands) {
+    assert(operands.size() > 1 && "Must list 2 or more operands.");
+    auto newPair = std::make_pair(verif, std::vector<std::string>());
+    newPair.second.insert(newPair.second.begin(), operands.begin(),
+                          operands.end());
+    autoVerificationPairs_.push_back(newPair);
+    return *this;
+  }
 
   ~InstrBuilder();
 
