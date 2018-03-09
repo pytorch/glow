@@ -63,7 +63,8 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
   Function *TF = glow::differentiate(&F, IP.getConfig());
   IP.compile(CompilationMode::Train, TF);
 
-  // Train the network until we reach some stable local minimum.
+  // The network might have variables, other than inputVar and expVar.
+  // Train the network until other variables reach some stable local minimum.
   IP.runBatch(300, {inputVar, expVar}, {inputs, outputs});
 
   // Create a version of the network that records the gradients to some side
@@ -77,13 +78,13 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
   auto gradVar = getGrad(varGrads, inputVar);
   gradVar->getPayload().zero();
 
-  // Train the network just once to calculate the grads.
+  // Train the network just once to record the values of gradient for inputVar.
   IP.runBatch(1, {inputVar, expVar}, {inputs, outputs});
 
-  // Copy the gradient buffer. Future iterations will invalidate the buffer.
-  Tensor gradCopy = gradVar->getPayload().clone();
-  auto analyticalGradsH = gradCopy.getHandle();
+  // Compile the original network in inference mode.
+  IP.compile(CompilationMode::Infer, &F);
 
+  auto analyticalGradsH = gradVar->getPayload().getHandle();
   auto inputsH = inputs->getHandle<>();
   for (size_t i = 0; i < analyticalGradsH.size(); i++) {
     auto old = inputsH.raw(i);
