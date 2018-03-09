@@ -422,8 +422,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::BatchedMatMulInstKind: {
-    BatchedMatMulInst *BMM = cast<BatchedMatMulInst>(I);
+  case Kinded::Kind::MatMulInstKind: {
+    MatMulInst *BMM = cast<MatMulInst>(I);
     auto *dest = BMM->getDest();
     auto *lhs = BMM->getLHS();
     auto *rhs = BMM->getRHS();
@@ -435,7 +435,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *lhsDims = emitValueDims(builder, lhs);
     auto *rhsDims = emitValueDims(builder, rhs);
 
-    auto *F = getFunction("batchedmatmul", dest->getElementType());
+    auto *F = getFunction("matmul", dest->getElementType());
     builder.CreateCall(F,
                        {destPtr, lhsPtr, rhsPtr, destDims, lhsDims, rhsDims});
     break;

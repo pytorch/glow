@@ -169,7 +169,7 @@ int main(int argc, char **argv) {
 
   /// Perform matrix multiplication between the 3d tensors LHS and RHS.
   /// If one of the sizes has a batch size of 1 the matrix is broadcasted.
-  BB.newInstr("BatchedMatMul")
+  BB.newInstr("MatMul")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)

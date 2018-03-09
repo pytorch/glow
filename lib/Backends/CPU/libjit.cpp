@@ -302,34 +302,27 @@ void libjit_elementselect_f(float *dest, const float *cond, const float *LHS,
   }
 }
 
-void libjit_batchedmatmul_f(float *dest, const float *LHS, const float *RHS,
-                            const size_t *destDims, const size_t *lhsDims,
-                            const size_t *rhsDims) {
-  size_t destSize = destDims[0] * destDims[1] * destDims[2];
+void libjit_matmul_f(float *dest, const float *LHS, const float *RHS,
+                     const size_t *destDims, const size_t *lhsDims,
+                     const size_t *rhsDims) {
+  size_t destSize = destDims[0] * destDims[1];
   for (size_t i = 0; i < destSize; ++i)
     dest[i] = 0;
 
-  // For each layer in the batch:
-  for (size_t n = 0; n < destDims[0]; n++) {
-    // Broadcast tensors with a batch size of 1 by selecting the right slice.
-    size_t ln = (lhsDims[0] == 1 ? 0 : n);
-    size_t rn = (rhsDims[0] == 1 ? 0 : n);
-
-    for (size_t i = 0; i < lhsDims[2]; i++) {
-      // For each (x,y) in the destination matrix:
-      for (size_t x = 0; x < destDims[1]; x++) {
-        for (size_t y = 0; y < destDims[2]; y++) {
-          // This loop order is very cache friendly.
-          // dest and rhs are accessed sequentially.
-          // lhs access is invariant inside the inner-most loop and can be
-          // hoisted.
-          dest[libjit_getXYZ(destDims, n, x, y)] +=
-              LHS[libjit_getXYZ(lhsDims, ln, x, i)] *
-              RHS[libjit_getXYZ(rhsDims, rn, i, y)];
-        }
+  for (size_t i = 0; i < lhsDims[1]; i++) {
+    // For each (x,y) in the destination matrix:
+    for (size_t x = 0; x < destDims[0]; x++) {
+      for (size_t y = 0; y < destDims[1]; y++) {
+        // This loop order is very cache friendly.
+        // dest and rhs are accessed sequentially.
+        // lhs access is invariant inside the inner-most loop and can be
+        // hoisted.
+        dest[libjit_getXY(destDims, x, y)] +=
+            LHS[libjit_getXY(lhsDims, x, i)] *
+            RHS[libjit_getXY(rhsDims, i, y)];
       }
     }
-  } // N
+  }
 }
 
 void libjit_batchedadd_f(float *dest, const float *batch, const float *slice,

@@ -192,7 +192,7 @@ void PoolAvgGradInst::verify() const {
   verifyPoolAvg(src, dest, Kernel_, Stride_, Pad_);
 }
 
-void BatchedMatMulInst::verify() const {
+void MatMulInst::verify() const {
   Value *dest = getDest();
   Value *lhs = getLHS();
   Value *rhs = getRHS();
@@ -200,23 +200,17 @@ void BatchedMatMulInst::verify() const {
   auto LDims = lhs->dims();
   auto RDims = rhs->dims();
   auto DDims = dest->dims();
+  (void)LDims;
+  (void)RDims;
   (void)DDims;
-  assert(DDims.size() == 3);
+  assert(DDims.size() == 2);
   auto elem = dest->getType()->getElementType();
   (void)elem;
   assert(lhs->getType()->getElementType() == elem);
   assert(rhs->getType()->getElementType() == elem);
 
-  size_t N, X, Y;
-  std::tie(N, X, Y) = calculateMatMulOutputDims(LDims, RDims);
-
-  assert(N == DDims[0] && "Invalid matrix dims");
-  assert(X == DDims[1] && "Invalid matrix dims");
-  assert(Y == DDims[2] && "Invalid matrix dims");
-
-  (void)N;
-  (void)X;
-  (void)Y;
+  assert(LDims[0] == DDims[0] && "Invalid matrix dims");
+  assert(RDims[1] == DDims[1] && "Invalid matrix dims");
 }
 
 void SoftMaxGradInst::verify() const {

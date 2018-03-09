@@ -1259,8 +1259,7 @@ void Interpreter::fwdElementSelectInst(bool isTrain,
   }
 }
 
-void Interpreter::fwdBatchedMatMulInst(bool isTrain,
-                                       const glow::BatchedMatMulInst *I) {
+void Interpreter::fwdMatMulInst(bool isTrain, const glow::MatMulInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto lhs = getTensor(I->getLHS())->getHandle<int8_t>();
     auto rhs = getTensor(I->getRHS())->getHandle<int8_t>();
@@ -1269,7 +1268,6 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
 
     auto destDim = dest.dims();
     auto lhsDim = lhs.dims();
-    auto rhsDim = rhs.dims();
 
     auto destTy = I->getDest()->getType();
     auto lhsTy = I->getLHS()->getType();
@@ -1285,31 +1283,24 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
     int32_t rhsOffset = rhsTy->getOffset();
     int32_t destOffset = destTy->getOffset();
 
-    // For each layer in the batch:
-    for (size_t n = 0; n < destDim[0]; n++) {
-      // Broadcast tensors with a batch size of 1 by selecting the right slice.
-      size_t ln = (lhsDim[0] == 1 ? 0 : n);
-      size_t rn = (rhsDim[0] == 1 ? 0 : n);
+    // For each (x,y) in the destination matrix:
+    for (size_t x = 0; x < destDim[0]; x++) {
+      for (size_t y = 0; y < destDim[1]; y++) {
 
-      // For each (x,y) in the destination matrix:
-      for (size_t x = 0; x < destDim[1]; x++) {
-        for (size_t y = 0; y < destDim[2]; y++) {
-
-          // Perform DOT on the row an column.
-          int32_t sum = 0;
-          for (size_t i = 0; i < lhsDim[2]; i++) {
-            int32_t L = lhs.at({ln, x, i});
-            int32_t R = rhs.at({rn, i, y});
-            // We represent the element multiplication with offset as
-            // (value - offset).
-            sum += (L - lhsOffset) * (R - rhsOffset);
-          }
-
-          dest.at({n, x, y}) = quantization::clip<int32_t, int8_t>(
-              std::round(scale * sum + destOffset));
+        // Perform DOT on the row an column.
+        int32_t sum = 0;
+        for (size_t i = 0; i < lhsDim[1]; i++) {
+          int32_t L = lhs.at({x, i});
+          int32_t R = rhs.at({i, y});
+          // We represent the element multiplication with offset as
+          // (value - offset).
+          sum += (L - lhsOffset) * (R - rhsOffset);
         }
+
+        dest.at({x, y}) = quantization::clip<int32_t, int8_t>(
+            std::round(scale * sum + destOffset));
       }
-    } // N
+    }
     return;
   }
 
@@ -1319,29 +1310,21 @@ void Interpreter::fwdBatchedMatMulInst(bool isTrain,
 
   auto destDim = dest.dims();
   auto lhsDim = lhs.dims();
-  auto rhsDim = rhs.dims();
 
   dest.clear(0);
 
-  // For each layer in the batch:
-  for (size_t n = 0; n < destDim[0]; n++) {
-    // Broadcast tensors with a batch size of 1 by selecting the right slice.
-    size_t ln = (lhsDim[0] == 1 ? 0 : n);
-    size_t rn = (rhsDim[0] == 1 ? 0 : n);
+  // For each (x,y) in the destination matrix:
+  for (size_t x = 0; x < destDim[0]; x++) {
+    for (size_t y = 0; y < destDim[1]; y++) {
 
-    // For each (x,y) in the destination matrix:
-    for (size_t x = 0; x < destDim[1]; x++) {
-      for (size_t y = 0; y < destDim[2]; y++) {
-
-        // Perform DOT on the row an column.
-        float sum = 0;
-        for (size_t i = 0; i < lhsDim[2]; i++) {
-          sum += lhs.at({ln, x, i}) * rhs.at({rn, i, y});
-        }
-        dest.at({n, x, y}) = sum;
+      // Perform DOT on the row an column.
+      float sum = 0;
+      for (size_t i = 0; i < lhsDim[1]; i++) {
+        sum += lhs.at({x, i}) * rhs.at({i, y});
       }
+      dest.at({x, y}) = sum;
     }
-  } // N
+  }
 }
 
 void Interpreter::fwdBatchedAddInst(bool isTrain,

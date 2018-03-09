@@ -283,7 +283,7 @@ void OCLBackend::doForwardPass(bool isTrain) {
       continue;
     }
 
-    if (auto *BMM = dyn_cast<BatchedMatMulInst>(I)) {
+    if (auto *BMM = dyn_cast<MatMulInst>(I)) {
       // This is a naive implementation that parallelizes using three dims:
       // batch, X and Y in the output filter.
       cl_kernel kernel = createKernel(program_, kernelName);
@@ -294,9 +294,9 @@ void OCLBackend::doForwardPass(bool isTrain) {
         setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
       }
 
-      auto ddim = ShapeNHWC::fromXYZ(BMM->getDest()->getType()->dims());
-      auto ldim = ShapeNHWC::fromXYZ(BMM->getLHS()->getType()->dims());
-      auto rdim = ShapeNHWC::fromXYZ(BMM->getRHS()->getType()->dims());
+      auto ddim = ShapeNHWC::fromXY(BMM->getDest()->getType()->dims());
+      auto ldim = ShapeNHWC::fromXY(BMM->getLHS()->getType()->dims());
+      auto rdim = ShapeNHWC::fromXY(BMM->getRHS()->getType()->dims());
 
       setKernelArg(kernel, 4, ddim);
       setKernelArg(kernel, 5, ldim);

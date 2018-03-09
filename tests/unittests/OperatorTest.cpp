@@ -54,13 +54,13 @@ TEST_P(Operator, matmul) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  auto *lhs = mod.createVariable(ElemKind::FloatTy, {1, 3, 2}, "lhs");
-  auto *rhs = mod.createVariable(ElemKind::FloatTy, {1, 2, 1}, "rhs");
-  auto *result = mod.createVariable(ElemKind::FloatTy, {1, 3, 1}, "result");
+  auto *lhs = mod.createVariable(ElemKind::FloatTy, {3, 2}, "lhs");
+  auto *rhs = mod.createVariable(ElemKind::FloatTy, {2, 1}, "rhs");
+  auto *result = mod.createVariable(ElemKind::FloatTy, {3, 1}, "result");
   lhs->getPayload().getHandle() = {1, 2, 3, 4, 5, 6};
   rhs->getPayload().getHandle() = {7, 10};
 
-  auto R = F->createBatchedMatMul("MM", lhs, rhs);
+  auto R = F->createMatMul("MM", lhs, rhs);
 
   F->createSave("save", R, result);
 
@@ -69,9 +69,9 @@ TEST_P(Operator, matmul) {
   EE.run({}, {});
 
   auto H = result->getPayload().getHandle();
-  EXPECT_NEAR(H.at({0, 0, 0}), 27, 0.001);
-  EXPECT_NEAR(H.at({0, 1, 0}), 61, 0.001);
-  EXPECT_NEAR(H.at({0, 2, 0}), 95, 0.001);
+  EXPECT_NEAR(H.at({0, 0}), 27, 0.001);
+  EXPECT_NEAR(H.at({1, 0}), 61, 0.001);
+  EXPECT_NEAR(H.at({2, 0}), 95, 0.001);
 }
 
 TEST_P(Operator, batchedReduceAdd) {
@@ -348,13 +348,13 @@ TEST(OperatorInterpOnly, IntMatMul) {
 
   // The scaling factor 1.4x was carefully selected to make sure we don't
   // overflow or underflow the calculation.
-  TypeRef resTy = mod.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.60, 4);
-  TypeRef lhsTy = mod.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.075, -2);
-  TypeRef rhsTy = mod.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.075, 2);
+  TypeRef resTy = mod.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.60, 4);
+  TypeRef lhsTy = mod.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.075, -2);
+  TypeRef rhsTy = mod.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.075, 2);
 
-  auto *res = mod.createVariable(ElemKind::FloatTy, {1, 3, 3}, "res");
-  auto *lhs = mod.createVariable(ElemKind::FloatTy, {1, 3, 3}, "lhs");
-  auto *rhs = mod.createVariable(ElemKind::FloatTy, {1, 3, 3}, "rhs");
+  auto *res = mod.createVariable(ElemKind::FloatTy, {3, 3}, "res");
+  auto *lhs = mod.createVariable(ElemKind::FloatTy, {3, 3}, "lhs");
+  auto *rhs = mod.createVariable(ElemKind::FloatTy, {3, 3}, "rhs");
 
   lhs->getPayload().getHandle() = {
       1.0, 2.0, 3.0, 4.0, 5.0, -5.0, -4.0, -3.0, 9.0,
@@ -367,7 +367,7 @@ TEST(OperatorInterpOnly, IntMatMul) {
   auto *lhsq = F->createQuantize("lhs.q", lhs, lhsTy);
   auto *rhsq = F->createQuantize("rhs.q", rhs, rhsTy);
 
-  auto *matmulq = F->createBatchedMatMul("matmul.q", resTy, lhsq, rhsq);
+  auto *matmulq = F->createMatMul("matmul.q", resTy, lhsq, rhsq);
 
   auto *rq = F->createDequantize("dequant", matmulq);
 
@@ -384,15 +384,15 @@ TEST(OperatorInterpOnly, IntMatMul) {
    */
 
   auto H = res->getPayload().getHandle();
-  EXPECT_NEAR(H.at({0, 0, 0}), 36.1, 1.0);
-  EXPECT_NEAR(H.at({0, 0, 1}), -1.2, 1.0);
-  EXPECT_NEAR(H.at({0, 0, 2}), 41.3, 1.0);
-  EXPECT_NEAR(H.at({0, 1, 0}), 15.4, 1.0);
-  EXPECT_NEAR(H.at({0, 1, 1}), -65.8, 1.0);
-  EXPECT_NEAR(H.at({0, 1, 2}), -8.8, 1.0);
-  EXPECT_NEAR(H.at({0, 2, 0}), 26.6, 1.0);
-  EXPECT_NEAR(H.at({0, 2, 1}), 69.8, 1.0);
-  EXPECT_NEAR(H.at({0, 2, 2}), 58.8, 1.0);
+  EXPECT_NEAR(H.at({0, 0}), 36.1, 1.0);
+  EXPECT_NEAR(H.at({0, 1}), -1.2, 1.0);
+  EXPECT_NEAR(H.at({0, 2}), 41.3, 1.0);
+  EXPECT_NEAR(H.at({1, 0}), 15.4, 1.0);
+  EXPECT_NEAR(H.at({1, 1}), -65.8, 1.0);
+  EXPECT_NEAR(H.at({1, 2}), -8.8, 1.0);
+  EXPECT_NEAR(H.at({2, 0}), 26.6, 1.0);
+  EXPECT_NEAR(H.at({2, 1}), 69.8, 1.0);
+  EXPECT_NEAR(H.at({2, 2}), 58.8, 1.0);
 }
 
 TEST(OperatorInterpOnly, IntBatchedArith) {
