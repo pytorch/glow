@@ -41,6 +41,12 @@ def mode_128to127 (x): return x-128
 Model = collections.namedtuple('Model', 'blob_name, image_mode_op, image_size, num_color_channels')
 
 model_props = dict(
+    densenet121=Model(
+        "data",
+        mode_0to1,
+        224,
+        3,
+    ),
     inception_v1=Model(
         "data",
         mode_128to127,
