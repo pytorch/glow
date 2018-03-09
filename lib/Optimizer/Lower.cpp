@@ -81,11 +81,11 @@ void lowerFullyConnectedNode(Function *F, FullyConnectedNode &FC) {
   auto xDim = flattenCdr(FC.getInput().getType()->dims());
   auto wDim = FC.getWeights().dims();
   auto *X =
-      F->createReshape("fc.1X", FC.getInput(), {1, xDim.first, xDim.second});
+      F->createReshape("fc.1X", FC.getInput(), {xDim.first, 1, xDim.second});
   Node *W = F->createReshape("fc.1W", FC.getWeights(), {1, wDim[0], wDim[1]});
 
   TypeRef outTy = F->getParent()->uniqueTypeWithNewShape(
-      FC.getResult()->getType(), {1, xDim.first, wDim[1]});
+      FC.getResult()->getType(), {xDim.first, 1, wDim[1]});
   auto *mul = F->createBatchedMatMul("fc.dot", outTy, X, W);
 
   auto *mulFlat = F->createReshape("fc.cast2", mul, {xDim.first, wDim[1]});
@@ -103,11 +103,12 @@ void lowerFullyConnectedGradNode(Function *F, FullyConnectedGradNode &FCG) {
   auto fDims = FCG.getWeights().dims();
 
   // dx = dout * w.T
-  auto dout = F->createReshape("fcg.outG", out, {1, outDims[0], outDims[1]});
+  auto doutMatrix = F->createReshape("fcg.outG", out, {1, outDims[0], outDims[1]});
+  auto doutBatched = F->createReshape("fcg.outG", out, {outDims[0], 1, outDims[1]});
   auto *w =
       F->createReshape("fcg.w", FCG.getWeights(), {1, fDims[0], fDims[1]});
   auto *wT = F->createTranspose("fcg.wT", w, {0, 2, 1});
-  auto *dx2 = F->createBatchedMatMul("fcg.dot", dout, wT);
+  auto *dx2 = F->createBatchedMatMul("fcg.dot", doutBatched, wT);
   auto *dx = F->createReshape("fcg.inG", dx2, FCG.getInput().getType()->dims());
   FCG.getGradOfInputNamedInput().replaceAllUsesOfWith(dx);
 
@@ -115,7 +116,7 @@ void lowerFullyConnectedGradNode(Function *F, FullyConnectedGradNode &FCG) {
   Node *x2 =
       F->createReshape("fcg.x", FCG.getInput(), {1, xDims.first, xDims.second});
   auto *x2T = F->createTranspose("fcg.xT", x2, {0, 2, 1});
-  auto *dw = F->createBatchedMatMul("fcg.dot", x2T, dout);
+  auto *dw = F->createBatchedMatMul("fcg.dot", x2T, doutMatrix);
   Node *dw2 = F->createReshape("fcg.dw2", dw, fDims);
   FCG.getGradOfInputNamedWeights().replaceAllUsesOfWith(dw2);
 
