@@ -78,3 +78,15 @@ auto-fix and to enable/disable specific checks:
   ```
   -DCMAKE_CXX_CLANG_TIDY:STRING="$(which clang-tidy);-checks=...;-fix"
   ```
+
+## Building with coverage
+
+Glow uses gcov, lcov and genhtml to generate coverage reports for the code base.
+Using this tool allows you to make sure that corner cases are covered with the
+unit tests as well as keep the unit test coverage at a healthy level.
+You can generate a coverage report by providing additional options to cmake:
+  
+  ```
+  -DGLOW_USE_COVERAGE=1
+  ```
+and then invoke ```glow_coverage``` make target.
