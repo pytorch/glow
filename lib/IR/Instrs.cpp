@@ -40,14 +40,6 @@ static void checkSameType(Value *A, Value *B) {
   assert(A->getType() == B->getType() && "Invalid type");
 }
 
-static void checkType(Value *A, ElemKind expectedType) {
-  assert(A->getElementType() == expectedType && "Invalid type");
-}
-
-static void checkSameShape(Value *A, Value *B) {
-  assert(A->dims().equals(B->dims()) && "Dimensions mismatch");
-}
-
 void CopyInst::verify() const {
   auto *dest = getDest();
   auto *src = getSrc();
@@ -227,15 +219,6 @@ void BatchedMatMulInst::verify() const {
   (void)Y;
 }
 
-void SigmoidInst::verify() const { checkSameType(getDest(), getSrc()); }
-
-void TanhInst::verify() const { checkSameType(getDest(), getSrc()); }
-
-void SoftMaxInst::verify() const {
-  checkSameType(getDest(), getSrc());
-  assert(getDest()->dims() == getSrc()->dims() && "Invalid shape");
-}
-
 void SoftMaxGradInst::verify() const {
   checkSameType(getOrigDest(), getOrigSrc());
   checkSameType(getOrigDest(), getSrcGrad());
@@ -351,29 +334,9 @@ void BatchNormalizationGradInst::verify() const {
   verifyBatchNormalization(src, dest, scale, bias, mean, var, ChannelIdx_);
 }
 
-void LocalResponseNormalizationInst::verify() const {
-  checkSameType(getDest(), getSrc());
-  checkSameType(getDest(), getScale());
-}
-
 void LocalResponseNormalizationGradInst::verify() const {
   checkSameType(getDestGrad(), getSrcGrad());
   checkSameType(getDestGrad(), getScale());
-}
-
-void ElementAddInst::verify() const {
-  checkSameShape(getDest(), getLHS());
-  checkSameShape(getDest(), getRHS());
-}
-
-void ElementMulInst::verify() const {
-  checkSameShape(getDest(), getLHS());
-  checkSameShape(getDest(), getRHS());
-}
-
-void ElementSubInst::verify() const {
-  checkSameType(getDest(), getLHS());
-  checkSameType(getDest(), getRHS());
 }
 
 void BatchedAddInst::verify() const {
@@ -390,34 +353,6 @@ void BatchedAddInst::verify() const {
 
 void BatchedReduceAddInst::verify() const {
   assert(getBatch()->dims().size() > 1 && "Invalid shape");
-}
-
-void ElementDivInst::verify() const {
-  checkSameShape(getDest(), getLHS());
-  checkSameShape(getDest(), getRHS());
-}
-
-void ElementMaxInst::verify() const {
-  checkSameShape(getDest(), getLHS());
-  checkSameShape(getDest(), getRHS());
-}
-
-void ElementMinInst::verify() const {
-  checkSameShape(getDest(), getLHS());
-  checkSameShape(getDest(), getRHS());
-}
-
-void ElementCmpLTEInst::verify() const {
-  checkSameShape(getDest(), getLHS());
-  checkSameShape(getDest(), getRHS());
-}
-
-void ElementPowInst::verify() const { checkSameShape(getDest(), getBase()); }
-
-void ElementSelectInst::verify() const {
-  checkSameShape(getDest(), getCond());
-  checkSameShape(getDest(), getLHS());
-  checkSameShape(getDest(), getRHS());
 }
 
 void AllocActivationInst::verify() const {
@@ -443,30 +378,6 @@ void QuantizationProfileInst::verify() const {
          "Computation info should be 1 dimensional");
   assert(getComputationInfo()->dims()[0] == 2 &&
          "Computation info should contain Min and Max value only");
-}
-
-void QuantizeInst::verify() const {
-  checkType(getDest(), ElemKind::Int8QTy);
-  checkType(getSrc(), ElemKind::FloatTy);
-  checkSameShape(getDest(), getSrc());
-}
-
-void DequantizeInst::verify() const {
-  checkType(getDest(), ElemKind::FloatTy);
-  checkType(getSrc(), ElemKind::Int8QTy);
-  checkSameShape(getDest(), getSrc());
-}
-
-void RescaleQuantizedInst::verify() const {
-  checkType(getDest(), ElemKind::Int8QTy);
-  checkType(getSrc(), ElemKind::Int8QTy);
-  checkSameShape(getDest(), getSrc());
-}
-
-void TopKInst::verify() const {
-  assert(getValues()->getElementType() == ElemKind::FloatTy);
-  assert(getInput()->getElementType() == ElemKind::FloatTy);
-  assert(getValues()->dims() == getIndices()->dims());
 }
 
 void GatherInst::verify() const {

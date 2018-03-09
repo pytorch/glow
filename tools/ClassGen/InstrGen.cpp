@@ -131,6 +131,7 @@ int main(int argc, char **argv) {
           "Dest",
           "Src",
       })
+      .autoVerify(VerifyKind::SameType, {"Dest", "Src", "Scale"})
       .addGradientInstr({"Dest", "Src", "Scale"}, {"Dest", "Src"});
 
   //===--------------------------------------------------------------------===//
@@ -141,6 +142,7 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .inplaceOperand({"Dest", "Src"})
+      .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen();
 
   BB.newInstr("SoftMaxGrad")
@@ -193,6 +195,7 @@ int main(int argc, char **argv) {
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Add");
 
   BB.newInstr("ElementSub")
@@ -200,6 +203,7 @@ int main(int argc, char **argv) {
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Sub");
 
   BB.newInstr("ElementMul")
@@ -207,6 +211,7 @@ int main(int argc, char **argv) {
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Mul");
 
   BB.newInstr("ElementDiv")
@@ -214,6 +219,7 @@ int main(int argc, char **argv) {
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Div");
 
   BB.newInstr("ElementMax")
@@ -221,6 +227,7 @@ int main(int argc, char **argv) {
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Max");
 
   BB.newInstr("ElementMin")
@@ -228,6 +235,7 @@ int main(int argc, char **argv) {
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Min");
 
   BB.newInstr("ElementCmpLTE")
@@ -235,6 +243,7 @@ int main(int argc, char **argv) {
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("CmpLTE");
 
   BB.newInstr("ElementPow")
@@ -242,6 +251,7 @@ int main(int argc, char **argv) {
       .addOperand("Base", OperandKind::In)
       .addMember(MemberType::Float, "Exp")
       .inplaceOperand({"Dest", "Base"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Base"})
       .autoIRGen("Pow");
 
   BB.newInstr("ElementSelect")
@@ -250,6 +260,7 @@ int main(int argc, char **argv) {
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS", "Cond"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Cond", "LHS", "RHS"})
       .autoIRGen("Select");
 
   //===--------------------------------------------------------------------===//
@@ -263,6 +274,7 @@ int main(int argc, char **argv) {
           "Dest",
           "Src",
       })
+      .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen();
 
   BB.newInstr("Tanh")
@@ -272,6 +284,7 @@ int main(int argc, char **argv) {
           "Dest",
           "Src",
       })
+      .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//
@@ -335,16 +348,25 @@ int main(int argc, char **argv) {
   BB.newInstr("Quantize")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::Int8QTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Src", "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .autoIRGen();
 
   BB.newInstr("Dequantize")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Src", "ElemKind::Int8QTy"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .autoIRGen();
 
   BB.newInstr("RescaleQuantized")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Dest", "Src", "ElemKind::Int8QTy"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//
@@ -356,7 +378,10 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::Out)
       .addOperand("Input", OperandKind::In)
       .addOperand("Scratch", OperandKind::InOut)
-      .addMember(MemberType::SizeT, "K");
+      .addMember(MemberType::SizeT, "K")
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Values", "Input", "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::SameShape, {"Values", "Indices"});
 
   //===--------------------------------------------------------------------===//
   //                Backend-Specific Instructions
