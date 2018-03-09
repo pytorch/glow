@@ -246,6 +246,12 @@ public:
   void declareValue(const std::string &name) {
     defStream << "DEF_VALUE(" << name << ", " << glow::tolower(name) << ")\n";
   }
+
+  /// Include backend-specific verification at the end of the auto-generated
+  /// Instrs cpp file.
+  void includeBackendSpecificVerification(const std::string &filename) {
+    cppStream << "\n#include \"" << filename << "\"\n";
+  }
 };
 
 #endif // GLOW_TOOLS_NODEGEN_INSTRBUILDER_H
