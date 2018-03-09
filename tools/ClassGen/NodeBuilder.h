@@ -48,7 +48,6 @@ class NodeBuilder {
   std::string docstring_;
   /// Whether node has side effects. By default there are no side effects.
   bool hasSideEffects_{false};
-
   /// Specifies if this Node is backend specific.
   bool isBackendSpecific_{false};
 
@@ -218,6 +217,12 @@ public:
   /// Declare the node in the def file but don't generate code for it.
   void declareNode(const std::string &name) {
     dStream << "DEF_NODE(" << name << "Node, " << name << ")\n";
+  }
+
+  /// Include backend-specific verification at the end of the auto-generated
+  /// Nodes cpp file.
+  void includeBackendSpecificVerification(const std::string &filename) {
+    cStream << "\n#include \"" << filename << "\"\n";
   }
 };
 
