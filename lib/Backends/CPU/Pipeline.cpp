@@ -92,6 +92,11 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM) {
       FF.addFnAttr(llvm::Attribute::AttrKind::NoInline);
     }
   }
+  
+  // The "main" function is parameterized by the base addresses of memory areas
+  // and it is always invoked from either the "jitmain" function or the AOT entry
+  // point. To enable better LLVM optimizations "main" should always be inlined.
+  M->getFunction("main")->addFnAttr(llvm::Attribute::AttrKind::AlwaysInline);
 
   llvm::legacy::FunctionPassManager FPM(M);
   llvm::legacy::PassManager PM;
