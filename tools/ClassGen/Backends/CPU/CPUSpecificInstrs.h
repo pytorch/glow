@@ -6,4 +6,6 @@ BB.newBackendSpecificInstr("CPUMaxZero")
     .inplaceOperand({"Dest", "Src"})
     .autoIRGen();
 
+BB.includeBackendSpecificVerification("CPUSpecificInstrsVerification.h");
+
 #endif // GLOW_WITH_CPU

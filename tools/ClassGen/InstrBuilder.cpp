@@ -164,14 +164,7 @@ void InstrBuilder::emitClass(std::ostream &os) const {
   }
 
   os << "\n  void dump(llvm::raw_ostream &os) const;\n";
-  // If the Instr is backend specific then we generate an empty verifier for now
-  // to avoid having the IR depend on the backends.
-  os << "  void verify() const";
-  if (isBackendSpecific_) {
-    os << " {}\n";
-  } else {
-    os << ";\n";
-  }
+  os << "  void verify() const;\n";
   os << "};\n} // namespace glow\n";
 }
 
