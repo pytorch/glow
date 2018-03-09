@@ -777,7 +777,7 @@ void LocalResponseNormalizationGradNode::verify() const {
 
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
   void NODE_NAME_##Node::verify() const {                                      \
-    verifyArithmetic(getLHS(), getRHS(), getNthResult(0));                     \
+    verifyArithmetic(getLHS(), getRHS(), getResult());                         \
   }
 VERIFY_ARITHMETIC(Add);
 VERIFY_ARITHMETIC(Mul);
