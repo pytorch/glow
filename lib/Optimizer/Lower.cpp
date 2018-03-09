@@ -267,25 +267,26 @@ void lowerBatchNormalizationNodeForInference(Function *F,
   auto epsilon = BN.getEpsilon();
 
   auto epsilonSplat = F->createSplat("epsSplat", var.getType(), epsilon);
-  Node* coef = F->createAdd("var_plus_eps", var, epsilonSplat);
+  Node *coef = F->createAdd("var_plus_eps", var, epsilonSplat);
   coef = F->createPow("sqrt_var_plus_eps", coef, 0.5);
   coef = F->createDiv("inverse_sqrt_var_plus_eps", gamma, coef);
 
   // Apply: out := (in - mean) * coef + beta
   // in and out are of the same size, while others must be broadcasted.
   auto meanB = F->createBroadcast("muBroadcasted", mean, in.dims(), channelIdx);
-  auto coefB = F->createBroadcast("coefBroadcasted", coef, in.dims(), channelIdx);
-  auto betaB = F->createBroadcast("betaBroadcasted", beta, in.dims(), channelIdx);
-  
-  Node* newResult = F->createSub("in_minus_mean", in, meanB);
+  auto coefB =
+      F->createBroadcast("coefBroadcasted", coef, in.dims(), channelIdx);
+  auto betaB =
+      F->createBroadcast("betaBroadcasted", beta, in.dims(), channelIdx);
+
+  Node *newResult = F->createSub("in_minus_mean", in, meanB);
   newResult = F->createMul("mul_coef", newResult, coefB);
   newResult = F->createAdd("result", newResult, betaB);
 
   BN.getResult().replaceAllUsesOfWith(newResult);
 }
 
-void computeBatchNormalizationWeights(Function *F,
-                                      BatchNormalizationNode &BN) {
+void computeBatchNormalizationWeights(Function *F, BatchNormalizationNode &BN) {
   auto in = BN.getInput();
 
   auto mean = BN.getMean();
@@ -316,14 +317,14 @@ void computeBatchNormalizationWeights(Function *F,
   }
   // Reshape input tensor to form:
   // {samplesPerChannel, numChannels}
-  Node* inFlat = F->createReshape("in.flat", inPrep,
-                                  {samplesPerChannel, numChannels});
+  Node *inFlat =
+      F->createReshape("in.flat", inPrep, {samplesPerChannel, numChannels});
 
   // Calculate Mean:
 
   // sum(in[i])
   // reduce the tensor by the first dimension, to get {numChannels}
-  Node* localMean = F->createBatchedReduceAdd("in.sum", inFlat);
+  Node *localMean = F->createBatchedReduceAdd("in.sum", inFlat);
   // Mean = sum(in[i]) / N
   auto samplesPerChannelSplat = F->createSplat(
       "samplesPerChannelSplat", localMean->getType(), samplesPerChannel);
@@ -332,33 +333,31 @@ void computeBatchNormalizationWeights(Function *F,
   // Calculate Variance:
 
   // sum((x - mu) ^ 2)
-  auto localMeanB = F->createBroadcast(
-      "new_mean_broadcasted",
-      localMean, inFlat->dims(), 1);
+  auto localMeanB =
+      F->createBroadcast("new_mean_broadcasted", localMean, inFlat->dims(), 1);
 
-  Node* localVar = F->createSub("x_mu", inFlat, localMeanB);
+  Node *localVar = F->createSub("x_mu", inFlat, localMeanB);
   localVar = F->createPow("x_mu2", localVar, 2);
   localVar = F->createBatchedReduceAdd("x_mu2.sum", localVar);
   // Var = sum((x - mu) ^ 2) / N
   localVar = F->createDiv("localVar", localVar, samplesPerChannelSplat);
 
   // Update the global variance and mean:
-  auto momentumSplat = F->createSplat(
-      "momentumSplat", localMean->getType(), momentum);
+  auto momentumSplat =
+      F->createSplat("momentumSplat", localMean->getType(), momentum);
   auto oneMinusMomentumSplat = F->createSplat(
       "oneMinusMomentumSplat", localMean->getType(), 1 - momentum);
 
   // newMean := P * localMean + (1 - P) * oldMean
   auto newMean = F->createAdd(
-    "newMean",
-    F->createMul("momentum_by_localMean", momentumSplat, localMean),
-    F->createMul("1_momentum_by_oldMean", oneMinusMomentumSplat, mean));
+      "newMean",
+      F->createMul("momentum_by_localMean", momentumSplat, localMean),
+      F->createMul("1_momentum_by_oldMean", oneMinusMomentumSplat, mean));
   // newVar := P * localVar + (1 - P) * oldVar
   auto newVar = F->createAdd(
-    "newVar",
-    F->createMul("momentum_by_localVar", momentumSplat, localVar),
-    F->createMul("1_momentum_by_oldVar", oneMinusMomentumSplat, var));
-  
+      "newVar", F->createMul("momentum_by_localVar", momentumSplat, localVar),
+      F->createMul("1_momentum_by_oldVar", oneMinusMomentumSplat, var));
+
   // TODO: don't rely on operands' indices
   assert(BN.getInputName(3) == "Mean");
   assert(BN.getInputName(4) == "Var");

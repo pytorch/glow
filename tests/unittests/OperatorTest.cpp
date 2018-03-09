@@ -16,7 +16,7 @@
 using namespace glow;
 
 class Operator : public ::testing::TestWithParam<BackendKind> {
- protected:
+protected:
   ExecutionEngine EE{GetParam()};
 };
 
@@ -901,7 +901,8 @@ TEST(Network, sliceVectors) {
   }
 }
 
-INSTANTIATE_TEST_CASE_P(Interpreter, Operator, ::testing::Values(BackendKind::Interpreter));
+INSTANTIATE_TEST_CASE_P(Interpreter, Operator,
+                        ::testing::Values(BackendKind::Interpreter));
 
 #ifdef GLOW_WITH_CPU
 INSTANTIATE_TEST_CASE_P(JIT, Operator, ::testing::Values(BackendKind::JIT));

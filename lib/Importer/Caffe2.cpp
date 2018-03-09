@@ -77,7 +77,7 @@ static ArgumentDictionaryTy loadArgumentMap(const caffe2::OperatorDef &op) {
 }
 
 /// Translates the "order" field of dictionary \p dict into a channel number.
-static unsigned getChannel(const ArgumentDictionaryTy& dict) {
+static unsigned getChannel(const ArgumentDictionaryTy &dict) {
   std::string order = "NCHW"; // default
   auto orderIt = dict.find("order");
   if (orderIt != dict.end()) {
