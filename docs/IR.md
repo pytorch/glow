@@ -92,9 +92,11 @@ Predicates are boolean variables that control the execution of some node or
 instruction. If the value of the predicate at runtime is set to 'false' then the
 predicated node or instructions may return any value. The program should know to
 ignore the output of the predicated instruction because it could be zeros or
-uninitialized memory. Predication is a way to accelerate the performance of the
-network by avoiding some computation. The type of the predicate must be a
-scalar, or a vector that matches the batch size.
+uninitialized memory. In training mode, predicated training nodes should not use
+uninitialized memory to update the weights and instead should pass zeros.
+Predication is a way to accelerate the performance of the network by avoiding
+some computation. The type of the predicate must be a scalar, or a vector that
+matches the batch size.
 
 ![](pred.png)
 
