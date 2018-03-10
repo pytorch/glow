@@ -763,12 +763,10 @@ TEST(OperatorInterpOnly, TestQuantizedRescaleSequence) {
   }
 }
 
-TEST(Network, FCGradientCheck) {
+TEST_P(Operator, FCGradientCheck) {
   // Create net representing A*X+Y=B, where X and Y are trainable, while
   // A and B are fixed. Record gradients for X and Y after 3 steps and compare
   // with reference values.
-  ExecutionEngine EE;
-
   auto &mod = EE.getModule();
   auto *A = mod.createVariable(ElemKind::FloatTy, {2, 1}, "A",
                                Variable::VisibilityKind::Public,
@@ -801,9 +799,7 @@ TEST(Network, FCGradientCheck) {
   EXPECT_NEAR(Y->getPayload().getHandle().raw(0), 0.01656, 1E-5);
 }
 
-TEST(Network, concatVectors) {
-  ExecutionEngine EE;
-
+TEST_P(Operator, concatVectors) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   F->setName("concatVectors");
@@ -844,9 +840,7 @@ TEST(Network, concatVectors) {
   }
 }
 
-TEST(Network, sliceVectors) {
-  ExecutionEngine EE;
-
+TEST_P(Operator, sliceVectors) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   F->setName("sliceVectors");
