@@ -213,6 +213,42 @@ void libjit_splat_u(size_t *buffer, size_t sz, float val) {
   }
 }
 
+namespace { // helpers for broadcast
+
+bool increment_and_check_dims(size_t *dest_i, const size_t *dest_dims,
+                              size_t n) {
+  for (size_t i = 0; i < n; i++) {
+    dest_i[i] += 1;
+    if (dest_i[i] == dest_dims[i]) {
+      dest_i[i] = 0;
+    } else {
+      return true;
+    }
+  }
+  return false;
+}
+
+void get_src_dim(size_t *src_i, const size_t *dest_i, const size_t *src_dims,
+                 size_t n) {
+  for (size_t i = 0; i < n; i++) {
+    src_i[i] = (src_dims[i] == 1) ? 0 : dest_i[i];
+  }
+}
+
+} // namespace
+
+void libjit_broadcast_f(float *dest, const float *src, const size_t *dest_dims,
+                        const size_t *src_dims, size_t n_dims) {
+  size_t dest_i[6] = {0};
+  size_t src_i[6] = {0};
+  do {
+    get_src_dim(src_i, dest_i, src_dims, n_dims);
+    size_t sptr = get_element_ptr(src, src_dims, n_dims, src_i, n_dims);
+    size_t dptr = get_element_ptr(dest, dest_dims, n_dims, dest_i, n_dims);
+    dest[dptr] = src[sptr];
+  } while (increment_and_check_dims(dest_i, dest_dims, n_dims));
+}
+
 void libjit_elementmax_f(float *dest, const float *LHS, const float *RHS,
                          size_t sz) {
   for (size_t i = 0; i < sz; i++) {

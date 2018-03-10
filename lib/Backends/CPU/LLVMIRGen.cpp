@@ -490,6 +490,27 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::BroadcastInstKind: {
+    BroadcastInst *BI = cast<BroadcastInst>(I);
+    auto *dest = BI->getDest();
+    auto *src = BI->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+
+    auto *destDims = emitValueDims(builder, dest);
+    auto *nDims = emitConstSizeT(builder, dest->dims().size());
+
+    // Pad src dims with 1s to match axis and dest dims.
+    llvm::SmallVector<size_t, 6> newDims(src->dims().begin(), src->dims().end());
+    newDims.insert(newDims.begin(), BI->getAxis(), 1);
+    newDims.insert(newDims.end(), dest->dims().size() - src->dims().size() - BI->getAxis(), 1);
+    auto *srcDims = emitConstArray(builder, newDims);
+
+    auto *F = getFunction("broadcast", dest->getElementType());
+    builder.CreateCall(F, {destPtr, srcPtr, destDims, srcDims, nDims});
+    break;
+  }
+
   case Kinded::Kind::ConvolutionInstKind: {
     ConvolutionInst *CI = cast<ConvolutionInst>(I);
     auto *dest = CI->getDest();

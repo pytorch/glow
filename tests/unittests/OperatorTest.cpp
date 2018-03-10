@@ -124,7 +124,7 @@ TEST_P(Operator, batchedBatchedAdd) {
 }
 
 /// Broadcast Tensor of shape (2,1,1) to (2,4,2) with axis 0.
-TEST(OperatorInterpOnly, broadcastSimple) {
+TEST_P(Operator, broadcastSimple) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -178,7 +178,7 @@ TEST(OperatorInterpOnly, broadcastSimple) {
 }
 
 /// Broadcast a Tensor of shape (2,1) to (3,2,4,2) with axis 1.
-TEST(OperatorInterpOnly, broadcast) {
+TEST_P(Operator, broadcast) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
