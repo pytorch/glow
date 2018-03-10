@@ -450,11 +450,18 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
 
 /// Scales a 32-bit integer using the integer shift-mult-shift method.
 /// See QuantizationTransform32To8 for more details.
-int32_t scaleI32(int32_t input, int32_t pre, int32_t post, int32_t scale,
-                 int32_t offset) {
+static int32_t libjit_scale_i32i8(int32_t input, int32_t pre, int32_t post,
+                                  int32_t scale, int32_t offset) {
   // The operation x >> y is rounded down to negative infinity. To get to
   // round-nearest we add (1 << (shift - 1)) to the value prior to shifting.
   int rtn = (1 << (post - 1));
+
+  // NOTICE: If your tests are failing because of signed integer overflow then
+  // this is a bug in the test and not in the program. You should make sure that
+  // the inputs to the operations do not overflow. The semantics of the
+  // quantization process is such that the result for values that fall out of
+  // range is undefined. The conversion procedure will only tolerate a few bits
+  // of overflow and the result will be clipped.
   return ((((input >> pre) * scale) + rtn) >> post) + offset;
 }
 
@@ -500,15 +507,15 @@ void libjit_convolution_i8(int8_t *outW, const int8_t *inW,
           }
 
           // Scale the bias to match the scale of the matrix multiplication.
-          int32_t B = scaleI32((int32_t)biasW[d] - biasOffset, biasPre,
-                               biasPost, biasScale, 0);
+          int32_t B = libjit_scale_i32i8((int32_t)biasW[d] - biasOffset,
+                                         biasPre, biasPost, biasScale, 0);
 
           // Add the bias:
           sum += B;
 
           // Scale the result back to the expected destination scale.
           int32_t scaledSum =
-              scaleI32(sum, outPre, outPost, outScale, outOffset);
+              libjit_scale_i32i8(sum, outPre, outPost, outScale, outOffset);
           outW[libjit_getXYZW(outWdims, n, ax, ay, d)] = libjit_clip(scaledSum);
         } // W
       }   // H
