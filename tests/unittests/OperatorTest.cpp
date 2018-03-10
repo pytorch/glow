@@ -443,8 +443,7 @@ TEST(OperatorInterpOnly, IntBatchedArith) {
   EXPECT_NEAR(H.at({0, 2, 2}), 9.3, 0.1);
 }
 
-TEST(OperatorInterpOnly, IntConvolution) {
-  ExecutionEngine EE;
+TEST_P(Operator, IntConvolution) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 

@@ -31,13 +31,7 @@ size_t libjit_getXY(const size_t *dims, size_t x, size_t y) {
   return (x * dims[1]) + y;
 }
 
-template <typename ElemTy, typename CompTy> ElemTy libjit_clip(CompTy val);
-
-template <> float libjit_clip<float, float>(float val) { return val; }
-
-template <> int8_t libjit_clip<int8_t, int32_t>(int32_t val) {
-  return (int8_t)MIN(MAX(val, -128), 127);
-}
+int8_t libjit_clip(int32_t val) { return (int8_t)MIN(MAX(val, -128), 127); }
 
 template <class ElemTy>
 static void libjit_dump_tensor_impl(ElemTy *tensor, size_t *dims,
@@ -200,63 +194,6 @@ void libjit_extract_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
   libjit_insert_tensor_impl(tensor, slice, offset, sliceCoor, fusedCoor,
                             tensorDim, sliceDim, numDimsTensor, numDimsSlice,
                             offsetDim, 0, 0);
-}
-
-template <typename ElemTy, typename CompTy>
-void libjit_convolution_impl(ElemTy *outW, const ElemTy *inW,
-                             const ElemTy *filterW, const ElemTy *biasW,
-                             const size_t *outWdims, const size_t *inWdims,
-                             const size_t *filterWdims, const size_t *biasWdims,
-                             size_t filterSize, size_t stride, size_t pad,
-                             float outScale, float inScale, float filterScale,
-                             float biasScale, int32_t outOffset,
-                             int32_t inOffset, int32_t filterOffset,
-                             int32_t biasOffset) {
-  // For now, require that scales match in a convenient way.
-  assert(outScale == inScale * filterScale && "Non-matching out scale");
-  assert(biasScale == inScale * filterScale && "Non-matching bias scale");
-  size_t inChannels = inWdims[3];
-
-  // For each input in the batch:
-  for (size_t n = 0; n < inWdims[0]; n++) {
-    // For each layer in the output tensor:
-    for (size_t d = 0; d < outWdims[3]; d++) {
-      // For each convolution 'jump' in the input tensor:
-      ssize_t x = -(ssize_t)pad;
-      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
-        ssize_t y = -(ssize_t)pad;
-        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
-          // For each element in the convolution-filter:
-          CompTy sum = 0;
-          for (size_t fx = 0; fx < filterSize; fx++) {
-            for (size_t fy = 0; fy < filterSize; fy++) {
-              ssize_t ox = x + fx;
-              ssize_t oy = y + fy;
-
-              // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
-                  oy >= (ssize_t)inWdims[2]) {
-                continue;
-              }
-              for (size_t fd = 0; fd < inChannels; fd++) {
-                sum +=
-                    ((CompTy)
-                         filterW[libjit_getXYZW(filterWdims, d, fx, fy, fd)] -
-                     filterOffset) *
-                    ((CompTy)inW[libjit_getXYZW(inWdims, n, (size_t)ox,
-                                                (size_t)oy, fd)] -
-                     inOffset);
-              }
-            }
-          }
-
-          sum += (CompTy)biasW[d] - biasOffset + outOffset;
-          outW[libjit_getXYZW(outWdims, n, ax, ay, d)] =
-              libjit_clip<ElemTy, CompTy>(sum);
-        } // W
-      }   // H
-    }     // C
-  }       // N
 }
 
 } // namespace
@@ -472,9 +409,43 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
                           const size_t *inWdims, const size_t *filterWdims,
                           const size_t *biasWdims, size_t filterSize,
                           size_t stride, size_t pad) {
-  libjit_convolution_impl<float, float>(
-      outW, inW, filterW, biasW, outWdims, inWdims, filterWdims, biasWdims,
-      filterSize, stride, pad, 1.0, 1.0, 1.0, 1.0, 0, 0, 0, 0);
+  size_t inChannels = inWdims[3];
+
+  // For each input in the batch:
+  for (size_t n = 0; n < inWdims[0]; n++) {
+    // For each layer in the output tensor:
+    for (size_t d = 0; d < outWdims[3]; d++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t x = -(ssize_t)pad;
+      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+        ssize_t y = -(ssize_t)pad;
+        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+          // For each element in the convolution-filter:
+          float sum = 0;
+          for (size_t fx = 0; fx < filterSize; fx++) {
+            for (size_t fy = 0; fy < filterSize; fy++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
+                  oy >= (ssize_t)inWdims[2]) {
+                continue;
+              }
+              for (size_t fd = 0; fd < inChannels; fd++) {
+                sum +=
+                    filterW[libjit_getXYZW(filterWdims, d, fx, fy, fd)] *
+                    inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+              }
+            }
+          }
+
+          sum += biasW[d];
+          outW[libjit_getXYZW(outWdims, n, ax, ay, d)] = sum;
+        } // W
+      }   // H
+    }     // C
+  }       // N
 }
 
 void libjit_convolution_i8(int8_t *outW, const int8_t *inW,
@@ -485,10 +456,56 @@ void libjit_convolution_i8(int8_t *outW, const int8_t *inW,
                            float outScale, float inScale, float filterScale,
                            float biasScale, int32_t outOffset, int32_t inOffset,
                            int32_t filterOffset, int32_t biasOffset) {
-  libjit_convolution_impl<int8_t, int32_t>(
-      outW, inW, filterW, biasW, outWdims, inWdims, filterWdims, biasWdims,
-      filterSize, stride, pad, outScale, inScale, filterScale, biasScale,
-      outOffset, inOffset, filterOffset, biasOffset);
+  size_t inChannels = inWdims[3];
+
+  // Calculate the scale of the values that come out of the matrix
+  // multiplication part of the calculation.
+  float matMulScale = inScale * filterScale;
+
+  // For each input in the batch:
+  for (size_t n = 0; n < inWdims[0]; n++) {
+    // For each layer in the output tensor:
+    for (size_t d = 0; d < outWdims[3]; d++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t x = -(ssize_t)pad;
+      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+        ssize_t y = -(ssize_t)pad;
+        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+          // For each element in the convolution-filter:
+          int32_t sum = 0;
+          for (size_t fx = 0; fx < filterSize; fx++) {
+            for (size_t fy = 0; fy < filterSize; fy++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
+                  oy >= (ssize_t)inWdims[2]) {
+                continue;
+              }
+              for (size_t fd = 0; fd < inChannels; fd++) {
+                int32_t F = filterW[libjit_getXYZW(filterWdims, d, fx, fy, fd)];
+                int32_t I =
+                    inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+                sum += (F - filterOffset) * (I - inOffset);
+              }
+            }
+          }
+
+          // Scale the bias to match the scale of the matrix multiplication.
+          int32_t B = std::round(float(biasW[d]) - biasOffset) *
+                      (biasScale / matMulScale);
+
+          // Add the bias:
+          sum += B;
+
+          // Scale the result back to the expected destination scale.
+          outW[libjit_getXYZW(outWdims, n, ax, ay, d)] = libjit_clip(
+              std::round(float(sum) * (matMulScale / outScale) + outOffset));
+        } // W
+      }   // H
+    }     // C
+  }       // N
 }
 
 void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
