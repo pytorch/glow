@@ -68,16 +68,16 @@ TEST(JITCorrectnessTest, convTest) {
 }
 
 TEST(JITCorrectnessTest, quantizedConvTest) {
-  Tensor inputs(ElemKind::Int8QTy, {20, 41, 32, 6}, 3.25, -7);
-  Tensor kernel(ElemKind::Int8QTy, {10, 5, 5, 6}, 2.0, 3);
-  Tensor bias(ElemKind::Int8QTy, {10}, 6.5, -4);
+  Tensor inputs(ElemKind::Int8QTy, {20, 41, 32, 6}, 0.025, -7);
+  Tensor kernel(ElemKind::Int8QTy, {10, 5, 5, 6}, 0.003, 3);
+  Tensor bias(ElemKind::Int8QTy, {10}, 0.5, -4);
   inputs.getHandle<int8_t>().randomize(-129, 128);
   kernel.getHandle<int8_t>().randomize(-129, 128);
   bias.getHandle<int8_t>().randomize(-11, 8);
   std::array<size_t, 4> S{{20, 15, 12, 10}};
   llvm::ArrayRef<size_t> shape(S);
-  Tensor out1(ElemKind::Int8QTy, shape, 6.5, -17);
-  Tensor out2(ElemKind::Int8QTy, shape, 6.5, -17);
+  Tensor out1(ElemKind::Int8QTy, shape, 0.05, -17);
+  Tensor out2(ElemKind::Int8QTy, shape, 0.05, -17);
 
   inferConvNet(&inputs, &kernel, &bias, &out1, BackendKind::JIT);
   inferConvNet(&inputs, &kernel, &bias, &out2, BackendKind::Interpreter);
