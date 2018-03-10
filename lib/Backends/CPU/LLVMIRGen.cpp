@@ -6,6 +6,7 @@
 
 #include "glow/Graph/Graph.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Quantization/Quantization.h"
 
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/IR/LegacyPassManager.h"
@@ -523,19 +524,37 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *srcTy = src->getType();
       auto *filterTy = filter->getType();
       auto *biasTy = bias->getType();
-      auto *destScale = emitConstF32(builder, destTy->getScale());
-      auto *srcScale = emitConstF32(builder, srcTy->getScale());
-      auto *filterScale = emitConstF32(builder, filterTy->getScale());
-      auto *biasScale = emitConstF32(builder, biasTy->getScale());
+
       auto *destOffset = emitConstI32(builder, destTy->getOffset());
       auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
       auto *filterOffset = emitConstI32(builder, filterTy->getOffset());
       auto *biasOffset = emitConstI32(builder, biasTy->getOffset());
 
-      builder.CreateCall(F, {destPtr, srcPtr, filterPtr, biasPtr, destDims,
-                             srcDims, filterDims, biasDims, kernel, stride, pad,
-                             destScale, srcScale, filterScale, biasScale,
-                             destOffset, srcOffset, filterOffset, biasOffset});
+      // Calculate the scale of the values that come out of the matrix
+      // multiplication part of the calculation.
+      float matMulScale = srcTy->getScale() * filterTy->getScale();
+
+      // Calculate the sacling parameters for the bias and output.
+      auto biasScaleParam = quantization::quantizeScaleOffset32To8(
+          biasTy->getScale() / matMulScale, biasTy->getOffset());
+      auto outScaleParam = quantization::quantizeScaleOffset32To8(
+          matMulScale / destTy->getScale(), biasTy->getOffset());
+
+      // Pass the pre-shift, post-shift and integer scale parameters for the
+      // bias and output calculation.
+      auto *biasPre = emitConstI32(builder, biasScaleParam.pre_);
+      auto *biasPost = emitConstI32(builder, biasScaleParam.post_);
+      auto *biasScale = emitConstI32(builder, biasScaleParam.scale_);
+      auto *outPre = emitConstI32(builder, outScaleParam.pre_);
+      auto *outPost = emitConstI32(builder, outScaleParam.post_);
+      auto *outScale = emitConstI32(builder, outScaleParam.scale_);
+
+      builder.CreateCall(F, {destPtr,   srcPtr,       filterPtr,  biasPtr,
+                             destDims,  srcDims,      filterDims, biasDims,
+                             kernel,    stride,       pad,        destOffset,
+                             srcOffset, filterOffset, biasOffset, biasPre,
+                             biasPost,  biasScale,    outPre,     outPost,
+                             outScale});
     } else {
       builder.CreateCall(F,
                          {destPtr, srcPtr, filterPtr, biasPtr, destDims,

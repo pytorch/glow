@@ -44,13 +44,12 @@ struct NodeQuantizationInfo {
 /// A data structure that represents the 32-bit to 8-bit quantization
 /// scaling operation. This data structure represents the transformation:
 /// (((input >> pre) * scale) + rtn) >> post + offset.
-class QuantizationTransform32To8 {
+struct QuantizationTransform32To8 {
   int pre_;
   int post_;
   int scale_;
   int offset_;
 
-public:
   /// Initializes the transformation based on the conversion formula (above).
   QuantizationTransform32To8(int pre, int post, int scale, int offset)
       : pre_(pre), post_(post), scale_(scale), offset_(offset) {}

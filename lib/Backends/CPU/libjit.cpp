@@ -448,19 +448,26 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
   }       // N
 }
 
+/// Scales a 32-bit integer using the integer shift-mult-shift method.
+/// See QuantizationTransform32To8 for more details.
+int32_t scaleI32(int32_t input, int32_t pre, int32_t post, int32_t scale,
+                 int32_t offset) {
+  // The operation x >> y is rounded down to negative infinity. To get to
+  // round-nearest we add (1 << (shift - 1)) to the value prior to shifting.
+  int rtn = (1 << (post - 1));
+  return ((((input >> pre) * scale) + rtn) >> post) + offset;
+}
+
 void libjit_convolution_i8(int8_t *outW, const int8_t *inW,
                            const int8_t *filterW, const int8_t *biasW,
                            const size_t *outWdims, const size_t *inWdims,
                            const size_t *filterWdims, const size_t *biasWdims,
                            size_t filterSize, size_t stride, size_t pad,
-                           float outScale, float inScale, float filterScale,
-                           float biasScale, int32_t outOffset, int32_t inOffset,
-                           int32_t filterOffset, int32_t biasOffset) {
+                           int32_t outOffset, int32_t inOffset,
+                           int32_t filterOffset, int32_t biasOffset,
+                           int32_t biasPre, int32_t biasPost, int32_t biasScale,
+                           int32_t outPre, int32_t outPost, int32_t outScale) {
   size_t inChannels = inWdims[3];
-
-  // Calculate the scale of the values that come out of the matrix
-  // multiplication part of the calculation.
-  float matMulScale = inScale * filterScale;
 
   // For each input in the batch:
   for (size_t n = 0; n < inWdims[0]; n++) {
@@ -493,15 +500,16 @@ void libjit_convolution_i8(int8_t *outW, const int8_t *inW,
           }
 
           // Scale the bias to match the scale of the matrix multiplication.
-          int32_t B = std::round(float(biasW[d]) - biasOffset) *
-                      (biasScale / matMulScale);
+          int32_t B = scaleI32((int32_t)biasW[d] - biasOffset, biasPre,
+                               biasPost, biasScale, 0);
 
           // Add the bias:
           sum += B;
 
           // Scale the result back to the expected destination scale.
-          outW[libjit_getXYZW(outWdims, n, ax, ay, d)] = libjit_clip(
-              std::round(float(sum) * (matMulScale / outScale) + outOffset));
+          int32_t scaledSum =
+              scaleI32(sum, outPre, outPost, outScale, outOffset);
+          outW[libjit_getXYZW(outWdims, n, ax, ay, d)] = libjit_clip(scaledSum);
         } // W
       }   // H
     }     // C
