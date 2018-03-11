@@ -189,7 +189,7 @@ TEST(JITCorrectnessTest, localResponseNormalizationGradTest) {
 }
 
 TEST(JITCorrectnessTest, maxTest) {
-  std::array<size_t, 3> S{{3, 8, 2}};
+  std::array<size_t, 1> S{{1941}};
   llvm::ArrayRef<size_t> shape(S);
   Tensor inputs1(ElemKind::FloatTy, shape);
   Tensor inputs2(ElemKind::FloatTy, shape);
@@ -207,7 +207,7 @@ TEST(JITCorrectnessTest, maxTest) {
 }
 
 TEST(JITCorrectnessTest, minTest) {
-  std::array<size_t, 4> S{{10, 3, 12, 8}};
+  std::array<size_t, 1> S{{1123}};
   llvm::ArrayRef<size_t> shape(S);
   Tensor inputs1(ElemKind::FloatTy, shape);
   Tensor inputs2(ElemKind::FloatTy, shape);
@@ -460,7 +460,7 @@ TEST(JITCorrectnessTest, softmaxGradTest) {
 }
 
 TEST(JITCorrectnessTest, tanhTest) {
-  Tensor inputs(ElemKind::FloatTy, {4, 7, 3, 3});
+  Tensor inputs(ElemKind::FloatTy, {14151});
   inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
