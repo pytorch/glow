@@ -359,33 +359,21 @@ void libjit_convolution_unroll_k4_f(
                   oy >= (ssize_t)inWdims[2]) {
                 continue;
               }
+
+              // Calculate the indices into the Filter and Input buffers.
+              size_t inIdx =
+                  libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, 0);
+              size_t filterIdx = libjit_getXYZW(filterWdims, d, fx, fy, 0);
+              size_t sliceSize =
+                  filterWdims[1] * filterWdims[2] * filterWdims[3];
+
+#pragma clang loop vectorize(enable)
               for (size_t fd = 0; fd < inChannels; fd++) {
-                float in =
-                    inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
-                sum0 +=
-                    filterW[libjit_getXYZW(filterWdims, d + 0, fx, fy, fd)] *
-                    in;
-              }
-              for (size_t fd = 0; fd < inChannels; fd++) {
-                float in =
-                    inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
-                sum1 +=
-                    filterW[libjit_getXYZW(filterWdims, d + 1, fx, fy, fd)] *
-                    in;
-              }
-              for (size_t fd = 0; fd < inChannels; fd++) {
-                float in =
-                    inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
-                sum2 +=
-                    filterW[libjit_getXYZW(filterWdims, d + 2, fx, fy, fd)] *
-                    in;
-              }
-              for (size_t fd = 0; fd < inChannels; fd++) {
-                float in =
-                    inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
-                sum3 +=
-                    filterW[libjit_getXYZW(filterWdims, d + 3, fx, fy, fd)] *
-                    in;
+                float in = inW[inIdx + fd];
+                sum0 += filterW[filterIdx + (sliceSize * 0) + fd] * in;
+                sum1 += filterW[filterIdx + (sliceSize * 1) + fd] * in;
+                sum2 += filterW[filterIdx + (sliceSize * 2) + fd] * in;
+                sum3 += filterW[filterIdx + (sliceSize * 3) + fd] * in;
               }
             }
           }
