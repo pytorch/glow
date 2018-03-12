@@ -122,8 +122,9 @@ static void libjit_dump_tensor_impl(ElemTy *tensor, size_t *dims,
 }
 
 template <typename ElemTy>
-static size_t get_element_ptr(ElemTy *tensor, size_t *dims, size_t numDims,
-                              size_t *indices, size_t numIndices) {
+static size_t get_element_ptr(const ElemTy *tensor, const size_t *dims,
+                              size_t numDims, const size_t *indices,
+                              size_t numIndices) {
   size_t index = 0;
   size_t subdimensionSize = 1;
   for (size_t i = numDims; i > 0; i--) {
