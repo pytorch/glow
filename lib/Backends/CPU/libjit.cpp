@@ -367,7 +367,6 @@ void libjit_convolution_unroll_k4_f(
               size_t sliceSize =
                   filterWdims[1] * filterWdims[2] * filterWdims[3];
 
-#pragma clang loop vectorize(enable)
               for (size_t fd = 0; fd < inChannels; fd++) {
                 float in = inW[inIdx + fd];
                 sum0 += filterW[filterIdx + (sliceSize * 0) + fd] * in;
