@@ -236,6 +236,7 @@ InstrBuilder::~InstrBuilder() {
   emitClass(headerStream);
   emitCppMethods(cppStream);
   emitIRBuilderMethods(builderHeaderStream, builderCppStream);
+  emitAutoIRGen(irGenStream);
 }
 
 InstrBuilder &
@@ -271,10 +272,13 @@ InstrBuilder::addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
   return *this;
 }
 
-InstrBuilder &InstrBuilder::autoIRGen(const std::string &name) {
-  const std::string &nodeName = (name.empty() ? name_ : name);
-  irGenStream << "case glow::Kinded::Kind::" << nodeName << "NodeKind: {\n";
-  irGenStream << "  auto *CN__ = cast<" << nodeName << "Node>(N);\n";
+void InstrBuilder::emitAutoIRGen(std::ostream &os) const {
+  if (autoIRGenNodeName.empty()) {
+    return;
+  }
+
+  os << "case glow::Kinded::Kind::" << autoIRGenNodeName << "NodeKind: {\n";
+  os << "  auto *CN__ = cast<" << autoIRGenNodeName << "Node>(N);\n";
 
   // Note: The convention is for Nodes to have 'Input's and 'Output's, and for
   // Instrs to have 'Src's and 'Dest's. Thus we map between the two below.
@@ -284,8 +288,8 @@ InstrBuilder &InstrBuilder::autoIRGen(const std::string &name) {
     if (opPair.second == OperandKind::In) {
       const std::string opNodeName =
           (opPair.first == "Src") ? "Input" : opPair.first;
-      irGenStream << "  auto *" << opPair.first << " = valueForNode(CN__->get"
-                  << opNodeName << "());\n";
+      os << "  auto *" << opPair.first << " = valueForNode(CN__->get"
+         << opNodeName << "());\n";
     } else if (opPair.second == OperandKind::Out) {
       assert(resNodeName.empty() && destOpName.empty() &&
              "Must have multiple results; don't support autogen yet.");
@@ -297,26 +301,24 @@ InstrBuilder &InstrBuilder::autoIRGen(const std::string &name) {
   assert(!resNodeName.empty() && !destOpName.empty() &&
          "Didn't find a result; Maybe using InOut which isn't yet supported");
 
-  irGenStream << "  auto *dest__ = builder_.createAllocActivationInst(\""
-              << nodeName << ".res\", CN__->get" << resNodeName
-              << "()->getType());\n";
-  irGenStream << "  auto *V = builder_.create" << name_ << "Inst(\"" << nodeName
-              << "\", dest__";
+  os << "  auto *dest__ = builder_.createAllocActivationInst(\""
+     << autoIRGenNodeName << ".res\", CN__->get" << resNodeName
+     << "()->getType());\n";
+  os << "  auto *V = builder_.create" << name_ << "Inst(\"" << autoIRGenNodeName
+     << "\", dest__";
   for (const auto &opPair : operands_) {
     if (opPair.second == OperandKind::In) {
-      irGenStream << ", " << opPair.first;
+      os << ", " << opPair.first;
     }
   }
   for (const auto &memPair : members_) {
-    irGenStream << ", CN__->get" << memPair.second << "()";
+    os << ", CN__->get" << memPair.second << "()";
   }
-  irGenStream << ");\n";
+  os << ");\n";
 
-  irGenStream << "  V->setName(N->getName());\n";
-  irGenStream << "  registerIR(N, V->get" << destOpName << "());\n";
-  irGenStream << "  nodeToInstr_[N] = V;\n";
-  irGenStream << "  break;\n";
-  irGenStream << "}\n";
-
-  return *this;
+  os << "  V->setName(N->getName());\n";
+  os << "  registerIR(N, V->get" << destOpName << "());\n";
+  os << "  nodeToInstr_[N] = V;\n";
+  os << "  break;\n";
+  os << "}\n";
 }
