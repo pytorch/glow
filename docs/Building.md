@@ -90,3 +90,14 @@ You can generate a coverage report by providing additional options to cmake:
   -DGLOW_USE_COVERAGE=1
   ```
 and then invoke ```glow_coverage``` make target.
+
+## Building Doxygen documentation
+
+Building documentation can be enabled by passing an additional cmake parameter:
+
+  ```
+  -DBUILD_DOCS=ON
+  ```
+
+Output will be placed in the `docs/html` subdirectory of the build output
+directory.
