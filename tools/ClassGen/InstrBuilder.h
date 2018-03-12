@@ -60,6 +60,9 @@ class InstrBuilder {
   /// specific kind of verification to apply on the list of operands.
   std::vector<std::pair<VerifyKind, std::vector<std::string>>>
       autoVerificationPairs_;
+  /// If autoIRGen is used on this Instr, this is the name of the Node that
+  /// generates to this Instr. If left empty then autoIRGen is not used.
+  std::string autoIRGenNodeName;
 
   /// Header file stream.
   std::ofstream &headerStream;
@@ -139,9 +142,12 @@ public:
   InstrBuilder &addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
                                  llvm::ArrayRef<llvm::StringRef> gradFields);
 
-  /// Adds a case to AutoIRGen for generating this Instr from a Node. Creates
-  /// the Instr for the Node \p name (if empty, defaults to same name as Instr).
-  InstrBuilder &autoIRGen(const std::string &name = "");
+  /// Turns on automatic IRGen generation for this instruction given the Node \p
+  /// name (if empty, defaults to same name as Instr).
+  InstrBuilder &autoIRGen(const std::string &name = "") {
+    autoIRGenNodeName = (name.empty() ? name_ : name);
+    return *this;
+  }
 
   /// Automatically generates verification of type \p verif
   InstrBuilder &autoVerify(VerifyKind verif,
@@ -189,6 +195,9 @@ private:
   /// Emit the methods that go into the CPP file and implement the methods that
   /// were declared in the header file.
   void emitCppMethods(std::ostream &os) const;
+
+  /// Adds a case to AutoIRGen for generating this Instr from a Node.
+  void emitAutoIRGen(std::ostream &os) const;
 };
 
 class Builder {
