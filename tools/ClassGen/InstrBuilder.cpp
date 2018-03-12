@@ -239,9 +239,9 @@ InstrBuilder::~InstrBuilder() {
   emitAutoIRGen(irGenStream);
 }
 
-InstrBuilder &
-InstrBuilder::addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
-                               llvm::ArrayRef<llvm::StringRef> gradFields) {
+void InstrBuilder::addGradientInstr(
+    llvm::ArrayRef<llvm::StringRef> originalFields,
+    llvm::ArrayRef<llvm::StringRef> gradFields) {
   InstrBuilder GI(headerStream, cppStream, defStream, builderHeaderStream,
                   builderCppStream, irGenStream, name_ + "Grad",
                   isBackendSpecific_);
@@ -269,7 +269,6 @@ InstrBuilder::addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
       }
     }
   }
-  return *this;
 }
 
 void InstrBuilder::emitAutoIRGen(std::ostream &os) const {

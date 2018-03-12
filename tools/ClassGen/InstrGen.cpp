@@ -69,8 +69,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Stride")
       .addMember(MemberType::SizeT, "Pad")
       .addMember(MemberType::SizeT, "Depth")
-      .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"})
-      .autoIRGen();
+      .autoIRGen()
+      .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
 
   // PoolMax version caching XY coordinates to speedup gradient-based
   // computations.
@@ -96,8 +96,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
       .addMember(MemberType::SizeT, "Pad")
-      .addGradientInstr({"Dest"}, {"Dest", "Src"})
-      .autoIRGen();
+      .autoIRGen()
+      .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
   //===--------------------------------------------------------------------===//
   //                     Normalization
@@ -117,9 +117,9 @@ int main(int argc, char **argv) {
           "Dest",
           "Src",
       })
+      .autoIRGen()
       .addGradientInstr({"Src", "Scale", "Mean", "Var"},
-                        {"Dest", "Src", "Scale", "Bias"})
-      .autoIRGen();
+                        {"Dest", "Src", "Scale", "Bias"});
 
   BB.newInstr("LocalResponseNormalization")
       .addOperand("Dest", OperandKind::Out)
