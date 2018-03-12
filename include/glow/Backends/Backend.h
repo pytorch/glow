@@ -11,6 +11,7 @@ class Value;
 class Tensor;
 class Variable;
 class Function;
+class Node;
 
 enum class BackendKind {
   Interpreter, // Execute the network with the built-in interpreter.
@@ -48,6 +49,9 @@ public:
   virtual bool transformPreLowering(Function *F) { return false; }
   virtual bool transformPostLowering(Function *F) { return false; }
   /// @}
+
+  // \returns true if the given node \p node can be quantized by the backend.
+  virtual bool canQuantize(const Node* node) const { return false; };
 };
 
 /// Create a backend of kind \p kind, to run the IR function \p M.

@@ -222,15 +222,6 @@ float dequantize(int8_t input, const TensorQuantizationParams &TQP) {
   return TQP.scale_ * (input - TQP.offset_);
 }
 
-/// \returns true if \p node should be quantized.
-static bool shouldQuantize(const Node *node) {
-  return llvm::isa<FullyConnectedNode>(node) ||
-         llvm::isa<ConvolutionNode>(node) || llvm::isa<ReluNode>(node) ||
-         llvm::isa<TransposeNode>(node) || llvm::isa<ReshapeNode>(node) ||
-         node->isArithmetic() || llvm::isa<ConcatNode>(node) ||
-         llvm::isa<PoolMaxNode>(node) || llvm::isa<PoolAvgNode>(node);
-}
-
 /// Quantize all inputs for \p node and return back pointers to the newly
 /// created qunatization nodes.
 static llvm::SmallVector<Node *, 6>
@@ -259,7 +250,7 @@ quantizeInputs(Function *F, Node *node,
 }
 
 void generateQuantizedGraph(
-    Function *F, llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos) {
+    const Backend &backend, Function *F, llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos) {
   // Build a mapping between node name and TensorQuantizatonParams.
   std::unordered_map<std::string, TensorQuantizationParams> nodeToTQP;
   for (const auto &quantizationInfo : quantizationInfos) {
@@ -272,7 +263,7 @@ void generateQuantizedGraph(
   for (auto nodeIt = F->getNodes().rbegin(), e = F->getNodes().rend();
        nodeIt != e; ++nodeIt) {
     Node *node = *nodeIt;
-    if (!shouldQuantize(node)) {
+    if (!backend.canQuantize(node)) {
       continue;
     }
 
