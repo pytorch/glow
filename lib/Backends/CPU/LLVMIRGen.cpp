@@ -382,33 +382,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     builder.CreateCall(F, {destPtr, cnt, val});
     break;
   }
-
-  case Kinded::Kind::ElementMaxInstKind: {
-    ElementMaxInst *EM = cast<ElementMaxInst>(I);
-    auto *dest = EM->getDest();
-    auto *destPtr = emitValueAddress(builder, dest);
-    auto *lhsPtr = emitValueAddress(builder, EM->getLHS());
-    auto *rhsPtr = emitValueAddress(builder, EM->getRHS());
-    auto cnt = emitValueSize(builder, dest);
-
-    auto *F = getFunction("elementmax", dest->getElementType());
-    builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, cnt});
-    break;
-  }
-
-  case Kinded::Kind::ElementMinInstKind: {
-    ElementMinInst *EM = cast<ElementMinInst>(I);
-    auto *dest = EM->getDest();
-    auto *destPtr = emitValueAddress(builder, dest);
-    auto *lhsPtr = emitValueAddress(builder, EM->getLHS());
-    auto *rhsPtr = emitValueAddress(builder, EM->getRHS());
-    auto cnt = emitValueSize(builder, dest);
-
-    auto *F = getFunction("elementmin", dest->getElementType());
-    builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, cnt});
-    break;
-  }
-
   case Kinded::Kind::ElementSelectInstKind: {
     ElementSelectInst *ES = cast<ElementSelectInst>(I);
     auto *dest = ES->getDest();
@@ -883,74 +856,26 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::ElementDivInstKind:
-  case Kinded::Kind::ElementMulInstKind:
-  case Kinded::Kind::ElementAddInstKind:
-  case Kinded::Kind::ElementSubInstKind:
-  case Kinded::Kind::ElementCmpLTEInstKind: {
-    // Generate code for the op parameters.
-    Value *dest;
-    llvm::Value *destPtr, *lhsPtr, *rhsPtr;
-
-    // Select the correct kernel from the library.
-    const char *funcName = "";
-    switch (I->getKind()) {
-    case Kinded::Kind::ElementDivInstKind: {
-      auto *tmpInst = cast<ElementDivInst>(I);
-      dest = tmpInst->getDest();
-      destPtr = emitValueAddress(builder, dest);
-      lhsPtr = emitValueAddress(builder, tmpInst->getLHS());
-      rhsPtr = emitValueAddress(builder, tmpInst->getRHS());
-      funcName = "element_div";
-      break;
-    }
-    case Kinded::Kind::ElementMulInstKind: {
-      auto *tmpInst = cast<ElementMulInst>(I);
-      dest = tmpInst->getDest();
-      destPtr = emitValueAddress(builder, dest);
-      lhsPtr = emitValueAddress(builder, tmpInst->getLHS());
-      rhsPtr = emitValueAddress(builder, tmpInst->getRHS());
-      funcName = "element_mul";
-      break;
-    }
-    case Kinded::Kind::ElementAddInstKind: {
-      auto *tmpInst = cast<ElementAddInst>(I);
-      dest = tmpInst->getDest();
-      destPtr = emitValueAddress(builder, dest);
-      lhsPtr = emitValueAddress(builder, tmpInst->getLHS());
-      rhsPtr = emitValueAddress(builder, tmpInst->getRHS());
-      funcName = "element_add";
-      break;
-    }
-    case Kinded::Kind::ElementSubInstKind: {
-      auto *tmpInst = cast<ElementSubInst>(I);
-      dest = tmpInst->getDest();
-      destPtr = emitValueAddress(builder, dest);
-      lhsPtr = emitValueAddress(builder, tmpInst->getLHS());
-      rhsPtr = emitValueAddress(builder, tmpInst->getRHS());
-      funcName = "element_sub";
-      break;
-    }
-    case Kinded::Kind::ElementCmpLTEInstKind: {
-      auto *tmpInst = cast<ElementCmpLTEInst>(I);
-      dest = tmpInst->getDest();
-      destPtr = emitValueAddress(builder, dest);
-      lhsPtr = emitValueAddress(builder, tmpInst->getLHS());
-      rhsPtr = emitValueAddress(builder, tmpInst->getRHS());
-      funcName = "element_cmp_lte";
-      break;
-    }
-    default:
-      llvm_unreachable("Invalid node kind");
-    }
-
-    auto numElem = dest->getType()->size();
-    auto *numElemVal = emitConstSizeT(builder, numElem);
-
-    auto *F = getFunction(funcName, dest->getElementType());
-    builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, numElemVal});
-    break;
+#define ARITHMETIC_CASE(INST_NAME_, FUN_NAME_)                                 \
+  case Kinded::Kind::INST_NAME_##InstKind: {                                   \
+    auto *AN = cast<INST_NAME_##Inst>(I);                                      \
+    auto *dest = AN->getDest();                                                \
+    auto *destPtr = emitValueAddress(builder, dest);                           \
+    auto *lhsPtr = emitValueAddress(builder, AN->getLHS());                    \
+    auto *rhsPtr = emitValueAddress(builder, AN->getRHS());                    \
+    auto cnt = emitValueSize(builder, dest);                                   \
+    auto *F = getFunction(FUN_NAME_, dest->getElementType());                  \
+    builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, cnt});                     \
+    break;                                                                     \
   }
+    ARITHMETIC_CASE(ElementAdd, "element_add");
+    ARITHMETIC_CASE(ElementMul, "element_mul");
+    ARITHMETIC_CASE(ElementSub, "element_sub");
+    ARITHMETIC_CASE(ElementDiv, "element_div");
+    ARITHMETIC_CASE(ElementMax, "elementmax");
+    ARITHMETIC_CASE(ElementMin, "elementmin");
+    ARITHMETIC_CASE(ElementCmpLTE, "element_cmp_lte");
+#undef ARITHMETIC_CASE
 
     // Alloc and Dealloc instructions are handled by the memory allocator.
   case Kinded::Kind::AllocActivationInstKind:
