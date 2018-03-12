@@ -283,3 +283,19 @@ void CPUBackend::save(llvm::StringRef outputDir) {
   // Produce the bundle.
   produceBundle(outputDir);
 }
+
+bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
+  // Check for quantization support.
+  if (elementTy == ElemKind::Int8QTy) {
+    switch (opKind) {
+    case Kinded::Kind::ConvolutionNodeKind:
+    case Kinded::Kind::QuantizeNodeKind:
+    case Kinded::Kind::DequantizeNodeKind:
+      return true;
+    default:
+      return false;
+    }
+  }
+
+  return true;
+}

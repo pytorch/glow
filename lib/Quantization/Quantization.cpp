@@ -2,6 +2,8 @@
 
 #include "glow/Quantization/Quantization.h"
 
+#include "glow/ExecutionEngine/ExecutionEngine.h"
+
 #include <cmath>
 #include <unordered_set>
 #include <vector>
@@ -250,7 +252,8 @@ quantizeInputs(Function *F, Node *node,
 }
 
 void generateQuantizedGraph(
-    const Backend &backend, Function *F, llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos) {
+    const ExecutionEngine &EE, Function *F,
+    llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos) {
   // Build a mapping between node name and TensorQuantizatonParams.
   std::unordered_map<std::string, TensorQuantizationParams> nodeToTQP;
   for (const auto &quantizationInfo : quantizationInfos) {
@@ -263,7 +266,7 @@ void generateQuantizedGraph(
   for (auto nodeIt = F->getNodes().rbegin(), e = F->getNodes().rend();
        nodeIt != e; ++nodeIt) {
     Node *node = *nodeIt;
-    if (!backend.canQuantize(node)) {
+    if (!EE.isOpSupported(node->getKind(), ElemKind::Int8QTy)) {
       continue;
     }
 

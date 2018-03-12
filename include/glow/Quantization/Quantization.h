@@ -4,13 +4,14 @@
 #define GLOW_QUANTIZATION_QUANTIZATION_H
 
 #include "glow/Graph/Graph.h"
-#include "glow/Backends/Backend.h"
 
 #include <string>
 #include <tuple>
 #include <vector>
 
 namespace glow {
+
+class ExecutionEngine;
 
 /// Main attributes of a quantized tensor.
 /// Scale and Offset allow quantization of a float tensor and dequantization of
@@ -96,9 +97,11 @@ template <class SrcTy, class DestTy> DestTy clip(SrcTy in) {
 }
 
 /// Converts floating point graph to a quantized one.
-/// Note, if not all operators have a conversion support graph ends up being hybrid.
+/// Note, if not all operators have a conversion support graph ends up being
+/// hybrid.
 void generateQuantizedGraph(
-    const Backend& backend, Function *F, llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos);
+    const ExecutionEngine &EE, Function *F,
+    llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos);
 
 } // namespace quantization
 

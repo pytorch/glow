@@ -48,7 +48,7 @@ public:
 
   void doForwardPass(bool isTrain) override;
 
-  bool canQuantize(const Node *node) const override;
+  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override;
   /// @}
 
 private:
