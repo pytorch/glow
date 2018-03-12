@@ -267,7 +267,7 @@ int main(int argc, char **argv) {
     auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
 
     // Quantize the graph based on the captured profile.
-    quantization::generateQuantizedGraph(EE.getBackend(), F, quantizationInfos);
+    quantization::generateQuantizedGraph(EE, F, quantizationInfos);
   }
 
   if (!emitBundle.empty()) {

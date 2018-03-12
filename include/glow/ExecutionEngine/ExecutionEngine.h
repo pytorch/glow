@@ -3,6 +3,7 @@
 
 #include "glow/Backends/Backend.h"
 #include "glow/Base/Train.h"
+#include "glow/Base/Traits.h"
 #include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -57,8 +58,10 @@ public:
   /// \returns the internal graph.
   Module &getModule() { return *M_; }
 
-  /// \returns the internal backend.
-  const Backend &getBackend() const { return *IP_; }
+  /// \returns whether operation is supported by the underlying backend.
+  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
+    return IP_->isOpSupported(opKind, elementTy);
+  }
 
   /// Optimize the graph, generate IR, optimize IR and compile it for a
   /// specific target. This method should be invoked before the run method.

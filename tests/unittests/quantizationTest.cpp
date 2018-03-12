@@ -14,6 +14,11 @@ namespace glow {
 
 using llvm::cast;
 
+class Quantization : public ::testing::TestWithParam<BackendKind> {
+protected:
+  ExecutionEngine EE{GetParam()};
+};
+
 bool operator==(const NodeQuantizationInfo &lhs,
                 const NodeQuantizationInfo &rhs) {
   return lhs.Scale() == rhs.Scale() && lhs.Offset() == rhs.Offset() &&
@@ -102,7 +107,7 @@ TEST(Quantization, quantizeGraph) {
       {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6, 0}},
   };
 
-  quantization::generateQuantizedGraph(EE.getBackend(), F, QI);
+  quantization::generateQuantizedGraph(EE, F, QI);
 
   // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer, F);
@@ -160,7 +165,7 @@ createSimpleGraphForQuantization(Module *M) {
   return {F, SN};
 }
 
-TEST(Quantization, end2end) {
+TEST_P(Quantization, end2end) {
   // STEP1 - Generate the first network to record the quantization parameters.
   ExecutionEngine EE;
   auto res = createSimpleGraphForQuantization(&EE.getModule());
@@ -183,7 +188,7 @@ TEST(Quantization, end2end) {
   Function *F2 = res2.first;
   SaveNode *result2 = res2.second;
 
-  quantization::generateQuantizedGraph(EE.getBackend(), F2, QI);
+  quantization::generateQuantizedGraph(EE, F2, QI);
   EE2.compile(CompilationMode::Infer, F2);
   EE2.run({}, {});
 
@@ -245,5 +250,12 @@ TEST(Quantization, optimizeRescaleQuantize) {
   auto RH = result->getVariable()->getHandle();
   EXPECT_NEAR(RH.at({0, 0}), 21.0, 0.001);
 }
+
+INSTANTIATE_TEST_CASE_P(Interpreter, Quantization,
+                        ::testing::Values(BackendKind::Interpreter));
+
+#ifdef GLOW_WITH_CPU
+INSTANTIATE_TEST_CASE_P(JIT, Quantization, ::testing::Values(BackendKind::JIT));
+#endif // GLOW_WITH_CPU
 
 } // namespace glow

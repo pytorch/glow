@@ -1,6 +1,8 @@
 #ifndef GLOW_BACKENDS_BACKEND_H
 #define GLOW_BACKENDS_BACKEND_H
 
+#include "glow/Base/Traits.h"
+
 #include <llvm/ADT/StringRef.h>
 
 namespace glow {
@@ -11,7 +13,6 @@ class Value;
 class Tensor;
 class Variable;
 class Function;
-class Node;
 
 enum class BackendKind {
   Interpreter, // Execute the network with the built-in interpreter.
@@ -50,8 +51,9 @@ public:
   virtual bool transformPostLowering(Function *F) { return false; }
   /// @}
 
-  // \returns true if the given node \p node can be quantized by the backend.
-  virtual bool canQuantize(const Node* node) const { return false; };
+  /// \returns true if backend supports given kind of operation with
+  /// the given \p elementTy element type.
+  virtual bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const = 0;
 };
 
 /// Create a backend of kind \p kind, to run the IR function \p M.

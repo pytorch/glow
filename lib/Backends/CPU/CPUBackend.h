@@ -69,6 +69,8 @@ public:
   void doForwardPass(bool isTrain) override;
 
   bool transformPostLowering(Function *F) override;
+
+  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override;
   /// @}
 };
 

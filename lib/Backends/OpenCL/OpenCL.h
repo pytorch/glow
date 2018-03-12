@@ -56,6 +56,14 @@ public:
   void init() override;
 
   void doForwardPass(bool isTrain) override;
+
+  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
+    if (elementTy == ElemKind::Int8QTy) {
+      return false;
+    }
+
+    return true;
+  };
   /// @}
 
 private:

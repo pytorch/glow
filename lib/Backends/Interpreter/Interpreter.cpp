@@ -91,12 +91,33 @@ void Interpreter::deleteTensor(const Value *v) {
   tensors_.erase(it);
 }
 
-bool Interpreter::canQuantize(const Node *node) const {
-  return llvm::isa<FullyConnectedNode>(node) ||
-         llvm::isa<ConvolutionNode>(node) || llvm::isa<ReluNode>(node) ||
-         llvm::isa<TransposeNode>(node) || llvm::isa<ReshapeNode>(node) ||
-         node->isArithmetic() || llvm::isa<ConcatNode>(node) ||
-         llvm::isa<PoolMaxNode>(node) || llvm::isa<PoolAvgNode>(node);
+bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
+  // Check quantization support.
+  if (elementTy == ElemKind::Int8QTy) {
+    switch (opKind) {
+    case Kinded::Kind::FullyConnectedNodeKind:
+    case Kinded::Kind::ConvolutionNodeKind:
+    case Kinded::Kind::ReluNodeKind:
+    case Kinded::Kind::TransposeNodeKind:
+    case Kinded::Kind::ReshapeNodeKind:
+    case Kinded::Kind::ConcatNodeKind:
+    case Kinded::Kind::PoolMaxNodeKind:
+    case Kinded::Kind::PoolAvgNodeKind:
+    case Kinded::Kind::AddNodeKind:
+    case Kinded::Kind::MaxNodeKind:
+    case Kinded::Kind::MinNodeKind:
+    case Kinded::Kind::MulNodeKind:
+    case Kinded::Kind::SubNodeKind:
+    case Kinded::Kind::QuantizeNodeKind:
+    case Kinded::Kind::DequantizeNodeKind:
+    case Kinded::Kind::RescaleQuantizedNodeKind:
+      return true;
+    default:
+      return false;
+    }
+  }
+
+  return true;
 }
 
 void Interpreter::doForwardPass(bool isTrain) {
