@@ -219,9 +219,10 @@ void libjit_elementmax_f(float *dest, const float *LHS, const float *RHS,
   }
 }
 
-void libjit_elementmax0_f(float *dest, const float *LHS, size_t sz) {
+void libjit_elementmaxsplat_f(float *dest, const float *LHS, size_t sz,
+                              float splatVal) {
   for (size_t i = 0; i < sz; i++) {
-    dest[i] = MAX(LHS[i], 0);
+    dest[i] = MAX(LHS[i], splatVal);
   }
 }
 
@@ -255,8 +256,7 @@ void libjit_matmul_f(float *dest, const float *LHS, const float *RHS,
         // lhs access is invariant inside the inner-most loop and can be
         // hoisted.
         dest[libjit_getXY(destDims, x, y)] +=
-            LHS[libjit_getXY(lhsDims, x, i)] *
-            RHS[libjit_getXY(rhsDims, i, y)];
+            LHS[libjit_getXY(lhsDims, x, i)] * RHS[libjit_getXY(rhsDims, i, y)];
       }
     }
   }

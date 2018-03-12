@@ -1,6 +1,6 @@
 #ifdef GLOW_WITH_CPU
 
-void CPUMaxZeroNode::verify() const {
+void CPUMaxSplatNode::verify() const {
   assert(getInput().getType() == getResult().getType() && "Invalid type");
   assert(getInput().dims() == getResult().dims() && "Invalid shape");
 }
