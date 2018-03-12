@@ -67,8 +67,10 @@ class InstrBuilder {
   std::ofstream &cppStream;
   /// Def-enum file stream.
   std::ofstream &defStream;
-  /// The IRBuilder stream.
-  std::ofstream &builderStream;
+  /// The IRBuilder header stream.
+  std::ofstream &builderHeaderStream;
+  /// The IRBuilder CPP stream.
+  std::ofstream &builderCppStream;
   /// The IRGen stream.
   std::ofstream &irGenStream;
 
@@ -81,10 +83,10 @@ class InstrBuilder {
 
 public:
   InstrBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
-               std::ofstream &B, std::ofstream &I, const std::string &name,
-               bool isBackendSpecific)
+               std::ofstream &BH, std::ofstream &BC, std::ofstream &I,
+               const std::string &name, bool isBackendSpecific)
       : name_(name), headerStream(H), cppStream(C), defStream(D),
-        builderStream(B), irGenStream(I),
+        builderHeaderStream(BH), builderCppStream(BC), irGenStream(I),
         isBackendSpecific_(isBackendSpecific) {
     defStream << (isBackendSpecific_ ? "DEF_BACKEND_SPECIFIC_INSTR("
                                      : "DEF_INSTR(")
@@ -159,7 +161,7 @@ private:
   void emitCtor(std::ostream &os) const;
 
   /// Emit the methods that make the IRBuilder.
-  void emitIRBuilderMethods(std::ostream &os) const;
+  void emitIRBuilderMethods(std::ostream &osH, std::ostream &osB) const;
 
   /// Emits the class members (the fields of the class).
   void emitClassMembers(std::ostream &os) const;
@@ -193,7 +195,8 @@ class Builder {
   std::ofstream &headerStream;
   std::ofstream &cppStream;
   std::ofstream &defStream;
-  std::ofstream &builderStream;
+  std::ofstream &builderHeaderStream;
+  std::ofstream &builderCppStream;
   std::ofstream &irGenStream;
   // First defined instruction.
   std::string firstInstr;
@@ -201,12 +204,13 @@ class Builder {
   std::string lastInstr;
 
 public:
-  /// Create a new top-level builder that holds the three output streams that
-  /// point to the header file, cpp file and enum definition file.
+  /// Create a new top-level builder that holds the output streams that
+  /// point to the header file, cpp file and enum definition file, as well as
+  /// the builder and IR Gen files.
   Builder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
-          std::ofstream &B, std::ofstream &I)
-      : headerStream(H), cppStream(C), defStream(D), builderStream(B),
-        irGenStream(I) {
+          std::ofstream &BH, std::ofstream &BC, std::ofstream &I)
+      : headerStream(H), cppStream(C), defStream(D), builderHeaderStream(BH),
+        builderCppStream(BC), irGenStream(I) {
     cppStream << "#include \"glow/IR/IR.h\"\n"
                  "#include \"glow/IR/Instrs.h\"\n"
                  "#include \"glow/Base/Type.h\"\n"
@@ -224,6 +228,11 @@ public:
            "#ifndef DEF_INSTR_RANGE\n"
            "#define DEF_INSTR_RANGE(ID, FIRST, LAST)\n"
            "#endif\n";
+
+    builderCppStream << "#include \"glow/IR/IRBuilder.h\"\n"
+                     << "#include \"glow/IR/IR.h\"\n"
+                     << "#include \"glow/IR/Instrs.h\"\n\n"
+                     << "using namespace glow;\n";
   }
 
   ~Builder() {
@@ -243,8 +252,8 @@ public:
       firstInstr = name;
     lastInstr = name;
     const bool isBackendSpecific = false;
-    return InstrBuilder(headerStream, cppStream, defStream, builderStream,
-                        irGenStream, name, isBackendSpecific);
+    return InstrBuilder(headerStream, cppStream, defStream, builderHeaderStream,
+                        builderCppStream, irGenStream, name, isBackendSpecific);
   }
 
   /// Declare a new backend-specific instruction and generate code for it.
@@ -253,8 +262,8 @@ public:
       firstInstr = name;
     lastInstr = name;
     const bool isBackendSpecific = true;
-    return InstrBuilder(headerStream, cppStream, defStream, builderStream,
-                        irGenStream, name, isBackendSpecific);
+    return InstrBuilder(headerStream, cppStream, defStream, builderHeaderStream,
+                        builderCppStream, irGenStream, name, isBackendSpecific);
   }
 
   /// Declare the instruction in the def file but don't generate code for it.

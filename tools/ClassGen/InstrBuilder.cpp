@@ -46,33 +46,42 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
   os << " {}\n\n";
 }
 
-void InstrBuilder::emitIRBuilderMethods(std::ostream &os) const {
-  os << "\n" << name_ << "Inst *create" << name_ << "Inst(llvm::StringRef name";
+void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
+                                        std::ostream &osB) const {
+  osH << "\n"
+      << name_ << "Inst *create" << name_ << "Inst(llvm::StringRef name";
+  osB << "\n"
+      << name_ << "Inst *IRBuilder::create" << name_
+      << "Inst(llvm::StringRef name";
 
   // The operands of the instruction class:
   for (const auto &op : operands_) {
-    os << ", Value *" << op.first;
+    osH << ", Value *" << op.first;
+    osB << ", Value *" << op.first;
   }
 
   // Extra class members:
   for (const auto &op : members_) {
-    os << ", " << getStorageTypename(op.first) << " " << op.second;
+    osH << ", " << getStorageTypename(op.first) << " " << op.second;
+    osB << ", " << getStorageTypename(op.first) << " " << op.second;
   }
+
+  osH << ");\n";
 
   // Initialize the base clases:
-  os << ") {\n";
-  os << "  auto *A = new " << name_ << "Inst(&getIRFunction(), name ";
+  osB << ") {\n";
+  osB << "  auto *A = new " << name_ << "Inst(&getIRFunction(), name ";
 
   // The operands of the instruction class:
   for (const auto &op : operands_) {
-    os << ", " << op.first;
+    osB << ", " << op.first;
   }
   // Extra class members:
   for (const auto &op : members_) {
-    os << ", " << op.second;
+    osB << ", " << op.second;
   }
-  os << ");\n";
-  os << "  F_->pushInstr(A);\n  return A;\n}\n";
+  osB << ");\n";
+  osB << "  F_->pushInstr(A);\n  return A;\n}\n";
 }
 
 void InstrBuilder::emitInplaceMethod(std::ostream &os) const {
@@ -226,14 +235,15 @@ void InstrBuilder::emitCppMethods(std::ostream &os) const {
 InstrBuilder::~InstrBuilder() {
   emitClass(headerStream);
   emitCppMethods(cppStream);
-  emitIRBuilderMethods(builderStream);
+  emitIRBuilderMethods(builderHeaderStream, builderCppStream);
 }
 
 InstrBuilder &
 InstrBuilder::addGradientInstr(llvm::ArrayRef<llvm::StringRef> originalFields,
                                llvm::ArrayRef<llvm::StringRef> gradFields) {
-  InstrBuilder GI(headerStream, cppStream, defStream, builderStream,
-                  irGenStream, name_ + "Grad", isBackendSpecific_);
+  InstrBuilder GI(headerStream, cppStream, defStream, builderHeaderStream,
+                  builderCppStream, irGenStream, name_ + "Grad",
+                  isBackendSpecific_);
 
   // The new 'Grad' class will have all of the fields of the current class.
   GI.ty_ = ty_;

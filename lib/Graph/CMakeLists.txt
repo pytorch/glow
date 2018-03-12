@@ -2,16 +2,18 @@
 set(INSTR_HDR ${GLOW_BINARY_DIR}/AutoGenInstr.h)
 set(INSTR_SRC ${GLOW_BINARY_DIR}/AutoGenInstr.cpp)
 set(INSTR_DEF ${GLOW_BINARY_DIR}/AutoGenInstr.def)
-set(INSTR_BLD ${GLOW_BINARY_DIR}/AutoGenIRBuilder.h)
+set(INSTR_BLD_HDR ${GLOW_BINARY_DIR}/AutoGenIRBuilder.h)
+set(INSTR_BLD_SRC ${GLOW_BINARY_DIR}/AutoGenIRBuilder.cpp)
 set(INSTR_IR_GEN ${GLOW_BINARY_DIR}/AutoGenIRGen.h)
 
 add_custom_command(OUTPUT
                     "${INSTR_HDR}"
                     "${INSTR_SRC}"
                     "${INSTR_DEF}"
-                    "${INSTR_BLD}"
+                    "${INSTR_BLD_HDR}"
+                    "${INSTR_BLD_SRC}"
                     "${INSTR_IR_GEN}"
-                    COMMAND InstrGen ${INSTR_HDR} ${INSTR_SRC} ${INSTR_DEF} ${INSTR_BLD} ${INSTR_IR_GEN}
+                    COMMAND InstrGen ${INSTR_HDR} ${INSTR_SRC} ${INSTR_DEF} ${INSTR_BLD_HDR} ${INSTR_BLD_SRC} ${INSTR_IR_GEN}
                     DEPENDS InstrGen
                     COMMENT "InstrGen: Generating instructions." VERBATIM)
 
@@ -36,7 +38,8 @@ add_library(Graph
             ${INSTR_HDR}
             ${INSTR_SRC}
             ${INSTR_DEF}
-            ${INSTR_BLD}
+            ${INSTR_BLD_HDR}
+            ${INSTR_BLD_SRC}
             Nodes.cpp
             Graph.cpp
             Grad.cpp)

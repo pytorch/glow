@@ -6,23 +6,26 @@
 #include <iostream>
 
 int main(int argc, char **argv) {
-  if (argc != 6) {
-    std::cerr << "Usage: " << argv[0]
-              << " header.h impl.cpp enums.def irbuilder.h irgen.h\n";
+  if (argc != 7) {
+    std::cerr
+        << "Usage: " << argv[0]
+        << " header.h impl.cpp enums.def irbuilder.h irbuilder.cpp irgen.h\n";
     return -1;
   }
 
   std::cout << "Writing instr descriptors to:\n\t" << argv[1] << "\n\t"
             << argv[2] << "\n\t" << argv[3] << "\n\t" << argv[4] << "\n\t"
-            << argv[5] << "\n";
+            << argv[5] << "\n\t" << argv[6] << "\n";
 
   std::ofstream headerStream(argv[1]);
   std::ofstream cppStream(argv[2]);
   std::ofstream defStream(argv[3]);
-  std::ofstream builderStream(argv[4]);
-  std::ofstream irGenStream(argv[5]);
+  std::ofstream builderHeaderStream(argv[4]);
+  std::ofstream builderCppStream(argv[5]);
+  std::ofstream irGenStream(argv[6]);
 
-  Builder BB(headerStream, cppStream, defStream, builderStream, irGenStream);
+  Builder BB(headerStream, cppStream, defStream, builderHeaderStream,
+             builderCppStream, irGenStream);
 
   //===--------------------------------------------------------------------===//
   //               Memory / Buffer Management
