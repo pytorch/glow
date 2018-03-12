@@ -9,31 +9,24 @@
 #include "glow/Optimizer/Optimizer.h"
 
 using namespace glow;
-using llvm::StringRef;
 using llvm::dyn_cast;
 using llvm::isa;
-
-static bool isZeroNode(NodeValue N) {
-  SplatNode *splat = dyn_cast<SplatNode>(N);
-  if (!splat)
-    return false;
-
-  return splat->getValue() == 0;
-}
 
 bool CPUBackend::transformPostLowering(Function *F) {
   bool changed = false;
   for (auto node : F->getNodes()) {
     if (auto *MN = dyn_cast<MaxNode>(node)) {
-      if (isZeroNode(MN->getLHS())) {
-        auto MZN = F->addNode(new CPUMaxZeroNode(MN->getName(), MN->getRHS()));
-        NodeValue(node, 0).replaceAllUsesOfWith(MZN);
+      if (auto *splat = dyn_cast<SplatNode>(MN->getLHS())) {
+        auto MSN = F->addNode(new CPUMaxSplatNode(MN->getName(), MN->getRHS(),
+                                                  splat->getValue()));
+        NodeValue(node, 0).replaceAllUsesOfWith(MSN);
         changed = true;
         continue;
       }
-      if (isZeroNode(MN->getRHS())) {
-        auto MZN = F->addNode(new CPUMaxZeroNode(MN->getName(), MN->getRHS()));
-        NodeValue(node, 0).replaceAllUsesOfWith(MZN);
+      if (auto *splat = dyn_cast<SplatNode>(MN->getRHS())) {
+        auto MSN = F->addNode(new CPUMaxSplatNode(MN->getName(), MN->getLHS(),
+                                                  splat->getValue()));
+        NodeValue(node, 0).replaceAllUsesOfWith(MSN);
         changed = true;
         continue;
       }

@@ -868,17 +868,18 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::CPUMaxZeroInstKind: {
-    CPUMaxZeroInst *MZ = cast<CPUMaxZeroInst>(I);
-    auto *dest = MZ->getDest();
-    auto *src = MZ->getSrc();
+  case Kinded::Kind::CPUMaxSplatInstKind: {
+    CPUMaxSplatInst *MS = cast<CPUMaxSplatInst>(I);
+    auto *dest = MS->getDest();
+    auto *src = MS->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *lhsPtr = emitValueAddress(builder, src);
+    auto splatVal = emitConstF32(builder, MS->getSplatValue());
 
     auto cnt = emitValueSize(builder, dest);
 
-    auto *F = getFunction("elementmax0", dest->getElementType());
-    builder.CreateCall(F, {destPtr, lhsPtr, cnt});
+    auto *F = getFunction("elementmaxsplat", dest->getElementType());
+    builder.CreateCall(F, {destPtr, lhsPtr, cnt, splatVal});
     break;
   }
 

@@ -1,9 +1,10 @@
 #ifdef GLOW_WITH_CPU
 
-BB.newBackendSpecificNode("CPUMaxZero")
+BB.newBackendSpecificNode("CPUMaxSplat")
     .addInput("Input")
     .addResult("Input.getType()")
-    .setDocstring("A Max node with one ZeroNode input; CPU specific.");
+    .addMember(MemberType::Float, "SplatValue")
+    .setDocstring("A Max node with one splat input; CPU specific.");
 
 BB.includeBackendSpecificVerification("CPUSpecificNodesVerification.h");
 
