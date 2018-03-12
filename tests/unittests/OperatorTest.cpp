@@ -123,6 +123,60 @@ TEST_P(Operator, batchedBatchedAdd) {
   EXPECT_NEAR(H.at({0, 1, 0}), 7, 0.001);
 }
 
+/// Broadcast Tensor of shape (2,1,1) to (2,4,2) with axis 0.
+TEST(OperatorInterpOnly, broadcastSimple) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  const size_t numDims_A = 3;
+  const size_t dimY_A = 2;
+  const size_t dimZ_A = 4;
+  const size_t dimW_A = 2;
+  const size_t dims_A[numDims_A] = {dimY_A, dimZ_A, dimW_A};
+
+  const size_t numDims_B = 3;
+  const size_t dimY_B = 2;
+  const size_t dimZ_B = 1;
+  const size_t dimW_B = 1;
+  const size_t dims_B[numDims_B] = {dimY_B, dimZ_B, dimW_B};
+
+  auto *B = mod.createVariable(ElemKind::FloatTy, dims_B, "B");
+  auto H_B = B->getPayload().getHandle();
+  H_B = {20, 10};
+
+  const unsigned axis = 0;
+
+  auto R = F->createBroadcast("broadcasted", B, dims_A, axis);
+  auto *broadcasted = mod.createVariable(ElemKind::FloatTy, dims_A, "A");
+  F->createSave("save", R, broadcasted);
+
+  EE.compile(CompilationMode::Infer, F);
+
+  EE.run({}, {});
+
+  auto broadcastedBHandle = broadcasted->getPayload().getHandle();
+  // Verify broadcasted B has same shape.
+  EXPECT_EQ(numDims_A, broadcastedBHandle.dims().size());
+  for (size_t i = 0; i < broadcastedBHandle.dims().size(); i++) {
+    EXPECT_EQ(dims_A[i], broadcastedBHandle.dims()[i]);
+  }
+
+  // Look at the two values in X_B and verify in the three dimensions it was
+  // broadcasted that the values were correctly broadcasted.
+  const size_t k_B = 0;
+  const size_t l_B = 0;
+  for (size_t j_B = 0; j_B < dimY_B; ++j_B) {
+    const float origVal = H_B.at({j_B, k_B, l_B});
+    const size_t j_A = j_B; // This dim was not broadcasted (dims were equal).
+    for (size_t k_A = 0; k_A < dimZ_A; ++k_A) {
+      for (size_t l_A = 0; l_A < dimW_A; ++l_A) {
+        EXPECT_EQ(origVal, broadcastedBHandle.at({j_A, k_A, l_A}));
+      }
+    }
+  }
+}
+
 /// Broadcast a Tensor of shape (2,1) to (3,2,4,2) with axis 1.
 TEST(OperatorInterpOnly, broadcast) {
   ExecutionEngine EE;
