@@ -57,7 +57,16 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM) {
     return true;
   };
 
+  // Internalize functions libjit. In this part of the code we change the
+  // visibility of the symbols in the module and make 'main' the only visibile
+  // function.
   llvm::internalizeModule(*M, preserveSymbols);
+
+  // Next, we remove all of the 'no-inline' attributes that clang in -O0 adds to
+  // all functions.
+  for (auto &FF : *M) {
+    FF.removeFnAttr(llvm::Attribute::AttrKind::NoInline);
+  }
 
   // Perform specialization of functions for constant arguments before anything
   // else.
