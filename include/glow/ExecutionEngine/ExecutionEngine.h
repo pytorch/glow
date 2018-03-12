@@ -57,6 +57,9 @@ public:
   /// \returns the internal graph.
   Module &getModule() { return *M_; }
 
+  /// \returns the internal backend.
+  const Backend &getBackend() const { return *IP_; }
+
   /// Optimize the graph, generate IR, optimize IR and compile it for a
   /// specific target. This method should be invoked before the run method.
   void compile(CompilationMode mode, Function *F);

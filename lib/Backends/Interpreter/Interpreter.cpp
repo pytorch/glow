@@ -91,6 +91,14 @@ void Interpreter::deleteTensor(const Value *v) {
   tensors_.erase(it);
 }
 
+bool Interpreter::canQuantize(const Node *node) const {
+  return llvm::isa<FullyConnectedNode>(node) ||
+         llvm::isa<ConvolutionNode>(node) || llvm::isa<ReluNode>(node) ||
+         llvm::isa<TransposeNode>(node) || llvm::isa<ReshapeNode>(node) ||
+         node->isArithmetic() || llvm::isa<ConcatNode>(node) ||
+         llvm::isa<PoolMaxNode>(node) || llvm::isa<PoolAvgNode>(node);
+}
+
 void Interpreter::doForwardPass(bool isTrain) {
 // Do the forward pass.
 #define DEF_VALUE(CLASS, NAME)

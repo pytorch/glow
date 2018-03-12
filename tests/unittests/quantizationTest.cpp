@@ -102,7 +102,7 @@ TEST(Quantization, quantizeGraph) {
       {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6, 0}},
   };
 
-  quantization::generateQuantizedGraph(F, QI);
+  quantization::generateQuantizedGraph(EE.getBackend(), F, QI);
 
   // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer, F);
@@ -183,7 +183,7 @@ TEST(Quantization, end2end) {
   Function *F2 = res2.first;
   SaveNode *result2 = res2.second;
 
-  quantization::generateQuantizedGraph(F2, QI);
+  quantization::generateQuantizedGraph(EE.getBackend(), F2, QI);
   EE2.compile(CompilationMode::Infer, F2);
   EE2.run({}, {});
 

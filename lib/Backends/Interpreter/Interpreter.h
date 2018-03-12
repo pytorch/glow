@@ -47,6 +47,8 @@ public:
   void init() override;
 
   void doForwardPass(bool isTrain) override;
+
+  bool canQuantize(const Node *node) const override;
   /// @}
 
 private:
