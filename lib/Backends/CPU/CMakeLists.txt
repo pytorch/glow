@@ -14,7 +14,7 @@ target_compile_options(CPURuntime
                          -ffast-math
                          -g0
                          -emit-llvm
-                         -Os)
+                         -O0)
 
 find_program(LLVM_LINK_BIN llvm-link)
 
