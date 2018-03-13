@@ -246,7 +246,7 @@ void TransposeInst::verify() const {
   auto *dest = getDest();
   auto *src = getSrc();
   (void)dest;
-  llvm::SmallVector<size_t, 6> shape;
+  ShapeVector shape;
 
   auto dims = src->dims();
   for (size_t i = 0; i < dims.size(); i++) {

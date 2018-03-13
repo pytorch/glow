@@ -21,6 +21,8 @@ using TypeRef = const Type *;
 
 constexpr unsigned max_tensor_dimensions = 6;
 
+using ShapeVector = llvm::SmallVector<size_t, max_tensor_dimensions>;
+
 struct ShapeNHWC {
   size_t n; // Number of samples
   size_t h; // Height

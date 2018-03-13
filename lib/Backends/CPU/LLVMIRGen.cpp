@@ -487,7 +487,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *nDims = emitConstSizeT(builder, dest->dims().size());
 
     // Pad src dims with 1s to match axis and dest dims.
-    llvm::SmallVector<size_t, 6> newDims(src->dims().begin(), src->dims().end());
+    ShapeVector newDims(src->dims().begin(), src->dims().end());
     newDims.insert(newDims.begin(), BI->getAxis(), 1);
     newDims.insert(newDims.end(), dest->dims().size() - src->dims().size() - BI->getAxis(), 1);
     auto *srcDims = emitConstArray(builder, newDims);
@@ -862,7 +862,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcDims = emitValueDims(builder, src);
 
     // Convert the mask to size_t type.
-    llvm::SmallVector<size_t, 6> shuffSizeT;
+    ShapeVector shuffSizeT;
     for (auto D : TI->getShuffle()) {
       shuffSizeT.push_back((size_t)D);
     }

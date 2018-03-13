@@ -110,7 +110,7 @@ TopKInst *IRBuilder::createTopKOp(Value *input, size_t k) {
   auto inDims = input->dims();
   assert(inDims.size() > 0);
   assert(k <= inDims.back());
-  llvm::SmallVector<size_t, 6> outDims(inDims.begin(), inDims.end());
+  ShapeVector outDims(inDims.begin(), inDims.end());
   outDims.back() = k;
   // Allocate enough scratch space to hold N values and N indices.
   auto *scratch = createAllocActivationInst("topk.scratch", ElemKind::IndexTy,
