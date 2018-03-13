@@ -38,7 +38,7 @@ public:
 
   /// Perform a single forward scan of the network, interpreting all of the
   /// instructions.
-  virtual void doForwardPass(bool isTrain) = 0;
+  virtual void doForwardPass() = 0;
 
   /// @name Backend transform methods for different phases.
   /// These methods are called by the compiler before code generation and gives
