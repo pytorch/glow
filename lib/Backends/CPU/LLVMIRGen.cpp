@@ -489,7 +489,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     // Pad src dims with 1s to match axis and dest dims.
     ShapeVector newDims(src->dims().begin(), src->dims().end());
     newDims.insert(newDims.begin(), BI->getAxis(), 1);
-    newDims.insert(newDims.end(), dest->dims().size() - src->dims().size() - BI->getAxis(), 1);
+    newDims.insert(newDims.end(),
+                   dest->dims().size() - src->dims().size() - BI->getAxis(), 1);
     auto *srcDims = emitConstArray(builder, newDims);
 
     auto *F = getFunction("broadcast", dest->getElementType());
