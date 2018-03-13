@@ -165,26 +165,112 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
   // discarded from the after the multiplication operation and figure out how
   // many bits we can take from the bottom of the input word by shifting it to
   // the right and add more precision to the integer scale multiplier.
+  //
+  // Addendum: The general formula for obtaining the "real" value f from the
+  // quantized representation together the scale s and offset o is:
+  // f = s * (i - o). Therefore, if we have two scales, (s1, o1) and (s2, o2),
+  // and we wish to transform a number i1 in the first scale to the second, then
+  // we should utilize the equation s2 * (i2 - o2) = s1 * (i1 - o1), or
+  // i2 - o2 = (s1 / s2) * (i1 - o1). Here (s1 / s2) is a float, but we must
+  // compute the product (s1 / s2) * (i1 - o1) using only 32-bit integer
+  // arithmetic.
+  //
+  // In order to maximize the accuracy of the computation, it is important that
+  // we use roughly an equal number of significant bits from both the scale
+  // factor (s1 / s2) and the offset input (i1 - o1). With 32 bits available,
+  // we would like to shift the input (prior to the multiplication) and the
+  // output (after the multiplication) so that the actual multiplication is
+  // performed with 16 significant bits (or as many as are available) for the
+  // input and 16 significant bits (or as many as are available) for the scale
+  // factor. (This follows from the fact that, when considering a product of two
+  // real numbers x and y each having sufficiently many significant bits and
+  // subject to the condition that the sum of the number of significant bits in
+  // x and y is fixed, then the largest precision for the product x * y is
+  // achieved when the available significant bits are partitioned evenly between
+  // x and y.) The following calculations should thus be performed:
+  //
+  // (a) Since the input i1 is an unknown 8-bit integer, the size of (i1 - o1)
+  // is equal to the greater of (i) the size of o1; and (ii) 8. The size of
+  // (i1 - o1) can therefore be computed by (i) Right-shifting by 8 bits; and
+  // then (ii) Iteratively right-shifting and testing for equality with 0.
+  //
+  // TODO(hegemanjwh2): Extend this comment.
+  //
+  int bits = 8;
   int preShift = 0;
   int postShift = 0;
+  int32_t e = 0;
+  uint32_t m = 0;
 
-  // Calculate the post-shift value. It's always safe to increase scale as long
-  // as it's below one, and it's always legal to shift at least 16 bits,
-  // because this won't overflow the calculation.
-  while (scale < 0.5 || postShift < 15) {
-    scale *= 2;
-    postShift++;
+  // In 2's complement representation, significant digits make the most sense
+  // for nonnegative numbers; as well, no offset should ever be -2147483648.
+  int32_t test = (offset >= 0 ? offset : -offset);
+
+  // Compute size of offset; note that we start with bits = 8 in order to
+  // account for addition of the 8-bit integer (+8) i1 (the input).
+  test >>= 8;
+  while (test > 0) {
+    test >>= 1;
+    bits++;
   }
 
-  // Calculate the pre-multiplication shift. Estimate how many bits we can take
-  // from the input number and pass to the integer scale.
-  while (scale < 255 && preShift < (postShift / 2)) {
-    scale *= 2;
-    preShift++;
+  // Assume scale is a nonnegative valid IEEE-754 binary32 float and not
+  // denormal or NaN. First, convert scale to a bit representation.
+  uint32_t x = *((uint32_t *)&scale);
+
+  // Make sure scale is not +/-0; this should be unnecessary.
+  if ((x & 0x7FFFFFFF) != 0) {
+
+    // Extract the mantissa m from x as an unsigned 32-bit integer, scaled by a
+    // factor of 2^23; here, we assume m is not denormal (this assumption is
+    // legitimate because denormal numbers are too small to be valid for the
+    // relevant scaling computations).
+    m = (x & 0x00FFFFFF);
+
+    // Add the assumed leading 1.
+    m |= 0x00800000;
+
+    // Determine the number of significant bits in the mantissa.
+    int mBits = 24;
+    int mShift = 0;
+    while ((m & 0x00000001) == 0) {
+      m >>= 1;
+      mBits--;
+      mShift++;
+    }
+
+    // Truncate the mantissa as necessary and determine preShift.
+    if (bits + 1 + mBits > 31) {
+      if (mBits <= 15) {
+        preShift = bits - (30 - mBits);
+        bits -= preShift;
+      } else if (bits <= 15) {
+        int a = mBits - (30 - bits);
+        m >>= a;
+        mBits -= a;
+        mShift += a;
+      } else {
+        preShift = bits - 15;
+        bits = 15;
+        m >>= mBits - 15;
+        mBits = 15;
+        mShift = 9;
+      }
+    }
+
+    // Extract and unbias the exponent.
+    e = ((x & 0x7F800000) >> 23) - 127;
+
+    // Compute the postShift.
+    postShift = 23 - mShift - e - preShift;
+    if (postShift > 30) {
+      preShift = 0;
+      postShift = 0;
+      m = 0;
+    }
   }
 
-  return QuantizationTransform32To8(preShift, postShift, std::round(scale),
-                                    offset);
+  return QuantizationTransform32To8(preShift, postShift, m, offset);
 }
 
 std::vector<NodeQuantizationInfo>
