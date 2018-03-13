@@ -450,6 +450,10 @@ void lowerBatchNormalizationGradNode(Function *F,
 
   auto gammaG = F->createMul("gammaG", sumDyhmu, invVarSqrt);
   BNG.getGradOfInputNamedScale().replaceAllUsesOfWith(gammaG);
+
+  auto zeroSplat = F->createSplat("zeroSplat", var.getType(), 0);
+  BNG.getGradOfInputNamedMean().replaceAllUsesOfWith(zeroSplat);
+  BNG.getGradOfInputNamedVar().replaceAllUsesOfWith(zeroSplat);
 }
 
 void glow::lower(Function *F, CompilationMode mode) {
