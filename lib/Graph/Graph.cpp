@@ -1066,7 +1066,7 @@ void Function::createLSTM(llvm::StringRef namePrefix,
   // Output gate:
   //    O <- sigmoid(Wxo * x + Who * h + bi)
   // Cell state:
-  //    C <- F. C + i . sigmoid(Wxc  * x + Whc * h + bc)
+  //    C <- F . C + I . tanh(Wxc  * x + Whc * h + bc)
   // Hidden state:
   //    h <- O . tanh(C)
 
