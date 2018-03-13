@@ -360,6 +360,98 @@ void computeBatchNormalizationWeights(Function *F, BatchNormalizationNode &BN) {
   F->createSave("saveVar", newVar, llvm::cast<Variable>(var.getNode()));
 }
 
+void lowerBatchNormalizationGradNode(Function *F,
+                                     BatchNormalizationGradNode &BNG) {
+  auto inW = BNG.getInput();
+  auto outG = BNG.getGradOfOriginalOutputNamedResult();
+
+  auto gamma = BNG.getScale();
+
+  auto var = BNG.getVar();
+  auto mean = BNG.getMean();
+
+  auto channelIdx = BNG.getChannelIdx();
+  auto epsilon = BNG.getEpsilon();
+
+  // The number of different channels.
+  const size_t numChannels = inW.dims()[channelIdx];
+  // The number of elements that each channel holds.
+  const size_t samplesPerChannel = inW.getType()->size() / numChannels;
+
+  // Calculate: sum(dy * (h - mu))
+  auto meanB =
+      F->createBroadcast("mean_broadcasted", mean, inW.dims(), channelIdx);
+  auto hmu = F->createSub("x_minus_mean", inW, meanB);
+  NodeValue sumDyhmu = F->createMul("dy_mul_h_minus_mu", outG, hmu);
+
+  // Calculate: sum(dy)
+  NodeValue sumDy = outG;
+
+  // TODO: consider adding this functionality to the main operator set.
+  if (channelIdx + 1 != inW.dims().size()) {
+    std::vector<unsigned> perm(inW.dims().size());
+    for (size_t i = 0; i < perm.size(); i++)
+      perm[i] = i;
+    std::swap(perm[channelIdx], perm[perm.size() - 1]);
+
+    sumDyhmu = F->createTranspose("sumDyhmu.transpose", sumDyhmu, perm);
+    sumDy = F->createTranspose("sumDy.transpose", sumDy, perm);
+  }
+  sumDyhmu = F->createReshape("sumDyhmu.flat", sumDyhmu,
+                              {samplesPerChannel, numChannels});
+  sumDy =
+      F->createReshape("sumDy.flat", sumDy, {samplesPerChannel, numChannels});
+  sumDyhmu = F->createBatchedReduceAdd("sumDyhmu.reduced", sumDyhmu);
+  sumDy = F->createBatchedReduceAdd("sumDy.reduced", sumDy);
+
+  // http://cthorey.github.io./backpropagation/
+  //
+  // mu = 1./N*np.sum(h)
+  // var = 1./N*np.sum((h-mu)**2)
+  // dbeta = np.sum(dy)
+  // dgamma = np.sum((h - mu) * (var + eps)**(-1. / 2.) * dy)
+  // dh = (1. / N) * gamma * (var + eps)**(-1. / 2.) *
+  //     (N * dy - np.sum(dy) - (h - mu) * 1/(var + eps) *
+  //     np.sum(dy * (h - mu)))
+  //
+
+  auto epsilonSplat = F->createSplat("epsSplat", var.getType(), epsilon);
+  auto oneSplat = F->createSplat("oneSplat", var.getType(), 1.0);
+  auto invNSplat =
+      F->createSplat("invNSplat", var.getType(), 1.0 / samplesPerChannel);
+  Node *invVar = F->createAdd("var_plus_eps", var, epsilonSplat);
+  invVar = F->createDiv("inverse_var_plus_eps", oneSplat, invVar);
+  Node *invVarSqrt = F->createPow("invVarSqrt", invVar, 0.5);
+
+  Node *coef1 =
+      F->createMul("invN_gamma_invVarSqrt",
+                   F->createMul("invN_gamma", invNSplat, gamma), invVarSqrt);
+  Node *coef2 = F->createMul("invVar_sumDyhmu", invVar, sumDyhmu);
+
+  // Apply:
+  // inG := Bcast(coef1) * (NSplat * outG - Bcast(sumDy) - hmu * Bcast(coef2))
+
+  coef1 =
+      F->createBroadcast("coef1_broadcasted", coef1, inW.dims(), channelIdx);
+  coef2 =
+      F->createBroadcast("coef2_broadcasted", coef2, inW.dims(), channelIdx);
+  auto sumDyB =
+      F->createBroadcast("sumDy_broadcasted", sumDy, inW.dims(), channelIdx);
+  auto NSplat = F->createSplat("oneSplat", inW.getType(), samplesPerChannel);
+  Node *in_brackets = F->createMul("NSplat_outG", NSplat, outG);
+  in_brackets = F->createSub(
+      "in_brackets", F->createSub("in_brackets_2ops", in_brackets, sumDyB),
+      F->createMul("hmu_coef2", hmu, coef2));
+
+  auto inG = F->createMul("inG", coef1, in_brackets);
+  BNG.getGradOfInputNamedInput().replaceAllUsesOfWith(inG);
+
+  BNG.getGradOfInputNamedBias().replaceAllUsesOfWith(sumDy);
+
+  auto gammaG = F->createMul("gammaG", sumDyhmu, invVarSqrt);
+  BNG.getGradOfInputNamedScale().replaceAllUsesOfWith(gammaG);
+}
+
 void glow::lower(Function *F, CompilationMode mode) {
   auto &nodes = F->getNodes();
 
@@ -394,6 +486,8 @@ void glow::lower(Function *F, CompilationMode mode) {
       if (mode == CompilationMode::Train)
         computeBatchNormalizationWeights(F, *BN);
       lowerBatchNormalizationNodeForInference(F, *BN);
+    } else if (auto *BNG = dyn_cast<BatchNormalizationGradNode>(node)) {
+      lowerBatchNormalizationGradNode(F, *BNG);
     }
   }
 
