@@ -327,6 +327,12 @@ void libjit_element_mul_f(float *dest, const float *LHS, const float *RHS,
   }
 }
 
+void libjit_element_pow_f(float *dest, const float *base, float exp, size_t n) {
+  for (size_t i = 0; i < n; i++) {
+    dest[i] = pow(base[i], exp);
+  }
+}
+
 void libjit_convolution_unroll_k4_f(
     float *outW, const float *inW, const float *filterW, const float *biasW,
     const size_t *outWdims, const size_t *inWdims, const size_t *filterWdims,

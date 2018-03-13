@@ -396,6 +396,19 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::ElementPowInstKind: {
+    auto *PI = cast<ElementPowInst>(I);
+    auto *dest = PI->getDest();
+    auto *destPtr = emitValueAddress(builder, PI->getDest());
+    auto *basePtr = emitValueAddress(builder, PI->getBase());
+    auto *exp = emitConstF32(builder, PI->getExp());
+    auto *size = emitValueSize(builder, dest);
+
+    auto *F = getFunction("element_pow", dest->getElementType());
+    builder.CreateCall(F, {destPtr, basePtr, exp, size});
+    break;
+  }
+
   case Kinded::Kind::MatMulInstKind: {
     MatMulInst *BMM = cast<MatMulInst>(I);
     auto *dest = BMM->getDest();
