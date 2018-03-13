@@ -215,6 +215,10 @@ void libjit_splat_u(size_t *buffer, size_t sz, float val) {
 
 namespace { // helpers for broadcast
 
+/// Increments an "index" dimension vector, \p dest_i, with respect to \p
+/// dest_dims.  This corresponds to striding through all \p n dimensions using
+/// \p n nested for-loops.
+/// \returns false when the index equals the dimension.
 bool increment_and_check_dims(size_t *dest_i, const size_t *dest_dims,
                               size_t n) {
   for (size_t i = 0; i < n; i++) {
@@ -228,6 +232,11 @@ bool increment_and_check_dims(size_t *dest_i, const size_t *dest_dims,
   return false;
 }
 
+/// Given a destination index \p dest_i of a broadcast operation, compute the
+/// source index \p src_i given a source tensor with dimensions \p src_dims.
+///
+/// Any source dimension containing a 1 is broadcast to all other dimensions by
+/// selecting index 0 in that dimension.
 void get_src_dim(size_t *src_i, const size_t *dest_i, const size_t *src_dims,
                  size_t n) {
   for (size_t i = 0; i < n; i++) {
