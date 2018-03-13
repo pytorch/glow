@@ -20,8 +20,7 @@ protected:
   ExecutionEngine EE{GetParam()};
 };
 
-TEST(OperatorInterpOnly, pow) {
-  ExecutionEngine EE;
+TEST_P(Operator, pow) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
