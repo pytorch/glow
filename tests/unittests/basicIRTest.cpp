@@ -83,7 +83,6 @@ TEST(IR, allInstrs) {
   auto T1 = mod.uniqueType(ElemKind::FloatTy, {1, 24, 24, 3});
   auto T2 = mod.uniqueType(ElemKind::FloatTy, {64});
   auto T4 = mod.uniqueType(ElemKind::IndexTy, {1, 1});
-  auto T5 = mod.uniqueType(ElemKind::FloatTy, {3});
 
   {
     IRBuilder builder(&M);
@@ -107,7 +106,6 @@ TEST(IR, allInstrs) {
     auto *F0 = builder.createWeightVar(ElemKind::FloatTy, {64, 7, 7, 3});
     auto *F1 = builder.createWeightVar(ElemKind::FloatTy, {32, 1728});
     auto *E0 = builder.createWeightVar(T4, "E0");
-    auto *S0 = builder.createWeightVar(T5, "S0");
 
     B0->setName("bias");
     B1->setName("FC_bias");
