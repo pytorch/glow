@@ -46,7 +46,7 @@ public:
 
   void init() override;
 
-  void doForwardPass(bool isTrain) override;
+  void doForwardPass() override;
 
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override;
   /// @}
@@ -79,7 +79,7 @@ private:
   ///@{
 
 #define DEF_VALUE(CLASS, NAME)
-#define DEF_INSTR(CLASS, NAME) void fwd##CLASS(bool isTrain, const CLASS *I);
+#define DEF_INSTR(CLASS, NAME) void fwd##CLASS(const CLASS *I);
 #define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME)
 #include "AutoGenInstr.def"
 

@@ -144,7 +144,7 @@ void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
   GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
 }
 
-void OCLBackend::doForwardPass(bool isTrain) {
+void OCLBackend::doForwardPass() {
   copyWeightsToDevice();
   std::vector<cl_kernel> kernels;
 

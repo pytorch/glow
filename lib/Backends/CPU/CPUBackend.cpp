@@ -115,7 +115,7 @@ void CPUBackend::init() {
   JIT_->addModule(irgen_.borrowModule());
 }
 
-void CPUBackend::doForwardPass(bool isTrain) {
+void CPUBackend::doForwardPass() {
   auto sym = JIT_->findSymbol("jitmain");
   assert(sym && "Unable to JIT the code!");
   using JitFuncType = void (*)(void);

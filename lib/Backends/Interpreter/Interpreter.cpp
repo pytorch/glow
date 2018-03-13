@@ -120,12 +120,12 @@ bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
   return true;
 }
 
-void Interpreter::doForwardPass(bool isTrain) {
+void Interpreter::doForwardPass() {
 // Do the forward pass.
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   case Kinded::Kind::CLASS##Kind: {                                            \
-    fwd##CLASS(isTrain, llvm::cast<CLASS>(I));                                 \
+    fwd##CLASS(llvm::cast<CLASS>(I));                                          \
     break;                                                                     \
   }
 #define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME)

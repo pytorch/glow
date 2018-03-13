@@ -66,7 +66,7 @@ public:
 
   void save(llvm::StringRef outputDir) override;
 
-  void doForwardPass(bool isTrain) override;
+  void doForwardPass() override;
 
   bool transformPostLowering(Function *F) override;
 

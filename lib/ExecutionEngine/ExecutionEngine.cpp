@@ -46,7 +46,7 @@ void ExecutionEngine::run(llvm::ArrayRef<Variable *> vars,
     loadValueFromTensor(vars[i], inputs[i]);
   }
 
-  IP_->doForwardPass(false);
+  IP_->doForwardPass();
 }
 
 void ExecutionEngine::runBatch(size_t iterations,
@@ -79,7 +79,7 @@ void ExecutionEngine::updateForwardBackward(llvm::ArrayRef<Variable *> vars,
     loadValueFromTensorSlice(vars[i], inputs[i], sampleIdx);
   }
 
-  IP_->doForwardPass(true);
+  IP_->doForwardPass();
 }
 
 void ExecutionEngine::loadValueFromTensorSlice(Variable *v, Tensor *input,

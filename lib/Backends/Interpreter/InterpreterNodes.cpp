@@ -16,7 +16,7 @@ using namespace glow;
 //                       Convolution
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdCopyInst(bool isTrain, const CopyInst *I) {
+void Interpreter::fwdCopyInst(const CopyInst *I) {
   auto inT = getTensor(I->getSrc());
   auto outT = getTensor(I->getDest());
   outT->copyRawFrom(inT);
@@ -162,7 +162,7 @@ void Interpreter::fwdConvolutionInst_I8Impl(Value *inV, Value *outV,
   }       // N
 }
 
-void Interpreter::fwdConvolutionInst(bool isTrain, const ConvolutionInst *I) {
+void Interpreter::fwdConvolutionInst(const ConvolutionInst *I) {
   size_t filterSize = I->getKernel();
   size_t pad = I->getPad();
   size_t stride = I->getStride();
@@ -177,8 +177,7 @@ void Interpreter::fwdConvolutionInst(bool isTrain, const ConvolutionInst *I) {
                                I->getBias(), filterSize, stride, pad);
 }
 
-void Interpreter::fwdConvolutionGradInst(bool isTrain,
-                                         const ConvolutionGradInst *I) {
+void Interpreter::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outG = getWeightHandle(I->getDestGrad());
@@ -301,7 +300,7 @@ static void fwdPoolMax(Tensor *inW, Tensor *outW, Handle<size_t> *SXY,
   }       // N
 }
 
-void Interpreter::fwdPoolMaxInst(bool isTrain, const PoolMaxInst *I) {
+void Interpreter::fwdPoolMaxInst(const PoolMaxInst *I) {
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
 
@@ -314,8 +313,7 @@ void Interpreter::fwdPoolMaxInst(bool isTrain, const PoolMaxInst *I) {
   }
 }
 
-void Interpreter::fwdPoolMaxWithXYInst(bool isTrain,
-                                       const PoolMaxWithXYInst *I) {
+void Interpreter::fwdPoolMaxWithXYInst(const PoolMaxWithXYInst *I) {
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
   auto SXY = getTensor(I->getSrcXY())->getHandle<size_t>();
@@ -329,7 +327,7 @@ void Interpreter::fwdPoolMaxWithXYInst(bool isTrain,
   }
 }
 
-void Interpreter::fwdPoolAvgInst(bool isTrain, const PoolAvgInst *I) {
+void Interpreter::fwdPoolAvgInst(const PoolAvgInst *I) {
   ShapeNHWC odim(I->getDest()->dims());
   ShapeNHWC idim(I->getSrc()->dims());
 
@@ -421,8 +419,7 @@ void Interpreter::fwdPoolAvgInst(bool isTrain, const PoolAvgInst *I) {
   }       // N
 }
 
-void Interpreter::fwdPoolMaxWithXYGradInst(bool isTrain,
-                                           const PoolMaxWithXYGradInst *I) {
+void Interpreter::fwdPoolMaxWithXYGradInst(const PoolMaxWithXYGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
@@ -455,7 +452,7 @@ void Interpreter::fwdPoolMaxWithXYGradInst(bool isTrain,
   }       // N
 }
 
-void Interpreter::fwdPoolAvgGradInst(bool isTrain, const PoolAvgGradInst *I) {
+void Interpreter::fwdPoolAvgGradInst(const PoolAvgGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
@@ -507,7 +504,7 @@ void Interpreter::fwdPoolAvgGradInst(bool isTrain, const PoolAvgGradInst *I) {
 //                       Activation functions
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdSigmoidInst(bool isTrain, const SigmoidInst *I) {
+void Interpreter::fwdSigmoidInst(const SigmoidInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
 
@@ -517,7 +514,7 @@ void Interpreter::fwdSigmoidInst(bool isTrain, const SigmoidInst *I) {
   }
 }
 
-void Interpreter::fwdTanhInst(bool isTrain, const TanhInst *I) {
+void Interpreter::fwdTanhInst(const TanhInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
 
@@ -531,7 +528,7 @@ void Interpreter::fwdTanhInst(bool isTrain, const TanhInst *I) {
 //                        Loss Functions (Softmax/regression/...)
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdSoftMaxInst(bool isTrain, const SoftMaxInst *I) {
+void Interpreter::fwdSoftMaxInst(const SoftMaxInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
   auto idim = inW.dims();
@@ -558,7 +555,7 @@ void Interpreter::fwdSoftMaxInst(bool isTrain, const SoftMaxInst *I) {
   } // N
 }
 
-void Interpreter::fwdSoftMaxGradInst(bool isTrain, const SoftMaxGradInst *I) {
+void Interpreter::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto idim = inG.dims();
   auto outW = getWeightHandle(I->getOrigDest());
@@ -576,8 +573,7 @@ void Interpreter::fwdSoftMaxGradInst(bool isTrain, const SoftMaxGradInst *I) {
   }
 }
 
-void Interpreter::fwdCrossEntropyLossInst(bool isTrain,
-                                          const CrossEntropyLossInst *I) {
+void Interpreter::fwdCrossEntropyLossInst(const CrossEntropyLossInst *I) {
   auto P = getWeightHandle(I->getP());
   auto labels = getTensor(I->getLabels())->getHandle<size_t>();
   auto CE = getWeightHandle(I->getCE());
@@ -590,7 +586,7 @@ void Interpreter::fwdCrossEntropyLossInst(bool isTrain,
 }
 
 void Interpreter::fwdCrossEntropyLossGradInst(
-    bool isTrain, const CrossEntropyLossGradInst *I) {
+    const CrossEntropyLossGradInst *I) {
   auto P = getWeightHandle(I->getP());
   auto Labels = getTensor(I->getLabels())->getHandle<size_t>();
   auto PGrad = getWeightHandle(I->getPgrad());
@@ -605,7 +601,7 @@ void Interpreter::fwdCrossEntropyLossGradInst(
 //===----------------------------------------------------------------------===//
 //                       Tensor shape (transpose/reshape/concat/...)
 //===----------------------------------------------------------------------===//
-void Interpreter::fwdTransposeInst(bool isTrain, const TransposeInst *I) {
+void Interpreter::fwdTransposeInst(const TransposeInst *I) {
   auto inTensor = getTensor(I->getSrc());
   (void)inTensor;
   auto outW = getTensor(I->getDest());
@@ -619,7 +615,7 @@ void Interpreter::fwdTransposeInst(bool isTrain, const TransposeInst *I) {
   }
 }
 
-void Interpreter::fwdBroadcastInst(bool isTrain, const BroadcastInst *I) {
+void Interpreter::fwdBroadcastInst(const BroadcastInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto outW = getTensor(I->getDest());
   auto shape = I->getShape();
@@ -628,16 +624,16 @@ void Interpreter::fwdBroadcastInst(bool isTrain, const BroadcastInst *I) {
   inW.broadcastToNewShape(outW, shape, axis);
 }
 
-void Interpreter::fwdReshapeInst(bool isTrain, const ReshapeInst *I) {
+void Interpreter::fwdReshapeInst(const ReshapeInst *I) {
   llvm_unreachable(
       "reshape is optimized away as a sequence of tensor_view and copy");
 }
 
-void Interpreter::fwdTensorViewInst(bool isTrain, const TensorViewInst *I) {
+void Interpreter::fwdTensorViewInst(const TensorViewInst *I) {
   getOrCreateUnownedTensor(I, I->getSrc());
 }
 
-void Interpreter::fwdSplatInst(bool isTrain, const glow::SplatInst *I) {
+void Interpreter::fwdSplatInst(const glow::SplatInst *I) {
   auto *T = getTensor(I->getDest());
   ElemKind k = T->getElementType();
 
@@ -661,8 +657,7 @@ void Interpreter::fwdSplatInst(bool isTrain, const glow::SplatInst *I) {
   llvm_unreachable("Unsupported tensor type");
 }
 
-void Interpreter::fwdInsertTensorInst(bool isTrain,
-                                      const glow::InsertTensorInst *I) {
+void Interpreter::fwdInsertTensorInst(const glow::InsertTensorInst *I) {
   Tensor *outT = getTensor(I->getDest());
   Tensor *inT = getTensor(I->getSrc());
   ElemKind k = outT->getElementType();
@@ -681,8 +676,7 @@ void Interpreter::fwdInsertTensorInst(bool isTrain,
   llvm_unreachable("Unsupported tensor type");
 }
 
-void Interpreter::fwdExtractTensorInst(bool isTrain,
-                                       const glow::ExtractTensorInst *I) {
+void Interpreter::fwdExtractTensorInst(const glow::ExtractTensorInst *I) {
   Tensor *outT = getTensor(I->getDest());
   Tensor *inT = getTensor(I->getSrc());
   ElemKind k = outT->getElementType();
@@ -700,7 +694,7 @@ void Interpreter::fwdExtractTensorInst(bool isTrain,
   llvm_unreachable("Unsupported tensor type");
 }
 
-void Interpreter::fwdGatherInst(bool isTrain, const glow::GatherInst *I) {
+void Interpreter::fwdGatherInst(const glow::GatherInst *I) {
   Tensor *dataT = getTensor(I->getData());
   Tensor *indicesT = getTensor(I->getIndices());
   Tensor *outT = getTensor(I->getDest());
@@ -722,7 +716,7 @@ void Interpreter::fwdGatherInst(bool isTrain, const glow::GatherInst *I) {
 //===----------------------------------------------------------------------===//
 
 void Interpreter::fwdLocalResponseNormalizationInst(
-    bool isTrain, const glow::LocalResponseNormalizationInst *I) {
+    const glow::LocalResponseNormalizationInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
   auto scaleCache = getWeightHandle(I->getScale());
@@ -777,7 +771,7 @@ void Interpreter::fwdLocalResponseNormalizationInst(
 }
 
 void Interpreter::fwdLocalResponseNormalizationGradInst(
-    bool isTrain, const glow::LocalResponseNormalizationGradInst *I) {
+    const glow::LocalResponseNormalizationGradInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outW = getWeightHandle(I->getDest());
@@ -850,7 +844,7 @@ void Interpreter::fwdLocalResponseNormalizationGradInst(
 //                       Arithmetic operations
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdElementAddInst(bool isTrain, const ElementAddInst *I) {
+void Interpreter::fwdElementAddInst(const ElementAddInst *I) {
 
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto lhsTy = I->getLHS()->getType();
@@ -892,7 +886,7 @@ void Interpreter::fwdElementAddInst(bool isTrain, const ElementAddInst *I) {
   }
 }
 
-void Interpreter::fwdElementSubInst(bool isTrain, const ElementSubInst *I) {
+void Interpreter::fwdElementSubInst(const ElementSubInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto lhsW = getWeightHandle(I->getLHS());
   auto rhsW = getWeightHandle(I->getRHS());
@@ -901,7 +895,7 @@ void Interpreter::fwdElementSubInst(bool isTrain, const ElementSubInst *I) {
   }
 }
 
-void Interpreter::fwdElementMulInst(bool isTrain, const ElementMulInst *I) {
+void Interpreter::fwdElementMulInst(const ElementMulInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto lhsTy = I->getLHS()->getType();
     auto rhsTy = I->getRHS()->getType();
@@ -931,7 +925,7 @@ void Interpreter::fwdElementMulInst(bool isTrain, const ElementMulInst *I) {
   }
 }
 
-void Interpreter::fwdElementDivInst(bool isTrain, const ElementDivInst *I) {
+void Interpreter::fwdElementDivInst(const ElementDivInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto lhsW = getWeightHandle(I->getLHS());
   auto rhsW = getWeightHandle(I->getRHS());
@@ -940,7 +934,7 @@ void Interpreter::fwdElementDivInst(bool isTrain, const ElementDivInst *I) {
   }
 }
 
-void Interpreter::fwdElementMaxInst(bool isTrain, const ElementMaxInst *I) {
+void Interpreter::fwdElementMaxInst(const ElementMaxInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto lhsTy = I->getLHS()->getType();
     auto rhsTy = I->getRHS()->getType();
@@ -976,7 +970,7 @@ void Interpreter::fwdElementMaxInst(bool isTrain, const ElementMaxInst *I) {
   }
 }
 
-void Interpreter::fwdElementMinInst(bool isTrain, const ElementMinInst *I) {
+void Interpreter::fwdElementMinInst(const ElementMinInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto lhsTy = I->getLHS()->getType();
     auto rhsTy = I->getRHS()->getType();
@@ -1009,8 +1003,7 @@ void Interpreter::fwdElementMinInst(bool isTrain, const ElementMinInst *I) {
   }
 }
 
-void Interpreter::fwdElementCmpLTEInst(bool isTrain,
-                                       const ElementCmpLTEInst *I) {
+void Interpreter::fwdElementCmpLTEInst(const ElementCmpLTEInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto lhsW = getWeightHandle(I->getLHS());
   auto rhsW = getWeightHandle(I->getRHS());
@@ -1019,8 +1012,7 @@ void Interpreter::fwdElementCmpLTEInst(bool isTrain,
   }
 }
 
-void Interpreter::fwdElementPowInst(bool isTrain,
-                                    const glow::ElementPowInst *I) {
+void Interpreter::fwdElementPowInst(const glow::ElementPowInst *I) {
   auto baseW = getWeightHandle(I->getBase());
   float exp = I->getExp();
   auto outW = getWeightHandle(I->getDest());
@@ -1029,8 +1021,7 @@ void Interpreter::fwdElementPowInst(bool isTrain,
   }
 }
 
-void Interpreter::fwdElementSelectInst(bool isTrain,
-                                       const glow::ElementSelectInst *I) {
+void Interpreter::fwdElementSelectInst(const glow::ElementSelectInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto condW = getWeightHandle(I->getCond());
   auto lhsW = getWeightHandle(I->getLHS());
@@ -1040,7 +1031,7 @@ void Interpreter::fwdElementSelectInst(bool isTrain,
   }
 }
 
-void Interpreter::fwdMatMulInst(bool isTrain, const glow::MatMulInst *I) {
+void Interpreter::fwdMatMulInst(const glow::MatMulInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto lhs = getTensor(I->getLHS())->getHandle<int8_t>();
     auto rhs = getTensor(I->getRHS())->getHandle<int8_t>();
@@ -1108,8 +1099,7 @@ void Interpreter::fwdMatMulInst(bool isTrain, const glow::MatMulInst *I) {
   }
 }
 
-void Interpreter::fwdBatchedAddInst(bool isTrain,
-                                    const glow::BatchedAddInst *I) {
+void Interpreter::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
   if (getTensor(I->getBatch())->getType().isQuantizedType()) {
     auto batch = getTensor(I->getBatch())->getHandle<int8_t>();
     auto slice = getTensor(I->getSlice())->getHandle<int8_t>();
@@ -1174,8 +1164,7 @@ void Interpreter::fwdBatchedAddInst(bool isTrain,
   }
 }
 
-void Interpreter::fwdBatchedReduceAddInst(bool isTrain,
-                                          const glow::BatchedReduceAddInst *I) {
+void Interpreter::fwdBatchedReduceAddInst(const glow::BatchedReduceAddInst *I) {
   auto batch = getWeightHandle(I->getBatch());
   auto dest = getWeightHandle(I->getDest());
 
@@ -1198,7 +1187,7 @@ void Interpreter::fwdBatchedReduceAddInst(bool isTrain,
 //                Instructions used by RNN
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdTopKInst(bool isTrain, const TopKInst *I) {
+void Interpreter::fwdTopKInst(const TopKInst *I) {
   auto in = getTensor(I->getInput())->getHandle();
   size_t k = I->getK();
   size_t n = in.dims().back();
@@ -1233,20 +1222,18 @@ void Interpreter::fwdTopKInst(bool isTrain, const TopKInst *I) {
 //                  Tensor allocation operations
 //===----------------------------------------------------------------------===//
 
-void Interpreter::fwdAllocActivationInst(bool isTrain,
-                                         const AllocActivationInst *I) {
+void Interpreter::fwdAllocActivationInst(const AllocActivationInst *I) {
   getOrCreateTensor(I);
 }
 
-void Interpreter::fwdDeallocActivationInst(bool isTrain,
-                                           const DeallocActivationInst *I) {
+void Interpreter::fwdDeallocActivationInst(const DeallocActivationInst *I) {
   deleteTensor(I->getSrc());
 }
 
 /// Prints a value of the instruction's operand.
 /// In most cases it will be the name of the variable and the value of the
 /// tensor.
-void Interpreter::fwdDebugPrintInst(bool isTrain, const DebugPrintInst *I) {
+void Interpreter::fwdDebugPrintInst(const DebugPrintInst *I) {
   auto *V = I->getSrc();
   llvm::outs() << I->getName() << ": ";
   // Dump the content of a value.
@@ -1261,7 +1248,7 @@ void Interpreter::fwdDebugPrintInst(bool isTrain, const DebugPrintInst *I) {
 //===----------------------------------------------------------------------===//
 
 void Interpreter::fwdQuantizationProfileInst(
-    bool isTrain, const glow::QuantizationProfileInst *I) {
+    const glow::QuantizationProfileInst *I) {
   auto inputTensor = getWeightHandle(I->getInputTensor());
   auto currentHistogram = getWeightHandle(I->getHistogram());
   auto computationInfo = getWeightHandle(I->getComputationInfo());
@@ -1275,7 +1262,7 @@ void Interpreter::fwdQuantizationProfileInst(
 }
 /// Quantize floating point tensor. Scale and Offset are based on return type
 /// of the instruction \p I.
-void Interpreter::fwdQuantizeInst(bool isTrain, const glow::QuantizeInst *I) {
+void Interpreter::fwdQuantizeInst(const glow::QuantizeInst *I) {
   auto srcHandle = getWeightHandle(I->getSrc());
   auto *destTensor = getTensor(I->getDest());
 
@@ -1289,8 +1276,7 @@ void Interpreter::fwdQuantizeInst(bool isTrain, const glow::QuantizeInst *I) {
 }
 /// Dequantize integer tensor. Scale and Offset are based
 /// on the source tensor type.
-void Interpreter::fwdDequantizeInst(bool isTrain,
-                                    const glow::DequantizeInst *I) {
+void Interpreter::fwdDequantizeInst(const glow::DequantizeInst *I) {
   auto *srcTensor = getTensor(I->getSrc());
   auto destHandle = getWeightHandle(I->getDest());
 
@@ -1303,8 +1289,7 @@ void Interpreter::fwdDequantizeInst(bool isTrain,
   }
 }
 
-void Interpreter::fwdRescaleQuantizedInst(bool isTrain,
-                                          const glow::RescaleQuantizedInst *I) {
+void Interpreter::fwdRescaleQuantizedInst(const glow::RescaleQuantizedInst *I) {
   auto src = I->getSrc();
   auto dest = I->getDest();
   auto srcTy = src->getType();
