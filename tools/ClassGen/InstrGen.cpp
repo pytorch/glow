@@ -103,24 +103,6 @@ int main(int argc, char **argv) {
   //                     Normalization
   //===--------------------------------------------------------------------===//
 
-  BB.newInstr("BatchNormalization")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .addOperand("Scale", OperandKind::In)
-      .addOperand("Bias", OperandKind::In)
-      .addOperand("Mean", OperandKind::In)
-      .addOperand("Var", OperandKind::In)
-      .addMember(MemberType::SizeT, "ChannelIdx")
-      .addMember(MemberType::Float, "Epsilon")
-      .addMember(MemberType::Float, "Momentum")
-      .inplaceOperand({
-          "Dest",
-          "Src",
-      })
-      .autoIRGen()
-      .addGradientInstr({"Src", "Scale", "Mean", "Var"},
-                        {"Dest", "Src", "Scale", "Bias"});
-
   BB.newInstr("LocalResponseNormalization")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)

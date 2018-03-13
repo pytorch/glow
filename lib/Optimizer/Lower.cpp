@@ -438,12 +438,12 @@ void lowerBatchNormalizationGradNode(Function *F,
   auto sumDyB =
       F->createBroadcast("sumDy_broadcasted", sumDy, inW.dims(), channelIdx);
   auto NSplat = F->createSplat("oneSplat", inW.getType(), samplesPerChannel);
-  Node *in_brackets = F->createMul("NSplat_outG", NSplat, outG);
-  in_brackets = F->createSub(
-      "in_brackets", F->createSub("in_brackets_2ops", in_brackets, sumDyB),
+  Node *inBrackets = F->createMul("NSplat_outG", NSplat, outG);
+  inBrackets = F->createSub(
+      "inBrackets", F->createSub("inBrackets_2ops", inBrackets, sumDyB),
       F->createMul("hmu_coef2", hmu, coef2));
 
-  auto inG = F->createMul("inG", coef1, in_brackets);
+  auto inG = F->createMul("inG", coef1, inBrackets);
   BNG.getGradOfInputNamedInput().replaceAllUsesOfWith(inG);
 
   BNG.getGradOfInputNamedBias().replaceAllUsesOfWith(sumDy);

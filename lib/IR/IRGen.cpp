@@ -249,42 +249,6 @@ public:
       registerIR(N, dest);
       break;
     }
-    case glow::Kinded::Kind::BatchNormalizationGradNodeKind: {
-      auto *BN = cast<BatchNormalizationGradNode>(N);
-      auto *in = valueForNode(BN->getInput());
-      auto *beta = valueForNode(BN->getBias());
-      auto *gamma = valueForNode(BN->getScale());
-      auto *mean = valueForNode(BN->getMean());
-      auto *var = valueForNode(BN->getVar());
-
-      auto *outG = valueForNode(BN->getGradOfOriginalOutputNamedResult());
-
-      auto *inG =
-          builder_.createAllocActivationInst("bn.input.G", in->getType());
-      auto *scaleG =
-          builder_.createAllocActivationInst("bn.scale.G", gamma->getType());
-      auto *biasG =
-          builder_.createAllocActivationInst("bn.bias.G", beta->getType());
-
-      auto *meanG =
-          builder_.createAllocActivationInst("bn.mean.G", mean->getType());
-      auto *varG =
-          builder_.createAllocActivationInst("bn.var.G", var->getType());
-
-      builder_.createSplatInst("bn.zero.mean.G", meanG, 0);
-      builder_.createSplatInst("bn.zero.var.G", varG, 0);
-
-      builder_.createBatchNormalizationGradInst(
-          N->getName(), in, gamma, mean, var, outG, inG, scaleG, biasG,
-          BN->getChannelIdx(), BN->getEpsilon(), BN->getMomentum());
-      registerIR(BN->getGradOfInputNamedInput(), inG);
-      registerIR(BN->getGradOfInputNamedBias(), biasG);
-      registerIR(BN->getGradOfInputNamedScale(), scaleG);
-      registerIR(BN->getGradOfInputNamedMean(), meanG);
-      registerIR(BN->getGradOfInputNamedVar(), varG);
-      break;
-    }
-
     case glow::Kinded::Kind::LocalResponseNormalizationNodeKind: {
       auto *LR = cast<LocalResponseNormalizationNode>(N);
       auto *in = valueForNode(LR->getInput());
