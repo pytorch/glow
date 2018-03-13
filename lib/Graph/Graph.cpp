@@ -512,7 +512,7 @@ ReshapeNode *Function::createReshape(llvm::StringRef name, NodeValue input,
 
 TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
                                          llvm::ArrayRef<unsigned> shuffle) {
-  llvm::SmallVector<size_t, 6> shape;
+  ShapeVector shape;
   auto dims = input.dims();
   for (size_t i = 0; i < dims.size(); i++) {
     shape.push_back(dims[shuffle[i]]);
@@ -568,7 +568,7 @@ ConcatNode *Function::createConcat(llvm::StringRef name,
   }
   auto inDim = inputs[0]->dims();
 
-  llvm::SmallVector<size_t, 6> shape(inDim.begin(), inDim.end());
+  ShapeVector shape(inDim.begin(), inDim.end());
 
   // We are stacking the tensors along a specific dimension. This means that we
   // increase the size of the tensor along this dimension.
@@ -779,7 +779,7 @@ TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
   auto inDims = input.dims();
   assert(inDims.size() > 0);
   assert(k <= inDims.back());
-  llvm::SmallVector<size_t, 6> outDims(inDims.begin(), inDims.end());
+  ShapeVector outDims(inDims.begin(), inDims.end());
   outDims.back() = k;
   return addNode(new TopKNode(
       name, getParent()->uniqueType(input->getElementType(), outDims),
@@ -791,7 +791,7 @@ GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
   auto dDims = data.dims();
   auto iDims = indices.dims();
   assert(dDims.size() > 0);
-  llvm::SmallVector<size_t, 6> outDims(iDims.begin(), iDims.end());
+  ShapeVector outDims(iDims.begin(), iDims.end());
   outDims.insert(outDims.end(), dDims.begin() + 1, dDims.end());
   return addNode(new GatherNode(
       name, getParent()->uniqueTypeWithNewShape(data->getType(), outDims), data,

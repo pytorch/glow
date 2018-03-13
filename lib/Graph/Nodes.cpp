@@ -682,7 +682,7 @@ void TransposeNode::verify() const {
   auto dest = getResult();
   auto src = getInput();
   (void)dest;
-  llvm::SmallVector<size_t, 6> shape;
+  ShapeVector shape;
 
   auto dims = src.dims();
   for (size_t i = 0; i < dims.size(); i++) {
