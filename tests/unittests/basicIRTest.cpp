@@ -125,8 +125,6 @@ TEST(IR, allInstrs) {
     builder.createTransposeInst("", I8, I2, {0, 3, 1, 2});
     builder.createTensorView(ElemKind::FloatTy, {1, 24, 3, 24}, I2, "I2_view");
     builder.createInsertTensorInst("", I6, I3, {0, 0, 0, 0});
-    builder.createBatchNormalizationInst("", I1, I0, S0, S0, S0, S0, 3, 0.01,
-                                         0.9);
     builder.createElementMulInst("", I1, I0, I0);
     builder.createDebugPrintInst("", I0);
     builder.createQuantizationProfileInst("", I0, B0, ComputationInfo);

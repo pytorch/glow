@@ -113,22 +113,6 @@ static void verifyPoolAvg(Value *src, Value *dest, size_t kernel, size_t stride,
   assert(exp == odim && "Unexpected output dimensions");
 }
 
-static void verifyBatchNormalization(Value *src, Value *dest, Value *scale,
-                                     Value *bias, Value *mean, Value *var,
-                                     size_t channel) {
-  checkSameType(dest, src);
-
-  // Figure out how many channels are in the tensor.
-  size_t channels = dest->dims()[channel];
-
-  auto exp = {channels};
-  (void)exp;
-  assert(scale->getType()->dims().equals(exp) && "Invalid bias dim");
-  assert(bias->getType()->dims().equals(exp) && "Invalid scale dim");
-  assert(mean->getType()->dims().equals(exp) && "Invalid mean dim");
-  assert(var->getType()->dims().equals(exp) && "Invalid var dim");
-}
-
 void ConvolutionInst::verify() const {
   Value *dest = getDest();
   Value *src = getSrc();
@@ -304,28 +288,6 @@ void ExtractTensorInst::verify() const {
   for (unsigned i = 0; i < numDims; i++) {
     assert(dest->dims()[i] + offsets[i] <= src->dims()[i] && "out of bounds");
   }
-}
-
-void BatchNormalizationInst::verify() const {
-  Value *src = getSrc();
-  Value *dest = getDest();
-  Value *scale = getScale();
-  Value *bias = getBias();
-  Value *mean = getMean();
-  Value *var = getVar();
-
-  verifyBatchNormalization(src, dest, scale, bias, mean, var, ChannelIdx_);
-}
-
-void BatchNormalizationGradInst::verify() const {
-  Value *src = getSrcGrad();
-  Value *dest = getDestGrad();
-  Value *scale = getScaleGrad();
-  Value *bias = getBiasGrad();
-  Value *mean = getMean();
-  Value *var = getVar();
-
-  verifyBatchNormalization(src, dest, scale, bias, mean, var, ChannelIdx_);
 }
 
 void LocalResponseNormalizationGradInst::verify() const {
