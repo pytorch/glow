@@ -986,6 +986,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     I->dump(llvm::errs());
     llvm::errs() << "\n";
 #endif
-    llvm_unreachable("ERROR: Cannot select the instruction.");
+    GLOW_UNREACHABLE("ERROR: Cannot select the instruction.");
   }
 }
