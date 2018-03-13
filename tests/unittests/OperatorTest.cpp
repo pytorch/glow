@@ -894,6 +894,53 @@ TEST_P(Operator, sliceVectors) {
   }
 }
 
+TEST_P(Operator, simpleCmpSelectPredication) {
+  // A simple test that checks predication of some values using the
+  // compare-select pair of instructions. Keep doubling some values
+  // until some condition is met.
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *inputs = mod.createVariable(ElemKind::FloatTy, {10}, "inputs");
+  auto *counters = mod.createVariable(ElemKind::FloatTy, {10}, "counters");
+
+  counters->getPayload().getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  inputs->getPayload().getHandle().clear(1);
+
+  Node *cnt = counters;
+  Node *data = inputs;
+  Node *const1 = F->createSplat("const1", counters->getType(), 1.0);
+  Node *const0 = F->createSplat("const0", counters->getType(), 0.0);
+
+  for (int i = 0; i < 10; i++) {
+    cnt = F->createSub("sub1", cnt, const1);
+    Node *pred = F->createCmpLTE("cmp", const0, cnt);
+
+    Node *const2 = F->createSplat("const2", data->getType(), 2.0);
+    Node *newData = F->createMul("mul2x", data, const2);
+
+    data = F->createSelect("select", pred, newData, data);
+  }
+
+  auto *SN = F->createSave("ret", data);
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+
+  auto H = SN->getVariable()->getHandle();
+  ASSERT_NEAR(H.at(0), 1, 0.001);
+  ASSERT_NEAR(H.at(1), 2, 0.001);
+  ASSERT_NEAR(H.at(2), 4, 0.001);
+  ASSERT_NEAR(H.at(3), 8, 0.001);
+  ASSERT_NEAR(H.at(4), 16, 0.001);
+  ASSERT_NEAR(H.at(5), 32, 0.001);
+  ASSERT_NEAR(H.at(6), 64, 0.001);
+  ASSERT_NEAR(H.at(7), 128, 0.001);
+  ASSERT_NEAR(H.at(8), 256, 0.001);
+  ASSERT_NEAR(H.at(9), 512, 0.001);
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, Operator,
                         ::testing::Values(BackendKind::Interpreter));
 

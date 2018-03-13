@@ -294,7 +294,7 @@ void libjit_copy(void *dest, const void *src, size_t bytes) {
 void libjit_element_cmp_lte_f(float *dest, const float *LHS, const float *RHS,
                               size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
-    dest[i] = LHS[i] < RHS[i];
+    dest[i] = LHS[i] <= RHS[i] ? 1.0 : 0.0;
   }
 }
 
