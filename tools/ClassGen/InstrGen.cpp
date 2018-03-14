@@ -145,14 +145,16 @@ int main(int argc, char **argv) {
   BB.newInstr("CrossEntropyLoss")
       .addOperand("P", OperandKind::In)
       .addOperand("Labels", OperandKind::In)
-      .addOperand("CE", OperandKind::Out);
+      .addOperand("CE", OperandKind::Out)
+      .autoVerify(VerifyKind::NoVerify);
 
   BB.newInstr("CrossEntropyLossGrad")
       .addOperand("CEGrad", OperandKind::In)
       .addOperand("P", OperandKind::In)
       .addOperand("Labels", OperandKind::In)
       .addOperand("Pgrad", OperandKind::Out)
-      .addOperand("Labelsgrad", OperandKind::Out);
+      .addOperand("Labelsgrad", OperandKind::Out)
+      .autoVerify(VerifyKind::NoVerify);
 
   //===--------------------------------------------------------------------===//
   //                      Arithmetic
@@ -310,6 +312,7 @@ int main(int argc, char **argv) {
   BB.newInstr("Splat")
       .addMember(MemberType::Float, "Value")
       .addOperand("Dest", OperandKind::Out)
+      .autoVerify(VerifyKind::NoVerify)
       .autoIRGen();
 
   BB.newInstr("InsertTensor")
@@ -336,7 +339,9 @@ int main(int argc, char **argv) {
   //             Instructions used for debugging/profiling/printing
   //===--------------------------------------------------------------------===//
 
-  BB.newInstr("DebugPrint").addOperand("Src", OperandKind::In);
+  BB.newInstr("DebugPrint")
+      .addOperand("Src", OperandKind::In)
+      .autoVerify(VerifyKind::NoVerify);
 
   //===--------------------------------------------------------------------===//
   //             Instructions used for quantization
