@@ -113,3 +113,16 @@ Below you can see the list of currently supported optimizations:
     to combine storage for two live intervals if they do not overlap. Typically,
     two live intervals are considered as candidates for sharing if they occur
     in the same instruction.
+
+  * Stacking of data-parallel operations
+
+    Stacking tries to combine multiple data parallel (i.e. element-wise) operations
+    that work with the same shape of tensors into a single kernel.
+
+    Executing such a kernel should be in theory more efficient then executing those
+    operations sequentially one after the other, because such a combined kernel
+    exposes a better cache locality.
+
+    The stacked kernels should provide even more advantages on GPUs, because they
+    reduce the number of kernel threads launches, which are rather expensive operations.
+    

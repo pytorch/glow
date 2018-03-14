@@ -163,10 +163,7 @@ void LLVMIRGen::performCodeGen() {
   auto *func = builder_->GetInsertBlock()->getParent();
   loadBaseAddresses(*builder_);
 
-  // For each instruction in the module:
-  for (auto &I : F_->getInstrs()) {
-    generateLLVMIRForInstr(*builder_, I);
-  }
+  generateLLVMIRForModule(*builder_);
 
   // Terminate the function.
   builder_->CreateRetVoid();
@@ -269,7 +266,7 @@ LLVMIRGen::emitConstOffsetsArray(llvm::IRBuilder<> &builder,
   // LLVM does not do it automatically for this code pattern involving global
   // variables. It also reduces the number of variables.
   auto &constArrayVar = constArrayPtrs_[arr];
-  if (constArrayVar)
+  if (constArrayVar && constArrayVar->getType() == sizeTType->getPointerTo())
     return constArrayVar;
 
   auto *M = builder.GetInsertBlock()->getModule();
@@ -287,6 +284,17 @@ llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,
   for (auto I : vals) {
     elems.push_back(llvm::ConstantInt::get(SizeTType, I));
   }
+  return emitConstArray(builder, elems, SizeTType);
+}
+
+llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,
+                                       llvm::ArrayRef<llvm::Constant *> vals,
+                                       llvm::Type *elemTy) {
+  auto SizeTType = builder.getIntNTy(sizeof(size_t) * 8);
+  std::vector<llvm::Constant *> elems;
+  for (auto I : vals) {
+    elems.push_back(cast<llvm::Constant>(builder.CreateBitCast(I, elemTy)));
+  }
   auto *arr = llvm::ConstantArray::get(
       llvm::ArrayType::get(SizeTType, elems.size()), elems);
   // Ensure that the same casted global variable is used for the equivalent
@@ -294,14 +302,14 @@ llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,
   // LLVM does not do it automatically for this code pattern involving global
   // variables. It also reduces the number of variables.
   auto &constArrayVar = constArrayPtrs_[arr];
-  if (constArrayVar)
+  if (constArrayVar && constArrayVar->getType() == elemTy->getPointerTo())
     return constArrayVar;
 
   auto *M = builder.GetInsertBlock()->getModule();
 
   auto *G = new llvm::GlobalVariable(*M, arr->getType(), true,
                                      llvm::GlobalValue::InternalLinkage, arr);
-  constArrayVar = builder.CreateBitCast(G, SizeTType->getPointerTo());
+  constArrayVar = builder.CreateBitCast(G, elemTy->getPointerTo());
   return constArrayVar;
 }
 
@@ -368,47 +376,351 @@ llvm::Function *LLVMIRGen::getFunction(const std::string &name,
   }
 }
 
-void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
-                                       glow::Instruction *I) {
-  switch (I->getKind()) {
-  case Kinded::Kind::SplatInstKind: {
-    SplatInst *SI = cast<SplatInst>(I);
-    auto *dest = SI->getDest();
-    auto *destPtr = emitValueAddress(builder, dest);
-    auto cnt = emitValueSize(builder, dest);
-    auto *val = emitConstF32(builder, SI->getValue());
+/// Create LLVM IR for the for loop with a loop count specified by the only
+/// parameter of the enclosing function.
+/// \returns a pair of basic blocks. The first BB is the BB of the loop body,
+/// the second BB is the loop exit BB.
+static std::pair<llvm::BasicBlock *, llvm::BasicBlock *>
+createLoop(llvm::IRBuilder<> &builder, llvm::LLVMContext &ctx,
+           llvm::Value *numElements) {
+  auto sizeTTy = builder.getIntNTy(sizeof(size_t) * 8);
+  auto *initVal = llvm::ConstantInt::get(sizeTTy, 0);
 
-    auto *F = getFunction("splat", dest->getElementType());
-    builder.CreateCall(F, {destPtr, cnt, val});
-    break;
+  // Make the new basic block for the loop header. Insert it after current
+  // block.
+  llvm::Function *func = builder.GetInsertBlock()->getParent();
+  auto *preheaderBB = builder.GetInsertBlock();
+  auto *loopBB = llvm::BasicBlock::Create(ctx, "loop", func);
+
+  // Insert a jump from the current block to the loopBB.
+  builder.CreateBr(loopBB);
+
+  // Start insertion in LoopBB.
+  builder.SetInsertPoint(loopBB);
+
+  // Create the PHI node with an entry for initial value.
+  llvm::PHINode *var = builder.CreatePHI(sizeTTy, 2);
+  var->addIncoming(initVal, preheaderBB);
+
+  // Emit the step value.
+  auto *stepVal = llvm::ConstantInt::get(sizeTTy, 1);
+  auto *nextVal = builder.CreateAdd(var, stepVal, "nextvar");
+  // Compute the end condition.
+  auto *endCond = builder.CreateICmpULT(nextVal, numElements, "loopcond");
+
+  // Create the "after loop" block and insert it.
+  auto *afterBB = llvm::BasicBlock::Create(ctx, "afterloop", func);
+
+  // Insert the conditional branch at the end of the loopBB.
+  builder.CreateCondBr(endCond, loopBB, afterBB);
+  // Add a new entry to the PHI node for the backedge.
+  var->addIncoming(nextVal, loopBB);
+  builder.SetInsertPoint(afterBB);
+  return std::make_pair(loopBB, afterBB);
+}
+
+/// \returns the LLVM type corresponding to the type of elements stored in \p
+/// val.
+static llvm::Type *getElementType(llvm::IRBuilder<> &builder, Value *val) {
+  switch (val->getElementType()) {
+  case ElemKind::IndexTy:
+    return builder.getIntNTy(sizeof(size_t) * 8);
+  case ElemKind::FloatTy:
+    return builder.getFloatTy();
+  case ElemKind::Int8QTy:
+    return builder.getInt8Ty();
+  case ElemKind::Int32QTy:
+    return builder.getInt32Ty();
   }
+  return nullptr;
+}
+
+/// Emit the address of the buffer \p v inside a data-parallel kernel \p kernel
+/// using the mapping provided by \p bufferToArgNum.
+static llvm::Value *
+emitBufferAddress(llvm::IRBuilder<> &builder, Value *val,
+                  llvm::Function *kernel,
+                  llvm::DenseMap<Value *, int> &bufferToArgNum) {
+  val = getOrigin(val);
+  assert(bufferToArgNum.count(val) && "Buffer should be in the map");
+  return kernel->args().begin() + bufferToArgNum[val];
+}
+
+/// Emit the function that implements a data-parallel kernel and calls it.
+///
+/// The generated kernel functions get buffers as their parameters. The buffers
+/// are uniqued, so that any buffer is passed as argument to the kernel function
+/// only once. This allows us to mark all parameters of the generated kernel as
+/// noalias. As a result, the LLVM optimizer makes use of the noalias attributes
+/// and produces nicely vectorized code for the generated data-parallel kernels.
+void LLVMIRGen::emitDataParallelKernel(llvm::IRBuilder<> &builder,
+                                       llvm::ArrayRef<Instruction *> bundle) {
+  if (bundle.empty())
+    return;
+  llvm::Type *voidTy = llvm::Type::getVoidTy(ctx_);
+  // Types of arguments for the kernel function being generated.
+  llvm::SmallVector<llvm::Type *, 32> argTypes;
+  // Map each buffer used by the kernel to the argument number of the kernel
+  // function. This ensures that same buffer is always mapped to the same
+  // argument.
+  llvm::DenseMap<Value *, int> bufferToArgNum;
+  // Buffers to be passed to the kernel function as arguments.
+  llvm::SmallVector<llvm::Value *, 32> buffers;
+  // Collect unique buffers used by the instructions of the kernel.
+  for (const auto I : bundle) {
+    for (const auto &Op : I->getOperands()) {
+      auto *buf = getOrigin(Op.first);
+      if (!bufferToArgNum.count(buf)) {
+        bufferToArgNum[buf] = argTypes.size();
+        buffers.push_back(emitValueAddress(builder, buf));
+        argTypes.push_back(getElementType(builder, buf)->getPointerTo());
+      }
+    }
+  }
+
+  // Create stacked kernel function type.
+  llvm::FunctionType *kernelFuncTy =
+      llvm::FunctionType::get(voidTy, argTypes, false);
+  auto *kernelFunc =
+      llvm::Function::Create(kernelFuncTy, llvm::Function::PrivateLinkage,
+                             "libjit_stacked_kernel", llmodule_.get());
+  // Mark all kernel function buffer parameters as no-alias, because above
+  // we ensured that they are uniqued.
+  for (unsigned paramIdx = 0; paramIdx < bufferToArgNum.size(); ++paramIdx) {
+    kernelFunc->addParamAttr(paramIdx, llvm::Attribute::AttrKind::NoAlias);
+  }
+
+  // Create the entry BB.
+  llvm::BasicBlock *entryBB =
+      llvm::BasicBlock::Create(ctx_, "entry", kernelFunc);
+  llvm::IRBuilder<> kernelBuilder(entryBB);
+  // Number of tensor elements.
+  auto *numElements =
+      emitValueSize(kernelBuilder, bundle[0]->getOperand(0).first);
+  // Create a loop inside the stacked kernel function being generated.
+  auto loopBBs = createLoop(kernelBuilder, ctx_, numElements);
+
+  // Get the index parameter of the loop.
+  // This is the PHI node of the BB.
+  auto *kernelLoopIdx = dyn_cast<llvm::PHINode>(loopBBs.first->begin());
+  assert(kernelLoopIdx && "Could not find the loop index");
+  // Insert the body of the loop right after the PHI node.
+  kernelBuilder.SetInsertPoint(loopBBs.first->getFirstNonPHIOrDbg());
+  // Iterate over stacked instructions and create a kernel invocations per
+  // instruction.
+  for (auto &BI : bundle) {
+    // Name of the stacked operation to be invoked.
+    assert(BI->isDataParallel() && "Data parallel operation is expected");
+    generateLLVMIRForDataParallelInstr(kernelBuilder, BI, kernelFunc,
+                                       bufferToArgNum, kernelLoopIdx);
+  }
+  kernelBuilder.SetInsertPoint(loopBBs.second);
+  // Add a return.
+  kernelBuilder.CreateRetVoid();
+
+  // Emit a call of the kernel.
+  builder.CreateCall(kernelFunc, buffers);
+}
+
+void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
+  InstructionNumbering instrNumbering(*F_);
+  // Go over the instructions and try to group them into bundles.
+  auto &instrs = F_->getInstrs();
+
+  // Group instructions into bundles of shape compatible data parallel
+  // instructions and emit them.
+  llvm::SmallVector<Instruction *, 32> bundle;
+  for (auto I : instrs) {
+    if (!I->isDataParallel()) {
+      emitDataParallelKernel(builder, bundle);
+      bundle.clear();
+      generateLLVMIRForInstr(builder, I);
+      continue;
+    }
+
+    // This is a data parallel instruction.
+
+    // Check if the current instruction is shape compatible with the bundle.
+    bool isShapeCompatible = true;
+    if (!bundle.empty()) {
+      auto val = I->getOperand(0).first;
+      auto bundleVal = bundle.back()->getOperand(0).first;
+      // Check if shapes have the same amount of elements.
+      isShapeCompatible =
+          val->getType()->size() == bundleVal->getType()->size();
+    }
+
+    // If the instruction is not shape-compatible, emit the kernel for the
+    // current bundle and start a new bundle.
+    if (!isShapeCompatible) {
+      emitDataParallelKernel(builder, bundle);
+      bundle.clear();
+    }
+    // Add a data parallel instruction to the bundle.
+    bundle.push_back(I);
+  }
+
+  emitDataParallelKernel(builder, bundle);
+}
+
+void LLVMIRGen::generateLLVMIRForDataParallelInstr(
+    llvm::IRBuilder<> &builder, glow::Instruction *I, llvm::Function *kernel,
+    llvm::DenseMap<Value *, int> &bufferToArgNum, llvm::Value *loopCount) {
+  assert(I->isDataParallel() && "Expected a data parallel instruction");
+  switch (I->getKind()) {
+
+#define ARITHMETIC_UNARY_OP_WITH_IMM_CASE(INST_NAME_, FUN_NAME_, VALUE_)       \
+  case Kinded::Kind::INST_NAME_##InstKind: {                                   \
+    auto *AN = cast<INST_NAME_##Inst>(I);                                      \
+    auto *dest = AN->getDest();                                                \
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);  \
+    auto *val = emitConstF32(builder, AN->get##VALUE_());                      \
+    auto *elementTy = getElementType(builder, dest);                           \
+    auto *F = getFunction(FUN_NAME_ "_kernel", dest->getElementType());        \
+    auto *stackedOpCall = builder.CreateCall(                                  \
+        F, {loopCount, val,                                                    \
+            llvm::ConstantPointerNull::get(elementTy->getPointerTo()),         \
+            llvm::ConstantPointerNull::get(elementTy->getPointerTo())});       \
+    auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,          \
+                                       "buffer.element.addr");                 \
+    builder.CreateStore(stackedOpCall, destAddr);                              \
+    break;                                                                     \
+  }
+    ARITHMETIC_UNARY_OP_WITH_IMM_CASE(Splat, "splat", Value);
+#undef ARITHMETIC_UNARY_OP_WITH_IMM_CASE
+
   case Kinded::Kind::ElementSelectInstKind: {
     ElementSelectInst *ES = cast<ElementSelectInst>(I);
     auto *dest = ES->getDest();
-    auto *destPtr = emitValueAddress(builder, dest);
-    auto *condPtr = emitValueAddress(builder, ES->getCond());
-    auto *lhsPtr = emitValueAddress(builder, ES->getLHS());
-    auto *rhsPtr = emitValueAddress(builder, ES->getRHS());
-    auto cnt = emitValueSize(builder, dest);
-
-    auto *F = getFunction("elementselect", dest->getElementType());
-    builder.CreateCall(F, {destPtr, condPtr, lhsPtr, rhsPtr, cnt});
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *condPtr =
+        emitBufferAddress(builder, ES->getCond(), kernel, bufferToArgNum);
+    auto *lhsPtr =
+        emitBufferAddress(builder, ES->getLHS(), kernel, bufferToArgNum);
+    auto *rhsPtr =
+        emitBufferAddress(builder, ES->getRHS(), kernel, bufferToArgNum);
+    auto *F = getFunction("elementselect_kernel", dest->getElementType());
+    auto *stackedOpCall =
+        builder.CreateCall(F, {loopCount, condPtr, lhsPtr, rhsPtr});
+    auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr, loopCount,
+                                       "buffer.element.addr");
+    builder.CreateStore(stackedOpCall, destAddr);
     break;
   }
 
-  case Kinded::Kind::ElementPowInstKind: {
-    auto *PI = cast<ElementPowInst>(I);
-    auto *dest = PI->getDest();
-    auto *destPtr = emitValueAddress(builder, PI->getDest());
-    auto *basePtr = emitValueAddress(builder, PI->getBase());
-    auto *exp = emitConstF32(builder, PI->getExp());
-    auto *size = emitValueSize(builder, dest);
+#define ARITHMETIC_UNARY_OP_CASE(INST_NAME_, FUN_NAME_)                        \
+  case Kinded::Kind::INST_NAME_##InstKind: {                                   \
+    auto *AN = cast<INST_NAME_##Inst>(I);                                      \
+    auto *dest = AN->getDest();                                                \
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);  \
+    auto *srcPtr =                                                             \
+        emitBufferAddress(builder, AN->getSrc(), kernel, bufferToArgNum);      \
+    auto *F = getFunction(FUN_NAME_ "_kernel", dest->getElementType());        \
+    auto *stackedOpCall = builder.CreateCall(                                  \
+        F,                                                                     \
+        {loopCount, srcPtr,                                                    \
+         llvm::ConstantPointerNull::get(builder.getFloatTy()->getPointerTo()), \
+         llvm::ConstantPointerNull::get(                                       \
+             builder.getFloatTy()->getPointerTo())});                          \
+    auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,          \
+                                       loopCount, "buffer.element.addr");      \
+    builder.CreateStore(stackedOpCall, destAddr);                              \
+    break;                                                                     \
+  }
 
-    auto *F = getFunction("element_pow", dest->getElementType());
-    builder.CreateCall(F, {destPtr, basePtr, exp, size});
+    ARITHMETIC_UNARY_OP_CASE(Sigmoid, "sigmoid");
+    ARITHMETIC_UNARY_OP_CASE(Tanh, "tanh");
+#undef ARITHMETIC_UNARY_OP_CASE
+
+  case Kinded::Kind::CopyInstKind: {
+    CopyInst *CI = cast<CopyInst>(I);
+    auto *dest = CI->getDest();
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *srcPtr =
+        emitBufferAddress(builder, CI->getSrc(), kernel, bufferToArgNum);
+    auto *F = getFunction("copy_kernel", dest->getElementType());
+    auto *stackedOpCall = builder.CreateCall(
+        F,
+        {loopCount, srcPtr,
+         llvm::ConstantPointerNull::get(builder.getFloatTy()->getPointerTo()),
+         llvm::ConstantPointerNull::get(builder.getFloatTy()->getPointerTo())});
+    auto *destAddr = builder.CreateGEP(getElementType(builder, dest), destPtr,
+                                       loopCount, "buffer.element.addr");
+    builder.CreateStore(stackedOpCall, destAddr);
     break;
   }
 
+#undef ARITHMETIC_UNARY_OP_CASE
+
+#define ARITHMETIC_BINARY_OP_CASE(INST_NAME_, FUN_NAME_)                       \
+  case Kinded::Kind::INST_NAME_##InstKind: {                                   \
+    auto *AN = cast<INST_NAME_##Inst>(I);                                      \
+    auto *dest = AN->getDest();                                                \
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);  \
+    auto *lhsPtr =                                                             \
+        emitBufferAddress(builder, AN->getLHS(), kernel, bufferToArgNum);      \
+    auto *rhsPtr =                                                             \
+        emitBufferAddress(builder, AN->getRHS(), kernel, bufferToArgNum);      \
+                                                                               \
+    auto *F = getFunction(FUN_NAME_ "_kernel", dest->getElementType());        \
+    auto *stackedOpCall =                                                      \
+        builder.CreateCall(F, {loopCount, lhsPtr, rhsPtr,                      \
+                               llvm::ConstantPointerNull::get(                 \
+                                   builder.getFloatTy()->getPointerTo())});    \
+    auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,          \
+                                       loopCount, "buffer.element.addr");      \
+    builder.CreateStore(stackedOpCall, destAddr);                              \
+    break;                                                                     \
+  }
+    ARITHMETIC_BINARY_OP_CASE(ElementAdd, "element_add");
+    ARITHMETIC_BINARY_OP_CASE(ElementMul, "element_mul");
+    ARITHMETIC_BINARY_OP_CASE(ElementSub, "element_sub");
+    ARITHMETIC_BINARY_OP_CASE(ElementDiv, "element_div");
+    ARITHMETIC_BINARY_OP_CASE(ElementMax, "elementmax");
+    ARITHMETIC_BINARY_OP_CASE(ElementMin, "elementmin");
+    ARITHMETIC_BINARY_OP_CASE(ElementCmpLTE, "element_cmp_lte");
+#undef ARITHMETIC_BINARY_OP_CASE
+
+#define ARITHMETIC_BINARY_OP_WITH_IMM_CASE(INST_NAME_, FUN_NAME_, SRC_,        \
+                                           VALUE_)                             \
+  case Kinded::Kind::INST_NAME_##InstKind: {                                   \
+    auto *AN = cast<INST_NAME_##Inst>(I);                                      \
+    auto *dest = AN->getDest();                                                \
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);  \
+    auto *lhsPtr =                                                             \
+        emitBufferAddress(builder, AN->get##SRC_(), kernel, bufferToArgNum);   \
+    auto *val = emitConstF32(builder, AN->get##VALUE_());                      \
+                                                                               \
+    auto *F = getFunction(FUN_NAME_ "_kernel", dest->getElementType());        \
+    auto *stackedOpCall =                                                      \
+        builder.CreateCall(F, {loopCount, val, lhsPtr,                         \
+                               llvm::ConstantPointerNull::get(                 \
+                                   builder.getFloatTy()->getPointerTo())});    \
+    auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,          \
+                                       loopCount, "buffer.element.addr");      \
+    builder.CreateStore(stackedOpCall, destAddr);                              \
+    break;                                                                     \
+  }
+    ARITHMETIC_BINARY_OP_WITH_IMM_CASE(CPUMaxSplat, "element_maxsplat", Src,
+                                       SplatValue);
+    ARITHMETIC_BINARY_OP_WITH_IMM_CASE(ElementPow, "element_pow", Base, Exp);
+#undef ARITHMETIC_BINARY_OP_WITH_IMM_CASE
+
+  default:
+#ifndef NDEBUG
+    llvm::errs() << "Cannot select the instruction:\n";
+    I->dump(llvm::errs());
+    llvm::errs() << "\n";
+#endif
+    GLOW_UNREACHABLE("ERROR: Cannot select the instruction.");
+  }
+}
+
+void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
+                                       glow::Instruction *I) {
+  assert(!I->isDataParallel() &&
+         "data parallel instructions are not handled here");
+  switch (I->getKind()) {
   case Kinded::Kind::MatMulInstKind: {
     MatMulInst *BMM = cast<MatMulInst>(I);
     auto *dest = BMM->getDest();
@@ -425,20 +737,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *F = getFunction("matmul", dest->getElementType());
     builder.CreateCall(F,
                        {destPtr, lhsPtr, rhsPtr, destDims, lhsDims, rhsDims});
-    break;
-  }
-
-  case Kinded::Kind::CopyInstKind: {
-    CopyInst *CI = cast<CopyInst>(I);
-    auto *dest = CI->getDest();
-    auto *destPtr = emitValueAddress(builder, dest);
-    destPtr = builder.CreateBitCast(destPtr, builder.getInt8PtrTy());
-    auto *srcPtr = emitValueAddress(builder, CI->getSrc());
-    srcPtr = builder.CreateBitCast(srcPtr, builder.getInt8PtrTy());
-    auto *bytes = emitConstSizeT(builder, dest->getType()->getSizeInBytes());
-
-    auto *F = getFunction("copy");
-    builder.CreateCall(F, {destPtr, srcPtr, bytes});
     break;
   }
 
@@ -807,32 +1105,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::SigmoidInstKind: {
-    SigmoidInst *SI = cast<SigmoidInst>(I);
-    auto *dest = SI->getDest();
-    auto *destPtr = emitValueAddress(builder, dest);
-    auto *srcPtr = emitValueAddress(builder, SI->getSrc());
-
-    auto *numElemVal = emitConstSizeT(builder, dest->getType()->size());
-
-    auto *F = getFunction("sigmoid", dest->getElementType());
-    builder.CreateCall(F, {srcPtr, destPtr, numElemVal});
-    break;
-  }
-
-  case Kinded::Kind::TanhInstKind: {
-    TanhInst *TI = cast<TanhInst>(I);
-    auto *dest = TI->getDest();
-    auto *destPtr = emitValueAddress(builder, dest);
-    auto *srcPtr = emitValueAddress(builder, TI->getSrc());
-
-    auto *numElemVal = emitConstSizeT(builder, dest->getType()->size());
-
-    auto *F = getFunction("tanh", dest->getElementType());
-    builder.CreateCall(F, {srcPtr, destPtr, numElemVal});
-    break;
-  }
-
   case Kinded::Kind::TopKInstKind: {
     TopKInst *TI = cast<TopKInst>(I);
 
@@ -875,42 +1147,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims, shuffle, len});
     break;
   }
-
-  case Kinded::Kind::CPUMaxSplatInstKind: {
-    CPUMaxSplatInst *MS = cast<CPUMaxSplatInst>(I);
-    auto *dest = MS->getDest();
-    auto *src = MS->getSrc();
-    auto *destPtr = emitValueAddress(builder, dest);
-    auto *lhsPtr = emitValueAddress(builder, src);
-    auto splatVal = emitConstF32(builder, MS->getSplatValue());
-
-    auto cnt = emitValueSize(builder, dest);
-
-    auto *F = getFunction("elementmaxsplat", dest->getElementType());
-    builder.CreateCall(F, {destPtr, lhsPtr, cnt, splatVal});
-    break;
-  }
-
-#define ARITHMETIC_CASE(INST_NAME_, FUN_NAME_)                                 \
-  case Kinded::Kind::INST_NAME_##InstKind: {                                   \
-    auto *AN = cast<INST_NAME_##Inst>(I);                                      \
-    auto *dest = AN->getDest();                                                \
-    auto *destPtr = emitValueAddress(builder, dest);                           \
-    auto *lhsPtr = emitValueAddress(builder, AN->getLHS());                    \
-    auto *rhsPtr = emitValueAddress(builder, AN->getRHS());                    \
-    auto cnt = emitValueSize(builder, dest);                                   \
-    auto *F = getFunction(FUN_NAME_, dest->getElementType());                  \
-    builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, cnt});                     \
-    break;                                                                     \
-  }
-    ARITHMETIC_CASE(ElementAdd, "element_add");
-    ARITHMETIC_CASE(ElementMul, "element_mul");
-    ARITHMETIC_CASE(ElementSub, "element_sub");
-    ARITHMETIC_CASE(ElementDiv, "element_div");
-    ARITHMETIC_CASE(ElementMax, "elementmax");
-    ARITHMETIC_CASE(ElementMin, "elementmin");
-    ARITHMETIC_CASE(ElementCmpLTE, "element_cmp_lte");
-#undef ARITHMETIC_CASE
 
     // Alloc and Dealloc instructions are handled by the memory allocator.
   case Kinded::Kind::AllocActivationInstKind:

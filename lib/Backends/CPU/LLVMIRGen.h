@@ -67,6 +67,12 @@ class LLVMIRGen {
   /// Generates LLVM IR that materializes the constant array \p vals.
   llvm::Value *emitConstArray(llvm::IRBuilder<> &builder,
                               llvm::ArrayRef<size_t> vals);
+
+  /// Generates LLVM IR that materializes the constant array \p vals. Elements
+  /// of vals have the type \p elemTy.
+  llvm::Value *emitConstArray(llvm::IRBuilder<> &builder,
+                              llvm::ArrayRef<llvm::Constant *> vals,
+                              llvm::Type *elemTy);
   /// Generates LLVM IR that computes the dimensions of \p val using \p builder.
   /// The result type is "size_t*".
   llvm::Value *emitValueDims(llvm::IRBuilder<> &builder, glow::Value *val);
@@ -74,6 +80,17 @@ class LLVMIRGen {
   /// weightvars, mutable weight vars) so that they can be reused inside the
   /// body of the function.
   void loadBaseAddresses(llvm::IRBuilder<> &builder);
+  /// Create a function representing a stacked kernel for instructions provided
+  /// in \p stackedInstrs.
+  void emitDataParallelKernel(llvm::IRBuilder<> &builder,
+                              llvm::ArrayRef<Instruction *> stackedInstrs);
+  /// Emit IR for the data parallel instruction \p I which is invoked inside the
+  /// stacked \p kernel. The current loop count is described by \p loopCount.
+  /// The \p bufferToArgNum map can be used to find the required buffers, which
+  /// are provided as arguments to the stacked \p kernel.
+  void generateLLVMIRForDataParallelInstr(
+      llvm::IRBuilder<> &builder, glow::Instruction *I, llvm::Function *kernel,
+      llvm::DenseMap<Value *, int> &bufferToArgNum, llvm::Value *loopCount);
 
 public:
   /// Ctor.
@@ -85,6 +102,8 @@ public:
 
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
   void generateLLVMIRForInstr(llvm::IRBuilder<> &builder, glow::Instruction *I);
+  /// Emit LLVM-IR for the whole IRFunction.
+  void generateLLVMIRForModule(llvm::IRBuilder<> &builder);
   /// \returns a libjit API function by name.
   llvm::Function *getFunction(const std::string &name);
   /// \returns a libjit API function by name and tensor element type.
