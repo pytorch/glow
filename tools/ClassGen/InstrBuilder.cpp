@@ -269,6 +269,23 @@ void InstrBuilder::addGradientInstr(
       }
     }
   }
+
+  // Copy over the auto-verify information, updating the operand names for
+  // gradient.
+  for (auto &verifPair : autoVerificationPairs_) {
+    auto newPair = std::make_pair(verifPair.first, std::vector<std::string>());
+    for (auto &opName : verifPair.second) {
+      if (std::find(gradFields.begin(), gradFields.end(), opName) !=
+          gradFields.end()) {
+        newPair.second.push_back(opName + "Grad");
+      }
+      if (std::find(originalFields.begin(), originalFields.end(), opName) !=
+          originalFields.end()) {
+        newPair.second.push_back(opName);
+      }
+    }
+    GI.autoVerificationPairs_.push_back(newPair);
+  }
 }
 
 void InstrBuilder::emitAutoIRGen(std::ostream &os) const {
