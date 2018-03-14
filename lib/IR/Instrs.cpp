@@ -66,19 +66,3 @@ void DeallocActivationInst::verify() const {
   // The operand of this instruction needs to be an AllocActivationInst.
   assert(isa<AllocActivationInst>(getSrc()) && "Invalid operand");
 }
-
-void SplatInst::verify() const {
-  // Nothing to verify.
-}
-
-void DebugPrintInst::verify() const {
-  // Nothing to verify.
-}
-
-void CrossEntropyLossInst::verify() const {
-  // Nothing to verify.
-}
-
-void CrossEntropyLossGradInst::verify() const {
-  // Nothing to verify.
-}
