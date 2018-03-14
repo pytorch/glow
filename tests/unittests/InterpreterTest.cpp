@@ -122,9 +122,11 @@ TEST(Interpreter, trainASimpleNetwork) {
 
   // Create a variable with 1 input, which is a vector of 4 elements.
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, 4}, "A",
-                               Variable::VisibilityKind::Public);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   auto *E = mod.createVariable(ElemKind::FloatTy, {1, 4}, "E",
-                               Variable::VisibilityKind::Public);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
 
   Node *O = F->createFullyConnected("fc1", A, 10);
   O = F->createSigmoid("sig1", O);
@@ -175,9 +177,11 @@ TEST(Interpreter, simpleRegression) {
   Function *F = mod.createFunction("main");
   F->setName("simpleRegression");
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, numInputs}, "A",
-                               Variable::VisibilityKind::Public);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   auto *Ex = mod.createVariable(ElemKind::FloatTy, {1, numInputs}, "E",
-                                Variable::VisibilityKind::Public);
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
   Node *O = F->createFullyConnected("fc", A, 4);
   O = F->createRELU("relu", O);
   O = F->createRegression("reg", O, Ex);
@@ -227,8 +231,11 @@ TEST(Interpreter, learnXor) {
   F->setName("learnXor");
 
   auto *A = mod.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A",
-                               Variable::VisibilityKind::Public);
-  auto *Ex = mod.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
+  auto *Ex = mod.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
 
   Node *O = F->createFullyConnected("fc1", A, 6);
   O = F->createTanh("tanh1", O);
@@ -326,7 +333,8 @@ TEST(Network, circle) {
   Function *F = mod.createFunction("main");
   F->setName("circle");
   auto *A = mod.createVariable(ElemKind::FloatTy, {minibatchSize, 2}, "A",
-                               Variable::VisibilityKind::Public);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   auto *S = mod.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, "S",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
@@ -414,17 +422,20 @@ TEST(Network, learnSingleValueConcat) {
   F->setName("learnSingleValueConcat");
 
   auto *Ex = mod.createVariable(ElemKind::FloatTy, {1, width * 2}, "Ex",
-                                Variable::VisibilityKind::Public);
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
 
   // Left side of the network:
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, width}, "A",
-                               Variable::VisibilityKind::Public);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   Node *L = F->createFullyConnected("fc1", A, width);
   L = F->createSigmoid("", L);
 
   // Right side of the network:
   auto *B = mod.createVariable(ElemKind::FloatTy, {1, width}, "B",
-                               Variable::VisibilityKind::Public);
+                               Variable::VisibilityKind::Public,
+                               Variable::TrainKind::None);
   Node *R = F->createFullyConnected("fc2", B, width);
   R = F->createSigmoid("sig", R);
 
@@ -603,7 +614,8 @@ TEST(Interpreter, learnSqrt2) {
                                Variable::TrainKind::Broadcast, 1);
   auto *Ex = mod.createVariable(ElemKind::FloatTy, {1}, "Ex",
                                 Variable::VisibilityKind::Public,
-                                Variable::TrainKind::Broadcast, 2);
+                                Variable::TrainKind::None);
+  Ex->getPayload().getHandle() = {2};
 
   Node *O = F->createMul("Mult", A, A);
   O = F->createRegression("reg", O, Ex);
@@ -714,9 +726,9 @@ TEST(LinearClassifier, classifyPlayerSport) {
   const size_t numFeatures = 2;
   const size_t numClasses = 2;
 
-  auto *A =
-      mod.createVariable(ElemKind::FloatTy, {numTrainPlayers, numFeatures}, "A",
-                         Variable::VisibilityKind::Public);
+  auto *A = mod.createVariable(
+      ElemKind::FloatTy, {numTrainPlayers, numFeatures}, "A",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
   auto *S = mod.createVariable(ElemKind::IndexTy, {numTrainPlayers, 1}, "S",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
