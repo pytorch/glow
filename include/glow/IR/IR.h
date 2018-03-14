@@ -139,6 +139,9 @@ public:
   /// operand \p srcIdx for writing the result of the operand at \p dstIdx.
   bool isInplaceOp(unsigned dstIdx, unsigned srcIdx) const { return false; }
 
+  /// \returns True if this instruction is data parallel.
+  bool isDataParallel() const;
+
   /// Sets the ith operand at index \p idx to the value \p v.
   void setOperand(unsigned idx, Value *v);
 

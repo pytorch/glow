@@ -5,6 +5,7 @@ BB.newBackendSpecificInstr("CPUMaxSplat")
     .addOperand("Src", OperandKind::In)
     .addMember(MemberType::Float, "SplatValue")
     .inplaceOperand({"Dest", "Src"})
+    .dataParallel()
     .autoIRGen();
 
 BB.includeBackendSpecificVerification("CPUSpecificInstrsVerification.h");

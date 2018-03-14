@@ -81,6 +81,8 @@ class InstrBuilder {
   /// Specifies if this Instr is backend specific.
   bool isBackendSpecific_{false};
 
+  bool isDataParallel_{false};
+
   /// \returns the index of the operand with the name \p name. Aborts if no such
   /// name.
   unsigned getOperandIndexByName(llvm::StringRef name) const;
@@ -163,6 +165,11 @@ public:
     return *this;
   }
 
+  InstrBuilder &dataParallel() {
+    isDataParallel_ = true;
+    return *this;
+  }
+
   ~InstrBuilder();
 
 private:
@@ -177,6 +184,12 @@ private:
 
   /// Emits the method that calculates the inplace property.
   void emitInplaceMethod(std::ostream &os) const;
+
+  /// Emits the property that returns true if the instruction is data parallel.
+  void emitDataParallelProperty(std::ostream &os) const;
+
+  /// Emits the methods that are properties of the instructions.
+  void emitProperties(std::ostream &os) const;
 
   /// Emit the getter for an operand.
   void emitOperandGetter(std::ostream &os, const std::string &name,
