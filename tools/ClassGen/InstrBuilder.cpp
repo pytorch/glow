@@ -213,6 +213,11 @@ void InstrBuilder::emitClass(std::ostream &os) const {
         }
         break;
       }
+      case VerifyKind::NoVerify: {
+        assert(autoVerificationPairs_.size() == 1);
+        os << "    // Nothing to verify.\n";
+        break;
+      }
       default:
         assert(false && "Unknown verification kind.");
         break;
