@@ -54,7 +54,8 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .setType("Src->getType()")
-      .inplaceOperand({"Dest", "Src"});
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel();
 
   //===--------------------------------------------------------------------===//
   //                   Convolution / Pool / FC
@@ -191,6 +192,7 @@ int main(int argc, char **argv) {
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Add");
 
@@ -199,6 +201,7 @@ int main(int argc, char **argv) {
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Sub");
 
@@ -207,6 +210,7 @@ int main(int argc, char **argv) {
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Mul");
 
@@ -215,6 +219,7 @@ int main(int argc, char **argv) {
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Div");
 
@@ -223,6 +228,7 @@ int main(int argc, char **argv) {
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Max");
 
@@ -231,6 +237,7 @@ int main(int argc, char **argv) {
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Min");
 
@@ -239,6 +246,7 @@ int main(int argc, char **argv) {
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("CmpLTE");
 
@@ -247,6 +255,7 @@ int main(int argc, char **argv) {
       .addOperand("Base", OperandKind::In)
       .addMember(MemberType::Float, "Exp")
       .inplaceOperand({"Dest", "Base"})
+      .dataParallel()
       .autoVerify(VerifyKind::SameShape, {"Dest", "Base"})
       .autoIRGen("Pow");
 
@@ -256,6 +265,7 @@ int main(int argc, char **argv) {
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS", "Cond"})
+      .dataParallel()
       .autoVerify(VerifyKind::SameShape, {"Dest", "Cond", "LHS", "RHS"})
       .autoIRGen("Select");
 
@@ -270,6 +280,7 @@ int main(int argc, char **argv) {
           "Dest",
           "Src",
       })
+      .dataParallel()
       .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen();
 
@@ -280,6 +291,7 @@ int main(int argc, char **argv) {
           "Dest",
           "Src",
       })
+      .dataParallel()
       .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen();
 
@@ -312,6 +324,7 @@ int main(int argc, char **argv) {
   BB.newInstr("Splat")
       .addMember(MemberType::Float, "Value")
       .addOperand("Dest", OperandKind::Out)
+      .dataParallel()
       .autoVerify(VerifyKind::NoVerify)
       .autoIRGen();
 

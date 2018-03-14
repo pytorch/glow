@@ -99,6 +99,16 @@ void InstrBuilder::emitInplaceMethod(std::ostream &os) const {
   os << "    return false;\n  }\n";
 }
 
+void InstrBuilder::emitDataParallelProperty(std::ostream &os) const {
+  os << "\n  bool isDataParallel() const {\n";
+  os << "    return " << (isDataParallel_ ? "true" : "false") << ";\n  }\n";
+}
+
+void InstrBuilder::emitProperties(std::ostream &os) const {
+  emitInplaceMethod(os);
+  emitDataParallelProperty(os);
+}
+
 void InstrBuilder::emitClassMembers(std::ostream &os) const {
   // Emit class members:
   for (const auto &op : members_) {
@@ -174,7 +184,7 @@ void InstrBuilder::emitClass(std::ostream &os) const {
 
   emitCtor(os);
   emitSettersGetters(os);
-  emitInplaceMethod(os);
+  emitProperties(os);
 
   for (const auto &m : extraMethods_) {
     os << "  " << m.first << "\n";
