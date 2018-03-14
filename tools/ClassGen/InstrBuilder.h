@@ -23,6 +23,7 @@ enum class VerifyKind : unsigned char {
   SameShape,
   SameType,
   SameElementType,
+  NoVerify,
 };
 
 inline OperandKind negateOperandKind(OperandKind CC) {
@@ -151,8 +152,10 @@ public:
 
   /// Automatically generates verification of type \p verif
   InstrBuilder &autoVerify(VerifyKind verif,
-                           llvm::ArrayRef<llvm::StringRef> operands) {
-    assert(operands.size() > 1 && "Must list 2 or more operands.");
+                           llvm::ArrayRef<llvm::StringRef> operands = {""}) {
+    if (verif != VerifyKind::NoVerify) {
+      assert(operands.size() > 1 && "Must list 2 or more operands.");
+    }
     auto newPair = std::make_pair(verif, std::vector<std::string>());
     newPair.second.insert(newPair.second.begin(), operands.begin(),
                           operands.end());
