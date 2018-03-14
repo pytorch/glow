@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 
+# Bash strict mode
+set -euo pipefail
+
 # Configure the following environment variables based on your setup.
 
 # Path to the Glow loader executable.
-LOADER=~/src/build/Glow/bin/loader
-# The root directory of the Glow source code.
-GLOW_ROOT=~/src/Glow
+LOADER="${LOADER:-~/src/build/Glow/bin/loader}"
 # The command to invoke a c++ compiler.
-CXX=clang++
+CXX="${CXX:-clang++}"
+
+# Get path to this script.
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# The root directory of the Glow source code.
+GLOW_ROOT="$( cd "${SCRIPT_DIR}/../.." && pwd )"
 
 # This file downloads the lenet_mnist model, uses the loader to create a
 # bundle from it and then links it with the client-code from
@@ -26,7 +32,7 @@ mkdir -p build
 ${LOADER} ${GLOW_ROOT}/tests/images/mnist/5_1087.png -image_mode=0to1 -d lenet_mnist -jit -emit-bundle build
 
 # Compile lenet_mnist_standalone.cpp.
-${CXX} -std=c++11 -c lenet_mnist_standalone.cpp -o build/lenet_mnist_standalone.o
+${CXX} -std=c++11 -c ${SCRIPT_DIR}/lenet_mnist_standalone.cpp -o build/lenet_mnist_standalone.o
 
 # Produce a standalone executable by linking
 # lenet_mnist_standalone.o and lenet_mnist.o
