@@ -139,9 +139,9 @@ protected:
 
     if (auto V = llvm::dyn_cast<Variable>(N)) {
       if (V->getVisibilityKind() == Variable::VisibilityKind::Public) {
-        os << "\tfillcolor=Snow2; color=DarkOliveGreen4\n";
+        os << "\tfillcolor=Snow2 color=DarkOliveGreen4\n";
       } else {
-        os << "\tfillcolor=Snow3; color=DeepSkyBlue4\n";
+        os << "\tfillcolor=Snow3 color=DeepSkyBlue4\n";
       }
     } else {
       os << "\tfillcolor=" << nodeColor << "\n";
