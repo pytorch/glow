@@ -17,50 +17,48 @@
 
 using namespace glow;
 
-TEST(Graph, simpleTest) {
-  {
-    Module MD;
-    Function *F = MD.createFunction("F");
-    IRFunction M(F);
-    Node *K = MD.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-    Node *S = MD.createVariable(ElemKind::IndexTy, {4, 1}, "select");
+TEST(Graph, simpleTestConv) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  IRFunction M(F);
+  Node *K = MD.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+  Node *S = MD.createVariable(ElemKind::IndexTy, {4, 1}, "select");
 
-    K = F->createConv("Conv1", K, 16, 3, 2, 3);
-    K = F->createRELU("Relu", K);
-    K = F->createSoftMax("SoftMax", K, S);
-    F->createSave("Save", K);
-    F->dump();
-    F->dumpDAG();
-    lower(F, CompilationMode::Train);
-    ::optimize(F, CompilationMode::Train);
-    M.generateIR(CompilationMode::Train);
-    M.dump();
-    EXPECT_GT(M.getInstrs().size(), 0);
-  }
+  K = F->createConv("Conv1", K, 16, 3, 2, 3);
+  K = F->createRELU("Relu", K);
+  K = F->createSoftMax("SoftMax", K, S);
+  F->createSave("Save", K);
+  F->dump();
+  F->dumpDAG();
+  lower(F, CompilationMode::Train);
+  ::optimize(F, CompilationMode::Train);
+  M.generateIR(CompilationMode::Train);
+  M.dump();
+  EXPECT_GT(M.getInstrs().size(), 0);
+}
 
-  {
-    unsigned numInputs = 10;
-    Module MD;
-    Function *F = MD.createFunction("F");
-    IRFunction M(F);
+TEST(Graph, simpleTestFC) {
+  unsigned numInputs = 10;
+  Module MD;
+  Function *F = MD.createFunction("F");
+  IRFunction M(F);
 
-    auto *A = MD.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
-    auto *Ex = MD.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
+  auto *A = MD.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
+  auto *Ex = MD.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
 
-    Node *O = F->createFullyConnected("FC1", A, 6);
-    O = F->createRELU("RELU1", O);
-    O = F->createFullyConnected("FC2", O, 1);
-    O = F->createRELU("RELU2", O);
-    O = F->createRegression("Regression", O, Ex);
-    F->createSave("Save", O);
-    F->dump();
-    F->dumpDAG();
-    lower(F, CompilationMode::Train);
-    ::optimize(F, CompilationMode::Train);
-    M.generateIR(CompilationMode::Train);
-    M.dump();
-    EXPECT_GT(M.getInstrs().size(), 0);
-  }
+  Node *O = F->createFullyConnected("FC1", A, 6);
+  O = F->createRELU("RELU1", O);
+  O = F->createFullyConnected("FC2", O, 1);
+  O = F->createRELU("RELU2", O);
+  O = F->createRegression("Regression", O, Ex);
+  F->createSave("Save", O);
+  F->dump();
+  F->dumpDAG();
+  lower(F, CompilationMode::Train);
+  ::optimize(F, CompilationMode::Train);
+  M.generateIR(CompilationMode::Train);
+  M.dump();
+  EXPECT_GT(M.getInstrs().size(), 0);
 }
 
 TEST(Graph, QuantizationProfileNodes) {
