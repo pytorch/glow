@@ -34,7 +34,7 @@ if(GLOW_USE_COVERAGE)
     COMMAND ctest -j 4
 
     # Capture lcov counters based on the test run.
-    COMMAND ${LCOV_PATH} --directory . --capture --output-file glow_coverage.info
+    COMMAND ${LCOV_PATH} --no-checksum --directory . --capture --output-file glow_coverage.info
     
     # Ignore not related files.
     COMMAND ${LCOV_PATH} --remove glow_coverage.info '*v1*' '/usr/*' '*tests/*' '*llvm_install*' --output-file ${PROJECT_BINARY_DIR}/glow_coverage_result.info
