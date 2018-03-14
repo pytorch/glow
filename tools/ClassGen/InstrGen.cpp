@@ -70,6 +70,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Pad")
       .addMember(MemberType::SizeT, "Depth")
       .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Dest", "Src", "Filter", "Bias"})
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
 
   // PoolMax version caching XY coordinates to speedup gradient-based
@@ -81,6 +83,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
       .addMember(MemberType::SizeT, "Pad")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest", "SrcXY"}, {"Dest", "Src"});
 
   BB.newInstr("PoolMax")
@@ -88,7 +91,8 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::SizeT, "Pad");
+      .addMember(MemberType::SizeT, "Pad")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
 
   BB.newInstr("PoolAvg")
       .addOperand("Dest", OperandKind::Out)
@@ -97,6 +101,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Stride")
       .addMember(MemberType::SizeT, "Pad")
       .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
   //===--------------------------------------------------------------------===//
@@ -134,7 +139,8 @@ int main(int argc, char **argv) {
       .addOperand("OrigDest", OperandKind::In)
       .addOperand("OrigSrc", OperandKind::In)
       .addOperand("Selected", OperandKind::In)
-      .addOperand("SrcGrad", OperandKind::Out);
+      .addOperand("SrcGrad", OperandKind::Out)
+      .autoVerify(VerifyKind::SameType, {"OrigDest", "OrigSrc", "SrcGrad"});
 
   BB.newInstr("CrossEntropyLoss")
       .addOperand("P", OperandKind::In)
@@ -158,13 +164,15 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .autoIRGen();
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "LHS", "RHS"});
 
   /// Accumulates all of the layers in the batch and produce a tensor that has
   /// the same dimensions as the input tensor without the first dimension.
   BB.newInstr("BatchedReduceAdd")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Batch", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
       .autoIRGen();
 
   /// Adds the 'Slice' operand to each one of the slices in the batch.
@@ -173,6 +181,7 @@ int main(int argc, char **argv) {
       .addOperand("Batch", OperandKind::In)
       .addOperand("Slice", OperandKind::In)
       .inplaceOperand({"Dest", "Batch"})
+      .autoVerify(VerifyKind::SameShape, {"Batch", "Dest"})
       .autoIRGen();
 
   BB.newInstr("ElementAdd")
@@ -280,12 +289,14 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::VectorSizeT, "Dims")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen();
 
   BB.newInstr("Transpose")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::VectorUnsigned, "Shuffle")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen();
 
   BB.newInstr("Broadcast")
@@ -293,6 +304,7 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::VectorSizeT, "Shape")
       .addMember(MemberType::Unsigned, "Axis")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen();
 
   BB.newInstr("Splat")
@@ -303,17 +315,22 @@ int main(int argc, char **argv) {
   BB.newInstr("InsertTensor")
       .addOperand("Dest", OperandKind::InOut)
       .addOperand("Src", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addMember(MemberType::VectorSizeT, "Offsets");
 
   BB.newInstr("ExtractTensor")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addMember(MemberType::VectorSizeT, "Offsets");
 
   BB.newInstr("Gather")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Data", OperandKind::In)
-      .addOperand("Indices", OperandKind::In);
+      .addOperand("Indices", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::IndexTy"});
 
   //===--------------------------------------------------------------------===//
   //             Instructions used for debugging/profiling/printing
@@ -328,7 +345,9 @@ int main(int argc, char **argv) {
   BB.newInstr("QuantizationProfile")
       .addOperand("InputTensor", OperandKind::In)
       .addOperand("Histogram", OperandKind::InOut)
-      .addOperand("ComputationInfo", OperandKind::InOut);
+      .addOperand("ComputationInfo", OperandKind::InOut)
+      .autoVerify(VerifyKind::SameElementType,
+                  {"InputTensor", "ElemKind::FloatTy"});
 
   BB.newInstr("Quantize")
       .addOperand("Dest", OperandKind::Out)
