@@ -532,6 +532,11 @@ void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
   llvm::SmallVector<Instruction *, 32> bundle;
   for (auto I : instrs) {
     if (!I->isDataParallel()) {
+      // Ignore memory management instructions as they are handled by the
+      // MemoryManager and are NOPs for a JIT.
+      if (isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I) ||
+          isa<TensorViewInst>(I))
+        continue;
       emitDataParallelKernel(builder, bundle);
       bundle.clear();
       generateLLVMIRForInstr(builder, I);
