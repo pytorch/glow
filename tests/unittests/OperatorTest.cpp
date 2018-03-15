@@ -547,8 +547,11 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
   }
 }
 
-TEST_P(Operator, IntConvolution) {
+TEST_P(Operator, IntConvolutionDepth10) {
   checkIntConvolution(EE, 10);
+}
+
+TEST_P(Operator, IntConvolutionDepth8) {
   checkIntConvolution(EE, 8);
 }
 
