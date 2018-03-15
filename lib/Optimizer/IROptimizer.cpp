@@ -1021,7 +1021,7 @@ static void eliminateDeadStores(IRFunction &M) {
       continue;
     }
 
-    // Process all operand reads.
+    // Process all operand reads and the predicate.
     for (const auto &Op : I->getOperands()) {
       auto opOrigin = getOrigin(Op.first);
       auto opKind = Op.second;
@@ -1029,6 +1029,13 @@ static void eliminateDeadStores(IRFunction &M) {
       if (opKind != OperandKind::Out) {
         state.lastSeenRead_ = I;
       }
+    }
+
+    if (I->hasPredicate()) {
+      auto pred = I->getPredicate();
+      auto opOrigin = getOrigin(pred);
+      auto &state = memoryState[opOrigin];
+      state.lastSeenRead_ = I;
     }
   }
 

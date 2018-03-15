@@ -136,6 +136,10 @@ public:
 llvm::hash_code Node::getHash() const { return HashNodeVisitor().visit(this); }
 
 void Node::visit(Node *parent, NodeWalker *visitor) {
+  if (hasPredicate()) {
+    getPredicate()->visit(this, visitor);
+  }
+  
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
@@ -452,10 +456,7 @@ void Node::verify() const {
     assert(pred.getNode() && "Invalid predicate");
     auto Ty = pred.getType();
     (void)Ty;
-    assert(Ty->dims().size() == 1 && Ty->dims()[0] == 1 &&
-           "Predicate must be a boolean tensor");
-    assert(Ty->getElementType() == ElemKind::IndexTy &&
-           "Predicates are booleans");
+    assert(Ty->dims().size() == 1 && "Predicate must be a vector");
   }
 
   // Verify node-specific properties:
