@@ -58,7 +58,7 @@ template <typename From, typename To> static To clip(From in) {
   return std::max<From>(mn, std::min<From>(mx, in));
 }
 
-TEST(Quantization, quantScaleOffset) {
+TEST(Quantization, quantRescaling) {
   // Test different scale values from 1<<-23 to 1>>1.
   float scales[] = {
       0.0000001596f, 0.00000025f, 0.000000995f, 0.0000035f, 0.00000952f,
@@ -80,6 +80,11 @@ TEST(Quantization, quantScaleOffset) {
       int32_t computed = TR.transform(sum32num);
 
       EXPECT_NEAR(input, computed, 1);
+
+      auto RS = quantization::computeRescale8To8(scale, sum32num);
+      int32_t rescaled = RS.transform(sum32num);
+
+      EXPECT_NEAR(input, rescaled, 1);
     }
   }
 }

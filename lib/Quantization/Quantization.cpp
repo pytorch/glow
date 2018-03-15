@@ -187,6 +187,92 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                     offset);
 }
 
+QuantizationRescale8To8 computeRescale8To8(float scaleRatio, int32_t inOffset) {
+  int bits = 8;
+  int preShift = 0;
+  int postShift = 0;
+  int32_t e = 0;
+  uint32_t m = 0;
+
+  assert(sizeof(float) == 4 && "float is not in binary32 format");
+
+  // In 2's-complement representation, significant digits make the most sense
+  // for nonnegative numbers; as well, no offset should ever be -2147483648.
+  int32_t test = (inOffset >= 0 ? inOffset : -inOffset);
+
+  // Compute size of input offset; note that we start with bits = 8 in order to
+  // account for subtraction with the 8-bit integer input.
+  test >>= 8;
+  while (test > 0) {
+    test >>= 1;
+    bits++;
+  }
+
+  // Assume scaleRatio is a nonnegative valid IEEE-754 binary32 float and not
+  // denormal or NaN. First, convert scaleRatio to a bit representation.
+  uint32_t x = *((uint32_t *)&scaleRatio);
+
+  // Make sure scale is not +/-0; this should be unnecessary.
+  if ((x & 0x7FFFFFFF) != 0) {
+
+    // Extract the mantissa m from x as an unsigned 32-bit integer, scaled by a
+    // factor of 2^23; here, we assume m is not denormal (this assumption is
+    // valid because denormal numbers are too small to be legitimate in the
+    // rescaling computation.
+    m = x & 0x007FFFFF;
+
+    // Add the assumed leading 1.
+    m |= 0x00800000;
+
+    // Determine the number of significant bits "afforded" to the mantissa.
+    int mBits = 24;
+    int mShift = 0;
+    while (((m & 0x00000001) == 0) && (bits + 1 + mBits > 31)) {
+      m >>= 1;
+      mBits--;
+      mShift++;
+    }
+
+    // At this point, we know that bits + 1 + mBits >= 31.
+
+    // Truncate the mantissa as necessary and determine preShift.
+    // The '1' in the if-condition is present to provide room for the
+    // subtraction of the inOffset from the input.
+    if (bits + 1 + mBits > 31) {
+      if (mBits <= 15) {
+        preShift = bits - (30 - mBits);
+        bits -= preShift;
+      } else if (bits <= 15) {
+        int a = mBits - (30 - bits);
+        m >>= a;
+        mBits -= a;
+        mShift += a;
+      } else {
+        preShift = bits - 15;
+        bits = 15;
+        m >>= mBits - 15;
+        mBits = 15;
+        mShift = 9;
+      }
+    }
+
+    // Extract and unbias the exponent.
+    e = ((x & 0x7F800000) >> 23) - 127;
+
+    // Compute the postShift.
+    postShift = 23 - mShift - e - preShift;
+    assert(postShift > 0 && "postShift is nonpositive");
+    if (postShift > 30) {
+      // Shifting an int32_t 32 bits to the right or more is... pointless.
+      preShift = 0;
+      postShift = 1;
+      m = 0;
+    }
+  }
+
+  return QuantizationRescale8To8(preShift, postShift, m);
+}
+
 std::vector<NodeQuantizationInfo>
 generateNodeQuantizationInfos(const Function *F) {
   std::vector<NodeQuantizationInfo> quantizationInfos;
