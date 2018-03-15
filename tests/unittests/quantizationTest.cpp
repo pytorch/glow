@@ -73,10 +73,11 @@ TEST(Quantization, quantScaleOffset) {
   // Try all scale factors:
   for (float scale : scales) {
     // Try all legal integers within the range:
-    for (int8_t input = -128; input < 127; input++) {
+    for (int8_t input = -128; input <= 126; input++) {
       int32_t sum32num = round(input / scale);
 
-      auto TR = quantization::quantizeScaleOffset32To8(scale, 0);
+      auto TR = quantization::quantizeScaleOffset32To8(scale, sum32num);
+      TR.offset_ = 0;
       int32_t computed = TR.transform(sum32num);
 
       EXPECT_NEAR(input, computed, 1);
