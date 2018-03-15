@@ -404,7 +404,8 @@ createLoop(llvm::IRBuilder<> &builder, llvm::LLVMContext &ctx,
 
   // Emit the step value.
   auto *stepVal = llvm::ConstantInt::get(sizeTTy, 1);
-  auto *nextVal = builder.CreateAdd(var, stepVal, "nextvar");
+  auto *nextVal = builder.CreateAdd(var, stepVal, "nextvar", /* HasNUW */ true,
+                                    /* HasNSW */ true);
   // Compute the end condition.
   auto *endCond = builder.CreateICmpULT(nextVal, numElements, "loopcond");
 
@@ -412,7 +413,24 @@ createLoop(llvm::IRBuilder<> &builder, llvm::LLVMContext &ctx,
   auto *afterBB = llvm::BasicBlock::Create(ctx, "afterloop", func);
 
   // Insert the conditional branch at the end of the loopBB.
-  builder.CreateCondBr(endCond, loopBB, afterBB);
+  auto *backEdge = builder.CreateCondBr(endCond, loopBB, afterBB);
+  // Add explicit loop llvm.loop.vectorize.enable metadata to the generated
+  // loop to help the LLVM vectorizer. Without this metadata, LLVM loop
+  // vectorizer bails on long data-parallel loops with a lot of operations. This
+  // metadata forces it to vectorize them anyways.
+  llvm::SmallVector<llvm::Metadata *, 4> args;
+  // Reserve operand 0 for loop id self reference.
+  args.push_back(llvm::MDNode::getTemporary(ctx, llvm::None).get());
+  llvm::Metadata *Vals[] = {
+      // Reserve operand 0 for loop id self reference.
+      llvm::MDString::get(ctx, "llvm.loop.vectorize.enable"),
+      llvm::ConstantAsMetadata::get(
+          llvm::ConstantInt::get(llvm::Type::getInt1Ty(ctx), true))};
+  args.push_back(llvm::MDNode::get(ctx, Vals));
+  auto *loopMD = llvm::MDNode::get(ctx, args);
+  // Set the first operand to itself.
+  loopMD->replaceOperandWith(0, loopMD);
+  backEdge->setMetadata(llvm::LLVMContext::MD_loop, loopMD);
   // Add a new entry to the PHI node for the backedge.
   var->addIncoming(nextVal, loopBB);
   builder.SetInsertPoint(afterBB);
