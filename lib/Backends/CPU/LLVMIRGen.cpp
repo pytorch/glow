@@ -482,7 +482,7 @@ void LLVMIRGen::emitDataParallelKernel(llvm::IRBuilder<> &builder,
   llvm::FunctionType *kernelFuncTy =
       llvm::FunctionType::get(voidTy, argTypes, false);
   auto *kernelFunc =
-      llvm::Function::Create(kernelFuncTy, llvm::Function::PrivateLinkage,
+      llvm::Function::Create(kernelFuncTy, llvm::Function::InternalLinkage,
                              "libjit_stacked_kernel", llmodule_.get());
   // Mark all kernel function buffer parameters as no-alias, because above
   // we ensured that they are uniqued.
