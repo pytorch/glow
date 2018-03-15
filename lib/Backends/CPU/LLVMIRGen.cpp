@@ -138,6 +138,12 @@ void LLVMIRGen::initCodeGen() {
   // Load the jit library as a new module.
   llmodule_ = loadStandardLibrary(&ctx_, "libjit.bc");
   GLOW_ASSERT(llmodule_.get() && "Unable to load the JIT library.");
+  // By default, LLVM would emit some diagnostics, remarks, etc. It is fine for
+  // a static compiler, but not necessary for a JIT. Let's disable it by
+  // providing a dummy diagnostics handler, that does not emit anything.
+  ctx_.setDiagnosticHandler([](const llvm::DiagnosticInfo &DI, void *Context){
+    // Do not emit any diagnostics when JITting.
+  });
 
   // Assign the target information to the module.
   llmodule_->setDataLayout(getTargetMachine().createDataLayout());
