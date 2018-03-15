@@ -269,7 +269,7 @@ extern "C" {
 /// \p type the type of the tensor elements and of the return value
 /// \p body the operation to be performed
 #define DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(name, type, body)         \
-  type name(size_t idx, type val, const type *LHS, const type *RHS) {          \
+  type name(size_t idx, float val, const type *LHS, const type *RHS) {         \
     return body;                                                               \
   }
 
