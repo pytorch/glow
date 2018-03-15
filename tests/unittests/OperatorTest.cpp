@@ -496,7 +496,7 @@ TEST(OperatorInterpOnly, IntBatchedArith) {
   EXPECT_NEAR(H.at({0, 2, 2}), 9.3, 0.1);
 }
 
-TEST_P(Operator, IntConvolution) {
+void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -508,7 +508,7 @@ TEST_P(Operator, IntConvolution) {
   // The inputs (specified below) are in the range [-1 .. 1],
 
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
-  auto *conv = F->createConv("conv", input, 10, 5, 1, 0);
+  auto *conv = F->createConv("conv", input, convDepth, 5, 1, 0);
   auto *res = mod.createVariable(ElemKind::FloatTy, conv->dims(), "res");
 
   auto filter = conv->getFilter();
@@ -545,6 +545,11 @@ TEST_P(Operator, IntConvolution) {
   for (int i = 0, e = H.size(); i < e; i++) {
     EXPECT_NEAR(H.raw(i), 0, 0.1);
   }
+}
+
+TEST_P(Operator, IntConvolution) {
+  checkIntConvolution(EE, 10);
+  checkIntConvolution(EE, 8);
 }
 
 TEST(OperatorInterpOnly, IntConcat) {

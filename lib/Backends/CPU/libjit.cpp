@@ -540,6 +540,91 @@ void libjit_convolution_i8(int8_t *outW, const int8_t *inW,
   }       // N
 }
 
+void libjit_convolution_unroll_k4_i8(
+    int8_t *outW, const int8_t *inW, const int8_t *filterW, const int8_t *biasW,
+    const size_t *outWdims, const size_t *inWdims, const size_t *filterWdims,
+    const size_t *biasWdims, size_t filterSize, size_t stride, size_t pad,
+    int32_t outOffset, int32_t inOffset, int32_t filterOffset,
+    int32_t biasOffset, int32_t biasPre, int32_t biasPost, int32_t biasScale,
+    int32_t outPre, int32_t outPost, int32_t outScale) {
+  size_t inChannels = inWdims[3];
+
+  // For each input in the batch:
+  for (size_t n = 0; n < inWdims[0]; n++) {
+
+    // For each layer in the output tensor:
+    for (size_t d = 0; d < outWdims[3]; d += 4) {
+
+      // For each convolution 'jump' in the input tensor:
+      ssize_t x = -(ssize_t)pad;
+      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+        ssize_t y = -(ssize_t)pad;
+        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+
+          // For each element in the convolution-filter:
+          int32_t sum0 = 0;
+          int32_t sum1 = 0;
+          int32_t sum2 = 0;
+          int32_t sum3 = 0;
+          for (size_t fx = 0; fx < filterSize; fx++) {
+            for (size_t fy = 0; fy < filterSize; fy++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
+                  oy >= (ssize_t)inWdims[2]) {
+                continue;
+              }
+
+              // Calculate the indices into the Filter and Input buffers.
+              size_t inIdx =
+                  libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, 0);
+              size_t filterIdx = libjit_getXYZW(filterWdims, d, fx, fy, 0);
+              size_t sliceSize =
+                  filterWdims[1] * filterWdims[2] * filterWdims[3];
+
+              for (size_t fd = 0; fd < inChannels; fd++) {
+                int32_t in = inW[inIdx + fd];
+                sum0 += filterW[filterIdx + (sliceSize * 0) + fd] * in;
+                sum1 += filterW[filterIdx + (sliceSize * 1) + fd] * in;
+                sum2 += filterW[filterIdx + (sliceSize * 2) + fd] * in;
+                sum3 += filterW[filterIdx + (sliceSize * 3) + fd] * in;
+              }
+            }
+          }
+
+          // Add the scaled bias to the sum.
+          sum0 += libjit_scale_i32i8((int32_t)biasW[d + 0] - biasOffset,
+                                     biasPre, biasPost, biasScale, 0);
+          sum1 += libjit_scale_i32i8((int32_t)biasW[d + 1] - biasOffset,
+                                     biasPre, biasPost, biasScale, 0);
+          sum2 += libjit_scale_i32i8((int32_t)biasW[d + 2] - biasOffset,
+                                     biasPre, biasPost, biasScale, 0);
+          sum3 += libjit_scale_i32i8((int32_t)biasW[d + 3] - biasOffset,
+                                     biasPre, biasPost, biasScale, 0);
+
+          // Scale the sum to the requested destination scale.
+          int32_t scl0 =
+              libjit_scale_i32i8(sum0, outPre, outPost, outScale, outOffset);
+          int32_t scl1 =
+              libjit_scale_i32i8(sum1, outPre, outPost, outScale, outOffset);
+          int32_t scl2 =
+              libjit_scale_i32i8(sum2, outPre, outPost, outScale, outOffset);
+          int32_t scl3 =
+              libjit_scale_i32i8(sum3, outPre, outPost, outScale, outOffset);
+
+          // Clip and set the destination.
+          outW[libjit_getXYZW(outWdims, n, ax, ay, d + 0)] = libjit_clip(scl0);
+          outW[libjit_getXYZW(outWdims, n, ax, ay, d + 1)] = libjit_clip(scl1);
+          outW[libjit_getXYZW(outWdims, n, ax, ay, d + 2)] = libjit_clip(scl2);
+          outW[libjit_getXYZW(outWdims, n, ax, ay, d + 3)] = libjit_clip(scl3);
+        } // W
+      }   // H
+    }     // C
+  }       // N
+}
+
 void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
                                float *filterG, float *biasG,
                                const float *filterW, const size_t *outGdims,
