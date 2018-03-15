@@ -100,7 +100,7 @@ class FunctionSpecializer {
     // noinline, to avoid code bloat.
     specializedF = dyn_cast<llvm::Function>(
         M->getOrInsertFunction(specializedName, F->getFunctionType()));
-    specializedF->setLinkage(llvm::GlobalValue::LinkageTypes::PrivateLinkage);
+    specializedF->setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
     assert(specializedF && "Could not create a specialized function");
     // Specialization thunks should not be inlined.
     specializedF->addFnAttr(llvm::Attribute::AttrKind::NoInline);
