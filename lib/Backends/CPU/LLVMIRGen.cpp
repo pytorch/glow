@@ -581,11 +581,11 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);  \
     auto *val = emitConstF32(builder, AN->get##VALUE_());                      \
     auto *elementTy = getElementType(builder, dest);                           \
+    auto *pointerNull =                                                        \
+        llvm::ConstantPointerNull::get(elementTy->getPointerTo());             \
     auto *F = getFunction(FUN_NAME_ "_kernel", dest->getElementType());        \
-    auto *stackedOpCall = builder.CreateCall(                                  \
-        F, {loopCount, val,                                                    \
-            llvm::ConstantPointerNull::get(elementTy->getPointerTo()),         \
-            llvm::ConstantPointerNull::get(elementTy->getPointerTo())});       \
+    auto *stackedOpCall =                                                      \
+        builder.CreateCall(F, {loopCount, val, pointerNull, pointerNull});     \
     auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,          \
                                        "buffer.element.addr");                 \
     builder.CreateStore(stackedOpCall, destAddr);                              \
@@ -621,12 +621,11 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *srcPtr =                                                             \
         emitBufferAddress(builder, AN->getSrc(), kernel, bufferToArgNum);      \
     auto *F = getFunction(FUN_NAME_ "_kernel", dest->getElementType());        \
-    auto *stackedOpCall = builder.CreateCall(                                  \
-        F,                                                                     \
-        {loopCount, srcPtr,                                                    \
-         llvm::ConstantPointerNull::get(builder.getFloatTy()->getPointerTo()), \
-         llvm::ConstantPointerNull::get(                                       \
-             builder.getFloatTy()->getPointerTo())});                          \
+    auto *elementTy = getElementType(builder, dest);                           \
+    auto *pointerNull =                                                        \
+        llvm::ConstantPointerNull::get(elementTy->getPointerTo());             \
+    auto *stackedOpCall =                                                      \
+        builder.CreateCall(F, {loopCount, srcPtr, pointerNull, pointerNull});  \
     auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,          \
                                        loopCount, "buffer.element.addr");      \
     builder.CreateStore(stackedOpCall, destAddr);                              \
@@ -644,11 +643,11 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *srcPtr =
         emitBufferAddress(builder, CI->getSrc(), kernel, bufferToArgNum);
     auto *F = getFunction("copy_kernel", dest->getElementType());
-    auto *stackedOpCall = builder.CreateCall(
-        F,
-        {loopCount, srcPtr,
-         llvm::ConstantPointerNull::get(builder.getFloatTy()->getPointerTo()),
-         llvm::ConstantPointerNull::get(builder.getFloatTy()->getPointerTo())});
+    auto *elementTy = getElementType(builder, dest);
+    auto *pointerNull =
+        llvm::ConstantPointerNull::get(elementTy->getPointerTo());
+    auto *stackedOpCall =
+        builder.CreateCall(F, {loopCount, srcPtr, pointerNull, pointerNull});
     auto *destAddr = builder.CreateGEP(getElementType(builder, dest), destPtr,
                                        loopCount, "buffer.element.addr");
     builder.CreateStore(stackedOpCall, destAddr);
@@ -668,10 +667,11 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
         emitBufferAddress(builder, AN->getRHS(), kernel, bufferToArgNum);      \
                                                                                \
     auto *F = getFunction(FUN_NAME_ "_kernel", dest->getElementType());        \
+    auto *elementTy = getElementType(builder, dest);                           \
+    auto *pointerNull =                                                        \
+        llvm::ConstantPointerNull::get(elementTy->getPointerTo());             \
     auto *stackedOpCall =                                                      \
-        builder.CreateCall(F, {loopCount, lhsPtr, rhsPtr,                      \
-                               llvm::ConstantPointerNull::get(                 \
-                                   builder.getFloatTy()->getPointerTo())});    \
+        builder.CreateCall(F, {loopCount, lhsPtr, rhsPtr, pointerNull});       \
     auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,          \
                                        loopCount, "buffer.element.addr");      \
     builder.CreateStore(stackedOpCall, destAddr);                              \
@@ -695,12 +695,12 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *lhsPtr =                                                             \
         emitBufferAddress(builder, AN->get##SRC_(), kernel, bufferToArgNum);   \
     auto *val = emitConstF32(builder, AN->get##VALUE_());                      \
-                                                                               \
     auto *F = getFunction(FUN_NAME_ "_kernel", dest->getElementType());        \
+    auto *elementTy = getElementType(builder, dest);                           \
+    auto *pointerNull =                                                        \
+        llvm::ConstantPointerNull::get(elementTy->getPointerTo());             \
     auto *stackedOpCall =                                                      \
-        builder.CreateCall(F, {loopCount, val, lhsPtr,                         \
-                               llvm::ConstantPointerNull::get(                 \
-                                   builder.getFloatTy()->getPointerTo())});    \
+        builder.CreateCall(F, {loopCount, val, lhsPtr, pointerNull});          \
     auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,          \
                                        loopCount, "buffer.element.addr");      \
     builder.CreateStore(stackedOpCall, destAddr);                              \
