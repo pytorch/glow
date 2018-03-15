@@ -197,6 +197,52 @@ void libjit_extract_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
                             offsetDim, 0, 0);
 }
 
+/// Helper struct for TopK
+struct value_index {
+  float value;
+  size_t index;
+};
+
+/// Helper function for TopK
+int value_index_sort(const void *va, const void *vb) {
+  value_index *a = (value_index *)va;
+  value_index *b = (value_index *)vb;
+  if (a->value != b->value)
+    return a->value > b->value ? -1 : 1;
+  return a->index < b->index ? -1 : 1;
+}
+
+/// Helper function for Broadcast. Increments an "index" dimension vector, \p
+/// dest_i, with respect to \p dest_dims.  This corresponds to striding through
+/// all \p n dimensions using \p n nested for-loops.
+///
+/// \returns false when the index equals the dimension.
+bool increment_and_check_dims(size_t *dest_i, const size_t *dest_dims,
+                              size_t n) {
+  for (size_t i = 0; i < n; i++) {
+    dest_i[i] += 1;
+    if (dest_i[i] == dest_dims[i]) {
+      dest_i[i] = 0;
+    } else {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Helper function for Broadcast. Given a destination index \p dest_i of a
+/// broadcast operation, compute the source index \p src_i given a source tensor
+/// with dimensions \p src_dims.
+///
+/// Any source dimension containing a 1 is broadcast to all other dimensions by
+/// selecting index 0 in that dimension.
+void get_src_dim(size_t *src_i, const size_t *dest_i, const size_t *src_dims,
+                 size_t n) {
+  for (size_t i = 0; i < n; i++) {
+    src_i[i] = (src_dims[i] == 1) ? 0 : dest_i[i];
+  }
+}
+
 } // namespace
 
 extern "C" {
@@ -263,39 +309,6 @@ DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_splat_kernel_u, size_t, val)
 #undef DEFINE_DATA_PARALLEL_KERNEL_FUNC
 #undef DEFINE_DATA_PARALLEL_KERNEL_FUNC
 #undef DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND
-
-namespace { // helpers for broadcast
-
-/// Increments an "index" dimension vector, \p dest_i, with respect to \p
-/// dest_dims.  This corresponds to striding through all \p n dimensions using
-/// \p n nested for-loops.
-/// \returns false when the index equals the dimension.
-bool increment_and_check_dims(size_t *dest_i, const size_t *dest_dims,
-                              size_t n) {
-  for (size_t i = 0; i < n; i++) {
-    dest_i[i] += 1;
-    if (dest_i[i] == dest_dims[i]) {
-      dest_i[i] = 0;
-    } else {
-      return true;
-    }
-  }
-  return false;
-}
-
-/// Given a destination index \p dest_i of a broadcast operation, compute the
-/// source index \p src_i given a source tensor with dimensions \p src_dims.
-///
-/// Any source dimension containing a 1 is broadcast to all other dimensions by
-/// selecting index 0 in that dimension.
-void get_src_dim(size_t *src_i, const size_t *dest_i, const size_t *src_dims,
-                 size_t n) {
-  for (size_t i = 0; i < n; i++) {
-    src_i[i] = (src_dims[i] == 1) ? 0 : dest_i[i];
-  }
-}
-
-} // namespace
 
 void libjit_broadcast_f(float *dest, const float *src, const size_t *dest_dims,
                         const size_t *src_dims, size_t n_dims) {
@@ -930,21 +943,6 @@ void libjit_sigmoid_f(const float *inW, float *outW, size_t numElem) {
     outW[i] = e / (e + 1);
   }
 }
-
-namespace {
-struct value_index {
-  float value;
-  size_t index;
-};
-
-int value_index_sort(const void *va, const void *vb) {
-  value_index *a = (value_index *)va;
-  value_index *b = (value_index *)vb;
-  if (a->value != b->value)
-    return a->value > b->value ? -1 : 1;
-  return a->index < b->index ? -1 : 1;
-}
-} // namespace
 
 void libjit_topk_f(const float *input, float *values, size_t *indices,
                    size_t *scratch, size_t k, size_t n, size_t size) {
