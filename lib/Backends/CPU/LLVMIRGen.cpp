@@ -849,7 +849,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto biasScaleParam = quantization::quantizeScaleOffset32To8(
           biasTy->getScale() / matMulScale, biasTy->getOffset());
       auto outScaleParam = quantization::quantizeScaleOffset32To8(
-          matMulScale / destTy->getScale(), biasTy->getOffset());
+          matMulScale / destTy->getScale(), 0);
 
       // Pass the pre-shift, post-shift and integer scale parameters for the
       // bias and output calculation.

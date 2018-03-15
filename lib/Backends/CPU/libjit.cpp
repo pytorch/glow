@@ -598,11 +598,19 @@ void libjit_convolution_unroll_k4_i8(
                   filterWdims[1] * filterWdims[2] * filterWdims[3];
 
               for (size_t fd = 0; fd < inChannels; fd++) {
-                int32_t in = inW[inIdx + fd];
-                sum0 += filterW[filterIdx + (sliceSize * 0) + fd] * in;
-                sum1 += filterW[filterIdx + (sliceSize * 1) + fd] * in;
-                sum2 += filterW[filterIdx + (sliceSize * 2) + fd] * in;
-                sum3 += filterW[filterIdx + (sliceSize * 3) + fd] * in;
+                int32_t in = inW[inIdx + fd] - inOffset;
+                sum0 +=
+                    (filterW[filterIdx + (sliceSize * 0) + fd] - filterOffset) *
+                    in;
+                sum1 +=
+                    (filterW[filterIdx + (sliceSize * 1) + fd] - filterOffset) *
+                    in;
+                sum2 +=
+                    (filterW[filterIdx + (sliceSize * 2) + fd] - filterOffset) *
+                    in;
+                sum3 +=
+                    (filterW[filterIdx + (sliceSize * 3) + fd] - filterOffset) *
+                    in;
               }
             }
           }
