@@ -993,6 +993,36 @@ TEST_P(Operator, simpleCmpSelectPredication) {
   ASSERT_NEAR(H.at(9), 512, 0.001);
 }
 
+TEST_P(Operator, simplePredication) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *inputs = mod.createVariable(ElemKind::FloatTy, {10, 10, 10}, "inputs");
+  auto *counters = mod.createVariable(ElemKind::FloatTy, {10}, "counters");
+
+  counters->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  inputs->getHandle().randomize(-10, 10);
+
+  Node *C5 = F->createSplat("C5", counters->getType(), 5.0);
+  Node *pred = F->createCmpLTE("cmp", C5, counters);
+
+  auto *FC0 = F->createFullyConnected("FC0", inputs, 128);
+  auto *RL0 = F->createRELU("RL0", FC0);
+  auto *FC1 = F->createFullyConnected("FC1", RL0, 64);
+  auto *RL1 = F->createRELU("RL1", FC1);
+  auto *FC2 = F->createFullyConnected("FC2", RL1, 32);
+  auto *RL2 = F->createRELU("RL2", FC2);
+
+  F->createSave("ret", RL2);
+
+  FC0->setPredicate(pred);
+  FC1->setPredicate(pred);
+  FC2->setPredicate(pred);
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 
