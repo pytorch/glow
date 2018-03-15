@@ -69,7 +69,7 @@ ConstInstructionOperand Use::getOperand() const {
 
 Value *Instruction::getPredicate() const { return predicate_; }
 
-void Instruction::setPredicate(Value *p) { predicate_ = p; }
+void Instruction::setPredicate(Value *p) { setOperand(predicateIndex, p); }
 
 bool Instruction::hasPredicate() const { return predicate_; }
 
@@ -79,23 +79,33 @@ void Instruction::pushOperand(Operand op) {
 }
 
 void Instruction::setOperand(unsigned idx, Value *v) {
-  auto *currVal = ops_[idx].first;
+  bool updatePred = idx == predicateIndex;
+  // Select which operand to update. The predicate or one of the operands in the
+  // instruction operand list.
+  auto **currVal = (updatePred ? &predicate_ : &ops_[idx].first);
 
-  if (currVal == v) {
+  // Check if we need to update anything.
+  if (*currVal == v) {
     return;
   }
 
-  if (currVal) {
-    currVal->removeUse(Use(idx, this));
+  // Remove the old user.
+  if (*currVal) {
+    (*currVal)->removeUse(Use(idx, this));
   }
 
+  // Register the new user.
   if (v) {
-    ops_[idx].first = v;
+    *currVal = v;
     v->addUse(Use(idx, this));
   }
 }
 
 Instruction::Operand Instruction::getOperand(unsigned idx) const {
+  if (idx == predicateIndex) {
+    return {predicate_, OperandKind::In};
+  }
+
   assert(ops_.size() > idx && "Invalid operand");
   return ops_[idx];
 }
