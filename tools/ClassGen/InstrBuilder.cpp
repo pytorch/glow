@@ -347,6 +347,7 @@ void InstrBuilder::emitAutoIRGen(std::ostream &os) const {
   os << ");\n";
 
   os << "  V->setName(N->getName());\n";
+  os << "  if (N->hasPredicate()) { V->setPredicate(valueForNode(N->getPredicate())); }";
   os << "  registerIR(N, V->get" << destOpName << "());\n";
   os << "  nodeToInstr_[N] = V;\n";
   os << "  break;\n";
