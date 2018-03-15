@@ -89,6 +89,11 @@ void lowerFullyConnectedNode(Function *F, FullyConnectedNode &FC) {
   auto add = F->createBatchedAdd("fc.add.bias", FC.getResult()->getType(), mul,
                                  FC.getBias());
   FC.getResult().replaceAllUsesOfWith(add);
+
+  if (FC.hasPredicate()) {
+    add->setPredicate(FC.getPredicate());
+    mul->setPredicate(FC.getPredicate());
+  }
 }
 
 void lowerFullyConnectedGradNode(Function *F, FullyConnectedGradNode &FCG) {
