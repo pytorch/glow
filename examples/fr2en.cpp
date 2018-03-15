@@ -305,7 +305,7 @@ llvm::cl::opt<std::string> dumpGraphDAGFileOpt(
     llvm::cl::value_desc("file.dot"), llvm::cl::cat(debugCat));
 
 int main(int argc, char **argv) {
-  llvm::cl::HideUnrelatedOptions({debugCat});
+  llvm::cl::HideUnrelatedOptions(debugCat);
   llvm::cl::ParseCommandLineOptions(
       argc, argv, "Translate sentences from French to English");
 
