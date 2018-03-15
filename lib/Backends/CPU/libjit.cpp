@@ -291,7 +291,13 @@ DEFINE_DATA_PARALLEL_KERNEL(libjit_element_div_kernel_f, float,
                             LHS[idx] / RHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_mul_kernel_f, float,
                             LHS[idx] * RHS[idx])
-DEFINE_DATA_PARALLEL_KERNEL(libjit_tanh_kernel_f, float, tanhf(LHS[idx]))
+// tanh cannot be vectorized by LLVM yet. Therefore we use the following
+// formula instead: 1 - 2 / (exp(x * 2) + 1), which is also used by Caffe2 and
+// provides a good accuracy.
+// Once LLVM supports the vectorization of tanh, we can replace this
+// approximation by a direct tanh call.
+DEFINE_DATA_PARALLEL_KERNEL(libjit_tanh_kernel_f, float,
+                            1 - 2 / (expf(LHS[idx] * 2) + 1))
 DEFINE_DATA_PARALLEL_KERNEL(libjit_elementselect_kernel_f, float,
                             (LHS[idx] != 0.0) ? RHS[idx] : op3[idx])
 DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_sigmoid_kernel_f) {
