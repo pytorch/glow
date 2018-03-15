@@ -37,6 +37,8 @@ void WeightVar::dump(llvm::raw_ostream &os) const {
 void CopyInst::verify() const {
   auto *dest = getDest();
   auto *src = getSrc();
+  (void) dest;
+  (void) src;
   assert(dest->getType() == src->getType() && "Invalid type.");
   // The operands of the copy instruction must be variables.
   assert(isa<AllocActivationInst>(dest) || isa<WeightVar>(dest) ||
