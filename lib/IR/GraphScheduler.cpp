@@ -118,6 +118,10 @@ class ChildMemSizeBasedScheduler : public Scheduler {
       orderedChildren.push_back(N->getNthInput(idx));
     }
 
+    if (N->hasPredicate()) {
+      orderedChildren.push_back(N->getPredicate());
+    }
+
     // Order children by (maxSize - resultSize). It gives more
     // priority to the nodes that free more memory after
     // their computation.
