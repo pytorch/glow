@@ -547,13 +547,9 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
   }
 }
 
-TEST_P(Operator, IntConvolutionDepth10) {
-  checkIntConvolution(EE, 10);
-}
+TEST_P(Operator, IntConvolutionDepth10) { checkIntConvolution(EE, 10); }
 
-TEST_P(Operator, IntConvolutionDepth8) {
-  checkIntConvolution(EE, 8);
-}
+TEST_P(Operator, IntConvolutionDepth8) { checkIntConvolution(EE, 8); }
 
 TEST(OperatorInterpOnly, IntConcat) {
   ExecutionEngine EE;

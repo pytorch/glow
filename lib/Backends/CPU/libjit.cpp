@@ -243,6 +243,50 @@ void get_src_dim(size_t *src_i, const size_t *dest_i, const size_t *src_dims,
   }
 }
 
+template <typename T>
+void libjit_transpose_generic(const T *inW, T *outW, const size_t *idim,
+                              const size_t *odim, const size_t *shuffle,
+                              size_t numDims) {
+  // Source coordinate.
+  size_t SC[4];
+
+  if (numDims == 4) {
+    for (size_t x = 0; x < odim[0]; x++)
+      for (size_t y = 0; y < odim[1]; y++)
+        for (size_t z = 0; z < odim[2]; z++)
+          for (size_t w = 0; w < odim[3]; w++) {
+            SC[shuffle[0]] = x;
+            SC[shuffle[1]] = y;
+            SC[shuffle[2]] = z;
+            SC[shuffle[3]] = w;
+            outW[libjit_getXYZW(odim, x, y, z, w)] =
+                inW[libjit_getXYZW(idim, SC[0], SC[1], SC[2], SC[3])];
+          }
+    return;
+  }
+  if (numDims == 3) {
+    for (size_t x = 0; x < odim[0]; x++)
+      for (size_t y = 0; y < odim[1]; y++)
+        for (size_t z = 0; z < odim[2]; z++) {
+          SC[shuffle[0]] = x;
+          SC[shuffle[1]] = y;
+          SC[shuffle[2]] = z;
+          outW[libjit_getXYZ(odim, x, y, z)] =
+              inW[libjit_getXYZ(idim, SC[0], SC[1], SC[2])];
+        }
+    return;
+  }
+  if (numDims == 2) {
+    for (size_t x = 0; x < odim[0]; x++)
+      for (size_t y = 0; y < odim[1]; y++) {
+        SC[shuffle[0]] = x;
+        SC[shuffle[1]] = y;
+        outW[libjit_getXY(odim, x, y)] = inW[libjit_getXY(idim, SC[0], SC[1])];
+      }
+    return;
+  }
+}
+
 } // namespace
 
 extern "C" {
@@ -1063,47 +1107,16 @@ void libjit_topk_f(const float *input, float *values, size_t *indices,
   }
 }
 
+void libjit_transpose_i8(const int8_t *inW, int8_t *outW, const size_t *idim,
+                         const size_t *odim, const size_t *shuffle,
+                         size_t numDims) {
+  libjit_transpose_generic(inW, outW, idim, odim, shuffle, numDims);
+}
+
 void libjit_transpose_f(const float *inW, float *outW, const size_t *idim,
                         const size_t *odim, const size_t *shuffle,
                         size_t numDims) {
-  // Source coordinate.
-  size_t SC[4];
-
-  if (numDims == 4) {
-    for (size_t x = 0; x < odim[0]; x++)
-      for (size_t y = 0; y < odim[1]; y++)
-        for (size_t z = 0; z < odim[2]; z++)
-          for (size_t w = 0; w < odim[3]; w++) {
-            SC[shuffle[0]] = x;
-            SC[shuffle[1]] = y;
-            SC[shuffle[2]] = z;
-            SC[shuffle[3]] = w;
-            outW[libjit_getXYZW(odim, x, y, z, w)] =
-                inW[libjit_getXYZW(idim, SC[0], SC[1], SC[2], SC[3])];
-          }
-    return;
-  }
-  if (numDims == 3) {
-    for (size_t x = 0; x < odim[0]; x++)
-      for (size_t y = 0; y < odim[1]; y++)
-        for (size_t z = 0; z < odim[2]; z++) {
-          SC[shuffle[0]] = x;
-          SC[shuffle[1]] = y;
-          SC[shuffle[2]] = z;
-          outW[libjit_getXYZ(odim, x, y, z)] =
-              inW[libjit_getXYZ(idim, SC[0], SC[1], SC[2])];
-        }
-    return;
-  }
-  if (numDims == 2) {
-    for (size_t x = 0; x < odim[0]; x++)
-      for (size_t y = 0; y < odim[1]; y++) {
-        SC[shuffle[0]] = x;
-        SC[shuffle[1]] = y;
-        outW[libjit_getXY(odim, x, y)] = inW[libjit_getXY(idim, SC[0], SC[1])];
-      }
-    return;
-  }
+  libjit_transpose_generic(inW, outW, idim, odim, shuffle, numDims);
 }
 
 void libjit_insert_tensor_f(float *tensor, float *slice, size_t *offset,
