@@ -320,10 +320,13 @@ void inferQuantizeNet(Tensor *inputs, float scale, int32_t offset, Tensor *out,
   Function *F = mod.createFunction("main");
   auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
                                  "input", Variable::VisibilityKind::Public);
-  auto QT = F->getParent()->uniqueType(ElemKind::Int8QTy, inputs->dims(), scale,
-                                       offset);
-  auto *quantize = F->createQuantize("quantize", var, QT);
-  auto *dequantize = F->createDequantize("dequantize", quantize);
+  auto QT1 = F->getParent()->uniqueType(ElemKind::Int8QTy, inputs->dims(),
+                                        scale, offset);
+  auto QT2 = F->getParent()->uniqueType(ElemKind::Int8QTy, inputs->dims(),
+                                        scale * 1.125, offset + 1);
+  auto *quantize = F->createQuantize("quantize", var, QT1);
+  auto *rescale = F->createRescaleQuantized("rescale", quantize, QT2);
+  auto *dequantize = F->createDequantize("dequantize", rescale);
   auto result = F->createSave("ret", dequantize);
   EE.compile(CompilationMode::Infer, F);
   EE.run({var}, {inputs});

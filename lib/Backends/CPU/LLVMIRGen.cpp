@@ -1117,6 +1117,32 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::RescaleQuantizedInstKind: {
+    RescaleQuantizedInst *RQI = cast<RescaleQuantizedInst>(I);
+    auto *dest = RQI->getDest();
+    auto *src = RQI->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+
+    auto *destType = dest->getType();
+    auto *srcType = src->getType();
+    auto *numElem = emitConstSizeT(builder, destType->size());
+
+    auto rescaleParams = quantization::quantizeScaleOffset32To8(
+        srcType->getScale() / destType->getScale(), srcType->getOffset());
+
+    auto *destOffset = emitConstI32(builder, destType->getOffset());
+    auto *srcOffset = emitConstI32(builder, srcType->getOffset());
+    auto *preShift = emitConstI32(builder, rescaleParams.pre_);
+    auto *postShift = emitConstI32(builder, rescaleParams.post_);
+    auto *scale = emitConstI32(builder, rescaleParams.scale_);
+
+    auto *F = getFunction("rescale", dest->getElementType());
+    builder.CreateCall(F, {destPtr, srcPtr, numElem, destOffset, srcOffset,
+                           preShift, postShift, scale});
+    break;
+  }
+
   case Kinded::Kind::SoftMaxInstKind: {
     SoftMaxInst *SM = cast<SoftMaxInst>(I);
     auto *dest = SM->getDest();
