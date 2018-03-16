@@ -262,7 +262,7 @@ TEST(Tensor, transpose) {
   };
 
   Tensor Xhat;
-  X.getHandle<>().transpose(&Xhat, {1, 0});
+  X.transpose(&Xhat, {1, 0});
 
   auto XhatH = Xhat.getHandle<>();
 
@@ -278,7 +278,7 @@ TEST(Tensor, transpose2) {
   H.randomize(-2.0, 2.0);
 
   Tensor Xhat;
-  X.getHandle<>().transpose(&Xhat, {1, 2, 0});
+  X.transpose(&Xhat, {1, 2, 0});
 
   auto XhatH = Xhat.getHandle<>();
 
@@ -375,7 +375,7 @@ TEST(Tensor, broadcastNewShape) {
 
   Tensor broadcastedB;
   const unsigned axis = 1;
-  X_B.getHandle<>().broadcastToNewShape(&broadcastedB, dims_A, axis);
+  X_B.broadcastToNewShape(&broadcastedB, dims_A, axis);
 
   auto broadcastedBHandle = broadcastedB.getHandle<>();
 

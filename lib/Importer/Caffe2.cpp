@@ -179,7 +179,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // weights in the format CRSK. Caffe2 stores the operators as KCRS.
     // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
     Tensor wtag;
-    w->getHandle<>().transpose(&wtag, {0, 2, 3, 1});
+    w->transpose(&wtag, {0, 2, 3, 1});
 
     // The structure of the conv weigts is: NHWC. We take the C, which is the
     // number of filters. We use this value to calculate the size of the bias
@@ -359,7 +359,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     // Caffe2 stores the transposed W matrix. In here we transpose W back.
     Tensor wtag;
-    w->getHandle<>().transpose(&wtag, {1, 0});
+    w->transpose(&wtag, {1, 0});
 
     auto W = G_.getParent()->addVar(new Variable(
         "weights", Variable::VisibilityKind::Private, std::move(wtag)));

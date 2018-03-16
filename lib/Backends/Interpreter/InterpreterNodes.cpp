@@ -602,26 +602,26 @@ void Interpreter::fwdCrossEntropyLossGradInst(
 //                       Tensor shape (transpose/reshape/concat/...)
 //===----------------------------------------------------------------------===//
 void Interpreter::fwdTransposeInst(const TransposeInst *I) {
-  auto inTensor = getTensor(I->getSrc());
-  (void)inTensor;
-  auto outW = getTensor(I->getDest());
+  auto inT = getTensor(I->getSrc());
+  (void)inT;
+  auto outT = getTensor(I->getDest());
 
-  assert(outW->size() == inTensor->size() && "Invalid tensor dimensions");
+  assert(outT->size() == inT->size() && "Invalid tensor dimensions");
 
   if (I->getSrc()->getType()->isQuantizedType()) {
-    getWeightHandle<int8_t>(I->getSrc()).transpose(outW, I->getShuffle());
+    inT->transpose(outT, I->getShuffle());
   } else {
-    getWeightHandle<float>(I->getSrc()).transpose(outW, I->getShuffle());
+    inT->transpose(outT, I->getShuffle());
   }
 }
 
 void Interpreter::fwdBroadcastInst(const BroadcastInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getTensor(I->getDest());
+  auto inT = getTensor(I->getSrc());
+  auto outT = getTensor(I->getDest());
   auto shape = I->getShape();
   auto axis = I->getAxis();
 
-  inW.broadcastToNewShape(outW, shape, axis);
+  inT->broadcastToNewShape(outT, shape, axis);
 }
 
 void Interpreter::fwdReshapeInst(const ReshapeInst *I) {
