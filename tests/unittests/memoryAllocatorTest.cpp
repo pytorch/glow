@@ -85,9 +85,9 @@ TEST(MemAlloc, dealloc2) {
 }
 
 TEST(MemAlloc, allocateToTheMax) {
-  MemoryAllocator MA(100);
-  auto p0 = MA.allocate(50);
-  auto p1 = MA.allocate(50);
+  MemoryAllocator MA(128);
+  auto p0 = MA.allocate(64);
+  auto p1 = MA.allocate(64);
 
   EXPECT_EQ(p0, 0);
   EXPECT_NE(p1, MemoryAllocator::npos);
@@ -95,5 +95,5 @@ TEST(MemAlloc, allocateToTheMax) {
   MA.deallocate(p0);
   MA.deallocate(p1);
 
-  EXPECT_EQ(MA.getMaxMemoryUsage(), 100);
+  EXPECT_EQ(MA.getMaxMemoryUsage(), 128);
 }
