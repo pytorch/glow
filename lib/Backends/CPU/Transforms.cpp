@@ -12,6 +12,17 @@ using namespace glow;
 using llvm::dyn_cast;
 using llvm::isa;
 
+bool CPUBackend::transformPreLowering(Function *F) {
+  bool changed = false;
+  for (auto node : F->getNodes()) {
+    if (isa<FullyConnectedNode>(node)) {
+      node->setShouldLower(false);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 bool CPUBackend::transformPostLowering(Function *F) {
   bool changed = false;
   for (auto node : F->getNodes()) {
