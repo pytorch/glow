@@ -357,6 +357,11 @@ llvm::Value *LLVMIRGen::emitStringConst(llvm::IRBuilder<> &builder,
 
 llvm::Function *LLVMIRGen::getFunction(const std::string &name) {
   auto *F = llmodule_->getFunction("libjit_" + name);
+#ifndef NDEBUG
+  if (!F) {
+    llvm::errs() << "Unable to load the function: libjit_" << name << "\n";
+  }
+#endif
   GLOW_ASSERT(F && "Unable to load the function");
   return F;
 }
@@ -365,6 +370,11 @@ llvm::Function *LLVMIRGen::getFunction(const std::string &name,
                                        ElemKind elemTy) {
   auto get = [this](llvm::StringRef funcName) {
     auto *F = llmodule_->getFunction(funcName);
+#ifndef NDEBUG
+    if (!F) {
+      llvm::errs() << "Unable to load the function: " << funcName << "\n";
+    }
+#endif
     GLOW_ASSERT(F && "Unable to load the function");
     return F;
   };
