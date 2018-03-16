@@ -357,7 +357,7 @@ llvm::Value *LLVMIRGen::emitStringConst(llvm::IRBuilder<> &builder,
 
 llvm::Function *LLVMIRGen::getFunction(const std::string &name) {
   auto *F = llmodule_->getFunction("libjit_" + name);
-  assert(F && "Unable to load the function");
+  GLOW_ASSERT(F && "Unable to load the function");
   return F;
 }
 
@@ -365,7 +365,7 @@ llvm::Function *LLVMIRGen::getFunction(const std::string &name,
                                        ElemKind elemTy) {
   auto get = [this](llvm::StringRef funcName) {
     auto *F = llmodule_->getFunction(funcName);
-    assert(F && "Unable to load the function");
+    GLOW_ASSERT(F && "Unable to load the function");
     return F;
   };
   switch (elemTy) {
