@@ -189,6 +189,45 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+void inferMatMulNet(Tensor *lhs, Tensor *rhs, Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  Variable *lhsVar;
+  Variable *rhsVar;
+  Variable *outVar;
+  TypeRef OT;
+  if (lhs->getType().isQuantizedType()) {
+    auto &lhsType = lhs->getType();
+    auto &rhsType = rhs->getType();
+    auto &outType = out->getType();
+    lhsVar = mod.createVariable(lhs->getElementType(), lhs->dims(),
+                                lhsType.getScale(), lhsType.getOffset(), "lhs",
+                                Variable::VisibilityKind::Public);
+    rhsVar = mod.createVariable(rhs->getElementType(), rhs->dims(),
+                                rhsType.getScale(), rhsType.getOffset(), "rhs",
+                                Variable::VisibilityKind::Public);
+    outVar = mod.createVariable(out->getElementType(), out->dims(),
+                                outType.getScale(), outType.getOffset(), "out",
+                                Variable::VisibilityKind::Public);
+    OT = F->getParent()->uniqueType(out->getElementType(), out->dims(),
+                                    outType.getScale(), outType.getOffset());
+  } else {
+    lhsVar = mod.createVariable(lhs->getElementType(), lhs->dims(), "lhs",
+                                Variable::VisibilityKind::Public);
+    rhsVar = mod.createVariable(rhs->getElementType(), rhs->dims(), "rhs",
+                                Variable::VisibilityKind::Public);
+    outVar = mod.createVariable(out->getElementType(), out->dims(), "out",
+                                Variable::VisibilityKind::Public);
+    OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
+  }
+  auto *matmul = F->createMatMul("matmul", OT, lhsVar, rhsVar);
+  auto result = F->createSave("ret", matmul, outVar);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({lhsVar, rhsVar}, {lhs, rhs});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                  BackendKind kind) {
   ExecutionEngine EE(kind);

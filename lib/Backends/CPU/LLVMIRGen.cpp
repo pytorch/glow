@@ -766,10 +766,10 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
          "data parallel instructions are not handled here");
   switch (I->getKind()) {
   case Kinded::Kind::MatMulInstKind: {
-    MatMulInst *BMM = cast<MatMulInst>(I);
-    auto *dest = BMM->getDest();
-    auto *lhs = BMM->getLHS();
-    auto *rhs = BMM->getRHS();
+    MatMulInst *MM = cast<MatMulInst>(I);
+    auto *dest = MM->getDest();
+    auto *lhs = MM->getLHS();
+    auto *rhs = MM->getRHS();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *lhsPtr = emitValueAddress(builder, lhs);
     auto *rhsPtr = emitValueAddress(builder, rhs);
@@ -779,8 +779,30 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *rhsDims = emitValueDims(builder, rhs);
 
     auto *F = getFunction("matmul", dest->getElementType());
-    builder.CreateCall(F,
-                       {destPtr, lhsPtr, rhsPtr, destDims, lhsDims, rhsDims});
+
+    if (lhs->getType()->isQuantizedType()) {
+      auto *destTy = dest->getType();
+      auto *lhsTy = lhs->getType();
+      auto *rhsTy = rhs->getType();
+
+      auto *destOffset = emitConstI32(builder, destTy->getOffset());
+      auto *lhsOffset = emitConstI32(builder, lhsTy->getOffset());
+      auto *rhsOffset = emitConstI32(builder, rhsTy->getOffset());
+
+      auto outScaleParams = quantization::quantizeScaleOffset32To8(
+          lhsTy->getScale() * rhsTy->getScale() / destTy->getScale(), 0);
+
+      auto *outPre = emitConstI32(builder, outScaleParams.pre_);
+      auto *outPost = emitConstI32(builder, outScaleParams.post_);
+      auto *outScale = emitConstI32(builder, outScaleParams.scale_);
+
+      builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, destDims, lhsDims,
+                             rhsDims, destOffset, lhsOffset, rhsOffset, outPre,
+                             outPost, outScale});
+    } else {
+      builder.CreateCall(F,
+                         {destPtr, lhsPtr, rhsPtr, destDims, lhsDims, rhsDims});
+    }
     break;
   }
 

@@ -396,7 +396,7 @@ TEST_P(Operator, QuantizeAndDequantize) {
   EXPECT_TRUE(expectedHandle.isEqual(resultHandle));
 }
 
-TEST_P(InterpOnly, IntMatMul) {
+TEST_P(Operator, IntMatMul) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 

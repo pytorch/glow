@@ -243,6 +243,23 @@ void get_src_dim(size_t *src_i, const size_t *dest_i, const size_t *src_dims,
   }
 }
 
+/// Scales a 32-bit integer using the integer shift-mult-shift method.
+/// See QuantizationTransform32To8 for more details.
+int32_t libjit_scale_i32i8(int32_t input, int32_t pre, int32_t post,
+                           int32_t scale, int32_t offset) {
+  // The operation x >> y is rounded down to negative infinity. To get to
+  // round-nearest we add (1 << (shift - 1)) to the value prior to shifting.
+  int rtn = (post > 0) ? (1 << (post - 1)) : 0;
+
+  // NOTICE: If your tests are failing because of signed integer overflow then
+  // this is a bug in the test and not in the program. You should make sure that
+  // the inputs to the operations do not overflow. The semantics of the
+  // quantization process is such that the result for values that fall out of
+  // range is undefined. The conversion procedure will only tolerate a few bits
+  // of overflow and the result will be clipped.
+  return ((((input >> pre) * scale) + rtn) >> post) + offset;
+}
+
 template <typename T>
 void libjit_transpose_generic(const T *inW, T *outW, const size_t *idim,
                               const size_t *odim, const size_t *shuffle,
@@ -440,6 +457,25 @@ void libjit_matmul_f(float *dest, const float *LHS, const float *RHS,
   }
 }
 
+void libjit_matmul_i8(int8_t *outW, const int8_t *lhsW, const int8_t *rhsW,
+                      const size_t *outWdims, const size_t *lhsWdims,
+                      const size_t *rhsWdims, int32_t outOffset,
+                      int32_t lhsOffset, int32_t rhsOffset, int32_t outPre,
+                      int32_t outPost, int32_t outScale) {
+  for (size_t x = 0; x < outWdims[0]; x++) {
+    for (size_t y = 0; y < outWdims[1]; y++) {
+      int32_t sum = 0;
+      for (size_t i = 0; i < lhsWdims[1]; i++) {
+        int32_t lhs = lhsW[libjit_getXY(lhsWdims, x, i)] - lhsOffset;
+        int32_t rhs = rhsW[libjit_getXY(rhsWdims, i, y)] - rhsOffset;
+        sum += lhs * rhs;
+      }
+      int32_t s = libjit_scale_i32i8(sum, outPre, outPost, outScale, outOffset);
+      outW[libjit_getXY(outWdims, x, y)] = libjit_clip(s);
+    }
+  }
+}
+
 void libjit_batchedadd_f(float *dest, const float *batch, const float *slice,
                          size_t numSlice, size_t sliceSize) {
   // For each layer in the batch:
@@ -542,23 +578,6 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
       }   // H
     }     // C
   }       // N
-}
-
-/// Scales a 32-bit integer using the integer shift-mult-shift method.
-/// See QuantizationTransform32To8 for more details.
-static int32_t libjit_scale_i32i8(int32_t input, int32_t pre, int32_t post,
-                                  int32_t scale, int32_t offset) {
-  // The operation x >> y is rounded down to negative infinity. To get to
-  // round-nearest we add (1 << (shift - 1)) to the value prior to shifting.
-  int rtn = (post > 0) ? (1 << (post - 1)) : 0;
-
-  // NOTICE: If your tests are failing because of signed integer overflow then
-  // this is a bug in the test and not in the program. You should make sure that
-  // the inputs to the operations do not overflow. The semantics of the
-  // quantization process is such that the result for values that fall out of
-  // range is undefined. The conversion procedure will only tolerate a few bits
-  // of overflow and the result will be clipped.
-  return ((((input >> pre) * scale) + rtn) >> post) + offset;
 }
 
 void libjit_convolution_i8(
