@@ -65,6 +65,21 @@ struct QuantizationTransform32To8 {
   }
 };
 
+struct QuantizationRescale8To8 {
+  int preShift_;
+  int postShift_;
+  uint32_t mantissa_;
+
+  QuantizationRescale8To8(int preShift, int postShift, uint32_t m)
+      : preShift_(preShift), postShift_(postShift), mantissa_(m) {}
+
+  /// \returns the rescaled 8-bit integer.
+  int32_t transform(int32_t input) {
+    int32_t result = (input >> preShift_) * mantissa_;
+    return (result + (1 << (postShift_ - 1))) >> postShift_;
+  }
+};
+
 namespace quantization {
 
 /// Generate NodeQuantizationInfo for all required nodes from graph \p G.
@@ -78,6 +93,9 @@ generateNodeQuantizationInfos(const Function *F);
 /// \returns transformation parameters.
 QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                                     int32_t offset);
+
+/// Compute the parameters for rescaling an 8-bit quantized integer.
+QuantizationRescale8To8 computeRescale8To8(float scaleRatio, int32_t inOffset);
 
 /// Converts floating point value to int8 based on the quantization
 /// parameters \p TQP.
