@@ -20,6 +20,11 @@ protected:
   ExecutionEngine EE{GetParam()};
 };
 
+class InterpOnly : public ::testing::TestWithParam<BackendKind> {
+ protected:
+  ExecutionEngine EE{GetParam()};
+};
+
 TEST_P(Operator, pow) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -124,7 +129,6 @@ TEST_P(Operator, batchedBatchedAdd) {
 
 /// Broadcast Tensor of shape (2,1,1) to (2,4,2) with axis 0.
 TEST_P(Operator, broadcastSimple) {
-  ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -178,7 +182,6 @@ TEST_P(Operator, broadcastSimple) {
 
 /// Broadcast a Tensor of shape (2,1) to (3,2,4,2) with axis 1.
 TEST_P(Operator, broadcast) {
-  ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -372,7 +375,6 @@ TEST_P(Operator, Gather) {
 }
 
 TEST_P(Operator, QuantizeAndDequantize) {
-  ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   Tensor inputs(ElemKind::FloatTy, {1, 4});
@@ -394,8 +396,7 @@ TEST_P(Operator, QuantizeAndDequantize) {
   EXPECT_TRUE(expectedHandle.isEqual(resultHandle));
 }
 
-TEST(OperatorInterpOnly, IntMatMul) {
-  ExecutionEngine EE;
+TEST_P(InterpOnly, IntMatMul) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -448,8 +449,7 @@ TEST(OperatorInterpOnly, IntMatMul) {
   EXPECT_NEAR(H.at({2, 2}), 58.8, 1.0);
 }
 
-TEST(OperatorInterpOnly, IntBatchedArith) {
-  ExecutionEngine EE;
+TEST_P(InterpOnly, IntBatchedArith) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -586,8 +586,7 @@ TEST(OperatorInterpOnly, IntConcat) {
   }
 }
 
-TEST(Operator, IntFC) {
-  ExecutionEngine EE;
+TEST_P(InterpOnly, IntFC) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -632,8 +631,7 @@ TEST(Operator, IntFC) {
   }
 }
 
-TEST(Operator, CrossEntropyLossTest) {
-  ExecutionEngine EE;
+TEST_P(InterpOnly, CrossEntropyLossTest) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -651,9 +649,8 @@ TEST(Operator, CrossEntropyLossTest) {
   EXPECT_NEAR(R.at({0}), -log(0.5) - log(0.3), 0.1);
 }
 
-TEST_P(Operator, RescaleNode) {
+TEST_P(InterpOnly, RescaleNode) {
   // Check the outputs of the RescaleQuantized operation.
-  ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -685,12 +682,11 @@ TEST_P(Operator, RescaleNode) {
   EXPECT_NEAR(RO.raw(0), 40, 1);
 }
 
-TEST(OperatorInterpOnly, QuantizedArithmeticNode) {
+TEST_P(InterpOnly, QuantizedArithmeticNode) {
   const int len = 100;
 
   // In this test we check the correctness of the quantized MAX, ADD,
   // MIN nodes as well as how they interact with the rescaling node.
-  ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -770,10 +766,9 @@ TEST(OperatorInterpOnly, QuantizedArithmeticNode) {
   }
 }
 
-TEST(OperatorInterpOnly, TestQuantizedRescaleSequence) {
+TEST_P(InterpOnly, TestQuantizedRescaleSequence) {
   const int len = 100;
 
-  ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -997,6 +992,9 @@ TEST_P(Operator, simpleCmpSelectPredication) {
   ASSERT_NEAR(H.at(8), 256, 0.001);
   ASSERT_NEAR(H.at(9), 512, 0.001);
 }
+
+INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
+                        ::testing::Values(BackendKind::Interpreter));
 
 INSTANTIATE_TEST_CASE_P(Interpreter, Operator,
                         ::testing::Values(BackendKind::Interpreter));
