@@ -1044,6 +1044,16 @@ void libjit_dequantize_f(float *outW, const int8_t *inW, size_t numElem,
   }
 }
 
+void libjit_rescale_i8(int8_t *outW, const int8_t *inW, size_t numElem,
+                       int32_t outOffset, int32_t inOffset, int32_t pre,
+                       int32_t post, int32_t scale) {
+  for (size_t i = 0; i < numElem; i++) {
+    int32_t s =
+        libjit_scale_i32i8(inW[i] - inOffset, pre, post, scale, outOffset);
+    outW[i] = libjit_clip(s);
+  }
+}
+
 void libjit_softmax_f(const float *inW, float *outW, const size_t *idim,
                       const size_t *odim) {
   for (size_t n = 0; n < idim[0]; n++) {
