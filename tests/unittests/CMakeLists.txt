@@ -31,6 +31,7 @@ target_link_libraries(IROptTest
                       PRIVATE
                         Backends
                         IR
+                        Optimizer
                         gtest
                         testMain)
 add_test(IROptTest ${GLOW_BINARY_DIR}/tests/IROptTest)
@@ -99,6 +100,7 @@ target_link_libraries(graphOptzTest
                         Graph
                         IR
                         Backends
+                        Optimizer
                         gtest
                         testMain)
 add_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest)
@@ -153,4 +155,3 @@ target_link_libraries(memoryAllocatorTest
                         gtest
                         testMain)
 add_test(memoryAllocatorTest ${GLOW_BINARY_DIR}/tests/memoryAllocatorTest)
-
