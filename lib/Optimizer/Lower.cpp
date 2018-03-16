@@ -460,6 +460,9 @@ void glow::lower(Function *F, CompilationMode mode) {
   auto &nodes = F->getNodes();
 
   for (auto const &node : nodes) {
+    if (!node->shouldLower()) {
+      continue;
+    }
     if (auto *RN = dyn_cast<RegressionNode>(node)) {
       lowerRegressionNode(*RN);
     } else if (auto *RGN = dyn_cast<RegressionGradNode>(node)) {

@@ -79,8 +79,8 @@ public:
 
     switch (N->getKind()) {
     default:
-      // Unknown node kind.
-      llvm_unreachable("Unhandled node kind");
+      llvm_unreachable("Unhandled node; perhaps should have been lowered to "
+                       "low-level nodes.");
       break;
 
       // Include all automatically generated cases:
@@ -330,21 +330,6 @@ public:
       registerIR(GN->getResult(), V->getDest());
       V->setName(N->getName());
       break;
-    }
-    case glow::Kinded::Kind::SGDNodeKind:
-    case glow::Kinded::Kind::TanhGradNodeKind:
-    case glow::Kinded::Kind::SigmoidGradNodeKind:
-    case glow::Kinded::Kind::AddGradNodeKind:
-    case glow::Kinded::Kind::MulGradNodeKind:
-    case glow::Kinded::Kind::SubGradNodeKind:
-    case glow::Kinded::Kind::DivGradNodeKind:
-    case glow::Kinded::Kind::ReluNodeKind:
-    case glow::Kinded::Kind::ReluGradNodeKind:
-    case glow::Kinded::Kind::FullyConnectedNodeKind:
-    case glow::Kinded::Kind::FullyConnectedGradNodeKind:
-    case glow::Kinded::Kind::RegressionNodeKind:
-    case glow::Kinded::Kind::RegressionGradNodeKind: {
-      llvm_unreachable("Node should have been lowered to low-level nodes");
     }
     }
   }

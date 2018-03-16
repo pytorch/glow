@@ -136,6 +136,11 @@ protected:
   /// A nullable reference to some tensor value that may predicate the execution
   /// of the current node.
   NodeValue predicate_{nullptr};
+  /// Whether or not the Node should be lowered. By default any Node that can be
+  /// lowered will be. However, some backends may implement a usually-lowered
+  /// Node with their own backend-specific Instr. Backends can set this bool to
+  /// false for such Instrs prior to lowering.
+  bool shouldLower_{true};
 
 public:
   Node(Kinded::Kind k, llvm::StringRef name) : Named(name), Kinded(k) {}
@@ -209,6 +214,12 @@ public:
   /// @{
   ElemKind getElementType(unsigned resNo = -1) const;
   llvm::ArrayRef<size_t> dims(unsigned resNo = -1) const;
+  /// @}
+
+  /// Getter/setter for shouldLower_
+  /// @{
+  bool shouldLower() { return shouldLower_; }
+  void setShouldLower(bool lower) { shouldLower_ = lower; }
   /// @}
 
 protected:
