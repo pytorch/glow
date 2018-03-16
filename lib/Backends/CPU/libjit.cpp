@@ -417,6 +417,7 @@ DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_element_pow_kernel_f, float,
                                              pow(LHS[idx], val))
 DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_splat_kernel_f, float, val)
 DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_splat_kernel_u, size_t, val)
+DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_splat_kernel_i8, int8_t, val)
 
 #undef DEFINE_DATA_PARALLEL_KERNEL
 #undef DEFINE_DATA_PARALLEL_KERNEL_FUNC
@@ -1135,6 +1136,14 @@ void libjit_extract_tensor_u(size_t *tensor, size_t *slice, size_t *offset,
                              size_t offsetDim) {
   libjit_extract_tensor(tensor, slice, offset, tensorDim, sliceDim,
                         numDimsTensor, numDimsSlice, offsetDim);
+}
+
+void libjit_insert_tensor_i8(int8_t *tensor, int8_t *slice, size_t *offset,
+                             size_t *tensorDim, size_t *sliceDim,
+                             size_t numDimsTensor, size_t numDimsSlice,
+                             size_t offsetDim) {
+  libjit_insert_tensor(tensor, slice, offset, tensorDim, sliceDim,
+                       numDimsTensor, numDimsSlice, offsetDim);
 }
 
 __attribute__((noinline)) void

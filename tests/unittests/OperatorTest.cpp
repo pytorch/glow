@@ -551,8 +551,7 @@ TEST_P(Operator, IntConvolutionDepth10) { checkIntConvolution(EE, 10); }
 
 TEST_P(Operator, IntConvolutionDepth8) { checkIntConvolution(EE, 8); }
 
-TEST(OperatorInterpOnly, IntConcat) {
-  ExecutionEngine EE;
+TEST_P(Operator, IntConcat) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
