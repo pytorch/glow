@@ -371,7 +371,7 @@ TEST_P(Operator, Gather) {
   EXPECT_FLOAT_EQ(H.at({1, 3, 1}), 1.2);
 }
 
-TEST(Interpreter, QuantizeAndDequantize) {
+TEST_P(Operator, QuantizeAndDequantize) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
