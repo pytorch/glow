@@ -169,9 +169,9 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
   int postShift = 0;
 
   // Calculate the post-shift value. It's always safe to increase scale as long
-  // as it's below one, and it's always legal to shift at least 16 bits,
-  // because this won't overflow the calculation.
-  while (scale < 0.5 || postShift < 15) {
+  // as it's below one, and it's always legal to shift at least 15 bits for
+  // small scale values.
+  while (scale < 0.5 || (scale < 256 && postShift < 15)) {
     scale *= 2;
     postShift++;
   }

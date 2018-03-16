@@ -490,7 +490,7 @@ static int32_t libjit_scale_i32i8(int32_t input, int32_t pre, int32_t post,
                                   int32_t scale, int32_t offset) {
   // The operation x >> y is rounded down to negative infinity. To get to
   // round-nearest we add (1 << (shift - 1)) to the value prior to shifting.
-  int rtn = (1 << (post - 1));
+  int rtn = (post > 0) ? (1 << (post - 1)) : 0;
 
   // NOTICE: If your tests are failing because of signed integer overflow then
   // this is a bug in the test and not in the program. You should make sure that
