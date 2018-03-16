@@ -188,6 +188,42 @@ TEST(JITCorrectnessTest, localResponseNormalizationGradTest) {
   EXPECT_TRUE(H1.isEqual(H2));
 }
 
+TEST(JITCorrectnessTest, matMulTest) {
+  Tensor lhs(ElemKind::FloatTy, {10, 9});
+  Tensor rhs(ElemKind::FloatTy, {9, 8});
+  lhs.getHandle().randomize(-72, 83);
+  rhs.getHandle().randomize(-63, 101);
+  std::array<size_t, 2> S{{10, 8}};
+  llvm::ArrayRef<size_t> shape(S);
+  Tensor out1(ElemKind::FloatTy, shape);
+  Tensor out2(ElemKind::FloatTy, shape);
+
+  inferMatMulNet(&lhs, &rhs, &out1, BackendKind::JIT);
+  inferMatMulNet(&lhs, &rhs, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle();
+  auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
+TEST(JITCorrectnessTest, quantizedMatMulTest) {
+  Tensor lhs(ElemKind::Int8QTy, {10, 9}, 2.7, 31);
+  Tensor rhs(ElemKind::Int8QTy, {9, 8}, 3.2, -12);
+  lhs.getHandle<int8_t>().randomize(-129, 128);
+  rhs.getHandle<int8_t>().randomize(-129, 128);
+  std::array<size_t, 2> S{{10, 8}};
+  llvm::ArrayRef<size_t> shape(S);
+  Tensor out1(ElemKind::Int8QTy, shape, 8.1, 7);
+  Tensor out2(ElemKind::Int8QTy, shape, 8.1, 7);
+
+  inferMatMulNet(&lhs, &rhs, &out1, BackendKind::JIT);
+  inferMatMulNet(&lhs, &rhs, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle<int8_t>();
+  auto H2 = out2.getHandle<int8_t>();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
 TEST(JITCorrectnessTest, maxTest) {
   std::array<size_t, 1> S{{1941}};
   llvm::ArrayRef<size_t> shape(S);

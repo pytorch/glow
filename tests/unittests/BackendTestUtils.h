@@ -31,6 +31,8 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
                                         llvm::ArrayRef<size_t> shape2,
                                         Tensor *out, BackendKind kind);
 
+void inferMatMulNet(Tensor *lhs, Tensor *rhs, Tensor *out, BackendKind kind);
+
 void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                  BackendKind kind);
 

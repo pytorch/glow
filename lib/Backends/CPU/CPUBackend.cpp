@@ -289,6 +289,7 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
   if (elementTy == ElemKind::Int8QTy) {
     switch (opKind) {
     case Kinded::Kind::ConvolutionNodeKind:
+    case Kinded::Kind::MatMulNodeKind:
     case Kinded::Kind::QuantizeNodeKind:
     case Kinded::Kind::DequantizeNodeKind:
     case Kinded::Kind::RescaleQuantizedNodeKind:
