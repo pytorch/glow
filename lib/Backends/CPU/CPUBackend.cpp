@@ -292,6 +292,7 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     case Kinded::Kind::QuantizeNodeKind:
     case Kinded::Kind::DequantizeNodeKind:
     case Kinded::Kind::TransposeNodeKind:
+    case Kinded::Kind::ReshapeNodeKind:
       return true;
     default:
       return false;
