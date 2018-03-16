@@ -141,7 +141,7 @@ void LLVMIRGen::initCodeGen() {
   // By default, LLVM would emit some diagnostics, remarks, etc. It is fine for
   // a static compiler, but not necessary for a JIT. Let's disable it by
   // providing a dummy diagnostics handler, that does not emit anything.
-  ctx_.setDiagnosticHandler([](const llvm::DiagnosticInfo &DI, void *Context){
+  ctx_.setDiagnosticHandler([](const llvm::DiagnosticInfo &DI, void *Context) {
     // Do not emit any diagnostics when JITting.
   });
 
