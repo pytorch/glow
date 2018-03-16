@@ -6,7 +6,6 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/Instrs.h"
-#include "glow/Optimizer/Optimizer.h"
 
 using namespace glow;
 using llvm::dyn_cast;

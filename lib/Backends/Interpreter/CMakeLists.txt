@@ -4,8 +4,6 @@ add_library(Interpreter
               InterpreterNodes.cpp)
 target_link_libraries(Interpreter
                       PRIVATE
-                        Optimizer
                         Base
                         Graph
                         Quantization)
-
