@@ -288,6 +288,7 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
   // Check for quantization support.
   if (elementTy == ElemKind::Int8QTy) {
     switch (opKind) {
+    case Kinded::Kind::ConcatNodeKind:
     case Kinded::Kind::ConvolutionNodeKind:
     case Kinded::Kind::MatMulNodeKind:
     case Kinded::Kind::QuantizeNodeKind:
