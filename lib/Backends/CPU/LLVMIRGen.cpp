@@ -436,7 +436,12 @@ createLoop(llvm::IRBuilder<> &builder, llvm::LLVMContext &ctx,
   // metadata forces it to vectorize them anyways.
   llvm::SmallVector<llvm::Metadata *, 4> args;
   // Reserve operand 0 for loop id self reference.
-  args.push_back(llvm::MDNode::getTemporary(ctx, llvm::None).get());
+  //
+  // Initialize it with a special temporary metadata node, which is typically
+  // used to create cyclic metadata structures. tmpMD is a unique_ptr and thus
+  // will be freed automatically when it goes out of scope.
+  llvm::TempMDTuple tmpMD = llvm::MDNode::getTemporary(ctx, llvm::None);
+  args.push_back(tmpMD.get());
   llvm::Metadata *Vals[] = {
       // Reserve operand 0 for loop id self reference.
       llvm::MDString::get(ctx, "llvm.loop.vectorize.enable"),
