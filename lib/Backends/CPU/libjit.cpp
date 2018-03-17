@@ -287,6 +287,51 @@ void libjit_transpose_generic(const T *inW, T *outW, const size_t *idim,
   }
 }
 
+template <typename T>
+void libjit_pool_max_generic(const T *inW, T *outW, const size_t *inWdims,
+                             const size_t *outWdims, size_t filterSize,
+                             size_t stride, size_t pad) {
+  // For each input in the batch:
+  for (size_t n = 0; n < outWdims[0]; n++) {
+
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < inWdims[3]; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t x = -(ssize_t)pad;
+      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+        ssize_t y = -(ssize_t)pad;
+        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+          int first = 1;
+          T max = 0;
+
+          for (size_t fx = 0; fx < filterSize; fx++) {
+            for (size_t fy = 0; fy < filterSize; fy++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
+                  oy >= (ssize_t)inWdims[2]) {
+                continue;
+              }
+
+              float val =
+                  inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, z)];
+
+              if (first || (val >= max)) {
+                first = 0;
+                max = val;
+              }
+            }
+          }
+
+          outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = max;
+        } // W
+      }   // H
+    }     // C
+  }       // N
+}
+
 } // namespace
 
 extern "C" {
@@ -833,48 +878,17 @@ void libjit_local_response_normalization_grad_f(
   }     // N
 }
 
+void libjit_pool_max_i8(const int8_t *inW, int8_t *outW, const size_t *inWdims,
+                        const size_t *outWdims, size_t filterSize,
+                        size_t stride, size_t pad) {
+  libjit_pool_max_generic(inW, outW, inWdims, outWdims, filterSize, stride,
+                          pad);
+}
 void libjit_pool_max_f(const float *inW, float *outW, const size_t *inWdims,
                        const size_t *outWdims, size_t filterSize, size_t stride,
                        size_t pad) {
-  // For each input in the batch:
-  for (size_t n = 0; n < outWdims[0]; n++) {
-
-    // For each layer in the output tensor:
-    for (size_t z = 0; z < inWdims[3]; z++) {
-      // For each convolution 'jump' in the input tensor:
-      ssize_t x = -(ssize_t)pad;
-      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
-        ssize_t y = -(ssize_t)pad;
-        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
-          int first = 1;
-          float max = 0;
-
-          for (size_t fx = 0; fx < filterSize; fx++) {
-            for (size_t fy = 0; fy < filterSize; fy++) {
-              ssize_t ox = x + fx;
-              ssize_t oy = y + fy;
-
-              // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
-                  oy >= (ssize_t)inWdims[2]) {
-                continue;
-              }
-
-              float val =
-                  inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, z)];
-
-              if (first || (val >= max)) {
-                first = 0;
-                max = val;
-              }
-            }
-          }
-
-          outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = max;
-        } // W
-      }   // H
-    }     // C
-  }       // N
+  libjit_pool_max_generic(inW, outW, inWdims, outWdims, filterSize, stride,
+                          pad);
 }
 
 void libjit_pool_max_xy_f(const float *inW, float *outW, size_t *inXY,
