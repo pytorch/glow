@@ -1,5 +1,6 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
+#include "glow/Backends/Backend.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
@@ -469,10 +470,13 @@ void lowerBatchNormalizationGradNode(Function *F,
   BNG.getGradOfInputNamedVar().replaceAllUsesOfWith(zeroSplat);
 }
 
-void glow::lower(Function *F, CompilationMode mode) {
+void glow::lower(Function *F, CompilationMode mode, Backend *B) {
   auto &nodes = F->getNodes();
 
   for (auto const &node : nodes) {
+    if (B && !B->shouldLower(node)) {
+      continue;
+    }
     if (auto *RN = dyn_cast<RegressionNode>(node)) {
       lowerRegressionNode(*RN);
     } else if (auto *RGN = dyn_cast<RegressionGradNode>(node)) {

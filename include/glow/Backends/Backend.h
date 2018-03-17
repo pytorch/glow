@@ -13,6 +13,7 @@ class Value;
 class Tensor;
 class Variable;
 class Function;
+class Node;
 
 enum class BackendKind {
   Interpreter, // Execute the network with the built-in interpreter.
@@ -54,6 +55,10 @@ public:
   /// \returns true if backend supports given kind of operation with
   /// the given \p elementTy element type.
   virtual bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const = 0;
+
+  /// \returns true if the supplied Node \N should be lowered. By default, all
+  /// Nodes are candidates for lowering.
+  virtual bool shouldLower(Node *N) { return true; }
 };
 
 /// Create a backend of kind \p kind, to run the IR function \p M.
