@@ -1046,18 +1046,39 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::PoolAvgInstKind: {
-    PoolAvgInst *PM = cast<PoolAvgInst>(I);
-    auto *dest = PM->getDest();
-    auto *src = PM->getSrc();
+    PoolAvgInst *PA = cast<PoolAvgInst>(I);
+    auto *dest = PA->getDest();
+    auto *src = PA->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, src);
 
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *kernel = emitConstSizeT(builder, PM->getKernel());
-    auto *stride = emitConstSizeT(builder, PM->getStride());
-    auto *pad = emitConstSizeT(builder, PM->getPad());
+    auto *kernel = emitConstSizeT(builder, PA->getKernel());
+    auto *stride = emitConstSizeT(builder, PA->getStride());
+    auto *pad = emitConstSizeT(builder, PA->getPad());
+
+    if (src->getType()->isQuantizedType()) {
+      auto *destTy = dest->getType();
+      auto *srcTy = src->getType();
+      auto *destOffset = emitConstI32(builder, destTy->getOffset());
+      auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
+
+      auto outScaleParam = quantization::quantizeScaleOffset32To8(
+          srcTy->getScale() / destTy->getScale() /
+              (PA->getKernel() * PA->getKernel()),
+          0);
+      auto *outPre = emitConstI32(builder, outScaleParam.pre_);
+      auto *outPost = emitConstI32(builder, outScaleParam.post_);
+      auto *outScale = emitConstI32(builder, outScaleParam.scale_);
+
+      auto *F = getFunction("pool_avg", dest->getElementType());
+      builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims, kernel, stride,
+                             pad, destOffset, srcOffset, outPre, outPost,
+                             outScale});
+      break;
+    }
 
     auto *F = getFunction("pool_avg", dest->getElementType());
     builder.CreateCall(
