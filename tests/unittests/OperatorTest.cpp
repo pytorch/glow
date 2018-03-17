@@ -653,7 +653,6 @@ TEST(Operator, CrossEntropyLossTest) {
 
 TEST_P(Operator, RescaleNode) {
   // Check the outputs of the RescaleQuantized operation.
-  ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
