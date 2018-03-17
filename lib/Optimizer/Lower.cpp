@@ -349,12 +349,20 @@ void computeBatchNormalizationWeights(Function *F, BatchNormalizationNode &BN) {
       "newVar", F->createMul("momentum_by_localVar", momentumSplat, localVar),
       F->createMul("1_momentum_by_oldVar", oneMinusMomentumSplat, var));
 
-  // TODO: don't rely on operands' indices
-  assert(BN.getInputName(3) == "Mean");
-  assert(BN.getInputName(4) == "Var");
-  BN.getNthInput(3).setOperand(newMean, 0);
-  BN.getNthInput(4).setOperand(newVar, 0);
-  // TODO: also consider updating corresponding BatchNormalizationGradNode
+  // Cannot use mean.replaceAllUsesOfWith(newMean) here, because newMean depends
+  // on mean. Essentially, we need to replace x with f(x). It means that such
+  // replacement would also find `f(x)` itself in the graph, and create a cycle.
+  for (auto N : F->getNodes())
+    if (llvm::isa<BatchNormalizationNode>(N) ||
+        llvm::isa<BatchNormalizationGradNode>(N))
+      for (size_t i = 0; i < N->getNumInputs(); i++) {
+        if (N->getNthInput(i) == mean) {
+          N->getNthInput(i) = newMean;
+        }
+        if (N->getNthInput(i) == var) {
+          N->getNthInput(i) = newVar;
+        }
+      }
 
   F->createSave("saveMean", newMean, llvm::cast<Variable>(mean.getNode()));
   F->createSave("saveVar", newVar, llvm::cast<Variable>(var.getNode()));
