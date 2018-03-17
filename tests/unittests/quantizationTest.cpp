@@ -16,7 +16,8 @@ using llvm::cast;
 
 class Quantization : public ::testing::TestWithParam<BackendKind> {
 protected:
-  ExecutionEngine EE{GetParam()};
+  ExecutionEngine interpreterEE{BackendKind::Interpreter};
+  ExecutionEngine backendSpecificEE{GetParam()};
 };
 
 bool operator==(const NodeQuantizationInfo &lhs,
@@ -167,30 +168,28 @@ createSimpleGraphForQuantization(Module *M) {
 
 TEST_P(Quantization, end2end) {
   // STEP1 - Generate the first network to record the quantization parameters.
-  ExecutionEngine EE;
-  auto res = createSimpleGraphForQuantization(&EE.getModule());
+  auto res = createSimpleGraphForQuantization(&interpreterEE.getModule());
   Function *F1 = res.first;
   SaveNode *result1 = res.second;
 
   glow::profileQuantization(F1);
-  EE.compile(CompilationMode::Infer, F1);
+  interpreterEE.compile(CompilationMode::Infer, F1);
 
   // Run graph to capture profile.
-  EE.run({}, {});
+  interpreterEE.run({}, {});
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
       quantization::generateNodeQuantizationInfos(F1);
 
   // STEP2 - Use the profile to quantize a network.
-  ExecutionEngine EE2;
-  auto res2 = createSimpleGraphForQuantization(&EE2.getModule());
+  auto res2 = createSimpleGraphForQuantization(&backendSpecificEE.getModule());
   Function *F2 = res2.first;
   SaveNode *result2 = res2.second;
 
-  quantization::generateQuantizedGraph(EE, F2, QI);
-  EE2.compile(CompilationMode::Infer, F2);
-  EE2.run({}, {});
+  quantization::generateQuantizedGraph(backendSpecificEE, F2, QI);
+  backendSpecificEE.compile(CompilationMode::Infer, F2);
+  backendSpecificEE.run({}, {});
 
   // STEP3 - Compare the results of the original and quantized functions.
   auto result1Handle = result1->getVariable()->getHandle();
