@@ -955,6 +955,46 @@ void libjit_pool_max_xy_grad_f(float *inG, const float *outG,
   }       // N
 }
 
+void libjit_pool_avg_i8(const int8_t *inW, int8_t *outW, const size_t *inWdims,
+                        const size_t *outWdims, size_t filterSize,
+                        size_t stride, size_t pad, int32_t outOffset,
+                        int32_t inOffset, int32_t outPre, int32_t outPost,
+                        int32_t outScale) {
+  // For each input in the batch:
+  for (size_t n = 0; n < outWdims[0]; n++) {
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < inWdims[3]; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t x = -ssize_t(pad);
+      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+        ssize_t y = -ssize_t(pad);
+        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+          int32_t sum = 0;
+
+          for (size_t fx = 0; fx < filterSize; fx++) {
+            for (size_t fy = 0; fy < filterSize; fy++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
+                  oy >= (ssize_t)inWdims[2]) {
+                continue;
+              }
+              sum +=
+                  inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, z)] -
+                  inOffset;
+            }
+          }
+
+          outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = libjit_clip(
+              libjit_scale_i32i8(sum, outPre, outPost, outScale, outOffset));
+        }
+      }
+    }
+  }
+}
+
 void libjit_pool_avg_f(const float *inW, float *outW, const size_t *inWdims,
                        const size_t *outWdims, size_t filterSize, size_t stride,
                        size_t pad) {
