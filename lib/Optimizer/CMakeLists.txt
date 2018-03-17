@@ -9,4 +9,5 @@ target_link_libraries(Optimizer
                       PRIVATE
                         Quantization
                         Graph
-                        IR)
+                        IR
+                        Backends)
