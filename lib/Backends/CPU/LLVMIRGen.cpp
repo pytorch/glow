@@ -1064,11 +1064,10 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *srcTy = src->getType();
       auto *destOffset = emitConstI32(builder, destTy->getOffset());
       auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
-
       auto outScaleParam = quantization::quantizeScaleOffset32To8(
           srcTy->getScale() / destTy->getScale() /
               (PA->getKernel() * PA->getKernel()),
-          0);
+          destTy->getOffset());
       auto *outPre = emitConstI32(builder, outScaleParam.pre_);
       auto *outPost = emitConstI32(builder, outScaleParam.post_);
       auto *outScale = emitConstI32(builder, outScaleParam.scale_);
@@ -1078,12 +1077,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                              pad, destOffset, srcOffset, outPre, outPost,
                              outScale});
       break;
+    } else {
+      auto *F = getFunction("pool_avg", dest->getElementType());
+      builder.CreateCall(
+          F, {srcPtr, destPtr, srcDims, destDims, kernel, stride, pad});
+      break;
     }
-
-    auto *F = getFunction("pool_avg", dest->getElementType());
-    builder.CreateCall(
-        F, {srcPtr, destPtr, srcDims, destDims, kernel, stride, pad});
-    break;
   }
 
   case Kinded::Kind::PoolAvgGradInstKind: {

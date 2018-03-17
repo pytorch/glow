@@ -651,7 +651,7 @@ TEST(Operator, CrossEntropyLossTest) {
   EXPECT_NEAR(R.at({0}), -log(0.5) - log(0.3), 0.1);
 }
 
-TEST(OperatorInterpOnly, RescaleNode) {
+TEST_P(Operator, RescaleNode) {
   // Check the outputs of the RescaleQuantized operation.
   ExecutionEngine EE;
   auto &mod = EE.getModule();
