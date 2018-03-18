@@ -43,25 +43,30 @@ struct NodeQuantizationInfo {
   }
 };
 
-/// A data structure that represents the 32-bit to 8-bit quantization
-/// scaling operation. This data structure represents the transformation:
-/// (((input >> pre) * scale) + rtn) >> post + offset.
-struct QuantizationTransform32To8 {
+/// A data structure that contains parameters for a float * 32-bit integer
+/// multiplication operation, using only integer arithmetic.
+struct MultTransformF32ToI32 {
   int pre_;
   int post_;
-  int scale_;
-  int offset_;
+  int32_t m_;
 
-  /// Initializes the transformation based on the conversion formula (above).
-  QuantizationTransform32To8(int pre, int post, int scale, int offset)
-      : pre_(pre), post_(post), scale_(scale), offset_(offset) {}
+  MultTransformF32ToI32(int pre, int post, int32_t m)
+      : pre_(pre), post_(post), m_(m) {}
 
-  /// \returns the scaled integer.
   int32_t transform(int32_t input) {
-    // The operation x >> y is rounded down to negative infinity. To get to
-    // round-nearest we add (1 << (shift - 1)) to the value prior to shifting.
-    int rtn = (1 << (post_ - 1));
-    return ((((input >> pre_) * scale_) + rtn) >> post_) + offset_;
+    // The operation x >> y is rounded down (toward negative infinity). We would
+    // prefer a symmetric rounding strategy. To this extent we perform some
+    // extra manipulation...
+    int32_t a = (int32_t)((uint32_t)input >> 31);
+
+    // TODO(hegemanjwh2): This branch is not good. It needs to go away. This
+    // entire method should be branchless.
+    if (pre_ > 0) {
+      input += (a << (pre_ - 1));
+    }
+
+    // ((input >> pre_) * m_) >> post_
+    return ((input >> pre_) * m_ + (a << (post_ - 1))) >> post_;
   }
 };
 
@@ -71,13 +76,9 @@ namespace quantization {
 std::vector<NodeQuantizationInfo>
 generateNodeQuantizationInfos(const Function *F);
 
-/// Convert the floating point quantization parameters \p scale and \p offset
-/// into the integer sequence of:
-/// result = ((input >> pre) * scale) >> post + offset.
-/// This scales a 32-bit signed integer word into an 8-bit signed integer.
-/// \returns transformation parameters.
-QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
-                                                    int32_t offset);
+/// Compute the multiplication-transform parameters for performing a multiply
+/// between a float and a 32-bit integer using only integer arithmetic.
+MultTransformF32ToI32 computeMultTransformParams(float scale, int bits);
 
 /// Converts floating point value to int8 based on the quantization
 /// parameters \p TQP.
