@@ -76,7 +76,7 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM) {
   PMB.OptLevel = 2;
   PMB.SizeLevel = 0;
   PMB.LoopVectorize = true;
-  PMB.SLPVectorize = true;
+  PMB.SLPVectorize = false;
   PMB.Inliner = llvm::createFunctionInliningPass();
 
   M->setTargetTriple(TM.getTargetTriple().normalize());
