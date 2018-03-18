@@ -861,11 +861,18 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *pad = emitConstSizeT(builder, CI->getPad());
 
     const char *kernelName = "convolution";
-    // Use a special version of the kernel for the case where K (the depth of
-    // the convolution) is a multiple of 4.
-    if (dest->dims()[3] % 4 == 0) {
-      kernelName = "convolution_unroll_k4";
+
+    auto destDepth = dest->dims()[3];
+
+    // Try to 'block' the convolution on the 'depth' dimension. We will process
+    // this number output slices each iteration.
+    unsigned unrollDFactor = 1;
+
+    if ((destDepth % 8) == 0) {
+      unrollDFactor = 8;
     }
+
+    auto *unrollD = emitConstSizeT(builder, unrollDFactor);
 
     auto *F = getFunction(kernelName, dest->getElementType());
 
@@ -904,11 +911,11 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                              kernel,    stride,       pad,        destOffset,
                              srcOffset, filterOffset, biasOffset, biasPre,
                              biasPost,  biasScale,    outPre,     outPost,
-                             outScale});
+                             outScale,  unrollD});
     } else {
-      builder.CreateCall(F,
-                         {destPtr, srcPtr, filterPtr, biasPtr, destDims,
-                          srcDims, filterDims, biasDims, kernel, stride, pad});
+      builder.CreateCall(F, {destPtr, srcPtr, filterPtr, biasPtr, destDims,
+                             srcDims, filterDims, biasDims, kernel, stride, pad,
+                             unrollD});
     }
     break;
   }

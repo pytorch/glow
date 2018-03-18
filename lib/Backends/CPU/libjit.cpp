@@ -465,17 +465,19 @@ void libjit_batchedreduceadd_f(float *dest, const float *batch, size_t destSize,
   }
 }
 
-void libjit_convolution_unroll_k4_f(
-    float *outW, const float *inW, const float *filterW, const float *biasW,
-    const size_t *outWdims, const size_t *inWdims, const size_t *filterWdims,
-    const size_t *biasWdims, size_t filterSize, size_t stride, size_t pad) {
+void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
+                          const float *biasW, const size_t *outWdims,
+                          const size_t *inWdims, const size_t *filterWdims,
+                          const size_t *biasWdims, size_t filterSize,
+                          size_t stride, size_t pad, size_t depthUnroll) {
   size_t inChannels = inWdims[3];
 
   // For each input in the batch:
   for (size_t n = 0; n < inWdims[0]; n++) {
 
-    // For each layer in the output tensor:
-    for (size_t d = 0; d < outWdims[3]; d += 4) {
+    // For each layer in the output tensor. Process 'depthUnroll' output layers
+    // together.
+    for (size_t d = 0; d < outWdims[3]; d += depthUnroll) {
 
       // For each convolution 'jump' in the input tensor:
       ssize_t x = -(ssize_t)pad;
@@ -483,11 +485,16 @@ void libjit_convolution_unroll_k4_f(
         ssize_t y = -(ssize_t)pad;
         for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
 
+          // The compiler should perform scalar replacement of aggregates and
+          // split this tiny array to registers.
+          float sum[depthUnroll];
+
+          // Add the bias for each output pixel/value that we are processing.
+          for (int i = 0; i < depthUnroll; i++) {
+            sum[i] = biasW[d + i];
+          }
+
           // For each element in the convolution-filter:
-          float sum0 = 0;
-          float sum1 = 0;
-          float sum2 = 0;
-          float sum3 = 0;
           for (size_t fx = 0; fx < filterSize; fx++) {
             for (size_t fy = 0; fy < filterSize; fy++) {
               ssize_t ox = x + fx;
@@ -506,68 +513,31 @@ void libjit_convolution_unroll_k4_f(
               size_t sliceSize =
                   filterWdims[1] * filterWdims[2] * filterWdims[3];
 
+              // Perform the heart of the convolution, 4 elements at a time to
+              // reduce register pressure.
               for (size_t fd = 0; fd < inChannels; fd++) {
                 float in = inW[inIdx + fd];
-                sum0 += filterW[filterIdx + (sliceSize * 0) + fd] * in;
-                sum1 += filterW[filterIdx + (sliceSize * 1) + fd] * in;
-                sum2 += filterW[filterIdx + (sliceSize * 2) + fd] * in;
-                sum3 += filterW[filterIdx + (sliceSize * 3) + fd] * in;
+                for (int i = 0; i < MIN(4, depthUnroll); i++) {
+                  sum[i] += filterW[filterIdx + (sliceSize * i) + fd] * in;
+                }
               }
+
+              // And run the innermost loop again for the second group of depth
+              // slices:
+              if (depthUnroll > 4)
+                for (size_t fd = 0; fd < inChannels; fd++) {
+                  float in = inW[inIdx + fd];
+                  for (int i = 4; i < MIN(8, depthUnroll); i++) {
+                    sum[i] += filterW[filterIdx + (sliceSize * i) + fd] * in;
+                  }
+                }
             }
           }
 
-          sum0 += biasW[d + 0];
-          sum1 += biasW[d + 1];
-          sum2 += biasW[d + 2];
-          sum3 += biasW[d + 3];
-          outW[libjit_getXYZW(outWdims, n, ax, ay, d + 0)] = sum0;
-          outW[libjit_getXYZW(outWdims, n, ax, ay, d + 1)] = sum1;
-          outW[libjit_getXYZW(outWdims, n, ax, ay, d + 2)] = sum2;
-          outW[libjit_getXYZW(outWdims, n, ax, ay, d + 3)] = sum3;
-        } // W
-      }   // H
-    }     // C
-  }       // N
-}
-
-void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
-                          const float *biasW, const size_t *outWdims,
-                          const size_t *inWdims, const size_t *filterWdims,
-                          const size_t *biasWdims, size_t filterSize,
-                          size_t stride, size_t pad) {
-  size_t inChannels = inWdims[3];
-
-  // For each input in the batch:
-  for (size_t n = 0; n < inWdims[0]; n++) {
-    // For each layer in the output tensor:
-    for (size_t d = 0; d < outWdims[3]; d++) {
-      // For each convolution 'jump' in the input tensor:
-      ssize_t x = -(ssize_t)pad;
-      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
-        ssize_t y = -(ssize_t)pad;
-        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
-          // For each element in the convolution-filter:
-          float sum = 0;
-          for (size_t fx = 0; fx < filterSize; fx++) {
-            for (size_t fy = 0; fy < filterSize; fy++) {
-              ssize_t ox = x + fx;
-              ssize_t oy = y + fy;
-
-              // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
-                  oy >= (ssize_t)inWdims[2]) {
-                continue;
-              }
-              for (size_t fd = 0; fd < inChannels; fd++) {
-                sum +=
-                    filterW[libjit_getXYZW(filterWdims, d, fx, fy, fd)] *
-                    inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
-              }
-            }
+          // Store the results to the output buffer.
+          for (int i = 0; i < depthUnroll; i++) {
+            outW[libjit_getXYZW(outWdims, n, ax, ay, d + i)] = sum[i];
           }
-
-          sum += biasW[d];
-          outW[libjit_getXYZW(outWdims, n, ax, ay, d)] = sum;
         } // W
       }   // H
     }     // C
@@ -591,90 +561,34 @@ static int32_t libjit_scale_i32i8(int32_t input, int32_t pre, int32_t post,
   return ((((input >> pre) * scale) + rtn) >> post) + offset;
 }
 
-void libjit_convolution_i8(int8_t *outW, const int8_t *inW,
-                           const int8_t *filterW, const int8_t *biasW,
-                           const size_t *outWdims, const size_t *inWdims,
-                           const size_t *filterWdims, const size_t *biasWdims,
-                           size_t filterSize, size_t stride, size_t pad,
-                           int32_t outOffset, int32_t inOffset,
-                           int32_t filterOffset, int32_t biasOffset,
-                           int32_t biasPre, int32_t biasPost, int32_t biasScale,
-                           int32_t outPre, int32_t outPost, int32_t outScale) {
-  size_t inChannels = inWdims[3];
-
-  // For each input in the batch:
-  for (size_t n = 0; n < inWdims[0]; n++) {
-    // For each layer in the output tensor:
-    for (size_t d = 0; d < outWdims[3]; d++) {
-      // For each convolution 'jump' in the input tensor:
-      ssize_t x = -(ssize_t)pad;
-      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
-        ssize_t y = -(ssize_t)pad;
-        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
-          // For each element in the convolution-filter:
-          int32_t sum = 0;
-          for (size_t fx = 0; fx < filterSize; fx++) {
-            for (size_t fy = 0; fy < filterSize; fy++) {
-              ssize_t ox = x + fx;
-              ssize_t oy = y + fy;
-
-              // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
-                  oy >= (ssize_t)inWdims[2]) {
-                continue;
-              }
-              for (size_t fd = 0; fd < inChannels; fd++) {
-                int32_t F = filterW[libjit_getXYZW(filterWdims, d, fx, fy, fd)];
-                int32_t I =
-                    inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
-                sum += (F - filterOffset) * (I - inOffset);
-              }
-            }
-          }
-
-          // Scale the bias to match the scale of the matrix multiplication.
-          int32_t B = libjit_scale_i32i8((int32_t)biasW[d] - biasOffset,
-                                         biasPre, biasPost, biasScale, 0);
-
-          // Add the bias:
-          sum += B;
-
-          // Scale the result back to the expected destination scale.
-          int32_t scaledSum =
-              libjit_scale_i32i8(sum, outPre, outPost, outScale, outOffset);
-          outW[libjit_getXYZW(outWdims, n, ax, ay, d)] = libjit_clip(scaledSum);
-        } // W
-      }   // H
-    }     // C
-  }       // N
-}
-
-void libjit_convolution_unroll_k4_i8(
+void libjit_convolution_i8(
     int8_t *outW, const int8_t *inW, const int8_t *filterW, const int8_t *biasW,
     const size_t *outWdims, const size_t *inWdims, const size_t *filterWdims,
     const size_t *biasWdims, size_t filterSize, size_t stride, size_t pad,
     int32_t outOffset, int32_t inOffset, int32_t filterOffset,
     int32_t biasOffset, int32_t biasPre, int32_t biasPost, int32_t biasScale,
-    int32_t outPre, int32_t outPost, int32_t outScale) {
+    int32_t outPre, int32_t outPost, int32_t outScale, size_t depthUnroll) {
   size_t inChannels = inWdims[3];
 
   // For each input in the batch:
   for (size_t n = 0; n < inWdims[0]; n++) {
-
-    // For each layer in the output tensor:
-    for (size_t d = 0; d < outWdims[3]; d += 4) {
-
+    // For each layer in the output tensor. Process 'depthUnroll' output layers
+    // together.
+    for (size_t d = 0; d < outWdims[3]; d += depthUnroll) {
       // For each convolution 'jump' in the input tensor:
       ssize_t x = -(ssize_t)pad;
       for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
         ssize_t y = -(ssize_t)pad;
         for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+          int32_t sum[depthUnroll];
+
+          for (int i = 0; i < depthUnroll; i++) {
+            // Scale the bias to match the scale of the matrix multiplication.
+            sum[i] = libjit_scale_i32i8((int32_t)biasW[d + i] - biasOffset,
+                                        biasPre, biasPost, biasScale, 0);
+          }
 
           // For each element in the convolution-filter:
-          int32_t sum0 = 0;
-          int32_t sum1 = 0;
-          int32_t sum2 = 0;
-          int32_t sum3 = 0;
           for (size_t fx = 0; fx < filterSize; fx++) {
             for (size_t fy = 0; fy < filterSize; fy++) {
               ssize_t ox = x + fx;
@@ -693,49 +607,37 @@ void libjit_convolution_unroll_k4_i8(
               size_t sliceSize =
                   filterWdims[1] * filterWdims[2] * filterWdims[3];
 
+              // Perform the innermost loop of the convolution using 4 vector
+              // registers.
               for (size_t fd = 0; fd < inChannels; fd++) {
                 int32_t in = inW[inIdx + fd] - inOffset;
-                sum0 +=
-                    (filterW[filterIdx + (sliceSize * 0) + fd] - filterOffset) *
-                    in;
-                sum1 +=
-                    (filterW[filterIdx + (sliceSize * 1) + fd] - filterOffset) *
-                    in;
-                sum2 +=
-                    (filterW[filterIdx + (sliceSize * 2) + fd] - filterOffset) *
-                    in;
-                sum3 +=
-                    (filterW[filterIdx + (sliceSize * 3) + fd] - filterOffset) *
-                    in;
+                for (int i = 0; i < MIN(4, depthUnroll); i++) {
+                  sum[i] += (filterW[filterIdx + (sliceSize * i) + fd] -
+                             filterOffset) *
+                            in;
+                }
               }
+
+              // And perform the innermost loop again with 4 more registers.
+              if (depthUnroll > 4)
+                for (size_t fd = 0; fd < inChannels; fd++) {
+                  int32_t in = inW[inIdx + fd] - inOffset;
+                  for (int i = 4; i < MIN(8, depthUnroll); i++) {
+                    sum[i] += (filterW[filterIdx + (sliceSize * i) + fd] -
+                               filterOffset) *
+                              in;
+                  }
+                }
             }
           }
 
-          // Add the scaled bias to the sum.
-          sum0 += libjit_scale_i32i8((int32_t)biasW[d + 0] - biasOffset,
-                                     biasPre, biasPost, biasScale, 0);
-          sum1 += libjit_scale_i32i8((int32_t)biasW[d + 1] - biasOffset,
-                                     biasPre, biasPost, biasScale, 0);
-          sum2 += libjit_scale_i32i8((int32_t)biasW[d + 2] - biasOffset,
-                                     biasPre, biasPost, biasScale, 0);
-          sum3 += libjit_scale_i32i8((int32_t)biasW[d + 3] - biasOffset,
-                                     biasPre, biasPost, biasScale, 0);
-
-          // Scale the sum to the requested destination scale.
-          int32_t scl0 =
-              libjit_scale_i32i8(sum0, outPre, outPost, outScale, outOffset);
-          int32_t scl1 =
-              libjit_scale_i32i8(sum1, outPre, outPost, outScale, outOffset);
-          int32_t scl2 =
-              libjit_scale_i32i8(sum2, outPre, outPost, outScale, outOffset);
-          int32_t scl3 =
-              libjit_scale_i32i8(sum3, outPre, outPost, outScale, outOffset);
-
-          // Clip and set the destination.
-          outW[libjit_getXYZW(outWdims, n, ax, ay, d + 0)] = libjit_clip(scl0);
-          outW[libjit_getXYZW(outWdims, n, ax, ay, d + 1)] = libjit_clip(scl1);
-          outW[libjit_getXYZW(outWdims, n, ax, ay, d + 2)] = libjit_clip(scl2);
-          outW[libjit_getXYZW(outWdims, n, ax, ay, d + 3)] = libjit_clip(scl3);
+          for (int i = 0; i < depthUnroll; i++) {
+            // Scale the result back to the expected destination scale.
+            int32_t scaledSum = libjit_scale_i32i8(sum[i], outPre, outPost,
+                                                   outScale, outOffset);
+            outW[libjit_getXYZW(outWdims, n, ax, ay, d + i)] =
+                libjit_clip(scaledSum);
+          }
         } // W
       }   // H
     }     // C
