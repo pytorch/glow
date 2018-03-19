@@ -137,7 +137,7 @@ void ExecutionEngine::generateIR(CompilationMode mode, Function *F) {
   IR_->setGraph(F);
 
   // Generate IR from the graph.
-  IR_->generateIR(mode);
+  IR_->generateIR();
 
   // Optimize the generated IR.
   ::glow::optimize(*IR_, mode);

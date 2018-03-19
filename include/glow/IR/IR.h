@@ -4,7 +4,6 @@
 #include "glow/Base/Traits.h"
 #include "glow/Base/Type.h"
 #include "glow/IR/UseDef.h"
-#include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
@@ -89,6 +88,7 @@ public:
 class Instruction : public Value {
 public:
   using Operand = InstructionOperand;
+
 private:
   /// Parent function.
   IRFunction *F_;
@@ -230,7 +230,7 @@ public:
 
   /// Generate IR from the graph nodes. If the compilation mode is 'training'
   /// then this procedure will also generate the code for the backward pass.
-  void generateIR(CompilationMode mode);
+  void generateIR();
 
   /// Wipe out the content of the function. This allows the function to be used
   /// again for another round of code generation.
