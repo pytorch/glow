@@ -18,5 +18,4 @@ target_link_libraries(Backends
                         Interpreter
                         ${linked_backends}
                         Base
-                        Graph
-                        CodeGen)
+                        Graph)
