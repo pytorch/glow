@@ -6,6 +6,7 @@ import collections
 import numpy as np
 import os
 import skimage.io
+import time
 
 print("Required modules imported.")
 
@@ -30,6 +31,8 @@ cmd_line_parser.add_argument('--model-name', '-m',
 cmd_line_parser.add_argument('--image_mode',
                              required=False,
                              help="Image mode; one of '0to1', '0to256', or '128to127'")
+cmd_line_parser.add_argument('--time', action='store_true')
+cmd_line_parser.add_argument('--iterations', type=int, default=1)
 
 args = cmd_line_parser.parse_args()
 
@@ -152,7 +155,14 @@ print("The blobs in the workspace after FeedBlob: {}".format(workspace.Blobs()))
 # Create a predictor using the loaded model.
 p = workspace.Predictor(init_net, predict_net)
 
-results = p.run([final_image])
+start = time.time()
+for i in range(0, args.iterations):
+    results = p.run([final_image])
+end = time.time()
+if args.time:
+    print('Wall time per iteration (s): {:0.4f}'.format(
+            (end - start) / args.iterations))
+
 max_idx = np.argmax(results[0][0])
 sum_probability = sum(results[0][0])
 
