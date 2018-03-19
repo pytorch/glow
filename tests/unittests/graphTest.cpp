@@ -32,7 +32,7 @@ TEST(Graph, simpleTestConv) {
   F->dumpDAG();
   lower(F, CompilationMode::Train);
   ::optimize(F, CompilationMode::Train);
-  M.generateIR(CompilationMode::Train);
+  M.generateIR();
   M.dump();
   EXPECT_GT(M.getInstrs().size(), 0);
 }
@@ -56,7 +56,7 @@ TEST(Graph, simpleTestFC) {
   F->dumpDAG();
   lower(F, CompilationMode::Train);
   ::optimize(F, CompilationMode::Train);
-  M.generateIR(CompilationMode::Train);
+  M.generateIR();
   M.dump();
   EXPECT_GT(M.getInstrs().size(), 0);
 }
@@ -87,7 +87,7 @@ TEST(Graph, QuantizationProfileNodes) {
   ::glow::profileQuantization(F);
   lower(F, CompilationMode::Infer);
   ::optimize(F, CompilationMode::Infer);
-  M.generateIR(CompilationMode::Infer);
+  M.generateIR();
 
   size_t numberOfProfileNodes =
       std::count_if(F->getNodes().begin(), F->getNodes().end(), [](Node *node) {

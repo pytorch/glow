@@ -352,7 +352,7 @@ public:
 
 } // namespace
 
-void IRFunction::generateIR(CompilationMode mode) {
+void IRFunction::generateIR() {
   G_->verify();
   // Schedule the nodes.
   NodesList ScheduledNodes;
