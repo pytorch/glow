@@ -5,7 +5,6 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/Utils.h"
-#include "glow/IR/IR.h"
 #include "glow/Support/Support.h"
 
 #include "llvm/ADT/SmallVector.h"
