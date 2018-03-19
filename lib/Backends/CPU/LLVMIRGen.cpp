@@ -1093,6 +1093,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *srcTy = src->getType();
       auto *destOffset = emitConstI32(builder, destTy->getOffset());
       auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
+      // Reduce resulting scale by a factor of PA->getKernel() * PA->getKernel()
+      // since each subtensor value is divided by the area of kernel.
       auto outScaleParam = quantization::quantizeScaleOffset32To8(
           srcTy->getScale() / destTy->getScale() /
               (PA->getKernel() * PA->getKernel()),
