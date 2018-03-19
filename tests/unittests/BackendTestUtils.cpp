@@ -10,19 +10,43 @@ namespace glow {
 
 using llvm::cast;
 
-void inferBatchedAddNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
+void inferBatchedAddNet(Tensor *batch, Tensor *slice, Tensor *out,
                         BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = mod.createVariable(inputs1->getElementType(), inputs1->dims(),
-                                  "input1", Variable::VisibilityKind::Public);
-  auto *var2 = mod.createVariable(inputs2->getElementType(), inputs2->dims(),
-                                  "input2", Variable::VisibilityKind::Public);
-  auto *batchedadd = F->createBatchedAdd("batchedadd", var1, var2);
-  auto result = F->createSave("ret", batchedadd);
+  Variable *batchVar;
+  Variable *sliceVar;
+  Variable *outVar;
+  TypeRef OT;
+  if (batch->getType().isQuantizedType()) {
+    auto &batchType = batch->getType();
+    auto &sliceType = slice->getType();
+    auto &outType = out->getType();
+    batchVar = mod.createVariable(batch->getElementType(), batch->dims(),
+                                  batchType.getScale(), batchType.getOffset(),
+                                  "batch", Variable::VisibilityKind::Public);
+    sliceVar = mod.createVariable(slice->getElementType(), slice->dims(),
+                                  sliceType.getScale(), sliceType.getOffset(),
+                                  "slice", Variable::VisibilityKind::Public);
+    outVar = mod.createVariable(out->getElementType(), out->dims(),
+                                outType.getScale(), outType.getOffset(), "out",
+                                Variable::VisibilityKind::Public);
+    OT = F->getParent()->uniqueType(out->getElementType(), out->dims(),
+                                    outType.getScale(), outType.getOffset());
+  } else {
+    batchVar = mod.createVariable(batch->getElementType(), batch->dims(),
+                                  "batch", Variable::VisibilityKind::Public);
+    sliceVar = mod.createVariable(slice->getElementType(), slice->dims(),
+                                  "slice", Variable::VisibilityKind::Public);
+    outVar = mod.createVariable(out->getElementType(), out->dims(), "out",
+                                Variable::VisibilityKind::Public);
+    OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
+  }
+  auto *batchedadd = F->createBatchedAdd("batchedadd", OT, batchVar, sliceVar);
+  auto result = F->createSave("ret", batchedadd, outVar);
   EE.compile(CompilationMode::Infer, F);
-  EE.run({var1, var2}, {inputs1, inputs2});
+  EE.run({batchVar, sliceVar}, {batch, slice});
   out->copyFrom(&result->getVariable()->getPayload());
 }
 

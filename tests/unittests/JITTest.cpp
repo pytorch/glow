@@ -18,17 +18,35 @@ using namespace glow;
 using llvm::cast;
 
 TEST(JITCorrectnessTest, batchedAddTest) {
-  Tensor inputs1(ElemKind::FloatTy, {8, 3, 3, 6});
-  Tensor inputs2(ElemKind::FloatTy, {3, 3, 6});
-  inputs1.getHandle().initXavier(1);
-  inputs2.getHandle().initXavier(1);
-  Tensor out1;
-  Tensor out2;
+  Tensor batch(ElemKind::FloatTy, {8, 3, 3, 6});
+  Tensor slice(ElemKind::FloatTy, {3, 3, 6});
+  batch.getHandle().initXavier(1);
+  slice.getHandle().initXavier(1);
+  Tensor out1(ElemKind::FloatTy, {8, 3, 3, 6});
+  Tensor out2(ElemKind::FloatTy, {8, 3, 3, 6});
 
-  inferBatchedAddNet(&inputs1, &inputs2, &out1, BackendKind::JIT);
-  inferBatchedAddNet(&inputs1, &inputs2, &out2, BackendKind::Interpreter);
+  inferBatchedAddNet(&batch, &slice, &out1, BackendKind::JIT);
+  inferBatchedAddNet(&batch, &slice, &out2, BackendKind::Interpreter);
   auto H1 = out1.getHandle();
   auto H2 = out2.getHandle();
+
+  EXPECT_TRUE(H1.isEqual(H2));
+}
+
+TEST(JITCorrectnessTest, quantizedBatchedAddTest) {
+  std::array<size_t, 4> S{{10, 1, 1, 2}};
+  llvm::ArrayRef<size_t> shape(S);
+  Tensor batch(ElemKind::Int8QTy, shape, 0.875, -1);
+  Tensor slice(ElemKind::Int8QTy, {1, 1, 2}, 1.4, 5);
+  batch.getHandle<int8_t>().randomize(-129, 128);
+  slice.getHandle<int8_t>().randomize(-129, 128);
+  Tensor out1(ElemKind::Int8QTy, shape, 0.375, -10);
+  Tensor out2(ElemKind::Int8QTy, shape, 0.375, -10);
+
+  inferBatchedAddNet(&batch, &slice, &out1, BackendKind::JIT);
+  inferBatchedAddNet(&batch, &slice, &out2, BackendKind::Interpreter);
+  auto H1 = out1.getHandle<int8_t>();
+  auto H2 = out2.getHandle<int8_t>();
 
   EXPECT_TRUE(H1.isEqual(H2));
 }
