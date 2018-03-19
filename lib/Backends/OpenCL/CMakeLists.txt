@@ -5,9 +5,9 @@ target_link_libraries(OpenCL
                       PRIVATE
                       Base
                       Graph
-                      CodeGen)
+                      CodeGen
+                      IR)
 
 target_link_libraries(OpenCL
                       PRIVATE
                       OpenCL::OpenCL)
-
