@@ -7,5 +7,5 @@ target_link_libraries(ExecutionEngine
                         Backends
                         Optimizer
                         Base
-                        Graph)
-
+                        Graph
+                        IR)
