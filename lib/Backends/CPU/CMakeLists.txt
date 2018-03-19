@@ -47,7 +47,10 @@ llvm_map_components_to_libnames(LLVM_TARGET_LIBRARIES ${LLVM_TARGETS_TO_BUILD})
 target_link_libraries(CPUBackend
                       PRIVATE
                         Base
+                        CodeGen
                         Graph
+                        IR
+                        Quantization
                         LLVMAnalysis
                         LLVMCodeGen
                         LLVMCore
