@@ -2,6 +2,7 @@
 
 #include "glow/Quantization/Quantization.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Graph/Graph.h"
 #include "glow/Quantization/Serialization.h"
 
 #include "gtest/gtest.h"
