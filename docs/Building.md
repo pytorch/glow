@@ -101,3 +101,8 @@ Building documentation can be enabled by passing an additional cmake parameter:
 
 Output will be placed in the `docs/html` subdirectory of the build output
 directory.
+
+## Generate dependency graph for cmake targets
+
+Run cmake normally and then execute `dependency_graph` target. The `dependency_graph`
+file contains dependencies for all project targets.
