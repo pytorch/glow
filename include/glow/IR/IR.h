@@ -90,14 +90,11 @@ class Instruction : public Value {
 public:
   using Operand = InstructionOperand;
 private:
-  /// We use this index to access the predicate field with the set/get operand
-  /// methods.
-  static const unsigned predicateIndex = 0xffff;
-
   /// Parent function.
   IRFunction *F_;
-  /// A nullable reference to some value that may predicate this instruction.
-  Value *predicate_{nullptr};
+  /// If a predicate is set this index points to the non-zero index of the
+  /// predicate in the instruction list.
+  unsigned predicateIndex_{0};
 
   /// A list of operands that the instruction has. This is typically a very
   /// short list.

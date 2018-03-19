@@ -1021,6 +1021,7 @@ TEST_P(Operator, simplePredication) {
 
   EE.compile(CompilationMode::Infer, F);
   EE.run({}, {});
+  EE.getIR().dump();
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,

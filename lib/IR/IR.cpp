@@ -67,11 +67,22 @@ ConstInstructionOperand Use::getOperand() const {
   return use_->getOperand(idx_);
 }
 
-Value *Instruction::getPredicate() const { return predicate_; }
+Value *Instruction::getPredicate() const {
+  assert(hasPredicate() && "No predicate is set");
+  return getOperand(predicateIndex_).first;
+}
 
-void Instruction::setPredicate(Value *p) { setOperand(predicateIndex, p); }
+void Instruction::setPredicate(Value *p) {
+  // Push a new predicate.
+  if (!hasPredicate()) {
+    predicateIndex_ = getNumOperands();
+    pushOperand({p, OperandKind::In});
+  }
 
-bool Instruction::hasPredicate() const { return predicate_; }
+  setOperand(predicateIndex_, p);
+}
+
+bool Instruction::hasPredicate() const { return predicateIndex_ > 0; }
 
 void Instruction::pushOperand(Operand op) {
   ops_.emplace_back(nullptr, op.second);
@@ -79,33 +90,23 @@ void Instruction::pushOperand(Operand op) {
 }
 
 void Instruction::setOperand(unsigned idx, Value *v) {
-  bool updatePred = idx == predicateIndex;
-  // Select which operand to update. The predicate or one of the operands in the
-  // instruction operand list.
-  auto **currVal = (updatePred ? &predicate_ : &ops_[idx].first);
+  auto *currVal = ops_[idx].first;
 
-  // Check if we need to update anything.
-  if (*currVal == v) {
+  if (currVal == v) {
     return;
   }
 
-  // Remove the old user.
-  if (*currVal) {
-    (*currVal)->removeUse(Use(idx, this));
+  if (currVal) {
+    currVal->removeUse(Use(idx, this));
   }
 
-  // Register the new user.
   if (v) {
-    *currVal = v;
+    ops_[idx].first = v;
     v->addUse(Use(idx, this));
   }
 }
 
 Instruction::Operand Instruction::getOperand(unsigned idx) const {
-  if (idx == predicateIndex) {
-    return {predicate_, OperandKind::In};
-  }
-
   assert(ops_.size() > idx && "Invalid operand");
   return ops_[idx];
 }

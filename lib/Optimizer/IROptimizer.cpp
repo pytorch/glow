@@ -1030,13 +1030,6 @@ static void eliminateDeadStores(IRFunction &M) {
         state.lastSeenRead_ = I;
       }
     }
-
-    if (I->hasPredicate()) {
-      auto pred = I->getPredicate();
-      auto opOrigin = getOrigin(pred);
-      auto &state = memoryState[opOrigin];
-      state.lastSeenRead_ = I;
-    }
   }
 
   eraseInstructions(M, erasedInstructions);
