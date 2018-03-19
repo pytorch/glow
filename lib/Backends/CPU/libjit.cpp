@@ -243,21 +243,23 @@ void get_src_dim(size_t *src_i, const size_t *dest_i, const size_t *src_dims,
   }
 }
 
-/// Scales a 32-bit integer using the integer shift-mult-shift method.
-/// See QuantizationTransform32To8 for more details.
-int32_t libjit_scale_i32i8(int32_t input, int32_t pre, int32_t post,
-                           int32_t scale, int32_t offset) {
-  // The operation x >> y is rounded down to negative infinity. To get to
-  // round-nearest we add (1 << (shift - 1)) to the value prior to shifting.
-  int rtn = (post > 0) ? (1 << (post - 1)) : 0;
+/// Multiplies a single-precision float and a 32-bit integer using the integer
+/// shift-multiply-shift method. See MultTransformF32ToI32 for more details.
+int32_t libjit_mult_f32i32(int32_t input, int32_t pre, int32_t post,
+                           int32_t m) {
+  // The operation x >> y is rounded down (toward negative infinity). We would
+  // prefer a symmetric rounding strategy. To this extent we perform some extra
+  // manipulation...
+  int32_t a = (int32_t)((uint32_t)input >> 31);
 
-  // NOTICE: If your tests are failing because of signed integer overflow then
-  // this is a bug in the test and not in the program. You should make sure that
-  // the inputs to the operations do not overflow. The semantics of the
-  // quantization process is such that the result for values that fall out of
-  // range is undefined. The conversion procedure will only tolerate a few bits
-  // of overflow and the result will be clipped.
-  return ((((input >> pre) * scale) + rtn) >> post) + offset;
+  // TODO(hegemanjwh2): This branch is not good. It needs to go away. This
+  // entire method should be branchless.
+  if (pre > 0) {
+    input += (a << (pre - 1));
+  }
+
+  // ((input >> pre) * m) >> post
+  return ((input >> pre) * m + (a << (post - 1))) >> post;
 }
 
 template <typename T>
@@ -470,8 +472,8 @@ void libjit_matmul_i8(int8_t *outW, const int8_t *lhsW, const int8_t *rhsW,
         int32_t rhs = rhsW[libjit_getXY(rhsWdims, i, y)] - rhsOffset;
         sum += lhs * rhs;
       }
-      int32_t s = libjit_scale_i32i8(sum, outPre, outPost, outScale, outOffset);
-      outW[libjit_getXY(outWdims, x, y)] = libjit_clip(s);
+      int32_t s = libjit_mult_f32i32(sum, outPre, outPost, outScale);
+      outW[libjit_getXY(outWdims, x, y)] = libjit_clip(s + outOffset);
     }
   }
 }
@@ -603,8 +605,8 @@ void libjit_convolution_i8(
 
           for (int i = 0; i < depthUnroll; i++) {
             // Scale the bias to match the scale of the matrix multiplication.
-            sum[i] = libjit_scale_i32i8((int32_t)biasW[d + i] - biasOffset,
-                                        biasPre, biasPost, biasScale, 0);
+            sum[i] = libjit_mult_f32i32((int32_t)biasW[d + i] - biasOffset,
+                                        biasPre, biasPost, biasScale);
           }
 
           // For each element in the convolution-filter:
@@ -652,10 +654,10 @@ void libjit_convolution_i8(
 
           for (int i = 0; i < depthUnroll; i++) {
             // Scale the result back to the expected destination scale.
-            int32_t scaledSum = libjit_scale_i32i8(sum[i], outPre, outPost,
-                                                   outScale, outOffset);
+            int32_t scaledSum =
+                libjit_mult_f32i32(sum[i], outPre, outPost, outScale);
             outW[libjit_getXYZW(outWdims, n, ax, ay, d + i)] =
-                libjit_clip(scaledSum);
+                libjit_clip(scaledSum + outOffset);
           }
         } // W
       }   // H
@@ -923,8 +925,9 @@ void libjit_pool_avg_i8(const int8_t *inW, int8_t *outW, const size_t *inWdims,
             }
           }
 
-          outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = libjit_clip(
-              libjit_scale_i32i8(sum, outPre, outPost, outScale, outOffset));
+          int32_t s = libjit_mult_f32i32(sum, outPre, outPost, outScale);
+          s += outOffset;
+          outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = libjit_clip(s);
         }
       }
     }
@@ -1024,9 +1027,8 @@ void libjit_rescale_i8(int8_t *outW, const int8_t *inW, size_t numElem,
                        int32_t outOffset, int32_t inOffset, int32_t pre,
                        int32_t post, int32_t scale) {
   for (size_t i = 0; i < numElem; i++) {
-    int32_t s =
-        libjit_scale_i32i8(inW[i] - inOffset, pre, post, scale, outOffset);
-    outW[i] = libjit_clip(s);
+    int32_t s = libjit_mult_f32i32(inW[i] - inOffset, pre, post, scale);
+    outW[i] = libjit_clip(s + outOffset);
   }
 }
 

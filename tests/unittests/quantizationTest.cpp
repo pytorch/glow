@@ -75,11 +75,19 @@ TEST(Quantization, quantScaleOffset) {
     // Try all legal integers within the range:
     for (int8_t input = -128; input < 127; input++) {
       int32_t sum32num = round(input / scale);
+      int bits = 0;
+      int32_t test = (sum32num >= 0 ? sum32num : -sum32num);
+      while (test > 0) {
+        test >>= 1;
+        bits++;
+      }
+      if (bits < 8) {
+        bits = 8;
+      }
+      auto MT = quantization::computeMultTransformParams(scale, bits);
+      int32_t result = MT.transform(sum32num);
 
-      auto TR = quantization::quantizeScaleOffset32To8(scale, 0);
-      int32_t computed = TR.transform(sum32num);
-
-      EXPECT_NEAR(input, computed, 1);
+      EXPECT_NEAR(input, result, 1);
     }
   }
 }

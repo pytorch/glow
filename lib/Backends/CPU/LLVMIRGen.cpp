@@ -789,12 +789,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *lhsOffset = emitConstI32(builder, lhsTy->getOffset());
       auto *rhsOffset = emitConstI32(builder, rhsTy->getOffset());
 
-      auto outScaleParams = quantization::quantizeScaleOffset32To8(
-          lhsTy->getScale() * rhsTy->getScale() / destTy->getScale(), 0);
+      auto outScaleParams = quantization::computeMultTransformParams(
+          lhsTy->getScale() * rhsTy->getScale() / destTy->getScale(), 20);
 
       auto *outPre = emitConstI32(builder, outScaleParams.pre_);
       auto *outPost = emitConstI32(builder, outScaleParams.post_);
-      auto *outScale = emitConstI32(builder, outScaleParams.scale_);
+      auto *outScale = emitConstI32(builder, outScaleParams.m_);
 
       builder.CreateCall(F, {destPtr, lhsPtr, rhsPtr, destDims, lhsDims,
                              rhsDims, destOffset, lhsOffset, rhsOffset, outPre,
@@ -914,19 +914,19 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       float matMulScale = srcTy->getScale() * filterTy->getScale();
 
       // Calculate the sacling parameters for the bias and output.
-      auto biasScaleParam = quantization::quantizeScaleOffset32To8(
-          biasTy->getScale() / matMulScale, biasTy->getOffset());
-      auto outScaleParam = quantization::quantizeScaleOffset32To8(
-          matMulScale / destTy->getScale(), 0);
+      auto biasScaleParam = quantization::computeMultTransformParams(
+          biasTy->getScale() / matMulScale, 9);
+      auto outScaleParam = quantization::computeMultTransformParams(
+          matMulScale / destTy->getScale(), 20);
 
       // Pass the pre-shift, post-shift and integer scale parameters for the
       // bias and output calculation.
       auto *biasPre = emitConstI32(builder, biasScaleParam.pre_);
       auto *biasPost = emitConstI32(builder, biasScaleParam.post_);
-      auto *biasScale = emitConstI32(builder, biasScaleParam.scale_);
+      auto *biasScale = emitConstI32(builder, biasScaleParam.m_);
       auto *outPre = emitConstI32(builder, outScaleParam.pre_);
       auto *outPost = emitConstI32(builder, outScaleParam.post_);
-      auto *outScale = emitConstI32(builder, outScaleParam.scale_);
+      auto *outScale = emitConstI32(builder, outScaleParam.m_);
 
       builder.CreateCall(F, {destPtr,   srcPtr,       filterPtr,  biasPtr,
                              destDims,  srcDims,      filterDims, biasDims,
@@ -1093,13 +1093,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *srcTy = src->getType();
       auto *destOffset = emitConstI32(builder, destTy->getOffset());
       auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
-      auto outScaleParam = quantization::quantizeScaleOffset32To8(
+      auto outScaleParam = quantization::computeMultTransformParams(
           srcTy->getScale() / destTy->getScale() /
               (PA->getKernel() * PA->getKernel()),
-          destTy->getOffset());
+          9);
       auto *outPre = emitConstI32(builder, outScaleParam.pre_);
       auto *outPost = emitConstI32(builder, outScaleParam.post_);
-      auto *outScale = emitConstI32(builder, outScaleParam.scale_);
+      auto *outScale = emitConstI32(builder, outScaleParam.m_);
 
       auto *F = getFunction("pool_avg", dest->getElementType());
       builder.CreateCall(F, {srcPtr, destPtr, srcDims, destDims, kernel, stride,
@@ -1177,14 +1177,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcType = src->getType();
     auto *numElem = emitConstSizeT(builder, destType->size());
 
-    auto rescaleParams = quantization::quantizeScaleOffset32To8(
-        srcType->getScale() / destType->getScale(), srcType->getOffset());
+    auto rescaleParams = quantization::computeMultTransformParams(
+        srcType->getScale() / destType->getScale(), 9);
 
     auto *destOffset = emitConstI32(builder, destType->getOffset());
     auto *srcOffset = emitConstI32(builder, srcType->getOffset());
     auto *preShift = emitConstI32(builder, rescaleParams.pre_);
     auto *postShift = emitConstI32(builder, rescaleParams.post_);
-    auto *scale = emitConstI32(builder, rescaleParams.scale_);
+    auto *scale = emitConstI32(builder, rescaleParams.m_);
 
     auto *F = getFunction("rescale", dest->getElementType());
     builder.CreateCall(F, {destPtr, srcPtr, numElem, destOffset, srcOffset,
