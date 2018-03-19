@@ -74,6 +74,6 @@ add_subdirectory(examples)
 add_subdirectory(tools)
 add_subdirectory(tests)
 
-add_custom_target(dependency_graph ALL
+add_custom_target(dependency_graph
                   "${CMAKE_COMMAND}" "--graphviz=dependency_graph" .
                   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
