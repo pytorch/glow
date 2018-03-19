@@ -1,7 +1,6 @@
 // Copyright 2017 Facebook Inc.  All Rights Reserved.
 
 #include "glow/CodeGen/MemoryAllocator.h"
-#include "glow/Support/Compiler.h"
 
 #include "llvm/Support/Casting.h"
 
