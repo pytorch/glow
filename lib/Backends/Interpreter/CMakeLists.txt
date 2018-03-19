@@ -6,4 +6,5 @@ target_link_libraries(Interpreter
                       PRIVATE
                         Base
                         Graph
+                        IR
                         Quantization)
