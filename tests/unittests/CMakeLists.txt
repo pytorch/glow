@@ -2,6 +2,7 @@ add_library(testMain
             testMain.cpp)
 target_link_libraries(testMain
                       PRIVATE
+                        LLVMSupport
                         gtest)
 
 add_executable(tensorsTest
@@ -9,7 +10,6 @@ add_executable(tensorsTest
 target_link_libraries(tensorsTest
                       PRIVATE
                         Base
-                        Support
                         gtest
                         testMain)
 add_test(tensorsTest ${GLOW_BINARY_DIR}/tests/tensorsTest)
@@ -18,8 +18,9 @@ add_executable(gradCheckTest
                gradCheckTest.cpp)
 target_link_libraries(gradCheckTest
                       PRIVATE
-                        Backends
+                        Base
                         ExecutionEngine
+                        Graph
                         IR
                         gtest
                         testMain)
@@ -29,7 +30,7 @@ add_executable(IROptTest
                IROptTest.cpp)
 target_link_libraries(IROptTest
                       PRIVATE
-                        Backends
+                        Graph
                         IR
                         Optimizer
                         gtest
@@ -40,7 +41,7 @@ add_executable(basicIRTest
                basicIRTest.cpp)
 target_link_libraries(basicIRTest
                       PRIVATE
-                        Backends
+                        Graph
                         IR
                         gtest
                         testMain)
@@ -50,7 +51,7 @@ add_executable(interpreterTest
                InterpreterTest.cpp)
 target_link_libraries(interpreterTest
                       PRIVATE
-                        Backends
+                        Graph
                         IR
                         ExecutionEngine
                         gtest
@@ -61,7 +62,7 @@ add_executable(operatorTest
                OperatorTest.cpp)
 target_link_libraries(operatorTest
                       PRIVATE
-                        Backends
+                        Graph
                         IR
                         ExecutionEngine
                         gtest
@@ -76,7 +77,6 @@ target_link_libraries(graphTest
                         ExecutionEngine
                         Graph
                         IR
-                        Backends
                         gtest
                         testMain)
 add_test(graphTest ${GLOW_BINARY_DIR}/tests/graphTest)
@@ -87,7 +87,6 @@ target_link_libraries(graphGradTest
                       PRIVATE
                         Graph
                         IR
-                        Backends
                         ExecutionEngine
                         gtest
                         testMain)
@@ -99,7 +98,6 @@ target_link_libraries(graphOptzTest
                       PRIVATE
                         Graph
                         IR
-                        Backends
                         Optimizer
                         gtest
                         testMain)
@@ -124,7 +122,7 @@ add_executable(OCLTest
                OCLTest.cpp)
 target_link_libraries(OCLTest
                       PRIVATE
-                        Backends
+                        Graph
                         IR
                         ExecutionEngine
                         gtest
@@ -138,9 +136,10 @@ add_executable(JITTest
                JITTest.cpp)
 target_link_libraries(JITTest
                       PRIVATE
-                        Backends
+                        Graph
                         IR
                         ExecutionEngine
+                        Support
                         gtest
                         testMain)
 add_test(JITTest ${GLOW_BINARY_DIR}/tests/JITTest)
@@ -150,8 +149,7 @@ add_executable(memoryAllocatorTest
                memoryAllocatorTest.cpp)
 target_link_libraries(memoryAllocatorTest
                       PRIVATE
-                        Backends
-                        IR
+                        CodeGen
                         gtest
                         testMain)
 add_test(memoryAllocatorTest ${GLOW_BINARY_DIR}/tests/memoryAllocatorTest)
