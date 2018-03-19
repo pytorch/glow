@@ -8,6 +8,7 @@
 #include "glow/Quantization/Serialization.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -171,6 +172,10 @@ llvm::cl::opt<bool>
                            "takes for the program to execute"),
             llvm::cl::Optional, llvm::cl::cat(loaderCat));
 
+llvm::cl::opt<unsigned> iterationsOpt(
+    "iterations", llvm::cl::desc("Number of iterations to perform"),
+    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(loaderCat));
+
 llvm::cl::opt<std::string> dumpProfileFileOpt(
     "dump_profile",
     llvm::cl::desc("Perform quantization profiling for a given graph "
@@ -297,11 +302,18 @@ int main(int argc, char **argv) {
   }
 
   llvm::Timer timer("Infer", "Infer");
-  if (timeOpt)
+  if (timeOpt) {
     timer.startTimer();
-  EE.run({i0, i1}, {&data, &data});
-  if (timeOpt)
+  }
+  for (unsigned i = 0; i < iterationsOpt; i++) {
+    EE.run({i0, i1}, {&data, &data});
+  }
+  if (timeOpt) {
     timer.stopTimer();
+    llvm::outs() << llvm::formatv("Wall time per iteration (s): {0:f4}\n",
+                                  timer.getTotalTime().getWallTime() /
+                                      iterationsOpt);
+  }
 
   if (!dumpProfileFileOpt.empty()) {
     std::vector<NodeQuantizationInfo> QI =
