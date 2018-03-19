@@ -810,16 +810,49 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     BatchedAddInst *BA = cast<BatchedAddInst>(I);
     auto *dest = BA->getDest();
     auto *batch = BA->getBatch();
+    auto *slice = BA->getSlice();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *batchPtr = emitValueAddress(builder, batch);
-    auto *slicePtr = emitValueAddress(builder, BA->getSlice());
+    auto *slicePtr = emitValueAddress(builder, slice);
 
     auto bdim = flattenCdr(batch->dims());
     auto *numSlice = emitConstSizeT(builder, bdim.first);
     auto *sliceSize = emitConstSizeT(builder, bdim.second);
 
     auto *F = getFunction("batchedadd", dest->getElementType());
-    builder.CreateCall(F, {destPtr, batchPtr, slicePtr, numSlice, sliceSize});
+
+    if (batch->getType()->isQuantizedType()) {
+      auto *destTy = dest->getType();
+      auto *batchTy = batch->getType();
+      auto *sliceTy = slice->getType();
+
+      auto *destOffset = emitConstI32(builder, destTy->getOffset());
+      auto *batchOffset = emitConstI32(builder, batchTy->getOffset());
+      auto *sliceOffset = emitConstI32(builder, sliceTy->getOffset());
+
+      float destScale = destTy->getScale();
+
+      // Here, we select parameters for scaling both summands to the
+      // destination scale.
+      auto batchScaleParams = quantization::quantizeScaleOffset32To8(
+          batchTy->getScale() / destScale, batchTy->getOffset());
+      auto sliceScaleParams = quantization::quantizeScaleOffset32To8(
+          sliceTy->getScale() / destScale, sliceTy->getOffset());
+
+      auto *batchPre = emitConstI32(builder, batchScaleParams.pre_);
+      auto *batchPost = emitConstI32(builder, batchScaleParams.post_);
+      auto *batchScale = emitConstI32(builder, batchScaleParams.scale_);
+      auto *slicePre = emitConstI32(builder, sliceScaleParams.pre_);
+      auto *slicePost = emitConstI32(builder, sliceScaleParams.post_);
+      auto *sliceScale = emitConstI32(builder, sliceScaleParams.scale_);
+
+      builder.CreateCall(F, {destPtr, batchPtr, slicePtr, numSlice, sliceSize,
+                             destOffset, batchOffset, sliceOffset, batchPre,
+                             batchPost, batchScale, slicePre, slicePost,
+                             sliceScale});
+    } else {
+      builder.CreateCall(F, {destPtr, batchPtr, slicePtr, numSlice, sliceSize});
+    }
     break;
   }
 
