@@ -3,10 +3,8 @@ add_executable(loader
                  loader.cpp)
 target_link_libraries(loader
                       PRIVATE
-                        Backends
+                        Base
                         Importer
                         ExecutionEngine
                         IR
-                        Support
                         Quantization)
-
