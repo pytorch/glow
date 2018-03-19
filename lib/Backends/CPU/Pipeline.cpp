@@ -100,6 +100,9 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM) {
     if (dontInline) {
       FF.addFnAttr(llvm::Attribute::AttrKind::NoInline);
     }
+    // Add no-frame-pointer-elim=true attribute. It helps with profiling and
+    // debugging the produced code.
+    FF.addFnAttr("no-frame-pointer-elim", "true");
   }
 
   // The "main" function is parameterized by the base addresses of memory areas
