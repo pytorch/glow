@@ -299,6 +299,7 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     case Kinded::Kind::TransposeNodeKind:
     case Kinded::Kind::PoolAvgNodeKind:
     case Kinded::Kind::PoolMaxNodeKind:
+    case Kinded::Kind::AddNodeKind:
       return true;
     default:
       return false;
