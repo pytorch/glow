@@ -599,7 +599,7 @@ void Interpreter::fwdCrossEntropyLossGradInst(
 }
 
 //===----------------------------------------------------------------------===//
-//                       Tensor shape (transpose/reshape/concat/...)
+//                       Tensor shape (transpose/concat/...)
 //===----------------------------------------------------------------------===//
 void Interpreter::fwdTransposeInst(const TransposeInst *I) {
   auto inT = getTensor(I->getSrc());
@@ -622,11 +622,6 @@ void Interpreter::fwdBroadcastInst(const BroadcastInst *I) {
   auto axis = I->getAxis();
 
   inT->broadcastToNewShape(outT, shape, axis);
-}
-
-void Interpreter::fwdReshapeInst(const ReshapeInst *I) {
-  llvm_unreachable(
-      "reshape is optimized away as a sequence of tensor_view and copy");
 }
 
 void Interpreter::fwdTensorViewInst(const TensorViewInst *I) {

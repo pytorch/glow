@@ -86,6 +86,18 @@ public:
       // Include all automatically generated cases:
 #include "AutoGenIRGen.h"
 
+    case glow::Kinded::Kind::ReshapeNodeKind: {
+      auto *RN = cast<ReshapeNode>(N);
+
+      auto *TVI = builder_.createTensorViewInst("tensorview.reshape",
+                                                valueForNode(RN->getInput()),
+                                                RN->getResult()->getType());
+      auto *dest = builder_.createAllocActivationInst(
+          "copy.reshape.res", RN->getResult()->getType());
+      builder_.createCopyInst("copy.reshape", dest, TVI);
+      registerIR(N, dest);
+      break;
+    }
     case glow::Kinded::Kind::ConvolutionGradNodeKind: {
       auto *CG = cast<ConvolutionGradNode>(N);
 
