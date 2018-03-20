@@ -36,6 +36,10 @@ static llvm::cl::opt<bool>
                llvm::cl::desc("Dump the textual assembly of the jitted code"),
                llvm::cl::init(false), llvm::cl::cat(CPUBackendCat));
 
+static llvm::cl::opt<bool>
+    emitDebugInfo("g", llvm::cl::desc("Emit debug information for debuggers"),
+                  llvm::cl::init(false), llvm::cl::cat(CPUBackendCat));
+
 /// Generate the LLVM MAttr list of attributes.
 static llvm::SmallVector<std::string, 0> getMachineAttributes() {
   llvm::SmallVector<std::string, 0> result;
@@ -165,6 +169,155 @@ void LLVMIRGen::initCodeGen() {
   builder_ = llvm::make_unique<llvm::IRBuilder<>>(entry_bb);
 }
 
+llvm::DIType *LLVMIRGen::getDebugType(llvm::IRBuilder<> &builder,
+                                      llvm::Type *ty) {
+  // Check if the debug info for the type is in the cache and use it, if it is
+  // available.
+  if (DbgInfo_.DITypes_.count(ty))
+    return DbgInfo_.DITypes_[ty];
+  llvm::DIType *DITy{nullptr};
+  if (ty == builder.getVoidTy()) {
+    DITy = nullptr;
+  } else if (ty == builder.getFloatTy()) {
+    DITy = DIBuilder_->createBasicType("float", sizeof(float) * 8,
+                                       llvm::dwarf::DW_ATE_float);
+  } else if (ty == builder.getIntNTy(sizeof(size_t) * 8)) {
+    DITy = DIBuilder_->createBasicType("size_t", sizeof(size_t) * 8,
+                                       llvm::dwarf::DW_ATE_unsigned);
+  } else if (auto *intTy = dyn_cast<llvm::IntegerType>(ty)) {
+    std::string tyName = "int" + std::to_string(intTy->getBitWidth());
+    DITy = DIBuilder_->createBasicType(tyName, intTy->getBitWidth(),
+                                       llvm::dwarf::DW_ATE_unsigned);
+  } else if (ty->isPointerTy()) {
+    std::string tyName = "ptr" + std::to_string(DbgInfo_.DITypes_.size());
+    DITy = DIBuilder_->createPointerType(
+        getDebugType(builder, ty->getPointerElementType()), sizeof(void *) * 8);
+  } else {
+    llvm_unreachable("Cannot create DWARF debug type for an LLVM type");
+  }
+  DbgInfo_.DITypes_[ty] = DITy;
+  return DITy;
+}
+
+void LLVMIRGen::generateDebugInfo() {
+  if (!emitDebugInfo)
+    return;
+  // Add the current debug info version into the module.
+  llmodule_->addModuleFlag(llvm::Module::Warning, "Debug Info Version",
+                           llvm::DEBUG_METADATA_VERSION);
+  llmodule_->addModuleFlag(llvm::Module::Warning, "Dwarf Version", 4);
+
+  // Construct the DIBuilder.
+  DIBuilder_ = llvm::make_unique<llvm::DIBuilder>(getModule());
+
+  // Create the debug information for the current file. It does not create a
+  // real file. It is just a file name and path used for the debug locations.
+  //
+  // Currently down as "network.glow" as a filename since there is no actual
+  // textual representation of the compiled network.
+  // TODO: Generate a textual file with Glow IR and use actual source locations.
+  llvm::DIFile *file = DIBuilder_->createFile("network.glow", ".");
+
+  // Create the compile unit for the module.
+  DbgInfo_.compilationUnit_ = DIBuilder_->createCompileUnit(
+      llvm::dwarf::DW_LANG_C, file, "Glow Compiler", 0, "", 0, "",
+      llvm::DICompileUnit::DebugEmissionKind::FullDebug);
+
+  // Create the debug information for the current file.
+  llvm::DIScope *fileScope = file;
+  unsigned lineNo = 0;
+
+  // Iterate over all functions in the module and generate a debug information
+  // for them.
+  for (auto &F : getModule()) {
+    if (F.isDeclaration())
+      continue;
+
+    // Create a function type. The result type should be stored in the first
+    // element.
+    llvm::SmallVector<llvm::Metadata *, 8> paramTys;
+
+    // Add the result type.
+    llvm::DIType *returnTy = getDebugType(*builder_, F.getReturnType());
+    paramTys.push_back(returnTy);
+
+    // Add the argument types.
+    for (unsigned i = 0, e = F.arg_size(); i != e; ++i) {
+      paramTys.push_back(
+          getDebugType(*builder_, F.getFunctionType()->getParamType(i)));
+    }
+    // Create a function type.
+    auto *DIFunctionTy = DIBuilder_->createSubroutineType(
+        DIBuilder_->getOrCreateTypeArray(paramTys));
+    // Create a debug information for the current function.
+    llvm::DISubprogram *DIFunction = DIBuilder_->createFunction(
+        fileScope, F.getName(), "", file, lineNo, DIFunctionTy,
+        false /* internal linkage */, true /* definition */, lineNo,
+        llvm::DINode::FlagPrototyped, true /* isOptimized */);
+    lineNo++;
+    F.setSubprogram(DIFunction);
+    auto *currentScope = DIFunction;
+    // First instruction in the entry block.
+    auto *firstInstr = &F.getEntryBlock().front();
+    llvm::IRBuilder<> builder(firstInstr);
+    llvm::DebugLoc DL;
+    builder.SetCurrentDebugLocation(DL);
+    // Create debug information for the arguments, so that a debugger can expect
+    // their values.
+    for (unsigned i = 0, e = F.arg_size(); i != e; ++i) {
+      // Create an alloca for storing a shadow of the function argument. The
+      // parameter value will be copied there to make it easier for debugger to
+      // inspect it.
+      auto *paramAlloca =
+          builder.CreateAlloca(F.getFunctionType()->getParamType(i));
+      // Create a debug descriptor for the function argument.
+      // TODO: Try to produce semantically meaningful parameter names, e.g. by
+      // analyzing the debug information of the libjit.
+      std::string paramName = "arg" + std::to_string(i + 1);
+      auto param = DIBuilder_->createParameterVariable(
+          currentScope, paramName, i + 1, file, lineNo,
+          cast<llvm::DIType>(paramTys[i + 1]),
+          /* alwaysPreserve */ true);
+      // Store the initial value into the alloca, so that the debugger can show
+      // it.
+      auto *store = builder.CreateStore(F.arg_begin() + i, paramAlloca);
+      DIBuilder_->insertDeclare(
+          paramAlloca, param, DIBuilder_->createExpression(),
+          llvm::DebugLoc::get(lineNo, 0, currentScope), store);
+    }
+    DIBuilder_->finalizeSubprogram(F.getSubprogram());
+  }
+
+  // Now iterate over the module and add debug locations to all instructions
+  // inside the functions which have debug information. This is required for the
+  // proper emission of the debug information into object files. If debug
+  // locations are missing, LLVM would not emit such information like e.g. types
+  // of function parameters, etc.
+  for (auto &F : getModule()) {
+    if (F.isDeclaration())
+      continue;
+    for (auto &BB : F) {
+      // Bail if the function has no debug information.
+      llvm::DIScope *scope = F.getSubprogram();
+      if (!scope)
+        continue;
+      for (auto &I : BB) {
+        I.setDebugLoc(llvm::DebugLoc(llvm::DILocation::get(ctx_, 0, 0, scope)));
+      }
+    }
+  }
+
+  // Finalize the debug info.
+  DIBuilder_->finalize();
+
+  // Verify the module to see if there are any errors due to the debug
+  // information.
+  bool brokenDebugInfo = false;
+  // Pass brokenDebugInfo as a reference to the verifyModule.
+  llvm::verifyModule(getModule(), &llvm::errs(), &brokenDebugInfo);
+  assert(!brokenDebugInfo && "Debug information is broken");
+}
+
 void LLVMIRGen::performCodeGen() {
   auto *func = builder_->GetInsertBlock()->getParent();
   loadBaseAddresses(*builder_);
@@ -184,6 +337,9 @@ void LLVMIRGen::performCodeGen() {
 
   // Optimize the module.
   optimizeLLVMModule(func, getTargetMachine());
+
+  // Generate debug information.
+  generateDebugInfo();
 
   // And pass the ownership to the JIT.
 
