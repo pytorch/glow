@@ -1102,17 +1102,6 @@ void performPeepholeOptimizations(IRFunction &M) {
       continue;
     }
 
-    // reshape -> tensorview, copy
-    if (auto *RI = dyn_cast<ReshapeInst>(I)) {
-      auto *TVI = B.createTensorViewInst(RI->getName(), RI->getSrc(),
-                                         RI->getDest()->getType());
-      it = M.moveInstruction(cur, TVI);
-      auto *CI = B.createCopyInst(RI->getName(), RI->getDest(), TVI);
-      M.moveInstruction(cur, CI);
-      M.eraseInstruction(cur);
-      continue;
-    }
-
     // tranpose dest, splat (src), ... -> copy dest, tensorview (splat (src))
     // This is safe, because transpose of a splat does not change any elements.
     // It changes only types.

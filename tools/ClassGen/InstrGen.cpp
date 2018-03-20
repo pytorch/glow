@@ -299,13 +299,6 @@ int main(int argc, char **argv) {
   //                Shape transformations
   //===--------------------------------------------------------------------===//
 
-  BB.newInstr("Reshape")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .addMember(MemberType::VectorSizeT, "Dims")
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-      .autoIRGen();
-
   BB.newInstr("Transpose")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)

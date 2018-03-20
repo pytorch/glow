@@ -499,11 +499,6 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (isa<ReshapeInst>(I)) {
-      llvm_unreachable(
-        "reshape is optimized away as a sequence of tensor_view and copy");
-    }
-
     if (auto *C = dyn_cast<CopyInst>(I)) {
       Value *dest, *src;
       dest = C->getDest();
