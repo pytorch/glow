@@ -699,21 +699,53 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
   case Kinded::Kind::INST_NAME_##InstKind: {                                   \
     auto *AN = cast<INST_NAME_##Inst>(I);                                      \
     auto *dest = AN->getDest();                                                \
+    auto *lhs = AN->getLHS();                                                  \
+    auto *rhs = AN->getRHS();                                                  \
     auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);  \
-    auto *lhsPtr =                                                             \
-        emitBufferAddress(builder, AN->getLHS(), kernel, bufferToArgNum);      \
-    auto *rhsPtr =                                                             \
-        emitBufferAddress(builder, AN->getRHS(), kernel, bufferToArgNum);      \
+    auto *lhsPtr = emitBufferAddress(builder, lhs, kernel, bufferToArgNum);    \
+    auto *rhsPtr = emitBufferAddress(builder, rhs, kernel, bufferToArgNum);    \
                                                                                \
     auto *F = getFunction(FUN_NAME_ "_kernel", dest->getElementType());        \
     auto *elementTy = getElementType(builder, dest);                           \
     auto *pointerNull =                                                        \
         llvm::ConstantPointerNull::get(elementTy->getPointerTo());             \
-    auto *stackedOpCall =                                                      \
-        builder.CreateCall(F, {loopCount, lhsPtr, rhsPtr, pointerNull});       \
-    auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,          \
-                                       loopCount, "buffer.element.addr");      \
-    builder.CreateStore(stackedOpCall, destAddr);                              \
+                                                                               \
+    if (lhs->getType()->isQuantizedType()) {                                   \
+      auto *destTy = dest->getType();                                          \
+      auto *lhsTy = lhs->getType();                                            \
+      auto *rhsTy = rhs->getType();                                            \
+                                                                               \
+      auto *destOffset = emitConstI32(builder, destTy->getOffset());           \
+      auto *lhsOffset = emitConstI32(builder, lhsTy->getOffset());             \
+      auto *rhsOffset = emitConstI32(builder, rhsTy->getOffset());             \
+                                                                               \
+      float destScale = destTy->getScale();                                    \
+                                                                               \
+      auto lhsScaleParams = quantization::quantizeScaleOffset32To8(            \
+          lhsTy->getScale() / destScale, lhsTy->getOffset());                  \
+      auto rhsScaleParams = quantization::quantizeScaleOffset32To8(            \
+          rhsTy->getScale() / destScale, rhsTy->getOffset());                  \
+                                                                               \
+      auto *lhsPre = emitConstI32(builder, lhsScaleParams.pre_);               \
+      auto *lhsPost = emitConstI32(builder, lhsScaleParams.post_);             \
+      auto *lhsScale = emitConstI32(builder, lhsScaleParams.scale_);           \
+      auto *rhsPre = emitConstI32(builder, rhsScaleParams.pre_);               \
+      auto *rhsPost = emitConstI32(builder, rhsScaleParams.post_);             \
+      auto *rhsScale = emitConstI32(builder, rhsScaleParams.scale_);           \
+                                                                               \
+      auto *stackedOpCall = builder.CreateCall(                                \
+          F, {loopCount, lhsPtr, rhsPtr, destOffset, lhsOffset, rhsOffset,     \
+              lhsPre, lhsPost, lhsScale, rhsPre, rhsPost, rhsScale});          \
+      auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,         \
+                                         loopCount, "buffer.element.addr");    \
+      builder.CreateStore(stackedOpCall, destAddr);                            \
+    } else {                                                                   \
+      auto *stackedOpCall =                                                    \
+          builder.CreateCall(F, {loopCount, lhsPtr, rhsPtr, pointerNull});     \
+      auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,        \
+                                         loopCount, "buffer.element.addr");    \
+      builder.CreateStore(stackedOpCall, destAddr);                            \
+    }                                                                          \
     break;                                                                     \
   }
     ARITHMETIC_BINARY_OP_CASE(ElementAdd, "element_add");
