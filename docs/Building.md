@@ -105,4 +105,5 @@ directory.
 ## Generate dependency graph for cmake targets
 
 Run cmake normally and then execute `dependency_graph` target. The `dependency_graph`
-file contains dependencies for all project targets.
+file contains dependencies for all project targets. It might look a bit overwhelming,
+in that case you could check `dependency_graph.loader`, `dependency_graph.cifar10`, etc.
