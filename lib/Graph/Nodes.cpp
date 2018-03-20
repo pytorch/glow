@@ -139,7 +139,7 @@ void Node::visit(Node *parent, NodeWalker *visitor) {
   if (hasPredicate()) {
     getPredicate()->visit(this, visitor);
   }
-  
+
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
