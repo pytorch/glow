@@ -585,7 +585,7 @@ TEST_P(Operator, IntConcat) {
   }
 }
 
-TEST_P(InterpOnly, IntFC) {
+TEST_P(Operator, IntFC) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
