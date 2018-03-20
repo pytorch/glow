@@ -5,6 +5,7 @@
 #include "glow/Base/Tensor.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
@@ -49,6 +50,15 @@ class LLVMIRGen {
   llvm::DenseMap<llvm::Constant *, llvm::Value *> constArrayPtrs_;
   /// The IRBuilder used for the code generation.
   std::unique_ptr<llvm::IRBuilder<>> builder_;
+  /// Debug info emission support.
+  struct DebugInfo {
+    /// Debug info for the current compilation unit.
+    llvm::DICompileUnit *compilationUnit_;
+    /// Mapping from LLVM types to DebugInfo types.
+    llvm::DenseMap<llvm::Type *, llvm::DIType *> DITypes_;
+  } DbgInfo_;
+  /// Debug info builder.
+  std::unique_ptr<llvm::DIBuilder> DIBuilder_;
 
   /// Generates LLVM IR that computes the address of \p val using \p builder.
   /// The address type is specified by \p ptrTy.
@@ -91,6 +101,10 @@ class LLVMIRGen {
   void generateLLVMIRForDataParallelInstr(
       llvm::IRBuilder<> &builder, glow::Instruction *I, llvm::Function *kernel,
       llvm::DenseMap<Value *, int> &bufferToArgNum, llvm::Value *loopCount);
+  /// Create a debug information for a given LLVM type \p ty.
+  llvm::DIType *getDebugType(llvm::IRBuilder<> &builder, llvm::Type *ty);
+  /// Generate debug information.
+  void generateDebugInfo();
 
 public:
   /// Ctor.
