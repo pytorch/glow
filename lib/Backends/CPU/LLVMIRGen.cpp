@@ -494,6 +494,10 @@ llvm::Value *LLVMIRGen::emitConstI32(llvm::IRBuilder<> &builder, int32_t val) {
   return builder.getInt32(val);
 }
 
+llvm::Value *LLVMIRGen::emitConstI8(llvm::IRBuilder<> &builder, int8_t val) {
+  return builder.getInt8(val);
+}
+
 llvm::Value *LLVMIRGen::emitConstSizeT(llvm::IRBuilder<> &builder, size_t val) {
   return builder.getIntN(sizeof(size_t) * 8, val);
 }
@@ -848,6 +852,36 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     builder.CreateStore(stackedOpCall, destAddr);
     break;
   }
+  case Kinded::Kind::CPUMaxSplatInstKind: {
+    auto *AN = cast<CPUMaxSplatInst>(I);
+    auto *dest = AN->getDest();
+    auto V = AN->getSplatValue();
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *lhs = AN->getSrc();
+    auto *lhsPtr = emitBufferAddress(builder, lhs, kernel, bufferToArgNum);
+    auto *F = getFunction("element_maxsplat_kernel", dest->getElementType());
+    auto *elementTy = getElementType(builder, dest);
+    auto *pointerNull =
+        llvm::ConstantPointerNull::get(elementTy->getPointerTo());
+
+    if (lhs->getType()->isQuantizedType()) {
+      auto *val = emitConstI8(builder, V);
+      auto *stackedOpCall =
+          builder.CreateCall(F, {loopCount, val, lhsPtr, pointerNull});
+      auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,
+                                         loopCount, "buffer.element.addr");
+      builder.CreateStore(stackedOpCall, destAddr);
+    } else {
+      auto *val = emitConstF32(builder, V);
+      auto *stackedOpCall =
+          builder.CreateCall(F, {loopCount, val, lhsPtr, pointerNull});
+      auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,
+                                         loopCount, "buffer.element.addr");
+      builder.CreateStore(stackedOpCall, destAddr);
+    }
+
+    break;
+  }
 
 #undef ARITHMETIC_UNARY_OP_CASE
 
@@ -919,9 +953,9 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *AN = cast<INST_NAME_##Inst>(I);                                      \
     auto *dest = AN->getDest();                                                \
     auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);  \
+    auto *val = emitConstF32(builder, AN->get##VALUE_());                      \
     auto *lhsPtr =                                                             \
         emitBufferAddress(builder, AN->get##SRC_(), kernel, bufferToArgNum);   \
-    auto *val = emitConstF32(builder, AN->get##VALUE_());                      \
     auto *F = getFunction(FUN_NAME_ "_kernel", dest->getElementType());        \
     auto *elementTy = getElementType(builder, dest);                           \
     auto *pointerNull =                                                        \
@@ -933,8 +967,6 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     builder.CreateStore(stackedOpCall, destAddr);                              \
     break;                                                                     \
   }
-    ARITHMETIC_BINARY_OP_WITH_IMM_CASE(CPUMaxSplat, "element_maxsplat", Src,
-                                       SplatValue);
     ARITHMETIC_BINARY_OP_WITH_IMM_CASE(ElementPow, "element_pow", Base, Exp);
 #undef ARITHMETIC_BINARY_OP_WITH_IMM_CASE
 

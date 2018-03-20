@@ -375,7 +375,7 @@ extern "C" {
 /// \p type the type of the tensor elements and of the return value
 /// \p body the operation to be performed
 #define DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(name, type, body)         \
-  type name(size_t idx, float val, const type *LHS, const type *RHS) {         \
+  type name(size_t idx, type val, const type *LHS, const type *RHS) {          \
     return body;                                                               \
   }
 
@@ -438,6 +438,8 @@ DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_sigmoid_kernel_f) {
 }
 DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_element_maxsplat_kernel_f,
                                              float, MAX(LHS[idx], val))
+DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_element_maxsplat_kernel_i8,
+                                             int8_t, MAX(LHS[idx], val))
 DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_element_pow_kernel_f, float,
                                              pow(LHS[idx], val))
 DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_splat_kernel_f, float, val)
