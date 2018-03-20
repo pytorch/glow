@@ -21,7 +21,7 @@ protected:
 };
 
 class InterpOnly : public ::testing::TestWithParam<BackendKind> {
- protected:
+protected:
   ExecutionEngine EE{GetParam()};
 };
 
