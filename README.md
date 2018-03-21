@@ -1,6 +1,7 @@
 # Glow
 
-[![Build Status](https://travis-ci.com/facebookexternal/Glow.svg?token=UwQBGB2pxogBqjigi7Nh&branch=master)](https://travis-ci.com/facebookexternal/Glow)
+* [![Build Status](https://travis-ci.com/facebookexternal/Glow.svg?token=UwQBGB2pxogBqjigi7Nh&branch=master)](https://travis-ci.com/facebookexternal/Glow)
+* [Code Coverage](https://fb-glow-assets.s3.amazonaws.com/coverage/coverage-master/index.html)
 
 Glow is a machine learning compiler and execution engine for hardware
 accelerators. This library is designed to be used as a backend for the Caffe2
