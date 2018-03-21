@@ -288,19 +288,23 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
   // Check for quantization support.
   if (elementTy == ElemKind::Int8QTy) {
     switch (opKind) {
+    case Kinded::Kind::AddNodeKind:
+    case Kinded::Kind::BatchedAddNodeKind:
     case Kinded::Kind::ConcatNodeKind:
     case Kinded::Kind::ConvolutionNodeKind:
+    case Kinded::Kind::DequantizeNodeKind:
     case Kinded::Kind::FullyConnectedNodeKind:
     case Kinded::Kind::MatMulNodeKind:
-    case Kinded::Kind::QuantizeNodeKind:
-    case Kinded::Kind::DequantizeNodeKind:
-    case Kinded::Kind::RescaleQuantizedNodeKind:
-    case Kinded::Kind::ReshapeNodeKind:
-    case Kinded::Kind::TransposeNodeKind:
+    case Kinded::Kind::MaxNodeKind:
+    case Kinded::Kind::MinNodeKind:
     case Kinded::Kind::PoolAvgNodeKind:
     case Kinded::Kind::PoolMaxNodeKind:
-    case Kinded::Kind::AddNodeKind:
+    case Kinded::Kind::QuantizeNodeKind:
     case Kinded::Kind::ReluNodeKind:
+    case Kinded::Kind::RescaleQuantizedNodeKind:
+    case Kinded::Kind::ReshapeNodeKind:
+    case Kinded::Kind::SubNodeKind:
+    case Kinded::Kind::TransposeNodeKind:
       return true;
     default:
       return false;
