@@ -417,6 +417,12 @@ DEFINE_DATA_PARALLEL_KERNEL(libjit_element_mul_kernel_f, float,
                             LHS[idx] * RHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_element_add_kernel_i8, int8_t,
                                       lhs + rhs)
+DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_element_sub_kernel_i8, int8_t,
+                                      lhs - rhs)
+DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_elementmax_kernel_i8, int8_t,
+                                      MAX(lhs, rhs))
+DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_elementmin_kernel_i8, int8_t,
+                                      MIN(lhs, rhs))
 // tanh cannot be vectorized by LLVM yet. Therefore we use the following
 // formula instead: 1 - 2 / (exp(x * 2) + 1), which is also used by Caffe2 and
 // provides a good accuracy.
