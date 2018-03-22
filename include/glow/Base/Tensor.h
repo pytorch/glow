@@ -551,13 +551,14 @@ public:
       return false;
     }
 
-    ElemTy sumErr = 0;
     for (size_t i = 0, e = size(); i < e; i++) {
-      ElemTy delta = raw(i) - other.raw(i);
-      sumErr += delta * delta;
+      double delta = raw(i) - other.raw(i);
+      if (std::abs(delta) > allowedError) {
+        return false;
+      }
     }
 
-    return sumErr < allowedError;
+    return true;
   }
 
   /// Insert the tensor \p slice at location \p offset. This operation is
