@@ -128,6 +128,7 @@ target_link_libraries(OCLTest
                         gtest
                         testMain)
 add_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest)
+LIST(APPEND UNOPT_TESTS ./tests/OCLTest -optimize-ir=false &&)
 endif()
 
 if(GLOW_WITH_CPU)
@@ -143,6 +144,7 @@ target_link_libraries(JITTest
                         gtest
                         testMain)
 add_test(JITTest ${GLOW_BINARY_DIR}/tests/JITTest)
+LIST(APPEND UNOPT_TESTS ./tests/JITTest -optimize-ir=false &&)
 endif()
 
 add_executable(memoryAllocatorTest
@@ -153,3 +155,12 @@ target_link_libraries(memoryAllocatorTest
                         gtest
                         testMain)
 add_test(memoryAllocatorTest ${GLOW_BINARY_DIR}/tests/memoryAllocatorTest)
+
+
+LIST(APPEND UNOPT_TESTS
+       ./tests/gradCheckTest -optimize-ir=false &&
+       ./tests/graphTest -optimize-ir=false &&
+       ./tests/graphGradTest -optimize-ir=false)
+
+add_custom_target(test_unopt ${UNOPT_TESTS}
+                  WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
