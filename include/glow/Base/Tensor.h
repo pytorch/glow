@@ -560,27 +560,26 @@ public:
   }
 
   /// \returns the mean and variance of the tensor.
-  std::pair<ElemTy, ElemTy> calculateMeanVariance() const {
+  std::pair<double, double> calculateMeanVariance() const {
     size_t n = size();
     assert(n > 1 && "Input must have at least 2 elements.");
 
     // Calculate mean.
-    ElemTy sum = 0;
+    double mean = 0;
     for (size_t i = 0; i < n; i++) {
-      sum += raw({i});
+      mean += raw({i});
     }
-
-    ElemTy mean = sum / n;
+    mean /= n;
 
     // Calculate variance.
-    ElemTy sigma = 0;
+    double var = 0;
     for (size_t i = 0; i < n; i++) {
-      ElemTy t = (raw({i}) - mean);
-      sigma += t * t;
+      double t = raw({i}) - mean;
+      var += t * t;
     }
+    var /= (n - 1);
 
-    ElemTy variance = sigma / (n - 1);
-    return {mean, variance};
+    return {mean, var};
   }
 
   /// Insert the tensor \p slice at location \p offset. This operation is
