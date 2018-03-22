@@ -43,9 +43,10 @@ matrix:
         - mkdir build && cd build
         - cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF -DGLOW_USE_COVERAGE=ON ../
       script:
-        - ../.travis/run_coverage.sh 
+        - ../.travis/run_coverage.sh
 
 script:
  - ninja all
  - CTEST_PARALLEL_LEVEL=2 ninja test
  - cat Testing/Temporary/LastTest.log
+ - CTEST_PARALLEL_LEVEL=2 ninja test_unopt
