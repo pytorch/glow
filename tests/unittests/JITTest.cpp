@@ -102,7 +102,7 @@ TEST(JITCorrectnessTest, quantizedConvTest) {
   auto H1 = out1.getHandle<int8_t>();
   auto H2 = out2.getHandle<int8_t>();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(H1.isEqual(H2, 1.0));
 }
 
 TEST(JITCorrectnessTest, convGradTest) {
@@ -209,8 +209,8 @@ TEST(JITCorrectnessTest, localResponseNormalizationGradTest) {
 TEST(JITCorrectnessTest, matMulTest) {
   Tensor lhs(ElemKind::FloatTy, {10, 9});
   Tensor rhs(ElemKind::FloatTy, {9, 8});
-  lhs.getHandle().randomize(-72, 83);
-  rhs.getHandle().randomize(-63, 101);
+  lhs.getHandle().randomize(-7.2, 8.3);
+  rhs.getHandle().randomize(-6.3, 10.1);
   std::array<size_t, 2> S{{10, 8}};
   llvm::ArrayRef<size_t> shape(S);
   Tensor out1(ElemKind::FloatTy, shape);
@@ -221,7 +221,7 @@ TEST(JITCorrectnessTest, matMulTest) {
   auto H1 = out1.getHandle();
   auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(H1.isEqual(H2, 0.001));
 }
 
 TEST(JITCorrectnessTest, quantizedMatMulTest) {
