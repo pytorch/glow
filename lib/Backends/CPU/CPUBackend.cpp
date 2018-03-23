@@ -272,6 +272,7 @@ void CPUBackend::save(llvm::StringRef outputDir) {
   irgen_.initTargetMachine(target.empty() ? "" : target.getValue(),
                            llvm::CodeModel::Model::Small);
   irgen_.setMainEntryName(F_->getGraph()->getName());
+  irgen_.setOutputDir(outputDir);
   irgen_.getTargetMachine();
   irgen_.initCodeGen();
   // Perform the address assignment for activations and WeightVars.

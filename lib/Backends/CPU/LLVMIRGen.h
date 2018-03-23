@@ -50,6 +50,8 @@ class LLVMIRGen {
   llvm::DenseMap<llvm::Constant *, llvm::Value *> constArrayPtrs_;
   /// The IRBuilder used for the code generation.
   std::unique_ptr<llvm::IRBuilder<>> builder_;
+  /// Output directory for bundles, debug info files, etc.
+  llvm::StringRef outputDir_;
   /// Debug info emission support.
   struct DebugInfo {
     /// Debug info for the current compilation unit.
@@ -163,6 +165,10 @@ public:
   llvm::Module &getModule() { return *llmodule_; }
   /// \returns the IR function.
   IRFunction *getIRFunction() { return F_; }
+  /// Set output directory for bundles, debug info files, etc.
+  void setOutputDir(llvm::StringRef outputDir) { outputDir_ = outputDir; }
+  /// Get output directory for bundles, debug info files, etc.
+  llvm::StringRef getOutputDir() const { return outputDir_; }
   /// Emit the array of constant offsets as provided by the \p allocationsInfo.
   llvm::Value *emitConstOffsetsArray(llvm::IRBuilder<> &builder,
                                      const AllocationsInfo &allocationsInfo);
