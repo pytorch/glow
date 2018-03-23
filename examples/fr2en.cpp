@@ -38,6 +38,7 @@ llvm::cl::opt<std::string> loadProfileFileOpt(
     llvm::cl::cat(quantizationCat));
 } // namespace
 
+const unsigned BATCH_SIZE = 32;
 const unsigned MAX_LENGTH = 10;
 const unsigned EMBEDDING_SIZE = 256;
 const unsigned HIDDEN_SIZE = EMBEDDING_SIZE * 3;
@@ -83,19 +84,19 @@ Node *createPyTorchGRUCell(Function *G, Node *input, Node *hidden,
   Node *gi = G->createFullyConnected("pytorch.GRU.gi", input, w_ih, b_ih);
   Node *gh = G->createFullyConnected("pytorch.GRU.gh", hidden, w_hh, b_hh);
 
-  Node *i_r =
-      G->createSlice("pytorch.GRU.i_r", gi, {0, 0}, {1, EMBEDDING_SIZE});
+  Node *i_r = G->createSlice("pytorch.GRU.i_r", gi, {0, 0},
+                             {BATCH_SIZE, EMBEDDING_SIZE});
   Node *i_i = G->createSlice("pytorch.GRU.i_i", gi, {0, EMBEDDING_SIZE},
-                             {1, 2 * EMBEDDING_SIZE});
+                             {BATCH_SIZE, 2 * EMBEDDING_SIZE});
   Node *i_n = G->createSlice("pytorch.GRU.i_n", gi, {0, 2 * EMBEDDING_SIZE},
-                             {1, 3 * EMBEDDING_SIZE});
+                             {BATCH_SIZE, 3 * EMBEDDING_SIZE});
 
-  Node *h_r =
-      G->createSlice("pytorch.GRU.h_r", gh, {0, 0}, {1, EMBEDDING_SIZE});
+  Node *h_r = G->createSlice("pytorch.GRU.h_r", gh, {0, 0},
+                             {BATCH_SIZE, EMBEDDING_SIZE});
   Node *h_i = G->createSlice("pytorch.GRU.h_i", gh, {0, EMBEDDING_SIZE},
-                             {1, 2 * EMBEDDING_SIZE});
+                             {BATCH_SIZE, 2 * EMBEDDING_SIZE});
   Node *h_n = G->createSlice("pytorch.GRU.h_n", gh, {0, 2 * EMBEDDING_SIZE},
-                             {1, 3 * EMBEDDING_SIZE});
+                             {BATCH_SIZE, 3 * EMBEDDING_SIZE});
 
   Node *resetgate = G->createSigmoid("pytorch.GRU.resetgate",
                                      G->createAdd("i_r_plus_h_r", i_r, h_r));
@@ -131,6 +132,10 @@ struct Model {
 
   Model() { EE_.getModule().createFunction("main"); }
 
+  void compile() {
+    EE_.compile(CompilationMode::Infer, EE_.getModule().getFunction("main"));
+  }
+
 private:
   Variable *embedding_fr_, *embedding_en_;
   Node *encoderHiddenOutput_;
@@ -162,14 +167,14 @@ void Model::loadEncoder() {
   auto &mod = EE_.getModule();
   Function *F = mod.getFunction("main");
   input_ = mod.createVariable(
-      ElemKind::IndexTy, {MAX_LENGTH}, "encoder.inputsentence",
+      ElemKind::IndexTy, {BATCH_SIZE, MAX_LENGTH}, "encoder.inputsentence",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
-  seqLength_ = mod.createVariable(ElemKind::IndexTy, {1}, "encoder.seqLength",
-                                  Variable::VisibilityKind::Public,
-                                  Variable::TrainKind::None);
+  seqLength_ = mod.createVariable(
+      ElemKind::IndexTy, {BATCH_SIZE}, "encoder.seqLength",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
 
   Variable *hiddenInit = mod.createVariable(
-      ElemKind::FloatTy, {1, EMBEDDING_SIZE}, "encoder.hiddenInit",
+      ElemKind::FloatTy, {BATCH_SIZE, EMBEDDING_SIZE}, "encoder.hiddenInit",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
   hiddenInit->getPayload().zero();
 
@@ -199,17 +204,24 @@ void Model::loadEncoder() {
   // We could use control flow here.
   std::vector<Node *> outputs;
   for (unsigned step = 0; step < MAX_LENGTH; step++) {
-    Node *inputSlice =
-        F->createSlice("encoder." + std::to_string(step) + ".inputSlice",
-                       inputEmbedded, {step, 0}, {step + 1, EMBEDDING_SIZE});
-    hidden =
-        createPyTorchGRUCell(F, inputSlice, hidden, w_ih, b_ih, w_hh, b_hh);
+    Node *inputSlice = F->createSlice(
+        "encoder." + std::to_string(step) + ".inputSlice", inputEmbedded,
+        {0, step, 0}, {BATCH_SIZE, step + 1, EMBEDDING_SIZE});
+    Node *reshape =
+        F->createReshape("encoder." + std::to_string(step) + ".reshape",
+                         inputSlice, {BATCH_SIZE, EMBEDDING_SIZE});
+    hidden = createPyTorchGRUCell(F, reshape, hidden, w_ih, b_ih, w_hh, b_hh);
     outputs.push_back(hidden);
   }
 
   Node *output = F->createConcat("encoder.output", outputs, 0);
-  encoderHiddenOutput_ =
-      F->createGather("encoder.outputNth", output, seqLength_);
+  Node *reshape = F->createReshape("encoder.output.reshape", output,
+                                   {MAX_LENGTH, BATCH_SIZE, EMBEDDING_SIZE});
+  Node *transpose =
+      F->createTranspose("encoder.output.transpose", reshape, {1, 0, 2});
+  Node *r2 = F->createReshape("encoder.output.r2", transpose,
+                              {MAX_LENGTH * BATCH_SIZE, EMBEDDING_SIZE});
+  encoderHiddenOutput_ = F->createGather("encoder.outputNth", r2, seqLength_);
 }
 
 /// Model part representing Decoder.
@@ -218,10 +230,12 @@ void Model::loadEncoder() {
 void Model::loadDecoder() {
   auto &mod = EE_.getModule();
   Function *F = mod.getFunction("main");
-  Variable *input = mod.createVariable(ElemKind::IndexTy, {1}, "decoder.input",
-                                       Variable::VisibilityKind::Public,
-                                       Variable::TrainKind::None);
-  input->getPayload().getHandle<size_t>().at({0}) = en_.word2index_["SOS"];
+  Variable *input = mod.createVariable(
+      ElemKind::IndexTy, {BATCH_SIZE}, "decoder.input",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
+  for (size_t i = 0; i < BATCH_SIZE; i++) {
+    input->getPayload().getHandle<size_t>().at({i}) = en_.word2index_["SOS"];
+  }
 
   Variable *w_ih = mod.createVariable(
       ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "decoder.w_ih",
@@ -267,16 +281,17 @@ void Model::loadDecoder() {
     Node *FC = F->createFullyConnected("decoder.outFC", hidden, out_w, out_b);
     Node *topK = F->createTopK("decoder.topK", FC, 1);
 
-    lastWordIdx = F->createReshape("decoder.reshape", {topK, 1}, {1});
+    lastWordIdx = F->createReshape("decoder.reshape", {topK, 1}, {BATCH_SIZE});
     outputs.push_back(lastWordIdx);
   }
 
-  Node *concat = F->createConcat("decoder.output", outputs, 0);
-
+  Node *concat = F->createConcat("decoder.output.concat", outputs, 0);
+  Node *reshape = F->createReshape("decoder.output.reshape", concat,
+                                   {MAX_LENGTH, BATCH_SIZE});
   output_ = mod.createVariable(
-      ElemKind::IndexTy, {MAX_LENGTH}, "decoder.output",
+      ElemKind::IndexTy, {MAX_LENGTH, BATCH_SIZE}, "decoder.output",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
-  F->createSave("decoder.output", concat, output_);
+  F->createSave("decoder.output", reshape, output_);
 
   // Handle the request to profile the graph in preperation for quantization.
   if (!dumpProfileFileOpt.empty()) {
@@ -301,47 +316,50 @@ void Model::loadDecoder() {
     // Quantize the graph based on the captured profile.
     glow::quantization::generateQuantizedGraph(EE_, F, quantizationInfos);
   }
-
-  EE_.compile(CompilationMode::Infer, F);
 }
 
 /// Translation has 2 stages:
 /// 1) Input sentence is fed into Encoder word by word.
 /// 2) "Memory" of Encoder is written into memory of Decoder.
 ///    Now Decoder streams resulting translation word by word.
-void translate(Model *seq2seq, llvm::StringRef sentence) {
-  std::istringstream iss(sentence);
-  std::vector<std::string> words;
-  std::string word;
-  while (iss >> word)
-    words.push_back(word);
-  words.push_back("EOS");
-
-  GLOW_ASSERT(words.size() <= MAX_LENGTH && "sentence is too long.");
-
-  Tensor input(ElemKind::IndexTy, {MAX_LENGTH});
-  Tensor seqLength(ElemKind::IndexTy, {1});
-
+void translate(Model *seq2seq, const std::vector<std::string> &batch) {
+  Tensor input(ElemKind::IndexTy, {BATCH_SIZE, MAX_LENGTH});
+  Tensor seqLength(ElemKind::IndexTy, {BATCH_SIZE});
   input.zero();
-  for (size_t i = 0; i < words.size(); i++) {
-    auto iter = seq2seq->fr_.word2index_.find(words[i]);
-    GLOW_ASSERT(iter != seq2seq->fr_.word2index_.end() && "Unknown word.");
-    input.getHandle<size_t>().at({i}) = iter->second;
+
+  for (size_t j = 0; j < batch.size(); j++) {
+    std::istringstream iss(batch[j]);
+    std::vector<std::string> words;
+    std::string word;
+    while (iss >> word)
+      words.push_back(word);
+    words.push_back("EOS");
+
+    GLOW_ASSERT(words.size() <= MAX_LENGTH && "sentence is too long.");
+
+    for (size_t i = 0; i < words.size(); i++) {
+      auto iter = seq2seq->fr_.word2index_.find(words[i]);
+      GLOW_ASSERT(iter != seq2seq->fr_.word2index_.end() && "Unknown word.");
+      input.getHandle<size_t>().at({j, i}) = iter->second;
+    }
+    seqLength.getHandle<size_t>().at({j}) = (words.size() - 1) + j * MAX_LENGTH;
   }
-  seqLength.getHandle<size_t>().at({0}) = words.size() - 1;
 
   seq2seq->EE_.run({seq2seq->input_, seq2seq->seqLength_},
                    {&input, &seqLength});
 
   auto OH = seq2seq->output_->getPayload().getHandle<size_t>();
-  for (unsigned i = 0; i < MAX_LENGTH; i++) {
-    size_t wordIdx = OH.at({i});
-    if (wordIdx == seq2seq->en_.word2index_["EOS"])
-      break;
+  for (unsigned j = 0; j < batch.size(); j++) {
+    for (unsigned i = 0; i < MAX_LENGTH; i++) {
+      size_t wordIdx = OH.at({i, j});
+      if (wordIdx == seq2seq->en_.word2index_["EOS"])
+        break;
 
-    if (i)
-      std::cout << ' ';
-    std::cout << seq2seq->en_.index2word_[wordIdx];
+      if (i)
+        std::cout << ' ';
+      std::cout << seq2seq->en_.index2word_[wordIdx];
+    }
+    std::cout << "\n\n";
   }
   std::cout << "\n\n";
 
@@ -364,6 +382,7 @@ int main(int argc, char **argv) {
   seq2seq.loadLanguages();
   seq2seq.loadEncoder();
   seq2seq.loadDecoder();
+  seq2seq.compile();
 
   if (!dumpGraphDAGFileOpt.empty()) {
     seq2seq.dumpGraphDAG(dumpGraphDAGFileOpt.c_str());
@@ -386,10 +405,20 @@ int main(int argc, char **argv) {
             << "\tj y songe encore .\n"
             << "\tje suis maintenant a l aeroport .\n\n";
 
-  std::string sentence;
-  while (getline(std::cin, sentence)) {
-    translate(&seq2seq, sentence);
-  }
+  std::vector<std::string> batch;
+  do {
+    batch.clear();
+    for (size_t i = 0; i < BATCH_SIZE; i++) {
+      std::string sentence;
+      if (!getline(std::cin, sentence)) {
+        break;
+      }
+      batch.push_back(sentence);
+    }
+    if (!batch.empty()) {
+      translate(&seq2seq, batch);
+    }
+  } while (batch.size() == BATCH_SIZE);
 
   return 0;
 }
