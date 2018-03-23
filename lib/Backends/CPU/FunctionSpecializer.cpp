@@ -75,7 +75,7 @@ class FunctionSpecializer {
   /// provided parameters.
   llvm::Function *getOrCreateSpecializedFunction(llvm::CallInst *call,
                                                  llvm::Function *F,
-                                                 unsigned argsToBeSpecialized) {
+                                                 uint64_t argsToBeSpecialized) {
     // Bail if there is nothing to do
     if (!jitSpecializeAllArguments_ && !jitSpecializeDims)
       return F;
@@ -124,7 +124,7 @@ class FunctionSpecializer {
       llvm::Value *argValue = &arg;
       // If this argument needs to be specialized, use its constant
       // value from the call instruction.
-      if (argsToBeSpecialized & (1 << argIdx)) {
+      if (argsToBeSpecialized & (((uint64_t)1) << argIdx)) {
         argValue = call->getArgOperand(argIdx);
       }
       forwardedArgs.push_back(argValue);
@@ -150,7 +150,7 @@ class FunctionSpecializer {
                                                             call->arg_end());
     // Set of arguments that need to be specialized. See SpecializationKey
     // documentation for more information about the encoding of this set.
-    unsigned argsToBeSpecialized = 0;
+    uint64_t argsToBeSpecialized = 0;
 
     // Go over all call arguments.
     // Check that all arguments are constants.
@@ -166,7 +166,7 @@ class FunctionSpecializer {
         continue;
       }
 
-      argsToBeSpecialized |= (1 << curArgIdx);
+      argsToBeSpecialized |= (((uint64_t)1) << curArgIdx);
 
       // Bail if the values of arguments are not constants.
       if (!getConstantValue(arg)) {
@@ -263,7 +263,7 @@ private:
     /// The first call instruction that was used to create this specialization.
     llvm::CallInst *call_{nullptr};
     /// The set of argument numbers that need to be specialized.
-    unsigned argsToBeSpecialized_{0};
+    uint64_t argsToBeSpecialized_{0};
   };
 
   /// A helper class providing a hash function for FunctionSpecializer.
@@ -278,7 +278,7 @@ private:
       // its unique representation.
       for (unsigned idx = 0, e = key.call_->getNumArgOperands(); idx < e;
            ++idx) {
-        if ((1 << idx) & key.argsToBeSpecialized_)
+        if ((((uint64_t)1) << idx) & key.argsToBeSpecialized_)
           hash = llvm::hash_combine(
               hash, getConstantValue(key.call_->getArgOperand(idx)));
       }
@@ -296,7 +296,7 @@ private:
         return false;
       for (unsigned idx = 0, e = lhs.call_->getNumArgOperands(); idx < e;
            ++idx) {
-        if ((1 << idx) & lhs.argsToBeSpecialized_)
+        if ((((uint64_t)1) << idx) & lhs.argsToBeSpecialized_)
           if (getConstantValue(lhs.call_->getArgOperand(idx)) !=
               getConstantValue(rhs.call_->getArgOperand(idx)))
             return false;
