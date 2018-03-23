@@ -319,7 +319,7 @@ void generateCircleData(Tensor &coordinates, Tensor &labels) {
 /// Test the fully connected layer and the softmax function.
 /// Example from:
 /// http://cs.stanford.edu/people/karpathy/convnetjs/demo/classify2d.html
-TEST(Network, circle) {
+TEST(Interpreter, circle) {
   // Testing the softmax layer.
   ExecutionEngine EE;
 
@@ -409,7 +409,7 @@ TEST(Network, circle) {
   }
 }
 
-TEST(Network, learnSingleValueConcat) {
+TEST(Interpreter, learnSingleValueConcat) {
   ExecutionEngine EE;
   unsigned width = 6;
 
@@ -570,13 +570,13 @@ void testRNNCell(TCellGenerator cell) {
   }
 };
 
-TEST(Network, trainASimpleRNN) { testRNNCell(buildRNN); };
+TEST(Interpreter, trainASimpleRNN) { testRNNCell(buildRNN); };
 
-TEST(Network, trainGRU) { testRNNCell(buildGRU); };
+TEST(Interpreter, trainGRU) { testRNNCell(buildGRU); };
 
-TEST(Network, trainLSTM) { testRNNCell(buildLSTM); };
+TEST(Interpreter, trainLSTM) { testRNNCell(buildLSTM); };
 
-TEST(Optimizer, copyPropagation) {
+TEST(Interpreter, copyPropagation) {
   ExecutionEngine EE;
 
   auto &mod = EE.getModule();
@@ -633,7 +633,7 @@ TEST(Interpreter, learnSqrt2) {
   EXPECT_NEAR(res, 1.4142, 0.01);
 }
 
-TEST(LinearRegression, trainSimpleLinearRegression) {
+TEST(Interpreter, trainSimpleLinearRegression) {
   // Given 1-D vectors x and y, find real numbers m and b such that
   // m * x + b is approximately equal to y.
   unsigned numSamples = 500;
@@ -714,7 +714,7 @@ void generatePlayerData(Tensor &players, Tensor &labels,
 
 // Given a player's height and weight, classify them as a basketball or
 // soccer player.
-TEST(LinearClassifier, classifyPlayerSport) {
+TEST(Interpreter, classifyPlayerSport) {
   ExecutionEngine EE;
   EE.getConfig().learningRate = 0.05;
 
