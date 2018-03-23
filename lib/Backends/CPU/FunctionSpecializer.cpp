@@ -325,4 +325,13 @@ private:
 void LLVMIRGen::performSpecialization() {
   FunctionSpecializer FuncSpecializer(llmodule_->getFunction("main"));
   FuncSpecializer.run();
+  // Add debug info to all the newly created functions, i.e. to the created
+  // specialized functions.
+  for (auto &FF : getModule()) {
+    if (FF.isDeclaration())
+      continue;
+    if (FF.getName().find("_specialized", 0) == llvm::StringRef::npos)
+      continue;
+    generateFunctionDebugInfo(&FF);
+  }
 }

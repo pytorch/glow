@@ -3,6 +3,7 @@
 
 #include "AllocationsInfo.h"
 #include "glow/Base/Tensor.h"
+#include "glow/IR/IR.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/IR/DIBuilder.h"
@@ -36,6 +37,8 @@ class LLVMIRGen {
   AllocationsInfo &allocationsInfo_;
   /// Name of the main entry.
   std::string mainEntryName_;
+  /// Instruction number for the module.
+  std::unique_ptr<InstructionNumbering> instrNumbering_;
   /// Value holding the base address of the activations memory area.
   llvm::Value *baseActivationsAddr_{nullptr};
   /// Value holding the base address of the constant WeightVars memory area.
@@ -54,11 +57,28 @@ class LLVMIRGen {
   llvm::StringRef outputDir_;
   /// Debug info emission support.
   struct DebugInfo {
+    /// Source file for the main function.
+    llvm::DIFile *mainFile_{nullptr};
+    /// Debug info for the main function.
+    llvm::DISubprogram *mainF_{nullptr};
+    /// Line number for the first instruction in the textual representation of
+    /// the Glow IR.
+    size_t mainFileFirstInstrLineNo_{0};
     /// Debug info for the current compilation unit.
-    llvm::DICompileUnit *compilationUnit_;
+    llvm::DICompileUnit *compilationUnit_{nullptr};
     /// Mapping from LLVM types to DebugInfo types.
     llvm::DenseMap<llvm::Type *, llvm::DIType *> DITypes_;
-  } DbgInfo_;
+    /// Global variable holding the base address of the constant WeightVars
+    /// memory
+    /// area. Used only when producing a debug information.
+    llvm::GlobalVariable *constWeightsBaseAddressGV_{nullptr};
+    /// Global variable holding the base address of mutable WeightVars memory
+    /// area. Used only when producing a debug information.
+    llvm::GlobalVariable *mutableWeightsBaseAddressGV_{nullptr};
+    /// Global variable holding the base address of the activations memory area.
+    /// Used only when producing a debug information.
+    llvm::GlobalVariable *activationsBaseAddressGV_{nullptr};
+  } dbgInfo_;
   /// Debug info builder.
   std::unique_ptr<llvm::DIBuilder> DIBuilder_;
 
@@ -105,10 +125,32 @@ class LLVMIRGen {
   void generateLLVMIRForDataParallelInstr(
       llvm::IRBuilder<> &builder, glow::Instruction *I, llvm::Function *kernel,
       llvm::DenseMap<Value *, int> &bufferToArgNum, llvm::Value *loopCount);
+  /// \returns the llvm type of the glow vale \p val.
+  llvm::Type *getElementType(llvm::IRBuilder<> &builder, Value *val);
   /// Create a debug information for a given LLVM type \p ty.
   llvm::DIType *getDebugType(llvm::IRBuilder<> &builder, llvm::Type *ty);
+  /// Init the generation of debug information.
+  void initDebugInfo();
   /// Generate debug information.
   void generateDebugInfo();
+  /// Set the debug location for the \p builder, so that it corresponds to the
+  /// instruction \p I in the textual representation of the Glow IR.
+  void setCurrentDebugLocation(llvm::IRBuilder<> &builder,
+                               glow::Instruction *I);
+  /// Get or create a debug information for a given LLVM function.
+  llvm::DISubprogram *getOrCreateFunctionDebugInfo(llvm::Function *F,
+                                                   llvm::DIScope *scope,
+                                                   llvm::DIFile *file,
+                                                   unsigned lineNo);
+  /// Emit a debug info for the logical global variable representing a weight or
+  /// an activation described by \p val. This allows for inspecting the values
+  /// of weights and activations when using a debugger. Logical global variables
+  /// are not materialized and do not require any additional memory to be
+  /// reserved or allocated. Instead, they reside at offsets described by
+  /// AllocationsInfo inside the memory blocks dynamically allocated by clients
+  /// for weights and activations, but behave like regular global variables from
+  /// the debugger's perspective.
+  void emitDebugGlobalVariableForValue(Value *val);
 
 public:
   /// Ctor.
@@ -168,6 +210,8 @@ public:
   /// Emit the array of constant offsets as provided by the \p allocationsInfo.
   llvm::Value *emitConstOffsetsArray(llvm::IRBuilder<> &builder,
                                      const AllocationsInfo &allocationsInfo);
+  /// Generate debug info for a LLVM function \p F.
+  void generateFunctionDebugInfo(llvm::Function *F);
 };
 
 } // namespace glow
