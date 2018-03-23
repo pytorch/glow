@@ -559,7 +559,9 @@ void IRFunction::nameInstructions() {
   }
 }
 
-void IRFunction::dump() {
+void IRFunction::dump() { dump(llvm::outs()); }
+
+void IRFunction::dump(llvm::raw_ostream &OS) {
   nameInstructions();
   InstructionNumbering InstrNumbering(*this);
   // Print all of the variables:
@@ -610,7 +612,7 @@ void IRFunction::dump() {
 
   sb << "}\n";
 
-  llvm::outs() << sb.str();
+  OS << sb.str();
 }
 
 static std::string getEscapedDottyType(const TypeRef &type) {

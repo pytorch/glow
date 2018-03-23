@@ -248,6 +248,9 @@ public:
   /// Dump a textual representation of the function.
   void dump();
 
+  /// Dump a textual representation of the function into provided output stream.
+  void dump(llvm::raw_ostream &OS);
+
   /// Dump a dotty graph that depicts the function.
   void dumpDAG(const char *dotFilename);
 
