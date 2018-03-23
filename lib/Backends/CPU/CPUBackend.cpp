@@ -229,6 +229,8 @@ void CPUBackend::emitBundleEntryFunction() {
   builder.CreateCall(entryF, initFunctionCallArgs);
   // Terminate the function.
   builder.CreateRetVoid();
+  // Create the debug info for the bundle entry point function.
+  irgen_.generateFunctionDebugInfo(func);
 }
 
 // Create a config for this network. It will be exposed to the clients,

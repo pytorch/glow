@@ -12,7 +12,7 @@ set_target_properties(CPURuntime
 target_compile_options(CPURuntime
                        PRIVATE
                          -ffast-math
-                         -g0
+                         -g
                          -emit-llvm
                          -O0)
 
@@ -36,6 +36,7 @@ add_custom_target(GlowCPURuntime
 
 add_library(CPUBackend
             AllocationsInfo.cpp
+            DebugInfo.cpp
             FunctionSpecializer.cpp
             GlowJIT.cpp
             Pipeline.cpp
