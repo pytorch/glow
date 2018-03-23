@@ -158,6 +158,7 @@ add_test(memoryAllocatorTest ${GLOW_BINARY_DIR}/tests/memoryAllocatorTest)
 
 
 LIST(APPEND UNOPT_TESTS
+       ./tests/interpreterTest -optimize-ir=false &&
        ./tests/gradCheckTest -optimize-ir=false &&
        ./tests/graphTest -optimize-ir=false &&
        ./tests/graphGradTest -optimize-ir=false)

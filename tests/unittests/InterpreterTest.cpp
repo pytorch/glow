@@ -576,29 +576,6 @@ TEST(Interpreter, trainGRU) { testRNNCell(buildGRU); };
 
 TEST(Interpreter, trainLSTM) { testRNNCell(buildLSTM); };
 
-TEST(Interpreter, copyPropagation) {
-  ExecutionEngine EE;
-
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-  F->setName("CopyPropagation");
-
-  Node *K = mod.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  Node *S = mod.createVariable(ElemKind::IndexTy, {4, 1}, "select");
-
-  K = F->createConv("Conv1", K, 16, 3, 2, 3);
-  K = F->createRELU("Relu", K);
-  K = F->createSoftMax("SoftMax", K, S);
-  K = F->createSave("result", K);
-  EE.compile(CompilationMode::Infer, F);
-
-  // Check that all copy instructions are eliminated.
-  auto &instrs = EE.getIR().getInstrs();
-  EXPECT_TRUE(std::none_of(
-      instrs.begin(), instrs.end(),
-      [](const Instruction *I) -> bool { return isa<CopyInst>(I); }));
-}
-
 /// Learn the square root of two.
 TEST(Interpreter, learnSqrt2) {
   ExecutionEngine EE;
