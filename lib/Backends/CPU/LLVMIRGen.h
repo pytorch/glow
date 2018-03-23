@@ -74,6 +74,10 @@ class LLVMIRGen {
   llvm::Value *emitConstI8(llvm::IRBuilder<> &builder, int8_t val);
   /// Generates LLVM IR that materializes the constant \p val.
   llvm::Value *emitConstSizeT(llvm::IRBuilder<> &builder, size_t val);
+  /// Generates LLVM IR that materializes the constant \p val as a constant of
+  /// the type specified by \p kind.
+  llvm::Value *emitConst(llvm::IRBuilder<> &builder, float val,
+                         glow::ElemKind kind);
   /// Generates LLVM IR that materializes the string literal \p str.
   llvm::Value *emitStringConst(llvm::IRBuilder<> &builder, llvm::StringRef str);
   /// Generates LLVM IR that materializes the constant array \p vals.

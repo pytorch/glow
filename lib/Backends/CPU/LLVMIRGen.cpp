@@ -502,6 +502,21 @@ llvm::Value *LLVMIRGen::emitConstSizeT(llvm::IRBuilder<> &builder, size_t val) {
   return builder.getIntN(sizeof(size_t) * 8, val);
 }
 
+llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
+                                  glow::ElemKind kind) {
+  switch (kind) {
+  case ElemKind::FloatTy:
+    return llvm::ConstantFP::get(llvm::Type::getFloatTy(ctx_), val);
+  case ElemKind::IndexTy:
+    return builder.getIntN(sizeof(size_t) * 8, static_cast<size_t>(val));
+  case ElemKind::Int8QTy:
+    return builder.getInt8(static_cast<int8_t>(val));
+  case ElemKind::Int32QTy:
+    return builder.getInt32(static_cast<int32_t>(val));
+  }
+  llvm_unreachable("Unknown element type");
+}
+
 llvm::Value *LLVMIRGen::emitStringConst(llvm::IRBuilder<> &builder,
                                         llvm::StringRef str) {
   llvm::GlobalVariable *gvarStr =
@@ -778,7 +793,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *AN = cast<INST_NAME_##Inst>(I);                                      \
     auto *dest = AN->getDest();                                                \
     auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);  \
-    auto *val = emitConstF32(builder, AN->get##VALUE_());                      \
+    auto *val = emitConst(builder, AN->get##VALUE_(), dest->getElementType()); \
     auto *elementTy = getElementType(builder, dest);                           \
     auto *pointerNull =                                                        \
         llvm::ConstantPointerNull::get(elementTy->getPointerTo());             \
@@ -865,14 +880,14 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
         llvm::ConstantPointerNull::get(elementTy->getPointerTo());
 
     if (lhs->getType()->isQuantizedType()) {
-      auto *val = emitConstI8(builder, V);
+      auto *val = emitConst(builder, V, lhs->getElementType());
       auto *stackedOpCall =
           builder.CreateCall(F, {loopCount, val, lhsPtr, pointerNull});
       auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,
                                          loopCount, "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
     } else {
-      auto *val = emitConstF32(builder, V);
+      auto *val = emitConst(builder, V, lhs->getElementType());
       auto *stackedOpCall =
           builder.CreateCall(F, {loopCount, val, lhsPtr, pointerNull});
       auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,
