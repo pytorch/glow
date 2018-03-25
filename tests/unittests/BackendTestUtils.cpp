@@ -511,14 +511,15 @@ void inferTanhNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
-void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind) {
+void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
+                       size_t convDepth) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
                                  "input", Variable::VisibilityKind::Public);
   auto *tr = F->createTranspose("tr", var, {0, 2, 3, 1});
-  auto *conv = F->createConv("conv", tr, 4, 5, 2, 1);
+  auto *conv = F->createConv("conv", tr, convDepth, 5, 2, 1);
   cast<Variable>(conv->getFilter())->getHandle().clear(2);
   cast<Variable>(conv->getBias())->getHandle().clear(2);
   auto *pool = F->createPoolMax("pool", conv, 2, 2, 0);

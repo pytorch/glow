@@ -36,8 +36,8 @@ TEST(OpenCLCorrectnessTest, convOps) {
   Tensor out1;
   Tensor out2;
 
-  inferBasicConvNet(&inputs, &out1, BackendKind::OpenCL);
-  inferBasicConvNet(&inputs, &out2, BackendKind::Interpreter);
+  inferBasicConvNet(&inputs, &out1, BackendKind::OpenCL, 4);
+  inferBasicConvNet(&inputs, &out2, BackendKind::Interpreter, 4);
   auto H1 = out1.getHandle();
   auto H2 = out2.getHandle();
 
