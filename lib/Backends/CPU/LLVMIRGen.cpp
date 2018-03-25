@@ -1067,6 +1067,34 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::CPUConvDKKC8InstKind: {
+    CPUConvDKKC8Inst *CI = cast<CPUConvDKKC8Inst>(I);
+    auto *dest = CI->getDest();
+    auto *src = CI->getSrc();
+    auto *filter = CI->getFilter();
+    auto *bias = CI->getBias();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *filterPtr = emitValueAddress(builder, filter);
+    auto *biasPtr = emitValueAddress(builder, bias);
+
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
+    auto *filterDims = emitValueDims(builder, filter);
+    auto *biasDims = emitValueDims(builder, bias);
+
+    auto *kernel = emitConstSizeT(builder, CI->getKernel());
+    auto *stride = emitConstSizeT(builder, CI->getStride());
+    auto *pad = emitConstSizeT(builder, CI->getPad());
+
+    const char *kernelName = "convDKKC8";
+    auto *F = getFunction(kernelName, dest->getElementType());
+
+    builder.CreateCall(F, {destPtr, srcPtr, filterPtr, biasPtr, destDims,
+                           srcDims, filterDims, biasDims, kernel, stride, pad});
+    break;
+  }
+
   case Kinded::Kind::ConvolutionGradInstKind: {
     ConvolutionGradInst *CG = cast<ConvolutionGradInst>(I);
     auto *srcGrad = CG->getSrcGrad();
