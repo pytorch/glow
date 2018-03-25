@@ -74,7 +74,8 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
 
 void inferTanhNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind);
+void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
+                       size_t convDepth);
 
 void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
