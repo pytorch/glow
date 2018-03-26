@@ -625,7 +625,14 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
                         size_t stride, size_t pad) {
   unsigned depthUnroll = 8;
 
+  if (outWdims[3] % (8 * depthUnroll) != 0) {
+    printf("D is not a multiple of the unroll factor!\n");
+  }
+
   size_t inChannels = inWdims[3];
+
+  printf("Running conv ch: %d, out: %d filter: %d\n", inChannels, outWdims[3], filterSize);
+
   // For each input in the batch:
   for (size_t n = 0; n < inWdims[0]; n++) {
     // For each layer in the output tensor. Process 4 x float8 elements at once.
@@ -659,12 +666,26 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
               // Perform the heart of the convolution.
               for (size_t fd = 0; fd < inChannels; fd++) {
                 // Load a single pixel from the input image and broadcast it.
-                float8 in =
+                float8 in = (float)
                     inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
+                
                 // Load 8 x 4 elements from the filter layer. The filter is
                 // pre-swizzled to ensure efficient access.
 
                 for (int du = 0; du < depthUnroll; du++) {
+                  size_t filterSize = filterWdims[0] * filterWdims[1] * filterWdims[2] * filterWdims[3] * filterWdims[4];
+
+                  auto idx = libjit_getXYZWQ(filterWdims, d / 8 + du, fx, fy, fd, 0);
+                  auto *ptr = &filterW[idx];
+
+                  if (idx > filterSize) {
+                    printf("out of bounds on filter!\n");
+                  }
+
+                  if (((size_t)ptr) % 32 != 0) {
+                    printf("unaligned load from filter!\n");
+                  }
+
                   float8 ff0 = LoadFloat8(&filterW[libjit_getXYZWQ(
                       filterWdims, d / 8 + du, fx, fy, fd, 0)]);
                   sum[du] += ff0 * in;
@@ -675,6 +696,18 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
 
           // Store the results to the output buffer.
           for (int du = 0; du < depthUnroll; du++) {
+
+            auto idx = libjit_getXYZW(outWdims, n, ax, ay, d + du * 8);
+            auto ptr = &outW[idx];
+            if (idx > (outWdims[0]*outWdims[1]*outWdims[2]*outWdims[3])) {
+              printf("out of bounds!\n");
+              printf("accessing %zu %zu %zu %lu\n", n, ax, ay, d + du * 8);
+              printf("tensor %zu %zu %zu %zu\n", outWdims[0], outWdims[1], outWdims[2], outWdims[3]);
+            }
+            if (((size_t)ptr) % 32 != 0) {
+              printf("unaligned load!\n");
+            }
+
             StoreFloat8(&outW[libjit_getXYZW(outWdims, n, ax, ay, d + du * 8)],
                         sum[du]);
           }

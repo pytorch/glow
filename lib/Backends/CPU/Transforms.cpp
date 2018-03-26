@@ -40,6 +40,8 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
     return nullptr;
   }
 
+  printf("Transforming %s, kernel %d\n", CN->getName().data(), CN->getKernel());
+
   // Create a new variable filter with the layout [D/8, K, K, C, 8];
   TypeRef filterTy = filter->getType();
   auto dims = filterTy->dims();
@@ -52,6 +54,7 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
   auto F8H = filter8->getHandle();
   auto FH = filter->getHandle();
 
+  printf("Transpose.\n");
   // Transpose the weights into the format [D/8, K, K, C, 8], where the depth
   // dimension is consecutive in memory.
   for (size_t c0 = 0; c0 < dims[0]; c0++)
@@ -61,6 +64,7 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
           F8H.at({c0 / 8, c1, c2, c3, c0 % 8}) = FH.at({c0, c1, c2, c3});
         }
 
+  printf("Done.\n");
   return F->addNode(new CPUConvDKKC8Node(
       CN->getName(), CN->getType(), CN->getInput(), filter8, CN->getBias(),
       CN->getKernel(), CN->getStride(), CN->getPad(), CN->getDepth()));

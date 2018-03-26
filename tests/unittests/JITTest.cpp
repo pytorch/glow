@@ -528,8 +528,12 @@ TEST(JITCorrectnessTest, tanhTest) {
 }
 
 TEST(JITCorrectnessTest, convOps) {
+  setbuf(stdout, NULL);
+
   // Construct networks with a different convolution depth.
   for (auto depth : {4, 12, 128}) {
+    printf("Starting convOps %d\n", depth);
+
     Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});
     inputs.getHandle().initXavier(1);
     Tensor out1;
@@ -541,6 +545,8 @@ TEST(JITCorrectnessTest, convOps) {
     auto H2 = out2.getHandle();
 
     EXPECT_TRUE(H1.isEqual(H2));
+    printf("Done convOps %d\n", depth);
+
   }
 }
 
