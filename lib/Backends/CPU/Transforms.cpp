@@ -68,15 +68,26 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
 
 bool CPUBackend::transformPostLowering(Function *F) {
   bool changed = false;
-  for (auto node : F->getNodes()) {
 
+  // Collect the convolutions.
+  std::vector<ConvolutionNode *> convs;
+  for (auto node : F->getNodes()) {
     if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
-      if (Node *NCN = optimizeCPUConv(CN, F)) {
-        NodeValue(node, 0).replaceAllUsesOfWith(NCN);
-        changed = true;
-        continue;
-      }
+      convs.push_back(CN);
     }
+  }
+
+  // Optimize the convolutions without invalidating the iterator.
+  for (auto *CN : convs) {
+    if (Node *NCN = optimizeCPUConv(CN, F)) {
+      NodeValue(CN, 0).replaceAllUsesOfWith(NCN);
+      F->eraseNode(CN);
+      changed = true;
+      continue;
+    }
+  }
+
+  for (auto node : F->getNodes()) {
     if (auto *MN = dyn_cast<MaxNode>(node)) {
       if (auto *splat = dyn_cast<SplatNode>(MN->getLHS())) {
         auto MSN = F->addNode(new CPUMaxSplatNode(MN->getName(), MN->getRHS(),
