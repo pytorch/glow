@@ -37,7 +37,7 @@ TEST(MemAlloc, holes) {
 }
 
 TEST(MemAlloc, dealloc) {
-  MemoryAllocator MA(100);
+  MemoryAllocator MA(400);
   auto p0 = MA.allocate(10);
   auto p1 = MA.allocate(10);
   auto p2 = MA.allocate(10);
