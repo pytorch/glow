@@ -17,6 +17,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <memory>
+
 using namespace glow;
 using llvm::StringRef;
 using llvm::cast;
@@ -95,8 +97,14 @@ void CPUBackend::performJITMemoryAllocation() {
 
   // Allocate the heap to match the max memory usage for activations.
   if (allocationsInfo_.activationsMemSize_ > 0) {
-    heap_.resize(allocationsInfo_.activationsMemSize_);
-    allocationsInfo_.baseActivationsAddress_ = &heap_[0];
+    size_t requiredSize = allocationsInfo_.activationsMemSize_ + heapAlignment;
+    heap_.resize(requiredSize);
+    auto *ptr = &heap_[0];
+
+    // We can't use std::align because of a bug in Gcc. This is a workaround.
+    while ((size_t)ptr % heapAlignment) { ptr++; }
+
+    allocationsInfo_.baseActivationsAddress_ = ptr;
   }
 }
 

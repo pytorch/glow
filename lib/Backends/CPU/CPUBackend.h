@@ -23,6 +23,9 @@ class Instruction;
 class WeightVar;
 struct AllocationsInfo;
 
+/// The is alligned to this value.
+constexpr unsigned heapAlignment = 32;
+
 class CPUBackend final : public Backend {
   /// The Module that holds the glow IR. This does not own the module.
   IRFunction *F_;
