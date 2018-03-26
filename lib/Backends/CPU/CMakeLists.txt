@@ -3,8 +3,10 @@ if(NOT "${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
   message(SEND_ERROR "clang is required to build the JIT library")
 endif()
 
+find_program(LLVM_LINK_BIN llvm-link)
+
 add_library(CPURuntime
-            OBJECT
+            SHARED
               libjit.cpp)
 set_target_properties(CPURuntime
                       PROPERTIES
@@ -15,24 +17,12 @@ target_compile_options(CPURuntime
                          -g
                          -emit-llvm
                          -O0)
-
-find_program(LLVM_LINK_BIN llvm-link)
-
-add_custom_command(OUTPUT
-                     ${CMAKE_BINARY_DIR}/libjit.bc
-                   DEPENDS
-                     $<TARGET_OBJECTS:CPURuntime>
-                     CPURuntime
-                   COMMAND
-                     echo \"$<TARGET_OBJECTS:CPURuntime>\" | tr '$<SEMICOLON>' ' ' | xargs -- ${LLVM_LINK_BIN} -o ${CMAKE_BINARY_DIR}/libjit.bc)
-get_target_property(CPURuntime_SOURCES CPURuntime SOURCES)
-add_custom_target(GlowCPURuntime
-                  ALL
-                  DEPENDS
-                    ${CMAKE_BINARY_DIR}/libjit.bc
-                  SOURCES
-                    ${CPURuntime_SOURCES}
-                    $<TARGET_OBJECTS:CPURuntime>)
+set_target_properties(CPURuntime
+                      PROPERTIES
+                        RULE_LAUNCH_LINK
+                          "${LLVM_LINK_BIN} -o ${CMAKE_BINARY_DIR}/libjit.bc <OBJECTS> # "
+                        OUTPUT_NAME
+                          libjit.bc)
 
 add_library(CPUBackend
             AllocationsInfo.cpp
@@ -70,4 +60,4 @@ target_link_libraries(CPUBackend
                         LLVMInterpreter
                         LLVMSupport
                         LLVMPasses)
-add_dependencies(CPUBackend GlowCPURuntime)
+add_dependencies(CPUBackend CPURuntime)
