@@ -6,6 +6,7 @@
 
 #include "glow/Base/Type.h"
 #include "glow/Support/Compiler.h"
+#include "glow/Support/Memory.h"
 #include "glow/Support/Random.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -26,6 +27,9 @@ void genericTranspose(Tensor *src, Tensor *dest,
 
 void broadcastToNewShapeImpl(Tensor *src, Tensor *dest,
                              llvm::ArrayRef<size_t> otherDims, unsigned axis);
+
+/// The tensor payload is allocated to be aligned to this value.
+constexpr unsigned TensorAlignment = 64;
 
 /// A class that represents a contiguous n-dimensional array (a tensor).
 class Tensor final {
@@ -168,18 +172,20 @@ public:
 
     // Delete the old buffer, update the shape, and allocate a new one.
     if (!isUnowned())
-      delete[] getData();
+      alignedFree(getData());
     type_ = T;
 
     if (size()) {
-      data_.setPointer(new char[size() * type_.getElementSize()]);
+      size_t count = size() * type_.getElementSize();
+      data_.setPointer(alignedAlloc(count, TensorAlignment));
       zero();
     }
   }
 
   ~Tensor() {
-    if (!isUnowned())
-      delete[] getData();
+    if (!isUnowned()) {
+      alignedFree(getData());
+    }
   }
 
   // Move ctor.
