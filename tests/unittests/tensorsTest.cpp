@@ -96,19 +96,19 @@ TEST(Tensor, equalHandles) {
   {
     Tensor A = {1.0, 20};
     Tensor B = {1.0};
-    EXPECT_FALSE(A.getHandle().isEqual(B.getHandle()));
+    EXPECT_FALSE(A.isEqual(B));
   }
 
   {
     Tensor A = {1.0, 20};
     Tensor B = {1.0, 20};
-    EXPECT_TRUE(A.getHandle().isEqual(B.getHandle()));
+    EXPECT_TRUE(A.isEqual(B));
   }
 
   {
     Tensor A = {1.0, 20};
     Tensor B = {1.0, 30};
-    EXPECT_FALSE(A.getHandle().isEqual(B.getHandle()));
+    EXPECT_FALSE(A.isEqual(B));
   }
 }
 

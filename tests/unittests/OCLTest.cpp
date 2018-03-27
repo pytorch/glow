@@ -24,10 +24,8 @@ TEST(OpenCLCorrectnessTest, reluTest) {
 
   inferReluNet(&inputs, &out1, BackendKind::OpenCL);
   inferReluNet(&inputs, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(OpenCLCorrectnessTest, convOps) {
@@ -38,10 +36,8 @@ TEST(OpenCLCorrectnessTest, convOps) {
 
   inferBasicConvNet(&inputs, &out1, BackendKind::OpenCL, 4);
   inferBasicConvNet(&inputs, &out2, BackendKind::Interpreter, 4);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(OpenCLCorrectnessTest, basicFCNet) {
@@ -52,10 +48,8 @@ TEST(OpenCLCorrectnessTest, basicFCNet) {
 
   inferBasicFCNet(&inputs, &out1, BackendKind::OpenCL);
   inferBasicFCNet(&inputs, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(OpenCLCorrectnessTest, inferMixedNet) {
@@ -66,8 +60,6 @@ TEST(OpenCLCorrectnessTest, inferMixedNet) {
 
   inferMixedNet(&inputs, &out1, BackendKind::OpenCL);
   inferMixedNet(&inputs, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
