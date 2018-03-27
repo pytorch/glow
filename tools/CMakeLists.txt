@@ -1,4 +1,6 @@
 add_subdirectory(ClassGen)
 add_subdirectory(emulator)
-add_subdirectory(loader)
+if(PNG_FOUND)
+  add_subdirectory(loader)
+endif()
 
