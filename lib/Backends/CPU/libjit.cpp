@@ -631,22 +631,45 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
     // For each layer in the output tensor. Process 4 x float8 elements at once.
     for (size_t d = 0; d < outWdims[3]; d += 8 * depthUnroll) {
 
-      // For each convolution 'jump' in the input tensor:
-      ssize_t x = -(ssize_t)pad;
-      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
-        ssize_t y = -(ssize_t)pad;
-        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+      // Clear the output buffer and save the bias values.
 
-          // Process 4 * 8 output pixels at once. Each value here is a scalar in
-          // the depth dimension.
-          float8 sum[depthUnroll];
+      // For each (x,y) step in the output tensor:
+      for (size_t ax = 0; ax < outWdims[1]; ax++) {
+        for (size_t ay = 0; ay < outWdims[2]; ay++) {
+          // Store the results to the output buffer.
           for (int du = 0; du < depthUnroll; du++) {
-            sum[du] = LoadFloat8(&biasW[d + du * 8]);
+            // If this is the first time that we are writing into the buffer
+            // then zero the output value and add the bias.
+            auto bias = LoadFloat8(&biasW[d + du * 8]);
+            auto outIdx = libjit_getXYZW(outWdims, n, ax, ay, d + du * 8);
+            StoreFloat8(&outW[outIdx], bias);
           }
+        } // For each Y in the output.
+      }   // For eaxh X in the output.
 
-          // For each element in the convolution-filter:
-          for (size_t fx = 0; fx < filterSize; fx++) {
-            for (size_t fy = 0; fy < filterSize; fy++) {
+      // Perform the convolution.
+
+      // For each element in the convolution-filter:
+      for (size_t fx = 0; fx < filterSize; fx++) {
+        for (size_t fy = 0; fy < filterSize; fy++) {
+
+          // For each (x,y) step in the input/output tensor:
+          ssize_t x = -(ssize_t)pad;
+          for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+            ssize_t y = -(ssize_t)pad;
+            for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+
+              // Process N * 8 output pixels at once. Each value here is a
+              // scalar that represents the sum for (x,y) and the filter. The
+              // SIMD dimension represents multiple layers of the depth (output
+              // channel).
+              float8 sum[depthUnroll];
+              for (int du = 0; du < depthUnroll; du++) {
+                sum[du] = 0;
+              }
+
+              // Calculate the specific input x,y that we calculate in this
+              // iteration.
               ssize_t ox = x + fx;
               ssize_t oy = y + fy;
 
@@ -656,33 +679,39 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
                 continue;
               }
 
-              // Perform the heart of the convolution.
+              // Perform the heart of the convolution:
               for (size_t fd = 0; fd < inChannels; fd++) {
                 // Load a single pixel from the input image and broadcast it.
                 float8 in =
                     inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
-                // Load 8 x 4 elements from the filter layer. The filter is
+                // Load N x 8 elements from the filter layer. The filter is
                 // pre-swizzled to ensure efficient access.
-
                 for (int du = 0; du < depthUnroll; du++) {
                   float8 ff0 = LoadFloat8(&filterW[libjit_getXYZWQ(
                       filterWdims, d / 8 + du, fx, fy, fd, 0)]);
                   sum[du] += ff0 * in;
                 }
               }
-            }
-          }
 
-          // Store the results to the output buffer.
-          for (int du = 0; du < depthUnroll; du++) {
-            StoreFloat8(&outW[libjit_getXYZW(outWdims, n, ax, ay, d + du * 8)],
-                        sum[du]);
-          }
+              // Store the results to the output buffer.
+              for (int du = 0; du < depthUnroll; du++) {
+                // If this is the first time that we are writing into the buffer
+                // then zero the output value and add the bias.
 
-        } // W
-      }   // H
-    }     // C
-  }       // N
+                // If this is not the first time that we are writing into the
+                // buffer then add the partial sum.
+                AddFloat8(
+                    &outW[libjit_getXYZW(outWdims, n, ax, ay, d + du * 8)],
+                    sum[du]);
+              }
+
+            } // For each Y in the output.
+          }   // For eaxh X in the output.
+
+        } // For each Y in the filter.
+      }   // For each X in the filter.
+    }     // For each D (the depth, or the output channel).
+  }       // For each N, the sample in the batch.
 }
 
 void libjit_convolution_f(float *outW, const float *inW, const float *filterW,

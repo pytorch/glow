@@ -25,7 +25,7 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
   // The depth dimension must of a multiple of 64 to perform the
   // transformation. This transformation is currently only profitable on
   // low-channel convolutions.
-  if (depth < 64 || depth % 64 || inChannels > 128) {
+  if (depth < 64 || depth % 64 || inChannels > 256) {
     return nullptr;
   }
 
