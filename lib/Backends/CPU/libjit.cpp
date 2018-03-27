@@ -744,25 +744,26 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
     // together.
     for (size_t d = 0; d < outWdims[3]; d += depthUnroll) {
 
-      // For each convolution 'jump' in the input tensor:
-      ssize_t x = -(ssize_t)pad;
-      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
-        ssize_t y = -(ssize_t)pad;
-        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+      // For each element in the convolution-filter:
+      for (size_t fx = 0; fx < filterSize; fx++) {
+        for (size_t fy = 0; fy < filterSize; fy++) {
 
-          // Process 'depthUnroll' output pixels at once. Each scalar here
-          // represents the convolution sum for one (x,y) point in the output.
-          // We process the same pixel for different output channel (D) values.
-          // The compiler should perform scalar replacement of aggregates and
-          // split this tiny array to registers.
-          float sum[depthUnroll];
-          for (int i = 0; i < depthUnroll; i++) {
-            sum[i] = 0;
-          }
+          // For each convolution 'jump' in the input tensor:
+          ssize_t x = -(ssize_t)pad;
+          for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+            ssize_t y = -(ssize_t)pad;
+            for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
 
-          // For each element in the convolution-filter:
-          for (size_t fx = 0; fx < filterSize; fx++) {
-            for (size_t fy = 0; fy < filterSize; fy++) {
+              // Process 'depthUnroll' output pixels at once. Each scalar here
+              // represents the convolution sum for one (x,y) point in the
+              // output. We process the same pixel for different output channel
+              // (D) values. The compiler should perform scalar replacement of
+              // aggregates and split this tiny array to registers.
+              float sum[depthUnroll];
+              for (int i = 0; i < depthUnroll; i++) {
+                sum[i] = 0;
+              }
+
               ssize_t ox = x + fx;
               ssize_t oy = y + fy;
 
@@ -797,12 +798,12 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
                     sum[i] += filterW[filterIdx + (sliceSize * i) + fd] * in;
                   }
                 }
-            }
-          }
 
-          // Store the results to the output buffer.
-          for (int i = 0; i < depthUnroll; i++) {
-            outW[libjit_getXYZW(outWdims, n, ax, ay, d + i)] += sum[i];
+              // Store the results to the output buffer.
+              for (int i = 0; i < depthUnroll; i++) {
+                outW[libjit_getXYZW(outWdims, n, ax, ay, d + i)] += sum[i];
+              }
+            }
           }
         } // W
       }   // H
