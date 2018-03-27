@@ -27,6 +27,11 @@ void genericTranspose(Tensor *src, Tensor *dest,
 void broadcastToNewShapeImpl(Tensor *src, Tensor *dest,
                              llvm::ArrayRef<size_t> otherDims, unsigned axis);
 
+// Tensors are allocated in alligned chunks to ensure correct SIMD access.
+struct alignas(64) TensorPage {
+  char sse_data[64];
+};
+
 /// A class that represents a contiguous n-dimensional array (a tensor).
 class Tensor final {
   /// A pointer to the tensor data and the unowned flag.
@@ -167,19 +172,25 @@ public:
     }
 
     // Delete the old buffer, update the shape, and allocate a new one.
-    if (!isUnowned())
-      delete[] getData();
+    if (!isUnowned()) {
+      delete[] reinterpret_cast<TensorPage *>(getData());
+    }
     type_ = T;
 
     if (size()) {
-      data_.setPointer(new char[size() * type_.getElementSize()]);
+      size_t requiredSize = size() * type_.getElementSize();
+      // Allocate enough pages to store all of the bytes that are required for
+      // the tensor.
+      auto numPages = 1 + requiredSize / sizeof(TensorPage);
+      data_.setPointer(new TensorPage[numPages]);
       zero();
     }
   }
 
   ~Tensor() {
-    if (!isUnowned())
-      delete[] getData();
+    if (!isUnowned()) {
+      delete[] reinterpret_cast<TensorPage *>(getData());
+    }
   }
 
   // Move ctor.
