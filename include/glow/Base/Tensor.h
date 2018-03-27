@@ -29,7 +29,7 @@ void broadcastToNewShapeImpl(Tensor *src, Tensor *dest,
 
 // Tensors are allocated in alligned chunks to ensure correct SIMD access.
 struct alignas(64) TensorPage {
-  char sse_data[64];
+  alignas(64) char pageData_[64];
 };
 
 /// A class that represents a contiguous n-dimensional array (a tensor).
@@ -182,7 +182,11 @@ public:
       // Allocate enough pages to store all of the bytes that are required for
       // the tensor.
       auto numPages = 1 + requiredSize / sizeof(TensorPage);
-      data_.setPointer(new TensorPage[numPages]);
+      auto *ptr = new TensorPage[numPages];
+      data_.setPointer(ptr);
+      if (((size_t)ptr) % 32 != 0) {
+        printf("Allocating unaligned pointer %08x!\n", ptr);
+      }
       zero();
     }
   }

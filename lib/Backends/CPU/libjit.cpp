@@ -633,6 +633,10 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
 
   printf("Running conv ch: %d, out: %d filter: %d\n", inChannels, outWdims[3], filterSize);
 
+  if (((size_t)filterW) % 32 != 0) {
+    printf("unaligned (base filterW %08x)!\n", filterW);
+  }
+
   // For each input in the batch:
   for (size_t n = 0; n < inWdims[0]; n++) {
     // For each layer in the output tensor. Process 4 x float8 elements at once.
@@ -668,7 +672,7 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
                 // Load a single pixel from the input image and broadcast it.
                 float8 in = (float)
                     inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, fd)];
-                
+
                 // Load 8 x 4 elements from the filter layer. The filter is
                 // pre-swizzled to ensure efficient access.
 
@@ -683,7 +687,7 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
                   }
 
                   if (((size_t)ptr) % 32 != 0) {
-                    printf("unaligned load from filter!\n");
+                    printf("unaligned load from filter %08x (base %08x)!\n", ptr, filterW);
                   }
 
                   float8 ff0 = LoadFloat8(&filterW[libjit_getXYZWQ(
