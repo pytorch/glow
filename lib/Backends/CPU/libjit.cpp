@@ -439,6 +439,53 @@ void libjit_pool_max_xy_generic(const T *inW, T *outW, size_t *inXY,
   }       // N
 }
 
+/// Innermost helper for matrix multiplication.  When inlined, the y dimension
+/// will be vectorized and flattened.
+static void libjit_matmul_inner(float * __restrict__ dest, const float * __restrict__ LHS, const float * __restrict__ RHS, size_t lda, size_t ldb, size_t x_block, size_t i_block, size_t y_block) {
+  for (size_t x = 0; x < x_block; x++) {
+    for (size_t i = 0; i < i_block; i++) {
+      for (size_t y = 0; y < y_block; y++) {
+        dest[ldb * x + y] += LHS[lda * x + i] * RHS[ldb * i + y];
+      }
+    }
+  }
+}
+
+/// Tile helper for matrix multiplication.  Processes multiplications in blocks,
+/// with customizable offset and block size to handle the "ragged edges".
+static void libjit_matmul_tiled(float *dest, const float *LHS, const float *RHS,
+                                const size_t *destDims, const size_t *lhsDims,
+                                const size_t *rhsDims,
+                                size_t x_off, size_t x_block,
+                                size_t i_off, size_t i_block,
+                                size_t y_off, size_t y_block) {
+  for (size_t x = x_off; x < destDims[0] - x_block + 1; x += x_block) {
+    for (size_t y = y_off; y < destDims[1] - y_block + 1; y += y_block) {
+      for (size_t i = i_off; i < lhsDims[1] - i_block + 1; i += i_block) {
+        libjit_matmul_inner(
+          &dest[libjit_getXY(destDims, x, y)],
+          &LHS[libjit_getXY(lhsDims, x, i)],
+          &RHS[libjit_getXY(rhsDims, i, y)],
+          lhsDims[1],
+          rhsDims[1],
+          x_block, i_block, y_block
+        );
+      }
+    }
+  }
+}
+
+/// Helper struct for matrix partitioning.
+struct part {
+  size_t div;
+  size_t rem;
+};
+
+/// Helper for matrix partitioning.
+part partition(size_t p, size_t q) {
+  return {p / q * q, p % q};
+}
+
 } // namespace
 
 extern "C" {
@@ -557,23 +604,37 @@ void libjit_broadcast_f(float *dest, const float *src, const size_t *dest_dims,
 void libjit_matmul_f(float *dest, const float *LHS, const float *RHS,
                      const size_t *destDims, const size_t *lhsDims,
                      const size_t *rhsDims) {
-  size_t destSize = destDims[0] * destDims[1];
-  for (size_t i = 0; i < destSize; ++i)
-    dest[i] = 0;
+  static constexpr size_t x_block = 32;
+  static constexpr size_t i_block = 32;
+  static constexpr size_t y_block = 64;
+  bzero(dest, sizeof(float) * destDims[0] * destDims[1]);
 
-  for (size_t i = 0; i < lhsDims[1]; i++) {
-    // For each (x,y) in the destination matrix:
-    for (size_t x = 0; x < destDims[0]; x++) {
-      for (size_t y = 0; y < destDims[1]; y++) {
-        // This loop order is very cache friendly.
-        // dest and rhs are accessed sequentially.
-        // lhs access is invariant inside the inner-most loop and can be
-        // hoisted.
-        dest[libjit_getXY(destDims, x, y)] +=
-            LHS[libjit_getXY(lhsDims, x, i)] * RHS[libjit_getXY(rhsDims, i, y)];
-      }
+  auto x_part = partition(destDims[0], x_block);
+  auto y_part = partition(destDims[1], y_block);
+  auto i_part = partition(lhsDims[1], i_block);
+
+  auto mul = [=](size_t xo, size_t xb, size_t io, size_t ib, size_t yo, size_t yb) {
+    if (!xb || !yb || !ib) {
+      return;
     }
-  }
+    if (xb > destDims[0] ||
+        yb > destDims[1] ||
+        ib > lhsDims[1]) {
+      return;
+    }
+    libjit_matmul_tiled(dest, LHS, RHS, destDims, lhsDims, rhsDims,
+                        xo, xb, io, ib, yo, yb);
+  };
+
+  mul(0, x_block, 0, i_block, 0, y_block);
+  mul(0, x_block, 0, i_block, y_part.div, y_part.rem);
+  mul(0, x_block, i_part.div, i_part.rem, 0, y_block);
+  mul(0, x_block, i_part.div, i_part.rem, y_part.div, y_part.rem);
+
+  mul(x_part.div, x_part.rem, 0, i_block, 0, y_block);
+  mul(x_part.div, x_part.rem, 0, i_block, y_part.div, y_part.rem);
+  mul(x_part.div, x_part.rem, i_part.div, i_part.rem, 0, y_block);
+  mul(x_part.div, x_part.rem, i_part.div, i_part.rem, y_part.div, y_part.rem);
 }
 
 void libjit_matmul_i8(int8_t *outW, const int8_t *lhsW, const int8_t *rhsW,
