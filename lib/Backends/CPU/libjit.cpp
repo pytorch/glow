@@ -634,9 +634,9 @@ void libjit_conv_init_output_with_bias(size_t N, float *outW,
         float bias = biasW[d];
         auto outIdx = libjit_getXYZW(outWdims, N, ax, ay, d);
         outW[outIdx] = bias;
-      }     // For each depth in the output.
-    } // For each Y in the output.
-  }   // For each X in the output.
+      } // For each depth in the output.
+    }   // For each Y in the output.
+  }     // For each X in the output.
 }
 
 void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
@@ -722,8 +722,8 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
           } // For each Y in the filter.
         }   // For each X in the filter.
       }     // For each D (the depth, or the output channel).
-    }
-  }       // For each N, the sample in the batch.
+    }       // For each block in the input channel.
+  }         // For each N, the sample in the batch.
 }
 
 void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
@@ -733,6 +733,13 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
                           size_t stride, size_t pad, size_t depthUnroll) {
   size_t inChannels = inWdims[3];
 
+  // The size of the input-channel tile. High channel count allow for SIMD
+  // parallelism but create register pressure. Low channel count reduces the
+  // memory pressure and allows things to fit in cache, but require additional
+  // compute (horizontal add) to sum the values in the block. This value is a
+  // compromise between the two.
+  constexpr unsigned cbSize = 512;
+
   // For each input in the batch:
   for (size_t n = 0; n < inWdims[0]; n++) {
 
@@ -740,75 +747,82 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
     // Later we will accumulate values into this slice.
     libjit_conv_init_output_with_bias(n, outW, biasW, outWdims, biasWdims);
 
-    // For each layer in the output tensor. Process 'depthUnroll' output layers
-    // together.
-    for (size_t d = 0; d < outWdims[3]; d += depthUnroll) {
+    // Process the body of the loop in tiles of "channel-block".
+    for (size_t cb = 0; cb < inChannels; cb += cbSize) {
 
-      // For each element in the convolution-filter:
-      for (size_t fx = 0; fx < filterSize; fx++) {
-        for (size_t fy = 0; fy < filterSize; fy++) {
+      // For each layer in the output tensor. Process 'depthUnroll' output
+      // layers together.
+      for (size_t d = 0; d < outWdims[3]; d += depthUnroll) {
 
-          // For each convolution 'jump' in the input tensor:
-          ssize_t x = -(ssize_t)pad;
-          for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
-            ssize_t y = -(ssize_t)pad;
-            for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+        // For each element in the convolution-filter:
+        for (size_t fx = 0; fx < filterSize; fx++) {
+          for (size_t fy = 0; fy < filterSize; fy++) {
 
-              // Process 'depthUnroll' output pixels at once. Each scalar here
-              // represents the convolution sum for one (x,y) point in the
-              // output. We process the same pixel for different output channel
-              // (D) values. The compiler should perform scalar replacement of
-              // aggregates and split this tiny array to registers.
-              float sum[depthUnroll];
-              for (int i = 0; i < depthUnroll; i++) {
-                sum[i] = 0;
-              }
+            // For each convolution 'jump' in the input tensor:
+            ssize_t x = -(ssize_t)pad;
+            for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+              ssize_t y = -(ssize_t)pad;
+              for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
 
-              ssize_t ox = x + fx;
-              ssize_t oy = y + fy;
-
-              // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
-                  oy >= (ssize_t)inWdims[2]) {
-                continue;
-              }
-
-              // Calculate the indices into the Filter and Input buffers.
-              size_t inIdx =
-                  libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, 0);
-              size_t filterIdx = libjit_getXYZW(filterWdims, d, fx, fy, 0);
-              size_t sliceSize =
-                  filterWdims[1] * filterWdims[2] * filterWdims[3];
-
-              // Perform the heart of the convolution, 4 elements at a time to
-              // reduce register pressure.
-              for (size_t fd = 0; fd < inChannels; fd++) {
-                float in = inW[inIdx + fd];
-                for (int i = 0; i < MIN(4, depthUnroll); i++) {
-                  sum[i] += filterW[filterIdx + (sliceSize * i) + fd] * in;
+                // Process 'depthUnroll' output pixels at once. Each scalar here
+                // represents the convolution sum for one (x,y) point in the
+                // output. We process the same pixel for different output
+                // channel (D) values. The compiler should perform scalar
+                // replacement of aggregates and split this tiny array to
+                // registers.
+                float sum[depthUnroll];
+                for (int i = 0; i < depthUnroll; i++) {
+                  sum[i] = 0;
                 }
-              }
 
-              // And run the innermost loop again for the second group of depth
-              // slices:
-              if (depthUnroll > 4)
-                for (size_t fd = 0; fd < inChannels; fd++) {
+                ssize_t ox = x + fx;
+                ssize_t oy = y + fy;
+
+                // Ignore index access below zero (this is due to padding).
+                if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
+                    oy >= (ssize_t)inWdims[2]) {
+                  continue;
+                }
+
+                // Calculate the indices into the Filter and Input buffers.
+                size_t inIdx =
+                    libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, 0);
+                size_t filterIdx = libjit_getXYZW(filterWdims, d, fx, fy, 0);
+                size_t sliceSize =
+                    filterWdims[1] * filterWdims[2] * filterWdims[3];
+
+                // Perform the heart of the convolution, 4 elements at a time to
+                // reduce register pressure.
+                for (size_t fd = cb; fd < MIN(cb + cbSize, inChannels); fd++) {
                   float in = inW[inIdx + fd];
-                  for (int i = 4; i < MIN(8, depthUnroll); i++) {
+                  for (int i = 0; i < MIN(4, depthUnroll); i++) {
                     sum[i] += filterW[filterIdx + (sliceSize * i) + fd] * in;
                   }
                 }
 
-              // Store the results to the output buffer.
-              for (int i = 0; i < depthUnroll; i++) {
-                outW[libjit_getXYZW(outWdims, n, ax, ay, d + i)] += sum[i];
+                // And run the innermost loop again for the second group of
+                // depth slices:
+                if (depthUnroll > 4) {
+                  for (size_t fd = cb; fd < MIN(cb + cbSize, inChannels);
+                       fd++) {
+                    float in = inW[inIdx + fd];
+                    for (int i = 4; i < MIN(8, depthUnroll); i++) {
+                      sum[i] += filterW[filterIdx + (sliceSize * i) + fd] * in;
+                    }
+                  }
+                }
+
+                // Store the results to the output buffer.
+                for (int i = 0; i < depthUnroll; i++) {
+                  outW[libjit_getXYZW(outWdims, n, ax, ay, d + i)] += sum[i];
+                }
               }
             }
-          }
-        } // W
-      }   // H
-    }     // C
-  }       // N
+          } // For each Y in the filter.
+        }   // For each X in the filter.
+      }     // For each D (the depth, or the output channel).
+    }       // For each block in the input channel.
+  }         // For each N, the sample in the batch.
 }
 
 void libjit_convolution_i8(
