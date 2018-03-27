@@ -27,10 +27,8 @@ TEST(JITCorrectnessTest, batchedAddTest) {
 
   inferBatchedAddNet(&batch, &slice, &out1, BackendKind::JIT);
   inferBatchedAddNet(&batch, &slice, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, quantizedBatchedAddTest) {
@@ -45,10 +43,8 @@ TEST(JITCorrectnessTest, quantizedBatchedAddTest) {
 
   inferBatchedAddNet(&batch, &slice, &out1, BackendKind::JIT);
   inferBatchedAddNet(&batch, &slice, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle<int8_t>();
-  auto H2 = out2.getHandle<int8_t>();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, batchedReduceAddTest) {
@@ -59,10 +55,8 @@ TEST(JITCorrectnessTest, batchedReduceAddTest) {
 
   inferBatchedReduceAddNet(&inputs, &out1, BackendKind::JIT);
   inferBatchedReduceAddNet(&inputs, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, convTest) {
@@ -79,10 +73,8 @@ TEST(JITCorrectnessTest, convTest) {
 
   inferConvNet(&inputs, &kernel, &bias, &out1, BackendKind::JIT);
   inferConvNet(&inputs, &kernel, &bias, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, quantizedConvTest) {
@@ -99,10 +91,8 @@ TEST(JITCorrectnessTest, quantizedConvTest) {
 
   inferConvNet(&inputs, &kernel, &bias, &out1, BackendKind::JIT);
   inferConvNet(&inputs, &kernel, &bias, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle<int8_t>();
-  auto H2 = out2.getHandle<int8_t>();
 
-  EXPECT_TRUE(H1.isEqual(H2, 1.0));
+  EXPECT_TRUE(out1.isEqual(out2, 1.0));
 }
 
 TEST(JITCorrectnessTest, convGradTest) {
@@ -132,10 +122,8 @@ TEST(JITCorrectnessTest, convGradTest) {
                shape2, &out1, BackendKind::JIT);
   trainConvNet(&inputs, &kernel1, &bias1, &kernel2, &bias2, &selected, shape1,
                shape2, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, gatherTest) {
@@ -156,10 +144,8 @@ TEST(JITCorrectnessTest, gatherTest) {
 
   inferGatherNet(&data, &indices, &out1, BackendKind::JIT);
   inferGatherNet(&data, &indices, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, localResponseNormalizationTest) {
@@ -170,10 +156,8 @@ TEST(JITCorrectnessTest, localResponseNormalizationTest) {
 
   inferLocalResponseNormalizationNet(&inputs, &out1, BackendKind::JIT);
   inferLocalResponseNormalizationNet(&inputs, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, localResponseNormalizationGradTest) {
@@ -200,10 +184,8 @@ TEST(JITCorrectnessTest, localResponseNormalizationGradTest) {
   trainLocalResponseNormalizationNet(&inputs, &weights, &bias, &selected,
                                      shape1, shape2, &out2,
                                      BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, matMulTest) {
@@ -218,10 +200,8 @@ TEST(JITCorrectnessTest, matMulTest) {
 
   inferMatMulNet(&lhs, &rhs, &out1, BackendKind::JIT);
   inferMatMulNet(&lhs, &rhs, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2, 0.001));
+  EXPECT_TRUE(out1.isEqual(out2, 0.001));
 }
 
 TEST(JITCorrectnessTest, quantizedMatMulTest) {
@@ -236,10 +216,8 @@ TEST(JITCorrectnessTest, quantizedMatMulTest) {
 
   inferMatMulNet(&lhs, &rhs, &out1, BackendKind::JIT);
   inferMatMulNet(&lhs, &rhs, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle<int8_t>();
-  auto H2 = out2.getHandle<int8_t>();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, maxTest) {
@@ -254,10 +232,8 @@ TEST(JITCorrectnessTest, maxTest) {
 
   inferMaxNet(&inputs1, &inputs2, &out1, BackendKind::JIT);
   inferMaxNet(&inputs1, &inputs2, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, minTest) {
@@ -272,10 +248,8 @@ TEST(JITCorrectnessTest, minTest) {
 
   inferMinNet(&inputs1, &inputs2, &out1, BackendKind::JIT);
   inferMinNet(&inputs1, &inputs2, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, poolAvgTest) {
@@ -286,10 +260,8 @@ TEST(JITCorrectnessTest, poolAvgTest) {
 
   inferPoolAvgNet(&inputs, &out1, BackendKind::JIT);
   inferPoolAvgNet(&inputs, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, poolAvgGradTest) {
@@ -315,10 +287,8 @@ TEST(JITCorrectnessTest, poolAvgGradTest) {
                   BackendKind::JIT);
   trainPoolAvgNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
                   BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, poolMaxTest) {
@@ -329,10 +299,8 @@ TEST(JITCorrectnessTest, poolMaxTest) {
 
   inferPoolMaxNet(&inputs, &out1, BackendKind::JIT);
   inferPoolMaxNet(&inputs, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, poolMaxGradTest) {
@@ -358,10 +326,8 @@ TEST(JITCorrectnessTest, poolMaxGradTest) {
                   BackendKind::JIT);
   trainPoolMaxNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
                   BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, quantizeTest) {
@@ -376,10 +342,8 @@ TEST(JITCorrectnessTest, quantizeTest) {
 
   inferQuantizeNet(&inputs, scale, offset, &out1, BackendKind::JIT);
   inferQuantizeNet(&inputs, scale, offset, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, reluTest) {
@@ -390,10 +354,8 @@ TEST(JITCorrectnessTest, reluTest) {
 
   inferReluNet(&inputs, &out1, BackendKind::JIT);
   inferReluNet(&inputs, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, reshapeTest) {
@@ -406,10 +368,8 @@ TEST(JITCorrectnessTest, reshapeTest) {
 
   inferReshapeNet(&inputs, shape, &out1, BackendKind::JIT);
   inferReshapeNet(&inputs, shape, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, reshapeIndexTest) {
@@ -425,10 +385,8 @@ TEST(JITCorrectnessTest, reshapeIndexTest) {
 
   inferReshapeNet(&inputs, shape, &out1, BackendKind::JIT);
   inferReshapeNet(&inputs, shape, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle<size_t>();
-  auto H2 = out2.getHandle<size_t>();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, selectTest) {
@@ -448,10 +406,8 @@ TEST(JITCorrectnessTest, selectTest) {
 
   inferSelectNet(&cond, &inputs1, &inputs2, &out1, BackendKind::JIT);
   inferSelectNet(&cond, &inputs1, &inputs2, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, sigmoidTest) {
@@ -462,10 +418,8 @@ TEST(JITCorrectnessTest, sigmoidTest) {
 
   inferSigmoidNet(&inputs, &out1, BackendKind::JIT);
   inferSigmoidNet(&inputs, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, softmaxTest) {
@@ -481,10 +435,8 @@ TEST(JITCorrectnessTest, softmaxTest) {
 
   inferSoftMaxNet(&inputs, &selected, &out1, BackendKind::JIT);
   inferSoftMaxNet(&inputs, &selected, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, softmaxGradTest) {
@@ -507,10 +459,8 @@ TEST(JITCorrectnessTest, softmaxGradTest) {
   trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out1, BackendKind::JIT);
   trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out2,
                   BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, tanhTest) {
@@ -521,10 +471,8 @@ TEST(JITCorrectnessTest, tanhTest) {
 
   inferTanhNet(&inputs, &out1, BackendKind::JIT);
   inferTanhNet(&inputs, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, convOps) {
@@ -537,10 +485,8 @@ TEST(JITCorrectnessTest, convOps) {
 
     inferBasicConvNet(&inputs, &out1, BackendKind::JIT, depth);
     inferBasicConvNet(&inputs, &out2, BackendKind::Interpreter, depth);
-    auto H1 = out1.getHandle();
-    auto H2 = out2.getHandle();
 
-    EXPECT_TRUE(H1.isEqual(H2));
+    EXPECT_TRUE(out1.isEqual(out2));
   }
 }
 
@@ -552,10 +498,8 @@ TEST(JITCorrectnessTest, basicFCNet) {
 
   inferBasicFCNet(&inputs, &out1, BackendKind::JIT);
   inferBasicFCNet(&inputs, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 TEST(JITCorrectnessTest, complexNet1) {
@@ -576,8 +520,6 @@ TEST(JITCorrectnessTest, complexNet1) {
                    BackendKind::JIT);
   inferComplexNet1(&inputs1, &inputs2, &inputs3, &inputs4, &out2,
                    BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
 
-  EXPECT_TRUE(H1.isEqual(H2));
+  EXPECT_TRUE(out1.isEqual(out2));
 }

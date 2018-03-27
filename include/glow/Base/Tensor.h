@@ -198,6 +198,29 @@ public:
     return *this;
   }
 
+  /// \returns true if the content of the other tensor \p other is identical to
+  /// this one.
+  bool isEqual(Tensor &other, float allowedError = 0.0001) {
+    if (other.dims() != dims()) {
+      return false;
+    }
+
+    switch (getElementType()) {
+    case ElemKind::FloatTy:
+      return isEqualImpl<float>(other, allowedError);
+    case ElemKind::Int8QTy:
+      assert(getType().getScale() == other.getType().getScale() &&
+             "Scales must match.");
+      assert(getType().getOffset() == other.getType().getOffset() &&
+             "Offsets must match.");
+      return isEqualImpl<int8_t>(other, allowedError);
+    case ElemKind::Int32QTy:
+      return isEqualImpl<int32_t>(other, allowedError);
+    case ElemKind::IndexTy:
+      return isEqualImpl<size_t>(other, allowedError);
+    }
+  }
+
   /// Update the content of the tensor from the tensor \p t.
   void copyFrom(const Tensor *t) {
     assert(this != t && "Copying to self");
@@ -283,6 +306,19 @@ public:
 
   /// \return a new handle that points and manages this tensor.
   template <class ElemTy = float> Handle<ElemTy> getHandle();
+
+private:
+  template <class ElemTy> bool isEqualImpl(Tensor &other, float allowedError) {
+    auto *myData = getRawDataPointer<ElemTy>();
+    auto *otherData = other.getRawDataPointer<ElemTy>();
+    for (size_t i = 0, e = size(); i < e; i++) {
+      double delta = myData[i] - otherData[i];
+      if (std::abs(delta) > allowedError) {
+        return false;
+      }
+    }
+    return true;
+  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -545,23 +581,6 @@ public:
 
     ElemTy variance = sigma / (n - 1);
     return {mean, variance};
-  }
-
-  /// \returns true if the content of the other handle \p other is identical to
-  /// this one.
-  bool isEqual(Handle<ElemTy> other, float allowedError = 0.0001) const {
-    if (other.dims() != dims()) {
-      return false;
-    }
-
-    for (size_t i = 0, e = size(); i < e; i++) {
-      double delta = raw(i) - other.raw(i);
-      if (std::abs(delta) > allowedError) {
-        return false;
-      }
-    }
-
-    return true;
   }
 
   /// Insert the tensor \p slice at location \p offset. This operation is

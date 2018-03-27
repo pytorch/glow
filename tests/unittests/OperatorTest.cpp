@@ -391,9 +391,7 @@ TEST_P(Operator, QuantizeAndDequantize) {
   EE.compile(CompilationMode::Infer, F);
   EE.run({A}, {&inputs});
 
-  auto resultHandle = result->getVariable()->getHandle();
-  auto expectedHandle = inputs.getHandle();
-  EXPECT_TRUE(expectedHandle.isEqual(resultHandle));
+  EXPECT_TRUE(inputs.isEqual(result->getVariable()->getPayload()));
 }
 
 TEST_P(Operator, IntMatMul) {
