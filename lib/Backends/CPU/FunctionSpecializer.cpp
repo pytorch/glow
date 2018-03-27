@@ -260,6 +260,9 @@ private:
   /// internally and their equality can be checked by means of a simple
   /// pointer comparison.
   struct SpecializationKey {
+    SpecializationKey(llvm::CallInst *CI, uint64_t Args)
+        : call_(CI), argsToBeSpecialized_(Args) {}
+
     /// The first call instruction that was used to create this specialization.
     llvm::CallInst *call_{nullptr};
     /// The set of argument numbers that need to be specialized.
