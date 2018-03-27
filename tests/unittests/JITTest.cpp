@@ -528,17 +528,26 @@ TEST(JITCorrectnessTest, tanhTest) {
 }
 
 TEST(JITCorrectnessTest, convOps) {
-  Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});
-  inputs.getHandle().initXavier(1);
-  Tensor out1;
-  Tensor out2;
+  setbuf(stdout, NULL);
 
-  inferBasicConvNet(&inputs, &out1, BackendKind::JIT);
-  inferBasicConvNet(&inputs, &out2, BackendKind::Interpreter);
-  auto H1 = out1.getHandle();
-  auto H2 = out2.getHandle();
+  // Construct networks with a different convolution depth.
+  for (auto depth : {4, 12, 128}) {
+    printf("Starting convOps %d\n", depth);
 
-  EXPECT_TRUE(H1.isEqual(H2));
+    Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});
+    inputs.getHandle().initXavier(1);
+    Tensor out1;
+    Tensor out2;
+
+    inferBasicConvNet(&inputs, &out1, BackendKind::JIT, depth);
+    inferBasicConvNet(&inputs, &out2, BackendKind::Interpreter, depth);
+    auto H1 = out1.getHandle();
+    auto H2 = out2.getHandle();
+
+    EXPECT_TRUE(H1.isEqual(H2));
+    printf("Done convOps %d\n", depth);
+
+  }
 }
 
 TEST(JITCorrectnessTest, basicFCNet) {

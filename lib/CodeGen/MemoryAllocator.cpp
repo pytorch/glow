@@ -8,9 +8,13 @@ using namespace glow;
 
 const size_t MemoryAllocator::npos = -1;
 
+// We align all buffers to this value. This ensures that vectors are aligned to
+// their natural alignment.
+static const unsigned maxTypeAlignment = sizeof(float) * 8;
+
 size_t MemoryAllocator::allocate(size_t size) {
   // Always allocate buffers properly aligned to hold values of any type.
-  size = (size + alignof(size_t) - 1) & ~(alignof(size_t) - 1);
+  size = (size + maxTypeAlignment - 1) & ~(maxTypeAlignment - 1);
   size_t prev = 0;
   for (auto it = allocations_.begin(), e = allocations_.end(); it != e; it++) {
     if (it->begin_ - prev >= size) {
