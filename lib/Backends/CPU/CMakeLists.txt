@@ -1,6 +1,8 @@
 
-if(NOT "${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
-  message(SEND_ERROR "clang is required to build the JIT library")
+if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+  set(CLANG_BIN ${CMAKE_CXX_COMPILER})
+else()
+  find_program(CLANG_BIN clang++)
 endif()
 
 find_program(LLVM_LINK_BIN llvm-link)
@@ -17,8 +19,16 @@ target_compile_options(CPURuntime
                          -g
                          -emit-llvm
                          -O0)
+# NOTE(abdulras) explicitly override the compiler and linker invocations with
+# custom rules.  The trailing `#` is the comment leader intended to nullify the
+# compile and link commands.  Doing this allows us to override the compiler
+# (driver) and the linker used for building the runtime which requires clang (to
+# emit LLVM IR for the LTO'ed AOT JIT runtime) and uses the `llvm-link` as the
+# linker to merge the object files.
 set_target_properties(CPURuntime
                       PROPERTIES
+                        RULE_LAUNCH_COMPILE
+                          "${CLANG_BIN} <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE> # "
                         RULE_LAUNCH_LINK
                           "${LLVM_LINK_BIN} -o ${CMAKE_BINARY_DIR}/libjit.bc <OBJECTS> # "
                         OUTPUT_NAME
