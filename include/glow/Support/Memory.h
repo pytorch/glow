@@ -7,7 +7,9 @@
 namespace glow {
 
 inline void *alignedAlloc(size_t size, size_t align) {
-  assert(align >= sizeof(void *) && "Invalid alignment");
+  assert(align >= sizeof(void *) && "Alignment too small.");
+  assert(align % sizeof(void *) == 0 &&
+         "Alignment is not a multiple of the machine word size.");
   void *ptr;
   int res = posix_memalign(&ptr, align, size);
   assert(res == 0 && "posix_memalign failed");

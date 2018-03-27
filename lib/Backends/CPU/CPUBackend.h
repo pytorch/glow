@@ -35,7 +35,7 @@ class CPUBackend final : public Backend {
   /// The LLVM IR code generator.
   LLVMIRGen irgen_;
   /// This represents the heap, that stores the activations at runtime.
-  std::vector<uint8_t> heap_{};
+  void *heap_{nullptr};
   /// Produce the main entry point for JIT execution.
   void emitJitMain();
   /// Perform memory allocation for a JIT execution.

@@ -28,7 +28,10 @@ static llvm::cl::opt<std::string> target("target", llvm::cl::desc("target"));
 CPUBackend::CPUBackend(IRFunction *F)
     : F_(F), irgen_(F_, allocationsInfo_, "") {}
 
-CPUBackend::~CPUBackend() { clear(); }
+CPUBackend::~CPUBackend() {
+  clear();
+  alignedFree(heap_);
+}
 
 void CPUBackend::clear() { F_->clear(); }
 
@@ -95,8 +98,9 @@ void CPUBackend::performJITMemoryAllocation() {
 
   // Allocate the heap to match the max memory usage for activations.
   if (allocationsInfo_.activationsMemSize_ > 0) {
-    heap_.resize(allocationsInfo_.activationsMemSize_);
-    allocationsInfo_.baseActivationsAddress_ = &heap_[0];
+    alignedFree(heap_);
+    heap_ = alignedAlloc(allocationsInfo_.activationsMemSize_, TensorAlignment);
+    allocationsInfo_.baseActivationsAddress_ = (uint8_t *)heap_;
   }
 }
 
