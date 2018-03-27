@@ -619,6 +619,26 @@ void libjit_batchedreduceadd_f(float *dest, const float *batch, size_t destSize,
   }
 }
 
+// Initialize the convolution output frame for slice \p N with the bias \p
+// biasW.
+void libjit_conv_init_output_with_bias(size_t N, float *outW,
+                                       const float *biasW,
+                                       const size_t *outWdims,
+                                       const size_t *biasWdims) {
+  // For each (x,y) step in the output tensor:
+  for (size_t ax = 0; ax < outWdims[1]; ax++) {
+    for (size_t ay = 0; ay < outWdims[2]; ay++) {
+      // For each output channel:
+      for (size_t d = 0; d < outWdims[3]; d++) {
+        // Store the results to the output buffer.
+        float bias = biasW[d];
+        auto outIdx = libjit_getXYZW(outWdims, N, ax, ay, d);
+        outW[outIdx] = bias;
+      }     // For each depth in the output.
+    } // For each Y in the output.
+  }   // For each X in the output.
+}
+
 void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
                         const float *biasW, const size_t *outWdims,
                         const size_t *inWdims, const size_t *filterWdims,
@@ -633,20 +653,9 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
   // For each input in the batch:
   for (size_t n = 0; n < inWdims[0]; n++) {
 
-    // Clear the output buffer and save the bias values.
-    for (size_t d = 0; d < outWdims[3]; d += 8 * depthUnroll) {
-      // For each (x,y) step in the output tensor:
-      for (size_t ax = 0; ax < outWdims[1]; ax++) {
-        for (size_t ay = 0; ay < outWdims[2]; ay++) {
-          // Store the results to the output buffer.
-          for (int du = 0; du < depthUnroll; du++) {
-            auto bias = LoadFloat8(&biasW[d + du * 8]);
-            auto outIdx = libjit_getXYZW(outWdims, n, ax, ay, d + du * 8);
-            StoreFloat8(&outW[outIdx], bias);
-          }
-        } // For each Y in the output.
-      }   // For eaah X in the output.
-    }
+    // Initialize the output frame for the N'th slice with the bias.
+    // Later we will accumulate values into this slice.
+    libjit_conv_init_output_with_bias(n, outW, biasW, outWdims, biasWdims);
 
     // Process the body of the loop in tiles of "channel-block".
     for (size_t cb = 0; cb < inChannels; cb += cbSize) {
@@ -708,7 +717,7 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
                 }
 
               } // For each Y in the output.
-            }   // For eaxh X in the output.
+            }   // For each X in the output.
 
           } // For each Y in the filter.
         }   // For each X in the filter.
@@ -727,6 +736,10 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
   // For each input in the batch:
   for (size_t n = 0; n < inWdims[0]; n++) {
 
+    // Initialize the output frame for the N'th slice with the bias.
+    // Later we will accumulate values into this slice.
+    libjit_conv_init_output_with_bias(n, outW, biasW, outWdims, biasWdims);
+
     // For each layer in the output tensor. Process 'depthUnroll' output layers
     // together.
     for (size_t d = 0; d < outWdims[3]; d += depthUnroll) {
@@ -737,13 +750,14 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
         ssize_t y = -(ssize_t)pad;
         for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
 
+          // Process 'depthUnroll' output pixels at once. Each scalar here
+          // represents the convolution sum for one (x,y) point in the output.
+          // We process the same pixel for different output channel (D) values.
           // The compiler should perform scalar replacement of aggregates and
           // split this tiny array to registers.
           float sum[depthUnroll];
-
-          // Add the bias for each output pixel/value that we are processing.
           for (int i = 0; i < depthUnroll; i++) {
-            sum[i] = biasW[d + i];
+            sum[i] = 0;
           }
 
           // For each element in the convolution-filter:
@@ -788,7 +802,7 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
 
           // Store the results to the output buffer.
           for (int i = 0; i < depthUnroll; i++) {
-            outW[libjit_getXYZW(outWdims, n, ax, ay, d + i)] = sum[i];
+            outW[libjit_getXYZW(outWdims, n, ax, ay, d + i)] += sum[i];
           }
         } // W
       }   // H
