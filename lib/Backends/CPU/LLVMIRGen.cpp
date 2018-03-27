@@ -202,6 +202,7 @@ void LLVMIRGen::performCodeGen() {
   // Perform verification, but ignore any debug info errors for now.
   // Debug info errors will be checked later by generateDebugInfo.
   bool brokenDebugInfo = false;
+  (void)brokenDebugInfo;
   assert(!llvm::verifyModule(getModule(), &llvm::errs(), &brokenDebugInfo) &&
          "LLVM module verification error");
 
