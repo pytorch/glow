@@ -6,6 +6,9 @@
 
 namespace glow {
 
+/// The tensor payload is allocated to be aligned to this value.
+constexpr unsigned TensorAlignment = 64;
+
 inline void *alignedAlloc(size_t size, size_t align) {
   assert(align >= sizeof(void *) && "Alignment too small.");
   assert(align % sizeof(void *) == 0 &&

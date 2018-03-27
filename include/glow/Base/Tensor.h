@@ -28,9 +28,6 @@ void genericTranspose(Tensor *src, Tensor *dest,
 void broadcastToNewShapeImpl(Tensor *src, Tensor *dest,
                              llvm::ArrayRef<size_t> otherDims, unsigned axis);
 
-/// The tensor payload is allocated to be aligned to this value.
-constexpr unsigned TensorAlignment = 64;
-
 /// A class that represents a contiguous n-dimensional array (a tensor).
 class Tensor final {
   /// A pointer to the tensor data and the unowned flag.

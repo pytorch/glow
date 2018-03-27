@@ -20,7 +20,7 @@ TEST(MemAlloc, simple) {
 }
 
 TEST(MemAlloc, holes) {
-  MemoryAllocator MA(100);
+  MemoryAllocator MA(1000);
 
   auto p0 = MA.allocate(10);
   auto p1 = MA.allocate(10);
@@ -37,7 +37,7 @@ TEST(MemAlloc, holes) {
 }
 
 TEST(MemAlloc, dealloc) {
-  MemoryAllocator MA(100);
+  MemoryAllocator MA(1000);
   auto p0 = MA.allocate(10);
   auto p1 = MA.allocate(10);
   auto p2 = MA.allocate(10);
@@ -59,7 +59,7 @@ TEST(MemAlloc, dealloc) {
 }
 
 TEST(MemAlloc, dealloc2) {
-  MemoryAllocator MA(1000);
+  MemoryAllocator MA(10000);
 
   std::vector<size_t> allocations;
 
