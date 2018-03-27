@@ -400,6 +400,7 @@ void LLVMIRGen::generateDebugInfo() {
   // Verify the module to see if there are any errors due to the debug
   // information.
   bool brokenDebugInfo = false;
+  (void)brokenDebugInfo;
   // Pass brokenDebugInfo as a reference to the verifyModule.
   assert(!llvm::verifyModule(getModule(), &llvm::errs(), &brokenDebugInfo) &&
          "LLVM module verification error");
