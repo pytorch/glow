@@ -22,10 +22,20 @@ llvm::cl::OptionCategory ptbCat("PTB Options");
 llvm::cl::opt<BackendKind> executionBackend(
     llvm::cl::desc("Backend to use:"),
     llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
-                                "Use interpreter"),
+                                "Use interpreter (default option)"),
                      clEnumValN(BackendKind::JIT, "jit", "Use JIT"),
                      clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
     llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(ptbCat));
+
+llvm::cl::opt<std::string> dumpInitialGraphDAGFileOpt(
+    "dumpInitialGraphDAG",
+    llvm::cl::desc("Specify the file to export the initial Graph in DOT format"),
+    llvm::cl::value_desc("file.dot"), llvm::cl::cat(ptbCat));
+
+llvm::cl::opt<std::string> dumpTrainingGraphDAGFileOpt(
+    "dumpTrainingGraphDAG",
+    llvm::cl::desc("Specify the file to export the training Graph in DOT format"),
+    llvm::cl::value_desc("file.dot"), llvm::cl::cat(ptbCat));
 } // namespace
 
 unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
@@ -200,13 +210,19 @@ void testPTB() {
   auto *SM = F->createSoftMax("softmax", O, T);
   auto *result = F->createSave("result", SM);
 
-  llvm::outs() << "Dumping graph\n";
+  if (!dumpInitialGraphDAGFileOpt.empty()) {
+    llvm::outs() << "Dumping initial graph\n";
+    F->dumpDAG(dumpInitialGraphDAGFileOpt.c_str());
+  }
 
   Function *TF = glow::differentiate(F, EE.getConfig());
 
   EE.compile(CompilationMode::Train, TF);
 
-  F->dumpDAG("DAG.dot");
+  if (!dumpTrainingGraphDAGFileOpt.empty()) {
+    llvm::outs() << "Dumping training graph\n";
+    TF->dumpDAG(dumpTrainingGraphDAGFileOpt.c_str());
+  }
 
   size_t numBatches = (numWords / minibatchSize - 1) / numSteps;
 
