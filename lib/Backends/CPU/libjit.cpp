@@ -665,7 +665,7 @@ void libjit_conv_init_output_with_bias(size_t N, float *outW,
 void libjit_convDKKC8_convolve_channel(
     float *outW, const float *inW, const float *filterW, const size_t *outWdims,
     const size_t *inWdims, const size_t *filterWdims, size_t sampleN,
-    size_t outChannel, size_t depthUnroll, size_t channelStart,
+    size_t outChannel, unsigned depthUnroll, size_t channelStart,
     size_t channelBlockSize, size_t numChannels, size_t inX, size_t inY,
     size_t outX, size_t outY, size_t filterX, size_t filterY) {
 
@@ -685,7 +685,7 @@ void libjit_convDKKC8_convolve_channel(
     float8 in = inW[libjit_getXYZW(inWdims, sampleN, inX, inY, fd)];
     // Load N x 8 elements from the filter layer. The filter is
     // pre-swizzled to ensure efficient access.
-    for (int du = 0; du < depthUnroll; du++) {
+    for (unsigned du = 0; du < depthUnroll; du++) {
       float8 ff0 = LoadFloat8(&filterW[libjit_getXYZWQ(
           filterWdims, outChannel / 8 + du, filterX, filterY, fd, 0)]);
       sum[du] += ff0 * in;
@@ -693,7 +693,7 @@ void libjit_convDKKC8_convolve_channel(
   }
 
   // Store the results to the output buffer.
-  for (int du = 0; du < depthUnroll; du++) {
+  for (unsigned du = 0; du < depthUnroll; du++) {
     // Add the partial sum to the tile.
     auto outIdx =
         libjit_getXYZW(outWdims, sampleN, outX, outY, outChannel + du * 8);
@@ -807,7 +807,7 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
                           const float *biasW, const size_t *outWdims,
                           const size_t *inWdims, const size_t *filterWdims,
                           const size_t *biasWdims, size_t filterSize,
-                          size_t stride, size_t pad, size_t depthUnroll) {
+                          size_t stride, size_t pad, unsigned depthUnroll) {
   size_t inChannels = inWdims[3];
 
   // The size of the input-channel tile. High channel count allow for SIMD
@@ -848,7 +848,7 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
                 // replacement of aggregates and split this tiny array to
                 // registers.
                 float sum[depthUnroll];
-                for (int i = 0; i < depthUnroll; i++) {
+                for (unsigned i = 0; i < depthUnroll; i++) {
                   sum[i] = 0;
                 }
 
@@ -872,7 +872,7 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
                 // reduce register pressure.
                 for (size_t fd = cb; fd < MIN(cb + cbSize, inChannels); fd++) {
                   float in = inW[inIdx + fd];
-                  for (int i = 0; i < MIN(4, depthUnroll); i++) {
+                  for (unsigned i = 0; i < MIN(4, depthUnroll); i++) {
                     sum[i] += filterW[filterIdx + (sliceSize * i) + fd] * in;
                   }
                 }
@@ -883,14 +883,14 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
                   for (size_t fd = cb; fd < MIN(cb + cbSize, inChannels);
                        fd++) {
                     float in = inW[inIdx + fd];
-                    for (int i = 4; i < MIN(8, depthUnroll); i++) {
+                    for (unsigned i = 4; i < MIN(8, depthUnroll); i++) {
                       sum[i] += filterW[filterIdx + (sliceSize * i) + fd] * in;
                     }
                   }
                 }
 
                 // Store the results to the output buffer.
-                for (int i = 0; i < depthUnroll; i++) {
+                for (unsigned i = 0; i < depthUnroll; i++) {
                   outW[libjit_getXYZW(outWdims, n, ax, ay, d + i)] += sum[i];
                 }
               }
@@ -908,7 +908,7 @@ void libjit_convolution_i8(
     const size_t *biasWdims, size_t filterSize, size_t stride, size_t pad,
     int32_t outOffset, int32_t inOffset, int32_t filterOffset,
     int32_t biasOffset, int32_t biasPre, int32_t biasPost, int32_t biasScale,
-    int32_t outPre, int32_t outPost, int32_t outScale, size_t depthUnroll) {
+    int32_t outPre, int32_t outPost, int32_t outScale, unsigned depthUnroll) {
   size_t inChannels = inWdims[3];
 
   // For each input in the batch:
@@ -923,7 +923,7 @@ void libjit_convolution_i8(
         for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
           int32_t sum[depthUnroll];
 
-          for (int i = 0; i < depthUnroll; i++) {
+          for (unsigned i = 0; i < depthUnroll; i++) {
             // Scale the bias to match the scale of the matrix multiplication.
             sum[i] = libjit_scale_i32i8((int32_t)biasW[d + i] - biasOffset,
                                         biasPre, biasPost, biasScale, 0);
@@ -952,7 +952,7 @@ void libjit_convolution_i8(
               // registers.
               for (size_t fd = 0; fd < inChannels; fd++) {
                 int32_t in = inW[inIdx + fd] - inOffset;
-                for (int i = 0; i < MIN(4, depthUnroll); i++) {
+                for (unsigned i = 0; i < MIN(4, depthUnroll); i++) {
                   sum[i] += (filterW[filterIdx + (sliceSize * i) + fd] -
                              filterOffset) *
                             in;
@@ -963,7 +963,7 @@ void libjit_convolution_i8(
               if (depthUnroll > 4)
                 for (size_t fd = 0; fd < inChannels; fd++) {
                   int32_t in = inW[inIdx + fd] - inOffset;
-                  for (int i = 4; i < MIN(8, depthUnroll); i++) {
+                  for (unsigned i = 4; i < MIN(8, depthUnroll); i++) {
                     sum[i] += (filterW[filterIdx + (sliceSize * i) + fd] -
                                filterOffset) *
                               in;
@@ -972,7 +972,7 @@ void libjit_convolution_i8(
             }
           }
 
-          for (int i = 0; i < depthUnroll; i++) {
+          for (unsigned i = 0; i < depthUnroll; i++) {
             // Scale the result back to the expected destination scale.
             int32_t scaledSum = libjit_scale_i32i8(sum[i], outPre, outPost,
                                                    outScale, outOffset);
