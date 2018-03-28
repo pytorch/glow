@@ -643,6 +643,48 @@ void libjit_conv_init_output_with_bias(size_t N, float *outW,
   }     // For each X in the output.
 }
 
+/// Perform the heart of the convolution. Load scalars in a specific channel
+/// and multiply them with [float8 * depthUnroll] depth values and accumulate
+/// them to create [float8 * depthUnroll] depth result values.
+void libjit_convDKKC8_convolve_channel(
+    float *outW, const float *inW, const float *filterW, const size_t *outWdims,
+    const size_t *inWdims, const size_t *filterWdims, size_t sampleN,
+    size_t outChannel, size_t depthUnroll, size_t channelStart,
+    size_t channelBlockSize, size_t numChannels, size_t inX, size_t inY,
+    size_t outX, size_t outY, size_t filterX, size_t filterY) {
+
+  // Process N * 8 output pixels at once. Each value here is a
+  // scalar that represents the sum for (x,y) and the filter. The
+  // SIMD dimension represents multiple layers of the depth
+  // (output channel).
+  float8 sum[depthUnroll];
+  for (unsigned du = 0; du < depthUnroll; du++) {
+    sum[du] = 0;
+  }
+
+  // Perform the heart of the convolution:
+  for (size_t fd = channelStart;
+       fd < MIN(channelStart + channelBlockSize, numChannels); fd++) {
+    // Load a single pixel from the input image and broadcast it.
+    float8 in = inW[libjit_getXYZW(inWdims, sampleN, inX, inY, fd)];
+    // Load N x 8 elements from the filter layer. The filter is
+    // pre-swizzled to ensure efficient access.
+    for (int du = 0; du < depthUnroll; du++) {
+      float8 ff0 = LoadFloat8(&filterW[libjit_getXYZWQ(
+          filterWdims, outChannel / 8 + du, filterX, filterY, fd, 0)]);
+      sum[du] += ff0 * in;
+    }
+  }
+
+  // Store the results to the output buffer.
+  for (int du = 0; du < depthUnroll; du++) {
+    // Add the partial sum to the tile.
+    auto outIdx =
+        libjit_getXYZW(outWdims, sampleN, outX, outY, outChannel + du * 8);
+    AddFloat8(&outW[outIdx], sum[du]);
+  }
+}
+
 void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
                         const float *biasW, const size_t *outWdims,
                         const size_t *inWdims, const size_t *filterWdims,
@@ -668,63 +710,78 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
       // once.
       for (size_t d = 0; d < outWdims[3]; d += 8 * depthUnroll) {
 
-        // Perform the convolution.
-        // For each element in the convolution-filter:
-        for (size_t fx = 0; fx < filterSize; fx++) {
-          for (size_t fy = 0; fy < filterSize; fy++) {
+        // Perform convolutions with a high channel count by scanning the input
+        // image multiple times, once for each filter entry. Scan images with
+        // a low channel count by scanning the image once because the filter
+        // scan will fall in the cache.
+        if (inChannels >= 16) {
+          // For each element in the convolution-filter:
+          for (size_t fx = 0; fx < filterSize; fx++) {
+            for (size_t fy = 0; fy < filterSize; fy++) {
 
-            // For each (x,y) step in the input/output tensor:
-            ssize_t x = -(ssize_t)pad;
-            for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
-              ssize_t y = -(ssize_t)pad;
-              for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+              // For each (x,y) step in the input/output tensor:
+              ssize_t x = -(ssize_t)pad;
+              for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+                ssize_t y = -(ssize_t)pad;
+                for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
 
-                // Process N * 8 output pixels at once. Each value here is a
-                // scalar that represents the sum for (x,y) and the filter. The
-                // SIMD dimension represents multiple layers of the depth
-                // (output channel).
-                float8 sum[depthUnroll];
-                for (unsigned du = 0; du < depthUnroll; du++) {
-                  sum[du] = 0;
-                }
+                  // Calculate the specific input x,y that we calculate in this
+                  // iteration.
+                  ssize_t ox = x + fx;
+                  ssize_t oy = y + fy;
 
-                // Calculate the specific input x,y that we calculate in this
-                // iteration.
-                ssize_t ox = x + fx;
-                ssize_t oy = y + fy;
-
-                // Ignore index access below zero (this is due to padding).
-                if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
-                    oy >= (ssize_t)inWdims[2]) {
-                  continue;
-                }
-
-                // Perform the heart of the convolution:
-                for (size_t fd = cb; fd < MIN(cb + cbSize, inChannels); fd++) {
-                  // Load a single pixel from the input image and broadcast it.
-                  float8 in = inW[libjit_getXYZW(inWdims, n, (size_t)ox,
-                                                 (size_t)oy, fd)];
-                  // Load N x 8 elements from the filter layer. The filter is
-                  // pre-swizzled to ensure efficient access.
-                  for (int du = 0; du < depthUnroll; du++) {
-                    float8 ff0 = LoadFloat8(&filterW[libjit_getXYZWQ(
-                        filterWdims, d / 8 + du, fx, fy, fd, 0)]);
-                    sum[du] += ff0 * in;
+                  // Ignore index access below zero (this is due to padding).
+                  if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
+                      oy >= (ssize_t)inWdims[2]) {
+                    continue;
                   }
-                }
 
-                // Store the results to the output buffer.
-                for (int du = 0; du < depthUnroll; du++) {
-                  // Add the partial sum to the tile.
-                  auto outIdx = libjit_getXYZW(outWdims, n, ax, ay, d + du * 8);
-                  AddFloat8(&outW[outIdx], sum[du]);
-                }
+                  libjit_convDKKC8_convolve_channel(
+                      outW, inW, filterW, outWdims, inWdims, filterWdims, n, d,
+                      depthUnroll, cb, cbSize, inChannels, ox, oy, ax, ay, fx,
+                      fy);
 
-              } // For each Y in the output.
-            }   // For each X in the output.
+                } // For each Y in the output.
+              }   // For each X in the output.
+            }     // For each Y in the filter.
+          }       // For each X in the filter.
 
-          } // For each Y in the filter.
-        }   // For each X in the filter.
+        } else {
+          // Perform short-channel convolutions by scanning the input buffer
+          // once and scan around the input coordinate at filter distance.
+
+          // For each (x,y) step in the input/output tensor:
+          ssize_t x = -(ssize_t)pad;
+          for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+            ssize_t y = -(ssize_t)pad;
+            for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+
+              // For each element in the convolution-filter:
+              for (size_t fx = 0; fx < filterSize; fx++) {
+                for (size_t fy = 0; fy < filterSize; fy++) {
+
+                  // Calculate the specific input x,y that we calculate in this
+                  // iteration.
+                  ssize_t ox = x + fx;
+                  ssize_t oy = y + fy;
+
+                  // Ignore index access below zero (this is due to padding).
+                  if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
+                      oy >= (ssize_t)inWdims[2]) {
+                    continue;
+                  }
+
+                  libjit_convDKKC8_convolve_channel(
+                      outW, inW, filterW, outWdims, inWdims, filterWdims, n, d,
+                      depthUnroll, cb, cbSize, inChannels, ox, oy, ax, ay, fx,
+                      fy);
+
+                } // For each Y in the output.
+              }   // For each X in the output.
+            }     // For each Y in the filter.
+          }       // For each X in the filter.
+        }
+
       }     // For each D (the depth, or the output channel).
     }       // For each block in the input channel.
   }         // For each N, the sample in the batch.
