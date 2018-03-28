@@ -1019,7 +1019,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       unrollDFactor = 8;
     }
 
-    auto *unrollD = emitConstSizeT(builder, unrollDFactor);
+    auto *unrollD = emitConstI32(builder, unrollDFactor);
 
     auto *F = getFunction(kernelName, dest->getElementType());
 
