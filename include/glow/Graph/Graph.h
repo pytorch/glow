@@ -224,6 +224,13 @@ public:
   SliceNode *createSlice(llvm::StringRef name, NodeValue input,
                          UnsignedArrayRef begin, UnsignedArrayRef end);
 
+  /// Shuffles dimension number \p kernel. Suppose original size is D. It will
+  /// be represented as groupX(D/group) matrix, transposed and concatenated back
+  /// to size D. For example, shuffle of {1, 2, 3, 4, 5, 6} with \p group = 2 is
+  /// {1, 4, 2, 5, 3, 6}
+  Node *createChannelShuffle(llvm::StringRef name, NodeValue input,
+                             size_t group, size_t kernel);
+
   BatchNormalizationNode *createBatchNormalization(llvm::StringRef name,
                                                    NodeValue input,
                                                    size_t channelIdx = 0,
