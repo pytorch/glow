@@ -285,8 +285,24 @@ void libjit_transpose_generic(const T *inW, T *outW, const size_t *idim,
                               const size_t *odim, const size_t *shuffle,
                               size_t numDims) {
   // Source coordinate.
-  size_t SC[4];
+  size_t SC[5];
 
+  if (numDims == 5) {
+    for (size_t x = 0; x < odim[0]; x++)
+      for (size_t y = 0; y < odim[1]; y++)
+        for (size_t z = 0; z < odim[2]; z++)
+          for (size_t w = 0; w < odim[3]; w++)
+            for (size_t q = 0; q < odim[4]; q++) {
+              SC[shuffle[0]] = x;
+              SC[shuffle[1]] = y;
+              SC[shuffle[2]] = z;
+              SC[shuffle[3]] = w;
+              SC[shuffle[4]] = q;
+              outW[libjit_getXYZWQ(odim, x, y, z, w, q)] =
+                  inW[libjit_getXYZWQ(idim, SC[0], SC[1], SC[2], SC[3], SC[4])];
+            }
+    return;
+  }
   if (numDims == 4) {
     for (size_t x = 0; x < odim[0]; x++)
       for (size_t y = 0; y < odim[1]; y++)
