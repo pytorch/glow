@@ -798,9 +798,9 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
           }       // For each X in the filter.
         }
 
-      }     // For each D (the depth, or the output channel).
-    }       // For each block in the input channel.
-  }         // For each N, the sample in the batch.
+      } // For each D (the depth, or the output channel).
+    }   // For each block in the input channel.
+  }     // For each N, the sample in the batch.
 }
 
 void libjit_convolution_f(float *outW, const float *inW, const float *filterW,

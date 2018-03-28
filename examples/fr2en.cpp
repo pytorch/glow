@@ -1,5 +1,6 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Quantization/Serialization.h"
 
 #include "llvm/Support/CommandLine.h"
 
@@ -12,6 +13,30 @@
 #include <vector>
 
 using namespace glow;
+
+namespace {
+llvm::cl::OptionCategory debugCat("Glow Debugging Options");
+
+llvm::cl::opt<std::string> dumpGraphDAGFileOpt(
+    "dumpGraphDAG",
+    llvm::cl::desc("Dump the graph to the given file in DOT format."),
+    llvm::cl::value_desc("file.dot"), llvm::cl::cat(debugCat));
+
+llvm::cl::OptionCategory quantizationCat("Quantization Options");
+
+llvm::cl::opt<std::string> dumpProfileFileOpt(
+    "dump_profile",
+    llvm::cl::desc("Perform quantization profiling for a given graph "
+                   "and dump result to the file."),
+    llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional,
+    llvm::cl::cat(quantizationCat));
+
+llvm::cl::opt<std::string> loadProfileFileOpt(
+    "load_profile",
+    llvm::cl::desc("Load quantization profile file and quantize the graph"),
+    llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional,
+    llvm::cl::cat(quantizationCat));
+} // namespace
 
 const unsigned MAX_LENGTH = 10;
 const unsigned EMBEDDING_SIZE = 256;
@@ -253,6 +278,30 @@ void Model::loadDecoder() {
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
   F->createSave("decoder.output", concat, output_);
 
+  // Handle the request to profile the graph in preperation for quantization.
+  if (!dumpProfileFileOpt.empty()) {
+    // Perform the high-level optimizations before instrumenting the graph. This
+    // optimization phase will remove stuff like repetitive transpose operations
+    // perform CSE, etc.
+    ::optimize(F, glow::CompilationMode::Infer);
+
+    // Instrument the graph to capture profiles for nodes' outputs.
+    glow::profileQuantization(F);
+  }
+
+  // Load the quantization profile and transform the graph.
+  if (!loadProfileFileOpt.empty()) {
+    // The profiled graph was optimized before it was instrumentated. In this
+    // part of the code we repeat the same transformation in order to create
+    // the same graph structure.
+    glow::optimize(F, CompilationMode::Infer);
+
+    auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
+
+    // Quantize the graph based on the captured profile.
+    glow::quantization::generateQuantizedGraph(EE_, F, quantizationInfos);
+  }
+
   EE_.compile(CompilationMode::Infer, F);
 }
 
@@ -295,17 +344,19 @@ void translate(Model *seq2seq, llvm::StringRef sentence) {
     std::cout << seq2seq->en_.index2word_[wordIdx];
   }
   std::cout << "\n\n";
+
+  if (!dumpProfileFileOpt.empty()) {
+    std::vector<NodeQuantizationInfo> QI =
+        quantization::generateNodeQuantizationInfos(
+            seq2seq->EE_.getModule().getFunction("main"));
+    serializeToYaml(dumpProfileFileOpt, QI);
+  }
 }
 
-llvm::cl::OptionCategory debugCat("Glow Debugging Options");
-
-llvm::cl::opt<std::string> dumpGraphDAGFileOpt(
-    "dumpGraphDAG",
-    llvm::cl::desc("Dump the graph to the given file in DOT format."),
-    llvm::cl::value_desc("file.dot"), llvm::cl::cat(debugCat));
-
 int main(int argc, char **argv) {
-  llvm::cl::HideUnrelatedOptions(debugCat);
+  std::array<const llvm::cl::OptionCategory *, 2> showCategories = {
+      {&debugCat, &quantizationCat}};
+  llvm::cl::HideUnrelatedOptions(showCategories);
   llvm::cl::ParseCommandLineOptions(
       argc, argv, "Translate sentences from French to English");
 
