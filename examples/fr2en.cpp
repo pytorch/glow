@@ -230,13 +230,10 @@ void Model::loadEncoder() {
     outputs.push_back(hidden);
   }
 
-  Node *output = F->createConcat("encoder.output", outputs, 0);
-  Node *reshape = F->createReshape("encoder.output.reshape", output,
-                                   {MAX_LENGTH, batchSize_, EMBEDDING_SIZE});
-  Node *transpose =
-      F->createTranspose("encoder.output.transpose", reshape, {1, 0, 2});
-  Node *r2 = F->createReshape("encoder.output.r2", transpose,
+  Node *output = F->createConcat("encoder.output", outputs, 1);
+  Node *r2 = F->createReshape("encoder.output.r2", output,
                               {MAX_LENGTH * batchSize_, EMBEDDING_SIZE});
+
   encoderHiddenOutput_ = F->createGather("encoder.outputNth", r2, seqLength_);
 }
 
