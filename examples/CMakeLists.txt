@@ -30,11 +30,11 @@ target_link_libraries(ptb
                         Support)
 
 add_executable(fr2en
-               fr2en.cpp)
+                 fr2en.cpp)
 target_link_libraries(fr2en
                       PRIVATE
-                        Backends
+                        Base
                         ExecutionEngine
-                        Graph
                         IR
+                        Quantization
                         Support)

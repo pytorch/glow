@@ -29,12 +29,14 @@ llvm::cl::opt<BackendKind> executionBackend(
 
 llvm::cl::opt<std::string> dumpInitialGraphDAGFileOpt(
     "dumpInitialGraphDAG",
-    llvm::cl::desc("Specify the file to export the initial Graph in DOT format"),
+    llvm::cl::desc(
+        "Specify the file to export the initial Graph in DOT format"),
     llvm::cl::value_desc("file.dot"), llvm::cl::cat(ptbCat));
 
 llvm::cl::opt<std::string> dumpTrainingGraphDAGFileOpt(
     "dumpTrainingGraphDAG",
-    llvm::cl::desc("Specify the file to export the training Graph in DOT format"),
+    llvm::cl::desc(
+        "Specify the file to export the training Graph in DOT format"),
     llvm::cl::value_desc("file.dot"), llvm::cl::cat(ptbCat));
 } // namespace
 
