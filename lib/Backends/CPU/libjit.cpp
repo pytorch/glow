@@ -330,7 +330,6 @@ void libjit_pool_max_generic(const T *inW, T *outW, const size_t *inWdims,
                              size_t stride, size_t pad) {
   // For each sample in the batch:
   for (size_t n = 0; n < outWdims[0]; n++) {
-
     // For each (x,y) step in the input/output tensor:
     ssize_t x = -(ssize_t)pad;
     for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
@@ -377,12 +376,15 @@ void libjit_pool_max_xy_generic(const T *inW, T *outW, size_t *inXY,
                                 size_t kernel, size_t stride, size_t pad) {
   // For each input in the batch:
   for (size_t n = 0; n < outWdims[0]; n++) {
-    // For each channel in the input:
-    for (size_t z = 0; z < outWdims[3]; z++) {
-      ssize_t x = -(ssize_t)pad;
-      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
-        ssize_t y = -(ssize_t)pad;
-        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+
+    // For each (x,y) step in the input/output tensor:
+    ssize_t x = -(ssize_t)pad;
+    for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+      ssize_t y = -(ssize_t)pad;
+      for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+
+        // For each channel in the output tensor:
+        for (size_t z = 0; z < outWdims[3]; z++) {
           size_t maxX = x;
           size_t maxY = y;
           int first = 1;
@@ -415,9 +417,9 @@ void libjit_pool_max_xy_generic(const T *inW, T *outW, size_t *inXY,
           size_t ix = 2 * libjit_getXYZW(outWdims, n, ax, ay, z);
           inXY[ix] = maxX;
           inXY[ix + 1] = maxY;
-        } // W
-      }   // H
-    }     // C
+        } // C
+      }   // W
+    }     // H
   }       // N
 }
 
@@ -1110,13 +1112,13 @@ void libjit_pool_avg_i8(const int8_t *inW, int8_t *outW, const size_t *inWdims,
                         int32_t outScale) {
   // For each input in the batch:
   for (size_t n = 0; n < outWdims[0]; n++) {
-    // For each layer in the output tensor:
-    for (size_t z = 0; z < inWdims[3]; z++) {
-      // For each convolution 'jump' in the input tensor:
-      ssize_t x = -ssize_t(pad);
-      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
-        ssize_t y = -ssize_t(pad);
-        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+    // For each (x,y) step in the input/output tensor:
+    ssize_t x = -ssize_t(pad);
+    for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+      ssize_t y = -ssize_t(pad);
+      for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+        // For each layer in the output tensor:
+        for (size_t z = 0; z < inWdims[3]; z++) {
           int32_t sum = 0;
 
           for (size_t fx = 0; fx < filterSize; fx++) {
@@ -1137,10 +1139,10 @@ void libjit_pool_avg_i8(const int8_t *inW, int8_t *outW, const size_t *inWdims,
 
           outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = libjit_clip(
               libjit_scale_i32i8(sum, outPre, outPost, outScale, outOffset));
-        }
-      }
-    }
-  }
+        } // C
+      }   // W
+    }     // H
+  }       // N
 }
 
 void libjit_pool_avg_f(const float *inW, float *outW, const size_t *inWdims,
@@ -1149,13 +1151,14 @@ void libjit_pool_avg_f(const float *inW, float *outW, const size_t *inWdims,
   float filterArea = filterSize * filterSize;
   // For each input in the batch:
   for (size_t n = 0; n < outWdims[0]; n++) {
-    // For each layer in the output tensor:
-    for (size_t z = 0; z < inWdims[3]; z++) {
-      // For each convolution 'jump' in the input tensor:
-      ssize_t x = -(ssize_t)pad;
-      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
-        ssize_t y = -(ssize_t)pad;
-        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+    // For each (x,y) step in the input/output tensor:
+    ssize_t x = -(ssize_t)pad;
+    for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+      ssize_t y = -(ssize_t)pad;
+      for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+        // For each layer in the output tensor:
+        for (size_t z = 0; z < inWdims[3]; z++) {
+
           float sum = 0;
 
           for (size_t fx = 0; fx < filterSize; fx++) {
@@ -1174,9 +1177,9 @@ void libjit_pool_avg_f(const float *inW, float *outW, const size_t *inWdims,
           }
 
           outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = sum / filterArea;
-        } // W
-      }   // H
-    }     // C
+        } // C
+      }   // W
+    }     // H
   }       // N
 }
 
