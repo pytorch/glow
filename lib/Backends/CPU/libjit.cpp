@@ -328,19 +328,21 @@ template <typename T>
 void libjit_pool_max_generic(const T *inW, T *outW, const size_t *inWdims,
                              const size_t *outWdims, size_t filterSize,
                              size_t stride, size_t pad) {
-  // For each input in the batch:
+  // For each sample in the batch:
   for (size_t n = 0; n < outWdims[0]; n++) {
 
-    // For each layer in the output tensor:
-    for (size_t z = 0; z < inWdims[3]; z++) {
-      // For each convolution 'jump' in the input tensor:
-      ssize_t x = -(ssize_t)pad;
-      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
-        ssize_t y = -(ssize_t)pad;
-        for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+    // For each (x,y) step in the input/output tensor:
+    ssize_t x = -(ssize_t)pad;
+    for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
+      ssize_t y = -(ssize_t)pad;
+      for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+
+        // For each layer in the output tensor:
+        for (size_t z = 0; z < inWdims[3]; z++) {
           int first = 1;
           T max = 0;
 
+          // For each element in the convolution-filter:
           for (size_t fx = 0; fx < filterSize; fx++) {
             for (size_t fy = 0; fy < filterSize; fy++) {
               ssize_t ox = x + fx;
@@ -363,9 +365,9 @@ void libjit_pool_max_generic(const T *inW, T *outW, const size_t *inWdims,
           }
 
           outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = max;
-        } // W
-      }   // H
-    }     // C
+        } // C
+      }   // W
+    }     // H
   }       // N
 }
 
