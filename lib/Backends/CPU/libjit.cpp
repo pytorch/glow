@@ -647,7 +647,7 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
   // The number of times to unroll the SIMD vector output-depth.
   constexpr unsigned depthUnroll = 8;
   // The size of the input-channel tile.
-  constexpr unsigned cbSize = 64;
+  constexpr unsigned cbSize = 128;
 
   size_t inChannels = inWdims[3];
   // For each input in the batch:

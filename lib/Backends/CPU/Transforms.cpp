@@ -20,12 +20,11 @@ using llvm::isa;
 static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
   auto depth = CN->getDepth();
   auto *M = F->getParent();
-  auto inChannels = CN->getInput()->dims()[3];
 
   // The depth dimension must be a multiple of 64 to perform the
   // transformation. This transformation is currently only profitable on
   // low-channel convolutions.
-  if (depth < 64 || (depth % 64) != 0 || inChannels > 256) {
+  if (depth < 64 || (depth % 64) != 0) {
     return nullptr;
   }
 
