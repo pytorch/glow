@@ -1023,6 +1023,28 @@ TEST_P(Operator, simplePredication) {
   EE.run({}, {});
 }
 
+TEST_P(Operator, ChannelShuffle) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *inputs = mod.createVariable(ElemKind::FloatTy, {1, 12, 1, 1}, "inputs");
+
+  inputs->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+
+  Node *CS = F->createChannelShuffle("CS", inputs, 3, 1);
+  SaveNode *S = F->createSave("save", CS);
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+
+  auto results = llvm::cast<Variable>(S->getOutput())->getPayload().getHandle();
+
+  EXPECT_EQ(results.size(), 12);
+  std::vector<float> expected = {1, 5, 9, 2, 6, 10, 3, 7, 11, 4, 8, 12};
+  for (size_t i = 0; i < expected.size(); i++)
+    EXPECT_FLOAT_EQ(results.at({0, i, 0, 0}), expected[i]);
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 
