@@ -428,6 +428,21 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "ChannelShuffle") {
+    auto *in = getOrCreateNodeByName(op.input(0));
+
+    size_t group = loadInt(dict["group"]);
+    size_t kernel = loadInt(dict["kernel"]);
+
+    Node *node = G_.createChannelShuffle(op.name(), in, group, kernel);
+
+    // Save the outputs:
+    for (int i = 0, e = op.output_size(); i < e; i++) {
+      nodeByName_[op.output(i)] = node;
+    }
+    return;
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
