@@ -106,7 +106,6 @@ bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     case Kinded::Kind::MaxNodeKind:
     case Kinded::Kind::MinNodeKind:
     case Kinded::Kind::MulNodeKind:
-    case Kinded::Kind::SubNodeKind:
     case Kinded::Kind::QuantizeNodeKind:
     case Kinded::Kind::DequantizeNodeKind:
     case Kinded::Kind::RescaleQuantizedNodeKind:
