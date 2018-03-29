@@ -19,6 +19,9 @@ typedef float float8 __attribute__((ext_vector_type(8)));
 /// Accumulate (+=) the simd float8 value to \p ptr.
 #define AddFloat8(PTR, VAL) *((float8 *)(PTR)) += (VAL);
 
+/// Broadcast the input value to a float8.
+#define BroadcastFloat8(VAL) ((VAL)-float8{})
+
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define AT(tensor, dims, numDims, indices, numIndices)                         \
@@ -441,6 +444,9 @@ void libjit_pool_max_xy_generic(const T *inW, T *outW, size_t *inXY,
 
 /// Innermost helper for matrix multiplication.  When inlined, the y dimension
 /// will be vectorized and flattened.
+/// \p lda is the leading dimension of LHS (i.e., dim[1])
+/// \p ldb is the leading dimension of RHS (i.e., dim[1])
+/// \p x_block, \p y_block, and \p i_block are the dimensions of the submatrix.
 static void libjit_matmul_inner_f8(float *dest, const float *LHS,
                                    const float *RHS, size_t lda, size_t ldb,
                                    size_t x_block, size_t i_block,
@@ -487,10 +493,10 @@ static void libjit_matmul_tiled(float *dest, const float *LHS, const float *RHS,
   for (size_t x = x_off; x < destDims[0] - x_block + 1; x += x_block) {
     for (size_t y = y_off; y < destDims[1] - y_block + 1; y += y_block) {
       for (size_t i = i_off; i < lhsDims[1] - i_block + 1; i += i_block) {
-        libjit_matmul_inner(&dest[libjit_getXY(destDims, x, y)],
-                            &LHS[libjit_getXY(lhsDims, x, i)],
-                            &RHS[libjit_getXY(rhsDims, i, y)], lhsDims[1],
-                            rhsDims[1], x_block, i_block, y_block);
+        libjit_matmul_inner_f8(&dest[libjit_getXY(destDims, x, y)],
+                               &LHS[libjit_getXY(lhsDims, x, i)],
+                               &RHS[libjit_getXY(rhsDims, i, y)], lhsDims[1],
+                               rhsDims[1], x_block, i_block, y_block);
       }
     }
   }
@@ -627,15 +633,33 @@ void libjit_broadcast_f(float *dest, const float *src, const size_t *dest_dims,
 void libjit_matmul_f(float *dest, const float *LHS, const float *RHS,
                      const size_t *destDims, const size_t *lhsDims,
                      const size_t *rhsDims) {
+  // Blocks are chosen to vectorize well on Intel Skylake CPUs.
+  // TODO: Generalize this.
   static constexpr size_t x_block = 32;
   static constexpr size_t i_block = 32;
   static constexpr size_t y_block = 64;
   bzero(dest, sizeof(float) * destDims[0] * destDims[1]);
 
+  // Parition each dimension into a tile that is a multiple of the block size,
+  // and an "edge" that consists of the remaining un-tiled part.
   auto x = partition(destDims[0], x_block);
   auto y = partition(destDims[1], y_block);
   auto i = partition(lhsDims[1], i_block);
 
+  // The tiling scheme naturally divides the input matrices into 4 parts each;
+  // one tiled section, and three "ragged" edges:
+  //
+  // -------------   -------------
+  // | A00 | A01 |   | B00 | B01 |
+  // ------------- * -------------
+  // | A10 | A11 |   | B10 | B11 |
+  // -------------   -------------
+  //
+  // We can process this as 8 separate matrix multiplications.  A00 is the tiled
+  // portion that is compute-bound.  The remaining multiplies are more like gemv
+  // operations that we handle with a straightforward implementation.
+
+  // This helper lambda determines if a ragged edge exists, and processes it.
   auto mul = [=](size_t xo, size_t xb, size_t io, size_t ib, size_t yo,
                  size_t yb) {
     if (xo == xb || io == ib || yo == yb) {
