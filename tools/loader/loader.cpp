@@ -193,7 +193,7 @@ llvm::cl::opt<BackendKind> ExecutionBackend(
     llvm::cl::desc("Backend to use:"),
     llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
                                 "Use interpreter"),
-                     clEnumValN(BackendKind::JIT, "jit", "Use JIT"),
+                     clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
                      clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
     llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(loaderCat));
 

@@ -25,7 +25,7 @@ TEST(JITCorrectnessTest, batchedAddTest) {
   Tensor out1(ElemKind::FloatTy, {8, 3, 3, 6});
   Tensor out2(ElemKind::FloatTy, {8, 3, 3, 6});
 
-  inferBatchedAddNet(&batch, &slice, &out1, BackendKind::JIT);
+  inferBatchedAddNet(&batch, &slice, &out1, BackendKind::CPU);
   inferBatchedAddNet(&batch, &slice, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -41,7 +41,7 @@ TEST(JITCorrectnessTest, quantizedBatchedAddTest) {
   Tensor out1(ElemKind::Int8QTy, shape, 0.375, -10);
   Tensor out2(ElemKind::Int8QTy, shape, 0.375, -10);
 
-  inferBatchedAddNet(&batch, &slice, &out1, BackendKind::JIT);
+  inferBatchedAddNet(&batch, &slice, &out1, BackendKind::CPU);
   inferBatchedAddNet(&batch, &slice, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -53,7 +53,7 @@ TEST(JITCorrectnessTest, batchedReduceAddTest) {
   Tensor out1;
   Tensor out2;
 
-  inferBatchedReduceAddNet(&inputs, &out1, BackendKind::JIT);
+  inferBatchedReduceAddNet(&inputs, &out1, BackendKind::CPU);
   inferBatchedReduceAddNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -71,7 +71,7 @@ TEST(JITCorrectnessTest, convTest) {
   Tensor out1(ElemKind::FloatTy, shape);
   Tensor out2(ElemKind::FloatTy, shape);
 
-  inferConvNet(&inputs, &kernel, &bias, &out1, BackendKind::JIT);
+  inferConvNet(&inputs, &kernel, &bias, &out1, BackendKind::CPU);
   inferConvNet(&inputs, &kernel, &bias, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -89,7 +89,7 @@ TEST(JITCorrectnessTest, quantizedConvTest) {
   Tensor out1(ElemKind::Int8QTy, shape, 0.05, -17);
   Tensor out2(ElemKind::Int8QTy, shape, 0.05, -17);
 
-  inferConvNet(&inputs, &kernel, &bias, &out1, BackendKind::JIT);
+  inferConvNet(&inputs, &kernel, &bias, &out1, BackendKind::CPU);
   inferConvNet(&inputs, &kernel, &bias, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2, 1.0));
@@ -119,7 +119,7 @@ TEST(JITCorrectnessTest, convGradTest) {
   Tensor out2(ElemKind::FloatTy, shape2);
 
   trainConvNet(&inputs, &kernel1, &bias1, &kernel2, &bias2, &selected, shape1,
-               shape2, &out1, BackendKind::JIT);
+               shape2, &out1, BackendKind::CPU);
   trainConvNet(&inputs, &kernel1, &bias1, &kernel2, &bias2, &selected, shape1,
                shape2, &out2, BackendKind::Interpreter);
 
@@ -142,7 +142,7 @@ TEST(JITCorrectnessTest, gatherTest) {
   Tensor out1(ElemKind::FloatTy, {nGathered, 16, 3, 2});
   Tensor out2(ElemKind::FloatTy, {nGathered, 16, 3, 2});
 
-  inferGatherNet(&data, &indices, &out1, BackendKind::JIT);
+  inferGatherNet(&data, &indices, &out1, BackendKind::CPU);
   inferGatherNet(&data, &indices, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -154,7 +154,7 @@ TEST(JITCorrectnessTest, localResponseNormalizationTest) {
   Tensor out1;
   Tensor out2;
 
-  inferLocalResponseNormalizationNet(&inputs, &out1, BackendKind::JIT);
+  inferLocalResponseNormalizationNet(&inputs, &out1, BackendKind::CPU);
   inferLocalResponseNormalizationNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -180,7 +180,7 @@ TEST(JITCorrectnessTest, localResponseNormalizationGradTest) {
   Tensor out2(ElemKind::FloatTy, shape1);
 
   trainLocalResponseNormalizationNet(&inputs, &weights, &bias, &selected,
-                                     shape1, shape2, &out1, BackendKind::JIT);
+                                     shape1, shape2, &out1, BackendKind::CPU);
   trainLocalResponseNormalizationNet(&inputs, &weights, &bias, &selected,
                                      shape1, shape2, &out2,
                                      BackendKind::Interpreter);
@@ -198,7 +198,7 @@ TEST(JITCorrectnessTest, matMulTest) {
   Tensor out1(ElemKind::FloatTy, shape);
   Tensor out2(ElemKind::FloatTy, shape);
 
-  inferMatMulNet(&lhs, &rhs, &out1, BackendKind::JIT);
+  inferMatMulNet(&lhs, &rhs, &out1, BackendKind::CPU);
   inferMatMulNet(&lhs, &rhs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2, 0.001));
@@ -214,7 +214,7 @@ TEST(JITCorrectnessTest, quantizedMatMulTest) {
   Tensor out1(ElemKind::Int8QTy, shape, 8.1, 7);
   Tensor out2(ElemKind::Int8QTy, shape, 8.1, 7);
 
-  inferMatMulNet(&lhs, &rhs, &out1, BackendKind::JIT);
+  inferMatMulNet(&lhs, &rhs, &out1, BackendKind::CPU);
   inferMatMulNet(&lhs, &rhs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -230,7 +230,7 @@ TEST(JITCorrectnessTest, maxTest) {
   Tensor out1;
   Tensor out2;
 
-  inferMaxNet(&inputs1, &inputs2, &out1, BackendKind::JIT);
+  inferMaxNet(&inputs1, &inputs2, &out1, BackendKind::CPU);
   inferMaxNet(&inputs1, &inputs2, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -246,7 +246,7 @@ TEST(JITCorrectnessTest, minTest) {
   Tensor out1;
   Tensor out2;
 
-  inferMinNet(&inputs1, &inputs2, &out1, BackendKind::JIT);
+  inferMinNet(&inputs1, &inputs2, &out1, BackendKind::CPU);
   inferMinNet(&inputs1, &inputs2, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -258,7 +258,7 @@ TEST(JITCorrectnessTest, poolAvgTest) {
   Tensor out1;
   Tensor out2;
 
-  inferPoolAvgNet(&inputs, &out1, BackendKind::JIT);
+  inferPoolAvgNet(&inputs, &out1, BackendKind::CPU);
   inferPoolAvgNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -284,7 +284,7 @@ TEST(JITCorrectnessTest, poolAvgGradTest) {
   Tensor out2(ElemKind::FloatTy, shape2);
 
   trainPoolAvgNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out1,
-                  BackendKind::JIT);
+                  BackendKind::CPU);
   trainPoolAvgNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
                   BackendKind::Interpreter);
 
@@ -297,7 +297,7 @@ TEST(JITCorrectnessTest, poolMaxTest) {
   Tensor out1;
   Tensor out2;
 
-  inferPoolMaxNet(&inputs, &out1, BackendKind::JIT);
+  inferPoolMaxNet(&inputs, &out1, BackendKind::CPU);
   inferPoolMaxNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -323,7 +323,7 @@ TEST(JITCorrectnessTest, poolMaxGradTest) {
   Tensor out2(ElemKind::FloatTy, shape2);
 
   trainPoolMaxNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out1,
-                  BackendKind::JIT);
+                  BackendKind::CPU);
   trainPoolMaxNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
                   BackendKind::Interpreter);
 
@@ -340,7 +340,7 @@ TEST(JITCorrectnessTest, quantizeTest) {
   Tensor out1(ElemKind::FloatTy, shape);
   Tensor out2(ElemKind::FloatTy, shape);
 
-  inferQuantizeNet(&inputs, scale, offset, &out1, BackendKind::JIT);
+  inferQuantizeNet(&inputs, scale, offset, &out1, BackendKind::CPU);
   inferQuantizeNet(&inputs, scale, offset, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -352,7 +352,7 @@ TEST(JITCorrectnessTest, reluTest) {
   Tensor out1;
   Tensor out2;
 
-  inferReluNet(&inputs, &out1, BackendKind::JIT);
+  inferReluNet(&inputs, &out1, BackendKind::CPU);
   inferReluNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -366,7 +366,7 @@ TEST(JITCorrectnessTest, reshapeTest) {
   Tensor out1;
   Tensor out2;
 
-  inferReshapeNet(&inputs, shape, &out1, BackendKind::JIT);
+  inferReshapeNet(&inputs, shape, &out1, BackendKind::CPU);
   inferReshapeNet(&inputs, shape, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -383,7 +383,7 @@ TEST(JITCorrectnessTest, reshapeIndexTest) {
   Tensor out1;
   Tensor out2;
 
-  inferReshapeNet(&inputs, shape, &out1, BackendKind::JIT);
+  inferReshapeNet(&inputs, shape, &out1, BackendKind::CPU);
   inferReshapeNet(&inputs, shape, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -404,7 +404,7 @@ TEST(JITCorrectnessTest, selectTest) {
   Tensor out1;
   Tensor out2;
 
-  inferSelectNet(&cond, &inputs1, &inputs2, &out1, BackendKind::JIT);
+  inferSelectNet(&cond, &inputs1, &inputs2, &out1, BackendKind::CPU);
   inferSelectNet(&cond, &inputs1, &inputs2, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -416,7 +416,7 @@ TEST(JITCorrectnessTest, sigmoidTest) {
   Tensor out1;
   Tensor out2;
 
-  inferSigmoidNet(&inputs, &out1, BackendKind::JIT);
+  inferSigmoidNet(&inputs, &out1, BackendKind::CPU);
   inferSigmoidNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -433,7 +433,7 @@ TEST(JITCorrectnessTest, softmaxTest) {
   Tensor out1;
   Tensor out2;
 
-  inferSoftMaxNet(&inputs, &selected, &out1, BackendKind::JIT);
+  inferSoftMaxNet(&inputs, &selected, &out1, BackendKind::CPU);
   inferSoftMaxNet(&inputs, &selected, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -456,7 +456,7 @@ TEST(JITCorrectnessTest, softmaxGradTest) {
   Tensor out1(ElemKind::FloatTy, shape);
   Tensor out2(ElemKind::FloatTy, shape);
 
-  trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out1, BackendKind::JIT);
+  trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out1, BackendKind::CPU);
   trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out2,
                   BackendKind::Interpreter);
 
@@ -469,7 +469,7 @@ TEST(JITCorrectnessTest, tanhTest) {
   Tensor out1;
   Tensor out2;
 
-  inferTanhNet(&inputs, &out1, BackendKind::JIT);
+  inferTanhNet(&inputs, &out1, BackendKind::CPU);
   inferTanhNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -483,7 +483,7 @@ TEST(JITCorrectnessTest, convOps) {
     Tensor out1;
     Tensor out2;
 
-    inferBasicConvNet(&inputs, &out1, BackendKind::JIT, depth);
+    inferBasicConvNet(&inputs, &out1, BackendKind::CPU, depth);
     inferBasicConvNet(&inputs, &out2, BackendKind::Interpreter, depth);
 
     EXPECT_TRUE(out1.isEqual(out2));
@@ -496,7 +496,7 @@ TEST(JITCorrectnessTest, basicFCNet) {
   Tensor out1;
   Tensor out2;
 
-  inferBasicFCNet(&inputs, &out1, BackendKind::JIT);
+  inferBasicFCNet(&inputs, &out1, BackendKind::CPU);
   inferBasicFCNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -517,7 +517,7 @@ TEST(JITCorrectnessTest, complexNet1) {
   Tensor out2;
 
   inferComplexNet1(&inputs1, &inputs2, &inputs3, &inputs4, &out1,
-                   BackendKind::JIT);
+                   BackendKind::CPU);
   inferComplexNet1(&inputs1, &inputs2, &inputs3, &inputs4, &out2,
                    BackendKind::Interpreter);
 

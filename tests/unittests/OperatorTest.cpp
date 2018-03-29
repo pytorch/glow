@@ -1050,5 +1050,5 @@ INSTANTIATE_TEST_CASE_P(Interpreter, Operator,
                         ::testing::Values(BackendKind::Interpreter));
 
 #ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(JIT, Operator, ::testing::Values(BackendKind::JIT));
+INSTANTIATE_TEST_CASE_P(JIT, Operator, ::testing::Values(BackendKind::CPU));
 #endif // GLOW_WITH_CPU

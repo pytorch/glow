@@ -26,7 +26,7 @@ Backend *glow::createBackend(BackendKind backendKind, IRFunction *F) {
     return createOCLBackend(F);
 #endif
 #if defined(GLOW_WITH_CPU)
-  case BackendKind::JIT:
+  case BackendKind::CPU:
     return createCPUBackend(F);
 #endif
   default:
