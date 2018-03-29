@@ -3,7 +3,7 @@ set(GLOW_USE_SANITIZER "" CACHE STRING
     "Define the sanitizer used to build binaries and tests.")
 
 if(GLOW_USE_SANITIZER)
-  # TODO(compnerd) ensure that the compiler supports these options before adding
+  # TODO: ensure that the compiler supports these options before adding
   # them.  At the moment, assume that this will just be used with a GNU
   # compatible driver and that the options are spelt correctly in light of that.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer")
