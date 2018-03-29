@@ -18,7 +18,7 @@ class Node;
 enum class BackendKind {
   Interpreter, // Execute the network with the built-in interpreter.
   OpenCL,      // Run the code on an OpenCL device.
-  JIT,         // Compile and run the code on the host.
+  CPU,         // Compile and run the code on the host.
   None,
 };
 

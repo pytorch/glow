@@ -29,7 +29,7 @@ done
 # lenet_mnist.o is the object file containing the compiled model
 # lenet_mnist.weights is the file with weights
 mkdir -p build
-${LOADER} ${GLOW_ROOT}/tests/images/mnist/5_1087.png -image_mode=0to1 -d lenet_mnist -jit -emit-bundle build -g
+${LOADER} ${GLOW_ROOT}/tests/images/mnist/5_1087.png -image_mode=0to1 -d lenet_mnist -cpu -emit-bundle build -g
 
 # Compile lenet_mnist_standalone.cpp.
 ${CXX} -std=c++11 -c -g ${SCRIPT_DIR}/lenet_mnist_standalone.cpp -o build/lenet_mnist_standalone.o
