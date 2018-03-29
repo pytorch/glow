@@ -684,6 +684,7 @@ void Interpreter::fwdExtractTensorInst(const glow::ExtractTensorInst *I) {
 
   TYPED_INSERT(size_t, ElemKind::IndexTy);
   TYPED_INSERT(float, ElemKind::FloatTy);
+  TYPED_INSERT(int8_t, ElemKind::Int8QTy)
 #undef TYPED_INSERT
 
   llvm_unreachable("Unsupported tensor type");

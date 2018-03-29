@@ -94,21 +94,22 @@ bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
   // Check quantization support.
   if (elementTy == ElemKind::Int8QTy) {
     switch (opKind) {
-    case Kinded::Kind::FullyConnectedNodeKind:
-    case Kinded::Kind::ConvolutionNodeKind:
-    case Kinded::Kind::ReluNodeKind:
-    case Kinded::Kind::TransposeNodeKind:
-    case Kinded::Kind::ReshapeNodeKind:
-    case Kinded::Kind::ConcatNodeKind:
-    case Kinded::Kind::PoolMaxNodeKind:
-    case Kinded::Kind::PoolAvgNodeKind:
     case Kinded::Kind::AddNodeKind:
+    case Kinded::Kind::ConcatNodeKind:
+    case Kinded::Kind::ConvolutionNodeKind:
+    case Kinded::Kind::DequantizeNodeKind:
+    case Kinded::Kind::FullyConnectedNodeKind:
     case Kinded::Kind::MaxNodeKind:
     case Kinded::Kind::MinNodeKind:
     case Kinded::Kind::MulNodeKind:
+    case Kinded::Kind::PoolAvgNodeKind:
+    case Kinded::Kind::PoolMaxNodeKind:
     case Kinded::Kind::QuantizeNodeKind:
-    case Kinded::Kind::DequantizeNodeKind:
+    case Kinded::Kind::ReluNodeKind:
     case Kinded::Kind::RescaleQuantizedNodeKind:
+    case Kinded::Kind::ReshapeNodeKind:
+    case Kinded::Kind::SliceNodeKind:
+    case Kinded::Kind::TransposeNodeKind:
       return true;
     default:
       return false;
