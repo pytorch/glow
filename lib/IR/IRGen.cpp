@@ -208,7 +208,7 @@ public:
       // Backward pass gradient dL/dY.
       auto *dY = valueForNode(CELossG->getGradOfOriginalOutputNamedCE());
       auto *pGrad = builder_.createAllocActivationInst(
-          "celoss.p.grad", P->getElementType(), P->dims());
+          "celoss.p.grad", P->getType());
       auto *yGrad = builder_.createAllocActivationInst("celoss.labels.grad",
                                                        Y->getType());
       auto *CELossGI = builder_.createCrossEntropyLossGradInst(
@@ -245,7 +245,7 @@ public:
       auto start = SL->getStart();
       auto *in = valueForNode(SL->getInput());
       auto *dest = builder_.createAllocActivationInst(
-          SL->getName(), SL->getElementType(), SL->dims());
+          SL->getName(), SL->getType());
       builder_.createExtractTensorInst(SL->getName(), dest, in, start);
       registerIR(N, dest);
       break;
