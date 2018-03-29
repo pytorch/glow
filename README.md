@@ -28,7 +28,7 @@ generators can use to generate efficient machine code.
 ### System Requirements
 
 The project builds and runs on macOS and Linux. The software depends on a modern
-C++ compiler that supports C++11, on CMake, protocol buffer, and libpng.
+C++ compiler that supports C++11, on CMake, LLVM, protocol buffer, and libpng.
 
 ### Building the Compiler
 

@@ -17,7 +17,7 @@ can install these dependencies using the brew package manager:
 On Ubuntu you would need to install a few dependencies. The following command should install the required dependencies.
 
   ```
-  sudo apt-get install graphviz clang cmake wget ninja-build llvm-5.0 libprotobuf-dev protobuf-compiler 
+  sudo apt-get install graphviz clang cmake wget ninja-build llvm-5.0 libprotobuf-dev protobuf-compiler
   ```
 
 Note, that OpenCL support is not trivial on Linux. We suggest to build without OpenCL for the first time.
@@ -36,8 +36,8 @@ support for the JIT and/or OpenCL backends, pass additional options to cmake:
 The JIT is able to target all environments supported by LLVM.  If the
 `build_llvm.sh` script is used to build LLVM for Glow, all the currently stable
 architectures will be enabled.  If you wish to control which architectures are
-built, you can use the `LLVM_TARGETS_TO_BUILD` parameter to CMake, which is a
-list of architectures to support, to enable the desired targets.
+built, you can use the `LLVM_TARGETS_TO_BUILD` cmake parameter when building
+LLVM.
 
 ## Building with the Sanitizers
 
@@ -85,7 +85,7 @@ Glow uses gcov, lcov and genhtml to generate coverage reports for the code base.
 Using this tool allows you to make sure that corner cases are covered with the
 unit tests as well as keep the unit test coverage at a healthy level.
 You can generate a coverage report by providing additional options to cmake:
-  
+
   ```
   -DGLOW_USE_COVERAGE=1
   ```
