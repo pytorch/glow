@@ -251,6 +251,18 @@ quantizeInputs(Function *F, Node *node,
   return quantizedInputs;
 }
 
+/// Node can only be quantized if all inputs are floats.
+static bool canBeQuantized(const Node *node) {
+  // Make sure that all inputs are floats.
+  for (unsigned i = 0, e = node->getNumInputs(); i < e; ++i) {
+    if (node->getNthInput(i).getElementType() != ElemKind::FloatTy) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 void generateQuantizedGraph(
     const ExecutionEngine &EE, Function *F,
     llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos) {
@@ -273,7 +285,10 @@ void generateQuantizedGraph(
     --nodeIt;
     Node *node = *nodeIt;
 
-    if (EE.isOpSupported(node->getKind(), ElemKind::Int8QTy)) {
+    // Make sure that all inputs are floats and int8 operation is suppored by the backend.
+    // Not all backends support particular quantized operation and also we should not quantize
+    // Index type inputs. 
+    if (canBeQuantized(node) && EE.isOpSupported(node->getKind(), ElemKind::Int8QTy)) {
       // 1) Quantize all of the inputs based on the profiles.
       llvm::SmallVector<Node *, 6> quantizedInputs =
           quantizeInputs(F, node, nodeToTQP);
