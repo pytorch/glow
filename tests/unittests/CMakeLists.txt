@@ -145,6 +145,19 @@ target_link_libraries(JITTest
                         testMain)
 add_test(JITTest ${GLOW_BINARY_DIR}/tests/JITTest)
 LIST(APPEND UNOPT_TESTS ./tests/JITTest -optimize-ir=false &&)
+
+add_executable(GemmTest
+               GemmTest.cpp)
+target_link_libraries(GemmTest
+                      PRIVATE
+                        Graph
+                        IR
+                        ExecutionEngine
+                        Support
+                        gtest
+                        testMain)
+add_test(GemmTest ${GLOW_BINARY_DIR}/tests/GemmTest)
+LIST(APPEND UNOPT_TESTS ./tests/GemmTest -optimize-ir=false &&)
 endif()
 
 add_executable(memoryAllocatorTest
