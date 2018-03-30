@@ -145,6 +145,7 @@ void CPUBackend::saveWeights(llvm::StringRef weightsFileName) {
   // Do not serialize mutable weights representing inputs and outputs, because
   // it should be configurable and set by the client.
   size_t pos = 0;
+  size_t maxPos = 0;
   for (auto &v : F_->getGraph()->getParent()->getVars()) {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
     if (v->getVisibilityKind() == Variable::VisibilityKind::Public)
@@ -160,6 +161,14 @@ void CPUBackend::saveWeights(llvm::StringRef weightsFileName) {
     weightsFile.seek(addr);
     weightsFile.write(payload, numBytes);
     pos = addr + numBytes;
+    maxPos = std::max(pos, maxPos);
+  }
+  // Make sure that the file is as long as the constantWeightVarsMemSize_.
+  // This is needed to properly handle alignments.
+  weightsFile.seek(maxPos);
+  for (size_t endPos = irgen_.getAllocationsInfo().constantWeightVarsMemSize_;
+       maxPos < endPos; maxPos++) {
+    weightsFile.write(0);
   }
   weightsFile.close();
 }
