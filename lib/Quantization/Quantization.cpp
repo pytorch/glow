@@ -285,10 +285,11 @@ void generateQuantizedGraph(
     --nodeIt;
     Node *node = *nodeIt;
 
-    // Make sure that all inputs are floats and int8 operation is suppored by the backend.
-    // Not all backends support particular quantized operation and also we should not quantize
-    // Index type inputs. 
-    if (canBeQuantized(node) && EE.isOpSupported(node->getKind(), ElemKind::Int8QTy)) {
+    // Make sure that all inputs are floats and int8 operation is suppored by
+    // the backend. Not all backends support particular quantized operation and
+    // also we should not quantize Index type inputs.
+    if (canBeQuantized(node) &&
+        EE.isOpSupported(node->getKind(), ElemKind::Int8QTy)) {
       // 1) Quantize all of the inputs based on the profiles.
       llvm::SmallVector<Node *, 6> quantizedInputs =
           quantizeInputs(F, node, nodeToTQP);
@@ -325,6 +326,19 @@ void generateQuantizedGraph(
             F->createConv(CV->getName(), quantizedInputs[0], quantizedInputs[1],
                           quantizedInputs[2], QT, CV->getDepth(),
                           CV->getKernel(), CV->getStride(), CV->getPad());
+        break;
+      }
+      case Kinded::Kind::SliceNodeKind: {
+        auto *S = cast<SliceNode>(node);
+        assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+
+        auto QT = F->getParent()->uniqueType(
+            ElemKind::Int8QTy, S->getResult()->dims(),
+            quantizedInputs[0]->getNthResult(0).getType()->getScale(),
+            quantizedInputs[0]->getNthResult(0).getType()->getOffset());
+
+        quantizedNode =
+            F->createSlice(S->getName(), quantizedInputs[0], S->getStart(), QT);
         break;
       }
       case Kinded::Kind::ReluNodeKind: {
