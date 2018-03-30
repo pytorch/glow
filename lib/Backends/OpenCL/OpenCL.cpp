@@ -8,6 +8,7 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
@@ -18,6 +19,15 @@ using llvm::isa;
 
 // This defines the string "SHADER_CODE".
 #include "kernels.cl"
+
+namespace {
+llvm::cl::OptionCategory OpenCLBackendCat("Glow OpenCL Backend Options");
+
+static llvm::cl::opt<int> deviceId("device",
+                                   llvm::cl::desc("OpenCL device to be used"),
+                                   llvm::cl::init(0),
+                                   llvm::cl::cat(OpenCLBackendCat));
+} // namespace
 
 Backend *glow::createOCLBackend(IRFunction *F) { return new OCLBackend(F); }
 
@@ -46,11 +56,16 @@ static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 }
 
 OCLBackend::OCLBackend(IRFunction *F) : F_(F), allocator_(0xFFFFFFFF) {
-  cl_int err =
-      clGetDeviceIDs(nullptr, CL_DEVICE_TYPE_DEFAULT, 1, &deviceId_, nullptr);
+  cl_uint num{0};
+  cl_int err = clGetDeviceIDs(nullptr, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
-
-  context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, &err);
+  GLOW_ASSERT(num > deviceId &&
+              "Should have at least one GPU for running OpenCL");
+  cl_device_id devices[num];
+  err = clGetDeviceIDs(nullptr, CL_DEVICE_TYPE_ALL, num, devices, nullptr);
+  GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
+  deviceId_ = devices[deviceId];
+  context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, nullptr);
   GLOW_ASSERT(context_ && "clCreateContext Failed.");
 
   commands_ = clCreateCommandQueue(context_, deviceId_, 0, &err);
