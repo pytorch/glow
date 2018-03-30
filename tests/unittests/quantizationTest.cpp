@@ -151,18 +151,23 @@ createSimpleGraphForQuantization(Module *M) {
   auto *MP = F->createPoolMax("maxPool", RL, 2, 2, 1);
   // Just add noop transpose.
   auto *T = F->createTranspose("transpose", MP, {0, 1, 2, 3});
-  // Noop reshape.
+  // Noop reshape, make sure conversion quantization procedure works well.
   auto *R = F->createReshape("reshape", T, T->getResult().dims());
   auto *AP = F->createPoolAvg("avgPool", R, 2, 2, 1);
 
   FullyConnectedNode *FC = F->createFullyConnected("fc", AP, 10);
+
+  // Noop slice, make sure conversion quantization procedure works well.
+  auto *S =
+      F->createSlice("slice", FC, {0, 0},
+                     {FC->getResult().dims()[0], FC->getResult().dims()[1]});
   Variable *bias2 = cast<Variable>(FC->getBias());
   Variable *filter2 = cast<Variable>(FC->getWeights());
 
   fillStableRandomData(bias2->getPayload().getHandle(), 3001, 1);
   fillStableRandomData(filter2->getPayload().getHandle(), 4000, 1);
 
-  auto *O = F->createConcat("concat", {FC, B}, 0);
+  auto *O = F->createConcat("concat", {S, B}, 0);
   SaveNode *SN = F->createSave("save", O);
   return {F, SN};
 }

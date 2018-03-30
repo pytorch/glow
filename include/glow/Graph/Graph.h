@@ -224,6 +224,11 @@ public:
   SliceNode *createSlice(llvm::StringRef name, NodeValue input,
                          UnsignedArrayRef begin, UnsignedArrayRef end);
 
+  /// Create a slice node with the given starting point for each dimension.
+  /// End points will be calculated based on the output type during execution.
+  SliceNode *createSlice(llvm::StringRef name, NodeValue input,
+                         llvm::ArrayRef<size_t> start, TypeRef outTy);
+
   /// Shuffles dimension number \p kernel. Suppose original size is D. It will
   /// be represented as groupX(D/group) matrix, transposed and concatenated back
   /// to size D. For example, shuffle of {1, 2, 3, 4, 5, 6} with \p group = 2 is

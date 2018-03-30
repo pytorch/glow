@@ -598,30 +598,46 @@ ConcatNode *Function::createConcat(llvm::StringRef name,
 }
 
 SliceNode *Function::createSlice(llvm::StringRef name, NodeValue input,
+                                 llvm::ArrayRef<size_t> start, TypeRef outTy) {
+  assert(input.dims().size() == start.size() &&
+         "Start and input dims should match");
+  assert(outTy->dims().size() == start.size() &&
+         "Output and start dims should match");
+
+  for (unsigned i = 0, e = input.dims().size(); i < e; i++) {
+    assert(start[i] < input.dims()[i] && "Invalid start position");
+    assert(outTy->dims()[i] == start[i] + input.dims()[i] &&
+           "Input/Output/Start dims mismatch");
+  }
+
+  return addNode(new SliceNode(name, outTy, input, start));
+}
+
+SliceNode *Function::createSlice(llvm::StringRef name, NodeValue input,
                                  llvm::ArrayRef<size_t> begin,
                                  llvm::ArrayRef<size_t> end) {
 
-  std::vector<size_t> begin_v, shape;
+  std::vector<size_t> beginV, shape;
   auto dims = input.dims();
   assert(begin.size() == end.size() && "Begin and End dimensions should match");
   assert(begin.size() == dims.size() &&
          "Begin and Input dimensions should match");
   for (unsigned i = 0; i < dims.size(); i++) {
-    size_t begin_i = begin[i];
-    size_t end_i = end[i];
-    size_t dim_i = dims[i];
-    (void)dim_i;
-    assert(begin_i >= 0 && "Illegal Begin indices");
-    assert(end_i > 0 && "Illegal End indices");
-    assert(begin_i < dim_i && "Illegal Begin indices");
-    assert(end_i <= dim_i && "Illegal End indices");
-    assert(end_i > begin_i && "Illegal Begin and End indices");
-    begin_v.push_back(begin_i);
-    shape.push_back(end_i - begin_i);
+    size_t beginI = begin[i];
+    size_t endI = end[i];
+    size_t dimI = dims[i];
+    (void)dimI;
+    assert(beginI >= 0 && "Illegal Begin indices");
+    assert(endI > 0 && "Illegal End indices");
+    assert(beginI < dimI && "Illegal Begin indices");
+    assert(endI <= dimI && "Illegal End indices");
+    assert(endI > beginI && "Illegal Begin and End indices");
+    beginV.push_back(beginI);
+    shape.push_back(endI - beginI);
   }
 
   auto NT = getParent()->uniqueTypeWithNewShape(input.getType(), shape);
-  return addNode(new SliceNode(name, NT, input, begin_v));
+  return addNode(new SliceNode(name, NT, input, beginV));
 }
 
 Node *Function::createChannelShuffle(llvm::StringRef name, NodeValue input,
