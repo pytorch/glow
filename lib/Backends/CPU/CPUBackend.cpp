@@ -372,10 +372,12 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     case Kinded::Kind::ConcatNodeKind:
     case Kinded::Kind::ConvolutionNodeKind:
     case Kinded::Kind::DequantizeNodeKind:
+    case Kinded::Kind::DivNodeKind:
     case Kinded::Kind::FullyConnectedNodeKind:
     case Kinded::Kind::MatMulNodeKind:
     case Kinded::Kind::MaxNodeKind:
     case Kinded::Kind::MinNodeKind:
+    case Kinded::Kind::MulNodeKind:
     case Kinded::Kind::PoolAvgNodeKind:
     case Kinded::Kind::PoolMaxNodeKind:
     case Kinded::Kind::QuantizeNodeKind:

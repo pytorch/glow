@@ -680,11 +680,11 @@ TEST_P(Operator, RescaleNode) {
   EXPECT_NEAR(RO.raw(0), 40, 1);
 }
 
-TEST_P(InterpOnly, QuantizedArithmeticNode) {
+TEST_P(Operator, QuantizedArithmeticRescaled) {
   const int len = 100;
 
-  // In this test we check the correctness of the quantized MAX, ADD,
-  // MIN nodes as well as how they interact with the rescaling node.
+  // In this test we check the correctness of the quantized Max, Min, Add, Sub,
+  // Mul, and Div nodes as well as how they interact with the rescaling node.
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -692,75 +692,214 @@ TEST_P(InterpOnly, QuantizedArithmeticNode) {
                                Variable::VisibilityKind::Public);
   auto *B = mod.createVariable(ElemKind::FloatTy, {len}, "B",
                                Variable::VisibilityKind::Public);
-  auto *O1 = mod.createVariable(ElemKind::FloatTy, {len}, "OutSum",
+  auto *C = mod.createVariable(ElemKind::FloatTy, {len}, "C",
+                               Variable::VisibilityKind::Public);
+  auto *O1 = mod.createVariable(ElemKind::FloatTy, {len}, "Max",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  auto *O2 = mod.createVariable(ElemKind::FloatTy, {len}, "OutMax",
+  auto *O2 = mod.createVariable(ElemKind::FloatTy, {len}, "Min",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  auto *O3 = mod.createVariable(ElemKind::FloatTy, {len}, "OutMin",
+  auto *O3 = mod.createVariable(ElemKind::FloatTy, {len}, "Add",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  auto *O4 = mod.createVariable(ElemKind::FloatTy, {len}, "OutMul",
+  auto *O4 = mod.createVariable(ElemKind::FloatTy, {len}, "Sub",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
+  auto *O5 = mod.createVariable(ElemKind::FloatTy, {len}, "Mul",
+                                Variable::VisibilityKind::Public,
+                                Variable::TrainKind::None);
+  auto *O6 = mod.createVariable(ElemKind::FloatTy, {len}, "Div",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
 
   auto AH = A->getHandle();
   auto BH = B->getHandle();
+  auto CH = C->getHandle();
   auto O1H = O1->getHandle();
   auto O2H = O2->getHandle();
   auto O3H = O3->getHandle();
   auto O4H = O4->getHandle();
+  auto O5H = O5->getHandle();
+  auto O6H = O6->getHandle();
 
   AH.randomize(-10, 10);
   BH.randomize(-10, 10);
+  // Below, randomize between 1 and 10 to avoid division by 0 later.
+  CH.randomize(1, 10);
 
   auto TA = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.2, 0);
   auto TB = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.1, 0);
+  auto TC = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.3, 0);
+
+  auto TI1 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.1, 0);
+  auto TI2 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.8, 0);
+  auto TI3 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 0);
+  auto TI4 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
+  auto TI5 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.2, 0);
+  auto TI6 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.7, 0);
+
   auto TO1 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
   auto TO2 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 0);
   auto TO3 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.1, 0);
   auto TO4 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.2, 0);
+  auto TO5 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
+  auto TO6 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.1, 0);
 
-  // Quantize input vars and apply max/add/min/mul quantized.
+  // Quantize input vars and apply max/min/add/sub/mul/div quantized.
   auto *QA = F->createQuantize("QA", A, TA);
   auto *QB = F->createQuantize("QB", B, TB);
-  Node *max = F->createMax("max", TO1, QA, QB);
-  Node *add = F->createAdd("add", TO2, QA, QB);
-  Node *min = F->createMin("min", TO1, QA, QB);
-  Node *mul = F->createMul("mul", TO1, QA, QB);
+  auto *QC = F->createQuantize("QC", C, TC);
+
+  Node *max = F->createMax("max", TI1, QA, QB);
+  Node *min = F->createMin("min", TI2, QA, QB);
+  Node *add = F->createAdd("add", TI3, QA, QB);
+  Node *sub = F->createSub("sub", TI4, QA, QB);
+  Node *mul = F->createMul("mul", TI5, QA, QB);
+  Node *div = F->createDiv("div", TI6, QB, QC);
 
   // Rescale quantized results.
-  max = F->createRescaleQuantized("rescaleMax", max, TO3);
-  add = F->createRescaleQuantized("rescaleAdd", add, TO4);
-  min = F->createRescaleQuantized("rescaleMin", min, TO3);
+  max = F->createRescaleQuantized("rescaleMax", max, TO1);
+  min = F->createRescaleQuantized("rescaleMin", min, TO2);
+  add = F->createRescaleQuantized("rescaleAdd", add, TO3);
+  sub = F->createRescaleQuantized("rescaleSub", sub, TO4);
+  mul = F->createRescaleQuantized("rescaleMul", mul, TO5);
+  div = F->createRescaleQuantized("rescaleDiv", div, TO6);
 
-  // Dequantize results back to fp.
-  add = F->createDequantize("addDq", add);
-  max = F->createDequantize("maxDq", max);
-  min = F->createDequantize("minDq", min);
-  mul = F->createDequantize("mulDq", mul);
+  // Dequantize results back to floating-point.
+  max = F->createDequantize("maxDQ", max);
+  min = F->createDequantize("minDQ", min);
+  add = F->createDequantize("addDQ", add);
+  sub = F->createDequantize("subDQ", sub);
+  mul = F->createDequantize("mulDQ", mul);
+  div = F->createDequantize("divDQ", div);
 
   // Save results of the operations.
-  F->createSave("saveAdd", add, O1);
-  F->createSave("saveMax", max, O2);
-  F->createSave("saveMin", min, O3);
-  F->createSave("saveMul", mul, O4);
+  F->createSave("saveMax", max, O1);
+  F->createSave("saveMin", min, O2);
+  F->createSave("saveAdd", add, O3);
+  F->createSave("saveSub", sub, O4);
+  F->createSave("saveMul", mul, O5);
+  F->createSave("saveDiv", div, O6);
 
   EE.compile(CompilationMode::Infer, F);
   EE.run({}, {});
 
   for (size_t i = 0; i < len; i++) {
     auto max = std::max(AH.at({i}), BH.at({i}));
-    auto add = AH.at({i}) + BH.at({i});
     auto min = std::min(AH.at({i}), BH.at({i}));
+    auto add = AH.at({i}) + BH.at({i});
+    auto sub = AH.at({i}) - BH.at({i});
     auto mul = AH.at({i}) * BH.at({i});
+    auto div = BH.at({i}) / CH.at({i});
 
     // We generate numbers up to 110, so a difference of 2 (~2%) is reasonable.
-    EXPECT_NEAR(add, O1H.at({i}), 2.0);
-    EXPECT_NEAR(max, O2H.at({i}), 2.0);
-    EXPECT_NEAR(min, O3H.at({i}), 2.0);
-    EXPECT_NEAR(mul, O4H.at({i}), 2.0);
+    EXPECT_NEAR(max, O1H.at({i}), 2.0);
+    EXPECT_NEAR(min, O2H.at({i}), 2.0);
+    EXPECT_NEAR(add, O3H.at({i}), 2.0);
+    EXPECT_NEAR(sub, O4H.at({i}), 2.0);
+    EXPECT_NEAR(mul, O5H.at({i}), 2.0);
+    EXPECT_NEAR(div, O6H.at({i}), 2.0);
+  }
+}
+
+TEST_P(Operator, QuantizedArithmeticUnrescaled) {
+  const int len = 100;
+
+  // In this test we check the correctness of the quantized Max, Min, Add, Sub,
+  // Mul, and Div operations.
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto TQA = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.1, -1);
+  auto TQB = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 2);
+  // For TQC, set offset to -11 to avoid division by 0 later.
+  auto TQC = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.2, -11);
+  auto TO1 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.4, 3);
+  auto TO2 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.8, 2);
+  auto TO3 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.7, 5);
+  auto TO4 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.3, -7);
+  auto TO5 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.2, 3);
+  auto TO6 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, -2);
+
+  auto *QA = mod.createVariable(ElemKind::Int8QTy, {len}, TQA->getScale(),
+                                TQA->getOffset(), "QA",
+                                Variable::VisibilityKind::Public);
+  auto *QB = mod.createVariable(ElemKind::Int8QTy, {len}, TQB->getScale(),
+                                TQB->getOffset(), "QB",
+                                Variable::VisibilityKind::Public);
+  auto *QC = mod.createVariable(ElemKind::Int8QTy, {len}, TQC->getScale(),
+                                TQC->getOffset(), "QC",
+                                Variable::VisibilityKind::Public);
+  auto *O1 = mod.createVariable(
+      ElemKind::Int8QTy, {len}, TO1->getScale(), TO1->getOffset(), "Max",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
+  auto *O2 = mod.createVariable(
+      ElemKind::Int8QTy, {len}, TO2->getScale(), TO2->getOffset(), "Min",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
+  auto *O3 = mod.createVariable(
+      ElemKind::Int8QTy, {len}, TO3->getScale(), TO3->getOffset(), "Add",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
+  auto *O4 = mod.createVariable(
+      ElemKind::Int8QTy, {len}, TO4->getScale(), TO4->getOffset(), "Sub",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
+  auto *O5 = mod.createVariable(
+      ElemKind::Int8QTy, {len}, TO5->getScale(), TO5->getOffset(), "Mul",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
+  auto *O6 = mod.createVariable(
+      ElemKind::Int8QTy, {len}, TO6->getScale(), TO6->getOffset(), "Div",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
+
+  auto QAH = QA->getHandle<int8_t>();
+  auto QBH = QB->getHandle<int8_t>();
+  auto QCH = QC->getHandle<int8_t>();
+  auto O1H = O1->getHandle<int8_t>();
+  auto O2H = O2->getHandle<int8_t>();
+  auto O3H = O3->getHandle<int8_t>();
+  auto O4H = O4->getHandle<int8_t>();
+  auto O5H = O5->getHandle<int8_t>();
+  auto O6H = O6->getHandle<int8_t>();
+
+  QAH.randomize(-10, 10);
+  QBH.randomize(-10, 10);
+  QCH.randomize(-10, 10);
+
+  // Apply max/min/add/sub/mul/div quantized.
+  Node *max = F->createMax("max", TO1, QA, QB);
+  Node *min = F->createMin("min", TO2, QA, QB);
+  Node *add = F->createAdd("add", TO3, QA, QB);
+  Node *sub = F->createSub("sub", TO4, QA, QB);
+  Node *mul = F->createMul("mul", TO5, QA, QB);
+  Node *div = F->createDiv("div", TO6, QB, QC);
+
+  // Save results of the operations.
+  F->createSave("saveMax", max, O1);
+  F->createSave("saveMin", min, O2);
+  F->createSave("saveAdd", add, O3);
+  F->createSave("saveSub", sub, O4);
+  F->createSave("saveMul", mul, O5);
+  F->createSave("saveDiv", div, O6);
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+
+  for (size_t i = 0; i < len; i++) {
+    float a = TQA->getScale() * (QAH.at({i}) - TQA->getOffset());
+    float b = TQB->getScale() * (QBH.at({i}) - TQB->getOffset());
+    float c = TQC->getScale() * (QCH.at({i}) - TQC->getOffset());
+    float max = std::max(a, b) / TO1->getScale() + TO1->getOffset();
+    float min = std::min(a, b) / TO2->getScale() + TO2->getOffset();
+    float add = (a + b) / TO3->getScale() + TO3->getOffset();
+    float sub = (a - b) / TO4->getScale() + TO4->getOffset();
+    float mul = (a * b) / TO5->getScale() + TO5->getOffset();
+    float div = (b / c) / TO6->getScale() + TO6->getOffset();
+
+    EXPECT_NEAR(std::round(max), O1H.at({i}), 1.0);
+    EXPECT_NEAR(std::round(min), O2H.at({i}), 1.0);
+    EXPECT_NEAR(std::round(add), O3H.at({i}), 1.0);
+    EXPECT_NEAR(std::round(sub), O4H.at({i}), 1.0);
+    EXPECT_NEAR(std::round(mul), O5H.at({i}), 1.0);
+    EXPECT_NEAR(std::round(div), O6H.at({i}), 1.0);
   }
 }
 
