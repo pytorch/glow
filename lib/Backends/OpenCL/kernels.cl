@@ -1,20 +1,28 @@
 
 static const char* SHADER_CODE = R"(
 
+/// This type is always 32 bits.
+typedef unsigned cl_uint32_t;
+/// This type is always 64 bits.
+typedef unsigned long cl_uint64_t;
+
+// The types of elements should be always matching the definitions of
+// ShapeNHWC in Type.h
 typedef struct {
-  size_t n; // Number of samples
-  size_t h; // Height
-  size_t w; // Width
-  size_t c; // Number of channels
+  cl_uint64_t n; // Number of samples
+  cl_uint64_t h; // Height
+  cl_uint64_t w; // Width
+  cl_uint64_t c; // Number of channels
 } ShapeNHWC;
 
 /// \returns the index of the element at x,y,z,w.
-size_t getNHWC(ShapeNHWC s, size_t x, size_t y, size_t z, size_t w) {
+size_t getNHWC(ShapeNHWC s, cl_uint32_t x, cl_uint32_t y, cl_uint32_t z,
+               cl_uint32_t w) {
   return (x * s.c * s.w * s.h) + (y * s.c * s.w) + (z * s.c) + w;
 }
 
 __kernel void batchedreduceaddK(__global float *dest, __global float *batch,
-                                size_t numSlice, size_t sliceSize) {
+                                cl_uint32_t numSlice, cl_uint32_t sliceSize) {
   size_t s = get_global_id(0);
   dest[s] = 0;
   for (size_t n = 0; n < numSlice; n++) {
@@ -22,28 +30,30 @@ __kernel void batchedreduceaddK(__global float *dest, __global float *batch,
   }
 }
 
-__kernel void batchedreduceaddW(__global void *mem, size_t dest, size_t batch,
-                                size_t numSlice, size_t sliceSize) {
+__kernel void batchedreduceaddW(__global void *mem, cl_uint32_t dest,
+                                cl_uint32_t batch, size_t numSlice,
+                                size_t sliceSize) {
   batchedreduceaddK(&mem[dest], &mem[batch], numSlice, sliceSize);
 }
 
 __kernel void batchedaddK(__global float *dest, __global float *batch,
-                          __global float *slice, size_t numSlice,
-                          size_t sliceSize) {
+                          __global float *slice, cl_uint32_t numSlice,
+                          cl_uint32_t sliceSize) {
   size_t s = get_global_id(0);
   for (size_t n = 0; n < numSlice; n++) {
     dest[n * sliceSize + s] = batch[n * sliceSize + s] + slice[s];
   }
 }
 
-__kernel void batchedaddW(__global void *mem, size_t dest, size_t batch,
-                          size_t slice, size_t numSlice, size_t sliceSize) {
+__kernel void batchedaddW(__global void *mem, cl_uint32_t dest,
+                          cl_uint32_t batch, cl_uint32_t slice,
+                          cl_uint32_t numSlice, cl_uint32_t sliceSize) {
   batchedaddK(&mem[dest], &mem[batch], &mem[slice], numSlice, sliceSize);
 }
 
 __kernel void matmulK(__global float *dest, __global float *lhs,
-                             __global float *rhs, ShapeNHWC ddim,
-                             ShapeNHWC ldim, ShapeNHWC rdim) {
+                      __global float *rhs, ShapeNHWC ddim, ShapeNHWC ldim,
+                      ShapeNHWC rdim) {
   // For each X in the destination matrix.
   size_t x = get_global_id(0);
   // For each Y in the destination matrix.
@@ -58,9 +68,9 @@ __kernel void matmulK(__global float *dest, __global float *lhs,
   dest[getNHWC(ddim, x, y, 0, 0)] = sum;
 }
 
-__kernel void matmulW(__global void *mem, size_t dest, size_t lhs,
-                             size_t rhs, ShapeNHWC ddim, ShapeNHWC ldim,
-                             ShapeNHWC rdim) {
+__kernel void matmulW(__global void *mem, cl_uint32_t dest, cl_uint32_t lhs,
+                      cl_uint32_t rhs, ShapeNHWC ddim, ShapeNHWC ldim,
+                      ShapeNHWC rdim) {
   matmulK(&mem[dest], &mem[lhs], &mem[rhs], ddim, ldim, rdim);
 }
 
@@ -69,7 +79,7 @@ __kernel void splatK(__global float *dest, float val) {
   dest[i] = val;
 }
 
-__kernel void splatW(__global void *mem, size_t dest, float val) {
+__kernel void splatW(__global void *mem, cl_uint32_t dest, float val) {
   splatK(&mem[dest], val);
 }
 
@@ -78,7 +88,7 @@ __kernel void sigmoidK(__global float *dest, __global float *src) {
   dest[i] = 1 / (1 + exp(-src[i]));
 }
 
-__kernel void sigmoidW(__global void *mem, size_t dest, size_t src) {
+__kernel void sigmoidW(__global void *mem, cl_uint32_t dest, cl_uint32_t src) {
   sigmoidK(&mem[dest], &mem[src]);
 }
 
@@ -90,7 +100,7 @@ __kernel void tanhK(__global float *dest, __global float *src) {
   dest[i] = (exp_val - exp_neg_val) / (exp_val + exp_neg_val);
 }
 
-__kernel void tanhW(__global void *mem, size_t dest, size_t src) {
+__kernel void tanhW(__global void *mem, cl_uint32_t dest, cl_uint32_t src) {
   tanhK(&mem[dest], &mem[src]);
 }
 
@@ -100,8 +110,8 @@ __kernel void elementaddK(__global float *dest, __global float *LHS,
   dest[i] = LHS[i] + RHS[i];
 }
 
-__kernel void elementaddW(__global void *mem, size_t dest, size_t LHS,
-                          size_t RHS) {
+__kernel void elementaddW(__global void *mem, cl_uint32_t dest, cl_uint32_t LHS,
+                          cl_uint32_t RHS) {
   elementaddK(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
@@ -111,8 +121,8 @@ __kernel void elementmaxK(__global float *dest, __global float *LHS,
   dest[i] = max(LHS[i], RHS[i]);
 }
 
-__kernel void elementmaxW(__global void *mem, size_t dest, size_t LHS,
-                          size_t RHS) {
+__kernel void elementmaxW(__global void *mem, cl_uint32_t dest, cl_uint32_t LHS,
+                          cl_uint32_t RHS) {
   elementmaxK(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
@@ -122,8 +132,8 @@ __kernel void elementminK(__global float *dest, __global float *LHS,
   dest[i] = min(LHS[i], RHS[i]);
 }
 
-__kernel void elementminW(__global void *mem, size_t dest, size_t LHS,
-                          size_t RHS) {
+__kernel void elementminW(__global void *mem, cl_uint32_t dest, cl_uint32_t LHS,
+                          cl_uint32_t RHS) {
   elementminK(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
@@ -133,8 +143,8 @@ __kernel void elementcmplteK(__global float *dest, __global float *LHS,
   dest[i] = LHS[i] <= RHS[i];
 }
 
-__kernel void elementcmplteW(__global void *mem, size_t dest, size_t LHS,
-                             size_t RHS) {
+__kernel void elementcmplteW(__global void *mem, cl_uint32_t dest,
+                             cl_uint32_t LHS, cl_uint32_t RHS) {
   elementcmplteK(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
@@ -144,8 +154,8 @@ __kernel void elementsubK(__global float *dest, __global float *LHS,
   dest[i] = LHS[i] - RHS[i];
 }
 
-__kernel void elementsubW(__global void *mem, size_t dest, size_t LHS,
-                          size_t RHS) {
+__kernel void elementsubW(__global void *mem, cl_uint32_t dest, cl_uint32_t LHS,
+                          cl_uint32_t RHS) {
   elementsubK(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
@@ -155,8 +165,8 @@ __kernel void elementmulK(__global float *dest, __global float *LHS,
   dest[i] = LHS[i] * RHS[i];
 }
 
-__kernel void elementmulW(__global void *mem, size_t dest, size_t LHS,
-                          size_t RHS) {
+__kernel void elementmulW(__global void *mem, cl_uint32_t dest, cl_uint32_t LHS,
+                          cl_uint32_t RHS) {
   elementmulK(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
@@ -166,13 +176,13 @@ __kernel void elementdivK(__global float *dest, __global float *LHS,
   dest[i] = LHS[i] / RHS[i];
 }
 
-__kernel void elementdivW(__global void *mem, size_t dest, size_t LHS,
-                          size_t RHS) {
+__kernel void elementdivW(__global void *mem, cl_uint32_t dest, cl_uint32_t LHS,
+                          cl_uint32_t RHS) {
   elementdivK(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
 __kernel void softmaxK(__global float *dest, __global float *src,
-                       __global float *e_cache, size_t sliceSize) {
+                       __global float *e_cache, cl_uint32_t sliceSize) {
   size_t i = get_global_id(0);
   float max_ = src[i * sliceSize];
   for (size_t j = 0; j < sliceSize; j++) {
@@ -191,15 +201,15 @@ __kernel void softmaxK(__global float *dest, __global float *src,
   }
 }
 
-__kernel void softmaxW(__global void *mem, size_t dest, size_t src,
-                       size_t sliceSize) {
+__kernel void softmaxW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
+                       cl_uint32_t sliceSize) {
   softmaxK(&mem[dest], &mem[src], (__global float *)0, sliceSize);
 }
 
 __kernel void convolutionK(__global float *dest, __global float *src,
                            __global float *filter, __global float *bias,
-                           size_t filterSize, size_t stride, size_t pad,
-                           ShapeNHWC odim, ShapeNHWC idim,
+                           cl_uint32_t filterSize, cl_uint32_t stride,
+                           cl_uint32_t pad, ShapeNHWC odim, ShapeNHWC idim,
                            ShapeNHWC filterDim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
@@ -238,17 +248,18 @@ __kernel void convolutionK(__global float *dest, __global float *src,
   } // N
 }
 
-__kernel void convolutionW(__global void *mem, size_t dest, size_t src,
-                           size_t filter, size_t bias, size_t filterSize,
-                           size_t stride, size_t pad, ShapeNHWC odim,
+__kernel void convolutionW(__global void *mem, cl_uint32_t dest,
+                           cl_uint32_t src, cl_uint32_t filter,
+                           cl_uint32_t bias, cl_uint32_t filterSize,
+                           cl_uint32_t stride, cl_uint32_t pad, ShapeNHWC odim,
                            ShapeNHWC idim, ShapeNHWC filterDim) {
   convolutionK(&mem[dest], &mem[src], &mem[filter], &mem[bias], filterSize,
                stride, pad, odim, idim, filterDim);
 }
 
 __kernel void poolmaxK(__global float *dest, __global float *src,
-                       size_t filterSize, size_t stride, size_t pad,
-                       ShapeNHWC odim, ShapeNHWC idim) {
+                       cl_uint32_t filterSize, cl_uint32_t stride,
+                       cl_uint32_t pad, ShapeNHWC odim, ShapeNHWC idim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
   size_t d = get_global_id(2);
@@ -287,16 +298,16 @@ __kernel void poolmaxK(__global float *dest, __global float *src,
   } // N
 }
 
-__kernel void poolmaxW(__global void *mem, size_t dest, size_t src,
-                       size_t filterSize, size_t stride, size_t pad,
-                       ShapeNHWC odim, ShapeNHWC idim) {
+__kernel void poolmaxW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
+                       cl_uint32_t filterSize, cl_uint32_t stride,
+                       cl_uint32_t pad, ShapeNHWC odim, ShapeNHWC idim) {
   poolmaxK(&mem[dest], &mem[src], filterSize, stride, pad, odim, idim);
 }
 
 __kernel void poolmaxwithxyK(__global float *dest, __global float *src,
-                             __global float *srcXY, size_t filterSize,
-                             size_t stride, size_t pad, ShapeNHWC odim,
-                             ShapeNHWC idim) {
+                             __global float *srcXY, cl_uint32_t filterSize,
+                             cl_uint32_t stride, cl_uint32_t pad,
+                             ShapeNHWC odim, ShapeNHWC idim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
   size_t d = get_global_id(2);
@@ -335,16 +346,17 @@ __kernel void poolmaxwithxyK(__global float *dest, __global float *src,
   } // N
 }
 
-__kernel void poolmaxwithxyW(__global void *mem, size_t dest, size_t src,
-                             size_t srcXY, size_t filterSize, size_t stride,
-                             size_t pad, ShapeNHWC odim, ShapeNHWC idim) {
+__kernel void poolmaxwithxyW(__global void *mem, cl_uint32_t dest,
+                             cl_uint32_t src, cl_uint32_t srcXY,
+                             cl_uint32_t filterSize, cl_uint32_t stride,
+                             cl_uint32_t pad, ShapeNHWC odim, ShapeNHWC idim) {
   poolmaxwithxyK(&mem[dest], &mem[src], &mem[srcXY], filterSize, stride, pad,
                  odim, idim);
 }
 
 __kernel void poolavgK(__global float *dest, __global float *src,
-                       size_t filterSize, size_t stride, size_t pad,
-                       ShapeNHWC odim, ShapeNHWC idim) {
+                       cl_uint32_t filterSize, cl_uint32_t stride,
+                       cl_uint32_t pad, ShapeNHWC odim, ShapeNHWC idim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
   size_t d = get_global_id(2);
@@ -378,9 +390,9 @@ __kernel void poolavgK(__global float *dest, __global float *src,
   } // N
 }
 
-__kernel void poolavgW(__global void *mem, size_t dest, size_t src,
-                       size_t filterSize, size_t stride, size_t pad,
-                       ShapeNHWC odim, ShapeNHWC idim) {
+__kernel void poolavgW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
+                       cl_uint32_t filterSize, cl_uint32_t stride,
+                       cl_uint32_t pad, ShapeNHWC odim, ShapeNHWC idim) {
   poolavgK(&mem[dest], &mem[src], filterSize, stride, pad, odim, idim);
 }
 
@@ -404,7 +416,7 @@ __kernel void transposeK(__global float *dest, __global float *src,
   }
 }
 
-__kernel void transposeW(__global void *mem, size_t dest, size_t src,
+__kernel void transposeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
                          ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC shuffle) {
   transposeK(&mem[dest], &mem[src], odim, idim, shuffle);
 }
@@ -427,8 +439,9 @@ __kernel void inserttensorK(__global float *dest, __global float *src,
   }
 }
 
-__kernel void inserttensorW(__global void *mem, size_t dest, size_t src,
-                            ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset) {
+__kernel void inserttensorW(__global void *mem, cl_uint32_t dest,
+                            cl_uint32_t src, ShapeNHWC odim, ShapeNHWC idim,
+                            ShapeNHWC offset) {
   inserttensorK(&mem[dest], &mem[src], odim, idim, offset);
 }
 )";
