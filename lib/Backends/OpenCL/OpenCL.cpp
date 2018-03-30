@@ -168,69 +168,36 @@ void OCLBackend::doForwardPass() {
     // a part of the OpenCL runtime.
     std::string kernelName = std::string(I->getKindName()) + "W";
 
-    if (isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I)) {
+    // Skip memory allocation instructions as they are NOPs.
+    if (isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I) ||
+        isa<TensorViewInst>(I)) {
       continue;
     }
 
-    // Element-wise operations:
-    if (isa<SigmoidInst>(I) || isa<TanhInst>(I) || isa<ElementAddInst>(I) ||
-        isa<ElementSubInst>(I) || isa<ElementMaxInst>(I) ||
-        isa<ElementMinInst>(I) || isa<ElementCmpLTEInst>(I) ||
-        isa<ElementMulInst>(I) || isa<ElementDivInst>(I)) {
+    // Element-wise operations, except the copy instruction.
+    if (I->isDataParallel() && !isa<CopyInst>(I)) {
 
       cl_kernel kernel = createKernel(program_, kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
+      unsigned numArgs = I->getNumOperands();
 
       for (unsigned arg = 0, e = I->getNumOperands(); arg < e; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
                               tensors_[I->getOperand(arg).first]);
       }
 
+      if (auto *SI = dyn_cast<SplatInst>(I)) {
+        // Pass the splat as a parameter.
+        setKernelArg(kernel, numArgs + 1, SI->getValue());
+      }
+
       // Figure out how many element-wise elements are there to process:
       size_t global;
-      if (auto *tmpInst = dyn_cast<SigmoidInst>(I)) {
-        global = tmpInst->getDest()->getType()->size();
-      } else if (auto *tmpInst = dyn_cast<TanhInst>(I)) {
-        global = tmpInst->getDest()->getType()->size();
-      } else if (auto *tmpInst = dyn_cast<ElementAddInst>(I)) {
-        global = tmpInst->getDest()->getType()->size();
-      } else if (auto *tmpInst = dyn_cast<ElementSubInst>(I)) {
-        global = tmpInst->getDest()->getType()->size();
-      } else if (auto *tmpInst = dyn_cast<ElementMaxInst>(I)) {
-        global = tmpInst->getDest()->getType()->size();
-      } else if (auto *tmpInst = dyn_cast<ElementMinInst>(I)) {
-        global = tmpInst->getDest()->getType()->size();
-      } else if (auto *tmpInst = dyn_cast<ElementCmpLTEInst>(I)) {
-        global = tmpInst->getDest()->getType()->size();
-      } else if (auto *tmpInst = dyn_cast<ElementMulInst>(I)) {
-        global = tmpInst->getDest()->getType()->size();
-      } else if (auto *tmpInst = dyn_cast<ElementDivInst>(I)) {
-        global = tmpInst->getDest()->getType()->size();
+      if (I->isDataParallel()) {
+        global = I->getOperand(0).first->getType()->size();
       } else {
         GLOW_UNREACHABLE("Invalid instruction.");
       }
-
-      enqueueKernel(commands_, kernel, deviceId_, {global});
-      kernels.push_back(kernel);
-      continue;
-    }
-
-    // Element-wise operations:
-    if (auto *SI = dyn_cast<SplatInst>(I)) {
-      cl_kernel kernel = createKernel(program_, kernelName);
-      setKernelArg(kernel, 0, deviceBuffer_);
-      unsigned numArgs = I->getNumOperands();
-
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
-      }
-
-      // Pass the splat as a parameter.
-      setKernelArg(kernel, numArgs + 1, SI->getValue());
-
-      // Figure out how many element-wise elements are there to process:
-      size_t global = SI->getDest()->getType()->size();
 
       enqueueKernel(commands_, kernel, deviceId_, {global});
       kernels.push_back(kernel);
