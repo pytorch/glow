@@ -801,13 +801,112 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     break;                                                                     \
   }
     ARITHMETIC_BINARY_OP_CASE(ElementAdd, "element_add");
-    ARITHMETIC_BINARY_OP_CASE(ElementMul, "element_mul");
     ARITHMETIC_BINARY_OP_CASE(ElementSub, "element_sub");
-    ARITHMETIC_BINARY_OP_CASE(ElementDiv, "element_div");
     ARITHMETIC_BINARY_OP_CASE(ElementMax, "elementmax");
     ARITHMETIC_BINARY_OP_CASE(ElementMin, "elementmin");
     ARITHMETIC_BINARY_OP_CASE(ElementCmpLTE, "element_cmp_lte");
 #undef ARITHMETIC_BINARY_OP_CASE
+
+  case Kinded::Kind::ElementMulInstKind: {
+    auto *MI = cast<ElementMulInst>(I);
+    auto *dest = MI->getDest();
+    auto *lhs = MI->getLHS();
+    auto *rhs = MI->getRHS();
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *lhsPtr = emitBufferAddress(builder, lhs, kernel, bufferToArgNum);
+    auto *rhsPtr = emitBufferAddress(builder, rhs, kernel, bufferToArgNum);
+
+    // Need _kernel suffix since these operations are implemented as
+    // "data-parallel" kernels in libjit.
+    auto *F = getFunction("element_mul_kernel", dest->getElementType());
+    auto *elementTy = getElementType(builder, dest);
+    auto *pointerNull =
+        llvm::ConstantPointerNull::get(elementTy->getPointerTo());
+
+    if (lhs->getType()->isQuantizedType()) {
+      auto *destTy = dest->getType();
+      auto *lhsTy = lhs->getType();
+      auto *rhsTy = rhs->getType();
+
+      auto *destOffset = emitConstI32(builder, destTy->getOffset());
+      auto *lhsOffset = emitConstI32(builder, lhsTy->getOffset());
+      auto *rhsOffset = emitConstI32(builder, rhsTy->getOffset());
+
+      // The multiplicative scale factor is s_l * s_r / s_d due to the equation
+      //    s_d * (i_d - o_d) = s_l * (i_l - o_l) * s_r * (i_r - o_r)
+      // => i_d = (s_l * s_r / s_d) * (i_l - o_l) * (i_r - o_r) + o_d
+      float scale = lhsTy->getScale() * rhsTy->getScale() / destTy->getScale();
+      auto scaleParams = quantization::quantizeScaleOffset32To8(scale, 0);
+      auto *mulPre = emitConstI32(builder, scaleParams.pre_);
+      auto *mulPost = emitConstI32(builder, scaleParams.post_);
+      auto *mulScale = emitConstI32(builder, scaleParams.scale_);
+
+      auto *stackedOpCall = builder.CreateCall(
+          F, {loopCount, lhsPtr, rhsPtr, destOffset, lhsOffset, rhsOffset,
+              mulPre, mulPost, mulScale});
+      auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,
+                                         loopCount, "buffer.element.addr");
+      builder.CreateStore(stackedOpCall, destAddr);
+    } else {
+      auto *stackedOpCall =
+          builder.CreateCall(F, {loopCount, lhsPtr, rhsPtr, pointerNull});
+      auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,
+                                         loopCount, "buffer.element.addr");
+      builder.CreateStore(stackedOpCall, destAddr);
+    }
+    break;
+  }
+
+  case Kinded::Kind::ElementDivInstKind: {
+    auto *MI = cast<ElementDivInst>(I);
+    auto *dest = MI->getDest();
+    auto *lhs = MI->getLHS();
+    auto *rhs = MI->getRHS();
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *lhsPtr = emitBufferAddress(builder, lhs, kernel, bufferToArgNum);
+    auto *rhsPtr = emitBufferAddress(builder, rhs, kernel, bufferToArgNum);
+
+    // Need _kernel suffix since these operations are implemented as
+    // "data-parallel" kernels in libjit.
+    auto *F = getFunction("element_div_kernel", dest->getElementType());
+    auto *elementTy = getElementType(builder, dest);
+    auto *pointerNull =
+        llvm::ConstantPointerNull::get(elementTy->getPointerTo());
+
+    if (lhs->getType()->isQuantizedType()) {
+      auto *destTy = dest->getType();
+      auto *lhsTy = lhs->getType();
+      auto *rhsTy = rhs->getType();
+
+      auto *destOffset = emitConstI32(builder, destTy->getOffset());
+      auto *lhsOffset = emitConstI32(builder, lhsTy->getOffset());
+      auto *rhsOffset = emitConstI32(builder, rhsTy->getOffset());
+
+      // The division scale factor is s_l / (s_r * s_d) due to the equation
+      //    s_d * (i_d - o_d) = (s_l * (i_l - o_l)) / (s_r * (i_r - o_r))
+      // => i_d = (s_l / (s_r * s_d)) * ((i_l - o_l) / (i_r - o_r)) + o_d
+      float scale =
+          lhsTy->getScale() / (rhsTy->getScale() * destTy->getScale());
+      auto scaleParams = quantization::quantizeScaleOffset32To8(scale, 0);
+      auto *divPre = emitConstI32(builder, scaleParams.pre_);
+      auto *divPost = emitConstI32(builder, scaleParams.post_);
+      auto *divScale = emitConstI32(builder, scaleParams.scale_);
+
+      auto *stackedOpCall = builder.CreateCall(
+          F, {loopCount, lhsPtr, rhsPtr, destOffset, lhsOffset, rhsOffset,
+              divPre, divPost, divScale});
+      auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,
+                                         loopCount, "buffer.element.addr");
+      builder.CreateStore(stackedOpCall, destAddr);
+    } else {
+      auto *stackedOpCall =
+          builder.CreateCall(F, {loopCount, lhsPtr, rhsPtr, pointerNull});
+      auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,
+                                         loopCount, "buffer.element.addr");
+      builder.CreateStore(stackedOpCall, destAddr);
+    }
+    break;
+  }
 
 #define ARITHMETIC_BINARY_OP_WITH_IMM_CASE(INST_NAME_, FUN_NAME_, SRC_,        \
                                            VALUE_)                             \
