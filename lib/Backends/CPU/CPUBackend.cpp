@@ -248,17 +248,18 @@ void CPUBackend::emitBundleEntryFunction() {
 
 // Create a config for this network. It will be exposed to the clients,
 // so that they know how much memory they need to allocate, etc.
-// Config consists of 3 fields.
+// Config consists of the following fields:
 // struct BundleConfig {
 //   size_t constantWeightVarsMemSize;
 //   size_t mutableWeightVarsMemSize;
 //   size_t activationsMemSize;
+//   size_t alignment;
 // };
 void CPUBackend::emitBundleConfig() {
   // Get the integer type having the same size in bits as size_t.
   auto *SizeTType = irgen_.getBuilder().getIntNTy(sizeof(size_t) * 8);
   auto *bundleConfigTy = llvm::StructType::get(
-      irgen_.getLLVMContext(), {SizeTType, SizeTType, SizeTType});
+      irgen_.getLLVMContext(), {SizeTType, SizeTType, SizeTType, SizeTType});
   auto config = new llvm::GlobalVariable(
       irgen_.getModule(), bundleConfigTy, /* isConst */ true,
       llvm::GlobalValue::LinkageTypes::ExternalLinkage, nullptr,
@@ -270,7 +271,8 @@ void CPUBackend::emitBundleConfig() {
       llvm::ConstantInt::get(
           SizeTType, irgen_.getAllocationsInfo().mutableWeightVarsMemSize_),
       llvm::ConstantInt::get(SizeTType,
-                             irgen_.getAllocationsInfo().activationsMemSize_)));
+                             irgen_.getAllocationsInfo().activationsMemSize_),
+      llvm::ConstantInt::get(SizeTType, TensorAlignment)));
 }
 
 void CPUBackend::performBundleMemoryAllocation() {
