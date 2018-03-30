@@ -182,7 +182,8 @@ void OCLBackend::doForwardPass() {
       setKernelArg(kernel, 0, deviceBuffer_);
 
       for (unsigned arg = 0, e = I->getNumOperands(); arg < e; arg++) {
-        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
       }
 
       // Figure out how many element-wise elements are there to process:
@@ -221,7 +222,8 @@ void OCLBackend::doForwardPass() {
       unsigned numArgs = I->getNumOperands();
 
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
       }
 
       // Pass the splat as a parameter.
@@ -244,7 +246,8 @@ void OCLBackend::doForwardPass() {
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
       }
 
       // This is the number of elements for each slice. There are N slices in
@@ -253,7 +256,7 @@ void OCLBackend::doForwardPass() {
       size_t numSlices = inputDims[0];
 
       // Pass the slice size (size of each sample in the batch) as a parameter.
-      setKernelArg(kernel, numArgs + 1, flattenCdr(inputDims).second);
+      setKernelArg<cl_uint>(kernel, numArgs + 1, flattenCdr(inputDims).second);
 
       enqueueKernel(commands_, kernel, deviceId_, {numSlices});
       kernels.push_back(kernel);
@@ -266,7 +269,8 @@ void OCLBackend::doForwardPass() {
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
       }
 
       // Currently support tensors of 2 and 4 dimensions.
@@ -305,7 +309,8 @@ void OCLBackend::doForwardPass() {
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
       }
 
       auto ddim = ShapeNHWC::fromXY(BMM->getDest()->getType()->dims());
@@ -329,12 +334,13 @@ void OCLBackend::doForwardPass() {
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
       }
 
       auto bdim = flattenCdr(BA->getBatch()->dims());
-      setKernelArg(kernel, 4, bdim.first);
-      setKernelArg(kernel, 5, bdim.second);
+      setKernelArg<cl_uint>(kernel, 4, bdim.first);
+      setKernelArg<cl_uint>(kernel, 5, bdim.second);
 
       // Parallelize on each element in the slice.
       enqueueKernel(commands_, kernel, deviceId_, {bdim.second});
@@ -348,12 +354,13 @@ void OCLBackend::doForwardPass() {
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
       }
 
       auto bdim = flattenCdr(BRA->getBatch()->dims());
-      setKernelArg(kernel, 3, bdim.first);
-      setKernelArg(kernel, 4, bdim.second);
+      setKernelArg<cl_uint>(kernel, 3, bdim.first);
+      setKernelArg<cl_uint>(kernel, 4, bdim.second);
 
       // Parallelize on each element in the slice.
       enqueueKernel(commands_, kernel, deviceId_, {bdim.second});
@@ -369,15 +376,16 @@ void OCLBackend::doForwardPass() {
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
       }
 
       auto odim = ShapeNHWC(CC->getDest()->getType()->dims());
       auto idim = ShapeNHWC(CC->getSrc()->getType()->dims());
 
-      setKernelArg<size_t>(kernel, 5, CC->getKernel());
-      setKernelArg(kernel, 6, CC->getStride());
-      setKernelArg(kernel, 7, CC->getPad());
+      setKernelArg<cl_uint>(kernel, 5, CC->getKernel());
+      setKernelArg<cl_uint>(kernel, 6, CC->getStride());
+      setKernelArg<cl_uint>(kernel, 7, CC->getPad());
       setKernelArg(kernel, 8, odim);
       setKernelArg(kernel, 9, idim);
       setKernelArg(kernel, 10, ShapeNHWC(CC->getFilter()->getType()->dims()));
@@ -399,15 +407,16 @@ void OCLBackend::doForwardPass() {
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
       }
 
       auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
 
-      setKernelArg<size_t>(kernel, numArgs + 1, PM->getKernel());
-      setKernelArg(kernel, numArgs + 2, PM->getStride());
-      setKernelArg(kernel, numArgs + 3, PM->getPad());
+      setKernelArg<cl_uint>(kernel, numArgs + 1, PM->getKernel());
+      setKernelArg<cl_uint>(kernel, numArgs + 2, PM->getStride());
+      setKernelArg<cl_uint>(kernel, numArgs + 3, PM->getPad());
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
 
@@ -424,15 +433,16 @@ void OCLBackend::doForwardPass() {
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
       }
 
       auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
 
       setKernelArg<size_t>(kernel, numArgs + 1, PM->getKernel());
-      setKernelArg(kernel, numArgs + 2, PM->getStride());
-      setKernelArg(kernel, numArgs + 3, PM->getPad());
+      setKernelArg<cl_uint>(kernel, numArgs + 2, PM->getStride());
+      setKernelArg<cl_uint>(kernel, numArgs + 3, PM->getPad());
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
 
@@ -449,15 +459,16 @@ void OCLBackend::doForwardPass() {
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
       }
 
       auto odim = ShapeNHWC(PA->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PA->getSrc()->getType()->dims());
 
-      setKernelArg<size_t>(kernel, 3, PA->getKernel());
-      setKernelArg(kernel, 4, PA->getStride());
-      setKernelArg(kernel, 5, PA->getPad());
+      setKernelArg<cl_uint>(kernel, 3, PA->getKernel());
+      setKernelArg<cl_uint>(kernel, 4, PA->getStride());
+      setKernelArg<cl_uint>(kernel, 5, PA->getPad());
       setKernelArg(kernel, 6, odim);
       setKernelArg(kernel, 7, idim);
 
@@ -477,7 +488,8 @@ void OCLBackend::doForwardPass() {
 
       unsigned numArgs = I->getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg(kernel, arg + 1, tensors_[I->getOperand(arg).first]);
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
       }
 
       // Temporary hack to support 3-dim transposes.
