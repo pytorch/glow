@@ -61,12 +61,37 @@ struct BundleConfig {
   size_t mutableWeightVarsMemSize;
   // Size of the activations memory area.
   size_t activationsMemSize;
+  // Alignment to be used for weights and activations.
+  size_t alignment;
+  // Number of symbols in the symbol table.
+  size_t numSymbols;
+  // Symbol table.
+  const SymbolTableEntry *symbolTable;
 };
 ```
 This configuration is supposed to be used by the client code to allocate the
 required amounts of memory for each of the memory areas, before invoking the
 `network_model_name` function to run the network.
 
+Clients also use `BundleConfig` to perform the symbol table lookups when they
+need to find information about an input or output variable.
+The SymbolTableEntry has always the following structure:
+```c++
+struct SymbolTableEntry {
+  // Name of a variable.
+  const char *name;
+  // Offset of the variable inside the memory area.
+  size_t offset;
+  // The number of elements inside this variable.
+  size_t size;
+  // The kind of the variable. 1 if it is a mutable variable, 0 otherwise.
+  char kind;
+};
+```
+
+Offsets of constants are offsets inside the memory area for constant weights.
+Offset of mutable variables are offsets inside the memory area for mutable
+weights.
 
 ## How to use the bundle
 
