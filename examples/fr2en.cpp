@@ -373,12 +373,11 @@ void Model::translate(const std::vector<std::string> &batch) {
     }
     std::cout << "\n\n";
   }
-  std::cout << "\n\n";
 
   if (!dumpProfileFileOpt.empty()) {
     std::vector<NodeQuantizationInfo> QI =
         quantization::generateNodeQuantizationInfos(
-            seq2seq->EE_.getModule().getFunction("main"));
+            EE_.getModule().getFunction("main"));
     serializeToYaml(dumpProfileFileOpt, QI);
   }
 }
