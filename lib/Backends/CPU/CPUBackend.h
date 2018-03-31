@@ -48,6 +48,8 @@ class CPUBackend final : public Backend {
   void produceBundle(llvm::StringRef outputDir);
   /// Emit config for a bundle.
   void emitBundleConfig();
+  /// Emit the symbol table for a bundle.
+  void emitSymbolTable();
   /// Emit the entry function for the bundle.
   void emitBundleEntryFunction();
 

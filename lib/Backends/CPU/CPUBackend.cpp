@@ -173,7 +173,58 @@ void CPUBackend::saveWeights(llvm::StringRef weightsFileName) {
   weightsFile.close();
 }
 
+void CPUBackend::emitSymbolTable() {
+  // Define a struct for symbol table entries:
+  // struct SymbolTableEntry {
+  //  const char *name;
+  //  size_t offset;
+  //  size_t size;
+  //  char kind;
+  // };
+  auto *charTy = llvm::Type::getInt8Ty(irgen_.getLLVMContext());
+  auto *sizeTTy =
+      llvm::Type::getIntNTy(irgen_.getLLVMContext(), sizeof(size_t) * 8);
+  auto symbolTableEntryTy =
+      llvm::StructType::get(irgen_.getLLVMContext(),
+                            {charTy->getPointerTo(), sizeTTy, sizeTTy, charTy});
+  // Set of entries in the symbol table.
+  llvm::SmallVector<llvm::Constant *, 128> entries;
+  // Iterate over all weights and record information about their names, offset,
+  // size and kind.
+  for (auto &v : F_->getGraph()->getParent()->getVars()) {
+    auto *w = cast<WeightVar>(F_->getWeightForNode(v));
+    bool isConstWeight =
+        v->getVisibilityKind() != Variable::VisibilityKind::Public;
+    auto size = w->getType()->size();
+    auto addr = allocationsInfo_.allocatedAddressed_[getOrigin(w)];
+    // Create an SymbolTableEntry.
+    auto *entry = llvm::ConstantStruct::get(
+        symbolTableEntryTy,
+        {// name.
+         dyn_cast<llvm::Constant>(irgen_.getBuilder().CreateBitCast(
+             irgen_.emitStringConst(irgen_.getBuilder(), w->getName()),
+             charTy->getPointerTo())),
+         // offset.
+         llvm::ConstantInt::get(sizeTTy, addr),
+         // size.
+         llvm::ConstantInt::get(sizeTTy, size),
+         // kind.
+         llvm::ConstantInt::get(charTy, isConstWeight ? 0 : 1)});
+    entries.push_back(entry);
+  }
+
+  // Create a constant array with these entries.
+  auto *arr = llvm::ConstantArray::get(
+      llvm::ArrayType::get(symbolTableEntryTy, entries.size()), entries);
+  // Create a global variable and initialize it with the constructed array.
+  new llvm::GlobalVariable(irgen_.getModule(), arr->getType(), true,
+                           llvm::GlobalValue::InternalLinkage, arr,
+                           irgen_.getMainEntryName() + "SymbolTable");
+}
+
 void CPUBackend::produceBundle(llvm::StringRef outputDir) {
+  // Emit the symbol table for weight variables.
+  emitSymbolTable();
   // Emit the config for the bundle.
   emitBundleConfig();
 
@@ -254,12 +305,20 @@ void CPUBackend::emitBundleEntryFunction() {
 //   size_t mutableWeightVarsMemSize;
 //   size_t activationsMemSize;
 //   size_t alignment;
+//   size_t numSymbols;
+//   SymbolTableEntry *symbolTable;
 // };
 void CPUBackend::emitBundleConfig() {
+  auto symbolTable = irgen_.getModule().getGlobalVariable(
+      irgen_.getMainEntryName() + "SymbolTable", true);
+  GLOW_ASSERT(symbolTable &&
+              "Expected to find a symbol table for the AOT bundle");
   // Get the integer type having the same size in bits as size_t.
   auto *SizeTType = irgen_.getBuilder().getIntNTy(sizeof(size_t) * 8);
+  auto symbolTableEntryTy = symbolTable->getType()->getPointerElementType();
   auto *bundleConfigTy = llvm::StructType::get(
-      irgen_.getLLVMContext(), {SizeTType, SizeTType, SizeTType, SizeTType});
+      irgen_.getLLVMContext(), {SizeTType, SizeTType, SizeTType, SizeTType,
+                                SizeTType, symbolTableEntryTy->getPointerTo()});
   auto config = new llvm::GlobalVariable(
       irgen_.getModule(), bundleConfigTy, /* isConst */ true,
       llvm::GlobalValue::LinkageTypes::ExternalLinkage, nullptr,
@@ -272,7 +331,10 @@ void CPUBackend::emitBundleConfig() {
           SizeTType, irgen_.getAllocationsInfo().mutableWeightVarsMemSize_),
       llvm::ConstantInt::get(SizeTType,
                              irgen_.getAllocationsInfo().activationsMemSize_),
-      llvm::ConstantInt::get(SizeTType, TensorAlignment)));
+      llvm::ConstantInt::get(SizeTType, TensorAlignment),
+      llvm::ConstantInt::get(SizeTType,
+                             F_->getGraph()->getParent()->getVars().size()),
+      symbolTable));
 }
 
 void CPUBackend::performBundleMemoryAllocation() {
@@ -290,7 +352,6 @@ void CPUBackend::save(llvm::StringRef outputDir) {
                            llvm::CodeModel::Model::Small);
   irgen_.setMainEntryName(F_->getGraph()->getName());
   irgen_.setOutputDir(outputDir);
-  irgen_.getTargetMachine();
   irgen_.initCodeGen();
   // Perform the address assignment for activations and WeightVars.
   performBundleMemoryAllocation();
