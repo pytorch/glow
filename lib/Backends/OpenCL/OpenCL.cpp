@@ -9,13 +9,28 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
+using llvm::format;
 
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
+
+typedef uint32_t cl_size_t;
+
+/// A helper struct with information about kernels launches.
+struct KernelLaunch {
+  /// Kernel that was launched.
+  cl_kernel kernel_;
+  /// Event associated with the start of the kernel.
+  /// Used only when profiling is enabled.
+  cl_event event_;
+  KernelLaunch(cl_kernel kernel, cl_event event)
+      : kernel_(kernel), event_(event) {}
+};
 
 // This defines the string "SHADER_CODE".
 #include "kernels.cl"
@@ -27,6 +42,10 @@ static llvm::cl::opt<int> deviceId("device",
                                    llvm::cl::desc("OpenCL device to be used"),
                                    llvm::cl::init(0),
                                    llvm::cl::cat(OpenCLBackendCat));
+static llvm::cl::opt<bool> doProfile("opencl-profile",
+                                     llvm::cl::desc("Profile OpenCL kernels"),
+                                     llvm::cl::init(false),
+                                     llvm::cl::cat(OpenCLBackendCat));
 } // namespace
 
 Backend *glow::createOCLBackend(IRFunction *F) { return new OCLBackend(F); }
@@ -67,8 +86,8 @@ OCLBackend::OCLBackend(IRFunction *F) : F_(F), allocator_(0xFFFFFFFF) {
   deviceId_ = devices[deviceId];
   context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, nullptr);
   GLOW_ASSERT(context_ && "clCreateContext Failed.");
-
-  commands_ = clCreateCommandQueue(context_, deviceId_, 0, &err);
+  commands_ = clCreateCommandQueue(
+      context_, deviceId_, (doProfile) ? CL_QUEUE_PROFILING_ENABLE : 0, &err);
   GLOW_ASSERT(commands_ && "clCreateCommandQueue Failed.");
 
   err = CL_SUCCESS;
@@ -129,7 +148,7 @@ void getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
   // The global workgroup size must be a multiple of the local workgroup size,
   // and less than the max size for the specific dimension. Also, the
   // multiplication of all dimensions (size of total local work) needs to be
-  // less than WSG. In here we find the highest L that divides the globa
+  // less than WSG. In here we find the highest L that divides the global
   // workgroup size. This is our naive implementation of gcd, with the other
   // constraints:
   size_t totalWorkPrevDims = 1;
@@ -148,19 +167,78 @@ void getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
   }
 }
 
+/// Enqueue a \p kernel for execution on the command queue \p commands on a
+/// given \p device. The information about the launched kernel will be added to
+/// \p kernelLaunches list.
 void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
-                   cl_device_id device, llvm::ArrayRef<size_t> global) {
+                   cl_device_id device, llvm::ArrayRef<size_t> global,
+                   std::vector<KernelLaunch> &kernelLaunches) {
   llvm::SmallVector<size_t, 4> local(global.size(), 0);
   getMaxLocalWorkgroupSize(kernel, device, global, local);
-
-  auto err = clEnqueueNDRangeKernel(commands, kernel, global.size(), nullptr,
-                                    &global[0], &local[0], 0, nullptr, nullptr);
+  cl_event event{nullptr};
+  cl_int err = clEnqueueNDRangeKernel(commands, kernel, global.size(), nullptr,
+                                      &global[0], &local[0], 0, nullptr,
+                                      doProfile ? &event : nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
+  kernelLaunches.push_back(KernelLaunch(kernel, event));
+}
+
+/// Analyze and dump the collected profiling information about the execution of
+/// OpenCL kernels.
+static void dumpProfileInfo(const std::vector<KernelLaunch> &kernelLaunches) {
+  if (!doProfile)
+    return;
+  cl_ulong total = 0;
+
+  std::unordered_map<std::string, cl_ulong> kernelToDuration;
+
+  for (auto &kl : kernelLaunches) {
+    auto &event = kl.event_;
+    clWaitForEvents(1, &event);
+    char kernelName[128];
+    size_t retSize;
+    auto err = clGetKernelInfo(kl.kernel_, CL_KERNEL_FUNCTION_NAME,
+                               sizeof(kernelName), &kernelName, &retSize);
+    GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelInfo.");
+    cl_ulong time_start;
+    cl_ulong time_end;
+
+    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START,
+                            sizeof(time_start), &time_start, NULL);
+    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(time_end),
+                            &time_end, NULL);
+    // Duration (in nanoseconds).
+    double duration = time_end - time_start;
+    kernelToDuration[kernelName] += duration;
+    total += duration;
+    llvm::outs() << "OpenCl execution time for a launch of kernel "
+                 << kernelName
+                 << format(" is: %0.3f milliseconds\n", duration / 1000000.0);
+  }
+  llvm::outs() << format(
+      "OpenCl total execution time is: %0.3f milliseconds \n",
+      total / 1000000.0);
+
+  // Build a sorted list of kernel durations.
+  std::vector<std::pair<cl_ulong, std::string>> sortedKernelDurations;
+  sortedKernelDurations.reserve(kernelToDuration.size());
+  for (auto kv : kernelToDuration) {
+    sortedKernelDurations.push_back(std::make_pair(kv.second, kv.first));
+  }
+  std::sort(sortedKernelDurations.begin(), sortedKernelDurations.end());
+
+  llvm::outs() << "\n\nSummary information per kernel:\n";
+  for (auto k : sortedKernelDurations) {
+    llvm::outs() << "OpenCl total execution time for kernel " << k.second
+                 << format(" is: %0.3f milliseconds (%lu%%)\n",
+                           k.first / 1000000.0,
+                           (unsigned long)(k.first * 100 / total));
+  }
 }
 
 void OCLBackend::doForwardPass() {
   copyWeightsToDevice();
-  std::vector<cl_kernel> kernels;
+  std::vector<KernelLaunch> kernelLaunches;
 
   for (auto &I : F_->getInstrs()) {
     // The kernels are named after the name of the instruction, plus the "W"
@@ -199,8 +277,7 @@ void OCLBackend::doForwardPass() {
         GLOW_UNREACHABLE("Invalid instruction.");
       }
 
-      enqueueKernel(commands_, kernel, deviceId_, {global});
-      kernels.push_back(kernel);
+      enqueueKernel(commands_, kernel, deviceId_, {global}, kernelLaunches);
       continue;
     }
 
@@ -225,8 +302,7 @@ void OCLBackend::doForwardPass() {
       // Pass the slice size (size of each sample in the batch) as a parameter.
       setKernelArg<cl_uint>(kernel, numArgs + 1, flattenCdr(inputDims).second);
 
-      enqueueKernel(commands_, kernel, deviceId_, {numSlices});
-      kernels.push_back(kernel);
+      enqueueKernel(commands_, kernel, deviceId_, {numSlices}, kernelLaunches);
       continue;
     }
 
@@ -262,9 +338,7 @@ void OCLBackend::doForwardPass() {
       setKernelArg(kernel, 3, odim);
       setKernelArg(kernel, 4, idim);
       setKernelArg(kernel, 5, offset);
-      enqueueKernel(commands_, kernel, deviceId_, {idim.n});
-      kernels.push_back(kernel);
-
+      enqueueKernel(commands_, kernel, deviceId_, {idim.n}, kernelLaunches);
       continue;
     }
 
@@ -290,8 +364,8 @@ void OCLBackend::doForwardPass() {
 
       // Use a 3D grid where the first dimension is the N and the second and
       // third dimensions are the X and Y in the output buffer.
-      enqueueKernel(commands_, kernel, deviceId_, {ddim.n, ddim.h, ddim.w});
-      kernels.push_back(kernel);
+      enqueueKernel(commands_, kernel, deviceId_, {ddim.n, ddim.h, ddim.w},
+                    kernelLaunches);
       continue;
     }
 
@@ -310,8 +384,8 @@ void OCLBackend::doForwardPass() {
       setKernelArg<cl_uint>(kernel, 5, bdim.second);
 
       // Parallelize on each element in the slice.
-      enqueueKernel(commands_, kernel, deviceId_, {bdim.second});
-      kernels.push_back(kernel);
+      enqueueKernel(commands_, kernel, deviceId_, {bdim.second},
+                    kernelLaunches);
       continue;
     }
 
@@ -330,8 +404,8 @@ void OCLBackend::doForwardPass() {
       setKernelArg<cl_uint>(kernel, 4, bdim.second);
 
       // Parallelize on each element in the slice.
-      enqueueKernel(commands_, kernel, deviceId_, {bdim.second});
-      kernels.push_back(kernel);
+      enqueueKernel(commands_, kernel, deviceId_, {bdim.second},
+                    kernelLaunches);
       continue;
     }
 
@@ -361,8 +435,8 @@ void OCLBackend::doForwardPass() {
 
       // Use a 3D grid where the first dimension is the depth and the second
       // dimension is the slice index in the batch.
-      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, depth});
-      kernels.push_back(kernel);
+      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, depth},
+                    kernelLaunches);
       continue;
     }
 
@@ -387,8 +461,8 @@ void OCLBackend::doForwardPass() {
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
 
-      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c});
-      kernels.push_back(kernel);
+      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
+                    kernelLaunches);
       continue;
     }
 
@@ -413,8 +487,8 @@ void OCLBackend::doForwardPass() {
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
 
-      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c});
-      kernels.push_back(kernel);
+      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
+                    kernelLaunches);
       continue;
     }
 
@@ -439,8 +513,8 @@ void OCLBackend::doForwardPass() {
       setKernelArg(kernel, 6, odim);
       setKernelArg(kernel, 7, idim);
 
-      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c});
-      kernels.push_back(kernel);
+      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
+                    kernelLaunches);
       continue;
     }
 
@@ -480,8 +554,7 @@ void OCLBackend::doForwardPass() {
       ShapeNHWC shuff(mask[0], mask[1], mask[2], mask[3]);
       setKernelArg(kernel, 5, shuff);
 
-      enqueueKernel(commands_, kernel, deviceId_, {idim.n});
-      kernels.push_back(kernel);
+      enqueueKernel(commands_, kernel, deviceId_, {idim.n}, kernelLaunches);
       continue;
     }
 
@@ -517,8 +590,11 @@ void OCLBackend::doForwardPass() {
 
   clFinish(commands_);
 
-  for (auto &k : kernels) {
-    clReleaseKernel(k);
+  // Output profiling information.
+  dumpProfileInfo(kernelLaunches);
+
+  for (auto &kl : kernelLaunches) {
+    clReleaseKernel(kl.kernel_);
   }
 
   copyWeightsFromDevice();
