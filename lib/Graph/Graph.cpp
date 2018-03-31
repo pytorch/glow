@@ -876,6 +876,7 @@ void Function::createSimpleRNN(llvm::StringRef namePrefix,
                                unsigned batchSize, unsigned hiddenSize,
                                unsigned outputSize,
                                std::vector<Node *> &outputs) {
+  std::string nameBase = namePrefix;
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");
   const unsigned inputSize = inputs.front()->dims().back();
@@ -883,46 +884,45 @@ void Function::createSimpleRNN(llvm::StringRef namePrefix,
 
   // Initialize the state to zero.
   auto *HInit = getParent()->createVariable(
-      ElemKind::FloatTy, {batchSize, hiddenSize},
-      (namePrefix + ".initial_state").str(), Variable::VisibilityKind::Public,
-      Variable::TrainKind::None);
+      ElemKind::FloatTy, {batchSize, hiddenSize}, nameBase + ".initial_state",
+      Variable::VisibilityKind::Public, Variable::TrainKind::None);
   HInit->getPayload().zero();
   Node *Ht = HInit;
 
   float b = 0.1;
   auto *Whh = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whh").str(),
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whh",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
   auto *Bhh = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".Bhh").str(),
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".Bhh",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
   auto *Wxh = getParent()->createVariable(
-      ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxh").str(),
+      ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxh",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       inputSize);
   auto *Bxh = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".Bxh").str(),
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".Bxh",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
   auto *Why = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize, outputSize}, (namePrefix + ".Why").str(),
+      ElemKind::FloatTy, {hiddenSize, outputSize}, nameBase + ".Why",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
   auto *Bhy = getParent()->createVariable(
-      ElemKind::FloatTy, {outputSize}, (namePrefix + ".Bhy").str(),
+      ElemKind::FloatTy, {outputSize}, nameBase + ".Bhy",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
 
   // Un-roll backpropogation through time as a loop with the shared parameters.
   for (unsigned t = 0; t < timeSteps; t++) {
-    auto fc1Name = (namePrefix + ".fc1." + std::to_string(t)).str();
+    auto fc1Name = nameBase + ".fc1." + std::to_string(t);
     auto *FC1 = createFullyConnected(fc1Name, Ht, Whh, Bhh);
-    auto fc2Name = (namePrefix + ".fc2." + std::to_string(t)).str();
+    auto fc2Name = nameBase + ".fc2." + std::to_string(t);
     auto *FC2 = createFullyConnected(fc2Name, inputs[t], Wxh, Bxh);
-    auto aName = (namePrefix + ".add." + std::to_string(t)).str();
+    auto aName = nameBase + ".add." + std::to_string(t);
     auto *A = createAdd(aName, FC1, FC2);
-    auto tanhName = (namePrefix + ".tanh." + std::to_string(t)).str();
+    auto tanhName = nameBase + ".tanh." + std::to_string(t);
     auto *H = createTanh(tanhName, A);
-    auto outName = (namePrefix + ".out." + std::to_string(t)).str();
+    auto outName = nameBase + ".out." + std::to_string(t);
     auto *O = createFullyConnected(outName, H, Why, Bhy);
     outputs.push_back(O);
 
@@ -934,6 +934,7 @@ void Function::createGRU(llvm::StringRef namePrefix,
                          llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                          unsigned hiddenSize, unsigned outputSize,
                          std::vector<Node *> &outputs) {
+  std::string nameBase = namePrefix;
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");
   const unsigned inputSize = inputs.front()->dims().back();
@@ -957,120 +958,120 @@ void Function::createGRU(llvm::StringRef namePrefix,
   // update gate
   float bUpdate = 0.1;
   auto *Wxz = getParent()->createVariable(
-      ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxz").str(),
+      ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxz",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       inputSize);
   auto *Whz = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whz").str(),
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whz",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
   auto *Bz1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bz1").str(),
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bz1",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bUpdate);
   auto *Bz2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bz2").str(),
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bz2",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bUpdate);
   float bReset = -1.0;
   // reset gate
   auto *Wxr = getParent()->createVariable(
-      ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxr").str(),
+      ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxr",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       inputSize);
   auto *Whr = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whr").str(),
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whr",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
   auto *Br1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".br1").str(),
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".br1",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bReset);
   auto *Br2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".br2").str(),
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".br2",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bReset);
 
   // hidden state
   float b = 0.1;
   auto *Wxh = getParent()->createVariable(
-      ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxh").str(),
+      ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxh",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       inputSize);
   auto *Whh = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whh").str(),
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whh",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
   auto *Bh1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bh1").str(),
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bh1",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
   auto *Bh2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bh2").str(),
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bh2",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
 
   // output layer
   auto *Why = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize, outputSize}, (namePrefix + ".Why").str(),
+      ElemKind::FloatTy, {hiddenSize, outputSize}, nameBase + ".Why",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
   auto *By = getParent()->createVariable(
-      ElemKind::FloatTy, {outputSize}, (namePrefix + ".by").str(),
+      ElemKind::FloatTy, {outputSize}, nameBase + ".by",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
 
   auto *Ones = getParent()->createVariable(
-      ElemKind::FloatTy, {batchSize, hiddenSize}, (namePrefix + ".ones").str(),
+      ElemKind::FloatTy, {batchSize, hiddenSize}, nameBase + ".ones",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
 
   Ones->getPayload().getHandle().clear(1.0);
 
   std::vector<Node *> outputNodes;
   for (unsigned t = 0; t < timeSteps; t++) {
-    auto fc1Name = (namePrefix + ".fc1." + std::to_string(t)).str();
-    auto fc2Name = (namePrefix + ".fc2." + std::to_string(t)).str();
-    auto add1Name = (namePrefix + ".add1." + std::to_string(t)).str();
-    auto sigmoid1Name = (namePrefix + ".sigmoid1." + std::to_string(t)).str();
+    auto fc1Name = nameBase + ".fc1." + std::to_string(t);
+    auto fc2Name = nameBase + ".fc2." + std::to_string(t);
+    auto add1Name = nameBase + ".add1." + std::to_string(t);
+    auto sigmoid1Name = nameBase + ".sigmoid1." + std::to_string(t);
 
     auto *Zt = createSigmoid(
         sigmoid1Name,
         createAdd(add1Name, createFullyConnected(fc1Name, Ht, Whz, Bz1),
                   createFullyConnected(fc2Name, inputs[t], Wxz, Bz2)));
 
-    auto fc3Name = (namePrefix + ".fc3." + std::to_string(t)).str();
-    auto fc4Name = (namePrefix + ".fc4." + std::to_string(t)).str();
-    auto add2Name = (namePrefix + ".add2." + std::to_string(t)).str();
-    auto sigmoid2Name = (namePrefix + ".sigmoid2." + std::to_string(t)).str();
+    auto fc3Name = nameBase + ".fc3." + std::to_string(t);
+    auto fc4Name = nameBase + ".fc4." + std::to_string(t);
+    auto add2Name = nameBase + ".add2." + std::to_string(t);
+    auto sigmoid2Name = nameBase + ".sigmoid2." + std::to_string(t);
 
     auto *Rt = createSigmoid(
         sigmoid2Name,
         createAdd(add2Name, createFullyConnected(fc3Name, Ht, Whr, Br1),
                   createFullyConnected(fc4Name, inputs[t], Wxr, Br2)));
 
-    auto zhtName = (namePrefix + ".zh." + std::to_string(t)).str();
+    auto zhtName = nameBase + ".zh." + std::to_string(t);
     auto *ZHt = createMul(zhtName, Zt, Ht);
 
-    auto oneMinusZtName = (namePrefix + ".1-z." + std::to_string(t)).str();
+    auto oneMinusZtName = nameBase + ".1-z." + std::to_string(t);
     auto *OneMinusZt = createSub(oneMinusZtName, Ones, Zt);
 
-    auto rhtName = (namePrefix + ".rh." + std::to_string(t)).str();
+    auto rhtName = nameBase + ".rh." + std::to_string(t);
     auto *RHt = createMul(rhtName, Rt, Ht);
 
-    auto fc5Name = (namePrefix + ".fc5." + std::to_string(t)).str();
-    auto fc6Name = (namePrefix + ".fc6." + std::to_string(t)).str();
-    auto add3Name = (namePrefix + ".add3." + std::to_string(t)).str();
-    auto tanh1Name = (namePrefix + ".tanh1." + std::to_string(t)).str();
+    auto fc5Name = nameBase + ".fc5." + std::to_string(t);
+    auto fc6Name = nameBase + ".fc6." + std::to_string(t);
+    auto add3Name = nameBase + ".add3." + std::to_string(t);
+    auto tanh1Name = nameBase + ".tanh1." + std::to_string(t);
 
     auto *Ut = createTanh(
         tanh1Name,
         createAdd(add3Name, createFullyConnected(fc5Name, RHt, Whh, Bh1),
                   createFullyConnected(fc6Name, inputs[t], Wxh, Bh2)));
 
-    auto oneMinusZtUtName = (namePrefix + "1.-zu." + std::to_string(t)).str();
+    auto oneMinusZtUtName = nameBase + "1.-zu." + std::to_string(t);
     auto *OneMinusZtUt = createMul(oneMinusZtUtName, OneMinusZt, Ut);
 
-    auto htName = (namePrefix + ".H." + std::to_string(t)).str();
+    auto htName = nameBase + ".H." + std::to_string(t);
     Ht = createAdd(htName, ZHt, OneMinusZtUt);
 
-    auto outName = (namePrefix + ".out." + std::to_string(t)).str();
+    auto outName = nameBase + ".out." + std::to_string(t);
     auto *O = createFullyConnected(outName, Ht, Why, By);
     outputs.push_back(O);
   }
@@ -1080,6 +1081,7 @@ void Function::createLSTM(llvm::StringRef namePrefix,
                           llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                           unsigned hiddenSize, unsigned outputSize,
                           std::vector<Node *> &outputs) {
+  std::string nameBase = namePrefix;
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");
   const unsigned inputSize = inputs.front()->dims().back();
@@ -1112,138 +1114,138 @@ void Function::createLSTM(llvm::StringRef namePrefix,
   // forget gate
   float bForget = 1.0;
   auto *Wxf = getParent()->createVariable(
-      ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxf").str(),
+      ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxf",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       inputSize);
   auto *Whf = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whf").str(),
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whf",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
   auto *Bf1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bf1").str(),
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bf1",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bForget);
   auto *Bf2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bf2").str(),
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bf2",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bForget);
   // input gate
   float bInput = 0.1;
   auto *Wxi = getParent()->createVariable(
-      ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxi").str(),
+      ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxi",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       inputSize);
   auto *Whi = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whi").str(),
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whi",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
   auto *Bi1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bi1").str(),
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bi1",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bInput);
   auto *Bi2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bi2").str(),
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bi2",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bInput);
 
   // output gate
   float bOutput = 0.1;
   auto *Wxo = getParent()->createVariable(
-      ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxo").str(),
+      ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxo",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       inputSize);
   auto *Who = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Who").str(),
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Who",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
   auto *Bo1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bo1").str(),
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bo1",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bOutput);
   auto *Bo2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bo2").str(),
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bo2",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast,
       bOutput);
 
   // cell state
   float bCell = 0.1;
   auto *Wxc = getParent()->createVariable(
-      ElemKind::FloatTy, {inputSize, hiddenSize}, (namePrefix + ".Wxc").str(),
+      ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxc",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       inputSize);
   auto *Whc = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize, hiddenSize}, (namePrefix + ".Whc").str(),
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whc",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
   auto *Bc1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bc1").str(),
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bc1",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, bCell);
   auto *Bc2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, (namePrefix + ".bc2").str(),
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bc2",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, bCell);
 
   // output layer
   float b = 0.1;
   auto *Why = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize, outputSize}, (namePrefix + ".Why").str(),
+      ElemKind::FloatTy, {hiddenSize, outputSize}, nameBase + ".Why",
       Variable::VisibilityKind::Private, Variable::TrainKind::Xavier,
       hiddenSize);
   auto *By = getParent()->createVariable(
-      ElemKind::FloatTy, {outputSize}, (namePrefix + ".by").str(),
+      ElemKind::FloatTy, {outputSize}, nameBase + ".by",
       Variable::VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
 
   std::vector<Node *> outputNodes;
   for (unsigned t = 0; t < timeSteps; t++) {
-    auto fc1Name = (namePrefix + ".fc1." + std::to_string(t)).str();
-    auto fc2Name = (namePrefix + ".fc2." + std::to_string(t)).str();
-    auto add1Name = (namePrefix + ".add1." + std::to_string(t)).str();
-    auto sigmoid1Name = (namePrefix + ".sigmoid1." + std::to_string(t)).str();
+    auto fc1Name = nameBase + ".fc1." + std::to_string(t);
+    auto fc2Name = nameBase + ".fc2." + std::to_string(t);
+    auto add1Name = nameBase + ".add1." + std::to_string(t);
+    auto sigmoid1Name = nameBase + ".sigmoid1." + std::to_string(t);
 
     auto *Ft = createSigmoid(
         sigmoid1Name,
         createAdd(add1Name, createFullyConnected(fc1Name, Ht, Whf, Bf1),
                   createFullyConnected(fc2Name, inputs[t], Wxf, Bf2)));
 
-    auto fc3Name = (namePrefix + ".fc3." + std::to_string(t)).str();
-    auto fc4Name = (namePrefix + ".fc4." + std::to_string(t)).str();
-    auto add2Name = (namePrefix + ".add2." + std::to_string(t)).str();
-    auto sigmoid2Name = (namePrefix + ".sigmoid2." + std::to_string(t)).str();
+    auto fc3Name = nameBase + ".fc3." + std::to_string(t);
+    auto fc4Name = nameBase + ".fc4." + std::to_string(t);
+    auto add2Name = nameBase + ".add2." + std::to_string(t);
+    auto sigmoid2Name = nameBase + ".sigmoid2." + std::to_string(t);
 
     auto *It = createSigmoid(
         sigmoid2Name,
         createAdd(add2Name, createFullyConnected(fc3Name, Ht, Whi, Bi1),
                   createFullyConnected(fc4Name, inputs[t], Wxi, Bi2)));
 
-    auto fc5Name = (namePrefix + ".fc5." + std::to_string(t)).str();
-    auto fc6Name = (namePrefix + ".fc6." + std::to_string(t)).str();
-    auto add3Name = (namePrefix + ".add3." + std::to_string(t)).str();
-    auto sigmoid3Name = (namePrefix + ".sigmoid3." + std::to_string(t)).str();
+    auto fc5Name = nameBase + ".fc5." + std::to_string(t);
+    auto fc6Name = nameBase + ".fc6." + std::to_string(t);
+    auto add3Name = nameBase + ".add3." + std::to_string(t);
+    auto sigmoid3Name = nameBase + ".sigmoid3." + std::to_string(t);
 
     auto *Ot = createSigmoid(
         sigmoid3Name,
         createAdd(add3Name, createFullyConnected(fc5Name, Ht, Who, Bo1),
                   createFullyConnected(fc6Name, inputs[t], Wxo, Bo2)));
 
-    auto fc7Name = (namePrefix + ".fc7." + std::to_string(t)).str();
-    auto fc8Name = (namePrefix + ".fc8." + std::to_string(t)).str();
-    auto add4Name = (namePrefix + ".add4." + std::to_string(t)).str();
-    auto tanh1Name = (namePrefix + ".tanh1." + std::to_string(t)).str();
+    auto fc7Name = nameBase + ".fc7." + std::to_string(t);
+    auto fc8Name = nameBase + ".fc8." + std::to_string(t);
+    auto add4Name = nameBase + ".add4." + std::to_string(t);
+    auto tanh1Name = nameBase + ".tanh1." + std::to_string(t);
 
     auto *CRt = createTanh(
         tanh1Name,
         createAdd(add4Name, createFullyConnected(fc7Name, Ht, Whc, Bc1),
                   createFullyConnected(fc8Name, inputs[t], Wxc, Bc2)));
 
-    auto mul1Name = (namePrefix + ".mul1." + std::to_string(t)).str();
-    auto mul2Name = (namePrefix + ".mul2." + std::to_string(t)).str();
-    Ct = createAdd((namePrefix + ".C." + std::to_string(t)).str(),
+    auto mul1Name = nameBase + ".mul1." + std::to_string(t);
+    auto mul2Name = nameBase + ".mul2." + std::to_string(t);
+    Ct = createAdd(nameBase + ".C." + std::to_string(t),
                    createMul(mul1Name, Ft, Ct), createMul(mul2Name, It, CRt));
 
-    auto htName = (namePrefix + ".H." + std::to_string(t)).str();
-    auto tanh2Name = (namePrefix + ".tanh2." + std::to_string(t)).str();
+    auto htName = nameBase + ".H." + std::to_string(t);
+    auto tanh2Name = nameBase + ".tanh2." + std::to_string(t);
     Ht = createMul(htName, Ot, createTanh(tanh2Name, Ct));
 
-    auto outName = (namePrefix + ".out." + std::to_string(t)).str();
+    auto outName = nameBase + ".out." + std::to_string(t);
     auto *O = createFullyConnected(outName, Ht, Why, By);
     outputs.push_back(O);
   }
