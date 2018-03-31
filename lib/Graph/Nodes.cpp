@@ -861,6 +861,13 @@ void GatherNode::verify() const {
   assert(getIndices().getElementType() == ElemKind::IndexTy);
   assert(getResult().dims().size() ==
          getData().dims().size() + getIndices().dims().size() - 1);
+  if (getResult()->getType()->isQuantizedType()) {
+    // Quantization scales must be identical; no rescaling is allowed.
+    assert(getResult()->getType()->getScale() ==
+           getData()->getType()->getScale());
+    assert(getResult()->getType()->getOffset() ==
+           getData()->getType()->getOffset());
+  }
 }
 
 void SaveNode::verify() const { checkSameType(getInput(), getOutput()); }

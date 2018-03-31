@@ -284,6 +284,16 @@ int32_t libjit_scale_i32i8(int32_t input, int32_t pre, int32_t post,
 }
 
 template <typename T>
+void libjit_gather(T *dest, const T *data, const size_t *indices,
+                   size_t numIndices, size_t sliceSize) {
+  for (size_t i = 0; i < numIndices; i++) {
+    size_t slice = indices[i];
+    memcpy(dest + i * sliceSize, data + slice * sliceSize,
+           sliceSize * sizeof(T));
+  }
+}
+
+template <typename T>
 void libjit_transpose_generic(const T *inW, T *outW, const size_t *idim,
                               const size_t *odim, const size_t *shuffle,
                               size_t numDims) {
@@ -1174,11 +1184,12 @@ void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
 
 void libjit_gather_f(float *dest, const float *data, const size_t *indices,
                      size_t numIndices, size_t sliceSize) {
-  for (size_t i = 0; i < numIndices; i++) {
-    size_t slice = indices[i];
-    memcpy(dest + i * sliceSize, data + slice * sliceSize,
-           sliceSize * sizeof(float));
-  }
+  libjit_gather(dest, data, indices, numIndices, sliceSize);
+}
+
+void libjit_gather_i8(int8_t *dest, const int8_t *data, const size_t *indices,
+                      size_t numIndices, size_t sliceSize) {
+  libjit_gather(dest, data, indices, numIndices, sliceSize);
 }
 
 void libjit_local_response_normalization_f(float *outW, const float *inW,
