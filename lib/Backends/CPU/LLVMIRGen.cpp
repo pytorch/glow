@@ -323,13 +323,12 @@ llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,
 llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,
                                        llvm::ArrayRef<llvm::Constant *> vals,
                                        llvm::Type *elemTy) {
-  auto SizeTType = builder.getIntNTy(sizeof(size_t) * 8);
   std::vector<llvm::Constant *> elems;
   for (auto I : vals) {
     elems.push_back(cast<llvm::Constant>(builder.CreateBitCast(I, elemTy)));
   }
   auto *arr = llvm::ConstantArray::get(
-      llvm::ArrayType::get(SizeTType, elems.size()), elems);
+      llvm::ArrayType::get(elemTy, elems.size()), elems);
   // Ensure that the same casted global variable is used for the equivalent
   // const arrays. This is important for the later function specialization pass.
   // LLVM does not do it automatically for this code pattern involving global
@@ -390,14 +389,12 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
 
 llvm::Value *LLVMIRGen::emitStringConst(llvm::IRBuilder<> &builder,
                                         llvm::StringRef str) {
-  llvm::GlobalVariable *gvarStr =
-      new llvm::GlobalVariable(*llmodule_, builder.getInt8Ty(), true,
-                               llvm::GlobalValue::PrivateLinkage, 0, ".str");
-  gvarStr->setAlignment(1);
-
   llvm::Constant *constStrArray =
       llvm::ConstantDataArray::getString(ctx_, str, true);
-  gvarStr->setInitializer(constStrArray);
+  llvm::GlobalVariable *gvarStr = new llvm::GlobalVariable(
+      *llmodule_, constStrArray->getType(), true,
+      llvm::GlobalValue::PrivateLinkage, constStrArray, ".str");
+  gvarStr->setAlignment(1);
   return gvarStr;
 }
 
