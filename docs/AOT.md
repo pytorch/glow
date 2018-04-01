@@ -146,3 +146,34 @@ The script performs the following steps:
 * Finally, it runs this standalone executable with mnist images as inputs and outputs the
 results of the network model execution.
 
+## A step-by-step example for the resnet50 network model
+
+There is a concrete example of integrating a network model with a project.  You
+can find it in the `examples/compile_resnet50` directory in the Glow
+repository.
+
+To build and run this example, you just need to run the
+`build_standalone.sh` script in the `examples/compile_resnet50`
+directory. You may need to adjust the environment variables at the top to match
+your setup.
+
+The script performs the following steps:
+* It downloads the resnet50 network model in the Caffe2 format.
+* It generates the bundle files using the Glow loader as described above.
+  The concrete command line looks like this:
+  `loader tests/images/imagenet/cat_285.png -image_mode=0to1 -d resnet50 -jit -emit-bundle build`
+  It reads the network model from `resnet50` and generates the `resnet50.o`
+  and `resnet50.weights` files into the `build` directory.
+* Then it compiles the `resnet50_standalone.cpp` file, which is the main file of the project.
+  This source file gives a good idea about how to interface with an auto-generated bundle.
+  It contains the code for interfacing with with the auto-generated bundle.
+  *  It allocated the memory areas based on their memory sizes provided in `resnet50_config`.
+  *  Then it loads the weights from the auto-generated `resnet50.weights` file.
+  *  It loads the input image, pre-processes it and puts it into the mutable weight variables
+     memory area.
+  *  Once evertything is setup, it invokes the compiled network model by calling the
+     `resnet50` function from the `resnet50.o` object file.
+* Then it links the user-defined `resnet50_standalone.o` and auto-generated `resnet50.o`
+  into a standalone executable file called `resnet50_standalone`
+* Finally, it runs this standalone executable with imagenet images as inputs and outputs the
+results of the network model execution.
