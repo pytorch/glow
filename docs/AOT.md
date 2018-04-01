@@ -113,39 +113,6 @@ mutable weights variables and activations.
 * After `network_model_name` has returned, you can find the results of the mutable weights
 variables area.
 
-
-## A step-by-step example for the lenet_mnist network model
-
-There is a concrete example of integrating a network model with a project.  You
-can find it in the `examples/compile_lenet_mnist` directory in the Glow
-repository.
-
-To build and run this example, you just need to run the
-`build_lenet_mnist_standalone.sh` script in the `examples/compile_lenet_mnist`
-directory. You may need to adjust the environment variables at the top to match
-your setup.
-
-The script performs the following steps:
-* It downloads the lenet_mnist network model in the Caffe2 format.
-* It generates the bundle files using the Glow loader as described above.
-  The concrete command line looks like this:
-  `loader tests/images/mnist/5_1087.png -image_mode=0to1 -d lenet_mnist -jit -emit-bundle build`
-  It reads the network model from `lenet_mnist` and generates the `lenet_mnist.o`
-  and `lenet_mnist.weights` files into the `build` directory.
-* Then it compiles the `lenet_mnist_standalone.cpp` file, which is the main file of the project.
-  This source file gives a good idea about how to interface with an auto-generated bundle.
-  It contains the code for interfacing with with the auto-generated bundle.
-  *  It allocated the memory areas based on their memory sizes provided in `lenet_mnist_config`.
-  *  Then it loads the weights from the auto-generated `lenet_mnist.weights` file.
-  *  It loads the input image, pre-processes it and puts it into the mutable weight variables
-     memory area.
-  *  Once evertything is setup, it invokes the compiled network model by calling the
-     `lenet_mnist` function from the `lenet_mnist.o` object file.
-* Then it links the user-defined `lenet_mnist_standalone.o` and auto-generated `lenet_mnist.o`
-  into a standalone executable file called `lenet_mnist_standalone`
-* Finally, it runs this standalone executable with mnist images as inputs and outputs the
-results of the network model execution.
-
 ## A step-by-step example for the resnet50 network model
 
 There is a concrete example of integrating a network model with a project.  You
