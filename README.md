@@ -50,10 +50,10 @@ like GNU Makefiles, Ninja and Xcode build.
 ### Building with dependencies (LLVM)
 
 By default, Glow will use a system provided LLVM.  Note that Glow requires LLVM
-5.0. If LLVM is not available on your system you'll need to build it manually.
-You may find the script './utils/build\_llvm.sh' useful. You will need to
-configure Glow with the flag '-DCMAKE\_PREFIX\_PATH' to tell the build system
-where to find LLVM (e.g. the location of 'llvm_install/' if using
+5.0 or later. If LLVM is not available on your system you'll need to build it
+manually.  You may find the script './utils/build\_llvm.sh' useful. You will
+need to configure Glow with the flag '-DCMAKE\_PREFIX\_PATH' to tell the build
+system where to find LLVM (e.g. the location of 'llvm_install/' if using
 'build\_llvm.sh').
 
 For more platform-specific build instructions and advance options, such as
