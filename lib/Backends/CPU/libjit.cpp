@@ -777,6 +777,67 @@ void libjit_conv_init_output_with_bias(size_t N, float *outW,
   }     // For each X in the output.
 }
 
+// Perform a convolution on \p depthUnroll layers with a gemm-like operation
+// under the constraint that the Y dimension is even. This method performs the
+// convolution operation on two input Y values at once to reduce the number of
+// elements that are loaded from the Filter buffer.
+void libjit_convDKKC8_gemm_even_y(
+    size_t sampleN, size_t outChannel, unsigned depthUnroll,
+    size_t channelStart, size_t channelBlockSize, size_t numChannels,
+    float *outW, const float *inW, const float *filterW, const float *biasW,
+    const size_t *outWdims, const size_t *inWdims, const size_t *filterWdims,
+    const size_t *biasWdims, size_t filterSize, size_t stride, size_t pad) {
+  // For each (x,y) step in the input/output tensor:
+  for (size_t x = 0; x < outWdims[1]; x++) {
+    // Perform the convolution on two 'Y' inputs at once.
+    for (size_t y = 0; y < outWdims[2]; y += 2 /* process 2 values */) {
+
+      // Process [2 inputs * depthUnroll * float8] outputs at once.
+      float8 sumA[depthUnroll];
+      float8 sumB[depthUnroll];
+
+      for (unsigned du = 0; du < depthUnroll; du++) {
+        sumA[du] = 0;
+        sumB[du] = 0;
+      }
+
+      // Perform the heart of the convolution:
+      for (size_t fd = channelStart;
+           fd < MIN(channelStart + channelBlockSize, numChannels); fd++) {
+        // Load two pixels from the input image and broadcast them to two vector
+        // registers.
+        auto idxA = libjit_getXYZW(inWdims, sampleN, x, y + 0, fd);
+        auto idxB = libjit_getXYZW(inWdims, sampleN, x, y + 1, fd);
+        float8 inA = BroadcastFloat8(inW[idxA]);
+        float8 inB = BroadcastFloat8(inW[idxB]);
+
+        // Load N x 8 elements from the filter layer. The filter is
+        // pre-swizzled to ensure efficient access.
+        for (unsigned du = 0; du < depthUnroll; du++) {
+          // Load the Filter value once and perform a multiplication on two
+          // input values.
+          float8 ff0 = LoadFloat8(&filterW[libjit_getXYZWQ(
+              filterWdims, outChannel / 8 + du, 0, 0, fd, 0)]);
+          sumA[du] += ff0 * inA;
+          sumB[du] += ff0 * inB;
+        }
+      }
+
+      // Store the two vector results to the output buffer.
+      for (unsigned du = 0; du < depthUnroll; du++) {
+        auto outIdxA =
+            libjit_getXYZW(outWdims, sampleN, x, y + 0, outChannel + du * 8);
+        auto outIdxB =
+            libjit_getXYZW(outWdims, sampleN, x, y + 1, outChannel + du * 8);
+        // Add the partial sum to the tile.
+        AddFloat8(&outW[outIdxA], sumA[du]);
+        AddFloat8(&outW[outIdxB], sumB[du]);
+      }
+
+    } // For each (Y * 2) in the output.
+  }   // For each X in the output.
+}
+
 /// Perform the heart of the convolution. Load scalars in a specific channel
 /// and multiply them with [float8 * depthUnroll] depth values and accumulate
 /// them to create [float8 * depthUnroll] depth result values.
@@ -900,10 +961,16 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
                         const size_t *inWdims, const size_t *filterWdims,
                         const size_t *biasWdims, size_t filterSize,
                         size_t stride, size_t pad) {
+
+  // ------------------------------------------------------------------------//
+  //  In this section we select the specific implementation and parameters   //
+  //  for the convolution.                                                   //
+  // ------------------------------------------------------------------------//
+
   // The number of times to unroll the SIMD vector output-depth.
-  constexpr unsigned depthUnroll = 8;
+  unsigned depthUnroll = 8;
   // The size of the input-channel tile.
-  constexpr unsigned cbSize = 128;
+  unsigned cbSize = 128;
 
   size_t inChannels = inWdims[3];
 
@@ -913,10 +980,25 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
   // with a low channel count by scanning the image once because the filter
   // scan will fall in the cache.
   bool processPixelsFirst = (inChannels < 16);
-
   auto eachPixelConv =
       (processPixelsFirst ? &libjit_convDKKC8_foreach_xy_pixels_filter
                           : &libjit_convDKKC8_foreach_xy_filter_pixels);
+
+  // Dispatch the gemm-based y-unrolled convolution.
+  // Check if the y-dimension is even.
+  bool isEvenOutputYDim = (outWdims[2] % 2 == 0);
+  // Check if the convolution parameters match the conv implementation.
+  if (filterSize == 1 && stride == 1 && pad == 0 && isEvenOutputYDim) {
+    // Call the right kernel.
+    eachPixelConv = &libjit_convDKKC8_gemm_even_y;
+    // We process twice as many inputs in the loop, so reduce the number of
+    // depth filters that we process to prevent register pressure.
+    depthUnroll = 4;
+  }
+
+  // ------------------------------------------------------------------------//
+  //               Depth x Channel Tiled Conv Implementation                 //
+  // ------------------------------------------------------------------------//
 
   // For each input in the batch:
   for (size_t n = 0; n < inWdims[0]; n++) {
