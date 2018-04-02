@@ -170,7 +170,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Load the inputs:
     int stride = dict.count("stride") ? loadInt(dict["stride"]) : 1;
     int pad = dict.count("pad") ? loadInt(dict["pad"]) : 0;
-    int kernel = loadInt(dict["kernel"]);
+    unsigned kernel = loadInt(dict["kernel"]);
+    unsigned group = dict.count("group") ? loadInt(dict["group"]) : 1;
 
     auto *in = getOrCreateNodeByName(op.input(0));
     Tensor *w = getTensorByName(op.input(1));
@@ -213,11 +214,33 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ShapeNHWC idim = ShapeNHWC(tr->dims());
     auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
     std::array<size_t, 4> outDims = {
-        {idim.n, outSz.first, outSz.second, depth}};
+        {idim.n, outSz.first, outSz.second, depth / group}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
-    auto *node = G_.createConv(op.name(), tr, filter, bias, outTy, depth,
-                               kernel, stride, pad);
+    Node *node;
+    if (group == 1) {
+      node = G_.createConv(op.name(), tr, filter, bias, outTy, depth, kernel,
+                           stride, pad);
+    } else {
+      unsigned groupChannels = idim.c / group;
+      unsigned groupDepth = depth / group;
+      std::vector<Node *> convs(group);
+      for (unsigned groupId = 0; groupId < group; groupId++) {
+        auto *tr_slice = G_.createSlice(
+            op.name(), tr, {0, 0, 0, groupId * groupChannels},
+            {idim.n, idim.h, idim.w, (groupId + 1) * groupChannels});
+        auto *filter_slice = G_.createSlice(
+            op.name(), filter, {groupId * groupDepth, 0, 0, 0},
+            {(groupId + 1) * groupDepth, kernel, kernel, groupChannels});
+        auto *bias_slice =
+            G_.createSlice(op.name(), bias, {groupId * groupDepth},
+                           {(groupId + 1) * groupDepth});
+        convs[groupId] =
+            G_.createConv(op.name(), tr_slice, filter_slice, bias_slice, outTy,
+                          groupDepth, kernel, stride, pad);
+      }
+      node = G_.createConcat(op.name(), convs, 3);
+    }
 
     // Transpose the output back.
     auto *N = G_.createTranspose(op.name(), node, NHWC2NCHW);
