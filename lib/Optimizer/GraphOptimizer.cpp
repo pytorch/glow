@@ -595,6 +595,19 @@ static void optimizeSliceOfSplat(Function *F) {
   }
 }
 
+/// Eliminate ReshapeNode when the input is already the correct shape.
+static void optimizeReshape(Function *F) {
+  for (const auto &node : F->getNodes()) {
+    auto *reshapeNode = dyn_cast<ReshapeNode>(node);
+    if (!reshapeNode)
+      continue;
+    auto inputNode = reshapeNode->getInput();
+    if (inputNode.dims() == reshapeNode->dims()) {
+      reshapeNode->getResult().replaceAllUsesOfWith(inputNode);
+    }
+  }
+}
+
 /// Eliminate node sequences that are related to quantization.
 static void optimizeQuantization(Function *F) {
   // A worklist that contains the nodes to process.
@@ -779,6 +792,7 @@ void glow::optimize(Function *F, CompilationMode mode) {
 
   // Optimize Tensor shape transformations.
   optimizeSliceOfSplat(F);
+  optimizeReshape(F);
 
   // Optimize things that are related to quantization.
   optimizeQuantization(F);

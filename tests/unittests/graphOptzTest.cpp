@@ -582,6 +582,28 @@ TEST(GraphOptz, SliceOfSplatNodeChain) {
   }
 }
 
+TEST(GraphOptz, ReshapeNoop) {
+  Module mod;
+  Function *F = mod.createFunction("foo");
+
+  const size_t shape[] = {10, 20, 30};
+  Type t(ElemKind::FloatTy, shape);
+  auto *Z = F->createSplat("zero", &t, 0.);
+  auto *R = F->createReshape("reshape", Z, shape);
+  auto *O = F->createSave("ret", R);
+
+  EXPECT_EQ(F->getNodes().size(), 3);
+
+  ::glow::optimize(F, CompilationMode::Train);
+
+  EXPECT_EQ(F->getNodes().size(), 2);
+
+  auto *SN = llvm::dyn_cast<SplatNode>(llvm::dyn_cast<SaveNode>(O)->getInput());
+  EXPECT_TRUE(SN);
+
+  EXPECT_TRUE(SN->getType()->dims().equals(shape));
+}
+
 TEST(GraphOptz, DCEPublicVars) {
   Module mod;
   Function *F = mod.createFunction("main");
