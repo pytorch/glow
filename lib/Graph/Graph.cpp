@@ -740,7 +740,7 @@ SelectNode *Function::createSelect(llvm::StringRef name, NodeValue Cond,
 
 SplatNode *Function::createSplat(llvm::StringRef name, TypeRef ty,
                                  float value) {
-  return addNode(new SplatNode(name, ty, value));
+  return addNode(new SplatNode(name, getParent()->uniqueType(*ty), value));
 }
 
 MatMulNode *Function::createMatMul(llvm::StringRef name, TypeRef outTy,
@@ -777,7 +777,8 @@ BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name,
 
 BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name, TypeRef outTy,
                                            NodeValue batch, NodeValue sample) {
-  return addNode(new BatchedAddNode(name, outTy, batch, sample));
+  return addNode(
+      new BatchedAddNode(name, getParent()->uniqueType(*outTy), batch, sample));
 }
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
@@ -846,7 +847,8 @@ QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
   assert(input->dims().equals(outTy->dims()) &&
          "Different dimensions for input and output");
 
-  return addNode(new QuantizeNode(name, outTy, input));
+  return addNode(
+      new QuantizeNode(name, getParent()->uniqueType(*outTy), input));
 }
 
 DequantizeNode *Function::createDequantize(llvm::StringRef name,
@@ -855,7 +857,8 @@ DequantizeNode *Function::createDequantize(llvm::StringRef name,
          "Input must be a quantized type");
   TypeRef outTy =
       getParent()->uniqueType(Type(ElemKind::FloatTy, input.dims()));
-  return addNode(new DequantizeNode(name, outTy, input));
+  return addNode(
+      new DequantizeNode(name, getParent()->uniqueType(*outTy), input));
 }
 
 RescaleQuantizedNode *Function::createRescaleQuantized(llvm::StringRef name,
@@ -868,7 +871,8 @@ RescaleQuantizedNode *Function::createRescaleQuantized(llvm::StringRef name,
   assert(input->dims().equals(outTy->dims()) &&
          "Different dimensions for input and output");
 
-  return addNode(new RescaleQuantizedNode(name, outTy, input));
+  return addNode(
+      new RescaleQuantizedNode(name, getParent()->uniqueType(*outTy), input));
 }
 
 void Function::createSimpleRNN(llvm::StringRef namePrefix,
