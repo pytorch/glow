@@ -115,23 +115,26 @@ variables area.
 
 ## A step-by-step example for the resnet50 network model
 
-There is a concrete example of integrating a network model with a project.  You
+There are concrete examples of integrating a network model with a project.  You
 can find it in the `examples/compile_resnet50` directory in the Glow
-repository.
+repository. Makefile with appropriate targets is provided for your convinience.
 
-To build and run this example, you just need to run the
-`build_standalone.sh` script in the `examples/compile_resnet50`
-directory. You may need to adjust the environment variables at the top to match
-your setup.
+### Floating point network
+To build and run the example, you just need to execute:
+* `make resnet50`
+* `make run_resnet50`
 
-The script performs the following steps:
-* It downloads the resnet50 network model in the Caffe2 format.
-* It generates the bundle files using the Glow loader as described above.
+You may need to adjust the environment variables at the top to match
+your setup, primarily LOADER and GLOW_SRC vars.
+
+The makefile provides the following targets:
+* `download_weights`: it downloads the resnet50 network model in the Caffe2 format.
+* `build/resnet50.o`: it generates the bundle files using the Glow loader as described above.
   The concrete command line looks like this:
   `loader tests/images/imagenet/cat_285.png -image_mode=0to1 -d resnet50 -jit -emit-bundle build`
   It reads the network model from `resnet50` and generates the `resnet50.o`
   and `resnet50.weights` files into the `build` directory.
-* Then it compiles the `resnet50_standalone.cpp` file, which is the main file of the project.
+* `build/main.o`:  it compiles the `resnet50_standalone.cpp` file, which is the main file of the project.
   This source file gives a good idea about how to interface with an auto-generated bundle.
   It contains the code for interfacing with with the auto-generated bundle.
   *  It allocated the memory areas based on their memory sizes provided in `resnet50_config`.
@@ -140,7 +143,22 @@ The script performs the following steps:
      memory area.
   *  Once evertything is setup, it invokes the compiled network model by calling the
      `resnet50` function from the `resnet50.o` object file.
-* Then it links the user-defined `resnet50_standalone.o` and auto-generated `resnet50.o`
+ * `resnet50`: it links the user-defined `resnet50_standalone.o` and auto-generated `resnet50.o`
   into a standalone executable file called `resnet50_standalone`
-* Finally, it runs this standalone executable with imagenet images as inputs and outputs the
+  * `run`: it runs this standalone executable with imagenet images as inputs and outputs the
 results of the network model execution.
+
+### Quantized network
+To build and run the example, you just need to execute:
+* `make resnet50_quantized`
+* `make run_resnet50_quantized`
+
+The `resnet50_quantized` performs almost the same steps as `resnet50`
+except it emits bundle based on the quantization profile:
+`loader tests/images/imagenet/cat_285.png -image_mode=0to1 -d resnet50
+-load_profile=profile.yml -jit -emit-bundle build`
+
+The `profile.yml` itself is captured at a prior step by executing loader with the `dump_profile` option:
+`loader tests/images/imagenet/*.png -image_mode=0to1 -d resnet50 -dump_profile=profile.yml`.
+See the makefile for details.
+
