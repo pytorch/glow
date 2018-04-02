@@ -32,7 +32,7 @@ done
 # ${NETWORK_MODEL}.o is the object file containing the compiled model
 # ${NETWORK_MODEL}.weights is the file with weights
 mkdir -p build
-${LOADER} ${GLOW_ROOT}/tests/images/imagenet/cat_285.png -image_mode=0to1 -d ${NETWORK_MODEL} -cpu -emit-bundle build -g
+${LOADER} ${GLOW_ROOT}/tests/images/imagenet/cat_285.png -image_mode=0to1 -d ${NETWORK_MODEL} -cpu -emit-bundle build
 
 # Compile lenet_mnist_standalone.cpp.
 ${CXX} -std=c++11 -c -g ${SCRIPT_DIR}/${NETWORK_MODEL}_standalone.cpp -o build/${NETWORK_MODEL}_standalone.o
