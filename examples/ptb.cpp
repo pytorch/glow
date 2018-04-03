@@ -188,16 +188,13 @@ void testPTB() {
                                    "selected", Variable::VisibilityKind::Public,
                                    Variable::TrainKind::None);
 
-  std::vector<Node *> slicesX, slicesY;
+  std::vector<Node *> slicesX;
 
   for (unsigned t = 0; t < numSteps; t++) {
     auto XtName = "X." + std::to_string(t);
     auto *Xt = F->createSlice(XtName, X, {0, t * vocabSize},
                               {minibatchSize, (t + 1) * vocabSize});
     slicesX.push_back(Xt);
-    auto YtName = "Y." + std::to_string(t);
-    auto *Yt = F->createSlice(YtName, Y, {0, t}, {minibatchSize, t + 1});
-    slicesY.push_back(Yt);
   }
 
   std::vector<Node *> outputNodes;
@@ -207,7 +204,8 @@ void testPTB() {
   // O has a shape of {numSteps * minibatchSize, vocabSize}
   Node *O = F->createConcat("output", outputNodes, 0);
   // T has shape of {numSteps * minibatchSize, 1}
-  Node *T = F->createConcat("target", slicesY, 0);
+  Node *TN = F->createTranspose("Y.transpose", Y, {1, 0});
+  Node *T = F->createReshape("Y.reshape", TN, {numSteps * minibatchSize, 1});
 
   auto *SM = F->createSoftMax("softmax", O, T);
   auto *result = F->createSave("result", SM);
