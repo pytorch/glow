@@ -11,33 +11,6 @@
 
 namespace {
 
-/// \returns the index of the element at x,y,z,w,q.
-size_t libjit_getXYZWQ(const size_t *dims, size_t x, size_t y, size_t z,
-                       size_t w, size_t q) {
-  return (x * dims[1] * dims[2] * dims[3] * dims[4]) +
-         (y * dims[2] * dims[3] * dims[4]) + (z * dims[3] * dims[4]) +
-         (w * dims[4]) + q;
-}
-
-/// \returns the index of the element at x,y,z,w.
-size_t libjit_getXYZW(const size_t *dims, size_t x, size_t y, size_t z,
-                      size_t w) {
-  return (x * dims[1] * dims[2] * dims[3]) + (y * dims[2] * dims[3]) +
-         (z * dims[3]) + w;
-}
-
-/// \returns the index of the element at x,y,z.
-size_t libjit_getXYZ(const size_t *dims, size_t x, size_t y, size_t z) {
-  return (x * dims[1] * dims[2]) + (y * dims[2]) + z;
-}
-
-/// \returns the index of the element at x,y.
-size_t libjit_getXY(const size_t *dims, size_t x, size_t y) {
-  return (x * dims[1]) + y;
-}
-
-int8_t libjit_clip(int32_t val) { return (int8_t)MIN(MAX(val, -128), 127); }
-
 template <class ElemTy>
 static void libjit_dump_tensor_impl(ElemTy *tensor, size_t *dims,
                                     size_t numDims) {
@@ -246,23 +219,6 @@ void get_src_dim(size_t *src_i, const size_t *dest_i, const size_t *src_dims,
   for (size_t i = 0; i < n; i++) {
     src_i[i] = (src_dims[i] == 1) ? 0 : dest_i[i];
   }
-}
-
-/// Scales a 32-bit integer using the integer shift-mult-shift method.
-/// See QuantizationTransform32To8 for more details.
-int32_t libjit_scale_i32i8(int32_t input, int32_t pre, int32_t post,
-                           int32_t scale, int32_t offset) {
-  // The operation x >> y is rounded down to negative infinity. To get to
-  // round-nearest we add (1 << (shift - 1)) to the value prior to shifting.
-  int rtn = (post > 0) ? (1 << (post - 1)) : 0;
-
-  // NOTICE: If your tests are failing because of signed integer overflow then
-  // this is a bug in the test and not in the program. You should make sure that
-  // the inputs to the operations do not overflow. The semantics of the
-  // quantization process is such that the result for values that fall out of
-  // range is undefined. The conversion procedure will only tolerate a few bits
-  // of overflow and the result will be clipped.
-  return ((((input >> pre) * scale) + rtn) >> post) + offset;
 }
 
 template <typename T>
@@ -547,26 +503,6 @@ void libjit_broadcast_f(float *dest, const float *src, const size_t *dest_dims,
     size_t dptr = get_element_ptr(dest, dest_dims, n_dims, dest_i, n_dims);
     dest[dptr] = src[sptr];
   } while (increment_and_check_dims(dest_i, dest_dims, n_dims));
-}
-
-
-void libjit_matmul_i8(int8_t *outW, const int8_t *lhsW, const int8_t *rhsW,
-                      const size_t *outWdims, const size_t *lhsWdims,
-                      const size_t *rhsWdims, int32_t outOffset,
-                      int32_t lhsOffset, int32_t rhsOffset, int32_t outPre,
-                      int32_t outPost, int32_t outScale) {
-  for (size_t x = 0; x < outWdims[0]; x++) {
-    for (size_t y = 0; y < outWdims[1]; y++) {
-      int32_t sum = 0;
-      for (size_t i = 0; i < lhsWdims[1]; i++) {
-        int32_t lhs = lhsW[libjit_getXY(lhsWdims, x, i)] - lhsOffset;
-        int32_t rhs = rhsW[libjit_getXY(rhsWdims, i, y)] - rhsOffset;
-        sum += lhs * rhs;
-      }
-      int32_t s = libjit_scale_i32i8(sum, outPre, outPost, outScale, outOffset);
-      outW[libjit_getXY(outWdims, x, y)] = libjit_clip(s);
-    }
-  }
 }
 
 void libjit_batchedadd_f(float *dest, const float *batch, const float *slice,

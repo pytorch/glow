@@ -53,7 +53,7 @@ void libjit_matmul_dot4x16(int k, const float *a, int lda, const float *b,
 /// Compute a portion of C one 4*16 block at a time.  Handle ragged edges with
 /// calls to a slow but general helper.
 void libjit_matmul_inner(int m, int n, int k, const float *a, int lda,
-                         const float *b, int ldb, float *c, int ldc) { 
+                         const float *b, int ldb, float *c, int ldc) {
   constexpr int mc = 4;
   constexpr int nr = 16;
   // The tiling scheme naturally divides the input matrices into 2 parts each;
@@ -139,4 +139,22 @@ void libjit_matmul_f(float *c, const float *a, const float *b,
                       cDims[1]);
 }
 
+void libjit_matmul_i8(int8_t *outW, const int8_t *lhsW, const int8_t *rhsW,
+                      const size_t *outWdims, const size_t *lhsWdims,
+                      const size_t *rhsWdims, int32_t outOffset,
+                      int32_t lhsOffset, int32_t rhsOffset, int32_t outPre,
+                      int32_t outPost, int32_t outScale) {
+  for (size_t x = 0; x < outWdims[0]; x++) {
+    for (size_t y = 0; y < outWdims[1]; y++) {
+      int32_t sum = 0;
+      for (size_t i = 0; i < lhsWdims[1]; i++) {
+        int32_t lhs = lhsW[libjit_getXY(lhsWdims, x, i)] - lhsOffset;
+        int32_t rhs = rhsW[libjit_getXY(rhsWdims, i, y)] - rhsOffset;
+        sum += lhs * rhs;
+      }
+      int32_t s = libjit_scale_i32i8(sum, outPre, outPost, outScale, outOffset);
+      outW[libjit_getXY(outWdims, x, y)] = libjit_clip(s);
+    }
+  }
+}
 }
