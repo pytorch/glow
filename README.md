@@ -27,10 +27,35 @@ generators can use to generate efficient machine code.
 
 ### System Requirements
 
-The project builds and runs on macOS and Linux. The software depends on a modern
-C++ compiler that supports C++11, on CMake, LLVM, protocol buffer, and libpng.
+Glow builds and runs on macOS and Linux. The software depends on a modern C++
+compiler that supports C++11, on CMake, LLVM, protocol buffers, and libpng.
 
-### Building the Compiler
+#### macOS
+
+Install the required dependencies using [Homebrew](https://brew.sh/):
+
+  ```
+  brew install cmake graphviz libpng ninja protobuf wget
+  brew install --with-toolchain llvm
+  ```
+
+Note that LLVM is installed to a non-default location (`/usr/local/opt/llvm`) to
+avoid conflicts with the system's LLVM.
+
+#### Ubuntu
+
+On Ubuntu you would need to install a few dependencies. The following command
+should install the required dependencies.
+
+  ```
+  sudo apt-get install graphviz clang cmake wget ninja-build llvm-5.0 \
+      libprotobuf-dev protobuf-compiler
+  ```
+
+Note, that OpenCL support is not trivial on Linux. We suggest to build without
+OpenCL for the first time.
+
+### Configure and build
 
 To build the compiler, create a build directory and run cmake on the source
 directory. It's a good idea to build two configurations (Release and Debug)
@@ -40,7 +65,7 @@ good idea to build the project outside of the source directory.
   ```
   mkdir build_Debug
   cd build_Debug
-  cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug ../glow
+  cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_CPU=1 ../Glow
   ninja all
   ```
 
@@ -50,15 +75,26 @@ like GNU Makefiles, Ninja and Xcode build.
 ### Building with dependencies (LLVM)
 
 By default, Glow will use a system provided LLVM.  Note that Glow requires LLVM
-5.0 or later. If LLVM is not available on your system you'll need to build it
-manually.  You may find the script './utils/build\_llvm.sh' useful. You will
-need to configure Glow with the flag '-DCMAKE\_PREFIX\_PATH' to tell the build
-system where to find LLVM (e.g. the location of 'llvm_install/' if using
-'build\_llvm.sh').
+5.0 or later.  If you have LLVM installed in a non-default location (for
+example, if you installed it using Homebrew on macOS), you need to tell CMake
+where to find llvm using `-DCMAKE_PREFIX_PATH`.  For example:
 
-For more platform-specific build instructions and advance options, such as
+  ```
+  cmake -G Ninja ../Glow \
+      -DCMAKE_BUILD_TYPE=Debug \
+      -DGLOW_WITH_CPU=1 \
+      -DCMAKE_PREFIX_PATH=/usr/local/opt/llvm
+  ```
+
+If LLVM is not available on your system you'll need to build it manually.  Run
+the script '`/utils/build_llvm.sh` to clone, build and install LLVM in a local
+directory. You will need to configure Glow with the flag `-DCMAKE_PREFIX_PATH`
+to tell the build system where to find LLVM (e.g. the location of
+`llvm_install/` if using `build_llvm.sh`).
+
+For more platform-specific build instructions and advanced options, such as
 building with Address-Sanitizers refer to this guide:
-[Building the compiler](docs/Building.md)
+[Building the Compiler](docs/Building.md).
 
 ## Testing and Running
 
