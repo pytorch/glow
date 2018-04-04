@@ -3,25 +3,6 @@
 This document contains detailed information about building the compiler on different
 systems and with different options.
 
-## macOS
-
-To build the compiler on a mac you would need to install a few dependencies. You
-can install these dependencies using the brew package manager:
-
-  ```
-    brew install libpng protobuf graphviz cmake wget
-  ```
-
-## Ubuntu
-
-On Ubuntu you would need to install a few dependencies. The following command should install the required dependencies.
-
-  ```
-  sudo apt-get install graphviz clang cmake wget ninja-build llvm-5.0 libprotobuf-dev protobuf-compiler
-  ```
-
-Note, that OpenCL support is not trivial on Linux. We suggest to build without OpenCL for the first time.
-
 ## Building with JIT/OpenCL Backends
 
 By default Glow builds with only the interpreter backend enabled.  To enable
