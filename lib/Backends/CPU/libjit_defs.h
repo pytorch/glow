@@ -1,6 +1,7 @@
 #ifndef GLOW_BACKENDS_CPU_LIBJIT_DEFS_H
 #define GLOW_BACKENDS_CPU_LIBJIT_DEFS_H
 
+#include <stdint.h>
 #include <string.h>
 
 typedef float float4 __attribute__((ext_vector_type(4)));
@@ -31,13 +32,57 @@ inline float8 LoaduFloat8(const float *p) {
 }
 
 /// Perform an unaligned store to a float pointer.
-inline void StoreuFloat8(float *p, float8 v) {
-  memcpy(p, &v, sizeof(float8));
-}
+inline void StoreuFloat8(float *p, float8 v) { memcpy(p, &v, sizeof(float8)); }
 
 /// Perform an unaligned addition to a float pointer.
 inline void AdduFloat8(float *p, float8 v) {
   StoreuFloat8(p, LoaduFloat8(p) + v);
+}
+
+/// \returns the index of the element at x,y,z,w,q.
+inline size_t libjit_getXYZWQ(const size_t *dims, size_t x, size_t y, size_t z,
+                              size_t w, size_t q) {
+  return (x * dims[1] * dims[2] * dims[3] * dims[4]) +
+         (y * dims[2] * dims[3] * dims[4]) + (z * dims[3] * dims[4]) +
+         (w * dims[4]) + q;
+}
+
+/// \returns the index of the element at x,y,z,w.
+inline size_t libjit_getXYZW(const size_t *dims, size_t x, size_t y, size_t z,
+                             size_t w) {
+  return (x * dims[1] * dims[2] * dims[3]) + (y * dims[2] * dims[3]) +
+         (z * dims[3]) + w;
+}
+
+/// \returns the index of the element at x,y,z.
+inline size_t libjit_getXYZ(const size_t *dims, size_t x, size_t y, size_t z) {
+  return (x * dims[1] * dims[2]) + (y * dims[2]) + z;
+}
+
+/// \returns the index of the element at x,y.
+inline size_t libjit_getXY(const size_t *dims, size_t x, size_t y) {
+  return (x * dims[1]) + y;
+}
+
+inline int8_t libjit_clip(int32_t val) {
+  return (int8_t)MIN(MAX(val, -128), 127);
+}
+
+/// Scales a 32-bit integer using the integer shift-mult-shift method.
+/// See QuantizationTransform32To8 for more details.
+inline int32_t libjit_scale_i32i8(int32_t input, int32_t pre, int32_t post,
+                                  int32_t scale, int32_t offset) {
+  // The operation x >> y is rounded down to negative infinity. To get to
+  // round-nearest we add (1 << (shift - 1)) to the value prior to shifting.
+  int rtn = (post > 0) ? (1 << (post - 1)) : 0;
+
+  // NOTICE: If your tests are failing because of signed integer overflow then
+  // this is a bug in the test and not in the program. You should make sure that
+  // the inputs to the operations do not overflow. The semantics of the
+  // quantization process is such that the result for values that fall out of
+  // range is undefined. The conversion procedure will only tolerate a few bits
+  // of overflow and the result will be clipped.
+  return ((((input >> pre) * scale) + rtn) >> post) + offset;
 }
 
 #endif // GLOW_BACKENDS_CPU_LIBJIT_DEFS_H
