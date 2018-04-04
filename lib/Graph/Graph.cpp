@@ -823,9 +823,9 @@ TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
   assert(k <= inDims.back());
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims.back() = k;
+  auto OT = getParent()->uniqueTypeWithNewShape(input.getType(), outDims);
   return addNode(new TopKNode(
-      name, getParent()->uniqueType(input->getElementType(), outDims),
-      getParent()->uniqueType(ElemKind::IndexTy, outDims), input, k));
+      name, OT, getParent()->uniqueType(ElemKind::IndexTy, outDims), input, k));
 }
 
 GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,

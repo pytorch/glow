@@ -1532,12 +1532,11 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::TopKInstKind: {
     TopKInst *TI = cast<TopKInst>(I);
-
     auto *input = TI->getInput();
     auto *valuesPtr = emitValueAddress(builder, TI->getValues());
     auto *indicesPtr = emitValueAddress(builder, TI->getIndices());
-    auto *scratchPtr = emitValueAddress(builder, TI->getScratch());
     auto *inputPtr = emitValueAddress(builder, input);
+    auto *scratchPtr = emitValueAddress(builder, TI->getScratch());
 
     auto *k = emitConstSizeT(builder, TI->getK());
     auto *n = emitConstSizeT(builder, input->dims().back());
@@ -1545,7 +1544,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *F = getFunction("topk", input->getElementType());
     builder.CreateCall(
-        F, {inputPtr, valuesPtr, indicesPtr, scratchPtr, k, n, size});
+        F, {valuesPtr, indicesPtr, inputPtr, scratchPtr, k, n, size});
     break;
   }
 

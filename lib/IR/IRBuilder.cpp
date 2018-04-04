@@ -112,12 +112,13 @@ TopKInst *IRBuilder::createTopKOp(Value *input, size_t k) {
   assert(k <= inDims.back());
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims.back() = k;
+  auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
+      input->getType(), outDims);
   // Allocate enough scratch space to hold N values and N indices.
   auto *scratch = createAllocActivationInst("topk.scratch", ElemKind::IndexTy,
                                             {inDims.back() * 2});
   createSplatInst("topk.zero.scratch", scratch, 0);
-  auto *values = createAllocActivationInst("topk.values",
-                                           input->getElementType(), outDims);
+  auto *values = createAllocActivationInst("topk.values", outTy);
   auto *indices =
       createAllocActivationInst("topk.indices", ElemKind::IndexTy, outDims);
   return createTopKInst("topk", values, indices, input, scratch, k);
