@@ -293,6 +293,51 @@ TEST_P(Operator, TopK) {
   EXPECT_EQ(I.at({2, 0, 2}), 3);
 }
 
+TEST_P(Operator, QuantizedTopK) {
+  auto *INV =
+      mod_.createVariable(ElemKind::Int8QTy, {3, 1, 5}, 1.2, 5, "input");
+  auto *OV =
+      mod_.createVariable(ElemKind::Int8QTy, {3, 1, 3}, 1.2, 5, "values");
+  auto *IV = mod_.createVariable(ElemKind::IndexTy, {3, 1, 3}, "indices");
+
+  INV->getPayload().getHandle<int8_t>() = {
+      -12, -28, -7, 8, -93, 0, 10, 3, -1, 10, -2, 3, -2, 3, 3,
+  };
+
+  auto TK = F_->createTopK("TopK", INV, 3);
+
+  F_->createSave("save.values", TK->getValues(), OV);
+  F_->createSave("save.indices", TK->getIndices(), IV);
+
+  EE_.compile(CompilationMode::Infer, F_);
+
+  EE_.run({}, {});
+
+  auto VH = OV->getPayload().getHandle<int8_t>();
+  auto IH = IV->getPayload().getHandle<size_t>();
+
+  EXPECT_EQ(VH.at({0, 0, 0}), 8);
+  EXPECT_EQ(IH.at({0, 0, 0}), 3);
+  EXPECT_EQ(VH.at({0, 0, 1}), -7);
+  EXPECT_EQ(IH.at({0, 0, 1}), 2);
+  EXPECT_EQ(VH.at({0, 0, 2}), -12);
+  EXPECT_EQ(IH.at({0, 0, 2}), 0);
+
+  EXPECT_EQ(VH.at({1, 0, 0}), 10);
+  EXPECT_EQ(IH.at({1, 0, 0}), 1);
+  EXPECT_EQ(VH.at({1, 0, 1}), 10);
+  EXPECT_EQ(IH.at({1, 0, 1}), 4);
+  EXPECT_EQ(VH.at({1, 0, 2}), 3);
+  EXPECT_EQ(IH.at({1, 0, 2}), 2);
+
+  EXPECT_EQ(VH.at({2, 0, 0}), 3);
+  EXPECT_EQ(IH.at({2, 0, 0}), 1);
+  EXPECT_EQ(VH.at({2, 0, 1}), 3);
+  EXPECT_EQ(IH.at({2, 0, 1}), 3);
+  EXPECT_EQ(VH.at({2, 0, 2}), 3);
+  EXPECT_EQ(IH.at({2, 0, 2}), 4);
+}
+
 TEST_P(Operator, Gather) {
   /*
     DATA  = [

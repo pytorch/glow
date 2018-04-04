@@ -1238,13 +1238,12 @@ void Interpreter::fwdBatchedReduceAddInst(const glow::BatchedReduceAddInst *I) {
 //===----------------------------------------------------------------------===//
 //                Instructions used by RNN
 //===----------------------------------------------------------------------===//
-
-void Interpreter::fwdTopKInst(const TopKInst *I) {
-  auto in = getTensor(I->getInput())->getHandle();
-  size_t k = I->getK();
+template <typename T>
+static void fwdTopK(Tensor *outW, Tensor *indW, Tensor *inW, size_t k) {
+  auto values = outW->getHandle<T>();
+  auto indices = indW->getHandle<size_t>();
+  auto in = inW->getHandle<T>();
   size_t n = in.dims().back();
-  auto values = getTensor(I->getValues())->getHandle();
-  auto indices = getTensor(I->getIndices())->getHandle<size_t>();
 
   size_t in_p = 0, out_p = 0;
   size_t tensor_end = in.size();
@@ -1267,6 +1266,19 @@ void Interpreter::fwdTopKInst(const TopKInst *I) {
       indices.raw(out_p) = buf[i].second;
       out_p++;
     }
+  }
+}
+
+void Interpreter::fwdTopKInst(const TopKInst *I) {
+  auto outW = getTensor(I->getValues());
+  auto indW = getTensor(I->getIndices());
+  auto inW = getTensor(I->getInput());
+  size_t k = I->getK();
+
+  if (inW->getType().isQuantizedType()) {
+    fwdTopK<int8_t>(outW, indW, inW, k);
+  } else {
+    fwdTopK<float>(outW, indW, inW, k);
   }
 }
 

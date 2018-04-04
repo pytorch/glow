@@ -851,9 +851,14 @@ void RescaleQuantizedNode::verify() const {
 }
 
 void TopKNode::verify() const {
-  assert(getInput().getElementType() == ElemKind::FloatTy);
-  assert(getValues().getElementType() == ElemKind::FloatTy);
   assert(getValues().dims() == getIndices().dims());
+  if (getInput()->getType()->isQuantizedType()) {
+    // Quantization scales must be identical; no rescaling is allowed.
+    assert(getValues()->getType(0)->getScale() ==
+           getInput()->getType()->getScale());
+    assert(getValues()->getType(0)->getOffset() ==
+           getInput()->getType()->getOffset());
+  }
 }
 
 void GatherNode::verify() const {

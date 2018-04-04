@@ -176,18 +176,42 @@ void libjit_extract_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
 }
 
 /// Helper struct for TopK
-struct value_index {
-  float value;
+template <typename T> struct value_index {
   size_t index;
+  T value;
 };
 
 /// Helper function for TopK
-int value_index_sort(const void *va, const void *vb) {
-  value_index *a = (value_index *)va;
-  value_index *b = (value_index *)vb;
+template <typename T> int value_index_sort(const void *va, const void *vb) {
+  value_index<T> *a = (value_index<T> *)va;
+  value_index<T> *b = (value_index<T> *)vb;
   if (a->value != b->value)
     return a->value > b->value ? -1 : 1;
   return a->index < b->index ? -1 : 1;
+}
+
+/// Generic Top-K function. Here, \p scratch is some allocated buffer space, \p
+/// size is the size of the input, and \p n is the size of the last dimension of
+/// the input.
+template <typename T>
+void libjit_topk(T *values, size_t *indices, const T *input, size_t *scratch,
+                 size_t k, size_t n, size_t size) {
+  size_t in = 0;
+  size_t out = 0;
+
+  value_index<T> *buffer = (value_index<T> *)scratch;
+  while (in < size) {
+    for (size_t i = 0; i < n; i++) {
+      buffer[i].index = i;
+      buffer[i].value = input[in++];
+    }
+    qsort(buffer, n, sizeof(value_index<T>), value_index_sort<T>);
+    for (size_t i = 0; i < k; i++) {
+      indices[out] = buffer[i].index;
+      values[out] = buffer[i].value;
+      out++;
+    }
+  }
 }
 
 /// Helper function for Broadcast. Increments an "index" dimension vector, \p
@@ -894,24 +918,14 @@ void libjit_sigmoid_f(const float *inW, float *outW, size_t numElem) {
   }
 }
 
-void libjit_topk_f(const float *input, float *values, size_t *indices,
+void libjit_topk_f(float *values, size_t *indices, const float *input,
                    size_t *scratch, size_t k, size_t n, size_t size) {
-  size_t in = 0;
-  size_t out = 0;
+  libjit_topk(values, indices, input, scratch, k, n, size);
+}
 
-  value_index *buf = (value_index *)scratch;
-  while (in < size) {
-    for (size_t i = 0; i < n; i++) {
-      buf[i].value = input[in++];
-      buf[i].index = i;
-    }
-    qsort(buf, n, sizeof(value_index), value_index_sort);
-    for (size_t i = 0; i < k; i++) {
-      values[out] = buf[i].value;
-      indices[out] = buf[i].index;
-      out++;
-    }
-  }
+void libjit_topk_i8(int8_t *values, size_t *indices, const int8_t *input,
+                    size_t *scratch, size_t k, size_t n, size_t size) {
+  libjit_topk(values, indices, input, scratch, k, n, size);
 }
 
 void libjit_transpose_i8(const int8_t *inW, int8_t *outW, const size_t *idim,

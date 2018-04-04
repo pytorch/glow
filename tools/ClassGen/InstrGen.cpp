@@ -394,8 +394,7 @@ int main(int argc, char **argv) {
       .addOperand("Input", OperandKind::In)
       .addOperand("Scratch", OperandKind::InOut)
       .addMember(MemberType::SizeT, "K")
-      .autoVerify(VerifyKind::SameElementType,
-                  {"Values", "Input", "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Values", "Input"})
       .autoVerify(VerifyKind::SameShape, {"Values", "Indices"});
 
   //===--------------------------------------------------------------------===//
