@@ -98,42 +98,51 @@ building with Address-Sanitizers refer to this guide:
 
 ## Testing and Running
 
-The project has a few unittests in the tests/ directory. To run all of the unit
-tests simply run the command 'ninja test' (or gmake test).  After compiling the
-project, a few test programs will be built under the /examples/ directory. The
-'mnist', 'cifar10' and 'ptb' programs train and run the digit recognition, image
-classification and language modeling benchmarks.
+### Unit tests
 
-The default compilation mode is 'Debug'. This means that the compiler itself is
-easy to debug because the binary contains debug info, lots of assertions, and
-the optimizations are disabled. It also means that the compiler and runtime are
-very slow, and the execution time can be hundreds of times slower than that of
-release builds. If you wish to benchmark the compiler, run long benchmarks, or
-release the product then you should compile the compiler in Release mode. Check
-the main CMake file for more details.
+The project has a few unit tests in the tests/unittests subdirectory. To run all
+of them, simply run `ninja test`.
 
-After building Glow in Release-mode run the following command to download the
-cifar10, mnist and ptb database:
+### C++ API examples
 
-```
-python ../glow/utils/download_test_db.py --all
-```
+A few test programs that use Glow's C++ API are found under the `examples/`
+subdirectory. The `mnist`, `cifar10`, `fr2en` and `ptb` programs train and run digit
+recognition, image classification and language modeling benchmarks,
+respectively.
 
-Next, after downloading and extracting the mnist and cifar10 database
-(preferably in the build directory), you can run the test programs:
+To run these programs, build Glow in Release mode, then run the following commands
+to download the cifar10, mnist and ptb databases.
 
-```
-./bin/mnist
-./bin/cifar10
-./bin/ptb
-```
+  ```
+  python ../Glow/utils/download_test_db.py --all
+  ```
 
-Note: The databases should be (for now) in the same directory from where the
-executable is run.
+Now run the examples. Note that the databases should be in the current working
+directory.
 
-If everything goes well you should see pictures from the mnist digits database
-and print outs from cifar10 that make sense as well as the perplexity on the
-ptb dataset go down as the network trains.
+  ```
+  ./bin/mnist
+  ./bin/cifar10
+  ./bin/fr2en
+  ./bin/ptb
+  ```
+
+If everything goes well you should see:
+  * `mnist`: pictures from the mnist digits database
+  * `cifar10`: image classifications that steadily improve
+  * `fr2en`: an interactive French-to-English translator
+  * `ptb` decreasing perplexity on the dataset as the network trains
+
+Note that the default build mode is `Debug`, which means that the compiler
+itself is easy to debug because the binary contains debug info, lots of
+assertions, and the optimizations are disabled. It also means that the compiler
+and runtime are very slow, and the execution time can be hundreds of times
+slower than that of release builds. If you wish to benchmark the compiler, run
+long benchmarks, or release the product then you should compile the compiler in
+Release mode. Check the main CMake file for more details.
+
+More details on testing and running Glow are found in: [Testing the Glow
+Compiler](docs/Testing.md).
 
 ## Contributing
 
