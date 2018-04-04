@@ -883,6 +883,34 @@ void Interpreter::fwdElementAddInst(const ElementAddInst *I) {
 }
 
 void Interpreter::fwdElementSubInst(const ElementSubInst *I) {
+
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    auto destTy = I->getDest()->getType();
+    auto lhsTy = I->getLHS()->getType();
+    auto rhsTy = I->getRHS()->getType();
+
+    float destScale = destTy->getScale();
+    float lhsScale = lhsTy->getScale();
+    float rhsScale = rhsTy->getScale();
+
+    int32_t destOffset = destTy->getOffset();
+    int32_t lhsOffset = lhsTy->getOffset();
+    int32_t rhsOffset = rhsTy->getOffset();
+
+    auto outW = getWeightHandle<int8_t>(I->getDest());
+    auto lhsW = getWeightHandle<int8_t>(I->getLHS());
+    auto rhsW = getWeightHandle<int8_t>(I->getRHS());
+    for (size_t i = 0, e = outW.size(); i < e; i++) {
+      //    s_d * (i_d - o_d) = s_l * (i_l - o_l) - s_r * (i_r - o_r)
+      // => i_d = (s_l / s_d) * (i_l - o_l) - (s_r / s_d) * (i_r - o_r) + o_d
+      float l = (lhsScale / destScale) * float(lhsW.raw(i) - lhsOffset);
+      float r = (rhsScale / destScale) * float(rhsW.raw(i) - rhsOffset);
+      int32_t q = std::round(l - r + destOffset);
+      outW.raw(i) = quantization::clip<int32_t, int8_t>(q);
+    }
+    return;
+  }
+
   auto outW = getWeightHandle(I->getDest());
   auto lhsW = getWeightHandle(I->getLHS());
   auto rhsW = getWeightHandle(I->getRHS());
@@ -922,6 +950,34 @@ void Interpreter::fwdElementMulInst(const ElementMulInst *I) {
 }
 
 void Interpreter::fwdElementDivInst(const ElementDivInst *I) {
+
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    auto destTy = I->getDest()->getType();
+    auto lhsTy = I->getLHS()->getType();
+    auto rhsTy = I->getRHS()->getType();
+
+    float destScale = destTy->getScale();
+    float lhsScale = lhsTy->getScale();
+    float rhsScale = rhsTy->getScale();
+
+    int32_t destOffset = destTy->getOffset();
+    int32_t lhsOffset = lhsTy->getOffset();
+    int32_t rhsOffset = rhsTy->getOffset();
+
+    auto outW = getWeightHandle<int8_t>(I->getDest());
+    auto lhsW = getWeightHandle<int8_t>(I->getLHS());
+    auto rhsW = getWeightHandle<int8_t>(I->getRHS());
+    for (size_t i = 0, e = outW.size(); i < e; i++) {
+      //    s_d * (i_d - o_d) = (s_l * (i_l - o_l)) / (s_r * (i_r - o_r))
+      // => i_d = (s_l * (i_l - o_l)) / (s_d * s_r * (i_r - o_r)) + o_d
+      float l = lhsScale * float(lhsW.raw(i) - lhsOffset);
+      float r = rhsScale * destScale * float(rhsW.raw(i) - rhsOffset);
+      int32_t q = std::round(l / r + destOffset);
+      outW.raw(i) = quantization::clip<int32_t, int8_t>(q);
+    }
+    return;
+  }
+
   auto outW = getWeightHandle(I->getDest());
   auto lhsW = getWeightHandle(I->getLHS());
   auto rhsW = getWeightHandle(I->getRHS());
