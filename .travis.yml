@@ -41,7 +41,7 @@ matrix:
         - sudo pip install awscli --upgrade
       install:
         - mkdir build && cd build
-        - cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF -DGLOW_USE_COVERAGE=ON ../
+        - cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_CPU=OFF -DGLOW_WITH_OPENCL=OFF -DGLOW_USE_COVERAGE=ON ../
       script:
         - ../.travis/run_coverage.sh
 
