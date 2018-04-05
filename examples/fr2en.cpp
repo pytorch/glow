@@ -384,7 +384,7 @@ void Model::translate(const std::vector<std::string> &batch) {
 
 int main(int argc, char **argv) {
   std::array<const llvm::cl::OptionCategory *, 3> showCategories = {
-    {&debugCat, &quantizationCat, &fr2enCat}};
+      {&debugCat, &quantizationCat, &fr2enCat}};
   llvm::cl::HideUnrelatedOptions(showCategories);
   llvm::cl::ParseCommandLineOptions(
       argc, argv, "Translate sentences from French to English");

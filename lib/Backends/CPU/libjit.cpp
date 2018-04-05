@@ -35,14 +35,10 @@ float8 LoaduFloat8(const float *p) {
 }
 
 /// Perform an unaligned store to a float pointer.
-void StoreuFloat8(float *p, float8 v) {
-  memcpy(p, &v, sizeof(float8));
-}
+void StoreuFloat8(float *p, float8 v) { memcpy(p, &v, sizeof(float8)); }
 
 /// Perform an unaligned addition to a float pointer.
-void AdduFloat8(float *p, float8 v) {
-  StoreuFloat8(p, LoaduFloat8(p) + v);
-}
+void AdduFloat8(float *p, float8 v) { StoreuFloat8(p, LoaduFloat8(p) + v); }
 
 namespace {
 
@@ -520,7 +516,7 @@ void libjit_matmul_dot4x16(int k, const float *a, int lda, const float *b,
 /// Compute a portion of C one 4*16 block at a time.  Handle ragged edges with
 /// calls to a slow but general helper.
 void libjit_matmul_inner(int m, int n, int k, const float *a, int lda,
-                         const float *b, int ldb, float *c, int ldc) { 
+                         const float *b, int ldb, float *c, int ldc) {
   constexpr int mc = 4;
   constexpr int nr = 16;
   // The tiling scheme naturally divides the input matrices into 2 parts each;
