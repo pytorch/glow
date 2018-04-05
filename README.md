@@ -65,7 +65,7 @@ good idea to build the project outside of the source directory.
   ```
   mkdir build_Debug
   cd build_Debug
-  cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_CPU=1 ../Glow
+  cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug ../Glow
   ninja all
   ```
 
@@ -82,7 +82,6 @@ where to find llvm using `-DCMAKE_PREFIX_PATH`.  For example:
   ```
   cmake -G Ninja ../Glow \
       -DCMAKE_BUILD_TYPE=Debug \
-      -DGLOW_WITH_CPU=1 \
       -DCMAKE_PREFIX_PATH=/usr/local/opt/llvm
   ```
 
