@@ -13,13 +13,13 @@ IMAGES=${GLOW_SRC}/tests/images/imagenet
 # Compiler.
 CXX=clang++
 
-run_resnet50: download_weights
+run_resnet50: resnet50
 	cd build; \
 	for file in ${IMAGES}/*; do \
 		./resnet50 $$file; \
 	done
 
-run_resnet50_quantized: download_weights
+run_resnet50_quantized: resnet50_quantized
 	cd build_quantized; \
 	for file in ${IMAGES}/*; do \
 		./resnet50 $$file; \
@@ -33,11 +33,11 @@ resnet50: build/main.o build/resnet50.o
 resnet50_quantized: build/main.o build_quantized/resnet50.o
 	${CXX} -o build_quantized/resnet50 build_quantized/resnet50.o build/main.o -lpng
 
-build/resnet50.o:
+build/resnet50.o: download_weights
 	mkdir -p build
 	${LOADER} ${IMAGES}/dog_207.png -image_mode=0to1 -d resnet50 -cpu -emit-bundle build
 
-build_quantized/resnet50.o:
+build_quantized/resnet50.o: download_weights
 	mkdir -p build_quantized
 	# Capture quantization profile based on all inputs.
 	${LOADER} ${IMAGES}/*.png -image_mode=0to1 -dump_profile=profile.yml -d resnet50
