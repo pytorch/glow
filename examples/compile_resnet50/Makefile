@@ -7,20 +7,17 @@ LOADER?=~/src/build/Glow/bin/loader
 # The root directory of the Glow repo.
 GLOW_SRC?=~/src/Glow
 
+# Should quantize the network (YES/NO)?
+QUANTIZE?=YES
+
 # Path to the images.
 IMAGES=${GLOW_SRC}/tests/images/imagenet
 
 # Compiler.
 CXX=clang++
 
-run_resnet50: resnet50
+run: resnet50
 	cd build; \
-	for file in ${IMAGES}/*; do \
-		./resnet50 $$file; \
-	done
-
-run_resnet50_quantized: resnet50_quantized
-	cd build_quantized; \
 	for file in ${IMAGES}/*; do \
 		./resnet50 $$file; \
 	done
@@ -29,20 +26,18 @@ run_resnet50_quantized: resnet50_quantized
 resnet50: build/main.o build/resnet50.o
 	${CXX} -o build/resnet50 build/resnet50.o build/main.o -lpng
 
-# Build executable for quantized resnet50. 
-resnet50_quantized: build/main.o build_quantized/resnet50.o
-	${CXX} -o build_quantized/resnet50 build_quantized/resnet50.o build/main.o -lpng
-
+ifeq ($(QUANTIZE),YES)
 build/resnet50.o: download_weights
 	mkdir -p build
-	${LOADER} ${IMAGES}/dog_207.png -image_mode=0to1 -d resnet50 -cpu -emit-bundle build
-
-build_quantized/resnet50.o: download_weights
-	mkdir -p build_quantized
 	# Capture quantization profile based on all inputs.
 	${LOADER} ${IMAGES}/*.png -image_mode=0to1 -dump_profile=profile.yml -d resnet50
 	# Create bundle with quantized weights and computation graph.
-	${LOADER} ${IMAGES}/dog_207.png -image_mode=0to1 -load_profile=profile.yml -d resnet50 -cpu -emit-bundle build_quantized
+	${LOADER} ${IMAGES}/dog_207.png -image_mode=0to1 -load_profile=profile.yml -d resnet50 -cpu -emit-bundle build
+else
+build/resnet50.o: download_weights
+	mkdir -p build
+	${LOADER} ${IMAGES}/dog_207.png -image_mode=0to1 -d resnet50 -cpu -emit-bundle build
+endif
 
 build/main.o:
 	mkdir -p build
