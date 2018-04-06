@@ -30,6 +30,14 @@ generators can use to generate efficient machine code.
 Glow builds and runs on macOS and Linux. The software depends on a modern C++
 compiler that supports C++11, on CMake, LLVM, protocol buffers, and libpng.
 
+#### Submodules
+
+Glow depends on googletest as a submodule.  To get it, run:
+
+  ```
+  git submodule update --init --recursive
+  ```
+
 #### macOS
 
 Install the required dependencies using [Homebrew](https://brew.sh/):
