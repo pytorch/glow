@@ -121,8 +121,7 @@ repository. Makefile with appropriate targets is provided for your convinience.
 
 ### Floating point network
 To build and run the example, you just need to execute:
-* `make resnet50`
-* `make run_resnet50`
+* `QUANTIZE=NO make run`
 
 You may need to adjust the environment variables at the top to match
 your setup, primarily LOADER and GLOW_SRC vars.
@@ -150,10 +149,9 @@ results of the network model execution.
 
 ### Quantized network
 To build and run the example, you just need to execute:
-* `make resnet50_quantized`
-* `make run_resnet50_quantized`
+* `make run`. By default, quantized resnet example is going to be executed.
 
-The `resnet50_quantized` performs almost the same steps as `resnet50`
+This run performs almost the same steps as non-quantized resnet50 version
 except it emits bundle based on the quantization profile:
 `loader tests/images/imagenet/cat_285.png -image_mode=0to1 -d resnet50
 -load_profile=profile.yml -jit -emit-bundle build`
