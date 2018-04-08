@@ -662,9 +662,8 @@ void libjit_convDKKC8_foreach_xy_filter_pixels(
     for (size_t fy = 0; fy < filterSize; fy++) {
 
       // For each x step in the input/output tensor:
-      ssize_t x = -(ssize_t)pad;
-      for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
-        ssize_t inx = x + fx;
+      for (size_t outx = 0; outx < outWdims[1]; outx++) {
+        ssize_t inx = (ssize_t)outx * stride - pad + fx;
 
         // Ignore out-of-bounds X values.
         if (inx < 0 || inx >= (ssize_t)inWdims[1]) {
@@ -672,13 +671,12 @@ void libjit_convDKKC8_foreach_xy_filter_pixels(
         }
 
         // For each y step in the input/output tensor, in steps of \p
-        // unrollYStep.
-        ssize_t y = -(ssize_t)pad;
-        size_t ay = 0;
-        for (; ay < outWdims[2]; y += stride * unrollYStep, ay += unrollYStep) {
-          ssize_t iny = y + fy;
+        // unrollYStep. We process \p unrollYStep pixels of Y in one iteration.
+        size_t outy = 0;
+        for (; outy < outWdims[2]; outy += unrollYStep) {
+          ssize_t iny = (ssize_t)outy * stride - pad + fy;
 
-          // Ignore index access below zero (this is due to padding).
+          // Ignore out of bound indices.
           if (iny < 0 || (iny + stride * unrollYStep) >= (ssize_t)inWdims[2]) {
             continue;
           }
@@ -686,14 +684,14 @@ void libjit_convDKKC8_foreach_xy_filter_pixels(
           // Convolve the (x,y .. y + ywidth) values.
           libjit_convDKKC8_convolve_channel(
               outW, inW, filterW, outWdims, inWdims, filterWdims, sampleN,
-              outChannel, depthUnroll, unrollYStep, numChannels, inx, iny, ax,
-              ay, fx, fy, stride);
+              outChannel, depthUnroll, unrollYStep, numChannels, inx, iny, outx,
+              outy, fx, fy, stride);
         } // For each Y group in the output.
 
         // Handle the remaining Y in the row in groups of size 1.
-        for (; ay < outWdims[2]; y += stride, ay++) {
-          ssize_t iny = y + fy;
-          // Ignore index access below zero (this is due to padding).
+        for (; outy < outWdims[2]; outy++) {
+          ssize_t iny = (ssize_t)outy * stride - pad + fy;
+          // Ignore out of bound indices.
           if (iny < 0 || iny >= (ssize_t)inWdims[2]) {
             continue;
           }
@@ -701,8 +699,8 @@ void libjit_convDKKC8_foreach_xy_filter_pixels(
           // Convolve a single (x,y) value.
           libjit_convDKKC8_convolve_channel(
               outW, inW, filterW, outWdims, inWdims, filterWdims, sampleN,
-              outChannel, depthUnroll, 1, numChannels, inx, iny, ax, ay, fx, fy,
-              stride);
+              outChannel, depthUnroll, 1, numChannels, inx, iny, outx, outy, fx,
+              fy, stride);
         } // For each Y, in step of 1, in the output.
 
       } // For each X in the output.
@@ -720,19 +718,17 @@ void libjit_convDKKC8_foreach_xy_pixels_filter(
     const size_t *inWdims, const size_t *filterWdims, const size_t *biasWdims,
     size_t filterSize, size_t stride, size_t pad) {
   // For each (x,y) step in the input/output tensor:
-  ssize_t x = -(ssize_t)pad;
-  for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
-    ssize_t y = -(ssize_t)pad;
-    for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+  for (size_t outx = 0; outx < outWdims[1]; outx++) {
+    for (size_t outy = 0; outy < outWdims[2]; outy++) {
 
       // For each element in the convolution-filter:
       for (size_t fx = 0; fx < filterSize; fx++) {
         for (size_t fy = 0; fy < filterSize; fy++) {
 
-          // Calculate the specific input x,y that we calculate in this
+          // Calculate the specific input x,y that we process in this
           // iteration.
-          ssize_t inx = x + fx;
-          ssize_t iny = y + fy;
+          ssize_t inx = (ssize_t)outx * stride - pad + fx;
+          ssize_t iny = (ssize_t)outy * stride - pad + fy;
 
           // Ignore index access below zero (this is due to padding).
           if (inx < 0 || iny < 0 || inx >= (ssize_t)inWdims[1] ||
@@ -742,8 +738,8 @@ void libjit_convDKKC8_foreach_xy_pixels_filter(
 
           libjit_convDKKC8_convolve_channel(
               outW, inW, filterW, outWdims, inWdims, filterWdims, sampleN,
-              outChannel, depthUnroll, 1, numChannels, inx, iny, ax, ay, fx, fy,
-              stride);
+              outChannel, depthUnroll, 1, numChannels, inx, iny, outx, outy, fx,
+              fy, stride);
         } // For each Y in the filter.
       }   // For each X in the filter.
     }     // For each Y in the output.
@@ -826,10 +822,8 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
           for (size_t fy = 0; fy < filterSize; fy++) {
 
             // For each convolution 'jump' in the input tensor:
-            ssize_t x = -(ssize_t)pad;
-            for (size_t ax = 0; ax < outWdims[1]; x += stride, ax++) {
-              ssize_t y = -(ssize_t)pad;
-              for (size_t ay = 0; ay < outWdims[2]; y += stride, ay++) {
+            for (size_t outx = 0; outx < outWdims[1]; outx++) {
+              for (size_t outy = 0; outy < outWdims[2]; outy++) {
 
                 // Process 'depthUnroll' output pixels at once. Each scalar here
                 // represents the convolution sum for one (x,y) point in the
@@ -842,18 +836,20 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
                   sum[i] = 0;
                 }
 
-                ssize_t ox = x + fx;
-                ssize_t oy = y + fy;
+                // Calculate the specific input x,y that we process in this
+                // iteration.
+                ssize_t inx = (ssize_t)outx * stride - pad + fx;
+                ssize_t iny = (ssize_t)outy * stride - pad + fy;
 
                 // Ignore index access below zero (this is due to padding).
-                if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
-                    oy >= (ssize_t)inWdims[2]) {
+                if (inx < 0 || iny < 0 || inx >= (ssize_t)inWdims[1] ||
+                    iny >= (ssize_t)inWdims[2]) {
                   continue;
                 }
 
                 // Calculate the indices into the Filter and Input buffers.
                 size_t inIdx =
-                    libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, 0);
+                    libjit_getXYZW(inWdims, n, (size_t)inx, (size_t)iny, 0);
                 size_t filterIdx = libjit_getXYZW(filterWdims, d, fx, fy, 0);
                 size_t sliceSize =
                     filterWdims[1] * filterWdims[2] * filterWdims[3];
@@ -881,7 +877,8 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
 
                 // Store the results to the output buffer.
                 for (unsigned i = 0; i < depthUnroll; i++) {
-                  outW[libjit_getXYZW(outWdims, n, ax, ay, d + i)] += sum[i];
+                  outW[libjit_getXYZW(outWdims, n, outx, outy, d + i)] +=
+                      sum[i];
                 }
               }
             }
