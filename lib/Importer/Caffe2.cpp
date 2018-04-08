@@ -153,12 +153,13 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
 
   const std::string &typeName = op.type();
+  const std::string &opName = op.name().length() ? op.name() : op.output(0);
 
   if (typeName == "Relu") {
     // Load the inputs:
     auto *in = getOrCreateNodeByName(op.input(0));
     // Create the RELU:
-    auto *R = G_.createRELU(op.name(), in);
+    auto *R = G_.createRELU(opName, in);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = R;
@@ -207,7 +208,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
 
     // Caffe passes the input as NCHW, and we expect the input to be NHWC.
-    auto *tr = G_.createTranspose(op.name(), in, NCHW2NHWC);
+    auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
 
     // Calculate the size and allocate the output buffer.
     ShapeNHWC idim = ShapeNHWC(tr->dims());
@@ -216,11 +217,11 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
-    auto *node = G_.createConv(op.name(), tr, filter, bias, outTy, depth,
-                               kernel, stride, pad);
+    auto *node = G_.createConv(opName, tr, filter, bias, outTy, depth, kernel,
+                               stride, pad);
 
     // Transpose the output back.
-    auto *N = G_.createTranspose(op.name(), node, NHWC2NCHW);
+    auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = N;
@@ -245,7 +246,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
              "Use of pad_[lrtb] is currently unsupported.");
     }
 
-    auto *tr = G_.createTranspose(op.name(), in, NCHW2NHWC);
+    auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
 
     // If 'global_pooling' is set then the operation will pool over the size of
     // the input by doing: kernel = height/width.
@@ -256,11 +257,11 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     Node *node = nullptr;
     if (typeName == "MaxPool") {
-      node = G_.createPoolMax(op.name(), tr, kernel, stride, pad);
+      node = G_.createPoolMax(opName, tr, kernel, stride, pad);
     } else {
-      node = G_.createPoolAvg(op.name(), tr, kernel, stride, pad);
+      node = G_.createPoolAvg(opName, tr, kernel, stride, pad);
     }
-    auto *N = G_.createTranspose(op.name(), node, NHWC2NCHW);
+    auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
 
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
@@ -291,7 +292,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
 
     auto channel = getChannel(dict);
-    auto *node = G_.createBatchNormalization(op.name(), in, channel, epsilon);
+    auto *node = G_.createBatchNormalization(opName, in, channel, epsilon);
 
     // Load the weights.
     cast<Variable>(node->getScale())->copyFrom(scale);
@@ -314,7 +315,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
 
     auto channel = getChannel(dict);
-    Node *node = G_.createConcat(op.name(), inputs, channel);
+    Node *node = G_.createConcat(opName, inputs, channel);
 
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;
@@ -324,7 +325,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "Sum") {
     auto *in0 = getOrCreateNodeByName(op.input(0));
     auto *in1 = getOrCreateNodeByName(op.input(1));
-    auto *node = G_.createAdd(op.name(), in0, in1);
+    auto *node = G_.createAdd(opName, in0, in1);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;
@@ -343,7 +344,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto flatten = flattenCdr(in->getType()->dims());
     in = G_.createReshape("reshape", in, {flatten.first, flatten.second});
 
-    auto *node = G_.createSoftMax(op.name(), in, softmaxExpected);
+    auto *node = G_.createSoftMax(opName, in, softmaxExpected);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;
@@ -365,7 +366,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         "weights", Variable::VisibilityKind::Private, std::move(wtag)));
     auto B = G_.getParent()->addVar(new Variable(
         "biases", Variable::VisibilityKind::Private, std::move(*b)));
-    auto *FC = G_.createFullyConnected(op.name(), in, W, B);
+    auto *FC = G_.createFullyConnected(opName, in, W, B);
 
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
@@ -381,12 +382,12 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     float beta = loadFloat(dict["beta"]);
     float k = loadFloat(dict["bias"]);
 
-    auto *tr = G_.createTranspose(op.name(), in, NCHW2NHWC);
+    auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
 
-    auto *node = G_.createLocalResponseNormalization(op.name(), tr, size / 2,
+    auto *node = G_.createLocalResponseNormalization(opName, tr, size / 2,
                                                      alpha, beta, k);
 
-    auto *N = G_.createTranspose(op.name(), node, NHWC2NCHW);
+    auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
 
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
@@ -409,16 +410,16 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       if (axis == -1) {
         axis = in0->dims().size() - in1->dims().size();
       }
-      finalIn1 = G_.createBroadcast(op.name(), in1, in0->dims(), axis);
+      finalIn1 = G_.createBroadcast(opName, in1, in0->dims(), axis);
     } else {
       finalIn1 = in1;
     }
 
     Node *node = nullptr;
     if (typeName == "Mul") {
-      node = G_.createMul(op.name(), in0, finalIn1);
+      node = G_.createMul(opName, in0, finalIn1);
     } else {
-      node = G_.createAdd(op.name(), in0, finalIn1);
+      node = G_.createAdd(opName, in0, finalIn1);
     }
 
     // Save the outputs:
@@ -434,7 +435,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     size_t group = loadInt(dict["group"]);
     size_t kernel = loadInt(dict["kernel"]);
 
-    Node *node = G_.createChannelShuffle(op.name(), in, group, kernel);
+    Node *node = G_.createChannelShuffle(opName, in, group, kernel);
 
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
