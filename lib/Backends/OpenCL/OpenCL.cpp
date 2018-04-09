@@ -33,7 +33,9 @@ struct KernelLaunch {
 };
 
 // This defines the string "SHADER_CODE".
+static const char* SHADER_CODE = R"(
 #include "kernels.cl"
+)";
 
 namespace {
 llvm::cl::OptionCategory OpenCLBackendCat("Glow OpenCL Backend Options");
