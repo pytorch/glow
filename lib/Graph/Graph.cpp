@@ -732,8 +732,22 @@ ARITHMETIC_FUN_DEF(Sub);
 ARITHMETIC_FUN_DEF(Div);
 ARITHMETIC_FUN_DEF(Max);
 ARITHMETIC_FUN_DEF(Min);
-ARITHMETIC_FUN_DEF(CmpLTE);
 #undef ARITHMETIC_FUN_DEF
+
+// For the quantized CmpLTE instruction, we require that the scale params be
+// (1.0, 0), so that the actual value and comparison value match.
+CmpLTENode *Function::createCmpLTE(llvm::StringRef name, NodeValue LHS,
+                                   NodeValue RHS) {
+  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
+  TypeRef OT;
+  if (LHS.getType()->isQuantizedType()) {
+    OT = getParent()->uniqueType(LHS.getType()->getElementType(), LHS.dims(),
+                                 1.0, 0);
+  } else {
+    OT = getParent()->uniqueType(*LHS.getType());
+  }
+  return addNode(new CmpLTENode(name, OT, LHS, RHS));
+}
 
 PowNode *Function::createPow(llvm::StringRef name, NodeValue Base, float exp) {
   return addNode(new PowNode(name, Base.getType(), Base, exp));

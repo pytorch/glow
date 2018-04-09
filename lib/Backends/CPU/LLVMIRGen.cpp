@@ -824,8 +824,57 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     ARITHMETIC_BINARY_OP_CASE(ElementSub, "element_sub");
     ARITHMETIC_BINARY_OP_CASE(ElementMax, "elementmax");
     ARITHMETIC_BINARY_OP_CASE(ElementMin, "elementmin");
-    ARITHMETIC_BINARY_OP_CASE(ElementCmpLTE, "element_cmp_lte");
 #undef ARITHMETIC_BINARY_OP_CASE
+
+  case Kinded::Kind::ElementCmpLTEInstKind: {
+    auto *CI = cast<ElementCmpLTEInst>(I);
+    auto *dest = CI->getDest();
+    auto *lhs = CI->getLHS();
+    auto *rhs = CI->getRHS();
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *lhsPtr = emitBufferAddress(builder, lhs, kernel, bufferToArgNum);
+    auto *rhsPtr = emitBufferAddress(builder, rhs, kernel, bufferToArgNum);
+
+    // Need _kernel suffix since these operations are implemented as
+    // "data-parallel" kernels in libjit.
+    auto *F = getFunction("element_cmp_lte_kernel", dest->getElementType());
+    auto *elementTy = getElementType(builder, dest);
+
+    if (lhs->getType()->isQuantizedType()) {
+      auto *lhsTy = lhs->getType();
+      auto *rhsTy = rhs->getType();
+
+      auto *lhsOffset = emitConstI32(builder, lhsTy->getOffset());
+      auto *rhsOffset = emitConstI32(builder, rhsTy->getOffset());
+
+      // We can divide both sides of the comparison by the rhs scale since it is
+      // strictly positive; this saves one rescale within the backend. The
+      // inequalities are:
+      //     s_l * (i_l - o_l) <= s_r * (i_r - o_r)
+      // <=> (s_l / s_r) * (i_l - o_l) <= i_r - o_r
+      float scale = lhsTy->getScale() / rhsTy->getScale();
+      auto scaleParams = quantization::quantizeScaleOffset32To8(scale, 0);
+      auto *cmpPre = emitConstI32(builder, scaleParams.pre_);
+      auto *cmpPost = emitConstI32(builder, scaleParams.post_);
+      auto *cmpScale = emitConstI32(builder, scaleParams.scale_);
+
+      auto *stackedOpCall =
+          builder.CreateCall(F, {loopCount, lhsPtr, rhsPtr, lhsOffset,
+                                 rhsOffset, cmpPre, cmpPost, cmpScale});
+      auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,
+                                         loopCount, "buffer.element.addr");
+      builder.CreateStore(stackedOpCall, destAddr);
+    } else {
+      auto *pointerNull =
+          llvm::ConstantPointerNull::get(elementTy->getPointerTo());
+      auto *stackedOpCall =
+          builder.CreateCall(F, {loopCount, lhsPtr, rhsPtr, pointerNull});
+      auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,
+                                         loopCount, "buffer.element.addr");
+      builder.CreateStore(stackedOpCall, destAddr);
+    }
+    break;
+  }
 
   case Kinded::Kind::ElementMulInstKind: {
     auto *MI = cast<ElementMulInst>(I);

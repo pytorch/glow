@@ -775,8 +775,16 @@ VERIFY_ARITHMETIC(Sub);
 VERIFY_ARITHMETIC(Div);
 VERIFY_ARITHMETIC(Max);
 VERIFY_ARITHMETIC(Min);
-VERIFY_ARITHMETIC(CmpLTE);
 #undef VERIFY_ARITHMETIC
+
+void CmpLTENode::verify() const {
+  verifyArithmetic(getLHS(), getRHS(), getResult());
+  if (getResult()->getType()->isQuantizedType()) {
+    // Quantization scale params for result must be (1.0, 0).
+    assert(getResult()->getType()->getScale() == 1.0);
+    assert(getResult()->getType()->getOffset() == 0);
+  }
+}
 
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
   void NODE_NAME_##Node::verify() const {                                      \
