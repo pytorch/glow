@@ -163,10 +163,18 @@ LLVMIRGen::getOrCreateFunctionDebugInfo(llvm::Function *F, llvm::DIScope *scope,
 void LLVMIRGen::initDebugInfo() {
   if (!emitDebugInfo)
     return;
+  // Remove any existing debug info version flags from the module to
+  // avoid possible conflicts, which may happen if libjit was compiled
+  // using an older version of Clang which uses the old debug info format.
+  llvm::NamedMDNode *NMD = llmodule_->getModuleFlagsMetadata();
+  if (NMD) {
+    NMD->eraseFromParent();
+  }
   // Add the current debug info version into the module.
   llmodule_->addModuleFlag(llvm::Module::Override, "Debug Info Version",
                            llvm::DEBUG_METADATA_VERSION);
   llmodule_->addModuleFlag(llvm::Module::Override, "Dwarf Version", 4);
+  llmodule_->addModuleFlag(llvm::Module::Override, "PIC Level", 2);
 
   // Store the base addresses into global variables to enable access to weights
   // and activations inside the debugger.
