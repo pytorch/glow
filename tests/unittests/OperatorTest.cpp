@@ -903,6 +903,53 @@ TEST_P(Operator, QuantizedArithmeticUnrescaled) {
   }
 }
 
+TEST_P(Operator, QuantizedCmpLTE) {
+  // In this test we check the correctness of the quantized
+  // less-than-or-equal-to comparison operator.
+  const int len = 1000;
+  auto TQA = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.1, -3);
+  auto TQB = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 5);
+
+  auto *QA = mod_.createVariable(ElemKind::Int8QTy, {len}, TQA->getScale(),
+                                 TQA->getOffset(), "QA",
+                                 Variable::VisibilityKind::Public);
+  auto *QB = mod_.createVariable(ElemKind::Int8QTy, {len}, TQB->getScale(),
+                                 TQB->getOffset(), "QB",
+                                 Variable::VisibilityKind::Public);
+  auto *Out = mod_.createVariable(ElemKind::Int8QTy, {len}, 1.0, 0, "cmpLTE",
+                                  Variable::VisibilityKind::Public,
+                                  Variable::TrainKind::None);
+
+  auto QAH = QA->getHandle<int8_t>();
+  auto QBH = QB->getHandle<int8_t>();
+  auto OH = Out->getHandle<int8_t>();
+
+  QAH.randomize(-50, 50);
+  QBH.randomize(-50, 50);
+
+  // Apply cmpLTE quantized.
+  Node *cmpLTE = F_->createCmpLTE("cmpLTE", QA, QB);
+
+  // Save result of the operation.
+  F_->createSave("saveCmpLTE", cmpLTE, Out);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  int count = 0;
+  for (size_t i = 0; i < len; i++) {
+    float a = TQA->getScale() * (QAH.at({i}) - TQA->getOffset());
+    float b = TQB->getScale() * (QBH.at({i}) - TQB->getOffset());
+    int8_t cmpLTE = a <= b ? 1 : 0;
+
+    if (OH.at({i}) != cmpLTE) {
+      count++;
+    }
+  }
+  // Require that the number of off-by-1 errors be less than 0.3%.
+  EXPECT_LT(count, 3);
+}
+
 TEST_P(Operator, TestQuantizedRescaleSequence) {
   const int len = 100;
 

@@ -1055,7 +1055,31 @@ void Interpreter::fwdElementMinInst(const ElementMinInst *I) {
   }
 }
 
+// For both quantized and non-quantized CmpLTE, we set the result to 1.0/0.0.
+// In the quantized case, we assume that the scale params are (1.0, 0).
 void Interpreter::fwdElementCmpLTEInst(const ElementCmpLTEInst *I) {
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    auto lhsTy = I->getLHS()->getType();
+    auto rhsTy = I->getRHS()->getType();
+
+    float lhsScale = lhsTy->getScale();
+    float rhsScale = rhsTy->getScale();
+
+    int32_t lhsOffset = lhsTy->getOffset();
+    int32_t rhsOffset = rhsTy->getOffset();
+
+    auto outW = getWeightHandle<int8_t>(I->getDest());
+    auto lhsW = getWeightHandle<int8_t>(I->getLHS());
+    auto rhsW = getWeightHandle<int8_t>(I->getRHS());
+    for (size_t i = 0, e = outW.size(); i < e; i++) {
+      outW.raw(i) = lhsScale * (lhsW.raw(i) - lhsOffset) <=
+                            rhsScale * (rhsW.raw(i) - rhsOffset)
+                        ? 1.0
+                        : 0.0;
+    }
+    return;
+  }
+
   auto outW = getWeightHandle(I->getDest());
   auto lhsW = getWeightHandle(I->getLHS());
   auto rhsW = getWeightHandle(I->getRHS());
