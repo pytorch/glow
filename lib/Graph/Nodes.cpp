@@ -889,9 +889,12 @@ void SaveNode::verify() const { checkSameType(getInput(), getOutput()); }
 void PowNode::verify() const { checkSameType(getResult(), getBase()); }
 
 void SelectNode::verify() const {
-  checkSameType(getResult(), getCond());
-  checkSameType(getResult(), getLHS());
-  checkSameType(getResult(), getRHS());
+  assert(getResult().getElementType() == getCond().getElementType());
+  assert(getResult().getElementType() == getLHS().getElementType());
+  assert(getResult().getElementType() == getRHS().getElementType());
+  checkSameShape(getResult(), getCond());
+  checkSameShape(getResult(), getLHS());
+  checkSameShape(getResult(), getRHS());
 }
 
 void ReluNode::verify() const { verifyRelu(getResult(), getInput()); }
