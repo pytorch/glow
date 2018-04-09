@@ -1,6 +1,4 @@
 
-static const char* SHADER_CODE = R"(
-
 /// This type is always 32 bits.
 typedef unsigned cl_uint32_t;
 /// This type is always 64 bits.
@@ -444,4 +442,3 @@ __kernel void inserttensorW(__global void *mem, cl_uint32_t dest,
                             ShapeNHWC offset) {
   inserttensorK(&mem[dest], &mem[src], odim, idim, offset);
 }
-)";
