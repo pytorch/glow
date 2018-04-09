@@ -754,11 +754,23 @@ PowNode *Function::createPow(llvm::StringRef name, NodeValue Base, float exp) {
   return addNode(new PowNode(name, Base.getType(), Base, exp));
 }
 
+SelectNode *Function::createSelect(llvm::StringRef name, TypeRef outTy,
+                                   NodeValue Cond, NodeValue LHS,
+                                   NodeValue RHS) {
+  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
+  assert(LHS.dims() == Cond.dims() && "Invalid operand shapes");
+  assert(LHS.dims() == outTy->dims() && "Invalid result shape");
+  auto OT = getParent()->uniqueType(*outTy);
+  return addNode(new SelectNode(name, OT, Cond, LHS, RHS));
+}
+
 SelectNode *Function::createSelect(llvm::StringRef name, NodeValue Cond,
                                    NodeValue LHS, NodeValue RHS) {
-  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
-  assert(Cond.dims() == RHS.dims() && "Invalid operand shapes");
-  return addNode(new SelectNode(name, Cond, LHS, RHS));
+  auto inDims = LHS.dims();
+  assert(inDims.size() > 0);
+  ShapeVector outDims(inDims.begin(), inDims.end());
+  auto OT = getParent()->uniqueType(LHS->getElementType(), outDims);
+  return createSelect(name, OT, Cond, LHS, RHS);
 }
 
 SplatNode *Function::createSplat(llvm::StringRef name, TypeRef ty,

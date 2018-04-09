@@ -5,6 +5,7 @@
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Quantization/Quantization.h"
 
 #include "gtest/gtest.h"
 
@@ -635,10 +636,15 @@ TEST_P(Operator, IntFC) {
   EE_.run({}, {});
 
   auto H = res->getPayload().getHandle();
-  // Check that the difference in the results is less than 0.2.
+  // Check that there aren't too many elements with a difference in the results
+  // of greater than 0.2.
+  int count = 0;
   for (int i = 0, e = H.size(); i < e; i++) {
-    EXPECT_NEAR(H.raw(i), 0, 0.2);
+    if (std::abs(H.raw(i)) > 0.2) {
+      count++;
+    }
   }
+  EXPECT_LT(count, 2);
 }
 
 TEST_P(InterpOnly, EntropyLossTest) {
@@ -903,12 +909,15 @@ TEST_P(Operator, QuantizedArithmeticUnrescaled) {
   }
 }
 
-TEST_P(Operator, QuantizedCmpLTE) {
+TEST_P(Operator, QuantizedCmpLTEAndSelect) {
   // In this test we check the correctness of the quantized
   // less-than-or-equal-to comparison operator.
   const int len = 1000;
   auto TQA = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.1, -3);
   auto TQB = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 5);
+  auto TQC = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.8, 3);
+  auto TQD = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.2, -4);
+  auto OT = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.5, -2);
 
   auto *QA = mod_.createVariable(ElemKind::Int8QTy, {len}, TQA->getScale(),
                                  TQA->getOffset(), "QA",
@@ -916,37 +925,57 @@ TEST_P(Operator, QuantizedCmpLTE) {
   auto *QB = mod_.createVariable(ElemKind::Int8QTy, {len}, TQB->getScale(),
                                  TQB->getOffset(), "QB",
                                  Variable::VisibilityKind::Public);
-  auto *Out = mod_.createVariable(ElemKind::Int8QTy, {len}, 1.0, 0, "cmpLTE",
+  auto *QC = mod_.createVariable(ElemKind::Int8QTy, {len}, TQC->getScale(),
+                                 TQC->getOffset(), "QC",
+                                 Variable::VisibilityKind::Public);
+  auto *QD = mod_.createVariable(ElemKind::Int8QTy, {len}, TQD->getScale(),
+                                 TQD->getOffset(), "QD",
+                                 Variable::VisibilityKind::Public);
+  auto *Out = mod_.createVariable(ElemKind::Int8QTy, {len}, 1.5, -2, "out",
                                   Variable::VisibilityKind::Public,
                                   Variable::TrainKind::None);
 
   auto QAH = QA->getHandle<int8_t>();
   auto QBH = QB->getHandle<int8_t>();
+  auto QCH = QC->getHandle<int8_t>();
+  auto QDH = QD->getHandle<int8_t>();
   auto OH = Out->getHandle<int8_t>();
 
-  QAH.randomize(-50, 50);
-  QBH.randomize(-50, 50);
+  QAH.randomize(-129, 128);
+  QBH.randomize(-129, 128);
+  QCH.randomize(-129, 128);
+  QDH.randomize(-129, 128);
 
-  // Apply cmpLTE quantized.
+  // Apply comparison and selection quantized.
   Node *cmpLTE = F_->createCmpLTE("cmpLTE", QA, QB);
+  Node *select = F_->createSelect("select", OT, cmpLTE, QC, QD);
 
   // Save result of the operation.
-  F_->createSave("saveCmpLTE", cmpLTE, Out);
+  F_->createSave("save", select, Out);
 
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
 
+  int count_strict = 0;
   int count = 0;
   for (size_t i = 0; i < len; i++) {
     float a = TQA->getScale() * (QAH.at({i}) - TQA->getOffset());
     float b = TQB->getScale() * (QBH.at({i}) - TQB->getOffset());
-    int8_t cmpLTE = a <= b ? 1 : 0;
+    float c = TQC->getScale() * (QCH.at({i}) - TQC->getOffset());
+    float d = TQD->getScale() * (QDH.at({i}) - TQD->getOffset());
+    float tmp = (a <= b) ? c : d;
+    int32_t q = std::round(tmp / 1.5 - 2);
+    int8_t select = quantization::clip<int32_t, int8_t>(q);
 
-    if (OH.at({i}) != cmpLTE) {
-      count++;
+    if (OH.at({i}) != select) {
+      count_strict++;
+      if (std::abs(OH.at({i}) - select) > 1) {
+        count++;
+      }
     }
   }
-  // Require that the number of off-by-1 errors be less than 0.3%.
+  // Require that the number of off-by-1 errors be at most 0.5%.
+  EXPECT_LT(count_strict, 6);
   EXPECT_LT(count, 3);
 }
 

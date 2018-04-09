@@ -524,6 +524,21 @@ DEFINE_DATA_PARALLEL_KERNEL(libjit_tanh_kernel_f, float,
                             1 - 2 / (expf(LHS[idx] * 2) + 1))
 DEFINE_DATA_PARALLEL_KERNEL(libjit_elementselect_kernel_f, float,
                             (LHS[idx] != 0.0) ? RHS[idx] : op3[idx])
+
+int8_t libjit_elementselect_kernel_i8(size_t idx, const int8_t *cond,
+                                      const int8_t *LHS, const int8_t *RHS,
+                                      int32_t destOffset, int32_t lhsOffset,
+                                      int32_t rhsOffset, int32_t lhsPre,
+                                      int32_t lhsPost, int32_t lhsScale,
+                                      int32_t rhsPre, int32_t rhsPost,
+                                      int32_t rhsScale) {
+  return (cond[idx] != 0)
+             ? libjit_clip(libjit_scale_i32i8(LHS[idx] - lhsOffset, lhsPre,
+                                              lhsPost, lhsScale, destOffset))
+             : libjit_clip(libjit_scale_i32i8(RHS[idx] - rhsOffset, rhsPre,
+                                              rhsPost, rhsScale, destOffset));
+}
+
 DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_sigmoid_kernel_f) {
   float e = expf(LHS[idx]);
   return e / (e + 1);

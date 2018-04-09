@@ -271,6 +271,9 @@ public:
   SelectNode *createSelect(llvm::StringRef name, NodeValue Cond, NodeValue LHS,
                            NodeValue RHS);
 
+  SelectNode *createSelect(llvm::StringRef name, TypeRef outTy, NodeValue Cond,
+                           NodeValue LHS, NodeValue RHS);
+
   SplatNode *createSplat(llvm::StringRef name, TypeRef ty, float value);
 
   MatMulNode *createMatMul(llvm::StringRef name, NodeValue lhs, NodeValue rhs);
