@@ -248,11 +248,124 @@ __kernel void convolutionK(__global float *dest, __global float *src,
   } // N
 }
 
+/// Optimized version of the convolution kernel that can process
+/// 16 floats (channels) at once.
+__kernel void convolutionK_float16(__global float *dest,
+                           const __global float *src,
+                           const __global float *filter,
+                           const __global float *bias,
+                           cl_uint32_t filterSize, cl_uint32_t stride,
+                           cl_uint32_t pad, ShapeNHWC odim, ShapeNHWC idim,
+                           ShapeNHWC filterDim) {
+  size_t ax = get_global_id(0);
+  size_t ay = get_global_id(1);
+  size_t d = get_global_id(2);
+
+  typedef int ssize_t;
+  // For each convolution 'jump' in the input tensor:
+  ssize_t x = -(ssize_t)pad + ax * stride;
+  ssize_t y = -(ssize_t)pad + ay * stride;
+
+  // For each input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+
+    // For each element in the convolution-filter:
+    float16 sum = 0;
+    
+    for (size_t fx = 0; fx < filterSize; fx++) {
+      for (size_t fy = 0; fy < filterSize; fy++) {
+        ssize_t ox = x + fx;
+        ssize_t oy = y + fy;
+
+        // Ignore index access below zero (this is due to padding).
+        if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
+            oy >= (ssize_t)idim.w) {
+          continue;
+        }
+
+        size_t filterBase = getNHWC(filterDim, d, fx, fy, 0);
+        size_t srcBase = getNHWC(idim, n, (size_t)ox, (size_t)oy, 0);
+
+        for (size_t fd = 0; fd < idim.c/16; fd ++) {
+          // Use vload instead of casts, because there is no guarantee that
+          // filter or src are aligned.
+          sum += vload16(fd, &filter[filterBase]) * vload16(fd, &src[srcBase]); 
+        }
+      }
+    }
+
+    dest[getNHWC(odim, n, ax, ay, d)] = bias[d] 
+                                      + dot(sum.hi.hi, 1.0) + dot(sum.hi.lo, 1.0)
+                                      + dot(sum.lo.hi, 1.0) + dot(sum.lo.lo, 1.0);
+  } // N
+}
+
+/// Optimized version of the convolution kernel that can process
+/// 8 floats (channels) at once.
+__kernel void convolutionK_float8(__global float *dest,
+                           const __global float *src,
+                           const __global float *filter,
+                           const __global float *bias,
+                           cl_uint32_t filterSize, cl_uint32_t stride,
+                           cl_uint32_t pad, ShapeNHWC odim, ShapeNHWC idim,
+                           ShapeNHWC filterDim) {
+  size_t ax = get_global_id(0);
+  size_t ay = get_global_id(1);
+  size_t d = get_global_id(2);
+
+  typedef int ssize_t;
+  // For each convolution 'jump' in the input tensor:
+  ssize_t x = -(ssize_t)pad + ax * stride;
+  ssize_t y = -(ssize_t)pad + ay * stride;
+
+  // For each input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+
+    // For each element in the convolution-filter:
+    float8 sum = 0;
+    
+    for (size_t fx = 0; fx < filterSize; fx++) {
+      for (size_t fy = 0; fy < filterSize; fy++) {
+        ssize_t ox = x + fx;
+        ssize_t oy = y + fy;
+
+        // Ignore index access below zero (this is due to padding).
+        if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
+            oy >= (ssize_t)idim.w) {
+          continue;
+        }
+
+        size_t filterBase = getNHWC(filterDim, d, fx, fy, 0);
+        size_t srcBase = getNHWC(idim, n, (size_t)ox, (size_t)oy, 0);
+
+        for (size_t fd = 0; fd < idim.c/8; fd ++) {
+          // Use vload instead of casts, because there is no guarantee that filter or src are aligned.
+          sum += vload8(fd, &filter[filterBase + 0]) * vload8(fd, &src[srcBase + 0]); 
+        }
+      }
+    }
+
+    dest[getNHWC(odim, n, ax, ay, d)] = bias[d] 
+                                      + dot(sum.hi, 1.0) + dot(sum.lo, 1.0);
+  } // N
+}
+
 __kernel void convolutionW(__global void *mem, cl_uint32_t dest,
                            cl_uint32_t src, cl_uint32_t filter,
                            cl_uint32_t bias, cl_uint32_t filterSize,
                            cl_uint32_t stride, cl_uint32_t pad, ShapeNHWC odim,
                            ShapeNHWC idim, ShapeNHWC filterDim) {
+  if (filterDim.c % 16 == 0) {
+    convolutionK_float16(&mem[dest], &mem[src], &mem[filter], &mem[bias],
+                         filterSize, stride, pad, odim, idim, filterDim);
+    return;
+  }
+
+  if (filterDim.c % 8 == 0) {
+    convolutionK_float8(&mem[dest], &mem[src], &mem[filter], &mem[bias],
+                        filterSize, stride, pad, odim, idim, filterDim);
+    return;
+  }
   convolutionK(&mem[dest], &mem[src], &mem[filter], &mem[bias], filterSize,
                stride, pad, odim, idim, filterDim);
 }
