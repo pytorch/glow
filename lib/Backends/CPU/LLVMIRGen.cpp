@@ -640,16 +640,32 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *AN = cast<INST_NAME_##Inst>(I);                                      \
     auto *dest = AN->getDest();                                                \
     auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);  \
-    auto *val = emitConst(builder, AN->get##VALUE_(), dest->getElementType()); \
     auto *elementTy = getElementType(builder, dest);                           \
+    auto value = AN->get##VALUE_();                                            \
+    auto *F = getFunction(FUN_NAME_ "_kernel", dest->getElementType());        \
     auto *pointerNull =                                                        \
         llvm::ConstantPointerNull::get(elementTy->getPointerTo());             \
-    auto *F = getFunction(FUN_NAME_ "_kernel", dest->getElementType());        \
-    auto *stackedOpCall =                                                      \
-        builder.CreateCall(F, {loopCount, val, pointerNull, pointerNull});     \
-    auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,          \
-                                       "buffer.element.addr");                 \
-    builder.CreateStore(stackedOpCall, destAddr);                              \
+    if (dest->getType()->isQuantizedType()) {                                  \
+      auto *destTy = dest->getType();                                          \
+      /* Quantize value based on the output type. */                           \
+      /* Perform this early and let jit library to work */                     \
+      /* with quantized number. */                                             \
+      TensorQuantizationParams TQP{destTy->getScale(), destTy->getOffset()};   \
+      auto quantizedValue = quantization::quantize(value, TQP);                \
+      auto *val = emitConstI8(builder, quantizedValue);                        \
+      auto *stackedOpCall =                                                    \
+          builder.CreateCall(F, {loopCount, val, pointerNull, pointerNull});   \
+      auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,        \
+                                         "buffer.element.addr");               \
+      builder.CreateStore(stackedOpCall, destAddr);                            \
+    } else {                                                                   \
+      auto *val = emitConst(builder, value, dest->getElementType());           \
+      auto *stackedOpCall =                                                    \
+          builder.CreateCall(F, {loopCount, val, pointerNull, pointerNull});   \
+      auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,        \
+                                         "buffer.element.addr");               \
+      builder.CreateStore(stackedOpCall, destAddr);                            \
+    }                                                                          \
     break;                                                                     \
   }
     ARITHMETIC_UNARY_OP_WITH_IMM_CASE(Splat, "splat", Value);

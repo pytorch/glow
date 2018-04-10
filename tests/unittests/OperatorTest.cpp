@@ -1182,6 +1182,36 @@ TEST_P(Operator, ChannelShuffle) {
     EXPECT_FLOAT_EQ(results.at({0, i, 0, 0}), expected[i]);
 }
 
+TEST_P(Operator, IntRelu) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  const float splatValue = 10;
+  const float scale = 1.0;
+  const float rescaleScale = 2.0;
+  const int32_t offset = 5;
+  const size_t size = 5;
+
+  auto splatTy = mod.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
+  auto rescaleTy =
+      mod.uniqueType(ElemKind::Int8QTy, {size}, rescaleScale, offset);
+
+  auto *splat = F->createSplat("splat", splatTy, splatValue);
+  auto *rescale = F->createRescaleQuantized("rescale", splat, rescaleTy);
+  auto *relu = F->createRELU("relu", rescale);
+  auto *dequantize = F->createDequantize("dequantize", relu);
+
+  auto *save = F->createSave("save", dequantize);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+
+  auto result = save->getVariable()->getHandle();
+  float expectedValue = std::max(0.0f, splatValue);
+  for (size_t i = 0; i < result.size(); i++) {
+    EXPECT_EQ(expectedValue, result.raw(i));
+  }
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 

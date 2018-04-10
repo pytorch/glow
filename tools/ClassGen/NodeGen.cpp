@@ -327,7 +327,9 @@ int main(int argc, char **argv) {
   BB.newNode("Splat")
       .addMember(MemberType::Float, "Value")
       .addResultFromCtorArg()
-      .setDocstring("Generate a tensor of a specific type filled with 'Value'");
+      .setDocstring("Generate a tensor of a specific type filled with 'Value'."
+                    "Splat always keep floating point value internally but can"
+                    "quantize it based on the output type.");
 
   BB.newNode("SGD")
       .addInput("Gradient")
