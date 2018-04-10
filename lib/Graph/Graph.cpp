@@ -372,37 +372,38 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
   auto OT = getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernel,
-                                     stride, pad, depth));
+                                     stride, pad, depth, /*group = */ 1));
 }
 
 /// Check that the dimensions that are passed in when the convolution is
 /// constructed are correct.
 static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
                            size_t depth, size_t kernel, size_t stride,
-                           size_t pad) {
+                           size_t pad, size_t group) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
+  assert(idim.c % group == 0 && "channels number must be divisible by groups");
   (void)idim;
 
   auto filterDims = filter->dims();
-  assert(filterDims[0] == depth && filterDims[1] == kernel &&
-         filterDims[2] == kernel && filterDims[3] == idim.c &&
+  assert(filterDims[0] == depth * group && filterDims[1] == kernel &&
+         filterDims[2] == kernel && filterDims[3] == idim.c / group &&
          "Invalid filter dims");
   (void)filterDims;
 
-  assert(bias->getType()->size() == depth && "Invalid bias size");
+  assert(bias->getType()->size() == depth * group && "Invalid bias size");
 }
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       NodeValue filter, NodeValue bias,
                                       TypeRef outTy, size_t depth,
-                                      size_t kernel, size_t stride,
-                                      size_t pad) {
-  assertConvDims(input, filter, bias, depth, kernel, stride, pad);
+                                      size_t kernel, size_t stride, size_t pad,
+                                      size_t group) {
+  assertConvDims(input, filter, bias, depth, kernel, stride, pad, group);
   auto OT = getParent()->uniqueType(*outTy);
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernel,
-                                     stride, pad, depth));
+                                     stride, pad, depth, group));
 }
 
 PoolMaxNode *Function::createPoolMax(llvm::StringRef name, NodeValue input,

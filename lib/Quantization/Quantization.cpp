@@ -322,10 +322,10 @@ void generateQuantizedGraph(
         auto QT = F->getParent()->uniqueType(ElemKind::Int8QTy,
                                              CV->getResult()->dims(),
                                              TQP.scale_, TQP.offset_);
-        quantizedNode =
-            F->createConv(CV->getName(), quantizedInputs[0], quantizedInputs[1],
-                          quantizedInputs[2], QT, CV->getDepth(),
-                          CV->getKernel(), CV->getStride(), CV->getPad());
+        quantizedNode = F->createConv(
+            CV->getName(), quantizedInputs[0], quantizedInputs[1],
+            quantizedInputs[2], QT, CV->getDepth(), CV->getKernel(),
+            CV->getStride(), CV->getPad(), CV->getGroup());
         break;
       }
       case Kinded::Kind::SliceNodeKind: {
