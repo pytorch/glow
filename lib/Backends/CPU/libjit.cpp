@@ -612,19 +612,23 @@ void libjit_convDKKC8_convolve_channel(
 
   // For each input channel:
   for (size_t fd = 0; fd < numChannels; fd++) {
-    // For each y pixel:
+    // First, load and broadcast the scalar data from the input buffer.
+    float8 in8[ywidth];
     for (unsigned wu = 0; wu < ywidth; wu++) {
       // Load a single pixel from the input image and broadcast it.
       auto inIdx = libjit_getXYZW(inWdims, sampleN, inX, inY + wu * stride, fd);
-      float8 in = inW[inIdx];
+      in8[wu] = inW[inIdx];
+    }
 
+    // For each y pixel:
+    for (unsigned wu = 0; wu < ywidth; wu++) {
       // Load N x 8 elements from the filter layer. The filter is
       // pre-swizzled to ensure efficient access.
       for (unsigned du = 0; du < depthUnroll; du++) {
         auto filterIdx = libjit_getXYZWQ(filterWdims, outChannel / 8 + du,
                                          filterX, filterY, fd, 0);
         float8 ff0 = LoadFloat8(&filterW[filterIdx]);
-        sum[du][wu] += ff0 * in;
+        sum[du][wu] += ff0 * in8[wu];
       }
     }
   }
