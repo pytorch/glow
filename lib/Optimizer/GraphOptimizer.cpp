@@ -738,10 +738,8 @@ static void optimizeQuantization(Function *F) {
       // Merge splat and rescale nodes.
       // Rescale(Splat()) -> Splat()
       if (auto *SP = dyn_cast<SplatNode>(RS->getInput())) {
-        auto destTy = RS->getType();
-        TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
-        int8_t val = quantization::quantize(SP->getValue(), destQ);
-        auto *newRS = F->createSplat(SP->getName(), RS->getType(), val);
+        auto *newRS =
+            F->createSplat(SP->getName(), RS->getType(), SP->getValue());
 
         worklist.push_back(newRS);
         RS->getResult().replaceAllUsesOfWith(newRS);
