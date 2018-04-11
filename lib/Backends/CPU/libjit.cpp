@@ -762,6 +762,7 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
                         const size_t *biasWdims, size_t filterSize,
                         size_t stride, size_t pad) {
   size_t inChannels = inWdims[3];
+  size_t outChannels = outWdims[3];
 
   // Select a method for iterating on the image in the pixel (filter-first, or
   // input-first). Perform convolutions with a high channel count by scanning
@@ -782,14 +783,19 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
   // When producing output pixels process this many times of depth-strips, where
   // each chunk is float8 * numDepthRegs. This is a form of tiling. It's
   // profitable to scan multiple depth-strips of the filter if the scanned
-  // memory fits in the cahce and does not get evicted before the next iteration
-  // . By increasing the number strips (and using more cache memory) we reduce
-  // the number of times that we iterate over the input. However, we also
+  // memory fits in the cahce and does not get evicted before the next
+  // iteration. By increasing the number strips (and using more cache memory) we
+  // reduce the number of times that we iterate over the input. However, we also
   // increase the pressure on the cache that has to store the filter so we can't
   // process too many strips at once.
   unsigned depthStrips = 1;
-  if (!processPixelsFirst && inChannels < 256) {
-    depthStrips = 2;
+  unsigned stripSize = 8 * numDepthRegs * inChannels;
+  unsigned tileSize = 16384;
+  // Increase the number of strips until we reach the output-tensor depth size
+  // or until we exceed some threashold.
+  while (2 * depthStrips * stripSize <= tileSize &&
+         2 * depthStrips * numDepthRegs * 8 <= outChannels && depthStrips < 8) {
+    depthStrips *= 2;
   }
 
   // For each input in the batch:
