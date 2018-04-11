@@ -78,11 +78,6 @@ bool CPUBackend::transformPostLowering(Function *F) {
     }
     if (auto *MN = dyn_cast<MaxNode>(node)) {
       if (auto *splat = dyn_cast<SplatNode>(MN->getLHS())) {
-        // TODO: support efficient max quantized splat.
-        if (splat->getResult().getType()->isQuantizedType()) {
-          continue;
-        }
-
         auto MSN = F->addNode(new CPUMaxSplatNode(MN->getName(), MN->getRHS(),
                                                   splat->getValue()));
         NodeValue(node, 0).replaceAllUsesOfWith(MSN);
@@ -90,11 +85,6 @@ bool CPUBackend::transformPostLowering(Function *F) {
         continue;
       }
       if (auto *splat = dyn_cast<SplatNode>(MN->getRHS())) {
-        // TODO: support efficient max quantized splat.
-        if (splat->getResult().getType()->isQuantizedType()) {
-          continue;
-        }
-
         auto MSN = F->addNode(new CPUMaxSplatNode(MN->getName(), MN->getLHS(),
                                                   splat->getValue()));
         NodeValue(node, 0).replaceAllUsesOfWith(MSN);
