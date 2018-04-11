@@ -528,7 +528,7 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
 
   auto *convq =
       F->createConv("convq", inputq, filterq, biasq, resTy, conv->getDepth(),
-                    conv->getKernel(), conv->getStride(), conv->getPad());
+                    conv->getKernel(), conv->getStride(), conv->getPad(), 1);
   auto *dequantRes = F->createDequantize("dequant", convq);
 
   // Subtract the results of the convolution from the quantized convolution.

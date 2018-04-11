@@ -171,7 +171,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Load the inputs:
     int stride = dict.count("stride") ? loadInt(dict["stride"]) : 1;
     int pad = dict.count("pad") ? loadInt(dict["pad"]) : 0;
-    int kernel = loadInt(dict["kernel"]);
+    unsigned kernel = loadInt(dict["kernel"]);
+    unsigned group = dict.count("group") ? loadInt(dict["group"]) : 1;
 
     auto *in = getOrCreateNodeByName(op.input(0));
     Tensor *w = getTensorByName(op.input(1));
@@ -217,8 +218,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
-    auto *node = G_.createConv(opName, tr, filter, bias, outTy, depth, kernel,
-                               stride, pad);
+    auto *node = G_.createConv(opName, tr, filter, bias, outTy, depth / group,
+                               kernel, stride, pad, group);
 
     // Transpose the output back.
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
