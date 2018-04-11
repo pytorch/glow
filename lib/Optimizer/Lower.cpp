@@ -470,6 +470,48 @@ void lowerBatchNormalizationGradNode(Function *F,
   BNG.getGradOfInputNamedVar().replaceAllUsesOfWith(zeroSplat);
 }
 
+void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
+  // When Group parameter is more than 1, ConvolutionNode can be represented as
+  // a Concatenation of smaller dimension Convolutions. Input channels will be
+  // divided into equal groups of consecutive channels. These will be separately
+  // convolved each with its own filter (and bias), and then concatenated.
+  // This will result in 4 * Group + 1 nodes.
+  unsigned kernel = BNG.getKernel();
+  unsigned pad = BNG.getPad();
+  unsigned stride = BNG.getStride();
+  unsigned group = BNG.getGroup();
+  auto in = BNG.getInput();
+  auto filter = BNG.getFilter();
+  auto bias = BNG.getBias();
+
+  ShapeNHWC idim = ShapeNHWC(in.dims());
+
+  unsigned inCperG = idim.c / group;
+  unsigned outCperG = filter.dims()[0] / group;
+
+  auto outDims = BNG.getResult().dims().vec();
+  outDims[3] = outCperG;
+  auto outTy = F->getParent()->uniqueTypeWithNewShape(
+      BNG.getResult()->getType(), outDims);
+
+  std::vector<Node *> convs(group);
+  for (unsigned groupId = 0; groupId < group; groupId++) {
+    auto *in_slice =
+        F->createSlice(BNG.getName(), in, {0, 0, 0, groupId * inCperG},
+                       {idim.n, idim.h, idim.w, (groupId + 1) * inCperG});
+    auto *filter_slice =
+        F->createSlice(BNG.getName(), filter, {groupId * outCperG, 0, 0, 0},
+                       {(groupId + 1) * outCperG, kernel, kernel, inCperG});
+    auto *bias_slice = F->createSlice(BNG.getName(), bias, {groupId * outCperG},
+                                      {(groupId + 1) * outCperG});
+    convs[groupId] =
+        F->createConv(BNG.getName(), in_slice, filter_slice, bias_slice, outTy,
+                      outCperG, kernel, stride, pad, 1);
+  }
+  auto result = F->createConcat(BNG.getName(), convs, 3);
+  BNG.getResult().replaceAllUsesOfWith(result);
+}
+
 void glow::lower(Function *F, CompilationMode mode, Backend *B) {
   auto &nodes = F->getNodes();
 
@@ -509,6 +551,9 @@ void glow::lower(Function *F, CompilationMode mode, Backend *B) {
       lowerBatchNormalizationNodeForInference(F, *BN);
     } else if (auto *BNG = dyn_cast<BatchNormalizationGradNode>(node)) {
       lowerBatchNormalizationGradNode(F, *BNG);
+    } else if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
+      if (CN->getGroup() > 1)
+        lowerGroupConvolutionNode(F, *CN);
     }
   }
 
