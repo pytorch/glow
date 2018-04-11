@@ -16,33 +16,45 @@
 using namespace glow;
 
 class Operator : public ::testing::TestWithParam<BackendKind> {
+public:
+  Operator() {
+    mod_ = EE_.getModule();
+    F_ = mod_.createFunction("main");
+  }
+
 protected:
-  ExecutionEngine EE{GetParam()};
+  ExecutionEngine EE_{GetParam()};
+  Module mod_;
+  Function *F_;
 };
 
 class InterpOnly : public ::testing::TestWithParam<BackendKind> {
+public:
+  InterpOnly() {
+    mod_ = EE_.getModule();
+    F_ = mod_.createFunction("main");
+  }
 protected:
-  ExecutionEngine EE{GetParam()};
+  ExecutionEngine EE_{GetParam()};
+  Module mod_;
+  Function *F_;
 };
 
 TEST_P(Operator, pow) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto *X = mod.createVariable(ElemKind::FloatTy, {1, 1, 3}, "X");
-  auto *Y = mod.createVariable(ElemKind::FloatTy, {2}, "Y");
+  auto *X = mod_.createVariable(ElemKind::FloatTy, {1, 1, 3}, "X");
+  auto *Y = mod_.createVariable(ElemKind::FloatTy, {2}, "Y");
   X->getPayload().getHandle() = {5, 0.1, -3};
   Y->getPayload().getHandle() = {2, 100};
 
-  auto *Pow1 = F->createPow("Pow1", X, 2.0);
-  auto *Pow2 = F->createPow("Pow2", Y, 0.5);
+  auto *Pow1 = F_->createPow("Pow1", X, 2.0);
+  auto *Pow2 = F_->createPow("Pow2", Y, 0.5);
 
-  auto *Save1 = F->createSave("save", Pow1);
-  auto *Save2 = F->createSave("save", Pow2);
+  auto *Save1 = F_->createSave("save", Pow1);
+  auto *Save2 = F_->createSave("save", Pow2);
 
-  EE.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F_);
 
-  EE.run({}, {});
+  EE_.run({}, {});
 
   auto HX = llvm::cast<Variable>(Save1->getOutput())->getPayload().getHandle();
   EXPECT_NEAR(HX.at({0, 0, 0}), 25, 1E-5);
@@ -55,22 +67,18 @@ TEST_P(Operator, pow) {
 }
 
 TEST_P(Operator, matmul) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto *lhs = mod.createVariable(ElemKind::FloatTy, {3, 2}, "lhs");
-  auto *rhs = mod.createVariable(ElemKind::FloatTy, {2, 1}, "rhs");
-  auto *result = mod.createVariable(ElemKind::FloatTy, {3, 1}, "result");
+  auto *lhs = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "lhs");
+  auto *rhs = mod_.createVariable(ElemKind::FloatTy, {2, 1}, "rhs");
+  auto *result = mod_.createVariable(ElemKind::FloatTy, {3, 1}, "result");
   lhs->getPayload().getHandle() = {1, 2, 3, 4, 5, 6};
   rhs->getPayload().getHandle() = {7, 10};
 
-  auto R = F->createMatMul("MM", lhs, rhs);
+  auto R = F_->createMatMul("MM", lhs, rhs);
 
-  F->createSave("save", R, result);
+  F_->createSave("save", R, result);
 
-  EE.compile(CompilationMode::Infer, F);
-
-  EE.run({}, {});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   auto H = result->getPayload().getHandle();
   EXPECT_NEAR(H.at({0, 0}), 27, 0.001);
@@ -79,20 +87,16 @@ TEST_P(Operator, matmul) {
 }
 
 TEST_P(Operator, batchedReduceAdd) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto *batch = mod.createVariable(ElemKind::FloatTy, {2, 4}, "batch");
-  auto *result = mod.createVariable(ElemKind::FloatTy, {4}, "result");
+  auto *batch = mod_.createVariable(ElemKind::FloatTy, {2, 4}, "batch");
+  auto *result = mod_.createVariable(ElemKind::FloatTy, {4}, "result");
   batch->getPayload().getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
 
-  auto R = F->createBatchedReduceAdd("reduce.add", batch);
+  auto R = F_->createBatchedReduceAdd("reduce.add", batch);
 
-  F->createSave("save", R, result);
+  F_->createSave("save", R, result);
 
-  EE.compile(CompilationMode::Infer, F);
-
-  EE.run({}, {});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   auto H = result->getPayload().getHandle();
   EXPECT_NEAR(H.at({0}), 11, 0.001);
@@ -102,23 +106,19 @@ TEST_P(Operator, batchedReduceAdd) {
 }
 
 TEST_P(Operator, batchedBatchedAdd) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto *batch = mod.createVariable(ElemKind::FloatTy, {2, 3, 3}, "batch");
-  auto *added = mod.createVariable(ElemKind::FloatTy, {3, 3}, "added");
-  auto *result = mod.createVariable(ElemKind::FloatTy, {2, 3, 3}, "result");
+  auto *batch = mod_.createVariable(ElemKind::FloatTy, {2, 3, 3}, "batch");
+  auto *added = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "added");
+  auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 3, 3}, "result");
 
   batch->getPayload().getHandle() = {9, 8, 7, 6, 5,  4,  3,  4,  5,
                                      6, 7, 8, 9, 10, 11, 12, 13, 14};
   added->getPayload().getHandle().clear(1.0);
 
-  auto R = F->createBatchedAdd("batch.add", batch, added);
-  F->createSave("save", R, result);
+  auto R = F_->createBatchedAdd("batch.add", batch, added);
+  F_->createSave("save", R, result);
 
-  EE.compile(CompilationMode::Infer, F);
-
-  EE.run({}, {});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   auto H = result->getPayload().getHandle();
   EXPECT_NEAR(H.at({0, 0, 0}), 10, 0.001);
@@ -129,9 +129,6 @@ TEST_P(Operator, batchedBatchedAdd) {
 
 /// Broadcast Tensor of shape (2,1,1) to (2,4,2) with axis 0.
 TEST_P(Operator, broadcastSimple) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
   const size_t numDims_A = 3;
   const size_t dimY_A = 2;
   const size_t dimZ_A = 4;
@@ -144,19 +141,18 @@ TEST_P(Operator, broadcastSimple) {
   const size_t dimW_B = 1;
   const size_t dims_B[numDims_B] = {dimY_B, dimZ_B, dimW_B};
 
-  auto *B = mod.createVariable(ElemKind::FloatTy, dims_B, "B");
+  auto *B = mod_.createVariable(ElemKind::FloatTy, dims_B, "B");
   auto H_B = B->getPayload().getHandle();
   H_B = {20, 10};
 
   const unsigned axis = 0;
 
-  auto R = F->createBroadcast("broadcasted", B, dims_A, axis);
-  auto *broadcasted = mod.createVariable(ElemKind::FloatTy, dims_A, "A");
-  F->createSave("save", R, broadcasted);
+  auto R = F_->createBroadcast("broadcasted", B, dims_A, axis);
+  auto *broadcasted = mod_.createVariable(ElemKind::FloatTy, dims_A, "A");
+  F_->createSave("save", R, broadcasted);
 
-  EE.compile(CompilationMode::Infer, F);
-
-  EE.run({}, {});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   auto broadcastedBHandle = broadcasted->getPayload().getHandle();
   // Verify broadcasted B has same shape.
@@ -182,9 +178,6 @@ TEST_P(Operator, broadcastSimple) {
 
 /// Broadcast a Tensor of shape (2,1) to (3,2,4,2) with axis 1.
 TEST_P(Operator, broadcast) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
   const size_t numDims_A = 4;
   const size_t dimX_A = 3;
   const size_t dimY_A = 2;
@@ -197,19 +190,18 @@ TEST_P(Operator, broadcast) {
   const size_t dimZ_B = 1;
   const size_t dims_B[numDims_B] = {dimY_B, dimZ_B};
 
-  auto *B = mod.createVariable(ElemKind::FloatTy, dims_B, "B");
+  auto *B = mod_.createVariable(ElemKind::FloatTy, dims_B, "B");
   auto H_B = B->getPayload().getHandle();
   H_B = {20, 10};
 
   const unsigned axis = 1;
 
-  auto R = F->createBroadcast("broadcasted", B, dims_A, axis);
-  auto *broadcasted = mod.createVariable(ElemKind::FloatTy, dims_A, "A");
-  F->createSave("save", R, broadcasted);
+  auto R = F_->createBroadcast("broadcasted", B, dims_A, axis);
+  auto *broadcasted = mod_.createVariable(ElemKind::FloatTy, dims_A, "A");
+  F_->createSave("save", R, broadcasted);
 
-  EE.compile(CompilationMode::Infer, F);
-
-  EE.run({}, {});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   auto broadcastedBHandle = broadcasted->getPayload().getHandle();
   // Verify broadcasted B has same shape.
@@ -235,20 +227,18 @@ TEST_P(Operator, broadcast) {
 }
 
 TEST_P(Operator, minElem) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
   unsigned len = 5;
 
-  auto *LHS = mod.createVariable(ElemKind::FloatTy, {len}, "lhs");
-  auto *RHS = mod.createVariable(ElemKind::FloatTy, {len}, "rhs");
-  auto *min = F->createMin("min", LHS, RHS);
-  auto *save = F->createSave("min", min);
+  auto *LHS = mod_.createVariable(ElemKind::FloatTy, {len}, "lhs");
+  auto *RHS = mod_.createVariable(ElemKind::FloatTy, {len}, "rhs");
+  auto *min = F_->createMin("min", LHS, RHS);
+  auto *save = F_->createSave("min", min);
 
   LHS->getHandle().randomize(-10, 10);
   RHS->getHandle().randomize(-10, 10);
 
-  EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   auto resultH = save->getVariable()->getHandle();
   auto LHSH = LHS->getHandle();
@@ -260,25 +250,22 @@ TEST_P(Operator, minElem) {
 }
 
 TEST_P(Operator, TopK) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto *inp = mod.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
-  auto *values = mod.createVariable(ElemKind::FloatTy, {3, 1, 3}, "values");
-  auto *indices = mod.createVariable(ElemKind::IndexTy, {3, 1, 3}, "indices");
+  auto *inp = mod_.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
+  auto *values = mod_.createVariable(ElemKind::FloatTy, {3, 1, 3}, "values");
+  auto *indices = mod_.createVariable(ElemKind::IndexTy, {3, 1, 3}, "indices");
 
   inp->getPayload().getHandle() = {
       28, 4, 411, 19, 42, 0.4, 0.4, 0.4, -0.4, 0.45, 7, 5, 9, 8, 100,
   };
 
-  auto R = F->createTopK("TopK", inp, 3);
+  auto R = F_->createTopK("TopK", inp, 3);
 
-  F->createSave("save.values", {R, 0}, values);
-  F->createSave("save.indices", {R, 1}, indices);
+  F_->createSave("save.values", {R, 0}, values);
+  F_->createSave("save.indices", {R, 1}, indices);
 
-  EE.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F_);
 
-  EE.run({}, {});
+  EE_.run({}, {});
 
   auto V = values->getPayload().getHandle();
   auto I = indices->getPayload().getHandle<size_t>();
@@ -331,12 +318,9 @@ TEST_P(Operator, Gather) {
         ],
     ]
   */
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto *data = mod.createVariable(ElemKind::FloatTy, {3, 2}, "data");
-  auto *indices = mod.createVariable(ElemKind::IndexTy, {2, 4}, "indices");
-  auto *result = mod.createVariable(ElemKind::FloatTy, {2, 4, 2}, "result");
+  auto *data = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "data");
+  auto *indices = mod_.createVariable(ElemKind::IndexTy, {2, 4}, "indices");
+  auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 4, 2}, "result");
 
   data->getPayload().getHandle() = {
       1.0, 1.2, 2.3, 3.4, 4.5, 5.7,
@@ -345,13 +329,12 @@ TEST_P(Operator, Gather) {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
-  auto R = F->createGather("gather", data, indices);
+  auto R = F_->createGather("gather", data, indices);
 
-  F->createSave("save", R, result);
+  F_->createSave("save", R, result);
 
-  EE.compile(CompilationMode::Infer, F);
-
-  EE.run({}, {});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   auto H = result->getPayload().getHandle();
 
@@ -375,38 +358,33 @@ TEST_P(Operator, Gather) {
 }
 
 TEST_P(Operator, QuantizeAndDequantize) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
   Tensor inputs(ElemKind::FloatTy, {1, 4});
   inputs.getHandle() = {1, 1.2, 0.5, 1.3};
 
-  auto *A = mod.createVariable(ElemKind::FloatTy, {1, 4}, "A",
+  auto *A = mod_.createVariable(ElemKind::FloatTy, {1, 4}, "A",
                                Variable::VisibilityKind::Public);
 
-  auto qType = mod.uniqueType(ElemKind::Int8QTy, {1, 4}, 0.05, -138);
-  auto *quantize = F->createQuantize("quantize", A, qType);
-  auto *dequantize = F->createDequantize("dequantize", quantize);
-  auto *result = F->createSave("save", dequantize);
+  auto qType = mod_.uniqueType(ElemKind::Int8QTy, {1, 4}, 0.05, -138);
+  auto *quantize = F_->createQuantize("quantize", A, qType);
+  auto *dequantize = F_->createDequantize("dequantize", quantize);
+  auto *result = F_->createSave("save", dequantize);
 
-  EE.compile(CompilationMode::Infer, F);
-  EE.run({A}, {&inputs});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({A}, {&inputs});
 
   EXPECT_TRUE(inputs.isEqual(result->getVariable()->getPayload()));
 }
 
 TEST_P(Operator, IntMatMul) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
   // The scaling factor 1.4x was carefully selected to make sure we don't
   // overflow or underflow the calculation.
-  TypeRef resTy = mod.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.60, 4);
-  TypeRef lhsTy = mod.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.075, -2);
-  TypeRef rhsTy = mod.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.075, 2);
+  TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.60, 4);
+  TypeRef lhsTy = mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.075, -2);
+  TypeRef rhsTy = mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.075, 2);
 
-  auto *res = mod.createVariable(ElemKind::FloatTy, {3, 3}, "res");
-  auto *lhs = mod.createVariable(ElemKind::FloatTy, {3, 3}, "lhs");
-  auto *rhs = mod.createVariable(ElemKind::FloatTy, {3, 3}, "rhs");
+  auto *res = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "res");
+  auto *lhs = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "lhs");
+  auto *rhs = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "rhs");
 
   lhs->getPayload().getHandle() = {
       1.0, 2.0, 3.0, 4.0, 5.0, -5.0, -4.0, -3.0, 9.0,
@@ -416,17 +394,17 @@ TEST_P(Operator, IntMatMul) {
       0.1, -0.2, 0.3, 9.0, -8.0, 7.0, 6.0, 5.0, 9.0,
   };
 
-  auto *lhsq = F->createQuantize("lhs.q", lhs, lhsTy);
-  auto *rhsq = F->createQuantize("rhs.q", rhs, rhsTy);
+  auto *lhsq = F_->createQuantize("lhs.q", lhs, lhsTy);
+  auto *rhsq = F_->createQuantize("rhs.q", rhs, rhsTy);
 
-  auto *matmulq = F->createMatMul("matmul.q", resTy, lhsq, rhsq);
+  auto *matmulq = F_->createMatMul("matmul.q", resTy, lhsq, rhsq);
 
-  auto *rq = F->createDequantize("dequant", matmulq);
+  auto *rq = F_->createDequantize("dequant", matmulq);
 
-  F->createSave("save", rq, res);
-  EE.compile(CompilationMode::Infer, F);
+  F_->createSave("save", rq, res);
+  EE_.compile(CompilationMode::Infer, F_);
 
-  EE.run({}, {});
+  EE_.run({}, {});
 
   /*
    Test the following matrix multiplication:
@@ -448,16 +426,13 @@ TEST_P(Operator, IntMatMul) {
 }
 
 TEST_P(Operator, IntBatchedArith) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
+  TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.10, 1.0);
+  TypeRef lhsTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.11, 4.0);
+  TypeRef rhsTy = mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.14, -2.0);
 
-  TypeRef resTy = mod.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.10, 1.0);
-  TypeRef lhsTy = mod.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.11, 4.0);
-  TypeRef rhsTy = mod.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.14, -2.0);
-
-  auto *res = mod.createVariable(ElemKind::FloatTy, {1, 3, 3}, "res");
-  auto *lhs = mod.createVariable(ElemKind::FloatTy, {1, 3, 3}, "lhs");
-  auto *rhs = mod.createVariable(ElemKind::FloatTy, {3, 3}, "rhs");
+  auto *res = mod_.createVariable(ElemKind::FloatTy, {1, 3, 3}, "res");
+  auto *lhs = mod_.createVariable(ElemKind::FloatTy, {1, 3, 3}, "lhs");
+  auto *rhs = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "rhs");
 
   lhs->getPayload().getHandle() = {
       8.7, 6.5, 4.3, 2.1, 1.0, -5.1, -4.0, -12.0, 0.2,
@@ -467,17 +442,17 @@ TEST_P(Operator, IntBatchedArith) {
       -9.1, -0.4, 1.3, 2.2, -8.1, 7.6, -6.4, 10.0, 9.1,
   };
 
-  auto *lhsq = F->createQuantize("lhs.q", lhs, lhsTy);
-  auto *rhsq = F->createQuantize("rhs.q", rhs, rhsTy);
+  auto *lhsq = F_->createQuantize("lhs.q", lhs, lhsTy);
+  auto *rhsq = F_->createQuantize("rhs.q", rhs, rhsTy);
 
-  auto *matmulq = F->createBatchedAdd("add", resTy, lhsq, rhsq);
+  auto *matmulq = F_->createBatchedAdd("add", resTy, lhsq, rhsq);
 
-  auto *rq = F->createDequantize("dequant", matmulq);
+  auto *rq = F_->createDequantize("dequant", matmulq);
 
-  F->createSave("save", rq, res);
-  EE.compile(CompilationMode::Infer, F);
+  F_->createSave("save", rq, res);
+  EE_.compile(CompilationMode::Infer, F_);
 
-  EE.run({}, {});
+  EE_.run({}, {});
 
   // A = [8.7, 6.5, 4.3, 2.1, 1.0, -5.1, -4.0, -12.0, 0.2]
   // B = [-9.1, -0.4, 1.3, 2.2, -8.1, 7.6, -6.4, 10.0, 9.1]
@@ -496,15 +471,14 @@ TEST_P(Operator, IntBatchedArith) {
 }
 
 void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
   // In this test we generate a Floating-point based convolution and an integer
   // convolution. We pass the same values and then subtract the results. We
   // check that the results are below some known delta.
 
   // In this test the output of the convolution is in the range [-256 ... 256].
   // The inputs (specified below) are in the range [-1 .. 1],
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
 
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
   auto *conv = F->createConv("conv", input, convDepth, 5, 1, 0);
@@ -536,7 +510,6 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
 
   F->createSave("save", sub, res);
   EE.compile(CompilationMode::Infer, F);
-
   EE.run({}, {});
   auto H = res->getPayload().getHandle();
 
@@ -546,36 +519,33 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
   }
 }
 
-TEST_P(Operator, IntConvolutionDepth10) { checkIntConvolution(EE, 10); }
+TEST_P(Operator, IntConvolutionDepth10) { checkIntConvolution(EE_, 10); }
 
-TEST_P(Operator, IntConvolutionDepth8) { checkIntConvolution(EE, 8); }
+TEST_P(Operator, IntConvolutionDepth8) { checkIntConvolution(EE_, 8); }
 
 TEST_P(Operator, IntConcat) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto A = mod.createVariable(ElemKind::FloatTy, {3, 3}, "A");
-  auto B = mod.createVariable(ElemKind::FloatTy, {2, 3}, "B");
+  auto A = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "A");
+  auto B = mod_.createVariable(ElemKind::FloatTy, {2, 3}, "B");
   A->getHandle().randomize(-1.0, 1.0);
   B->getHandle().randomize(-1.0, 1.0);
 
-  auto ATy = mod.uniqueType(ElemKind::Int8QTy, A->dims(), 0.01, 0);
-  auto BTy = mod.uniqueType(ElemKind::Int8QTy, B->dims(), 0.01, 0);
-  auto outTy = mod.uniqueType(ElemKind::Int8QTy, {5, 3}, 0.01, 0);
+  auto ATy = mod_.uniqueType(ElemKind::Int8QTy, A->dims(), 0.01, 0);
+  auto BTy = mod_.uniqueType(ElemKind::Int8QTy, B->dims(), 0.01, 0);
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {5, 3}, 0.01, 0);
 
-  auto QA = F->createQuantize("QA", A, ATy);
-  auto QB = F->createQuantize("QB", B, BTy);
+  auto QA = F_->createQuantize("QA", A, ATy);
+  auto QB = F_->createQuantize("QB", B, BTy);
 
-  auto C = F->createConcat("concat", {A, B}, 0);
-  auto CQ = F->createConcat("concatQ", {QA, QB}, 0, outTy);
-  auto DCQ = F->createDequantize("DQ", CQ);
+  auto C = F_->createConcat("concat", {A, B}, 0);
+  auto CQ = F_->createConcat("concatQ", {QA, QB}, 0, outTy);
+  auto DCQ = F_->createDequantize("DQ", CQ);
 
   // Subtract the results of the Concat from the quantized Concat.
-  auto sub = F->createSub("compare", C, DCQ);
+  auto sub = F_->createSub("compare", C, DCQ);
 
-  auto res = F->createSave("save", sub);
-  EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  auto res = F_->createSave("save", sub);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   auto R = res->getVariable()->getHandle();
   // Check that the difference in the results is less than 0.2.
@@ -585,15 +555,11 @@ TEST_P(Operator, IntConcat) {
 }
 
 TEST_P(Operator, IntFC) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
   // In this test we subtract the outputs of a quantized FC and a floating-point
   // FC and ensure that the error is below some low value.
-
-  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
-  auto *fc = F->createFullyConnected("FC", input, 30);
-  auto *res = mod.createVariable(ElemKind::FloatTy, fc->dims(), "res");
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
+  auto *fc = F_->createFullyConnected("FC", input, 30);
+  auto *res = mod_.createVariable(ElemKind::FloatTy, fc->dims(), "res");
 
   auto weights = fc->getWeights();
   auto bias = fc->getBias();
@@ -602,25 +568,25 @@ TEST_P(Operator, IntFC) {
   llvm::cast<Variable>(bias)->getPayload().getHandle().randomize(0, 0.00001);
   llvm::cast<Variable>(weights)->getPayload().getHandle().randomize(-1.1, 1.1);
 
-  TypeRef resTy = mod.uniqueType(ElemKind::Int8QTy, res->dims(), 0.15, 4);
-  TypeRef inputTy = mod.uniqueType(ElemKind::Int8QTy, input->dims(), 0.01, 0);
+  TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, res->dims(), 0.15, 4);
+  TypeRef inputTy = mod_.uniqueType(ElemKind::Int8QTy, input->dims(), 0.01, 0);
   TypeRef weightsTy =
-      mod.uniqueType(ElemKind::Int8QTy, weights.dims(), 0.01, 2);
-  TypeRef biasTy = mod.uniqueType(ElemKind::Int8QTy, bias.dims(), 0.02, 1);
+      mod_.uniqueType(ElemKind::Int8QTy, weights.dims(), 0.01, 2);
+  TypeRef biasTy = mod_.uniqueType(ElemKind::Int8QTy, bias.dims(), 0.02, 1);
 
-  auto *inputq = F->createQuantize("input.q", input, inputTy);
-  auto *weightsq = F->createQuantize("filter.q", weights, weightsTy);
-  auto *biasq = F->createQuantize("bias.q", bias, biasTy);
+  auto *inputq = F_->createQuantize("input.q", input, inputTy);
+  auto *weightsq = F_->createQuantize("filter.q", weights, weightsTy);
+  auto *biasq = F_->createQuantize("bias.q", bias, biasTy);
 
-  auto *fcq = F->createFullyConnected("fcq", inputq, weightsq, biasq, resTy);
-  auto *dequantRes = F->createDequantize("dequant", fcq);
+  auto *fcq = F_->createFullyConnected("fcq", inputq, weightsq, biasq, resTy);
+  auto *dequantRes = F_->createDequantize("dequant", fcq);
 
   // Subtract the results of the convolution from the quantized fc.
-  auto *sub = F->createSub("compare", dequantRes, fc);
+  auto *sub = F_->createSub("compare", dequantRes, fc);
 
-  F->createSave("save", sub, res);
-  EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  F_->createSave("save", sub, res);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   auto H = res->getPayload().getHandle();
   // Check that the difference in the results is less than 0.2.
@@ -629,49 +595,43 @@ TEST_P(Operator, IntFC) {
   }
 }
 
-TEST_P(InterpOnly, CrossEntropyLossTest) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto *P = mod.createVariable(ElemKind::FloatTy, {2, 3}, "P");
-  auto *Y = mod.createVariable(ElemKind::IndexTy, {2}, "Y");
-  auto *L = mod.createVariable(ElemKind::FloatTy, {1}, "L");
+TEST_P(InterpOnly, EntropyLossTest) {
+  auto *P = mod_.createVariable(ElemKind::FloatTy, {2, 3}, "P");
+  auto *Y = mod_.createVariable(ElemKind::IndexTy, {2}, "Y");
+  auto *L = mod_.createVariable(ElemKind::FloatTy, {1}, "L");
 
   P->getPayload().getHandle() = {0.2, 0.5, 0.3, 0.4, 0.3, 0.3};
   Y->getPayload().getHandle<size_t>() = {1, 2};
-  auto *ceLoss = F->createCrossEntropyLoss("CELoss", P, Y);
-  F->createSave("save", ceLoss, L);
-  EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  auto *ceLoss = F_->createCrossEntropyLoss("CELoss", P, Y);
+  F_->createSave("save", ceLoss, L);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
   auto R = L->getPayload().getHandle();
   EXPECT_NEAR(R.at({0}), -log(0.5) - log(0.3), 0.1);
 }
 
 TEST_P(Operator, RescaleNode) {
   // Check the outputs of the RescaleQuantized operation.
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto *input = mod.createVariable(ElemKind::Int8QTy, {4, 10}, 0.4, -3, "input",
+  auto *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.4, -3, "input",
                                    Variable::VisibilityKind::Public,
                                    Variable::TrainKind::Broadcast, 40);
 
-  auto *output = mod.createVariable(ElemKind::Int8QTy, {4, 10}, 0.4, -3,
+  auto *output = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.4, -3,
                                     "output", Variable::VisibilityKind::Public,
                                     Variable::TrainKind::None);
 
-  auto T1 = mod.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.7, 5);
-  auto T2 = mod.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.3, -4);
+  auto T1 = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.7, 5);
+  auto T2 = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.3, -4);
 
   // Test a sequence of rescale operations that the optimizer may try to
   // optimize at some point.
-  auto *X = F->createRescaleQuantized("R1", input, T1);
-  auto *Y = F->createRescaleQuantized("R2", X, T2);
-  auto *Z = F->createRescaleQuantized("R3", Y, output->getType());
+  auto *X = F_->createRescaleQuantized("R1", input, T1);
+  auto *Y = F_->createRescaleQuantized("R2", X, T2);
+  auto *Z = F_->createRescaleQuantized("R3", Y, output->getType());
 
-  F->createSave("save", Z, output);
-  EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  F_->createSave("save", Z, output);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   auto RI = input->getPayload().getHandle<int8_t>();
   auto RO = output->getPayload().getHandle<int8_t>();
@@ -685,31 +645,28 @@ TEST_P(Operator, QuantizedArithmeticRescaled) {
 
   // In this test we check the correctness of the quantized Max, Min, Add, Sub,
   // Mul, and Div nodes as well as how they interact with the rescaling node.
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto *A = mod.createVariable(ElemKind::FloatTy, {len}, "A",
+  auto *A = mod_.createVariable(ElemKind::FloatTy, {len}, "A",
                                Variable::VisibilityKind::Public);
-  auto *B = mod.createVariable(ElemKind::FloatTy, {len}, "B",
+  auto *B = mod_.createVariable(ElemKind::FloatTy, {len}, "B",
                                Variable::VisibilityKind::Public);
-  auto *C = mod.createVariable(ElemKind::FloatTy, {len}, "C",
+  auto *C = mod_.createVariable(ElemKind::FloatTy, {len}, "C",
                                Variable::VisibilityKind::Public);
-  auto *O1 = mod.createVariable(ElemKind::FloatTy, {len}, "Max",
+  auto *O1 = mod_.createVariable(ElemKind::FloatTy, {len}, "Max",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  auto *O2 = mod.createVariable(ElemKind::FloatTy, {len}, "Min",
+  auto *O2 = mod_.createVariable(ElemKind::FloatTy, {len}, "Min",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  auto *O3 = mod.createVariable(ElemKind::FloatTy, {len}, "Add",
+  auto *O3 = mod_.createVariable(ElemKind::FloatTy, {len}, "Add",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  auto *O4 = mod.createVariable(ElemKind::FloatTy, {len}, "Sub",
+  auto *O4 = mod_.createVariable(ElemKind::FloatTy, {len}, "Sub",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  auto *O5 = mod.createVariable(ElemKind::FloatTy, {len}, "Mul",
+  auto *O5 = mod_.createVariable(ElemKind::FloatTy, {len}, "Mul",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  auto *O6 = mod.createVariable(ElemKind::FloatTy, {len}, "Div",
+  auto *O6 = mod_.createVariable(ElemKind::FloatTy, {len}, "Div",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
 
@@ -728,62 +685,62 @@ TEST_P(Operator, QuantizedArithmeticRescaled) {
   // Below, randomize between 1 and 10 to avoid division by 0 later.
   CH.randomize(1, 10);
 
-  auto TA = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.2, 0);
-  auto TB = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.1, 0);
-  auto TC = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.3, 0);
+  auto TA = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.2, 0);
+  auto TB = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.1, 0);
+  auto TC = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.3, 0);
 
-  auto TI1 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.1, 0);
-  auto TI2 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.8, 0);
-  auto TI3 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 0);
-  auto TI4 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
-  auto TI5 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.2, 0);
-  auto TI6 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.7, 0);
+  auto TI1 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.1, 0);
+  auto TI2 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.8, 0);
+  auto TI3 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 0);
+  auto TI4 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
+  auto TI5 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.2, 0);
+  auto TI6 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.7, 0);
 
-  auto TO1 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
-  auto TO2 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 0);
-  auto TO3 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.1, 0);
-  auto TO4 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.2, 0);
-  auto TO5 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
-  auto TO6 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.1, 0);
+  auto TO1 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
+  auto TO2 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 0);
+  auto TO3 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.1, 0);
+  auto TO4 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.2, 0);
+  auto TO5 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
+  auto TO6 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.1, 0);
 
   // Quantize input vars and apply max/min/add/sub/mul/div quantized.
-  auto *QA = F->createQuantize("QA", A, TA);
-  auto *QB = F->createQuantize("QB", B, TB);
-  auto *QC = F->createQuantize("QC", C, TC);
+  auto *QA = F_->createQuantize("QA", A, TA);
+  auto *QB = F_->createQuantize("QB", B, TB);
+  auto *QC = F_->createQuantize("QC", C, TC);
 
-  Node *max = F->createMax("max", TI1, QA, QB);
-  Node *min = F->createMin("min", TI2, QA, QB);
-  Node *add = F->createAdd("add", TI3, QA, QB);
-  Node *sub = F->createSub("sub", TI4, QA, QB);
-  Node *mul = F->createMul("mul", TI5, QA, QB);
-  Node *div = F->createDiv("div", TI6, QB, QC);
+  Node *max = F_->createMax("max", TI1, QA, QB);
+  Node *min = F_->createMin("min", TI2, QA, QB);
+  Node *add = F_->createAdd("add", TI3, QA, QB);
+  Node *sub = F_->createSub("sub", TI4, QA, QB);
+  Node *mul = F_->createMul("mul", TI5, QA, QB);
+  Node *div = F_->createDiv("div", TI6, QB, QC);
 
   // Rescale quantized results.
-  max = F->createRescaleQuantized("rescaleMax", max, TO1);
-  min = F->createRescaleQuantized("rescaleMin", min, TO2);
-  add = F->createRescaleQuantized("rescaleAdd", add, TO3);
-  sub = F->createRescaleQuantized("rescaleSub", sub, TO4);
-  mul = F->createRescaleQuantized("rescaleMul", mul, TO5);
-  div = F->createRescaleQuantized("rescaleDiv", div, TO6);
+  max = F_->createRescaleQuantized("rescaleMax", max, TO1);
+  min = F_->createRescaleQuantized("rescaleMin", min, TO2);
+  add = F_->createRescaleQuantized("rescaleAdd", add, TO3);
+  sub = F_->createRescaleQuantized("rescaleSub", sub, TO4);
+  mul = F_->createRescaleQuantized("rescaleMul", mul, TO5);
+  div = F_->createRescaleQuantized("rescaleDiv", div, TO6);
 
   // Dequantize results back to floating-point.
-  max = F->createDequantize("maxDQ", max);
-  min = F->createDequantize("minDQ", min);
-  add = F->createDequantize("addDQ", add);
-  sub = F->createDequantize("subDQ", sub);
-  mul = F->createDequantize("mulDQ", mul);
-  div = F->createDequantize("divDQ", div);
+  max = F_->createDequantize("maxDQ", max);
+  min = F_->createDequantize("minDQ", min);
+  add = F_->createDequantize("addDQ", add);
+  sub = F_->createDequantize("subDQ", sub);
+  mul = F_->createDequantize("mulDQ", mul);
+  div = F_->createDequantize("divDQ", div);
 
   // Save results of the operations.
-  F->createSave("saveMax", max, O1);
-  F->createSave("saveMin", min, O2);
-  F->createSave("saveAdd", add, O3);
-  F->createSave("saveSub", sub, O4);
-  F->createSave("saveMul", mul, O5);
-  F->createSave("saveDiv", div, O6);
+  F_->createSave("saveMax", max, O1);
+  F_->createSave("saveMin", min, O2);
+  F_->createSave("saveAdd", add, O3);
+  F_->createSave("saveSub", sub, O4);
+  F_->createSave("saveMul", mul, O5);
+  F_->createSave("saveDiv", div, O6);
 
-  EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   for (size_t i = 0; i < len; i++) {
     auto max = std::max(AH.at({i}), BH.at({i}));
@@ -808,45 +765,42 @@ TEST_P(Operator, QuantizedArithmeticUnrescaled) {
 
   // In this test we check the correctness of the quantized Max, Min, Add, Sub,
   // Mul, and Div operations.
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto TQA = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.1, -1);
-  auto TQB = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 2);
+  auto TQA = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.1, -1);
+  auto TQB = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 2);
   // For TQC, set offset to -11 to avoid division by 0 later.
-  auto TQC = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.2, -11);
-  auto TO1 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.4, 3);
-  auto TO2 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.8, 2);
-  auto TO3 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.7, 5);
-  auto TO4 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.3, -7);
-  auto TO5 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.2, 3);
-  auto TO6 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, -2);
+  auto TQC = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.2, -11);
+  auto TO1 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.4, 3);
+  auto TO2 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.8, 2);
+  auto TO3 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.7, 5);
+  auto TO4 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.3, -7);
+  auto TO5 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.2, 3);
+  auto TO6 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.0, -2);
 
-  auto *QA = mod.createVariable(ElemKind::Int8QTy, {len}, TQA->getScale(),
+  auto *QA = mod_.createVariable(ElemKind::Int8QTy, {len}, TQA->getScale(),
                                 TQA->getOffset(), "QA",
                                 Variable::VisibilityKind::Public);
-  auto *QB = mod.createVariable(ElemKind::Int8QTy, {len}, TQB->getScale(),
+  auto *QB = mod_.createVariable(ElemKind::Int8QTy, {len}, TQB->getScale(),
                                 TQB->getOffset(), "QB",
                                 Variable::VisibilityKind::Public);
-  auto *QC = mod.createVariable(ElemKind::Int8QTy, {len}, TQC->getScale(),
+  auto *QC = mod_.createVariable(ElemKind::Int8QTy, {len}, TQC->getScale(),
                                 TQC->getOffset(), "QC",
                                 Variable::VisibilityKind::Public);
-  auto *O1 = mod.createVariable(
+  auto *O1 = mod_.createVariable(
       ElemKind::Int8QTy, {len}, TO1->getScale(), TO1->getOffset(), "Max",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O2 = mod.createVariable(
+  auto *O2 = mod_.createVariable(
       ElemKind::Int8QTy, {len}, TO2->getScale(), TO2->getOffset(), "Min",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O3 = mod.createVariable(
+  auto *O3 = mod_.createVariable(
       ElemKind::Int8QTy, {len}, TO3->getScale(), TO3->getOffset(), "Add",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O4 = mod.createVariable(
+  auto *O4 = mod_.createVariable(
       ElemKind::Int8QTy, {len}, TO4->getScale(), TO4->getOffset(), "Sub",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O5 = mod.createVariable(
+  auto *O5 = mod_.createVariable(
       ElemKind::Int8QTy, {len}, TO5->getScale(), TO5->getOffset(), "Mul",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O6 = mod.createVariable(
+  auto *O6 = mod_.createVariable(
       ElemKind::Int8QTy, {len}, TO6->getScale(), TO6->getOffset(), "Div",
       Variable::VisibilityKind::Public, Variable::TrainKind::None);
 
@@ -865,23 +819,23 @@ TEST_P(Operator, QuantizedArithmeticUnrescaled) {
   QCH.randomize(-10, 10);
 
   // Apply max/min/add/sub/mul/div quantized.
-  Node *max = F->createMax("max", TO1, QA, QB);
-  Node *min = F->createMin("min", TO2, QA, QB);
-  Node *add = F->createAdd("add", TO3, QA, QB);
-  Node *sub = F->createSub("sub", TO4, QA, QB);
-  Node *mul = F->createMul("mul", TO5, QA, QB);
-  Node *div = F->createDiv("div", TO6, QB, QC);
+  Node *max = F_->createMax("max", TO1, QA, QB);
+  Node *min = F_->createMin("min", TO2, QA, QB);
+  Node *add = F_->createAdd("add", TO3, QA, QB);
+  Node *sub = F_->createSub("sub", TO4, QA, QB);
+  Node *mul = F_->createMul("mul", TO5, QA, QB);
+  Node *div = F_->createDiv("div", TO6, QB, QC);
 
   // Save results of the operations.
-  F->createSave("saveMax", max, O1);
-  F->createSave("saveMin", min, O2);
-  F->createSave("saveAdd", add, O3);
-  F->createSave("saveSub", sub, O4);
-  F->createSave("saveMul", mul, O5);
-  F->createSave("saveDiv", div, O6);
+  F_->createSave("saveMax", max, O1);
+  F_->createSave("saveMin", min, O2);
+  F_->createSave("saveAdd", add, O3);
+  F_->createSave("saveSub", sub, O4);
+  F_->createSave("saveMul", mul, O5);
+  F_->createSave("saveDiv", div, O6);
 
-  EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   for (size_t i = 0; i < len; i++) {
     float a = TQA->getScale() * (QAH.at({i}) - TQA->getOffset());
@@ -906,12 +860,9 @@ TEST_P(Operator, QuantizedArithmeticUnrescaled) {
 TEST_P(Operator, TestQuantizedRescaleSequence) {
   const int len = 100;
 
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto *A = mod.createVariable(ElemKind::FloatTy, {len}, "A",
+  auto *A = mod_.createVariable(ElemKind::FloatTy, {len}, "A",
                                Variable::VisibilityKind::Public);
-  auto *O = mod.createVariable(ElemKind::FloatTy, {len}, "Out",
+  auto *O = mod_.createVariable(ElemKind::FloatTy, {len}, "Out",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
 
@@ -923,29 +874,29 @@ TEST_P(Operator, TestQuantizedRescaleSequence) {
   // values.
   AH.randomize(-12, 12);
 
-  auto T1 = mod.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
-  auto T2 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 2);
-  auto T3 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.1, -3);
-  auto T4 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.1, 7);
-  auto T5 = mod.uniqueType(ElemKind::Int8QTy, {len}, 0.3, -3);
+  auto T1 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
+  auto T2 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 2);
+  auto T3 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.1, -3);
+  auto T4 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.1, 7);
+  auto T5 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.3, -3);
 
-  Node *R = F->createQuantize("R", A, T1);
+  Node *R = F_->createQuantize("R", A, T1);
   // Check that a sequence of type conversions does not change the result.
-  R = F->createRescaleQuantized("R", R, T1);
-  R = F->createRescaleQuantized("R", R, T2);
-  R = F->createRescaleQuantized("R", R, T3);
+  R = F_->createRescaleQuantized("R", R, T1);
+  R = F_->createRescaleQuantized("R", R, T2);
+  R = F_->createRescaleQuantized("R", R, T3);
   // Check that adding the quantized zero does not change the result.
-  auto *G = F->createSplat("splatZero", T3, 0.0);
-  R = F->createAdd("addZero", G, R);
-  R = F->createRescaleQuantized("R", R, T4);
-  R = F->createRescaleQuantized("R", R, T5);
-  R = F->createRescaleQuantized("R", R, T1);
-  auto *DQ = F->createDequantize("DQ", R);
+  auto *G = F_->createSplat("splatZero", T3, 0.0);
+  R = F_->createAdd("addZero", G, R);
+  R = F_->createRescaleQuantized("R", R, T4);
+  R = F_->createRescaleQuantized("R", R, T5);
+  R = F_->createRescaleQuantized("R", R, T1);
+  auto *DQ = F_->createDequantize("DQ", R);
 
   // Test a sequence of rescale operations t
-  F->createSave("save", DQ, O);
-  EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  F_->createSave("save", DQ, O);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   for (size_t i = 0; i < len; i++) {
     EXPECT_NEAR(AH.at({i}), OH.at({i}), 1.0);
@@ -956,52 +907,48 @@ TEST_P(Operator, FCGradientCheck) {
   // Create net representing A*X+Y=B, where X and Y are trainable, while
   // A and B are fixed. Record gradients for X and Y after 3 steps and compare
   // with reference values.
-  auto &mod = EE.getModule();
-  auto *A = mod.createVariable(ElemKind::FloatTy, {2, 1}, "A",
+  
+  auto *A = mod_.createVariable(ElemKind::FloatTy, {2, 1}, "A",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
-  auto *B = mod.createVariable(ElemKind::FloatTy, {2, 1}, "B",
+  auto *B = mod_.createVariable(ElemKind::FloatTy, {2, 1}, "B",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
-  auto *X = mod.createVariable(ElemKind::FloatTy, {1, 1}, "X",
+  auto *X = mod_.createVariable(ElemKind::FloatTy, {1, 1}, "X",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::Broadcast, -1.26274);
-  auto *Y = mod.createVariable(ElemKind::FloatTy, {1}, "Y",
+  auto *Y = mod_.createVariable(ElemKind::FloatTy, {1}, "Y",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::Broadcast, 0.10000);
-  Function *F = mod.createFunction("main");
-  auto *FC = F->createFullyConnected("fc", A, X, Y);
-  auto *S = F->createRegression("reg", FC, B);
-  F->createSave("ret", S);
+  auto *FC = F_->createFullyConnected("fc", A, X, Y);
+  auto *S = F_->createRegression("reg", FC, B);
+  F_->createSave("ret", S);
 
   Tensor initA(ElemKind::FloatTy, {2, 1});
   Tensor initB(ElemKind::FloatTy, {2, 1});
   initA.getHandle() = {4.2, 9.875};
   initB.getHandle() = {-13.1, 3.14};
 
-  Function *DF = glow::differentiate(F, EE.getConfig(), "d_main");
-  EE.compile(CompilationMode::Train, DF);
-
-  EE.runBatch(3, {A, B}, {&initA, &initB});
+  Function *DF = glow::differentiate(F_, EE_.getConfig(), "d_main");
+  EE_.compile(CompilationMode::Train, DF);
+  EE_.runBatch(3, {A, B}, {&initA, &initB});
 
   EXPECT_NEAR(X->getPayload().getHandle().raw(0), -0.21294, 1E-5);
   EXPECT_NEAR(Y->getPayload().getHandle().raw(0), 0.01656, 1E-5);
 }
 
 TEST_P(Operator, concatVectors) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-  F->setName("concatVectors");
+  F_->setName("concatVectors");
 
-  auto *V1 = mod.createVariable(ElemKind::IndexTy, {10}, "V1",
+  auto *V1 = mod_.createVariable(ElemKind::IndexTy, {10}, "V1",
                                 Variable::VisibilityKind::Public);
-  auto *V2 = mod.createVariable(ElemKind::IndexTy, {20}, "V2",
+  auto *V2 = mod_.createVariable(ElemKind::IndexTy, {20}, "V2",
                                 Variable::VisibilityKind::Public);
-  auto *V3 = mod.createVariable(ElemKind::IndexTy, {30}, "V3",
+  auto *V3 = mod_.createVariable(ElemKind::IndexTy, {30}, "V3",
                                 Variable::VisibilityKind::Public);
 
-  Node *L = F->createConcat("concat", {V1, V2, V3}, 0);
-  auto *result = F->createSave("ret", L);
+  Node *L = F_->createConcat("concat", {V1, V2, V3}, 0);
+  auto *result = F_->createSave("ret", L);
 
   Tensor I1(ElemKind::IndexTy, {10});
   Tensor I2(ElemKind::IndexTy, {20});
@@ -1017,10 +964,10 @@ TEST_P(Operator, concatVectors) {
     I3.getHandle<size_t>().at({i + 20}) = i + 50;
   }
 
-  EE.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F_);
 
   // Testing the output vector.
-  EE.run({V1, V2, V3}, {&I1, &I2, &I3});
+  EE_.run({V1, V2, V3}, {&I1, &I2, &I3});
   auto RNWH = result->getVariable()->getPayload().getHandle<size_t>();
   (void)RNWH;
 
@@ -1030,20 +977,18 @@ TEST_P(Operator, concatVectors) {
 }
 
 TEST_P(Operator, sliceVectors) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-  F->setName("sliceVectors");
+  F_->setName("sliceVectors");
 
-  auto *V = mod.createVariable(ElemKind::IndexTy, {3, 30}, "V",
+  auto *V = mod_.createVariable(ElemKind::IndexTy, {3, 30}, "V",
                                Variable::VisibilityKind::Public);
 
-  Node *S1 = F->createSlice("slice1", V, {0, 10}, {3, 13});
-  Node *S2 = F->createSlice("slice2", V, {1, 10}, {2, 30});
-  Node *S3 = F->createSlice("slice3", V, {2, 10}, {3, 12});
+  Node *S1 = F_->createSlice("slice1", V, {0, 10}, {3, 13});
+  Node *S2 = F_->createSlice("slice2", V, {1, 10}, {2, 30});
+  Node *S3 = F_->createSlice("slice3", V, {2, 10}, {3, 12});
 
-  auto *result1 = F->createSave("ret1", S1);
-  auto *result2 = F->createSave("ret2", S2);
-  auto *result3 = F->createSave("ret3", S3);
+  auto *result1 = F_->createSave("ret1", S1);
+  auto *result2 = F_->createSave("ret2", S2);
+  auto *result3 = F_->createSave("ret3", S3);
 
   Tensor I(ElemKind::IndexTy, {3, 30});
 
@@ -1053,10 +998,10 @@ TEST_P(Operator, sliceVectors) {
     I.getHandle<size_t>().at({2, j}) = j + 60;
   }
 
-  EE.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F_);
 
   // Testing the output slices.
-  EE.run({V}, {&I});
+  EE_.run({V}, {&I});
   auto RNWH1 = result1->getVariable()->getPayload().getHandle<size_t>();
   (void)RNWH1;
   auto RNWH2 = result2->getVariable()->getPayload().getHandle<size_t>();
@@ -1088,34 +1033,31 @@ TEST_P(Operator, simpleCmpSelectPredication) {
   // compare-select pair of instructions. Keep doubling some values
   // until some condition is met.
 
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto *inputs = mod.createVariable(ElemKind::FloatTy, {10}, "inputs");
-  auto *counters = mod.createVariable(ElemKind::FloatTy, {10}, "counters");
+  auto *inputs = mod_.createVariable(ElemKind::FloatTy, {10}, "inputs");
+  auto *counters = mod_.createVariable(ElemKind::FloatTy, {10}, "counters");
 
   counters->getPayload().getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
   inputs->getPayload().getHandle().clear(1);
 
   Node *cnt = counters;
   Node *data = inputs;
-  Node *const1 = F->createSplat("const1", counters->getType(), 1.0);
-  Node *const0 = F->createSplat("const0", counters->getType(), 0.0);
+  Node *const1 = F_->createSplat("const1", counters->getType(), 1.0);
+  Node *const0 = F_->createSplat("const0", counters->getType(), 0.0);
 
   for (int i = 0; i < 10; i++) {
-    cnt = F->createSub("sub1", cnt, const1);
-    Node *pred = F->createCmpLTE("cmp", const0, cnt);
+    cnt = F_->createSub("sub1", cnt, const1);
+    Node *pred = F_->createCmpLTE("cmp", const0, cnt);
 
-    Node *const2 = F->createSplat("const2", data->getType(), 2.0);
-    Node *newData = F->createMul("mul2x", data, const2);
+    Node *const2 = F_->createSplat("const2", data->getType(), 2.0);
+    Node *newData = F_->createMul("mul2x", data, const2);
 
-    data = F->createSelect("select", pred, newData, data);
+    data = F_->createSelect("select", pred, newData, data);
   }
 
-  auto *SN = F->createSave("ret", data);
+  auto *SN = F_->createSave("ret", data);
 
-  EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   auto H = SN->getVariable()->getHandle();
   ASSERT_NEAR(H.at(0), 1, 0.001);
@@ -1131,48 +1073,42 @@ TEST_P(Operator, simpleCmpSelectPredication) {
 }
 
 TEST_P(Operator, simplePredication) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto *inputs = mod.createVariable(ElemKind::FloatTy, {10, 10, 10}, "inputs");
-  auto *counters = mod.createVariable(ElemKind::FloatTy, {10}, "counters");
+  auto *inputs = mod_.createVariable(ElemKind::FloatTy, {10, 10, 10}, "inputs");
+  auto *counters = mod_.createVariable(ElemKind::FloatTy, {10}, "counters");
 
   counters->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
   inputs->getHandle().randomize(-10, 10);
 
-  Node *C5 = F->createSplat("C5", counters->getType(), 5.0);
-  Node *pred = F->createCmpLTE("cmp", C5, counters);
+  Node *C5 = F_->createSplat("C5", counters->getType(), 5.0);
+  Node *pred = F_->createCmpLTE("cmp", C5, counters);
 
-  auto *FC0 = F->createFullyConnected("FC0", inputs, 128);
-  auto *RL0 = F->createRELU("RL0", FC0);
-  auto *FC1 = F->createFullyConnected("FC1", RL0, 64);
-  auto *RL1 = F->createRELU("RL1", FC1);
-  auto *FC2 = F->createFullyConnected("FC2", RL1, 32);
-  auto *RL2 = F->createRELU("RL2", FC2);
+  auto *FC0 = F_->createFullyConnected("FC0", inputs, 128);
+  auto *RL0 = F_->createRELU("RL0", FC0);
+  auto *FC1 = F_->createFullyConnected("FC1", RL0, 64);
+  auto *RL1 = F_->createRELU("RL1", FC1);
+  auto *FC2 = F_->createFullyConnected("FC2", RL1, 32);
+  auto *RL2 = F_->createRELU("RL2", FC2);
 
-  F->createSave("ret", RL2);
+  F_->createSave("ret", RL2);
 
   FC0->setPredicate(pred);
   FC1->setPredicate(pred);
   FC2->setPredicate(pred);
 
-  EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 }
 
 TEST_P(Operator, ChannelShuffle) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto *inputs = mod.createVariable(ElemKind::FloatTy, {1, 12, 1, 1}, "inputs");
+  auto *inputs = mod_.createVariable(ElemKind::FloatTy, {1, 12, 1, 1}, "inputs");
 
   inputs->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
 
-  Node *CS = F->createChannelShuffle("CS", inputs, 3, 1);
-  SaveNode *S = F->createSave("save", CS);
+  Node *CS = F_->createChannelShuffle("CS", inputs, 3, 1);
+  SaveNode *S = F_->createSave("save", CS);
 
-  EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   auto results = llvm::cast<Variable>(S->getOutput())->getPayload().getHandle();
 
@@ -1183,27 +1119,24 @@ TEST_P(Operator, ChannelShuffle) {
 }
 
 TEST_P(Operator, IntRelu) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
   const float splatValue = 10;
   const float scale = 1.0;
   const float rescaleScale = 2.0;
   const int32_t offset = 5;
   const size_t size = 5;
 
-  auto splatTy = mod.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
+  auto splatTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
   auto rescaleTy =
-      mod.uniqueType(ElemKind::Int8QTy, {size}, rescaleScale, offset);
+      mod_.uniqueType(ElemKind::Int8QTy, {size}, rescaleScale, offset);
 
-  auto *splat = F->createSplat("splat", splatTy, splatValue);
-  auto *rescale = F->createRescaleQuantized("rescale", splat, rescaleTy);
-  auto *relu = F->createRELU("relu", rescale);
-  auto *dequantize = F->createDequantize("dequantize", relu);
+  auto *splat = F_->createSplat("splat", splatTy, splatValue);
+  auto *rescale = F_->createRescaleQuantized("rescale", splat, rescaleTy);
+  auto *relu = F_->createRELU("relu", rescale);
+  auto *dequantize = F_->createDequantize("dequantize", relu);
 
-  auto *save = F->createSave("save", dequantize);
-  EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  auto *save = F_->createSave("save", dequantize);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   auto result = save->getVariable()->getHandle();
   float expectedValue = std::max(0.0f, splatValue);
@@ -1213,21 +1146,18 @@ TEST_P(Operator, IntRelu) {
 }
 
 TEST_P(Operator, IntSplat) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
   const float splatValue = 10;
   const float scale = 1.0;
   const int32_t offset = 5;
   const size_t size = 3;
 
-  auto splatTy = mod.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
-  auto *splat = F->createSplat("splat", splatTy, splatValue);
-  auto *dequantize = F->createDequantize("dequantize", splat);
+  auto splatTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
+  auto *splat = F_->createSplat("splat", splatTy, splatValue);
+  auto *dequantize = F_->createDequantize("dequantize", splat);
 
-  auto *save = F->createSave("save", dequantize);
-  EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  auto *save = F_->createSave("save", dequantize);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
 
   auto result = save->getVariable()->getHandle();
   for (size_t i = 0; i < result.size(); i++) {
