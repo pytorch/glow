@@ -743,7 +743,11 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
         llvm::ConstantPointerNull::get(elementTy->getPointerTo());
 
     if (lhs->getType()->isQuantizedType()) {
-      auto *val = emitConst(builder, V, lhs->getElementType());
+      // Quantize value from the splat to the {S,O} of the lhs param.
+      TensorQuantizationParams TQP{lhs->getType()->getScale(),
+                                   lhs->getType()->getOffset()};
+      auto quantizedValue = quantization::quantize(V, TQP);
+      auto *val = emitConst(builder, quantizedValue, lhs->getElementType());
       auto *stackedOpCall =
           builder.CreateCall(F, {loopCount, val, lhsPtr, pointerNull});
       auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,

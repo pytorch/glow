@@ -1212,6 +1212,29 @@ TEST_P(Operator, IntRelu) {
   }
 }
 
+TEST_P(Operator, IntSplat) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  const float splatValue = 10;
+  const float scale = 1.0;
+  const int32_t offset = 5;
+  const size_t size = 3;
+
+  auto splatTy = mod.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
+  auto *splat = F->createSplat("splat", splatTy, splatValue);
+  auto *dequantize = F->createDequantize("dequantize", splat);
+
+  auto *save = F->createSave("save", dequantize);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+
+  auto result = save->getVariable()->getHandle();
+  for (size_t i = 0; i < result.size(); i++) {
+    EXPECT_EQ(splatValue, result.raw(i));
+  }
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 
