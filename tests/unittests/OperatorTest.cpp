@@ -178,23 +178,33 @@ TEST_P(Operator, broadcastSimple) {
   const size_t dims_B[numDims_B] = {dimY_B, dimZ_B, dimW_B};
 
   auto *B = mod_.createVariable(ElemKind::FloatTy, dims_B, "B");
+  auto *QB = mod_.createVariable(ElemKind::Int8QTy, dims_B, 1.1, -2, "QB");
   auto H_B = B->getPayload().getHandle();
+  auto H_QB = QB->getPayload().getHandle<int8_t>();
   H_B = {20, 10};
+  H_QB = {35, -18};
 
   const unsigned axis = 0;
 
   auto R = F_->createBroadcast("broadcasted", B, dims_A, axis);
+  auto QR = F_->createBroadcast("broadcastedQ", QB, dims_A, axis);
   auto *broadcasted = mod_.createVariable(ElemKind::FloatTy, dims_A, "A");
+  auto *broadcastedQ =
+      mod_.createVariable(ElemKind::Int8QTy, dims_A, 1.1, -2, "QA");
   F_->createSave("save", R, broadcasted);
+  F_->createSave("saveQ", QR, broadcastedQ);
 
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
 
   auto broadcastedBHandle = broadcasted->getPayload().getHandle();
+  auto broadcastedQBHandle = broadcastedQ->getPayload().getHandle<int8_t>();
   // Verify broadcasted B has same shape.
-  EXPECT_EQ(numDims_A, broadcastedBHandle.dims().size());
+  EXPECT_EQ(broadcastedBHandle.dims().size(), numDims_A);
+  EXPECT_EQ(broadcastedQBHandle.dims().size(), numDims_A);
   for (size_t i = 0; i < broadcastedBHandle.dims().size(); i++) {
-    EXPECT_EQ(dims_A[i], broadcastedBHandle.dims()[i]);
+    EXPECT_EQ(broadcastedBHandle.dims()[i], dims_A[i]);
+    EXPECT_EQ(broadcastedQBHandle.dims()[i], dims_A[i]);
   }
 
   // Look at the two values in X_B and verify in the three dimensions it was
@@ -203,10 +213,12 @@ TEST_P(Operator, broadcastSimple) {
   const size_t l_B = 0;
   for (size_t j_B = 0; j_B < dimY_B; ++j_B) {
     const float origVal = H_B.at({j_B, k_B, l_B});
+    const int8_t origValQ = H_QB.at({j_B, k_B, l_B});
     const size_t j_A = j_B; // This dim was not broadcasted (dims were equal).
-    for (size_t k_A = 0; k_A < dimZ_A; ++k_A) {
-      for (size_t l_A = 0; l_A < dimW_A; ++l_A) {
-        EXPECT_EQ(origVal, broadcastedBHandle.at({j_A, k_A, l_A}));
+    for (size_t k_A = 0; k_A < dimZ_A; k_A++) {
+      for (size_t l_A = 0; l_A < dimW_A; l_A++) {
+        EXPECT_EQ(broadcastedBHandle.at({j_A, k_A, l_A}), origVal);
+        EXPECT_EQ(broadcastedQBHandle.at({j_A, k_A, l_A}), origValQ);
       }
     }
   }
@@ -227,23 +239,33 @@ TEST_P(Operator, broadcast) {
   const size_t dims_B[numDims_B] = {dimY_B, dimZ_B};
 
   auto *B = mod_.createVariable(ElemKind::FloatTy, dims_B, "B");
+  auto *QB = mod_.createVariable(ElemKind::Int8QTy, dims_B, 0.8, 3, "QB");
   auto H_B = B->getPayload().getHandle();
+  auto H_QB = QB->getPayload().getHandle<int8_t>();
   H_B = {20, 10};
+  H_QB = {-8, 41};
 
   const unsigned axis = 1;
 
   auto R = F_->createBroadcast("broadcasted", B, dims_A, axis);
+  auto QR = F_->createBroadcast("broadcastedQ", QB, dims_A, axis);
   auto *broadcasted = mod_.createVariable(ElemKind::FloatTy, dims_A, "A");
+  auto *broadcastedQ =
+      mod_.createVariable(ElemKind::Int8QTy, dims_A, 0.8, 3, "QB");
   F_->createSave("save", R, broadcasted);
+  F_->createSave("saveQ", QR, broadcastedQ);
 
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
 
   auto broadcastedBHandle = broadcasted->getPayload().getHandle();
+  auto broadcastedQBHandle = broadcastedQ->getPayload().getHandle<int8_t>();
   // Verify broadcasted B has same shape.
-  EXPECT_EQ(numDims_A, broadcastedBHandle.dims().size());
+  EXPECT_EQ(broadcastedBHandle.dims().size(), numDims_A);
+  EXPECT_EQ(broadcastedQBHandle.dims().size(), numDims_A);
   for (size_t i = 0; i < broadcastedBHandle.dims().size(); i++) {
-    EXPECT_EQ(dims_A[i], broadcastedBHandle.dims()[i]);
+    EXPECT_EQ(broadcastedBHandle.dims()[i], dims_A[i]);
+    EXPECT_EQ(broadcastedQBHandle.dims()[i], dims_A[i]);
   }
 
   // Look at the two values in X_B and verify in the three dimensions it was
@@ -251,11 +273,13 @@ TEST_P(Operator, broadcast) {
   const size_t k_B = 0;
   for (size_t j_B = 0; j_B < dimY_B; ++j_B) {
     const float origVal = H_B.at({j_B, k_B});
+    const int8_t origValQ = H_QB.at({j_B, k_B});
     const size_t j_A = j_B; // This dim was not broadcasted (dims were equal).
-    for (size_t i_A = 0; i_A < dimX_A; ++i_A) {
-      for (size_t k_A = 0; k_A < dimZ_A; ++k_A) {
-        for (size_t l_A = 0; l_A < dimW_A; ++l_A) {
-          EXPECT_EQ(origVal, broadcastedBHandle.at({i_A, j_A, k_A, l_A}));
+    for (size_t i_A = 0; i_A < dimX_A; i_A++) {
+      for (size_t k_A = 0; k_A < dimZ_A; k_A++) {
+        for (size_t l_A = 0; l_A < dimW_A; l_A++) {
+          EXPECT_EQ(broadcastedBHandle.at({i_A, j_A, k_A, l_A}), origVal);
+          EXPECT_EQ(broadcastedQBHandle.at({i_A, j_A, k_A, l_A}), origValQ);
         }
       }
     }

@@ -533,8 +533,8 @@ TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
 BroadcastNode *Function::createBroadcast(llvm::StringRef name, NodeValue input,
                                          llvm::ArrayRef<size_t> shape,
                                          unsigned axis) {
-  auto TR = getParent()->uniqueType(input.getType()->getElementType(), shape);
-  return addNode(new BroadcastNode(name, TR, input, shape.vec(), axis));
+  auto OT = getParent()->uniqueTypeWithNewShape(input.getType(), shape);
+  return addNode(new BroadcastNode(name, OT, input, shape.vec(), axis));
 }
 
 /// \returns true if \p T1 and T2 has the exact same type except for dimension
