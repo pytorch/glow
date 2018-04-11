@@ -760,43 +760,13 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
                         const float *biasW, const size_t *outWdims,
                         const size_t *inWdims, const size_t *filterWdims,
                         const size_t *biasWdims, size_t filterSize,
-                        size_t stride, size_t pad) {
-  size_t inChannels = inWdims[3];
-  size_t outChannels = outWdims[3];
-
-  // Select a method for iterating on the image in the pixel (filter-first, or
-  // input-first). Perform convolutions with a high channel count by scanning
-  // the input image multiple times, once for each filter entry. Scan images
-  // with a low channel count by scanning the image once because the filter
-  // scan will fall in the cache.
-  bool processPixelsFirst = (inChannels < 16);
-
+                        size_t stride, size_t pad, unsigned pixelScanFirst,
+                        unsigned numDepthRegs, unsigned sizeGroupY,
+                        unsigned depthStrips) {
+  // Select the order in which we iterate over the pixels in the picture.
   auto eachPixelConv =
-      (processPixelsFirst ? &libjit_convDKKC8_foreach_xy_pixels_filter
-                          : &libjit_convDKKC8_foreach_xy_filter_pixels);
-
-  // The number of float8 registers that we use to process the depth channel.
-  unsigned numDepthRegs = (processPixelsFirst ? 8 : 2);
-  // The number of y pixels to process at once.
-  unsigned sizeGroupY = (processPixelsFirst ? 1 : 5);
-
-  // When producing output pixels process this many times of depth-strips, where
-  // each chunk is float8 * numDepthRegs. This is a form of tiling. It's
-  // profitable to scan multiple depth-strips of the filter if the scanned
-  // memory fits in the cahce and does not get evicted before the next
-  // iteration. By increasing the number strips (and using more cache memory) we
-  // reduce the number of times that we iterate over the input. However, we also
-  // increase the pressure on the cache that has to store the filter so we can't
-  // process too many strips at once.
-  unsigned depthStrips = 1;
-  unsigned stripSize = 8 * numDepthRegs * inChannels;
-  unsigned tileSize = 16384;
-  // Increase the number of strips until we reach the output-tensor depth size
-  // or until we exceed some threashold.
-  while (2 * depthStrips * stripSize <= tileSize &&
-         2 * depthStrips * numDepthRegs * 8 <= outChannels && depthStrips < 8) {
-    depthStrips *= 2;
-  }
+      (pixelScanFirst ? &libjit_convDKKC8_foreach_xy_pixels_filter
+                      : &libjit_convDKKC8_foreach_xy_filter_pixels);
 
   // For each input in the batch:
   for (size_t n = 0; n < inWdims[0]; n++) {
@@ -809,7 +779,7 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
     for (size_t d = 0; d < outWdims[3]; d += 8 * numDepthRegs * depthStrips) {
 
       // Perform the convolution for each pixel.
-      eachPixelConv(n, d, numDepthRegs, depthStrips, sizeGroupY, inChannels,
+      eachPixelConv(n, d, numDepthRegs, depthStrips, sizeGroupY, inWdims[3],
                     outW, inW, filterW, biasW, outWdims, inWdims, filterWdims,
                     biasWdims, filterSize, stride, pad);
 
