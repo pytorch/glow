@@ -1197,11 +1197,52 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *stride = emitConstSizeT(builder, CI->getStride());
     auto *pad = emitConstSizeT(builder, CI->getPad());
 
+    size_t inChannels = src->dims()[3];
+    size_t outChannels = src->dims()[3];
+
+    // Select a method for iterating on the image in the pixel (filter-first, or
+    // input-first). Perform convolutions with a high channel count by scanning
+    // the input image multiple times, once for each filter entry. Scan images
+    // with a low channel count by scanning the image once because the filter
+    // scan will fall in the cache.
+    bool pixelScanFirst = (inChannels < 16);
+
+    // The number of float8 registers that we use to process the depth channel.
+    unsigned numDepthRegs = (pixelScanFirst ? 8 : 2);
+    // The number of y pixels to process at once.
+    unsigned sizeGroupY = (pixelScanFirst ? 1 : 5);
+
+    // When producing output pixels process this many times of depth-strips,
+    // where each chunk is float8 * numDepthRegs. This is a form of tiling. It's
+    // profitable to scan multiple depth-strips of the filter if the scanned
+    // memory fits in the cahce and does not get evicted before the next
+    // iteration. By increasing the number strips (and using more cache memory)
+    // we reduce the number of times that we iterate over the input. However, we
+    // also increase the pressure on the cache that has to store the filter so
+    // we can't process too many strips at once.
+    unsigned depthStrips = 1;
+    unsigned stripSize = 8 * numDepthRegs * inChannels;
+    unsigned tileSize = 16384;
+    // Increase the number of strips until we reach the output-tensor depth size
+    // or until we exceed some threashold.
+    while (2 * depthStrips * stripSize <= tileSize &&
+           2 * depthStrips * numDepthRegs * 8 <= outChannels &&
+           depthStrips < 8) {
+      depthStrips *= 2;
+    }
+
+    auto *pixelScanFirstVal = emitConstI32(builder, pixelScanFirst);
+    auto *numDepthRegsVal = emitConstI32(builder, numDepthRegs);
+    auto *sizeGroupYVal = emitConstI32(builder, sizeGroupY);
+    auto *depthStripsVal = emitConstI32(builder, depthStrips);
+
     const char *kernelName = "convDKKC8";
     auto *F = getFunction(kernelName, dest->getElementType());
 
     builder.CreateCall(F, {destPtr, srcPtr, filterPtr, biasPtr, destDims,
-                           srcDims, filterDims, biasDims, kernel, stride, pad});
+                           srcDims, filterDims, biasDims, kernel, stride, pad,
+                           pixelScanFirstVal, numDepthRegsVal, sizeGroupYVal,
+                           depthStripsVal});
     break;
   }
 
