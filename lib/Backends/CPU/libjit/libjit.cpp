@@ -246,6 +246,19 @@ void get_src_dim(size_t *src_i, const size_t *dest_i, const size_t *src_dims,
 }
 
 template <typename T>
+void libjit_broadcast(T *dest, const T *src, const size_t *destDims,
+                      const size_t *srcDims, size_t nDims) {
+  size_t destI[6] = {0};
+  size_t srcI[6] = {0};
+  do {
+    get_src_dim(srcI, destI, srcDims, nDims);
+    size_t sptr = get_element_ptr(src, srcDims, nDims, srcI, nDims);
+    size_t dptr = get_element_ptr(dest, destDims, nDims, destI, nDims);
+    dest[dptr] = src[sptr];
+  } while (increment_and_check_dims(destI, destDims, nDims));
+}
+
+template <typename T>
 void libjit_gather(T *dest, const T *data, const size_t *indices,
                    size_t numIndices, size_t sliceSize) {
   for (size_t i = 0; i < numIndices; i++) {
@@ -559,16 +572,15 @@ DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_splat_kernel_i8, int8_t,
 #undef DEFINE_DATA_PARALLEL_KERNEL_FUNC
 #undef DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND
 
-void libjit_broadcast_f(float *dest, const float *src, const size_t *dest_dims,
-                        const size_t *src_dims, size_t n_dims) {
-  size_t dest_i[6] = {0};
-  size_t src_i[6] = {0};
-  do {
-    get_src_dim(src_i, dest_i, src_dims, n_dims);
-    size_t sptr = get_element_ptr(src, src_dims, n_dims, src_i, n_dims);
-    size_t dptr = get_element_ptr(dest, dest_dims, n_dims, dest_i, n_dims);
-    dest[dptr] = src[sptr];
-  } while (increment_and_check_dims(dest_i, dest_dims, n_dims));
+void libjit_broadcast_f(float *dest, const float *src, const size_t *destDims,
+                        const size_t *srcDims, size_t nDims) {
+  libjit_broadcast(dest, src, destDims, srcDims, nDims);
+}
+
+void libjit_broadcast_i8(int8_t *dest, const int8_t *src,
+                         const size_t *destDims, const size_t *srcDims,
+                         size_t nDims) {
+  libjit_broadcast(dest, src, destDims, srcDims, nDims);
 }
 
 void libjit_batchedadd_f(float *dest, const float *batch, const float *slice,

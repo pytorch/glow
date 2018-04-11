@@ -301,8 +301,15 @@ static void broadcastOneDimensionGeneric(Tensor *src, Tensor *dest,
   }
   newDims[direction] = newDimLen;
   const unsigned newDimsSize = origDims.size() + (addingNewDim ? 1 : 0);
-  dest->reset(src->getElementType(),
-              llvm::ArrayRef<size_t>(newDims, newDimsSize));
+  auto &srcType = src->getType();
+  if (srcType.isQuantizedType()) {
+    dest->reset(src->getElementType(),
+                llvm::ArrayRef<size_t>(newDims, newDimsSize),
+                srcType.getScale(), srcType.getOffset());
+  } else {
+    dest->reset(src->getElementType(),
+                llvm::ArrayRef<size_t>(newDims, newDimsSize));
+  }
 
   size_t currNewIdxsArr[max_tensor_dimensions];
   auto currNewIdxs = llvm::MutableArrayRef<size_t>(currNewIdxsArr, newDimsSize);

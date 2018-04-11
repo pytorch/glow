@@ -706,6 +706,14 @@ void BroadcastNode::verify() const {
          "Source being broadcasted must have <= number dims of result shape.");
   assert(dest.dims().equals(shape) &&
          "New broadcasted shape does not match shape to broadcast to.");
+
+  if (getInput()->getType()->isQuantizedType()) {
+    // Quantization scales must be identical; no rescaling is allowed.
+    assert(getResult()->getType()->getScale() ==
+           getInput()->getType()->getScale());
+    assert(getResult()->getType()->getOffset() ==
+           getInput()->getType()->getOffset());
+  }
 }
 
 void SplatNode::verify() const {}
