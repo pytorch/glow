@@ -10,6 +10,7 @@ find_program(LLVM_LINK_BIN llvm-link)
 add_library(CPURuntime
             SHARED
               libjit/libjit.cpp
+              libjit/libjit_conv.cpp
               libjit/libjit_matmul.cpp)
 set_target_properties(CPURuntime
                       PROPERTIES
