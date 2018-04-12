@@ -348,10 +348,12 @@ void Module::assignUniqueName(Node *N) { N->setName(uniqueName(N->getName())); }
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       size_t depth, size_t kernel,
-                                      size_t stride, size_t pad) {
+                                      size_t stride, size_t pad, size_t group) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
+  assert(idim.c % group == 0 && "channels number must be divisible by groups");
+  assert(depth % group == 0 && "depth must be divisible by groups");
 
   // Calculate the size and allocate the output buffer.
   auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
@@ -359,7 +361,7 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
   std::array<size_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
 
   // Allocate the Filter and Bias tensors.
-  std::array<size_t, 4> filterDim = {{depth, kernel, kernel, idim.c}};
+  std::array<size_t, 4> filterDim = {{depth, kernel, kernel, idim.c / group}};
   size_t fanIn = kernel * kernel * idim.c;
   auto *filter = getParent()->createVariable(
       ElemKind::FloatTy, filterDim, "filter", Variable::VisibilityKind::Private,
@@ -372,7 +374,7 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
   auto OT = getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernel,
-                                     stride, pad, /*group = */ 1));
+                                     stride, pad, group));
 }
 
 /// Check that the dimensions that are passed in when the convolution is

@@ -166,7 +166,7 @@ TEST(Network, gradientCheckConv) {
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
 
-  Node *O = F->createConv("conv", A, 4, 5, 1, 2);
+  Node *O = F->createConv("conv", A, 4, 5, 1, 2, 1);
   O = F->createPoolMax("pool", O, 3, 3, 0);
   O = F->createFullyConnected("fc", O, numOutputElem);
   O = F->createRELU("relu", O);

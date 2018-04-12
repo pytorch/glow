@@ -26,11 +26,11 @@ Variable *A = mod.createVariable(
     Variable::VisibilityKind::Public, Variable::TrainKind::None);
 
 // Construct LeNet.
-auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2);
+auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2, 1);
 auto *RL0 = F->createRELU("relu", CV0);
 auto *MP0 = F->createPoolMax("pool", RL0, 3, 3, 0);
 
-auto *CV1 = F->createConv("conv", MP0, 16, 5, 1, 2);
+auto *CV1 = F->createConv("conv", MP0, 16, 5, 1, 2, 1);
 auto *RL1 = F->createRELU("relu", CV1);
 auto *MP1 = F->createPoolMax("pool", RL1, 3, 3, 0);
 

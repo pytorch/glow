@@ -482,7 +482,7 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
   Function *F = mod.createFunction("main");
 
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
-  auto *conv = F->createConv("conv", input, convDepth, 5, 1, 0);
+  auto *conv = F->createConv("conv", input, convDepth, 5, 1, 0, 1);
   auto *res = mod.createVariable(ElemKind::FloatTy, conv->dims(), "res");
 
   auto filter = conv->getFilter();

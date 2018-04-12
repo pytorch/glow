@@ -29,11 +29,11 @@ TEST(GraphAutoGrad, autoGrad) {
                                    Variable::VisibilityKind::Public,
                                    Variable::TrainKind::None);
 
-  auto *CV0 = F->createConv("conv1", A, 16, 5, 1, 2);
+  auto *CV0 = F->createConv("conv1", A, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
   auto *MP0 = F->createPoolMax("pool1", RL0, 3, 3, 0);
 
-  auto *CV1 = F->createConv("conv2", MP0, 16, 5, 1, 2);
+  auto *CV1 = F->createConv("conv2", MP0, 16, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("conv23", CV1);
   auto *MP1 = F->createPoolMax("pool2", RL1, 3, 3, 0);
 

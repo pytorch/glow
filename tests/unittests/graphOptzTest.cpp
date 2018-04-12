@@ -73,7 +73,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
   Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  Node *CV = F_->createConv("conv", A, 16, 5, 1, 2);
+  Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   F_->createSave("ret", BN);
 
@@ -99,7 +99,7 @@ TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
   Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  Node *CV = F_->createConv("conv", A, 16, 5, 1, 2);
+  Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   F_->createSave("ret", BN);
 
@@ -114,7 +114,7 @@ TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
 
-  Node *CV = F_->createConv("conv", A, 16, 5, 1, 2);
+  Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   F_->createSave("ret", BN);
   F_->createSave("ret", CV);

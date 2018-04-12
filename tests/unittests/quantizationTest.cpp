@@ -140,7 +140,7 @@ createSimpleGraphForQuantization(Module *M) {
                                            Variable::TrainKind::None);
   fillStableRandomData(B->getHandle(), 2001, 1);
 
-  ConvolutionNode *CV = F->createConv("conv", A, 16, 5, 1, 2);
+  ConvolutionNode *CV = F->createConv("conv", A, 16, 5, 1, 2, 1);
   Variable *bias = cast<Variable>(CV->getBias());
   Variable *filter = cast<Variable>(CV->getFilter());
 
