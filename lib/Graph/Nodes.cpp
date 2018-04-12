@@ -488,7 +488,7 @@ static void checkType(NodeValue A, ElemKind expectedType) {
 
 static void verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
                               NodeValue bias, size_t kernel, size_t stride,
-                              size_t pad, size_t depth) {
+                              size_t pad, size_t depth, size_t group) {
   assert(src.getElementType() == dest.getElementType() && "Invalid Type");
   assert(src.getElementType() == filter.getElementType() && "Invalid Type");
   assert(src.getElementType() == bias.getElementType() && "Invalid Type");
@@ -498,17 +498,18 @@ static void verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
 
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
+  assert(idim.c % group == 0 && "channels number must be divisible by groups");
 
   auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
-  ShapeNHWC exp(idim.n, outSz.first, outSz.second, depth);
+  ShapeNHWC exp(idim.n, outSz.first, outSz.second, depth * group);
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");
 
-  auto filterDims = {depth, kernel, kernel, idim.c};
+  auto filterDims = {depth * group, kernel, kernel, idim.c / group};
   assert(filter.getType()->dims().equals(filterDims) && "Invalid filter dims");
   (void)filterDims;
 
-  auto biasDims = {depth};
+  auto biasDims = {depth * group};
   assert(bias.getType()->dims().equals(biasDims) && "Invalid bias dims");
   (void)biasDims;
 }
@@ -595,14 +596,14 @@ static void verifyRegression(NodeValue src, NodeValue dest,
 
 void ConvolutionNode::verify() const {
   verifyConvolution(getInput(), getResult(), getFilter(), getBias(), Kernel_,
-                    Stride_, Pad_, Depth_);
+                    Stride_, Pad_, Depth_, Group_);
 }
 
 void ConvolutionGradNode::verify() const {
   verifyConvolution(getGradOfInputNamedInput(),
                     getGradOfOriginalOutputNamedResult(),
                     getGradOfInputNamedFilter(), getGradOfInputNamedBias(),
-                    Kernel_, Stride_, Pad_, Depth_);
+                    Kernel_, Stride_, Pad_, Depth_, Group_);
 }
 
 void PoolMaxNode::verify() const {

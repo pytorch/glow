@@ -165,7 +165,7 @@ public:
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
                               size_t depth, size_t kernel, size_t stride,
-                              size_t pad);
+                              size_t pad, size_t group);
 
   PoolMaxNode *createPoolMax(llvm::StringRef name, NodeValue input,
                              size_t kernel, size_t stride, size_t pad);
