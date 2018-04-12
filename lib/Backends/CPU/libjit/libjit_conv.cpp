@@ -1,3 +1,12 @@
+#include <cassert>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <sys/types.h>
+
 #include "libjit_defs.h"
 
 namespace {
