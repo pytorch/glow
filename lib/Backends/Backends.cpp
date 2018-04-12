@@ -21,21 +21,21 @@ Backend *glow::createBackend(BackendKind backendKind, IRFunction *F) {
   switch (backendKind) {
   case BackendKind::Interpreter:
     return createInterpreter(F);
-#if defined(GLOW_WITH_OPENCL)
   case BackendKind::OpenCL:
-    return createOCLBackend(F);
-#endif
-#if defined(GLOW_WITH_CPU)
+    #ifndef GLOW_WITH_OPENCL
+      GLOW_UNREACHABLE("Must compile with OpenCL support");
+    #else
+      return createOCLBackend(F);
+    #endif
   case BackendKind::CPU:
-    return createCPUBackend(F);
-#endif
-  default:
-    // Unknown execution backend.
-    GLOW_UNREACHABLE("Invalid backend kind.");
-    break;
+    #ifndef GLOW_WITH_CPU
+      GLOW_UNREACHABLE("Must compile with CPU support");
+    #else
+      return createCPUBackend(F);
+    #endif
   }
 }
 
 void Backend::save(llvm::StringRef outputDir) {
-  llvm_unreachable("Saving a bundle is not supported by the backend");
+  GLOW_UNREACHABLE("Saving a bundle is not supported by the backend");
 }
