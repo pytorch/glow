@@ -24,7 +24,7 @@ TEST(Graph, simpleTestConv) {
   Node *K = MD.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
   Node *S = MD.createVariable(ElemKind::IndexTy, {4, 1}, "select");
 
-  K = F->createConv("Conv1", K, 16, 3, 2, 3);
+  K = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
   K = F->createRELU("Relu", K);
   K = F->createSoftMax("SoftMax", K, S);
   F->createSave("Save", K);
@@ -172,7 +172,7 @@ TEST(Graph, cloneTest) {
   Function *F = M.createFunction("main");
   Node *K = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
   Node *S = M.createVariable(ElemKind::IndexTy, {4, 1}, "select");
-  Node *conv = F->createConv("Conv1", K, 16, 3, 2, 3);
+  Node *conv = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
   Node *relu = F->createRELU("Relu", conv);
   Node *SM = F->createSoftMax("SoftMax", relu, S);
   F->createSave("Save", SM);
@@ -223,7 +223,7 @@ TEST(Graph, cloneTest2) {
   auto *F = M.createFunction("main");
   Node *K = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
   Node *S = M.createVariable(ElemKind::IndexTy, {4, 1}, "select");
-  Node *conv = F->createConv("Conv1", K, 16, 3, 2, 3);
+  Node *conv = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
   Node *relu = F->createRELU("Relu", conv);
   Node *concat = F->createConcat("concat", {relu, relu, relu}, 0);
 
@@ -273,7 +273,7 @@ TEST(Graph, nodesWithPredicates) {
                                       Variable::VisibilityKind::Private,
                                       Variable::TrainKind::None);
 
-  auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2);
+  auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
   auto *MP0 = F->createPoolMax("pool1", RL0, 2, 2, 0);
 

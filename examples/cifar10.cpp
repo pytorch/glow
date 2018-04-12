@@ -84,15 +84,15 @@ void testCIFAR10() {
                                Variable::TrainKind::None);
 
   // Create the rest of the network.
-  auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2);
+  auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu", CV0);
   auto *MP0 = F->createPoolMax("pool", RL0, 2, 2, 0);
 
-  auto *CV1 = F->createConv("conv", MP0, 20, 5, 1, 2);
+  auto *CV1 = F->createConv("conv", MP0, 20, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("relu", CV1);
   auto *MP1 = F->createPoolMax("pool", RL1, 2, 2, 0);
 
-  auto *CV2 = F->createConv("conv", MP1, 20, 5, 1, 2);
+  auto *CV2 = F->createConv("conv", MP1, 20, 5, 1, 2, 1);
   auto *RL2 = F->createRELU("relu", CV2);
   auto *MP2 = F->createPoolMax("pool", RL2, 2, 2, 0);
 

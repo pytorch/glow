@@ -127,11 +127,11 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   auto *var2 = mod.createVariable(selected->getElementType(), selected->dims(),
                                   "selected", Variable::VisibilityKind::Public,
                                   Variable::TrainKind::None);
-  auto *conv1 = F->createConv("conv1", var1, 3, 3, 2, 1);
+  auto *conv1 = F->createConv("conv1", var1, 3, 3, 2, 1, 1);
   cast<Variable>(conv1->getFilter())->copyFrom(kernel1);
   cast<Variable>(conv1->getBias())->copyFrom(bias1);
   auto *reshape1 = F->createReshape("reshape1", conv1, shape1);
-  auto *conv2 = F->createConv("conv2", reshape1, 2, 2, 2, 0);
+  auto *conv2 = F->createConv("conv2", reshape1, 2, 2, 2, 0, 1);
   cast<Variable>(conv2->getFilter())->copyFrom(kernel2);
   cast<Variable>(conv2->getBias())->copyFrom(bias2);
   auto *reshape2 = F->createReshape("reshape2", conv2, shape2);
@@ -519,7 +519,7 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
   auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
                                  "input", Variable::VisibilityKind::Public);
   auto *tr = F->createTranspose("tr", var, {0, 2, 3, 1});
-  auto *conv = F->createConv("conv", tr, convDepth, 5, 2, 1);
+  auto *conv = F->createConv("conv", tr, convDepth, 5, 2, 1, 1);
   cast<Variable>(conv->getFilter())->getHandle().clear(2);
   cast<Variable>(conv->getBias())->getHandle().clear(2);
   auto *pool = F->createPoolMax("pool", conv, 2, 2, 0);
@@ -588,7 +588,7 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
                                   "inputs3", Variable::VisibilityKind::Public);
   auto *var4 = mod.createVariable(inputs4->getElementType(), inputs4->dims(),
                                   "inputs4", Variable::VisibilityKind::Public);
-  auto *conv1 = F->createConv("conv1", var1, 6, 4, 1, 2);
+  auto *conv1 = F->createConv("conv1", var1, 6, 4, 1, 2, 1);
   cast<Variable>(conv1->getFilter())->getHandle().clear(0.5);
   cast<Variable>(conv1->getBias())->getHandle().clear(0.7);
   auto *sigmoid1 = F->createSigmoid("sigmoid1", conv1);
@@ -604,7 +604,7 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
   auto *reshape2 = F->createReshape("reshape2", fc2, {8, 8, 15, 6});
   auto *mul = F->createMul("mul", tanh, reshape2);
   auto *sigmoid2 = F->createSigmoid("sigmoid2", mul);
-  auto *conv2 = F->createConv("conv2", sigmoid2, 7, 3, 2, 1);
+  auto *conv2 = F->createConv("conv2", sigmoid2, 7, 3, 2, 1, 1);
   cast<Variable>(conv2->getFilter())->getHandle().clear(0.3);
   cast<Variable>(conv2->getBias())->getHandle().clear(1.3);
   auto *reshape3 = F->createReshape("reshape3", conv2, {8, 8, 7, 4});

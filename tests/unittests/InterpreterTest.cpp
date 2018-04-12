@@ -30,15 +30,15 @@ TEST(Interpreter, interpret) {
 
   auto *ex = mod.createVariable(ElemKind::IndexTy, {1, 1}, "exp");
 
-  auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2);
+  auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
   auto *MP0 = F->createPoolMax("pool1", RL0, 2, 2, 0);
 
-  auto *CV1 = F->createConv("conv2", MP0, 20, 5, 1, 2);
+  auto *CV1 = F->createConv("conv2", MP0, 20, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("relu2", CV1);
   auto *MP1 = F->createPoolMax("pool2", RL1, 2, 2, 0);
 
-  auto *CV2 = F->createConv("conv3", MP1, 20, 5, 1, 2);
+  auto *CV2 = F->createConv("conv3", MP1, 20, 5, 1, 2, 1);
   auto *RL2 = F->createRELU("relu3", CV2);
   auto *MP2 = F->createPoolMax("pool3", RL2, 2, 2, 0);
 
