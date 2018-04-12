@@ -50,11 +50,12 @@ int main(int argc, char **argv) {
       .addMember(MemberType::SizeT, "Stride")
       .addMember(MemberType::SizeT, "Pad")
       .addMember(MemberType::SizeT, "Depth")
+      .addMember(MemberType::SizeT, "Group")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs Convolution using a given Input, Filter, and "
                     "Bias tensors, as well as provided Kernel, Stride, Pad, "
-                    "and Depth.");
+                    "Depth and Group.");
 
   BB.newNode("PoolMax")
       .addInput("Input")
