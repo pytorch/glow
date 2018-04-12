@@ -557,3 +557,25 @@ TEST_F(GraphOptz, quantizeToRescale) {
   ::glow::optimize(F_, CompilationMode::Infer);
   EXPECT_EQ(F_->getNodes().size(), 2);
 }
+
+TEST_F(GraphOptz, MaxOfQuantizedSplat) {
+  const size_t size = 5;
+  const float scale = 1;
+  // offset == -128 guarantees that fp range has values which are not less than
+  // 0.
+  const int32_t offset = -128;
+
+  auto splatTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
+  auto *splat = F_->createSplat("splat", splatTy, 0.0);
+
+  Node *input = mod_.createVariable(ElemKind::Int8QTy, {size}, scale, offset,
+                                    "input", Variable::VisibilityKind::Public,
+                                    Variable::TrainKind::Broadcast, 4);
+  auto *max = F_->createMax("max", splat, input);
+  F_->createSave("save", max);
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+  // Splat and Max should be gone.
+  EXPECT_EQ(F_->getNodes().size(), 1);
+}

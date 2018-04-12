@@ -608,6 +608,51 @@ static void optimizeReshape(Function *F) {
   }
 }
 
+/// Optimize: Max(Splat(), otherInput) or Max(otherInput, Splat()) for
+/// quantized operations.
+/// Splat and Max can be eliminated if Splat value cannot impact the result.
+/// For example, Max and Splat can be removed if splat value is smaller
+/// than quantization range [min, max].
+static void optimizeQuantizedMaxSplat(Function *F) {
+  // The following optimizations need to be performed after all
+  // quantize/dequantize/rescale optimizations are done.
+  for (auto node : F->getNodes()) {
+    // Potentially nop quantized Max can be eliminated.
+    // Likely MaxNode has same types for LHS/RHS and Result, make sure
+    // it's the case.
+    if (auto *MN = dyn_cast<MaxNode>(node)) {
+      if (!node->getType()->isQuantizedType() ||
+          MN->getResult()->getType() != MN->getLHS()->getType() ||
+          MN->getResult()->getType() != MN->getRHS()->getType()) {
+        continue;
+      }
+
+      // Check for input Splat node.
+      if (!isa<SplatNode>(MN->getLHS()) && !isa<SplatNode>(MN->getRHS())) {
+        continue;
+      }
+
+      Node *splatNode =
+          isa<SplatNode>(MN->getLHS()) ? MN->getLHS() : MN->getRHS();
+      Node *otherInput =
+          isa<SplatNode>(MN->getLHS()) ? MN->getRHS() : MN->getLHS();
+
+      float splatValue = (dyn_cast<SplatNode>(splatNode))->getValue();
+      // Calculate quantization [min,max] range.
+      TensorQuantizationParams TQP{MN->getResult().getType()->getScale(),
+                                   MN->getResult().getType()->getOffset()};
+      float min =
+          quantization::dequantize(std::numeric_limits<int8_t>::min(), TQP);
+
+      // If splat value is smaller than values that can be covered by
+      // quantition [min,max] range then just remove MaxNode operation.
+      if (splatValue <= min) {
+        MN->getResult().replaceAllUsesOfWith(otherInput);
+      }
+    }
+  }
+}
+
 /// Eliminate node sequences that are related to quantization.
 static void optimizeQuantization(Function *F) {
   // A worklist that contains the nodes to process.
@@ -757,6 +802,8 @@ static void optimizeQuantization(Function *F) {
       }
     } // Handle RescaleQuantizedNode
   }   // For each item in the worklist.
+
+  optimizeQuantizedMaxSplat(F);
 }
 
 void glow::optimize(Function *F, CompilationMode mode) {
