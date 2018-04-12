@@ -10,7 +10,7 @@ void CPUConvDKKC8Node::verify() const {
   ShapeNHWC odim(getResult().getType()->dims());
   auto outSz = calculateConvOutputDims(idim.h, idim.w, getKernel(), getStride(),
                                        getPad());
-  ShapeNHWC exp(idim.n, outSz.first, outSz.second, getDepth());
+  ShapeNHWC exp(idim.n, outSz.first, outSz.second, getBias().dims()[0]);
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");
 }

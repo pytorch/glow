@@ -16,7 +16,6 @@ BB.newBackendSpecificInstr("CPUConvDKKC8")
     .addMember(MemberType::SizeT, "Kernel")
     .addMember(MemberType::SizeT, "Stride")
     .addMember(MemberType::SizeT, "Pad")
-    .addMember(MemberType::SizeT, "Depth")
     .autoIRGen()
     .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter", "Bias"});
 

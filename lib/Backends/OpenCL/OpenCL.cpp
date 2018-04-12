@@ -431,11 +431,9 @@ void OCLBackend::doForwardPass() {
       setKernelArg(kernel, 9, idim);
       setKernelArg(kernel, 10, ShapeNHWC(CC->getFilter()->getType()->dims()));
 
-      auto depth = CC->getDepth();
-
       // Use a 3D grid where the first dimension is the depth and the second
       // dimension is the slice index in the batch.
-      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, depth},
+      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
                     kernelLaunches);
       continue;
     }

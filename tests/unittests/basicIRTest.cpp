@@ -115,7 +115,7 @@ TEST(IR, allInstrs) {
     XY->setName("srcXY");
 
     builder.createCopyInst("", I1, I0);
-    builder.createConvolutionInst("", I3, I1, F0, B0, 7, 2, 3, 64, 1);
+    builder.createConvolutionInst("", I3, I1, F0, B0, 7, 2, 3, 1);
     builder.createPoolMaxInst("", I4, I0, 7, 2, 3);
     builder.createSigmoidInst("", I1, I0);
     builder.createTanhInst("", I1, I0);
