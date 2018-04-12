@@ -104,7 +104,7 @@ void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
     OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
   }
   auto *conv =
-      F->createConv("conv", inputVar, filterVar, biasVar, OT, 10, 5, 3, 4, 1);
+      F->createConv("conv", inputVar, filterVar, biasVar, OT, 5, 3, 4, 1);
   auto result = F->createSave("ret", conv, outVar);
   EE.compile(CompilationMode::Infer, F);
   EE.run({inputVar, filterVar, biasVar}, {inputs, filter, bias});

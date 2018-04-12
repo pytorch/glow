@@ -762,10 +762,10 @@ static void optimizeQuantization(Function *F) {
       if (auto *CN = dyn_cast<ConvolutionNode>(RS->getInput())) {
         // Create the exact same convolution but with a different scaling
         // return type.
-        auto *newCN = F->createConv(
-            CN->getName(), CN->getInput(), CN->getFilter(), CN->getBias(),
-            RS->getType(), CN->getDepth(), CN->getKernel(), CN->getStride(),
-            CN->getPad(), CN->getGroup());
+        auto *newCN =
+            F->createConv(CN->getName(), CN->getInput(), CN->getFilter(),
+                          CN->getBias(), RS->getType(), CN->getKernel(),
+                          CN->getStride(), CN->getPad(), CN->getGroup());
         RS->getResult().replaceAllUsesOfWith(newCN);
         continue;
       }

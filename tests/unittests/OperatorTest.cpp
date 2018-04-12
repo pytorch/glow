@@ -502,8 +502,8 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
   auto *biasq = F->createQuantize("bias.q", bias, biasTy);
 
   auto *convq =
-      F->createConv("convq", inputq, filterq, biasq, resTy, conv->getDepth(),
-                    conv->getKernel(), conv->getStride(), conv->getPad(), 1);
+      F->createConv("convq", inputq, filterq, biasq, resTy, conv->getKernel(),
+                    conv->getStride(), conv->getPad(), 1);
   auto *dequantRes = F->createDequantize("dequant", convq);
 
   // Subtract the results of the convolution from the quantized convolution.

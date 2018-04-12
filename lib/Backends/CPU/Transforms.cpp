@@ -18,7 +18,7 @@ using llvm::isa;
 /// pre-swizzle the data in the weights to make the access pattern more
 /// efficient.
 static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
-  auto depth = CN->getDepth();
+  auto depth = CN->getFilter().dims()[0];
   auto *M = F->getParent();
 
   // The depth dimension must be a multiple of 64 to perform the
@@ -62,7 +62,7 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
 
   return F->addNode(new CPUConvDKKC8Node(
       CN->getName(), CN->getType(), CN->getInput(), filter8, CN->getBias(),
-      CN->getKernel(), CN->getStride(), CN->getPad(), CN->getDepth()));
+      CN->getKernel(), CN->getStride(), CN->getPad()));
 }
 
 bool CPUBackend::transformPostLowering(Function *F) {

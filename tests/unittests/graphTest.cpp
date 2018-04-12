@@ -123,8 +123,8 @@ TEST(Graph, simpleQuant) {
   std::array<size_t, 4> outDims = {{1, outSz.first, outSz.second, 16}};
   auto t = F->getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims, 1.5, 6);
 
-  auto *conv = F->createConv("conv", input, filter, bias, t, depth, kernel,
-                             step, pad, 1);
+  auto *conv =
+      F->createConv("conv", input, filter, bias, t, kernel, step, pad, 1);
 
   auto s = conv->getType()->size();
   auto *fcFilter = MD.createVariable(ElemKind::Int8QTy, {s, 6}, 0.4, 2, "F");

@@ -218,8 +218,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
-    auto *node = G_.createConv(opName, tr, filter, bias, outTy, depth / group,
-                               kernel, stride, pad, group);
+    auto *node = G_.createConv(opName, tr, filter, bias, outTy, kernel, stride,
+                               pad, group);
 
     // Transpose the output back.
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);

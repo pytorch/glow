@@ -115,10 +115,9 @@ public:
       auto *filterG = builder_.createAllocActivationInst("conv.filter.G",
                                                          filter->getType());
 
-      builder_.createConvolutionGradInst(N->getName(), input, filter, outGrad,
-                                         inG, filterG, biasG, CG->getKernel(),
-                                         CG->getStride(), CG->getPad(),
-                                         CG->getDepth(), CG->getGroup());
+      builder_.createConvolutionGradInst(
+          N->getName(), input, filter, outGrad, inG, filterG, biasG,
+          CG->getKernel(), CG->getStride(), CG->getPad(), CG->getGroup());
 
       registerIR(CG->getGradOfInputNamedInput(), inG);
       registerIR(CG->getGradOfInputNamedFilter(), filterG);

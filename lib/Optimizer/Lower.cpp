@@ -504,9 +504,8 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
                        {(groupId + 1) * outCperG, kernel, kernel, inCperG});
     auto *bias_slice = F->createSlice(BNG.getName(), bias, {groupId * outCperG},
                                       {(groupId + 1) * outCperG});
-    convs[groupId] =
-        F->createConv(BNG.getName(), in_slice, filter_slice, bias_slice, outTy,
-                      outCperG, kernel, stride, pad, 1);
+    convs[groupId] = F->createConv(BNG.getName(), in_slice, filter_slice,
+                                   bias_slice, outTy, kernel, stride, pad, 1);
   }
   auto result = F->createConcat(BNG.getName(), convs, 3);
   BNG.getResult().replaceAllUsesOfWith(result);
