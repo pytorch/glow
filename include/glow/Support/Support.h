@@ -44,19 +44,6 @@ inline std::string tolower(const std::string &in) {
   return data;
 }
 
-template <typename E> std::string listToString_impl(E v) {
-  return std::to_string(v);
-}
-
-template <typename E, typename... Args>
-std::string listToString_impl(E first, Args... args) {
-  return std::to_string(first) + " " + listToString_impl(args...);
-}
-
-template <typename... Args> std::string listToString(Args... args) {
-  return "[" + listToString_impl(args...) + "]";
-}
-
 /// A helper class that builds a textual descriptor of a group of parameters.
 class DescriptionBuilder {
   std::string buffer_;
