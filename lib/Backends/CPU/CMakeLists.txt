@@ -36,6 +36,11 @@ set_target_properties(CPURuntime
                         OUTPUT_NAME
                           libjit.bc)
 
+add_library(CPURuntimeNative
+              libjit/libjit.cpp
+              libjit/libjit_conv.cpp
+              libjit/libjit_matmul.cpp)
+
 add_library(CPUBackend
             AllocationsInfo.cpp
             DebugInfo.cpp
