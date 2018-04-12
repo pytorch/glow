@@ -17,443 +17,379 @@
 
 using namespace glow;
 
-TEST(GraphOptz, DCE) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-  IRFunction M(F);
-  Node *K = mod.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+class GraphOptz : public ::testing::Test {
+public:
+  GraphOptz() {
+    F_ = mod_.createFunction("main");
+  }
+protected:
+  Module mod_;
+  Function *F_;
+};
+
+TEST_F(GraphOptz, DCE) {
+  Node *K = mod_.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
 
   for (int i = 0; i < 40; i++) {
-    K = F->createRELU("relu", K);
+    K = F_->createRELU("relu", K);
     // Add a graph structure that diverges and converges, to catch algorithms
     // that perform a dump recursive scan.
-    K = F->createAdd("arith", K, K);
+    K = F_->createAdd("arith", K, K);
   }
 
   // Check that we know how many nodes we've created.
-  EXPECT_EQ(F->getNodes().size(), 80);
+  EXPECT_EQ(F_->getNodes().size(), 80);
 
   // Optimize all of the dead code.
-  ::glow::optimize(F, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
   //  All of the nodes are gone.
-  EXPECT_EQ(F->getNodes().size(), 0);
-  EXPECT_EQ(mod.getVars().size(), 0);
+  EXPECT_EQ(F_->getNodes().size(), 0);
+  EXPECT_EQ(mod_.getVars().size(), 0);
 }
 
-TEST(GraphOptz, liveCodeNotEliminated) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *K = mod.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  auto *Ex = mod.createVariable(ElemKind::IndexTy, {4, 1}, "Ex");
+TEST_F(GraphOptz, liveCodeNotEliminated) {
+  Node *K = mod_.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+  auto *Ex = mod_.createVariable(ElemKind::IndexTy, {4, 1}, "Ex");
 
   for (int i = 0; i < 40; i++) {
-    K = F->createRELU("relu", K);
-    K = F->createAdd("arith", K, K);
+    K = F_->createRELU("relu", K);
+    K = F_->createAdd("arith", K, K);
   }
-  K = F->createSoftMax("Regression", K, Ex);
-  F->createSave("ret", K);
+  K = F_->createSoftMax("Regression", K, Ex);
+  F_->createSave("ret", K);
 
   // Check that we know how many nodes we've created.
-  EXPECT_EQ(F->getNodes().size(), 82);
+  EXPECT_EQ(F_->getNodes().size(), 82);
 
   // This should not optimize code because none is dead.
-  ::glow::optimize(F, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
   //  Nothing got optimized.
-  EXPECT_EQ(F->getNodes().size(), 82);
-  EXPECT_EQ(mod.getVars().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 82);
+  EXPECT_EQ(mod_.getVars().size(), 3);
 }
 
-TEST(GraphOptz, optimizeBatchNormAfterConv) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
-  Node *CV = F->createConv("conv", A, 16, 5, 1, 2);
-  Node *BN = F->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
-  F->createSave("ret", BN);
+  Node *CV = F_->createConv("conv", A, 16, 5, 1, 2);
+  Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
+  F_->createSave("ret", BN);
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::optimize(F, CompilationMode::Infer);
-  EXPECT_EQ(F->getNodes().size(), 2);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 2);
 }
 
-TEST(GraphOptz, transposePrivateVariable) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+TEST_F(GraphOptz, transposePrivateVariable) {
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
                                Variable::VisibilityKind::Private,
                                Variable::TrainKind::None);
-  Node *T = F->createTranspose("transpose", A, {0, 3, 1, 2});
-  F->createSave("ret", T);
-  EXPECT_EQ(F->getNodes().size(), 2);
+  Node *T = F_->createTranspose("transpose", A, {0, 3, 1, 2});
+  F_->createSave("ret", T);
+  EXPECT_EQ(F_->getNodes().size(), 2);
 
-  ::glow::optimize(F, CompilationMode::Infer);
-  EXPECT_EQ(F->getNodes().size(), 1);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 1);
 }
 
-TEST(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
-  Node *CV = F->createConv("conv", A, 16, 5, 1, 2);
-  Node *BN = F->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
-  F->createSave("ret", BN);
+  Node *CV = F_->createConv("conv", A, 16, 5, 1, 2);
+  Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
+  F_->createSave("ret", BN);
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::optimize(F, CompilationMode::Train);
-  EXPECT_EQ(F->getNodes().size(), 3);
+  ::glow::optimize(F_, CompilationMode::Train);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
-TEST(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
 
-  Node *CV = F->createConv("conv", A, 16, 5, 1, 2);
-  Node *BN = F->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
-  F->createSave("ret", BN);
-  F->createSave("ret", CV);
+  Node *CV = F_->createConv("conv", A, 16, 5, 1, 2);
+  Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
+  F_->createSave("ret", BN);
+  F_->createSave("ret", CV);
 
-  EXPECT_EQ(F->getNodes().size(), 4);
+  EXPECT_EQ(F_->getNodes().size(), 4);
 
-  ::glow::optimize(F, CompilationMode::Infer);
-  EXPECT_EQ(F->getNodes().size(), 4);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 4);
 }
 
-TEST(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
-  Node *T = F->createTranspose("transpose", A, {0, 3, 1, 2});
-  Node *BN = F->createBatchNormalization("batch", T, 3, 0.0001, 0.9);
-  Node *O = F->createSave("ret", BN);
+  Node *T = F_->createTranspose("transpose", A, {0, 3, 1, 2});
+  Node *BN = F_->createBatchNormalization("batch", T, 3, 0.0001, 0.9);
+  Node *O = F_->createSave("ret", BN);
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::optimize(F, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than BN->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
   EXPECT_TRUE(
       llvm::isa<TransposeNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
-TEST(GraphOptz, sinkTransposeBelowRELU) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+TEST_F(GraphOptz, sinkTransposeBelowRELU) {
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
-  Node *T = F->createTranspose("transpose", A, {0, 3, 1, 2});
-  Node *K = F->createRELU("relu", T);
-  Node *O = F->createSave("ret", K);
+  Node *T = F_->createTranspose("transpose", A, {0, 3, 1, 2});
+  Node *K = F_->createRELU("relu", T);
+  Node *O = F_->createSave("ret", K);
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::optimize(F, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than RELU->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
   EXPECT_TRUE(
       llvm::isa<TransposeNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
-TEST(GraphOptz, sinkTransposeBelowSigmoid) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+TEST_F(GraphOptz, sinkTransposeBelowSigmoid) {
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
-  Node *T = F->createTranspose("transpose", A, {0, 3, 1, 2});
-  Node *SI = F->createSigmoid("sigmoid", T);
-  Node *O = F->createSave("ret", SI);
+  Node *T = F_->createTranspose("transpose", A, {0, 3, 1, 2});
+  Node *SI = F_->createSigmoid("sigmoid", T);
+  Node *O = F_->createSave("ret", SI);
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::optimize(F, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than Sigmoid->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
   EXPECT_TRUE(
       llvm::isa<TransposeNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
-TEST(GraphOptz, sinkTransposeBelowTanh) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+TEST_F(GraphOptz, sinkTransposeBelowTanh) {
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
-  Node *T = F->createTranspose("transpose", A, {0, 3, 1, 2});
-  Node *TN = F->createTanh("tanh", T);
-  Node *O = F->createSave("ret", TN);
+  Node *T = F_->createTranspose("transpose", A, {0, 3, 1, 2});
+  Node *TN = F_->createTanh("tanh", T);
+  Node *O = F_->createSave("ret", TN);
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::optimize(F, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than Sigmoid->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
   EXPECT_TRUE(
       llvm::isa<TransposeNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
-TEST(GraphOptz, cancelTwoTransposes) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+TEST_F(GraphOptz, cancelTwoTransposes) {
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
-  Node *T1 = F->createTranspose("transpose", A, {0, 2, 3, 1});
-  Node *T2 = F->createTranspose("transpose", T1, {0, 3, 1, 2});
-  Node *K = F->createRELU("relu", T2);
-  F->createSave("ret", K);
+  Node *T1 = F_->createTranspose("transpose", A, {0, 2, 3, 1});
+  Node *T2 = F_->createTranspose("transpose", T1, {0, 3, 1, 2});
+  Node *K = F_->createRELU("relu", T2);
+  F_->createSave("ret", K);
 
-  EXPECT_EQ(F->getNodes().size(), 4);
+  EXPECT_EQ(F_->getNodes().size(), 4);
 
-  ::glow::optimize(F, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
-  EXPECT_EQ(F->getNodes().size(), 2);
+  EXPECT_EQ(F_->getNodes().size(), 2);
 }
 
-TEST(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
-  Node *T1 = F->createTranspose("transpose", A, {0, 2, 3, 1});
-  Node *T2 = F->createTranspose("transpose", T1, {0, 1, 2, 3});
-  Node *K = F->createRELU("relu", T2);
-  F->createSave("ret", K);
+  Node *T1 = F_->createTranspose("transpose", A, {0, 2, 3, 1});
+  Node *T2 = F_->createTranspose("transpose", T1, {0, 1, 2, 3});
+  Node *K = F_->createRELU("relu", T2);
+  F_->createSave("ret", K);
 
-  EXPECT_EQ(F->getNodes().size(), 4);
+  EXPECT_EQ(F_->getNodes().size(), 4);
 
-  ::glow::optimize(F, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
-  EXPECT_EQ(F->getNodes().size(), 4);
+  EXPECT_EQ(F_->getNodes().size(), 4);
 }
 
-TEST(GraphOptz, sinkTransposeBelowArithmeticNodes) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A1 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  Node *A2 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  Node *T1 = F->createTranspose("transpose1", A1, {0, 3, 1, 2});
-  Node *T2 = F->createTranspose("transpose2", A2, {0, 3, 1, 2});
-  Node *K = F->createAdd("arith", T1, T2);
-  Node *O = F->createSave("ret", K);
+  Node *T1 = F_->createTranspose("transpose1", A1, {0, 3, 1, 2});
+  Node *T2 = F_->createTranspose("transpose2", A2, {0, 3, 1, 2});
+  Node *K = F_->createAdd("arith", T1, T2);
+  Node *O = F_->createSave("ret", K);
 
-  EXPECT_EQ(F->getNodes().size(), 4);
+  EXPECT_EQ(F_->getNodes().size(), 4);
 
-  ::glow::optimize(F, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than Add->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
   EXPECT_TRUE(
       llvm::isa<TransposeNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
-TEST(GraphOptz, sinkReluBelowConcatNodes) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A1 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+TEST_F(GraphOptz, sinkReluBelowConcatNodes) {
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  Node *A2 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  Node *R1 = F->createRELU("relu1", A1);
-  Node *R2 = F->createRELU("relu2", A2);
-  Node *CN = F->createConcat("concat", {R1, R2}, 1);
-  Node *O = F->createSave("ret", CN);
+  Node *R1 = F_->createRELU("relu1", A1);
+  Node *R2 = F_->createRELU("relu2", A2);
+  Node *CN = F_->createConcat("concat", {R1, R2}, 1);
+  Node *O = F_->createSave("ret", CN);
 
-  EXPECT_EQ(F->getNodes().size(), 4);
+  EXPECT_EQ(F_->getNodes().size(), 4);
 
-  ::glow::optimize(F, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting RELU->Output rather than Concat->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
   EXPECT_TRUE(llvm::isa<ReluNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
-TEST(GraphOptz, sinkTransposeBelowConcatNodes) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A1 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+TEST_F(GraphOptz, sinkTransposeBelowConcatNodes) {
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  Node *A2 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  Node *T1 = F->createTranspose("transpose", A1, {0, 2, 3, 1});
-  Node *T2 = F->createTranspose("transpose", A2, {0, 2, 3, 1});
-  Node *CN = F->createConcat("concat", {T1, T2}, 1);
-  Node *O = F->createSave("ret", CN);
+  Node *T1 = F_->createTranspose("transpose", A1, {0, 2, 3, 1});
+  Node *T2 = F_->createTranspose("transpose", A2, {0, 2, 3, 1});
+  Node *CN = F_->createConcat("concat", {T1, T2}, 1);
+  Node *O = F_->createSave("ret", CN);
 
-  EXPECT_EQ(F->getNodes().size(), 4);
+  EXPECT_EQ(F_->getNodes().size(), 4);
 
-  ::glow::optimize(F, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than Concat->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
   EXPECT_TRUE(
       llvm::isa<TransposeNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
-TEST(GraphOptz, poolBelowReluSwapped) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+TEST_F(GraphOptz, poolBelowReluSwapped) {
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
-  Node *R = F->createRELU("relu", A);
-  Node *PL = F->createPoolMax("pool", R, 1, 10, 20);
-  Node *O = F->createSave("ret", PL);
+  Node *R = F_->createRELU("relu", A);
+  Node *PL = F_->createPoolMax("pool", R, 1, 10, 20);
+  Node *O = F_->createSave("ret", PL);
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::optimize(F, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting RELU->Output rather than Pool->Output.
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
   EXPECT_TRUE(llvm::isa<ReluNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
-TEST(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+TEST_F(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
-  Node *R = F->createRELU("relu", A);
-  Node *PL = F->createPoolAvg("pool", R, 1, 10, 20);
-  Node *O = F->createSave("ret", PL);
+  Node *R = F_->createRELU("relu", A);
+  Node *PL = F_->createPoolAvg("pool", R, 1, 10, 20);
+  Node *O = F_->createSave("ret", PL);
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::optimize(F, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting Pool->Output (no swap).
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
   EXPECT_TRUE(llvm::isa<PoolAvgNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
-TEST(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+TEST_F(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                                Variable::VisibilityKind::Public,
                                Variable::TrainKind::None);
-  Node *R = F->createRELU("relu", A);
-  Node *PL = F->createPoolMax("pool", R, 1, 10, 20);
-  Node *O = F->createSave("ret", PL);
-  F->createSave("ret", R);
+  Node *R = F_->createRELU("relu", A);
+  Node *PL = F_->createPoolMax("pool", R, 1, 10, 20);
+  Node *O = F_->createSave("ret", PL);
+  F_->createSave("ret", R);
 
-  EXPECT_EQ(F->getNodes().size(), 4);
+  EXPECT_EQ(F_->getNodes().size(), 4);
 
-  ::glow::optimize(F, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting Pool->Output (no swap).
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
   EXPECT_TRUE(llvm::isa<PoolMaxNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
-  EXPECT_EQ(F->getNodes().size(), 4);
+  EXPECT_EQ(F_->getNodes().size(), 4);
 }
 
-TEST(GraphOptz, mergeConcatNodes) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A1 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+TEST_F(GraphOptz, mergeConcatNodes) {
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  Node *A2 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  Node *A3 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input3",
+  Node *A3 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input3",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  Node *A4 = mod.createVariable(ElemKind::FloatTy, {1, 1, 10, 15}, "input4",
+  Node *A4 = mod_.createVariable(ElemKind::FloatTy, {1, 1, 10, 15}, "input4",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
 
-  Node *CN1 = F->createConcat("concat1", {A1, A2}, 1);
-  Node *CN2 = F->createConcat("concat2", {A1, CN1}, 1);
-  Node *CN3 = F->createConcat("concat3", {A4}, 2);
-  Node *CN4 = F->createConcat("concat4", {A3, CN2, CN3}, 1);
-  Node *O = F->createSave("ret", CN4);
+  Node *CN1 = F_->createConcat("concat1", {A1, A2}, 1);
+  Node *CN2 = F_->createConcat("concat2", {A1, CN1}, 1);
+  Node *CN3 = F_->createConcat("concat3", {A4}, 2);
+  Node *CN4 = F_->createConcat("concat4", {A3, CN2, CN3}, 1);
+  Node *O = F_->createSave("ret", CN4);
 
-  EXPECT_EQ(F->getNodes().size(), 5);
+  EXPECT_EQ(F_->getNodes().size(), 5);
 
-  ::glow::optimize(F, CompilationMode::Train);
+  ::glow::optimize(F_, CompilationMode::Train);
 
   // It is expected that the optimization transforms
   // concat4(1, A3, concat2(1, A1, concat1(1, A1, A2)), concat3(2, A4))
@@ -471,45 +407,41 @@ TEST(GraphOptz, mergeConcatNodes) {
 
   // CN1 should be merged into a new CN2 and later into a new CN4 and removed by
   // the optimizations.
-  EXPECT_TRUE(std::find(F->getNodes().begin(), F->getNodes().end(), CN1) ==
-              F->getNodes().end());
+  EXPECT_TRUE(std::find(F_->getNodes().begin(), F_->getNodes().end(), CN1) ==
+              F_->getNodes().end());
 
   // CN2 should be merged into a new CN4 and removed by the optimizations.
-  EXPECT_TRUE(std::find(F->getNodes().begin(), F->getNodes().end(), CN2) ==
-              F->getNodes().end());
+  EXPECT_TRUE(std::find(F_->getNodes().begin(), F_->getNodes().end(), CN2) ==
+              F_->getNodes().end());
 
   // CN3 should not be merged into CN4 and should not be removed,
   // because CN4 and CN3 have a different dimension parameter.
-  EXPECT_TRUE(std::find(F->getNodes().begin(), F->getNodes().end(), CN3) !=
-              F->getNodes().end());
+  EXPECT_TRUE(std::find(F_->getNodes().begin(), F_->getNodes().end(), CN3) !=
+              F_->getNodes().end());
 
   // The CN4 concat node should be replaced by a merged concat node.
-  EXPECT_TRUE(std::find(F->getNodes().begin(), F->getNodes().end(), CN4) ==
-              F->getNodes().end());
+  EXPECT_TRUE(std::find(F_->getNodes().begin(), F_->getNodes().end(), CN4) ==
+              F_->getNodes().end());
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
-TEST(GraphOptz, CSE) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
-  Node *A1 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+TEST_F(GraphOptz, CSE) {
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
-  Node *A2 = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
                                 Variable::VisibilityKind::Public,
                                 Variable::TrainKind::None);
 
-  Node *CN1 = F->createConcat("concat1", {A1, A2}, 1);
-  Node *CN2 = F->createConcat("concat2", {A1, A2}, 1);
-  Node *CN3 = F->createConcat("concat3", {CN1, CN2}, 2);
-  Node *O = F->createSave("ret", CN3);
+  Node *CN1 = F_->createConcat("concat1", {A1, A2}, 1);
+  Node *CN2 = F_->createConcat("concat2", {A1, A2}, 1);
+  Node *CN3 = F_->createConcat("concat3", {CN1, CN2}, 2);
+  Node *O = F_->createSave("ret", CN3);
 
-  EXPECT_EQ(F->getNodes().size(), 4);
+  EXPECT_EQ(F_->getNodes().size(), 4);
 
-  ::glow::optimize(F, CompilationMode::Train);
+  ::glow::optimize(F_, CompilationMode::Train);
 
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
 
@@ -521,31 +453,27 @@ TEST(GraphOptz, CSE) {
   EXPECT_EQ(CN->getInputs().size(), 2);
 
   // CN1 should not be removed.
-  EXPECT_TRUE(std::find(F->getNodes().begin(), F->getNodes().end(), CN1) !=
-              F->getNodes().end());
+  EXPECT_TRUE(std::find(F_->getNodes().begin(), F_->getNodes().end(), CN1) !=
+              F_->getNodes().end());
 
   // CSE should replace CN2 by CN1 and remove CN2.
-  EXPECT_TRUE(std::find(F->getNodes().begin(), F->getNodes().end(), CN2) ==
-              F->getNodes().end());
+  EXPECT_TRUE(std::find(F_->getNodes().begin(), F_->getNodes().end(), CN2) ==
+              F_->getNodes().end());
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
-TEST(GraphOptz, SliceOfSplatNode) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
-  IRFunction M(F);
+TEST_F(GraphOptz, SliceOfSplatNode) {
   Type t(ElemKind::FloatTy, {1000, 1000, 1000});
-  Node *Z = F->createSplat("zero", &t, 0.);
-  Node *S = F->createSlice("slice", Z, {5, 15, 42}, {99, 88, 77});
-  Node *O = F->createSave("ret", S);
+  Node *Z = F_->createSplat("zero", &t, 0.);
+  Node *S = F_->createSlice("slice", Z, {5, 15, 42}, {99, 88, 77});
+  Node *O = F_->createSave("ret", S);
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::optimize(F, CompilationMode::Train);
+  ::glow::optimize(F_, CompilationMode::Train);
 
-  EXPECT_EQ(F->getNodes().size(), 2);
+  EXPECT_EQ(F_->getNodes().size(), 2);
 
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
 
@@ -555,12 +483,11 @@ TEST(GraphOptz, SliceOfSplatNode) {
   EXPECT_TRUE(CN->getType()->dims().equals({94, 73, 35}));
 }
 
-TEST(GraphOptz, SliceOfSplatNodeChain) {
+TEST(GraphOptzTest, SliceOfSplatNodeChain) {
   for (int shouldReverse = 0; shouldReverse <= 1; shouldReverse++) {
     Module mod;
     Function *F = mod.createFunction("foo");
 
-    IRFunction M(F);
     Type t(ElemKind::FloatTy, {1000, 1000, 1000});
     Node *Z = F->createSplat("zero", &t, 0.);
     Node *S1 = F->createSlice("slice1", Z, {5, 15, 42}, {99, 88, 77});
@@ -582,21 +509,18 @@ TEST(GraphOptz, SliceOfSplatNodeChain) {
   }
 }
 
-TEST(GraphOptz, ReshapeNoop) {
-  Module mod;
-  Function *F = mod.createFunction("foo");
-
+TEST_F(GraphOptz, ReshapeNoop) {
   const size_t shape[] = {10, 20, 30};
   Type t(ElemKind::FloatTy, shape);
-  auto *Z = F->createSplat("zero", &t, 0.);
-  auto *R = F->createReshape("reshape", Z, shape);
-  auto *O = F->createSave("ret", R);
+  auto *Z = F_->createSplat("zero", &t, 0.);
+  auto *R = F_->createReshape("reshape", Z, shape);
+  auto *O = F_->createSave("ret", R);
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::optimize(F, CompilationMode::Train);
+  ::glow::optimize(F_, CompilationMode::Train);
 
-  EXPECT_EQ(F->getNodes().size(), 2);
+  EXPECT_EQ(F_->getNodes().size(), 2);
 
   auto *SN = llvm::dyn_cast<SplatNode>(llvm::dyn_cast<SaveNode>(O)->getInput());
   EXPECT_TRUE(SN);
@@ -604,38 +528,33 @@ TEST(GraphOptz, ReshapeNoop) {
   EXPECT_TRUE(SN->getType()->dims().equals(shape));
 }
 
-TEST(GraphOptz, DCEPublicVars) {
-  Module mod;
-  Function *F = mod.createFunction("main");
-  IRFunction M(F);
-  mod.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input",
+TEST_F(GraphOptz, DCEPublicVars) {
+  mod_.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input",
                      Variable::VisibilityKind::Public);
 
-  EXPECT_EQ(mod.getVars().size(), 1);
+  EXPECT_EQ(mod_.getVars().size(), 1);
 
   // Optimize all of the dead code.
-  ::glow::optimize(F, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
   //  Public nodes should not be deleted.
-  EXPECT_EQ(mod.getVars().size(), 1);
+  EXPECT_EQ(mod_.getVars().size(), 1);
 }
 
-TEST(GraphOptz, quantizeToRescale) {
+TEST_F(GraphOptz, quantizeToRescale) {
   // Check that we are combining quantization-dequantization pairs.
-  Module mod;
-  Function *F = mod.createFunction("foo");
-  Node *input = mod.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11, "input",
+  Node *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11, "input",
                                    Variable::VisibilityKind::Public,
                                    Variable::TrainKind::Broadcast, 15);
-  auto *D = F->createDequantize("dequantize", input);
+  auto *D = F_->createDequantize("dequantize", input);
 
-  auto qType = mod.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.03, 5);
-  auto *Q = F->createQuantize("quantize", D, qType);
+  auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.03, 5);
+  auto *Q = F_->createQuantize("quantize", D, qType);
 
-  F->createSave("ret", Q);
+  F_->createSave("ret", Q);
 
-  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::optimize(F, CompilationMode::Infer);
-  EXPECT_EQ(F->getNodes().size(), 2);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 2);
 }
