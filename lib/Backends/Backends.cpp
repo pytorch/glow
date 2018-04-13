@@ -34,6 +34,10 @@ Backend *glow::createBackend(BackendKind backendKind, IRFunction *F) {
       return createCPUBackend(F);
     #endif
   }
+
+  // This is to make compiler happy. It can never reach this point as switch
+  // always covers all possible values.
+  llvm_unreachable("unreachable");
 }
 
 void Backend::save(llvm::StringRef outputDir) {

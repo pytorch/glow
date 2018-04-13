@@ -219,6 +219,10 @@ public:
     case ElemKind::IndexTy:
       return isEqualImpl<size_t>(other, allowedError);
     }
+
+    // This is to make compiler happy. It can never reach this point as switch
+    // always covers all possible values.
+    llvm_unreachable("unreachable");
   }
 
   /// Update the content of the tensor from the tensor \p t.

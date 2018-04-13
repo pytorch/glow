@@ -52,7 +52,7 @@ void generateTensorHistogram(const Handle<float> inputTensor,
       float destBinEnd = newMin + destBinWidth * (destBin + 1);
 
       float srcBinEnd = srcBinBegin + srcBinWidth;
-      int destBinToVerify = (srcBinEnd - newMin) / destBinWidth;
+      size_t destBinToVerify = (srcBinEnd - newMin) / destBinWidth;
       // Make sure that destination bin is mapped at most to 2 final bins, based
       // on that redistribute percentage is calculated.
       assert(destBinToVerify <= destBin + 2);
