@@ -501,6 +501,7 @@ static void verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
   assert(idim.c % group == 0 && "channels number must be divisible by groups");
 
   auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
+  (void)outSz;
   assert(odim.n == idim.n && odim.h == outSz.first && odim.w == outSz.second &&
          odim.c % group == 0 && "Invalid output dimensions");
 
