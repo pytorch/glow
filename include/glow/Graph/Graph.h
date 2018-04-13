@@ -33,7 +33,7 @@ class Module final {
   VariablesList vars_;
 
   /// \returns unique legal name that's based on the string \p name. Legal
-  /// names are legal C identifiers.
+  /// names are legal C identifiers in the form: "[a-zA-Z_][a-zA-Z0-9_]*".
   llvm::StringRef uniqueName(llvm::StringRef name);
 
 public:
