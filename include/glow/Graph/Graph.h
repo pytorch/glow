@@ -7,6 +7,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringSet.h"
 
 #include <list>
 #include <unordered_map>
@@ -26,15 +27,14 @@ class Module final {
   /// A uniqued list of types. Types in this list can be equated by comparing
   /// their addresses.
   TypesList types_{};
-
+  /// Stores a list of unique names that were used by the module at one point.
+  llvm::StringSet<> uniqueNames_{};
   /// A list of variables that the Module owns.
   VariablesList vars_;
 
-  /// Unique index for producing unique names.
-  size_t uniqueIdx_{1};
-
-  /// \returns unique name with a prefix \p Name.
-  std::string uniqueName(llvm::StringRef Name);
+  /// \returns unique legal name that's based on the string \p name. Legal
+  /// names are legal C identifiers.
+  llvm::StringRef uniqueName(llvm::StringRef name);
 
 public:
   Module() = default;
