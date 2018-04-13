@@ -318,7 +318,7 @@ Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
 }
 
 llvm::StringRef Module::uniqueName(llvm::StringRef name) {
-  std::string legalName = "";
+  std::string legalName;
 
   // Legalize the name.
   for (const char c : name) {
@@ -326,9 +326,10 @@ llvm::StringRef Module::uniqueName(llvm::StringRef name) {
     legalName.push_back(legal ? c : '_');
   }
 
-  // We don't allow empty names.
-  if (!legalName.size()) {
-    legalName = "_";
+  // Names must start with some alphabetic character or underscore and can't be
+  // empty.
+  if (legalName.empty() || isdigit(legalName[0])) {
+    legalName = "A" + legalName;
   }
 
   auto it = uniqueNames_.insert(legalName);
