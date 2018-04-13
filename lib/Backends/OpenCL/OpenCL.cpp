@@ -38,10 +38,9 @@ struct KernelLaunch {
 namespace {
 llvm::cl::OptionCategory OpenCLBackendCat("Glow OpenCL Backend Options");
 
-static llvm::cl::opt<int> deviceId("device",
-                                   llvm::cl::desc("OpenCL device to be used"),
-                                   llvm::cl::init(0),
-                                   llvm::cl::cat(OpenCLBackendCat));
+static llvm::cl::opt<unsigned>
+    deviceId("device", llvm::cl::desc("OpenCL device to be used"),
+             llvm::cl::init(0), llvm::cl::cat(OpenCLBackendCat));
 static llvm::cl::opt<bool> doProfile("opencl-profile",
                                      llvm::cl::desc("Profile OpenCL kernels"),
                                      llvm::cl::init(false),

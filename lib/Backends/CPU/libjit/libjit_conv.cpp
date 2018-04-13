@@ -125,7 +125,8 @@ void libjit_convDKKC8_foreach_xy_filter_pixels(
           ssize_t iny = (ssize_t)outy * stride - pad + fy;
 
           // Ignore out of bound indices.
-          if (iny < 0 || (iny + stride * sizeGroupY) >= (ssize_t)inWdims[2]) {
+          if (iny < 0 ||
+              (iny + (ssize_t)stride * sizeGroupY) >= (ssize_t)inWdims[2]) {
             continue;
           }
 
