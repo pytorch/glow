@@ -26,20 +26,22 @@ run: resnet50
 resnet50: build/main.o build/resnet50.o
 	${CXX} -o build/resnet50 build/resnet50.o build/main.o -lpng
 
-ifeq ($(QUANTIZE),YES)
-build/resnet50.o: download_weights
-	mkdir -p build
+profile.yml:
 	# Capture quantization profile based on all inputs.
 	${LOADER} ${IMAGES}/*.png -image_mode=0to1 -dump_profile=profile.yml -d resnet50
+
+ifeq ($(QUANTIZE),YES)
+build/resnet50.o: profile.yml download_weights
+	mkdir -p build
 	# Create bundle with quantized weights and computation graph.
-	${LOADER} ${IMAGES}/dog_207.png -image_mode=0to1 -load_profile=profile.yml -d resnet50 -cpu -emit-bundle build
+	${LOADER} ${IMAGES}/dog_207.png -image_mode=0to1 -load_profile=profile.yml -d resnet50 -cpu -emit-bundle build -g
 else
 build/resnet50.o: download_weights
 	mkdir -p build
-	${LOADER} ${IMAGES}/dog_207.png -image_mode=0to1 -d resnet50 -cpu -emit-bundle build
+	${LOADER} ${IMAGES}/dog_207.png -image_mode=0to1 -d resnet50 -cpu -emit-bundle build -g
 endif
 
-build/main.o:
+build/main.o: resnet50_standalone.cpp
 	mkdir -p build
 	${CXX} -std=c++11 -c -g resnet50_standalone.cpp -o build/main.o
 
