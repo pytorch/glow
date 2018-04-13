@@ -15,6 +15,7 @@
  */
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
+#include "glow/IR/IR.h"
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -53,6 +54,9 @@ llvm::cl::opt<std::string> dumpTrainingGraphDAGFileOpt(
     llvm::cl::desc(
         "Specify the file to export the training Graph in DOT format"),
     llvm::cl::value_desc("file.dot"), llvm::cl::cat(ptbCat));
+
+llvm::cl::opt<bool> dumpIROpt("dumpIR", llvm::cl::desc("Prints IR to stdout"),
+                              llvm::cl::cat(ptbCat));
 } // namespace
 
 unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
@@ -237,6 +241,9 @@ void testPTB() {
   if (!dumpTrainingGraphDAGFileOpt.empty()) {
     llvm::outs() << "Dumping training graph\n";
     TF->dumpDAG(dumpTrainingGraphDAGFileOpt.c_str());
+  }
+  if (dumpIROpt) {
+    EE.getIR().dump();
   }
 
   size_t numBatches = (numWords / minibatchSize - 1) / numSteps;
