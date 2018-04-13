@@ -22,7 +22,7 @@ static void libjit_dump_tensor_impl(ElemTy *tensor, size_t *dims,
 
   // Output shape.
   printf("shape: ( ");
-  for (int i = 0; i < numDims; ++i) {
+  for (size_t i = 0; i < numDims; ++i) {
     printf("%zu ", dims[i]);
   }
   printf(")\n");
@@ -32,11 +32,11 @@ static void libjit_dump_tensor_impl(ElemTy *tensor, size_t *dims,
 
   size_t size = 1;
   size_t sliceSize[numDims];
-  for (int i = 0; i < numDims; ++i) {
+  for (size_t i = 0; i < numDims; ++i) {
     size *= dims[i];
   }
 
-  for (int i = numDims - 1, curSliceSize = 1; i >= 0; --i) {
+  for (ssize_t i = numDims - 1, curSliceSize = 1; i >= 0; --i) {
     sliceSize[i] = curSliceSize;
     curSliceSize *= dims[i];
   }
