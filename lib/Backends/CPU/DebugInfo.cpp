@@ -204,34 +204,6 @@ void LLVMIRGen::initDebugInfo() {
   // Construct the DIBuilder.
   DIBuilder_ = llvm::make_unique<llvm::DIBuilder>(getModule());
 
-  // Normalize names of weights and activations to become valid identifiers.
-  // Replace all characters of the name that cannot be part of a valid C/C++
-  // identifier by underscores. This allows for using them with a debugger.
-  auto normalizeName = [](Value *v) {
-    std::string name = v->getName();
-    bool changed = false;
-    for (auto &c : name) {
-      if (!isalpha(c) && !isdigit(c) && c != '_') {
-        c = '_';
-        changed = true;
-      }
-    }
-    if (changed) {
-      v->setName(name);
-    }
-  };
-
-  for (auto &v : F_->getGraph()->getParent()->getVars()) {
-    auto *w = cast<WeightVar>(F_->getWeightForNode(v));
-    normalizeName(w);
-  }
-
-  for (auto I : F_->getInstrs()) {
-    if (!isa<AllocActivationInst>(I) && !isa<TensorViewInst>(I))
-      continue;
-    normalizeName(I);
-  }
-
   // Create a textual representation of the IR for the main function.
   // First store the textual IR into a string.
   std::string irContent;

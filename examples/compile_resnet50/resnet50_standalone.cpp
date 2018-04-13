@@ -338,7 +338,7 @@ static uint8_t *initMutableWeightVars(const BundleConfig &config) {
   printf("Copying image data into mutable weight vars: %lu bytes\n",
          imageDataSizeInBytes);
   const SymbolTableEntry &inputGPUDataVar =
-      getMutableWeightVar(config, "gpu_0/data");
+      getMutableWeightVar(config, "gpu_0_data");
   memcpy(mutableWeightVarsAddr + inputGPUDataVar.offset, inputT,
          imageDataSizeInBytes);
   return mutableWeightVarsAddr;
