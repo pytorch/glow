@@ -26,12 +26,13 @@ run: resnet50
 resnet50: build/main.o build/resnet50.o
 	${CXX} -o build/resnet50 build/resnet50.o build/main.o -lpng
 
-profile.yml:
+profile.yml: download_weights
 	# Capture quantization profile based on all inputs.
+	# Note, Interpreter backend is used to collect the profile data.
 	${LOADER} ${IMAGES}/*.png -image_mode=0to1 -dump_profile=profile.yml -d resnet50
 
 ifeq ($(QUANTIZE),YES)
-build/resnet50.o: profile.yml download_weights
+build/resnet50.o: profile.yml
 	mkdir -p build
 	# Create bundle with quantized weights and computation graph.
 	${LOADER} ${IMAGES}/dog_207.png -image_mode=0to1 -load_profile=profile.yml -d resnet50 -cpu -emit-bundle build -g
