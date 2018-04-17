@@ -810,6 +810,8 @@ void BatchedAddNode::verify() const {
 }
 
 void BatchedReduceAddNode::verify() const {
+  assert(getResult().getElementType() == getBatch().getElementType() &&
+         "Mismatched element types");
   assert(getBatch().dims().size() > 1 && "Invalid shape");
 }
 

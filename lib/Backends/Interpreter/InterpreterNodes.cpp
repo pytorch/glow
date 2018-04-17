@@ -1267,6 +1267,40 @@ void Interpreter::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
 }
 
 void Interpreter::fwdBatchedReduceAddInst(const glow::BatchedReduceAddInst *I) {
+  if (getTensor(I->getBatch())->getType().isQuantizedType()) {
+    auto dest = getWeightHandle<int8_t>(I->getDest());
+    auto batch = getWeightHandle<int8_t>(I->getBatch());
+
+    auto destTy = I->getDest()->getType();
+    auto batchTy = I->getBatch()->getType();
+
+    float destScale = destTy->getScale();
+    float batchScale = batchTy->getScale();
+
+    int32_t destOffset = destTy->getOffset();
+    int32_t batchOffset = batchTy->getOffset();
+
+    auto bdim = flattenCdr(batch.dims());
+
+    // The following loop order is inefficient but easy to implement correctly;
+    // as this is the Interpreter, we prioritize simplicity and correctness
+    // above all else.
+    // For each element in the slice:
+    for (size_t i = 0; i < bdim.second; i++) {
+      float sum = 0.0;
+
+      // For each layer in the batch:
+      for (size_t n = 0; n < bdim.first; n++) {
+        size_t base = batch.getElementPtr({n});
+        sum += batch.raw(base + i) - batchOffset;
+      }
+
+      int32_t q = std::round(sum * batchScale / destScale) + destOffset;
+      dest.raw(i) = quantization::clip<int32_t, int8_t>(q);
+    }
+    return;
+  }
+
   auto batch = getWeightHandle(I->getBatch());
   auto dest = getWeightHandle(I->getDest());
 
@@ -1278,7 +1312,7 @@ void Interpreter::fwdBatchedReduceAddInst(const glow::BatchedReduceAddInst *I) {
   for (size_t n = 0; n < bdim.first; n++) {
     size_t base = batch.getElementPtr({n});
 
-    // For each element in the slice.
+    // For each element in the slice:
     for (size_t i = 0; i < bdim.second; i++) {
       dest.raw(i) += batch.raw(base + i);
     }

@@ -615,6 +615,22 @@ void libjit_batchedreduceadd_f(float *dest, const float *batch, size_t destSize,
   }
 }
 
+void libjit_batchedreduceadd_i8(int8_t *dest, const int8_t *batch,
+                                size_t destSize, size_t numSlice,
+                                size_t sliceSize, int32_t destOffset,
+                                int32_t batchOffset, int32_t batchPre,
+                                int32_t batchPost, int32_t batchScale) {
+  for (size_t i = 0; i < sliceSize; i++) {
+    int32_t sum = 0;
+    for (size_t n = 0; n < numSlice; n++) {
+      sum += batch[n * sliceSize + i] - batchOffset;
+    }
+    int32_t q =
+        libjit_scale_i32i8(sum, batchPre, batchPost, batchScale, destOffset);
+    dest[i] = libjit_clip(q);
+  }
+}
+
 void libjit_gather_f(float *dest, const float *data, const size_t *indices,
                      size_t numIndices, size_t sliceSize) {
   libjit_gather(dest, data, indices, numIndices, sliceSize);

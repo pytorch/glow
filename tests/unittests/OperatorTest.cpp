@@ -107,6 +107,40 @@ TEST_P(Operator, batchedReduceAdd) {
   EXPECT_NEAR(H.at({3}), 44, 0.001);
 }
 
+TEST_P(Operator, batchedReduceAddQuantized) {
+  auto BT = mod_.uniqueType(ElemKind::Int8QTy, {3, 8}, 0.5, 3);
+  auto OT = mod_.uniqueType(ElemKind::Int8QTy, {8}, 2.0, -1);
+
+  auto *batch = mod_.createVariable(ElemKind::Int8QTy, {3, 8}, BT->getScale(),
+                                    BT->getOffset(), "batch");
+  auto *result = mod_.createVariable(ElemKind::Int8QTy, {8}, OT->getScale(),
+                                     OT->getOffset(), "result");
+
+  batch->getPayload().getHandle<int8_t>() = {
+      27, -31, 16,  7,  20, 34, -2, 8,   -10, 83, 29,  -17,
+      19, 13,  -11, -9, 50, 58, 0,  -20, -72, 43, -25, -1};
+
+  auto BH = batch->getHandle<int8_t>();
+  auto OH = result->getHandle<int8_t>();
+
+  auto *R = F_->createBatchedReduceAdd("batched.reduce.add", OT, batch);
+
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  for (size_t i = 0; i < 8; i++) {
+    std::array<int32_t, 3> b{{BH.at({0, i}), BH.at({1, i}), BH.at({2, i})}};
+    float s = BT->getScale() / OT->getScale();
+    int32_t o = BT->getOffset();
+    float result = (b[0] - o) + (b[1] - o) + (b[2] - o);
+    result = s * result + OT->getOffset();
+
+    EXPECT_NEAR(std::round(result), OH.at({i}), 1.0);
+  }
+}
+
 TEST_P(Operator, batchedBatchedAdd) {
   auto *batch = mod_.createVariable(ElemKind::FloatTy, {2, 3, 3}, "batch");
   auto *added = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "added");
