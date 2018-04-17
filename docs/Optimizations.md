@@ -63,44 +63,44 @@ Below you can see the list of currently supported graph optimizations:
 
     This optimization performs a classic CSE with a goal of avoiding of any
     results that were computed already.
-    
+
 #### Quantization specific optimizations
 
 Majority of the common optimizations above can be used on a quantized graph.
 But in addition to those there are quantization specific optimizations:
   * Quantize(Dequantize(X)) -> RescaleQuantized(X)
-  
+
     If the Quantize-Dequantize sequence does not change the type then this
     sequence is simply dropped without adding nop RescaleQuantized node.
     If Dequantize node has an input type that is different from the Quantize
     node output type then a RescaleQuantized node replaces Quantize-Dequantize.
- 
+
   * Dequantize(Quantize(X))
- 
+
     A sequence of Dequantize(Quantize(X)) is a nop transformation and can be completely removed.
-    
+
   * RescaleQuantized(RescaleQuantized(X)
-  
+
     A sequence of RescaleQuantized operators can be replaced by just a single RescaleQuantized.
-  
+
   * Private variables optimization
- 
+
     Private variables which have single use could be quantized at the optimization phase.
     This optimization replaces Quantize(Var) with just a Var with updated quantized weights
     based on the quantization parameters from the Quantize node.
-   
-  * RescaleQuantized(MAX(X,Y)) -> MAX(RescaleQuantized(X), RescaleQuantized(Y))
-  
+
+  * RescaleQuantized(Max(X,Y)) -> Max(RescaleQuantized(X), RescaleQuantized(Y))
+
     It's OK to rescale the operands because even if the output range is smaller then truncation
     would have happened during the rescaling. On values that are outside of the range, we just move
     the truncation to a different location.
-    
+
   * Fuse RescaleQuantized operator into the operations
-  
+
     There are a number of operations which can operate on varying quantized parameters
     for the output type. It's safe to just merge RescaleQuantized node into the operator itself if
     operator supports this, e.g., add, mul, etc.
-    
+
     This optimization can be applied to:
       * Add
       * Sub
@@ -108,6 +108,20 @@ But in addition to those there are quantization specific optimizations:
       * Div
       * Convolution
       * Splat
+
+  * RescaleQuantized(Quantize(X)) -> Quantize(X)
+
+    A sequence of Quantize operation followed by RescaleQuantized operation
+    is replaced by a single Quantize operation with the proper quantization
+    parameters based on the RescaleQuantized operation.
+
+  * Eliminate Max operation in Max(Splat(X), someOperand) or Max(someOperand, Splat(X))
+
+    Splat and Max operations can be completely eliminated if Splat value cannot impact
+    the result of the Max operation. For example, Max and Splat are removed if Splat
+    value is smaller than the smallest possible value from the other operand. Smallest
+    possible value from the operand can be calculated based on the quantization
+    parameters which represent quantization range [min, max] in fp32.
 
 ### Set of supported IR optimizations
 
@@ -169,4 +183,3 @@ Below you can see the list of currently supported optimizations:
 
     The stacked kernels should provide even more advantages on GPUs, because they
     reduce the number of kernel threads launches, which are rather expensive operations.
-    

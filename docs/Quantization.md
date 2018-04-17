@@ -5,9 +5,10 @@
 
 Quantization is the process of constraining an input from a continuous or
 otherwise large set of values (such as the real numbers) to a discrete set
-(such as the integers). In the context of machine learning, Quantization is the
-process of converting the inference phase of the neural network execution from
-floating point arithmetic to integer arithmetic.
+(such as the integers). In general, Quantization can be used both for Training
+and Inference, Glow supports only Inference time Quantization. In this context,
+Quantization is the process of converting the inference phase of the neural
+network execution from floating point arithmetic to integer arithmetic.
 
 This is an external [link](https://www.tensorflow.org/performance/quantization)
 that explains how quantization is done in TensorFlow.
@@ -23,7 +24,7 @@ non-floating-point values such as Int8 (8-bit integers) and index types (either
 of 8-bit integers. In addition to the information that the tensor payload is
 made of 8-bit integers, the possible range of the values in the tensor is
 recorded. The extra range information is recorded using the 'scale' and 'offset'
-fiends.  To convert from the 8-bit integer range of [-128..127] to the number
+fields. To convert from the 8-bit integer range of [-128..127] to the number
 that they represent use the following conversion formula:
 
   ```
@@ -55,7 +56,7 @@ outputs in the range that the original floating point network produces.
 Glow loader provides options to execute both profiling and conversion of a NN graph.
 
 ```dump_profile=profile.yaml``` option is used to dump per node's output profile data
-into the ```file.yaml``` file.
+into the ```profile.yaml``` file.
 This information can be used in the process of quantized conversion.
 For example, you can run the following command to capture profile for Resnet50.
 ```
@@ -69,7 +70,7 @@ the graph.
 For example, you can run the following command to load the profile and quantize
 the graph.
 ```
-./bin/loader tests/images/*.png -image_mode=0to1 -d=resnet50 -load_profile="profile"
+./bin/loader tests/images/*.png -image_mode=0to1 -d=resnet50 -load_profile="profile.yaml"
 ```
 
 ## Compiler Optimizations
@@ -95,3 +96,4 @@ hardware implementations of the quantized operations. For example, consider the
 allow the hardware to perform a simple comparison. By normalizing both sides of
 the 'max' operation to the same scale we enable this efficient optimization.
 
+For more specific graph optimizations check [here](Optimizations.md#quantization-specific-optimizations).
