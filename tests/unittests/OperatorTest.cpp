@@ -1288,6 +1288,50 @@ TEST_P(Operator, IntSplat) {
   }
 }
 
+TEST_P(Operator, GroupConvolution) {
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 2, 1, 8}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 2 * 8; i++) {
+    IH.raw(i) = i + 1;
+  }
+
+  auto filter = mod_.createVariable(ElemKind::FloatTy, {6, 1, 1, 4}, "filter");
+  auto FH = filter->getHandle();
+  for (size_t i = 0; i < 6; i++)
+    for (size_t j = 0; j < 4; j++) {
+      FH.at({i, 0, 0, j}) = pow(10.0, i);
+    }
+
+  auto *zeroBias = mod_.createVariable(ElemKind::FloatTy, {6}, "bias");
+  zeroBias->getPayload().zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 2, 1, 6});
+
+  ConvolutionNode *CN =
+      F_->createConv("Conv", input, filter, zeroBias, outTy, 1, 1, 0, 2);
+  SaveNode *S = F_->createSave("save", CN);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto result = llvm::cast<Variable>(S->getOutput())->getPayload().getHandle();
+
+  std::vector<size_t> expectedDims = {1, 2, 1, 6};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 1 + 2 + 3 + 4);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1}), (1 + 2 + 3 + 4) * 10);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 2}), (1 + 2 + 3 + 4) * 100);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 3}), (5 + 6 + 7 + 8) * 1000);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 4}), (5 + 6 + 7 + 8) * 10000);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 5}), (5 + 6 + 7 + 8) * 100000);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), 9 + 10 + 11 + 12);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 1}), (9 + 10 + 11 + 12) * 10);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 2}), (9 + 10 + 11 + 12) * 100);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 3}), (13 + 14 + 15 + 16) * 1000);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 4}), (13 + 14 + 15 + 16) * 10000);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 100000);
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 
