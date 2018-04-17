@@ -1159,7 +1159,31 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *sliceSize = emitConstSizeT(builder, bdim.second);
 
     auto *F = getFunction("batchedreduceadd", dest->getElementType());
-    builder.CreateCall(F, {destPtr, batchPtr, destSize, numSlice, sliceSize});
+
+    if (batch->getType()->isQuantizedType()) {
+      auto *destTy = dest->getType();
+      auto *batchTy = batch->getType();
+
+      auto *destOffset = emitConstI32(builder, destTy->getOffset());
+      auto *batchOffset = emitConstI32(builder, batchTy->getOffset());
+
+      // BatchedReduceAdd is an accumulation operation, with equations
+      //    s_d * (i_d - o_d) = \sum s_b * (i_b - o_b)
+      // => i_d - o_d = \sum (s_b / s_d) * (i_b - o_b)
+      // => i_d = (s_b / s_d ) * [\sum (i_b - o_b)] + o_d
+      auto batchScaleParams = quantization::quantizeScaleOffset32To8(
+          batchTy->getScale() / destTy->getScale(), batchTy->getOffset());
+
+      auto *batchPre = emitConstI32(builder, batchScaleParams.pre_);
+      auto *batchPost = emitConstI32(builder, batchScaleParams.post_);
+      auto *batchScale = emitConstI32(builder, batchScaleParams.scale_);
+
+      builder.CreateCall(F, {destPtr, batchPtr, destSize, numSlice, sliceSize,
+                             destOffset, batchOffset, batchPre, batchPost,
+                             batchScale});
+    } else {
+      builder.CreateCall(F, {destPtr, batchPtr, destSize, numSlice, sliceSize});
+    }
     break;
   }
 

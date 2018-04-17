@@ -95,6 +95,7 @@ bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
   if (elementTy == ElemKind::Int8QTy) {
     switch (opKind) {
     case Kinded::Kind::AddNodeKind:
+    case Kinded::Kind::BatchedReduceAddNodeKind:
     case Kinded::Kind::ConcatNodeKind:
     case Kinded::Kind::ConvolutionNodeKind:
     case Kinded::Kind::DequantizeNodeKind:

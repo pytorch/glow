@@ -284,6 +284,9 @@ public:
   BatchedReduceAddNode *createBatchedReduceAdd(llvm::StringRef name,
                                                NodeValue batch);
 
+  BatchedReduceAddNode *createBatchedReduceAdd(llvm::StringRef name,
+                                               TypeRef outTy, NodeValue batch);
+
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, NodeValue batch,
                                    NodeValue sample);
 
