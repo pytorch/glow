@@ -673,7 +673,6 @@ static void optimizeQuantization(Function *F) {
 
     if (auto *Q = dyn_cast<QuantizeNode>(node)) {
       if (auto *DQ = dyn_cast<DequantizeNode>(Q->getInput())) {
-
         // Quantize(Dequantize(X)) -> RescaleQuantized(X)
         // If the quantization-dequantization sequence does not change the type
         // then we can simply drop them without adding a requantization node.
@@ -693,7 +692,6 @@ static void optimizeQuantization(Function *F) {
       }
 
       if (auto *V = dyn_cast<Variable>(Q->getInput())) {
-
         // Quantize(Variable) -> Variable
         // V must have a single use and be private.
         if (!V || !V->hasOneUse() || !V->isPrivate()) {
@@ -718,7 +716,6 @@ static void optimizeQuantization(Function *F) {
 
     if (auto *DQ = dyn_cast<DequantizeNode>(node)) {
       if (auto *Q = dyn_cast<QuantizeNode>(DQ->getInput())) {
-
         // Dequantize(Quantize(X)) -> X
         DQ->getResult().replaceAllUsesOfWith(Q->getInput());
         continue;
@@ -727,14 +724,12 @@ static void optimizeQuantization(Function *F) {
 
     if (auto *RS = dyn_cast<RescaleQuantizedNode>(node)) {
       if (RS->getInput()->getType() == RS->getType()) {
-
         // If rescale does not change the type, then simply drop it.
         RS->getResult().replaceAllUsesOfWith(RS->getInput());
         continue;
       }
 
       if (auto *MN = dyn_cast<MaxNode>(RS->getInput())) {
-
         // Rescale(MAX(X, Y)) -> MAX(Rescale(X), Rescale(Y)).
         // It's okay to rescale the operands because even if the output range is
         // smaller then truncation would have happened during the rescale. On
@@ -750,12 +745,24 @@ static void optimizeQuantization(Function *F) {
         continue;
       }
 
-      if (auto *AN = dyn_cast<AddNode>(RS->getInput())) {
-        auto *newAN = F->createAdd(AN->getName(), RS->getType(), AN->getLHS(),
-                                   AN->getRHS());
-        RS->getResult().replaceAllUsesOfWith(newAN);
-        continue;
-      }
+// Merge the rescale node into the arithmetic node.
+// Rescale(Arithmetic()) -> Arithmetic().
+// Not all arithmetic nodes support explicit output quantized type.
+// Fuse rescale with add, sub, mul, div.
+#define FUSE_RESCALE_TO_ARITHMETIC_NODE(NODE_NAME_)                            \
+  if (auto *AN = dyn_cast<NODE_NAME_##Node>(RS->getInput())) {                 \
+    auto *newAN = F->create##NODE_NAME_(AN->getName(), RS->getType(),          \
+                                        AN->getLHS(), AN->getRHS());           \
+    RS->getResult().replaceAllUsesOfWith(newAN);                               \
+                                                                               \
+    continue;                                                                  \
+  }
+
+      FUSE_RESCALE_TO_ARITHMETIC_NODE(Add);
+      FUSE_RESCALE_TO_ARITHMETIC_NODE(Sub);
+      FUSE_RESCALE_TO_ARITHMETIC_NODE(Mul);
+      FUSE_RESCALE_TO_ARITHMETIC_NODE(Div);
+#undef FUSE_RESCALE_TO_ARITHMETIC_NODE
 
       // Merge the rescale node into the convolution.
       // Rescale(Conv()) -> Conv()
@@ -770,22 +777,22 @@ static void optimizeQuantization(Function *F) {
         continue;
       }
 
-      // Fold the rescale into the previous rescale.
-      // Rescale(Rescale()) -> Rescale()
-      if (auto *RS2 = dyn_cast<RescaleQuantizedNode>(RS->getInput())) {
-        auto *newRS = F->createRescaleQuantized(RS->getName(), RS2->getInput(),
-                                                RS->getType());
-        worklist.push_back(newRS);
-        RS->getResult().replaceAllUsesOfWith(newRS);
-        continue;
-      }
-
       // Merge splat and rescale nodes.
       // Rescale(Splat()) -> Splat()
       if (auto *SP = dyn_cast<SplatNode>(RS->getInput())) {
         auto *newRS =
             F->createSplat(SP->getName(), RS->getType(), SP->getValue());
 
+        worklist.push_back(newRS);
+        RS->getResult().replaceAllUsesOfWith(newRS);
+        continue;
+      }
+
+      // Fold the rescale into the previous rescale.
+      // Rescale(Rescale()) -> Rescale()
+      if (auto *RS2 = dyn_cast<RescaleQuantizedNode>(RS->getInput())) {
+        auto *newRS = F->createRescaleQuantized(RS->getName(), RS2->getInput(),
+                                                RS->getType());
         worklist.push_back(newRS);
         RS->getResult().replaceAllUsesOfWith(newRS);
         continue;
