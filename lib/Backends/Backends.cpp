@@ -22,17 +22,17 @@ Backend *glow::createBackend(BackendKind backendKind, IRFunction *F) {
   case BackendKind::Interpreter:
     return createInterpreter(F);
   case BackendKind::OpenCL:
-    #ifndef GLOW_WITH_OPENCL
-      GLOW_UNREACHABLE("Must compile with OpenCL support");
-    #else
-      return createOCLBackend(F);
-    #endif
+#ifndef GLOW_WITH_OPENCL
+    GLOW_UNREACHABLE("Must compile with OpenCL support");
+#else
+    return createOCLBackend(F);
+#endif
   case BackendKind::CPU:
-    #ifndef GLOW_WITH_CPU
-      GLOW_UNREACHABLE("Must compile with CPU support");
-    #else
-      return createCPUBackend(F);
-    #endif
+#ifndef GLOW_WITH_CPU
+    GLOW_UNREACHABLE("Must compile with CPU support");
+#else
+    return createCPUBackend(F);
+#endif
   }
 
   // This is to make compiler happy. It can never reach this point as switch
