@@ -63,7 +63,51 @@ Below you can see the list of currently supported graph optimizations:
 
     This optimization performs a classic CSE with a goal of avoiding of any
     results that were computed already.
+    
+#### Quantization specific optimizations
 
+Majority of the common optimizations above can be used on a quantized graph.
+But in addition to those there are quantization specific optimizations:
+  * Quantize(Dequantize(X)) -> RescaleQuantized(X)
+  
+    If the Quantize-Dequantize sequence does not change the type then this
+    sequence is simply dropped without adding nop RescaleQuantized node.
+    If Dequantize node has an input type that is different from the Quantize
+    node output type then a RescaleQuantized node replaces Quantize-Dequantize.
+ 
+  * Dequantize(Quantize(X))
+ 
+    A sequence of Dequantize(Quantize(X)) is a nop transformation and can be completely removed.
+    
+  * RescaleQuantized(RescaleQuantized(X)
+  
+    A sequence of RescaleQuantized operators can be replaced by just a single RescaleQuantized.
+  
+  * Private variables optimization
+ 
+    Private variables which have single use could be quantized at the optimization phase.
+    This optimization replaces Quantize(Var) with just a Var with updated quantized weights
+    based on the quantization parameters from the Quantize node.
+   
+  * RescaleQuantized(MAX(X,Y)) -> MAX(RescaleQuantized(X), RescaleQuantized(Y))
+  
+    It's OK to rescale the operands because even if the output range is smaller then truncation
+    would have happened during the rescaling. On values that are outside of the range, we just move
+    the truncation to a different location.
+    
+  * Fuse RescaleQuantized operator into the operations
+  
+    There are a number of operations which can operate on varying quantized parameters
+    for the output type. It's safe to just merge RescaleQuantized node into the operator itself if
+    operator supports this, e.g., add, mul, etc.
+    
+    This optimization can be applied to:
+      * Add
+      * Sub
+      * Mul
+      * Div
+      * Convolution
+      * Splat
 
 ### Set of supported IR optimizations
 
