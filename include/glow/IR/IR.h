@@ -18,6 +18,7 @@ class Instruction;
 class IRFunction;
 class Function;
 class Value;
+class InstructionNumbering;
 
 enum class OperandKind : unsigned char {
   In,
@@ -66,7 +67,7 @@ public:
   Value(llvm::StringRef name, TypeRef T, Kinded::Kind k)
       : Named(name), Typed(T), Kinded(k) {}
 
-  void verifyUseList(const IRFunction &M) const;
+  void verifyUseList(const InstructionNumbering &InstrNumbering) const;
 
   /// Verify the correctness of the instruction parameters.
   void verify(const IRFunction &M) const;
@@ -155,7 +156,7 @@ public:
   llvm::ArrayRef<Operand> getOperands() const { return ops_; }
 
   /// Check the correctness of the use-list.
-  void verifyUseList() const;
+  void verifyUseList(const InstructionNumbering &InstrNumbering) const;
 
   /// Verify the correctness of the instruction parameters.
   void verify() const;

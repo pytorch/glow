@@ -61,13 +61,14 @@ TEST(IR, basicUseList) {
 
     // Check that we can construct a new instruction.
     auto *CC = builder.createCopyInst("C", V1, V2);
-    CC->verifyUseList();
+    InstructionNumbering IN(M);
+    CC->verifyUseList(IN);
 
     // Check the getOperand and setOperand functions.
     EXPECT_EQ(CC->getDest(), V1);
     CC->setOperand(0, V2);
     EXPECT_EQ(CC->getDest(), V2);
-    CC->verifyUseList();
+    CC->verifyUseList(IN);
   }
 
   // Check that we can destroy the operands.
@@ -169,7 +170,8 @@ TEST(IR, predicateIR) {
     auto *CC = builder.createCopyInst("C", V1, V2);
     // Set the predicate.
     CC->setPredicate(P);
-    CC->verifyUseList();
+    InstructionNumbering IN(M);
+    CC->verifyUseList(IN);
     M.verify();
   }
 }
