@@ -158,6 +158,12 @@ public:
     reset(t);
   }
 
+  void reset(ElemKind elemTy, llvm::ArrayRef<size_t> shape, float scale,
+             int32_t offset) {
+    Type t(elemTy, shape, scale, offset);
+    reset(t);
+  }
+
   /// Assigns a new shape to the tensor and allocates a new buffer.
   void reset(const Type &T) {
     // If the new size is identical to the allocated size then there is no need

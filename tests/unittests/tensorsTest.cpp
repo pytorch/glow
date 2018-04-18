@@ -254,6 +254,38 @@ TEST(Tensor, copySlice) {
   }
 }
 
+TEST(Tensor, reset) {
+  Tensor A(ElemKind::FloatTy, {2, 3});
+  Tensor QA(ElemKind::Int8QTy, {3, 4}, 2.2, 7);
+  auto H = A.getHandle();
+  auto QH = QA.getHandle<int8_t>();
+
+  H = {1.5, 17.3, -20.3, 10.0, 1.2, -2.3};
+  QH = {5, 9, -2, 4, 3, -10, 21, -9, 0, -51, 73, 2};
+
+  A.reset(ElemKind::FloatTy, {5, 2, 6});
+  QA.reset(ElemKind::Int8QTy, {4, 7, 3, 8}, 1.4, -13);
+
+  H = A.getHandle();
+  QH = QA.getHandle<int8_t>();
+
+  EXPECT_EQ(H.dims().size(), 3);
+  EXPECT_EQ(QH.dims().size(), 4);
+  EXPECT_TRUE(H.dims().equals({5, 2, 6}));
+  EXPECT_TRUE(QH.dims().equals({4, 7, 3, 8}));
+  EXPECT_EQ(H.size(), 5 * 2 * 6);
+  EXPECT_EQ(QH.size(), 4 * 7 * 3 * 8);
+  EXPECT_NEAR(QA.getType().getScale(), 1.4, 0.0001);
+  EXPECT_EQ(QA.getType().getOffset(), -13);
+
+  for (size_t i = 0; i < 5 * 2 * 6; i++) {
+    EXPECT_EQ(H.raw(i), 0.0);
+  }
+  for (size_t i = 0; i < 4 * 7 * 3 * 8; i++) {
+    EXPECT_EQ(QH.raw(i), 0);
+  }
+}
+
 TEST(Tensor, transpose) {
   Tensor X(ElemKind::FloatTy, {5, 2});
   auto H = X.getHandle<>();
