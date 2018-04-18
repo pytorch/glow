@@ -204,7 +204,7 @@ private:
   Function *G_{};
 
   /// A list of weights. Weights are shared between all execution context.
-  std::list<WeightVar *> weights_{};
+  WeightVarListTy weights_{};
 
   /// A list of instruction that represent the network.
   InstListTy instrs_{};
