@@ -113,13 +113,13 @@ Instruction::Operand Instruction::getOperand(unsigned idx) const {
 
 void Instruction::eraseFromParent() { getParent()->eraseInstruction(this); }
 
-void Instruction::verifyUseList() const {
+void Instruction::verifyUseList(const InstructionNumbering &InstrNumbering) const {
   for (const auto &op : ops_) {
     auto *v = op.first;
     (void)v;
     assert(v && "Instruction operand must be a real value");
     assert(v->hasUser(this) && "Invalid use-list");
-    v->verifyUseList(*getParent());
+    v->verifyUseList(InstrNumbering);
   }
 }
 
@@ -134,14 +134,13 @@ void Instruction::verify() const {
 
 void Value::verify(const IRFunction &M) const {}
 
-void Value::verifyUseList(const IRFunction &M) const {
+void Value::verifyUseList(const InstructionNumbering &InstrNumbering) const {
   auto users = getUsers();
-  auto instrs = M.getInstrs();
   for (const auto &use : users) {
     auto *I = use.get();
     (void)I;
     // Every instruction using this value should be in the instruction list.
-    assert(std::find(instrs.begin(), instrs.end(), I) != instrs.end());
+    assert(InstrNumbering.getInstrNumber(I) != -1);
   }
 }
 
@@ -341,9 +340,10 @@ static void verifyLiveness(const IRFunction &M) {
 }
 
 void IRFunction::verify() const {
+  InstructionNumbering InstrNumbering(*this);
   assert(!instrs_.empty() && "Instruction list is empty!");
   for (auto it : instrs_) {
-    it->verifyUseList();
+    it->verifyUseList(InstrNumbering);
     verifyOperandsAccess(it);
     it->verify();
   }
@@ -355,7 +355,7 @@ void IRFunction::verify() const {
     assert(p.first->getType() == p.second->getType() &&
            "Weight and variable must have the same type");
     p.second->verify(*this);
-    p.second->verifyUseList(*this);
+    p.second->verifyUseList(InstrNumbering);
   }
 }
 
@@ -464,7 +464,7 @@ static void dumpIRInContext(const Value *V, llvm::raw_ostream &out) {
 
 /// Dump the instruction numbers of all users of \p V.
 static void dumpUsers(const Value *V, llvm::raw_ostream &out,
-                      InstructionNumbering &IN) {
+                      InstructionNumbering &InstrNumbering) {
   if (V->getNumUsers() == 0)
     return;
   out << " // Users: ";
@@ -477,7 +477,7 @@ static void dumpUsers(const Value *V, llvm::raw_ostream &out,
 
     out << getOperandKindStr(U->getOperand().second) << " ";
 
-    auto instrNum = IN.getInstrNumber(I);
+    auto instrNum = InstrNumbering.getInstrNumber(I);
     assert(instrNum >= 0);
     out << instrNum;
     isFirst = false;
