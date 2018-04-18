@@ -93,10 +93,10 @@ TEST(Quantization, quantizeGraph) {
 
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 3}, "input");
   auto *W = mod.createVariable(ElemKind::FloatTy, {3, 3}, "weights",
-                               Variable::VisibilityKind::Private,
+                               VisibilityKind::Private,
                                Variable::TrainKind::Xavier, 3);
   auto *B = mod.createVariable(ElemKind::FloatTy, {3}, "bias",
-                               Variable::VisibilityKind::Private,
+                               VisibilityKind::Private,
                                Variable::TrainKind::Broadcast, 0.1);
   auto *FC = F->createFullyConnected("FC", input, W, B);
   F->createSave("ret", FC);
@@ -130,13 +130,13 @@ static std::pair<Function *, SaveNode *>
 createSimpleGraphForQuantization(Module *M) {
   Function *F = M->createFunction("main");
 
-  auto *A = F->getParent()->createVariable(
-      ElemKind::FloatTy, {1, 32, 32, 3}, "A", Variable::VisibilityKind::Public,
-      Variable::TrainKind::None);
+  auto *A = F->getParent()->createVariable(ElemKind::FloatTy, {1, 32, 32, 3},
+                                           "A", VisibilityKind::Public,
+                                           Variable::TrainKind::None);
   fillStableRandomData(A->getHandle(), 1100, 1);
 
   auto *B = F->getParent()->createVariable(ElemKind::FloatTy, {10, 10}, "B",
-                                           Variable::VisibilityKind::Public,
+                                           VisibilityKind::Public,
                                            Variable::TrainKind::None);
   fillStableRandomData(B->getHandle(), 2001, 1);
 
@@ -217,7 +217,7 @@ TEST(Quantization, rescaleSameType) {
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("foo");
   auto *input = mod.createVariable(ElemKind::Int8QTy, {1, 1}, 0.5, 11, "input",
-                                   Variable::VisibilityKind::Public,
+                                   VisibilityKind::Public,
                                    Variable::TrainKind::Broadcast, 21);
   auto *Q = F->createRescaleQuantized(
       "rescale", input, mod.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.5, 11));
@@ -238,7 +238,7 @@ TEST(Quantization, optimizeRescaleQuantize) {
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("foo");
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 1}, "input",
-                                   Variable::VisibilityKind::Public,
+                                   VisibilityKind::Public,
                                    Variable::TrainKind::Broadcast, 21);
   auto *Q = F->createQuantize(
       "quant", input, mod.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.25, 4));

@@ -183,9 +183,9 @@ void testPTB() {
 
   Variable *X = mod.createVariable(
       ElemKind::FloatTy, {minibatchSize, vocabSize * numSteps}, "input",
-      Variable::VisibilityKind::Public, Variable::TrainKind::None);
+      VisibilityKind::Public, Variable::TrainKind::None);
   Variable *Y = mod.createVariable(ElemKind::IndexTy, {minibatchSize, numSteps},
-                                   "selected", Variable::VisibilityKind::Public,
+                                   "selected", VisibilityKind::Public,
                                    Variable::TrainKind::None);
 
   std::vector<Node *> slicesX;

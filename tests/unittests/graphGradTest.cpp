@@ -25,9 +25,9 @@ TEST(GraphAutoGrad, autoGrad) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  Variable *A = mod.createVariable(ElemKind::FloatTy, {10, 28, 28, 1}, "input",
-                                   Variable::VisibilityKind::Public,
-                                   Variable::TrainKind::None);
+  Variable *A =
+      mod.createVariable(ElemKind::FloatTy, {10, 28, 28, 1}, "input",
+                         VisibilityKind::Public, Variable::TrainKind::None);
 
   auto *CV0 = F->createConv("conv1", A, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
@@ -39,9 +39,9 @@ TEST(GraphAutoGrad, autoGrad) {
 
   auto *FCL1 = F->createFullyConnected("fc3", MP1, 10);
   auto *RL2 = F->createRELU("relu3", FCL1);
-  Variable *selected = mod.createVariable(
-      ElemKind::IndexTy, {10, 1}, "selected", Variable::VisibilityKind::Public,
-      Variable::TrainKind::None);
+  Variable *selected =
+      mod.createVariable(ElemKind::IndexTy, {10, 1}, "selected",
+                         VisibilityKind::Public, Variable::TrainKind::None);
 
   auto *SM = F->createSoftMax("sm", RL2, selected);
 
@@ -64,15 +64,15 @@ TEST(GraphAutoGrad, checkLRNGen) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  Variable *A = mod.createVariable(ElemKind::FloatTy, {10, 28, 28, 1}, "input",
-                                   Variable::VisibilityKind::Public,
-                                   Variable::TrainKind::None);
+  Variable *A =
+      mod.createVariable(ElemKind::FloatTy, {10, 28, 28, 1}, "input",
+                         VisibilityKind::Public, Variable::TrainKind::None);
   auto *CV0 = F->createLocalResponseNormalization("LRN", A);
   auto *FCL1 = F->createFullyConnected("fc3", CV0, 10);
   auto *RL2 = F->createRELU("relu3", FCL1);
-  Variable *selected = mod.createVariable(
-      ElemKind::IndexTy, {10, 1}, "selected", Variable::VisibilityKind::Public,
-      Variable::TrainKind::None);
+  Variable *selected =
+      mod.createVariable(ElemKind::IndexTy, {10, 1}, "selected",
+                         VisibilityKind::Public, Variable::TrainKind::None);
 
   auto *SM = F->createSoftMax("sm", RL2, selected);
 
@@ -90,10 +90,10 @@ TEST(GraphAutoGrad, cloneAndDiff) {
   Module M;
 
   auto *F = M.createFunction("main");
-  Node *A = M.createVariable(ElemKind::FloatTy, {1}, "A",
-                             Variable::VisibilityKind::Private);
-  Node *B = M.createVariable(ElemKind::FloatTy, {1}, "B",
-                             Variable::VisibilityKind::Private);
+  Node *A =
+      M.createVariable(ElemKind::FloatTy, {1}, "A", VisibilityKind::Private);
+  Node *B =
+      M.createVariable(ElemKind::FloatTy, {1}, "B", VisibilityKind::Private);
   Node *AplusB_F = F->createAdd("AplusB", A, B);
 
   EXPECT_EQ(M.getVars().size(), 2);
@@ -103,16 +103,16 @@ TEST(GraphAutoGrad, cloneAndDiff) {
   EXPECT_EQ(M.getVars().size(), 2);
   EXPECT_EQ(G->getNodes().size(), 1);
 
-  Node *C = M.createVariable(ElemKind::FloatTy, {1}, "C",
-                             Variable::VisibilityKind::Private);
+  Node *C =
+      M.createVariable(ElemKind::FloatTy, {1}, "C", VisibilityKind::Private);
   Node *AplusB_G = G->getNodes().back();
   G->createAdd("totalSum", AplusB_G, C);
 
   EXPECT_EQ(M.getVars().size(), 3);
 
-  Node *label = M.createVariable(ElemKind::FloatTy, {1}, "label",
-                                 Variable::VisibilityKind::Public,
-                                 Variable::TrainKind::None);
+  Node *label =
+      M.createVariable(ElemKind::FloatTy, {1}, "label", VisibilityKind::Public,
+                       Variable::TrainKind::None);
   Node *reg = F->createRegression("reg", AplusB_F, label);
   F->createSave("return", reg);
 

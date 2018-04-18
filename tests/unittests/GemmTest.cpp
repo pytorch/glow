@@ -32,15 +32,12 @@ TEST(Gemm, jitTest) {
           ExecutionEngine EE(kind);
           auto &mod = EE.getModule();
           Function *F = mod.createFunction("main");
-          auto lhsVar =
-              mod.createVariable(lhs.getElementType(), lhs.dims(), "lhs",
-                                 Variable::VisibilityKind::Public);
-          auto rhsVar =
-              mod.createVariable(rhs.getElementType(), rhs.dims(), "rhs",
-                                 Variable::VisibilityKind::Public);
-          auto outVar =
-              mod.createVariable(out->getElementType(), out->dims(), "out",
-                                 Variable::VisibilityKind::Public);
+          auto lhsVar = mod.createVariable(lhs.getElementType(), lhs.dims(),
+                                           "lhs", VisibilityKind::Public);
+          auto rhsVar = mod.createVariable(rhs.getElementType(), rhs.dims(),
+                                           "rhs", VisibilityKind::Public);
+          auto outVar = mod.createVariable(out->getElementType(), out->dims(),
+                                           "out", VisibilityKind::Public);
           auto OT =
               F->getParent()->uniqueType(out->getElementType(), out->dims());
           auto *matmul = F->createMatMul("matmul", OT, lhsVar, rhsVar);
