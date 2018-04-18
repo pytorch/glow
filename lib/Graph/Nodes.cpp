@@ -426,7 +426,7 @@ static const char *getVariableTrainKindStr(Variable::TrainKind kind) {
   return names[static_cast<int>(kind)];
 }
 
-static const char *getVariableVisibilityKindStr(Variable::VisibilityKind kind) {
+static const char *getVariableVisibilityKindStr(VisibilityKind kind) {
   const char *names[] = {"public", "private", nullptr};
   return names[static_cast<int>(kind)];
 }

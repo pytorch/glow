@@ -28,7 +28,7 @@ void AllocationsInfo::allocateWeightVars(IRFunction *F, bool reuseAddresses) {
   for (auto &v : F->getGraph()->getParent()->getVars()) {
     assert(isa<WeightVar>(F->getWeightForNode(v)));
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
-    if (v->getVisibilityKind() == Variable::VisibilityKind::Public)
+    if (v->getVisibilityKind() == VisibilityKind::Public)
       continue;
     auto numBytes = w->getSizeInBytes();
     size_t addr = constantWeightVarsAllocator.allocate(numBytes);
@@ -45,7 +45,7 @@ void AllocationsInfo::allocateWeightVars(IRFunction *F, bool reuseAddresses) {
   for (auto &v : F->getGraph()->getParent()->getVars()) {
     assert(isa<WeightVar>(F->getWeightForNode(v)));
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
-    if (v->getVisibilityKind() != Variable::VisibilityKind::Public)
+    if (v->getVisibilityKind() != VisibilityKind::Public)
       continue;
     auto numBytes = w->getSizeInBytes();
     size_t addr = mutableWeightVarsAllocator.allocate(numBytes);
@@ -129,7 +129,7 @@ void AllocationsInfo::numberValues(IRFunction *F) {
   for (auto &v : F->getGraph()->getParent()->getVars()) {
     assert(isa<WeightVar>(F->getWeightForNode(v)));
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
-    auto kind = v->getVisibilityKind() != Variable::VisibilityKind::Public
+    auto kind = v->getVisibilityKind() != VisibilityKind::Public
                     ? ValueKind::ConstantWeight
                     : ValueKind::MutableWeight;
     valueNumbers_[w] = std::make_pair(kind, valueIdx++);

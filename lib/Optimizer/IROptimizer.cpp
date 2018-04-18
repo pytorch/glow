@@ -434,6 +434,11 @@ static Instruction *getSingleWriter(const Value *V) {
 void makeWeightsConst(IRFunction &M) {
   // For each weight:
   for (auto *W : M.getWeights()) {
+    if (W->getVisibility() == VisibilityKind::Public) {
+      assert(W->getMutability() != WeightVar::MutabilityKind::Constant &&
+             "Public vars can not be Constant.");
+      continue;
+    }
     bool readOnly = true;
     // For each instruction that uses the weight:
     for (const auto &U : ValueUses(W)) {
@@ -449,7 +454,8 @@ void makeWeightsConst(IRFunction &M) {
     if (readOnly) {
       W->setMutability(WeightVar::MutabilityKind::Constant);
     } else {
-      W->setMutability(WeightVar::MutabilityKind::Mutable);
+      assert(W->getMutability() != WeightVar::MutabilityKind::Constant &&
+             "Variables defined as Const cannot be written into.");
     }
   }
 }

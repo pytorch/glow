@@ -30,7 +30,7 @@ static bool shouldDeleteNode(Node *N) {
   if (Variable *V = dyn_cast<Variable>(N)) {
     // We don't want to delete unused public variables because they are
     // accessible to the outside world that may hold a reference to them.
-    if (V->getVisibilityKind() == Variable::VisibilityKind::Public)
+    if (V->getVisibilityKind() == VisibilityKind::Public)
       return false;
   }
 

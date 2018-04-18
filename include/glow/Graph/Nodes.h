@@ -2,6 +2,7 @@
 #define GLOW_GRAPH_NODES_H
 
 #include "glow/Base/Tensor.h"
+#include "glow/Base/Traits.h"
 #include "glow/Graph/Grad.h"
 #include "glow/Graph/Node.h"
 
@@ -22,14 +23,6 @@ public:
     None,      // The variable is not trainable. It is initialized to zero.
     Broadcast, // Broadcast a single value to all elements.
     Xavier,    // Init the variable with random values using the Xavier method.
-  };
-
-  /// Specifies the visibility of the variable. Public nodes can't be
-  /// optimized because they are visible to external users that may hold
-  /// a reference or handles.
-  enum class VisibilityKind {
-    Public,  // The variable is visible from outside the graph.
-    Private, // The variable isn't visible from outside the graph.
   };
 
 private:

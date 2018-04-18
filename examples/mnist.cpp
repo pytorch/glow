@@ -80,9 +80,9 @@ void testMNIST() {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  Variable *A = mod.createVariable(
-      ElemKind::FloatTy, {minibatchSize, 28, 28, 1}, "input",
-      Variable::VisibilityKind::Public, Variable::TrainKind::None);
+  Variable *A =
+      mod.createVariable(ElemKind::FloatTy, {minibatchSize, 28, 28, 1}, "input",
+                         VisibilityKind::Public, Variable::TrainKind::None);
 
   auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu", CV0);
@@ -93,9 +93,9 @@ void testMNIST() {
   auto *MP1 = F->createPoolMax("pool", RL1, 3, 3, 0);
 
   auto *FCL1 = F->createFullyConnected("fc", MP1, 10);
-  Variable *selected = mod.createVariable(
-      ElemKind::IndexTy, {minibatchSize, 1}, "selected",
-      Variable::VisibilityKind::Public, Variable::TrainKind::None);
+  Variable *selected =
+      mod.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, "selected",
+                         VisibilityKind::Public, Variable::TrainKind::None);
   auto *SM = F->createSoftMax("sm", FCL1, selected);
 
   auto *result = F->createSave("return", SM);

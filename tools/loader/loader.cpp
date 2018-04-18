@@ -248,8 +248,8 @@ int main(int argc, char **argv) {
     i1 = llvm::cast<Variable>(LD.getOrCreateNodeByName("data"));
   }
 
-  assert(i0->getVisibilityKind() == Variable::VisibilityKind::Public);
-  assert(i1->getVisibilityKind() == Variable::VisibilityKind::Public);
+  assert(i0->getVisibilityKind() == VisibilityKind::Public);
+  assert(i1->getVisibilityKind() == VisibilityKind::Public);
 
   // Handle the request to profile the graph in preperation for quantization.
   if (!dumpProfileFileOpt.empty()) {

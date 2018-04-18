@@ -98,24 +98,24 @@ public:
   /// @name High-level Variable builders.
   ///@{
 
-  Variable *createVariable(
-      TypeRef T, llvm::StringRef name,
-      Variable::VisibilityKind visibility = Variable::VisibilityKind::Private,
-      Variable::TrainKind train = Variable::TrainKind::Broadcast,
-      float val = 0.0);
+  Variable *
+  createVariable(TypeRef T, llvm::StringRef name,
+                 VisibilityKind visibility = VisibilityKind::Private,
+                 Variable::TrainKind train = Variable::TrainKind::Broadcast,
+                 float val = 0.0);
 
-  Variable *createVariable(
-      ElemKind T, llvm::ArrayRef<size_t> dims, llvm::StringRef name,
-      Variable::VisibilityKind visibility = Variable::VisibilityKind::Private,
-      Variable::TrainKind train = Variable::TrainKind::Broadcast,
-      float val = 0.0);
+  Variable *
+  createVariable(ElemKind T, llvm::ArrayRef<size_t> dims, llvm::StringRef name,
+                 VisibilityKind visibility = VisibilityKind::Private,
+                 Variable::TrainKind train = Variable::TrainKind::Broadcast,
+                 float val = 0.0);
 
-  Variable *createVariable(
-      ElemKind T, llvm::ArrayRef<size_t> dims, float scale, int32_t offset,
-      llvm::StringRef name,
-      Variable::VisibilityKind visibility = Variable::VisibilityKind::Private,
-      Variable::TrainKind train = Variable::TrainKind::Broadcast,
-      float val = 0.0);
+  Variable *
+  createVariable(ElemKind T, llvm::ArrayRef<size_t> dims, float scale,
+                 int32_t offset, llvm::StringRef name,
+                 VisibilityKind visibility = VisibilityKind::Private,
+                 Variable::TrainKind train = Variable::TrainKind::Broadcast,
+                 float val = 0.0);
   ///@}
 
   /// Verify the correctness of the Module.

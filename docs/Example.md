@@ -23,7 +23,7 @@ Function *F = mod.createFunction("main");
 // Declare input: a minibatch of 28x28 images.
 Variable *A = mod.createVariable(
     ElemKind::FloatTy, {minibatchSize, 28, 28, 1}, "input",
-    Variable::VisibilityKind::Public, Variable::TrainKind::None);
+    VisibilityKind::Public, Variable::TrainKind::None);
 
 // Construct LeNet.
 auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2, 1);
@@ -39,7 +39,7 @@ auto *FCL1 = F->createFullyConnected("fc", MP1, 10);
 // Declare output: an index (0-9) indicating which digit is seen.
 Variable *selected = mod.createVariable(
     ElemKind::IndexTy, {minibatchSize, 1}, "selected",
-    Variable::VisibilityKind::Public, Variable::TrainKind::None);
+    VisibilityKind::Public, Variable::TrainKind::None);
 auto *SM = F->createSoftMax("sm", FCL1, selected);
 
 auto *result = F->createSave("return", SM);

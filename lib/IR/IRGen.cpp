@@ -308,7 +308,8 @@ public:
     case glow::Kinded::Kind::VariableNodeKind: {
       auto *V = cast<Variable>(N);
       auto *W = builder_.createWeightVar(V->getType(), V->getName(),
-                                         WeightVar::MutabilityKind::Mutable);
+                                         WeightVar::MutabilityKind::Mutable,
+                                         V->getVisibilityKind());
       W->setName(N->getName());
       registerIR(N, W);
       break;

@@ -58,11 +58,13 @@ public:
   ///@{
 
   WeightVar *createWeightVar(TypeRef T, llvm::StringRef name = "",
-                             MutabilityKind k = MutabilityKind::Mutable);
+                             MutabilityKind m = MutabilityKind::Mutable,
+                             VisibilityKind v = VisibilityKind::Private);
 
   WeightVar *createWeightVar(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
                              llvm::StringRef name = "",
-                             MutabilityKind k = MutabilityKind::Mutable);
+                             MutabilityKind m = MutabilityKind::Mutable,
+                             VisibilityKind v = VisibilityKind::Private);
 
   AllocActivationInst *createAllocActivationInst(llvm::StringRef name,
                                                  ElemKind elemTy,

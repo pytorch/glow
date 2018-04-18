@@ -112,14 +112,14 @@ TEST(Graph, simpleQuant) {
   unsigned width = 224;
 
   auto *input = MD.createVariable(ElemKind::Int8QTy, {1, width, width, 3}, 0.4,
-                                  2, "Input", Variable::VisibilityKind::Public);
+                                  2, "Input", VisibilityKind::Public);
 
   // Calculate the size and allocate the output buffer.
   std::array<size_t, 4> filterDim = {{depth, kernel, kernel, 3}};
   auto *filter = MD.createVariable(ElemKind::Int8QTy, filterDim, 3.3, 4, "F",
-                                   Variable::VisibilityKind::Private);
+                                   VisibilityKind::Private);
   auto *bias = MD.createVariable(ElemKind::Int8QTy, {depth}, 1.3, 5, "B",
-                                 Variable::VisibilityKind::Private);
+                                 VisibilityKind::Private);
 
   // Calculate the size and allocate the output buffer.
   auto outSz = calculateConvOutputDims(width, width, kernel, step, pad);
@@ -161,9 +161,9 @@ TEST(Graph, quantizeGather) {
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
   auto *input = mod.createVariable(ElemKind::Int8QTy, {2, 2}, 0.4, 2, "input",
-                                   Variable::VisibilityKind::Public);
+                                   VisibilityKind::Public);
   auto *indices = mod.createVariable(ElemKind::IndexTy, {1}, "index",
-                                     Variable::VisibilityKind::Public);
+                                     VisibilityKind::Public);
   auto *gather = F->createGather("gather", input, indices);
   F->createSave("ret", gather);
   EE.compile(CompilationMode::Infer, F);
@@ -244,7 +244,7 @@ TEST(Graph, NodeValue) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *inputX = mod.createVariable(ElemKind::FloatTy, {1}, "input",
-                                    Variable::VisibilityKind::Public,
+                                    VisibilityKind::Public,
                                     Variable::TrainKind::Broadcast, 3.0);
   NodeValue a = F->createAdd("x2", inputX, inputX);
   a = F->createAdd("x4", a, a);
@@ -268,13 +268,13 @@ TEST(Graph, nodesWithPredicates) {
   Function *F = mod.createFunction("main");
   F->setName("interpret");
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input",
-                                   Variable::VisibilityKind::Public);
+                                   VisibilityKind::Public);
 
   auto *ex = mod.createVariable(ElemKind::IndexTy, {1, 1}, "exp");
 
-  Variable *pred = mod.createVariable(ElemKind::IndexTy, {1}, "predicate",
-                                      Variable::VisibilityKind::Private,
-                                      Variable::TrainKind::None);
+  Variable *pred =
+      mod.createVariable(ElemKind::IndexTy, {1}, "predicate",
+                         VisibilityKind::Private, Variable::TrainKind::None);
 
   auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);

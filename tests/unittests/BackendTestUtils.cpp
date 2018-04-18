@@ -11,7 +11,7 @@ namespace glow {
 using llvm::cast;
 
 #define VarFrom(T)                                                             \
-  mod.createVariable(&T->getType(), #T, Variable::VisibilityKind::Public,      \
+  mod.createVariable(&T->getType(), #T, VisibilityKind::Public,                \
                      Variable::TrainKind::None)
 
 void inferBatchedAddNet(Tensor *batch, Tensor *slice, Tensor *out,

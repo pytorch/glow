@@ -84,6 +84,15 @@ public:
   const char *getKindName() const { return getKindName(kind_); }
 };
 
+/// Specifies the visibility of a Variable or WeightVar. Public nodes can't be
+/// optimized because they are visible to external users that may hold a
+/// reference or handles. Their equivalent WeightVar must be left Mutable at the
+/// Instr level.
+enum class VisibilityKind {
+  Public,  // The variable is visible from outside the graph.
+  Private, // The variable isn't visible from outside the graph.
+};
+
 } // namespace glow
 
 #endif // GLOW_BASE_TRAITS_H

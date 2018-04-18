@@ -148,7 +148,7 @@ void CPUBackend::saveWeights(llvm::StringRef weightsFileName) {
   size_t maxPos = 0;
   for (auto &v : F_->getGraph()->getParent()->getVars()) {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
-    if (v->getVisibilityKind() == Variable::VisibilityKind::Public)
+    if (v->getVisibilityKind() == VisibilityKind::Public)
       continue;
     auto numBytes = w->getSizeInBytes();
     auto payload = v->getPayload().getUnsafePtr();
@@ -193,8 +193,7 @@ void CPUBackend::emitSymbolTable() {
   // size and kind.
   for (auto &v : F_->getGraph()->getParent()->getVars()) {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
-    bool isConstWeight =
-        v->getVisibilityKind() != Variable::VisibilityKind::Public;
+    bool isConstWeight = v->getVisibilityKind() != VisibilityKind::Public;
     auto size = w->getType()->size();
     auto addr = allocationsInfo_.allocatedAddressed_[getOrigin(w)];
     // Create an SymbolTableEntry.

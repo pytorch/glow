@@ -121,12 +121,12 @@ TEST(Network, gradientCheckFCConcatRELU) {
 
   auto &mod = IP.getModule();
   Function *F = mod.createFunction("main");
-  auto *A = mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
-  auto *Exp = mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
-                                 Variable::VisibilityKind::Public,
-                                 Variable::TrainKind::None);
+  auto *A =
+      mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *Exp =
+      mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
+                         VisibilityKind::Public, Variable::TrainKind::None);
 
   Node *FA = F->createFullyConnected("fc1", A, numOutputElem / 2);
   FA = F->createRELU("relu1", FA);
@@ -159,12 +159,12 @@ TEST(Network, gradientCheckConv) {
 
   auto &mod = IP.getModule();
   Function *F = mod.createFunction("main");
-  auto *A = mod.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
-  auto *Ex = mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
-                                Variable::VisibilityKind::Public,
-                                Variable::TrainKind::None);
+  auto *A =
+      mod.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *Ex =
+      mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
+                         VisibilityKind::Public, Variable::TrainKind::None);
 
   Node *O = F->createConv("conv", A, 4, 5, 1, 2, 1);
   O = F->createPoolMax("pool", O, 3, 3, 0);
@@ -193,12 +193,12 @@ TEST(Network, gradientCheckAvgPool) {
 
   auto &mod = IP.getModule();
   Function *F = mod.createFunction("main");
-  auto *A = mod.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
-  auto *Exp = mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
-                                 Variable::VisibilityKind::Public,
-                                 Variable::TrainKind::None);
+  auto *A =
+      mod.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *Exp =
+      mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
+                         VisibilityKind::Public, Variable::TrainKind::None);
 
   Node *O = F->createPoolAvg("pool", A, 3, 3, 1);
   O = F->createTanh("tanh", O);
@@ -226,12 +226,12 @@ TEST(Network, gradientCheckBatchNorm) {
 
   auto &mod = IP.getModule();
   Function *F = mod.createFunction("main");
-  auto *A = mod.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 3}, "A",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
-  auto *Ex = mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
-                                Variable::VisibilityKind::Public,
-                                Variable::TrainKind::None);
+  auto *A =
+      mod.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 3}, "A",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *Ex =
+      mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
+                         VisibilityKind::Public, Variable::TrainKind::None);
 
   Node *O = F->createBatchNormalization("batch", A, 3, 0.0001, 0.9);
   O = F->createReshape("reshape", O, {1, numDim * numDim * 3});
@@ -265,14 +265,14 @@ TEST(Network, gradientCheckArithmeticDiv) {
   auto &mod = IP.getModule();
   Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
-                               Variable::VisibilityKind::Public,
+                               VisibilityKind::Public,
                                Variable::TrainKind::Xavier, 1);
-  auto *B = mod.createVariable(ElemKind::FloatTy, {1, numDim}, "B",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
-  auto *Exp = mod.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
-                                 Variable::VisibilityKind::Public,
-                                 Variable::TrainKind::None);
+  auto *B =
+      mod.createVariable(ElemKind::FloatTy, {1, numDim}, "B",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *Exp =
+      mod.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
+                         VisibilityKind::Public, Variable::TrainKind::None);
   Node *O = F->createDiv("div", A, B);
   O = F->createRegression("reg", O, Exp);
   auto *result = F->createSave("ret", O);
@@ -294,27 +294,27 @@ TEST(Network, gradientCheckArithmetic) {
 
   auto &mod = IP.getModule();
   Function *F = mod.createFunction("main");
-  auto *A = mod.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
+  auto *A =
+      mod.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
+                         VisibilityKind::Public, Variable::TrainKind::None);
   auto *B = mod.createVariable(ElemKind::FloatTy, {1, numDim}, "B",
-                               Variable::VisibilityKind::Public,
+                               VisibilityKind::Public,
                                Variable::TrainKind::None, 0.1);
   auto *C = mod.createVariable(ElemKind::FloatTy, {1, numDim}, "C",
-                               Variable::VisibilityKind::Public,
+                               VisibilityKind::Public,
                                Variable::TrainKind::None, 0.1);
   auto *D = mod.createVariable(ElemKind::FloatTy, {1, numDim}, "D",
-                               Variable::VisibilityKind::Public,
+                               VisibilityKind::Public,
                                Variable::TrainKind::None, 0.1);
-  auto *E = mod.createVariable(ElemKind::FloatTy, {1, numDim}, "E",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
+  auto *E =
+      mod.createVariable(ElemKind::FloatTy, {1, numDim}, "E",
+                         VisibilityKind::Public, Variable::TrainKind::None);
   // Randomize E to avoid div by zero.
   E->getPayload().getHandle().initXavier(1);
 
-  auto *Exp = mod.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
-                                 Variable::VisibilityKind::Public,
-                                 Variable::TrainKind::None);
+  auto *Exp =
+      mod.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
+                         VisibilityKind::Public, Variable::TrainKind::None);
 
   Node *O = F->createMul("mul", A, B);
   O = F->createAdd("add", O, C);
@@ -344,12 +344,12 @@ TEST(Network, gradientCheckFCConcatTanh) {
 
   auto &mod = IP.getModule();
   Function *F = mod.createFunction("main");
-  auto *A = mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
-  auto *Exp = mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
-                                 Variable::VisibilityKind::Public,
-                                 Variable::TrainKind::None);
+  auto *A =
+      mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *Exp =
+      mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
+                         VisibilityKind::Public, Variable::TrainKind::None);
 
   Node *FA = F->createFullyConnected("fc", A, numOutputElem);
   FA = F->createTanh("tanh", FA);
@@ -376,12 +376,12 @@ TEST(Network, gradientCheckFC) {
 
   auto &mod = IP.getModule();
   Function *F = mod.createFunction("main");
-  auto *A = mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
-  auto *Exp = mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
-                                 Variable::VisibilityKind::Public,
-                                 Variable::TrainKind::None);
+  auto *A =
+      mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *Exp =
+      mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
+                         VisibilityKind::Public, Variable::TrainKind::None);
 
   Node *FA = F->createFullyConnected("fc", A, numOutputElem);
   FA = F->createRegression("reg", FA, Exp);
@@ -407,12 +407,12 @@ TEST(Network, gradientCheckSigmoid) {
 
   auto &mod = IP.getModule();
   Function *F = mod.createFunction("main");
-  auto *A = mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
-  auto *Exp = mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
-                                 Variable::VisibilityKind::Public,
-                                 Variable::TrainKind::None);
+  auto *A =
+      mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *Exp =
+      mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
+                         VisibilityKind::Public, Variable::TrainKind::None);
   F->createSave("ret", A);
 
   Node *FA = F->createSigmoid("sig", Exp);
@@ -439,12 +439,12 @@ TEST(Network, gradientCheckRelu) {
 
   auto &mod = IP.getModule();
   Function *F = mod.createFunction("main");
-  auto *A = mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
-  auto *Exp = mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
-                                 Variable::VisibilityKind::Public,
-                                 Variable::TrainKind::None);
+  auto *A =
+      mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *Exp =
+      mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
+                         VisibilityKind::Public, Variable::TrainKind::None);
   F->createSave("ret", A);
 
   Node *FA = F->createRELU("relu", Exp);
@@ -470,12 +470,12 @@ TEST(Network, gradientCheckTranspose) {
 
   auto &mod = IP.getModule();
   Function *F = mod.createFunction("main");
-  auto *A = mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 5}, "input",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
-  auto *Exp = mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
-                                 Variable::VisibilityKind::Public,
-                                 Variable::TrainKind::None);
+  auto *A =
+      mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 5}, "input",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *Exp =
+      mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
+                         VisibilityKind::Public, Variable::TrainKind::None);
   Node *TA = F->createTranspose("transpose", A, {0, 3, 1, 2});
   TA = F->createFullyConnected("fc", TA, numOutputElem);
   TA = F->createRegression("regress", TA, Exp);
@@ -502,15 +502,15 @@ TEST(Network, gradientCheckCrossEntropyLoss) {
 
   auto &mod = IP.getModule();
   Function *F = mod.createFunction("main");
-  auto *P = mod.createVariable(ElemKind::FloatTy, {batchSize, 4}, "P",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
-  auto *Y = mod.createVariable(ElemKind::IndexTy, {batchSize}, "Labels",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
-  auto *L = mod.createVariable(ElemKind::FloatTy, {1}, "L",
-                               Variable::VisibilityKind::Public,
-                               Variable::TrainKind::None);
+  auto *P =
+      mod.createVariable(ElemKind::FloatTy, {batchSize, 4}, "P",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *Y =
+      mod.createVariable(ElemKind::IndexTy, {batchSize}, "Labels",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *L =
+      mod.createVariable(ElemKind::FloatTy, {1}, "L", VisibilityKind::Public,
+                         Variable::TrainKind::None);
   Node *CE = F->createCrossEntropyLoss("celoss", P, Y);
   F->createSave("ret", CE, L);
 

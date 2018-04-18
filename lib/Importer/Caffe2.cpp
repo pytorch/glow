@@ -137,7 +137,7 @@ Node *caffe2ModelLoader::getOrCreateNodeByName(const std::string &name) {
 
   Tensor *T = getTensorByName(name);
   auto *V = G_.getParent()->createVariable(T->getElementType(), T->dims(), name,
-                                           Variable::VisibilityKind::Private,
+                                           VisibilityKind::Private,
                                            Variable::TrainKind::Broadcast);
   V->copyFrom(T);
   nodeByName_[name] = V;
@@ -363,10 +363,10 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Tensor wtag;
     w->transpose(&wtag, {1, 0});
 
-    auto W = G_.getParent()->addVar(new Variable(
-        "weights", Variable::VisibilityKind::Private, std::move(wtag)));
-    auto B = G_.getParent()->addVar(new Variable(
-        "biases", Variable::VisibilityKind::Private, std::move(*b)));
+    auto W = G_.getParent()->addVar(
+        new Variable("weights", VisibilityKind::Private, std::move(wtag)));
+    auto B = G_.getParent()->addVar(
+        new Variable("biases", VisibilityKind::Private, std::move(*b)));
     auto *FC = G_.createFullyConnected(opName, in, W, B);
 
     // Save the outputs:
@@ -552,9 +552,9 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
   assert(names.size() == tensors.size() && "Invalid initialization list");
   for (unsigned i = 0; i < names.size(); i++) {
     auto *T = tensors[i];
-    auto *V = G_.getParent()->createVariable(
-        T->getElementType(), T->dims(), names[i],
-        Variable::VisibilityKind::Public, Variable::TrainKind::None);
+    auto *V = G_.getParent()->createVariable(T->getElementType(), T->dims(),
+                                             names[i], VisibilityKind::Public,
+                                             Variable::TrainKind::None);
     V->copyFrom(T);
     nodeByName_[names[i]] = V;
   }
