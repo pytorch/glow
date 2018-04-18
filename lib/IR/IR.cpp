@@ -390,7 +390,7 @@ bool Instruction::isDataParallel() const {
 //                    Instruction numbering
 //===----------------------------------------------------------------------===//
 
-InstructionNumbering::InstructionNumbering(IRFunction &M) {
+InstructionNumbering::InstructionNumbering(const IRFunction &M) {
   auto &instrs = M.getInstrs();
   size_t instIdx = 0;
   for (auto it = instrs.begin(), e = instrs.end(); it != e; ++instIdx, ++it) {
@@ -406,11 +406,11 @@ int64_t InstructionNumbering::getInstrNumber(Instruction *I) const {
   return (int64_t)Result->second;
 }
 
-int64_t InstructionNumbering::getInstrNumber(InstrIterator IT) const {
+int64_t InstructionNumbering::getInstrNumber(InstrConstIterator IT) const {
   return getInstrNumber(*IT);
 }
 
-InstrIterator InstructionNumbering::getInstr(size_t instrNumber) const {
+InstrConstIterator InstructionNumbering::getInstr(size_t instrNumber) const {
   assert(instrNumber < numToInstr_.size());
   return numToInstr_[instrNumber];
 }

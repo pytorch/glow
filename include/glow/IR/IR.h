@@ -314,7 +314,7 @@ using InstrConstIterator = IRFunction::InstrConstIterator;
 
 /// A helper class used for instructions numbering.
 class InstructionNumbering {
-  using NumberedInstructionMap = std::vector<InstrIterator>;
+  using NumberedInstructionMap = std::vector<InstrConstIterator>;
   using InstructionNumbersMap = std::unordered_map<Instruction *, size_t>;
   /// Maps the number to an instruction.
   NumberedInstructionMap numToInstr_;
@@ -322,15 +322,15 @@ class InstructionNumbering {
   InstructionNumbersMap instrToNum_;
 
 public:
-  InstructionNumbering(IRFunction &M);
+  InstructionNumbering(const IRFunction &M);
 
   /// Return the instruction with a given number or
   /// M.getInstrs().end() if this instruction is not assigned any number.
-  InstrIterator getInstr(size_t InstrNumber) const;
+  InstrConstIterator getInstr(size_t InstrNumber) const;
 
   /// Return the number of an instruction or a negative value if no number
   /// was assigned to this instruction.
-  int64_t getInstrNumber(InstrIterator IT) const;
+  int64_t getInstrNumber(InstrConstIterator IT) const;
 
   /// Return the number of an instruction or a negative value if no number
   /// was assigned to this instruction.
