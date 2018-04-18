@@ -579,3 +579,40 @@ TEST_F(GraphOptz, MaxOfQuantizedSplat) {
   // Splat and Max should be gone.
   EXPECT_EQ(F_->getNodes().size(), 1);
 }
+
+TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
+  // This test ensures the fact that fusing of rescale is done.
+  auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 1, 0);
+  auto rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 2, 1);
+
+  Node *LHS = mod_.createVariable(ElemKind::Int8QTy, {10}, 0.4, 0,
+                                    "LHS", Variable::VisibilityKind::Public);
+  Node *RHS = mod_.createVariable(ElemKind::Int8QTy, {10}, 0.3, 0,
+                                    "RHS", Variable::VisibilityKind::Public);
+
+  Node *add = F_->createAdd("qAdd", opOutTy, LHS, RHS);
+  add = F_->createRescaleQuantized("rsAdd", add, rescaleOutTy);
+  add = F_->createSave("saveAdd", add);
+
+  Node *sub = F_->createSub("qSub", opOutTy, LHS, RHS);
+  sub = F_->createRescaleQuantized("rsSub", sub, rescaleOutTy);
+  sub = F_->createSave("saveSub", sub);
+
+  Node *div = F_->createDiv("qDiv", opOutTy, LHS, RHS);
+  div = F_->createRescaleQuantized("rsDiv", div, rescaleOutTy);
+  div = F_->createSave("saveDiv", div);
+
+  Node *mul = F_->createMul("qMul", opOutTy, LHS, RHS);
+  mul = F_->createRescaleQuantized("rsMul", mul, rescaleOutTy);
+  mul = F_->createSave("saveMul", mul);
+
+  // All rescales must be fused into arithmetic operations above.
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  EXPECT_EQ(F_->getNodes().size(), 8);
+
+  EXPECT_EQ(add->getNthInput(0).getType(), rescaleOutTy);
+  EXPECT_EQ(sub->getNthInput(0).getType(), rescaleOutTy); 
+  EXPECT_EQ(mul->getNthInput(0).getType(), rescaleOutTy); 
+  EXPECT_EQ(div->getNthInput(0).getType(), rescaleOutTy);  
+}
