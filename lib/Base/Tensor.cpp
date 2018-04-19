@@ -426,12 +426,7 @@ void glow::genericTranspose(Tensor *src, Tensor *dest,
   }
 
   // Resize the tensor to the transposed shape.
-  auto destType =
-      src->getType().isQuantizedType()
-          ? Type(src->getElementType(), {newSizes, origDims.size()},
-                 src->getType().getScale(), src->getType().getOffset())
-          : Type(src->getElementType(), {newSizes, origDims.size()});
-
+  auto destType = Type::newShape(src->getType(), {newSizes, origDims.size()});
   dest->reset(destType);
 
   switch (src->getElementType()) {

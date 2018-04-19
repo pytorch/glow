@@ -841,7 +841,6 @@ void Interpreter::fwdLocalResponseNormalizationGradInst(
 //===----------------------------------------------------------------------===//
 
 void Interpreter::fwdElementAddInst(const ElementAddInst *I) {
-
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto lhsTy = I->getLHS()->getType();
     auto rhsTy = I->getRHS()->getType();
@@ -883,7 +882,6 @@ void Interpreter::fwdElementAddInst(const ElementAddInst *I) {
 }
 
 void Interpreter::fwdElementSubInst(const ElementSubInst *I) {
-
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto destTy = I->getDest()->getType();
     auto lhsTy = I->getLHS()->getType();
@@ -950,7 +948,6 @@ void Interpreter::fwdElementMulInst(const ElementMulInst *I) {
 }
 
 void Interpreter::fwdElementDivInst(const ElementDivInst *I) {
-
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto destTy = I->getDest()->getType();
     auto lhsTy = I->getLHS()->getType();
