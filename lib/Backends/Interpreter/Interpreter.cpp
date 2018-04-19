@@ -95,12 +95,16 @@ bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
   if (elementTy == ElemKind::Int8QTy) {
     switch (opKind) {
     case Kinded::Kind::AddNodeKind:
+    case Kinded::Kind::BatchedAddNodeKind:
     case Kinded::Kind::BatchedReduceAddNodeKind:
     case Kinded::Kind::BroadcastNodeKind:
+    case Kinded::Kind::CmpLTENodeKind:
     case Kinded::Kind::ConcatNodeKind:
     case Kinded::Kind::ConvolutionNodeKind:
     case Kinded::Kind::DequantizeNodeKind:
+    case Kinded::Kind::DivNodeKind:
     case Kinded::Kind::FullyConnectedNodeKind:
+    case Kinded::Kind::MatMulNodeKind:
     case Kinded::Kind::MaxNodeKind:
     case Kinded::Kind::MinNodeKind:
     case Kinded::Kind::MulNodeKind:
@@ -110,8 +114,10 @@ bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     case Kinded::Kind::ReluNodeKind:
     case Kinded::Kind::RescaleQuantizedNodeKind:
     case Kinded::Kind::ReshapeNodeKind:
+    case Kinded::Kind::SelectNodeKind:
     case Kinded::Kind::SliceNodeKind:
     case Kinded::Kind::SubNodeKind:
+    case Kinded::Kind::TopKNodeKind:
     case Kinded::Kind::TransposeNodeKind:
       return true;
     default:
