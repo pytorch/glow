@@ -268,13 +268,7 @@ TypeRef Module::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
 }
 
 TypeRef Module::uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims) {
-  if (T->isQuantizedType()) {
-    return uniqueType(
-        Type(T->getElementType(), dims, T->getScale(), T->getOffset()));
-
-  } else {
-    return uniqueType(Type(T->getElementType(), dims));
-  }
+  return uniqueType(Type::newShape(*T, dims));
 }
 
 TypeRef Module::uniqueType(const Type &T) {

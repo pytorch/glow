@@ -137,11 +137,7 @@ public:
     Tensor unownedTensor;
     unownedTensor.data_.setPointer(getData());
     unownedTensor.data_.setInt(1);
-    unownedTensor.type_ =
-        getType().isQuantizedType()
-            ? Type(getElementType(), dims, getType().getScale(),
-                   getType().getOffset())
-            : Type(getElementType(), dims);
+    unownedTensor.type_ = Type::newShape(getType(), dims);
     assert(size() == unownedTensor.size() &&
            "The size of the non-owned tensor should be "
            "the same as the size of the original "
