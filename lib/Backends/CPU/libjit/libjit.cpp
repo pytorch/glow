@@ -332,7 +332,7 @@ void libjit_pool_max_generic(const T *inW, T *outW, const size_t *inWdims,
           int first = 1;
           T max = 0;
 
-          // For each element in the convolution-filter:
+          // For each element in the pool filter:
           for (size_t fx = 0; fx < filterSize; fx++) {
             for (size_t fy = 0; fy < filterSize; fy++) {
               ssize_t ox = x + fx;
