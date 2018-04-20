@@ -353,6 +353,7 @@ int main(int argc, char **argv) {
       .addInput("Histogram")
       .addInput("ComputationInfo")
       .addMember(MemberType::String, "ProfiledNodeName")
+      .addMember(MemberType::Unsigned, "ProfiledOutputNumber")
       .addExtraMethod("Variable *getHistogramVar() const ;",
                       "Variable *QuantizationProfileNode::getHistogramVar() "
                       "const { return "
@@ -364,9 +365,15 @@ int main(int argc, char **argv) {
       .addOverwrittenInput("ComputationInfo")
       .addOverwrittenInput("Histogram")
       .setHasSideEffects(true)
-      .setDocstring("Generate profile (distribution of values) of the Input "
-                    "tensor. This data is used for quantization of the tensor "
-                    "later on.");
+      .setDocstring(
+          "Generate profile (distribution of values) of the Input "
+          "tensor. This data is used for quantization of the tensor "
+          "later on. ProfiledNodeName contains the name of the node "
+          "which is profiled by the QuantizationProfile node. "
+          "ProfiledNodeName is helpful as lowering might transform the "
+          "original graph. "
+          "ProfiledOutputNumber contains the position of the node's output "
+          "which gets profiled.");
 
   BB.newNode("Quantize")
       .addInput("Input")

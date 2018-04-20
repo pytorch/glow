@@ -68,22 +68,25 @@ TEST(Graph, QuantizationProfileNodes) {
   IRFunction M(F);
 
   auto *A = MD.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
-  auto *Ex = MD.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
 
   // Add non float operation, which should not be profiled.
   auto *outQTy = F->getParent()->uniqueType(glow::ElemKind::Int8QTy,
                                             {numInputs, 2}, 1.5, 6);
-  F->createQuantize("quantize", A, outQTy);
+  auto *quantize = F->createQuantize("quantize", A, outQTy);
+  // Make sure that quantize is not optimized away.
+  F->createSave("save", quantize);
 
-  // Create two nodes reading from the same variable.
+  // Multiple nodes read from the same variable.
   // Only one Quantization Profile node should be created for the output
   // from the variable.
   Node *O = F->createFullyConnected("FC1", A, 6);
   Node *C = F->createFullyConnected("FC2", A, 6);
-  (void)C;
   O = F->createRELU("RELU1", O);
-  F->createRegression("Regression", O, Ex);
+  F->createSave("save", O);
+  F->createSave("save", C);
 
+  // Simulate actual usage.
+  ::optimize(F, CompilationMode::Infer);
   ::glow::profileQuantization(F);
   lower(F, CompilationMode::Infer);
   ::optimize(F, CompilationMode::Infer);
@@ -94,7 +97,7 @@ TEST(Graph, QuantizationProfileNodes) {
         return llvm::isa<QuantizationProfileNode>(node);
       });
 
-  EXPECT_EQ(8, numberOfProfileNodes);
+  EXPECT_EQ(10, numberOfProfileNodes);
 }
 
 TEST(Graph, simpleQuant) {
