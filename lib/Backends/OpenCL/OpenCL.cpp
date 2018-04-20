@@ -572,7 +572,7 @@ void OCLBackend::doForwardPass() {
       }
       size_t destOff = tensors_[dest];
       size_t srcOff = tensors_[src];
-      size_t sizeInBytes = dest->getType()->getSizeInBytes();
+      size_t sizeInBytes = dest->getSizeInBytes();
 
       cl_int err =
           clEnqueueCopyBuffer(commands_, deviceBuffer_, deviceBuffer_, srcOff,
@@ -655,7 +655,7 @@ void OCLBackend::init() {
   // Assign device-space addresses to the activations.
   for (auto &I : F_->getInstrs()) {
     if (auto *A = llvm::dyn_cast<AllocActivationInst>(I)) {
-      auto numBytes = I->getType()->getSizeInBytes();
+      auto numBytes = I->getSizeInBytes();
       size_t addr = allocator_.allocate(numBytes);
       assert(!tensors_.count(A) && "Allocation already made!");
       tensors_[A] = addr;

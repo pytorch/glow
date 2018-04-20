@@ -576,7 +576,7 @@ void IRFunction::dump(llvm::raw_ostream &OS) {
     Value *V = it;
     sb << "  ";
     dumpIR(V, sb);
-    sb << " // size: " << V->getType()->getSizeInBytes();
+    sb << " // size: " << V->getSizeInBytes();
     dumpUsers(V, sb, InstrNumbering);
     sb << "\n";
 
@@ -598,7 +598,7 @@ void IRFunction::dump(llvm::raw_ostream &OS) {
     sb << InstrNum << " ";
     dumpIR(II, sb);
     if (isa<AllocActivationInst>(II))
-      sb << " // size: " << II->getType()->getSizeInBytes();
+      sb << " // size: " << II->getSizeInBytes();
     if (isa<DeallocActivationInst>(II)) {
       sb << " // size: "
          << cast<DeallocActivationInst>(II)
