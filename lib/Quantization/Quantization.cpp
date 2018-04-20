@@ -234,6 +234,12 @@ quantizeInputs(Function *F, Node *node,
 
   for (unsigned i = 0, e = node->getNumInputs(); i < e; ++i) {
     NodeValue &NV = node->getNthInput(i);
+
+    // Do not quantize non floating point type, e.g., Index type.
+    if (NV.getElementType() != ElemKind::FloatTy) {
+      continue;
+    }
+
     std::string nodeOutputName = NodeQuantizationInfo::generateNodeOutputName(
         NV->getName(), NV.getResNo());
     assert(nodeToTQP.find(nodeOutputName) != nodeToTQP.end() &&
@@ -251,8 +257,22 @@ quantizeInputs(Function *F, Node *node,
   return quantizedInputs;
 }
 
-/// Node can only be quantized if all inputs are floats.
+/// \returns true when given \p node can be quantized.
+/// Normally node's inputs must have floating point
+/// type, but there are some special cases, e.g., Gather node.
 static bool canBeQuantized(const Node *node) {
+  // Handle special cases like Gather node when some of the inputs does not
+  // need to be quantized while some does.
+  switch (node->getKind()) {
+  case Kinded::Kind::GatherNodeKind: {
+    auto *gather = cast<GatherNode>(node);
+    return gather->getData().getElementType() == ElemKind::FloatTy;
+  }
+  default:
+    // Let the general procedure handle this node kind.
+    break;
+  }
+
   // Make sure that all inputs are floats.
   for (unsigned i = 0, e = node->getNumInputs(); i < e; ++i) {
     if (node->getNthInput(i).getElementType() != ElemKind::FloatTy) {
@@ -384,8 +404,10 @@ void generateQuantizedGraph(
   case Kinded::Kind::NODE_NAME_##NodeKind: {                                   \
     auto *AN = cast<NODE_NAME_##Node>(node);                                   \
     assert(quantizedInputs.size() == 2 && "Invalid number of inputs");         \
-    quantizedNode = F->create##NODE_NAME_(AN->getName(), quantizedInputs[0],   \
-                                          quantizedInputs[1]);                 \
+    auto outTy = F->getParent()->uniqueType(                                   \
+        ElemKind::Int8QTy, AN->getResult().dims(), TQP.scale_, TQP.offset_);   \
+    quantizedNode = F->create##NODE_NAME_(                                     \
+        AN->getName(), outTy, quantizedInputs[0], quantizedInputs[1]);         \
     break;                                                                     \
   }
         CASE_QUANTIZE_NODE(Add);
@@ -414,22 +436,28 @@ void generateQuantizedGraph(
                                         C->getDim(), outTy);
         break;
       }
+      case Kinded::Kind::GatherNodeKind: {
+        auto *gather = cast<GatherNode>(node);
+        // Gather node has 2 inputs, but only one should be quantized.
+        assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
 
+        quantizedNode = F->createGather(gather->getName(), quantizedInputs[0],
+                                        gather->getIndices());
+
+        break;
+      }
       default:
-        llvm_unreachable("The node type is not supported for quantization");
+        GLOW_UNREACHABLE("The node type is not supported for quantization");
       }
 
       // Some of the quantized nodes need additional post processing.
-      if (node->getKind() == Kinded::Kind::ReluNodeKind) {
-        // Relu does not change {S,O} of the output, it uses the same {S,O} as
-        // the input. Make sure that rescale is applied to comply with the taken
-        // profile from RELU.
-        auto outTy = F->getParent()->uniqueType(
-            ElemKind::Int8QTy, quantizedNode->dims(), TQP.scale_, TQP.offset_);
-        quantizedNode = F->createRescaleQuantized(quantizedNode->getName(),
-                                                  quantizedNode, outTy);
-      } else if (node->getKind() == Kinded::Kind::PoolMaxNodeKind ||
-                 node->getKind() == Kinded::Kind::PoolAvgNodeKind) {
+      if (node->getKind() == Kinded::Kind::ReluNodeKind ||
+          node->getKind() == Kinded::Kind::PoolMaxNodeKind ||
+          node->getKind() == Kinded::Kind::PoolAvgNodeKind ||
+          node->getKind() == Kinded::Kind::GatherNodeKind) {
+        // These nodes do not change {S,O} of the output, they use the same
+        // {S,O} as the input. Make sure that rescale is applied to comply with
+        // the taken profile from the node.
         auto outTy = F->getParent()->uniqueType(
             ElemKind::Int8QTy, quantizedNode->dims(), TQP.scale_, TQP.offset_);
         quantizedNode = F->createRescaleQuantized(quantizedNode->getName(),
