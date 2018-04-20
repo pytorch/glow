@@ -3,6 +3,7 @@
 #include "glow/Quantization/Serialization.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Timer.h"
 
 #include <algorithm>
 #include <fstream>
@@ -32,6 +33,14 @@ llvm::cl::opt<unsigned> batchSizeOpt(
 llvm::cl::alias batchSizeA("b", llvm::cl::desc("Alias for -batchsize"),
                            llvm::cl::aliasopt(batchSizeOpt),
                            llvm::cl::cat(fr2enCat));
+
+llvm::cl::opt<bool>
+    timeOpt("time",
+            llvm::cl::desc("Print timer data detailing how long it "
+                           "takes for the program to execute translate phase. "
+                           "This option will be useful if input is read from "
+                           "the file directly."),
+            llvm::cl::Optional, llvm::cl::cat(fr2enCat));
 
 /// Quantization options.
 llvm::cl::OptionCategory quantizationCat("Quantization Options");
@@ -416,6 +425,12 @@ int main(int argc, char **argv) {
             << "\tj y songe encore .\n"
             << "\tje suis maintenant a l aeroport .\n\n";
 
+  
+  llvm::Timer timer("Translate", "Translate");
+  if (timeOpt) {
+    timer.startTimer();
+  }
+
   std::vector<std::string> batch;
   do {
     batch.clear();
@@ -430,6 +445,10 @@ int main(int argc, char **argv) {
       seq2seq.translate(batch);
     }
   } while (batch.size() == batchSizeOpt);
+
+  if (timeOpt) {
+    timer.stopTimer();
+  }
 
   return 0;
 }
