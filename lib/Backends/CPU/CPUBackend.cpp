@@ -150,7 +150,7 @@ void CPUBackend::saveWeights(llvm::StringRef weightsFileName) {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
     if (v->getVisibilityKind() == Variable::VisibilityKind::Public)
       continue;
-    auto numBytes = w->getType()->getSizeInBytes();
+    auto numBytes = w->getSizeInBytes();
     auto payload = v->getPayload().getUnsafePtr();
     auto addr = allocationsInfo_.allocatedAddressed_[getOrigin(w)];
     if (addr < pos) {

@@ -30,7 +30,7 @@ void AllocationsInfo::allocateWeightVars(IRFunction *F, bool reuseAddresses) {
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
     if (v->getVisibilityKind() == Variable::VisibilityKind::Public)
       continue;
-    auto numBytes = w->getType()->getSizeInBytes();
+    auto numBytes = w->getSizeInBytes();
     size_t addr = constantWeightVarsAllocator.allocate(numBytes);
     if (!reuseAddresses) {
       allocatedAddressed_[w] = addr;
@@ -47,7 +47,7 @@ void AllocationsInfo::allocateWeightVars(IRFunction *F, bool reuseAddresses) {
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
     if (v->getVisibilityKind() != Variable::VisibilityKind::Public)
       continue;
-    auto numBytes = w->getType()->getSizeInBytes();
+    auto numBytes = w->getSizeInBytes();
     size_t addr = mutableWeightVarsAllocator.allocate(numBytes);
     if (!reuseAddresses) {
       allocatedAddressed_[w] = addr;
@@ -73,10 +73,9 @@ void AllocationsInfo::allocateWeightVars(IRFunction *F, bool reuseAddresses) {
             ? "constant weight"
             : "mutable weight";
     llvm::errs() << "Allocated " << kind << " " << A.first->getName()
-                 << " size: " << A.first->getType()->getSizeInBytes()
+                 << " size: " << A.first->getSizeInBytes()
                  << "  address range:  [" << allocatedAddressed_[origin] << ", "
-                 << allocatedAddressed_[origin] +
-                        A.first->getType()->getSizeInBytes()
+                 << allocatedAddressed_[origin] + A.first->getSizeInBytes()
                  << "]\n";
   });
 }
@@ -92,7 +91,7 @@ void AllocationsInfo::allocateActivations(IRFunction *F) {
   // Assign device-space addresses to the activations.
   for (auto &I : F->getInstrs()) {
     if (auto *A = dyn_cast<AllocActivationInst>(I)) {
-      auto numBytes = I->getType()->getSizeInBytes();
+      auto numBytes = I->getSizeInBytes();
       size_t addr = activationsAllocator.allocate(numBytes);
       assert(!activationAddr.count(A) && "Allocation already made!");
       activationAddr[A] = addr;
@@ -116,11 +115,10 @@ void AllocationsInfo::allocateActivations(IRFunction *F) {
   DEBUG(for (auto &A
              : allocatedAddressed_) {
     llvm::errs() << "Allocated activation " << A.first->getName()
-                 << " size: " << A.first->getType()->getSizeInBytes()
+                 << " size: " << A.first->getSizeInBytes()
                  << "  address range:  ["
                  << allocatedAddressed_[getOrigin(A.first)] << ", "
-                 << allocatedAddressed_[A.first] +
-                        A.first->getType()->getSizeInBytes()
+                 << allocatedAddressed_[A.first] + A.first->getSizeInBytes()
                  << "]\n";
   });
 }

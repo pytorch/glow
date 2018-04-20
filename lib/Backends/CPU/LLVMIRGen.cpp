@@ -347,7 +347,7 @@ llvm::Value *LLVMIRGen::emitValueDims(llvm::IRBuilder<> &builder,
 
 llvm::Value *LLVMIRGen::emitValueSize(llvm::IRBuilder<> &builder,
                                       glow::Value *val) {
-  return builder.getIntN(sizeof(size_t) * 8, val->getType()->size());
+  return builder.getIntN(sizeof(size_t) * 8, val->size());
 }
 
 llvm::Value *LLVMIRGen::emitConstF32(llvm::IRBuilder<> &builder, float val) {
@@ -611,8 +611,7 @@ void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
       auto val = I->getOperand(0).first;
       auto bundleVal = bundle.back()->getOperand(0).first;
       // Check if shapes have the same amount of elements.
-      isShapeCompatible =
-          val->getType()->size() == bundleVal->getType()->size();
+      isShapeCompatible = val->size() == bundleVal->size();
     }
 
     // If the instruction is not shape-compatible, emit the kernel for the
@@ -1153,7 +1152,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destPtr = emitValueAddress(builder, dest);
     auto *batchPtr = emitValueAddress(builder, batch);
 
-    auto *destSize = emitConstSizeT(builder, dest->getType()->size());
+    auto *destSize = emitConstSizeT(builder, dest->size());
     auto bdim = flattenCdr(batch->dims());
     auto *numSlice = emitConstSizeT(builder, bdim.first);
     auto *sliceSize = emitConstSizeT(builder, bdim.second);
@@ -1575,7 +1574,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcPtr = emitValueAddress(builder, src);
 
     auto *srcType = src->getType();
-    auto *numElem = emitConstSizeT(builder, dest->getType()->size());
+    auto *numElem = emitConstSizeT(builder, dest->size());
     auto *scale = emitConstF32(builder, srcType->getScale());
     auto *offset = emitConstI32(builder, srcType->getOffset());
 
@@ -1652,7 +1651,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *k = emitConstSizeT(builder, TI->getK());
     auto *n = emitConstSizeT(builder, input->dims().back());
-    auto *size = emitConstSizeT(builder, input->getType()->size());
+    auto *size = emitConstSizeT(builder, input->size());
 
     auto *F = getFunction("topk", input->getElementType());
     builder.CreateCall(
@@ -1746,7 +1745,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *dataPtr = emitValueAddress(builder, data);
     auto *indicesPtr = emitValueAddress(builder, indices);
 
-    auto *indicesSize = emitConstSizeT(builder, indices->getType()->size());
+    auto *indicesSize = emitConstSizeT(builder, indices->size());
 
     auto *dataType = data->getType();
     auto *sliceSize =

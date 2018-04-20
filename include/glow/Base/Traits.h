@@ -37,6 +37,10 @@ public:
 
   llvm::ArrayRef<size_t> dims() const { return Ty_->dims(); }
 
+  size_t size() const { return Ty_->size(); }
+
+  size_t getSizeInBytes() const { return Ty_->getSizeInBytes(); }
+
   ElemKind getElementType() const { return Ty_->getElementType(); }
 
   bool isType(TypeRef T) { return Ty_ == T; }
