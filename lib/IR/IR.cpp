@@ -113,7 +113,8 @@ Instruction::Operand Instruction::getOperand(unsigned idx) const {
 
 void Instruction::eraseFromParent() { getParent()->eraseInstruction(this); }
 
-void Instruction::verifyUseList(const InstructionNumbering &InstrNumbering) const {
+void Instruction::verifyUseList(
+    const InstructionNumbering &InstrNumbering) const {
   for (const auto &op : ops_) {
     auto *v = op.first;
     (void)v;
