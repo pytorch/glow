@@ -42,6 +42,14 @@ llvm::cl::opt<bool>
                            "the file directly."),
             llvm::cl::Optional, llvm::cl::cat(fr2enCat));
 
+llvm::cl::opt<BackendKind> ExecutionBackend(
+    llvm::cl::desc("Backend to use:"),
+    llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
+                                "Use interpreter"),
+                     clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
+                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
+    llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(fr2enCat));
+
 /// Quantization options.
 llvm::cl::OptionCategory quantizationCat("Quantization Options");
 
@@ -102,7 +110,7 @@ void loadMatrixFromFile(llvm::StringRef filename, Tensor &result) {
 /// few references to input/output Variables.
 struct Model {
   unsigned batchSize_;
-  ExecutionEngine EE_;
+  ExecutionEngine EE_{ExecutionBackend};
   Vocabulary en_, fr_;
   Variable *input_;
   Variable *seqLength_;
