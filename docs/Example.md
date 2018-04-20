@@ -78,7 +78,7 @@ The declaration block for LeNet looks like this:
 ```
 function main
 declare {
-  %input__1 = WeightVar float<8 x 28 x 28 x 1> const // size: 25088 // Users: @in 1
+  %input__1 = WeightVar float<8 x 28 x 28 x 1> mutable // size: 25088 // Users: @in 1
   %filter__2 = WeightVar float<16 x 5 x 5 x 1> const // size: 1600 // Users: @in 1
   %bias__3 = WeightVar float<16> const // size: 64 // Users: @in 1
   %filter__7 = WeightVar float<16 x 5 x 5 x 16> const // size: 25600 // Users: @in 7

@@ -86,6 +86,15 @@ perform constant propagation, etc. The semantics of variables in the program,
 both private and public, is that all writes must happen before the end of the
 execution of the program.
 
+### Variable Mutability
+
+During IRGen, Variables are converted into WeightVars. These WeightVars are
+annotated with Mutable or Constant labels, depending on if other instructions
+write into them. However, Variables which are defined as Public cannot be
+considered Constant even if only ever read by other instructions. Thus, the
+visibility of the Variable is also annotated on its generated WeightVar, and all
+Public WeightVars are kept Mutable.
+
 ### Predicates
 
 Predicates are boolean variables that control the execution of some node or
@@ -208,6 +217,3 @@ This is a high-level overview of the compilation process:
 6. IRGen (convert the low-level graph into instructions).
 7. IR-level optimizations.
 8. Backend-specific optimizations and code generation.
-
-
-
