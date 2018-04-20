@@ -847,8 +847,9 @@ Function::createQuantizationProfile(llvm::StringRef name, NodeValue input) {
       ElemKind::FloatTy, {2}, "computationInfo",
       Variable::VisibilityKind::Private, Variable::TrainKind::None);
 
-  return addNode(new QuantizationProfileNode(
-      name, input, histogram, computationInfo, input->getName().str()));
+  return addNode(
+      new QuantizationProfileNode(name, input, histogram, computationInfo,
+                                  input->getName().str(), input.getResNo()));
 }
 
 TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
