@@ -117,7 +117,7 @@ struct Type final {
   }
 
   /// Reshape existing type. This method takes care of quantized types.
-  static Type newShape(const Type& T, llvm::ArrayRef<size_t> dims) {
+  static Type newShape(const Type &T, llvm::ArrayRef<size_t> dims) {
     if (T.isQuantizedType()) {
       return Type(T.getElementType(), dims, T.getScale(), T.getOffset());
     } else {

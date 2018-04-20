@@ -585,10 +585,10 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
   auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 1, 0);
   auto rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 2, 1);
 
-  Node *LHS = mod_.createVariable(ElemKind::Int8QTy, {10}, 0.4, 0,
-                                    "LHS", Variable::VisibilityKind::Public);
-  Node *RHS = mod_.createVariable(ElemKind::Int8QTy, {10}, 0.3, 0,
-                                    "RHS", Variable::VisibilityKind::Public);
+  Node *LHS = mod_.createVariable(ElemKind::Int8QTy, {10}, 0.4, 0, "LHS",
+                                  Variable::VisibilityKind::Public);
+  Node *RHS = mod_.createVariable(ElemKind::Int8QTy, {10}, 0.3, 0, "RHS",
+                                  Variable::VisibilityKind::Public);
 
   Node *add = F_->createAdd("qAdd", opOutTy, LHS, RHS);
   add = F_->createRescaleQuantized("rsAdd", add, rescaleOutTy);
@@ -612,7 +612,7 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
   EXPECT_EQ(F_->getNodes().size(), 8);
 
   EXPECT_EQ(add->getNthInput(0).getType(), rescaleOutTy);
-  EXPECT_EQ(sub->getNthInput(0).getType(), rescaleOutTy); 
-  EXPECT_EQ(mul->getNthInput(0).getType(), rescaleOutTy); 
-  EXPECT_EQ(div->getNthInput(0).getType(), rescaleOutTy);  
+  EXPECT_EQ(sub->getNthInput(0).getType(), rescaleOutTy);
+  EXPECT_EQ(mul->getNthInput(0).getType(), rescaleOutTy);
+  EXPECT_EQ(div->getNthInput(0).getType(), rescaleOutTy);
 }
