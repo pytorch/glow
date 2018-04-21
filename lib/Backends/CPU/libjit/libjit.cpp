@@ -993,6 +993,12 @@ void libjit_transpose_f(const float *inW, float *outW, const size_t *idim,
   libjit_transpose_generic(inW, outW, idim, odim, shuffle, numDims);
 }
 
+void libjit_transpose_u(const size_t *inW, size_t *outW, const size_t *idim,
+                        const size_t *odim, const size_t *shuffle,
+                        size_t numDims) {
+  libjit_transpose_generic(inW, outW, idim, odim, shuffle, numDims);
+}
+
 void libjit_insert_tensor_f(float *tensor, float *slice, size_t *offset,
                             size_t *tensorDim, size_t *sliceDim,
                             size_t numDimsTensor, size_t numDimsSlice,
