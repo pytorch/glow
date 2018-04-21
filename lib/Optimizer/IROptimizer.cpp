@@ -170,12 +170,17 @@ using Instructions = std::unordered_set<Instruction *>;
 static void hoistDealloc(IRFunction &M) {
   // Maps activation instructions to their last non-dealloc user.
   std::unordered_map<Value *, InstrIterator> lastUser;
+  // Dealloc instructions in the current function.
+  llvm::SmallVector<InstrIterator, 64> deallocs;
   auto &instrs = M.getInstrs();
 
   // Record the last use of each dealloc.
   for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
-    if (isa<DeallocActivationInst>(*it))
+    if (isa<DeallocActivationInst>(*it)) {
+      // Collect dealloc instructions.
+      deallocs.push_back(it);
       continue;
+    }
 
     if (auto alloc = dyn_cast<AllocActivationInst>(*it)) {
       lastUser[alloc] = it;
@@ -195,10 +200,11 @@ static void hoistDealloc(IRFunction &M) {
     }
   }
 
-  // Now that we've found the last user we can hoist the instruction.
-  for (auto it = instrs.begin(), e = instrs.end(); it != e;
+  // Now that we've found the last user of each allocated buffer, we can hoist
+  // the dealloc instructions.
+  for (auto it = deallocs.begin(), e = deallocs.end(); it != e;
        /* increment below */) {
-    auto curr = it;
+    auto curr = *it;
     ++it;
     auto *da = dyn_cast<DeallocActivationInst>(*curr);
     if (!da) {
@@ -213,7 +219,7 @@ static void hoistDealloc(IRFunction &M) {
       continue;
     }
     ++where;
-    M.moveInstruction(where, da);
+    M.moveInstruction(where, curr);
   }
 }
 
@@ -1094,10 +1100,9 @@ void performPeepholeOptimizations(IRFunction &M) {
       if (!isa<AllocActivationInst>(SrcXY) || SrcXY->getNumUsers() != 2)
         continue;
 
-      auto *NewPMI = B.createPoolMaxInst(PMI->getName(), PMI->getDest(),
-                                         PMI->getSrc(), PMI->getKernel(),
-                                         PMI->getStride(), PMI->getPad());
-      it = M.moveInstruction(cur, NewPMI);
+      B.createPoolMaxInst(PMI->getName(), PMI->getDest(), PMI->getSrc(),
+                          PMI->getKernel(), PMI->getStride(), PMI->getPad());
+      it = M.moveInstruction(cur, instrs.back());
       M.eraseInstruction(cur);
       continue;
     }
@@ -1113,11 +1118,11 @@ void performPeepholeOptimizations(IRFunction &M) {
           if (src->getType() != dest->getType()) {
             auto *TVI =
                 B.createTensorViewInst(TI->getName(), src, dest->getType());
-            M.moveInstruction(cur, TVI);
+            M.moveInstruction(cur, instrs.back());
             src = TVI;
           }
-          auto *CI = B.createCopyInst(TI->getName(), TI->getDest(), src);
-          it = M.moveInstruction(cur, CI);
+          B.createCopyInst(TI->getName(), TI->getDest(), src);
+          it = M.moveInstruction(cur, instrs.back());
           M.eraseInstruction(cur);
           continue;
         }
@@ -1138,9 +1143,8 @@ void performPeepholeOptimizations(IRFunction &M) {
       auto *wrhs = getSingleWriter(rhs);
       if (wrhs && isa<SplatInst>(wrhs))
         continue;
-      auto *newEM =
-          B.createElementMaxInst(EM->getName(), EM->getDest(), rhs, lhs);
-      it = M.moveInstruction(cur, newEM);
+      B.createElementMaxInst(EM->getName(), EM->getDest(), rhs, lhs);
+      it = M.moveInstruction(cur, instrs.back());
       M.eraseInstruction(cur);
       continue;
     }

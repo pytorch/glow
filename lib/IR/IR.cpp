@@ -216,6 +216,13 @@ InstrIterator IRFunction::moveInstruction(InstrIterator where,
   return insertInstruction(where, I);
 }
 
+InstrIterator IRFunction::moveInstruction(InstrIterator where,
+                                          InstrIterator I) {
+  auto instr = *I;
+  removeInstruction(I);
+  return insertInstruction(where, instr);
+}
+
 InstrIterator IRFunction::moveInstruction(const Instruction *where,
                                           glow::Instruction *I) {
   I->getParent()->removeInstruction(I);
