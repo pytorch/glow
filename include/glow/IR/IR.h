@@ -291,11 +291,15 @@ public:
   /// Inserts an instruction at the place described by \where.
   InstrIterator insertInstruction(InstrIterator where, Instruction *I);
 
-  /// Moves an instruction belonging to a function to the place described by
+  /// Moves an instruction belonging to a function before the place described by
   /// \where.
   InstrIterator moveInstruction(InstrIterator where, Instruction *I);
 
-  /// Moves an instruction belonging to a function to the place described by
+  /// Moves an instruction belonging to a function before the place described by
+  /// \where.
+  InstrIterator moveInstruction(InstrIterator where, InstrIterator I);
+
+  /// Moves an instruction belonging to a function before the place described by
   /// \where.
   InstrIterator moveInstruction(const Instruction *where, Instruction *I);
 
