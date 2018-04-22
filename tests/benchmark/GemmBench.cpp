@@ -62,6 +62,7 @@ private:
 
 int main() {
   constexpr int reps = 12;
+  printf("outX, outY, lhsX, lhsY, rhsX, rhsY, gflops/s, \n");
 
   for (int i = 0; i < 2; i++) {
     for (int j = 0; j < 2; j++) {
@@ -76,11 +77,9 @@ int main() {
 
           GemmBench b(m, 32, m);
           auto time = bench(&b, reps);
-          printf(
-              "%4zu x %-4zu += %4zu x %-4zu * %4zu x %-4zu, gflops/s: %5.2lf\n",
-              m, n, m, k, k, n, b.gflops() / time);
+          printf("%4zu, %-4zu,   %4zu, %-4zu,   %4zu,  %-4zu,   %5.2lf\n", m, n,
+                 m, k, k, n, b.gflops() / time);
         }
-        printf("\n");
       }
     }
   }
