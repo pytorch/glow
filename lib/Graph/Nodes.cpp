@@ -968,8 +968,7 @@ size_t toBinary(float f) {
   return static_cast<size_t>(static_cast<int>(f));
 }
 
-/// FIXME: Provide a more meaningful implementation for Tensors.
-llvm::hash_code hash_value(const glow::Tensor &T) { return 0; }
+llvm::hash_code hash_value(const glow::Tensor &T) { return T.size(); }
 
 // Types are uniqued, so just a pointer can be used.
 llvm::hash_code hash_value(const glow::Type *T) {
