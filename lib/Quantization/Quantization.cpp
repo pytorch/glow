@@ -54,12 +54,9 @@ static TensorQuantizationParams chooseQuantizationParams(float min, float max) {
                                 ? zeroPointFromMin
                                 : zeroPointFromMax;
 
-  // For symmetric quantization (min == -max), we force zero_point to 128
-  // to model signed integer (FIXME: this is a workaround that gemmlowp
-  // doesn't support signed int AFAIK. Once we have an (efficient) gemm for
-  // signed as well, we can just use signed int with zero_point = 0
+  // For symmetric quantization, if min == -max, force the zero point to be 0.
   if (min == -max) {
-    initialZeroPoint = (qmin + qmax) / 2 + 1;
+    initialZeroPoint = 0;
   }
 
   // Now we need to nudge the zero point to be an integer (our zero points are
