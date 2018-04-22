@@ -191,8 +191,6 @@ class FunctionSpecializer {
     // may introduce more complex logic for making this decision. It could be
     // based in the number of invocations of a function, number of its
     // arguments, its code size, etc.
-    // TODO: May be make this list configurable? E.g. different backends may set
-    // it according to their needs?
     const auto *caller = call->getFunction();
     const auto *callee = call->getCalledFunction();
     // Specialized only calls inside main.
