@@ -570,10 +570,6 @@ static void CSE(Function *F) {
   // all variables are distinct from each other.
 
   // Perform CSE on all nodes.
-  //
-  // TODO: Make sure that nodes are visited after nodes that dominate them.
-  // This code may need to be updated if we allow for non-linear control flow
-  // in the future.
   for (auto const &N : F->getNodes()) {
     N->visit(nullptr, &visitor);
   }

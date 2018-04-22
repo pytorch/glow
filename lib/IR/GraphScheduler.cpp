@@ -146,8 +146,6 @@ class ChildMemSizeBasedScheduler : public Scheduler {
     });
 
     // Process the children according to the computed ordering.
-    // TODO: This can be generalize to schedule on multiple devices
-    // once it is supported.
     for (auto child : orderedChildren) {
       orderChildNodesAndSchedule(child);
     }

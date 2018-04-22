@@ -130,9 +130,6 @@ public:
   /// The lifetime of the returned unowned tensor should be always within
   /// the lifetime of its parent tensor, i.e. the unowned tensor should not
   /// outlive its parent tensor.
-  ///
-  /// TODO: Add mechanims like RC (reference counting) to ensure that unowned
-  /// tensors do not outlive their parent tensors.
   Tensor getUnowned(llvm::ArrayRef<size_t> dims) const {
     Tensor unownedTensor;
     unownedTensor.data_.setPointer(getData());
