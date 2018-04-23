@@ -1015,6 +1015,14 @@ void libjit_extract_tensor_f(float *tensor, float *slice, size_t *offset,
                         numDimsTensor, numDimsSlice, offsetDim);
 }
 
+void libjit_extract_tensor_i8(int8_t *tensor, int8_t *slice, size_t *offset,
+                              size_t *tensorDim, size_t *sliceDim,
+                              size_t numDimsTensor, size_t numDimsSlice,
+                              size_t offsetDim) {
+  libjit_extract_tensor(tensor, slice, offset, tensorDim, sliceDim,
+                        numDimsTensor, numDimsSlice, offsetDim);
+}
+
 void libjit_insert_tensor_u(size_t *tensor, size_t *slice, size_t *offset,
                             size_t *tensorDim, size_t *sliceDim,
                             size_t numDimsTensor, size_t numDimsSlice,
