@@ -246,7 +246,7 @@ static void sinkAllocas(IRFunction &M) {
   for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
     for (int i = 0, e = (*it)->getNumOperands(); i < e; i++) {
       auto op = (*it)->getOperand(i).first;
-      auto aa = dyn_cast<AllocActivationInst>(op);
+      auto aa = dyn_cast<AllocActivationInst>(getOrigin(op));
       if (!aa) {
         continue;
       }
@@ -262,6 +262,65 @@ static void sinkAllocas(IRFunction &M) {
   }
 
   assert(allocs.empty() && "Forgot to insert some allocas!");
+}
+
+/// Sink tensorview instructions right before their first use.
+static void sinkTensorViews(IRFunction &M) {
+  // A set of tensorviews to reschedule.
+  std::unordered_set<TensorViewInst *> tensorviews;
+  auto &instrs = M.getInstrs();
+
+  // Remove all of the tensorviews.
+  for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
+    auto curr = it;
+    auto *tv = dyn_cast<TensorViewInst>(*curr);
+    if (!tv) {
+      ++it;
+      continue;
+    }
+
+    // Ignore tensorviews that are unused.
+    if (!tv->hasUsers()) {
+      ++it;
+      continue;
+    }
+
+    tensorviews.insert(tv);
+    it = M.removeInstruction(curr);
+  }
+
+  // Place all of the tensorviews in the right place:
+  for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
+    // Holds the next value for the iterator.
+    auto nextIt = instrs.end();
+    for (int i = 0, e = (*it)->getNumOperands(); i < e; i++) {
+      auto op = (*it)->getOperand(i).first;
+      auto tv = dyn_cast<TensorViewInst>(op);
+      if (!tv) {
+        continue;
+      }
+      auto TV = tensorviews.find(tv);
+      if (TV == tensorviews.end()) {
+        continue;
+      }
+      auto inserted = M.insertInstruction(it, tv);
+      tensorviews.erase(TV);
+      if (tensorviews.empty())
+        return;
+      if (nextIt == instrs.end()) {
+        // Remember and re-scan the first inserted instruction as it may use
+        // another tensor_view.
+        nextIt = inserted;
+      }
+    }
+    // If no insertions were made, move to the next instruction.
+    if (nextIt == instrs.end()) {
+      nextIt = ++it;
+    }
+    it = nextIt;
+  }
+
+  assert(tensorviews.empty() && "Forgot to insert some tensorviews!");
 }
 
 /// Delete alloc instructions that have no readers or writers.
@@ -895,7 +954,7 @@ tryToShareBuffersForInstr(LiveIntervalsMap &intervalsMap,
       if (!src)
         src = srcOp.first;
       // Operands must be different, but of the same type.
-      if (dest->getType() != src->getType()) {
+      if (destOp.first->getType() != srcOp.first->getType()) {
         continue;
       }
 
@@ -956,6 +1015,9 @@ static void shareBuffers(IRFunction &M) {
   // introduce by extending live interval lifetimes.
   hoistDealloc(M);
   sinkAllocas(M);
+  // Fix eventual issues with tensorviews that shareBuffers may
+  // introduce by extending live interval lifetimes.
+  sinkTensorViews(M);
 }
 
 /// Dead Store Elimination.
