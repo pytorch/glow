@@ -23,31 +23,6 @@ using llvm::isa;
 //                       General IR operations
 //===----------------------------------------------------------------------===//
 
-Value *glow::getAllocationOrigin(Value *V) {
-  while (true) {
-    if (auto *AI = dyn_cast<AllocActivationInst>(V))
-      return AI;
-    if (auto *TVI = dyn_cast<TensorViewInst>(V)) {
-      V = TVI->getSrc();
-      continue;
-    }
-    return nullptr;
-  }
-  return nullptr;
-}
-
-Value *glow::getOrigin(Value *V) {
-  while (true) {
-    auto *TVI = dyn_cast<TensorViewInst>(V);
-    if (!TVI)
-      return V;
-    V = TVI->getSrc();
-  }
-  return V;
-}
-
-bool glow::isTensorView(glow::Value *v) { return isa<TensorViewInst>(v); }
-
 bool Instruction::classof(const Value *V) {
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)
