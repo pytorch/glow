@@ -433,7 +433,6 @@ int main(int argc, char **argv) {
             << "\tj y songe encore .\n"
             << "\tje suis maintenant a l aeroport .\n\n";
 
-  
   llvm::Timer timer("Translate", "Translate");
   if (timeOpt) {
     timer.startTimer();
