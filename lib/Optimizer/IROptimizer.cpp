@@ -418,10 +418,11 @@ static void LLVM_ATTRIBUTE_UNUSED dump(IRFunction &M,
 /// of the current value, which is assigned at the beginning of the current
 /// interval. If there are multiple writes to the same mutable memory
 /// location, then each such assignment would result in a new interval.
-static void calculateLiveIntervals(IRFunction &M, LiveIntervalsMap &liveness) {
+static void calculateLiveIntervals(const IRFunction &M,
+                                   LiveIntervalsMap &liveness) {
   assert(liveness.empty() &&
          "This function should be called with empty liveness map");
-  auto &instrs = M.getInstrs();
+  auto const &instrs = M.getInstrs();
   unsigned instIdx = 0;
 
   // Compute the [start..end) intervals for each alloc activation in our basic
@@ -583,8 +584,8 @@ static void moveInterval(Intervals &from, Intervals &to, Interval &interval) {
 
 /// Replace all uses of \p val by \p with inside interval \p liveInterval.
 static void replaceAllUsesInsideIntervalWith(
-    Value *val, Value *with, Interval &liveInterval, IRFunction &M,
-    LiveIntervalsInstructionNumbering &instrNumbering) {
+    Value *val, Value *with, const Interval &liveInterval, IRFunction &M,
+    const LiveIntervalsInstructionNumbering &instrNumbering) {
   auto &instrs = M.getInstrs();
   auto valOrigin = getOrigin(val);
   auto withOrigin = getOrigin(with);
@@ -660,20 +661,19 @@ static bool isObservable(Value *V) { return isa<WeightVar>(getOrigin(V)); }
 
 /// Substitute all uses of \p oldBuffer by \p newBuffer inside the
 /// \p oldInterval.
-static void
-reuseBufferInsideInterval(Value *oldBuffer, Value *newBuffer,
-                          Interval oldInterval, IRFunction &M,
-                          LiveIntervalsInstructionNumbering &instrNumbering,
-                          Intervals &oldIntervals, Intervals &newIntervals) {
+static void reuseBufferInsideInterval(
+    Value *oldBuffer, Value *newBuffer, Interval oldInterval, IRFunction &M,
+    const LiveIntervalsInstructionNumbering &instrNumbering,
+    Intervals &oldIntervals, Intervals &newIntervals) {
   DEBUG(llvm::dbgs() << "\n\nReuse buffers: use buffer of "
                      << newBuffer->getName() << " as a buffer for "
                      << oldBuffer->getName() << "\n"
                      << "in live interval " << oldInterval << "\n");
-  // Replace src by dest.
+  // Replace oldBuffer with newBuffer.
   replaceAllUsesInsideIntervalWith(oldBuffer, newBuffer, oldInterval, M,
                                    instrNumbering);
-  // srcInterval does not belong to srcIntervals anymore. It should belong
-  // to destIntervals now.
+  // oldInterval does not belong to oldIntervals anymore. It should belong
+  // to newIntervals now.
   moveInterval(oldIntervals, newIntervals, oldInterval);
 }
 
@@ -683,7 +683,7 @@ class BufferSharingOptimizer {
   /// Current function.
   IRFunction &M_;
   /// The instruction numbering to be used.
-  LiveIntervalsInstructionNumbering &instrNumbering_;
+  const LiveIntervalsInstructionNumbering &instrNumbering_;
   /// Current instruction.
   Instruction *instr_;
   /// The number of the current instruction.
@@ -805,10 +805,10 @@ class BufferSharingOptimizer {
 
 public:
   /// Initialize the state of the shared buffers optimizer.
-  BufferSharingOptimizer(IRFunction &M, LiveIntervalsMap &intervalsMap,
-                         LiveIntervalsInstructionNumbering &instrNumbering,
-                         Instruction *instr, size_t instrIdx, Value *dest,
-                         Value *src)
+  BufferSharingOptimizer(
+      IRFunction &M, LiveIntervalsMap &intervalsMap,
+      const LiveIntervalsInstructionNumbering &instrNumbering,
+      Instruction *instr, size_t instrIdx, Value *dest, Value *src)
       : M_(M), instrNumbering_(instrNumbering), instr_(instr),
         instrIdx_(instrIdx), src_(src), dest_(dest), srcOrigin_(getOrigin(src)),
         destOrigin_(getOrigin(dest)), srcIntervals_(intervalsMap[srcOrigin_]),
@@ -832,7 +832,7 @@ public:
         LiveIntervalsInstructionNumbering::getInstrWriteSlotNumber(instrIdx_));
     assert(destIntervalIt != destIntervals_.end() &&
            "Cannot share buffers: cannot "
-           "find enclosing src interval");
+           "find enclosing dest interval");
 
     // Remember the found src and dest intervals.
     srcInterval_ = srcIntervalIt;
@@ -877,10 +877,10 @@ public:
 /// The only exception is the copy instruction, where the live interval
 /// of the X may be enclosed into a live interval of Y because they have
 /// the same value after the copy instruction.
-static void
-tryToShareBuffersForInstr(LiveIntervalsMap &intervalsMap,
-                          LiveIntervalsInstructionNumbering &instrNumbering,
-                          Instruction *I, unsigned instIdx) {
+static void tryToShareBuffersForInstr(
+    LiveIntervalsMap &intervalsMap,
+    const LiveIntervalsInstructionNumbering &instrNumbering, Instruction *I,
+    unsigned instIdx) {
   IRFunction &M = *I->getParent();
   // Consider all pair of operands. Check if their respective buffers can be
   // reused in principle.
