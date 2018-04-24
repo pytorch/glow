@@ -8,7 +8,7 @@ this guide to help backend implementers understand the compilation pipeline.
 ## Creating a Network
 
 Glow provides C++ APIs for manually constructing a network.  (In practice, we
-expect Glow's frontend to be driven with Caffe2 models, but we show the C++ here
+expect Glow's frontend to be driven by Caffe2 models, but we show the C++ here
 to demystify that interface).
 
 The following snippet constructs a graph of tensor operations, declares input
@@ -66,7 +66,7 @@ tensors, such as NCHW versus NHCW.
 ## Lowering to IR
 
 The graph IR is lowered to a  pseudo-instruction level that explicitly
-represents memory buffers.  Using this IR we can perform low level
+represents memory buffers.  Using this IR, we can perform low-level
 optimizations: re-using buffers to save memory, minimizing allocation lifetimes,
 and scheduling allocations to reduce overall memory use.
 

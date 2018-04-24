@@ -177,7 +177,7 @@ Below you can see the list of currently supported optimizations:
     Stacking tries to combine multiple data parallel (i.e. element-wise) operations
     that work with the same shape of tensors into a single kernel.
 
-    Executing such a kernel should be in theory more efficient then executing those
+    Executing such a kernel should be in theory more efficient than executing those
     operations sequentially one after the other, because such a combined kernel
     exposes a better cache locality.
 

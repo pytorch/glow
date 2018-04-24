@@ -62,7 +62,7 @@ auto-fix and to enable/disable specific checks:
 
 ## Building with coverage
 
-Glow uses gcov, lcov and genhtml to generate coverage reports for the code base.
+Glow uses gcov, lcov, and genhtml to generate coverage reports for the code base.
 Using this tool allows you to make sure that corner cases are covered with the
 unit tests as well as keep the unit test coverage at a healthy level.
 You can generate a coverage report by providing additional options to cmake:
@@ -80,7 +80,7 @@ Building documentation can be enabled by passing an additional cmake parameter:
   -DBUILD_DOCS=ON
   ```
 
-Output will be placed in the `docs/html` subdirectory of the build output
+The output will be placed in the `docs/html` subdirectory of the build output
 directory.
 
 ## Generate dependency graph for cmake targets

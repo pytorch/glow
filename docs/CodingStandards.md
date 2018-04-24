@@ -1,7 +1,7 @@
 ## Coding Standards
 
 This document provides general guidance for developing code for the project.
-The rules in this document will guide us in writing high quality code that will
+The rules in this document guide us in writing high-quality code that will
 allow us to scale the project and ensure that the code base remains readable and
 maintainable.
 
@@ -35,7 +35,7 @@ along the path to reaching larger stated goals. Long-term development branches
 suffer from many problems, including the lack of visibility, difficulty of code
 review, lack of testing of the branch and merge difficulty. Commits that go into
 the project need to be reviewable. This means that commits need to be relatively
-small, well documented and self contained.
+small, well documented and self-contained.
 
 ### Add tests
 
