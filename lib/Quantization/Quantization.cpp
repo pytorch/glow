@@ -279,6 +279,208 @@ static bool canBeQuantized(const Node *node) {
   return true;
 }
 
+/// Quantize the \p node.
+static Node *quantizeNode(Function *F, Node *node,
+                          llvm::MutableArrayRef<Node *> quantizedInputs,
+                          llvm::ArrayRef<TensorQuantizationParams> qParams) {
+  Node *quantizedNode{};
+
+  switch (node->getKind()) {
+  case Kinded::Kind::FullyConnectedNodeKind: {
+    auto *FC = cast<FullyConnectedNode>(node);
+    assert(quantizedInputs.size() == 3 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+    auto QT =
+        F->getParent()->uniqueType(ElemKind::Int8QTy, FC->getResult()->dims(),
+                                   qParams[0].scale_, qParams[0].offset_);
+    quantizedNode =
+        F->createFullyConnected(FC->getName(), quantizedInputs[0],
+                                quantizedInputs[1], quantizedInputs[2], QT);
+    break;
+  }
+
+  case Kinded::Kind::ConvolutionNodeKind: {
+    auto *CV = cast<ConvolutionNode>(node);
+    assert(quantizedInputs.size() == 3 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+    auto QT =
+        F->getParent()->uniqueType(ElemKind::Int8QTy, CV->getResult()->dims(),
+                                   qParams[0].scale_, qParams[0].offset_);
+    quantizedNode =
+        F->createConv(CV->getName(), quantizedInputs[0], quantizedInputs[1],
+                      quantizedInputs[2], QT, CV->getKernel(), CV->getStride(),
+                      CV->getPad(), CV->getGroup());
+    break;
+  }
+  case Kinded::Kind::SliceNodeKind: {
+    auto *S = cast<SliceNode>(node);
+    assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+
+    auto QT = F->getParent()->uniqueType(
+        ElemKind::Int8QTy, S->getResult()->dims(),
+        quantizedInputs[0]->getNthResult(0).getType()->getScale(),
+        quantizedInputs[0]->getNthResult(0).getType()->getOffset());
+
+    quantizedNode =
+        F->createSlice(S->getName(), quantizedInputs[0], S->getStart(), QT);
+    break;
+  }
+  case Kinded::Kind::ReluNodeKind: {
+    auto *R = cast<ReluNode>(node);
+    assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+
+    quantizedNode = F->createRELU(R->getName(), quantizedInputs[0]);
+    break;
+  }
+  case Kinded::Kind::TransposeNodeKind: {
+    auto *T = cast<TransposeNode>(node);
+    assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+    quantizedNode =
+        F->createTranspose(T->getName(), quantizedInputs[0], T->getShuffle());
+    break;
+  }
+  case Kinded::Kind::ReshapeNodeKind: {
+    auto *R = cast<ReshapeNode>(node);
+    assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+    quantizedNode =
+        F->createReshape(R->getName(), quantizedInputs[0], R->getDims());
+    break;
+  }
+  case Kinded::Kind::PoolMaxNodeKind: {
+    auto *P = cast<PoolMaxNode>(node);
+    assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+
+    quantizedNode =
+        F->createPoolMax(node->getName(), quantizedInputs[0], P->getKernel(),
+                         P->getStride(), P->getPad());
+    break;
+  }
+  case Kinded::Kind::PoolAvgNodeKind: {
+    auto *P = cast<PoolAvgNode>(node);
+    assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+
+    quantizedNode =
+        F->createPoolAvg(node->getName(), quantizedInputs[0], P->getKernel(),
+                         P->getStride(), P->getPad());
+    break;
+  }
+#define CASE_QUANTIZE_NODE(NODE_NAME_)                                         \
+  case Kinded::Kind::NODE_NAME_##NodeKind: {                                   \
+    auto *AN = cast<NODE_NAME_##Node>(node);                                   \
+    assert(quantizedInputs.size() == 2 && "Invalid number of inputs");         \
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");      \
+    auto outTy =                                                               \
+        F->getParent()->uniqueType(ElemKind::Int8QTy, AN->getResult().dims(),  \
+                                   qParams[0].scale_, qParams[0].offset_);     \
+    quantizedNode = F->create##NODE_NAME_(                                     \
+        AN->getName(), outTy, quantizedInputs[0], quantizedInputs[1]);         \
+    break;                                                                     \
+  }
+    CASE_QUANTIZE_NODE(Add);
+    CASE_QUANTIZE_NODE(Mul);
+    CASE_QUANTIZE_NODE(Sub);
+    CASE_QUANTIZE_NODE(Max);
+    CASE_QUANTIZE_NODE(Min);
+#undef CASE_QUANTIZE_NODE
+  case Kinded::Kind::ConcatNodeKind: {
+    auto *C = cast<ConcatNode>(node);
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+
+    // Concat just moves tensors around, make sure that all tensors have the
+    // same {S,O} params.
+    for (size_t qi = 0, e = quantizedInputs.size(); qi < e; qi++) {
+      auto argOutTy = F->getParent()->uniqueType(
+          ElemKind::Int8QTy, quantizedInputs[qi]->dims(), qParams[0].scale_,
+          qParams[0].offset_);
+
+      quantizedInputs[qi] = F->createRescaleQuantized(
+          quantizedInputs[qi]->getName(), quantizedInputs[qi], argOutTy);
+    }
+
+    auto outTy =
+        F->getParent()->uniqueType(ElemKind::Int8QTy, C->getResult()->dims(),
+                                   qParams[0].scale_, qParams[0].offset_);
+    quantizedNode =
+        F->createConcat(node->getName(), quantizedInputs, C->getDim(), outTy);
+    break;
+  }
+  case Kinded::Kind::GatherNodeKind: {
+    auto *gather = cast<GatherNode>(node);
+    // Gather node has 2 inputs, but only one should be quantized.
+    assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+
+    quantizedNode = F->createGather(gather->getName(), quantizedInputs[0],
+                                    gather->getIndices());
+
+    break;
+  }
+  case Kinded::Kind::TopKNodeKind: {
+    auto *topK = cast<TopKNode>(node);
+    assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+    // Two outputs but only one should be quantized.
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+
+    quantizedNode =
+        F->createTopK(topK->getName(), quantizedInputs[0], topK->getK());
+    break;
+  }
+  default:
+    GLOW_UNREACHABLE("The node type is not supported for quantization");
+  }
+
+  return quantizedNode;
+}
+
+/// Gather quantization params for all outputs of the given node.
+static llvm::SmallVector<TensorQuantizationParams, 6> getQuantizationParameters(
+    Node *node,
+    std::unordered_map<std::string, TensorQuantizationParams> &nodeToTQP) {
+  llvm::SmallVector<TensorQuantizationParams, 6> result;
+
+  for (unsigned outNum = 0, e = node->getNumResults(); outNum < e; outNum++) {
+    // Only floating point outputs were profiled.
+    if (node->getNthResult(outNum).getElementType() != ElemKind::FloatTy) {
+      continue;
+    }
+
+    const std::string nodeOutputName =
+        NodeQuantizationInfo::generateNodeOutputName(node->getName(), outNum);
+    assert(nodeToTQP.find(nodeOutputName) != nodeToTQP.end() &&
+           "Missing quantization params for a node");
+    result.push_back(nodeToTQP[nodeOutputName]);
+  }
+
+  return result;
+}
+
+/// Some of the nodes need special post processing after quantization.
+/// For example, RELU node needs to have adjusted quantization parameters.
+static Node *
+postProcessQuantizedNode(Function *F, Node *quantizedNode,
+                         llvm::ArrayRef<TensorQuantizationParams> qParams) {
+  if (quantizedNode->getKind() == Kinded::Kind::ReluNodeKind ||
+      quantizedNode->getKind() == Kinded::Kind::PoolMaxNodeKind ||
+      quantizedNode->getKind() == Kinded::Kind::PoolAvgNodeKind ||
+      quantizedNode->getKind() == Kinded::Kind::GatherNodeKind) {
+    // These nodes do not change {S,O} of the output, they use the same
+    // {S,O} as the input. Make sure that rescale is applied to comply with
+    // the taken profile from the node.
+    auto outTy =
+        F->getParent()->uniqueType(ElemKind::Int8QTy, quantizedNode->dims(),
+                                   qParams[0].scale_, qParams[0].offset_);
+    return F->createRescaleQuantized(quantizedNode->getName(), quantizedNode,
+                                     outTy);
+  }
+  return quantizedNode;
+}
+
 void generateQuantizedGraph(
     const ExecutionEngine &EE, Function *F,
     llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos) {
@@ -308,195 +510,16 @@ void generateQuantizedGraph(
         EE.isOpSupported(node->getKind(), ElemKind::Int8QTy)) {
       // 1) Quantize all of the inputs based on the profiles.
       //    Quantize only floating point inputs.
-      llvm::SmallVector<Node *, 6> quantizedInputs =
-          quantizeInputs(F, node, nodeToTQP);
-
-      // Gather quantization params for all outputs of the given node.
-      llvm::SmallVector<TensorQuantizationParams, 6> qParams;
-      for (unsigned outNum = 0, e = node->getNumResults(); outNum < e;
-           outNum++) {
-        // Only floating point outputs were profiled.
-        if (node->getNthResult(outNum).getElementType() != ElemKind::FloatTy) {
-          continue;
-        }
-
-        const std::string nodeOutputName =
-            NodeQuantizationInfo::generateNodeOutputName(node->getName(),
-                                                         outNum);
-        assert(nodeToTQP.find(nodeOutputName) != nodeToTQP.end() &&
-               "Missing quantization params for a node");
-        qParams.push_back(nodeToTQP[nodeOutputName]);
-      }
+      auto quantizedInputs = quantizeInputs(F, node, nodeToTQP);
+      
+      auto qParams = getQuantizationParameters(node, nodeToTQP);
 
       // 2) Quantize the node.
-      Node *quantizedNode{};
-      switch (node->getKind()) {
-      case Kinded::Kind::FullyConnectedNodeKind: {
-        auto *FC = cast<FullyConnectedNode>(node);
-        assert(quantizedInputs.size() == 3 && "Invalid number of inputs");
-        assert(qParams.size() == 1 && "Invalid number of quantized outputs");
-        auto QT = F->getParent()->uniqueType(
-            ElemKind::Int8QTy, FC->getResult()->dims(), qParams[0].scale_,
-            qParams[0].offset_);
-        quantizedNode =
-            F->createFullyConnected(FC->getName(), quantizedInputs[0],
-                                    quantizedInputs[1], quantizedInputs[2], QT);
-        break;
-      }
-
-      case Kinded::Kind::ConvolutionNodeKind: {
-        auto *CV = cast<ConvolutionNode>(node);
-        assert(quantizedInputs.size() == 3 && "Invalid number of inputs");
-        assert(qParams.size() == 1 && "Invalid number of quantized outputs");
-        auto QT = F->getParent()->uniqueType(
-            ElemKind::Int8QTy, CV->getResult()->dims(), qParams[0].scale_,
-            qParams[0].offset_);
-        quantizedNode =
-            F->createConv(CV->getName(), quantizedInputs[0], quantizedInputs[1],
-                          quantizedInputs[2], QT, CV->getKernel(),
-                          CV->getStride(), CV->getPad(), CV->getGroup());
-        break;
-      }
-      case Kinded::Kind::SliceNodeKind: {
-        auto *S = cast<SliceNode>(node);
-        assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
-        assert(qParams.size() == 1 && "Invalid number of quantized outputs");
-
-        auto QT = F->getParent()->uniqueType(
-            ElemKind::Int8QTy, S->getResult()->dims(),
-            quantizedInputs[0]->getNthResult(0).getType()->getScale(),
-            quantizedInputs[0]->getNthResult(0).getType()->getOffset());
-
-        quantizedNode =
-            F->createSlice(S->getName(), quantizedInputs[0], S->getStart(), QT);
-        break;
-      }
-      case Kinded::Kind::ReluNodeKind: {
-        auto *R = cast<ReluNode>(node);
-        assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
-        assert(qParams.size() == 1 && "Invalid number of quantized outputs");
-
-        quantizedNode = F->createRELU(R->getName(), quantizedInputs[0]);
-        break;
-      }
-      case Kinded::Kind::TransposeNodeKind: {
-        auto *T = cast<TransposeNode>(node);
-        assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
-        assert(qParams.size() == 1 && "Invalid number of quantized outputs");
-        quantizedNode = F->createTranspose(T->getName(), quantizedInputs[0],
-                                           T->getShuffle());
-        break;
-      }
-      case Kinded::Kind::ReshapeNodeKind: {
-        auto *R = cast<ReshapeNode>(node);
-        assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
-        assert(qParams.size() == 1 && "Invalid number of quantized outputs");
-        quantizedNode =
-            F->createReshape(R->getName(), quantizedInputs[0], R->getDims());
-        break;
-      }
-      case Kinded::Kind::PoolMaxNodeKind: {
-        auto *P = cast<PoolMaxNode>(node);
-        assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
-        assert(qParams.size() == 1 && "Invalid number of quantized outputs");
-
-        quantizedNode =
-            F->createPoolMax(node->getName(), quantizedInputs[0],
-                             P->getKernel(), P->getStride(), P->getPad());
-        break;
-      }
-      case Kinded::Kind::PoolAvgNodeKind: {
-        auto *P = cast<PoolAvgNode>(node);
-        assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
-        assert(qParams.size() == 1 && "Invalid number of quantized outputs");
-
-        quantizedNode =
-            F->createPoolAvg(node->getName(), quantizedInputs[0],
-                             P->getKernel(), P->getStride(), P->getPad());
-        break;
-      }
-#define CASE_QUANTIZE_NODE(NODE_NAME_)                                         \
-  case Kinded::Kind::NODE_NAME_##NodeKind: {                                   \
-    auto *AN = cast<NODE_NAME_##Node>(node);                                   \
-    assert(quantizedInputs.size() == 2 && "Invalid number of inputs");         \
-    assert(qParams.size() == 1 && "Invalid number of quantized outputs");      \
-    auto outTy =                                                               \
-        F->getParent()->uniqueType(ElemKind::Int8QTy, AN->getResult().dims(),  \
-                                   qParams[0].scale_, qParams[0].offset_);     \
-    quantizedNode = F->create##NODE_NAME_(                                     \
-        AN->getName(), outTy, quantizedInputs[0], quantizedInputs[1]);         \
-    break;                                                                     \
-  }
-        CASE_QUANTIZE_NODE(Add);
-        CASE_QUANTIZE_NODE(Mul);
-        CASE_QUANTIZE_NODE(Sub);
-        CASE_QUANTIZE_NODE(Max);
-        CASE_QUANTIZE_NODE(Min);
-#undef CASE_QUANTIZE_NODE
-      case Kinded::Kind::ConcatNodeKind: {
-        auto *C = cast<ConcatNode>(node);
-        assert(qParams.size() == 1 && "Invalid number of quantized outputs");
-
-        // Concat just moves tensors around, make sure that all tensors have the
-        // same {S,O} params.
-        for (size_t qi = 0, e = quantizedInputs.size(); qi < e; qi++) {
-          auto argOutTy = F->getParent()->uniqueType(
-              ElemKind::Int8QTy, quantizedInputs[qi]->dims(), qParams[0].scale_,
-              qParams[0].offset_);
-
-          quantizedInputs[qi] = F->createRescaleQuantized(
-              quantizedInputs[qi]->getName(), quantizedInputs[qi], argOutTy);
-        }
-
-        auto outTy = F->getParent()->uniqueType(
-            ElemKind::Int8QTy, C->getResult()->dims(), qParams[0].scale_,
-            qParams[0].offset_);
-        quantizedNode = F->createConcat(node->getName(), quantizedInputs,
-                                        C->getDim(), outTy);
-        break;
-      }
-      case Kinded::Kind::GatherNodeKind: {
-        auto *gather = cast<GatherNode>(node);
-        // Gather node has 2 inputs, but only one should be quantized.
-        assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
-        assert(qParams.size() == 1 && "Invalid number of quantized outputs");
-
-        quantizedNode = F->createGather(gather->getName(), quantizedInputs[0],
-                                        gather->getIndices());
-
-        break;
-      }
-      case Kinded::Kind::TopKNodeKind: {
-        auto *topK = cast<TopKNode>(node);
-        assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
-        // Two outputs but only one should be quantized.
-        assert(qParams.size() == 1 && "Invalid number of quantized outputs");
-
-        quantizedNode =
-            F->createTopK(topK->getName(), quantizedInputs[0], topK->getK());
-        break;
-      }
-      default:
-        GLOW_UNREACHABLE("The node type is not supported for quantization");
-      }
-
-      // Some of the quantized nodes need additional post processing.
-      if (node->getKind() == Kinded::Kind::ReluNodeKind ||
-          node->getKind() == Kinded::Kind::PoolMaxNodeKind ||
-          node->getKind() == Kinded::Kind::PoolAvgNodeKind ||
-          node->getKind() == Kinded::Kind::GatherNodeKind) {
-        // These nodes do not change {S,O} of the output, they use the same
-        // {S,O} as the input. Make sure that rescale is applied to comply with
-        // the taken profile from the node.
-        auto outTy =
-            F->getParent()->uniqueType(ElemKind::Int8QTy, quantizedNode->dims(),
-                                       qParams[0].scale_, qParams[0].offset_);
-        quantizedNode = F->createRescaleQuantized(quantizedNode->getName(),
-                                                  quantizedNode, outTy);
-      }
+      Node *quantizedNode = quantizeNode(F, node, quantizedInputs, qParams);
+      quantizedNode = postProcessQuantizedNode(F, quantizedNode, qParams);
+      assert(quantizedNode != nullptr && "Node must be quantized");
 
       // 3) Dequantize all outputs of the node so that invariant is kept.
-      assert(quantizedNode != nullptr && "Node must be quantized");
       unsigned qParamIndex = 0;
       for (unsigned outNum = 0, e = quantizedNode->getNumResults(); outNum < e;
            outNum++) {
@@ -526,5 +549,4 @@ void generateQuantizedGraph(
 }
 
 } // namespace quantization
-
 } // namespace glow
