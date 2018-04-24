@@ -11,7 +11,7 @@ const size_t MemoryAllocator::npos = -1;
 
 size_t MemoryAllocator::allocate(size_t size) {
   // Always allocate buffers properly aligned to hold values of any type.
-  size = (size + TensorAlignment - 1) & ~(TensorAlignment - 1);
+  size = alignedSize(size, TensorAlignment);
   size_t prev = 0;
   for (auto it = allocations_.begin(), e = allocations_.end(); it != e; it++) {
     if (it->begin_ - prev >= size) {

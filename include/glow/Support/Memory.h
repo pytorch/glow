@@ -9,6 +9,7 @@ namespace glow {
 /// The tensor payload is allocated to be aligned to this value.
 constexpr unsigned TensorAlignment = 64;
 
+/// Allocate \p size bytes of memory aligned to \p align bytes.
 inline void *alignedAlloc(size_t size, size_t align) {
   assert(align >= sizeof(void *) && "Alignment too small.");
   assert(align % sizeof(void *) == 0 &&
@@ -21,7 +22,13 @@ inline void *alignedAlloc(size_t size, size_t align) {
   return ptr;
 }
 
+/// Free aligned memory.
 inline void alignedFree(void *p) { free(p); }
+
+/// Rounds up \p size to the nearest \p alignment.
+inline size_t alignedSize(size_t size, size_t alignment) {
+  return (size + alignment - 1) & ~(alignment - 1);
+}
 
 } // end namespace glow
 
