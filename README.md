@@ -15,10 +15,10 @@ The Glow compiler has three different
 [intermediate representations](./docs/IR.md) at different phases of the
 compilation pipe. The first representation is a high-level graph that resembles
 the original neural network. This representation allows the compiler to perform
-high-level domain specific optimizations. The next level, is a low-level
+high-level domain-specific optimizations. The next level is a low-level
 bytecode, that represents memory explicitly and allows the compiler to perform
-low-level memory optimizations that are not possible at higher levels.  And
-finally, the target specific intermediate representation that the code
+low-level memory optimizations that are not possible at higher levels. And
+finally, the target-specific intermediate representation that the code
 generators can use to generate efficient machine code.
 
 ![](./docs/3LevelIR.png)
@@ -148,7 +148,7 @@ slower than that of release builds. If you wish to benchmark the compiler, run
 long benchmarks, or release the product then you should compile the compiler in
 Release mode. Check the main CMake file for more details.
 
-More details on testing and running Glow are found in: [Testing the Glow
+More details on testing and running Glow can be found in: [Testing the Glow
 Compiler](docs/Testing.md).
 
 ### Ahead-of-time Compilation
@@ -160,6 +160,6 @@ Standalone Executable Bundles](docs/AOT.md) for more detail.
 
 ## Contributing
 
-To get started please refer to the following guides:
+To get started, please refer to the following guides:
 * [Contributing](docs/Contributing.md)
 * [CodingStandards](docs/CodingStandards.md)
