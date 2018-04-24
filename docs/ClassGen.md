@@ -15,14 +15,14 @@ information. Because there may be a large number of these records, it is
 specifically designed to allow writing flexible descriptions and for common
 features of these records to be factored out. This reduces the amount of
 duplication in the description, reduces the chance of error, and makes it easier
-to structure domain specific information. "
+to structure domain-specific information. "
 
 The current system is capable of generating two kinds of classes: Nodes and
 Instructions. These structures are declared in the IR document. Here is a short
 example of the code for generating the SoftMax instruction. This node generates
 the SoftMax instruction as well as the gradient calculation instruction
 SoftMaxGrad. The different methods of the builder (described in the builder
-doxygen comments) construct the different kinds of fields that the Instruction
+Doxygen comments) construct the different kinds of fields that the Instruction
 has.
 
   ```

@@ -14,7 +14,7 @@ the model in a standalone mode.
 
 It is possible to use the Glow library to produce bundles. On the CPU, the
 bundles are object files that can be linked with some executable. On other
-architectures the bundle may look completly different.
+architectures, the bundle may look completely different.
 
 This document demonstrates how to produce a bundle for the host CPU using the
 'loader' tool.  We use the flag `-emit-bundle` to specify the output directory.
@@ -35,7 +35,7 @@ contains the weights required to run the compiled model.
 ## APIs exposed by bundles
 
 This section describes the APIs that the CPU bundle exposes. Other targets may
-expose a completly different API.
+expose a completely different API.
 
 Each bundle exposes two symbols named `network_model_name` and
 `network_model_name_config`.  The `network_model_name` is the name of the
@@ -75,7 +75,7 @@ required amounts of memory for each of the memory areas, before invoking the
 
 Clients also use `BundleConfig` to perform the symbol table lookups when they
 need to find information about an input or output variable.
-The SymbolTableEntry has always the following structure:
+The SymbolTableEntry always has the following structure:
 ```c++
 struct SymbolTableEntry {
   // Name of a variable.
@@ -90,7 +90,7 @@ struct SymbolTableEntry {
 ```
 
 Offsets of constants are offsets inside the memory area for constant weights.
-Offset of mutable variables are offsets inside the memory area for mutable
+Offsets of mutable variables are offsets inside the memory area for mutable
 weights.
 
 ## How to use the bundle
@@ -108,16 +108,16 @@ memory area sizes provided by `network_model_name_config`.
 file into the constant weights variables memory area.
 * And need to initialize the mutable weights area with inputs (e.g. image data)
 * And finally, you need to invoke the `network_model_name` function with 3
-parameters that are base addresses of the the memory areas for constant weights variables,
-mutable weights variables and activations.
+parameters that are base addresses of the memory areas for constant weights variables,
+mutable weights variables, and activations.
 * After `network_model_name` has returned, you can find the results of the mutable weights
 variables area.
 
-## A step-by-step example for the resnet50 network model
+## A step-by-step example of the Resnet50 network model
 
 There are concrete examples of integrating a network model with a project.  You
 can find it in the `examples/compile_resnet50` directory in the Glow
-repository. Makefile with appropriate targets is provided for your convinience.
+repository. Makefile with appropriate targets is provided for your convenience.
 
 ### Floating point network
 To build and run the example, you just need to execute:
@@ -127,7 +127,7 @@ You may need to adjust the environment variables at the top to match
 your setup, primarily LOADER and GLOW_SRC vars.
 
 The makefile provides the following targets:
-* `download_weights`: it downloads the resnet50 network model in the Caffe2 format.
+* `download_weights`: it downloads the Resnet50 network model in the Caffe2 format.
 * `build/resnet50.o`: it generates the bundle files using the Glow loader as described above.
   The concrete command line looks like this:
   `loader tests/images/imagenet/cat_285.png -image_mode=0to1 -d resnet50 -cpu -emit-bundle build`
@@ -135,12 +135,12 @@ The makefile provides the following targets:
   and `resnet50.weights` files into the `build` directory.
 * `build/main.o`:  it compiles the `resnet50_standalone.cpp` file, which is the main file of the project.
   This source file gives a good idea about how to interface with an auto-generated bundle.
-  It contains the code for interfacing with with the auto-generated bundle.
+  It contains the code for interfacing with the auto-generated bundle.
   *  It allocated the memory areas based on their memory sizes provided in `resnet50_config`.
   *  Then it loads the weights from the auto-generated `resnet50.weights` file.
   *  It loads the input image, pre-processes it and puts it into the mutable weight variables
      memory area.
-  *  Once evertything is setup, it invokes the compiled network model by calling the
+  *  Once everything is setup, it invokes the compiled network model by calling the
      `resnet50` function from the `resnet50.o` object file.
  * `resnet50`: it links the user-defined `resnet50_standalone.o` and auto-generated `resnet50.o`
   into a standalone executable file called `resnet50_standalone`
@@ -149,9 +149,9 @@ results of the network model execution.
 
 ### Quantized network
 To build and run the example, you just need to execute:
-* `make run`. By default, quantized resnet example is going to be executed.
+* `make run`. By default, quantized Resnet50 example is going to be executed.
 
-This run performs almost the same steps as non-quantized resnet50 version
+This run performs almost the same steps as non-quantized Resnet50 version
 except it emits bundle based on the quantization profile:
 `loader tests/images/imagenet/cat_285.png -image_mode=0to1 -d resnet50
 -load_profile=profile.yml -cpu -emit-bundle build`

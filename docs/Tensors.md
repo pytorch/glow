@@ -25,7 +25,7 @@ problem is that the compiler can't prove that there are no pointers that point
 to the internal data structures of the Tensor and has to re-read the tensor
 dimensions and element type from memory very frequently.
 
-The solution of this problem is the use of Handles. Handles are stack-allocated
+The solution to this problem is the use of Handles. Handles are stack-allocated
 generic data structures that contain an optimized version of the tensor
 metadata.  The fact that they are stack allocated allows the compiler to
 assume that there are no aliases to the tensor metadata.  The fact that the

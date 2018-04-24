@@ -31,21 +31,21 @@ that they represent use the following conversion formula:
     value = (input - offset) * scale
   ```
 
-Activations, weights and variables all use the same type-system and represent
+Activations, weights, and variables all use the same type-system and represent
 information in a uniform way.
 
 ## Network Conversion
 
 Different parts of the network contain floating-point values in different
-ranges. In some parts the typical range of the numbers is between zero and one,
+ranges. In some parts, the typical range of the numbers is between zero and one,
 while in other parts of the network the possible range is in the hundreds.
 Choosing a single conversion scale for the whole network would not work, because
 a single scale value could be imprecise for small values and truncate large
 values.
 
-We use profile guided information to estimate the possible numeric range for
-each stage of the neural network. Our Quantization conversion works using a two
-phase process. At first, we instrument the network and add special nodes that
+We use the profile guided information to estimate the possible numeric range for
+each stage of the neural network. Our Quantization conversion works using a two-phase process.
+At first, we instrument the network and add special nodes that
 record the ranges of activations that flow in the network.  Next, we use the
 profile information to convert the network into a quantized form. We convert
 portions of the network into islands of integer computation and aim to generate
@@ -86,14 +86,14 @@ can minimize conversions.
 
 Second, the neural network contains 'rescale' nodes that change the range of the
 integers. These nodes are required to convert between numeric ranges that mimic
-the original floating point network. However, in many cases it's possible to
+the original floating point network. However, in many cases, it's possible to
 fold the rescale operations into numeric-producing operations, and eliminate
 them.
 
 Third, it's possible to rescale the values in the network in order to allow fast
 hardware implementations of the quantized operations. For example, consider the
-'max' operations.  By converting both sides of the 'max' into the same scale we
+'max' operations.  By converting both sides of the 'max' into the same scale, we
 allow the hardware to perform a simple comparison. By normalizing both sides of
-the 'max' operation to the same scale we enable this efficient optimization.
+the 'max' operation to the same scale, we enable this efficient optimization.
 
 For more specific graph optimizations check [here](Optimizations.md#quantization-specific-optimizations).

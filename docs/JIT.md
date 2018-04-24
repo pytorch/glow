@@ -4,7 +4,7 @@
 
 The JIT ("Just In Time") compiler is a backend that generates code in memory on
 demand for the host CPU. The host cpu can be X86, ARM or anything that LLVM can
-target. In many way the JIT is similar to the interpreter. Both execute code on
+target. In many ways, the JIT is similar to the interpreter. Both execute code on
 the host CPU, except that the JIT is able to further optimize the code.
 
 The Glow interpreter goes over the low-level IR one instruction at a time and
@@ -15,7 +15,7 @@ dispatch switch-loop.  Second, the C++ implementation of the low-level
 instruction had no knowledge of the specific situation in which the instruction
 is being executed.
 
-The JIT on the other hand, generates a single stream of highly optimized
+The JIT, on the other hand, generates a single stream of highly optimized
 instructions that don't go back to the interpreter.  Moreover, each instruction
 is optimized based on specific information on the context in which the
 instruction is executed.  When a matrix multiplication is compiled the JIT knows
@@ -24,7 +24,7 @@ tensors are placed in memory.  The JIT knows that the buffers do or do-not
 alias, and exactly the number of iterations for the loop. The knowledge enables
 much better code generation and vectorization. The JIT is also able to eliminate
 all calls to 'malloc', because the memory is statically allocated. The whole
-network is allocated into a single malloc call in the heap.
+network is allocated by a single malloc call.
 
 ### How the JIT Works
 
@@ -50,7 +50,7 @@ is ready for execution.
 
 ### Usage of the Standard Library
 
-During the compilation process each Glow low-level instruction is converted into
+During the compilation process, each Glow low-level instruction is converted into
 a sequence of LLVM-IR instructions.  One way to implement this lowering is to
 use the IRBuilder to generate low-level programs. For example, the matmul
 instruction would translate to LLVM-IR by creating new basic blocks and encoding
@@ -66,7 +66,7 @@ inline the standard library functions into the module.
 
 ### Optimizations
 
-In this section we describe some opportunities for optimizations.
+In this section, we describe some opportunities for optimizations.
 
 1. Some libraries provide optimized versions of some operators, such as matrix
 multiplication and convolution. It could be a good idea to call these functions.

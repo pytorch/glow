@@ -13,8 +13,8 @@ additional layers of IR.
 
 ### High-level Graph
 
-The high-level IR, is a graph-based representation that's similar to the graph
-that you may find inside Caffe.  When we load the model from a file we construct
+The high-level IR is a graph-based representation that's similar to the graph
+that you may find inside Caffe.  When we load the model from a file, we construct
 this graph in a direct translation of one operator to one node.  It's a simple
 graph that allows basic transformations such as swapping the order of nodes and
 removing nodes. The graph is strongly typed, which means that inputs and output
@@ -22,7 +22,7 @@ have a known tensor type (dimension and element type), and that the types must
 match.
 
 The Glow graph is structured as a Module that contains multiple functions that
-contain a multiple nodes. Variables, which are similar to global variables in C
+contain multiple nodes. Variables, which are similar to global variables in C
 programs, are shared between the functions. Nodes inside functions are able to
 reference variables, which are owned by the module. The picture below depicts a
 module that contains two functions.  One of the functions does the training of
@@ -78,7 +78,7 @@ Variables are persistent tensors that live across different executions of the ML
 network.  Variables are annotated with Public or Private labels. These labels
 specify whether the node is visible outside of the graph, or not. If the node is
 public, then it means that C++ code from outside the graph may access the
-variable directly and change it's content before or after the execution of the
+variable directly and change its content before or after the execution of the
 program.  This means that the optimizer is not allowed to delete unused public
 variables or change their dimensions. On the other hand, in the case of private
 variables, the optimizer is allowed to delete unused variables, transpose,
@@ -195,13 +195,13 @@ take. And third, after lowering we allow the backends to perform additional
 target-specific optimizations. The lowering transformation does not preserve the
 semantics of the graph, because it is not possible to differentiate the graph
 for certain operators. For example, the Regression node becomes a nop, for the
-forward pass, but is translated into a element-wise subtract for the backward
-pass. Performing the lowering before differentiantion would prevent us from
+forward pass, but is translated into an element-wise subtract for the backward
+pass. Performing the lowering before differentiation would prevent us from
 performing the correct lowering of the Regression node.
 
 This is a high-level overview of the compilation process:
 1. The graph is constructed (via the c++ interface or graph loader).
-2. The graph is optimized, and differentianted, if needed.
+2. The graph is optimized, and differentiated, if needed.
 3. Linear Algebra lowering takes place.
 4. Additional rounds of optimizations (both target independent and target specific.)
 5. Scheduling of the graph into a linear sequence of nodes that minimizes the memory usage.
