@@ -497,10 +497,10 @@ TEST_F(GraphOptz, SliceOfSplatNode) {
 }
 
 TEST_F(GraphOptz, ZeroArithmetic) {
-  // Tests the identities: [0 + X = X] [0 * X = 0] [0 / X = 0]
+  // Tests the identities: [0 + X = X] [0 * X = 0] [0 / X = 0] [ X - 0 = X]
 
   Node *input = mod_.createVariable(ElemKind::FloatTy, {4, 10}, "input",
-                                    Variable::VisibilityKind::Public);
+                                    VisibilityKind::Public);
 
   // This builds the expression: ((0 / I) + (0 + I) + (0 * I)) - 0
 
