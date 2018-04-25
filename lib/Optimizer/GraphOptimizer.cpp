@@ -120,6 +120,100 @@ static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle1,
   return true;
 }
 
+/// \returns True if the node \p N always evaluates to zero.
+bool isZero(Node *N) {
+  SplatNode *Z = dyn_cast<SplatNode>(N);
+  if (!Z)
+    return false;
+
+  return (Z->getValue() == 0);
+}
+
+/// \returns True if the node returns a constant value.
+bool isConstant(Node *N) { return isa<SplatNode>(N); }
+
+/// \returns the new simplified node or the original node.
+static Node *simplifyNode(Node *node, Function *F) {
+
+  if (auto *AN = dyn_cast<AddNode>(node)) {
+    // Simplify the operands of the Add node.
+    Node *LHS = simplifyNode(AN->getLHS(), F);
+    Node *RHS = simplifyNode(AN->getRHS(), F);
+    if (LHS != AN->getLHS()) {
+      return simplifyNode(F->createAdd(AN->getName(), LHS, AN->getRHS()), F);
+    }
+    if (RHS != AN->getRHS()) {
+      return simplifyNode(F->createAdd(AN->getName(), AN->getLHS(), RHS), F);
+    }
+
+    // X + 0 => X
+    if (isZero(AN->getRHS())) {
+      return AN->getLHS();
+    }
+
+    // C + X  =>  X + C
+    if (isConstant(AN->getLHS()) && !isConstant(AN->getRHS())) {
+      return F->createAdd(AN->getName(), AN->getRHS(), AN->getLHS());
+    }
+  }
+
+  if (auto *MN = dyn_cast<MulNode>(node)) {
+    // Simplify the operands of the Mul node.
+    Node *LHS = simplifyNode(MN->getLHS(), F);
+    Node *RHS = simplifyNode(MN->getRHS(), F);
+    if (LHS != MN->getLHS()) {
+      return simplifyNode(F->createMul(MN->getName(), LHS, MN->getRHS()), F);
+    }
+    if (RHS != MN->getRHS()) {
+      return simplifyNode(F->createMul(MN->getName(), MN->getLHS(), RHS), F);
+    }
+
+    // X * 0 => 0
+    if (isZero(MN->getRHS())) {
+      return MN->getRHS();
+    }
+
+    // C * X  =>  X * C
+    if (isConstant(MN->getLHS()) && !isConstant(MN->getRHS())) {
+      return F->createMul(MN->getName(), MN->getRHS(), MN->getLHS());
+    }
+  }
+
+  // 0 / X => 0
+  if (auto *DN = dyn_cast<DivNode>(node)) {
+    Node *LHS = simplifyNode(DN->getLHS(), F);
+    Node *RHS = simplifyNode(DN->getRHS(), F);
+    if (LHS != DN->getLHS()) {
+      return simplifyNode(F->createDiv(DN->getName(), LHS, DN->getRHS()), F);
+    }
+    if (RHS != DN->getRHS()) {
+      return simplifyNode(F->createDiv(DN->getName(), DN->getLHS(), RHS), F);
+    }
+
+    if (isZero(DN->getLHS())) {
+      return DN->getLHS();
+    }
+  }
+
+  // X - 0 => X
+  if (auto *SN = dyn_cast<SubNode>(node)) {
+    Node *LHS = simplifyNode(SN->getLHS(), F);
+    Node *RHS = simplifyNode(SN->getRHS(), F);
+    if (LHS != SN->getLHS()) {
+      return simplifyNode(F->createSub(SN->getName(), LHS, SN->getRHS()), F);
+    }
+    if (RHS != SN->getRHS()) {
+      return simplifyNode(F->createSub(SN->getName(), SN->getLHS(), RHS), F);
+    }
+
+    if (isZero(SN->getRHS())) {
+      return SN->getLHS();
+    }
+  }
+
+  return node;
+}
+
 /// Code Sinking.
 static void sinkCode(Function *F) {
   auto &nodes = F->getNodes();
@@ -485,61 +579,30 @@ static void optimizeConcatNodes(Function *F) {
   }
 }
 
-/// \returns True if the node \p N always evaluates to zero.
-bool isZero(Node *N) {
-  SplatNode *Z = dyn_cast<SplatNode>(N);
-  if (!Z)
-    return false;
-
-  return (Z->getValue() == 0);
-}
-
-/// Optimize arithmetic nodes by detecting simple arithmetic identities.
+/// Simplify and canonicalize arithmetic nodes by detecting simple arithmetic
+/// identities.
 static void optimizeArithmeticNodes(Function *F) {
-  auto &nodes = F->getNodes();
+  // A worklist that contains the nodes to process.
+  std::vector<Node *> worklist;
 
-  // For each node:
-  for (auto const &node : nodes) {
-    if (auto *AN = dyn_cast<AddNode>(node)) {
-      // X == X + 0
-      if (isZero(AN->getRHS())) {
-        AN->getResult().replaceAllUsesOfWith(AN->getLHS());
-        continue;
-      }
-      // X == 0 + X
-      if (isZero(AN->getLHS())) {
-        AN->getResult().replaceAllUsesOfWith(AN->getRHS());
-        continue;
-      }
+  // Add all of the interesting nodes to the worklist.
+  for (auto *node : F->getNodes()) {
+    if (isa<AddNode>(node) || isa<MulNode>(node) || isa<DivNode>(node) ||
+        isa<SubNode>(node)) {
+      worklist.push_back(node);
     }
+  }
 
-    if (auto *MN = dyn_cast<MulNode>(node)) {
-      // 0 == X * 0
-      if (isZero(MN->getRHS())) {
-        MN->getResult().replaceAllUsesOfWith(MN->getRHS());
-        continue;
-      }
-      // 0 == 0 * X
-      if (isZero(MN->getLHS())) {
-        MN->getResult().replaceAllUsesOfWith(MN->getLHS());
-        continue;
-      }
-    }
+  while (!worklist.empty()) {
+    Node *node = worklist.back();
+    worklist.pop_back();
 
-    if (auto *DN = dyn_cast<DivNode>(node)) {
-      // 0 == 0 / X
-      if (isZero(DN->getLHS())) {
-        DN->getResult().replaceAllUsesOfWith(DN->getLHS());
-        continue;
-      }
-    }
-
-    if (auto *SN = dyn_cast<SubNode>(node)) {
-      // X == X - 0
-      if (isZero(SN->getRHS())) {
-        SN->getResult().replaceAllUsesOfWith(SN->getLHS());
-        continue;
-      }
+    auto *sn = simplifyNode(node, F);
+    if (sn != node) {
+      node->getNthResult(0).replaceAllUsesOfWith(sn);
+      // The simplified node could be further simplified.
+      worklist.push_back(sn);
+      continue;
     }
   }
 }
