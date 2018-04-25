@@ -97,8 +97,7 @@ void testCIFAR10() {
   auto *MP2 = F->createPoolMax("pool", RL2, 2, 2, 0);
 
   auto *FCL1 = F->createFullyConnected("fc", MP2, 10);
-  auto *RL3 = F->createRELU("relu", FCL1);
-  auto *SM = F->createSoftMax("softmax", RL3, E);
+  auto *SM = F->createSoftMax("softmax", FCL1, E);
   auto *result = F->createSave("ret", SM);
 
   Function *TF = glow::differentiate(F, EE.getConfig());
