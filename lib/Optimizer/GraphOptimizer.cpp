@@ -135,61 +135,61 @@ bool isConstant(Node *N) { return isa<SplatNode>(N); }
 /// \returns the new simplified node or the original node.
 static Node *simplifyNode(Node *node, Function *F) {
 
-  if (auto *AN = dyn_cast<AddNode>(node)) {
-    // Simplify the operands of the Add node.
-    Node *LHS = simplifyNode(AN->getLHS(), F);
-    Node *RHS = simplifyNode(AN->getRHS(), F);
-    if (LHS != AN->getLHS()) {
-      return simplifyNode(F->createAdd(AN->getName(), LHS, AN->getRHS()), F);
-    }
-    if (RHS != AN->getRHS()) {
-      return simplifyNode(F->createAdd(AN->getName(), AN->getLHS(), RHS), F);
+// Recursively simplify the operands of arithmetic nodes.
+#define SIMPLIFY_OPERANDS(NodeKind)                                            \
+  if (auto *NN = dyn_cast<NodeKind##Node>(node)) {                             \
+    Node *LHS = simplifyNode(NN->getLHS(), F);                                 \
+    Node *RHS = simplifyNode(NN->getRHS(), F);                                 \
+    if (LHS != NN->getLHS()) {                                                 \
+      return simplifyNode(                                                     \
+          F->create##NodeKind(NN->getName(), LHS, NN->getRHS()), F);           \
+    }                                                                          \
+    if (RHS != NN->getRHS()) {                                                 \
+      return simplifyNode(                                                     \
+          F->create##NodeKind(NN->getName(), NN->getLHS(), RHS), F);           \
+    }                                                                          \
+  }
+
+  SIMPLIFY_OPERANDS(Add)
+  SIMPLIFY_OPERANDS(Mul)
+  SIMPLIFY_OPERANDS(Div)
+  SIMPLIFY_OPERANDS(Sub)
+  SIMPLIFY_OPERANDS(Max)
+  SIMPLIFY_OPERANDS(Min)
+  SIMPLIFY_OPERANDS(CmpLTE)
+#undef SIMPLIFY_OPERANDS
+
+// Simplify commutative nodes by moving the constant operator to the right-hand
+// side.
+// Example:  C + X  =>  X + C
+#define COMMUTE_CONST_TO_RHS(NodeKind)                                         \
+  if (auto *NN = dyn_cast<NodeKind##Node>(node))                               \
+    if (isConstant(NN->getLHS()) && !isConstant(NN->getRHS())) {               \
+      return F->create##NodeKind(NN->getName(), NN->getRHS(), NN->getLHS());   \
     }
 
+  COMMUTE_CONST_TO_RHS(Add)
+  COMMUTE_CONST_TO_RHS(Mul)
+  COMMUTE_CONST_TO_RHS(Max)
+  COMMUTE_CONST_TO_RHS(Min)
+#undef COMMUTE_CONST_TO_RHS
+
+  if (auto *AN = dyn_cast<AddNode>(node)) {
     // X + 0 => X
     if (isZero(AN->getRHS())) {
       return AN->getLHS();
     }
-
-    // C + X  =>  X + C
-    if (isConstant(AN->getLHS()) && !isConstant(AN->getRHS())) {
-      return F->createAdd(AN->getName(), AN->getRHS(), AN->getLHS());
-    }
   }
 
   if (auto *MN = dyn_cast<MulNode>(node)) {
-    // Simplify the operands of the Mul node.
-    Node *LHS = simplifyNode(MN->getLHS(), F);
-    Node *RHS = simplifyNode(MN->getRHS(), F);
-    if (LHS != MN->getLHS()) {
-      return simplifyNode(F->createMul(MN->getName(), LHS, MN->getRHS()), F);
-    }
-    if (RHS != MN->getRHS()) {
-      return simplifyNode(F->createMul(MN->getName(), MN->getLHS(), RHS), F);
-    }
-
     // X * 0 => 0
     if (isZero(MN->getRHS())) {
       return MN->getRHS();
-    }
-
-    // C * X  =>  X * C
-    if (isConstant(MN->getLHS()) && !isConstant(MN->getRHS())) {
-      return F->createMul(MN->getName(), MN->getRHS(), MN->getLHS());
     }
   }
 
   // 0 / X => 0
   if (auto *DN = dyn_cast<DivNode>(node)) {
-    Node *LHS = simplifyNode(DN->getLHS(), F);
-    Node *RHS = simplifyNode(DN->getRHS(), F);
-    if (LHS != DN->getLHS()) {
-      return simplifyNode(F->createDiv(DN->getName(), LHS, DN->getRHS()), F);
-    }
-    if (RHS != DN->getRHS()) {
-      return simplifyNode(F->createDiv(DN->getName(), DN->getLHS(), RHS), F);
-    }
-
     if (isZero(DN->getLHS())) {
       return DN->getLHS();
     }
@@ -197,15 +197,6 @@ static Node *simplifyNode(Node *node, Function *F) {
 
   // X - 0 => X
   if (auto *SN = dyn_cast<SubNode>(node)) {
-    Node *LHS = simplifyNode(SN->getLHS(), F);
-    Node *RHS = simplifyNode(SN->getRHS(), F);
-    if (LHS != SN->getLHS()) {
-      return simplifyNode(F->createSub(SN->getName(), LHS, SN->getRHS()), F);
-    }
-    if (RHS != SN->getRHS()) {
-      return simplifyNode(F->createSub(SN->getName(), SN->getLHS(), RHS), F);
-    }
-
     if (isZero(SN->getRHS())) {
       return SN->getLHS();
     }
@@ -587,8 +578,7 @@ static void optimizeArithmeticNodes(Function *F) {
 
   // Add all of the interesting nodes to the worklist.
   for (auto *node : F->getNodes()) {
-    if (isa<AddNode>(node) || isa<MulNode>(node) || isa<DivNode>(node) ||
-        isa<SubNode>(node)) {
+    if (node->isArithmetic()) {
       worklist.push_back(node);
     }
   }
