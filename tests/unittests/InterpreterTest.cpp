@@ -43,8 +43,7 @@ TEST(Interpreter, interpret) {
   auto *MP2 = F->createPoolMax("pool3", RL2, 2, 2, 0);
 
   auto *FCL1 = F->createFullyConnected("fc", MP2, 10);
-  auto *RL3 = F->createRELU("relu4", FCL1);
-  auto *SM = F->createSoftMax("sm", RL3, ex);
+  auto *SM = F->createSoftMax("sm", FCL1, ex);
   F->createSave("ret", SM);
 
   EE.compile(CompilationMode::Infer, F);
@@ -342,8 +341,7 @@ TEST(Interpreter, circle) {
   auto *FCL0 = F->createFullyConnected("fc1", A, 8);
   auto *T0 = F->createTanh("tanh1", FCL0);
   auto *FCL1 = F->createFullyConnected("fc2", T0, 2);
-  auto *T1 = F->createTanh("tanh2", FCL1);
-  auto *SM = F->createSoftMax("soft", T1, S);
+  auto *SM = F->createSoftMax("soft", FCL1, S);
   auto *result = F->createSave("ret", SM);
 
   Function *TF = glow::differentiate(F, EE.getConfig());
