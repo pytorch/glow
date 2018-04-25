@@ -496,6 +496,41 @@ TEST_F(GraphOptz, SliceOfSplatNode) {
   EXPECT_TRUE(CN->getType()->dims().equals({94, 73, 35}));
 }
 
+TEST_F(GraphOptz, ZeroArithmetic) {
+  // Tests the identities: [0 + X = X] [0 * X = 0] [0 / X = 0]
+
+  Node *input = mod_.createVariable(ElemKind::FloatTy, {4, 10}, "input",
+                                    Variable::VisibilityKind::Public);
+
+  // This builds the expression: ((0 / I) + (0 + I) + (0 * I)) - 0
+
+  auto *zero = F_->createSplat("zero", input->getType(), 0.);
+
+  auto *div = F_->createDiv("div", zero, input); // -> zero
+
+  auto *add = F_->createAdd("add", zero, input); // -> input
+
+  auto *mul = F_->createMul("mul", zero, input); // -> zero
+
+  auto *add3 = F_->createAdd("add", div, add);
+
+  add3 = F_->createAdd("add", add3, mul);
+
+  auto *sub = F_->createSub("sub", add3, zero); // -> input
+
+  SaveNode *O = F_->createSave("ret", sub);
+
+  // The expression evaluates to "I".
+
+  EXPECT_EQ(F_->getNodes().size(), 8);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  EXPECT_EQ(F_->getNodes().size(), 1);
+
+  EXPECT_EQ(O->getInput().getNode(), input);
+}
+
 TEST(GraphOptzTest, SliceOfSplatNodeChain) {
   for (int shouldReverse = 0; shouldReverse <= 1; shouldReverse++) {
     Module mod;

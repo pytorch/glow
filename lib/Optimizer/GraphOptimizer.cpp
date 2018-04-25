@@ -485,6 +485,65 @@ static void optimizeConcatNodes(Function *F) {
   }
 }
 
+/// \returns True if the node \p N always evaluates to zero.
+bool isZero(Node *N) {
+  SplatNode *Z = dyn_cast<SplatNode>(N);
+  if (!Z)
+    return false;
+
+  return (Z->getValue() == 0);
+}
+
+/// Optimize arithmetic nodes by detecting simple arithmetic identities.
+static void optimizeArithmeticNodes(Function *F) {
+  auto &nodes = F->getNodes();
+
+  // For each node:
+  for (auto const &node : nodes) {
+    if (auto *AN = dyn_cast<AddNode>(node)) {
+      // X == X + 0
+      if (isZero(AN->getRHS())) {
+        AN->getResult().replaceAllUsesOfWith(AN->getLHS());
+        continue;
+      }
+      // X == 0 + X
+      if (isZero(AN->getLHS())) {
+        AN->getResult().replaceAllUsesOfWith(AN->getRHS());
+        continue;
+      }
+    }
+
+    if (auto *MN = dyn_cast<MulNode>(node)) {
+      // 0 == X * 0
+      if (isZero(MN->getRHS())) {
+        MN->getResult().replaceAllUsesOfWith(MN->getRHS());
+        continue;
+      }
+      // 0 == 0 * X
+      if (isZero(MN->getLHS())) {
+        MN->getResult().replaceAllUsesOfWith(MN->getLHS());
+        continue;
+      }
+    }
+
+    if (auto *DN = dyn_cast<DivNode>(node)) {
+      // 0 == 0 / X
+      if (isZero(DN->getLHS())) {
+        DN->getResult().replaceAllUsesOfWith(DN->getLHS());
+        continue;
+      }
+    }
+
+    if (auto *SN = dyn_cast<SubNode>(node)) {
+      // X == X - 0
+      if (isZero(SN->getRHS())) {
+        SN->getResult().replaceAllUsesOfWith(SN->getLHS());
+        continue;
+      }
+    }
+  }
+}
+
 /// Statically transpose private variables.
 static void optimizeTranspose(Function *F) {
   auto &nodes = F->getNodes();
@@ -852,8 +911,12 @@ void glow::optimize(Function *F, CompilationMode mode) {
   // Optimize Concat nodes.
   optimizeConcatNodes(F);
 
+  // Optimize arithmetic nodes based on algebraic identities.
+  optimizeArithmeticNodes(F);
+
   // Optimize Tensor shape transformations.
   optimizeSliceOfSplat(F);
+
   optimizeReshape(F);
 
   // Optimize things that are related to quantization.
