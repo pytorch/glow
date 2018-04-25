@@ -33,10 +33,10 @@
 #include "llvm/Target/TargetMachine.h"
 
 using namespace glow;
-using llvm::StringRef;
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
+using llvm::StringRef;
 
 llvm::cl::OptionCategory CPUBackendCat("Glow CPU Backend Options");
 
