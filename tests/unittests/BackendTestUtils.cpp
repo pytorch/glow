@@ -10,6 +10,10 @@ namespace glow {
 
 using llvm::cast;
 
+#define VarFrom(T)                                                             \
+  mod.createVariable(&T->getType(), #T, Variable::VisibilityKind::Public,      \
+                     Variable::TrainKind::None)
+
 void inferBatchedAddNet(Tensor *batch, Tensor *slice, Tensor *out,
                         BackendKind kind) {
   ExecutionEngine EE(kind);
@@ -20,27 +24,16 @@ void inferBatchedAddNet(Tensor *batch, Tensor *slice, Tensor *out,
   Variable *outVar;
   TypeRef OT;
   if (batch->getType().isQuantizedType()) {
-    auto &batchType = batch->getType();
-    auto &sliceType = slice->getType();
     auto &outType = out->getType();
-    batchVar = mod.createVariable(batch->getElementType(), batch->dims(),
-                                  batchType.getScale(), batchType.getOffset(),
-                                  "batch", Variable::VisibilityKind::Public);
-    sliceVar = mod.createVariable(slice->getElementType(), slice->dims(),
-                                  sliceType.getScale(), sliceType.getOffset(),
-                                  "slice", Variable::VisibilityKind::Public);
-    outVar = mod.createVariable(out->getElementType(), out->dims(),
-                                outType.getScale(), outType.getOffset(), "out",
-                                Variable::VisibilityKind::Public);
+    batchVar = VarFrom(batch);
+    sliceVar = VarFrom(slice);
+    outVar = VarFrom(out);
     OT = F->getParent()->uniqueType(out->getElementType(), out->dims(),
                                     outType.getScale(), outType.getOffset());
   } else {
-    batchVar = mod.createVariable(batch->getElementType(), batch->dims(),
-                                  "batch", Variable::VisibilityKind::Public);
-    sliceVar = mod.createVariable(slice->getElementType(), slice->dims(),
-                                  "slice", Variable::VisibilityKind::Public);
-    outVar = mod.createVariable(out->getElementType(), out->dims(), "out",
-                                Variable::VisibilityKind::Public);
+    batchVar = VarFrom(batch);
+    sliceVar = VarFrom(slice);
+    outVar = VarFrom(out);
     OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
   }
   auto *batchedadd = F->createBatchedAdd("batchedadd", OT, batchVar, sliceVar);
@@ -54,8 +47,7 @@ void inferBatchedReduceAddNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                 "input", Variable::VisibilityKind::Public);
+  auto *var = VarFrom(inputs);
   auto *batchedreduce = F->createBatchedReduceAdd("batchedreduce", var);
   auto result = F->createSave("ret", batchedreduce);
   EE.compile(CompilationMode::Infer, F);
@@ -74,33 +66,18 @@ void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
   Variable *outVar;
   TypeRef OT;
   if (inputs->getType().isQuantizedType()) {
-    auto &inputType = inputs->getType();
-    auto &filterType = filter->getType();
-    auto &biasType = bias->getType();
     auto &outType = out->getType();
-    inputVar = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                  inputType.getScale(), inputType.getOffset(),
-                                  "input", Variable::VisibilityKind::Public);
-    filterVar = mod.createVariable(
-        filter->getElementType(), filter->dims(), filterType.getScale(),
-        filterType.getOffset(), "filter", Variable::VisibilityKind::Public);
-    biasVar = mod.createVariable(bias->getElementType(), bias->dims(),
-                                 biasType.getScale(), biasType.getOffset(),
-                                 "bias", Variable::VisibilityKind::Public);
-    outVar = mod.createVariable(out->getElementType(), out->dims(),
-                                outType.getScale(), outType.getOffset(), "out",
-                                Variable::VisibilityKind::Public);
+    inputVar = VarFrom(inputs);
+    filterVar = VarFrom(filter);
+    biasVar = VarFrom(bias);
+    outVar = VarFrom(out);
     OT = F->getParent()->uniqueType(out->getElementType(), out->dims(),
                                     outType.getScale(), outType.getOffset());
   } else {
-    inputVar = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                  "input", Variable::VisibilityKind::Public);
-    filterVar = mod.createVariable(filter->getElementType(), filter->dims(),
-                                   "filter", Variable::VisibilityKind::Public);
-    biasVar = mod.createVariable(bias->getElementType(), bias->dims(), "bias",
-                                 Variable::VisibilityKind::Public);
-    outVar = mod.createVariable(out->getElementType(), out->dims(), "out",
-                                Variable::VisibilityKind::Public);
+    inputVar = VarFrom(inputs);
+    filterVar = VarFrom(filter);
+    biasVar = VarFrom(bias);
+    outVar = VarFrom(out);
     OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
   }
   auto *conv =
@@ -121,12 +98,8 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   EE.getConfig().L2Decay = 0.01;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                  "input", Variable::VisibilityKind::Public,
-                                  Variable::TrainKind::None);
-  auto *var2 = mod.createVariable(selected->getElementType(), selected->dims(),
-                                  "selected", Variable::VisibilityKind::Public,
-                                  Variable::TrainKind::None);
+  auto *var1 = VarFrom(inputs);
+  auto *var2 = VarFrom(selected);
   auto *conv1 = F->createConv("conv1", var1, 3, 3, 2, 1, 1);
   cast<Variable>(conv1->getFilter())->copyFrom(kernel1);
   cast<Variable>(conv1->getBias())->copyFrom(bias1);
@@ -152,11 +125,8 @@ void inferGatherNet(Tensor *data, Tensor *indices, Tensor *dest,
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *dataV = mod.createVariable(data->getElementType(), data->dims(), "data",
-                                   Variable::VisibilityKind::Public);
-  auto *indicesV =
-      mod.createVariable(indices->getElementType(), indices->dims(), "indices",
-                         Variable::VisibilityKind::Public);
+  auto *dataV = VarFrom(data);
+  auto *indicesV = VarFrom(indices);
   auto *gather = F->createGather("gather", dataV, indicesV);
   auto *result = F->createSave("ret", gather);
   EE.compile(CompilationMode::Infer, F);
@@ -169,8 +139,7 @@ void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                 "input", Variable::VisibilityKind::Public);
+  auto *var = VarFrom(inputs);
   auto *lrn = F->createLocalResponseNormalization("lrn", var, 5, 3.0, 0.5, 1.5);
   auto result = F->createSave("ret", lrn);
   EE.compile(CompilationMode::Infer, F);
@@ -189,11 +158,8 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
   EE.getConfig().L2Decay = 0.01;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                  "input", Variable::VisibilityKind::Public);
-  auto *var2 = mod.createVariable(selected->getElementType(), selected->dims(),
-                                  "selected", Variable::VisibilityKind::Public,
-                                  Variable::TrainKind::None);
+  auto *var1 = VarFrom(inputs);
+  auto *var2 = VarFrom(selected);
   auto *fc = F->createFullyConnected("fc", var1, bias->dims()[0]);
   cast<Variable>(fc->getWeights())->copyFrom(weights);
   cast<Variable>(fc->getBias())->copyFrom(bias);
@@ -222,27 +188,16 @@ void inferMatMulNet(Tensor *lhs, Tensor *rhs, Tensor *out, BackendKind kind) {
   Variable *outVar;
   TypeRef OT;
   if (lhs->getType().isQuantizedType()) {
-    auto &lhsType = lhs->getType();
-    auto &rhsType = rhs->getType();
     auto &outType = out->getType();
-    lhsVar = mod.createVariable(lhs->getElementType(), lhs->dims(),
-                                lhsType.getScale(), lhsType.getOffset(), "lhs",
-                                Variable::VisibilityKind::Public);
-    rhsVar = mod.createVariable(rhs->getElementType(), rhs->dims(),
-                                rhsType.getScale(), rhsType.getOffset(), "rhs",
-                                Variable::VisibilityKind::Public);
-    outVar = mod.createVariable(out->getElementType(), out->dims(),
-                                outType.getScale(), outType.getOffset(), "out",
-                                Variable::VisibilityKind::Public);
+    lhsVar = VarFrom(lhs);
+    rhsVar = VarFrom(rhs);
+    outVar = VarFrom(out);
     OT = F->getParent()->uniqueType(out->getElementType(), out->dims(),
                                     outType.getScale(), outType.getOffset());
   } else {
-    lhsVar = mod.createVariable(lhs->getElementType(), lhs->dims(), "lhs",
-                                Variable::VisibilityKind::Public);
-    rhsVar = mod.createVariable(rhs->getElementType(), rhs->dims(), "rhs",
-                                Variable::VisibilityKind::Public);
-    outVar = mod.createVariable(out->getElementType(), out->dims(), "out",
-                                Variable::VisibilityKind::Public);
+    lhsVar = VarFrom(lhs);
+    rhsVar = VarFrom(rhs);
+    outVar = VarFrom(out);
     OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
   }
   auto *matmul = F->createMatMul("matmul", OT, lhsVar, rhsVar);
@@ -257,10 +212,8 @@ void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = mod.createVariable(inputs1->getElementType(), inputs1->dims(),
-                                  "input1", Variable::VisibilityKind::Public);
-  auto *var2 = mod.createVariable(inputs2->getElementType(), inputs2->dims(),
-                                  "input2", Variable::VisibilityKind::Public);
+  auto *var1 = VarFrom(inputs1);
+  auto *var2 = VarFrom(inputs2);
   auto *max = F->createMax("max", var1, var2);
   auto result = F->createSave("ret", max);
   EE.compile(CompilationMode::Infer, F);
@@ -273,10 +226,8 @@ void inferMinNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = mod.createVariable(inputs1->getElementType(), inputs1->dims(),
-                                  "input1", Variable::VisibilityKind::Public);
-  auto *var2 = mod.createVariable(inputs2->getElementType(), inputs2->dims(),
-                                  "input2", Variable::VisibilityKind::Public);
+  auto *var1 = VarFrom(inputs1);
+  auto *var2 = VarFrom(inputs2);
   auto *min = F->createMin("min", var1, var2);
   auto result = F->createSave("ret", min);
   EE.compile(CompilationMode::Infer, F);
@@ -288,8 +239,7 @@ void inferPoolAvgNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                 "input", Variable::VisibilityKind::Public);
+  auto *var = VarFrom(inputs);
   auto *pool = F->createPoolAvg("pool", var, 3, 3, 1);
   auto result = F->createSave("ret", pool);
   EE.compile(CompilationMode::Infer, F);
@@ -307,11 +257,8 @@ void trainPoolAvgNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   EE.getConfig().L2Decay = 0.01;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                  "input", Variable::VisibilityKind::Public);
-  auto *var2 = mod.createVariable(selected->getElementType(), selected->dims(),
-                                  "selected", Variable::VisibilityKind::Public,
-                                  Variable::TrainKind::None);
+  auto *var1 = VarFrom(inputs);
+  auto *var2 = VarFrom(selected);
   auto *fc = F->createFullyConnected("fc", var1, bias->dims()[0]);
   cast<Variable>(fc->getWeights())->copyFrom(weights);
   cast<Variable>(fc->getBias())->copyFrom(bias);
@@ -334,8 +281,7 @@ void inferPoolMaxNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                 "input", Variable::VisibilityKind::Public);
+  auto *var = VarFrom(inputs);
   auto *pool = F->createPoolMax("pool", var, 4, 2, 3);
   auto result = F->createSave("ret", pool);
   EE.compile(CompilationMode::Infer, F);
@@ -353,11 +299,8 @@ void trainPoolMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   EE.getConfig().L2Decay = 0.003;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                  "input", Variable::VisibilityKind::Public);
-  auto *var2 = mod.createVariable(selected->getElementType(), selected->dims(),
-                                  "selected", Variable::VisibilityKind::Public,
-                                  Variable::TrainKind::None);
+  auto *var1 = VarFrom(inputs);
+  auto *var2 = VarFrom(selected);
   auto *fc = F->createFullyConnected("fc", var1, bias->dims()[0]);
   cast<Variable>(fc->getWeights())->copyFrom(weights);
   cast<Variable>(fc->getBias())->copyFrom(bias);
@@ -381,8 +324,7 @@ void inferQuantizeNet(Tensor *inputs, float scale, int32_t offset, Tensor *out,
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                 "input", Variable::VisibilityKind::Public);
+  auto *var = VarFrom(inputs);
   auto QT1 = F->getParent()->uniqueType(ElemKind::Int8QTy, inputs->dims(),
                                         scale, offset);
   auto QT2 = F->getParent()->uniqueType(ElemKind::Int8QTy, inputs->dims(),
@@ -400,8 +342,7 @@ void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                 "input", Variable::VisibilityKind::Public);
+  auto *var = VarFrom(inputs);
   auto *relu = F->createRELU("relu", var);
   auto result = F->createSave("ret", relu);
   EE.compile(CompilationMode::Infer, F);
@@ -414,8 +355,7 @@ void inferReshapeNet(Tensor *inputs, llvm::ArrayRef<size_t> shape, Tensor *out,
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                 "input", Variable::VisibilityKind::Public);
+  auto *var = VarFrom(inputs);
   auto *reshape = F->createReshape("reshape", var, shape);
   auto result = F->createSave("ret", reshape);
   EE.compile(CompilationMode::Infer, F);
@@ -428,12 +368,9 @@ void inferSelectNet(Tensor *cond, Tensor *inputs1, Tensor *inputs2, Tensor *out,
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = mod.createVariable(cond->getElementType(), cond->dims(), "cond",
-                                  Variable::VisibilityKind::Public);
-  auto *var2 = mod.createVariable(inputs1->getElementType(), inputs1->dims(),
-                                  "input1", Variable::VisibilityKind::Public);
-  auto *var3 = mod.createVariable(inputs2->getElementType(), inputs2->dims(),
-                                  "input2", Variable::VisibilityKind::Public);
+  auto *var1 = VarFrom(cond);
+  auto *var2 = VarFrom(inputs1);
+  auto *var3 = VarFrom(inputs2);
   auto *select = F->createSelect("cond", var1, var2, var3);
   auto result = F->createSave("ret", select);
   EE.compile(CompilationMode::Infer, F);
@@ -445,8 +382,7 @@ void inferSigmoidNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                 "input", Variable::VisibilityKind::Public);
+  auto *var = VarFrom(inputs);
   auto *sigmoid = F->createSigmoid("sigmoid", var);
   auto result = F->createSave("ret", sigmoid);
   EE.compile(CompilationMode::Infer, F);
@@ -459,10 +395,8 @@ void inferSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                  "input", Variable::VisibilityKind::Public);
-  auto *var2 = mod.createVariable(selected->getElementType(), selected->dims(),
-                                  "selected", Variable::VisibilityKind::Public);
+  auto *var1 = VarFrom(inputs);
+  auto *var2 = VarFrom(selected);
   auto *softmax = F->createSoftMax("softmax", var1, var2);
   auto result = F->createSave("ret", softmax);
   EE.compile(CompilationMode::Infer, F);
@@ -478,11 +412,8 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   EE.getConfig().L2Decay = 0.001;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                  "input", Variable::VisibilityKind::Public);
-  auto *var2 = mod.createVariable(selected->getElementType(), selected->dims(),
-                                  "selected", Variable::VisibilityKind::Public,
-                                  Variable::TrainKind::None);
+  auto *var1 = VarFrom(inputs);
+  auto *var2 = VarFrom(selected);
   auto *fc = F->createFullyConnected("fc", var1, bias->dims()[0]);
   cast<Variable>(fc->getWeights())->copyFrom(weights);
   cast<Variable>(fc->getBias())->copyFrom(bias);
@@ -502,8 +433,7 @@ void inferTanhNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                 "input", Variable::VisibilityKind::Public);
+  auto *var = VarFrom(inputs);
   auto *tanh = F->createTanh("tanh", var);
   auto result = F->createSave("ret", tanh);
   EE.compile(CompilationMode::Infer, F);
@@ -516,8 +446,7 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                 "input", Variable::VisibilityKind::Public);
+  auto *var = VarFrom(inputs);
   auto *tr = F->createTranspose("tr", var, {0, 2, 3, 1});
   auto *conv = F->createConv("conv", tr, convDepth, 5, 2, 1, 1);
   cast<Variable>(conv->getFilter())->getHandle().clear(2);
@@ -533,8 +462,7 @@ void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                 "input", Variable::VisibilityKind::Public);
+  auto *var = VarFrom(inputs);
   auto *tr = F->createTranspose("tr", var, {0, 2, 3, 1});
   auto *fc = F->createFullyConnected("fc", tr, 16);
   auto *rl0 = F->createRELU("relu", fc);
@@ -552,8 +480,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = mod.createVariable(inputs->getElementType(), inputs->dims(),
-                                 "input", Variable::VisibilityKind::Public);
+  auto *var = VarFrom(inputs);
   auto *selected = mod.createVariable(ElemKind::IndexTy, {2, 1}, "selected");
 
   auto *tr = F->createTranspose("tr", var, {0, 2, 3, 1});
@@ -580,14 +507,10 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = mod.createVariable(inputs1->getElementType(), inputs1->dims(),
-                                  "inputs1", Variable::VisibilityKind::Public);
-  auto *var2 = mod.createVariable(inputs2->getElementType(), inputs2->dims(),
-                                  "inputs2", Variable::VisibilityKind::Public);
-  auto *var3 = mod.createVariable(inputs3->getElementType(), inputs3->dims(),
-                                  "inputs3", Variable::VisibilityKind::Public);
-  auto *var4 = mod.createVariable(inputs4->getElementType(), inputs4->dims(),
-                                  "inputs4", Variable::VisibilityKind::Public);
+  auto *var1 = VarFrom(inputs1);
+  auto *var2 = VarFrom(inputs2);
+  auto *var3 = VarFrom(inputs3);
+  auto *var4 = VarFrom(inputs4);
   auto *conv1 = F->createConv("conv1", var1, 6, 4, 1, 2, 1);
   cast<Variable>(conv1->getFilter())->getHandle().clear(0.5);
   cast<Variable>(conv1->getBias())->getHandle().clear(0.7);
