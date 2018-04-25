@@ -300,7 +300,8 @@ static bool canBeQuantized(const Node *node) {
 /// \param F Function which holds the non quantized \p node.
 /// \param node Node to be quantized.
 /// \param quantizedInputs Array of already quantized inputs to the result node.
-/// \param qParams Tensor quantization parameters for all outputs of the \p node.
+/// \param qParams Tensor quantization parameters for all outputs of the
+///        \p node.
 static Node *quantizeNode(Function *F, Node *node,
                           llvm::MutableArrayRef<Node *> quantizedInputs,
                           llvm::ArrayRef<TensorQuantizationParams> qParams) {
@@ -536,7 +537,7 @@ void generateQuantizedGraph(
       // 1) Quantize all of the inputs based on the profiles.
       //    Quantize only floating point inputs.
       auto quantizedInputs = quantizeInputs(F, node, nodeToTQP);
-      
+
       auto qParams = getQuantizationParameters(node, nodeToTQP);
 
       // 2) Quantize the node.
