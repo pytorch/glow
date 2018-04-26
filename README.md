@@ -155,7 +155,7 @@ Compiler](docs/Testing.md).
 
 Glow can be used to compile neural networks into object files containing native
 code.  We provide resnet50 (both quantized and non-quantized versions) as an
-example of this capability in `examples/compile_resnet50`.  See [Creating
+example of this capability in `examples/bundles/resnet50`.  See [Creating
 Standalone Executable Bundles](docs/AOT.md) for more detail.
 
 ## Contributing
