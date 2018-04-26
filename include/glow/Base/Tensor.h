@@ -139,21 +139,45 @@ public:
   Tensor &operator=(const Tensor &other) = delete;
 
   /// \returns unowned tensor using the same data buffer as the current tensor
-  /// but having different dimensions. This is essentially a different
-  /// view on the same data.
+  /// but having different dimensions \p dims. \p offsets represents an optional
+  /// offset into the tensor representing the location of the first element to
+  /// start a subview from. The returned unonwed tensor is essentially a
+  /// different view or subview on the same data.
   ///
   /// The lifetime of the returned unowned tensor should be always within
   /// the lifetime of its parent tensor, i.e. the unowned tensor should not
   /// outlive its parent tensor.
-  Tensor getUnowned(llvm::ArrayRef<size_t> dims) const {
+  Tensor getUnowned(llvm::ArrayRef<size_t> dims,
+                    llvm::ArrayRef<size_t> offsets = {}) const {
     Tensor unownedTensor;
-    unownedTensor.data_.setPointer(getData());
+
+    auto *firstElemPtr = getData();
+    if (offsets.size()) {
+      assert(offsets.size() == this->dims().size() &&
+             "Number of dims of tensor must equal number of dims in offsets");
+      // Find the index of the first element and use it to find the pointer to
+      // the first element.
+      size_t index = 0, pi = 1;
+      for (int i = this->dims().size() - 1; i >= 0; i--) {
+        index += pi * offsets[i];
+        pi *= this->dims()[i];
+      }
+      firstElemPtr = &firstElemPtr[index * type_.getElementSize()];
+    }
+
+    unownedTensor.data_.setPointer(firstElemPtr);
     unownedTensor.data_.setInt(1);
     unownedTensor.type_ = Type::newShape(getType(), dims);
-    assert(size() == unownedTensor.size() &&
-           "The size of the non-owned tensor should be "
-           "the same as the size of the original "
-           "tensor");
+    if (offsets.size() == 0) {
+      assert(size() == unownedTensor.size() && "The size of the unowned tensor "
+                                               "should the same as the size of "
+                                               "the original tensor");
+
+    } else {
+      assert(size() >= unownedTensor.size() && "The size of the unowned tensor "
+                                               "should be no greater than the "
+                                               "size of the original tensor");
+    }
     return unownedTensor;
   }
 
