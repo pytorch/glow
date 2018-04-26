@@ -374,6 +374,93 @@ TEST(Tensor, nonOwnedTensor) {
   H1.dump();
 }
 
+/// Verify that accessing/modifying a tensor with offsets correctly modifies the
+/// underlying base Tensor's data. Transforms a 2D tensor:
+/// 0.0 0.0 0.0       0.0 0.0 1.0
+/// 0.0 0.0 0.0  -->  1.0 2.0 1.0
+/// 0.0 0.0 0.0       1.0 1.0 0.0
+TEST(Tensor, modifyOffsetIntoTensor2D) {
+  // Zero out the base tensor.
+  Tensor orig(ElemKind::FloatTy, {3, 3});
+  orig.zero();
+
+  // View contiguous data from the original tensor from {0, 2} to {2, 1} as a
+  // single dimensional tensor of length 6.
+  Tensor subview = orig.getUnowned({6}, {0, 2});
+  auto H_subview = subview.getHandle<>();
+  // Clear this row of 6 to 1.0.
+  H_subview.clear(1.0);
+  // Set the 3rd element to 2.0.
+  H_subview.at({2}) = 2.0;
+
+  // Verify the underlying data was correctly modified, according to the picture
+  // above.
+  auto H_orig = orig.getHandle<>();
+  EXPECT_EQ(H_orig.at({0, 0}), 0.0);
+  EXPECT_EQ(H_orig.at({0, 1}), 0.0);
+  EXPECT_EQ(H_orig.at({0, 2}), 1.0);
+  EXPECT_EQ(H_orig.at({1, 0}), 1.0);
+  EXPECT_EQ(H_orig.at({1, 1}), 2.0);
+  EXPECT_EQ(H_orig.at({1, 2}), 1.0);
+  EXPECT_EQ(H_orig.at({2, 0}), 1.0);
+  EXPECT_EQ(H_orig.at({2, 1}), 1.0);
+  EXPECT_EQ(H_orig.at({2, 2}), 0.0);
+}
+
+/// Three-dimensional test of modifying a subtensor; similar in idea to the
+/// two-dimensional version, modifyOffsetIntoTensor2D.
+TEST(Tensor, modifyOffsetIntoTensor3D) {
+  // Zero out the base tensor.
+  Tensor orig(ElemKind::FloatTy, {4, 3, 2});
+  orig.zero();
+
+  // Get a 2D view of the subtensor.
+  Tensor subview = orig.getUnowned({2, 6}, {1, 0, 0});
+  auto H_subview = subview.getHandle<>();
+  // Clear subview to 1.0.
+  H_subview.clear(1.0);
+
+  // Verify the underlying data was correctly modified.
+  auto H_orig = orig.getHandle<>();
+  for (size_t i = 0; i < 4; i++) {
+    for (size_t j = 0; j < 3; j++) {
+      for (size_t k = 0; k < 2; k++) {
+        if (i == 1 || i == 2) {
+          EXPECT_EQ(H_orig.at({i, j, k}), 1.0);
+        } else {
+          EXPECT_EQ(H_orig.at({i, j, k}), 0.0);
+        }
+      }
+    }
+  }
+}
+
+/// Verify that checking equality using a sub-tensor with offsets works
+/// correctly.
+TEST(Tensor, equalsOffsetIntoTensor) {
+  // 0.0 1.0
+  // 2.0 3.0
+  // 4.0 5.0
+  // 6.0 7.0
+  Tensor orig(ElemKind::FloatTy, {4, 2});
+  auto H_orig = orig.getHandle<>();
+  H_orig = {0, 1, 2, 3, 4, 5, 6, 7};
+
+  // View the data from rows 2 and 3 (each of length 2) as a single dimensional
+  // tensor of size 4.
+  Tensor subview = orig.getUnowned({4}, {2, 0});
+  auto H_subview = subview.getHandle<>();
+
+  // Create another tensor with same expected dimensions/data as the subview.
+  Tensor recreatedSubview(ElemKind::FloatTy, {4});
+  auto H_recreatedSubview = recreatedSubview.getHandle<>();
+  H_recreatedSubview = {4, 5, 6, 7};
+
+  for (size_t i = 0; i < 4; i++) {
+    EXPECT_EQ(H_subview.at({i}), H_recreatedSubview.at({i}));
+  }
+}
+
 TEST(Tensor, externallyManagedPayload) {
   // Allocate and initialize payload "externally", without using the Tensor API.
   // For example the data may come from a different library, be read from a
