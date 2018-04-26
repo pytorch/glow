@@ -19,6 +19,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/IR/IR.h"
 #include "glow/Importer/Caffe2.h"
+#include "glow/Importer/ONNX.h"
 #include "glow/Quantization/Serialization.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -136,6 +137,13 @@ llvm::cl::opt<std::string> netDirectoryOpt(
 llvm::cl::alias NetDirectoryA("d", llvm::cl::desc("Alias for -directory"),
                               llvm::cl::aliasopt(netDirectoryOpt),
                               llvm::cl::cat(modelInputCat));
+llvm::cl::opt<std::string>
+    onnxModelFilenameOpt("onnx", llvm::cl::desc("Specify the ONNX model file"),
+                         llvm::cl::value_desc("onnxModelFilename"),
+                         llvm::cl::cat(modelInputCat), llvm::cl::Optional);
+llvm::cl::alias onnxModelFilenameAOpt("o", llvm::cl::desc("Alias for -onnx"),
+                                      llvm::cl::aliasopt(onnxModelFilenameOpt),
+                                      llvm::cl::cat(modelInputCat));
 
 llvm::cl::OptionCategory
     modelExportCat("How to export the Glow Intermediate Representation/Graphs",
@@ -253,13 +261,22 @@ int main(int argc, char **argv) {
   SaveNode *SM;
   Variable *i0;
   Variable *i1;
-  {
+  if (!netDescFilenameOpt.empty()) {
     caffe2ModelLoader LD(netDescFilenameOpt, netWeightFilenameOpt,
                          {"data", "gpu_0/data", "softmax_expected"},
                          {&data, &data, &expectedSoftmax}, *F);
     SM = LD.getRoot();
     i0 = llvm::cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
     i1 = llvm::cast<Variable>(LD.getOrCreateNodeByName("data"));
+  } else {
+    assert(inputImageFilenames.size() == 1 &&
+           "Batch image inference is not supported by ONNX models.");
+    ONNXModelLoader LD(onnxModelFilenameOpt,
+                       {"data_0", "gpu_0/data_0", "softmax_expected"},
+                       {&data, &data, &expectedSoftmax}, *F);
+    SM = LD.getRoot();
+    i0 = llvm::cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data_0"));
+    i1 = llvm::cast<Variable>(LD.getOrCreateNodeByName("data_0"));
   }
 
   assert(i0->getVisibilityKind() == VisibilityKind::Public);
