@@ -7,7 +7,7 @@ maintainable.
 
 ### Follow the LLVM and Facebook coding standards
 
-Use the facebook coding standards when writing c++ code. The Facebook coding
+Use the Facebook coding standards when writing c++ code. The Facebook coding
 standards are almost identical to the LLVM coding standards, except for lower
 case variable naming and the underscore suffix. The LLVM coding standards also
 covers topics that are compiler specific:
@@ -61,17 +61,16 @@ Here are some guidelines about the format of the commit message:
 Separate the commit message into a single-line title and a separate body that
 describes the change. Make the title short (80 chars) and readable.  In changes
 that are restricted to a specific part of the code, include a [tag] at the start
-of the line in square brackets—for example, “[docs] ... ”.
+of the line in square brackets, for example, "[docs] ... ".
 
 If the commit fixes an issue in the bug tracking system, include a link or a
 task number. When reverting a change make sure to add a short note that
 describes why the patch is being reverted.
 
-
 ### Code review
 
 The project relies on code review to maintain the software quality. Review other
-people’s changes! Anybody is allowed to review code and comment on patches.
+people's changes! Anybody is allowed to review code and comment on patches.
 
 All changes, by all developers, must be reviewed before they are committed to
 the repository.
