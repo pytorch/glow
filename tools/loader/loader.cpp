@@ -354,7 +354,9 @@ int main(int argc, char **argv) {
 
   Tensor &res = SM->getVariable()->getPayload();
   auto H = res.getHandle<>();
-  llvm::outs() << "Model: " << netDescFilenameOpt << "\n";
+  std::string modelPath =
+      !netDescFilenameOpt.empty() ? netDescFilenameOpt : onnxModelFilenameOpt;
+  llvm::outs() << "Model: " << modelPath << "\n";
   for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
     Tensor slice = H.extractSlice(i);
     auto SH = slice.getHandle<>();
