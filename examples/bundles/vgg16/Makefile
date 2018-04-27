@@ -53,5 +53,4 @@ download_weights:
 
 clean:
 	rm -rf ./build
-	rm -rf ./build_quantized
 	rm -f profile.yml
