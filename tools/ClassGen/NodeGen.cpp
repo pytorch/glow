@@ -117,7 +117,8 @@ int main(int argc, char **argv) {
       .addGradient()
       .setDocstring("Performs batch normalization on the Input tensor with the "
                     "provided Scale, Bias, Mean, Var, ChannelIdx, Epsilon, and "
-                    "Momentum. Similar to Caffe2 SpatialBN.");
+                    "Momentum. Similar to Caffe2 SpatialBN, and ONNX "
+                    "BatchNormalization operator.");
 
   BB.newNode("LocalResponseNormalization")
       .addInput("Input")
@@ -129,7 +130,7 @@ int main(int argc, char **argv) {
       .addGradient()
       .setDocstring("Performs local response normalization on the Input tensor "
                     "with the provided Scale, Bias, Mean, Var, ChannelIdx, "
-                    "Epsilon, and Momentum. Similar to Caffe2 LRN.");
+                    "Epsilon, and Momentum. Similar to Caffe2 and ONNX LRN.");
 
   //===--------------------------------------------------------------------===//
   //                      Loss operations

@@ -60,6 +60,11 @@ should install the required dependencies.
       libprotobuf-dev protobuf-compiler
   ```
 
+In order to support ONNX net serialization format, Glow requires
+`protobuf >= 2.6.1`, but the above command may install older
+version on older Ubuntu (e.g. 14.04). If this is the case, we suggest to look
+at `utils/install_protobuf.sh` to install newer version from source.
+
 Note, that OpenCL support is not trivial on Linux. We suggest to build without
 OpenCL for the first time.
 

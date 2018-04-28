@@ -14,7 +14,8 @@ additional layers of IR.
 ### High-level Graph
 
 The high-level IR is a graph-based representation that's similar to the graph
-that you may find inside Caffe.  When we load the model from a file, we construct
+that you may find inside Caffe or ONNX format. When we load the model from a
+file, we construct
 this graph in a direct translation of one operator to one node.  It's a simple
 graph that allows basic transformations such as swapping the order of nodes and
 removing nodes. The graph is strongly typed, which means that inputs and output

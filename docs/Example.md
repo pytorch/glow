@@ -7,9 +7,9 @@ this guide to help backend implementers understand the compilation pipeline.
 
 ## Creating a Network
 
-Glow provides C++ APIs for manually constructing a network.  (In practice, we
-expect Glow's frontend to be driven by Caffe2 models, but we show the C++ here
-to demystify that interface).
+Glow provides C++ APIs for manually constructing a network. (In practice, we
+expect Glow's frontend to be driven by Caffe2 and ONNX models, but we show the
+C++ here to demystify that interface).
 
 The following snippet constructs a graph of tensor operations, declares input
 and output variables, and compiles the graph for inference:
