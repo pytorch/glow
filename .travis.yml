@@ -19,7 +19,7 @@ matrix:
       before_install:
         - sudo apt-get -qq update
         - sudo apt-get install -y ninja-build llvm libpng-dev
-        - utils/install-protobuf.sh
+        - utils/install_protobuf.sh
       install:
         - mkdir build && cd build
         - cmake -G Ninja -DGLOW_USE_SANITIZER="Address;Undefined" -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=ON ../
@@ -29,7 +29,7 @@ matrix:
       before_install:
         - sudo apt-get -qq update
         - sudo apt-get install -y ninja-build llvm libpng-dev
-        - utils/install-protobuf.sh
+        - utils/install_protobuf.sh
       install:
         - mkdir build && cd build
         - cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=ON ../
@@ -41,7 +41,7 @@ matrix:
         - sudo apt-get -qq update
         - sudo apt-get install -y ninja-build llvm lcov libpng-dev
         - sudo pip install awscli --upgrade
-        - utils/install-protobuf.sh
+        - utils/install_protobuf.sh
       install:
         - mkdir build && cd build
         - cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_CPU=OFF -DGLOW_WITH_OPENCL=OFF -DGLOW_USE_COVERAGE=ON ../
