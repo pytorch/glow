@@ -92,7 +92,7 @@ void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
     assert(dims[2] == numChannels &&
            "All images must have the same number of channels");
 
-    // Convert to BGR, as this is what Caffe2 is expecting.
+    // Convert to BGR, as this is what imagenet models are expecting.
     for (unsigned z = 0; z < numChannels; z++) {
       for (unsigned y = 0; y < dims[1]; y++) {
         for (unsigned x = 0; x < dims[0]; x++) {
@@ -111,32 +111,34 @@ llvm::cl::list<std::string>
                         llvm::cl::OneOrMore);
 
 llvm::cl::OptionCategory modelInputCat("How to input the models",
-                                       "These control the caffe2 model paths");
-llvm::cl::opt<std::string>
-    netDescFilenameOpt("network",
-                       llvm::cl::desc("Specify the network structure file"),
-                       llvm::cl::value_desc("netDescFilename"),
-                       llvm::cl::cat(modelInputCat), llvm::cl::Optional);
-llvm::cl::alias netDescFilenameAOpt("n", llvm::cl::desc("Alias for -network"),
-                                    llvm::cl::aliasopt(netDescFilenameOpt),
-                                    llvm::cl::cat(modelInputCat));
-llvm::cl::opt<std::string>
-    netWeightFilenameOpt("weight",
-                         llvm::cl::desc("Specify the network weight file"),
-                         llvm::cl::value_desc("netWeightFilename"),
-                         llvm::cl::cat(modelInputCat), llvm::cl::Optional);
-llvm::cl::alias netWeightFileNameAOpt("w", llvm::cl::desc("Alias for -weight"),
-                                      llvm::cl::aliasopt(netWeightFilenameOpt),
-                                      llvm::cl::cat(modelInputCat));
-llvm::cl::opt<std::string> netDirectoryOpt(
-    "directory",
-    llvm::cl::desc("Specify the directory with the network structure "
-                   "<predict_net.pb> and weight <init_net.pb> files"),
-    llvm::cl::value_desc("netDirectory"), llvm::cl::cat(modelInputCat),
+                                       "These control the model paths");
+llvm::cl::opt<std::string> caffe2NetDescFilenameOpt(
+    "caffe2_network",
+    llvm::cl::desc("Specify the Caffe2 network structure file"),
+    llvm::cl::value_desc("caffe2NetDescFilename"), llvm::cl::cat(modelInputCat),
     llvm::cl::Optional);
-llvm::cl::alias NetDirectoryA("d", llvm::cl::desc("Alias for -directory"),
-                              llvm::cl::aliasopt(netDirectoryOpt),
+llvm::cl::alias
+    caffe2NetDescFilenameAOpt("n", llvm::cl::desc("Alias for -caffe2_network"),
+                              llvm::cl::aliasopt(caffe2NetDescFilenameOpt),
                               llvm::cl::cat(modelInputCat));
+llvm::cl::opt<std::string> caffe2NetWeightFilenameOpt(
+    "caffe2_weight", llvm::cl::desc("Specify the Caffe2 network weight file"),
+    llvm::cl::value_desc("caffe2NetWeightFilename"),
+    llvm::cl::cat(modelInputCat), llvm::cl::Optional);
+llvm::cl::alias
+    caffe2NetWeightFilenameAOpt("w", llvm::cl::desc("Alias for -caffe2_weight"),
+                                llvm::cl::aliasopt(caffe2NetWeightFilenameOpt),
+                                llvm::cl::cat(modelInputCat));
+llvm::cl::opt<std::string> caffe2NetDirectoryOpt(
+    "caffe2_directory",
+    llvm::cl::desc("Specify the directory with the Caffe2 network structure "
+                   "<predict_net.pb> and weight <init_net.pb> files"),
+    llvm::cl::value_desc("caffe2NetDirectory"), llvm::cl::cat(modelInputCat),
+    llvm::cl::Optional);
+llvm::cl::alias
+    caffe2NetDirectoryA("d", llvm::cl::desc("Alias for -caffe2_directory"),
+                        llvm::cl::aliasopt(caffe2NetDirectoryOpt),
+                        llvm::cl::cat(modelInputCat));
 llvm::cl::opt<std::string>
     onnxModelFilenameOpt("onnx", llvm::cl::desc("Specify the ONNX model file"),
                          llvm::cl::value_desc("onnxModelFilename"),
@@ -251,18 +253,22 @@ int main(int argc, char **argv) {
 
   loadImagesAndPreprocess(inputImageFilenames, &data, imageMode);
 
-  if (!netDirectoryOpt.empty()) {
-    netDescFilenameOpt.setValue(netDirectoryOpt + "/predict_net.pb");
-    netWeightFilenameOpt.setValue(netDirectoryOpt + "/init_net.pb");
+  if (!caffe2NetDirectoryOpt.empty()) {
+    caffe2NetDescFilenameOpt.setValue(caffe2NetDirectoryOpt +
+                                      "/predict_net.pb");
+    caffe2NetWeightFilenameOpt.setValue(caffe2NetDirectoryOpt + "/init_net.pb");
   }
+  std::string modelPath = !caffe2NetDescFilenameOpt.empty()
+                              ? caffe2NetDescFilenameOpt
+                              : onnxModelFilenameOpt;
 
   ExecutionEngine EE(ExecutionBackend);
-  Function *F = EE.getModule().createFunction(netDirectoryOpt);
+  Function *F = EE.getModule().createFunction(modelPath);
   SaveNode *SM;
   Variable *i0;
   Variable *i1;
-  if (!netDescFilenameOpt.empty()) {
-    caffe2ModelLoader LD(netDescFilenameOpt, netWeightFilenameOpt,
+  if (!caffe2NetDescFilenameOpt.empty()) {
+    caffe2ModelLoader LD(caffe2NetDescFilenameOpt, caffe2NetWeightFilenameOpt,
                          {"data", "gpu_0/data", "softmax_expected"},
                          {&data, &data, &expectedSoftmax}, *F);
     SM = LD.getRoot();
@@ -354,8 +360,6 @@ int main(int argc, char **argv) {
 
   Tensor &res = SM->getVariable()->getPayload();
   auto H = res.getHandle<>();
-  std::string modelPath =
-      !netDescFilenameOpt.empty() ? netDescFilenameOpt : onnxModelFilenameOpt;
   llvm::outs() << "Model: " << modelPath << "\n";
   for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
     Tensor slice = H.extractSlice(i);
