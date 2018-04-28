@@ -18,11 +18,12 @@ set.
 
 ## Model Loader
 
-We test the correctness of the Glow implementation by loading Caffe2 models and
-executing them end-to-end. The program 'loader' loads a model, a png file, and
-runs a single pass of inference. If everything goes right the output of the
-program is identical to the output of the Caffe2 model. Unfortunately, the caffe
-model does not describe what the input format should be. Should the pixels be
+We test the correctness of the Glow implementation by loading Caffe2 and ONNX
+models and executing them end-to-end. The program 'loader' loads a model,
+a png file, and runs a single pass of inference. If everything goes right the
+output of the program is identical to the output of the original (Caffe2 or
+ONNX) model. Unfortunately, the models do not usually describe what the input
+format should be. Should the pixels be
 between zero and one, or negative 128 to positive 128? The user needs to be
 aware of these things when running the models. The script in the directory
 'utils/' downloads a number of pre-trained networks that we can use for testing.
@@ -34,12 +35,12 @@ loader program. The script can be executed with the command:
   build$./tests/images/run.sh
   ```
 
-## Caffe2 Models
+## Caffe2 and ONNX Models
 
-The `loader` program loads pre-trained models from Caffe2. These pre-trained
-models are downloaded via the `download_caffe2_models.sh` script located in
-`utils/`. We also provide other scripts in `utils/` for working with Caffe2
-models.
+The `loader` program loads pre-trained models from protobuf file (either
+Caffe2 or ONNX). These pre-trained models are downloaded via
+`download_caffe2_models.sh` and `download_onnx_models.sh` scripts located in
+`utils/`.
 
 ### Train and Save Caffe2 Models
 
