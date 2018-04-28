@@ -17,6 +17,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Support/Support.h"
 
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -26,6 +27,17 @@
 using namespace glow;
 
 const size_t mnistNumImages = 50000;
+
+namespace {
+llvm::cl::OptionCategory mnistCat("MNIST Options");
+llvm::cl::opt<BackendKind> executionBackend(
+    llvm::cl::desc("Backend to use:"),
+    llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
+                                "Use interpreter (default option)"),
+                     clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
+                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
+    llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(mnistCat));
+} // namespace
 
 unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
   /// Load the MNIST database into 4D tensor of images and 2D tensor of labels.
@@ -83,7 +95,7 @@ void testMNIST() {
 
   unsigned minibatchSize = 8;
 
-  ExecutionEngine EE;
+  ExecutionEngine EE(executionBackend);
   llvm::Timer timer("Training", "Training");
 
   // Construct the network:
@@ -179,7 +191,8 @@ void testMNIST() {
               "Did not classify as many digits as expected");
 }
 
-int main() {
+int main(int argc, char **argv) {
+  llvm::cl::ParseCommandLineOptions(argc, argv, " The MNIST test\n\n");
   testMNIST();
 
   return 0;
