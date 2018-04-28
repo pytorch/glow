@@ -17,6 +17,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Support/Support.h"
 
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -25,6 +26,17 @@
 #include <iostream>
 
 using namespace glow;
+
+namespace {
+llvm::cl::OptionCategory cifarCat("CIFAR10 Options");
+llvm::cl::opt<BackendKind> executionBackend(
+    llvm::cl::desc("Backend to use:"),
+    llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
+                                "Use interpreter (default option)"),
+                     clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
+                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
+    llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(cifarCat));
+} // namespace
 
 /// The CIFAR file format is structured as one byte label in the range 0..9.
 /// The label is followed by an image: 32 x 32 pixels, in RGB format. Each
@@ -81,7 +93,7 @@ void testCIFAR10() {
   unsigned minibatchSize = 8;
 
   // Construct the network:
-  ExecutionEngine EE;
+  ExecutionEngine EE(executionBackend);
   EE.getConfig().learningRate = 0.001;
   EE.getConfig().momentum = 0.9;
   EE.getConfig().L2Decay = 0.0001;
@@ -161,7 +173,8 @@ void testCIFAR10() {
   }
 }
 
-int main() {
+int main(int argc, char **argv) {
+  llvm::cl::ParseCommandLineOptions(argc, argv, " The CIFAR10 test\n\n");
   testCIFAR10();
 
   return 0;
