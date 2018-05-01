@@ -23,6 +23,7 @@
 #include "glow/Quantization/Serialization.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
@@ -110,42 +111,17 @@ llvm::cl::list<std::string>
                         llvm::cl::desc("<input image files>"),
                         llvm::cl::OneOrMore);
 
-llvm::cl::OptionCategory modelInputCat("How to input the models",
-                                       "These control the model paths");
-llvm::cl::opt<std::string> caffe2NetDescFilenameOpt(
-    "caffe2_network",
-    llvm::cl::desc("Specify the Caffe2 network structure file"),
-    llvm::cl::value_desc("caffe2NetDescFilename"), llvm::cl::cat(modelInputCat),
-    llvm::cl::Optional);
-llvm::cl::alias
-    caffe2NetDescFilenameAOpt("n", llvm::cl::desc("Alias for -caffe2_network"),
-                              llvm::cl::aliasopt(caffe2NetDescFilenameOpt),
-                              llvm::cl::cat(modelInputCat));
-llvm::cl::opt<std::string> caffe2NetWeightFilenameOpt(
-    "caffe2_weight", llvm::cl::desc("Specify the Caffe2 network weight file"),
-    llvm::cl::value_desc("caffe2NetWeightFilename"),
-    llvm::cl::cat(modelInputCat), llvm::cl::Optional);
-llvm::cl::alias
-    caffe2NetWeightFilenameAOpt("w", llvm::cl::desc("Alias for -caffe2_weight"),
-                                llvm::cl::aliasopt(caffe2NetWeightFilenameOpt),
-                                llvm::cl::cat(modelInputCat));
-llvm::cl::opt<std::string> caffe2NetDirectoryOpt(
-    "caffe2_directory",
-    llvm::cl::desc("Specify the directory with the Caffe2 network structure "
-                   "<predict_net.pb> and weight <init_net.pb> files"),
-    llvm::cl::value_desc("caffe2NetDirectory"), llvm::cl::cat(modelInputCat),
-    llvm::cl::Optional);
-llvm::cl::alias
-    caffe2NetDirectoryA("d", llvm::cl::desc("Alias for -caffe2_directory"),
-                        llvm::cl::aliasopt(caffe2NetDirectoryOpt),
-                        llvm::cl::cat(modelInputCat));
-llvm::cl::opt<std::string>
-    onnxModelFilenameOpt("onnx", llvm::cl::desc("Specify the ONNX model file"),
-                         llvm::cl::value_desc("onnxModelFilename"),
-                         llvm::cl::cat(modelInputCat), llvm::cl::Optional);
-llvm::cl::alias onnxModelFilenameAOpt("o", llvm::cl::desc("Alias for -onnx"),
-                                      llvm::cl::aliasopt(onnxModelFilenameOpt),
-                                      llvm::cl::cat(modelInputCat));
+llvm::cl::list<std::string> modelPathOpt(
+    "model",
+    llvm::cl::desc(
+        "Specify one of three:\n"
+        "1. Path to ONNX model file.\n"
+        "2. Two paths to Caffe2 model files: network structure and weight.\n"
+        "3. Path to directory with the Caffe2 network structure "
+        "<predict_net.pb> and weight <init_net.pb> files."),
+    llvm::cl::value_desc("modelPath"), llvm::cl::Required, llvm::cl::OneOrMore);
+llvm::cl::alias modelPathAOpt("m", llvm::cl::desc("Alias for -model"),
+                              llvm::cl::aliasopt(modelPathOpt));
 
 llvm::cl::OptionCategory
     modelExportCat("How to export the Glow Intermediate Representation/Graphs",
@@ -253,22 +229,30 @@ int main(int argc, char **argv) {
 
   loadImagesAndPreprocess(inputImageFilenames, &data, imageMode);
 
-  if (!caffe2NetDirectoryOpt.empty()) {
-    caffe2NetDescFilenameOpt.setValue(caffe2NetDirectoryOpt +
-                                      "/predict_net.pb");
-    caffe2NetWeightFilenameOpt.setValue(caffe2NetDirectoryOpt + "/init_net.pb");
+  assert(modelPathOpt.size() <= 2 &&
+         "-model flag should have either 1 or 2 paths assigned. "
+         "Please see flag's description.");
+
+  std::string caffe2NetDescFilename, caffe2NetWeightFilename, onnxModelFilename;
+  if (modelPathOpt.size() == 1) {
+    if (llvm::sys::fs::is_directory(*modelPathOpt.begin())) {
+      caffe2NetDescFilename = modelPathOpt[0] + "/predict_net.pb";
+      caffe2NetWeightFilename = modelPathOpt[0] + "/init_net.pb";
+    } else {
+      onnxModelFilename = modelPathOpt[0];
+    }
+  } else {
+    caffe2NetDescFilename = modelPathOpt[0];
+    caffe2NetWeightFilename = modelPathOpt[1];
   }
-  std::string modelPath = !caffe2NetDescFilenameOpt.empty()
-                              ? caffe2NetDescFilenameOpt
-                              : onnxModelFilenameOpt;
 
   ExecutionEngine EE(ExecutionBackend);
-  Function *F = EE.getModule().createFunction(modelPath);
+  Function *F = EE.getModule().createFunction(modelPathOpt[0]);
   SaveNode *SM;
   Variable *i0;
   Variable *i1;
-  if (!caffe2NetDescFilenameOpt.empty()) {
-    caffe2ModelLoader LD(caffe2NetDescFilenameOpt, caffe2NetWeightFilenameOpt,
+  if (!caffe2NetDescFilename.empty()) {
+    caffe2ModelLoader LD(caffe2NetDescFilename, caffe2NetWeightFilename,
                          {"data", "gpu_0/data", "softmax_expected"},
                          {&data, &data, &expectedSoftmax}, *F);
     SM = LD.getRoot();
@@ -277,7 +261,7 @@ int main(int argc, char **argv) {
   } else {
     assert(inputImageFilenames.size() == 1 &&
            "Batch image inference is not supported by ONNX models.");
-    ONNXModelLoader LD(onnxModelFilenameOpt,
+    ONNXModelLoader LD(onnxModelFilename,
                        {"data_0", "gpu_0/data_0", "softmax_expected"},
                        {&data, &data, &expectedSoftmax}, *F);
     SM = LD.getRoot();
@@ -360,7 +344,7 @@ int main(int argc, char **argv) {
 
   Tensor &res = SM->getVariable()->getPayload();
   auto H = res.getHandle<>();
-  llvm::outs() << "Model: " << modelPath << "\n";
+  llvm::outs() << "Model: " << modelPathOpt[0] << "\n";
   for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
     Tensor slice = H.extractSlice(i);
     auto SH = slice.getHandle<>();
