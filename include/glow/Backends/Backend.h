@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_BACKEND_H
 
 #include "glow/Base/Traits.h"
+#include "glow/Optimizer/Optimizer.h"
 
 #include <llvm/ADT/StringRef.h>
 
@@ -62,8 +63,12 @@ public:
   /// cleaning up after itself.
   /// \returns True if the graph was modified.
   ///@{
-  virtual bool transformPreLowering(Function *F) { return false; }
-  virtual bool transformPostLowering(Function *F) { return false; }
+  virtual bool transformPreLowering(Function *F, CompilationMode mode) {
+    return false;
+  }
+  virtual bool transformPostLowering(Function *F, CompilationMode mode) {
+    return false;
+  }
   /// @}
 
   /// \returns true if backend supports given kind of operation with

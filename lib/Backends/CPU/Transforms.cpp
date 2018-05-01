@@ -78,7 +78,7 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
       CN->getKernel(), CN->getStride(), CN->getPad()));
 }
 
-bool CPUBackend::transformPostLowering(Function *F) {
+bool CPUBackend::transformPostLowering(Function *F, CompilationMode mode) {
   bool changed = false;
   for (auto node : F->getNodes()) {
 

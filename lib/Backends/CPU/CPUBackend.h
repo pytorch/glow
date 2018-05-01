@@ -85,7 +85,7 @@ public:
 
   void doForwardPass() override;
 
-  bool transformPostLowering(Function *F) override;
+  bool transformPostLowering(Function *F, CompilationMode mode) override;
 
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override;
   /// @}
