@@ -166,5 +166,5 @@ Standalone Executable Bundles](docs/AOT.md) for more detail.
 ## Contributing
 
 To get started, please refer to the following guides:
-* [Contributing](docs/Contributing.md)
+* [Contributing](CONTRIBUTING.md)
 * [CodingStandards](docs/CodingStandards.md)
