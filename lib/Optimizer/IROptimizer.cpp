@@ -1147,6 +1147,8 @@ static void performDebugInstrumentation(IRFunction &M) {
         name += Op.first->getName();
         name += ".";
         name += instrName;
+        name += ".";
+        name += (*it)->getKindName();
         auto *dumpInstr = new DebugPrintInst(&M, name, Op.first);
         M.insertInstruction(it, dumpInstr);
       }
@@ -1157,6 +1159,8 @@ static void performDebugInstrumentation(IRFunction &M) {
         name += Op.first->getName();
         name += ".";
         name += instrName;
+        name += ".";
+        name += (*it)->getKindName();
         auto *dumpInstr = new DebugPrintInst(&M, name, Op.first);
         M.insertInstruction(next, dumpInstr);
       }
