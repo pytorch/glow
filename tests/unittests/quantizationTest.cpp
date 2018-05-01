@@ -149,7 +149,7 @@ createSimpleGraphForQuantization(Module *M) {
                                            Variable::TrainKind::None);
   fillStableRandomData(A->getHandle(), 1100, 1);
 
-  auto *B = F->getParent()->createVariable(ElemKind::FloatTy, {10, 10}, "B",
+  auto *B = F->getParent()->createVariable(ElemKind::FloatTy, {10, 9}, "B",
                                            VisibilityKind::Public,
                                            Variable::TrainKind::None);
   fillStableRandomData(B->getHandle(), 2001, 1);
@@ -173,7 +173,7 @@ createSimpleGraphForQuantization(Module *M) {
 
   // Noop slice, make sure conversion quantization procedure works well.
   auto *S =
-      F->createSlice("slice", FC, {0, 0},
+      F->createSlice("slice", FC, {0, 1},
                      {FC->getResult().dims()[0], FC->getResult().dims()[1]});
   Variable *bias2 = cast<Variable>(FC->getBias());
   Variable *filter2 = cast<Variable>(FC->getWeights());

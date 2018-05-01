@@ -25,7 +25,6 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <fstream>
-#include <iostream>
 #include <unordered_set>
 
 using namespace glow;
@@ -622,8 +621,7 @@ SliceNode *Function::createSlice(llvm::StringRef name, NodeValue input,
          "Output and start dims should match");
 
   for (unsigned i = 0, e = input.dims().size(); i < e; i++) {
-    assert(start[i] < input.dims()[i] && "Invalid start position");
-    assert(outTy->dims()[i] == start[i] + input.dims()[i] &&
+    assert(start[i] + outTy->dims()[i] <= input.dims()[i] &&
            "Input/Output/Start dims mismatch");
   }
 
