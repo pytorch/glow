@@ -32,11 +32,7 @@ using llvm::dyn_cast;
 using llvm::isa;
 using llvm::StringRef;
 
-extern llvm::cl::OptionCategory CPUBackendCat;
-
-static llvm::cl::opt<bool>
-    emitDebugInfo("g", llvm::cl::desc("Emit debug information for debuggers"),
-                  llvm::cl::init(false), llvm::cl::cat(CPUBackendCat));
+extern llvm::cl::opt<bool> emitDebugInfo;
 
 void LLVMIRGen::setCurrentDebugLocation(llvm::IRBuilder<> &builder,
                                         glow::Instruction *I) {

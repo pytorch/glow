@@ -50,6 +50,10 @@ static llvm::cl::opt<bool>
                llvm::cl::desc("Dump the textual assembly of the jitted code"),
                llvm::cl::init(false), llvm::cl::cat(CPUBackendCat));
 
+llvm::cl::opt<bool>
+    emitDebugInfo("g", llvm::cl::desc("Emit debug information for debuggers"),
+                  llvm::cl::init(false), llvm::cl::cat(CPUBackendCat));
+
 /// Generate the LLVM MAttr list of attributes.
 static llvm::SmallVector<std::string, 0> getMachineAttributes() {
   llvm::SmallVector<std::string, 0> result;
@@ -207,12 +211,17 @@ void LLVMIRGen::performCodeGen() {
     llmodule_->print(llvm::outs(), nullptr);
   }
 
-  // Perform verification, but ignore any debug info errors for now.
-  // Debug info errors will be checked later by generateDebugInfo.
-  bool brokenDebugInfo = false;
-  (void)brokenDebugInfo;
-  assert(!llvm::verifyModule(getModule(), &llvm::errs(), &brokenDebugInfo) &&
-         "LLVM module verification error");
+  // Perform verification if no debug info is being emitted.
+  // Otherwise, the verification is performed later by
+  // generateDebugInfo, once the debug info emission is finalized.
+  if (!emitDebugInfo) {
+    // Perform verification, but ignore any debug info errors for now.
+    // Debug info errors will be checked later by generateDebugInfo.
+    bool brokenDebugInfo = false;
+    (void)brokenDebugInfo;
+    assert(!llvm::verifyModule(getModule(), &llvm::errs(), &brokenDebugInfo) &&
+           "LLVM module verification error");
+  }
 
   // Optimize the module.
   optimizeLLVMModule(func, getTargetMachine());
