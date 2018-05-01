@@ -610,6 +610,7 @@ void IRFunction::dump(llvm::raw_ostream &OS) {
   sb << "}\n";
 
   OS << sb.str();
+  OS.flush();
 }
 
 static std::string getEscapedDottyType(const TypeRef &type) {
@@ -719,8 +720,8 @@ void IRFunction::dumpDAG(const char *dotFilename) {
       stream << '"' << I << "\":f" << i << "->\"" << op.first
              << "\"[dir=" << getDottyArrowForCC(op.second) << "];\n";
     }
-    if (auto *pred = I->getPredicate()) {
-      stream << '"' << pred << "\"->\"" << I << "\":n;\n";
+    if (I->hasPredicate()) {
+      stream << '"' << I->getPredicate() << "\"->\"" << I << "\":n;\n";
     }
   }
 
