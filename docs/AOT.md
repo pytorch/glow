@@ -20,7 +20,7 @@ This document demonstrates how to produce a bundle for the host CPU using the
 'loader' tool.  We use the flag `-emit-bundle` to specify the output directory.
 
 ```
-loader image_file -image_mode=0to1 -d network_model_name -cpu -emit-bundle output_directory_name
+loader image_file -image_mode=0to1 -m network_model_name -cpu -emit-bundle output_directory_name
 ```
 
 The command above would compile the neural network model from the
@@ -130,7 +130,7 @@ The makefile provides the following targets:
 * `download_weights`: it downloads the Resnet50 network model in the Caffe2 format.
 * `build/resnet50.o`: it generates the bundle files using the Glow loader as described above.
   The concrete command line looks like this:
-  `loader tests/images/imagenet/cat_285.png -image_mode=0to1 -d resnet50 -cpu -emit-bundle build`
+  `loader tests/images/imagenet/cat_285.png -image_mode=0to1 -m resnet50 -cpu -emit-bundle build`
   It reads the network model from `resnet50` and generates the `resnet50.o`
   and `resnet50.weights` files into the `build` directory.
 * `build/main.o`:  it compiles the `resnet50_standalone.cpp` file, which is the main file of the project.
@@ -153,9 +153,9 @@ To build and run the example, you just need to execute:
 
 This run performs almost the same steps as non-quantized Resnet50 version
 except it emits bundle based on the quantization profile:
-`loader tests/images/imagenet/cat_285.png -image_mode=0to1 -d resnet50
+`loader tests/images/imagenet/cat_285.png -image_mode=0to1 -m resnet50
 -load_profile=profile.yml -cpu -emit-bundle build`
 
 The `profile.yml` itself is captured at a prior step by executing loader with the `dump_profile` option:
-`loader tests/images/imagenet/*.png -image_mode=0to1 -d resnet50 -dump_profile=profile.yml`.
+`loader tests/images/imagenet/*.png -image_mode=0to1 -m resnet50 -dump_profile=profile.yml`.
 See the makefile for details.

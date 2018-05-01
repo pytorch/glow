@@ -29,17 +29,17 @@ vgg16: build/main.o build/vgg16.o
 profile.yml: download_weights
 	# Capture quantization profile based on all inputs.
 	# Note, Interpreter backend is used to collect the profile data.
-	${LOADER} ${IMAGES}/*.png -image_mode=0to256 -dump_profile=profile.yml -d vgg16
+	${LOADER} ${IMAGES}/*.png -image_mode=0to256 -dump_profile=profile.yml -m vgg16
 
 ifeq ($(QUANTIZE),YES)
 build/vgg16.o: profile.yml
 	mkdir -p build
 	# Create bundle with quantized weights and computation graph.
-	${LOADER} ${IMAGES}/dog_207.png -image_mode=0to256 -load_profile=profile.yml -d vgg16 -cpu -emit-bundle build -g
+	${LOADER} ${IMAGES}/dog_207.png -image_mode=0to256 -load_profile=profile.yml -m vgg16 -cpu -emit-bundle build -g
 else
 build/vgg16.o: download_weights
 	mkdir -p build
-	${LOADER} ${IMAGES}/dog_207.png -image_mode=0to256 -d vgg16 -cpu -emit-bundle build -g
+	${LOADER} ${IMAGES}/dog_207.png -image_mode=0to256 -m vgg16 -cpu -emit-bundle build -g
 endif
 
 build/main.o: vgg16.cpp
