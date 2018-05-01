@@ -1,9 +1,9 @@
-## Design of the Glow IR
+## Design of the Glow Intermediate Representation
 
 ### Introduction
 
 This document describes the motivation behind the Glow intermediate
-representation and some implementation details.
+representation (IR) and some implementation details.
 
 Glow is a retargetable compiler that supports a number of different backends.
 This means that the first few layers of the compiler are target-independent, but
@@ -11,34 +11,44 @@ as you get closer to the different backends things start to diverge.  The first
 two levels of IR are shared between all targets. Different backends may have
 additional layers of IR.
 
-### High-level Graph
+### High-level IR
 
-The high-level IR is a graph-based representation that's similar to the graph
-that you may find inside Caffe or ONNX format. When we load the model from a
-file, we construct
-this graph in a direct translation of one operator to one node.  It's a simple
-graph that allows basic transformations such as swapping the order of nodes and
-removing nodes. The graph is strongly typed, which means that inputs and output
-have a known tensor type (dimension and element type), and that the types must
-match.
+The high-level IR is a dataflow node-based graph representation that is similar
+to a graph that you may find inside Caffe or in ONNX format. When we load a
+neural network model from some file we construct this graph with a direct
+translation of one operator to one or more nodes. The high-level IR is a simple
+graph that allows basic transformations such as replacing all uses of some node
+with another node and modifying the content of variables. The graph is strongly
+typed, which means that inputs and output have a known tensor type (consisting
+of the tensor's shape and element type), and that the types of nodes are
+verified by the compiler. For example, the element-wise add instruction must
+operate on operands of the same type.
 
-The Glow graph is structured as a Module that contains multiple functions that
+The Glow graph is structured as a module that contains multiple functions that
 contain multiple nodes. Variables, which are similar to global variables in C
-programs, are shared between the functions. Nodes inside functions are able to
-reference variables, which are owned by the module. The picture below depicts a
-module that contains two functions.  One of the functions does the training of
-the weights, and the other function runs the inference.
+programs, are persistent tensors shared between the functions. Nodes inside
+functions are able to reference variables which are owned by the module. A
+module may have multiple functions. For example, one module could contain both
+an inference function and the gradient of that inference function. The gradient
+function could perform training of the weights variables, and the inference
+function could read from those same weights variables.
 
 ![](module.png)
 
 Glow functions contain nodes that represent the different operations of a neural
 network. The function owns the nodes and has access to the variables in the
-module. The picture below depicts a small part of a function.
+module. The image below depicts the compute graph that represents the expression
+"A / B". The graph is automatically differentiated by Glow, and the value of
+variable A is updated with the gradient of the expression. Glow lowers the nodes
+that compute the gradient of the expression and the stochastic gradient descent
+(SGD) node into a sequence of low-level operators (Div, Mul, Add and Save). The
+different compiler backends do not need to implement support for the DivGrad,
+ReLUGrad or SGD nodes.
 
 ![](nodes.png)
 
 The compiler has a debug method for dumping a graphical representation of the
-graph into a dotty file. The method is called 'dumpDAG'. The pictures above were
+graph into a dotty file. The method is called 'dumpDAG'. The images above were
 generated with this method. The textual representation of the graph is less
 informative and it looks like this:
 
@@ -75,17 +85,18 @@ into one or more instructions.
 
 ### Variable Visibility
 
-Variables are persistent tensors that live across different executions of the ML
-network.  Variables are annotated with Public or Private labels. These labels
-specify whether the node is visible outside of the graph, or not. If the node is
-public, then it means that C++ code from outside the graph may access the
-variable directly and change its content before or after the execution of the
-program.  This means that the optimizer is not allowed to delete unused public
-variables or change their dimensions. On the other hand, in the case of private
-variables, the optimizer is allowed to delete unused variables, transpose,
-perform constant propagation, etc. The semantics of variables in the program,
-both private and public, is that all writes must happen before the end of the
-execution of the program.
+
+Glow variables are similar to PyTorch and TensorFlow variables. They are
+persistent tensors that live across different executions of the neural network.
+Variables are annotated with Public or Private labels. These labels specify
+whether the node is visible outside of the graph. If the node is public, then it
+means that C++ code from outside the graph may access the variable directly and
+change its content before or after the execution of the program. This means that
+the optimizer is not allowed to delete unused public variables or change their
+dimensions. However, in the case of private variables, the optimizer is allowed
+to delete unused variables, transpose, perform constant propagation, etc. The
+semantics of variables in the program, both private and public, is that all
+writes must happen before the end of the execution of the program.
 
 ### Variable Mutability
 
@@ -98,56 +109,105 @@ Public WeightVars are kept Mutable.
 
 ### Predicates
 
-Predicates are boolean variables that control the execution of some node or
-instruction. If the value of the predicate at runtime is set to 'false' then the
-predicated node or instructions may return any value. The program should know to
-ignore the output of the predicated instruction because it could be zeros or
-uninitialized memory. In training mode, predicated training nodes should not use
-uninitialized memory to update the weights and instead should pass zeros.
-Predication is a way to accelerate the performance of the network by avoiding
-some computation. The type of the predicate must be a scalar, or a vector that
-matches the batch size.
+Predication is a well-known technique to control the execution of some node or
+instruction by means of a boolean flag. If the value of the flag at runtime is
+set to 'false' then the predicated node or instructions may return any value. A
+correct program should know to ignore the output of the predicated instruction
+because it could be zeros or uninitialized memory. The type of the flag must be
+a boolean value or a vector of booleans that matches the batch size. Predicates
+could accelerate the performance of some networks by avoiding some
+computation. It can particularly be useful when applied to Recurrent Neural
+Networks, because different elements of the batch may have different lengths and
+do not need to perform the same amount of computation. In training mode,
+predicated training nodes should not use uninitialized memory to update the
+weights and instead should pass zeros.
 
 ![](pred.png)
 
-### Mid-level Graph
+### Node Lowering
+
+Instead of compiling high-level operators directly, Glow performs "node
+lowering". In this phase, the compiler breaks the high-level operator nodes into
+low-level linear algebra operator nodes. For example, the FullyConnected layer
+is represented as a matrix multiplication followed by broadcasted add. Different
+compiler backends do not have to implement the FullyConnected layer and a dozen
+other high-level opcodes, just the low-level matrix multiplication.
+
+This lowering phase drives many of the design decisions of the compiler. In
+Glow, lowering is performed as part of the high-level graph as described above,
+prior to moving to low-level IR. This is due to a number of reasons. First, the
+new lowered graph may allow for additional graph-level optimizations. Second,
+the new graph structure may affect the decisions of the instruction
+scheduler. And third, after lowering we allow the backends to perform additional
+target-specific optimizations on the lowered graph.
+
+The lowering phase comes after the graph is differentiated. Because the lowering
+transformation does not preserve the semantics of the graph, it is not possible
+to differentiate the graph for certain operators. For example, the Regression
+node (which produces gradient when optimizing total squared error) becomes a
+no-op for the inference case, but is translated into an element-wise subtract
+for the training case. Performing the lowering before differentiation would
+prevent us from performing the correct lowering of the Regression node.
+
+
+### Low-Level IR
+
+After optimizing the graph with target-independent optimizations, and lowering
+from high-level operator nodes to linear algebra operator nodes, the code is
+further lowered into the low-level IR in a phase that is called "IRGen" (which
+stands for IR generation). This is a one-to-many translation where each
+high-level node is translated into one or more instructions.
 
 The low-level IR enables a different kind of target independent optimizations
-that are not possible with the high-level graph format. For example, the ability
-to share the memory buffers during the forward pass can't be expressed in the
-Graph form because buffers are not explicit.
+that are not possible with the high-level graph format. This is an
+instruction-based representation that operates on tensors that are referenced by
+address. This gives the compiler the ability to perform low-level memory
+optimizations that are not possible at the high-level, because memory is not
+represented directly. An example of such a transformation is the optimization
+that allows certain operations to transform some buffers in-place, such as
+element-wise arithmetic.
 
-The mid-level IR is built like a sequence of instructions that perform things
-like copy-memory and perform-convolution.  The IR is not Static Single
-Assignment (SSA) based representation, because the IR does not support control
-flow. The IR is strongly typed and each instruction operand kind has known
-parameter types.  The IR representation is designed to be used as an in-memory
-form. The IR can be dumped to human readable assembly-like format.
+In the context of hardware acceleration, the low-level instruction-based
+representation allows the compiler to represent device-specific operations such
+as asynchronous DMA operations. Hiding the latency of memory operations is
+important for utilizing the execution units of the hardware effectively, and the
+instruction-based representation allows the compiler to create a schedule that
+hides the latency of the memory operations.
 
-The IR has two sections: 'declare' and 'program'. In the first section of the IR
-we declare a number of memory regions that live throughout the lifetime of the
-program. This is similar to global variables in C++. The second part of the IR
-is list of instructions. Each variable is annotated with the kind of
-initialization that the program should do.
+The IR is strongly typed and each instruction operand kind has known parameter
+types. The IR is not Static Single Assignment (SSA) based representation,
+because the IR does not support control flow. The IR is strongly typed and each
+instruction operand kind has known parameter types. It is designed to be used as
+an in-memory form, though can be dumped to human readable assembly-like format.
 
-There are two kinds of memory regions. The global memory regions and locally
-allocated regions. The locally allocated memory regions are similar to 'alloca'
-in C++, and in LLVM. Memory regions are strongly typed, which means that the
-kind of type of tensor that the region represents is known.
+A function in IR form contains two sections: 'declare' and 'program'. In the
+first section of the IR we declare a number of memory regions that live
+throughout the lifetime of the program. This is similar to global variables in
+C. The second part of the IR is a list of instructions. Each variable is
+annotated with the kind of initialization that the program should do.
 
-Instructions operate on either global variables or locally allocated buffers.
-Each operand is annotated with one of the qualifiers '@in'/'@out'/'@inout'. In
-means that the buffer is read from. Out means that the buffer is written into.
-And InOut means that the instruction may read and write into the buffer. These
-operand qualifiers help the optimizer decide when it is legal to share buffers.
-Instructions may have other attributes that specify the legality of some
-optimizations. For example, some operands require that the data from the forward
-pass would be kept around for the backward pass, so if the program is not
-optimized for inference-only mode then certain memory optimizations can't
-happen.
+There are two kinds of memory regions which correspond to these two sections:
+global memory regions (found in 'declare') and locally allocated regions (found
+in 'program'). The locally allocated memory regions are similar to 'alloca' in
+LLVM IR. Memory regions are strongly typed, which means that the kind of type of
+tensor that the region represents is known.
 
+Instructions operate on either global variables or locally allocated
+buffers. Each operand is annotated with one of the qualifiers
+'@in'/'@out'/'@inout'. '@in' means that the buffer is read from. '@out' means
+that the buffer is written into. And '@inout' means that the instruction may
+read and write into the buffer. These operand qualifiers help the optimizer
+decide when it is legal to perform certain optimizations, such as copy
+elimination or buffer sharing. Instructions may have other attributes that
+specify the legality of some optimizations. For example, some instructions
+require that the data from the forward pass would be kept around for the
+backward pass, so if the program is not optimized for inference-only mode then
+certain memory optimizations cannot happen.
 
-This is an example of an unoptimized IR.
+Below is an example of unoptimized Glow IR. Note that the 'alloc' instruction
+does not allocate memory; it just marks the lifetime of the activation. The
+low-level memory allocator is responsible for allocating all of the buffers into
+a single coalesced region.
 
   ```
   declare {
@@ -179,42 +239,25 @@ This is an example of an unoptimized IR.
 
 ### The Lifetime of a Glow Instruction
 
-This section describes how instructions make their way from the beginning of the
-compilation pipeline, and through the different levels of IR and to the
-backends.  The Glow compilation pipeline comes to solve the problem of targeting
-a large number of opcodes to many different targets. For example, being able to
-run the Div, Relu, ConvGrad opcodes on three different accelerators and two GPU
-vendors. The approach that was taken by classic learning frameworks was to
-implement each opcode for each hardware target. And so, Div would be implemented
-once for the GPU, once for the CPU, once for mobile, etc. This approach does not
-scale as the number of opcodes increase and the number of hardware targets
-increase. Instead, Glow takes a different approach. Instead of compiling the
-high-level operators directly, Glow performs "node-lowering". In this phase the
-compiler breaks the high-level operators into low-level linear algebra
-operators. For example, the FullyConnected layer is represented as a sequence of
-matrix multiplication followed by element-wise add. Then, the different compiler
-backends don't have to implement the FullyConnected layer and a dozen other
-high-level opcodes, just the low-level matrix multiplication. This lowering
-phase derives many of the design decisions of the compiler.
-
-In Glow, lowering is performed as part of the high-level graph, that's described
-above. The lowering process happens before IR-Gen for a number of reasons.
-First, the new lowered graph may allow additional graph-level optimizations.
-Second, the new graph structure may effect the decisions that the scheduler must
-take. And third, after lowering we allow the backends to perform additional
-target-specific optimizations. The lowering transformation does not preserve the
-semantics of the graph, because it is not possible to differentiate the graph
-for certain operators. For example, the Regression node becomes a nop, for the
-forward pass, but is translated into an element-wise subtract for the backward
-pass. Performing the lowering before differentiation would prevent us from
-performing the correct lowering of the Regression node.
-
 This is a high-level overview of the compilation process:
-1. The graph is constructed (via the c++ interface or graph loader).
-2. The graph is optimized, and differentiated, if needed.
-3. Linear Algebra lowering takes place.
-4. Additional rounds of optimizations (both target independent and target specific.)
-5. Scheduling of the graph into a linear sequence of nodes that minimizes the memory usage.
-6. IRGen (convert the low-level graph into instructions).
-7. IR-level optimizations.
-8. Backend-specific optimizations and code generation.
+
+1. The graph is either loaded via the graph loader (from ONNX or Caffe2 format),
+or constructed via the C++ interface.
+
+2. The graph is differentiated if needed.
+
+3. The graph is optimized.
+
+4. Linear algebra node lowering takes place.
+
+5. Additional rounds of optimizations occur, both target independent and target
+specific.
+
+6. The graph is scheduled into a linear sequence of nodes that minimizes memory
+usage.
+
+7. IRGen converts the low-level graph into instructions.
+
+8. Low-level IR optimizations are performed.
+
+9. Backend-specific optimizations and code generation are performed.

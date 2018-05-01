@@ -1,9 +1,10 @@
 
 ## Automatic class generation
 
-This document describes the automatic code generation techniques (class-gen)
-that Glow uses for defining instructions and nodes. Glow's class-gen is inspired
-by LLVM's TableGen tools.
+Glow uses automatic code generation techniques (class-gen) for defining
+instructions and nodes. The purpose of the automatic code generation tools in
+Glow is similar to the motivation behind LLVM's TableGen, which is to help a
+human develop and maintain records of domain-specific information.
 
 ### Introduction
 
@@ -17,21 +18,22 @@ features of these records to be factored out. This reduces the amount of
 duplication in the description, reduces the chance of error, and makes it easier
 to structure domain-specific information. "
 
-The current system is capable of generating two kinds of classes: Nodes and
-Instructions. These structures are declared in the IR document. Here is a short
-example of the code for generating the SoftMax instruction. This node generates
-the SoftMax instruction as well as the gradient calculation instruction
-SoftMaxGrad. The different methods of the builder (described in the builder
-Doxygen comments) construct the different kinds of fields that the Instruction
-has.
+The current system is capable of generating two kinds of classes: Nodes for the
+high-level IR and Instructions for the low-level IR. Below is an example of the
+code for generating the AvgPool instruction. ClassGen generates most of the
+methods that instructions need to have, such as instruction equality and
+hashing, cloning, printing, verification, etc. The different methods of the
+builder (described in the builder Doxygen comments) construct the different
+kinds of fields that the Instruction has.
 
   ```
-  BB.newInstr("SoftMax")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .addOperand("E", OperandKind::InOut)
-      .addOperand("Selected", OperandKind::InOut)
-      .inplaceOperand({"Dest", "Src"})
-      .addGradientInstr({"Src", "E", "Selected"}, {"Dest", "Src"});
+  BB.newInstr("AvgPool")
+    .addOperand("Dest", OperandKind::Out)
+    .addOperand("Src", OperandKind::In)
+    .addMember(MemberType::SizeT, "Kernel")
+    .addMember(MemberType::SizeT, "Stride")
+    .addMember(MemberType::SizeT, "Pad")
+    .autoIRGen()
+    .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+    .addGradientInstr({"Dest"}, {"Dest", "Src"});
   ```
-
