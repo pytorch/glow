@@ -4,22 +4,26 @@
 * [Code Coverage](https://fb-glow-assets.s3.amazonaws.com/coverage/coverage-master/index.html)
 
 Glow is a machine learning compiler and execution engine for hardware
-accelerators. This library is designed to be used as a backend for the Caffe2
-machine learning framework. The compiler is designed to allow state of the art
-compiler optimizations and code generation of neural network graphs.  This
-library is experimental and in active development.
+accelerators. It is designed to be used as a backend for executing a neural
+network compute graph (currently represented in either ONNX or Caffe2
+format). The compiler is designed to allow state of the art compiler
+optimizations and code generation of neural network graphs. This library is
+experimental and in active development.
 
 ## How does it work?
 
-The Glow compiler has three different
-[intermediate representations](./docs/IR.md) at different phases of the
-compilation pipe. The first representation is a high-level graph that resembles
-the original neural network. This representation allows the compiler to perform
-high-level domain-specific optimizations. The next level is a low-level
-bytecode, that represents memory explicitly and allows the compiler to perform
-low-level memory optimizations that are not possible at higher levels. And
-finally, the target-specific intermediate representation that the code
-generators can use to generate efficient machine code.
+Glow lowers a traditional neural network dataflow graph into a two-phase
+strongly-typed [intermediate representation (IR)](./docs/IR.md). The high-level
+IR allows the optimizer to perform domain-specific optimizations. The
+lower-level instruction-based address-only IR allows the compiler to perform
+memory-related optimizations, such as instruction scheduling, static memory
+allocation and copy elimination. At the lowest level, the optimizer performs
+machine-specific code generation to take advantage of specialized hardware
+features. Glow features a lowering phase which enables the compiler to support a
+high number of input operators as well as a large number of hardware targets by
+eliminating the need to implement all operators on all targets. The lowering
+phase is designed to reduce the input space and allow new hardware backends to
+focus on a small number of linear algebra primitives.
 
 ![](./docs/3LevelIR.png)
 

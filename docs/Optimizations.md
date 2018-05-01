@@ -1,7 +1,7 @@
 ## Glow optimization passes
 
-This document describes the optimizations performed by the graph and IR optimizers and some
-implementation details.
+This document describes the target-independent optimizations performed by the
+graph and IR optimizers and some implementation details.
 
 ### Overview
 
