@@ -128,7 +128,7 @@ void ExecutionEngine::generateIR(CompilationMode mode, Function *F) {
   ::glow::optimize(F, mode);
 
   // Allow the backend to transform the graph prior to lowering.
-  if (IP_->transformPreLowering(F)) {
+  if (IP_->transformPreLowering(F, mode)) {
     // Optimize the graph again after the backend transformation.
     // In particular, DCE is very likely to be useful.
     ::glow::optimize(F, mode);
@@ -141,7 +141,7 @@ void ExecutionEngine::generateIR(CompilationMode mode, Function *F) {
   ::glow::optimize(F, mode);
 
   // Allow the backend to transform the graph after lowering.
-  if (IP_->transformPostLowering(F)) {
+  if (IP_->transformPostLowering(F, mode)) {
     // Optimize the graph again after the backend transformation.
     // In particular, DCE is very likely to be useful.
     ::glow::optimize(F, mode);
