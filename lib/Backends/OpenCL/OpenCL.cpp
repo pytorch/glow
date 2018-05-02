@@ -624,12 +624,14 @@ size_t OCLBackend::copyValueToDevice(const Value *v, void *buf) {
   if (sizeInBytes) {
     if (!buf) {
       Tensor *T = externalTensors_[v];
-      assert(T && "Expectded an external tensor");
+      assert(T && "Expected an external tensor");
       buf = T->getUnsafePtr();
     }
-    cl_int err =
-        clEnqueueWriteBuffer(commands_, deviceBuffer_, CL_FALSE, it->second,
-                             sizeInBytes, buf, 0, nullptr, nullptr);
+    size_t valueOffset = it->second;
+    cl_int err = clEnqueueWriteBuffer(
+        commands_, deviceBuffer_, /* blocking_read */ CL_FALSE, valueOffset,
+        sizeInBytes, buf, /* num_events_in_wait_list */ 0,
+        /* event_list */ nullptr, /* event */ nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
     copiedBytes += sizeInBytes;
   }
@@ -645,12 +647,14 @@ size_t OCLBackend::copyValueFromDevice(const Value *v, void *buf) {
   if (sizeInBytes) {
     if (!buf) {
       Tensor *T = externalTensors_[v];
-      assert(T && "Expectded an external tensor");
+      assert(T && "Expected an external tensor");
       buf = T->getUnsafePtr();
     }
-    cl_int err =
-        clEnqueueReadBuffer(commands_, deviceBuffer_, CL_FALSE, it->second,
-                            sizeInBytes, buf, 0, nullptr, nullptr);
+    size_t valueOffset = it->second;
+    cl_int err = clEnqueueReadBuffer(
+        commands_, deviceBuffer_, /* blocking_read */ CL_FALSE, valueOffset,
+        sizeInBytes, buf, /* num_events_in_wait_list */ 0,
+        /* event_list */ nullptr, /* event */ nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy from the device");
     DEBUG(llvm::dbgs() << "Copied the value from device: "
                        << it->first->getName() << "\n");
