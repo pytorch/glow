@@ -489,6 +489,18 @@ TEST(JITCorrectnessTest, tanhTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
+TEST(JITCorrectnessTest, transposeTest) {
+  Tensor inputs(ElemKind::FloatTy, {32, 32});
+  inputs.getHandle().randomize(-1.0, 1.0);
+  Tensor out1;
+  Tensor out2;
+
+  inferTransposeNet(&inputs, &out1, BackendKind::CPU);
+  inferTransposeNet(&inputs, &out2, BackendKind::Interpreter);
+
+  EXPECT_TRUE(out1.isEqual(out2));
+}
+
 TEST(JITCorrectnessTest, convOps) {
   // Construct networks with a different convolution depth.
   for (auto depth : {4, 12, 128}) {

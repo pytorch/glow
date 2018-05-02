@@ -455,6 +455,18 @@ void inferTanhNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+void inferTransposeNet(Tensor *inputs, Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *var = VarFrom(inputs);
+  auto *tr = F->createTranspose("tr", var, {1, 0});
+  auto result = F->createSave("ret", tr);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({var}, {inputs});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
                        size_t convDepth) {
   ExecutionEngine EE(kind);
