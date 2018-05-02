@@ -206,9 +206,10 @@ static Node *simplifyNode(Node *node, Function *F) {
 }
 
 /// Code Sinking.
-static void sinkCode(Function *F) {
+/// \returns true if code sinking was successful.
+static bool sinkCode(Function *F) {
   auto &nodes = F->getNodes();
-
+  bool changed = false;
   // For each node:
   for (auto const &node : nodes) {
     // Sink Transpose below batch normalization nodes:
@@ -231,6 +232,7 @@ static void sinkCode(Function *F) {
       auto *newTR = F->createTranspose(TR->getName(), NewBN, TR->getShuffle());
 
       BN->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
       continue;
     }
 
@@ -245,6 +247,7 @@ static void sinkCode(Function *F) {
       auto *NRL = F->createRELU(RL->getName(), TR->getInput());
       auto *newTR = F->createTranspose(TR->getName(), NRL, TR->getShuffle());
       RL->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
       continue;
     }
 
@@ -259,6 +262,7 @@ static void sinkCode(Function *F) {
       auto *NSI = F->createSigmoid(SI->getName(), TR->getInput());
       auto *newTR = F->createTranspose(TR->getName(), NSI, TR->getShuffle());
       SI->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
       continue;
     }
 
@@ -273,6 +277,7 @@ static void sinkCode(Function *F) {
       auto *NTN = F->createTanh(TN->getName(), TR->getInput());
       auto *newTR = F->createTranspose(TR->getName(), NTN, TR->getShuffle());
       TN->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
       continue;
     }
 
@@ -288,10 +293,11 @@ static void sinkCode(Function *F) {
       auto mask2 = TR2->getShuffle();
       assert(mask1.size() == mask2.size() && "Invalid mask size");
 
-      // The two transposes are reversing one another. We can skip both of them
-      // alltogether.
+      // The two transposes are reversing one another. We can skip both of
+      // them alltogether.
       if (isIdentityShuffle(mask1, mask2)) {
         TR1->getResult().replaceAllUsesOfWith(TR2->getInput());
+        changed = true;
         continue;
       }
     }
@@ -304,12 +310,30 @@ static void sinkCode(Function *F) {
 #define GET_RHS(NODE_) NODE_->getNthInput(1)
       TransposeNode *LTR = dyn_cast<TransposeNode>(GET_LHS(node));
       TransposeNode *RTR = dyn_cast<TransposeNode>(GET_RHS(node));
-#undef GET_LHS
-#undef GET_RHS
 
       if (!LTR || !RTR) {
-        continue;
+        // If one of the sides is a splat, it can be seen as
+        // transpose (splat').
+        if (isa<SplatNode>(GET_LHS(node)) && RTR) {
+          // Build splat' for LHS.
+          auto *SN = dyn_cast<SplatNode>(GET_LHS(node));
+          auto *NS = F->createSplat("splat", RTR->getInput().getType(),
+                                    SN->getValue());
+          LTR = F->createTranspose("transpose", NS, RTR->getShuffle());
+          changed = true;
+        } else if (isa<SplatNode>(GET_RHS(node)) && LTR) {
+          // Build splat' for RHS.
+          auto *SN = dyn_cast<SplatNode>(GET_RHS(node));
+          auto *NS = F->createSplat("splat", LTR->getInput().getType(),
+                                    SN->getValue());
+          RTR = F->createTranspose("transpose", NS, LTR->getShuffle());
+          changed = true;
+        } else {
+          continue;
+        }
       }
+#undef GET_LHS
+#undef GET_RHS
       // The masks of the transposes on both sizes must match.
       if (LTR->getShuffle() != RTR->getShuffle()) {
         continue;
@@ -336,6 +360,7 @@ static void sinkCode(Function *F) {
       }
 #undef ARITHMETIC_CASE
 
+      changed = true;
       auto *newTR =
           F->createTranspose(LTR->getName(), newAN, LTR->getShuffle());
 #define GET_RESULT(NODE_) NODE_->getNthResult(0)
@@ -390,9 +415,11 @@ static void sinkCode(Function *F) {
           CN->getName(), {L->getInput(), R->getInput()}, newChannelIdx);
       auto *newTR = F->createTranspose(L->getName(), newCN, L->getShuffle());
       CN->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
     }
-
   } // For all nodes in the graph.
+
+  return changed;
 }
 
 /// Pool optimization.
@@ -937,7 +964,13 @@ static void optimizeQuantization(Function *F) {
 
 void glow::optimize(Function *F, CompilationMode mode) {
   // Sink transpose operations in an attempt to cancel them out.
-  sinkCode(F);
+  // Perform code sinking until a fixed-point is reached.
+  // On big functions, the number of iterations until the fixpoint
+  // is usually at most 2 or 3 iterations.
+  while (sinkCode(F)) {
+    // Perform Dead Code Elimination between rounds of code sinking.
+    DCE(F);
+  }
 
   // Optimize the pooling operation.
   optimizePool(F);
