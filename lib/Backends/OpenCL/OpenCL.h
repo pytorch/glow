@@ -102,6 +102,23 @@ private:
   void copyWeightsToDevice();
 
   void copyWeightsFromDevice();
+  /// Copy the value from a device to a provided buffer.
+  /// If \p buf is nullptr, the payload of the underlying tensor is used.
+  /// \returns number of copied bytes.
+  size_t copyValueFromDevice(const Value *v, void *buf = nullptr);
+  /// Copy value from the provided buffer to the device.
+  /// If \p buf is nullptr, the payload of the underlying tensor is used.
+  /// \returns number of copied bytes.
+  size_t copyValueToDevice(const Value *v, void *buf = nullptr);
+  /// Copy mutable weights to the device.
+  /// \returns number of copied bytes.
+  size_t copyMutableWeightsToDevice();
+  /// Copy constant weights to the device.
+  /// \returns number of copied bytes.
+  size_t copyConstantWeightsToDevice();
+  /// Copy mutable weights from the device.
+  /// \returns number of copied bytes.
+  size_t copyMutableWeightsFromDevice();
 
   /// Allocate a device buffer of required \p size.
   cl_mem allocDeviceBuffer(size_t size);
