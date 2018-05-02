@@ -34,43 +34,42 @@ void libjit_matmul_odd(int m, int n, int k, const float *a, int lda,
   }
 }
 
-/// Compute a 4x16 block of C using a vectorized dot product.
-void libjit_matmul_dot4x16(int k, const float *a, int lda, const float *b,
-                           int ldb, float *c, int ldc) {
-  float8 ctmp07[4] = {0.0};
-  float8 ctmp815[4] = {0.0};
+/// Compute a RAxRB block of C using a vectorized dot product, where RA is the
+/// number of registers to load from matrix A, and RB is the number of registers
+/// to load from matrix B.
+template <unsigned int regsA, unsigned int regsB>
+void libjit_matmul_dot(int k, const float *a, int lda, const float *b, int ldb,
+                       float *c, int ldc) {
+  float8 csum[regsA][regsB] = {{0.0}};
   for (int p = 0; p < k; p++) {
-    float8 a0p = BroadcastFloat8(A(0, p));
-    float8 a1p = BroadcastFloat8(A(1, p));
-    float8 a2p = BroadcastFloat8(A(2, p));
-    float8 a3p = BroadcastFloat8(A(3, p));
-    float8 bp0p7 = LoaduFloat8(&B(p, 0));
-    float8 bp8p15 = LoaduFloat8(&B(p, 8));
-    ctmp07[0] += a0p * bp0p7;
-    ctmp07[1] += a1p * bp0p7;
-    ctmp07[2] += a2p * bp0p7;
-    ctmp07[3] += a3p * bp0p7;
-    ctmp815[0] += a0p * bp8p15;
-    ctmp815[1] += a1p * bp8p15;
-    ctmp815[2] += a2p * bp8p15;
-    ctmp815[3] += a3p * bp8p15;
+
+    // Perform the DOT product.
+    for (int bi = 0; bi < regsB; bi++) {
+      float8 bb = LoaduFloat8(&B(p, bi * 8));
+      for (int ai = 0; ai < regsA; ai++) {
+        float8 aa = BroadcastFloat8(A(ai, p));
+        csum[ai][bi] += aa * bb;
+      }
+    }
   }
-  AdduFloat8(&C(0, 0), ctmp07[0]);
-  AdduFloat8(&C(1, 0), ctmp07[1]);
-  AdduFloat8(&C(2, 0), ctmp07[2]);
-  AdduFloat8(&C(3, 0), ctmp07[3]);
-  AdduFloat8(&C(0, 8), ctmp815[0]);
-  AdduFloat8(&C(1, 8), ctmp815[1]);
-  AdduFloat8(&C(2, 8), ctmp815[2]);
-  AdduFloat8(&C(3, 8), ctmp815[3]);
+
+  // Accumulate the results into C.
+  for (int ai = 0; ai < regsA; ai++) {
+    for (int bi = 0; bi < regsB; bi++) {
+      AdduFloat8(&C(ai, bi * 8), csum[ai][bi]);
+    }
+  }
 }
 
-/// Compute a portion of C one 4*16 block at a time.  Handle ragged edges with
-/// calls to a slow but general helper.
+/// Compute a portion of C one block at a time.  Handle ragged edges with calls
+/// to a slow but general helper.
 void libjit_matmul_inner(int m, int n, int k, const float *a, int lda,
                          const float *b, int ldb, float *c, int ldc) {
-  constexpr int mc = 4;
-  constexpr int nr = 16;
+  constexpr int regsA = 4;
+  constexpr int regsB = 2;
+
+  constexpr int mc = regsA;
+  constexpr int nr = regsB * 8;
   // The tiling scheme naturally divides the input matrices into 2 parts each;
   // one tiled section, and three "ragged" edges.
   //
@@ -86,7 +85,8 @@ void libjit_matmul_inner(int m, int n, int k, const float *a, int lda,
   // to a general matrix-multiplication for odd sizes.
   for (int j = 0; j < n - nr + 1; j += nr) {
     for (int i = 0; i < m - mc + 1; i += mc) {
-      libjit_matmul_dot4x16(k, &A(i, 0), lda, &B(0, j), ldb, &C(i, j), ldc);
+      libjit_matmul_dot<regsA, regsB>(k, &A(i, 0), lda, &B(0, j), ldb, &C(i, j),
+                                      ldc);
     }
   }
   int i = (m / mc) * mc;
