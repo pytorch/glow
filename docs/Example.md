@@ -133,7 +133,8 @@ A few key differences from the graph IR are apparent:
 * Some instructions have been "lowered" to a form suitable for the backend (in
   this case, the CPU backend).  In this example, `relu` has been lowered to
   `cpumaxsplat`, which simply computes the elementwise max of a tensor with a
-  constant value (for ReLU, 0.0).
+  constant value (for ReLU, 0.0). Note that `cpumaxsplat` is an [instruction that
+  is backend-specific](Backends.md#backend-specific-nodes-and-instructions).
 
 ## Backend Code Generation
 
