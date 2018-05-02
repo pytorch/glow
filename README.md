@@ -1,6 +1,6 @@
 # Glow
 
-* [![Build Status](https://travis-ci.com/pytorch/Glow.svg?token=UwQBGB2pxogBqjigi7Nh&branch=master)](https://travis-ci.com/pytorch/Glow)
+* [![Build Status](https://travis-ci.com/pytorch/glow.svg?token=UwQBGB2pxogBqjigi7Nh&branch=master)](https://travis-ci.com/pytorch/glow)
 * [Code Coverage](https://fb-glow-assets.s3.amazonaws.com/coverage/coverage-master/index.html)
 
 Glow is a machine learning compiler and execution engine for hardware
@@ -78,7 +78,7 @@ good idea to build the project outside of the source directory.
   ```
   mkdir build_Debug
   cd build_Debug
-  cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug ../Glow
+  cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug ../glow
   ninja all
   ```
 
@@ -93,7 +93,7 @@ example, if you installed it using Homebrew on macOS), you need to tell CMake
 where to find llvm using `-DCMAKE_PREFIX_PATH`.  For example:
 
   ```
-  cmake -G Ninja ../Glow \
+  cmake -G Ninja ../glow \
       -DCMAKE_BUILD_TYPE=Debug \
       -DCMAKE_PREFIX_PATH=/usr/local/opt/llvm
   ```
@@ -126,7 +126,7 @@ To run these programs, build Glow in Release mode, then run the following comman
 to download the cifar10, mnist and ptb databases.
 
   ```
-  python ../Glow/utils/download_test_db.py --all
+  python ../glow/utils/download_test_db.py --all
   ```
 
 Now run the examples. Note that the databases should be in the current working
