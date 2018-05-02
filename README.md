@@ -3,10 +3,9 @@
 * [![Build Status](https://travis-ci.com/pytorch/glow.svg?token=UwQBGB2pxogBqjigi7Nh&branch=master)](https://travis-ci.com/pytorch/glow)
 * [Code Coverage](https://fb-glow-assets.s3.amazonaws.com/coverage/coverage-master/index.html)
 
-Glow is a machine learning compiler and execution engine for hardware
-accelerators. It is designed to be used as a backend for executing a neural
-network compute graph (currently represented in either ONNX or Caffe2
-format). The compiler is designed to allow state of the art compiler
+Glow is a machine learning compiler and execution engine for various hardware
+targets.  It is designed to be used as a backend for high-level machine learning
+frameworks.  The compiler is designed to allow state of the art compiler
 optimizations and code generation of neural network graphs. This library is
 experimental and in active development.
 
