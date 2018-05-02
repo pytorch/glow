@@ -2,10 +2,10 @@
 $(VERBOSE).SILENT:
 
 # The path to the loader executable.
-LOADER?=~/src/build/Glow/bin/loader
+LOADER?=~/src/build/glow/bin/loader
 
 # The root directory of the Glow repo.
-GLOW_SRC?=~/src/Glow
+GLOW_SRC?=~/src/glow
 
 # Should quantize the network (YES/NO)?
 QUANTIZE?=YES

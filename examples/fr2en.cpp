@@ -115,7 +115,7 @@ void loadMatrixFromFile(llvm::StringRef filename, Tensor &result) {
                  result.size() * sizeof(float))) {
     std::cout << "Error reading file: " << filename.str() << '\n'
               << "Need to be downloaded by calling:\n"
-              << "python ../Glow/utils/download_test_db.py -d fr2en\n";
+              << "python ../glow/utils/download_test_db.py -d fr2en\n";
     exit(1);
   }
 }
