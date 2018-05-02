@@ -103,7 +103,7 @@ private:
                                  size_t pad);
   void fwdConvolutionInst_FloatImpl(Value *inV, Value *outV, Value *filterV,
                                     Value *biasV, size_t filterSize,
-                                    size_t stride, size_t pad);
+                                    size_t stride, size_t pad, size_t group);
   ///@}
 };
 

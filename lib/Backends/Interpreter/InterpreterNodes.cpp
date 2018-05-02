@@ -40,7 +40,7 @@ void Interpreter::fwdCopyInst(const CopyInst *I) {
 void Interpreter::fwdConvolutionInst_FloatImpl(Value *inV, Value *outV,
                                                Value *filterV, Value *biasV,
                                                size_t filterSize, size_t stride,
-                                               size_t pad) {
+                                               size_t pad, size_t group) {
 
   auto inW = getWeightHandle(inV);
   auto outW = getWeightHandle(outV);
@@ -50,45 +50,50 @@ void Interpreter::fwdConvolutionInst_FloatImpl(Value *inV, Value *outV,
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
 
-  size_t inChannels = idim.c;
+  size_t inCperG = idim.c / group;
+  size_t outCperG = odim.c / group;
 
   // For each input in the batch:
   for (size_t n = 0; n < idim.n; n++) {
 
-    // For each layer in the output tensor:
-    for (size_t d = 0; d < odim.c; d++) {
+    // For each group of input channels:
+    for (size_t g = 0; g < group; g++) {
 
-      // For each convolution 'jump' in the input tensor:
-      ssize_t x = -ssize_t(pad);
-      for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
-        ssize_t y = -ssize_t(pad);
-        for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+      // For each output channel in the group:
+      for (size_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
 
-          // For each element in the convolution-filter:
-          float sum = 0;
-          for (size_t fx = 0; fx < filterSize; fx++) {
-            for (size_t fy = 0; fy < filterSize; fy++) {
-              ssize_t ox = x + fx;
-              ssize_t oy = y + fy;
+        // For each convolution 'jump' in the input tensor:
+        ssize_t x = -ssize_t(pad);
+        for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+          ssize_t y = -ssize_t(pad);
+          for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
 
-              // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-                  oy >= ssize_t(idim.w)) {
-                continue;
-              }
-              for (size_t fd = 0; fd < inChannels; fd++) {
-                sum += filterW.at({d, fx, fy, fd}) *
-                       inW.at({n, (size_t)ox, (size_t)oy, fd});
+            // For each element in the convolution-filter:
+            float sum = 0;
+            for (size_t fx = 0; fx < filterSize; fx++) {
+              for (size_t fy = 0; fy < filterSize; fy++) {
+                ssize_t ox = x + fx;
+                ssize_t oy = y + fy;
+
+                // Ignore index access below zero (this is due to padding).
+                if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                    oy >= ssize_t(idim.w)) {
+                  continue;
+                }
+                for (size_t fd = 0; fd < inCperG; fd++) {
+                  sum += filterW.at({d, fx, fy, fd}) *
+                         inW.at({n, (size_t)ox, (size_t)oy, g * inCperG + fd});
+                }
               }
             }
-          }
 
-          sum += biasW.at({d});
-          outW.at({n, ax, ay, d}) = sum;
-        } // W
-      }   // H
-    }     // C
-  }       // N
+            sum += biasW.at({d});
+            outW.at({n, ax, ay, d}) = sum;
+          } // W
+        }   // H
+      }     // C
+    }       // G
+  }         // N
 }
 
 // This is the quantized i8 implementation of Convolution.
@@ -180,6 +185,7 @@ void Interpreter::fwdConvolutionInst(const ConvolutionInst *I) {
   size_t filterSize = I->getKernel();
   size_t pad = I->getPad();
   size_t stride = I->getStride();
+  size_t group = I->getGroup();
 
   if (I->getSrc()->getType()->isQuantizedType()) {
     fwdConvolutionInst_I8Impl(I->getSrc(), I->getDest(), I->getFilter(),
@@ -188,7 +194,7 @@ void Interpreter::fwdConvolutionInst(const ConvolutionInst *I) {
   }
 
   fwdConvolutionInst_FloatImpl(I->getSrc(), I->getDest(), I->getFilter(),
-                               I->getBias(), filterSize, stride, pad);
+                               I->getBias(), filterSize, stride, pad, group);
 }
 
 void Interpreter::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
