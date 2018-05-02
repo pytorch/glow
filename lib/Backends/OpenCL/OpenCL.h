@@ -34,6 +34,23 @@
 namespace glow {
 class IRFunction;
 class Backend;
+/// A helper struct with information about kernels launches.
+struct KernelLaunch {
+  /// Kernel that was launched.
+  cl_kernel kernel_;
+  /// The name of the kernel that was launched.
+  std::string name_;
+  /// Event associated with the start of the kernel.
+  /// Used only when profiling is enabled.
+  cl_event event_;
+  /// Constructor to be used by launching Glow's CL kernels.
+  KernelLaunch(cl_kernel kernel, std::string name, cl_event event)
+      : kernel_(kernel), name_(name), event_(event) {}
+  /// Constructor to be used when launching an "external" CL kernel, e.g.
+  /// provided by such libraries like CLBlast, etc.
+  KernelLaunch(const std::string &name, cl_event event)
+      : kernel_(nullptr), name_(name), event_(event) {}
+};
 
 /// This is the OpenCL backend.
 class OCLBackend final : public Backend {
@@ -85,6 +102,10 @@ private:
   void copyWeightsToDevice();
 
   void copyWeightsFromDevice();
+  /// Enqueue a \p kernel on a provided \p commands queue. 
+  void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
+                     cl_device_id device, llvm::ArrayRef<size_t> global,
+                     std::vector<KernelLaunch> &kernelLaunches);
 
   /// \returns a pointer to the tensor that is saved under \p v.
   Tensor *getTensor(const Value *v) const;
