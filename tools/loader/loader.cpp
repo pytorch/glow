@@ -111,6 +111,9 @@ llvm::cl::list<std::string>
                         llvm::cl::desc("<input image files>"),
                         llvm::cl::OneOrMore);
 
+/// Image loader options.
+llvm::cl::OptionCategory loaderCat("Image Loader Options");
+
 llvm::cl::list<std::string> modelPathOpt(
     "model",
     llvm::cl::desc(
@@ -119,34 +122,11 @@ llvm::cl::list<std::string> modelPathOpt(
         "2. Two paths to Caffe2 model files: network structure and weight.\n"
         "3. Path to directory with the Caffe2 network structure "
         "<predict_net.pb> and weight <init_net.pb> files."),
-    llvm::cl::value_desc("modelPath"), llvm::cl::Required, llvm::cl::OneOrMore);
+    llvm::cl::value_desc("modelPath"), llvm::cl::Required, llvm::cl::OneOrMore,
+    llvm::cl::cat(loaderCat));
 llvm::cl::alias modelPathAOpt("m", llvm::cl::desc("Alias for -model"),
-                              llvm::cl::aliasopt(modelPathOpt));
-
-llvm::cl::OptionCategory
-    modelExportCat("How to export the Glow Intermediate Representation/Graphs",
-                   "These options are for debugging the "
-                   "graphs by writing the IR/Graphs to "
-                   "given files/stdout");
-
-llvm::cl::opt<std::string> dumpGraphDAGFileOpt(
-    "dumpGraphDAG",
-    llvm::cl::desc("Specify the file to export the Graph in DOT format"),
-    llvm::cl::value_desc("file.dot"), llvm::cl::cat(modelExportCat));
-
-llvm::cl::opt<bool> dumpGraphOpt("dumpGraph",
-                                 llvm::cl::desc("Prints Graph to stdout"),
-                                 llvm::cl::cat(modelExportCat));
-
-llvm::cl::opt<std::string> dumpIRDAGFileOpt(
-    "dumpIRDAG",
-    llvm::cl::desc("Specify the file to export the IR in DOT format"),
-    llvm::cl::value_desc("file.dot"), llvm::cl::cat(modelExportCat));
-
-llvm::cl::opt<bool> dumpIROpt("dumpIR", llvm::cl::desc("Prints IR to stdout"),
-                              llvm::cl::cat(modelExportCat));
-
-llvm::cl::OptionCategory loaderCat("Image Loader Options");
+                              llvm::cl::aliasopt(modelPathOpt),
+                              llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<ImageNormalizationMode> imageMode(
     "image_mode", llvm::cl::desc("Specify the image mode:"), llvm::cl::Required,
@@ -196,6 +176,30 @@ llvm::cl::opt<BackendKind> ExecutionBackend(
                      clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
                      clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
     llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(loaderCat));
+
+/// Debugging options.
+llvm::cl::OptionCategory
+    modelExportCat("How to export the Glow Intermediate Representation/Graphs",
+                   "These options are for debugging the "
+                   "graphs by writing the IR/Graphs to "
+                   "given files/stdout");
+
+llvm::cl::opt<std::string> dumpGraphDAGFileOpt(
+    "dumpGraphDAG",
+    llvm::cl::desc("Specify the file to export the Graph in DOT format"),
+    llvm::cl::value_desc("file.dot"), llvm::cl::cat(modelExportCat));
+
+llvm::cl::opt<bool> dumpGraphOpt("dumpGraph",
+                                 llvm::cl::desc("Prints Graph to stdout"),
+                                 llvm::cl::cat(modelExportCat));
+
+llvm::cl::opt<std::string> dumpIRDAGFileOpt(
+    "dumpIRDAG",
+    llvm::cl::desc("Specify the file to export the IR in DOT format"),
+    llvm::cl::value_desc("file.dot"), llvm::cl::cat(modelExportCat));
+
+llvm::cl::opt<bool> dumpIROpt("dumpIR", llvm::cl::desc("Prints IR to stdout"),
+                              llvm::cl::cat(modelExportCat));
 
 /// Emit a bundle into the specified output directory.
 llvm::cl::opt<std::string>
