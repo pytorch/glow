@@ -99,9 +99,6 @@ public:
   /// @}
 
 private:
-  void copyWeightsToDevice();
-
-  void copyWeightsFromDevice();
   /// Copy the value from a device to a provided buffer.
   /// If \p buf is nullptr, the payload of the underlying tensor is used.
   /// \returns number of copied bytes.
