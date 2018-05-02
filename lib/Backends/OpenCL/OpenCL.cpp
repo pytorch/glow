@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#define DEBUG_TYPE "opencl"
 
 #include "OpenCL.h"
 
@@ -23,6 +24,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -246,8 +248,11 @@ static void dumpProfileInfo(const std::vector<KernelLaunch> &kernelLaunches) {
 }
 
 void OCLBackend::doForwardPass() {
-  copyWeightsToDevice();
   std::vector<KernelLaunch> kernelLaunches;
+  auto copiedToDeviceBytes = copyMutableWeightsToDevice();
+  (void)copiedToDeviceBytes;
+  DEBUG(llvm::dbgs() << "Copied " << copiedToDeviceBytes
+                     << " bytes to OpenCL device\n");
 
   for (auto &I : F_->getInstrs()) {
     // The kernels are named after the name of the instruction, plus the "W"
@@ -604,46 +609,106 @@ void OCLBackend::doForwardPass() {
     clReleaseKernel(kl.kernel_);
   }
 
-  copyWeightsFromDevice();
+  auto copiedFromDeviceBytes = copyMutableWeightsFromDevice();
+  (void)copiedFromDeviceBytes;
+  DEBUG(llvm::dbgs() << "Copied " << copiedFromDeviceBytes
+                     << " bytes from OpenCL device\n");
 }
 
-void OCLBackend::copyWeightsToDevice() {
+size_t OCLBackend::copyValueToDevice(const Value *v, void *buf) {
+  size_t copiedBytes = 0;
+  auto it = tensors_.find(v);
+  assert(it != tensors_.end() && "Unknown value");
+  size_t sizeInBytes = v->getType()->getSizeInBytes();
+  // Issue a non-blocking command to copy the buffer to the device.
+  if (sizeInBytes) {
+    if (!buf) {
+      Tensor *T = externalTensors_[v];
+      assert(T && "Expectded an external tensor");
+      buf = T->getUnsafePtr();
+    }
+    cl_int err =
+        clEnqueueWriteBuffer(commands_, deviceBuffer_, CL_FALSE, it->second,
+                             sizeInBytes, buf, 0, nullptr, nullptr);
+    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
+    copiedBytes += sizeInBytes;
+  }
+  return copiedBytes;
+}
+
+size_t OCLBackend::copyValueFromDevice(const Value *v, void *buf) {
+  size_t copiedBytes = 0;
+  auto it = tensors_.find(v);
+  assert(it != tensors_.end() && "Unknown value");
+  size_t sizeInBytes = v->getType()->getSizeInBytes();
+  // Issue a non-blocking command to copy the buffer from the device.
+  if (sizeInBytes) {
+    if (!buf) {
+      Tensor *T = externalTensors_[v];
+      assert(T && "Expectded an external tensor");
+      buf = T->getUnsafePtr();
+    }
+    cl_int err =
+        clEnqueueReadBuffer(commands_, deviceBuffer_, CL_FALSE, it->second,
+                            sizeInBytes, buf, 0, nullptr, nullptr);
+    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy from the device");
+    DEBUG(llvm::dbgs() << "Copied the value from device: "
+                       << it->first->getName() << "\n");
+    copiedBytes += sizeInBytes;
+  }
+  return copiedBytes;
+}
+
+size_t OCLBackend::copyMutableWeightsToDevice() {
+  size_t copiedBytes = 0;
   for (auto it : tensors_) {
     if (!externalTensors_.count(it.first)) {
       continue;
     }
-    Tensor *T = externalTensors_[it.first];
-    size_t sizeInBytes = T->getType().getSizeInBytes();
-    // Issue a non-blocking command to copy the buffer to the device.
-    if (sizeInBytes) {
-      cl_int err = clEnqueueWriteBuffer(commands_, deviceBuffer_, CL_FALSE,
-                                        it.second, sizeInBytes,
-                                        T->getUnsafePtr(), 0, nullptr, nullptr);
-      GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
+    if (auto *W = dyn_cast<WeightVar>(it.first)) {
+      if (W->getMutability() == WeightVar::MutabilityKind::Constant)
+        continue;
     }
+    copiedBytes += copyValueToDevice(it.first);
   }
   // Do it!
   clFinish(commands_);
+  return copiedBytes;
 }
 
-void OCLBackend::copyWeightsFromDevice() {
+size_t OCLBackend::copyConstantWeightsToDevice() {
+  size_t copiedBytes = 0;
+  for (auto it : tensors_) {
+    if (!externalTensors_.count(it.first)) {
+      continue;
+    }
+    if (auto *W = dyn_cast<WeightVar>(it.first)) {
+      if (W->getMutability() != WeightVar::MutabilityKind::Constant)
+        continue;
+    }
+    copiedBytes += copyValueToDevice(it.first);
+  }
+  // Do it!
+  clFinish(commands_);
+  return copiedBytes;
+}
+
+size_t OCLBackend::copyMutableWeightsFromDevice() {
+  size_t copiedBytes = 0;
   clFinish(commands_);
 
   for (auto it : tensors_) {
     if (!externalTensors_.count(it.first)) {
       continue;
     }
-
-    Tensor *T = externalTensors_[it.first];
-    size_t sizeInBytes = T->getType().getSizeInBytes();
-
-    // Issue a non-blocking command to copy the buffer from the device.
-    cl_int err = clEnqueueReadBuffer(commands_, deviceBuffer_, CL_FALSE,
-                                     it.second, sizeInBytes, T->getUnsafePtr(),
-                                     0, nullptr, nullptr);
-    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy from the device");
+    if (auto *W = dyn_cast<WeightVar>(it.first)) {
+      if (W->getMutability() == WeightVar::MutabilityKind::Constant)
+        continue;
+    }
+    copiedBytes += copyValueFromDevice(it.first);
   }
   clFinish(commands_);
+  return copiedBytes;
 }
 
 void OCLBackend::init() {
@@ -697,6 +762,8 @@ void OCLBackend::init() {
   }
 
   deviceBuffer_ = allocDeviceBuffer(requiredSpace);
+  // Copy constant weights just once.
+  copyConstantWeightsToDevice();
 }
 
 void OCLBackend::clear() { externalTensors_.clear(); }
