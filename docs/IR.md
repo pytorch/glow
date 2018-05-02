@@ -45,7 +45,9 @@ that compute the gradient of the expression and the stochastic gradient descent
 different compiler backends do not need to implement support for the DivGrad,
 ReLUGrad or SGD nodes.
 
-![](nodes.png)
+<p align="center">
+<img src="nodes.png" width="420"/>
+</p>
 
 The compiler has a debug method for dumping a graphical representation of the
 graph into a dotty file. The method is called 'dumpDAG'. The images above were
