@@ -108,7 +108,7 @@ OCLBackend::~OCLBackend() {
   clReleaseCommandQueue(commands_);
   clReleaseContext(context_);
   if (deviceBuffer_) {
-    clReleaseMemObject(deviceBuffer_);
+    freeDeviceBuffer(deviceBuffer_);
     deviceBuffer_ = nullptr;
   }
   clear();
@@ -692,13 +692,11 @@ void OCLBackend::init() {
 
   // Release the memory from the previous run.
   if (deviceBuffer_) {
-    clReleaseMemObject(deviceBuffer_);
+    freeDeviceBuffer(deviceBuffer_);
     deviceBuffer_ = nullptr;
   }
 
-  deviceBuffer_ = clCreateBuffer(context_, CL_MEM_READ_WRITE, requiredSpace,
-                                 nullptr, nullptr);
-  GLOW_ASSERT(deviceBuffer_ && "Allocation failed!");
+  deviceBuffer_ = allocDeviceBuffer(requiredSpace);
 }
 
 void OCLBackend::clear() { externalTensors_.clear(); }
@@ -708,3 +706,15 @@ Tensor *OCLBackend::getTensor(const Value *v) const {
   auto ie = externalTensors_.find(v);
   return ie->second;
 }
+
+cl_mem OCLBackend::allocDeviceBuffer(size_t size) {
+  const size_t alignment = 128;
+  // Always allocate buffers properly aligned to hold values of any type.
+  size = alignedSize(size, alignment);
+  auto buf =
+      clCreateBuffer(context_, CL_MEM_READ_WRITE, size, nullptr, nullptr);
+  GLOW_ASSERT(buf && "Allocation failed!");
+  return buf;
+}
+
+void OCLBackend::freeDeviceBuffer(cl_mem buf) { clReleaseMemObject(buf); }

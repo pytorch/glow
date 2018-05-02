@@ -102,6 +102,11 @@ private:
   void copyWeightsToDevice();
 
   void copyWeightsFromDevice();
+
+  /// Allocate a device buffer of required \p size.
+  cl_mem allocDeviceBuffer(size_t size);
+  /// Frees a device buffer.
+  void freeDeviceBuffer(cl_mem buf);
   /// Enqueue a \p kernel on a provided \p commands queue. 
   void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
                      cl_device_id device, llvm::ArrayRef<size_t> global,
