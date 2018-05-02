@@ -22,6 +22,7 @@
 #include "glow/Importer/ONNX.h"
 #include "glow/Quantization/Serialization.h"
 
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -37,13 +38,10 @@ enum class ImageNormalizationMode {
 };
 
 ImageNormalizationMode strToImageNormalizationMode(const std::string &str) {
-  if (str == "0to1")
-    return ImageNormalizationMode::k0to1;
-  if (str == "0to256")
-    return ImageNormalizationMode::k0to256;
-  if (str == "128to127")
-    return ImageNormalizationMode::k128to127;
-
+  return llvm::StringSwitch<ImageNormalizationMode>(str)
+      .Case("0to1", ImageNormalizationMode::k0to1)
+      .Case("0to256", ImageNormalizationMode::k0to256)
+      .Case("128to127", ImageNormalizationMode::k128to127);
   GLOW_ASSERT(false && "Unknown image format");
 }
 
