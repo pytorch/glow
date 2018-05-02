@@ -35,17 +35,6 @@ using llvm::isa;
 
 typedef uint32_t cl_size_t;
 
-/// A helper struct with information about kernels launches.
-struct KernelLaunch {
-  /// Kernel that was launched.
-  cl_kernel kernel_;
-  /// Event associated with the start of the kernel.
-  /// Used only when profiling is enabled.
-  cl_event event_;
-  KernelLaunch(cl_kernel kernel, cl_event event)
-      : kernel_(kernel), event_(event) {}
-};
-
 // This defines the string "SHADER_CODE".
 #include "kernels.cl"
 
@@ -183,17 +172,24 @@ void getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
 /// Enqueue a \p kernel for execution on the command queue \p commands on a
 /// given \p device. The information about the launched kernel will be added to
 /// \p kernelLaunches list.
-void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
-                   cl_device_id device, llvm::ArrayRef<size_t> global,
-                   std::vector<KernelLaunch> &kernelLaunches) {
+void OCLBackend::enqueueKernel(cl_command_queue commands, cl_kernel kernel,
+                               cl_device_id device,
+                               llvm::ArrayRef<size_t> global,
+                               std::vector<KernelLaunch> &kernelLaunches) {
   llvm::SmallVector<size_t, 4> local(global.size(), 0);
   getMaxLocalWorkgroupSize(kernel, device, global, local);
+  char kernelName[128];
+  size_t retSize;
+  cl_int err = clGetKernelInfo(kernel, CL_KERNEL_FUNCTION_NAME,
+                               sizeof(kernelName), &kernelName, &retSize);
+  GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelInfo.");
+
   cl_event event{nullptr};
-  cl_int err = clEnqueueNDRangeKernel(commands, kernel, global.size(), nullptr,
-                                      &global[0], &local[0], 0, nullptr,
-                                      doProfile ? &event : nullptr);
+  err = clEnqueueNDRangeKernel(commands, kernel, global.size(), nullptr,
+                               &global[0], &local[0], 0, nullptr,
+                               doProfile ? &event : nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
-  kernelLaunches.push_back(KernelLaunch(kernel, event));
+  kernelLaunches.push_back(KernelLaunch(kernel, kernelName, event));
 }
 
 /// Analyze and dump the collected profiling information about the execution of
