@@ -95,18 +95,15 @@ OCLBackend::OCLBackend(IRFunction *F) : F_(F), allocator_(0xFFFFFFFF) {
   GLOW_ASSERT(commands_ && "clCreateCommandQueue Failed.");
 
   err = CL_SUCCESS;
-  program_ =
-      clCreateProgramWithSource(context_, 1, &SHADER_CODE, nullptr, &err);
-  GLOW_ASSERT(program_ && "clCreateProgramWithSource Failed.");
-  err = clBuildProgram(program_, 0, nullptr, nullptr, nullptr, nullptr);
-  if (err) {
-    dumpCompileLog(deviceId_, program_);
-  }
-  GLOW_ASSERT(err == CL_SUCCESS && "clBuildProgram Failed.");
+  /// Create the program from the source.
+  createProgram(SHADER_CODE, {}, commands_);
 }
 
 OCLBackend::~OCLBackend() {
-  clReleaseProgram(program_);
+  for (auto &kv : programsCache_) {
+    auto prog = kv.second;
+    clReleaseProgram(prog);
+  }
   clReleaseCommandQueue(commands_);
   clReleaseContext(context_);
   if (deviceBuffer_) {
@@ -116,11 +113,62 @@ OCLBackend::~OCLBackend() {
   clear();
 }
 
-cl_kernel createKernel(cl_program program, const std::string &name) {
+cl_kernel OCLBackend::createKernel(const std::string &name,
+                                   cl_program program) {
   cl_int err = CL_SUCCESS;
-  cl_kernel kernel = clCreateKernel(program, name.c_str(), &err);
-  GLOW_ASSERT((kernel && err == CL_SUCCESS) && "clCreateKernel Failed.");
+  cl_kernel kernel = nullptr;
+  if (program) {
+    cl_kernel kernel = clCreateKernel(program, name.c_str(), &err);
+    GLOW_ASSERT((kernel && err == CL_SUCCESS) && "clCreateKernel Failed.");
+    return kernel;
+  }
+  // Inspect all programs.
+  for (auto &kv : programsCache_) {
+    auto prog = kv.second;
+    cl_kernel kernel = clCreateKernel(prog, name.c_str(), &err);
+    if (err == CL_SUCCESS) {
+      return kernel;
+    }
+  }
+  GLOW_ASSERT(kernel && "clCreateKernel Failed.");
   return kernel;
+}
+
+cl_program OCLBackend::createProgram(const std::string &source,
+                                     const std::vector<std::string> &options,
+                                     cl_command_queue queue) {
+  const char *src = source.c_str();
+  cl_context ctx;
+  cl_int err = clGetCommandQueueInfo(queue, CL_QUEUE_CONTEXT, sizeof(ctx), &ctx,
+                                     nullptr);
+  GLOW_ASSERT(err == CL_SUCCESS && "clGetCommandQueueInfo Failed.");
+  cl_device_id deviceId;
+  err = clGetCommandQueueInfo(queue, CL_QUEUE_DEVICE, sizeof(deviceId),
+                              &deviceId, nullptr);
+  GLOW_ASSERT(err == CL_SUCCESS && "clGetCommandQueueInfo Failed.");
+
+  // Check if this program was compiled with the same parameters for the
+  // provided context and device.
+  std::string combinedOptions;
+  for (auto &opt : options) {
+    combinedOptions.append(opt).append(" ");
+  }
+
+  ProgramKey key = std::make_tuple(source, combinedOptions, deviceId);
+  cl_program &program = programsCache_[key];
+  if (program) {
+    return program;
+  }
+  // Create a new compiled program.
+  program = clCreateProgramWithSource(context_, 1, &src, nullptr, &err);
+  GLOW_ASSERT(program && "clCreateProgramWithSource Failed.");
+  err = clBuildProgram(program, 0, nullptr, nullptr, nullptr, nullptr);
+  if (err) {
+    dumpCompileLog(deviceId, program);
+  }
+  GLOW_ASSERT(err == CL_SUCCESS && "clBuildProgram Failed.");
+  // Add this program to the program cache.
+  return program;
 }
 
 template <class T>
@@ -269,7 +317,7 @@ void OCLBackend::doForwardPass() {
     // Element-wise operations, except the copy instruction.
     if (I->isDataParallel() && !isa<CopyInst>(I)) {
 
-      cl_kernel kernel = createKernel(program_, kernelName);
+      cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
       unsigned numArgs = I->getNumOperands();
 
@@ -298,7 +346,7 @@ void OCLBackend::doForwardPass() {
     if (auto *SM = dyn_cast<SoftMaxInst>(I)) {
       // Implement Softmax by parallelizing the batch dimension. Each sample in
       // the batch is processed by a different parallel 'thread'.
-      cl_kernel kernel = createKernel(program_, kernelName);
+      cl_kernel kernel = createKernel(kernelName);
 
       setKernelArg(kernel, 0, deviceBuffer_);
 
@@ -321,7 +369,7 @@ void OCLBackend::doForwardPass() {
     }
 
     if (auto *CI = dyn_cast<InsertTensorInst>(I)) {
-      cl_kernel kernel = createKernel(program_, kernelName);
+      cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I->getNumOperands();
@@ -359,7 +407,7 @@ void OCLBackend::doForwardPass() {
     if (auto *BMM = dyn_cast<MatMulInst>(I)) {
       // This is a naive implementation that parallelizes using three dims:
       // batch, X and Y in the output filter.
-      cl_kernel kernel = createKernel(program_, kernelName);
+      cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I->getNumOperands();
@@ -384,7 +432,7 @@ void OCLBackend::doForwardPass() {
     }
 
     if (auto *BA = dyn_cast<BatchedAddInst>(I)) {
-      cl_kernel kernel = createKernel(program_, kernelName);
+      cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I->getNumOperands();
@@ -404,7 +452,7 @@ void OCLBackend::doForwardPass() {
     }
 
     if (auto *BRA = dyn_cast<BatchedReduceAddInst>(I)) {
-      cl_kernel kernel = createKernel(program_, kernelName);
+      cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I->getNumOperands();
@@ -426,7 +474,7 @@ void OCLBackend::doForwardPass() {
     if (auto *CC = dyn_cast<ConvolutionInst>(I)) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
-      cl_kernel kernel = createKernel(program_, kernelName);
+      cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I->getNumOperands();
@@ -455,7 +503,7 @@ void OCLBackend::doForwardPass() {
     if (auto *PM = dyn_cast<PoolMaxInst>(I)) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
-      cl_kernel kernel = createKernel(program_, kernelName);
+      cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I->getNumOperands();
@@ -481,7 +529,7 @@ void OCLBackend::doForwardPass() {
     if (auto *PM = dyn_cast<PoolMaxWithXYInst>(I)) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
-      cl_kernel kernel = createKernel(program_, kernelName);
+      cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I->getNumOperands();
@@ -507,7 +555,7 @@ void OCLBackend::doForwardPass() {
     if (auto *PA = dyn_cast<PoolAvgInst>(I)) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
-      cl_kernel kernel = createKernel(program_, kernelName);
+      cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I->getNumOperands();
@@ -536,7 +584,7 @@ void OCLBackend::doForwardPass() {
       GLOW_ASSERT(TR->getShuffle().size() <= 4 &&
                   "This code supports only 4 and lower dimensional transposes");
 
-      cl_kernel kernel = createKernel(program_, kernelName);
+      cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I->getNumOperands();

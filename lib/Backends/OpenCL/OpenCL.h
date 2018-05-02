@@ -54,6 +54,16 @@ struct KernelLaunch {
 
 /// This is the OpenCL backend.
 class OCLBackend final : public Backend {
+  /// A helper type representing a key for the program's cache.
+  /// Each compiled program is uniquely identified by its source code, set of
+  /// compiler options that were used and the device it was compiled for.
+  using ProgramKey =
+      std::tuple<const std::string, const std::string, const cl_device_id>;
+  struct ProgramKeyHash {
+    std::size_t operator()(const ProgramKey &K) const noexcept {
+      return llvm::hash_combine(std::get<0>(K), std::get<1>(K), std::get<2>(K));
+    }
+  };
   /// The Module that holds the IR. This does not own the module.
   IRFunction *F_;
   /// The allocator assigns device memory addresses to the buffers.
@@ -69,9 +79,12 @@ class OCLBackend final : public Backend {
   cl_context context_;
   /// CL compute command queue.
   cl_command_queue commands_;
-  // Stores the compiled kernel bank.
-  cl_program program_;
-  // A pointer to the on-device memory buffer.
+  /// Cache of compiled programs.
+  /// The same source code can be compile with different options (e.g. with
+  /// different set of macro definitions) and/or for a different device and
+  /// would result in different programs.
+  std::unordered_map<ProgramKey, cl_program, ProgramKeyHash> programsCache_;
+  /// A pointer to the on-device memory buffer.
   cl_mem deviceBuffer_{0};
 
 public:
@@ -121,6 +134,16 @@ private:
   cl_mem allocDeviceBuffer(size_t size);
   /// Frees a device buffer.
   void freeDeviceBuffer(cl_mem buf);
+
+  /// Create kernel with a given \p name from a \p program.
+  /// If \p program is nullptr, try to find the kernel with a given \p name
+  /// in any of compiled programs.
+  cl_kernel createKernel(const std::string &name, cl_program program = nullptr);
+
+  /// Create a program from the \p source using provided \p options.
+  cl_program createProgram(const std::string &source,
+                           const std::vector<std::string> &options,
+                           cl_command_queue queue);
   /// Enqueue a \p kernel on a provided \p commands queue. 
   void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
                      cl_device_id device, llvm::ArrayRef<size_t> global,
