@@ -388,6 +388,50 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
+    if (auto *ET = dyn_cast<ExtractTensorInst>(I)) {
+      cl_kernel kernel = createKernel(kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
+
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
+      }
+
+      // Currently support tensors up to 4 dimensions.
+      // TODO: Handle other dimensions.
+      const size_t numDimensions = ET->getDest()->getType()->dims().size();
+      ShapeNHWC odim = ShapeNHWC::empty();
+      ShapeNHWC idim = ShapeNHWC::empty();
+      ShapeNHWC offset = ShapeNHWC::empty();
+
+      if (numDimensions == 1) {
+        odim = ShapeNHWC::fromX(ET->getDest()->getType()->dims());
+        idim = ShapeNHWC::fromX(ET->getSrc()->getType()->dims());
+        offset = ShapeNHWC::fromXY(ET->getOffsets());
+      } else if (numDimensions == 2) {
+        odim = ShapeNHWC::fromXY(ET->getDest()->getType()->dims());
+        idim = ShapeNHWC::fromXY(ET->getSrc()->getType()->dims());
+        offset = ShapeNHWC::fromXY(ET->getOffsets());
+      } else if (numDimensions == 3) {
+        odim = ShapeNHWC::fromXYZ(ET->getDest()->getType()->dims());
+        idim = ShapeNHWC::fromXYZ(ET->getSrc()->getType()->dims());
+        offset = ShapeNHWC::fromXYZ(ET->getOffsets());
+      } else if (numDimensions == 4) {
+        odim = ShapeNHWC(ET->getDest()->getType()->dims());
+        idim = ShapeNHWC(ET->getSrc()->getType()->dims());
+        offset = ShapeNHWC(ET->getOffsets());
+      } else {
+        assert(false && "Unsupported tensor dimension");
+      }
+
+      setKernelArg(kernel, 3, odim);
+      setKernelArg(kernel, 4, idim);
+      setKernelArg(kernel, 5, offset);
+      enqueueKernel(commands_, kernel, deviceId_, {odim.n}, kernelLaunches_);
+      continue;
+    }
+
     if (auto *IT = dyn_cast<InsertTensorInst>(I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);

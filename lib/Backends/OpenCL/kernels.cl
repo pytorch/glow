@@ -472,6 +472,36 @@ __kernel void inserttensorW(__global void *mem, cl_uint32_t dest,
                             ShapeNHWC offset) {
   inserttensorK(&mem[dest], &mem[src], odim, idim, offset);
 }
+
+__kernel void extracttensorK(__global float *dest,
+                             __global float *src,
+                             ShapeNHWC odim,
+                             ShapeNHWC idim,
+                             ShapeNHWC offset) {
+  size_t d0 = get_global_id(0);
+  size_t offset_w = ((odim.w > 1) ? offset.w : 0);
+  size_t offset_c = ((odim.c > 1) ? offset.c : 0);
+  for (size_t d1 = 0; d1 < odim.h; d1++) {
+    for (size_t d2 = 0; d2 < odim.w; d2++) {
+      for (size_t d3 = 0; d3 < odim.c; d3++) {
+        size_t r0 = d0 + offset.n;
+        size_t r1 = d1 + offset.h;
+        size_t r2 = d2 + offset_w;
+        size_t r3 = d3 + offset_c;
+        size_t destIdx = getNHWC(odim, d0, d1, d2, d3);
+        size_t srcIdx = getNHWC(idim, r0, r1, r2, r3);
+        dest[destIdx] = src[srcIdx];
+      }
+    }
+  }
+}
+
+__kernel void extracttensorW(__global void *mem, cl_uint32_t dest,
+                             cl_uint32_t src, ShapeNHWC odim, ShapeNHWC idim,
+                             ShapeNHWC offset) {
+  extracttensorK(&mem[dest], &mem[src], odim, idim, offset);
+}
+
 void memcpy_float(__global float *dest, const __global float *src, int len) {
     for(int i=0;i<len;i++) {
       dest[i]=src[i];
