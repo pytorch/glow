@@ -363,6 +363,31 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
+    if (auto *SM = dyn_cast<SoftMaxGradInst>(I)) {
+      // Implement Softmax by parallelizing the batch dimension. Each sample in
+      // the batch is processed by a different parallel 'thread'.
+      cl_kernel kernel = createKernel(kernelName);
+
+      setKernelArg(kernel, 0, deviceBuffer_);
+
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
+      }
+
+      // This is the number of elements for each slice. There are N slices in
+      // our batch.
+      auto inputDims = SM->getSrcGrad()->getType()->dims();
+      size_t numSlices = inputDims[0];
+
+      // Pass the slice size (size of each sample in the batch) as a parameter.
+      setKernelArg<cl_uint>(kernel, numArgs + 1, flattenCdr(inputDims).second);
+
+      enqueueKernel(commands_, kernel, deviceId_, {numSlices}, kernelLaunches_);
+      continue;
+    }
+
     if (auto *IT = dyn_cast<InsertTensorInst>(I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
