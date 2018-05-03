@@ -23,6 +23,7 @@ high number of input operators as well as a large number of hardware targets by
 eliminating the need to implement all operators on all targets. The lowering
 phase is designed to reduce the input space and allow new hardware backends to
 focus on a small number of linear algebra primitives.
+The design philosophy is described in an [arXiv paper](https://arxiv.org/abs/1805.00907).
 
 ![](./docs/3LevelIR.png)
 
