@@ -86,6 +86,8 @@ class OCLBackend final : public Backend {
   std::unordered_map<ProgramKey, cl_program, ProgramKeyHash> programsCache_;
   /// A pointer to the on-device memory buffer.
   cl_mem deviceBuffer_{0};
+  /// Information about kernel launches.
+  std::vector<KernelLaunch> kernelLaunches_;
 
 public:
   /// Ctor.

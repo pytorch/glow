@@ -296,7 +296,6 @@ static void dumpProfileInfo(const std::vector<KernelLaunch> &kernelLaunches) {
 }
 
 void OCLBackend::doForwardPass() {
-  std::vector<KernelLaunch> kernelLaunches;
   auto copiedToDeviceBytes = copyMutableWeightsToDevice();
   (void)copiedToDeviceBytes;
   DEBUG(llvm::dbgs() << "Copied " << copiedToDeviceBytes
@@ -339,7 +338,7 @@ void OCLBackend::doForwardPass() {
         GLOW_UNREACHABLE("Invalid instruction.");
       }
 
-      enqueueKernel(commands_, kernel, deviceId_, {global}, kernelLaunches);
+      enqueueKernel(commands_, kernel, deviceId_, {global}, kernelLaunches_);
       continue;
     }
 
@@ -364,7 +363,7 @@ void OCLBackend::doForwardPass() {
       // Pass the slice size (size of each sample in the batch) as a parameter.
       setKernelArg<cl_uint>(kernel, numArgs + 1, flattenCdr(inputDims).second);
 
-      enqueueKernel(commands_, kernel, deviceId_, {numSlices}, kernelLaunches);
+      enqueueKernel(commands_, kernel, deviceId_, {numSlices}, kernelLaunches_);
       continue;
     }
 
@@ -400,7 +399,7 @@ void OCLBackend::doForwardPass() {
       setKernelArg(kernel, 3, odim);
       setKernelArg(kernel, 4, idim);
       setKernelArg(kernel, 5, offset);
-      enqueueKernel(commands_, kernel, deviceId_, {idim.n}, kernelLaunches);
+      enqueueKernel(commands_, kernel, deviceId_, {idim.n}, kernelLaunches_);
       continue;
     }
 
@@ -427,7 +426,7 @@ void OCLBackend::doForwardPass() {
       // Use a 3D grid where the first dimension is the N and the second and
       // third dimensions are the X and Y in the output buffer.
       enqueueKernel(commands_, kernel, deviceId_, {ddim.n, ddim.h, ddim.w},
-                    kernelLaunches);
+                    kernelLaunches_);
       continue;
     }
 
@@ -447,7 +446,7 @@ void OCLBackend::doForwardPass() {
 
       // Parallelize on each element in the slice.
       enqueueKernel(commands_, kernel, deviceId_, {bdim.second},
-                    kernelLaunches);
+                    kernelLaunches_);
       continue;
     }
 
@@ -467,7 +466,7 @@ void OCLBackend::doForwardPass() {
 
       // Parallelize on each element in the slice.
       enqueueKernel(commands_, kernel, deviceId_, {bdim.second},
-                    kernelLaunches);
+                    kernelLaunches_);
       continue;
     }
 
@@ -496,7 +495,7 @@ void OCLBackend::doForwardPass() {
       // Use a 3D grid where the first dimension is the depth and the second
       // dimension is the slice index in the batch.
       enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
-                    kernelLaunches);
+                    kernelLaunches_);
       continue;
     }
 
@@ -522,7 +521,7 @@ void OCLBackend::doForwardPass() {
       setKernelArg(kernel, numArgs + 5, idim);
 
       enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
-                    kernelLaunches);
+                    kernelLaunches_);
       continue;
     }
 
@@ -548,7 +547,7 @@ void OCLBackend::doForwardPass() {
       setKernelArg(kernel, numArgs + 5, idim);
 
       enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
-                    kernelLaunches);
+                    kernelLaunches_);
       continue;
     }
 
@@ -574,7 +573,7 @@ void OCLBackend::doForwardPass() {
       setKernelArg(kernel, 7, idim);
 
       enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
-                    kernelLaunches);
+                    kernelLaunches_);
       continue;
     }
 
@@ -614,7 +613,7 @@ void OCLBackend::doForwardPass() {
       ShapeNHWC shuff(mask[0], mask[1], mask[2], mask[3]);
       setKernelArg(kernel, 5, shuff);
 
-      enqueueKernel(commands_, kernel, deviceId_, {idim.n}, kernelLaunches);
+      enqueueKernel(commands_, kernel, deviceId_, {idim.n}, kernelLaunches_);
       continue;
     }
 
@@ -645,17 +644,18 @@ void OCLBackend::doForwardPass() {
     }
 
     llvm::errs() << "Cannot select: " << I->getKindName() << "\n";
-    llvm::report_fatal_error("compilation failed");
+    GLOW_UNREACHABLE("compilation failed");
   }
 
   clFinish(commands_);
 
   // Output profiling information.
-  dumpProfileInfo(kernelLaunches);
+  dumpProfileInfo(kernelLaunches_);
 
-  for (auto &kl : kernelLaunches) {
+  for (auto &kl : kernelLaunches_) {
     clReleaseKernel(kl.kernel_);
   }
+  kernelLaunches_.clear();
 
   auto copiedFromDeviceBytes = copyMutableWeightsFromDevice();
   (void)copiedFromDeviceBytes;
