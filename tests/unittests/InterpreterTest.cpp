@@ -896,3 +896,94 @@ TEST(Interpreter, nonLinearClassifier) {
     EXPECT_NEAR(RH.at({0, std::get<2>(tests[i])}), 1.0, 0.2);
   }
 }
+
+/// Generate images in two classes. A "line" is labeled as 0
+/// and a "cross" is labeled as 1
+void generateImageData(Tensor &images, Tensor &labels, unsigned numSamples, unsigned offset) {
+  auto L = labels.getHandle<size_t>();
+  auto Im = images.getHandle<>();
+  images.zero();
+
+  for (size_t i = 0; i < numSamples; i++) {
+    L.at({i, 0}) = i % 2;
+    size_t target = 2 + i % 10 + offset * 10;
+    for (size_t x = 0; x < 32; x++) {
+      for (size_t y = 0; y < 32; y++) {
+        if (i % 2 == 0) {
+          /// line
+          if (x == target)
+            Im.at({i, x, y, 0u}) = 1;
+        } else {
+          /// cross
+          if (x == target || y == target)
+            Im.at({i, x, y, 0u}) = 1;
+        }
+      }
+    }
+  }
+}
+
+TEST(Interpreter, simpleConv) {
+  unsigned numSamples = 50;
+  ExecutionEngine EE;
+
+  EE.getConfig().learningRate = 0.001;
+  EE.getConfig().momentum = 0.9;
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  F->setName("simpleConv");
+
+  auto *input = mod.createVariable(ElemKind::FloatTy, {numSamples, 32, 32, 1}, "input",
+                                   VisibilityKind::Public);
+
+  auto *ex = mod.createVariable(ElemKind::IndexTy, {numSamples, 1}, "exp",
+                                VisibilityKind::Public, Variable::TrainKind::None);
+  auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2, 1);
+  auto *RL0 = F->createRELU("relu1", CV0);
+  auto *MP0 = F->createPoolMax("pool1", RL0, 2, 2, 0);
+
+  auto *FCL1 = F->createFullyConnected("fc", MP0, 10);
+  auto *FCL2 = F->createFullyConnected("fc", FCL1, 2);
+  auto *SM = F->createSoftMax("sm", FCL2, ex);
+  auto *result = F->createSave("ret", SM);
+
+  Function *TF = glow::differentiate(F, EE.getConfig());
+  EE.compile(CompilationMode::Train, TF);
+
+  Tensor images(ElemKind::FloatTy, {numSamples, 32, 32, 1});
+  Tensor labels(ElemKind::IndexTy, {numSamples, 1});
+  generateImageData(images, labels, numSamples, 0);
+
+  // Training:
+  EE.runBatch(100, {input, ex}, {&images, &labels});
+  EE.compile(CompilationMode::Infer, F);
+
+  EE.run({input}, {&images});
+  auto SMH = result->getVariable()->getPayload().getHandle<>();
+  for (size_t i = 0; i < numSamples; i++) {                                                                                                                     
+    auto A = SMH.at({i, 0});
+    auto B = SMH.at({i, 1});
+    if (i % 2 == 0)
+      EXPECT_TRUE(A > B);
+    else 
+      EXPECT_TRUE(B > A);
+  }
+
+  llvm::outs() << "now testing new ones: ...\n"; 
+  Tensor test_im(ElemKind::FloatTy, {numSamples, 32, 32, 1});
+  /// generate the images used for testing. The third param "1" makes sure that
+  /// the images are diffirent from the ones used for training.
+  generateImageData(test_im, labels, numSamples, 1);
+  EE.run({input}, {&test_im});
+  SMH = result->getVariable()->getPayload().getHandle<>();
+  for (size_t i = 0; i < numSamples; i++) {
+    auto A = SMH.at({i, 0});
+    auto B = SMH.at({i, 1});
+    llvm::outs() << i << " " << A << " " << B << "\n" ;
+    if (i % 2 == 0)
+      EXPECT_TRUE(A > B);
+    else
+      EXPECT_TRUE(B > A);
+  }
+}
