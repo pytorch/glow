@@ -639,6 +639,24 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
+
+    if (auto *DP = dyn_cast<DebugPrintInst>(I)) {
+      clFinish(commands_);
+      auto *V = DP->getSrc();
+      // Allocate a temporary tensor to hold the value.
+      Tensor T(V->getType());
+      // Load the current value of the variable into host memory.
+      copyValueFromDevice(V, T.getUnsafePtr());
+      clFinish(commands_);
+      llvm::outs() << I->getName() << ": ";
+      // Dump the content of a value.
+      V->dump();
+      llvm::outs() << "\n";
+      dumpImpl(&T);
+      llvm::outs() << "\n";
+      llvm::outs().flush();
+      continue;
+    }
     llvm::errs() << "Cannot select: " << I->getKindName() << "\n";
     GLOW_UNREACHABLE("compilation failed");
   }
