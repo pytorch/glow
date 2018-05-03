@@ -62,6 +62,11 @@ struct ShapeNHWC {
     return ShapeNHWC(shape[0], shape[1], 1, 1);
   }
 
+  static ShapeNHWC fromX(llvm::ArrayRef<size_t> shape) {
+    assert(shape.size() == 1 && "Invalid 1d shape");
+    return ShapeNHWC(shape[0], 1, 1, 1);
+  }
+
   static ShapeNHWC empty() { return ShapeNHWC(0, 0, 0, 0); }
 
   explicit ShapeNHWC(size_t samples, size_t height, size_t width,

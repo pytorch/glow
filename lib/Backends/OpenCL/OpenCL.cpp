@@ -363,7 +363,7 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *CI = dyn_cast<InsertTensorInst>(I)) {
+    if (auto *IT = dyn_cast<InsertTensorInst>(I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
@@ -373,21 +373,28 @@ void OCLBackend::doForwardPass() {
                               tensors_[I->getOperand(arg).first]);
       }
 
-      // Currently support tensors of 2 and 4 dimensions.
+      // Currently support tensors of up to 4 dimensions.
       // TODO: Handle other dimensions.
-      const size_t numDimensions = CI->getDest()->getType()->dims().size();
+      const size_t numDimensions = IT->getDest()->getType()->dims().size();
       ShapeNHWC odim = ShapeNHWC::empty();
       ShapeNHWC idim = ShapeNHWC::empty();
       ShapeNHWC offset = ShapeNHWC::empty();
-
-      if (numDimensions == 4) {
-        odim = ShapeNHWC(CI->getDest()->getType()->dims());
-        idim = ShapeNHWC(CI->getSrc()->getType()->dims());
-        offset = ShapeNHWC(CI->getOffsets());
+      if (numDimensions == 1) {
+        odim = ShapeNHWC::fromX(IT->getDest()->getType()->dims());
+        idim = ShapeNHWC::fromX(IT->getSrc()->getType()->dims());
+        offset = ShapeNHWC::fromX(IT->getOffsets());
       } else if (numDimensions == 2) {
-        odim = ShapeNHWC::fromXY(CI->getDest()->getType()->dims());
-        idim = ShapeNHWC::fromXY(CI->getSrc()->getType()->dims());
-        offset = ShapeNHWC::fromXY(CI->getOffsets());
+        odim = ShapeNHWC::fromXY(IT->getDest()->getType()->dims());
+        idim = ShapeNHWC::fromXY(IT->getSrc()->getType()->dims());
+        offset = ShapeNHWC::fromXY(IT->getOffsets());
+      } else if (numDimensions == 3) {
+        odim = ShapeNHWC::fromXYZ(IT->getDest()->getType()->dims());
+        idim = ShapeNHWC::fromXYZ(IT->getSrc()->getType()->dims());
+        offset = ShapeNHWC::fromXYZ(IT->getOffsets());
+      } else if (numDimensions == 4) {
+        odim = ShapeNHWC(IT->getDest()->getType()->dims());
+        idim = ShapeNHWC(IT->getSrc()->getType()->dims());
+        offset = ShapeNHWC(IT->getOffsets());
       } else {
         assert(false && "Unsupported tensor dimension");
       }
