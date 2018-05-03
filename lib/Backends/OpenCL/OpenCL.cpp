@@ -639,6 +639,27 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
+    if (auto *GI = dyn_cast<GatherInst>(I)) {
+      cl_kernel kernel = createKernel(kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
+
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
+      }
+
+      auto *data = GI->getData();
+      size_t dataSliceSize =
+          data->size() / data->dims()[0] * data->getType()->getElementSize();
+      size_t numIndices = GI->getIndices()->size();
+      setKernelArg<cl_uint>(kernel, numArgs + 1, numIndices);
+      setKernelArg<cl_uint>(kernel, numArgs + 2, dataSliceSize);
+
+      enqueueKernel(commands_, kernel, deviceId_, {numIndices},
+                    kernelLaunches_);
+      continue;
+    }
 
     if (auto *DP = dyn_cast<DebugPrintInst>(I)) {
       clFinish(commands_);
