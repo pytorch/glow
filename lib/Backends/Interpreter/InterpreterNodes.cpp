@@ -50,6 +50,8 @@ void Interpreter::fwdConvolutionInst_FloatImpl(Value *inV, Value *outV,
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
 
+  assert(idim.c % group == 0 && "Input channels must be divisible by group.");
+  assert(odim.c % group == 0 && "Output channels must be divisible by group.");
   size_t inCperG = idim.c / group;
   size_t outCperG = odim.c / group;
 
