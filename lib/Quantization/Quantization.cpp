@@ -466,7 +466,7 @@ static Node *quantizeNode(Function *F, Node *node,
 /// \param node Node for which quantization params are gathered.
 /// \param nodeToTQP Tensor quantization parameters for all nodes.
 static llvm::SmallVector<TensorQuantizationParams, 6> getQuantizationParameters(
-    Node *node,
+    const Node *node,
     std::unordered_map<std::string, TensorQuantizationParams> &nodeToTQP) {
   llvm::SmallVector<TensorQuantizationParams, 6> result;
 
@@ -507,6 +507,76 @@ postProcessQuantizedNode(Function *F, Node *quantizedNode,
   return quantizedNode;
 }
 
+/// Perform final adjustments to the \p quantizedNode.
+/// Relink all of the consumers of \p originalNode to temporary
+/// dequantize node which dequantizes all of the eligible outputs
+/// from the newly created \p quantizedNode.
+///
+/// \param quantizedNode Quantized node.
+/// \param originalNode Original node that was quantized.
+/// \param F Function of interest.
+/// \param nodeToTQP Mapping between node output and tensor quantization params
+///        for the output.
+/// \param qParams Tensor quantization params for eligible outputs of \p
+///        originalNode.
+static void finalizeNodeQuantization(
+    const Node *quantizedNode, Node *originalNode, Function *F,
+    std::unordered_map<std::string, TensorQuantizationParams> &nodeToTQP,
+    llvm::ArrayRef<TensorQuantizationParams> qParams) {
+  unsigned qParamIndex = 0;
+
+  for (unsigned outNum = 0, e = quantizedNode->getNumResults(); outNum < e;
+       outNum++) {
+    // Dequantize only quantized outputs.
+    // In case output was not quantized we still need to relink the node.
+    if (quantizedNode->getNthResult(outNum).getElementType() !=
+        ElemKind::Int8QTy) {
+      originalNode->getNthResult(outNum).replaceAllUsesOfWith(
+          quantizedNode->getNthResult(outNum));
+      continue;
+    }
+
+    auto *dequantized =
+        F->createDequantize("dequantize", quantizedNode->getNthResult(outNum));
+
+    originalNode->getNthResult(outNum).replaceAllUsesOfWith(dequantized);
+    nodeToTQP[NodeQuantizationInfo::generateNodeOutputName(dequantized->getName())] = qParams[qParamIndex++];
+  }
+}
+
+/// Build a map between node output and quantization params.
+///
+/// \param F Function which holds all nodes of interest.
+/// \param quantizationInfos List of all tensor quantization params.
+static std::unordered_map<std::string, TensorQuantizationParams> buildTensorQuantizationParams(
+  const Function *F,
+  llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos) {
+  std::unordered_map<std::string, TensorQuantizationParams> nodeToTQP;
+
+  for (const auto &quantizationInfo : quantizationInfos) {
+    nodeToTQP.emplace(quantizationInfo.nodeOutputName_,
+                      quantizationInfo.tensorQuantizationParams_);
+  }
+
+  // Invalidate profile data for certain nodes, e.g., Slice.
+  // Slice node narrows the dynamic range of the tensor values
+  // but it's useless and additional Rescale wastes compute.
+  for(auto node : F->getNodes()) {
+    if (node->getKind() == Kinded::Kind::SliceNodeKind ||
+        node->getKind() == Kinded::Kind::GatherNodeKind ||
+        node->getKind() == Kinded::Kind::ReshapeNodeKind ||
+        node->getKind() == Kinded::Kind::TransposeNodeKind) {
+      NodeValue &input = node->getNthInput(0);
+
+      nodeToTQP[NodeQuantizationInfo::generateNodeOutputName(node->getName())] =
+          nodeToTQP[NodeQuantizationInfo::generateNodeOutputName(
+              input->getName(), input.getResNo())];
+    }
+  }
+
+  return nodeToTQP;
+}
+
 void generateQuantizedGraph(
     const ExecutionEngine &EE, Function *F,
     llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos) {
@@ -515,11 +585,8 @@ void generateQuantizedGraph(
   }
 
   // Build a mapping between node name and TensorQuantizatonParams.
-  std::unordered_map<std::string, TensorQuantizationParams> nodeToTQP;
-  for (const auto &quantizationInfo : quantizationInfos) {
-    nodeToTQP.emplace(quantizationInfo.nodeOutputName_,
-                      quantizationInfo.tensorQuantizationParams_);
-  }
+  std::unordered_map<std::string, TensorQuantizationParams> nodeToTQP =
+    buildTensorQuantizationParams(F, quantizationInfos);
 
   // For every unprocessed node in the graph we keep the invariant of having
   // all inputs to be float typed.
@@ -546,30 +613,11 @@ void generateQuantizedGraph(
       assert(quantizedNode != nullptr && "Node must be quantized");
 
       // 3) Dequantize all outputs of the node so that invariant is kept.
-      unsigned qParamIndex = 0;
-      for (unsigned outNum = 0, e = quantizedNode->getNumResults(); outNum < e;
-           outNum++) {
-        // Dequantize only quantized outputs.
-        // In case output was not quantized we still need to relink the node.
-        if (quantizedNode->getNthResult(outNum).getElementType() !=
-            ElemKind::Int8QTy) {
-          node->getNthResult(outNum).replaceAllUsesOfWith(
-              quantizedNode->getNthResult(outNum));
-          continue;
-        }
-
-        auto *dequantized = F->createDequantize(
-            "dequantize", quantizedNode->getNthResult(outNum));
-
-        // 4) Replace all usages of the floating point node output by the
-        // dequantized node to maintain the invariant.
-        node->getNthResult(outNum).replaceAllUsesOfWith(dequantized);
-
-        // 5) Make sure that TQP is not lost after addition of intermediate
-        // dequantized node.
-        nodeToTQP[NodeQuantizationInfo::generateNodeOutputName(
-            dequantized->getName())] = qParams[qParamIndex++];
-      }
+      //    Replace all usages of the floating point node output by the
+      //    dequantized node.
+      //    Make sure that TQP is properly propagated after addition of
+      //    the intermediate dequantized node.
+      finalizeNodeQuantization(quantizedNode, node, F, nodeToTQP, qParams);
     }
   } while (nodeIt != stopIt);
 }
