@@ -254,11 +254,8 @@ static void dumpProfileInfo(const std::vector<KernelLaunch> &kernelLaunches) {
   for (auto &kl : kernelLaunches) {
     auto &event = kl.event_;
     clWaitForEvents(1, &event);
-    char kernelName[128];
-    size_t retSize;
-    auto err = clGetKernelInfo(kl.kernel_, CL_KERNEL_FUNCTION_NAME,
-                               sizeof(kernelName), &kernelName, &retSize);
-    GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelInfo.");
+    auto name = kl.name_;
+    assert(!name.empty() && "Kernel name cannot be empty");
     cl_ulong time_start;
     cl_ulong time_end;
 
@@ -268,10 +265,9 @@ static void dumpProfileInfo(const std::vector<KernelLaunch> &kernelLaunches) {
                             &time_end, NULL);
     // Duration (in nanoseconds).
     double duration = time_end - time_start;
-    kernelToDuration[kernelName] += duration;
+    kernelToDuration[name] += duration;
     total += duration;
-    llvm::outs() << "OpenCl execution time for a launch of kernel "
-                 << kernelName
+    llvm::outs() << "OpenCl execution time for a launch of kernel " << name
                  << format(" is: %0.3f milliseconds\n", duration / 1000000.0);
   }
   llvm::outs() << format(
@@ -806,6 +802,8 @@ void OCLBackend::init() {
   // Ask the memory allocator how much memory is required. What was the high
   // watermark for this program.
   size_t requiredSpace = allocator_.getMaxMemoryUsage();
+  DEBUG(llvm::dbgs() << "Allocated GPU memory block of size: " << requiredSpace
+                     << "\n");
 
   // Release the memory from the previous run.
   if (deviceBuffer_) {
@@ -821,7 +819,7 @@ void OCLBackend::init() {
 void OCLBackend::clear() { externalTensors_.clear(); }
 
 Tensor *OCLBackend::getTensor(const Value *v) const {
-  assert(externalTensors_.count(v) && "Unknown Value");
+  assert(externalTensors_.count(v) && "Unknown value");
   auto ie = externalTensors_.find(v);
   return ie->second;
 }
