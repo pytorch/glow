@@ -206,6 +206,24 @@ __kernel void softmaxW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
   softmaxK(&mem[dest], &mem[src], (__global float *)0, sliceSize);
 }
 
+__kernel void softmaxgradK(__global float *inG, __global float *outW,
+                           __global cl_uint64_t *selectedW,
+                           cl_uint32_t sliceSize) {
+  size_t i = get_global_id(0);
+  for (size_t j = 0; j < sliceSize; j++) {
+      float delta = (selectedW[i] == j);
+      inG[i*sliceSize + j] = outW[i*sliceSize + j] - delta;
+  }
+}
+
+__kernel void softmaxgradW(__global void *mem,
+                           cl_uint32_t origDest, cl_uint32_t origSrc,
+                           cl_uint32_t selected,
+                           cl_uint32_t srcGrad,
+                           cl_uint32_t sliceSize) {
+  softmaxgradK(&mem[srcGrad], &mem[origDest], &mem[selected], sliceSize);
+}
+
 __kernel void convolutionK(__global float *dest, __global float *src,
                            __global float *filter, __global float *bias,
                            cl_uint32_t filterSize, cl_uint32_t stride,
