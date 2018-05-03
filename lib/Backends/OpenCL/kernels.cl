@@ -305,7 +305,7 @@ __kernel void poolmaxW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
 }
 
 __kernel void poolmaxwithxyK(__global float *dest, __global float *src,
-                             __global float *srcXY, cl_uint32_t filterSize,
+                             __global cl_uint64_t *srcXY, cl_uint32_t filterSize,
                              cl_uint32_t stride, cl_uint32_t pad,
                              ShapeNHWC odim, ShapeNHWC idim) {
   size_t ax = get_global_id(0);
@@ -321,6 +321,8 @@ __kernel void poolmaxwithxyK(__global float *dest, __global float *src,
   for (size_t n = 0; n < idim.n; n++) {
     float maxVal = 0;
     bool first = true;
+    size_t maxX = x;
+    size_t maxY = y;
 
     // For each element in the convolution-filter:
     for (size_t fx = 0; fx < filterSize; fx++) {
@@ -339,10 +341,16 @@ __kernel void poolmaxwithxyK(__global float *dest, __global float *src,
         if (first || (val >= maxVal)) {
           first = false;
           maxVal = val;
+          maxX = (size_t)ox;
+          maxY = (size_t)oy;
         }
       }
     }
     dest[getNHWC(odim, n, ax, ay, d)] = maxVal;
+    if (srcXY) {
+       srcXY[getNHWC(odim, n, ax, ay, d)*2] = maxX;
+       srcXY[getNHWC(odim, n, ax, ay, d)*2+1] = maxY;
+    }
   } // N
 }
 
