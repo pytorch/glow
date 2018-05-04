@@ -15,10 +15,10 @@ typedef struct {
   cl_uint64_t c; // Number of channels
 } ShapeNHWC;
 
-/// \returns the index of the element at x,y,z,w.
-size_t getNHWC(ShapeNHWC s, cl_uint32_t x, cl_uint32_t y, cl_uint32_t z,
-               cl_uint32_t w) {
-  return (x * s.c * s.w * s.h) + (y * s.c * s.w) + (z * s.c) + w;
+/// \returns the index of the element at n, h, w, c.
+size_t getNHWC(ShapeNHWC s, cl_uint32_t n, cl_uint32_t h, cl_uint32_t w,
+               cl_uint32_t c) {
+  return (n * s.c * s.w * s.h) + (h * s.c * s.w) + (w * s.c) + c;
 }
 
 __kernel void batchedreduceaddK(__global float *dest, __global float *batch,
