@@ -172,3 +172,8 @@ Standalone Executable Bundles](docs/AOT.md) for more detail.
 To get started, please refer to the following guides:
 * [Contributing](CONTRIBUTING.md)
 * [CodingStandards](docs/CodingStandards.md)
+
+### Communication
+
+* forums: discuss implementations, research, etc. http://discuss.pytorch.org
+* GitHub issues: bug reports, feature requests, install issues, RFCs, thoughts, etc.
