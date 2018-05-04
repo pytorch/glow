@@ -311,6 +311,25 @@ void OCLBackend::doForwardPass() {
 
     // Element-wise operations, except the copy instruction.
     if (I->isDataParallel() && !isa<CopyInst>(I)) {
+      // Figure out how many element-wise elements are there to process:
+      size_t global;
+      if (I->isDataParallel()) {
+        global = I->getOperand(0).first->getType()->size();
+        if (global % 16 == 0) {
+          // Start less kernels and let each kernel do more work using vector
+          // instructions.
+          global /= 16;
+          kernelName += "16";
+        } else
+            if (global % 8 == 0) {
+          // Start less kernels and let each kernel do more work using vector
+          // instructions.
+          global /= 8;
+          kernelName += "8";
+        }
+      } else {
+        GLOW_UNREACHABLE("Invalid instruction.");
+      }
 
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
@@ -324,14 +343,6 @@ void OCLBackend::doForwardPass() {
       if (auto *SI = dyn_cast<SplatInst>(I)) {
         // Pass the splat as a parameter.
         setKernelArg(kernel, numArgs + 1, SI->getValue());
-      }
-
-      // Figure out how many element-wise elements are there to process:
-      size_t global;
-      if (I->isDataParallel()) {
-        global = I->getOperand(0).first->getType()->size();
-      } else {
-        GLOW_UNREACHABLE("Invalid instruction.");
       }
 
       enqueueKernel(commands_, kernel, deviceId_, {global}, kernelLaunches_);
