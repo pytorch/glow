@@ -726,8 +726,7 @@ void OCLBackend::doForwardPass() {
       }
 
       auto *data = GI->getData();
-      size_t dataSliceSize =
-          data->size() / data->dims()[0] * data->getType()->getElementSize();
+      size_t dataSliceSize = data->size() / data->dims()[0];
       size_t numIndices = GI->getIndices()->size();
       setKernelArg<cl_uint>(kernel, numArgs + 1, numIndices);
       setKernelArg<cl_uint>(kernel, numArgs + 2, dataSliceSize);
