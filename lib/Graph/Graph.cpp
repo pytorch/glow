@@ -463,7 +463,8 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
   assert(outTy->dims().size() == 2 && "Invalid number of dimensions");
   assert(outTy->dims()[0] == input.dims()[0] && "Invalid dimensions");
 
-  return addNode(new FullyConnectedNode(name, outTy, input, W, B));
+  TypeRef OT = getParent()->uniqueType(*outTy);
+  return addNode(new FullyConnectedNode(name, OT, input, W, B));
 }
 
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
@@ -610,7 +611,8 @@ ConcatNode *Function::createConcat(llvm::StringRef name,
     ops.emplace_back(I);
   }
 
-  return addNode(new ConcatNode(name, outTy, ops, dimension));
+  TypeRef OT = getParent()->uniqueType(*outTy);
+  return addNode(new ConcatNode(name, OT, ops, dimension));
 }
 
 SliceNode *Function::createSlice(llvm::StringRef name, NodeValue input,
@@ -625,7 +627,8 @@ SliceNode *Function::createSlice(llvm::StringRef name, NodeValue input,
            "Input/Output/Start dims mismatch");
   }
 
-  return addNode(new SliceNode(name, outTy, input, start));
+  TypeRef OT = getParent()->uniqueType(*outTy);
+  return addNode(new SliceNode(name, OT, input, start));
 }
 
 SliceNode *Function::createSlice(llvm::StringRef name, NodeValue input,
@@ -730,7 +733,8 @@ LocalResponseNormalizationNode *Function::createLocalResponseNormalization(
   NODE_NAME_##Node *Function::create##NODE_NAME_(                              \
       llvm::StringRef name, TypeRef T, NodeValue LHS, NodeValue RHS) {         \
     assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");              \
-    return addNode(new NODE_NAME_##Node(name, T, LHS, RHS));                   \
+    TypeRef OT = getParent()->uniqueType(*T);                                  \
+    return addNode(new NODE_NAME_##Node(name, OT, LHS, RHS));                  \
   }
 
 ARITHMETIC_FUN_DEF(Add);
@@ -907,7 +911,7 @@ DequantizeNode *Function::createDequantize(llvm::StringRef name,
   TypeRef outTy =
       getParent()->uniqueType(Type(ElemKind::FloatTy, input.dims()));
   return addNode(
-      new DequantizeNode(name, getParent()->uniqueType(*outTy), input));
+      new DequantizeNode(name, outTy, input));
 }
 
 RescaleQuantizedNode *Function::createRescaleQuantized(llvm::StringRef name,
