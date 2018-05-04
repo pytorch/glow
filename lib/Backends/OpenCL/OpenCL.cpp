@@ -113,6 +113,22 @@ OCLBackend::~OCLBackend() {
   clear();
 }
 
+static std::string getKernelName(const char *baseName, ElemKind elemTy) {
+  std::string name = baseName;
+  switch (elemTy) {
+  case ElemKind::FloatTy:
+    return name + "W";
+  case ElemKind::Int8QTy:
+    return name + "_i8W";
+  case ElemKind::Int32QTy:
+    return name + "_i32W";
+  case ElemKind::IndexTy:
+    return name + "_uW";
+  default:
+    GLOW_ASSERT("Unsupported element type");
+  }
+}
+
 cl_kernel OCLBackend::createKernel(const std::string &name,
                                    cl_program program) {
   cl_int err = CL_SUCCESS;
@@ -301,7 +317,9 @@ void OCLBackend::doForwardPass() {
     // The kernels are named after the name of the instruction, plus the "W"
     // suffix to prevent name colissions for functions like 'tanh' that are also
     // a part of the OpenCL runtime.
-    std::string kernelName = std::string(I->getKindName()) + "W";
+    auto elemTy = I->getNumOperands() ? I->getOperand(0).first->getElementType()
+                                      : ElemKind::FloatTy;
+    std::string kernelName = getKernelName(I->getKindName(), elemTy);
 
     // Skip memory allocation instructions as they are NOPs.
     if (isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I) ||
@@ -320,8 +338,7 @@ void OCLBackend::doForwardPass() {
           // instructions.
           global /= 16;
           kernelName += "16";
-        } else
-            if (global % 8 == 0) {
+        } else if (global % 8 == 0) {
           // Start less kernels and let each kernel do more work using vector
           // instructions.
           global /= 8;
