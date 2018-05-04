@@ -77,3 +77,50 @@ TEST(OpenCLCorrectnessTest, inferMixedNet) {
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
+
+TEST(OpenCLCorrectnessTest, softmaxGradTest) {
+  std::array<size_t, 2> S{{8, 23}};
+  llvm::ArrayRef<size_t> shape(S);
+  Tensor inputs(ElemKind::FloatTy, shape);
+  Tensor weights(ElemKind::FloatTy, {23, 23});
+  Tensor bias(ElemKind::FloatTy, {23});
+  Tensor selected(ElemKind::IndexTy, {8, 1});
+  inputs.getHandle().initXavier(1);
+  weights.getHandle().randomize(0.0, 0.5);
+  bias.getHandle().randomize(-0.2, 0.0);
+  auto selectedH = selected.getHandle<size_t>();
+  for (size_t i = 0; i < 8; i++) {
+    selectedH.raw(i) = nextRandInt(0, 22);
+  }
+  Tensor out1(ElemKind::FloatTy, shape);
+  Tensor out2(ElemKind::FloatTy, shape);
+
+  trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out1,
+                  BackendKind::OpenCL);
+  trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out2,
+                  BackendKind::Interpreter);
+
+  EXPECT_TRUE(out1.isEqual(out2));
+}
+
+TEST(OpenCLCorrectnessTest, gatherTest) {
+  constexpr size_t nSlices = 16;
+  constexpr size_t nGathered = 8;
+
+  Tensor data(ElemKind::FloatTy, {nSlices, 16, 3, 2});
+  data.getHandle().initXavier(1);
+
+  Tensor indices(ElemKind::IndexTy, {nGathered});
+  auto indicesH = indices.getHandle<size_t>();
+  for (size_t i = 0; i < nGathered; i++) {
+    indicesH.raw(i) = nextRandInt(0, nSlices - 1);
+  }
+
+  Tensor out1(ElemKind::FloatTy, {nGathered, 16, 3, 2});
+  Tensor out2(ElemKind::FloatTy, {nGathered, 16, 3, 2});
+
+  inferGatherNet(&data, &indices, &out1, BackendKind::OpenCL);
+  inferGatherNet(&data, &indices, &out2, BackendKind::Interpreter);
+
+  EXPECT_TRUE(out1.isEqual(out2));
+}
