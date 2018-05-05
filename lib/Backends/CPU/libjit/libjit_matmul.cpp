@@ -65,8 +65,8 @@ void libjit_matmul_dot(int k, const float *a, int lda, const float *b, int ldb,
 /// to a slow but general helper.
 void libjit_matmul_inner(int m, int n, int k, const float *a, int lda,
                          const float *b, int ldb, float *c, int ldc) {
-  constexpr int regsA = 4;
-  constexpr int regsB = 2;
+  constexpr int regsA = 3;
+  constexpr int regsB = 4;
 
   constexpr int mc = regsA;
   constexpr int nr = regsB * 8;
