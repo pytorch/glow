@@ -132,6 +132,12 @@ private:
   /// \returns number of copied bytes.
   size_t copyMutableWeightsFromDevice();
 
+  /// Fill the device \p buffer with a given \p value.
+  /// \param len number of buffer elements to be filled by the \p value.
+  /// Elements are considered to be of the type described by \p elemKind.
+  void fillBuffer(cl_mem buffer, size_t start, size_t len, float value,
+                  ElemKind elemKind);
+
   /// Allocate a device buffer of required \p size.
   cl_mem allocDeviceBuffer(size_t size);
   /// Frees a device buffer.

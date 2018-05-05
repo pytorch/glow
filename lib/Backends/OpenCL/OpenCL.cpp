@@ -193,6 +193,15 @@ void setKernelArg(cl_kernel kernel, unsigned argIdx, T value) {
   GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
 }
 
+void OCLBackend::fillBuffer(cl_mem buffer, size_t start, size_t len,
+                            float value, ElemKind elemKind) {
+  auto kernel = createKernel(getKernelName("splat", elemKind));
+  setKernelArg(kernel, 0, buffer);
+  setKernelArg<cl_uint>(kernel, 1, start);
+  setKernelArg(kernel, 2, value);
+  enqueueKernel(commands_, kernel, deviceId_, {len}, kernelLaunches_);
+}
+
 /// \returns the max local workgroup size for each dimension, under the
 /// opencl constraints, with the global workgroup sizes of \p global;
 void getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
