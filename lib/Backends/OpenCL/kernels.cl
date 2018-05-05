@@ -15,6 +15,32 @@ typedef struct {
   cl_uint64_t c; // Number of channels
 } ShapeNHWC;
 
+#if defined(cl_khr_int32_base_atomics)
+#pragma OPENCL EXTENSION cl_khr_int32_base_atomics : enable
+#define ATOMICS_32_AVAILABLE
+#endif
+
+#if defined(cl_khr_global_int32_base_atomics)
+#pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
+#define ATOMICS_32_AVAILABLE
+#endif
+
+#ifdef ATOMICS_32_AVAILABLE
+inline void atomicAdd(volatile __global float *source, const float operand) {
+  union {
+    uint intVal;
+    float floatVal;
+  } next, expected, current;
+  current.floatVal = *source;
+  do {
+    expected.floatVal = current.floatVal;
+    next.floatVal = expected.floatVal + operand;
+    current.intVal = atomic_cmpxchg((volatile __global uint *)source,
+                                    expected.intVal, next.intVal);
+  } while (current.intVal != expected.intVal);
+}
+#endif
+
 /// \returns the index of the element at n, h, w, c.
 size_t getNHWC(ShapeNHWC s, cl_uint32_t n, cl_uint32_t h, cl_uint32_t w,
                cl_uint32_t c) {
@@ -428,6 +454,72 @@ __kernel void convolutionW(__global void *mem, cl_uint32_t dest,
                            ShapeNHWC idim, ShapeNHWC filterDim) {
   convolutionK(&mem[dest], &mem[src], &mem[filter], &mem[bias], filterSize,
                stride, pad, odim, idim, filterDim);
+}
+
+
+__kernel void convolutiongradK(const __global float *inW,
+                               const __global float *filterW,
+                               const __global float *outG, __global float *inG,
+                               __global float *filterG, __global float *biasG,
+                               cl_uint32_t filterSize, cl_uint32_t stride,
+                               cl_uint32_t pad, ShapeNHWC inWdims,
+                               ShapeNHWC outGdims, ShapeNHWC filterGdims) {
+  // ax and ay are coordinates in the tensor outG.
+  size_t ax = get_global_id(0);
+  size_t ay = get_global_id(1);
+  size_t d = get_global_id(2);
+
+  typedef int ssize_t;
+  // For each convolution 'jump' in the input tensor:
+  ssize_t x = -(ssize_t)pad + ax * stride;
+  ssize_t y = -(ssize_t)pad + ay * stride;
+
+  // NHWC format is assumed
+
+  // For each input in the batch:
+  for (size_t n = 0; n < outGdims.n; n++) {
+    float grad = outG[getNHWC(outGdims, n, ax, ay, d)];
+
+    for (size_t fx = 0; fx < filterSize; fx++) {
+      for (size_t fy = 0; fy < filterSize; fy++) {
+        ssize_t ox = x + fx;
+        ssize_t oy = y + fy;
+
+        if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims.h ||
+            oy >= (ssize_t)inWdims.w) {
+          continue;
+        }
+
+        for (size_t fd = 0; fd < inWdims.c; fd++) {
+          atomicAdd(&filterG[getNHWC(filterGdims, d, fx, fy, fd)],
+                    inW[getNHWC(inWdims, n, (size_t)ox, (size_t)oy, fd)] *
+                        grad);
+          atomicAdd(&inG[getNHWC(inWdims, n, (size_t)ox, (size_t)oy, fd)],
+                    filterW[getNHWC(filterGdims, d, fx, fy, fd)] * grad);
+        }
+      }
+    }
+    atomicAdd(&biasG[d], grad);
+  } // N
+}
+
+__kernel void convolutiongradW(__global void *mem, 
+                           cl_uint32_t src,
+                           cl_uint32_t filter,
+                           cl_uint32_t destGrad,
+                           cl_uint32_t srcGrad,
+                           cl_uint32_t filterGrad,
+                           cl_uint32_t biasGrad,
+                           cl_uint32_t filterSize,
+                           cl_uint32_t stride,
+                           cl_uint32_t pad,
+                           ShapeNHWC srcDim,
+                           ShapeNHWC destGradDim,
+                           ShapeNHWC filterGradDim) {
+   convolutiongradK(&mem[src], &mem[filter],
+                    &mem[destGrad], &mem[srcGrad], &mem[filterGrad],
+                    &mem[biasGrad],
+                    filterSize, stride, pad, srcDim, destGradDim, filterGradDim); 
 }
 
 __kernel void poolmaxK(__global float *dest, __global float *src,

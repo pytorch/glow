@@ -103,6 +103,37 @@ TEST(OpenCLCorrectnessTest, softmaxGradTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
+TEST(OpenCLCorrectnessTest, convGradTest) {
+  Tensor inputs(ElemKind::FloatTy, {9, 8, 9, 4});
+  Tensor kernel1(ElemKind::FloatTy, {3, 3, 3, 4});
+  Tensor bias1(ElemKind::FloatTy, {3});
+  Tensor kernel2(ElemKind::FloatTy, {2, 2, 2, 1});
+  Tensor bias2(ElemKind::FloatTy, {2});
+  Tensor selected(ElemKind::IndexTy, {9, 1});
+  inputs.getHandle().initXavier(1);
+  kernel1.getHandle().randomize(-1.0, 1.4);
+  bias1.getHandle().randomize(-0.2, 0.5);
+  kernel2.getHandle().randomize(-1.8, 2.3);
+  bias2.getHandle().randomize(-0.5, 1.0);
+  auto selectedH = selected.getHandle<size_t>();
+  for (size_t i = 0; i < 9; i++) {
+    selectedH.raw(i) = nextRandInt(0, 29);
+  }
+  std::array<size_t, 4> S1{{9, 6, 10, 1}};
+  llvm::ArrayRef<size_t> shape1(S1);
+  std::array<size_t, 2> S2{{9, 30}};
+  llvm::ArrayRef<size_t> shape2(S2);
+  Tensor out1(ElemKind::FloatTy, shape2);
+  Tensor out2(ElemKind::FloatTy, shape2);
+
+  trainConvNet(&inputs, &kernel1, &bias1, &kernel2, &bias2, &selected, shape1,
+               shape2, &out1, BackendKind::OpenCL);
+  trainConvNet(&inputs, &kernel1, &bias1, &kernel2, &bias2, &selected, shape1,
+               shape2, &out2, BackendKind::Interpreter);
+
+  EXPECT_TRUE(out1.isEqual(out2));
+}
+
 TEST(OpenCLCorrectnessTest, gatherTest) {
   constexpr size_t nSlices = 16;
   constexpr size_t nGathered = 8;
