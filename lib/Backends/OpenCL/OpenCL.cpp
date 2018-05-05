@@ -608,6 +608,50 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
+    if (auto *CG = dyn_cast<ConvolutionGradInst>(I)) {
+      auto *src = CG->getSrc();
+      auto *filter = CG->getFilter();
+      auto *destGrad = CG->getDestGrad();
+      auto *srcGrad = CG->getSrcGrad();
+      auto *filterGrad = CG->getFilterGrad();
+      auto *biasGrad = CG->getBiasGrad();
+      cl_kernel kernel = createKernel(kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
+
+      unsigned numArgs = CG->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[CG->getOperand(arg).first]);
+      }
+
+      auto destGradDim = ShapeNHWC(destGrad->dims());
+      auto srcDim = ShapeNHWC(src->dims());
+      auto filterGradDim = ShapeNHWC(filterGrad->dims());
+
+      setKernelArg<cl_uint>(kernel, numArgs + 1, CG->getKernel());
+      setKernelArg<cl_uint>(kernel, numArgs + 2, CG->getStride());
+      setKernelArg<cl_uint>(kernel, numArgs + 3, CG->getPad());
+      setKernelArg(kernel, numArgs + 4, srcDim);
+      setKernelArg(kernel, numArgs + 5, destGradDim);
+      setKernelArg(kernel, numArgs + 6, filterGradDim);
+
+      // Zero memory for the output buffers.
+      fillBuffer(deviceBuffer_, tensors_[srcGrad], srcGrad->size(), 0,
+                 srcGrad->getElementType());
+      fillBuffer(deviceBuffer_, tensors_[filterGrad], filterGrad->size(), 0,
+                 filterGrad->getElementType());
+      fillBuffer(deviceBuffer_, tensors_[biasGrad], biasGrad->size(), 0,
+                 biasGrad->getElementType());
+
+      assert(filter->dims() == filterGrad->dims() && "Dims should be the same");
+      assert(src->dims() == srcGrad->dims() && "Dims should be the same");
+
+      enqueueKernel(commands_, kernel, deviceId_,
+                    {destGradDim.h, destGradDim.w, destGradDim.c},
+                    kernelLaunches_);
+      continue;
+    }
+
     if (auto *PM = dyn_cast<PoolMaxInst>(I)) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
