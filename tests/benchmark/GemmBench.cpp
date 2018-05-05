@@ -76,7 +76,7 @@ private:
 };
 
 int main() {
-  constexpr int reps = 12;
+  constexpr int reps = 100;
   printf("outX, outY, lhsX, lhsY, rhsX, rhsY, gflops/s, \n");
 
   for (int i = 0; i < 2; i++) {
