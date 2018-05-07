@@ -74,7 +74,9 @@ public:
   operator Node *() const { return node_; }
 
   /// Replace all of the uses of this value with \p v.
-  void replaceAllUsesOfWith(NodeValue v);
+  /// \param v Value which replaces the original one.
+  /// \param forceTypeCheck Force type checking between original value and \p v.
+  void replaceAllUsesOfWith(NodeValue v, bool forceTypeCheck = true);
 
   /// Provide a smart-pointer interface.
   Node *operator->() const { return node_; }
