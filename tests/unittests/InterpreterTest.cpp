@@ -899,6 +899,13 @@ TEST(Interpreter, nonLinearClassifier) {
 
 TEST(Interpreter, NotImplementedSave) {
   ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  
+  // Create a few nodes to make sure IR can be normally generated.
+  Function *F = mod.createFunction("main");
+  F->createSave("save", mod.createVariable(ElemKind::FloatTy, {2}, "A",
+                                           VisibilityKind::Public,
+                                           Variable::TrainKind::None));
 
-  EXPECT_DEATH(EE.save(CompilationMode::Infer, nullptr, "output"), "");
+  EXPECT_DEATH(EE.save(CompilationMode::Infer, F, "output"), "");
 }
