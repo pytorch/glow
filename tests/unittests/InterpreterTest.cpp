@@ -936,26 +936,19 @@ TEST(Interpreter, simpleConv) {
   F->setName("simpleConv");
 
   auto *input = mod.createVariable(ElemKind::FloatTy, {numSamples, 32, 32, 1}, "input",
-                                   VisibilityKind::Public);
+                                   VisibilityKind::Public, Variable::TrainKind::None);
 
   auto *ex = mod.createVariable(ElemKind::IndexTy, {numSamples, 1}, "exp",
                                 VisibilityKind::Public, Variable::TrainKind::None);
-  //auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2, 1);
-  //auto *RL0 = F->createRELU("relu1", CV0);
-  //auto *MP0 = F->createPoolMax("pool1", RL0, 2, 2, 0);
-
-  //  auto *FCL1 = F->createFullyConnected("fc", MP0, 10);
-  //auto *FCL2 = F->createFullyConnected("fc", MP0, 2);
-  //auto *SM = F->createSoftMax("sm", FCL2, ex);
-  //auto *result = F->createSave("ret", SM);
 
   auto *CV0 = F->createConv("conv1", input, 6, 5, 1, 2, 1);
-  auto *TANH0 = F->createTanh("tanh1", CV0);
-  auto *AP0 = F->createPoolAvg("pool1", TANH0, 2, 2, 0);
-  auto *TANH1 = F->createTanh("tanh2", AP0);  
+  auto *AP0 = F->createPoolAvg("pool1", CV0, 2, 2, 0);
+  auto *CV1 = F->createConv("conv2", AP0, 6, 5, 1, 2, 1);
+  auto *AP1 = F->createPoolAvg("pool2", CV1, 2, 2, 0);
+  auto *TANH1 = F->createTanh("tanh2", AP1);  
   auto *FCL1 = F->createFullyConnected("fc", TANH1, 120);
   auto *TANH2 = F->createTanh("tanh3", FCL1);
-  auto *FCL2 = F->createFullyConnected("fc", TANH2, 2);
+  auto *FCL2 = F->createFullyConnected("fc1", TANH2, 2);
   auto *SM = F->createSoftMax("sm", FCL2, ex);                                                                                                                                      
   auto *result = F->createSave("ret", SM);      
   
@@ -982,23 +975,5 @@ TEST(Interpreter, simpleConv) {
     if ((i % 2 == 0 && A > B) || (i % 2 == 1 && B > A))
       success++;
   }
-  llvm::outs() << "rate of successful tests in testing set: " << (float)success / (float)numSamples << "\n";
-
-  /*
-  llvm::outs() << "now testing new ones: ...\n"; 
-  Tensor test_im(ElemKind::FloatTy, {numSamples, 32, 32, 1});
-  /// generate the images used for testing. The third param "1" makes sure that
-  /// the images are diffirent from the ones used for training.
-  generateImageData(test_im, labels, numSamples, 1);
-  EE.run({input}, {&test_im});
-  SMH = result->getVariable()->getPayload().getHandle<>();
-  for (size_t i = 0; i < numSamples; i++) {
-    auto A = SMH.at({i, 0});
-    auto B = SMH.at({i, 1});
-    llvm::outs() << i << " " << A << " " << B << "\n" ;
-    if (i % 2 == 0)
-      EXPECT_TRUE(A > B);
-    else
-      EXPECT_TRUE(B > A);
-      }*/
+  llvm::outs() << "the rate of successful tests in testing set: " << (float)success / (float)numSamples << "\n";
 }
