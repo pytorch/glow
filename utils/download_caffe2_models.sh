@@ -8,8 +8,8 @@ lenet_mnist
 resnet50
 shufflenet
 squeezenet
-vgg16
 vgg19
+zfnet512
 EOF
 )
 
