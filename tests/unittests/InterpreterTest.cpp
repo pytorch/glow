@@ -842,6 +842,7 @@ TEST(Interpreter, nonLinearClassifier) {
 
   ExecutionEngine EE;
   EE.getConfig().learningRate = 0.01;
+  EE.getConfig().momentum = 0.9;
   EE.getConfig().batchSize = batchSize;
 
   auto &mod = EE.getModule();
@@ -878,7 +879,7 @@ TEST(Interpreter, nonLinearClassifier) {
     labels.getHandle<size_t>().at({i, 0}) = label;
   }
 
-  EE.runBatch(4000, {A, S}, {&samples, &labels});
+  EE.runBatch(500, {A, S}, {&samples, &labels});
 
   EE.compile(CompilationMode::Infer, F);
 
