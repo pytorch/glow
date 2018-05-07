@@ -80,15 +80,15 @@ model_props = dict(
         224,
         3,
     ),
-    vgg16=Model(
-        "gpu_0/data",
-        mode_0to256,
-        224,
-        3,
-    ),
     vgg19=Model(
         "data",
         mode_128to127,
+        224,
+        3,
+    ),
+    zfnet512=Model(
+        "gpu_0/data",
+        mode_0to256,
         224,
         3,
     ),
