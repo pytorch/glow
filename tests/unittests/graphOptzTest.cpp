@@ -665,3 +665,23 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
   EXPECT_EQ(mul->getNthInput(0).getType(), rescaleOutTy);
   EXPECT_EQ(div->getNthInput(0).getType(), rescaleOutTy);
 }
+
+TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
+  // Check that we eliminate rescale nodes by sinking them into other operators.
+  Node *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+                                    "input", VisibilityKind::Public,
+                                    Variable::TrainKind::Broadcast, 15);
+  // slice -> rescale -> reshape -> rescale -> transpose -> save.
+  auto *slice = F_->createSlice("slice", input, {0, 0}, {3, 3});
+  auto *rescale = F_->createRescaleQuantized(
+      "rescale", slice, mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.4, 10));
+  auto *reshape = F_->createReshape("reshape", rescale, {1, 9});
+  auto *rescale2 = F_->createRescaleQuantized(
+      "rescale", reshape, mod_.uniqueType(ElemKind::Int8QTy, {1, 9}, 0.3, 9));
+  auto *transpose = F_->createTranspose("transpose", rescale2, {1, 0});
+  F_->createSave("ret", transpose);
+
+  EXPECT_EQ(F_->getNodes().size(), 6);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 5);
+}

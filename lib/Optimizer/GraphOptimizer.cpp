@@ -883,11 +883,11 @@ static void optimizeQuantization(Function *F) {
         continue;
       }
 
-// Merge the rescale node into the arithmetic node.
+// Combine the rescale node up into the arithmetic node.
 // Rescale(Arithmetic()) -> Arithmetic().
 // Not all arithmetic nodes support explicit output quantized type.
-// Fuse rescale with add, sub, mul, div.
-#define FUSE_RESCALE_TO_ARITHMETIC_NODE(NODE_NAME_)                            \
+// Combine up rescale with add, sub, mul, div.
+#define COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(NODE_NAME_)                      \
   if (auto *AN = dyn_cast<NODE_NAME_##Node>(RS->getInput())) {                 \
     auto *newAN = F->create##NODE_NAME_(AN->getName(), RS->getType(),          \
                                         AN->getLHS(), AN->getRHS());           \
@@ -896,13 +896,13 @@ static void optimizeQuantization(Function *F) {
     continue;                                                                  \
   }
 
-      FUSE_RESCALE_TO_ARITHMETIC_NODE(Add);
-      FUSE_RESCALE_TO_ARITHMETIC_NODE(Sub);
-      FUSE_RESCALE_TO_ARITHMETIC_NODE(Mul);
-      FUSE_RESCALE_TO_ARITHMETIC_NODE(Div);
-#undef FUSE_RESCALE_TO_ARITHMETIC_NODE
+      COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(Add);
+      COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(Sub);
+      COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(Mul);
+      COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(Div);
+#undef COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE
 
-      // Merge the rescale node into the convolution.
+      // Combine the rescale node up into the convolution.
       // Rescale(Conv()) -> Conv()
       if (auto *CN = dyn_cast<ConvolutionNode>(RS->getInput())) {
         // Create the exact same convolution but with a different scaling
@@ -951,6 +951,89 @@ static void optimizeQuantization(Function *F) {
   optimizeQuantizedMaxSplat(F);
 }
 
+/// Sink Rescale nodes down when possible.
+static bool sinkRescaleQuantizedNode(Function *F) {
+  bool changed = false;
+  for (auto const &node : F->getNodes()) {
+    // Sink Rescale below Reshape node.
+    // Reshape(Rescale(X)) -> Rescale(Reshape(X)).
+    if (auto *reshape = dyn_cast<ReshapeNode>(node)) {
+      auto *rescale = dyn_cast<RescaleQuantizedNode>(reshape->getInput());
+      if (!rescale) {
+        continue;
+      }
+
+      auto *newReshape = F->createReshape(reshape->getName(),
+                                          rescale->getInput(), reshape->dims());
+      auto *newRescale = F->createRescaleQuantized(
+          rescale->getName(), newReshape, reshape->getResult().getType());
+      reshape->getResult().replaceAllUsesOfWith(newRescale);
+
+      changed = true;
+      continue;
+    }
+
+    // Sink Rescale below Slice node.
+    // Slice(Rescale(X)) -> Rescale(Slice(X)).
+    if (auto *slice = dyn_cast<SliceNode>(node)) {
+      auto *rescale = dyn_cast<RescaleQuantizedNode>(slice->getInput());
+      if (!rescale) {
+        continue;
+      }
+
+      auto sliceOutTy = F->getParent()->uniqueTypeWithNewShape(
+          rescale->getInput().getType(), slice->dims());
+      auto *newSlice = F->createSlice(slice->getName(), rescale->getInput(),
+                                      slice->getStart(), sliceOutTy);
+      auto *newRescale = F->createRescaleQuantized(
+          rescale->getName(), newSlice, slice->getResult().getType());
+      slice->getResult().replaceAllUsesOfWith(newRescale);
+
+      changed = true;
+      continue;
+    }
+
+    // Sink Rescale below Transpose node.
+    // Transpose(Rescale(X)) -> Rescale(Transpose(X)).
+    if (auto *transpose = dyn_cast<TransposeNode>(node)) {
+      auto *rescale = dyn_cast<RescaleQuantizedNode>(transpose->getInput());
+      if (!rescale) {
+        continue;
+      }
+
+      auto *newTranspose = F->createTranspose(
+          transpose->getName(), rescale->getInput(), transpose->getShuffle());
+      auto rescaleOutTy = F->getParent()->uniqueTypeWithNewShape(
+          rescale->getResult().getType(), transpose->dims());
+      auto *newRescale = F->createRescaleQuantized(rescale->getName(),
+                                                   newTranspose, rescaleOutTy);
+      transpose->getResult().replaceAllUsesOfWith(newRescale);
+
+      changed = true;
+      continue;
+    }
+
+    // Combine Rescale down with FullyConnected node.
+    // FullyConnected(Rescale(X)) -> FullyConnected(X).
+    if (auto *FC = dyn_cast<FullyConnectedNode>(node)) {
+      auto *rescale = dyn_cast<RescaleQuantizedNode>(FC->getInput());
+      if (!rescale) {
+        continue;
+      }
+
+      auto *newFC = F->createFullyConnected(FC->getName(), rescale->getInput(),
+                                            FC->getWeights(), FC->getBias(),
+                                            FC->getResult().getType());
+      FC->getResult().replaceAllUsesOfWith(newFC);
+
+      changed = true;
+      continue;
+    }
+  }
+
+  return changed;
+} 
+
 void glow::optimize(Function *F, CompilationMode mode) {
   // Sink transpose operations in an attempt to cancel them out.
   // Perform code sinking until a fixed-point is reached.
@@ -994,6 +1077,11 @@ void glow::optimize(Function *F, CompilationMode mode) {
 
   // Optimize things that are related to quantization.
   optimizeQuantization(F);
+
+  while (sinkRescaleQuantizedNode(F)) {
+    DCE(F);
+    optimizeQuantization(F);
+  }
 
   // Perform Dead Code Elimination.
   DCE(F);
