@@ -550,17 +550,6 @@ static void optimizeBatchNorm(Function *F) {
   } // For all nodes in the graph.
 }
 
-static void optimizeRegression(Function *F) {
-  auto &nodes = F->getNodes();
-  // For each node:
-  for (auto const &node : nodes) {
-    // In inference mode Regression nodes simply forward their inputs.
-    if (auto *R = dyn_cast<RegressionNode>(node)) {
-      R->getResult().replaceAllUsesOfWith(R->getInput());
-    }
-  } // For all nodes in the graph.
-}
-
 /// Concat nodes merging.
 /// concat(dim1, concat(dim2, X, Y), Z) -> concat(dim1, X, Y, Z)
 /// but only if dim1 == dim2
@@ -987,8 +976,6 @@ void glow::optimize(Function *F, CompilationMode mode) {
 
     // Constant-fold transpose operations.
     optimizeTranspose(F);
-
-    optimizeRegression(F);
   }
 
   // Perform Common Subexpression Elimination.

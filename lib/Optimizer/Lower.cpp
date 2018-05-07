@@ -78,8 +78,8 @@ void lowerDivGradNode(Function *F, DivGradNode &node) {
 }
 
 void lowerRegressionNode(RegressionNode &node) {
-  auto outG = node.getInput();
-  node.getResult().replaceAllUsesOfWith(outG);
+  auto input = node.getInput();
+  node.getResult().replaceAllUsesOfWith(input);
 }
 
 void lowerRegressionGradNode(Function *F, RegressionGradNode &node) {
