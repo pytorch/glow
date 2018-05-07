@@ -896,3 +896,9 @@ TEST(Interpreter, nonLinearClassifier) {
     EXPECT_NEAR(RH.at({0, std::get<2>(tests[i])}), 1.0, 0.2);
   }
 }
+
+TEST(Interpreter, NotImplementedSave) {
+  ExecutionEngine EE;
+
+  EXPECT_DEATH(EE.save(CompilationMode::Infer, nullptr, "output"), "");
+}
