@@ -582,6 +582,53 @@ __kernel void poolmaxW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
   poolmaxK(&mem[dest], &mem[src], filterSize, stride, pad, odim, idim);
 }
 
+__kernel void oclpoolmaxK(__global float *dest, __global float *src,
+                       cl_uint32_t filterSize, cl_uint32_t stride,
+                       cl_uint32_t pad, ShapeNCHW odim, ShapeNCHW idim) {
+  size_t ax = get_global_id(0);
+  size_t ay = get_global_id(1);
+  size_t d = get_global_id(2);
+
+  typedef int ssize_t;
+  // For each convolution 'jump' in the input tensor:
+  ssize_t x = -(ssize_t)pad + ax * stride;
+  ssize_t y = -(ssize_t)pad + ay * stride;
+
+  // For each input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+    float maxVal = 0;
+    bool first = true;
+
+    // For each element in the convolution-filter:
+    for (size_t fx = 0; fx < filterSize; fx++) {
+      for (size_t fy = 0; fy < filterSize; fy++) {
+        ssize_t ox = x + fx;
+        ssize_t oy = y + fy;
+
+        // Ignore index access below zero (this is due to padding).
+        if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
+            oy >= (ssize_t)idim.w) {
+          continue;
+        }
+
+        float val = src[getNCHW(idim, n, d, (size_t)ox, (size_t)oy)];
+
+        if (first || (val >= maxVal)) {
+          first = false;
+          maxVal = val;
+        }
+      }
+    }
+    dest[getNCHW(odim, n, d, ax, ay)] = maxVal;
+  } // N
+}
+
+__kernel void oclpoolmaxW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
+                       cl_uint32_t filterSize, cl_uint32_t stride,
+                       cl_uint32_t pad, ShapeNCHW odim, ShapeNCHW idim) {
+  oclpoolmaxK(&mem[dest], &mem[src], filterSize, stride, pad, odim, idim);
+}
+
 __kernel void poolmaxwithxyK(__global float *dest, __global float *src,
                              __global cl_uint64_t *srcXY, cl_uint32_t filterSize,
                              cl_uint32_t stride, cl_uint32_t pad,
@@ -720,6 +767,48 @@ __kernel void poolavgW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
                        cl_uint32_t filterSize, cl_uint32_t stride,
                        cl_uint32_t pad, ShapeNHWC odim, ShapeNHWC idim) {
   poolavgK(&mem[dest], &mem[src], filterSize, stride, pad, odim, idim);
+}
+
+__kernel void oclpoolavgK(__global float *dest, __global float *src,
+                       cl_uint32_t filterSize, cl_uint32_t stride,
+                       cl_uint32_t pad, ShapeNCHW odim, ShapeNCHW idim) {
+  size_t ax = get_global_id(0);
+  size_t ay = get_global_id(1);
+  size_t d = get_global_id(2);
+
+  typedef int ssize_t;
+  // For each convolution 'jump' in the input tensor:
+  ssize_t x = -(ssize_t)pad + ax * stride;
+  ssize_t y = -(ssize_t)pad + ay * stride;
+
+  float filterArea = filterSize * filterSize;
+
+  // For each input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+    float sumVal = 0;
+    // For each element in the convolution-filter:
+    for (size_t fx = 0; fx < filterSize; fx++) {
+      for (size_t fy = 0; fy < filterSize; fy++) {
+        ssize_t ox = x + fx;
+        ssize_t oy = y + fy;
+
+        // Ignore index access below zero (this is due to padding).
+        if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
+            oy >= (ssize_t)idim.w) {
+          continue;
+        }
+
+        sumVal += src[getNCHW(idim, n, d, (size_t)ox, (size_t)oy)];
+      }
+    }
+    dest[getNCHW(odim, n, d, ax, ay)] = sumVal / filterArea;
+  } // N
+}
+
+__kernel void oclpoolavgW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
+                       cl_uint32_t filterSize, cl_uint32_t stride,
+                       cl_uint32_t pad, ShapeNCHW odim, ShapeNCHW idim) {
+  oclpoolavgK(&mem[dest], &mem[src], filterSize, stride, pad, odim, idim);
 }
 
 __kernel void transposeK(__global float *dest, __global float *src,
