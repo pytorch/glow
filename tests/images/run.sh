@@ -7,5 +7,8 @@
 for png_filename in tests/images/imagenet/*.png; do
   ./bin/loader $png_filename -image_mode=0to1 -m=resnet50/model.onnx $@
 done
+for png_filename in tests/images/imagenet/*.png; do
+  ./bin/loader $png_filename -image_mode=128to127 -m=vgg19/model.onnx $@
+done
 
 ./bin/loader tests/images/mnist/*.png -image_mode=0to1 -m=lenet_mnist $@
