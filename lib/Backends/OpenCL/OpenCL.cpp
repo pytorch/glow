@@ -244,6 +244,25 @@ void getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
   }
 }
 
+void OCLBackend::enqueueKernel(cl_command_queue commands, cl_kernel kernel,
+                               cl_device_id device,
+                               llvm::ArrayRef<size_t> global,
+                               llvm::ArrayRef<size_t> local,
+                               std::vector<KernelLaunch> &kernelLaunches) {
+  char kernelName[128];
+  size_t retSize;
+  cl_int err = clGetKernelInfo(kernel, CL_KERNEL_FUNCTION_NAME,
+                               sizeof(kernelName), &kernelName, &retSize);
+  GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelInfo.");
+
+  cl_event event{nullptr};
+  err = clEnqueueNDRangeKernel(commands, kernel, global.size(), nullptr,
+                               &global[0], &local[0], 0, nullptr,
+                               doProfile ? &event : nullptr);
+  GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
+  kernelLaunches.push_back(KernelLaunch(kernel, kernelName, event));
+}
+
 /// Enqueue a \p kernel for execution on the command queue \p commands on a
 /// given \p device. The information about the launched kernel will be added to
 /// \p kernelLaunches list.
