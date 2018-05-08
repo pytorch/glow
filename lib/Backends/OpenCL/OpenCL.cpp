@@ -39,6 +39,8 @@ typedef uint32_t cl_size_t;
 
 // This defines the string "SHADER_CODE".
 #include "kernels.cl"
+// This defines kernels for optimized convolutions.
+#include "kernels_fwd_conv.cl"
 
 namespace {
 llvm::cl::OptionCategory OpenCLBackendCat("Glow OpenCL Backend Options");
@@ -178,7 +180,8 @@ cl_program OCLBackend::createProgram(const std::string &source,
   // Create a new compiled program.
   program = clCreateProgramWithSource(context_, 1, &src, nullptr, &err);
   GLOW_ASSERT(program && "clCreateProgramWithSource Failed.");
-  err = clBuildProgram(program, 0, nullptr, nullptr, nullptr, nullptr);
+  err = clBuildProgram(program, 0, nullptr, combinedOptions.c_str(), nullptr,
+                       nullptr);
   if (err) {
     dumpCompileLog(deviceId, program);
   }
@@ -333,6 +336,136 @@ static void dumpProfileInfo(const std::vector<KernelLaunch> &kernelLaunches) {
                            k.first / 1000000.0,
                            (unsigned long)(k.first * 100 / total));
   }
+}
+
+/// Add an macro definition with an integer value to the set of options.
+template <typename T>
+static void addIntOption(std::vector<std::string> &options,
+                         const std::string &name, const T value) {
+  options.push_back("-D" + name + "=" + std::to_string(value));
+}
+
+/// Add an macro definition with a string value to the set of options.
+static void addStringOption(std::vector<std::string> &options,
+                            const std::string &name, const std::string &value) {
+  options.push_back("-D" + name + "=" + value);
+}
+
+void OCLBackend::executeConvolution(OCLConvolutionInst *CC) {
+  auto input = CC->getSrc();
+  auto output = CC->getDest();
+  auto bias = CC->getBias();
+  auto weights = CC->getFilter();
+  auto odim = ShapeNCHW(CC->getDest()->getType()->dims());
+  auto idim = ShapeNCHW(CC->getSrc()->getType()->dims());
+  auto fdim = ShapeNCHW(CC->getFilter()->getType()->dims());
+  // Create options for compiling the program.
+  // Don't use names M, N, K as they are defined in precompiled headers.
+
+  std::vector<std::string> options;
+  // Number of spacial axes.
+  addIntOption(options, "v_nax", 2);
+  // Number of groups.
+  addIntOption(options, "v_g", 1);
+  // Parameters for kernel size, padding and stride
+  addIntOption(options, "v_k_0", CC->getKernel());
+  addIntOption(options, "v_k_1", CC->getKernel());
+  addIntOption(options, "v_p_0", CC->getPad());
+  addIntOption(options, "v_p_1", CC->getPad());
+  addIntOption(options, "v_s_0", CC->getStride());
+  addIntOption(options, "v_s_1", CC->getStride());
+
+  // Dilation.
+  addIntOption(options, "v_d_0", 1);
+  addIntOption(options, "v_d_1", 1);
+
+  // Number of kernel input channels.
+  addIntOption(options, "v_fin", fdim.c);
+  // Number of kernel output channels.
+  addIntOption(options, "v_fout", fdim.n);
+  // Bias multiplier.
+  addStringOption(options, "v_bmul", "(float)1");
+
+  // Spacial dimensions of input.
+  addIntOption(options, "v_imsi_0", idim.h);
+  addIntOption(options, "v_imsi_1", idim.w);
+
+  // Spacial dimensions of output.
+  addIntOption(options, "v_imso_0", odim.h);
+  addIntOption(options, "v_imso_1", odim.w);
+
+  // Padding required for tiles.
+  addStringOption(options, "v_pad_A", "0");
+  addStringOption(options, "v_pad_B", "0");
+
+  // Determine the work groups sizes along h and w.
+  size_t WIS[3];
+  cl_int err = clGetDeviceInfo(deviceId_, CL_DEVICE_MAX_WORK_ITEM_SIZES,
+                               sizeof(WIS), &WIS, nullptr);
+  GLOW_ASSERT(err == CL_SUCCESS && "Could not execute clGetDeviceInfo");
+  size_t wg_size[3];
+  for (int id = 0; id < 2; ++id) {
+    size_t defaultVal = 16;
+    // Special case on CPUs devices, where a workgroup size could be 1,
+    // e.g. in case of Apple's OpenCL driver for CPUs.
+    if (WIS[id] < defaultVal || (id == 0 && WIS[1] < defaultVal)) {
+      defaultVal = WIS[1];
+    }
+    addIntOption(options, "workgroup_size_" + std::to_string(id), defaultVal);
+    wg_size[id] = defaultVal;
+  }
+  // The tile-size in dimension K.
+  // Should be tunable.
+  addStringOption(options, "TSK", "4");
+  addIntOption(options, "TSK_UNROLL", 1);
+
+  // WPTN and WPTM should be tunable.
+  size_t WPTN = 4;
+  size_t WPTM = 4;
+  // The work-per-thread in dimension N.
+  addIntOption(options, "WPTN", WPTN);
+  // The work-per-thread in dimension M.
+  addIntOption(options, "WPTM", WPTM);
+
+  // Vector width in dimensions M and M.
+  // VWN and VWM should be tunable.
+  addStringOption(options, "VWM", "4");
+  addStringOption(options, "VWN", "4");
+
+  // Generate a tailor-made convolution kernel using the provided options based
+  // on the parameters of the current convolution.
+  auto prog = createProgram(FWD_CONV_CODE, options, commands_);
+  auto kernel = createKernel("conv_forward_mem", prog);
+  setKernelArg(kernel, 0, deviceBuffer_);
+  setKernelArg<cl_uint>(kernel, 1, tensors_[input]);
+  setKernelArg<cl_uint>(kernel, 2, tensors_[weights]);
+  setKernelArg<cl_uint>(kernel, 3, tensors_[bias]);
+  setKernelArg<cl_uint>(kernel, 4, tensors_[output]);
+
+  // Compute proper parameters for global work and workgroups.
+  int group = 1;
+  auto fw_wgs0 = wg_size[0];
+  auto fw_wgs1 = wg_size[1];
+  int fw_wptn = WPTN;
+  int fw_wptm = WPTM;
+  int fw_div_N = fw_wptn * fw_wgs0;
+  int fw_div_M = fw_wptm * fw_wgs1;
+  int N_FW_ = idim.h * idim.w;
+  int M_FW_ = odim.c / group;
+  size_t L;
+  clGetKernelWorkGroupInfo(kernel, deviceId_, CL_KERNEL_WORK_GROUP_SIZE,
+                           sizeof(L), &L, nullptr);
+  GLOW_ASSERT(fw_wgs0 * fw_wgs1 <= L && "Bad workgroup size");
+
+  // Set the size of a workgroup.
+  std::vector<size_t> local = {fw_wgs0, fw_wgs1, 1};
+
+  // Set the global work size.
+  std::vector<size_t> global = {((N_FW_ - 1) / fw_div_N + 1) * fw_wgs0,
+                                ((M_FW_ - 1) / fw_div_M + 1) * fw_wgs1,
+                                idim.n * group};
+
+  enqueueKernel(commands_, kernel, deviceId_, global, local, kernelLaunches_);
 }
 
 void OCLBackend::doForwardPass() {
@@ -595,6 +728,11 @@ void OCLBackend::doForwardPass() {
       // Parallelize on each element in the slice.
       enqueueKernel(commands_, kernel, deviceId_, {bdim.second},
                     kernelLaunches_);
+      continue;
+    }
+
+    if (auto *CC = dyn_cast<OCLConvolutionInst>(I)) {
+      executeConvolution(CC);
       continue;
     }
 
