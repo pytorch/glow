@@ -898,6 +898,83 @@ TEST(Interpreter, nonLinearClassifier) {
   }
 }
 
+/// Generate images in two classes.
+/// A "line" is labeled as 0 and a "cross" is labeled as 1.
+static void generateImageData(Tensor &images, Tensor &labels) {
+  auto L = labels.getHandle<size_t>();
+  auto image = images.getHandle<>();
+  unsigned numSamples = images.dims()[0];
+  images.zero();
+
+  for (size_t i = 0; i < numSamples; i++) {
+    bool isLine = i % 2 == 0;
+    L.at({i, 0}) = isLine ? 0 : 1;
+    size_t target = nextRandInt(1, 6);
+    if (isLine) {
+      for (size_t y = 0; y < 8; y++)
+        image.at({i, target, y, 0u}) = 1;
+    } else {
+      for (size_t pos = 0; pos < 8; pos++) {
+        image.at({i, pos, target, 0u}) = 1;
+        image.at({i, target, pos, 0u}) = 1;
+      }
+    }
+  }
+}
+
+/// Test the convolutional layer.
+/// Use a simple convnet to learn two classes of images: Line and Cross.
+TEST(Interpreter, convNetForImageRecognition) {
+  const unsigned numSamples = 500;
+  const unsigned batchSize = 7;
+  ExecutionEngine EE;
+
+  EE.getConfig().learningRate = 0.01;
+  EE.getConfig().batchSize = batchSize;
+  EE.getConfig().momentum = 0.9;
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input =
+      mod.createVariable(ElemKind::FloatTy, {batchSize, 8, 8, 1}, "input",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+
+  auto *ex =
+      mod.createVariable(ElemKind::IndexTy, {batchSize, 1}, "exp",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+
+  auto *CV = F->createConv("conv", input, 1, 3, 1, 0, 1);
+  auto *TANH = F->createTanh("tanh", CV);
+  auto *FCL = F->createFullyConnected("fc", TANH, 2);
+  auto *SM = F->createSoftMax("sm", FCL, ex);
+  auto *result = F->createSave("ret", SM);
+  Function *TF = glow::differentiate(F, EE.getConfig());
+  EE.compile(CompilationMode::Train, TF);
+
+  Tensor images(ElemKind::FloatTy, {numSamples, 8, 8, 1});
+  Tensor labels(ElemKind::IndexTy, {numSamples, 1});
+  generateImageData(images, labels);
+
+  // Training:
+  EE.runBatch(500, {input, ex}, {&images, &labels});
+  EE.compile(CompilationMode::Infer, F);
+
+  // Generate the images used for testing.
+  Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
+  Tensor testLabels(ElemKind::IndexTy, {batchSize, 1});
+  generateImageData(testImages, testLabels);
+  EE.run({input}, {&testImages});
+  auto SMH = result->getVariable()->getHandle<>();
+  for (size_t i = 0; i < batchSize; i++) {
+    bool isLine = testLabels.getHandle<size_t>().at({i, 0}) == 0;
+    auto lineWeight = SMH.at({i, 0});
+    auto crossWeight = SMH.at({i, 1});
+    EXPECT_TRUE(isLine && lineWeight > crossWeight ||
+                !isLine && crossWeight > lineWeight);
+  }
+}
+
 TEST(Interpreter, NotImplementedSave) {
   // Interpreter backend does not support a save method.
   // Exercise it and make sure that it fails.
