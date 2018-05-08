@@ -861,6 +861,18 @@ static void optimizeQuantization(Function *F) {
     }
 
     if (auto *RS = dyn_cast<RescaleQuantizedNode>(node)) {
+      // Eliminate redundant RescaleNode after SliceNode:
+      // Rescale(Slice()) -> Slice()
+      // Rescale is typically introduced after the SliceNode because of the
+      // narrowing of dynamic range for activations in
+      // the captured profile after slicing operation,
+      // but actual rescale is not required.
+      if (RS->getInput()->getKind() == Kinded::Kind::SliceNodeKind) {
+        // Remove rescale node and do not perform type check.
+        RS->getResult().replaceAllUsesOfWith(RS->getInput(), false);
+        continue;
+      }
+
       if (RS->getInput()->getType() == RS->getType()) {
         // If rescale does not change the type, then simply drop it.
         RS->getResult().replaceAllUsesOfWith(RS->getInput());
