@@ -685,3 +685,23 @@ TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
   ::glow::optimize(F_, CompilationMode::Infer);
   EXPECT_EQ(F_->getNodes().size(), 5);
 }
+
+TEST_F(GraphOptz, mergeRescaleWithArithmeticNode) {
+  // Check that Arithmetic operations can be merged with the Rescale.
+  Node *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+                                    "input", VisibilityKind::Public,
+                                    Variable::TrainKind::Broadcast, 15);
+  auto *rescale1 = F_->createRescaleQuantized("rescale", input, mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.4, 11));
+  auto *add = F_->createAdd("add", rescale1, rescale1);
+  auto *rescale2 = F_->createRescaleQuantized("rescale", add, mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.3, 11));
+  auto *sub = F_->createSub("sub", rescale2, rescale2);
+  auto *rescale3 = F_->createRescaleQuantized("rescale", sub, mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.2, 11));
+  auto *mul = F_->createMul("mul", rescale3, rescale3);
+  auto *rescale4 = F_->createRescaleQuantized("rescale", mul, mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.1, 11));
+  auto *div = F_->createDiv("div", rescale4, rescale4);
+  F_->createSave("save", div);
+
+  EXPECT_EQ(F_->getNodes().size(), 9);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 5);
+}

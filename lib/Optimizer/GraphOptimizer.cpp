@@ -1030,6 +1030,36 @@ static bool sinkRescaleQuantizedNode(Function *F) {
       changed = true;
       continue;
     }
+
+// Combine Rescale down with Arithmetic node.
+//   ArithmeticNode(Rescale(X), Rescale(Y)) -> ArithmeticNode(X, Y).
+//   ArithmeticNode(Rescale(X), Y) -> ArithmeticNode(X, Y).
+//   ArithmeticNode(X, Rescale(Y)) -> ArithmeticNode(X, Y).
+// Apply this optimization for Add, Sub, Mul and Div.
+#define COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(NODE_NAME_)                    \
+  if (auto *AN = dyn_cast<NODE_NAME_##Node>(node)) {                           \
+    if (auto *rescale = dyn_cast<RescaleQuantizedNode>(AN->getLHS())) {        \
+      auto *newAN =                                                            \
+          F->create##NODE_NAME_(AN->getName(), AN->getResult().getType(),      \
+                                rescale->getInput(), AN->getRHS());            \
+      AN->getResult().replaceAllUsesOfWith(newAN);                             \
+      AN = newAN;                                                              \
+      changed = true;                                                          \
+    }                                                                          \
+    if (auto *rescale = dyn_cast<RescaleQuantizedNode>(AN->getRHS())) {        \
+      auto *newAN =                                                            \
+          F->create##NODE_NAME_(AN->getName(), AN->getResult().getType(),      \
+                                AN->getLHS(), rescale->getInput());            \
+      AN->getResult().replaceAllUsesOfWith(newAN);                             \
+      changed = true;                                                          \
+    }                                                                          \
+    continue;                                                                  \
+  }
+    COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Add);
+    COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Sub);
+    COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Mul);
+    COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Div);
+#undef COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE
   }
 
   return changed;
