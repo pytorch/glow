@@ -34,6 +34,7 @@
 namespace glow {
 class IRFunction;
 class Backend;
+class OCLConvolutionInst;
 /// A helper struct with information about kernels launches.
 struct KernelLaunch {
   /// Kernel that was launched.
@@ -140,6 +141,8 @@ private:
   void fillBuffer(cl_mem buffer, size_t start, size_t len, float value,
                   ElemKind elemKind);
 
+  /// Execution a convolution instruction which uses NCHW format.
+  void executeConvolution(OCLConvolutionInst *CC);
   /// Allocate a device buffer of required \p size.
   cl_mem allocDeviceBuffer(size_t size);
   /// Frees a device buffer.
