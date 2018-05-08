@@ -156,6 +156,12 @@ private:
   void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
                      cl_device_id device, llvm::ArrayRef<size_t> global,
                      std::vector<KernelLaunch> &kernelLaunches);
+  /// Enqueue a \p kernel on a provided \p commands queue using specified \p
+  /// global and \p local work sizes.
+  void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
+                     cl_device_id device, llvm::ArrayRef<size_t> global,
+                     llvm::ArrayRef<size_t> local,
+                     std::vector<KernelLaunch> &kernelLaunches);
 
   /// \returns a pointer to the tensor that is saved under \p v.
   Tensor *getTensor(const Value *v) const;
