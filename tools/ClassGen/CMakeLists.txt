@@ -17,3 +17,7 @@ target_link_libraries(InstrGen
 if(GLOW_WITH_CPU)
   add_subdirectory(Backends/CPU)
 endif()
+
+if(GLOW_WITH_OPENCL)
+  add_subdirectory(Backends/OpenCL)
+endif()
