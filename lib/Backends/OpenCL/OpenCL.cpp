@@ -880,6 +880,55 @@ void OCLBackend::doForwardPass() {
       llvm::outs().flush();
       continue;
     }
+
+    if (auto PA = dyn_cast<OCLPoolAvgInst>(I)) {
+      cl_kernel kernel = createKernel(kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
+
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
+      }
+
+      auto odim = ShapeNCHW(PA->getDest()->getType()->dims());
+      auto idim = ShapeNCHW(PA->getSrc()->getType()->dims());
+
+      setKernelArg<cl_uint>(kernel, 3, PA->getKernel());
+      setKernelArg<cl_uint>(kernel, 4, PA->getStride());
+      setKernelArg<cl_uint>(kernel, 5, PA->getPad());
+      setKernelArg(kernel, 6, odim);
+      setKernelArg(kernel, 7, idim);
+
+      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
+                    kernelLaunches_);
+      continue;
+    }
+
+    if (auto *PM = dyn_cast<OCLPoolMaxInst>(I)) {
+      cl_kernel kernel = createKernel(kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
+
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
+      }
+
+      auto odim = ShapeNCHW(PM->getDest()->getType()->dims());
+      auto idim = ShapeNCHW(PM->getSrc()->getType()->dims());
+
+      setKernelArg<cl_uint>(kernel, numArgs + 1, PM->getKernel());
+      setKernelArg<cl_uint>(kernel, numArgs + 2, PM->getStride());
+      setKernelArg<cl_uint>(kernel, numArgs + 3, PM->getPad());
+      setKernelArg(kernel, numArgs + 4, odim);
+      setKernelArg(kernel, numArgs + 5, idim);
+
+      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
+                    kernelLaunches_);
+      continue;
+    }
+
     llvm::errs() << "Cannot select: " << I->getKindName() << "\n";
     GLOW_UNREACHABLE("compilation failed");
   }
