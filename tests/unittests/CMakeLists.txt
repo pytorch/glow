@@ -152,7 +152,8 @@ endif()
 if(GLOW_WITH_CPU)
 add_executable(JITTest
                BackendTestUtils.cpp
-               JITTest.cpp)
+               JITTest.cpp
+               HyphenTest.cpp)
 target_link_libraries(JITTest
                       PRIVATE
                         Graph

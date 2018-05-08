@@ -10,6 +10,7 @@
 GPATH
 GRTAGS
 GTAGS
+tags
 
 compile_commands.json
 
