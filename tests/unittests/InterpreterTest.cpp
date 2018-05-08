@@ -899,6 +899,8 @@ TEST(Interpreter, nonLinearClassifier) {
 }
 
 TEST(Interpreter, NotImplementedSave) {
+  // Interpreter backend does not support a save method.
+  // Exercise it and make sure that it fails.
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   
