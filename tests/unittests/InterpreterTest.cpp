@@ -912,3 +912,9 @@ TEST(Interpreter, NotImplementedSave) {
 
   EXPECT_DEATH(EE.save(CompilationMode::Infer, F, "output"), "");
 }
+
+
+
+TEST(Interpreter,simpleConv) {
+  EXPECT_TRUE(1 > 0);
+}
