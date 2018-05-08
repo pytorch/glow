@@ -493,7 +493,7 @@ void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *fc = F->createFullyConnected("fc", tr, 16);
   auto *rl0 = F->createRELU("relu", fc);
   auto *fc2 = F->createFullyConnected("fc2", rl0, 8);
-  auto *rl1 = F->createRELU("relu", fc);
+  auto *rl1 = F->createRELU("relu", fc2);
   cast<Variable>(fc->getWeights())->getHandle().clear(0.8);
   cast<Variable>(fc2->getWeights())->getHandle().clear(1.5);
   auto result = F->createSave("ret", rl1);
