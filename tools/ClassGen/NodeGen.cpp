@@ -431,6 +431,7 @@ int main(int argc, char **argv) {
   //===--------------------------------------------------------------------===//
 
 #include "Backends/CPU/CPUSpecificNodes.h"
+#include "Backends/OpenCL/OpenCLSpecificNodes.h"
 
   return 0;
 }
