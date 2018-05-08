@@ -1,5 +1,6 @@
 add_library(OpenCL
-            OpenCL.cpp)
+            OpenCL.cpp
+            Transforms.cpp)
 
 target_link_libraries(OpenCL
                       PRIVATE

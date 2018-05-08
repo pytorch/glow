@@ -104,6 +104,8 @@ public:
 
   void doForwardPass() override;
 
+  bool transformPostLowering(Function *F, CompilationMode mode) override;
+
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     if (elementTy == ElemKind::Int8QTy) {
       return false;
