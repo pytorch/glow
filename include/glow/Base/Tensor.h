@@ -97,6 +97,12 @@ public:
     return reinterpret_cast<ElemTy *>(data_);
   }
 
+  /// \returns a const pointer to the raw data, of type \p ElemTy.
+  template <class ElemTy> const ElemTy *getRawDataPointer() const {
+    assert(type_.isType<ElemTy>() && "Asking for the wrong ptr type.");
+    return reinterpret_cast<const ElemTy *>(data_.getPointer());
+  }
+
   /// Initialize an empty tensor.
   Tensor() = default;
 
@@ -248,7 +254,7 @@ public:
 
   /// \returns true if the content of the other tensor \p other is identical to
   /// this one.
-  bool isEqual(Tensor &other, float allowedError = 0.0001) {
+  bool isEqual(const Tensor &other, float allowedError = 0.0001) const {
     if (other.dims() != dims()) {
       return false;
     }
@@ -360,9 +366,10 @@ public:
   template <class ElemTy = float> Handle<ElemTy> getHandle();
 
 private:
-  template <class ElemTy> bool isEqualImpl(Tensor &other, float allowedError) {
-    auto *myData = getRawDataPointer<ElemTy>();
-    auto *otherData = other.getRawDataPointer<ElemTy>();
+  template <class ElemTy>
+  bool isEqualImpl(const Tensor &other, float allowedError) const {
+    auto const *myData = getRawDataPointer<ElemTy>();
+    auto const *otherData = other.getRawDataPointer<ElemTy>();
     for (size_t i = 0, e = size(); i < e; i++) {
       double delta = myData[i] - otherData[i];
       if (std::abs(delta) > allowedError) {
