@@ -54,6 +54,7 @@ int main(int argc, char **argv) {
   BB.newInstr("TensorView")
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::TypeRef, "Ty")
+      .addMember(MemberType::VectorSizeT, "Offsets")
       .setType("Ty");
 
   BB.newInstr("DeallocActivation")

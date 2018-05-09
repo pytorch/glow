@@ -101,12 +101,19 @@ CrossEntropyLossInst *IRBuilder::createCrossEntropyLossOp(Value *p,
 /// in the view is the same as the number of elements in the source tensor
 /// \p src
 /// \param src the source tensor used to create the unowned tensor.
+/// \param offsets is a vector of offsets into the Tensor for this view of the
+/// Tensor.
 TensorViewInst *IRBuilder::createTensorView(ElemKind elemKind,
                                             llvm::ArrayRef<size_t> dims,
-                                            Value *src, llvm::StringRef name) {
+                                            Value *src, llvm::StringRef name,
+                                            llvm::ArrayRef<size_t> offsets) {
   auto ty =
       getIRFunction().getGraph()->getParent()->uniqueType(Type(elemKind, dims));
-  return createTensorViewInst(name, src, ty);
+  return createTensorViewInst(
+      name, src, ty,
+      (offsets.size()
+           ? offsets
+           : llvm::ArrayRef<size_t>(std::vector<size_t>(dims.size(), 0))));
 }
 
 LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationOp(
