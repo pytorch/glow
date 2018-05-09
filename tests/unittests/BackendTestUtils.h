@@ -105,4 +105,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind);
 void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
                       Tensor *inputs4, Tensor *out, BackendKind kind);
 
+void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
+                     BackendKind kind);
+
 } // namespace glow
