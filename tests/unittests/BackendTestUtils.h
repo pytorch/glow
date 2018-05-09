@@ -93,6 +93,9 @@ void inferTransposeNet(Tensor *inputs, Tensor *out, BackendKind kind);
 void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
                        size_t convDepth);
 
+void inferTanhConcatNet(Tensor *input1, Tensor *input2, Tensor *input3,
+                        Tensor *out, BackendKind kind);
+
 void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
 void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind);

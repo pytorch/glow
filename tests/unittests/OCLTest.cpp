@@ -124,3 +124,30 @@ TEST(OpenCLCorrectnessTest, gatherTest) {
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
+
+TEST(OpenCLCorrectnessTest, tanhConcatTest) {
+  Tensor I1(ElemKind::FloatTy, {10, 5});
+  Tensor I2(ElemKind::FloatTy, {20, 5});
+  Tensor I3(ElemKind::FloatTy, {30, 5});
+
+  for (size_t i = 0; i < 10; i++) {
+    for (size_t j = 0; j < 5; j++) {
+      I1.getHandle<float>().at({i, j}) = 0.05 * (i + j * 10 + 1);
+
+      I2.getHandle<float>().at({i, j}) = 0.10 * (i + j * 10 + 1);
+      I2.getHandle<float>().at({i + 10, j}) = 0.15 * (i + j * 10 + 1);
+
+      I3.getHandle<float>().at({i, j}) = 0.20 * (i + j * 10 + 1);
+      I3.getHandle<float>().at({i + 10, j}) = 0.25 * (i + j * 10 + 1);
+      I3.getHandle<float>().at({i + 20, j}) = 0.30 * (i + j * 10 + 1);
+    }
+  }
+
+  Tensor out1(ElemKind::FloatTy, {100, 5});
+  Tensor out2(ElemKind::FloatTy, {100, 5});
+
+  inferTanhConcatNet(&I1, &I2, &I3, &out1, BackendKind::OpenCL);
+  inferTanhConcatNet(&I1, &I2, &I3, &out2, BackendKind::Interpreter);
+
+  EXPECT_TRUE(out1.isEqual(out2));
+}

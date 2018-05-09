@@ -467,6 +467,25 @@ void inferTransposeNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+void inferTanhConcatNet(Tensor *input1, Tensor *input2, Tensor *input3,
+                        Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *var1 = VarFrom(input1);
+  auto *var2 = VarFrom(input2);
+  auto *var3 = VarFrom(input3);
+  auto *T1 = F->createTanh("tanh1", var1);
+  auto *T2 = F->createTanh("tanh2", var2);
+  auto *T3 = F->createTanh("tanh3", var3);
+  Node *C1 = F->createConcat("concat", {T1, T2}, 0);
+  Node *C2 = F->createConcat("concat", {T2, T3, C1, T2}, 0);
+  auto *result = F->createSave("ret", C2);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({var1, var2, var3}, {input1, input2, input3});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
                        size_t convDepth) {
   ExecutionEngine EE(kind);
