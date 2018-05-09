@@ -56,7 +56,8 @@ public:
 
   TensorViewInst *createTensorView(ElemKind elemKind,
                                    llvm::ArrayRef<size_t> dims, Value *src,
-                                   llvm::StringRef name);
+                                   llvm::StringRef name,
+                                   llvm::ArrayRef<size_t> offsets = {});
 
   LocalResponseNormalizationInst *
   createLocalResponseNormalizationOp(Value *input, size_t halfWindowSize = 2,

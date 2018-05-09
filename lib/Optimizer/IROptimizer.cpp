@@ -406,8 +406,9 @@ static void replaceAllNonDeallocUsersWith(Value *val, Value *with) {
       replacement = withOrigin;
     if (Op.first->getType() != replacement->getType()) {
       // Perform a cast if required.
+      std::vector<size_t> offsets(Op.first->getType()->dims().size(), 0);
       auto *tv = B.createTensorViewInst(I->getName(), replacement,
-                                        Op.first->getType());
+                                        Op.first->getType(), offsets);
       M.moveInstruction(I, tv);
       replacement = tv;
     }
@@ -706,8 +707,9 @@ static void replaceAllUsesInsideIntervalWith(
         replacement = withOrigin;
       if (op->getType() != replacement->getType()) {
         // Perform a cast if required.
+        std::vector<size_t> offsets(op->getType()->dims().size(), 0);
         auto *tv = B.createTensorViewInst((*it)->getName(), replacement,
-                                          op->getType());
+                                          op->getType(), offsets);
         M.moveInstruction(it, tv);
         replacement = tv;
       }
@@ -1202,8 +1204,9 @@ void performPeepholeOptimizations(IRFunction &M) {
       if (auto W = getSingleWriter(src)) {
         if (isa<SplatInst>(W)) {
           if (src->getType() != dest->getType()) {
-            auto *TVI =
-                B.createTensorViewInst(TI->getName(), src, dest->getType());
+            std::vector<size_t> offsets(dest->getType()->dims().size(), 0);
+            auto *TVI = B.createTensorViewInst(TI->getName(), src,
+                                               dest->getType(), offsets);
             M.moveInstruction(cur, instrs.back());
             src = TVI;
           }

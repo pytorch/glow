@@ -79,7 +79,8 @@ TEST(Optimizer, dseDoNotRemloveLastWriteIntoWeightVar) {
   // no instruction that reads it, because it is an observable side-effect.
   bb.createElementAddInst("elem_add", output, input1, input2);
   bb.createTensorViewInst(
-      "cast", output, mod.uniqueType(Type(glow::ElemKind::FloatTy, {1, 1, 1})));
+      "cast", output, mod.uniqueType(Type(glow::ElemKind::FloatTy, {1, 1, 1})),
+      {0, 0, 0});
 
   optimize(M, CompilationMode::Infer);
 
