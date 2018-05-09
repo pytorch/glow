@@ -694,6 +694,39 @@ __kernel void transposeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
   transposeK(&mem[dest], &mem[src], odim, idim, shuffle);
 }
 
+__kernel void transposeK_u(__global cl_uint64_t *dest, __global cl_uint64_t *src,
+                         ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC shuffleMask) {
+  size_t d0 = get_global_id(0);
+  uint4 res;
+  res.s0 = d0;
+  uint4 mask;
+
+  mask.s0 = shuffleMask.n;
+  mask.s1 = shuffleMask.h;
+  mask.s2 = shuffleMask.w;
+  mask.s3 = shuffleMask.c;
+
+  for (size_t d1 = 0; d1 < idim.h; d1++) {
+    res.s1 = d1;
+    for (size_t d2 = 0; d2 < idim.w; d2++) {
+      res.s2 = d2;
+      for (size_t d3 = 0; d3 < idim.c; d3++) {
+        res.s3 = d3;
+        uint4 result = shuffle(res, mask);
+        size_t dstIdx = getNHWC(odim, result[0], result[1],
+                                result[2], result[3]);
+        size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
+        dest[dstIdx] = src[srcIdx];
+      }
+    }
+  }
+}
+
+__kernel void transpose_uW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
+                         ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC shuffle) {
+  transposeK_u(&mem[dest], &mem[src], odim, idim, shuffle);
+}
+
 __kernel void inserttensorK(__global float *dest, __global float *src,
                             ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset) {
   size_t d0 = get_global_id(0);
