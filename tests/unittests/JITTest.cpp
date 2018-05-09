@@ -549,3 +549,29 @@ TEST(JITCorrectnessTest, complexNet1) {
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
+
+TEST(JITCorrectnessTest, tinyResnet) {
+  Tensor input(ElemKind::FloatTy, {1, 7, 7, 64});
+  input.getHandle().randomize(0, 1.0);
+
+  std::vector<Tensor> weights;
+  using Dims = llvm::ArrayRef<size_t>;
+  weights.emplace_back(ElemKind::FloatTy, Dims{256, 1, 1, 64});
+  weights.emplace_back(ElemKind::FloatTy, Dims{256});
+  weights.emplace_back(ElemKind::FloatTy, Dims{64, 1, 1, 64});
+  weights.emplace_back(ElemKind::FloatTy, Dims{64});
+  weights.emplace_back(ElemKind::FloatTy, Dims{64, 3, 3, 64});
+  weights.emplace_back(ElemKind::FloatTy, Dims{64});
+  weights.emplace_back(ElemKind::FloatTy, Dims{256, 1, 1, 64});
+  weights.emplace_back(ElemKind::FloatTy, Dims{256});
+  for (auto &T : weights) {
+    T.getHandle().initXavier(1.0);
+  }
+
+  Tensor out1;
+  Tensor out2;
+  inferTinyResnet(&input, &out1, weights, BackendKind::Interpreter);
+  inferTinyResnet(&input, &out2, weights, BackendKind::CPU);
+
+  EXPECT_TRUE(out1.isEqual(out2, 0.001));
+}

@@ -586,4 +586,40 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+namespace {
+// Helper for initializing conv node filter/bias from input tensors.
+static void initConv(ConvolutionNode *C, Tensor &filter, Tensor &bias) {
+  cast<Variable>(C->getFilter())->getPayload().copyFrom(&filter);
+  cast<Variable>(C->getBias())->getPayload().copyFrom(&bias);
+}
+} // namespace
+
+void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
+                     BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+
+  auto *in = VarFrom(input);
+  auto *conv1 = F->createConv("conv1", in, 256, 1, 1, 0, 1);
+  auto *conv2a = F->createConv("conv2a", in, 64, 1, 1, 0, 1);
+  auto *relu2a = F->createRELU("relu2a", conv2a);
+  auto *conv2b = F->createConv("conv2b", relu2a, 64, 3, 1, 1, 1);
+  auto *relu2b = F->createRELU("relu2b", conv2b);
+  auto *conv2c = F->createConv("conv2c", relu2b, 256, 1, 1, 0, 1);
+  auto *add = F->createAdd("add", conv2c, conv1);
+  auto *relu = F->createRELU("res2a_relu", add);
+  auto *result = F->createSave("ret", relu);
+
+  initConv(conv1, weights[0], weights[1]);
+  initConv(conv2a, weights[2], weights[3]);
+  initConv(conv2b, weights[4], weights[5]);
+  initConv(conv2c, weights[6], weights[7]);
+
+  EE.compile(CompilationMode::Infer, F);
+
+  EE.run({in}, {input});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 } // namespace glow
