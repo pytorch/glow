@@ -717,14 +717,6 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *TV = dyn_cast<TensorViewInst>(I)) {
-      assert(tensors_[TV] == tensors_[TV->getSrc()] &&
-             "Memory address for a tensor_view should be the same as the "
-             "address of its origin");
-      (void)TV;
-      continue;
-    }
-
     if (auto *C = dyn_cast<CopyInst>(I)) {
       Value *dest, *src;
       dest = C->getDest();
@@ -928,8 +920,19 @@ void OCLBackend::init() {
     }
 
     if (auto *TV = llvm::dyn_cast<TensorViewInst>(I)) {
+      // Calculate and store the length of the offset into the base, using the
+      // source of the tensorview.
       assert(!tensors_.count(TV) && "Allocation already made!");
-      tensors_[TV] = tensors_[TV->getSrc()];
+      size_t offsetLength = TV->getOffsets()[0];
+      auto *tvSource = TV->getSrc();
+      if (tvSource->dims().size() > 1) {
+        for (size_t i = 1; i < tvSource->dims().size(); ++i) {
+          offsetLength *= tvSource->dims()[i];
+        }
+      }
+      assert(tensors_.count(tvSource) && "Source allocation not found!");
+      tensors_[TV] =
+          tensors_[tvSource] + (offsetLength * TV->getType()->getElementSize());
       continue;
     }
 
