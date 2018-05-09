@@ -136,12 +136,21 @@ void libjit_convDKKC8_foreach_xy_filter_pixels(
         // For each y step in the input/output tensor, in steps of \p
         // sizeGroupY. We process \p sizeGroupY pixels of Y in one iteration.
         size_t outy = 0;
-        for (; outy < outWdims[2]; outy += sizeGroupY) {
+        while (outy < outWdims[2]) {
           ssize_t iny = (ssize_t)outy * stride - pad + fy;
 
+          if ((iny + (ssize_t)stride * sizeGroupY) >= (ssize_t)inWdims[2]) {
+            // If we've passed the upper bound, we don't want to increment
+            // `outy` again, since we're going to handle the remaining y steps
+            // in the following loop.
+            break;
+          }
           // Ignore out of bound indices.
-          if (iny < 0 ||
-              (iny + (ssize_t)stride * sizeGroupY) >= (ssize_t)inWdims[2]) {
+          if (iny < 0) {
+            /// We know iny is out of bounds, so we have nothing to do for outy.
+            /// But we can't skip ahead by sizeGroupY, because we haven't
+            /// checked outy + 1.
+            outy += 1;
             continue;
           }
 
@@ -152,6 +161,8 @@ void libjit_convDKKC8_foreach_xy_filter_pixels(
                 outChannel + strip * numDepthRegs * 8, numDepthRegs, sizeGroupY,
                 numChannels, inx, iny, outx, outy, fx, fy, stride);
           }
+
+          outy += sizeGroupY;
         } // For each Y group in the output.
 
         // Handle the remaining Y in the row in groups of size 1.
