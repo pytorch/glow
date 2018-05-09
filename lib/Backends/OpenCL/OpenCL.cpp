@@ -704,6 +704,33 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
+    if (auto *PMG = dyn_cast<PoolMaxWithXYGradInst>(I)) {
+      cl_kernel kernel = createKernel(kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
+
+      unsigned numArgs = I->getNumOperands();
+      for (unsigned arg = 0; arg < numArgs; arg++) {
+        setKernelArg<cl_uint>(kernel, arg + 1,
+                              tensors_[I->getOperand(arg).first]);
+      }
+
+      auto destGradDim = ShapeNHWC(PMG->getDestGrad()->dims());
+      auto srcGradDim = ShapeNHWC(PMG->getSrcGrad()->dims());
+
+      setKernelArg<size_t>(kernel, numArgs + 1, PMG->getKernel());
+      setKernelArg<cl_uint>(kernel, numArgs + 2, PMG->getStride());
+      setKernelArg<cl_uint>(kernel, numArgs + 3, PMG->getPad());
+      setKernelArg(kernel, numArgs + 4, srcGradDim);
+      setKernelArg(kernel, numArgs + 5, destGradDim);
+
+      assert(srcGradDim.n == destGradDim.n && "batch size is wrong");
+      assert(srcGradDim.c == destGradDim.c && "depth size is wrong");
+
+      enqueueKernel(commands_, kernel, deviceId_, {srcGradDim.n},
+                    kernelLaunches_);
+      continue;
+    }
+
     if (auto *PA = dyn_cast<PoolAvgInst>(I)) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.

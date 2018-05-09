@@ -627,6 +627,46 @@ __kernel void poolmaxwithxyW(__global void *mem, cl_uint32_t dest,
                  odim, idim);
 }
 
+__kernel void
+poolmaxwithxygradK(__global float *dest, __global cl_uint64_t *srcXY,
+                   __global float *destGrad, __global float *srcGrad,
+                   cl_uint32_t filterSize, cl_uint32_t stride, cl_uint32_t pad,
+                   ShapeNHWC srcGradDim, ShapeNHWC destGradDim) {
+  size_t n = get_global_id(0);
+
+  // NHWC format is assumed
+  for (size_t z = 0; z < destGradDim.c; z++) {
+    // Clear srcGrad
+    for (size_t x = 0; x < srcGradDim.h; x++) {
+      for (size_t y = 0; y < srcGradDim.w; y++) {
+        srcGrad[getNHWC(srcGradDim, n, x, y, z)] = 0.0;
+      }
+    }
+
+    for (size_t ax = 0; ax < destGradDim.h; ax++) {
+      for (size_t ay = 0; ay < destGradDim.w; ay++) {
+        // For the x and y argmax's, we use a 5-dimensional
+        // tensor whose fifth dimension has size 2:
+        size_t ix = 2 * getNHWC(destGradDim, n, ax, ay, z);
+        size_t maxX = srcXY[ix];
+        size_t maxY = srcXY[ix + 1];
+
+        float df = destGrad[getNHWC(destGradDim, n, ax, ay, z)];
+        srcGrad[getNHWC(srcGradDim, n, maxX, maxY, z)] += df;
+      } // W
+    }   // H
+  }     // C
+}
+
+__kernel void poolmaxwithxygradW(__global void *mem, cl_uint32_t dest,
+                                 cl_uint32_t srcXY, cl_uint32_t destGrad,
+                                 cl_uint32_t srcGrad, cl_uint32_t filterSize,
+                                 cl_uint32_t stride, cl_uint32_t pad,
+                                 ShapeNHWC srcGradDim, ShapeNHWC destDim) {
+  poolmaxwithxygradK(&mem[dest], &mem[srcXY], &mem[destGrad], &mem[srcGrad],
+                     filterSize, stride, pad, srcGradDim, destDim);
+}
+
 __kernel void poolavgK(__global float *dest, __global float *src,
                        cl_uint32_t filterSize, cl_uint32_t stride,
                        cl_uint32_t pad, ShapeNHWC odim, ShapeNHWC idim) {
