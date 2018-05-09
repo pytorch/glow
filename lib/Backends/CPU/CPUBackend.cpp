@@ -109,6 +109,7 @@ void CPUBackend::performJITMemoryAllocation() {
   allocationsInfo_.allocateActivations(F_);
   // Tell the allocateWeightVars to reuse existing addresses for weights.
   allocationsInfo_.allocateWeightVars(F_, true);
+  allocationsInfo_.allocateTensorViews(F_);
 
   // Allocate the heap to match the max memory usage for activations.
   if (allocationsInfo_.activationsMemSize_ > 0) {
@@ -166,7 +167,7 @@ void CPUBackend::saveWeights(llvm::StringRef weightsFileName) {
       continue;
     auto numBytes = w->getSizeInBytes();
     auto payload = v->getPayload().getUnsafePtr();
-    auto addr = allocationsInfo_.allocatedAddressed_[getOrigin(w)];
+    auto addr = allocationsInfo_.allocatedAddressed_[w];
     if (addr < pos) {
       // The payload was written already. It aliases something we have seen
       // already.
@@ -209,7 +210,7 @@ void CPUBackend::emitSymbolTable() {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
     bool isConstWeight = v->getVisibilityKind() != VisibilityKind::Public;
     auto size = w->getType()->size();
-    auto addr = allocationsInfo_.allocatedAddressed_[getOrigin(w)];
+    auto addr = allocationsInfo_.allocatedAddressed_[w];
     // Create an SymbolTableEntry.
     auto *entry = llvm::ConstantStruct::get(
         symbolTableEntryTy,
@@ -357,6 +358,7 @@ void CPUBackend::performBundleMemoryAllocation() {
   // Tell the allocateWeightVars to not reuse any existing addresses for weights
   // and to assign new ones.
   allocationsInfo_.allocateWeightVars(F_, false);
+  allocationsInfo_.allocateTensorViews(F_);
 }
 
 void CPUBackend::save(llvm::StringRef outputDir) {

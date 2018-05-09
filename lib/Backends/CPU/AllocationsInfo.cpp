@@ -79,18 +79,18 @@ void AllocationsInfo::allocateWeightVars(IRFunction *F, bool reuseAddresses) {
 
   DEBUG(for (auto &A
              : allocatedAddressed_) {
-    auto origin = getOrigin(A.first);
-    if (isa<AllocActivationInst>(origin))
+    if (isa<AllocActivationInst>(A.first) || isa<TensorViewInst>(A.first))
       continue;
-    assert(valueNumbers_.count(origin) && "Unknown weight");
+    assert(valueNumbers_.count(A.first) && "Unknown weight");
     llvm::StringRef kind =
-        valueNumbers_[origin].first == ValueKind::ConstantWeight
+        valueNumbers_[A.first].first == ValueKind::ConstantWeight
             ? "constant weight"
             : "mutable weight";
     llvm::errs() << "Allocated " << kind << " " << A.first->getName()
                  << " size: " << A.first->getSizeInBytes()
-                 << "  address range:  [" << allocatedAddressed_[origin] << ", "
-                 << allocatedAddressed_[origin] + A.first->getSizeInBytes()
+                 << "  address range:  [" << allocatedAddressed_[A.first]
+                 << ", "
+                 << allocatedAddressed_[A.first] + A.first->getSizeInBytes()
                  << "]\n";
   });
 }
@@ -131,11 +131,37 @@ void AllocationsInfo::allocateActivations(IRFunction *F) {
              : allocatedAddressed_) {
     llvm::errs() << "Allocated activation " << A.first->getName()
                  << " size: " << A.first->getSizeInBytes()
-                 << "  address range:  ["
-                 << allocatedAddressed_[getOrigin(A.first)] << ", "
+                 << "  address range:  [" << allocatedAddressed_[A.first]
+                 << ", "
                  << allocatedAddressed_[A.first] + A.first->getSizeInBytes()
                  << "]\n";
   });
+}
+
+void AllocationsInfo::allocateTensorViews(IRFunction *F) {
+  for (auto &I : F->getInstrs()) {
+    if (auto *A = dyn_cast<TensorViewInst>(I)) {
+      auto *viewOrigin = getOrigin(A);
+      assert(allocatedAddressed_.count(viewOrigin) &&
+             "Did not find original WeightVar or AllocActivation for a "
+             "TensorView.");
+      size_t originAddr = allocatedAddressed_[viewOrigin];
+
+      // Calculate and store the length of the offset into the base, using the
+      // source of the tensorview.
+      size_t offsetLength = A->getOffsets()[0];
+      auto *tvSource = A->getSrc();
+      if (tvSource->dims().size() > 1) {
+        for (size_t i = 1; i < tvSource->dims().size(); ++i) {
+          offsetLength *= tvSource->dims()[i];
+        }
+      }
+      assert(!allocatedAddressed_.count(A) && "Allocation already made!");
+      allocatedAddressed_[A] =
+          originAddr + (offsetLength * A->getType()->getElementSize());
+      continue;
+    }
+  }
 }
 
 void AllocationsInfo::numberValues(IRFunction *F) {
@@ -149,10 +175,21 @@ void AllocationsInfo::numberValues(IRFunction *F) {
                     : ValueKind::MutableWeight;
     valueNumbers_[w] = std::make_pair(kind, valueIdx++);
   }
-  // Assign numbers to all activations.
+  // Assign numbers to all activations and tensorviews.
   for (auto &I : F->getInstrs()) {
     if (auto *A = dyn_cast<AllocActivationInst>(I)) {
       valueNumbers_[A] = std::make_pair(ValueKind::Activation, valueIdx++);
+      continue;
+    }
+    if (auto *A = dyn_cast<TensorViewInst>(I)) {
+      auto *viewOrigin = getOrigin(A);
+      auto kind = ValueKind::Activation;
+      if (auto *w = dyn_cast<WeightVar>(viewOrigin)) {
+        kind = w->getVisibility() != VisibilityKind::Public
+                   ? ValueKind::ConstantWeight
+                   : ValueKind::MutableWeight;
+      }
+      valueNumbers_[A] = std::make_pair(kind, valueIdx++);
       continue;
     }
   }

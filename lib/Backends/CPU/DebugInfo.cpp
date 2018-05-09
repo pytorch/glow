@@ -273,7 +273,6 @@ void LLVMIRGen::initDebugInfo() {
 
 void LLVMIRGen::emitDebugGlobalVariableForValue(Value *val) {
   auto name = val->getName();
-  val = getOrigin(val);
   // Create a proper type for the variable.
   // Represent Glow's N-dimensional tensors as N-dimensional C arrays in the
   // debug information. This allows for inspecting them in the debugger using a
