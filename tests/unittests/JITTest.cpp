@@ -436,6 +436,18 @@ TEST(JITCorrectnessTest, sigmoidTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
+TEST(JITCorrectnessTest, smallConv) {
+  Tensor input(ElemKind::FloatTy, {1, 3, 3, 32});
+  input.getHandle().clear(0.2);
+  Tensor out1;
+  Tensor out2;
+
+  inferSmallConv(&input, &out1, BackendKind::CPU);
+  inferSmallConv(&input, &out2, BackendKind::Interpreter);
+
+  EXPECT_TRUE(out1.isEqual(out2));
+}
+
 TEST(JITCorrectnessTest, softmaxTest) {
   Tensor inputs(ElemKind::FloatTy, {14, 19});
   Tensor selected(ElemKind::IndexTy, {14, 1});

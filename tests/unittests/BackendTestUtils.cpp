@@ -404,6 +404,20 @@ void inferSigmoidNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+void inferSmallConv(Tensor *inputs, Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  auto *in = VarFrom(inputs);
+  auto *C = F->createConv("conv2a", in, 64, 1, 1, 0, 1);
+  cast<Variable>(C->getFilter())->getHandle().clear(0.3);
+  cast<Variable>(C->getBias())->getHandle().clear(0.4);
+  auto *result = F->createSave("ret", C);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({in}, {inputs});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 void inferSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
                      BackendKind kind) {
   ExecutionEngine EE(kind);
