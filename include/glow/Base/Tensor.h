@@ -100,7 +100,7 @@ public:
   /// \returns a const pointer to the raw data, of type \p ElemTy.
   template <class ElemTy> const ElemTy *getRawDataPointer() const {
     assert(type_.isType<ElemTy>() && "Asking for the wrong ptr type.");
-    return reinterpret_cast<const ElemTy *>(data_.getPointer());
+    return reinterpret_cast<const ElemTy *>(data_);
   }
 
   /// Initialize an empty tensor.
