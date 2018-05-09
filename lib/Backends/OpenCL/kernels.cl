@@ -605,13 +605,15 @@ __kernel void transposeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
 __kernel void inserttensorK(__global float *dest, __global float *src,
                             ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset) {
   size_t d0 = get_global_id(0);
+  size_t offset_n = ((odim.n > 1) ? offset.n : 0);
+  size_t offset_h = ((odim.h > 1) ? offset.h : 0);
   size_t offset_w = ((odim.w > 1) ? offset.w : 0);
   size_t offset_c = ((odim.c > 1) ? offset.c : 0);
   for (size_t d1 = 0; d1 < idim.h; d1++) {
     for (size_t d2 = 0; d2 < idim.w; d2++) {
       for (size_t d3 = 0; d3 < idim.c; d3++) {
-        size_t r0 = d0 + offset.n;
-        size_t r1 = d1 + offset.h;
+        size_t r0 = d0 + offset_n;
+        size_t r1 = d1 + offset_h;
         size_t r2 = d2 + offset_w;
         size_t r3 = d3 + offset_c;
         size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
