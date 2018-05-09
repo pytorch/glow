@@ -15,6 +15,13 @@ typedef struct {
   cl_uint64_t c; // Number of channels
 } ShapeNHWC;
 
+typedef struct {
+  cl_uint64_t n; // Number of samples
+  cl_uint64_t c; // Number of channels
+  cl_uint64_t h; // Height
+  cl_uint64_t w; // Width
+} ShapeNCHW;
+
 #if defined(cl_khr_int32_base_atomics)
 #pragma OPENCL EXTENSION cl_khr_int32_base_atomics : enable
 #define ATOMICS_32_AVAILABLE
@@ -45,6 +52,12 @@ inline void atomicAdd(volatile __global float *source, const float operand) {
 size_t getNHWC(ShapeNHWC s, cl_uint32_t n, cl_uint32_t h, cl_uint32_t w,
                cl_uint32_t c) {
   return (n * s.c * s.w * s.h) + (h * s.c * s.w) + (w * s.c) + c;
+}
+
+/// \returns the index of the element at n, c, h, w.
+size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
+               cl_uint32_t w) {
+  return (n * s.c * s.w * s.h) + (c * s.h * s.w) + (h * s.w) + w;
 }
 
 /// Macro to define a kernel for data-parallel ternay operations. The body of
