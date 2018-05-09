@@ -63,6 +63,11 @@ struct AllocationsInfo {
   /// performed by the client based on the information provided by the
   /// AllocationsInfo.
   void allocateActivations(IRFunction *F);
+  /// Assign offsets to all tensorviews.
+  /// No memory allocation is performed. Sets up all offsets into already
+  /// defined offsets for WeightVars and AllocActivations. Assumes the weight
+  /// vars and alloc activations have already been added to allocatedAddressed_.
+  void allocateTensorViews(IRFunction *F);
   /// Number all allocations and weight variables by assigning them unique
   /// numbers.
   void numberValues(IRFunction *F);

@@ -249,7 +249,6 @@ void LLVMIRGen::performCodeGen() {
 
 llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
                                          glow::Value *val) {
-  val = getOrigin(val);
   assert(allocationsInfo_.allocatedAddressed_.count(val) &&
          "Value address was not allocated");
   auto sizeTTy = builder.getIntNTy(sizeof(size_t) * 8);
@@ -300,7 +299,6 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
 llvm::Value *
 LLVMIRGen::emitConstOffsetsArray(llvm::IRBuilder<> &builder,
                                  const AllocationsInfo &allocationsInfo) {
-
   auto sizeTType = builder.getIntNTy(sizeof(size_t) * 8);
   std::vector<llvm::Constant *> elems(allocationsInfo.valueNumbers_.size());
   for (auto &I : allocationsInfo.valueNumbers_) {
@@ -524,7 +522,6 @@ static llvm::Value *
 emitBufferAddress(llvm::IRBuilder<> &builder, Value *val,
                   llvm::Function *kernel,
                   llvm::DenseMap<Value *, int> &bufferToArgNum) {
-  val = getOrigin(val);
   assert(bufferToArgNum.count(val) && "Buffer should be in the map");
   return kernel->args().begin() + bufferToArgNum[val];
 }
@@ -552,7 +549,7 @@ void LLVMIRGen::emitDataParallelKernel(llvm::IRBuilder<> &builder,
   // Collect unique buffers used by the instructions of the kernel.
   for (const auto I : bundle) {
     for (const auto &Op : I->getOperands()) {
-      auto *buf = getOrigin(Op.first);
+      auto *buf = Op.first;
       if (!bufferToArgNum.count(buf)) {
         bufferToArgNum[buf] = argTypes.size();
         buffers.push_back(emitValueAddress(builder, buf));
