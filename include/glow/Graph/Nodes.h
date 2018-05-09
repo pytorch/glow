@@ -85,6 +85,9 @@ public:
   /// \returns the original training mode of the variable.
   TrainKind getTrainKind() const { return train_; }
 
+  /// \returns the value used during initialization.
+  float getValue() const { return val_; }
+
   /// \returns the visibility of the variable.
   VisibilityKind getVisibilityKind() const { return visibility_; }
 
