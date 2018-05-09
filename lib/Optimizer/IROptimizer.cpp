@@ -382,7 +382,7 @@ static void deleteDeadAllocs(IRFunction &M) {
 }
 
 // Replace all users of some value with another value, but don't touch the
-// dealloc instruction, because we need to preserve the well formdness of the
+// dealloc instruction, because we need to preserve the well formedness of the
 // IR.
 static void replaceAllNonDeallocUsersWith(Value *val, Value *with) {
   assert(val != with && "Replacing value with self");
@@ -406,7 +406,7 @@ static void replaceAllNonDeallocUsersWith(Value *val, Value *with) {
       replacement = withOrigin;
     if (Op.first->getType() != replacement->getType()) {
       // Perform a cast if required.
-      std::vector<size_t> offsets(Op.first->getType()->dims().size(), 0);
+      std::vector<size_t> offsets(replacement->dims().size(), 0);
       auto *tv = B.createTensorViewInst(I->getName(), replacement,
                                         Op.first->getType(), offsets);
       M.moveInstruction(I, tv);
@@ -474,7 +474,6 @@ void makeWeightsConst(IRFunction &M) {
     }
   }
 }
-
 #ifndef NDEBUG
 /// Dump a live intervals map.
 static void LLVM_ATTRIBUTE_UNUSED dump(IRFunction &M,
@@ -549,8 +548,16 @@ static void calculateLiveIntervals(const IRFunction &M,
         continue;
       }
 
+      // Determine if this is a write to a subview of the tensor, i.e. a write
+      // to a tensorview with any non-zero offsets. We treat such partial writes
+      // in the same way as InOut: they're not the end of an interval, but they
+      // also obviously modify (part of) the value.
+      const bool isPartialWrite =
+          (opKind == OperandKind::Out) &&
+          (op->getType()->size() < loc->getType()->size());
+
       auto opIdx = instIdx;
-      if (opKind == OperandKind::Out) {
+      if (opKind == OperandKind::Out && !isPartialWrite) {
         opIdx =
             LiveIntervalsInstructionNumbering::getInstrWriteSlotNumber(instIdx);
       } else {
@@ -587,12 +594,14 @@ static void calculateLiveIntervals(const IRFunction &M,
       // interval, which is not the case. To handle this, @inout operands are
       // considered to be a part of the existing interval, but the sameValue_
       // flag is set to false to indicate that the value is not guaranteed to be
-      // the same inside the interval.
-      if (opKind == OperandKind::InOut)
+      // the same inside the interval. Note: partial writes have similar
+      // properties and so are treated in the same way.
+      if (opKind == OperandKind::InOut || isPartialWrite)
         intervals.back().sameValue_ = false;
 
-      // No need to create a new interval if it is not a write.
-      if (opKind != OperandKind::Out)
+      // No need to create a new interval if it is not a write, or if it is a
+      // partial write.
+      if (opKind != OperandKind::Out || isPartialWrite)
         continue;
       opIdx =
           LiveIntervalsInstructionNumbering::getInstrWriteSlotNumber(instIdx);
@@ -707,7 +716,7 @@ static void replaceAllUsesInsideIntervalWith(
         replacement = withOrigin;
       if (op->getType() != replacement->getType()) {
         // Perform a cast if required.
-        std::vector<size_t> offsets(op->getType()->dims().size(), 0);
+        std::vector<size_t> offsets(replacement->dims().size(), 0);
         auto *tv = B.createTensorViewInst((*it)->getName(), replacement,
                                           op->getType(), offsets);
         M.moveInstruction(it, tv);
@@ -1089,15 +1098,23 @@ static void eliminateDeadStores(IRFunction &M) {
       auto &State = memoryState[OpOrigin];
       if (OpKind != OperandKind::In) {
         numMutatedOperands++;
-        // If it a write that was not read and it is not a last write into
-        // a WeightVar (i.e. an observable effect), then is can be eliminated.
+        // If it is a write that was not read and it is not a last write into
+        // a WeightVar (i.e. an observable effect), then it can be eliminated.
         // If there are multiple writes in this instruction, all of them
         // should satisfy this property for the instruction to be removed.
         if (!State.lastSeenRead_) {
           numNonReadMutatedOperands++;
         }
-        State.lastSeenWrite_ = I;
-        State.lastSeenRead_ = nullptr;
+
+        // Only update last seen read/write if it was not a partial write. These
+        // are used when determining if one write fully overwrites (kills) an
+        // earlier write, but a partial write does not do so.
+        const bool isPartialWrite =
+            (Op.first->getType()->size() < OpOrigin->getType()->size());
+        if (!isPartialWrite) {
+          State.lastSeenWrite_ = I;
+          State.lastSeenRead_ = nullptr;
+        }
       }
     }
 
@@ -1122,6 +1139,118 @@ static void eliminateDeadStores(IRFunction &M) {
     }
   }
 
+  eraseInstructions(M, erasedInstructions);
+}
+
+/// \returns true if the first dimension in \p offsets has a non-zero value.
+static bool isOnlyOffsetInFirstDim(llvm::ArrayRef<size_t> offsets) {
+  if (offsets.size() > 1) {
+    for (size_t i = 1; i < offsets.size(); ++i) {
+      if (offsets[i] != 0) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+/// \returns true if the dimensions of \p sourceDims, other than the first
+/// dimension, all equal the dimensions in \p destDims.
+static bool allButFirstDimsEqual(llvm::ArrayRef<size_t> sourceDims,
+                                 llvm::ArrayRef<size_t> destDims) {
+  assert(sourceDims.size() == destDims.size() &&
+         "Source and dest dims must have same number of dims.");
+  if (sourceDims.size() > 1) {
+    for (size_t i = 1; i < sourceDims.size(); ++i) {
+      if (sourceDims[i] != destDims[i]) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+/// Replace InsertTensors that are only offset in the first dimension with
+/// writing directly into the destination using TensorViews with the same
+/// offsets. This is possible because this means the underlying memory is
+/// contiguous in this case.
+void optimizeInserts(IRFunction &M) {
+  auto &instrs = M.getInstrs();
+  Instructions erasedInstructions;
+  IRBuilder B(&M);
+  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
+    auto *I = *it;
+
+    // Look for compatible InsertTensors.
+    auto *ITI = dyn_cast<InsertTensorInst>(I);
+    if (!ITI) {
+      continue;
+    }
+
+    // TVI with offsets currently only works for this optimization if the insert
+    // is only into the first dimension. This is because the tensor memory must
+    // be contiguous.
+    if (!isOnlyOffsetInFirstDim(ITI->getOffsets())) {
+      continue;
+    }
+
+    // For now only support an InsertTensor with an alloc as its source. This is
+    // the pattern usually seen via IRGen'd ConcatNodes.
+    auto *insertSourceAAI = dyn_cast<AllocActivationInst>(ITI->getSrc());
+    if (!insertSourceAAI) {
+      continue;
+    }
+
+    // Assume 3 users of the source AAI: ITI, the original instruction that
+    // writes into it, and a dealloc. The dealloc is unchecked but assumed as a
+    // user as we already know insertSourceAAI is one user, and so there must be
+    // a dealloc.
+    if (insertSourceAAI->getNumUsers() != 3) {
+      continue;
+    }
+
+    // Make sure that all but the first dimension of the inserttensor's source
+    // and dest are equal. This means that the writes to the destination of the
+    // insert are contiguous.
+    auto *insertDest = ITI->getDest();
+    if (!allButFirstDimsEqual(insertSourceAAI->dims(), insertDest->dims())) {
+      continue;
+    }
+
+    // Find the original writer into insertSourceAAI.
+    Instruction *origWriter = nullptr;
+    for (const auto &U : ValueUses(insertSourceAAI)) {
+      auto *tmpI = U.get();
+      if (tmpI != ITI && !isa<DeallocActivationInst>(tmpI)) {
+        origWriter = tmpI;
+        break;
+      }
+    }
+    assert(origWriter &&
+           "Did not find the original writer to the source alloc.");
+
+    // Create a new TensorView of the the original dest of the InsertTensor,
+    // with the same offset as the InsertTensor.
+    auto *TVI =
+        B.createTensorViewInst((ITI->getName() + ".tv.dest").str(), insertDest,
+                               insertSourceAAI->getType(), ITI->getOffsets());
+
+    // Replace the insertSourceAAI with the new TensorView, so that the original
+    // writer into insertSourceAAI writes into the offset into insertDest
+    // instead.
+    replaceAllNonDeallocUsersWith(insertSourceAAI, TVI);
+
+    // Move the TVI to the location of the InsertTensor.
+    auto itTVI = M.moveInstruction(it, TVI);
+
+    // Move the original writer into insertSourceAAI to now come after the TVI,
+    // preserving the order of writes into insertDestAAI.
+    M.moveInstruction(++itTVI, origWriter);
+
+    // Queue up removal of the now-unnecessary InsertTensor. Unused
+    // allocs/deallocs will be deleted by later passes.
+    erasedInstructions.insert(ITI);
+  }
   eraseInstructions(M, erasedInstructions);
 }
 
@@ -1204,7 +1333,7 @@ void performPeepholeOptimizations(IRFunction &M) {
       if (auto W = getSingleWriter(src)) {
         if (isa<SplatInst>(W)) {
           if (src->getType() != dest->getType()) {
-            std::vector<size_t> offsets(dest->getType()->dims().size(), 0);
+            std::vector<size_t> offsets(src->getType()->dims().size(), 0);
             auto *TVI = B.createTensorViewInst(TI->getName(), src,
                                                dest->getType(), offsets);
             M.moveInstruction(cur, instrs.back());
@@ -1249,8 +1378,21 @@ void performPeepholeOptimizations(IRFunction &M) {
 
     // Remove useless copies.
     if (auto *CI = dyn_cast<CopyInst>(I)) {
-      if (getOrigin(CI->getSrc()) == getOrigin(CI->getDest()))
+      auto *src = CI->getSrc();
+      auto *dest = CI->getDest();
+      if (getOrigin(src) == getOrigin(dest)) {
+        if (src->getType()->size() != dest->getType()->size()) {
+          continue;
+        }
+
+        auto *srcTV = dyn_cast<TensorViewInst>(src);
+        auto *destTV = dyn_cast<TensorViewInst>(dest);
+        if (srcTV && destTV && (srcTV->getOffsets() != destTV->getOffsets())) {
+          continue;
+        }
+
         M.eraseInstruction(cur);
+      }
       continue;
     }
   }
@@ -1265,6 +1407,9 @@ void glow::optimize(IRFunction &M, CompilationMode mode) {
   performPeepholeOptimizations(M);
 
   eliminateDeadStores(M);
+
+  // Replace applicable InsertTensors with TensorViews.
+  optimizeInserts(M);
 
   // Reuse buffers from previous operations.
   shareBuffers(M);

@@ -62,8 +62,8 @@ void CopyInst::verify() const {
 }
 
 void TensorViewInst::verify() const {
-  assert(getSrc()->getType()->size() == getType()->size() &&
-         "TensorView view size should be the same as Src size");
+  assert(getSrc()->getType()->size() >= getType()->size() &&
+         "TensorView view size should be no larger than Src size");
   assert(getSrc()->getElementType() == getType()->getElementType() &&
          "TensorView view element type should be the same as Src type");
 }
