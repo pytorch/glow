@@ -647,7 +647,7 @@ void Interpreter::fwdBroadcastInst(const BroadcastInst *I) {
 }
 
 void Interpreter::fwdTensorViewInst(const TensorViewInst *I) {
-  getOrCreateUnownedTensor(I, I->getSrc());
+  getOrCreateUnownedTensor(I, I->getSrc(), I->getOffsets());
 }
 
 void Interpreter::fwdSplatInst(const glow::SplatInst *I) {

@@ -229,3 +229,81 @@ TEST(Optimizer, copyPropagationTranspose) {
                isa<DeallocActivationInst>(I);
       }));
 }
+
+/// Simple test where a single insert is replaced by a tensor view with offsets.
+TEST(Optimizer, insertOptimizer) {
+  Module mod;
+  Function *F = mod.createFunction("InsertOptimizer");
+  IRFunction M(F);
+  IRBuilder bb(&M);
+
+  auto *output =
+      bb.createWeightVar(glow::ElemKind::FloatTy, {4, 4, 5}, "output",
+                         WeightVar::MutabilityKind::Mutable);
+
+  auto *allocSrc = bb.createAllocActivationInst(
+      "allocSrc", glow::ElemKind::FloatTy, {3, 4, 5});
+
+  bb.createSplatInst("splatSrc", allocSrc, 1.0);
+  bb.createSplatInst("splatDest", output, 2.0);
+
+  bb.createInsertTensorInst("insert", output, allocSrc, {1, 0, 0});
+
+  bb.createDeallocActivationInst("deallocSrc", allocSrc);
+
+  optimize(M, CompilationMode::Infer);
+
+  // After optimization, should be left with two splats and a tensorview; the
+  // insert, alloc, and dealloc should be gone.
+  auto &instrs = M.getInstrs();
+  EXPECT_EQ(instrs.size(), 3);
+  EXPECT_TRUE(std::all_of(instrs.begin(), instrs.end(),
+                          [](const Instruction *I) -> bool {
+                            return isa<SplatInst>(I) || isa<TensorViewInst>(I);
+                          }));
+}
+
+/// This is representative of what a ConcatNode is IRGen'd into: src1 and src2
+/// represent the two tensors that are being concatenated, and dest represents
+/// the resulting concatenated tensor.
+TEST(Optimizer, twoInsertsWithBuffersOptimizer) {
+  Module mod;
+  Function *F = mod.createFunction("InsertWithBufferOptimizer");
+  IRFunction M(F);
+  IRBuilder bb(&M);
+
+  auto *output =
+      bb.createWeightVar(glow::ElemKind::FloatTy, {4, 4, 5}, "output",
+                         WeightVar::MutabilityKind::Mutable);
+
+  auto *allocSrc1 = bb.createAllocActivationInst(
+      "allocSrc1", glow::ElemKind::FloatTy, {2, 4, 5});
+  auto *allocSrc2 = bb.createAllocActivationInst(
+      "allocSrc2", glow::ElemKind::FloatTy, {2, 4, 5});
+  auto *allocDest = bb.createAllocActivationInst(
+      "allocDest", glow::ElemKind::FloatTy, {4, 4, 5});
+
+  bb.createSplatInst("splatSrc1", allocSrc1, 1.0);
+  bb.createSplatInst("splatSrc2", allocSrc2, 2.0);
+  bb.createSplatInst("splatDest", allocDest, 3.0);
+
+  bb.createInsertTensorInst("insert1", allocDest, allocSrc1, {0, 0, 0});
+  bb.createInsertTensorInst("insert2", allocDest, allocSrc2, {2, 0, 0});
+
+  bb.createCopyInst("copy", output, allocDest);
+
+  bb.createDeallocActivationInst("deallocDest", allocDest);
+  bb.createDeallocActivationInst("deallocSrc2", allocSrc2);
+  bb.createDeallocActivationInst("deallocSrc1", allocSrc1);
+
+  optimize(M, CompilationMode::Infer);
+
+  // After optimization, should be left with three splats and two tensorviews;
+  // the inserts, allocs, and deallocs should be gone.
+  auto &instrs = M.getInstrs();
+  EXPECT_EQ(instrs.size(), 5);
+  EXPECT_TRUE(std::all_of(instrs.begin(), instrs.end(),
+                          [](const Instruction *I) -> bool {
+                            return isa<SplatInst>(I) || isa<TensorViewInst>(I);
+                          }));
+}
