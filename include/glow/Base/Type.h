@@ -78,6 +78,41 @@ struct ShapeNHWC {
   }
 };
 
+struct ShapeNCHW {
+  size_t n; // Number of samples
+  size_t c; // Number of Channels
+  size_t h; // Height
+  size_t w; // Width
+
+  explicit ShapeNCHW(llvm::ArrayRef<size_t> shape) {
+    assert(shape.size() == 4 && "Invalid shape");
+    n = shape[0];
+    c = shape[1];
+    h = shape[2];
+    w = shape[3];
+  }
+
+  static ShapeNCHW fromXYZ(llvm::ArrayRef<size_t> shape) {
+    assert(shape.size() == 3 && "Invalid 3d shape");
+    return ShapeNCHW(shape[0], 1, shape[1], shape[2]);
+  }
+
+  static ShapeNCHW fromXY(llvm::ArrayRef<size_t> shape) {
+    assert(shape.size() == 2 && "Invalid 2d shape");
+    return ShapeNCHW(shape[0], 1, shape[1], 1);
+  }
+
+  static ShapeNCHW empty() { return ShapeNCHW(0, 0, 0, 0); }
+
+  explicit ShapeNCHW(size_t samples, size_t channels, size_t height,
+                     size_t width)
+      : n(samples), c(channels), h(height), w(width) {}
+
+  bool equals(const ShapeNCHW &other) const {
+    return n == other.n && h == other.h && w == other.w && c == other.c;
+  }
+};
+
 /// Collapse a tensor shape into two sizes: the first dimension and the size of
 /// the rest of the dimensions.
 /// For example, [7, 3, 4, 2] -> [7, 24]
@@ -93,6 +128,10 @@ inline std::pair<size_t, size_t> flattenCdr(llvm::ArrayRef<size_t> dims) {
 }
 
 inline bool operator==(const ShapeNHWC &LHS, const ShapeNHWC &RHS) {
+  return LHS.equals(RHS);
+}
+
+inline bool operator==(const ShapeNCHW &LHS, const ShapeNCHW &RHS) {
   return LHS.equals(RHS);
 }
 
