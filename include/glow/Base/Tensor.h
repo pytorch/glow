@@ -25,7 +25,6 @@
 #include "glow/Support/Random.h"
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/PointerUnion.h"
 
 namespace glow {
 
@@ -45,19 +44,22 @@ void broadcastToNewShapeImpl(Tensor *src, Tensor *dest,
 
 /// A class that represents a contiguous n-dimensional array (a tensor).
 class Tensor final {
-  /// A pointer to the tensor data and the unowned flag.
-  llvm::PointerIntPair<void *, 1, bool> data_{nullptr};
+  /// A pointer to the tensor data.
+  char *data_{nullptr};
 
   /// The type of the tensor.
   Type type_;
 
+  /// If the tensor is unowned.
+  bool isUnowned_{false};
+
   template <class ElemTy> friend class Handle;
 
   /// \returns a pointer to the tensor data buffer.
-  char *getData() const { return reinterpret_cast<char *>(data_.getPointer()); }
+  char *getData() const { return data_; }
 
   /// \returns true if it is an unowned tensor.
-  bool isUnowned() const { return data_.getInt(); }
+  bool isUnowned() const { return isUnowned_; }
 
 public:
   /// \returns the type of the tensor.
@@ -92,7 +94,7 @@ public:
   /// \returns a pointer to the raw data, of type \p ElemTy.
   template <class ElemTy> ElemTy *getRawDataPointer() {
     assert(type_.isType<ElemTy>() && "Asking for the wrong ptr type.");
-    return reinterpret_cast<ElemTy *>(data_.getPointer());
+    return reinterpret_cast<ElemTy *>(data_);
   }
 
   /// Initialize an empty tensor.
@@ -109,29 +111,35 @@ public:
   }
 
   /// Allocate and initialize a new tensor.
-  explicit Tensor(TypeRef ty) : data_(nullptr), type_(*ty) { reset(*ty); }
+  explicit Tensor(TypeRef ty) : data_(nullptr), type_(*ty), isUnowned_{false} {
+    reset(*ty);
+  }
 
   /// Allocate and initialize a new tensor.
-  explicit Tensor(const Type &ty) : data_(nullptr), type_(ty) { reset(ty); }
+  explicit Tensor(const Type &ty)
+      : data_(nullptr), type_(ty), isUnowned_{false} {
+    reset(ty);
+  }
 
   /// Allocate and initialize a float new tensor.
   Tensor(ElemKind elemTy, llvm::ArrayRef<size_t> dims)
-      : data_(nullptr), type_(elemTy, dims) {
+      : data_(nullptr), type_(elemTy, dims), isUnowned_{false} {
     reset(elemTy, dims);
   }
 
   /// Construct an unowned tensor provided an existing payload buffer.
   /// This constructor can be used when there is a need to work with
   /// "externally" managed payload buffers using Tensor APIs.
-  Tensor(void *data, TypeRef ty) : data_(data), type_(*ty) {
+  Tensor(void *data, TypeRef ty)
+      : data_(reinterpret_cast<char *>(data)), type_(*ty), isUnowned_{false} {
     // Mark as unowned.
-    data_.setInt(1);
+    isUnowned_ = true;
   }
 
   /// Allocate and initialize a new integer tensor with \p scale and \p offset.
   Tensor(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
          int32_t offset)
-      : data_(nullptr), type_(elemTy, dims, scale, offset) {
+      : data_(nullptr), type_(elemTy, dims, scale, offset), isUnowned_{false} {
     reset(type_);
   }
 
@@ -165,8 +173,8 @@ public:
       firstElemPtr = &firstElemPtr[index * type_.getElementSize()];
     }
 
-    unownedTensor.data_.setPointer(firstElemPtr);
-    unownedTensor.data_.setInt(1);
+    unownedTensor.data_ = firstElemPtr;
+    unownedTensor.isUnowned_ = true;
     unownedTensor.type_ = Type::newShape(getType(), dims);
     if (offsets.size() == 0) {
       assert(size() == unownedTensor.size() && "The size of the unowned tensor "
@@ -212,7 +220,7 @@ public:
 
     if (size()) {
       size_t count = size() * type_.getElementSize();
-      data_.setPointer(alignedAlloc(count, TensorAlignment));
+      data_ = reinterpret_cast<char *>(alignedAlloc(count, TensorAlignment));
       zero();
     }
   }
@@ -227,12 +235,14 @@ public:
   Tensor(Tensor &&other) noexcept {
     std::swap(data_, other.data_);
     std::swap(type_, other.type_);
+    std::swap(isUnowned_, other.isUnowned_);
   }
 
   /// Move assignment operator.
   Tensor &operator=(Tensor &&other) noexcept {
     std::swap(data_, other.data_);
     std::swap(type_, other.type_);
+    std::swap(isUnowned_, other.isUnowned_);
     return *this;
   }
 
