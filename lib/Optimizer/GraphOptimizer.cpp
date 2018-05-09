@@ -628,8 +628,9 @@ static void optimizeTranspose(Function *F) {
       continue;
     }
     // Create a new variable NV to hold the transposed result.
-    auto *NV = F->getParent()->createVariable(
-        TN->getType(), V->getName(), V->getVisibilityKind(), V->getTrainKind());
+    auto *NV = F->getParent()->createVariable(TN->getType(), V->getName(),
+                                              V->getVisibilityKind(),
+                                              V->getTrainKind(), V->getValue());
     // Transpose the value of V into NV.
     genericTranspose(&V->getPayload(), &NV->getPayload(), TN->getShuffle());
     // Rewrite uses of TN to reference NV.
