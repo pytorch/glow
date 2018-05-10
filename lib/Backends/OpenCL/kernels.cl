@@ -813,20 +813,19 @@ __kernel void oclpoolavgW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
 
 __kernel void transposeK(__global float *dest, __global float *src,
                          ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC shuffle) {
-  size_t d0 = get_global_id(0);
   size_t res[4];
+  size_t d0 = get_global_id(0);
+  size_t d1 = get_global_id(1);
   res[0] = d0;
-  for (size_t d1 = 0; d1 < idim.h; d1++) {
-    res[1] = d1;
-    for (size_t d2 = 0; d2 < idim.w; d2++) {
-      res[2] = d2;
-      for (size_t d3 = 0; d3 < idim.c; d3++) {
-        res[3] = d3;
-        size_t dstIdx = getNHWC(odim, res[shuffle.n], res[shuffle.h],
-                                res[shuffle.w], res[shuffle.c]);
-        size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
-        dest[dstIdx] = src[srcIdx];
-      }
+  res[1] = d1;
+  for (size_t d2 = 0; d2 < idim.w; d2++) {
+    res[2] = d2;
+    for (size_t d3 = 0; d3 < idim.c; d3++) {
+      res[3] = d3;
+      size_t dstIdx = getNHWC(odim, res[shuffle.n], res[shuffle.h],
+                              res[shuffle.w], res[shuffle.c]);
+      size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
+      dest[dstIdx] = src[srcIdx];
     }
   }
 }
@@ -836,30 +835,22 @@ __kernel void transposeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
   transposeK(&mem[dest], &mem[src], odim, idim, shuffle);
 }
 
-__kernel void transposeK_u(__global cl_uint64_t *dest, __global cl_uint64_t *src,
-                         ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC shuffleMask) {
+__kernel void transposeK_u(__global cl_uint64_t *dest,
+                           __global cl_uint64_t *src, ShapeNHWC odim,
+                           ShapeNHWC idim, ShapeNHWC shuffle) {
+  size_t res[4];
   size_t d0 = get_global_id(0);
-  uint4 res;
-  res.s0 = d0;
-  uint4 mask;
-
-  mask.s0 = shuffleMask.n;
-  mask.s1 = shuffleMask.h;
-  mask.s2 = shuffleMask.w;
-  mask.s3 = shuffleMask.c;
-
-  for (size_t d1 = 0; d1 < idim.h; d1++) {
-    res.s1 = d1;
-    for (size_t d2 = 0; d2 < idim.w; d2++) {
-      res.s2 = d2;
-      for (size_t d3 = 0; d3 < idim.c; d3++) {
-        res.s3 = d3;
-        uint4 result = shuffle(res, mask);
-        size_t dstIdx = getNHWC(odim, result[0], result[1],
-                                result[2], result[3]);
-        size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
-        dest[dstIdx] = src[srcIdx];
-      }
+  size_t d1 = get_global_id(1);
+  res[0] = d0;
+  res[1] = d1;
+  for (size_t d2 = 0; d2 < idim.w; d2++) {
+    res[2] = d2;
+    for (size_t d3 = 0; d3 < idim.c; d3++) {
+      res[3] = d3;
+      size_t dstIdx = getNHWC(odim, res[shuffle.n], res[shuffle.h],
+                              res[shuffle.w], res[shuffle.c]);
+      size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
+      dest[dstIdx] = src[srcIdx];
     }
   }
 }
@@ -872,21 +863,20 @@ __kernel void transpose_uW(__global void *mem, cl_uint32_t dest, cl_uint32_t src
 __kernel void inserttensorK(__global float *dest, __global float *src,
                             ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset) {
   size_t d0 = get_global_id(0);
+  size_t d1 = get_global_id(1);
   size_t offset_n = ((odim.n > 1) ? offset.n : 0);
   size_t offset_h = ((odim.h > 1) ? offset.h : 0);
   size_t offset_w = ((odim.w > 1) ? offset.w : 0);
   size_t offset_c = ((odim.c > 1) ? offset.c : 0);
-  for (size_t d1 = 0; d1 < idim.h; d1++) {
-    for (size_t d2 = 0; d2 < idim.w; d2++) {
-      for (size_t d3 = 0; d3 < idim.c; d3++) {
-        size_t r0 = d0 + offset_n;
-        size_t r1 = d1 + offset_h;
-        size_t r2 = d2 + offset_w;
-        size_t r3 = d3 + offset_c;
-        size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
-        size_t destIdx = getNHWC(odim, r0, r1, r2, r3);
-        dest[destIdx] = src[srcIdx];
-      }
+  for (size_t d2 = 0; d2 < idim.w; d2++) {
+    for (size_t d3 = 0; d3 < idim.c; d3++) {
+      size_t r0 = d0 + offset_n;
+      size_t r1 = d1 + offset_h;
+      size_t r2 = d2 + offset_w;
+      size_t r3 = d3 + offset_c;
+      size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
+      size_t destIdx = getNHWC(odim, r0, r1, r2, r3);
+      dest[destIdx] = src[srcIdx];
     }
   }
 }
@@ -897,25 +887,21 @@ __kernel void inserttensorW(__global void *mem, cl_uint32_t dest,
   inserttensorK(&mem[dest], &mem[src], odim, idim, offset);
 }
 
-__kernel void extracttensorK(__global float *dest,
-                             __global float *src,
-                             ShapeNHWC odim,
-                             ShapeNHWC idim,
-                             ShapeNHWC offset) {
+__kernel void extracttensorK(__global float *dest, __global float *src,
+                             ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset) {
   size_t d0 = get_global_id(0);
+  size_t d1 = get_global_id(1);
   size_t offset_w = ((odim.w > 1) ? offset.w : 0);
   size_t offset_c = ((odim.c > 1) ? offset.c : 0);
-  for (size_t d1 = 0; d1 < odim.h; d1++) {
-    for (size_t d2 = 0; d2 < odim.w; d2++) {
-      for (size_t d3 = 0; d3 < odim.c; d3++) {
-        size_t r0 = d0 + offset.n;
-        size_t r1 = d1 + offset.h;
-        size_t r2 = d2 + offset_w;
-        size_t r3 = d3 + offset_c;
-        size_t destIdx = getNHWC(odim, d0, d1, d2, d3);
-        size_t srcIdx = getNHWC(idim, r0, r1, r2, r3);
-        dest[destIdx] = src[srcIdx];
-      }
+  for (size_t d2 = 0; d2 < odim.w; d2++) {
+    for (size_t d3 = 0; d3 < odim.c; d3++) {
+      size_t r0 = d0 + offset.n;
+      size_t r1 = d1 + offset.h;
+      size_t r2 = d2 + offset_w;
+      size_t r3 = d3 + offset_c;
+      size_t destIdx = getNHWC(odim, d0, d1, d2, d3);
+      size_t srcIdx = getNHWC(idim, r0, r1, r2, r3);
+      dest[destIdx] = src[srcIdx];
     }
   }
 }
