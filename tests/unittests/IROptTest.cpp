@@ -307,3 +307,50 @@ TEST(Optimizer, twoInsertsWithBuffersOptimizer) {
                             return isa<SplatInst>(I) || isa<TensorViewInst>(I);
                           }));
 }
+
+/// This is representative of what a SliceNode is IRGen'd into: src is the
+/// original source tensor, and then two slices are created into dest1 and
+/// dest2.
+TEST(Optimizer, twoExtractsWithBuffersOptimizer) {
+  Module mod;
+  Function *F = mod.createFunction("ExtractWithBufferOptimizer");
+  IRFunction M(F);
+  IRBuilder bb(&M);
+
+  auto *output1 =
+      bb.createWeightVar(glow::ElemKind::FloatTy, {2, 4, 5}, "output1",
+                         WeightVar::MutabilityKind::Mutable);
+  auto *output2 =
+      bb.createWeightVar(glow::ElemKind::FloatTy, {2, 4, 5}, "output2",
+                         WeightVar::MutabilityKind::Mutable);
+
+  auto *allocSrc = bb.createAllocActivationInst(
+      "allocSrc", glow::ElemKind::FloatTy, {4, 4, 5});
+  auto *allocDest1 = bb.createAllocActivationInst(
+      "allocDest1", glow::ElemKind::FloatTy, {2, 4, 5});
+  auto *allocDest2 = bb.createAllocActivationInst(
+      "allocDest2", glow::ElemKind::FloatTy, {2, 4, 5});
+
+  bb.createSplatInst("splatSrc", allocSrc, 3.0);
+
+  bb.createExtractTensorInst("extract1", allocDest1, allocSrc, {0, 0, 0});
+  bb.createExtractTensorInst("extract2", allocDest2, allocSrc, {2, 0, 0});
+
+  bb.createCopyInst("copy", output1, allocDest1);
+  bb.createCopyInst("copy", output2, allocDest2);
+
+  bb.createDeallocActivationInst("deallocSrc", allocSrc);
+  bb.createDeallocActivationInst("deallocDest2", allocDest2);
+  bb.createDeallocActivationInst("deallocDest1", allocDest1);
+
+  optimize(M, CompilationMode::Infer);
+
+  // After optimization, the extracts should be gone, as well as both allocDests
+  // and their deallocs. Should be left with splatSrc, allocSrc, deallocSrc, two
+  // tensorviews, and two copies from the tensorviews into the outputs.
+  auto &instrs = M.getInstrs();
+  EXPECT_EQ(instrs.size(), 7);
+  EXPECT_TRUE(std::none_of(
+      instrs.begin(), instrs.end(),
+      [](const Instruction *I) -> bool { return isa<ExtractTensorInst>(I); }));
+}

@@ -393,6 +393,12 @@ static void replaceAllNonDeallocUsersWith(Value *val, Value *with) {
   llvm::SmallVector<Use, 6> usersVec(users.begin(), users.end());
   for (auto &U : usersVec) {
     auto *I = U.get();
+    // Ignore the instruction itself (e.g. when creating a view and then
+    // replacing all uses of the original with the view).
+    if (I == with) {
+      continue;
+    }
+
     auto &M = *I->getParent();
     IRBuilder B(&M);
     // Ignore dealloc instrs.
@@ -416,8 +422,39 @@ static void replaceAllNonDeallocUsersWith(Value *val, Value *with) {
   }
 }
 
-/// \returns the pointer to the single writer that writes into this value, or
-/// nullptr if the number of writers is not exactly one.
+/// \returns true if Value \p V has more than one writer, ignoring any
+/// instructions in \p ignoredInstructions.
+static bool hasMultipleWriters(const Value *V,
+                               Instructions ignoredInstructions) {
+  bool foundWriter = false;
+  for (const auto &U : ValueUses(V)) {
+    Instruction *user = U.get();
+
+    // Ignore deallocs.
+    if (isa<DeallocActivationInst>(user))
+      continue;
+
+    // Ignore readers.
+    if (U.getOperand().second == OperandKind::In) {
+      continue;
+    }
+
+    // Ignore others provided.
+    if (ignoredInstructions.find(user) != ignoredInstructions.end()) {
+      continue;
+    }
+
+    // Already found another writer.
+    if (foundWriter) {
+      return true;
+    }
+    foundWriter = true;
+  }
+  return false;
+}
+
+/// \returns the pointer to the single writer that writes into this value \p V,
+/// or nullptr if the number of writers is not exactly one.
 static Instruction *getSingleWriter(const Value *V) {
   Instruction *singleUser = nullptr;
   for (const auto &U : ValueUses(V)) {
@@ -719,6 +756,8 @@ static void replaceAllUsesInsideIntervalWith(
         std::vector<size_t> offsets(replacement->dims().size(), 0);
         auto *tv = B.createTensorViewInst((*it)->getName(), replacement,
                                           op->getType(), offsets);
+        assert(tv->getType()->size() == with->getType()->size() &&
+               "Replacement must have same number of elements as original.");
         M.moveInstruction(it, tv);
         replacement = tv;
       }
@@ -1000,6 +1039,12 @@ static void tryToShareBuffersForInstr(
       if (!Instruction::isInplaceOp(I, first, second)) {
         continue;
       }
+
+      // Bail if the origin buffers of src and dest are of different sizes.
+      if (dest->getType()->size() != src->getType()->size()) {
+        continue;
+      }
+
       // The buffers can be reused in principle, thus try to share the buffers.
       BufferSharingOptimizer opt(M, intervalsMap, instrNumbering, I, instIdx,
                                  dest, src);
@@ -1254,6 +1299,71 @@ void optimizeInserts(IRFunction &M) {
   eraseInstructions(M, erasedInstructions);
 }
 
+/// Replace ExtractTensors that are only offset in the first dimension with
+/// reading directly from the destination using TensorViews with the same
+/// offsets. This is possible because this means the underlying memory is
+/// contiguous in this case.
+void optimizeExtracts(IRFunction &M) {
+  auto &instrs = M.getInstrs();
+  Instructions erasedInstructions;
+  IRBuilder B(&M);
+  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
+    auto *I = *it;
+
+    // Look for compatible ExtractTensors.
+    auto *ETI = dyn_cast<ExtractTensorInst>(I);
+    if (!ETI) {
+      continue;
+    }
+
+    // TVI with offsets currently only works for this optimization if the
+    // extract is only into the first dimension. This is because the tensor
+    // memory must be contiguous.
+    if (!isOnlyOffsetInFirstDim(ETI->getOffsets())) {
+      continue;
+    }
+
+    // Verify that the source of the extract is not written to more than once.
+    // This is to ensure that all uses of the extract's output can be replaced
+    // by a view of the source instead, since it should be read-only after the
+    // first write, and the extract should only come after the write.
+    auto *extractSrc = ETI->getSrc();
+    if (hasMultipleWriters(extractSrc, erasedInstructions)) {
+      continue;
+    }
+
+    // For now only support an extract with an alloc as its dest. This is the
+    // pattern usually seen via IRGen'd SliceNodes.
+    auto *extractDestAAI = dyn_cast<AllocActivationInst>(ETI->getDest());
+    if (!extractDestAAI) {
+      continue;
+    }
+
+    // Make sure that all but the first dimension of the extract's source and
+    // dest are equal. This means that the accesses are contiguous.
+    if (!allButFirstDimsEqual(extractSrc->dims(), extractDestAAI->dims())) {
+      continue;
+    }
+
+    // Create a new TensorView of the the original source of the ExtractTensor,
+    // and with the same offset as the ExtractTensor.
+    auto *TVI =
+        B.createTensorViewInst((ETI->getName() + ".tv.dest").str(), extractSrc,
+                               extractDestAAI->getType(), ETI->getOffsets());
+
+    // Replace all uses of the extract's dest (extractDestAAI) with the TVI.
+    replaceAllNonDeallocUsersWith(extractDestAAI, TVI);
+
+    // Move the TVI to the location of the ExtractTensor.
+    M.moveInstruction(it, TVI);
+
+    // Queue up removal of the now-unnecessary ExtractTensor. Unused
+    // allocs/deallocs will be deleted by later passes.
+    erasedInstructions.insert(ETI);
+  }
+  eraseInstructions(M, erasedInstructions);
+}
+
 /// Instrument the code to make it easier to debug issues.
 /// Add dumping of inputs before each instruction and
 /// dumping of outputs after each instruction.
@@ -1408,8 +1518,9 @@ void glow::optimize(IRFunction &M, CompilationMode mode) {
 
   eliminateDeadStores(M);
 
-  // Replace applicable InsertTensors with TensorViews.
+  // Replace applicable InsertTensors and ExtractTensors with TensorViews.
   optimizeInserts(M);
+  optimizeExtracts(M);
 
   // Reuse buffers from previous operations.
   shareBuffers(M);
