@@ -617,7 +617,8 @@ void OCLBackend::doForwardPass() {
       setKernelArg(kernel, 3, odim);
       setKernelArg(kernel, 4, idim);
       setKernelArg(kernel, 5, offset);
-      enqueueKernel(commands_, kernel, deviceId_, {odim.n}, kernelLaunches_);
+      enqueueKernel(commands_, kernel, deviceId_, {odim.n, odim.h},
+                    kernelLaunches_);
       continue;
     }
 
@@ -660,7 +661,8 @@ void OCLBackend::doForwardPass() {
       setKernelArg(kernel, 3, odim);
       setKernelArg(kernel, 4, idim);
       setKernelArg(kernel, 5, offset);
-      enqueueKernel(commands_, kernel, deviceId_, {idim.n}, kernelLaunches_);
+      enqueueKernel(commands_, kernel, deviceId_, {idim.n, idim.h},
+                    kernelLaunches_);
       continue;
     }
 
@@ -949,8 +951,8 @@ void OCLBackend::doForwardPass() {
 
       ShapeNHWC shuff(mask[0], mask[1], mask[2], mask[3]);
       setKernelArg(kernel, 5, shuff);
-
-      enqueueKernel(commands_, kernel, deviceId_, {idim.n}, kernelLaunches_);
+      enqueueKernel(commands_, kernel, deviceId_, {idim.n, idim.h},
+                    kernelLaunches_);
       continue;
     }
 
