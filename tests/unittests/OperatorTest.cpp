@@ -1177,7 +1177,7 @@ TEST_P(Operator, sliceVectors) {
                                 VisibilityKind::Public);
 
   Node *S1 = F_->createSlice("slice1", V, {0, 10}, {3, 13});
-  Node *S2 = F_->createSlice("slice2", V, {1, 10}, {2, 30});
+  Node *S2 = F_->createSlice("slice2", V, {1, 0}, {2, 30});
   Node *S3 = F_->createSlice("slice3", V, {2, 10}, {3, 12});
 
   auto *result1 = F_->createSave("ret1", S1);
@@ -1211,14 +1211,59 @@ TEST_P(Operator, sliceVectors) {
     }
   }
   EXPECT_EQ(1, RNWH2.dims()[0]);
-  EXPECT_EQ(20, RNWH2.dims()[1]);
-  for (size_t j = 10; j < 30; j++) {
-    EXPECT_NEAR(RNWH2.at({0, j - 10}), j + 30, 0.001);
+  EXPECT_EQ(30, RNWH2.dims()[1]);
+  for (size_t j = 0; j < 30; j++) {
+    EXPECT_NEAR(RNWH2.at({0, j}), j + 30, 0.001);
   }
   EXPECT_EQ(1, RNWH3.dims()[0]);
   EXPECT_EQ(2, RNWH3.dims()[1]);
   for (size_t j = 10; j < 12; j++) {
     EXPECT_NEAR(RNWH3.at({0, j - 10}), j + 60, 0.001);
+  }
+}
+
+TEST_P(Operator, sliceConcatVectors) {
+  F_->setName("sliceConcatVectors");
+
+  auto *V = mod_.createVariable(ElemKind::IndexTy, {5, 4}, "V",
+                                VisibilityKind::Public);
+
+  Tensor I(ElemKind::IndexTy, {5, 4});
+  for (size_t i = 0; i < 5; i++) {
+    for (size_t j = 0; j < 4; j++) {
+      I.getHandle<size_t>().at({i, j}) = i * 100 + j;
+    }
+  }
+
+  Node *S0 = F_->createSlice("slice0", V, {1, 0}, {5, 4});
+  Node *S1 = F_->createSlice("slice1", S0, {0, 0}, {2, 4});
+  Node *S2 = F_->createSlice("slice2", S0, {2, 0}, {4, 4});
+  Node *S3 = F_->createSlice("slice3", S0, {0, 0}, {2, 2});
+  Node *S4 = F_->createSlice("slice4", S0, {2, 2}, {4, 4});
+  Node *S5 = F_->createSlice("slice5", V, {0, 0}, {1, 4});
+
+  Node *C0 = F_->createConcat("concat0", {S5, S1}, 0);
+  Node *C1 = F_->createConcat("concat1", {S3, S4}, 1);
+  Node *C2 = F_->createConcat("concat2", {S2, C1, C0}, 0);
+
+  auto *result = F_->createSave("ret", C2);
+
+  EE_.compile(CompilationMode::Infer, F_);
+
+  EE_.run({V}, {&I});
+
+  const size_t expected[7][4] = {{300, 301, 302, 303}, {400, 401, 402, 403},
+                                 {100, 101, 302, 303}, {200, 201, 402, 403},
+                                 {0, 1, 2, 3},         {100, 101, 102, 103},
+                                 {200, 201, 202, 203}};
+
+  auto resultH = result->getVariable()->getPayload().getHandle<size_t>();
+  EXPECT_EQ(7, resultH.dims()[0]);
+  EXPECT_EQ(4, resultH.dims()[1]);
+  for (size_t i = 0; i < 7; i++) {
+    for (size_t j = 0; j < 4; j++) {
+      EXPECT_EQ(resultH.at({i, j}), expected[i][j]);
+    }
   }
 }
 
