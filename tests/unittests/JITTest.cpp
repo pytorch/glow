@@ -45,7 +45,7 @@ TEST(JITCorrectnessTest, batchedAddTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, quantizedBatchedAddTest) {
+TEST(JITCorrectnessTest, DISABLED_quantizedBatchedAddTest) {
   std::array<size_t, 4> S{{10, 1, 1, 2}};
   llvm::ArrayRef<size_t> shape(S);
   Tensor batch(ElemKind::Int8QTy, shape, 0.875, -1);

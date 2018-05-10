@@ -610,11 +610,24 @@ public:
 
   /// Fill the tensor with uniformly distributed values in the range
   /// [low .. high].
-  void randomize(float low, float high) {
+  template<typename T = ElemTy>
+  typename std::enable_if<std::is_floating_point<T>::value>::type
+  randomize(float low, float high) {
     assert(low < high && "invalid range");
     float range = (high - low);
     for (size_t i = 0, e = size(); i < e; i++) {
       raw(i) = (std::abs(nextRand())) * range + low;
+    }
+  }
+
+  /// Fill the tensor with uniformly distributed values in the range
+  /// [low .. high].
+  template<typename T = ElemTy>
+  typename std::enable_if<std::is_integral<T>::value>::type
+  randomize(int low, int high) {
+    assert(low < high && "invalid range");
+    for (size_t i = 0, e = size(); i < e; i++) {
+      raw(i) = nextRandInt(low, high);
     }
   }
 
