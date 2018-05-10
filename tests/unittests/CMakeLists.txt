@@ -114,7 +114,14 @@ target_link_libraries(quantizationTest
                         testMain)
 add_test(quantizationTest ${GLOW_BINARY_DIR}/tests/quantizationTest)
 
-
+add_executable(UtilsTest
+               UtilsTest.cpp)
+target_link_libraries(UtilsTest
+                      PRIVATE
+                        Support
+                        gtest
+                        testMain)
+add_test(UtilsTest ${GLOW_BINARY_DIR}/tests/UtilsTest)
 
 if(GLOW_WITH_OPENCL)
 add_executable(OCLTest
