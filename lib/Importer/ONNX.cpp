@@ -379,6 +379,26 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     return;
   }
 
+  if (typeName == "GlobalAveragePool") {
+    // Load the inputs:
+    auto *in = getOrCreateNodeByName(op.input(0));
+    int stride =
+      dict.count("strides") ? getConstantArrayHead(dict["strides"]) : 1;
+
+    GLOW_ASSERT(in->dims()[2] == in->dims()[3] && "For the image, height == weight is required");
+
+    size_t kernel = in->dims()[2];
+    int pad = getPad(dict);
+    auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
+    Node *node = G_.createPoolAvg(opName, tr, kernel, stride, pad);
+    auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
+    // Save the outputs:
+    for (int i = 0, e = op.output_size(); i < e; i++) {
+      nodeByName_[op.output(i)] = N;
+    }
+    return;
+  }
+
   if (typeName == "Dropout") {
     auto *in = getOrCreateNodeByName(op.input(0));
     // Save the identity operation:
