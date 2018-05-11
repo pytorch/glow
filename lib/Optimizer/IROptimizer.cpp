@@ -387,7 +387,6 @@ static void deleteDeadAllocs(IRFunction &M) {
 static void replaceAllNonDeallocUsersWith(Value *val, Value *with) {
   assert(val != with && "Replacing value with self");
   auto &users = val->getUsers();
-  auto *withOrigin = getOrigin(with);
   // We use a vector here because changing the operands of the user changes the
   // uselist, and this invalidates the iterator.
   llvm::SmallVector<Use, 6> usersVec(users.begin(), users.end());
@@ -406,19 +405,9 @@ static void replaceAllNonDeallocUsersWith(Value *val, Value *with) {
       continue;
     }
 
-    auto Op = U.getOperand();
-    auto replacement = with;
-    if (Op.first->getType() != replacement->getType())
-      replacement = withOrigin;
-    if (Op.first->getType() != replacement->getType()) {
-      // Perform a cast if required.
-      std::vector<size_t> offsets(replacement->dims().size(), 0);
-      auto *tv = B.createTensorViewInst(I->getName(), replacement,
-                                        Op.first->getType(), offsets);
-      M.moveInstruction(I, tv);
-      replacement = tv;
-    }
-    U.setOperand(replacement);
+    assert(U.getOperand().first->getType() == with->getType() &&
+           "Operand type does not match replacement type.");
+    U.setOperand(with);
   }
 }
 
