@@ -178,7 +178,7 @@ using Intervals = llvm::SmallVector<Interval, 4>;
 /// Maping from a memory buffer to its live intervals.
 using LiveIntervalsMap = std::unordered_map<Value *, Intervals>;
 /// Set of instructions.
-using Instructions = std::unordered_set<Instruction *>;
+using InstructionPtrSet = std::unordered_set<Instruction *>;
 
 /// Hoists Dealloc instructions right after their last use.
 static void hoistDealloc(IRFunction &M) {
@@ -425,7 +425,7 @@ static void replaceAllNonDeallocUsersWith(Value *val, Value *with) {
 /// \returns true if Value \p V has more than one writer, ignoring any
 /// instructions in \p ignoredInstructions.
 static bool hasMultipleWriters(const Value *V,
-                               Instructions ignoredInstructions) {
+                               InstructionPtrSet ignoredInstructions) {
   bool foundWriter = false;
   for (const auto &U : ValueUses(V)) {
     Instruction *user = U.get();
@@ -776,7 +776,8 @@ static void replaceAllUsesInsideIntervalWith(
 /// Erase all instructions from the \p ErasedInstructions set.
 /// If \p forceErase is true, no additional checks are performed.
 /// Otherwise, copies into weight variables cannot be erased.
-static void eraseInstructions(IRFunction &M, Instructions &erasedInstructions) {
+static void eraseInstructions(IRFunction &M,
+                              InstructionPtrSet &erasedInstructions) {
   for (auto it : erasedInstructions) {
     DEBUG(llvm::dbgs() << "Deleting instruction :"; it->dump(llvm::dbgs());
           llvm::dbgs() << "\n");
@@ -1065,7 +1066,7 @@ static void tryToShareBuffersForInstr(
 /// candidates for sharing if they occur in the same instruction, but it is not
 /// strictly necessary.
 static void shareBuffers(IRFunction &M) {
-  Instructions erasedInstructions;
+  InstructionPtrSet erasedInstructions;
   // Build a list of live intervals for each memory location
   // which is either a WeightVar or a an Allocation.
   LiveIntervalsMap intervalsMap;
@@ -1108,7 +1109,7 @@ static void shareBuffers(IRFunction &M) {
 static void eliminateDeadStores(IRFunction &M) {
   auto &instrs = M.getInstrs();
   // Instructions to be erased.
-  Instructions erasedInstructions;
+  InstructionPtrSet erasedInstructions;
   /// Representation of the analysis state.
   struct MemoryLocationState {
     /// Instruction that contained a last seen read.
@@ -1221,7 +1222,7 @@ static bool allButFirstDimsEqual(llvm::ArrayRef<size_t> sourceDims,
 /// contiguous in this case.
 void optimizeInserts(IRFunction &M) {
   auto &instrs = M.getInstrs();
-  Instructions erasedInstructions;
+  InstructionPtrSet erasedInstructions;
   IRBuilder B(&M);
   for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
     auto *I = *it;
@@ -1305,7 +1306,7 @@ void optimizeInserts(IRFunction &M) {
 /// contiguous in this case.
 void optimizeExtracts(IRFunction &M) {
   auto &instrs = M.getInstrs();
-  Instructions erasedInstructions;
+  InstructionPtrSet erasedInstructions;
   IRBuilder B(&M);
   for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
     auto *I = *it;
