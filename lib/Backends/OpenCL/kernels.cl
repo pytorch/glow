@@ -352,6 +352,63 @@ __kernel void batchedaddW(__global void *mem, cl_uint32_t dest,
   batchedaddK(&mem[dest], &mem[batch], &mem[slice], numSlice, sliceSize);
 }
 
+
+/// Size of the tile to be used for matrix multiplication.
+/// The kernel can only be executed by the OpenCL backends that allow
+/// workgroups with sizes which are at least as big as a tile.
+#define TILE_SIZE 8
+
+__kernel void matmul_tiled(__global void *mem, cl_uint32_t C_off,
+                      cl_uint32_t A_off, cl_uint32_t B_off, ShapeNHWC ddim,
+                      ShapeNHWC ldim, ShapeNHWC rdim) {
+  __global float *C = &mem[C_off];
+  __global float *A = &mem[A_off];
+  __global float *B = &mem[B_off];
+
+  int M = ldim.n;
+  int N = rdim.h;
+  int K = ldim.h;
+
+  int tx = get_local_id(1);
+  int ty = get_local_id(0);
+  int row = get_global_id(0);
+  int col = get_global_id(1);
+  
+  // Tile of LHS. 
+  __local float sA[TILE_SIZE][TILE_SIZE];
+  // Tile of RHS.
+  __local float sB[TILE_SIZE][TILE_SIZE];
+
+  float sum = 0;
+  for (int t = 0; t < (K - 1) / TILE_SIZE + 1; t += 1) {
+    // Load LHS tile.
+    if (row < M && t * TILE_SIZE + tx < K) {
+      sA[ty][tx] = A[row * K + (t * TILE_SIZE + tx)];
+    } else {
+      sA[ty][tx] = 0;
+    }
+
+    // Load RHS tile and store it transposed.
+    if (t * TILE_SIZE + ty < K && col < N) {
+      sB[tx][ty] = B[(t * TILE_SIZE + ty) * N + col];
+    } else {
+      sB[tx][ty] = 0;
+    }
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+#pragma unroll
+    for (int k = 0; k < TILE_SIZE; k++) {
+      sum += sA[ty][k] * sB[tx][k];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+  }
+
+  if (row < M && col < N) {
+    C[row * N + col] = sum;
+  }
+}
+#undef TILE_SIZE
+
 __kernel void matmulK(__global float *dest, __global float *lhs,
                       __global float *rhs, ShapeNHWC ddim, ShapeNHWC ldim,
                       ShapeNHWC rdim) {
