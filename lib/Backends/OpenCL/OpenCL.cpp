@@ -667,9 +667,19 @@ void OCLBackend::doForwardPass() {
     }
 
     if (auto *BMM = dyn_cast<MatMulInst>(I)) {
-      // This is a naive implementation that parallelizes using three dims:
-      // batch, X and Y in the output filter.
-      cl_kernel kernel = createKernel(kernelName);
+// Size of the tile to be used for matrix multiplication.
+#define TILE_DIM ((size_t)8)
+      // Determine max work groups sizes.
+      size_t WIS[3];
+      cl_int err = clGetDeviceInfo(deviceId_, CL_DEVICE_MAX_WORK_ITEM_SIZES,
+                                   sizeof(WIS), &WIS, nullptr);
+      GLOW_ASSERT(err == CL_SUCCESS && "Could not execute clGetDeviceInfo");
+      // True if the tiled matrix multiplication kernel can be used. This is
+      // only possible if the device allows workgroups with sizes which are at
+      // least as big as a tile.
+      bool useTiledMatMul = (WIS[0] >= TILE_DIM && WIS[1] >= TILE_DIM);
+      cl_kernel kernel =
+          createKernel(useTiledMatMul ? "matmul_tiled" : kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I->getNumOperands();
@@ -686,10 +696,18 @@ void OCLBackend::doForwardPass() {
       setKernelArg(kernel, 5, ldim);
       setKernelArg(kernel, 6, rdim);
 
-      // Use a 3D grid where the first dimension is the N and the second and
-      // third dimensions are the X and Y in the output buffer.
-      enqueueKernel(commands_, kernel, deviceId_, {ddim.n, ddim.h, ddim.w},
-                    kernelLaunches_);
+      if (useTiledMatMul) {
+        std::vector<size_t> local{TILE_DIM, TILE_DIM};
+        std::vector<size_t> global{(ddim.n / local[0] + 1) * local[0],
+                                   (ddim.h / local[1] + 1) * local[1]};
+
+        enqueueKernel(commands_, kernel, deviceId_, global, local,
+                      kernelLaunches_);
+      } else {
+        enqueueKernel(commands_, kernel, deviceId_, {ddim.n, ddim.h, ddim.w},
+                      kernelLaunches_);
+      }
+#undef TILE_DIM
       continue;
     }
 
