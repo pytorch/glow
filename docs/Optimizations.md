@@ -95,7 +95,7 @@ But in addition to those there are quantization specific optimizations:
     would have happened during the rescaling. On values that are outside of the range, we just move
     the truncation to a different location.
 
-  * Fuse RescaleQuantized operator into the operations
+  * Combine RescaleQuantized operator up into the operation
 
     There are a number of operations which can operate on varying quantized parameters
     for the output type. It's safe to just merge RescaleQuantized node into the operator itself if
@@ -108,6 +108,19 @@ But in addition to those there are quantization specific optimizations:
       * Div
       * Convolution
       * Splat
+
+  * Combine RescaleQuantized operator down into the operation
+
+    This optimization allows eliminating redundant rescale operations when the next
+    operation supports quantized inputs of different scales and offsets, e.g., normal
+    arithmetic operations: Add, Sub, Mul, Div.
+
+  * Sinking RescaleQuantized operator below other operators
+
+    This optimization sinks RescaleQuantized node below such operations as slice,
+    reshape, transpose, etc. By doing this, many RescaleQuantized operators
+    are brought closer to each other, and it creates more opportunities for
+    elimination of RescaleQuantized operations.
 
   * RescaleQuantized(Quantize(X)) -> Quantize(X)
 
