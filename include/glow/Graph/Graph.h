@@ -251,6 +251,13 @@ public:
   Node *createChannelShuffle(llvm::StringRef name, NodeValue input,
                              size_t group, size_t kernel);
 
+  /// Removes single-dimensional entries from the shape of a tensor. The
+  /// parameter \p axes is a list of positive integers, indicating the dimensions
+  /// to squeeze.
+  /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#squeeze
+  Node *createSqueeze(llvm::StringRef name, NodeValue input, 
+                      llvm::ArrayRef<size_t> axes);
+
   BatchNormalizationNode *createBatchNormalization(llvm::StringRef name,
                                                    NodeValue input,
                                                    size_t channelIdx = 0,

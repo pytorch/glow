@@ -1388,6 +1388,44 @@ TEST_P(Operator, ChannelShuffle) {
     EXPECT_FLOAT_EQ(results.at({0, i, 0, 0}), expected[i]);
 }
 
+TEST_P(Operator, Squeeze) {
+  auto *inputs = mod_.createVariable(ElemKind::FloatTy, {1, 2, 1, 5}, "inputs");
+  inputs->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+
+  std::vector<float> expectedValues = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  // Test 1:
+  {
+    std::vector<size_t> axes = {0};
+    Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
+    SaveNode *S = F_->createSave("save", SQZ);
+
+    EE_.compile(CompilationMode::Infer, F_);
+    EE_.run({}, {});
+
+    auto results = S->getVariable()->getHandle();
+    std::vector<size_t> expectedDims = {2, 1, 5};
+    EXPECT_TRUE(results.dims().vec() == expectedDims);
+    for (size_t i = 0; i < 10; i++)
+      EXPECT_FLOAT_EQ(results.raw(i), expectedValues[i]);
+  }
+
+  // Test 2:
+  {
+    std::vector<size_t> axes = {0, 2, 2};
+    Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
+    SaveNode *S = F_->createSave("save", SQZ);
+
+    EE_.compile(CompilationMode::Infer, F_);
+    EE_.run({}, {});
+
+    auto results = S->getVariable()->getHandle();
+    std::vector<size_t> expectedDims = {2, 5};
+    EXPECT_TRUE(results.dims().vec() == expectedDims);
+    for (size_t i = 0; i < 10; i++)
+      EXPECT_FLOAT_EQ(results.raw(i), expectedValues[i]);
+  }
+}
+
 TEST_P(Operator, IntRelu) {
   const float splatValue = 10;
   const float scale = 1.0;

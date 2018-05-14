@@ -682,6 +682,37 @@ Node *Function::createChannelShuffle(llvm::StringRef name, NodeValue input,
   return createReshape(name.str() + ".reshape2", T, inDims);
 }
 
+Node *Function::createSqueeze(llvm::StringRef name, NodeValue input,
+                              llvm::ArrayRef<size_t> axes) {
+  auto originalSize = axes.size();
+  assert(originalSize > 0 && "Parameter `axes` must be provided.");
+
+  ShapeVector shapeAxes(axes.begin(), axes.end());
+
+  // Sort and unique the values in axes to 
+  // 1. make sure each dim is only removed once;
+  // 2. check if the size and value of dimensions to squeeze are valid.
+  std::sort(shapeAxes.begin(), shapeAxes.end());
+  shapeAxes.erase(std::unique(shapeAxes.begin(), shapeAxes.end()),
+                  shapeAxes.end());
+  auto inDims = input.dims();
+  assert(
+      shapeAxes.back() < inDims.size() &&
+      "The size and value of dimensions to squeeze must be less than the input size.");
+
+  ShapeVector newDims;
+  size_t j = 0;
+  for (size_t i = 0, e = inDims.size(); i < e; i++) {
+    if (j < shapeAxes.size() && shapeAxes[j] == i) {
+      assert(inDims[i] == 1 && "The dimension to squeeze must be 1.");
+      j++;
+    } else {
+      newDims.push_back(inDims[i]);
+    }
+  }
+  return createReshape(name.str() + ".reshape", input, newDims);
+}
+
 BatchNormalizationNode *Function::createBatchNormalization(llvm::StringRef name,
                                                            NodeValue input,
                                                            size_t channelIdx,

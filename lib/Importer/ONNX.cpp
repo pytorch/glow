@@ -400,6 +400,17 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     return;
   }
 
+  if (typeName == "Squeeze") {
+    auto *in = getOrCreateNodeByName(op.input(0));
+    auto axes = getShape(dict["axes"]);
+    Node *node = G_.createSqueeze(opName, in, axes);
+
+    for (int i = 0, e = op.output_size(); i < e; i++) {
+      nodeByName_[op.output(i)] = node;
+    }
+    return;
+  }
+
   if (typeName == "Dropout") {
     auto *in = getOrCreateNodeByName(op.input(0));
     // Save the identity operation:
