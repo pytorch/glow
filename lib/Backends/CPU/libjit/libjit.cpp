@@ -215,6 +215,26 @@ void libjit_topk(T *values, size_t *indices, const T *input, size_t *scratch,
   size_t out = 0;
 
   value_index<T> *buffer = (value_index<T> *)scratch;
+
+  // Specialize TopK for the case where K is 1.
+  if (k == 1) {
+    while (in < size) {
+      // Find the largest value by iterating over the array instead of calling
+      // 'sort'.
+      value_index<T> mx = {0, input[0]};
+      for (size_t i = 1; i < n; i++) {
+        if (input[i] > mx.value) {
+          mx = {i, input[i]};
+        }
+      }
+      indices[out] = mx.index;
+      values[out] = mx.value;
+      out++;
+      in += n;
+    }
+    return;
+  }
+
   while (in < size) {
     for (size_t i = 0; i < n; i++) {
       buffer[i].index = i;
