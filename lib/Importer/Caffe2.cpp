@@ -459,6 +459,17 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "Squeeze") {
+    auto *in = getOrCreateNodeByName(op.input(0));
+    auto dims = getShape(dict["dims"]);
+    Node *node = G_.createSqueeze(opName, in, dims);
+
+    for (int i = 0, e = op.output_size(); i < e; i++) {
+      nodeByName_[op.output(i)] = node;
+    }
+    return;
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
