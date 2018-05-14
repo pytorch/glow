@@ -394,6 +394,17 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "Gather") {
+    auto *data = getOrCreateNodeByName(op.input(0));
+    auto *indices = getOrCreateNodeByName(op.input(1));
+
+    Node *GN = G_.createGather(opName, data, indices);
+    for (int i = 0, e = op.output_size(); i < e; i++) {
+      nodeByName_[op.output(i)] = GN;
+    }
+    return;
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
