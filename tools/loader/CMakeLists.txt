@@ -1,7 +1,9 @@
 
-add_executable(loader
-                 loader.cpp)
-target_link_libraries(loader
+add_executable(image-classifier
+  Loader.cpp
+  ImageClassifier.cpp)
+
+target_link_libraries(image-classifier
                       PRIVATE
                         Base
                         Importer

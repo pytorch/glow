@@ -19,7 +19,7 @@ set.
 ## Model Loader
 
 We test the correctness of the Glow implementation by loading Caffe2 and ONNX
-models and executing them end-to-end. The program 'loader' loads a model,
+models and executing them end-to-end. The program 'image-classifier' loads a model,
 a png file, and runs a single pass of inference. If everything goes right the
 output of the program is identical to the output of the original (Caffe2 or
 ONNX) model. Unfortunately, the models do not usually describe what the input
@@ -29,7 +29,7 @@ aware of these things when running the models. The script in the directory
 'utils/' downloads a number of pre-trained networks that we can use for testing.
 
 The Glow build scripts copy a few sample images and a run script that tests the
-loader program. The script can be executed with the command:
+image-classifier program. The script can be executed with the command:
 
   ```
   build$./tests/images/run.sh
@@ -37,7 +37,7 @@ loader program. The script can be executed with the command:
 
 ## Caffe2 and ONNX Models
 
-The `loader` program loads pre-trained models from protobuf file (either
+The `image-classifier` program loads pre-trained models from protobuf file (either
 Caffe2 or ONNX). These pre-trained models are downloaded via
 `download_caffe2_models.sh` and `download_onnx_models.sh` scripts located in
 `utils/`.
@@ -56,7 +56,7 @@ False`. This script is heavily based on the MNIST.py tutorial from Caffe2.
 The `caffe2_pb_runner.py` script in `utils/` loads and runs a pre-trained model
 using the protobuf files saved using `caffe2_train_and_dump_pb.py`. This can be
 used to compare the output from Glow to Caffe2. Its usage is similar to running
-the `loader`, which is found in the `run.sh` script in `tests/images/`. For
+the `image-classifier`, which is found in the `run.sh` script in `tests/images/`. For
 example, the following command will run the pre-trained resnet50 model using
 Caffe2:
 
