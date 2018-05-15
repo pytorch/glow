@@ -1063,7 +1063,7 @@ static bool sinkRescaleQuantizedNode(Function *F) {
   }
 
   return changed;
-} 
+}
 
 void glow::optimize(Function *F, CompilationMode mode) {
   // Sink transpose operations in an attempt to cancel them out.

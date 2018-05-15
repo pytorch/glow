@@ -157,7 +157,7 @@ private:
   cl_program createProgram(const std::string &source,
                            const std::vector<std::string> &options,
                            cl_command_queue queue);
-  /// Enqueue a \p kernel on a provided \p commands queue. 
+  /// Enqueue a \p kernel on a provided \p commands queue.
   void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
                      cl_device_id device, llvm::ArrayRef<size_t> global,
                      std::vector<KernelLaunch> &kernelLaunches);
