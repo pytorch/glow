@@ -132,6 +132,7 @@ bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     case Kinded::Kind::SelectNodeKind:
     case Kinded::Kind::SliceNodeKind:
     case Kinded::Kind::SubNodeKind:
+    case Kinded::Kind::TanhNodeKind:
     case Kinded::Kind::TopKNodeKind:
     case Kinded::Kind::TransposeNodeKind:
       return true;

@@ -390,6 +390,13 @@ int main(int argc, char **argv) {
           "ProfiledOutputNumber contains the position of the node's output "
           "which gets profiled.");
 
+  BB.newNode("IntLookupTable")
+      .addInput("Input")
+      .addInput("Mapping")
+      .addResultFromCtorArg()
+      .setDocstring("Simple mapping between quantized numbers."
+                    "This can be used as quantized sigmoid or tanh functions.");
+
   BB.newNode("Quantize")
       .addInput("Input")
       .addResultFromCtorArg()

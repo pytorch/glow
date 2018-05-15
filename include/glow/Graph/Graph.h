@@ -319,11 +319,26 @@ public:
 
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
   SaveNode *createSave(llvm::StringRef name, NodeValue input, Variable *output);
+
   /// Create quantization profile node named \p name for the output tensor from
   /// \p input. Capture observed node name in quantization profile node as
   /// original node can be replaced during lowering phase.
   QuantizationProfileNode *createQuantizationProfile(llvm::StringRef name,
                                                      NodeValue input);
+
+  /// Create lookup table for mapping between quantized numbers.
+  /// \p input and \p outTy must have quantized type.
+  /// Table contains all numbers from the quantized range, e.g.,
+  /// 256 entries for int8. Position 0 in the \p initValues
+  /// corresponds to the -128 input number, position 255 to 127.
+  IntLookupTableNode *createIntLookupTable(llvm::StringRef name,
+                                           NodeValue input,
+                                           llvm::ArrayRef<int8_t> initValues,
+                                           TypeRef outTy);
+
+  /// Create quantized tanh.
+  IntLookupTableNode *createIntTanh(llvm::StringRef name, NodeValue input,
+                                    TypeRef outTy);
 
   TopKNode *createTopK(llvm::StringRef name, NodeValue input, size_t k);
 

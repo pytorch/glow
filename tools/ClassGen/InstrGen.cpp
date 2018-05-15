@@ -375,6 +375,14 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"InputTensor", "ElemKind::FloatTy"});
 
+  BB.newInstr("IntLookupTable")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Mapping", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Dest", "Src", "ElemKind::Int8QTy"})
+      .autoIRGen();
+
   BB.newInstr("Quantize")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)

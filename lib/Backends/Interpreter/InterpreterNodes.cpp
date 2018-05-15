@@ -1473,3 +1473,13 @@ void Interpreter::fwdRescaleQuantizedInst(const glow::RescaleQuantizedInst *I) {
     destH.raw(i) = quantization::quantize(val, destQ);
   }
 }
+
+void Interpreter::fwdIntLookupTableInst(const IntLookupTableInst *I) {
+  auto srcH = getWeightHandle<int8_t>(I->getSrc());
+  auto destH = getWeightHandle<int8_t>(I->getDest());
+  auto mappingH = getWeightHandle<int8_t>(I->getMapping());
+
+  for (size_t i = 0, e = destH.size(); i < e; i++) {
+    destH.raw(i) = mappingH.raw((int)srcH.raw(i) + 128);
+  }
+}

@@ -555,6 +555,13 @@ public:
     }
   }
 
+  void operator=(llvm::ArrayRef<ElemTy> array) {
+    assert(size() == array.size() && "Invalid input size.");
+    for (size_t i = 0, e = array.size(); i < e; ++i) {
+      raw(i) = array[i];
+    }
+  }
+
   void dumpAscii() const { dumpAsciiImpl(tensor_); }
 
   /// \returns the raw indices of a min and max values from the tensor.

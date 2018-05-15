@@ -25,10 +25,9 @@
 using llvm::cast;
 
 namespace glow {
+namespace quantization {
 
-/// Calculate TensorQuantizationParams based on the clipped min and max float
-/// range.
-static TensorQuantizationParams chooseQuantizationParams(float min, float max) {
+TensorQuantizationParams chooseQuantizationParams(float min, float max) {
   assert(min <= max && "min must not be bigger than max");
 
   // Given 8 bit precision.
@@ -88,8 +87,6 @@ static TensorQuantizationParams chooseQuantizationParams(float min, float max) {
   TensorQuantizationParams result{static_cast<float>(scale), nudgedZeroPoint};
   return result;
 }
-
-namespace quantization {
 
 QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                                     int32_t offset) {
@@ -451,6 +448,33 @@ static Node *quantizeNode(Function *F, Node *node,
 
     quantizedNode =
         F->createTopK(topK->getName(), quantizedInputs[0], topK->getK());
+    break;
+  }
+  case Kinded::Kind::TanhNodeKind: {
+    assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+
+    // Quantized tanh operator expects input to be in a certain floating point
+    // range. This operator works based on the precomputed table and has to
+    // process input in a range of [-3.0, 3.0]. Tanh asymptotically approaches
+    // +/-1.0 and is already +/-.995 at +/-3.0.
+    // The output quantization parameters are chosen to represent the floating
+    // point range of [-1.0, 1.0].
+    auto inputQuantizationParams = chooseQuantizationParams(-3.0, 3.0);
+    auto tanhInTy = F->getParent()->uniqueType(
+        ElemKind::Int8QTy, quantizedInputs[0]->dims(),
+        inputQuantizationParams.scale_, inputQuantizationParams.offset_);
+
+    // Make sure input is clipped in [-3.0, 3.0] floating point range.
+    auto *rescaleNode = F->createRescaleQuantized(quantizedInputs[0]->getName(),
+                                                  quantizedInputs[0], tanhInTy);
+
+    // Make sure output is clipped in [-1.0, 1.0] floating point range.
+    auto outputQuantizationParams = chooseQuantizationParams(-1.0, 1.0);
+    auto resultOutTy = F->getParent()->uniqueType(
+        ElemKind::Int8QTy, rescaleNode->getResult().dims(),
+        outputQuantizationParams.scale_, outputQuantizationParams.offset_);
+
+    quantizedNode = F->createIntTanh(node->getName(), rescaleNode, resultOutTy);
     break;
   }
   default:
