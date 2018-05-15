@@ -820,6 +820,7 @@ void OCLBackend::doForwardPass() {
       fillBuffer(deviceBuffer_, tensors_[biasGrad], biasGrad->size(), 0,
                  biasGrad->getElementType());
 
+      (void)filter; 
       assert(filter->dims() == filterGrad->dims() && "Dims should be the same");
       assert(src->dims() == srcGrad->dims() && "Dims should be the same");
 

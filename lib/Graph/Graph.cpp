@@ -684,8 +684,7 @@ Node *Function::createChannelShuffle(llvm::StringRef name, NodeValue input,
 
 Node *Function::createSqueeze(llvm::StringRef name, NodeValue input,
                               llvm::ArrayRef<size_t> axes) {
-  auto originalSize = axes.size();
-  assert(originalSize > 0 && "Parameter `axes` must be provided.");
+  assert(!axes.empty() && "Parameter `axes` must be provided.");
 
   ShapeVector shapeAxes(axes.begin(), axes.end());
 
