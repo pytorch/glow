@@ -383,9 +383,10 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     // Load the inputs:
     auto *in = getOrCreateNodeByName(op.input(0));
     int stride =
-      dict.count("strides") ? getConstantArrayHead(dict["strides"]) : 1;
+        dict.count("strides") ? getConstantArrayHead(dict["strides"]) : 1;
 
-    GLOW_ASSERT(in->dims()[2] == in->dims()[3] && "For the image, height == weight is required");
+    GLOW_ASSERT(in->dims()[2] == in->dims()[3] &&
+                "For the image, height == weight is required");
 
     size_t kernel = in->dims()[2];
     int pad = getPad(dict);

@@ -910,8 +910,7 @@ DequantizeNode *Function::createDequantize(llvm::StringRef name,
          "Input must be a quantized type");
   TypeRef outTy =
       getParent()->uniqueType(Type(ElemKind::FloatTy, input.dims()));
-  return addNode(
-      new DequantizeNode(name, outTy, input));
+  return addNode(new DequantizeNode(name, outTy, input));
 }
 
 RescaleQuantizedNode *Function::createRescaleQuantized(llvm::StringRef name,
