@@ -574,7 +574,7 @@ static bool sameSameShapeExceptDim(TypeRef T1, TypeRef T2, unsigned dim) {
 }
 
 ConcatNode *Function::createConcat(llvm::StringRef name,
-                                   llvm::ArrayRef<Node *> inputs,
+                                   llvm::ArrayRef<NodeValue> inputs,
                                    unsigned dimension) {
   for (int i = 1, e = inputs.size(); i < e; i++) {
     assert(sameSameShapeExceptDim(inputs[i]->getType(), inputs[0]->getType(),
@@ -603,7 +603,7 @@ ConcatNode *Function::createConcat(llvm::StringRef name,
 }
 
 ConcatNode *Function::createConcat(llvm::StringRef name,
-                                   llvm::ArrayRef<Node *> inputs,
+                                   llvm::ArrayRef<NodeValue> inputs,
                                    unsigned dimension, TypeRef outTy) {
   std::vector<NodeValue> ops;
   ops.reserve(inputs.size());
@@ -961,7 +961,7 @@ void Function::createSimpleRNN(llvm::StringRef namePrefix,
                                llvm::ArrayRef<Node *> inputs,
                                unsigned batchSize, unsigned hiddenSize,
                                unsigned outputSize,
-                               std::vector<Node *> &outputs) {
+                               std::vector<NodeValue> &outputs) {
   std::string nameBase = namePrefix;
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");
@@ -1016,7 +1016,7 @@ void Function::createSimpleRNN(llvm::StringRef namePrefix,
 void Function::createGRU(llvm::StringRef namePrefix,
                          llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                          unsigned hiddenSize, unsigned outputSize,
-                         std::vector<Node *> &outputs) {
+                         std::vector<NodeValue> &outputs) {
   std::string nameBase = namePrefix;
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");
@@ -1152,7 +1152,7 @@ void Function::createGRU(llvm::StringRef namePrefix,
 void Function::createLSTM(llvm::StringRef namePrefix,
                           llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                           unsigned hiddenSize, unsigned outputSize,
-                          std::vector<Node *> &outputs) {
+                          std::vector<NodeValue> &outputs) {
   std::string nameBase = namePrefix;
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");

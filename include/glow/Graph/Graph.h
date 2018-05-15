@@ -229,12 +229,14 @@ public:
                                  UnsignedArrayRef shape, unsigned axis);
 
   /// Create concat node which concatenates input tensors along \p dimension.
-  ConcatNode *createConcat(llvm::StringRef name, llvm::ArrayRef<Node *> inputs,
+  ConcatNode *createConcat(llvm::StringRef name,
+                           llvm::ArrayRef<NodeValue> inputs,
                            unsigned dimension);
 
   /// Create concat node with the given return type \p outTy.
-  ConcatNode *createConcat(llvm::StringRef name, llvm::ArrayRef<Node *> inputs,
-                           unsigned dimension, TypeRef outTy);
+  ConcatNode *createConcat(llvm::StringRef name,
+                           llvm::ArrayRef<NodeValue> inputs, unsigned dimension,
+                           TypeRef outTy);
 
   SliceNode *createSlice(llvm::StringRef name, NodeValue input,
                          UnsignedArrayRef begin, UnsignedArrayRef end);
@@ -355,7 +357,7 @@ public:
   void createSimpleRNN(llvm::StringRef namePrefix,
                        const llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                        unsigned hiddenSize, unsigned outputSize,
-                       std::vector<Node *> &outputs);
+                       std::vector<NodeValue> &outputs);
 
   /// Create an unrolled single-layer GRU cell with \p hiddenSize
   /// dimensionality of the hidden state and \p outputSize dimensionality of the
@@ -368,7 +370,7 @@ public:
   void createGRU(llvm::StringRef namePrefix,
                  const llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                  unsigned hiddenSize, unsigned outputSize,
-                 std::vector<Node *> &outputs);
+                 std::vector<NodeValue> &outputs);
 
   /// Create an unrolled single-layer LSTM cell with \p hiddenSize
   /// dimensionality of the hidden state and \p outputSize dimensionality of the
@@ -381,7 +383,7 @@ public:
   void createLSTM(llvm::StringRef namePrefix,
                   const llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                   unsigned hiddenSize, unsigned outputSize,
-                  std::vector<Node *> &outputs);
+                  std::vector<NodeValue> &outputs);
 
   /// @}
 

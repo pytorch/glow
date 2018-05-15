@@ -475,25 +475,25 @@ TEST_P(MLTest, learnSingleValueConcat) {
 
 void buildGRU(Function *F, const std::vector<Node *> &slicesX,
               unsigned hiddenSize, unsigned outputSize,
-              std::vector<Node *> &outputs) {
+              std::vector<NodeValue> &outputs) {
   return F->createGRU("GRU", slicesX, 1, hiddenSize, outputSize, outputs);
 };
 
 void buildRNN(Function *F, const std::vector<Node *> &slicesX,
               unsigned hiddenSize, unsigned outputSize,
-              std::vector<Node *> &outputs) {
+              std::vector<NodeValue> &outputs) {
   return F->createSimpleRNN("SimpleRNN", slicesX, 1, hiddenSize, outputSize,
                             outputs);
 };
 
 void buildLSTM(Function *F, const std::vector<Node *> &slicesX,
                unsigned hiddenSize, unsigned outputSize,
-               std::vector<Node *> &outputs) {
+               std::vector<NodeValue> &outputs) {
   return F->createLSTM("LSTM", slicesX, 1, hiddenSize, outputSize, outputs);
 };
 
 using TCellGenerator = void (*)(Function *, const std::vector<Node *> &,
-                                unsigned, unsigned, std::vector<Node *> &);
+                                unsigned, unsigned, std::vector<NodeValue> &);
 
 void testRNNCell(TCellGenerator cell) {
   ExecutionEngine EE;
@@ -536,10 +536,10 @@ void testRNNCell(TCellGenerator cell) {
   const unsigned hiddenSize = 5;
   const unsigned outputSize = 1;
 
-  std::vector<Node *> outputNodes;
+  std::vector<NodeValue> outputNodes;
   cell(F, XSliced, hiddenSize, outputSize, outputNodes);
 
-  std::vector<Node *> regressionNodes;
+  std::vector<NodeValue> regressionNodes;
   for (unsigned t = 0; t < NumVectors; t++) {
     regressionNodes.push_back(
         F->createRegression("", outputNodes[t], YSliced[t]));

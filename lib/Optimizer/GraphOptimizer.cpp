@@ -561,7 +561,7 @@ static void optimizeConcatNodes(Function *F) {
     if (auto *CN = dyn_cast<ConcatNode>(node)) {
       auto inputs = CN->getInputs();
       // Check if any of the inputs is a ConcatNode.
-      llvm::SmallVector<Node *, 16> newInputs;
+      llvm::SmallVector<NodeValue, 16> newInputs;
       bool changed = false;
       for (auto input : inputs) {
         newInputs.push_back(input);
