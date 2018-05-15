@@ -236,11 +236,11 @@ float dequantize(int8_t input, const TensorQuantizationParams &TQP) {
 
 /// Quantize all inputs for \p node and return back pointers to the newly
 /// created qunatization nodes.
-static llvm::SmallVector<Node *, 6>
+static llvm::SmallVector<NodeValue, 6>
 quantizeInputs(Function *F, Node *node,
                const std::unordered_map<std::string, TensorQuantizationParams>
                    &nodeToTQP) {
-  llvm::SmallVector<Node *, 6> quantizedInputs;
+  llvm::SmallVector<NodeValue, 6> quantizedInputs;
 
   for (unsigned i = 0, e = node->getNumInputs(); i < e; ++i) {
     NodeValue &NV = node->getNthInput(i);
@@ -303,7 +303,7 @@ static bool canBeQuantized(const Node *node) {
 /// \param qParams Tensor quantization parameters for all outputs of the
 ///        \p node.
 static Node *quantizeNode(Function *F, Node *node,
-                          llvm::MutableArrayRef<Node *> quantizedInputs,
+                          llvm::MutableArrayRef<NodeValue> quantizedInputs,
                           llvm::ArrayRef<TensorQuantizationParams> qParams) {
   Node *quantizedNode{};
 

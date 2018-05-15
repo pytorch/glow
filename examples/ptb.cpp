@@ -216,7 +216,7 @@ void testPTB() {
     slicesX.push_back(Xt);
   }
 
-  std::vector<Node *> outputNodes;
+  std::vector<NodeValue> outputNodes;
   F->createSimpleRNN("rnn", slicesX, minibatchSize, hiddenSize, vocabSize,
                      outputNodes);
 

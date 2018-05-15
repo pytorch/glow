@@ -250,7 +250,7 @@ void Model::loadEncoder() {
 
   // TODO: encoder does exactly MAX_LENGTH steps, while input size is smaller.
   // We could use control flow here.
-  std::vector<Node *> outputs;
+  std::vector<NodeValue> outputs;
   for (unsigned step = 0; step < MAX_LENGTH; step++) {
     Node *inputSlice = F->createSlice(
         "encoder." + std::to_string(step) + ".inputSlice", inputEmbedded,
@@ -310,7 +310,7 @@ void Model::loadDecoder() {
   Node *hidden = encoderHiddenOutput_;
   Node *lastWordIdx = input;
 
-  std::vector<Node *> outputs;
+  std::vector<NodeValue> outputs;
   // TODO: decoder does exactly MAX_LENGTH steps, while translation could be
   // smaller. We could use control flow here.
   for (unsigned step = 0; step < MAX_LENGTH; step++) {

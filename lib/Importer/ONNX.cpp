@@ -437,7 +437,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
 
   if (typeName == "Concat") {
     const unsigned numInputs = op.input_size();
-    llvm::SmallVector<Node *, 4> inputs;
+    llvm::SmallVector<NodeValue, 4> inputs;
     inputs.reserve(numInputs);
     for (unsigned i = 0; i < numInputs; i++) {
       inputs.push_back(getOrCreateNodeByName(op.input(i)));

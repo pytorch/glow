@@ -508,7 +508,7 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
   auto outTy = F->getParent()->uniqueTypeWithNewShape(
       BNG.getResult()->getType(), outDims);
 
-  std::vector<Node *> convs(group);
+  std::vector<NodeValue> convs;
   for (unsigned groupId = 0; groupId < group; groupId++) {
     auto *in_slice =
         F->createSlice(BNG.getName(), in, {0, 0, 0, groupId * inCperG},
@@ -518,8 +518,8 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
                        {(groupId + 1) * outCperG, kernel, kernel, inCperG});
     auto *bias_slice = F->createSlice(BNG.getName(), bias, {groupId * outCperG},
                                       {(groupId + 1) * outCperG});
-    convs[groupId] = F->createConv(BNG.getName(), in_slice, filter_slice,
-                                   bias_slice, outTy, kernel, stride, pad, 1);
+    convs.push_back(F->createConv(BNG.getName(), in_slice, filter_slice,
+                                  bias_slice, outTy, kernel, stride, pad, 1));
   }
   auto result = F->createConcat(BNG.getName(), convs, 3);
   BNG.getResult().replaceAllUsesOfWith(result);
