@@ -31,12 +31,15 @@
 using namespace glow;
 using llvm::isa;
 
-TEST(Interpreter, interpret) {
-  ExecutionEngine EE;
+class MLTest : public ::testing::TestWithParam<BackendKind> {
+public:
+  ExecutionEngine EE_{GetParam()};
+};
 
+TEST_P(MLTest, simpleInference) {
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
 
-  auto &mod = EE.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   F->setName("interpret");
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input",
@@ -61,15 +64,15 @@ TEST(Interpreter, interpret) {
   auto *SM = F->createSoftMax("sm", RL3, ex);
   F->createSave("ret", SM);
 
-  EE.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F);
 
   /// Add a debug_action instruction to check that it can be
   /// processed by the interpreter.
-  auto &M = EE.getIR();
+  auto &M = EE_.getIR();
   IRBuilder builder(&M);
   builder.createDebugPrintInst("print1", *M.getWeights().begin());
 
-  EE.run({input}, {&inputs});
+  EE_.run({input}, {&inputs});
 }
 
 TEST(Interpreter, profileQuantizationForANetwork) {
@@ -125,12 +128,11 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   EXPECT_NEAR(1.6, max, 0.00001);
 }
 
-TEST(Interpreter, trainASimpleNetwork) {
-  ExecutionEngine EE;
+TEST_P(MLTest, trainASimpleNetwork) {
   // Learning a single input vector.
-  EE.getConfig().learningRate = 0.05;
+  EE_.getConfig().learningRate = 0.05;
 
-  auto &mod = EE.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   F->setName("trainASimpleNetwork");
 
@@ -155,16 +157,16 @@ TEST(Interpreter, trainASimpleNetwork) {
   inputs.getHandle<>() = {0.15, 0.15, 0.15, 0.15};
   expected.getHandle<>() = {0.9, 0.9, 0.9, 0.9};
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
-  EE.compile(CompilationMode::Train, TF);
+  Function *TF = glow::differentiate(F, EE_.getConfig());
+  EE_.compile(CompilationMode::Train, TF);
 
   // Train the network. Learn 1000 batches.
-  EE.runBatch(1000, {A, E}, {&inputs, &expected});
+  EE_.runBatch(1000, {A, E}, {&inputs, &expected});
 
   // Testing the output vector.
 
-  EE.compile(CompilationMode::Infer, F);
-  EE.run({A}, {&inputs});
+  EE_.compile(CompilationMode::Infer, F);
+  EE_.run({A}, {&inputs});
   auto RNWH = result->getVariable()->getPayload().getHandle<>();
   (void)RNWH;
 
@@ -172,22 +174,19 @@ TEST(Interpreter, trainASimpleNetwork) {
   EXPECT_NEAR(RNWH.at({0, 0}), 0.9, 0.05);
 }
 
-TEST(Interpreter, simpleRegression) {
+TEST_P(MLTest, simpleRegression) {
   // Testing the regression layer. This test takes the first element from the
   // input vector, adds one to it and places the result in the second element of
   // the output vector.
   const int numInputs = 4;
 
-  // Learning the Xor function.
-  ExecutionEngine EE;
-
   // Learning a single input vector.
-  EE.getConfig().learningRate = 0.05;
+  EE_.getConfig().learningRate = 0.05;
 
   Tensor inputs(ElemKind::FloatTy, {1, numInputs});
   Tensor expected(ElemKind::FloatTy, {1, numInputs});
 
-  auto &mod = EE.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   F->setName("simpleRegression");
   auto *A =
@@ -204,25 +203,25 @@ TEST(Interpreter, simpleRegression) {
   auto I = inputs.getHandle<>();
   auto E = expected.getHandle<>();
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
-  EE.compile(CompilationMode::Train, TF);
+  Function *TF = glow::differentiate(F, EE_.getConfig());
+  EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
   for (int iter = 0; iter < 1000; iter++) {
     float target = float(iter % 9);
     I = {target, 0., 0., 0.};
     E = {0., target + 1, 0., 0.};
-    EE.runBatch(1, {A, Ex}, {&inputs, &expected});
+    EE_.runBatch(1, {A, Ex}, {&inputs, &expected});
   }
 
   // Verify the result of the regression layer.
-  EE.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F);
 
   // Test the output:
   for (int iter = 0; iter < 5; iter++) {
     float target = iter % 9 + 1;
     I = {target, 0., 0., 0.};
-    EE.run({A}, {&inputs});
+    EE_.run({A}, {&inputs});
 
     auto resH = result->getVariable()->getPayload().getHandle<>();
     (void)resH;
@@ -231,16 +230,13 @@ TEST(Interpreter, simpleRegression) {
   }
 }
 
-TEST(Interpreter, learnXor) {
+TEST_P(MLTest, learnXor) {
   unsigned numInputs = 10;
 
-  // Learning the Xor function.
-  ExecutionEngine EE;
-
   // Learning a single input vector.
-  EE.getConfig().learningRate = 0.05;
+  EE_.getConfig().learningRate = 0.05;
 
-  auto &mod = EE.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   F->setName("learnXor");
 
@@ -274,13 +270,13 @@ TEST(Interpreter, learnXor) {
     TL.at({i, 0}) = a ^ b;
   }
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
-  EE.compile(CompilationMode::Train, TF);
+  Function *TF = glow::differentiate(F, EE_.getConfig());
+  EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
-  EE.runBatch(2500, {A, Ex}, {&trainingSet, &trainingLabels});
+  EE_.runBatch(2500, {A, Ex}, {&trainingSet, &trainingLabels});
 
-  EE.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F);
 
   // Prepare the testing tensor:
   for (unsigned i = 0; i < numInputs; i++) {
@@ -290,7 +286,7 @@ TEST(Interpreter, learnXor) {
     TS.at({i, 1}) = b;
   }
 
-  EE.run({A}, {&trainingSet});
+  EE_.run({A}, {&trainingSet});
   auto resH = result->getVariable()->getPayload().getHandle<>();
 
   // Test the output:
@@ -333,17 +329,15 @@ void generateCircleData(Tensor &coordinates, Tensor &labels) {
 /// Test the fully connected layer and the softmax function.
 /// Example from:
 /// http://cs.stanford.edu/people/karpathy/convnetjs/demo/classify2d.html
-TEST(Interpreter, circle) {
+TEST_P(MLTest, circle) {
   // Testing the softmax layer.
-  ExecutionEngine EE;
-
   // Learning a single input vector.
-  EE.getConfig().momentum = 0.9;
-  EE.getConfig().learningRate = 0.01;
+  EE_.getConfig().momentum = 0.9;
+  EE_.getConfig().learningRate = 0.01;
 
   unsigned minibatchSize = 11;
 
-  auto &mod = EE.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   F->setName("circle");
   auto *A =
@@ -360,17 +354,17 @@ TEST(Interpreter, circle) {
   auto *SM = F->createSoftMax("soft", T1, S);
   auto *result = F->createSave("ret", SM);
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
-  EE.compile(CompilationMode::Train, TF);
+  Function *TF = glow::differentiate(F, EE_.getConfig());
+  EE_.compile(CompilationMode::Train, TF);
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
   Tensor labels(ElemKind::IndexTy, {numSamples, 1});
   generateCircleData(coordinates, labels);
 
   // Training:
-  EE.runBatch(4000, {A, S}, {&coordinates, &labels});
+  EE_.runBatch(4000, {A, S}, {&coordinates, &labels});
 
-  EE.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F);
 
   // Print a diagram that depicts the network decision on a grid.
   Tensor sample(ElemKind::FloatTy, {minibatchSize, 2});
@@ -381,7 +375,7 @@ TEST(Interpreter, circle) {
       sample.getHandle<>().at({0, 0}) = float(x) / 10;
       sample.getHandle<>().at({0, 1}) = float(y) / 10;
 
-      EE.run({A}, {&sample});
+      EE_.run({A}, {&sample});
 
       auto SMH = result->getVariable()->getPayload().getHandle<>();
       auto A = SMH.at({0, 0});
@@ -404,7 +398,7 @@ TEST(Interpreter, circle) {
     // The dot in the middle must be one.
     sample.getHandle<>().at({0, 0}) = 0;
     sample.getHandle<>().at({0, 1}) = 0;
-    EE.run({A}, {&sample});
+    EE_.run({A}, {&sample});
     auto SMH = result->getVariable()->getPayload().getHandle<>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
@@ -415,7 +409,7 @@ TEST(Interpreter, circle) {
     // Far away dot must be zero.
     sample.getHandle<>().at({0, 0}) = 1;
     sample.getHandle<>().at({0, 1}) = 1;
-    EE.run({A}, {&sample});
+    EE_.run({A}, {&sample});
     auto SMH = result->getVariable()->getPayload().getHandle<>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
@@ -423,15 +417,14 @@ TEST(Interpreter, circle) {
   }
 }
 
-TEST(Interpreter, learnSingleValueConcat) {
-  ExecutionEngine EE;
+TEST_P(MLTest, learnSingleValueConcat) {
   unsigned width = 6;
 
   // Learning a single input vector.
-  EE.getConfig().momentum = 0.9;
-  EE.getConfig().learningRate = 0.01;
+  EE_.getConfig().momentum = 0.9;
+  EE_.getConfig().learningRate = 0.01;
 
-  auto &mod = EE.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   F->setName("learnSingleValueConcat");
 
@@ -463,16 +456,16 @@ TEST(Interpreter, learnSingleValueConcat) {
   inputs.getHandle<>().clear(0.15);
   expected.getHandle<>().clear(0.9);
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
-  EE.compile(CompilationMode::Train, TF);
+  Function *TF = glow::differentiate(F, EE_.getConfig());
+  EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
-  EE.runBatch(1000, {A, B, Ex}, {&inputs, &inputs, &expected});
+  EE_.runBatch(1000, {A, B, Ex}, {&inputs, &inputs, &expected});
 
-  EE.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F);
 
   // Testing the output vector.
-  EE.run({A}, {&inputs});
+  EE_.run({A}, {&inputs});
   auto RNWH = result->getVariable()->getPayload().getHandle<>();
   (void)RNWH;
 
@@ -584,19 +577,17 @@ void testRNNCell(TCellGenerator cell) {
   }
 };
 
-TEST(Interpreter, trainASimpleRNN) { testRNNCell(buildRNN); };
+TEST_P(MLTest, trainASimpleRNN) { testRNNCell(buildRNN); };
 
-TEST(Interpreter, trainGRU) { testRNNCell(buildGRU); };
+TEST_P(MLTest, trainGRU) { testRNNCell(buildGRU); };
 
-TEST(Interpreter, trainLSTM) { testRNNCell(buildLSTM); };
+TEST_P(MLTest, trainLSTM) { testRNNCell(buildLSTM); };
 
 /// Learn the square root of two.
-TEST(Interpreter, learnSqrt2) {
-  ExecutionEngine EE;
+TEST_P(MLTest, learnSqrt2) {
+  EE_.getConfig().learningRate = 0.03;
 
-  EE.getConfig().learningRate = 0.03;
-
-  auto &mod = EE.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   F->setName("Square root of 2");
 
@@ -612,28 +603,27 @@ TEST(Interpreter, learnSqrt2) {
   O = F->createRegression("reg", O, Ex);
   F->createSave("ret", O);
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
-  EE.compile(CompilationMode::Train, TF);
+  Function *TF = glow::differentiate(F, EE_.getConfig());
+  EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
   for (int i = 0; i < 50; i++) {
-    EE.run({}, {});
+    EE_.run({}, {});
   }
 
   float res = A->getPayload().getHandle().at({0});
   EXPECT_NEAR(res, 1.4142, 0.01);
 }
 
-TEST(Interpreter, trainSimpleLinearRegression) {
+TEST_P(MLTest, trainSimpleLinearRegression) {
   // Given 1-D vectors x and y, find real numbers m and b such that
   // m * x + b is approximately equal to y.
   unsigned numSamples = 500;
 
-  ExecutionEngine EE;
-  EE.getConfig().learningRate = 0.1;
-  EE.getConfig().batchSize = numSamples;
+  EE_.getConfig().learningRate = 0.1;
+  EE_.getConfig().batchSize = numSamples;
 
-  auto &mod = EE.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   F->setName("Gradient descent solution for simple linear regression");
 
@@ -665,11 +655,11 @@ TEST(Interpreter, trainSimpleLinearRegression) {
   Variable *M = llvm::cast<Variable>(FC->getWeights());
   Variable *B = llvm::cast<Variable>(FC->getBias());
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
-  EE.compile(CompilationMode::Train, TF);
+  Function *TF = glow::differentiate(F, EE_.getConfig());
+  EE_.compile(CompilationMode::Train, TF);
 
   // Train the network doing 100 steps. Learn on 500 samples.
-  EE.runBatch(100, {inputX, expectedY}, {&tensorX, &tensorY});
+  EE_.runBatch(100, {inputX, expectedY}, {&tensorX, &tensorY});
 
   // Testing trained m and b:
   EXPECT_NEAR(M->getPayload().getHandle<>().at({0, 0}), referenceM, 0.01);
@@ -705,11 +695,10 @@ void generatePlayerData(Tensor &players, Tensor &labels,
 
 // Given a player's height and weight, classify them as a basketball or
 // soccer player.
-TEST(Interpreter, classifyPlayerSport) {
-  ExecutionEngine EE;
-  EE.getConfig().learningRate = 0.05;
+TEST_P(MLTest, classifyPlayerSport) {
+  EE_.getConfig().learningRate = 0.05;
 
-  auto &mod = EE.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   F->setName("classifyPlayers");
 
@@ -728,17 +717,17 @@ TEST(Interpreter, classifyPlayerSport) {
   auto *SM = F->createSoftMax("softmax", FC, S);
   auto *result = F->createSave("result", SM);
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
-  EE.compile(CompilationMode::Train, TF);
+  Function *TF = glow::differentiate(F, EE_.getConfig());
+  EE_.compile(CompilationMode::Train, TF);
 
   Tensor players(ElemKind::FloatTy, {numTrainPlayers, numFeatures});
   Tensor labels(ElemKind::IndexTy, {numTrainPlayers, 1});
   generatePlayerData(players, labels, numTrainPlayers);
 
   // Training:
-  EE.runBatch(2000, {A, S}, {&players, &labels});
+  EE_.runBatch(2000, {A, S}, {&players, &labels});
 
-  EE.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F);
 
   std::vector<std::tuple<unsigned, unsigned, Sport>> testPlayers;
   testPlayers.emplace_back(82, 240, Sport::BASKETBALL);
@@ -754,7 +743,7 @@ TEST(Interpreter, classifyPlayerSport) {
     testPlayersTensor.getHandle<>().at({i, 1}) = std::get<1>(testPlayers[i]);
   }
 
-  EE.run({A}, {&testPlayersTensor});
+  EE_.run({A}, {&testPlayersTensor});
 
   for (size_t i = 0; i < testPlayers.size(); i++) {
     auto SMH = result->getVariable()->getPayload().getHandle<>();
@@ -763,16 +752,15 @@ TEST(Interpreter, classifyPlayerSport) {
   }
 }
 
-TEST(Interpreter, learnSinus) {
+TEST_P(MLTest, learnSinus) {
   // Try to learn the sin(x) function.
   float epsilon = 0.1;
   unsigned numSamples = 50;
 
-  ExecutionEngine EE;
-  EE.getConfig().learningRate = 0.2;
-  EE.getConfig().batchSize = numSamples;
+  EE_.getConfig().learningRate = 0.2;
+  EE_.getConfig().batchSize = numSamples;
 
-  auto &mod = EE.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   F->setName("Gradient descent solution for sin(x)");
 
@@ -808,11 +796,11 @@ TEST(Interpreter, learnSinus) {
   Node *R = F->createRegression("reg", FC2, expectedY);
   auto *result = F->createSave("return", R);
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
-  EE.compile(CompilationMode::Train, TF);
+  Function *TF = glow::differentiate(F, EE_.getConfig());
+  EE_.compile(CompilationMode::Train, TF);
 
   // Learn on numSamples samples.
-  EE.runBatch(2700, {inputX, expectedY}, {&tensorX, &tensorY});
+  EE_.runBatch(2700, {inputX, expectedY}, {&tensorX, &tensorY});
 
   // Create a test set, which is similar, but different from the training set.
   for (unsigned i = 0; i < numSamples; i++) {
@@ -824,8 +812,8 @@ TEST(Interpreter, learnSinus) {
     tensorY.getHandle<>().at({i, 0}) = y;
   }
 
-  EE.compile(CompilationMode::Infer, F);
-  EE.run({inputX}, {&tensorX});
+  EE_.compile(CompilationMode::Infer, F);
+  EE_.run({inputX}, {&tensorX});
   auto resH = result->getVariable()->getPayload().getHandle<>();
 
   for (size_t i = 0; i < numSamples; i++) {
@@ -834,18 +822,17 @@ TEST(Interpreter, learnSinus) {
   }
 }
 
-TEST(Interpreter, nonLinearClassifier) {
+TEST_P(MLTest, nonLinearClassifier) {
   // Test non-linear classification on a set of 2d points. Generate x and y in
   // (-1, 1) and classify according to XOR of the sign bit.
   unsigned batchSize = 46;
   unsigned numSamples = 230;
 
-  ExecutionEngine EE;
-  EE.getConfig().learningRate = 0.01;
-  EE.getConfig().momentum = 0.9;
-  EE.getConfig().batchSize = batchSize;
+  EE_.getConfig().learningRate = 0.01;
+  EE_.getConfig().momentum = 0.9;
+  EE_.getConfig().batchSize = batchSize;
 
-  auto &mod = EE.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   F->setName("nonLinearClassifier");
 
@@ -864,8 +851,8 @@ TEST(Interpreter, nonLinearClassifier) {
   auto *SM = F->createSoftMax("soft", FCL2, S);
   auto *result = F->createSave("ret", SM);
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
-  EE.compile(CompilationMode::Train, TF);
+  Function *TF = glow::differentiate(F, EE_.getConfig());
+  EE_.compile(CompilationMode::Train, TF);
 
   Tensor samples(ElemKind::FloatTy, {numSamples, 2});
   Tensor labels(ElemKind::IndexTy, {numSamples, 1});
@@ -879,9 +866,9 @@ TEST(Interpreter, nonLinearClassifier) {
     labels.getHandle<size_t>().at({i, 0}) = label;
   }
 
-  EE.runBatch(500, {A, S}, {&samples, &labels});
+  EE_.runBatch(500, {A, S}, {&samples, &labels});
 
-  EE.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F);
 
   std::vector<std::tuple<float, float, size_t>> tests;
   tests.emplace_back(-0.8, -0.8, 0);
@@ -892,7 +879,7 @@ TEST(Interpreter, nonLinearClassifier) {
     Tensor T(ElemKind::FloatTy, {batchSize, 2});
     T.getHandle<>().at({0, 0}) = std::get<0>(tests[i]);
     T.getHandle<>().at({0, 1}) = std::get<1>(tests[i]);
-    EE.run({A}, {&T});
+    EE_.run({A}, {&T});
     auto RH = result->getVariable()->getPayload().getHandle<>();
     EXPECT_NEAR(RH.at({0, std::get<2>(tests[i])}), 1.0, 0.2);
   }
@@ -924,16 +911,15 @@ static void generateImageData(Tensor &images, Tensor &labels) {
 
 /// Test the convolutional layer.
 /// Use a simple convnet to learn two classes of images: Line and Cross.
-TEST(Interpreter, convNetForImageRecognition) {
+TEST_P(MLTest, convNetForImageRecognition) {
   const unsigned numSamples = 500;
   const unsigned batchSize = 7;
-  ExecutionEngine EE;
 
-  EE.getConfig().learningRate = 0.01;
-  EE.getConfig().batchSize = batchSize;
-  EE.getConfig().momentum = 0.9;
+  EE_.getConfig().learningRate = 0.01;
+  EE_.getConfig().batchSize = batchSize;
+  EE_.getConfig().momentum = 0.9;
 
-  auto &mod = EE.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
 
   auto *input =
@@ -949,22 +935,22 @@ TEST(Interpreter, convNetForImageRecognition) {
   auto *FCL = F->createFullyConnected("fc", TANH, 2);
   auto *SM = F->createSoftMax("sm", FCL, ex);
   auto *result = F->createSave("ret", SM);
-  Function *TF = glow::differentiate(F, EE.getConfig());
-  EE.compile(CompilationMode::Train, TF);
+  Function *TF = glow::differentiate(F, EE_.getConfig());
+  EE_.compile(CompilationMode::Train, TF);
 
   Tensor images(ElemKind::FloatTy, {numSamples, 8, 8, 1});
   Tensor labels(ElemKind::IndexTy, {numSamples, 1});
   generateImageData(images, labels);
 
   // Training:
-  EE.runBatch(500, {input, ex}, {&images, &labels});
-  EE.compile(CompilationMode::Infer, F);
+  EE_.runBatch(500, {input, ex}, {&images, &labels});
+  EE_.compile(CompilationMode::Infer, F);
 
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
   Tensor testLabels(ElemKind::IndexTy, {batchSize, 1});
   generateImageData(testImages, testLabels);
-  EE.run({input}, {&testImages});
+  EE_.run({input}, {&testImages});
   auto SMH = result->getVariable()->getHandle<>();
   for (size_t i = 0; i < batchSize; i++) {
     bool isLine = testLabels.getHandle<size_t>().at({i, 0}) == 0;
@@ -989,3 +975,15 @@ TEST(Interpreter, NotImplementedSave) {
 
   EXPECT_DEATH(EE.save(CompilationMode::Infer, F, "output"), "");
 }
+
+
+INSTANTIATE_TEST_CASE_P(Interpreter, MLTest,
+                        ::testing::Values(BackendKind::Interpreter));
+
+#ifdef GLOW_WITH_CPU
+INSTANTIATE_TEST_CASE_P(JIT, MLTest, ::testing::Values(BackendKind::CPU));
+#endif
+
+#ifdef GLOW_WITH_OPENCL
+INSTANTIATE_TEST_CASE_P(OpenCL, MLTest, ::testing::Values(BackendKind::OpenCL));
+#endif
