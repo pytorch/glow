@@ -50,9 +50,9 @@
 #include "llvm/Transforms/Vectorize.h"
 
 using namespace glow;
-using llvm::StringRef;
 using llvm::dyn_cast;
 using llvm::isa;
+using llvm::StringRef;
 
 void LLVMIRGen::optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM) {
   auto *M = F->getParent();
