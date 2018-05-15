@@ -1566,6 +1566,61 @@ TEST_P(Operator, GroupConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 100000);
 }
 
+TEST_P(InterpOnly, Int8Tanh) {
+  constexpr size_t size = 10;
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {size}, "input");
+  input->getHandle().randomize(-10.0, 10.0);
+  
+  auto *fpTanh = F_->createTanh("fpTanh", input);
+  auto *saveFp = F_->createSave("fpSave", fpTanh);
+
+  auto quantizationParams = glow::quantization::chooseQuantizationParams(-3.0, 3.0);
+  auto quantizeTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale_, quantizationParams.offset_);
+  auto *quantize = F_->createQuantize("quantize", input, quantizeTy);
+
+  quantizationParams = glow::quantization::chooseQuantizationParams(-1.0, 1.0); 
+  auto tanhTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale_, quantizationParams.offset_);
+  auto *intTanh = F_->createIntTanh("int8Tanh", quantize, tanhTy);
+  auto *dequantize = F_->createDequantize("dequantize", intTanh);
+  auto *saveInt = F_->createSave("int8Save", dequantize);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto fpResult = saveFp->getVariable()->getHandle();
+  auto intResult = saveInt->getVariable()->getHandle();
+
+  for(size_t i = 0; i < size; i++) {
+    EXPECT_NEAR(fpResult.raw(i), intResult.raw(i), 0.05);
+  }
+}
+
+TEST_P(InterpOnly, IntLookupTable) {
+  constexpr size_t size = 6;
+  auto *input = mod_.createVariable(ElemKind::Int8QTy, {size}, 1, 0, "input");
+  input->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5};
+
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, 3, 3);
+
+  // Mapping i -> i.
+  std::vector<int8_t> initValues(256);
+  for (size_t i = 0; i < 256; ++i) {
+    initValues[i] = i - 128;
+  }
+
+  auto lookupTable =
+      F_->createIntLookupTable("lookupTable", input, initValues, outTy);
+  auto save = F_->createSave("save", lookupTable);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto result = save->getVariable()->getHandle<int8_t>();
+  for (size_t i = 0; i < size; ++i) {
+    EXPECT_EQ(result.raw(i), i);
+  }
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 

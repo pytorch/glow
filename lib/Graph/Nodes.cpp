@@ -859,6 +859,17 @@ void QuantizationProfileNode::verify() const {
          "Computation info should contain Min and Max value only");
 }
 
+void IntLookupTableNode::verify() const {
+  assert(getInput().getElementType() == ElemKind::Int8QTy &&
+         "Quantized input is expected");
+  assert(getResult().getElementType() == ElemKind::Int8QTy &&
+         "Quantized output is expected");
+
+  assert(getMapping().dims().size() == 1 && "Mapping should be 1 dimensional");
+  assert(getMapping().dims()[0] == 256 &&
+         "Mapping should cover whole int8 range");
+}
+
 void QuantizeNode::verify() const {
   // Dest must be quantized.
   checkType(getResult(), ElemKind::Int8QTy);
