@@ -1,8 +1,8 @@
 # Suppress display of executed commands.
 $(VERBOSE).SILENT:
 
-# The path to the loader executable.
-LOADER?=~/src/build/glow/bin/loader
+# The path to the image-classifier executable.
+LOADER?=~/src/build/glow/bin/image-classifier
 
 # The root directory of the Glow repo.
 GLOW_SRC?=~/src/glow
