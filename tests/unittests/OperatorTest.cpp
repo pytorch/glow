@@ -366,6 +366,36 @@ TEST_P(Operator, TopK) {
   EXPECT_EQ(I.at({2, 0, 2}), 3);
 }
 
+// Check the TopK operator for the special case of K=1.
+TEST_P(Operator, TopK1) {
+  auto *inp = mod_.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
+  auto *values = mod_.createVariable(ElemKind::FloatTy, {3, 1, 1}, "values");
+  auto *indices = mod_.createVariable(ElemKind::IndexTy, {3, 1, 1}, "indices");
+
+  inp->getPayload().getHandle() = {
+      0, 18, 7, 16, 5, 14, 33, 2, 41, 0, 1, -23, 34, 4, -5,
+  };
+
+  auto R = F_->createTopK("TopK", inp, 1);
+
+  F_->createSave("save.values", {R, 0}, values);
+  F_->createSave("save.indices", {R, 1}, indices);
+
+  EE_.compile(CompilationMode::Infer, F_);
+
+  EE_.run({}, {});
+
+  auto V = values->getPayload().getHandle();
+  auto I = indices->getPayload().getHandle<size_t>();
+
+  EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 18);
+  EXPECT_EQ(I.at({0, 0, 0}), 1);
+  EXPECT_FLOAT_EQ(V.at({1, 0, 0}), 41);
+  EXPECT_EQ(I.at({1, 0, 0}), 3);
+  EXPECT_FLOAT_EQ(V.at({2, 0, 0}), 34);
+  EXPECT_EQ(I.at({2, 0, 0}), 2);
+}
+
 TEST_P(Operator, QuantizedTopK) {
   auto *INV =
       mod_.createVariable(ElemKind::Int8QTy, {3, 1, 5}, 1.2, 5, "input");

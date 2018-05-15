@@ -221,10 +221,10 @@ void libjit_topk(T *values, size_t *indices, const T *input, size_t *scratch,
     while (in < size) {
       // Find the largest value by iterating over the array instead of calling
       // 'sort'.
-      value_index<T> mx = {0, input[0]};
+      value_index<T> mx = {0, input[in]};
       for (size_t i = 1; i < n; i++) {
-        if (input[i] > mx.value) {
-          mx = {i, input[i]};
+        if (input[i + in] > mx.value) {
+          mx = {i, input[i + in]};
         }
       }
       indices[out] = mx.index;
