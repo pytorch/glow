@@ -956,8 +956,8 @@ TEST_P(MLTest, convNetForImageRecognition) {
     bool isLine = testLabels.getHandle<size_t>().at({i, 0}) == 0;
     auto lineWeight = SMH.at({i, 0});
     auto crossWeight = SMH.at({i, 1});
-    EXPECT_TRUE(isLine && lineWeight > crossWeight ||
-                !isLine && crossWeight > lineWeight);
+    EXPECT_TRUE((isLine && lineWeight > crossWeight) ||
+                (!isLine && crossWeight > lineWeight));
   }
 }
 
