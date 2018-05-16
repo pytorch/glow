@@ -493,6 +493,13 @@ static void mergeMatMul(Function *F) {
   // Collect the list of nodes that are used by the matrix multiplier.
   for (auto const &node : nodes) {
     if (auto *MM = dyn_cast<MatMulNode>(node)) {
+      // Do not try to merge quantized matrix multiplications because their
+      // quantized parameters may not match. Until we implement the logic to
+      // match the scale and offset just avoid the optimization.
+      if (MM->getType()->isQuantizedType()) {
+        continue;
+      }
+
       rightMatrixUsers[MM->getRHS().getNode()].push_back(MM);
       leftMatrixUsers[MM->getLHS().getNode()].push_back(MM);
     }
