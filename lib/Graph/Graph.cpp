@@ -366,6 +366,8 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
   ShapeNHWC idim = ShapeNHWC(input.dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
+
+  assert(group > 0 && "group should be larger than 0");
   assert(idim.c % group == 0 && "channels number must be divisible by groups");
   assert(depth % group == 0 && "depth must be divisible by groups");
 
