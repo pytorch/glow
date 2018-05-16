@@ -8,7 +8,23 @@ time.
 ## Overview
 
 A bundle is a self-contained compiled network model that can be used to execute
-the model in a standalone mode.
+the model in a standalone mode. After following the instructions in this
+document and the Makefile in the example directory you will be able to compile
+convolutional neural networks into small executables. Example:
+
+```
+  $make
+  ...
+
+  $cd build
+
+  $ls
+  cat.png          main.o           resnet50         resnet50.glow    resnet50.o       resnet50.weights
+
+  $./resnet50 cat.png
+  Result: 285
+```
+
 
 ## Producing a bundle
 
