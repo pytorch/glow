@@ -102,7 +102,7 @@ void Interpreter::fwdConvolutionInst_FloatImpl(Value *inV, Value *outV,
 void Interpreter::fwdConvolutionInst_I8Impl(Value *inV, Value *outV,
                                             Value *filterV, Value *biasV,
                                             size_t filterSize, size_t stride,
-                                            size_t pad) {
+                                            size_t pad, size_t group) {
   auto inW = getWeightHandle<int8_t>(inV);
   auto outW = getWeightHandle<int8_t>(outV);
   auto filterW = getWeightHandle<int8_t>(filterV);
@@ -110,6 +110,11 @@ void Interpreter::fwdConvolutionInst_I8Impl(Value *inV, Value *outV,
 
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
+
+  assert(idim.c % group == 0 && "Input channels must be divisible by group.");
+  assert(odim.c % group == 0 && "Output channels must be divisible by group.");
+  size_t inCperG = idim.c / group;
+  size_t outCperG = odim.c / group;
 
   auto outTy = outV->getType();
   auto inTy = inV->getType();
@@ -130,57 +135,59 @@ void Interpreter::fwdConvolutionInst_I8Impl(Value *inV, Value *outV,
   // multiplication part of the calculation.
   float matMulScale = inScale * filterScale;
 
-  size_t inChannels = idim.c;
-
   // For each input in the batch:
   for (size_t n = 0; n < idim.n; n++) {
+    // For each group of input channels:
+    for (size_t g = 0; g < group; g++) {
 
-    // For each layer in the output tensor:
-    for (size_t d = 0; d < odim.c; d++) {
+      // For each output channel in the group:
+      for (size_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
 
-      // For each convolution 'jump' in the input tensor:
-      ssize_t x = -ssize_t(pad);
-      for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
-        ssize_t y = -ssize_t(pad);
-        for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+        // For each convolution 'jump' in the input tensor:
+        ssize_t x = -ssize_t(pad);
+        for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+          ssize_t y = -ssize_t(pad);
+          for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
 
-          // For each element in the convolution-filter:
-          int32_t sum = 0;
-          for (size_t fx = 0; fx < filterSize; fx++) {
-            for (size_t fy = 0; fy < filterSize; fy++) {
-              ssize_t ox = x + fx;
-              ssize_t oy = y + fy;
+            // For each element in the convolution-filter:
+            int32_t sum = 0;
+            for (size_t fx = 0; fx < filterSize; fx++) {
+              for (size_t fy = 0; fy < filterSize; fy++) {
+                ssize_t ox = x + fx;
+                ssize_t oy = y + fy;
 
-              // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-                  oy >= ssize_t(idim.w)) {
-                continue;
-              }
-              for (size_t fd = 0; fd < inChannels; fd++) {
+                // Ignore index access below zero (this is due to padding).
+                if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                    oy >= ssize_t(idim.w)) {
+                  continue;
+                }
+                for (size_t fd = 0; fd < inCperG; fd++) {
 
-                int32_t F = filterW.at({d, fx, fy, fd});
-                int32_t I = inW.at({n, (size_t)ox, (size_t)oy, fd});
-                // We represent the element multiplication with offset as
-                // (value - offset).
-                sum += (F - filterOffset) * (I - inOffset);
+                  int32_t F = filterW.at({d, fx, fy, fd});
+                  int32_t I =
+                      inW.at({n, (size_t)ox, (size_t)oy, g * inCperG + fd});
+                  // We represent the element multiplication with offset as
+                  // (value - offset).
+                  sum += (F - filterOffset) * (I - inOffset);
+                }
               }
             }
-          }
 
-          // Scale the bias to match the scale of the matrix multiplication.
-          int32_t B = std::round(float(biasW.at({d}) - biasOffset) *
-                                 (biasScale / matMulScale));
+            // Scale the bias to match the scale of the matrix multiplication.
+            int32_t B = std::round(float(biasW.at({d}) - biasOffset) *
+                                   (biasScale / matMulScale));
 
-          // Add the bias:
-          sum += B;
+            // Add the bias:
+            sum += B;
 
-          // Scale the result back to the expected destination scale.
-          outW.at({n, ax, ay, d}) = quantization::clip<int32_t, int8_t>(
-              std::round(float(sum) * (matMulScale / outScale) + outOffset));
-        } // W
-      }   // H
-    }     // C
-  }       // N
+            // Scale the result back to the expected destination scale.
+            outW.at({n, ax, ay, d}) = quantization::clip<int32_t, int8_t>(
+                std::round(float(sum) * (matMulScale / outScale) + outOffset));
+          } // W
+        }   // H
+      }     // C
+    }       // G
+  }         // N
 }
 
 void Interpreter::fwdConvolutionInst(const ConvolutionInst *I) {
@@ -191,7 +198,7 @@ void Interpreter::fwdConvolutionInst(const ConvolutionInst *I) {
 
   if (I->getSrc()->getType()->isQuantizedType()) {
     fwdConvolutionInst_I8Impl(I->getSrc(), I->getDest(), I->getFilter(),
-                              I->getBias(), filterSize, stride, pad);
+                              I->getBias(), filterSize, stride, pad, group);
     return;
   }
 

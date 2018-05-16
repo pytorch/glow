@@ -101,7 +101,7 @@ private:
 
   void fwdConvolutionInst_I8Impl(Value *inV, Value *outV, Value *filterV,
                                  Value *biasV, size_t filterSize, size_t stride,
-                                 size_t pad);
+                                 size_t pad, size_t group);
   void fwdConvolutionInst_FloatImpl(Value *inV, Value *outV, Value *filterV,
                                     Value *biasV, size_t filterSize,
                                     size_t stride, size_t pad, size_t group);

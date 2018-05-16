@@ -144,7 +144,7 @@ static std::pair<Function *, SaveNode *>
 createSimpleGraphForQuantization(Module *M) {
   Function *F = M->createFunction("main");
 
-  auto *A = F->getParent()->createVariable(ElemKind::FloatTy, {1, 32, 32, 3},
+  auto *A = F->getParent()->createVariable(ElemKind::FloatTy, {1, 32, 32, 2},
                                            "A", VisibilityKind::Public,
                                            Variable::TrainKind::None);
   fillStableRandomData(A->getHandle(), 1100, 1);
@@ -154,7 +154,7 @@ createSimpleGraphForQuantization(Module *M) {
                                            Variable::TrainKind::None);
   fillStableRandomData(B->getHandle(), 2001, 1);
 
-  ConvolutionNode *CV = F->createConv("conv", A, 16, 5, 1, 2, 1);
+  ConvolutionNode *CV = F->createConv("conv", A, 16, 5, 1, 2, 2);
   Variable *bias = cast<Variable>(CV->getBias());
   Variable *filter = cast<Variable>(CV->getFilter());
 
