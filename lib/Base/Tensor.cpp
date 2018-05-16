@@ -62,22 +62,23 @@ template <class ElemTy> static char valueToChar(ElemTy val) {
   return ch;
 }
 
-template <class ElemTy> static void dumpGenericImpl(Handle<ElemTy> handle) {
+template <class ElemTy>
+static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
   auto shape = handle.dims();
   size_t numDims = shape.size();
 
   // Check for empty tensor.
   if (!numDims) {
-    llvm::outs() << "[ Empty tensor ]\n";
+    os << "[ Empty tensor ]\n";
     return;
   }
 
   // Output shape.
-  llvm::outs() << "shape: ( ";
+  os << "shape: ( ";
   for (auto &d : shape) {
-    llvm::outs() << d << " ";
+    os << d << " ";
   }
-  llvm::outs() << ")\n";
+  os << ")\n";
 
   ElemTy mx = handle.raw(0);
   ElemTy mn = handle.raw(0);
@@ -89,20 +90,20 @@ template <class ElemTy> static void dumpGenericImpl(Handle<ElemTy> handle) {
 
   // Check for zero tensor.
   if (mn == .0 && mx == .0) {
-    llvm::outs() << "[ Zero tensor ]\n";
+    os << "[ Zero tensor ]\n";
     return;
   }
 
   // Output max and min.
-  llvm::outs() << "max: ";
-  llvm::write_double(llvm::outs(), mx, llvm::FloatStyle::Fixed, 3);
-  llvm::outs() << "  min: ";
-  llvm::write_double(llvm::outs(), mn, llvm::FloatStyle::Fixed, 3);
-  llvm::outs() << "\n";
+  os << "max: ";
+  llvm::write_double(os, mx, llvm::FloatStyle::Fixed, 3);
+  os << "  min: ";
+  llvm::write_double(os, mn, llvm::FloatStyle::Fixed, 3);
+  os << "\n";
 
   const unsigned maxNumElem = 100;
 
-  llvm::outs() << "[";
+  os << "[";
 
   for (size_t i = 0, e = std::min<size_t>(maxNumElem, handle.size()); i < e;
        i++) {
@@ -111,51 +112,51 @@ template <class ElemTy> static void dumpGenericImpl(Handle<ElemTy> handle) {
     for (size_t j = 0, e = numDims - 1; numDims > 1 && j < e; j++) {
       if (i % handle.sliceSize(j) == 0) {
         // This iteration of outer loop is a new row, slice or tensor.
-        llvm::outs() << "[";
+        os << "[";
       }
     }
 
     // Print the value at the current index.
-    llvm::write_double(llvm::outs(), handle.raw(i), llvm::FloatStyle::Fixed, 3);
+    llvm::write_double(os, handle.raw(i), llvm::FloatStyle::Fixed, 3);
 
     // Print one closed brace at the end of every row, slice, or tensor.
     for (size_t j = 0, e = numDims - 1; numDims > 1 && j < e; j++) {
       size_t next_index = i + 1;
       if (next_index % handle.sliceSize(j) == 0u) {
-        llvm::outs() << "]";
+        os << "]";
       }
     }
 
-    llvm::outs() << ", ";
+    os << ", ";
 
     // Print one newline at the end of every row, slice, or tensor.
     for (size_t j = 0, e = numDims - 1; numDims > 1 && j < e; j++) {
       size_t next_index = i + 1;
       if (next_index % handle.sliceSize(j) == 0u) {
         // Next iteration of outer loop will be a new row, slice or tensor.
-        llvm::outs() << "\n";
+        os << "\n";
       }
     }
   }
 
   if (handle.size() > maxNumElem) {
-    llvm::outs() << "...";
+    os << "...";
   }
 
-  llvm::outs() << "]\n";
+  os << "]\n";
 }
 
 template <class ElemTy>
-static void dumpAsciiGenericImpl(Handle<ElemTy> handle) {
+static void dumpAsciiGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
   auto d = handle.dims();
 
   if (d.size() == 2) {
     for (size_t x = 0; x < d[0]; x++) {
       for (size_t y = 0; y < d[1]; y++) {
         auto val = handle.at({x, y});
-        llvm::outs() << valueToChar(val);
+        os << valueToChar(val);
       }
-      llvm::outs() << "\n";
+      os << "\n";
     }
   } else if (d.size() == 3) {
     // Print monochrome (one-color channel) tensors:
@@ -163,19 +164,19 @@ static void dumpAsciiGenericImpl(Handle<ElemTy> handle) {
       for (size_t x = 0; x < d[0]; x++) {
         for (size_t y = 0; y < d[1]; y++) {
           auto val = handle.at({x, y, 0});
-          llvm::outs() << valueToChar(val);
+          os << valueToChar(val);
         }
-        llvm::outs() << "\n";
+        os << "\n";
       }
     } else {
       for (size_t z = 0; z < d[2]; z++) {
-        llvm::outs() << "\n";
+        os << "\n";
         for (size_t x = 0; x < d[0]; x++) {
           for (size_t y = 0; y < d[1]; y++) {
             auto val = handle.at({x, y, z});
-            llvm::outs() << valueToChar(val);
+            os << valueToChar(val);
           }
-          llvm::outs() << "\n";
+          os << "\n";
         }
       }
     }
@@ -401,30 +402,38 @@ static void broadcastToNewShapeGenericImpl(Tensor *src, Tensor *dest,
 }
 } // namespace
 
-void glow::dumpAsciiImpl(Tensor *T) {
+void glow::dumpAsciiImpl(Tensor *T, llvm::raw_ostream &os) {
   switch (T->getElementType()) {
   case ElemKind::FloatTy:
-    return dumpAsciiGenericImpl(T->getHandle<float>());
+    return dumpAsciiGenericImpl(T->getHandle<float>(), os);
   case ElemKind::Int8QTy:
-    return dumpAsciiGenericImpl(T->getHandle<int8_t>());
+    return dumpAsciiGenericImpl(T->getHandle<int8_t>(), os);
   case ElemKind::Int32QTy:
-    return dumpAsciiGenericImpl(T->getHandle<int32_t>());
+    return dumpAsciiGenericImpl(T->getHandle<int32_t>(), os);
   case ElemKind::IndexTy:
-    return dumpAsciiGenericImpl(T->getHandle<size_t>());
+    return dumpAsciiGenericImpl(T->getHandle<size_t>(), os);
+  }
+}
+
+void glow::dumpAsciiImpl(Tensor *T) {
+  dumpAsciiImpl(T, llvm::outs());
+}
+
+void glow::dumpImpl(Tensor *T, llvm::raw_ostream &os) {
+  switch (T->getElementType()) {
+  case ElemKind::FloatTy:
+    return dumpGenericImpl(T->getHandle<float>(), os);
+  case ElemKind::Int8QTy:
+    return dumpGenericImpl(T->getHandle<int8_t>(), os);
+  case ElemKind::Int32QTy:
+    return dumpGenericImpl(T->getHandle<int32_t>(), os);
+  case ElemKind::IndexTy:
+    return dumpGenericImpl(T->getHandle<size_t>(), os);
   }
 }
 
 void glow::dumpImpl(Tensor *T) {
-  switch (T->getElementType()) {
-  case ElemKind::FloatTy:
-    return dumpGenericImpl(T->getHandle<float>());
-  case ElemKind::Int8QTy:
-    return dumpGenericImpl(T->getHandle<int8_t>());
-  case ElemKind::Int32QTy:
-    return dumpGenericImpl(T->getHandle<int32_t>());
-  case ElemKind::IndexTy:
-    return dumpGenericImpl(T->getHandle<size_t>());
-  }
+  dumpImpl(T, llvm::outs());
 }
 
 void glow::genericTranspose(Tensor *src, Tensor *dest,
