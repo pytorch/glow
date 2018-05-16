@@ -384,8 +384,10 @@ private:
 //                    Tensor Handle
 //===----------------------------------------------------------------------===//
 
+void dumpAsciiImpl(Tensor *T, llvm::raw_ostream &os);
 void dumpAsciiImpl(Tensor *T);
 
+void dumpImpl(Tensor *T, llvm::raw_ostream &os);
 void dumpImpl(Tensor *T);
 
 /// A class that provides indexed access to a tensor. This class has value
@@ -562,6 +564,7 @@ public:
     }
   }
 
+  void dumpAscii(llvm::raw_ostream &os) const { dumpAsciiImpl(tensor_, os); }
   void dumpAscii() const { dumpAsciiImpl(tensor_); }
 
   /// \returns the raw indices of a min and max values from the tensor.
@@ -597,6 +600,7 @@ public:
     return true;
   }
 
+  void dump(llvm::raw_ostream &os) const { dumpImpl(tensor_, os); }
   void dump() const { dumpImpl(tensor_); }
 
   /// Fill the array with random data that's close to zero using the
