@@ -40,20 +40,11 @@ protected:
   Function *F_;
 };
 
-class InterpOnly : public ::testing::TestWithParam<BackendKind> {
-public:
-  InterpOnly() {
-    mod_ = EE_.getModule();
-    F_ = mod_.createFunction("main");
-  }
+class InterpAndCPU : public Operator {};
 
-protected:
-  ExecutionEngine EE_{GetParam()};
-  Module mod_;
-  Function *F_;
-};
+class InterpOnly : public Operator {};
 
-TEST_P(Operator, pow) {
+TEST_P(InterpAndCPU, pow) {
   auto *X = mod_.createVariable(ElemKind::FloatTy, {1, 1, 3}, "X");
   auto *Y = mod_.createVariable(ElemKind::FloatTy, {2}, "Y");
   X->getPayload().getHandle() = {5, 0.1, -3};
@@ -118,7 +109,7 @@ TEST_P(Operator, batchedReduceAdd) {
   EXPECT_NEAR(H.at({3}), 44, 0.001);
 }
 
-TEST_P(Operator, batchedReduceAddQuantized) {
+TEST_P(InterpAndCPU, batchedReduceAddQuantized) {
   auto BT = mod_.uniqueType(ElemKind::Int8QTy, {3, 8}, 0.5, 3);
   auto OT = mod_.uniqueType(ElemKind::Int8QTy, {8}, 2.0, -1);
 
@@ -175,7 +166,7 @@ TEST_P(Operator, batchedBatchedAdd) {
 }
 
 /// Broadcast Tensor of shape (2,1,1) to (2,4,2) with axis 0.
-TEST_P(Operator, broadcastSimple) {
+TEST_P(InterpAndCPU, broadcastSimple) {
   const size_t numDims_A = 3;
   const size_t dimY_A = 2;
   const size_t dimZ_A = 4;
@@ -236,7 +227,7 @@ TEST_P(Operator, broadcastSimple) {
 }
 
 /// Broadcast a Tensor of shape (2,1) to (3,2,4,2) with axis 1.
-TEST_P(Operator, broadcast) {
+TEST_P(InterpAndCPU, broadcast) {
   const size_t numDims_A = 4;
   const size_t dimX_A = 3;
   const size_t dimY_A = 2;
@@ -320,7 +311,7 @@ TEST_P(Operator, minElem) {
   }
 }
 
-TEST_P(Operator, TopK) {
+TEST_P(InterpAndCPU, TopK) {
   auto *inp = mod_.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
   auto *values = mod_.createVariable(ElemKind::FloatTy, {3, 1, 3}, "values");
   auto *indices = mod_.createVariable(ElemKind::IndexTy, {3, 1, 3}, "indices");
@@ -413,7 +404,7 @@ TEST_P(Operator, matMul) {
 }
 
 // Check the TopK operator for the special case of K=1.
-TEST_P(Operator, TopK1) {
+TEST_P(InterpAndCPU, TopK1) {
   auto *inp = mod_.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
   auto *values = mod_.createVariable(ElemKind::FloatTy, {3, 1, 1}, "values");
   auto *indices = mod_.createVariable(ElemKind::IndexTy, {3, 1, 1}, "indices");
@@ -442,7 +433,7 @@ TEST_P(Operator, TopK1) {
   EXPECT_EQ(I.at({2, 0, 0}), 2);
 }
 
-TEST_P(Operator, QuantizedTopK) {
+TEST_P(InterpAndCPU, QuantizedTopK) {
   auto *INV =
       mod_.createVariable(ElemKind::Int8QTy, {3, 1, 5}, 1.2, 5, "input");
   auto *OV =
@@ -570,7 +561,7 @@ TEST_P(Operator, QuantizeAndDequantize) {
   EXPECT_TRUE(inputs.isEqual(result->getVariable()->getPayload()));
 }
 
-TEST_P(Operator, IntMatMul) {
+TEST_P(InterpAndCPU, IntMatMul) {
   // The scaling factor 1.4x was carefully selected to make sure we don't
   // overflow or underflow the calculation.
   TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.60, 4);
@@ -620,7 +611,7 @@ TEST_P(Operator, IntMatMul) {
   EXPECT_NEAR(H.at({2, 2}), 58.8, 1.0);
 }
 
-TEST_P(Operator, IntBatchedArith) {
+TEST_P(InterpAndCPU, IntBatchedArith) {
   TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.10, 1.0);
   TypeRef lhsTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.11, 4.0);
   TypeRef rhsTy = mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.14, -2.0);
@@ -714,11 +705,11 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
   }
 }
 
-TEST_P(Operator, IntConvolutionDepth10) { checkIntConvolution(EE_, 10); }
+TEST_P(InterpAndCPU, IntConvolutionDepth10) { checkIntConvolution(EE_, 10); }
 
-TEST_P(Operator, IntConvolutionDepth8) { checkIntConvolution(EE_, 8); }
+TEST_P(InterpAndCPU, IntConvolutionDepth8) { checkIntConvolution(EE_, 8); }
 
-TEST_P(Operator, IntConcat) {
+TEST_P(InterpAndCPU, IntConcat) {
   auto A = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "A");
   auto B = mod_.createVariable(ElemKind::FloatTy, {2, 3}, "B");
   A->getHandle().randomize(-1.0, 1.0);
@@ -749,7 +740,7 @@ TEST_P(Operator, IntConcat) {
   }
 }
 
-TEST_P(Operator, IntFC) {
+TEST_P(InterpAndCPU, IntFC) {
   // In this test we subtract the outputs of a quantized FC and a floating-point
   // FC and ensure that the error is below some low value.
   auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
@@ -840,7 +831,7 @@ TEST_P(Operator, RescaleNode) {
   EXPECT_NEAR(RO.raw(0), 40, 1);
 }
 
-TEST_P(Operator, QuantizedArithmeticRescaled) {
+TEST_P(InterpAndCPU, QuantizedArithmeticRescaled) {
   const int len = 100;
 
   // In this test we check the correctness of the quantized Max, Min, Add, Sub,
@@ -960,7 +951,7 @@ TEST_P(Operator, QuantizedArithmeticRescaled) {
   }
 }
 
-TEST_P(Operator, QuantizedArithmeticUnrescaled) {
+TEST_P(InterpAndCPU, QuantizedArithmeticUnrescaled) {
   const int len = 100;
 
   // In this test we check the correctness of the quantized Max, Min, Add, Sub,
@@ -1057,7 +1048,7 @@ TEST_P(Operator, QuantizedArithmeticUnrescaled) {
   }
 }
 
-TEST_P(Operator, QuantizedCmpLTEAndSelect) {
+TEST_P(InterpAndCPU, QuantizedCmpLTEAndSelect) {
   // In this test we check the correctness of the quantized
   // less-than-or-equal-to comparison operator.
   const int len = 1000;
@@ -1207,7 +1198,7 @@ TEST_P(Operator, FCGradientCheck) {
   EXPECT_NEAR(Y->getPayload().getHandle().raw(0), 0.01656, 1E-5);
 }
 
-TEST_P(Operator, concatVectors) {
+TEST_P(InterpAndCPU, concatVectors) {
   F_->setName("concatVectors");
 
   auto *V1 = mod_.createVariable(ElemKind::IndexTy, {10}, "V1",
@@ -1246,7 +1237,7 @@ TEST_P(Operator, concatVectors) {
   }
 }
 
-TEST_P(Operator, sliceVectors) {
+TEST_P(InterpAndCPU, sliceVectors) {
   F_->setName("sliceVectors");
 
   auto *V = mod_.createVariable(ElemKind::IndexTy, {3, 30}, "V",
@@ -1298,7 +1289,7 @@ TEST_P(Operator, sliceVectors) {
   }
 }
 
-TEST_P(Operator, sliceConcatVectors) {
+TEST_P(InterpAndCPU, sliceConcatVectors) {
   F_->setName("sliceConcatVectors");
 
   auto *V = mod_.createVariable(ElemKind::IndexTy, {5, 4}, "V",
@@ -1414,7 +1405,7 @@ TEST_P(Operator, simplePredication) {
   EE_.run({}, {});
 }
 
-TEST_P(Operator, ChannelShuffle) {
+TEST_P(InterpAndCPU, ChannelShuffle) {
   auto *inputs =
       mod_.createVariable(ElemKind::FloatTy, {1, 12, 1, 1}, "inputs");
 
@@ -1472,7 +1463,7 @@ TEST_P(Operator, Squeeze) {
   }
 }
 
-TEST_P(Operator, IntRelu) {
+TEST_P(InterpAndCPU, IntRelu) {
   const float splatValue = 10;
   const float scale = 1.0;
   const float rescaleScale = 2.0;
@@ -1499,7 +1490,7 @@ TEST_P(Operator, IntRelu) {
   }
 }
 
-TEST_P(Operator, IntSplat) {
+TEST_P(InterpAndCPU, IntSplat) {
   const float splatValue = 10;
   const float scale = 1.0;
   const int32_t offset = 5;
@@ -1621,9 +1612,18 @@ TEST_P(InterpOnly, IntLookupTable) {
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 
+INSTANTIATE_TEST_CASE_P(Interpreter, InterpAndCPU,
+                        ::testing::Values(BackendKind::Interpreter));
+
 INSTANTIATE_TEST_CASE_P(Interpreter, Operator,
                         ::testing::Values(BackendKind::Interpreter));
 
 #ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(JIT, Operator, ::testing::Values(BackendKind::CPU));
+INSTANTIATE_TEST_CASE_P(CPU, Operator, ::testing::Values(BackendKind::CPU));
+INSTANTIATE_TEST_CASE_P(CPU, InterpAndCPU, ::testing::Values(BackendKind::CPU));
 #endif // GLOW_WITH_CPU
+
+#ifdef GLOW_WITH_OPENCL
+INSTANTIATE_TEST_CASE_P(OpenCL, Operator,
+                        ::testing::Values(BackendKind::OpenCL));
+#endif // GLOW_WITH_OPENCL
