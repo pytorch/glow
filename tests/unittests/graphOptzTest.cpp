@@ -709,3 +709,39 @@ TEST_F(GraphOptz, mergeRescaleWithArithmeticNode) {
   ::glow::optimize(F_, CompilationMode::Infer);
   EXPECT_EQ(F_->getNodes().size(), 5);
 }
+
+/// \returns the number of nodes in \p F of kind \p kind.
+static unsigned countNodeKind(Function *F, Kinded::Kind kind) {
+  unsigned count = 0;
+  for (auto *n : F->getNodes()) {
+    if (n->getKind() == kind) {
+      count++;
+    }
+  }
+
+  return count;
+}
+
+// Check that we are able to merge some small matmuls into a larger one.
+TEST_F(GraphOptz, mergeMatMulNodes) {
+  Node *input = mod_.createVariable(ElemKind::FloatTy, {10, 10, 10}, "input");
+  Node *weight = mod_.createVariable(ElemKind::FloatTy, {10, 10}, "weight");
+
+  // Split the input to a bunch of small slices.
+  std::vector<NodeValue> inputs;
+  for (size_t i = 0; i < 10; i++) {
+    auto *K = F_->createSlice("extract", input, {i, 0, 0}, {i + 1, 10, 10});
+    auto *R = F_->createReshape("reshape", K, {10, 10});
+    auto *MM = F_->createMatMul("mm", R, weight);
+    inputs.push_back(MM);
+  }
+
+  auto *cc = F_->createConcat("merge", inputs, 0);
+  F_->createSave("save", cc);
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MatMulNodeKind), 10);
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Check that all of the matmuls are merged into a single matmul node.
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MatMulNodeKind), 1);
+}

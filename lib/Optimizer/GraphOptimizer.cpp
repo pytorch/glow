@@ -422,6 +422,121 @@ static bool sinkCode(Function *F) {
   return changed;
 }
 
+/// \returns True if node A may depend on the result of B. The relationship
+/// between the nodes does not have to be direct. For example, A can depend on
+/// X which depends on B. In that case the method needs to return True.
+/// Check the use-def dependency up to a depth of \p depth.
+static bool mayDepend(Node *A, Node *B, unsigned depth = 6) {
+  // We define the identify as a dependency.
+  if (A == B) {
+    return true;
+  }
+
+  // A does not depend on anything.
+  if (A->getNumInputs() == 0) {
+    return false;
+  }
+
+  // B has no users. Nothing can depend on it.
+  if (B->getNumResults() == 0) {
+    return false;
+  }
+
+  // We can't continue the search. Assume that the nodes depend on one another.
+  if (depth == 0) {
+    return true;
+  }
+
+  // Check all inputs of A. None of them may depend on B.
+  for (int i = 0, e = A->getNumInputs(); i < e; i++) {
+    auto *input = A->getNthInput(i).getNode();
+    // The inputs of A must not depend on B.
+    if (mayDepend(input, B, depth - 1)) {
+      return true;
+    }
+  }
+
+  // We checked all inputs of A and none of them depend on B.
+  return false;
+}
+
+/// \returns True if the node \p N depends on any of the values in \p list, or
+/// if any of the values in list depend on \p N.
+static bool mayDependOnAny(llvm::ArrayRef<NodeValue> list, Node *N) {
+  for (auto ll : list) {
+    if (mayDepend(ll.getNode(), N) || mayDepend(N, ll.getNode())) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Merge several two or more multiple matrix multiplications into a single
+// large matmul. The large matmul is more likely to utilize the hardware. The
+// result of the big matmul is the concatenated results.
+//
+//            ____      _________        _________
+//   ----    |    |    |         |     M|  A * C  |
+// M| A  |  T| B  | * K|    C    | =    |---------|
+//   ---- ,  |    |    |         |     T|  B * C  |
+//    K       ----      ---------        ---------
+//             K            R                R
+static void mergeMatMul(Function *F) {
+  auto &nodes = F->getNodes();
+
+  // These two maps record the list of matrix multipliers that use each node
+  // value either as a right-hand-side user or a left-hand-user.
+  llvm::DenseMap<Node *, std::vector<MatMulNode *>> rightMatrixUsers;
+  llvm::DenseMap<Node *, std::vector<MatMulNode *>> leftMatrixUsers;
+
+  // Collect the list of nodes that are used by the matrix multiplier.
+  for (auto const &node : nodes) {
+    if (auto *MM = dyn_cast<MatMulNode>(node)) {
+      rightMatrixUsers[MM->getRHS().getNode()].push_back(MM);
+      leftMatrixUsers[MM->getLHS().getNode()].push_back(MM);
+    }
+  }
+
+  // Merge RHS matrices.
+  for (auto &it : rightMatrixUsers) {
+    auto &MMs = it.second;
+
+    // Collects the LHS values to merge.
+    std::vector<NodeValue> LHS;
+
+    // For each matmul that depends on the rhs matrix.
+    for (auto &MM : MMs) {
+      auto L = MM->getLHS();
+      // The operands to the matrix multiplier should not depend on one another
+      // or else we won't be able to get rid of the original matrix
+      // multiplication.
+      if (mayDependOnAny(LHS, L.getNode())) {
+        continue;
+      }
+      LHS.push_back(L);
+    }
+
+    // We need to have at least two matrices to merge.
+    if (LHS.size() < 2) {
+      continue;
+    }
+
+    // Merge the matmul:
+    auto *CC = F->createConcat("mergeLHS", LHS, 0);
+    auto *MM = F->createMatMul("bigMatMul", CC, it.first);
+
+    size_t R = MM->getNthResult(0).dims()[1];
+    size_t start = 0;
+    for (auto *origMM : MMs) {
+      size_t H = origMM->dims()[0];
+      auto *ex = F->createSlice("extract", MM, {start, 0}, {start + H, R});
+      start += H;
+      NodeValue(origMM).replaceAllUsesOfWith(ex);
+    }
+  }
+}
+
 /// Pool optimization.
 static void optimizePool(Function *F) {
   auto &nodes = F->getNodes();
@@ -1080,6 +1195,9 @@ void glow::optimize(Function *F, CompilationMode mode) {
 
   // Perform Common Subexpression Elimination.
   CSE(F);
+
+  // Merge multiple matmul nodes into a single large matmul.
+  mergeMatMul(F);
 
   // Perform Dead Code Elimination.
   DCE(F);
