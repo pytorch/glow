@@ -366,6 +366,55 @@ TEST_P(Operator, TopK) {
   EXPECT_EQ(I.at({2, 0, 2}), 3);
 }
 
+// Check that matrix multiplication works well on some predefined values.
+TEST_P(Operator, matMul) {
+  auto *inp0 = mod_.createVariable(ElemKind::FloatTy, {1, 2}, "input0");
+  auto *inp1 = mod_.createVariable(ElemKind::FloatTy, {1, 2}, "input1");
+  auto *inp2 = mod_.createVariable(ElemKind::FloatTy, {1, 2}, "input1");
+  auto *res0 = mod_.createVariable(ElemKind::FloatTy, {1, 2}, "res0");
+  auto *res1 = mod_.createVariable(ElemKind::FloatTy, {1, 2}, "res1");
+  auto *res2 = mod_.createVariable(ElemKind::FloatTy, {1, 2}, "res1");
+  auto *rot = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "rot");
+
+  float deg = 45.0 / 180.0 * 3.1415926;
+  // Use the rotation matrix to manipulate some values.
+  // https://en.wikipedia.org/wiki/Rotation_matrix
+  rot->getPayload().getHandle() = {
+      cosf(deg),
+      -sinf(deg),
+      sinf(deg),
+      cosf(deg),
+  };
+
+  // Some test vectors.
+  inp0->getPayload().getHandle() = {1, 4};
+  inp1->getPayload().getHandle() = {14, 2};
+  inp2->getPayload().getHandle() = {5, 2};
+
+  auto *A0 = F_->createMatMul("m0", inp0, rot);
+  auto *A1 = F_->createMatMul("m1", inp1, rot);
+  auto *A2 = F_->createMatMul("m2", inp2, rot);
+
+  F_->createSave("save.values", A0, res0);
+  F_->createSave("save.values", A1, res1);
+  F_->createSave("save.values", A2, res2);
+
+  EE_.compile(CompilationMode::Infer, F_);
+
+  EE_.run({}, {});
+
+  auto R0 = res0->getPayload().getHandle();
+  auto R1 = res1->getPayload().getHandle();
+  auto R2 = res2->getPayload().getHandle();
+
+  EXPECT_FLOAT_EQ(R0.at({0, 0}), 3.5355339);
+  EXPECT_FLOAT_EQ(R0.at({0, 1}), 2.1213205);
+  EXPECT_FLOAT_EQ(R1.at({0, 0}), 11.313709);
+  EXPECT_FLOAT_EQ(R1.at({0, 1}), -8.485281);
+  EXPECT_FLOAT_EQ(R2.at({0, 0}), 4.9497476);
+  EXPECT_FLOAT_EQ(R2.at({0, 1}), -2.1213202);
+}
+
 // Check the TopK operator for the special case of K=1.
 TEST_P(Operator, TopK1) {
   auto *inp = mod_.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
