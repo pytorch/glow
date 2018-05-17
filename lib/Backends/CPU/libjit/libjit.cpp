@@ -129,50 +129,74 @@ static size_t get_element_ptr(const ElemTy *tensor, const size_t *dims,
 }
 
 template <typename ElemTy>
-static void libjit_insert_tensor_impl(ElemTy *tensor, ElemTy *slice,
-                                      size_t *offset, size_t *sliceCoor,
-                                      size_t *fusedCoor, size_t *tensorDim,
-                                      size_t *sliceDim, size_t numDimsTensor,
-                                      size_t numDimsSliceCoor,
-                                      size_t numDimsFusedCoor,
-                                      unsigned isInsert, unsigned d) {
-  unsigned isDone = (d == numDimsSliceCoor);
-
-  if (isDone) {
-    if (isInsert) {
-      AT(tensor, tensorDim, numDimsTensor, fusedCoor, numDimsFusedCoor) =
-          AT(slice, sliceDim, numDimsSliceCoor, sliceCoor, numDimsSliceCoor);
-    } else {
-      AT(slice, sliceDim, numDimsSliceCoor, sliceCoor, numDimsSliceCoor) =
-          AT(tensor, tensorDim, numDimsTensor, fusedCoor, numDimsFusedCoor);
-    }
-    return;
-  }
-
-  for (size_t i = 0, e = sliceDim[d]; i < e; i++) {
-    // Construct the coordinates for the slice and for the joint shape.
-    // Add the 'offset' to the dimension that we concat the shapes on.
-    sliceCoor[d] = i;
-    fusedCoor[d] = i + offset[d];
-    libjit_insert_tensor_impl(
-        tensor, slice, offset, sliceCoor, fusedCoor, tensorDim, sliceDim,
-        numDimsTensor, numDimsSliceCoor, numDimsFusedCoor, isInsert, d + 1);
-  }
-}
-
-template <typename ElemTy>
 void libjit_insert_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
                           size_t *tensorDim, size_t *sliceDim,
                           size_t numDimsTensor, size_t numDimsSlice,
                           size_t offsetDim) {
-  // Reserve statically enough memory to avoid dynamic memory allocation.
-  size_t sliceCoor[10];
-  size_t fusedCoor[10];
-  memcpy(sliceCoor, sliceDim, sizeof(*sliceDim) * numDimsSlice);
-  memcpy(fusedCoor, tensorDim, sizeof(*tensorDim) * numDimsTensor);
-  libjit_insert_tensor_impl(tensor, slice, offset, sliceCoor, fusedCoor,
-                            tensorDim, sliceDim, numDimsTensor, numDimsSlice,
-                            offsetDim, 1, 0);
+  // Destination coordinates.
+  size_t C[5];
+  if (numDimsSlice == 5) {
+    for (size_t x = 0; x < sliceDim[0]; x++)
+      for (size_t y = 0; y < sliceDim[1]; y++)
+        for (size_t z = 0; z < sliceDim[2]; z++)
+          for (size_t w = 0; w < sliceDim[3]; w++)
+            for (size_t q = 0; q < sliceDim[4]; q++) {
+              C[0] = x + offset[0];
+              C[1] = y + offset[1];
+              C[2] = z + offset[2];
+              C[3] = w + offset[3];
+              C[4] = q + offset[4];
+              tensor[libjit_getXYZWQ(tensorDim, C[0], C[1], C[2], C[3], C[4])] =
+                  slice[libjit_getXYZWQ(sliceDim, x, y, z, w, q)];
+            }
+    return;
+  }
+
+  if (numDimsSlice == 4) {
+    for (size_t x = 0; x < sliceDim[0]; x++)
+      for (size_t y = 0; y < sliceDim[1]; y++)
+        for (size_t z = 0; z < sliceDim[2]; z++)
+          for (size_t w = 0; w < sliceDim[3]; w++) {
+            C[0] = x + offset[0];
+            C[1] = y + offset[1];
+            C[2] = z + offset[2];
+            C[3] = w + offset[3];
+            tensor[libjit_getXYZW(tensorDim, C[0], C[1], C[2], C[3])] =
+                slice[libjit_getXYZW(sliceDim, x, y, z, w)];
+          }
+    return;
+  }
+
+  if (numDimsSlice == 3) {
+    for (size_t x = 0; x < sliceDim[0]; x++)
+      for (size_t y = 0; y < sliceDim[1]; y++)
+        for (size_t z = 0; z < sliceDim[2]; z++) {
+          C[0] = x + offset[0];
+          C[1] = y + offset[1];
+          C[2] = z + offset[2];
+          tensor[libjit_getXYZ(tensorDim, C[0], C[1], C[2])] =
+              slice[libjit_getXYZ(sliceDim, x, y, z)];
+        }
+    return;
+  }
+
+  if (numDimsSlice == 2) {
+    for (size_t x = 0; x < sliceDim[0]; x++)
+      for (size_t y = 0; y < sliceDim[1]; y++) {
+        C[0] = x + offset[0];
+        C[1] = y + offset[1];
+        tensor[libjit_getXY(tensorDim, C[0], C[1])] =
+            slice[libjit_getXY(sliceDim, x, y)];
+      }
+    return;
+  }
+
+  if (numDimsSlice == 1) {
+    for (size_t x = 0; x < sliceDim[0]; x++) {
+      tensor[x + offset[0]] = slice[x];
+    }
+    return;
+  }
 }
 
 template <typename ElemTy>
@@ -180,14 +204,71 @@ void libjit_extract_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
                            size_t *tensorDim, size_t *sliceDim,
                            size_t numDimsTensor, size_t numDimsSlice,
                            size_t offsetDim) {
-  // Reserve statically enough memory to avoid dynamic memory allocation.
-  size_t sliceCoor[10];
-  size_t fusedCoor[10];
-  memcpy(sliceCoor, sliceDim, sizeof(*sliceDim) * numDimsSlice);
-  memcpy(fusedCoor, tensorDim, sizeof(*tensorDim) * numDimsTensor);
-  libjit_insert_tensor_impl(tensor, slice, offset, sliceCoor, fusedCoor,
-                            tensorDim, sliceDim, numDimsTensor, numDimsSlice,
-                            offsetDim, 0, 0);
+  // Source coordinates.
+  size_t C[5];
+  if (numDimsSlice == 5) {
+    for (size_t x = 0; x < sliceDim[0]; x++)
+      for (size_t y = 0; y < sliceDim[1]; y++)
+        for (size_t z = 0; z < sliceDim[2]; z++)
+          for (size_t w = 0; w < sliceDim[3]; w++)
+            for (size_t q = 0; q < sliceDim[4]; q++) {
+              C[0] = x + offset[0];
+              C[1] = y + offset[1];
+              C[2] = z + offset[2];
+              C[3] = w + offset[3];
+              C[4] = q + offset[4];
+              slice[libjit_getXYZWQ(sliceDim, x, y, z, w, q)] =
+                  tensor[libjit_getXYZWQ(tensorDim, C[0], C[1], C[2], C[3],
+                                         C[4])];
+            }
+    return;
+  }
+
+  if (numDimsSlice == 4) {
+    for (size_t x = 0; x < sliceDim[0]; x++)
+      for (size_t y = 0; y < sliceDim[1]; y++)
+        for (size_t z = 0; z < sliceDim[2]; z++)
+          for (size_t w = 0; w < sliceDim[3]; w++) {
+            C[0] = x + offset[0];
+            C[1] = y + offset[1];
+            C[2] = z + offset[2];
+            C[3] = w + offset[3];
+            slice[libjit_getXYZW(sliceDim, x, y, z, w)] =
+                tensor[libjit_getXYZW(tensorDim, C[0], C[1], C[2], C[3])];
+          }
+    return;
+  }
+
+  if (numDimsSlice == 3) {
+    for (size_t x = 0; x < sliceDim[0]; x++)
+      for (size_t y = 0; y < sliceDim[1]; y++)
+        for (size_t z = 0; z < sliceDim[2]; z++) {
+          C[0] = x + offset[0];
+          C[1] = y + offset[1];
+          C[2] = z + offset[2];
+          slice[libjit_getXYZ(sliceDim, x, y, z)] =
+              tensor[libjit_getXYZ(tensorDim, C[0], C[1], C[2])];
+        }
+    return;
+  }
+
+  if (numDimsSlice == 2) {
+    for (size_t x = 0; x < sliceDim[0]; x++)
+      for (size_t y = 0; y < sliceDim[1]; y++) {
+        C[0] = x + offset[0];
+        C[1] = y + offset[1];
+        slice[libjit_getXY(sliceDim, x, y)] =
+            tensor[libjit_getXY(tensorDim, C[0], C[1])];
+      }
+    return;
+  }
+
+  if (numDimsSlice == 1) {
+    for (size_t x = 0; x < sliceDim[0]; x++) {
+      slice[x] = tensor[x + offset[0]];
+    }
+    return;
+  }
 }
 
 /// Helper struct for TopK

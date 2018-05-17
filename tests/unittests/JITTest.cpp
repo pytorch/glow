@@ -89,7 +89,7 @@ TEST(JITCorrectnessTest, convTest) {
 }
 
 TEST(JITCorrectnessTest, extract3Dtest) {
-  Tensor inputs(ElemKind::FloatTy, {10, 100, 100});
+  Tensor inputs(ElemKind::FloatTy, {5, 100, 100});
   inputs.getHandle().initXavier(1);
   std::array<size_t, 4> S{{1, 95, 100}};
   llvm::ArrayRef<size_t> shape(S);
