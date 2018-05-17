@@ -88,6 +88,20 @@ TEST(JITCorrectnessTest, convTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
+TEST(JITCorrectnessTest, extract3Dtest) {
+  Tensor inputs(ElemKind::FloatTy, {10, 100, 100});
+  inputs.getHandle().initXavier(1);
+  std::array<size_t, 4> S{{1, 95, 100}};
+  llvm::ArrayRef<size_t> shape(S);
+  Tensor out1(ElemKind::FloatTy, shape);
+  Tensor out2(ElemKind::FloatTy, shape);
+
+  inferExtract3D(&inputs, &out1, BackendKind::CPU);
+  inferExtract3D(&inputs, &out2, BackendKind::Interpreter);
+
+  EXPECT_TRUE(out1.isEqual(out2));
+}
+
 TEST(JITCorrectnessTest, quantizedConvTest) {
   Tensor inputs(ElemKind::Int8QTy, {20, 41, 32, 6}, 0.025, -7);
   Tensor kernel(ElemKind::Int8QTy, {10, 5, 5, 6}, 0.003, 3);

@@ -636,4 +636,34 @@ void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+void inferExtract3D(Tensor *input, Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+
+  auto *inputs = VarFrom(input);
+
+  auto *x1 = F->createSlice("ex1", inputs, {0, 5, 0}, {1, 100, 100});
+  auto *x2 = F->createSlice("ex2", inputs, {1, 5, 0}, {2, 100, 100});
+  auto *x3 = F->createSlice("ex3", inputs, {2, 5, 0}, {3, 100, 100});
+  auto *x4 = F->createSlice("ex4", inputs, {3, 5, 0}, {4, 100, 100});
+
+  auto *x12 = F->createConcat("x12", {x1, x2}, 1);
+  auto *x34 = F->createConcat("x34", {x3, x4}, 1);
+  auto *x13 = F->createConcat("x34", {x1, x3}, 1);
+  auto *x24 = F->createConcat("x34", {x2, x4}, 1);
+
+  auto *add1 = F->createAdd("add1", x12, x34);
+  auto *add2 = F->createAdd("add1", x13, x24);
+  auto *add3 = F->createAdd("add1", add1, add2);
+  
+  auto *e = F->createSlice("slice", add3, {0, 55, 50}, {1, 150, 100});
+  auto *result = F->createSave("ret", e);
+
+  EE.compile(CompilationMode::Infer, F);
+
+  EE.run({inputs}, {input});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 } // namespace glow
