@@ -9,8 +9,9 @@ time.
 
 A bundle is a self-contained compiled network model that can be used to execute
 the model in a standalone mode. After following the instructions in this
-document and the Makefile in the example directory you will be able to compile
-convolutional neural networks into small executables. Example:
+document and the [Makefile](../examples/bundles/resnet50) in the example
+directory you will be able to compile convolutional neural networks into small
+executables. Example:
 
 ```
   $make
@@ -37,7 +38,7 @@ This document demonstrates how to produce a bundle for the host CPU using the
 directory.
 
 ```
-image-classifier image_file -image_mode=0to1 -m network_model_name -cpu -emit-bundle output_directory_name
+$image-classifier image.png -image_mode=0to1 -m resnet50 -cpu -emit-bundle build/
 ```
 
 The command above would compile the neural network model from the
