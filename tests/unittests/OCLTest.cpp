@@ -24,9 +24,6 @@
 
 #include "gtest/gtest.h"
 
-#include <cassert>
-#include <string>
-
 using namespace glow;
 using llvm::cast;
 
