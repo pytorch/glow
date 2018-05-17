@@ -786,7 +786,7 @@ TEST_P(InterpAndCPU, IntFC) {
   EXPECT_LT(count, 2);
 }
 
-TEST_P(InterpOnly, EntropyLossTest) {
+TEST_P(InterpAndCPU, EntropyLossTest) {
   auto *P = mod_.createVariable(ElemKind::FloatTy, {2, 3}, "P");
   auto *Y = mod_.createVariable(ElemKind::IndexTy, {2}, "Y");
   auto *L = mod_.createVariable(ElemKind::FloatTy, {1}, "L");

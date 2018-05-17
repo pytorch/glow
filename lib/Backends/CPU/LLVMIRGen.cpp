@@ -1405,6 +1405,22 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::CrossEntropyLossInstKind: {
+    auto *CI = cast<CrossEntropyLossInst>(I);
+    auto *P = CI->getP();
+    auto *labels = CI->getLabels();
+    auto *CE = CI->getCE();
+
+    auto *CEPtr = emitValueAddress(builder, CE);
+    auto *PPtr = emitValueAddress(builder, P);
+    auto *labelsPtr = emitValueAddress(builder, labels);
+    auto *dims = emitValueDims(builder, P);
+
+    auto *F = getFunction("cross_entropy_loss", CE->getElementType());
+    builder.CreateCall(F, {CEPtr, PPtr, labelsPtr, dims});
+    break;
+  }
+
   case Kinded::Kind::LocalResponseNormalizationInstKind: {
     LocalResponseNormalizationInst *LRN =
         cast<LocalResponseNormalizationInst>(I);
