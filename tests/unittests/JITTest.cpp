@@ -28,7 +28,14 @@
 using namespace glow;
 using llvm::cast;
 
-TEST(JITCorrectnessTest, batchedAddTest) {
+class JITCorrectnessTest : public ::testing::TestWithParam<BackendKind> {
+protected:
+  BackendKind backendKind_{GetParam()};
+};
+
+class CPUOnly : public JITCorrectnessTest {};
+
+TEST_P(JITCorrectnessTest, batchedAddTest) {
   Tensor batch(ElemKind::FloatTy, {8, 3, 3, 6});
   Tensor slice(ElemKind::FloatTy, {3, 3, 6});
   batch.getHandle().initXavier(1);
@@ -36,13 +43,13 @@ TEST(JITCorrectnessTest, batchedAddTest) {
   Tensor out1(ElemKind::FloatTy, {8, 3, 3, 6});
   Tensor out2(ElemKind::FloatTy, {8, 3, 3, 6});
 
-  inferBatchedAddNet(&batch, &slice, &out1, BackendKind::CPU);
+  inferBatchedAddNet(&batch, &slice, &out1, backendKind_);
   inferBatchedAddNet(&batch, &slice, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, DISABLED_quantizedBatchedAddTest) {
+TEST_P(JITCorrectnessTest, DISABLED_quantizedBatchedAddTest) {
   std::array<size_t, 4> S{{10, 1, 1, 2}};
   llvm::ArrayRef<size_t> shape(S);
   Tensor batch(ElemKind::Int8QTy, shape, 0.875, -1);
@@ -52,25 +59,25 @@ TEST(JITCorrectnessTest, DISABLED_quantizedBatchedAddTest) {
   Tensor out1(ElemKind::Int8QTy, shape, 0.375, -10);
   Tensor out2(ElemKind::Int8QTy, shape, 0.375, -10);
 
-  inferBatchedAddNet(&batch, &slice, &out1, BackendKind::CPU);
+  inferBatchedAddNet(&batch, &slice, &out1, backendKind_);
   inferBatchedAddNet(&batch, &slice, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, batchedReduceAddTest) {
+TEST_P(JITCorrectnessTest, batchedReduceAddTest) {
   Tensor inputs(ElemKind::FloatTy, {7, 5, 9, 2});
   inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
-  inferBatchedReduceAddNet(&inputs, &out1, BackendKind::CPU);
+  inferBatchedReduceAddNet(&inputs, &out1, backendKind_);
   inferBatchedReduceAddNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, convTest) {
+TEST_P(JITCorrectnessTest, convTest) {
   Tensor inputs(ElemKind::FloatTy, {20, 41, 32, 6});
   Tensor kernel(ElemKind::FloatTy, {10, 5, 5, 6});
   Tensor bias(ElemKind::FloatTy, {10});
@@ -82,13 +89,13 @@ TEST(JITCorrectnessTest, convTest) {
   Tensor out1(ElemKind::FloatTy, shape);
   Tensor out2(ElemKind::FloatTy, shape);
 
-  inferConvNet(&inputs, &kernel, &bias, &out1, BackendKind::CPU);
+  inferConvNet(&inputs, &kernel, &bias, &out1, backendKind_);
   inferConvNet(&inputs, &kernel, &bias, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, extract3Dtest) {
+TEST_P(CPUOnly, extract3Dtest) {
   Tensor inputs(ElemKind::FloatTy, {5, 100, 100});
   inputs.getHandle().initXavier(1);
   std::array<size_t, 4> S{{1, 95, 100}};
@@ -102,7 +109,7 @@ TEST(JITCorrectnessTest, extract3Dtest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, quantizedConvTest) {
+TEST_P(CPUOnly, quantizedConvTest) {
   Tensor inputs(ElemKind::Int8QTy, {20, 41, 32, 6}, 0.025, -7);
   Tensor kernel(ElemKind::Int8QTy, {10, 5, 5, 6}, 0.003, 3);
   Tensor bias(ElemKind::Int8QTy, {10}, 0.5, -4);
@@ -114,13 +121,13 @@ TEST(JITCorrectnessTest, quantizedConvTest) {
   Tensor out1(ElemKind::Int8QTy, shape, 0.05, -17);
   Tensor out2(ElemKind::Int8QTy, shape, 0.05, -17);
 
-  inferConvNet(&inputs, &kernel, &bias, &out1, BackendKind::CPU);
+  inferConvNet(&inputs, &kernel, &bias, &out1, backendKind_);
   inferConvNet(&inputs, &kernel, &bias, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2, 1.0));
 }
 
-TEST(JITCorrectnessTest, convGradTest) {
+TEST_P(JITCorrectnessTest, convGradTest) {
   Tensor inputs(ElemKind::FloatTy, {9, 8, 9, 4});
   Tensor kernel1(ElemKind::FloatTy, {3, 3, 3, 4});
   Tensor bias1(ElemKind::FloatTy, {3});
@@ -144,14 +151,14 @@ TEST(JITCorrectnessTest, convGradTest) {
   Tensor out2(ElemKind::FloatTy, shape2);
 
   trainConvNet(&inputs, &kernel1, &bias1, &kernel2, &bias2, &selected, shape1,
-               shape2, &out1, BackendKind::CPU);
+               shape2, &out1, backendKind_);
   trainConvNet(&inputs, &kernel1, &bias1, &kernel2, &bias2, &selected, shape1,
                shape2, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, gatherTest) {
+TEST_P(JITCorrectnessTest, gatherTest) {
   constexpr size_t nSlices = 16;
   constexpr size_t nGathered = 8;
 
@@ -167,25 +174,25 @@ TEST(JITCorrectnessTest, gatherTest) {
   Tensor out1(ElemKind::FloatTy, {nGathered, 16, 3, 2});
   Tensor out2(ElemKind::FloatTy, {nGathered, 16, 3, 2});
 
-  inferGatherNet(&data, &indices, &out1, BackendKind::CPU);
+  inferGatherNet(&data, &indices, &out1, backendKind_);
   inferGatherNet(&data, &indices, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, localResponseNormalizationTest) {
+TEST_P(CPUOnly, localResponseNormalizationTest) {
   Tensor inputs(ElemKind::FloatTy, {8, 15, 13, 30});
   inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
-  inferLocalResponseNormalizationNet(&inputs, &out1, BackendKind::CPU);
+  inferLocalResponseNormalizationNet(&inputs, &out1, backendKind_);
   inferLocalResponseNormalizationNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, localResponseNormalizationGradTest) {
+TEST_P(CPUOnly, localResponseNormalizationGradTest) {
   Tensor inputs(ElemKind::FloatTy, {5, 4, 7, 3});
   Tensor weights(ElemKind::FloatTy, {84, 180});
   Tensor bias(ElemKind::FloatTy, {180});
@@ -205,7 +212,7 @@ TEST(JITCorrectnessTest, localResponseNormalizationGradTest) {
   Tensor out2(ElemKind::FloatTy, shape1);
 
   trainLocalResponseNormalizationNet(&inputs, &weights, &bias, &selected,
-                                     shape1, shape2, &out1, BackendKind::CPU);
+                                     shape1, shape2, &out1, backendKind_);
   trainLocalResponseNormalizationNet(&inputs, &weights, &bias, &selected,
                                      shape1, shape2, &out2,
                                      BackendKind::Interpreter);
@@ -213,7 +220,7 @@ TEST(JITCorrectnessTest, localResponseNormalizationGradTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, matMulTest) {
+TEST_P(JITCorrectnessTest, matMulTest) {
   Tensor lhs(ElemKind::FloatTy, {10, 9});
   Tensor rhs(ElemKind::FloatTy, {9, 8});
   lhs.getHandle().randomize(-7.2, 8.3);
@@ -223,13 +230,13 @@ TEST(JITCorrectnessTest, matMulTest) {
   Tensor out1(ElemKind::FloatTy, shape);
   Tensor out2(ElemKind::FloatTy, shape);
 
-  inferMatMulNet(&lhs, &rhs, &out1, BackendKind::CPU);
+  inferMatMulNet(&lhs, &rhs, &out1, backendKind_);
   inferMatMulNet(&lhs, &rhs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2, 0.001));
 }
 
-TEST(JITCorrectnessTest, quantizedMatMulTest) {
+TEST_P(CPUOnly, quantizedMatMulTest) {
   Tensor lhs(ElemKind::Int8QTy, {10, 9}, 2.7, 31);
   Tensor rhs(ElemKind::Int8QTy, {9, 8}, 3.2, -12);
   lhs.getHandle<int8_t>().randomize(-129, 128);
@@ -239,13 +246,13 @@ TEST(JITCorrectnessTest, quantizedMatMulTest) {
   Tensor out1(ElemKind::Int8QTy, shape, 8.1, 7);
   Tensor out2(ElemKind::Int8QTy, shape, 8.1, 7);
 
-  inferMatMulNet(&lhs, &rhs, &out1, BackendKind::CPU);
+  inferMatMulNet(&lhs, &rhs, &out1, backendKind_);
   inferMatMulNet(&lhs, &rhs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, maxTest) {
+TEST_P(JITCorrectnessTest, maxTest) {
   std::array<size_t, 1> S{{1941}};
   llvm::ArrayRef<size_t> shape(S);
   Tensor inputs1(ElemKind::FloatTy, shape);
@@ -255,13 +262,13 @@ TEST(JITCorrectnessTest, maxTest) {
   Tensor out1;
   Tensor out2;
 
-  inferMaxNet(&inputs1, &inputs2, &out1, BackendKind::CPU);
+  inferMaxNet(&inputs1, &inputs2, &out1, backendKind_);
   inferMaxNet(&inputs1, &inputs2, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, minTest) {
+TEST_P(JITCorrectnessTest, minTest) {
   std::array<size_t, 1> S{{1123}};
   llvm::ArrayRef<size_t> shape(S);
   Tensor inputs1(ElemKind::FloatTy, shape);
@@ -271,25 +278,25 @@ TEST(JITCorrectnessTest, minTest) {
   Tensor out1;
   Tensor out2;
 
-  inferMinNet(&inputs1, &inputs2, &out1, BackendKind::CPU);
+  inferMinNet(&inputs1, &inputs2, &out1, backendKind_);
   inferMinNet(&inputs1, &inputs2, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, poolAvgTest) {
+TEST_P(JITCorrectnessTest, poolAvgTest) {
   Tensor inputs(ElemKind::FloatTy, {14, 12, 19, 7});
   inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
-  inferPoolAvgNet(&inputs, &out1, BackendKind::CPU);
+  inferPoolAvgNet(&inputs, &out1, backendKind_);
   inferPoolAvgNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, poolAvgGradTest) {
+TEST_P(CPUOnly, poolAvgGradTest) {
   Tensor inputs(ElemKind::FloatTy, {5, 7, 6, 3});
   Tensor weights(ElemKind::FloatTy, {126, 72});
   Tensor bias(ElemKind::FloatTy, {72});
@@ -309,26 +316,26 @@ TEST(JITCorrectnessTest, poolAvgGradTest) {
   Tensor out2(ElemKind::FloatTy, shape2);
 
   trainPoolAvgNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out1,
-                  BackendKind::CPU);
+                  backendKind_);
   trainPoolAvgNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
                   BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, poolMaxTest) {
+TEST_P(JITCorrectnessTest, poolMaxTest) {
   Tensor inputs(ElemKind::FloatTy, {5, 53, 71, 14});
   inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
-  inferPoolMaxNet(&inputs, &out1, BackendKind::CPU);
+  inferPoolMaxNet(&inputs, &out1, backendKind_);
   inferPoolMaxNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, poolMaxGradTest) {
+TEST_P(JITCorrectnessTest, poolMaxGradTest) {
   Tensor inputs(ElemKind::FloatTy, {4, 8, 7, 2});
   Tensor weights(ElemKind::FloatTy, {112, 84});
   Tensor bias(ElemKind::FloatTy, {84});
@@ -348,14 +355,14 @@ TEST(JITCorrectnessTest, poolMaxGradTest) {
   Tensor out2(ElemKind::FloatTy, shape2);
 
   trainPoolMaxNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out1,
-                  BackendKind::CPU);
+                  backendKind_);
   trainPoolMaxNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
                   BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, quantizeTest) {
+TEST_P(JITCorrectnessTest, quantizeTest) {
   std::array<size_t, 4> S{{26, 51, 29, 32}};
   llvm::ArrayRef<size_t> shape(S);
   Tensor inputs(ElemKind::FloatTy, shape);
@@ -365,25 +372,25 @@ TEST(JITCorrectnessTest, quantizeTest) {
   Tensor out1(ElemKind::FloatTy, shape);
   Tensor out2(ElemKind::FloatTy, shape);
 
-  inferQuantizeNet(&inputs, scale, offset, &out1, BackendKind::CPU);
+  inferQuantizeNet(&inputs, scale, offset, &out1, backendKind_);
   inferQuantizeNet(&inputs, scale, offset, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, reluTest) {
+TEST_P(JITCorrectnessTest, reluTest) {
   Tensor inputs(ElemKind::FloatTy, {2, 16});
   inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
-  inferReluNet(&inputs, &out1, BackendKind::CPU);
+  inferReluNet(&inputs, &out1, backendKind_);
   inferReluNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, reshapeTest) {
+TEST_P(JITCorrectnessTest, reshapeTest) {
   Tensor inputs(ElemKind::FloatTy, {12, 6, 8, 12});
   inputs.getHandle().initXavier(1);
   std::array<size_t, 4> S{{18, 4, 24, 4}};
@@ -391,13 +398,13 @@ TEST(JITCorrectnessTest, reshapeTest) {
   Tensor out1;
   Tensor out2;
 
-  inferReshapeNet(&inputs, shape, &out1, BackendKind::CPU);
+  inferReshapeNet(&inputs, shape, &out1, backendKind_);
   inferReshapeNet(&inputs, shape, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, reshapeIndexTest) {
+TEST_P(JITCorrectnessTest, reshapeIndexTest) {
   Tensor inputs(ElemKind::IndexTy, {12, 6, 8, 12});
   auto H = inputs.getHandle<size_t>();
   for (size_t i = 0; i < H.size(); i++) {
@@ -408,13 +415,13 @@ TEST(JITCorrectnessTest, reshapeIndexTest) {
   Tensor out1;
   Tensor out2;
 
-  inferReshapeNet(&inputs, shape, &out1, BackendKind::CPU);
+  inferReshapeNet(&inputs, shape, &out1, backendKind_);
   inferReshapeNet(&inputs, shape, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, selectTest) {
+TEST_P(JITCorrectnessTest, selectTest) {
   std::array<size_t, 4> S{{5, 3, 9, 2}};
   llvm::ArrayRef<size_t> shape(S);
   Tensor cond(ElemKind::FloatTy, shape);
@@ -429,37 +436,37 @@ TEST(JITCorrectnessTest, selectTest) {
   Tensor out1;
   Tensor out2;
 
-  inferSelectNet(&cond, &inputs1, &inputs2, &out1, BackendKind::CPU);
+  inferSelectNet(&cond, &inputs1, &inputs2, &out1, backendKind_);
   inferSelectNet(&cond, &inputs1, &inputs2, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, sigmoidTest) {
+TEST_P(JITCorrectnessTest, sigmoidTest) {
   Tensor inputs(ElemKind::FloatTy, {11, 4, 5, 2});
   inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
-  inferSigmoidNet(&inputs, &out1, BackendKind::CPU);
+  inferSigmoidNet(&inputs, &out1, backendKind_);
   inferSigmoidNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, smallConv) {
+TEST_P(JITCorrectnessTest, smallConv) {
   Tensor input(ElemKind::FloatTy, {1, 3, 3, 32});
   input.getHandle().clear(0.2);
   Tensor out1;
   Tensor out2;
 
-  inferSmallConv(&input, &out1, BackendKind::CPU);
+  inferSmallConv(&input, &out1, backendKind_);
   inferSmallConv(&input, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, softmaxTest) {
+TEST_P(JITCorrectnessTest, softmaxTest) {
   Tensor inputs(ElemKind::FloatTy, {14, 19});
   Tensor selected(ElemKind::IndexTy, {14, 1});
   inputs.getHandle().initXavier(1);
@@ -470,13 +477,13 @@ TEST(JITCorrectnessTest, softmaxTest) {
   Tensor out1;
   Tensor out2;
 
-  inferSoftMaxNet(&inputs, &selected, &out1, BackendKind::CPU);
+  inferSoftMaxNet(&inputs, &selected, &out1, backendKind_);
   inferSoftMaxNet(&inputs, &selected, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, softmaxGradTest) {
+TEST_P(JITCorrectnessTest, softmaxGradTest) {
   std::array<size_t, 2> S{{8, 23}};
   llvm::ArrayRef<size_t> shape(S);
   Tensor inputs(ElemKind::FloatTy, shape);
@@ -493,38 +500,38 @@ TEST(JITCorrectnessTest, softmaxGradTest) {
   Tensor out1(ElemKind::FloatTy, shape);
   Tensor out2(ElemKind::FloatTy, shape);
 
-  trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out1, BackendKind::CPU);
+  trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out1, backendKind_);
   trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out2,
                   BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, tanhTest) {
+TEST_P(JITCorrectnessTest, tanhTest) {
   Tensor inputs(ElemKind::FloatTy, {14151});
   inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
-  inferTanhNet(&inputs, &out1, BackendKind::CPU);
+  inferTanhNet(&inputs, &out1, backendKind_);
   inferTanhNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, transposeTest) {
+TEST_P(JITCorrectnessTest, transposeTest) {
   Tensor inputs(ElemKind::FloatTy, {32, 32});
   inputs.getHandle().randomize(-1.0, 1.0);
   Tensor out1;
   Tensor out2;
 
-  inferTransposeNet(&inputs, &out1, BackendKind::CPU);
+  inferTransposeNet(&inputs, &out1, backendKind_);
   inferTransposeNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, convOps) {
+TEST_P(JITCorrectnessTest, convOps) {
   // Construct networks with a different convolution depth.
   for (auto depth : {4, 12, 128}) {
     Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});
@@ -532,26 +539,26 @@ TEST(JITCorrectnessTest, convOps) {
     Tensor out1;
     Tensor out2;
 
-    inferBasicConvNet(&inputs, &out1, BackendKind::CPU, depth);
+    inferBasicConvNet(&inputs, &out1, backendKind_, depth);
     inferBasicConvNet(&inputs, &out2, BackendKind::Interpreter, depth);
 
     EXPECT_TRUE(out1.isEqual(out2));
   }
 }
 
-TEST(JITCorrectnessTest, basicFCNet) {
+TEST_P(JITCorrectnessTest, basicFCNet) {
   Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});
   inputs.getHandle().initXavier(1);
   Tensor out1;
   Tensor out2;
 
-  inferBasicFCNet(&inputs, &out1, BackendKind::CPU);
+  inferBasicFCNet(&inputs, &out1, backendKind_);
   inferBasicFCNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, complexNet1) {
+TEST_P(CPUOnly, complexNet1) {
   std::array<size_t, 4> S{{8, 7, 14, 11}};
   llvm::ArrayRef<size_t> shape(S);
   Tensor inputs1(ElemKind::FloatTy, shape);
@@ -565,15 +572,14 @@ TEST(JITCorrectnessTest, complexNet1) {
   Tensor out1;
   Tensor out2;
 
-  inferComplexNet1(&inputs1, &inputs2, &inputs3, &inputs4, &out1,
-                   BackendKind::CPU);
+  inferComplexNet1(&inputs1, &inputs2, &inputs3, &inputs4, &out1, backendKind_);
   inferComplexNet1(&inputs1, &inputs2, &inputs3, &inputs4, &out2,
                    BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(JITCorrectnessTest, tinyResnet) {
+TEST_P(JITCorrectnessTest, tinyResnet) {
   Tensor input(ElemKind::FloatTy, {1, 7, 7, 64});
   input.getHandle().randomize(0, 1.0);
 
@@ -594,7 +600,16 @@ TEST(JITCorrectnessTest, tinyResnet) {
   Tensor out1;
   Tensor out2;
   inferTinyResnet(&input, &out1, weights, BackendKind::Interpreter);
-  inferTinyResnet(&input, &out2, weights, BackendKind::CPU);
+  inferTinyResnet(&input, &out2, weights, backendKind_);
 
   EXPECT_TRUE(out1.isEqual(out2, 0.001));
 }
+
+INSTANTIATE_TEST_CASE_P(CPU, JITCorrectnessTest,
+                        ::testing::Values(BackendKind::CPU));
+INSTANTIATE_TEST_CASE_P(CPU, CPUOnly, ::testing::Values(BackendKind::CPU));
+
+#ifdef GLOW_WITH_OPENCL
+INSTANTIATE_TEST_CASE_P(OpenCL, JITCorrectnessTest,
+                        ::testing::Values(BackendKind::OpenCL));
+#endif // GLOW_WITH_OPENCL
