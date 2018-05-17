@@ -759,6 +759,16 @@ void libjit_batchedreduceadd_i8(int8_t *dest, const int8_t *batch,
   }
 }
 
+void libjit_cross_entropy_loss_f(float *CE, float *P, size_t *labels,
+                                 size_t *dims) {
+  CE[0] = 0.0;
+  for (size_t n = 0; n < dims[0]; ++n) {
+    auto y = labels[n];
+    auto p_n = P[libjit_getXY(dims, n, y)];
+    CE[0] -= log(p_n);
+  }
+}
+
 void libjit_gather_f(float *dest, const float *data, const size_t *indices,
                      size_t numIndices, size_t sliceSize) {
   libjit_gather(dest, data, indices, numIndices, sliceSize);
