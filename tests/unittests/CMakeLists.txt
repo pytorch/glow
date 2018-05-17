@@ -47,16 +47,27 @@ target_link_libraries(basicIRTest
                         testMain)
 add_test(basicIRTest ${GLOW_BINARY_DIR}/tests/basicIRTest)
 
-add_executable(interpreterTest
-               InterpreterTest.cpp)
-target_link_libraries(interpreterTest
+add_executable(backendTest
+               BackendTest.cpp)
+target_link_libraries(backendTest
                       PRIVATE
                         Graph
                         IR
                         ExecutionEngine
                         gtest
                         testMain)
-add_test(interpreterTest ${GLOW_BINARY_DIR}/tests/interpreterTest)
+add_test(backendTest ${GLOW_BINARY_DIR}/tests/backendTest)
+
+add_executable(MLTest
+	       MLTest.cpp)
+target_link_libraries(MLTest
+                      PRIVATE
+                        Graph
+                        IR
+                        ExecutionEngine
+                        gtest
+                        testMain)
+add_test(MLTest ${GLOW_BINARY_DIR}/tests/MLTest)
 
 add_executable(operatorTest
                OperatorTest.cpp)
@@ -178,7 +189,8 @@ add_test(memoryAllocatorTest ${GLOW_BINARY_DIR}/tests/memoryAllocatorTest)
 
 
 LIST(APPEND UNOPT_TESTS
-       ./tests/interpreterTest -optimize-ir=false &&
+       ./tests/backendTest -optimize-ir=false &&
+       ./tests/MLTest -optimize-ir=false &&
        ./tests/operatorTest -optimize-ir=false &&
        ./tests/quantizationTest -optimize-ir=false &&
        ./tests/gradCheckTest -optimize-ir=false &&
