@@ -25,9 +25,6 @@
 
 #include "llvm/Support/raw_ostream.h"
 
-#include <cassert>
-#include <string>
-
 using namespace glow;
 
 class Operator : public ::testing::TestWithParam<BackendKind> {
