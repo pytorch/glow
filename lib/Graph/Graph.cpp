@@ -690,16 +690,16 @@ Node *Function::createSqueeze(llvm::StringRef name, NodeValue input,
 
   ShapeVector shapeAxes(axes.begin(), axes.end());
 
-  // Sort and unique the values in axes to 
+  // Sort and unique the values in axes to
   // 1. make sure each dim is only removed once;
   // 2. check if the size and value of dimensions to squeeze are valid.
   std::sort(shapeAxes.begin(), shapeAxes.end());
   shapeAxes.erase(std::unique(shapeAxes.begin(), shapeAxes.end()),
                   shapeAxes.end());
   auto inDims = input.dims();
-  assert(
-      shapeAxes.back() < inDims.size() &&
-      "The size and value of dimensions to squeeze must be less than the input size.");
+  assert(shapeAxes.back() < inDims.size() && "The size and value of dimensions "
+                                             "to squeeze must be less than the "
+                                             "input size.");
 
   ShapeVector newDims;
   size_t j = 0;
@@ -935,6 +935,35 @@ IntLookupTableNode *Function::createIntTanh(llvm::StringRef name,
       120,  120,  121,  121,  121,  122,  122,  122,  122,  123,  123,  123,
       123,  123,  123,  124,  124,  124,  124,  124,  124,  124,  125,  125,
       125,  125,  125,  125,  125,  125,  125,  125,  125,  126,  126,  126,
+      126,  126,  126,  126,  126,  126,  126,  126,  126,  126,  126,  126,
+      126,  126,  126,  127};
+
+  return createIntLookupTable(name, input, mapping, outTy);
+}
+
+IntLookupTableNode *Function::createIntSigmoid(llvm::StringRef name,
+                                               NodeValue input, TypeRef outTy) {
+  static int8_t mapping[] = {
+      -128, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127,
+      -127, -127, -127, -127, -127, -127, -127, -126, -126, -126, -126, -126,
+      -126, -126, -126, -126, -126, -126, -125, -125, -125, -125, -125, -125,
+      -125, -125, -124, -124, -124, -124, -124, -123, -123, -123, -123, -122,
+      -122, -122, -122, -121, -121, -121, -120, -120, -120, -119, -119, -118,
+      -118, -118, -117, -117, -116, -115, -115, -114, -114, -113, -112, -112,
+      -111, -110, -109, -109, -108, -107, -106, -105, -104, -103, -102, -101,
+      -99,  -98,  -97,  -96,  -94,  -93,  -91,  -90,  -88,  -87,  -85,  -83,
+      -82,  -80,  -78,  -76,  -74,  -72,  -70,  -68,  -66,  -63,  -61,  -59,
+      -56,  -54,  -51,  -49,  -46,  -44,  -41,  -38,  -36,  -33,  -30,  -27,
+      -24,  -21,  -18,  -15,  -12,  -9,   -6,   -3,   -1,   2,    5,    8,
+      11,   14,   17,   20,   23,   26,   29,   32,   35,   37,   40,   43,
+      45,   48,   50,   53,   55,   58,   60,   62,   65,   67,   69,   71,
+      73,   75,   77,   79,   81,   82,   84,   86,   87,   89,   90,   92,
+      93,   95,   96,   97,   98,   100,  101,  102,  103,  104,  105,  106,
+      107,  108,  108,  109,  110,  111,  111,  112,  113,  113,  114,  114,
+      115,  116,  116,  117,  117,  117,  118,  118,  119,  119,  119,  120,
+      120,  120,  121,  121,  121,  121,  122,  122,  122,  122,  123,  123,
+      123,  123,  123,  124,  124,  124,  124,  124,  124,  124,  124,  125,
+      125,  125,  125,  125,  125,  125,  125,  125,  125,  125,  126,  126,
       126,  126,  126,  126,  126,  126,  126,  126,  126,  126,  126,  126,
       126,  126,  126,  127};
 
