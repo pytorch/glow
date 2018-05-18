@@ -134,22 +134,32 @@ static std::unique_ptr<llvm::Module> loadStandardLibrary(llvm::LLVMContext *ctx,
   using llvm::sys::path::append;
   using llvm::sys::path::parent_path;
 
-  llvm::SMDiagnostic Err;
+  llvm::SMDiagnostic error;
+  // Figure out the location of the current executable.
   auto mainExec =
       llvm::sys::fs::getMainExecutable(nullptr, (void *)&loadStandardLibrary);
   StringRef basePath = parent_path(mainExec);
 
+  // Search for the standard library starting at the location of the executable.
+  // Go up the tree up to three levels (by removing the last directory name).
   for (int i = 0; i < 3; i++) {
     llvm::SmallString<256> libPath(basePath);
     append(libPath, filename);
     if (llvm::sys::fs::exists(libPath)) {
-      return llvm::parseIRFile(libPath, Err, *ctx);
+      auto res = llvm::parseIRFile(libPath, error, *ctx);
+
+      // If we could not parse the bitcode file then print an error.
+      if (!res.get()) {
+        error.print(mainExec.c_str(), llvm::errs());
+      }
+      return res;
     }
 
+    // Go up the filesystem tree.
     basePath = parent_path(basePath);
   }
 
-  return llvm::parseIRFile(filename, Err, *ctx);
+  return llvm::parseIRFile(filename, error, *ctx);
 }
 
 void LLVMIRGen::initCodeGen() {
