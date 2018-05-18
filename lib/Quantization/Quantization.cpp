@@ -477,6 +477,35 @@ static Node *quantizeNode(Function *F, Node *node,
     quantizedNode = F->createIntTanh(node->getName(), rescaleNode, resultOutTy);
     break;
   }
+  case Kinded::Kind::SigmoidNodeKind: {
+    assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+
+    // Quantized sigmoid operator expects input to be in a certain floating
+    // point range. This operator works based on the precomputed table and has
+    // to process input in a range of [-6.0, 6.0]. Sigmoid asymptotically
+    // approaches 0 at -inf and 1 at +inf. It has values of 0.00247262 and
+    // 0.997527 at -6.0 and 6.0 correspondingly. The output quantization
+    // parameters are chosen to represent the floating point range of [0, 1.0].
+    auto inputQuantizationParams = chooseQuantizationParams(-6.0, 6.0);
+    auto sigmoidInTy = F->getParent()->uniqueType(
+        ElemKind::Int8QTy, quantizedInputs[0]->dims(),
+        inputQuantizationParams.scale_, inputQuantizationParams.offset_);
+
+    // Make sure input is clipped in [-6.0, 6.0] floating point range.
+    auto *rescaleNode = F->createRescaleQuantized(
+        quantizedInputs[0]->getName(), quantizedInputs[0], sigmoidInTy);
+
+    // Make sure output is clipped in [0.0, 1.0] floating point range.
+    auto outputQuantizationParams = chooseQuantizationParams(0.0, 1.0);
+    auto resultOutTy = F->getParent()->uniqueType(
+        ElemKind::Int8QTy, rescaleNode->getResult().dims(),
+        outputQuantizationParams.scale_, outputQuantizationParams.offset_);
+
+    quantizedNode =
+        F->createIntSigmoid(node->getName(), rescaleNode, resultOutTy);
+
+    break;
+  }
   default:
     GLOW_UNREACHABLE("The node type is not supported for quantization");
   }
