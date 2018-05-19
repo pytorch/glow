@@ -449,7 +449,7 @@ using VariableGradientsList = std::list<std::pair<Variable *, Variable *>>;
 /// (var, grad_var) pairs associating variables with their gradient variables.
 /// This feature is used by the gradient-check unit tests.
 /// \returns a new function with the name \p newFuncName.
-Function *differentiate(Function *F, TrainingConfig &config,
+Function *differentiate(Function *F, const TrainingConfig &config,
                         llvm::StringRef newFuncName = "",
                         VariableGradientsList *varGrads = nullptr);
 

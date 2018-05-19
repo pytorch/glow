@@ -53,7 +53,7 @@ NodeValue GraphGradMapper::getGradient(NodeValue activation) {
 //        Code for automatically generating the back propagation code.
 //===----------------------------------------------------------------------===//
 
-Function *glow::differentiate(Function *F, TrainingConfig &conf,
+Function *glow::differentiate(Function *F, const TrainingConfig &conf,
                               llvm::StringRef newFuncName,
                               VariableGradientsList *varGrads) {
   // Create a new name for the differentiated function, if none is given.
