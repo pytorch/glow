@@ -544,6 +544,186 @@ static void mergeMatMul(Function *F) {
   }
 }
 
+/// \returns True if the two slices \p A and \p B access consecutive spacial
+/// regions on the \p dim dimension. For example Slice(0..10) Slice(10..50) are
+/// consecutive but Slice(0..10) Slice(20..30) are not.
+static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned dim) {
+  // The slices must extract from the same input.
+  if (A->getInput().getNode() != B->getInput().getNode()) {
+    return false;
+  }
+
+  // The result element type must be identical.
+  if (A->getResult().getType()->getElementType() !=
+      B->getResult().getType()->getElementType()) {
+    return false;
+  }
+
+  auto aStart = A->getStart();
+  auto bStart = B->getStart();
+
+  assert(aStart.size() > dim && "Invalid dimension");
+
+  for (int i = 0, e = aStart.size(); i < e; i++) {
+    if (i == dim) {
+      auto resSize = A->getResult().dims();
+      // This is the stride (the delta between the two slices on the requested
+      // dimension).
+      auto delta = bStart[i] - aStart[i];
+      // The distance between the two slices must be identical to the size of
+      // the result.
+      if (resSize[dim] != delta) {
+        return false;
+      }
+
+      continue;
+    }
+
+    // The non-consecutive dimensions must be identical.
+    if (aStart[i] != bStart[i]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/// Find a sequence of slices in \p input that span the whole input.
+/// \returns True if a group of slices that span the whole input was found. The
+/// order of the slices is recorded in \p order.
+static bool findSlicesThatSpanInput(llvm::ArrayRef<SliceNode *> input,
+                                    unsigned dimension,
+                                    std::vector<SliceNode *> &order) {
+  // This is the 'last' slice to be found in the sequence of slices.
+  SliceNode *lastSlice = nullptr;
+
+  // Find the 'first' slice in the sequence.
+  for (SliceNode *SN : input) {
+    auto start = SN->getStart();
+
+    // Invalid dimension.
+    if (start.size() <= dimension) {
+      return false;
+    }
+
+    // Check if this slice extract the first element.
+    if (start[dimension] == 0) {
+      // We found the first element.
+      lastSlice = SN;
+      order.push_back(lastSlice);
+      break;
+    }
+  }
+
+  // We could not find a 'first' slice.
+  if (!lastSlice) {
+    return false;
+  }
+
+  // Now that we've found the first slice in the sequence, try to order the rest
+  // of the slices after the first one.
+  bool addedSlice = true;
+  while (addedSlice) {
+    addedSlice = false;
+
+    // For each slice:
+    for (SliceNode *SN : input) {
+      // Ignore slices of invalid types.
+      if (lastSlice->getResult().getType() != SN->getResult().getType()) {
+        continue;
+      }
+
+      // Check if SN comes after the last slice in the sequence.
+      if (areSlicesConsecutive(lastSlice, SN, dimension)) {
+        // Add the consecutive slice and schedule another iteration.
+        lastSlice = SN;
+        order.push_back(lastSlice);
+        addedSlice = true;
+        continue;
+      }
+    }
+  } // While adding new slices.
+
+  // Check that the last slice completes the tensor.
+  auto startCoor = lastSlice->getStart();
+  auto resDim = lastSlice->getResult()->getType()->dims();
+  auto inDim = lastSlice->getInput()->getType()->dims();
+
+  // Check if for all dimensions, the size of the result tensor plus the start
+  // coordinate matches the size of the tensor.
+  for (int i = 0, e = startCoor.size(); i < e; i++) {
+    if (startCoor[i] + resDim[i] != inDim[i])
+      return false;
+  }
+
+  // Report success if we found at least two slices that extract from the input.
+  return order.size() > 1;
+}
+
+/// Merge multiple batched add nodes into a large batched-add node.
+static void mergeBatchedAdd(Function *F) {
+  auto &nodes = F->getNodes();
+
+  // We index the batched add nodes by the slice operand.
+  llvm::DenseMap<Node *, std::vector<BatchedAddNode *>> rightBAUsers;
+
+  // Collect all of the batched add nodes and index them by the 'slice' operand.
+  for (auto const &node : nodes) {
+    if (auto *BA = dyn_cast<BatchedAddNode>(node)) {
+      rightBAUsers[BA->getSlice().getNode()].push_back(BA);
+    }
+  }
+
+  // For each 'slice' that batched add nodes access:
+  for (auto &it : rightBAUsers) {
+    auto &BAs = it.second;
+
+    // Collects the left-hand-side operands that the batched-adds add into. We
+    // only collect 'slice' nodes.
+    std::vector<SliceNode *> slices;
+
+    for (auto *BA : BAs) {
+      if (auto *S = dyn_cast<SliceNode>(BA->getBatch().getNode())) {
+        slices.push_back(S);
+      }
+    }
+
+    // Check if the slice nodes that we've collected cover a whole tensor.
+    std::vector<SliceNode *> order;
+    bool found = findSlicesThatSpanInput(slices, 0, order);
+
+    if (!found) {
+      continue;
+    }
+
+    // We found a sequence of batched-add-slice that cover the input tensor. We
+    // can transform the graph and create one big batched-add.
+    std::vector<Node *> newSlices;
+    SliceNode *S = llvm::cast<SliceNode>(order[0]);
+    auto *BA = F->createBatchedAdd("mergedBA", S->getInput(), it.first);
+
+    // Create the new slices. These slices will replace the the original scalar
+    // batched-add nodes.
+    for (int i = 0, e = order.size(); i < e; i++) {
+      auto *orig = order[i];
+      newSlices.push_back(F->createSlice(orig->getName(), BA, orig->getStart(),
+                                         orig->getType()));
+    }
+
+    // Replace the original individual batched adds with corresponding slices
+    // from the new merged batch add.
+    for (auto *BA : BAs) {
+      for (int i = 0, e = order.size(); i < e; i++) {
+        if (BA->getBatch().getNode() == order[i]) {
+          NodeValue(BA).replaceAllUsesOfWith(newSlices[i]);
+          break;
+        }
+      }
+    }
+
+  } // for each batched-add group.
+}
+
 /// Pool optimization.
 static void optimizePool(Function *F) {
   auto &nodes = F->getNodes();
@@ -1205,6 +1385,9 @@ void glow::optimize(Function *F, CompilationMode mode) {
 
   // Merge multiple matmul nodes into a single large matmul.
   mergeMatMul(F);
+
+  // Merge multiple batched adds into a larger batched add.
+  mergeBatchedAdd(F);
 
   // Perform Dead Code Elimination.
   DCE(F);
