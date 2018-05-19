@@ -1573,6 +1573,7 @@ TEST_P(InterpOnly, Int8Tanh) {
   auto tanhTy =
       mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale_,
                       quantizationParams.offset_);
+
   auto *intTanh = F_->createIntTanh("int8Tanh", quantize, tanhTy);
   auto *dequantize = F_->createDequantize("dequantize", intTanh);
   auto *saveInt = F_->createSave("int8Save", dequantize);
@@ -1645,6 +1646,47 @@ TEST_P(InterpOnly, IntLookupTable) {
   auto result = save->getVariable()->getHandle<int8_t>();
   for (size_t i = 0; i < size; ++i) {
     EXPECT_EQ(result.raw(i), i);
+  }
+}
+
+/// Check that the sequence of extract-batchedadd-concat works.
+TEST_P(Operator, testBatchAdd) {
+  unsigned numSlices = 10;
+  auto *input =
+      mod_.createVariable(ElemKind::FloatTy, {numSlices, 10, 10}, "input");
+  auto *slice = mod_.createVariable(ElemKind::FloatTy, {10, 10}, "slice");
+  auto *result =
+      mod_.createVariable(ElemKind::FloatTy, {numSlices, 10, 10}, "result");
+
+  input->getHandle().randomize(-10.0, 10.0);
+  slice->getHandle().randomize(-10.0, 10.0);
+
+  std::vector<NodeValue> adds;
+  for (size_t i = 0; i < numSlices; i++) {
+    auto *ex = F_->createSlice("slice", input, {i, 0, 0}, {i + 1, 10, 10});
+    auto *ba = F_->createBatchedAdd("add", ex, slice);
+    adds.push_back(ba);
+  }
+
+  auto *cc = F_->createConcat("concat", adds, 0);
+
+  F_->createSave("save", cc, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto RH = result->getPayload().getHandle();
+  auto IH = input->getPayload().getHandle();
+  auto SH = slice->getPayload().getHandle();
+
+  // Check that batched add works as expected.
+  for (size_t i = 0; i < numSlices; i++) {
+    for (size_t j = 0; j < 10; j++) {
+      for (size_t k = 0; k < 10; k++) {
+        EXPECT_NEAR(IH.at({i, j, k}) + SH.at({j, k}), RH.at({i, j, k}),
+                    0.00001);
+      }
+    }
   }
 }
 
