@@ -852,38 +852,48 @@ static void optimizeBatchNorm(Function *F) {
   } // For all nodes in the graph.
 }
 
-/// Concat nodes merging.
-/// concat(dim1, concat(dim2, X, Y), Z) -> concat(dim1, X, Y, Z)
-/// but only if dim1 == dim2
+/// Simplify concat node.
+/// \returns a new simplified Concat node or nullptr.
+static ConcatNode *simplifyConcatNode(Function *F, ConcatNode *CN) {
+  /// concat(dim1, concat(dim2, X, Y), Z) -> concat(dim1, X, Y, Z),
+  /// but only if dim1 == dim2
+  auto inputs = CN->getInputs();
+  // Check if any of the inputs are ConcatNode.
+  llvm::SmallVector<NodeValue, 16> newInputs;
+  bool merged = false;
+  for (auto input : inputs) {
+    newInputs.push_back(input);
+    auto *CNI = dyn_cast<ConcatNode>(input);
+    // Bail if it is not a ConcatNode or it is a concat node with a diffrent
+    // dimension.
+    if (!CNI || CNI->getDim() != CN->getDim())
+      continue;
+
+    merged = true;
+    // Replace current input by its own inputs, i.e. merge them into the
+    // parent concat node.
+    newInputs.pop_back();
+    newInputs.append(CNI->getInputs().begin(), CNI->getInputs().end());
+  }
+  if (merged) {
+    // Return a new simplified Concat node.
+    return F->createConcat(CN->getName(), newInputs, CN->getDim());
+  }
+
+  return nullptr;
+}
+
+/// Optimize Concat nodes.
 static void optimizeConcatNodes(Function *F) {
   auto &nodes = F->getNodes();
 
   // For each node:
   for (auto const &node : nodes) {
     if (auto *CN = dyn_cast<ConcatNode>(node)) {
-      auto inputs = CN->getInputs();
-      // Check if any of the inputs is a ConcatNode.
-      llvm::SmallVector<NodeValue, 16> newInputs;
-      bool changed = false;
-      for (auto input : inputs) {
-        newInputs.push_back(input);
-        auto *CNI = dyn_cast<ConcatNode>(input);
-        // Bail if it is not a ConcatNode or it is a concat node with a diffrent
-        // dimension.
-        if (!CNI || CNI->getDim() != CN->getDim())
-          continue;
-
-        changed = true;
-        // Replace current input by its own inputs, i.e. merge them into the
-        // parent concat node.
-        newInputs.pop_back();
-        newInputs.append(CNI->getInputs().begin(), CNI->getInputs().end());
+      auto *newCN = simplifyConcatNode(F, CN);
+      if (newCN) {
+        CN->getResult().replaceAllUsesOfWith(newCN);
       }
-      if (!changed)
-        continue;
-      // Create a new Concat node.
-      auto newCN = F->createConcat(CN->getName(), newInputs, CN->getDim());
-      CN->getResult().replaceAllUsesOfWith(newCN);
     }
   }
 }
