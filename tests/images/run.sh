@@ -14,5 +14,11 @@ done
 for png_filename in tests/images/imagenet/*.png; do
   ./bin/image-classifier $png_filename -image_mode=128to127 -m=squeezenet/model.onnx $@
 done
+for png_filename in tests/images/imagenet/*.png; do
+  ./bin/image-classifier $png_filename -image_mode=0to256 -m=zfnet512/model.onnx $@
+done
+for png_filename in tests/images/imagenet/*.png; do
+  ./bin/image-classifier $png_filename -image_mode=0to1 -m=densenet121/model.onnx $@
+done
 
 ./bin/image-classifier tests/images/mnist/*.png -image_mode=0to1 -m=lenet_mnist $@
