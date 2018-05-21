@@ -738,3 +738,26 @@ TEST_F(GraphOptz, mergeMatMulNodes) {
   // Check that all of the matmuls are merged into a single matmul node.
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MatMulNodeKind), 1);
 }
+
+// Check that we are able to merge batched adds.
+TEST_F(GraphOptz, mergeBANodes) {
+  Node *input = mod_.createVariable(ElemKind::FloatTy, {10, 10, 10}, "input");
+  Node *slice = mod_.createVariable(ElemKind::FloatTy, {10, 10}, "weight");
+
+  // Split the input to a bunch of small slices.
+  std::vector<NodeValue> inputs;
+  for (size_t i = 0; i < 10; i++) {
+    auto *K = F_->createSlice("extract", input, {i, 0, 0}, {i + 1, 10, 10});
+    auto *MM = F_->createBatchedAdd("BA", K, slice);
+    inputs.push_back(MM);
+  }
+
+  auto *cc = F_->createConcat("merge", inputs, 0);
+  F_->createSave("save", cc);
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedAddNodeKind), 10);
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Check that all of the batched-adds are merged into a single node.
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedAddNodeKind), 1);
+}
