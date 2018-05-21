@@ -1308,6 +1308,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *kernel = emitConstSizeT(builder, CI->getKernel());
     auto *stride = emitConstSizeT(builder, CI->getStride());
     auto *pad = emitConstSizeT(builder, CI->getPad());
+    auto *group = emitConstSizeT(builder, CI->getGroup());
 
     const char *kernelName = "convolution";
 
@@ -1317,7 +1318,11 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     // this number output slices each iteration.
     unsigned unrollDFactor = 1;
 
-    if ((destDepth % 8) == 0) {
+    // In libjit_convolution_f function, 'unrollDFactor' output
+    // layers will be processed together. Therefore, the number of
+    // output layers in each group should be divisible by 'unrollDFactor'
+    bool groupDividedBy8 = ((destDepth / CI->getGroup()) % 8) == 0;
+    if (groupDividedBy8) {
       unrollDFactor = 8;
     }
 
@@ -1356,15 +1361,15 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *outScale = emitConstI32(builder, outScaleParam.scale_);
 
       createCall(builder, F,
-                 {destPtr,  srcPtr,     filterPtr, biasPtr,      destDims,
-                  srcDims,  filterDims, biasDims,  kernel,       stride,
-                  pad,      destOffset, srcOffset, filterOffset, biasOffset,
-                  biasPre,  biasPost,   biasScale, outPre,       outPost,
-                  outScale, unrollD});
+                 {destPtr,    srcPtr,     filterPtr,  biasPtr,   destDims,
+                  srcDims,    filterDims, biasDims,   kernel,    stride,
+                  pad,        group,      destOffset, srcOffset, filterOffset,
+                  biasOffset, biasPre,    biasPost,   biasScale, outPre,
+                  outPost,    outScale,   unrollD});
     } else {
       createCall(builder, F,
                  {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
-                  filterDims, biasDims, kernel, stride, pad, unrollD});
+                  filterDims, biasDims, kernel, stride, pad, group, unrollD});
     }
     break;
   }
