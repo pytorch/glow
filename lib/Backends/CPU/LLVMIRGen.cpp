@@ -1257,6 +1257,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *kernel = emitConstSizeT(builder, CI->getKernel());
     auto *stride = emitConstSizeT(builder, CI->getStride());
     auto *pad = emitConstSizeT(builder, CI->getPad());
+    auto *group = emitConstSizeT(builder, CI->getGroup());
 
     const char *kernelName = "convolution";
 
@@ -1304,16 +1305,16 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *outPost = emitConstI32(builder, outScaleParam.post_);
       auto *outScale = emitConstI32(builder, outScaleParam.scale_);
 
-      builder.CreateCall(F, {destPtr,   srcPtr,       filterPtr,  biasPtr,
-                             destDims,  srcDims,      filterDims, biasDims,
-                             kernel,    stride,       pad,        destOffset,
-                             srcOffset, filterOffset, biasOffset, biasPre,
-                             biasPost,  biasScale,    outPre,     outPost,
-                             outScale,  unrollD});
+      builder.CreateCall(F, {destPtr,    srcPtr,    filterPtr,    biasPtr,
+                             destDims,   srcDims,   filterDims,   biasDims,
+                             kernel,     stride,    pad,          group,
+                             destOffset, srcOffset, filterOffset, biasOffset,
+                             biasPre,    biasPost,  biasScale,    outPre,
+                             outPost,    outScale,  unrollD});
     } else {
       builder.CreateCall(F, {destPtr, srcPtr, filterPtr, biasPtr, destDims,
                              srcDims, filterDims, biasDims, kernel, stride, pad,
-                             unrollD});
+                             group, unrollD});
     }
     break;
   }

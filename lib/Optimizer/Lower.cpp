@@ -564,10 +564,10 @@ void glow::lower(Function *F, CompilationMode mode, Backend *B) {
       lowerBatchNormalizationNodeForInference(F, *BN);
     } else if (auto *BNG = dyn_cast<BatchNormalizationGradNode>(node)) {
       lowerBatchNormalizationGradNode(F, *BNG);
-    } else if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
-      if (CN->getGroup() > 1)
-        lowerGroupConvolutionNode(F, *CN);
-    }
+    } // else if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
+      // if (CN->getGroup() > 1)
+      //  lowerGroupConvolutionNode(F, *CN);
+    //
   }
 
   for (auto it = F->getNodes().begin(), e = F->getNodes().end(); it != e;) {
