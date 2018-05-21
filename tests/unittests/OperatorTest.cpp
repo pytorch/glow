@@ -1690,6 +1690,55 @@ TEST_P(Operator, testBatchAdd) {
   }
 }
 
+/// Tests quantized batched-add arithmetic.
+TEST_P(InterpAndCPU, testQuantizedBatchAdd) {
+  unsigned numSlices = 10;
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {numSlices, 10, 10},
+                                    "input", VisibilityKind::Public);
+  auto *slice = mod_.createVariable(ElemKind::FloatTy, {10, 10}, "slice",
+                                    VisibilityKind::Public);
+  auto *result = mod_.createVariable(ElemKind::FloatTy, {numSlices, 10, 10},
+                                     "result", VisibilityKind::Public);
+
+  input->getHandle().randomize(-5.0, 5.0);
+  slice->getHandle().randomize(-5.0, 5.0);
+
+  // Scale the numbers in the range (-5. .. 5.) to (-50 .. 50).
+  auto qInType = mod_.uniqueType(ElemKind::Int8QTy, {numSlices, 10, 10}, .1, 0);
+  auto qSliceType2 = mod_.uniqueType(ElemKind::Int8QTy, {10, 10}, .1, 0);
+  auto qSliceType3 = mod_.uniqueType(ElemKind::Int8QTy, {1, 10, 10}, .1, 0);
+
+  auto *intInput = F_->createQuantize("qinput", input, qInType);
+  auto *intSlice = F_->createQuantize("qslice", slice, qSliceType2);
+
+  std::vector<NodeValue> adds;
+  for (size_t i = 0; i < numSlices; i++) {
+    auto *ex = F_->createSlice("slice", intInput, {i, 0, 0}, qSliceType3);
+    auto *ba = F_->createBatchedAdd("add", ex, intSlice);
+    adds.push_back(ba);
+  }
+
+  Node *cc = F_->createConcat("concat", adds, 0, qInType);
+  cc = F_->createDequantize("dq", cc);
+  F_->createSave("save", cc, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto RH = result->getPayload().getHandle();
+  auto IH = input->getPayload().getHandle();
+  auto SH = slice->getPayload().getHandle();
+
+  // Check that batched add works as expected.
+  for (size_t i = 0; i < numSlices; i++) {
+    for (size_t j = 0; j < 10; j++) {
+      for (size_t k = 0; k < 10; k++) {
+        EXPECT_NEAR(IH.at({i, j, k}) + SH.at({j, k}), RH.at({i, j, k}), 0.1);
+      }
+    }
+  }
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 
