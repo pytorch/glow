@@ -20,12 +20,10 @@
 #include "glow/Graph/Nodes.h"
 
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/raw_ostream.h"
 
 #include "onnx.pb.h"
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
-#include <google/protobuf/text_format.h>
 
 #include <cassert>
 #include <cstddef>
@@ -39,61 +37,8 @@
 using namespace glow;
 using llvm::cast;
 
-static auto NCHW2NHWC = {0u, 2u, 3u, 1u};
-static auto NHWC2NCHW = {0u, 3u, 1u, 2u};
-
 using ArgumentDictionaryTy =
     std::unordered_map<std::string, const onnx::AttributeProto *>;
-
-/// Prints a single serialized protocol buffer node. This method is useful for
-/// debugging the network and printing errors.
-template <typename T>
-void unexpectedNodeError(const T &node, llvm::StringRef message) {
-  std::string str;
-  google::protobuf::TextFormat::PrintToString(node, &str);
-  llvm::outs() << message << "\n" << str << "\n";
-}
-
-/// Reads a single integer.
-static int loadInt(const onnx::AttributeProto *arg) {
-  assert(arg->has_i() && "Node has no Int value");
-  return arg->i();
-}
-
-/// Reads a single float.
-static float loadFloat(const onnx::AttributeProto *arg) {
-  assert(arg->has_f() && "Node has no float value");
-  return arg->f();
-}
-
-/// Reads a single string.
-static const std::string &loadStr(const onnx::AttributeProto *arg) {
-  assert(arg->has_s() && "Node has no str value");
-  return arg->s();
-}
-
-/// Load the 'shape' record into a vector of sizes.
-std::vector<size_t> getShape(const onnx::AttributeProto *arg) {
-  std::vector<size_t> dim;
-  for (auto i : arg->ints()) {
-    dim.push_back(i);
-  }
-  return dim;
-}
-
-bool arrayIsConstant(const llvm::ArrayRef<size_t> a) {
-  for (size_t i = 1; i < a.size(); i++)
-    if (a[0] != a[i])
-      return false;
-  return true;
-}
-
-size_t getConstantArrayHead(const onnx::AttributeProto *arg) {
-  auto dim = getShape(arg);
-  assert(arrayIsConstant(dim) &&
-         "Only equal values along each dimensions are supported");
-  return dim[0];
-}
 
 /// Translates the protocol buffer node \p op into a random access map.
 static ArgumentDictionaryTy loadArgumentMap(const onnx::NodeProto &op) {
@@ -133,41 +78,6 @@ size_t getPad(ArgumentDictionaryTy &dict) {
     assert(false && "only auto_pad==VALID is supported");
   }
   return 0;
-}
-
-Tensor *ONNXModelLoader::getTensorByName(const std::string &name) {
-  assert(tensors_.count(name) &&
-         "There is no tensor registered with this name.");
-  return tensors_[name];
-}
-
-Node *ONNXModelLoader::getNodeByName(const std::string &name) {
-  auto it = nodeByName_.find(name);
-  if (it != nodeByName_.end()) {
-    return it->second;
-  }
-
-  llvm_unreachable("Could not find a node with this name.");
-}
-
-Node *ONNXModelLoader::getOrCreateNodeByName(const std::string &name) {
-  auto it = nodeByName_.find(name);
-  if (it != nodeByName_.end()) {
-    return it->second;
-  }
-
-  Tensor *T = getTensorByName(name);
-  auto *V = G_.getParent()->createVariable(T->getElementType(), T->dims(), name,
-                                           VisibilityKind::Private,
-                                           Variable::TrainKind::Broadcast);
-  V->copyFrom(T);
-  nodeByName_[name] = V;
-  return V;
-}
-
-bool ONNXModelLoader::hasNodeByName(const std::string &name) const {
-  auto it = nodeByName_.find(name);
-  return (it != nodeByName_.end());
 }
 
 void loadTensor(const onnx::TensorProto &in, Tensor *T) {
@@ -653,32 +563,11 @@ void ONNXModelLoader::loadNetwork(onnx::GraphProto &net) {
 
 ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  llvm::ArrayRef<const char *> names,
-                                 llvm::ArrayRef<Tensor *> tensors, Function &G)
-    : G_(G) {
-  // Verify that the version of the library that we linked against is
-  // compatible with the version of the headers we compiled against.
-  GOOGLE_PROTOBUF_VERIFY_VERSION;
-
+                                 llvm::ArrayRef<Tensor *> tensors, Function &F)
+    : ProtobufLoader(names, tensors, F) {
   // The ONNX model that we are deserializing.
   onnx::GraphProto modelDef;
-
-  assert(names.size() == tensors.size() && "Invalid initialization list");
-  for (unsigned i = 0; i < names.size(); i++) {
-    auto *T = tensors[i];
-    auto *V = G_.getParent()->createVariable(T->getElementType(), T->dims(),
-                                             names[i], VisibilityKind::Public,
-                                             Variable::TrainKind::None);
-    V->copyFrom(T);
-    nodeByName_[names[i]] = V;
-  }
-
   loadProtoFile(modelDef, modelDescFilename);
   loadInitializers(modelDef);
   loadNetwork(modelDef);
-}
-
-ONNXModelLoader::~ONNXModelLoader() {
-  for (auto it : tensors_) {
-    delete it.second;
-  }
 }
