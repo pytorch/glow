@@ -69,6 +69,20 @@ void inferBatchedReduceAddNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+void inferIntLookupTableNet(Tensor *input, Tensor *out,
+                            llvm::ArrayRef<int8_t> table, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *var = VarFrom(input);
+  auto outTy = mod.uniqueType(ElemKind::Int8QTy, {input->size()}, 3, 3);
+  auto *lookupTable = F->createIntLookupTable("lookuptable", var, table, outTy);
+  auto result = F->createSave("ret", lookupTable);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({var}, {input});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
                   BackendKind kind) {
   ExecutionEngine EE(kind);

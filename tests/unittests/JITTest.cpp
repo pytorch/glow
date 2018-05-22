@@ -362,6 +362,24 @@ TEST_P(JITCorrectnessTest, poolMaxGradTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
+TEST_P(JITCorrectnessTest, intLookupTable) {
+  constexpr size_t inputSize = 100;
+  Tensor inputs(ElemKind::Int8QTy, {inputSize}, 0.8, 4);
+  inputs.getHandle<int8_t>().randomize(-128, 127);
+  Tensor out1, out2;
+
+  // Mapping i -> i.
+  std::vector<int8_t> initValues(256);
+  for (size_t i = 0; i < 256; ++i) {
+    initValues[i] = i - 128;
+  }
+
+  inferIntLookupTableNet(&inputs, &out1, initValues, backendKind_);
+  inferIntLookupTableNet(&inputs, &out2, initValues, BackendKind::Interpreter);
+
+  EXPECT_TRUE(out1.isEqual(out2));
+}
+
 TEST_P(JITCorrectnessTest, quantizeTest) {
   std::array<size_t, 4> S{{26, 51, 29, 32}};
   llvm::ArrayRef<size_t> shape(S);

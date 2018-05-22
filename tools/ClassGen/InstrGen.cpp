@@ -381,6 +381,7 @@ int main(int argc, char **argv) {
       .addOperand("Mapping", OperandKind::In)
       .autoVerify(VerifyKind::SameElementType,
                   {"Dest", "Src", "ElemKind::Int8QTy"})
+      .dataParallel()
       .autoIRGen();
 
   BB.newInstr("Quantize")

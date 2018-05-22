@@ -757,7 +757,26 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     }
     break;
   }
+  case Kinded::Kind::IntLookupTableInstKind: {
+    auto *lookupTable = cast<IntLookupTableInst>(I);
+    auto *dest = lookupTable->getDest();
+    auto *src = lookupTable->getSrc();
+    auto *mapping = lookupTable->getMapping();
 
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *srcPtr = emitBufferAddress(builder, src, kernel, bufferToArgNum);
+    auto *mappingPtr =
+        emitBufferAddress(builder, mapping, kernel, bufferToArgNum);
+
+    auto *F = getFunction("intlookuptable_kernel", dest->getElementType());
+    auto *stackedOpCall =
+        builder.CreateCall(F, {loopCount, srcPtr, mappingPtr});
+    auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr, loopCount,
+                                       "buffer.element.addr");
+    builder.CreateStore(stackedOpCall, destAddr);
+
+    break;
+  }
 #define ARITHMETIC_UNARY_OP_CASE(INST_NAME_, FUN_NAME_)                        \
   case Kinded::Kind::INST_NAME_##InstKind: {                                   \
     auto *AN = cast<INST_NAME_##Inst>(I);                                      \
