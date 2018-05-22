@@ -420,7 +420,7 @@ llvm::Value *LLVMIRGen::emitStringConst(llvm::IRBuilder<> &builder,
       *llmodule_, constStrArray->getType(), true,
       llvm::GlobalValue::PrivateLinkage, constStrArray, ".str");
   gvarStr->setAlignment(1);
-  return gvarStr;
+  return builder.CreateBitCast(gvarStr, builder.getInt8PtrTy());
 }
 
 llvm::Function *LLVMIRGen::getFunction(const std::string &name) {
