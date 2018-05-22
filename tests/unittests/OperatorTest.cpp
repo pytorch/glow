@@ -1463,6 +1463,61 @@ TEST_P(Operator, Squeeze) {
   }
 }
 
+TEST_P(InterpAndCPU, Split) {
+  auto *inputs = mod_.createVariable(ElemKind::FloatTy, {1, 2, 6}, "inputs");
+  inputs->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+
+  std::vector<Node *> outputs1;
+  F_->createSplit("Split1", inputs, /*outputNum = */ 2, /*axis = */ 2,
+                  /*split = */ {}, outputs1);
+  std::vector<Node *> outputs2;
+  F_->createSplit("Split2", inputs, /*outputNum = */ 2, /*axis = */ 2,
+                  /*split = */ {2, 4}, outputs2);
+  auto S1 = F_->createSave("save1", outputs1[0]);
+  auto S2 = F_->createSave("save2", outputs1[1]);
+  auto S3 = F_->createSave("save3", outputs2[0]);
+  auto S4 = F_->createSave("save4", outputs2[1]);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto result = S1->getVariable()->getHandle();
+  EXPECT_EQ(result.dims().vec(), std::vector<size_t>({1, 2, 3}));
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0}), 1);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1}), 2);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2}), 3);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0}), 7);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 1}), 8);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 2}), 9);
+
+  result = S2->getVariable()->getHandle();
+  EXPECT_EQ(result.dims().vec(), std::vector<size_t>({1, 2, 3}));
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0}), 4);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1}), 5);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2}), 6);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0}), 10);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 1}), 11);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 2}), 12);
+
+  result = S3->getVariable()->getHandle();
+  EXPECT_EQ(result.dims().vec(), std::vector<size_t>({1, 2, 2}));
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0}), 1);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1}), 2);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0}), 7);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 1}), 8);
+
+  result = S4->getVariable()->getHandle();
+  EXPECT_EQ(result.dims().vec(), std::vector<size_t>({1, 2, 4}));
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0}), 3);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1}), 4);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2}), 5);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 3}), 6);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0}), 9);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 1}), 10);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 2}), 11);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 3}), 12);
+}
+
 TEST_P(InterpAndCPU, IntRelu) {
   const float splatValue = 10;
   const float scale = 1.0;
