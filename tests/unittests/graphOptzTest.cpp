@@ -761,3 +761,26 @@ TEST_F(GraphOptz, mergeBANodes) {
   // Check that all of the batched-adds are merged into a single node.
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedAddNodeKind), 1);
 }
+
+// Check that we are able to eliminate concat nodes.
+TEST_F(GraphOptz, concatElim) {
+  Node *input = mod_.createVariable(ElemKind::FloatTy, {10, 10, 10}, "input");
+
+  // Split the input to a bunch of small slices.
+  std::vector<NodeValue> inputs;
+  for (size_t i = 0; i < 10; i++) {
+    auto *K = F_->createSlice("extract", input, {i, 0, 0}, {i + 1, 10, 10});
+    // Insert the nodes in reverse order to make sure that we can catch
+    // non-consecutive graph-order slices.
+    inputs.insert(inputs.begin(), K);
+  }
+
+  auto *cc = F_->createConcat("merge", inputs, 0);
+  F_->createSave("save", cc);
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 10);
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Check that the concat node is gone.
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 0);
+}

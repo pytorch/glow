@@ -854,33 +854,59 @@ static void optimizeBatchNorm(Function *F) {
 
 /// Simplify concat node.
 /// \returns a new simplified Concat node or nullptr.
-static ConcatNode *simplifyConcatNode(Function *F, ConcatNode *CN) {
+static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
   /// concat(dim1, concat(dim2, X, Y), Z) -> concat(dim1, X, Y, Z),
   /// but only if dim1 == dim2
-  auto inputs = CN->getInputs();
-  // Check if any of the inputs are ConcatNode.
-  llvm::SmallVector<NodeValue, 16> newInputs;
-  bool merged = false;
-  for (auto input : inputs) {
-    newInputs.push_back(input);
-    auto *CNI = dyn_cast<ConcatNode>(input);
-    // Bail if it is not a ConcatNode or it is a concat node with a diffrent
-    // dimension.
-    if (!CNI || CNI->getDim() != CN->getDim())
-      continue;
+  {
+    auto inputs = CN->getInputs();
+    // Check if any of the inputs are ConcatNode.
+    llvm::SmallVector<NodeValue, 16> newInputs;
+    bool merged = false;
+    for (auto input : inputs) {
+      newInputs.push_back(input);
+      auto *CNI = dyn_cast<ConcatNode>(input);
+      // Bail if it is not a ConcatNode or it is a concat node with a diffrent
+      // dimension.
+      if (!CNI || CNI->getDim() != CN->getDim())
+        continue;
 
-    merged = true;
-    // Replace current input by its own inputs, i.e. merge them into the
-    // parent concat node.
-    newInputs.pop_back();
-    newInputs.append(CNI->getInputs().begin(), CNI->getInputs().end());
-  }
-  if (merged) {
-    // Return a new simplified Concat node.
-    return F->createConcat(CN->getName(), newInputs, CN->getDim());
+      merged = true;
+      // Replace current input by its own inputs, i.e. merge them into the
+      // parent concat node.
+      newInputs.pop_back();
+      newInputs.append(CNI->getInputs().begin(), CNI->getInputs().end());
+    }
+    if (merged) {
+      // Return a new simplified Concat node.
+      return F->createConcat(CN->getName(), newInputs, CN->getDim());
+    }
   }
 
-  return nullptr;
+  // If all of the inputs to the concat are extracted from the same input in the
+  // right order then we can just use the extract-input instead of the concat.
+  // Concat(Slice(X, 0..10), Slice(X, 10..20)) -> X.
+  {
+    std::vector<SliceNode *> order;
+    std::vector<SliceNode *> slices;
+    // Collect all of the inputs that are SliceNode.
+    for (auto &I : CN->getInputs()) {
+      if (auto *S = dyn_cast<SliceNode>(I.getNode())) {
+        slices.push_back(S);
+      }
+    }
+    // Check if the slices span the input value.
+    bool found = findSlicesThatSpanInput(slices, CN->getDim(), order);
+    if (found && order.size() == slices.size()) {
+      auto orig = order[0]->getInput();
+      // The original value that we extract from must be of the same shape as
+      // the concat.
+      if (CN->getType() == orig.getType()) {
+        return orig;
+      }
+    }
+  }
+
+  return NodeValue(nullptr);
 }
 
 /// Optimize Concat nodes.
@@ -890,8 +916,8 @@ static void optimizeConcatNodes(Function *F) {
   // For each node:
   for (auto const &node : nodes) {
     if (auto *CN = dyn_cast<ConcatNode>(node)) {
-      auto *newCN = simplifyConcatNode(F, CN);
-      if (newCN) {
+      NodeValue newCN = simplifyConcatNode(F, CN);
+      if (newCN.getNode()) {
         CN->getResult().replaceAllUsesOfWith(newCN);
       }
     }
