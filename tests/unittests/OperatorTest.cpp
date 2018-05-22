@@ -1670,6 +1670,9 @@ TEST_P(Operator, testBatchAdd) {
 
   auto *cc = F_->createConcat("concat", adds, 0);
 
+  // Remove the reference to the graph nodes to allow DCE to remove them.
+  adds.clear();
+
   F_->createSave("save", cc, result);
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -1721,6 +1724,9 @@ TEST_P(InterpAndCPU, testQuantizedBatchAdd) {
   Node *cc = F_->createConcat("concat", adds, 0, qInType);
   cc = F_->createDequantize("dq", cc);
   F_->createSave("save", cc, result);
+
+  // Remove the reference to the graph nodes to allow DCE to remove them.
+  adds.clear();
 
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
