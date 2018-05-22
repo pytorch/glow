@@ -654,6 +654,11 @@ DEFINE_DATA_PARALLEL_KERNEL(libjit_tanh_kernel_f, float,
 DEFINE_DATA_PARALLEL_KERNEL(libjit_elementselect_kernel_f, float,
                             (LHS[idx] != 0.0) ? RHS[idx] : op3[idx])
 
+int8_t libjit_intlookuptable_kernel_i8(size_t idx, const int8_t *src,
+                                       const int8_t *mapping) {
+  return mapping[src[idx] + 128];
+}
+
 int8_t libjit_elementselect_kernel_i8(size_t idx, const int8_t *cond,
                                       const int8_t *LHS, const int8_t *RHS,
                                       int32_t destOffset, int32_t lhsOffset,

@@ -67,6 +67,9 @@ void trainPoolMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      llvm::ArrayRef<size_t> shape2, Tensor *out,
                      BackendKind kind);
 
+void inferIntLookupTableNet(Tensor *input, Tensor *out,
+                            llvm::ArrayRef<int8_t> table, BackendKind kind);
+
 void inferQuantizeNet(Tensor *inputs, float scale, int32_t offset, Tensor *out,
                       BackendKind kind);
 
