@@ -15,6 +15,7 @@
  */
 #define DEBUG_TYPE "ir-optimizer"
 
+#include "glow/Backends/Backend.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
@@ -1499,7 +1500,7 @@ void performPeepholeOptimizations(IRFunction &M) {
 }
 
 /// Perform optimizations on the IR representation.
-void glow::optimize(IRFunction &M, CompilationMode mode) {
+void glow::optimize(IRFunction &M, CompilationMode mode, const Backend &B) {
   M.verify();
   if (!optimizeIR)
     return;
@@ -1513,7 +1514,8 @@ void glow::optimize(IRFunction &M, CompilationMode mode) {
   optimizeExtracts(M);
 
   // Reuse buffers from previous operations.
-  shareBuffers(M);
+  if (B.shouldShareBuffers())
+    shareBuffers(M);
 
   performPeepholeOptimizations(M);
 

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "BackendTestUtils.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
@@ -54,7 +55,7 @@ TEST(Optimizer, dseBasic) {
   bb.createElementSelectInst("select", output, input1, output, input2);
   bb.createElementAddInst("elem_add2", output, input2, input2);
 
-  optimize(M, CompilationMode::Infer);
+  optimize(M, CompilationMode::Infer, MockBackend());
 
   // Check that the first relu instruction  and select are eliminated, because
   // their outputs are never read.
@@ -82,7 +83,7 @@ TEST(Optimizer, dseDoNotRemloveLastWriteIntoWeightVar) {
       "cast", output, mod.uniqueType(Type(glow::ElemKind::FloatTy, {1, 1, 1})),
       {0, 0, 0});
 
-  optimize(M, CompilationMode::Infer);
+  optimize(M, CompilationMode::Infer, MockBackend());
 
   // Check that the first relu instruction  and select are eliminated, because
   // their outputs are never read.
@@ -117,7 +118,7 @@ TEST(Optimizer, shareBuffers) {
   bb.createDeallocActivationInst("dealloc2", alloc2);
   bb.createDeallocActivationInst("dealloc1", alloc1);
 
-  optimize(M, CompilationMode::Infer);
+  optimize(M, CompilationMode::Infer, MockBackend());
 
   // Check that the first relu instruction  and select are eliminated, because
   // their outputs are never read.
@@ -150,7 +151,7 @@ TEST(Optimizer, copyPropagation) {
   bb.createDeallocActivationInst("dealloc2", alloc2);
   bb.createDeallocActivationInst("dealloc1", alloc1);
 
-  optimize(M, CompilationMode::Infer);
+  optimize(M, CompilationMode::Infer, MockBackend());
 
   EXPECT_EQ(M.getInstrs().size(), 5);
 
@@ -182,7 +183,7 @@ TEST(Optimizer, copyPropagationSimple) {
   bb.createDeallocActivationInst("dealloc2", alloc2);
   bb.createDeallocActivationInst("dealloc1", alloc1);
 
-  optimize(M, CompilationMode::Infer);
+  optimize(M, CompilationMode::Infer, MockBackend());
 
   EXPECT_EQ(M.getInstrs().size(), 2);
 
@@ -218,7 +219,7 @@ TEST(Optimizer, copyPropagationTranspose) {
   bb.createDeallocActivationInst("dealloc2", alloc2);
   bb.createDeallocActivationInst("dealloc1", alloc1);
 
-  optimize(M, CompilationMode::Infer);
+  optimize(M, CompilationMode::Infer, MockBackend());
 
   EXPECT_EQ(M.getInstrs().size(), 5);
 
@@ -251,7 +252,7 @@ TEST(Optimizer, insertOptimizer) {
 
   bb.createDeallocActivationInst("deallocSrc", allocSrc);
 
-  optimize(M, CompilationMode::Infer);
+  optimize(M, CompilationMode::Infer, MockBackend());
 
   // After optimization, should be left with two splats and a tensorview; the
   // insert, alloc, and dealloc should be gone.
@@ -296,7 +297,7 @@ TEST(Optimizer, twoInsertsWithBuffersOptimizer) {
   bb.createDeallocActivationInst("deallocSrc2", allocSrc2);
   bb.createDeallocActivationInst("deallocSrc1", allocSrc1);
 
-  optimize(M, CompilationMode::Infer);
+  optimize(M, CompilationMode::Infer, MockBackend());
 
   // After optimization, should be left with three splats and two tensorviews;
   // the inserts, allocs, and deallocs should be gone.
@@ -343,7 +344,7 @@ TEST(Optimizer, twoExtractsWithBuffersOptimizer) {
   bb.createDeallocActivationInst("deallocDest2", allocDest2);
   bb.createDeallocActivationInst("deallocDest1", allocDest1);
 
-  optimize(M, CompilationMode::Infer);
+  optimize(M, CompilationMode::Infer, MockBackend());
 
   // After optimization, the extracts should be gone, as well as both allocDests
   // and their deallocs. Should be left with splatSrc, allocSrc, deallocSrc, two

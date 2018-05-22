@@ -154,7 +154,7 @@ void ExecutionEngine::generateIR(CompilationMode mode, Function *F) {
   IR_->generateIR();
 
   // Optimize the generated IR.
-  ::glow::optimize(*IR_, mode);
+  ::glow::optimize(*IR_, mode, *IP_.get());
 }
 
 void ExecutionEngine::compile(CompilationMode mode, Function *F) {
