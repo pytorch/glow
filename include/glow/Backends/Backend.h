@@ -78,6 +78,10 @@ public:
   /// \returns true if the supplied Node \N should be lowered. By default, all
   /// Nodes are candidates for lowering.
   virtual bool shouldLower(Node *N) { return true; }
+
+  /// \returns true if the Backend wants the buffer sharing optimization
+  /// performed.
+  virtual bool shouldShareBuffers() const { return true; }
 };
 
 /// Create a backend of kind \p kind, to run the IR function \p M.

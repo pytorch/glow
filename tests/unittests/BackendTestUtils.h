@@ -20,6 +20,16 @@
 
 namespace glow {
 
+/// MockBackend used only for unit testing.
+class MockBackend : public Backend {
+  void clear() override {}
+  void init() override {}
+  void doForwardPass() override {}
+  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
+    return false;
+  }
+};
+
 void inferBatchedAddNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                         BackendKind kind);
 
