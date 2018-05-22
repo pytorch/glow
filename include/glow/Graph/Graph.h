@@ -260,6 +260,13 @@ public:
   Node *createSqueeze(llvm::StringRef name, NodeValue input,
                       llvm::ArrayRef<size_t> axes);
 
+  /// Create \p outputNum slice nodes of \p input. Slices happen along dimension
+  /// number \p axis. Array \p split defines lengths of slices. If \p split is
+  /// empty, \p input is split to equal sized parts.
+  void createSplit(llvm::StringRef name, NodeValue input, size_t outputNum,
+                   size_t axis, llvm::ArrayRef<size_t> split,
+                   std::vector<Node *> &outputs);
+
   BatchNormalizationNode *createBatchNormalization(llvm::StringRef name,
                                                    NodeValue input,
                                                    size_t channelIdx = 0,

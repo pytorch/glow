@@ -714,6 +714,36 @@ Node *Function::createSqueeze(llvm::StringRef name, NodeValue input,
   return createReshape(name.str() + ".reshape", input, newDims);
 }
 
+void Function::createSplit(llvm::StringRef name, NodeValue input,
+                           size_t outputNum, size_t axis,
+                           llvm::ArrayRef<size_t> split,
+                           std::vector<Node *> &outputs) {
+  auto inDims = input.dims();
+  if (split.empty()) {
+    assert(inDims[axis] % outputNum == 0 &&
+           "Dimension to split must be divisible by outputs number.");
+  } else {
+    assert(outputNum == split.size() &&
+           "Number of splits must be divisible by outputs number.");
+  }
+
+  ShapeVector start(inDims.size(), 0);
+  ShapeVector end(inDims.begin(), inDims.end());
+  end[axis] = 0;
+
+  outputs.resize(outputNum);
+  for (size_t i = 0; i < outputNum; i++) {
+    size_t curLength = split.empty() ? inDims[axis] / outputNum : split[i];
+    end[axis] += curLength;
+    outputs[i] =
+        createSlice(name.str() + ".out" + std::to_string(i), input, start, end);
+    start[axis] = end[axis];
+  }
+
+  assert(end[axis] == inDims[axis] &&
+         "Total size of results must be equal to input size.");
+}
+
 BatchNormalizationNode *Function::createBatchNormalization(llvm::StringRef name,
                                                            NodeValue input,
                                                            size_t channelIdx,
