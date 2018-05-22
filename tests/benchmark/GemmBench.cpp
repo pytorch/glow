@@ -90,7 +90,7 @@ int main() {
           size_t n = j ? 32 : x;
           size_t k = p ? 32 : x;
 
-          GemmBench b(m, 32, m);
+          GemmBench b(m, n, k);
           auto time = bench(&b, reps);
           printf("%4zu, %-4zu,   %4zu, %-4zu,   %4zu,  %-4zu,   %5.2lf\n", m, n,
                  m, k, k, n, b.gflops() / time);
