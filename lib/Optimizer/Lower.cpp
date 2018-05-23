@@ -525,11 +525,11 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
   BNG.getResult().replaceAllUsesOfWith(result);
 }
 
-void glow::lower(Function *F, CompilationMode mode, Backend *B) {
+void glow::lower(Function *F, CompilationMode mode, const Backend &B) {
   auto &nodes = F->getNodes();
 
   for (auto const &node : nodes) {
-    if (B && !B->shouldLower(node)) {
+    if (!B.shouldLower(node)) {
       continue;
     }
     if (auto *RN = dyn_cast<RegressionNode>(node)) {

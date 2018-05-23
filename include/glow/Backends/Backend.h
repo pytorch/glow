@@ -77,7 +77,7 @@ public:
 
   /// \returns true if the supplied Node \N should be lowered. By default, all
   /// Nodes are candidates for lowering.
-  virtual bool shouldLower(Node *N) { return true; }
+  virtual bool shouldLower(Node *N) const { return true; }
 
   /// \returns true if the Backend wants the buffer sharing optimization
   /// performed.
