@@ -324,7 +324,8 @@ Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
   return createVariable(FT, name, visibility, train, val);
 }
 
-llvm::StringRef Module::uniqueName(llvm::StringRef name) {
+llvm::StringRef Module::uniqueName(llvm::StringRef name,
+                                   llvm::StringSet<> &stringTable) {
   std::string legalName;
 
   // Legalize the name.
@@ -339,7 +340,7 @@ llvm::StringRef Module::uniqueName(llvm::StringRef name) {
     legalName = "A" + legalName;
   }
 
-  auto it = uniqueNames_.insert(legalName);
+  auto it = stringTable.insert(legalName);
   if (it.second) {
     // This name is already unique!
     return it.first->first();
@@ -348,7 +349,7 @@ llvm::StringRef Module::uniqueName(llvm::StringRef name) {
   for (unsigned i = 1; i < 10000; i++) {
     auto suffix = std::to_string(i);
 
-    auto it = uniqueNames_.insert(legalName + suffix);
+    auto it = stringTable.insert(legalName + suffix);
     if (it.second) {
       // Found a unique name!
       return it.first->first();
@@ -357,8 +358,6 @@ llvm::StringRef Module::uniqueName(llvm::StringRef name) {
 
   llvm_unreachable("Unable to find a unique a name.");
 }
-
-void Module::assignUniqueName(Node *N) { N->setName(uniqueName(N->getName())); }
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       size_t depth, size_t kernel,
@@ -900,9 +899,7 @@ SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest = getParent()->createVariable(
       input.getType(), name, VisibilityKind::Public, Variable::TrainKind::None);
 
-  std::string nodeName{"_save_"};
-  nodeName += name;
-  return addNode(new SaveNode(nodeName, input, dest));
+  return addNode(new SaveNode(name, input, dest));
 }
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input,
@@ -1495,6 +1492,15 @@ void Function::dumpDAG(const char *dotFilename) {
   myfile.close();
 }
 
+Node *Function::getNodeByName(llvm::StringRef name) {
+  for (auto *N : getNodes()) {
+    if (N->getName().equals(name)) {
+      return N;
+    }
+  }
+  return nullptr;
+}
+
 void Module::eraseVariable(VariablesList::iterator I) {
   if (I == vars_.end())
     return;
@@ -1604,6 +1610,8 @@ void Function::verify() const {
     dump();
     llvm_unreachable("Multiple nodes with the same name");
   }
+
+  NameToNode.clear();
 
   for (auto *N : nodes_) {
     if (NameToNode.insert({N->getName(), N}).second)

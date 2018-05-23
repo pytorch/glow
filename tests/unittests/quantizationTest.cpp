@@ -140,18 +140,13 @@ static void fillStableRandomData(Handle<float> H, size_t seed,
 }
 
 /// Builds a simple graph, returns back input var and save node through refs.
-static std::pair<Function *, SaveNode *>
-createSimpleGraphForQuantization(Module *M) {
-  Function *F = M->createFunction("main");
+static Function *createSimpleGraphForQuantization(Module *M, Variable *A,
+                                                  Variable *B,
+                                                  llvm::StringRef funcName) {
+  Function *F = M->createFunction(funcName);
 
-  auto *A = F->getParent()->createVariable(ElemKind::FloatTy, {1, 32, 32, 2},
-                                           "A", VisibilityKind::Public,
-                                           Variable::TrainKind::None);
   fillStableRandomData(A->getHandle(), 1100, 1);
 
-  auto *B = F->getParent()->createVariable(ElemKind::FloatTy, {10, 9}, "B",
-                                           VisibilityKind::Public,
-                                           Variable::TrainKind::None);
   fillStableRandomData(B->getHandle(), 2001, 1);
 
   ConvolutionNode *CV = F->createConv("conv", A, 16, 5, 1, 2, 2);
@@ -182,15 +177,24 @@ createSimpleGraphForQuantization(Module *M) {
   fillStableRandomData(filter2->getPayload().getHandle(), 4000, 1);
 
   auto *O = F->createConcat("concat", {S, B}, 0);
-  SaveNode *SN = F->createSave("save", O);
-  return {F, SN};
+  F->createSave("save", O);
+  return F;
 }
 
 TEST_P(Quantization, end2end) {
+  auto *mod = &interpreterEE.getModule();
+
+  auto *A =
+      mod->createVariable(ElemKind::FloatTy, {1, 32, 32, 2}, "A",
+                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto *B =
+      mod->createVariable(ElemKind::FloatTy, {10, 9}, "B",
+                          VisibilityKind::Public, Variable::TrainKind::None);
+
   // STEP1 - Generate the first network to record the quantization parameters.
-  auto res = createSimpleGraphForQuantization(&interpreterEE.getModule());
-  Function *F1 = res.first;
-  SaveNode *result1 = res.second;
+  Function *F1 = createSimpleGraphForQuantization(mod, A, B, "main");
+  Function *F2 = F1->clone("main2");
+  SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
 
   glow::profileQuantization(F1);
   interpreterEE.compile(CompilationMode::Infer, F1);
@@ -203,9 +207,7 @@ TEST_P(Quantization, end2end) {
       quantization::generateNodeQuantizationInfos(F1);
 
   // STEP2 - Use the profile to quantize a network.
-  auto res2 = createSimpleGraphForQuantization(&backendSpecificEE.getModule());
-  Function *F2 = res2.first;
-  SaveNode *result2 = res2.second;
+  SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
   quantization::generateQuantizedGraph(backendSpecificEE, F2, QI);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
