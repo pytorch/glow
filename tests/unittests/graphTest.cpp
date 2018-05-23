@@ -15,6 +15,7 @@
  */
 
 #include "glow/Graph/Graph.h"
+#include "BackendTestUtils.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
@@ -37,7 +38,7 @@ TEST(Graph, simpleTestConv) {
   F->createSave("Save", K);
   F->dump();
   F->dumpDAG();
-  lower(F, CompilationMode::Train);
+  lower(F, CompilationMode::Train, MockBackend());
   ::optimize(F, CompilationMode::Train);
   M.generateIR();
   M.dump();
@@ -61,7 +62,7 @@ TEST(Graph, simpleTestFC) {
   F->createSave("Save", O);
   F->dump();
   F->dumpDAG();
-  lower(F, CompilationMode::Train);
+  lower(F, CompilationMode::Train, MockBackend());
   ::optimize(F, CompilationMode::Train);
   M.generateIR();
   M.dump();
@@ -95,7 +96,7 @@ TEST(Graph, QuantizationProfileNodes) {
   // Simulate actual usage.
   ::optimize(F, CompilationMode::Infer);
   ::glow::profileQuantization(F);
-  lower(F, CompilationMode::Infer);
+  lower(F, CompilationMode::Infer, MockBackend());
   ::optimize(F, CompilationMode::Infer);
   M.generateIR();
 
