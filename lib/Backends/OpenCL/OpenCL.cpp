@@ -129,6 +129,7 @@ static std::string getKernelName(const char *baseName, ElemKind elemTy) {
   default:
     GLOW_ASSERT("Unsupported element type");
   }
+  return "";
 }
 
 cl_kernel OCLBackend::createKernel(const std::string &name,
