@@ -98,7 +98,7 @@ void CPUBackend::emitJitMain() {
   // use of it.
   auto *entryF = irgen_.getModule().getFunction(irgen_.getMainEntryName());
   entryF->setLinkage(llvm::Function::InternalLinkage);
-  builder.CreateCall(entryF, initFunctionCallArgs);
+  createCall(builder, entryF, initFunctionCallArgs);
   // Terminate the function.
   builder.CreateRetVoid();
 }
@@ -304,7 +304,7 @@ void CPUBackend::emitBundleEntryFunction() {
   // use of it.
   auto *entryF = irgen_.getModule().getFunction("main");
   entryF->setLinkage(llvm::Function::InternalLinkage);
-  builder.CreateCall(entryF, initFunctionCallArgs);
+  createCall(builder, entryF, initFunctionCallArgs);
   // Terminate the function.
   builder.CreateRetVoid();
   // Create the debug info for the bundle entry point function.
@@ -413,4 +413,21 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
   }
 
   return true;
+}
+
+llvm::CallInst *glow::createCall(llvm::IRBuilder<> &builder,
+                                 llvm::Function *callee,
+                                 llvm::ArrayRef<llvm::Value *> args) {
+#ifndef NDEBUG
+  llvm::FunctionType *FTy = callee->getFunctionType();
+  assert((args.size() == FTy->getNumParams() ||
+          (FTy->isVarArg() && args.size() > FTy->getNumParams())) &&
+         "Calling a function with bad signature: wrong number of arguments.");
+
+  for (unsigned i = 0; i != args.size(); ++i)
+    assert((i >= FTy->getNumParams() ||
+            FTy->getParamType(i) == args[i]->getType()) &&
+           "Calling a function with a bad signature: argument type mismatch.");
+#endif
+  return builder.CreateCall(callee, args);
 }
