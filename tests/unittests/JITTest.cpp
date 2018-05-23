@@ -362,7 +362,7 @@ TEST_P(JITCorrectnessTest, poolMaxGradTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST_P(JITCorrectnessTest, intLookupTable) {
+TEST_P(CPUOnly, intLookupTable) {
   constexpr size_t inputSize = 100;
   Tensor inputs(ElemKind::Int8QTy, {inputSize}, 0.8, 4);
   inputs.getHandle<int8_t>().randomize(-128, 127);
