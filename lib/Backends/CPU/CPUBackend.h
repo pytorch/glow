@@ -38,6 +38,12 @@ class Instruction;
 class WeightVar;
 struct AllocationsInfo;
 
+/// Helper function to create a new CallInst, with the specified \p builder, \p
+/// callee, and \p args. Verifies that the function signature is correct,
+/// and then creates and \returns the CallInst.
+llvm::CallInst *createCall(llvm::IRBuilder<> &builder, llvm::Function *callee,
+                           llvm::ArrayRef<llvm::Value *> args);
+
 class CPUBackend final : public Backend {
   /// The Module that holds the glow IR. This does not own the module.
   IRFunction *F_;

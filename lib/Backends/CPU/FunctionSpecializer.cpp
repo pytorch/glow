@@ -145,7 +145,7 @@ class FunctionSpecializer {
       argIdx++;
     }
     // Create the invocation of the original function.
-    builder.CreateCall(F, forwardedArgs);
+    createCall(builder, F, forwardedArgs);
     builder.CreateRetVoid();
     DEBUG(llvm::dbgs() << "\n\nCreated specialized function " << specializedName
                        << "\n";
@@ -195,7 +195,7 @@ class FunctionSpecializer {
     // Generate a call of the specialized function before the current call
     // instruction.
     builder.SetInsertPoint(call);
-    builder.CreateCall(specializedF, argsForSpecialized);
+    createCall(builder, specializedF, argsForSpecialized);
     return true;
   }
 
