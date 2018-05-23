@@ -42,29 +42,28 @@ class Module final {
   /// A uniqued list of types. Types in this list can be equated by comparing
   /// their addresses.
   TypesList types_{};
-  /// Stores a list of unique names that were used by the module at one point.
-  llvm::StringSet<> uniqueNames_{};
+  /// Stores a list of unique variable names that were used by the module at
+  /// some point.
+  llvm::StringSet<> uniqueVariableNames_{};
   /// A list of variables that the Module owns.
   VariablesList vars_;
-
-  /// \returns unique legal name that's based on the string \p name. Legal
-  /// names are legal C identifiers in the form: "[a-zA-Z_][a-zA-Z0-9_]*".
-  llvm::StringRef uniqueName(llvm::StringRef name);
 
 public:
   Module() = default;
 
   ~Module();
 
+  /// \returns unique legal name that's based on the string \p name. Legal
+  /// names are legal C identifiers in the form: "[a-zA-Z_][a-zA-Z0-9_]*".
+  static llvm::StringRef uniqueName(llvm::StringRef name,
+                                    llvm::StringSet<> &stringTable);
+
   /// Inserts the variable \p V to the list of variables.
   Variable *addVar(Variable *V) {
-    assignUniqueName(V);
+    V->setName(uniqueName(V->getName(), uniqueVariableNames_));
     vars_.push_back(V);
     return V;
   }
-
-  /// Assign unique name to node \p N.
-  void assignUniqueName(Node *N);
 
   /// Return a pointer to a uniqued type \p T.
   TypeRef uniqueType(const Type &T);
@@ -151,6 +150,10 @@ class Function final : public Named {
   /// A list of nodes that the Function owns.
   NodesList nodes_;
 
+  /// Stores a list of unique node names that were used by the module at some
+  /// point.
+  llvm::StringSet<> uniqueNodeNames_{};
+
   /// A reference to the owner of the function.
   Module *parent_;
 
@@ -165,7 +168,7 @@ public:
 
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
-    getParent()->assignUniqueName(N);
+    N->setName(Module::uniqueName(N->getName(), uniqueNodeNames_));
     nodes_.push_back(N);
     return N;
   }
@@ -433,6 +436,9 @@ public:
 
   /// \returns the list of nodes that the Function owns.
   NodesList &getNodes() { return nodes_; }
+
+  /// \returns a node with the name \p name or nullptr if no node was found.
+  Node *getNodeByName(llvm::StringRef name);
 
   const NodesList &getNodes() const { return nodes_; }
 };
