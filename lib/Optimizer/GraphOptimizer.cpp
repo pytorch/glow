@@ -564,7 +564,7 @@ static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned dim) {
 
   assert(aStart.size() > dim && "Invalid dimension");
 
-  for (int i = 0, e = aStart.size(); i < e; i++) {
+  for (size_t i = 0, e = aStart.size(); i < e; i++) {
     if (i == dim) {
       auto resSize = A->getResult().dims();
       // This is the stride (the delta between the two slices on the requested
