@@ -31,8 +31,7 @@
 
 #include "gtest/gtest.h"
 
-#include <cassert>
-#include <cctype>
+#include <random>
 #include <string>
 
 using namespace glow;
@@ -280,10 +279,8 @@ struct HyphenNetwork {
 
   // Run `inputs` through the inference function and check the results against
   // `hyphens`. Return the number of errors.
-  unsigned inferenceErrors(ExecutionEngine &EE,
-  llvm::StringRef name,
-   Tensor &inputs,
-                           const vector<bool> &hyphens) {
+  unsigned inferenceErrors(ExecutionEngine &EE, llvm::StringRef name,
+                           Tensor &inputs, const vector<bool> &hyphens) {
     // Compilation is destructive because of target-specific lowering.
     // Compile a clone of the inference function.
     EE.compile(CompilationMode::Infer, infer_->clone(name));
@@ -334,10 +331,15 @@ TEST(HyphenTest, network) {
 
   // Randomly shuffle the training data.
   // This is required for stochastic gradient descent training.
-  for (size_t i = numSamples - 1; i > 0; i--) {
-    size_t j = nextRandInt(0, i);
-    std::swap(words[i], words[j]);
-    std::swap(hyphens[i], hyphens[j]);
+  {
+    // Use a deterministically seeded RNG.
+    std::mt19937 generator;
+    for (size_t i = numSamples - 1; i > 0; i--) {
+      std::uniform_int_distribution<> distribution(0, i);
+      size_t j = distribution(generator);
+      std::swap(words[i], words[j]);
+      std::swap(hyphens[i], hyphens[j]);
+    }
   }
 
   // Convert words and hyphens to a tensor representation.
@@ -353,12 +355,12 @@ TEST(HyphenTest, network) {
   // Now build the network.
   ExecutionEngine EE(BackendKind::CPU);
   EE.getConfig().learningRate = 0.8;
-  EE.getConfig().batchSize = 10;
+  EE.getConfig().batchSize = 50;
   HyphenNetwork net(EE.getModule(), EE.getConfig());
 
   // Train using mini-batch SGD.
   EE.compile(CompilationMode::Train, net.train_);
-  EE.runBatch(500, {net.input_, net.expected_}, {&inputs, &expected});
+  EE.runBatch(1000, {net.input_, net.expected_}, {&inputs, &expected});
 
   // Now test inference on the trained network.
   // Note that we have probably overfitted the data, so we expect 100% accuracy.
