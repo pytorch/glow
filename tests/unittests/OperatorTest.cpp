@@ -1629,7 +1629,7 @@ TEST_P(InterpAndCPU, GroupConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 100000);
 }
 
-TEST_P(InterpOnly, Int8Tanh) {
+TEST_P(InterpAndCPU, Int8Tanh) {
   constexpr size_t size = 10;
   auto *input = mod_.createVariable(ElemKind::FloatTy, {size}, "input");
   input->getHandle().randomize(-10.0, 10.0);
@@ -1664,7 +1664,7 @@ TEST_P(InterpOnly, Int8Tanh) {
   }
 }
 
-TEST_P(InterpOnly, Int8Sigmoid) {
+TEST_P(InterpAndCPU, Int8Sigmoid) {
   constexpr size_t size = 10;
   auto *input = mod_.createVariable(ElemKind::FloatTy, {size}, "input");
   input->getHandle().randomize(-10.0, 10.0);
@@ -1698,7 +1698,7 @@ TEST_P(InterpOnly, Int8Sigmoid) {
   }
 }
 
-TEST_P(InterpOnly, IntLookupTable) {
+TEST_P(InterpAndCPU, IntLookupTable) {
   constexpr size_t size = 6;
   auto *input = mod_.createVariable(ElemKind::Int8QTy, {size}, 1, 0, "input");
   input->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5};

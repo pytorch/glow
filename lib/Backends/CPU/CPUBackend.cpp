@@ -403,7 +403,9 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     case Kinded::Kind::RescaleQuantizedNodeKind:
     case Kinded::Kind::ReshapeNodeKind:
     case Kinded::Kind::SelectNodeKind:
+    case Kinded::Kind::SigmoidNodeKind:
     case Kinded::Kind::SubNodeKind:
+    case Kinded::Kind::TanhNodeKind:
     case Kinded::Kind::TopKNodeKind:
     case Kinded::Kind::TransposeNodeKind:
       return true;
