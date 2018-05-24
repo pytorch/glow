@@ -865,6 +865,94 @@ TEST_P(MLTest, convNetForImageRecognition) {
   }
 }
 
+/// Generate data for the regression test. Put a '1' in a random location in a
+/// clear tensor and report the coordinates of that pixel.
+static void generateRegressionTestData(Tensor &images, Tensor &labels) {
+  auto L = labels.getHandle<>();
+  auto image = images.getHandle<>();
+  unsigned numSamples = images.dims()[0];
+  image.clear(0);
+
+  for (size_t i = 0; i < numSamples; i++) {
+    // Generate the X,Y coordinates to place our object.
+    size_t x = nextRandInt(0, 9);
+    size_t y = nextRandInt(0, 9);
+    L.at({i, 0}) = x;
+    L.at({i, 1}) = y;
+    image.at({i, x, y, 0u}) = 1;
+  }
+}
+
+/// This is the "Where's Waldo" test. We place a pixel in a tensor and the
+/// network reports the coordinate of the pixel.
+TEST_P(MLTest, testFindPixelRegression) {
+  const unsigned numSamples = 1000;
+  const unsigned batchSize = 10;
+
+  EE_.getConfig().learningRate = 0.01;
+  EE_.getConfig().batchSize = batchSize;
+  EE_.getConfig().momentum = 0.9;
+
+  auto &mod = EE_.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input =
+      mod.createVariable(ElemKind::FloatTy, {batchSize, 10, 10, 1}, "input",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *ex =
+      mod.createVariable(ElemKind::FloatTy, {batchSize, 2}, "coordinates",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+
+  // A simple single-layer FC network could solve this program but we use a two
+  // layer FC network to give the compiler something slightly more complex to
+  // work with so we are adding another FC layer.
+  auto *FC0 = F->createFullyConnected("fc0", input, 6);
+  auto *RL0 = F->createRELU("relu0", FC0);
+  auto *FC1 = F->createFullyConnected("fc1", RL0, 2);
+  auto *R = F->createRegression("regression", FC1, ex);
+  auto *result = F->createSave("ret", R);
+  Function *TF = glow::differentiate(F, EE_.getConfig());
+  EE_.compile(CompilationMode::Train, TF);
+
+  Tensor images(ElemKind::FloatTy, {numSamples, 10, 10, 1});
+  Tensor labels(ElemKind::FloatTy, {numSamples, 2});
+  generateRegressionTestData(images, labels);
+
+  // Training:
+  EE_.runBatch(400, {input, ex}, {&images, &labels});
+  EE_.compile(CompilationMode::Infer, F);
+
+  // Generate the images used for testing.
+  Tensor testImages(ElemKind::FloatTy, {batchSize, 10, 10, 1});
+  Tensor testLabels(ElemKind::FloatTy, {batchSize, 2});
+  generateRegressionTestData(testImages, testLabels);
+
+  // Run the inference:
+  EE_.run({input}, {&testImages});
+
+  // A handle to the projected result.
+  auto RH = result->getVariable()->getHandle<>();
+  // A handle to the true label.
+  auto LH = testLabels.getHandle<>();
+
+  // Check how many of the coordinates that were reported are close to the real
+  // values.
+  unsigned correct = 0;
+
+  for (size_t i = 0; i < batchSize; i++) {
+    // Calculate the distance between the predicted value and correct value.
+    auto dx = LH.at({i, 0}) - RH.at({i, 0});
+    auto dy = LH.at({i, 1}) - RH.at({i, 1});
+    auto distance = std::sqrt(std::pow(dx, 2) + std::pow(dy, 2));
+
+    // A correct answer is one where the projected distance is somewhat close.
+    correct += distance < 3;
+  }
+
+  // Expect 90% of the results to be correct.
+  EXPECT_GE(correct, batchSize * 0.90);
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, MLTest,
                         ::testing::Values(BackendKind::Interpreter));
 
