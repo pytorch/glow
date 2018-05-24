@@ -60,7 +60,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   O = F->createRELU("relu", O);
   O = F->createRegression("reg", O, Ex);
 
-  ::glow::profileQuantization(F);
+  F = ::glow::profileQuantization(F);
 
   EE.compile(CompilationMode::Infer, F);
 

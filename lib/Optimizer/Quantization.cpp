@@ -22,16 +22,23 @@
 
 using namespace glow;
 
-/// Instrument function \p F with Quantization Profile nodes.
-/// Nodes should only be added when function is compiled in
-/// the Inference mode.
-void glow::profileQuantization(Function *F) {
+Function *glow::profileQuantization(Function *F, llvm::StringRef newFuncName) {
+  // Create a new name for the differentiated function, if none is given.
+  std::string tmpName;
+  if (newFuncName.empty()) {
+    tmpName = std::string(F->getName()) + "_profile";
+    newFuncName = tmpName;
+  }
+
+  // Clone the function.
+  Function *G = F->clone(newFuncName);
+
   // Iterate over all nodes in the graph and insert QuantizationProfile nodes
   // to observe tensor values from every node's output.
   std::unordered_set<NodeValue> nodesToInstrument;
 
   // Add Quantization Profile node to all of the floating point outputs.
-  for (const auto &node : F->getNodes()) {
+  for (const auto &node : G->getNodes()) {
     for (unsigned i = 0, e = node->getNumResults(); i < e; ++i) {
       if (node->getNthResult(i).getElementType() != ElemKind::FloatTy) {
         continue;
@@ -41,7 +48,7 @@ void glow::profileQuantization(Function *F) {
   }
 
   // Add Quantization Profile node to all floating point vars.
-  for (const auto &var : F->getParent()->getVars()) {
+  for (const auto &var : G->getParent()->getVars()) {
     if (var->getNthResult(0).getElementType() != ElemKind::FloatTy) {
       continue;
     }
@@ -50,6 +57,8 @@ void glow::profileQuantization(Function *F) {
   }
 
   for (const auto &node : nodesToInstrument) {
-    F->createQuantizationProfile("QuantizationProfile", node);
+    G->createQuantizationProfile("QuantizationProfile", node);
   }
+
+  return G;
 }

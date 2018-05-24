@@ -196,7 +196,7 @@ TEST_P(Quantization, end2end) {
   Function *F2 = F1->clone("main2");
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
 
-  glow::profileQuantization(F1);
+  F1 = glow::profileQuantization(F1);
   interpreterEE.compile(CompilationMode::Infer, F1);
 
   // Run graph to capture profile.

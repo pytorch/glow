@@ -95,10 +95,9 @@ TEST(Graph, QuantizationProfileNodes) {
 
   // Simulate actual usage.
   ::optimize(F, CompilationMode::Infer);
-  ::glow::profileQuantization(F);
+  F = ::glow::profileQuantization(F);
   lower(F, CompilationMode::Infer, MockBackend());
   ::optimize(F, CompilationMode::Infer);
-  M.generateIR();
 
   size_t numberOfProfileNodes =
       std::count_if(F->getNodes().begin(), F->getNodes().end(), [](Node *node) {

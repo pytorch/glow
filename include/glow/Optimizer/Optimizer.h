@@ -38,8 +38,10 @@ void optimize(Function *F, CompilationMode mode);
 void lower(Function *F, CompilationMode mode, const Backend &B);
 
 /// Instrument function \p F by inserting quantization profile nodes
-/// for capturing stats for quantization.
-void profileQuantization(Function *F);
+/// for capturing stats for quantization. The new quantized function is called
+/// \p newFuncName. If no name is given the method will generate a name.
+/// \returns a new function with the added quantization nodes.
+Function *profileQuantization(Function *F, llvm::StringRef newFuncName = "");
 
 } // namespace glow
 
