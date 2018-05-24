@@ -238,7 +238,7 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
       vstore8(VAL, i * 2, dest);                                               \
     }                                                                          \
     {                                                                          \
-      vtype SRC = vtype(val);                                                  \
+      vtype SRC = (vtype)val;                                                  \
       vtype VAL = body;                                                        \
       vstore8(VAL, i * 2 + 1, dest);                                           \
     }                                                                          \
@@ -332,8 +332,8 @@ __kernel void batchedreduceaddK(__global float *dest, __global float *batch,
 }
 
 __kernel void batchedreduceaddW(__global void *mem, cl_uint32_t dest,
-                                cl_uint32_t batch, size_t numSlice,
-                                size_t sliceSize) {
+                                cl_uint32_t batch, cl_uint32_t numSlice,
+                                cl_uint32_t sliceSize) {
   batchedreduceaddK(&mem[dest], &mem[batch], numSlice, sliceSize);
 }
 
