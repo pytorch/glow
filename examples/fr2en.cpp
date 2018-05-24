@@ -345,7 +345,7 @@ void Model::loadDecoder() {
     ::optimize(F, glow::CompilationMode::Infer);
 
     // Instrument the graph to capture profiles for nodes' outputs.
-    glow::profileQuantization(F);
+    F = glow::profileQuantization(F);
   }
 
   // Load the quantization profile and transform the graph.

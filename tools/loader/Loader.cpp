@@ -134,7 +134,7 @@ void Loader::compile() {
     ::optimize(F_, glow::CompilationMode::Infer);
 
     // Instrument the graph to capture profiles for nodes' outputs.
-    ::profileQuantization(F_);
+    F_ = ::profileQuantization(F_);
   }
 
   // Load the quantization profile and transform the graph.
