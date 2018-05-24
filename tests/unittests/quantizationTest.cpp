@@ -228,6 +228,141 @@ TEST_P(Quantization, end2end) {
   }
 }
 
+/// Fills the tensor \p H with some stable random integers with the seed \p seed
+/// and the range [0, scale).
+static void fillStableRandomIndex(Handle<size_t> H, size_t seed,
+                                  size_t scale = 10) {
+  for (size_t i = 0, e = H.size(); i < e; i++) {
+    H.raw(i) = int(i * 1921 + seed) % scale;
+  }
+}
+
+/// Builds a graph with two GRUs and saves output from last hidden node.
+static Function *createGRUForQuantization(Module *M, llvm::StringRef funcName) {
+  Function *F = M->createFunction(funcName);
+
+  constexpr unsigned sequenceSize = 2;
+  constexpr unsigned embeddingSize = 10;
+  constexpr unsigned languageSize = 10;
+  constexpr unsigned batchSize = 5;
+  constexpr unsigned hiddenSize = 3 * embeddingSize;
+
+  // STEP1 - Initialize inputs into GRU
+  auto *emb = F->getParent()->createVariable(
+      ElemKind::FloatTy, {languageSize, embeddingSize}, "embedding",
+      VisibilityKind::Public, Variable::TrainKind::None);
+  fillStableRandomData(emb->getHandle(), 4565, 1);
+
+  auto *input = F->getParent()->createVariable(
+      ElemKind::IndexTy, {batchSize, sequenceSize}, "input",
+      VisibilityKind::Public, Variable::TrainKind::None);
+  fillStableRandomIndex(input->getHandle<size_t>(), 7227, 10);
+
+  auto *hiddenInit = F->getParent()->createVariable(
+      ElemKind::FloatTy, {batchSize, embeddingSize}, "hiddenInit",
+      VisibilityKind::Public, Variable::TrainKind::None);
+  hiddenInit->getPayload().zero();
+  Node *hidden = hiddenInit;
+
+  for (unsigned step = 0; step < sequenceSize; step++) {
+    // STEP2 - Gather a single set of embeddings for the GRU
+    Node *inputEmbedded = F->createGather("gru.embedding", emb, input);
+    Node *inputSlice =
+        F->createSlice("gru.inputSlice", inputEmbedded, {0, step, 0},
+                       {batchSize, step + 1, embeddingSize});
+    Node *reshape =
+        F->createReshape("gru.reshape", inputSlice, {batchSize, embeddingSize});
+
+    // STEP3 - Generate a GRU
+    // reference implementation:
+    // https://github.com/pytorch/pytorch/blob/dd5c195646b941d3e20a72847ac48c41e272b8b2/torch/nn/_functions/rnn.py#L46
+    // similar to /examples/fr2en.cpp
+
+    auto *FCi = F->createFullyConnected("gru.fci", reshape, hiddenSize);
+    Variable *biasI = cast<Variable>(FCi->getBias());
+    Variable *filterI = cast<Variable>(FCi->getWeights());
+    fillStableRandomData(biasI->getPayload().getHandle(), 8877, 1);
+    fillStableRandomData(filterI->getPayload().getHandle(), 1441, 1);
+
+    auto *FCh = F->createFullyConnected("gru.fch", hidden, hiddenSize);
+    Variable *biasH = cast<Variable>(FCh->getBias());
+    Variable *filterH = cast<Variable>(FCh->getWeights());
+    fillStableRandomData(biasH->getPayload().getHandle(), 9009, 1);
+    fillStableRandomData(filterH->getPayload().getHandle(), 1001, 1);
+
+    Node *i_r =
+        F->createSlice("gru.i_r", FCi, {0, 0}, {batchSize, embeddingSize});
+    Node *i_i = F->createSlice("gru.i_i", FCi, {0, embeddingSize},
+                               {batchSize, 2 * embeddingSize});
+    Node *i_n = F->createSlice("gru.i_n", FCi, {0, 2 * embeddingSize},
+                               {batchSize, 3 * embeddingSize});
+
+    Node *h_r =
+        F->createSlice("gru.h_r", FCh, {0, 0}, {batchSize, embeddingSize});
+    Node *h_i = F->createSlice("gru.h_i", FCh, {0, embeddingSize},
+                               {batchSize, 2 * embeddingSize});
+    Node *h_n = F->createSlice("gru.h_n", FCh, {0, 2 * embeddingSize},
+                               {batchSize, 3 * embeddingSize});
+
+    Node *resetgate = F->createSigmoid("gru.resetgate",
+                                       F->createAdd("i_r_plus_h_r", i_r, h_r));
+    Node *inputgate = F->createSigmoid("gru.inputgate",
+                                       F->createAdd("i_i_plus_h_i", i_i, h_i));
+    Node *newgate = F->createTanh(
+        "gru.newgate",
+        F->createAdd("i_n_plus_rg_mult_h_n", i_n,
+                     F->createMul("rg_mult_h_n", resetgate, h_n)));
+    hidden = F->createAdd(
+        "gru.newhidden", newgate,
+        F->createMul("ig_mult_hmng", inputgate,
+                     F->createSub("hidden_minus_newgate", hidden, newgate)));
+  }
+  // No-op TopK selection to test quantization
+  Node *downsample = F->createTopK("gru.downsample", hidden, embeddingSize / 2);
+
+  F->createSave("save", {downsample, 0});
+  return F;
+}
+
+TEST_P(Quantization, end2endGRU) {
+  // STEP1 - Generate the first network to record the quantization parameters.
+  auto *mod = &interpreterEE.getModule();
+  Function *F1 = createGRUForQuantization(mod, "main");
+  Function *F2 = F1->clone("main2");
+  SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
+
+  F1 = glow::profileQuantization(F1);
+  interpreterEE.compile(CompilationMode::Infer, F1);
+
+  // Run graph to capture profile.
+  interpreterEE.run({}, {});
+
+  // Get quantization infos and build new quantized graph.
+  std::vector<NodeQuantizationInfo> QI =
+      quantization::generateNodeQuantizationInfos(F1);
+
+  // STEP2 - Use the profile to quantize a network.
+  SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
+
+  quantization::generateQuantizedGraph(backendSpecificEE, F2, QI);
+  backendSpecificEE.compile(CompilationMode::Infer, F2);
+  backendSpecificEE.run({}, {});
+
+  // STEP3 - Compare the results of the original and quantized functions.
+  auto result1Handle = result1->getVariable()->getHandle();
+  auto result2Handle = result2->getVariable()->getHandle();
+
+  EXPECT_EQ(result1Handle.size(), result2Handle.size());
+
+  for (int i = 0, e = result1Handle.size(); i < e; ++i) {
+    float mx = result2Handle.raw(result2Handle.minMaxArg().second);
+    double diff = std::fabs(result2Handle.raw(i) - result1Handle.raw(i)) / mx;
+
+    // Allow 3% difference.
+    EXPECT_NEAR(diff, 0, 0.03);
+  }
+}
+
 TEST(Quantization, rescaleSameType) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
