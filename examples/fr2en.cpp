@@ -358,7 +358,7 @@ void Model::loadDecoder() {
     auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
 
     // Quantize the graph based on the captured profile.
-    glow::quantization::generateQuantizedGraph(EE_, F, quantizationInfos);
+    F = glow::quantization::quantizeFunction(EE_, quantizationInfos, F);
   }
 }
 

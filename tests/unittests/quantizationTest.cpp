@@ -123,7 +123,7 @@ TEST(Quantization, quantizeGraph) {
       {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6, 0}},
   };
 
-  quantization::generateQuantizedGraph(EE, F, QI);
+  F = quantization::quantizeFunction(EE, QI, F);
 
   // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer, F);
@@ -209,7 +209,7 @@ TEST_P(Quantization, end2end) {
   // STEP2 - Use the profile to quantize a network.
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
-  quantization::generateQuantizedGraph(backendSpecificEE, F2, QI);
+  F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run({}, {});
 
@@ -344,7 +344,7 @@ TEST_P(Quantization, end2endGRU) {
   // STEP2 - Use the profile to quantize a network.
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
-  quantization::generateQuantizedGraph(backendSpecificEE, F2, QI);
+  F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run({}, {});
 

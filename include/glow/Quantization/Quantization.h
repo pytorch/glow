@@ -114,12 +114,15 @@ template <class SrcTy, class DestTy> DestTy clip(SrcTy in) {
   return std::max<SrcTy>(mn, std::min<SrcTy>(mx, in));
 }
 
-/// Converts floating point graph to a quantized one.
-/// Note, if not all operators have a conversion support graph ends up being
-/// hybrid.
-void generateQuantizedGraph(
-    const ExecutionEngine &EE, Function *F,
-    llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos);
+/// Quantizes the function \p F into a new unoptimized partially quantized
+/// function based on \p quantizationInfos. This method converts to integer as
+/// many nodes as permitted by the backend \p EE. The new quantized function is
+/// called \p newFuncName. If no name is given the method will generate a name.
+/// \returns a new quantized function.
+Function *
+quantizeFunction(const ExecutionEngine &EE,
+                 llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
+                 Function *F, llvm::StringRef newFuncName = "");
 
 } // namespace quantization
 

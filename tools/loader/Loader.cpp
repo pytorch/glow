@@ -146,8 +146,15 @@ void Loader::compile() {
 
     auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
 
+    // In AOT compilation mode the name of the symbol depends on the name of the
+    // function. Our tutorial expects the quantized name to be identical to the
+    // original name, so we rename the floating-point network and give the
+    // quantized network a new name.
+    std::string oldName = F_->getName();
+    F_->setName("old");
+
     // Quantize the graph based on the captured profile.
-    quantization::generateQuantizedGraph(EE_, F_, quantizationInfos);
+    F_ = quantization::quantizeFunction(EE_, quantizationInfos, F_, oldName);
   }
 
   if (emittingBundle()) {

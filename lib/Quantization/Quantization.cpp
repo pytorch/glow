@@ -560,12 +560,17 @@ postProcessQuantizedNode(Function *F, Node *quantizedNode,
   return quantizedNode;
 }
 
-void generateQuantizedGraph(
-    const ExecutionEngine &EE, Function *F,
-    llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos) {
-  if (F->getNodes().empty()) {
-    return;
+Function *
+quantizeFunction(const ExecutionEngine &EE,
+                 llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
+                 Function *F, llvm::StringRef newFuncName) {
+  std::string tmpName;
+  if (newFuncName.empty()) {
+    tmpName = std::string(F->getName()) + "_quantized";
+    newFuncName = tmpName;
   }
+
+  Function *G = F->clone(newFuncName);
 
   // Build a mapping between node name and TensorQuantizatonParams.
   std::unordered_map<std::string, TensorQuantizationParams> nodeToTQP;
@@ -576,8 +581,8 @@ void generateQuantizedGraph(
 
   // For every unprocessed node in the graph we keep the invariant of having
   // all inputs to be float typed.
-  auto nodeIt = F->getNodes().end();
-  auto stopIt = F->getNodes().begin();
+  auto nodeIt = G->getNodes().end();
+  auto stopIt = G->getNodes().begin();
   do {
     --nodeIt;
     Node *node = *nodeIt;
@@ -589,13 +594,13 @@ void generateQuantizedGraph(
         EE.isOpSupported(node->getKind(), ElemKind::Int8QTy)) {
       // 1) Quantize all of the inputs based on the profiles.
       //    Quantize only floating point inputs.
-      auto quantizedInputs = quantizeInputs(F, node, nodeToTQP);
+      auto quantizedInputs = quantizeInputs(G, node, nodeToTQP);
 
       auto qParams = getQuantizationParameters(node, nodeToTQP);
 
       // 2) Quantize the node.
-      Node *quantizedNode = quantizeNode(F, node, quantizedInputs, qParams);
-      quantizedNode = postProcessQuantizedNode(F, quantizedNode, qParams);
+      Node *quantizedNode = quantizeNode(G, node, quantizedInputs, qParams);
+      quantizedNode = postProcessQuantizedNode(G, quantizedNode, qParams);
       assert(quantizedNode != nullptr && "Node must be quantized");
 
       // 3) Dequantize all outputs of the node so that invariant is kept.
@@ -611,7 +616,7 @@ void generateQuantizedGraph(
           continue;
         }
 
-        auto *dequantized = F->createDequantize(
+        auto *dequantized = G->createDequantize(
             "dequantize", quantizedNode->getNthResult(outNum));
 
         // 4) Replace all usages of the floating point node output by the
@@ -625,6 +630,8 @@ void generateQuantizedGraph(
       }
     }
   } while (nodeIt != stopIt);
+
+  return G;
 }
 
 } // namespace quantization
