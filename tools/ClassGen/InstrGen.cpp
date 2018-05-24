@@ -265,6 +265,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("CmpLTE");
 
+  BB.newInstr("ElementCmpEQ")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoIRGen("CmpEQ");
+
   BB.newInstr("ElementPow")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Base", OperandKind::In)

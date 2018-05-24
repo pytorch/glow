@@ -967,6 +967,30 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     break;
   }
 
+  case Kinded::Kind::ElementCmpEQInstKind: {
+    auto *CI = cast<ElementCmpEQInst>(I);
+    auto *dest = CI->getDest();
+
+    auto *lhs = CI->getLHS();
+    auto *rhs = CI->getRHS();
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *lhsPtr = emitBufferAddress(builder, lhs, kernel, bufferToArgNum);
+    auto *rhsPtr = emitBufferAddress(builder, rhs, kernel, bufferToArgNum);
+
+    // Need _kernel suffix since these operations are implemented as
+    // "data-parallel" kernels in libjit.
+    auto *F = getFunction("element_cmp_eq_kernel", dest->getElementType());
+    auto *elementTy = getElementType(builder, dest);
+    auto *pointerNull =
+        llvm::ConstantPointerNull::get(elementTy->getPointerTo());
+    auto *stackedOpCall =
+        createCall(builder, F, {loopCount, lhsPtr, rhsPtr, pointerNull});
+    auto *destAddr =
+        builder.CreateGEP(elementTy, destPtr, loopCount, "buffer.element.addr");
+    builder.CreateStore(stackedOpCall, destAddr);
+    break;
+  }
+
   case Kinded::Kind::ElementMulInstKind: {
     auto *MI = cast<ElementMulInst>(I);
     auto *dest = MI->getDest();

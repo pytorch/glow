@@ -210,6 +210,13 @@ int main(int argc, char **argv) {
                     "mask that's consumed by the select instruction. The "
                     "format of the result is target- and type-specific.");
 
+  BB.newNode("CmpEQ")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .setDocstring("Performs an element-wise equal comparison on the LHS and "
+                    "RHS operands. Inputs must be integer.");
+
   BB.newNode("Pow")
       .addInput("Base")
       .addMember(MemberType::Float, "Exp")

@@ -90,6 +90,30 @@ TEST_P(InterpAndCPU, log) {
   }
 }
 
+TEST_P(InterpAndCPU, CmpEQ) {
+  auto *X = mod_.createVariable(ElemKind::IndexTy, {2, 7}, "X");
+  X->getPayload().getHandle<size_t>() = {0, 1, 17, 876, 1000, 44444, 9999999,
+                                         0, 1, 17, 876, 1000, 44444, 9999999};
+  auto *Y = mod_.createVariable(ElemKind::IndexTy, {2, 7}, "Y");
+  Y->getPayload().getHandle<size_t>() = {1, 2, 16, 900, 1111, 44544, 1999999,
+                                         0, 1, 17, 876, 1000, 44444, 9999999};
+
+  auto *cmpEQ = F_->createCmpEQ("cmpEQ", X, Y);
+  auto *save = F_->createSave("save", cmpEQ);
+
+  EE_.compile(CompilationMode::Infer, F_);
+
+  EE_.run({}, {});
+
+  auto saveH = save->getVariable()->getHandle<size_t>();
+  for (size_t i = 0; i < 7; ++i) {
+    EXPECT_FALSE(saveH.at({0, i}));
+  }
+  for (size_t i = 0; i < 7; ++i) {
+    EXPECT_TRUE(saveH.at({1, i}));
+  }
+}
+
 TEST_P(Operator, matmul) {
   auto *lhs = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "lhs");
   auto *rhs = mod_.createVariable(ElemKind::FloatTy, {2, 1}, "rhs");

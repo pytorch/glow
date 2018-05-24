@@ -1114,6 +1114,15 @@ void Interpreter::fwdElementCmpLTEInst(const ElementCmpLTEInst *I) {
   }
 }
 
+void Interpreter::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
+  auto outW = getWeightHandle<size_t>(I->getDest());
+  auto lhsW = getWeightHandle<size_t>(I->getLHS());
+  auto rhsW = getWeightHandle<size_t>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = lhsW.raw(i) == rhsW.raw(i) ? 1 : 0;
+  }
+}
+
 void Interpreter::fwdElementPowInst(const glow::ElementPowInst *I) {
   auto baseW = getWeightHandle(I->getBase());
   float exp = I->getExp();

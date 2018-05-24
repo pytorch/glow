@@ -300,6 +300,7 @@ public:
   ARITHMETIC_FUN_DECL(Max);
   ARITHMETIC_FUN_DECL(Min);
   ARITHMETIC_FUN_DECL(CmpLTE);
+  ARITHMETIC_FUN_DECL(CmpEQ);
 #undef ARITHMETIC_FUN_DECL
 
   PowNode *createPow(llvm::StringRef name, NodeValue Base, float exp);
