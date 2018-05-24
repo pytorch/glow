@@ -872,7 +872,7 @@ void OCLBackend::doForwardPass() {
       auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
 
-      setKernelArg<size_t>(kernel, numArgs + 1, PM->getKernel());
+      setKernelArg<cl_uint>(kernel, numArgs + 1, PM->getKernel());
       setKernelArg<cl_uint>(kernel, numArgs + 2, PM->getStride());
       setKernelArg<cl_uint>(kernel, numArgs + 3, PM->getPad());
       setKernelArg(kernel, numArgs + 4, odim);
@@ -896,7 +896,7 @@ void OCLBackend::doForwardPass() {
       auto destGradDim = ShapeNHWC(PMG->getDestGrad()->dims());
       auto srcGradDim = ShapeNHWC(PMG->getSrcGrad()->dims());
 
-      setKernelArg<size_t>(kernel, numArgs + 1, PMG->getKernel());
+      setKernelArg<cl_uint>(kernel, numArgs + 1, PMG->getKernel());
       setKernelArg<cl_uint>(kernel, numArgs + 2, PMG->getStride());
       setKernelArg<cl_uint>(kernel, numArgs + 3, PMG->getPad());
       setKernelArg(kernel, numArgs + 4, srcGradDim);
