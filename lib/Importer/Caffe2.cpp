@@ -417,6 +417,17 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "EQ") {
+    auto *in0 = getOrCreateNodeByName(op.input(0));
+    auto *in1 = getOrCreateNodeByName(op.input(1));
+    auto *node = G_.createCmpEQ(opName, in0, in1);
+    // Save the outputs:
+    for (int i = 0, e = op.output_size(); i < e; i++) {
+      nodeByName_[op.output(i)] = node;
+    }
+    return;
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 

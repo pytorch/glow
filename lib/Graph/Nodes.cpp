@@ -396,6 +396,7 @@ bool Node::isArithmetic() const {
   case glow::Kinded::Kind::MaxNodeKind:
   case glow::Kinded::Kind::MinNodeKind:
   case glow::Kinded::Kind::CmpLTENodeKind:
+  case glow::Kinded::Kind::CmpEQNodeKind:
     return true;
   default:
     return false;
@@ -797,6 +798,7 @@ VERIFY_ARITHMETIC(Sub);
 VERIFY_ARITHMETIC(Div);
 VERIFY_ARITHMETIC(Max);
 VERIFY_ARITHMETIC(Min);
+VERIFY_ARITHMETIC(CmpEQ);
 #undef VERIFY_ARITHMETIC
 
 void CmpLTENode::verify() const {

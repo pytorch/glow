@@ -821,6 +821,13 @@ CmpLTENode *Function::createCmpLTE(llvm::StringRef name, NodeValue LHS,
   return addNode(new CmpLTENode(name, OT, LHS, RHS));
 }
 
+CmpEQNode *Function::createCmpEQ(llvm::StringRef name, NodeValue LHS,
+                                 NodeValue RHS) {
+  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
+  auto OT = getParent()->uniqueType(*LHS.getType());
+  return addNode(new CmpEQNode(name, OT, LHS, RHS));
+}
+
 PowNode *Function::createPow(llvm::StringRef name, NodeValue Base, float exp) {
   return addNode(new PowNode(name, Base.getType(), Base, exp));
 }

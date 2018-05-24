@@ -157,6 +157,7 @@ static Node *simplifyNode(Node *node, Function *F) {
   SIMPLIFY_OPERANDS(Max)
   SIMPLIFY_OPERANDS(Min)
   SIMPLIFY_OPERANDS(CmpLTE)
+  SIMPLIFY_OPERANDS(CmpEQ)
 #undef SIMPLIFY_OPERANDS
 
 // Simplify commutative nodes by moving the constant operator to the right-hand
@@ -355,6 +356,7 @@ static bool sinkCode(Function *F) {
         ARITHMETIC_CASE(Max);
         ARITHMETIC_CASE(Min);
         ARITHMETIC_CASE(CmpLTE);
+        ARITHMETIC_CASE(CmpEQ);
       default:
         llvm_unreachable("Unhandled node");
       }
