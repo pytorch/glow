@@ -212,6 +212,8 @@ public:
 
   TanhNode *createTanh(llvm::StringRef name, NodeValue input);
 
+  LogNode *createLog(llvm::StringRef name, NodeValue input);
+
   SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input,
                              NodeValue selected);
 

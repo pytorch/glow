@@ -670,7 +670,7 @@ void inferExtract3D(Tensor *input, Tensor *out, BackendKind kind) {
   auto *add1 = F->createAdd("add1", x12, x34);
   auto *add2 = F->createAdd("add1", x13, x24);
   auto *add3 = F->createAdd("add1", add1, add2);
-  
+
   auto *e = F->createSlice("slice", add3, {0, 55, 50}, {1, 150, 100});
   auto *result = F->createSave("ret", e);
 

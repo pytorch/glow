@@ -624,6 +624,7 @@ DEFINE_DATA_PARALLEL_KERNEL(libjit_element_div_kernel_f, float,
                             LHS[idx] / RHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_mul_kernel_f, float,
                             LHS[idx] * RHS[idx])
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_log_kernel_f, float, log(LHS[idx]))
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_element_add_kernel_i8, int8_t,
                                       lhs + rhs)
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_element_sub_kernel_i8, int8_t,

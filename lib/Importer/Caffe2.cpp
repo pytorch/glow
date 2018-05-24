@@ -405,6 +405,18 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "Log") {
+    // Load the inputs:
+    auto *in = getOrCreateNodeByName(op.input(0));
+    // Create the log:
+    auto *R = G_.createLog(opName, in);
+    // Save the outputs:
+    for (int i = 0, e = op.output_size(); i < e; i++) {
+      nodeByName_[op.output(i)] = R;
+    }
+    return;
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 

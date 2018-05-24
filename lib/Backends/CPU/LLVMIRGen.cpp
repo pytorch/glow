@@ -800,6 +800,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
 
     ARITHMETIC_UNARY_OP_CASE(Sigmoid, "sigmoid");
     ARITHMETIC_UNARY_OP_CASE(Tanh, "tanh");
+    ARITHMETIC_UNARY_OP_CASE(ElementLog, "element_log");
 #undef ARITHMETIC_UNARY_OP_CASE
 
   case Kinded::Kind::CopyInstKind: {

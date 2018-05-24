@@ -923,6 +923,8 @@ void SaveNode::verify() const { checkSameType(getInput(), getOutput()); }
 
 void PowNode::verify() const { checkSameType(getResult(), getBase()); }
 
+void LogNode::verify() const { checkSameType(getInput(), getResult()); }
+
 void SelectNode::verify() const {
   assert(getResult().getElementType() == getCond().getElementType());
   assert(getResult().getElementType() == getLHS().getElementType());

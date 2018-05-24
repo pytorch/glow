@@ -70,6 +70,26 @@ TEST_P(InterpAndCPU, pow) {
   EXPECT_NEAR(HY.at({1}), 10, 1E-5);
 }
 
+TEST_P(InterpAndCPU, log) {
+  auto *X = mod_.createVariable(ElemKind::FloatTy, {6}, "X");
+  auto XH = X->getPayload().getHandle();
+  XH = {210030, 600, 4, 0.7, .005, 0.000829};
+
+  auto *LN = F_->createLog("log", X);
+
+  auto *save = F_->createSave("save", LN);
+
+  EE_.compile(CompilationMode::Infer, F_);
+
+  EE_.run({}, {});
+
+  auto saveH = save->getVariable()->getHandle();
+
+  for (size_t i = 0; i < 6; i++) {
+    EXPECT_NEAR(saveH.at({i}), log(XH.at({i})), 1E-5);
+  }
+}
+
 TEST_P(Operator, matmul) {
   auto *lhs = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "lhs");
   auto *rhs = mod_.createVariable(ElemKind::FloatTy, {2, 1}, "rhs");
