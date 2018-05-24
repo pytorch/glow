@@ -216,6 +216,13 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .setDocstring("Performs elementwise pow(Base, Exp).");
 
+  // clang-format off
+  BB.newNode("Log")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .setDocstring("Performs element-wise natural log to the Input.");
+  // clang-format on
+
   BB.newNode("Select")
       .addInput("Cond")
       .addInput("LHS")

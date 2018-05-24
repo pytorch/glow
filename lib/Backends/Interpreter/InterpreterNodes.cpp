@@ -1123,6 +1123,15 @@ void Interpreter::fwdElementPowInst(const glow::ElementPowInst *I) {
   }
 }
 
+void Interpreter::fwdElementLogInst(const ElementLogInst *I) {
+  auto inW = getWeightHandle(I->getSrc());
+  auto outW = getWeightHandle(I->getDest());
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    float val = inW.raw(i);
+    outW.raw(i) = log(val);
+  }
+}
+
 void Interpreter::fwdElementSelectInst(const glow::ElementSelectInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto destTy = I->getDest()->getType();
