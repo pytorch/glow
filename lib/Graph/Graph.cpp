@@ -616,6 +616,25 @@ ConcatNode *Function::createConcat(llvm::StringRef name,
   return addNode(new ConcatNode(name, OT, ops, dimension));
 }
 
+ConcatNode *Function::createTile(llvm::StringRef name, NodeValue input,
+                                 unsigned tiles, unsigned axis) {
+  assert(tiles > 0 && "Tiles must be non-zero.");
+  assert(axis >= 0 && axis < input.dims().size() &&
+         "Axis must fall in range of source dims.");
+
+  std::vector<NodeValue> ops;
+  ops.reserve(tiles);
+  for (size_t i = 0; i < tiles; i++) {
+    ops.emplace_back(input);
+  }
+
+  ShapeVector outShape(input.dims().begin(), input.dims().end());
+  outShape[axis] *= tiles;
+  auto OT = getParent()->uniqueTypeWithNewShape(input->getType(), outShape);
+
+  return addNode(new ConcatNode(name, OT, ops, axis));
+}
+
 SliceNode *Function::createSlice(llvm::StringRef name, NodeValue input,
                                  llvm::ArrayRef<size_t> start, TypeRef outTy) {
   assert(input.dims().size() == start.size() &&

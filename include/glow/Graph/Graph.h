@@ -243,6 +243,13 @@ public:
                            llvm::ArrayRef<NodeValue> inputs, unsigned dimension,
                            TypeRef outTy);
 
+  /// Create a concat node that implements a tile with provided \p name, \p
+  /// input, \p tiles, and \p axis. For example, an input tensor {{1,2,3,4}} of
+  /// dimension 1x4 with tiles = 2 and axis = 0 would result in an output tensor
+  /// {{1,2,3,4}, {1,2,3,4}} of dimension 2x4.
+  ConcatNode *createTile(llvm::StringRef name, NodeValue input, unsigned tiles,
+                         unsigned axis);
+
   SliceNode *createSlice(llvm::StringRef name, NodeValue input,
                          UnsignedArrayRef begin, UnsignedArrayRef end);
 
