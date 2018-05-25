@@ -16,6 +16,7 @@
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Quantization/Quantization.h"
 
 #include "gtest/gtest.h"
 
@@ -27,10 +28,13 @@
 using namespace glow;
 using llvm::isa;
 
-class MLTest : public ::testing::TestWithParam<BackendKind> {
+class TestRunnerBase : public ::testing::TestWithParam<BackendKind> {
 public:
   ExecutionEngine EE_{GetParam()};
 };
+
+class InterpreterAndCPU : public TestRunnerBase {};
+class MLTest : public TestRunnerBase {};
 
 TEST_P(MLTest, trainASimpleNetwork) {
   // Learning a single input vector.
@@ -885,15 +889,17 @@ static void generateRegressionTestData(Tensor &images, Tensor &labels) {
 
 /// This is the "Where's Waldo" test. We place a pixel in a tensor and the
 /// network reports the coordinate of the pixel.
-TEST_P(MLTest, testFindPixelRegression) {
+TEST_P(InterpreterAndCPU, testFindPixelRegression) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+
   const unsigned numSamples = 1000;
   const unsigned batchSize = 10;
 
-  EE_.getConfig().learningRate = 0.01;
-  EE_.getConfig().batchSize = batchSize;
-  EE_.getConfig().momentum = 0.9;
+  EE.getConfig().learningRate = 0.01;
+  EE.getConfig().batchSize = batchSize;
+  EE.getConfig().momentum = 0.9;
 
-  auto &mod = EE_.getModule();
+  auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   auto *input =
@@ -911,16 +917,38 @@ TEST_P(MLTest, testFindPixelRegression) {
   auto *FC1 = F->createFullyConnected("fc1", RL0, 2);
   auto *R = F->createRegression("regression", FC1, ex);
   auto *result = F->createSave("ret", R);
-  Function *TF = glow::differentiate(F, EE_.getConfig());
-  EE_.compile(CompilationMode::Train, TF);
+  Function *TF = glow::differentiate(F, EE.getConfig());
+  EE.compile(CompilationMode::Train, TF);
 
+  // --  STEP1 - train the network. --
   Tensor images(ElemKind::FloatTy, {numSamples, 10, 10, 1});
   Tensor labels(ElemKind::FloatTy, {numSamples, 2});
   generateRegressionTestData(images, labels);
 
   // Training:
-  EE_.runBatch(400, {input, ex}, {&images, &labels});
-  EE_.compile(CompilationMode::Infer, F);
+  EE.runBatch(400, {input, ex}, {&images, &labels});
+
+  // -- STEP2 - Profile and quantize the network. --
+
+  // Profiled 'F'.
+  Function *PF = glow::profileQuantization(F);
+  EE.compile(CompilationMode::Infer, PF);
+
+  // Run the graph to capture the profile.
+  EE.runBatch(100, {input}, {&images});
+
+  // Get quantization infos and build new quantized graph.
+  std::vector<NodeQuantizationInfo> QI =
+      quantization::generateNodeQuantizationInfos(PF);
+
+  Function *QP = quantization::quantizeFunction(EE, QI, F);
+
+  // -- STEP3 - evaluate the quantized function. --
+
+  // Set the execution backend to the backend that we test.
+  EE.setBackend(GetParam());
+
+  EE.compile(CompilationMode::Infer, QP);
 
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 10, 10, 1});
@@ -928,7 +956,7 @@ TEST_P(MLTest, testFindPixelRegression) {
   generateRegressionTestData(testImages, testLabels);
 
   // Run the inference:
-  EE_.run({input}, {&testImages});
+  EE.run({input}, {&testImages});
 
   // A handle to the projected result.
   auto RH = result->getVariable()->getHandle<>();
@@ -955,11 +983,16 @@ TEST_P(MLTest, testFindPixelRegression) {
 
 INSTANTIATE_TEST_CASE_P(Interpreter, MLTest,
                         ::testing::Values(BackendKind::Interpreter));
-
 #ifdef GLOW_WITH_CPU
 INSTANTIATE_TEST_CASE_P(JIT, MLTest, ::testing::Values(BackendKind::CPU));
 #endif
-
 #ifdef GLOW_WITH_OPENCL
 INSTANTIATE_TEST_CASE_P(OpenCL, MLTest, ::testing::Values(BackendKind::OpenCL));
+#endif
+
+INSTANTIATE_TEST_CASE_P(Interpreter, InterpreterAndCPU,
+                        ::testing::Values(BackendKind::Interpreter));
+#ifdef GLOW_WITH_CPU
+INSTANTIATE_TEST_CASE_P(JIT, InterpreterAndCPU,
+                        ::testing::Values(BackendKind::CPU));
 #endif
