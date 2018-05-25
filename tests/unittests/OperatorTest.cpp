@@ -1378,6 +1378,97 @@ TEST_P(InterpAndCPU, sliceConcatVectors) {
   }
 }
 
+TEST_P(InterpAndCPU, Tile) {
+  F_->setName("concatVectors");
+
+  auto *V = mod_.createVariable(ElemKind::FloatTy, {4, 5}, "V",
+                                VisibilityKind::Public);
+
+  Node *T0 = F_->createTile("tile0", V, /* tiles */ 3, /* axis */ 0);
+  auto *result0 = F_->createSave("res0", T0);
+
+  Node *T1 = F_->createTile("tile1", V, /* tiles */ 3, /* axis */ 1);
+  auto *result1 = F_->createSave("res1", T1);
+
+  Tensor VT(ElemKind::FloatTy, {4, 5});
+
+  for (size_t i = 0; i < 4; i++) {
+    for (size_t j = 0; j < 5; j++) {
+      VT.getHandle<float>().at({i, j}) = i * 5 + j;
+    }
+  }
+
+  EE_.compile(CompilationMode::Infer, F_);
+
+  EE_.run({V}, {&VT});
+
+  // Testing the output vector with axis 0.
+  auto res0 = result0->getVariable()->getHandle<float>();
+  for (size_t i = 0; i < res0.dims()[0]; i++) {
+    for (size_t j = 0; j < res0.dims()[1]; j++) {
+      EXPECT_EQ(res0.at({i, j}), (i % 4) * 5 + j);
+    }
+  }
+
+  // Testing the output vector with axis 1.
+  auto res1 = result1->getVariable()->getHandle<float>();
+  (void)res1;
+  for (size_t i = 0; i < res1.dims()[0]; i++) {
+    for (size_t j = 0; j < res1.dims()[1]; j++) {
+      EXPECT_EQ(res1.at({i, j}), i * 5 + (j % 5));
+    }
+  }
+}
+
+TEST_P(InterpAndCPU, QuantizedTile) {
+  F_->setName("concatVectors");
+
+  auto *V = mod_.createVariable(ElemKind::FloatTy, {4, 5}, "V",
+                                VisibilityKind::Public);
+  auto quantizationParams = glow::quantization::chooseQuantizationParams(0, 20);
+  auto quantizeTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {4, 5}, quantizationParams.scale_,
+                      quantizationParams.offset_);
+  auto *Q = F_->createQuantize("quantize", V, quantizeTy);
+
+  Node *T0 = F_->createTile("tile0", Q, /* tiles */ 3, /* axis */ 0);
+  auto *DQ0 = F_->createDequantize("dequantize0", T0);
+  auto *result0 = F_->createSave("res0", DQ0);
+
+  Node *T1 = F_->createTile("tile1", Q, /* tiles */ 3, /* axis */ 1);
+  auto *DQ1 = F_->createDequantize("dequantize1", T1);
+  auto *result1 = F_->createSave("res1", DQ1);
+
+  Tensor VT(ElemKind::FloatTy, {4, 5});
+
+  for (size_t i = 0; i < 4; i++) {
+    for (size_t j = 0; j < 5; j++) {
+      VT.getHandle<float>().at({i, j}) = i * 5 + j;
+    }
+  }
+
+  EE_.compile(CompilationMode::Infer, F_);
+
+  EE_.run({V}, {&VT});
+
+  // Testing the output vector with axis 0.
+  auto res0 = result0->getVariable()->getHandle<float>();
+  for (size_t i = 0; i < res0.dims()[0]; i++) {
+    for (size_t j = 0; j < res0.dims()[1]; j++) {
+      EXPECT_NEAR(res0.at({i, j}), (i % 4) * 5 + j, 0.05);
+    }
+  }
+
+  // Testing the output vector with axis 1.
+  auto res1 = result1->getVariable()->getHandle<float>();
+  (void)res1;
+  for (size_t i = 0; i < res1.dims()[0]; i++) {
+    for (size_t j = 0; j < res1.dims()[1]; j++) {
+      EXPECT_NEAR(res1.at({i, j}), i * 5 + (j % 5), 0.05);
+    }
+  }
+}
+
 TEST_P(Operator, simpleCmpSelectPredication) {
   // A simple test that checks predication of some values using the
   // compare-select pair of instructions. Keep doubling some values

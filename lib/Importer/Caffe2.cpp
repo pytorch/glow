@@ -428,6 +428,19 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "Tile") {
+    auto *in = getOrCreateNodeByName(op.input(0));
+    unsigned tiles = loadInt(dict["tiles"]);
+    unsigned axis = loadInt(dict["axis"]);
+
+    auto *node = G_.createTile(opName, in, tiles, axis);
+    // Save the outputs:
+    for (int i = 0, e = op.output_size(); i < e; i++) {
+      nodeByName_[op.output(i)] = node;
+    }
+    return;
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
