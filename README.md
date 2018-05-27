@@ -141,13 +141,15 @@ directory.
   ./bin/cifar10
   ./bin/fr2en
   ./bin/ptb
+  ./bin/char-rnn
   ```
 
 If everything goes well you should see:
   * `mnist`: pictures from the mnist digits database
   * `cifar10`: image classifications that steadily improve
   * `fr2en`: an interactive French-to-English translator
-  * `ptb` decreasing perplexity on the dataset as the network trains
+  * `ptb`: decreasing perplexity on the dataset as the network trains
+  * `char-rnn`: generates random text based on some document
 
 Note that the default build mode is `Debug`, which means that the compiler
 itself is easy to debug because the binary contains debug info, lots of
