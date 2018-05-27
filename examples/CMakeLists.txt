@@ -29,6 +29,16 @@ target_link_libraries(ptb
                         IR
                         Support)
 
+add_executable(char-rnn
+                 char-rnn.cpp)
+target_link_libraries(char-rnn
+                      PRIVATE
+                        Backends
+                        ExecutionEngine
+                        Graph
+                        IR
+                        Support)
+
 add_executable(fr2en
                  fr2en.cpp)
 target_link_libraries(fr2en
