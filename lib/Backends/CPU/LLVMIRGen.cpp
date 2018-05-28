@@ -614,6 +614,39 @@ void LLVMIRGen::emitDataParallelKernel(llvm::IRBuilder<> &builder,
   generateFunctionDebugInfo(kernelFunc);
 }
 
+/// Check if the provided operand overlaps with an operand of an instruction
+/// already in the bundle, but is not exactly the same memory region.
+/// Such memory regions cannot be considered data-parallel in the scope of the
+/// same kernel.
+///
+/// \param allocationsInfo information about allocations
+/// \param bundle current bundle of stacked instructions
+/// \param buf the buffer operand to be checked for overlaps with the \p bundle.
+static bool isOverlappingWithAnyBundleBufferOperands(
+    AllocationsInfo &allocationsInfo,
+    llvm::SmallVectorImpl<Instruction *> &bundle, Value *buf) {
+  auto addr1 = allocationsInfo.allocatedAddressed_[buf];
+  auto size1 = buf->getSizeInBytes();
+  for (auto bi : bundle) {
+    for (auto bop : bi->getOperands()) {
+      auto buf2 = bop.first;
+      auto addr2 = allocationsInfo.allocatedAddressed_[buf2];
+      auto size2 = buf2->getSizeInBytes();
+      // It is fine, if buffers of different data-parallel instructions are
+      // allocated exactly the same memory region.
+      if (addr1 == addr2 && size1 == size2) {
+        continue;
+      }
+      if ((addr1 >= addr2 && addr1 < addr2 + size2) ||
+          (addr2 >= addr1 && addr2 < addr1 + size1)) {
+        // Two intervals overlap, but are not the same.
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
   // Go over the instructions and try to group them into bundles.
   auto &instrs = F_->getInstrs();
@@ -637,17 +670,35 @@ void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
     // This is a data parallel instruction.
 
     // Check if the current instruction is shape compatible with the bundle.
-    bool isShapeCompatible = true;
+    bool isBundleCompatible = true;
     if (!bundle.empty()) {
       auto val = I->getOperand(0).first;
       auto bundleVal = bundle.back()->getOperand(0).first;
       // Check if shapes have the same amount of elements.
-      isShapeCompatible = val->size() == bundleVal->size();
+      isBundleCompatible = val->size() == bundleVal->size();
     }
 
-    // If the instruction is not shape-compatible, emit the kernel for the
-    // current bundle and start a new bundle.
-    if (!isShapeCompatible) {
+    // Check all mutated operands of the current instruction. Their memory
+    // regions should not have a non-exact overlap with any operands of the
+    // bundled instructions. In case this condition does not hold, the current
+    // instruction cannot be included into the data-parallel bundle, because
+    // overlapping operand buffers are not data parallel.
+    for (auto op : I->getOperands()) {
+      // Skip non-mutated operands.
+      if (op.second == OperandKind::In)
+        continue;
+      // If the mutated operand buffer overlaps with any buffer already used by
+      // the bundle, the current instruction cannot become a part of the bundle.
+      if (isOverlappingWithAnyBundleBufferOperands(allocationsInfo_, bundle,
+                                                   op.first)) {
+        isBundleCompatible = false;
+        break;
+      }
+    }
+
+    // If the instruction cannot be added to the current bundle, emit the kernel
+    // for the current bundle and start a new bundle.
+    if (!isBundleCompatible) {
       emitDataParallelKernel(builder, bundle);
       bundle.clear();
     }
