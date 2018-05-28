@@ -220,6 +220,83 @@ TEST_P(CPUOnly, localResponseNormalizationGradTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
+/// This is a mock backend wrapping the CPU backend. It is used only for unit
+/// testing.
+class MockCPUBackend : public Backend {
+  // The actual backend being wrapped.
+  std::unique_ptr<Backend> backend_;
+
+public:
+  MockCPUBackend(IRFunction *M) {
+    backend_.reset(createBackend(BackendKind::CPU, M));
+  }
+  void clear() override { backend_->clear(); }
+  void init() override { backend_->init(); }
+  void doForwardPass() override { backend_->doForwardPass(); }
+  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
+    return true;
+  }
+};
+
+TEST_P(CPUOnly, dataParallelStackingTest) {
+  // Create an activation of size 3 and create two overlapping tensorviews of
+  // this activation. Perform data-parallel instructions involving those
+  // tensorviews. The backend's logic for the creation of stacked kernels should
+  // handle them correctly and avoid putting all those data-parallel
+  // instructuins into the same kernel even though they are all
+  // shape-compatible, because some of these instructions would mutate the same
+  // buffer that is already used by other instructions in the stacked kernel.
+  Module mod;
+  Function *F = mod.createFunction("DataParallelStacking");
+  IRFunction M(F);
+  IRBuilder bb(&M);
+
+  auto var = mod.createVariable(glow::ElemKind::FloatTy, {2}, "output");
+
+  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {2}, "output1",
+                                    WeightVar::MutabilityKind::Mutable);
+
+  M.getVariableMap()[var] = output;
+
+  auto *act = bb.createAllocActivationInst(
+      "act1", mod.uniqueType(glow::ElemKind::FloatTy, {3}));
+  bb.createSplatInst("zero", act, 0.0);
+  auto tv1 = bb.createTensorViewInst(
+      "tv1", act, mod.uniqueType(glow::ElemKind::FloatTy, {2}), {0});
+  auto tv2 = bb.createTensorViewInst(
+      "tv2", act, mod.uniqueType(glow::ElemKind::FloatTy, {2}), {1});
+
+  auto *one = bb.createAllocActivationInst(
+      "act2", mod.uniqueType(glow::ElemKind::FloatTy, {2}));
+  bb.createSplatInst("one", one, 1.0);
+  // after this instruction:
+  // act will be: [1, 1, 0]
+  // tv1 will be: [1, 1]
+  // tv2 will be: [1, 0]
+  bb.createElementAddInst("elem_add1", tv1, tv1, one);
+  // The next instruction should not be put into the same stacking kernel,
+  // because tv2 overlaps with tv1.
+  // after this instruction:
+  // act will be: [1, 2, 2]
+  // tv1 will be: [1, 2]
+  // tv2 will be: [2, 2]
+  bb.createElementAddInst("elem_add2", tv2, tv2, tv1);
+  // after this instruction:
+  // output will be: [3, 4]
+  // tv1 will be: [1, 2]
+  // tv2 will be: [2, 2]
+  // If stacking would put elem_add1 and elem_add2 into the same stacking
+  // kernel, the output would be: [2, 4], which is wrong.
+  bb.createElementAddInst("elem_add3", output, tv2, tv1);
+  bb.createDeallocActivationInst("dealloc", act);
+  MockCPUBackend backend(&M);
+  backend.init();
+  backend.doForwardPass();
+  auto H = var->getHandle();
+  EXPECT_EQ(H.at(0), 3);
+  EXPECT_EQ(H.at(1), 4);
+}
+
 TEST_P(BackendCorrectnessTest, matMulTest) {
   Tensor lhs(ElemKind::FloatTy, {10, 9});
   Tensor rhs(ElemKind::FloatTy, {9, 8});
