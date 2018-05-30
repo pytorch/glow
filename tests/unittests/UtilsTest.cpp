@@ -37,3 +37,32 @@ TEST(Utils, randomClosedInterval) {
     EXPECT_LT(j, trials);
   }
 }
+
+// Same as above, but with a PseudoRNG instance.
+TEST(Utils, PRNGBasics) {
+  PseudoRNG PRNG;
+  constexpr int lb = -3;
+  constexpr int ub = 3;
+  constexpr int trials = 200;
+
+  for (int i = lb; i <= ub; i++) {
+    int j = 0;
+    for (; j < trials; j++) {
+      if (PRNG.nextRandInt(lb, ub) == i) {
+        break;
+      }
+    }
+    EXPECT_LT(j, trials);
+  }
+}
+
+// Test that two default-constructed PseudoRNG objects do in fact generate
+// identical sequences.
+TEST(Utils, deterministicPRNG) {
+  PseudoRNG genA, genB;
+  std::uniform_int_distribution<int> dist(0, 100000);
+
+  for (unsigned i = 0; i != 100; i++) {
+    EXPECT_EQ(dist(genA), dist(genB));
+  }
+}
