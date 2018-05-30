@@ -983,6 +983,156 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   EXPECT_GE(correct, batchSize * 0.90);
 }
 
+// Generate tests for a toy neural network that can recognize if a matrix 3x3
+// is a rotation of another matrix 3x3.
+// This is *not* about rotation matrices used for computer graphics, but a much
+// simpler concept.
+// Informally, let M1 and M2 be two 3x3 matrices, M2 is a rotation of M1 if it
+// exists a way to rotate the cells of M1 to get M2. The rotations are all
+// centered in the middle of the matrices.
+// E.g.,
+// Rotate clockwise 1 cell centered in 'e':
+//              --+
+//      | a b c | |
+// M1 = | d e f | V
+//      | g h i |
+// =>
+//      | d a b |
+// M2 = | g e c |
+//      | h i f |
+static void generateMatrixRotationRecognitionData(Tensor &matricesA,
+                                                  Tensor &matricesB,
+                                                  Tensor &expected,
+                                                  PseudoRNG &PRNG) {
+
+  using CellIdx = std::pair<uint8_t, uint8_t>;
+  // List the indices in a clockwise ordering starting from the top left
+  // corner.
+  // Note: This does not include the cell in the middle given it is
+  // never rotated.
+  static const CellIdx clockwiseOrder[] = {{0, 0}, {0, 1}, {0, 2}, {1, 2},
+                                           {2, 2}, {2, 1}, {2, 0}, {1, 0}};
+  static const uint8_t possibleTargetCells =
+      sizeof(clockwiseOrder) / sizeof(clockwiseOrder[0]);
+  const unsigned numSamples = matricesA.dims()[0];
+  assert(expected.dims()[0] == numSamples &&
+         matricesB.dims()[0] == numSamples &&
+         "Size of the tensors is incompatible");
+  auto handleMatricesA = matricesA.getHandle<float>();
+  auto handleMatricesB = matricesB.getHandle<float>();
+  auto handleExpected = expected.getHandle<size_t>();
+
+  handleMatricesA.randomize<int>(0, 1, PRNG);
+  handleMatricesB.randomize<int>(0, 1, PRNG);
+  for (unsigned idx = 0; idx < numSamples; ++idx) {
+    // Toss a coin and create a rotation relationship or not.
+    bool shouldHaveRotation = PRNG.nextRandInt(0, 1);
+    handleExpected.at({idx, 0}) = shouldHaveRotation;
+    if (shouldHaveRotation) {
+      // On a 3x3 matrix we have 8 different possbile clockwise steps.
+      // Pick one.
+      size_t clockwiseSteps = PRNG.nextRandInt(0, possibleTargetCells - 1);
+      // Generate the rotation matrix from A.
+      // The center never changes.
+      handleMatricesB.at({idx, 1, 1}) = handleMatricesA.at({idx, 1, 1});
+      // Fetch the cell registered in the clockwiseOrder at the desired step.
+      for (size_t i = 0; i != possibleTargetCells; ++i) {
+        const CellIdx &sourceCellIdx = clockwiseOrder[i];
+        const CellIdx &targetCellIdx =
+            clockwiseOrder[(i + clockwiseSteps) % possibleTargetCells];
+        handleMatricesB.at({idx, targetCellIdx.first, targetCellIdx.second}) =
+            handleMatricesA.at(
+                {idx, sourceCellIdx.first, sourceCellIdx.second});
+      }
+    }
+    // Else:
+    // There is a high probability that A and B don't have a rotation
+    // relationship and thus, there is nothing to do.
+    // Worse case, we mislabeled a relationship.
+
+    // Alternatively we could always alter one of the matrix such that it is
+    // impossible to have a rotation between them (e.g., make sure the center
+    // is different), but that would bias the kind of differences that could
+    // occur.
+  }
+}
+
+TEST_P(MLTest, matrixRotationRecognition) {
+  TrainingConfig &config = EE_.getConfig();
+  config.learningRate = 0.15;
+  config.batchSize = 17;
+
+  Module &mod = EE_.getModule();
+  PseudoRNG &PRNG = mod.getPRNG();
+  Function *F = mod.createFunction("MatrixRotationRecognition");
+  Variable *varMatricesA =
+      mod.createVariable(ElemKind::FloatTy, {config.batchSize, 3, 3}, "matrixA",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  Variable *varMatricesB =
+      mod.createVariable(ElemKind::FloatTy, {config.batchSize, 3, 3}, "matrixB",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  Variable *varExpected =
+      mod.createVariable(ElemKind::IndexTy, {config.batchSize, 1}, "expected",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+
+  // Simply concatenating the matrices first would probability be as effective
+  // but we want to build something more complex than a straight chain of
+  // operators to stress the scheduler.
+  auto *FCA = F->createFullyConnected("hidden_matrixA_fc", varMatricesA, 10);
+  auto *FCB = F->createFullyConnected("hidden_matrixB_fc", varMatricesB, 10);
+  auto *ReLUA = F->createRELU("hidden_matrixA_ReLU", FCA);
+  auto *ReLUB = F->createRELU("hidden_matrixB_ReLU", FCB);
+  auto *concat = F->createConcat("hidden_concat_A_B", {ReLUA, ReLUB}, 1);
+  auto *hiddenFC = F->createFullyConnected("hidden_fc", concat, 30);
+  auto *finalReLU = F->createRELU("hidden_concat_ReLU", hiddenFC);
+  auto *finalFC = F->createFullyConnected("output_fc", finalReLU, 2);
+  auto *softMax = F->createSoftMax("output", finalFC, varExpected);
+  SaveNode *forwardInferenceResult = F->createSave("result", softMax);
+  Function *trainingGradientFunction = glow::differentiate(F, config);
+
+  // Train the network.
+  const unsigned numSamples = 50;
+  Tensor matricesA(ElemKind::FloatTy, {numSamples, 3, 3});
+  Tensor matricesB(ElemKind::FloatTy, {numSamples, 3, 3});
+  Tensor expected(ElemKind::IndexTy, {numSamples, 1});
+  generateMatrixRotationRecognitionData(matricesA, matricesB, expected, PRNG);
+
+  EE_.compile(CompilationMode::Train, trainingGradientFunction);
+  // Training:
+  EE_.runBatch(200, {varMatricesA, varMatricesB, varExpected},
+              {&matricesA, &matricesB, &expected});
+
+  // Switch to inference mode.
+  EE_.compile(CompilationMode::Infer, F);
+
+  // At this point we should have overfitted the data.
+  // Take a random batch and check that the values match what we expect.
+  auto RHtrain = forwardInferenceResult->getVariable()->getHandle<>();
+  auto batchSize = config.batchSize;
+  unsigned numBatches = numSamples / batchSize;
+  unsigned batchStartIdx = PRNG.nextRandInt(0, numBatches - 1) * batchSize;
+
+  auto batchMatricesA =
+      matricesA.getUnowned({batchSize, 3, 3}, {batchStartIdx, 0, 0});
+  auto batchMatricesB =
+      matricesB.getUnowned({batchSize, 3, 3}, {batchStartIdx, 0, 0});
+  EE_.run({varMatricesA, varMatricesB}, {&batchMatricesA, &batchMatricesB});
+
+  unsigned errors = 0;
+  // Check each output in the batch.
+  for (size_t i = 0; i != batchSize; i++) {
+    // Note that the two softmax outputs always sum to 1, so we only look at
+    // one. Index one is true if there is a rotation.
+    float value = RHtrain.at({i, 1});
+    bool hasRotation = expected.getHandle<size_t>().at({batchStartIdx + i, 0});
+    if ((value > 0.5) != hasRotation) {
+      ++errors;
+    }
+  }
+
+  EXPECT_LE(errors, 1);
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, MLTest,
                         ::testing::Values(BackendKind::Interpreter));
 #ifdef GLOW_WITH_CPU
