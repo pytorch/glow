@@ -15,11 +15,26 @@
  */
 
 #include "glow/Support/Random.h"
+#include "llvm/Support/CommandLine.h"
 
 #include <cassert>
-#include <random>
+
+static llvm::cl::opt<glow::PseudoRNG::result_type>
+    pseudoRandomSeed("pseudo-random-seed",
+                     llvm::cl::desc("Seed for pseudo-random numbers"),
+                     llvm::cl::init(glow::PseudoRNG::Engine::default_seed));
 
 namespace glow {
+
+PseudoRNG::PseudoRNG() : engine_(pseudoRandomSeed.getValue()) {}
+
+// Constant uniform distribution used as a template in nextRand.
+// This computes the parameters once instead of on each call.
+const static std::uniform_real_distribution<> uniformReal(-1, 1);
+
+double PseudoRNG::nextRand() {
+  return std::uniform_real_distribution<double>(uniformReal.param())(engine_);
+}
 
 double nextRand() {
   static std::mt19937 generator;

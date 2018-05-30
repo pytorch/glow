@@ -16,7 +16,50 @@
 #ifndef GLOW_SUPPORT_RANDOM_H
 #define GLOW_SUPPORT_RANDOM_H
 
+#include <random>
+
 namespace glow {
+
+/// A pseudo-random number generator.
+///
+/// A PseudoRNG generates a deterministic sequence of numbers controlled by the
+/// initial seed. Use the various templates from the <random> standard library
+/// header to draw numbers from a specific distribution.
+class PseudoRNG {
+public:
+  /// Glow uses the Mersenne Twister engine.
+  typedef std::mt19937 Engine;
+
+private:
+  Engine engine_;
+
+public:
+  /// Get a freshly initialized pseudo-random number generator.
+  ///
+  /// All the generators created by this default constructor will generate the
+  /// same deterministic sequence of numbers, controlled by the
+  /// "-pseudo-random-seed" command line option.
+  PseudoRNG();
+
+  /// \returns a pseudo-random floating point number from the half-open range
+  /// [-1; 1).
+  double nextRand();
+
+  /// \returns the next uniform random integer in the closed interval [a, b].
+  int nextRandInt(int a, int b) {
+    return std::uniform_int_distribution<int>(a, b)(engine_);
+  }
+
+  /// This typedef and the methods below implement the standard interface for a
+  /// random number generator.
+  typedef Engine::result_type result_type;
+  /// \returns the next pseudo-random number between min() and max().
+  result_type operator()() { return engine_(); }
+  /// \returns the smallest possible value generated.
+  static constexpr result_type min() { return Engine::min(); }
+  /// \returns the largest possible value generated.
+  static constexpr result_type max() { return Engine::max(); }
+};
 
 /// \returns the next uniform random number in the range -1..1.
 double nextRand();

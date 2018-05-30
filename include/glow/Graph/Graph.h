@@ -47,6 +47,8 @@ class Module final {
   llvm::StringSet<> uniqueVariableNames_{};
   /// A list of variables that the Module owns.
   VariablesList vars_;
+  /// Deterministic PRNG used to initialize weights in this module.
+  PseudoRNG PRNG_;
 
 public:
   Module() = default;
@@ -134,6 +136,9 @@ public:
 
   /// Verify the correctness of the Module.
   void verify() const;
+
+  /// Get the pseudo-random number generator used by this module.
+  PseudoRNG &getPRNG() { return PRNG_; }
 
   /// Dumps the textual representation of the network.
   void dump() const;
