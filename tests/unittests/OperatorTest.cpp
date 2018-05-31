@@ -1158,9 +1158,9 @@ TEST_P(InterpAndCPU, QuantizedCmpLTEAndSelect) {
       }
     }
   }
-  // Require that the number of off-by-1 errors be at most 0.5%.
-  EXPECT_LT(count_strict, 6);
-  EXPECT_LT(count, 3);
+  // Require that the number of off-by-1 errors be at most 0.6%.
+  EXPECT_LE(count_strict, 6);
+  EXPECT_LE(count, 4);
 }
 
 TEST_P(Operator, TestQuantizedRescaleSequence) {
