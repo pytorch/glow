@@ -37,9 +37,10 @@ TEST(Tensor, init) {
 }
 
 TEST(Tensor, randomizeInt) {
+  PseudoRNG PRNG;
   Tensor T(ElemKind::Int8QTy, {10, 10}, 1.0, 0);
   auto H = T.getHandle<int8_t>();
-  H.randomize(-50, 50);
+  H.randomize(-50, 50, PRNG);
 
   // Check that all of the numbers fall in the range -50 to 50.
   for (size_t i = 0, e = H.size(); i < e; i++) {
@@ -250,6 +251,7 @@ TEST(Tensor, getDimForPtr) {
 }
 
 TEST(Tensor, copySlice) {
+  PseudoRNG PRNG;
   // Testing some tensor operations.
   Tensor A(ElemKind::FloatTy, {10, 5, 3});
   Tensor B(ElemKind::FloatTy, {5, 3});
@@ -257,7 +259,7 @@ TEST(Tensor, copySlice) {
   auto AH = A.getHandle<>();
   auto BH = B.getHandle<>();
 
-  AH.randomize(-2.0, 2.0);
+  AH.randomize(-2.0, 2.0, PRNG);
 
   B.copySlice(&A, 0);
 
@@ -319,9 +321,10 @@ TEST(Tensor, transpose) {
 }
 
 TEST(Tensor, transpose2) {
+  PseudoRNG PRNG;
   Tensor X(ElemKind::FloatTy, {10, 6, 3});
   auto H = X.getHandle<>();
-  H.randomize(-2.0, 2.0);
+  H.randomize(-2.0, 2.0, PRNG);
 
   Tensor Xhat;
   X.transpose(&Xhat, {1, 2, 0});

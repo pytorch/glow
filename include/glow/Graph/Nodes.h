@@ -54,15 +54,16 @@ private:
   /// Initialize the content of the tensor.
   /// Payload is initialized to zero for 'None' TrainKind, and user
   /// of the graph is responsible for updating the tensor externally.
-  void initPayload();
+  void initPayload(PseudoRNG &PRNG);
 
 public:
+  /// Create a new variable and initialize its payload.
   Variable(llvm::StringRef name, TypeRef Ty, VisibilityKind visibility,
-           TrainKind train, float val)
+           TrainKind train, float val, PseudoRNG &PRNG)
       : Node(Kinded::Kind::VariableNodeKind, name), val_(val), train_(train),
         visibility_(visibility) {
     addResult(Ty);
-    initPayload();
+    initPayload(PRNG);
   }
 
   Variable(llvm::StringRef name, VisibilityKind visibility, Tensor &&payload)

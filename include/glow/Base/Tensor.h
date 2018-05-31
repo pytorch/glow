@@ -611,11 +611,12 @@ public:
   /// NxM (\p input) * MxK (\p weights) == NxK (\p result)
   /// Correct \p filterSize for weights tensor is M, so that norm for each
   /// row of \p input equals to norm of corresponding row of \p result.
-  void initXavier(size_t filterSize) {
+  void initXavier(size_t filterSize, PseudoRNG &PRNG) {
     assert(filterSize > 0 && "invalid filter size");
     double scale = std::sqrt(3.0 / double(filterSize));
+    std::uniform_real_distribution<> dist(-scale, scale);
     for (size_t i = 0, e = size(); i < e; i++) {
-      raw(i) = (nextRand()) * scale;
+      raw(i) = dist(PRNG);
     }
   }
 
@@ -623,11 +624,11 @@ public:
   /// [low .. high].
   template <typename T = ElemTy>
   typename std::enable_if<std::is_floating_point<T>::value>::type
-  randomize(float low, float high) {
+  randomize(float low, float high, PseudoRNG &PRNG) {
     assert(low < high && "invalid range");
-    float range = (high - low);
+    std::uniform_real_distribution<ElemTy> dist(low, high);
     for (size_t i = 0, e = size(); i < e; i++) {
-      raw(i) = (std::abs(nextRand())) * range + low;
+      raw(i) = dist(PRNG);
     }
   }
 
@@ -635,10 +636,11 @@ public:
   /// [low .. high].
   template <typename T = ElemTy>
   typename std::enable_if<std::is_integral<T>::value>::type
-  randomize(int low, int high) {
+  randomize(int low, int high, PseudoRNG &PRNG) {
     assert(low < high && "invalid range");
+    std::uniform_int_distribution<int> dist(low, high);
     for (size_t i = 0, e = size(); i < e; i++) {
-      raw(i) = nextRandInt(low, high);
+      raw(i) = dist(PRNG);
     }
   }
 

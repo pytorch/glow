@@ -304,7 +304,7 @@ Variable *Module::createVariable(TypeRef T, llvm::StringRef name,
                                  VisibilityKind visibility,
                                  Variable::TrainKind train, float val) {
   auto FT = uniqueType(*T);
-  return addVar(new Variable(name, FT, visibility, train, val));
+  return addVar(new Variable(name, FT, visibility, train, val, getPRNG()));
 }
 
 Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
