@@ -159,8 +159,8 @@ TEST(Network, gradientCheckFCConcatRELU) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(1);
-  outputsH.initXavier(1);
+  inputsH.initXavier(1, mod.getPRNG());
+  outputsH.initXavier(1, mod.getPRNG());
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
@@ -193,8 +193,8 @@ TEST(Network, gradientCheckConv) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(1);
-  outputsH.initXavier(1);
+  inputsH.initXavier(1, mod.getPRNG());
+  outputsH.initXavier(1, mod.getPRNG());
 
   performGradCheck(IP, result, A, Ex, &inputs, &outputs, 0.001, 0.004);
 }
@@ -226,8 +226,8 @@ TEST(Network, gradientCheckAvgPool) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(1);
-  outputsH.initXavier(1);
+  inputsH.initXavier(1, mod.getPRNG());
+  outputsH.initXavier(1, mod.getPRNG());
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.001, 0.004);
 }
@@ -258,8 +258,8 @@ TEST(Network, gradientCheckBatchNorm) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(1);
-  outputsH.initXavier(1);
+  inputsH.initXavier(1, mod.getPRNG());
+  outputsH.initXavier(1, mod.getPRNG());
 
   for (int i = 0, e = inputsH.size(); i < e; i++) {
     inputsH.raw(i) *= 6;
@@ -295,8 +295,8 @@ TEST(Network, gradientCheckArithmeticDiv) {
   Tensor ExpValues(ElemKind::FloatTy, {1, numDim});
   // Random values are in the range, so that all intermediate computations are
   // not too small and not too large.
-  BValues.getHandle().randomize(0.1, 1);
-  ExpValues.getHandle().randomize(0.1, 1);
+  BValues.getHandle().randomize(0.1, 1, mod.getPRNG());
+  ExpValues.getHandle().randomize(0.1, 1, mod.getPRNG());
 
   performGradCheck(IP, result, B, Exp, &BValues, &ExpValues, 0.0001, 0.001);
 }
@@ -324,7 +324,7 @@ TEST(Network, gradientCheckArithmetic) {
       mod.createVariable(ElemKind::FloatTy, {1, numDim}, "E",
                          VisibilityKind::Public, Variable::TrainKind::None);
   // Randomize E to avoid div by zero.
-  E->getPayload().getHandle().initXavier(1);
+  E->getPayload().getHandle().initXavier(1, mod.getPRNG());
 
   auto *Exp =
       mod.createVariable(ElemKind::FloatTy, {1, numDim}, "exp",
@@ -343,8 +343,8 @@ TEST(Network, gradientCheckArithmetic) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(1);
-  outputsH.initXavier(1);
+  inputsH.initXavier(1, mod.getPRNG());
+  outputsH.initXavier(1, mod.getPRNG());
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.01, 0.004);
 }
@@ -376,8 +376,8 @@ TEST(Network, gradientCheckFCConcatTanh) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(1);
-  outputsH.initXavier(1);
+  inputsH.initXavier(1, mod.getPRNG());
+  outputsH.initXavier(1, mod.getPRNG());
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
@@ -407,8 +407,8 @@ TEST(Network, gradientCheckFC) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(1);
-  outputsH.initXavier(1);
+  inputsH.initXavier(1, mod.getPRNG());
+  outputsH.initXavier(1, mod.getPRNG());
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.0001);
 }
@@ -439,8 +439,8 @@ TEST(Network, gradientCheckSigmoid) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(1);
-  outputsH.initXavier(1);
+  inputsH.initXavier(1, mod.getPRNG());
+  outputsH.initXavier(1, mod.getPRNG());
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
@@ -471,8 +471,8 @@ TEST(Network, gradientCheckRelu) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(1);
-  outputsH.initXavier(1);
+  inputsH.initXavier(1, mod.getPRNG());
+  outputsH.initXavier(1, mod.getPRNG());
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
@@ -501,8 +501,8 @@ TEST(Network, gradientCheckTranspose) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.randomize(-1, 1);
-  outputsH.randomize(-1, 1);
+  inputsH.randomize(-1, 1, mod.getPRNG());
+  outputsH.randomize(-1, 1, mod.getPRNG());
 
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
@@ -534,7 +534,7 @@ TEST(Network, gradientCheckCrossEntropyLoss) {
   auto inputsH = inputs.getHandle();
   auto outputsH = outputs.getHandle<size_t>();
 
-  inputsH.randomize(0.0, 1.0);
+  inputsH.randomize(0.0, 1.0, mod.getPRNG());
   outputsH.at({0}) = 2;
   outputsH.at({1}) = 0;
   outputsH.at({2}) = 1;
@@ -546,7 +546,7 @@ TEST(Network, gradientCheckCrossEntropyLoss) {
   auto gradP = getGrad(varGrads, P)->getHandle();
 
   for (int i = 0; i < testSamples; ++i) {
-    inputsH.randomize(0.0, 1.0);
+    inputsH.randomize(0.0, 1.0, mod.getPRNG());
     for (size_t j = 0; j < inputsH.size(); ++j) {
       IP.run({P, Y}, {&inputs, &outputs});
       L->getPayload().zero();

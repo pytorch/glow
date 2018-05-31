@@ -202,7 +202,7 @@ bool UnownedNodeValueMap::count(NodeValue from) {
 
 llvm::ArrayRef<size_t> NodeValue::dims() const { return getType()->dims(); }
 
-void Variable::initPayload() {
+void Variable::initPayload(PseudoRNG &PRNG) {
   payload_.reset(*getType());
 
   switch (getTrainKind()) {
@@ -234,19 +234,19 @@ void Variable::initPayload() {
   case TrainKind::Xavier: {
     switch (payload_.getElementType()) {
     case ElemKind::FloatTy: {
-      payload_.getHandle<float>().initXavier(val_);
+      payload_.getHandle<float>().initXavier(val_, PRNG);
       break;
     }
     case ElemKind::Int8QTy: {
-      payload_.getHandle<int8_t>().initXavier(val_);
+      payload_.getHandle<int8_t>().initXavier(val_, PRNG);
       break;
     };
     case ElemKind::Int32QTy: {
-      payload_.getHandle<int32_t>().initXavier(val_);
+      payload_.getHandle<int32_t>().initXavier(val_, PRNG);
       break;
     }
     case ElemKind::IndexTy: {
-      payload_.getHandle<size_t>().initXavier(val_);
+      payload_.getHandle<size_t>().initXavier(val_, PRNG);
       break;
     }
     }

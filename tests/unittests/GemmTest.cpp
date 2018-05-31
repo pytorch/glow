@@ -32,13 +32,15 @@ using namespace glow;
 using llvm::cast;
 
 TEST(Gemm, jitTest) {
+  PseudoRNG PRNG;
+
   for (size_t m : {1, 4, 5, 8}) {
     for (size_t n : {1, 16, 17}) {
       for (size_t k : {1, 3}) {
         Tensor lhs(ElemKind::FloatTy, {m, k});
         Tensor rhs(ElemKind::FloatTy, {k, n});
-        lhs.getHandle().randomize(-7.2, 8.3);
-        rhs.getHandle().randomize(-6.3, 10.1);
+        lhs.getHandle().randomize(-7.2, 8.3, PRNG);
+        rhs.getHandle().randomize(-6.3, 10.1, PRNG);
         Tensor out1(ElemKind::FloatTy, {m, n});
         Tensor out2(ElemKind::FloatTy, {m, n});
 

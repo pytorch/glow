@@ -333,6 +333,7 @@ TEST_P(InterpAndCPU, broadcast) {
 }
 
 TEST_P(Operator, minElem) {
+  PseudoRNG PRNG;
   unsigned len = 5;
 
   auto *LHS = mod_.createVariable(ElemKind::FloatTy, {len}, "lhs");
@@ -340,8 +341,8 @@ TEST_P(Operator, minElem) {
   auto *min = F_->createMin("min", LHS, RHS);
   auto *save = F_->createSave("min", min);
 
-  LHS->getHandle().randomize(-10, 10);
-  RHS->getHandle().randomize(-10, 10);
+  LHS->getHandle().randomize(-10, 10, PRNG);
+  RHS->getHandle().randomize(-10, 10, PRNG);
 
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
@@ -717,8 +718,8 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
   auto filter = conv->getFilter();
   auto bias = conv->getBias();
 
-  input->getPayload().getHandle().randomize(-1.0, 1.0);
-  llvm::cast<Variable>(bias)->getPayload().getHandle().randomize(-2.0, 2.0);
+  input->getPayload().getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  llvm::cast<Variable>(bias)->getPayload().getHandle().randomize(-2.0, 2.0, mod.getPRNG());
 
   TypeRef resTy = mod.uniqueType(ElemKind::Int8QTy, res->dims(), 0.08, 0.0);
   TypeRef inputTy = mod.uniqueType(ElemKind::Int8QTy, input->dims(), 0.01, 0.0);
@@ -756,8 +757,8 @@ TEST_P(InterpAndCPU, IntConvolutionDepth8) { checkIntConvolution(EE_, 8); }
 TEST_P(InterpAndCPU, IntConcat) {
   auto A = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "A");
   auto B = mod_.createVariable(ElemKind::FloatTy, {2, 3}, "B");
-  A->getHandle().randomize(-1.0, 1.0);
-  B->getHandle().randomize(-1.0, 1.0);
+  A->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  B->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
 
   auto ATy = mod_.uniqueType(ElemKind::Int8QTy, A->dims(), 0.01, 0);
   auto BTy = mod_.uniqueType(ElemKind::Int8QTy, B->dims(), 0.01, 0);
@@ -794,9 +795,9 @@ TEST_P(InterpAndCPU, IntFC) {
   auto weights = fc->getWeights();
   auto bias = fc->getBias();
 
-  input->getPayload().getHandle().randomize(-1.0, 1.0);
-  llvm::cast<Variable>(bias)->getPayload().getHandle().randomize(0, 0.00001);
-  llvm::cast<Variable>(weights)->getPayload().getHandle().randomize(-1.1, 1.1);
+  input->getPayload().getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  llvm::cast<Variable>(bias)->getPayload().getHandle().randomize(0, 0.00001, mod_.getPRNG());
+  llvm::cast<Variable>(weights)->getPayload().getHandle().randomize(-1.1, 1.1, mod_.getPRNG());
 
   TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, res->dims(), 0.15, 4);
   TypeRef inputTy = mod_.uniqueType(ElemKind::Int8QTy, input->dims(), 0.01, 0);
@@ -915,10 +916,10 @@ TEST_P(InterpAndCPU, QuantizedArithmeticRescaled) {
   auto O5H = O5->getHandle();
   auto O6H = O6->getHandle();
 
-  AH.randomize(-10, 10);
-  BH.randomize(-10, 10);
+  AH.randomize(-10, 10, mod_.getPRNG());
+  BH.randomize(-10, 10, mod_.getPRNG());
   // Below, randomize between 1 and 10 to avoid division by 0 later.
-  CH.randomize(1, 10);
+  CH.randomize(1, 10, mod_.getPRNG());
 
   auto TA = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.2, 0);
   auto TB = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.1, 0);
@@ -1049,9 +1050,9 @@ TEST_P(InterpAndCPU, QuantizedArithmeticUnrescaled) {
   auto O5H = O5->getHandle<int8_t>();
   auto O6H = O6->getHandle<int8_t>();
 
-  QAH.randomize(-10, 10);
-  QBH.randomize(-10, 10);
-  QCH.randomize(-10, 10);
+  QAH.randomize(-10, 10, mod_.getPRNG());
+  QBH.randomize(-10, 10, mod_.getPRNG());
+  QCH.randomize(-10, 10, mod_.getPRNG());
 
   // Apply max/min/add/sub/mul/div quantized.
   Node *max = F_->createMax("max", TO1, QA, QB);
@@ -1124,10 +1125,10 @@ TEST_P(InterpAndCPU, QuantizedCmpLTEAndSelect) {
   auto QDH = QD->getHandle<int8_t>();
   auto OH = Out->getHandle<int8_t>();
 
-  QAH.randomize(-129, 128);
-  QBH.randomize(-129, 128);
-  QCH.randomize(-129, 128);
-  QDH.randomize(-129, 128);
+  QAH.randomize(-129, 128, mod_.getPRNG());
+  QBH.randomize(-129, 128, mod_.getPRNG());
+  QCH.randomize(-129, 128, mod_.getPRNG());
+  QDH.randomize(-129, 128, mod_.getPRNG());
 
   // Apply comparison and selection quantized.
   Node *cmpLTE = F_->createCmpLTE("cmpLTE", QA, QB);
@@ -1177,7 +1178,7 @@ TEST_P(Operator, TestQuantizedRescaleSequence) {
   // Notice that the range below is the an approximation of the scale factors in
   // T3 and T4. If we increase the size of the range we may start losing some
   // values.
-  AH.randomize(-12, 12);
+  AH.randomize(-12, 12, mod_.getPRNG());
 
   auto T1 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
   auto T2 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 2);
@@ -1518,7 +1519,7 @@ TEST_P(Operator, simplePredication) {
   auto *counters = mod_.createVariable(ElemKind::FloatTy, {10}, "counters");
 
   counters->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
-  inputs->getHandle().randomize(-10, 10);
+  inputs->getHandle().randomize(-10, 10, mod_.getPRNG());
 
   Node *C5 = F_->createSplat("C5", counters->getType(), 5.0);
   Node *pred = F_->createCmpLTE("cmp", C5, counters);
@@ -1747,7 +1748,7 @@ TEST_P(InterpAndCPU, GroupConvolution) {
 TEST_P(InterpAndCPU, Int8Tanh) {
   constexpr size_t size = 10;
   auto *input = mod_.createVariable(ElemKind::FloatTy, {size}, "input");
-  input->getHandle().randomize(-10.0, 10.0);
+  input->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
 
   auto *fpTanh = F_->createTanh("fpTanh", input);
   auto *saveFp = F_->createSave("fpSave", fpTanh);
@@ -1782,7 +1783,7 @@ TEST_P(InterpAndCPU, Int8Tanh) {
 TEST_P(InterpAndCPU, Int8Sigmoid) {
   constexpr size_t size = 10;
   auto *input = mod_.createVariable(ElemKind::FloatTy, {size}, "input");
-  input->getHandle().randomize(-10.0, 10.0);
+  input->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
 
   auto *fpSigmoid = F_->createSigmoid("fpSigmoid", input);
   auto *saveFp = F_->createSave("fpSave", fpSigmoid);
@@ -1848,8 +1849,8 @@ TEST_P(Operator, testBatchAdd) {
   auto *result =
       mod_.createVariable(ElemKind::FloatTy, {numSlices, 10, 10}, "result");
 
-  input->getHandle().randomize(-10.0, 10.0);
-  slice->getHandle().randomize(-10.0, 10.0);
+  input->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
+  slice->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
 
   std::vector<NodeValue> adds;
   for (size_t i = 0; i < numSlices; i++) {
@@ -1893,8 +1894,8 @@ TEST_P(InterpAndCPU, testQuantizedBatchAdd) {
   auto *result = mod_.createVariable(ElemKind::FloatTy, {numSlices, 10, 10},
                                      "result", VisibilityKind::Public);
 
-  input->getHandle().randomize(-5.0, 5.0);
-  slice->getHandle().randomize(-5.0, 5.0);
+  input->getHandle().randomize(-5.0, 5.0, mod_.getPRNG());
+  slice->getHandle().randomize(-5.0, 5.0, mod_.getPRNG());
 
   // Scale the numbers in the range (-5. .. 5.) to (-50 .. 50).
   auto qInType = mod_.uniqueType(ElemKind::Int8QTy, {numSlices, 10, 10}, .1, 0);
