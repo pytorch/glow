@@ -22,23 +22,6 @@ using namespace glow;
 
 // Test that nextRandInt generates every number in the closed interval [lb, ub].
 // Use enough trials that the probability of random failure is < 1.0e-9.
-TEST(Utils, randomClosedInterval) {
-  constexpr int lb = -3;
-  constexpr int ub = 3;
-  constexpr int trials = 200;
-
-  for (int i = lb; i <= ub; i++) {
-    int j = 0;
-    for (; j < trials; j++) {
-      if (nextRandInt(lb, ub) == i) {
-        break;
-      }
-    }
-    EXPECT_LT(j, trials);
-  }
-}
-
-// Same as above, but with a PseudoRNG instance.
 TEST(Utils, PRNGBasics) {
   PseudoRNG PRNG;
   constexpr int lb = -3;
