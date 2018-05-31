@@ -209,13 +209,13 @@ unsigned numSamples = 230;
 
 /// Generate data in two classes. The circle of dots that's close to the axis is
 /// L0, and the rest of the dots, away from the axis are L1.
-void generateCircleData(Tensor &coordinates, Tensor &labels) {
+void generateCircleData(Tensor &coordinates, Tensor &labels, PseudoRNG &PRNG) {
   auto C = coordinates.getHandle<>();
   auto L = labels.getHandle<size_t>();
 
   for (size_t i = 0; i < numSamples / 2; i++) {
-    float r = nextRand() * 0.4;
-    float a = nextRand() * 3.141592 * 2;
+    float r = PRNG.nextRand() * 0.4;
+    float a = PRNG.nextRand() * 3.141592 * 2;
     float y = r * sin(a);
     float x = r * cos(a);
 
@@ -223,8 +223,8 @@ void generateCircleData(Tensor &coordinates, Tensor &labels) {
     C.at({i * 2, 1u}) = y;
     L.at({i * 2, 0}) = 1;
 
-    r = nextRand() * 0.4 + 0.8;
-    a = nextRand() * 3.141592 * 2;
+    r = PRNG.nextRand() * 0.4 + 0.8;
+    a = PRNG.nextRand() * 3.141592 * 2;
     y = r * sin(a);
     x = r * cos(a);
 
@@ -267,7 +267,7 @@ TEST_P(MLTest, circle) {
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
   Tensor labels(ElemKind::IndexTy, {numSamples, 1});
-  generateCircleData(coordinates, labels);
+  generateCircleData(coordinates, labels, mod.getPRNG());
 
   // Training:
   EE_.runBatch(4000, {A, S}, {&coordinates, &labels});
@@ -543,7 +543,7 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
   Tensor tensorY(ElemKind::FloatTy, {numSamples, 1});
   for (unsigned i = 0; i < numSamples; i++) {
     float x_i = -2.0 + 4.0 * i / numSamples;
-    float y_i = referenceM * x_i + referenceB + nextRand() / 10.0;
+    float y_i = referenceM * x_i + referenceB + mod.getPRNG().nextRand() / 10.0;
     tensorX.getHandle<>().at({i, 0}) = x_i;
     tensorY.getHandle<>().at({i, 0}) = y_i;
   }
@@ -577,14 +577,15 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
 enum class Sport : size_t { BASKETBALL = 0, SOCCER = 1 };
 
 void generatePlayerData(Tensor &players, Tensor &labels,
-                        unsigned numTrainPlayers) {
+                        unsigned numTrainPlayers, PseudoRNG &PRNG) {
   auto P = players.getHandle<>();
   auto L = labels.getHandle<size_t>();
 
   // Auto generate height/weights for basketball players.
   for (size_t i = 0; i < numTrainPlayers / 2; i++) {
-    auto heightInches = nextRandInt(70, 88);
-    auto weightLbs = 4 * heightInches + nextRandInt(-85, -55); // [195, 297]
+    auto heightInches = PRNG.nextRandInt(70, 88);
+    auto weightLbs =
+        4 * heightInches + PRNG.nextRandInt(-85, -55); // [195, 297]
     P.at({i, 0}) = heightInches;
     P.at({i, 1}) = weightLbs;
     L.at({i, 0}) = static_cast<size_t>(Sport::BASKETBALL);
@@ -592,9 +593,9 @@ void generatePlayerData(Tensor &players, Tensor &labels,
 
   // Auto generate height/weights for soccer players.
   for (size_t i = numTrainPlayers / 2; i < numTrainPlayers; i++) {
-    auto heightInches = nextRandInt(60, 76);
+    auto heightInches = PRNG.nextRandInt(60, 76);
     auto weightLbs = static_cast<unsigned>(2 * heightInches) +
-                     nextRandInt(20, 50); // [140, 202]
+                     PRNG.nextRandInt(20, 50); // [140, 202]
     P.at({i, 0}) = heightInches;
     P.at({i, 1}) = weightLbs;
     L.at({i, 0}) = static_cast<size_t>(Sport::SOCCER);
@@ -630,7 +631,7 @@ TEST_P(MLTest, classifyPlayerSport) {
 
   Tensor players(ElemKind::FloatTy, {numTrainPlayers, numFeatures});
   Tensor labels(ElemKind::IndexTy, {numTrainPlayers, 1});
-  generatePlayerData(players, labels, numTrainPlayers);
+  generatePlayerData(players, labels, numTrainPlayers, mod.getPRNG());
 
   // Training:
   EE_.runBatch(2000, {A, S}, {&players, &labels});
@@ -766,8 +767,8 @@ TEST_P(MLTest, nonLinearClassifier) {
   Tensor labels(ElemKind::IndexTy, {numSamples, 1});
 
   for (size_t i = 0; i < numSamples; i++) {
-    float x = nextRand();
-    float y = nextRand();
+    float x = mod.getPRNG().nextRand();
+    float y = mod.getPRNG().nextRand();
     size_t label = (x < 0.0) ^ (y < 0.0);
     samples.getHandle<>().at({i, 0}) = x;
     samples.getHandle<>().at({i, 1}) = y;
@@ -795,7 +796,7 @@ TEST_P(MLTest, nonLinearClassifier) {
 
 /// Generate images in two classes.
 /// A "line" is labeled as 0 and a "cross" is labeled as 1.
-static void generateImageData(Tensor &images, Tensor &labels) {
+static void generateImageData(Tensor &images, Tensor &labels, PseudoRNG &PRNG) {
   auto L = labels.getHandle<size_t>();
   auto image = images.getHandle<>();
   unsigned numSamples = images.dims()[0];
@@ -804,7 +805,7 @@ static void generateImageData(Tensor &images, Tensor &labels) {
   for (size_t i = 0; i < numSamples; i++) {
     bool isLine = i % 2 == 0;
     L.at({i, 0}) = isLine ? 0 : 1;
-    size_t target = nextRandInt(1, 6);
+    size_t target = PRNG.nextRandInt(1, 6);
     if (isLine) {
       for (size_t y = 0; y < 8; y++)
         image.at({i, target, y, 0u}) = 1;
@@ -848,7 +849,7 @@ TEST_P(MLTest, convNetForImageRecognition) {
 
   Tensor images(ElemKind::FloatTy, {numSamples, 8, 8, 1});
   Tensor labels(ElemKind::IndexTy, {numSamples, 1});
-  generateImageData(images, labels);
+  generateImageData(images, labels, mod.getPRNG());
 
   // Training:
   EE_.runBatch(500, {input, ex}, {&images, &labels});
@@ -857,7 +858,7 @@ TEST_P(MLTest, convNetForImageRecognition) {
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
   Tensor testLabels(ElemKind::IndexTy, {batchSize, 1});
-  generateImageData(testImages, testLabels);
+  generateImageData(testImages, testLabels, mod.getPRNG());
   EE_.run({input}, {&testImages});
   auto SMH = result->getVariable()->getHandle<>();
   for (size_t i = 0; i < batchSize; i++) {
@@ -871,7 +872,8 @@ TEST_P(MLTest, convNetForImageRecognition) {
 
 /// Generate data for the regression test. Put a '1' in a random location in a
 /// clear tensor and report the coordinates of that pixel.
-static void generateRegressionTestData(Tensor &images, Tensor &labels) {
+static void generateRegressionTestData(Tensor &images, Tensor &labels,
+                                       PseudoRNG &PRNG) {
   auto L = labels.getHandle<>();
   auto image = images.getHandle<>();
   unsigned numSamples = images.dims()[0];
@@ -879,8 +881,8 @@ static void generateRegressionTestData(Tensor &images, Tensor &labels) {
 
   for (size_t i = 0; i < numSamples; i++) {
     // Generate the X,Y coordinates to place our object.
-    size_t x = nextRandInt(0, 9);
-    size_t y = nextRandInt(0, 9);
+    size_t x = PRNG.nextRandInt(0, 9);
+    size_t y = PRNG.nextRandInt(0, 9);
     L.at({i, 0}) = x;
     L.at({i, 1}) = y;
     image.at({i, x, y, 0u}) = 1;
@@ -923,7 +925,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   // --  STEP1 - train the network. --
   Tensor images(ElemKind::FloatTy, {numSamples, 10, 10, 1});
   Tensor labels(ElemKind::FloatTy, {numSamples, 2});
-  generateRegressionTestData(images, labels);
+  generateRegressionTestData(images, labels, mod.getPRNG());
 
   // Training:
   EE.runBatch(400, {input, ex}, {&images, &labels});
@@ -953,7 +955,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 10, 10, 1});
   Tensor testLabels(ElemKind::FloatTy, {batchSize, 2});
-  generateRegressionTestData(testImages, testLabels);
+  generateRegressionTestData(testImages, testLabels, mod.getPRNG());
 
   // Run the inference:
   EE.run({input}, {&testImages});
