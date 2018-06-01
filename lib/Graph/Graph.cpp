@@ -539,11 +539,55 @@ TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
   return addNode(new TransposeNode(name, NT, input, shuffle.vec()));
 }
 
-BroadcastNode *Function::createBroadcast(llvm::StringRef name, NodeValue input,
-                                         llvm::ArrayRef<size_t> shape,
-                                         unsigned axis) {
-  auto OT = getParent()->uniqueTypeWithNewShape(input.getType(), shape);
-  return addNode(new BroadcastNode(name, OT, input, shape.vec(), axis));
+Node *Function::createBroadcast(llvm::StringRef name, NodeValue input,
+                                llvm::ArrayRef<size_t> newShape,
+                                unsigned axis) {
+  assert(axis >= 0 && axis < newShape.size() &&
+         "Axis must fit inside the newShape.");
+
+  const auto &origDims = input.dims();
+
+  // Iterate over the new shape; if the original shape had a dimension here
+  // (when considering the axis) then verify the dimension either matches the
+  // new shape (no action taken) or == 1 (broadcast in that direction). Else
+  // the original shape had no dimensions here (after considering axis), so
+  // add the new dimension and broadcast in that direction.
+  size_t reshapeDims[newShape.size()];
+  for (size_t i = 0; i < newShape.size(); i++) {
+    if (i >= axis && i < origDims.size() + axis) {
+      const int origIdx = i - axis;
+      if (origDims[origIdx] == newShape[i]) {
+        // Keep original dimensions; they are compatible.
+        reshapeDims[i] = origDims[origIdx];
+      } else if (origDims[origIdx] == 1) {
+        // Will broadcast this dimension to size from newShape.
+        reshapeDims[i] = 1;
+      } else {
+        // Incompatible dimensions for broadcasting
+        assert(false && "Cannot broadcast with these dimensions.");
+      }
+    } else {
+      // Will broadcast this dimension to size from newShape.
+      reshapeDims[i] = 1;
+    }
+  }
+
+  // Reshape the input node to same number of dimensions as new shape, but with
+  // 1s in place of to-be-brodacasted dimensions.
+  Node *currNode =
+      createReshape(name.str() + ".reshape", input,
+                    llvm::ArrayRef<size_t>(reshapeDims, newShape.size()));
+
+  // Create a Tile (which is really a Concat) in each direction that needs to be
+  // broadcasted.
+  for (size_t i = 0; i < newShape.size(); i++) {
+    if (reshapeDims[i] == 1 && newShape[i] != 1) {
+      currNode = createTile(name.str() + ".tile" + std::to_string(i), currNode,
+                            newShape[i], i);
+    }
+  }
+
+  return currNode;
 }
 
 /// \returns true if \p T1 and T2 has the exact same type except for dimension

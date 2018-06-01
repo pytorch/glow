@@ -488,55 +488,6 @@ TEST(Tensor, externallyManagedPayload) {
   EXPECT_EQ(int(payload[3]), 30);
 }
 
-/// Broadcast a Tensor of shape (2,1) to (3,2,4,2) with axis 1.
-TEST(Tensor, broadcastNewShape) {
-  const size_t numDims_A = 4;
-
-  const size_t dimX_A = 3;
-  const size_t dimY_A = 2;
-  const size_t dimZ_A = 4;
-  const size_t dimW_A = 2;
-
-  size_t dims_A[numDims_A];
-  dims_A[0] = dimX_A;
-  dims_A[1] = dimY_A;
-  dims_A[2] = dimZ_A;
-  dims_A[3] = dimW_A;
-
-  const size_t dimY_B = 2;
-  const size_t dimZ_B = 1;
-  Tensor X_B(ElemKind::FloatTy, {dimY_B, dimZ_B});
-  auto H_B = X_B.getHandle<>();
-  H_B = {200, 201};
-
-  Tensor broadcastedB;
-  const unsigned axis = 1;
-  X_B.broadcastToNewShape(&broadcastedB, dims_A, axis);
-
-  auto broadcastedBHandle = broadcastedB.getHandle<>();
-
-  // Verify broadcasted B has same shape.
-  EXPECT_EQ(numDims_A, broadcastedBHandle.dims().size());
-  for (size_t i = 0; i < broadcastedBHandle.dims().size(); i++) {
-    EXPECT_EQ(dims_A[i], broadcastedBHandle.dims()[i]);
-  }
-
-  // Look at the two values in X_B and verify in the three dimensions it was
-  // broadcasted that the values were correctly broadcasted.
-  const size_t k_B = 0;
-  for (size_t j_B = 0; j_B < dimY_B; ++j_B) {
-    const float origVal = H_B.at({j_B, k_B});
-    const size_t j_A = j_B; // This dim was not broadcasted (dims were equal).
-    for (size_t i_A = 0; i_A < dimX_A; ++i_A) {
-      for (size_t k_A = 0; k_A < dimZ_A; ++k_A) {
-        for (size_t l_A = 0; l_A < dimW_A; ++l_A) {
-          EXPECT_EQ(origVal, broadcastedBHandle.at({i_A, j_A, k_A, l_A}));
-        }
-      }
-    }
-  }
-}
-
 TEST(Tensor, integerTensors) {
   Tensor X;
   // Integer tensors must have scale and offset.

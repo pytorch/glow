@@ -644,15 +644,6 @@ void Interpreter::fwdTransposeInst(const TransposeInst *I) {
   }
 }
 
-void Interpreter::fwdBroadcastInst(const BroadcastInst *I) {
-  auto inT = getTensor(I->getSrc());
-  auto outT = getTensor(I->getDest());
-  auto shape = I->getShape();
-  auto axis = I->getAxis();
-
-  inT->broadcastToNewShape(outT, shape, axis);
-}
-
 void Interpreter::fwdTensorViewInst(const TensorViewInst *I) {
   getOrCreateUnownedTensor(I, I->getSrc(), I->getOffsets());
 }

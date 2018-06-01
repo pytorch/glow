@@ -302,17 +302,6 @@ int main(int argc, char **argv) {
       .setDocstring("Transpose the Input tensor based on the vector Shuffle, "
                     "which assigns a new axis for each dimension in Input.");
 
-  BB.newNode("Broadcast")
-      .addInput("Input")
-      .addMember(MemberType::VectorSizeT, "Shape")
-      .addMember(MemberType::Unsigned, "Axis")
-      .addResultFromCtorArg()
-      .setDocstring("Performs broadcasting on the Input tensor so that its "
-                    "shape matches the provided Shape. The provided Axis "
-                    "represents the offset of the Input's shape (from the "
-                    "leading dimension) when comparing dimensions to the "
-                    "destination Shape.");
-
   BB.newNode("Concat")
       .addMember(MemberType::VectorNodeValue, "Inputs")
       .addMember(MemberType::Unsigned, "Dim")

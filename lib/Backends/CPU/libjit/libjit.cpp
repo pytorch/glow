@@ -330,50 +330,6 @@ void libjit_topk(T *values, size_t *indices, const T *input, size_t *scratch,
   }
 }
 
-/// Helper function for Broadcast. Increments an "index" dimension vector, \p
-/// dest_i, with respect to \p dest_dims.  This corresponds to striding through
-/// all \p n dimensions using \p n nested for-loops.
-///
-/// \returns false when the index equals the dimension.
-bool increment_and_check_dims(size_t *dest_i, const size_t *dest_dims,
-                              size_t n) {
-  for (size_t i = 0; i < n; i++) {
-    dest_i[i] += 1;
-    if (dest_i[i] == dest_dims[i]) {
-      dest_i[i] = 0;
-    } else {
-      return true;
-    }
-  }
-  return false;
-}
-
-/// Helper function for Broadcast. Given a destination index \p dest_i of a
-/// broadcast operation, compute the source index \p src_i given a source tensor
-/// with dimensions \p src_dims.
-///
-/// Any source dimension containing a 1 is broadcast to all other dimensions by
-/// selecting index 0 in that dimension.
-void get_src_dim(size_t *src_i, const size_t *dest_i, const size_t *src_dims,
-                 size_t n) {
-  for (size_t i = 0; i < n; i++) {
-    src_i[i] = (src_dims[i] == 1) ? 0 : dest_i[i];
-  }
-}
-
-template <typename T>
-void libjit_broadcast(T *dest, const T *src, const size_t *destDims,
-                      const size_t *srcDims, size_t nDims) {
-  size_t destI[6] = {0};
-  size_t srcI[6] = {0};
-  do {
-    get_src_dim(srcI, destI, srcDims, nDims);
-    size_t sptr = get_element_ptr(src, srcDims, nDims, srcI, nDims);
-    size_t dptr = get_element_ptr(dest, destDims, nDims, destI, nDims);
-    dest[dptr] = src[sptr];
-  } while (increment_and_check_dims(destI, destDims, nDims));
-}
-
 template <typename T>
 void libjit_gather(T *dest, const T *data, const size_t *indices,
                    size_t numIndices, size_t sliceSize) {
@@ -695,17 +651,6 @@ DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_splat_kernel_i8, int8_t,
 #undef DEFINE_DATA_PARALLEL_KERNEL_FUNC
 #undef DEFINE_DATA_PARALLEL_KERNEL_FUNC
 #undef DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND
-
-void libjit_broadcast_f(float *dest, const float *src, const size_t *destDims,
-                        const size_t *srcDims, size_t nDims) {
-  libjit_broadcast(dest, src, destDims, srcDims, nDims);
-}
-
-void libjit_broadcast_i8(int8_t *dest, const int8_t *src,
-                         const size_t *destDims, const size_t *srcDims,
-                         size_t nDims) {
-  libjit_broadcast(dest, src, destDims, srcDims, nDims);
-}
 
 void libjit_batchedadd_f(float *dest, const float *batch, const float *slice,
                          size_t numSlice, size_t sliceSize) {
