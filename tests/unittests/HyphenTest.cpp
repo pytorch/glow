@@ -31,7 +31,6 @@
 
 #include "gtest/gtest.h"
 
-#include <random>
 #include <string>
 
 using namespace glow;
@@ -317,6 +316,8 @@ struct HyphenNetwork {
 } // namespace
 
 TEST(HyphenTest, network) {
+  ExecutionEngine EE(BackendKind::CPU);
+
   // Convert the training data to word windows and labels.
   vector<string> words;
   vector<bool> hyphens;
@@ -331,15 +332,11 @@ TEST(HyphenTest, network) {
 
   // Randomly shuffle the training data.
   // This is required for stochastic gradient descent training.
-  {
-    // Use a deterministically seeded RNG.
-    std::mt19937 generator;
-    for (size_t i = numSamples - 1; i > 0; i--) {
-      std::uniform_int_distribution<> distribution(0, i);
-      size_t j = distribution(generator);
-      std::swap(words[i], words[j]);
-      std::swap(hyphens[i], hyphens[j]);
-    }
+  auto &PRNG = EE.getModule().getPRNG();
+  for (size_t i = numSamples - 1; i > 0; i--) {
+    size_t j = PRNG.nextRandInt(0, i);
+    std::swap(words[i], words[j]);
+    std::swap(hyphens[i], hyphens[j]);
   }
 
   // Convert words and hyphens to a tensor representation.
@@ -353,7 +350,6 @@ TEST(HyphenTest, network) {
   }
 
   // Now build the network.
-  ExecutionEngine EE(BackendKind::CPU);
   EE.getConfig().learningRate = 0.8;
   EE.getConfig().batchSize = 50;
   HyphenNetwork net(EE.getModule(), EE.getConfig());
