@@ -126,9 +126,15 @@ void loadTensor(const onnx::TensorProto &in, Tensor *T) {
 
 void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
-
   const std::string &typeName = op.op_type();
-  const std::string &opName = op.name().length() ? op.name() : op.output(0);
+
+  // Check if operator is supported in parent class, CommonOperatorLoader.
+  if (tryLoadCommonOperator(typeName, op, dict)) {
+    // If operator is supported, CommonOperatorLoader loaded it to the Graph.
+    return;
+  }
+
+  const std::string &opName = loadOperatorName(op);
 
   // Load tensors with values:
   if (typeName == "Constant") {
@@ -169,18 +175,6 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     auto *T = new Tensor();
     loadTensor(dict["value"]->t(), T);
     tensors_[name] = T;
-    return;
-  }
-
-  if (typeName == "Relu") {
-    // Load the inputs:
-    auto *in = getOrCreateNodeByName(op.input(0));
-    // Create the RELU:
-    auto *R = G_.createRELU(opName, in);
-    // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = R;
-    }
     return;
   }
 
@@ -564,7 +558,7 @@ void ONNXModelLoader::loadNetwork(onnx::GraphProto &net) {
 ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  llvm::ArrayRef<const char *> names,
                                  llvm::ArrayRef<Tensor *> tensors, Function &F)
-    : ProtobufLoader(names, tensors, F) {
+    : CommonOperatorLoader(names, tensors, F) {
   // The ONNX model that we are deserializing.
   onnx::GraphProto modelDef;
   loadProtoFile(modelDef, modelDescFilename);

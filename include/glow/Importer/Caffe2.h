@@ -18,13 +18,14 @@
 #define GLOW_IMPORTER_CAFFE2_H
 
 #include "glow/Graph/Graph.h"
-#include "glow/Importer/ProtobufLoader.h"
+#include "glow/Importer/CommonOperatorLoader.h"
 
 #include "llvm/ADT/ArrayRef.h"
 
 #include <string>
 
 namespace caffe2 {
+class Argument;
 class OperatorDef;
 class NetDef;
 } // namespace caffe2
@@ -35,7 +36,8 @@ class Tensor;
 class Value;
 
 /// Loads caffe2 models.
-class caffe2ModelLoader : public ProtobufLoader {
+class caffe2ModelLoader
+    : public CommonOperatorLoader<caffe2::OperatorDef, caffe2::Argument> {
   /// Load the weight tensors from the 'init' file and register them in the map
   /// \p tensors.
   void loadWeights(caffe2::NetDef &net);

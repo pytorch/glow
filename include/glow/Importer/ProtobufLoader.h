@@ -81,6 +81,12 @@ template <typename T> size_t getConstantArrayHead(const T *arg) {
   return dim[0];
 }
 
+/// Returns canonical name for a given operator: either \p name() from proto,
+/// or its first output's name.
+template <typename T> std::string loadOperatorName(const T &op) {
+  return op.name().length() ? op.name() : op.output(0);
+}
+
 /// Loads model: graph and weights.
 class ProtobufLoader {
 protected:
