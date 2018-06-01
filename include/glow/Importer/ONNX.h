@@ -18,13 +18,14 @@
 #define GLOW_IMPORTER_ONNX_H
 
 #include "glow/Graph/Graph.h"
-#include "glow/Importer/ProtobufLoader.h"
+#include "glow/Importer/CommonOperatorLoader.h"
 
 #include "llvm/ADT/ArrayRef.h"
 
 #include <string>
 
 namespace onnx {
+class AttributeProto;
 class NodeProto;
 class GraphProto;
 } // namespace onnx
@@ -32,7 +33,8 @@ class GraphProto;
 namespace glow {
 
 /// Loads ONNX models.
-class ONNXModelLoader : public ProtobufLoader {
+class ONNXModelLoader
+    : public CommonOperatorLoader<onnx::NodeProto, onnx::AttributeProto> {
   /// Load the network operators from the GraphProto.
   void loadNetwork(onnx::GraphProto &net);
 

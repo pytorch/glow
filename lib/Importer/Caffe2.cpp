@@ -89,21 +89,15 @@ bool caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
 
 void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
-
   const std::string &typeName = op.type();
-  const std::string &opName = op.name().length() ? op.name() : op.output(0);
 
-  if (typeName == "Relu") {
-    // Load the inputs:
-    auto *in = getOrCreateNodeByName(op.input(0));
-    // Create the RELU:
-    auto *R = G_.createRELU(opName, in);
-    // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = R;
-    }
+  // Check if operator is supported in parent class, CommonOperatorLoader.
+  if (tryLoadCommonOperator(typeName, op, dict)) {
+    // If operator is supported, CommonOperatorLoader loaded it to the Graph.
     return;
   }
+
+  const std::string &opName = loadOperatorName(op);
 
   if (typeName == "Conv") {
     // Load the inputs:
@@ -551,7 +545,7 @@ caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
                                      llvm::ArrayRef<const char *> names,
                                      llvm::ArrayRef<Tensor *> tensors,
                                      Function &F)
-    : ProtobufLoader(names, tensors, F) {
+    : CommonOperatorLoader(names, tensors, F) {
   // The caffe2 weights that we are deserializing.
   caffe2::NetDef weightsDef;
   // The caffe2 network descriptor that we are deserializing.
