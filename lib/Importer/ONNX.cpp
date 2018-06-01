@@ -537,6 +537,22 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     return;
   }
 
+  if (typeName == "Split") {
+    auto *in = getOrCreateNodeByName(op.input(0));
+    size_t axis = dict.count("axis") ? loadInt(dict["axis"]) : 0;
+    std::vector<size_t> split;
+    if (dict.count("split"))
+      split = getShape(dict["split"]);
+
+    std::vector<Node *> outputs;
+    G_.createSplit(opName, in, op.output_size(), axis, split, outputs);
+
+    for (int i = 0, e = op.output_size(); i < e; i++) {
+      nodeByName_[op.output(i)] = outputs[i];
+    }
+    return;
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
