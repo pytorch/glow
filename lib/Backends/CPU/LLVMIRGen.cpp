@@ -1459,6 +1459,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *kernel = emitConstSizeT(builder, CI->getKernel());
     auto *stride = emitConstSizeT(builder, CI->getStride());
     auto *pad = emitConstSizeT(builder, CI->getPad());
+    auto *group = emitConstSizeT(builder, CI->getGroup());
 
     size_t inChannels = src->dims()[3];
     size_t outChannels = src->dims()[3];
@@ -1504,8 +1505,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     createCall(builder, F,
                {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
-                filterDims, biasDims, kernel, stride, pad, pixelScanFirstVal,
-                numDepthRegsVal, sizeGroupYVal, depthStripsVal});
+                filterDims, biasDims, kernel, stride, pad, group,
+                pixelScanFirstVal, numDepthRegsVal, sizeGroupYVal,
+                depthStripsVal});
     break;
   }
 

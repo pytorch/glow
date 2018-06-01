@@ -585,6 +585,18 @@ TEST_P(BackendCorrectnessTest, smallConv) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
+/// This test targets the DKKC8 optimization.
+TEST_P(CPUOnly, groupConvTest) {
+  std::array<size_t, 4> S{{1, 2, 1, 128}};
+  llvm::ArrayRef<size_t> shape(S);
+  Tensor out1(ElemKind::FloatTy, shape);
+  Tensor out2(ElemKind::FloatTy, shape);
+  inferGroupConv(&out1, backendKind_);
+  inferGroupConv(&out2, BackendKind::Interpreter);
+
+  EXPECT_TRUE(out1.isEqual(out2));
+}
+
 TEST_P(BackendCorrectnessTest, softmaxTest) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {14, 19});

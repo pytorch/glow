@@ -432,6 +432,38 @@ void inferSmallConv(Tensor *inputs, Tensor *out, BackendKind kind) {
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+void inferGroupConv(Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+
+  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 2, 1, 32}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 2 * 32; i++) {
+    IH.raw(i) = (i + 1) / 10.0;
+  }
+
+  auto filter =
+      mod.createVariable(ElemKind::FloatTy, {128, 1, 1, 16}, "filter");
+  auto FH = filter->getHandle();
+  for (size_t i = 0; i < 128; i++)
+    for (size_t j = 0; j < 16; j++) {
+      FH.at({i, 0, 0, j}) = (i + j) / 100.0;
+    }
+  auto *zeroBias = mod.createVariable(ElemKind::FloatTy, {128}, "bias");
+  zeroBias->getPayload().zero();
+
+  auto outTy = mod.uniqueType(ElemKind::FloatTy, {1, 2, 1, 128});
+
+  ConvolutionNode *CN =
+      F->createConv("Conv", input, filter, zeroBias, outTy, 1, 1, 0, 2);
+  SaveNode *result = F->createSave("save", CN);
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 void inferSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
                      BackendKind kind) {
   ExecutionEngine EE(kind);

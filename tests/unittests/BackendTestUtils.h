@@ -93,6 +93,8 @@ void inferSelectNet(Tensor *cond, Tensor *inputs1, Tensor *inputs2, Tensor *out,
 
 void inferSigmoidNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
+void inferGroupConv(Tensor *out, BackendKind kind);
+
 void inferSmallConv(Tensor *inputs, Tensor *out, BackendKind kind);
 
 void inferSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
