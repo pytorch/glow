@@ -235,8 +235,12 @@ public:
   TransposeNode *createTranspose(llvm::StringRef name, NodeValue input,
                                  llvm::ArrayRef<unsigned> shuffle);
 
-  BroadcastNode *createBroadcast(llvm::StringRef name, NodeValue input,
-                                 UnsignedArrayRef shape, unsigned axis);
+  /// Create a series of nodes that implement a Broadcast operation. The \p
+  /// input Tensor is broadcasted based on \p newShape and along the \p axis,
+  /// which defines the offset from the leading dimension under which
+  /// broadcasting is performed.
+  Node *createBroadcast(llvm::StringRef name, NodeValue input,
+                        UnsignedArrayRef newShape, unsigned axis);
 
   /// Create concat node which concatenates input tensors along \p dimension.
   ConcatNode *createConcat(llvm::StringRef name,

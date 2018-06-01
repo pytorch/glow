@@ -111,7 +111,6 @@ bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     case Kinded::Kind::AddNodeKind:
     case Kinded::Kind::BatchedAddNodeKind:
     case Kinded::Kind::BatchedReduceAddNodeKind:
-    case Kinded::Kind::BroadcastNodeKind:
     case Kinded::Kind::CmpLTENodeKind:
     case Kinded::Kind::ConcatNodeKind:
     case Kinded::Kind::ConvolutionNodeKind:

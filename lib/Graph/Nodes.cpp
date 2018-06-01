@@ -709,28 +709,6 @@ void TransposeNode::verify() const {
   assert(dest.dims().equals(shape) && "Invalid transpose dims");
 }
 
-void BroadcastNode::verify() const {
-  auto src = getInput();
-  auto dest = getResult();
-  auto shape = getShape();
-  (void)src;
-  (void)dest;
-  (void)shape;
-
-  assert(src.dims().size() <= dest.dims().size() &&
-         "Source being broadcasted must have <= number dims of result shape.");
-  assert(dest.dims().equals(shape) &&
-         "New broadcasted shape does not match shape to broadcast to.");
-
-  if (getInput()->getType()->isQuantizedType()) {
-    // Quantization scales must be identical; no rescaling is allowed.
-    assert(getResult()->getType()->getScale() ==
-           getInput()->getType()->getScale());
-    assert(getResult()->getType()->getOffset() ==
-           getInput()->getType()->getOffset());
-  }
-}
-
 void SplatNode::verify() const {}
 
 void InsertTensorNode::verify() const {

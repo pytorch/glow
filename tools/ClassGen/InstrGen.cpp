@@ -341,14 +341,6 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen();
 
-  BB.newInstr("Broadcast")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Src", OperandKind::In)
-      .addMember(MemberType::VectorSizeT, "Shape")
-      .addMember(MemberType::Unsigned, "Axis")
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-      .autoIRGen();
-
   BB.newInstr("Splat")
       .addMember(MemberType::Float, "Value")
       .addOperand("Dest", OperandKind::Out)

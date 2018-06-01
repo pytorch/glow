@@ -39,9 +39,6 @@ class Tensor;
 void genericTranspose(Tensor *src, Tensor *dest,
                       llvm::ArrayRef<unsigned> shuffle);
 
-void broadcastToNewShapeImpl(Tensor *src, Tensor *dest,
-                             llvm::ArrayRef<size_t> otherDims, unsigned axis);
-
 /// A class that represents a contiguous n-dimensional array (a tensor).
 class Tensor final {
   /// A pointer to the tensor data.
@@ -337,19 +334,6 @@ public:
   /// axis based on the list \p shuffle, where each element is the src index.
   void transpose(Tensor *dest, llvm::ArrayRef<unsigned> shuffle) {
     genericTranspose(this, dest, shuffle);
-  }
-
-  /// Broadcast the current Tensor to a new shape specified by \p otherDims and
-  /// place it in \p dest. Values in the new dimension(s) are copied from the
-  /// original Tensor. The \p axis defines the offset from the leading dimension
-  /// under which broadcasting is performed. Compared to numpy's broadcasting,
-  /// this implementation only allows broadcasting one Tensor to some new shape
-  /// specified by \p otherDims. For example, numpy allows broadcasting two
-  /// Tensors of shapes (3,1) and (1,4) to both be (3,4), while this
-  /// implementation does not.
-  void broadcastToNewShape(Tensor *dest, llvm::ArrayRef<size_t> otherDims,
-                           unsigned axis) {
-    broadcastToNewShapeImpl(this, dest, otherDims, axis);
   }
 
   /// Create a new copy of the current tensor.
