@@ -34,11 +34,12 @@ using llvm::isa;
 static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
   auto depth = CN->getFilter().dims()[0];
   auto *M = F->getParent();
+  auto group = CN->getGroup();
 
-  // The depth dimension must be a multiple of 64 to perform the
+  // Make sure that the depth group is divisible by 64 to perform the
   // transformation. This transformation is currently only profitable on
   // low-channel convolutions.
-  if (depth < 64 || (depth % 64) != 0) {
+  if (((depth / group) % 64) != 0) {
     return nullptr;
   }
 
@@ -75,7 +76,7 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
 
   return F->addNode(new CPUConvDKKC8Node(
       CN->getName(), CN->getType(), CN->getInput(), filter8, CN->getBias(),
-      CN->getKernel(), CN->getStride(), CN->getPad()));
+      CN->getKernel(), CN->getStride(), CN->getPad(), group));
 }
 
 bool CPUBackend::transformPostLowering(Function *F, CompilationMode mode) {

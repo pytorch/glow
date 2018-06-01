@@ -54,7 +54,7 @@ void libjit_convDKKC8_convolve_channel(
     const size_t *inWdims, const size_t *filterWdims, size_t sampleN,
     size_t outChannel, unsigned numDepthRegs, unsigned ywidth,
     size_t numChannels, ssize_t inX, ssize_t inY, size_t outX, size_t outY,
-    size_t filterX, size_t filterY, size_t stride) {
+    size_t filterX, size_t filterY, size_t stride, size_t group) {
 
   // Process N * YWidth * 8 output pixels at once. Each value here is a
   // scalar that represents the sum for (x,y..y+ywidth) and the filter. The
@@ -75,7 +75,8 @@ void libjit_convDKKC8_convolve_channel(
     float8 in8[ywidth];
     for (unsigned wu = 0; wu < ywidth; wu++) {
       // Load a single pixel from the input image and broadcast it.
-      auto inIdx = libjit_getXYZW(inWdims, sampleN, inX, inY + wu * stride, fd);
+      auto inIdx = libjit_getXYZW(inWdims, sampleN, inX, inY + wu * stride,
+                                  fd + group * numChannels);
       in8[wu] = inW[inIdx];
     }
 
@@ -112,8 +113,8 @@ void libjit_convDKKC8_foreach_xy_filter_pixels(
     unsigned depthStrips, unsigned sizeGroupY, size_t numChannels, float *outW,
     const float *inW, const float *filterW, const float *biasW,
     const size_t *outWdims, const size_t *inWdims, const size_t *filterWdims,
-    const size_t *biasWdims, size_t filterSize, size_t stride, size_t pad) {
-
+    const size_t *biasWdims, size_t filterSize, size_t stride, size_t pad,
+    size_t group) {
   // The loops below look scary but the the idea is simple. We iterate over
   // the pixels in the output tensor and calculate the coordinate of the source
   // tensor. When we process the Y row we try to process [sizeGroupY] elements
@@ -159,7 +160,7 @@ void libjit_convDKKC8_foreach_xy_filter_pixels(
             libjit_convDKKC8_convolve_channel(
                 outW, inW, filterW, outWdims, inWdims, filterWdims, sampleN,
                 outChannel + strip * numDepthRegs * 8, numDepthRegs, sizeGroupY,
-                numChannels, inx, iny, outx, outy, fx, fy, stride);
+                numChannels, inx, iny, outx, outy, fx, fy, stride, group);
           }
 
           outy += sizeGroupY;
@@ -178,7 +179,7 @@ void libjit_convDKKC8_foreach_xy_filter_pixels(
             libjit_convDKKC8_convolve_channel(
                 outW, inW, filterW, outWdims, inWdims, filterWdims, sampleN,
                 outChannel + strip * numDepthRegs * 8, numDepthRegs, 1,
-                numChannels, inx, iny, outx, outy, fx, fy, stride);
+                numChannels, inx, iny, outx, outy, fx, fy, stride, group);
           }
         } // For each Y, in step of 1, in the output.
 
@@ -195,7 +196,8 @@ void libjit_convDKKC8_foreach_xy_pixels_filter(
     unsigned depthStrips, unsigned sizeGroupY, size_t numChannels, float *outW,
     const float *inW, const float *filterW, const float *biasW,
     const size_t *outWdims, const size_t *inWdims, const size_t *filterWdims,
-    const size_t *biasWdims, size_t filterSize, size_t stride, size_t pad) {
+    const size_t *biasWdims, size_t filterSize, size_t stride, size_t pad,
+    size_t group) {
   // For each (x,y) step in the input/output tensor:
   for (size_t outx = 0; outx < outWdims[1]; outx++) {
     for (size_t outy = 0; outy < outWdims[2]; outy++) {
@@ -219,7 +221,7 @@ void libjit_convDKKC8_foreach_xy_pixels_filter(
             libjit_convDKKC8_convolve_channel(
                 outW, inW, filterW, outWdims, inWdims, filterWdims, sampleN,
                 outChannel + strip * numDepthRegs * 8, numDepthRegs, 1,
-                numChannels, inx, iny, outx, outy, fx, fy, stride);
+                numChannels, inx, iny, outx, outy, fx, fy, stride, group);
           }
         } // For each Y in the filter.
       }   // For each X in the filter.
@@ -234,9 +236,14 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
                         const float *biasW, const size_t *outWdims,
                         const size_t *inWdims, const size_t *filterWdims,
                         const size_t *biasWdims, size_t filterSize,
-                        size_t stride, size_t pad, unsigned pixelScanFirst,
-                        unsigned numDepthRegs, unsigned sizeGroupY,
-                        unsigned depthStrips) {
+                        size_t stride, size_t pad, size_t group,
+                        unsigned pixelScanFirst, unsigned numDepthRegs,
+                        unsigned sizeGroupY, unsigned depthStrips) {
+  size_t inChannels = inWdims[3];
+  size_t outChannels = outWdims[3];
+  size_t inCperG = inChannels / group;
+  size_t outCperG = outChannels / group;
+
   // Select the order in which we iterate over the pixels in the picture.
   auto eachPixelConv =
       (pixelScanFirst ? &libjit_convDKKC8_foreach_xy_pixels_filter
@@ -249,16 +256,23 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
     // Later we will accumulate values into this slice.
     libjit_conv_init_output_with_bias(n, outW, biasW, outWdims, biasWdims);
 
-    // For each output channel, process [numDepthRegs x float8] elements.
-    for (size_t d = 0; d < outWdims[3]; d += 8 * numDepthRegs * depthStrips) {
+    // For each group of input channels:
+    for (size_t g = 0; g < group; g++) {
 
-      // Perform the convolution for each pixel.
-      eachPixelConv(n, d, numDepthRegs, depthStrips, sizeGroupY, inWdims[3],
-                    outW, inW, filterW, biasW, outWdims, inWdims, filterWdims,
-                    biasWdims, filterSize, stride, pad);
+      // For each output channel, process [numDepthRegs x float8] elements.
+      size_t startChannelIndex = g * outCperG;
+      size_t endChannelIndex = (g + 1) * outCperG;
+      for (size_t d = startChannelIndex; d < endChannelIndex;
+           d += 8 * numDepthRegs * depthStrips) {
 
-    } // For each D (the depth, or the output channel).
-  }   // For each N, the sample in the batch.
+        // Perform the convolution for each pixel.
+        eachPixelConv(n, d, numDepthRegs, depthStrips, sizeGroupY, inCperG,
+                      outW, inW, filterW, biasW, outWdims, inWdims, filterWdims,
+                      biasWdims, filterSize, stride, pad, g);
+
+      } // For each D (the depth, or the output channel).
+    }   // for each G, the group
+  }     // For each N, the sample in the batch.
 }
 
 void libjit_convolution_f(float *outW, const float *inW, const float *filterW,

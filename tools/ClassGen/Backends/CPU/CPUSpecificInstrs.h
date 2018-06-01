@@ -31,8 +31,8 @@ BB.newBackendSpecificInstr("CPUConvDKKC8")
     .addMember(MemberType::SizeT, "Kernel")
     .addMember(MemberType::SizeT, "Stride")
     .addMember(MemberType::SizeT, "Pad")
-    .autoIRGen()
-    .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter", "Bias"});
+    .addMember(MemberType::SizeT, "Group")
+    .autoIRGen();
 
 BB.includeBackendSpecificVerification("CPUSpecificInstrsVerification.h");
 

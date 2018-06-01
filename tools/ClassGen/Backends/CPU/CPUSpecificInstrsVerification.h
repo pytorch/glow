@@ -20,4 +20,17 @@ void CPUMaxSplatInst::verify() const {
   assert(getSrc()->dims() == getDest()->dims() && "Invalid shape");
 }
 
+void CPUConvDKKC8Inst::verify() const {
+  assert(getSrc()->dims()[3] % getGroup() == 0 &&
+         "Input channels must be divisible by group.");
+  assert(getDest()->dims()[3] % getGroup() == 0 &&
+         "Output channels must be divisible by group.");
+  assert(getDest()->getElementType() == getSrc()->getElementType() &&
+         "Invalid Element Type");
+  assert(getDest()->getElementType() == getFilter()->getElementType() &&
+         "Invalid Element Type");
+  assert(getDest()->getElementType() == getBias()->getElementType() &&
+         "Invalid Element Type");
+}
+
 #endif // GLOW_WITH_CPU
