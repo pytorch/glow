@@ -651,15 +651,19 @@ public:
     return {mean, var};
   }
 
-  /// Insert the tensor \p slice at location \p offset. This operation is
-  /// equivalent to the operation of scanning the source tensor, and saving
-  /// the value that is stored at coordinate {d_0, d_1, ... d_n} in the new
-  /// tensor at {d_0 + O_0, d_1 + O_1, ... d_n + O_n}, where O is the offset
-  /// vector. The tensors must be of the right dimensions.
-  void insertTensors(Handle<ElemTy> &slice, llvm::ArrayRef<size_t> offset) {
+  /// Insert the tensor \p slice at location \p offset \p count times along the
+  /// \p axis. This operation is equivalent to the operation of scanning the
+  /// source tensor, and saving the value that is stored at coordinate {d_0,
+  /// d_1, ... d_n} in the new tensor at {d_0 + O_0, d_1 + O_1, ... d_n + O_n},
+  /// where O is the offset vector, assuming \p count = 1. For \p count > 1, the
+  /// same Tensor is copied \p count times along the provided \p axis. The
+  /// tensors must be of the right dimensions.
+  void insertTensors(Handle<ElemTy> &slice, llvm::ArrayRef<size_t> offset,
+                     size_t count = 1, size_t axis = 0) {
     auto sliceCoor = slice.dims().vec();
     auto fusedCoor = dims().vec();
-    insertTensorsImpl(sliceCoor, fusedCoor, slice, true, offset, 0);
+    insertTensorsImpl(sliceCoor, fusedCoor, slice, true, offset, count, axis,
+                      0);
   }
 
   /// Extract the tensor \p slice at location \p offset. This operation is
@@ -670,7 +674,8 @@ public:
   void extractTensors(Handle<ElemTy> &slice, llvm::ArrayRef<size_t> offset) {
     auto sliceCoor = slice.dims().vec();
     auto fusedCoor = dims().vec();
-    insertTensorsImpl(sliceCoor, fusedCoor, slice, false, offset, 0);
+    insertTensorsImpl(sliceCoor, fusedCoor, slice, false, offset, /* count */ 1,
+                      /* axis */ 0, 0);
   }
 
 private:
@@ -683,11 +688,14 @@ private:
   /// slice to add or extract along the dimension \p offsetDim. \p d is the
   /// recursion depth parameter that's following the number of the axis. if \p
   /// isInsert is set then data is copied from \p slice to \p fused. Otherwise
-  /// data is copied from \p fused to \p slice.
+  /// data is copied from \p fused to \p slice. \p count and \p axis are used in
+  /// conjunction for inserting the same tensor \p count times along the \p
+  /// axis.
   void insertTensorsImpl(llvm::MutableArrayRef<size_t> sliceCoor,
                          llvm::MutableArrayRef<size_t> fusedCoor,
                          Handle<ElemTy> &slice, bool isInsert,
-                         llvm::ArrayRef<size_t> offset, unsigned d) {
+                         llvm::ArrayRef<size_t> offset, size_t count,
+                         size_t axis, unsigned d) {
     bool isDone = (d == slice.dims().size());
 
     if (isDone) {
@@ -699,12 +707,21 @@ private:
       return;
     }
 
-    for (size_t i = 0, e = slice.dims()[d]; i < e; i++) {
-      // Construct the coordinates for the slice and for the joint shape.
-      // Add the 'offset' to the dimension that we concat the shapes on.
-      sliceCoor[d] = i;
-      fusedCoor[d] = i + offset[d];
-      insertTensorsImpl(sliceCoor, fusedCoor, slice, isInsert, offset, d + 1);
+    // Only need to iterate over count if the current dimension d is equal to
+    // the axis we're inserting over.
+    const size_t countIters = (axis == d) ? count : 1;
+    for (size_t c = 0; c < countIters; c++) {
+      for (size_t i = 0, e = slice.dims()[d]; i < e; i++) {
+        // Construct the coordinates for the slice and for the joint shape.
+        // Add the 'offset' to the dimension that we concat the shapes on.
+        sliceCoor[d] = i;
+        // If this is the correct axis to insert multiple times then calcuate
+        // the additional offset to use.
+        const size_t countAxisOffset = (axis == d) ? c * slice.dims()[d] : 0;
+        fusedCoor[d] = i + offset[d] + countAxisOffset;
+        insertTensorsImpl(sliceCoor, fusedCoor, slice, isInsert, offset, count,
+                          axis, d + 1);
+      }
     }
   }
 };

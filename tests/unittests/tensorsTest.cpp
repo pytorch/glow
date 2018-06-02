@@ -515,3 +515,24 @@ TEST(Tensor, integerTensors) {
   // These types have the same scale and offset.
   EXPECT_TRUE(I8Ty2.isEqual(I8Ty3));
 }
+
+TEST(Tensor, insertWithCountAndAxis) {
+  Tensor X(ElemKind::FloatTy, {3, 2});
+  Tensor Y(ElemKind::FloatTy, {3, 6});
+
+  auto xH = X.getHandle<>();
+  auto yH = Y.getHandle<>();
+
+  for (size_t i = 0, e = xH.size(); i < e; i++) {
+    xH.raw(i) = float(i);
+  }
+
+  // Insert three of these slices on axis 1
+  yH.insertTensors(xH, {0, 0}, /* count */ 3, /* axis */ 1);
+
+  for (size_t i = 0; i < 3; i++) {
+    for (size_t j = 0; j < 6; j++) {
+      EXPECT_EQ(xH.at({i, j % 2}), yH.at({i, j}));
+    }
+  }
+}

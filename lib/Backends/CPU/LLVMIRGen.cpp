@@ -1866,11 +1866,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcDimsSize = emitConstSizeT(builder, src->getType()->dims().size());
     auto *offsetsPtr = emitConstArray(builder, offsets);
     auto *offsetsArraySize = emitConstSizeT(builder, offsets.size());
+    auto *count = emitConstSizeT(builder, ITI->getCount());
+    auto *axis = emitConstSizeT(builder, ITI->getAxis());
 
     auto *F = getFunction("insert_tensor", dest->getElementType());
     createCall(builder, F,
                {destPtr, srcPtr, offsetsPtr, destDims, srcDims, destDimsSize,
-                srcDimsSize, offsetsArraySize});
+                srcDimsSize, offsetsArraySize, count, axis});
     break;
   }
 

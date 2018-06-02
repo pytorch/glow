@@ -247,7 +247,8 @@ public:
 
       for (int i = 0, e = inputs.size(); i < e; i++) {
         builder_.createInsertTensorInst(CC->getName(), dest,
-                                        valueForNode(inputs[i]), offsets);
+                                        valueForNode(inputs[i]), offsets,
+                                        /* count */ 1, /* axis */ 0);
         // We are stacking the tensors along a specific dimension. This means
         // that we increase the size of the tensor along this dimension.
         offsets[dim] += inputs[i].dims()[dim];
@@ -273,7 +274,9 @@ public:
       auto *dest =
           builder_.createAllocActivationInst(IT->getName(), IT->getType());
       builder_.createCopyInst("copy.insert", dest, big);
-      builder_.createInsertTensorInst("insert", dest, small, start);
+      builder_.createInsertTensorInst("insert", dest, small, start,
+                                      /* count */ 1, /* axis */ 0);
+
       registerIR(N, dest);
       break;
     }

@@ -680,7 +680,7 @@ void Interpreter::fwdInsertTensorInst(const glow::InsertTensorInst *I) {
   if (k == TYPEKIND) {                                                         \
     auto OH = outT->getHandle<TY>();                                           \
     auto IH = inT->getHandle<TY>();                                            \
-    return OH.insertTensors(IH, I->getOffsets());                              \
+    return OH.insertTensors(IH, I->getOffsets(), I->getCount(), I->getAxis()); \
   }
 
   TYPED_INSERT(size_t, ElemKind::IndexTy);
