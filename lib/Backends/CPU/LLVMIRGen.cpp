@@ -163,26 +163,33 @@ static std::unique_ptr<llvm::Module> loadStandardLibrary(llvm::LLVMContext *ctx,
   return llvm::parseIRFile(filename, error, *ctx);
 }
 
+/// Register a diagnostics handler that prevents the compiler from printing to
+/// stdout.
+static void registerEmptyDiagHandler(llvm::LLVMContext &ctx) {
+#if LLVM_VERSION_MAJOR >= 6
+  ctx.setDiagnosticHandlerCallBack(
+      [](const llvm::DiagnosticInfo &DI, void *Context) {
+        // Do not emit any warnings or diagnostics when JITting.
+      });
+#else
+  ctx.setDiagnosticHandler([](const llvm::DiagnosticInfo &DI, void *Context) {
+    // Do not emit any warnings or diagnostics when JITting.
+  });
+#endif
+}
+
 void LLVMIRGen::initCodeGen() {
   instrNumbering_.reset(new InstructionNumbering(*F_));
   // Load the jit library as a new module.
   llmodule_ = loadStandardLibrary(&ctx_, "libjit.bc");
   GLOW_ASSERT(llmodule_.get() && "Unable to load the JIT library.");
+
   // By default, LLVM would emit some diagnostics, remarks, etc. It is fine for
   // a static compiler, but not necessary for a JIT. Let's disable it by
   // providing a dummy diagnostics handler, that does not emit anything.
   // In particular, this allows us to get rid of the annoying "cannot vectorize"
   // warnings.
-#if LLVM_VERSION_MAJOR >= 6
-  ctx_.setDiagnosticHandlerCallBack(
-      [](const llvm::DiagnosticInfo &DI, void *Context) {
-        // Do not emit any warnings or diagnostics when JITting.
-      });
-#else
-  ctx_.setDiagnosticHandler([](const llvm::DiagnosticInfo &DI, void *Context) {
-    // Do not emit any warnings or diagnostics when JITting.
-  });
-#endif
+  registerEmptyDiagHandler(ctx_);
 
   // Assign the target information to the module.
   llmodule_->setDataLayout(getTargetMachine().createDataLayout());
