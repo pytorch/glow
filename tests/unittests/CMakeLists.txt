@@ -149,10 +149,10 @@ add_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest)
 LIST(APPEND UNOPT_TESTS ./tests/OCLTest -optimize-ir=false &&)
 endif()
 
-add_executable(JITTest
+add_executable(BackendCorrectnessTest
                BackendTestUtils.cpp
-               JITTest.cpp)
-target_link_libraries(JITTest
+               BackendCorrectnessTest.cpp)
+target_link_libraries(BackendCorrectnessTest
                       PRIVATE
                         Graph
                         IR
@@ -160,11 +160,11 @@ target_link_libraries(JITTest
                         Support
                         gtest
                         testMain)
-add_test(JITTest ${GLOW_BINARY_DIR}/tests/JITTest)
-LIST(APPEND UNOPT_TESTS ./tests/JITTest -optimize-ir=false &&)
+add_test(BackendCorrectnessTest ${GLOW_BINARY_DIR}/tests/BackendCorrectnessTest)
+LIST(APPEND UNOPT_TESTS ./tests/BackendCorrectnessTest -optimize-ir=false &&)
 
 if(GLOW_WITH_CPU)
-target_sources(JITTest PUBLIC HyphenTest.cpp)
+target_sources(BackendCorrectnessTest PUBLIC HyphenTest.cpp)
 
 add_executable(GemmTest
                GemmTest.cpp)
