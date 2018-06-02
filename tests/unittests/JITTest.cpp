@@ -732,9 +732,11 @@ TEST_P(BackendCorrectnessTest, tinyResnet) {
   EXPECT_TRUE(out1.isEqual(out2, 0.001));
 }
 
+#ifdef GLOW_WITH_CPU
 INSTANTIATE_TEST_CASE_P(CPU, BackendCorrectnessTest,
                         ::testing::Values(BackendKind::CPU));
 INSTANTIATE_TEST_CASE_P(CPU, CPUOnly, ::testing::Values(BackendKind::CPU));
+#endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
 INSTANTIATE_TEST_CASE_P(OpenCL, BackendCorrectnessTest,
