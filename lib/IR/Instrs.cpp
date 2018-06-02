@@ -82,3 +82,11 @@ void DeallocActivationInst::verify() const {
   // The operand of this instruction needs to be an AllocActivationInst.
   assert(isa<AllocActivationInst>(getSrc()) && "Invalid operand");
 }
+
+void InsertTensorInst::verify() const {
+  assert(getSrc()->getElementType() == getDest()->getElementType() &&
+         "InsertTensor dest element type should be the same as Src type.");
+  assert(getCount() > 0 && "Count must be non-zero.");
+  assert(getAxis() >= 0 && getAxis() < getDest()->dims().size() &&
+         "Axis must fit inside Dest dims.");
+}

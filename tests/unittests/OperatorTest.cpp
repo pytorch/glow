@@ -719,7 +719,8 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
   auto bias = conv->getBias();
 
   input->getPayload().getHandle().randomize(-1.0, 1.0, mod.getPRNG());
-  llvm::cast<Variable>(bias)->getPayload().getHandle().randomize(-2.0, 2.0, mod.getPRNG());
+  llvm::cast<Variable>(bias)->getPayload().getHandle().randomize(-2.0, 2.0,
+                                                                 mod.getPRNG());
 
   TypeRef resTy = mod.uniqueType(ElemKind::Int8QTy, res->dims(), 0.08, 0.0);
   TypeRef inputTy = mod.uniqueType(ElemKind::Int8QTy, input->dims(), 0.01, 0.0);
@@ -796,8 +797,10 @@ TEST_P(InterpAndCPU, IntFC) {
   auto bias = fc->getBias();
 
   input->getPayload().getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
-  llvm::cast<Variable>(bias)->getPayload().getHandle().randomize(0, 0.00001, mod_.getPRNG());
-  llvm::cast<Variable>(weights)->getPayload().getHandle().randomize(-1.1, 1.1, mod_.getPRNG());
+  llvm::cast<Variable>(bias)->getPayload().getHandle().randomize(
+      0, 0.00001, mod_.getPRNG());
+  llvm::cast<Variable>(weights)->getPayload().getHandle().randomize(
+      -1.1, 1.1, mod_.getPRNG());
 
   TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, res->dims(), 0.15, 4);
   TypeRef inputTy = mod_.uniqueType(ElemKind::Int8QTy, input->dims(), 0.01, 0);
@@ -1279,6 +1282,50 @@ TEST_P(InterpAndCPU, concatVectors) {
 
   for (size_t i = 0; i < 60; i++) {
     EXPECT_NEAR(RNWH.at({i}), i, 0.001);
+  }
+}
+
+/// Check that concatenating two tensors repeatedly is correct. This is intended
+/// to verify that IRGen to InsertTensor instructions with axis/count works
+/// correctly.
+TEST_P(InterpAndCPU, concatVectorsRepeated) {
+  F_->setName("concatVectors");
+
+  auto *V1 = mod_.createVariable(ElemKind::IndexTy, {10}, "V1",
+                                 VisibilityKind::Public);
+  auto *V2 = mod_.createVariable(ElemKind::IndexTy, {20}, "V2",
+                                 VisibilityKind::Public);
+
+  // Alternate adding sequences of V1 and V2, so that the IRGen'd InsertTensors
+  // have different counts.
+  Node *L = F_->createConcat("concat", {V2, V1, V1, V1, V2, V2, V1, V1, V2}, 0);
+  auto *result = F_->createSave("ret", L);
+
+  Tensor I1(ElemKind::IndexTy, {10});
+  Tensor I2(ElemKind::IndexTy, {20});
+
+  for (size_t i = 0; i < 10; i++) {
+    I1.getHandle<size_t>().at({i}) = 1;
+
+    I2.getHandle<size_t>().at({i}) = 2;
+    I2.getHandle<size_t>().at({i + 10}) = 2;
+  }
+
+  EE_.compile(CompilationMode::Infer, F_);
+
+  // Testing the output vector.
+  EE_.run({V1, V2}, {&I1, &I2});
+  auto outH = result->getVariable()->getPayload().getHandle<size_t>();
+  (void)outH;
+
+  // Simply verify here that the values are in their correct places, based on
+  // the number of times/order V1 and V2 are concatenated and their sizes.
+  for (size_t i = 0; i < 130; i++) {
+    if ((i < 20) || (i >= 50 && i < 90) || (i >= 110)) {
+      EXPECT_EQ(outH.at({i}), 2);
+    } else {
+      EXPECT_EQ(outH.at({i}), 1);
+    }
   }
 }
 

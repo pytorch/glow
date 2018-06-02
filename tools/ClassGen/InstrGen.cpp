@@ -351,8 +351,9 @@ int main(int argc, char **argv) {
   BB.newInstr("InsertTensor")
       .addOperand("Dest", OperandKind::InOut)
       .addOperand("Src", OperandKind::In)
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-      .addMember(MemberType::VectorSizeT, "Offsets");
+      .addMember(MemberType::VectorSizeT, "Offsets")
+      .addMember(MemberType::SizeT, "Count")
+      .addMember(MemberType::SizeT, "Axis");
 
   BB.newInstr("ExtractTensor")
       .addOperand("Dest", OperandKind::Out)

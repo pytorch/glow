@@ -248,7 +248,7 @@ TEST(Optimizer, insertOptimizer) {
   bb.createSplatInst("splatSrc", allocSrc, 1.0);
   bb.createSplatInst("splatDest", output, 2.0);
 
-  bb.createInsertTensorInst("insert", output, allocSrc, {1, 0, 0});
+  bb.createInsertTensorInst("insert", output, allocSrc, {1, 0, 0}, 1, 0);
 
   bb.createDeallocActivationInst("deallocSrc", allocSrc);
 
@@ -288,8 +288,8 @@ TEST(Optimizer, twoInsertsWithBuffersOptimizer) {
   bb.createSplatInst("splatSrc2", allocSrc2, 2.0);
   bb.createSplatInst("splatDest", allocDest, 3.0);
 
-  bb.createInsertTensorInst("insert1", allocDest, allocSrc1, {0, 0, 0});
-  bb.createInsertTensorInst("insert2", allocDest, allocSrc2, {2, 0, 0});
+  bb.createInsertTensorInst("insert1", allocDest, allocSrc1, {0, 0, 0}, 1, 0);
+  bb.createInsertTensorInst("insert2", allocDest, allocSrc2, {2, 0, 0}, 1, 0);
 
   bb.createCopyInst("copy", output, allocDest);
 
