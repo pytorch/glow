@@ -149,11 +149,9 @@ add_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest)
 LIST(APPEND UNOPT_TESTS ./tests/OCLTest -optimize-ir=false &&)
 endif()
 
-if(GLOW_WITH_CPU)
 add_executable(JITTest
                BackendTestUtils.cpp
-               JITTest.cpp
-               HyphenTest.cpp)
+               JITTest.cpp)
 target_link_libraries(JITTest
                       PRIVATE
                         Graph
@@ -164,6 +162,9 @@ target_link_libraries(JITTest
                         testMain)
 add_test(JITTest ${GLOW_BINARY_DIR}/tests/JITTest)
 LIST(APPEND UNOPT_TESTS ./tests/JITTest -optimize-ir=false &&)
+
+if(GLOW_WITH_CPU)
+target_sources(JITTest PUBLIC HyphenTest.cpp)
 
 add_executable(GemmTest
                GemmTest.cpp)
