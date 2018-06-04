@@ -102,9 +102,10 @@ public:
 
 private:
   /// Update the inputs for all variables \p vars with data from the inputs \p
-  /// inputs at offset \p sampleIdx. Then perform a forward and backwards scan.
-  void updateForwardBackward(llvm::ArrayRef<Variable *> vars,
-                             llvm::ArrayRef<Tensor *> inputs, size_t sampleIdx);
+  /// inputs at offset \p sampleIdx. Then perform a run of the network.
+  void updateInputsAndRunNetwork(llvm::ArrayRef<Variable *> vars,
+                                 llvm::ArrayRef<Tensor *> inputs,
+                                 size_t sampleIdx);
 
   /// Update the content of the tensor \p v with some slices that from \p input.
   /// The data starts at slice \p sampleIdx and wraps around until the
