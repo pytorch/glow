@@ -1223,6 +1223,16 @@ void optimizeInserts(IRFunction &M) {
       continue;
     }
 
+    // If the insert has a count greater than 1, then the original operation
+    // that wrote into the alloc activation would need to be replicated many
+    // times given the current way the optimization is designed. Instead, it's
+    // likely more efficient to keep the original pattern here, with the
+    // original operation executing once and writing into a buffer, and then
+    // having the ITI copy it over many times to the final alloc.
+    if (ITI->getCount() > 1) {
+      continue;
+    }
+
     // TVI with offsets currently only works for this optimization if the insert
     // is only into the first dimension. This is because the tensor memory must
     // be contiguous.
