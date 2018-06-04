@@ -142,8 +142,14 @@ protected:
     Node *node = nullptr;
     if (typeName == "Mul") {
       node = G_.createMul(opName, in0, finalIn1);
-    } else {
+    } else if (typeName == "Add") {
       node = G_.createAdd(opName, in0, finalIn1);
+    } else if (typeName == "Sub") {
+      node = G_.createSub(opName, in0, finalIn1);
+    } else if (typeName == "Div") {
+      node = G_.createDiv(opName, in0, finalIn1);
+    } else {
+      assert(false && "Unsupported arithmetic typeName");
     }
 
     addNodeAsOutput(op, node);
@@ -191,7 +197,8 @@ protected:
       loadLRN(op, dict);
       return true;
     }
-    if (typeName == "Mul" || typeName == "Add") {
+    if (typeName == "Mul" || typeName == "Add" || typeName == "Sub" ||
+        typeName == "Div") {
       loadArithmetic(typeName, op, dict);
       return true;
     }
