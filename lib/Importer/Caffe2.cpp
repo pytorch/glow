@@ -329,6 +329,11 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "Free") {
+    // Glow frees memory automatically.
+    return;
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
