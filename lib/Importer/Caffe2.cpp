@@ -64,6 +64,19 @@ static unsigned getChannel(const ArgumentDictionaryTy &dict) {
   GLOW_ASSERT(false && "Invalid order field");
 }
 
+unsigned getSizeHW(ArgumentDictionaryTy &dict, const std::string &name,
+                   unsigned defaultValue) {
+  if (dict.count(name)) {
+    return loadInt(dict[name]);
+  }
+  if (dict.count(name + "_h") && dict.count(name + "_w")) {
+    assert(loadInt(dict[name + "_h"]) == loadInt(dict[name + "_w"]) &&
+           "Unsupported size: _h and _w must be equal.");
+    return loadInt(dict[name + "_h"]);
+  }
+  return defaultValue;
+}
+
 bool caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
                                       const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
@@ -101,9 +114,9 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Conv") {
     // Load the inputs:
-    int stride = dict.count("stride") ? loadInt(dict["stride"]) : 1;
+    int stride = getSizeHW(dict, "stride", 1);
     int pad = dict.count("pad") ? loadInt(dict["pad"]) : 0;
-    unsigned kernel = loadInt(dict["kernel"]);
+    unsigned kernel = getSizeHW(dict, "kernel", 0);
     unsigned group = dict.count("group") ? loadInt(dict["group"]) : 1;
 
     auto *in = getOrCreateNodeByName(op.input(0));
@@ -165,8 +178,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "MaxPool" || typeName == "AveragePool") {
     // Load the inputs:
     auto *in = getOrCreateNodeByName(op.input(0));
-    int stride = loadInt(dict["stride"]);
-    size_t kernel = loadInt(dict["kernel"]);
+    int stride = getSizeHW(dict, "stride", 1);
+    unsigned kernel = getSizeHW(dict, "kernel", 0);
     int pad = 0;
     auto padIt = dict.find("pad");
     if (padIt != dict.end()) {
