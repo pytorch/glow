@@ -373,8 +373,8 @@ __kernel void matmul_tiled(__global void *mem, cl_uint32_t C_off,
   int ty = get_local_id(0);
   int row = get_global_id(0);
   int col = get_global_id(1);
-  
-  // Tile of LHS. 
+
+  // Tile of LHS.
   __local float sA[TILE_SIZE][TILE_SIZE];
   // Tile of RHS.
   __local float sB[TILE_SIZE][TILE_SIZE];
@@ -573,7 +573,7 @@ __kernel void convolutiongradK(const __global float *inW,
   } // N
 }
 
-__kernel void convolutiongradW(__global void *mem, 
+__kernel void convolutiongradW(__global void *mem,
                            cl_uint32_t src,
                            cl_uint32_t filter,
                            cl_uint32_t destGrad,
@@ -589,7 +589,7 @@ __kernel void convolutiongradW(__global void *mem,
    convolutiongradK(&mem[src], &mem[filter],
                     &mem[destGrad], &mem[srcGrad], &mem[filterGrad],
                     &mem[biasGrad],
-                    filterSize, stride, pad, srcDim, destGradDim, filterGradDim); 
+                    filterSize, stride, pad, srcDim, destGradDim, filterGradDim);
 }
 
 __kernel void poolmaxK(__global float *dest, __global float *src,
@@ -918,30 +918,37 @@ __kernel void transpose_uW(__global void *mem, cl_uint32_t dest, cl_uint32_t src
 }
 
 __kernel void inserttensorK(__global float *dest, __global float *src,
-                            ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset) {
+                            ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset,
+                            size_t count, size_t axis) {
   size_t d0 = get_global_id(0);
   size_t d1 = get_global_id(1);
   size_t offset_n = ((odim.n > 1) ? offset.n : 0);
   size_t offset_h = ((odim.h > 1) ? offset.h : 0);
   size_t offset_w = ((odim.w > 1) ? offset.w : 0);
   size_t offset_c = ((odim.c > 1) ? offset.c : 0);
-  for (size_t d2 = 0; d2 < idim.w; d2++) {
-    for (size_t d3 = 0; d3 < idim.c; d3++) {
-      size_t r0 = d0 + offset_n;
-      size_t r1 = d1 + offset_h;
-      size_t r2 = d2 + offset_w;
-      size_t r3 = d3 + offset_c;
-      size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
-      size_t destIdx = getNHWC(odim, r0, r1, r2, r3);
-      dest[destIdx] = src[srcIdx];
+  for (size_t c = 0; c < count; c++) {
+    size_t count_offset_n = (axis == 0) ? c * idim.n : 0;
+    size_t count_offset_h = (axis == 1) ? c * idim.h : 0;
+    size_t count_offset_w = (axis == 2) ? c * idim.w : 0;
+    size_t count_offset_c = (axis == 3) ? c * idim.c : 0;
+    for (size_t d2 = 0; d2 < idim.w; d2++) {
+      for (size_t d3 = 0; d3 < idim.c; d3++) {
+        size_t r0 = d0 + offset_n + count_offset_n;
+        size_t r1 = d1 + offset_h + count_offset_h;
+        size_t r2 = d2 + offset_w + count_offset_w;
+        size_t r3 = d3 + offset_c + count_offset_c;
+        size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
+        size_t destIdx = getNHWC(odim, r0, r1, r2, r3);
+        dest[destIdx] = src[srcIdx];
+      }
     }
   }
 }
 
 __kernel void inserttensorW(__global void *mem, cl_uint32_t dest,
                             cl_uint32_t src, ShapeNHWC odim, ShapeNHWC idim,
-                            ShapeNHWC offset) {
-  inserttensorK(&mem[dest], &mem[src], odim, idim, offset);
+                            ShapeNHWC offset, size_t count, size_t axis) {
+  inserttensorK(&mem[dest], &mem[src], odim, idim, offset, count, axis);
 }
 
 __kernel void extracttensorK(__global float *dest, __global float *src,

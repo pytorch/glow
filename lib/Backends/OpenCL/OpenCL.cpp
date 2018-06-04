@@ -662,6 +662,8 @@ void OCLBackend::doForwardPass() {
       setKernelArg(kernel, 3, odim);
       setKernelArg(kernel, 4, idim);
       setKernelArg(kernel, 5, offset);
+      setKernelArg<cl_uint>(kernel, 6, IT->getCount());
+      setKernelArg<cl_uint>(kernel, 7, IT->getAxis());
       enqueueKernel(commands_, kernel, deviceId_, {idim.n, idim.h},
                     kernelLaunches_);
       continue;
@@ -821,7 +823,7 @@ void OCLBackend::doForwardPass() {
       fillBuffer(deviceBuffer_, tensors_[biasGrad], biasGrad->size(), 0,
                  biasGrad->getElementType());
 
-      (void)filter; 
+      (void)filter;
       assert(filter->dims() == filterGrad->dims() && "Dims should be the same");
       assert(src->dims() == srcGrad->dims() && "Dims should be the same");
 
