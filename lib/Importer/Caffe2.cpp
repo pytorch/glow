@@ -255,112 +255,6 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
     return;
   }
-  if (typeName == "Sum") {
-    auto *in0 = getOrCreateNodeByName(op.input(0));
-    auto *in1 = getOrCreateNodeByName(op.input(1));
-    auto *node = G_.createAdd(opName, in0, in1);
-    // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
-    }
-    return;
-  }
-
-  if (typeName == "Softmax") {
-    auto *softmaxExpected = getOrCreateNodeByName("softmax_expected");
-
-    // Load the inputs:
-    Node *in = getOrCreateNodeByName(op.input(0));
-
-    // Caffe2 allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
-    // softmax function. This is similar to a bitcast operation.
-    auto flatten = flattenCdr(in->getType()->dims());
-    in = G_.createReshape("reshape", in, {flatten.first, flatten.second});
-
-    auto *node = G_.createSoftMax(opName, in, softmaxExpected);
-    // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
-    }
-    return;
-  }
-  if (typeName == "FC") {
-    // Load the inputs:
-    auto *in = getOrCreateNodeByName(op.input(0));
-    // Load weights.
-    Tensor *w = getTensorByName(op.input(1));
-    Tensor *b = getTensorByName(op.input(2));
-
-    // Caffe2 stores the transposed W matrix. In here we transpose W back.
-    Tensor wtag;
-    w->transpose(&wtag, {1, 0});
-
-    auto W = G_.getParent()->addVar(
-        new Variable("weights", VisibilityKind::Private, std::move(wtag)));
-    auto B = G_.getParent()->addVar(
-        new Variable("biases", VisibilityKind::Private, std::move(*b)));
-    auto *FC = G_.createFullyConnected(opName, in, W, B);
-
-    // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = FC;
-    }
-    return;
-  }
-  if (typeName == "LRN") {
-    auto *in = getOrCreateNodeByName(op.input(0));
-
-    size_t size = loadInt(dict["size"]);
-    float alpha = loadFloat(dict["alpha"]);
-    float beta = loadFloat(dict["beta"]);
-    float k = loadFloat(dict["bias"]);
-
-    auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
-
-    auto *node = G_.createLocalResponseNormalization(opName, tr, size / 2,
-                                                     alpha, beta, k);
-
-    auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
-
-    // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = N;
-    }
-    return;
-  }
-
-  if (typeName == "Mul" || typeName == "Add") {
-    auto *in0 = getOrCreateNodeByName(op.input(0));
-    auto *in1 = getOrCreateNodeByName(op.input(1));
-
-    int broadcast = loadInt(dict["broadcast"]);
-
-    Node *finalIn1 = nullptr;
-    if (broadcast == 1) {
-      int axis = loadInt(dict["axis"]);
-      // In Caffe2, if axis == -1 then it sets the axis so that the
-      // trailing-most dimensions are aligned like this.
-      if (axis == -1) {
-        axis = in0->dims().size() - in1->dims().size();
-      }
-      finalIn1 = G_.createBroadcast(opName, in1, in0->dims(), axis);
-    } else {
-      finalIn1 = in1;
-    }
-
-    Node *node = nullptr;
-    if (typeName == "Mul") {
-      node = G_.createMul(opName, in0, finalIn1);
-    } else {
-      node = G_.createAdd(opName, in0, finalIn1);
-    }
-
-    // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
-    }
-    return;
-  }
 
   if (typeName == "ChannelShuffle") {
     auto *in = getOrCreateNodeByName(op.input(0));
@@ -431,22 +325,6 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = node;
-    }
-    return;
-  }
-
-  if (typeName == "Split") {
-    auto *in = getOrCreateNodeByName(op.input(0));
-    size_t axis = dict.count("axis") ? loadInt(dict["axis"]) : 0;
-    std::vector<size_t> split;
-    if (dict.count("split"))
-      split = getShape(dict["split"]);
-
-    std::vector<Node *> outputs;
-    G_.createSplit(opName, in, op.output_size(), axis, split, outputs);
-
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = outputs[i];
     }
     return;
   }
