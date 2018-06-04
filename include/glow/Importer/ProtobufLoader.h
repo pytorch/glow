@@ -65,8 +65,9 @@ template <typename T> static const std::string &loadStr(const T *arg) {
 }
 
 /// Load the 'shape' record into a vector of sizes.
-template <typename T> std::vector<size_t> getShape(const T *arg) {
-  std::vector<size_t> dim;
+template <typename ElemTy = size_t, typename AttrType>
+std::vector<ElemTy> getShape(const AttrType *arg) {
+  std::vector<ElemTy> dim;
   for (auto i : arg->ints()) {
     dim.push_back(i);
   }

@@ -165,6 +165,44 @@ protected:
     }
   }
 
+  void loadReshape(const OpType &op, ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    auto *in = getOrCreateNodeByName(op.input(0));
+
+    std::vector<size_t> newDim;
+    if (dict.count("shape")) {
+      std::vector<int64_t> protoDims = getShape<int64_t>(dict["shape"]);
+
+      auto oldDim = in->dims();
+      int64_t product = 1;
+      for (size_t i = 0, e = protoDims.size(); i != e; i++) {
+        if (protoDims[i] == 0)
+          // shape[i] == 0 means that corresponding element should remain
+          // the same.
+          protoDims[i] = oldDim[i];
+        if (protoDims[i] != -1)
+          product *= protoDims[i];
+      }
+      for (size_t i = 0, e = newDim.size(); i != e; i++) {
+        if (protoDims[i] == -1)
+          // shape[i] == -1 means that corresponding element should be inferred
+          // from all other elements, so that Tensor size remains the same.
+          protoDims[i] = in->getType()->size() / product;
+        newDim.push_back(protoDims[i]);
+      }
+    } else {
+      Tensor *T = getTensorByName(op.input(1));
+      auto TH = T->getHandle<size_t>();
+      for (size_t i = 0, e = T->size(); i != e; i++) {
+        newDim.push_back(TH.raw(i));
+      }
+    }
+
+    auto *node = G_.createReshape(opName, in, newDim);
+
+    addNodeAsOutput(op, node);
+  }
+
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns true and creates new operator.
@@ -197,6 +235,10 @@ protected:
     }
     if (typeName == "Split") {
       loadSplit(op, dict);
+      return true;
+    }
+    if (typeName == "Reshape") {
+      loadReshape(op, dict);
       return true;
     }
     return false;

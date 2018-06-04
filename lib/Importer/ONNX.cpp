@@ -397,29 +397,6 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     return;
   }
 
-  if (typeName == "Reshape") {
-    auto *in = getOrCreateNodeByName(op.input(0));
-
-    std::vector<size_t> newDim;
-    if (dict.count("shape")) {
-      newDim = getShape(dict["shape"]);
-    } else {
-      auto *T = getTensorByName(op.input(1));
-      auto TH = T->getHandle<size_t>();
-      for (size_t i = 0, e = T->size(); i != e; i++) {
-        newDim.push_back(TH.raw(i));
-      }
-    }
-
-    auto *node = G_.createReshape(opName, in, newDim);
-
-    // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
-    }
-    return;
-  }
-
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
