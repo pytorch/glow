@@ -78,21 +78,23 @@ void ExecutionEngine::runBatch(size_t iterations,
   size_t batchSize = vars[0]->getType()->dims()[0];
 
   for (size_t i = 0; i < iterations; i++) {
-    // Launch threads that update the different chunks in the batch:
-    updateForwardBackward(vars, inputs, trainCounter);
+    // Pick up one slice from the input tensors, and load it into corresponding
+    // network Variables. Then, run a single pass over the network.
+    updateInputsAndRunNetwork(vars, inputs, trainCounter);
 
     trainCounter += batchSize;
   }
 }
 
-void ExecutionEngine::updateForwardBackward(llvm::ArrayRef<Variable *> vars,
-                                            llvm::ArrayRef<Tensor *> inputs,
-                                            size_t sampleIdx) {
+void ExecutionEngine::updateInputsAndRunNetwork(llvm::ArrayRef<Variable *> vars,
+                                                llvm::ArrayRef<Tensor *> inputs,
+                                                size_t sampleIdx) {
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
     loadValueFromTensorSlice(vars[i], inputs[i], sampleIdx);
   }
 
+  // Run the network.
   IP_->doForwardPass();
 }
 
