@@ -36,6 +36,19 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
+/// Helper function that \returns the number of times the same consecutive
+/// NodeValue in \p inputs is found, starting from index \p i.
+static size_t getConsecutiveSameNodeCount(llvm::ArrayRef<NodeValue> inputs,
+                                          const size_t i) {
+  assert(i < inputs.size() && "Index must fit inside the size of the inputs.");
+  for (size_t j = i, e = inputs.size(); j < e; j++) {
+    if (inputs[i] != inputs[j]) {
+      return j - i;
+    }
+  }
+  return inputs.size() - i;
+}
+
 /// A helper class for visiting and generating the dotty file from the graph.
 struct IRGenVisitor : NodeWalker {
   using NodeValueToDestTy = std::unordered_map<NodeValue, Value *>;
@@ -245,13 +258,27 @@ public:
       std::vector<size_t> offsets(CC->dims().size(), 0);
       unsigned dim = CC->getDim();
 
-      for (int i = 0, e = inputs.size(); i < e; i++) {
+      for (size_t i = 0, e = inputs.size(); i < e;) {
+        // Look for a series of the same Node being concated consecutively many
+        // times. We can wrap n such consecutive repeats into a single insert
+        // with count n along the dim axis.
+        const size_t consecutiveCount = getConsecutiveSameNodeCount(inputs, i);
+
+        // Create the new InsertTensor instruction given the input node, along
+        // with the number of times to insert the node and the axis (dim) we are
+        // inserting in.
         builder_.createInsertTensorInst(CC->getName(), dest,
                                         valueForNode(inputs[i]), offsets,
-                                        /* count */ 1, /* axis */ 0);
+                                        consecutiveCount, dim);
+
         // We are stacking the tensors along a specific dimension. This means
-        // that we increase the size of the tensor along this dimension.
-        offsets[dim] += inputs[i].dims()[dim];
+        // that we increase the size of the tensor along this dimension, count
+        // times.
+        offsets[dim] += inputs[i].dims()[dim] * consecutiveCount;
+
+        // Increment i by the number of the same nodes that were found in a row,
+        // which were all wrapped into a single InsertTensorInst.
+        i += consecutiveCount;
       }
       registerIR(N, dest);
       break;
