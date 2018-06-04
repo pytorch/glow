@@ -46,22 +46,157 @@ protected:
   }
 
   /// Loads RELU operator, given its protobuf representation and parsed args.
-  void loadRelu(const OpType &op, const ArgumentDictionaryTy &dict) {
+  void loadRelu(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
     auto *in = getOrCreateNodeByName(op.input(0));
     auto *R = G_.createRELU(opName, in);
     addNodeAsOutput(op, R);
   }
-  // TODO: move more common operators here (from ONNX.cpp and Caffe2.cpp)
+
+  void loadSum(const OpType &op, ArgumentDictionaryTy &dict) {
+    // TODO: support variadic arguments
+    assert(op.input_size() == 2 && "Only Sum of 2 inputs is supported.");
+    const std::string &opName = loadOperatorName(op);
+    auto *in0 = getOrCreateNodeByName(op.input(0));
+    auto *in1 = getOrCreateNodeByName(op.input(1));
+    auto *node = G_.createAdd(opName, in0, in1);
+    addNodeAsOutput(op, node);
+  }
+
+  void loadSoftmax(const OpType &op, ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+
+    auto *softmaxExpected = getOrCreateNodeByName("softmax_expected");
+
+    Node *in = getOrCreateNodeByName(op.input(0));
+
+    // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
+    // softmax function. This is similar to a bitcast operation.
+    auto flatten = flattenCdr(in->getType()->dims());
+    in = G_.createReshape("reshape", in, {flatten.first, flatten.second});
+
+    auto *node = G_.createSoftMax(opName, in, softmaxExpected);
+    addNodeAsOutput(op, node);
+  }
+
+  void loadFC(const OpType &op, ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    auto *in = getOrCreateNodeByName(op.input(0));
+    // Load weights.
+    Tensor *w = getTensorByName(op.input(1));
+    Tensor *b = getTensorByName(op.input(2));
+
+    // ONNX stores the transposed W matrix. In here we transpose W back.
+    Tensor wtag;
+    w->transpose(&wtag, {1, 0});
+
+    auto W = G_.getParent()->addVar(
+        new Variable("weights", VisibilityKind::Private, std::move(wtag)));
+    auto B = G_.getParent()->addVar(
+        new Variable("biases", VisibilityKind::Private, std::move(*b)));
+    auto *FC = G_.createFullyConnected(opName, in, W, B);
+
+    addNodeAsOutput(op, FC);
+  }
+
+  void loadLRN(const OpType &op, ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    auto *in = getOrCreateNodeByName(op.input(0));
+
+    size_t size = loadInt(dict["size"]);
+    float alpha = loadFloat(dict["alpha"]);
+    float beta = loadFloat(dict["beta"]);
+    float k = loadFloat(dict["bias"]);
+
+    auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
+
+    auto *node = G_.createLocalResponseNormalization(opName, tr, size / 2,
+                                                     alpha, beta, k);
+
+    auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
+
+    addNodeAsOutput(op, N);
+  }
+
+  void loadArithmetic(llvm::StringRef typeName, const OpType &op,
+                      ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    auto *in0 = getOrCreateNodeByName(op.input(0));
+    auto *in1 = getOrCreateNodeByName(op.input(1));
+
+    int broadcast = loadInt(dict["broadcast"]);
+
+    Node *finalIn1 = nullptr;
+    if (broadcast == 1) {
+      int axis = loadInt(dict["axis"]);
+      // In ONNX, if axis == -1 then it sets the axis so that the
+      // trailing-most dimensions are aligned like this.
+      if (axis == -1) {
+        axis = in0->dims().size() - in1->dims().size();
+      }
+      finalIn1 = G_.createBroadcast(opName, in1, in0->dims(), axis);
+    } else {
+      finalIn1 = in1;
+    }
+
+    Node *node = nullptr;
+    if (typeName == "Mul") {
+      node = G_.createMul(opName, in0, finalIn1);
+    } else {
+      node = G_.createAdd(opName, in0, finalIn1);
+    }
+
+    addNodeAsOutput(op, node);
+  }
+
+  void loadSplit(const OpType &op, ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    auto *in = getOrCreateNodeByName(op.input(0));
+    size_t axis = dict.count("axis") ? loadInt(dict["axis"]) : 0;
+    std::vector<size_t> split;
+    if (dict.count("split"))
+      split = getShape(dict["split"]);
+
+    std::vector<Node *> outputs;
+    G_.createSplit(opName, in, op.output_size(), axis, split, outputs);
+
+    for (int i = 0, e = op.output_size(); i < e; i++) {
+      nodeByName_[op.output(i)] = outputs[i];
+    }
+  }
 
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns true and creates new operator.
   /// Otherwise returns false.
   bool tryLoadCommonOperator(llvm::StringRef typeName, const OpType &op,
-                             const ArgumentDictionaryTy &dict) {
+                             ArgumentDictionaryTy &dict) {
     if (typeName == "Relu") {
       loadRelu(op, dict);
+      return true;
+    }
+    if (typeName == "Sum") {
+      loadSum(op, dict);
+      return true;
+    }
+    if (typeName == "Softmax") {
+      loadSoftmax(op, dict);
+      return true;
+    }
+    if (typeName == "FC") {
+      loadFC(op, dict);
+      return true;
+    }
+    if (typeName == "LRN") {
+      loadLRN(op, dict);
+      return true;
+    }
+    if (typeName == "Mul" || typeName == "Add") {
+      loadArithmetic(typeName, op, dict);
+      return true;
+    }
+    if (typeName == "Split") {
+      loadSplit(op, dict);
       return true;
     }
     return false;
