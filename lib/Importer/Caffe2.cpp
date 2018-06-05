@@ -347,6 +347,10 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "Transpose") {
+    return loadTranspose(op, dict, "axes");
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
