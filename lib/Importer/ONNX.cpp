@@ -397,6 +397,10 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     return;
   }
 
+  if (typeName == "Transpose") {
+    return loadTranspose(op, dict, "perm");
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
