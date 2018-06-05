@@ -145,6 +145,12 @@ bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
   return true;
 }
 
+bool Interpreter::shouldLower(Node *N) const {
+  if (N->getKind() == Kinded::Kind::ConvolutionNodeKind)
+    return false;
+  return true;
+}
+
 void Interpreter::doForwardPass() {
 // Do the forward pass.
 #define DEF_VALUE(CLASS, NAME)

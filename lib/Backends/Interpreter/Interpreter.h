@@ -64,6 +64,8 @@ public:
   void doForwardPass() override;
 
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override;
+
+  bool shouldLower(Node *N) const override;
   /// @}
 
 private:
