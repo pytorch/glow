@@ -196,6 +196,11 @@ public:
   void optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM);
   /// Performs specialization of operations based on constant parameters.
   void performSpecialization();
+  /// Performs specialization of a call based on constant parameters.
+  /// In case of a successful specialization, the old call instruction is
+  /// replaced by the new one and the old one is erases. \returns the new
+  /// specialized call or nullptr if no specialization was possible.
+  llvm::CallInst *specializeCallWithConstantArguments(llvm::CallInst *call);
   /// \returns allocations info.
   AllocationsInfo &getAllocationsInfo() { return allocationsInfo_; }
   /// \returns the name of the main entry point.

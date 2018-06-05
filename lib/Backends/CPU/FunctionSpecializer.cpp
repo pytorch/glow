@@ -158,6 +158,30 @@ class FunctionSpecializer {
     return specializedF;
   }
 
+  /// \returns true if a function is eligible for specialization.
+  bool isEligibleForSpecialization(const llvm::CallInst *call) {
+    // For now, specialize all functions invoked from "main". In the future, we
+    // may introduce more complex logic for making this decision. It could be
+    // based in the number of invocations of a function, number of its
+    // arguments, its code size, etc.
+    const auto *caller = call->getFunction();
+    const auto *callee = call->getCalledFunction();
+    // Specialized only calls inside main.
+    assert(caller == entryF_ &&
+           "Only calls inside the entry function are specialized");
+    (void)caller;
+    // Do not specialize any LLVM internal functions.
+    if (callee && callee->getName().startswith("llvm."))
+      return false;
+    // Do not specialize noinline functions, because it does not improve
+    // anything.
+    return callee != nullptr &&
+           !callee->hasFnAttribute(llvm::Attribute::AttrKind::NoInline);
+  }
+
+public:
+  FunctionSpecializer(llvm::Function *entryF) : entryF_(entryF) {}
+
   /// Specialize a single call.
   /// \returns the specialized Call instruction if it was possible to specialize
   /// the call or nullptr otherwise.
@@ -203,29 +227,6 @@ class FunctionSpecializer {
     return createCall(builder, specializedF, argsForSpecialized);
   }
 
-  /// \returns true if a function is eligable for specialization.
-  bool isEligableForSpecialization(const llvm::CallInst *call) {
-    // For now, specialize all functions invoked from "main". In the future, we
-    // may introduce more complex logic for making this decision. It could be
-    // based in the number of invocations of a function, number of its
-    // arguments, its code size, etc.
-    const auto *caller = call->getFunction();
-    const auto *callee = call->getCalledFunction();
-    // Specialized only calls inside main.
-    assert(caller == entryF_ &&
-           "Only calls inside the entry function are specialized");
-    (void)caller;
-    // Do not specialize any LLVM internal functions.
-    if (callee && callee->getName().startswith("llvm."))
-      return false;
-    // Do not specialize noinline functions, because it does not improve
-    // anything.
-    return callee != nullptr &&
-           !callee->hasFnAttribute(llvm::Attribute::AttrKind::NoInline);
-  }
-
-public:
-  FunctionSpecializer(llvm::Function *entryF) : entryF_(entryF) {}
   void run() {
     // Bail if there is nothing to be specialized.
     if (!jitSpecializeDims && !jitSpecializeAllArguments_)
@@ -242,7 +243,7 @@ public:
         auto *CI = dyn_cast<llvm::CallInst>(&I);
         if (!CI)
           continue;
-        if (!isEligableForSpecialization(CI))
+        if (!isEligibleForSpecialization(CI))
           continue;
         calls.push_back(CI);
       }
@@ -353,4 +354,16 @@ void LLVMIRGen::performSpecialization() {
       continue;
     generateFunctionDebugInfo(&FF);
   }
+}
+
+llvm::CallInst *
+LLVMIRGen::specializeCallWithConstantArguments(llvm::CallInst *call) {
+  FunctionSpecializer FuncSpecializer({});
+  auto specializedCall = FuncSpecializer.specializeCall(call);
+  // Remove the original call instruction, if a new call instruction was
+  // created.
+  if (specializedCall) {
+    call->eraseFromParent();
+  }
+  return specializedCall;
 }
