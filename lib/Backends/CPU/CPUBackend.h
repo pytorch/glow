@@ -94,6 +94,8 @@ public:
   bool transformPostLowering(Function *F, CompilationMode mode) override;
 
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override;
+
+  bool shouldLower(Node *N) const override;
   /// @}
 };
 

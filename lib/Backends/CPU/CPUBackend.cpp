@@ -416,6 +416,12 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
   return true;
 }
 
+bool CPUBackend::shouldLower(Node *N) const {
+  if (N->getKind() == Kinded::Kind::ConvolutionNodeKind)
+    return false;
+  return true;
+}
+
 llvm::CallInst *glow::createCall(llvm::IRBuilder<> &builder,
                                  llvm::Function *callee,
                                  llvm::ArrayRef<llvm::Value *> args) {
