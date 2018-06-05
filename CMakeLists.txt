@@ -21,6 +21,7 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(GlowDefaults)
+include(GlowTestSupport)
 include(SanitizerSupport)
 include(CoverageSupport)
 include(DoxygenSupport)
@@ -75,3 +76,9 @@ add_subdirectory(tests)
 add_custom_target(dependency_graph
                   "${CMAKE_COMMAND}" "--graphviz=dependency_graph" .
                   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# Fetch the dependencies for all the tests.
+get_property(GLOW_TEST_DEPENDS GLOBAL PROPERTY GLOW_TEST_DEPENDS)
+
+add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND}
+                    DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL)
