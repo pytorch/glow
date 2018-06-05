@@ -522,6 +522,9 @@ void OCLBackend::doForwardPass() {
       if (auto *SI = dyn_cast<SplatInst>(I)) {
         // Pass the splat as a parameter.
         setKernelArg(kernel, numArgs + 1, SI->getValue());
+      } else if (auto *EPI = dyn_cast<ElementPowInst>(I)) {
+        // Pass the exp as a parameter.
+        setKernelArg(kernel, numArgs + 1, EPI->getExp());
       }
 
       enqueueKernel(commands_, kernel, deviceId_, {global}, kernelLaunches_);
