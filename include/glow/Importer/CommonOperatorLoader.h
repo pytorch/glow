@@ -189,7 +189,7 @@ protected:
         if (protoDims[i] != -1)
           product *= protoDims[i];
       }
-      for (size_t i = 0, e = newDim.size(); i != e; i++) {
+      for (size_t i = 0, e = protoDims.size(); i != e; i++) {
         if (protoDims[i] == -1)
           // shape[i] == -1 means that corresponding element should be inferred
           // from all other elements, so that Tensor size remains the same.
