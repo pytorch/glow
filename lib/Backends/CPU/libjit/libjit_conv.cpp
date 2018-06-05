@@ -283,10 +283,6 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
                           unsigned depthUnroll) {
   size_t inChannels = inWdims[3];
   size_t outChannels = outWdims[3];
-  assert(inChannels % group == 0 &&
-         "Input channels must be divisible by group.");
-  assert(outChannels % group == 0 &&
-         "Output channels must be divisible by group.");
   size_t inCperG = inChannels / group;
   size_t outCperG = outChannels / group;
 
@@ -398,10 +394,6 @@ void libjit_convolution_i8(
     int32_t outPre, int32_t outPost, int32_t outScale, unsigned depthUnroll) {
   size_t inChannels = inWdims[3];
   size_t outChannels = outWdims[3];
-  assert(inChannels % group == 0 &&
-         "Input channels must be divisible by group.");
-  assert(outChannels % group == 0 &&
-         "Output channels must be divisible by group.");
   size_t inCperG = inChannels / group;
   size_t outCperG = outChannels / group;
 
