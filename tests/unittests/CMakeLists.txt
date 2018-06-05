@@ -12,7 +12,7 @@ target_link_libraries(tensorsTest
                         Base
                         gtest
                         testMain)
-add_test(tensorsTest ${GLOW_BINARY_DIR}/tests/tensorsTest)
+add_glow_test(tensorsTest ${GLOW_BINARY_DIR}/tests/tensorsTest)
 
 add_executable(gradCheckTest
                gradCheckTest.cpp)
@@ -24,7 +24,7 @@ target_link_libraries(gradCheckTest
                         IR
                         gtest
                         testMain)
-add_test(gradCheckTest ${GLOW_BINARY_DIR}/tests/gradCheckTest)
+add_glow_test(gradCheckTest ${GLOW_BINARY_DIR}/tests/gradCheckTest)
 
 add_executable(IROptTest
                IROptTest.cpp)
@@ -35,7 +35,7 @@ target_link_libraries(IROptTest
                         Optimizer
                         gtest
                         testMain)
-add_test(IROptTest ${GLOW_BINARY_DIR}/tests/IROptTest)
+add_glow_test(IROptTest ${GLOW_BINARY_DIR}/tests/IROptTest)
 
 add_executable(basicIRTest
                basicIRTest.cpp)
@@ -45,7 +45,7 @@ target_link_libraries(basicIRTest
                         IR
                         gtest
                         testMain)
-add_test(basicIRTest ${GLOW_BINARY_DIR}/tests/basicIRTest)
+add_glow_test(basicIRTest ${GLOW_BINARY_DIR}/tests/basicIRTest)
 
 add_executable(backendTest
                BackendTest.cpp)
@@ -56,7 +56,7 @@ target_link_libraries(backendTest
                         ExecutionEngine
                         gtest
                         testMain)
-add_test(backendTest ${GLOW_BINARY_DIR}/tests/backendTest)
+add_glow_test(backendTest ${GLOW_BINARY_DIR}/tests/backendTest)
 
 add_executable(MLTest
                MLTest.cpp)
@@ -67,7 +67,7 @@ target_link_libraries(MLTest
                         ExecutionEngine
                         gtest
                         testMain)
-add_test(MLTest ${GLOW_BINARY_DIR}/tests/MLTest)
+add_glow_test(MLTest ${GLOW_BINARY_DIR}/tests/MLTest)
 
 add_executable(operatorTest
                OperatorTest.cpp)
@@ -78,7 +78,7 @@ target_link_libraries(operatorTest
                         ExecutionEngine
                         gtest
                         testMain)
-add_test(operatorTest ${GLOW_BINARY_DIR}/tests/operatorTest)
+add_glow_test(operatorTest ${GLOW_BINARY_DIR}/tests/operatorTest)
 
 
 add_executable(graphTest
@@ -90,7 +90,7 @@ target_link_libraries(graphTest
                         IR
                         gtest
                         testMain)
-add_test(graphTest ${GLOW_BINARY_DIR}/tests/graphTest)
+add_glow_test(graphTest ${GLOW_BINARY_DIR}/tests/graphTest)
 
 add_executable(graphGradTest
                graphGradTest.cpp)
@@ -101,7 +101,7 @@ target_link_libraries(graphGradTest
                         ExecutionEngine
                         gtest
                         testMain)
-add_test(graphGradTest ${GLOW_BINARY_DIR}/tests/graphGradTest)
+add_glow_test(graphGradTest ${GLOW_BINARY_DIR}/tests/graphGradTest)
 
 add_executable(graphOptzTest
                graphOptzTest.cpp)
@@ -112,7 +112,7 @@ target_link_libraries(graphOptzTest
                         Optimizer
                         gtest
                         testMain)
-add_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest)
+add_glow_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest)
 
 add_executable(quantizationTest
                quantizationTest.cpp)
@@ -123,7 +123,7 @@ target_link_libraries(quantizationTest
                         Quantization
                         gtest
                         testMain)
-add_test(quantizationTest ${GLOW_BINARY_DIR}/tests/quantizationTest)
+add_glow_test(quantizationTest ${GLOW_BINARY_DIR}/tests/quantizationTest)
 
 add_executable(UtilsTest
                UtilsTest.cpp)
@@ -132,7 +132,7 @@ target_link_libraries(UtilsTest
                         Support
                         gtest
                         testMain)
-add_test(UtilsTest ${GLOW_BINARY_DIR}/tests/UtilsTest)
+add_glow_test(UtilsTest ${GLOW_BINARY_DIR}/tests/UtilsTest)
 
 if(GLOW_WITH_OPENCL)
 add_executable(OCLTest
@@ -145,7 +145,7 @@ target_link_libraries(OCLTest
                         ExecutionEngine
                         gtest
                         testMain)
-add_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest)
+add_glow_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest)
 LIST(APPEND UNOPT_TESTS ./tests/OCLTest -optimize-ir=false &&)
 endif()
 
@@ -160,7 +160,7 @@ target_link_libraries(BackendCorrectnessTest
                         Support
                         gtest
                         testMain)
-add_test(BackendCorrectnessTest ${GLOW_BINARY_DIR}/tests/BackendCorrectnessTest)
+add_glow_test(BackendCorrectnessTest ${GLOW_BINARY_DIR}/tests/BackendCorrectnessTest)
 LIST(APPEND UNOPT_TESTS ./tests/BackendCorrectnessTest -optimize-ir=false &&)
 
 if(GLOW_WITH_CPU)
@@ -176,7 +176,7 @@ target_link_libraries(GemmTest
                         Support
                         gtest
                         testMain)
-add_test(GemmTest ${GLOW_BINARY_DIR}/tests/GemmTest)
+add_glow_test(GemmTest ${GLOW_BINARY_DIR}/tests/GemmTest)
 LIST(APPEND UNOPT_TESTS ./tests/GemmTest -optimize-ir=false &&)
 endif()
 
@@ -187,7 +187,7 @@ target_link_libraries(memoryAllocatorTest
                         CodeGen
                         gtest
                         testMain)
-add_test(memoryAllocatorTest ${GLOW_BINARY_DIR}/tests/memoryAllocatorTest)
+add_glow_test(memoryAllocatorTest ${GLOW_BINARY_DIR}/tests/memoryAllocatorTest)
 
 
 LIST(APPEND UNOPT_TESTS
