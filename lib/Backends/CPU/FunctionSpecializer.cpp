@@ -22,6 +22,8 @@
 
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/Transforms/Utils/ValueMapper.h"
 
 using namespace glow;
 
@@ -93,60 +95,62 @@ class FunctionSpecializer {
     // Bail if there is nothing to do
     if (!jitSpecializeAllArguments_ && !jitSpecializeDims)
       return F;
-    llvm::LLVMContext &ctx = F->getContext();
-    llvm::Module *M = F->getParent();
 
     SpecializationKey key{call, argsToBeSpecialized};
     auto &specializedF = specializations_[key];
     // Is there any specialization for this hash code already?
     if (specializedF) {
-      assert(specializedF->getFunctionType() == F->getFunctionType() &&
-             "A function and its specialization should have the same type");
+      auto specializedFTy = specializedF->getFunctionType();
+      auto FTy = F->getFunctionType();
+      (void)specializedFTy;
+      (void)FTy;
+      assert(
+          specializedFTy->getReturnType() == FTy->getReturnType() &&
+          "A function and its specialization should have the same return type");
+      // The specialized function only takes non-constant parameters from the
+      // original function call. Check that the types of these parameter are the
+      // same for the original and the specialized function.
+      for (size_t argIdx = 0, e = F->arg_size(); argIdx < e; ++argIdx) {
+        if (!(argsToBeSpecialized & (((uint64_t)1) << argIdx))) {
+          assert(specializedFTy->getParamType(argIdx) ==
+                     FTy->getParamType(argIdx) &&
+                 "A function and its specialization should have the same "
+                 "parameter type");
+        }
+      }
       NumSharedSpecializations++;
       return specializedF;
     }
 
     std::string specializedName = createUniqueName(F->getName());
-    // Create a specialized function.
-    // This function should have exactly the same type as the original function.
-    // It should forward all its non-constant arguments and use constant values
-    // for all other arguments. The specialized function should be marked as
-    // noinline, to avoid code bloat.
-    specializedF = dyn_cast<llvm::Function>(
-        M->getOrInsertFunction(specializedName, F->getFunctionType()));
-    specializedF->setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
-    assert(specializedF && "Could not create a specialized function");
-    // Specialization thunks should not be inlined.
-    specializedF->addFnAttr(llvm::Attribute::AttrKind::NoInline);
-    F->removeFnAttr(llvm::Attribute::AttrKind::NoInline);
-    // Make sure that the original function will be inlined into the specialized
-    // function.
-    F->addFnAttr(llvm::Attribute::AttrKind::AlwaysInline);
 
-    // Generate the code invoke the original function with a new set of
-    // arguments.
-
-    // Setup the entry basic block and initialize the IR builder.
-    llvm::BasicBlock *entryBB =
-        llvm::BasicBlock::Create(ctx, "entry", specializedF);
-    llvm::IRBuilder<> builder(entryBB);
-
-    // Arguments to be used for the invocation of the original function.
-    llvm::SmallVector<llvm::Value *, 16> forwardedArgs;
-    int argIdx = 0;
-    for (auto &arg : specializedF->args()) {
-      llvm::Value *argValue = &arg;
+    // We are going to clone the body of the original function and substitute
+    // constant values for the (constant) arguments that are going to be
+    // specialized. The LLVM's cloning function requires a map for its
+    // operation. All arguments mapped by this map are removed from the argument
+    // list of the specialized function.
+    llvm::ValueToValueMapTy VMap;
+    size_t argIdx = 0;
+    for (auto &arg : F->args()) {
       // If this argument needs to be specialized, use its constant
       // value from the call instruction.
       if (argsToBeSpecialized & (((uint64_t)1) << argIdx)) {
-        argValue = call->getArgOperand(argIdx);
+        auto *argValue = call->getArgOperand(argIdx);
+        // Map the argument to a constant value.
+        VMap[&arg] = argValue;
       }
-      forwardedArgs.push_back(argValue);
       argIdx++;
     }
-    // Create the invocation of the original function.
-    createCall(builder, F, forwardedArgs);
-    builder.CreateRetVoid();
+
+    // Create a specialized function by cloning the body of the original
+    // function and substituting the values of constant arguments. The
+    // specialized function should be marked as noinline, to avoid code bloat.
+    specializedF = llvm::CloneFunction(F, VMap);
+    specializedF->setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
+    assert(specializedF && "Could not create a specialized function");
+    // Specializations should not be inlined.
+    specializedF->addFnAttr(llvm::Attribute::AttrKind::NoInline);
+    specializedF->setName(specializedName);
     DEBUG(llvm::dbgs() << "\n\nCreated specialized function " << specializedName
                        << "\n";
           specializedF->print(llvm::errs(), nullptr));
@@ -155,13 +159,13 @@ class FunctionSpecializer {
   }
 
   /// Specialize a single call.
-  /// \returns true if it was possible to specialize the call.
-  bool specializeCall(llvm::CallInst *call) {
+  /// \returns the specialized Call instruction if it was possible to specialize
+  /// the call or nullptr otherwise.
+  llvm::CallInst *specializeCall(llvm::CallInst *call) {
     llvm::IRBuilder<> builder(call->getParent());
     auto *callee = call->getCalledFunction();
     // Args to be used for calling the specialized function.
-    llvm::SmallVector<llvm::Value *, 16> argsForSpecialized(call->arg_begin(),
-                                                            call->arg_end());
+    llvm::SmallVector<llvm::Value *, 16> argsForSpecialized;
     // Set of arguments that need to be specialized. See SpecializationKey
     // documentation for more information about the encoding of this set.
     uint64_t argsToBeSpecialized = 0;
@@ -177,6 +181,7 @@ class FunctionSpecializer {
           cast<llvm::PointerType>(arg->getType())
               ->getElementType()
               ->isFloatTy()) {
+        argsForSpecialized.push_back(arg);
         continue;
       }
 
@@ -186,7 +191,7 @@ class FunctionSpecializer {
       if (!getConstantValue(arg)) {
         DEBUG(llvm::dbgs() << "Could not specialize call:\n";
               call->print(llvm::dbgs()));
-        return false;
+        return nullptr;
       }
     }
 
@@ -195,8 +200,7 @@ class FunctionSpecializer {
     // Generate a call of the specialized function before the current call
     // instruction.
     builder.SetInsertPoint(call);
-    createCall(builder, specializedF, argsForSpecialized);
-    return true;
+    return createCall(builder, specializedF, argsForSpecialized);
   }
 
   /// \returns true if a function is eligable for specialization.
