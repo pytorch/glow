@@ -164,12 +164,7 @@ class FunctionSpecializer {
     // may introduce more complex logic for making this decision. It could be
     // based in the number of invocations of a function, number of its
     // arguments, its code size, etc.
-    const auto *caller = call->getFunction();
     const auto *callee = call->getCalledFunction();
-    // Specialized only calls inside main.
-    assert(caller == entryF_ &&
-           "Only calls inside the entry function are specialized");
-    (void)caller;
     // Do not specialize any LLVM internal functions.
     if (callee && callee->getName().startswith("llvm."))
       return false;
@@ -180,7 +175,7 @@ class FunctionSpecializer {
   }
 
 public:
-  FunctionSpecializer(llvm::Function *entryF) : entryF_(entryF) {}
+  FunctionSpecializer(llvm::ArrayRef<llvm::Function *> funcs) : funcs_(funcs) {}
 
   /// Specialize a single call.
   /// \returns the specialized Call instruction if it was possible to specialize
@@ -235,23 +230,24 @@ public:
     // The removal should happen after all specializations are done, because
     // these call instructions are used by the keys in Specializations_ map.
     llvm::SmallVector<llvm::Instruction *, 32> erasedInstructions;
-    auto *F = entryF_;
-    // Collect all eligable calls in the current function.
-    llvm::SmallVector<llvm::CallInst *, 64> calls;
-    for (auto &BB : *F) {
-      for (auto &I : BB) {
-        auto *CI = dyn_cast<llvm::CallInst>(&I);
-        if (!CI)
-          continue;
-        if (!isEligibleForSpecialization(CI))
-          continue;
-        calls.push_back(CI);
+    for (auto *F : funcs_) {
+      // Collect all eligable calls in the current function.
+      llvm::SmallVector<llvm::CallInst *, 64> calls;
+      for (auto &BB : *F) {
+        for (auto &I : BB) {
+          auto *CI = dyn_cast<llvm::CallInst>(&I);
+          if (!CI)
+            continue;
+          if (!isEligibleForSpecialization(CI))
+            continue;
+          calls.push_back(CI);
+        }
       }
-    }
-    // Try to specialize all the collected calls.
-    for (auto *call : calls) {
-      if (specializeCall(call))
-        erasedInstructions.push_back(call);
+      // Try to specialize all the collected calls.
+      for (auto *call : calls) {
+        if (specializeCall(call))
+          erasedInstructions.push_back(call);
+      }
     }
 
     // Remove those calls that were successfully replaced by calls of
@@ -325,8 +321,8 @@ private:
     }
   };
 
-  /// The entry function of the module.
-  llvm::Function *entryF_;
+  /// Functions to be analyzed.
+  llvm::ArrayRef<llvm::Function *> funcs_;
   /// Mapping from specialization keys to the specialized functions.
   std::unordered_map<SpecializationKey, llvm::Function *,
                      SpecializationKeyHasher, SpecializationKeyEq>
@@ -343,7 +339,34 @@ private:
 } // namespace
 
 void LLVMIRGen::performSpecialization() {
-  FunctionSpecializer FuncSpecializer(llmodule_->getFunction("main"));
+  // Specialize all invocations of main functions with constant parameters to
+  // produce a better optimized code.
+  auto *func = getModule().getFunction("jitmain");
+  while (func) {
+    // Call of a "main" function is always the last instruction before return.
+    auto instrBeforeTerminator =
+        std::prev(func->back().getTerminator()->getIterator());
+    auto *call = dyn_cast<llvm::CallInst>(instrBeforeTerminator);
+    if (!call)
+      break;
+    // Specialize only calls of all "main" functions.
+    func = call->getCalledFunction();
+    if (!func || !func->getName().startswith("main"))
+      break;
+    call = specializeCallWithConstantArguments(call);
+    func = call ? call->getCalledFunction() : nullptr;
+  }
+
+  // Specialize calls in all main functions.
+  llvm::SmallVector<llvm::Function *, 32> mainFunctions;
+  for (auto &F : getModule()) {
+    if (!F.getName().startswith("main")) {
+      continue;
+    }
+    mainFunctions.emplace_back(&F);
+  }
+
+  FunctionSpecializer FuncSpecializer(mainFunctions);
   FuncSpecializer.run();
   // Add debug info to all the newly created functions, i.e. to the created
   // specialized functions.

@@ -68,6 +68,10 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM) {
     // start with jit_
     if (name.empty() || name.startswith("libjit_"))
       return false;
+    // Do not preserve main functions that are called internally by the
+    // top-level main.
+    if (name.startswith("main."))
+      return false;
     return true;
   };
 
