@@ -18,58 +18,163 @@
 namespace {
 
 /// Macros for accessing submatrices of a matmul using the leading dimension.
-#define A(i, j) a[(i)*lda + (j)]
-#define B(i, j) b[(i)*ldb + (j)]
-#define C(i, j) c[(i)*ldc + (j)]
+#define A(i, j) a[(j)*lda + (i)]
+#define B(i, j) b[(j)*ldb + (i)]
+#define C(i, j) c[(j)*ldc + (i)]
 
 /// Naive gemm helper to handle oddly-sized matrices.
 void libjit_matmul_odd(int m, int n, int k, const float *a, int lda,
                        const float *b, int ldb, float *c, int ldc) {
+  // The order of these loops is tuned for column-major matrices.
   for (int p = 0; p < k; p++) {
-    for (int i = 0; i < m; i++) {
-      for (int j = 0; j < n; j++) {
+    for (int j = 0; j < n; j++) {
+      for (int i = 0; i < m; i++) {
         C(i, j) += A(i, p) * B(p, j);
       }
     }
   }
 }
 
+/// Number of registers to use for rows of A in the dot-product kernel.
+constexpr int regsA = 4;
+/// Number of registers to use for columns of B in the dot-product kernel.
+constexpr int regsB = 3;
+
+/// Number of rows of A to process in the kernel.  Vector loads are used for A,
+/// so we load eight times as many floats as we use registers.
+constexpr int mr = regsA * 8;
+/// Number of columns of B to process in the kernel.
+constexpr int nr = regsB;
+
+/// Blocking parameters for the outer kernel.  We multiply mc x kc blocks of A
+/// with kc x nc panels of B (this approach is referred to as `gebp` in the
+/// literature).  TODO: Generalize these parameters for other cache sizes.
+constexpr int mc = 256;
+constexpr int kc = 128;
+constexpr int nc = 4096;
+
+/// Only pack matrices if dimension is above this threshold.  Packing is
+/// primarily helpful for avoiding TLB pressure and cache set conflicts, so this
+/// can be fairly large.
+constexpr size_t pack_threshold = 1024;
+
 /// Compute a RAxRB block of C using a vectorized dot product, where RA is the
 /// number of registers to load from matrix A, and RB is the number of registers
 /// to load from matrix B.
-template <unsigned int regsA, unsigned int regsB>
-void libjit_matmul_dot(int k, const float *a, int lda, const float *b, int ldb,
-                       float *c, int ldc) {
+template <size_t regsA, size_t regsB>
+void libjit_matmul_dot(size_t k, const float *a, size_t lda, const float *b,
+                       size_t ldb, float *c, size_t ldc) {
   float8 csum[regsA][regsB] = {{0.0}};
-  for (int p = 0; p < k; p++) {
-
+  for (size_t p = 0; p < k; p++) {
     // Perform the DOT product.
-    for (int bi = 0; bi < regsB; bi++) {
-      float8 bb = LoaduFloat8(&B(p, bi * 8));
-      for (int ai = 0; ai < regsA; ai++) {
-        float8 aa = BroadcastFloat8(A(ai, p));
+    for (size_t ai = 0; ai < regsA; ai++) {
+      float8 aa = LoaduFloat8(&A(ai * 8, p));
+      for (size_t bi = 0; bi < regsB; bi++) {
+        float8 bb = BroadcastFloat8(B(p, bi));
         csum[ai][bi] += aa * bb;
       }
     }
   }
 
   // Accumulate the results into C.
-  for (int ai = 0; ai < regsA; ai++) {
-    for (int bi = 0; bi < regsB; bi++) {
-      AdduFloat8(&C(ai, bi * 8), csum[ai][bi]);
+  for (size_t bi = 0; bi < regsB; bi++) {
+    for (size_t ai = 0; ai < regsA; ai++) {
+      AdduFloat8(&C(ai * 8, bi), csum[ai][bi]);
+    }
+  }
+}
+
+/// Similar to libjit_matmul_dot, but assumes that \p a and \p b have been
+/// packed using z-ordering.
+template <size_t regsA, size_t regsB>
+void libjit_matmul_zdot(size_t k, const float *a, size_t lda, const float *b,
+                        size_t ldb, float *c, size_t ldc) {
+  float8 csum[regsA][regsB] = {{0.0}};
+
+  for (size_t p = 0; p < k; p++) {
+    // Perform the DOT product.
+    float8 *aptr = (float8 *)&A(0, p);
+    for (size_t ai = 0; ai < regsA; ai++) {
+      float8 aa = *aptr++;
+      for (size_t bi = 0; bi < regsB; bi++) {
+        float8 bb = BroadcastFloat8(*(b + bi));
+        csum[ai][bi] += aa * bb;
+      }
+    }
+    b += regsB;
+  }
+
+  // Accumulate the results into C.
+  for (size_t bi = 0; bi < regsB; bi++) {
+    for (size_t ai = 0; ai < regsA; ai++) {
+      AdduFloat8(&C(ai * 8, bi), csum[ai][bi]);
+    }
+  }
+}
+
+/// Pack matrix \p a into matrix \p a_to using a z-ordering, so that the
+/// dot-product kernel can stride sequentially through memory.
+template <size_t regsA>
+void pack_matrix_a(size_t m, size_t k, const float *a, size_t lda,
+                   float *a_to) {
+  for (size_t i = 0; i < m - mr + 1; i += mr) {
+    for (size_t j = 0; j < k; j++) {
+      const float *a_ij_pntr = &A(i, j);
+      for (size_t ai = 0; ai < regsA; ai++) {
+        StoreuFloat8(a_to + 8 * ai, LoaduFloat8(a_ij_pntr + 8 * ai));
+      }
+      a_to += 8 * regsA;
+    }
+  }
+}
+
+/// Pack matrix \p b into matrix \p b_to using a z-ordering, so that the
+/// dot-product kernel can stride sequentially through memory, rather than
+/// reading from `regsB` separate columns.
+template <size_t regsB>
+void pack_matrix_b(size_t n, size_t k, const float *b, size_t ldb,
+                   float *b_to) {
+  for (size_t j = 0; j < n - nr + 1; j += nr) {
+    for (size_t i = 0; i < k; i++) {
+      for (size_t bi = 0; bi < regsB; bi++) {
+        *b_to++ = B(i, j + bi);
+      }
+    }
+  }
+}
+
+/// Inner kernel for packed matrices.  The order of the M and N loops matters,
+/// because packed matrices need to be more more sensitive to cache locality,
+/// and N strides over the B matrix, which is very large and will blow out the
+/// cache.
+void libjit_matmul_inner_packed(int m, int n, int k, const float *packedA,
+                                const float *packedB, float *c, int ldc) {
+  for (int j = 0; j < n - nr + 1; j += nr) {
+    for (int i = 0; i < m - mr + 1; i += mr) {
+      libjit_matmul_zdot<regsA, regsB>(k, &packedA[i * k], mr, &packedB[j * k],
+                                       k, &C(i, j), ldc);
+    }
+  }
+}
+
+/// Inner kernel for non-packed matrices.  In these cases N is small, so it
+/// tends to be beneficial to retain locality in the A matrix.
+void libjit_matmul_inner_unpacked(int m, int n, int k, const float *a, int lda,
+                                  const float *b, int ldb, float *c, int ldc) {
+  for (int i = 0; i < m - mr + 1; i += mr) {
+    for (int j = 0; j < n - nr + 1; j += nr) {
+      libjit_matmul_dot<regsA, regsB>(k, &A(i, 0), lda, &B(0, j), ldb, &C(i, j),
+                                      ldc);
     }
   }
 }
 
 /// Compute a portion of C one block at a time.  Handle ragged edges with calls
 /// to a slow but general helper.
+template <bool pack>
 void libjit_matmul_inner(int m, int n, int k, const float *a, int lda,
-                         const float *b, int ldb, float *c, int ldc) {
-  constexpr int regsA = 3;
-  constexpr int regsB = 4;
-
-  constexpr int mc = regsA;
-  constexpr int nr = regsB * 8;
+                         const float *b, int ldb, float *c, int ldc,
+                         float *packedB) {
   // The tiling scheme naturally divides the input matrices into 2 parts each;
   // one tiled section, and three "ragged" edges.
   //
@@ -83,14 +188,19 @@ void libjit_matmul_inner(int m, int n, int k, const float *a, int lda,
   // perfectly-tiled portion, which we handly with a 4x16 dot-product kernel.
   // The ragged edges are (ideally) less critical, so we handle them with a call
   // to a general matrix-multiplication for odd sizes.
-  for (int j = 0; j < n - nr + 1; j += nr) {
-    for (int i = 0; i < m - mc + 1; i += mc) {
-      libjit_matmul_dot<regsA, regsB>(k, &A(i, 0), lda, &B(0, j), ldb, &C(i, j),
-                                      ldc);
-    }
+  float packedA[m * k] __attribute__((aligned(64)));
+  if (pack) {
+    pack_matrix_a<regsA>(m, k, &A(0, 0), lda, packedA);
   }
-  int i = (m / mc) * mc;
-  int j = (n / nr) * nr;
+
+  if (pack) {
+    libjit_matmul_inner_packed(m, n, k, packedA, packedB, c, ldc);
+  } else {
+    libjit_matmul_inner_unpacked(m, n, k, a, lda, b, ldb, c, ldc);
+  }
+
+  size_t i = (m / mr) * mr;
+  size_t j = (n / nr) * nr;
   if (i < m) {
     libjit_matmul_odd(m - i, j, k, &A(i, 0), lda, &B(0, 0), ldb, &C(i, 0), ldc);
   }
@@ -106,22 +216,29 @@ void libjit_matmul_inner(int m, int n, int k, const float *a, int lda,
 /// Tile A into mc * kc blocks, where mc and kc are chosen to approximately fit
 /// the L2 cache on recent Intel processors (e.g., 256 KB for Skylake).  Stream
 /// kc * n panels of B through memory to compute each mc * n block of C.
-/// \p a is an \p m x \p k row-major matrix;
-/// \p b is a \p k x \p n row-major matrix;
-/// \p c is a \p m x \p n row-major matrix.
+/// \p a is an \p m x \p k column-major matrix;
+/// \p b is a \p k x \p n column-major matrix;
+/// \p c is a \p m x \p n column-major matrix.
 /// \p lda, \p ldb, and \p ldc are the leading dimensions of A, B, and C,
 /// respectively.
-void libjit_matmul_outer(int m, int n, int k, const float *a, int lda,
-                         const float *b, int ldb, float *c, int ldc) {
-  // TODO: Generalize these parameters for other cache sizes.
-  constexpr int mc = 256;
-  constexpr int kc = 128;
-  for (int p = 0; p < k; p += kc) {
-    int pb = MIN(k - p, kc);
-    for (int i = 0; i < m; i += mc) {
-      int ib = MIN(m - i, mc);
-      libjit_matmul_inner(ib, n, pb, &A(i, p), lda, &B(p, 0), ldb, &C(i, 0),
-                          ldc);
+template <bool pack>
+void __attribute__((noinline))
+libjit_matmul_outer(size_t m, size_t n, size_t k, const float *a, size_t lda,
+                    const float *b, size_t ldb, float *c, size_t ldc) {
+  float packedB[kc * nc] __attribute__((aligned(64)));
+
+  for (size_t p = 0; p < k; p += kc) {
+    size_t pb = MIN(k - p, kc);
+    for (size_t j = 0; j < n; j += nc) {
+      size_t jb = MIN(n - j, nc);
+      if (pack) {
+        pack_matrix_b<regsB>(jb, pb, &B(p, j), ldb, packedB);
+      }
+      for (size_t i = 0; i < m; i += mc) {
+        size_t ib = MIN(m - i, mc);
+        libjit_matmul_inner<pack>(ib, jb, pb, &A(i, p), lda, &B(p, j), ldb,
+                                  &C(i, j), ldc, packedB);
+      }
     }
   }
 }
@@ -148,10 +265,21 @@ void libjit_matmul_f(float *c, const float *a, const float *b,
   // to the number of columns in the matrix.  For a, this is k; for b and c,
   // this is n.
   //
+  // This "outer" helper assumes the matrices are given in column-major format
+  // (the packing algorithm is more effective with column-major matrices), while
+  // the input is row-major. So we compute C += B * A, which is equivalent.
+  //
   // The matrix multiplication routine is heavily inspired by:
   // https://github.com/flame/how-to-optimize-gemm
-  libjit_matmul_outer(cDims[0], cDims[1], aDims[1], a, aDims[1], b, bDims[1], c,
-                      cDims[1]);
+  int m = cDims[1];
+  int n = cDims[0];
+  int k = aDims[1];
+  bool pack = m >= pack_threshold;
+  if (pack) {
+    libjit_matmul_outer<true>(m, n, k, b, bDims[1], a, aDims[1], c, cDims[1]);
+  } else {
+    libjit_matmul_outer<false>(m, n, k, b, bDims[1], a, aDims[1], c, cDims[1]);
+  }
 }
 
 void libjit_matmul_i8(int8_t *outW, const int8_t *lhsW, const int8_t *rhsW,
