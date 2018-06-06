@@ -214,8 +214,12 @@ protected:
     const std::string &opName = loadOperatorName(op);
     auto *in = getOrCreateNodeByName(op.input(0));
 
+    // There is a difference between ONNX and Caffe2 specs for Transpose:
+    // one contains permutation under name "perm", the other contains it under
+    // argument name "axes". That's why the name is passed as a parameter.
     std::vector<unsigned> perm = getShape<unsigned>(dict[permArgName]);
     if (perm.empty()) {
+      // Empty permutation argument means reversing axes order.
       size_t N = in->dims().size();
       for (int64_t i = N - 1; i >= 0; i--)
         perm.push_back(i);
