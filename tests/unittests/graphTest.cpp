@@ -299,3 +299,46 @@ TEST(Graph, nodesWithPredicates) {
   EE.compile(CompilationMode::Infer, F);
   EE.run({input}, {&inputs});
 }
+
+// Return the number of ConvolutionNode after lower.
+unsigned getConvNodeSize(BackendKind kind) {
+  Module mod;
+  Function *F = mod.createFunction("main");
+  IRFunction M(F);
+  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 2, 1, 32}, "input");
+  ConvolutionNode *CN = F->createConv("conv", input, 6, 1, 1, 0, 2);
+  F->createSave("save", CN);
+
+  std::unique_ptr<Backend> backend(createBackend(kind, &M));
+  lower(F, CompilationMode::Infer, *backend);
+
+  unsigned count = 0;
+  for (auto *n : F->getNodes()) {
+    if (n->getKind() == Kinded::Kind::ConvolutionNodeKind) {
+      count++;
+    }
+  }
+
+  if (kind == BackendKind::Interpreter) {
+    EXPECT_EQ(count, 1);
+  }
+
+  return count;
+}
+
+// Check the unrolling grouped convolution opt status:
+// -- disabled for Interpreter and CPU backend,
+// -- enabled for openCL backend.
+TEST(Graph, disableUnrollingGroupConv) {
+  unsigned numberOfNodesInterpreter = getConvNodeSize(BackendKind::Interpreter);
+
+#ifdef GLOW_WITH_CPU
+  unsigned numberOfNodesCPU = getConvNodeSize(BackendKind::CPU);
+  EXPECT_EQ(numberOfNodesCPU, numberOfNodesInterpreter);
+#endif // GLOW_WITH_CPU
+
+#ifdef GLOW_WITH_OPENCL
+  unsigned numberOfNodesOpenCL = getConvNodeSize(BackendKind::OpenCL);
+  EXPECT_GT(numberOfNodesOpenCL, numberOfNodesInterpreter);
+#endif // GLOW_WITH_OPENCL
+}
