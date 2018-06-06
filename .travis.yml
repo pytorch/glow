@@ -22,17 +22,17 @@ matrix:
         - utils/install_protobuf.sh
       install:
         - mkdir build && cd build
-        - cmake -G Ninja -DGLOW_USE_SANITIZER="Address;Undefined" -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=ON ../
+        - cmake -G Ninja -DGLOW_USE_SANITIZER="Address;Undefined" -DCMAKE_BUILD_TYPE=Release -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=ON ../
     - os: linux
       env:
-        - TEST_NAME=RELEASE
+        - TEST_NAME=DEBUG
       before_install:
         - sudo apt-get -qq update
         - sudo apt-get install -y ninja-build llvm libpng-dev
         - utils/install_protobuf.sh
       install:
         - mkdir build && cd build
-        - cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=ON ../
+        - cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=ON ../
     - os: linux
       compiler: g++
       env:
