@@ -399,8 +399,6 @@ static void replaceAllNonDeallocUsersWith(Value *val, Value *with) {
       continue;
     }
 
-    auto &M = *I->getParent();
-    IRBuilder B(&M);
     // Ignore dealloc instrs.
     if (isa<DeallocActivationInst>(I)) {
       continue;
