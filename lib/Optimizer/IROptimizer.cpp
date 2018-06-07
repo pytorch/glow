@@ -172,14 +172,23 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Interval &I) {
 }
 #endif
 
+/// A helper type to produce a hash of an instruction iterator, which is
+/// computed as a hash of the instruction being referenced by the iterator.
+struct InstrIterHasher {
+  size_t operator()(const IRFunction::InstrIterator &it) const {
+    return std::hash<Instruction *>{}(*it);
+  }
+};
+
 /// Set of intervals for a single memory buffer. If there is only one write into
 /// a memory buffer, it would contain a single interval. If there are multiple
 /// writes, it would contain multiple live intervals, one per write.
 using Intervals = llvm::SmallVector<Interval, 4>;
 /// Maping from a memory buffer to its live intervals.
 using LiveIntervalsMap = std::unordered_map<Value *, Intervals>;
-/// Set of instructions.
-using InstructionPtrSet = std::unordered_set<Instruction *>;
+/// Set of instructions iterators.
+using InstructionIterSet =
+    std::unordered_set<IRFunction::InstrIterator, InstrIterHasher>;
 
 /// Hoists Dealloc instructions right after their last use.
 static void hoistDealloc(IRFunction &M) {
@@ -338,48 +347,54 @@ static void sinkTensorViews(IRFunction &M) {
   assert(tensorviews.empty() && "Forgot to insert some tensorviews!");
 }
 
+/// Erase all instructions from the \p ErasedInstructions set.
+static void eraseInstructions(IRFunction &M,
+                              InstructionIterSet &erasedInstructions) {
+  for (auto &it : erasedInstructions) {
+    DEBUG(llvm::dbgs() << "Deleting instruction :"; (*it)->dump(llvm::dbgs());
+          llvm::dbgs() << "\n");
+    M.eraseInstruction(it);
+  }
+}
+
 /// Delete alloc instructions that have no readers or writers.
 static void deleteDeadAllocs(IRFunction &M) {
   auto &instrs = M.getInstrs();
 
-  llvm::SmallVector<Instruction *, 16> erasedInstructions{};
+  InstructionIterSet erasedInstructions;
 
   // Remove all unused tensorviews.
-  for (auto &I : instrs) {
+  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
+    const auto *I = *it;
     if (isa<TensorViewInst>(I) && I->getNumUsers() == 0) {
-      erasedInstructions.push_back(I);
+      erasedInstructions.insert(it);
     }
   }
 
-  for (auto I : erasedInstructions) {
-    M.eraseInstruction(I);
-  }
-
+  eraseInstructions(M, erasedInstructions);
   erasedInstructions.clear();
 
   // Remove all of the DeallocActivationInst that close unused allocs.
-  for (auto &I : instrs) {
+  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
+    const auto *I = *it;
     const auto *DA = dyn_cast<const DeallocActivationInst>(I);
     if (DA && DA->getAlloc()->getNumUsers() < 2) {
-      erasedInstructions.push_back(I);
+      erasedInstructions.insert(it);
     }
   }
 
-  for (auto I : erasedInstructions) {
-    M.eraseInstruction(I);
-  }
+  eraseInstructions(M, erasedInstructions);
   erasedInstructions.clear();
 
   // Remove the unused allocs.
-  for (auto &I : instrs) {
+  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
+    const auto *I = *it;
     if (isa<const AllocActivationInst>(I) && I->getNumUsers() < 2) {
-      erasedInstructions.push_back(I);
+      erasedInstructions.insert(it);
     }
   }
 
-  for (auto I : erasedInstructions) {
-    M.eraseInstruction(I);
-  }
+  eraseInstructions(M, erasedInstructions);
 }
 
 // Replace all users of some value with another value, but don't touch the
@@ -414,8 +429,9 @@ static void replaceAllNonDeallocUsersWith(Value *val, Value *with) {
 
 /// \returns true if Value \p V has more than one writer, ignoring any
 /// instructions in \p ignoredInstructions.
-static bool hasMultipleWriters(const Value *V,
-                               InstructionPtrSet ignoredInstructions) {
+static bool hasMultipleWriters(
+    const Value *V,
+    llvm::DenseMap<Instruction *, Instruction *> &ignoredInstructions) {
   bool foundWriter = false;
   for (const auto &U : ValueUses(V)) {
     Instruction *user = U.get();
@@ -698,6 +714,15 @@ static void moveInterval(Intervals &from, Intervals &to, Interval &interval) {
   from.erase(fromIt);
 }
 
+/// A helper method used if you need to get the iterator referring to the
+/// instruction that was just create by means of e.g. IRBuilder::createXYZ
+/// functions. \returns iterator referring to the last element in the
+/// instruction list.
+static IRFunction::InstrIterator getBackIter(IRFunction::InstListTy &instrs) {
+  assert(!instrs.empty() && "Instruction list should not be empty");
+  return std::prev(instrs.end());
+}
+
 /// Replace all uses of \p val by \p with inside interval \p liveInterval.
 static void replaceAllUsesInsideIntervalWith(
     Value *val, Value *with, const Interval &liveInterval, IRFunction &M,
@@ -748,7 +773,7 @@ static void replaceAllUsesInsideIntervalWith(
                                           op->getType(), offsets);
         assert(tv->getType()->size() == with->getType()->size() &&
                "Replacement must have same number of elements as original.");
-        M.moveInstruction(it, tv);
+        M.moveInstruction(it, getBackIter(instrs));
         replacement = tv;
       }
 
@@ -760,18 +785,6 @@ static void replaceAllUsesInsideIntervalWith(
       DEBUG(llvm::dbgs() << "after: "; I->dump(llvm::dbgs());
             llvm::dbgs() << "\n");
     }
-  }
-}
-
-/// Erase all instructions from the \p ErasedInstructions set.
-/// If \p forceErase is true, no additional checks are performed.
-/// Otherwise, copies into weight variables cannot be erased.
-static void eraseInstructions(IRFunction &M,
-                              InstructionPtrSet &erasedInstructions) {
-  for (auto it : erasedInstructions) {
-    DEBUG(llvm::dbgs() << "Deleting instruction :"; it->dump(llvm::dbgs());
-          llvm::dbgs() << "\n");
-    M.eraseInstruction(it);
   }
 }
 
@@ -1056,7 +1069,6 @@ static void tryToShareBuffersForInstr(
 /// candidates for sharing if they occur in the same instruction, but it is not
 /// strictly necessary.
 static void shareBuffers(IRFunction &M) {
-  InstructionPtrSet erasedInstructions;
   // Build a list of live intervals for each memory location
   // which is either a WeightVar or a an Allocation.
   LiveIntervalsMap intervalsMap;
@@ -1099,7 +1111,7 @@ static void shareBuffers(IRFunction &M) {
 static void eliminateDeadStores(IRFunction &M) {
   auto &instrs = M.getInstrs();
   // Instructions to be erased.
-  InstructionPtrSet erasedInstructions;
+  InstructionIterSet erasedInstructions;
   /// Representation of the analysis state.
   struct MemoryLocationState {
     /// Instruction that contained a last seen read.
@@ -1116,7 +1128,7 @@ static void eliminateDeadStores(IRFunction &M) {
   // This ensures that last stored into WeightVars are not
   // eliminated.
   for (auto *WV : M.getWeights()) {
-    memoryState[WV].lastSeenRead_ = *std::prev(instrs.end());
+    memoryState[WV].lastSeenRead_ = *getBackIter(instrs);
   }
 
   // Iterate over instructions in reversed order.
@@ -1158,7 +1170,10 @@ static void eliminateDeadStores(IRFunction &M) {
     // are not read afterwards.
     if (numMutatedOperands > 0 &&
         numMutatedOperands == numNonReadMutatedOperands) {
-      erasedInstructions.insert(I);
+      // Convert backward iterator into a forward iterator.
+      auto fwdIt = --it.base();
+      assert(*it == *fwdIt && "Iterators should refer to the same instruction");
+      erasedInstructions.insert(fwdIt);
       // Do not process any reads of operands, because
       // this instruction will be eliminated.
       continue;
@@ -1210,9 +1225,9 @@ static bool allButFirstDimsEqual(llvm::ArrayRef<size_t> sourceDims,
 /// writing directly into the destination using TensorViews with the same
 /// offsets. This is possible because this means the underlying memory is
 /// contiguous in this case.
-void optimizeInserts(IRFunction &M) {
+static void optimizeInserts(IRFunction &M) {
   auto &instrs = M.getInstrs();
-  InstructionPtrSet erasedInstructions;
+  InstructionIterSet erasedInstructions;
   IRBuilder B(&M);
   for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
     auto *I = *it;
@@ -1287,7 +1302,7 @@ void optimizeInserts(IRFunction &M) {
     replaceAllNonDeallocUsersWith(insertSourceAAI, TVI);
 
     // Move the TVI to the location of the InsertTensor.
-    auto itTVI = M.moveInstruction(it, TVI);
+    auto itTVI = M.moveInstruction(it, getBackIter(instrs));
 
     // Move the original writer into insertSourceAAI to now come after the TVI,
     // preserving the order of writes into insertDestAAI.
@@ -1295,7 +1310,7 @@ void optimizeInserts(IRFunction &M) {
 
     // Queue up removal of the now-unnecessary InsertTensor. Unused
     // allocs/deallocs will be deleted by later passes.
-    erasedInstructions.insert(ITI);
+    erasedInstructions.insert(it);
   }
   eraseInstructions(M, erasedInstructions);
 }
@@ -1304,9 +1319,12 @@ void optimizeInserts(IRFunction &M) {
 /// reading directly from the destination using TensorViews with the same
 /// offsets. This is possible because this means the underlying memory is
 /// contiguous in this case.
-void optimizeExtracts(IRFunction &M) {
+static void optimizeExtracts(IRFunction &M) {
   auto &instrs = M.getInstrs();
-  InstructionPtrSet erasedInstructions;
+  InstructionIterSet erasedInstructions;
+  // Pointers to erased instructions. They are required for fast lookups in
+  // hasMultipleWriters.
+  llvm::DenseMap<Instruction *, Instruction *> erasedInstructionsPtrs;
   IRBuilder B(&M);
   for (auto it = instrs.begin(), e = instrs.end(); it != e; ++it) {
     auto *I = *it;
@@ -1329,7 +1347,7 @@ void optimizeExtracts(IRFunction &M) {
     // by a view of the source instead, since it should be read-only after the
     // first write, and the extract should only come after the write.
     auto *extractSrc = ETI->getSrc();
-    if (hasMultipleWriters(extractSrc, erasedInstructions)) {
+    if (hasMultipleWriters(extractSrc, erasedInstructionsPtrs)) {
       continue;
     }
 
@@ -1348,19 +1366,20 @@ void optimizeExtracts(IRFunction &M) {
 
     // Create a new TensorView of the the original source of the ExtractTensor,
     // and with the same offset as the ExtractTensor.
-    auto *TVI =
-        B.createTensorViewInst((ETI->getName() + ".tv.dest").str(), extractSrc,
-                               extractDestAAI->getType(), ETI->getOffsets());
+    B.createTensorViewInst((ETI->getName() + ".tv.dest").str(), extractSrc,
+                           extractDestAAI->getType(), ETI->getOffsets());
+    auto TVII = getBackIter(instrs);
 
     // Replace all uses of the extract's dest (extractDestAAI) with the TVI.
-    replaceAllNonDeallocUsersWith(extractDestAAI, TVI);
+    replaceAllNonDeallocUsersWith(extractDestAAI, *TVII);
 
     // Move the TVI to the location of the ExtractTensor.
-    M.moveInstruction(it, TVI);
+    M.moveInstruction(it, TVII);
 
     // Queue up removal of the now-unnecessary ExtractTensor. Unused
     // allocs/deallocs will be deleted by later passes.
-    erasedInstructions.insert(ETI);
+    erasedInstructions.insert(it);
+    erasedInstructionsPtrs.insert(std::make_pair(I, I));
   }
   eraseInstructions(M, erasedInstructions);
 }
@@ -1412,7 +1431,7 @@ static void performDebugInstrumentation(IRFunction &M) {
 }
 
 /// Perform peephole optimizations.
-void performPeepholeOptimizations(IRFunction &M) {
+static void performPeepholeOptimizations(IRFunction &M) {
   auto &instrs = M.getInstrs();
   IRBuilder B(&M);
   for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
@@ -1430,7 +1449,7 @@ void performPeepholeOptimizations(IRFunction &M) {
 
       B.createPoolMaxInst(PMI->getName(), PMI->getDest(), PMI->getSrc(),
                           PMI->getKernel(), PMI->getStride(), PMI->getPad());
-      it = M.moveInstruction(cur, instrs.back());
+      it = M.moveInstruction(cur, getBackIter(instrs));
       M.eraseInstruction(cur);
       continue;
     }
@@ -1447,11 +1466,11 @@ void performPeepholeOptimizations(IRFunction &M) {
             std::vector<size_t> offsets(src->getType()->dims().size(), 0);
             auto *TVI = B.createTensorViewInst(TI->getName(), src,
                                                dest->getType(), offsets);
-            M.moveInstruction(cur, instrs.back());
+            M.moveInstruction(cur, getBackIter(instrs));
             src = TVI;
           }
           B.createCopyInst(TI->getName(), TI->getDest(), src);
-          it = M.moveInstruction(cur, instrs.back());
+          it = M.moveInstruction(cur, getBackIter(instrs));
           M.eraseInstruction(cur);
           continue;
         }
@@ -1473,7 +1492,7 @@ void performPeepholeOptimizations(IRFunction &M) {
       if (wrhs && isa<SplatInst>(wrhs))
         continue;
       B.createElementMaxInst(EM->getName(), EM->getDest(), rhs, lhs);
-      it = M.moveInstruction(cur, instrs.back());
+      it = M.moveInstruction(cur, getBackIter(instrs));
       M.eraseInstruction(cur);
       continue;
     }
