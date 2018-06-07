@@ -183,7 +183,7 @@ static Function *createNetwork(Module &mod, size_t minibatchSize,
                      outputNodes);
 
   std::vector<NodeValue> resX;
-  for (int i = 0; i < numSteps; i++) {
+  for (unsigned i = 0; i < numSteps; i++) {
     auto *R =
         F->createReshape("reshapeSelector", expectedX[i], {minibatchSize, 1});
     auto *SM = F->createSoftMax("softmax", outputNodes[i], R);
@@ -228,7 +228,7 @@ int main(int argc, char **argv) {
   Tensor nextCharTrain(ElemKind::IndexTy, {batchSize, numSteps});
   loadText(thisCharTrain, nextCharTrain, text, true);
 
-  for (int i = 0; i < numEpochs; i++) {
+  for (unsigned i = 0; i < numEpochs; i++) {
     llvm::outs() << "Iteration " << i + 1 << "/" << numEpochs;
     EE.runBatch(batchSize / minibatchSize, {X, Y},
                 {&thisCharTrain, &nextCharTrain});
@@ -251,7 +251,7 @@ int main(int argc, char **argv) {
   input.insert(input.begin(), text.begin(), text.begin() + numSteps);
   result = input;
 
-  for (int i = 0; i < generateChars; i++) {
+  for (unsigned i = 0; i < generateChars; i++) {
     EE.run({X}, {&currCharInfer});
     char c = getPredictedChar(T, 0, numSteps - 1);
     result.push_back(c);
