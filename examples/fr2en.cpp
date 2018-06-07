@@ -15,10 +15,14 @@
  */
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
+#include "glow/IR/IR.h"
 #include "glow/Quantization/Serialization.h"
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Timer.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <algorithm>
 #include <fstream>
@@ -38,6 +42,11 @@ llvm::cl::opt<std::string> dumpGraphDAGFileOpt(
     "dumpGraphDAG",
     llvm::cl::desc("Dump the graph to the given file in DOT format."),
     llvm::cl::value_desc("file.dot"), llvm::cl::cat(debugCat));
+
+llvm::cl::opt<std::string> dumpIRFileOpt(
+    "dumpIR",
+    llvm::cl::desc("Dump IR to the given file"),
+    llvm::cl::value_desc("file.ir"), llvm::cl::cat(debugCat));
 
 /// Translator options.
 llvm::cl::OptionCategory fr2enCat("French-to-English Translator Options");
@@ -142,6 +151,20 @@ struct Model {
 
   void dumpGraphDAG(const char *filename) {
     EE_.getModule().getFunction("main")->dumpDAG(filename);
+  }
+
+  void dumpIR(const char *filename) {
+    std::error_code OutErrorInfo;
+    std::error_code ok;
+    llvm::raw_fd_ostream outFile(llvm::StringRef(filename), OutErrorInfo, llvm::sys::fs::F_None);
+
+    if (OutErrorInfo == ok) {
+      EE_.getIR().dump(outFile);
+    } else {
+      llvm::errs() << "Cannot open " << filename << " for writing\n";
+    }
+
+    outFile.close();
   }
 
   void compile() {
@@ -428,6 +451,9 @@ int main(int argc, char **argv) {
 
   if (!dumpGraphDAGFileOpt.empty()) {
     seq2seq.dumpGraphDAG(dumpGraphDAGFileOpt.c_str());
+  }
+  if (!dumpIRFileOpt.empty()) {
+    seq2seq.dumpIR(dumpIRFileOpt.c_str());
   }
 
   std::cout << "Please enter a sentence in French, such that its English "

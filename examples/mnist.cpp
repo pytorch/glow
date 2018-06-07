@@ -15,6 +15,7 @@
  */
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
+#include "glow/IR/IR.h"
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -37,6 +38,9 @@ llvm::cl::opt<BackendKind> executionBackend(
                      clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
                      clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
     llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(mnistCat));
+
+llvm::cl::opt<bool> dumpIROpt("dumpIR", llvm::cl::desc("Prints IR to stdout"),
+                              llvm::cl::cat(mnistCat));
 } // namespace
 
 unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
@@ -130,6 +134,10 @@ void testMNIST() {
   Function *T = glow::differentiate(F, EE.getConfig());
 
   EE.compile(CompilationMode::Train, T);
+
+  if (dumpIROpt) {
+    EE.getIR().dump();
+  }
 
   const int numIterations = 30;
 

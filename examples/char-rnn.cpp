@@ -50,6 +50,9 @@ llvm::cl::opt<BackendKind> executionBackend(
                      clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
     llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(category));
 
+llvm::cl::opt<bool> dumpIROpt("dumpIR", llvm::cl::desc("Prints IR to stdout"),
+                              llvm::cl::cat(category));
+
 llvm::cl::opt<unsigned> numEpochs("epochs",
                                   llvm::cl::desc("Process the input N times."),
                                   llvm::cl::init(4), llvm::cl::value_desc("N"),
@@ -220,6 +223,10 @@ int main(int argc, char **argv) {
   Function *F = createNetwork(mod, minibatchSize, numSteps, hiddenSize);
   Function *TF = differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
+
+  if (dumpIROpt) {
+    EE.getIR().dump();
+  }
 
   auto *X = mod.getVariableByName("input");
   auto *Y = mod.getVariableByName("expected");
