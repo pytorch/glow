@@ -416,7 +416,7 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
   return true;
 }
 
-bool CPUBackend::shouldLower(Node *N) const {
+bool CPUBackend::shouldLower(const Node *N) const {
   if (N->getKind() == Kinded::Kind::ConvolutionNodeKind)
     return false;
   return true;

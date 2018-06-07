@@ -144,7 +144,7 @@ bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
   return true;
 }
 
-bool Interpreter::shouldLower(Node *N) const {
+bool Interpreter::shouldLower(const Node *N) const {
   if (N->getKind() == Kinded::Kind::ConvolutionNodeKind)
     return false;
   return true;

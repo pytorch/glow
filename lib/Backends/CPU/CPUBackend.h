@@ -95,7 +95,7 @@ public:
 
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override;
 
-  bool shouldLower(Node *N) const override;
+  bool shouldLower(const Node *N) const override;
   /// @}
 };
 
