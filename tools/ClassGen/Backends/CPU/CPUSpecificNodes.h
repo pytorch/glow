@@ -27,7 +27,7 @@ BB.newNode("CPUConvDKKC8")
     .addInput("Bias")
     .addMember(MemberType::SizeT, "Kernel")
     .addMember(MemberType::SizeT, "Stride")
-    .addMember(MemberType::SizeT, "Pad")
+    .addMember(MemberType::VectorSizeT, "Pads")
     .addMember(MemberType::SizeT, "Group")
     .addResultFromCtorArg()
     .setDocstring("This is a cpu-specific convolution implementation where the "

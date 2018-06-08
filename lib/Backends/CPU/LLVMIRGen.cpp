@@ -1368,7 +1368,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *kernel = emitConstSizeT(builder, CI->getKernel());
     auto *stride = emitConstSizeT(builder, CI->getStride());
-    auto *pad = emitConstSizeT(builder, CI->getPad());
+    auto *pads = emitConstArray(builder, CI->getPads());
     auto *group = emitConstSizeT(builder, CI->getGroup());
 
     const char *kernelName = "convolution";
@@ -1424,13 +1424,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       createCall(builder, F,
                  {destPtr,    srcPtr,     filterPtr,  biasPtr,   destDims,
                   srcDims,    filterDims, biasDims,   kernel,    stride,
-                  pad,        group,      destOffset, srcOffset, filterOffset,
+                  pads,       group,      destOffset, srcOffset, filterOffset,
                   biasOffset, biasPre,    biasPost,   biasScale, outPre,
                   outPost,    outScale,   unrollD});
     } else {
       createCall(builder, F,
                  {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
-                  filterDims, biasDims, kernel, stride, pad, group, unrollD});
+                  filterDims, biasDims, kernel, stride, pads, group, unrollD});
     }
     break;
   }
@@ -1453,7 +1453,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *kernel = emitConstSizeT(builder, CI->getKernel());
     auto *stride = emitConstSizeT(builder, CI->getStride());
-    auto *pad = emitConstSizeT(builder, CI->getPad());
+    auto *pads = emitConstArray(builder, CI->getPads());
     auto *group = emitConstSizeT(builder, CI->getGroup());
 
     size_t inChannels = src->dims()[3];
@@ -1500,7 +1500,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     createCall(builder, F,
                {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
-                filterDims, biasDims, kernel, stride, pad, group,
+                filterDims, biasDims, kernel, stride, pads, group,
                 pixelScanFirstVal, numDepthRegsVal, sizeGroupYVal,
                 depthStripsVal});
     break;
@@ -1525,13 +1525,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *kernel = emitConstSizeT(builder, CG->getKernel());
     auto *stride = emitConstSizeT(builder, CG->getStride());
-    auto *pad = emitConstSizeT(builder, CG->getPad());
+    auto *pads = emitConstArray(builder, CG->getPads());
 
     auto *F = getFunction("convolution_grad", srcGrad->getElementType());
     createCall(builder, F,
                {srcGradPtr, destGradPtr, srcPtr, filterGradPtr, biasGradPtr,
                 filterPtr, destGradDims, srcDims, filterGradDims, kernel,
-                stride, pad});
+                stride, pads});
     break;
   }
 

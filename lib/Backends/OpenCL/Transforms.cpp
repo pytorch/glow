@@ -41,9 +41,12 @@ static Node *optimizeOCLConv(ConvolutionNode *CN, Function *F) {
                       originalDims[2]};
   auto outTy = F->getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
+  // For OpenCL, we currently only support equal padding.
+  PaddingTLBR pads(CN->getPads());
+  assert(pads.equalPadding() && "OpenCL Conv requires equal padding");
   auto *NC = F->addNode(new OCLConvolutionNode(CN->getName(), outTy, NI, NF,
                                                CN->getBias(), CN->getKernel(),
-                                               CN->getStride(), CN->getPad()));
+                                               CN->getStride(), pads.top));
   auto NR = F->createTranspose("conv.result", NC, NCHW2NHWC);
   return NR;
 }

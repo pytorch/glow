@@ -785,7 +785,7 @@ void OCLBackend::doForwardPass() {
 
       setKernelArg<cl_uint>(kernel, 5, CC->getKernel());
       setKernelArg<cl_uint>(kernel, 6, CC->getStride());
-      setKernelArg<cl_uint>(kernel, 7, CC->getPad());
+      setKernelArg<cl_uint>(kernel, 7, CC->getPads()[0]);
       setKernelArg(kernel, 8, odim);
       setKernelArg(kernel, 9, idim);
       setKernelArg(kernel, 10, ShapeNHWC(CC->getFilter()->getType()->dims()));
@@ -819,7 +819,7 @@ void OCLBackend::doForwardPass() {
 
       setKernelArg<cl_uint>(kernel, numArgs + 1, CG->getKernel());
       setKernelArg<cl_uint>(kernel, numArgs + 2, CG->getStride());
-      setKernelArg<cl_uint>(kernel, numArgs + 3, CG->getPad());
+      setKernelArg<cl_uint>(kernel, numArgs + 3, CG->getPads()[0]);
       setKernelArg(kernel, numArgs + 4, srcDim);
       setKernelArg(kernel, numArgs + 5, destGradDim);
       setKernelArg(kernel, numArgs + 6, filterGradDim);

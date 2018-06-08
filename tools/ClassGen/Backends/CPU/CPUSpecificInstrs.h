@@ -30,7 +30,7 @@ BB.newBackendSpecificInstr("CPUConvDKKC8")
     .addOperand("Bias", OperandKind::In)
     .addMember(MemberType::SizeT, "Kernel")
     .addMember(MemberType::SizeT, "Stride")
-    .addMember(MemberType::SizeT, "Pad")
+    .addMember(MemberType::VectorSizeT, "Pads")
     .addMember(MemberType::SizeT, "Group")
     .autoIRGen();
 

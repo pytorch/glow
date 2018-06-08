@@ -1022,7 +1022,7 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
 
   auto *convq =
       F->createConv("convq", inputq, filterq, biasq, resTy, conv->getKernel(),
-                    conv->getStride(), conv->getPad(), 1);
+                    conv->getStride(), conv->getPads(), 1);
   auto *dequantRes = F->createDequantize("dequant", convq);
 
   // Subtract the results of the convolution from the quantized convolution.
@@ -2105,6 +2105,48 @@ TEST_P(InterpAndCPU, GroupConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 3}), (13 + 14 + 15 + 16) * 1000);
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 4}), (13 + 14 + 15 + 16) * 10000);
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 100000);
+}
+
+TEST_P(InterpAndCPU, NonSquarePaddingConvolution) {
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+
+  auto filter = mod_.createVariable(ElemKind::FloatTy, {2, 2, 2, 1}, "filter");
+  auto FH = filter->getHandle();
+  for (size_t i = 0; i < 2 * 2 * 2; i++) {
+    FH.raw(i) = pow(2.0, i);
+  }
+  auto *zeroBias = mod_.createVariable(ElemKind::FloatTy, {2}, "bias");
+  zeroBias->getPayload().zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 8, 2});
+
+  ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
+                                       2, 1, {0, 2, 1, 3}, 1);
+  SaveNode *S = F_->createSave("save", CN);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor &result = S->getVariable()->getPayload();
+
+  auto *input1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 9, 1}, "input1");
+  input1->getPayload().zero();
+  auto IH1 = input1->getHandle();
+  for (size_t i = 0; i < 4; i++)
+    for (size_t j = 2; j < 6; j++) {
+      IH1.at({0, i, j, 0}) = i * 4 + j - 2 + 1;
+    }
+
+  CN = F_->createConv("Conv1", input1, filter, zeroBias, outTy, 2, 1,
+                      {0, 0, 0, 0}, 1);
+  S = F_->createSave("save1", CN);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor &result1 = S->getVariable()->getPayload();
+
+  EXPECT_TRUE(result.isEqual(result1));
 }
 
 TEST_P(InterpAndCPU, Int8Tanh) {

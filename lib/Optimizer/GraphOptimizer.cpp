@@ -1265,7 +1265,7 @@ static void optimizeQuantization(Function *F) {
         auto *newCN =
             F->createConv(CN->getName(), CN->getInput(), CN->getFilter(),
                           CN->getBias(), RS->getType(), CN->getKernel(),
-                          CN->getStride(), CN->getPad(), CN->getGroup());
+                          CN->getStride(), CN->getPads(), CN->getGroup());
         RS->getResult().replaceAllUsesOfWith(newCN);
         continue;
       }

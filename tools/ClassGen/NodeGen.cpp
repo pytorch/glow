@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
       .addInput("Bias")
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::SizeT, "Pad")
+      .addMember(MemberType::VectorSizeT, "Pads")
       .addMember(MemberType::SizeT, "Group")
       .addResultFromCtorArg()
       .addGradient()

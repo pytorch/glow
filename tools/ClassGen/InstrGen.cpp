@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
       .addOperand("Bias", OperandKind::In)
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::SizeT, "Pad")
+      .addMember(MemberType::VectorSizeT, "Pads")
       .addMember(MemberType::SizeT, "Group")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType,

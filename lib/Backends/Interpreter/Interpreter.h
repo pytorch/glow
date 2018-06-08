@@ -103,10 +103,11 @@ private:
 
   void fwdConvolutionInst_I8Impl(Value *inV, Value *outV, Value *filterV,
                                  Value *biasV, size_t filterSize, size_t stride,
-                                 size_t pad, size_t group);
+                                 llvm::ArrayRef<size_t> pads, size_t group);
   void fwdConvolutionInst_FloatImpl(Value *inV, Value *outV, Value *filterV,
                                     Value *biasV, size_t filterSize,
-                                    size_t stride, size_t pad, size_t group);
+                                    size_t stride, llvm::ArrayRef<size_t> pads,
+                                    size_t group);
   ///@}
 };
 

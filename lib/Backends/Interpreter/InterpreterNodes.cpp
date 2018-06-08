@@ -40,7 +40,8 @@ void Interpreter::fwdCopyInst(const CopyInst *I) {
 void Interpreter::fwdConvolutionInst_FloatImpl(Value *inV, Value *outV,
                                                Value *filterV, Value *biasV,
                                                size_t filterSize, size_t stride,
-                                               size_t pad, size_t group) {
+                                               llvm::ArrayRef<size_t> pads,
+                                               size_t group) {
 
   auto inW = getWeightHandle(inV);
   auto outW = getWeightHandle(outV);
@@ -55,6 +56,8 @@ void Interpreter::fwdConvolutionInst_FloatImpl(Value *inV, Value *outV,
   size_t inCperG = idim.c / group;
   size_t outCperG = odim.c / group;
 
+  PaddingTLBR pdim(pads);
+
   // For each input in the batch:
   for (size_t n = 0; n < idim.n; n++) {
 
@@ -65,9 +68,9 @@ void Interpreter::fwdConvolutionInst_FloatImpl(Value *inV, Value *outV,
       for (size_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
 
         // For each convolution 'jump' in the input tensor:
-        ssize_t x = -ssize_t(pad);
+        ssize_t x = -ssize_t(pdim.top);
         for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
-          ssize_t y = -ssize_t(pad);
+          ssize_t y = -ssize_t(pdim.left);
           for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
 
             // For each element in the convolution-filter:
@@ -102,7 +105,8 @@ void Interpreter::fwdConvolutionInst_FloatImpl(Value *inV, Value *outV,
 void Interpreter::fwdConvolutionInst_I8Impl(Value *inV, Value *outV,
                                             Value *filterV, Value *biasV,
                                             size_t filterSize, size_t stride,
-                                            size_t pad, size_t group) {
+                                            llvm::ArrayRef<size_t> pads,
+                                            size_t group) {
   auto inW = getWeightHandle<int8_t>(inV);
   auto outW = getWeightHandle<int8_t>(outV);
   auto filterW = getWeightHandle<int8_t>(filterV);
@@ -116,6 +120,7 @@ void Interpreter::fwdConvolutionInst_I8Impl(Value *inV, Value *outV,
   size_t inCperG = idim.c / group;
   size_t outCperG = odim.c / group;
 
+  PaddingTLBR pdim(pads);
   auto outTy = outV->getType();
   auto inTy = inV->getType();
   auto filterTy = filterV->getType();
@@ -144,9 +149,9 @@ void Interpreter::fwdConvolutionInst_I8Impl(Value *inV, Value *outV,
       for (size_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
 
         // For each convolution 'jump' in the input tensor:
-        ssize_t x = -ssize_t(pad);
+        ssize_t x = -ssize_t(pdim.top);
         for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
-          ssize_t y = -ssize_t(pad);
+          ssize_t y = -ssize_t(pdim.left);
           for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
 
             // For each element in the convolution-filter:
@@ -192,18 +197,18 @@ void Interpreter::fwdConvolutionInst_I8Impl(Value *inV, Value *outV,
 
 void Interpreter::fwdConvolutionInst(const ConvolutionInst *I) {
   size_t filterSize = I->getKernel();
-  size_t pad = I->getPad();
+  llvm::ArrayRef<size_t> pads = I->getPads();
   size_t stride = I->getStride();
   size_t group = I->getGroup();
 
   if (I->getSrc()->getType()->isQuantizedType()) {
     fwdConvolutionInst_I8Impl(I->getSrc(), I->getDest(), I->getFilter(),
-                              I->getBias(), filterSize, stride, pad, group);
+                              I->getBias(), filterSize, stride, pads, group);
     return;
   }
 
   fwdConvolutionInst_FloatImpl(I->getSrc(), I->getDest(), I->getFilter(),
-                               I->getBias(), filterSize, stride, pad, group);
+                               I->getBias(), filterSize, stride, pads, group);
 }
 
 void Interpreter::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
@@ -216,7 +221,7 @@ void Interpreter::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
   auto biasG = getWeightHandle(I->getBiasGrad());
 
   size_t filterSize = I->getKernel();
-  size_t pad = I->getPad();
+  llvm::ArrayRef<size_t> pads = I->getPads();
   size_t stride = I->getStride();
   size_t group = I->getGroup();
 
@@ -226,6 +231,7 @@ void Interpreter::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
 
   ShapeNHWC odim(outG.dims());
   ShapeNHWC idim(inW.dims());
+  PaddingTLBR pdim(pads);
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
   assert(odim.c % group == 0 && "Output channels must be divisible by group.");
@@ -242,9 +248,9 @@ void Interpreter::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
       for (size_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
 
         // For each convolution 'jump' in the input tensor:
-        ssize_t x = -ssize_t(pad);
+        ssize_t x = -ssize_t(pdim.top);
         for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
-          ssize_t y = -ssize_t(pad);
+          ssize_t y = -ssize_t(pdim.left);
           for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
 
             float chainGrad = outG.at({n, ax, ay, d});

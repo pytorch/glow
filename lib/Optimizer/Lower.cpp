@@ -492,7 +492,7 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
   // convolved each with its own filter (and bias), and then concatenated.
   // This will result in 4 * Group + 1 nodes.
   unsigned kernel = BNG.getKernel();
-  unsigned pad = BNG.getPad();
+  llvm::ArrayRef<size_t> pads = BNG.getPads();
   unsigned stride = BNG.getStride();
   unsigned group = BNG.getGroup();
   auto in = BNG.getInput();
@@ -520,7 +520,7 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
     auto *bias_slice = F->createSlice(BNG.getName(), bias, {groupId * outCperG},
                                       {(groupId + 1) * outCperG});
     convs.push_back(F->createConv(BNG.getName(), in_slice, filter_slice,
-                                  bias_slice, outTy, kernel, stride, pad, 1));
+                                  bias_slice, outTy, kernel, stride, pads, 1));
   }
   auto result = F->createConcat(BNG.getName(), convs, 3);
   BNG.getResult().replaceAllUsesOfWith(result);
