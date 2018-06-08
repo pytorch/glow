@@ -1131,6 +1131,42 @@ RescaleQuantizedNode *Function::createRescaleQuantized(llvm::StringRef name,
       new RescaleQuantizedNode(name, getParent()->uniqueType(*outTy), input));
 }
 
+Node *Function::createWeightedSum(llvm::StringRef name,
+                                  llvm::ArrayRef<NodeValue> data,
+                                  llvm::ArrayRef<NodeValue> weights) {
+  assert(data.size() == weights.size() &&
+         "Must have same number of data and weights.");
+  assert(data.size() > 0 && "No inputs provided.");
+
+  const auto *outTy = data[0].getType();
+
+  // Create a zero splat to bootstrap the adding chain.
+  Node *currAdd = createSplat(name.str() + ".splat", outTy, 0.);
+
+  for (size_t i = 0, e = data.size(); i < e; i++) {
+    assert(weights[i].getType()->size() == 1 &&
+           "Each provided weight node must be size 1.");
+    assert(outTy == data[i].getType() &&
+           "All data nodes must have the same type.");
+
+    // Broadcast the current weight to same shape as the data.
+    auto *bcastW =
+        createBroadcast(name.str() + ".bcastWeight" + std::to_string(i),
+                        weights[i], outTy->dims(), /* axis */ 0);
+
+    // Element-wise multiply the broadcasted weight by the data.
+    auto *scaledD =
+        createMul(name.str() + ".mul" + std::to_string(i), bcastW, data[i]);
+
+    // Element-wise add the scaled data to the running total.
+    currAdd =
+        createAdd(name.str() + ".add" + std::to_string(i), scaledD, currAdd);
+  }
+
+  // Return the final weighted sum via the last add in the chain.
+  return currAdd;
+}
+
 void Function::createSimpleRNN(llvm::StringRef namePrefix,
                                llvm::ArrayRef<Node *> inputs,
                                unsigned batchSize, unsigned hiddenSize,
