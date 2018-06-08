@@ -394,6 +394,15 @@ public:
   RescaleQuantizedNode *createRescaleQuantized(llvm::StringRef name,
                                                NodeValue input, TypeRef outTy);
 
+  /// Create a series of nodes that implement a weighted sum. \p data and \p
+  /// weights should have the same number of elements. The nodes in \p weights
+  /// should all be of size 1. Each node d_i in \p data is element-wise
+  /// multiplied by the corresponding weight value w_i found in \p weights,
+  /// broadcasted to the same shape as d_i, and resulting in r_i. All r_i are
+  /// element-wise summed, and the final add node in this sum is returned.
+  Node *createWeightedSum(llvm::StringRef name, llvm::ArrayRef<NodeValue> data,
+                          llvm::ArrayRef<NodeValue> weights);
+
   /// Create an unrolled single-layer Simple RNN cell with \p hiddenSize
   /// dimensionality of the hidden state and \p outputSize dimensionality of the
   /// output state. \p inputs define the input for the cell at each time step

@@ -332,6 +332,35 @@ TEST_P(InterpAndCPU, broadcast) {
   }
 }
 
+/// Perform a simple weighted sum.
+TEST_P(Operator, weightedSum) {
+  // Create the data.
+  auto *A = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "A");
+  A->getPayload().getHandle() = {1.0, 2.0, 3.0, 4.0};
+  auto *B = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "B");
+  B->getPayload().getHandle() = {5.0, 6.0, 7.0, 8.0};
+
+  // Create the weights.
+  auto *AW = mod_.createVariable(ElemKind::FloatTy, {1}, "AW");
+  AW->getPayload().getHandle() = {0.1};
+  auto *BW = mod_.createVariable(ElemKind::FloatTy, {1}, "BW");
+  BW->getPayload().getHandle() = {10.0};
+
+  // Create the weighted sum with the data and weights, and save it.
+  auto *WS = F_->createWeightedSum("ws", {A, B}, {AW, BW});
+  auto *save = F_->createSave("save", WS);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  // Verify the weighted sum was correctly calculated.
+  auto resultH = save->getVariable()->getHandle();
+  EXPECT_NEAR(resultH.at({0, 0}), 50.1, 1E-5);
+  EXPECT_NEAR(resultH.at({0, 1}), 60.2, 1E-5);
+  EXPECT_NEAR(resultH.at({1, 0}), 70.3, 1E-5);
+  EXPECT_NEAR(resultH.at({1, 1}), 80.4, 1E-5);
+}
+
 TEST_P(Operator, minElem) {
   PseudoRNG PRNG;
   unsigned len = 5;
