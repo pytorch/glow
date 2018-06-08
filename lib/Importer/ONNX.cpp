@@ -68,11 +68,28 @@ bool ONNXModelLoader::loadProtoFile(onnx::GraphProto &net,
   return true;
 }
 
-size_t getPad(ArgumentDictionaryTy &dict) {
+std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
   if (dict.count("pads")) {
-    return getConstantArrayHead(dict["pads"]);
-  } else if (dict.count("auto_pad")) {
-    auto padStr = loadStr(dict["auto_pad"]);
+    return getShape(dict.at("pads"));
+  }
+  if (dict.count("auto_pad")) {
+    auto padStr = loadStr(dict.at("auto_pad"));
+    if (padStr == "VALID") {
+      // Return default value 0 for pad.
+      return {0, 0, 0, 0};
+    }
+    assert(false && "only auto_pad==VALID is supported");
+  }
+  // Return default value 0 for pad.
+  return {0, 0, 0, 0};
+}
+
+size_t getPad(const ArgumentDictionaryTy &dict) {
+  if (dict.count("pads")) {
+    return getConstantArrayHead(dict.at("pads"));
+  }
+  if (dict.count("auto_pad")) {
+    auto padStr = loadStr(dict.at("auto_pad"));
     if (padStr == "VALID")
       return 0;
     assert(false && "only auto_pad==VALID is supported");
@@ -182,8 +199,9 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     // Load the inputs:
     int stride =
         dict.count("strides") ? getConstantArrayHead(dict["strides"]) : 1;
-    int pad = getPad(dict);
     unsigned group = dict.count("group") ? loadInt(dict["group"]) : 1;
+    // Pads : {pad_top, pad_left, pad_bottom, pad_right}
+    std::vector<size_t> pads = getPads(dict);
 
     auto *in = getOrCreateVariableByName(op.input(0));
     Tensor *w = getTensorByName(op.input(1));
@@ -231,13 +249,13 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
 
     // Calculate the size and allocate the output buffer.
     ShapeNHWC idim = ShapeNHWC(tr->dims());
-    auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
+    auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pads);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
     auto *node = G_.createConv(opName, tr, filter, bias, outTy, kernel, stride,
-                               pad, group);
+                               pads, group);
 
     // Transpose the output back.
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);

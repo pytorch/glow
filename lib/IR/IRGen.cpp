@@ -145,7 +145,7 @@ public:
 
       builder_.createConvolutionGradInst(
           N->getName(), input, filter, outGrad, inG, filterG, biasG,
-          CG->getKernel(), CG->getStride(), CG->getPad(), CG->getGroup());
+          CG->getKernel(), CG->getStride(), CG->getPads(), CG->getGroup());
 
       registerIR(CG->getGradOfInputNamedInput(), inG);
       registerIR(CG->getGradOfInputNamedFilter(), filterG);

@@ -113,6 +113,25 @@ struct ShapeNCHW {
   }
 };
 
+struct PaddingTLBR {
+  size_t top;
+  size_t left;
+  size_t bottom;
+  size_t right;
+
+  explicit PaddingTLBR(llvm::ArrayRef<size_t> pads) {
+    assert(pads.size() == 4 && "Invalid padding");
+    top = pads[0];
+    left = pads[1];
+    bottom = pads[2];
+    right = pads[3];
+  }
+
+  bool equalPadding() const {
+    return top == left && top == bottom && top == right;
+  }
+};
+
 /// Collapse a tensor shape into two sizes: the first dimension and the size of
 /// the rest of the dimensions.
 /// For example, [7, 3, 4, 2] -> [7, 24]

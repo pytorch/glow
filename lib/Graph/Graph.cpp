@@ -372,7 +372,9 @@ llvm::StringRef Module::uniqueName(llvm::StringRef name,
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       size_t depth, size_t kernel,
-                                      size_t stride, size_t pad, size_t group) {
+                                      size_t stride,
+                                      llvm::ArrayRef<size_t> pads,
+                                      size_t group) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
@@ -382,7 +384,7 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
   assert(depth % group == 0 && "depth must be divisible by groups");
 
   // Calculate the size and allocate the output buffer.
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
+  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pads);
 
   std::array<size_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
 
@@ -400,14 +402,14 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
   auto OT = getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernel,
-                                     stride, pad, group));
+                                     stride, pads, group));
 }
 
 /// Check that the dimensions that are passed in when the convolution is
 /// constructed are correct.
 static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
-                           size_t kernel, size_t stride, size_t pad,
-                           size_t group) {
+                           size_t kernel, size_t stride,
+                           llvm::ArrayRef<size_t> pads, size_t group) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
@@ -423,14 +425,30 @@ static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
   assert(bias->getType()->size() == filterDims[0] && "Invalid bias size");
 }
 
+ConvolutionNode *
+Function::createConv(llvm::StringRef name, NodeValue input, NodeValue filter,
+                     NodeValue bias, TypeRef outTy, size_t kernel,
+                     size_t stride, llvm::ArrayRef<size_t> pads, size_t group) {
+  assertConvDims(input, filter, bias, kernel, stride, pads, group);
+  auto OT = getParent()->uniqueType(*outTy);
+  return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernel,
+                                     stride, pads, group));
+}
+
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       NodeValue filter, NodeValue bias,
                                       TypeRef outTy, size_t kernel,
                                       size_t stride, size_t pad, size_t group) {
-  assertConvDims(input, filter, bias, kernel, stride, pad, group);
-  auto OT = getParent()->uniqueType(*outTy);
-  return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernel,
-                                     stride, pad, group));
+  llvm::SmallVector<size_t, 4> pads = {pad, pad, pad, pad};
+  return createConv(name, input, filter, bias, outTy, kernel, stride, pads,
+                    group);
+}
+
+ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
+                                      size_t depth, size_t kernel,
+                                      size_t stride, size_t pad, size_t group) {
+  llvm::SmallVector<size_t, 4> pads = {pad, pad, pad, pad};
+  return createConv(name, input, depth, kernel, stride, pads, group);
 }
 
 PoolMaxNode *Function::createPoolMax(llvm::StringRef name, NodeValue input,
@@ -439,7 +457,7 @@ PoolMaxNode *Function::createPoolMax(llvm::StringRef name, NodeValue input,
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
+  auto outSz = calculatePoolOutputDims(idim.h, idim.w, kernel, stride, pad);
   auto OT = getParent()->uniqueTypeWithNewShape(
       input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
 
@@ -452,7 +470,7 @@ PoolAvgNode *Function::createPoolAvg(llvm::StringRef name, NodeValue input,
   assert(idim.w >= kernel && idim.h >= kernel &&
          "buffer too small for selected stride");
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
+  auto outSz = calculatePoolOutputDims(idim.h, idim.w, kernel, stride, pad);
   auto OT = getParent()->uniqueTypeWithNewShape(
       input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
 

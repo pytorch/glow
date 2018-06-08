@@ -49,6 +49,26 @@ static ArgumentDictionaryTy loadArgumentMap(const caffe2::OperatorDef &op) {
   return dict;
 }
 
+static std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
+  if (dict.count("pad")) {
+    int pad = loadInt(dict.at("pad"));
+    std::vector<size_t> pads(4, pad);
+    return pads;
+  }
+  if (dict.count("pad_t")) {
+    std::vector<size_t> pads(4);
+    pads[0] = loadInt(dict.at("pad_t"));
+    assert(dict.count("pad_l") && "missing pad_l");
+    pads[1] = loadInt(dict.at("pad_l"));
+    assert(dict.count("pad_b") && "missing pad_b");
+    pads[2] = loadInt(dict.at("pad_b"));
+    assert(dict.count("pad_r") && "missing pad_r");
+    pads[3] = loadInt(dict.at("pad_r"));
+  }
+  // Return default value 0 for pad.
+  return {0, 0, 0, 0};
+}
+
 /// Translates the "order" field of dictionary \p dict into a channel number.
 static unsigned getChannel(const ArgumentDictionaryTy &dict) {
   std::string order = "NCHW"; // default
@@ -115,7 +135,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "Conv") {
     // Load the inputs:
     int stride = getSizeHW(dict, "stride", 1);
-    int pad = dict.count("pad") ? loadInt(dict["pad"]) : 0;
+    std::vector<size_t> pads = getPads(dict);
     unsigned kernel = getSizeHW(dict, "kernel", 0);
     unsigned group = dict.count("group") ? loadInt(dict["group"]) : 1;
 
@@ -156,13 +176,13 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     // Calculate the size and allocate the output buffer.
     ShapeNHWC idim = ShapeNHWC(tr->dims());
-    auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pad);
+    auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pads);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
     auto *node = G_.createConv(opName, tr, filter, bias, outTy, kernel, stride,
-                               pad, group);
+                               pads, group);
 
     // Transpose the output back.
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);

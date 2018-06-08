@@ -328,7 +328,7 @@ static Node *quantizeNode(Function *F, Node *node,
     quantizedNode =
         F->createConv(CV->getName(), quantizedInputs[0], quantizedInputs[1],
                       quantizedInputs[2], QT, CV->getKernel(), CV->getStride(),
-                      CV->getPad(), CV->getGroup());
+                      CV->getPads(), CV->getGroup());
     break;
   }
   case Kinded::Kind::SliceNodeKind: {

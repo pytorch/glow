@@ -130,7 +130,7 @@ TEST(Graph, simpleQuant) {
 
   unsigned depth = 16;
   unsigned kernel = 5;
-  unsigned pad = 0;
+  llvm::SmallVector<size_t, 4> pads = {0, 0, 0, 0};
   unsigned step = 1;
   unsigned width = 224;
 
@@ -145,12 +145,12 @@ TEST(Graph, simpleQuant) {
                                  VisibilityKind::Private);
 
   // Calculate the size and allocate the output buffer.
-  auto outSz = calculateConvOutputDims(width, width, kernel, step, pad);
+  auto outSz = calculateConvOutputDims(width, width, kernel, step, pads);
   std::array<size_t, 4> outDims = {{1, outSz.first, outSz.second, 16}};
   auto t = F->getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims, 1.5, 6);
 
   auto *conv =
-      F->createConv("conv", input, filter, bias, t, kernel, step, pad, 1);
+      F->createConv("conv", input, filter, bias, t, kernel, step, pads, 1);
 
   auto s = conv->getType()->size();
   auto *fcFilter = MD.createVariable(ElemKind::Int8QTy, {s, 6}, 0.4, 2, "F");

@@ -72,7 +72,7 @@ informative and it looks like this:
   bias : float<16>
   kernel : 5
   stride : 1
-  pad : 2
+  pads : size_t<4>
   depth : 16
 
   relu
