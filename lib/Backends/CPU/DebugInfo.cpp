@@ -19,6 +19,7 @@
 #include "CommandLine.h"
 
 #include "glow/Graph/Graph.h"
+#include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
 
 #include "llvm/IR/Verifier.h"
@@ -271,7 +272,7 @@ void LLVMIRGen::initDebugInfo() {
                          : nullptr;
 }
 
-void LLVMIRGen::emitDebugGlobalVariableForValue(Value *val) {
+void LLVMIRGen::emitDebugGlobalVariableForValue(const Value *val) {
   auto name = val->getName();
   // Create a proper type for the variable.
   // Represent Glow's N-dimensional tensors as N-dimensional C arrays in the
@@ -377,10 +378,10 @@ void LLVMIRGen::generateDebugInfo() {
     emitDebugGlobalVariableForValue(w);
   }
 
-  for (auto I : F_->getInstrs()) {
-    if (!isa<AllocActivationInst>(I) && !isa<TensorViewInst>(I))
+  for (const auto &I : F_->getInstrs()) {
+    if (!isa<AllocActivationInst>(&I) && !isa<TensorViewInst>(&I))
       continue;
-    emitDebugGlobalVariableForValue(I);
+    emitDebugGlobalVariableForValue(&I);
   }
 
   // Finalize the debug info.

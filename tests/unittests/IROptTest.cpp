@@ -157,8 +157,8 @@ TEST(Optimizer, copyPropagation) {
 
   auto &instrs = M.getInstrs();
   EXPECT_TRUE(std::none_of(
-      instrs.begin(), instrs.end(), [](const Instruction *I) -> bool {
-        return I->getKind() == Instruction::Kind::CopyInstKind;
+      instrs.begin(), instrs.end(), [](const Instruction &I) -> bool {
+        return I.getKind() == Instruction::Kind::CopyInstKind;
       }));
 }
 
@@ -189,9 +189,9 @@ TEST(Optimizer, copyPropagationSimple) {
 
   auto &instrs = M.getInstrs();
   EXPECT_TRUE(std::none_of(
-      instrs.begin(), instrs.end(), [](const Instruction *I) -> bool {
-        return isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I) ||
-               isa<CopyInst>(I);
+      instrs.begin(), instrs.end(), [](const Instruction &I) -> bool {
+        return isa<AllocActivationInst>(&I) || isa<DeallocActivationInst>(&I) ||
+               isa<CopyInst>(&I);
       }));
 }
 
@@ -225,9 +225,9 @@ TEST(Optimizer, copyPropagationTranspose) {
 
   auto &instrs = M.getInstrs();
   EXPECT_TRUE(std::none_of(
-      instrs.begin(), instrs.end(), [](const Instruction *I) -> bool {
-        return isa<TransposeInst>(I) || isa<AllocActivationInst>(I) ||
-               isa<DeallocActivationInst>(I);
+      instrs.begin(), instrs.end(), [](const Instruction &I) -> bool {
+        return isa<TransposeInst>(&I) || isa<AllocActivationInst>(&I) ||
+               isa<DeallocActivationInst>(&I);
       }));
 }
 
@@ -258,10 +258,10 @@ TEST(Optimizer, insertOptimizer) {
   // insert, alloc, and dealloc should be gone.
   auto &instrs = M.getInstrs();
   EXPECT_EQ(instrs.size(), 3);
-  EXPECT_TRUE(std::all_of(instrs.begin(), instrs.end(),
-                          [](const Instruction *I) -> bool {
-                            return isa<SplatInst>(I) || isa<TensorViewInst>(I);
-                          }));
+  EXPECT_TRUE(std::all_of(
+      instrs.begin(), instrs.end(), [](const Instruction &I) -> bool {
+        return isa<SplatInst>(&I) || isa<TensorViewInst>(&I);
+      }));
 }
 
 /// This is representative of what a ConcatNode is IRGen'd into: src1 and src2
@@ -303,10 +303,10 @@ TEST(Optimizer, twoInsertsWithBuffersOptimizer) {
   // the inserts, allocs, and deallocs should be gone.
   auto &instrs = M.getInstrs();
   EXPECT_EQ(instrs.size(), 5);
-  EXPECT_TRUE(std::all_of(instrs.begin(), instrs.end(),
-                          [](const Instruction *I) -> bool {
-                            return isa<SplatInst>(I) || isa<TensorViewInst>(I);
-                          }));
+  EXPECT_TRUE(std::all_of(
+      instrs.begin(), instrs.end(), [](const Instruction &I) -> bool {
+        return isa<SplatInst>(&I) || isa<TensorViewInst>(&I);
+      }));
 }
 
 /// This is representative of what a SliceNode is IRGen'd into: src is the
@@ -353,5 +353,5 @@ TEST(Optimizer, twoExtractsWithBuffersOptimizer) {
   EXPECT_EQ(instrs.size(), 7);
   EXPECT_TRUE(std::none_of(
       instrs.begin(), instrs.end(),
-      [](const Instruction *I) -> bool { return isa<ExtractTensorInst>(I); }));
+      [](const Instruction &I) -> bool { return isa<ExtractTensorInst>(&I); }));
 }

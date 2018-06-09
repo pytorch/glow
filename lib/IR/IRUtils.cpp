@@ -39,6 +39,10 @@ Value *glow::getAllocationOrigin(Value *V) {
 }
 
 Value *glow::getOrigin(Value *V) {
+  return const_cast<Value *>(getOrigin(const_cast<const Value *>(V)));
+}
+
+const Value *glow::getOrigin(const Value *V) {
   while (true) {
     auto *TVI = dyn_cast<TensorViewInst>(V);
     if (!TVI)

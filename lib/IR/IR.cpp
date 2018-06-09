@@ -134,7 +134,7 @@ void Value::verifyUseList(const InstructionNumbering &InstrNumbering) const {
   }
 }
 
-void IRFunction::destroyInstruction(Instruction *I) {
+void Instruction::destroyInstruction(Instruction *I) {
   switch (I->getKind()) {
   default:
     llvm_unreachable("Unknown value kind");
@@ -150,85 +150,34 @@ void IRFunction::destroyInstruction(Instruction *I) {
   }
 }
 
-InstrIterator IRFunction::eraseInstruction(InstrIterator it) {
-  auto *I = *it;
-  assert(std::find(instrs_.begin(), instrs_.end(), I) != instrs_.end() &&
-         "Cannot erase an instruction not belonging to a function");
-  destroyInstruction(I);
-  auto result = instrs_.erase(it);
-  assert(std::find(instrs_.begin(), instrs_.end(), I) == instrs_.end() &&
-         "Instruction should be erased");
-  return result;
-}
-
 void IRFunction::eraseInstruction(glow::Instruction *I) {
-  // find the instruction inside the function.
-  auto it = std::find(instrs_.begin(), instrs_.end(), I);
-  assert(it != instrs_.end() &&
+  assert(I->getParent() == this &&
          "Cannot erase an instruction not belonging to a function");
-  eraseInstruction(it);
+  instrs_.erase(I);
 }
 
-InstrIterator IRFunction::removeInstruction(InstrIterator it) {
-  auto *I = *it;
-  (void)I;
-  assert(std::find(instrs_.begin(), instrs_.end(), I) != instrs_.end() &&
-         "Cannot remove an instruction not belonging to a function");
-  auto result = instrs_.erase(it);
-  assert(std::find(instrs_.begin(), instrs_.end(), I) == instrs_.end() &&
-         "Instruction should be removed");
+InstrIterator IRFunction::removeInstruction(glow::Instruction *I) {
+  assert(I->getParent() == this &&
+         "Cannot erase an instruction not beloning to a function");
+  auto result = I->getIterator();
+  ++result;
+  instrs_.remove(I);
   return result;
-}
-
-void IRFunction::removeInstruction(glow::Instruction *I) {
-  // find the instruction inside the function.
-  auto it = std::find(instrs_.begin(), instrs_.end(), I);
-  assert(it != instrs_.end() &&
-         "Cannot remove an instruction not belonging to a function");
-  removeInstruction(it);
 }
 
 void IRFunction::insertInstruction(glow::Instruction *I) {
   instrs_.push_back(I);
-  I->setParent(this);
 }
 
-InstrIterator IRFunction::insertInstruction(InstrIterator where,
+InstrIterator IRFunction::insertInstruction(glow::Instruction *where,
                                             glow::Instruction *I) {
-  I->setParent(this);
-  return instrs_.insert(where, I);
+  return instrs_.insert(where->getIterator(), I);
 }
 
-InstrIterator IRFunction::moveInstruction(InstrIterator where,
+InstrIterator IRFunction::moveInstruction(Instruction *where,
                                           glow::Instruction *I) {
   I->getParent()->removeInstruction(I);
   return insertInstruction(where, I);
-}
-
-InstrIterator IRFunction::moveInstruction(InstrIterator where,
-                                          InstrIterator I) {
-  auto instr = *I;
-  removeInstruction(I);
-  return insertInstruction(where, instr);
-}
-
-InstrIterator IRFunction::moveInstruction(const Instruction *where,
-                                          glow::Instruction *I) {
-  I->getParent()->removeInstruction(I);
-  return insertInstruction(getInstrIterator(where), I);
-}
-
-InstrIterator IRFunction::getInstrIterator(const Instruction *I) {
-  auto it = std::find(instrs_.begin(), instrs_.end(), I);
-  assert(it != instrs_.end() && "Instruction should be present");
-  return it;
-}
-
-IRFunction::InstListTy::const_iterator
-IRFunction::getInstrIterator(const Instruction *I) const {
-  auto it = std::find(instrs_.begin(), instrs_.end(), I);
-  assert(it != instrs_.end() && "Instruction should be present");
-  return it;
 }
 
 IRFunction::~IRFunction() { clear(); }
@@ -239,21 +188,24 @@ void IRFunction::clear() {
 
   // Delete all of the instructions, in reverse order, to make sure that
   // we delete the users before the instructions.
-  for (auto it = instrs_.rbegin(), e = instrs_.rend(); it != e; ++it) {
-    destroyInstruction(*it);
+  for (auto it = instrs_.rbegin(), e = instrs_.rend(); it != e;) {
+    auto *curI = &*it;
+    ++it;
+    Instruction::destroyInstruction(curI);
   }
 
   // Delete all of the weights.
   for (auto &I : weights_) {
     delete I;
   }
-  instrs_.clear();
+  // iplist's destructor is going to destroy the InstList.
+  instrs_.clearAndLeakNodesUnsafely();
   weights_.clear();
 
   G_ = nullptr;
 }
 
-static void LLVM_ATTRIBUTE_UNUSED verifyOperandsAccess(Instruction *I) {
+static void LLVM_ATTRIBUTE_UNUSED verifyOperandsAccess(const Instruction *I) {
   if (llvm::isa<CopyInst>(I))
     return;
   for (size_t opIdx = 0, e = I->getNumOperands(); opIdx < e; ++opIdx) {
@@ -299,15 +251,15 @@ static void LLVM_ATTRIBUTE_UNUSED verifyOperandsAccess(Instruction *I) {
 /// it was deallocated or before it is allocated.
 static void verifyLiveness(const IRFunction &M) {
   // The live set stores allocations that are known to be live.
-  std::unordered_map<Value *, bool> liveBuffers;
-  for (auto *I : M.getInstrs()) {
-    if (auto *AI = dyn_cast<AllocActivationInst>(I)) {
+  std::unordered_map<const Value *, bool> liveBuffers;
+  for (const auto &I : M.getInstrs()) {
+    if (auto *AI = dyn_cast<AllocActivationInst>(&I)) {
       assert(liveBuffers.find(AI) == liveBuffers.end() &&
              "Redefinition of an existing allocation");
       liveBuffers.insert({AI, false});
       continue;
     }
-    if (auto *DI = dyn_cast<DeallocActivationInst>(I)) {
+    if (auto *DI = dyn_cast<DeallocActivationInst>(&I)) {
       assert(llvm::isa<AllocActivationInst>(DI->getSrc()) &&
              "Only allocations can be deallocated");
       assert(liveBuffers.find(DI->getSrc()) != liveBuffers.end() &&
@@ -317,10 +269,10 @@ static void verifyLiveness(const IRFunction &M) {
     }
     // Do not consider tensorview definitions to be real uses of any
     // allocations.
-    if (llvm::isa<TensorViewInst>(I))
+    if (llvm::isa<TensorViewInst>(&I))
       continue;
 
-    for (const auto &Op : I->getOperands()) {
+    for (const auto &Op : I.getOperands()) {
       if (auto *AI = dyn_cast<AllocActivationInst>(getOrigin(Op.first))) {
         auto entry = liveBuffers.find(AI);
         assert(entry != liveBuffers.end() &&
@@ -339,10 +291,10 @@ static void verifyLiveness(const IRFunction &M) {
 void IRFunction::verify() const {
   InstructionNumbering InstrNumbering(*this);
   assert(!instrs_.empty() && "Instruction list is empty!");
-  for (auto it : instrs_) {
-    it->verifyUseList(InstrNumbering);
-    verifyOperandsAccess(it);
-    it->verify();
+  for (const auto &I : instrs_) {
+    I.verifyUseList(InstrNumbering);
+    verifyOperandsAccess(&I);
+    I.verify();
   }
 
   verifyLiveness(*this);
@@ -390,24 +342,21 @@ bool Instruction::isDataParallel() const {
 InstructionNumbering::InstructionNumbering(const IRFunction &M) {
   auto &instrs = M.getInstrs();
   size_t instIdx = 0;
-  for (auto it = instrs.begin(), e = instrs.end(); it != e; ++instIdx, ++it) {
-    numToInstr_.push_back(it);
-    instrToNum_[*it] = instIdx;
+  for (const auto &I : instrs) {
+    numToInstr_.push_back(&I);
+    instrToNum_[&I] = instIdx;
+    ++instIdx;
   }
 }
 
-int64_t InstructionNumbering::getInstrNumber(Instruction *I) const {
+int64_t InstructionNumbering::getInstrNumber(const Instruction *I) const {
   auto Result = instrToNum_.find(I);
   if (Result == instrToNum_.end())
     return -1;
   return (int64_t)Result->second;
 }
 
-int64_t InstructionNumbering::getInstrNumber(InstrConstIterator IT) const {
-  return getInstrNumber(*IT);
-}
-
-InstrConstIterator InstructionNumbering::getInstr(size_t instrNumber) const {
+const Instruction *InstructionNumbering::getInstr(size_t instrNumber) const {
   assert(instrNumber < numToInstr_.size());
   return numToInstr_[instrNumber];
 }
@@ -541,7 +490,7 @@ static void nameInstr(std::unordered_set<std::string> &usedNames, Named *named,
 
 IRFunction::IRFunction(Function *G) : G_(G) {}
 
-static bool hasResultValue(Instruction *I) {
+static bool hasResultValue(const Instruction *I) {
   return I->getKind() == Instruction::Kind::AllocActivationInstKind ||
          I->getKind() == Instruction::Kind::TensorViewInstKind;
 }
@@ -551,8 +500,8 @@ void IRFunction::nameInstructions() {
   for (auto &v : weights_) {
     nameInstr(usedNames, v, v->getKindName());
   }
-  for (auto &v : instrs_) {
-    nameInstr(usedNames, v, v->getKindName());
+  for (auto &I : instrs_) {
+    nameInstr(usedNames, &I, I.getKindName());
   }
 }
 
@@ -586,24 +535,23 @@ void IRFunction::dump(llvm::raw_ostream &OS) {
   sb << "code {\n";
 
   // Print all of the instructions:
-  for (auto it : instrs_) {
-    Instruction *II = it;
+  for (const auto &I : instrs_) {
     sb << "  ";
-    auto InstrNum = InstrNumbering.getInstrNumber(II);
+    auto InstrNum = InstrNumbering.getInstrNumber(&I);
     assert(InstrNum >= 0);
     sb << InstrNum << " ";
-    dumpIR(II, sb);
-    if (isa<AllocActivationInst>(II))
-      sb << " // size: " << II->getSizeInBytes();
-    if (isa<DeallocActivationInst>(II)) {
+    dumpIR(&I, sb);
+    if (isa<AllocActivationInst>(&I))
+      sb << " // size: " << I.getSizeInBytes();
+    if (isa<DeallocActivationInst>(&I)) {
       sb << " // size: "
-         << cast<DeallocActivationInst>(II)
+         << cast<DeallocActivationInst>(&I)
                 ->getSrc()
                 ->getType()
                 ->getSizeInBytes();
     }
-    if (hasResultValue(II))
-      dumpUsers(II, sb, InstrNumbering);
+    if (hasResultValue(&I))
+      dumpUsers(&I, sb, InstrNumbering);
     sb << "\n";
   }
 
@@ -686,10 +634,10 @@ void IRFunction::dumpDAG(const char *dotFilename) {
   stream << "subgraph cluster_1 {";
   stream << "  style=invis;\n";
 
-  for (auto &I : instrs_) {
-    std::string desc = getDottyDesc(I);
+  for (const auto &I : instrs_) {
+    std::string desc = getDottyDesc(&I);
 
-    stream << '"' << I << "\"[\n";
+    stream << '"' << &I << "\"[\n";
     std::string repr = quote(desc);
     stream << "\tlabel = " << repr << "\n";
     stream << "\tshape = \"record\"\n";
@@ -714,28 +662,67 @@ void IRFunction::dumpDAG(const char *dotFilename) {
   stream << "  style=invis;\n";
 
   // Dump the use-def edges.
-  for (auto &I : instrs_) {
-    for (int i = 0, e = I->getNumOperands(); i < e; i++) {
-      auto op = I->getOperand(i);
-      stream << '"' << I << "\":f" << i << "->\"" << op.first
+  for (const auto &I : instrs_) {
+    for (int i = 0, e = I.getNumOperands(); i < e; i++) {
+      auto op = I.getOperand(i);
+      stream << '"' << &I << "\":f" << i << "->\"" << op.first
              << "\"[dir=" << getDottyArrowForCC(op.second) << "];\n";
     }
-    if (I->hasPredicate()) {
-      stream << '"' << I->getPredicate() << "\"->\"" << I << "\":n;\n";
+    if (I.hasPredicate()) {
+      stream << '"' << I.getPredicate() << "\"->\"" << &I << "\":n;\n";
     }
   }
 
   // Dump the order edges.
-  Instruction *prev = nullptr;
-  for (auto &I : instrs_) {
+  const Instruction *prev = nullptr;
+  for (const auto &I : instrs_) {
     if (prev) {
-      stream << '"' << prev << "\"->\"" << I << "\"[color=\"blue\"];\n";
+      stream << '"' << prev << "\"->\"" << &I << "\"[color=\"blue\"];\n";
     }
-    prev = I;
+    prev = &I;
   }
   stream << "}";
   stream << "}";
 
   std::ofstream filestream(dotFilename);
   filestream << stream.str();
+}
+
+//===----------------------------------------------------------------------===//
+// ilist_traits<glow::Instruction> Implementation
+//===----------------------------------------------------------------------===//
+
+// The trait object is embedded into a IRFunction.  Use dirty hacks to
+// reconstruct the IRFunction from the 'self' pointer of the trait.
+IRFunction *llvm::ilist_traits<Instruction>::getContainingFunction() {
+  size_t Offset(
+      size_t(&((IRFunction *)nullptr->*IRFunction::getInstrsMemberPtr())));
+  iplist<Instruction> *Anchor(static_cast<iplist<Instruction> *>(this));
+  return reinterpret_cast<IRFunction *>(reinterpret_cast<char *>(Anchor) -
+                                        Offset);
+}
+
+void llvm::ilist_traits<Instruction>::addNodeToList(Instruction *I) {
+  assert(I->getParent() == nullptr && "Already in a list!");
+  I->setParent(getContainingFunction());
+}
+
+void llvm::ilist_traits<Instruction>::removeNodeFromList(Instruction *I) {
+  // When an instruction is removed from a function, clear the parent pointer.
+  assert(I->getParent() && "Not in a list!");
+  I->setParent(nullptr);
+}
+
+void llvm::ilist_traits<Instruction>::transferNodesFromList(
+    llvm::ilist_traits<Instruction> &L2, instr_iterator first,
+    instr_iterator last) {
+  // If transferring instructions within the same IRFunction, no reason to
+  // update their parent pointers.
+  IRFunction *ThisParent = getContainingFunction();
+  if (ThisParent == L2.getContainingFunction())
+    return;
+
+  // Update the parent fields in the instructions.
+  for (; first != last; ++first)
+    first->setParent(ThisParent);
 }

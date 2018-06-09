@@ -19,6 +19,7 @@
 
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
 
 #include "llvm/ADT/SmallVector.h"
@@ -352,7 +353,7 @@ static void addStringOption(std::vector<std::string> &options,
   options.push_back("-D" + name + "=" + value);
 }
 
-void OCLBackend::executeConvolution(OCLConvolutionInst *CC) {
+void OCLBackend::executeConvolution(const OCLConvolutionInst *CC) {
   auto input = CC->getSrc();
   auto output = CC->getDest();
   auto bias = CC->getBias();
@@ -475,13 +476,13 @@ void OCLBackend::doForwardPass() {
   DEBUG(llvm::dbgs() << "Copied " << copiedToDeviceBytes
                      << " bytes to OpenCL device\n");
 
-  for (auto &I : F_->getInstrs()) {
+  for (const auto &I : F_->getInstrs()) {
     // The kernels are named after the name of the instruction, plus the "W"
     // suffix to prevent name colissions for functions like 'tanh' that are also
     // a part of the OpenCL runtime.
-    auto elemTy = I->getNumOperands() ? I->getOperand(0).first->getElementType()
-                                      : ElemKind::FloatTy;
-    std::string kernelName = getKernelName(I->getKindName(), elemTy);
+    auto elemTy = I.getNumOperands() ? I.getOperand(0).first->getElementType()
+                                     : ElemKind::FloatTy;
+    std::string kernelName = getKernelName(I.getKindName(), elemTy);
 
     // Skip memory allocation instructions as they are NOPs.
     if (isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I) ||
@@ -490,11 +491,11 @@ void OCLBackend::doForwardPass() {
     }
 
     // Element-wise operations, except the copy instruction.
-    if (I->isDataParallel() && !isa<CopyInst>(I)) {
+    if (I.isDataParallel() && !isa<CopyInst>(I)) {
       // Figure out how many element-wise elements are there to process:
       size_t global;
-      if (I->isDataParallel()) {
-        global = I->getOperand(0).first->getType()->size();
+      if (I.isDataParallel()) {
+        global = I.getOperand(0).first->getType()->size();
         if (global % 16 == 0) {
           // Start less kernels and let each kernel do more work using vector
           // instructions.
@@ -512,17 +513,17 @@ void OCLBackend::doForwardPass() {
 
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
 
-      for (unsigned arg = 0, e = I->getNumOperands(); arg < e; arg++) {
+      for (unsigned arg = 0, e = I.getNumOperands(); arg < e; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
-      if (auto *SI = dyn_cast<SplatInst>(I)) {
+      if (auto *SI = dyn_cast<SplatInst>(&I)) {
         // Pass the splat as a parameter.
         setKernelArg(kernel, numArgs + 1, SI->getValue());
-      } else if (auto *EPI = dyn_cast<ElementPowInst>(I)) {
+      } else if (auto *EPI = dyn_cast<ElementPowInst>(&I)) {
         // Pass the exp as a parameter.
         setKernelArg(kernel, numArgs + 1, EPI->getExp());
       }
@@ -531,17 +532,17 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *SM = dyn_cast<SoftMaxInst>(I)) {
+    if (auto *SM = dyn_cast<SoftMaxInst>(&I)) {
       // Implement Softmax by parallelizing the batch dimension. Each sample in
       // the batch is processed by a different parallel 'thread'.
       cl_kernel kernel = createKernel(kernelName);
 
       setKernelArg(kernel, 0, deviceBuffer_);
 
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
       // This is the number of elements for each slice. There are N slices in
@@ -556,17 +557,17 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *SM = dyn_cast<SoftMaxGradInst>(I)) {
+    if (auto *SM = dyn_cast<SoftMaxGradInst>(&I)) {
       // Implement Softmax by parallelizing the batch dimension. Each sample in
       // the batch is processed by a different parallel 'thread'.
       cl_kernel kernel = createKernel(kernelName);
 
       setKernelArg(kernel, 0, deviceBuffer_);
 
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
       // This is the number of elements for each slice. There are N slices in
@@ -581,14 +582,14 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *ET = dyn_cast<ExtractTensorInst>(I)) {
+    if (auto *ET = dyn_cast<ExtractTensorInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
       // Currently support tensors up to 4 dimensions.
@@ -626,14 +627,14 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *IT = dyn_cast<InsertTensorInst>(I)) {
+    if (auto *IT = dyn_cast<InsertTensorInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
       // Currently support tensors of up to 4 dimensions.
@@ -672,7 +673,7 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *BMM = dyn_cast<MatMulInst>(I)) {
+    if (auto *BMM = dyn_cast<MatMulInst>(&I)) {
 // Size of the tile to be used for matrix multiplication.
 #define TILE_DIM ((size_t)8)
       // Determine max work groups sizes.
@@ -688,10 +689,10 @@ void OCLBackend::doForwardPass() {
           createKernel(useTiledMatMul ? "matmul_tiled" : kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
       auto ddim = ShapeNHWC::fromXY(BMM->getDest()->getType()->dims());
@@ -717,14 +718,14 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *BA = dyn_cast<BatchedAddInst>(I)) {
+    if (auto *BA = dyn_cast<BatchedAddInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
       auto bdim = flattenCdr(BA->getBatch()->dims());
@@ -737,14 +738,14 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *BRA = dyn_cast<BatchedReduceAddInst>(I)) {
+    if (auto *BRA = dyn_cast<BatchedReduceAddInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
       auto bdim = flattenCdr(BRA->getBatch()->dims());
@@ -757,21 +758,21 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *CC = dyn_cast<OCLConvolutionInst>(I)) {
+    if (auto *CC = dyn_cast<OCLConvolutionInst>(&I)) {
       executeConvolution(CC);
       continue;
     }
 
-    if (auto *CC = dyn_cast<ConvolutionInst>(I)) {
+    if (auto *CC = dyn_cast<ConvolutionInst>(&I)) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
       auto odim = ShapeNHWC(CC->getDest()->getType()->dims());
@@ -791,7 +792,7 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *CG = dyn_cast<ConvolutionGradInst>(I)) {
+    if (auto *CG = dyn_cast<ConvolutionGradInst>(&I)) {
       auto *src = CG->getSrc();
       auto *filter = CG->getFilter();
       auto *destGrad = CG->getDestGrad();
@@ -836,16 +837,16 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *PM = dyn_cast<PoolMaxInst>(I)) {
+    if (auto *PM = dyn_cast<PoolMaxInst>(&I)) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
       auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
@@ -862,16 +863,16 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *PM = dyn_cast<PoolMaxWithXYInst>(I)) {
+    if (auto *PM = dyn_cast<PoolMaxWithXYInst>(&I)) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
       auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
@@ -888,14 +889,14 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *PMG = dyn_cast<PoolMaxWithXYGradInst>(I)) {
+    if (auto *PMG = dyn_cast<PoolMaxWithXYGradInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
       auto destGradDim = ShapeNHWC(PMG->getDestGrad()->dims());
@@ -915,16 +916,16 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *PA = dyn_cast<PoolAvgInst>(I)) {
+    if (auto *PA = dyn_cast<PoolAvgInst>(&I)) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
       auto odim = ShapeNHWC(PA->getDest()->getType()->dims());
@@ -941,7 +942,7 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *TR = dyn_cast<TransposeInst>(I)) {
+    if (auto *TR = dyn_cast<TransposeInst>(&I)) {
       // This is a naive implementation that parallelizes using one dimension,
       // the N (batch size).
       GLOW_ASSERT(TR->getShuffle().size() <= 4 &&
@@ -950,10 +951,10 @@ void OCLBackend::doForwardPass() {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
       // Temporary hack to support 3-dim transposes.
@@ -981,7 +982,7 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *C = dyn_cast<CopyInst>(I)) {
+    if (auto *C = dyn_cast<CopyInst>(&I)) {
       Value *dest, *src;
       dest = C->getDest();
       src = C->getSrc();
@@ -999,14 +1000,14 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *GI = dyn_cast<GatherInst>(I)) {
+    if (auto *GI = dyn_cast<GatherInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
       auto *data = GI->getData();
@@ -1020,7 +1021,7 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *DP = dyn_cast<DebugPrintInst>(I)) {
+    if (auto *DP = dyn_cast<DebugPrintInst>(&I)) {
       clFinish(commands_);
       auto *V = DP->getSrc();
       // Allocate a temporary tensor to hold the value.
@@ -1028,7 +1029,7 @@ void OCLBackend::doForwardPass() {
       // Load the current value of the variable into host memory.
       copyValueFromDevice(V, T.getUnsafePtr());
       clFinish(commands_);
-      llvm::outs() << I->getName() << ": ";
+      llvm::outs() << I.getName() << ": ";
       // Dump the content of a value.
       V->dump();
       llvm::outs() << "\n";
@@ -1038,14 +1039,14 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto PA = dyn_cast<OCLPoolAvgInst>(I)) {
+    if (auto PA = dyn_cast<OCLPoolAvgInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
       auto odim = ShapeNCHW(PA->getDest()->getType()->dims());
@@ -1062,14 +1063,14 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    if (auto *PM = dyn_cast<OCLPoolMaxInst>(I)) {
+    if (auto *PM = dyn_cast<OCLPoolMaxInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 
-      unsigned numArgs = I->getNumOperands();
+      unsigned numArgs = I.getNumOperands();
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I->getOperand(arg).first]);
+                              tensors_[I.getOperand(arg).first]);
       }
 
       auto odim = ShapeNCHW(PM->getDest()->getType()->dims());
@@ -1086,7 +1087,7 @@ void OCLBackend::doForwardPass() {
       continue;
     }
 
-    llvm::errs() << "Cannot select: " << I->getKindName() << "\n";
+    llvm::errs() << "Cannot select: " << I.getKindName() << "\n";
     GLOW_UNREACHABLE("compilation failed");
   }
 
@@ -1223,16 +1224,16 @@ void OCLBackend::init() {
   }
 
   // Assign device-space addresses to the activations.
-  for (auto &I : F_->getInstrs()) {
-    if (auto *A = llvm::dyn_cast<AllocActivationInst>(I)) {
-      auto numBytes = I->getSizeInBytes();
+  for (const auto &I : F_->getInstrs()) {
+    if (auto *A = llvm::dyn_cast<AllocActivationInst>(&I)) {
+      auto numBytes = I.getSizeInBytes();
       size_t addr = allocator_.allocate(numBytes);
       assert(!tensors_.count(A) && "Allocation already made!");
       tensors_[A] = addr;
       continue;
     }
 
-    if (auto *TV = llvm::dyn_cast<TensorViewInst>(I)) {
+    if (auto *TV = llvm::dyn_cast<TensorViewInst>(&I)) {
       // Calculate and store the length of the offset into the base, using the
       // source of the tensorview.
       assert(!tensors_.count(TV) && "Allocation already made!");
@@ -1249,7 +1250,7 @@ void OCLBackend::init() {
       continue;
     }
 
-    if (auto *D = llvm::dyn_cast<DeallocActivationInst>(I)) {
+    if (auto *D = llvm::dyn_cast<DeallocActivationInst>(&I)) {
       auto *A = D->getAlloc();
       assert(tensors_.count(A) && "Invalid deallocation!");
       allocator_.deallocate(tensors_[A]);
