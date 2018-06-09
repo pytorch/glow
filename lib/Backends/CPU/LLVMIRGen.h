@@ -144,7 +144,7 @@ class LLVMIRGen {
       llvm::IRBuilder<> &builder, glow::Instruction *I, llvm::Function *kernel,
       llvm::DenseMap<Value *, int> &bufferToArgNum, llvm::Value *loopCount);
   /// \returns the llvm type of the glow vale \p val.
-  llvm::Type *getElementType(llvm::IRBuilder<> &builder, Value *val);
+  llvm::Type *getElementType(llvm::IRBuilder<> &builder, const Value *val);
   /// Create a debug information for a given LLVM type \p ty.
   llvm::DIType *getDebugType(llvm::IRBuilder<> &builder, llvm::Type *ty);
   /// Init the generation of debug information.
@@ -168,7 +168,7 @@ class LLVMIRGen {
   /// AllocationsInfo inside the memory blocks dynamically allocated by clients
   /// for weights and activations, but behave like regular global variables from
   /// the debugger's perspective.
-  void emitDebugGlobalVariableForValue(Value *val);
+  void emitDebugGlobalVariableForValue(const Value *val);
 
 public:
   /// Ctor.

@@ -33,12 +33,12 @@ struct AllocationsInfo {
   enum class ValueKind { ConstantWeight, MutableWeight, Activation };
   using KindAndNumber = std::pair<ValueKind, size_t>;
   /// Map Values in the module to their numbers.
-  llvm::DenseMap<Value *, KindAndNumber> valueNumbers_;
+  llvm::DenseMap<const Value *, KindAndNumber> valueNumbers_;
   /// To get the offset of a given value simply use
   /// numberOffsets_[valueNumbers_[v]]
 
   /// Maps Values in the module to their offsets.
-  llvm::DenseMap<Value *, size_t> allocatedAddressed_;
+  llvm::DenseMap<const Value *, size_t> allocatedAddressed_;
   /// Amount of memory to be allocated for constant WeightVars.
   size_t constantWeightVarsMemSize_{0};
   /// Amount of memory to be allocated for mutable WeightVars.

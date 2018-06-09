@@ -23,6 +23,8 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/ilist.h"
+#include "llvm/ADT/ilist_node.h"
 
 #include <list>
 #include <unordered_map>
@@ -101,11 +103,15 @@ public:
 };
 
 /// This represents an instruction in our IR.
-class Instruction : public Value {
+class Instruction : public Value, public llvm::ilist_node<Instruction> {
 public:
   using Operand = InstructionOperand;
 
 private:
+  friend llvm::ilist_traits<Instruction>;
+  friend llvm::ilist_traits<IRFunction>;
+  friend IRFunction;
+
   /// Parent function.
   IRFunction *F_;
   /// If a predicate is set this index points to the non-zero index of the
@@ -120,7 +126,12 @@ private:
   Instruction(const Instruction &I) = delete;
   Instruction &operator=(const Instruction &I) = delete;
 
-protected:
+  /// Destroy an instruction and deallocate its memory. This function is
+  /// automatically invoked when the instruction is being deleted from the list
+  /// of instructions.
+  static void destroyInstruction(Instruction *I);
+
+public:
   /// Prevent the destruction of a derived object via a base-class pointer.
   /// Use IRFunction::destroyInstruction instead.
   ~Instruction() {
@@ -141,11 +152,11 @@ public:
   void pushOperand(Operand op);
 
   Instruction(IRFunction *M, llvm::StringRef name, Kinded::Kind k, TypeRef Ty)
-      : Value(name, Ty, k), F_(M) {}
+      : Value(name, Ty, k), F_(nullptr) {}
 
   Instruction(IRFunction *M, llvm::StringRef name, Kinded::Kind k, TypeRef Ty,
               llvm::ArrayRef<Operand> ops)
-      : Value(name, Ty, k), F_(M) {
+      : Value(name, Ty, k), F_(nullptr) {
     for (auto &op : ops) {
       pushOperand(op);
     }
@@ -201,6 +212,39 @@ protected:
   /// Dump the operands of the instruction into the stream \p os.
   void dumpOperands(llvm::raw_ostream &os) const;
 };
+} // namespace glow
+
+//===----------------------------------------------------------------------===//
+// ilist_traits for glow::Instruction
+//===----------------------------------------------------------------------===//
+
+namespace llvm {
+
+template <>
+struct ilist_traits<glow::Instruction>
+    : public ilist_default_traits<glow::Instruction> {
+  using Instruction = glow::Instruction;
+
+private:
+  glow::IRFunction *getContainingFunction();
+
+  using instr_iterator = simple_ilist<Instruction>::iterator;
+
+public:
+  static void deleteNode(Instruction *V) { Instruction::destroyInstruction(V); }
+
+  void addNodeToList(Instruction *I);
+  void removeNodeFromList(Instruction *I);
+  void transferNodesFromList(ilist_traits<Instruction> &L2,
+                             instr_iterator first, instr_iterator last);
+
+private:
+  void createNode(const Instruction &);
+};
+
+} // namespace llvm
+
+namespace glow {
 
 class WeightVar;
 class Value;
@@ -210,7 +254,7 @@ class Node;
 class IRFunction final {
 public:
   using VariableMap = std::unordered_map<const Node *, Value *>;
-  using InstListTy = std::list<Instruction *>;
+  using InstListTy = llvm::iplist<Instruction>;
   using InstrIterator = InstListTy::iterator;
   using InstrConstIterator = InstListTy::const_iterator;
   using WeightVarListTy = std::list<WeightVar *>;
@@ -285,47 +329,29 @@ public:
   /// \returns the list of instructions.
   const InstListTy &getInstrs() const { return instrs_; }
 
+  /// \returns pointer to the class member for the instruction list.
+  static InstListTy IRFunction::*getInstrsMemberPtr() {
+    return &IRFunction::instrs_;
+  }
+
   /// \returns the list of weights.
   WeightVarListTy &getWeights() { return weights_; }
 
   /// Erase the instruction from the function.
   void eraseInstruction(Instruction *I);
 
-  /// Erase the instruction from the function.
-  InstrIterator eraseInstruction(InstrIterator it);
-
   /// Remove the instruction from the function.
-  void removeInstruction(Instruction *I);
-
-  /// Remove the instruction from the function.
-  InstrIterator removeInstruction(InstrIterator it);
-
-  /// Destroy an instruction.
-  void destroyInstruction(Instruction *I);
+  InstrIterator removeInstruction(Instruction *I);
 
   /// Inserts an instruction at the place described by \where.
-  InstrIterator insertInstruction(InstrIterator where, Instruction *I);
-
-  /// Moves an instruction belonging to a function before the place described by
-  /// \where.
-  InstrIterator moveInstruction(InstrIterator where, Instruction *I);
-
-  /// Moves an instruction belonging to a function before the place described by
-  /// \where.
-  InstrIterator moveInstruction(InstrIterator where, InstrIterator I);
-
-  /// Moves an instruction belonging to a function before the place described by
-  /// \where.
-  InstrIterator moveInstruction(const Instruction *where, Instruction *I);
+  InstrIterator insertInstruction(Instruction *where, Instruction *I);
 
   /// Inserts an instruction at the end of the instructions list.
   void insertInstruction(Instruction *I);
 
-  /// \returns instruction's list iterator corresponding to the instruction.
-  InstrIterator getInstrIterator(const Instruction *I);
-
-  /// \returns instruction's list iterator corresponding to the instruction.
-  InstrConstIterator getInstrIterator(const Instruction *I) const;
+  /// Moves an instruction belonging to a function before the place described by
+  /// \where.
+  InstrIterator moveInstruction(Instruction *where, Instruction *I);
 };
 
 /// Iterator over inteructions.
@@ -334,8 +360,8 @@ using InstrConstIterator = IRFunction::InstrConstIterator;
 
 /// A helper class used for instructions numbering.
 class InstructionNumbering {
-  using NumberedInstructionMap = std::vector<InstrConstIterator>;
-  using InstructionNumbersMap = std::unordered_map<Instruction *, size_t>;
+  using NumberedInstructionMap = std::vector<const Instruction *>;
+  using InstructionNumbersMap = std::unordered_map<const Instruction *, size_t>;
   /// Maps the number to an instruction.
   NumberedInstructionMap numToInstr_;
   /// Maps an instruction to its number.
@@ -346,23 +372,12 @@ public:
 
   /// Return the instruction with a given number or
   /// M.getInstrs().end() if this instruction is not assigned any number.
-  InstrConstIterator getInstr(size_t InstrNumber) const;
+  const Instruction *getInstr(size_t InstrNumber) const;
 
   /// Return the number of an instruction or a negative value if no number
   /// was assigned to this instruction.
-  int64_t getInstrNumber(InstrConstIterator IT) const;
-
-  /// Return the number of an instruction or a negative value if no number
-  /// was assigned to this instruction.
-  int64_t getInstrNumber(Instruction *I) const;
+  int64_t getInstrNumber(const Instruction *I) const;
 };
-
-/// Get the allocation corrsponding to th value \p V. It can look through
-/// tensorview instructions. \returns found allocation or nullptr.
-Value *getAllocationOrigin(Value *V);
-
-/// \returns peels off the layers of tensorviews from a value \p V.
-Value *getOrigin(Value *V);
 
 } // namespace glow
 
