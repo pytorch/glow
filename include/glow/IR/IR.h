@@ -151,10 +151,10 @@ public:
   /// Adds a new operand \p op at the end of the operand list.
   void pushOperand(Operand op);
 
-  Instruction(IRFunction *M, llvm::StringRef name, Kinded::Kind k, TypeRef Ty)
+  Instruction(llvm::StringRef name, Kinded::Kind k, TypeRef Ty)
       : Value(name, Ty, k), F_(nullptr) {}
 
-  Instruction(IRFunction *M, llvm::StringRef name, Kinded::Kind k, TypeRef Ty,
+  Instruction(llvm::StringRef name, Kinded::Kind k, TypeRef Ty,
               llvm::ArrayRef<Operand> ops)
       : Value(name, Ty, k), F_(nullptr) {
     for (auto &op : ops) {

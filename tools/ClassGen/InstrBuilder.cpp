@@ -28,7 +28,7 @@ unsigned InstrBuilder::getOperandIndexByName(llvm::StringRef name) const {
 }
 
 void InstrBuilder::emitCtor(std::ostream &os) const {
-  os << "  " << name_ << "Inst(IRFunction *M, llvm::StringRef name";
+  os << "  " << name_ << "Inst(llvm::StringRef name";
 
   // The operands of the instruction class:
   for (const auto &op : operands_) {
@@ -41,8 +41,8 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
   }
 
   // Initialize the base clases:
-  os << ")\n      : Instruction(M, name, Kinded::Kind::" << name_
-     << "InstKind, " << ty_ << ", {\n";
+  os << ")\n      : Instruction(name, Kinded::Kind::" << name_ << "InstKind, "
+     << ty_ << ", {\n";
 
   // The operands of the instruction class:
   for (const auto &op : operands_) {
@@ -84,7 +84,7 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
 
   // Initialize the base clases:
   osB << ") {\n";
-  osB << "  auto *A = new " << name_ << "Inst(&getIRFunction(), name ";
+  osB << "  auto *A = new " << name_ << "Inst(name ";
 
   // The operands of the instruction class:
   for (const auto &op : operands_) {
