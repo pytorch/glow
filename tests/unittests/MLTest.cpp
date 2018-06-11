@@ -23,7 +23,6 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 
-
 using namespace glow;
 using llvm::isa;
 
@@ -217,11 +216,11 @@ TEST_P(MLTest, learnLog) {
   F->setName("learnLog");
 
   auto *A =
-      mod.createVariable(ElemKind::FloatTy, {batchSize, 1}, "A", VisibilityKind::Public,
-                         Variable::TrainKind::None);
+      mod.createVariable(ElemKind::FloatTy, {batchSize, 1}, "A",
+                         VisibilityKind::Public, Variable::TrainKind::None);
   auto *Ex =
-      mod.createVariable(ElemKind::FloatTy, {batchSize, 1}, "Ex", VisibilityKind::Public,
-                         Variable::TrainKind::None);
+      mod.createVariable(ElemKind::FloatTy, {batchSize, 1}, "Ex",
+                         VisibilityKind::Public, Variable::TrainKind::None);
 
   Node *O = F->createFullyConnected("fc1", A, 5);
   O = F->createTanh("tanh1", O);
@@ -232,7 +231,7 @@ TEST_P(MLTest, learnLog) {
   O = F->createRegression("reg", O, Ex);
   auto *result = F->createSave("ret", O);
 
-  // Set the training data. 
+  // Set the training data.
   Tensor trainingSet(ElemKind::FloatTy, {numInputs, 1});
   Tensor trainingLabels(ElemKind::FloatTy, {numInputs, 1});
 
@@ -240,13 +239,13 @@ TEST_P(MLTest, learnLog) {
   auto TL = trainingLabels.getHandle<>();
 
   // Set the training date as floating number from range [0.75, 1.5).
-  const float LO = 0.75; // Lower bound of training data 
-  const float HI = 1.5;  // Upper bound of training data
-  for (size_t i = 0; i < numInputs; i ++) {
-    // Generate a floating number in the range of [LO,HI)
-    float a = (LO+HI)/2 + PRNG.nextRand()*(HI-LO)/2;
-    TS.at({i,0}) = a;
-    TL.at({i,0}) = std::log(a);
+  const float LO = 0.75; // Lower bound of training data.
+  const float HI = 1.5;  // Upper bound of training data.
+  for (size_t i = 0; i < numInputs; i++) {
+    // Generate a floating number in the range of [LO,HI).
+    float a = (LO + HI) / 2 + PRNG.nextRand() * (HI - LO) / 2;
+    TS.at({i, 0}) = a;
+    TL.at({i, 0}) = std::log(a);
   }
 
   Function *TF = glow::differentiate(F, EE_.getConfig());
@@ -264,9 +263,9 @@ TEST_P(MLTest, learnLog) {
   auto TES = testSet.getHandle<>();
 
   for (size_t i = 0; i < batchSize; i++) {
-    // Generate a floating number in the range of [LO,HI)
-    float a = (LO+HI)/2 + PRNG.nextRand()*(HI-LO)/2;
-    TES.at({i,0}) = a;
+    // Generate a floating number in the range of [LO,HI).
+    float a = (LO + HI) / 2 + PRNG.nextRand() * (HI - LO) / 2;
+    TES.at({i, 0}) = a;
   }
 
   EE_.run({A}, {&testSet});
@@ -278,7 +277,6 @@ TEST_P(MLTest, learnLog) {
     EXPECT_NEAR(resH.at({i, 0}), (std::log(a)), 0.02);
   }
 }
-
 
 unsigned numSamples = 230;
 
