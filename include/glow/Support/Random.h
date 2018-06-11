@@ -45,6 +45,10 @@ public:
   /// [-1; 1).
   double nextRand();
 
+  /// \returns a pseudo-random floating point number from the half-open
+  /// user-specified range [a; b).
+  double nextRandReal(double a, double b);
+
   /// \returns the next uniform random integer in the closed interval [a, b].
   int nextRandInt(int a, int b) {
     return std::uniform_int_distribution<int>(a, b)(engine_);
