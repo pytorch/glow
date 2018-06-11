@@ -205,6 +205,78 @@ TEST_P(MLTest, learnXor) {
   }
 }
 
+/// Learn the logarithmic function.
+TEST_P(MLTest, learnLog) {
+  unsigned numInputs = 100;
+  unsigned batchSize = 7;
+  EE_.getConfig().learningRate = 0.07;
+  EE_.getConfig().batchSize = batchSize;
+
+  auto &mod = EE_.getModule();
+  auto &PRNG = mod.getPRNG();
+  Function *F = mod.createFunction("learnLog");
+
+  auto *A =
+      mod.createVariable(ElemKind::FloatTy, {batchSize, 1}, "A",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *Ex =
+      mod.createVariable(ElemKind::FloatTy, {batchSize, 1}, "Ex",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+
+  Node *O = F->createFullyConnected("fc1", A, 4);
+  O = F->createTanh("tanh1", O);
+  O = F->createFullyConnected("fc2", O, 3);
+  O = F->createFullyConnected("fc3", O, 1);
+  O = F->createRegression("reg", O, Ex);
+  auto *result = F->createSave("ret", O);
+
+  // Set the training data.
+  Tensor trainingSet(ElemKind::FloatTy, {numInputs, 1});
+  Tensor trainingLabels(ElemKind::FloatTy, {numInputs, 1});
+
+  auto TS = trainingSet.getHandle<>();
+  auto TL = trainingLabels.getHandle<>();
+
+  // Set the training date as floating number from range [0.75, 1.5).
+  const float LO = 0.75; // Lower bound of training data.
+  const float HI = 1.5;  // Upper bound of training data.
+  for (size_t i = 0; i < numInputs; i++) {
+    // Generate a floating number in the range of [LO,HI).
+    float a = PRNG.nextRandReal(LO, HI);
+    TS.at({i, 0}) = a;
+    TL.at({i, 0}) = std::log(a);
+  }
+
+  Function *TF = glow::differentiate(F, EE_.getConfig());
+  EE_.compile(CompilationMode::Train, TF);
+
+  // Train the network:
+  EE_.runBatch(1000, {A, Ex}, {&trainingSet, &trainingLabels});
+
+  EE_.compile(CompilationMode::Infer, F);
+
+  // Set the testing data.
+
+  Tensor testSet(ElemKind::FloatTy, {batchSize, 1});
+
+  auto TES = testSet.getHandle<>();
+
+  for (size_t i = 0; i < batchSize; i++) {
+    // Generate a floating number in the range of [LO,HI).
+    float a = PRNG.nextRandReal(LO, HI);
+    TES.at({i, 0}) = a;
+  }
+
+  EE_.run({A}, {&testSet});
+  auto resH = result->getVariable()->getPayload().getHandle<>();
+
+  // Test the output:
+  for (size_t i = 0; i < batchSize; i++) {
+    float a = TES.at({i, 0});
+    EXPECT_NEAR(resH.at({i, 0}), (std::log(a)), 0.02);
+  }
+}
+
 unsigned numSamples = 230;
 
 /// Generate data in two classes. The circle of dots that's close to the axis is
@@ -1100,7 +1172,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
   EE_.compile(CompilationMode::Train, trainingGradientFunction);
   // Training:
   EE_.runBatch(200, {varMatricesA, varMatricesB, varExpected},
-              {&matricesA, &matricesB, &expected});
+               {&matricesA, &matricesB, &expected});
 
   // Switch to inference mode.
   EE_.compile(CompilationMode::Infer, F);
