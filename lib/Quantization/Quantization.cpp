@@ -198,8 +198,8 @@ std::vector<NodeQuantizationInfo>
 generateNodeQuantizationInfos(const Function *F) {
   std::vector<NodeQuantizationInfo> quantizationInfos;
 
-  for (auto *node : F->getNodes()) {
-    auto *QPN = llvm::dyn_cast<QuantizationProfileNode>(node);
+  for (auto &node : F->getNodes()) {
+    auto *QPN = llvm::dyn_cast<QuantizationProfileNode>(&node);
 
     if (QPN) {
       auto CI = QPN->getComputationInfoVar()->getHandle<float>();
@@ -585,7 +585,7 @@ quantizeFunction(const ExecutionEngine &EE,
   auto stopIt = G->getNodes().begin();
   do {
     --nodeIt;
-    Node *node = *nodeIt;
+    Node *node = &*nodeIt;
 
     // Make sure that all inputs are floats and int8 operation is suppored by
     // the backend. Not all backends support particular quantized operation and

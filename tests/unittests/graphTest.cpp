@@ -100,8 +100,8 @@ TEST(Graph, QuantizationProfileNodes) {
   ::optimize(F, CompilationMode::Infer);
 
   size_t numberOfProfileNodes =
-      std::count_if(F->getNodes().begin(), F->getNodes().end(), [](Node *node) {
-        return llvm::isa<QuantizationProfileNode>(node);
+      std::count_if(F->getNodes().begin(), F->getNodes().end(), [](Node &node) {
+        return llvm::isa<QuantizationProfileNode>(&node);
       });
 
   EXPECT_EQ(10, numberOfProfileNodes);
@@ -313,8 +313,8 @@ unsigned getConvNodeSize(BackendKind kind) {
   lower(F, CompilationMode::Infer, *backend);
 
   unsigned count = 0;
-  for (auto *n : F->getNodes()) {
-    if (n->getKind() == Kinded::Kind::ConvolutionNodeKind) {
+  for (auto &n : F->getNodes()) {
+    if (n.getKind() == Kinded::Kind::ConvolutionNodeKind) {
       count++;
     }
   }

@@ -57,20 +57,20 @@ public:
 
 /// A helper class for ordering Graph nodes in a post-order order.
 class GraphPostOrderVisitor : public PostOrderVisitor {
-  const Function &G;
+  Function &G;
   void visit() {
     for (const auto *V : G.getParent()->getVars()) {
       V->visit(nullptr, this);
     }
     // Start visiting all root nodes, i.e. nodes that do not have any users.
-    for (auto *N : G.getNodes()) {
-      if (N->getNumUsers() == 0)
-        N->visit(nullptr, this);
+    for (auto &N : G.getNodes()) {
+      if (N.getNumUsers() == 0)
+        N.visit(nullptr, this);
     }
   }
 
 public:
-  explicit GraphPostOrderVisitor(const Function &G) : G(G) {}
+  explicit GraphPostOrderVisitor(Function &G) : G(G) {}
   /// \returns the order.
   llvm::ArrayRef<Node *> getPostOrder() {
     if (postOrder_.empty())

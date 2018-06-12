@@ -119,7 +119,7 @@ TEST(GraphAutoGrad, cloneAndDiff) {
 
   Node *C =
       M.createVariable(ElemKind::FloatTy, {1}, "C", VisibilityKind::Private);
-  Node *AplusB_G = G->getNodes().back();
+  Node *AplusB_G = &G->getNodes().back();
   G->createAdd("totalSum", AplusB_G, C);
 
   EXPECT_EQ(M.getVars().size(), 3);

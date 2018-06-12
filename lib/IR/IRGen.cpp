@@ -399,7 +399,7 @@ public:
 void IRFunction::generateIR() {
   G_->verify();
   // Schedule the nodes.
-  NodesList ScheduledNodes;
+  NodesPtrList ScheduledNodes;
   scheduleGraph(ScheduledNodes);
   IRGenVisitor irgen(this);
 

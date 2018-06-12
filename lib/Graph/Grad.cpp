@@ -78,7 +78,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
 
   PostOrderVisitor pov;
   for (auto &N : G->getNodes()) {
-    N->visit(nullptr, &pov);
+    N.visit(nullptr, &pov);
   }
 
   auto nodes = pov.getPostOrder();

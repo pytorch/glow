@@ -65,7 +65,7 @@ static void DCE(Function *F) {
   do {
     changedLocally = false;
     for (auto it = nodes.begin(), e = nodes.end(); it != e;) {
-      if (!shouldDeleteNode(*it)) {
+      if (!shouldDeleteNode(&*it)) {
         ++it;
         continue;
       }
@@ -212,7 +212,8 @@ static bool sinkCode(Function *F) {
   auto &nodes = F->getNodes();
   bool changed = false;
   // For each node:
-  for (auto const &node : nodes) {
+  for (auto &N : nodes) {
+    auto *node = &N;
     // Sink Transpose below batch normalization nodes:
     if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
       auto *TR = dyn_cast<TransposeNode>(BN->getInput());
@@ -493,8 +494,8 @@ static void mergeMatMul(Function *F) {
   llvm::DenseMap<Node *, std::vector<MatMulNode *>> leftMatrixUsers;
 
   // Collect the list of nodes that are used by the matrix multiplier.
-  for (auto const &node : nodes) {
-    if (auto *MM = dyn_cast<MatMulNode>(node)) {
+  for (auto &node : nodes) {
+    if (auto *MM = dyn_cast<MatMulNode>(&node)) {
       // Do not try to merge quantized matrix multiplications because their
       // quantized parameters may not match. Until we implement the logic to
       // match the scale and offset just avoid the optimization.
@@ -670,8 +671,8 @@ static void mergeBatchedAdd(Function *F) {
   llvm::DenseMap<Node *, std::vector<BatchedAddNode *>> rightBAUsers;
 
   // Collect all of the batched add nodes and index them by the 'slice' operand.
-  for (auto const &node : nodes) {
-    if (auto *BA = dyn_cast<BatchedAddNode>(node)) {
+  for (auto &node : nodes) {
+    if (auto *BA = dyn_cast<BatchedAddNode>(&node)) {
       rightBAUsers[BA->getSlice().getNode()].push_back(BA);
     }
   }
@@ -731,14 +732,14 @@ static void optimizePool(Function *F) {
   auto &nodes = F->getNodes();
 
   // For each node:
-  for (auto const &node : nodes) {
+  for (auto &node : nodes) {
     // Swap the order of Relu->MaxPool, to perform the RELU operation on a
     // smaller tensor. This optimization is not a major performance win. The
     // RELU operation takes a small fraction of the time, and reordering the
     // nodes does not give us much. However, reordering the buffers allows us to
     // reuse the memory buffer of the pool operation and potentially save
     // memory.
-    if (auto *PL = dyn_cast<PoolMaxNode>(node)) {
+    if (auto *PL = dyn_cast<PoolMaxNode>(&node)) {
       auto *RL = dyn_cast<ReluNode>(PL->getInput());
 
       if (!RL) {
@@ -766,10 +767,10 @@ static void optimizeBatchNorm(Function *F) {
   auto &nodes = F->getNodes();
 
   // For each node:
-  for (auto const &node : nodes) {
+  for (auto &node : nodes) {
     // Merge the Batch Normalization operation into the convolution that comes
     // before it by updating the weights of the filter.
-    if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
+    if (auto *BN = dyn_cast<BatchNormalizationNode>(&node)) {
       auto *CV = dyn_cast<ConvolutionNode>(BN->getInput());
       if (!CV) {
         continue;
@@ -916,8 +917,8 @@ static void optimizeConcatNodes(Function *F) {
   auto &nodes = F->getNodes();
 
   // For each node:
-  for (auto const &node : nodes) {
-    if (auto *CN = dyn_cast<ConcatNode>(node)) {
+  for (auto &node : nodes) {
+    if (auto *CN = dyn_cast<ConcatNode>(&node)) {
       NodeValue newCN = simplifyConcatNode(F, CN);
       if (newCN.getNode()) {
         CN->getResult().replaceAllUsesOfWith(newCN);
@@ -933,9 +934,9 @@ static void optimizeArithmeticNodes(Function *F) {
   std::vector<Node *> worklist;
 
   // Add all of the interesting nodes to the worklist.
-  for (auto *node : F->getNodes()) {
-    if (node->isArithmetic()) {
-      worklist.push_back(node);
+  for (auto &node : F->getNodes()) {
+    if (node.isArithmetic()) {
+      worklist.push_back(&node);
     }
   }
 
@@ -957,8 +958,8 @@ static void optimizeArithmeticNodes(Function *F) {
 static void optimizeTranspose(Function *F) {
   auto &nodes = F->getNodes();
 
-  for (auto const &node : nodes) {
-    auto *TN = dyn_cast<TransposeNode>(node);
+  for (auto &node : nodes) {
+    auto *TN = dyn_cast<TransposeNode>(&node);
     if (!TN) {
       continue;
     }
@@ -1053,16 +1054,16 @@ static void CSE(Function *F) {
   // all variables are distinct from each other.
 
   // Perform CSE on all nodes.
-  for (auto const &N : F->getNodes()) {
-    N->visit(nullptr, &visitor);
+  for (auto &N : F->getNodes()) {
+    N.visit(nullptr, &visitor);
   }
 }
 
 /// Eliminate SliceNode when the input is SplatNode.
 /// Slice(Splat(args)) -> Splat(args')
 static void optimizeSliceOfSplat(Function *F) {
-  for (const auto &node : F->getNodes()) {
-    auto *sliceNode = dyn_cast<SliceNode>(node);
+  for (auto &node : F->getNodes()) {
+    auto *sliceNode = dyn_cast<SliceNode>(&node);
     if (!sliceNode)
       continue;
     auto *splatNode = dyn_cast<SplatNode>(sliceNode->getInput());
@@ -1076,8 +1077,8 @@ static void optimizeSliceOfSplat(Function *F) {
 
 /// Eliminate ReshapeNode when the input is already the correct shape.
 static void optimizeReshape(Function *F) {
-  for (const auto &node : F->getNodes()) {
-    auto *reshapeNode = dyn_cast<ReshapeNode>(node);
+  for (auto &node : F->getNodes()) {
+    auto *reshapeNode = dyn_cast<ReshapeNode>(&node);
     if (!reshapeNode)
       continue;
     auto inputNode = reshapeNode->getInput();
@@ -1095,12 +1096,12 @@ static void optimizeReshape(Function *F) {
 static void optimizeQuantizedMaxSplat(Function *F) {
   // The following optimizations need to be performed after all
   // quantize/dequantize/rescale optimizations are done.
-  for (auto node : F->getNodes()) {
+  for (auto &node : F->getNodes()) {
     // Potentially nop quantized Max can be eliminated.
     // Likely MaxNode has same types for LHS/RHS and Result, make sure
     // it's the case.
-    if (auto *MN = dyn_cast<MaxNode>(node)) {
-      if (!node->getType()->isQuantizedType() ||
+    if (auto *MN = dyn_cast<MaxNode>(&node)) {
+      if (!node.getType()->isQuantizedType() ||
           MN->getResult()->getType() != MN->getLHS()->getType() ||
           MN->getResult()->getType() != MN->getRHS()->getType()) {
         continue;
@@ -1138,10 +1139,10 @@ static void optimizeQuantization(Function *F) {
   std::vector<Node *> worklist;
 
   // Add all of the interesting nodes to the worklist.
-  for (auto *node : F->getNodes()) {
+  for (auto &node : F->getNodes()) {
     if (isa<QuantizeNode>(node) || isa<DequantizeNode>(node) ||
         isa<RescaleQuantizedNode>(node)) {
-      worklist.push_back(node);
+      worklist.push_back(&node);
     }
   }
 
@@ -1295,10 +1296,10 @@ static void optimizeQuantization(Function *F) {
 /// Sink Rescale nodes down when possible.
 static bool sinkRescaleQuantizedNode(Function *F) {
   bool changed = false;
-  for (auto const &node : F->getNodes()) {
+  for (auto &node : F->getNodes()) {
     // Sink Rescale below Reshape node.
     // Reshape(Rescale(X)) -> Rescale(Reshape(X)).
-    if (auto *reshape = dyn_cast<ReshapeNode>(node)) {
+    if (auto *reshape = dyn_cast<ReshapeNode>(&node)) {
       auto *rescale = dyn_cast<RescaleQuantizedNode>(reshape->getInput());
       if (!rescale) {
         continue;
@@ -1316,7 +1317,7 @@ static bool sinkRescaleQuantizedNode(Function *F) {
 
     // Sink Rescale below Slice node.
     // Slice(Rescale(X)) -> Rescale(Slice(X)).
-    if (auto *slice = dyn_cast<SliceNode>(node)) {
+    if (auto *slice = dyn_cast<SliceNode>(&node)) {
       auto *rescale = dyn_cast<RescaleQuantizedNode>(slice->getInput());
       if (!rescale) {
         continue;
@@ -1336,7 +1337,7 @@ static bool sinkRescaleQuantizedNode(Function *F) {
 
     // Sink Rescale below Transpose node.
     // Transpose(Rescale(X)) -> Rescale(Transpose(X)).
-    if (auto *transpose = dyn_cast<TransposeNode>(node)) {
+    if (auto *transpose = dyn_cast<TransposeNode>(&node)) {
       auto *rescale = dyn_cast<RescaleQuantizedNode>(transpose->getInput());
       if (!rescale) {
         continue;
@@ -1356,7 +1357,7 @@ static bool sinkRescaleQuantizedNode(Function *F) {
 
     // Combine Rescale down with FullyConnected node.
     // FullyConnected(Rescale(X)) -> FullyConnected(X).
-    if (auto *FC = dyn_cast<FullyConnectedNode>(node)) {
+    if (auto *FC = dyn_cast<FullyConnectedNode>(&node)) {
       auto *rescale = dyn_cast<RescaleQuantizedNode>(FC->getInput());
       if (!rescale) {
         continue;
@@ -1377,7 +1378,7 @@ static bool sinkRescaleQuantizedNode(Function *F) {
 //   ArithmeticNode(X, Rescale(Y)) -> ArithmeticNode(X, Y).
 // Apply this optimization for Add, Sub, Mul and Div.
 #define COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(NODE_NAME_)                    \
-  if (auto *AN = dyn_cast<NODE_NAME_##Node>(node)) {                           \
+  if (auto *AN = dyn_cast<NODE_NAME_##Node>(&node)) {                          \
     if (auto *rescale = dyn_cast<RescaleQuantizedNode>(AN->getLHS())) {        \
       auto *newAN =                                                            \
           F->create##NODE_NAME_(AN->getName(), AN->getResult().getType(),      \

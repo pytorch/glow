@@ -92,24 +92,24 @@ bool OCLBackend::transformPostLowering(Function *F, CompilationMode mode) {
   if (mode == CompilationMode::Train)
     return false;
   // Convert convolutions and pooling nodes into nodes using the NCHW format.
-  for (auto node : F->getNodes()) {
-    if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
+  for (auto &node : F->getNodes()) {
+    if (auto *CN = dyn_cast<ConvolutionNode>(&node)) {
       if (Node *NCN = optimizeOCLConv(CN, F)) {
-        NodeValue(node, 0).replaceAllUsesOfWith(NCN);
+        NodeValue(&node, 0).replaceAllUsesOfWith(NCN);
         changed = true;
         continue;
       }
     }
-    if (auto *PAN = dyn_cast<PoolAvgNode>(node)) {
+    if (auto *PAN = dyn_cast<PoolAvgNode>(&node)) {
       if (Node *NPAN = optimizeOCLPoolAvg(PAN, F)) {
-        NodeValue(node, 0).replaceAllUsesOfWith(NPAN);
+        NodeValue(&node, 0).replaceAllUsesOfWith(NPAN);
         changed = true;
         continue;
       }
     }
-    if (auto *PMN = dyn_cast<PoolMaxNode>(node)) {
+    if (auto *PMN = dyn_cast<PoolMaxNode>(&node)) {
       if (Node *NPMN = optimizeOCLPoolMax(PMN, F)) {
-        NodeValue(node, 0).replaceAllUsesOfWith(NPMN);
+        NodeValue(&node, 0).replaceAllUsesOfWith(NPMN);
         changed = true;
         continue;
       }

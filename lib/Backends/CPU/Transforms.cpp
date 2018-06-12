@@ -81,27 +81,27 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
 
 bool CPUBackend::transformPostLowering(Function *F, CompilationMode mode) {
   bool changed = false;
-  for (auto node : F->getNodes()) {
+  for (auto &node : F->getNodes()) {
 
-    if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
+    if (auto *CN = dyn_cast<ConvolutionNode>(&node)) {
       if (Node *NCN = optimizeCPUConv(CN, F)) {
-        NodeValue(node, 0).replaceAllUsesOfWith(NCN);
+        NodeValue(&node, 0).replaceAllUsesOfWith(NCN);
         changed = true;
         continue;
       }
     }
-    if (auto *MN = dyn_cast<MaxNode>(node)) {
+    if (auto *MN = dyn_cast<MaxNode>(&node)) {
       if (auto *splat = dyn_cast<SplatNode>(MN->getLHS())) {
         auto MSN = F->addNode(new CPUMaxSplatNode(MN->getName(), MN->getRHS(),
                                                   splat->getValue()));
-        NodeValue(node, 0).replaceAllUsesOfWith(MSN);
+        NodeValue(&node, 0).replaceAllUsesOfWith(MSN);
         changed = true;
         continue;
       }
       if (auto *splat = dyn_cast<SplatNode>(MN->getRHS())) {
         auto MSN = F->addNode(new CPUMaxSplatNode(MN->getName(), MN->getLHS(),
                                                   splat->getValue()));
-        NodeValue(node, 0).replaceAllUsesOfWith(MSN);
+        NodeValue(&node, 0).replaceAllUsesOfWith(MSN);
         changed = true;
         continue;
       }

@@ -372,15 +372,15 @@ void computeBatchNormalizationWeights(Function *F, BatchNormalizationNode &BN) {
   // Cannot use mean.replaceAllUsesOfWith(newMean) here, because newMean depends
   // on mean. Essentially, we need to replace x with f(x). It means that such
   // replacement would also find `f(x)` itself in the graph, and create a cycle.
-  for (auto N : F->getNodes())
+  for (auto &N : F->getNodes())
     if (llvm::isa<BatchNormalizationNode>(N) ||
         llvm::isa<BatchNormalizationGradNode>(N))
-      for (size_t i = 0; i < N->getNumInputs(); i++) {
-        if (N->getNthInput(i) == mean) {
-          N->getNthInput(i) = newMean;
+      for (size_t i = 0; i < N.getNumInputs(); i++) {
+        if (N.getNthInput(i) == mean) {
+          N.getNthInput(i) = newMean;
         }
-        if (N->getNthInput(i) == var) {
-          N->getNthInput(i) = newVar;
+        if (N.getNthInput(i) == var) {
+          N.getNthInput(i) = newVar;
         }
       }
 
@@ -528,7 +528,8 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
 void glow::lower(Function *F, CompilationMode mode, const Backend &B) {
   auto &nodes = F->getNodes();
 
-  for (auto const &node : nodes) {
+  for (auto &N : nodes) {
+    auto *node = &N;
     if (!B.shouldLower(node)) {
       continue;
     }
@@ -571,7 +572,7 @@ void glow::lower(Function *F, CompilationMode mode, const Backend &B) {
   }
 
   for (auto it = F->getNodes().begin(), e = F->getNodes().end(); it != e;) {
-    auto cur = *(it++);
+    auto cur = &*(it++);
     if (dyn_cast<SGDNode>(cur))
       F->eraseNode(cur);
   }

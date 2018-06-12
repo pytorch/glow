@@ -23,6 +23,8 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringSet.h"
+#include "llvm/ADT/ilist.h"
+#include "llvm/ADT/ilist_node.h"
 
 #include <list>
 #include <unordered_map>
@@ -30,9 +32,15 @@
 
 namespace glow {
 
+/// List of Types.
 using TypesList = std::list<Type>;
-using NodesList = std::list<Node *>;
+/// Intrusive list of Nodes.
+using NodesList = llvm::iplist<glow::Node>;
+/// List of pointers to Nodes. The nodes are not owned by the list.
+using NodesPtrList = std::list<glow::Node *>;
+/// List of Functions.
 using FunctionList = std::list<Function *>;
+/// List of Variables.
 using VariablesList = std::list<Variable *>;
 using UnsignedArrayRef = llvm::ArrayRef<size_t>;
 

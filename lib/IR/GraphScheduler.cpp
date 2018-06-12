@@ -41,17 +41,17 @@ using llvm::isa;
 class Scheduler {
 protected:
   /// Graph being processed.
-  const Function &G_;
+  Function &G_;
   /// Scheduled nodes.
-  NodesList &scheduled_;
+  NodesPtrList &scheduled_;
 
 public:
-  Scheduler(const Function &G, NodesList &scheduled)
+  Scheduler(Function &G, NodesPtrList &scheduled)
       : G_(G), scheduled_(scheduled) {}
   // Create a linear execution schedule for a graph.
   virtual void schedule() = 0;
 
-  NodesList &getSchedule() { return scheduled_; }
+  NodesPtrList &getSchedule() { return scheduled_; }
 };
 
 /// This is a scheduler based on the generalized the paper "Generalizations of
@@ -76,14 +76,14 @@ class ChildMemSizeBasedScheduler : public Scheduler {
   /// Computes the amount of memory required to keep the result
   /// of each node.
   void computeNodeResultsMemorySize() {
-    for (auto *N : G_.getNodes()) {
+    for (auto &N : G_.getNodes()) {
       size_t resultSize = 0;
-      for (size_t idx = 0, e = N->getNumResults(); idx < e; ++idx) {
-        resultSize += N->getType(idx)->getSizeInBytes();
+      for (size_t idx = 0, e = N.getNumResults(); idx < e; ++idx) {
+        resultSize += N.getType(idx)->getSizeInBytes();
       }
-      resultMemSize_[N] = resultSize;
-      DEBUG(llvm::outs() << "ResultSize of " << N->getName() << ":"
-                         << resultSize << "\n");
+      resultMemSize_[&N] = resultSize;
+      DEBUG(llvm::outs() << "ResultSize of " << N.getName() << ":" << resultSize
+                         << "\n");
     }
   }
 
@@ -171,14 +171,14 @@ class ChildMemSizeBasedScheduler : public Scheduler {
 
   void scheduleNodes() {
     /// Try to schedule all root nodes.
-    for (auto *N : G_.getNodes()) {
-      if (N->getNumUsers() == 0)
-        orderChildNodesAndSchedule(N);
+    for (auto &N : G_.getNodes()) {
+      if (N.getNumUsers() == 0)
+        orderChildNodesAndSchedule(&N);
     }
   }
 
 public:
-  ChildMemSizeBasedScheduler(const Function &G, NodesList &Schedule)
+  ChildMemSizeBasedScheduler(Function &G, NodesPtrList &Schedule)
       : Scheduler(G, Schedule) {}
 
   void schedule() override {
@@ -188,7 +188,7 @@ public:
   }
 };
 
-void IRFunction::scheduleGraph(NodesList &Schedule) {
+void IRFunction::scheduleGraph(NodesPtrList &Schedule) {
   Schedule.clear();
   for (auto &N : G_->getParent()->getVars()) {
     Schedule.push_back(N);

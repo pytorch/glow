@@ -436,6 +436,19 @@ Node *Node::clone() const {
   }
 }
 
+void Node::destroyNode(Node *N) {
+  switch (N->getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind: {                                      \
+    delete static_cast<CLASS *>(N);                                            \
+    break;                                                                     \
+  }
+#include "AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+}
+
 static const char *getVariableTrainKindStr(Variable::TrainKind kind) {
   const char *names[] = {"none", "broadcast", "xavier", nullptr};
   return names[static_cast<int>(kind)];

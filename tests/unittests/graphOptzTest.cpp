@@ -373,6 +373,21 @@ TEST_F(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
   EXPECT_EQ(F_->getNodes().size(), 4);
 }
 
+/// A helper predicate to check if the provided node has the same address as a
+/// pre-defined address provided in constructor. This is useful if you need to
+/// check that a given node is still in the graph. In general, it is not safe to
+/// use the std::find(begin_it, end_it, value) and compare the nodes by value,
+/// because the node provided as the last parameter of std::find (i.e. the value
+/// reference) may have been removed by some optimizations and cannot be
+/// dereferenced anymore. But comparing the addresses of the nodes should be
+/// fine. Thus, one can use the following form instead:
+/// std::find_if(begin_it, end_it, IsSameNodeAddress(node_address))
+struct IsSameNodeAddress {
+  Node *nodeAddress_;
+  IsSameNodeAddress(Node *nodeAddress) : nodeAddress_(nodeAddress) {}
+  bool operator()(const Node &n) const { return &n == nodeAddress_; }
+};
+
 TEST_F(GraphOptz, mergeConcatNodes) {
   Node *A1 =
       mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
@@ -413,21 +428,21 @@ TEST_F(GraphOptz, mergeConcatNodes) {
 
   // CN1 should be merged into a new CN2 and later into a new CN4 and removed by
   // the optimizations.
-  EXPECT_TRUE(std::find(F_->getNodes().begin(), F_->getNodes().end(), CN1) ==
-              F_->getNodes().end());
+  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
+                           IsSameNodeAddress(CN1)) == F_->getNodes().end());
 
   // CN2 should be merged into a new CN4 and removed by the optimizations.
-  EXPECT_TRUE(std::find(F_->getNodes().begin(), F_->getNodes().end(), CN2) ==
-              F_->getNodes().end());
+  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
+                           IsSameNodeAddress(CN2)) == F_->getNodes().end());
 
   // CN3 should not be merged into CN4 and should not be removed,
   // because CN4 and CN3 have a different dimension parameter.
-  EXPECT_TRUE(std::find(F_->getNodes().begin(), F_->getNodes().end(), CN3) !=
-              F_->getNodes().end());
+  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
+                           IsSameNodeAddress(CN3)) != F_->getNodes().end());
 
   // The CN4 concat node should be replaced by a merged concat node.
-  EXPECT_TRUE(std::find(F_->getNodes().begin(), F_->getNodes().end(), CN4) ==
-              F_->getNodes().end());
+  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
+                           IsSameNodeAddress(CN4)) == F_->getNodes().end());
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
@@ -459,12 +474,12 @@ TEST_F(GraphOptz, CSE) {
   EXPECT_EQ(CN->getInputs().size(), 2);
 
   // CN1 should not be removed.
-  EXPECT_TRUE(std::find(F_->getNodes().begin(), F_->getNodes().end(), CN1) !=
-              F_->getNodes().end());
+  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
+                           IsSameNodeAddress(CN1)) != F_->getNodes().end());
 
   // CSE should replace CN2 by CN1 and remove CN2.
-  EXPECT_TRUE(std::find(F_->getNodes().begin(), F_->getNodes().end(), CN2) ==
-              F_->getNodes().end());
+  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
+                           IsSameNodeAddress(CN2)) == F_->getNodes().end());
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
@@ -524,6 +539,26 @@ TEST_F(GraphOptz, ZeroArithmetic) {
   EXPECT_EQ(O->getInput().getNode(), input);
 }
 
+/// Reverse the intrusive list of nodes. This custom implementation is required,
+/// because std::reverse cannot be used with LLVM's intrusive lists.
+static void reverse(NodesList &L) {
+  if (L.empty())
+    return;
+  // Last element of the list before reversal.
+  auto &last = L.back();
+  // Take element from the beginning and move it right after the old last
+  // element. Do it until the old last element becomes the first element.
+  while (true) {
+    auto &first = L.front();
+    // Finish when the old last element becomes the new front element.
+    if (&first == &last) {
+      break;
+    }
+    L.remove(first);
+    L.insert(++last.getIterator(), &first);
+  }
+}
+
 TEST(GraphOptzTest, SliceOfSplatNodeChain) {
   for (int shouldReverse = 0; shouldReverse <= 1; shouldReverse++) {
     Module mod;
@@ -537,7 +572,7 @@ TEST(GraphOptzTest, SliceOfSplatNodeChain) {
 
     if (shouldReverse) {
       auto &nodes = F->getNodes();
-      reverse(nodes.begin(), nodes.end());
+      reverse(nodes);
     }
 
     EXPECT_EQ(F->getNodes().size(), 4);
@@ -706,8 +741,8 @@ TEST_F(GraphOptz, mergeRescaleWithArithmeticNode) {
 /// \returns the number of nodes in \p F of kind \p kind.
 static unsigned countNodeKind(Function *F, Kinded::Kind kind) {
   unsigned count = 0;
-  for (auto *n : F->getNodes()) {
-    if (n->getKind() == kind) {
+  for (auto &n : F->getNodes()) {
+    if (n.getKind() == kind) {
       count++;
     }
   }

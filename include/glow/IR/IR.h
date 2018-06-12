@@ -18,6 +18,7 @@
 
 #include "glow/Base/Traits.h"
 #include "glow/Base/Type.h"
+#include "glow/Graph/Graph.h"
 #include "glow/IR/UseDef.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -278,7 +279,7 @@ private:
 
   /// Perform scheduling on the graph.
   /// \returns computed schedule in the \p Schedule parameter.
-  void scheduleGraph(std::list<Node *> &Schedule);
+  void scheduleGraph(NodesPtrList &Schedule);
 
 public:
   /// Add an instruction to the instr stream.
