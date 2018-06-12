@@ -201,6 +201,78 @@ TEST_P(MLTest, learnXor) {
   }
 }
 
+/// Learn the logarithmic function.
+TEST_P(MLTest, learnLog) {
+  unsigned numInputs = 50;
+  unsigned batchSize = 5;
+  EE_.getConfig().learningRate = 0.07;
+  EE_.getConfig().batchSize = batchSize;
+
+  auto &mod = EE_.getModule();
+  Function *F = mod.createFunction("learnLog");
+
+  auto *A =
+      mod.createVariable(ElemKind::FloatTy, {batchSize, 1}, "A",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *Ex =
+      mod.createVariable(ElemKind::FloatTy, {batchSize, 1}, "Ex",
+                         VisibilityKind::Public, Variable::TrainKind::None);
+
+  Node *O = F->createFullyConnected("fc1", A, 4);
+  O = F->createTanh("tanh1", O);
+  O = F->createFullyConnected("fc2", O, 1);
+  O = F->createRegression("reg", O, Ex);
+  auto *result = F->createSave("ret", O);
+
+  // Set the training data.
+  Tensor trainingSet(ElemKind::FloatTy, {numInputs, 1});
+  Tensor trainingLabels(ElemKind::FloatTy, {numInputs, 1});
+
+  auto TS = trainingSet.getHandle<>();
+  auto TL = trainingLabels.getHandle<>();
+
+  // Set the training data as floating number from range [0.75, 1.5).
+  const float LO = 0.75; // Lower bound of training data.
+  const float HI = 1.5;  // Upper bound of training data.
+  for (size_t i = 0; i < numInputs; i++) {
+    // Generate a floating number in the range of [LO,HI).
+    float a = LO + i * (HI - LO) / numInputs;
+    TS.at({i, 0}) = a;
+    TL.at({i, 0}) = std::log(a);
+  }
+
+  Function *TF = glow::differentiate(F, EE_.getConfig());
+  EE_.compile(CompilationMode::Train, TF);
+
+  // Train the network:
+  EE_.runBatch(1000, {A, Ex}, {&trainingSet, &trainingLabels});
+
+  EE_.compile(CompilationMode::Infer, F);
+
+  // Set the testing data.
+  Tensor testSet(ElemKind::FloatTy, {batchSize, 1});
+
+  auto TES = testSet.getHandle<>();
+
+  const float LO_T = 0.85; // Lower bound of testing data.
+  const float HI_T = 1.45; // Upper bound of testing data.
+
+  for (size_t i = 0; i < batchSize; i++) {
+    // Generate a floating number in the range of [LO_T,HI_T).
+    float a = mod.getPRNG().nextRandReal(LO_T, HI_T);
+    TES.at({i, 0}) = a;
+  }
+
+  EE_.run({A}, {&testSet});
+  auto resH = result->getVariable()->getPayload().getHandle<>();
+
+  // Test the output:
+  for (size_t i = 0; i < batchSize; i++) {
+    float a = TES.at({i, 0});
+    EXPECT_NEAR(resH.at({i, 0}), (std::log(a)), 0.02);
+  }
+}
+
 unsigned numSamples = 230;
 
 /// Generate data in two classes. The circle of dots that's close to the axis is
