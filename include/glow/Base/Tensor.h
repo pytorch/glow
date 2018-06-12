@@ -452,7 +452,7 @@ public:
       pi *= sizes_[i];
     }
 
-    assert(numDims_ < max_tensor_dimensions);
+    assert(numDims_ <= max_tensor_dimensions && "Too many dimensions.");
   }
 
   llvm::ArrayRef<size_t> dims() const {
