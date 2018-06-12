@@ -746,8 +746,8 @@ Node *Function::createChannelShuffle(llvm::StringRef name, NodeValue input,
   return createReshape(name.str() + ".reshape2", T, inDims);
 }
 
-Node *Function::createSqueeze(llvm::StringRef name, NodeValue input,
-                              llvm::ArrayRef<size_t> axes) {
+ReshapeNode *Function::createSqueeze(llvm::StringRef name, NodeValue input,
+                                     llvm::ArrayRef<size_t> axes) {
   assert(!axes.empty() && "Parameter `axes` must be provided.");
 
   ShapeVector shapeAxes(axes.begin(), axes.end());
@@ -774,6 +774,44 @@ Node *Function::createSqueeze(llvm::StringRef name, NodeValue input,
     }
   }
   return createReshape(name.str() + ".reshape", input, newDims);
+}
+
+ReshapeNode *Function::createExpandDims(llvm::StringRef name, NodeValue input,
+                                        llvm::ArrayRef<size_t> axes) {
+  assert(!axes.empty() && "Parameter `axes` must be provided.");
+
+  // Dimensions provided in axes are for the output tensor, so we sort them and
+  // unique them to make sure they are processed correctly and in the right
+  // order.
+  ShapeVector shapeAxes(axes.begin(), axes.end());
+  std::sort(shapeAxes.begin(), shapeAxes.end());
+  shapeAxes.erase(std::unique(shapeAxes.begin(), shapeAxes.end()),
+                  shapeAxes.end());
+
+  const auto inDims = input.dims();
+
+  // The total number of dimensions in the new shape is equal to the original
+  // shape size plus the uniqued new shape axes, which represents where to
+  // insert dimensions of 1 into the ouput tensor's shape.
+  const size_t totalNumNewDims = shapeAxes.size() + inDims.size();
+  assert(totalNumNewDims <= max_tensor_dimensions &&
+         "New expanded shape has too many dimensions.");
+  assert(shapeAxes.back() < totalNumNewDims &&
+         "Specified axis expands outside size of output tensor shape.");
+  ShapeVector newDims;
+  for (size_t i = 0, j = 0, k = 0; k < totalNumNewDims; k++) {
+    if (j < shapeAxes.size() && shapeAxes[j] == k) {
+      newDims.push_back(1);
+      j++;
+    } else {
+      assert(i < inDims.size() && "Somehow overflowing inDims.");
+      newDims.push_back(inDims[i]);
+      i++;
+    }
+  }
+
+  // Create a reshape of the original data with the newly determined dimensions.
+  return createReshape(name.str() + ".expanddims", input, newDims);
 }
 
 void Function::createSplit(llvm::StringRef name, NodeValue input,

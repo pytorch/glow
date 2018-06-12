@@ -1675,6 +1675,33 @@ TEST_P(Operator, Squeeze) {
   }
 }
 
+/// Check that the expand dims operator works, which is implemented with a
+/// reshape.
+TEST_P(Operator, ExpandDims) {
+  auto *inputs = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "inputs");
+  auto IH = inputs->getHandle();
+  IH = {1, 2, 3, 4};
+
+  // This should be uniqued and sorted, so should become {0, 1, 3, 5}.
+  std::vector<size_t> axes = {3, 0, 5, 1, 3};
+  Node *EDN = F_->createExpandDims("expand", inputs, axes);
+  SaveNode *S = F_->createSave("save", EDN);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  // Expected dims based on the axes above; inserted new dimensions of 1 in
+  // every unique axes location, based on the output tensor shape.
+  std::vector<size_t> expectedDims = {1, 1, 2, 1, 2, 1};
+  auto results = S->getVariable()->getHandle();
+  EXPECT_TRUE(results.dims().vec() == expectedDims);
+
+  // The data should be the same, as this was just a reshape.
+  for (size_t i = 0; i < 4; i++) {
+    EXPECT_FLOAT_EQ(results.raw(i), IH.raw(i));
+  }
+}
+
 TEST_P(InterpAndCPU, Split) {
   auto *inputs = mod_.createVariable(ElemKind::FloatTy, {1, 2, 6}, "inputs");
   inputs->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
