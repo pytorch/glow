@@ -70,10 +70,10 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   QuantizationProfileNode *profile{nullptr};
   // Find QPN for node A.
-  for (auto node : F->getNodes()) {
+  for (auto &node : F->getNodes()) {
     if (QuantizationProfileNode *QPN =
-            llvm::dyn_cast<QuantizationProfileNode>(node)) {
-      Node *observedNode = node->getNthInput(0).getNode();
+            llvm::dyn_cast<QuantizationProfileNode>(&node)) {
+      Node *observedNode = node.getNthInput(0).getNode();
       if (observedNode == A) {
         profile = QPN;
         break;

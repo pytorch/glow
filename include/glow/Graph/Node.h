@@ -17,6 +17,8 @@
 #define GLOW_GRAPH_NODE_H
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/ilist.h"
+#include "llvm/ADT/ilist_node.h"
 #include "llvm/Support/Casting.h"
 
 #include "glow/Base/Traits.h"
@@ -139,7 +141,10 @@ struct NodeUse {
 /// Represents a node in the compute graph.
 class Node : public Named,
              public Kinded,
-             public UseDef<Node, NodeValue, NodeUse> {
+             public UseDef<Node, NodeValue, NodeUse>,
+             public llvm::ilist_node<Node> {
+  friend llvm::ilist_traits<Node>;
+
 protected:
   /// This is the maximum number of results that a node may have.
   static constexpr unsigned maxNodeResno_ = 6;
@@ -151,6 +156,11 @@ protected:
   /// A nullable reference to some tensor value that may predicate the execution
   /// of the current node.
   NodeValue predicate_{nullptr};
+
+  /// Destroys a node and deallocates the memory. This method is typically
+  /// implicitly invoked when a node is being removed from the intrusive list of
+  /// nodes.
+  static void destroyNode(Node *N);
 
 public:
   Node(Kinded::Kind k, llvm::StringRef name) : Named(name), Kinded(k) {}
@@ -191,6 +201,9 @@ public:
 
   /// \returns true if the node is equal to the other node.
   bool isEqual(const Node &other) const;
+
+  /// \returns true if the node is equal to the other node.
+  bool operator==(const Node &O) const { return isEqual(O); }
 
   /// \returns a hash code of the node.
   llvm::hash_code getHash() const;
@@ -268,6 +281,30 @@ template <> struct simplify_type<const glow::NodeValue> {
     return val.getNode();
   }
 };
+
+//===----------------------------------------------------------------------===//
+// ilist_traits for glow::Node
+//===----------------------------------------------------------------------===//
+
+template <>
+struct ilist_traits<glow::Node> : public ilist_default_traits<glow::Node> {
+  using Node = glow::Node;
+
+private:
+  using node_iterator = simple_ilist<Node>::iterator;
+
+public:
+  static void deleteNode(Node *N) { glow::Node::destroyNode(N); }
+
+  void addNodeToList(Node *N) {}
+  void removeNodeFromList(Node *N) {}
+  void transferNodesFromList(ilist_traits<Node> &L2, node_iterator first,
+                             node_iterator last) {}
+
+private:
+  void createNode(const Node &);
+};
+
 } // namespace llvm
 
 // custom specialization of std::hash for NodeValue.

@@ -38,12 +38,12 @@ Function *glow::profileQuantization(Function *F, llvm::StringRef newFuncName) {
   std::unordered_set<NodeValue> nodesToInstrument;
 
   // Add Quantization Profile node to all of the floating point outputs.
-  for (const auto &node : G->getNodes()) {
-    for (unsigned i = 0, e = node->getNumResults(); i < e; ++i) {
-      if (node->getNthResult(i).getElementType() != ElemKind::FloatTy) {
+  for (auto &node : G->getNodes()) {
+    for (unsigned i = 0, e = node.getNumResults(); i < e; ++i) {
+      if (node.getNthResult(i).getElementType() != ElemKind::FloatTy) {
         continue;
       }
-      nodesToInstrument.insert(node->getNthResult(i));
+      nodesToInstrument.insert(node.getNthResult(i));
     }
   }
 

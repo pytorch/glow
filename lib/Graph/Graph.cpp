@@ -163,7 +163,7 @@ protected:
     vertices_.push_back(os.str());
   }
 
-  void dumpEdgeStyle(Node *N, size_t i, Node *to, std::ostream &os) {
+  void dumpEdgeStyle(const Node *N, size_t i, Node *to, std::ostream &os) {
     if (N->isOverwrittenNthInput(i)) {
       os << " [dir=\"both\"]";
     }
@@ -212,10 +212,10 @@ class ModuleDottyPrinter : public AbstractDottyPrinter {
        << "];\n";
     vertices_.push_back(os.str());
 
-    for (Node *N : F->getNodes()) {
-      for (size_t i = 0; i < N->getNumInputs(); i++) {
-        Node *to = N->getNthInput(i).getNode();
-        size_t resNo = N->getNthInput(i).getResNo();
+    for (auto &N : F->getNodes()) {
+      for (size_t i = 0; i < N.getNumInputs(); i++) {
+        Node *to = N.getNthInput(i).getNode();
+        size_t resNo = N.getNthInput(i).getResNo();
 
         if (!isa<Variable>(to))
           continue;
@@ -223,7 +223,7 @@ class ModuleDottyPrinter : public AbstractDottyPrinter {
         std::ostringstream edge;
         edge << uniqueVertexName(to) << ":" << to->getOutputName(resNo).str()
              << " -> " << uniqueVertexName(F);
-        dumpEdgeStyle(N, i, to, edge);
+        dumpEdgeStyle(&N, i, to, edge);
         edges_.insert(edge.str());
       }
     }
@@ -267,7 +267,7 @@ Function::~Function() {
   // Delete all of the nodes and the variables.
   for (auto it = nodes_.begin(), e = nodes_.end(); it != e;) {
     auto cur = it++;
-    eraseNode(*cur);
+    eraseNode(&*cur);
   }
 }
 
@@ -1524,8 +1524,8 @@ void Function::createLSTM(llvm::StringRef namePrefix,
 
 void Function::dump() const {
   llvm::outs() << "Graph structure " << getName() << ":\n";
-  for (auto n : nodes_) {
-    llvm::outs() << n->getDebugDesc() << "\n";
+  for (auto &n : nodes_) {
+    llvm::outs() << n.getDebugDesc() << "\n";
   }
 }
 
@@ -1571,8 +1571,8 @@ class FunctionDottyPrinter : public AbstractDottyPrinter {
 
 public:
   void visitGraph(Function *F) {
-    for (auto N : F->getNodes()) {
-      visitNode(N);
+    for (auto &N : F->getNodes()) {
+      visitNode(&N);
     }
 
     for (auto N : visitedNodes_) {
@@ -1603,9 +1603,9 @@ void Function::dumpDAG(const char *dotFilename) {
 }
 
 Node *Function::getNodeByName(llvm::StringRef name) {
-  for (auto *N : getNodes()) {
-    if (N->getName().equals(name)) {
-      return N;
+  for (auto &N : getNodes()) {
+    if (N.getName().equals(name)) {
+      return &N;
     }
   }
   return nullptr;
@@ -1619,18 +1619,6 @@ void Module::eraseVariable(VariablesList::iterator I) {
 }
 
 void Function::eraseNode(NodesList::iterator I) {
-  Node *N = *I;
-  switch (N->getKind()) {
-#define DEF_NODE(CLASS, NAME)                                                  \
-  case glow::Kinded::Kind::CLASS##Kind: {                                      \
-    delete static_cast<CLASS *>(N);                                            \
-    break;                                                                     \
-  }
-#include "AutoGenNodes.def"
-  default:
-    llvm_unreachable("Unhandled node");
-  }
-
   nodes_.erase(I);
 }
 
@@ -1652,7 +1640,7 @@ void Function::eraseNode(Node *N) {
   if (Variable *V = dyn_cast<Variable>(N)) {
     return getParent()->eraseVariable(V);
   }
-  auto I = std::find(nodes_.begin(), nodes_.end(), N);
+  auto I = std::find(nodes_.begin(), nodes_.end(), *N);
   assert(I != nodes_.end() && "Could not find node to delete!");
   eraseNode(I);
 }
@@ -1666,20 +1654,20 @@ Function *Function::clone(llvm::StringRef newName,
   llvm::DenseMap<Node *, Node *> currToNew;
 
   // Clone all of the nodes in the function.
-  for (auto *N : getNodes()) {
-    Node *copy = N->clone();
+  for (auto &N : getNodes()) {
+    Node *copy = N.clone();
     // Record the copy relationship between the graphs.
-    currToNew[N] = copy;
+    currToNew[&N] = copy;
     newF->addNode(copy);
   }
 
   // At this point we have a new invalid function that points into nodes in the
   // original function. Here we update the links between the nodes in the new
   // function.
-  for (auto *N : newF->getNodes()) {
+  for (auto &N : newF->getNodes()) {
     // Fix each one of the inputs of this node.
-    for (unsigned inp = 0, e = N->getNumInputs(); inp < e; inp++) {
-      NodeValue &input = N->getNthInput(inp);
+    for (unsigned inp = 0, e = N.getNumInputs(); inp < e; inp++) {
+      NodeValue &input = N.getNthInput(inp);
 
       auto it = currToNew.find(input.getNode());
       if (it == currToNew.end()) {
@@ -1706,7 +1694,7 @@ Function *Function::clone(llvm::StringRef newName,
 }
 
 void Function::verify() const {
-  std::unordered_map<std::string, Node *> NameToNode;
+  std::unordered_map<std::string, const Node *> NameToNode;
 
   for (auto *V : getParent()->getVars()) {
     if (NameToNode.insert({V->getName(), V}).second)
@@ -1723,15 +1711,15 @@ void Function::verify() const {
 
   NameToNode.clear();
 
-  for (auto *N : nodes_) {
-    if (NameToNode.insert({N->getName(), N}).second)
+  for (auto &N : nodes_) {
+    if (NameToNode.insert({N.getName(), &N}).second)
       continue;
     /// Output extra information helping to find the error.
-    llvm::outs() << "The node with name '" << N->getName()
+    llvm::outs() << "The node with name '" << N.getName()
                  << "' conflicts with a previous definition:\n";
-    llvm::errs() << "Current definition: " << N->getDebugDesc() << "\n";
+    llvm::errs() << "Current definition: " << N.getDebugDesc() << "\n";
     llvm::errs() << "Previous definition: "
-                 << NameToNode[N->getName()]->getDebugDesc() << "\n";
+                 << NameToNode[N.getName()]->getDebugDesc() << "\n";
     dump();
     llvm_unreachable("Multiple nodes with the same name");
   }
@@ -1739,18 +1727,17 @@ void Function::verify() const {
   auto vars = getParent()->getVars();
 
   // Any node referenced by one of the graph nodes should be part of the Graph.
-  for (auto *N : nodes_) {
-    for (size_t idx = 0, e = N->getNumInputs(); idx < e; ++idx) {
-      assert((std::find(nodes_.begin(), nodes_.end(), N->getNthInput(idx)) !=
-                  nodes_.end() ||
-              std::find(vars.begin(), vars.end(), N->getNthInput(idx)) !=
-                  vars.end()) &&
+  for (const auto &N : nodes_) {
+    for (size_t idx = 0, e = N.getNumInputs(); idx < e; ++idx) {
+      auto &input = N.getNthInput(idx);
+      assert((std::find(nodes_.begin(), nodes_.end(), *input) != nodes_.end() ||
+              std::find(vars.begin(), vars.end(), input) != vars.end()) &&
              "Every node referenced by one of the graph"
              " nodes should be part of the graph");
     }
   }
 
-  for (const auto *N : nodes_) {
-    N->verify();
+  for (const auto &N : nodes_) {
+    N.verify();
   }
 }
