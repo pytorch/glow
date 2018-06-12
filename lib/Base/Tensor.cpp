@@ -335,3 +335,11 @@ void glow::genericTranspose(Tensor *src, Tensor *dest,
   }
   }
 }
+
+ShapeVector glow::expandDimsToMax(llvm::ArrayRef<size_t> currDims) {
+  ShapeVector newDims(currDims.begin(), currDims.end());
+  for (size_t i = newDims.size(); i < max_tensor_dimensions; i++) {
+    newDims.push_back(1);
+  }
+  return newDims;
+}

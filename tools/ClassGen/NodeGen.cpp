@@ -255,6 +255,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("BatchedReduceAdd")
       .addInput("Batch")
+      .addMember(MemberType::SizeT, "Axis")
       .addResultFromCtorArg()
       .setDocstring("Accumulates all of the layers in the batch and produce a "
                     "tensor that has the same dimensions as the input tensor "

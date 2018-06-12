@@ -739,6 +739,8 @@ void OCLBackend::doForwardPass() {
     }
 
     if (auto *BRA = dyn_cast<BatchedReduceAddInst>(&I)) {
+      assert(BRA->getAxis() == 0 && "No current support for non-zero axis.");
+
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
 

@@ -185,11 +185,13 @@ int main(int argc, char **argv) {
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "LHS", "RHS"});
 
-  /// Accumulates all of the layers in the batch and produce a tensor that has
-  /// the same dimensions as the input tensor without the first dimension.
+  /// Accumulates all of the layers in the batch along the Axis dimension and
+  /// produce a tensor that has the same dimensions as the input tensor without
+  /// the Axis dimension.
   BB.newInstr("BatchedReduceAdd")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Batch", OperandKind::In)
+      .addMember(MemberType::SizeT, "Axis")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
       .autoIRGen();
 

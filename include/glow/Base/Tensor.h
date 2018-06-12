@@ -39,6 +39,12 @@ class Tensor;
 void genericTranspose(Tensor *src, Tensor *dest,
                       llvm::ArrayRef<unsigned> shuffle);
 
+/// Helper function that \returns a ShapeVector of those dimensions in \p
+/// currDims expanded with dimension = 1 until the maximum tensor dimension is
+/// reached. The number of elements in the input dims is the same as in the
+/// returned dims. For example, input {2,1,4} would result in {2,1,4,1,1,1}.
+ShapeVector expandDimsToMax(llvm::ArrayRef<size_t> currDims);
+
 /// A class that represents a contiguous n-dimensional array (a tensor).
 class Tensor final {
   /// A pointer to the tensor data.

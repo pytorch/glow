@@ -62,7 +62,8 @@ void inferBatchedReduceAddNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var = VarFrom(inputs);
-  auto *batchedreduce = F->createBatchedReduceAdd("batchedreduce", var);
+  auto *batchedreduce =
+      F->createBatchedReduceAdd("batchedreduce", var, /* axis */ 0);
   auto result = F->createSave("ret", batchedreduce);
   EE.compile(CompilationMode::Infer, F);
   EE.run({var}, {inputs});

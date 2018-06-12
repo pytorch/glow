@@ -131,7 +131,7 @@ void lowerFullyConnectedGradNode(Function *F, FullyConnectedGradNode &FCG) {
   FCG.getGradOfInputNamedWeights().replaceAllUsesOfWith(dw);
 
   // db = reduce(dout).
-  auto *db = F->createBatchedReduceAdd("fc.bias.reduce", dout);
+  auto *db = F->createBatchedReduceAdd("fc.bias.reduce", dout, /* axis */ 0);
   FCG.getGradOfInputNamedBias().replaceAllUsesOfWith(db);
 }
 
@@ -335,7 +335,7 @@ void computeBatchNormalizationWeights(Function *F, BatchNormalizationNode &BN) {
 
   // sum(in[i])
   // reduce the tensor by the first dimension, to get {numChannels}
-  Node *localMean = F->createBatchedReduceAdd("in.sum", inFlat);
+  Node *localMean = F->createBatchedReduceAdd("in.sum", inFlat, /* axis */ 0);
   // Mean = sum(in[i]) / N
   auto samplesPerChannelSplat = F->createSplat(
       "samplesPerChannelSplat", localMean->getType(), samplesPerChannel);
@@ -349,7 +349,7 @@ void computeBatchNormalizationWeights(Function *F, BatchNormalizationNode &BN) {
 
   Node *localVar = F->createSub("x_mu", inFlat, localMeanB);
   localVar = F->createPow("x_mu2", localVar, 2);
-  localVar = F->createBatchedReduceAdd("x_mu2.sum", localVar);
+  localVar = F->createBatchedReduceAdd("x_mu2.sum", localVar, /* axis */ 0);
   // Var = sum((x - mu) ^ 2) / N
   localVar = F->createDiv("localVar", localVar, samplesPerChannelSplat);
 
@@ -429,8 +429,9 @@ void lowerBatchNormalizationGradNode(Function *F,
                               {samplesPerChannel, numChannels});
   sumDy =
       F->createReshape("sumDy.flat", sumDy, {samplesPerChannel, numChannels});
-  sumDyhmu = F->createBatchedReduceAdd("sumDyhmu.reduced", sumDyhmu);
-  sumDy = F->createBatchedReduceAdd("sumDy.reduced", sumDy);
+  sumDyhmu =
+      F->createBatchedReduceAdd("sumDyhmu.reduced", sumDyhmu, /* axis */ 0);
+  sumDy = F->createBatchedReduceAdd("sumDy.reduced", sumDy, /* axis */ 0);
 
   // http://cthorey.github.io./backpropagation/
   //
