@@ -24,9 +24,22 @@ static llvm::cl::opt<glow::PseudoRNG::result_type>
                      llvm::cl::desc("Seed for pseudo-random numbers"),
                      llvm::cl::init(glow::PseudoRNG::Engine::default_seed));
 
+static llvm::cl::opt<bool> useRandomDevice(
+    "use-random-device",
+    llvm::cl::desc(
+        "Use a non-deterministic random number generator to seed the PRNG"),
+    llvm::cl::Optional, llvm::cl::init(false));
+
+static glow::PseudoRNG::result_type getRandomSeed() {
+  if (useRandomDevice) {
+    return std::random_device()();
+  }
+  return pseudoRandomSeed.getValue();
+}
+
 namespace glow {
 
-PseudoRNG::PseudoRNG() : engine_(pseudoRandomSeed.getValue()) {}
+PseudoRNG::PseudoRNG() : engine_(getRandomSeed()) {}
 
 // Constant uniform distribution used as a template in nextRand.
 // This computes the parameters once instead of on each call.
