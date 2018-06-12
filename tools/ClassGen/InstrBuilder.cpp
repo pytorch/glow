@@ -15,7 +15,6 @@
  */
 
 #include "InstrBuilder.h"
-#include "glow/Support/Compiler.h"
 
 unsigned InstrBuilder::getOperandIndexByName(llvm::StringRef name) const {
   for (unsigned i = 0; i < operands_.size(); i++) {

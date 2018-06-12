@@ -17,7 +17,6 @@
 #define GLOW_TOOLS_NODEGEN_NODEBUILDER_H
 
 #include "MemberType.h"
-#include "glow/Support/Support.h"
 
 #include "llvm/ADT/ArrayRef.h"
 
