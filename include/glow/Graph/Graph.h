@@ -276,10 +276,17 @@ public:
 
   /// Removes single-dimensional entries from the shape of a tensor. The
   /// parameter \p axes is a list of positive integers, indicating the
-  /// dimensions to squeeze.
+  /// dimensions to squeeze. Impelmented as a single ReshapeNode. This is the
+  /// opposite of ExpandDims.
   /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#squeeze
-  Node *createSqueeze(llvm::StringRef name, NodeValue input,
-                      llvm::ArrayRef<size_t> axes);
+  ReshapeNode *createSqueeze(llvm::StringRef name, NodeValue input,
+                             llvm::ArrayRef<size_t> axes);
+
+  /// Add single-dimensional entries to the shape of the \p input tensor at
+  /// locations in \p axes. \p axes is listed as seen in the output tensor.
+  /// Implemented as a single ReshapeNode. This is the opposite of Squeeze.
+  ReshapeNode *createExpandDims(llvm::StringRef name, NodeValue input,
+                                llvm::ArrayRef<size_t> axes);
 
   /// Create \p outputNum slice nodes of \p input. Slices happen along dimension
   /// number \p axis. Array \p split defines lengths of slices. If \p split is
