@@ -54,6 +54,15 @@ inline void AdduFloat8(float *p, float8 v) {
   StoreuFloat8(p, LoaduFloat8(p) + v);
 }
 
+/// \returns the index of the element at x,y,z,w,q,r.
+inline size_t libjit_getXYZWQR(const size_t *dims, size_t x, size_t y, size_t z,
+                               size_t w, size_t q, size_t r) {
+  return (x * dims[1] * dims[2] * dims[3] * dims[4] * dims[5]) +
+         (y * dims[2] * dims[3] * dims[4] * dims[5]) +
+         (z * dims[3] * dims[4] * dims[5]) + (w * dims[4] * dims[5]) +
+         (q * dims[5]) + r;
+}
+
 /// \returns the index of the element at x,y,z,w,q.
 inline size_t libjit_getXYZWQ(const size_t *dims, size_t x, size_t y, size_t z,
                               size_t w, size_t q) {

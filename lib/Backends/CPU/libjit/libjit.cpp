@@ -694,32 +694,69 @@ void libjit_batchedadd_i8(int8_t *dest, const int8_t *batch,
   }
 }
 
+/// The dimensions passed in here are pre-expanded in LLVMIRGen with 1s so that
+/// we can iterate over the shape here, regardless of the shape of the tensor.
 void libjit_batchedreduceadd_f(float *dest, const float *batch, size_t destSize,
-                               size_t numSlice, size_t sliceSize) {
-  for (size_t i = 0; i < destSize; i++) {
+                               const size_t *destDims, const size_t *batchDims,
+                               size_t axis) {
+  for (size_t i = 0; i < destSize; i++)
     dest[i] = 0.0;
-  }
-  for (size_t n = 0; n < numSlice; n++) {
-    size_t base = n * sliceSize;
-    for (size_t i = 0; i < sliceSize; i++) {
-      dest[i] += batch[base + i];
-    }
-  }
+
+  for (size_t x = 0; x < batchDims[0]; x++)
+    for (size_t y = 0; y < batchDims[1]; y++)
+      for (size_t z = 0; z < batchDims[2]; z++)
+        for (size_t w = 0; w < batchDims[3]; w++)
+          for (size_t q = 0; q < batchDims[4]; q++)
+            for (size_t r = 0; r < batchDims[5]; r++) {
+              size_t I[] = {x, y, z, w, q, r};
+              I[axis] = 0;
+              dest[libjit_getXYZWQR(destDims, I[0], I[1], I[2], I[3], I[4],
+                                    I[5])] +=
+                  batch[libjit_getXYZWQR(batchDims, x, y, z, w, q, r)];
+            }
 }
 
+/// Same as the non-quantized version, the dimensions here are pre-expanded in
+/// LLVMIRGen. However, for quantization, we must accumulate in the inner-most
+/// loop with higher precision (int32_t) and then clip the result back into the
+/// dest tensor. Thus we add max_tensor_dimensions different cases for this to
+/// ensure the axis is used as the inner-most loop.
 void libjit_batchedreduceadd_i8(int8_t *dest, const int8_t *batch,
-                                size_t destSize, size_t numSlice,
-                                size_t sliceSize, int32_t destOffset,
-                                int32_t batchOffset, int32_t batchPre,
-                                int32_t batchPost, int32_t batchScale) {
-  for (size_t i = 0; i < sliceSize; i++) {
-    int32_t sum = 0;
-    for (size_t n = 0; n < numSlice; n++) {
-      sum += batch[n * sliceSize + i] - batchOffset;
-    }
-    int32_t q =
-        libjit_scale_i32i8(sum, batchPre, batchPost, batchScale, destOffset);
-    dest[i] = libjit_clip(q);
+                                const size_t *destDims, const size_t *batchDims,
+                                int32_t destOffset, int32_t batchOffset,
+                                int32_t batchPre, int32_t batchPost,
+                                int32_t batchScale, size_t axis) {
+  switch (axis) {
+#define LOOP_AXIS_CASE(_D0, _D1, _D2, _D3, _D4, _D5_AXIS)                      \
+  case _D5_AXIS:                                                               \
+    for (size_t i##_D0 = 0; i##_D0 < batchDims[_D0]; i##_D0++)                 \
+      for (size_t i##_D1 = 0; i##_D1 < batchDims[_D1]; i##_D1++)               \
+        for (size_t i##_D2 = 0; i##_D2 < batchDims[_D2]; i##_D2++)             \
+          for (size_t i##_D3 = 0; i##_D3 < batchDims[_D3]; i##_D3++)           \
+            for (size_t i##_D4 = 0; i##_D4 < batchDims[_D4]; i##_D4++) {       \
+              int32_t sum = 0.0;                                               \
+              for (size_t i##_D5_AXIS = 0; i##_D5_AXIS < batchDims[_D5_AXIS];  \
+                   i##_D5_AXIS++) {                                            \
+                sum += batch[libjit_getXYZWQR(batchDims, i0, i1, i2, i3, i4,   \
+                                              i5)] -                           \
+                       batchOffset;                                            \
+              }                                                                \
+              size_t i##_D5_AXIS = 0;                                          \
+              int32_t res = libjit_scale_i32i8(sum, batchPre, batchPost,       \
+                                               batchScale, destOffset);        \
+              dest[libjit_getXYZWQR(destDims, i0, i1, i2, i3, i4, i5)] =       \
+                  libjit_clip(res);                                            \
+            }                                                                  \
+    return;
+
+    // Each loop order, with the inner-most dimension/index equal to the axis.
+    LOOP_AXIS_CASE(1, 2, 3, 4, 5, 0);
+    LOOP_AXIS_CASE(0, 2, 3, 4, 5, 1);
+    LOOP_AXIS_CASE(0, 1, 3, 4, 5, 2);
+    LOOP_AXIS_CASE(0, 1, 2, 4, 5, 3);
+    LOOP_AXIS_CASE(0, 1, 2, 3, 5, 4);
+    LOOP_AXIS_CASE(0, 1, 2, 3, 4, 5);
+#undef LOOP_AXIS_CASE
   }
 }
 

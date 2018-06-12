@@ -982,18 +982,28 @@ MatMulNode *Function::createMatMul(llvm::StringRef name, NodeValue lhs,
 
 BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
                                                        TypeRef outTy,
-                                                       NodeValue batch) {
-  assert(outTy->size() == flattenCdr(batch.dims()).second);
+                                                       NodeValue batch,
+                                                       size_t axis) {
+  // Calculate the expected total number of elements in the output tensor based
+  // on the number of elements in the batch divided by the axis dimension.
+  const size_t outNumElements = batch.getType()->size() / batch.dims()[axis];
+  (void)outNumElements;
+  assert(outTy->size() == outNumElements &&
+         "Incorrect number of elements in the output type.");
   auto OT = getParent()->uniqueType(*outTy);
-  return addNode(new BatchedReduceAddNode(name, OT, batch));
+  return addNode(new BatchedReduceAddNode(name, OT, batch, axis));
 }
 
 BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
-                                                       NodeValue batch) {
+                                                       NodeValue batch,
+                                                       size_t axis) {
   auto BT = batch.getType();
-  auto OT =
-      getParent()->uniqueType(BT->getElementType(), BT->dims().drop_front());
-  return createBatchedReduceAdd(name, OT, batch);
+
+  ShapeVector outDims(BT->dims().begin(), BT->dims().end());
+  outDims.erase(outDims.begin() + axis);
+
+  auto OT = getParent()->uniqueType(BT->getElementType(), outDims);
+  return createBatchedReduceAdd(name, OT, batch, axis);
 }
 
 BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name,

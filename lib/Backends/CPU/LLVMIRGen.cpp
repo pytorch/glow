@@ -217,7 +217,8 @@ void LLVMIRGen::initCodeGen() {
 
 /// \returns the LLVM type corresponding to the type of elements stored in \p
 /// val.
-llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder, const Value *val) {
+llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
+                                      const Value *val) {
   switch (val->getElementType()) {
   case ElemKind::IndexTy:
     return builder.getIntNTy(sizeof(size_t) * 8);
@@ -1305,11 +1306,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *batch = BR->getBatch();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *batchPtr = emitValueAddress(builder, batch);
+    auto *axis = emitConstSizeT(builder, BR->getAxis());
 
-    auto *destSize = emitConstSizeT(builder, dest->size());
-    auto bdim = flattenCdr(batch->dims());
-    auto *numSlice = emitConstSizeT(builder, bdim.first);
-    auto *sliceSize = emitConstSizeT(builder, bdim.second);
+    ShapeVector eBatchDims = expandDimsToMax(batch->dims());
+    ShapeVector eDestDims = eBatchDims;
+    eDestDims[BR->getAxis()] = 1;
+
+    auto *batchDims = emitConstArray(builder, eBatchDims);
+    auto *destDims = emitConstArray(builder, eDestDims);
 
     auto *F = getFunction("batchedreduceadd", dest->getElementType());
 
@@ -1332,11 +1336,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *batchScale = emitConstI32(builder, batchScaleParams.scale_);
 
       createCall(builder, F,
-                 {destPtr, batchPtr, destSize, numSlice, sliceSize, destOffset,
-                  batchOffset, batchPre, batchPost, batchScale});
+                 {destPtr, batchPtr, destDims, batchDims, destOffset,
+                  batchOffset, batchPre, batchPost, batchScale, axis});
     } else {
+      auto *destSize = emitConstSizeT(builder, dest->size());
+
       createCall(builder, F,
-                 {destPtr, batchPtr, destSize, numSlice, sliceSize});
+                 {destPtr, batchPtr, destSize, destDims, batchDims, axis});
     }
     break;
   }

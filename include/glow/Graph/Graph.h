@@ -350,10 +350,11 @@ public:
                            NodeValue rhs);
 
   BatchedReduceAddNode *createBatchedReduceAdd(llvm::StringRef name,
-                                               NodeValue batch);
+                                               NodeValue batch, size_t axis);
 
   BatchedReduceAddNode *createBatchedReduceAdd(llvm::StringRef name,
-                                               TypeRef outTy, NodeValue batch);
+                                               TypeRef outTy, NodeValue batch,
+                                               size_t axis);
 
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, NodeValue batch,
                                    NodeValue sample);

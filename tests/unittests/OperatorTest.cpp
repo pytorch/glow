@@ -139,7 +139,7 @@ TEST_P(Operator, batchedReduceAdd) {
   auto *result = mod_.createVariable(ElemKind::FloatTy, {4}, "result");
   batch->getPayload().getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
 
-  auto R = F_->createBatchedReduceAdd("reduce.add", batch);
+  auto R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 0);
 
   F_->createSave("save", R, result);
 
@@ -151,6 +151,25 @@ TEST_P(Operator, batchedReduceAdd) {
   EXPECT_NEAR(H.at({1}), 22, 0.001);
   EXPECT_NEAR(H.at({2}), 33, 0.001);
   EXPECT_NEAR(H.at({3}), 44, 0.001);
+}
+
+TEST_P(InterpAndCPU, batchedReduceAddWithAxis) {
+  auto *batch = mod_.createVariable(ElemKind::FloatTy, {2, 3, 2}, "batch");
+  auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "result");
+  batch->getPayload().getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+
+  auto R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 1);
+
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto H = result->getPayload().getHandle();
+  EXPECT_NEAR(H.at({0, 0}), 6, 0.001);
+  EXPECT_NEAR(H.at({0, 1}), 9, 0.001);
+  EXPECT_NEAR(H.at({1, 0}), 24, 0.001);
+  EXPECT_NEAR(H.at({1, 1}), 27, 0.001);
 }
 
 TEST_P(InterpAndCPU, batchedReduceAddQuantized) {
@@ -169,7 +188,8 @@ TEST_P(InterpAndCPU, batchedReduceAddQuantized) {
   auto BH = batch->getHandle<int8_t>();
   auto OH = result->getHandle<int8_t>();
 
-  auto *R = F_->createBatchedReduceAdd("batched.reduce.add", OT, batch);
+  auto *R =
+      F_->createBatchedReduceAdd("batched.reduce.add", OT, batch, /* axis */ 0);
 
   F_->createSave("save", R, result);
 
@@ -184,6 +204,43 @@ TEST_P(InterpAndCPU, batchedReduceAddQuantized) {
     result = s * result + OT->getOffset();
 
     EXPECT_NEAR(std::round(result), OH.at({i}), 1.0);
+  }
+}
+
+TEST_P(InterpAndCPU, batchedReduceAddQuantizedWithAxis) {
+  auto BT = mod_.uniqueType(ElemKind::Int8QTy, {2, 3, 4}, 0.5, 3);
+  auto OT = mod_.uniqueType(ElemKind::Int8QTy, {2, 4}, 2.0, -1);
+
+  auto *batch = mod_.createVariable(ElemKind::Int8QTy, {2, 3, 4},
+                                    BT->getScale(), BT->getOffset(), "batch");
+  auto *result = mod_.createVariable(ElemKind::Int8QTy, {2, 4}, OT->getScale(),
+                                     OT->getOffset(), "result");
+
+  batch->getPayload().getHandle<int8_t>() = {
+      27, -31, 16,  7,  20, 34, -2, 8,   -10, 83, 29,  -17,
+      19, 13,  -11, -9, 50, 58, 0,  -20, -72, 43, -25, -1};
+
+  auto BH = batch->getHandle<int8_t>();
+  auto OH = result->getHandle<int8_t>();
+
+  auto *R =
+      F_->createBatchedReduceAdd("batched.reduce.add", OT, batch, /* axis */ 1);
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  for (size_t i = 0; i < 2; i++) {
+    for (size_t j = 0; j < 4; j++) {
+      std::array<int32_t, 3> b{
+          {BH.at({i, 0, j}), BH.at({i, 1, j}), BH.at({i, 2, j})}};
+      float s = BT->getScale() / OT->getScale();
+      int32_t o = BT->getOffset();
+      float result = (b[0] - o) + (b[1] - o) + (b[2] - o);
+      result = s * result + OT->getOffset();
+
+      EXPECT_NEAR(std::round(result), OH.at({i, j}), 1.0);
+    }
   }
 }
 

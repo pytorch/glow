@@ -1302,12 +1302,25 @@ void Interpreter::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
 }
 
 void Interpreter::fwdBatchedReduceAddInst(const glow::BatchedReduceAddInst *I) {
-  if (getTensor(I->getBatch())->getType().isQuantizedType()) {
-    auto dest = getWeightHandle<int8_t>(I->getDest());
-    auto batch = getWeightHandle<int8_t>(I->getBatch());
+  static_assert(max_tensor_dimensions == 6,
+                "Loops below assume max_tensor_dimensions = 6.");
 
-    auto destTy = I->getDest()->getType();
-    auto batchTy = I->getBatch()->getType();
+  auto *batch = I->getBatch();
+  auto *dest = I->getDest();
+  const auto axis = I->getAxis();
+
+  // Initialize both expanded batch and dest dims to the expanded batch
+  // dims. This allows us below to iterate over the tensor regardless of its
+  // shape using max_tensor_dimensions loops below.
+  ShapeVector eBatchDims = expandDimsToMax(batch->dims());
+  ShapeVector eDestDims = eBatchDims;
+
+  // Set the destination axis dimension (the one we are reducing) to 1.
+  eDestDims[axis] = 1;
+
+  if (getTensor(batch)->getType().isQuantizedType()) {
+    auto destTy = dest->getType();
+    auto batchTy = batch->getType();
 
     float destScale = destTy->getScale();
     float batchScale = batchTy->getScale();
@@ -1315,41 +1328,73 @@ void Interpreter::fwdBatchedReduceAddInst(const glow::BatchedReduceAddInst *I) {
     int32_t destOffset = destTy->getOffset();
     int32_t batchOffset = batchTy->getOffset();
 
-    auto bdim = flattenCdr(batch.dims());
+    // Get unowned handles of the batch and dest with these new expanded dims.
+    auto eBatch = getTensor(batch)->getUnowned(eBatchDims);
+    auto eDest = getTensor(dest)->getUnowned(eDestDims);
+    auto eBatchH = eBatch.getHandle<int8_t>();
+    auto eDestH = eDest.getHandle<int8_t>();
+    eDestH.clear();
 
-    // The following loop order is inefficient but easy to implement correctly;
-    // as this is the Interpreter, we prioritize simplicity and correctness
-    // above all else.
-    // For each element in the slice:
-    for (size_t i = 0; i < bdim.second; i++) {
-      float sum = 0.0;
-
-      // For each layer in the batch:
-      for (size_t n = 0; n < bdim.first; n++) {
-        size_t base = batch.getElementPtr({n});
-        sum += batch.raw(base + i) - batchOffset;
-      }
-
-      int32_t q = std::round(sum * batchScale / destScale) + destOffset;
-      dest.raw(i) = quantization::clip<int32_t, int8_t>(q);
-    }
+    // For quantization, we must accumulate in the inner-most loop into a local
+    // float and then clip the result back into the dest tensor. Here are the
+    // max_tensor_dimensions cases for this, to ensure the axis is used as the
+    // inner-most loop.
+    switch (axis) {
+#define LOOP_AXIS_CASE(_D0, _D1, _D2, _D3, _D4, _D5_AXIS)                      \
+  case _D5_AXIS:                                                               \
+    for (size_t i##_D0 = 0; i##_D0 < eBatchDims[_D0]; i##_D0++)                \
+      for (size_t i##_D1 = 0; i##_D1 < eBatchDims[_D1]; i##_D1++)              \
+        for (size_t i##_D2 = 0; i##_D2 < eBatchDims[_D2]; i##_D2++)            \
+          for (size_t i##_D3 = 0; i##_D3 < eBatchDims[_D3]; i##_D3++)          \
+            for (size_t i##_D4 = 0; i##_D4 < eBatchDims[_D4]; i##_D4++) {      \
+              float sum = 0.0;                                                 \
+              for (size_t i##_D5_AXIS = 0; i##_D5_AXIS < eBatchDims[_D5_AXIS]; \
+                   i##_D5_AXIS++) {                                            \
+                sum += eBatchH.at({i0, i1, i2, i3, i4, i5}) - batchOffset;     \
+              }                                                                \
+              size_t i##_D5_AXIS = 0;                                          \
+              int32_t res =                                                    \
+                  std::round(sum * batchScale / destScale) + destOffset;       \
+              eDestH.at({i0, i1, i2, i3, i4, i5}) =                            \
+                  quantization::clip<int32_t, int8_t>(res);                    \
+            }                                                                  \
     return;
+
+      // Each loop order, with the inner-most dimension/index equal to the axis.
+      LOOP_AXIS_CASE(1, 2, 3, 4, 5, 0);
+      LOOP_AXIS_CASE(0, 2, 3, 4, 5, 1);
+      LOOP_AXIS_CASE(0, 1, 3, 4, 5, 2);
+      LOOP_AXIS_CASE(0, 1, 2, 4, 5, 3);
+      LOOP_AXIS_CASE(0, 1, 2, 3, 5, 4);
+      LOOP_AXIS_CASE(0, 1, 2, 3, 4, 5);
+#undef LOOP_AXIS_CASE
+    default:
+      llvm_unreachable("Axis should be less than max_tensor_dimensions.");
+    }
   }
 
-  auto batch = getWeightHandle(I->getBatch());
-  auto dest = getWeightHandle(I->getDest());
+  // Get unowned handles of the batch and dest with these new expanded dims.
+  auto eBatch = getTensor(batch)->getUnowned(eBatchDims);
+  auto eDest = getTensor(dest)->getUnowned(eDestDims);
+  auto eBatchH = eBatch.getHandle();
+  auto eDestH = eDest.getHandle();
+  eDestH.clear();
 
-  auto bdim = flattenCdr(batch.dims());
-
-  dest.clear();
-
-  // For each layer in the batch:
-  for (size_t n = 0; n < bdim.first; n++) {
-    size_t base = batch.getElementPtr({n});
-
-    // For each element in the slice:
-    for (size_t i = 0; i < bdim.second; i++) {
-      dest.raw(i) += batch.raw(base + i);
+  // We can use this loop for all shapes. Use the same indices for both the
+  // batch and dest, except for setting the axis index in the dest to 0.
+  for (size_t x = 0; x < eBatchDims[0]; x++) {
+    for (size_t y = 0; y < eBatchDims[1]; y++) {
+      for (size_t z = 0; z < eBatchDims[2]; z++) {
+        for (size_t w = 0; w < eBatchDims[3]; w++) {
+          for (size_t q = 0; q < eBatchDims[4]; q++) {
+            for (size_t r = 0; r < eBatchDims[5]; r++) {
+              size_t destIndices[] = {x, y, z, w, q, r};
+              destIndices[axis] = 0;
+              eDestH.at(destIndices) += eBatchH.at({x, y, z, w, q, r});
+            }
+          }
+        }
+      }
     }
   }
 }
