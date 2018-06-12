@@ -313,7 +313,7 @@ private:
   /// Setup the internals of type that store the dimensions. This method is used
   /// by the constructor.
   void initDims(llvm::ArrayRef<size_t> dims) {
-    assert(dims.size() < max_tensor_dimensions && "Too many indices");
+    assert(dims.size() <= max_tensor_dimensions && "Too many dimensions.");
     // Update the tensor sizes.
     for (size_t i = 0, e = dims.size(); i < e; i++) {
       sizes_[i] = dims[i];
