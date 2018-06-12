@@ -223,12 +223,10 @@ TEST_P(MLTest, learnLog) {
       mod.createVariable(ElemKind::FloatTy, {batchSize, 1}, "Ex",
                          VisibilityKind::Public, Variable::TrainKind::None);
 
-  Node *O = F->createFullyConnected("fc1", A, 5);
+  Node *O = F->createFullyConnected("fc1", A, 4);
   O = F->createTanh("tanh1", O);
-  O = F->createFullyConnected("fc2", O, 5);
-  O = F->createTanh("tanh2", O);
+  O = F->createFullyConnected("fc2", O, 3);
   O = F->createFullyConnected("fc3", O, 1);
-  O = F->createTanh("tanh3", O);
   O = F->createRegression("reg", O, Ex);
   auto *result = F->createSave("ret", O);
 
@@ -240,8 +238,8 @@ TEST_P(MLTest, learnLog) {
   auto TL = trainingLabels.getHandle<>();
 
   // Set the training date as floating number from range [0.75, 1.5).
-  const float LO = 0.15; // Lower bound of training data.
-  const float HI = 2.5;  // Upper bound of training data.
+  const float LO = 0.75; // Lower bound of training data.
+  const float HI = 1.5;  // Upper bound of training data.
   for (size_t i = 0; i < numInputs; i++) {
     // Generate a floating number in the range of [LO,HI).
     float a = PRNG.nextRandReal(LO, HI);
@@ -1174,7 +1172,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
   EE_.compile(CompilationMode::Train, trainingGradientFunction);
   // Training:
   EE_.runBatch(200, {varMatricesA, varMatricesB, varExpected},
-              {&matricesA, &matricesB, &expected});
+               {&matricesA, &matricesB, &expected});
 
   // Switch to inference mode.
   EE_.compile(CompilationMode::Infer, F);
