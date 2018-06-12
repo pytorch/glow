@@ -36,4 +36,8 @@ double PseudoRNG::nextRand() {
   return std::uniform_real_distribution<double>(uniformReal.param())(engine_);
 }
 
+double PseudoRNG::nextRandReal(double a, double b) {
+  return std::uniform_real_distribution<double>(a, b)(engine_);
+}
+
 } // namespace glow

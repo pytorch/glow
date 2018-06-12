@@ -207,15 +207,14 @@ TEST_P(MLTest, learnXor) {
 
 /// Learn the logarithmic function.
 TEST_P(MLTest, learnLog) {
-  unsigned numInputs = 50;
+  unsigned numInputs = 100;
   unsigned batchSize = 7;
   EE_.getConfig().learningRate = 0.07;
   EE_.getConfig().batchSize = batchSize;
 
   auto &mod = EE_.getModule();
   auto &PRNG = mod.getPRNG();
-  Function *F = mod.createFunction("main");
-  F->setName("learnLog");
+  Function *F = mod.createFunction("learnLog");
 
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {batchSize, 1}, "A",
@@ -241,11 +240,11 @@ TEST_P(MLTest, learnLog) {
   auto TL = trainingLabels.getHandle<>();
 
   // Set the training date as floating number from range [0.75, 1.5).
-  const float LO = 0.75; // Lower bound of training data.
-  const float HI = 1.5;  // Upper bound of training data.
+  const float LO = 0.15; // Lower bound of training data.
+  const float HI = 2.5;  // Upper bound of training data.
   for (size_t i = 0; i < numInputs; i++) {
     // Generate a floating number in the range of [LO,HI).
-    float a = (LO + HI) / 2 + PRNG.nextRand() * (HI - LO) / 2;
+    float a = PRNG.nextRandReal(LO, HI);
     TS.at({i, 0}) = a;
     TL.at({i, 0}) = std::log(a);
   }
@@ -266,7 +265,7 @@ TEST_P(MLTest, learnLog) {
 
   for (size_t i = 0; i < batchSize; i++) {
     // Generate a floating number in the range of [LO,HI).
-    float a = (LO + HI) / 2 + PRNG.nextRand() * (HI - LO) / 2;
+    float a = PRNG.nextRandReal(LO, HI);
     TES.at({i, 0}) = a;
   }
 
