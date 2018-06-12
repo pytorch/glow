@@ -41,8 +41,7 @@ TEST_P(MLTest, trainASimpleNetwork) {
   EE_.getConfig().learningRate = 0.05;
 
   auto &mod = EE_.getModule();
-  Function *F = mod.createFunction("main");
-  F->setName("trainASimpleNetwork");
+  Function *F = mod.createFunction("trainASimpleNetwork");
 
   // Create a variable with 1 input, which is a vector of 4 elements.
   auto *A =
@@ -55,7 +54,6 @@ TEST_P(MLTest, trainASimpleNetwork) {
   Node *O = F->createFullyConnected("fc1", A, 10);
   O = F->createSigmoid("sig1", O);
   O = F->createFullyConnected("fc2", O, 4);
-  O = F->createSigmoid("sig2", O);
   O = F->createRegression("reg", O, E);
   auto *result = F->createSave("return", O);
 
@@ -95,8 +93,7 @@ TEST_P(MLTest, simpleRegression) {
   Tensor expected(ElemKind::FloatTy, {1, numInputs});
 
   auto &mod = EE_.getModule();
-  Function *F = mod.createFunction("main");
-  F->setName("simpleRegression");
+  Function *F = mod.createFunction("simpleRegression");
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {1, numInputs}, "A",
                          VisibilityKind::Public, Variable::TrainKind::None);
@@ -145,8 +142,7 @@ TEST_P(MLTest, learnXor) {
   EE_.getConfig().learningRate = 0.05;
 
   auto &mod = EE_.getModule();
-  Function *F = mod.createFunction("main");
-  F->setName("learnXor");
+  Function *F = mod.createFunction("learnXor");
 
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A",
@@ -158,7 +154,6 @@ TEST_P(MLTest, learnXor) {
   Node *O = F->createFullyConnected("fc1", A, 6);
   O = F->createTanh("tanh1", O);
   O = F->createFullyConnected("fc2", O, 1);
-  O = F->createTanh("tanh2", O);
   O = F->createRegression("reg", O, Ex);
   auto *result = F->createSave("ret", O);
 
@@ -246,8 +241,7 @@ TEST_P(MLTest, circle) {
   unsigned minibatchSize = 11;
 
   auto &mod = EE_.getModule();
-  Function *F = mod.createFunction("main");
-  F->setName("circle");
+  Function *F = mod.createFunction("circle");
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {minibatchSize, 2}, "A",
                          VisibilityKind::Public, Variable::TrainKind::None);
@@ -258,8 +252,7 @@ TEST_P(MLTest, circle) {
   auto *FCL0 = F->createFullyConnected("fc1", A, 8);
   auto *T0 = F->createTanh("tanh1", FCL0);
   auto *FCL1 = F->createFullyConnected("fc2", T0, 2);
-  auto *T1 = F->createTanh("tanh2", FCL1);
-  auto *SM = F->createSoftMax("soft", T1, S);
+  auto *SM = F->createSoftMax("soft", FCL1, S);
   auto *result = F->createSave("ret", SM);
 
   Function *TF = glow::differentiate(F, EE_.getConfig());
@@ -333,8 +326,7 @@ TEST_P(MLTest, learnSingleValueConcat) {
   EE_.getConfig().learningRate = 0.01;
 
   auto &mod = EE_.getModule();
-  Function *F = mod.createFunction("main");
-  F->setName("learnSingleValueConcat");
+  Function *F = mod.createFunction("learnSingleValueConcat");
 
   auto *Ex =
       mod.createVariable(ElemKind::FloatTy, {1, width * 2}, "Ex",
@@ -409,8 +401,7 @@ void testRNNCell(TCellGenerator cell) {
   EE.getConfig().learningRate = 0.05;
 
   auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-  F->setName("testRNNCell");
+  Function *F = mod.createFunction("testRNNCell");
 
   const unsigned NumVectors = 3;
   const unsigned NumElements = 4;
@@ -496,8 +487,7 @@ TEST_P(MLTest, learnSqrt2) {
   EE_.getConfig().learningRate = 0.03;
 
   auto &mod = EE_.getModule();
-  Function *F = mod.createFunction("main");
-  F->setName("Square root of 2");
+  Function *F = mod.createFunction("Square root of 2");
 
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {1}, "A", VisibilityKind::Public,
@@ -532,8 +522,7 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
   EE_.getConfig().batchSize = numSamples;
 
   auto &mod = EE_.getModule();
-  Function *F = mod.createFunction("main");
-  F->setName("Gradient descent solution for simple linear regression");
+  Function *F = mod.createFunction("Gradient descent solution for simple linear regression");
 
   // These m and b are only used to generate training data.
   float referenceM = 3.0;
@@ -608,8 +597,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   EE_.getConfig().learningRate = 0.05;
 
   auto &mod = EE_.getModule();
-  Function *F = mod.createFunction("main");
-  F->setName("classifyPlayers");
+  Function *F = mod.createFunction("classifyPlayers");
 
   const unsigned numTrainPlayers = 200;
   const size_t numFeatures = 2;
@@ -670,8 +658,7 @@ TEST_P(MLTest, learnSinus) {
   EE_.getConfig().batchSize = numSamples;
 
   auto &mod = EE_.getModule();
-  Function *F = mod.createFunction("main");
-  F->setName("Gradient descent solution for sin(x)");
+  Function *F = mod.createFunction("Gradient descent solution for sin(x)");
 
   // Function that should be learned by the NN
   auto FF = [](float x) -> float {
@@ -742,8 +729,7 @@ TEST_P(MLTest, nonLinearClassifier) {
   EE_.getConfig().batchSize = batchSize;
 
   auto &mod = EE_.getModule();
-  Function *F = mod.createFunction("main");
-  F->setName("nonLinearClassifier");
+  Function *F = mod.createFunction("nonLinearClassifier");
 
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {batchSize, 2}, "A",
