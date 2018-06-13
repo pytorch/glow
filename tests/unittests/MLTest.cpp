@@ -140,6 +140,7 @@ TEST_P(MLTest, learnXor) {
 
   // Learning a single input vector.
   EE_.getConfig().learningRate = 0.05;
+  EE_.getConfig().batchSize = numInputs;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("learnXor");
@@ -233,12 +234,13 @@ void generateCircleData(Tensor &coordinates, Tensor &labels, PseudoRNG &PRNG) {
 /// Example from:
 /// http://cs.stanford.edu/people/karpathy/convnetjs/demo/classify2d.html
 TEST_P(MLTest, circle) {
+  unsigned minibatchSize = 11;
+
   // Testing the softmax layer.
   // Learning a single input vector.
   EE_.getConfig().momentum = 0.9;
   EE_.getConfig().learningRate = 0.01;
-
-  unsigned minibatchSize = 11;
+  EE_.getConfig().batchSize = minibatchSize;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("circle");
@@ -594,14 +596,15 @@ void generatePlayerData(Tensor &players, Tensor &labels,
 // Given a player's height and weight, classify them as a basketball or
 // soccer player.
 TEST_P(MLTest, classifyPlayerSport) {
-  EE_.getConfig().learningRate = 0.05;
-
-  auto &mod = EE_.getModule();
-  Function *F = mod.createFunction("classifyPlayers");
-
   const unsigned numTrainPlayers = 200;
   const size_t numFeatures = 2;
   const size_t numClasses = 2;
+
+  EE_.getConfig().learningRate = 0.05;
+  EE_.getConfig().batchSize = numTrainPlayers;
+
+  auto &mod = EE_.getModule();
+  Function *F = mod.createFunction("classifyPlayers");
 
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {numTrainPlayers, numFeatures}, "A",
