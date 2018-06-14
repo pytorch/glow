@@ -179,8 +179,7 @@ static Function *createNetwork(Module &mod, size_t minibatchSize,
   }
 
   std::vector<NodeValue> outputNodes;
-  F->createSimpleRNN("rnn", slicesX, minibatchSize, hiddenSize, 128,
-                     outputNodes);
+  F->createLSTM("rnn", slicesX, minibatchSize, hiddenSize, 128, outputNodes);
 
   std::vector<NodeValue> resX;
   for (unsigned i = 0; i < numSteps; i++) {
@@ -202,16 +201,16 @@ int main(int argc, char **argv) {
   auto text = mb.get()->getBuffer();
   llvm::outs() << "Loaded " << text.size() << " chars.\n";
 
-  const size_t numSteps = 20;
-  const size_t minibatchSize = 16;
+  const size_t numSteps = 50;
+  const size_t minibatchSize = 32;
   const size_t batchSize = text.size() - numSteps;
-  const size_t hiddenSize = 128;
+  const size_t hiddenSize = 256;
 
   GLOW_ASSERT(text.size() > numSteps && "Text is too short");
 
   ExecutionEngine EE(executionBackend);
-  EE.getConfig().learningRate = 0.01;
-  EE.getConfig().momentum = 0;
+  EE.getConfig().learningRate = 0.001;
+  EE.getConfig().momentum = 0.9;
   EE.getConfig().batchSize = minibatchSize;
 
   auto &mod = EE.getModule();
@@ -219,7 +218,6 @@ int main(int argc, char **argv) {
   //// Train the network ////
   Function *F = createNetwork(mod, minibatchSize, numSteps, hiddenSize);
   Function *TF = differentiate(F, EE.getConfig());
-  EE.compile(CompilationMode::Train, TF);
 
   auto *X = mod.getVariableByName("input");
   auto *Y = mod.getVariableByName("expected");
@@ -228,38 +226,49 @@ int main(int argc, char **argv) {
   Tensor nextCharTrain(ElemKind::IndexTy, {batchSize, numSteps});
   loadText(thisCharTrain, nextCharTrain, text, true);
 
+  // Run this number of iterations over the input. On each iteration: train the
+  // network on the whole input and then generate some sample text.
   for (unsigned i = 0; i < numEpochs; i++) {
+    EE.compile(CompilationMode::Train, TF);
+
+    // Train the network on the whole input.
     llvm::outs() << "Iteration " << i + 1 << "/" << numEpochs;
     EE.runBatch(batchSize / minibatchSize, {X, Y},
                 {&thisCharTrain, &nextCharTrain});
     llvm::outs() << ".\n";
+
+    //// Use the trained network to generate some text ////
+    EE.compile(CompilationMode::Infer, F);
+
+    // Load a few characters to start the text that we generate.
+    Tensor currCharInfer(ElemKind::FloatTy, {minibatchSize, numSteps, 128});
+    Tensor nextCharInfer(ElemKind::IndexTy, {minibatchSize, numSteps});
+    loadText(currCharInfer, nextCharInfer, text.slice(0, 128), false);
+
+    auto *res = llvm::cast<SaveNode>(F->getNodeByName("result"));
+    auto &T = res->getVariable()->getPayload();
+
+    std::string result;
+    std::string input;
+    input.insert(input.begin(), text.begin(), text.begin() + numSteps);
+    result = input;
+
+    // Generate a sentence by running inference over and over again.
+    for (unsigned i = 0; i < generateChars; i++) {
+      // Generate a char:
+      EE.run({X}, {&currCharInfer});
+      // Pick a char at random from the softmax distribution.
+      char c = getPredictedChar(T, 0, numSteps - 1);
+
+      // Update the inputs for the next iteration:
+      result.push_back(c);
+      input.push_back(c);
+      input.erase(input.begin());
+      loadText(currCharInfer, nextCharInfer, input, false);
+    }
+
+    llvm::outs() << "Generated output:\n" << result << "\n";
   }
 
-  //// Use the trained network to generate some text ////
-  EE.compile(CompilationMode::Infer, F);
-
-  // Load a few characters to start the text that we generate.
-  Tensor currCharInfer(ElemKind::FloatTy, {minibatchSize, numSteps, 128});
-  Tensor nextCharInfer(ElemKind::IndexTy, {minibatchSize, numSteps});
-  loadText(currCharInfer, nextCharInfer, text.slice(0, 128), false);
-
-  auto *res = llvm::cast<SaveNode>(F->getNodeByName("result"));
-  auto &T = res->getVariable()->getPayload();
-
-  std::string result;
-  std::string input;
-  input.insert(input.begin(), text.begin(), text.begin() + numSteps);
-  result = input;
-
-  for (unsigned i = 0; i < generateChars; i++) {
-    EE.run({X}, {&currCharInfer});
-    char c = getPredictedChar(T, 0, numSteps - 1);
-    result.push_back(c);
-    input.push_back(c);
-    input.erase(input.begin());
-    loadText(currCharInfer, nextCharInfer, input, false);
-  }
-
-  llvm::outs() << "Generated output:\n" << result << "\n";
   return 0;
 }
