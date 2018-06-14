@@ -881,16 +881,18 @@ static void generateImageData(Tensor &images, Tensor &labels, PseudoRNG &PRNG) {
 
 /// Test the convolutional layer.
 /// Use a simple convnet to learn two classes of images: Line and Cross.
-TEST_P(MLTest, convNetForImageRecognition) {
+/// This test checks the results of the quantized network.
+TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
+  ExecutionEngine EE{BackendKind::Interpreter};
   const unsigned numSamples = 500;
   const unsigned batchSize = 7;
 
-  EE_.getConfig().learningRate = 0.01;
-  EE_.getConfig().batchSize = batchSize;
-  EE_.getConfig().momentum = 0.9;
+  EE.getConfig().learningRate = 0.01;
+  EE.getConfig().batchSize = batchSize;
+  EE.getConfig().momentum = 0.9;
 
-  auto &mod = EE_.getModule();
-  Function *F = mod.createFunction("main");
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("convNetForImageRecognition");
 
   auto *input =
       mod.createVariable(ElemKind::FloatTy, {batchSize, 8, 8, 1}, "input",
@@ -905,22 +907,35 @@ TEST_P(MLTest, convNetForImageRecognition) {
   auto *FCL = F->createFullyConnected("fc", TANH, 2);
   auto *SM = F->createSoftMax("sm", FCL, ex);
   auto *result = F->createSave("ret", SM);
-  Function *TF = glow::differentiate(F, EE_.getConfig());
-  EE_.compile(CompilationMode::Train, TF);
+  Function *TF = glow::differentiate(F, EE.getConfig());
+  EE.compile(CompilationMode::Train, TF);
 
   Tensor images(ElemKind::FloatTy, {numSamples, 8, 8, 1});
   Tensor labels(ElemKind::IndexTy, {numSamples, 1});
   generateImageData(images, labels, mod.getPRNG());
 
   // Training:
-  EE_.runBatch(500, {input, ex}, {&images, &labels});
-  EE_.compile(CompilationMode::Infer, F);
+  EE.runBatch(500, {input, ex}, {&images, &labels});
 
+  // Profiling:
+  Function *PF = glow::profileQuantization(F);
+  EE.compile(CompilationMode::Infer, PF);
+  EE.runBatch(100, {input}, {&images});
+
+  // Get the quantization info and build the new quantized graph.
+  std::vector<NodeQuantizationInfo> QI =
+      quantization::generateNodeQuantizationInfos(PF);
+  Function *QP = quantization::quantizeFunction(EE, QI, F);
+
+  // Evaluate on the quantized function:
+  // Set the execution backend to the backend that we test.
+  EE.setBackend(GetParam());
+  EE.compile(CompilationMode::Infer, QP);
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
   Tensor testLabels(ElemKind::IndexTy, {batchSize, 1});
   generateImageData(testImages, testLabels, mod.getPRNG());
-  EE_.run({input}, {&testImages});
+  EE.run({input}, {&testImages});
   auto SMH = result->getVariable()->getHandle<>();
   for (size_t i = 0; i < batchSize; i++) {
     bool isLine = testLabels.getHandle<size_t>().at({i, 0}) == 0;
