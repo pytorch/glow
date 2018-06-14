@@ -1768,6 +1768,7 @@ void Function::verify() const {
   for (const auto &N : nodes_) {
     for (size_t idx = 0, e = N.getNumInputs(); idx < e; ++idx) {
       auto &input = N.getNthInput(idx);
+      (void)input;
       assert((std::find(nodes_.begin(), nodes_.end(), *input) != nodes_.end() ||
               std::find(vars.begin(), vars.end(), input) != vars.end()) &&
              "Every node referenced by one of the graph"
