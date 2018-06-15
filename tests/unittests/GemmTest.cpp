@@ -35,7 +35,7 @@ TEST(Gemm, jitTest) {
   PseudoRNG PRNG;
 
   for (size_t m : {1, 4, 5, 8}) {
-    for (size_t n : {1, 16, 17}) {
+    for (size_t n : {1, 16, 17, 1024}) {
       for (size_t k : {1, 3}) {
         Tensor lhs(ElemKind::FloatTy, {m, k});
         Tensor rhs(ElemKind::FloatTy, {k, n});

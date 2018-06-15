@@ -134,7 +134,7 @@ void pack_matrix_a(size_t m, size_t k, const float *a, size_t lda,
 template <size_t regsB>
 void pack_matrix_b(size_t n, size_t k, const float *b, size_t ldb,
                    float *b_to) {
-  for (size_t j = 0; j < n - nr + 1; j += nr) {
+  for (int j = 0; j < int(n) - nr + 1; j += nr) {
     for (size_t i = 0; i < k; i++) {
       for (size_t bi = 0; bi < regsB; bi++) {
         *b_to++ = B(i, j + bi);
