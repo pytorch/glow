@@ -83,21 +83,33 @@ class FunctionSpecializer {
 
   /// \returns True if the argument \p arg needs to be specialized in the
   /// function.
+  /// NOTE: Currently, the decision is based solely on the type of the argument
+  /// \p arg. In the future, we may need to improve this logic by taking into
+  /// account the semantics of the argument or even the specifics of the
+  /// function call being specialized.
   bool shouldSpecializeParameter(llvm::Value *arg) {
     // This flag force-specializes all arguments.
     if (jitSpecializeAllArguments_) {
       return true;
     }
 
-    // We don't specialize pointers to floating point buffers.
+    // We don't specialize arguments which are pointers to floating point and
+    // quantized buffers, because this is likely to significantly increase the
+    // code size without any big performance benefits.
     if (arg->getType()->isPointerTy()) {
       auto elemTy = cast<llvm::PointerType>(arg->getType())->getElementType();
+      // Bail if it is an FP buffer.
       if (elemTy->isFloatTy()) {
+        return false;
+      }
+      // Bail if it is a quantized buffer.
+      if (elemTy->isIntegerTy(8)) {
         return false;
       }
     }
 
-    // We specialize all other arguments.
+    // We specialize all other arguments, which typically represent dimensions
+    // of tensors, indices, size of batches, etc.
     return true;
   }
 
