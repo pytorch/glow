@@ -1075,15 +1075,28 @@ static void optimizeSliceOfSplat(Function *F) {
   }
 }
 
-/// Eliminate ReshapeNode when the input is already the correct shape.
+/// Optimize reshape nodes.
 static void optimizeReshape(Function *F) {
   for (auto &node : F->getNodes()) {
     auto *reshapeNode = dyn_cast<ReshapeNode>(&node);
     if (!reshapeNode)
       continue;
-    auto inputNode = reshapeNode->getInput();
+    auto &inputNode = reshapeNode->getNthInput(0);
+    // Eliminate ReshapeNode when the input is already the correct shape.
     if (inputNode.dims() == reshapeNode->dims()) {
       reshapeNode->getResult().replaceAllUsesOfWith(inputNode);
+      continue;
+    }
+    // Reshape(Splat(args)) -> Splat(args').
+    auto *splatNode = dyn_cast<SplatNode>(inputNode);
+    if (splatNode && splatNode->hasOneUse()) {
+      // Splat node with more than one use can not be transformed, otherwise
+      // we would increase the number of splats, which may lead to increased
+      // memory consumption during the execution of the NN model.
+      auto *newSplatNode = F->createSplat(
+          splatNode->getName(), reshapeNode->getType(), splatNode->getValue());
+      reshapeNode->getResult().replaceAllUsesOfWith(newSplatNode);
+      continue;
     }
   }
 }
