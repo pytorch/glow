@@ -170,6 +170,7 @@ add_executable(GemmTest
                GemmTest.cpp)
 target_link_libraries(GemmTest
                       PRIVATE
+                        CPURuntimeNative
                         Graph
                         IR
                         ExecutionEngine

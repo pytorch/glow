@@ -31,6 +31,31 @@
 using namespace glow;
 using llvm::cast;
 
+extern "C" {
+// Forward declare functions from libjit.
+extern void libjit_matmul_f(float *c, const float *a, const float *b,
+                            const size_t *cDims, const size_t *aDims,
+                            const size_t *bDims);
+}
+
+void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
+  ExecutionEngine EE(BackendKind::Interpreter);
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto lhsVar = mod.createVariable(lhs->getElementType(), lhs->dims(), "lhs",
+                                   VisibilityKind::Public);
+  auto rhsVar = mod.createVariable(rhs->getElementType(), rhs->dims(), "rhs",
+                                   VisibilityKind::Public);
+  auto outVar = mod.createVariable(out->getElementType(), out->dims(), "out",
+                                   VisibilityKind::Public);
+  auto OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
+  auto *matmul = F->createMatMul("matmul", OT, lhsVar, rhsVar);
+  auto result = F->createSave("ret", matmul, outVar);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({lhsVar, rhsVar}, {lhs, rhs});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 TEST(Gemm, jitTest) {
   PseudoRNG PRNG;
 
@@ -44,27 +69,12 @@ TEST(Gemm, jitTest) {
         Tensor out1(ElemKind::FloatTy, {m, n});
         Tensor out2(ElemKind::FloatTy, {m, n});
 
-        auto infer = [&](Tensor *out, BackendKind kind) {
-          ExecutionEngine EE(kind);
-          auto &mod = EE.getModule();
-          Function *F = mod.createFunction("main");
-          auto lhsVar = mod.createVariable(lhs.getElementType(), lhs.dims(),
-                                           "lhs", VisibilityKind::Public);
-          auto rhsVar = mod.createVariable(rhs.getElementType(), rhs.dims(),
-                                           "rhs", VisibilityKind::Public);
-          auto outVar = mod.createVariable(out->getElementType(), out->dims(),
-                                           "out", VisibilityKind::Public);
-          auto OT =
-              F->getParent()->uniqueType(out->getElementType(), out->dims());
-          auto *matmul = F->createMatMul("matmul", OT, lhsVar, rhsVar);
-          auto result = F->createSave("ret", matmul, outVar);
-          EE.compile(CompilationMode::Infer, F);
-          EE.run({lhsVar, rhsVar}, {&lhs, &rhs});
-          out->copyFrom(&result->getVariable()->getPayload());
-        };
+        libjit_matmul_f(out1.getRawDataPointer<float>(),
+                        lhs.getRawDataPointer<float>(),
+                        rhs.getRawDataPointer<float>(), out1.dims().data(),
+                        lhs.dims().data(), rhs.dims().data());
 
-        infer(&out1, BackendKind::CPU);
-        infer(&out2, BackendKind::Interpreter);
+        infer(&out2, &lhs, &rhs);
 
         EXPECT_TRUE(out1.isEqual(out2, 0.001));
       }
