@@ -372,15 +372,3 @@ void LLVMIRGen::performSpecialization() {
     generateFunctionDebugInfo(&FF);
   }
 }
-
-llvm::CallInst *
-LLVMIRGen::specializeCallWithConstantArguments(llvm::CallInst *call) {
-  FunctionSpecializer FuncSpecializer({});
-  auto specializedCall = FuncSpecializer.specializeCall(call);
-  // Remove the original call instruction, if a new call instruction was
-  // created.
-  if (specializedCall) {
-    call->eraseFromParent();
-  }
-  return specializedCall;
-}
