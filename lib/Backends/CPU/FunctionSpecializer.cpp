@@ -81,6 +81,26 @@ class FunctionSpecializer {
         .str();
   }
 
+  /// \returns True if the argument \p arg needs to be specialized in the
+  /// function.
+  bool shouldSpecializeParameter(llvm::Value *arg) {
+    // This flag force-specializes all arguments.
+    if (jitSpecializeAllArguments_) {
+      return true;
+    }
+
+    // We don't specialize pointers to floating point buffers.
+    if (arg->getType()->isPointerTy()) {
+      auto elemTy = cast<llvm::PointerType>(arg->getType())->getElementType();
+      if (elemTy->isFloatTy()) {
+        return false;
+      }
+    }
+
+    // We specialize all other arguments.
+    return true;
+  }
+
   /// Find an existing specialization or create a new one.
   /// \param CI the call that is being specialized.
   /// \param F the function being specialized.
@@ -200,11 +220,8 @@ public:
     unsigned argIdx = 0;
     for (auto &arg : call->arg_operands()) {
       auto curArgIdx = argIdx++;
-      // Do not take data buffer addresses into account, unless asked to do so.
-      if (!jitSpecializeAllArguments_ && arg->getType()->isPointerTy() &&
-          cast<llvm::PointerType>(arg->getType())
-              ->getElementType()
-              ->isFloatTy()) {
+
+      if (!shouldSpecializeParameter(arg)) {
         argsForSpecialized.push_back(arg);
         continue;
       }
