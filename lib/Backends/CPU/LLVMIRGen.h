@@ -38,6 +38,31 @@ class Instruction;
 class WeightVar;
 struct AllocationsInfo;
 
+/// A POD struct that stores information related to debug info.
+struct DebugInfo {
+  /// Source file for the main function.
+  llvm::DIFile *mainFile_{nullptr};
+  /// Debug info for the main function.
+  llvm::DISubprogram *mainF_{nullptr};
+  /// Line number for the first instruction in the textual representation of
+  /// the Glow IR.
+  size_t mainFileFirstInstrLineNo_{0};
+  /// Debug info for the current compilation unit.
+  llvm::DICompileUnit *compilationUnit_{nullptr};
+  /// Mapping from LLVM types to DebugInfo types.
+  llvm::DenseMap<llvm::Type *, llvm::DIType *> DITypes_;
+  /// Global variable holding the base address of the constant WeightVars
+  /// memory
+  /// area. Used only when producing a debug information.
+  llvm::GlobalVariable *constWeightsBaseAddressGV_{nullptr};
+  /// Global variable holding the base address of mutable WeightVars memory
+  /// area. Used only when producing a debug information.
+  llvm::GlobalVariable *mutableWeightsBaseAddressGV_{nullptr};
+  /// Global variable holding the base address of the activations memory area.
+  /// Used only when producing a debug information.
+  llvm::GlobalVariable *activationsBaseAddressGV_{nullptr};
+};
+
 /// This is a class containing a common logic for the generation of the LLVM IR
 /// from an IRFunction. The primary clients of this class are JITs and bundlers.
 class LLVMIRGen {
@@ -72,29 +97,7 @@ class LLVMIRGen {
   /// Output directory for bundles, debug info files, etc.
   llvm::StringRef outputDir_;
   /// Debug info emission support.
-  struct DebugInfo {
-    /// Source file for the main function.
-    llvm::DIFile *mainFile_{nullptr};
-    /// Debug info for the main function.
-    llvm::DISubprogram *mainF_{nullptr};
-    /// Line number for the first instruction in the textual representation of
-    /// the Glow IR.
-    size_t mainFileFirstInstrLineNo_{0};
-    /// Debug info for the current compilation unit.
-    llvm::DICompileUnit *compilationUnit_{nullptr};
-    /// Mapping from LLVM types to DebugInfo types.
-    llvm::DenseMap<llvm::Type *, llvm::DIType *> DITypes_;
-    /// Global variable holding the base address of the constant WeightVars
-    /// memory
-    /// area. Used only when producing a debug information.
-    llvm::GlobalVariable *constWeightsBaseAddressGV_{nullptr};
-    /// Global variable holding the base address of mutable WeightVars memory
-    /// area. Used only when producing a debug information.
-    llvm::GlobalVariable *mutableWeightsBaseAddressGV_{nullptr};
-    /// Global variable holding the base address of the activations memory area.
-    /// Used only when producing a debug information.
-    llvm::GlobalVariable *activationsBaseAddressGV_{nullptr};
-  } dbgInfo_;
+  DebugInfo dbgInfo_;
   /// Debug info builder.
   std::unique_ptr<llvm::DIBuilder> DIBuilder_;
 
