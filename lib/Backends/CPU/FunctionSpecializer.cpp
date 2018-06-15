@@ -93,10 +93,15 @@ class FunctionSpecializer {
       return true;
     }
 
+    // Don't specialize arguments that we were requested to skip.
+    if (dontSpecializeArgsSet_.count(arg)) {
+      return false;
+    }
+
     // We don't specialize arguments which are pointers to floating point and
     // quantized buffers, because this is likely to significantly increase the
     // code size without any big performance benefits.
-    if (arg->getType()->isPointerTy()) {
+      if (arg->getType()->isPointerTy()) {
       auto elemTy = cast<llvm::PointerType>(arg->getType())->getElementType();
       // Bail if it is an FP buffer.
       if (elemTy->isFloatTy()) {
@@ -212,7 +217,9 @@ class FunctionSpecializer {
   }
 
 public:
-  FunctionSpecializer(llvm::Function *entryF) : entryF_(entryF) {}
+  FunctionSpecializer(llvm::Function *entryF,
+                      llvm::DenseSet<llvm::Value *> &dontSpec)
+      : entryF_(entryF), dontSpecializeArgsSet_(dontSpec) {}
 
   /// Specialize a single call.
   /// \returns the specialized Call instruction if it was possible to specialize
@@ -367,12 +374,17 @@ private:
   /// If set, specialize taking into account the whole set of arguments,
   /// including buffer addresses.
   bool jitSpecializeAllArguments_{false};
+
+  /// A reference to a set of values that the specializer was requested not to
+  /// specialize.
+  llvm::DenseSet<llvm::Value *> &dontSpecializeArgsSet_;
 };
 
 } // namespace
 
 void LLVMIRGen::performSpecialization() {
-  FunctionSpecializer FuncSpecializer(llmodule_->getFunction("main"));
+  FunctionSpecializer FuncSpecializer(llmodule_->getFunction("main"),
+                                      dontSpecializeArgsSet_);
   FuncSpecializer.run();
   // Add debug info to all the newly created functions, i.e. to the created
   // specialized functions.

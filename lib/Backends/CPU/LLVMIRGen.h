@@ -21,6 +21,7 @@
 #include "glow/IR/IR.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
@@ -100,6 +101,10 @@ class LLVMIRGen {
   DebugInfo dbgInfo_;
   /// Debug info builder.
   std::unique_ptr<llvm::DIBuilder> DIBuilder_;
+
+  /// A set that contains all of the argument that we request from the
+  /// specializer not to specialize.
+  llvm::DenseSet<llvm::Value *> dontSpecializeArgsSet_;
 
   /// Generates LLVM IR that computes the address of \p val using \p builder.
   /// The address type is specified by \p ptrTy.
