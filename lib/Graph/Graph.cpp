@@ -296,6 +296,17 @@ TypeRef Module::uniqueType(const Type &T) {
 
 TypeRef Module::getVoidTy() { return uniqueType(Type()); }
 
+/// \returns a ShapeVector of rank 1 less than the input \p dims, where the
+/// provided \p axis dimension is removed from the shape.
+static ShapeVector getNewShapeWithoutAxis(llvm::ArrayRef<size_t> dims,
+                                          size_t axis) {
+  assert(axis < dims.size() &&
+         "Axis to remove must fit inside dimensions of the provided dims.");
+  ShapeVector newDims(dims.begin(), dims.end());
+  newDims.erase(newDims.begin() + axis);
+  return newDims;
+}
+
 //===----------------------------------------------------------------------===//
 //                       Node builders
 //===----------------------------------------------------------------------===//
@@ -997,12 +1008,8 @@ BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
 BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
                                                        NodeValue batch,
                                                        size_t axis) {
-  auto BT = batch.getType();
-
-  ShapeVector outDims(BT->dims().begin(), BT->dims().end());
-  outDims.erase(outDims.begin() + axis);
-
-  auto OT = getParent()->uniqueType(BT->getElementType(), outDims);
+  auto outDims = getNewShapeWithoutAxis(batch.dims(), axis);
+  auto OT = getParent()->uniqueType(batch.getType()->getElementType(), outDims);
   return createBatchedReduceAdd(name, OT, batch, axis);
 }
 
