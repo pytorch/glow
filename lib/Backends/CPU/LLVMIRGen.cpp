@@ -448,6 +448,10 @@ llvm::Value *LLVMIRGen::emitStringConst(llvm::IRBuilder<> &builder,
   return builder.CreateBitCast(gvarStr, builder.getInt8PtrTy());
 }
 
+void LLVMIRGen::markArgAsUnspecialized(llvm::Value *val) {
+  dontSpecializeArgsSet_.insert(val);
+}
+
 llvm::Function *LLVMIRGen::getFunction(const std::string &name) {
   auto *F = llmodule_->getFunction("libjit_" + name);
 #ifndef NDEBUG
@@ -1876,6 +1880,11 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *count = emitConstSizeT(builder, ITI->getCount());
     auto *axis = emitConstSizeT(builder, ITI->getAxis());
 
+    // Don't specialize the offsetPtr because we typically generate lots of
+    // extracts from different offsets and specializing on this argument does
+    // not speed things up.
+    markArgAsUnspecialized(offsetsPtr);
+
     auto *F = getFunction("insert_tensor", dest->getElementType());
     createCall(builder, F,
                {destPtr, srcPtr, offsetsPtr, destDims, srcDims, destDimsSize,
@@ -1899,6 +1908,11 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcDimsSize = emitConstSizeT(builder, src->getType()->dims().size());
     auto *offsetsPtr = emitConstArray(builder, offsets);
     auto *offsetsArraySize = emitConstSizeT(builder, offsets.size());
+
+    // Don't specialize the offsetPtr because we typically generate lots of
+    // extracts from different offsets and specializing on this argument does
+    // not speed things up.
+    markArgAsUnspecialized(offsetsPtr);
 
     auto *F = getFunction("extract_tensor", dest->getElementType());
     createCall(builder, F,

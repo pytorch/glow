@@ -240,6 +240,8 @@ public:
   void generateFunctionDebugInfo(llvm::Function *F);
   /// Generates LLVM IR that materializes the string literal \p str.
   llvm::Value *emitStringConst(llvm::IRBuilder<> &builder, llvm::StringRef str);
+  /// Register \p val as an argument that should not be specialized.
+  void markArgAsUnspecialized(llvm::Value *val);
 };
 
 } // namespace glow
