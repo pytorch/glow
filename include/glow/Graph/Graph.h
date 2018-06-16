@@ -356,6 +356,20 @@ public:
                                                TypeRef outTy, NodeValue batch,
                                                size_t axis);
 
+  /// Implements a batched reduce mean of the \p batch on the provided \p axis
+  /// with output type \p outTy with three nodes: a BatchedReduceAdd followed by
+  /// a DivNode with a SplatNode of the length of the \p axis
+  /// dimension. \returns the final DivNode.
+  DivNode *createBatchedReduceMean(llvm::StringRef name, TypeRef outTy,
+                                   NodeValue batch, size_t axis);
+
+  /// Implements a batched reduce mean of the \p batch on the provided \p axis
+  /// with three nodes: a BatchedReduceAdd followed by a DivNode with a
+  /// SplatNode of the length of the \p axis dimension. \returns the final
+  /// DivNode.
+  DivNode *createBatchedReduceMean(llvm::StringRef name, NodeValue batch,
+                                   size_t axis);
+
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, NodeValue batch,
                                    NodeValue sample);
 
