@@ -135,6 +135,14 @@ void libjit_insert_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
                           size_t offsetDim, size_t count, size_t axis) {
   // Destination coordinates.
   size_t C[5];
+
+  // A local copy of the offsets buffer. We copy the buffer to make it clear
+  // to the optimizer that the inputs don't alias. This loop is optimized away.
+  size_t offsets_cpy[5];
+  for (size_t i = 0; i < numDimsSlice; i++) {
+    offsets_cpy[i] = offset[i];
+  }
+
   if (numDimsSlice == 5) {
     for (size_t c = 0; c < count; c++)
       for (size_t x = 0; x < sliceDim[0]; x++)
@@ -143,11 +151,11 @@ void libjit_insert_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
             for (size_t w = 0; w < sliceDim[3]; w++)
               for (size_t q = 0; q < sliceDim[4]; q++) {
                 const size_t countAxisOffset = c * sliceDim[axis];
-                C[0] = x + offset[0] + ((axis == 0) ? countAxisOffset : 0);
-                C[1] = y + offset[1] + ((axis == 1) ? countAxisOffset : 0);
-                C[2] = z + offset[2] + ((axis == 2) ? countAxisOffset : 0);
-                C[3] = w + offset[3] + ((axis == 3) ? countAxisOffset : 0);
-                C[4] = q + offset[4] + ((axis == 4) ? countAxisOffset : 0);
+                C[0] = x + offsets_cpy[0] + ((axis == 0) ? countAxisOffset : 0);
+                C[1] = y + offsets_cpy[1] + ((axis == 1) ? countAxisOffset : 0);
+                C[2] = z + offsets_cpy[2] + ((axis == 2) ? countAxisOffset : 0);
+                C[3] = w + offsets_cpy[3] + ((axis == 3) ? countAxisOffset : 0);
+                C[4] = q + offsets_cpy[4] + ((axis == 4) ? countAxisOffset : 0);
                 tensor[libjit_getXYZWQ(tensorDim, C[0], C[1], C[2], C[3],
                                        C[4])] =
                     slice[libjit_getXYZWQ(sliceDim, x, y, z, w, q)];
@@ -162,10 +170,10 @@ void libjit_insert_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
           for (size_t z = 0; z < sliceDim[2]; z++)
             for (size_t w = 0; w < sliceDim[3]; w++) {
               const size_t countAxisOffset = c * sliceDim[axis];
-              C[0] = x + offset[0] + ((axis == 0) ? countAxisOffset : 0);
-              C[1] = y + offset[1] + ((axis == 1) ? countAxisOffset : 0);
-              C[2] = z + offset[2] + ((axis == 2) ? countAxisOffset : 0);
-              C[3] = w + offset[3] + ((axis == 3) ? countAxisOffset : 0);
+              C[0] = x + offsets_cpy[0] + ((axis == 0) ? countAxisOffset : 0);
+              C[1] = y + offsets_cpy[1] + ((axis == 1) ? countAxisOffset : 0);
+              C[2] = z + offsets_cpy[2] + ((axis == 2) ? countAxisOffset : 0);
+              C[3] = w + offsets_cpy[3] + ((axis == 3) ? countAxisOffset : 0);
               tensor[libjit_getXYZW(tensorDim, C[0], C[1], C[2], C[3])] =
                   slice[libjit_getXYZW(sliceDim, x, y, z, w)];
             }
@@ -178,9 +186,9 @@ void libjit_insert_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
         for (size_t y = 0; y < sliceDim[1]; y++)
           for (size_t z = 0; z < sliceDim[2]; z++) {
             const size_t countAxisOffset = c * sliceDim[axis];
-            C[0] = x + offset[0] + ((axis == 0) ? countAxisOffset : 0);
-            C[1] = y + offset[1] + ((axis == 1) ? countAxisOffset : 0);
-            C[2] = z + offset[2] + ((axis == 2) ? countAxisOffset : 0);
+            C[0] = x + offsets_cpy[0] + ((axis == 0) ? countAxisOffset : 0);
+            C[1] = y + offsets_cpy[1] + ((axis == 1) ? countAxisOffset : 0);
+            C[2] = z + offsets_cpy[2] + ((axis == 2) ? countAxisOffset : 0);
             tensor[libjit_getXYZ(tensorDim, C[0], C[1], C[2])] =
                 slice[libjit_getXYZ(sliceDim, x, y, z)];
           }
@@ -192,8 +200,8 @@ void libjit_insert_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
       for (size_t x = 0; x < sliceDim[0]; x++)
         for (size_t y = 0; y < sliceDim[1]; y++) {
           const size_t countAxisOffset = c * sliceDim[axis];
-          C[0] = x + offset[0] + ((axis == 0) ? countAxisOffset : 0);
-          C[1] = y + offset[1] + ((axis == 1) ? countAxisOffset : 0);
+          C[0] = x + offsets_cpy[0] + ((axis == 0) ? countAxisOffset : 0);
+          C[1] = y + offsets_cpy[1] + ((axis == 1) ? countAxisOffset : 0);
           tensor[libjit_getXY(tensorDim, C[0], C[1])] =
               slice[libjit_getXY(sliceDim, x, y)];
         }
@@ -204,7 +212,8 @@ void libjit_insert_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
     for (size_t c = 0; c < count; c++)
       for (size_t x = 0; x < sliceDim[0]; x++) {
         const size_t countAxisOffset = c * sliceDim[axis];
-        tensor[x + offset[0] + ((axis == 0) ? countAxisOffset : 0)] = slice[x];
+        tensor[x + offsets_cpy[0] + ((axis == 0) ? countAxisOffset : 0)] =
+            slice[x];
       }
     return;
   }
@@ -217,17 +226,25 @@ void libjit_extract_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
                            size_t offsetDim) {
   // Source coordinates.
   size_t C[5];
+
+  // A local copy of the offsets buffer. We copy the buffer to make it clear
+  // to the optimizer that the inputs don't alias. This loop is optimized away.
+  size_t offsets_cpy[5];
+  for (size_t i = 0; i < numDimsSlice; i++) {
+    offsets_cpy[i] = offset[i];
+  }
+
   if (numDimsSlice == 5) {
     for (size_t x = 0; x < sliceDim[0]; x++)
       for (size_t y = 0; y < sliceDim[1]; y++)
         for (size_t z = 0; z < sliceDim[2]; z++)
           for (size_t w = 0; w < sliceDim[3]; w++)
             for (size_t q = 0; q < sliceDim[4]; q++) {
-              C[0] = x + offset[0];
-              C[1] = y + offset[1];
-              C[2] = z + offset[2];
-              C[3] = w + offset[3];
-              C[4] = q + offset[4];
+              C[0] = x + offsets_cpy[0];
+              C[1] = y + offsets_cpy[1];
+              C[2] = z + offsets_cpy[2];
+              C[3] = w + offsets_cpy[3];
+              C[4] = q + offsets_cpy[4];
               slice[libjit_getXYZWQ(sliceDim, x, y, z, w, q)] =
                   tensor[libjit_getXYZWQ(tensorDim, C[0], C[1], C[2], C[3],
                                          C[4])];
@@ -240,10 +257,10 @@ void libjit_extract_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
       for (size_t y = 0; y < sliceDim[1]; y++)
         for (size_t z = 0; z < sliceDim[2]; z++)
           for (size_t w = 0; w < sliceDim[3]; w++) {
-            C[0] = x + offset[0];
-            C[1] = y + offset[1];
-            C[2] = z + offset[2];
-            C[3] = w + offset[3];
+            C[0] = x + offsets_cpy[0];
+            C[1] = y + offsets_cpy[1];
+            C[2] = z + offsets_cpy[2];
+            C[3] = w + offsets_cpy[3];
             slice[libjit_getXYZW(sliceDim, x, y, z, w)] =
                 tensor[libjit_getXYZW(tensorDim, C[0], C[1], C[2], C[3])];
           }
@@ -254,9 +271,9 @@ void libjit_extract_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
     for (size_t x = 0; x < sliceDim[0]; x++)
       for (size_t y = 0; y < sliceDim[1]; y++)
         for (size_t z = 0; z < sliceDim[2]; z++) {
-          C[0] = x + offset[0];
-          C[1] = y + offset[1];
-          C[2] = z + offset[2];
+          C[0] = x + offsets_cpy[0];
+          C[1] = y + offsets_cpy[1];
+          C[2] = z + offsets_cpy[2];
           slice[libjit_getXYZ(sliceDim, x, y, z)] =
               tensor[libjit_getXYZ(tensorDim, C[0], C[1], C[2])];
         }
@@ -266,8 +283,8 @@ void libjit_extract_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
   if (numDimsSlice == 2) {
     for (size_t x = 0; x < sliceDim[0]; x++)
       for (size_t y = 0; y < sliceDim[1]; y++) {
-        C[0] = x + offset[0];
-        C[1] = y + offset[1];
+        C[0] = x + offsets_cpy[0];
+        C[1] = y + offsets_cpy[1];
         slice[libjit_getXY(sliceDim, x, y)] =
             tensor[libjit_getXY(tensorDim, C[0], C[1])];
       }
@@ -276,7 +293,7 @@ void libjit_extract_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
 
   if (numDimsSlice == 1) {
     for (size_t x = 0; x < sliceDim[0]; x++) {
-      slice[x] = tensor[x + offset[0]];
+      slice[x] = tensor[x + offsets_cpy[0]];
     }
     return;
   }
