@@ -1013,6 +1013,31 @@ BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
   return createBatchedReduceAdd(name, OT, batch, axis);
 }
 
+DivNode *Function::createBatchedReduceMean(llvm::StringRef name, TypeRef outTy,
+                                           NodeValue batch, size_t axis) {
+  // Use the same output type for both the batched reduce add and the
+  // denominator splat. Only use outTy as the output of the final div.
+  auto redDims = getNewShapeWithoutAxis(batch.dims(), axis);
+  auto outTyBRA = getParent()->uniqueTypeWithNewShape(batch.getType(), redDims);
+
+  // Create a batched add to sum up the values in the provided axis.
+  auto *BRA = createBatchedReduceAdd(name, outTyBRA, batch, axis);
+
+  // Create a splat of the same output type as the BRA, with value of the size
+  // of the original dimensions of the axis, to divide the BRA by.
+  auto *SN = createSplat(name.str() + ".denom", outTyBRA, batch.dims()[axis]);
+
+  // Element-wise divide to produce the reduced mean with outTy provided.
+  return createDiv(name.str() + ".res", outTy, BRA, SN);
+}
+
+DivNode *Function::createBatchedReduceMean(llvm::StringRef name,
+                                           NodeValue batch, size_t axis) {
+  auto redDims = getNewShapeWithoutAxis(batch.dims(), axis);
+  auto outTy = getParent()->uniqueTypeWithNewShape(batch.getType(), redDims);
+  return createBatchedReduceMean(name, outTy, batch, axis);
+}
+
 BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name,
                                            NodeValue batch, NodeValue sample) {
   return addNode(new BatchedAddNode(name, batch.getType(), batch, sample));
@@ -1673,9 +1698,7 @@ void Module::eraseVariable(VariablesList::iterator I) {
   vars_.erase(I);
 }
 
-void Function::eraseNode(NodesList::iterator I) {
-  nodes_.erase(I);
-}
+void Function::eraseNode(NodesList::iterator I) { nodes_.erase(I); }
 
 Variable *Module::getVariableByName(llvm::StringRef name) {
   for (auto *V : getVars()) {

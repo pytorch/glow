@@ -244,6 +244,116 @@ TEST_P(InterpAndCPU, batchedReduceAddQuantizedWithAxis) {
   }
 }
 
+TEST_P(Operator, batchedReduceMean) {
+  auto *batch = mod_.createVariable(ElemKind::FloatTy, {2, 4}, "batch");
+  auto *result = mod_.createVariable(ElemKind::FloatTy, {4}, "result");
+  batch->getPayload().getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
+
+  auto R = F_->createBatchedReduceMean("reduce.add", batch, /* axis */ 0);
+
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto H = result->getPayload().getHandle();
+  EXPECT_NEAR(H.at({0}), 5.5, 0.001);
+  EXPECT_NEAR(H.at({1}), 11.0, 0.001);
+  EXPECT_NEAR(H.at({2}), 16.5, 0.001);
+  EXPECT_NEAR(H.at({3}), 22.0, 0.001);
+}
+
+TEST_P(InterpAndCPU, batchedReduceMeanWithAxis) {
+  auto *batch = mod_.createVariable(ElemKind::FloatTy, {2, 3, 2}, "batch");
+  auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "result");
+  batch->getPayload().getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+
+  auto R = F_->createBatchedReduceMean("reduce.add", batch, /* axis */ 1);
+
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto H = result->getPayload().getHandle();
+  EXPECT_NEAR(H.at({0, 0}), 2.0, 0.001);
+  EXPECT_NEAR(H.at({0, 1}), 3.0, 0.001);
+  EXPECT_NEAR(H.at({1, 0}), 8.0, 0.001);
+  EXPECT_NEAR(H.at({1, 1}), 9.0, 0.001);
+}
+
+TEST_P(InterpAndCPU, batchedReduceMeanQuantized) {
+  auto BT = mod_.uniqueType(ElemKind::Int8QTy, {3, 8}, 0.5, 3);
+  auto OT = mod_.uniqueType(ElemKind::Int8QTy, {8}, 2.0, -1);
+
+  auto *batch = mod_.createVariable(ElemKind::Int8QTy, {3, 8}, BT->getScale(),
+                                    BT->getOffset(), "batch");
+  auto *result = mod_.createVariable(ElemKind::Int8QTy, {8}, OT->getScale(),
+                                     OT->getOffset(), "result");
+
+  batch->getPayload().getHandle<int8_t>() = {
+      27, -31, 16,  7,  20, 34, -2, 8,   -10, 83, 29,  -17,
+      19, 13,  -11, -9, 50, 58, 0,  -20, -72, 43, -25, -1};
+
+  auto BH = batch->getHandle<int8_t>();
+  auto OH = result->getHandle<int8_t>();
+
+  auto *R = F_->createBatchedReduceMean("batched.reduce.add", OT, batch,
+                                        /* axis */ 0);
+
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  for (size_t i = 0; i < 8; i++) {
+    std::array<int32_t, 3> b{{BH.at({0, i}), BH.at({1, i}), BH.at({2, i})}};
+    float s = BT->getScale() / OT->getScale();
+    int32_t o = BT->getOffset();
+    float result = ((b[0] - o) + (b[1] - o) + (b[2] - o)) / 3;
+    result = s * result + OT->getOffset();
+
+    EXPECT_NEAR(std::round(result), OH.at({i}), 1.0);
+  }
+}
+
+TEST_P(InterpAndCPU, batchedReduceMeanQuantizedWithAxis) {
+  auto BT = mod_.uniqueType(ElemKind::Int8QTy, {2, 3, 4}, 0.5, 3);
+  auto OT = mod_.uniqueType(ElemKind::Int8QTy, {2, 4}, 2.0, -1);
+
+  auto *batch = mod_.createVariable(ElemKind::Int8QTy, {2, 3, 4},
+                                    BT->getScale(), BT->getOffset(), "batch");
+  auto *result = mod_.createVariable(ElemKind::Int8QTy, {2, 4}, OT->getScale(),
+                                     OT->getOffset(), "result");
+
+  batch->getPayload().getHandle<int8_t>() = {
+      27, -31, 16,  7,  20, 34, -2, 8,   -10, 83, 29,  -17,
+      19, 13,  -11, -9, 50, 58, 0,  -20, -72, 43, -25, -1};
+
+  auto BH = batch->getHandle<int8_t>();
+  auto OH = result->getHandle<int8_t>();
+
+  auto *R = F_->createBatchedReduceMean("batched.reduce.add", OT, batch,
+                                        /* axis */ 1);
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  for (size_t i = 0; i < 2; i++) {
+    for (size_t j = 0; j < 4; j++) {
+      std::array<int32_t, 3> b{
+          {BH.at({i, 0, j}), BH.at({i, 1, j}), BH.at({i, 2, j})}};
+      float s = BT->getScale() / OT->getScale();
+      int32_t o = BT->getOffset();
+      float result = ((b[0] - o) + (b[1] - o) + (b[2] - o)) / 3;
+      result = s * result + OT->getOffset();
+
+      EXPECT_NEAR(std::round(result), OH.at({i, j}), 1.0);
+    }
+  }
+}
+
 TEST_P(Operator, batchedBatchedAdd) {
   auto *batch = mod_.createVariable(ElemKind::FloatTy, {2, 3, 3}, "batch");
   auto *added = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "added");
