@@ -1056,4 +1056,21 @@ __kernel void gatherW(__global void *mem,
    gatherK(&mem[dest], &mem[src], &mem[indices], numIndices, sliceSize);
 }
 
+__kernel void scatterassignK(__global float *data,
+                      __global cl_uint64_t *indices,
+                      __global const float *slices,
+                      cl_uint32_t sliceSize) {
+  int idx = get_global_id(0);
+  cl_uint64_t destDataIdx = indices[idx];
+  memcpy_float(data + destDataIdx * sliceSize, slices + idx * sliceSize, sliceSize);
+}
+
+__kernel void scatterassignW(__global void *mem,
+                      cl_uint32_t data,
+                      cl_uint32_t indices,
+                      cl_uint32_t slices,
+                      cl_uint32_t sliceSize) {
+   scatterassignK(&mem[data], &mem[indices], &mem[slices], sliceSize);
+}
+
 )";

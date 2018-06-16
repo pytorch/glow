@@ -339,6 +339,16 @@ int main(int argc, char **argv) {
                     "{I_0, I_1, ... I_n, D_1, D_2, ... D_m}, where D_i and I_j "
                     "denote Data and Indices dimensions respectively.");
 
+  BB.newNode("ScatterAssign")
+      .addInput("Data")
+      .addInput("Indices")
+      .addInput("Slices")
+      .addResult("Data.getType()")
+      .setDocstring("Copies each slice from Slices into Data at the "
+                    "corresponding index in Indices. For example, given input "
+                    "Data {{1,2},{3,4},{5,6}}, Slices {{-3,-4}}, and Indices "
+                    "{1}, the result is {{1,2},{-3,-4},{5,6}}.");
+
   //===--------------------------------------------------------------------===//
   //                Nodes used for network training
   //===--------------------------------------------------------------------===//

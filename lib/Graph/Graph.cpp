@@ -1175,6 +1175,13 @@ GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
       indices));
 }
 
+ScatterAssignNode *Function::createScatterAssign(llvm::StringRef name,
+                                                 NodeValue data,
+                                                 NodeValue indices,
+                                                 NodeValue slices) {
+  return addNode(new ScatterAssignNode(name, data, indices, slices));
+}
+
 QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
                                        TypeRef outTy) {
   assert(input.getElementType() == ElemKind::FloatTy &&

@@ -307,6 +307,19 @@ public:
       registerIR(N, dest);
       break;
     }
+    case glow::Kinded::Kind::ScatterAssignNodeKind: {
+      auto *SAI = cast<ScatterAssignNode>(N);
+      auto *dataTensor = valueForNode(SAI->getData());
+      auto *indicesTensor = valueForNode(SAI->getIndices());
+      auto *slicesTensor = valueForNode(SAI->getSlices());
+      auto *dest =
+          builder_.createAllocActivationInst(SAI->getName(), SAI->getType());
+      builder_.createCopyInst("copy.scatterassign", dest, dataTensor);
+      builder_.createScatterAssignInst("scatterassign", dest, indicesTensor,
+                                       slicesTensor);
+      registerIR(N, dest);
+      break;
+    }
     case glow::Kinded::Kind::LocalResponseNormalizationNodeKind: {
       auto *LR = cast<LocalResponseNormalizationNode>(N);
       auto *in = valueForNode(LR->getInput());

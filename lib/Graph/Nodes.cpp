@@ -912,6 +912,29 @@ void GatherNode::verify() const {
   }
 }
 
+void ScatterAssignNode::verify() const {
+  const auto &slicesDims = getSlices().dims();
+  const auto &dataDims = getData().dims();
+  const auto &indicesDims = getIndices().dims();
+  (void)slicesDims;
+  (void)dataDims;
+  (void)indicesDims;
+
+  assert(indicesDims.size() == 1 &&
+         "Indices should be a single dimensional vector.");
+  assert(indicesDims[0] == slicesDims[0] &&
+         "There should be an index for each slice.");
+  assert(slicesDims.size() == dataDims.size() &&
+         "Slices and data should have same number of dimensions.");
+
+  if (dataDims.size() > 1) {
+    for (size_t i = 1; i < dataDims.size(); i++) {
+      assert(dataDims[i] == slicesDims[i] &&
+             "Slice shape should equal data shape without first dimension.");
+    }
+  }
+}
+
 void SaveNode::verify() const { checkSameType(getInput(), getOutput()); }
 
 void PowNode::verify() const { checkSameType(getResult(), getBase()); }

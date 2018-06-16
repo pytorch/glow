@@ -1943,6 +1943,28 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::ScatterAssignInstKind: {
+    ScatterAssignInst *SAI = llvm::cast<ScatterAssignInst>(I);
+    auto *data = SAI->getData();
+    auto *indices = SAI->getIndices();
+    auto *slices = SAI->getSlices();
+
+    auto *dataPtr = emitValueAddress(builder, data);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+    auto *slicesPtr = emitValueAddress(builder, slices);
+
+    auto *indicesSize = emitConstSizeT(builder, indices->size());
+
+    auto *dataType = data->getType();
+    auto *sliceSize =
+        emitConstSizeT(builder, dataType->size() / dataType->dims()[0]);
+
+    auto *F = getFunction("scatterassign", data->getElementType());
+    createCall(builder, F,
+               {dataPtr, indicesPtr, slicesPtr, indicesSize, sliceSize});
+    break;
+  }
+
   case Kinded::Kind::DebugPrintInstKind: {
     DebugPrintInst *DPI = llvm::cast<DebugPrintInst>(I);
     auto *src = DPI->getSrc();
