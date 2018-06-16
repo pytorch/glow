@@ -68,6 +68,20 @@ llvm::Value *getConstantValue(llvm::Value *v) {
   return nullptr;
 }
 
+/// Remember in \p argsToBeSpecialized that the argument \p argIdx needs to be
+/// specialized.
+static void addArgToBeSpecialized(uint64_t &argsToBeSpecialized,
+                                  unsigned argIdx) {
+  argsToBeSpecialized |= (((uint64_t)1) << argIdx);
+}
+
+/// \returns true if the argument \p argIdx needs to be specialized according to
+/// the \p argsToBeSpecialized mask.
+static bool isArgToBeSpecialized(uint64_t argsToBeSpecialized,
+                                 unsigned argIdx) {
+  return argsToBeSpecialized & (((uint64_t)1) << argIdx);
+}
+
 /// Specialize functions for constant arguments. Such specialized functions are
 /// marked as noinline and simply invoke the original function with constant
 /// arguments. This call later gets inlined and optimized.
@@ -133,27 +147,34 @@ class FunctionSpecializer {
     if (!jitSpecializeAllArguments_ && !jitSpecializeDims)
       return F;
 
+    // A key representing the function and arguments to be specialized.
     SpecializationKey key{call, argsToBeSpecialized};
+    // Check if there is any existing specialization for this hash key already.
     auto &specializedF = specializations_[key];
-    // Is there any specialization for this hash code already?
     if (specializedF) {
-      auto specializedFTy = specializedF->getFunctionType();
-      auto FTy = F->getFunctionType();
-      (void)specializedFTy;
-      (void)FTy;
+      auto specializedFnTy = specializedF->getFunctionType();
+      auto FnTy = F->getFunctionType();
+      (void)specializedFnTy;
+      (void)FnTy;
       assert(
-          specializedFTy->getReturnType() == FTy->getReturnType() &&
+          specializedFnTy->getReturnType() == FnTy->getReturnType() &&
           "A function and its specialization should have the same return type");
-      // The specialized function only takes non-constant parameters from the
-      // original function call. Check that the types of these parameter are the
-      // same for the original and the specialized function.
-      for (size_t argIdx = 0, e = F->arg_size(); argIdx < e; ++argIdx) {
-        if (!(argsToBeSpecialized & (((uint64_t)1) << argIdx))) {
-          assert(specializedFTy->getParamType(argIdx) ==
-                     FTy->getParamType(argIdx) &&
-                 "A function and its specialization should have the same "
-                 "parameter type");
-        }
+      // The specialized function only takes non-specialized parameters from the
+      // original function call. Check that the types of these parameters are
+      // the same for the original and the specialized function.
+      for (size_t argIdx = 0, specializedFnArgIdx = 0, e = F->arg_size();
+           argIdx < e; ++argIdx) {
+        // If the parameter is specialized, it is not present in the specialized
+        // function.
+        if (isArgToBeSpecialized(argsToBeSpecialized, argIdx))
+          continue;
+        // The parameter of the original call is not specialized and should be
+        // present in the specialized function.
+        assert(specializedFnTy->getParamType(specializedFnArgIdx) ==
+                   FnTy->getParamType(argIdx) &&
+               "A function and its specialization should have the same "
+               "parameter type for non-constant arguments");
+        specializedFnArgIdx++;
       }
       NumSharedSpecializations++;
       return specializedF;
@@ -171,7 +192,7 @@ class FunctionSpecializer {
     for (auto &arg : F->args()) {
       // If this argument needs to be specialized, use its constant
       // value from the call instruction.
-      if (argsToBeSpecialized & (((uint64_t)1) << argIdx)) {
+      if (isArgToBeSpecialized(argsToBeSpecialized, argIdx)) {
         auto *argValue = call->getArgOperand(argIdx);
         // Map the argument to a constant value.
         VMap[&arg] = argValue;
@@ -245,7 +266,7 @@ public:
         continue;
       }
 
-      argsToBeSpecialized |= (((uint64_t)1) << curArgIdx);
+      addArgToBeSpecialized(argsToBeSpecialized, curArgIdx);
 
       // Bail if the values of arguments are not constants.
       if (!getConstantValue(arg)) {
@@ -334,9 +355,10 @@ private:
       // its unique representation.
       for (unsigned idx = 0, e = key.call_->getNumArgOperands(); idx < e;
            ++idx) {
-        if ((((uint64_t)1) << idx) & key.argsToBeSpecialized_)
+        if (isArgToBeSpecialized(key.argsToBeSpecialized_, idx)) {
           hash = llvm::hash_combine(
               hash, getConstantValue(key.call_->getArgOperand(idx)));
+        }
       }
       return hash;
     }
@@ -352,10 +374,11 @@ private:
         return false;
       for (unsigned idx = 0, e = lhs.call_->getNumArgOperands(); idx < e;
            ++idx) {
-        if ((((uint64_t)1) << idx) & lhs.argsToBeSpecialized_)
+        if (isArgToBeSpecialized(lhs.argsToBeSpecialized_, idx)) {
           if (getConstantValue(lhs.call_->getArgOperand(idx)) !=
               getConstantValue(rhs.call_->getArgOperand(idx)))
             return false;
+        }
       }
       return true;
     }
