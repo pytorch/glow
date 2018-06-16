@@ -371,6 +371,13 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"Indices", "ElemKind::IndexTy"});
 
+  BB.newInstr("ScatterAssign")
+      .addOperand("Data", OperandKind::InOut)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Slices", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::IndexTy"});
+
   //===--------------------------------------------------------------------===//
   //             Instructions used for debugging/profiling/printing
   //===--------------------------------------------------------------------===//

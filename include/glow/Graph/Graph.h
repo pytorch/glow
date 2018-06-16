@@ -408,6 +408,13 @@ public:
   GatherNode *createGather(llvm::StringRef name, NodeValue data,
                            NodeValue indices);
 
+  /// Copies each slice from \p slices into \p data at the corresponding index
+  /// in \p indices, and \returns this new version of data. For example, given
+  /// input data {{1,2},{3,4},{5,6}}, slices {{-3,-4}}, and indices {1}, the
+  /// result is {{1,2},{-3,-4},{5,6}}.
+  ScatterAssignNode *createScatterAssign(llvm::StringRef name, NodeValue data,
+                                         NodeValue indices, NodeValue slices);
+
   /// Create quantization node which transforms floating point tensor to a
   /// quantized one with given Scale and Offset. Scale and Offset params are
   /// part of the \p outTy.

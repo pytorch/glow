@@ -727,6 +727,24 @@ void Interpreter::fwdGatherInst(const glow::GatherInst *I) {
   }
 }
 
+void Interpreter::fwdScatterAssignInst(const glow::ScatterAssignInst *I) {
+  Tensor *dataT = getTensor(I->getData());
+  Tensor *indicesT = getTensor(I->getIndices());
+  Tensor *slicesT = getTensor(I->getSlices());
+
+  size_t dataSliceSize =
+      dataT->size() / dataT->dims()[0] * dataT->getType().getElementSize();
+
+  // For each index, copy from the slice at that index into the location in data
+  // given the offset from the indices tensor.
+  for (size_t i = 0, end = indicesT->size(); i < end; i++) {
+    size_t destDataIdx = indicesT->getHandle<size_t>().raw(i);
+    std::copy(&slicesT->getUnsafePtr()[i * dataSliceSize],
+              &slicesT->getUnsafePtr()[(i + 1) * dataSliceSize],
+              &dataT->getUnsafePtr()[dataSliceSize * destDataIdx]);
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                      Local Response Normalization
 //===----------------------------------------------------------------------===//

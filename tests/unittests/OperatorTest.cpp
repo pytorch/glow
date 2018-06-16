@@ -784,6 +784,77 @@ TEST_P(Operator, Gather) {
   EXPECT_FLOAT_EQ(H.at({1, 3, 1}), 1.2);
 }
 
+TEST_P(Operator, ScatterAssign) {
+  auto *data = mod_.createVariable(ElemKind::FloatTy, {5, 2}, "data");
+  auto *indices = mod_.createVariable(ElemKind::IndexTy, {2}, "indices");
+  auto *slices = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "slices");
+  auto *result = mod_.createVariable(ElemKind::FloatTy, {5, 2}, "result");
+
+  data->getPayload().getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  indices->getPayload().getHandle<size_t>() = {1, 3};
+  slices->getPayload().getHandle() = {-3, -4, -7, -8};
+
+  auto R = F_->createScatterAssign("scatterassign", data, indices, slices);
+
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto H = result->getPayload().getHandle();
+
+  EXPECT_FLOAT_EQ(H.at({0, 0}), 1.0);
+  EXPECT_FLOAT_EQ(H.at({0, 1}), 2.0);
+  EXPECT_FLOAT_EQ(H.at({1, 0}), -3.0);
+  EXPECT_FLOAT_EQ(H.at({1, 1}), -4.0);
+  EXPECT_FLOAT_EQ(H.at({2, 0}), 5.0);
+  EXPECT_FLOAT_EQ(H.at({2, 1}), 6.0);
+  EXPECT_FLOAT_EQ(H.at({3, 0}), -7.0);
+  EXPECT_FLOAT_EQ(H.at({3, 1}), -8.0);
+  EXPECT_FLOAT_EQ(H.at({4, 0}), 9.0);
+  EXPECT_FLOAT_EQ(H.at({4, 1}), 10.0);
+}
+
+TEST_P(InterpAndCPU, ScatterAssignQuantized) {
+  auto *data = mod_.createVariable(ElemKind::FloatTy, {5, 2}, "data");
+  auto *indices = mod_.createVariable(ElemKind::IndexTy, {2}, "indices");
+  auto *slices = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "slices");
+  auto *result = mod_.createVariable(ElemKind::FloatTy, {5, 2}, "result");
+
+  data->getPayload().getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  indices->getPayload().getHandle<size_t>() = {1, 3};
+  slices->getPayload().getHandle() = {-3, -4, -7, -8};
+
+  auto qParams = glow::quantization::chooseQuantizationParams(-11, 11);
+  auto dataTy = mod_.uniqueType(ElemKind::Int8QTy, {5, 2}, qParams.scale_,
+                                qParams.offset_);
+  auto slicesTy = mod_.uniqueType(ElemKind::Int8QTy, {2, 2}, qParams.scale_,
+                                  qParams.offset_);
+
+  auto *dataQ = F_->createQuantize("quantizeQ", data, dataTy);
+  auto *slicesQ = F_->createQuantize("quantizeS", slices, slicesTy);
+  auto *SA = F_->createScatterAssign("scatterassign", dataQ, indices, slicesQ);
+  auto *DQ = F_->createDequantize("dequantize", SA);
+
+  F_->createSave("save", DQ, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto H = result->getPayload().getHandle();
+
+  EXPECT_NEAR(H.at({0, 0}), 1.0, 0.05);
+  EXPECT_NEAR(H.at({0, 1}), 2.0, 0.05);
+  EXPECT_NEAR(H.at({1, 0}), -3.0, 0.05);
+  EXPECT_NEAR(H.at({1, 1}), -4.0, 0.05);
+  EXPECT_NEAR(H.at({2, 0}), 5.0, 0.05);
+  EXPECT_NEAR(H.at({2, 1}), 6.0, 0.05);
+  EXPECT_NEAR(H.at({3, 0}), -7.0, 0.05);
+  EXPECT_NEAR(H.at({3, 1}), -8.0, 0.05);
+  EXPECT_NEAR(H.at({4, 0}), 9.0, 0.05);
+  EXPECT_NEAR(H.at({4, 1}), 10.0, 0.05);
+}
+
 TEST_P(Operator, QuantizeAndDequantize) {
   Tensor inputs(ElemKind::FloatTy, {1, 4});
   inputs.getHandle() = {1, 1.2, 0.5, 1.3};
