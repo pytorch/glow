@@ -368,8 +368,8 @@ int main(int argc, char **argv) {
       .addOperand("Data", OperandKind::In)
       .addOperand("Indices", OperandKind::In)
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
-      .autoVerify(VerifyKind::SameElementType,
-                  {"Indices", "ElemKind::IndexTy"});
+      .autoVerify(VerifyKind::SameElementType, {"Indices", "ElemKind::IndexTy"})
+      .autoIRGen();
 
   //===--------------------------------------------------------------------===//
   //             Instructions used for debugging/profiling/printing
