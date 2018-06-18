@@ -1387,11 +1387,8 @@ void Function::createGRU(llvm::StringRef namePrefix,
       ElemKind::FloatTy, {outputSize}, nameBase + ".by",
       VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
 
-  auto *Ones = getParent()->createVariable(
-      ElemKind::FloatTy, {batchSize, hiddenSize}, nameBase + ".ones",
-      VisibilityKind::Private, Variable::TrainKind::None);
-
-  Ones->getPayload().getHandle().clear(1.0);
+  auto ty = getParent()->uniqueType(ElemKind::FloatTy, {batchSize, hiddenSize});
+  auto *Ones = createSplat(nameBase + ".ones", ty, 1.0);
 
   std::vector<Node *> outputNodes;
   for (unsigned t = 0; t < timeSteps; t++) {
