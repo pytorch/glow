@@ -22,6 +22,7 @@
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
 
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
@@ -172,8 +173,20 @@ LLVMIRGen::getOrCreateFunctionDebugInfo(llvm::Function *F, llvm::DIScope *scope,
 }
 
 void LLVMIRGen::initDebugInfo() {
-  if (!emitDebugInfo)
+  if (!emitDebugInfo) {
+#if LLVM_VERSION_MAJOR >= 6
+    // No debug information is going to be emitted for the code generated from
+    // the Glow IR. But any debug information from the Glow's library (e.g.
+    // libjit) should be stripped as well. Let's strip the debug info as early
+    // as possible, so that the LLVM's optimizer does not need to spend any time
+    // to preserve the debug info during optimizations.
+    // The debug info stripping is enabled only for LLVM >= 6.0.0, because
+    // earlier versions of LLVM had a bug in this function which resulted in
+    // compiler crashes.
+    llvm::StripDebugInfo(getModule());
+#endif
     return;
+  }
   // Remove any existing debug info version flags from the module to
   // avoid possible conflicts, which may happen if libjit was compiled
   // using an older version of Clang which uses the old debug info format.
