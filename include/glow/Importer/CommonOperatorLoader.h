@@ -79,6 +79,23 @@ protected:
     addNodeAsOutput(op, shape);
   }
 
+  /// Loads Sqrt operator, given its protobuf representation and parsed args.
+  void loadSqrt(const OpType &op, ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto *R = G_.createPow(opName, in, 0.5f);
+    addNodeAsOutput(op, R);
+  }
+
+  /// Loads Reciprocal operator, given its protobuf representation and parsed
+  /// args.
+  void loadReciprocal(const OpType &op, ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto *R = G_.createPow(opName, in, -1.0f);
+    addNodeAsOutput(op, R);
+  }
+
   void loadSum(const OpType &op, ArgumentDictionaryTy &dict) {
     // TODO: support variadic arguments
     assert(op.input_size() == 2 && "Only Sum of 2 inputs is supported.");
@@ -352,6 +369,14 @@ protected:
     }
     if (typeName == "Shape") {
       loadShape(op, dict);
+      return true;
+    }
+    if (typeName == "Sqrt") {
+      loadSqrt(op, dict);
+      return true;
+    }
+    if (typeName == "Reciprocal") {
+      loadReciprocal(op, dict);
       return true;
     }
     if (typeName == "Sum") {
