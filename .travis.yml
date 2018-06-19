@@ -2,49 +2,59 @@ os: linux
 dist: trusty
 sudo: required
 language: cpp
-compiler: clang
+
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
+      - llvm-toolchain-trusty-6.0
+    packages:
+      - llvm-6.0
+      - llvm-6.0-dev
+      - clang-6.0
+      - clang++-6.0
+      - ninja-build
+      - libpng-dev
+
+before_install:
+  - utils/install_protobuf.sh
 
 matrix:
   fast_finish: true
   include:
-    - os: linux
-      env:
+    - env:
         - TEST_NAME=ASAN
-      addons:
-        apt:
-          sources:
-            - ubuntu-toolchain-r-test
-          packages:
-            - g++-6
-      before_install:
-        - sudo apt-get -qq update
-        - sudo apt-get install -y ninja-build llvm libpng-dev
-        - utils/install_protobuf.sh
       install:
         - mkdir build && cd build
-        - cmake -G Ninja -DGLOW_USE_SANITIZER="Address;Undefined" -DCMAKE_BUILD_TYPE=Release -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=ON ../
-    - os: linux
-      env:
+        - CC=clang-6.0 CXX=clang++-6.0 cmake -G Ninja
+          -DCMAKE_BUILD_TYPE=Release -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=ON
+          -DCMAKE_PREFIX_PATH=/usr/lib/llvm-6.0/include/
+          -DGLOW_USE_SANITIZER="Address;Undefined"
+          ../
+
+    - env:
         - TEST_NAME=DEBUG
-      before_install:
-        - sudo apt-get -qq update
-        - sudo apt-get install -y ninja-build llvm libpng-dev
-        - utils/install_protobuf.sh
       install:
         - mkdir build && cd build
-        - cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=ON ../
-    - os: linux
-      compiler: g++
+        - CC=clang-6.0 CXX=clang++-6.0 cmake -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=ON
+          -DCMAKE_PREFIX_PATH=/usr/lib/llvm-6.0/include/
+          ../
+
+    - compiler: g++
       env:
         - TEST_NAME=COVERAGE
       before_install:
-        - sudo apt-get -qq update
-        - sudo apt-get install -y ninja-build llvm lcov libpng-dev
-        - sudo pip install awscli --upgrade
         - utils/install_protobuf.sh
+        - sudo apt-get install -y lcov
+        - sudo pip install awscli --upgrade
       install:
         - mkdir build && cd build
-        - cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_CPU=OFF -DGLOW_WITH_OPENCL=OFF -DGLOW_USE_COVERAGE=ON ../
+        - cmake -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=OFF
+          -DCMAKE_PREFIX_PATH=/usr/lib/llvm-6.0/include/
+          -DGLOW_USE_COVERAGE=ON
+          ../
       script:
         - ../.travis/run_coverage.sh
 

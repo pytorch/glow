@@ -54,10 +54,16 @@ if (GLOW_WITH_OPENCL)
   find_package(OpenCL REQUIRED)
 endif ()
 
-find_package(LLVM CONFIG)
+# Prefer LLVM 6.
+find_package(LLVM 6 CONFIG)
+# If LLVM 6 not found, try build with whatever is available.
+if (NOT LLVM_FOUND)
+  find_package(LLVM CONFIG)
+endif()
 if (NOT LLVM_FOUND)
   message(FATAL_ERROR "Could not find LLVM. Build LLVM manually and configure the project with -DCMAKE_PREFIX_PATH=/path/to/llvm/install")
 endif()
+
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})

@@ -5,7 +5,10 @@ else()
   find_program(CLANG_BIN clang++)
 endif()
 
-find_program(LLVM_LINK_BIN llvm-link)
+find_program(LLVM_LINK_BIN
+             NAMES
+               llvm-link-6.0
+               llvm-link)
 
 add_library(CPURuntime
             SHARED
