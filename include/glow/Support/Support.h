@@ -28,6 +28,15 @@ namespace glow {
 /// Convert the ptr \p ptr into an ascii representation in the format "0xFFF..."
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, void *ptr);
 
+/// \returns output stream for stdout.
+llvm::raw_ostream &outs();
+
+/// \returns output stream for stderr.
+llvm::raw_ostream &errs();
+
+/// \returns output stream for debug messages.
+llvm::raw_ostream &dbgs();
+
 /// Stream LLVM's ArrayRef into the given output stream.
 template <typename E>
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
