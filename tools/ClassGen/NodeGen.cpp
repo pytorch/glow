@@ -52,6 +52,14 @@ int main(int argc, char **argv) {
                     "this node and all of its ancestor nodes. Generally "
                     "intended to save the final result of a network.");
 
+  BB.newNode("Load")
+      .addInput("Variable")
+      .addResultFromCtorArg()
+      .setDocstring("Load/Copy a variable into local memory. "
+                    "If the memory space of the variable is the same as the "
+                    "local memory space and the memory dependencies allow it, "
+                    "the backend may choose to reuse this buffer directly.");
+
   //===--------------------------------------------------------------------===//
   //                   Convolution / Pool / FC
   //===--------------------------------------------------------------------===//

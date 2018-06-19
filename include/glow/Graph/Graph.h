@@ -479,6 +479,8 @@ public:
                   unsigned hiddenSize, unsigned outputSize,
                   std::vector<NodeValue> &outputs);
 
+  LoadNode *createLoad(llvm::StringRef name, NodeValue Variable);
+
   /// @}
 
   /// Erase the node \p N from the Function.

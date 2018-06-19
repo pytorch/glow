@@ -1602,6 +1602,10 @@ void Function::createLSTM(llvm::StringRef namePrefix,
   }
 };
 
+LoadNode *Function::createLoad(llvm::StringRef name, NodeValue variable) {
+  return addNode(new LoadNode(name, variable.getType(), variable));
+}
+
 //===----------------------------------------------------------------------===//
 //                   Graph dumping and printing
 //===----------------------------------------------------------------------===//
