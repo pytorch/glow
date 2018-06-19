@@ -15,6 +15,7 @@
  */
 
 #include "glow/Support/Support.h"
+#include "llvm/Support/Debug.h"
 
 #include <cctype>
 #include <sstream>
@@ -25,6 +26,18 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, void *ptr) {
   std::ostringstream stringstream;
   stringstream << ptr;
   return os << stringstream.str();
+}
+
+llvm::raw_ostream &outs() {
+  return llvm::outs();
+}
+
+llvm::raw_ostream &errs() {
+  return llvm::errs();
+}
+
+llvm::raw_ostream &dbgs() {
+  return llvm::dbgs();
 }
 
 std::string escapeDottyString(const std::string &str) {
