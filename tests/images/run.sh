@@ -24,3 +24,7 @@ done
 ./bin/image-classifier tests/images/imagenet/zebra_340.png -image_mode=0to1 -m=shufflenet/model.onnx $@
 
 ./bin/image-classifier tests/images/mnist/*.png -image_mode=0to1 -m=lenet_mnist $@
+
+for png_filename in tests/images/mnist/*.png; do
+  ./bin/image-classifier $png_filename -image_mode=0to1 -m=mnist.onnx $@
+done
