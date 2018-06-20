@@ -200,9 +200,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     size_t depth = wtag.dims()[0];
 
     // Construct the Filter field.
-    Variable *filter =
-        G_.getParent()->createVariable(&wtag.getType(), "conv.filter");
-    filter->getPayload().copyFrom(&wtag);
+    auto *filter = createVariable("conv.filter", wtag);
 
     unsigned kernel;
     if (dict.count("kernel_shape")) {
@@ -214,9 +212,8 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     }
 
     // Construct the Bias field.
-    Variable *bias =
-        G_.getParent()->createVariable(ElemKind::FloatTy, {depth}, "conv.bias");
-    bias->getPayload().zero();
+    Tensor biasTensor(ElemKind::FloatTy, {depth});
+    biasTensor.zero();
 
     // Check if we have a serialized bias vector.
     if (op.input_size() > 2) {
@@ -224,9 +221,10 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
       if (tensors_.count(biasTensorName)) {
         // Load the serialized bias vector.
         Tensor *b = getTensorByName(biasTensorName);
-        bias->copyFrom(b);
+        biasTensor.copyFrom(b);
       }
     }
+    auto *bias = createVariable("conv.bias", biasTensor);
 
     // ONNX passes the input as NCHW, and we expect the input to be NHWC.
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);

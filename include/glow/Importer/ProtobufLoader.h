@@ -103,13 +103,34 @@ protected:
   /// \returns the tensor that was registered under the name \p name.
   Tensor *getTensorByName(const std::string &name);
 
+  /// Create a new variable \p name initialized with \p tensor.
+  /// The created variable is also registered under \p name.
+  /// \returns the newly created variable.
+  /// \pre !hasNodeByName(name)
+  Node *createAndRememberVariable(
+      const std::string &name, Tensor &tensor,
+      VisibilityKind visibilityKind = VisibilityKind::Private,
+      Variable::TrainKind trainKind = Variable::TrainKind::Broadcast);
+
+  /// \returns the node that was registered with the name \p name or nullptr
+  /// if no node has been registered with this name.
+  Node *getNodeByNameOrNull(const std::string &name) const;
+
 public:
   /// \returns the node that was registered with the name \p name.
-  Node *getNodeByName(const std::string &name);
+  /// \pre hasNodeByName(name)
+  Node *getNodeByName(const std::string &name) const;
 
   /// \returns the node that was registered with the name \p name or create a
   /// new Variable node for a tensor with this name.
   Node *getOrCreateNodeByName(const std::string &name);
+
+  /// Create a new variable \p name initialized with \p tensor.
+  /// \returns the newly created variable.
+  Node *createVariable(
+      const std::string &name, Tensor &tensor,
+      VisibilityKind visibilityKind = VisibilityKind::Private,
+      Variable::TrainKind trainKind = Variable::TrainKind::Broadcast);
 
   /// \returns True if the node that's registered using \p name exists.
   bool hasNodeByName(const std::string &name) const;
