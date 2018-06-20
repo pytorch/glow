@@ -137,7 +137,7 @@ void ExecutionEngine::generateIR(CompilationMode mode, Function *F) {
   }
 
   // Lower the graph into a sequence of low-level linear algebra operations.
-  ::glow::lower(F, mode, *backend_.get());
+  ::glow::lower(F, mode, *backend_);
 
   // Optimized the graph again.
   ::glow::optimize(F, mode);
@@ -156,7 +156,7 @@ void ExecutionEngine::generateIR(CompilationMode mode, Function *F) {
   IR_->generateIR();
 
   // Optimize the generated IR.
-  ::glow::optimize(*IR_, mode, *backend_.get());
+  ::glow::optimize(*IR_, mode, *backend_);
 }
 
 void ExecutionEngine::compile(CompilationMode mode, Function *F) {
