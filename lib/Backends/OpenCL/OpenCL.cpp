@@ -21,6 +21,7 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Support/Debug.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -473,8 +474,8 @@ void OCLBackend::executeConvolution(const OCLConvolutionInst *CC) {
 void OCLBackend::doForwardPass() {
   auto copiedToDeviceBytes = copyMutableWeightsToDevice();
   (void)copiedToDeviceBytes;
-  DEBUG(llvm::dbgs() << "Copied " << copiedToDeviceBytes
-                     << " bytes to OpenCL device\n");
+  DEBUG_GLOW(llvm::dbgs() << "Copied " << copiedToDeviceBytes
+                          << " bytes to OpenCL device\n");
 
   for (const auto &I : F_->getInstrs()) {
     // The kernels are named after the name of the instruction, plus the "W"
@@ -1125,8 +1126,8 @@ void OCLBackend::doForwardPass() {
 
   auto copiedFromDeviceBytes = copyMutableWeightsFromDevice();
   (void)copiedFromDeviceBytes;
-  DEBUG(llvm::dbgs() << "Copied " << copiedFromDeviceBytes
-                     << " bytes from OpenCL device\n");
+  DEBUG_GLOW(llvm::dbgs() << "Copied " << copiedFromDeviceBytes
+                          << " bytes from OpenCL device\n");
 }
 
 size_t OCLBackend::copyValueToDevice(const Value *v, void *buf) {
@@ -1170,8 +1171,8 @@ size_t OCLBackend::copyValueFromDevice(const Value *v, void *buf) {
         sizeInBytes, buf, /* num_events_in_wait_list */ 0,
         /* event_list */ nullptr, /* event */ nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy from the device");
-    DEBUG(llvm::dbgs() << "Copied the value from device: "
-                       << it->first->getName() << "\n");
+    DEBUG_GLOW(llvm::dbgs() << "Copied the value from device: "
+                            << it->first->getName() << "\n");
     copiedBytes += sizeInBytes;
   }
   return copiedBytes;
@@ -1283,8 +1284,8 @@ void OCLBackend::init() {
   // Ask the memory allocator how much memory is required. What was the high
   // watermark for this program.
   size_t requiredSpace = allocator_.getMaxMemoryUsage();
-  DEBUG(llvm::dbgs() << "Allocated GPU memory block of size: " << requiredSpace
-                     << "\n");
+  DEBUG_GLOW(llvm::dbgs() << "Allocated GPU memory block of size: "
+                          << requiredSpace << "\n");
 
   // Release the memory from the previous run.
   if (deviceBuffer_) {

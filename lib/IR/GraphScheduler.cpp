@@ -18,6 +18,7 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/Utils.h"
 #include "glow/IR/IR.h"
+#include "glow/Support/Debug.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
@@ -82,8 +83,8 @@ class ChildMemSizeBasedScheduler : public Scheduler {
         resultSize += N.getType(idx)->getSizeInBytes();
       }
       resultMemSize_[&N] = resultSize;
-      DEBUG(llvm::outs() << "ResultSize of " << N.getName() << ":" << resultSize
-                         << "\n");
+      DEBUG_GLOW(llvm::outs() << "ResultSize of " << N.getName() << ":"
+                              << resultSize << "\n");
     }
   }
 
@@ -111,8 +112,8 @@ class ChildMemSizeBasedScheduler : public Scheduler {
           maxSize = maxMemSize_[input];
       }
       maxMemSize_[N] = maxSize;
-      DEBUG(llvm::outs() << "MaxSize of " << N->getName() << ":" << maxSize
-                         << "\n");
+      DEBUG_GLOW(llvm::outs()
+                 << "MaxSize of " << N->getName() << ":" << maxSize << "\n");
     }
   }
 
@@ -150,11 +151,11 @@ class ChildMemSizeBasedScheduler : public Scheduler {
       }
     }
 
-    DEBUG(llvm::outs() << "\nAbout to schedule children of " << N->getName()
-                       << "\n";
-          llvm::outs() << "Children are:\n");
-    DEBUG(for (auto child
-               : orderedChildren) {
+    DEBUG_GLOW(llvm::outs() << "\nAbout to schedule children of "
+                            << N->getName() << "\n";
+               llvm::outs() << "Children are:\n");
+    DEBUG_GLOW(for (auto child
+                    : orderedChildren) {
       llvm::outs() << "Child " << child->getName() << ": "
                    << maxMemSize_[child] - resultMemSize_[child] << "\n";
     });
@@ -165,7 +166,7 @@ class ChildMemSizeBasedScheduler : public Scheduler {
     }
 
     // Schedule the node after all its children are scheduled.
-    DEBUG(llvm::outs() << "Scheduled node: " << N->getName() << "\n");
+    DEBUG_GLOW(llvm::outs() << "Scheduled node: " << N->getName() << "\n");
     scheduled_.push_back(N);
   }
 

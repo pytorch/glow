@@ -19,6 +19,7 @@
 #include "CommandLine.h"
 
 #include "glow/IR/Instrs.h"
+#include "glow/Support/Debug.h"
 
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/Debug.h"
@@ -27,10 +28,10 @@
 
 using namespace glow;
 
+using llvm::StringRef;
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
-using llvm::StringRef;
 
 namespace {
 /// Perform function specialization with constant arguments taking into account
@@ -115,7 +116,7 @@ class FunctionSpecializer {
     // We don't specialize arguments which are pointers to floating point and
     // quantized buffers, because this is likely to significantly increase the
     // code size without any big performance benefits.
-      if (arg->getType()->isPointerTy()) {
+    if (arg->getType()->isPointerTy()) {
       auto elemTy = cast<llvm::PointerType>(arg->getType())->getElementType();
       // Bail if it is an FP buffer.
       if (elemTy->isFloatTy()) {
@@ -214,9 +215,9 @@ class FunctionSpecializer {
     // it into the specialized function. And if the original fuction did not
     // have any debug info, then its specialization should not have any debug
     // info either.
-    DEBUG(llvm::dbgs() << "\n\nCreated specialized function " << specializedName
-                       << "\n";
-          specializedF->print(llvm::errs(), nullptr));
+    DEBUG_GLOW(llvm::dbgs() << "\n\nCreated specialized function "
+                            << specializedName << "\n";
+               specializedF->print(llvm::errs(), nullptr));
     NumSpecializations++;
     return specializedF;
   }
@@ -275,8 +276,8 @@ public:
 
       // Bail if the values of arguments are not constants.
       if (!getConstantValue(arg)) {
-        DEBUG(llvm::dbgs() << "Could not specialize call:\n";
-              call->print(llvm::dbgs()));
+        DEBUG_GLOW(llvm::dbgs() << "Could not specialize call:\n";
+                   call->print(llvm::dbgs()));
         return nullptr;
       }
     }
@@ -323,10 +324,10 @@ public:
     for (auto *I : erasedInstructions) {
       I->eraseFromParent();
     }
-    DEBUG(llvm::dbgs() << "Number of specializations: " << NumSpecializations
-                       << "\n";
-          llvm::dbgs() << "Number of shared specializations: "
-                       << NumSharedSpecializations << "\n");
+    DEBUG_GLOW(llvm::dbgs() << "Number of specializations: "
+                            << NumSpecializations << "\n";
+               llvm::dbgs() << "Number of shared specializations: "
+                            << NumSharedSpecializations << "\n");
   }
 
 private:
