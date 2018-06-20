@@ -143,8 +143,6 @@ int main(int argc, char **argv) {
     i0 = llvm::cast<Variable>(LD.getOrCreateNodeByName("gpu_0/data"));
     i1 = llvm::cast<Variable>(LD.getOrCreateNodeByName("data"));
   } else {
-    assert(inputImageFilenames.size() == 1 &&
-           "Batch image inference is not supported by ONNX models.");
     ONNXModelLoader LD(loader.getOnnxModelFilename(),
                        {"data_0", "gpu_0/data_0", "softmax_expected"},
                        {&data, &data, &expectedSoftmax}, *loader.getFunction());
