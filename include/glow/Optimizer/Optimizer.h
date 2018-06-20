@@ -16,6 +16,8 @@
 #ifndef GLOW_OPTIMIZER_OPTIMIZER_H
 #define GLOW_OPTIMIZER_OPTIMIZER_H
 
+#include "llvm/ADT/StringRef.h"
+
 namespace glow {
 
 class IRFunction;
