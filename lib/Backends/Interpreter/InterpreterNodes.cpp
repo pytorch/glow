@@ -218,6 +218,7 @@ void Interpreter::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
   size_t filterSize = I->getKernel();
   size_t pad = I->getPad();
   size_t stride = I->getStride();
+  size_t group = I->getGroup();
 
   inG.clear();
   filterG.clear();
@@ -226,46 +227,56 @@ void Interpreter::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
   ShapeNHWC odim(outG.dims());
   ShapeNHWC idim(inW.dims());
 
+  assert(idim.c % group == 0 && "Input channels must be divisible by group.");
+  assert(odim.c % group == 0 && "Output channels must be divisible by group.");
+  size_t inCperG = idim.c / group;
+  size_t outCperG = odim.c / group;
+
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
 
-    // Compute the gradient. For each layer in the output tensor:
-    for (size_t d = 0; d < odim.c; d++) {
+    // For each group of input channels:
+    for (size_t g = 0; g < group; g++) {
 
-      // For each convolution 'jump' in the input tensor:
-      ssize_t x = -ssize_t(pad);
-      for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
-        ssize_t y = -ssize_t(pad);
-        for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+      // Compute the gradient. For each layer in the output tensor:
+      for (size_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
 
-          float chainGrad = outG.at({n, ax, ay, d});
+        // For each convolution 'jump' in the input tensor:
+        ssize_t x = -ssize_t(pad);
+        for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+          ssize_t y = -ssize_t(pad);
+          for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
 
-          // For each element in the convolution-filter:
-          for (size_t fx = 0; fx < filterSize; fx++) {
-            for (size_t fy = 0; fy < filterSize; fy++) {
-              ssize_t ox = x + fx;
-              ssize_t oy = y + fy;
+            float chainGrad = outG.at({n, ax, ay, d});
 
-              // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-                  oy >= ssize_t(idim.w)) {
-                continue;
-              }
+            // For each element in the convolution-filter:
+            for (size_t fx = 0; fx < filterSize; fx++) {
+              for (size_t fy = 0; fy < filterSize; fy++) {
+                ssize_t ox = x + fx;
+                ssize_t oy = y + fy;
 
-              for (size_t fd = 0; fd < idim.c; fd++) {
-                filterG.at({d, fx, fy, fd}) +=
-                    inW.at({n, (size_t)ox, (size_t)oy, fd}) * chainGrad;
-                inG.at({n, (size_t)ox, (size_t)oy, fd}) +=
-                    filterW.at({d, fx, fy, fd}) * chainGrad;
+                // Ignore index access below zero (this is due to padding).
+                if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                    oy >= ssize_t(idim.w)) {
+                  continue;
+                }
+
+                for (size_t fd = 0; fd < inCperG; fd++) {
+                  filterG.at({d, fx, fy, fd}) +=
+                      inW.at({n, (size_t)ox, (size_t)oy, g * inCperG + fd}) *
+                      chainGrad;
+                  inG.at({n, (size_t)ox, (size_t)oy, g * inCperG + fd}) +=
+                      filterW.at({d, fx, fy, fd}) * chainGrad;
+                }
               }
             }
-          }
 
-          biasG.at({d}) += chainGrad;
-        } // W
-      }   // H
-    }     // C
-  }       // N
+            biasG.at({d}) += chainGrad;
+          } // W
+        }   // H
+      }     // C
+    }       // G
+  }         // N
 }
 
 //===----------------------------------------------------------------------===//

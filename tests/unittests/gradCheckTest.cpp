@@ -165,7 +165,7 @@ TEST(Network, gradientCheckFCConcatRELU) {
   performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
 
-TEST(Network, gradientCheckConv) {
+static void gradientCheckGroupConv(size_t numInputChan, size_t group) {
   ExecutionEngine IP;
 
   size_t numDim = 10;
@@ -173,21 +173,21 @@ TEST(Network, gradientCheckConv) {
 
   auto &mod = IP.getModule();
   Function *F = mod.createFunction("main");
-  auto *A =
-      mod.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *A = mod.createVariable(
+      ElemKind::FloatTy, {1, numDim, numDim, numInputChan}, "A",
+      VisibilityKind::Public, Variable::TrainKind::None);
   auto *Ex =
       mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
                          VisibilityKind::Public, Variable::TrainKind::None);
 
-  Node *O = F->createConv("conv", A, 4, 5, 1, 2, 1);
+  Node *O = F->createConv("conv", A, 4, 5, 1, 2, group);
   O = F->createPoolMax("pool", O, 3, 3, 0);
   O = F->createFullyConnected("fc", O, numOutputElem);
   O = F->createRELU("relu", O);
   O = F->createRegression("reg", O, Ex);
   auto *result = F->createSave("ret", O);
 
-  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
+  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, numInputChan});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
 
   auto inputsH = inputs.getHandle<>();
@@ -198,6 +198,12 @@ TEST(Network, gradientCheckConv) {
 
   performGradCheck(IP, result, A, Ex, &inputs, &outputs, 0.001, 0.004);
 }
+
+TEST(Network, gradientCheckConv) { gradientCheckGroupConv(1, 1); }
+
+TEST(Network, gradientCheckDepthwiseConv) { gradientCheckGroupConv(4, 4); }
+
+TEST(Network, gradientCheckGroupConv) { gradientCheckGroupConv(4, 2); }
 
 TEST(Network, gradientCheckAvgPool) {
   ExecutionEngine IP;
