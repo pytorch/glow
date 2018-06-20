@@ -22,6 +22,7 @@
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/Optimizer.h"
+#include "glow/Support/Debug.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -752,13 +753,14 @@ static void replaceAllUsesInsideIntervalWith(
         replacement = tv;
       }
 
-      DEBUG(llvm::dbgs() << "Replacing inside instruction " << opIdx << "\n";
-            llvm::dbgs() << "before: "; I->dump(llvm::dbgs());
-            llvm::dbgs() << "\n");
+      DEBUG_GLOW(llvm::dbgs()
+                     << "Replacing inside instruction " << opIdx << "\n";
+                 llvm::dbgs() << "before: "; I->dump(llvm::dbgs());
+                 llvm::dbgs() << "\n");
       // Replace the old value by the new value.
       I->setOperand(i, replacement);
-      DEBUG(llvm::dbgs() << "after: "; I->dump(llvm::dbgs());
-            llvm::dbgs() << "\n");
+      DEBUG_GLOW(llvm::dbgs() << "after: "; I->dump(llvm::dbgs());
+                 llvm::dbgs() << "\n");
     }
   }
 }
@@ -769,8 +771,8 @@ static void replaceAllUsesInsideIntervalWith(
 static void eraseInstructions(IRFunction &M,
                               InstructionPtrSet &erasedInstructions) {
   for (auto it : erasedInstructions) {
-    DEBUG(llvm::dbgs() << "Deleting instruction :"; it->dump(llvm::dbgs());
-          llvm::dbgs() << "\n");
+    DEBUG_GLOW(llvm::dbgs() << "Deleting instruction :"; it->dump(llvm::dbgs());
+               llvm::dbgs() << "\n");
     M.eraseInstruction(it);
   }
 }
@@ -785,10 +787,10 @@ static void reuseBufferInsideInterval(
     Value *oldBuffer, Value *newBuffer, Interval oldInterval, IRFunction &M,
     const LiveIntervalsInstructionNumbering &instrNumbering,
     Intervals &oldIntervals, Intervals &newIntervals) {
-  DEBUG(llvm::dbgs() << "\n\nReuse buffers: use buffer of "
-                     << newBuffer->getName() << " as a buffer for "
-                     << oldBuffer->getName() << "\n"
-                     << "in live interval " << oldInterval << "\n");
+  DEBUG_GLOW(llvm::dbgs() << "\n\nReuse buffers: use buffer of "
+                          << newBuffer->getName() << " as a buffer for "
+                          << oldBuffer->getName() << "\n"
+                          << "in live interval " << oldInterval << "\n");
   // Replace oldBuffer with newBuffer.
   replaceAllUsesInsideIntervalWith(oldBuffer, newBuffer, oldInterval, M,
                                    instrNumbering);

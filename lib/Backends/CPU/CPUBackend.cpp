@@ -18,6 +18,7 @@
 #include "CPUBackend.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Support/Debug.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -32,10 +33,10 @@
 #include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
+using llvm::StringRef;
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
-using llvm::StringRef;
 
 static llvm::cl::opt<std::string> target("target", llvm::cl::desc("target"));
 
@@ -248,10 +249,10 @@ void CPUBackend::produceBundle(llvm::StringRef outputDir) {
   auto bundleName = irgen_.getMainEntryName();
   auto bundleCodeOutput = (outputDir + "/" + bundleName + ".o").str();
   auto bundleWeightsOutput = (outputDir + "/" + bundleName + ".weights").str();
-  DEBUG(llvm::outs() << "Producing a bundle:\n"
-                     << "bundle name: " << bundleName << "\n"
-                     << "bundle code: " << bundleCodeOutput << "\n"
-                     << "bundle weights:" << bundleWeightsOutput << "\n");
+  DEBUG_GLOW(llvm::outs() << "Producing a bundle:\n"
+                          << "bundle name: " << bundleName << "\n"
+                          << "bundle code: " << bundleCodeOutput << "\n"
+                          << "bundle weights:" << bundleWeightsOutput << "\n");
   llvm::StringRef fileName = bundleCodeOutput;
   std::error_code EC;
   llvm::raw_fd_ostream outputFile(fileName, EC, llvm::sys::fs::F_None);

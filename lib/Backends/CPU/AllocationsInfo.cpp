@@ -21,6 +21,7 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Support/Debug.h"
 
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -28,10 +29,10 @@
 using namespace glow;
 
 using namespace glow;
+using llvm::StringRef;
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
-using llvm::StringRef;
 
 void AllocationsInfo::allocateWeightVars(IRFunction *F, bool reuseAddresses) {
   // Use two different allocators, because constant weights and mutable weights
@@ -78,8 +79,8 @@ void AllocationsInfo::allocateWeightVars(IRFunction *F, bool reuseAddresses) {
   constantWeightVarsMemSize_ = constantWeightVarsAllocator.getMaxMemoryUsage();
   mutableWeightVarsMemSize_ = mutableWeightVarsAllocator.getMaxMemoryUsage();
 
-  DEBUG(for (auto &A
-             : allocatedAddressed_) {
+  DEBUG_GLOW(for (auto &A
+                  : allocatedAddressed_) {
     if (isa<AllocActivationInst>(A.first) || isa<TensorViewInst>(A.first))
       continue;
     assert(valueNumbers_.count(A.first) && "Unknown weight");
@@ -128,8 +129,8 @@ void AllocationsInfo::allocateActivations(IRFunction *F) {
   for (auto &A : activationAddr) {
     allocatedAddressed_[A.first] = A.second;
   }
-  DEBUG(for (auto &A
-             : allocatedAddressed_) {
+  DEBUG_GLOW(for (auto &A
+                  : allocatedAddressed_) {
     llvm::errs() << "Allocated activation " << A.first->getName()
                  << " size: " << A.first->getSizeInBytes()
                  << "  address range:  [" << allocatedAddressed_[A.first]
