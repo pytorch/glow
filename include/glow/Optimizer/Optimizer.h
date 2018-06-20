@@ -33,7 +33,7 @@ void optimize(IRFunction &M, CompilationMode mode, const Backend &B);
 /// Perform optimizations on the graph representation.
 void optimize(Function *F, CompilationMode mode);
 
-/// Lower the high-level neural network operators into low-level lineal algebra
+/// Lower the high-level neural network operators into low-level linear algebra
 /// operators.
 void lower(Function *F, CompilationMode mode, const Backend &B);
 
