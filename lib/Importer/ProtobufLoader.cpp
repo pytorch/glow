@@ -37,34 +37,53 @@ Tensor *ProtobufLoader::getTensorByName(const std::string &name) {
   return tensors_[name];
 }
 
-Node *ProtobufLoader::getNodeByName(const std::string &name) {
+Node *ProtobufLoader::getNodeByNameOrNull(const std::string &name) const {
   auto it = nodeByName_.find(name);
   if (it != nodeByName_.end()) {
     return it->second;
   }
 
-  llvm_unreachable("Could not find a node with this name.");
   return nullptr;
 }
 
-Node *ProtobufLoader::getOrCreateNodeByName(const std::string &name) {
-  auto it = nodeByName_.find(name);
-  if (it != nodeByName_.end()) {
-    return it->second;
-  }
+Node *ProtobufLoader::getNodeByName(const std::string &name) const {
+  assert(hasNodeByName(name) && "No node under that name");
+  auto *node = getNodeByNameOrNull(name);
+  assert(node && "Null is under that name??");
+  return node;
+}
 
-  Tensor *T = getTensorByName(name);
-  auto *V = G_.getParent()->createVariable(T->getElementType(), T->dims(), name,
-                                           VisibilityKind::Private,
-                                           Variable::TrainKind::Broadcast);
-  V->copyFrom(T);
+Node *ProtobufLoader::createVariable(const std::string &name, Tensor &tensor,
+                                     VisibilityKind visibilityKind,
+                                     Variable::TrainKind trainKind) {
+  auto *V = G_.getParent()->createVariable(
+      tensor.getElementType(), tensor.dims(), name, visibilityKind, trainKind);
+  V->copyFrom(&tensor);
+  return V;
+}
+
+Node *ProtobufLoader::createAndRememberVariable(const std::string &name,
+                                                Tensor &tensor,
+                                                VisibilityKind visibilityKind,
+                                                Variable::TrainKind trainKind) {
+  assert(!hasNodeByName(name) && "Creating an already existing node?!");
+  auto *V = createVariable(name, tensor, visibilityKind, trainKind);
   nodeByName_[name] = V;
   return V;
 }
 
+Node *ProtobufLoader::getOrCreateNodeByName(const std::string &name) {
+  auto *node = getNodeByNameOrNull(name);
+  if (node) {
+    return node;
+  }
+
+  Tensor *T = getTensorByName(name);
+  return createAndRememberVariable(name, *T);
+}
+
 bool ProtobufLoader::hasNodeByName(const std::string &name) const {
-  auto it = nodeByName_.find(name);
-  return (it != nodeByName_.end());
+  return getNodeByNameOrNull(name) != nullptr;
 }
 
 ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> names,
@@ -76,12 +95,9 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> names,
 
   assert(names.size() == tensors.size() && "Invalid initialization list");
   for (unsigned i = 0; i < names.size(); i++) {
-    auto *T = tensors[i];
-    auto *V = G_.getParent()->createVariable(T->getElementType(), T->dims(),
-                                             names[i], VisibilityKind::Public,
-                                             Variable::TrainKind::None);
-    V->copyFrom(T);
-    nodeByName_[names[i]] = V;
+    assert(!hasNodeByName(names[i]) && "Input names have duplicate");
+    createAndRememberVariable(names[i], *tensors[i], VisibilityKind::Public,
+                              Variable::TrainKind::None);
   }
 }
 
