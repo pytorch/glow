@@ -155,6 +155,24 @@ protected:
     nodeValueByName_[op.output(0)] = NodeValue(N, 0);
   }
 
+  void loadMinMax(llvm::StringRef typeName, const OpType &op,
+                  ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    auto in0 = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in1 = getNodeValueOrCreateVariableByName(op.input(1));
+
+    Node *node = nullptr;
+    if (typeName == "Min") {
+      node = G_.createMin(opName, in0, in1);
+    } else if (typeName == "Max") {
+      node = G_.createMax(opName, in0, in1);
+    } else {
+      llvm_unreachable("Invalid min or max operator");
+    }
+
+    addNodeAsOutput(op, node);
+  }
+
   void loadArithmetic(llvm::StringRef typeName, const OpType &op,
                       ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
@@ -394,6 +412,10 @@ protected:
     }
     if (typeName == "LRN") {
       loadLRN(op, dict);
+      return true;
+    }
+    if (typeName == "Min" || typeName == "Max") {
+      loadMinMax(typeName, op, dict);
       return true;
     }
     if (typeName == "Mul" || typeName == "Add" || typeName == "Sub" ||
