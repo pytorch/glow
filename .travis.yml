@@ -60,6 +60,6 @@ matrix:
 
 script:
  - ninja all
- - CTEST_PARALLEL_LEVEL=2 ninja test
+ - CTEST_PARALLEL_LEVEL=2 travis_wait 20 ninja test
  - cat Testing/Temporary/LastTest.log
  - CTEST_PARALLEL_LEVEL=2 travis_wait 20 ninja test_unopt
