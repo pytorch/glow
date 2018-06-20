@@ -45,8 +45,8 @@ class ExecutionEngine final {
   std::unique_ptr<Module> M_;
   /// The IR function that represents the program.
   std::unique_ptr<IRFunction> IR_;
-  /// The network interpreter
-  std::unique_ptr<Backend> IP_;
+  /// The network execution backend.
+  std::unique_ptr<Backend> backend_;
   /// The training configuration.
   TrainingConfig config_;
   /// The kind of the backend being currently used.
@@ -75,7 +75,7 @@ public:
 
   /// \returns whether operation is supported by the underlying backend.
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
-    return IP_->isOpSupported(opKind, elementTy);
+    return backend_->isOpSupported(opKind, elementTy);
   }
 
   /// Optimize the graph, generate IR, optimize IR and compile it for a

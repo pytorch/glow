@@ -29,19 +29,19 @@ ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
   backendKind_ = backendKind;
   M_.reset(new Module());
   IR_.reset(new IRFunction());
-  IP_.reset(createBackend(backendKind_, &*IR_));
+  backend_.reset(createBackend(backendKind_, &*IR_));
 }
 
 // Set the code generator kind to \p backendKind.
 void ExecutionEngine::setBackend(BackendKind backendKind) {
   backendKind_ = backendKind;
-  IP_.reset(createBackend(backendKind, &*IR_));
+  backend_.reset(createBackend(backendKind, &*IR_));
 }
 
 void ExecutionEngine::reset() {
   if (IR_)
     IR_->clear();
-  IP_.reset(createBackend(backendKind_, &*IR_));
+  backend_.reset(createBackend(backendKind_, &*IR_));
 }
 
 ExecutionEngine::~ExecutionEngine() = default;
@@ -60,7 +60,7 @@ void ExecutionEngine::run(llvm::ArrayRef<Variable *> vars,
     loadValueFromTensor(vars[i], inputs[i]);
   }
 
-  IP_->doForwardPass();
+  backend_->doForwardPass();
 }
 
 void ExecutionEngine::runBatch(size_t iterations,
@@ -95,7 +95,7 @@ void ExecutionEngine::updateInputsAndRunNetwork(llvm::ArrayRef<Variable *> vars,
   }
 
   // Run the network.
-  IP_->doForwardPass();
+  backend_->doForwardPass();
 }
 
 void ExecutionEngine::loadValueFromTensorSlice(Variable *v, Tensor *input,
@@ -130,20 +130,20 @@ void ExecutionEngine::generateIR(CompilationMode mode, Function *F) {
   ::glow::optimize(F, mode);
 
   // Allow the backend to transform the graph prior to lowering.
-  if (IP_->transformPreLowering(F, mode)) {
+  if (backend_->transformPreLowering(F, mode)) {
     // Optimize the graph again after the backend transformation.
     // In particular, DCE is very likely to be useful.
     ::glow::optimize(F, mode);
   }
 
   // Lower the graph into a sequence of low-level linear algebra operations.
-  ::glow::lower(F, mode, *IP_.get());
+  ::glow::lower(F, mode, *backend_.get());
 
   // Optimized the graph again.
   ::glow::optimize(F, mode);
 
   // Allow the backend to transform the graph after lowering.
-  if (IP_->transformPostLowering(F, mode)) {
+  if (backend_->transformPostLowering(F, mode)) {
     // Optimize the graph again after the backend transformation.
     // In particular, DCE is very likely to be useful.
     ::glow::optimize(F, mode);
@@ -156,16 +156,16 @@ void ExecutionEngine::generateIR(CompilationMode mode, Function *F) {
   IR_->generateIR();
 
   // Optimize the generated IR.
-  ::glow::optimize(*IR_, mode, *IP_.get());
+  ::glow::optimize(*IR_, mode, *backend_.get());
 }
 
 void ExecutionEngine::compile(CompilationMode mode, Function *F) {
   generateIR(mode, F);
-  IP_->init();
+  backend_->init();
 }
 
 void ExecutionEngine::save(CompilationMode mode, Function *F,
                            llvm::StringRef outputDir) {
   generateIR(mode, F);
-  IP_->save(outputDir);
+  backend_->save(outputDir);
 }
