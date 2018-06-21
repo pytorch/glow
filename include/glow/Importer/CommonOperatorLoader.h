@@ -192,38 +192,57 @@ protected:
 
   void loadReshape(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    NodeValue in = getNodeValueOrCreateVariableByName(op.input(0));
 
-    std::vector<size_t> newDim;
-    if (dict.count("shape")) {
-      std::vector<int64_t> protoDims = getShape<int64_t>(dict["shape"]);
-
-      auto oldDim = in->dims(0);
-      int64_t product = 1;
-      for (size_t i = 0, e = protoDims.size(); i != e; i++) {
-        if (protoDims[i] == 0)
-          // shape[i] == 0 means that corresponding element should remain
-          // the same.
-          protoDims[i] = oldDim[i];
-        if (protoDims[i] != -1)
-          product *= protoDims[i];
+    // Get the requested shape from the model.
+    // First look at input tensors, then at the "shape" attribute.
+    std::vector<int64_t> requestedDims;
+    if (op.input_size() > 1) {
+      Tensor *constShapeTensor = getTensorByName(op.input(1));
+      auto TH = constShapeTensor->getHandle<size_t>();
+      for (size_t i = 0, e = constShapeTensor->size(); i != e; i++) {
+        requestedDims.push_back(TH.at({i}));
       }
+    } else if (dict.count("shape")) {
+      std::vector<int64_t> protoDims = getShape<int64_t>(dict["shape"]);
       for (size_t i = 0, e = protoDims.size(); i != e; i++) {
-        if (protoDims[i] == -1)
-          // shape[i] == -1 means that corresponding element should be inferred
-          // from all other elements, so that Tensor size remains the same.
-          protoDims[i] = in->getType(0)->size() / product;
-        newDim.push_back(protoDims[i]);
+        requestedDims.push_back(protoDims[i]);
       }
     } else {
-      Tensor *T = getTensorByName(op.input(1));
-      auto TH = T->getHandle<size_t>();
-      for (size_t i = 0, e = T->size(); i != e; i++) {
-        newDim.push_back(TH.raw(i));
-      }
+      assert(false &&
+             "Missing output shape information for the Reshape operator.");
     }
 
-    auto *node = G_.createReshape(opName, in, newDim);
+    // Compute the actual new shape
+    ssize_t negOneIndex = -1;
+    llvm::ArrayRef<size_t> inputDims = in.dims();
+    std::vector<size_t> outputDims;
+    int64_t dimProduct = 1;
+    for (size_t i = 0, e = requestedDims.size(); i != e; i++) {
+      int64_t newDim = requestedDims[i];
+      if (newDim == 0) {
+        // 0 means that corresponding input dimension should be propagated to
+        // the output.
+        newDim = inputDims[i];
+      }
+      if (newDim != -1) {
+        dimProduct *= newDim;
+        outputDims.push_back(newDim);
+      } else {
+        // -1 means that the corresponding dimension should be inferred
+        // from all other dimensions, so that tensor size remains the same.
+        assert(negOneIndex < 0 &&
+               "At most one dimension of the new shape can be -1.");
+        negOneIndex = (ssize_t)i;
+        // The -1 case value is handled later.
+        outputDims.push_back(0);
+      }
+    }
+    if (negOneIndex >= 0) {
+      outputDims[negOneIndex] = in.getType()->size() / dimProduct;
+    }
+
+    auto *node = G_.createReshape(opName, in, outputDims);
 
     // Caffe2 sometimes outputs old_shape which goes unused. We do not currently
     // support it, so explicitly only set the first output.
