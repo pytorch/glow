@@ -2277,6 +2277,52 @@ TEST_P(InterpAndCPU, testQuantizedBatchAdd) {
   }
 }
 
+TEST_P(InterpOnly, SparseLengthsSum) {
+  /*
+    DATA  = [
+        [1.0, 1.2],
+        [2.3, 3.4],
+        [4.5, 5.7],
+    ]
+    INDICES = [2, 0, 1, 2, 0, 0, 0, 0]
+    LENGTHS = [2, 0, 2, 1, 3]
+    OUTPUT = [
+        [5.5, 6.9],
+        [0.0, 0.0],
+        [6.8, 9.1],
+        [1.0, 1.2],
+        [3.0, 3.6],
+    ]
+  */
+  auto *data = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "data");
+  auto *indices = mod_.createVariable(ElemKind::IndexTy, {8}, "indices");
+  auto *lengths = mod_.createVariable(ElemKind::IndexTy, {5}, "lengths");
+
+  data->getPayload().getHandle() = {
+      1.0, 1.2, 2.3, 3.4, 4.5, 5.7,
+  };
+  indices->getPayload().getHandle<size_t>() = {
+      2, 0, 1, 2, 0, 0, 0, 0,
+  };
+  lengths->getPayload().getHandle<size_t>() = {
+      2, 0, 2, 1, 3,
+  };
+
+  auto R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
+  auto S = F_->createSave("save", R);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  Tensor &result = llvm::cast<Variable>(S->getOutput())->getPayload();
+  Tensor expected(ElemKind::FloatTy, {5, 2});
+  expected.getHandle() = {
+      5.5, 6.9, 0.0, 0.0, 6.8, 9.1, 1.0, 1.2, 3.0, 3.6,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 

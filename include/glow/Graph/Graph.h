@@ -376,6 +376,17 @@ public:
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, TypeRef outTy,
                                    NodeValue batch, NodeValue sample);
 
+  /// Create a node, performing SparseLengthsSum operation:
+  /// Gathers slices of the outer-most dimension of Data indexed by Indices
+  /// vector, and then accumulates them into len(Lengths) entries:
+  /// first Lengths[0] slices are aggregated to Result[0], next Lengths[1]
+  /// slices are aggregated to Result[1], etc. I.e. sum(Lengths) must be equal
+  /// to len(Indices).
+  SparseLengthsSumNode *createSparseLengthsSum(llvm::StringRef name,
+                                               NodeValue data,
+                                               NodeValue indices,
+                                               NodeValue lengths);
+
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
   SaveNode *createSave(llvm::StringRef name, NodeValue input, Variable *output);
 

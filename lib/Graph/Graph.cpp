@@ -1049,6 +1049,17 @@ BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name, TypeRef outTy,
       new BatchedAddNode(name, getParent()->uniqueType(*outTy), batch, sample));
 }
 
+SparseLengthsSumNode *Function::createSparseLengthsSum(llvm::StringRef name,
+                                                       NodeValue data,
+                                                       NodeValue indices,
+                                                       NodeValue lengths) {
+  auto inDims = data.dims();
+  ShapeVector outDims(inDims.begin(), inDims.end());
+  outDims[0] = lengths.dims()[0];
+  auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
+  return addNode(new SparseLengthsSumNode(name, outTy, data, indices, lengths));
+}
+
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest = getParent()->createVariable(
       input.getType(), name, VisibilityKind::Public, Variable::TrainKind::None);
