@@ -639,7 +639,6 @@ void LLVMIRGen::emitDataParallelKernel(llvm::IRBuilder<> &builder,
 
   // Emit a call of the kernel.
   createCall(builder, kernelFunc, buffers);
-  generateFunctionDebugInfo(kernelFunc);
 }
 
 /// Check if the provided operand overlaps with an operand of an instruction
