@@ -470,21 +470,14 @@ void Instruction::dumpOperands(llvm::raw_ostream &os) const {
   }
 }
 
-static void nameInstr(std::unordered_set<std::string> &usedNames, Named *named,
-                      llvm::StringRef suggestion) {
-  unsigned idx = 0;
-
+void IRFunction::nameInstruction(Named *named, llvm::StringRef suggestion,
+                                 llvm::StringSet<> &stringTable) {
   // Use the first few letters of the value as the initial name.
   if (!named->hasName()) {
     named->setName(suggestion.slice(0, 4));
   }
 
-  std::string tempName = named->getName();
-
-  while (!usedNames.insert(tempName).second) {
-    tempName = named->getName().str() + std::to_string(idx++);
-  }
-
+  std::string tempName = Module::uniqueName(named->getName(), stringTable);
   named->setName(tempName);
 }
 
@@ -496,12 +489,14 @@ static bool hasResultValue(const Instruction *I) {
 }
 
 void IRFunction::nameInstructions() {
-  std::unordered_set<std::string> usedNames;
+  /// Stores a list of unique instruction names that were used by the IRFunction
+  /// at some point.
+  llvm::StringSet<> uniqueNames;
   for (auto &v : weights_) {
-    nameInstr(usedNames, v, v->getKindName());
+    nameInstruction(v, v->getKindName(), uniqueNames);
   }
   for (auto &I : instrs_) {
-    nameInstr(usedNames, &I, I.getKindName());
+    nameInstruction(&I, I.getKindName(), uniqueNames);
   }
 }
 

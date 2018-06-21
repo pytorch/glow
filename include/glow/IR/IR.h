@@ -274,8 +274,12 @@ private:
   /// represent them in the lower IR.
   VariableMap variableMap_{};
 
-  /// Assign the instructions in the function a unique name.
-  void nameInstructions();
+  /// Assign the instruction \p Named in the function a unique legal name.
+  /// Legal names are legal C identifiers in the form: "[a-zA-Z_][a-zA-Z0-9_]*".
+  /// If the instruction does not have any name yet, use the \p suggestion as a
+  /// hint for a name.
+  void nameInstruction(Named *named, llvm::StringRef suggestion,
+                       llvm::StringSet<> &stringTable);
 
   /// Perform scheduling on the graph.
   /// \returns computed schedule in the \p Schedule parameter.
@@ -353,6 +357,10 @@ public:
   /// Moves an instruction belonging to a function before the place described by
   /// \where.
   InstrIterator moveInstruction(Instruction *where, Instruction *I);
+
+  /// Assign the instructions in the function unique legal names.
+  /// Legal names are legal C identifiers in the form: "[a-zA-Z_][a-zA-Z0-9_]*".
+  void nameInstructions();
 };
 
 /// Iterator over inteructions.
