@@ -80,6 +80,7 @@ llvm::DIType *LLVMIRGen::getDebugType(llvm::IRBuilder<> &builder,
 void LLVMIRGen::generateFunctionDebugInfo(llvm::Function *F) {
   if (!emitDebugInfo)
     return;
+  assert(F->getSubprogram() == nullptr && "Function has debug info already");
   // First, generate a DISubprogram for the function.
   auto *DIFunction = getOrCreateFunctionDebugInfo(F, dbgInfo_.mainFile_,
                                                   dbgInfo_.mainFile_, 0);
@@ -172,6 +173,47 @@ LLVMIRGen::getOrCreateFunctionDebugInfo(llvm::Function *F, llvm::DIScope *scope,
   return DIFunction;
 }
 
+/// Create and initialize global variables holding the bases addresses of
+/// different memory areas.
+static void initBaseAddressesOfMemoryAreas(DebugInfo &dbgInfo,
+                                           llvm::IRBuilder<> &builder,
+                                           llvm::Module &M) {
+  auto *main = M.getFunction("main");
+  // Initialize the names of base address variables.
+  // Only 3 memory areas are currently supported: constant weights, mutable
+  // weights and activations. If more memory areas are introduced, the assert
+  // and the initialization code below need to be adjusted.
+  constexpr unsigned expectedNumMemoryAreas = 3;
+  assert(MemoryAreaKind::LastMemoryArea == expectedNumMemoryAreas &&
+         "Expected only 3 memory areas");
+  dbgInfo.baseAddressesVariablesNames_.resize(expectedNumMemoryAreas);
+  dbgInfo.baseAddressesVariablesNames_[MemoryAreaKind::ConstWeightsMemoryArea] =
+      "constWeightsBaseAddress";
+  dbgInfo
+      .baseAddressesVariablesNames_[MemoryAreaKind::MutableWeightsMemoryArea] =
+      "mutableWeightsBaseAddress";
+  dbgInfo.baseAddressesVariablesNames_[MemoryAreaKind::ActivationsMemoryArea] =
+      "activationsBaseAddress";
+
+  dbgInfo.baseAddressesVariables_.resize(expectedNumMemoryAreas);
+  // Create global variables to hold base addresses of different memory areas.
+  for (unsigned idx = 0, e = dbgInfo.baseAddressesVariablesNames_.size();
+       idx != e; ++idx) {
+    auto name = dbgInfo.baseAddressesVariablesNames_[idx];
+    // Create a global variable to hold a base address. Use CommonLinkage to
+    // make sure it is not removed by optimizations.
+    auto baseAddressVar = new llvm::GlobalVariable(
+        M, builder.getInt8PtrTy(), /* isConst */ false,
+        llvm::GlobalValue::CommonLinkage, nullptr, name);
+    baseAddressVar->setInitializer(
+        llvm::ConstantPointerNull::get(builder.getInt8PtrTy()));
+    // Initialize the variable by the corresponding base address passed to
+    // "main" as a parameter.
+    builder.CreateStore(main->args().begin() + idx, baseAddressVar);
+    dbgInfo.baseAddressesVariables_[idx] = baseAddressVar;
+  }
+}
+
 void LLVMIRGen::initDebugInfo() {
   if (!emitDebugInfo) {
 #if LLVM_VERSION_MAJOR >= 6
@@ -204,27 +246,9 @@ void LLVMIRGen::initDebugInfo() {
   // Store the base addresses into global variables to enable access to weights
   // and activations inside the debugger.
   auto *main = getModule().getFunction("main");
-  dbgInfo_.constWeightsBaseAddressGV_ = new llvm::GlobalVariable(
-      getModule(), builder_->getInt8PtrTy(), /* isConst */ false,
-      llvm::GlobalValue::InternalLinkage, nullptr, "constWeightsBaseAddress");
-  dbgInfo_.mutableWeightsBaseAddressGV_ = new llvm::GlobalVariable(
-      getModule(), builder_->getInt8PtrTy(), /* isConst */ false,
-      llvm::GlobalValue::InternalLinkage, nullptr, "mutableWeightsBaseAddress");
-  dbgInfo_.activationsBaseAddressGV_ = new llvm::GlobalVariable(
-      getModule(), builder_->getInt8PtrTy(), /* isConst */ false,
-      llvm::GlobalValue::InternalLinkage, nullptr, "activationsBaseAddress");
-  dbgInfo_.constWeightsBaseAddressGV_->setInitializer(
-      llvm::ConstantPointerNull::get(builder_->getInt8PtrTy()));
-  dbgInfo_.mutableWeightsBaseAddressGV_->setInitializer(
-      llvm::ConstantPointerNull::get(builder_->getInt8PtrTy()));
-  dbgInfo_.activationsBaseAddressGV_->setInitializer(
-      llvm::ConstantPointerNull::get(builder_->getInt8PtrTy()));
-  builder_->CreateStore(main->args().begin() + 0,
-                        dbgInfo_.constWeightsBaseAddressGV_);
-  builder_->CreateStore(main->args().begin() + 1,
-                        dbgInfo_.mutableWeightsBaseAddressGV_);
-  builder_->CreateStore(main->args().begin() + 2,
-                        dbgInfo_.activationsBaseAddressGV_);
+
+  // Init global variables holding base address of different memory areas.
+  initBaseAddressesOfMemoryAreas(dbgInfo_, *builder_, getModule());
 
   // Construct the DIBuilder.
   DIBuilder_ = llvm::make_unique<llvm::DIBuilder>(getModule());
@@ -310,20 +334,27 @@ void LLVMIRGen::emitDebugGlobalVariableForValue(const Value *val) {
   // the information from the AllocationsInfo.
   llvm::GlobalVariable *baseAddress{nullptr};
 
+  MemoryAreaKind memoryAreaKind = MemoryAreaKind::LastMemoryArea;
+
   switch (allocationsInfo_.valueNumbers_[val].first) {
   case AllocationsInfo::ValueKind::Activation: {
-    baseAddress = dbgInfo_.activationsBaseAddressGV_;
+    memoryAreaKind = MemoryAreaKind::ActivationsMemoryArea;
     break;
   }
   case AllocationsInfo::ValueKind::ConstantWeight: {
-    baseAddress = dbgInfo_.constWeightsBaseAddressGV_;
+    memoryAreaKind = MemoryAreaKind::ConstWeightsMemoryArea;
     break;
   }
   case AllocationsInfo::ValueKind::MutableWeight: {
-    baseAddress = dbgInfo_.mutableWeightsBaseAddressGV_;
+    memoryAreaKind = MemoryAreaKind::MutableWeightsMemoryArea;
     break;
+  default:
+    GLOW_UNREACHABLE("Unknown memory area kind");
   }
   }
+
+  baseAddress = dbgInfo_.baseAddressesVariables_[memoryAreaKind];
+
   // DWARF operations to be performed with the base address to compute the
   // address of the logical global variable.
   llvm::SmallVector<uint64_t, 4> ops;
@@ -348,6 +379,16 @@ void LLVMIRGen::emitDebugGlobalVariableForValue(const Value *val) {
 void LLVMIRGen::generateDebugInfo() {
   if (!emitDebugInfo)
     return;
+
+  // Check that global variables representing base-addresses are not eliminated
+  // e.g. by optimization passes. These variables are needed for emitting the
+  // debug info for weights and activations, because it uses relative addressing
+  // based on these variables.
+  for (auto name : dbgInfo_.baseAddressesVariablesNames_) {
+    assert(getModule().getGlobalVariable(name,
+                                         /* allowInternal */ true) &&
+           "Base address variable should be present in the LLVM module");
+  }
 
   // Iterate over all functions in the module and generate a debug information
   // for them.

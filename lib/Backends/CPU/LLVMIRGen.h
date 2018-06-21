@@ -39,6 +39,16 @@ class Instruction;
 class WeightVar;
 struct AllocationsInfo;
 
+/// Different kinds of memory areas used by the emitted LLVM function.
+/// The order is important. It should match the order of base addresses
+/// arguments passed to "main".
+enum MemoryAreaKind {
+  ConstWeightsMemoryArea,
+  MutableWeightsMemoryArea,
+  ActivationsMemoryArea,
+  LastMemoryArea
+};
+
 /// A POD struct that stores information related to debug info.
 struct DebugInfo {
   /// Source file for the main function.
@@ -52,16 +62,19 @@ struct DebugInfo {
   llvm::DICompileUnit *compilationUnit_{nullptr};
   /// Mapping from LLVM types to DebugInfo types.
   llvm::DenseMap<llvm::Type *, llvm::DIType *> DITypes_;
-  /// Global variable holding the base address of the constant WeightVars
-  /// memory
-  /// area. Used only when producing a debug information.
-  llvm::GlobalVariable *constWeightsBaseAddressGV_{nullptr};
-  /// Global variable holding the base address of mutable WeightVars memory
-  /// area. Used only when producing a debug information.
-  llvm::GlobalVariable *mutableWeightsBaseAddressGV_{nullptr};
-  /// Global variable holding the base address of the activations memory area.
-  /// Used only when producing a debug information.
-  llvm::GlobalVariable *activationsBaseAddressGV_{nullptr};
+  /// Names of global variables to hold the bases address of different memory
+  /// areas, e.g. activations, constant or mutable weights.
+  llvm::SmallVector<llvm::StringRef, LastMemoryArea - 1>
+      baseAddressesVariablesNames_;
+  /// Maps memory area kinds to the global variables holding the base address of
+  /// the corresponding memory area, e.g. activations, constant or mutable
+  /// weights area. Used only when producing a debug information. These
+  /// variables are required to properly show in the debugger weights and
+  /// activations variables, which are expressed in DWARF using a relative
+  /// addressing mode with the base addresses stored in these base addresses
+  /// variables.
+  llvm::SmallVector<llvm::GlobalVariable *, LastMemoryArea - 1>
+      baseAddressesVariables_;
 };
 
 /// This is a class containing a common logic for the generation of the LLVM IR
