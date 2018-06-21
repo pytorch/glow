@@ -1417,6 +1417,44 @@ void Interpreter::fwdBatchedReduceAddInst(const glow::BatchedReduceAddInst *I) {
   }
 }
 
+void Interpreter::fwdSparseLengthsSumInst(const SparseLengthsSumInst *I) {
+  auto out = getTensor(I->getDest());
+  auto data = getTensor(I->getData());
+  auto indices = getTensor(I->getIndices());
+  auto lengths = getTensor(I->getLengths());
+
+  out->zero();
+
+  auto IH = indices->getHandle<size_t>();
+  auto LH = lengths->getHandle<size_t>();
+
+  size_t segments = lengths->dims()[0];
+  size_t totalLength = 0;
+  for (size_t i = 0; i < segments; i++) {
+    totalLength += LH.raw(i);
+  }
+  assert(totalLength == indices->dims()[0] &&
+         "sum(Lengths) must be equal to len(Indices)");
+
+  size_t lineSize = data->size() / data->dims()[0];
+
+  assert(!data->getType().isQuantizedType() &&
+         "Quantization is not yet supported for SparseLengthsSum.");
+
+  auto DH = data->getHandle<float>();
+  auto OH = out->getHandle<float>();
+
+  size_t curIdx = 0;
+  for (size_t i = 0; i < segments; i++) {
+    for (size_t j = 0, e = LH.raw(i); j < e; j++) {
+      size_t offsetIn = IH.raw(curIdx++) * lineSize;
+      size_t offsetOut = i * lineSize;
+      for (size_t k = 0; k < lineSize; k++)
+        OH.raw(offsetOut++) += DH.raw(offsetIn++);
+    }
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                Instructions used by RNN
 //===----------------------------------------------------------------------===//

@@ -830,6 +830,17 @@ void BatchedReduceAddNode::verify() const {
   assert(getBatch().dims().size() > 1 && "Invalid shape");
 }
 
+void SparseLengthsSumNode::verify() const {
+  assert(getResult().getElementType() == getData().getElementType() &&
+         "Mismatched element types");
+  assert(getIndices().getElementType() == ElemKind::IndexTy &&
+         "Indices must have index type");
+  assert(getLengths().getElementType() == ElemKind::IndexTy &&
+         "Lengths must have index type");
+  assert(getIndices().dims().size() == 1 && "Indices must be 1D vector");
+  assert(getLengths().dims().size() == 1 && "Lengths must be 1D vector");
+}
+
 void SGDNode::verify() const {
   if (Momentum_ > 0.0) {
     assert(getGradient().getType() == getGsum().getType() &&
