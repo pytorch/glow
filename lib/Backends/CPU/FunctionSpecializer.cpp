@@ -209,6 +209,11 @@ class FunctionSpecializer {
     // Specializations should not be inlined.
     specializedF->addFnAttr(llvm::Attribute::AttrKind::NoInline);
     specializedF->setName(specializedName);
+    // No need to explicitly emit a debug info for the specialized function. If
+    // the original function had it, the cloner would have automatically copied
+    // it into the specialized function. And if the original fuction did not
+    // have any debug info, then its specialization should not have any debug
+    // info either.
     DEBUG(llvm::dbgs() << "\n\nCreated specialized function " << specializedName
                        << "\n";
           specializedF->print(llvm::errs(), nullptr));
@@ -409,13 +414,4 @@ void LLVMIRGen::performSpecialization() {
   FunctionSpecializer FuncSpecializer(llmodule_->getFunction("main"),
                                       dontSpecializeArgsSet_);
   FuncSpecializer.run();
-  // Add debug info to all the newly created functions, i.e. to the created
-  // specialized functions.
-  for (auto &FF : getModule()) {
-    if (FF.isDeclaration())
-      continue;
-    if (FF.getName().find("_specialized", 0) == llvm::StringRef::npos)
-      continue;
-    generateFunctionDebugInfo(&FF);
-  }
 }
