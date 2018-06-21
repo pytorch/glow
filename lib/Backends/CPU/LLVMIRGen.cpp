@@ -1526,12 +1526,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *kernel = emitConstSizeT(builder, CG->getKernel());
     auto *stride = emitConstSizeT(builder, CG->getStride());
     auto *pads = emitConstArray(builder, CG->getPads());
+    auto *group = emitConstSizeT(builder, CG->getGroup());
 
     auto *F = getFunction("convolution_grad", srcGrad->getElementType());
     createCall(builder, F,
                {srcGradPtr, destGradPtr, srcPtr, filterGradPtr, biasGradPtr,
                 filterPtr, destGradDims, srcDims, filterGradDims, kernel,
-                stride, pads});
+                stride, pads, group});
     break;
   }
 
