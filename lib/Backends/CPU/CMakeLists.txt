@@ -21,7 +21,7 @@ set_target_properties(CPURuntime
 target_compile_options(CPURuntime
                        PRIVATE
                          -ffast-math
-                         -g
+                         -g0
                          -emit-llvm
                          -O0)
 # NOTE(abdulras) explicitly override the compiler and linker invocations with
