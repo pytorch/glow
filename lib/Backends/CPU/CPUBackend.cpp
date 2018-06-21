@@ -101,6 +101,8 @@ void CPUBackend::emitJitMain() {
   createCall(builder, entryF, initFunctionCallArgs);
   // Terminate the function.
   builder.CreateRetVoid();
+  // Create the debug info for the entry point function.
+  irgen_.generateFunctionDebugInfo(func);
 }
 
 void CPUBackend::performJITMemoryAllocation() {
