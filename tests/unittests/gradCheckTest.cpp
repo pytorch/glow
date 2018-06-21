@@ -26,6 +26,14 @@
 
 using namespace glow;
 
+class GradCheckBase : public ::testing::TestWithParam<BackendKind> {
+public:
+  ExecutionEngine EE_{GetParam()};
+};
+
+class InterpreterGrad : public GradCheckBase {};
+class GradCheck : public GradCheckBase {};
+
 /// \returns the regression loss for the tensor \p X with regard to \p Y.
 float computeL2Loss(Tensor *X, Tensor *Y) {
   assert(X->dims() == Y->dims() && "Invalid input dims");
@@ -60,7 +68,7 @@ Variable *getGrad(const VariableGradientsList &grads, Variable *V) {
 /// Analytical grad is based on the gradient output calculated during back
 /// propagation.
 ///
-/// \param IP Execution engine to compile/run network.
+/// \param EE Execution engine to compile/run network.
 /// \param result Node that contains result of f(x).
 /// \param inputVar Variable which gradient is assessed.
 /// \param expVar Variable with expected value, only used during the training.
@@ -68,35 +76,35 @@ Variable *getGrad(const VariableGradientsList &grads, Variable *V) {
 /// \param outputs Tensor for \p expVar variable.
 /// \param allowedError allowed delta between analytical and numerical
 ///                     gradients.
-void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
+void performGradCheck(ExecutionEngine &EE, SaveNode *result, Variable *inputVar,
                       Variable *expVar, Tensor *inputs, Tensor *outputs,
                       float delta, float allowedError) {
-  auto &F = *IP.getModule().getFunction("main");
+  auto &F = *EE.getModule().getFunction("main");
 
   // Create a function that trains the network.
-  Function *TF = glow::differentiate(&F, IP.getConfig());
-  IP.compile(CompilationMode::Train, TF);
+  Function *TF = glow::differentiate(&F, EE.getConfig());
+  EE.compile(CompilationMode::Train, TF);
 
   // The network might have variables, other than inputVar and expVar.
   // Train the network until other variables reach some stable local minimum.
-  IP.runBatch(300, {inputVar, expVar}, {inputs, outputs});
+  EE.runBatch(300, {inputVar, expVar}, {inputs, outputs});
 
   // Create a version of the network that records the gradients to some side
   // table instead of updating them.
   VariableGradientsList varGrads;
   Function *recordNet =
-      glow::differentiate(&F, IP.getConfig(), "record", &varGrads);
-  IP.compile(CompilationMode::Train, recordNet);
+      glow::differentiate(&F, EE.getConfig(), "record", &varGrads);
+  EE.compile(CompilationMode::Train, recordNet);
 
   // Clear the gradients of the first layer.
   auto gradVar = getGrad(varGrads, inputVar);
   gradVar->getPayload().zero();
 
   // Train the network just once to record the values of gradient for inputVar.
-  IP.runBatch(1, {inputVar, expVar}, {inputs, outputs});
+  EE.runBatch(1, {inputVar, expVar}, {inputs, outputs});
 
   // Compile the original network in inference mode.
-  IP.compile(CompilationMode::Infer, &F);
+  EE.compile(CompilationMode::Infer, &F);
 
   auto analyticalGradsH = gradVar->getPayload().getHandle();
   auto inputsH = inputs->getHandle<>();
@@ -106,12 +114,12 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
 
     // Calculate f(x+e):
     inputsH.raw(i) = old + delta;
-    IP.run({inputVar}, {inputs});
+    EE.run({inputVar}, {inputs});
     auto plusLoss = computeL2Loss(outputs, &res);
 
     // Calculate f(x-e):
     inputsH.raw(i) = old - delta;
-    IP.run({inputVar}, {inputs});
+    EE.run({inputVar}, {inputs});
     auto minusLoss = computeL2Loss(outputs, &res);
 
     // Restore value back.
@@ -127,13 +135,11 @@ void performGradCheck(ExecutionEngine &IP, SaveNode *result, Variable *inputVar,
   }
 }
 
-TEST(Network, gradientCheckFCConcatRELU) {
-  ExecutionEngine IP;
-
+TEST_P(InterpreterGrad, gradientCheckFCConcatRELU) {
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  auto &mod = IP.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
@@ -162,16 +168,15 @@ TEST(Network, gradientCheckFCConcatRELU) {
   inputsH.initXavier(1, mod.getPRNG());
   outputsH.initXavier(1, mod.getPRNG());
 
-  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
+  performGradCheck(EE_, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
 
-static void gradientCheckGroupConv(size_t numInputChan, size_t group) {
-  ExecutionEngine IP;
-
+static void gradientCheckGroupConv(size_t numInputChan, size_t group,
+                                   ExecutionEngine &EE_) {
   size_t numDim = 10;
   size_t numOutputElem = 10;
 
-  auto &mod = IP.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(
       ElemKind::FloatTy, {1, numDim, numDim, numInputChan}, "A",
@@ -196,22 +201,22 @@ static void gradientCheckGroupConv(size_t numInputChan, size_t group) {
   inputsH.initXavier(1, mod.getPRNG());
   outputsH.initXavier(1, mod.getPRNG());
 
-  performGradCheck(IP, result, A, Ex, &inputs, &outputs, 0.001, 0.004);
+  performGradCheck(EE_, result, A, Ex, &inputs, &outputs, 0.001, 0.004);
 }
 
-TEST(Network, gradientCheckConv) { gradientCheckGroupConv(1, 1); }
+TEST_P(GradCheck, gradientCheckConv) { gradientCheckGroupConv(1, 1, EE_); }
 
-TEST(Network, gradientCheckDepthwiseConv) { gradientCheckGroupConv(4, 4); }
+TEST_P(GradCheck, gradientCheckDepthwiseConv) {
+  gradientCheckGroupConv(4, 4, EE_);
+}
 
-TEST(Network, gradientCheckGroupConv) { gradientCheckGroupConv(4, 2); }
+TEST_P(GradCheck, gradientCheckGroupConv) { gradientCheckGroupConv(4, 2, EE_); }
 
-TEST(Network, gradientCheckAvgPool) {
-  ExecutionEngine IP;
-
+TEST_P(InterpreterGrad, gradientCheckAvgPool) {
   size_t numDim = 10;
   size_t numOutputElem = 10;
 
-  auto &mod = IP.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
@@ -235,16 +240,14 @@ TEST(Network, gradientCheckAvgPool) {
   inputsH.initXavier(1, mod.getPRNG());
   outputsH.initXavier(1, mod.getPRNG());
 
-  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.001, 0.004);
+  performGradCheck(EE_, result, A, Exp, &inputs, &outputs, 0.001, 0.004);
 }
 
-TEST(Network, gradientCheckBatchNorm) {
-  ExecutionEngine IP;
-
+TEST_P(InterpreterGrad, gradientCheckBatchNorm) {
   size_t numDim = 5;
   size_t numOutputElem = numDim * numDim * 3;
 
-  auto &mod = IP.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {1, numDim, numDim, 3}, "A",
@@ -272,17 +275,16 @@ TEST(Network, gradientCheckBatchNorm) {
     inputsH.raw(i) += 4;
   }
 
-  performGradCheck(IP, result, A, Ex, &inputs, &outputs, 0.001, 0.004);
+  performGradCheck(EE_, result, A, Ex, &inputs, &outputs, 0.001, 0.004);
 }
 
-TEST(Network, gradientCheckArithmeticDiv) {
+TEST_P(InterpreterGrad, gradientCheckArithmeticDiv) {
   // The test creates a net: A / B = Exp. Where A is trainable weight,
   // B and Exp are external data (initialized randomly once). SGD will find
   // correct value for A, and then gradient check will be performed.
-  ExecutionEngine IP;
   size_t numDim = 10;
 
-  auto &mod = IP.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
                                VisibilityKind::Public,
@@ -304,15 +306,13 @@ TEST(Network, gradientCheckArithmeticDiv) {
   BValues.getHandle().randomize(0.1, 1, mod.getPRNG());
   ExpValues.getHandle().randomize(0.1, 1, mod.getPRNG());
 
-  performGradCheck(IP, result, B, Exp, &BValues, &ExpValues, 0.0001, 0.001);
+  performGradCheck(EE_, result, B, Exp, &BValues, &ExpValues, 0.0001, 0.001);
 }
 
-TEST(Network, gradientCheckArithmetic) {
-  ExecutionEngine IP;
-
+TEST_P(InterpreterGrad, gradientCheckArithmetic) {
   size_t numDim = 20;
 
-  auto &mod = IP.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {1, numDim}, "A",
@@ -352,17 +352,15 @@ TEST(Network, gradientCheckArithmetic) {
   inputsH.initXavier(1, mod.getPRNG());
   outputsH.initXavier(1, mod.getPRNG());
 
-  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.01, 0.004);
+  performGradCheck(EE_, result, A, Exp, &inputs, &outputs, 0.01, 0.004);
 }
 
-TEST(Network, gradientCheckFCConcatTanh) {
+TEST_P(InterpreterGrad, gradientCheckFCConcatTanh) {
   // Using the same gradient check test setup as gradientCheck_FC_Concat_RELU
-  ExecutionEngine IP;
-
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  auto &mod = IP.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
@@ -385,16 +383,14 @@ TEST(Network, gradientCheckFCConcatTanh) {
   inputsH.initXavier(1, mod.getPRNG());
   outputsH.initXavier(1, mod.getPRNG());
 
-  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
+  performGradCheck(EE_, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
 
-TEST(Network, gradientCheckFC) {
-  ExecutionEngine IP;
-
+TEST_P(InterpreterGrad, gradientCheckFC) {
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  auto &mod = IP.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
@@ -416,16 +412,14 @@ TEST(Network, gradientCheckFC) {
   inputsH.initXavier(1, mod.getPRNG());
   outputsH.initXavier(1, mod.getPRNG());
 
-  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.0001);
+  performGradCheck(EE_, result, A, Exp, &inputs, &outputs, 0.0001, 0.0001);
 }
 
-TEST(Network, gradientCheckSigmoid) {
-  ExecutionEngine IP;
-
+TEST_P(InterpreterGrad, gradientCheckSigmoid) {
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  auto &mod = IP.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
@@ -448,16 +442,14 @@ TEST(Network, gradientCheckSigmoid) {
   inputsH.initXavier(1, mod.getPRNG());
   outputsH.initXavier(1, mod.getPRNG());
 
-  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
+  performGradCheck(EE_, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
 
-TEST(Network, gradientCheckRelu) {
-  ExecutionEngine IP;
-
+TEST_P(InterpreterGrad, gradientCheckRelu) {
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
-  auto &mod = IP.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {1, numInputElem}, "A",
@@ -480,15 +472,14 @@ TEST(Network, gradientCheckRelu) {
   inputsH.initXavier(1, mod.getPRNG());
   outputsH.initXavier(1, mod.getPRNG());
 
-  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
+  performGradCheck(EE_, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
 
-TEST(Network, gradientCheckTranspose) {
+TEST_P(InterpreterGrad, gradientCheckTranspose) {
   // Using the same gradient check test setup as gradientCheck_FC_Concat_RELU
-  ExecutionEngine IP;
   size_t numOutputElem = 10;
 
-  auto &mod = IP.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {1, 5, 10, 5}, "input",
@@ -510,17 +501,16 @@ TEST(Network, gradientCheckTranspose) {
   inputsH.randomize(-1, 1, mod.getPRNG());
   outputsH.randomize(-1, 1, mod.getPRNG());
 
-  performGradCheck(IP, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
+  performGradCheck(EE_, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
 
-TEST(Network, gradientCheckCrossEntropyLoss) {
-  ExecutionEngine IP;
+TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   const size_t batchSize = 6;
   const int testSamples = 5;
   const float stepSize = 1e-4;
   const float delta = 0.015;
 
-  auto &mod = IP.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *P =
       mod.createVariable(ElemKind::FloatTy, {batchSize, 4}, "P",
@@ -546,29 +536,39 @@ TEST(Network, gradientCheckCrossEntropyLoss) {
   outputsH.at({2}) = 1;
 
   VariableGradientsList varGrads;
-  Function *TF = glow::differentiate(F, IP.getConfig(), "record", &varGrads);
-  IP.compile(CompilationMode::Train, TF);
+  Function *TF = glow::differentiate(F, EE_.getConfig(), "record", &varGrads);
+  EE_.compile(CompilationMode::Train, TF);
 
   auto gradP = getGrad(varGrads, P)->getHandle();
 
   for (int i = 0; i < testSamples; ++i) {
     inputsH.randomize(0.0, 1.0, mod.getPRNG());
     for (size_t j = 0; j < inputsH.size(); ++j) {
-      IP.run({P, Y}, {&inputs, &outputs});
+      EE_.run({P, Y}, {&inputs, &outputs});
       L->getPayload().zero();
       auto x = inputsH.raw(j);
       auto g = gradP.raw(j);
       inputsH.raw(j) = x + stepSize;
-      IP.run({P, Y}, {&inputs, &outputs});
+      EE_.run({P, Y}, {&inputs, &outputs});
       auto lp = L->getHandle().raw(0);
       inputsH.raw(j) = x - stepSize;
       L->getPayload().zero();
-      IP.run({P, Y}, {&inputs, &outputs});
+      EE_.run({P, Y}, {&inputs, &outputs});
       auto lm = L->getHandle().raw(0);
       auto diff = (lp - lm) / (2 * stepSize);
       inputsH.raw(j) = x;
-      IP.run({P, Y}, {&inputs, &outputs});
+      EE_.run({P, Y}, {&inputs, &outputs});
       EXPECT_NEAR(diff, g, delta);
     }
   }
 }
+
+INSTANTIATE_TEST_CASE_P(Interpreter, InterpreterGrad,
+                        ::testing::Values(BackendKind::Interpreter));
+
+INSTANTIATE_TEST_CASE_P(Interpreter, GradCheck,
+                        ::testing::Values(BackendKind::Interpreter));
+
+#ifdef GLOW_WITH_CPU
+INSTANTIATE_TEST_CASE_P(JIT, GradCheck, ::testing::Values(BackendKind::CPU));
+#endif // GLOW_WITH_CPU

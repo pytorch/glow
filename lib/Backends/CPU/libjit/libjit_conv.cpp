@@ -492,49 +492,58 @@ void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
                                const float *filterW, const size_t *outGdims,
                                const size_t *inWdims, const size_t *filterGdims,
                                const size_t kernel, const size_t stride,
-                               const size_t *pads) {
+                               const size_t *pads, const size_t group) {
   // NHWC format is assumed
   // Clear inG, filterG, and biasG
-  size_t p = sizeof(float) * inWdims[3];
-  memset(inG, 0, inWdims[0] * inWdims[1] * inWdims[2] * p);
-  memset(filterG, 0, outGdims[3] * kernel * kernel * p);
-  memset(biasG, 0, sizeof(float) * outGdims[3]);
+  size_t p = sizeof(float);
+  memset(inG, 0, inWdims[0] * inWdims[1] * inWdims[2] * inWdims[3] * p);
+  memset(filterG, 0,
+         filterGdims[0] * filterGdims[1] * filterGdims[2] * filterGdims[3] * p);
+  memset(biasG, 0, outGdims[3] * p);
 
   size_t pad_t = pads[0];
   size_t pad_l = pads[1];
+  size_t inCperG = inWdims[3] / group;
+  size_t outCperG = outGdims[3] / group;
+
   // For each input in the batch:
   for (size_t n = 0; n < outGdims[0]; n++) {
-    for (size_t d = 0; d < outGdims[3]; d++) {
-      ssize_t x = -(ssize_t)pad_t;
-      for (size_t bx = 0; bx < outGdims[1]; bx++, x += stride) {
-        ssize_t y = -(ssize_t)pad_l;
-        for (size_t by = 0; by < outGdims[2]; by++, y += stride) {
-          float grad = outG[libjit_getXYZW(outGdims, n, bx, by, d)];
+    // For each group of input channels:
+    for (size_t g = 0; g < group; g++) {
+      for (size_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
+        ssize_t x = -(ssize_t)pad_t;
+        for (size_t bx = 0; bx < outGdims[1]; bx++, x += stride) {
+          ssize_t y = -(ssize_t)pad_l;
+          for (size_t by = 0; by < outGdims[2]; by++, y += stride) {
+            float grad = outG[libjit_getXYZW(outGdims, n, bx, by, d)];
 
-          for (size_t kx = 0; kx < kernel; kx++) {
-            for (size_t ky = 0; ky < kernel; ky++) {
-              ssize_t ax = x + kx;
-              ssize_t ay = y + ky;
+            for (size_t kx = 0; kx < kernel; kx++) {
+              for (size_t ky = 0; ky < kernel; ky++) {
+                ssize_t ax = x + kx;
+                ssize_t ay = y + ky;
 
-              if (ax < 0 || ay < 0 || ax >= (ssize_t)inWdims[1] ||
-                  ay >= (ssize_t)inWdims[2]) {
-                continue;
-              }
+                if (ax < 0 || ay < 0 || ax >= (ssize_t)inWdims[1] ||
+                    ay >= (ssize_t)inWdims[2]) {
+                  continue;
+                }
 
-              for (size_t c = 0; c < inWdims[3]; c++) {
-                inG[libjit_getXYZW(inWdims, n, (size_t)ax, (size_t)ay, c)] +=
-                    filterW[libjit_getXYZW(filterGdims, d, kx, ky, c)] * grad;
-                filterG[libjit_getXYZW(filterGdims, d, kx, ky, c)] +=
-                    inW[libjit_getXYZW(inWdims, n, (size_t)ax, (size_t)ay, c)] *
-                    grad;
+                for (size_t c = 0; c < inCperG; c++) {
+                  inG[libjit_getXYZW(inWdims, n, (size_t)ax, (size_t)ay,
+                                     g * inCperG + c)] +=
+                      filterW[libjit_getXYZW(filterGdims, d, kx, ky, c)] * grad;
+                  filterG[libjit_getXYZW(filterGdims, d, kx, ky, c)] +=
+                      inW[libjit_getXYZW(inWdims, n, (size_t)ax, (size_t)ay,
+                                         g * inCperG + c)] *
+                      grad;
+                }
               }
             }
-          }
 
-          biasG[d] += grad;
-        } // W
-      }   // H
-    }     // C
-  }       // N
+            biasG[d] += grad;
+          } // W
+        }   // H
+      }     // C
+    }       // G
+  }         // N
 }
 }
