@@ -357,6 +357,10 @@ void LLVMIRGen::generateDebugInfo() {
     // If a function has a debug information already, no need to re-emit it.
     if (F.getSubprogram())
       continue;
+    // Specializations are not forced to have any debug info. They will have it,
+    // if the original function has it.
+    if (F.getName().endswith("_specialized"))
+      continue;
     llvm_unreachable(
         "Expected all functions to have debug information at this point");
   }
