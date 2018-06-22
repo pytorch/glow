@@ -349,6 +349,15 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return loadTranspose(op, dict, "axes");
   }
 
+  if (typeName == "SparseLengthsSum") {
+    auto *in0 = getOrCreateNodeByName(op.input(0));
+    auto *in1 = getOrCreateNodeByName(op.input(1));
+    auto *in2 = getOrCreateNodeByName(op.input(2));
+    auto *node = G_.createSparseLengthsSum(opName, in0, in1, in2);
+    addNodeAsOutput(op, node);
+    return;
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
