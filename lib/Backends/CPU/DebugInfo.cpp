@@ -390,22 +390,6 @@ void LLVMIRGen::generateDebugInfo() {
            "Base address variable should be present in the LLVM module");
   }
 
-  // Iterate over all functions in the module and generate a debug information
-  // for them.
-  for (auto &F : getModule()) {
-    if (F.isDeclaration())
-      continue;
-    // If a function has a debug information already, no need to re-emit it.
-    if (F.getSubprogram())
-      continue;
-    // Specializations are not forced to have any debug info. They will have it,
-    // if the original function has it.
-    if (F.getName().endswith("_specialized"))
-      continue;
-    llvm_unreachable(
-        "Expected all functions to have debug information at this point");
-  }
-
   // Now iterate over the module and add debug locations to all instructions
   // inside the functions which have debug information. This is required for the
   // proper emission of the debug information into object files. If debug
