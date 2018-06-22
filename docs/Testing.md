@@ -42,6 +42,11 @@ Caffe2 or ONNX). These pre-trained models are downloaded via
 `download_caffe2_models.sh` and `download_onnx_models.sh` scripts located in
 `utils/`.
 
+There is a more general way to run a pre-trained model, not related to images.
+The `model-runner` program loads and runs a self-contained model, i.e. a model,
+which has all its inputs initialized inside itself and does not ask for user's
+input.
+
 ### Train and Save Caffe2 Models
 
 The `caffe2_train_and_dump_pb.py` script in `utils/` allows the user to define
