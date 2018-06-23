@@ -385,6 +385,7 @@ void LLVMIRGen::generateDebugInfo() {
   // debug info for weights and activations, because it uses relative addressing
   // based on these variables.
   for (auto name : dbgInfo_.baseAddressesVariablesNames_) {
+    (void)name;
     assert(getModule().getGlobalVariable(name,
                                          /* allowInternal */ true) &&
            "Base address variable should be present in the LLVM module");
