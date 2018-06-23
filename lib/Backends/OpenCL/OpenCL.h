@@ -174,10 +174,4 @@ private:
 
 } // namespace glow
 
-namespace glow {
-
-Backend *createOCLBackend(IRFunction *M);
-
-} // namespace glow
-
 #endif // GLOW_OPENCL_BACKEND_H

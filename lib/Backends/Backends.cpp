@@ -14,14 +14,6 @@
  * limitations under the License.
  */
 
-#include "Interpreter/Interpreter.h"
-#if defined(GLOW_WITH_CPU)
-#include "CPU/CPUBackend.h"
-#endif
-#if defined(GLOW_WITH_OPENCL)
-#include "OpenCL/OpenCL.h"
-#endif
-
 #include "glow/Backends/Backend.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
@@ -30,6 +22,24 @@
 #include "llvm/Support/Casting.h"
 
 using namespace glow;
+
+namespace glow {
+/// NOTE: Please add a declaration of a backend-specific `create` method here
+/// when you define a new backend.
+
+/// Create a new instance of the interpreter backend.
+Backend *createInterpreter(IRFunction *F);
+
+#if defined(GLOW_WITH_CPU)
+/// Create a new instance of the CPUBackend backend.
+Backend *createCPUBackend(IRFunction *F);
+#endif
+
+#if defined(GLOW_WITH_OPENCL)
+/// Create a new instance of the OpenCL backend.
+Backend *createOCLBackend(IRFunction *F);
+#endif
+} // namespace glow
 
 Backend *glow::createBackend(BackendKind backendKind, IRFunction *F) {
   switch (backendKind) {
