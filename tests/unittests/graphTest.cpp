@@ -25,6 +25,22 @@
 
 using namespace glow;
 
+TEST(Graph, testVariableErasure) {
+  Module MD;
+  auto &vars = MD.getVars();
+  EXPECT_EQ(vars.size(), 0);
+  EXPECT_EQ(std::distance(vars.begin(), vars.end()), vars.size());
+
+  Variable *V = MD.createVariable(ElemKind::FloatTy, {1, 1}, "dummy",
+                                  VisibilityKind::Public);
+  EXPECT_EQ(vars.size(), 1);
+  EXPECT_EQ(std::distance(vars.begin(), vars.end()), vars.size());
+
+  MD.eraseVariable(V);
+  EXPECT_EQ(vars.size(), 0);
+  EXPECT_EQ(std::distance(vars.begin(), vars.end()), vars.size());
+}
+
 TEST(Graph, simpleTestConv) {
   Module MD;
   Function *F = MD.createFunction("F");
