@@ -402,14 +402,27 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
       }
 
       auto dim = getShape(dict["shape"]);
-      T->reset(ElemKind::FloatTy, dim);
-      auto TH = T->getHandle<>();
+
       size_t i = 0;
-      for (auto f : dict["values"]->floats()) {
-        TH.raw(i++) = f;
+      if (dict["values"]->floats_size()) {
+        T->reset(ElemKind::FloatTy, dim);
+        auto TH = T->getHandle<>();
+        for (auto num : dict["values"]->floats()) {
+          TH.raw(i++) = num;
+        }
+      } else if (dict["values"]->ints_size()) {
+        T->reset(ElemKind::IndexTy, dim);
+        auto TH = T->getHandle<size_t>();
+        for (auto num : dict["values"]->ints()) {
+          assert(0 <= num && num < (1LL << 32) &&
+                 "Only uint32 integers are supported");
+          TH.raw(i++) = num;
+        }
+      } else {
+        unexpectedNodeError(op, "Unsupported data type for GivenTensorFill.");
       }
 
-      assert(i == TH.size() && "The number of serialized values does not "
+      assert(i == T->size() && "The number of serialized values does not "
                                "match the size of the tensor.");
       continue;
     }
