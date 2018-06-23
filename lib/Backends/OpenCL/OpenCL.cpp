@@ -56,7 +56,9 @@ static llvm::cl::opt<bool> doProfile("opencl-profile",
                                      llvm::cl::cat(OpenCLBackendCat));
 } // namespace
 
-Backend *glow::createOCLBackend(IRFunction *F) { return new OCLBackend(F); }
+namespace glow {
+Backend *createOCLBackend(IRFunction *F) { return new OCLBackend(F); }
+} // namespace glow
 
 using Kind = Kinded::Kind;
 using kernelSrcEnum = struct {

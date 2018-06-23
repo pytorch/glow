@@ -170,3 +170,7 @@ void Interpreter::doForwardPass() {
     }
   }
 }
+
+namespace glow {
+Backend *createInterpreter(IRFunction *F) { return new Interpreter(F); }
+} // namespace glow

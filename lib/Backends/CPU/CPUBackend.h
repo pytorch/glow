@@ -99,9 +99,6 @@ public:
   /// @}
 };
 
-/// Create a new instance of the JITBackend backend.
-inline Backend *createCPUBackend(IRFunction *M) { return new CPUBackend(M); }
-
 } // namespace glow
 
 #endif // GLOW_BACKENDS_JIT_JIT_H

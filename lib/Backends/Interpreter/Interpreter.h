@@ -110,9 +110,6 @@ private:
   ///@}
 };
 
-/// Create a new instance of the Interpreter backend.
-inline Backend *createInterpreter(IRFunction *M) { return new Interpreter(M); }
-
 } // namespace glow
 
 #endif // GLOW_INTERPRETER_INTERPRETER_H
