@@ -1724,7 +1724,7 @@ Variable *Module::getVariableByName(llvm::StringRef name) {
 }
 
 void Module::eraseVariable(Variable *N) {
-  auto vars = getVars();
+  auto &vars = getVars();
   auto I = std::find(vars.begin(), vars.end(), N);
   eraseVariable(I);
 }
@@ -1817,7 +1817,7 @@ void Function::verify() const {
     llvm_unreachable("Multiple nodes with the same name");
   }
 
-  auto vars = getParent()->getVars();
+  const auto &vars = getParent()->getVars();
 
   // Any node referenced by one of the graph nodes should be part of the Graph.
   for (const auto &N : nodes_) {
