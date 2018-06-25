@@ -40,6 +40,7 @@ add_library(Graph
             ${INSTR_DEF}
             ${INSTR_BLD_HDR}
             ${INSTR_BLD_SRC}
+            Node.cpp
             Nodes.cpp
             Graph.cpp
             Grad.cpp)
