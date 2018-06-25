@@ -923,3 +923,73 @@ TEST_F(GraphOptz, concatElim) {
   // Check that the concat node is gone.
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 0);
 }
+
+// Check the transformation Concat(Reshape(x) * N) -> Reshape(Concat(x * N)).
+TEST_F(GraphOptz, concatReshapes) {
+  const size_t shape1[] = {10, 20};
+  const size_t shape2[] = {10, 1, 20};
+  const size_t shape3[] = {5, 40};
+  llvm::SmallVector<NodeValue, 10> inputs1;
+  llvm::SmallVector<NodeValue, 10> inputs2;
+  for (size_t i = 0; i < 10; i++) {
+    // 10 reshape nodes that transform from {10,20} to {10, 1, 20}.
+    // And a ConcatNode concatenates the outputs of reshape at 2nd dim.
+    // The optimization would kick in, as the size of sub-tensor  of original
+    // ConcatNode (before opt) is  20, which can be obtained from the
+    // dims of {10,20}.
+    Node *var = F_->getParent()->createVariable(ElemKind::FloatTy, shape1,
+                                                "input" + std::to_string(i));
+    auto *RN = F_->createReshape("reshape" + std::to_string(i), var, shape2);
+    inputs1.push_back(RN);
+  }
+  auto *concatNode1 = F_->createConcat("concat", inputs1, 1);
+  for (size_t i = 0; i < 10; i++) {
+    // 10 reshape nodes that transform from {5,40} to {10, 1, 20}.
+    // And a ConcatNode concatenates the outputs of reshape at 2nd dim.
+    // The optimization would NOT kick in, as the size of sub-tensor of original
+    // ConcatNode (before opt) is 20, which can not be obtained from the
+    // dims of {5,40}.
+    Node *var = F_->getParent()->createVariable(ElemKind::FloatTy, shape3,
+                                                "input" + std::to_string(i));
+    auto *RN = F_->createReshape("reshape" + std::to_string(i), var, shape2);
+    inputs2.push_back(RN);
+  }
+  auto *concatNode2 = F_->createConcat("concat", inputs2, 1);
+  auto outputShape = concatNode1->getResult().dims();
+  // Need to dereference the RN vectors, otherwise the user number of those
+  // nodes would always be positive, making them unable to be removed by DCE.
+  inputs1.clear();
+  inputs2.clear();
+
+  auto *addNode = F_->createAdd("add", concatNode1, concatNode2);
+  auto *O = F_->createSave("ret", addNode);
+
+  EXPECT_EQ(F_->getNodes().size(), 24);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // After optimization, we expect to see only 15 nodes. All 10 of the reshapes
+  // that were the inputs to the first original concat node (concatNode1) are
+  // removed, and a single new reshape is added after the new concat.
+  EXPECT_EQ(F_->getNodes().size(), 15);
+
+  // concatNode1 should not exist any more.
+  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
+                           IsSameNodeAddress(concatNode1)) ==
+              F_->getNodes().end());
+  // concatNode2 should still exist.
+  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
+                           IsSameNodeAddress(concatNode2)) !=
+              F_->getNodes().end());
+
+  // The first input of addNode should be a Reshape node now, with the same
+  // result shape of concatNode1.
+  auto *newRN = llvm::dyn_cast<ReshapeNode>(O->getInput()->getNthInput(0));
+  ASSERT_TRUE(newRN);
+  EXPECT_TRUE(newRN->getType()->dims().equals(outputShape));
+
+  // The input of newRN should be a ConcatNode now.
+  auto *newCN =
+      llvm::dyn_cast<ConcatNode>(O->getInput()->getNthInput(0)->getNthInput(0));
+  ASSERT_TRUE(newCN);
+}

@@ -855,6 +855,127 @@ static void optimizeBatchNorm(Function *F) {
   } // For all nodes in the graph.
 }
 
+// \returns true if all dimensions of the input tensors are the same except
+// for the provided dimension, otherwise return false.
+static bool checkConcatNodeUniformDims(llvm::ArrayRef<NodeValue> inputs,
+                                       size_t dimension) {
+  for (size_t i = 1; i < inputs.size(); i++) {
+    for (size_t j = 0; j < inputs[0].dims().size(); j++) {
+      if (j == dimension) {
+        continue;
+      }
+      if (inputs[0].dims()[j] != inputs[i].dims()[j]) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// Given one tensor and the desired sub-tensor size, \returns the dimension,
+// after which the sub-tensor has the desired size, otherwise return -1.
+// Example: Given a tensor <2,3,4,5>, and a desired size 20, this function will
+// return dimension 1 as the sub-tensor after it is <4,5>, which has the
+// size 20.
+static ssize_t
+findMatchingConcatDimForSameSizeSubTensor(llvm::ArrayRef<size_t> firstDims,
+                                          size_t desiredSubTensorSize) {
+  size_t currentSubTensorSize = 1;
+  for (ssize_t i = firstDims.size() - 1; i >= 0; i--) {
+    if (currentSubTensorSize == desiredSubTensorSize) {
+      return i;
+    }
+    currentSubTensorSize *= firstDims[i];
+  }
+  return -1;
+}
+
+/// Given input tensors and a original ConcatNode, try to find out if
+/// there is a dimension in the input tensors, with which we can meet
+/// two requirements:
+/// 1) Input tensors are concatenate-able along this dimension.
+/// 2) The sub-tensors after this dimension in the input tensors, are
+///    of the same size as the sub-tensor of the input of the original
+///    Concat node after the concatenation dimension.
+/// \returns this dimension if found, otherwise -1.
+static int tryToConcatAlongSameSizeSubTensor(llvm::ArrayRef<NodeValue> inputs,
+                                             ConcatNode *origConcatN) {
+  // For the purpose of the optimiztion
+  // Concat(Reshape(X)*N)->Reshape(Concat(N*X)), we want to make sure the new
+  // ConcatNode can concatenate on the sub-tensor which is of the same size of
+  // that of the original Concate node.
+
+  auto firstDims = inputs.front().dims();
+  auto origConcatNInputDims = origConcatN->getInputs().front().dims();
+  // The size of the sub-tensors of the original ConcatNode, which are being
+  // concatenated. This size is simply the product of dimensions following the
+  // dimension used for concatenation.
+  size_t subTensorSizeOriginalConcatNode = 1;
+  for (size_t i = origConcatN->getDim() + 1; i < origConcatNInputDims.size();
+       ++i) {
+    subTensorSizeOriginalConcatNode *= origConcatNInputDims[i];
+  }
+
+  // Try to find the dimension in the first input such that the sub-tensor size
+  // based on this direction is the same as the size of sub-tensors based on the
+  // concatenation dimension used by the original ConcatNode.
+  ssize_t dimension = findMatchingConcatDimForSameSizeSubTensor(
+      firstDims, subTensorSizeOriginalConcatNode);
+  if (dimension == -1) {
+    return -1;
+  }
+
+  // Now we have found the dimension, we need to check if all inputs can be
+  // concatenated along this dimension.
+  if (!checkConcatNodeUniformDims(inputs, dimension)) {
+    return -1;
+  }
+  return dimension;
+}
+
+// Given the inputs of one Concat Nodes, \returns true if they are all
+// ReshapeNode, and the input tensors of these input nodes have same number of
+// dimensions, otherwise returns false.
+static bool
+tryToGetNewConcatInputs(llvm::ArrayRef<NodeValue> originalConcatInputs,
+                        llvm::SmallVectorImpl<NodeValue> &newConcatInputs) {
+  // Go through the input nodes of CN, check if they are all ReshapeNode,
+  // and if the input tensors of these input nodes have same number of
+  // dimensions.
+  for (auto &I : originalConcatInputs) {
+    if (auto *R = dyn_cast<ReshapeNode>(I)) {
+      if (newConcatInputs.empty() || newConcatInputs.front().dims().size() ==
+                                         R->getInput().dims().size()) {
+        newConcatInputs.push_back(R->getInput());
+        continue;
+      }
+    }
+    return false;
+  }
+  return true;
+}
+
+/// Concat(Reshape(x) * N) -> Reshape(Concat(x * N)).
+/// \returns a new simplified Concat node or nullptr.
+static NodeValue tryToOptimizeConcatOfRehapes(Function *F, ConcatNode *CN) {
+  llvm::SmallVector<NodeValue, 16> newConcatInputs;
+  // The inputs of the collected input reshape nodes. They will be used as
+  // inputs for the new Concat node if possible.
+  if (!tryToGetNewConcatInputs(CN->getInputs(), newConcatInputs)) {
+    return NodeValue(nullptr);
+  }
+
+  // Try to concatenate along the same size sub-tensor as of the original
+  // Concat node.
+  auto dim = tryToConcatAlongSameSizeSubTensor(newConcatInputs, CN);
+  if (dim == -1) {
+    return NodeValue(nullptr);
+  }
+  auto *newCN = F->createConcat(CN->getName(), newConcatInputs, dim);
+  return F->createReshape(CN->getInputs().front()->getName(), newCN,
+                          CN->getResult().dims());
+}
+
 /// Simplify concat node.
 /// \returns a new simplified Concat node or nullptr.
 static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
@@ -909,6 +1030,10 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
     }
   }
 
+  /// Try the optimization Concat(Reshape(x) * N) -> Reshape(Concat(x * N)).
+  if (auto transformedConcatNode = tryToOptimizeConcatOfRehapes(F, CN)) {
+    return transformedConcatNode;
+  }
   return NodeValue(nullptr);
 }
 
@@ -939,7 +1064,6 @@ static void optimizeArithmeticNodes(Function *F) {
       worklist.push_back(&node);
     }
   }
-
   while (!worklist.empty()) {
     Node *node = worklist.back();
     worklist.pop_back();
