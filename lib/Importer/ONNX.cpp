@@ -234,7 +234,7 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
 
   if (typeName == "Conv") {
-    // Load the inputs:
+    // Load the attributes
     std::vector<unsigned_t> strides(2, 1);
     if (dict.count("strides")) {
       strides = getShape<unsigned_t>(dict.at("strides"));
@@ -243,29 +243,37 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     // Pads : {pad_top, pad_left, pad_bottom, pad_right}
     std::vector<unsigned_t> pads = getPads(dict);
 
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
-    Tensor *w = getTensorByName(op.input(1));
+    // Load the inputs
+    NodeValue in = getNodeValueOrCreateVariableByName(op.input(0));
+    NodeValue filterValue = getNodeValueOrCreateVariableByName(op.input(1));
 
-    // Transpose the weights to the right format. Glow expects to read the
+    // Transpose the filter to the right format. Glow expects to read the
     // weights in the format CRSK. ONNX stores the operators as KCRS.
     // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
-    Tensor wtag;
-    w->transpose(&wtag, NCHW2NHWC);
+    TransposeNode *filterTransposeNode =
+        G_.createTranspose(opName, filterValue, NCHW2NHWC);
 
     // The structure of the conv weigts is: NHWC. We take the C, which is the
     // number of filters. We use this value to calculate the size of the bias
     // if it is not specified.
-    size_t depth = wtag.dims()[0];
+    const NodeValue filterTransposedValue = filterTransposeNode->getResult();
+    size_t depth = filterTransposedValue.dims()[0];
 
-    // Construct the Filter field.
-    auto *filter = G_.getParent()->createVariable("conv.filter", wtag);
+    // Get the kernel shape from the input.
+    std::vector<unsigned_t> kernelShape(2);
+    kernelShape[0] = filterTransposedValue.dims()[1];
+    kernelShape[1] = filterTransposedValue.dims()[2];
 
-    std::vector<unsigned_t> kernels(2);
+    // Extra check when the 'kernel_shape' attribute exists.
+    // The 'kernel_shape' attribute is redundant not mandatory.
     if (dict.count("kernel_shape")) {
-      kernels = getShape<unsigned_t>(dict.at("kernel_shape"));
-    } else {
-      kernels[0] = filter->dims()[1];
-      kernels[1] = filter->dims()[2];
+      std::vector<unsigned_t> kernelShapeAttribute =
+          getShape<unsigned_t>(dict.at("kernel_shape"));
+      assert(kernelShape[0] == kernelShapeAttribute[0] &&
+             kernelShape[1] == kernelShapeAttribute[1] &&
+             "The 'kernel_shape' attribute is not consistent with the actual "
+             "convolution kernel shape.");
+      (void)kernelShapeAttribute; // Avoids compilation warning in release mode.
     }
 
     // Construct the Bias field.
@@ -289,17 +297,18 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     // Calculate the size and allocate the output buffer.
     ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
     auto outSz =
-        calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
+        calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides, pads);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
-    auto *node = G_.createConv(opName, tr, filter, bias, outTy, kernels,
-                               strides, pads, group);
+    auto *node = G_.createConv(opName, tr, filterTransposeNode, bias, outTy,
+                               kernelShape, strides, pads, group);
 
     // Transpose the output back.
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);
+
     return true;
   }
 
