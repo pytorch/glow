@@ -689,14 +689,14 @@ void LoadNode::verify() const {
 /// the types they apply to.
 namespace glow {
 /// Convert a float into an unsigned integer binary representation.
-/// Do not use union-based tricks, because they introduce undefined behavior.
-/// Instead, convert the float to an unsigned integer at the cost of
-/// having more hash collisions.
 size_t toBinary(float f) {
-  /// First convert to an integer and then to an unsigned.
-  /// Direct conversion from a float to an unsigned integer may result
-  /// in an undefined behavior according to the C++ standard.
-  return static_cast<size_t>(static_cast<int>(f));
+  // Convert floating-point binary representation to integer.  memcpy compiles
+  // to a simple asm move on platforms we support.
+  static_assert(sizeof(size_t) >= sizeof(float),
+                "size_t is too small on this platform");
+  size_t ret = 0;
+  memcpy(&ret, &f, sizeof(float));
+  return ret;
 }
 
 llvm::hash_code hash_value(const glow::Tensor &T) { return T.size(); }
