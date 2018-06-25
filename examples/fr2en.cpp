@@ -126,6 +126,7 @@ void loadMatrixFromFile(llvm::StringRef filename, Tensor &result) {
 struct Model {
   unsigned batchSize_;
   ExecutionEngine EE_{ExecutionBackend};
+  Function *F_;
   Vocabulary en_, fr_;
   Variable *input_;
   Variable *seqLength_;
@@ -137,15 +138,36 @@ struct Model {
   void translate(const std::vector<std::string> &batch);
 
   Model(unsigned batchSize) : batchSize_(batchSize) {
-    EE_.getModule().createFunction("main");
+    F_ = EE_.getModule().createFunction("main");
   }
 
-  void dumpGraphDAG(const char *filename) {
-    EE_.getModule().getFunction("main")->dumpDAG(filename);
-  }
+  void dumpGraphDAG(const char *filename) { F_->dumpDAG(filename); }
 
   void compile() {
-    EE_.compile(CompilationMode::Infer, EE_.getModule().getFunction("main"));
+    if (!dumpProfileFileOpt.empty()) {
+      // Perform the high-level optimizations before instrumenting the graph.
+      // This optimization phase will remove stuff like repetitive transpose
+      // operations perform CSE, etc.
+      ::optimize(F_, glow::CompilationMode::Infer);
+
+      // Instrument the graph to capture profiles for nodes' outputs.
+      F_ = glow::profileQuantization(F_);
+    }
+
+    // Load the quantization profile and transform the graph.
+    if (!loadProfileFileOpt.empty()) {
+      // The profiled graph was optimized before it was instrumentated. In this
+      // part of the code we repeat the same transformation in order to create
+      // the same graph structure.
+      glow::optimize(F_, CompilationMode::Infer);
+
+      auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
+
+      // Quantize the graph based on the captured profile.
+      F_ = glow::quantization::quantizeFunction(EE_, quantizationInfos, F_);
+    }
+
+    EE_.compile(CompilationMode::Infer, F_);
   }
 
 private:
@@ -213,7 +235,6 @@ void Model::loadLanguages() {
 /// \p encoderHiddenOutput saves resulting hidden layer.
 void Model::loadEncoder() {
   auto &mod = EE_.getModule();
-  Function *F = mod.getFunction("main");
   input_ = mod.createVariable(ElemKind::IndexTy, {batchSize_, MAX_LENGTH},
                               "encoder.inputsentence", VisibilityKind::Public,
                               Variable::TrainKind::None);
@@ -246,27 +267,27 @@ void Model::loadEncoder() {
   loadMatrixFromFile("fr2en/encoder_b_hh.bin", b_hh->getPayload());
 
   Node *inputEmbedded =
-      F->createGather("encoder.embedding", embedding_fr_, input_);
+      F_->createGather("encoder.embedding", embedding_fr_, input_);
 
   // TODO: encoder does exactly MAX_LENGTH steps, while input size is smaller.
   // We could use control flow here.
   std::vector<NodeValue> outputs;
   for (unsigned step = 0; step < MAX_LENGTH; step++) {
-    Node *inputSlice = F->createSlice(
+    Node *inputSlice = F_->createSlice(
         "encoder." + std::to_string(step) + ".inputSlice", inputEmbedded,
         {0, step, 0}, {batchSize_, step + 1, EMBEDDING_SIZE});
     Node *reshape =
-        F->createReshape("encoder." + std::to_string(step) + ".reshape",
-                         inputSlice, {batchSize_, EMBEDDING_SIZE});
-    hidden = createPyTorchGRUCell(F, reshape, hidden, w_ih, b_ih, w_hh, b_hh);
+        F_->createReshape("encoder." + std::to_string(step) + ".reshape",
+                          inputSlice, {batchSize_, EMBEDDING_SIZE});
+    hidden = createPyTorchGRUCell(F_, reshape, hidden, w_ih, b_ih, w_hh, b_hh);
     outputs.push_back(hidden);
   }
 
-  Node *output = F->createConcat("encoder.output", outputs, 1);
-  Node *r2 = F->createReshape("encoder.output.r2", output,
-                              {MAX_LENGTH * batchSize_, EMBEDDING_SIZE});
+  Node *output = F_->createConcat("encoder.output", outputs, 1);
+  Node *r2 = F_->createReshape("encoder.output.r2", output,
+                               {MAX_LENGTH * batchSize_, EMBEDDING_SIZE});
 
-  encoderHiddenOutput_ = F->createGather("encoder.outputNth", r2, seqLength_);
+  encoderHiddenOutput_ = F_->createGather("encoder.outputNth", r2, seqLength_);
 }
 
 /// Model part representing Decoder.
@@ -274,7 +295,6 @@ void Model::loadEncoder() {
 /// Resulting translation is put into \p output Variable.
 void Model::loadDecoder() {
   auto &mod = EE_.getModule();
-  Function *F = mod.getFunction("main");
   Variable *input =
       mod.createVariable(ElemKind::IndexTy, {batchSize_}, "decoder.input",
                          VisibilityKind::Public, Variable::TrainKind::None);
@@ -316,50 +336,26 @@ void Model::loadDecoder() {
   for (unsigned step = 0; step < MAX_LENGTH; step++) {
     // Use last translated word as an input at the current step.
     Node *embedded =
-        F->createGather("decoder.embedding." + std::to_string(step),
-                        embedding_en_, lastWordIdx);
+        F_->createGather("decoder.embedding." + std::to_string(step),
+                         embedding_en_, lastWordIdx);
 
-    Node *relu = F->createRELU("decoder.relu", embedded);
-    hidden = createPyTorchGRUCell(F, relu, hidden, w_ih, b_ih, w_hh, b_hh);
+    Node *relu = F_->createRELU("decoder.relu", embedded);
+    hidden = createPyTorchGRUCell(F_, relu, hidden, w_ih, b_ih, w_hh, b_hh);
 
-    Node *FC = F->createFullyConnected("decoder.outFC", hidden, out_w, out_b);
-    Node *topK = F->createTopK("decoder.topK", FC, 1);
+    Node *FC = F_->createFullyConnected("decoder.outFC", hidden, out_w, out_b);
+    Node *topK = F_->createTopK("decoder.topK", FC, 1);
 
-    lastWordIdx = F->createReshape("decoder.reshape", {topK, 1}, {batchSize_});
+    lastWordIdx = F_->createReshape("decoder.reshape", {topK, 1}, {batchSize_});
     outputs.push_back(lastWordIdx);
   }
 
-  Node *concat = F->createConcat("decoder.output.concat", outputs, 0);
-  Node *reshape = F->createReshape("decoder.output.reshape", concat,
-                                   {MAX_LENGTH, batchSize_});
+  Node *concat = F_->createConcat("decoder.output.concat", outputs, 0);
+  Node *reshape = F_->createReshape("decoder.output.reshape", concat,
+                                    {MAX_LENGTH, batchSize_});
   output_ = mod.createVariable(ElemKind::IndexTy, {MAX_LENGTH, batchSize_},
                                "decoder.output", VisibilityKind::Public,
                                Variable::TrainKind::None);
-  F->createSave("decoder.output", reshape, output_);
-
-  // Handle the request to profile the graph in preperation for quantization.
-  if (!dumpProfileFileOpt.empty()) {
-    // Perform the high-level optimizations before instrumenting the graph. This
-    // optimization phase will remove stuff like repetitive transpose operations
-    // perform CSE, etc.
-    ::optimize(F, glow::CompilationMode::Infer);
-
-    // Instrument the graph to capture profiles for nodes' outputs.
-    F = glow::profileQuantization(F);
-  }
-
-  // Load the quantization profile and transform the graph.
-  if (!loadProfileFileOpt.empty()) {
-    // The profiled graph was optimized before it was instrumentated. In this
-    // part of the code we repeat the same transformation in order to create
-    // the same graph structure.
-    glow::optimize(F, CompilationMode::Infer);
-
-    auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
-
-    // Quantize the graph based on the captured profile.
-    F = glow::quantization::quantizeFunction(EE_, quantizationInfos, F);
-  }
+  F_->createSave("decoder.output", reshape, output_);
 }
 
 /// Translation has 2 stages:
@@ -407,8 +403,7 @@ void Model::translate(const std::vector<std::string> &batch) {
 
   if (!dumpProfileFileOpt.empty()) {
     std::vector<NodeQuantizationInfo> QI =
-        quantization::generateNodeQuantizationInfos(
-            EE_.getModule().getFunction("main"));
+        quantization::generateNodeQuantizationInfos(F_);
     serializeToYaml(dumpProfileFileOpt, QI);
   }
 }
