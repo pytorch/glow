@@ -47,7 +47,7 @@ class InterpOnly : public Operator {};
 TEST_P(InterpAndCPU, pow) {
   auto *X = mod_.createVariable(ElemKind::FloatTy, {1, 1, 3}, "X");
   auto *Y = mod_.createVariable(ElemKind::FloatTy, {2}, "Y");
-  X->getPayload().getHandle() = {5, 0.1, -3};
+  X->getPayload().getHandle() = {5, 0.1f, -3};
   Y->getPayload().getHandle() = {2, 100};
 
   auto *Pow1 = F_->createPow("Pow1", X, 2.0);
@@ -73,7 +73,7 @@ TEST_P(InterpAndCPU, pow) {
 TEST_P(InterpAndCPU, log) {
   auto *X = mod_.createVariable(ElemKind::FloatTy, {6}, "X");
   auto XH = X->getPayload().getHandle();
-  XH = {210030, 600, 4, 0.7, .005, 0.000829};
+  XH = {210030, 600, 4, 0.7f, .005f, 0.000829f};
 
   auto *LN = F_->createLog("log", X);
 
@@ -530,7 +530,7 @@ TEST_P(Operator, weightedSum) {
 
   // Create the weights.
   auto *AW = mod_.createVariable(ElemKind::FloatTy, {1}, "AW");
-  AW->getPayload().getHandle() = {0.1};
+  AW->getPayload().getHandle() = {0.1f};
   auto *BW = mod_.createVariable(ElemKind::FloatTy, {1}, "BW");
   BW->getPayload().getHandle() = {10.0};
 
@@ -579,7 +579,7 @@ TEST_P(InterpAndCPU, TopK) {
   auto *indices = mod_.createVariable(ElemKind::IndexTy, {3, 1, 3}, "indices");
 
   inp->getPayload().getHandle() = {
-      28, 4, 411, 19, 42, 0.4, 0.4, 0.4, -0.4, 0.45, 7, 5, 9, 8, 100,
+      28, 4, 411, 19, 42, 0.4f, 0.4f, 0.4f, -0.4f, 0.45f, 7, 5, 9, 8, 100,
   };
 
   auto R = F_->createTopK("TopK", inp, 3);
@@ -771,7 +771,7 @@ TEST_P(Operator, Gather) {
   auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 4, 2}, "result");
 
   data->getPayload().getHandle() = {
-      1.0, 1.2, 2.3, 3.4, 4.5, 5.7,
+      1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
   indices->getPayload().getHandle<size_t>() = {
       0, 1, 0, 1, 1, 2, 2, 0,
@@ -878,7 +878,7 @@ TEST_P(InterpAndCPU, ScatterAssignQuantized) {
 
 TEST_P(Operator, QuantizeAndDequantize) {
   Tensor inputs(ElemKind::FloatTy, {1, 4});
-  inputs.getHandle() = {1, 1.2, 0.5, 1.3};
+  inputs.getHandle() = {1, 1.2f, 0.5f, 1.3f};
 
   auto *A = mod_.createVariable(ElemKind::FloatTy, {1, 4}, "A",
                                 VisibilityKind::Public);
@@ -910,7 +910,7 @@ TEST_P(InterpAndCPU, IntMatMul) {
   };
 
   rhs->getPayload().getHandle() = {
-      0.1, -0.2, 0.3, 9.0, -8.0, 7.0, 6.0, 5.0, 9.0,
+      0.1f, -0.2f, 0.3f, 9.0f, -8.0f, 7.0f, 6.0f, 5.0f, 9.0f,
   };
 
   auto *lhsq = F_->createQuantize("lhs.q", lhs, lhsTy);
@@ -954,11 +954,11 @@ TEST_P(InterpAndCPU, IntBatchedArith) {
   auto *rhs = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "rhs");
 
   lhs->getPayload().getHandle() = {
-      8.7, 6.5, 4.3, 2.1, 1.0, -5.1, -4.0, -12.0, 0.2,
+      8.7f, 6.5f, 4.3f, 2.1f, 1.0f, -5.1f, -4.0f, -12.0f, 0.2f,
   };
 
   rhs->getPayload().getHandle() = {
-      -9.1, -0.4, 1.3, 2.2, -8.1, 7.6, -6.4, 10.0, 9.1,
+      -9.1f, -0.4f, 1.3f, 2.2f, -8.1f, 7.6f, -6.4f, 10.0f, 9.1f,
   };
 
   auto *lhsq = F_->createQuantize("lhs.q", lhs, lhsTy);
@@ -1127,7 +1127,7 @@ TEST_P(InterpAndCPU, EntropyLossTest) {
   auto *Y = mod_.createVariable(ElemKind::IndexTy, {2}, "Y");
   auto *L = mod_.createVariable(ElemKind::FloatTy, {1}, "L");
 
-  P->getPayload().getHandle() = {0.2, 0.5, 0.3, 0.4, 0.3, 0.3};
+  P->getPayload().getHandle() = {0.2f, 0.5f, 0.3f, 0.4f, 0.3f, 0.3f};
   Y->getPayload().getHandle<size_t>() = {1, 2};
   auto *ceLoss = F_->createCrossEntropyLoss("CELoss", P, Y);
   F_->createSave("save", ceLoss, L);
@@ -1523,8 +1523,8 @@ TEST_P(Operator, FCGradientCheck) {
 
   Tensor initA(ElemKind::FloatTy, {2, 1});
   Tensor initB(ElemKind::FloatTy, {2, 1});
-  initA.getHandle() = {4.2, 9.875};
-  initB.getHandle() = {-13.1, 3.14};
+  initA.getHandle() = {4.2f, 9.875f};
+  initB.getHandle() = {-13.1f, 3.14f};
 
   Function *DF = glow::differentiate(F_, EE_.getConfig(), "d_main");
   EE_.compile(CompilationMode::Train, DF);
@@ -2362,7 +2362,7 @@ TEST_P(InterpOnly, SparseLengthsSum) {
   auto *lengths = mod_.createVariable(ElemKind::IndexTy, {5}, "lengths");
 
   data->getPayload().getHandle() = {
-      1.0, 1.2, 2.3, 3.4, 4.5, 5.7,
+      1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
   indices->getPayload().getHandle<size_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
@@ -2380,7 +2380,7 @@ TEST_P(InterpOnly, SparseLengthsSum) {
   Tensor &result = llvm::cast<Variable>(S->getOutput())->getPayload();
   Tensor expected(ElemKind::FloatTy, {5, 2});
   expected.getHandle() = {
-      5.5, 6.9, 0.0, 0.0, 6.8, 9.1, 1.0, 1.2, 3.0, 3.6,
+      5.5f, 6.9f, 0.0f, 0.0f, 6.8f, 9.1f, 1.0f, 1.2f, 3.0f, 3.6f,
   };
 
   EXPECT_TRUE(expected.isEqual(result));

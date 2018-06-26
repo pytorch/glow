@@ -60,8 +60,8 @@ TEST_P(MLTest, trainASimpleNetwork) {
   // Values for the input and output variables.
   Tensor inputs(ElemKind::FloatTy, {1, 4});
   Tensor expected(ElemKind::FloatTy, {1, 4});
-  inputs.getHandle<>() = {0.15, 0.15, 0.15, 0.15};
-  expected.getHandle<>() = {0.9, 0.9, 0.9, 0.9};
+  inputs.getHandle<>() = {0.15f, 0.15f, 0.15f, 0.15f};
+  expected.getHandle<>() = {0.9f, 0.9f, 0.9f, 0.9f};
 
   Function *TF = glow::differentiate(F, EE_.getConfig());
   EE_.compile(CompilationMode::Train, TF);

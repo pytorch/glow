@@ -117,10 +117,10 @@ TEST(Quantization, quantizeGraph) {
 
   std::vector<NodeQuantizationInfo> QI{
       {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-       {0.2, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(W->getName()), {0.3, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(B->getName()), {0.4, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6, 0}},
+       {0.2f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(W->getName()), {0.3f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(B->getName()), {0.4f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6f, 0}},
   };
 
   F = quantization::quantizeFunction(EE, QI, F);

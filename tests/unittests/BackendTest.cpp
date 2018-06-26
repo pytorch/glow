@@ -50,7 +50,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   Tensor inputs(ElemKind::FloatTy, {1, 4});
-  inputs.getHandle() = {1, 1.2, 0.5, 1.3};
+  inputs.getHandle() = {1, 1.2f, 0.5f, 1.3f};
 
   auto *A = mod.createVariable(ElemKind::FloatTy, {1, 4}, "A",
                                VisibilityKind::Public);
@@ -90,7 +90,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   EXPECT_NEAR(1.3, max, 0.00001);
 
   // Run inference for the second time with new min and max.
-  inputs.getHandle() = {0.2, 1.6, 0.5, 1.3};
+  inputs.getHandle() = {0.2f, 1.6f, 0.5f, 1.3f};
   EE.run({A}, {&inputs});
   min = CI.raw(0);
   max = CI.raw(1);
