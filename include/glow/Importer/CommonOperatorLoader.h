@@ -48,7 +48,7 @@ protected:
   /// Loads RELU operator, given its protobuf representation and parsed args.
   void loadRelu(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
     auto *R = G_.createRELU(opName, in);
     addNodeAsOutput(op, R);
   }
@@ -57,8 +57,8 @@ protected:
     // TODO: support variadic arguments
     assert(op.input_size() == 2 && "Only Sum of 2 inputs is supported.");
     const std::string &opName = loadOperatorName(op);
-    auto *in0 = getOrCreateNodeByName(op.input(0));
-    auto *in1 = getOrCreateNodeByName(op.input(1));
+    auto *in0 = getOrCreateVariableByName(op.input(0));
+    auto *in1 = getOrCreateVariableByName(op.input(1));
     auto *node = G_.createAdd(opName, in0, in1);
     addNodeAsOutput(op, node);
   }
@@ -66,9 +66,9 @@ protected:
   void loadSoftmax(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
 
-    auto *softmaxExpected = getOrCreateNodeByName("softmax_expected");
+    auto *softmaxExpected = getOrCreateVariableByName("softmax_expected");
 
-    Node *in = getOrCreateNodeByName(op.input(0));
+    Node *in = getOrCreateVariableByName(op.input(0));
 
     // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
     // softmax function. This is similar to a bitcast operation.
@@ -81,7 +81,7 @@ protected:
 
   void loadFC(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
     // Load weights.
     Tensor *w = getTensorByName(op.input(1));
     Tensor *b = getTensorByName(op.input(2));
@@ -101,7 +101,7 @@ protected:
 
   void loadLRN(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
 
     size_t size = loadInt(dict["size"]);
     float alpha = loadFloat(dict["alpha"]);
@@ -121,8 +121,8 @@ protected:
   void loadArithmetic(llvm::StringRef typeName, const OpType &op,
                       ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto *in0 = getOrCreateNodeByName(op.input(0));
-    auto *in1 = getOrCreateNodeByName(op.input(1));
+    auto *in0 = getOrCreateVariableByName(op.input(0));
+    auto *in1 = getOrCreateVariableByName(op.input(1));
 
     int broadcast = loadInt(dict["broadcast"]);
 
@@ -157,7 +157,7 @@ protected:
 
   void loadSplit(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
     size_t axis = dict.count("axis") ? loadInt(dict["axis"]) : 0;
     std::vector<size_t> split;
     if (dict.count("split"))
@@ -173,7 +173,7 @@ protected:
 
   void loadReshape(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
 
     std::vector<size_t> newDim;
     if (dict.count("shape")) {
@@ -212,7 +212,7 @@ protected:
   void loadTranspose(const OpType &op, ArgumentDictionaryTy &dict,
                      llvm::StringRef permArgName) {
     const std::string &opName = loadOperatorName(op);
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
 
     // There is a difference between ONNX and Caffe2 specs for Transpose:
     // one contains permutation under name "perm", the other contains it under
