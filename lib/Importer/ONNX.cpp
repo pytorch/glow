@@ -507,6 +507,35 @@ std::unique_ptr<ONNXModelLoader> ONNXModelLoader::parse(const void *onnxModel,
 ONNXModelLoader::ONNXModelLoader(Function &F)
     : CommonOperatorLoader({}, {}, F) {}
 
+void ONNXModelLoader::checkInputs(onnx::GraphProto &net,
+                                  llvm::ArrayRef<const char *> tensorNames,
+                                  llvm::ArrayRef<Tensor *> tensors) {
+  for (size_t i = 0; i < tensorNames.size(); i++) {
+    // Look if a corresponding input exists.
+    for (int j = 0; j < net.input_size(); j++) {
+      const onnx::ValueInfoProto &valueInfo = net.input(j);
+      const std::string &inputName = valueInfo.name();
+
+      if (inputName != tensorNames[i]) {
+        continue;
+      }
+
+      llvm::ArrayRef<size_t> dims = tensors[i]->dims();
+      const onnx::TensorShapeProto &shape =
+          valueInfo.type().tensor_type().shape();
+
+      // Check if the number of dimensions is consistent.
+      assert(dims.size() == shape.dim_size() &&
+             "Mismatch between input image and ONNX input shape");
+      // Allow batch dimensions to be different.
+      for (size_t k = 1; k < dims.size(); k++) {
+        assert(dims[k] == shape.dim(k).dim_value() &&
+               "Mismatch between input image and ONNX input shape");
+      }
+    }
+  }
+}
+
 ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  llvm::ArrayRef<const char *> tensorNames,
                                  llvm::ArrayRef<Tensor *> tensors, Function &F)
@@ -516,6 +545,8 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
   if (!loadProto(modelDef, modelDescFilename)) {
     GLOW_ASSERT("Cannot load the network.");
   }
+
+  checkInputs(modelDef, tensorNames, tensors);
 
   loadInitializers(modelDef);
   if (loadNetwork(modelDef)) {

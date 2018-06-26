@@ -89,6 +89,13 @@ class ONNXModelLoader
   size_t opsetVersion_;
 
 public:
+  /// Checks that the inputs tensors are compatible with the inputs declared in
+  /// the ONNX model. The input tensors in \p tensors are stored with the names
+  /// in the list of names \p tensorNames.
+  void checkInputs(onnx::GraphProto &net,
+                   llvm::ArrayRef<const char *> tensorNames,
+                   llvm::ArrayRef<Tensor *> tensors);
+
   /// Loads the ONNX model that's represented by a model description file,
   /// serialized in \p modelDescFilename and populates the network into \p F.
   /// The tensors in \p tensors are stored with the names in the list of names
