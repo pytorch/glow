@@ -21,7 +21,7 @@
 using namespace glow;
 
 TEST(Tensor, init) {
-  Tensor T = {1.2, 12.1, 51.0, 1515.2};
+  Tensor T = {1.2f, 12.1f, 51.0f, 1515.2f};
 
   auto H = T.getHandle<>();
 
@@ -29,7 +29,7 @@ TEST(Tensor, init) {
 
   EXPECT_EQ(int(H.at({2})), 51);
 
-  H = {1.1, 1.2, 1.3, 1.4};
+  H = {1.1f, 1.2f, 1.3f, 1.4f};
 
   EXPECT_EQ(int(H.at({0})), 1);
 
@@ -49,7 +49,7 @@ TEST(Tensor, randomizeInt) {
 }
 
 TEST(Tensor, clone) {
-  Tensor T = {1.2, 12.1, 51.0, 1515.2};
+  Tensor T = {1.2f, 12.1f, 51.0f, 1515.2f};
   auto H = T.getHandle<>();
 
   Tensor v;
@@ -59,7 +59,7 @@ TEST(Tensor, clone) {
   EXPECT_EQ(int(vH.at({0})), 1);
 
   // Update the original tensor
-  H = {0.11, 0.22, 0.33, 0.44};
+  H = {0.11f, 0.22f, 0.33f, 0.44f};
 
   // The cloned vector is unmodified.
   EXPECT_EQ(int(vH.at({1})), 12);
@@ -160,10 +160,10 @@ TEST(Tensor, assignment) {
 }
 
 TEST(Tensor, concatTensors1D) {
-  Tensor X = {1.1, 2.1, 3.1, 4.1};
-  Tensor Y = {5.2, 6.2, 7.2, 8.2};
-  Tensor Z = {0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3};
-  Tensor expected = {5.2, 6.2, 7.2, 8.2, 1.1, 2.1, 3.1, 4.1};
+  Tensor X = {1.1f, 2.1f, 3.1f, 4.1f};
+  Tensor Y = {5.2f, 6.2f, 7.2f, 8.2f};
+  Tensor Z = {0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f};
+  Tensor expected = {5.2f, 6.2f, 7.2f, 8.2f, 1.1f, 2.1f, 3.1f, 4.1f};
 
   auto xH = X.getHandle<>();
   auto yH = Y.getHandle<>();
@@ -276,7 +276,7 @@ TEST(Tensor, reset) {
   auto H = A.getHandle();
   auto QH = QA.getHandle<int8_t>();
 
-  H = {1.5, 17.3, -20.3, 10.0, 1.2, -2.3};
+  H = {1.5f, 17.3f, -20.3f, 10.0f, 1.2f, -2.3f};
   QH = {5, 9, -2, 4, 3, -10, 21, -9, 0, -51, 73, 2};
 
   A.reset(ElemKind::FloatTy, {5, 2, 6});
@@ -306,7 +306,7 @@ TEST(Tensor, transpose) {
   Tensor X(ElemKind::FloatTy, {5, 2});
   auto H = X.getHandle<>();
   H = {
-      0.2, 0.4, 0.6, 0.8, 1.0, 0.6, 0.8, 1.0, 2.0, 3.0,
+      0.2f, 0.4f, 0.6f, 0.8f, 1.0f, 0.6f, 0.8f, 1.0f, 2.0f, 3.0f,
   };
 
   Tensor Xhat;
@@ -341,7 +341,7 @@ TEST(Tensor, transpose2) {
 }
 
 TEST(Tensor, nonOwnedTensor) {
-  Tensor T1 = {1.2, 12.1, 51.0, 1515.2};
+  Tensor T1 = {1.2f, 12.1f, 51.0f, 1515.2f};
 
   auto H1 = T1.getHandle<>();
   H1.dump();
@@ -468,7 +468,7 @@ TEST(Tensor, externallyManagedPayload) {
   // Allocate and initialize payload "externally", without using the Tensor API.
   // For example the data may come from a different library, be read from a
   // file, etc.
-  std::vector<float> payload{1.2, 12.1, 51.0, 1515.2};
+  std::vector<float> payload{1.2f, 12.1f, 51.0f, 1515.2f};
 
   {
     // Work with an existing payload buffer by means of the Tensor APIs.

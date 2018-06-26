@@ -31,7 +31,7 @@ class Tensor;
 struct TrainingConfig {
   float L1Decay{0};
   float L2Decay{0};
-  float learningRate{0.01};
+  float learningRate{0.01f};
   float momentum{0.0};
   unsigned batchSize{1};
 };
