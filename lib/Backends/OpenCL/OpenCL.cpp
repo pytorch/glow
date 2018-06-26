@@ -52,6 +52,9 @@ namespace {
 llvm::cl::OptionCategory OpenCLBackendCat("Glow OpenCL Backend Options");
 
 static llvm::cl::opt<unsigned>
+    platformId("platform", llvm::cl::desc("OpenCL platform to be used"),
+               llvm::cl::init(0), llvm::cl::cat(OpenCLBackendCat));
+static llvm::cl::opt<unsigned>
     deviceId("device", llvm::cl::desc("OpenCL device to be used"),
              llvm::cl::init(0), llvm::cl::cat(OpenCLBackendCat));
 static llvm::cl::opt<bool> doProfile("opencl-profile",
@@ -84,13 +87,24 @@ static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 
 OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F)
     : F_(std::move(F)) {
+  cl_uint numPlatforms{0};
+  cl_int err = clGetPlatformIDs(0, NULL, &numPlatforms);
+  GLOW_ASSERT(err == CL_SUCCESS && "clGetPlatformIDs Failed.");
+  GLOW_ASSERT(numPlatforms > platformId &&
+              "Should have at least one platform for running OpenCL");
+  std::vector<cl_platform_id> platform_ids(numPlatforms);
+  err = clGetPlatformIDs(numPlatforms, platform_ids.data(), NULL);
+  cl_platform_id platform_id_used = platform_ids[platformId];
+  GLOW_ASSERT(err == CL_SUCCESS && "clGetPlatformIDs Failed.");
+
   cl_uint num{0};
-  cl_int err = clGetDeviceIDs(nullptr, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
+  err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
   GLOW_ASSERT(num > deviceId &&
-              "Should have at least one GPU for running OpenCL");
-  cl_device_id devices[num];
-  err = clGetDeviceIDs(nullptr, CL_DEVICE_TYPE_ALL, num, devices, nullptr);
+              "Should have at least one GPU/CPU/FPGA for running OpenCL");
+  std::vector<cl_device_id> devices(num);
+  err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, num, devices.data(),
+                       nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
   deviceId_ = devices[deviceId];
   context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, nullptr);
