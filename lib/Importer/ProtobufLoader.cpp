@@ -31,13 +31,13 @@ bool isArrayConstant(llvm::ArrayRef<size_t> a) {
   return true;
 }
 
-Tensor *ProtobufLoader::getTensorByName(const std::string &name) {
+Tensor *ProtobufLoader::getTensorByName(llvm::StringRef name) {
   assert(tensors_.count(name) &&
          "There is no tensor registered with this name.");
   return tensors_[name];
 }
 
-Node *ProtobufLoader::getNodeByNameOrNull(const std::string &name) const {
+Node *ProtobufLoader::getNodeByNameOrNull(llvm::StringRef name) const {
   auto it = nodeByName_.find(name);
   if (it != nodeByName_.end()) {
     return it->second;
@@ -46,14 +46,14 @@ Node *ProtobufLoader::getNodeByNameOrNull(const std::string &name) const {
   return nullptr;
 }
 
-Node *ProtobufLoader::getNodeByName(const std::string &name) const {
+Node *ProtobufLoader::getNodeByName(llvm::StringRef name) const {
   assert(hasNodeByName(name) && "No node under that name");
   auto *node = getNodeByNameOrNull(name);
   assert(node && "Null is under that name??");
   return node;
 }
 
-Node *ProtobufLoader::createVariable(const std::string &name, Tensor &tensor,
+Node *ProtobufLoader::createVariable(llvm::StringRef name, Tensor &tensor,
                                      VisibilityKind visibilityKind,
                                      Variable::TrainKind trainKind) {
   auto *V = G_.getParent()->createVariable(
@@ -62,7 +62,7 @@ Node *ProtobufLoader::createVariable(const std::string &name, Tensor &tensor,
   return V;
 }
 
-Node *ProtobufLoader::createAndRememberVariable(const std::string &name,
+Node *ProtobufLoader::createAndRememberVariable(llvm::StringRef name,
                                                 Tensor &tensor,
                                                 VisibilityKind visibilityKind,
                                                 Variable::TrainKind trainKind) {
@@ -72,7 +72,7 @@ Node *ProtobufLoader::createAndRememberVariable(const std::string &name,
   return V;
 }
 
-Node *ProtobufLoader::getOrCreateNodeByName(const std::string &name) {
+Node *ProtobufLoader::getOrCreateVariableByName(llvm::StringRef name) {
   auto *node = getNodeByNameOrNull(name);
   if (node) {
     return node;
@@ -82,7 +82,7 @@ Node *ProtobufLoader::getOrCreateNodeByName(const std::string &name) {
   return createAndRememberVariable(name, *T);
 }
 
-bool ProtobufLoader::hasNodeByName(const std::string &name) const {
+bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {
   return getNodeByNameOrNull(name) != nullptr;
 }
 

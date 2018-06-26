@@ -119,7 +119,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     unsigned kernel = getSizeHW(dict, "kernel", 0);
     unsigned group = dict.count("group") ? loadInt(dict["group"]) : 1;
 
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
     Tensor *w = getTensorByName(op.input(1));
 
     // Transpose the weights to the right format. Glow expects to read the
@@ -175,7 +175,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "MaxPool" || typeName == "AveragePool") {
     // Load the inputs:
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
     int stride = getSizeHW(dict, "stride", 1);
     unsigned kernel = getSizeHW(dict, "kernel", 0);
     int pad = 0;
@@ -215,7 +215,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "Dropout") {
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
     // Save the identity operation:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = in;
@@ -224,7 +224,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "SpatialBN") {
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
     auto *scale = getTensorByName(op.input(1));
     auto *bias = getTensorByName(op.input(2));
     auto *mean = getTensorByName(op.input(3));
@@ -255,7 +255,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     llvm::SmallVector<NodeValue, 4> inputs;
     inputs.reserve(numInputs);
     for (unsigned i = 0; i < numInputs; i++) {
-      inputs.push_back(getOrCreateNodeByName(op.input(i)));
+      inputs.push_back(getOrCreateVariableByName(op.input(i)));
     }
 
     auto channel = getChannel(dict);
@@ -268,7 +268,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "ChannelShuffle") {
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
 
     size_t group = loadInt(dict["group"]);
     size_t kernel = loadInt(dict["kernel"]);
@@ -283,7 +283,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "Squeeze") {
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
     auto dims = getShape(dict["dims"]);
     Node *node = G_.createSqueeze(opName, in, dims);
 
@@ -294,8 +294,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "Gather") {
-    auto *data = getOrCreateNodeByName(op.input(0));
-    auto *indices = getOrCreateNodeByName(op.input(1));
+    auto *data = getOrCreateVariableByName(op.input(0));
+    auto *indices = getOrCreateVariableByName(op.input(1));
 
     Node *GN = G_.createGather(opName, data, indices);
     for (int i = 0, e = op.output_size(); i < e; i++) {
@@ -306,7 +306,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Log") {
     // Load the inputs:
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
     // Create the log:
     auto *R = G_.createLog(opName, in);
     // Save the outputs:
@@ -317,8 +317,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "EQ") {
-    auto *in0 = getOrCreateNodeByName(op.input(0));
-    auto *in1 = getOrCreateNodeByName(op.input(1));
+    auto *in0 = getOrCreateVariableByName(op.input(0));
+    auto *in1 = getOrCreateVariableByName(op.input(1));
     auto *node = G_.createCmpEQ(opName, in0, in1);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {
@@ -328,7 +328,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "Tile") {
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
     unsigned tiles = loadInt(dict["tiles"]);
     unsigned axis = loadInt(dict["axis"]);
 
@@ -350,9 +350,9 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "SparseLengthsSum") {
-    auto *in0 = getOrCreateNodeByName(op.input(0));
-    auto *in1 = getOrCreateNodeByName(op.input(1));
-    auto *in2 = getOrCreateNodeByName(op.input(2));
+    auto *in0 = getOrCreateVariableByName(op.input(0));
+    auto *in1 = getOrCreateVariableByName(op.input(1));
+    auto *in2 = getOrCreateVariableByName(op.input(2));
     auto *node = G_.createSparseLengthsSum(opName, in0, in1, in2);
     addNodeAsOutput(op, node);
     return;

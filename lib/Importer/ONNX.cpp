@@ -185,7 +185,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     int pad = getPad(dict);
     unsigned group = dict.count("group") ? loadInt(dict["group"]) : 1;
 
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
     Tensor *w = getTensorByName(op.input(1));
 
     // Transpose the weights to the right format. Glow expects to read the
@@ -250,7 +250,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
 
   if (typeName == "MaxPool" || typeName == "AveragePool") {
     // Load the inputs:
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
     int stride =
         dict.count("strides") ? getConstantArrayHead(dict["strides"]) : 1;
     size_t kernel = getConstantArrayHead(dict["kernel_shape"]);
@@ -283,7 +283,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
 
   if (typeName == "GlobalAveragePool") {
     // Load the inputs:
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
     int stride =
         dict.count("strides") ? getConstantArrayHead(dict["strides"]) : 1;
 
@@ -303,7 +303,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
   }
 
   if (typeName == "Squeeze") {
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
     auto axes = getShape(dict["axes"]);
     Node *node = G_.createSqueeze(opName, in, axes);
 
@@ -314,7 +314,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
   }
 
   if (typeName == "Dropout") {
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
     // Save the identity operation:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = in;
@@ -323,7 +323,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
   }
 
   if (typeName == "BatchNormalization") {
-    auto *in = getOrCreateNodeByName(op.input(0));
+    auto *in = getOrCreateVariableByName(op.input(0));
     auto *scale = getTensorByName(op.input(1));
     auto *bias = getTensorByName(op.input(2));
     auto *mean = getTensorByName(op.input(3));
@@ -353,7 +353,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     llvm::SmallVector<NodeValue, 4> inputs;
     inputs.reserve(numInputs);
     for (unsigned i = 0; i < numInputs; i++) {
-      inputs.push_back(getOrCreateNodeByName(op.input(i)));
+      inputs.push_back(getOrCreateVariableByName(op.input(i)));
     }
 
     auto axis = loadInt(dict["axis"]);
@@ -366,9 +366,9 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
   }
 
   if (typeName == "Gemm") {
-    Node *A = getOrCreateNodeByName(op.input(0));
-    Node *B = getOrCreateNodeByName(op.input(1));
-    Node *C = getOrCreateNodeByName(op.input(2));
+    Node *A = getOrCreateVariableByName(op.input(0));
+    Node *B = getOrCreateVariableByName(op.input(1));
+    Node *C = getOrCreateVariableByName(op.input(2));
 
     bool broadcastC = dict.count("broadcast") && loadInt(dict["broadcast"]);
     bool transA = dict.count("transA") && loadInt(dict["transA"]);

@@ -21,6 +21,7 @@
 #include "glow/Graph/Graph.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <google/protobuf/text_format.h>
@@ -101,39 +102,39 @@ protected:
   SaveNode *root_{nullptr};
 
   /// \returns the tensor that was registered under the name \p name.
-  Tensor *getTensorByName(const std::string &name);
+  Tensor *getTensorByName(llvm::StringRef name);
 
   /// Create a new variable \p name initialized with \p tensor.
   /// The created variable is also registered under \p name.
   /// \returns the newly created variable.
   /// \pre !hasNodeByName(name)
   Node *createAndRememberVariable(
-      const std::string &name, Tensor &tensor,
+      llvm::StringRef name, Tensor &tensor,
       VisibilityKind visibilityKind = VisibilityKind::Private,
       Variable::TrainKind trainKind = Variable::TrainKind::Broadcast);
 
   /// \returns the node that was registered with the name \p name or nullptr
   /// if no node has been registered with this name.
-  Node *getNodeByNameOrNull(const std::string &name) const;
+  Node *getNodeByNameOrNull(llvm::StringRef name) const;
 
 public:
   /// \returns the node that was registered with the name \p name.
   /// \pre hasNodeByName(name)
-  Node *getNodeByName(const std::string &name) const;
+  Node *getNodeByName(llvm::StringRef name) const;
 
   /// \returns the node that was registered with the name \p name or create a
   /// new Variable node for a tensor with this name.
-  Node *getOrCreateNodeByName(const std::string &name);
+  Node *getOrCreateVariableByName(llvm::StringRef name);
 
   /// Create a new variable \p name initialized with \p tensor.
   /// \returns the newly created variable.
   Node *createVariable(
-      const std::string &name, Tensor &tensor,
+      llvm::StringRef name, Tensor &tensor,
       VisibilityKind visibilityKind = VisibilityKind::Private,
       Variable::TrainKind trainKind = Variable::TrainKind::Broadcast);
 
   /// \returns True if the node that's registered using \p name exists.
-  bool hasNodeByName(const std::string &name) const;
+  bool hasNodeByName(llvm::StringRef name) const;
 
   /// Constructs new ProtobufLoader object. It will populate the network into \p
   /// F. The tensors in \p tensors are stored with the names in the list of
