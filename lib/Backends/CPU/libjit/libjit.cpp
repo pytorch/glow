@@ -1071,7 +1071,7 @@ void libjit_pool_avg_grad_f(float *inG, const float *outG,
 void libjit_quantize_i8(int8_t *outW, const float *inW, size_t numElem,
                         float scale, int32_t offset) {
   for (size_t i = 0; i < numElem; i++) {
-    int32_t result = (int32_t)roundf(inW[i] / scale + offset);
+    int32_t result = (int32_t)nearbyintf(inW[i] / scale + offset);
     outW[i] = MAX(INT8_MIN, MIN(INT8_MAX, result));
   }
 }
