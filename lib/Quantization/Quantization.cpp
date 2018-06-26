@@ -224,7 +224,7 @@ generateNodeQuantizationInfos(const Function *F) {
 
 int8_t quantize(float input, const TensorQuantizationParams &TQP) {
   float result = input / TQP.scale_ + TQP.offset_;
-  return quantization::clip<int32_t, int8_t>(round(result));
+  return quantization::clip<int32_t, int8_t>((int32_t)nearbyintf(result));
 }
 
 float dequantize(int8_t input, const TensorQuantizationParams &TQP) {
