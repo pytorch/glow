@@ -1822,6 +1822,7 @@ void Function::verify() const {
   }
 
   const auto &vars = getParent()->getVars();
+  (void)vars;
 
   // Any node referenced by one of the graph nodes should be part of the Graph.
   for (const auto &N : nodes_) {
