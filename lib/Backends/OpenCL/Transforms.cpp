@@ -33,10 +33,9 @@ static Node *optimizeOCLConv(ConvolutionNode *CN, Function *F) {
   auto *NI = F->createTranspose("conv.input", CN->getInput(), NHWC2NCHW);
   auto *NF = F->createTranspose("conv.filter", CN->getFilter(), NHWC2NCHW);
 
-  auto originalDims = CN->getType()->dims();
-  size_t outDims[] = {originalDims[0], originalDims[3], originalDims[1],
-                      originalDims[2]};
-  auto outTy = F->getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  auto dimsNHWC = ShapeNHWC(CN->getType()->dims());
+  auto dimsNCHW = {dimsNHWC.n, dimsNHWC.c, dimsNHWC.h, dimsNHWC.w};
+  auto outTy = F->getParent()->uniqueType(ElemKind::FloatTy, dimsNCHW);
 
   // For OpenCL, we currently only support equal padding.
   PaddingTLBR pads(CN->getPads());
@@ -54,10 +53,9 @@ static Node *optimizeOCLPoolAvg(PoolAvgNode *PAN, Function *F) {
   // Convert input from NHWC (Glow's default) into NCHW.
   auto *NI = F->createTranspose("conv.input", PAN->getInput(), NHWC2NCHW);
 
-  auto originalDims = PAN->getType()->dims();
-  size_t outDims[] = {originalDims[0], originalDims[3], originalDims[1],
-                      originalDims[2]};
-  auto outTy = F->getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  auto dimsNHWC = ShapeNHWC(PAN->getType()->dims());
+  auto dimsNCHW = {dimsNHWC.n, dimsNHWC.c, dimsNHWC.h, dimsNHWC.w};
+  auto outTy = F->getParent()->uniqueType(ElemKind::FloatTy, dimsNCHW);
 
   auto *NPAN =
       F->addNode(new OCLPoolAvgNode(PAN->getName(), outTy, NI, PAN->getKernel(),
@@ -72,10 +70,9 @@ static Node *optimizeOCLPoolMax(PoolMaxNode *PMN, Function *F) {
   // Convert input from NHWC (Glow's default) into NCHW.
   auto *NI = F->createTranspose("conv.input", PMN->getInput(), NHWC2NCHW);
 
-  auto originalDims = PMN->getType()->dims();
-  size_t outDims[] = {originalDims[0], originalDims[3], originalDims[1],
-                      originalDims[2]};
-  auto outTy = F->getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  auto dimsNHWC = ShapeNHWC(PMN->getType()->dims());
+  auto dimsNCHW = {dimsNHWC.n, dimsNHWC.c, dimsNHWC.h, dimsNHWC.w};
+  auto outTy = F->getParent()->uniqueType(ElemKind::FloatTy, dimsNCHW);
 
   auto *NPAN =
       F->addNode(new OCLPoolMaxNode(PMN->getName(), outTy, NI, PMN->getKernel(),
