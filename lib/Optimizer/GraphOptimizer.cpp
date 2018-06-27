@@ -865,7 +865,7 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
     // Check if any of the inputs are ConcatNode.
     llvm::SmallVector<NodeValue, 16> newInputs;
     bool merged = false;
-    for (auto input : inputs) {
+    for (auto &input : inputs) {
       newInputs.push_back(input);
       auto *CNI = dyn_cast<ConcatNode>(input);
       // Bail if it is not a ConcatNode or it is a concat node with a diffrent
@@ -1081,7 +1081,7 @@ static void optimizeReshape(Function *F) {
     auto *reshapeNode = dyn_cast<ReshapeNode>(&node);
     if (!reshapeNode)
       continue;
-    auto &inputNode = reshapeNode->getNthInput(0);
+    auto inputNode = reshapeNode->getNthInput(0);
     // Eliminate ReshapeNode when the input is already the correct shape.
     if (inputNode.dims() == reshapeNode->dims()) {
       reshapeNode->getResult().replaceAllUsesOfWith(inputNode);

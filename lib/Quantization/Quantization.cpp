@@ -240,7 +240,7 @@ quantizeInputs(Function *F, Node *node,
   llvm::SmallVector<NodeValue, 6> quantizedInputs;
 
   for (unsigned i = 0, e = node->getNumInputs(); i < e; ++i) {
-    NodeValue &NV = node->getNthInput(i);
+    auto NV = node->getNthInput(i);
 
     // Do not quantize non floating point type, e.g., Index type.
     if (NV.getElementType() != ElemKind::FloatTy) {
