@@ -21,9 +21,6 @@
 
 namespace glow {
 
-unsigned NCHW2NHWC[4] = {0u, 2u, 3u, 1u};
-unsigned NHWC2NCHW[4] = {0u, 3u, 1u, 2u};
-
 bool isArrayConstant(llvm::ArrayRef<size_t> a) {
   for (size_t i = 1; i < a.size(); i++)
     if (a[0] != a[i])

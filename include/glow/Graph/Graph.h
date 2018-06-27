@@ -558,6 +558,12 @@ Function *differentiate(Function *F, const TrainingConfig &config,
 /// gradients that flow into V.
 Variable *generateRecordGradientNode(Function &G, Variable *V);
 
+/// Helper vectors for common transpose shuffles.
+#define NCHW2NHWC                                                              \
+  { 0u, 2u, 3u, 1u }
+#define NHWC2NCHW                                                              \
+  { 0u, 3u, 1u, 2u }
+
 } // namespace glow
 
 #endif // GLOW_GRAPH_GRAPH_H

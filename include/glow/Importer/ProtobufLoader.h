@@ -32,9 +32,6 @@
 
 namespace glow {
 
-extern unsigned NCHW2NHWC[4];
-extern unsigned NHWC2NCHW[4];
-
 /// Returns true iff all elements of \p a are the same.
 bool isArrayConstant(const llvm::ArrayRef<size_t> a);
 

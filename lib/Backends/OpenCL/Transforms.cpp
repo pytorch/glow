@@ -25,9 +25,6 @@ using namespace glow;
 using llvm::dyn_cast;
 using llvm::isa;
 
-static auto NCHW2NHWC = {0u, 2u, 3u, 1u};
-static auto NHWC2NCHW = {0u, 3u, 1u, 2u};
-
 /// Optimize the regular Convolution into a target-specific convolution
 /// with a different memory layout. Many GPU kernels prefer the NCHW memory
 /// layout.

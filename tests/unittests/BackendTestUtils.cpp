@@ -584,7 +584,7 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var = VarFrom(inputs);
-  auto *tr = F->createTranspose("tr", var, {0, 2, 3, 1});
+  auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
   auto *conv = F->createConv("conv", tr, convDepth, 5, 2, {1, 1, 1, 1}, 1);
   cast<Variable>(conv->getFilter())->getHandle().clear(2);
   cast<Variable>(conv->getBias())->getHandle().clear(2);
@@ -600,7 +600,7 @@ void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var = VarFrom(inputs);
-  auto *tr = F->createTranspose("tr", var, {0, 2, 3, 1});
+  auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
   auto *fc = F->createFullyConnected("fc", tr, 16);
   auto *rl0 = F->createRELU("relu", fc);
   auto *fc2 = F->createFullyConnected("fc2", rl0, 8);
@@ -620,7 +620,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *var = VarFrom(inputs);
   auto *selected = mod.createVariable(ElemKind::IndexTy, {2, 1}, "selected");
 
-  auto *tr = F->createTranspose("tr", var, {0, 2, 3, 1});
+  auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
   auto *fc = F->createFullyConnected("fc", tr, 16);
   auto *th0 = F->createTanh("tanh", fc);
   auto *sg0 = F->createSigmoid("sig", fc);
