@@ -16,8 +16,6 @@
 #ifndef GLOW_IR_USEDEF_H
 #define GLOW_IR_USEDEF_H
 
-#include "llvm/ADT/SmallVector.h"
-
 #include <list>
 
 namespace glow {
