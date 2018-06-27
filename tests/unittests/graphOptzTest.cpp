@@ -94,7 +94,7 @@ TEST_F(GraphOptz, transposePrivateVariable) {
   Node *A =
       mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
                           VisibilityKind::Private, Variable::TrainKind::None);
-  Node *T = F_->createTranspose("transpose", A, {0, 3, 1, 2});
+  Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   F_->createSave("ret", T);
   EXPECT_EQ(F_->getNodes().size(), 2);
 
@@ -136,7 +136,7 @@ TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
   Node *A =
       mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                           VisibilityKind::Public, Variable::TrainKind::None);
-  Node *T = F_->createTranspose("transpose", A, {0, 3, 1, 2});
+  Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *BN = F_->createBatchNormalization("batch", T, 3, 0.0001, 0.9);
   Node *O = F_->createSave("ret", BN);
 
@@ -156,7 +156,7 @@ TEST_F(GraphOptz, sinkTransposeBelowRELU) {
   Node *A =
       mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                           VisibilityKind::Public, Variable::TrainKind::None);
-  Node *T = F_->createTranspose("transpose", A, {0, 3, 1, 2});
+  Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *K = F_->createRELU("relu", T);
   Node *O = F_->createSave("ret", K);
 
@@ -176,7 +176,7 @@ TEST_F(GraphOptz, sinkTransposeBelowSigmoid) {
   Node *A =
       mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                           VisibilityKind::Public, Variable::TrainKind::None);
-  Node *T = F_->createTranspose("transpose", A, {0, 3, 1, 2});
+  Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *SI = F_->createSigmoid("sigmoid", T);
   Node *O = F_->createSave("ret", SI);
 
@@ -196,7 +196,7 @@ TEST_F(GraphOptz, sinkTransposeBelowTanh) {
   Node *A =
       mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                           VisibilityKind::Public, Variable::TrainKind::None);
-  Node *T = F_->createTranspose("transpose", A, {0, 3, 1, 2});
+  Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *TN = F_->createTanh("tanh", T);
   Node *O = F_->createSave("ret", TN);
 
@@ -216,8 +216,8 @@ TEST_F(GraphOptz, cancelTwoTransposes) {
   Node *A =
       mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                           VisibilityKind::Public, Variable::TrainKind::None);
-  Node *T1 = F_->createTranspose("transpose", A, {0, 2, 3, 1});
-  Node *T2 = F_->createTranspose("transpose", T1, {0, 3, 1, 2});
+  Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
+  Node *T2 = F_->createTranspose("transpose", T1, NHWC2NCHW);
   Node *K = F_->createRELU("relu", T2);
   F_->createSave("ret", K);
 
@@ -232,7 +232,7 @@ TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
   Node *A =
       mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                           VisibilityKind::Public, Variable::TrainKind::None);
-  Node *T1 = F_->createTranspose("transpose", A, {0, 2, 3, 1});
+  Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
   Node *T2 = F_->createTranspose("transpose", T1, {0, 1, 2, 3});
   Node *K = F_->createRELU("relu", T2);
   F_->createSave("ret", K);
@@ -251,8 +251,8 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
   Node *A2 =
       mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
                           VisibilityKind::Public, Variable::TrainKind::None);
-  Node *T1 = F_->createTranspose("transpose1", A1, {0, 3, 1, 2});
-  Node *T2 = F_->createTranspose("transpose2", A2, {0, 3, 1, 2});
+  Node *T1 = F_->createTranspose("transpose1", A1, NHWC2NCHW);
+  Node *T2 = F_->createTranspose("transpose2", A2, NHWC2NCHW);
   Node *K = F_->createAdd("arith", T1, T2);
   Node *O = F_->createSave("ret", K);
 
@@ -298,8 +298,8 @@ TEST_F(GraphOptz, sinkTransposeBelowConcatNodes) {
   Node *A2 =
       mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
                           VisibilityKind::Public, Variable::TrainKind::None);
-  Node *T1 = F_->createTranspose("transpose", A1, {0, 2, 3, 1});
-  Node *T2 = F_->createTranspose("transpose", A2, {0, 2, 3, 1});
+  Node *T1 = F_->createTranspose("transpose", A1, NCHW2NHWC);
+  Node *T2 = F_->createTranspose("transpose", A2, NCHW2NHWC);
   Node *CN = F_->createConcat("concat", {T1, T2}, 1);
   Node *O = F_->createSave("ret", CN);
 

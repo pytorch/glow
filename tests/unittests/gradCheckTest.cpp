@@ -496,7 +496,7 @@ TEST(Network, gradientCheckTranspose) {
   auto *Exp =
       mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
                          VisibilityKind::Public, Variable::TrainKind::None);
-  Node *TA = F->createTranspose("transpose", A, {0, 3, 1, 2});
+  Node *TA = F->createTranspose("transpose", A, NHWC2NCHW);
   TA = F->createFullyConnected("fc", TA, numOutputElem);
   TA = F->createRegression("regress", TA, Exp);
   auto *result = F->createSave("ret", TA);

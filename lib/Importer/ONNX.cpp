@@ -210,7 +210,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     // weights in the format CRSK. ONNX stores the operators as KCRS.
     // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
     Tensor wtag;
-    w->transpose(&wtag, {0, 2, 3, 1});
+    w->transpose(&wtag, NCHW2NHWC);
 
     // The structure of the conv weigts is: NHWC. We take the C, which is the
     // number of filters. We use this value to calculate the size of the bias
