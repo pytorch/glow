@@ -36,9 +36,10 @@ class NodeWalker;
 /// a computation. Gradient-calculating nodes such as conv-grad return multiple
 /// values. As such, each use of a node computation must indicate the node that
 /// computes it as well as which return value to use from that node. This pair
-/// of information is represented in this class. This class also manages the
-/// node use-def chain, by registering and removing the address of the value
-/// from the use-list. This data structure is similar to LLVM's SDValue.
+/// of information is represented in this class.
+
+/// NodeValue is a simple POD struct that contains a reference to a node and a
+/// result number.
 struct NodeValue {
 protected:
   /// A pointer to the node (owned by the graph).
@@ -47,31 +48,31 @@ protected:
   unsigned resNo_{0};
 
 public:
-  /// Create a new value and register the node we reference.
+  /// Create a new value.
   /*implicit*/ NodeValue(Node *N);
 
-  /// Create a new value for result \p resNo and register the node we reference.
+  /// Create a new value for result \p resNo.
   NodeValue(Node *N, unsigned resNo);
 
-  /// Create a new operand and register it as a new user to the node.
-  NodeValue(const NodeValue &that) { setOperand(that.getNode(), that.resNo_); }
+  /// Create a new value from an existing one.
+  NodeValue(const NodeValue &that) : node_(that.node_), resNo_{that.resNo_} {}
 
-  /// Unregister old value, assign new NodeValue and register it.
+  /// Assignment.
   NodeValue &operator=(const NodeValue &that) {
-    setOperand(that.getNode(), that.resNo_);
+    node_ = that.node_;
+    resNo_ = that.resNo_;
     return *this;
   }
 
-  /// When deleting an operand we need to unregister the operand from the
-  /// use-list of the node it used to reference.
-  ~NodeValue() { setOperand(nullptr, 0); }
-  /// Sets the operand to point to \p N. This method registers the operand as a
-  /// user of \p N.
-  void setOperand(Node *v, unsigned resNo);
+  /// Destructor.
+  ~NodeValue() {
+  }
+
   /// Get the index which selects a specific result in the SDNode
   unsigned getResNo() const { return resNo_; }
   /// \returns the underlying pointer.
   Node *getNode() const { return node_; }
+
   /// \returns the underlying pointer when casting.
   operator Node *() const { return node_; }
 
@@ -155,12 +156,35 @@ struct NodeHandle : NodeValue {
   void setOperand(Node *v, unsigned resNo);
 };
 
+/// A wrapper class to expose a vector of NodeHandles inside an
+/// object as a vector of NodeValues. This is done to avoid leaking of
+/// NodeHandles from Nodes into the user-code. This type can be used as a
+/// return type of e.g. getInputs() and similar functions.
+class NodeValueArrayRef {
+  llvm::ArrayRef<NodeHandle> ref_;
+
+public:
+  using const_iterator = llvm::ArrayRef<NodeHandle>::const_iterator;
+
+  NodeValueArrayRef(llvm::ArrayRef<NodeHandle> ref) : ref_(ref) {}
+  NodeValueArrayRef(const std::vector<NodeHandle> &ref) : ref_(ref) {}
+  const NodeValue &operator[](std::size_t idx) const { return ref_[idx]; }
+  operator std::vector<NodeValue>() {
+    return std::vector<NodeValue>(ref_.begin(), ref_.end());
+  }
+  size_t size() const { return ref_.size(); }
+  bool empty() const { return ref_.empty(); }
+  const_iterator begin() { return ref_.begin(); }
+  const_iterator end() { return ref_.end(); }
+  NodeValue front() { return *begin(); }
+};
+
 /// A simple linear map that stores NodeValue without maintaining the reverse
 /// reference that allows the RAUW operation.
 class UnownedNodeValueMap {
 public:
   /// A reference to some Node's result.
-  using ValRef = std::pair<Node *, unsigned>;
+  using ValRef = NodeValue;
   using Entry = std::pair<ValRef, ValRef>;
 
 private:
@@ -181,22 +205,22 @@ public:
 struct NodeUse {
   /// The operand site. This is the address of the operand that points to our
   /// node.
-  NodeValue *site_;
+  NodeHandle *site_;
 
-  explicit NodeUse(NodeValue *site) : site_(site) {}
+  explicit NodeUse(NodeHandle *site) : site_(site) {}
 
   bool operator==(const NodeUse &other) const { return site_ == other.site_; }
 
   /// \returns the instruction that the use refers to.
-  NodeValue *get() const { return site_; }
+  NodeHandle *get() const { return site_; }
   /// Sets the operand to a new value.
-  void setOperand(NodeValue &site);
+  void setOperand(NodeHandle &site);
 };
 
 /// Represents a node in the compute graph.
 class Node : public Named,
              public Kinded,
-             public UseDef<Node, NodeValue, NodeUse>,
+             public UseDef<Node, NodeHandle, NodeUse>,
              public llvm::ilist_node<Node> {
   friend llvm::ilist_traits<Node>;
 
@@ -210,7 +234,7 @@ protected:
   unsigned numRes_{0};
   /// A nullable reference to some tensor value that may predicate the execution
   /// of the current node.
-  NodeValue predicate_{nullptr};
+  NodeHandle predicate_{nullptr};
 
   /// Destroys a node and deallocates the memory. This method is typically
   /// implicitly invoked when a node is being removed from the intrusive list of
@@ -221,7 +245,7 @@ public:
   Node(Kinded::Kind k, llvm::StringRef name) : Named(name), Kinded(k) {}
 
   /// \returns the nullable predicate of the current node.
-  const NodeValue &getPredicate() const;
+  const NodeValue getPredicate() const;
   /// Assigns a nullable predicate to the current node.
   void setPredicate(const NodeValue &P);
   /// Checks if a predicate is assigned to the current node.
@@ -234,11 +258,12 @@ public:
   /// \returns the n'th result of the node.
   const NodeValue getNthResult(unsigned idx) const;
 
-  /// Getters to access Node's inputs and outputs.
+  /// Getters/setters to access Node's inputs and outputs.
   unsigned getNumInputs() const;
   llvm::StringRef getInputName(unsigned idx) const;
-  NodeValue &getNthInput(unsigned idx);
-  const NodeValue &getNthInput(unsigned idx) const;
+  NodeValue getNthInput(unsigned idx);
+  const NodeValue getNthInput(unsigned idx) const;
+  void setNthInput(unsigned idx, NodeValue val);
   llvm::StringRef getOutputName(unsigned idx) const;
   bool hasSideEffects() const;
   bool isArithmetic() const;

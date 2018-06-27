@@ -41,7 +41,7 @@ inline const char *getReturnTypename(MemberType type) {
                                "llvm::ArrayRef<float>",
                                "llvm::ArrayRef<unsigned>",
                                "llvm::ArrayRef<size_t>",
-                               "llvm::ArrayRef<NodeValue>",
+                               "NodeValueArrayRef",
                                nullptr};
   return returnTypes[(int)type];
 }
@@ -55,9 +55,23 @@ inline const char *getStorageTypename(MemberType type) {
                                 "std::vector<float>",
                                 "std::vector<unsigned>",
                                 "std::vector<size_t>",
-                                "std::vector<NodeValue>",
+                                "std::vector<NodeHandle>",
                                 nullptr};
   return storageTypes[(int)type];
+}
+
+inline const char *getCtorArgTypename(MemberType type) {
+  const char *ctorArgTypes[] = {"TypeRef",
+                                "float",
+                                "unsigned",
+                                "size_t",
+                                "std::string",
+                                "std::vector<float>",
+                                "std::vector<unsigned>",
+                                "std::vector<size_t>",
+                                "std::vector<NodeValue>",
+                                nullptr};
+  return ctorArgTypes[(int)type];
 }
 
 #endif // GLOW_TOOLS_CLASSGEN_MEMBERTYPE_H
