@@ -61,6 +61,86 @@ TEST(Graph, simpleTestConv) {
   EXPECT_GT(M.getInstrs().size(), 0);
 }
 
+/// Test that our use lists are correctly reflecting the state of the IR
+/// and in particular that it is not polluted by temporary variable.
+TEST(Graph, useList) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  IRFunction M(F);
+  Variable *K = MD.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+
+  EXPECT_EQ(K->getNumUsers(), 0);
+
+  ConvolutionNode *conv = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
+
+  EXPECT_TRUE(K->hasOneUse());
+  EXPECT_EQ(K->getNumUsers(), 1);
+  EXPECT_EQ(conv->getNumUsers(), 0);
+
+  // Although the filter of the convolution is only used by the convolution
+  // node, calling getFilter creates a temporary NodeValue that messes up
+  // with the actual use list.
+  // Therefore those checks are currently inverted but should be
+  // fixed eventually.
+  // Test with implicit temporary NodeValue.
+  EXPECT_FALSE /*TRUE*/ (conv->getFilter()->hasOneUse());
+  EXPECT_EQ(conv->getFilter()->getNumUsers(), 2 /*should be one, really*/);
+
+  // Test with explicit temporary NodeValue.
+  Node *nodeFilter;
+  {
+    NodeValue tmp = conv->getFilter();
+    EXPECT_FALSE /*TRUE*/ (tmp->hasOneUse());
+    EXPECT_EQ(tmp->getNumUsers(), 2 /*should be one, really*/);
+    nodeFilter = tmp.getNode();
+    // Test with NodeValue still around.
+    EXPECT_FALSE /*TRUE*/ (nodeFilter->hasOneUse());
+    EXPECT_EQ(nodeFilter->getNumUsers(), 2 /*should be one, really*/);
+  }
+
+  // Test with NodeValue took out.
+  EXPECT_TRUE(nodeFilter->hasOneUse());
+  EXPECT_EQ(nodeFilter->getNumUsers(), 1);
+
+  // Same kind of test but with the convolution node itself.
+  {
+    NodeValue tmpConvRes(conv, 0);
+    EXPECT_EQ(conv->getNumUsers(), 1 /*should be zero*/);
+    EXPECT_EQ(tmpConvRes->getNumUsers(), 1 /*should be zero*/);
+  }
+
+  // Add a couple of uses to conv and make sure it reflects on its use list.
+  F->createSave("Save", conv, K);
+
+  EXPECT_FALSE(K->hasOneUse());
+  EXPECT_EQ(K->getNumUsers(), 2);
+  EXPECT_EQ(conv->getNumUsers(), 1);
+  EXPECT_TRUE(conv->hasOneUse());
+
+  {
+    NodeValue tmpConvRes(conv, 0);
+    EXPECT_FALSE /*TRUE*/ (tmpConvRes->hasOneUse());
+    EXPECT_FALSE /*TRUE*/ (conv->hasOneUse());
+    EXPECT_EQ(conv->getNumUsers(), 2 /*should be one*/);
+    EXPECT_EQ(tmpConvRes->getNumUsers(), 2 /*should be one*/);
+  }
+
+  F->createSave("Save", conv, K);
+
+  EXPECT_FALSE(K->hasOneUse());
+  EXPECT_EQ(K->getNumUsers(), 3);
+  EXPECT_EQ(conv->getNumUsers(), 2);
+  EXPECT_FALSE(conv->hasOneUse());
+
+  {
+    NodeValue tmpConvRes(conv, 0);
+    EXPECT_FALSE(tmpConvRes->hasOneUse());
+    EXPECT_FALSE(conv->hasOneUse());
+    EXPECT_EQ(conv->getNumUsers(), 3 /*should be two*/);
+    EXPECT_EQ(tmpConvRes->getNumUsers(), 3 /*should be two*/);
+  }
+}
+
 TEST(Graph, simpleTestFC) {
   unsigned numInputs = 10;
   Module MD;
