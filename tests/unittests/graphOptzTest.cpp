@@ -90,6 +90,84 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
   EXPECT_EQ(F_->getNodes().size(), 2);
 }
 
+TEST_F(GraphOptz, optimizeBatchNormAfterConvButConvReused) {
+  Node *A =
+      mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
+  Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
+  SaveNode *ret = F_->createSave("ret", BN);
+  SaveNode *convSave = F_->createSave("convSave", CV);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+  // Make sure the structure of the graph did not change, since the convolution
+  // node is used more than once.
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_TRUE(llvm::isa<ConvolutionNode>(convSave->getInput()));
+  ConvolutionNode *conv = llvm::dyn_cast<ConvolutionNode>(convSave->getInput());
+  EXPECT_EQ(conv, CV);
+  EXPECT_TRUE(llvm::isa<BatchNormalizationNode>(ret->getInput()));
+  BatchNormalizationNode *batchNorm =
+      llvm::dyn_cast<BatchNormalizationNode>(ret->getInput());
+  EXPECT_EQ(batchNorm, BN);
+  EXPECT_EQ(batchNorm->getInput().getNode(), CV);
+  EXPECT_EQ(conv->getInput().getNode(), A);
+}
+
+TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
+  Node *A =
+      mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                          VisibilityKind::Public, Variable::TrainKind::None);
+  Variable *filter = mod_.createVariable(ElemKind::FloatTy, {16, 5, 5, 3},
+                                         "filter", VisibilityKind::Private,
+                                         Variable::TrainKind::Broadcast, 75);
+  Variable *bias = mod_.createVariable(ElemKind::FloatTy, {16}, "bias",
+                                       VisibilityKind::Private,
+                                       Variable::TrainKind::Broadcast, 1.0);
+  ConvolutionNode *CV = F_->createConv(
+      "conv", A, filter, bias,
+      mod_.uniqueType(ElemKind::FloatTy, {1, 10, 20, 16}), 5, 1, 2, 1);
+  float filterValue = llvm::cast<Variable>(CV->getFilter())->getValue();
+  Variable *beta = mod_.createVariable(ElemKind::FloatTy, {16}, "beta",
+                                       VisibilityKind::Private,
+                                       Variable::TrainKind::Broadcast, 0.0);
+  Variable *gamma = mod_.createVariable(ElemKind::FloatTy, {16}, "gamma",
+                                        VisibilityKind::Private,
+                                        Variable::TrainKind::Broadcast, 2.0);
+  Variable *mean = mod_.createVariable(ElemKind::FloatTy, {16}, "mean");
+  Variable *var = mod_.createVariable(ElemKind::FloatTy, {16}, "var");
+
+  Node *BN = F_->createBatchNormalization("batch", CV, beta, gamma, mean, var,
+                                          3, 0.0001, 0.9);
+  SaveNode *ret = F_->createSave("ret", BN);
+  SaveNode *filterSave = F_->createSave("filterSave", CV->getFilter());
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+  // Make sure the structure of the graph did not change.
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_TRUE(llvm::isa<VariableNode>(filterSave->getInput()));
+  VariableNode *varFilter =
+      llvm::dyn_cast<VariableNode>(filterSave->getInput());
+  EXPECT_EQ(varFilter, CV->getFilter());
+  EXPECT_TRUE(llvm::isa<BatchNormalizationNode>(ret->getInput()));
+  BatchNormalizationNode *batchNorm =
+      llvm::dyn_cast<BatchNormalizationNode>(ret->getInput());
+  EXPECT_EQ(batchNorm, BN);
+  EXPECT_TRUE(batchNorm && batchNorm->getInput() &&
+              batchNorm->getInput().getNode() == CV);
+
+  // Make sure that we didn't temper the values in the filter
+  // given we had more than one use for it.
+  auto filterH = filter->getHandle<>();
+  for (size_t i = 0, e = filterH.size(); i < e; ++i) {
+    EXPECT_EQ(filterH.raw(i), filterValue);
+  }
+}
+
 TEST_F(GraphOptz, transposePrivateVariable) {
   Node *A =
       mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",

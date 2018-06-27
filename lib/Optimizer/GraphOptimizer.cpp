@@ -763,13 +763,24 @@ static void optimizePool(Function *F) {
   } // For all nodes in the graph.
 }
 
+/// \returns The uniquely used variable from node or nullptr
+/// if node has more than one user or is not a variable.
+static Variable *getUniquelyUsedVariable(Node &node) {
+  // If that node has more than one use, it may not
+  // be okay to modify the underlying variable.
+  if (!node.hasOneUse()) {
+    return nullptr;
+  }
+  return dyn_cast<Variable>(&node);
+}
+
 static void optimizeBatchNorm(Function *F) {
   auto &nodes = F->getNodes();
 
   // For each node:
   for (auto &node : nodes) {
     // Merge the Batch Normalization operation into the convolution that comes
-    // before it by updating the weights of the filter.
+    // before it by updating the weights of the filter and bias.
     if (auto *BN = dyn_cast<BatchNormalizationNode>(&node)) {
       auto *CV = dyn_cast<ConvolutionNode>(BN->getInput());
       if (!CV) {
@@ -815,13 +826,33 @@ static void optimizeBatchNorm(Function *F) {
       // Q = W * A
       // C = b * A + B
 
-      auto filterH = cast<Variable>(CV->getFilter())->getHandle<>();
-      auto cbiasH = cast<Variable>(CV->getBias())->getHandle<>();
+      // FIXME: We need to use a temporary node to hold on
+      // the variables, because using the result directly
+      // will create a temporary NodeValue that is going
+      // to be otherwise alive at the call site and that
+      // messes up with the number of users.
+      Node *tmp = CV->getFilter().getNode();
+      Variable *filterV = getUniquelyUsedVariable(*tmp);
+      tmp = CV->getBias().getNode();
+      Variable *cbiasV = getUniquelyUsedVariable(*tmp);
 
-      auto scaleH = cast<Variable>(BN->getScale())->getHandle<>();
-      auto biasH = cast<Variable>(BN->getBias())->getHandle<>();
-      auto meanH = cast<Variable>(BN->getMean())->getHandle<>();
-      auto varH = cast<Variable>(BN->getVar())->getHandle<>();
+      if (!filterV || !cbiasV) {
+        continue;
+      }
+
+      Variable *scaleV = cast<Variable>(BN->getScale());
+      Variable *biasV = cast<Variable>(BN->getBias());
+      Variable *meanV = cast<Variable>(BN->getMean());
+      Variable *var = cast<Variable>(BN->getVar());
+
+      auto filterH = filterV->getHandle<>();
+
+      auto cbiasH = cbiasV->getHandle<>();
+
+      auto scaleH = scaleV->getHandle<>();
+      auto biasH = biasV->getHandle<>();
+      auto meanH = meanV->getHandle<>();
+      auto varH = var->getHandle<>();
 
       // Update the filter/bias variables of the Conv node.
       auto epsilon = BN->getEpsilon();
