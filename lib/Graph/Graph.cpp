@@ -1812,7 +1812,7 @@ Function *Function::clone(llvm::StringRef newName,
   for (auto &N : newF->getNodes()) {
     // Fix each one of the inputs of this node.
     for (unsigned inp = 0, e = N.getNumInputs(); inp < e; inp++) {
-      NodeValue &input = N.getNthInput(inp);
+      auto input = N.getNthInput(inp);
 
       auto it = currToNew.find(input.getNode());
       if (it == currToNew.end()) {
@@ -1822,7 +1822,7 @@ Function *Function::clone(llvm::StringRef newName,
       }
 
       // Update the node with the edge to the current graph.
-      input.setOperand(it->second, input.getResNo());
+      N.setNthInput(inp, NodeValue(it->second, input.getResNo()));
     }
   }
 

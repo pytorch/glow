@@ -83,19 +83,19 @@ TEST(Graph, useList) {
   // Therefore those checks are currently inverted but should be
   // fixed eventually.
   // Test with implicit temporary NodeValue.
-  EXPECT_FALSE /*TRUE*/ (conv->getFilter()->hasOneUse());
-  EXPECT_EQ(conv->getFilter()->getNumUsers(), 2 /*should be one, really*/);
+  EXPECT_TRUE(conv->getFilter()->hasOneUse());
+  EXPECT_EQ(conv->getFilter()->getNumUsers(), 1);
 
   // Test with explicit temporary NodeValue.
   Node *nodeFilter;
   {
     NodeValue tmp = conv->getFilter();
-    EXPECT_FALSE /*TRUE*/ (tmp->hasOneUse());
-    EXPECT_EQ(tmp->getNumUsers(), 2 /*should be one, really*/);
+    EXPECT_TRUE(tmp->hasOneUse());
+    EXPECT_EQ(tmp->getNumUsers(), 1);
     nodeFilter = tmp.getNode();
     // Test with NodeValue still around.
-    EXPECT_FALSE /*TRUE*/ (nodeFilter->hasOneUse());
-    EXPECT_EQ(nodeFilter->getNumUsers(), 2 /*should be one, really*/);
+    EXPECT_TRUE(nodeFilter->hasOneUse());
+    EXPECT_EQ(nodeFilter->getNumUsers(), 1);
   }
 
   // Test with NodeValue took out.
@@ -105,8 +105,8 @@ TEST(Graph, useList) {
   // Same kind of test but with the convolution node itself.
   {
     NodeValue tmpConvRes(conv, 0);
-    EXPECT_EQ(conv->getNumUsers(), 1 /*should be zero*/);
-    EXPECT_EQ(tmpConvRes->getNumUsers(), 1 /*should be zero*/);
+    EXPECT_EQ(conv->getNumUsers(), 0);
+    EXPECT_EQ(tmpConvRes->getNumUsers(), 0);
   }
 
   // Add a couple of uses to conv and make sure it reflects on its use list.
@@ -119,10 +119,10 @@ TEST(Graph, useList) {
 
   {
     NodeValue tmpConvRes(conv, 0);
-    EXPECT_FALSE /*TRUE*/ (tmpConvRes->hasOneUse());
-    EXPECT_FALSE /*TRUE*/ (conv->hasOneUse());
-    EXPECT_EQ(conv->getNumUsers(), 2 /*should be one*/);
-    EXPECT_EQ(tmpConvRes->getNumUsers(), 2 /*should be one*/);
+    EXPECT_TRUE(tmpConvRes->hasOneUse());
+    EXPECT_TRUE(conv->hasOneUse());
+    EXPECT_EQ(conv->getNumUsers(), 1);
+    EXPECT_EQ(tmpConvRes->getNumUsers(), 1);
   }
 
   F->createSave("Save", conv, K);
@@ -136,8 +136,8 @@ TEST(Graph, useList) {
     NodeValue tmpConvRes(conv, 0);
     EXPECT_FALSE(tmpConvRes->hasOneUse());
     EXPECT_FALSE(conv->hasOneUse());
-    EXPECT_EQ(conv->getNumUsers(), 3 /*should be two*/);
-    EXPECT_EQ(tmpConvRes->getNumUsers(), 3 /*should be two*/);
+    EXPECT_EQ(conv->getNumUsers(), 2);
+    EXPECT_EQ(tmpConvRes->getNumUsers(), 2);
   }
 }
 

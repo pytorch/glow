@@ -445,10 +445,10 @@ void computeBatchNormalizationWeights(Function *F, BatchNormalizationNode &BN) {
         llvm::isa<BatchNormalizationGradNode>(N))
       for (size_t i = 0; i < N.getNumInputs(); i++) {
         if (N.getNthInput(i) == mean) {
-          N.getNthInput(i) = newMean;
+          N.setNthInput(i, NodeValue(newMean));
         }
         if (N.getNthInput(i) == var) {
-          N.getNthInput(i) = newVar;
+          N.setNthInput(i, NodeValue(newVar));
         }
       }
 

@@ -113,7 +113,7 @@ llvm::StringRef Variable::getInputName(unsigned idx) const {
   llvm_unreachable("Invalid index");
 }
 
-NodeValue &Variable::getNthInput(unsigned idx) {
+NodeValue Variable::getNthInput(unsigned idx) {
   llvm_unreachable("Invalid index");
 }
 
@@ -717,6 +717,10 @@ llvm::hash_code hash_value(const glow::Type *T) {
 llvm::hash_code hash_value(glow::Node *N) { return N->getHash(); }
 
 llvm::hash_code hash_value(const glow::NodeValue &NV) {
+  return llvm::hash_combine(NV.getNode(), NV.getResNo());
+}
+
+llvm::hash_code hash_value(const glow::NodeHandle &NV) {
   return llvm::hash_combine(NV.getNode(), NV.getResNo());
 }
 } // namespace glow
