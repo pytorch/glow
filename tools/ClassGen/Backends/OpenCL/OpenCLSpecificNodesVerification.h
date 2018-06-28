@@ -19,8 +19,9 @@
 void OCLConvolutionNode::verify() const {
   ShapeNCHW idim(getInput().getType()->dims());
   ShapeNCHW odim(getResult().getType()->dims());
+  auto pad = getPad();
   auto outSz = calculateConvOutputDims(idim.h, idim.w, getKernel(), getStride(),
-                                       getPad());
+                                       {pad, pad, pad, pad});
   ShapeNCHW exp(idim.n, getBias().dims()[0], outSz.first, outSz.second);
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");
