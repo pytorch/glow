@@ -22,6 +22,7 @@
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Debug.h"
+#include "glow/Support/Support.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -90,7 +91,8 @@ OCLBackend::OCLBackend(IRFunction *F) : F_(F), allocator_(0xFFFFFFFF) {
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
   GLOW_ASSERT(num > deviceId &&
               "Should have at least one GPU for running OpenCL");
-  cl_device_id devices[num];
+  GLOW_VLA(cl_device_id, devices, num);
+
   err = clGetDeviceIDs(nullptr, CL_DEVICE_TYPE_ALL, num, devices, nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
   deviceId_ = devices[deviceId];

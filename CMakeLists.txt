@@ -54,7 +54,11 @@ if (GLOW_WITH_OPENCL)
   find_package(OpenCL REQUIRED)
 endif ()
 
-if (NOT MSVC)
+if(MSVC)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4710 /wd4711 /wd4514 /wd4571 /wd4820 /wd4774 /wd4625")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4526 /wd4061 /wd4365 /wd4242 /wd4996 /wd5026 /wd4626")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd5027 /wd4668 /wd4305 /wd4826 /wd4574")
+else()
   # Prefer LLVM 6.
   find_package(LLVM 6 CONFIG)
   # If LLVM 6 not found, try build with whatever is available.
@@ -74,7 +78,9 @@ if (NOT MSVC)
   endif()
 endif()
 
-if (NOT MSVC)
+find_package(Protobuf REQUIRED)
+
+if(NOT MSVC)
   add_subdirectory(tests/googletest/)
 endif()
 
@@ -85,10 +91,13 @@ add_subdirectory(tests)
 
 add_custom_target(dependency_graph
                   "${CMAKE_COMMAND}" "--graphviz=dependency_graph" .
-                  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+                  WORKING_DIRECTORY "${GLOW_BINARY_DIR}")
 
 # Fetch the dependencies for all the tests.
 get_property(GLOW_TEST_DEPENDS GLOBAL PROPERTY GLOW_TEST_DEPENDS)
 
-add_custom_target(check-glow COMMAND ${CMAKE_CTEST_COMMAND}
-                    DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL)
+add_custom_target(check-glow
+                  COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG>
+                  DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL
+                  WORKING_DIRECTORY "${GLOW_BINARY_DIR}"
+                  )
