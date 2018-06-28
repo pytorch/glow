@@ -855,6 +855,140 @@ static void optimizeBatchNorm(Function *F) {
   } // For all nodes in the graph.
 }
 
+/// Check if the \p inputs of this method (vector of NodeValues) can be
+/// legal input of CreateConcat function.
+/// \returns the dimension where the Concat will take place. If not
+/// concatenatable, return -1.
+static int
+getConcatDimensionForInputs(const llvm::SmallVectorImpl<NodeValue> &inputs,
+                            ConcatNode *origConcatN) {
+  // For the Concat to work, the inputs must only have one
+  // different dim, like <2,1,3>, <2,2,3> can be concatenated
+  // while <2,1,3>, <1,2,3> cannot. So for this function, it tries
+  // to check the inputs fall into the following two cases:
+  //  1). The inputs dims vectors are all the same. e.g. <2,2,3> ... <2,2,3>.
+  //      For this case, the returned dim should be the chosen index that can
+  //      maintain the data order as by the original ConcatNode (origConcatN).
+  //      A example is like, the origConcatN concatenates two <4,3> on the 2nd
+  //      dim, then the new Concat can only concatenate on the 2nd dim, as we
+  //      want the concat "granularity" to be exactly 3 (which is of the
+  //      origConcatN).
+  //  2). Only one dim is different for all the dims vectors. e.g. <2,1,3>,
+  //      <2,2,3>, <2,2,3>, <2,3,3>. For this case, the returned dim is this dim
+  //      i where dims1[i] != dims2[i]. While at the same time, we also need to
+  //      make sure the concat "granularity" to be exactly same as of the
+  //      origConcatN.
+  auto firstDims = inputs.front().dims();
+  size_t dimSize = firstDims.size();
+  auto origCNInputShape = origConcatN->getInputs().front().dims();
+  // Calculate the number of elements that form the small tensor
+  // that got concatenated, i.e. the granularity of the original ConcatNode.
+  int numElementsToLegallyConcat = 1;
+  // Find the minimal number of data units so that we can legally Concat them.
+  for (size_t i = origConcatN->getDim() + 1; i < origCNInputShape.size(); ++i) {
+    numElementsToLegallyConcat *= origCNInputShape[i];
+  }
+
+  ssize_t index = -1;
+  ssize_t prevIndex = -1;
+  // Go through all the input dims vectors, find out if either all vectors
+  // are all the same, or they are equal in all but one dim.
+  for (auto &in : inputs) {
+    auto curDims = in.dims();
+    // Find the previous non-negative index value.
+    if (index != -1) {
+      if (prevIndex != -1 && prevIndex != index) {
+        // We cannot have two different non-negative index to be the
+        // dim for Concat.
+        return -1;
+      }
+      prevIndex = index;
+    }
+    index = -1;
+    for (size_t i = 0; i < dimSize; ++i) {
+      // Find the index i where firstDims[i] != curDims[i]
+      if (firstDims[i] != curDims[i]) {
+        if (index != -1) {
+          // If curDims and firstDims have more than one different element ,
+          // then we can not perform Concat on top of these two nodes.
+          return -1;
+        }
+        index = i;
+      }
+    }
+  }
+
+  // Find the non-negative index value.
+  if (index == -1) {
+    index = prevIndex;
+  }
+  // It's still possible that index can be -1. it means all inputs have
+  // same shape.
+  if (index == -1) {
+    // In this case, we need to determine the index that can meet the
+    // requirement of the number of data units in the small tensors that would
+    // be concatenated.
+
+    // The cumulative number of elements that can form the small tensors
+    // that got concatenated, i.e. the granularity of this newly created
+    // ConcatNode.
+    int numCumulativeElements = 1;
+    for (ssize_t i = dimSize - 1; i >= 0; i--) {
+      // Go over the dimensions from right to left, find the first index that
+      // can make numCumulativeElements divided by numElementsToLegallyConcat.
+      if (numCumulativeElements == numElementsToLegallyConcat) {
+        return i;
+      }
+      numCumulativeElements *= firstDims[i];
+    }
+    return -1;
+  }
+  // In this case, we found the specific index that can be the dim for Concat.
+  // What we need to do is check if this dim is legal.
+
+  // Same definition as described above.
+  int numCumulativeElements = 1;
+  for (size_t i = index + 1; i < dimSize; ++i) {
+    numCumulativeElements *= firstDims[i];
+  }
+  if (numCumulativeElements != numElementsToLegallyConcat) {
+    return -1;
+  }
+  return index;
+}
+
+/// Concat(Reshape(x) * N) -> Reshape(Concat(x * N)).
+/// \returns a new simplified Concat node or nullptr.
+static NodeValue tryToOptimizeConcatOfRehapes(Function *F, ConcatNode *CN) {
+  llvm::SmallVector<ReshapeNode *, 16> reshapes;
+  for (auto &I : CN->getInputs()) {
+    if (auto *R = dyn_cast<ReshapeNode>(I)) {
+      // The input dims of Reshape nodes should have the same size.
+      if (reshapes.size() == 0 || reshapes.front()->getInput().dims().size() ==
+                                      R->getInput().dims().size()) {
+        reshapes.push_back(R);
+        continue;
+      }
+    }
+    // The inputs of Concat have to be all Reshape nodes. All the
+    // Reshape nodes need to also have the same shape.
+    return NodeValue(nullptr);
+  }
+
+  llvm::SmallVector<NodeValue, 16> newInputs;
+  for (auto &RN : reshapes) {
+    newInputs.push_back(RN->getInput());
+  }
+  // Check if the inputs are valid for a Concat node.
+  auto dim = getConcatDimensionForInputs(newInputs, CN);
+  if (dim == -1) {
+    return NodeValue(nullptr);
+  }
+  auto *newCN = F->createConcat(CN->getName(), newInputs, dim);
+  return F->createReshape(reshapes.front()->getName(), newCN,
+                          CN->getResult().dims());
+}
+
 /// Simplify concat node.
 /// \returns a new simplified Concat node or nullptr.
 static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
@@ -909,6 +1043,12 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
     }
   }
 
+  /// If the inputs of concat are all reshape nodes, and the inputs of reshape
+  /// are able to be concatenated, then we can perform concat first and then
+  /// reshape. Concat(Reshape(x) * N) -> Reshape(Concat(x * N)).
+  if (auto transformedConcatNode = tryToOptimizeConcatOfRehapes(F, CN)) {
+    return transformedConcatNode;
+  }
   return NodeValue(nullptr);
 }
 
@@ -939,7 +1079,6 @@ static void optimizeArithmeticNodes(Function *F) {
       worklist.push_back(&node);
     }
   }
-
   while (!worklist.empty()) {
     Node *node = worklist.back();
     worklist.pop_back();
