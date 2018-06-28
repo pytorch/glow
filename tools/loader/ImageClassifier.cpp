@@ -28,6 +28,7 @@
 using namespace glow;
 
 enum class ImageNormalizationMode {
+  k1to1,    // Values are in the range: -1 and 1.
   k0to1,     // Values are in the range: 0 and 1.
   k0to256,   // Values are in the range: 0 and 256.
   k128to127, // Values are in the range: -128 .. 127
@@ -35,6 +36,7 @@ enum class ImageNormalizationMode {
 
 ImageNormalizationMode strToImageNormalizationMode(const std::string &str) {
   return llvm::StringSwitch<ImageNormalizationMode>(str)
+      .Case("1to1", ImageNormalizationMode::k1to1)
       .Case("0to1", ImageNormalizationMode::k0to1)
       .Case("0to256", ImageNormalizationMode::k0to256)
       .Case("128to127", ImageNormalizationMode::k128to127);
@@ -44,6 +46,8 @@ ImageNormalizationMode strToImageNormalizationMode(const std::string &str) {
 /// Convert the normalization to numeric floating poing ranges.
 std::pair<float, float> normModeToRange(ImageNormalizationMode mode) {
   switch (mode) {
+  case ImageNormalizationMode::k1to1:
+    return {-1., 1.};
   case ImageNormalizationMode::k0to1:
     return {0., 1.0};
   case ImageNormalizationMode::k0to256:
@@ -65,7 +69,9 @@ llvm::cl::list<std::string> inputImageFilenames(llvm::cl::Positional,
 llvm::cl::opt<ImageNormalizationMode> imageMode(
     "image_mode", llvm::cl::desc("Specify the image mode:"), llvm::cl::Required,
     llvm::cl::cat(imageLoaderCat),
-    llvm::cl::values(clEnumValN(ImageNormalizationMode::k0to1, "0to1",
+    llvm::cl::values(clEnumValN(ImageNormalizationMode::k1to1, "1to1",
+                                "Values are in the range: -1 and 1"),
+                     clEnumValN(ImageNormalizationMode::k0to1, "0to1",
                                 "Values are in the range: 0 and 1"),
                      clEnumValN(ImageNormalizationMode::k0to256, "0to256",
                                 "Values are in the range: 0 and 256"),
