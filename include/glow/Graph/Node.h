@@ -45,30 +45,43 @@ private:
   Node *node_{nullptr};
   /// Specifies the node result number to use.
   unsigned resNo_{0};
+  /// Is this value an operand of some instruction or just a temporary object
+  /// flying around.
+  bool isOperand_{false};
 
 public:
   /// Create a new value and register the node we reference.
   /*implicit*/ NodeValue(Node *N);
 
   /// Create a new value for result \p resNo and register the node we reference.
-  NodeValue(Node *N, unsigned resNo);
+  NodeValue(Node *N, unsigned resNo, bool isOperand = false);
 
   /// Create a new operand and register it as a new user to the node.
-  NodeValue(const NodeValue &that) { setOperand(that.getNode(), that.resNo_); }
+  NodeValue(const NodeValue &that, bool isOperand = false)
+      : NodeValue(that.getNode(), that.resNo_, isOperand) {}
 
   /// Unregister old value, assign new NodeValue and register it.
   NodeValue &operator=(const NodeValue &that) {
-    setOperand(that.getNode(), that.resNo_);
+    if (isOperand_) {
+      setOperand(that.getNode(), that.resNo_);
+    } else {
+      node_ = that.node_;
+      resNo_ = that.resNo_;
+    }
     return *this;
   }
 
   /// When deleting an operand we need to unregister the operand from the
   /// use-list of the node it used to reference.
-  ~NodeValue() { setOperand(nullptr, 0); }
-  /// Sets the operand to point to \p N. This method registers the operand as a
-  /// user of \p N.
+  ~NodeValue() {
+    if (isOperand_) {
+      setOperand(nullptr, 0);
+    }
+  }
+  /// Sets the operand to point to \p v. This method registers the operand as a
+  /// user of \p v.
   void setOperand(Node *v, unsigned resNo);
-  /// Get the index which selects a specific result in the SDNode
+  /// Get the index which selects a specific result in the Node.
   unsigned getResNo() const { return resNo_; }
   /// \returns the underlying pointer.
   Node *getNode() const { return node_; }
