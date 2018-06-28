@@ -54,25 +54,29 @@ if (GLOW_WITH_OPENCL)
   find_package(OpenCL REQUIRED)
 endif ()
 
-# Prefer LLVM 6.
-find_package(LLVM 6 CONFIG)
-# If LLVM 6 not found, try build with whatever is available.
-if (NOT LLVM_FOUND)
-  find_package(LLVM CONFIG)
-endif()
-if (NOT LLVM_FOUND)
-  message(FATAL_ERROR "Could not find LLVM. Build LLVM manually and configure the project with -DCMAKE_PREFIX_PATH=/path/to/llvm/install")
+if (NOT MSVC)
+  # Prefer LLVM 6.
+  find_package(LLVM 6 CONFIG)
+  # If LLVM 6 not found, try build with whatever is available.
+  if (NOT LLVM_FOUND)
+    find_package(LLVM CONFIG)
+  endif()
+  if (NOT LLVM_FOUND)
+    message(FATAL_ERROR "Could not find LLVM. Build LLVM manually and configure the project with -DCMAKE_PREFIX_PATH=/path/to/llvm/install")
+  endif()
+
+  message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+  message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+  include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
+
+  if(NOT EXISTS "${GLOW_SOURCE_DIR}/tests/googletest/googletest")
+    message(FATAL_ERROR "No git submodules. Run: git submodule update --init --recursive")
+  endif()
 endif()
 
-message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
-message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
-include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
-
-if(NOT EXISTS "${GLOW_SOURCE_DIR}/tests/googletest/googletest")
-  message(FATAL_ERROR "No git submodules. Run: git submodule update --init --recursive")
+if (NOT MSVC)
+  add_subdirectory(tests/googletest/)
 endif()
-
-add_subdirectory(tests/googletest/)
 
 add_subdirectory(lib)
 add_subdirectory(examples)
@@ -86,5 +90,5 @@ add_custom_target(dependency_graph
 # Fetch the dependencies for all the tests.
 get_property(GLOW_TEST_DEPENDS GLOBAL PROPERTY GLOW_TEST_DEPENDS)
 
-add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND}
+add_custom_target(check-glow COMMAND ${CMAKE_CTEST_COMMAND}
                     DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL)
