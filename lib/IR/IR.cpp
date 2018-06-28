@@ -617,9 +617,8 @@ void IRFunction::dumpDAG() {
 }
 
 /// Dump a dotty graph that depicts the function.
-void IRFunction::dumpDAG(const char *dotFilename) {
-  std::string filename = dotFilename;
-  llvm::outs() << "Writing dotty graph to: " << filename << '\n';
+void IRFunction::dumpDAG(llvm::StringRef dotFilename) {
+  llvm::outs() << "Writing dotty graph to: " << dotFilename << '\n';
 
   std::string buffer;
   llvm::raw_string_ostream stream(buffer);

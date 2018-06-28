@@ -249,16 +249,15 @@ void Module::dumpDAG() {
   dumpDAG(stream.str().c_str());
 }
 
-void Module::dumpDAG(const char *dotFilename) {
-  std::string filename = dotFilename;
-  llvm::outs() << "Writing dotty graph for Module to: " << filename << '\n';
+void Module::dumpDAG(llvm::StringRef dotFilename) {
+  llvm::outs() << "Writing dotty graph for Module to: " << dotFilename << '\n';
 
   ModuleDottyPrinter DP;
 
   DP.visitModule(this);
 
   std::ofstream myfile;
-  myfile.open(filename);
+  myfile.open(dotFilename);
   DP.dumpAll(myfile);
   myfile.close();
 }
@@ -1705,16 +1704,15 @@ void Function::dumpDAG() {
   dumpDAG(stream.str().c_str());
 }
 
-void Function::dumpDAG(const char *dotFilename) {
-  std::string filename = dotFilename;
-  llvm::outs() << "Writing dotty graph for Function to: " << filename << '\n';
+void Function::dumpDAG(llvm::StringRef dotFilename) {
+  llvm::outs() << "Writing dotty graph for Function to: " << dotFilename << '\n';
 
   FunctionDottyPrinter DP;
 
   DP.visitGraph(this);
 
   std::ofstream myfile;
-  myfile.open(filename);
+  myfile.open(dotFilename);
   DP.dumpAll(myfile);
   myfile.close();
 }

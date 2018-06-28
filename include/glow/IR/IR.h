@@ -317,7 +317,7 @@ public:
   void dump(llvm::raw_ostream &OS);
 
   /// Dump a dotty graph that depicts the function.
-  void dumpDAG(const char *dotFilename);
+  void dumpDAG(llvm::StringRef dotFilename);
 
   /// Dump a dotty graph that depicts the function.
   void dumpDAG();
