@@ -45,7 +45,8 @@ NodeValue::NodeValue(Node *N, unsigned resNo, bool isOperand)
   }
 }
 
-void NodeValue::setOperand(Node *v, unsigned resNo) {
+void NodeValue::setOperand(Node *v, unsigned resNo, bool fromFriend) {
+  assert((fromFriend || isOperand_) && "This is not an operand");
   if (node_ && isOperand_) {
     node_->removeUse(NodeUse(this));
   }

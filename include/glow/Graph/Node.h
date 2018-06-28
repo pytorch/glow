@@ -49,18 +49,46 @@ private:
   /// flying around.
   bool isOperand_{false};
 
+protected:
+  /// Create a new value for result \p resNo and register the node we reference
+  /// in case isOperand is true.
+  /// Only friend classes will be able to create NodeValue with the
+  /// operand mode ON.
+  NodeValue(Node *N, unsigned resNo, bool isOperand);
+
+  NodeValue(const NodeValue &that, bool isOperand)
+      : NodeValue(that.getNode(), that.getResNo(), isOperand) {}
+
+  friend class Node;
+#define DEF_NODE(CLASS, NAME) friend class CLASS;
+#include "AutoGenNodes.def"
+
+  /// Sets the operand to point to \p v. This method registers the operand as a
+  /// user of \p v.
+  /// \p fromFriend tells if this method is called from a friend class.
+  ///
+  /// This is important to know because this method will switch "this" into
+  /// the mode of tracking the uses if it was not already in that mode.
+  ///
+  /// This switch should only happen when a value is attached to a node,
+  /// thus we want to be sure this is expected. Otherwise, the tracking is
+  /// only allowed if "this" is already in that mode.
+  ///
+  /// \pre isOperand_ || fromFriend
+  void setOperand(Node *v, unsigned resNo, bool fromFriend);
+
 public:
-  /// Create a new value and register the node we reference.
+  /// Create a new value for ()N, 0).
   /*implicit*/ NodeValue(Node *N);
 
-  /// Create a new value for result \p resNo and register the node we reference.
-  NodeValue(Node *N, unsigned resNo, bool isOperand = false);
+  /// Create a new value for result \p resNo.
+  NodeValue(Node *N, unsigned resNo)
+      : NodeValue(N, resNo, /*isOperand*/ false) {}
 
-  /// Create a new operand and register it as a new user to the node.
-  NodeValue(const NodeValue &that, bool isOperand = false)
-      : NodeValue(that.getNode(), that.resNo_, isOperand) {}
+  NodeValue(const NodeValue &that) : NodeValue(that, /*isOperand*/ false) {}
 
   /// Unregister old value, assign new NodeValue and register it.
+  /// The registering only happen is the NodeValue is in operand mode.
   NodeValue &operator=(const NodeValue &that) {
     if (isOperand_) {
       setOperand(that.getNode(), that.resNo_);
@@ -78,9 +106,11 @@ public:
       setOperand(nullptr, 0);
     }
   }
-  /// Sets the operand to point to \p v. This method registers the operand as a
-  /// user of \p v.
-  void setOperand(Node *v, unsigned resNo);
+  /// Sets the operand to point to \p v.
+  /// This method should be used only on a NodeValue that is attached
+  /// to a Node.
+  /// \pre this.isOperand_ == true
+  void setOperand(Node *v, unsigned resNo) { setOperand(v, resNo, false); }
   /// Get the index which selects a specific result in the Node.
   unsigned getResNo() const { return resNo_; }
   /// \returns the underlying pointer.
@@ -168,7 +198,7 @@ protected:
   unsigned numRes_{0};
   /// A nullable reference to some tensor value that may predicate the execution
   /// of the current node.
-  NodeValue predicate_{nullptr};
+  NodeValue predicate_{nullptr, 0, /*isOperand*/ true};
 
   /// Destroys a node and deallocates the memory. This method is typically
   /// implicitly invoked when a node is being removed from the intrusive list of

@@ -78,11 +78,11 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
     if (op.first != MemberType::VectorNodeValue) {
       continue;
     }
-    os << "    int i = 0;";
+    os << "    int i = 0;\n";
     os << "    for(const auto &nodeVal : " << op.second << ") {\n";
-    os << "      " << op.second
-       << "_[i++].setOperand(nodeVal.getNode(), nodeVal.getResNo());\n";
-    os << "     }\n";
+    os << "      " << op.second << "_[i++]";
+    os << ".setOperand(nodeVal.getNode(), nodeVal.getResNo(), true);\n";
+    os << "    }\n";
   }
 
   os << "  }\n";
