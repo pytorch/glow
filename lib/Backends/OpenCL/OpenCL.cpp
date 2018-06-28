@@ -714,7 +714,7 @@ void OCLBackend::doForwardPass() {
       setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
+      for (unsigned arg = 0; arg < 3; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
                               tensors_[I.getOperand(arg).first]);
       }
