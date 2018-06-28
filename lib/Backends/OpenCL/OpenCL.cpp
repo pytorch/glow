@@ -176,7 +176,6 @@ cl_kernel OCLBackend::createKernel(const std::string &name,
 cl_program OCLBackend::createProgram(const std::string &source,
                                      const std::vector<std::string> &options,
                                      cl_command_queue queue) {
-  const char *src = source.c_str();
   cl_context ctx;
   cl_int err = clGetCommandQueueInfo(queue, CL_QUEUE_CONTEXT, sizeof(ctx), &ctx,
                                      nullptr);
@@ -198,6 +197,12 @@ cl_program OCLBackend::createProgram(const std::string &source,
   if (program) {
     return program;
   }
+
+  std::string finalSource = "#define GLOW_HOST_SIZEOF_SIZE_T ";
+  char itoaBuffer[20];
+  finalSource += itoa(sizeof(size_t), itoaBuffer, 10);
+  finalSource  += source.c_str();
+  const char *src = finalSource.c_str();
   // Create a new compiled program.
   program = clCreateProgramWithSource(context_, 1, &src, nullptr, &err);
   GLOW_ASSERT(program && "clCreateProgramWithSource Failed.");
