@@ -16,19 +16,18 @@
 
 #include "OpenCL.h"
 
-#include "glow/Graph/Graph.h"
+#include "glow/Backends/LayoutConverter.h"
 #include "glow/Graph/Nodes.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
+
+#include "llvm/Support/Casting.h"
+
+using llvm::dyn_cast;
 
 using namespace glow;
-using llvm::dyn_cast;
-using llvm::isa;
 
-/// Optimize the regular Convolution into a target-specific convolution
-/// with a different memory layout. Many GPU kernels prefer the NCHW memory
-/// layout.
-static Node *optimizeOCLConv(ConvolutionNode *CN, Function *F) {
+/// Optimize regular Convolution nodes (that use NHWC) into an
+/// OCL-backend-specific convolution that uses NCHW.
+static Node *convertConvToOCLConv(ConvolutionNode *CN, Function *F) {
   // Convert filter and input from NHWC (Glow's default) into NCHW.
   auto *NI = F->createTranspose("conv.input", CN->getInput(), NHWC2NCHW);
   auto *NF = F->createTranspose("conv.filter", CN->getFilter(), NHWC2NCHW);
@@ -47,69 +46,34 @@ static Node *optimizeOCLConv(ConvolutionNode *CN, Function *F) {
   return NR;
 }
 
-/// Optimize the regular pool average node into a target-specific node using the
-/// NCHW memory layout.
-static Node *optimizeOCLPoolAvg(PoolAvgNode *PAN, Function *F) {
-  // Convert input from NHWC (Glow's default) into NCHW.
-  auto *NI = F->createTranspose("conv.input", PAN->getInput(), NHWC2NCHW);
-
-  auto dimsNHWC = ShapeNHWC(PAN->getType()->dims());
-  auto dimsNCHW = {dimsNHWC.n, dimsNHWC.c, dimsNHWC.h, dimsNHWC.w};
-  auto outTy = F->getParent()->uniqueType(ElemKind::FloatTy, dimsNCHW);
-
-  auto *NPAN =
-      F->addNode(new OCLPoolAvgNode(PAN->getName(), outTy, NI, PAN->getKernel(),
-                                    PAN->getStride(), PAN->getPad()));
-  auto NR = F->createTranspose("poolavg.result", NPAN, NCHW2NHWC);
-  return NR;
-}
-
-/// Optimize the regular pool max node into a target-specific node using the
-/// NCHW memory layout.
-static Node *optimizeOCLPoolMax(PoolMaxNode *PMN, Function *F) {
-  // Convert input from NHWC (Glow's default) into NCHW.
-  auto *NI = F->createTranspose("conv.input", PMN->getInput(), NHWC2NCHW);
-
-  auto dimsNHWC = ShapeNHWC(PMN->getType()->dims());
-  auto dimsNCHW = {dimsNHWC.n, dimsNHWC.c, dimsNHWC.h, dimsNHWC.w};
-  auto outTy = F->getParent()->uniqueType(ElemKind::FloatTy, dimsNCHW);
-
-  auto *NPAN =
-      F->addNode(new OCLPoolMaxNode(PMN->getName(), outTy, NI, PMN->getKernel(),
-                                    PMN->getStride(), PMN->getPad()));
-  auto NR = F->createTranspose("poolmax.result", NPAN, NCHW2NHWC);
-  return NR;
-}
-
 /// Perform OpenCL specific post-lowering graph transformation.
 bool OCLBackend::transformPostLowering(Function *F, CompilationMode mode) {
-  bool changed = false;
-  // Transformation is not supported in training mode yet, because of some
+  // NCHW transformation is not supported in training mode yet, because of some
   // issues with gradient nodes.
   if (mode == CompilationMode::Train)
     return false;
-  // Convert convolutions and pooling nodes into nodes using the NCHW format.
+
+  bool changed = false;
   for (auto &node : F->getNodes()) {
     if (auto *CN = dyn_cast<ConvolutionNode>(&node)) {
-      if (Node *NCN = optimizeOCLConv(CN, F)) {
-        NodeValue(&node, 0).replaceAllUsesOfWith(NCN);
-        changed = true;
-        continue;
-      }
-    }
-    if (auto *PAN = dyn_cast<PoolAvgNode>(&node)) {
-      if (Node *NPAN = optimizeOCLPoolAvg(PAN, F)) {
-        NodeValue(&node, 0).replaceAllUsesOfWith(NPAN);
-        changed = true;
-        continue;
-      }
+      // Note: Using OCL-specific convolution conversion here since OCL only
+      // currently supports equal padding.
+      auto *NR = convertConvToOCLConv(CN, F);
+      NodeValue(&node, 0).replaceAllUsesOfWith(NR);
+      changed = true;
+      continue;
     }
     if (auto *PMN = dyn_cast<PoolMaxNode>(&node)) {
-      if (Node *NPMN = optimizeOCLPoolMax(PMN, F)) {
-        NodeValue(&node, 0).replaceAllUsesOfWith(NPMN);
-        changed = true;
-        continue;
-      }
+      auto *NR = convertPoolToNCHWPool<PoolMaxNode, OCLPoolMaxNode>(PMN, F);
+      NodeValue(&node, 0).replaceAllUsesOfWith(NR);
+      changed = true;
+      continue;
+    }
+    if (auto *PAN = dyn_cast<PoolAvgNode>(&node)) {
+      auto *NR = convertPoolToNCHWPool<PoolAvgNode, OCLPoolAvgNode>(PAN, F);
+      NodeValue(&node, 0).replaceAllUsesOfWith(NR);
+      changed = true;
+      continue;
     }
   }
   return changed;
