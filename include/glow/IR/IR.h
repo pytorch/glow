@@ -320,6 +320,9 @@ public:
   void dumpDAG(llvm::StringRef dotFilename);
 
   /// Dump a dotty graph that depicts the function.
+  void dumpDAG(const char *dotFilename);
+
+  /// Dump a dotty graph that depicts the function.
   void dumpDAG();
 
   /// \returns the variable map.

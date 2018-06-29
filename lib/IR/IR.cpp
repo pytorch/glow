@@ -682,6 +682,10 @@ void IRFunction::dumpDAG(llvm::StringRef dotFilename) {
   filestream << stream.str();
 }
 
+void IRFunction::dumpDAG(const char *dotFilename) {
+  dumpDAG(llvm::StringRef(dotFilename));
+}
+
 //===----------------------------------------------------------------------===//
 // ilist_traits<glow::Instruction> Implementation
 //===----------------------------------------------------------------------===//

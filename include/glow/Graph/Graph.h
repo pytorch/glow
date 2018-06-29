@@ -156,6 +156,9 @@ public:
 
   /// Dump a dotty graph that depicts the Module.
   void dumpDAG(llvm::StringRef dotFilename);
+
+  /// Dump a dotty graph that depicts the Module.
+  void dumpDAG(const char *dotFilename);
 };
 
 /// Represents the compute graph.
@@ -527,6 +530,9 @@ public:
 
   /// Dump a dotty graph that depicts the function.
   void dumpDAG(llvm::StringRef dotFilename);
+
+  /// Dump a dotty graph that depicts the function.
+  void dumpDAG(const char *dotFilename);
 
   /// \returns the list of nodes that the Function owns.
   NodesList &getNodes() { return nodes_; }
