@@ -262,6 +262,10 @@ void Module::dumpDAG(llvm::StringRef dotFilename) {
   myfile.close();
 }
 
+void Module::dumpDAG(const char *dotFilename) {
+  dumpDAG(llvm::StringRef(dotFilename));
+}
+
 Function::~Function() {
   // Delete all of the nodes and the variables.
   for (auto it = nodes_.begin(), e = nodes_.end(); it != e;) {
@@ -1715,6 +1719,10 @@ void Function::dumpDAG(llvm::StringRef dotFilename) {
   myfile.open(dotFilename);
   DP.dumpAll(myfile);
   myfile.close();
+}
+
+void Function::dumpDAG(const char *dotFilename) {
+  dumpDAG(llvm::StringRef(dotFilename));
 }
 
 Node *Function::getNodeByName(llvm::StringRef name) {
