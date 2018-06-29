@@ -1186,8 +1186,11 @@ static void optimizeQuantization(Function *F) {
 
       if (auto *V = dyn_cast<Variable>(Q->getInput())) {
         // Quantize(Variable) -> Variable
-        // V must have a single use and be private.
-        if (!V || !V->hasOneUse() || !V->isPrivate()) {
+        // V must be a private variable.
+        // Note, it does not really matter how many usages this var has.
+        // Quantized graph will use optimized var and other functions will
+        // refer to the floating point original var.
+        if (!V || !V->isPrivate()) {
           continue;
         }
         // Create a new variable NV to hold the quantized result.
