@@ -16,6 +16,8 @@
 #ifndef GLOW_SUPPORT_COMPILER_H
 #define GLOW_SUPPORT_COMPILER_H
 
+#include <stdio.h>
+
 #if !defined(__has_builtin)
 #define __has_builtin(builtin) 0
 #endif
