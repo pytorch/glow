@@ -287,7 +287,7 @@ template <> struct simplify_type<const glow::NodeValue> {
 //===----------------------------------------------------------------------===//
 
 template <>
-struct ilist_traits<glow::Node> : public ilist_default_traits<glow::Node> {
+struct ilist_traits<glow::Node> : public ilist_node_traits<glow::Node> {
   using Node = glow::Node;
 
 private:
