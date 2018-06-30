@@ -584,7 +584,7 @@ Node *Function::createBroadcast(llvm::StringRef name, NodeValue input,
   // new shape (no action taken) or == 1 (broadcast in that direction). Else
   // the original shape had no dimensions here (after considering axis), so
   // add the new dimension and broadcast in that direction.
-  size_t reshapeDims[newShape.size()];
+  size_t reshapeDims[max_tensor_dimensions];
   for (size_t i = 0; i < newShape.size(); i++) {
     if (i >= axis && i < origDims.size() + axis) {
       const int origIdx = i - axis;
