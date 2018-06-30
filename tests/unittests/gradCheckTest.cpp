@@ -515,7 +515,7 @@ TEST(Network, gradientCheckTranspose) {
 
 TEST(Network, gradientCheckCrossEntropyLoss) {
   ExecutionEngine IP;
-  const int batchSize = 6;
+  const size_t batchSize = 6;
   const int testSamples = 5;
   const float stepSize = 1e-4;
   const float delta = 0.015;

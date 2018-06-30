@@ -1168,7 +1168,7 @@ TEST_P(Operator, RescaleNode) {
 }
 
 TEST_P(InterpAndCPU, QuantizedArithmeticRescaled) {
-  const int len = 100;
+  const size_t len = 100;
 
   // In this test we check the correctness of the quantized Max, Min, Add, Sub,
   // Mul, and Div nodes as well as how they interact with the rescaling node.
@@ -1288,7 +1288,7 @@ TEST_P(InterpAndCPU, QuantizedArithmeticRescaled) {
 }
 
 TEST_P(InterpAndCPU, QuantizedArithmeticUnrescaled) {
-  const int len = 100;
+  const size_t len = 100;
 
   // In this test we check the correctness of the quantized Max, Min, Add, Sub,
   // Mul, and Div operations.
@@ -1387,7 +1387,7 @@ TEST_P(InterpAndCPU, QuantizedArithmeticUnrescaled) {
 TEST_P(InterpAndCPU, QuantizedCmpLTEAndSelect) {
   // In this test we check the correctness of the quantized
   // less-than-or-equal-to comparison operator.
-  const int len = 1000;
+  const size_t len = 1000;
   auto TQA = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.1, -3);
   auto TQB = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 5);
   auto TQC = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.8, 3);
@@ -1455,7 +1455,7 @@ TEST_P(InterpAndCPU, QuantizedCmpLTEAndSelect) {
 }
 
 TEST_P(Operator, TestQuantizedRescaleSequence) {
-  const int len = 100;
+  const size_t len = 100;
 
   auto *A = mod_.createVariable(ElemKind::FloatTy, {len}, "A",
                                 VisibilityKind::Public);

@@ -84,7 +84,7 @@ TEST_P(MLTest, simpleRegression) {
   // Testing the regression layer. This test takes the first element from the
   // input vector, adds one to it and places the result in the second element of
   // the output vector.
-  const int numInputs = 4;
+  const size_t numInputs = 4;
 
   // Learning a single input vector.
   EE_.getConfig().learningRate = 0.05;
