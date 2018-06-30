@@ -61,7 +61,8 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
 
   // Initialize the operands:
   for (const auto &op : nodeInputs_) {
-    os << ", " << op << "_(" << op << ")";
+    os << ", " << op << "_("
+       << "this, " << op << ")";
   }
 
   // Initialize the members:
@@ -70,6 +71,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
       os << ", " << op.second << "_(" << op.second << ")";
       continue;
     }
+    continue;
     os << ", " << op.second << "_(" << op.second << ".begin(), " << op.second
        << ".end()"
        << ")";
@@ -79,6 +81,18 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
   os << " {\n";
   for (auto &RT : nodeOutputs_) {
     os << "    addResult(" << RT.first << ");\n";
+  }
+
+  for (const auto &op : members_) {
+    if (op.first != MemberType::VectorNodeValue) {
+      continue;
+    }
+    os << "    " << op.second << "_.resize(" << op.second << ".size());\n";
+    os << "    for (size_t idx = 0, e = " << op.second
+       << ".size(); idx < e; ++idx) {\n"
+       << "        " << op.second << "_[idx] = " << op.second << "[idx];\n"
+       << "        " << op.second << "_[idx].setParent(this);\n"
+       << "    }\n";
   }
 
   os << "  }\n";

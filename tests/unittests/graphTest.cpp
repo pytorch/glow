@@ -141,6 +141,27 @@ TEST(Graph, useList) {
   }
 }
 
+TEST(Graph, useListIteration) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  IRFunction M(F);
+  Node *K = MD.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+
+  EXPECT_EQ(K->getNumUsers(), 0);
+
+  ConvolutionNode *conv1 = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
+  ConvolutionNode *conv2 = F->createConv("Conv2", K, 16, 3, 2, 3, 1);
+  // Check the number of users for different nodes.
+  EXPECT_EQ(K->getNumUsers(), 2);
+  EXPECT_EQ(conv1->getNumUsers(), 0);
+  EXPECT_TRUE(conv2->getFilter()->hasOneUse());
+  EXPECT_EQ(conv1->getFilter()->getNumUsers(), 1);
+  // Check that the first user of K is conv1.
+  EXPECT_EQ(K->getUsers().begin()->getUser(), conv1);
+  // Check that the second user of K is conv2.
+  EXPECT_EQ((++K->getUsers().begin())->getUser(), conv2);
+}
+
 TEST(Graph, simpleTestFC) {
   unsigned numInputs = 10;
   Module MD;

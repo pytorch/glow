@@ -31,6 +31,7 @@ namespace glow {
 
 class Node;
 class NodeWalker;
+struct NodeUse;
 
 /// Unlike LLVM values, graph nodes may return multiple values as the result of
 /// a computation. Gradient-calculating nodes such as conv-grad return multiple
@@ -117,25 +118,33 @@ public:
 /// members of and should never leave it. E.g. they cannot be returned as
 /// results of function calls, etc.
 struct NodeHandle : NodeValue {
+private:
+  friend NodeUse;
+  ///  Parent object which contains this handle.
+  Node *parent_{nullptr};
+
+public:
   /// Create a new value and register the node we reference
-  /*implicit*/ NodeHandle(Node *N);
+  /*implicit*/ NodeHandle(Node *parent, Node *N);
 
   /// Create a new value for result \p resNo and register the node we
   /// reference.
-  NodeHandle(Node *N, unsigned resNo);
+  NodeHandle(Node *parent, Node *N, unsigned resNo);
 
   /// Create a new operand and register it as a new user to the node.
-  NodeHandle(const NodeValue &that) : NodeValue(nullptr) {
+  NodeHandle(Node *parent, const NodeValue &that)
+      : NodeValue(nullptr), parent_(parent) {
     setOperand(that.getNode(), that.getResNo());
   }
 
   /// Create a new NodeHandle from an existing one and register it.
-  NodeHandle(const NodeHandle &that) : NodeValue(nullptr) {
+  NodeHandle(Node *parent, const NodeHandle &that)
+      : NodeValue(nullptr), parent_(parent) {
     setOperand(that.getNode(), that.getResNo());
   }
 
   /// Create an empty handle.
-  NodeHandle() : NodeValue(nullptr) {}
+  NodeHandle() : NodeValue(nullptr), parent_(nullptr) {}
 
   /// When deleting an operand we need to unregister the operand from the
   /// use-list of the node it used to reference.
@@ -152,10 +161,15 @@ struct NodeHandle : NodeValue {
     setOperand(that.getNode(), that.getResNo());
     return *this;
   }
-
   /// Sets the operand to point to \p N. This method registers the operand as
   /// a user of \p N.
   void setOperand(Node *v, unsigned resNo);
+
+  /// Set the parent object.
+  void setParent(Node *parent) {
+    assert(!parent_ && "Offset was set already");
+    parent_ = parent;
+  }
 };
 
 /// A wrapper class to expose a vector of NodeHandles inside an
@@ -193,6 +207,8 @@ struct NodeUse {
 
   /// \returns the instruction that the use refers to.
   NodeHandle *get() const { return site_; }
+  /// Get the node containing this use.
+  Node *getUser() { return site_->parent_; }
   /// Sets the operand to a new value.
   void setOperand(NodeHandle &site);
 };
@@ -214,7 +230,7 @@ protected:
   unsigned numRes_{0};
   /// A nullable reference to some tensor value that may predicate the execution
   /// of the current node.
-  NodeHandle predicate_{nullptr};
+  NodeHandle predicate_;
 
   /// Destroys a node and deallocates the memory. This method is typically
   /// implicitly invoked when a node is being removed from the intrusive list of
@@ -222,7 +238,8 @@ protected:
   static void destroyNode(Node *N);
 
 public:
-  Node(Kinded::Kind k, llvm::StringRef name) : Named(name), Kinded(k) {}
+  Node(Kinded::Kind k, llvm::StringRef name)
+      : Named(name), Kinded(k), predicate_(this, nullptr) {}
 
   /// \returns the nullable predicate of the current node.
   const NodeValue getPredicate() const;

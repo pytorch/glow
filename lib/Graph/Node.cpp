@@ -106,9 +106,12 @@ bool Node::isEqual(const Node &other) const {
   return false;
 }
 
-NodeHandle::NodeHandle(Node *N) : NodeValue(N) { setOperand(N, 0); }
+NodeHandle::NodeHandle(Node *parent, Node *N) : NodeValue(N), parent_(parent) {
+  setOperand(N, 0);
+}
 
-NodeHandle::NodeHandle(Node *N, unsigned resNo) : NodeValue(N, resNo) {
+NodeHandle::NodeHandle(Node *parent, Node *N, unsigned resNo)
+    : NodeValue(N, resNo), parent_(parent) {
   setOperand(N, resNo);
 }
 
