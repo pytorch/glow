@@ -26,7 +26,7 @@ typedef __declspec(align(64)) float float16;
 #else
 typedef float float4 __attribute__((ext_vector_type(4)));
 typedef float float8 __attribute__((ext_vector_type(8)));
-typedef float float16 __attribute__((ext_vector_type(16)));
+typedef float float16 __attribute__((aligned(64)));
 #endif
 
 #ifdef _MSC_VER
