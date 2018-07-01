@@ -19,8 +19,47 @@
 #include <stdint.h>
 #include <string.h>
 
+#if defined(_MSC_VER)
+typedef __declspec(align(16)) float float4;
+typedef __declspec(align(32)) float float8;
+typedef __declspec(align(64)) float float16;
+#else
 typedef float float4 __attribute__((ext_vector_type(4)));
 typedef float float8 __attribute__((ext_vector_type(8)));
+typedef float float16 __attribute__((ext_vector_type(16)));
+#endif
+
+#ifdef _MSC_VER
+/*
+ * Microsoft Visual C/C++ Compiler doesn't support for VLA, using _alloca
+ * instead.
+ * https://stackoverflow.com/questions/46878963/allocate-aligned-memory-on-the-stack-like-alloca
+ */
+extern "C" void *__cdecl _alloca(size_t _Size);
+#define __LIB_JIT_alloca_aligned(size, alignment_minus_1) \
+  ((UINT_PTR)_alloca((size) + (alignment_minus_1)) + (alignment_minus_1))     \
+   & ~((UINT_PTR)(alignment_minus_1))
+
+#define LIBJIT_VLA(type, name, size)                                          \
+  type *name = (type *)(__LIB_JIT_alloca_aligned(                             \
+                        sizeof(type) * (size),                                \
+                        __alignof(type) - 1))          
+
+#endif /* _MSC_VER */
+
+#ifndef LIBJIT_VLA
+#define LIBJIT_VLA(type, name, size) type name[size]
+#endif /* !GLOW_VLA */
+#if defined(_MSC_VER)
+#include <BaseTsd.h>
+typedef SSIZE_T ssize_t;
+#endif
+
+#if defined(_MSC_VER)
+#define LIBJIT_NOINLINE __declspec(noinline)
+#else
+#define LIBJIT_NOINLINE __attribute__((noinline))
+#endif
 
 /// Loads a simd float8 value from \p ptr.
 #define LoadFloat8(PTR) *((const float8 *)(PTR))
