@@ -46,7 +46,7 @@ static void libjit_dump_tensor_impl(ElemTy *tensor, size_t *dims,
   ElemTy mn = tensor[0];
 
   size_t size = 1;
-  size_t sliceSize[numDims];
+  LIBJIT_VLA(size_t, sliceSize, numDims);
   for (size_t i = 0; i < numDims; ++i) {
     size *= dims[i];
   }
@@ -1271,7 +1271,7 @@ void libjit_insert_tensor_i8(int8_t *tensor, int8_t *slice, size_t *offset,
                        numDimsTensor, numDimsSlice, offsetDim, count, axis);
 }
 
-__attribute__((noinline)) void
+void LIBJIT_NOINLINE
 libjit_dump_tensor(uint8_t *tensor, size_t *tensorDim, size_t numDimsTensor,
                    size_t elemKind, const char *name) {
   printf("%s\n", name);
