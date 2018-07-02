@@ -23,7 +23,7 @@ BB.newBackendSpecificInstr("OCLConvolution")
     .addOperand("Bias", OperandKind::In)
     .addMember(MemberType::SizeT, "Kernel")
     .addMember(MemberType::SizeT, "Stride")
-    .addMember(MemberType::SizeT, "Pad")
+    .addMember(MemberType::VectorSizeT, "Pads")
     .autoIRGen()
     .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter", "Bias"});
 

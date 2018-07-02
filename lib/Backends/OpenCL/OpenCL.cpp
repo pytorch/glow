@@ -394,6 +394,7 @@ void OCLBackend::executeConvolution(const OCLConvolutionInst *CC) {
   auto odim = ShapeNCHW(CC->getDest()->getType()->dims());
   auto idim = ShapeNCHW(CC->getSrc()->getType()->dims());
   auto fdim = ShapeNCHW(CC->getFilter()->getType()->dims());
+  PaddingTLBR pads(CC->getPads());
   // Create options for compiling the program.
   // Don't use names M, N, K as they are defined in precompiled headers.
 
@@ -405,8 +406,8 @@ void OCLBackend::executeConvolution(const OCLConvolutionInst *CC) {
   // Parameters for kernel size, padding and stride
   addIntOption(options, "v_k_0", CC->getKernel());
   addIntOption(options, "v_k_1", CC->getKernel());
-  addIntOption(options, "v_p_0", CC->getPad());
-  addIntOption(options, "v_p_1", CC->getPad());
+  addIntOption(options, "v_p_0", pads.top);
+  addIntOption(options, "v_p_1", pads.left);
   addIntOption(options, "v_s_0", CC->getStride());
   addIntOption(options, "v_s_1", CC->getStride());
 
@@ -499,6 +500,12 @@ void OCLBackend::executeConvolution(const OCLConvolutionInst *CC) {
   std::vector<size_t> global = {((N_FW_ - 1) / fw_div_N + 1) * fw_wgs0,
                                 ((M_FW_ - 1) / fw_div_M + 1) * fw_wgs1,
                                 idim.n * group};
+
+  // The global work for the N dimension (which covers all pixels) should be big
+  // enough to cover all outputs for the correctness.
+  if (global[0] * fw_div_N < odim.h * odim.w) {
+    global[0] = (odim.h * odim.w - 1) / fw_div_N + 1;
+  }
 
   enqueueKernel(commands_, kernel, deviceId_, global, local, kernelLaunches_);
 }
@@ -765,10 +772,10 @@ void OCLBackend::doForwardPass() {
 
       auto odim = ShapeNHWC(CC->getDest()->getType()->dims());
       auto idim = ShapeNHWC(CC->getSrc()->getType()->dims());
-
+      auto pads = PaddingTLBR(CC->getPads());
       setKernelArg<cl_uint>(kernel, numArgs + 1, CC->getKernel());
       setKernelArg<cl_uint>(kernel, numArgs + 2, CC->getStride());
-      setKernelArg<cl_uint>(kernel, numArgs + 3, CC->getPads()[0]);
+      setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
       setKernelArg(kernel, numArgs + 6,
@@ -795,10 +802,10 @@ void OCLBackend::doForwardPass() {
       auto destGradDim = ShapeNHWC(destGrad->dims());
       auto srcDim = ShapeNHWC(src->dims());
       auto filterGradDim = ShapeNHWC(filterGrad->dims());
-
+      auto pads = PaddingTLBR(CG->getPads());
       setKernelArg<cl_uint>(kernel, numArgs + 1, CG->getKernel());
       setKernelArg<cl_uint>(kernel, numArgs + 2, CG->getStride());
-      setKernelArg<cl_uint>(kernel, numArgs + 3, CG->getPads()[0]);
+      setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, srcDim);
       setKernelArg(kernel, numArgs + 5, destGradDim);
       setKernelArg(kernel, numArgs + 6, filterGradDim);

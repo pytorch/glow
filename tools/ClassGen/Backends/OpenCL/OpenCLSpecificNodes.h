@@ -22,7 +22,7 @@ BB.newNode("OCLConvolution")
     .addInput("Bias")
     .addMember(MemberType::SizeT, "Kernel")
     .addMember(MemberType::SizeT, "Stride")
-    .addMember(MemberType::SizeT, "Pad")
+    .addMember(MemberType::VectorSizeT, "Pads")
     .addResultFromCtorArg()
     .setDocstring(
         "This is an OpenCL-specific convolution implementation where the "

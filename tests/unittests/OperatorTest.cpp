@@ -2158,19 +2158,27 @@ TEST_P(InterpAndCPU, GroupConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 100000);
 }
 
-TEST_P(InterpAndCPU, NonSquarePaddingConvolution) {
+/// Check non-square padding for convolution. The first conv has non-square
+/// padding, while the second one has zero padding. The second conv's input is
+/// the same as the first one's after-padding input. All other parameters of the
+/// two convs are the same.
+TEST_P(Operator, NonSquarePaddingConvolution) {
   auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
   auto IH = input->getHandle();
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
 
-  auto filter = mod_.createVariable(ElemKind::FloatTy, {2, 2, 2, 1}, "filter");
+  auto filter =
+      mod_.createVariable(ElemKind::FloatTy, {2, 2, 2, 1}, "filter",
+                          VisibilityKind::Public, Variable::TrainKind::None);
   auto FH = filter->getHandle();
   for (size_t i = 0; i < 2 * 2 * 2; i++) {
     FH.raw(i) = pow(2.0, i);
   }
-  auto *zeroBias = mod_.createVariable(ElemKind::FloatTy, {2}, "bias");
+  auto *zeroBias =
+      mod_.createVariable(ElemKind::FloatTy, {2}, "bias",
+                          VisibilityKind::Public, Variable::TrainKind::None);
   zeroBias->getPayload().zero();
 
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 8, 2});
@@ -2182,6 +2190,8 @@ TEST_P(InterpAndCPU, NonSquarePaddingConvolution) {
   EE_.run({}, {});
   Tensor &result = S->getVariable()->getPayload();
 
+  // Create the reference conv operator whose input is the same as the
+  // after-padding-input above.
   auto *input1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 9, 1}, "input1");
   input1->getPayload().zero();
   auto IH1 = input1->getHandle();
@@ -2190,10 +2200,11 @@ TEST_P(InterpAndCPU, NonSquarePaddingConvolution) {
       IH1.at({0, i, j, 0}) = i * 4 + j - 2 + 1;
     }
 
-  CN = F_->createConv("Conv1", input1, filter, zeroBias, outTy, 2, 1,
-                      {0, 0, 0, 0}, 1);
-  S = F_->createSave("save1", CN);
-  EE_.compile(CompilationMode::Infer, F_);
+  Function *refF = mod_.createFunction("mainRef");
+  CN = refF->createConv("Conv1", input1, filter, zeroBias, outTy, 2, 1,
+                        {0, 0, 0, 0}, 1);
+  S = refF->createSave("save1", CN);
+  EE_.compile(CompilationMode::Infer, refF);
   EE_.run({}, {});
   Tensor &result1 = S->getVariable()->getPayload();
 
