@@ -25,6 +25,7 @@ namespace glow {
 /// Interface for benchmarks
 class Benchmark {
 public:
+  virtual ~Benchmark() = default;
   virtual void setup() = 0;
   virtual void run() = 0;
   virtual void teardown() = 0;
