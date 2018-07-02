@@ -865,15 +865,25 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
   mul = F_->createRescaleQuantized("rsMul", mul, rescaleOutTy);
   mul = F_->createSave("saveMul", mul);
 
+  Node *min = F_->createMin("qMin", opOutTy, LHS, RHS);
+  min = F_->createRescaleQuantized("rsMin", min, rescaleOutTy);
+  min = F_->createSave("saveMin", min);
+
+  Node *max = F_->createMax("qMax", opOutTy, LHS, RHS);
+  max = F_->createRescaleQuantized("rsMax", max, rescaleOutTy);
+  max = F_->createSave("saveMax", max);
+
   // All rescales must be fused into arithmetic operations above.
   ::glow::optimize(F_, CompilationMode::Infer);
 
-  EXPECT_EQ(F_->getNodes().size(), 8);
+  EXPECT_EQ(F_->getNodes().size(), 12);
 
   EXPECT_EQ(add->getNthInput(0).getType(), rescaleOutTy);
   EXPECT_EQ(sub->getNthInput(0).getType(), rescaleOutTy);
   EXPECT_EQ(mul->getNthInput(0).getType(), rescaleOutTy);
   EXPECT_EQ(div->getNthInput(0).getType(), rescaleOutTy);
+  EXPECT_EQ(min->getNthInput(0).getType(), rescaleOutTy);
+  EXPECT_EQ(max->getNthInput(0).getType(), rescaleOutTy);
 }
 
 TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
