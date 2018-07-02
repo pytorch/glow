@@ -1399,7 +1399,7 @@ static void optimizeQuantization(Function *F) {
 // Combine the rescale node up into the arithmetic node.
 // Rescale(Arithmetic()) -> Arithmetic().
 // Not all arithmetic nodes support explicit output quantized type.
-// Combine up rescale with add, sub, mul, div.
+// Combine up rescale with Add, Sub, Mul, Div, Min, Max.
 #define COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(NODE_NAME_)                      \
   if (auto *AN = dyn_cast<NODE_NAME_##Node>(RS->getInput())) {                 \
     auto *newAN = F->create##NODE_NAME_(AN->getName(), RS->getType(),          \
@@ -1413,6 +1413,8 @@ static void optimizeQuantization(Function *F) {
       COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(Sub);
       COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(Mul);
       COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(Div);
+      COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(Min);
+      COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(Max);
 #undef COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE
 
       // Combine the rescale node up into the convolution.
@@ -1547,7 +1549,7 @@ static bool sinkRescaleQuantizedNode(Function *F) {
 //   ArithmeticNode(Rescale(X), Rescale(Y)) -> ArithmeticNode(X, Y).
 //   ArithmeticNode(Rescale(X), Y) -> ArithmeticNode(X, Y).
 //   ArithmeticNode(X, Rescale(Y)) -> ArithmeticNode(X, Y).
-// Apply this optimization for Add, Sub, Mul and Div.
+// Apply this optimization for Add, Sub, Mul, Div, Min, Max.
 #define COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(NODE_NAME_)                    \
   if (auto *AN = dyn_cast<NODE_NAME_##Node>(&node)) {                          \
     if (auto *rescale = dyn_cast<RescaleQuantizedNode>(AN->getLHS())) {        \
@@ -1571,6 +1573,8 @@ static bool sinkRescaleQuantizedNode(Function *F) {
     COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Sub);
     COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Mul);
     COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Div);
+    COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Min);
+    COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Max);
 #undef COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE
   }
 

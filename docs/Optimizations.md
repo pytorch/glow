@@ -106,6 +106,8 @@ But in addition to those there are quantization specific optimizations:
       * Sub
       * Mul
       * Div
+      * Min
+      * Max
       * Convolution
       * Splat
 
@@ -113,7 +115,7 @@ But in addition to those there are quantization specific optimizations:
 
     This optimization allows eliminating redundant rescale operations when the next
     operation supports quantized inputs of different scales and offsets, e.g., normal
-    arithmetic operations: Add, Sub, Mul, Div.
+    arithmetic operations: Add, Sub, Mul, Div, Min, Max.
 
   * Sinking RescaleQuantized operator below other operators
 
