@@ -22,6 +22,15 @@ typedef struct {
   cl_uint64_t w; // Width
 } ShapeNCHW;
 
+// The types of elements should be always matching the definitions of
+// PaddingTLBR in Type.h
+typedef struct {
+  cl_uint64_t top;
+  cl_uint64_t left;
+  cl_uint64_t bottom;
+  cl_uint64_t right;
+} PaddingTLBR;
+
 #if defined(cl_khr_int32_base_atomics)
 #pragma OPENCL EXTENSION cl_khr_int32_base_atomics : enable
 #define ATOMICS_32_AVAILABLE
@@ -533,7 +542,7 @@ __kernel void softmaxgradW(__global void *mem,
 __kernel void convolutionK(__global float *dest, __global float *src,
                            __global float *filter, __global float *bias,
                            cl_uint32_t filterSize, cl_uint32_t stride,
-                           cl_uint32_t pad, ShapeNHWC odim, ShapeNHWC idim,
+                           PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim,
                            ShapeNHWC filterDim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
@@ -541,8 +550,8 @@ __kernel void convolutionK(__global float *dest, __global float *src,
 
   typedef int ssize_t;
   // For each convolution 'jump' in the input tensor:
-  ssize_t x = -(ssize_t)pad + ax * stride;
-  ssize_t y = -(ssize_t)pad + ay * stride;
+  ssize_t x = -(ssize_t)pads.top + ax * stride;
+  ssize_t y = -(ssize_t)pads.left + ay * stride;
 
   // For each input in the batch:
   for (size_t n = 0; n < idim.n; n++) {
@@ -575,10 +584,10 @@ __kernel void convolutionK(__global float *dest, __global float *src,
 __kernel void convolutionW(__global void *mem, cl_uint32_t dest,
                            cl_uint32_t src, cl_uint32_t filter,
                            cl_uint32_t bias, cl_uint32_t filterSize,
-                           cl_uint32_t stride, cl_uint32_t pad, ShapeNHWC odim,
+                           cl_uint32_t stride, PaddingTLBR pads, ShapeNHWC odim,
                            ShapeNHWC idim, ShapeNHWC filterDim) {
   convolutionK(&mem[dest], &mem[src], &mem[filter], &mem[bias], filterSize,
-               stride, pad, odim, idim, filterDim);
+               stride, pads, odim, idim, filterDim);
 }
 
 
@@ -587,7 +596,7 @@ __kernel void convolutiongradK(const __global float *inW,
                                const __global float *outG, __global float *inG,
                                __global float *filterG, __global float *biasG,
                                cl_uint32_t filterSize, cl_uint32_t stride,
-                               cl_uint32_t pad, ShapeNHWC inWdims,
+                               PaddingTLBR pads, ShapeNHWC inWdims,
                                ShapeNHWC outGdims, ShapeNHWC filterGdims) {
   // ax and ay are coordinates in the tensor outG.
   size_t ax = get_global_id(0);
@@ -596,8 +605,8 @@ __kernel void convolutiongradK(const __global float *inW,
 
   typedef int ssize_t;
   // For each convolution 'jump' in the input tensor:
-  ssize_t x = -(ssize_t)pad + ax * stride;
-  ssize_t y = -(ssize_t)pad + ay * stride;
+  ssize_t x = -(ssize_t)pads.top + ax * stride;
+  ssize_t y = -(ssize_t)pads.left + ay * stride;
 
   // NHWC format is assumed
 
@@ -637,14 +646,14 @@ __kernel void convolutiongradW(__global void *mem,
                            cl_uint32_t biasGrad,
                            cl_uint32_t filterSize,
                            cl_uint32_t stride,
-                           cl_uint32_t pad,
+                           PaddingTLBR pads,
                            ShapeNHWC srcDim,
                            ShapeNHWC destGradDim,
                            ShapeNHWC filterGradDim) {
    convolutiongradK(&mem[src], &mem[filter],
                     &mem[destGrad], &mem[srcGrad], &mem[filterGrad],
                     &mem[biasGrad],
-                    filterSize, stride, pad, srcDim, destGradDim, filterGradDim);
+                    filterSize, stride, pads, srcDim, destGradDim, filterGradDim);
 }
 
 __kernel void poolmaxK(__global float *dest, __global float *src,

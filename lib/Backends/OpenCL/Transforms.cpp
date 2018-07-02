@@ -25,27 +25,6 @@ using llvm::dyn_cast;
 
 using namespace glow;
 
-/// Optimize regular Convolution nodes (that use NHWC) into an
-/// OCL-backend-specific convolution that uses NCHW.
-static Node *convertConvToOCLConv(ConvolutionNode *CN, Function *F) {
-  // Convert filter and input from NHWC (Glow's default) into NCHW.
-  auto *NI = F->createTranspose("conv.input", CN->getInput(), NHWC2NCHW);
-  auto *NF = F->createTranspose("conv.filter", CN->getFilter(), NHWC2NCHW);
-
-  auto dimsNHWC = ShapeNHWC(CN->getResult().getType()->dims());
-  auto dimsNCHW = {dimsNHWC.n, dimsNHWC.c, dimsNHWC.h, dimsNHWC.w};
-  auto outTy = F->getParent()->uniqueType(ElemKind::FloatTy, dimsNCHW);
-
-  // For OpenCL, we currently only support equal padding.
-  PaddingTLBR pads(CN->getPads());
-  assert(pads.equalPadding() && "OpenCL Conv requires equal padding");
-  auto *NC = F->addNode(new OCLConvolutionNode(CN->getName(), outTy, NI, NF,
-                                               CN->getBias(), CN->getKernel(),
-                                               CN->getStride(), pads.top));
-  auto NR = F->createTranspose("conv.result", NC, NCHW2NHWC);
-  return NR;
-}
-
 /// Perform OpenCL specific post-lowering graph transformation.
 bool OCLBackend::transformPostLowering(Function *F, CompilationMode mode) {
   // NCHW transformation is not supported in training mode yet, because of some
@@ -56,9 +35,7 @@ bool OCLBackend::transformPostLowering(Function *F, CompilationMode mode) {
   bool changed = false;
   for (auto &node : F->getNodes()) {
     if (auto *CN = dyn_cast<ConvolutionNode>(&node)) {
-      // Note: Using OCL-specific convolution conversion here since OCL only
-      // currently supports equal padding.
-      auto *NR = convertConvToOCLConv(CN, F);
+      auto *NR = convertConvToNCHWConv<OCLConvolutionNode>(CN, F);
       NodeValue(&node, 0).replaceAllUsesOfWith(NR);
       changed = true;
       continue;
