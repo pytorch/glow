@@ -50,7 +50,9 @@ public:
   virtual void init() = 0;
 
   /// Save the bundle for a later standalone execution.
-  virtual void save(llvm::StringRef outputDir);
+  virtual void save(llvm::StringRef outputDir) {
+    GLOW_UNREACHABLE("Saving a bundle is not supported by the backend");
+  }
 
   /// Perform a single forward scan of the network, interpreting all of the
   /// instructions.
