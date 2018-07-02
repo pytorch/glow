@@ -596,7 +596,8 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
   EE_.getConfig().batchSize = numSamples;
 
   auto &mod = EE_.getModule();
-  Function *F = mod.createFunction("Gradient descent solution for simple linear regression");
+  Function *F = mod.createFunction(
+      "Gradient descent solution for simple linear regression");
 
   // These m and b are only used to generate training data.
   float referenceM = 3.0;
@@ -1176,7 +1177,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
   EE_.compile(CompilationMode::Train, trainingGradientFunction);
   // Training:
   EE_.runBatch(200, {varMatricesA, varMatricesB, varExpected},
-              {&matricesA, &matricesB, &expected});
+               {&matricesA, &matricesB, &expected});
 
   // Switch to inference mode.
   EE_.compile(CompilationMode::Infer, F);

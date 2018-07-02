@@ -672,8 +672,8 @@ TEST_F(GraphOptz, DCEPublicVars) {
 
 TEST_F(GraphOptz, foldQuantizeIntoVar) {
   auto input = mod_.createVariable(ElemKind::FloatTy, {4}, "input",
-                      VisibilityKind::Private);
-  input->getPayload() = {10, 10 , 10, 10};
+                                   VisibilityKind::Private);
+  input->getPayload() = {10, 10, 10, 10};
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
 
   auto Q = F_->createQuantize("quantize", input, qType);
@@ -686,15 +686,15 @@ TEST_F(GraphOptz, foldQuantizeIntoVar) {
 
   auto quantizedInput = llvm::cast<Variable>(S->getInput());
   auto quantizedValues = quantizedInput->getHandle<int8_t>();
-  for(unsigned i = 0; i < 4; ++i) {
+  for (unsigned i = 0; i < 4; ++i) {
     EXPECT_EQ(5, quantizedValues.raw(i));
   }
 }
 
 TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
   auto input = mod_.createVariable(ElemKind::FloatTy, {4}, "input",
-                      VisibilityKind::Private);
-  input->getPayload() = {10, 10 , 10, 10};
+                                   VisibilityKind::Private);
+  input->getPayload() = {10, 10, 10, 10};
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
 
   auto Q = F_->createQuantize("quantize", input, qType);
@@ -707,15 +707,16 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
   EXPECT_EQ(2, F_->getNodes().size());
 
   // Check original var.
-  for(unsigned i = 0; i < 4; ++i) {
+  for (unsigned i = 0; i < 4; ++i) {
     EXPECT_EQ(10, input->getHandle().raw(i));
   }
- 
+
   // Quantization node was merged into input var.
   EXPECT_EQ(1, clonedF->getNodes().size());
-  auto quantizedInput = llvm::cast<Variable>(clonedF->getNodes().front().getNthInput(0));
+  auto quantizedInput =
+      llvm::cast<Variable>(clonedF->getNodes().front().getNthInput(0));
   auto quantizedValues = quantizedInput->getHandle<int8_t>();
-  for(unsigned i = 0; i < 4; ++i) {
+  for (unsigned i = 0; i < 4; ++i) {
     EXPECT_EQ(5, quantizedValues.raw(i));
   }
 }

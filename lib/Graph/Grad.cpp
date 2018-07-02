@@ -221,9 +221,9 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
     }
 
     TypeRef Ty = conf.momentum > 0 ? V->getType() : G->getParent()->getVoidTy();
-    Variable *gsum =
-        new Variable("gsum", Ty, VisibilityKind::Private,
-                     Variable::TrainKind::Broadcast, 0, G->getParent()->getPRNG());
+    Variable *gsum = new Variable("gsum", Ty, VisibilityKind::Private,
+                                  Variable::TrainKind::Broadcast, 0,
+                                  G->getParent()->getPRNG());
 
     newVars.push_back(gsum);
 

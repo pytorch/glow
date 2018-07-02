@@ -1709,7 +1709,8 @@ void Function::dumpDAG() {
 }
 
 void Function::dumpDAG(llvm::StringRef dotFilename) {
-  llvm::outs() << "Writing dotty graph for Function to: " << dotFilename << '\n';
+  llvm::outs() << "Writing dotty graph for Function to: " << dotFilename
+               << '\n';
 
   FunctionDottyPrinter DP;
 

@@ -28,10 +28,10 @@
 
 using namespace glow;
 
-using llvm::StringRef;
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
+using llvm::StringRef;
 
 namespace {
 /// Perform function specialization with constant arguments taking into account

@@ -28,17 +28,11 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, void *ptr) {
   return os << stringstream.str();
 }
 
-llvm::raw_ostream &outs() {
-  return llvm::outs();
-}
+llvm::raw_ostream &outs() { return llvm::outs(); }
 
-llvm::raw_ostream &errs() {
-  return llvm::errs();
-}
+llvm::raw_ostream &errs() { return llvm::errs(); }
 
-llvm::raw_ostream &dbgs() {
-  return llvm::dbgs();
-}
+llvm::raw_ostream &dbgs() { return llvm::dbgs(); }
 
 std::string escapeDottyString(const std::string &str) {
   std::string out;

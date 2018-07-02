@@ -29,7 +29,6 @@ public:
   ExecutionEngine EE_{GetParam()};
 };
 
-
 TEST(Interpreter, NotImplementedSave) {
   // Interpreter backend does not support a save method.
   // Exercise it and make sure that it fails.
@@ -145,5 +144,6 @@ INSTANTIATE_TEST_CASE_P(JIT, BackendTest, ::testing::Values(BackendKind::CPU));
 #endif
 
 #ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, BackendTest, ::testing::Values(BackendKind::OpenCL));
+INSTANTIATE_TEST_CASE_P(OpenCL, BackendTest,
+                        ::testing::Values(BackendKind::OpenCL));
 #endif

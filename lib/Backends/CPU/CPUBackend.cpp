@@ -33,10 +33,10 @@
 #include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
-using llvm::StringRef;
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
+using llvm::StringRef;
 
 static llvm::cl::opt<std::string> target("target", llvm::cl::desc("target"));
 
