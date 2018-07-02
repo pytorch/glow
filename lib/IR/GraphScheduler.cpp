@@ -49,6 +49,9 @@ protected:
 public:
   Scheduler(Function &G, NodesPtrList &scheduled)
       : G_(G), scheduled_(scheduled) {}
+
+  virtual ~Scheduler() = default;
+
   // Create a linear execution schedule for a graph.
   virtual void schedule() = 0;
 
@@ -181,6 +184,8 @@ class ChildMemSizeBasedScheduler : public Scheduler {
 public:
   ChildMemSizeBasedScheduler(Function &G, NodesPtrList &Schedule)
       : Scheduler(G, Schedule) {}
+
+  ~ChildMemSizeBasedScheduler() override = default;
 
   void schedule() override {
     computeNodeResultsMemorySize();
