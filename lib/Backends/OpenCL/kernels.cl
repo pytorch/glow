@@ -6,20 +6,26 @@ typedef unsigned cl_uint32_t;
 /// This type is always 64 bits.
 typedef unsigned long cl_uint64_t;
 
+#if GLOW_HOST_SIZEOF_SIZE_T == 4
+typedef unsigned glow_size_t;
+#else
+typedef unsigned long glow_size_t;
+#endif
+
 // The types of elements should be always matching the definitions of
 // ShapeNHWC in Type.h
 typedef struct {
-  cl_uint64_t n; // Number of samples
-  cl_uint64_t h; // Height
-  cl_uint64_t w; // Width
-  cl_uint64_t c; // Number of channels
+  glow_size_t n; // Number of samples
+  glow_size_t h; // Height
+  glow_size_t w; // Width
+  glow_size_t c; // Number of channels
 } ShapeNHWC;
 
 typedef struct {
-  cl_uint64_t n; // Number of samples
-  cl_uint64_t c; // Number of channels
-  cl_uint64_t h; // Height
-  cl_uint64_t w; // Width
+  glow_size_t n; // Number of samples
+  glow_size_t c; // Number of channels
+  glow_size_t h; // Height
+  glow_size_t w; // Width
 } ShapeNCHW;
 
 #if defined(cl_khr_int32_base_atomics)
@@ -49,13 +55,13 @@ inline void atomicAdd(volatile __global float *source, const float operand) {
 #endif
 
 /// \returns the index of the element at n, h, w, c.
-size_t getNHWC(ShapeNHWC s, cl_uint32_t n, cl_uint32_t h, cl_uint32_t w,
+glow_size_t getNHWC(ShapeNHWC s, cl_uint32_t n, cl_uint32_t h, cl_uint32_t w,
                cl_uint32_t c) {
   return (n * s.c * s.w * s.h) + (h * s.c * s.w) + (w * s.c) + c;
 }
 
 /// \returns the index of the element at n, c, h, w.
-size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
+glow_size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
                cl_uint32_t w) {
   return (n * s.c * s.w * s.h) + (c * s.h * s.w) + (h * s.w) + w;
 }
@@ -70,7 +76,7 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
   __kernel void name##K##16(__global type * dest, __global type * cond,        \
                             __global type * lhs, __global type * rhs) {        \
     typedef float8 vtype;                                                      \
-    size_t i = get_global_id(0);                                               \
+    glow_size_t i = get_global_id(0);                                               \
     {                                                                          \
       vtype COND = vload8(i * 2, cond);                                        \
       vtype LHS = vload8(i * 2, lhs);                                          \
@@ -94,7 +100,7 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
   __kernel void name##K##8(__global type * dest, __global type * cond,         \
                            __global type * lhs, __global type * rhs) {         \
     typedef float8 vtype;                                                      \
-    size_t i = get_global_id(0);                                               \
+    glow_size_t i = get_global_id(0);                                               \
     vtype COND = vload8(i, cond);                                              \
     vtype LHS = vload8(i, lhs);                                                \
     vtype RHS = vload8(i, rhs);                                                \
@@ -109,7 +115,7 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
   __kernel void name##K(__global type *dest, __global type *cond,              \
                         __global type *lhs, __global type *rhs) {              \
     typedef float vtype;                                                       \
-    size_t i = get_global_id(0);                                               \
+    glow_size_t i = get_global_id(0);                                               \
     vtype COND = cond[i];                                                      \
     vtype RHS = rhs[i];                                                        \
     vtype LHS = lhs[i];                                                        \
@@ -130,7 +136,7 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
   __kernel void name##K##16(__global type * dest, __global type * lhs,         \
                             __global type * rhs) {                             \
     typedef float8 vtype;                                                      \
-    size_t i = get_global_id(0);                                               \
+    glow_size_t i = get_global_id(0);                                               \
     {                                                                          \
       vtype LHS = vload8(i * 2, lhs);                                          \
       vtype RHS = vload8(i * 2, rhs);                                          \
@@ -151,7 +157,7 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
   __kernel void name##K##8(__global type * dest, __global type * lhs,          \
                            __global type * rhs) {                              \
     typedef float8 vtype;                                                      \
-    size_t i = get_global_id(0);                                               \
+    glow_size_t i = get_global_id(0);                                               \
     vtype LHS = vload8(i, lhs);                                                \
     vtype RHS = vload8(i, rhs);                                                \
     vtype VAL = body;                                                          \
@@ -164,7 +170,7 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
   __kernel void name##K(__global type *dest, __global type *lhs,               \
                         __global type *rhs) {                                  \
     typedef float vtype;                                                       \
-    size_t i = get_global_id(0);                                               \
+    glow_size_t i = get_global_id(0);                                               \
     vtype RHS = rhs[i];                                                        \
     vtype LHS = lhs[i];                                                        \
     dest[i] = body;                                                            \
@@ -183,7 +189,7 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
 #define DEFINE_OPENCL_UNARY_DATA_PARALLEL_KERNEL(name, type, body)             \
   __kernel void name##K##16(__global type * dest, __global type * src) {       \
     typedef float8 vtype;                                                      \
-    size_t i = get_global_id(0);                                               \
+    glow_size_t i = get_global_id(0);                                               \
     {                                                                          \
       vtype SRC = vload8(i * 2, src);                                          \
       vtype VAL = body;                                                        \
@@ -201,7 +207,7 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
   }                                                                            \
   __kernel void name##K##8(__global type * dest, __global type * src) {        \
     typedef float8 vtype;                                                      \
-    size_t i = get_global_id(0);                                               \
+    glow_size_t i = get_global_id(0);                                               \
     vtype SRC = vload8(i, src);                                                \
     vtype VAL = body;                                                          \
     vstore8(VAL, i, dest);                                                     \
@@ -212,7 +218,7 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
   }                                                                            \
   __kernel void name##K(__global type *dest, __global type *src) {             \
     typedef float vtype;                                                       \
-    size_t i = get_global_id(0);                                               \
+    glow_size_t i = get_global_id(0);                                               \
     vtype SRC = src[i];                                                        \
     dest[i] = body;                                                            \
   }                                                                            \
@@ -220,6 +226,8 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
                         cl_uint32_t src) {                                     \
     name##K(&mem[dest], &mem[src]);                                            \
   }
+)"
+R"(
 
 /// Macro to define a kernel for data-parallel binary operations with one
 /// immediate operand. The body of the kernel is auto-generated by the macro.
@@ -232,7 +240,7 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
   __kernel void name##K##16(__global type * dest, __global type * src,         \
                             type val) {                                        \
     typedef float8 vtype;                                                      \
-    size_t i = get_global_id(0);                                               \
+    glow_size_t i = get_global_id(0);                                               \
     {                                                                          \
       vtype SRC = vload8(i * 2, src);                                          \
       vtype VAL = body;                                                        \
@@ -251,7 +259,7 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
   __kernel void name##K##8(__global type * dest, __global type * src,          \
                            type val) {                                         \
     typedef float8 vtype;                                                      \
-    size_t i = get_global_id(0);                                               \
+    glow_size_t i = get_global_id(0);                                               \
     vtype SRC = vload8(i, src);                                                \
     vtype VAL = body;                                                          \
     vstore8(VAL, i, dest);                                                     \
@@ -262,7 +270,7 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
   }                                                                            \
   __kernel void name##K(__global type *dest, __global type *src, type val) {   \
     typedef float vtype;                                                       \
-    size_t i = get_global_id(0);                                               \
+    glow_size_t i = get_global_id(0);                                               \
     vtype SRC = src[i];                                                        \
     dest[i] = body;                                                            \
   }                                                                            \
@@ -282,7 +290,7 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
                                                                   body)        \
   __kernel void name##K##16(__global type * dest, type val) {                  \
     typedef type##8 vtype;                                                     \
-    size_t i = get_global_id(0);                                               \
+    glow_size_t i = get_global_id(0);                                               \
     {                                                                          \
       vtype SRC = (vtype)val;                                                  \
       vtype VAL = body;                                                        \
@@ -299,7 +307,7 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
   }                                                                            \
   __kernel void name##K##8(__global type * dest, type val) {                   \
     typedef type##8 vtype;                                                     \
-    size_t i = get_global_id(0);                                               \
+    glow_size_t i = get_global_id(0);                                               \
     vtype SRC = (vtype)val;                                                    \
     vtype VAL = body;                                                          \
     vstore8(VAL, i, dest);                                                     \
@@ -309,7 +317,7 @@ size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
   }                                                                            \
   __kernel void name##K(__global type *dest, type val) {                       \
     typedef type vtype;                                                        \
-    size_t i = get_global_id(0);                                               \
+    glow_size_t i = get_global_id(0);                                               \
     vtype SRC = (vtype)val;                                                    \
     dest[i] = body;                                                            \
   }                                                                            \
@@ -344,7 +352,7 @@ DEFINE_OPENCL_UNARY_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(splat_u, ulong, SRC)
 
 __kernel void elementcmplteK16(__global float *dest, __global float *LHS,
                                __global float *RHS) {
-  size_t i = get_global_id(0);
+  glow_size_t i = get_global_id(0);
   vstore8(convert_float8(islessequal(vload8(i, LHS), vload8(i, RHS))), i, dest);
   vstore8(convert_float8(islessequal(vload8(i + 1, LHS), vload8(i + 1, RHS))),
           i + 1, dest);
@@ -357,7 +365,7 @@ __kernel void elementcmplteW16(__global void *mem, cl_uint32_t dest,
 
 __kernel void elementcmplteK8(__global float *dest, __global float *LHS,
                               __global float *RHS) {
-  size_t i = get_global_id(0);
+  glow_size_t i = get_global_id(0);
   vstore8(convert_float8(islessequal(vload8(i, LHS), vload8(i, RHS))), i, dest);
 }
 
@@ -368,7 +376,7 @@ __kernel void elementcmplteW8(__global void *mem, cl_uint32_t dest,
 
 __kernel void elementcmplteK(__global float *dest, __global float *LHS,
                              __global float *RHS) {
-  size_t i = get_global_id(0);
+  glow_size_t i = get_global_id(0);
   dest[i] = LHS[i] <= RHS[i];
 }
 
@@ -379,9 +387,9 @@ __kernel void elementcmplteW(__global void *mem, cl_uint32_t dest,
 
 __kernel void batchedreduceaddK(__global float *dest, __global float *batch,
                                 cl_uint32_t numSlice, cl_uint32_t sliceSize) {
-  size_t s = get_global_id(0);
+  glow_size_t s = get_global_id(0);
   dest[s] = 0;
-  for (size_t n = 0; n < numSlice; n++) {
+  for (glow_size_t n = 0; n < numSlice; n++) {
     dest[s] += batch[n * sliceSize + s];
   }
 }
@@ -395,8 +403,8 @@ __kernel void batchedreduceaddW(__global void *mem, cl_uint32_t dest,
 __kernel void batchedaddK(__global float *dest, __global float *batch,
                           __global float *slice, cl_uint32_t numSlice,
                           cl_uint32_t sliceSize) {
-  size_t s = get_global_id(0);
-  for (size_t n = 0; n < numSlice; n++) {
+  glow_size_t s = get_global_id(0);
+  for (glow_size_t n = 0; n < numSlice; n++) {
     dest[n * sliceSize + s] = batch[n * sliceSize + s] + slice[s];
   }
 }
@@ -463,18 +471,20 @@ __kernel void matmul_tiled(__global void *mem, cl_uint32_t C_off,
   }
 }
 #undef TILE_SIZE
+)"
+R"(
 
 __kernel void matmulK(__global float *dest, __global float *lhs,
                       __global float *rhs, ShapeNHWC ddim, ShapeNHWC ldim,
                       ShapeNHWC rdim) {
   // For each X in the destination matrix.
-  size_t x = get_global_id(0);
+  glow_size_t x = get_global_id(0);
   // For each Y in the destination matrix.
-  size_t y = get_global_id(1);
+  glow_size_t y = get_global_id(1);
 
   // Perform DOT on the row an column.
   float sum = 0;
-  for (size_t i = 0; i < ldim.h; i++) {
+  for (glow_size_t i = 0; i < ldim.h; i++) {
     sum += lhs[getNHWC(ldim, x, i, 0, 0)] * rhs[getNHWC(rdim, i, y, 0, 0)];
   }
 
@@ -489,18 +499,18 @@ __kernel void matmulW(__global void *mem, cl_uint32_t dest, cl_uint32_t lhs,
 
 __kernel void softmaxK(__global float *dest, __global float *src,
                        __global float *e_cache, cl_uint32_t sliceSize) {
-  size_t i = get_global_id(0);
+  glow_size_t i = get_global_id(0);
   float max_ = src[i * sliceSize];
-  for (size_t j = 0; j < sliceSize; j++) {
+  for (glow_size_t j = 0; j < sliceSize; j++) {
     max_ = max(max_, src[i * sliceSize + j]);
   }
   float sum = 0;
-  for (size_t j = 0; j < sliceSize; j++) {
+  for (glow_size_t j = 0; j < sliceSize; j++) {
     float e = exp(src[i * sliceSize + j] - max_);
     sum += e;
     dest[i * sliceSize + j] = e;
   }
-  for (size_t j = 0; j < sliceSize; j++) {
+  for (glow_size_t j = 0; j < sliceSize; j++) {
     dest[i * sliceSize + j] /= sum;
     if (e_cache)
       e_cache[i * sliceSize + j] = dest[i * sliceSize + j];
@@ -515,8 +525,8 @@ __kernel void softmaxW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
 __kernel void softmaxgradK(__global float *inG, __global float *outW,
                            __global cl_uint64_t *selectedW,
                            cl_uint32_t sliceSize) {
-  size_t i = get_global_id(0);
-  for (size_t j = 0; j < sliceSize; j++) {
+  glow_size_t i = get_global_id(0);
+  for (glow_size_t j = 0; j < sliceSize; j++) {
       float delta = (selectedW[i] == j);
       inG[i*sliceSize + j] = outW[i*sliceSize + j] - delta;
   }
@@ -535,34 +545,34 @@ __kernel void convolutionK(__global float *dest, __global float *src,
                            cl_uint32_t filterSize, cl_uint32_t stride,
                            cl_uint32_t pad, ShapeNHWC odim, ShapeNHWC idim,
                            ShapeNHWC filterDim) {
-  size_t ax = get_global_id(0);
-  size_t ay = get_global_id(1);
-  size_t d = get_global_id(2);
+  glow_size_t ax = get_global_id(0);
+  glow_size_t ay = get_global_id(1);
+  glow_size_t d = get_global_id(2);
 
-  typedef int ssize_t;
+  typedef int sglow_size_t;
   // For each convolution 'jump' in the input tensor:
-  ssize_t x = -(ssize_t)pad + ax * stride;
-  ssize_t y = -(ssize_t)pad + ay * stride;
+  sglow_size_t x = -(sglow_size_t)pad + ax * stride;
+  sglow_size_t y = -(sglow_size_t)pad + ay * stride;
 
   // For each input in the batch:
-  for (size_t n = 0; n < idim.n; n++) {
+  for (glow_size_t n = 0; n < idim.n; n++) {
 
     // For each element in the convolution-filter:
     float sum = 0;
-    for (size_t fx = 0; fx < filterSize; fx++) {
-      for (size_t fy = 0; fy < filterSize; fy++) {
-        ssize_t ox = x + fx;
-        ssize_t oy = y + fy;
+    for (glow_size_t fx = 0; fx < filterSize; fx++) {
+      for (glow_size_t fy = 0; fy < filterSize; fy++) {
+        sglow_size_t ox = x + fx;
+        sglow_size_t oy = y + fy;
 
         // Ignore index access below zero (this is due to padding).
-        if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
-            oy >= (ssize_t)idim.w) {
+        if (ox < 0 || oy < 0 || ox >= (sglow_size_t)idim.h ||
+            oy >= (sglow_size_t)idim.w) {
           continue;
         }
 
-        for (size_t fd = 0; fd < idim.c; fd++) {
+        for (glow_size_t fd = 0; fd < idim.c; fd++) {
           sum += filter[getNHWC(filterDim, d, fx, fy, fd)] *
-                 src[getNHWC(idim, n, (size_t)ox, (size_t)oy, fd)];
+                 src[getNHWC(idim, n, (glow_size_t)ox, (glow_size_t)oy, fd)];
         }
       }
     }
@@ -590,36 +600,36 @@ __kernel void convolutiongradK(const __global float *inW,
                                cl_uint32_t pad, ShapeNHWC inWdims,
                                ShapeNHWC outGdims, ShapeNHWC filterGdims) {
   // ax and ay are coordinates in the tensor outG.
-  size_t ax = get_global_id(0);
-  size_t ay = get_global_id(1);
-  size_t d = get_global_id(2);
+  glow_size_t ax = get_global_id(0);
+  glow_size_t ay = get_global_id(1);
+  glow_size_t d = get_global_id(2);
 
-  typedef int ssize_t;
+  typedef int sglow_size_t;
   // For each convolution 'jump' in the input tensor:
-  ssize_t x = -(ssize_t)pad + ax * stride;
-  ssize_t y = -(ssize_t)pad + ay * stride;
+  sglow_size_t x = -(sglow_size_t)pad + ax * stride;
+  sglow_size_t y = -(sglow_size_t)pad + ay * stride;
 
   // NHWC format is assumed
 
   // For each input in the batch:
-  for (size_t n = 0; n < outGdims.n; n++) {
+  for (glow_size_t n = 0; n < outGdims.n; n++) {
     float grad = outG[getNHWC(outGdims, n, ax, ay, d)];
 
-    for (size_t fx = 0; fx < filterSize; fx++) {
-      for (size_t fy = 0; fy < filterSize; fy++) {
-        ssize_t ox = x + fx;
-        ssize_t oy = y + fy;
+    for (glow_size_t fx = 0; fx < filterSize; fx++) {
+      for (glow_size_t fy = 0; fy < filterSize; fy++) {
+        sglow_size_t ox = x + fx;
+        sglow_size_t oy = y + fy;
 
-        if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims.h ||
-            oy >= (ssize_t)inWdims.w) {
+        if (ox < 0 || oy < 0 || ox >= (sglow_size_t)inWdims.h ||
+            oy >= (sglow_size_t)inWdims.w) {
           continue;
         }
 
-        for (size_t fd = 0; fd < inWdims.c; fd++) {
+        for (glow_size_t fd = 0; fd < inWdims.c; fd++) {
           atomicAdd(&filterG[getNHWC(filterGdims, d, fx, fy, fd)],
-                    inW[getNHWC(inWdims, n, (size_t)ox, (size_t)oy, fd)] *
+                    inW[getNHWC(inWdims, n, (glow_size_t)ox, (glow_size_t)oy, fd)] *
                         grad);
-          atomicAdd(&inG[getNHWC(inWdims, n, (size_t)ox, (size_t)oy, fd)],
+          atomicAdd(&inG[getNHWC(inWdims, n, (glow_size_t)ox, (glow_size_t)oy, fd)],
                     filterW[getNHWC(filterGdims, d, fx, fy, fd)] * grad);
         }
       }
@@ -650,33 +660,33 @@ __kernel void convolutiongradW(__global void *mem,
 __kernel void poolmaxK(__global float *dest, __global float *src,
                        cl_uint32_t filterSize, cl_uint32_t stride,
                        cl_uint32_t pad, ShapeNHWC odim, ShapeNHWC idim) {
-  size_t ax = get_global_id(0);
-  size_t ay = get_global_id(1);
-  size_t d = get_global_id(2);
+  glow_size_t ax = get_global_id(0);
+  glow_size_t ay = get_global_id(1);
+  glow_size_t d = get_global_id(2);
 
-  typedef int ssize_t;
+  typedef int sglow_size_t;
   // For each convolution 'jump' in the input tensor:
-  ssize_t x = -(ssize_t)pad + ax * stride;
-  ssize_t y = -(ssize_t)pad + ay * stride;
+  sglow_size_t x = -(sglow_size_t)pad + ax * stride;
+  sglow_size_t y = -(sglow_size_t)pad + ay * stride;
 
   // For each input in the batch:
-  for (size_t n = 0; n < idim.n; n++) {
+  for (glow_size_t n = 0; n < idim.n; n++) {
     float maxVal = 0;
     bool first = true;
 
     // For each element in the convolution-filter:
-    for (size_t fx = 0; fx < filterSize; fx++) {
-      for (size_t fy = 0; fy < filterSize; fy++) {
-        ssize_t ox = x + fx;
-        ssize_t oy = y + fy;
+    for (glow_size_t fx = 0; fx < filterSize; fx++) {
+      for (glow_size_t fy = 0; fy < filterSize; fy++) {
+        sglow_size_t ox = x + fx;
+        sglow_size_t oy = y + fy;
 
         // Ignore index access below zero (this is due to padding).
-        if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
-            oy >= (ssize_t)idim.w) {
+        if (ox < 0 || oy < 0 || ox >= (sglow_size_t)idim.h ||
+            oy >= (sglow_size_t)idim.w) {
           continue;
         }
 
-        float val = src[getNHWC(idim, n, (size_t)ox, (size_t)oy, d)];
+        float val = src[getNHWC(idim, n, (glow_size_t)ox, (glow_size_t)oy, d)];
 
         if (first || (val >= maxVal)) {
           first = false;
@@ -697,33 +707,33 @@ __kernel void poolmaxW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
 __kernel void oclpoolmaxK(__global float *dest, __global float *src,
                        cl_uint32_t filterSize, cl_uint32_t stride,
                        cl_uint32_t pad, ShapeNCHW odim, ShapeNCHW idim) {
-  size_t ax = get_global_id(0);
-  size_t ay = get_global_id(1);
-  size_t d = get_global_id(2);
+  glow_size_t ax = get_global_id(0);
+  glow_size_t ay = get_global_id(1);
+  glow_size_t d = get_global_id(2);
 
-  typedef int ssize_t;
+  typedef int sglow_size_t;
   // For each convolution 'jump' in the input tensor:
-  ssize_t x = -(ssize_t)pad + ax * stride;
-  ssize_t y = -(ssize_t)pad + ay * stride;
+  sglow_size_t x = -(sglow_size_t)pad + ax * stride;
+  sglow_size_t y = -(sglow_size_t)pad + ay * stride;
 
   // For each input in the batch:
-  for (size_t n = 0; n < idim.n; n++) {
+  for (glow_size_t n = 0; n < idim.n; n++) {
     float maxVal = 0;
     bool first = true;
 
     // For each element in the convolution-filter:
-    for (size_t fx = 0; fx < filterSize; fx++) {
-      for (size_t fy = 0; fy < filterSize; fy++) {
-        ssize_t ox = x + fx;
-        ssize_t oy = y + fy;
+    for (glow_size_t fx = 0; fx < filterSize; fx++) {
+      for (glow_size_t fy = 0; fy < filterSize; fy++) {
+        sglow_size_t ox = x + fx;
+        sglow_size_t oy = y + fy;
 
         // Ignore index access below zero (this is due to padding).
-        if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
-            oy >= (ssize_t)idim.w) {
+        if (ox < 0 || oy < 0 || ox >= (sglow_size_t)idim.h ||
+            oy >= (sglow_size_t)idim.w) {
           continue;
         }
 
-        float val = src[getNCHW(idim, n, d, (size_t)ox, (size_t)oy)];
+        float val = src[getNCHW(idim, n, d, (glow_size_t)ox, (glow_size_t)oy)];
 
         if (first || (val >= maxVal)) {
           first = false;
@@ -745,41 +755,41 @@ __kernel void poolmaxwithxyK(__global float *dest, __global float *src,
                              __global cl_uint64_t *srcXY, cl_uint32_t filterSize,
                              cl_uint32_t stride, cl_uint32_t pad,
                              ShapeNHWC odim, ShapeNHWC idim) {
-  size_t ax = get_global_id(0);
-  size_t ay = get_global_id(1);
-  size_t d = get_global_id(2);
+  glow_size_t ax = get_global_id(0);
+  glow_size_t ay = get_global_id(1);
+  glow_size_t d = get_global_id(2);
 
-  typedef int ssize_t;
+  typedef int sglow_size_t;
   // For each convolution 'jump' in the input tensor:
-  ssize_t x = -(ssize_t)pad + ax * stride;
-  ssize_t y = -(ssize_t)pad + ay * stride;
+  sglow_size_t x = -(sglow_size_t)pad + ax * stride;
+  sglow_size_t y = -(sglow_size_t)pad + ay * stride;
 
   // For each input in the batch:
-  for (size_t n = 0; n < idim.n; n++) {
+  for (glow_size_t n = 0; n < idim.n; n++) {
     float maxVal = 0;
     bool first = true;
-    size_t maxX = x;
-    size_t maxY = y;
+    glow_size_t maxX = x;
+    glow_size_t maxY = y;
 
     // For each element in the convolution-filter:
-    for (size_t fx = 0; fx < filterSize; fx++) {
-      for (size_t fy = 0; fy < filterSize; fy++) {
-        ssize_t ox = x + fx;
-        ssize_t oy = y + fy;
+    for (glow_size_t fx = 0; fx < filterSize; fx++) {
+      for (glow_size_t fy = 0; fy < filterSize; fy++) {
+        sglow_size_t ox = x + fx;
+        sglow_size_t oy = y + fy;
 
         // Ignore index access below zero (this is due to padding).
-        if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
-            oy >= (ssize_t)idim.w) {
+        if (ox < 0 || oy < 0 || ox >= (sglow_size_t)idim.h ||
+            oy >= (sglow_size_t)idim.w) {
           continue;
         }
 
-        float val = src[getNHWC(idim, n, (size_t)ox, (size_t)oy, d)];
+        float val = src[getNHWC(idim, n, (glow_size_t)ox, (glow_size_t)oy, d)];
 
         if (first || (val >= maxVal)) {
           first = false;
           maxVal = val;
-          maxX = (size_t)ox;
-          maxY = (size_t)oy;
+          maxX = (glow_size_t)ox;
+          maxY = (glow_size_t)oy;
         }
       }
     }
@@ -804,24 +814,24 @@ poolmaxwithxygradK(__global float *dest, __global cl_uint64_t *srcXY,
                    __global float *destGrad, __global float *srcGrad,
                    cl_uint32_t filterSize, cl_uint32_t stride, cl_uint32_t pad,
                    ShapeNHWC srcGradDim, ShapeNHWC destGradDim) {
-  size_t n = get_global_id(0);
+  glow_size_t n = get_global_id(0);
 
   // NHWC format is assumed
-  for (size_t z = 0; z < destGradDim.c; z++) {
+  for (glow_size_t z = 0; z < destGradDim.c; z++) {
     // Clear srcGrad
-    for (size_t x = 0; x < srcGradDim.h; x++) {
-      for (size_t y = 0; y < srcGradDim.w; y++) {
+    for (glow_size_t x = 0; x < srcGradDim.h; x++) {
+      for (glow_size_t y = 0; y < srcGradDim.w; y++) {
         srcGrad[getNHWC(srcGradDim, n, x, y, z)] = 0.0;
       }
     }
 
-    for (size_t ax = 0; ax < destGradDim.h; ax++) {
-      for (size_t ay = 0; ay < destGradDim.w; ay++) {
+    for (glow_size_t ax = 0; ax < destGradDim.h; ax++) {
+      for (glow_size_t ay = 0; ay < destGradDim.w; ay++) {
         // For the x and y argmax's, we use a 5-dimensional
         // tensor whose fifth dimension has size 2:
-        size_t ix = 2 * getNHWC(destGradDim, n, ax, ay, z);
-        size_t maxX = srcXY[ix];
-        size_t maxY = srcXY[ix + 1];
+        glow_size_t ix = 2 * getNHWC(destGradDim, n, ax, ay, z);
+        glow_size_t maxX = srcXY[ix];
+        glow_size_t maxY = srcXY[ix + 1];
 
         float df = destGrad[getNHWC(destGradDim, n, ax, ay, z)];
         srcGrad[getNHWC(srcGradDim, n, maxX, maxY, z)] += df;
@@ -842,38 +852,40 @@ __kernel void poolmaxwithxygradW(__global void *mem, cl_uint32_t dest,
 __kernel void poolavgK(__global float *dest, __global float *src,
                        cl_uint32_t filterSize, cl_uint32_t stride,
                        cl_uint32_t pad, ShapeNHWC odim, ShapeNHWC idim) {
-  size_t ax = get_global_id(0);
-  size_t ay = get_global_id(1);
-  size_t d = get_global_id(2);
+  glow_size_t ax = get_global_id(0);
+  glow_size_t ay = get_global_id(1);
+  glow_size_t d = get_global_id(2);
 
-  typedef int ssize_t;
+  typedef int sglow_size_t;
   // For each convolution 'jump' in the input tensor:
-  ssize_t x = -(ssize_t)pad + ax * stride;
-  ssize_t y = -(ssize_t)pad + ay * stride;
+  sglow_size_t x = -(sglow_size_t)pad + ax * stride;
+  sglow_size_t y = -(sglow_size_t)pad + ay * stride;
 
   float filterArea = filterSize * filterSize;
 
   // For each input in the batch:
-  for (size_t n = 0; n < idim.n; n++) {
+  for (glow_size_t n = 0; n < idim.n; n++) {
     float sumVal = 0;
     // For each element in the convolution-filter:
-    for (size_t fx = 0; fx < filterSize; fx++) {
-      for (size_t fy = 0; fy < filterSize; fy++) {
-        ssize_t ox = x + fx;
-        ssize_t oy = y + fy;
+    for (glow_size_t fx = 0; fx < filterSize; fx++) {
+      for (glow_size_t fy = 0; fy < filterSize; fy++) {
+        sglow_size_t ox = x + fx;
+        sglow_size_t oy = y + fy;
 
         // Ignore index access below zero (this is due to padding).
-        if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
-            oy >= (ssize_t)idim.w) {
+        if (ox < 0 || oy < 0 || ox >= (sglow_size_t)idim.h ||
+            oy >= (sglow_size_t)idim.w) {
           continue;
         }
 
-        sumVal += src[getNHWC(idim, n, (size_t)ox, (size_t)oy, d)];
+        sumVal += src[getNHWC(idim, n, (glow_size_t)ox, (glow_size_t)oy, d)];
       }
     }
     dest[getNHWC(odim, n, ax, ay, d)] = sumVal / filterArea;
   } // N
 }
+)"
+R"(
 
 __kernel void poolavgW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
                        cl_uint32_t filterSize, cl_uint32_t stride,
@@ -884,33 +896,33 @@ __kernel void poolavgW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
 __kernel void oclpoolavgK(__global float *dest, __global float *src,
                        cl_uint32_t filterSize, cl_uint32_t stride,
                        cl_uint32_t pad, ShapeNCHW odim, ShapeNCHW idim) {
-  size_t ax = get_global_id(0);
-  size_t ay = get_global_id(1);
-  size_t d = get_global_id(2);
+  glow_size_t ax = get_global_id(0);
+  glow_size_t ay = get_global_id(1);
+  glow_size_t d = get_global_id(2);
 
-  typedef int ssize_t;
+  typedef int sglow_size_t;
   // For each convolution 'jump' in the input tensor:
-  ssize_t x = -(ssize_t)pad + ax * stride;
-  ssize_t y = -(ssize_t)pad + ay * stride;
+  sglow_size_t x = -(sglow_size_t)pad + ax * stride;
+  sglow_size_t y = -(sglow_size_t)pad + ay * stride;
 
   float filterArea = filterSize * filterSize;
 
   // For each input in the batch:
-  for (size_t n = 0; n < idim.n; n++) {
+  for (glow_size_t n = 0; n < idim.n; n++) {
     float sumVal = 0;
     // For each element in the convolution-filter:
-    for (size_t fx = 0; fx < filterSize; fx++) {
-      for (size_t fy = 0; fy < filterSize; fy++) {
-        ssize_t ox = x + fx;
-        ssize_t oy = y + fy;
+    for (glow_size_t fx = 0; fx < filterSize; fx++) {
+      for (glow_size_t fy = 0; fy < filterSize; fy++) {
+        sglow_size_t ox = x + fx;
+        sglow_size_t oy = y + fy;
 
         // Ignore index access below zero (this is due to padding).
-        if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
-            oy >= (ssize_t)idim.w) {
+        if (ox < 0 || oy < 0 || ox >= (sglow_size_t)idim.h ||
+            oy >= (sglow_size_t)idim.w) {
           continue;
         }
 
-        sumVal += src[getNCHW(idim, n, d, (size_t)ox, (size_t)oy)];
+        sumVal += src[getNCHW(idim, n, d, (glow_size_t)ox, (glow_size_t)oy)];
       }
     }
     dest[getNCHW(odim, n, d, ax, ay)] = sumVal / filterArea;
@@ -925,18 +937,18 @@ __kernel void oclpoolavgW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
 
 __kernel void transposeK(__global float *dest, __global float *src,
                          ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC shuffle) {
-  size_t res[4];
-  size_t d0 = get_global_id(0);
-  size_t d1 = get_global_id(1);
+  glow_size_t res[4];
+  glow_size_t d0 = get_global_id(0);
+  glow_size_t d1 = get_global_id(1);
   res[0] = d0;
   res[1] = d1;
-  for (size_t d2 = 0; d2 < idim.w; d2++) {
+  for (glow_size_t d2 = 0; d2 < idim.w; d2++) {
     res[2] = d2;
-    for (size_t d3 = 0; d3 < idim.c; d3++) {
+    for (glow_size_t d3 = 0; d3 < idim.c; d3++) {
       res[3] = d3;
-      size_t dstIdx = getNHWC(odim, res[shuffle.n], res[shuffle.h],
+      glow_size_t dstIdx = getNHWC(odim, res[shuffle.n], res[shuffle.h],
                               res[shuffle.w], res[shuffle.c]);
-      size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
+      glow_size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
       dest[dstIdx] = src[srcIdx];
     }
   }
@@ -950,18 +962,18 @@ __kernel void transposeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
 __kernel void transposeK_u(__global cl_uint64_t *dest,
                            __global cl_uint64_t *src, ShapeNHWC odim,
                            ShapeNHWC idim, ShapeNHWC shuffle) {
-  size_t res[4];
-  size_t d0 = get_global_id(0);
-  size_t d1 = get_global_id(1);
+  glow_size_t res[4];
+  glow_size_t d0 = get_global_id(0);
+  glow_size_t d1 = get_global_id(1);
   res[0] = d0;
   res[1] = d1;
-  for (size_t d2 = 0; d2 < idim.w; d2++) {
+  for (glow_size_t d2 = 0; d2 < idim.w; d2++) {
     res[2] = d2;
-    for (size_t d3 = 0; d3 < idim.c; d3++) {
+    for (glow_size_t d3 = 0; d3 < idim.c; d3++) {
       res[3] = d3;
-      size_t dstIdx = getNHWC(odim, res[shuffle.n], res[shuffle.h],
+      glow_size_t dstIdx = getNHWC(odim, res[shuffle.n], res[shuffle.h],
                               res[shuffle.w], res[shuffle.c]);
-      size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
+      glow_size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
       dest[dstIdx] = src[srcIdx];
     }
   }
@@ -974,26 +986,26 @@ __kernel void transpose_uW(__global void *mem, cl_uint32_t dest, cl_uint32_t src
 
 __kernel void inserttensorK(__global float *dest, __global float *src,
                             ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset,
-                            size_t count, size_t axis) {
-  size_t d0 = get_global_id(0);
-  size_t d1 = get_global_id(1);
-  size_t offset_n = ((odim.n > 1) ? offset.n : 0);
-  size_t offset_h = ((odim.h > 1) ? offset.h : 0);
-  size_t offset_w = ((odim.w > 1) ? offset.w : 0);
-  size_t offset_c = ((odim.c > 1) ? offset.c : 0);
-  for (size_t c = 0; c < count; c++) {
-    size_t count_offset_n = (axis == 0) ? c * idim.n : 0;
-    size_t count_offset_h = (axis == 1) ? c * idim.h : 0;
-    size_t count_offset_w = (axis == 2) ? c * idim.w : 0;
-    size_t count_offset_c = (axis == 3) ? c * idim.c : 0;
-    for (size_t d2 = 0; d2 < idim.w; d2++) {
-      for (size_t d3 = 0; d3 < idim.c; d3++) {
-        size_t r0 = d0 + offset_n + count_offset_n;
-        size_t r1 = d1 + offset_h + count_offset_h;
-        size_t r2 = d2 + offset_w + count_offset_w;
-        size_t r3 = d3 + offset_c + count_offset_c;
-        size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
-        size_t destIdx = getNHWC(odim, r0, r1, r2, r3);
+                            glow_size_t count, glow_size_t axis) {
+  glow_size_t d0 = get_global_id(0);
+  glow_size_t d1 = get_global_id(1);
+  glow_size_t offset_n = ((odim.n > 1) ? offset.n : 0);
+  glow_size_t offset_h = ((odim.h > 1) ? offset.h : 0);
+  glow_size_t offset_w = ((odim.w > 1) ? offset.w : 0);
+  glow_size_t offset_c = ((odim.c > 1) ? offset.c : 0);
+  for (glow_size_t c = 0; c < count; c++) {
+    glow_size_t count_offset_n = (axis == 0) ? c * idim.n : 0;
+    glow_size_t count_offset_h = (axis == 1) ? c * idim.h : 0;
+    glow_size_t count_offset_w = (axis == 2) ? c * idim.w : 0;
+    glow_size_t count_offset_c = (axis == 3) ? c * idim.c : 0;
+    for (glow_size_t d2 = 0; d2 < idim.w; d2++) {
+      for (glow_size_t d3 = 0; d3 < idim.c; d3++) {
+        glow_size_t r0 = d0 + offset_n + count_offset_n;
+        glow_size_t r1 = d1 + offset_h + count_offset_h;
+        glow_size_t r2 = d2 + offset_w + count_offset_w;
+        glow_size_t r3 = d3 + offset_c + count_offset_c;
+        glow_size_t srcIdx = getNHWC(idim, d0, d1, d2, d3);
+        glow_size_t destIdx = getNHWC(odim, r0, r1, r2, r3);
         dest[destIdx] = src[srcIdx];
       }
     }
@@ -1002,24 +1014,24 @@ __kernel void inserttensorK(__global float *dest, __global float *src,
 
 __kernel void inserttensorW(__global void *mem, cl_uint32_t dest,
                             cl_uint32_t src, ShapeNHWC odim, ShapeNHWC idim,
-                            ShapeNHWC offset, size_t count, size_t axis) {
+                            ShapeNHWC offset, glow_size_t count, glow_size_t axis) {
   inserttensorK(&mem[dest], &mem[src], odim, idim, offset, count, axis);
 }
 
 __kernel void extracttensorK(__global float *dest, __global float *src,
                              ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset) {
-  size_t d0 = get_global_id(0);
-  size_t d1 = get_global_id(1);
-  size_t offset_w = ((odim.w > 1) ? offset.w : 0);
-  size_t offset_c = ((odim.c > 1) ? offset.c : 0);
-  for (size_t d2 = 0; d2 < odim.w; d2++) {
-    for (size_t d3 = 0; d3 < odim.c; d3++) {
-      size_t r0 = d0 + offset.n;
-      size_t r1 = d1 + offset.h;
-      size_t r2 = d2 + offset_w;
-      size_t r3 = d3 + offset_c;
-      size_t destIdx = getNHWC(odim, d0, d1, d2, d3);
-      size_t srcIdx = getNHWC(idim, r0, r1, r2, r3);
+  glow_size_t d0 = get_global_id(0);
+  glow_size_t d1 = get_global_id(1);
+  glow_size_t offset_w = ((odim.w > 1) ? offset.w : 0);
+  glow_size_t offset_c = ((odim.c > 1) ? offset.c : 0);
+  for (glow_size_t d2 = 0; d2 < odim.w; d2++) {
+    for (glow_size_t d3 = 0; d3 < odim.c; d3++) {
+      glow_size_t r0 = d0 + offset.n;
+      glow_size_t r1 = d1 + offset.h;
+      glow_size_t r2 = d2 + offset_w;
+      glow_size_t r3 = d3 + offset_c;
+      glow_size_t destIdx = getNHWC(odim, d0, d1, d2, d3);
+      glow_size_t srcIdx = getNHWC(idim, r0, r1, r2, r3);
       dest[destIdx] = src[srcIdx];
     }
   }

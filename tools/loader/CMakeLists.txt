@@ -10,3 +10,7 @@ target_link_libraries(image-classifier
                         ExecutionEngine
                         IR
                         Quantization)
+
+target_include_directories(image-classifier
+                           PRIVATE
+                           ${PROTOBUF_INCLUDE_DIRS})

@@ -1,3 +1,9 @@
+if (MSVC)
+  include_directories(${CMAKE_CURRENT_LIST_DIR}/../../../../utils/unittest/googletest/include
+                      ${CMAKE_CURRENT_LIST_DIR}/../../../../utils/unittest/googletest
+                      ${CMAKE_CURRENT_LIST_DIR}/../../../../utils/unittest/googlemock/include
+                      ${CMAKE_CURRENT_LIST_DIR}/../../../../utils/unittest/googlemock)
+endif()
 add_library(testMain
             testMain.cpp)
 target_link_libraries(testMain
@@ -201,4 +207,4 @@ LIST(APPEND UNOPT_TESTS
        ./tests/graphGradTest -optimize-ir=false)
 
 add_custom_target(test_unopt ${UNOPT_TESTS}
-                  WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+                  WORKING_DIRECTORY ${GLOW_BINARY_DIR})

@@ -23,6 +23,21 @@
 #include <iostream>
 #include <sstream>
 
+#ifdef _MSC_VER
+/*
+ * Microsoft Visual C/C++ Compiler doesn't support for VLA, using _alloca
+ * instead.
+ */
+extern "C" void *__cdecl _alloca(size_t _Size);
+#define GLOW_VLA(type, name, size)                                             \
+  type *name = (type *)(_alloca(sizeof(type) * size))
+
+#endif /* _MSC_VER */
+
+#ifndef GLOW_VLA
+#define GLOW_VLA(type, name, size) type name[size]
+#endif /* !GLOW_VLA */
+
 namespace glow {
 
 /// Convert the ptr \p ptr into an ascii representation in the format "0xFFF..."

@@ -188,7 +188,7 @@ void libjit_matmul_inner(int m, int n, int k, const float *a, int lda,
   // perfectly-tiled portion, which we handly with a 4x16 dot-product kernel.
   // The ragged edges are (ideally) less critical, so we handle them with a call
   // to a general matrix-multiplication for odd sizes.
-  float packedA[m * k] __attribute__((aligned(64)));
+  LIBJIT_VLA(float16, packedA, m * k);
   if (pack) {
     pack_matrix_a<regsA>(m, k, &A(0, 0), lda, packedA);
   }
@@ -222,10 +222,10 @@ void libjit_matmul_inner(int m, int n, int k, const float *a, int lda,
 /// \p lda, \p ldb, and \p ldc are the leading dimensions of A, B, and C,
 /// respectively.
 template <bool pack>
-void __attribute__((noinline))
+void LIBJIT_NOINLINE
 libjit_matmul_outer(size_t m, size_t n, size_t k, const float *a, size_t lda,
                     const float *b, size_t ldb, float *c, size_t ldc) {
-  float packedB[kc * nc] __attribute__((aligned(64)));
+  float16 packedB[kc * nc];
 
   for (size_t p = 0; p < k; p += kc) {
     size_t pb = MIN(k - p, kc);
