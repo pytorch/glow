@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_BACKENDS_JIT_LLVMIRGEN_H
-#define GLOW_BACKENDS_JIT_LLVMIRGEN_H
+#ifndef GLOW_BACKENDS_CPU_LLVMIRGEN_H
+#define GLOW_BACKENDS_CPU_LLVMIRGEN_H
 
 #include "AllocationsInfo.h"
 #include "glow/Base/Tensor.h"
@@ -259,4 +259,4 @@ public:
 
 } // namespace glow
 
-#endif // GLOW_BACKENDS_JIT_LLVMIRGEN_H
+#endif // GLOW_BACKENDS_CPU_LLVMIRGEN_H

@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_BACKENDS_JIT_ALLOCATIONSINFO_H
-#define GLOW_BACKENDS_JIT_ALLOCATIONSINFO_H
+#ifndef GLOW_BACKENDS_CPU_ALLOCATIONSINFO_H
+#define GLOW_BACKENDS_CPU_ALLOCATIONSINFO_H
 
 #include "llvm/IR/Module.h"
 
@@ -76,4 +76,4 @@ struct AllocationsInfo {
 };
 
 } // namespace glow
-#endif // GLOW_BACKENDS_JIT_ALLOCATIONSINFO_H
+#endif // GLOW_BACKENDS_CPU_ALLOCATIONSINFO_H

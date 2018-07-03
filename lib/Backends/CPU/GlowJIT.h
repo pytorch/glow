@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_BACKENDS_JIT_GLOWJIT_H
-#define GLOW_BACKENDS_JIT_GLOWJIT_H
+#ifndef GLOW_BACKENDS_CPU_GLOWJIT_H
+#define GLOW_BACKENDS_CPU_GLOWJIT_H
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
@@ -64,4 +64,4 @@ public:
 } // end namespace orc
 } // end namespace llvm
 
-#endif // GLOW_BACKENDS_JIT_GLOWJIT_H
+#endif // GLOW_BACKENDS_CPU_GLOWJIT_H
