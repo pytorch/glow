@@ -15,12 +15,72 @@
  */
 
 #include "GlowJIT.h"
+#include "CommandLine.h"
+#include "llvm/Object/SymbolSize.h"
 
 using GlowJIT = llvm::orc::GlowJIT;
 
+namespace {
+/// An option to enabling the dump of the symbol information for the JITted
+/// functions. It dumps e.g. the names of the functions, their start addresses
+/// and their end addresses.
+static llvm::cl::opt<bool> dumpJITSymbolInfo(
+    "dump-jit-symbol-info",
+    llvm::cl::desc("Dump the load addresses and sizes of JITted symbols"),
+    llvm::cl::init(false), llvm::cl::cat(CPUBackendCat));
+
+/// This is a callback that is invoked when an LLVM module is compiled and
+/// loaded by the JIT for execution.
+class NotifyLoadedFunctor {
+  /// JIT object whose events are received by this listener.
+  GlowJIT *jit_;
+  /// Dump symbol information for symbols defined by the object file.
+  void dumpSymbolInfo(const llvm::object::ObjectFile &loadedObj,
+                      const llvm::RuntimeDyld::LoadedObjectInfo &objInfo) {
+    if (!dumpJITSymbolInfo)
+      return;
+    // Dump information about symbols.
+    for (auto symSizePair : llvm::object::computeSymbolSizes(loadedObj)) {
+      auto sym = symSizePair.first;
+      auto size = symSizePair.second;
+      auto symName = sym.getName();
+      // Skip any unnamed symbols.
+      if (!symName || symName->empty())
+        continue;
+      // The relative address of the symbol inside its section.
+      auto symAddr = sym.getAddress();
+      if (!symAddr)
+        continue;
+      // The address the functions was loaded at.
+      auto loadedSymAddress = *symAddr;
+      auto symbolSection = sym.getSection();
+      if (symbolSection) {
+        // Compute the load address of the symbol by adding the section load
+        // address.
+        loadedSymAddress += objInfo.getSectionLoadAddress(*symbolSection.get());
+      }
+      llvm::outs() << llvm::format("Address range: [%12p, %12p]",
+                                   loadedSymAddress, loadedSymAddress + size)
+                   << "\tSymbol: " << *symName << "\n";
+    }
+  }
+
+public:
+  NotifyLoadedFunctor(GlowJIT *jit) : jit_(jit) {}
+  void operator()(llvm::orc::RTDyldObjectLinkingLayerBase::ObjHandleT,
+                  const llvm::orc::RTDyldObjectLinkingLayerBase::ObjectPtr &obj,
+                  const llvm::RuntimeDyld::LoadedObjectInfo &objInfo) {
+    auto loadedObj = obj->getBinary();
+    // Dump symbol information for the JITed symbols.
+    dumpSymbolInfo(*loadedObj, objInfo);
+  }
+};
+} // namespace
+
 GlowJIT::GlowJIT(llvm::TargetMachine &TM)
     : TM_(TM), DL_(TM_.createDataLayout()),
-      objectLayer_([]() { return std::make_shared<SectionMemoryManager>(); }),
+      objectLayer_([]() { return std::make_shared<SectionMemoryManager>(); },
+                   NotifyLoadedFunctor(this)),
       compileLayer_(objectLayer_, SimpleCompiler(TM)) {
   llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
 }
