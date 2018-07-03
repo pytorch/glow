@@ -19,7 +19,7 @@
 #include "glow/Base/Traits.h"
 #include "glow/Base/Type.h"
 #include "glow/Graph/Graph.h"
-#include "glow/IR/UseDef.h"
+#include "glow/Graph/UseDef.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
