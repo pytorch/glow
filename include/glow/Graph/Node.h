@@ -23,7 +23,7 @@
 
 #include "glow/Base/Traits.h"
 #include "glow/Base/Type.h"
-#include "glow/IR/UseDef.h"
+#include "glow/Graph/UseDef.h"
 
 #include <list>
 

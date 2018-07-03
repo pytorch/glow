@@ -18,7 +18,6 @@
 
 #include "glow/Base/Type.h"
 #include "glow/Graph/Nodes.h"
-#include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -27,7 +26,6 @@
 #include "llvm/ADT/ilist_node.h"
 
 #include <list>
-#include <unordered_map>
 #include <vector>
 
 namespace glow {

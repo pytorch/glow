@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_IR_USEDEF_H
-#define GLOW_IR_USEDEF_H
+#ifndef GLOW_GRAPH_USEDEF_H
+#define GLOW_GRAPH_USEDEF_H
 
 #include <list>
 
@@ -66,4 +66,4 @@ public:
 
 } // namespace glow
 
-#endif // GLOW_IR_USEDEF_H
+#endif // GLOW_GRAPH_USEDEF_H
