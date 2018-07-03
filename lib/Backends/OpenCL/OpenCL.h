@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_OPENCL_BACKEND_H
-#define GLOW_OPENCL_BACKEND_H
+#ifndef GLOW_BACKENDS_OPENCL_OPENCL_H
+#define GLOW_BACKENDS_OPENCL_OPENCL_H
 
 #include "glow/Backends/Backend.h"
 #include "glow/Base/Tensor.h"
@@ -174,4 +174,4 @@ private:
 
 } // namespace glow
 
-#endif // GLOW_OPENCL_BACKEND_H
+#endif // GLOW_BACKENDS_OPENCL_OPENCL_H
