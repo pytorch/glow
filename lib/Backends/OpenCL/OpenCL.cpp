@@ -39,10 +39,17 @@ using llvm::isa;
 
 typedef uint32_t cl_size_t;
 
-// This defines the string "SHADER_CODE".
-#include "kernels.cl"
+// This defines the OpenCL kernels.
+const char kernels_cl[] = {
+#include "kernels_cl.h"
+  , 0x00
+};
+
 // This defines kernels for optimized convolutions.
-#include "kernels_fwd_conv.cl"
+const char kernels_fwd_conv_cl[] = {
+#include "kernels_fwd_conv_cl.h"
+  , 0x00
+};
 
 namespace {
 llvm::cl::OptionCategory OpenCLBackendCat("Glow OpenCL Backend Options");
@@ -102,7 +109,7 @@ OCLBackend::OCLBackend(IRFunction *F) : F_(F), allocator_(0xFFFFFFFF) {
 
   err = CL_SUCCESS;
   /// Create the program from the source.
-  createProgram(SHADER_CODE, {}, commands_);
+  createProgram(&kernels_cl[0], {}, commands_);
 }
 
 OCLBackend::~OCLBackend() {
@@ -439,7 +446,7 @@ void OCLBackend::executeConvolution(const OCLConvolutionInst *CC) {
 
   // Generate a tailor-made convolution kernel using the provided options based
   // on the parameters of the current convolution.
-  auto prog = createProgram(FWD_CONV_CODE, options, commands_);
+  auto prog = createProgram(&kernels_fwd_conv_cl[0], options, commands_);
   auto kernel = createKernel("conv_forward_mem", prog);
   setKernelArg(kernel, 0, deviceBuffer_);
   setKernelArg<cl_uint>(kernel, 1, tensors_[input]);
