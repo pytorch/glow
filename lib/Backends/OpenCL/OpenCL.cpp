@@ -201,6 +201,36 @@ void setKernelArg(cl_kernel kernel, unsigned argIdx, T value) {
   GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
 }
 
+/// Set OpenCL \p kernel arguments using the buffer operands of the
+/// instruction \p I. The first of these arguments should be passed to the \p
+/// kernel at index \p nextKernelArgIdx. The \p tensors map provides a mapping
+/// from Values to on-device buffers addresses of these values.
+///
+/// \returns the index of the last set OpenCL kernel argument.
+static size_t
+setKernelArgsForBuffers(cl_kernel kernel, const Instruction &I,
+                        size_t nextKernelArgIdx,
+                        std::unordered_map<const Value *, size_t> &tensors) {
+  // Number of instruction operands.
+  auto numArgs = I.getNumOperands();
+  // The predicate of the instruction if available.
+  Value *predicate = I.hasPredicate() ? I.getPredicate() : nullptr;
+  // The index of the kernel argument to be set.
+  unsigned kernelArgIdx = nextKernelArgIdx;
+  // Go over all operands and pass buffer operands to the kernel.
+  for (unsigned arg = 0; arg < numArgs; arg++) {
+    auto *value = I.getOperand(arg).first;
+    // Ignore predicate operands as they are not supported by the OpenCL backend
+    // yet.
+    if (value == predicate)
+      continue;
+    // The value is a buffer that should be passed as a kernel argument.
+    setKernelArg<cl_uint>(kernel, kernelArgIdx, tensors[value]);
+    kernelArgIdx++;
+  }
+  return kernelArgIdx - 1;
+}
+
 void OCLBackend::fillBuffer(cl_mem buffer, size_t start, size_t len,
                             float value, ElemKind elemKind) {
   auto kernel = createKernel(getKernelName("splat", elemKind));
@@ -516,12 +546,7 @@ void OCLBackend::doForwardPass() {
 
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      unsigned numArgs = I.getNumOperands();
-
-      for (unsigned arg = 0, e = I.getNumOperands(); arg < e; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       if (auto *SI = dyn_cast<SplatInst>(&I)) {
         // Pass the splat as a parameter.
@@ -539,14 +564,8 @@ void OCLBackend::doForwardPass() {
       // Implement Softmax by parallelizing the batch dimension. Each sample in
       // the batch is processed by a different parallel 'thread'.
       cl_kernel kernel = createKernel(kernelName);
-
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       // This is the number of elements for each slice. There are N slices in
       // our batch.
@@ -564,14 +583,8 @@ void OCLBackend::doForwardPass() {
       // Implement Softmax by parallelizing the batch dimension. Each sample in
       // the batch is processed by a different parallel 'thread'.
       cl_kernel kernel = createKernel(kernelName);
-
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       // This is the number of elements for each slice. There are N slices in
       // our batch.
@@ -588,12 +601,7 @@ void OCLBackend::doForwardPass() {
     if (auto *ET = dyn_cast<ExtractTensorInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       // Currently support tensors up to 4 dimensions.
       // TODO: Handle other dimensions.
@@ -622,9 +630,9 @@ void OCLBackend::doForwardPass() {
         assert(false && "Unsupported tensor dimension");
       }
 
-      setKernelArg(kernel, 3, odim);
-      setKernelArg(kernel, 4, idim);
-      setKernelArg(kernel, 5, offset);
+      setKernelArg(kernel, numArgs + 1, odim);
+      setKernelArg(kernel, numArgs + 2, idim);
+      setKernelArg(kernel, numArgs + 3, offset);
       enqueueKernel(commands_, kernel, deviceId_, {odim.n, odim.h},
                     kernelLaunches_);
       continue;
@@ -633,12 +641,7 @@ void OCLBackend::doForwardPass() {
     if (auto *IT = dyn_cast<InsertTensorInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       // Currently support tensors of up to 4 dimensions.
       // TODO: Handle other dimensions.
@@ -666,11 +669,11 @@ void OCLBackend::doForwardPass() {
         assert(false && "Unsupported tensor dimension");
       }
 
-      setKernelArg(kernel, 3, odim);
-      setKernelArg(kernel, 4, idim);
-      setKernelArg(kernel, 5, offset);
-      setKernelArg<cl_uint>(kernel, 6, IT->getCount());
-      setKernelArg<cl_uint>(kernel, 7, IT->getAxis());
+      setKernelArg(kernel, numArgs + 1, odim);
+      setKernelArg(kernel, numArgs + 2, idim);
+      setKernelArg(kernel, numArgs + 3, offset);
+      setKernelArg<cl_uint>(kernel, numArgs + 4, IT->getCount());
+      setKernelArg<cl_uint>(kernel, numArgs + 5, IT->getAxis());
       enqueueKernel(commands_, kernel, deviceId_, {idim.n, idim.h},
                     kernelLaunches_);
       continue;
@@ -691,20 +694,15 @@ void OCLBackend::doForwardPass() {
       cl_kernel kernel =
           createKernel(useTiledMatMul ? "matmul_tiled" : kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       auto ddim = ShapeNHWC::fromXY(BMM->getDest()->getType()->dims());
       auto ldim = ShapeNHWC::fromXY(BMM->getLHS()->getType()->dims());
       auto rdim = ShapeNHWC::fromXY(BMM->getRHS()->getType()->dims());
 
-      setKernelArg(kernel, 4, ddim);
-      setKernelArg(kernel, 5, ldim);
-      setKernelArg(kernel, 6, rdim);
+      setKernelArg(kernel, numArgs + 1, ddim);
+      setKernelArg(kernel, numArgs + 2, ldim);
+      setKernelArg(kernel, numArgs + 3, rdim);
 
       if (useTiledMatMul) {
         std::vector<size_t> local{TILE_DIM, TILE_DIM};
@@ -724,16 +722,11 @@ void OCLBackend::doForwardPass() {
     if (auto *BA = dyn_cast<BatchedAddInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       auto bdim = flattenCdr(BA->getBatch()->dims());
-      setKernelArg<cl_uint>(kernel, 4, bdim.first);
-      setKernelArg<cl_uint>(kernel, 5, bdim.second);
+      setKernelArg<cl_uint>(kernel, numArgs + 1, bdim.first);
+      setKernelArg<cl_uint>(kernel, numArgs + 2, bdim.second);
 
       // Parallelize on each element in the slice.
       enqueueKernel(commands_, kernel, deviceId_, {bdim.second},
@@ -746,16 +739,11 @@ void OCLBackend::doForwardPass() {
 
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       auto bdim = flattenCdr(BRA->getBatch()->dims());
-      setKernelArg<cl_uint>(kernel, 3, bdim.first);
-      setKernelArg<cl_uint>(kernel, 4, bdim.second);
+      setKernelArg<cl_uint>(kernel, numArgs + 1, bdim.first);
+      setKernelArg<cl_uint>(kernel, numArgs + 2, bdim.second);
 
       // Parallelize on each element in the slice.
       enqueueKernel(commands_, kernel, deviceId_, {bdim.second},
@@ -773,22 +761,18 @@ void OCLBackend::doForwardPass() {
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       auto odim = ShapeNHWC(CC->getDest()->getType()->dims());
       auto idim = ShapeNHWC(CC->getSrc()->getType()->dims());
 
-      setKernelArg<cl_uint>(kernel, 5, CC->getKernel());
-      setKernelArg<cl_uint>(kernel, 6, CC->getStride());
-      setKernelArg<cl_uint>(kernel, 7, CC->getPads()[0]);
-      setKernelArg(kernel, 8, odim);
-      setKernelArg(kernel, 9, idim);
-      setKernelArg(kernel, 10, ShapeNHWC(CC->getFilter()->getType()->dims()));
+      setKernelArg<cl_uint>(kernel, numArgs + 1, CC->getKernel());
+      setKernelArg<cl_uint>(kernel, numArgs + 2, CC->getStride());
+      setKernelArg<cl_uint>(kernel, numArgs + 3, CC->getPads()[0]);
+      setKernelArg(kernel, numArgs + 4, odim);
+      setKernelArg(kernel, numArgs + 5, idim);
+      setKernelArg(kernel, numArgs + 6,
+                   ShapeNHWC(CC->getFilter()->getType()->dims()));
 
       // Use a 3D grid where the first dimension is the depth and the second
       // dimension is the slice index in the batch.
@@ -806,12 +790,7 @@ void OCLBackend::doForwardPass() {
       auto *biasGrad = CG->getBiasGrad();
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = CG->getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[CG->getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       auto destGradDim = ShapeNHWC(destGrad->dims());
       auto srcDim = ShapeNHWC(src->dims());
@@ -847,12 +826,7 @@ void OCLBackend::doForwardPass() {
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
@@ -873,12 +847,7 @@ void OCLBackend::doForwardPass() {
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
@@ -897,12 +866,7 @@ void OCLBackend::doForwardPass() {
     if (auto *PMG = dyn_cast<PoolMaxWithXYGradInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       auto destGradDim = ShapeNHWC(PMG->getDestGrad()->dims());
       auto srcGradDim = ShapeNHWC(PMG->getSrcGrad()->dims());
@@ -926,21 +890,16 @@ void OCLBackend::doForwardPass() {
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       auto odim = ShapeNHWC(PA->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PA->getSrc()->getType()->dims());
 
-      setKernelArg<cl_uint>(kernel, 3, PA->getKernel());
-      setKernelArg<cl_uint>(kernel, 4, PA->getStride());
-      setKernelArg<cl_uint>(kernel, 5, PA->getPad());
-      setKernelArg(kernel, 6, odim);
-      setKernelArg(kernel, 7, idim);
+      setKernelArg<cl_uint>(kernel, numArgs + 1, PA->getKernel());
+      setKernelArg<cl_uint>(kernel, numArgs + 2, PA->getStride());
+      setKernelArg<cl_uint>(kernel, numArgs + 3, PA->getPad());
+      setKernelArg(kernel, numArgs + 4, odim);
+      setKernelArg(kernel, numArgs + 5, idim);
 
       enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
                     kernelLaunches_);
@@ -955,12 +914,7 @@ void OCLBackend::doForwardPass() {
 
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       // Temporary hack to support 3-dim transposes.
       // TODO: support any dimensional transposes.
@@ -977,11 +931,11 @@ void OCLBackend::doForwardPass() {
       auto odim = ShapeNHWC(odim_vec);
       auto idim = ShapeNHWC(idim_vec);
 
-      setKernelArg(kernel, 3, odim);
-      setKernelArg(kernel, 4, idim);
+      setKernelArg(kernel, numArgs + 1, odim);
+      setKernelArg(kernel, numArgs + 2, idim);
 
       ShapeNHWC shuff(mask[0], mask[1], mask[2], mask[3]);
-      setKernelArg(kernel, 5, shuff);
+      setKernelArg(kernel, numArgs + 3, shuff);
       enqueueKernel(commands_, kernel, deviceId_, {idim.n, idim.h},
                     kernelLaunches_);
       continue;
@@ -1008,12 +962,7 @@ void OCLBackend::doForwardPass() {
     if (auto *GI = dyn_cast<GatherInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       auto *data = GI->getData();
       size_t dataSliceSize = data->size() / data->dims()[0];
@@ -1029,12 +978,7 @@ void OCLBackend::doForwardPass() {
     if (auto *SAI = dyn_cast<ScatterAssignInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       auto *data = SAI->getData();
       size_t dataSliceSize = data->size() / data->dims()[0];
@@ -1067,21 +1011,16 @@ void OCLBackend::doForwardPass() {
     if (auto PA = dyn_cast<OCLPoolAvgInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       auto odim = ShapeNCHW(PA->getDest()->getType()->dims());
       auto idim = ShapeNCHW(PA->getSrc()->getType()->dims());
 
-      setKernelArg<cl_uint>(kernel, 3, PA->getKernel());
-      setKernelArg<cl_uint>(kernel, 4, PA->getStride());
-      setKernelArg<cl_uint>(kernel, 5, PA->getPad());
-      setKernelArg(kernel, 6, odim);
-      setKernelArg(kernel, 7, idim);
+      setKernelArg<cl_uint>(kernel, numArgs + 1, PA->getKernel());
+      setKernelArg<cl_uint>(kernel, numArgs + 2, PA->getStride());
+      setKernelArg<cl_uint>(kernel, numArgs + 3, PA->getPad());
+      setKernelArg(kernel, numArgs + 4, odim);
+      setKernelArg(kernel, numArgs + 5, idim);
 
       enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
                     kernelLaunches_);
@@ -1091,12 +1030,7 @@ void OCLBackend::doForwardPass() {
     if (auto *PM = dyn_cast<OCLPoolMaxInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-
-      unsigned numArgs = I.getNumOperands();
-      for (unsigned arg = 0; arg < numArgs; arg++) {
-        setKernelArg<cl_uint>(kernel, arg + 1,
-                              tensors_[I.getOperand(arg).first]);
-      }
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       auto odim = ShapeNCHW(PM->getDest()->getType()->dims());
       auto idim = ShapeNCHW(PM->getSrc()->getType()->dims());
