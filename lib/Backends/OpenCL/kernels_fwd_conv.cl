@@ -28,7 +28,6 @@
 // VWN - vector width in dimension N.
 // VWM - vector width in dimension M.
 
-static const char* FWD_CONV_CODE = R"(
 #define Dtype float
 #define Dtype1 float
 #define Dtype2 float2
@@ -319,4 +318,3 @@ conv_forward_mem(__global void *mem, unsigned im_in_offset, unsigned wg_offset,
     }
   }
 }
-)";
