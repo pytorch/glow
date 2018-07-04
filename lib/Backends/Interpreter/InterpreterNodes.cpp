@@ -1204,6 +1204,7 @@ void Interpreter::fwdElementSelectInst(const glow::ElementSelectInst *I) {
 }
 
 void Interpreter::fwdMatMulInst(const glow::MatMulInst *I) {
+  GLOW_ASSERT(I->getNumOperands() == 3 && "MatMulInst should have 3 operands");
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto lhs = getTensor(I->getLHS())->getHandle<int8_t>();
     auto rhs = getTensor(I->getRHS())->getHandle<int8_t>();

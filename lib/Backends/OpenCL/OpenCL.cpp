@@ -693,6 +693,7 @@ void OCLBackend::doForwardPass() {
       setKernelArg(kernel, 0, deviceBuffer_);
 
       unsigned numArgs = I.getNumOperands();
+      GLOW_ASSERT(numArgs == 3 && "MatMulInst should have 3 operands");
       for (unsigned arg = 0; arg < numArgs; arg++) {
         setKernelArg<cl_uint>(kernel, arg + 1,
                               tensors_[I.getOperand(arg).first]);
