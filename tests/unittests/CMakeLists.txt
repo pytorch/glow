@@ -65,6 +65,7 @@ target_link_libraries(MLTest
                         Graph
                         IR
                         ExecutionEngine
+                        Quantization
                         gtest
                         testMain)
 add_glow_test(MLTest ${GLOW_BINARY_DIR}/tests/MLTest)
@@ -76,6 +77,7 @@ target_link_libraries(operatorTest
                         Graph
                         IR
                         ExecutionEngine
+                        Quantization
                         gtest
                         testMain)
 add_glow_test(operatorTest ${GLOW_BINARY_DIR}/tests/operatorTest)

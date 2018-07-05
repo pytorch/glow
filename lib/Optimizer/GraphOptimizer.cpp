@@ -18,7 +18,7 @@
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Optimizer/Optimizer.h"
-#include "glow/Quantization/Quantization.h"
+#include "glow/Quantization/Base/Base.h"
 
 #include "llvm/Support/Casting.h"
 

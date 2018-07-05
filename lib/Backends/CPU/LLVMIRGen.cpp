@@ -22,7 +22,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
-#include "glow/Quantization/Quantization.h"
+#include "glow/Quantization/Base/Base.h"
 
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/IR/LegacyPassManager.h"

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef GLOW_QUANTIZATION_BASE_H
-#define GLOW_QUANTIZATION_BASE_H
+#ifndef GLOW_QUANTIZATION_BASE_BASE_H
+#define GLOW_QUANTIZATION_BASE_BASE_H
 
 #include <cstdlib>
 #include <cassert>
@@ -30,6 +30,28 @@ namespace glow {
 struct TensorQuantizationParams {
   float scale_;
   int32_t offset_;
+};
+
+/// A data structure that represents the 32-bit to 8-bit quantization
+/// scaling operation. This data structure represents the transformation:
+/// (((input >> pre) * scale) + rtn) >> post + offset.
+struct QuantizationTransform32To8 {
+  int pre_;
+  int post_;
+  int scale_;
+  int offset_;
+
+  /// Initializes the transformation based on the conversion formula (above).
+  QuantizationTransform32To8(int pre, int post, int scale, int offset)
+      : pre_(pre), post_(post), scale_(scale), offset_(offset) {}
+
+  /// \returns the scaled integer.
+  int32_t transform(int32_t input) {
+    // The operation x >> y is rounded down to negative infinity. To get to
+    // round-nearest we add (1 << (shift - 1)) to the value prior to shifting.
+    int rtn = (1 << (post_ - 1));
+    return ((((input >> pre_) * scale_) + rtn) >> post_) + offset_;
+  }
 };
 
 namespace quantization {
@@ -51,7 +73,15 @@ template <class SrcTy, class DestTy> DestTy clip(SrcTy in) {
   return std::max<SrcTy>(mn, std::min<SrcTy>(mx, in));
 }
 
-} // quantization
-} // glow
+/// Convert the floating point quantization parameters \p scale and \p offset
+/// into the integer sequence of:
+/// result = ((input >> pre) * scale) >> post + offset.
+/// This scales a 32-bit signed integer word into an 8-bit signed integer.
+/// \returns transformation parameters.
+QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
+                                                    int32_t offset);
 
-#endif 
+} // namespace quantization
+} // namespace glow
+
+#endif // GLOW_QUANTIZATION_BASE_BASE_H

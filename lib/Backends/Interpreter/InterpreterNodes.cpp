@@ -18,6 +18,7 @@
 
 #include "glow/IR/Instrs.h"
 #include "glow/Quantization/Base/Base.h"
+#include "glow/Quantization/Base/Profile.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"

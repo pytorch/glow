@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef GLOW_QUANTIZATION_PROFILE_H
-#define GLOW_QUANTIZATION_PROFILE_H
+#ifndef GLOW_QUANTIZATION_BASE_PROFILE_H
+#define GLOW_QUANTIZATION_BASE_PROFILE_H
 
 #include "glow/Base/Tensor.h"
 
@@ -39,4 +39,4 @@ void generateTensorHistogram(const Handle<float> inputTensor,
 } // namespace quantization
 } // namespace glow
 
-#endif
+#endif // GLOW_QUANTIZATION_BASE_PROFILE_H

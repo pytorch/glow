@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/Quantization/Profile.h"
+#include "glow/Quantization/Base/Profile.h"
 
 #include <cmath>
 
