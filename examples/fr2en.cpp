@@ -343,9 +343,10 @@ void Model::loadDecoder() {
     hidden = createPyTorchGRUCell(F_, relu, hidden, w_ih, b_ih, w_hh, b_hh);
 
     Node *FC = F_->createFullyConnected("decoder.outFC", hidden, out_w, out_b);
-    Node *topK = F_->createTopK("decoder.topK", FC, 1);
+    auto *topK = F_->createTopK("decoder.topK", FC, 1);
 
-    lastWordIdx = F_->createReshape("decoder.reshape", {topK, 1}, {batchSize_});
+    lastWordIdx =
+        F_->createReshape("decoder.reshape", topK->getIndices(), {batchSize_});
     outputs.push_back(lastWordIdx);
   }
 
