@@ -649,8 +649,8 @@ static bool findSlicesThatSpanInput(llvm::ArrayRef<SliceNode *> input,
 
   // Check that the last slice completes the tensor.
   auto startCoor = lastSlice->getStart();
-  auto resDim = lastSlice->getResult()->getType()->dims();
-  auto inDim = lastSlice->getInput()->getType()->dims();
+  auto resDim = lastSlice->getResult().getType()->dims();
+  auto inDim = lastSlice->getInput().getType()->dims();
 
   // Check if for all dimensions, the size of the result tensor plus the start
   // coordinate matches the size of the tensor.
@@ -1124,9 +1124,9 @@ static void optimizeTranspose(Function *F) {
       continue;
     }
     // Create a new variable NV to hold the transposed result.
-    auto *NV = F->getParent()->createVariable(TN->getType(), V->getName(),
-                                              V->getVisibilityKind(),
-                                              V->getTrainKind(), V->getValue());
+    auto *NV = F->getParent()->createVariable(
+        TN->getResult().getType(), V->getName(), V->getVisibilityKind(),
+        V->getTrainKind(), V->getValue());
     // Transpose the value of V into NV.
     genericTranspose(&V->getPayload(), &NV->getPayload(), TN->getShuffle());
     // Rewrite uses of TN to reference NV.
@@ -1224,8 +1224,9 @@ static void optimizeSliceOfSplat(Function *F) {
     auto *splatNode = dyn_cast<SplatNode>(sliceNode->getInput());
     if (!splatNode)
       continue;
-    auto *newSplatNode = F->createSplat(
-        sliceNode->getName(), sliceNode->getType(), splatNode->getValue());
+    auto *newSplatNode =
+        F->createSplat(sliceNode->getName(), sliceNode->getResult().getType(),
+                       splatNode->getValue());
     sliceNode->getResult().replaceAllUsesOfWith(newSplatNode);
   }
 }
@@ -1248,8 +1249,9 @@ static void optimizeReshape(Function *F) {
       // Splat node with more than one use can not be transformed, otherwise
       // we would increase the number of splats, which may lead to increased
       // memory consumption during the execution of the NN model.
-      auto *newSplatNode = F->createSplat(
-          splatNode->getName(), reshapeNode->getType(), splatNode->getValue());
+      auto *newSplatNode = F->createSplat(splatNode->getName(),
+                                          reshapeNode->getResult().getType(),
+                                          splatNode->getValue());
       reshapeNode->getResult().replaceAllUsesOfWith(newSplatNode);
       continue;
     }
@@ -1270,8 +1272,8 @@ static void optimizeQuantizedMaxSplat(Function *F) {
     // it's the case.
     if (auto *MN = dyn_cast<MaxNode>(&node)) {
       if (!node.getType()->isQuantizedType() ||
-          MN->getResult()->getType() != MN->getLHS()->getType() ||
-          MN->getResult()->getType() != MN->getRHS()->getType()) {
+          MN->getResult().getType() != MN->getLHS().getType() ||
+          MN->getResult().getType() != MN->getRHS().getType()) {
         continue;
       }
 
@@ -1324,13 +1326,13 @@ static void optimizeQuantization(Function *F) {
         // Quantize(Dequantize(X)) -> RescaleQuantized(X)
         // If the quantization-dequantization sequence does not change the type
         // then we can simply drop them without adding a requantization node.
-        if (DQ->getInput()->getType() == Q->getType()) {
+        if (DQ->getInput().getType() == Q->getResult().getType()) {
           Q->getResult().replaceAllUsesOfWith(DQ->getInput());
           continue;
         }
 
         auto *RS = F->createRescaleQuantized(Q->getName(), DQ->getInput(),
-                                             Q->getType());
+                                             Q->getResult().getType());
         Q->getResult().replaceAllUsesOfWith(RS);
 
         // We may be able to optimize this rescale node. Remember to visit this
@@ -1349,14 +1351,14 @@ static void optimizeQuantization(Function *F) {
           continue;
         }
         // Create a new variable NV to hold the quantized result.
-        auto *NV = F->getParent()->createVariable(Q->getType(), V->getName(),
-                                                  V->getVisibilityKind(),
-                                                  V->getTrainKind(), 1.0);
+        auto *NV = F->getParent()->createVariable(
+            Q->getResult().getType(), V->getName(), V->getVisibilityKind(),
+            V->getTrainKind(), 1.0);
         // Quantize V into NV.
         auto srcHandle = V->getHandle();
         auto destHandle = NV->getHandle<int8_t>();
-        TensorQuantizationParams params{Q->getType()->getScale(),
-                                        Q->getType()->getOffset()};
+        TensorQuantizationParams params{Q->getResult().getType()->getScale(),
+                                        Q->getResult().getType()->getOffset()};
         for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
           destHandle.raw(i) = quantization::quantize(srcHandle.raw(i), params);
         }
@@ -1374,7 +1376,7 @@ static void optimizeQuantization(Function *F) {
     }
 
     if (auto *RS = dyn_cast<RescaleQuantizedNode>(node)) {
-      if (RS->getInput()->getType() == RS->getType()) {
+      if (RS->getInput().getType() == RS->getResult().getType()) {
         // If rescale does not change the type, then simply drop it.
         RS->getResult().replaceAllUsesOfWith(RS->getInput());
         continue;
@@ -1387,8 +1389,10 @@ static void optimizeQuantization(Function *F) {
         // values that are outside of the range we just moved the truncation to
         // a different location.
         auto name = RS->getName();
-        auto *L = F->createRescaleQuantized(name, MN->getLHS(), RS->getType());
-        auto *R = F->createRescaleQuantized(name, MN->getRHS(), RS->getType());
+        auto *L = F->createRescaleQuantized(name, MN->getLHS(),
+                                            RS->getResult().getType());
+        auto *R = F->createRescaleQuantized(name, MN->getRHS(),
+                                            RS->getResult().getType());
         auto *newMN = F->createMax(MN->getName(), L, R);
         worklist.push_back(L);
         worklist.push_back(R);
@@ -1402,8 +1406,8 @@ static void optimizeQuantization(Function *F) {
 // Combine up rescale with Add, Sub, Mul, Div, Min, Max.
 #define COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(NODE_NAME_)                      \
   if (auto *AN = dyn_cast<NODE_NAME_##Node>(RS->getInput())) {                 \
-    auto *newAN = F->create##NODE_NAME_(AN->getName(), RS->getType(),          \
-                                        AN->getLHS(), AN->getRHS());           \
+    auto *newAN = F->create##NODE_NAME_(                                       \
+        AN->getName(), RS->getResult().getType(), AN->getLHS(), AN->getRHS()); \
     RS->getResult().replaceAllUsesOfWith(newAN);                               \
                                                                                \
     continue;                                                                  \
@@ -1422,10 +1426,10 @@ static void optimizeQuantization(Function *F) {
       if (auto *CN = dyn_cast<ConvolutionNode>(RS->getInput())) {
         // Create the exact same convolution but with a different scaling
         // return type.
-        auto *newCN =
-            F->createConv(CN->getName(), CN->getInput(), CN->getFilter(),
-                          CN->getBias(), RS->getType(), CN->getKernel(),
-                          CN->getStride(), CN->getPads(), CN->getGroup());
+        auto *newCN = F->createConv(
+            CN->getName(), CN->getInput(), CN->getFilter(), CN->getBias(),
+            RS->getResult().getType(), CN->getKernel(), CN->getStride(),
+            CN->getPads(), CN->getGroup());
         RS->getResult().replaceAllUsesOfWith(newCN);
         continue;
       }
@@ -1433,8 +1437,8 @@ static void optimizeQuantization(Function *F) {
       // Merge splat and rescale nodes.
       // Rescale(Splat()) -> Splat()
       if (auto *SP = dyn_cast<SplatNode>(RS->getInput())) {
-        auto *newRS =
-            F->createSplat(SP->getName(), RS->getType(), SP->getValue());
+        auto *newRS = F->createSplat(SP->getName(), RS->getResult().getType(),
+                                     SP->getValue());
 
         worklist.push_back(newRS);
         RS->getResult().replaceAllUsesOfWith(newRS);
@@ -1445,7 +1449,7 @@ static void optimizeQuantization(Function *F) {
       // Rescale(Rescale()) -> Rescale()
       if (auto *RS2 = dyn_cast<RescaleQuantizedNode>(RS->getInput())) {
         auto *newRS = F->createRescaleQuantized(RS->getName(), RS2->getInput(),
-                                                RS->getType());
+                                                RS->getResult().getType());
         worklist.push_back(newRS);
         RS->getResult().replaceAllUsesOfWith(newRS);
         continue;
@@ -1454,8 +1458,8 @@ static void optimizeQuantization(Function *F) {
       // Fold the rescale into the previous quantize.
       // Rescale(Quantize()) -> Quantize()
       if (auto *QN = dyn_cast<QuantizeNode>(RS->getInput())) {
-        auto *newQ =
-            F->createQuantize(QN->getName(), QN->getInput(), RS->getType());
+        auto *newQ = F->createQuantize(QN->getName(), QN->getInput(),
+                                       RS->getResult().getType());
         worklist.push_back(newQ);
         RS->getResult().replaceAllUsesOfWith(newQ);
         continue;
