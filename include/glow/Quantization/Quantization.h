@@ -18,6 +18,7 @@
 #define GLOW_QUANTIZATION_QUANTIZATION_H
 
 #include "glow/Graph/Graph.h"
+#include "glow/Quantization/Base/Base.h"
 
 #include <string>
 #include <tuple>
@@ -26,14 +27,6 @@
 namespace glow {
 
 class ExecutionEngine;
-
-/// Main attributes of a quantized tensor.
-/// Scale and Offset allow quantization of a float tensor and dequantization of
-/// integer tensor back to float one.
-struct TensorQuantizationParams {
-  float scale_;
-  int32_t offset_;
-};
 
 /// Tensor quantization parameters for a given node.
 struct NodeQuantizationInfo {
@@ -96,23 +89,6 @@ generateNodeQuantizationInfos(const Function *F);
 /// \returns transformation parameters.
 QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                                     int32_t offset);
-
-/// Converts floating point value to int8 based on the quantization
-/// parameters \p TQP.
-int8_t quantize(float input, const TensorQuantizationParams &TQP);
-
-/// Converts int8 quantized value back to floating point number based on
-/// the quantization parameters \p TQP.
-float dequantize(int8_t input, const TensorQuantizationParams &TQP);
-
-/// \returns the value \p in as clipped to the range of \p DestTy.
-template <class SrcTy, class DestTy> DestTy clip(SrcTy in) {
-  assert(sizeof(SrcTy) >= sizeof(DestTy) && "Invalid types");
-
-  auto mx = std::numeric_limits<DestTy>::max();
-  auto mn = std::numeric_limits<DestTy>::min();
-  return std::max<SrcTy>(mn, std::min<SrcTy>(mx, in));
-}
 
 /// Quantizes the function \p F into a new unoptimized partially quantized
 /// function based on \p quantizationInfos. This method converts to integer as
