@@ -233,7 +233,7 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
     os << "  unsigned mIndex = 0;\n";
     os << "  for (auto II : get" << mem.second << "()) {\n"
        << "    db.addParam(\"" << mem.second
-       << "\"+std::to_string(mIndex++), *II->getType());\n"
+       << "\"+std::to_string(mIndex++), *II.getType());\n"
        << "  }\n";
   }
 
