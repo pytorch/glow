@@ -347,6 +347,7 @@ unsigned getConvNodeSize(BackendKind kind) {
 // -- enabled for openCL backend.
 TEST(Graph, disableUnrollingGroupConv) {
   unsigned numberOfNodesInterpreter = getConvNodeSize(BackendKind::Interpreter);
+  (void)numberOfNodesInterpreter;
 
 #ifdef GLOW_WITH_CPU
   unsigned numberOfNodesCPU = getConvNodeSize(BackendKind::CPU);
