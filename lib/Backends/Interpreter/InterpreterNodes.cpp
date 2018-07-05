@@ -17,8 +17,7 @@
 #include "Interpreter.h"
 
 #include "glow/IR/Instrs.h"
-#include "glow/Quantization/Profile.h"
-#include "glow/Quantization/Quantization.h"
+#include "glow/Quantization/Base/Base.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"

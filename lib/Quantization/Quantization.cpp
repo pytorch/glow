@@ -222,15 +222,6 @@ generateNodeQuantizationInfos(const Function *F) {
   return quantizationInfos;
 }
 
-int8_t quantize(float input, const TensorQuantizationParams &TQP) {
-  float result = input / TQP.scale_ + TQP.offset_;
-  return quantization::clip<int32_t, int8_t>((int32_t)nearbyintf(result));
-}
-
-float dequantize(int8_t input, const TensorQuantizationParams &TQP) {
-  return TQP.scale_ * (input - TQP.offset_);
-}
-
 /// Quantize all inputs for \p node and return back pointers to the newly
 /// created qunatization nodes.
 static llvm::SmallVector<NodeValue, 6>
