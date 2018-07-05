@@ -16,6 +16,7 @@
 
 #include "GlowJIT.h"
 #include "CommandLine.h"
+#include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/Object/SymbolSize.h"
 
 using GlowJIT = llvm::orc::GlowJIT;
@@ -32,8 +33,9 @@ static llvm::cl::opt<bool> dumpJITSymbolInfo(
 /// This is a callback that is invoked when an LLVM module is compiled and
 /// loaded by the JIT for execution.
 class NotifyLoadedFunctor {
-  /// JIT object whose events are received by this listener.
-  GlowJIT *jit_;
+  /// The listener for debugger events. It is used to provide debuggers with the
+  /// information about JITted code.
+  llvm::JITEventListener *dbgRegistrationListener_;
   /// Dump symbol information for symbols defined by the object file.
   void dumpSymbolInfo(const llvm::object::ObjectFile &loadedObj,
                       const llvm::RuntimeDyld::LoadedObjectInfo &objInfo) {
@@ -66,11 +68,17 @@ class NotifyLoadedFunctor {
   }
 
 public:
-  NotifyLoadedFunctor(GlowJIT *jit) : jit_(jit) {}
+  NotifyLoadedFunctor(GlowJIT *jit)
+      : dbgRegistrationListener_(
+            llvm::JITEventListener::createGDBRegistrationListener()) {}
   void operator()(llvm::orc::RTDyldObjectLinkingLayerBase::ObjHandleT,
                   const llvm::orc::RTDyldObjectLinkingLayerBase::ObjectPtr &obj,
                   const llvm::RuntimeDyld::LoadedObjectInfo &objInfo) {
     auto loadedObj = obj->getBinary();
+    // Inform the debugger about the loaded object file. This should allow for
+    // more complete stack traces under debugger. And even it should even enable
+    // the stepping functionality on platforms supporting it.
+    dbgRegistrationListener_->NotifyObjectEmitted(*loadedObj, objInfo);
     // Dump symbol information for the JITed symbols.
     dumpSymbolInfo(*loadedObj, objInfo);
   }
