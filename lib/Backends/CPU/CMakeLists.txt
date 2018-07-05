@@ -61,7 +61,7 @@ target_link_libraries(CPUBackend
                         CodeGen
                         Graph
                         IR
-                        Quantization
+                        QuantizationBase
                         LLVMAnalysis
                         LLVMCodeGen
                         LLVMCore
