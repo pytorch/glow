@@ -654,12 +654,12 @@ ConcatNode *Function::createConcat(llvm::StringRef name,
                                    llvm::ArrayRef<NodeValue> inputs,
                                    unsigned dimension) {
   for (int i = 1, e = inputs.size(); i < e; i++) {
-    assert(sameSameShapeExceptDim(inputs[i]->getType(), inputs[0]->getType(),
+    assert(sameSameShapeExceptDim(inputs[i].getType(), inputs[0].getType(),
                                   dimension) &&
            "Invalid type");
     (void)sameSameShapeExceptDim;
   }
-  auto inDim = inputs[0]->dims();
+  auto inDim = inputs[0].dims();
 
   ShapeVector shape(inDim.begin(), inDim.end());
 
@@ -667,10 +667,10 @@ ConcatNode *Function::createConcat(llvm::StringRef name,
   // increase the size of the tensor along this dimension.
   shape[dimension] = 0;
   for (auto I : inputs) {
-    shape[dimension] += I->getType()->dims()[dimension];
+    shape[dimension] += I.getType()->dims()[dimension];
   }
 
-  auto NT = getParent()->uniqueTypeWithNewShape(inputs[0]->getType(), shape);
+  auto NT = getParent()->uniqueTypeWithNewShape(inputs[0].getType(), shape);
   std::vector<NodeValue> ops;
   ops.reserve(inputs.size());
   for (auto I : inputs) {
