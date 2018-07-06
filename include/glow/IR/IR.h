@@ -352,6 +352,9 @@ public:
   /// \returns the list of weights.
   WeightVarListTy &getWeights() { return weights_; }
 
+  /// \returns the list of weights.
+  const WeightVarListTy &getWeights() const { return weights_; }
+
   /// Erase the instruction from the function.
   void eraseInstruction(Instruction *I);
 
