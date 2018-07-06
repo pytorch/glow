@@ -24,6 +24,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
 
@@ -274,12 +275,8 @@ private:
   /// represent them in the lower IR.
   VariableMap variableMap_{};
 
-  /// Assign the instruction \p Named in the function a unique legal name.
-  /// Legal names are legal C identifiers in the form: "[a-zA-Z_][a-zA-Z0-9_]*".
-  /// If the instruction does not have any name yet, use the \p suggestion as a
-  /// hint for a name.
-  void nameInstruction(Named *named, llvm::StringRef suggestion,
-                       llvm::StringSet<> &stringTable);
+  /// A list of unique instruction names use by the function.
+  llvm::StringSet<> stringTable_;
 
   /// Perform scheduling on the graph.
   /// \returns computed schedule in the \p Schedule parameter.
@@ -306,6 +303,12 @@ public:
 
   /// \returns a reference to the high-level graph.
   void setGraph(Function *F) { G_ = F; }
+
+  /// \returns a unique legal name that's based on the string \p name.  Legal
+  /// names are legal C identifiers in the form: "[a-zA-Z_][a-zA-Z0-9_]*".
+  llvm::StringRef uniqueName(llvm::StringRef name) {
+    return Module::uniqueName(name, stringTable_);
+  }
 
   /// Verify the correctness of the function.
   void verify() const;
@@ -334,6 +337,7 @@ public:
 
   /// \returns the list of instructions.
   InstListTy &getInstrs() { return instrs_; }
+
   /// \returns the list of instructions.
   const InstListTy &getInstrs() const { return instrs_; }
 
@@ -360,10 +364,6 @@ public:
   /// Moves an instruction belonging to a function before the place described by
   /// \where.
   InstrIterator moveInstruction(Instruction *where, Instruction *I);
-
-  /// Assign the instructions in the function unique legal names.
-  /// Legal names are legal C identifiers in the form: "[a-zA-Z_][a-zA-Z0-9_]*".
-  void nameInstructions();
 };
 
 /// Iterator over inteructions.
