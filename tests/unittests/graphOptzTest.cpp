@@ -735,6 +735,39 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
                            IsSameNodeAddress(Z2)) == F_->getNodes().end());
 }
 
+/// Test the Reshape(Reshape(x)) -> Reshape(x) transformation.
+TEST_F(GraphOptz, ReshapeReshapeOpt) {
+  const size_t shape[] = {10, 20};
+  const size_t reshape1[] = {200, 1};
+  const size_t reshape2[] = {200};
+  Node *input =
+      F_->getParent()->createVariable(ElemKind::FloatTy, shape, "input");
+  auto *R1 = F_->createReshape("reshape1", input, reshape1);
+  auto *R2 = F_->createReshape("reshape2", R1, reshape2);
+  auto *O = F_->createSave("ret", R2);
+
+  // Before optimization, we have 2 Reshapes and a Save.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // After optimization, we expect to see only 1 Reshape and a Save.
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  // Save should have the new Reshape as input.
+  auto *RN = llvm::dyn_cast<ReshapeNode>(O->getInput());
+  ASSERT_TRUE(RN);
+  // The new Reshape should have the same shape as the original second Reshape.
+  EXPECT_TRUE(RN->getType()->dims().equals(reshape2));
+
+  // R1 and R2 should not be in the graph any more; they were replaced by a
+  // single new reshape.
+  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
+                           IsSameNodeAddress(R1)) == F_->getNodes().end());
+  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
+                           IsSameNodeAddress(R2)) == F_->getNodes().end());
+}
+
 TEST_F(GraphOptz, DCEPublicVars) {
   mod_.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input",
                       VisibilityKind::Public);

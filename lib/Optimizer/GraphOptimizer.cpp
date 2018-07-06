@@ -1255,6 +1255,15 @@ static void optimizeReshape(Function *F) {
       reshapeNode->getResult().replaceAllUsesOfWith(newSplatNode);
       continue;
     }
+    // Reshape(Reshape(x)) -> Reshape(x).
+    auto *reshapeNodeInput = dyn_cast<ReshapeNode>(inputNode);
+    if (reshapeNodeInput && reshapeNodeInput->hasOneUse()) {
+      auto *newReshape =
+          F->createReshape(reshapeNode->getName(), reshapeNodeInput->getInput(),
+                           reshapeNode->dims());
+      reshapeNode->getResult().replaceAllUsesOfWith(newReshape);
+      continue;
+    }
   }
 }
 
