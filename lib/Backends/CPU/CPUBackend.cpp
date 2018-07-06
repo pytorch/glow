@@ -48,11 +48,9 @@ CPUBackend::CPUBackend(IRFunction *F)
     : F_(F), irgen_(F_, allocationsInfo_, "") {}
 
 CPUBackend::~CPUBackend() {
-  clear();
+  F_->clear();
   alignedFree(heap_);
 }
-
-void CPUBackend::clear() { F_->clear(); }
 
 //===----------------------------------------------------------------------===//
 //                   Functions for executing code using JIT

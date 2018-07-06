@@ -83,8 +83,6 @@ public:
   ///@{
   ~CPUBackend() override;
 
-  void clear() override;
-
   void init() override;
 
   void save(llvm::StringRef outputDir) override;

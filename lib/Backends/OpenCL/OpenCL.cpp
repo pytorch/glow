@@ -116,7 +116,7 @@ OCLBackend::~OCLBackend() {
     freeDeviceBuffer(deviceBuffer_);
     deviceBuffer_ = nullptr;
   }
-  clear();
+  externalTensors_.clear();
 }
 
 static std::string getKernelName(const char *baseName, ElemKind elemTy) {
@@ -1233,8 +1233,6 @@ void OCLBackend::init() {
   // Copy constant weights just once.
   copyConstantWeightsToDevice();
 }
-
-void OCLBackend::clear() { externalTensors_.clear(); }
 
 Tensor *OCLBackend::getTensor(const Value *v) const {
   assert(externalTensors_.count(v) && "Unknown value");
