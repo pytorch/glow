@@ -66,7 +66,7 @@ class OCLBackend final : public Backend {
     }
   };
   /// The Module that holds the IR. This does not own the module.
-  IRFunction *F_;
+  const IRFunction *F_;
   /// The allocator assigns device memory addresses to the buffers.
   MemoryAllocator allocator_;
   /// Maps values to on-device buffers. This list includes both weights and
@@ -92,7 +92,7 @@ class OCLBackend final : public Backend {
 
 public:
   /// Ctor.
-  explicit OCLBackend(IRFunction *M);
+  explicit OCLBackend(const IRFunction *M);
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
