@@ -48,7 +48,6 @@ CPUBackend::CPUBackend(IRFunction *F)
     : F_(F), irgen_(F_, allocationsInfo_, "") {}
 
 CPUBackend::~CPUBackend() {
-  F_->clear();
   alignedFree(heap_);
 }
 
