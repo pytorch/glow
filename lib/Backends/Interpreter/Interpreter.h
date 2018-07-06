@@ -41,7 +41,7 @@ class Variable;
 /// execute the instructions one at a time.
 class Interpreter final : public Backend {
   /// The Module that holds the IR. This does not own the module.
-  IRFunction *F_;
+  const IRFunction *F_;
   /// Maps values to Tensors, that are owned by this class.
   std::unordered_map<const Value *, Tensor *> tensors_;
 
@@ -50,7 +50,7 @@ class Interpreter final : public Backend {
 
 public:
   /// Ctor.
-  explicit Interpreter(IRFunction *F) : F_(F) {}
+  explicit Interpreter(const IRFunction *F) : F_(F) {}
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
