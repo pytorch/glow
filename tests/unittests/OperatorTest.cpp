@@ -2213,6 +2213,74 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
   EXPECT_TRUE(result.isEqual(result1));
 }
 
+/// Check non-square padding for AveragePool. The first pool op has non-square
+/// padding, while the second one has zero padding. The second pool op's input
+/// is the same as the first one's after-padding input. All other parameters of
+/// the two convs are the same.
+TEST_P(Operator, NonSquarePaddingAveragePool) {
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+  auto *Pool = F_->createPoolAvg("pool", input, 2, 1, {0, 2, 1, 3});
+  auto *S = F_->createSave("save", Pool);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor &result = S->getVariable()->getPayload();
+
+  auto *input1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 9, 1}, "input1");
+  input1->getPayload().zero();
+  auto IH1 = input1->getHandle();
+  for (size_t i = 0; i < 4; i++)
+    for (size_t j = 2; j < 6; j++) {
+      IH1.at({0, i, j, 0}) = i * 4 + j - 2 + 1;
+    }
+
+  Function *refF = mod_.createFunction("mainRef");
+  Pool = refF->createPoolAvg("pool1", input1, 2, 1, 0);
+  S = refF->createSave("save1", Pool);
+  EE_.compile(CompilationMode::Infer, refF);
+  EE_.run({}, {});
+  Tensor &result1 = S->getVariable()->getPayload();
+
+  EXPECT_TRUE(result.isEqual(result1));
+}
+
+/// Check non-square padding for MaxPool. The first pool op has non-square
+/// padding, while the second one has zero padding. The second pool-op's input
+/// is the same as the first one's after-padding input. All other parameters
+/// of the two convs are the same.
+TEST_P(Operator, NonSquarePaddingMaxPool) {
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+  auto *Pool = F_->createPoolMax("pool", input, 2, 1, {0, 2, 1, 3});
+  auto *S = F_->createSave("save", Pool);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor &result = S->getVariable()->getPayload();
+
+  auto *input1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 9, 1}, "input1");
+  input1->getPayload().zero();
+  auto IH1 = input1->getHandle();
+  for (size_t i = 0; i < 4; i++)
+    for (size_t j = 2; j < 6; j++) {
+      IH1.at({0, i, j, 0}) = i * 4 + j - 2 + 1;
+    }
+
+  Function *refF = mod_.createFunction("mainRef");
+  Pool = refF->createPoolMax("pool1", input1, 2, 1, 0);
+  S = refF->createSave("save1", Pool);
+  EE_.compile(CompilationMode::Infer, refF);
+  EE_.run({}, {});
+  Tensor &result1 = S->getVariable()->getPayload();
+
+  EXPECT_TRUE(result.isEqual(result1));
+}
+
 TEST_P(InterpAndCPU, Int8Tanh) {
   constexpr size_t size = 10;
   auto *input = mod_.createVariable(ElemKind::FloatTy, {size}, "input");

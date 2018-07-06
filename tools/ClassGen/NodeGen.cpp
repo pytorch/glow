@@ -78,28 +78,28 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs Convolution using a given Input, Filter, and "
-                    "Bias tensors, as well as provided Kernel, Stride, Pad, "
+                    "Bias tensors, as well as provided Kernel, Stride, Pads, "
                     "and Group.");
 
   BB.newNode("PoolMax")
       .addInput("Input")
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::SizeT, "Pad")
+      .addMember(MemberType::VectorSizeT, "Pads")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs a Max Pool operation on the Input given provided "
-                    "Kernel, Stride, and Pad.");
+                    "Kernel, Stride, and Pads.");
 
   BB.newNode("PoolAvg")
       .addInput("Input")
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::SizeT, "Pad")
+      .addMember(MemberType::VectorSizeT, "Pads")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs an Average Pool operation on the Input given "
-                    "provided Kernel, Stride, and Pad.");
+                    "provided Kernel, Stride, and Pads.");
 
   BB.newNode("FullyConnected")
       .addInput("Input")

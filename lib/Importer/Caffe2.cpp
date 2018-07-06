@@ -64,6 +64,7 @@ static std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
     pads[2] = loadInt(dict.at("pad_b"));
     assert(dict.count("pad_r") && "missing pad_r");
     pads[3] = loadInt(dict.at("pad_r"));
+    return pads;
   }
   // Return default value 0 for pad.
   return {0, 0, 0, 0};
@@ -176,7 +177,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     // Calculate the size and allocate the output buffer.
     ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
-    auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pads);
+    auto outSz =
+        calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
@@ -198,17 +200,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *in = getOrCreateVariableByName(op.input(0));
     int stride = getSizeHW(dict, "stride", 1);
     unsigned kernel = getSizeHW(dict, "kernel", 0);
-    int pad = 0;
-    auto padIt = dict.find("pad");
-    if (padIt != dict.end()) {
-      pad = loadInt(padIt->second);
-    } else {
-      assert(dict.find("pad_l") == dict.end() &&
-             dict.find("pad_r") == dict.end() &&
-             dict.find("pad_t") == dict.end() &&
-             dict.find("pad_b") == dict.end() &&
-             "Use of pad_[lrtb] is currently unsupported.");
-    }
+    std::vector<size_t> pads = getPads(dict);
 
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
 
@@ -221,9 +213,9 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     Node *node = nullptr;
     if (typeName == "MaxPool") {
-      node = G_.createPoolMax(opName, tr, kernel, stride, pad);
+      node = G_.createPoolMax(opName, tr, kernel, stride, pads);
     } else {
-      node = G_.createPoolAvg(opName, tr, kernel, stride, pad);
+      node = G_.createPoolAvg(opName, tr, kernel, stride, pads);
     }
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
 

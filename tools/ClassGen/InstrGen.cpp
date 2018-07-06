@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
       .addOperand("SrcXY", OperandKind::Out)
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::SizeT, "Pad")
+      .addMember(MemberType::VectorSizeT, "Pads")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest", "SrcXY"}, {"Dest", "Src"});
 
@@ -107,7 +107,7 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::SizeT, "Pad")
+      .addMember(MemberType::VectorSizeT, "Pads")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
 
   BB.newInstr("PoolAvg")
@@ -115,7 +115,7 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::SizeT, "Pad")
+      .addMember(MemberType::VectorSizeT, "Pads")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest"}, {"Dest", "Src"});

@@ -156,7 +156,7 @@ public:
       auto *P = cast<PoolMaxNode>(N);
       auto *in = valueForNode(P->getInput());
       auto *V = builder_.createPoolMaxWithXYOp(in, P->getKernel(),
-                                               P->getStride(), P->getPad());
+                                               P->getStride(), P->getPads());
       Value *dest = V->getDest();
       nodeToInstr_[N] = V;
       V->setName(N->getName());
@@ -180,7 +180,7 @@ public:
 
       builder_.createPoolMaxWithXYGradInst(N->getName(), outW, PI->getSrcXY(),
                                            outG, inG, PG->getKernel(),
-                                           PG->getStride(), PG->getPad());
+                                           PG->getStride(), PG->getPads());
       registerIR(PG->getGradOfInputNamedInput(), inG);
       break;
     }
@@ -196,7 +196,7 @@ public:
 
       builder_.createPoolAvgGradInst(N->getName(), outW, outG, inG,
                                      PG->getKernel(), PG->getStride(),
-                                     PG->getPad());
+                                     PG->getPads());
       registerIR(PG->getGradOfInputNamedInput(), inG);
       break;
     }

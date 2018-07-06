@@ -755,7 +755,7 @@ static void optimizePool(Function *F) {
 
       auto *NPL =
           F->createPoolMax(PL->getName(), RL->getInput(), PL->getKernel(),
-                           PL->getStride(), PL->getPad());
+                           PL->getStride(), PL->getPads());
       auto *NRL = F->createRELU(RL->getName(), NPL);
       PL->getResult().replaceAllUsesOfWith(NRL);
       continue;

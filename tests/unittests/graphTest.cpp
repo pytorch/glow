@@ -225,7 +225,7 @@ TEST(Graph, simpleQuant) {
                                  VisibilityKind::Private);
 
   // Calculate the size and allocate the output buffer.
-  auto outSz = calculateConvOutputDims(width, width, kernel, step, pads);
+  auto outSz = calculateConvPoolOutputDims(width, width, kernel, step, pads);
   std::array<size_t, 4> outDims = {{1, outSz.first, outSz.second, 16}};
   auto t = F->getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims, 1.5, 6);
 

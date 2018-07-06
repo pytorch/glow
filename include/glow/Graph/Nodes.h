@@ -127,23 +127,14 @@ public:
 
 using VariableNode = Variable;
 
-/// Calculate the size of the output tensor based on the convolution parameters.
+/// Calculate the size of the output tensor based on the convolution/pooling
+/// parameters.
 inline std::pair<size_t, size_t>
-calculateConvOutputDims(size_t sx, size_t sy, size_t filterSize, size_t stride,
-                        llvm::ArrayRef<size_t> pads) {
+calculateConvPoolOutputDims(size_t sx, size_t sy, size_t filterSize,
+                            size_t stride, llvm::ArrayRef<size_t> pads) {
   PaddingTLBR pdim(pads);
   size_t outsx = ((sx + pdim.top + pdim.bottom - filterSize) / stride + 1);
   size_t outsy = ((sy + pdim.left + pdim.right - filterSize) / stride + 1);
-  return {outsx, outsy};
-}
-
-/// Calculate the size of the output tensor based on the pooling parameters.
-inline std::pair<size_t, size_t> calculatePoolOutputDims(size_t sx, size_t sy,
-                                                         size_t filterSize,
-                                                         size_t stride,
-                                                         size_t pad) {
-  size_t outsx = ((sx + 2 * pad - filterSize) / stride + 1);
-  size_t outsy = ((sy + 2 * pad - filterSize) / stride + 1);
   return {outsx, outsy};
 }
 

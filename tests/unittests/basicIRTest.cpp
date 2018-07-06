@@ -131,7 +131,7 @@ TEST(IR, allInstrs) {
 
     builder.createCopyInst("", I1, I0);
     builder.createConvolutionInst("", I3, I1, F0, B0, 7, 2, {3, 3, 3, 3}, 1);
-    builder.createPoolMaxInst("", I4, I0, 7, 2, 3);
+    builder.createPoolMaxInst("", I4, I0, 7, 2, {3, 3, 3, 3});
     builder.createSigmoidInst("", I1, I0);
     builder.createTanhInst("", I1, I0);
     builder.createSoftMaxInst("", I1, I0);
@@ -155,7 +155,7 @@ TEST(IR, casting) {
     auto *input = bb.createWeightVar(ElemKind::FloatTy, {1, 224, 224, 3});
     auto *res = bb.createAllocActivationInst("sigmoid.res", input->getType());
     auto *sig = bb.createSigmoidInst("sigmoid", res, input);
-    auto *pool = bb.createPoolAvgOp(sig->getDest(), 7, 2, 3);
+    auto *pool = bb.createPoolAvgOp(sig->getDest(), 7, 2, {3, 3, 3, 3});
 
     EXPECT_EQ(isa<PoolAvgInst>(pool), true);
     EXPECT_EQ(isa<PoolAvgInst>(input), false);

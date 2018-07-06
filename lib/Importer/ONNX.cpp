@@ -84,19 +84,6 @@ std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
   return {0, 0, 0, 0};
 }
 
-size_t getPad(const ArgumentDictionaryTy &dict) {
-  if (dict.count("pads")) {
-    return getConstantArrayHead(dict.at("pads"));
-  }
-  if (dict.count("auto_pad")) {
-    auto padStr = loadStr(dict.at("auto_pad"));
-    if (padStr == "VALID")
-      return 0;
-    assert(false && "only auto_pad==VALID is supported");
-  }
-  return 0;
-}
-
 void loadTensor(const onnx::TensorProto &in, Tensor *T) {
   std::vector<size_t> dim;
   for (auto d : in.dims()) {
@@ -249,7 +236,8 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
 
     // Calculate the size and allocate the output buffer.
     ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
-    auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pads);
+    auto outSz =
+        calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
@@ -273,7 +261,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
         dict.count("strides") ? getConstantArrayHead(dict["strides"]) : 1;
     size_t kernel = getConstantArrayHead(dict["kernel_shape"]);
 
-    int pad = getPad(dict);
+    std::vector<size_t> pads = getPads(dict);
 
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
 
@@ -286,9 +274,9 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
 
     Node *node = nullptr;
     if (typeName == "MaxPool") {
-      node = G_.createPoolMax(opName, tr, kernel, stride, pad);
+      node = G_.createPoolMax(opName, tr, kernel, stride, pads);
     } else {
-      node = G_.createPoolAvg(opName, tr, kernel, stride, pad);
+      node = G_.createPoolAvg(opName, tr, kernel, stride, pads);
     }
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
 
@@ -309,9 +297,9 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
                 "For the image, height == weight is required");
 
     size_t kernel = in->dims(0)[2];
-    int pad = getPad(dict);
+    std::vector<size_t> pads = getPads(dict);
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
-    Node *node = G_.createPoolAvg(opName, tr, kernel, stride, pad);
+    Node *node = G_.createPoolAvg(opName, tr, kernel, stride, pads);
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     // Save the outputs:
     for (int i = 0, e = op.output_size(); i < e; i++) {

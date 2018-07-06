@@ -55,13 +55,13 @@ void IRBuilder::deallocateActiveInstrs() {
 //===----------------------------------------------------------------------===//
 //                        High level operators.
 //===----------------------------------------------------------------------===//
-PoolMaxWithXYInst *IRBuilder::createPoolMaxWithXYOp(Value *input, size_t kernel,
-                                                    size_t stride, size_t pad) {
+PoolMaxWithXYInst *
+IRBuilder::createPoolMaxWithXYOp(Value *input, size_t kernel, size_t stride,
+                                 llvm::ArrayRef<size_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
-  assert(idim.w >= kernel && idim.h >= kernel &&
-         "buffer too small for selected stride");
 
-  auto outSz = calculatePoolOutputDims(idim.h, idim.w, kernel, stride, pad);
+  auto outSz =
+      calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
@@ -74,20 +74,20 @@ PoolMaxWithXYInst *IRBuilder::createPoolMaxWithXYOp(Value *input, size_t kernel,
   Value *dest = createAllocActivationInst("pool.res", outTy);
 
   return createPoolMaxWithXYInst("pool", dest, input, srcXY, kernel, stride,
-                                 pad);
+                                 pads);
 }
 PoolAvgInst *IRBuilder::createPoolAvgOp(Value *input, size_t kernel,
-                                        size_t stride, size_t pad) {
+                                        size_t stride,
+                                        llvm::ArrayRef<size_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
-  assert(idim.w >= kernel && idim.h >= kernel &&
-         "buffer too small for selected stride");
 
-  auto outSz = calculatePoolOutputDims(idim.h, idim.w, kernel, stride, pad);
+  auto outSz =
+      calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
   auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
       input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
   Value *dest = createAllocActivationInst("pool.res", outTy);
 
-  return createPoolAvgInst("pool", dest, input, kernel, stride, pad);
+  return createPoolAvgInst("pool", dest, input, kernel, stride, pads);
 }
 
 CrossEntropyLossInst *IRBuilder::createCrossEntropyLossOp(Value *p,

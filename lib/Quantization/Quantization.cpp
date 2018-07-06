@@ -200,7 +200,7 @@ static Node *quantizeNode(Function *F, Node *node,
 
     quantizedNode =
         F->createPoolMax(node->getName(), quantizedInputs[0], P->getKernel(),
-                         P->getStride(), P->getPad());
+                         P->getStride(), P->getPads());
     break;
   }
   case Kinded::Kind::PoolAvgNodeKind: {
@@ -210,7 +210,7 @@ static Node *quantizeNode(Function *F, Node *node,
 
     quantizedNode =
         F->createPoolAvg(node->getName(), quantizedInputs[0], P->getKernel(),
-                         P->getStride(), P->getPad());
+                         P->getStride(), P->getPads());
     break;
   }
 #define CASE_QUANTIZE_NODE(NODE_NAME_)                                         \
