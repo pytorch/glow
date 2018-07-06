@@ -46,7 +46,7 @@ llvm::CallInst *createCall(llvm::IRBuilder<> &builder, llvm::Function *callee,
 
 class CPUBackend final : public Backend {
   /// The Module that holds the glow IR. This does not own the module.
-  IRFunction *F_;
+  const IRFunction *F_;
   /// Information about allocations.
   AllocationsInfo allocationsInfo_;
   /// The LLVM JIT engine. The jit must be initialized after the ctor
@@ -76,7 +76,7 @@ class CPUBackend final : public Backend {
 
 public:
   /// Ctor.
-  explicit CPUBackend(IRFunction *M);
+  explicit CPUBackend(const IRFunction *M);
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.

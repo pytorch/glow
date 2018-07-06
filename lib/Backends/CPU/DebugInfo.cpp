@@ -37,7 +37,7 @@ using llvm::StringRef;
 extern llvm::cl::opt<bool> emitDebugInfo;
 
 void LLVMIRGen::setCurrentDebugLocation(llvm::IRBuilder<> &builder,
-                                        glow::Instruction *I) {
+                                        const glow::Instruction *I) {
   if (!emitDebugInfo)
     return;
   auto instrNum = instrNumbering_->getInstrNumber(I);

@@ -34,7 +34,7 @@ using llvm::dyn_cast;
 using llvm::isa;
 using llvm::StringRef;
 
-void AllocationsInfo::allocateWeightVars(IRFunction *F, bool reuseAddresses) {
+void AllocationsInfo::allocateWeightVars(const IRFunction *F, bool reuseAddresses) {
   // Use two different allocators, because constant weights and mutable weights
   // may use different memory blocks.
   MemoryAllocator constantWeightVarsAllocator(0);
@@ -97,7 +97,7 @@ void AllocationsInfo::allocateWeightVars(IRFunction *F, bool reuseAddresses) {
   });
 }
 
-void AllocationsInfo::allocateActivations(IRFunction *F) {
+void AllocationsInfo::allocateActivations(const IRFunction *F) {
   // Use a memory allocator with no upper bound on how much memory we can
   // allocate.
   MemoryAllocator activationsAllocator(0);
@@ -140,7 +140,7 @@ void AllocationsInfo::allocateActivations(IRFunction *F) {
   });
 }
 
-void AllocationsInfo::allocateTensorViews(IRFunction *F) {
+void AllocationsInfo::allocateTensorViews(const IRFunction *F) {
   for (const auto &I : F->getInstrs()) {
     if (const auto *A = dyn_cast<TensorViewInst>(&I)) {
       auto *viewOrigin = getOrigin(A);
@@ -166,7 +166,7 @@ void AllocationsInfo::allocateTensorViews(IRFunction *F) {
   }
 }
 
-void AllocationsInfo::numberValues(IRFunction *F) {
+void AllocationsInfo::numberValues(const IRFunction *F) {
   size_t valueIdx = 0;
   // Assign numbers to all weights.
   for (auto &v : F->getGraph()->getParent()->getVars()) {
