@@ -178,7 +178,8 @@ private:
     auto &mod = EE_.getModule();
     Variable *result =
         mod.createVariable(ElemKind::FloatTy, {langSize, EMBEDDING_SIZE},
-                           "embedding." + langPrefix.str());
+                           "embedding." + langPrefix.str(),
+                           VisibilityKind::Private, Variable::TrainKind::None);
     loadMatrixFromFile("fr2en/" + langPrefix.str() + "_embedding.bin",
                        result->getPayload());
     return result;
@@ -235,24 +236,31 @@ void Model::loadLanguages() {
 void Model::loadEncoder() {
   auto &mod = EE_.getModule();
   input_ = mod.createVariable(ElemKind::IndexTy, {batchSize_, MAX_LENGTH},
-                              "encoder.inputsentence", VisibilityKind::Public);
-  seqLength_ = mod.createVariable(ElemKind::IndexTy, {batchSize_},
-                                  "encoder.seqLength", VisibilityKind::Public);
+                              "encoder.inputsentence", VisibilityKind::Public,
+                              Variable::TrainKind::None);
+  seqLength_ =
+      mod.createVariable(ElemKind::IndexTy, {batchSize_}, "encoder.seqLength",
+                         VisibilityKind::Public, Variable::TrainKind::None);
 
   Variable *hiddenInit = mod.createVariable(
-      ElemKind::FloatTy, {batchSize_, EMBEDDING_SIZE}, "encoder.hiddenInit");
+      ElemKind::FloatTy, {batchSize_, EMBEDDING_SIZE}, "encoder.hiddenInit",
+      VisibilityKind::Private, Variable::TrainKind::None);
   hiddenInit->getPayload().zero();
 
   Node *hidden = hiddenInit;
 
   Variable *w_ih = mod.createVariable(
-      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "encoder.w_ih");
+      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "encoder.w_ih",
+      VisibilityKind::Private, Variable::TrainKind::None);
   Variable *b_ih =
-      mod.createVariable(ElemKind::FloatTy, {HIDDEN_SIZE}, "encoder.b_ih");
+      mod.createVariable(ElemKind::FloatTy, {HIDDEN_SIZE}, "encoder.b_ih",
+                         VisibilityKind::Private, Variable::TrainKind::None);
   Variable *w_hh = mod.createVariable(
-      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "encoder.w_hh");
+      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "encoder.w_hh",
+      VisibilityKind::Private, Variable::TrainKind::None);
   Variable *b_hh =
-      mod.createVariable(ElemKind::FloatTy, {HIDDEN_SIZE}, "encoder.b_hh");
+      mod.createVariable(ElemKind::FloatTy, {HIDDEN_SIZE}, "encoder.b_hh",
+                         VisibilityKind::Private, Variable::TrainKind::None);
   loadMatrixFromFile("fr2en/encoder_w_ih.bin", w_ih->getPayload());
   loadMatrixFromFile("fr2en/encoder_b_ih.bin", b_ih->getPayload());
   loadMatrixFromFile("fr2en/encoder_w_hh.bin", w_hh->getPayload());
@@ -288,24 +296,30 @@ void Model::loadEncoder() {
 void Model::loadDecoder() {
   auto &mod = EE_.getModule();
   Variable *input =
-      mod.createVariable(ElemKind::IndexTy, {batchSize_}, "decoder.input");
+      mod.createVariable(ElemKind::IndexTy, {batchSize_}, "decoder.input",
+                         VisibilityKind::Private, Variable::TrainKind::None);
   for (size_t i = 0; i < batchSize_; i++) {
     input->getPayload().getHandle<size_t>().at({i}) = en_.word2index_["SOS"];
   }
 
   Variable *w_ih = mod.createVariable(
-      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "decoder.w_ih");
+      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "decoder.w_ih",
+      VisibilityKind::Private, Variable::TrainKind::None);
   Variable *b_ih =
-      mod.createVariable(ElemKind::FloatTy, {HIDDEN_SIZE}, "decoder.b_ih");
+      mod.createVariable(ElemKind::FloatTy, {HIDDEN_SIZE}, "decoder.b_ih",
+                         VisibilityKind::Private, Variable::TrainKind::None);
   Variable *w_hh = mod.createVariable(
-      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "decoder.w_hh");
+      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "decoder.w_hh",
+      VisibilityKind::Private, Variable::TrainKind::None);
   Variable *b_hh =
-      mod.createVariable(ElemKind::FloatTy, {HIDDEN_SIZE}, "decoder.b_hh");
-  Variable *out_w = mod.createVariable(ElemKind::FloatTy,
-                                       {EMBEDDING_SIZE, en_.index2word_.size()},
-                                       "decoder.out_w");
+      mod.createVariable(ElemKind::FloatTy, {HIDDEN_SIZE}, "decoder.b_hh",
+                         VisibilityKind::Private, Variable::TrainKind::None);
+  Variable *out_w = mod.createVariable(
+      ElemKind::FloatTy, {EMBEDDING_SIZE, en_.index2word_.size()},
+      "decoder.out_w", VisibilityKind::Private, Variable::TrainKind::None);
   Variable *out_b = mod.createVariable(
-      ElemKind::FloatTy, {en_.index2word_.size()}, "decoder.out_b");
+      ElemKind::FloatTy, {en_.index2word_.size()}, "decoder.out_b",
+      VisibilityKind::Private, Variable::TrainKind::None);
   loadMatrixFromFile("fr2en/decoder_w_ih.bin", w_ih->getPayload());
   loadMatrixFromFile("fr2en/decoder_b_ih.bin", b_ih->getPayload());
   loadMatrixFromFile("fr2en/decoder_w_hh.bin", w_hh->getPayload());
@@ -340,7 +354,8 @@ void Model::loadDecoder() {
   Node *reshape = F_->createReshape("decoder.output.reshape", concat,
                                     {MAX_LENGTH, batchSize_});
   output_ = mod.createVariable(ElemKind::IndexTy, {MAX_LENGTH, batchSize_},
-                               "decoder.output");
+                               "decoder.output", VisibilityKind::Public,
+                               Variable::TrainKind::None);
   F_->createSave("decoder.output", reshape, output_);
 }
 
