@@ -470,17 +470,6 @@ void Instruction::dumpOperands(llvm::raw_ostream &os) const {
   }
 }
 
-void IRFunction::nameInstruction(Named *named, llvm::StringRef suggestion,
-                                 llvm::StringSet<> &stringTable) {
-  // Use the first few letters of the value as the initial name.
-  if (!named->hasName()) {
-    named->setName(suggestion.slice(0, 4));
-  }
-
-  std::string tempName = Module::uniqueName(named->getName(), stringTable);
-  named->setName(tempName);
-}
-
 IRFunction::IRFunction(Function *G) : G_(G) {}
 
 static bool hasResultValue(const Instruction *I) {
@@ -488,22 +477,9 @@ static bool hasResultValue(const Instruction *I) {
          I->getKind() == Instruction::Kind::TensorViewInstKind;
 }
 
-void IRFunction::nameInstructions() {
-  /// Stores a list of unique instruction names that were used by the IRFunction
-  /// at some point.
-  llvm::StringSet<> uniqueNames;
-  for (auto &v : weights_) {
-    nameInstruction(v, v->getKindName(), uniqueNames);
-  }
-  for (auto &I : instrs_) {
-    nameInstruction(&I, I.getKindName(), uniqueNames);
-  }
-}
-
 void IRFunction::dump() { dump(llvm::outs()); }
 
 void IRFunction::dump(llvm::raw_ostream &OS) {
-  nameInstructions();
   InstructionNumbering InstrNumbering(*this);
   // Print all of the variables:
   std::string s;

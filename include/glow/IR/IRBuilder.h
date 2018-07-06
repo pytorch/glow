@@ -32,6 +32,12 @@ class IRBuilder {
   /// The function that we are building.
   IRFunction *F_;
 
+  /// \returns a unique legal name that's based on the string \p name.  Legal
+  /// names are legal C identifiers in the form: "[a-zA-Z_][a-zA-Z0-9_]*".
+  llvm::StringRef uniqueName(llvm::StringRef name) {
+    return F_->uniqueName(name);
+  }
+
 public:
   explicit IRBuilder(IRFunction *F) : F_(F) {}
 

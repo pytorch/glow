@@ -173,7 +173,7 @@ WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
   assert(!(m == WeightVar::MutabilityKind::Constant &&
            v == VisibilityKind::Public) &&
          "Cannot have a Constant Public Variable.");
-  auto *A = new WeightVar(name, T, m, v);
+  auto *A = new WeightVar(uniqueName(name), T, m, v);
   F_->getWeights().push_back(A);
   A->setName(name);
   return A;

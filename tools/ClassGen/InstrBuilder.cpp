@@ -84,7 +84,7 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
 
   // Initialize the base clases:
   osB << ") {\n";
-  osB << "  auto *A = new " << name_ << "Inst(name ";
+  osB << "  auto *A = new " << name_ << "Inst(uniqueName(name)";
 
   // The operands of the instruction class:
   for (const auto &op : operands_) {

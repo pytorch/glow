@@ -229,7 +229,6 @@ void LLVMIRGen::initDebugInfo() {
 #endif
     return;
   }
-  F_->nameInstructions();
   // Remove any existing debug info version flags from the module to
   // avoid possible conflicts, which may happen if libjit was compiled
   // using an older version of Clang which uses the old debug info format.
