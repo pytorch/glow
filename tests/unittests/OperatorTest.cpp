@@ -1825,7 +1825,7 @@ TEST_P(Operator, simpleCmpSelectPredication) {
     cnt = F_->createSub("sub1", cnt, const1);
     Node *pred = F_->createCmpLTE("cmp", const0, cnt);
 
-    Node *const2 = F_->createSplat("const2", data->getType(), 2.0);
+    Node *const2 = F_->createSplat("const2", data->getType(0), 2.0);
     Node *newData = F_->createMul("mul2x", data, const2);
 
     data = F_->createSelect("select", pred, newData, data);

@@ -425,7 +425,7 @@ static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
          "Invalid filter dims");
   (void)filterDims;
 
-  assert(bias->getType()->size() == filterDims[0] && "Invalid bias size");
+  assert(bias.getType()->size() == filterDims[0] && "Invalid bias size");
 }
 
 ConvolutionNode *
@@ -462,7 +462,7 @@ PoolMaxNode *Function::createPoolMax(llvm::StringRef name, NodeValue input,
 
   auto outSz = calculatePoolOutputDims(idim.h, idim.w, kernel, stride, pad);
   auto OT = getParent()->uniqueTypeWithNewShape(
-      input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
+      input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
 
   return addNode(new PoolMaxNode(name, OT, input, kernel, stride, pad));
 }
@@ -475,7 +475,7 @@ PoolAvgNode *Function::createPoolAvg(llvm::StringRef name, NodeValue input,
 
   auto outSz = calculatePoolOutputDims(idim.h, idim.w, kernel, stride, pad);
   auto OT = getParent()->uniqueTypeWithNewShape(
-      input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
+      input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
 
   return addNode(new PoolAvgNode(name, OT, input, kernel, stride, pad));
 }
@@ -706,7 +706,7 @@ ConcatNode *Function::createTile(llvm::StringRef name, NodeValue input,
 
   ShapeVector outShape(input.dims().begin(), input.dims().end());
   outShape[axis] *= tiles;
-  auto OT = getParent()->uniqueTypeWithNewShape(input->getType(), outShape);
+  auto OT = getParent()->uniqueTypeWithNewShape(input.getType(), outShape);
 
   return addNode(new ConcatNode(name, OT, ops, axis));
 }
@@ -1203,7 +1203,7 @@ GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
   ShapeVector outDims(iDims.begin(), iDims.end());
   outDims.insert(outDims.end(), dDims.begin() + 1, dDims.end());
   return addNode(new GatherNode(
-      name, getParent()->uniqueTypeWithNewShape(data->getType(), outDims), data,
+      name, getParent()->uniqueTypeWithNewShape(data.getType(), outDims), data,
       indices));
 }
 

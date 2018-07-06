@@ -499,7 +499,7 @@ static void mergeMatMul(Function *F) {
       // Do not try to merge quantized matrix multiplications because their
       // quantized parameters may not match. Until we implement the logic to
       // match the scale and offset just avoid the optimization.
-      if (MM->getType()->isQuantizedType()) {
+      if (MM->getResult().getType()->isQuantizedType()) {
         continue;
       }
 
@@ -710,7 +710,7 @@ static void mergeBatchedAdd(Function *F) {
     for (int i = 0, e = order.size(); i < e; i++) {
       auto *orig = order[i];
       newSlices.push_back(F->createSlice(orig->getName(), BA, orig->getStart(),
-                                         orig->getType()));
+                                         orig->getResult().getType()));
     }
 
     // Replace the original individual batched adds with corresponding slices
@@ -1055,7 +1055,7 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
       auto orig = order[0]->getInput();
       // The original value that we extract from must be of the same shape as
       // the concat.
-      if (CN->getType() == orig.getType()) {
+      if (CN->getResult().getType() == orig.getType()) {
         return orig;
       }
     }
@@ -1271,7 +1271,7 @@ static void optimizeQuantizedMaxSplat(Function *F) {
     // Likely MaxNode has same types for LHS/RHS and Result, make sure
     // it's the case.
     if (auto *MN = dyn_cast<MaxNode>(&node)) {
-      if (!node.getType()->isQuantizedType() ||
+      if (!MN->getResult().getType()->isQuantizedType() ||
           MN->getResult().getType() != MN->getLHS().getType() ||
           MN->getResult().getType() != MN->getRHS().getType()) {
         continue;

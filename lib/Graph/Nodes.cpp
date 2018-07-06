@@ -456,10 +456,10 @@ VERIFY_ARITHMETIC(CmpEQ);
 
 void CmpLTENode::verify() const {
   verifyArithmetic(getLHS(), getRHS(), getResult());
-  if (getResult()->getType()->isQuantizedType()) {
+  if (getResult().getType()->isQuantizedType()) {
     // Quantization scale params for result must be (1.0, 0).
-    assert(getResult()->getType()->getScale() == 1.0);
-    assert(getResult()->getType()->getOffset() == 0);
+    assert(getResult().getType()->getScale() == 1.0);
+    assert(getResult().getType()->getOffset() == 0);
   }
 }
 
@@ -562,12 +562,12 @@ void RescaleQuantizedNode::verify() const {
 
 void TopKNode::verify() const {
   assert(getValues().dims() == getIndices().dims());
-  if (getInput()->getType()->isQuantizedType()) {
+  if (getInput().getType()->isQuantizedType()) {
     // Quantization scales must be identical; no rescaling is allowed.
-    assert(getValues()->getType(0)->getScale() ==
-           getInput()->getType()->getScale());
-    assert(getValues()->getType(0)->getOffset() ==
-           getInput()->getType()->getOffset());
+    assert(getValues().getType()->getScale() ==
+           getInput().getType()->getScale());
+    assert(getValues().getType()->getOffset() ==
+           getInput().getType()->getOffset());
   }
 }
 
@@ -576,12 +576,12 @@ void GatherNode::verify() const {
   assert(getIndices().getElementType() == ElemKind::IndexTy);
   assert(getResult().dims().size() ==
          getData().dims().size() + getIndices().dims().size() - 1);
-  if (getResult()->getType()->isQuantizedType()) {
+  if (getResult().getType()->isQuantizedType()) {
     // Quantization scales must be identical; no rescaling is allowed.
-    assert(getResult()->getType()->getScale() ==
-           getData()->getType()->getScale());
-    assert(getResult()->getType()->getOffset() ==
-           getData()->getType()->getOffset());
+    assert(getResult().getType()->getScale() ==
+           getData().getType()->getScale());
+    assert(getResult().getType()->getOffset() ==
+           getData().getType()->getOffset());
   }
 }
 
@@ -666,11 +666,11 @@ void ConcatNode::verify() const {
 
   for (size_t i = 0; i < inputs.size(); i++) {
     checkType(inputs[i], getResult()->getElementType());
-    if (getResult()->getType()->isQuantizedType()) {
-      assert(inputs[i]->getType()->getScale() ==
-             getResult()->getType()->getScale());
-      assert(inputs[i]->getType()->getOffset() ==
-             getResult()->getType()->getOffset());
+    if (getResult().getType()->isQuantizedType()) {
+      assert(inputs[i].getType()->getScale() ==
+             getResult().getType()->getScale());
+      assert(inputs[i].getType()->getOffset() ==
+             getResult().getType()->getOffset());
     }
   }
 }

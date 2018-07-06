@@ -231,7 +231,7 @@ public:
   ~Node() { releaseUsers(); }
 
   /// \returns the n'th result type of the node.
-  TypeRef getType(unsigned idx = -1) const;
+  TypeRef getType(unsigned idx) const;
 
   /// Methods that forward to the result type (that must be valid):
   /// @{

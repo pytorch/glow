@@ -579,13 +579,13 @@ TEST_F(GraphOptz, SliceOfSplatNode) {
   auto *CN = llvm::dyn_cast<SplatNode>(llvm::dyn_cast<SaveNode>(O)->getInput());
   EXPECT_TRUE(CN);
 
-  EXPECT_TRUE(CN->getType()->dims().equals({94, 73, 35}));
+  EXPECT_TRUE(CN->getResult().getType()->dims().equals({94, 73, 35}));
 }
 
 TEST_F(GraphOptz, ZeroArithmetic) {
   // Tests the identities: [0 + X = X] [0 * X = 0] [0 / X = 0] [ X - 0 = X]
 
-  Node *input = mod_.createVariable(ElemKind::FloatTy, {4, 10}, "input",
+  Variable *input = mod_.createVariable(ElemKind::FloatTy, {4, 10}, "input",
                                     VisibilityKind::Public);
 
   // This builds the expression: ((0 / I) + (0 + I) + (0 * I)) - 0
@@ -679,7 +679,7 @@ TEST_F(GraphOptz, ReshapeNoop) {
   auto *SN = llvm::dyn_cast<SplatNode>(llvm::dyn_cast<SaveNode>(O)->getInput());
   EXPECT_TRUE(SN);
 
-  EXPECT_TRUE(SN->getType()->dims().equals(shape));
+  EXPECT_TRUE(SN->getResult().getType()->dims().equals(shape));
 }
 
 /// Test the Reshape(Splat(args)) -> Splat(args') transformation.
@@ -695,18 +695,18 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
   Node *input =
       F_->getParent()->createVariable(ElemKind::FloatTy, shape, "input");
   auto *Z1 = F_->createSplat("zero1", &t1, 1.5);
-  auto *A1 = F_->createAdd("add1", Z1->getType(), input, Z1);
+  auto *A1 = F_->createAdd("add1", Z1->getResult().getType(), input, Z1);
   auto *R1 = F_->createReshape("reshape1", Z1, reshape);
   // Z1 is used by R1 and A1.
   // The reshape optimization will thus NOT be able to remove this reshape node
   // (R1).
   auto *R2 = F_->createReshape("reshape2", A1, reshape);
-  auto *A2 = F_->createAdd("add", R1->getType(), R1, R2);
+  auto *A2 = F_->createAdd("add", R1->getResult().getType(), R1, R2);
   auto *Z2 = F_->createSplat("zero2", &t1, 2.5);
   auto *R3 = F_->createReshape("reshape3", Z2, reshape);
   // Z2 is only used by R3.
   // The Z2,R3 nodes will be replaced by a new splat node with the shape of R3.
-  auto *A3 = F_->createAdd("add", A2->getType(), A2, R3);
+  auto *A3 = F_->createAdd("add", A2->getResult().getType(), A2, R3);
   auto *O = F_->createSave("ret", A3);
 
   // Before optimization, we have 9 nodes in the graph.
@@ -722,7 +722,7 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
   auto *SN = llvm::dyn_cast<SplatNode>(
       llvm::dyn_cast<SaveNode>(O)->getInput()->getNthInput(1));
   EXPECT_TRUE(SN);
-  EXPECT_TRUE(SN->getType()->dims().equals(reshape));
+  EXPECT_TRUE(SN->getResult().getType()->dims().equals(reshape));
 
   // R1 should still be in the graph.
   EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
@@ -1074,7 +1074,7 @@ TEST_F(GraphOptz, concatReshapes) {
   // result shape of concatNode1.
   auto *newRN = llvm::dyn_cast<ReshapeNode>(O->getInput()->getNthInput(0));
   ASSERT_TRUE(newRN);
-  EXPECT_TRUE(newRN->getType()->dims().equals(outputShape));
+  EXPECT_TRUE(newRN->getResult().getType()->dims().equals(outputShape));
 
   // The input of newRN should be a ConcatNode now.
   auto *newCN =
