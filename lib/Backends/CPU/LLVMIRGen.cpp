@@ -83,7 +83,7 @@ static llvm::StringRef getHostCpuName() {
   return cpu_name;
 }
 
-LLVMIRGen::LLVMIRGen(IRFunction *F, AllocationsInfo &allocationsInfo,
+LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName)
     : F_(F), allocationsInfo_(allocationsInfo), mainEntryName_(mainEntryName) {}
 
@@ -573,7 +573,7 @@ emitBufferAddress(llvm::IRBuilder<> &builder, Value *val,
 /// noalias. As a result, the LLVM optimizer makes use of the noalias attributes
 /// and produces nicely vectorized code for the generated data-parallel kernels.
 void LLVMIRGen::emitDataParallelKernel(llvm::IRBuilder<> &builder,
-                                       llvm::ArrayRef<Instruction *> bundle) {
+                                       llvm::ArrayRef<const Instruction *> bundle) {
   if (bundle.empty())
     return;
   llvm::Type *voidTy = llvm::Type::getVoidTy(ctx_);
@@ -651,7 +651,7 @@ void LLVMIRGen::emitDataParallelKernel(llvm::IRBuilder<> &builder,
 /// \param buf the buffer operand to be checked for overlaps with the \p bundle.
 static bool isOverlappingWithAnyBundleBufferOperands(
     AllocationsInfo &allocationsInfo,
-    llvm::SmallVectorImpl<Instruction *> &bundle, Value *buf) {
+    llvm::SmallVectorImpl<const Instruction *> &bundle, Value *buf) {
   auto addr1 = allocationsInfo.allocatedAddressed_[buf];
   auto size1 = buf->getSizeInBytes();
   for (auto bi : bundle) {
@@ -680,7 +680,7 @@ void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
 
   // Group instructions into bundles of shape compatible data parallel
   // instructions and emit them.
-  llvm::SmallVector<Instruction *, 32> bundle;
+  llvm::SmallVector<const Instruction *, 32> bundle;
   for (auto &I : instrs) {
     if (!I.isDataParallel()) {
       // Ignore memory management instructions as they are handled by the
@@ -737,7 +737,7 @@ void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
 }
 
 void LLVMIRGen::generateLLVMIRForDataParallelInstr(
-    llvm::IRBuilder<> &builder, glow::Instruction *I, llvm::Function *kernel,
+    llvm::IRBuilder<> &builder, const glow::Instruction *I, llvm::Function *kernel,
     llvm::DenseMap<Value *, int> &bufferToArgNum, llvm::Value *loopCount) {
   setCurrentDebugLocation(builder, I);
   assert(I->isDataParallel() && "Expected a data parallel instruction");
@@ -780,7 +780,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
 #undef ARITHMETIC_UNARY_OP_WITH_IMM_CASE
 
   case Kinded::Kind::ElementSelectInstKind: {
-    ElementSelectInst *ES = cast<ElementSelectInst>(I);
+    auto *ES = cast<ElementSelectInst>(I);
     auto *dest = ES->getDest();
     auto *cond = ES->getCond();
     auto *lhs = ES->getLHS();
@@ -882,7 +882,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
 #undef ARITHMETIC_UNARY_OP_CASE
 
   case Kinded::Kind::CopyInstKind: {
-    CopyInst *CI = cast<CopyInst>(I);
+    auto *CI = cast<CopyInst>(I);
     auto *dest = CI->getDest();
     auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
     auto *srcPtr =
@@ -1206,13 +1206,13 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
 }
 
 void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
-                                       glow::Instruction *I) {
+                                       const glow::Instruction *I) {
   setCurrentDebugLocation(builder, I);
   assert(!I->isDataParallel() &&
          "data parallel instructions are not handled here");
   switch (I->getKind()) {
   case Kinded::Kind::MatMulInstKind: {
-    MatMulInst *MM = cast<MatMulInst>(I);
+    auto *MM = cast<MatMulInst>(I);
     auto *dest = MM->getDest();
     auto *lhs = MM->getLHS();
     auto *rhs = MM->getRHS();
@@ -1253,7 +1253,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::BatchedAddInstKind: {
-    BatchedAddInst *BA = cast<BatchedAddInst>(I);
+    auto *BA = cast<BatchedAddInst>(I);
     auto *dest = BA->getDest();
     auto *batch = BA->getBatch();
     auto *slice = BA->getSlice();
@@ -1304,7 +1304,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::BatchedReduceAddInstKind: {
-    BatchedReduceAddInst *BR = cast<BatchedReduceAddInst>(I);
+    auto *BR = cast<BatchedReduceAddInst>(I);
     auto *dest = BR->getDest();
     auto *batch = BR->getBatch();
     auto *destPtr = emitValueAddress(builder, dest);
@@ -1351,7 +1351,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::ConvolutionInstKind: {
-    ConvolutionInst *CI = cast<ConvolutionInst>(I);
+    auto *CI = cast<ConvolutionInst>(I);
     auto *dest = CI->getDest();
     auto *src = CI->getSrc();
     auto *filter = CI->getFilter();
@@ -1436,7 +1436,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::CPUConvDKKC8InstKind: {
-    CPUConvDKKC8Inst *CI = cast<CPUConvDKKC8Inst>(I);
+    auto *CI = cast<CPUConvDKKC8Inst>(I);
     auto *dest = CI->getDest();
     auto *src = CI->getSrc();
     auto *filter = CI->getFilter();
@@ -1507,7 +1507,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::ConvolutionGradInstKind: {
-    ConvolutionGradInst *CG = cast<ConvolutionGradInst>(I);
+    auto *CG = cast<ConvolutionGradInst>(I);
     auto *srcGrad = CG->getSrcGrad();
     auto *destGrad = CG->getDestGrad();
     auto *src = CG->getSrc();
@@ -1553,7 +1553,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::LocalResponseNormalizationInstKind: {
-    LocalResponseNormalizationInst *LRN =
+    auto *LRN =
         cast<LocalResponseNormalizationInst>(I);
     auto *dest = LRN->getDest();
     auto *src = LRN->getSrc();
@@ -1577,7 +1577,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::LocalResponseNormalizationGradInstKind: {
-    LocalResponseNormalizationGradInst *LRNG =
+    auto *LRNG =
         llvm::cast<LocalResponseNormalizationGradInst>(I);
     auto *srcGrad = LRNG->getSrcGrad();
     auto *dest = LRNG->getDest();
@@ -1602,7 +1602,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::PoolMaxInstKind: {
-    PoolMaxInst *PM = cast<PoolMaxInst>(I);
+    auto *PM = cast<PoolMaxInst>(I);
     auto *dest = PM->getDest();
     auto *src = PM->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
@@ -1622,7 +1622,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::PoolMaxWithXYInstKind: {
-    PoolMaxWithXYInst *PMXY = cast<PoolMaxWithXYInst>(I);
+    auto *PMXY = cast<PoolMaxWithXYInst>(I);
     auto *dest = PMXY->getDest();
     auto *src = PMXY->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
@@ -1644,7 +1644,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::PoolMaxWithXYGradInstKind: {
-    PoolMaxWithXYGradInst *PMG = cast<PoolMaxWithXYGradInst>(I);
+    auto *PMG = cast<PoolMaxWithXYGradInst>(I);
     auto *srcGrad = PMG->getSrcGrad();
     auto *srcGradPtr = emitValueAddress(builder, srcGrad);
     auto *destGradPtr = emitValueAddress(builder, PMG->getDestGrad());
@@ -1660,7 +1660,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::PoolAvgInstKind: {
-    PoolAvgInst *PA = cast<PoolAvgInst>(I);
+    auto *PA = cast<PoolAvgInst>(I);
     auto *dest = PA->getDest();
     auto *src = PA->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
@@ -1702,7 +1702,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::PoolAvgGradInstKind: {
-    PoolAvgGradInst *PAG = cast<PoolAvgGradInst>(I);
+    auto *PAG = cast<PoolAvgGradInst>(I);
     auto *srcGrad = PAG->getSrcGrad();
     auto *srcGradPtr = emitValueAddress(builder, srcGrad);
     auto *destGradPtr = emitValueAddress(builder, PAG->getDestGrad());
@@ -1722,7 +1722,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::QuantizeInstKind: {
-    QuantizeInst *QI = cast<QuantizeInst>(I);
+    auto *QI = cast<QuantizeInst>(I);
     auto *dest = QI->getDest();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, QI->getSrc());
@@ -1738,7 +1738,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::DequantizeInstKind: {
-    DequantizeInst *DQI = cast<DequantizeInst>(I);
+    auto *DQI = cast<DequantizeInst>(I);
     auto *dest = DQI->getDest();
     auto *src = DQI->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
@@ -1755,7 +1755,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::RescaleQuantizedInstKind: {
-    RescaleQuantizedInst *RQI = cast<RescaleQuantizedInst>(I);
+    auto *RQI = cast<RescaleQuantizedInst>(I);
     auto *dest = RQI->getDest();
     auto *src = RQI->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
@@ -1782,7 +1782,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::SoftMaxInstKind: {
-    SoftMaxInst *SM = cast<SoftMaxInst>(I);
+    auto *SM = cast<SoftMaxInst>(I);
     auto *dest = SM->getDest();
     auto *src = SM->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
@@ -1797,7 +1797,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::SoftMaxGradInstKind: {
-    SoftMaxGradInst *SMG = cast<SoftMaxGradInst>(I);
+    auto *SMG = cast<SoftMaxGradInst>(I);
     auto *srcGrad = SMG->getSrcGrad();
     auto *selected = SMG->getSelected();
     auto *srcGradPtr = emitValueAddress(builder, srcGrad);
@@ -1814,7 +1814,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::TopKInstKind: {
-    TopKInst *TI = cast<TopKInst>(I);
+    auto *TI = cast<TopKInst>(I);
     auto *input = TI->getInput();
     auto *valuesPtr = emitValueAddress(builder, TI->getValues());
     auto *indicesPtr = emitValueAddress(builder, TI->getIndices());
@@ -1832,7 +1832,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::TransposeInstKind: {
-    TransposeInst *TI = cast<TransposeInst>(I);
+    auto *TI = cast<TransposeInst>(I);
     auto *dest = TI->getDest();
     auto *src = TI->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
@@ -1862,7 +1862,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
 
   case Kinded::Kind::InsertTensorInstKind: {
-    InsertTensorInst *ITI = llvm::cast<InsertTensorInst>(I);
+    auto *ITI = llvm::cast<InsertTensorInst>(I);
     auto *dest = ITI->getDest();
     auto *src = ITI->getSrc();
     auto offsets = ITI->getOffsets();
@@ -1893,7 +1893,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::ExtractTensorInstKind: {
-    ExtractTensorInst *ITI = llvm::cast<ExtractTensorInst>(I);
+    auto *ITI = llvm::cast<ExtractTensorInst>(I);
     auto *dest = ITI->getDest();
     auto *src = ITI->getSrc();
     auto offsets = ITI->getOffsets();
@@ -1922,7 +1922,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::GatherInstKind: {
-    GatherInst *GI = llvm::cast<GatherInst>(I);
+    auto *GI = llvm::cast<GatherInst>(I);
     auto *dest = GI->getDest();
     auto *data = GI->getData();
     auto *indices = GI->getIndices();
@@ -1944,7 +1944,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::ScatterAssignInstKind: {
-    ScatterAssignInst *SAI = llvm::cast<ScatterAssignInst>(I);
+    auto *SAI = llvm::cast<ScatterAssignInst>(I);
     auto *data = SAI->getData();
     auto *indices = SAI->getIndices();
     auto *slices = SAI->getSlices();
@@ -1966,7 +1966,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::DebugPrintInstKind: {
-    DebugPrintInst *DPI = llvm::cast<DebugPrintInst>(I);
+    auto *DPI = llvm::cast<DebugPrintInst>(I);
     auto *src = DPI->getSrc();
     auto *srcPtr = emitValueAddress(builder, src);
     srcPtr = builder.CreateBitCast(srcPtr, builder.getInt8PtrTy());

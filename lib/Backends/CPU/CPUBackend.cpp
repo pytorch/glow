@@ -44,7 +44,7 @@ namespace glow {
 Backend *createCPUBackend(IRFunction *F) { return new CPUBackend(F); }
 } // namespace glow
 
-CPUBackend::CPUBackend(IRFunction *F)
+CPUBackend::CPUBackend(const IRFunction *F)
     : F_(F), irgen_(F_, allocationsInfo_, "") {}
 
 CPUBackend::~CPUBackend() {

@@ -81,7 +81,7 @@ struct DebugInfo {
 /// from an IRFunction. The primary clients of this class are JITs and bundlers.
 class LLVMIRGen {
   /// The Module that holds the glow IR. This does not own the module.
-  IRFunction *F_;
+  const IRFunction *F_;
   /// The LLVM context.
   llvm::LLVMContext ctx_;
   /// The LLVM IR module.
@@ -156,13 +156,13 @@ class LLVMIRGen {
   /// Create a function representing a stacked kernel for instructions provided
   /// in \p stackedInstrs.
   void emitDataParallelKernel(llvm::IRBuilder<> &builder,
-                              llvm::ArrayRef<Instruction *> stackedInstrs);
+                              llvm::ArrayRef<const Instruction *> stackedInstrs);
   /// Emit IR for the data parallel instruction \p I which is invoked inside the
   /// stacked \p kernel. The current loop count is described by \p loopCount.
   /// The \p bufferToArgNum map can be used to find the required buffers, which
   /// are provided as arguments to the stacked \p kernel.
   void generateLLVMIRForDataParallelInstr(
-      llvm::IRBuilder<> &builder, glow::Instruction *I, llvm::Function *kernel,
+      llvm::IRBuilder<> &builder, const glow::Instruction *I, llvm::Function *kernel,
       llvm::DenseMap<Value *, int> &bufferToArgNum, llvm::Value *loopCount);
   /// \returns the llvm type of the glow vale \p val.
   llvm::Type *getElementType(llvm::IRBuilder<> &builder, const Value *val);
@@ -175,7 +175,7 @@ class LLVMIRGen {
   /// Set the debug location for the \p builder, so that it corresponds to the
   /// instruction \p I in the textual representation of the Glow IR.
   void setCurrentDebugLocation(llvm::IRBuilder<> &builder,
-                               glow::Instruction *I);
+                               const glow::Instruction *I);
   /// Get or create a debug information for a given LLVM function.
   llvm::DISubprogram *getOrCreateFunctionDebugInfo(llvm::Function *F,
                                                    llvm::DIScope *scope,
@@ -193,14 +193,14 @@ class LLVMIRGen {
 
 public:
   /// Ctor.
-  explicit LLVMIRGen(IRFunction *M, AllocationsInfo &allocationsInfo,
+  explicit LLVMIRGen(const IRFunction *M, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName);
 
   /// Init the TargetMachine using a given target and code model.
   void initTargetMachine(llvm::StringRef T, llvm::CodeModel::Model CM);
 
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
-  void generateLLVMIRForInstr(llvm::IRBuilder<> &builder, glow::Instruction *I);
+  void generateLLVMIRForInstr(llvm::IRBuilder<> &builder, const glow::Instruction *I);
   /// Emit LLVM-IR for the whole IRFunction.
   void generateLLVMIRForModule(llvm::IRBuilder<> &builder);
   /// \returns a libjit API function by name.
@@ -241,7 +241,7 @@ public:
   /// \returns current LLVM module.
   llvm::Module &getModule() { return *llmodule_; }
   /// \returns the IR function.
-  IRFunction *getIRFunction() { return F_; }
+  const IRFunction *getIRFunction() { return F_; }
   /// Set output directory for bundles, debug info files, etc.
   void setOutputDir(llvm::StringRef outputDir) { outputDir_ = outputDir; }
   /// Get output directory for bundles, debug info files, etc.

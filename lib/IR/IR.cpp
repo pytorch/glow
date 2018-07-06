@@ -477,9 +477,9 @@ static bool hasResultValue(const Instruction *I) {
          I->getKind() == Instruction::Kind::TensorViewInstKind;
 }
 
-void IRFunction::dump() { dump(llvm::outs()); }
+void IRFunction::dump() const { dump(llvm::outs()); }
 
-void IRFunction::dump(llvm::raw_ostream &OS) {
+void IRFunction::dump(llvm::raw_ostream &OS) const {
   InstructionNumbering InstrNumbering(*this);
   // Print all of the variables:
   std::string s;
@@ -585,7 +585,7 @@ static const char *getDottyArrowForCC(OperandKind k) {
   llvm_unreachable("Invalid operand kind.");
 }
 
-void IRFunction::dumpDAG() {
+void IRFunction::dumpDAG() const {
   std::string buffer;
   llvm::raw_string_ostream stream(buffer);
   stream << "dotty_ir_dump_" << this << ".dot";
@@ -593,7 +593,7 @@ void IRFunction::dumpDAG() {
 }
 
 /// Dump a dotty graph that depicts the function.
-void IRFunction::dumpDAG(llvm::StringRef dotFilename) {
+void IRFunction::dumpDAG(llvm::StringRef dotFilename) const {
   llvm::outs() << "Writing dotty graph to: " << dotFilename << '\n';
 
   std::string buffer;
@@ -658,7 +658,7 @@ void IRFunction::dumpDAG(llvm::StringRef dotFilename) {
   filestream << stream.str();
 }
 
-void IRFunction::dumpDAG(const char *dotFilename) {
+void IRFunction::dumpDAG(const char *dotFilename) const {
   dumpDAG(llvm::StringRef(dotFilename));
 }
 

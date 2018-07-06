@@ -302,6 +302,9 @@ public:
   Function *getGraph() { return G_; }
 
   /// \returns a reference to the high-level graph.
+  const Function *getGraph() const { return G_; }
+
+  /// Sets the high-level graph corresponding to this function.
   void setGraph(Function *F) { G_ = F; }
 
   /// \returns a unique legal name that's based on the string \p name.  Legal
@@ -314,19 +317,19 @@ public:
   void verify() const;
 
   /// Dump a textual representation of the function.
-  void dump();
+  void dump() const;
 
   /// Dump a textual representation of the function into provided output stream.
-  void dump(llvm::raw_ostream &OS);
+  void dump(llvm::raw_ostream &OS) const;
 
   /// Dump a dotty graph that depicts the function.
-  void dumpDAG(llvm::StringRef dotFilename);
+  void dumpDAG(llvm::StringRef dotFilename) const;
 
   /// Dump a dotty graph that depicts the function.
-  void dumpDAG(const char *dotFilename);
+  void dumpDAG(const char *dotFilename) const;
 
   /// Dump a dotty graph that depicts the function.
-  void dumpDAG();
+  void dumpDAG() const;
 
   /// \returns the variable map.
   VariableMap &getVariableMap() { return variableMap_; }

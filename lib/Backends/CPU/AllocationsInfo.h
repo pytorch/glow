@@ -57,20 +57,20 @@ struct AllocationsInfo {
   /// by the payloads of tensors corresponding to those WeightVars as offsets.
   /// This is useful in a JIT setup. If \p reuseAddresses is false, then all the
   /// WeightVars will get new offsets assigned.
-  void allocateWeightVars(IRFunction *F, bool reuseAddresses);
+  void allocateWeightVars(const IRFunction *F, bool reuseAddresses);
   /// Assign offsets to all activations.
   /// No actual memory allocation is performed. All the allocations should be
   /// performed by the client based on the information provided by the
   /// AllocationsInfo.
-  void allocateActivations(IRFunction *F);
+  void allocateActivations(const IRFunction *F);
   /// Assign offsets to all tensorviews.
   /// No memory allocation is performed. Sets up all offsets into already
   /// defined offsets for WeightVars and AllocActivations. Assumes the weight
   /// vars and alloc activations have already been added to allocatedAddressed_.
-  void allocateTensorViews(IRFunction *F);
+  void allocateTensorViews(const IRFunction *F);
   /// Number all allocations and weight variables by assigning them unique
   /// numbers.
-  void numberValues(IRFunction *F);
+  void numberValues(const IRFunction *F);
   /// Reset the state of the allocation info.
   void clear();
 };
