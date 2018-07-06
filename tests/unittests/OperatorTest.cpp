@@ -616,6 +616,57 @@ TEST_P(InterpAndCPU, TopK) {
   EXPECT_EQ(I.at({2, 0, 2}), 3);
 }
 
+// Check that concatenating Nodes with multiple outputs works correctly.
+TEST_P(InterpAndCPU, ConcatTopK) {
+  auto *inp1 = mod_.createVariable(ElemKind::FloatTy, {2, 1, 3}, "input");
+  auto *inp2 = mod_.createVariable(ElemKind::FloatTy, {2, 1, 3}, "input");
+  auto *values = mod_.createVariable(ElemKind::FloatTy, {4, 1, 2}, "values");
+  auto *indices = mod_.createVariable(ElemKind::IndexTy, {4, 1, 2}, "indices");
+
+  inp1->getPayload().getHandle() = {1, 2, 3, 17.4f, -0.1f, -10.1f};
+  inp2->getPayload().getHandle() = {1, 2, -3, -17.4f, -0.1f, -10.1f};
+
+  auto *R1 = F_->createTopK("TopK1", inp1, 2);
+  auto *R2 = F_->createTopK("TopK2", inp2, 2);
+
+  // Concat the values and indices separately, both on the 0th dimension,
+  // matching the shapes of the values and indices variables above.
+  auto *CV =
+      F_->createConcat("Concat.Values", {R1->getValues(), R2->getValues()}, 0);
+  auto *CI = F_->createConcat("Concat.Indices",
+                              {R1->getIndices(), R2->getIndices()}, 0);
+
+  F_->createSave("Save.Values", CV, values);
+  F_->createSave("Save.Indices", CI, indices);
+
+  EE_.compile(CompilationMode::Infer, F_);
+
+  EE_.run({}, {});
+
+  auto V = values->getPayload().getHandle();
+  auto I = indices->getPayload().getHandle<size_t>();
+
+  EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 3);
+  EXPECT_FLOAT_EQ(I.at({0, 0, 0}), 2);
+  EXPECT_FLOAT_EQ(V.at({0, 0, 1}), 2);
+  EXPECT_FLOAT_EQ(I.at({0, 0, 1}), 1);
+
+  EXPECT_FLOAT_EQ(V.at({1, 0, 0}), 17.4f);
+  EXPECT_FLOAT_EQ(I.at({1, 0, 0}), 0);
+  EXPECT_FLOAT_EQ(V.at({1, 0, 1}), -0.1f);
+  EXPECT_FLOAT_EQ(I.at({1, 0, 1}), 1);
+
+  EXPECT_FLOAT_EQ(V.at({2, 0, 0}), 2);
+  EXPECT_FLOAT_EQ(I.at({2, 0, 0}), 1);
+  EXPECT_FLOAT_EQ(V.at({2, 0, 1}), 1);
+  EXPECT_FLOAT_EQ(I.at({2, 0, 1}), 0);
+
+  EXPECT_FLOAT_EQ(V.at({3, 0, 0}), -0.1f);
+  EXPECT_FLOAT_EQ(I.at({3, 0, 0}), 1);
+  EXPECT_FLOAT_EQ(V.at({3, 0, 1}), -10.1f);
+  EXPECT_FLOAT_EQ(I.at({3, 0, 1}), 2);
+}
+
 // Check that matrix multiplication works well on some predefined values.
 TEST_P(Operator, matMul) {
   auto *inp0 = mod_.createVariable(ElemKind::FloatTy, {1, 2}, "input0");
