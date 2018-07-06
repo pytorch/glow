@@ -75,7 +75,7 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
         }
 
   return F->addNode(new CPUConvDKKC8Node(
-      CN->getName(), CN->getType(), CN->getInput(), filter8, CN->getBias(),
+      CN->getName(), CN->getResult().getType(), CN->getInput(), filter8, CN->getBias(),
       CN->getKernel(), CN->getStride(), CN->getPads(), group));
 }
 

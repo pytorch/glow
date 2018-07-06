@@ -115,7 +115,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
     if (N->getKind() == Kind::SaveNodeKind) {
       // Swap the src and dest. Send the Zero value as gradient for both sides.
       auto *X = new SplatNode(N->getName(),
-                              cast<SaveNode>(N)->getInput()->getType(), 0);
+                              cast<SaveNode>(N)->getInput().getType(), 0);
       toAppend.push_back(X);
       map.addGradient(cast<SaveNode>(N)->getInput(), X);
       map.addGradient(cast<SaveNode>(N)->getVariable(), X);
@@ -128,8 +128,8 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       NodeValue inputW = RN->getInput();
 
       // Swap the src and dest.
-      auto *X = new ReshapeNode(N->getName(), inputW->getType(), outputG,
-                                inputW->getType()->dims());
+      auto *X = new ReshapeNode(N->getName(), inputW.getType(), outputG,
+                                inputW.getType()->dims());
       toAppend.push_back(X);
       map.addGradient(RN->getInput(), X);
       continue;
@@ -148,7 +148,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       }
 
       // Swap the src and dest.
-      auto *X = new TransposeNode(N->getName(), inputW->getType(), outputG,
+      auto *X = new TransposeNode(N->getName(), inputW.getType(), outputG,
                                   reverseShuffle);
       toAppend.push_back(X);
       map.addGradient(TN->getInput(), X);
@@ -157,7 +157,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
 
     if (N->getKind() == Kind::SliceNodeKind) {
       SliceNode *SN = cast<SliceNode>(N);
-      auto *zero = new SplatNode("expand", SN->getInput()->getType(), 0);
+      auto *zero = new SplatNode("expand", SN->getInput().getType(), 0);
       auto *insert = new InsertTensorNode("insert.slice.grad", zero,
                                           map.getGradient(SN->getResult()),
                                           SN->getStart());

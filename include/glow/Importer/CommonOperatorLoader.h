@@ -72,7 +72,7 @@ protected:
 
     // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
     // softmax function. This is similar to a bitcast operation.
-    auto flatten = flattenCdr(in->getType()->dims());
+    auto flatten = flattenCdr(in->getType(0)->dims());
     in = G_.createReshape("reshape", in, {flatten.first, flatten.second});
 
     auto *node = G_.createSoftMax(opName, in, softmaxExpected);
@@ -193,7 +193,7 @@ protected:
         if (protoDims[i] == -1)
           // shape[i] == -1 means that corresponding element should be inferred
           // from all other elements, so that Tensor size remains the same.
-          protoDims[i] = in->getType()->size() / product;
+          protoDims[i] = in->getType(0)->size() / product;
         newDim.push_back(protoDims[i]);
       }
     } else {

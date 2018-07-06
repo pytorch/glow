@@ -347,7 +347,7 @@ void InstrBuilder::emitAutoIRGen(std::ostream &os) const {
          "Didn't find a result; Maybe using InOut which isn't yet supported");
   os << "  std::string allocName = std::string(N->getName()) + \".res\";\n";
   os << "  auto *dest__ = builder_.createAllocActivationInst(allocName,"
-     << "CN__->get" << resNodeName << "()->getType());\n";
+     << "CN__->get" << resNodeName << "()->getType(0));\n";
   os << "  auto *V = builder_.create" << name_ << "Inst(\"" << autoIRGenNodeName
      << "\", dest__";
   for (const auto &opPair : operands_) {

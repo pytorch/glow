@@ -120,9 +120,9 @@ public:
       auto *inVal = valueForNode(RN->getInput());
       std::vector<size_t> offsets(inVal->getType()->dims().size(), 0);
       auto *TVI = builder_.createTensorViewInst(
-          "tensorview.reshape", inVal, RN->getResult()->getType(), offsets);
+          "tensorview.reshape", inVal, RN->getResult().getType(), offsets);
       auto *dest = builder_.createAllocActivationInst(
-          "copy.reshape.res", RN->getResult()->getType());
+          "copy.reshape.res", RN->getResult().getType());
       builder_.createCopyInst("copy.reshape", dest, TVI);
       registerIR(N, dest);
       break;
@@ -171,7 +171,7 @@ public:
       auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
 
       auto *inG = builder_.createAllocActivationInst("pool.outG",
-                                                     PG->getInput()->getType());
+                                                     PG->getInput().getType());
 
       // Find the original pool instruction.
       assert(nodeToInstr_.count(poolOut) &&
@@ -192,7 +192,7 @@ public:
       auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
 
       auto *inG = builder_.createAllocActivationInst("pool.outG",
-                                                     PG->getInput()->getType());
+                                                     PG->getInput().getType());
 
       builder_.createPoolAvgGradInst(N->getName(), outW, outG, inG,
                                      PG->getKernel(), PG->getStride(),
@@ -250,7 +250,7 @@ public:
       auto *CC = cast<ConcatNode>(N);
 
       auto *dest =
-          builder_.createAllocActivationInst(CC->getName(), CC->getType());
+          builder_.createAllocActivationInst(CC->getName(), CC->getResult().getType());
       builder_.createSplatInst(CC->getName(), dest, 0);
       auto inputs = CC->getInputs();
 
@@ -288,7 +288,7 @@ public:
       auto start = SL->getStart();
       auto *in = valueForNode(SL->getInput());
       auto *dest =
-          builder_.createAllocActivationInst(SL->getName(), SL->getType());
+          builder_.createAllocActivationInst(SL->getName(), SL->getResult().getType());
       builder_.createExtractTensorInst(SL->getName(), dest, in, start);
       registerIR(N, dest);
       break;
@@ -299,7 +299,7 @@ public:
       auto *big = valueForNode(IT->getBig());
       auto *small = valueForNode(IT->getSmall());
       auto *dest =
-          builder_.createAllocActivationInst(IT->getName(), IT->getType());
+          builder_.createAllocActivationInst(IT->getName(), IT->getResult().getType());
       builder_.createCopyInst("copy.insert", dest, big);
       builder_.createInsertTensorInst("insert", dest, small, start,
                                       /* count */ 1, /* axis */ 0);
@@ -313,7 +313,7 @@ public:
       auto *indicesTensor = valueForNode(SAI->getIndices());
       auto *slicesTensor = valueForNode(SAI->getSlices());
       auto *dest =
-          builder_.createAllocActivationInst(SAI->getName(), SAI->getType());
+          builder_.createAllocActivationInst(SAI->getName(), SAI->getResult().getType());
       builder_.createCopyInst("copy.scatterassign", dest, dataTensor);
       builder_.createScatterAssignInst("scatterassign", dest, indicesTensor,
                                        slicesTensor);
@@ -367,7 +367,7 @@ public:
       auto *load = cast<LoadNode>(N);
       auto *src = valueForNode(load->getVariable());
       auto *dest =
-          builder_.createAllocActivationInst(load->getName(), load->getType());
+          builder_.createAllocActivationInst(load->getName(), load->getResult().getType());
       auto *copy = builder_.createCopyInst("load", dest, src);
       copy->setName(N->getName());
       registerIR(N, dest);

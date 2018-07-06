@@ -280,7 +280,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     // If 'global_pooling' is set then the operation will pool over the size of
     // the input by doing: kernel = height/width.
     if (dict.count("global_pooling")) {
-      auto Ty = in->getType();
+      auto Ty = in->getType(0);
       kernel = Ty->dims()[3];
     }
 

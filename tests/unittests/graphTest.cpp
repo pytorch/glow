@@ -152,7 +152,7 @@ TEST(Graph, simpleQuant) {
   auto *conv =
       F->createConv("conv", input, filter, bias, t, kernel, step, pads, 1);
 
-  auto s = conv->getType()->size();
+  auto s = conv->getResult().getType()->size();
   auto *fcFilter = MD.createVariable(ElemKind::Int8QTy, {s, 6}, 0.4, 2, "F");
   auto *fcBias = MD.createVariable(ElemKind::Int8QTy, {6}, 0.4, 2, "B");
   Node *O = F->createFullyConnected("fc1", conv, fcFilter, fcBias);

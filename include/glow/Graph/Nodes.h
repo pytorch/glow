@@ -86,6 +86,9 @@ public:
   /// \returns the original training mode of the variable.
   TrainKind getTrainKind() const { return train_; }
 
+  /// \returns result type of the variable.
+  TypeRef getType() const { return Node::getType(0); }
+
   /// \returns the value used during initialization.
   float getValue() const { return val_; }
 

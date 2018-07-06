@@ -98,10 +98,10 @@ void lowerFullyConnectedNode(Function *F, FullyConnectedNode &FC) {
   auto *X = F->createReshape("fc.1X", FC.getInput(), {xDim.first, xDim.second});
 
   TypeRef outTy = F->getParent()->uniqueTypeWithNewShape(
-      FC.getResult()->getType(), {xDim.first, wDim[1]});
+      FC.getResult().getType(), {xDim.first, wDim[1]});
   auto *mul = F->createMatMul("fc.dot", outTy, X, FC.getWeights());
 
-  auto add = F->createBatchedAdd("fc.add.bias", FC.getResult()->getType(), mul,
+  auto add = F->createBatchedAdd("fc.add.bias", FC.getResult().getType(), mul,
                                  FC.getBias());
   FC.getResult().replaceAllUsesOfWith(add);
 
@@ -183,7 +183,7 @@ void lowerSigmoidGradNode(Function *F, SigmoidGradNode &THG) {
 
 void lowerReluNode(Function *F, ReluNode &R) {
   // Relu is a max between zero and the input value.
-  SplatNode *zero = F->createSplat("zero", R.getType(), 0.0);
+  SplatNode *zero = F->createSplat("zero", R.getResult().getType(), 0.0);
   auto *relu = F->createMax("relu", zero, R.getInput());
   R.getResult().replaceAllUsesOfWith(relu);
 }
@@ -335,14 +335,13 @@ void computeBatchNormalizationWeights(Function *F, BatchNormalizationNode &BN) {
 
   // sum(in[i])
   // reduce the tensor by the first dimension, to get {numChannels}
-  Node *localMean = F->createBatchedReduceAdd("in.sum", inFlat, /* axis */ 0);
+  auto *batchedAdd = F->createBatchedReduceAdd("in.sum", inFlat, /* axis */ 0);
   // Mean = sum(in[i]) / N
   auto samplesPerChannelSplat = F->createSplat(
-      "samplesPerChannelSplat", localMean->getType(), samplesPerChannel);
-  localMean = F->createDiv("localMean", localMean, samplesPerChannelSplat);
+      "samplesPerChannelSplat", batchedAdd->getResult().getType(), samplesPerChannel);
+  DivNode *localMean = F->createDiv("localMean", batchedAdd, samplesPerChannelSplat);
 
   // Calculate Variance:
-
   // sum((x - mu) ^ 2)
   auto localMeanB =
       F->createBroadcast("new_mean_broadcasted", localMean, inFlat->dims(), 1);
@@ -355,9 +354,9 @@ void computeBatchNormalizationWeights(Function *F, BatchNormalizationNode &BN) {
 
   // Update the global variance and mean:
   auto momentumSplat =
-      F->createSplat("momentumSplat", localMean->getType(), momentum);
+      F->createSplat("momentumSplat", localMean->getResult().getType(), momentum);
   auto oneMinusMomentumSplat = F->createSplat(
-      "oneMinusMomentumSplat", localMean->getType(), 1 - momentum);
+      "oneMinusMomentumSplat", localMean->getResult().getType(), 1 - momentum);
 
   // newMean := P * localMean + (1 - P) * oldMean
   auto newMean = F->createAdd(
@@ -507,7 +506,7 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
   auto outDims = BNG.getResult().dims().vec();
   outDims[3] = outCperG;
   auto outTy = F->getParent()->uniqueTypeWithNewShape(
-      BNG.getResult()->getType(), outDims);
+      BNG.getResult().getType(), outDims);
 
   std::vector<NodeValue> convs;
   for (unsigned groupId = 0; groupId < group; groupId++) {
