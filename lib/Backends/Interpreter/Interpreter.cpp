@@ -26,14 +26,11 @@
 using namespace glow;
 using llvm::isa;
 
-Interpreter::~Interpreter() { clear(); }
-
-void Interpreter::clear() {
+Interpreter::~Interpreter() {
   // Delete the tensors that are owned by this backend.
   for (auto p : tensors_) {
     delete p.second;
   }
-
   tensors_.clear();
   externalTensors_.clear();
 }

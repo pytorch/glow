@@ -240,7 +240,6 @@ public:
   MockCPUBackend(IRFunction *M) {
     backend_.reset(createBackend(BackendKind::CPU, M));
   }
-  void clear() override { backend_->clear(); }
   void init() override { backend_->init(); }
   void doForwardPass() override { backend_->doForwardPass(); }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {

@@ -99,8 +99,6 @@ public:
   ///@{
   ~OCLBackend() override;
 
-  void clear() override;
-
   void init() override;
 
   void doForwardPass() override;

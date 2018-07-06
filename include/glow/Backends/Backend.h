@@ -43,9 +43,6 @@ public:
   /// Dtor.
   virtual ~Backend() = default;
 
-  /// Wipe out the state of the backend.
-  virtual void clear() = 0;
-
   /// Prepare the interpreter for execution of new code.
   virtual void init() = 0;
 
