@@ -32,7 +32,7 @@ BB.newBackendSpecificInstr("OCLPoolAvg")
     .addOperand("Src", OperandKind::In)
     .addMember(MemberType::SizeT, "Kernel")
     .addMember(MemberType::SizeT, "Stride")
-    .addMember(MemberType::SizeT, "Pad")
+    .addMember(MemberType::VectorSizeT, "Pads")
     .autoIRGen()
     .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
     .addGradientInstr({"Dest"}, {"Dest", "Src"});
@@ -42,7 +42,7 @@ BB.newBackendSpecificInstr("OCLPoolMax")
     .addOperand("Src", OperandKind::In)
     .addMember(MemberType::SizeT, "Kernel")
     .addMember(MemberType::SizeT, "Stride")
-    .addMember(MemberType::SizeT, "Pad")
+    .addMember(MemberType::VectorSizeT, "Pads")
     .autoIRGen()
     .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
 

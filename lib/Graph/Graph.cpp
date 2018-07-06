@@ -387,7 +387,8 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
   assert(depth % group == 0 && "depth must be divisible by groups");
 
   // Calculate the size and allocate the output buffer.
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pads);
+  auto outSz =
+      calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
 
   std::array<size_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
 
@@ -455,29 +456,51 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
 }
 
 PoolMaxNode *Function::createPoolMax(llvm::StringRef name, NodeValue input,
-                                     size_t kernel, size_t stride, size_t pad) {
+                                     size_t kernel, size_t stride,
+                                     llvm::ArrayRef<size_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
-  assert(idim.w >= kernel && idim.h >= kernel &&
+  PaddingTLBR pdim(pads);
+  (void)pdim;
+  assert((idim.w + pdim.left + pdim.right) >= kernel &&
+         (idim.h + pdim.top + pdim.bottom) >= kernel &&
          "buffer too small for selected stride");
 
-  auto outSz = calculatePoolOutputDims(idim.h, idim.w, kernel, stride, pad);
+  auto outSz =
+      calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
   auto OT = getParent()->uniqueTypeWithNewShape(
       input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
 
-  return addNode(new PoolMaxNode(name, OT, input, kernel, stride, pad));
+  return addNode(new PoolMaxNode(name, OT, input, kernel, stride, pads));
+}
+
+PoolMaxNode *Function::createPoolMax(llvm::StringRef name, NodeValue input,
+                                     size_t kernel, size_t stride, size_t pad) {
+  llvm::SmallVector<size_t, 4> pads = {pad, pad, pad, pad};
+  return createPoolMax(name, input, kernel, stride, pads);
+}
+
+PoolAvgNode *Function::createPoolAvg(llvm::StringRef name, NodeValue input,
+                                     size_t kernel, size_t stride,
+                                     llvm::ArrayRef<size_t> pads) {
+  ShapeNHWC idim = ShapeNHWC(input.dims());
+  PaddingTLBR pdim(pads);
+  (void)pdim;
+  assert((idim.w + pdim.left + pdim.right) >= kernel &&
+         (idim.h + pdim.top + pdim.bottom) >= kernel &&
+         "buffer too small for selected stride");
+
+  auto outSz =
+      calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
+  auto OT = getParent()->uniqueTypeWithNewShape(
+      input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
+
+  return addNode(new PoolAvgNode(name, OT, input, kernel, stride, pads));
 }
 
 PoolAvgNode *Function::createPoolAvg(llvm::StringRef name, NodeValue input,
                                      size_t kernel, size_t stride, size_t pad) {
-  ShapeNHWC idim = ShapeNHWC(input.dims());
-  assert(idim.w >= kernel && idim.h >= kernel &&
-         "buffer too small for selected stride");
-
-  auto outSz = calculatePoolOutputDims(idim.h, idim.w, kernel, stride, pad);
-  auto OT = getParent()->uniqueTypeWithNewShape(
-      input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
-
-  return addNode(new PoolAvgNode(name, OT, input, kernel, stride, pad));
+  llvm::SmallVector<size_t, 4> pads = {pad, pad, pad, pad};
+  return createPoolAvg(name, input, kernel, stride, pads);
 }
 
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,

@@ -185,12 +185,16 @@ static void verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
 
   ShapeNHWC idim(src.getType()->dims());
   ShapeNHWC odim(dest.getType()->dims());
-
-  assert(idim.w >= kernel && idim.h >= kernel &&
+  PaddingTLBR pdim(pads);
+  (void)pdim;
+  assert((idim.w + pdim.left + pdim.right) >= kernel &&
+         (idim.h + pdim.top + pdim.bottom) >= kernel &&
          "buffer too small for selected stride");
+
   assert(idim.c % group == 0 && "channels number must be divisible by groups");
 
-  auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pads);
+  auto outSz =
+      calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
   (void)outSz;
   assert(odim.n == idim.n && odim.h == outSz.first && odim.w == outSz.second &&
          odim.c % group == 0 && "Invalid output dimensions");
@@ -216,14 +220,18 @@ static void verifyFullyConnected(NodeValue src, NodeValue weights,
 }
 
 static void verifyPool(NodeValue src, NodeValue dest, size_t kernel,
-                       size_t stride, size_t pad) {
+                       size_t stride, llvm::ArrayRef<size_t> pads) {
   ShapeNHWC idim = ShapeNHWC(src.getType()->dims());
   ShapeNHWC odim = ShapeNHWC(dest.getType()->dims());
   (void)odim;
-  assert(idim.w >= kernel && idim.h >= kernel &&
+  PaddingTLBR pdim(pads);
+  (void)pdim;
+  assert((idim.w + pdim.left + pdim.right) >= kernel &&
+         (idim.h + pdim.top + pdim.bottom) >= kernel &&
          "buffer too small for selected stride");
 
-  auto outSz = calculatePoolOutputDims(idim.h, idim.w, kernel, stride, pad);
+  auto outSz =
+      calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
   (void)exp;
   assert(exp == odim && "Unexpected output dimensions");
@@ -297,21 +305,21 @@ void ConvolutionGradNode::verify() const {
 }
 
 void PoolMaxNode::verify() const {
-  verifyPool(getInput(), getResult(), Kernel_, Stride_, Pad_);
+  verifyPool(getInput(), getResult(), Kernel_, Stride_, Pads_);
 }
 
 void PoolAvgNode::verify() const {
-  verifyPool(getInput(), getResult(), Kernel_, Stride_, Pad_);
+  verifyPool(getInput(), getResult(), Kernel_, Stride_, Pads_);
 }
 
 void PoolMaxGradNode::verify() const {
   verifyPool(getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
-             Kernel_, Stride_, Pad_);
+             Kernel_, Stride_, Pads_);
 }
 
 void PoolAvgGradNode::verify() const {
   verifyPool(getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
-             Kernel_, Stride_, Pad_);
+             Kernel_, Stride_, Pads_);
 }
 
 void MatMulNode::verify() const {

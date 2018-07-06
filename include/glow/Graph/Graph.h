@@ -209,7 +209,15 @@ public:
                               size_t group);
 
   PoolMaxNode *createPoolMax(llvm::StringRef name, NodeValue input,
+                             size_t kernel, size_t stride,
+                             llvm::ArrayRef<size_t> pads);
+
+  PoolMaxNode *createPoolMax(llvm::StringRef name, NodeValue input,
                              size_t kernel, size_t stride, size_t pad);
+
+  PoolAvgNode *createPoolAvg(llvm::StringRef name, NodeValue input,
+                             size_t kernel, size_t stride,
+                             llvm::ArrayRef<size_t> pads);
 
   PoolAvgNode *createPoolAvg(llvm::StringRef name, NodeValue input,
                              size_t kernel, size_t stride, size_t pad);

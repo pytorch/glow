@@ -32,7 +32,7 @@ BB.newNode("OCLPoolAvg")
     .addInput("Input")
     .addMember(MemberType::SizeT, "Kernel")
     .addMember(MemberType::SizeT, "Stride")
-    .addMember(MemberType::SizeT, "Pad")
+    .addMember(MemberType::VectorSizeT, "Pads")
     .addResultFromCtorArg()
     .setDocstring(
         "This is an OpenCL-specific Average Pool operation on the Input given "
@@ -43,7 +43,7 @@ BB.newNode("OCLPoolMax")
     .addInput("Input")
     .addMember(MemberType::SizeT, "Kernel")
     .addMember(MemberType::SizeT, "Stride")
-    .addMember(MemberType::SizeT, "Pad")
+    .addMember(MemberType::VectorSizeT, "Pads")
     .addResultFromCtorArg()
     .setDocstring(
         "This is an OpenCL-specific Max Pool operation on the Input given "

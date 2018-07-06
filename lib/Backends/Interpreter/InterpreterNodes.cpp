@@ -286,11 +286,13 @@ void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
 //===----------------------------------------------------------------------===//
 template <class T>
 static void fwdPoolMax(Tensor *inW, Tensor *outW, Handle<size_t> *SXY,
-                       size_t filterSize, size_t stride, size_t pad) {
+                       size_t filterSize, size_t stride,
+                       llvm::ArrayRef<size_t> pads) {
   ShapeNHWC odim(outW->dims());
   ShapeNHWC idim(inW->dims());
   Handle<T> inHandle = inW->getHandle<T>();
   Handle<T> outHandle = outW->getHandle<T>();
+  PaddingTLBR pdim(pads);
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
@@ -298,9 +300,9 @@ static void fwdPoolMax(Tensor *inW, Tensor *outW, Handle<size_t> *SXY,
     // For each layer in the output tensor:
     for (size_t z = 0; z < idim.c; z++) {
       // For each convolution 'jump' in the input tensor:
-      ssize_t x = -ssize_t(pad);
+      ssize_t x = -ssize_t(pdim.top);
       for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
-        ssize_t y = -ssize_t(pad);
+        ssize_t y = -ssize_t(pdim.left);
         for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
           size_t maxX = x;
           size_t maxY = y;
@@ -329,7 +331,6 @@ static void fwdPoolMax(Tensor *inW, Tensor *outW, Handle<size_t> *SXY,
             }
           }
 
-          assert(!first && "Max value is uninitialized");
           outHandle.at({n, ax, ay, z}) = max_value;
 
           if (SXY) {
@@ -348,10 +349,10 @@ void InterpreterFunction::fwdPoolMaxInst(const PoolMaxInst *I) {
 
   if (inW->getType().isQuantizedType()) {
     fwdPoolMax<int8_t>(inW, outW, nullptr, I->getKernel(), I->getStride(),
-                       I->getPad());
+                       I->getPads());
   } else {
     fwdPoolMax<float>(inW, outW, nullptr, I->getKernel(), I->getStride(),
-                      I->getPad());
+                      I->getPads());
   }
 }
 
@@ -362,10 +363,10 @@ void InterpreterFunction::fwdPoolMaxWithXYInst(const PoolMaxWithXYInst *I) {
 
   if (inW->getType().isQuantizedType()) {
     fwdPoolMax<int8_t>(inW, outW, &SXY, I->getKernel(), I->getStride(),
-                       I->getPad());
+                       I->getPads());
   } else {
     fwdPoolMax<float>(inW, outW, &SXY, I->getKernel(), I->getStride(),
-                      I->getPad());
+                      I->getPads());
   }
 }
 
@@ -373,7 +374,7 @@ void InterpreterFunction::fwdPoolAvgInst(const PoolAvgInst *I) {
   ShapeNHWC odim(I->getDest()->dims());
   ShapeNHWC idim(I->getSrc()->dims());
 
-  auto pad = I->getPad();
+  PaddingTLBR pdim(I->getPads());
   auto filterSize = I->getKernel();
   auto stride = I->getStride();
   // Implement the avg pooling operation as defined here:
@@ -393,9 +394,9 @@ void InterpreterFunction::fwdPoolAvgInst(const PoolAvgInst *I) {
       // For each layer in the output tensor:
       for (size_t z = 0; z < idim.c; z++) {
         // For each convolution 'jump' in the input tensor:
-        ssize_t x = -ssize_t(pad);
+        ssize_t x = -ssize_t(pdim.top);
         for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
-          ssize_t y = -ssize_t(pad);
+          ssize_t y = -ssize_t(pdim.left);
           for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
             int32_t sum = 0;
 
@@ -434,9 +435,9 @@ void InterpreterFunction::fwdPoolAvgInst(const PoolAvgInst *I) {
     // For each layer in the output tensor:
     for (size_t z = 0; z < idim.c; z++) {
       // For each convolution 'jump' in the input tensor:
-      ssize_t x = -ssize_t(pad);
+      ssize_t x = -ssize_t(pdim.top);
       for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
-        ssize_t y = -ssize_t(pad);
+        ssize_t y = -ssize_t(pdim.left);
         for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
           float sum = 0;
 
@@ -503,7 +504,7 @@ void InterpreterFunction::fwdPoolAvgGradInst(const PoolAvgGradInst *I) {
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inG.dims());
 
-  auto pad = I->getPad();
+  PaddingTLBR pdim(I->getPads());
   auto filterSize = I->getKernel();
   auto stride = I->getStride();
 
@@ -517,9 +518,9 @@ void InterpreterFunction::fwdPoolAvgGradInst(const PoolAvgGradInst *I) {
     // For each layer in the output tensor:
     for (size_t z = 0; z < odim.c; z++) {
       // For each convolution 'jump' in the input tensor:
-      ssize_t x = -ssize_t(pad);
+      ssize_t x = -ssize_t(pdim.top);
       for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
-        ssize_t y = -ssize_t(pad);
+        ssize_t y = -ssize_t(pdim.left);
         for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
 
           float dy = outG.at({n, ax, ay, z}) / filterArea;

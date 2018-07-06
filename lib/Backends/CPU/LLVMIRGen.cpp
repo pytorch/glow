@@ -1612,11 +1612,11 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *kernel = emitConstSizeT(builder, PM->getKernel());
     auto *stride = emitConstSizeT(builder, PM->getStride());
-    auto *pad = emitConstSizeT(builder, PM->getPad());
+    auto *pads = emitConstArray(builder, PM->getPads());
 
     auto *F = getFunction("pool_max", dest->getElementType());
     createCall(builder, F,
-               {srcPtr, destPtr, srcDims, destDims, kernel, stride, pad});
+               {srcPtr, destPtr, srcDims, destDims, kernel, stride, pads});
     break;
   }
 
@@ -1633,12 +1633,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *kernel = emitConstSizeT(builder, PMXY->getKernel());
     auto *stride = emitConstSizeT(builder, PMXY->getStride());
-    auto *pad = emitConstSizeT(builder, PMXY->getPad());
+    auto *pads = emitConstArray(builder, PMXY->getPads());
 
     auto *F = getFunction("pool_max_xy", dest->getElementType());
     createCall(
         builder, F,
-        {srcPtr, destPtr, srcXYPtr, srcDims, destDims, kernel, stride, pad});
+        {srcPtr, destPtr, srcXYPtr, srcDims, destDims, kernel, stride, pads});
     break;
   }
 
@@ -1670,7 +1670,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *kernel = emitConstSizeT(builder, PA->getKernel());
     auto *stride = emitConstSizeT(builder, PA->getStride());
-    auto *pad = emitConstSizeT(builder, PA->getPad());
+    auto *pads = emitConstArray(builder, PA->getPads());
 
     if (src->getType()->isQuantizedType()) {
       auto *destTy = dest->getType();
@@ -1689,13 +1689,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
       auto *F = getFunction("pool_avg", dest->getElementType());
       createCall(builder, F,
-                 {srcPtr, destPtr, srcDims, destDims, kernel, stride, pad,
+                 {srcPtr, destPtr, srcDims, destDims, kernel, stride, pads,
                   destOffset, srcOffset, outPre, outPost, outScale});
       break;
     } else {
       auto *F = getFunction("pool_avg", dest->getElementType());
       createCall(builder, F,
-                 {srcPtr, destPtr, srcDims, destDims, kernel, stride, pad});
+                 {srcPtr, destPtr, srcDims, destDims, kernel, stride, pads});
       break;
     }
   }
@@ -1711,12 +1711,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *kernel = emitConstSizeT(builder, PAG->getKernel());
     auto *stride = emitConstSizeT(builder, PAG->getStride());
-    auto *pad = emitConstSizeT(builder, PAG->getPad());
+    auto *pads = emitConstArray(builder, PAG->getPads());
 
     auto *F = getFunction("pool_avg_grad", srcGrad->getElementType());
     createCall(
         builder, F,
-        {srcGradPtr, destGradPtr, srcGradDims, destDims, kernel, stride, pad});
+        {srcGradPtr, destGradPtr, srcGradDims, destDims, kernel, stride, pads});
     break;
   }
 

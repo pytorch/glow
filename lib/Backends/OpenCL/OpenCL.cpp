@@ -841,10 +841,11 @@ void OpenCLFunction::execute() {
 
       auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
+      auto pads = PaddingTLBR(PM->getPads());
 
       setKernelArg<cl_uint>(kernel, numArgs + 1, PM->getKernel());
       setKernelArg<cl_uint>(kernel, numArgs + 2, PM->getStride());
-      setKernelArg<cl_uint>(kernel, numArgs + 3, PM->getPad());
+      setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
 
@@ -862,10 +863,11 @@ void OpenCLFunction::execute() {
 
       auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
+      auto pads = PaddingTLBR(PM->getPads());
 
       setKernelArg<cl_uint>(kernel, numArgs + 1, PM->getKernel());
       setKernelArg<cl_uint>(kernel, numArgs + 2, PM->getStride());
-      setKernelArg<cl_uint>(kernel, numArgs + 3, PM->getPad());
+      setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
 
@@ -881,10 +883,11 @@ void OpenCLFunction::execute() {
 
       auto destGradDim = ShapeNHWC(PMG->getDestGrad()->dims());
       auto srcGradDim = ShapeNHWC(PMG->getSrcGrad()->dims());
+      auto pads = PaddingTLBR(PMG->getPads());
 
       setKernelArg<cl_uint>(kernel, numArgs + 1, PMG->getKernel());
       setKernelArg<cl_uint>(kernel, numArgs + 2, PMG->getStride());
-      setKernelArg<cl_uint>(kernel, numArgs + 3, PMG->getPad());
+      setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, srcGradDim);
       setKernelArg(kernel, numArgs + 5, destGradDim);
 
@@ -905,10 +908,11 @@ void OpenCLFunction::execute() {
 
       auto odim = ShapeNHWC(PA->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PA->getSrc()->getType()->dims());
+      auto pads = PaddingTLBR(PA->getPads());
 
       setKernelArg<cl_uint>(kernel, numArgs + 1, PA->getKernel());
       setKernelArg<cl_uint>(kernel, numArgs + 2, PA->getStride());
-      setKernelArg<cl_uint>(kernel, numArgs + 3, PA->getPad());
+      setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
 
@@ -1026,10 +1030,11 @@ void OpenCLFunction::execute() {
 
       auto odim = ShapeNCHW(PA->getDest()->getType()->dims());
       auto idim = ShapeNCHW(PA->getSrc()->getType()->dims());
+      auto pads = PaddingTLBR(PA->getPads());
 
       setKernelArg<cl_uint>(kernel, numArgs + 1, PA->getKernel());
       setKernelArg<cl_uint>(kernel, numArgs + 2, PA->getStride());
-      setKernelArg<cl_uint>(kernel, numArgs + 3, PA->getPad());
+      setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
 
@@ -1045,10 +1050,11 @@ void OpenCLFunction::execute() {
 
       auto odim = ShapeNCHW(PM->getDest()->getType()->dims());
       auto idim = ShapeNCHW(PM->getSrc()->getType()->dims());
+      auto pads = PaddingTLBR(PM->getPads());
 
       setKernelArg<cl_uint>(kernel, numArgs + 1, PM->getKernel());
       setKernelArg<cl_uint>(kernel, numArgs + 2, PM->getStride());
-      setKernelArg<cl_uint>(kernel, numArgs + 3, PM->getPad());
+      setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
 
