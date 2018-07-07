@@ -758,7 +758,7 @@ TEST_F(GraphOptz, ReshapeReshapeOpt) {
   auto *RN = llvm::dyn_cast<ReshapeNode>(O->getInput());
   ASSERT_TRUE(RN);
   // The new Reshape should have the same shape as the original second Reshape.
-  EXPECT_TRUE(RN->getType()->dims().equals(reshape2));
+  EXPECT_TRUE(RN->getResult().getType()->dims().equals(reshape2));
 
   // R1 and R2 should not be in the graph any more; they were replaced by a
   // single new reshape.

@@ -29,7 +29,7 @@ Node *convertConvToNCHWConv(ConvolutionNode *CN, Function *F) {
   auto *NI = F->createTranspose("conv.input", CN->getInput(), NHWC2NCHW);
   auto *NF = F->createTranspose("conv.filter", CN->getFilter(), NHWC2NCHW);
 
-  auto dimsNHWC = ShapeNHWC(CN->getType()->dims());
+  auto dimsNHWC = ShapeNHWC(CN->getResult().getType()->dims());
   auto dimsNCHW = {dimsNHWC.n, dimsNHWC.c, dimsNHWC.h, dimsNHWC.w};
   auto outTy = F->getParent()->uniqueType(ElemKind::FloatTy, dimsNCHW);
 
@@ -48,7 +48,7 @@ Node *convertPoolToNCHWPool(PoolNode *PN, Function *F) {
   // Convert input from NHWC (Glow's default) into NCHW.
   auto *NI = F->createTranspose("conv.input", PN->getInput(), NHWC2NCHW);
 
-  auto dimsNHWC = ShapeNHWC(PN->getType()->dims());
+  auto dimsNHWC = ShapeNHWC(PN->getResult().getType()->dims());
   auto dimsNCHW = {dimsNHWC.n, dimsNHWC.c, dimsNHWC.h, dimsNHWC.w};
   auto outTy = F->getParent()->uniqueType(ElemKind::FloatTy, dimsNCHW);
 
