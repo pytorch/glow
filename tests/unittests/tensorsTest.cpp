@@ -127,11 +127,11 @@ TEST(Tensor, equalHandles) {
   }
 }
 
-TEST(Tensor, assignment) {
+template <typename Ty> void testAssignment(const Type &ty) {
   // Testing some tensor operations.
-  Tensor T(ElemKind::FloatTy, {320, 200, 64});
+  Tensor T(ty);
 
-  auto Handle = T.getHandle<>();
+  auto Handle = T.getHandle<Ty>();
 
   for (unsigned i = 0; i < 10; i++) {
     for (unsigned x = 0; x < 32; x++) {
@@ -145,8 +145,8 @@ TEST(Tensor, assignment) {
 
   EXPECT_EQ(Handle.at({10, 10, 10}), 10 + 10 + 10);
 
-  auto TT = Handle.extractSlice(1);
-  auto H2 = TT.getHandle<>();
+  Tensor TT = Handle.extractSlice(1);
+  auto H2 = TT.getHandle<Ty>();
 
   EXPECT_EQ(H2.at({10, 10}), 1 + 10 + 10);
 
@@ -157,6 +157,14 @@ TEST(Tensor, assignment) {
   }
 
   EXPECT_EQ(H2.at({10, 10}), 2);
+}
+
+TEST(Tensor, assignment) {
+  size_t dim[] = {320, 200, 64};
+  testAssignment<float>(Type{ElemKind::FloatTy, dim});
+  testAssignment<int8_t>(Type{ElemKind::Int8QTy, dim, 1., 0});
+  testAssignment<int32_t>(Type{ElemKind::Int32QTy, dim, 1., 0});
+  testAssignment<size_t>(Type{ElemKind::IndexTy, dim});
 }
 
 TEST(Tensor, concatTensors1D) {
