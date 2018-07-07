@@ -523,8 +523,8 @@ public:
     auto sizes = tensor_->dims();
     assert(sizes.size() > 1 && "Tensor has only one dimension");
     assert(idx < sizes[0] && "Invalid first index");
-    auto elemTy = tensor_->getElementType();
-    Tensor slice(elemTy, sizes.slice(1));
+
+    Tensor slice{Type::newShape(tensor_->getType(), sizes.slice(1))};
 
     // Extract the whole slice.
     size_t startIdx = sizeIntegral_[0] * idx;
