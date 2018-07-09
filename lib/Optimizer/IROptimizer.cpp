@@ -781,24 +781,6 @@ static void eraseInstructions(IRFunction &M,
 /// outside.
 static bool isObservable(Value *V) { return isa<WeightVar>(getOrigin(V)); }
 
-/// Substitute all uses of \p oldBuffer by \p newBuffer inside the
-/// \p oldInterval.
-static void reuseBufferInsideInterval(
-    Value *oldBuffer, Value *newBuffer, Interval oldInterval, IRFunction &M,
-    const LiveIntervalsInstructionNumbering &instrNumbering,
-    Intervals &oldIntervals, Intervals &newIntervals) {
-  DEBUG_GLOW(llvm::dbgs() << "\n\nReuse buffers: use buffer of "
-                          << newBuffer->getName() << " as a buffer for "
-                          << oldBuffer->getName() << "\n"
-                          << "in live interval " << oldInterval << "\n");
-  // Replace oldBuffer with newBuffer.
-  replaceAllUsesInsideIntervalWith(oldBuffer, newBuffer, oldInterval, M,
-                                   instrNumbering);
-  // oldInterval does not belong to oldIntervals anymore. It should belong
-  // to newIntervals now.
-  moveInterval(oldIntervals, newIntervals, oldInterval);
-}
-
 /// A helper class for performing a sharing of buffers used by a given
 /// instruction.
 class BufferSharingOptimizer {
@@ -981,15 +963,43 @@ public:
     if (bufferToReuse == destOrigin_) {
       // This operation may extend the lifetime of dest's buffer.
       // shareBuffers will fix it once it's done.
-      reuseBufferInsideInterval(srcOrigin_, dest_, *srcInterval_, M_,
-                                instrNumbering_, srcIntervals_, destIntervals_);
+      reuseBufferInsideInterval(srcOrigin_, dest_, *srcInterval_,
+                                *destInterval_, M_, srcIntervals_,
+                                destIntervals_);
       return true;
     }
 
     // Source buffer can be reused.
-    reuseBufferInsideInterval(destOrigin_, src_, *destInterval_, M_,
-                              instrNumbering_, destIntervals_, srcIntervals_);
+    reuseBufferInsideInterval(destOrigin_, src_, *destInterval_, *srcInterval_,
+                              M_, destIntervals_, srcIntervals_);
     return true;
+  }
+
+  /// Substitute all uses of \p oldBuffer by \p newBuffer inside the
+  /// \p oldInterval.
+  void reuseBufferInsideInterval(Value *oldBuffer, Value *newBuffer,
+                                 Interval oldInterval, Interval &newInterval,
+                                 IRFunction &M, Intervals &oldIntervals,
+                                 Intervals &newIntervals) {
+    DEBUG_GLOW(llvm::dbgs()
+               << "\n\nReuse buffers: use buffer of " << newBuffer->getName()
+               << " as a buffer for " << oldBuffer->getName() << "\n"
+               << "in live interval " << oldInterval << "\n");
+    // Replace oldBuffer with newBuffer.
+    replaceAllUsesInsideIntervalWith(oldBuffer, newBuffer, oldInterval, M,
+                                     instrNumbering_);
+    if (isa<CopyInst>(instr_) && oldInterval.sameValue_ &&
+        newInterval.sameValue_) {
+      // This is a copy propagation.
+      // Merge the old interval with the new one.
+      newInterval.begin_ = std::min(newInterval.begin_, oldInterval.begin_);
+      newInterval.end_ = std::max(newInterval.end_, oldInterval.end_);
+      assert(isEnclosedInside(newInterval, oldInterval) &&
+             "Merging the intervals didn't work");
+    }
+    // oldInterval does not belong to oldIntervals anymore. It should belong
+    // to newIntervals now.
+    moveInterval(oldIntervals, newIntervals, oldInterval);
   }
 };
 

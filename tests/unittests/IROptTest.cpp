@@ -436,18 +436,18 @@ TEST(Optimizer, chainOfTwoForwardCopies) {
   optimize(M, CompilationMode::Infer, MockBackend());
 
   // After optimization, the copies should have been coalesced with
-  // input and output.
+  // input.
   // Ideally, we should get rid of 2 copies, the related 2 allocactivations and
   // deallocation.
   // Therefore expected instructions should be
   // nbIntrsBeforeOpt - 2 copies - 2 dealloc - 2 alloc
-  // In practice, the optimization will coalesce tmp2 = copy tmp1 first.
-  // Then, it will coalesce tmp1 with input but only on the original
-  // interval of tmp1, thus the coalesce tmp2 = copy tmp1, which became
-  // tmp1 = copy tmp1 is turned into tmp1 = copy input.
-  // Therefore, the optimization is not smart enough to get rid of chain of
-  // copies that goes forward, so we end up with only 1 copy removed, thus one
-  // left.
   EXPECT_EQ(instrs.size(),
-            nbInstrsBeforeOpt /*copy*/ - 1 /*alloca*/ - 1 /*dealloc*/ - 1);
+            nbInstrsBeforeOpt /*copy*/ - 2 /*alloca*/ - 2 /*dealloc*/ - 2);
+  EXPECT_TRUE(std::none_of(instrs.begin(), instrs.end(),
+                           [](const Instruction &I) -> bool {
+                             return isa<AllocActivationInst>(&I);
+                           }));
+  EXPECT_TRUE(std::none_of(
+      instrs.begin(), instrs.end(),
+      [](const Instruction &I) -> bool { return isa<CopyInst>(&I); }));
 }
