@@ -67,9 +67,6 @@ public:
   /// Reset the execution engine.
   void reset();
 
-  /// \returns the internal IR function.
-  IRFunction &getIR() { return *IR_; }
-
   /// \returns the internal graph.
   Module &getModule() { return *M_; }
 
