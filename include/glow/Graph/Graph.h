@@ -140,6 +140,15 @@ public:
                  float val = 0.0);
   ///@}
 
+  /// Variable builder for a singleton Variable with a reserved \p name,
+  /// reserved in the Module constructor. A singleton Variable with this name
+  /// should only be created once.
+  Variable *createSingletonVariable(
+      ElemKind T, llvm::ArrayRef<size_t> dims, float scale, int32_t offset,
+      llvm::StringRef name, VisibilityKind visibility = VisibilityKind::Private,
+      Variable::TrainKind train = Variable::TrainKind::Broadcast,
+      float val = 0.0);
+
   /// Verify the correctness of the Module.
   void verify() const;
 

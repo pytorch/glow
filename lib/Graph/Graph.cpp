@@ -338,6 +338,23 @@ Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
   return createVariable(FT, name, visibility, train, val);
 }
 
+Variable *
+Module::createSingletonVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
+                                float scale, int32_t offset,
+                                llvm::StringRef name, VisibilityKind visibility,
+                                Variable::TrainKind train, float val) {
+  for (auto *V : getVars()) {
+    if (V->getName() == name) {
+      assert(false && "Variable with this name has already been created.");
+    }
+  }
+
+  auto FT = uniqueType(T, dims, scale, offset);
+  auto *V = new Variable(name, FT, visibility, train, val, getPRNG());
+  vars_.push_back(V);
+  return V;
+}
+
 llvm::StringRef Module::uniqueName(llvm::StringRef name,
                                    llvm::StringSet<> &stringTable) {
   std::string legalName;
