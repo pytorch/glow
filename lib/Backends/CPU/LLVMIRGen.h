@@ -155,15 +155,17 @@ class LLVMIRGen {
   void loadBaseAddresses(llvm::IRBuilder<> &builder);
   /// Create a function representing a stacked kernel for instructions provided
   /// in \p stackedInstrs.
-  void emitDataParallelKernel(llvm::IRBuilder<> &builder,
-                              llvm::ArrayRef<const Instruction *> stackedInstrs);
+  void
+  emitDataParallelKernel(llvm::IRBuilder<> &builder,
+                         llvm::ArrayRef<const Instruction *> stackedInstrs);
   /// Emit IR for the data parallel instruction \p I which is invoked inside the
   /// stacked \p kernel. The current loop count is described by \p loopCount.
   /// The \p bufferToArgNum map can be used to find the required buffers, which
   /// are provided as arguments to the stacked \p kernel.
   void generateLLVMIRForDataParallelInstr(
-      llvm::IRBuilder<> &builder, const glow::Instruction *I, llvm::Function *kernel,
-      llvm::DenseMap<Value *, int> &bufferToArgNum, llvm::Value *loopCount);
+      llvm::IRBuilder<> &builder, const glow::Instruction *I,
+      llvm::Function *kernel, llvm::DenseMap<Value *, int> &bufferToArgNum,
+      llvm::Value *loopCount);
   /// \returns the llvm type of the glow vale \p val.
   llvm::Type *getElementType(llvm::IRBuilder<> &builder, const Value *val);
   /// Create a debug information for a given LLVM type \p ty.
@@ -200,7 +202,8 @@ public:
   void initTargetMachine(llvm::StringRef T, llvm::CodeModel::Model CM);
 
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
-  void generateLLVMIRForInstr(llvm::IRBuilder<> &builder, const glow::Instruction *I);
+  void generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
+                              const glow::Instruction *I);
   /// Emit LLVM-IR for the whole IRFunction.
   void generateLLVMIRForModule(llvm::IRBuilder<> &builder);
   /// \returns a libjit API function by name.

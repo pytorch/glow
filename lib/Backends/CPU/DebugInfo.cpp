@@ -32,7 +32,6 @@ using namespace glow;
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
-using llvm::StringRef;
 
 extern llvm::cl::opt<bool> emitDebugInfo;
 

@@ -52,7 +52,6 @@
 using namespace glow;
 using llvm::dyn_cast;
 using llvm::isa;
-using llvm::StringRef;
 
 void LLVMIRGen::optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM) {
   auto *M = F->getParent();

@@ -17,10 +17,10 @@
 #ifndef GLOW_QUANTIZATION_BASE_BASE_H
 #define GLOW_QUANTIZATION_BASE_BASE_H
 
-#include <cstdlib>
-#include <cassert>
-#include <limits>
 #include <algorithm>
+#include <cassert>
+#include <cstdlib>
+#include <limits>
 
 namespace glow {
 
