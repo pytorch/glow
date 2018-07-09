@@ -25,6 +25,8 @@
 
 #include "gtest/gtest.h"
 
+#include "llvm/ADT/STLExtras.h"
+
 using namespace glow;
 using llvm::cast;
 
@@ -237,10 +239,10 @@ class MockCPUBackend : public Backend {
   std::unique_ptr<Backend> backend_;
 
 public:
-  MockCPUBackend(IRFunction *M) {
-    backend_.reset(createBackend(BackendKind::CPU, M));
+  MockCPUBackend() {
+    backend_.reset(createBackend(BackendKind::CPU));
   }
-  void init() override { backend_->init(); }
+  void init(std::unique_ptr<const IRFunction> IR) override { backend_->init(std::move(IR)); }
   void doForwardPass() override { backend_->doForwardPass(); }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     return true;
@@ -257,18 +259,18 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
   // buffer that is already used by other instructions in the stacked kernel.
   Module mod;
   Function *F = mod.createFunction("DataParallelStacking");
-  IRFunction M(F);
+  auto M = llvm::make_unique<IRFunction>(F);
 
   auto var = mod.createVariable(glow::ElemKind::FloatTy, {2}, "output");
   {
     // Scope the IRBuilder so the active allocations are properly deallocated at
     // destruction.
-    IRBuilder bb(&M);
+    IRBuilder bb(M.get());
 
     auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {2}, "output1",
                                       WeightVar::MutabilityKind::Mutable);
 
-    M.getVariableMap()[var] = output;
+    M->getVariableMap()[var] = output;
 
     auto *act = bb.createAllocActivationInst(
         "act1", mod.uniqueType(glow::ElemKind::FloatTy, {3}));
@@ -303,8 +305,8 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
     bb.createDeallocActivationInst("dealloc", act);
   }
 
-  MockCPUBackend backend(&M);
-  backend.init();
+  MockCPUBackend backend;
+  backend.init(std::move(M));
   backend.doForwardPass();
   auto H = var->getHandle();
   EXPECT_EQ(H.at(0), 3);

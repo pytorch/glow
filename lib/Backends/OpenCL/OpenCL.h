@@ -65,8 +65,8 @@ class OCLBackend final : public Backend {
       return llvm::hash_combine(std::get<0>(K), std::get<1>(K), std::get<2>(K));
     }
   };
-  /// The Module that holds the IR. This does not own the module.
-  const IRFunction *F_;
+  /// The IR to be executed.
+  std::unique_ptr<const IRFunction> F_;
   /// The allocator assigns device memory addresses to the buffers.
   MemoryAllocator allocator_;
   /// Maps values to on-device buffers. This list includes both weights and
@@ -92,14 +92,14 @@ class OCLBackend final : public Backend {
 
 public:
   /// Ctor.
-  explicit OCLBackend(const IRFunction *M);
+  explicit OCLBackend();
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
   ///@{
   ~OCLBackend() override;
 
-  void init() override;
+  void init(std::unique_ptr<const IRFunction> IR) override;
 
   void doForwardPass() override;
 

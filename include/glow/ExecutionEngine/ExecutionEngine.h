@@ -43,8 +43,6 @@ class Value;
 class ExecutionEngine final {
   /// The Module that represents the high-level program.
   std::unique_ptr<Module> M_;
-  /// The IR function that represents the program.
-  std::unique_ptr<IRFunction> IR_;
   /// The network execution backend.
   std::unique_ptr<Backend> backend_;
   /// The training configuration.
@@ -53,7 +51,7 @@ class ExecutionEngine final {
   BackendKind backendKind_;
 
   /// Optimize the graph, generate IR, and optimize the IR.
-  void generateIR(CompilationMode mode, Function *F);
+  std::unique_ptr<IRFunction> generateIR(CompilationMode mode, Function *F);
 
 public:
   ExecutionEngine(BackendKind backendKind = BackendKind::Interpreter);

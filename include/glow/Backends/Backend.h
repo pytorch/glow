@@ -44,10 +44,10 @@ public:
   virtual ~Backend() = default;
 
   /// Prepare the interpreter for execution of new code.
-  virtual void init() = 0;
+  virtual void init(std::unique_ptr<const IRFunction> IR) = 0;
 
   /// Save the bundle for a later standalone execution.
-  virtual void save(llvm::StringRef outputDir) {
+  virtual void save(std::unique_ptr<const IRFunction> IR, llvm::StringRef outputDir) {
     GLOW_UNREACHABLE("Saving a bundle is not supported by the backend");
   }
 
@@ -83,8 +83,8 @@ public:
   virtual bool shouldShareBuffers() const { return true; }
 };
 
-/// Create a backend of kind \p kind, to run the IR function \p M.
-Backend *createBackend(BackendKind backendKind, IRFunction *M);
+/// Create a backend of kind \p kind.
+Backend *createBackend(BackendKind backendKind);
 
 } // namespace glow
 

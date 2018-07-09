@@ -23,6 +23,7 @@
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/Optimizer.h"
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/CommandLine.h"
 
 using namespace glow;
@@ -40,20 +41,17 @@ static llvm::cl::opt<bool> dumpIR("dump-ir",
 ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
   backendKind_ = backendKind;
   M_.reset(new Module());
-  IR_.reset(new IRFunction());
-  backend_.reset(createBackend(backendKind_, &*IR_));
+  backend_.reset(createBackend(backendKind_));
 }
 
 // Set the code generator kind to \p backendKind.
 void ExecutionEngine::setBackend(BackendKind backendKind) {
   backendKind_ = backendKind;
-  backend_.reset(createBackend(backendKind, &*IR_));
+  backend_.reset(createBackend(backendKind));
 }
 
 void ExecutionEngine::reset() {
-  if (IR_)
-    IR_->clear();
-  backend_.reset(createBackend(backendKind_, &*IR_));
+  backend_.reset(createBackend(backendKind_));
 }
 
 ExecutionEngine::~ExecutionEngine() = default;
@@ -62,8 +60,6 @@ void ExecutionEngine::run(llvm::ArrayRef<Variable *> vars,
                           llvm::ArrayRef<Tensor *> inputs) {
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
-  assert(!IR_->getInstrs().empty() &&
-         "Running a function with no instructions.");
 
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
@@ -83,8 +79,6 @@ void ExecutionEngine::runBatch(size_t iterations,
   assert(!inputs.empty() && "No inputs");
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
-  assert(!IR_->getInstrs().empty() &&
-         "Running a function with no instructions.");
 
   // This is the size of one batch (the number of samples in the batch).
   size_t batchSize = vars[0]->getType()->dims()[0];
@@ -131,10 +125,7 @@ void ExecutionEngine::loadValueFromTensor(Variable *v, Tensor *input) {
   t.copyFrom(input);
 }
 
-void ExecutionEngine::generateIR(CompilationMode mode, Function *F) {
-  // Reset the engine and start a new compilation process.
-  reset();
-
+std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode, Function *F) {
   // Verify the function pre-optimization/lowering.
   F->verify();
 
@@ -162,30 +153,32 @@ void ExecutionEngine::generateIR(CompilationMode mode, Function *F) {
   }
 
   /// Prepare the IR container to handle our function.
-  IR_->setGraph(F);
+  auto IR = llvm::make_unique<IRFunction>(F);
 
   // Generate IR from the graph.
-  IR_->generateIR();
+  IR->generateIR();
 
   // Optimize the generated IR.
-  ::glow::optimize(*IR_, mode, *backend_);
+  ::glow::optimize(*IR, mode, *backend_);
 
   // If requested, dump IR to stdout and/or dot file for debugging.
   if (dumpIR) {
-    IR_->dump();
+    IR->dump();
   }
   if (!dumpIRDAG.empty()) {
-    IR_->dumpDAG(dumpIRDAG.getValue());
+    IR->dumpDAG(dumpIRDAG.getValue());
   }
+
+  return IR;
 }
 
 void ExecutionEngine::compile(CompilationMode mode, Function *F) {
-  generateIR(mode, F);
-  backend_->init();
+  reset();
+  backend_->init(generateIR(mode, F));
 }
 
 void ExecutionEngine::save(CompilationMode mode, Function *F,
                            llvm::StringRef outputDir) {
-  generateIR(mode, F);
-  backend_->save(outputDir);
+  reset();
+  backend_->save(generateIR(mode, F), outputDir);
 }

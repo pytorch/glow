@@ -325,7 +325,7 @@ unsigned getConvNodeSize(BackendKind kind) {
   ConvolutionNode *CN = F->createConv("conv", input, 6, 1, 1, 0, 2);
   F->createSave("save", CN);
 
-  std::unique_ptr<Backend> backend(createBackend(kind, &M));
+  std::unique_ptr<Backend> backend(createBackend(kind));
   lower(F, CompilationMode::Infer, *backend);
 
   unsigned count = 0;

@@ -40,8 +40,8 @@ class Variable;
 /// This is the IR-interpreter. It owns the IR, and the heap, and is able to
 /// execute the instructions one at a time.
 class Interpreter final : public Backend {
-  /// The Module that holds the IR. This does not own the module.
-  const IRFunction *F_;
+  /// The IR to be executed.
+  std::unique_ptr<const IRFunction> F_;
   /// Maps values to Tensors, that are owned by this class.
   std::unordered_map<const Value *, Tensor *> tensors_;
 
@@ -50,14 +50,14 @@ class Interpreter final : public Backend {
 
 public:
   /// Ctor.
-  explicit Interpreter(const IRFunction *F) : F_(F) {}
+  explicit Interpreter() {}
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
   ///@{
   ~Interpreter() override;
 
-  void init() override;
+  void init(std::unique_ptr<const IRFunction> IR) override;
 
   void doForwardPass() override;
 

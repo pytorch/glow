@@ -44,10 +44,10 @@ using llvm::isa;
 static llvm::cl::opt<std::string> target("target", llvm::cl::desc("target"));
 
 namespace glow {
-Backend *createCPUBackend(IRFunction *F) { return new CPUBackend(F); }
+Backend *createCPUBackend() { return new CPUBackend(); }
 } // namespace glow
 
-CPUBackend::CPUBackend(const IRFunction *F) : F_(F) {}
+CPUBackend::CPUBackend() {}
 
 CPUBackend::~CPUBackend() { alignedFree(heap_); }
 
@@ -131,16 +131,16 @@ static void *allocateJITMemory(const IRFunction *F,
 
 } // end namespace
 
-void CPUBackend::init() {
+void CPUBackend::init(std::unique_ptr<const IRFunction> IR) {
   AllocationsInfo allocationsInfo;
-  LLVMIRGen irgen(F_, allocationsInfo, "");
+  LLVMIRGen irgen(IR.get(), allocationsInfo, "");
   irgen.initTargetMachine(target.empty() ? "" : target.getValue(),
                           llvm::CodeModel::Model::Large);
   JIT_ = llvm::make_unique<llvm::orc::GlowJIT>(irgen.getTargetMachine());
   irgen.initCodeGen();
   // Perform the address assignment for activations and WeightVars.
   assert(heap_ == nullptr);
-  heap_ = allocateJITMemory(F_, allocationsInfo);
+  heap_ = allocateJITMemory(IR.get(), allocationsInfo);
   // Create the jitmain function to be invoked by JIT.
   emitJitMain(allocationsInfo, irgen);
   // Emit the code for the body of the entry function.
@@ -162,9 +162,9 @@ void CPUBackend::doForwardPass() {
   }
 }
 
-void CPUBackend::save(llvm::StringRef outputDir) {
+void CPUBackend::save(std::unique_ptr<const IRFunction> IR, llvm::StringRef outputDir) {
   std::string tgt = target.empty() ? "" : target.getValue();
-  BundleSaver(F_).save(tgt, outputDir);
+  BundleSaver(IR.get()).save(tgt, outputDir);
 }
 
 bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {

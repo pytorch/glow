@@ -57,7 +57,7 @@ static llvm::cl::opt<bool> doProfile("opencl-profile",
 } // namespace
 
 namespace glow {
-Backend *createOCLBackend(IRFunction *F) { return new OCLBackend(F); }
+Backend *createOCLBackend() { return new OCLBackend(); }
 } // namespace glow
 
 using Kind = Kinded::Kind;
@@ -84,7 +84,7 @@ static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 #endif
 }
 
-OCLBackend::OCLBackend(const IRFunction *F) : F_(F), allocator_(0xFFFFFFFF) {
+OCLBackend::OCLBackend() : allocator_(0xFFFFFFFF) {
   cl_uint num{0};
   cl_int err = clGetDeviceIDs(nullptr, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
@@ -1166,7 +1166,8 @@ size_t OCLBackend::copyMutableWeightsFromDevice() {
   return copiedBytes;
 }
 
-void OCLBackend::init() {
+void OCLBackend::init(std::unique_ptr<const IRFunction> IR) {
+  F_ = std::move(IR);
   for (auto &v : F_->getGraph()->getParent()->getVars()) {
     auto *w = F_->getWeightForNode(v);
     assert(!externalTensors_.count(w) && "The tensor is already registered");
