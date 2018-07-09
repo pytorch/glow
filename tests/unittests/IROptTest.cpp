@@ -355,3 +355,99 @@ TEST(Optimizer, twoExtractsWithBuffersOptimizer) {
       instrs.begin(), instrs.end(),
       [](const Instruction &I) -> bool { return isa<ExtractTensorInst>(&I); }));
 }
+
+/// Check that we are able to coalesce a copy forward from the input.
+/// This test consists in copy from the input variable.
+/// Its may characteristic is that this copy cannot be coalesced with
+/// the output (otherwise it would be a backward chain of
+/// copies from output).
+/// The shareBuffers optimization works backward, so as long as
+/// it manages to coalesce things with output one by one, we
+/// won't see if the forward copies are properly handled.
+TEST(Optimizer, forwardCopy) {
+  Module mod;
+  Function *F = mod.createFunction("forwardCopy");
+  IRFunction M(F);
+  IRBuilder bb(&M);
+
+  auto *input = bb.createWeightVar(glow::ElemKind::FloatTy, {64}, "input",
+                                   WeightVar::MutabilityKind::Mutable);
+  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {2, 64}, "output",
+                                    WeightVar::MutabilityKind::Mutable);
+  auto *tmp1 =
+      bb.createAllocActivationInst("tmp1", glow::ElemKind::FloatTy, {64});
+  bb.createCopyInst("copy1", tmp1, input);
+
+  auto *view = bb.createTensorViewInst(
+      "view", tmp1, mod.uniqueType(Type(glow::ElemKind::FloatTy, {1, 64})),
+      {0});
+  bb.createInsertTensorInst("copyOutput", output, view, {0, 0}, 1, 0);
+
+  bb.createDeallocActivationInst("dealloc1", tmp1);
+
+  auto &instrs = M.getInstrs();
+  auto nbInstrsBeforeOpt = instrs.size();
+  optimize(M, CompilationMode::Infer, MockBackend());
+
+  // After optimization, the copy should have been coalesced with input.
+  // nbIntrsBeforeOpt - 1 copy - 1 dealloc - 1 alloc
+  EXPECT_EQ(instrs.size(),
+            nbInstrsBeforeOpt /*copy*/ - 1 /*alloca*/ - 1 /*dealloc*/ - 1);
+  EXPECT_TRUE(std::none_of(instrs.begin(), instrs.end(),
+                           [](const Instruction &I) -> bool {
+                             return isa<AllocActivationInst>(&I);
+                           }));
+  EXPECT_TRUE(std::none_of(
+      instrs.begin(), instrs.end(),
+      [](const Instruction &I) -> bool { return isa<CopyInst>(&I); }));
+}
+
+/// Check that we are able to coalesce chain of copies
+/// forward from the input.
+/// This test is similar to forwardCopy, expect it uses a chain of copies (more
+/// than one) instead of just on copy from input.
+TEST(Optimizer, chainOfTwoForwardCopies) {
+  Module mod;
+  Function *F = mod.createFunction("chainOfTwoForwardCopies");
+  IRFunction M(F);
+  IRBuilder bb(&M);
+
+  auto *input = bb.createWeightVar(glow::ElemKind::FloatTy, {64}, "input",
+                                   WeightVar::MutabilityKind::Mutable);
+  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {2, 64}, "output",
+                                    WeightVar::MutabilityKind::Mutable);
+  auto *tmp1 =
+      bb.createAllocActivationInst("tmp1", glow::ElemKind::FloatTy, {64});
+  bb.createCopyInst("copy1", tmp1, input);
+
+  auto *tmp2 =
+      bb.createAllocActivationInst("tmp2", glow::ElemKind::FloatTy, {64});
+  bb.createCopyInst("copy2", tmp2, tmp1);
+  auto *view = bb.createTensorViewInst(
+      "view", tmp2, mod.uniqueType(Type(glow::ElemKind::FloatTy, {1, 64})),
+      {0});
+  bb.createInsertTensorInst("copyOutput", output, view, {0, 0}, 1, 0);
+
+  bb.createDeallocActivationInst("dealloc1", tmp1);
+  bb.createDeallocActivationInst("dealloc2", tmp2);
+
+  auto &instrs = M.getInstrs();
+  auto nbInstrsBeforeOpt = instrs.size();
+  optimize(M, CompilationMode::Infer, MockBackend());
+
+  // After optimization, the copies should have been coalesced with
+  // input and output.
+  // Ideally, we should get rid of 2 copies, the related 2 allocactivations and
+  // deallocation.
+  // Therefore expected instructions should be
+  // nbIntrsBeforeOpt - 2 copies - 2 dealloc - 2 alloc
+  // In practice, the optimization will coalesce tmp2 = copy tmp1 first.
+  // Then, it will coalesce tmp1 with input but only on the original
+  // interval of tmp1, thus the coalesce tmp2 = copy tmp1, which became
+  // tmp1 = copy tmp1 is turned into tmp1 = copy input.
+  // Therefore, the optimization is not smart enough to get rid of chain of
+  // copies that goes forward, so we end up with only 1 copy removed, thus one
+  // left.
+  EXPECT_EQ(instrs.size(),
+            nbInstrsBeforeOpt /*copy*/ - 1 /*alloca*/ - 1 /*dealloc*/ - 1);
+}
