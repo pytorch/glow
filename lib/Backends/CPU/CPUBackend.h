@@ -52,27 +52,15 @@ class CPUBackend final : public Backend {
   /// The LLVM JIT engine. The jit must be initialized after the ctor
   /// initializes the LLVM backends.
   std::unique_ptr<llvm::orc::GlowJIT> JIT_{nullptr};
-
   /// The LLVM IR code generator.
   LLVMIRGen irgen_;
   /// This represents the heap, that stores the activations at runtime.
   void *heap_{nullptr};
+
   /// Produce the main entry point for JIT execution.
   void emitJitMain();
   /// Perform memory allocation for a JIT execution.
   void performJITMemoryAllocation();
-  /// Perform memory allocation for a bundle.
-  void performBundleMemoryAllocation();
-  /// Save weights for the bundle.
-  void saveWeights(llvm::StringRef weightsFileName);
-  /// Produce a bundle.
-  void produceBundle(llvm::StringRef outputDir);
-  /// Emit config for a bundle.
-  void emitBundleConfig();
-  /// Emit the symbol table for a bundle.
-  void emitSymbolTable();
-  /// Emit the entry function for the bundle.
-  void emitBundleEntryFunction();
 
 public:
   /// Ctor.
