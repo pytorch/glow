@@ -275,59 +275,23 @@ static Node *quantizeNode(Function *F, Node *node,
     break;
   }
   case Kinded::Kind::TanhNodeKind: {
+    auto *TN = cast<TanhNode>(node);
     assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
 
-    // Quantized tanh operator expects input to be in a certain floating point
-    // range. This operator works based on the precomputed table and has to
-    // process input in a range of [-3.0, 3.0]. Tanh asymptotically approaches
-    // +/-1.0 and is already +/-.995 at +/-3.0.
-    // The output quantization parameters are chosen to represent the floating
-    // point range of [-1.0, 1.0].
-    auto inputQuantizationParams = chooseQuantizationParams(-3.0, 3.0);
-    auto tanhInTy = F->getParent()->uniqueType(
-        ElemKind::Int8QTy, quantizedInputs[0]->dims(),
-        inputQuantizationParams.scale_, inputQuantizationParams.offset_);
-
-    // Make sure input is clipped in [-3.0, 3.0] floating point range.
-    auto *rescaleNode = F->createRescaleQuantized(quantizedInputs[0]->getName(),
-                                                  quantizedInputs[0], tanhInTy);
-
-    // Make sure output is clipped in [-1.0, 1.0] floating point range.
-    auto outputQuantizationParams = chooseQuantizationParams(-1.0, 1.0);
-    auto resultOutTy = F->getParent()->uniqueType(
-        ElemKind::Int8QTy, rescaleNode->getResult().dims(),
-        outputQuantizationParams.scale_, outputQuantizationParams.offset_);
-
-    quantizedNode = F->createIntTanh(node->getName(), rescaleNode, resultOutTy);
+    // Note: This should either be lowered into an IntLookupTable, or
+    // implemented via a backend-specific Node/Inst.
+    quantizedNode = F->createTanh(TN->getName(), quantizedInputs[0]);
     break;
   }
   case Kinded::Kind::SigmoidNodeKind: {
+    auto *SN = cast<SigmoidNode>(node);
     assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
 
-    // Quantized sigmoid operator expects input to be in a certain floating
-    // point range. This operator works based on the precomputed table and has
-    // to process input in a range of [-6.0, 6.0]. Sigmoid asymptotically
-    // approaches 0 at -inf and 1 at +inf. It has values of 0.00247262 and
-    // 0.997527 at -6.0 and 6.0 correspondingly. The output quantization
-    // parameters are chosen to represent the floating point range of [0, 1.0].
-    auto inputQuantizationParams = chooseQuantizationParams(-6.0, 6.0);
-    auto sigmoidInTy = F->getParent()->uniqueType(
-        ElemKind::Int8QTy, quantizedInputs[0]->dims(),
-        inputQuantizationParams.scale_, inputQuantizationParams.offset_);
-
-    // Make sure input is clipped in [-6.0, 6.0] floating point range.
-    auto *rescaleNode = F->createRescaleQuantized(
-        quantizedInputs[0]->getName(), quantizedInputs[0], sigmoidInTy);
-
-    // Make sure output is clipped in [0.0, 1.0] floating point range.
-    auto outputQuantizationParams = chooseQuantizationParams(0.0, 1.0);
-    auto resultOutTy = F->getParent()->uniqueType(
-        ElemKind::Int8QTy, rescaleNode->getResult().dims(),
-        outputQuantizationParams.scale_, outputQuantizationParams.offset_);
-
-    quantizedNode =
-        F->createIntSigmoid(node->getName(), rescaleNode, resultOutTy);
-
+    // Note: This should either be lowered into an IntLookupTable, or
+    // implemented via a backend-specific Node/Inst.
+    quantizedNode = F->createSigmoid(SN->getName(), quantizedInputs[0]);
     break;
   }
   default:
