@@ -664,7 +664,7 @@ static Intervals::iterator getEnclosingInterval(Intervals &liveIntervals,
 
 /// Returns true if RHS is enclosed inside LHS.
 static bool isEnclosedInside(Interval &lhs, Interval &rhs) {
-  return lhs.begin_ < rhs.begin_ && rhs.end_ <= lhs.end_;
+  return lhs.begin_ <= rhs.begin_ && rhs.end_ <= lhs.end_;
 }
 
 /// \returns true of any intervals from \p Ints overlap with interval \p I.
