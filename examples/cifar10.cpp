@@ -15,6 +15,7 @@
  */
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
+#include "glow/IR/IR.h"
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -36,6 +37,9 @@ llvm::cl::opt<BackendKind> executionBackend(
                      clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
                      clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
     llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(cifarCat));
+
+llvm::cl::opt<bool> dumpIROpt("dumpIR", llvm::cl::desc("Prints IR to stdout"),
+                              llvm::cl::cat(cifarCat));
 } // namespace
 
 /// The CIFAR file format is structured as one byte label in the range 0..9.
@@ -129,6 +133,10 @@ void testCIFAR10() {
 
   Function *TF = glow::differentiate(F, EE.getConfig());
   EE.compile(CompilationMode::Train, TF);
+
+  if (dumpIROpt) {
+    EE.getIR().dump();
+  }
 
   // Report progress every this number of training iterations.
   int reportRate = 256;
