@@ -57,7 +57,7 @@ class Module final {
   PseudoRNG PRNG_;
 
 public:
-  Module() = default;
+  Module();
 
   ~Module();
 
@@ -423,6 +423,15 @@ public:
   IntLookupTableNode *createIntLookupTable(llvm::StringRef name,
                                            NodeValue input,
                                            llvm::ArrayRef<int8_t> initValues,
+                                           TypeRef outTy);
+
+  /// Create lookup table for mapping between quantized numbers.
+  /// \p input and \p outTy must have quantized type.
+  /// Table contains all numbers from the quantized range, e.g., 256 entries for
+  /// int8. \p mapping should be a vector of the same length, where index 0
+  /// corresponds to the -128 input number, and index 255 to 127.
+  IntLookupTableNode *createIntLookupTable(llvm::StringRef name,
+                                           NodeValue input, Variable *mapping,
                                            TypeRef outTy);
 
   /// Create quantized tanh.
