@@ -47,10 +47,11 @@ namespace glow {
 Backend *createCPUBackend(IRFunction *F) { return new CPUBackend(F); }
 } // namespace glow
 
-CPUBackend::CPUBackend(const IRFunction *F)
-    : F_(F), irgen_(F_, allocationsInfo_, "") {}
+CPUBackend::CPUBackend(const IRFunction *F) : F_(F) {}
 
 CPUBackend::~CPUBackend() { alignedFree(heap_); }
+
+namespace {
 
 //===----------------------------------------------------------------------===//
 //                   Functions for executing code using JIT
@@ -62,81 +63,90 @@ CPUBackend::~CPUBackend() { alignedFree(heap_); }
 /// propagate them into relative addressing computations and the like and
 /// produce a very efficient code that uses absolute addressing whenever
 /// possible.
-void CPUBackend::emitJitMain() {
-  llvm::Type *voidTy = llvm::Type::getVoidTy(irgen_.getLLVMContext());
+static void emitJitMain(AllocationsInfo &allocationsInfo, LLVMIRGen &irgen) {
+  llvm::Type *voidTy = llvm::Type::getVoidTy(irgen.getLLVMContext());
   llvm::FunctionType *jitFuncTy = llvm::FunctionType::get(voidTy, {}, false);
   auto *func =
       llvm::Function::Create(jitFuncTy, llvm::Function::ExternalLinkage,
-                             "jitmain", &irgen_.getModule());
+                             "jitmain", &irgen.getModule());
   llvm::BasicBlock *entry_bb =
-      llvm::BasicBlock::Create(irgen_.getLLVMContext(), "entry", func);
+      llvm::BasicBlock::Create(irgen.getLLVMContext(), "entry", func);
   llvm::IRBuilder<> builder(entry_bb);
 
   // Prepare arguments for the "main" function.
   llvm::SmallVector<llvm::Value *, 4> initFunctionCallArgs;
   // Get the integer type having the same size in bits as size_t.
   auto *sizeTType = builder.getIntNTy(sizeof(size_t) * 8);
-  auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen_.getLLVMContext());
+  auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen.getLLVMContext());
 
   initFunctionCallArgs.push_back(builder.CreateIntToPtr(
       llvm::ConstantInt::get(
           sizeTType, reinterpret_cast<size_t>(
-                         allocationsInfo_.baseConstantWeightVarsAddress_)),
+                         allocationsInfo.baseConstantWeightVarsAddress_)),
       int8PtrTy));
   initFunctionCallArgs.push_back(builder.CreateIntToPtr(
       llvm::ConstantInt::get(
           sizeTType, reinterpret_cast<size_t>(
-                         allocationsInfo_.baseMutableWeightVarsAddress_)),
+                         allocationsInfo.baseMutableWeightVarsAddress_)),
       int8PtrTy));
   initFunctionCallArgs.push_back(builder.CreateIntToPtr(
       llvm::ConstantInt::get(
           sizeTType,
-          reinterpret_cast<size_t>(allocationsInfo_.baseActivationsAddress_)),
+          reinterpret_cast<size_t>(allocationsInfo.baseActivationsAddress_)),
       int8PtrTy));
   // Now form the offsets array and pass it as the last argument.
   auto offsetsArray =
-      irgen_.emitConstOffsetsArray(irgen_.getBuilder(), allocationsInfo_);
+      irgen.emitConstOffsetsArray(irgen.getBuilder(), allocationsInfo);
   initFunctionCallArgs.push_back(offsetsArray);
   // Invoke the main entry with constant arguments and let LLVM optimizer make
   // use of it.
-  auto *entryF = irgen_.getModule().getFunction(irgen_.getMainEntryName());
+  auto *entryF = irgen.getModule().getFunction(irgen.getMainEntryName());
   entryF->setLinkage(llvm::Function::InternalLinkage);
   createCall(builder, entryF, initFunctionCallArgs);
   // Terminate the function.
   builder.CreateRetVoid();
   // Create the debug info for the entry point function.
-  irgen_.generateFunctionDebugInfo(func);
+  irgen.generateFunctionDebugInfo(func);
 }
 
-void CPUBackend::performJITMemoryAllocation() {
-  allocationsInfo_.clear();
-  allocationsInfo_.numberValues(F_);
-  allocationsInfo_.allocateActivations(F_);
+/// Perform memory allocation for a JIT execution.
+static void *allocateJITMemory(const IRFunction *F,
+                               AllocationsInfo &allocationsInfo) {
+  allocationsInfo.clear();
+  allocationsInfo.numberValues(F);
+  allocationsInfo.allocateActivations(F);
   // Tell the allocateWeightVars to reuse existing addresses for weights.
-  allocationsInfo_.allocateWeightVars(F_, true);
-  allocationsInfo_.allocateTensorViews(F_);
+  allocationsInfo.allocateWeightVars(F, true);
+  allocationsInfo.allocateTensorViews(F);
 
   // Allocate the heap to match the max memory usage for activations.
-  if (allocationsInfo_.activationsMemSize_ > 0) {
-    alignedFree(heap_);
-    heap_ = alignedAlloc(allocationsInfo_.activationsMemSize_, TensorAlignment);
-    allocationsInfo_.baseActivationsAddress_ = (uint8_t *)heap_;
+  if (allocationsInfo.activationsMemSize_ == 0) {
+    return nullptr;
   }
+  auto heap =
+      alignedAlloc(allocationsInfo.activationsMemSize_, TensorAlignment);
+  allocationsInfo.baseActivationsAddress_ = (uint8_t *)heap;
+  return heap;
 }
 
+} // end namespace
+
 void CPUBackend::init() {
-  irgen_.initTargetMachine(target.empty() ? "" : target.getValue(),
-                           llvm::CodeModel::Model::Large);
-  JIT_ = llvm::make_unique<llvm::orc::GlowJIT>(irgen_.getTargetMachine());
-  irgen_.initCodeGen();
+  AllocationsInfo allocationsInfo;
+  LLVMIRGen irgen(F_, allocationsInfo, "");
+  irgen.initTargetMachine(target.empty() ? "" : target.getValue(),
+                          llvm::CodeModel::Model::Large);
+  JIT_ = llvm::make_unique<llvm::orc::GlowJIT>(irgen.getTargetMachine());
+  irgen.initCodeGen();
   // Perform the address assignment for activations and WeightVars.
-  performJITMemoryAllocation();
+  assert(heap_ == nullptr);
+  heap_ = allocateJITMemory(F_, allocationsInfo);
   // Create the jitmain function to be invoked by JIT.
-  emitJitMain();
+  emitJitMain(allocationsInfo, irgen);
   // Emit the code for the body of the entry function.
-  irgen_.performCodeGen();
+  irgen.performCodeGen();
   // Hand over the module to JIT for the machine code generation.
-  JIT_->addModule(irgen_.borrowModule());
+  JIT_->addModule(irgen.borrowModule());
 }
 
 void CPUBackend::doForwardPass() {

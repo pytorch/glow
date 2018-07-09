@@ -47,20 +47,11 @@ llvm::CallInst *createCall(llvm::IRBuilder<> &builder, llvm::Function *callee,
 class CPUBackend final : public Backend {
   /// The Module that holds the glow IR. This does not own the module.
   const IRFunction *F_;
-  /// Information about allocations.
-  AllocationsInfo allocationsInfo_;
   /// The LLVM JIT engine. The jit must be initialized after the ctor
   /// initializes the LLVM backends.
   std::unique_ptr<llvm::orc::GlowJIT> JIT_{nullptr};
-  /// The LLVM IR code generator.
-  LLVMIRGen irgen_;
   /// This represents the heap, that stores the activations at runtime.
   void *heap_{nullptr};
-
-  /// Produce the main entry point for JIT execution.
-  void emitJitMain();
-  /// Perform memory allocation for a JIT execution.
-  void performJITMemoryAllocation();
 
 public:
   /// Ctor.
