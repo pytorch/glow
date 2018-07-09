@@ -81,6 +81,10 @@ template <class SrcTy, class DestTy> DestTy clip(SrcTy in) {
 QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                                     int32_t offset);
 
+/// Calculate TensorQuantizationParams based on the clipped \p min and \p max
+/// floating point range.
+TensorQuantizationParams chooseQuantizationParams(float min, float max);
+
 } // namespace quantization
 } // namespace glow
 

@@ -136,5 +136,66 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                     offset);
 }
 
+TensorQuantizationParams chooseQuantizationParams(float min, float max) {
+  assert(min <= max && "min must not be bigger than max");
+
+  // Given 8 bit precision.
+  const int32_t qmin = std::numeric_limits<int8_t>::min();
+  const int32_t qmax = std::numeric_limits<int8_t>::max();
+
+  // We extend the [min, max] interval to ensure that it contains 0.
+  // Otherwise, we would not meet the requirement that 0 be an exactly
+  // representable value.
+  min = std::min(min, 0.f);
+  max = std::max(max, 0.f);
+
+  double scale = (max - min) / ((double)qmax - qmin);
+
+  // Dequantization uses the following formula scale * (X - offset), so
+  // scale should not be equal to zero.
+  // If scale is 0, we arbitrary adjust the scale to 0.1.
+  if (scale == 0)
+    scale = 0.1;
+
+  assert(scale > 0 && "Scale must be non negative");
+
+  // Zero-point computation.
+  // First the initial floating-point computation. The zero-point can be
+  // determined from solving an affine equation for any known pair
+  // (real value, corresponding quantized value).
+  // We know two such pairs: (rmin, qmin) and (rmax, qmax).
+  // The arithmetic error on the zero point computed from either pair
+  // will be roughly machine_epsilon * (sum of absolute values of terms)
+  // so we want to use the variant that adds the smaller terms.
+  double zeroPointFromMin = qmin - min / scale;
+  double zeroPointFromMax = qmax - max / scale;
+  double zeroPointFromMinError = std::abs(qmin) + std::abs(min / scale);
+  double zeroPointFromMaxError = std::abs(qmax) + std::abs(max / scale);
+  double initialZeroPoint = zeroPointFromMinError < zeroPointFromMaxError
+                                ? zeroPointFromMin
+                                : zeroPointFromMax;
+
+  // For symmetric quantization, if min == -max, force the zero point to be 0.
+  if (min == -max) {
+    initialZeroPoint = 0;
+  }
+
+  // Now we need to nudge the zero point to be an integer (our zero points are
+  // integer, and this is motivated by the requirement to be able to represent
+  // the real value "0" exactly as a quantized value, which is required in
+  // multiple places, for example in Im2col with SAME padding).
+  int32_t nudgedZeroPoint = 0;
+  if (initialZeroPoint < qmin) {
+    nudgedZeroPoint = qmin;
+  } else if (initialZeroPoint > qmax) {
+    nudgedZeroPoint = qmax;
+  } else {
+    nudgedZeroPoint = static_cast<int32_t>(round(initialZeroPoint));
+  }
+
+  TensorQuantizationParams result{static_cast<float>(scale), nudgedZeroPoint};
+  return result;
+}
+
 } // namespace quantization
 } // namespace glow
