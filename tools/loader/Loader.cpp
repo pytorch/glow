@@ -98,14 +98,6 @@ llvm::cl::opt<bool> dumpGraphOpt("dumpGraph",
                                  llvm::cl::desc("Prints Graph to stdout"),
                                  llvm::cl::cat(modelExportCat));
 
-llvm::cl::opt<std::string> dumpIRDAGFileOpt(
-    "dumpIRDAG",
-    llvm::cl::desc("Specify the file to export the IR in DOT format"),
-    llvm::cl::value_desc("file.dot"), llvm::cl::cat(modelExportCat));
-
-llvm::cl::opt<bool> dumpIROpt("dumpIR", llvm::cl::desc("Prints IR to stdout"),
-                              llvm::cl::cat(modelExportCat));
-
 /// Emit a bundle into the specified output directory.
 llvm::cl::opt<std::string>
     emitBundle("emit-bundle",
@@ -170,12 +162,6 @@ void Loader::compile() {
   }
   if (!dumpGraphDAGFileOpt.empty()) {
     F_->dumpDAG(dumpGraphDAGFileOpt.c_str());
-  }
-  if (dumpIROpt) {
-    EE_.getIR().dump();
-  }
-  if (!dumpIRDAGFileOpt.empty()) {
-    EE_.getIR().dumpDAG(dumpIRDAGFileOpt.c_str());
   }
 }
 

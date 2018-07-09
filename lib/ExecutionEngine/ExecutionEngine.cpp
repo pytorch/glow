@@ -23,7 +23,19 @@
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/Optimizer.h"
 
+#include "llvm/Support/CommandLine.h"
+
 using namespace glow;
+
+namespace {
+static llvm::cl::opt<std::string>
+    dumpIRDAG("dump-ir-dag",
+              llvm::cl::desc("Specify the file to export the IR in DOT format"),
+              llvm::cl::value_desc("file.dot"));
+
+static llvm::cl::opt<bool> dumpIR("dump-ir",
+                                  llvm::cl::desc("Prints IR to stdout"));
+} // namespace
 
 ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
   backendKind_ = backendKind;
@@ -157,6 +169,14 @@ void ExecutionEngine::generateIR(CompilationMode mode, Function *F) {
 
   // Optimize the generated IR.
   ::glow::optimize(*IR_, mode, *backend_);
+
+  // If requested, dump IR to stdout and/or dot file for debugging.
+  if (dumpIR) {
+    IR_->dump();
+  }
+  if (!dumpIRDAG.empty()) {
+    IR_->dumpDAG(dumpIRDAG.getValue());
+  }
 }
 
 void ExecutionEngine::compile(CompilationMode mode, Function *F) {
