@@ -52,10 +52,6 @@ struct NodeQuantizationInfo {
 
 namespace quantization {
 
-/// Calculate TensorQuantizationParams based on the clipped \p min and \p max
-/// floating point range.
-TensorQuantizationParams chooseQuantizationParams(float min, float max);
-
 /// Generate NodeQuantizationInfo for all required nodes from graph \p G.
 std::vector<NodeQuantizationInfo>
 generateNodeQuantizationInfos(const Function *F);
