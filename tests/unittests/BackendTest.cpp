@@ -20,6 +20,7 @@
 
 #include "gtest/gtest.h"
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 
 using namespace glow;
@@ -139,13 +140,12 @@ TEST_P(BackendTest, debugPrint) {
                          Variable::TrainKind::None);
   IV->copyFrom(&input);
 
-  IRFunction ir;
-  ir.setGraph(F);
-  ir.generateIR();
-  IRBuilder(&ir).createDebugPrintInst("print", *ir.getWeights().begin());
+  auto IR = llvm::make_unique<IRFunction>(F);
+  IR->generateIR();
+  IRBuilder(IR.get()).createDebugPrintInst("print", *IR->getWeights().begin());
 
-  std::unique_ptr<Backend> backend(createBackend(GetParam(), &ir));
-  backend->init();
+  std::unique_ptr<Backend> backend(createBackend(GetParam()));
+  backend->init(std::move(IR));
   backend->doForwardPass();
 }
 

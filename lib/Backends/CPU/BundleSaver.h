@@ -24,7 +24,7 @@
 namespace glow {
 
 class BundleSaver final {
-  /// The Module that holds the glow IR. This does not own the module.
+  /// The IR to be compiled.
   const IRFunction *F_;
   /// Information about allocations.
   AllocationsInfo allocationsInfo_;

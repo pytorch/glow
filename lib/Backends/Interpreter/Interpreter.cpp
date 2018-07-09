@@ -35,7 +35,8 @@ Interpreter::~Interpreter() {
   externalTensors_.clear();
 }
 
-void Interpreter::init() {
+void Interpreter::init(std::unique_ptr<const IRFunction> IR) {
+  F_ = std::move(IR);
   for (auto &v : F_->getGraph()->getParent()->getVars()) {
     auto *w = F_->getWeightForNode(v);
     assert(!externalTensors_.count(w) && "The tensor is already registered");
@@ -169,5 +170,5 @@ void Interpreter::doForwardPass() {
 }
 
 namespace glow {
-Backend *createInterpreter(IRFunction *F) { return new Interpreter(F); }
+Backend *createInterpreter() { return new Interpreter(); }
 } // namespace glow

@@ -80,7 +80,7 @@ struct DebugInfo {
 /// This is a class containing a common logic for the generation of the LLVM IR
 /// from an IRFunction. The primary clients of this class are JITs and bundlers.
 class LLVMIRGen {
-  /// The Module that holds the glow IR. This does not own the module.
+  /// The IR to generate code for.
   const IRFunction *F_;
   /// The LLVM context.
   llvm::LLVMContext ctx_;

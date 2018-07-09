@@ -28,34 +28,34 @@ namespace glow {
 /// when you define a new backend.
 
 /// Create a new instance of the interpreter backend.
-Backend *createInterpreter(IRFunction *F);
+Backend *createInterpreter();
 
 #if defined(GLOW_WITH_CPU)
 /// Create a new instance of the CPUBackend backend.
-Backend *createCPUBackend(IRFunction *F);
+Backend *createCPUBackend();
 #endif
 
 #if defined(GLOW_WITH_OPENCL)
 /// Create a new instance of the OpenCL backend.
-Backend *createOCLBackend(IRFunction *F);
+Backend *createOCLBackend();
 #endif
 } // namespace glow
 
-Backend *glow::createBackend(BackendKind backendKind, IRFunction *F) {
+Backend *glow::createBackend(BackendKind backendKind) {
   switch (backendKind) {
   case BackendKind::Interpreter:
-    return createInterpreter(F);
+    return createInterpreter();
   case BackendKind::OpenCL:
 #ifndef GLOW_WITH_OPENCL
     GLOW_UNREACHABLE("Must compile with OpenCL support");
 #else
-    return createOCLBackend(F);
+    return createOCLBackend();
 #endif
   case BackendKind::CPU:
 #ifndef GLOW_WITH_CPU
     GLOW_UNREACHABLE("Must compile with CPU support");
 #else
-    return createCPUBackend(F);
+    return createCPUBackend();
 #endif
   }
 

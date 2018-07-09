@@ -45,8 +45,6 @@ llvm::CallInst *createCall(llvm::IRBuilder<> &builder, llvm::Function *callee,
                            llvm::ArrayRef<llvm::Value *> args);
 
 class CPUBackend final : public Backend {
-  /// The Module that holds the glow IR. This does not own the module.
-  const IRFunction *F_;
   /// The LLVM JIT engine. The jit must be initialized after the ctor
   /// initializes the LLVM backends.
   std::unique_ptr<llvm::orc::GlowJIT> JIT_{nullptr};
@@ -55,16 +53,16 @@ class CPUBackend final : public Backend {
 
 public:
   /// Ctor.
-  explicit CPUBackend(const IRFunction *M);
+  explicit CPUBackend();
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
   ///@{
   ~CPUBackend() override;
 
-  void init() override;
+  void init(std::unique_ptr<const IRFunction> IR) override;
 
-  void save(llvm::StringRef outputDir) override;
+  void save(std::unique_ptr<const IRFunction> IR, llvm::StringRef outputDir) override;
 
   void doForwardPass() override;
 
