@@ -586,7 +586,7 @@ TEST_F(GraphOptz, ZeroArithmetic) {
   // Tests the identities: [0 + X = X] [0 * X = 0] [0 / X = 0] [ X - 0 = X]
 
   Variable *input = mod_.createVariable(ElemKind::FloatTy, {4, 10}, "input",
-                                    VisibilityKind::Public);
+                                        VisibilityKind::Public);
 
   // This builds the expression: ((0 / I) + (0 + I) + (0 * I)) - 0
 

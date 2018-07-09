@@ -36,7 +36,6 @@ using namespace glow;
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
-using llvm::StringRef;
 
 static llvm::cl::opt<std::string> target("target", llvm::cl::desc("target"));
 
@@ -47,9 +46,7 @@ Backend *createCPUBackend(IRFunction *F) { return new CPUBackend(F); }
 CPUBackend::CPUBackend(const IRFunction *F)
     : F_(F), irgen_(F_, allocationsInfo_, "") {}
 
-CPUBackend::~CPUBackend() {
-  alignedFree(heap_);
-}
+CPUBackend::~CPUBackend() { alignedFree(heap_); }
 
 //===----------------------------------------------------------------------===//
 //                   Functions for executing code using JIT

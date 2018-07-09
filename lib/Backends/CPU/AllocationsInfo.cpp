@@ -32,9 +32,9 @@ using namespace glow;
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
-using llvm::StringRef;
 
-void AllocationsInfo::allocateWeightVars(const IRFunction *F, bool reuseAddresses) {
+void AllocationsInfo::allocateWeightVars(const IRFunction *F,
+                                         bool reuseAddresses) {
   // Use two different allocators, because constant weights and mutable weights
   // may use different memory blocks.
   MemoryAllocator constantWeightVarsAllocator(0);

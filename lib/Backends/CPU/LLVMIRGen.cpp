@@ -38,7 +38,6 @@ using namespace glow;
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
-using llvm::StringRef;
 
 llvm::cl::OptionCategory CPUBackendCat("Glow CPU Backend Options");
 
@@ -87,7 +86,7 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName)
     : F_(F), allocationsInfo_(allocationsInfo), mainEntryName_(mainEntryName) {}
 
-void LLVMIRGen::initTargetMachine(StringRef T,
+void LLVMIRGen::initTargetMachine(llvm::StringRef T,
                                   llvm::CodeModel::Model codeModel) {
   llvm::InitializeAllTargets();
   llvm::InitializeAllTargetMCs();
@@ -102,9 +101,10 @@ void LLVMIRGen::initTargetMachine(StringRef T,
 }
 
 std::string LLVMIRGen::getMainEntryName() const {
-  StringRef name = mainEntryName_.empty() ? "main" : F_->getGraph()->getName();
+  llvm::StringRef name =
+      mainEntryName_.empty() ? "main" : F_->getGraph()->getName();
   auto delimPos = name.rfind('/');
-  if (delimPos != StringRef::npos)
+  if (delimPos != llvm::StringRef::npos)
     name = name.substr(delimPos + 1);
   return name;
 }
@@ -131,8 +131,8 @@ void LLVMIRGen::loadBaseAddresses(llvm::IRBuilder<> &builder) {
 // Search for the standard library bitcode file on disk and load it into an
 // LLVM module. We search for the standard library around the current executable
 // and also in the current directory.
-static std::unique_ptr<llvm::Module> loadStandardLibrary(llvm::LLVMContext *ctx,
-                                                         StringRef filename) {
+static std::unique_ptr<llvm::Module>
+loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename) {
   using llvm::sys::path::append;
   using llvm::sys::path::parent_path;
 
@@ -140,7 +140,7 @@ static std::unique_ptr<llvm::Module> loadStandardLibrary(llvm::LLVMContext *ctx,
   // Figure out the location of the current executable.
   auto mainExec =
       llvm::sys::fs::getMainExecutable(nullptr, (void *)&loadStandardLibrary);
-  StringRef basePath = parent_path(mainExec);
+  llvm::StringRef basePath = parent_path(mainExec);
 
   // Search for the standard library starting at the location of the executable.
   // Go up the tree up to three levels (by removing the last directory name).
@@ -572,8 +572,8 @@ emitBufferAddress(llvm::IRBuilder<> &builder, Value *val,
 /// only once. This allows us to mark all parameters of the generated kernel as
 /// noalias. As a result, the LLVM optimizer makes use of the noalias attributes
 /// and produces nicely vectorized code for the generated data-parallel kernels.
-void LLVMIRGen::emitDataParallelKernel(llvm::IRBuilder<> &builder,
-                                       llvm::ArrayRef<const Instruction *> bundle) {
+void LLVMIRGen::emitDataParallelKernel(
+    llvm::IRBuilder<> &builder, llvm::ArrayRef<const Instruction *> bundle) {
   if (bundle.empty())
     return;
   llvm::Type *voidTy = llvm::Type::getVoidTy(ctx_);
@@ -737,8 +737,9 @@ void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
 }
 
 void LLVMIRGen::generateLLVMIRForDataParallelInstr(
-    llvm::IRBuilder<> &builder, const glow::Instruction *I, llvm::Function *kernel,
-    llvm::DenseMap<Value *, int> &bufferToArgNum, llvm::Value *loopCount) {
+    llvm::IRBuilder<> &builder, const glow::Instruction *I,
+    llvm::Function *kernel, llvm::DenseMap<Value *, int> &bufferToArgNum,
+    llvm::Value *loopCount) {
   setCurrentDebugLocation(builder, I);
   assert(I->isDataParallel() && "Expected a data parallel instruction");
   switch (I->getKind()) {
@@ -1553,8 +1554,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::LocalResponseNormalizationInstKind: {
-    auto *LRN =
-        cast<LocalResponseNormalizationInst>(I);
+    auto *LRN = cast<LocalResponseNormalizationInst>(I);
     auto *dest = LRN->getDest();
     auto *src = LRN->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
@@ -1577,8 +1577,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::LocalResponseNormalizationGradInstKind: {
-    auto *LRNG =
-        llvm::cast<LocalResponseNormalizationGradInst>(I);
+    auto *LRNG = llvm::cast<LocalResponseNormalizationGradInst>(I);
     auto *srcGrad = LRNG->getSrcGrad();
     auto *dest = LRNG->getDest();
     auto *srcGradPtr = emitValueAddress(builder, srcGrad);
