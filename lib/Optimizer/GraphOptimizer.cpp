@@ -886,8 +886,8 @@ static void optimizeBatchNorm(Function *F) {
   } // For all nodes in the graph.
 }
 
-// \returns true if all dimensions of the input tensors are the same except
-// for the provided dimension, otherwise return false.
+/// \returns true if all dimensions of the \p input tensors are the same except
+/// for the provided \p dimension, otherwise return false.
 static bool checkConcatNodeUniformDims(llvm::ArrayRef<NodeValue> inputs,
                                        size_t dimension) {
   for (size_t i = 1; i < inputs.size(); i++) {
@@ -903,70 +903,90 @@ static bool checkConcatNodeUniformDims(llvm::ArrayRef<NodeValue> inputs,
   return true;
 }
 
-// Given one tensor and the desired sub-tensor size, \returns the dimension,
-// after which the sub-tensor has the desired size, otherwise return -1.
-// Example: Given a tensor <2,3,4,5>, and a desired size 20, this function will
-// return dimension 1 as the sub-tensor after it is <4,5>, which has the
-// size 20.
-static ssize_t
-findMatchingConcatDimForSameSizeSubTensor(llvm::ArrayRef<size_t> firstDims,
-                                          size_t desiredSubTensorSize) {
-  size_t currentSubTensorSize = 1;
+/// Given a tensor's dims \p firstDims and the desired leading/trailing dims
+/// sizes \p leadingDimsProdOriginalConcatNode, \p
+/// trailingDimsProdOriginalConcatNode. \returns the dimension, at which the
+/// trailing/leading dimensions match the desired sizes, otherwise returns -1.
+/// Example: Given a tensor <1,2,3,4,5>, and a desired trailing dimensions size
+/// of 20, and a desired leading dimensions size of 2, this function will return
+/// dimension 1 as the trailing dimensions after it are <4,5>, which matches the
+/// size 20, and the leading dimensions are <1,2>, which matches the size 2.
+static ssize_t findMatchingConcatDimForSameTrailingAndLeadingDims(
+    llvm::ArrayRef<size_t> firstDims, size_t leadingDimsProdOriginalConcatNode,
+    size_t trailingDimsProdOriginalConcatNode) {
+  size_t trailingDimsProdCurNode = 1;
   for (ssize_t i = firstDims.size() - 1; i >= 0; i--) {
-    if (currentSubTensorSize == desiredSubTensorSize) {
-      return i;
+    if (trailingDimsProdCurNode == trailingDimsProdOriginalConcatNode) {
+      size_t leadingDimsProdCurNode = 1;
+      for (size_t j = 0; j < i; j++) {
+        leadingDimsProdCurNode *= firstDims[j];
+      }
+      if (leadingDimsProdCurNode == leadingDimsProdOriginalConcatNode) {
+        return i;
+      }
     }
-    currentSubTensorSize *= firstDims[i];
+    trailingDimsProdCurNode *= firstDims[i];
   }
   return -1;
 }
 
-/// Given input tensors and a original ConcatNode, try to find out if
-/// there is a dimension in the input tensors, with which we can meet
-/// two requirements:
-/// 1) Input tensors are concatenate-able along this dimension.
-/// 2) The sub-tensors after this dimension in the input tensors, are
-///    of the same size as the sub-tensor of the input of the original
-///    Concat node after the concatenation dimension.
+/// Given input tensors \p inputs and a original ConcatNode \p origConcatN, try
+/// to find out if there is a dimension in the input tensors, with which we can
+/// meet two requirements:
+///   1) Input tensors are concatenate-able along this dimension.
+///   2) The trailing/leading dimensions sizes after/before this dimension in
+///      the input tensors, are of the same size as the trailing/leading
+///      dimensions of the input of the original Concat node after/before the
+///      concatenation dimension. It is required, because they ensure that the
+///      payload of the new concat node should be the same as the payload of the
+///      original concat node, and also won't affect the data order of the
+///      entire tensor.
 /// \returns this dimension if found, otherwise -1.
-static int tryToConcatAlongSameSizeSubTensor(llvm::ArrayRef<NodeValue> inputs,
-                                             ConcatNode *origConcatN) {
+static int
+findConcatDimForSameTrailingAndLeadingDims(llvm::ArrayRef<NodeValue> inputs,
+                                           ConcatNode *originalConcatNode) {
   // For the purpose of the optimiztion
   // Concat(Reshape(X)*N)->Reshape(Concat(N*X)), we want to make sure the new
-  // ConcatNode can concatenate on the sub-tensor which is of the same size of
-  // that of the original Concate node.
+  // ConcatNode can concatenate on the trailing/leading dimensions which are of
+  // the same size of those of the original Concate node.
 
   auto firstDims = inputs.front().dims();
-  auto origConcatNInputDims = origConcatN->getInputs().front().dims();
-  // The size of the sub-tensors of the original ConcatNode, which are being
-  // concatenated. This size is simply the product of dimensions following the
-  // dimension used for concatenation.
-  size_t subTensorSizeOriginalConcatNode = 1;
-  for (size_t i = origConcatN->getDim() + 1; i < origConcatNInputDims.size();
-       ++i) {
-    subTensorSizeOriginalConcatNode *= origConcatNInputDims[i];
+  auto origConcatNInputDims = originalConcatNode->getInputs().front().dims();
+  // The sizes of the trailing/leading dimensions of the original ConcatNode,
+  // which are being concatenated. This sizes are simply the products of
+  // dimensions following/before the dimension used for concatenation.
+  size_t trailingDimsProdOriginalConcatNode = 1;
+  size_t leadingDimsProdOriginalConcatNode = 1;
+  for (size_t i = 0; i < origConcatNInputDims.size(); ++i) {
+    if (i < originalConcatNode->getDim()) {
+      leadingDimsProdOriginalConcatNode *= origConcatNInputDims[i];
+    } else if (i > originalConcatNode->getDim()) {
+      trailingDimsProdOriginalConcatNode *= origConcatNInputDims[i];
+    }
   }
 
-  // Try to find the dimension in the first input such that the sub-tensor size
-  // based on this direction is the same as the size of sub-tensors based on the
-  // concatenation dimension used by the original ConcatNode.
-  ssize_t dimension = findMatchingConcatDimForSameSizeSubTensor(
-      firstDims, subTensorSizeOriginalConcatNode);
-  if (dimension == -1) {
+  // Try to find the dimension in the first input such that the trailing/leading
+  // dimensions sizes are the same as the sizes of the trailing/leading
+  // dimensions based on the concatenation dimension used by the original
+  // ConcatNode.
+  ssize_t dim = findMatchingConcatDimForSameTrailingAndLeadingDims(
+      firstDims, leadingDimsProdOriginalConcatNode,
+      trailingDimsProdOriginalConcatNode);
+  if (dim == -1) {
     return -1;
   }
 
   // Now we have found the dimension, we need to check if all inputs can be
   // concatenated along this dimension.
-  if (!checkConcatNodeUniformDims(inputs, dimension)) {
+  if (!checkConcatNodeUniformDims(inputs, dim)) {
     return -1;
   }
-  return dimension;
+  return dim;
 }
 
-// Given the inputs of one Concat Nodes, \returns true if they are all
-// ReshapeNode, and the input tensors of these input nodes have same number of
-// dimensions, otherwise returns false.
+/// Given the inputs \p originalConcatInputs of one Concat Nodes, \returns true
+/// if they are all ReshapeNode, and the input tensors of these input nodes have
+/// same number of dimensions, otherwise returns false.
 static bool
 tryToGetNewConcatInputs(llvm::ArrayRef<NodeValue> originalConcatInputs,
                         llvm::SmallVectorImpl<NodeValue> &newConcatInputs) {
@@ -996,9 +1016,9 @@ static NodeValue tryToOptimizeConcatOfRehapes(Function *F, ConcatNode *CN) {
     return NodeValue(nullptr);
   }
 
-  // Try to concatenate along the same size sub-tensor as of the original
-  // Concat node.
-  auto dim = tryToConcatAlongSameSizeSubTensor(newConcatInputs, CN);
+  // Try to concatenate along the same size trailing/leading dimensions as of
+  // the original Concat node.
+  auto dim = findConcatDimForSameTrailingAndLeadingDims(newConcatInputs, CN);
   if (dim == -1) {
     return NodeValue(nullptr);
   }
@@ -1061,7 +1081,7 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
     }
   }
 
-  /// Try the optimization Concat(Reshape(x) * N) -> Reshape(Concat(x * N)).
+  // Try the optimization Concat(Reshape(x) * N) -> Reshape(Concat(x * N)).
   if (auto transformedConcatNode = tryToOptimizeConcatOfRehapes(F, CN)) {
     return transformedConcatNode;
   }

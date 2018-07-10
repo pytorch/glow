@@ -586,7 +586,7 @@ TEST_F(GraphOptz, ZeroArithmetic) {
   // Tests the identities: [0 + X = X] [0 * X = 0] [0 / X = 0] [ X - 0 = X]
 
   Variable *input = mod_.createVariable(ElemKind::FloatTy, {4, 10}, "input",
-                                    VisibilityKind::Public);
+                                        VisibilityKind::Public);
 
   // This builds the expression: ((0 / I) + (0 + I) + (0 * I)) - 0
 
@@ -1047,17 +1047,17 @@ TEST_F(GraphOptz, concatElim) {
 
 // Check the transformation Concat(Reshape(x) * N) -> Reshape(Concat(x * N)).
 TEST_F(GraphOptz, concatReshapes) {
-  const size_t shape1[] = {10, 20};
-  const size_t shape2[] = {10, 1, 20};
-  const size_t shape3[] = {5, 40};
+  const size_t shape1[] = {2, 5, 2, 1, 20};
+  const size_t shape2[] = {10, 2, 2, 10};
+  const size_t shape3[] = {5, 80};
   llvm::SmallVector<NodeValue, 10> inputs1;
   llvm::SmallVector<NodeValue, 10> inputs2;
   for (size_t i = 0; i < 10; i++) {
-    // 10 reshape nodes that transform from {10,20} to {10, 1, 20}.
+    // 10 reshape nodes that transform from {2,5,2,1,20} to {10,2,2,10}.
     // And a ConcatNode concatenates the outputs of reshape at 2nd dim.
-    // The optimization would kick in, as the size of sub-tensor  of original
-    // ConcatNode (before opt) is  20, which can be obtained from the
-    // dims of {10,20}.
+    // The optimization would kick in, as the size of trailing dimensions of
+    // original ConcatNode (before opt) is 20, and the size of leading
+    // dimensions of original ConcatNode (before opt) is 10.
     Node *var = F_->getParent()->createVariable(ElemKind::FloatTy, shape1,
                                                 "input" + std::to_string(i));
     auto *RN = F_->createReshape("reshape" + std::to_string(i), var, shape2);
@@ -1065,11 +1065,11 @@ TEST_F(GraphOptz, concatReshapes) {
   }
   auto *concatNode1 = F_->createConcat("concat", inputs1, 1);
   for (size_t i = 0; i < 10; i++) {
-    // 10 reshape nodes that transform from {5,40} to {10, 1, 20}.
+    // 10 reshape nodes that transform from {5,80} to {10,1,2,10}.
     // And a ConcatNode concatenates the outputs of reshape at 2nd dim.
-    // The optimization would NOT kick in, as the size of sub-tensor of original
-    // ConcatNode (before opt) is 20, which can not be obtained from the
-    // dims of {5,40}.
+    // The optimization would NOT kick in, as we cannot find the dim that
+    // makes the leading/trailing dims same as in the case of the original
+    // concat node.
     Node *var = F_->getParent()->createVariable(ElemKind::FloatTy, shape3,
                                                 "input" + std::to_string(i));
     auto *RN = F_->createReshape("reshape" + std::to_string(i), var, shape2);
