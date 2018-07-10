@@ -224,9 +224,9 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     if (dict.count("kernel_shape")) {
       kernel = getConstantArrayHead(dict["kernel_shape"]);
     } else {
-      assert(filter->dims()[1] == filter->dims()[2] &&
+      assert(filter->dims(0)[1] == filter->dims(0)[2] &&
              "Only square kernels are supported");
-      kernel = filter->dims()[1];
+      kernel = filter->dims(0)[1];
     }
 
     // Construct the Bias field.
@@ -248,7 +248,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
 
     // Calculate the size and allocate the output buffer.
-    ShapeNHWC idim = ShapeNHWC(tr->dims());
+    ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
     auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pads);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
@@ -305,10 +305,10 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     int stride =
         dict.count("strides") ? getConstantArrayHead(dict["strides"]) : 1;
 
-    GLOW_ASSERT(in->dims()[2] == in->dims()[3] &&
+    GLOW_ASSERT(in->dims(0)[2] == in->dims(0)[3] &&
                 "For the image, height == weight is required");
 
-    size_t kernel = in->dims()[2];
+    size_t kernel = in->dims(0)[2];
     int pad = getPad(dict);
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
     Node *node = G_.createPoolAvg(opName, tr, kernel, stride, pad);
@@ -398,10 +398,10 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     if (transB)
       B = G_.createTranspose(opName, B, {1, 0});
 
-    Node *mul = G_.createMatMul(opName, A, B);
+    MatMulNode *mul = G_.createMatMul(opName, A, B);
     if (broadcastC) {
-      int axis = mul->dims().size() - C->dims().size();
-      C = G_.createBroadcast(opName, C, mul->dims(), axis);
+      int axis = mul->getResult().dims().size() - C->dims(0).size();
+      C = G_.createBroadcast(opName, C, mul->getResult().dims(), axis);
     }
 
     Node *node = G_.createAdd(opName, mul, C);

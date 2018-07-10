@@ -89,6 +89,12 @@ public:
   /// \returns result type of the variable.
   TypeRef getType() const { return Node::getType(0); }
 
+  /// Methods that forward to the result type (that must be valid):
+  /// @{
+  ElemKind getElementType() const { return getType()->getElementType(); };
+  llvm::ArrayRef<size_t> dims() const { return getType()->dims(); };
+  /// @}
+
   /// \returns the value used during initialization.
   float getValue() const { return val_; }
 

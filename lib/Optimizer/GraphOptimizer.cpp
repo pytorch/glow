@@ -539,7 +539,7 @@ static void mergeMatMul(Function *F) {
     size_t R = MM->getNthResult(0).dims()[1];
     size_t start = 0;
     for (auto *origMM : MMs) {
-      size_t H = origMM->dims()[0];
+      size_t H = origMM->getResult().dims()[0];
       auto *ex = F->createSlice("extract", MM, {start, 0}, {start + H, R});
       start += H;
       NodeValue(origMM).replaceAllUsesOfWith(ex);
@@ -1239,7 +1239,7 @@ static void optimizeReshape(Function *F) {
       continue;
     auto &inputNode = reshapeNode->getNthInput(0);
     // Eliminate ReshapeNode when the input is already the correct shape.
-    if (inputNode.dims() == reshapeNode->dims()) {
+    if (inputNode.dims() == reshapeNode->getResult().dims()) {
       reshapeNode->getResult().replaceAllUsesOfWith(inputNode);
       continue;
     }
@@ -1260,7 +1260,7 @@ static void optimizeReshape(Function *F) {
     if (reshapeNodeInput && reshapeNodeInput->hasOneUse()) {
       auto *newReshape =
           F->createReshape(reshapeNode->getName(), reshapeNodeInput->getInput(),
-                           reshapeNode->dims());
+                           reshapeNode->getResult().dims());
       reshapeNode->getResult().replaceAllUsesOfWith(newReshape);
       continue;
     }
@@ -1492,7 +1492,7 @@ static bool sinkRescaleQuantizedNode(Function *F) {
       }
 
       auto *newReshape = F->createReshape(reshape->getName(),
-                                          rescale->getInput(), reshape->dims());
+                                          rescale->getInput(), reshape->getResult().dims());
       auto *newRescale = F->createRescaleQuantized(
           rescale->getName(), newReshape, reshape->getResult().getType());
       reshape->getResult().replaceAllUsesOfWith(newRescale);
@@ -1510,7 +1510,7 @@ static bool sinkRescaleQuantizedNode(Function *F) {
       }
 
       auto sliceOutTy = F->getParent()->uniqueTypeWithNewShape(
-          rescale->getInput().getType(), slice->dims());
+          rescale->getInput().getType(), slice->getResult().dims());
       auto *newSlice = F->createSlice(slice->getName(), rescale->getInput(),
                                       slice->getStart(), sliceOutTy);
       auto *newRescale = F->createRescaleQuantized(
@@ -1532,7 +1532,7 @@ static bool sinkRescaleQuantizedNode(Function *F) {
       auto *newTranspose = F->createTranspose(
           transpose->getName(), rescale->getInput(), transpose->getShuffle());
       auto rescaleOutTy = F->getParent()->uniqueTypeWithNewShape(
-          rescale->getResult().getType(), transpose->dims());
+          rescale->getResult().getType(), transpose->getResult().dims());
       auto *newRescale = F->createRescaleQuantized(rescale->getName(),
                                                    newTranspose, rescaleOutTy);
       transpose->getResult().replaceAllUsesOfWith(newRescale);

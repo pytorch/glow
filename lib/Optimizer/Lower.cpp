@@ -198,9 +198,9 @@ void lowerQuantizedTanhNode(Function *F, TanhNode *TN) {
   // point range of [-1.0, 1.0].
   auto inputQuantizationParams =
       glow::quantization::chooseQuantizationParams(-3.0, 3.0);
-  auto tanhInTy = F->getParent()->uniqueType(ElemKind::Int8QTy, TN->dims(),
-                                             inputQuantizationParams.scale_,
-                                             inputQuantizationParams.offset_);
+  auto tanhInTy = F->getParent()->uniqueType(
+      ElemKind::Int8QTy, TN->getResult().dims(), inputQuantizationParams.scale_,
+      inputQuantizationParams.offset_);
 
   // Make sure input is clipped in [-3.0, 3.0] floating point range.
   auto *rescaleInputNode =
@@ -232,7 +232,7 @@ void lowerQuantizedSigmoidNode(Function *F, SigmoidNode *SN) {
   auto inputQuantizationParams =
       glow::quantization::chooseQuantizationParams(-6.0, 6.0);
   auto sigmoidInTy = F->getParent()->uniqueType(
-      ElemKind::Int8QTy, SN->dims(), inputQuantizationParams.scale_,
+      ElemKind::Int8QTy, SN->getResult().dims(), inputQuantizationParams.scale_,
       inputQuantizationParams.offset_);
 
   // Make sure input is clipped in [-6.0, 6.0] floating point range.
@@ -395,7 +395,7 @@ void computeBatchNormalizationWeights(Function *F, BatchNormalizationNode &BN) {
   }
   // Reshape input tensor to form:
   // {samplesPerChannel, numChannels}
-  Node *inFlat =
+  ReshapeNode *inFlat =
       F->createReshape("in.flat", inPrep, {samplesPerChannel, numChannels});
 
   // Calculate Mean:
@@ -413,7 +413,7 @@ void computeBatchNormalizationWeights(Function *F, BatchNormalizationNode &BN) {
   // Calculate Variance:
   // sum((x - mu) ^ 2)
   auto localMeanB =
-      F->createBroadcast("new_mean_broadcasted", localMean, inFlat->dims(), 1);
+      F->createBroadcast("new_mean_broadcasted", localMean, inFlat->getResult().dims(), 1);
 
   Node *localVar = F->createSub("x_mu", inFlat, localMeanB);
   localVar = F->createPow("x_mu2", localVar, 2);

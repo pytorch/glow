@@ -174,7 +174,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       NodeValue outputG = map.getGradient(CC->getResult());
 
       // We start extracting the shape at (0,0, ... ).
-      std::vector<size_t> offsets(CC->dims().size(), 0);
+      std::vector<size_t> offsets(CC->getResult().dims().size(), 0);
       unsigned dim = CC->getDim();
       for (auto &N : inputs) {
         auto *X = new SliceNode("extract", N.getType(), outputG, offsets);

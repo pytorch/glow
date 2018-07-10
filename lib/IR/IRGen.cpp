@@ -255,7 +255,7 @@ public:
       auto inputs = CC->getInputs();
 
       // We start inserting to the shape at (0,0, ... ).
-      std::vector<size_t> offsets(CC->dims().size(), 0);
+      std::vector<size_t> offsets(CC->getResult().dims().size(), 0);
       unsigned dim = CC->getDim();
 
       for (size_t i = 0, e = inputs.size(); i < e;) {

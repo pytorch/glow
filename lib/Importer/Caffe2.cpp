@@ -175,7 +175,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
 
     // Calculate the size and allocate the output buffer.
-    ShapeNHWC idim = ShapeNHWC(tr->dims());
+    ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
     auto outSz = calculateConvOutputDims(idim.h, idim.w, kernel, stride, pads);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
