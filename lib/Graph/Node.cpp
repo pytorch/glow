@@ -80,11 +80,6 @@ void Node::setPredicate(const NodeValue &P) { predicate_ = P; }
 bool Node::hasPredicate() const { return predicate_.getNode(); }
 
 TypeRef Node::getType(unsigned idx) const {
-  if (idx == (unsigned)-1) {
-    assert(numRes_ == 1 && "Did not specify the result number for a node "
-                           "with multiple results.");
-    return types_[0];
-  }
   assert(idx < numRes_ && "Result number does not exist.");
   return types_[idx];
 }
