@@ -242,7 +242,7 @@ public:
   MockCPUBackend() {
     backend_.reset(createBackend(BackendKind::CPU));
   }
-  void init(std::unique_ptr<const IRFunction> IR) override { backend_->init(std::move(IR)); }
+  void init(std::unique_ptr<IRFunction> IR) override { backend_->init(std::move(IR)); }
   void doForwardPass() override { backend_->doForwardPass(); }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     return true;

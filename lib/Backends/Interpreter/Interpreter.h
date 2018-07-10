@@ -41,7 +41,7 @@ class Variable;
 /// execute the instructions one at a time.
 class Interpreter final : public Backend {
   /// The IR to be executed.
-  std::unique_ptr<const IRFunction> F_;
+  std::unique_ptr<IRFunction> F_;
   /// Maps values to Tensors, that are owned by this class.
   std::unordered_map<const Value *, Tensor *> tensors_;
 
@@ -57,7 +57,7 @@ public:
   ///@{
   ~Interpreter() override;
 
-  void init(std::unique_ptr<const IRFunction> IR) override;
+  void init(std::unique_ptr<IRFunction> IR) override;
 
   void doForwardPass() override;
 

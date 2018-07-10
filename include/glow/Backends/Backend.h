@@ -44,10 +44,10 @@ public:
   virtual ~Backend() = default;
 
   /// Prepare the interpreter for execution of new code.
-  virtual void init(std::unique_ptr<const IRFunction> IR) = 0;
+  virtual void init(std::unique_ptr<IRFunction> IR) = 0;
 
   /// Save the bundle for a later standalone execution.
-  virtual void save(std::unique_ptr<const IRFunction> IR, llvm::StringRef outputDir) {
+  virtual void save(std::unique_ptr<IRFunction> IR, llvm::StringRef outputDir) {
     GLOW_UNREACHABLE("Saving a bundle is not supported by the backend");
   }
 
