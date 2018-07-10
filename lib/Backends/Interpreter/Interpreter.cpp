@@ -35,7 +35,7 @@ Interpreter::~Interpreter() {
   externalTensors_.clear();
 }
 
-void Interpreter::init(std::unique_ptr<const IRFunction> IR) {
+void Interpreter::init(std::unique_ptr<IRFunction> IR) {
   F_ = std::move(IR);
   for (auto &v : F_->getGraph()->getParent()->getVars()) {
     auto *w = F_->getWeightForNode(v);

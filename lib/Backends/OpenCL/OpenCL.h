@@ -66,7 +66,7 @@ class OCLBackend final : public Backend {
     }
   };
   /// The IR to be executed.
-  std::unique_ptr<const IRFunction> F_;
+  std::unique_ptr<IRFunction> F_;
   /// The allocator assigns device memory addresses to the buffers.
   MemoryAllocator allocator_;
   /// Maps values to on-device buffers. This list includes both weights and
@@ -99,7 +99,7 @@ public:
   ///@{
   ~OCLBackend() override;
 
-  void init(std::unique_ptr<const IRFunction> IR) override;
+  void init(std::unique_ptr<IRFunction> IR) override;
 
   void doForwardPass() override;
 

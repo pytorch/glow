@@ -22,7 +22,7 @@ namespace glow {
 
 /// MockBackend used only for unit testing.
 class MockBackend : public Backend {
-  void init(std::unique_ptr<const IRFunction> IR) override {}
+  void init(std::unique_ptr<IRFunction> IR) override {}
   void doForwardPass() override {}
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     return false;

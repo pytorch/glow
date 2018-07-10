@@ -60,9 +60,9 @@ public:
   ///@{
   ~CPUBackend() override;
 
-  void init(std::unique_ptr<const IRFunction> IR) override;
+  void init(std::unique_ptr<IRFunction> IR) override;
 
-  void save(std::unique_ptr<const IRFunction> IR, llvm::StringRef outputDir) override;
+  void save(std::unique_ptr<IRFunction> IR, llvm::StringRef outputDir) override;
 
   void doForwardPass() override;
 

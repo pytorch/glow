@@ -131,7 +131,7 @@ static void *allocateJITMemory(const IRFunction *F,
 
 } // end namespace
 
-void CPUBackend::init(std::unique_ptr<const IRFunction> IR) {
+void CPUBackend::init(std::unique_ptr<IRFunction> IR) {
   AllocationsInfo allocationsInfo;
   LLVMIRGen irgen(IR.get(), allocationsInfo, "");
   irgen.initTargetMachine(target.empty() ? "" : target.getValue(),
@@ -162,7 +162,7 @@ void CPUBackend::doForwardPass() {
   }
 }
 
-void CPUBackend::save(std::unique_ptr<const IRFunction> IR, llvm::StringRef outputDir) {
+void CPUBackend::save(std::unique_ptr<IRFunction> IR, llvm::StringRef outputDir) {
   std::string tgt = target.empty() ? "" : target.getValue();
   BundleSaver(IR.get()).save(tgt, outputDir);
 }

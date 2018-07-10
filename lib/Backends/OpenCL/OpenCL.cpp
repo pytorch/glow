@@ -1173,7 +1173,7 @@ size_t OCLBackend::copyMutableWeightsFromDevice() {
   return copiedBytes;
 }
 
-void OCLBackend::init(std::unique_ptr<const IRFunction> IR) {
+void OCLBackend::init(std::unique_ptr<IRFunction> IR) {
   F_ = std::move(IR);
   for (auto &v : F_->getGraph()->getParent()->getVars()) {
     auto *w = F_->getWeightForNode(v);
