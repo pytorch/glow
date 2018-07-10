@@ -258,46 +258,51 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
   Module mod;
   Function *F = mod.createFunction("DataParallelStacking");
   IRFunction M(F);
-  IRBuilder bb(&M);
 
   auto var = mod.createVariable(glow::ElemKind::FloatTy, {2}, "output");
+  {
+    // Scope the IRBuilder so the active allocations are properly deallocated at
+    // destruction.
+    IRBuilder bb(&M);
 
-  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {2}, "output1",
-                                    WeightVar::MutabilityKind::Mutable);
+    auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {2}, "output1",
+                                      WeightVar::MutabilityKind::Mutable);
 
-  M.getVariableMap()[var] = output;
+    M.getVariableMap()[var] = output;
 
-  auto *act = bb.createAllocActivationInst(
-      "act1", mod.uniqueType(glow::ElemKind::FloatTy, {3}));
-  bb.createSplatInst("zero", act, 0.0);
-  auto tv1 = bb.createTensorViewInst(
-      "tv1", act, mod.uniqueType(glow::ElemKind::FloatTy, {2}), {0});
-  auto tv2 = bb.createTensorViewInst(
-      "tv2", act, mod.uniqueType(glow::ElemKind::FloatTy, {2}), {1});
+    auto *act = bb.createAllocActivationInst(
+        "act1", mod.uniqueType(glow::ElemKind::FloatTy, {3}));
+    bb.createSplatInst("zero", act, 0.0);
+    auto tv1 = bb.createTensorViewInst(
+        "tv1", act, mod.uniqueType(glow::ElemKind::FloatTy, {2}), {0});
+    auto tv2 = bb.createTensorViewInst(
+        "tv2", act, mod.uniqueType(glow::ElemKind::FloatTy, {2}), {1});
 
-  auto *one = bb.createAllocActivationInst(
-      "act2", mod.uniqueType(glow::ElemKind::FloatTy, {2}));
-  bb.createSplatInst("one", one, 1.0);
-  // after this instruction:
-  // act will be: [1, 1, 0]
-  // tv1 will be: [1, 1]
-  // tv2 will be: [1, 0]
-  bb.createElementAddInst("elem_add1", tv1, tv1, one);
-  // The next instruction should not be put into the same stacking kernel,
-  // because tv2 overlaps with tv1.
-  // after this instruction:
-  // act will be: [1, 2, 2]
-  // tv1 will be: [1, 2]
-  // tv2 will be: [2, 2]
-  bb.createElementAddInst("elem_add2", tv2, tv2, tv1);
-  // after this instruction:
-  // output will be: [3, 4]
-  // tv1 will be: [1, 2]
-  // tv2 will be: [2, 2]
-  // If stacking would put elem_add1 and elem_add2 into the same stacking
-  // kernel, the output would be: [2, 4], which is wrong.
-  bb.createElementAddInst("elem_add3", output, tv2, tv1);
-  bb.createDeallocActivationInst("dealloc", act);
+    auto *one = bb.createAllocActivationInst(
+        "act2", mod.uniqueType(glow::ElemKind::FloatTy, {2}));
+    bb.createSplatInst("one", one, 1.0);
+    // after this instruction:
+    // act will be: [1, 1, 0]
+    // tv1 will be: [1, 1]
+    // tv2 will be: [1, 0]
+    bb.createElementAddInst("elem_add1", tv1, tv1, one);
+    // The next instruction should not be put into the same stacking kernel,
+    // because tv2 overlaps with tv1.
+    // after this instruction:
+    // act will be: [1, 2, 2]
+    // tv1 will be: [1, 2]
+    // tv2 will be: [2, 2]
+    bb.createElementAddInst("elem_add2", tv2, tv2, tv1);
+    // after this instruction:
+    // output will be: [3, 4]
+    // tv1 will be: [1, 2]
+    // tv2 will be: [2, 2]
+    // If stacking would put elem_add1 and elem_add2 into the same stacking
+    // kernel, the output would be: [2, 4], which is wrong.
+    bb.createElementAddInst("elem_add3", output, tv2, tv1);
+    bb.createDeallocActivationInst("dealloc", act);
+  }
+
   MockCPUBackend backend(&M);
   backend.init();
   backend.doForwardPass();
