@@ -19,8 +19,7 @@ addons:
 before_install:
   - utils/install_protobuf.sh
 
-matrix:
-  fast_finish: true
+jobs:
   include:
     - env:
         - TEST_NAME=ASAN
