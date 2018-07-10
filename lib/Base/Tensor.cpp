@@ -220,7 +220,7 @@ static bool tryTransposeFastImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
                                  llvm::ArrayRef<unsigned> shuffle) {
   const size_t numDims = dest.dims().size();
   size_t srcCoorArr[max_tensor_dimensions];
-  size_t destCoorArr[max_tensor_dimensions];
+  size_t destCoorArr[max_tensor_dimensions] = {0};
   auto srcCoor = llvm::ArrayRef<size_t>(srcCoorArr, numDims);
   auto destCoor = llvm::ArrayRef<size_t>(destCoorArr, numDims);
 
