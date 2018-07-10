@@ -47,9 +47,11 @@ jobs:
         - utils/install_protobuf.sh
         - sudo apt-get install -y lcov
         - sudo pip install awscli --upgrade
+        - sudo apt-get install -qq g++-6
+        - sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-6 90
       install:
         - mkdir build && cd build
-        - cmake -G Ninja
+        - CC=gcc-6 CXX=g++-6 cmake -G Ninja
           -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=OFF
           -DCMAKE_PREFIX_PATH=/usr/lib/llvm-6.0/include/
           -DGLOW_USE_COVERAGE=ON

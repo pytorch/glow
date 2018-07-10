@@ -11,7 +11,7 @@ if(GLOW_USE_COVERAGE)
     message(FATAL_ERROR "Make sure gcov is installed.")
   endif()
 
-  find_program(LCOV_PATH  NAMES lcov lcov.bat lcov.exe lcov.perl)
+  find_program(LCOV_PATH NAMES lcov lcov.bat lcov.exe lcov.perl)
   if(NOT LCOV_PATH)
     message(FATAL_ERROR "Make sure lcov is installed.")
   endif()
