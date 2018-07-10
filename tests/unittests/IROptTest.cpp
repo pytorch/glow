@@ -451,3 +451,64 @@ TEST(Optimizer, chainOfTwoForwardCopies) {
       instrs.begin(), instrs.end(),
       [](const Instruction &I) -> bool { return isa<CopyInst>(&I); }));
 }
+
+/// The idea of this test is to have live intervals looking like this:
+/// A          B
+/// |   <-copy |
+/// inout      |
+/// |          |
+/// Because of the inout on A, A and B interfere.
+/// Make sure we don't coalesce such buffers.
+TEST(Optimizer, inoutCopy) {
+  Module mod;
+  Function *F = mod.createFunction("inoutCopy");
+  IRFunction M(F);
+  IRBuilder bb(&M);
+
+  auto *input = bb.createWeightVar(glow::ElemKind::FloatTy, {2, 64}, "input",
+                                   WeightVar::MutabilityKind::Mutable);
+  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {3, 64}, "output",
+                                    WeightVar::MutabilityKind::Mutable);
+  auto *output2 =
+      bb.createWeightVar(glow::ElemKind::FloatTy, {2, 64}, "output2",
+                         WeightVar::MutabilityKind::Mutable);
+  // This copy cannot be eliminated because input must not be changed.
+  // Indeed, this is an observable variable plus it is used as a source
+  // for a copy to output2.
+  auto *tmp1 =
+      bb.createAllocActivationInst("tmp1", glow::ElemKind::FloatTy, {2, 64});
+  bb.createCopyInst("copy1", tmp1, input);
+
+  auto *tmp2 =
+      bb.createAllocActivationInst("tmp2", glow::ElemKind::FloatTy, {64});
+  bb.createSplatInst("splat", tmp2, 3.0);
+  auto *view =
+      bb.createTensorView(ElemKind::FloatTy, {1, 64}, tmp2, "view", {0});
+  bb.createInsertTensorInst("insertTmp1", tmp1, view, {0, 0}, 1, 0);
+  bb.createInsertTensorInst("insertOutput", output, tmp1, {1, 0}, 1, 0);
+  bb.createCopyInst("copyOutput2", output2, input);
+
+  bb.createDeallocActivationInst("dealloc1", tmp1);
+  bb.createDeallocActivationInst("dealloc2", tmp2);
+
+  optimize(M, CompilationMode::Infer, MockBackend());
+
+  // After optimization, the copies shouldn't have been touched.
+  // tmp1 = copy input cannot be coalesced because tmp1 is inout.
+  // output2 = copy input cannot be coalesced because they are both
+  // externally visible.
+  EXPECT_EQ(input->getNumUsers(), 2);
+  EXPECT_TRUE(
+      std::all_of(input->getUsers().begin(), input->getUsers().end(),
+                  [](const Use &I) -> bool { return isa<CopyInst>(I.get()); }));
+  const Value *expectedDest[] = {tmp1, output2};
+  unsigned idx = 0;
+  for (const Use &use : input->getUsers()) {
+    if (idx == sizeof(expectedDest) / sizeof(expectedDest[0])) {
+      // If we end up here that means that input has too many users.
+      EXPECT_FALSE(true);
+      break;
+    }
+    EXPECT_EQ(use.get()->getOperand(0).first, expectedDest[idx++]);
+  }
+}
