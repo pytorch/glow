@@ -142,8 +142,7 @@ TEST_P(BackendTest, debugPrint) {
   IRFunction ir;
   ir.setGraph(F);
   ir.generateIR();
-  IRBuilder builder(&ir);
-  builder.createDebugPrintInst("print", *ir.getWeights().begin());
+  IRBuilder(&ir).createDebugPrintInst("print", *ir.getWeights().begin());
 
   std::unique_ptr<Backend> backend(createBackend(GetParam(), &ir));
   backend->init();
