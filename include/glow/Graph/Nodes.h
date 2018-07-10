@@ -28,7 +28,7 @@
 
 namespace glow {
 
-class Variable final : public Node {
+class Variable: public Node {
 public:
   /// Specifies the kind of training and initialization for the variable.
   /// Nodes that are marked as 'none' are not modified during the training
@@ -105,7 +105,7 @@ public:
 
   unsigned getNumInputs() const;
   llvm::StringRef getInputName(unsigned idx) const;
-  NodeValue &getNthInput(unsigned idx);
+  NodeValue getNthInput(unsigned idx);
   llvm::StringRef getOutputName(unsigned idx) const;
   bool hasSideEffects() const;
   std::string getDebugDesc() const;
@@ -119,7 +119,8 @@ public:
   llvm::hash_code getHash() const;
 };
 
-using VariableNode = Variable;
+class VariableNode: public Variable {
+};
 
 /// Calculate the size of the output tensor based on the convolution parameters.
 inline std::pair<size_t, size_t>
@@ -159,6 +160,7 @@ llvm::hash_code hash_value(const glow::Type *T);
 llvm::hash_code hash_value(glow::Node *T);
 
 llvm::hash_code hash_value(const glow::NodeValue &T);
+llvm::hash_code hash_value(const glow::PrivateNodeTypes::NodeValueHandle &T);
 
 } // namespace glow
 

@@ -61,6 +61,23 @@ TEST(Graph, simpleTestConv) {
   EXPECT_GT(M.getInstrs().size(), 0);
 }
 
+TEST(Graph, useList) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  IRFunction M(F);
+  Node *K = MD.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+
+  EXPECT_EQ(K->getNumUsers(), 0);
+
+  ConvolutionNode *conv = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
+
+  EXPECT_TRUE(K->hasOneUse());
+  EXPECT_EQ(K->getNumUsers(), 1);
+  EXPECT_EQ(conv->getNumUsers(), 0);
+  EXPECT_TRUE(conv->getFilter()->hasOneUse());
+  EXPECT_EQ(conv->getFilter()->getNumUsers(), 1);
+}
+
 TEST(Graph, simpleTestFC) {
   unsigned numInputs = 10;
   Module MD;
