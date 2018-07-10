@@ -419,7 +419,7 @@ static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
   assert(idim.c % group == 0 && "channels number must be divisible by groups");
   (void)idim;
 
-  auto filterDims = filter->dims();
+  auto filterDims = filter.dims();
   assert(filterDims[0] % group == 0 && filterDims[1] == kernel &&
          filterDims[2] == kernel && filterDims[3] == idim.c / group &&
          "Invalid filter dims");
@@ -984,7 +984,7 @@ SelectNode *Function::createSelect(llvm::StringRef name, NodeValue Cond,
   auto inDims = LHS.dims();
   assert(inDims.size() > 0);
   ShapeVector outDims(inDims.begin(), inDims.end());
-  auto OT = getParent()->uniqueType(LHS->getElementType(), outDims);
+  auto OT = getParent()->uniqueType(LHS.getElementType(), outDims);
   return createSelect(name, OT, Cond, LHS, RHS);
 }
 
@@ -1220,7 +1220,7 @@ QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
          "Input must be a floating type");
   assert(outTy->getElementType() == ElemKind::Int8QTy &&
          "Output must be a quantized type");
-  assert(input->dims().equals(outTy->dims()) &&
+  assert(input.dims().equals(outTy->dims()) &&
          "Different dimensions for input and output");
 
   return addNode(
@@ -1243,7 +1243,7 @@ RescaleQuantizedNode *Function::createRescaleQuantized(llvm::StringRef name,
          "Input must be a quantized type");
   assert(outTy->getElementType() == ElemKind::Int8QTy &&
          "Output must be a quantized type");
-  assert(input->dims().equals(outTy->dims()) &&
+  assert(input.dims().equals(outTy->dims()) &&
          "Different dimensions for input and output");
 
   return addNode(
@@ -1294,7 +1294,7 @@ void Function::createSimpleRNN(llvm::StringRef namePrefix,
   std::string nameBase = namePrefix;
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");
-  const unsigned inputSize = inputs.front()->dims().back();
+  const unsigned inputSize = inputs.front()->dims(0).back();
   assert(inputSize > 0 && "input dimensionality is zero");
 
   // Initialize the state to zero.
@@ -1349,7 +1349,7 @@ void Function::createGRU(llvm::StringRef namePrefix,
   std::string nameBase = namePrefix;
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");
-  const unsigned inputSize = inputs.front()->dims().back();
+  const unsigned inputSize = inputs.front()->dims(0).back();
   assert(inputSize > 0 && "input dimensionality is zero");
 
   // Initialize the state to zero.
@@ -1482,7 +1482,7 @@ void Function::createLSTM(llvm::StringRef namePrefix,
   std::string nameBase = namePrefix;
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");
-  const unsigned inputSize = inputs.front()->dims().back();
+  const unsigned inputSize = inputs.front()->dims(0).back();
   assert(inputSize > 0 && "input dimensionality is zero");
 
   // Initialize the hidden and cell states to zero.

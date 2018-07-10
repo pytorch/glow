@@ -78,7 +78,7 @@ quantizeInputs(Function *F, Node *node,
 
     const TensorQuantizationParams &TQP =
         nodeToTQP.find(nodeOutputName)->second;
-    auto QT = F->getParent()->uniqueType(ElemKind::Int8QTy, NV->dims(),
+    auto QT = F->getParent()->uniqueType(ElemKind::Int8QTy, NV.dims(),
                                          TQP.scale_, TQP.offset_);
 
     Node *quantizeNode = F->createQuantize("quantize", NV, QT);
@@ -134,7 +134,7 @@ static Node *quantizeNode(Function *F, Node *node,
     assert(quantizedInputs.size() == 3 && "Invalid number of inputs");
     assert(qParams.size() == 1 && "Invalid number of quantized outputs");
     auto QT =
-        F->getParent()->uniqueType(ElemKind::Int8QTy, FC->getResult()->dims(),
+        F->getParent()->uniqueType(ElemKind::Int8QTy, FC->getResult().dims(),
                                    qParams[0].scale_, qParams[0].offset_);
     quantizedNode =
         F->createFullyConnected(FC->getName(), quantizedInputs[0],
@@ -147,7 +147,7 @@ static Node *quantizeNode(Function *F, Node *node,
     assert(quantizedInputs.size() == 3 && "Invalid number of inputs");
     assert(qParams.size() == 1 && "Invalid number of quantized outputs");
     auto QT =
-        F->getParent()->uniqueType(ElemKind::Int8QTy, CV->getResult()->dims(),
+        F->getParent()->uniqueType(ElemKind::Int8QTy, CV->getResult().dims(),
                                    qParams[0].scale_, qParams[0].offset_);
     quantizedNode =
         F->createConv(CV->getName(), quantizedInputs[0], quantizedInputs[1],
@@ -161,7 +161,7 @@ static Node *quantizeNode(Function *F, Node *node,
     assert(qParams.size() == 1 && "Invalid number of quantized outputs");
 
     auto QT = F->getParent()->uniqueType(
-        ElemKind::Int8QTy, S->getResult()->dims(),
+        ElemKind::Int8QTy, S->getResult().dims(),
         quantizedInputs[0]->getNthResult(0).getType()->getScale(),
         quantizedInputs[0]->getNthResult(0).getType()->getOffset());
 
@@ -239,7 +239,7 @@ static Node *quantizeNode(Function *F, Node *node,
     // same {S,O} params.
     for (size_t qi = 0, e = quantizedInputs.size(); qi < e; qi++) {
       auto argOutTy = F->getParent()->uniqueType(
-          ElemKind::Int8QTy, quantizedInputs[qi]->dims(), qParams[0].scale_,
+          ElemKind::Int8QTy, quantizedInputs[qi].dims(), qParams[0].scale_,
           qParams[0].offset_);
 
       quantizedInputs[qi] = F->createRescaleQuantized(
@@ -247,7 +247,7 @@ static Node *quantizeNode(Function *F, Node *node,
     }
 
     auto outTy =
-        F->getParent()->uniqueType(ElemKind::Int8QTy, C->getResult()->dims(),
+        F->getParent()->uniqueType(ElemKind::Int8QTy, C->getResult().dims(),
                                    qParams[0].scale_, qParams[0].offset_);
     quantizedNode =
         F->createConcat(node->getName(), quantizedInputs, C->getDim(), outTy);
@@ -340,7 +340,7 @@ postProcessQuantizedNode(Function *F, Node *quantizedNode,
     // {S,O} as the input. Make sure that rescale is applied to comply with
     // the taken profile from the node.
     auto outTy =
-        F->getParent()->uniqueType(ElemKind::Int8QTy, quantizedNode->dims(),
+        F->getParent()->uniqueType(ElemKind::Int8QTy, quantizedNode->dims(0),
                                    qParams[0].scale_, qParams[0].offset_);
     return F->createRescaleQuantized(quantizedNode->getName(), quantizedNode,
                                      outTy);

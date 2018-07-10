@@ -261,7 +261,7 @@ static void verifySoftMax(NodeValue src, NodeValue dest) {
 
 static void verifyCrossEntropyLoss(NodeValue P, NodeValue CE,
                                    NodeValue labels) {
-  assert(P.getElementType() == CE->getElementType());
+  assert(P.getElementType() == CE.getElementType());
   assert(P.dims()[0] == labels.dims()[0] && "Invalid shape");
 }
 
@@ -665,7 +665,7 @@ void ConcatNode::verify() const {
   }
 
   for (size_t i = 0; i < inputs.size(); i++) {
-    checkType(inputs[i], getResult()->getElementType());
+    checkType(inputs[i], getResult().getElementType());
     if (getResult().getType()->isQuantizedType()) {
       assert(inputs[i].getType()->getScale() ==
              getResult().getType()->getScale());

@@ -132,9 +132,9 @@ protected:
       // In ONNX, if axis == -1 then it sets the axis so that the
       // trailing-most dimensions are aligned like this.
       if (axis == -1) {
-        axis = in0->dims().size() - in1->dims().size();
+        axis = in0->dims(0).size() - in1->dims(0).size();
       }
-      finalIn1 = G_.createBroadcast(opName, in1, in0->dims(), axis);
+      finalIn1 = G_.createBroadcast(opName, in1, in0->dims(0), axis);
     } else {
       finalIn1 = in1;
     }
@@ -179,7 +179,7 @@ protected:
     if (dict.count("shape")) {
       std::vector<int64_t> protoDims = getShape<int64_t>(dict["shape"]);
 
-      auto oldDim = in->dims();
+      auto oldDim = in->dims(0);
       int64_t product = 1;
       for (size_t i = 0, e = protoDims.size(); i != e; i++) {
         if (protoDims[i] == 0)
@@ -220,7 +220,7 @@ protected:
     std::vector<unsigned> perm = getShape<unsigned>(dict[permArgName]);
     if (perm.empty()) {
       // Empty permutation argument means reversing axes order.
-      size_t N = in->dims().size();
+      size_t N = in->dims(0).size();
       for (int64_t i = N - 1; i >= 0; i--)
         perm.push_back(i);
     }
