@@ -28,7 +28,7 @@
 
 namespace glow {
 
-class Variable final : public Node {
+class Variable : public Node {
 public:
   /// Specifies the kind of training and initialization for the variable.
   /// Nodes that are marked as 'none' are not modified during the training
@@ -119,7 +119,9 @@ public:
   llvm::hash_code getHash() const;
 };
 
-using VariableNode = Variable;
+// We need an actual class for VariableNode to be able to
+// use DEF_NODE macro in a consistent way.
+class VariableNode final : public Variable {};
 
 /// Calculate the size of the output tensor based on the convolution parameters.
 inline std::pair<size_t, size_t>

@@ -29,31 +29,32 @@ void NodeUse::setOperand(NodeValue &other) {
   site_->setOperand(other.getNode(), other.getResNo());
 }
 
-NodeValue::NodeValue(Node *N) {
+NodeValue::NodeValue(Node *N) : NodeValue(N, 0) {
   assert((!N || (N->getNumResults() == 1)) &&
          "Constructing a value for a multi-res node");
-  setOperand(N, 0);
 }
 
-NodeValue::NodeValue(Node *N, unsigned resNo) {
-  assert(resNo < N->getNumResults() && "Invalid result number");
-  setOperand(N, resNo);
-}
-
-void NodeValue::setOperand(Node *v, unsigned resNo) {
-  if (node_ == v && resNo == resNo_) {
-    return;
-  }
-
-  if (node_) {
-    node_->removeUse(NodeUse(this));
-    node_ = nullptr;
-    resNo_ = 0;
-  }
-
-  if (v) {
-    node_ = v;
+NodeValue::NodeValue(Node *N, unsigned resNo, bool isOperand)
+    : isOperand_(isOperand) {
+  assert((!N || resNo < N->getNumResults()) && "Invalid result number");
+  if (isOperand) {
+    setOperand(N, resNo);
+  } else {
+    node_ = N;
     resNo_ = resNo;
+  }
+}
+
+void NodeValue::setOperand(Node *v, unsigned resNo, bool fromFriend) {
+  assert((fromFriend || isOperand_) && "This is not an operand");
+  if (node_ && isOperand_) {
+    node_->removeUse(NodeUse(this));
+  }
+
+  isOperand_ = true;
+  node_ = v;
+  resNo_ = resNo;
+  if (v) {
     v->addUse(NodeUse(this));
   }
 }
@@ -75,7 +76,9 @@ void NodeValue::replaceAllUsesOfWith(NodeValue v) {
 
 const NodeValue &Node::getPredicate() const { return predicate_; }
 
-void Node::setPredicate(const NodeValue &P) { predicate_ = P; }
+void Node::setPredicate(const NodeValue &P) {
+  predicate_.setOperand(P.getNode(), P.getResNo());
+}
 
 bool Node::hasPredicate() const { return predicate_.getNode(); }
 
