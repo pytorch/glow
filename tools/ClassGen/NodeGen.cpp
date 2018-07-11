@@ -53,7 +53,10 @@ int main(int argc, char **argv) {
                     "intended to save the final result of a network.");
 
   BB.newNode("Load")
-      .addInput("Variable")
+      .addInput("Address")
+      .addExtraMethod("Variable *getVariable() const;",
+                      "Variable *LoadNode::getVariable() const { return "
+                      "llvm::cast<Variable>(Address_.getNode()); };")
       .addResultFromCtorArg()
       .setDocstring("Load/Copy a variable into local memory. "
                     "If the memory space of the variable is the same as the "

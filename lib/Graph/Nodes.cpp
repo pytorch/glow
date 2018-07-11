@@ -677,7 +677,7 @@ void ConcatNode::verify() const {
 
 void LoadNode::verify() const {
   // Loads are restricted to Variables.
-  assert(llvm::isa<Variable>(getVariable().getNode()));
+  assert(llvm::isa<Variable>(getAddress().getNode()));
 }
 
 //===----------------------------------------------------------------------===//

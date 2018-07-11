@@ -86,8 +86,7 @@ Variable *ProtobufLoader::getVariableByName(llvm::StringRef name) const {
 
   assert(llvm::isa<LoadNode>(node) && "Not a load of a variable");
 
-  return llvm::cast<Variable>(
-      llvm::cast<LoadNode>(node)->getVariable().getNode());
+  return llvm::cast<LoadNode>(node)->getVariable();
 }
 
 bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {
