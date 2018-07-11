@@ -54,7 +54,7 @@ public:
   ///@{
   ~InterpreterFunction() override;
 
-  void doForwardPass() override;
+  void execute() override;
   ///@}
 
 private:

@@ -514,7 +514,7 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   enqueueKernel(commands_, kernel, deviceId_, global, local, kernelLaunches_);
 }
 
-void OpenCLFunction::doForwardPass() {
+void OpenCLFunction::execute() {
   auto copiedToDeviceBytes = copyMutableWeightsToDevice();
   (void)copiedToDeviceBytes;
   DEBUG_GLOW(llvm::dbgs() << "Copied " << copiedToDeviceBytes
@@ -1265,8 +1265,7 @@ cl_mem OpenCLFunction::allocDeviceBuffer(size_t size) {
 
 void OpenCLFunction::freeDeviceBuffer(cl_mem buf) { clReleaseMemObject(buf); }
 
-void OCLBackend::init(std::unique_ptr<IRFunction> IR) {
-  function_ = llvm::make_unique<OpenCLFunction>(std::move(IR));
+std::unique_ptr<CompiledFunction>
+OCLBackend::compile(std::unique_ptr<IRFunction> IR) const {
+  return llvm::make_unique<OpenCLFunction>(std::move(IR));
 }
-
-void OCLBackend::doForwardPass() { function_->doForwardPass(); }

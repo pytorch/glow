@@ -98,7 +98,7 @@ public:
   ///@{
   ~OpenCLFunction() override;
 
-  void doForwardPass() override;
+  void execute() override;
   ///@}
 
 private:
@@ -161,10 +161,6 @@ private:
 
 /// This is the OpenCL backend.
 class OCLBackend final : public Backend {
-private:
-  /// Function containing state for execution.
-  std::unique_ptr<CompiledFunction> function_;
-
 public:
   /// Ctor.
   OCLBackend() = default;
@@ -174,9 +170,8 @@ public:
   ///@{
   ~OCLBackend() override = default;
 
-  void init(std::unique_ptr<IRFunction> IR) override;
-
-  void doForwardPass() override;
+  std::unique_ptr<CompiledFunction>
+  compile(std::unique_ptr<IRFunction> IR) const override;
 
   bool transformPostLowering(Function *F, CompilationMode mode) override;
 

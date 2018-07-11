@@ -145,8 +145,8 @@ TEST_P(BackendTest, debugPrint) {
   IRBuilder(IR.get()).createDebugPrintInst("print", *IR->getWeights().begin());
 
   std::unique_ptr<Backend> backend(createBackend(GetParam()));
-  backend->init(std::move(IR));
-  backend->doForwardPass();
+  auto function = backend->compile(std::move(IR));
+  function->execute();
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, BackendTest,

@@ -22,8 +22,13 @@ namespace glow {
 
 /// MockBackend used only for unit testing.
 class MockBackend : public Backend {
-  void init(std::unique_ptr<IRFunction> IR) override {}
-  void doForwardPass() override {}
+  class MockFunction : public CompiledFunction {
+    void execute() override {}
+  };
+  std::unique_ptr<CompiledFunction>
+  compile(std::unique_ptr<IRFunction> IR) const override {
+    return llvm::make_unique<MockFunction>();
+  }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     return false;
   }

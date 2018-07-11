@@ -115,7 +115,8 @@ static void *allocateJITMemory(const IRFunction *F,
 
 } // end namespace
 
-void CPUBackend::init(std::unique_ptr<IRFunction> IR) {
+std::unique_ptr<CompiledFunction>
+CPUBackend::compile(std::unique_ptr<IRFunction> IR) const {
   AllocationsInfo allocationsInfo;
   LLVMIRGen irgen(IR.get(), allocationsInfo, "");
   irgen.initTargetMachine(target.empty() ? "" : target.getValue(),
@@ -130,10 +131,8 @@ void CPUBackend::init(std::unique_ptr<IRFunction> IR) {
   // Hand over the module to JIT for the machine code generation.
   auto JIT = llvm::make_unique<llvm::orc::GlowJIT>(irgen.getTargetMachine());
   JIT->addModule(irgen.borrowModule());
-  function_ = llvm::make_unique<CPUFunction>(std::move(JIT), heap);
+  return llvm::make_unique<CPUFunction>(std::move(JIT), heap);
 }
-
-void CPUBackend::doForwardPass() { function_->doForwardPass(); }
 
 void CPUBackend::save(std::unique_ptr<IRFunction> IR,
                       llvm::StringRef outputDir) {
