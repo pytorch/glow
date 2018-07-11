@@ -17,6 +17,7 @@
 
 #include "OpenCL.h"
 
+#include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IRUtils.h"
@@ -84,7 +85,7 @@ static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 #endif
 }
 
-OCLBackend::OCLBackend() : allocator_(0xFFFFFFFF) {
+OCLBackend::OCLBackend() {
   cl_uint num{0};
   cl_int err = clGetDeviceIDs(nullptr, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
@@ -1175,6 +1176,8 @@ size_t OCLBackend::copyMutableWeightsFromDevice() {
 
 void OCLBackend::init(std::unique_ptr<IRFunction> IR) {
   F_ = std::move(IR);
+  /// The allocator assigns device memory addresses to the buffers.
+  MemoryAllocator allocator(0xFFFFFFFF);
   for (auto &v : F_->getGraph()->getParent()->getVars()) {
     auto *w = F_->getWeightForNode(v);
     assert(!externalTensors_.count(w) && "The tensor is already registered");
@@ -1185,7 +1188,7 @@ void OCLBackend::init(std::unique_ptr<IRFunction> IR) {
   for (auto it : externalTensors_) {
     Tensor *T = it.second;
     size_t sizeInBytes = T->getType().getSizeInBytes();
-    size_t addr = allocator_.allocate(sizeInBytes);
+    size_t addr = allocator.allocate(sizeInBytes);
     // Associate the new buffer with the weight value.
     tensors_[it.first] = addr;
   }
@@ -1194,7 +1197,7 @@ void OCLBackend::init(std::unique_ptr<IRFunction> IR) {
   for (const auto &I : F_->getInstrs()) {
     if (auto *A = llvm::dyn_cast<AllocActivationInst>(&I)) {
       auto numBytes = I.getSizeInBytes();
-      size_t addr = allocator_.allocate(numBytes);
+      size_t addr = allocator.allocate(numBytes);
       assert(!tensors_.count(A) && "Allocation already made!");
       tensors_[A] = addr;
       continue;
@@ -1220,14 +1223,14 @@ void OCLBackend::init(std::unique_ptr<IRFunction> IR) {
     if (auto *D = llvm::dyn_cast<DeallocActivationInst>(&I)) {
       auto *A = D->getAlloc();
       assert(tensors_.count(A) && "Invalid deallocation!");
-      allocator_.deallocate(tensors_[A]);
+      allocator.deallocate(tensors_[A]);
       continue;
     }
   }
 
   // Ask the memory allocator how much memory is required. What was the high
   // watermark for this program.
-  size_t requiredSpace = allocator_.getMaxMemoryUsage();
+  size_t requiredSpace = allocator.getMaxMemoryUsage();
   DEBUG_GLOW(llvm::dbgs() << "Allocated GPU memory block of size: "
                           << requiredSpace << "\n");
 

@@ -19,7 +19,6 @@
 #include "glow/Backends/Backend.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Traits.h"
-#include "glow/CodeGen/MemoryAllocator.h"
 
 #include "llvm/ADT/ArrayRef.h"
 
@@ -67,8 +66,6 @@ class OCLBackend final : public Backend {
   };
   /// The IR to be executed.
   std::unique_ptr<IRFunction> F_;
-  /// The allocator assigns device memory addresses to the buffers.
-  MemoryAllocator allocator_;
   /// Maps values to on-device buffers. This list includes both weights and
   /// activations.
   std::unordered_map<const Value *, size_t> tensors_;
