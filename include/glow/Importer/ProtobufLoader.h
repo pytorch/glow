@@ -106,13 +106,20 @@ protected:
   /// \returns A load to the newly created variable.
   /// \pre !hasNodeByName(name)
   Node *createAndRememberVariable(
-      llvm::StringRef name, Tensor &tensor,
+      llvm::StringRef name, const Tensor &tensor,
       VisibilityKind visibilityKind = VisibilityKind::Private,
       Variable::TrainKind trainKind = Variable::TrainKind::Broadcast);
 
   /// \returns the node that was registered with the name \p name or nullptr
   /// if no node has been registered with this name.
   Node *getNodeByNameOrNull(llvm::StringRef name) const;
+
+  /// Create a new variable \p name initialized with \p tensor.
+  /// \returns the newly created variable.
+  Node *createVariable(
+      llvm::StringRef name, const Tensor &tensor,
+      VisibilityKind visibilityKind = VisibilityKind::Private,
+      Variable::TrainKind trainKind = Variable::TrainKind::Broadcast);
 
 public:
   /// \returns the node that was registered with the name \p name.
@@ -130,13 +137,6 @@ public:
   /// under \p name.
   /// \pre isa<LoadNode>(getNodeByName(name))
   Variable *getVariableByName(llvm::StringRef name) const;
-
-  /// Create a new variable \p name initialized with \p tensor.
-  /// \returns the newly created variable.
-  Node *createVariable(
-      llvm::StringRef name, Tensor &tensor,
-      VisibilityKind visibilityKind = VisibilityKind::Private,
-      Variable::TrainKind trainKind = Variable::TrainKind::Broadcast);
 
   /// \returns True if the node that's registered using \p name exists.
   bool hasNodeByName(llvm::StringRef name) const;
