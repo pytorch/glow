@@ -15,6 +15,7 @@
  */
 
 #include "CPUBackend.h"
+#include "LLVMIRGen.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
