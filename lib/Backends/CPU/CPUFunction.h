@@ -22,7 +22,7 @@
 
 namespace glow {
 
-/// A function compiled for the CPU using LLVM.
+/// A Glow IR function compiled for the CPU using LLVM.
 class CPUFunction final : public CompiledFunction {
   /// The LLVM JIT engine. The jit must be initialized after the ctor
   /// initializes the LLVM backends.

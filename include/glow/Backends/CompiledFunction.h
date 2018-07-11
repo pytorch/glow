@@ -18,7 +18,7 @@
 
 namespace glow {
 
-/// Interface containing state necessary to execute a compiled network.
+/// Interface for executing a compiled function.
 class CompiledFunction {
 public:
   /// Dtor.

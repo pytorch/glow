@@ -19,11 +19,6 @@
 #include "InterpreterFunction.h"
 
 #include "glow/Backends/Backend.h"
-#include "glow/Base/Tensor.h"
-
-#include "llvm/ADT/ArrayRef.h"
-
-#include <unordered_map>
 
 namespace glow {
 
