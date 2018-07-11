@@ -1052,7 +1052,8 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
 
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
   auto *conv = F->createConv("conv", input, convDepth, 5, 1, 0, 1);
-  auto *res = mod.createVariable(ElemKind::FloatTy, conv->getResult().dims(), "res");
+  auto *res =
+      mod.createVariable(ElemKind::FloatTy, conv->getResult().dims(), "res");
 
   auto filter = conv->getFilter();
   auto bias = conv->getBias();
@@ -1130,7 +1131,8 @@ TEST_P(InterpAndCPU, IntFC) {
   // FC and ensure that the error is below some low value.
   auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
   auto *fc = F_->createFullyConnected("FC", input, 30);
-  auto *res = mod_.createVariable(ElemKind::FloatTy, fc->getResult().dims(), "res");
+  auto *res =
+      mod_.createVariable(ElemKind::FloatTy, fc->getResult().dims(), "res");
 
   auto weights = fc->getWeights();
   auto bias = fc->getBias();

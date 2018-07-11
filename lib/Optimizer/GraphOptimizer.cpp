@@ -1491,8 +1491,8 @@ static bool sinkRescaleQuantizedNode(Function *F) {
         continue;
       }
 
-      auto *newReshape = F->createReshape(reshape->getName(),
-                                          rescale->getInput(), reshape->getResult().dims());
+      auto *newReshape = F->createReshape(
+          reshape->getName(), rescale->getInput(), reshape->getResult().dims());
       auto *newRescale = F->createRescaleQuantized(
           rescale->getName(), newReshape, reshape->getResult().getType());
       reshape->getResult().replaceAllUsesOfWith(newRescale);
