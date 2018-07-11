@@ -19,13 +19,9 @@
 
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
-#include "glow/IR/IRUtils.h"
-#include "glow/IR/Instrs.h"
-
-#include "llvm/Support/Casting.h"
+#include "glow/IR/IR.h"
 
 using namespace glow;
-using llvm::isa;
 
 void Interpreter::init(std::unique_ptr<IRFunction> IR) {
   function_ = llvm::make_unique<InterpreterFunction>(std::move(IR));
