@@ -16,6 +16,7 @@
 #ifndef GLOW_BACKENDS_BACKEND_H
 #define GLOW_BACKENDS_BACKEND_H
 
+#include "glow/Backends/CompiledFunction.h"
 #include "glow/Base/Traits.h"
 #include "glow/Optimizer/Optimizer.h"
 
