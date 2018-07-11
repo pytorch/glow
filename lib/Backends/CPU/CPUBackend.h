@@ -16,27 +16,13 @@
 #ifndef GLOW_BACKENDS_CPU_CPUBACKEND_H
 #define GLOW_BACKENDS_CPU_CPUBACKEND_H
 
-#include "AllocationsInfo.h"
-#include "GlowJIT.h"
-#include "LLVMIRGen.h"
 #include "glow/Backends/Backend.h"
 #include "glow/Base/Tensor.h"
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Module.h"
 
 namespace glow {
-
-class Context;
-class IRFunction;
-class Value;
-class Tensor;
-class Variable;
-class Instruction;
-class WeightVar;
-struct AllocationsInfo;
 
 /// Helper function to create a new CallInst, with the specified \p builder, \p
 /// callee, and \p args. Verifies that the function signature is correct,

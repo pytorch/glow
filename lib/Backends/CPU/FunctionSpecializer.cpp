@@ -17,6 +17,7 @@
 
 #include "CPUBackend.h"
 #include "CommandLine.h"
+#include "LLVMIRGen.h"
 
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Debug.h"

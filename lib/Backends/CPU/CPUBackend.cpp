@@ -14,33 +14,20 @@
  * limitations under the License.
  */
 
-#define DEBUG_TYPE "jit"
-
-#include "CPUBackend.h"
-
 #include "BundleSaver.h"
+#include "CPUBackend.h"
 #include "CPUFunction.h"
 
 #include "glow/Graph/Graph.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Debug.h"
 
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Bitcode/BitcodeWriter.h"
-#include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
-using llvm::cast;
-using llvm::dyn_cast;
-using llvm::isa;
 
 static llvm::cl::opt<std::string> target("target", llvm::cl::desc("target"));
 
