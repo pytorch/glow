@@ -85,7 +85,8 @@ static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 #endif
 }
 
-OCLBackend::OCLBackend() {
+OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F)
+    : F_(std::move(F)) {
   cl_uint num{0};
   cl_int err = clGetDeviceIDs(nullptr, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
@@ -104,9 +105,10 @@ OCLBackend::OCLBackend() {
   err = CL_SUCCESS;
   /// Create the program from the source.
   createProgram(SHADER_CODE, {}, commands_);
+  allocateMemory();
 }
 
-OCLBackend::~OCLBackend() {
+OpenCLFunction::~OpenCLFunction() {
   for (auto &kv : programsCache_) {
     auto prog = kv.second;
     clReleaseProgram(prog);
@@ -137,8 +139,8 @@ static std::string getKernelName(const char *baseName, ElemKind elemTy) {
   return "";
 }
 
-cl_kernel OCLBackend::createKernel(const std::string &name,
-                                   cl_program program) {
+cl_kernel OpenCLFunction::createKernel(const std::string &name,
+                                       cl_program program) {
   cl_int err = CL_SUCCESS;
   cl_kernel kernel = nullptr;
   if (program) {
@@ -158,9 +160,10 @@ cl_kernel OCLBackend::createKernel(const std::string &name,
   return kernel;
 }
 
-cl_program OCLBackend::createProgram(const std::string &source,
-                                     const std::vector<std::string> &options,
-                                     cl_command_queue queue) {
+cl_program
+OpenCLFunction::createProgram(const std::string &source,
+                              const std::vector<std::string> &options,
+                              cl_command_queue queue) {
   const char *src = source.c_str();
   cl_context ctx;
   cl_int err = clGetCommandQueueInfo(queue, CL_QUEUE_CONTEXT, sizeof(ctx), &ctx,
@@ -232,8 +235,8 @@ setKernelArgsForBuffers(cl_kernel kernel, const Instruction &I,
   return kernelArgIdx - 1;
 }
 
-void OCLBackend::fillBuffer(cl_mem buffer, size_t start, size_t len,
-                            float value, ElemKind elemKind) {
+void OpenCLFunction::fillBuffer(cl_mem buffer, size_t start, size_t len,
+                                float value, ElemKind elemKind) {
   auto kernel = createKernel(getKernelName("splat", elemKind));
   setKernelArg(kernel, 0, buffer);
   setKernelArg<cl_uint>(kernel, 1, start);
@@ -283,11 +286,11 @@ void getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
   }
 }
 
-void OCLBackend::enqueueKernel(cl_command_queue commands, cl_kernel kernel,
-                               cl_device_id device,
-                               llvm::ArrayRef<size_t> global,
-                               llvm::ArrayRef<size_t> local,
-                               std::vector<KernelLaunch> &kernelLaunches) {
+void OpenCLFunction::enqueueKernel(cl_command_queue commands, cl_kernel kernel,
+                                   cl_device_id device,
+                                   llvm::ArrayRef<size_t> global,
+                                   llvm::ArrayRef<size_t> local,
+                                   std::vector<KernelLaunch> &kernelLaunches) {
   char kernelName[128];
   size_t retSize;
   cl_int err = clGetKernelInfo(kernel, CL_KERNEL_FUNCTION_NAME,
@@ -305,10 +308,10 @@ void OCLBackend::enqueueKernel(cl_command_queue commands, cl_kernel kernel,
 /// Enqueue a \p kernel for execution on the command queue \p commands on a
 /// given \p device. The information about the launched kernel will be added to
 /// \p kernelLaunches list.
-void OCLBackend::enqueueKernel(cl_command_queue commands, cl_kernel kernel,
-                               cl_device_id device,
-                               llvm::ArrayRef<size_t> global,
-                               std::vector<KernelLaunch> &kernelLaunches) {
+void OpenCLFunction::enqueueKernel(cl_command_queue commands, cl_kernel kernel,
+                                   cl_device_id device,
+                                   llvm::ArrayRef<size_t> global,
+                                   std::vector<KernelLaunch> &kernelLaunches) {
   llvm::SmallVector<size_t, 4> local(global.size(), 0);
   getMaxLocalWorkgroupSize(kernel, device, global, local);
   char kernelName[128];
@@ -387,7 +390,7 @@ static void addStringOption(std::vector<std::string> &options,
   options.push_back("-D" + name + "=" + value);
 }
 
-void OCLBackend::executeConvolution(const OCLConvolutionInst *CC) {
+void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   auto input = CC->getSrc();
   auto output = CC->getDest();
   auto bias = CC->getBias();
@@ -511,7 +514,7 @@ void OCLBackend::executeConvolution(const OCLConvolutionInst *CC) {
   enqueueKernel(commands_, kernel, deviceId_, global, local, kernelLaunches_);
 }
 
-void OCLBackend::doForwardPass() {
+void OpenCLFunction::doForwardPass() {
   auto copiedToDeviceBytes = copyMutableWeightsToDevice();
   (void)copiedToDeviceBytes;
   DEBUG_GLOW(llvm::dbgs() << "Copied " << copiedToDeviceBytes
@@ -1074,7 +1077,7 @@ void OCLBackend::doForwardPass() {
                           << " bytes from OpenCL device\n");
 }
 
-size_t OCLBackend::copyValueToDevice(const Value *v, void *buf) {
+size_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
   size_t copiedBytes = 0;
   auto it = tensors_.find(v);
   assert(it != tensors_.end() && "Unknown value");
@@ -1097,7 +1100,7 @@ size_t OCLBackend::copyValueToDevice(const Value *v, void *buf) {
   return copiedBytes;
 }
 
-size_t OCLBackend::copyValueFromDevice(const Value *v, void *buf) {
+size_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
   size_t copiedBytes = 0;
   auto it = tensors_.find(v);
   assert(it != tensors_.end() && "Unknown value");
@@ -1122,7 +1125,7 @@ size_t OCLBackend::copyValueFromDevice(const Value *v, void *buf) {
   return copiedBytes;
 }
 
-size_t OCLBackend::copyMutableWeightsToDevice() {
+size_t OpenCLFunction::copyMutableWeightsToDevice() {
   size_t copiedBytes = 0;
   for (auto it : tensors_) {
     if (!externalTensors_.count(it.first)) {
@@ -1139,7 +1142,7 @@ size_t OCLBackend::copyMutableWeightsToDevice() {
   return copiedBytes;
 }
 
-size_t OCLBackend::copyConstantWeightsToDevice() {
+size_t OpenCLFunction::copyConstantWeightsToDevice() {
   size_t copiedBytes = 0;
   for (auto it : tensors_) {
     if (!externalTensors_.count(it.first)) {
@@ -1156,7 +1159,7 @@ size_t OCLBackend::copyConstantWeightsToDevice() {
   return copiedBytes;
 }
 
-size_t OCLBackend::copyMutableWeightsFromDevice() {
+size_t OpenCLFunction::copyMutableWeightsFromDevice() {
   size_t copiedBytes = 0;
   clFinish(commands_);
 
@@ -1174,8 +1177,7 @@ size_t OCLBackend::copyMutableWeightsFromDevice() {
   return copiedBytes;
 }
 
-void OCLBackend::init(std::unique_ptr<IRFunction> IR) {
-  F_ = std::move(IR);
+void OpenCLFunction::allocateMemory() {
   /// The allocator assigns device memory addresses to the buffers.
   MemoryAllocator allocator(0xFFFFFFFF);
   for (auto &v : F_->getGraph()->getParent()->getVars()) {
@@ -1245,13 +1247,13 @@ void OCLBackend::init(std::unique_ptr<IRFunction> IR) {
   copyConstantWeightsToDevice();
 }
 
-Tensor *OCLBackend::getTensor(const Value *v) const {
+Tensor *OpenCLFunction::getTensor(const Value *v) const {
   assert(externalTensors_.count(v) && "Unknown value");
   auto ie = externalTensors_.find(v);
   return ie->second;
 }
 
-cl_mem OCLBackend::allocDeviceBuffer(size_t size) {
+cl_mem OpenCLFunction::allocDeviceBuffer(size_t size) {
   const size_t alignment = 128;
   // Always allocate buffers properly aligned to hold values of any type.
   size = alignedSize(size, alignment);
@@ -1261,4 +1263,10 @@ cl_mem OCLBackend::allocDeviceBuffer(size_t size) {
   return buf;
 }
 
-void OCLBackend::freeDeviceBuffer(cl_mem buf) { clReleaseMemObject(buf); }
+void OpenCLFunction::freeDeviceBuffer(cl_mem buf) { clReleaseMemObject(buf); }
+
+void OCLBackend::init(std::unique_ptr<IRFunction> IR) {
+  function_ = llvm::make_unique<OpenCLFunction>(std::move(IR));
+}
+
+void OCLBackend::doForwardPass() { function_->doForwardPass(); }
