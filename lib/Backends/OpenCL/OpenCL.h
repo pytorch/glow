@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_OPENCL_OPENCL_H
 
 #include "glow/Backends/Backend.h"
+#include "glow/Backends/CompiledFunction.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Traits.h"
 
@@ -31,9 +32,11 @@
 #endif
 
 namespace glow {
+
 class IRFunction;
 class Backend;
 class OCLConvolutionInst;
+
 /// A helper struct with information about kernels launches.
 struct KernelLaunch {
   /// Kernel that was launched.
@@ -52,8 +55,8 @@ struct KernelLaunch {
       : kernel_(nullptr), name_(name), event_(event) {}
 };
 
-/// This is the OpenCL backend.
-class OCLBackend final : public Backend {
+/// A Glow IR function compiled for OpenCL.
+class OpenCLFunction final : public CompiledFunction {
   /// A helper type representing a key for the program's cache.
   /// Each compiled program is uniquely identified by its source code, set of
   /// compiler options that were used and the device it was compiled for.
@@ -89,29 +92,18 @@ class OCLBackend final : public Backend {
 
 public:
   /// Ctor.
-  explicit OCLBackend();
+  explicit OpenCLFunction(std::unique_ptr<IRFunction> F);
 
-  /// @name Backend methods.
-  /// This is the implementation of the Backend interface.
+  /// @name CompiledFunction interface
   ///@{
-  ~OCLBackend() override;
-
-  void init(std::unique_ptr<IRFunction> IR) override;
+  ~OpenCLFunction() override;
 
   void doForwardPass() override;
-
-  bool transformPostLowering(Function *F, CompilationMode mode) override;
-
-  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
-    if (elementTy == ElemKind::Int8QTy) {
-      return false;
-    }
-
-    return true;
-  };
-  /// @}
+  ///@}
 
 private:
+  /// Allocate memory for the tensors.
+  void allocateMemory();
   /// Copy the value from a device to a provided buffer.
   /// If \p buf is nullptr, the payload of the underlying tensor is used.
   /// \returns number of copied bytes.
@@ -165,6 +157,36 @@ private:
 
   /// \returns a pointer to the tensor that is saved under \p v.
   Tensor *getTensor(const Value *v) const;
+};
+
+/// This is the OpenCL backend.
+class OCLBackend final : public Backend {
+private:
+  /// Function containing state for execution.
+  std::unique_ptr<CompiledFunction> function_;
+
+public:
+  /// Ctor.
+  OCLBackend() = default;
+
+  /// @name Backend methods.
+  /// This is the implementation of the Backend interface.
+  ///@{
+  ~OCLBackend() override = default;
+
+  void init(std::unique_ptr<IRFunction> IR) override;
+
+  void doForwardPass() override;
+
+  bool transformPostLowering(Function *F, CompilationMode mode) override;
+
+  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
+    if (elementTy == ElemKind::Int8QTy) {
+      return false;
+    }
+    return true;
+  };
+  /// @}
 };
 
 } // namespace glow
