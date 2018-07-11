@@ -412,8 +412,8 @@ void computeBatchNormalizationWeights(Function *F, BatchNormalizationNode &BN) {
 
   // Calculate Variance:
   // sum((x - mu) ^ 2)
-  auto localMeanB =
-      F->createBroadcast("new_mean_broadcasted", localMean, inFlat->getResult().dims(), 1);
+  auto localMeanB = F->createBroadcast("new_mean_broadcasted", localMean,
+                                       inFlat->getResult().dims(), 1);
 
   Node *localVar = F->createSub("x_mu", inFlat, localMeanB);
   localVar = F->createPow("x_mu2", localVar, 2);
