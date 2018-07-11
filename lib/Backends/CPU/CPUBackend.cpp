@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "BundleSaver.h"
 #include "CPUBackend.h"
+#include "BundleSaver.h"
 #include "CPUFunction.h"
 
 #include "glow/Graph/Graph.h"
@@ -133,11 +133,10 @@ void CPUBackend::init(std::unique_ptr<IRFunction> IR) {
   function_ = llvm::make_unique<CPUFunction>(std::move(JIT), heap);
 }
 
-void CPUBackend::doForwardPass() {
-  function_->doForwardPass();
-}
+void CPUBackend::doForwardPass() { function_->doForwardPass(); }
 
-void CPUBackend::save(std::unique_ptr<IRFunction> IR, llvm::StringRef outputDir) {
+void CPUBackend::save(std::unique_ptr<IRFunction> IR,
+                      llvm::StringRef outputDir) {
   std::string tgt = target.empty() ? "" : target.getValue();
   BundleSaver(IR.get()).save(tgt, outputDir);
 }

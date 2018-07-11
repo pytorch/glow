@@ -21,8 +21,8 @@
 
 using namespace glow;
 
-CPUFunction::CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT, void *heap) 
-  : JIT_(std::move(JIT)), heap_(heap) {}
+CPUFunction::CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT, void *heap)
+    : JIT_(std::move(JIT)), heap_(heap) {}
 
 CPUFunction::~CPUFunction() { alignedFree(heap_); }
 

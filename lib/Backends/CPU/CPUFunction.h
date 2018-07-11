@@ -30,7 +30,7 @@ class CPUFunction final : public CompiledFunction {
   /// This represents the heap, that stores the activations at runtime.
   void *heap_;
 
- public:
+public:
   /// Ctor.
   CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT, void *heap);
 

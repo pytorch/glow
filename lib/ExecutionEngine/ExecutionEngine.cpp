@@ -50,9 +50,7 @@ void ExecutionEngine::setBackend(BackendKind backendKind) {
   backend_.reset(createBackend(backendKind));
 }
 
-void ExecutionEngine::reset() {
-  backend_.reset(createBackend(backendKind_));
-}
+void ExecutionEngine::reset() { backend_.reset(createBackend(backendKind_)); }
 
 ExecutionEngine::~ExecutionEngine() = default;
 
@@ -125,7 +123,8 @@ void ExecutionEngine::loadValueFromTensor(Variable *v, Tensor *input) {
   t.copyFrom(input);
 }
 
-std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode, Function *F) {
+std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode,
+                                                        Function *F) {
   // Verify the function pre-optimization/lowering.
   F->verify();
 
