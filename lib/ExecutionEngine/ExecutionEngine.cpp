@@ -47,10 +47,13 @@ ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
 // Set the code generator kind to \p backendKind.
 void ExecutionEngine::setBackend(BackendKind backendKind) {
   backendKind_ = backendKind;
-  backend_.reset(createBackend(backendKind));
+  reset();
 }
 
-void ExecutionEngine::reset() { backend_.reset(createBackend(backendKind_)); }
+void ExecutionEngine::reset() {
+  backend_.reset(createBackend(backendKind_));
+  function_.reset();
+}
 
 ExecutionEngine::~ExecutionEngine() = default;
 
@@ -66,7 +69,7 @@ void ExecutionEngine::run(llvm::ArrayRef<Variable *> vars,
     loadValueFromTensor(vars[i], inputs[i]);
   }
 
-  backend_->doForwardPass();
+  function_->execute();
 }
 
 void ExecutionEngine::runBatch(size_t iterations,
@@ -99,7 +102,7 @@ void ExecutionEngine::updateInputsAndRunNetwork(llvm::ArrayRef<Variable *> vars,
   }
 
   // Run the network.
-  backend_->doForwardPass();
+  function_->execute();
 }
 
 void ExecutionEngine::loadValueFromTensorSlice(Variable *v, Tensor *input,
@@ -173,7 +176,7 @@ std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode,
 
 void ExecutionEngine::compile(CompilationMode mode, Function *F) {
   reset();
-  backend_->init(generateIR(mode, F));
+  function_ = backend_->compile(generateIR(mode, F));
 }
 
 void ExecutionEngine::save(CompilationMode mode, Function *F,

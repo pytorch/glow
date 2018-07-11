@@ -31,9 +31,6 @@ llvm::CallInst *createCall(llvm::IRBuilder<> &builder, llvm::Function *callee,
                            llvm::ArrayRef<llvm::Value *> args);
 
 class CPUBackend final : public Backend {
-  /// The function compiled for the CPU.
-  std::unique_ptr<CompiledFunction> function_;
-
 public:
   /// Ctor.
   CPUBackend() = default;
@@ -43,11 +40,10 @@ public:
   ///@{
   ~CPUBackend() override = default;
 
-  void init(std::unique_ptr<IRFunction> IR) override;
+  std::unique_ptr<CompiledFunction>
+  compile(std::unique_ptr<IRFunction> IR) const override;
 
   void save(std::unique_ptr<IRFunction> IR, llvm::StringRef outputDir) override;
-
-  void doForwardPass() override;
 
   bool transformPostLowering(Function *F, CompilationMode mode) override;
 

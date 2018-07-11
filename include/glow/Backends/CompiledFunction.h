@@ -25,7 +25,7 @@ public:
   virtual ~CompiledFunction() = default;
 
   /// Execute the network.
-  virtual void doForwardPass() = 0;
+  virtual void execute() = 0;
 };
 
 } // end namespace glow

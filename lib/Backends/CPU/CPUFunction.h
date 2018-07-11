@@ -38,7 +38,7 @@ public:
   ///@{
   ~CPUFunction() override;
 
-  void doForwardPass() override;
+  void execute() override;
   ///@}
 };
 

@@ -240,10 +240,10 @@ class MockCPUBackend : public Backend {
 
 public:
   MockCPUBackend() { backend_.reset(createBackend(BackendKind::CPU)); }
-  void init(std::unique_ptr<IRFunction> IR) override {
-    backend_->init(std::move(IR));
+  std::unique_ptr<CompiledFunction>
+  compile(std::unique_ptr<IRFunction> IR) const override {
+    return backend_->compile(std::move(IR));
   }
-  void doForwardPass() override { backend_->doForwardPass(); }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     return true;
   }
@@ -306,8 +306,7 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
   }
 
   MockCPUBackend backend;
-  backend.init(std::move(M));
-  backend.doForwardPass();
+  backend.compile(std::move(M))->execute();
   auto H = var->getHandle();
   EXPECT_EQ(H.at(0), 3);
   EXPECT_EQ(H.at(1), 4);

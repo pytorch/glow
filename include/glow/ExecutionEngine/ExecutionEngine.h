@@ -17,6 +17,7 @@
 #define GLOW_EXECUTIONENGINE_EXECUTIONENGINE_H
 
 #include "glow/Backends/Backend.h"
+#include "glow/Backends/CompiledFunction.h"
 #include "glow/Base/Train.h"
 #include "glow/Base/Traits.h"
 #include "glow/Optimizer/Optimizer.h"
@@ -45,6 +46,8 @@ class ExecutionEngine final {
   std::unique_ptr<Module> M_;
   /// The network execution backend.
   std::unique_ptr<Backend> backend_;
+  /// A glow function compiled for this ExecutionEngine's backend.
+  std::unique_ptr<CompiledFunction> function_;
   /// The training configuration.
   TrainingConfig config_;
   /// The kind of the backend being currently used.

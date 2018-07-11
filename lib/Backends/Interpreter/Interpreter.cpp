@@ -23,11 +23,10 @@
 
 using namespace glow;
 
-void Interpreter::init(std::unique_ptr<IRFunction> IR) {
-  function_ = llvm::make_unique<InterpreterFunction>(std::move(IR));
+std::unique_ptr<CompiledFunction>
+Interpreter::compile(std::unique_ptr<IRFunction> IR) const {
+  return llvm::make_unique<InterpreterFunction>(std::move(IR));
 }
-
-void Interpreter::doForwardPass() { function_->doForwardPass(); }
 
 bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
   // Check quantization support.
