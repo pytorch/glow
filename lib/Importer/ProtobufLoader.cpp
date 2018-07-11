@@ -50,7 +50,7 @@ Node *ProtobufLoader::getNodeByName(llvm::StringRef name) const {
   return node;
 }
 
-Node *ProtobufLoader::createVariable(llvm::StringRef name, Tensor &tensor,
+Node *ProtobufLoader::createVariable(llvm::StringRef name, const Tensor &tensor,
                                      VisibilityKind visibilityKind,
                                      Variable::TrainKind trainKind) {
   auto *V = G_.getParent()->createVariable(
@@ -60,7 +60,7 @@ Node *ProtobufLoader::createVariable(llvm::StringRef name, Tensor &tensor,
 }
 
 Node *ProtobufLoader::createAndRememberVariable(llvm::StringRef name,
-                                                Tensor &tensor,
+                                                const Tensor &tensor,
                                                 VisibilityKind visibilityKind,
                                                 Variable::TrainKind trainKind) {
   assert(!hasNodeByName(name) && "Creating an already existing node?!");
