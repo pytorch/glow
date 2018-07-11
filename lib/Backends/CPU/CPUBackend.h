@@ -45,20 +45,17 @@ llvm::CallInst *createCall(llvm::IRBuilder<> &builder, llvm::Function *callee,
                            llvm::ArrayRef<llvm::Value *> args);
 
 class CPUBackend final : public Backend {
-  /// The LLVM JIT engine. The jit must be initialized after the ctor
-  /// initializes the LLVM backends.
-  std::unique_ptr<llvm::orc::GlowJIT> JIT_{nullptr};
-  /// This represents the heap, that stores the activations at runtime.
-  void *heap_{nullptr};
+  /// The function compiled for the CPU.
+  std::unique_ptr<CompiledFunction> function_;
 
 public:
   /// Ctor.
-  explicit CPUBackend();
+  CPUBackend() = default;
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
   ///@{
-  ~CPUBackend() override;
+  ~CPUBackend() override = default;
 
   void init(std::unique_ptr<IRFunction> IR) override;
 

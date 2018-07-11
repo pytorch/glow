@@ -19,6 +19,7 @@
 #include "CPUBackend.h"
 
 #include "BundleSaver.h"
+#include "CPUFunction.h"
 
 #include "glow/Graph/Graph.h"
 #include "glow/IR/Instrs.h"
@@ -46,10 +47,6 @@ static llvm::cl::opt<std::string> target("target", llvm::cl::desc("target"));
 namespace glow {
 Backend *createCPUBackend() { return new CPUBackend(); }
 } // namespace glow
-
-CPUBackend::CPUBackend() {}
-
-CPUBackend::~CPUBackend() { alignedFree(heap_); }
 
 namespace {
 
@@ -136,30 +133,21 @@ void CPUBackend::init(std::unique_ptr<IRFunction> IR) {
   LLVMIRGen irgen(IR.get(), allocationsInfo, "");
   irgen.initTargetMachine(target.empty() ? "" : target.getValue(),
                           llvm::CodeModel::Model::Large);
-  JIT_ = llvm::make_unique<llvm::orc::GlowJIT>(irgen.getTargetMachine());
   irgen.initCodeGen();
   // Perform the address assignment for activations and WeightVars.
-  assert(heap_ == nullptr);
-  heap_ = allocateJITMemory(IR.get(), allocationsInfo);
+  auto heap = allocateJITMemory(IR.get(), allocationsInfo);
   // Create the jitmain function to be invoked by JIT.
   emitJitMain(allocationsInfo, irgen);
   // Emit the code for the body of the entry function.
   irgen.performCodeGen();
   // Hand over the module to JIT for the machine code generation.
-  JIT_->addModule(irgen.borrowModule());
+  auto JIT = llvm::make_unique<llvm::orc::GlowJIT>(irgen.getTargetMachine());
+  JIT->addModule(irgen.borrowModule());
+  function_ = llvm::make_unique<CPUFunction>(std::move(JIT), heap);
 }
 
 void CPUBackend::doForwardPass() {
-  auto sym = JIT_->findSymbol("jitmain");
-  assert(sym && "Unable to JIT the code!");
-  using JitFuncType = void (*)(void);
-  auto address = sym.getAddress();
-  if (address) {
-    JitFuncType funcPtr = reinterpret_cast<JitFuncType>(address.get());
-    funcPtr();
-  } else {
-    GLOW_ASSERT(false && "Error getting address.");
-  }
+  function_->doForwardPass();
 }
 
 void CPUBackend::save(std::unique_ptr<IRFunction> IR, llvm::StringRef outputDir) {
