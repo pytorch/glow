@@ -176,8 +176,21 @@ public:
   bool transformPostLowering(Function *F, CompilationMode mode) const override;
 
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
+    // Check quantization support.
     if (elementTy == ElemKind::Int8QTy) {
-      return false;
+      switch (opKind) {
+      case Kinded::Kind::AddNodeKind:
+      case Kinded::Kind::QuantizeNodeKind:
+      case Kinded::Kind::DequantizeNodeKind:
+      case Kinded::Kind::DivNodeKind:
+      case Kinded::Kind::MaxNodeKind:
+      case Kinded::Kind::MinNodeKind:
+      case Kinded::Kind::MulNodeKind:
+      case Kinded::Kind::SubNodeKind:
+        return true;
+      default:
+        return false;
+      }
     }
     return true;
   };

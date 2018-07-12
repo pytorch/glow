@@ -6,6 +6,10 @@ typedef unsigned cl_uint32_t;
 /// This type is always 64 bits.
 typedef unsigned long cl_uint64_t;
 
+typedef int cl_int32_t;
+typedef char cl_int8_t;
+typedef unsigned char cl_uint8_t;
+
 // The types of elements should be always matching the definitions of
 // ShapeNHWC in Type.h
 typedef struct {
@@ -67,6 +71,50 @@ size_t getNHWC(ShapeNHWC s, cl_uint32_t n, cl_uint32_t h, cl_uint32_t w,
 size_t getNCHW(ShapeNCHW s, cl_uint32_t n, cl_uint32_t c, cl_uint32_t h,
                cl_uint32_t w) {
   return (n * s.c * s.w * s.h) + (c * s.h * s.w) + (h * s.w) + w;
+}
+
+/// Scales a 32-bit integer using the integer shift-mult-shift method.
+cl_int32_t scale_i32i8(cl_int32_t input, cl_int32_t pre, cl_int32_t post,
+                       cl_int32_t scale, cl_int32_t offset) {
+  // See more details in libjit_defs.h:libjit_scale_i32i8()
+  int rtn = (post > 0) ? (1 << (post - 1)) : 0;
+  return ((((input >> pre) * scale) + rtn) >> post) + offset;
+}
+
+// Clips int32_t into int8_t
+inline cl_int8_t clip(cl_int32_t val) {
+  return (cl_int8_t)min(max(val, -128), 127);
+}
+
+inline cl_int8_t quantize(float input, float scale, cl_int32_t offset) {
+  float result = input / scale + offset;
+  return clip((cl_int32_t)nearbyintf(result));
+}
+
+float dequantize(cl_int8_t input, float scale, cl_int32_t offset) {
+  return scale * (input - offset);
+}
+
+__kernel void quantize_i8K(__global cl_int8_t *dest, __global float *src,
+                           float scale, cl_int32_t offset) {
+  size_t i = get_global_id(0);
+  dest[i] = quantize(src[i], scale, offset);
+}
+
+__kernel void quantize_i8W(__global void *mem, cl_uint32_t dest,
+                           cl_uint32_t src, float scale, cl_int32_t offset) {
+  quantize_i8K(&mem[dest], &mem[src], scale, offset);
+}
+
+__kernel void dequantizeK(__global float *dest, __global cl_int8_t *src,
+                          float scale, cl_int32_t offset) {
+  size_t i = get_global_id(0);
+  dest[i] = dequantize(src[i], scale, offset);
+}
+
+__kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
+                          float scale, cl_int32_t offset) {
+  dequantizeK(&mem[dest], &mem[src], scale, offset);
 }
 
 /// Macro to define a kernel for data-parallel ternay operations. The body of
