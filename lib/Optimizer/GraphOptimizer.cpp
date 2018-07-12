@@ -21,9 +21,17 @@
 #include "glow/Quantization/Base/Base.h"
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 
 #include <unordered_map>
 #include <unordered_set>
+
+llvm::cl::OptionCategory graphOptCat("Graph Optimizations Options");
+llvm::cl::opt<unsigned> constVarDedupSizeOpt(
+    "const_var_dedup_size",
+    llvm::cl::desc(
+        "Max number of elements allowed for deduplicating constant variables"),
+    llvm::cl::Optional, llvm::cl::init(256), llvm::cl::cat(graphOptCat));
 
 using namespace glow;
 using llvm::cast;
@@ -1219,14 +1227,122 @@ struct CSEVisitor : NodeWalker {
   }
 };
 
+/// A helper type for hashing Variable pointers when they are used as keys in
+/// hash maps for deduplication. The hash is based on the type of the Variable
+/// (element type, dimensions), as well as a constant number of elements from
+/// the Variable to balance collisions with hash calclulation time.
+struct VarsHasherDedup {
+  size_t operator()(Variable *V) const {
+    auto hash = llvm::hash_value(V->getType());
+    auto &T = V->getPayload();
+    // Only use the first 8 elements in the hash. It's likely that if two
+    // tensors have different content they will diverge quickly. Fall back to
+    // full equality check in VarsEqDedup.
+    constexpr size_t maxNumEls = 8;
+    size_t numEls = std::min(T.getType().size(), maxNumEls);
+    size_t bufSize = T.getType().getElementSize() * numEls;
+    auto *data = T.getUnsafePtr();
+    for (size_t i = 0; i < bufSize; i++) {
+      hash = llvm::hash_combine(hash, data[i]);
+    }
+    return hash;
+  }
+};
+
+/// A helper type implementing the Variable equality predicate that can be used
+/// when Variable pointers are used as keys in hash maps for deduplication. It
+/// is assumed the Visibility and TrainKinds are the same, as deduplication
+/// only inserts if Private and None, respectively.
+struct VarsEqDedup {
+  bool operator()(const Variable *lhs, const Variable *rhs) const {
+    // Only consider Vars for deduplication if they have the same type. The
+    // train kind and visibility must already be the same.
+    if (lhs->getType() != rhs->getType()) {
+      return false;
+    }
+    assert(lhs->getVisibilityKind() == rhs->getVisibilityKind() &&
+           "Should only be comparing Variables with same VisibilityKind.");
+    assert(lhs->getTrainKind() == rhs->getTrainKind() &&
+           "Should only be comparing Variables with same TrainKind.");
+    // Only combine Vars if their data matches exactly, so allowed error is 0.0.
+    return lhs->getPayload().isEqual(rhs->getPayload(), /* allowedError */ 0.0);
+  }
+};
+
 } // namespace
+
+/// \returns true if Variable \p V is written into, either as a result, or as an
+/// overwritten input.
+static bool hasWriters(Variable *V) {
+  for (auto &U : V->getUsers()) {
+    auto *N = U.getUser();
+
+    // See if V is used as a result anywhere.
+    for (unsigned i = 0; i < N->getNumResults(); i++)
+      if (V == N->getNthResult(i))
+        return true;
+
+    // See if V is used as an overwritten input anywhere.
+    for (unsigned i = 0; i < N->getNumInputs(); i++)
+      if (N->isOverwrittenNthInput(i))
+        if (V == N->getNthInput(i))
+          return true;
+  }
+  return false;
+}
+
+/// Deduplicates constant variables in the Module \p M. Applicable constant
+/// variables for deduplication must have the same data, have
+/// VisibilityKind::Private, have TrainKind::None, and have no writers.
+static void deduplicateConstants(Module *M) {
+  // Map from Variables to other Variables that are equivalent for purposes of
+  // deduplication.
+  std::unordered_map<Variable *, Variable *, VarsHasherDedup, VarsEqDedup>
+      duplicateVars;
+
+  for (auto &V : M->getVars()) {
+    // Only perform deduplication on vars of small enough size. Otherwise just
+    // skip them. constVarDedupSizeOpt defaults to 256 as a heuristic, to keep
+    // compile time reasonable.
+    size_t maxNumEls = constVarDedupSizeOpt;
+    size_t numEls = V->getType()->size();
+    if (numEls > maxNumEls) {
+      continue;
+    }
+
+    // Only perform deduplication on private vars that have no train kind.
+    if (V->getVisibilityKind() != VisibilityKind::Private ||
+        V->getTrainKind() != Variable::TrainKind::None) {
+      continue;
+    }
+
+    // Only perform deduplication on vars that have no writers.
+    if (hasWriters(V)) {
+      continue;
+    }
+
+    // Try to find a var that has the same data as the current one.
+    auto foundI = duplicateVars.find(V);
+    if (foundI == duplicateVars.end()) {
+      // No node equivalent to the current one has been seen yet. Remember this
+      // variable, so that the next occurrence can be replaced by this one.
+      duplicateVars.emplace(V, V);
+      assert(duplicateVars.find(V) != duplicateVars.end());
+      continue;
+    }
+    Variable *foundV = foundI->second;
+    assert(V != foundV && "Variables should not be visited multiple times.");
+
+    // Replace current var by a found var, which is equivalent to it.
+    V->getOutput().replaceAllUsesOfWith(foundV);
+  }
+}
 
 /// Common Subexpression Elimination.
 static void CSE(Function *F) {
   CSEVisitor visitor;
 
-  // No need to perform CSE on variables because
-  // all variables are distinct from each other.
+  deduplicateConstants(F->getParent());
 
   // Perform CSE on all nodes.
   for (auto &N : F->getNodes()) {
