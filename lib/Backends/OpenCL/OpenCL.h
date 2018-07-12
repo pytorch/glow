@@ -34,8 +34,8 @@
 namespace glow {
 
 class IRFunction;
-class Backend;
 class OCLConvolutionInst;
+class Value;
 
 /// A helper struct with information about kernels launches.
 struct KernelLaunch {
