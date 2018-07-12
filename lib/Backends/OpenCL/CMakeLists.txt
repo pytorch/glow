@@ -7,7 +7,8 @@ target_link_libraries(OpenCL
                       Base
                       Graph
                       CodeGen
-                      IR)
+                      IR
+                      QuantizationBase)
 
 target_link_libraries(OpenCL
                       PRIVATE

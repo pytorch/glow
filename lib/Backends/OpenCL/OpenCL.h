@@ -180,12 +180,12 @@ public:
     if (elementTy == ElemKind::Int8QTy) {
       switch (opKind) {
       case Kinded::Kind::AddNodeKind:
-      case Kinded::Kind::QuantizeNodeKind:
       case Kinded::Kind::DequantizeNodeKind:
       case Kinded::Kind::DivNodeKind:
       case Kinded::Kind::MaxNodeKind:
       case Kinded::Kind::MinNodeKind:
       case Kinded::Kind::MulNodeKind:
+      case Kinded::Kind::QuantizeNodeKind:
       case Kinded::Kind::SubNodeKind:
         return true;
       default:

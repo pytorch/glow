@@ -22,6 +22,7 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Quantization/Base/Base.h"
 #include "glow/Support/Debug.h"
 
 #include "llvm/ADT/SmallVector.h"
@@ -528,6 +529,10 @@ void OpenCLFunction::execute() {
                                      : ElemKind::FloatTy;
     std::string kernelName = getKernelName(I.getKindName(), elemTy);
 
+    //  Check if the instruction is quantized.
+    bool isQuantized = I.getNumOperands() &&
+                       I.getOperand(0).first->getType()->isQuantizedType();
+
     // Skip memory allocation instructions as they are NOPs.
     if (isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I) ||
         isa<TensorViewInst>(I)) {
@@ -561,12 +566,36 @@ void OpenCLFunction::execute() {
 
       if (auto *SI = dyn_cast<SplatInst>(&I)) {
         // Pass the splat as a parameter.
-        setKernelArg(kernel, numArgs + 1, SI->getValue());
+        setKernelArg(kernel, ++numArgs, SI->getValue());
       } else if (auto *EPI = dyn_cast<ElementPowInst>(&I)) {
         // Pass the exp as a parameter.
-        setKernelArg(kernel, numArgs + 1, EPI->getExp());
+        setKernelArg(kernel, ++numArgs, EPI->getExp());
       }
 
+      if (isQuantized) {
+        if (isa<ElementAddInst>(I) || isa<ElementSubInst>(I) ||
+            isa<ElementMulInst>(I) || isa<ElementDivInst>(I) ||
+            isa<ElementMinInst>(I) || isa<ElementMaxInst>(I)) {
+          int32_t destOffset = I.getOperand(0).first->getType()->getOffset();
+          float destScale = I.getOperand(0).first->getType()->getScale();
+          auto lhsScaleParams = quantization::quantizeScaleOffset32To8(
+              I.getOperand(1).first->getType()->getScale() / destScale,
+              I.getOperand(1).first->getType()->getOffset());
+          auto rhsScaleParams = quantization::quantizeScaleOffset32To8(
+              I.getOperand(2).first->getType()->getScale() / destScale,
+              I.getOperand(2).first->getType()->getOffset());
+          setKernelArg(kernel, ++numArgs, destOffset);
+          setKernelArg(kernel, ++numArgs, lhsScaleParams);
+          setKernelArg(kernel, ++numArgs, rhsScaleParams);
+          if (isa<ElementMulInst>(I) || isa<ElementDivInst>(I)) {
+            auto resultScaleParams = quantization::quantizeScaleOffset32To8(
+                I.getOperand(1).first->getType()->getScale() *
+                    I.getOperand(2).first->getType()->getScale() / destScale,
+                0);
+            setKernelArg(kernel, ++numArgs, resultScaleParams);
+          } 
+        }
+      }
       enqueueKernel(commands_, kernel, deviceId_, {global}, kernelLaunches_);
       continue;
     }

@@ -1340,7 +1340,7 @@ TEST_P(InterpAndCPU, QuantizedArithmeticRescaled) {
   }
 }
 
-TEST_P(InterpAndCPU, QuantizedArithmeticUnrescaled) {
+TEST_P(Operator, QuantizedArithmeticUnrescaled) {
   const size_t len = 100;
 
   // In this test we check the correctness of the quantized Max, Min, Add, Sub,
