@@ -24,12 +24,7 @@
 
 namespace glow {
 
-class Context;
 class IRFunction;
-class Value;
-class Tensor;
-class Variable;
-class Function;
 class Node;
 
 enum class BackendKind {
