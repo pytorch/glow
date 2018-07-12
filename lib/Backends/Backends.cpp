@@ -33,8 +33,13 @@ Backend *createInterpreter();
 #if defined(GLOW_WITH_CPU)
 /// Create a new instance of the CPUBackend backend.
 Backend *createCPUBackend();
+Backend *createMultiCPUBackend();
 #else
 Backend *createCPUBackend() {
+  GLOW_UNREACHABLE("Must compile with CPU support");
+}
+
+Backend *createMultiCPUBackend() {
   GLOW_UNREACHABLE("Must compile with CPU support");
 }
 #endif
@@ -57,6 +62,8 @@ Backend *glow::createBackend(BackendKind backendKind) {
     return createOCLBackend();
   case BackendKind::CPU:
     return createCPUBackend();
+  case BackendKind::MultiCPU:
+    return createMultiCPUBackend();
   }
 
   // This is to make compiler happy. It can never reach this point as switch

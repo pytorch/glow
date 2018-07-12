@@ -19,6 +19,7 @@
 #include "glow/Backends/CompiledFunction.h"
 #include "glow/Base/Traits.h"
 #include "glow/Optimizer/Optimizer.h"
+#include "glow/Graph/FunctionGraph.h"
 
 #include <llvm/ADT/StringRef.h>
 
@@ -31,6 +32,7 @@ enum class BackendKind {
   Interpreter, // Execute the network with the built-in interpreter.
   OpenCL,      // Run the code on an OpenCL device.
   CPU,         // Compile and run the code on the host.
+  MultiCPU,    // Compile and run on the host with multiple cores.
 };
 
 // This is the interface that glow backends need to implement.
@@ -42,6 +44,11 @@ public:
   /// Generate code for input function \param IR.
   virtual std::unique_ptr<CompiledFunction>
   compile(std::unique_ptr<IRFunction> IR) const = 0;
+
+  virtual std::unique_ptr<CompiledFunction>
+  compile(std::vector<std::unique_ptr<IRFunction>> IR, FunctionGraph &G) const {
+    GLOW_UNREACHABLE("Partitioning is not supported by the backend");
+  }
 
   /// Save the bundle for a later standalone execution.
   virtual void save(std::unique_ptr<IRFunction> IR,
@@ -62,6 +69,9 @@ public:
   virtual bool transformPostLowering(Function *F, CompilationMode mode) const {
     return false;
   }
+  virtual FunctionGraph partition(Function *F) const {
+    GLOW_UNREACHABLE("Partitioning is not supported by the backend");
+  }
   /// @}
 
   /// \returns true if backend supports given kind of operation with
@@ -75,6 +85,9 @@ public:
   /// \returns true if the Backend wants the buffer sharing optimization
   /// performed.
   virtual bool shouldShareBuffers() const { return true; }
+
+  /// \returns true if the Backend supports graph partitioning.
+  virtual bool supportsPartitioning() const { return false; }
 };
 
 /// Create a backend of kind \p kind.

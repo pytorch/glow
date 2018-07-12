@@ -30,7 +30,7 @@ namespace glow {
 llvm::CallInst *createCall(llvm::IRBuilder<> &builder, llvm::Function *callee,
                            llvm::ArrayRef<llvm::Value *> args);
 
-class CPUBackend final : public Backend {
+class CPUBackend : public Backend {
 public:
   /// Ctor.
   CPUBackend() = default;

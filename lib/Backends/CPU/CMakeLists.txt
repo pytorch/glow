@@ -51,6 +51,8 @@ add_library(CPUBackend
             DebugInfo.cpp
             FunctionSpecializer.cpp
             GlowJIT.cpp
+            MultiCPUBackend.cpp
+            MultiCPUFunction.cpp
             Pipeline.cpp
             Transforms.cpp
             LLVMIRGen.cpp

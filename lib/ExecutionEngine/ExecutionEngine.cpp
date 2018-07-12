@@ -169,7 +169,16 @@ std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode,
 }
 
 void ExecutionEngine::compile(CompilationMode mode, Function *F) {
-  function_ = backend_->compile(generateIR(mode, F));
+  if (!backend_->supportsPartitioning()) {
+    function_ = backend_->compile(generateIR(mode, F));
+    return;
+  }
+  auto G = backend_->partition(F);
+  std::vector<std::unique_ptr<IRFunction>> IRs;
+  for (auto &F : G.getFunctions()) {
+    IRs.push_back(generateIR(mode, F));
+  }
+  function_ = backend_->compile(std::move(IRs), G);
 }
 
 void ExecutionEngine::save(CompilationMode mode, Function *F,
