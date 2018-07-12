@@ -123,7 +123,7 @@ std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode,
   // Verify the function pre-optimization/lowering.
   F->verify();
 
-  // Optimized the graph.
+  // Optimize the graph.
   ::glow::optimize(F, mode);
 
   // Allow the backend to transform the graph prior to lowering.
@@ -136,7 +136,7 @@ std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode,
   // Lower the graph into a sequence of low-level linear algebra operations.
   ::glow::lower(F, mode, *backend_);
 
-  // Optimized the graph again.
+  // Optimize the graph again.
   ::glow::optimize(F, mode);
 
   // Allow the backend to transform the graph after lowering.
