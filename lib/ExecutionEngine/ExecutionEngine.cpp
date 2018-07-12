@@ -38,10 +38,8 @@ static llvm::cl::opt<bool> dumpIR("dump-ir",
                                   llvm::cl::desc("Prints IR to stdout"));
 } // namespace
 
-ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
-  M_.reset(new Module());
-  backend_.reset(createBackend(backendKind));
-}
+ExecutionEngine::ExecutionEngine(BackendKind backendKind)
+    : backend_(createBackend(backendKind)) {}
 
 // Set the code generator kind to \p backendKind.
 void ExecutionEngine::setBackend(BackendKind backendKind) {
