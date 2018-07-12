@@ -9,11 +9,7 @@ if [ $(which clang-format) ]; then
   FARRAY=( $FILES ) # count the number of files to process
   echo  Formatting ${#FARRAY[@]} files
 
-  for F in $FILES; do
-    clang-format -i $F
-    echo -n .
-  done
-  echo
+  echo "$FILES" | xargs -P8 -n1 clang-format -i
   echo "Done"
   exit
 fi
