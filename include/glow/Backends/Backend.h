@@ -49,7 +49,8 @@ public:
   compile(std::unique_ptr<IRFunction> IR) const = 0;
 
   /// Save the bundle for a later standalone execution.
-  virtual void save(std::unique_ptr<IRFunction> IR, llvm::StringRef outputDir) {
+  virtual void save(std::unique_ptr<IRFunction> IR,
+                    llvm::StringRef outputDir) const {
     GLOW_UNREACHABLE("Saving a bundle is not supported by the backend");
   }
 
@@ -60,10 +61,10 @@ public:
   /// cleaning up after itself.
   /// \returns True if the graph was modified.
   ///@{
-  virtual bool transformPreLowering(Function *F, CompilationMode mode) {
+  virtual bool transformPreLowering(Function *F, CompilationMode mode) const {
     return false;
   }
-  virtual bool transformPostLowering(Function *F, CompilationMode mode) {
+  virtual bool transformPostLowering(Function *F, CompilationMode mode) const {
     return false;
   }
   /// @}

@@ -173,7 +173,7 @@ public:
   std::unique_ptr<CompiledFunction>
   compile(std::unique_ptr<IRFunction> IR) const override;
 
-  bool transformPostLowering(Function *F, CompilationMode mode) override;
+  bool transformPostLowering(Function *F, CompilationMode mode) const override;
 
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     if (elementTy == ElemKind::Int8QTy) {

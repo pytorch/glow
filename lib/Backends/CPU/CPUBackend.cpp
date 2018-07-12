@@ -135,7 +135,7 @@ CPUBackend::compile(std::unique_ptr<IRFunction> IR) const {
 }
 
 void CPUBackend::save(std::unique_ptr<IRFunction> IR,
-                      llvm::StringRef outputDir) {
+                      llvm::StringRef outputDir) const {
   std::string tgt = target.empty() ? "" : target.getValue();
   BundleSaver(IR.get()).save(tgt, outputDir);
 }

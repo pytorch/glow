@@ -43,9 +43,10 @@ public:
   std::unique_ptr<CompiledFunction>
   compile(std::unique_ptr<IRFunction> IR) const override;
 
-  void save(std::unique_ptr<IRFunction> IR, llvm::StringRef outputDir) override;
+  void save(std::unique_ptr<IRFunction> IR,
+            llvm::StringRef outputDir) const override;
 
-  bool transformPostLowering(Function *F, CompilationMode mode) override;
+  bool transformPostLowering(Function *F, CompilationMode mode) const override;
 
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override;
 
