@@ -1113,3 +1113,72 @@ TEST_F(GraphOptz, concatReshapes) {
       llvm::dyn_cast<ConcatNode>(O->getInput()->getNthInput(0)->getNthInput(0));
   ASSERT_TRUE(newCN);
 }
+
+/// Check that Variable CSE works correctly, combining small Variables that have
+/// the same data.
+TEST_F(GraphOptz, VarsCSE) {
+  // Create three variables that are Private, have TrainKind None, and have no
+  // writers. The first two variables have the same data, and so should be
+  // combined via variable CSE. The third variable differs by the last value,
+  // and so should not be combined.
+  auto *input1 =
+      mod_.createVariable(ElemKind::FloatTy, {10}, "input1",
+                          VisibilityKind::Private, Variable::TrainKind::None);
+  auto *input2 =
+      mod_.createVariable(ElemKind::FloatTy, {10}, "input2",
+                          VisibilityKind::Private, Variable::TrainKind::None);
+  auto *input3 =
+      mod_.createVariable(ElemKind::FloatTy, {10}, "input3",
+                          VisibilityKind::Private, Variable::TrainKind::None);
+  input1->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  input2->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  input3->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, -1};
+
+  // Input them each to different nodes, so node CSE does not change them.
+  auto *TN = F_->createTanh("tanh", input1);
+  auto *SN = F_->createSigmoid("sigmoid", input2);
+  auto *RN = F_->createRELU("relu", input3);
+  auto *CN = F_->createConcat("concat", {TN, SN, RN}, /* axis */ 0);
+  F_->createSave("ret", CN);
+
+  // Initially there are four variables: inputs 1, 2, and 3, and the variable
+  // for the save.
+  EXPECT_EQ(mod_.getVars().size(), 4);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Now only three variables are left; input1 and input2 have been combined,
+  // but input3 has not.
+  EXPECT_EQ(mod_.getVars().size(), 3);
+
+  // Verify that only one of input1 and input2 exists, and that input3 still
+  // exists.
+  Variable *varOneOrTwo = nullptr;
+  bool foundVarThree = false;
+  for (auto *V : mod_.getVars()) {
+    if (V == input1 || V == input2) {
+      EXPECT_TRUE(varOneOrTwo == nullptr);
+      varOneOrTwo = V;
+    } else if (V == input3) {
+      foundVarThree = true;
+    }
+  }
+  EXPECT_TRUE(varOneOrTwo != nullptr);
+  EXPECT_TRUE(foundVarThree);
+
+  // Verify that the users of the inputs are updated correctly.
+  EXPECT_TRUE(TN->getInput().getNode() == varOneOrTwo);
+  EXPECT_TRUE(SN->getInput().getNode() == varOneOrTwo);
+  EXPECT_TRUE(RN->getInput().getNode() == input3);
+
+  // Verify that whichever input1/input2 is left over has two users TN and SN.
+  EXPECT_TRUE(varOneOrTwo->getUsers().size() == 2);
+  for (auto &U : varOneOrTwo->getUsers()) {
+    auto *N = U.getUser();
+    EXPECT_TRUE(N == TN || N == SN);
+  }
+
+  // Verify that input3 only has a single user RN.
+  ASSERT_TRUE(input3->getUsers().size() == 1);
+  EXPECT_TRUE(input3->getUsers().begin()->getUser() == RN);
+}

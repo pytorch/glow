@@ -103,6 +103,8 @@ public:
 
   Tensor &getPayload() { return payload_; }
 
+  const Tensor &getPayload() const { return payload_; }
+
   template <class ElemTy = float> Handle<ElemTy> getHandle() {
     return getPayload().getHandle<ElemTy>();
   }
