@@ -51,6 +51,7 @@ ExecutionEngine::~ExecutionEngine() = default;
 
 void ExecutionEngine::run(llvm::ArrayRef<Variable *> vars,
                           llvm::ArrayRef<Tensor *> inputs) {
+  assert(function_ && "No function has been compiled");
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
 
@@ -69,6 +70,7 @@ void ExecutionEngine::runBatch(size_t iterations,
                                llvm::ArrayRef<Tensor *> inputs) {
   static size_t trainCounter = 0;
 
+  assert(function_ && "No function has been compiled");
   assert(!inputs.empty() && "No inputs");
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
