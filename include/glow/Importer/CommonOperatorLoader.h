@@ -79,26 +79,6 @@ protected:
     addNodeAsOutput(op, node);
   }
 
-  void loadFC(const OpType &op, ArgumentDictionaryTy &dict) {
-    const std::string &opName = loadOperatorName(op);
-    auto *in = getOrCreateVariableByName(op.input(0));
-    // Load weights.
-    Tensor *w = getTensorByName(op.input(1));
-    Tensor *b = getTensorByName(op.input(2));
-
-    // ONNX stores the transposed W matrix. In here we transpose W back.
-    Tensor wtag;
-    w->transpose(&wtag, {1, 0});
-
-    auto W = G_.getParent()->addVar(
-        new Variable("weights", VisibilityKind::Private, std::move(wtag)));
-    auto B = G_.getParent()->addVar(
-        new Variable("biases", VisibilityKind::Private, std::move(*b)));
-    auto *FC = G_.createFullyConnected(opName, in, W, B);
-
-    addNodeAsOutput(op, FC);
-  }
-
   void loadLRN(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
     auto *in = getOrCreateVariableByName(op.input(0));
@@ -246,10 +226,6 @@ protected:
     }
     if (typeName == "Softmax") {
       loadSoftmax(op, dict);
-      return true;
-    }
-    if (typeName == "FC") {
-      loadFC(op, dict);
       return true;
     }
     if (typeName == "LRN") {

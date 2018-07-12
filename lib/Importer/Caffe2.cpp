@@ -266,6 +266,42 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "FC") {
+    // Load the inputs:
+    auto *in = getOrCreateVariableByName(op.input(0));
+    if (in->getType(0)->dims().size() > 2) {
+      size_t axis = dict.count("axis") ? loadInt(dict["axis"]) : 1;
+      auto xDim = flattenCdr(in->getType(0)->dims(), axis);
+      in = G_.createReshape("fc.in", in, {xDim.first, xDim.second});
+    }
+
+    // Load weights.
+    Tensor *w = getTensorByName(op.input(1));
+    Tensor *b = getTensorByName(op.input(2));
+    size_t axis_w = dict.count("axis_w") ? loadInt(dict["axis_w"]) : 1;
+
+    // Caffe2 stores the transposed W matrix. In here we first coerce W to a 2D
+    // matrix size if necessay and then transpose it back.
+    Tensor wtag;
+    if (w->dims().size() > 2) {
+      auto wDims = flattenCdr(w->dims(), axis_w);
+      Tensor tmp(ElemKind::FloatTy, {wDims.first, wDims.second});
+      tmp.copyRawFrom(w);
+      tmp.transpose(&wtag, {1, 0});
+    } else
+      w->transpose(&wtag, {1, 0});
+
+    auto W = G_.getParent()->addVar(
+        new Variable("weights", VisibilityKind::Private, std::move(wtag)));
+    auto B = G_.getParent()->addVar(
+        new Variable("biases", VisibilityKind::Private, std::move(*b)));
+    auto *node = G_.createFullyConnected(opName, in, W, B);
+
+    // Save the outputs:
+    addNodeAsOutput(op, node);
+    return;
+  }
+
   if (typeName == "ChannelShuffle") {
     auto *in = getOrCreateVariableByName(op.input(0));
 
