@@ -50,8 +50,6 @@ class ExecutionEngine final {
   std::unique_ptr<CompiledFunction> function_;
   /// The training configuration.
   TrainingConfig config_;
-  /// The kind of the backend being currently used.
-  BackendKind backendKind_;
 
   /// Optimize the graph, generate IR, and optimize the IR.
   std::unique_ptr<IRFunction> generateIR(CompilationMode mode, Function *F);
@@ -64,9 +62,6 @@ public:
   // Set the code generator kind to \p backendKind. New code will be generated
   // using this backend.
   void setBackend(BackendKind backendKind);
-
-  /// Reset the execution engine.
-  void reset();
 
   /// \returns the internal graph.
   Module &getModule() { return *M_; }

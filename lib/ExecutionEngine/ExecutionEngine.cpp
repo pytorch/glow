@@ -39,19 +39,13 @@ static llvm::cl::opt<bool> dumpIR("dump-ir",
 } // namespace
 
 ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
-  backendKind_ = backendKind;
   M_.reset(new Module());
-  backend_.reset(createBackend(backendKind_));
+  backend_.reset(createBackend(backendKind));
 }
 
 // Set the code generator kind to \p backendKind.
 void ExecutionEngine::setBackend(BackendKind backendKind) {
-  backendKind_ = backendKind;
-  reset();
-}
-
-void ExecutionEngine::reset() {
-  backend_.reset(createBackend(backendKind_));
+  backend_.reset(createBackend(backendKind));
   function_.reset();
 }
 
@@ -175,12 +169,10 @@ std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode,
 }
 
 void ExecutionEngine::compile(CompilationMode mode, Function *F) {
-  reset();
   function_ = backend_->compile(generateIR(mode, F));
 }
 
 void ExecutionEngine::save(CompilationMode mode, Function *F,
                            llvm::StringRef outputDir) {
-  reset();
   backend_->save(generateIR(mode, F), outputDir);
 }
