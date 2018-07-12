@@ -571,6 +571,40 @@ void OpenCLFunction::execute() {
       continue;
     }
 
+    // Quantize floating point tensor. Scale and Offset are based on return type
+    // of the instruction \p I.
+    if (auto *QI = dyn_cast<QuantizeInst>(&I)) {
+      float destTensorQuantizationScale = QI->getDest()->getType()->getScale();
+      int32_t destTensorQuantizationOffset =
+          QI->getDest()->getType()->getOffset();
+      size_t global = QI->getDest()->getType()->size();
+
+      cl_kernel kernel = createKernel(kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
+      setKernelArg(kernel, ++numArgs, destTensorQuantizationScale);
+      setKernelArg(kernel, ++numArgs, destTensorQuantizationOffset);
+      enqueueKernel(commands_, kernel, deviceId_, {global}, kernelLaunches_);
+      continue;
+    }
+
+    // Dequantize integer tensor. Scale and Offset are based
+    // on the source tensor type.
+    if (auto *QI = dyn_cast<DequantizeInst>(&I)) {
+      float srcTensorQuantizationScale = QI->getSrc()->getType()->getScale();
+      int32_t srcTensorQuantizationOffset =
+          QI->getSrc()->getType()->getOffset();
+      size_t global = QI->getDest()->getType()->size();
+
+      cl_kernel kernel = createKernel(kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
+      setKernelArg(kernel, ++numArgs, srcTensorQuantizationScale);
+      setKernelArg(kernel, ++numArgs, srcTensorQuantizationOffset);
+      enqueueKernel(commands_, kernel, deviceId_, {global}, kernelLaunches_);
+      continue;
+    }
+
     if (auto *SM = dyn_cast<SoftMaxInst>(&I)) {
       // Implement Softmax by parallelizing the batch dimension. Each sample in
       // the batch is processed by a different parallel 'thread'.
