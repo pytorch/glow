@@ -536,7 +536,7 @@ static void mergeMatMul(Function *F) {
     auto *CC = F->createConcat("mergeLHS", LHS, 0);
     auto *MM = F->createMatMul("bigMatMul", CC, it.first);
 
-    size_t R = MM->getNthResult(0).dims()[1];
+    size_t R = MM->getResult().dims()[1];
     size_t start = 0;
     for (auto *origMM : MMs) {
       size_t H = origMM->getResult().dims()[0];
