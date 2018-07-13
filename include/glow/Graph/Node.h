@@ -40,7 +40,7 @@ class NodeWalker;
 /// node use-def chain, by registering and removing the address of the value
 /// from the use-list. This data structure is similar to LLVM's SDValue.
 struct NodeValue {
-private:
+protected:
   /// A pointer to the node (owned by the graph).
   Node *node_{nullptr};
   /// Specifies the node result number to use.
@@ -98,6 +98,61 @@ public:
       return resNo_ < O.resNo_;
     return (node_ < O.node_);
   }
+};
+
+/// A handle type for a NodeValue. This type should be used only by the
+/// class members of Node classes when they need to refer to other nodes!
+///
+/// This class also manages the node use-def chain, by registering and
+/// removing the address of the value from the use-list. This data structure
+/// is similar to LLVM's SDValue. Only these NodeHandle instances are
+/// registered as users of the nodes they refer to. The is different from the
+/// usual NodeValue instances, which are not registered as users of the nodes
+/// they refer to.
+///
+/// Instances of NodeHandle should always stay inside the Nodes they are
+/// members of and should never leave it. E.g. they cannot be returned as
+/// results of function calls, etc.
+struct NodeHandle : NodeValue {
+  /// Create a new value and register the node we reference
+  /*implicit*/ NodeHandle(Node *N);
+
+  /// Create a new value for result \p resNo and register the node we
+  /// reference.
+  NodeHandle(Node *N, unsigned resNo);
+
+  /// Create a new operand and register it as a new user to the node.
+  NodeHandle(const NodeValue &that) : NodeValue(nullptr) {
+    setOperand(that.getNode(), that.getResNo());
+  }
+
+  /// Create a new NodeHandle from an existing one and register it.
+  NodeHandle(const NodeHandle &that) : NodeValue(nullptr) {
+    setOperand(that.getNode(), that.getResNo());
+  }
+
+  /// Create an empty handle.
+  NodeHandle() : NodeValue(nullptr) {}
+
+  /// When deleting an operand we need to unregister the operand from the
+  /// use-list of the node it used to reference.
+  ~NodeHandle() { setOperand(nullptr, 0); }
+
+  /// Unregister old value, assign new NodeValue and register it.
+  NodeHandle &operator=(const NodeHandle &that) {
+    setOperand(that.getNode(), that.getResNo());
+    return *this;
+  }
+
+  /// Unregister old value, assign new NodeValue and register it.
+  NodeHandle &operator=(const NodeValue &that) {
+    setOperand(that.getNode(), that.getResNo());
+    return *this;
+  }
+
+  /// Sets the operand to point to \p N. This method registers the operand as
+  /// a user of \p N.
+  void setOperand(Node *v, unsigned resNo);
 };
 
 /// A simple linear map that stores NodeValue without maintaining the reverse
@@ -278,6 +333,20 @@ template <> struct simplify_type<glow::NodeValue> {
 template <> struct simplify_type<const glow::NodeValue> {
   typedef glow::Node *SimpleType;
   static SimpleType getSimplifiedValue(const glow::NodeValue &val) {
+    return val.getNode();
+  }
+};
+/// Allow casting NodeHandle into Node*.
+template <> struct simplify_type<glow::NodeHandle> {
+  typedef glow::Node *SimpleType;
+  static SimpleType getSimplifiedValue(glow::NodeHandle &val) {
+    return val.getNode();
+  }
+};
+/// Allow casting const NodeHandle into Node*.
+template <> struct simplify_type<const glow::NodeHandle> {
+  typedef glow::Node *SimpleType;
+  static SimpleType getSimplifiedValue(const glow::NodeHandle &val) {
     return val.getNode();
   }
 };
