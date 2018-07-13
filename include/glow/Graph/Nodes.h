@@ -109,6 +109,10 @@ public:
 
   void copyFrom(const Tensor *t) { payload_.copyFrom(t); }
 
+  /// \returns the output NodeValue from the Variable. Variables only have a
+  /// single output.
+  NodeValue getOutput() { return getNthResult(0); }
+
   unsigned getNumInputs() const;
   llvm::StringRef getInputName(unsigned idx) const;
   NodeValue &getNthInput(unsigned idx);

@@ -50,11 +50,10 @@ Function *glow::profileQuantization(Function *F, llvm::StringRef newFuncName) {
 
   // Add Quantization Profile node to all floating point vars.
   for (const auto &var : G->getParent()->getVars()) {
-    if (var->getNthResult(0).getElementType() != ElemKind::FloatTy) {
+    if (var->getOutput().getElementType() != ElemKind::FloatTy) {
       continue;
     }
-    // Assuming varable has only a single output.
-    nodesToInstrument.insert(var->getNthResult(0));
+    nodesToInstrument.insert(var->getOutput());
   }
 
   for (const auto &node : nodesToInstrument) {
