@@ -173,35 +173,6 @@ ElemKind NodeValue::getElementType() const {
   return getType()->getElementType();
 }
 
-void UnownedNodeValueMap::insert(NodeValue from, NodeValue to) {
-  entries_.push_front({from, to});
-}
-
-NodeValue UnownedNodeValueMap::get(NodeValue from) {
-  for (auto &E : entries_) {
-    auto &F = E.first;
-    auto &T = E.second;
-
-    if (F == from) {
-      return T;
-    }
-  }
-
-  llvm_unreachable("Invalid node");
-  return NodeValue(nullptr, 0);
-}
-
-bool UnownedNodeValueMap::count(NodeValue from) {
-  for (auto &E : entries_) {
-    auto &F = E.first;
-    if (F == from) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 llvm::ArrayRef<size_t> NodeValue::dims() const { return getType()->dims(); }
 
 //===----------------------------------------------------------------------===//

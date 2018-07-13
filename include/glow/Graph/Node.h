@@ -49,6 +49,8 @@ protected:
 
 public:
   /// Create a new value.
+  NodeValue() = default;
+  /// Create a new value.
   /*implicit*/ NodeValue(Node *N);
 
   /// Create a new value for result \p resNo.
@@ -177,28 +179,6 @@ public:
   const_iterator begin() { return ref_.begin(); }
   const_iterator end() { return ref_.end(); }
   NodeValue front() { return *begin(); }
-};
-
-/// A simple linear map that stores NodeValue without maintaining the reverse
-/// reference that allows the RAUW operation.
-class UnownedNodeValueMap {
-public:
-  /// A reference to some Node's result.
-  using ValRef = NodeValue;
-  using Entry = std::pair<ValRef, ValRef>;
-
-private:
-  std::list<Entry> entries_;
-
-public:
-  /// \register the node \p from as mapping to \p to.
-  void insert(NodeValue from, NodeValue to);
-
-  /// \returns True if N is in the map.
-  bool count(NodeValue from);
-
-  /// \returns the node that \p from is mapped to.
-  NodeValue get(NodeValue from);
 };
 
 /// A 'Use' is a use-list representation of a Node operand.

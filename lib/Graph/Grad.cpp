@@ -32,13 +32,13 @@ using llvm::isa;
 
 void GraphGradMapper::addGradient(NodeValue activation, NodeValue grad) {
   if (map_.count(activation)) {
-    auto curr = map_.get(activation);
+    auto curr = map_[activation];
     auto *sum = F_->createAdd("updateGrad", curr, grad);
-    map_.insert(activation, sum);
+    map_[activation] = sum;
     return;
   }
 
-  map_.insert(activation, grad);
+  map_[activation] = grad;
 }
 
 bool GraphGradMapper::hasGradient(NodeValue activation) {
@@ -46,7 +46,7 @@ bool GraphGradMapper::hasGradient(NodeValue activation) {
 }
 
 NodeValue GraphGradMapper::getGradient(NodeValue activation) {
-  return map_.get(activation);
+  return map_[activation];
 }
 
 //===----------------------------------------------------------------------===//

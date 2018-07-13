@@ -30,7 +30,7 @@ class GraphGradMapper {
   /// The graph that we mutate.
   Function *F_;
   /// Maps activation values to their gradient values.
-  UnownedNodeValueMap map_;
+  std::unordered_map<NodeValue, NodeValue> map_;
 
 public:
   GraphGradMapper(Function *F) : F_(F) {}
