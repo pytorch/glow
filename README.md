@@ -173,7 +173,7 @@ Standalone Executable Bundles](docs/AOT.md) for more detail.
 
 To get started, please refer to the following guides:
 * [Contributing](CONTRIBUTING.md)
-* [CodingStandards](docs/CodingStandards.md)
+* [Coding Standards](docs/CodingStandards.md)
 
 ### Communication
 
