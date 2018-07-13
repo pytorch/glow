@@ -33,11 +33,19 @@ Backend *createInterpreter();
 #if defined(GLOW_WITH_CPU)
 /// Create a new instance of the CPUBackend backend.
 Backend *createCPUBackend();
+#else
+Backend *createCPUBackend() {
+  GLOW_UNREACHABLE("Must compile with CPU support");
+}
 #endif
 
 #if defined(GLOW_WITH_OPENCL)
 /// Create a new instance of the OpenCL backend.
 Backend *createOCLBackend();
+#else
+Backend *createOCLBackend() {
+  GLOW_UNREACHABLE("Must compile with OpenCL support");
+}
 #endif
 } // namespace glow
 
@@ -46,17 +54,9 @@ Backend *glow::createBackend(BackendKind backendKind) {
   case BackendKind::Interpreter:
     return createInterpreter();
   case BackendKind::OpenCL:
-#ifndef GLOW_WITH_OPENCL
-    GLOW_UNREACHABLE("Must compile with OpenCL support");
-#else
     return createOCLBackend();
-#endif
   case BackendKind::CPU:
-#ifndef GLOW_WITH_CPU
-    GLOW_UNREACHABLE("Must compile with CPU support");
-#else
     return createCPUBackend();
-#endif
   }
 
   // This is to make compiler happy. It can never reach this point as switch
