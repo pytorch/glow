@@ -10,6 +10,18 @@ target_link_libraries(image-classifier
                         IR
                         Quantization)
 
+add_executable(text-translator
+  Loader.cpp
+  TextTranslator.cpp)
+
+target_link_libraries(text-translator
+                      PRIVATE
+                        Base
+                        Importer
+                        ExecutionEngine
+                        IR
+                        Quantization)
+
 add_executable(model-runner
   Loader.cpp
   ModelRunner.cpp)
