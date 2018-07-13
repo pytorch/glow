@@ -50,6 +50,9 @@ public:
   }
   /// Getter for the ONNX model file name.
   llvm::StringRef getOnnxModelFilename() { return onnxModelFilename_; }
+  /// Getter for the model path.
+  /// \pre (modelPathOpt.size() == 1)
+  llvm::StringRef getModelOptPath();
 
   /// Compiles the Function F_. Handles quantization, emitting bundles, and
   /// dumping debug information.

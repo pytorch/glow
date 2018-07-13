@@ -128,6 +128,13 @@ llvm::cl::opt<std::string> networkName(
     llvm::cl::cat(loaderCat));
 } // namespace
 
+llvm::StringRef Loader::getModelOptPath() {
+  assert(modelPathOpt.size() == 1 &&
+         llvm::sys::fs::is_directory(*modelPathOpt.begin()) &&
+         "Model path must be a single directory.");
+  return modelPathOpt[0];
+}
+
 bool glow::emittingBundle() { return !emitBundle.empty(); }
 
 static bool commandLineIsInvalid() {
