@@ -137,5 +137,22 @@ TEST(GraphAutoGrad, cloneAndDiff) {
   diffF->verify();
 
   EXPECT_EQ(M.getFunctions().size(), 3);
-  EXPECT_EQ(M.getVars().size(), 7);
+  EXPECT_EQ(M.getVars().size(), 5);
+  // Check that we have as many SGD node as variables that need to be trained.
+  unsigned nbSGDs = 0;
+  unsigned nbSGDA = 0;
+  unsigned nbSGDB = 0;
+  for (auto &node : diffF->getNodes()) {
+    SGDNode *SGD = llvm::dyn_cast<SGDNode>(&node);
+    if (!SGD)
+      continue;
+    ++nbSGDs;
+    if (A == SGD->getWeight())
+      ++nbSGDA;
+    else if (B == SGD->getWeight())
+      ++nbSGDB;
+  }
+  EXPECT_EQ(nbSGDs, 2);
+  EXPECT_EQ(nbSGDA, 1);
+  EXPECT_EQ(nbSGDB, 1);
 }
