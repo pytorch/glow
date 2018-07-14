@@ -256,11 +256,8 @@ void lowerQuantizedSigmoidNode(Function *F, SigmoidNode *SN) {
 }
 
 void lowerSGDNode(Function *F, SGDNode &SGD) {
-  assert(SGD.getUsers().size() == 0 && "SGDNode must not have users");
-
   NodeValue W = SGD.getWeight();
   NodeValue G = SGD.getGradient();
-  NodeValue Gsum = SGD.getGsum();
 
   /// Described in the paper: Alex Krizhevsky [2014]
   // "One weird trick for parallelizing convolutional neural networks"
@@ -310,15 +307,19 @@ void lowerSGDNode(Function *F, SGDNode &SGD) {
   // http://ufldl.stanford.edu/tutorial/supervised/
   // OptimizationStochasticGradientDescent/
   if (momentum > 0.0) {
+    Variable *Gsum = F->getParent()->createVariable(
+        W->getType(0), "gsum", VisibilityKind::Private,
+        Variable::TrainKind::Broadcast, 0);
+
     auto *momentumSplat = F->createSplat("learningRateSplat", type, momentum);
     auto *GsumMult = F->createMul("GsumMult", momentumSplat, Gsum);
 
     dx = F->createAdd("dx_with_momentum", GsumMult, dx);
-    F->createSave("saveGsum", dx, llvm::cast<Variable>(Gsum.getNode()));
+    F->createSave("save.gsum", dx, Gsum);
   }
 
   auto *newW = F->createAdd("newW", W, dx);
-  F->createSave("saveW", newW, llvm::cast<Variable>(W.getNode()));
+  SGD.getUpdatedWeight().replaceAllUsesOfWith(newW);
 }
 
 void lowerBatchNormalizationNodeForInference(Function *F,

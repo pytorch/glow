@@ -220,17 +220,13 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       continue;
     }
 
-    TypeRef Ty = conf.momentum > 0 ? V->getType() : G->getParent()->getVoidTy();
-    Variable *gsum = new Variable("gsum", Ty, VisibilityKind::Private,
-                                  Variable::TrainKind::Broadcast, 0,
-                                  G->getParent()->getPRNG());
-
-    newVars.push_back(gsum);
-
-    auto X = new SGDNode(V->getName(), map.getGradient(V), V, gsum,
-                         conf.L1Decay, conf.L2Decay, conf.learningRate,
-                         conf.momentum, conf.batchSize);
+    auto X = new SGDNode(V->getName(), map.getGradient(V), V, conf.L1Decay,
+                         conf.L2Decay, conf.learningRate, conf.momentum,
+                         conf.batchSize);
     toAppend.push_back(X);
+    // Now update the weight with the value computed by SGD.
+    auto *save = new SaveNode(V->getName().str() + ".saveGrad", {X, 0}, V);
+    toAppend.push_back(save);
   }
 
   // Add all of the new variables and instructions.

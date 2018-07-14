@@ -512,11 +512,6 @@ void SparseLengthsSumNode::verify() const {
 }
 
 void SGDNode::verify() const {
-  if (Momentum_ > 0.0) {
-    assert(getGradient().getType() == getGsum().getType() &&
-           "Invalid gsum type");
-  }
-
   assert(getGradient().getType() == getWeight().getType() &&
          "Invalid weight or gradient type");
 }

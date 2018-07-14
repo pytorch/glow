@@ -386,15 +386,16 @@ int main(int argc, char **argv) {
   BB.newNode("SGD")
       .addInput("Gradient")
       .addInput("Weight")
-      .addInput("Gsum")
       .addMember(MemberType::Float, "L1Decay")
       .addMember(MemberType::Float, "L2Decay")
       .addMember(MemberType::Float, "LearningRate")
       .addMember(MemberType::Float, "Momentum")
       .addMember(MemberType::Unsigned, "BatchSize")
-      .addOverwrittenInput("Weight")
+      .addResult("Weight.getType()", "UpdatedWeight")
       .setHasSideEffects(true)
-      .setDocstring("Stochastic Gradient Descent node used during training.");
+      .setDocstring("Stochastic Gradient Descent node used during training. "
+                    "Produces the updated weight that needs to be used "
+                    "instead of Weight for the next iteration.");
 
   //===--------------------------------------------------------------------===//
   //                Nodes used by quantization.
