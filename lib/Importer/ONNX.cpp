@@ -248,9 +248,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     // Transpose the output back.
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = N;
-    }
+    addNodeAsOutput(op, N);
     return;
   }
 
@@ -281,9 +279,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
 
     // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = N;
-    }
+    addNodeAsOutput(op, N);
     return;
   }
 
@@ -312,19 +308,14 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     auto *in = getOrCreateVariableByName(op.input(0));
     auto axes = getShape(dict["axes"]);
     Node *node = G_.createSqueeze(opName, in, axes);
-
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
-    }
+    addNodeAsOutput(op, node);
     return;
   }
 
   if (typeName == "Dropout") {
     auto *in = getOrCreateVariableByName(op.input(0));
     // Save the identity operation:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = in;
-    }
+    addNodeAsOutput(op, in);
     return;
   }
 
@@ -347,10 +338,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     cast<Variable>(node->getBias())->copyFrom(bias);
     cast<Variable>(node->getMean())->copyFrom(mean);
     cast<Variable>(node->getVar())->copyFrom(var);
-
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
-    }
+    addNodeAsOutput(op, node);
     return;
   }
 
@@ -365,9 +353,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     auto axis = loadInt(dict["axis"]);
     Node *node = G_.createConcat(opName, inputs, axis);
 
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
-    }
+    addNodeAsOutput(op, node);
     return;
   }
 
@@ -395,9 +381,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     Node *node = G_.createAdd(opName, mul, C);
 
     // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
-    }
+    addNodeAsOutput(op, node);
     return;
   }
 
