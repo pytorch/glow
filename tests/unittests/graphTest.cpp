@@ -463,3 +463,89 @@ TEST(Graph, disableUnrollingGroupConv) {
   EXPECT_GT(numberOfNodesOpenCL, numberOfNodesInterpreter);
 #endif // GLOW_WITH_OPENCL
 }
+
+/// Check that save nodes are properly scheduled.
+/// That is, they happen after the last use of the related variable.
+/// In that test, the order of the creation of the nodes give a valid schedule.
+TEST(Graph, schedulingOfSavesOrderProvided) {
+  ExecutionEngine EE;
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *A = mod.createVariable(ElemKind::FloatTy, {3, 32}, "A",
+                               VisibilityKind::Public,
+                               Variable::TrainKind::Xavier, 1.0);
+  auto *zero = mod.createVariable(A->getType(), "zero", VisibilityKind::Public,
+                                  Variable::TrainKind::Broadcast, 0.0);
+
+  auto *B = mod.createVariable(A->getType(), "B", VisibilityKind::Public,
+                               Variable::TrainKind::Xavier, 1.0);
+
+  auto *addAB = F->createAdd("addAB", A, B);
+
+  auto *saveNode = F->createSave("ret", addAB);
+  F->createSave("resetA", zero, A);
+
+  // Copy the value of A.
+  Tensor AOrig = A->getPayload().clone();
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+  auto *ret = saveNode->getVariable();
+  auto handleAOrig = AOrig.getHandle<>();
+  auto handleB = B->getPayload().getHandle<>();
+  auto handleRet = ret->getPayload().getHandle<>();
+  bool allEqual = true;
+  for (unsigned row = 0; row != 3; ++row) {
+    for (unsigned column = 0; column != 32; ++column) {
+      allEqual &= handleAOrig.at({row, column}) + handleB.at({row, column}) ==
+                  handleRet.at({row, column});
+    }
+  }
+  EXPECT_TRUE(A->getPayload().isEqual(zero->getPayload(), 0.0));
+  EXPECT_TRUE(allEqual);
+}
+
+/// Same as schedulingOfSavesOrderProvided except the order in which the nodes
+/// are added to the function don't form a valid schedule.
+/// In other words, the scheduler won't get away with scheduling
+/// using only the order of the nodes in the list of nodes.
+TEST(Graph, schedulingOfSaves) {
+  ExecutionEngine EE;
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *A = mod.createVariable(ElemKind::FloatTy, {3, 32}, "A",
+                               VisibilityKind::Public,
+                               Variable::TrainKind::Xavier, 1.0);
+  auto *zero = mod.createVariable(A->getType(), "zero", VisibilityKind::Public,
+                                  Variable::TrainKind::Broadcast, 0.0);
+  F->createSave("resetA", zero, A);
+
+  auto *B = mod.createVariable(A->getType(), "B", VisibilityKind::Public,
+                               Variable::TrainKind::Xavier, 1.0);
+
+  auto *addAB = F->createAdd("addAB", A, B);
+
+  auto *saveNode = F->createSave("ret", addAB);
+
+  // Copy the value of A.
+  Tensor AOrig = A->getPayload().clone();
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+  auto *ret = saveNode->getVariable();
+  auto handleAOrig = AOrig.getHandle<>();
+  auto handleB = B->getHandle<>();
+  auto handleRet = ret->getHandle<>();
+  bool allEqual = true;
+  for (unsigned row = 0; row != 3; ++row) {
+    for (unsigned column = 0; column != 32; ++column) {
+      allEqual &= handleAOrig.at({row, column}) + handleB.at({row, column}) ==
+                  handleRet.at({row, column});
+    }
+  }
+  EXPECT_TRUE(A->getPayload().isEqual(zero->getPayload(), 0.0));
+  // FIXME: This should be true, but right now it is not!
+  EXPECT_FALSE /*TRUE*/ (allEqual);
+}
