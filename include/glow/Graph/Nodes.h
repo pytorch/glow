@@ -28,7 +28,7 @@
 
 namespace glow {
 
-class Variable: public Node {
+class Variable : public Node {
 public:
   /// Specifies the kind of training and initialization for the variable.
   /// Nodes that are marked as 'none' are not modified during the training
@@ -129,8 +129,7 @@ public:
   llvm::hash_code getHash() const;
 };
 
-class VariableNode: public Variable {
-};
+class VariableNode : public Variable {};
 
 /// Calculate the size of the output tensor based on the convolution/pooling
 /// parameters.
