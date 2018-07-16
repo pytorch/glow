@@ -306,6 +306,14 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     return;
   }
 
+  if (typeName == "Unsqueeze") {
+    auto *in = getOrCreateVariableByName(op.input(0));
+    auto axes = getShape(dict["axes"]);
+    Node *node = G_.createExpandDims(opName, in, axes);
+    addNodeAsOutput(op, node);
+    return;
+  }
+
   if (typeName == "Dropout") {
     auto *in = getOrCreateVariableByName(op.input(0));
     // Save the identity operation:
