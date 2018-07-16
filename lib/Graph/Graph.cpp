@@ -1838,6 +1838,22 @@ Function *Function::clone(llvm::StringRef newName,
   return newF;
 }
 
+/// Verify the input \p idx of a node \p N. Check that the node \p N is in the
+/// use-list of the corresponding input node.
+static void verifyNodeInput(const Node &N, size_t idx) {
+  auto input = N.getNthInput(idx);
+  auto refN = input.getNode();
+  // Check that N is in the use-list of the input node and there is a proper
+  // entry for it.
+  for (auto &U : refN->getUsers()) {
+    if (U.getUser() == &N && *U.get() == input) {
+      return;
+    }
+  }
+  GLOW_UNREACHABLE(
+      "Any node referencing another node N be in the use-list of the node N");
+}
+
 void Function::verify() const {
   std::unordered_map<std::string, const Node *> NameToNode;
 
@@ -1877,10 +1893,20 @@ void Function::verify() const {
     for (size_t idx = 0, e = N.getNumInputs(); idx < e; ++idx) {
       auto &input = N.getNthInput(idx);
       (void)input;
+      // Verify each input of N.
+      verifyNodeInput(N, idx);
       assert((std::find(nodes_.begin(), nodes_.end(), *input) != nodes_.end() ||
               std::find(vars.begin(), vars.end(), input) != vars.end()) &&
              "Every node referenced by one of the graph"
              " nodes should be part of the graph");
+    }
+  }
+
+  // Check that all uses of each node refer to this node.
+  for (const auto &N : nodes_) {
+    for (auto U : N.getUsers()) {
+      assert(U.get()->getNode() == &N &&
+             "All uses of a node should refer to this node");
     }
   }
 
