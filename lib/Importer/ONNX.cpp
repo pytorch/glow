@@ -247,7 +247,6 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
 
     // Transpose the output back.
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
-    // Save the outputs:
     addNodeAsOutput(op, N);
     return;
   }
@@ -277,8 +276,6 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
       node = G_.createPoolAvg(opName, tr, kernel, stride, pads);
     }
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
-
-    // Save the outputs:
     addNodeAsOutput(op, N);
     return;
   }
@@ -297,10 +294,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
     Node *node = G_.createPoolAvg(opName, tr, kernel, stride, pads);
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
-    // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = N;
-    }
+    addNodeAsOutput(op, N);
     return;
   }
 
@@ -379,8 +373,6 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     }
 
     Node *node = G_.createAdd(opName, mul, C);
-
-    // Save the outputs:
     addNodeAsOutput(op, node);
     return;
   }

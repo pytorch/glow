@@ -188,7 +188,6 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     // Transpose the output back.
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
-    // Save the outputs:
     addNodeAsOutput(op, N);
     return;
   }
@@ -216,8 +215,6 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       node = G_.createPoolAvg(opName, tr, kernel, stride, pads);
     }
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
-
-    // Save the outputs:
     addNodeAsOutput(op, N);
     return;
   }
@@ -225,9 +222,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "Dropout") {
     auto *in = getOrCreateVariableByName(op.input(0));
     // Save the identity operation:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = in;
-    }
+    addNodeAsOutput(op, in);
     return;
   }
 
@@ -278,8 +273,6 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     size_t kernel = loadInt(dict["kernel"]);
 
     Node *node = G_.createChannelShuffle(opName, in, group, kernel);
-
-    // Save the outputs:
     addNodeAsOutput(op, node);
     return;
   }
@@ -288,10 +281,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *in = getOrCreateVariableByName(op.input(0));
     auto dims = getShape(dict["dims"]);
     Node *node = G_.createSqueeze(opName, in, dims);
-
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
-    }
+    addNodeAsOutput(op, node);
     return;
   }
 
@@ -309,7 +299,6 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *in = getOrCreateVariableByName(op.input(0));
     // Create the log:
     auto *R = G_.createLog(opName, in);
-    // Save the outputs:
     addNodeAsOutput(op, R);
     return;
   }
@@ -318,7 +307,6 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *in0 = getOrCreateVariableByName(op.input(0));
     auto *in1 = getOrCreateVariableByName(op.input(1));
     auto *node = G_.createCmpEQ(opName, in0, in1);
-    // Save the outputs:
     addNodeAsOutput(op, node);
     return;
   }
@@ -329,7 +317,6 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     unsigned axis = loadInt(dict["axis"]);
 
     auto *node = G_.createTile(opName, in, tiles, axis);
-    // Save the outputs:
     addNodeAsOutput(op, node);
     return;
   }
