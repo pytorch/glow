@@ -359,6 +359,9 @@ TEST(Graph, cloneTest2) {
 
   auto *newF = F->clone("new_main");
   newF->verify();
+  F->dump();
+  newF->dump();
+
   EXPECT_EQ(newF->getNodes().size(), F->getNodes().size());
   EXPECT_EQ(newF->getParent(), F->getParent());
 }
