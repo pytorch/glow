@@ -189,9 +189,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Transpose the output back.
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = N;
-    }
+    addNodeAsOutput(op, N);
     return;
   }
 
@@ -220,9 +218,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
 
     // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = N;
-    }
+    addNodeAsOutput(op, N);
     return;
   }
 
@@ -256,9 +252,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     cast<Variable>(node->getMean())->copyFrom(mean);
     cast<Variable>(node->getVar())->copyFrom(var);
 
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
-    }
+    addNodeAsOutput(op, node);
     return;
   }
 
@@ -273,9 +267,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto channel = getChannel(dict);
     Node *node = G_.createConcat(opName, inputs, channel);
 
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
-    }
+    addNodeAsOutput(op, node);
     return;
   }
 
@@ -288,9 +280,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Node *node = G_.createChannelShuffle(opName, in, group, kernel);
 
     // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
-    }
+    addNodeAsOutput(op, node);
     return;
   }
 
@@ -310,9 +300,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *indices = getOrCreateVariableByName(op.input(1));
 
     Node *GN = G_.createGather(opName, data, indices);
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = GN;
-    }
+    addNodeAsOutput(op, GN);
     return;
   }
 
@@ -322,9 +310,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Create the log:
     auto *R = G_.createLog(opName, in);
     // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = R;
-    }
+    addNodeAsOutput(op, R);
     return;
   }
 
@@ -333,9 +319,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *in1 = getOrCreateVariableByName(op.input(1));
     auto *node = G_.createCmpEQ(opName, in0, in1);
     // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
-    }
+    addNodeAsOutput(op, node);
     return;
   }
 
@@ -346,9 +330,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     auto *node = G_.createTile(opName, in, tiles, axis);
     // Save the outputs:
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = node;
-    }
+    addNodeAsOutput(op, node);
     return;
   }
 
