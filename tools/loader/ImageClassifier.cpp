@@ -28,9 +28,9 @@
 using namespace glow;
 
 enum class ImageNormalizationMode {
-  kneg1to1,  // Values are in the range: -1 and 1.
-  k0to1,     // Values are in the range: 0 and 1.
-  k0to256,   // Values are in the range: 0 and 256.
+  kneg1to1,     // Values are in the range: -1 and 1.
+  k0to1,        // Values are in the range: 0 and 1.
+  k0to256,      // Values are in the range: 0 and 256.
   kneg128to127, // Values are in the range: -128 .. 127
 };
 
@@ -75,7 +75,8 @@ llvm::cl::opt<ImageNormalizationMode> imageMode(
                                 "Values are in the range: 0 and 1"),
                      clEnumValN(ImageNormalizationMode::k0to256, "0to256",
                                 "Values are in the range: 0 and 256"),
-                     clEnumValN(ImageNormalizationMode::kneg128to127, "neg128to127",
+                     clEnumValN(ImageNormalizationMode::kneg128to127,
+                                "neg128to127",
                                 "Values are in the range: -128 .. 127")));
 llvm::cl::alias imageModeA("i", llvm::cl::desc("Alias for -image_mode"),
                            llvm::cl::aliasopt(imageMode),

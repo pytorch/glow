@@ -131,8 +131,8 @@ void NodeBuilder::emitMemberGetter(std::ostream &os, MemberType type,
 void NodeBuilder::emitSettersGetters(std::ostream &os) const {
   // Print the getters/setters.
   for (const auto &inName : nodeInputs_) {
-    os << "  const NodeValue get" << inName << "() const { return "
-       << inName << "_; }\n";
+    os << "  const NodeValue get" << inName << "() const { return " << inName
+       << "_; }\n";
   }
 
   unsigned idx = 0;

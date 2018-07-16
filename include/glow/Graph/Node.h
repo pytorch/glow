@@ -68,8 +68,7 @@ public:
   }
 
   /// Destructor.
-  ~NodeValue() {
-  }
+  ~NodeValue() {}
 
   /// Get the index which selects a specific result in the SDNode
   unsigned getResNo() const { return resNo_; }
