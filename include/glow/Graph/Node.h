@@ -143,6 +143,8 @@ public:
     setOperand(that.getNode(), that.getResNo());
   }
 
+  NodeHandle(const NodeHandle &that) : NodeHandle(that.parent_, that) {}
+
   /// Create an empty handle.
   NodeHandle() : NodeValue(nullptr), parent_(nullptr) {}
 
