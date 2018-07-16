@@ -207,6 +207,7 @@ struct NodeUse {
   /// \returns the instruction that the use refers to.
   NodeHandle *get() const { return site_; }
   /// Get the node containing this use.
+  const Node *getUser() const { return site_->parent_; }
   Node *getUser() { return site_->parent_; }
   /// Sets the operand to a new value.
   void setOperand(NodeHandle &site);
