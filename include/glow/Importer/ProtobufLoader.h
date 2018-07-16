@@ -98,8 +98,8 @@ protected:
   std::unordered_map<std::string, Node *> nodeByName_;
   /// A list of weight tensors indexed by name.
   std::unordered_map<std::string, Tensor *> tensors_;
-  /// The external output of the network.
-  SaveNode *root_{nullptr};
+  /// A map from names of the external outputs of the network to SaveNodes.
+  std::unordered_map<std::string, SaveNode *> outputsByName_;
 
   /// \returns the tensor that was registered under the name \p name.
   Tensor *getTensorByName(llvm::StringRef name);
@@ -149,9 +149,19 @@ public:
 
   virtual ~ProtobufLoader();
 
-  /// \returns the output of the network. This is usually the result of the last
+  /// \returns the single final output of the network. The function assumes
+  /// there is only one output, verified via assertion. For image
+  /// classification, this single final output is usually the result of the last
   /// softmax or regression layer.
-  SaveNode *getRoot() { return root_; }
+  /// \pre outputsByName_.size() == 1
+  SaveNode *getSingleOutput() {
+    assert(outputsByName_.size() == 1);
+    return outputsByName_.begin()->second;
+  }
+
+  /// \returns the SaveNode for the external output with \p name.
+  /// \pre outputsByName_.find(name) != outputsByName_.end()
+  SaveNode *getOutputByName(llvm::StringRef name) const;
 };
 
 } // namespace glow

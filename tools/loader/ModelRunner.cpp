@@ -39,7 +39,7 @@ int main(int argc, char **argv) {
     LD = new ONNXModelLoader(loader.getOnnxModelFilename(), {}, {},
                              *loader.getFunction());
   }
-  SaveNode *output = LD->getRoot();
+  SaveNode *output = LD->getSingleOutput();
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.

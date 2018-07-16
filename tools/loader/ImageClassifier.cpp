@@ -146,14 +146,14 @@ int main(int argc, char **argv) {
         loader.getCaffe2NetDescFilename(), loader.getCaffe2NetWeightFilename(),
         {"data", "gpu_0/data", "softmax_expected"},
         {&data, &data, &expectedSoftmax}, *loader.getFunction());
-    SM = LD.getRoot();
+    SM = LD.getSingleOutput();
     i0 = LD.getVariableByName("gpu_0/data");
     i1 = LD.getVariableByName("data");
   } else {
     ONNXModelLoader LD(loader.getOnnxModelFilename(),
                        {"data_0", "gpu_0/data_0", "softmax_expected"},
                        {&data, &data, &expectedSoftmax}, *loader.getFunction());
-    SM = LD.getRoot();
+    SM = LD.getSingleOutput();
     i0 = LD.getVariableByName("gpu_0/data_0");
     i1 = LD.getVariableByName("data_0");
   }

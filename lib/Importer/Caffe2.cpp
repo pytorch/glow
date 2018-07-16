@@ -405,8 +405,12 @@ void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
 
   assert(net.external_output_size() &&
          "Network needs external outputs defined.");
-  auto *r = getNodeByName(net.external_output(0));
-  root_ = G_.createSave("output", r);
+
+  for (int i = 0; i < net.external_output_size(); i++) {
+    auto &outputName = net.external_output(i);
+    auto *r = getNodeByName(outputName);
+    outputsByName_[outputName] = G_.createSave("save_" + outputName, r);
+  }
 }
 
 void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {

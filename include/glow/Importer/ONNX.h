@@ -46,8 +46,9 @@ class ONNXModelLoader
   /// \returns true if network can be loaded.
   bool loadNetwork(onnx::GraphProto &net);
 
-  /// Set the root_ as an output node.
-  void setOutputNode(onnx::GraphProto &net);
+  /// Set the output nodes of the network \p net. Initializes the map from the
+  /// names of the outputs to the save nodes that save each output.
+  void setOutputNodes(onnx::GraphProto &net);
 
   /// Load the network initializers from the GraphProto.
   void loadInitializers(onnx::GraphProto &net);

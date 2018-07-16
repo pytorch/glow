@@ -34,6 +34,15 @@ Tensor *ProtobufLoader::getTensorByName(llvm::StringRef name) {
   return tensors_[name];
 }
 
+SaveNode *ProtobufLoader::getOutputByName(llvm::StringRef name) const {
+  assert(outputsByName_.count(name) &&
+         "There is no tensor registered with this name.");
+  auto it = outputsByName_.find(name);
+  assert(it != outputsByName_.end() &&
+         "No external output was registered with this name.");
+  return it->second;
+}
+
 Node *ProtobufLoader::getNodeByNameOrNull(llvm::StringRef name) const {
   auto it = nodeByName_.find(name);
   if (it != nodeByName_.end()) {

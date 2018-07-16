@@ -465,10 +465,14 @@ void ONNXModelLoader::loadInitializers(onnx::GraphProto &net) {
   }
 }
 
-void ONNXModelLoader::setOutputNode(onnx::GraphProto &net) {
+void ONNXModelLoader::setOutputNodes(onnx::GraphProto &net) {
   assert(net.output_size() && "Network needs external outputs defined.");
-  auto *r = getNodeByName(net.output(0).name());
-  root_ = G_.createSave("output", r);
+
+  for (int i = 0; i < net.output_size(); i++) {
+    auto &outputName = net.output(i).name();
+    auto *r = getNodeByName(outputName);
+    outputsByName_[outputName] = G_.createSave("save_" + outputName, r);
+  }
 }
 
 bool ONNXModelLoader::loadNetwork(onnx::GraphProto &net) {
@@ -517,6 +521,6 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
 
   loadInitializers(modelDef);
   if (loadNetwork(modelDef)) {
-    setOutputNode(modelDef);
+    setOutputNodes(modelDef);
   }
 }
