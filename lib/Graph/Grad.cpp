@@ -71,8 +71,6 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
 
   // A list of nodes to add to the Function.
   std::vector<Node *> toAppend;
-  // A list of vars to add to the Function.
-  std::vector<Variable *> newVars;
 
   // Generate the gradient nodes for each one of the nodes in the function.
 
@@ -232,9 +230,6 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
   // Add all of the new variables and instructions.
   for (auto &I : toAppend) {
     G->addNode(I);
-  }
-  for (auto &I : newVars) {
-    G->getParent()->addVar(I);
   }
 
   return G;
