@@ -154,7 +154,7 @@
 <text text-anchor="start" x="204.5" y="-1573.3" font-family="Times,serif" font-size="14.00" fill="#000000">Bias : float&lt;16&gt;</text>
 <text text-anchor="start" x="204.5" y="-1559.3" font-family="Times,serif" font-size="14.00" fill="#000000">Kernel : 5</text>
 <text text-anchor="start" x="204.5" y="-1545.3" font-family="Times,serif" font-size="14.00" fill="#000000">Stride : 1</text>
-<text text-anchor="start" x="204.5" y="-1531.3" font-family="Times,serif" font-size="14.00" fill="#000000">Pad : 2</text>
+<text text-anchor="start" x="204.5" y="-1531.3" font-family="Times,serif" font-size="14.00" fill="#000000">Pads : [2, 2, 2, 2]</text>
 <text text-anchor="start" x="204.5" y="-1517.3" font-family="Times,serif" font-size="14.00" fill="#000000">Depth : 16</text>
 <text text-anchor="start" x="204.5" y="-1503.3" font-family="Times,serif" font-size="14.00" fill="#000000">users : 1</text>
 <text text-anchor="start" x="204.5" y="-1489.3" font-family="Times,serif" font-size="14.00" fill="#000000">Result : float&lt;8 x 28 x 28 x 16&gt;</text>
@@ -178,7 +178,7 @@
 <text text-anchor="start" x="415.5" y="-596.3" font-family="Times,serif" font-size="14.00" fill="#000000">Input : float&lt;8 x 9 x 9 x 16&gt;</text>
 <text text-anchor="start" x="415.5" y="-582.3" font-family="Times,serif" font-size="14.00" fill="#000000">Kernel : 3</text>
 <text text-anchor="start" x="415.5" y="-568.3" font-family="Times,serif" font-size="14.00" fill="#000000">Stride : 3</text>
-<text text-anchor="start" x="415.5" y="-554.3" font-family="Times,serif" font-size="14.00" fill="#000000">Pad : 0</text>
+<text text-anchor="start" x="415.5" y="-554.3" font-family="Times,serif" font-size="14.00" fill="#000000">Pads : [0, 0, 0, 0]</text>
 <text text-anchor="start" x="415.5" y="-540.3" font-family="Times,serif" font-size="14.00" fill="#000000">users : 1</text>
 <text text-anchor="start" x="415.5" y="-526.3" font-family="Times,serif" font-size="14.00" fill="#000000">Result : float&lt;8 x 3 x 3 x 16&gt;</text>
 <polyline fill="none" stroke="#000000" stroke-width="2" points="407.5,-519.5 587.8496,-519.5 "/>
@@ -221,7 +221,7 @@
 <text text-anchor="start" x="414.7241" y="-970.3" font-family="Times,serif" font-size="14.00" fill="#000000">Bias : float&lt;16&gt;</text>
 <text text-anchor="start" x="414.7241" y="-956.3" font-family="Times,serif" font-size="14.00" fill="#000000">Kernel : 5</text>
 <text text-anchor="start" x="414.7241" y="-942.3" font-family="Times,serif" font-size="14.00" fill="#000000">Stride : 1</text>
-<text text-anchor="start" x="414.7241" y="-928.3" font-family="Times,serif" font-size="14.00" fill="#000000">Pad : 2</text>
+<text text-anchor="start" x="414.7241" y="-928.3" font-family="Times,serif" font-size="14.00" fill="#000000">Pads : [2, 2, 2, 2]</text>
 <text text-anchor="start" x="414.7241" y="-914.3" font-family="Times,serif" font-size="14.00" fill="#000000">Depth : 16</text>
 <text text-anchor="start" x="414.7241" y="-900.3" font-family="Times,serif" font-size="14.00" fill="#000000">users : 1</text>
 <text text-anchor="start" x="414.7241" y="-886.3" font-family="Times,serif" font-size="14.00" fill="#000000">Result : float&lt;8 x 9 x 9 x 16&gt;</text>
@@ -319,7 +319,7 @@
 <text text-anchor="start" x="207.6138" y="-1199.3" font-family="Times,serif" font-size="14.00" fill="#000000">Input : float&lt;8 x 28 x 28 x 16&gt;</text>
 <text text-anchor="start" x="207.6138" y="-1185.3" font-family="Times,serif" font-size="14.00" fill="#000000">Kernel : 3</text>
 <text text-anchor="start" x="207.6138" y="-1171.3" font-family="Times,serif" font-size="14.00" fill="#000000">Stride : 3</text>
-<text text-anchor="start" x="207.6138" y="-1157.3" font-family="Times,serif" font-size="14.00" fill="#000000">Pad : 0</text>
+<text text-anchor="start" x="207.6138" y="-1157.3" font-family="Times,serif" font-size="14.00" fill="#000000">Pads : [0, 0, 0, 0]</text>
 <text text-anchor="start" x="207.6138" y="-1143.3" font-family="Times,serif" font-size="14.00" fill="#000000">users : 1</text>
 <text text-anchor="start" x="207.6138" y="-1129.3" font-family="Times,serif" font-size="14.00" fill="#000000">Result : float&lt;8 x 9 x 9 x 16&gt;</text>
 <polyline fill="none" stroke="#000000" stroke-width="2" points="199.6138,-1122.5 387.7358,-1122.5 "/>

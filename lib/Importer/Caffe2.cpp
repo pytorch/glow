@@ -66,7 +66,7 @@ static std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
     pads[3] = loadInt(dict.at("pad_r"));
     return pads;
   }
-  // Return default value 0 for pad.
+  // Return default value 0 for pads.
   return {0, 0, 0, 0};
 }
 
