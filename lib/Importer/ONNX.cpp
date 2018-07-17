@@ -78,7 +78,7 @@ bool ONNXModelLoader::loadProto(
   google::protobuf::io::CodedInputStream codedStream(&iStream);
 
   // Don't warn about large file sizes.
-  codedStream.SetTotalBytesLimit(1e+9, 1e+9);
+  codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE, MAX_PROTO_SIZE);
   onnx::ModelProto MP;
   bool parseNet = MP.ParseFromCodedStream(&codedStream);
   net = MP.graph();

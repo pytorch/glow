@@ -113,7 +113,7 @@ bool caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
     google::protobuf::io::IstreamInputStream filestr(&ff);
     google::protobuf::io::CodedInputStream codedstr(&filestr);
     // Don't warn about large file sizes.
-    codedstr.SetTotalBytesLimit(1e+9, 1e+9);
+    codedstr.SetTotalBytesLimit(MAX_PROTO_SIZE, MAX_PROTO_SIZE);
     parseNet = net.ParseFromCodedStream(&codedstr);
   }
 

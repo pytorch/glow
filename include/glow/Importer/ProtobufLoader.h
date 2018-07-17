@@ -30,6 +30,9 @@
 #include <unordered_map>
 #include <vector>
 
+/// This is the maximum allowed protobuf size (2GB).
+#define MAX_PROTO_SIZE 0x7FFFFFFF
+
 namespace glow {
 
 /// Returns true iff all elements of \p a are the same.
