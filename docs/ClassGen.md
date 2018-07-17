@@ -27,13 +27,13 @@ builder (described in the builder Doxygen comments) construct the different
 kinds of fields that the Instruction has.
 
   ```
-  BB.newInstr("AvgPool")
-    .addOperand("Dest", OperandKind::Out)
-    .addOperand("Src", OperandKind::In)
-    .addMember(MemberType::SizeT, "Kernel")
-    .addMember(MemberType::SizeT, "Stride")
-    .addMember(MemberType::SizeT, "Pad")
-    .autoIRGen()
-    .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-    .addGradientInstr({"Dest"}, {"Dest", "Src"});
+  BB.newInstr("PoolAvg")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::SizeT, "Kernel")
+      .addMember(MemberType::SizeT, "Stride")
+      .addMember(MemberType::VectorSizeT, "Pads")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .addGradientInstr({"Dest"}, {"Dest", "Src"});
   ```

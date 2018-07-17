@@ -75,12 +75,12 @@ std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
   if (dict.count("auto_pad")) {
     auto padStr = loadStr(dict.at("auto_pad"));
     if (padStr == "VALID") {
-      // Return default value 0 for pad.
+      // Return default value 0 for pads.
       return {0, 0, 0, 0};
     }
     assert(false && "only auto_pad==VALID is supported");
   }
-  // Return default value 0 for pad.
+  // Return default value 0 for pads.
   return {0, 0, 0, 0};
 }
 

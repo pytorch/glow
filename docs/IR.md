@@ -61,7 +61,7 @@ informative and it looks like this:
   output : float<8 x 9 x 9 x 16>
   kernel : 3
   stride : 3
-  pad : 0
+  pads : [0, 0, 0, 0]
   kind : max
 
   convolution
@@ -72,7 +72,7 @@ informative and it looks like this:
   bias : float<16>
   kernel : 5
   stride : 1
-  pads : size_t<4>
+  pads : [2, 2, 2, 2]
   depth : 16
 
   relu

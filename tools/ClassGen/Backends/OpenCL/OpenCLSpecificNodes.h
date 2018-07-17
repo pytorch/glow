@@ -36,7 +36,7 @@ BB.newNode("OCLPoolAvg")
     .addResultFromCtorArg()
     .setDocstring(
         "This is an OpenCL-specific Average Pool operation on the Input given "
-        "provided Kernel, Stride, and Pad. The input and output are in NCHW "
+        "provided Kernel, Stride, and Pads. The input and output are in NCHW "
         "format");
 
 BB.newNode("OCLPoolMax")
@@ -48,7 +48,7 @@ BB.newNode("OCLPoolMax")
     .setDocstring(
         "This is an OpenCL-specific Max Pool operation on the Input given "
         "provided "
-        "Kernel, Stride, and Pad. The input and output are in NCHW format");
+        "Kernel, Stride, and Pads. The input and output are in NCHW format");
 
 BB.includeBackendSpecificVerification("OpenCLSpecificNodesVerification.h");
 
