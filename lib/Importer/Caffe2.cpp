@@ -121,6 +121,10 @@ bool caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
   return true;
 }
 
+bool caffe2ModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
+  return dict.count("broadcast") && (loadInt(dict.at("broadcast")) == 1);
+}
+
 void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.type();

@@ -38,6 +38,9 @@ class Value;
 /// Loads caffe2 models.
 class caffe2ModelLoader
     : public CommonOperatorLoader<caffe2::OperatorDef, caffe2::Argument> {
+  /// Get the broadcast attribute.
+  bool getBroadcast(const ArgumentDictionaryTy &dict) override;
+
   /// Load the weight tensors from the 'init' file and register them in the map
   /// \p tensors.
   void loadWeights(caffe2::NetDef &net);

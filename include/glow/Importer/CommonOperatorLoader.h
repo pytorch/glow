@@ -39,6 +39,8 @@ protected:
   using ArgumentDictionaryTy =
       std::unordered_map<std::string, const AttrType *>;
 
+  virtual bool getBroadcast(const ArgumentDictionaryTy &dict) { return true; }
+
   void addNodeAsOutput(const OpType &op, Node *R) {
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeByName_[op.output(i)] = R;
@@ -124,11 +126,11 @@ protected:
     auto *in0 = getOrCreateVariableByName(op.input(0));
     auto *in1 = getOrCreateVariableByName(op.input(1));
 
-    int broadcast = loadInt(dict["broadcast"]);
+    bool broadcast = getBroadcast(dict);
 
     Node *finalIn1 = nullptr;
-    if (broadcast == 1) {
-      int axis = loadInt(dict["axis"]);
+    if (broadcast) {
+      int axis = dict.count("axis") ? loadInt(dict["axis"]) : -1;
       // In ONNX, if axis == -1 then it sets the axis so that the
       // trailing-most dimensions are aligned like this.
       if (axis == -1) {

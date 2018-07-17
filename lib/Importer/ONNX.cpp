@@ -50,6 +50,28 @@ static ArgumentDictionaryTy loadArgumentMap(const onnx::NodeProto &op) {
   return dict;
 }
 
+bool ONNXModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
+  if (opsetVersion_ > 6)
+    return true;
+  return dict.count("broadcast") && (loadInt(dict.at("broadcast")) == 1);
+}
+
+void ONNXModelLoader::setVersion(onnx::ModelProto MP) {
+  irVersion_ = MP.ir_version();
+  opsetVersion_ = 0;
+  GLOW_ASSERT(
+      irVersion_ >= 3 &&
+      "This ONNX model with ir_version < 3 is too old to be supported.");
+  for (const auto &imp : MP.opset_import()) {
+    if (!imp.has_domain() || imp.domain() == "") {
+      opsetVersion_ = imp.version();
+      break;
+    }
+  }
+  GLOW_ASSERT(opsetVersion_ > 0 &&
+              "The opset of this ONNX model is not supported.");
+}
+
 bool ONNXModelLoader::loadProtoFile(onnx::GraphProto &net,
                                     const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
@@ -63,7 +85,7 @@ bool ONNXModelLoader::loadProtoFile(onnx::GraphProto &net,
   onnx::ModelProto MP;
   bool parseNet = MP.ParseFromCodedStream(&codedstr);
   net = MP.graph();
-
+  setVersion(MP);
   GLOW_ASSERT(parseNet && "Failed to parse the network descriptor.");
   return true;
 }
@@ -364,7 +386,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     Node *B = getOrCreateVariableByName(op.input(1));
     Node *C = getOrCreateVariableByName(op.input(2));
 
-    bool broadcastC = dict.count("broadcast") && loadInt(dict["broadcast"]);
+    bool broadcastC = getBroadcast(dict);
     bool transA = dict.count("transA") && loadInt(dict["transA"]);
     bool transB = dict.count("transB") && loadInt(dict["transB"]);
     // TODO: support alpha * A * B + beta * C
