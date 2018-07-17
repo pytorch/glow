@@ -28,6 +28,7 @@ namespace onnx {
 class AttributeProto;
 class NodeProto;
 class GraphProto;
+class ModelProto;
 } // namespace onnx
 
 namespace glow {
@@ -35,6 +36,12 @@ namespace glow {
 /// Loads ONNX models.
 class ONNXModelLoader
     : public CommonOperatorLoader<onnx::NodeProto, onnx::AttributeProto> {
+  /// Get the broadcast attribute based on different ONNX op versions.
+  bool getBroadcast(const ArgumentDictionaryTy &dict) override;
+
+  /// Set ir verion and op version.
+  void setVersion(onnx::ModelProto MP);
+
   /// Load the network operators from the GraphProto.
   void loadNetwork(onnx::GraphProto &net);
 
@@ -48,6 +55,12 @@ class ONNXModelLoader
   /// Reads a network (weights or structure) from the serialized protocol buffer
   /// file.
   bool loadProtoFile(onnx::GraphProto &net, const std::string &filename);
+
+  /// ONNX model ir_version;
+  size_t irVersion_;
+
+  /// ONNX model op_version;
+  size_t opsetVersion_;
 
 public:
   /// Loads the ONNX model that's represented by a model description file,
