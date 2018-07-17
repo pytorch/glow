@@ -1842,7 +1842,7 @@ Function *Function::clone(llvm::StringRef newName,
 /// use-list of the corresponding input node.
 static void verifyNodeInput(const Node &N, size_t idx) {
   auto input = N.getNthInput(idx);
-  auto refN = input.getNode();
+  auto *refN = input.getNode();
   // Check that N is in the use-list of the input node and there is a proper
   // entry for it.
   for (auto &U : refN->getUsers()) {
@@ -1850,7 +1850,7 @@ static void verifyNodeInput(const Node &N, size_t idx) {
       return;
     }
   }
-  GLOW_UNREACHABLE(
+  llvm_unreachable(
       "Any node referencing another node N be in the use-list of the node N");
 }
 
@@ -1904,7 +1904,7 @@ void Function::verify() const {
 
   // Check that all uses of each node refer to this node.
   for (const auto &N : nodes_) {
-    for (auto U : N.getUsers()) {
+    for (const auto &U : N.getUsers()) {
       assert(U.get()->getNode() == &N &&
              "All uses of a node should refer to this node");
     }
