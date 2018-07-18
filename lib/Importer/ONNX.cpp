@@ -72,22 +72,34 @@ void ONNXModelLoader::setVersion(onnx::ModelProto MP) {
               "The opset of this ONNX model is not supported.");
 }
 
-bool ONNXModelLoader::loadProtoFile(onnx::GraphProto &net,
-                                    const std::string &filename) {
+bool ONNXModelLoader::loadProto(
+    onnx::GraphProto &net, google::protobuf::io::ZeroCopyInputStream &iStream) {
+  // Construct and configure a Coded Input Stream
+  google::protobuf::io::CodedInputStream codedStream(&iStream);
+
+  // Don't warn about large file sizes.
+  codedStream.SetTotalBytesLimit(1e+9, 1e+9);
+  onnx::ModelProto MP;
+  bool parseNet = MP.ParseFromCodedStream(&codedStream);
+  net = MP.graph();
+  setVersion(MP);
+
+  return parseNet;
+}
+
+bool ONNXModelLoader::loadProto(onnx::GraphProto &net, const void *onnxModel,
+                                size_t onnxModelSize) {
+  google::protobuf::io::ArrayInputStream arrayStream(onnxModel, onnxModelSize);
+  return loadProto(net, arrayStream);
+}
+
+bool ONNXModelLoader::loadProto(onnx::GraphProto &net,
+                                const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
   GLOW_ASSERT(ff && "Can't find the model or network files.");
 
-  // Construct and configure a Coded Input Stream
-  google::protobuf::io::IstreamInputStream filestr(&ff);
-  google::protobuf::io::CodedInputStream codedstr(&filestr);
-  // Don't warn about large file sizes.
-  codedstr.SetTotalBytesLimit(1e+9, 1e+9);
-  onnx::ModelProto MP;
-  bool parseNet = MP.ParseFromCodedStream(&codedstr);
-  net = MP.graph();
-  setVersion(MP);
-  GLOW_ASSERT(parseNet && "Failed to parse the network descriptor.");
-  return true;
+  google::protobuf::io::IstreamInputStream fileStream(&ff);
+  return loadProto(net, fileStream);
 }
 
 std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
@@ -106,7 +118,8 @@ std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
   return {0, 0, 0, 0};
 }
 
-void loadTensor(const onnx::TensorProto &in, Tensor *T) {
+/// Loads tensor \p T from the input \p in.
+static void loadTensor(const onnx::TensorProto &in, Tensor *T) {
   std::vector<size_t> dim;
   for (auto d : in.dims()) {
     dim.push_back(d);
@@ -150,14 +163,14 @@ void loadTensor(const onnx::TensorProto &in, Tensor *T) {
   }
 }
 
-void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
+bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
 
   // Check if operator is supported in parent class, CommonOperatorLoader.
   if (tryLoadCommonOperator(typeName, op, dict)) {
     // If operator is supported, CommonOperatorLoader loaded it to the Graph.
-    return;
+    return true;
   }
 
   const std::string &opName = loadOperatorName(op);
@@ -192,7 +205,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     // If the tensor is pre-populated by the user of this class then we don't
     // need to allocate a new tensor.
     if (tensors_.count(name)) {
-      return;
+      return true;
     }
 
     assert(dict["value"]->type() == onnx::AttributeProto::TENSOR &&
@@ -201,7 +214,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     auto *T = new Tensor();
     loadTensor(dict["value"]->t(), T);
     tensors_[name] = T;
-    return;
+    return true;
   }
 
   if (typeName == "Conv") {
@@ -270,7 +283,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     // Transpose the output back.
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);
-    return;
+    return true;
   }
 
   if (typeName == "MaxPool" || typeName == "AveragePool") {
@@ -299,7 +312,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     }
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);
-    return;
+    return true;
   }
 
   if (typeName == "GlobalAveragePool") {
@@ -317,7 +330,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     Node *node = G_.createPoolAvg(opName, tr, kernel, stride, pads);
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);
-    return;
+    return true;
   }
 
   if (typeName == "Squeeze") {
@@ -325,7 +338,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     auto axes = getShape(dict["axes"]);
     Node *node = G_.createSqueeze(opName, in, axes);
     addNodeAsOutput(op, node);
-    return;
+    return true;
   }
 
   if (typeName == "Unsqueeze") {
@@ -333,14 +346,14 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     auto axes = getShape(dict["axes"]);
     Node *node = G_.createExpandDims(opName, in, axes);
     addNodeAsOutput(op, node);
-    return;
+    return true;
   }
 
   if (typeName == "Dropout") {
     auto *in = getOrCreateVariableByName(op.input(0));
     // Save the identity operation:
     addNodeAsOutput(op, in);
-    return;
+    return true;
   }
 
   if (typeName == "BatchNormalization") {
@@ -363,7 +376,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     cast<Variable>(node->getMean())->copyFrom(mean);
     cast<Variable>(node->getVar())->copyFrom(var);
     addNodeAsOutput(op, node);
-    return;
+    return true;
   }
 
   if (typeName == "Concat") {
@@ -378,7 +391,7 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     Node *node = G_.createConcat(opName, inputs, axis);
 
     addNodeAsOutput(op, node);
-    return;
+    return true;
   }
 
   if (typeName == "Gemm") {
@@ -404,18 +417,47 @@ void ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
 
     Node *node = G_.createAdd(opName, mul, C);
     addNodeAsOutput(op, node);
-    return;
+    return true;
   }
 
   if (typeName == "Transpose") {
-    return loadTranspose(op, dict, "perm");
+    loadTranspose(op, dict, "perm");
+    return true;
   }
 
-  unexpectedNodeError(op, "Unsupported operator.");
+  return false;
+}
+
+/// Creates tensor \p T from the input \p in. Note, there is no data associated
+/// with the Tensor. This method makes sure that the tensor is created with the
+/// proper share and element type.
+static void loadShape(const onnx::TypeProto &in, Tensor *T) {
+  std::vector<size_t> dim;
+  for (auto d : in.tensor_type().shape().dim()) {
+    dim.push_back(d.dim_value());
+  }
+
+  if (in.tensor_type().elem_type() == onnx::TensorProto::FLOAT) {
+    T->reset(ElemKind::FloatTy, dim);
+  } else if (in.tensor_type().elem_type() == onnx::TensorProto::INT64) {
+    // TODO: either switch IndexTy to be 64 bit, or switch to another type here
+    T->reset(ElemKind::IndexTy, dim);
+  } else {
+    assert(false && "Only float and index tensors are supported");
+  }
+}
+
+/// Loads tensor \p T from the input \p in.
+void ONNXModelLoader::loadInputs(onnx::GraphProto &net) {
+  for (const auto &in : net.input()) {
+    Tensor *T = new Tensor();
+    loadShape(in.type(), T);
+    tensors_[in.name()] = T;
+  }
 }
 
 void ONNXModelLoader::loadInitializers(onnx::GraphProto &net) {
-  /// Load the network initializaers:
+  // Load the network initializaers:
   for (const auto &in : net.initializer()) {
     Tensor *T = new Tensor();
     loadTensor(in, T);
@@ -423,17 +465,45 @@ void ONNXModelLoader::loadInitializers(onnx::GraphProto &net) {
   }
 }
 
-void ONNXModelLoader::loadNetwork(onnx::GraphProto &net) {
-  /// Load the network operators:
-  for (int i = 0; i < net.node_size(); i++) {
-    auto &op = net.node(i);
-    loadOperator(op);
-  }
-
+void ONNXModelLoader::setOutputNode(onnx::GraphProto &net) {
   assert(net.output_size() && "Network needs external outputs defined.");
   auto *r = getNodeByName(net.output(0).name());
   root_ = G_.createSave("output", r);
 }
+
+bool ONNXModelLoader::loadNetwork(onnx::GraphProto &net) {
+  /// Load the network operators:
+  for (int i = 0; i < net.node_size(); i++) {
+    auto &op = net.node(i);
+    if (!loadOperator(op)) {
+      unexpectedNodeError(op, "Unsupported operator.");
+      return false;
+    }
+  }
+
+  return true;
+}
+
+std::unique_ptr<ONNXModelLoader> ONNXModelLoader::parse(const void *onnxModel,
+                                                        size_t onnxModelSize,
+                                                        Function &F) {
+  std::unique_ptr<ONNXModelLoader> onnxLoader(new ONNXModelLoader(F));
+
+  onnx::GraphProto modelDef;
+  if (!onnxLoader->loadProto(modelDef, onnxModel, onnxModelSize)) {
+    return nullptr;
+  }
+
+  onnxLoader->loadInputs(modelDef);
+  if (!onnxLoader->loadNetwork(modelDef)) {
+    return nullptr;
+  }
+
+  return onnxLoader;
+}
+
+ONNXModelLoader::ONNXModelLoader(Function &F)
+    : CommonOperatorLoader({}, {}, F) {}
 
 ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  llvm::ArrayRef<const char *> tensorNames,
@@ -441,7 +511,12 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
     : CommonOperatorLoader(tensorNames, tensors, F) {
   // The ONNX model that we are deserializing.
   onnx::GraphProto modelDef;
-  loadProtoFile(modelDef, modelDescFilename);
+  if (!loadProto(modelDef, modelDescFilename)) {
+    GLOW_ASSERT("Cannot load the network.");
+  }
+
   loadInitializers(modelDef);
-  loadNetwork(modelDef);
+  if (loadNetwork(modelDef)) {
+    setOutputNode(modelDef);
+  }
 }
