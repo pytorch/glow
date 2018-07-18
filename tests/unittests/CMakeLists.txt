@@ -116,6 +116,20 @@ target_link_libraries(graphOptzTest
                         testMain)
 add_glow_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest)
 
+if(GLOW_WITH_CPU)
+add_executable(PartitionTest
+               PartitionTest.cpp)
+target_link_libraries(PartitionTest
+                      PRIVATE
+                        ExecutionEngine
+                        Graph
+                        IR
+                        Optimizer
+                        gtest
+                        testMain)
+add_glow_test(PartitionTest ${GLOW_BINARY_DIR}/tests/PartitionTest)
+endif()
+
 add_executable(quantizationTest
                quantizationTest.cpp)
 target_link_libraries(quantizationTest
