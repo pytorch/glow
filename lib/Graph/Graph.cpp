@@ -1905,6 +1905,7 @@ void Function::verify() const {
   // Check that all uses of each node refer to this node.
   for (const auto &N : nodes_) {
     for (const auto &U : N.getUsers()) {
+      (void)U;
       assert(U.get()->getNode() == &N &&
              "All uses of a node should refer to this node");
     }
