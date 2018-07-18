@@ -29,6 +29,7 @@
 
 namespace glow {
 
+class Function;
 class Node;
 class NodeWalker;
 struct NodeUse;
@@ -239,9 +240,12 @@ protected:
   /// nodes.
   static void destroyNode(Node *N);
 
+  /// Link to the function holding this node.
+  Function *parent_;
+
 public:
   Node(Kinded::Kind k, llvm::StringRef name)
-      : Named(name), Kinded(k), predicate_(this, nullptr) {}
+      : Named(name), Kinded(k), predicate_(this, nullptr), parent_(nullptr) {}
 
   /// \returns the nullable predicate of the current node.
   const NodeValue getPredicate() const;
@@ -256,6 +260,13 @@ public:
   NodeValue getNthResult(unsigned idx);
   /// \returns the n'th result of the node.
   const NodeValue getNthResult(unsigned idx) const;
+
+  /// \returns the function holding this node.
+  /// If that node does not belong to any function, this
+  /// is nullptr.
+  Function *getParent() const { return parent_; }
+  /// Set the link to the function that holds this node.
+  void setParent(Function *parent) { parent_ = parent; }
 
   /// Getters/setters to access Node's inputs and outputs.
   unsigned getNumInputs() const;
@@ -383,16 +394,18 @@ template <>
 struct ilist_traits<glow::Node> : public ilist_default_traits<glow::Node> {
   using Node = glow::Node;
 
+  glow::Function *getContainingFunction();
+
 private:
   using node_iterator = simple_ilist<Node>::iterator;
 
 public:
   static void deleteNode(Node *N) { glow::Node::destroyNode(N); }
 
-  void addNodeToList(Node *N) {}
-  void removeNodeFromList(Node *N) {}
+  void addNodeToList(Node *N);
+  void removeNodeFromList(Node *N);
   void transferNodesFromList(ilist_traits<Node> &L2, node_iterator first,
-                             node_iterator last) {}
+                             node_iterator last);
 
 private:
   void createNode(const Node &);

@@ -547,6 +547,9 @@ public:
   Node *getNodeByName(llvm::StringRef name);
 
   const NodesList &getNodes() const { return nodes_; }
+
+  /// \returns pointer to the class member for the nodes list.
+  static NodesList Function::*getNodesMemberPtr() { return &Function::nodes_; }
 };
 
 struct TrainingConfig;

@@ -347,6 +347,13 @@ void Node::verify() const {
     assert(Ty->dims().size() == 1 && "Predicate must be a vector");
   }
 
+  if (getParent()) {
+    assert(std::find(getParent()->getNodes().begin(),
+                     getParent()->getNodes().end(),
+                     *this) != getParent()->getNodes().end() &&
+           "Node not present in its parent");
+  }
+
   // Verify node-specific properties:
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
@@ -356,4 +363,41 @@ void Node::verify() const {
   default:
     llvm_unreachable("Unhandled node");
   }
+}
+
+//===----------------------------------------------------------------------===//
+// ilist_traits<glow::Node> Implementation
+//===----------------------------------------------------------------------===//
+
+// The trait object is embedded into a Function.  Use dirty hacks to
+// reconstruct the Function from the 'self' pointer of the trait.
+Function *llvm::ilist_traits<Node>::getContainingFunction() {
+  size_t Offset(size_t(&((Function *)nullptr->*Function::getNodesMemberPtr())));
+  iplist<Node> *Anchor(static_cast<iplist<Node> *>(this));
+  return reinterpret_cast<Function *>(reinterpret_cast<char *>(Anchor) -
+                                      Offset);
+}
+
+void llvm::ilist_traits<Node>::addNodeToList(Node *node) {
+  assert(node->getParent() == nullptr && "Already in a list!");
+  node->setParent(getContainingFunction());
+}
+
+void llvm::ilist_traits<Node>::removeNodeFromList(Node *node) {
+  // When an instruction is removed from a function, clear the parent pointer.
+  assert(node->getParent() && "Not in a list!");
+  node->setParent(nullptr);
+}
+
+void llvm::ilist_traits<Node>::transferNodesFromList(
+    llvm::ilist_traits<Node> &L2, node_iterator first, node_iterator last) {
+  // If transferring nodes within the same Function, no reason to
+  // update their parent pointers.
+  Function *ThisParent = getContainingFunction();
+  if (ThisParent == L2.getContainingFunction())
+    return;
+
+  // Update the parent fields in the nodes.
+  for (; first != last; ++first)
+    first->setParent(ThisParent);
 }

@@ -549,3 +549,51 @@ TEST(Graph, schedulingOfSaves) {
   // FIXME: This should be true, but right now it is not!
   EXPECT_FALSE /*TRUE*/ (allEqual);
 }
+
+/// Check that the parent link is properly updated while tweaking
+/// nodes and their function.
+TEST(Graph, parentLink) {
+  ExecutionEngine EE;
+
+  auto &mod = EE.getModule();
+  Variable *V = new Variable("V", mod.uniqueType(ElemKind::FloatTy, {3, 32}),
+                             VisibilityKind::Private,
+                             Variable::TrainKind::Broadcast, 0, mod.getPRNG());
+  // Variables don't belong to any function...
+  EXPECT_EQ(V->getParent(), nullptr);
+  // Even when we create them from a module...
+  Variable *V2 = mod.createVariable(V->getType(), "V2");
+  EXPECT_EQ(V2->getParent(), nullptr);
+  // Or add them to a module.
+  mod.addVar(V);
+  EXPECT_EQ(V->getParent(), nullptr);
+
+  Function *F = mod.createFunction("main");
+
+  // Nodes created with function helper belong to the related function.
+  auto *addNode = F->createAdd("addnode", V, V2);
+  EXPECT_EQ(addNode->getParent(), F);
+
+  // Nodes created directly don't belong to any function.
+  auto *addNode2 = new AddNode("addnode2", V->getType(), addNode, addNode);
+  EXPECT_EQ(addNode2->getParent(), nullptr);
+
+  // Nodes added to a function belong to that function.
+  F->addNode(addNode2);
+  EXPECT_EQ(addNode2->getParent(), F);
+
+  // Cloned nodes don't belong to anything.
+  auto *clonedAddNode = addNode->clone();
+  EXPECT_EQ(clonedAddNode->getParent(), nullptr);
+
+  // Check that the setter properly sets things.
+  clonedAddNode->setParent(F);
+  EXPECT_EQ(clonedAddNode->getParent(), F);
+  clonedAddNode->setParent(nullptr);
+  EXPECT_EQ(clonedAddNode->getParent(), nullptr);
+
+  // Add the cloned node to F so that the memory is properly
+  // cleaned at the end of the test.
+  F->addNode(clonedAddNode);
+  EXPECT_EQ(clonedAddNode->getParent(), F);
+}
