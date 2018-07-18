@@ -43,18 +43,43 @@ class ONNXModelLoader
   void setVersion(onnx::ModelProto MP);
 
   /// Load the network operators from the GraphProto.
-  void loadNetwork(onnx::GraphProto &net);
+  /// \returns true if network can be loaded.
+  bool loadNetwork(onnx::GraphProto &net);
+
+  /// Set the root_ as an output node.
+  void setOutputNode(onnx::GraphProto &net);
 
   /// Load the network initializers from the GraphProto.
   void loadInitializers(onnx::GraphProto &net);
 
+  /// Load the inputs from the GraphProto. This is useful when the
+  /// initializers are not available.
+  void loadInputs(onnx::GraphProto &net);
+
+  /// \returns true if operator \p op can be loaded.
   /// Load the operator \p op into the network. This creates one or more nodes
   /// in the network.
-  void loadOperator(const onnx::NodeProto &op);
+  bool loadOperator(const onnx::NodeProto &op);
 
-  /// Reads a network (weights or structure) from the serialized protocol buffer
-  /// file.
-  bool loadProtoFile(onnx::GraphProto &net, const std::string &filename);
+  /// \returns true if \p net can be constructed from the content of the
+  /// file \p filename.
+  /// Loads GraphProto \p net from the file containing serialized protobuf.
+  bool loadProto(onnx::GraphProto &net, const std::string &filename);
+
+  /// \returns true if \p net can be constructed from the in-memory
+  /// serialized protobuf.
+  /// Loads GraphProto \p net from the in-memory serialized protobuf \p
+  /// onnxModel with the model size \p onnxModelSize.
+  bool loadProto(onnx::GraphProto &net, const void *onnxModel,
+                 size_t onnxModelSize);
+
+  /// \returns true if GraphProto \p net can be loaded from the stream \p
+  /// iStream.
+  bool loadProto(onnx::GraphProto &net,
+                 google::protobuf::io::ZeroCopyInputStream &iStream);
+
+  /// Creates a ONNX model loader to build \p F.
+  ONNXModelLoader(Function &F);
 
   /// ONNX model ir_version;
   size_t irVersion_;
@@ -70,6 +95,12 @@ public:
   ONNXModelLoader(const std::string &modelDescFilename,
                   llvm::ArrayRef<const char *> tensorNames,
                   llvm::ArrayRef<Tensor *> tensors, Function &F);
+
+  /// \returns unique pointer to ONNXModelLoader if \p onnxModel can be parsed,
+  /// e.g., the model is a valid ONNX model and Glow supports all of the
+  /// operators in the network. \returns nullptr otherwise.
+  static std::unique_ptr<ONNXModelLoader>
+  parse(const void *onnxModel, size_t onnxModelSize, Function &F);
 };
 
 } // namespace glow
