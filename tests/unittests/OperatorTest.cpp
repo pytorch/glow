@@ -928,21 +928,27 @@ TEST_P(InterpAndCPU, ScatterAssignQuantized) {
 }
 
 TEST_P(Operator, QuantizeAndDequantize) {
-  Tensor inputs(ElemKind::FloatTy, {1, 4});
-  inputs.getHandle() = {1, 1.2f, 0.5f, 1.3f};
-
   auto *A = mod_.createVariable(ElemKind::FloatTy, {1, 4}, "A",
                                 VisibilityKind::Public);
+  auto *B = mod_.createVariable(ElemKind::FloatTy, {1, 4}, "B",
+                                VisibilityKind::Public);
+  A->getPayload().getHandle() = {1, 1.2f, 0.5f, 1.3f};
+  B->getPayload().getHandle() = {1.8f, 5.2f, 3.5f, 11.3f};
 
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {1, 4}, 0.05, -138);
-  auto *quantize = F_->createQuantize("quantize", A, qType);
-  auto *dequantize = F_->createDequantize("dequantize", quantize);
+  auto *quantizeA = F_->createQuantize("quantize", A, qType);
+  auto *quantizeB = F_->createQuantize("quantize", B, qType);
+  auto *add = F_->createAdd("add", quantizeA, quantizeB);
+  auto *dequantize = F_->createDequantize("dequantize", add);
   auto *result = F_->createSave("save", dequantize);
+  auto *fpAdd = F_->createAdd("fpAdd", A, B);
+  auto *fpResult = F_->createSave("fpSave", fpAdd);
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run({A}, {&inputs});
+  EE_.run({}, {});
 
-  EXPECT_TRUE(inputs.isEqual(result->getVariable()->getPayload()));
+  EXPECT_TRUE(result->getVariable()->getPayload().isEqual(
+      fpResult->getVariable()->getPayload()));
 }
 
 TEST_P(InterpAndCPU, IntMatMul) {
