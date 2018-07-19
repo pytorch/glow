@@ -667,6 +667,37 @@ static bool hasOverlappingIntervals(Intervals &intervals, Interval I) {
   return false;
 }
 
+/// Helper function to get a compatible value to replace \p val with \p with.
+/// This function casts \p with if necessary. When a cast needs to be created
+/// it will be inserted before \p Before. Moreover, when that happens, the
+/// second element of the returned pair is true, false otherwise.
+///
+/// \returns A pair with the first element being the Value matching val's type,
+/// using \p with's content and the second element being the status of
+/// whether a cast was inserted or not.
+static std::pair<Value *, bool>
+getCompatibleValueForReplacement(IRBuilder &B, Instruction *Before,
+                                 const Value &val, Value &with) {
+  if (val.getType() == with.getType()) {
+    return std::make_pair(&with, false);
+  }
+
+  Value *replacement = getOrigin(&with);
+  if (val.getType() == replacement->getType()) {
+    return std::make_pair(replacement, false);
+  }
+
+  // Perform a cast to make the types match.
+  std::vector<size_t> offsets(replacement->dims().size(), 0);
+  auto *tv = B.createTensorViewInst(with.getName(), replacement, val.getType(),
+                                    offsets);
+  assert(tv->getType()->size() == with.getType()->size() &&
+         "Replacement must have same number of elements as original.");
+  B.getIRFunction().moveInstruction(Before, tv);
+  replacement = tv;
+  return std::make_pair(replacement, true);
+}
+
 /// Moves an interval from one interval list to another.
 static void moveInterval(Intervals &from, Intervals &to, Interval &interval) {
   auto fromIt = std::find(from.begin(), from.end(), interval);
@@ -690,14 +721,25 @@ static void moveInterval(Intervals &from, Intervals &to, Interval &interval) {
 }
 
 /// Replace all uses of \p val by \p with inside interval \p liveInterval.
+/// While replacing the uses if we don't find a definition before
+/// the first use and \p fixUpFirstUseIfNoDef is true, this method will
+/// create a proper definition for \p with.
+///
+/// \p fixUpFirstUseIfNoDef must only be used when we are extending destination
+/// live-ranges upward. Also, \p fixUpFirstUseIfNoDef must only be used if
+/// we extend the live-range of \p with toward the live-range of a WeightVar.
+/// If fixUpFirstUseIfNoDef is required in other situations, that means the
+/// input IR is wrong and that we have a bug somewhere else.
 static void replaceAllUsesInsideIntervalWith(
     Value *val, Value *with, const Interval &liveInterval, IRFunction &M,
-    const LiveIntervalsInstructionNumbering &instrNumbering) {
+    const LiveIntervalsInstructionNumbering &instrNumbering,
+    bool fixUpFirstUseIfNoDef) {
   auto &instrs = M.getInstrs();
   auto valOrigin = getOrigin(val);
-  auto withOrigin = getOrigin(with);
   unsigned instIdx = 0;
   IRBuilder B(&M);
+  bool sawDefinitionBeforeFirstUse = false;
+  Instruction *firstUse = nullptr;
   for (auto it = instrNumbering.getInstr(liveInterval.begin_)->getIterator(),
             e = instrs.end();
        it != e && instIdx <= liveInterval.end_; ++it) {
@@ -712,6 +754,7 @@ static void replaceAllUsesInsideIntervalWith(
     if (instNum < 0)
       continue;
 
+    bool sawDefinition = false;
     // This is an instruction inside the interval.
     // Iterate over all operands and perform replacements.
     for (int i = 0, e = I->getNumOperands(); i < e; i++) {
@@ -730,29 +773,48 @@ static void replaceAllUsesInsideIntervalWith(
       // Skip operands outside of the interval.
       if (opIdx < liveInterval.begin_ || opIdx >= liveInterval.end_)
         continue;
-      auto replacement = with;
-      if (op->getType() != replacement->getType())
-        replacement = withOrigin;
-      if (op->getType() != replacement->getType()) {
-        // Perform a cast if required.
-        std::vector<size_t> offsets(replacement->dims().size(), 0);
-        auto *tv = B.createTensorViewInst(I->getName(), replacement,
-                                          op->getType(), offsets);
-        assert(tv->getType()->size() == with->getType()->size() &&
-               "Replacement must have same number of elements as original.");
-        M.moveInstruction(I, tv);
-        replacement = tv;
+
+      std::pair<Value *, bool> replacementAndHasCreated =
+          getCompatibleValueForReplacement(B, I, *op, *with);
+      auto *replacement = replacementAndHasCreated.first;
+      // If we inserted a cast of with and didn't see any use
+      // of with yet, this is our first use.
+      if (replacementAndHasCreated.second && !firstUse) {
+        assert(llvm::isa<Instruction>(replacement) &&
+               "Replacement status should not be \"hasCreated\"");
+        firstUse = llvm::cast<Instruction>(replacement);
       }
 
       DEBUG_GLOW(llvm::dbgs()
                      << "Replacing inside instruction " << opIdx << "\n";
                  llvm::dbgs() << "before: "; I->dump(llvm::dbgs());
                  llvm::dbgs() << "\n");
+
+      // Don't account for InOut definitions, because the In part of that
+      // definition is going to be undefined if we didn't see any
+      // definition yet.
+      sawDefinition |= opKind == OperandKind::Out;
+      if (!firstUse &&
+          (opKind == OperandKind::In || opKind == OperandKind::InOut)) {
+        firstUse = I;
+      }
+
       // Replace the old value by the new value.
       I->setOperand(i, replacement);
       DEBUG_GLOW(llvm::dbgs() << "after: "; I->dump(llvm::dbgs());
                  llvm::dbgs() << "\n");
     }
+    sawDefinitionBeforeFirstUse |= (sawDefinition && !firstUse);
+  }
+  // We found a use without a definition first and have been asked to
+  // fix those situations.
+  // Insert a copy to initialize "with" with val.
+  if (firstUse && !sawDefinitionBeforeFirstUse && fixUpFirstUseIfNoDef) {
+    std::pair<Value *, bool> replacementAndHasCreated =
+        getCompatibleValueForReplacement(B, firstUse, *with, *val);
+    auto *fixupInit = B.createCopyInst(firstUse->getName().str() + ".fixup",
+                                       with, replacementAndHasCreated.first);
+    M.moveInstruction(firstUse, fixupInit);
   }
 }
 
@@ -964,15 +1026,22 @@ public:
     if (bufferToReuse == destOrigin_) {
       // This operation may extend the lifetime of dest's buffer.
       // shareBuffers will fix it once it's done.
-      reuseBufferInsideInterval(srcOrigin_, dest_, *srcInterval_,
-                                *destInterval_, M_, srcIntervals_,
-                                destIntervals_);
+      // However, if the source interval is a WeightVar, it may
+      // not have a definition on the interval we are replacing.
+      // If that's the case, we need to add one, otherwise
+      // dest will not be defined and shareBuffers won't have enough
+      // information to be able to fix that.
+      reuseBufferInsideInterval(
+          srcOrigin_, dest_, *srcInterval_, *destInterval_, M_, srcIntervals_,
+          destIntervals_,
+          /*fixUpFirstUseIfNoDef*/ llvm::isa<WeightVar>(srcOrigin_));
       return true;
     }
 
     // Source buffer can be reused.
     reuseBufferInsideInterval(destOrigin_, src_, *destInterval_, *srcInterval_,
-                              M_, destIntervals_, srcIntervals_);
+                              M_, destIntervals_, srcIntervals_,
+                              /*fixUpFirstUseIfNoDef*/ false);
     return true;
   }
 
@@ -981,14 +1050,15 @@ public:
   void reuseBufferInsideInterval(Value *oldBuffer, Value *newBuffer,
                                  Interval oldInterval, Interval &newInterval,
                                  IRFunction &M, Intervals &oldIntervals,
-                                 Intervals &newIntervals) {
+                                 Intervals &newIntervals,
+                                 bool fixUpFirstUseIfNoDef) {
     DEBUG_GLOW(llvm::dbgs()
                << "\n\nReuse buffers: use buffer of " << newBuffer->getName()
                << " as a buffer for " << oldBuffer->getName() << "\n"
                << "in live interval " << oldInterval << "\n");
     // Replace oldBuffer with newBuffer.
     replaceAllUsesInsideIntervalWith(oldBuffer, newBuffer, oldInterval, M,
-                                     instrNumbering_);
+                                     instrNumbering_, fixUpFirstUseIfNoDef);
     if (isCopyPropagation()) {
       // This is a copy propagation.
       // Merge the old interval with the new one.

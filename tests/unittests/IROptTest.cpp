@@ -18,6 +18,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
+#include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/Optimizer.h"
 
@@ -538,4 +539,177 @@ TEST(Optimizer, inoutCopy) {
     }
     EXPECT_EQ(use.get()->getOperand(0).first, expectedDest[idx++]);
   }
+}
+
+/// Check that we properly define a buffer when we extend its live-range
+/// on a segment of the source that does not have any definition.
+/// A source live-range without any definition can happen when this
+/// is the first use of a WeightVar.
+/// At the high level, this test looks like this:
+/// WeightVar    Buffer
+///    | useA
+///    | useB      | def
+///    | redef     | save to output
+/// - UseA is the first use of WeightVar and we want it to be replaced by
+///   a use of Buffer. I.e., Buffer live-range is extended toward the top.
+/// - UseB involves both WeightVar and Buffer. It exposes the buffer sharing
+///   opportunity between these two variables. It must happen after useA
+///   to expose the case of extending the live-range of a buffer toward
+///   the top where no definition exists.
+/// - redef redefines WeightVar. It is necessary otherwise both useA and useB
+///   could all share the same buffer and thus, we would extend the live-range
+///   of the buffer in useA downward (or the use of Buffer up to the
+///   definition of the buffer in useA), which is not what we want to test.
+/// - save to output is required to keep the def of Buffer alive. Moreover,
+///   the save must be done in such a way that the output buffer and Buffer
+///   must not be able to share the same buffer. Otherwise, the live-range
+///   of output buffer will be extended upward to useB and given output and
+///   WeightVar are both externally observable, the output buffer cannot be
+///   merged with WeightVar.
+///   Therefore, we won't expose an extension of output up to useA
+///   and won't test the case where the replaced buffer doesn't have any
+///   definition.
+///
+/// The expected result at a high level looks like this:
+/// WeightVar    Buffer
+///    |   copy    | <- Buffer gets WeightVar
+///      useA      | <- Buffer is used instead of WeightVar
+///      useB      | def <- ditto
+///    | redef     | save to output
+TEST(Optimizer, bufferReuseWithoutDefs) {
+  Module mod;
+  Function *F = mod.createFunction("bufferReuseWithoutDefs");
+  IRFunction M(F);
+  IRBuilder bb(&M);
+
+  auto *input = bb.createWeightVar(glow::ElemKind::FloatTy, {64}, "input",
+                                   WeightVar::MutabilityKind::Mutable);
+  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {2, 64}, "output",
+                                    WeightVar::MutabilityKind::Mutable);
+  auto *tmp1 =
+      bb.createAllocActivationInst("tmp1", glow::ElemKind::FloatTy, {64});
+
+  auto *tmp2 =
+      bb.createAllocActivationInst("tmp2", glow::ElemKind::FloatTy, {64});
+  auto *tmp3 =
+      bb.createAllocActivationInst("tmp3", glow::ElemKind::FloatTy, {64});
+
+  bb.createSplatInst("tmp2init", tmp2, 1.0);
+  // use input for some stuff.
+  auto *useA = bb.createElementAddInst("useA", tmp3, tmp2, input);
+  // Make the first user of input a dependency of the definition
+  // of tmp1 that way the scheduler cannot mess with the layout
+  // we want for the instructions ordering.
+  bb.createElementAddInst("useB", tmp1, input, tmp3);
+  bb.createCopyInst("redef", input, tmp3);
+  auto *view = bb.createTensorViewInst(
+      "view", tmp1, mod.uniqueType(Type(glow::ElemKind::FloatTy, {1, 64})),
+      {0});
+  bb.createInsertTensorInst("save", output, view, {0, 0}, 1, 0);
+
+  bb.createDeallocActivationInst("dealloc1", tmp1);
+  bb.createDeallocActivationInst("dealloc2", tmp2);
+  bb.createDeallocActivationInst("dealloc2", tmp3);
+
+  optimize(M, CompilationMode::Infer, MockBackend());
+
+  // Check that we manage to expose the problematic case we wanted:
+  // tmp1 is extended upward and replace the use of input.
+  EXPECT_EQ(useA->getRHS(), tmp1);
+  // Check that tmp1 is properly defined before useA.
+  Instruction *instBeforeUseA = &*std::prev(useA->getIterator());
+
+  EXPECT_TRUE(isa<CopyInst>(instBeforeUseA));
+  // The somewhat complicated check is to make sure we don't crash the test
+  // when instBeforeUseA is not a copy.
+  // I.e., this test was failing (instead of crashing) when the
+  // bug was present.
+  EXPECT_EQ(instBeforeUseA->getNumOperands() > 0
+                ? instBeforeUseA->getOperand(0).first
+                : nullptr,
+            tmp1);
+  EXPECT_EQ(instBeforeUseA->getNumOperands() > 1
+                ? instBeforeUseA->getOperand(1).first
+                : nullptr,
+            input);
+}
+
+/// Same as bufferReuseWithoutDefs but with casts in the middle.
+/// This makes sure that we properly set the types for whatever fixup
+/// code we will insert.
+/// The high level view of the test is:
+/// WeightVar    Buffer
+///    | useA
+///    | useB(cast)| def
+///    | redef     | save to output
+///
+/// The expected result at a high level looks like this:
+/// WeightVar    Buffer
+///    | copy(cast)| <- Buffer gets WeightVar
+///      useA(cast)| <- Buffer is used instead of WeightVar
+///      useB      | def <- ditto
+///    | redef     | save to output
+TEST(Optimizer, bufferReuseWithoutDefsPlusCasts) {
+  Module mod;
+  Function *F = mod.createFunction("bufferReuseWithoutDefsPlusCasts");
+  IRFunction M(F);
+  IRBuilder bb(&M);
+
+  auto *input = bb.createWeightVar(glow::ElemKind::FloatTy, {1, 64}, "input",
+                                   WeightVar::MutabilityKind::Mutable);
+  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {2, 64}, "output",
+                                    WeightVar::MutabilityKind::Mutable);
+  auto *tmp1 =
+      bb.createAllocActivationInst("tmp1", glow::ElemKind::FloatTy, {64});
+
+  auto *tmp2 =
+      bb.createAllocActivationInst("tmp2", glow::ElemKind::FloatTy, {1, 64});
+  auto *tmp3 =
+      bb.createAllocActivationInst("tmp3", glow::ElemKind::FloatTy, {1, 64});
+
+  bb.createSplatInst("tmp2init", tmp2, 1.0);
+  auto *useA = bb.createElementAddInst("useA", tmp3, tmp2, input);
+  auto *inputView = bb.createTensorViewInst(
+      "inputView", input, mod.uniqueType(Type(glow::ElemKind::FloatTy, {64})),
+      {0});
+  auto *tmp3View = bb.createTensorViewInst(
+      "tmp3View", tmp3, mod.uniqueType(Type(glow::ElemKind::FloatTy, {64})),
+      {0});
+
+  bb.createElementAddInst("useB", tmp1, inputView, tmp3View);
+  bb.createCopyInst("redef", input, tmp3);
+  auto *view = bb.createTensorViewInst(
+      "view", tmp1, mod.uniqueType(Type(glow::ElemKind::FloatTy, {1, 64})),
+      {0});
+  bb.createInsertTensorInst("save", output, view, {0, 0}, 1, 0);
+
+  bb.createDeallocActivationInst("dealloc1", tmp1);
+  bb.createDeallocActivationInst("dealloc2", tmp2);
+  bb.createDeallocActivationInst("dealloc2", tmp3);
+
+  optimize(M, CompilationMode::Infer, MockBackend());
+
+  // Check that we manage to expose the problematic case we wanted:
+  // tmp1 is extended upward and replace the use of input.
+  Value *useARHS = useA->getRHS();
+  EXPECT_EQ(getOrigin(useARHS), tmp1);
+  Instruction *tmp1TensorView = dyn_cast<TensorViewInst>(useARHS);
+  EXPECT_TRUE(tmp1TensorView && tmp1TensorView->getOperand(0).first == tmp1);
+  // Check that tmp1 is properly defined before useA.
+  Instruction *tmp1Fixup =
+      tmp1TensorView ? &*std::prev(tmp1TensorView->getIterator()) : nullptr;
+  EXPECT_TRUE(tmp1Fixup && isa<CopyInst>(tmp1Fixup));
+  // The somewhat complicated check is to make sure we don't crash the test
+  // when instBeforeUseA is not a copy.
+  EXPECT_EQ((tmp1Fixup && tmp1Fixup->getNumOperands() > 0)
+                ? getOrigin(tmp1Fixup->getOperand(0).first)
+                : nullptr,
+            tmp1);
+  // Now check that input feeds tmp1Fixup and was properly casted.
+  Instruction *inputCast =
+      (tmp1Fixup && tmp1Fixup->getNumOperands() > 1)
+          ? dyn_cast<TensorViewInst>(tmp1Fixup->getOperand(1).first)
+          : nullptr;
+  EXPECT_EQ(inputCast ? getOrigin(inputCast) : nullptr, input);
+  EXPECT_EQ(inputCast ? inputCast->getOperand(0).first : nullptr, input);
 }
