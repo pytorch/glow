@@ -593,7 +593,7 @@ void OpenCLFunction::execute() {
                     I.getOperand(2).first->getType()->getScale() / destScale,
                 0);
             setKernelArg(kernel, ++numArgs, resultScaleParams);
-          } 
+          }
         }
       }
       enqueueKernel(commands_, kernel, deviceId_, {global}, kernelLaunches_);
