@@ -194,7 +194,8 @@ public:
                           unsigned srcIdx);
 
   /// \returns parent of current instruction.
-  IRFunction *getParent() const { return F_; }
+  const IRFunction *getParent() const { return F_; }
+  IRFunction *getParent() { return F_; }
 
   /// Sets a parent for the current instruction.
   void setParent(IRFunction *Mod) { F_ = Mod; }
