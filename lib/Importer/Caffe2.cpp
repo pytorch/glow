@@ -366,9 +366,11 @@ void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
 void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
   for (auto &op : net.op()) {
     ArgumentDictionaryTy dict = loadArgumentMap(op);
+    const std::string &typeName = op.type();
 
     /// Load tensors with values:
-    if (op.type() == "GivenTensorFill") {
+    if (typeName == "GivenTensorFill" || typeName == "GivenTensorIntFill" ||
+        typeName == "GivenTensorInt64Fill") {
       /*
        output: "conv1_w"
        name: ""
@@ -394,6 +396,8 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
 
       size_t i = 0;
       if (dict["values"]->floats_size()) {
+        assert(typeName != "GivenTensorIntFill" &&
+               typeName != "GivenTensorInt64Fill");
         T->reset(ElemKind::FloatTy, dim);
         auto TH = T->getHandle<>();
         for (auto num : dict["values"]->floats()) {
@@ -417,7 +421,7 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
     }
 
     // Load tensors with constant fill:
-    if (op.type() == "ConstantFill") {
+    if (typeName == "ConstantFill") {
       /*
        output: "data"
        name: ""
@@ -442,6 +446,46 @@ void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
       T->reset(ElemKind::FloatTy, dim);
       auto TH = T->getHandle<>();
       TH.clear();
+      continue;
+    }
+
+    if (typeName == "UniformFill") {
+      /*
+       output: "fc/w"
+       name: ""
+       type: "UniformFill"
+       arg {
+         name: "max"
+         f: 0.25
+       }
+       arg {
+         name: "shape"
+         ints: 1
+         ints: 16
+       }
+       arg {
+         name: "min"
+         f: -0.25
+       }
+      */
+      const auto &name = op.output(0);
+      auto *T = new Tensor();
+      tensors_[name] = T;
+      auto dim = getShape(dict["shape"]);
+      T->reset(ElemKind::FloatTy, dim);
+      auto TH = T->getHandle<>();
+      float tensorMin = loadFloat(dict["min"]);
+      float tensorMax = loadFloat(dict["max"]);
+
+#ifndef NDEBUG
+      llvm::outs() << "The model contains UniformFill operator, which generates"
+                   << " random numbers. This could be source of discrepancy.\n";
+#endif // NDEBUG
+      // Uniformly generate random numbers in [tensorMin; tensorMax).
+      for (size_t i = 0, e = T->size(); i != e; i++) {
+        TH.raw(i) =
+            G_.getParent()->getPRNG().nextRandReal(tensorMin, tensorMax);
+      }
       continue;
     }
 
