@@ -264,7 +264,7 @@ public:
   /// \returns the function holding this node.
   /// If that node does not belong to any function, this
   /// is nullptr.
-  Function *getParent() const { return parent_; }
+  const Function *getParent() const { return parent_; }
   /// Set the link to the function that holds this node.
   void setParent(Function *parent) { parent_ = parent; }
 
