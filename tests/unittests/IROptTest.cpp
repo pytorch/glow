@@ -125,6 +125,33 @@ TEST(Optimizer, shareBuffers) {
   EXPECT_EQ(M.getInstrs().size(), 2);
 }
 
+TEST(Optimizer, deleteDeadViews) {
+  Module mod;
+  Function *F = mod.createFunction("DeleteDeadViews");
+  IRFunction M(F);
+  IRBuilder bb(&M);
+
+  auto *input = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input",
+                                   WeightVar::MutabilityKind::Constant);
+  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "ouput",
+                                    WeightVar::MutabilityKind::Mutable);
+
+  auto *tensorView1 = bb.createTensorViewInst(
+      "tensor_view1", input,
+      mod.uniqueType(Type{glow::ElemKind::FloatTy, {1, 1}}), {0, 0});
+
+  bb.createTensorViewInst("tensor_view2", tensorView1,
+                          mod.uniqueType(Type{glow::ElemKind::FloatTy, {1}}),
+                          {0});
+  bb.createCopyInst("copy", output, input);
+
+  optimize(M, CompilationMode::Infer, MockBackend());
+
+  // Check that all tensor_view instructions are eliminated, because they are
+  // never used.
+  EXPECT_EQ(M.getInstrs().size(), 1);
+}
+
 TEST(Optimizer, copyPropagation) {
   Module mod;
   Function *F = mod.createFunction("ShareBuffers");

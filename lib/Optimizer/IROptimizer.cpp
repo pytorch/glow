@@ -344,43 +344,34 @@ static void sinkTensorViews(IRFunction &M) {
 static void deleteDeadAllocs(IRFunction &M) {
   auto &instrs = M.getInstrs();
 
-  llvm::SmallVector<Instruction *, 16> erasedInstructions{};
-
-  // Remove all unused tensorviews.
-  for (auto &I : instrs) {
-    if (isa<TensorViewInst>(I) && I.getNumUsers() == 0) {
-      erasedInstructions.push_back(&I);
+  // Remove all unused tensor views tracking back their dependencies, which are
+  // in a topological order.
+  // Note that this should precede to remove dependencies on allocs.
+  for (auto it = instrs.rbegin(); it != instrs.rend();) {
+    // Remember the current instruction and advance the iterator.
+    auto *I = &*it++;
+    if (isa<TensorViewInst>(I) && I->getNumUsers() == 0) {
+      // Remove a tensor view. It may make other tensor views preceding it
+      // eligible for a removal as well.
+      M.eraseInstruction(I);
     }
   }
 
-  for (auto I : erasedInstructions) {
-    M.eraseInstruction(I);
-  }
+  // Remove all of unused allocs and their corresponding deallocs.
+  // Iterate instructions in a reverse order to erase deallocs before
+  // their respective allocs, otherwise `DeallocActivationInst::getAlloc()` will
+  // return erased allocs.
+  for (auto it = instrs.rbegin(); it != instrs.rend();) {
+    auto *I = &*it++;
 
-  erasedInstructions.clear();
-
-  // Remove all of the DeallocActivationInst that close unused allocs.
-  for (auto &I : instrs) {
-    const auto *DA = dyn_cast<const DeallocActivationInst>(&I);
+    const auto *DA = dyn_cast<const DeallocActivationInst>(I);
     if (DA && DA->getAlloc()->getNumUsers() < 2) {
-      erasedInstructions.push_back(&I);
+      M.eraseInstruction(I);
+      continue;
     }
-  }
-
-  for (auto I : erasedInstructions) {
-    M.eraseInstruction(I);
-  }
-  erasedInstructions.clear();
-
-  // Remove the unused allocs.
-  for (auto &I : instrs) {
-    if (isa<AllocActivationInst>(&I) && I.getNumUsers() < 2) {
-      erasedInstructions.push_back(&I);
+    if (isa<AllocActivationInst>(I) && !I->hasUsers()) {
+      M.eraseInstruction(I);
     }
-  }
-
-  for (auto I : erasedInstructions) {
-    M.eraseInstruction(I);
   }
 }
 
