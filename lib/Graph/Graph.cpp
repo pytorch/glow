@@ -1912,6 +1912,8 @@ void Function::verify() const {
   }
 
   for (const auto &N : nodes_) {
+    assert(N.getParent() == this &&
+           "Node is not linked to the function it belongs");
     N.verify();
   }
 }
