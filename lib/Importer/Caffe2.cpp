@@ -256,7 +256,10 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       inputs.push_back(getNodeValueOrCreateVariableByName(op.input(i)));
     }
 
-    auto channel = getChannel(dict);
+    // If axis exists it takes priority over channel.
+    unsigned channel =
+        dict.count("axis") ? loadInt(dict["axis"]) : getChannel(dict);
+
     Node *node = G_.createConcat(opName, inputs, channel);
 
     // Concat has multiple outputs in Caffe2, but I believe the other output
