@@ -566,7 +566,16 @@ void OpenCLFunction::execute() {
 
       if (auto *SI = dyn_cast<SplatInst>(&I)) {
         // Pass the splat as a parameter.
-        setKernelArg(kernel, ++numArgs, SI->getValue());
+        if (!isQuantized) {
+          setKernelArg(kernel, ++numArgs, SI->getValue());
+        } else {
+          auto *destTy = SI->getDest()->getType();
+          TensorQuantizationParams destQ{destTy->getScale(),
+                                         destTy->getOffset()};
+          float val = SI->getValue();
+          int8_t int8Val = quantization::quantize(val, destQ);
+          setKernelArg<int8_t>(kernel, ++numArgs, int8Val);
+        }
       } else if (auto *EPI = dyn_cast<ElementPowInst>(&I)) {
         // Pass the exp as a parameter.
         setKernelArg(kernel, ++numArgs, EPI->getExp());
