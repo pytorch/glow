@@ -66,9 +66,9 @@ public:
   /// Loads the ONNX model that's represented by a model description file,
   /// serialized in \p modelDescFilename and populates the network into \p F.
   /// The tensors in \p tensors are stored with the names in the list of names
-  /// \p names and used as inputs to the network.
+  /// \p tensorNames and used as inputs to the network.
   ONNXModelLoader(const std::string &modelDescFilename,
-                  llvm::ArrayRef<const char *> names,
+                  llvm::ArrayRef<const char *> tensorNames,
                   llvm::ArrayRef<Tensor *> tensors, Function &F);
 };
 

@@ -436,9 +436,9 @@ void ONNXModelLoader::loadNetwork(onnx::GraphProto &net) {
 }
 
 ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
-                                 llvm::ArrayRef<const char *> names,
+                                 llvm::ArrayRef<const char *> tensorNames,
                                  llvm::ArrayRef<Tensor *> tensors, Function &F)
-    : CommonOperatorLoader(names, tensors, F) {
+    : CommonOperatorLoader(tensorNames, tensors, F) {
   // The ONNX model that we are deserializing.
   onnx::GraphProto modelDef;
   loadProtoFile(modelDef, modelDescFilename);

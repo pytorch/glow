@@ -93,17 +93,18 @@ bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {
   return getNodeByNameOrNull(name) != nullptr;
 }
 
-ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> names,
+ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                                llvm::ArrayRef<Tensor *> tensors, Function &F)
     : G_(F) {
   // Verify that the version of the library that we linked against is
   // compatible with the version of the headers we compiled against.
   GOOGLE_PROTOBUF_VERIFY_VERSION;
 
-  assert(names.size() == tensors.size() && "Invalid initialization list");
-  for (unsigned i = 0; i < names.size(); i++) {
-    assert(!hasNodeByName(names[i]) && "Input names have duplicate");
-    createAndRememberVariable(names[i], *tensors[i], VisibilityKind::Public,
+  assert(tensorNames.size() == tensors.size() && "Invalid initialization list");
+  for (unsigned i = 0; i < tensorNames.size(); i++) {
+    assert(!hasNodeByName(tensorNames[i]) && "Input names have duplicate");
+    createAndRememberVariable(tensorNames[i], *tensors[i],
+                              VisibilityKind::Public,
                               Variable::TrainKind::None);
   }
 }
