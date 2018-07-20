@@ -143,8 +143,8 @@ public:
 
   /// Constructs new ProtobufLoader object. It will populate the network into \p
   /// F. The tensors in \p tensors are stored with the names in the list of
-  /// names \p names and used as inputs to the network.
-  ProtobufLoader(llvm::ArrayRef<const char *> names,
+  /// names \p tensorNames and used as inputs to the network.
+  ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                  llvm::ArrayRef<Tensor *> tensors, Function &F);
 
   virtual ~ProtobufLoader();
