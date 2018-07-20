@@ -74,8 +74,7 @@ protected:
 
     // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
     // softmax function. This is similar to a bitcast operation.
-    auto flatten = flattenCdr(in->getType(0)->dims());
-    in = G_.createReshape("reshape", in, {flatten.first, flatten.second});
+    in = G_.createFlatten("flatten", in, 1);
 
     auto *node = G_.createSoftMax(opName, in, softmaxExpected);
     addNodeAsOutput(op, node);
@@ -212,6 +211,14 @@ protected:
     addNodeAsOutput(op, T);
   }
 
+  void loadFlatten(const OpType &op, ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    auto *in = getOrCreateVariableByName(op.input(0));
+    int axis = dict.count("axis") ? loadInt(dict["axis"]) : 1;
+    auto *node = G_.createFlatten(opName, in, axis);
+    addNodeAsOutput(op, node);
+  }
+
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns true and creates new operator.
@@ -245,6 +252,10 @@ protected:
     }
     if (typeName == "Reshape") {
       loadReshape(op, dict);
+      return true;
+    }
+    if (typeName == "Flatten") {
+      loadFlatten(op, dict);
       return true;
     }
     return false;

@@ -94,13 +94,12 @@ void lowerRegressionGradNode(Function *F, RegressionGradNode &node) {
 }
 
 void lowerFullyConnectedNode(Function *F, FullyConnectedNode &FC) {
-  auto xDim = flattenCdr(FC.getInput().getType()->dims());
-  auto wDim = FC.getWeights().dims();
-  auto *X = F->createReshape("fc.1X", FC.getInput(), {xDim.first, xDim.second});
+  auto *X = F->createFlatten("fc.1X", FC.getInput(), 1);
 
+  auto W = FC.getWeights();
   TypeRef outTy = F->getParent()->uniqueTypeWithNewShape(
-      FC.getResult().getType(), {xDim.first, wDim[1]});
-  auto *mul = F->createMatMul("fc.dot", outTy, X, FC.getWeights());
+      FC.getResult().getType(), {X->getResult().dims()[0], W.dims()[1]});
+  auto *mul = F->createMatMul("fc.dot", outTy, X, W);
 
   auto add = F->createBatchedAdd("fc.add.bias", FC.getResult().getType(), mul,
                                  FC.getBias());
@@ -116,7 +115,6 @@ void lowerFullyConnectedGradNode(Function *F, FullyConnectedGradNode &FCG) {
   // Follow the lowering from here:
   // https://github.com/huyouare/CS231n/blob/master/assignment2/cs231n/layers.py#L53
   auto dout = FCG.getGradOfOriginalOutputNamedResult();
-  auto xDims = flattenCdr(FCG.getInput().dims());
 
   // dx = dout * w.T
   auto *wT = F->createTranspose("fcg.wT", FCG.getWeights(), {1, 0});
@@ -125,8 +123,7 @@ void lowerFullyConnectedGradNode(Function *F, FullyConnectedGradNode &FCG) {
   FCG.getGradOfInputNamedInput().replaceAllUsesOfWith(dx);
 
   // dw = xT * dout.
-  Node *x2 =
-      F->createReshape("fcg.x", FCG.getInput(), {xDims.first, xDims.second});
+  Node *x2 = F->createFlatten("fcg.x", FCG.getInput(), 1);
   auto *x2T = F->createTranspose("fcg.xT", x2, {1, 0});
   auto *dw = F->createMatMul("fcg.dot", x2T, dout);
   FCG.getGradOfInputNamedWeights().replaceAllUsesOfWith(dw);

@@ -275,8 +275,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *in = getOrCreateVariableByName(op.input(0));
     if (in->getType(0)->dims().size() > 2) {
       size_t axis = dict.count("axis") ? loadInt(dict["axis"]) : 1;
-      auto xDim = flattenCdr(in->getType(0)->dims(), axis);
-      in = G_.createReshape("fc.in", in, {xDim.first, xDim.second});
+      in = G_.createFlatten("fc.in", in, axis);
     }
 
     // Load weights.
