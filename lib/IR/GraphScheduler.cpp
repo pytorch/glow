@@ -140,6 +140,27 @@ class ChildMemSizeBasedScheduler : public Scheduler {
       orderedChildren.push_back(N->getPredicate());
     }
 
+    // SaveNode hack:
+    // We don't model memory dependencies, but we still need to honor them.
+    // Make sure the SaveNode happens after the last use of the output variable.
+    if (auto *save = dyn_cast<SaveNode>(N)) {
+      Variable *output = save->getVariable();
+      for (NodeUse &use : output->getUsers()) {
+        Node *user = use.getUser();
+        if (user == save) {
+          continue;
+        }
+        // Variables may have users scattered across different functions.
+        // Only accounts for the ones in that function.
+        if (&G_ != user->getParent()) {
+          continue;
+        }
+        assert(!isa<SaveNode>(user) &&
+               "Variables must be saved at most once in each function");
+        orderedChildren.push_back(user);
+      }
+    }
+
     // Order children by (maxSize - resultSize). It gives more
     // priority to the nodes that free more memory after
     // their computation.
