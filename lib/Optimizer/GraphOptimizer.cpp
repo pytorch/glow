@@ -139,11 +139,11 @@ static Node *simplifyNode(Node *node, Function *F) {
 #define SIMPLIFY_OPERANDS(NodeKind)                                            \
   if (auto *NN = dyn_cast<NodeKind##Node>(node)) {                             \
     Node *LHS = simplifyNode(NN->getLHS(), F);                                 \
-    Node *RHS = simplifyNode(NN->getRHS(), F);                                 \
     if (LHS != NN->getLHS()) {                                                 \
       return simplifyNode(                                                     \
           F->create##NodeKind(NN->getName(), LHS, NN->getRHS()), F);           \
     }                                                                          \
+    Node *RHS = simplifyNode(NN->getRHS(), F);                                 \
     if (RHS != NN->getRHS()) {                                                 \
       return simplifyNode(                                                     \
           F->create##NodeKind(NN->getName(), NN->getLHS(), RHS), F);           \
