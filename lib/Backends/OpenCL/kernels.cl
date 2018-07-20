@@ -95,7 +95,7 @@ cl_int8_t clip(cl_int32_t val) { return (cl_int8_t)min(max(val, -128), 127); }
 /// Quantizes \p input from float to int8.
 cl_int8_t quantize(float input, float scale, cl_int32_t offset) {
   float result = input / scale + offset;
-  return clip((cl_int32_t)nearbyintf(result));
+  return clip((cl_int32_t)round(result));
 }
 
 /// Dequantizes \p input from int8 to float.
