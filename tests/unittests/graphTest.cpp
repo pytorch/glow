@@ -546,8 +546,7 @@ TEST(Graph, schedulingOfSaves) {
     }
   }
   EXPECT_TRUE(A->getPayload().isEqual(zero->getPayload(), 0.0));
-  // FIXME: This should be true, but right now it is not!
-  EXPECT_FALSE /*TRUE*/ (allEqual);
+  EXPECT_TRUE(allEqual);
 }
 
 /// Check that the parent link is properly updated while tweaking
