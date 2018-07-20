@@ -866,6 +866,12 @@ ReshapeNode *Function::createExpandDims(llvm::StringRef name, NodeValue input,
   return createReshape(name.str() + ".expanddims", input, newDims);
 }
 
+ReshapeNode *Function::createFlatten(llvm::StringRef name, NodeValue input,
+                                     size_t axis) {
+  auto xDim = flattenCdr(input.getType()->dims(), axis);
+  return createReshape(name, input, {xDim.first, xDim.second});
+}
+
 void Function::createSplit(llvm::StringRef name, NodeValue input,
                            size_t outputNum, size_t axis,
                            llvm::ArrayRef<size_t> split,
