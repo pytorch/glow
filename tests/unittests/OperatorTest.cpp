@@ -1346,6 +1346,26 @@ TEST_P(InterpAndCPU, QuantizedArithmeticRescaled) {
   }
 }
 
+TEST_P(Operator, QuantizedTranspose) {
+  auto *A = mod_.createVariable(ElemKind::FloatTy, {2, 3}, "A",
+                                VisibilityKind::Public);
+  auto *B = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "B",
+                                VisibilityKind::Public);
+  A->getPayload().getHandle() = {1, 1.2f, 0.5f, 1.3f, 2.7f, 5.8f};
+  A->getPayload().transpose(&B->getPayload(), {1, 0});
+  auto qType = mod_.uniqueType(ElemKind::Int8QTy, {2, 3}, 0.05, -138);
+  auto *quantizeA = F_->createQuantize("quantize", A, qType);
+  auto *tr = F_->createTranspose("tr", quantizeA, {1, 0});
+  auto *dequantize = F_->createDequantize("dequantize", tr);
+  auto *result = F_->createSave("ret", dequantize);
+  auto *fpTr = F_->createTranspose("fpTr", A, {1, 0});
+  auto *fpResult = F_->createSave("fpRet", fpTr);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  EXPECT_TRUE(result->getVariable()->getPayload().isEqual(B->getPayload()));
+  EXPECT_TRUE(fpResult->getVariable()->getPayload().isEqual(B->getPayload()));
+}
+
 TEST_P(Operator, QuantizedArithmeticUnrescaled) {
   const size_t len = 100;
 

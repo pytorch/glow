@@ -187,6 +187,7 @@ public:
       case Kinded::Kind::MulNodeKind:
       case Kinded::Kind::QuantizeNodeKind:
       case Kinded::Kind::SubNodeKind:
+      case Kinded::Kind::TransposeNodeKind:
         return true;
       default:
         return false;
