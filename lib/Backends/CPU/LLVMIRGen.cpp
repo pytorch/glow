@@ -289,7 +289,7 @@ void LLVMIRGen::performCodeGen() {
 }
 
 llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
-                                         glow::Value *val) {
+                                         const glow::Value *val) {
   assert(allocationsInfo_.allocatedAddressed_.count(val) &&
          "Value address was not allocated");
   auto sizeTTy = builder.getIntNTy(sizeof(size_t) * 8);
@@ -402,13 +402,13 @@ llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,
 }
 
 llvm::Value *LLVMIRGen::emitValueDims(llvm::IRBuilder<> &builder,
-                                      glow::Value *val) {
+                                      const glow::Value *val) {
   auto dims = val->dims();
   return emitConstArray(builder, dims);
 }
 
 llvm::Value *LLVMIRGen::emitValueSize(llvm::IRBuilder<> &builder,
-                                      glow::Value *val) {
+                                      const glow::Value *val) {
   return builder.getIntN(sizeof(size_t) * 8, val->size());
 }
 
