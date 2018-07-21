@@ -121,10 +121,12 @@ class LLVMIRGen {
 
   /// Generates LLVM IR that computes the address of \p val using \p builder.
   /// The address type is specified by \p ptrTy.
-  llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder, glow::Value *val);
+  llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder,
+                                const glow::Value *val);
   /// Generates LLVM IR that computes the size of the tensor of \p val using
   /// \p builder. The size type is native to the machine (size_t).
-  llvm::Value *emitValueSize(llvm::IRBuilder<> &builder, glow::Value *val);
+  llvm::Value *emitValueSize(llvm::IRBuilder<> &builder,
+                             const glow::Value *val);
   /// Generates LLVM IR that materializes the constant \p val.
   llvm::Value *emitConstF32(llvm::IRBuilder<> &builder, float val);
   /// Generates LLVM IR that materializes the constant \p val.
@@ -148,7 +150,8 @@ class LLVMIRGen {
                               llvm::Type *elemTy);
   /// Generates LLVM IR that computes the dimensions of \p val using \p builder.
   /// The result type is "size_t*".
-  llvm::Value *emitValueDims(llvm::IRBuilder<> &builder, glow::Value *val);
+  llvm::Value *emitValueDims(llvm::IRBuilder<> &builder,
+                             const glow::Value *val);
   /// Load base addresses of different memory areas (activations, const
   /// weightvars, mutable weight vars) so that they can be reused inside the
   /// body of the function.
