@@ -103,10 +103,15 @@ protected:
 
     // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
     // softmax function. This is similar to a bitcast operation.
-    in = G_.createFlatten("flatten", in, 1);
+    int axis = dict.count("axis") ? loadInt(dict["axis"]) : 1;
+    auto *FN = G_.createFlatten("reshapeInput", in, axis);
 
-    auto *node = G_.createSoftMax(opName, in, selected);
-    addNodeAsOutput(op, node);
+    auto *SM = G_.createSoftMax(opName, FN, selected);
+
+    // The output should have the same shape as the original input.
+    auto origInDims = in.getType()->dims();
+    auto *RN = G_.createReshape("reshapeOutput", SM, origInDims);
+    addNodeAsOutput(op, RN);
   }
 
   void loadLRN(const OpType &op, ArgumentDictionaryTy &dict) {
