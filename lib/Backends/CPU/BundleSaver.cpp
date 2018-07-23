@@ -242,7 +242,6 @@ void BundleSaver::emitBundleConfig() {
 }
 
 void BundleSaver::performBundleMemoryAllocation() {
-  allocationsInfo_.clear();
   allocationsInfo_.numberValues(F_);
   allocationsInfo_.allocateActivations(F_);
   // Tell the allocateWeightVars to not reuse any existing addresses for weights
