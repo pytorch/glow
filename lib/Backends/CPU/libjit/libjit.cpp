@@ -646,6 +646,8 @@ DEFINE_DATA_PARALLEL_KERNEL(libjit_element_sub_kernel_f, float,
                             LHS[idx] - RHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_div_kernel_f, float,
                             LHS[idx] / RHS[idx])
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_div_kernel_u, size_t,
+                            LHS[idx] / RHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_mul_kernel_f, float,
                             LHS[idx] * RHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_log_kernel_f, float, log(LHS[idx]))
