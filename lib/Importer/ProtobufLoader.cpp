@@ -65,7 +65,6 @@ Node *ProtobufLoader::createAndRememberVariable(llvm::StringRef name,
                                                 Variable::TrainKind trainKind) {
   assert(!hasNodeByName(name) && "Creating an already existing node?!");
   Node *node = createVariable(name, tensor, visibilityKind, trainKind);
-  node = G_.createLoad(name.str() + ".loaded", node);
   nodeByName_[name] = node;
   return node;
 }
@@ -84,9 +83,9 @@ Variable *ProtobufLoader::getVariableByName(llvm::StringRef name) const {
   assert(hasNodeByName(name) && "Variable was not created");
   auto *node = getNodeByName(name);
 
-  assert(llvm::isa<LoadNode>(node) && "Not a load of a variable");
+  assert(llvm::isa<Variable>(node) && "Node is not a variable");
 
-  return llvm::cast<LoadNode>(node)->getVariable();
+  return llvm::cast<Variable>(node);
 }
 
 bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {

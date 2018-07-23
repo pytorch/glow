@@ -101,9 +101,8 @@ protected:
   /// \returns the tensor that was registered under the name \p name.
   Tensor *getTensorByName(llvm::StringRef name);
 
-  /// Create a new variable \p name initialized with \p tensor and load it.
-  /// The load is also registered under \p name.
-  /// \returns A load to the newly created variable.
+  /// Create a new variable \p name initialized with \p tensor.
+  /// \returns The newly created variable.
   /// \pre !hasNodeByName(name)
   Node *createAndRememberVariable(
       llvm::StringRef name, const Tensor &tensor,
@@ -127,15 +126,13 @@ public:
   Node *getNodeByName(llvm::StringRef name) const;
 
   /// \returns the node that was registered with the name \p name or create a
-  /// new Variable node for a tensor with this name and load it.
-  /// In case a new variable is returned, this method registers
-  /// the returned load node, not the variable itself.
-  /// Only save and load node are allowed to use variable directly.
+  /// new Variable node for a tensor with this name.
+  /// In case a new variable is created, this method registers
+  /// it under \p name.
   Node *getOrCreateVariableByName(llvm::StringRef name);
 
-  /// \returns The variable referenced by the load registered
-  /// under \p name.
-  /// \pre isa<LoadNode>(getNodeByName(name))
+  /// \returns The variable registered under \p name.
+  /// \pre isa<Variable>(getNodeByName(name))
   Variable *getVariableByName(llvm::StringRef name) const;
 
   /// \returns True if the node that's registered using \p name exists.

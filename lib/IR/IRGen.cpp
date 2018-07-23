@@ -363,16 +363,6 @@ public:
       V->setName(N->getName());
       break;
     }
-    case glow::Kinded::Kind::LoadNodeKind: {
-      auto *load = cast<LoadNode>(N);
-      auto *src = valueForNode(load->getVariable());
-      auto *dest = builder_.createAllocActivationInst(
-          load->getName(), load->getResult().getType());
-      auto *copy = builder_.createCopyInst("load", dest, src);
-      copy->setName(N->getName());
-      registerIR(N, dest);
-      break;
-    }
     case glow::Kinded::Kind::VariableNodeKind: {
       auto *V = cast<Variable>(N);
       auto *W = builder_.createWeightVar(V->getType(), V->getName(),

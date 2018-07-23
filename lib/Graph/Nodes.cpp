@@ -678,11 +678,6 @@ void ConcatNode::verify() const {
   }
 }
 
-void LoadNode::verify() const {
-  // Loads are restricted to Variables.
-  assert(llvm::isa<Variable>(getAddress().getNode()));
-}
-
 //===----------------------------------------------------------------------===//
 //                     Node hashing support
 //===----------------------------------------------------------------------===//
