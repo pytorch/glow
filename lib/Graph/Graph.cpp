@@ -1907,9 +1907,31 @@ void Function::verify() const {
     }
   }
 
+  std::unordered_map<const Variable *, const Node *> variablesWrittenTo;
   for (const auto &N : nodes_) {
     assert(N.getParent() == this &&
            "Node is not linked to the function it belongs");
     N.verify();
+    // Make sure all the variables are at most written once.
+    for (size_t idx = 0, e = N.getNumInputs(); idx < e; ++idx) {
+      if (!N.isOverwrittenNthInput(idx)) {
+        continue;
+      }
+      auto &input = N.getNthInput(idx);
+      if (!isa<Variable>(input)) {
+        continue;
+      }
+      const auto *var = cast<Variable>(input);
+      auto varToFirstDef = variablesWrittenTo.find(var);
+      if (varToFirstDef != variablesWrittenTo.end()) {
+        llvm::errs() << "Variable " << var->getDebugDesc() << '\n';
+        llvm::errs() << "has more than one write:\n";
+        llvm::errs() << N.getDebugDesc() << '\n';
+        llvm::errs() << varToFirstDef->second->getDebugDesc() << '\n';
+      }
+      assert(varToFirstDef == variablesWrittenTo.end() &&
+             "Variable has more than one write");
+      variablesWrittenTo[var] = &N;
+    }
   }
 }
