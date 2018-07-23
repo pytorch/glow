@@ -134,27 +134,6 @@ TEST_P(Operator, matmul) {
   EXPECT_NEAR(H.at({2, 0}), 95, 0.001);
 }
 
-TEST_P(Operator, Load) {
-  auto *var = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "var",
-                                  VisibilityKind::Private,
-                                  Variable::TrainKind::Xavier, 1);
-  auto *R = F_->createLoad("load", var);
-
-  auto *result = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "result");
-  F_->createSave("save", R, result);
-
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run({}, {});
-
-  auto resultHandler = result->getPayload().getHandle();
-  auto varHandler = var->getPayload().getHandle();
-  for (size_t i = 0; i < 3; ++i) {
-    for (size_t j = 0; j < 3; ++j) {
-      EXPECT_EQ(resultHandler.at({i, j}), varHandler.at({i, j}));
-    }
-  }
-}
-
 TEST_P(Operator, batchedReduceAdd) {
   auto *batch = mod_.createVariable(ElemKind::FloatTy, {2, 4}, "batch");
   auto *result = mod_.createVariable(ElemKind::FloatTy, {4}, "result");
