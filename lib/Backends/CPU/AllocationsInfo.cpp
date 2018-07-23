@@ -151,7 +151,7 @@ void AllocationsInfo::allocateTensorViews(const IRFunction *F) {
 
       // Calculate and store the length of the offset into the base, using the
       // source of the tensorview.
-      size_t offsetLength = A->getOffsets()[0];
+      size_t offsetLength = A->getOffsets().empty() ? 0 : A->getOffsets()[0];
       auto *tvSource = A->getSrc();
       if (tvSource->dims().size() > 1) {
         for (size_t i = 1; i < tvSource->dims().size(); ++i) {

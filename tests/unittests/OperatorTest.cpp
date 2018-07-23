@@ -1990,6 +1990,29 @@ TEST_P(Operator, Squeeze) {
     for (size_t i = 0; i < 10; i++)
       EXPECT_FLOAT_EQ(results.raw(i), expectedValues[i]);
   }
+
+  // Test 3: 0-dimensional Tensor
+  {
+    auto *emptyInput =
+        mod_.createVariable(ElemKind::FloatTy, {1}, "emptyInput");
+    emptyInput->getHandle() = {42.0};
+
+    std::vector<size_t> axes = {0};
+    Node *SQZ = F_->createSqueeze("SQZ", emptyInput, axes);
+    SaveNode *S1 = F_->createSave("save", SQZ);
+    Node *UnSQZ = F_->createExpandDims("UnSQZ", SQZ, axes);
+    SaveNode *S2 = F_->createSave("save", UnSQZ);
+
+    EE_.compile(CompilationMode::Infer, F_);
+    EE_.run({}, {});
+
+    auto res1 = S1->getVariable()->getHandle();
+    EXPECT_TRUE(res1.dims().vec() == std::vector<size_t>());
+    EXPECT_FLOAT_EQ(res1.raw(0), 42.0);
+    auto res2 = S2->getVariable()->getHandle();
+    EXPECT_TRUE(res2.dims().vec() == std::vector<size_t>(1, 1));
+    EXPECT_FLOAT_EQ(res2.raw(0), 42.0);
+  }
 }
 
 /// Check that the expand dims operator works, which is implemented with a

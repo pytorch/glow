@@ -544,3 +544,63 @@ TEST(Tensor, insertWithCountAndAxis) {
     }
   }
 }
+
+TEST(ZeroDimensionalTensor, handleAt) {
+  Tensor T(ElemKind::FloatTy, {});
+  auto H = T.getHandle<>();
+  H.at({}) = 7.1;
+  EXPECT_FLOAT_EQ(T.getRawDataPointer<float>()[0], 7.1);
+}
+
+TEST(ZeroDimensionalTensor, handleAssign) {
+  Tensor T(ElemKind::FloatTy, {});
+  T.getHandle<>() = {1.14};
+  EXPECT_FLOAT_EQ(T.getRawDataPointer<float>()[0], 1.14);
+}
+
+TEST(ZeroDimensionalTensor, compareAndDumpTwo) {
+  Tensor T1(ElemKind::FloatTy, {});
+  Tensor T2(ElemKind::FloatTy, {});
+
+  EXPECT_TRUE(T1.isEqual(T2));
+
+  auto H = T1.getHandle<>();
+  H.dump();
+
+  EXPECT_FLOAT_EQ(H.raw(0), 0.0);
+  H.raw(0) = 4.2;
+  EXPECT_FLOAT_EQ(H.raw(0), 4.2);
+
+  EXPECT_FALSE(T1.isEqual(T2));
+  H.dump();
+}
+
+TEST(ZeroDimensionalTensor, compareToNonZeroDimensional) {
+  Tensor T1(ElemKind::FloatTy, {});
+  Tensor T2(ElemKind::FloatTy, {1});
+  T1.zero();
+  T2.zero();
+
+  EXPECT_FALSE(T1.isEqual(T2));
+}
+
+TEST(ZeroDimensionalTensor, transpose) {
+  Tensor T(ElemKind::IndexTy, {});
+  T.getHandle<size_t>() = {15};
+
+  Tensor TT;
+  T.transpose(&TT, {});
+
+  EXPECT_TRUE(T.isEqual(TT));
+}
+
+TEST(Type, compare) {
+  Type T1(ElemKind::FloatTy, {});
+  Type T2(ElemKind::FloatTy, {});
+  Type T3(ElemKind::FloatTy, {1});
+  Type T4(ElemKind::IndexTy, {});
+
+  EXPECT_TRUE(T1.isEqual(T2));
+  EXPECT_FALSE(T1.isEqual(T3));
+  EXPECT_FALSE(T1.isEqual(T4));
+}

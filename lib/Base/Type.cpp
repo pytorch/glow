@@ -20,10 +20,6 @@
 
 namespace glow {
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Type &type) {
-  if (type.numSizes_ == 0) {
-    return os << "<void>";
-  }
-
   os << type.getElementName();
 
   if (type.isQuantizedType()) {

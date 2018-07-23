@@ -67,9 +67,11 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
   auto shape = handle.dims();
   size_t numDims = shape.size();
 
-  // Check for empty tensor.
+  // Check for 0-dimensional tensor.
   if (!numDims) {
-    os << "[ Empty tensor ]\n";
+    os << "[ Scalar containing: ";
+    llvm::write_double(os, handle.raw(0), llvm::FloatStyle::Fixed, 3);
+    os << " ]\n";
     return;
   }
 

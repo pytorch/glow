@@ -29,9 +29,9 @@ namespace {
 template <class ElemTy>
 static void libjit_dump_tensor_impl(ElemTy *tensor, size_t *dims,
                                     size_t numDims) {
-  // Check for empty tensor.
+  // Check for 0-dimensional tensor.
   if (!numDims) {
-    printf("[ Empty tensor ]\n");
+    printf("[ Scalar containing: %.3f ]\n", (float)tensor[0]);
     return;
   }
 
