@@ -297,7 +297,25 @@ void ConvolutionNode::verify() const {
                     Stride_, Pads_, Group_);
 }
 
+/// Verify that types of an input and its gradient are the same.
+static void verifyInputAndGradInputTypes(NodeValue input, NodeValue gradInput) {
+  assert(input.getType() == gradInput.getType() &&
+         "Types of input and its gradient should be the same");
+}
+
+/// Verify that types of an output and its gradient are the same.
+static void verifyOutputAndGradOutputTypes(NodeValue output,
+                                           NodeValue gradOutput) {
+  assert(output.getType() == gradOutput.getType() &&
+         "Types of output and its gradient should be the same");
+}
+
 void ConvolutionGradNode::verify() const {
+  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
+  verifyInputAndGradInputTypes(getFilter(), getGradOfInputNamedFilter());
+  verifyInputAndGradInputTypes(getBias(), getGradOfInputNamedBias());
+  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
+                                 getGradOfOriginalOutputNamedResult());
   verifyConvolution(getGradOfInputNamedInput(),
                     getGradOfOriginalOutputNamedResult(),
                     getGradOfInputNamedFilter(), getGradOfInputNamedBias(),
@@ -313,11 +331,17 @@ void PoolAvgNode::verify() const {
 }
 
 void PoolMaxGradNode::verify() const {
+  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
+  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
+                                 getGradOfOriginalOutputNamedResult());
   verifyPool(getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
              Kernel_, Stride_, Pads_);
 }
 
 void PoolAvgGradNode::verify() const {
+  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
+  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
+                                 getGradOfOriginalOutputNamedResult());
   verifyPool(getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
              Kernel_, Stride_, Pads_);
 }
@@ -346,6 +370,9 @@ void MatMulNode::verify() const {
 void SigmoidNode::verify() const { verifySigmoid(getInput(), getResult()); }
 
 void SigmoidGradNode::verify() const {
+  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
+  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
+                                 getGradOfOriginalOutputNamedResult());
   verifySigmoid(getGradOfInputNamedInput(),
                 getGradOfOriginalOutputNamedResult());
 }
@@ -353,12 +380,19 @@ void SigmoidGradNode::verify() const {
 void TanhNode::verify() const { verifyTanh(getInput(), getResult()); }
 
 void TanhGradNode::verify() const {
+  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
+  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
+                                 getGradOfOriginalOutputNamedResult());
   verifyTanh(getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult());
 }
 
 void SoftMaxNode::verify() const { verifySoftMax(getInput(), getResult()); }
 
 void SoftMaxGradNode::verify() const {
+  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
+  verifyInputAndGradInputTypes(getSelected(), getGradOfInputNamedSelected());
+  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
+                                 getGradOfOriginalOutputNamedResult());
   verifySoftMax(getGradOfInputNamedInput(),
                 getGradOfOriginalOutputNamedResult());
 }
@@ -368,6 +402,10 @@ void CrossEntropyLossNode::verify() const {
 }
 
 void CrossEntropyLossGradNode::verify() const {
+  verifyInputAndGradInputTypes(getLabels(), getGradOfInputNamedLabels());
+  verifyInputAndGradInputTypes(getP(), getGradOfInputNamedP());
+  verifyOutputAndGradOutputTypes(getOriginalOutputForCE(),
+                                 getGradOfOriginalOutputNamedCE());
   verifyCrossEntropyLoss(getGradOfInputNamedP(),
                          getGradOfOriginalOutputNamedCE(),
                          getGradOfInputNamedLabels());
@@ -434,6 +472,13 @@ void BatchNormalizationNode::verify() const {
 }
 
 void BatchNormalizationGradNode::verify() const {
+  verifyInputAndGradInputTypes(getBias(), getGradOfInputNamedBias());
+  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
+  verifyInputAndGradInputTypes(getMean(), getGradOfInputNamedMean());
+  verifyInputAndGradInputTypes(getScale(), getGradOfInputNamedScale());
+  verifyInputAndGradInputTypes(getVar(), getGradOfInputNamedVar());
+  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
+                                 getGradOfOriginalOutputNamedResult());
   verifyBatchNormalization(
       getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
       getGradOfInputNamedBias(), getGradOfInputNamedScale(),
@@ -445,6 +490,9 @@ void LocalResponseNormalizationNode::verify() const {
 }
 
 void LocalResponseNormalizationGradNode::verify() const {
+  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
+  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
+                                 getGradOfOriginalOutputNamedResult());
   verifyLocalResponseNormalization(getGradOfInputNamedInput(),
                                    getGradOfOriginalOutputNamedResult());
 }
@@ -473,6 +521,10 @@ void CmpLTENode::verify() const {
 
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
   void NODE_NAME_##Node::verify() const {                                      \
+    verifyInputAndGradInputTypes(getLHS(), getGradOfInputNamedLHS());          \
+    verifyInputAndGradInputTypes(getRHS(), getGradOfInputNamedRHS());          \
+    verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),               \
+                                   getGradOfOriginalOutputNamedResult());      \
     verifyArithmetic(getGradOfInputNamedLHS(), getGradOfInputNamedRHS(),       \
                      getGradOfOriginalOutputNamedResult());                    \
   }
@@ -629,6 +681,9 @@ void SelectNode::verify() const {
 void ReluNode::verify() const { verifyRelu(getResult(), getInput()); }
 
 void ReluGradNode::verify() const {
+  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
+  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
+                                 getGradOfOriginalOutputNamedResult());
   verifyRelu(getGradOfOriginalOutputNamedResult(), getInput());
 }
 
@@ -637,6 +692,10 @@ void RegressionNode::verify() const {
 }
 
 void RegressionGradNode::verify() const {
+  verifyInputAndGradInputTypes(getExpected(), getGradOfInputNamedExpected());
+  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
+  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
+                                 getGradOfOriginalOutputNamedResult());
   verifyRegression(getGradOfInputNamedInput(),
                    getGradOfOriginalOutputNamedResult(),
                    getGradOfInputNamedExpected());
@@ -647,6 +706,11 @@ void FullyConnectedNode::verify() const {
 }
 
 void FullyConnectedGradNode::verify() const {
+  verifyInputAndGradInputTypes(getBias(), getGradOfInputNamedBias());
+  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
+  verifyInputAndGradInputTypes(getWeights(), getGradOfInputNamedWeights());
+  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
+                                 getGradOfOriginalOutputNamedResult());
   verifyFullyConnected(getGradOfInputNamedInput(), getGradOfInputNamedWeights(),
                        getGradOfInputNamedBias(),
                        getGradOfOriginalOutputNamedResult());
