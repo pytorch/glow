@@ -196,14 +196,3 @@ void AllocationsInfo::numberValues(const IRFunction *F) {
     }
   }
 }
-
-void AllocationsInfo::clear() {
-  allocatedAddressed_.clear();
-  valueNumbers_.clear();
-  baseActivationsAddress_ = nullptr;
-  baseConstantWeightVarsAddress_ = nullptr;
-  baseMutableWeightVarsAddress_ = nullptr;
-  activationsMemSize_ = 0;
-  constantWeightVarsMemSize_ = 0;
-  mutableWeightVarsMemSize_ = 0;
-}

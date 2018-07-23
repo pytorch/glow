@@ -71,8 +71,6 @@ struct AllocationsInfo {
   /// Number all allocations and weight variables by assigning them unique
   /// numbers.
   void numberValues(const IRFunction *F);
-  /// Reset the state of the allocation info.
-  void clear();
 };
 
 } // namespace glow

@@ -96,7 +96,6 @@ static void emitJitMain(AllocationsInfo &allocationsInfo, LLVMIRGen &irgen) {
 /// Perform memory allocation for a JIT execution.
 static void *allocateJITMemory(const IRFunction *F,
                                AllocationsInfo &allocationsInfo) {
-  allocationsInfo.clear();
   allocationsInfo.numberValues(F);
   allocationsInfo.allocateActivations(F);
   // Tell the allocateWeightVars to reuse existing addresses for weights.
