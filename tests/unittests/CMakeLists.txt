@@ -5,6 +5,15 @@ target_link_libraries(testMain
                         LLVMSupport
                         gtest)
 
+add_executable(partitionTest
+               partitionTest.cpp)
+target_link_libraries(partitionTest
+                      PRIVATE
+                        ExecutionEngine
+                        gtest
+                        testMain)
+add_glow_test(partitionTest ${GLOW_BINARY_DIR}/tests/partitionTest)
+
 add_executable(tensorsTest
                tensorsTest.cpp)
 target_link_libraries(tensorsTest
@@ -81,7 +90,6 @@ target_link_libraries(operatorTest
                         gtest
                         testMain)
 add_glow_test(operatorTest ${GLOW_BINARY_DIR}/tests/operatorTest)
-
 
 add_executable(graphTest
                graphTest.cpp)
