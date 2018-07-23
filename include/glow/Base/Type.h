@@ -257,10 +257,6 @@ struct Type final {
 
   /// \returns the number of elements in the tensor.
   size_t size() const {
-    if (!numSizes_) {
-      return 0;
-    }
-
     size_t s = 1;
     for (unsigned i = 0; i < numSizes_; i++) {
       s *= size_t(sizes_[i]);

@@ -1309,7 +1309,7 @@ void OpenCLFunction::allocateMemory() {
       // Calculate and store the length of the offset into the base, using the
       // source of the tensorview.
       assert(!tensors_.count(TV) && "Allocation already made!");
-      size_t offsetLength = TV->getOffsets()[0];
+      size_t offsetLength = TV->getOffsets().empty() ? 0 : TV->getOffsets()[0];
       auto *tvSource = TV->getSrc();
       if (tvSource->dims().size() > 1) {
         for (size_t i = 1; i < tvSource->dims().size(); ++i) {

@@ -521,7 +521,7 @@ public:
   /// the first dimension).
   Tensor extractSlice(size_t idx) const {
     auto sizes = tensor_->dims();
-    assert(sizes.size() > 1 && "Tensor has only one dimension");
+    assert(sizes.size() > 1 && "Tensor must have at least two dimensions");
     assert(idx < sizes[0] && "Invalid first index");
 
     Tensor slice{Type::newShape(tensor_->getType(), sizes.slice(1))};
