@@ -1170,10 +1170,11 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
                                          loopCount, "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
     } else {
+      auto *elementTy = getElementType(builder, dest);
       auto *stackedOpCall =
           createCall(builder, F, {loopCount, lhsPtr, rhsPtr, pointerNull});
-      auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,
-                                         loopCount, "buffer.element.addr");
+      auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,
+                                         "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
     }
     break;
