@@ -613,6 +613,16 @@ TEST_P(CPUOnly, nonSquarePaddingConvTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
+/// This test targets the DKKC8 opt correctionimization.
+TEST_P(CPUOnly, convDKKC8Test) {
+  std::array<size_t, 4> S{{3, 3, 3, 192}};
+  Tensor out1(ElemKind::FloatTy, S);
+  Tensor out2(ElemKind::FloatTy, S);
+  inferConvDKKC8(&out1, BackendKind::CPU);
+  inferConvDKKC8(&out2, BackendKind::Interpreter);
+  EXPECT_TRUE(out1.isEqual(out2));
+}
+
 TEST_P(BackendCorrectnessTest, softmaxTest) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {14, 19});
