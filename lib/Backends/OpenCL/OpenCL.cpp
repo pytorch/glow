@@ -626,6 +626,28 @@ void OpenCLFunction::execute() {
       continue;
     }
 
+    // Rescale quantized tensor. Scale and Offset are based on return type
+    // of the instruction \p I.
+    if (auto *RQI = dyn_cast<RescaleQuantizedInst>(&I)) {
+      auto *dest = RQI->getDest();
+      auto *src = RQI->getSrc();
+      auto *destType = dest->getType();
+      auto *srcType = src->getType();
+      size_t global = destType->size();
+
+      auto rescaleParams = quantization::quantizeScaleOffset32To8(
+          srcType->getScale() / destType->getScale(), srcType->getOffset());
+
+      cl_kernel kernel = createKernel(kernelName);
+      setKernelArg(kernel, 0, deviceBuffer_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
+      setKernelArg(kernel, ++numArgs, destType->getOffset());
+      setKernelArg(kernel, ++numArgs, srcType->getOffset());
+      setKernelArg(kernel, ++numArgs, rescaleParams);
+      enqueueKernel(commands_, kernel, deviceId_, {global}, kernelLaunches_);
+      continue;
+    }
+
     // Dequantize integer tensor. Scale and Offset are based
     // on the source tensor type.
     if (auto *QI = dyn_cast<DequantizeInst>(&I)) {
