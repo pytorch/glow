@@ -28,10 +28,10 @@ typedef struct {
 
 // Helper struct that contains the information for quantization.
 typedef struct {
-  cl_int32_t pre_;
-  cl_int32_t post_;
-  cl_int32_t scale_;
-  cl_int32_t offset_;
+  cl_int32_t pre;
+  cl_int32_t post;
+  cl_int32_t scale;
+  cl_int32_t offset;
 } QuantizationTransform32To8;
 
 // The types of elements should be always matching the definitions of
@@ -130,8 +130,8 @@ __kernel void rescalequantized_i8W(
     cl_int32_t destOffset,
     cl_int32_t srcOffset, QuantizationTransform32To8 rescaleParams) {
   rescalequantized_i8K(&mem[dest], &mem[src], destOffset, srcOffset,
-                        rescaleParams.pre_, rescaleParams.post_,
-                        rescaleParams.scale_);
+                        rescaleParams.pre, rescaleParams.post,
+                        rescaleParams.scale);
 }
 
 __kernel void dequantizeK(__global float *dest, __global cl_int8_t *src,
@@ -284,10 +284,10 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
       cl_int32_t destOffset, QuantizationTransform32To8 lhsScaleParams,        \
       QuantizationTransform32To8 rhsScaleParams) {                             \
     name##_i8K(&mem[dest], &mem[lhs], &mem[rhs], destOffset,                   \
-               lhsScaleParams.offset_, rhsScaleParams.offset_,                 \
-               lhsScaleParams.pre_, lhsScaleParams.post_,                      \
-               lhsScaleParams.scale_, rhsScaleParams.pre_,                     \
-               rhsScaleParams.post_, rhsScaleParams.scale_);                   \
+               lhsScaleParams.offset, rhsScaleParams.offset,                   \
+               lhsScaleParams.pre, lhsScaleParams.post,                        \
+               lhsScaleParams.scale, rhsScaleParams.pre,                       \
+               rhsScaleParams.post, rhsScaleParams.scale);                     \
   }
 
 /// Macro to define a mini-kernel for data-parallel multiplicative quantized
@@ -314,8 +314,8 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
       QuantizationTransform32To8 rhsScaleParams,                               \
       QuantizationTransform32To8 resultScaleParams) {                          \
     name##_i8K(&mem[dest], &mem[lhs], &mem[rhs], destOffset,                   \
-    lhsScaleParams.offset_, rhsScaleParams.offset_, resultScaleParams.pre_,    \
-    resultScaleParams.post_, resultScaleParams.scale_);                        \
+    lhsScaleParams.offset, rhsScaleParams.offset, resultScaleParams.pre,       \
+    resultScaleParams.post, resultScaleParams.scale);                          \
   }
 
 /// Macro to define a kernel for data-parallel unary operations. The body of
