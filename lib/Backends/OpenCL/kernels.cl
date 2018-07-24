@@ -114,6 +114,26 @@ __kernel void quantize_i8W(__global void *mem, cl_uint32_t dest,
   quantize_i8K(&mem[dest], &mem[src], scale, offset);
 }
 
+__kernel void rescalequantized_i8K(__global cl_int8_t *dest,
+                                   __global cl_int8_t *src, cl_int32_t destOffset,
+                                   cl_int32_t srcOffset, cl_int32_t rescalePre,
+                                   cl_int32_t rescalePost,
+                                   cl_int32_t rescaleScale) {
+  size_t i = get_global_id(0);
+  cl_int32_t s = scale_i32i8(src[i] - srcOffset, rescalePre, rescalePost,
+                             rescaleScale, destOffset);
+  dest[i] = clip(s);
+}
+
+__kernel void rescalequantized_i8W(
+    __global void *mem, cl_uint32_t dest, cl_uint32_t src,
+    cl_int32_t destOffset,
+    cl_int32_t srcOffset, QuantizationTransform32To8 rescaleParams) {
+  rescalequantized_i8K(&mem[dest], &mem[src], destOffset, srcOffset,
+                        rescaleParams.pre_, rescaleParams.post_,
+                        rescaleParams.scale_);
+}
+
 __kernel void dequantizeK(__global float *dest, __global cl_int8_t *src,
                           float scale, cl_int32_t offset) {
   size_t i = get_global_id(0);

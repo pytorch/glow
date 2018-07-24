@@ -1203,7 +1203,7 @@ TEST_P(Operator, RescaleNode) {
                                     Variable::TrainKind::Broadcast, 40);
 
   auto *output =
-      mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.4, -3, "output",
+      mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.4, -4, "output",
                           VisibilityKind::Public, Variable::TrainKind::None);
 
   auto T1 = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.7, 5);
