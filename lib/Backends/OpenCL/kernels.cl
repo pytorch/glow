@@ -1114,7 +1114,7 @@ DEFINE_OPENCL_TRANSPOSE_KERNEL(transpose, float)
 
 __kernel void inserttensorK(__global float *dest, __global float *src,
                             ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset,
-                            size_t count, size_t axis) {
+                            cl_uint32_t count, cl_uint32_t axis) {
   size_t d0 = get_global_id(0);
   size_t d1 = get_global_id(1);
   size_t offset_n = ((odim.n > 1) ? offset.n : 0);
@@ -1142,7 +1142,8 @@ __kernel void inserttensorK(__global float *dest, __global float *src,
 
 __kernel void inserttensorW(__global void *mem, cl_uint32_t dest,
                             cl_uint32_t src, ShapeNHWC odim, ShapeNHWC idim,
-                            ShapeNHWC offset, size_t count, size_t axis) {
+                            ShapeNHWC offset, cl_uint32_t count,
+                            cl_uint32_t axis) {
   inserttensorK(&mem[dest], &mem[src], odim, idim, offset, count, axis);
 }
 
