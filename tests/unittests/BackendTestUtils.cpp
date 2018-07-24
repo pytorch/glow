@@ -496,6 +496,39 @@ void inferNonSquarePaddingConv(Tensor *out, BackendKind kind) {
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+void inferConvDKKC8(Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+
+  auto *input = mod.createVariable(ElemKind::FloatTy, {3, 3, 3, 32}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 3 * 3 * 3 * 32; i++) {
+    IH.raw(i) = (i + 1) / 10.0;
+  }
+
+  auto filter =
+      mod.createVariable(ElemKind::FloatTy, {192, 3, 3, 32}, "filter");
+  auto FH = filter->getHandle();
+  for (size_t i = 0; i < 192; i++)
+    for (size_t j = 0; j < 3; j++)
+      for (size_t k = 0; k < 3; k++)
+        for (size_t l = 0; l < 32; l++) {
+          FH.at({i, j, k, k}) = (i + j + k + l) / 200.0;
+        }
+  auto *zeroBias = mod.createVariable(ElemKind::FloatTy, {192}, "bias");
+  zeroBias->getPayload().zero();
+  auto outTy = mod.uniqueType(ElemKind::FloatTy, {3, 3, 3, 192});
+
+  ConvolutionNode *CN = F->createConv("Conv", input, filter, zeroBias, outTy, 3,
+                                      1, {1, 1, 1, 1}, 1);
+  SaveNode *result = F->createSave("save", CN);
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 void inferSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
                      BackendKind kind) {
   ExecutionEngine EE(kind);

@@ -1458,7 +1458,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *group = emitConstSizeT(builder, CI->getGroup());
 
     size_t inChannels = src->dims()[3];
-    size_t outChannels = src->dims()[3];
+    size_t outChannels = dest->dims()[3];
 
     // Select a method for iterating on the image in the pixel (filter-first, or
     // input-first). Perform convolutions with a high channel count by scanning
@@ -1486,7 +1486,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     // Increase the number of strips until we reach the output-tensor depth size
     // or until we exceed some threashold.
     while (2 * depthStrips * stripSize <= tileSize &&
-           2 * depthStrips * numDepthRegs * 8 <= outChannels &&
+           2 * depthStrips * numDepthRegs * 8 <= outChannels / CI->getGroup() &&
            depthStrips < 8) {
       depthStrips *= 2;
     }
