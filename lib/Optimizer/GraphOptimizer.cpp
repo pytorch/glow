@@ -918,7 +918,7 @@ static ssize_t findMatchingConcatDimForSameTrailingAndLeadingDims(
   for (ssize_t i = firstDims.size() - 1; i >= 0; i--) {
     if (trailingDimsProdCurNode == trailingDimsProdOriginalConcatNode) {
       size_t leadingDimsProdCurNode = 1;
-      for (size_t j = 0; j < i; j++) {
+      for (ssize_t j = 0; j < i; j++) {
         leadingDimsProdCurNode *= firstDims[j];
       }
       if (leadingDimsProdCurNode == leadingDimsProdOriginalConcatNode) {
