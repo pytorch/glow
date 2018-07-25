@@ -336,10 +336,12 @@ int main(int argc, char **argv) {
       .addInput("Big")
       .addInput("Small")
       .addMember(MemberType::VectorSizeT, "Start")
+      .addMember(MemberType::SizeT, "Count")
+      .addMember(MemberType::SizeT, "Axis")
       .addResult("Big.getType()")
-      .setDocstring("Insert a tensor Small into tensor Big given indices "
-                    "Start. The resulting Tensor will have the same type as "
-                    "the input Big tensor.");
+      .setDocstring("Insert tensor Small into tensor Big given indices Start. "
+                    "Small is inserted Count times along Axis. The resulting "
+                    "Tensor will have the same type as the input Big tensor.");
 
   BB.newNode("Gather")
       .addInput("Data")

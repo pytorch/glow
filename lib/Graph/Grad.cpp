@@ -156,9 +156,9 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
     if (N->getKind() == Kind::SliceNodeKind) {
       SliceNode *SN = cast<SliceNode>(N);
       auto *zero = new SplatNode("expand", SN->getInput().getType(), 0);
-      auto *insert = new InsertTensorNode("insert.slice.grad", zero,
-                                          map.getGradient(SN->getResult()),
-                                          SN->getStart());
+      auto *insert = new InsertTensorNode(
+          "insert.slice.grad", zero, map.getGradient(SN->getResult()),
+          SN->getStart(), /* count */ 1, /* axis */ 0);
 
       toAppend.push_back(zero);
       toAppend.push_back(insert);
