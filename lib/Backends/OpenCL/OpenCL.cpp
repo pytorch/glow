@@ -878,6 +878,16 @@ void OpenCLFunction::execute() {
       setKernelArg(kernel, numArgs + 5, idim);
       setKernelArg(kernel, numArgs + 6,
                    ShapeNHWC(CC->getFilter()->getType()->dims()));
+      if (isQuantized) {
+        setKernelArg(kernel, numArgs + 7, CC->getDest()->getType()->getOffset());
+        setKernelArg(kernel, numArgs + 8, CC->getDest()->getType()->getScale());
+        setKernelArg(kernel, numArgs + 9, CC->getSrc()->getType()->getOffset());
+        setKernelArg(kernel, numArgs + 10, CC->getSrc()->getType()->getScale());
+        setKernelArg(kernel, numArgs + 11, CC->getFilter()->getType()->getOffset());
+        setKernelArg(kernel, numArgs + 12, CC->getFilter()->getType()->getScale());
+        setKernelArg(kernel, numArgs + 13, CC->getBias()->getType()->getOffset());
+        setKernelArg(kernel, numArgs + 14, CC->getBias()->getType()->getScale());
+      }
 
       // Use a 3D grid where the first dimension is the depth and the second
       // dimension is the slice index in the batch.
