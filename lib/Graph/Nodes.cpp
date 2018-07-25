@@ -485,6 +485,11 @@ void BatchNormalizationGradNode::verify() const {
       getGradOfInputNamedMean(), getGradOfInputNamedVar(), ChannelIdx_);
 }
 
+void MeanVarNormalizationNode::verify() const {
+  checkType(getMean(), ElemKind::FloatTy);
+  checkSameType(getMean(), getVar());
+}
+
 void LocalResponseNormalizationNode::verify() const {
   verifyLocalResponseNormalization(getInput(), getResult());
 }

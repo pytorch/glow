@@ -120,6 +120,17 @@ int main(int argc, char **argv) {
                     "Momentum. Similar to Caffe2 SpatialBN, and ONNX "
                     "BatchNormalization operator.");
 
+  BB.newNode("MeanVarNormalization")
+      .addInput("Input")
+      .addInput("Mean")
+      .addInput("Var")
+      .addMember(MemberType::SizeT, "ChannelIdx")
+      .addMember(MemberType::Float, "Momentum")
+      .addResult("Mean.getType()", "NewMean")
+      .addResult("Var.getType()", "NewVar")
+      .setDocstring("Calculates new normalized mean and variance based on the "
+                    "input mean, variance, and input.");
+
   BB.newNode("LocalResponseNormalization")
       .addInput("Input")
       .addMember(MemberType::SizeT, "HalfWindowSize")

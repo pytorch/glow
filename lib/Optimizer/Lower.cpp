@@ -322,8 +322,7 @@ void lowerSGDNode(Function *F, SGDNode &SGD) {
   SGD.getUpdatedWeight().replaceAllUsesOfWith(newW);
 }
 
-void lowerBatchNormalizationNodeForInference(Function *F,
-                                             BatchNormalizationNode &BN) {
+void lowerBatchNormalizationNode(Function *F, BatchNormalizationNode &BN) {
   auto in = BN.getInput();
   auto out = BN.getResult();
 
@@ -365,14 +364,14 @@ void lowerBatchNormalizationNodeForInference(Function *F,
   BN.getResult().replaceAllUsesOfWith(newResult);
 }
 
-void computeBatchNormalizationWeights(Function *F, BatchNormalizationNode &BN) {
-  auto in = BN.getInput();
+void lowerMeanVarNormalizationNode(Function *F, MeanVarNormalizationNode &MVN) {
+  auto in = MVN.getInput();
 
-  auto mean = BN.getMean();
-  auto var = BN.getVar();
+  auto inMean = MVN.getMean();
+  auto inVar = MVN.getVar();
 
-  auto channelIdx = BN.getChannelIdx();
-  auto momentum = BN.getMomentum();
+  auto channelIdx = MVN.getChannelIdx();
+  auto momentum = MVN.getMomentum();
 
   // The number of different channels.
   const size_t numChannels = in.dims()[channelIdx];
@@ -432,29 +431,14 @@ void computeBatchNormalizationWeights(Function *F, BatchNormalizationNode &BN) {
   auto newMean = F->createAdd(
       "newMean",
       F->createMul("momentum_by_localMean", momentumSplat, localMean),
-      F->createMul("1_momentum_by_oldMean", oneMinusMomentumSplat, mean));
+      F->createMul("1_momentum_by_oldMean", oneMinusMomentumSplat, inMean));
   // newVar := P * localVar + (1 - P) * oldVar
   auto newVar = F->createAdd(
       "newVar", F->createMul("momentum_by_localVar", momentumSplat, localVar),
-      F->createMul("1_momentum_by_oldVar", oneMinusMomentumSplat, var));
+      F->createMul("1_momentum_by_oldVar", oneMinusMomentumSplat, inVar));
 
-  // Cannot use mean.replaceAllUsesOfWith(newMean) here, because newMean depends
-  // on mean. Essentially, we need to replace x with f(x). It means that such
-  // replacement would also find `f(x)` itself in the graph, and create a cycle.
-  for (auto &N : F->getNodes())
-    if (llvm::isa<BatchNormalizationNode>(N) ||
-        llvm::isa<BatchNormalizationGradNode>(N))
-      for (size_t i = 0; i < N.getNumInputs(); i++) {
-        if (N.getNthInput(i) == mean) {
-          N.setNthInput(i, NodeValue(newMean));
-        }
-        if (N.getNthInput(i) == var) {
-          N.setNthInput(i, NodeValue(newVar));
-        }
-      }
-
-  F->createSave("saveMean", newMean, llvm::cast<Variable>(mean.getNode()));
-  F->createSave("saveVar", newVar, llvm::cast<Variable>(var.getNode()));
+  MVN.getNewMean().replaceAllUsesOfWith(newMean);
+  MVN.getNewVar().replaceAllUsesOfWith(newVar);
 }
 
 void lowerBatchNormalizationGradNode(Function *F,
@@ -630,9 +614,9 @@ void glow::lower(Function *F, CompilationMode mode, const Backend &B) {
     } else if (auto *SGD = dyn_cast<SGDNode>(node)) {
       lowerSGDNode(F, *SGD);
     } else if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
-      if (mode == CompilationMode::Train)
-        computeBatchNormalizationWeights(F, *BN);
-      lowerBatchNormalizationNodeForInference(F, *BN);
+      lowerBatchNormalizationNode(F, *BN);
+    } else if (auto *MVN = dyn_cast<MeanVarNormalizationNode>(node)) {
+      lowerMeanVarNormalizationNode(F, *MVN);
     } else if (auto *BNG = dyn_cast<BatchNormalizationGradNode>(node)) {
       lowerBatchNormalizationGradNode(F, *BNG);
     } else if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
