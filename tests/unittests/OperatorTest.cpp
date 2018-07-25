@@ -1806,7 +1806,6 @@ TEST_P(InterpAndCPU, Tile) {
 
   // Testing the output vector with axis 1.
   auto res1 = result1->getVariable()->getHandle<float>();
-  (void)res1;
   for (size_t i = 0; i < res1.dims()[0]; i++) {
     for (size_t j = 0; j < res1.dims()[1]; j++) {
       EXPECT_EQ(res1.at({i, j}), i * 5 + (j % 5));
