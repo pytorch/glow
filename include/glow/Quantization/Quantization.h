@@ -52,9 +52,11 @@ struct NodeQuantizationInfo {
 
 namespace quantization {
 
-/// Generate NodeQuantizationInfo for all required nodes from graph \p G.
+/// Generate NodeQuantizationInfo for all required nodes from graph \p G
+/// using the method specified by \p schema.
 std::vector<NodeQuantizationInfo>
-generateNodeQuantizationInfos(const Function *F);
+generateNodeQuantizationInfos(const Function *F,
+                              Schema schema = Schema::Asymmetric);
 
 /// Quantizes the function \p F into a new unoptimized partially quantized
 /// function based on \p quantizationInfos. This method converts to integer as
