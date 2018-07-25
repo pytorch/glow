@@ -730,23 +730,19 @@ void InterpreterFunction::fwdExtractTensorInst(
 void InterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
   Tensor *dataT = getTensor(I->getData());
   auto &dataTy = dataT->getType();
-  auto iDims = dataT->dims();
   Tensor *indicesT = getTensor(I->getIndices());
   Tensor *outT = getTensor(I->getDest());
   unsigned batchDims = I->getBatchDims();
 
   size_t out_p = 0;
-  unsigned elementSize = dataT->getType().getElementSize();
+  unsigned elementSize = dataTy.getElementSize();
   // The size of the sample in the batch.
   size_t dataSampleSize = dataTy.getSliceSize(batchDims) * elementSize;
   // The size of the slices that we gather.
   size_t dataSliceSize = dataTy.getSliceSize(batchDims + 1) * elementSize;
 
   // Calculate the size of each sample in the batch.
-  size_t numSamples = 1;
-  for (size_t i = 0; i < batchDims; i++) {
-    numSamples *= iDims[i];
-  }
+  size_t numSamples = (dataT->size() * elementSize) / dataSampleSize;
 
   // For each sample in the batch:
   for (size_t sample = 0; sample < numSamples; sample++) {

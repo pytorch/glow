@@ -1220,9 +1220,10 @@ TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
 
 GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
                                    NodeValue indices, unsigned batchDims) {
+
   auto dDims = data.dims();
   auto iDims = indices.dims();
-  assert(dDims.size() > 0);
+  assert(dDims.size() > batchDims);
   ShapeVector outDims;
   outDims.insert(outDims.end(), dDims.begin(), dDims.begin() + batchDims);
   outDims.insert(outDims.end(), iDims.begin(), iDims.end());

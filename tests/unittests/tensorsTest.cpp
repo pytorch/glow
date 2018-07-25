@@ -38,7 +38,7 @@ TEST(Tensor, init) {
 
 TEST(Tensor, getSliceSize) {
   // Test the Type::getSliceSize() function.
-  
+
   Tensor X(ElemKind::FloatTy, {3, 2, 10, 4});
   Tensor Y(ElemKind::FloatTy, {1, 2, 3, 4});
 

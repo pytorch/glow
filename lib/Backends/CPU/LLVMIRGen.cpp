@@ -1936,15 +1936,11 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *dataType = data->getType();
 
     // The size of the sample in the batch.
-    size_t sampleSize = dataType->getSlicesize(batchDims);
+    size_t sampleSize = dataType->getSliceSize(batchDims);
     // The size of the slices that we gather.
-    size_t sliceSize = dataType->getSlicesize(batchDims + 1);
-
-    // Calculate the size of each sample in the batch.
-    size_t numSamples = 1;
-    for (size_t i = 0; i < batchDims; i++) {
-      numSamples *= data->dims()[i];
-    }
+    size_t sliceSize = dataType->getSliceSize(batchDims + 1);
+    // The size of each sample in the batch.
+    size_t numSamples = dataType->size() / sampleSize;
 
     auto *sliceSizeVal = emitConstSizeT(builder, sliceSize);
     auto *numSamplesVal = emitConstSizeT(builder, numSamples);

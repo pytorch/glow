@@ -1085,13 +1085,32 @@ void OpenCLFunction::execute() {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
+      unsigned batchDims = GI->getBatchDims();
 
       auto *data = GI->getData();
-      size_t dataSliceSize = data->size() / data->dims()[0];
+
+      assert(data->getElementType() == ElemKind::FloatTy &&
+             "At the moment only floats are supported");
+
+      TypeRef dataType = data->getType();
       size_t numIndices = GI->getIndices()->size();
 
+      // The size of the sample in the batch.
+      size_t sliceSize = dataType->getSliceSize(batchDims + 1);
+      // The size of the slices that we gather.
+      size_t srcSampleSize = dataType->getSliceSize(batchDims);
+      // The size of the slices that we pack.
+      size_t destSampleSize = numIndices * sliceSize;
+      // The size of each sample in the batch.
+      size_t numSamples = dataType->size() / srcSampleSize;
+
       setKernelArg<cl_uint>(kernel, numArgs + 1, numIndices);
-      setKernelArg<cl_uint>(kernel, numArgs + 2, dataSliceSize);
+      setKernelArg<cl_uint>(kernel, numArgs + 2, sliceSize);
+
+      // Batch arguments:
+      setKernelArg<cl_uint>(kernel, numArgs + 3, numSamples);
+      setKernelArg<cl_uint>(kernel, numArgs + 4, destSampleSize);
+      setKernelArg<cl_uint>(kernel, numArgs + 5, srcSampleSize);
 
       enqueueKernel(commands_, kernel, deviceId_, {numIndices},
                     kernelLaunches_);

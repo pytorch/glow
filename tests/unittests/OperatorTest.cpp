@@ -842,9 +842,9 @@ TEST_P(Operator, BatchedGather) {
     [2.3, 3.4, 3.6, 2.3],
     [4.5, 5.7, 1.2, 4.5],
    ]
-   INDICES = [
-    [0, 2],
-   ]
+
+   INDICES = [0, 2],
+
    OUTPUT = [
     [1.0, 2.4],
     [2.3, 3.6],
