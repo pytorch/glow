@@ -579,7 +579,7 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
   BNG.getResult().replaceAllUsesOfWith(result);
 }
 
-void glow::lower(Function *F, CompilationMode mode, const Backend &B) {
+void glow::lower(Function *F, const Backend &B) {
   auto &nodes = F->getNodes();
 
   for (auto &N : nodes) {
