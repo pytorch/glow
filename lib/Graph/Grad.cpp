@@ -97,7 +97,6 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
     CONVERT_TO_GRAD_NODE(PoolMaxNode)
     CONVERT_TO_GRAD_NODE(PoolAvgNode)
     CONVERT_TO_GRAD_NODE(FullyConnectedNode)
-    CONVERT_TO_GRAD_NODE(BatchNormalizationNode)
     CONVERT_TO_GRAD_NODE(LocalResponseNormalizationNode)
     CONVERT_TO_GRAD_NODE(SoftMaxNode)
     CONVERT_TO_GRAD_NODE(CrossEntropyLossNode)
@@ -189,6 +188,41 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       // Constant nodes don't have inputs therefore don't need grad
       // calculations.
       continue;
+
+    if (N->getKind() == Kind::BatchNormalizationNodeKind) {
+      auto *BN = cast<BatchNormalizationNode>(N);
+      auto in = BN->getInput();
+      auto mean = BN->getMean();
+      auto var = BN->getVar();
+      auto channelIdx = BN->getChannelIdx();
+      auto momentum = BN->getMomentum();
+
+      // Update the mean and variance via the MeanVarNormalizationNode.
+      auto *MVN = new MeanVarNormalizationNode("mean_var_normalization", in,
+                                               mean, var, channelIdx, momentum);
+      toAppend.push_back(MVN);
+
+      // Save the newly calculated mean and variance to the mean and variance
+      // variables. These will be used during the next iteration of training.
+      G->createSave("saveMean", MVN->getNewMean(),
+                    llvm::cast<Variable>(mean.getNode()));
+      G->createSave("saveVar", MVN->getNewVar(),
+                    llvm::cast<Variable>(var.getNode()));
+
+      // Replace the BN's mean and variance with the new mean and variance
+      // calculated from MVN. The indices here are based on the assumed
+      // auto-generated order from NodeGen/NodeBuilder.
+      constexpr size_t idxMean = 3;
+      assert(BN->getNthInput(idxMean) == mean && "Mean idx is incorrect");
+      BN->setNthInput(idxMean, mean);
+      constexpr size_t idxVar = 4;
+      assert(BN->getNthInput(idxVar) == var && "Var idx is incorrect");
+      BN->setNthInput(idxVar, var);
+
+      toAppend.push_back(BN->getGrad(map));
+
+      continue;
+    }
 
     llvm_unreachable("Invalid instruction type.");
   } // End of the for-each instr loop.
