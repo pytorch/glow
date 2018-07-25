@@ -53,7 +53,7 @@ public:
   FunctionGraph &operator=(const FunctionGraph &G) = delete;
 
   /// Get list of functions in this graph.
-  FunctionList &getFunctions() { return functions_; }
+  const FunctionList &getFunctions() const { return functions_; }
 
   /// Get input dependences for a function.
   const MappedType &getInputs(Function *F) const {
