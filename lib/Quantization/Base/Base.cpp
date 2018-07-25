@@ -136,7 +136,8 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                     offset);
 }
 
-TensorQuantizationParams chooseQuantizationParams(float min, float max) {
+TensorQuantizationParams chooseQuantizationParams(float min, float max,
+                                                  Schema schema) {
   assert(min <= max && "min must not be bigger than max");
 
   // Given 8 bit precision.
@@ -148,6 +149,18 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max) {
   // representable value.
   min = std::min(min, 0.f);
   max = std::max(max, 0.f);
+
+  if (schema == quantization::Schema::Symmetric) {
+    // Check which end saturates the output dynamic range earlier
+    // and extend the other end to map the zero-point to quantized 0.
+    double rmin = min / (double)qmin;
+    double rmax = max / (double)qmax;
+    if (rmin > rmax) {
+      max = rmin * qmax;
+    } else {
+      min = rmax * qmin;
+    }
+  }
 
   double scale = (max - min) / ((double)qmax - qmin);
 
