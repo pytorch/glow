@@ -296,13 +296,15 @@ public:
     case glow::Kinded::Kind::InsertTensorNodeKind: {
       auto *IT = cast<InsertTensorNode>(N);
       auto start = IT->getStart();
+      auto count = IT->getCount();
+      auto axis = IT->getAxis();
       auto *big = valueForNode(IT->getBig());
       auto *small = valueForNode(IT->getSmall());
       auto *dest = builder_.createAllocActivationInst(
           IT->getName(), IT->getResult().getType());
       builder_.createCopyInst("copy.insert", dest, big);
-      builder_.createInsertTensorInst("insert", dest, small, start,
-                                      /* count */ 1, /* axis */ 0);
+      builder_.createInsertTensorInst("insert", dest, small, start, count,
+                                      axis);
 
       registerIR(N, dest);
       break;
