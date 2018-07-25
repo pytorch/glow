@@ -269,7 +269,7 @@ struct Type final {
   /// size of the slice starting at \p startDim. For example, the tensor with
   /// the shape [10, 10, 3] and startDim 1 would have the size 30, because this
   /// is the size of the slice [10, 3] that starts at index 1.
-  size_t getSlicesize(unsigned startDim) const {
+  size_t getSliceSize(unsigned startDim) const {
     assert(startDim <= numSizes_ && "Invalid start dim");
     size_t s = 1;
     for (unsigned i = startDim; i < numSizes_; i++) {
