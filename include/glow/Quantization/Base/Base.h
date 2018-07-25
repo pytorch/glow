@@ -56,6 +56,13 @@ struct QuantizationTransform32To8 {
 
 namespace quantization {
 
+enum Schema {
+  /// Asymmetric quantization produces ranges not necessarily centered on 0.
+  Asymmetric,
+  /// Symmetric quantization produces ranges centered on 0.
+  Symmetric,
+};
+
 /// Converts floating point value to int8 based on the quantization
 /// parameters \p TQP.
 int8_t quantize(float input, const TensorQuantizationParams &TQP);
@@ -82,8 +89,10 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                                     int32_t offset);
 
 /// Calculate TensorQuantizationParams based on the clipped \p min and \p max
-/// floating point range.
-TensorQuantizationParams chooseQuantizationParams(float min, float max);
+/// floating point range and using the quantization method described
+/// by \p schema.
+TensorQuantizationParams chooseQuantizationParams(float min, float max,
+                                                  Schema schema = Asymmetric);
 
 } // namespace quantization
 } // namespace glow
