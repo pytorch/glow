@@ -23,6 +23,7 @@
 #include "llvm/Support/Casting.h"
 
 using namespace glow;
+using llvm::isa;
 
 namespace {
 
@@ -68,7 +69,7 @@ Node *singleNonVariableInput(Node *node) {
 
   for (unsigned i = 0, e = node->getNumInputs(); i < e; i++) {
     Node *in = node->getNthInput(i).getNode();
-    if (llvm::isa<Variable>(in))
+    if (isa<Variable>(in))
       continue;
     if (nonVarInput)
       return nullptr;
@@ -88,7 +89,7 @@ NodeFunctionMap selectPartitions(Function *F) {
   // assigned to a partition before it is assigned.
   GraphPostOrderVisitor visitor(*F);
   for (auto *node : visitor.getPostOrder()) {
-    if (llvm::isa<Variable>(node))
+    if (isa<Variable>(node))
       continue;
 
     // If node has only one input, and that input has only one output, place it
@@ -131,7 +132,7 @@ FunctionGraph doPartitioning(Function *F, NodeFunctionMap &mapping) {
     for (auto &N : F->getNodes()) {
       for (unsigned inp = 0, e = N.getNumInputs(); inp < e; inp++) {
         auto input = N.getNthInput(inp);
-        if (llvm::isa<Variable>(input.getNode()))
+        if (isa<Variable>(input.getNode()))
           continue;
 
         auto *inputF = mapping[input.getNode()];
@@ -166,7 +167,7 @@ FunctionGraph doPartitioning(Function *F, NodeFunctionMap &mapping) {
       for (unsigned inp = 0, e = N.getNumInputs(); inp < e; inp++) {
         auto input = N.getNthInput(inp);
 
-        if (llvm::isa<Variable>(input.getNode()))
+        if (isa<Variable>(input.getNode()))
           continue;
 
         // Link this node to the clone of its input.
