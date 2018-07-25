@@ -360,11 +360,26 @@ void libjit_topk(T *values, size_t *indices, const T *input, size_t *scratch,
 
 template <typename T>
 void libjit_gather(T *dest, const T *data, const size_t *indices,
-                   size_t numIndices, size_t sliceSize) {
-  for (size_t i = 0; i < numIndices; i++) {
-    size_t slice = indices[i];
-    memcpy(dest + i * sliceSize, data + slice * sliceSize,
-           sliceSize * sizeof(T));
+                   size_t numIndices, size_t sliceSize, size_t numSamples,
+                   size_t sampleSize) {
+  // The index of the slice that is being written.
+  size_t outIdx = 0;
+
+  // For each sample in our batch:
+  for (size_t sample = 0; sample < numSamples; sample++) {
+    size_t sampleStart = sample * sampleSize;
+
+    // For each slice that we fetch:
+    for (size_t i = 0; i < numIndices; i++) {
+      size_t slice = indices[i];
+
+      // Copy the slice.
+      memcpy(dest + outIdx * sliceSize, data + sampleStart + slice * sliceSize,
+             sliceSize * sizeof(T));
+
+      // Point to the next location in the destination tensor.
+      outIdx++;
+    }
   }
 }
 
@@ -802,13 +817,17 @@ void libjit_cross_entropy_loss_f(float *CE, float *P, size_t *labels,
 }
 
 void libjit_gather_f(float *dest, const float *data, const size_t *indices,
-                     size_t numIndices, size_t sliceSize) {
-  libjit_gather(dest, data, indices, numIndices, sliceSize);
+                     size_t numIndices, size_t sliceSize, size_t numSamples,
+                     size_t sampleSize) {
+  libjit_gather(dest, data, indices, numIndices, sliceSize, numSamples,
+                sampleSize);
 }
 
 void libjit_gather_i8(int8_t *dest, const int8_t *data, const size_t *indices,
-                      size_t numIndices, size_t sliceSize) {
-  libjit_gather(dest, data, indices, numIndices, sliceSize);
+                      size_t numIndices, size_t sliceSize, size_t numSamples,
+                      size_t sampleSize) {
+  libjit_gather(dest, data, indices, numIndices, sliceSize, numSamples,
+                sampleSize);
 }
 
 void libjit_scatterassign_f(float *data, const size_t *indices,
