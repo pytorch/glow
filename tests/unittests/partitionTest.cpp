@@ -21,6 +21,8 @@
 
 #include "gtest/gtest.h"
 
+#include <llvm/ADT/ArrayRef.h>
+
 using namespace glow;
 
 class PartitionTest : public ::testing::Test {
@@ -31,6 +33,17 @@ protected:
   Module mod_;
   Function *F_;
 };
+
+/// Execute a graph of functions serially, which is the simplest approach.
+static void executeSerial(const FunctionGraph &G,
+                          llvm::ArrayRef<Variable *> vars,
+                          llvm::ArrayRef<Tensor *> inputs) {
+  for (auto *F : G.getFunctions()) {
+    ExecutionEngine EE;
+    EE.compile(CompilationMode::Infer, F);
+    EE.run(vars, inputs);
+  }
+}
 
 TEST_F(PartitionTest, SerialExecution) {
   auto *input =
@@ -86,17 +99,12 @@ TEST_F(PartitionTest, SerialExecution) {
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 32});
   ExecutionEngine EE;
-  EE.compile(CompilationMode::Infer, F_->clone("clone"));
+  EE.compile(CompilationMode::Infer, F_);
   EE.run({input}, {&in});
   Tensor ref = res.clone();
 
   // Infer using the partitioned graph.
-  res.zero();
-  for (auto *F : G.getFunctions()) {
-    ExecutionEngine EE;
-    EE.compile(CompilationMode::Infer, F);
-    EE.run({input}, {&in});
-  }
+  executeSerial(G, {input}, {&in});
   Tensor test = res.clone();
   EXPECT_TRUE(ref.isEqual(test));
 }
@@ -108,7 +116,8 @@ TEST_F(PartitionTest, Branchover) {
   auto *FC1 = F_->createFullyConnected("fc1", input, 8);
   auto *FC2 = F_->createFullyConnected("fc2", FC1, 8);
   auto *add = F_->createAdd("add", FC1, FC2);
-  F_->createSave("save", add);
+  auto *save = F_->createSave("save", add);
+  auto &res = save->getVariable()->getPayload();
 
   auto G = glow::partition(F_);
   ASSERT_EQ(G.getFunctions().size(), 3);
@@ -129,6 +138,18 @@ TEST_F(PartitionTest, Branchover) {
     EXPECT_EQ(F->getNodes().size(), 2);
     EXPECT_EQ(G.getInputs(F).size(), 2);
   }
+
+  // Infer using the un-partitioned graph.
+  Tensor in(ElemKind::FloatTy, {1, 8});
+  ExecutionEngine EE;
+  EE.compile(CompilationMode::Infer, F_);
+  EE.run({input}, {&in});
+  Tensor ref = res.clone();
+
+  // Infer using the partitioned graph.
+  executeSerial(G, {input}, {&in});
+  Tensor test = res.clone();
+  EXPECT_TRUE(ref.isEqual(test));
 }
 
 TEST_F(PartitionTest, Train) {
