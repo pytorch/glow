@@ -22,8 +22,9 @@
 
 namespace glow {
 
-/// Data structure representing a set of interdependent Functions and the
-/// dependences between them.
+/// Maps a set of functions to the set of functions it depends on.  The
+/// execution of a function cannot begin until all its dependencies have
+/// executed.
 class FunctionGraph {
   /// Dependency map type.
   using Map = llvm::DenseMap<Function *, FunctionList>;
