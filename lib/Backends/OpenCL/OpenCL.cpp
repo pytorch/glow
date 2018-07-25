@@ -1060,10 +1060,13 @@ void OpenCLFunction::execute() {
       size_t destOff = tensors_[dest];
       size_t srcOff = tensors_[src];
       size_t sizeInBytes = dest->getSizeInBytes();
-
-      cl_int err =
-          clEnqueueCopyBuffer(commands_, deviceBuffer_, deviceBuffer_, srcOff,
-                              destOff, sizeInBytes, 0, nullptr, nullptr);
+      cl_event event{nullptr};
+      cl_int err = clEnqueueCopyBuffer(commands_, deviceBuffer_, deviceBuffer_,
+                                       srcOff, destOff, sizeInBytes, 0, nullptr,
+                                       doProfile ? &event : nullptr);
+      if (doProfile) {
+        kernelLaunches_.emplace_back(KernelLaunch("copy", event));
+      }
       GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueCopyBuffer.");
       continue;
     }
@@ -1190,11 +1193,15 @@ size_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
       buf = T->getUnsafePtr();
     }
     size_t valueOffset = it->second;
+    cl_event event{nullptr};
     cl_int err = clEnqueueWriteBuffer(
         commands_, deviceBuffer_, /* blocking_read */ CL_FALSE, valueOffset,
         sizeInBytes, buf, /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr, /* event */ nullptr);
+        /* event_list */ nullptr, /* event */ doProfile ? &event : nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
+    if (doProfile) {
+      kernelLaunches_.emplace_back(KernelLaunch("copyToDevice", event));
+    }
     copiedBytes += sizeInBytes;
   }
   return copiedBytes;
@@ -1213,13 +1220,17 @@ size_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
       buf = T->getUnsafePtr();
     }
     size_t valueOffset = it->second;
+    cl_event event{nullptr};
     cl_int err = clEnqueueReadBuffer(
         commands_, deviceBuffer_, /* blocking_read */ CL_FALSE, valueOffset,
         sizeInBytes, buf, /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr, /* event */ nullptr);
+        /* event_list */ nullptr, /* event */ doProfile ? &event : nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy from the device");
     DEBUG_GLOW(llvm::dbgs() << "Copied the value from device: "
                             << it->first->getName() << "\n");
+    if (doProfile) {
+      kernelLaunches_.emplace_back(KernelLaunch("copyFromDevice", event));
+    }
     copiedBytes += sizeInBytes;
   }
   return copiedBytes;
