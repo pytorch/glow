@@ -1076,9 +1076,9 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
   }
 }
 
-TEST_P(InterpAndCPU, IntConvolutionDepth10) { checkIntConvolution(EE_, 10); }
+TEST_P(Operator, IntConvolutionDepth10) { checkIntConvolution(EE_, 10); }
 
-TEST_P(InterpAndCPU, IntConvolutionDepth8) { checkIntConvolution(EE_, 8); }
+TEST_P(Operator, IntConvolutionDepth8) { checkIntConvolution(EE_, 8); }
 
 TEST_P(InterpAndCPU, IntConcat) {
   auto A = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "A");

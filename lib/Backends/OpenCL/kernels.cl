@@ -735,6 +735,69 @@ __kernel void convolutionW(__global void *mem, cl_uint32_t dest,
                stride, pads, odim, idim, filterDim);
 }
 
+__kernel void convolution_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
+                           __global cl_int8_t *filter, __global cl_int8_t *bias,
+                           cl_uint32_t filterSize, cl_uint32_t stride, 
+                           cl_int32_t destOffset, float destScale, 
+                           cl_int32_t srcOffset, float srcScale, 
+                           cl_int32_t filterOffset, float filterScale, 
+                           cl_int32_t biasOffset, float biasScale, 
+                           PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim,
+                           ShapeNHWC filterDim) {
+  size_t ax = get_global_id(0);
+  size_t ay = get_global_id(1);
+  size_t d = get_global_id(2);
+
+  typedef int ssize_t;
+  // For each convolution 'jump' in the input tensor:
+  ssize_t x = -(ssize_t)pads.top + ax * stride;
+  ssize_t y = -(ssize_t)pads.left + ay * stride;
+
+  float matMulScale = srcScale * filterScale;
+
+  // For each input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+
+    // For each element in the convolution-filter:
+    cl_int32_t sum = 0;
+    for (size_t fx = 0; fx < filterSize; fx++) {
+      for (size_t fy = 0; fy < filterSize; fy++) {
+        ssize_t ox = x + fx;
+        ssize_t oy = y + fy;
+
+        // Ignore index access below zero (this is due to padding).
+        if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
+            oy >= (ssize_t)idim.w) {
+          continue;
+        }
+
+        for (size_t fd = 0; fd < idim.c; fd++) {
+          sum += (filter[getNHWC(filterDim, d, fx, fy, fd)] - filterOffset) *
+                 (src[getNHWC(idim, n, (size_t)ox, (size_t)oy, fd)] - srcOffset);
+        }
+      }
+    }
+
+    sum += round((float)(bias[d] - biasOffset) * (biasScale / matMulScale));
+    dest[getNHWC(odim, n, ax, ay, d)] = clip(round(float(sum) * (matMulScale 
+                                        / destScale) + destOffset));
+  } 
+}
+
+__kernel void convolution_i8W(__global void *mem, cl_uint32_t dest,
+                           cl_uint32_t src, cl_uint32_t filter,
+                           cl_uint32_t bias, cl_uint32_t filterSize,
+                           cl_uint32_t stride, PaddingTLBR pads, 
+                           ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC filterDim, 
+                           cl_int32_t destOffset, float destScale, 
+                           cl_int32_t srcOffset, float srcScale, 
+                           cl_int32_t filterOffset, float filterScale, 
+                           cl_int32_t biasOffset, float biasScale) {
+  convolution_i8K(&mem[dest], &mem[src], &mem[filter], &mem[bias], filterSize,
+               stride, destOffset, destScale, srcOffset, srcScale, filterOffset, 
+               filterScale, biasOffset, biasScale, pads, odim, idim, filterDim);
+}
+
 
 __kernel void convolutiongradK(const __global float *inW,
                                const __global float *filterW,
