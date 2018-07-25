@@ -434,8 +434,12 @@ public:
 
   TopKNode *createTopK(llvm::StringRef name, NodeValue input, size_t k);
 
+  /// Gathers entries of the outer-most dimension of \p data indexed by
+  /// \p indices, and concatenates them. A non-zero \p batchDims specifies the
+  /// batch, and the result is the concatenation of the operation on each sample
+  /// in the batch.
   GatherNode *createGather(llvm::StringRef name, NodeValue data,
-                           NodeValue indices);
+                           NodeValue indices, unsigned batchDims = 0);
 
   /// Copies each slice from \p slices into \p data at the corresponding index
   /// in \p indices, and \returns this new version of data. For example, given

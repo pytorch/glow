@@ -729,18 +729,38 @@ void InterpreterFunction::fwdExtractTensorInst(
 
 void InterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
   Tensor *dataT = getTensor(I->getData());
+  auto &dataTy = dataT->getType();
+  auto iDims = dataT->dims();
   Tensor *indicesT = getTensor(I->getIndices());
   Tensor *outT = getTensor(I->getDest());
+  unsigned batchDims = I->getBatchDims();
 
   size_t out_p = 0;
-  size_t dataSliceSize =
-      dataT->size() / dataT->dims()[0] * dataT->getType().getElementSize();
-  for (size_t i = 0, end = indicesT->size(); i < end; i++) {
-    size_t slice = indicesT->getHandle<size_t>().raw(i);
-    std::copy(&dataT->getUnsafePtr()[dataSliceSize * slice],
-              &dataT->getUnsafePtr()[dataSliceSize * (slice + 1)],
-              &outT->getUnsafePtr()[out_p]);
-    out_p += dataSliceSize;
+  unsigned elementSize = dataT->getType().getElementSize();
+  // The size of the sample in the batch.
+  size_t dataSampleSize = dataTy.getSlicesize(batchDims) * elementSize;
+  // The size of the slices that we gather.
+  size_t dataSliceSize = dataTy.getSlicesize(batchDims + 1) * elementSize;
+
+  // Calculate the size of each sample in the batch.
+  size_t numSamples = 1;
+  for (size_t i = 0; i < batchDims; i++) {
+    numSamples *= iDims[i];
+  }
+
+  // For each sample in the batch:
+  for (size_t sample = 0; sample < numSamples; sample++) {
+    size_t sampleStart = sample * dataSampleSize;
+
+    // For each slice (small fragment) that we copy from the source memory:
+    for (size_t i = 0, end = indicesT->size(); i < end; i++) {
+      size_t slice = indicesT->getHandle<size_t>().raw(i);
+      std::copy(
+          &dataT->getUnsafePtr()[sampleStart + dataSliceSize * slice],
+          &dataT->getUnsafePtr()[sampleStart + dataSliceSize * (slice + 1)],
+          &outT->getUnsafePtr()[out_p]);
+      out_p += dataSliceSize;
+    }
   }
 }
 

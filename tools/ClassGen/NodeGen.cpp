@@ -344,12 +344,16 @@ int main(int argc, char **argv) {
   BB.newNode("Gather")
       .addInput("Data")
       .addInput("Indices")
+      .addMember(MemberType::Unsigned, "BatchDims")
       .addResultFromCtorArg()
-      .setDocstring("Gathers entries of the outer-most dimension of Data  "
-                    "indexed by Indices, and concatenates them. Output tensor  "
-                    "will have dimensions: "
-                    "{I_0, I_1, ... I_n, D_1, D_2, ... D_m}, where D_i and I_j "
-                    "denote Data and Indices dimensions respectively.");
+      .setDocstring("Gathers entries of the outer-most dimension of Data "
+                    "indexed by Indices, and concatenates them. Output tensor "
+                    "will have dimensions: {I_0, I_1, ... I_n, D_1, D_2, ... "
+                    "D_m}, where D_i and I_j denote Data and Indices "
+                    "dimensions respectively. If batchDims is not zero, the "
+                    "gather operator will treat the first batchDims as the "
+                    "batch and will concat the result of the gather operation "
+                    "on each sample in the batch.");
 
   BB.newNode("ScatterAssign")
       .addInput("Data")
