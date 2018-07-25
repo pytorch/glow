@@ -54,7 +54,7 @@ TEST(Graph, simpleTestConv) {
   F->createSave("Save", K);
   F->dump();
   F->dumpDAG();
-  lower(F, CompilationMode::Train, MockBackend());
+  lower(F, MockBackend());
   ::optimize(F, CompilationMode::Train);
   M.generateIR();
   M.dump();
@@ -179,7 +179,7 @@ TEST(Graph, simpleTestFC) {
   F->createSave("Save", O);
   F->dump();
   F->dumpDAG();
-  lower(F, CompilationMode::Train, MockBackend());
+  lower(F, MockBackend());
   ::optimize(F, CompilationMode::Train);
   M.generateIR();
   M.dump();
@@ -213,7 +213,7 @@ TEST(Graph, QuantizationProfileNodes) {
   // Simulate actual usage.
   ::optimize(F, CompilationMode::Infer);
   F = ::glow::profileQuantization(F);
-  lower(F, CompilationMode::Infer, MockBackend());
+  lower(F, MockBackend());
   ::optimize(F, CompilationMode::Infer);
 
   size_t numberOfProfileNodes =
@@ -430,7 +430,7 @@ unsigned getConvNodeSize(BackendKind kind) {
   F->createSave("save", CN);
 
   std::unique_ptr<Backend> backend(createBackend(kind));
-  lower(F, CompilationMode::Infer, *backend);
+  lower(F, *backend);
 
   unsigned count = 0;
   for (auto &n : F->getNodes()) {

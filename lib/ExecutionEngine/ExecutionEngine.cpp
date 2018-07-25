@@ -136,7 +136,7 @@ std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode,
   }
 
   // Lower the graph into a sequence of low-level linear algebra operations.
-  ::glow::lower(F, mode, *backend_);
+  ::glow::lower(F, *backend_);
 
   // Optimize the graph again.
   ::glow::optimize(F, mode);

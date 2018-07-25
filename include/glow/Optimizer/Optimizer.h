@@ -37,7 +37,7 @@ void optimize(Function *F, CompilationMode mode);
 
 /// Lower the high-level neural network operators into low-level linear algebra
 /// operators.
-void lower(Function *F, CompilationMode mode, const Backend &B);
+void lower(Function *F, const Backend &B);
 
 /// Instrument function \p F by inserting quantization profile nodes
 /// for capturing stats for quantization. The new quantized function is called
