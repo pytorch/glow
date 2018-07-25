@@ -1925,6 +1925,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *dest = GI->getDest();
     auto *data = GI->getData();
     auto *indices = GI->getIndices();
+    unsigned batchDims = GI->getBatchDims();
 
     auto *destPtr = emitValueAddress(builder, dest);
     auto *dataPtr = emitValueAddress(builder, data);
@@ -1933,12 +1934,26 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *indicesSize = emitConstSizeT(builder, indices->size());
 
     auto *dataType = data->getType();
-   auto *sliceSize =
-        emitConstSizeT(builder, dataType->size() / dataType->dims()[0]);
+
+    // The size of the sample in the batch.
+    size_t sampleSize = dataType->getSlicesize(batchDims);
+    // The size of the slices that we gather.
+    size_t sliceSize = dataType->getSlicesize(batchDims + 1);
+
+    // Calculate the size of each sample in the batch.
+    size_t numSamples = 1;
+    for (size_t i = 0; i < batchDims; i++) {
+      numSamples *= data->dims()[i];
+    }
+
+    auto *sliceSizeVal = emitConstSizeT(builder, sliceSize);
+    auto *numSamplesVal = emitConstSizeT(builder, numSamples);
+    auto *sampleSizeVal = emitConstSizeT(builder, sampleSize);
 
     auto *F = getFunction("gather", dest->getElementType());
     createCall(builder, F,
-               {destPtr, dataPtr, indicesPtr, indicesSize, sliceSize});
+               {destPtr, dataPtr, indicesPtr, indicesSize, sliceSizeVal,
+                numSamplesVal, sampleSizeVal});
     break;
   }
 
