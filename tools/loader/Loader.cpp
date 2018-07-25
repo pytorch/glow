@@ -68,6 +68,15 @@ llvm::cl::opt<std::string> dumpProfileFileOpt(
     llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional,
     llvm::cl::cat(loaderCat));
 
+llvm::cl::opt<quantization::Schema> quantizationSchema(
+    "quantization-schema",
+    llvm::cl::desc("Specify which quantization schema to use"),
+    llvm::cl::values(clEnumValN(quantization::Schema::Asymmetric, "asymmetric",
+                                "Use asymmetric ranges"),
+                     clEnumValN(quantization::Schema::Symmetric, "symmetric",
+                                "Use symmetric ranges")),
+    llvm::cl::init(quantization::Schema::Asymmetric), llvm::cl::cat(loaderCat));
+
 llvm::cl::opt<std::string> loadProfileFileOpt(
     "load_profile",
     llvm::cl::desc("Load quantization profile file and quantize the graph"),
@@ -186,7 +195,7 @@ void Loader::runInference(llvm::ArrayRef<Variable *> variables,
 
   if (!dumpProfileFileOpt.empty()) {
     std::vector<NodeQuantizationInfo> QI =
-        quantization::generateNodeQuantizationInfos(F_);
+        quantization::generateNodeQuantizationInfos(F_, quantizationSchema);
     serializeToYaml(dumpProfileFileOpt, QI);
   }
 }

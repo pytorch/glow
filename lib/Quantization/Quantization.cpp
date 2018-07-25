@@ -28,7 +28,7 @@ namespace glow {
 namespace quantization {
 
 std::vector<NodeQuantizationInfo>
-generateNodeQuantizationInfos(const Function *F) {
+generateNodeQuantizationInfos(const Function *F, Schema schema) {
   std::vector<NodeQuantizationInfo> quantizationInfos;
 
   for (auto &node : F->getNodes()) {
@@ -46,7 +46,7 @@ generateNodeQuantizationInfos(const Function *F) {
       // TODO: Ideally tensor quantization params should be calculated
       // based on the histogram distribution. Use simplistic approach for now.
       (void)histogram;
-      TensorQuantizationParams TQP = chooseQuantizationParams(min, max);
+      TensorQuantizationParams TQP = chooseQuantizationParams(min, max, schema);
 
       quantizationInfos.emplace_back(fullOutputName, TQP);
     }
