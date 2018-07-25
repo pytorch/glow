@@ -835,6 +835,51 @@ TEST_P(Operator, Gather) {
   EXPECT_FLOAT_EQ(H.at({1, 3, 1}), 1.2);
 }
 
+TEST_P(Operator, BatchedGather) {
+  /*
+   DATA  = [
+    [1.0, 1.2, 2.4, 4.5],
+    [2.3, 3.4, 3.6, 2.3],
+    [4.5, 5.7, 1.2, 4.5],
+   ]
+   INDICES = [
+    [0, 2],
+   ]
+   OUTPUT = [
+    [1.0, 2.4],
+    [2.3, 3.6],
+    [4.5, 1.2],
+   ]
+   */
+  auto *data = mod_.createVariable(ElemKind::FloatTy, {3, 4}, "data");
+  auto *indices = mod_.createVariable(ElemKind::IndexTy, {2}, "indices");
+  auto *result = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "result");
+
+  data->getPayload().getHandle() = {
+      1.0f, 1.2f, 2.4f, 4.5f, 2.3f, 3.4f, 3.6f, 2.3f, 4.5f, 5.7f, 1.2f, 4.5f,
+  };
+  indices->getPayload().getHandle<size_t>() = {
+      0,
+      2,
+  };
+
+  // Create a batched gather (a single batch dimension).
+  auto R = F_->createGather("gather", data, indices, 1);
+
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto H = result->getPayload().getHandle();
+  EXPECT_FLOAT_EQ(H.at({0, 0}), 1.0);
+  EXPECT_FLOAT_EQ(H.at({0, 1}), 2.4);
+  EXPECT_FLOAT_EQ(H.at({1, 0}), 2.3);
+  EXPECT_FLOAT_EQ(H.at({1, 1}), 3.6);
+  EXPECT_FLOAT_EQ(H.at({2, 0}), 4.5);
+  EXPECT_FLOAT_EQ(H.at({2, 1}), 1.2);
+}
+
 TEST_P(Operator, ScatterAssign) {
   auto *data = mod_.createVariable(ElemKind::FloatTy, {5, 2}, "data");
   auto *indices = mod_.createVariable(ElemKind::IndexTy, {2}, "indices");
