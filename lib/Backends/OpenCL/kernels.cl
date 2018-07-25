@@ -1161,10 +1161,20 @@ __kernel void gatherK(__global float *dest,
                       __global const float *src,
                       __global cl_uint64_t *indices,
                       cl_uint32_t numIndices,
-                      cl_uint32_t sliceSize) {
+                      cl_uint32_t sliceSize,
+                      cl_uint32_t numSamples,
+                      cl_uint32_t destSampleSize,
+                      cl_uint32_t srcSampleSize) {
   int idx = get_global_id(0);
   cl_uint64_t slice = indices[idx];
-  memcpy_float(dest + idx * sliceSize, src + slice * sliceSize, sliceSize);
+  // For each sample in our batch:
+  for (size_t sample = 0; sample < numSamples; sample++) {
+    size_t srcSampleStart = sample * srcSampleSize;
+    size_t destSampleStart = sample * destSampleSize;
+    memcpy_float(dest + destSampleStart + idx * sliceSize,
+                 src + srcSampleStart + slice * sliceSize,
+                 sliceSize);
+  }
 }
 
 __kernel void gatherW(__global void *mem,
@@ -1172,8 +1182,12 @@ __kernel void gatherW(__global void *mem,
                       cl_uint32_t src,
                       cl_uint32_t indices,
                       cl_uint32_t numIndices,
-                      cl_uint32_t sliceSize) {
-   gatherK(&mem[dest], &mem[src], &mem[indices], numIndices, sliceSize);
+                      cl_uint32_t sliceSize,
+                      cl_uint32_t numSamples,
+                      cl_uint32_t destSampleSize,
+                      cl_uint32_t srcSampleSize) {
+   gatherK(&mem[dest], &mem[src], &mem[indices], numIndices, sliceSize,
+           numSamples, destSampleSize, srcSampleSize);
 }
 
 __kernel void scatterassignK(__global float *data,
