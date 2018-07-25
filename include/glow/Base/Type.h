@@ -269,6 +269,19 @@ struct Type final {
     return s;
   }
 
+  /// \returns the number of elements in a slice in the tensor. Calculate the
+  /// size of the slice starting at \p startDim. For example, the tensor with
+  /// the shape [10, 10, 3] and startDim 1 would have the size 30, because this
+  /// is the size of the slice [10, 3] that starts at index 1.
+  size_t getSlicesize(unsigned startDim) const {
+    assert(startDim <= numSizes_ && "Invalid start dim");
+    size_t s = 1;
+    for (unsigned i = startDim; i < numSizes_; i++) {
+      s *= size_t(sizes_[i]);
+    }
+    return s;
+  }
+
   /// \returns true if the templated parameter \p ElemTy matches this type.
   template <class ElemTy> bool isType() const {
     return isType<ElemTy>(elementType_);
