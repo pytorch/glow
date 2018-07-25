@@ -49,7 +49,7 @@ public:
   void add(Node *N, Function *F) { nodeToFunction_[N] = F; }
 
   /// Get list of functions contained in this map.
-  FunctionList &getFunctions() { return functions_; }
+  const FunctionList &getFunctions() const { return functions_; }
 
   /// \returns the number of partitions.
   Map::size_type size() const { return functions_.size(); }
