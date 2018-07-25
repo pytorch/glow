@@ -1933,7 +1933,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *indicesSize = emitConstSizeT(builder, indices->size());
 
     auto *dataType = data->getType();
-    auto *sliceSize =
+   auto *sliceSize =
         emitConstSizeT(builder, dataType->size() / dataType->dims()[0]);
 
     auto *F = getFunction("gather", dest->getElementType());

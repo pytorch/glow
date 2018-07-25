@@ -36,18 +36,18 @@ TEST(Tensor, init) {
   H.dump();
 }
 
-TEST(Tensor, getSlicesize) {
-  // Test the Type::getSlicesize() function.
+TEST(Tensor, getSliceSize) {
+  // Test the Type::getSliceSize() function.
   
   Tensor X(ElemKind::FloatTy, {3, 2, 10, 4});
   Tensor Y(ElemKind::FloatTy, {1, 2, 3, 4});
 
-  EXPECT_EQ(X.getType().getSlicesize(0), 3 * 2 * 10 * 4);
-  EXPECT_EQ(X.getType().getSlicesize(1), 2 * 10 * 4);
-  EXPECT_EQ(X.getType().getSlicesize(2), 10 * 4);
-  EXPECT_EQ(X.getType().getSlicesize(3), 4);
-  EXPECT_EQ(Y.getType().getSlicesize(0), 1 * 2 * 3 * 4);
-  EXPECT_EQ(Y.getType().getSlicesize(3), 4);
+  EXPECT_EQ(X.getType().getSliceSize(0), 3 * 2 * 10 * 4);
+  EXPECT_EQ(X.getType().getSliceSize(1), 2 * 10 * 4);
+  EXPECT_EQ(X.getType().getSliceSize(2), 10 * 4);
+  EXPECT_EQ(X.getType().getSliceSize(3), 4);
+  EXPECT_EQ(Y.getType().getSliceSize(0), 1 * 2 * 3 * 4);
+  EXPECT_EQ(Y.getType().getSliceSize(3), 4);
 }
 
 TEST(Tensor, randomizeInt) {

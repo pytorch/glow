@@ -738,9 +738,9 @@ void InterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
   size_t out_p = 0;
   unsigned elementSize = dataT->getType().getElementSize();
   // The size of the sample in the batch.
-  size_t dataSampleSize = dataTy.getSlicesize(batchDims) * elementSize;
+  size_t dataSampleSize = dataTy.getSliceSize(batchDims) * elementSize;
   // The size of the slices that we gather.
-  size_t dataSliceSize = dataTy.getSlicesize(batchDims + 1) * elementSize;
+  size_t dataSliceSize = dataTy.getSliceSize(batchDims + 1) * elementSize;
 
   // Calculate the size of each sample in the batch.
   size_t numSamples = 1;
