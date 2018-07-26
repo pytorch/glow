@@ -149,9 +149,8 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
   ::glow::optimize(F_, CompilationMode::Infer);
   // Make sure the structure of the graph did not change.
   EXPECT_EQ(F_->getNodes().size(), 4);
-  EXPECT_TRUE(llvm::isa<VariableNode>(filterSave->getInput()));
-  VariableNode *varFilter =
-      llvm::dyn_cast<VariableNode>(filterSave->getInput());
+  EXPECT_TRUE(llvm::isa<Variable>(filterSave->getInput()));
+  Variable *varFilter = llvm::dyn_cast<Variable>(filterSave->getInput());
   EXPECT_EQ(varFilter, CV->getFilter());
   EXPECT_TRUE(llvm::isa<BatchNormalizationNode>(ret->getInput()));
   BatchNormalizationNode *batchNorm =

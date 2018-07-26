@@ -365,7 +365,7 @@ public:
       V->setName(N->getName());
       break;
     }
-    case glow::Kinded::Kind::VariableNodeKind: {
+    case glow::Kinded::Kind::VariableKind: {
       auto *V = cast<Variable>(N);
       auto *W = builder_.createWeightVar(V->getType(), V->getName(),
                                          WeightVar::MutabilityKind::Mutable,

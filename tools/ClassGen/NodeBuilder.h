@@ -231,7 +231,7 @@ public:
 
   /// Declare the node in the def file but don't generate code for it.
   void declareNode(const std::string &name) {
-    dStream << "DEF_NODE(" << name << "Node, " << name << ")\n";
+    dStream << "DEF_NODE(" << name << ", " << name << ")\n";
   }
 
   /// Include backend-specific verification at the end of the auto-generated
