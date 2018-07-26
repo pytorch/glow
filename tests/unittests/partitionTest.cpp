@@ -35,7 +35,7 @@ protected:
 };
 
 /// Execute a graph of functions serially, which is the simplest approach.
-static void executeSerial(const FunctionGraph &G,
+static void executeSerial(const FunctionDAG &G,
                           llvm::ArrayRef<Variable *> vars,
                           llvm::ArrayRef<Tensor *> inputs) {
   for (auto *F : G.getFunctions()) {
@@ -167,7 +167,7 @@ TEST_F(PartitionTest, VerifyTopo) {
   auto *F1 = mod_.createFunction("F1");
   auto *F2 = mod_.createFunction("F2");
   FunctionList functions{F1, F2};
-  FunctionGraph G(functions);
+  FunctionDAG G(functions);
   G.add(F2, F1);
   EXPECT_TRUE(G.verify());
 }
@@ -176,7 +176,7 @@ TEST_F(PartitionTest, VerifyTopoFails) {
   auto *F1 = mod_.createFunction("F1");
   auto *F2 = mod_.createFunction("F2");
   FunctionList functions{F1, F2};
-  FunctionGraph G(functions);
+  FunctionDAG G(functions);
   G.add(F1, F2);
   EXPECT_FALSE(G.verify());
 }
@@ -184,7 +184,7 @@ TEST_F(PartitionTest, VerifyTopoFails) {
 TEST_F(PartitionTest, VerifyCyclicFails) {
   auto *F1 = mod_.createFunction("F1");
   FunctionList functions{F1};
-  FunctionGraph G(functions);
+  FunctionDAG G(functions);
   G.add(F1, F1);
   EXPECT_FALSE(G.verify());
 }

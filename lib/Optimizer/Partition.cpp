@@ -112,10 +112,10 @@ NodeFunctionMap selectBasicBlockPartitions(Function *F) {
   return mapping;
 }
 
-/// Given a function \p F and partitioning \p mapping, \return a FunctionGraph
+/// Given a function \p F and partitioning \p mapping, \return a FunctionDAG
 /// that contains appropriately-partitioned functions and their dependences.
-FunctionGraph doPartitioning(Function *F, NodeFunctionMap &mapping) {
-  FunctionGraph G(mapping.getFunctions());
+FunctionDAG doPartitioning(Function *F, NodeFunctionMap &mapping) {
+  FunctionDAG G(mapping.getFunctions());
   llvm::DenseMap<Node *, Node *> currToNew;
   auto *mod = F->getParent();
 
@@ -140,7 +140,7 @@ FunctionGraph doPartitioning(Function *F, NodeFunctionMap &mapping) {
         if (F == inputF)
           continue;
 
-        // Add this dependence to the FunctionGraph.
+        // Add this dependence to the FunctionDAG.
         G.add(F, inputF);
 
         // If we've already created a variable for this dependence, use it.
@@ -183,14 +183,14 @@ FunctionGraph doPartitioning(Function *F, NodeFunctionMap &mapping) {
 
 } // end namespace
 
-FunctionGraph::FunctionGraph(const FunctionList &functions)
+FunctionDAG::FunctionDAG(const FunctionList &functions)
     : functions_(functions) {
   for (auto *F : functions_) {
     dependencies_[F] = FunctionList();
   }
 }
 
-bool FunctionGraph::verify() const {
+bool FunctionDAG::verify() const {
   llvm::DenseSet<Function *> seen;
   for (auto *F : functions_) {
     for (auto *dep : dependencies_.lookup(F)) {
@@ -202,7 +202,7 @@ bool FunctionGraph::verify() const {
   return true;
 }
 
-FunctionGraph glow::partition(Function *F) {
+FunctionDAG glow::partition(Function *F) {
   NodeFunctionMap partitionMap = selectBasicBlockPartitions(F);
   auto G = doPartitioning(F, partitionMap);
   assert(G.verify());
