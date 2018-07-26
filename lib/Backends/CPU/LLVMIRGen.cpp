@@ -485,7 +485,7 @@ llvm::Function *LLVMIRGen::getFunction(const std::string &name,
   case ElemKind::IndexTy:
     return get("libjit_" + name + "_u");
   default:
-    GLOW_ASSERT("Unsupported element type");
+    GLOW_UNREACHABLE("Unsupported element type");
   }
 }
 
