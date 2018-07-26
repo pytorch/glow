@@ -27,8 +27,6 @@
 #include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
-
-using namespace glow;
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
