@@ -78,22 +78,22 @@ TEST_F(PartitionTest, SerialExecution) {
   {
     auto *F = *it++;
     EXPECT_EQ(F->getNodes().size(), 3);
-    EXPECT_EQ(G.getInputs(F).size(), 0);
+    EXPECT_EQ(G.getDependencies(F).size(), 0);
   }
   {
     auto *F = *it++;
     EXPECT_EQ(F->getNodes().size(), 5);
-    EXPECT_EQ(G.getInputs(F).size(), 1);
+    EXPECT_EQ(G.getDependencies(F).size(), 1);
   }
   {
     auto *F = *it++;
     EXPECT_EQ(F->getNodes().size(), 5);
-    EXPECT_EQ(G.getInputs(F).size(), 1);
+    EXPECT_EQ(G.getDependencies(F).size(), 1);
   }
   {
     auto *F = *it++;
     EXPECT_EQ(F->getNodes().size(), 2);
-    EXPECT_EQ(G.getInputs(F).size(), 2);
+    EXPECT_EQ(G.getDependencies(F).size(), 2);
   }
 
   // Infer using the un-partitioned graph.
@@ -126,17 +126,17 @@ TEST_F(PartitionTest, Branchover) {
   {
     auto *F = *it++;
     EXPECT_EQ(F->getNodes().size(), 2);
-    EXPECT_EQ(G.getInputs(F).size(), 0);
+    EXPECT_EQ(G.getDependencies(F).size(), 0);
   }
   {
     auto *F = *it++;
     EXPECT_EQ(F->getNodes().size(), 2);
-    EXPECT_EQ(G.getInputs(F).size(), 1);
+    EXPECT_EQ(G.getDependencies(F).size(), 1);
   }
   {
     auto *F = *it++;
     EXPECT_EQ(F->getNodes().size(), 2);
-    EXPECT_EQ(G.getInputs(F).size(), 2);
+    EXPECT_EQ(G.getDependencies(F).size(), 2);
   }
 
   // Infer using the un-partitioned graph.
@@ -161,4 +161,30 @@ TEST_F(PartitionTest, Train) {
   auto *TF = glow::differentiate(F_, TrainingConfig());
   auto G = glow::partition(TF);
   ASSERT_EQ(G.getFunctions().size(), 6);
+}
+
+TEST_F(PartitionTest, VerifyTopo) {
+  auto *F1 = mod_.createFunction("F1");
+  auto *F2 = mod_.createFunction("F2");
+  FunctionList functions{F1, F2};
+  FunctionGraph G(functions);
+  G.add(F2, F1);
+  EXPECT_TRUE(G.verify());
+}
+
+TEST_F(PartitionTest, VerifyTopoFails) {
+  auto *F1 = mod_.createFunction("F1");
+  auto *F2 = mod_.createFunction("F2");
+  FunctionList functions{F1, F2};
+  FunctionGraph G(functions);
+  G.add(F1, F2);
+  EXPECT_FALSE(G.verify());
+}
+
+TEST_F(PartitionTest, VerifyCyclicFails) {
+  auto *F1 = mod_.createFunction("F1");
+  FunctionList functions{F1};
+  FunctionGraph G(functions);
+  G.add(F1, F1);
+  EXPECT_FALSE(G.verify());
 }

@@ -20,6 +20,7 @@
 #include "glow/Graph/Utils.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/Casting.h"
 
 using namespace glow;
@@ -82,7 +83,7 @@ Node *singleNonVariableInput(Node *node) {
 /// partitions the graph in a manner that looks like basic blocks in a control
 /// flow graphs: regions end after a node with multiple outputs or before a node
 /// with multiple inputs.
-NodeFunctionMap selectPartitions(Function *F) {
+NodeFunctionMap selectBasicBlockPartitions(Function *F) {
   NodeFunctionMap mapping;
 
   // Visit graph nodes in reverse post order so that a node's inputs are already
@@ -185,11 +186,25 @@ FunctionGraph doPartitioning(Function *F, NodeFunctionMap &mapping) {
 FunctionGraph::FunctionGraph(const FunctionList &functions)
     : functions_(functions) {
   for (auto *F : functions_) {
-    inputs_[F] = FunctionList();
+    dependencies_[F] = FunctionList();
   }
 }
 
+bool FunctionGraph::verify() const {
+  llvm::DenseSet<Function *> seen;
+  for (auto *F : functions_) {
+    for (auto *dep : dependencies_.lookup(F)) {
+      if (!seen.count(dep))
+        return false;
+    }
+    seen.insert(F);
+  }
+  return true;
+}
+
 FunctionGraph glow::partition(Function *F) {
-  NodeFunctionMap partitionMap = selectPartitions(F);
-  return doPartitioning(F, partitionMap);
+  NodeFunctionMap partitionMap = selectBasicBlockPartitions(F);
+  auto G = doPartitioning(F, partitionMap);
+  assert(G.verify());
+  return G;
 }

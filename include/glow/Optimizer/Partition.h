@@ -36,7 +36,7 @@ class FunctionGraph {
   FunctionList functions_;
 
   /// Input dependencies of each function.
-  Map inputs_;
+  Map dependencies_;
 
 public:
   /// Ctor.
@@ -56,15 +56,18 @@ public:
   /// Get list of functions in this graph.
   const FunctionList &getFunctions() const { return functions_; }
 
-  /// Get input dependences for a function.
-  const MappedType &getInputs(Function *F) const {
-    auto it = inputs_.find(F);
-    assert(it != inputs_.end() && "No inputs found for function in graph");
+  /// Get dependencies for a function.
+  const MappedType &getDependencies(Function *F) const {
+    auto it = dependencies_.find(F);
+    assert(it != dependencies_.end() && "No dependencies found for function in graph");
     return it->second;
   }
 
   /// Record that \p F depends on \p inputF.
-  void add(Function *F, Function *inputF) { inputs_[F].push_back(inputF); }
+  void add(Function *F, Function *inputF) { dependencies_[F].push_back(inputF); }
+
+  /// Verify that function graph is well-formed (acyclic, topologically sorted).
+  bool verify() const;
 };
 
 /// Split an input Function into a FunctionGraph.
