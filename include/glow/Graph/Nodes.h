@@ -60,14 +60,14 @@ public:
   /// Create a new variable and initialize its payload.
   Variable(llvm::StringRef name, TypeRef Ty, VisibilityKind visibility,
            TrainKind train, float val, PseudoRNG &PRNG)
-      : Node(Kinded::Kind::VariableNodeKind, name), val_(val), train_(train),
+      : Node(Kinded::Kind::VariableKind, name), val_(val), train_(train),
         visibility_(visibility) {
     addResult(Ty);
     initPayload(PRNG);
   }
 
   Variable(llvm::StringRef name, VisibilityKind visibility, Tensor &&payload)
-      : Node(Kinded::Kind::VariableNodeKind, name), val_(0.0),
+      : Node(Kinded::Kind::VariableKind, name), val_(0.0),
         train_(TrainKind::None), visibility_(visibility),
         payload_(std::move(payload)) {
     addResult(&payload_.getType());
@@ -80,7 +80,7 @@ public:
   bool isPrivate() const { return visibility_ == VisibilityKind::Private; }
 
   static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::VariableNodeKind;
+    return k->getKind() == Kinded::Kind::VariableKind;
   }
 
   /// \returns the original training mode of the variable.
@@ -128,8 +128,6 @@ public:
 
   llvm::hash_code getHash() const;
 };
-
-class VariableNode : public Variable {};
 
 /// Calculate the size of the output tensor based on the convolution/pooling
 /// parameters.
