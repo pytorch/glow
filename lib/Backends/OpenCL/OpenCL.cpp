@@ -62,12 +62,6 @@ namespace glow {
 Backend *createOCLBackend() { return new OCLBackend(); }
 } // namespace glow
 
-using Kind = Kinded::Kind;
-using kernelSrcEnum = struct {
-  Kind kind;
-  const char *funcName;
-};
-
 static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 #ifndef NDEBUG
   // Determine the size of the log.
