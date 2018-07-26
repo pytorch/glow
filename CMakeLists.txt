@@ -70,7 +70,11 @@ message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
 
 if(NOT EXISTS "${GLOW_SOURCE_DIR}/tests/googletest/googletest")
-  message(FATAL_ERROR "No git submodules. Run: git submodule update --init --recursive")
+  message(FATAL_ERROR "No googletest git submodule. Run: git submodule update --init --recursive")
+endif()
+
+if(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/onnx")
+  message(FATAL_ERROR "No onnx git submodule. Run: git submodule update --init --recursive")
 endif()
 
 add_subdirectory(tests/googletest/)
