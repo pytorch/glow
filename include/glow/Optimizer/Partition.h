@@ -25,7 +25,7 @@ namespace glow {
 /// Maps a set of functions to the set of functions it depends on.  The
 /// execution of a function cannot begin until all its dependencies have
 /// executed.
-class FunctionGraph {
+class FunctionDAG {
   /// Dependency map type.
   using Map = llvm::DenseMap<Function *, FunctionList>;
 
@@ -40,18 +40,18 @@ class FunctionGraph {
 
 public:
   /// Ctor.
-  FunctionGraph(const FunctionList &functions);
+  FunctionDAG(const FunctionList &functions);
 
   /// Dtor.
-  ~FunctionGraph() = default;
+  ~FunctionDAG() = default;
 
   /// Move ctor.
-  FunctionGraph(FunctionGraph &&G) = default;
-  FunctionGraph &operator=(FunctionGraph &&G) = default;
+  FunctionDAG(FunctionDAG &&G) = default;
+  FunctionDAG &operator=(FunctionDAG &&G) = default;
 
-  /// FunctionGraph is non-copyable to ensure efficiency.
-  FunctionGraph(const FunctionGraph &G) = delete;
-  FunctionGraph &operator=(const FunctionGraph &G) = delete;
+  /// FunctionDAG is non-copyable to ensure efficiency.
+  FunctionDAG(const FunctionDAG &G) = delete;
+  FunctionDAG &operator=(const FunctionDAG &G) = delete;
 
   /// Get list of functions in this graph.
   const FunctionList &getFunctions() const { return functions_; }
@@ -70,8 +70,8 @@ public:
   bool verify() const;
 };
 
-/// Split an input Function into a FunctionGraph.
-FunctionGraph partition(Function *F);
+/// Split an input Function into a FunctionDAG.
+FunctionDAG partition(Function *F);
 
 } // namespace glow
 
