@@ -779,7 +779,7 @@ __kernel void convolution_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
     }
 
     sum += round((float)(bias[d] - biasOffset) * (biasScale / matMulScale));
-    dest[getNHWC(odim, n, ax, ay, d)] = clip(round(float(sum) * (matMulScale 
+    dest[getNHWC(odim, n, ax, ay, d)] = clip(round((float)(sum) * (matMulScale 
                                         / destScale) + destOffset));
   } 
 }
