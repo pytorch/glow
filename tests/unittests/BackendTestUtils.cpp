@@ -122,9 +122,11 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
                   llvm::ArrayRef<size_t> shape1, llvm::ArrayRef<size_t> shape2,
                   Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
-  EE.getConfig().learningRate = 0.03;
-  EE.getConfig().momentum = 0.3;
-  EE.getConfig().L2Decay = 0.01;
+  TrainingConfig TC;
+
+  TC.learningRate = 0.03;
+  TC.momentum = 0.3;
+  TC.L2Decay = 0.01;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var1 = VarFrom(inputs);
@@ -140,7 +142,7 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
   auto result = F->createSave("ret", softmax);
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
 
   EE.runBatch(8, {var1, var2}, {inputs, selected});
@@ -182,9 +184,11 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
                                         llvm::ArrayRef<size_t> shape2,
                                         Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
-  EE.getConfig().learningRate = 0.06;
-  EE.getConfig().momentum = 0.1;
-  EE.getConfig().L2Decay = 0.01;
+  TrainingConfig TC;
+
+  TC.learningRate = 0.06;
+  TC.momentum = 0.1;
+  TC.L2Decay = 0.01;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var1 = VarFrom(inputs);
@@ -199,7 +203,7 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
   auto result = F->createSave("ret", softmax);
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
   EE.runBatch(8, {var1, var2}, {inputs, selected});
 
@@ -281,9 +285,11 @@ void trainPoolAvgNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      llvm::ArrayRef<size_t> shape2, Tensor *out,
                      BackendKind kind) {
   ExecutionEngine EE(kind);
-  EE.getConfig().learningRate = 0.01;
-  EE.getConfig().momentum = 0.4;
-  EE.getConfig().L2Decay = 0.01;
+  TrainingConfig TC;
+
+  TC.learningRate = 0.01;
+  TC.momentum = 0.4;
+  TC.L2Decay = 0.01;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var1 = VarFrom(inputs);
@@ -297,7 +303,7 @@ void trainPoolAvgNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
   auto result = F->createSave("ret", softmax);
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
 
   EE.runBatch(10, {var1, var2}, {inputs, selected});
@@ -323,9 +329,11 @@ void trainPoolMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      llvm::ArrayRef<size_t> shape2, Tensor *out,
                      BackendKind kind) {
   ExecutionEngine EE(kind);
-  EE.getConfig().learningRate = 0.03;
-  EE.getConfig().momentum = 0.3;
-  EE.getConfig().L2Decay = 0.003;
+  TrainingConfig TC;
+
+  TC.learningRate = 0.03;
+  TC.momentum = 0.3;
+  TC.L2Decay = 0.003;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var1 = VarFrom(inputs);
@@ -339,7 +347,7 @@ void trainPoolMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
   auto result = F->createSave("ret", softmax);
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
 
   EE.runBatch(7, {var1, var2}, {inputs, selected});
@@ -513,9 +521,11 @@ void inferSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
 void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      Tensor *selected, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
-  EE.getConfig().learningRate = 0.003;
-  EE.getConfig().momentum = 0.7;
-  EE.getConfig().L2Decay = 0.001;
+  TrainingConfig TC;
+
+  TC.learningRate = 0.003;
+  TC.momentum = 0.7;
+  TC.L2Decay = 0.001;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var1 = VarFrom(inputs);
@@ -526,7 +536,7 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *softmax = F->createSoftMax("softmax", fc, var2);
   auto result = F->createSave("ret", softmax);
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
 
   EE.runBatch(30, {var1, var2}, {inputs, selected});

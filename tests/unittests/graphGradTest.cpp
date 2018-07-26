@@ -30,11 +30,13 @@ using namespace glow;
 TEST(GraphAutoGrad, autoGrad) {
   ExecutionEngine EE;
 
+  TrainingConfig TC;
+
   // Construct the network:
-  EE.getConfig().learningRate = 0.001;
-  EE.getConfig().momentum = 0.9;
-  EE.getConfig().L2Decay = 0.001;
-  EE.getConfig().L1Decay = 0.001;
+  TC.learningRate = 0.001;
+  TC.momentum = 0.9;
+  TC.L2Decay = 0.001;
+  TC.L1Decay = 0.001;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -62,18 +64,19 @@ TEST(GraphAutoGrad, autoGrad) {
   auto *result = F->createSave("return", SM);
   (void)result;
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
   EE.compile(CompilationMode::Infer, F);
 }
 
 TEST(GraphAutoGrad, checkLRNGen) {
   ExecutionEngine EE;
+  TrainingConfig TC;
 
   // Construct the network:
-  EE.getConfig().learningRate = 0.001;
-  EE.getConfig().momentum = 0.9;
-  EE.getConfig().L2Decay = 0.001;
+  TC.learningRate = 0.001;
+  TC.momentum = 0.9;
+  TC.L2Decay = 0.001;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -92,7 +95,7 @@ TEST(GraphAutoGrad, checkLRNGen) {
 
   auto *result = F->createSave("return", SM);
   (void)result;
-  Function *TF = glow::differentiate(F, EE.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
   EE.compile(CompilationMode::Infer, F);
 }
@@ -100,6 +103,7 @@ TEST(GraphAutoGrad, checkLRNGen) {
 TEST(GraphAutoGrad, cloneAndDiff) {
   // The test ensures that unused variables are not touched in differentiation.
   ExecutionEngine EE;
+  TrainingConfig TC;
 
   Module M;
 
@@ -132,7 +136,7 @@ TEST(GraphAutoGrad, cloneAndDiff) {
 
   EXPECT_EQ(M.getVars().size(), 5);
 
-  auto *diffF = differentiate(F, EE.getConfig());
+  auto *diffF = differentiate(F, TC);
 
   diffF->verify();
 

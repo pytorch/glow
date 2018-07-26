@@ -41,8 +41,6 @@ class ExecutionEngine final {
   std::unique_ptr<Backend> backend_;
   /// A glow function compiled for this ExecutionEngine's backend.
   std::unique_ptr<CompiledFunction> function_;
-  /// The training configuration.
-  TrainingConfig config_;
 
   /// Optimize the graph, generate IR, and optimize the IR.
   std::unique_ptr<IRFunction> generateIR(CompilationMode mode, Function *F);
@@ -72,9 +70,6 @@ public:
   /// everything when preparing the bundle for saving. There is no need to
   /// invoke the compile method before it.
   void save(CompilationMode mode, Function *F, llvm::StringRef outputDir);
-
-  /// Provides access to the training configuration.
-  TrainingConfig &getConfig() { return config_; }
 
   /// Runs the program in a forward pass. Update the nodes in \p nodes with the
   /// values \p inputs.

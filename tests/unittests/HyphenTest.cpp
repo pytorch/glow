@@ -279,12 +279,13 @@ struct HyphenNetwork {
   // Run `inputs` through the inference function and check the results against
   // `hyphens`. Return the number of errors.
   unsigned inferenceErrors(ExecutionEngine &EE, llvm::StringRef name,
-                           Tensor &inputs, const vector<bool> &hyphens) {
+                           Tensor &inputs, const vector<bool> &hyphens,
+                           TrainingConfig &TC) {
     // Compilation is destructive because of target-specific lowering.
     // Compile a clone of the inference function.
     EE.compile(CompilationMode::Infer, infer_->clone(name));
 
-    auto batchSize = EE.getConfig().batchSize;
+    auto batchSize = TC.batchSize;
     auto numSamples = inputs.dims()[0];
     EXPECT_LE(batchSize, numSamples);
     auto resultHandle = result_->getVariable()->getHandle<>();
@@ -350,9 +351,10 @@ TEST(HyphenTest, network) {
   }
 
   // Now build the network.
-  EE.getConfig().learningRate = 0.8;
-  EE.getConfig().batchSize = 50;
-  HyphenNetwork net(EE.getModule(), EE.getConfig());
+  TrainingConfig TC;
+  TC.learningRate = 0.8;
+  TC.batchSize = 50;
+  HyphenNetwork net(EE.getModule(), TC);
 
   // Train using mini-batch SGD.
   EE.compile(CompilationMode::Train, net.train_);
@@ -360,9 +362,9 @@ TEST(HyphenTest, network) {
 
   // Now test inference on the trained network.
   // Note that we have probably overfitted the data, so we expect 100% accuracy.
-  EXPECT_EQ(net.inferenceErrors(EE, "cpu", inputs, hyphens), 0);
+  EXPECT_EQ(net.inferenceErrors(EE, "cpu", inputs, hyphens, TC), 0);
 
   // See of the interpreter gets the same result.
   EE.setBackend(BackendKind::Interpreter);
-  EXPECT_EQ(net.inferenceErrors(EE, "interpreter", inputs, hyphens), 0);
+  EXPECT_EQ(net.inferenceErrors(EE, "interpreter", inputs, hyphens, TC), 0);
 }

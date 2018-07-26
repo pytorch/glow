@@ -1562,6 +1562,7 @@ TEST_P(Operator, FCGradientCheck) {
   // Create net representing A*X+Y=B, where X and Y are trainable, while
   // A and B are fixed. Record gradients for X and Y after 3 steps and compare
   // with reference values.
+  TrainingConfig TC;
 
   auto *A =
       mod_.createVariable(ElemKind::FloatTy, {2, 1}, "A",
@@ -1584,7 +1585,7 @@ TEST_P(Operator, FCGradientCheck) {
   initA.getHandle() = {4.2f, 9.875f};
   initB.getHandle() = {-13.1f, 3.14f};
 
-  Function *DF = glow::differentiate(F_, EE_.getConfig(), "d_main");
+  Function *DF = glow::differentiate(F_, TC, "d_main");
   EE_.compile(CompilationMode::Train, DF);
   EE_.runBatch(3, {A, B}, {&initA, &initB});
 

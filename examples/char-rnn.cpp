@@ -207,17 +207,18 @@ int main(int argc, char **argv) {
   const size_t hiddenSize = 256;
 
   GLOW_ASSERT(text.size() > numSteps && "Text is too short");
+  TrainingConfig TC;
 
   ExecutionEngine EE(executionBackend);
-  EE.getConfig().learningRate = 0.001;
-  EE.getConfig().momentum = 0.9;
-  EE.getConfig().batchSize = minibatchSize;
+  TC.learningRate = 0.001;
+  TC.momentum = 0.9;
+  TC.batchSize = minibatchSize;
 
   auto &mod = EE.getModule();
 
   //// Train the network ////
   Function *F = createNetwork(mod, minibatchSize, numSteps, hiddenSize);
-  Function *TF = differentiate(F, EE.getConfig());
+  Function *TF = differentiate(F, TC);
 
   auto *X = mod.getVariableByName("input");
   auto *Y = mod.getVariableByName("expected");

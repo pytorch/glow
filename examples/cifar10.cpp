@@ -93,11 +93,13 @@ void testCIFAR10() {
   unsigned minibatchSize = 8;
 
   // Construct the network:
+  TrainingConfig TC;
+
   ExecutionEngine EE(executionBackend);
-  EE.getConfig().learningRate = 0.001;
-  EE.getConfig().momentum = 0.9;
-  EE.getConfig().L2Decay = 0.0001;
-  EE.getConfig().batchSize = minibatchSize;
+  TC.learningRate = 0.001;
+  TC.momentum = 0.9;
+  TC.L2Decay = 0.0001;
+  TC.batchSize = minibatchSize;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -127,7 +129,7 @@ void testCIFAR10() {
   auto *SM = F->createSoftMax("softmax", FCL1, E);
   auto *result = F->createSave("ret", SM);
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
 
   // Report progress every this number of training iterations.
