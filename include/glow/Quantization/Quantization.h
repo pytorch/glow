@@ -39,8 +39,8 @@ struct NodeQuantizationInfo {
       : nodeOutputName_(nodeOutputName),
         tensorQuantizationParams_(tensorQuantizationParams) {}
 
-  float Scale() const { return tensorQuantizationParams_.scale_; }
-  int32_t Offset() const { return tensorQuantizationParams_.offset_; }
+  float Scale() const { return tensorQuantizationParams_.scale; }
+  int32_t Offset() const { return tensorQuantizationParams_.offset; }
 
   /// Get the full node output name based on the node name and output number.
   /// The following format is used: nodename:outputNumber

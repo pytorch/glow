@@ -199,8 +199,8 @@ void lowerQuantizedTanhNode(Function *F, TanhNode *TN) {
   auto inputQuantizationParams =
       glow::quantization::chooseQuantizationParams(-3.0, 3.0);
   auto tanhInTy = F->getParent()->uniqueType(
-      ElemKind::Int8QTy, TN->getResult().dims(), inputQuantizationParams.scale_,
-      inputQuantizationParams.offset_);
+      ElemKind::Int8QTy, TN->getResult().dims(), inputQuantizationParams.scale,
+      inputQuantizationParams.offset);
 
   // Make sure input is clipped in [-3.0, 3.0] floating point range.
   auto *rescaleInputNode =
@@ -211,7 +211,7 @@ void lowerQuantizedTanhNode(Function *F, TanhNode *TN) {
       glow::quantization::chooseQuantizationParams(-1.0, 1.0);
   auto resultOutTy = F->getParent()->uniqueType(
       ElemKind::Int8QTy, rescaleInputNode->getResult().dims(),
-      outputQuantizationParams.scale_, outputQuantizationParams.offset_);
+      outputQuantizationParams.scale, outputQuantizationParams.offset);
 
   auto *quantizedNode =
       F->createIntTanh(TN->getName(), rescaleInputNode, resultOutTy);
@@ -232,8 +232,8 @@ void lowerQuantizedSigmoidNode(Function *F, SigmoidNode *SN) {
   auto inputQuantizationParams =
       glow::quantization::chooseQuantizationParams(-6.0, 6.0);
   auto sigmoidInTy = F->getParent()->uniqueType(
-      ElemKind::Int8QTy, SN->getResult().dims(), inputQuantizationParams.scale_,
-      inputQuantizationParams.offset_);
+      ElemKind::Int8QTy, SN->getResult().dims(), inputQuantizationParams.scale,
+      inputQuantizationParams.offset);
 
   // Make sure input is clipped in [-6.0, 6.0] floating point range.
   auto *rescaleInputNode =
@@ -244,7 +244,7 @@ void lowerQuantizedSigmoidNode(Function *F, SigmoidNode *SN) {
       glow::quantization::chooseQuantizationParams(0.0, 1.0);
   auto resultOutTy = F->getParent()->uniqueType(
       ElemKind::Int8QTy, rescaleInputNode->getResult().dims(),
-      outputQuantizationParams.scale_, outputQuantizationParams.offset_);
+      outputQuantizationParams.scale, outputQuantizationParams.offset);
 
   auto *quantizedNode =
       F->createIntSigmoid(SN->getName(), rescaleInputNode, resultOutTy);

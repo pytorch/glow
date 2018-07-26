@@ -922,10 +922,10 @@ TEST_P(InterpAndCPU, ScatterAssignQuantized) {
   slices->getPayload().getHandle() = {-3, -4, -7, -8};
 
   auto qParams = glow::quantization::chooseQuantizationParams(-11, 11);
-  auto dataTy = mod_.uniqueType(ElemKind::Int8QTy, {5, 2}, qParams.scale_,
-                                qParams.offset_);
-  auto slicesTy = mod_.uniqueType(ElemKind::Int8QTy, {2, 2}, qParams.scale_,
-                                  qParams.offset_);
+  auto dataTy = mod_.uniqueType(ElemKind::Int8QTy, {5, 2}, qParams.scale,
+                                qParams.offset);
+  auto slicesTy = mod_.uniqueType(ElemKind::Int8QTy, {2, 2}, qParams.scale,
+                                  qParams.offset);
 
   auto *dataQ = F_->createQuantize("quantizeQ", data, dataTy);
   auto *slicesQ = F_->createQuantize("quantizeS", slices, slicesTy);
@@ -1866,8 +1866,8 @@ TEST_P(InterpAndCPU, QuantizedTile) {
                                 VisibilityKind::Public);
   auto quantizationParams = glow::quantization::chooseQuantizationParams(0, 20);
   auto quantizeTy =
-      mod_.uniqueType(ElemKind::Int8QTy, {4, 5}, quantizationParams.scale_,
-                      quantizationParams.offset_);
+      mod_.uniqueType(ElemKind::Int8QTy, {4, 5}, quantizationParams.scale,
+                      quantizationParams.offset);
   auto *Q = F_->createQuantize("quantize", V, quantizeTy);
 
   Node *T0 = F_->createTile("tile0", Q, /* tiles */ 3, /* axis */ 0);
@@ -2365,14 +2365,14 @@ TEST_P(InterpAndCPU, Int8Tanh) {
   auto quantizationParams =
       glow::quantization::chooseQuantizationParams(-3.0, 3.0);
   auto quantizeTy =
-      mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale_,
-                      quantizationParams.offset_);
+      mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale,
+                      quantizationParams.offset);
   auto *quantize = F_->createQuantize("quantize", input, quantizeTy);
 
   quantizationParams = glow::quantization::chooseQuantizationParams(-1.0, 1.0);
   auto tanhTy =
-      mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale_,
-                      quantizationParams.offset_);
+      mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale,
+                      quantizationParams.offset);
 
   auto *intTanh = F_->createIntTanh("int8Tanh", quantize, tanhTy);
   auto *dequantize = F_->createDequantize("dequantize", intTanh);
@@ -2400,14 +2400,14 @@ TEST_P(InterpAndCPU, Int8Sigmoid) {
   auto quantizationParams =
       glow::quantization::chooseQuantizationParams(-6.0, 6.0);
   auto quantizeTy =
-      mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale_,
-                      quantizationParams.offset_);
+      mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale,
+                      quantizationParams.offset);
   auto *quantize = F_->createQuantize("quantize", input, quantizeTy);
 
   quantizationParams = glow::quantization::chooseQuantizationParams(0, 1.0);
   auto sigmoidTy =
-      mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale_,
-                      quantizationParams.offset_);
+      mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale,
+                      quantizationParams.offset);
   auto *intSigmoid = F_->createIntSigmoid("int8Sigmoid", quantize, sigmoidTy);
   auto *dequantize = F_->createDequantize("dequantize", intSigmoid);
   auto *saveInt = F_->createSave("int8Save", dequantize);

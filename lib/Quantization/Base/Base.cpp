@@ -22,12 +22,12 @@ namespace glow {
 namespace quantization {
 
 int8_t quantize(float input, const TensorQuantizationParams &TQP) {
-  float result = input / TQP.scale_ + TQP.offset_;
+  float result = input / TQP.scale + TQP.offset;
   return quantization::clip<int32_t, int8_t>((int32_t)nearbyintf(result));
 }
 
 float dequantize(int8_t input, const TensorQuantizationParams &TQP) {
-  return TQP.scale_ * (input - TQP.offset_);
+  return TQP.scale * (input - TQP.offset);
 }
 
 QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
