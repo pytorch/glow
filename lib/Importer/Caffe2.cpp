@@ -387,6 +387,13 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "CopyCPUToMKL" || typeName == "CopyMKLToCPU") {
+    // Glow does not support MKL now, just pass these two ops.
+    auto *in = getOrCreateVariableByName(op.input(0));
+    addNodeAsOutput(op, in);
+    return;
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
