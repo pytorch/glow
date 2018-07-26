@@ -79,10 +79,11 @@ Variable *getGrad(const VariableGradientsList &grads, Variable *V) {
 void performGradCheck(ExecutionEngine &EE, SaveNode *result, Variable *inputVar,
                       Variable *expVar, Tensor *inputs, Tensor *outputs,
                       float delta, float allowedError) {
+  TrainingConfig TC;
   auto &F = *EE.getModule().getFunction("main");
 
   // Create a function that trains the network.
-  Function *TF = glow::differentiate(&F, EE.getConfig());
+  Function *TF = glow::differentiate(&F, TC);
   EE.compile(CompilationMode::Train, TF);
 
   // The network might have variables, other than inputVar and expVar.
@@ -92,8 +93,7 @@ void performGradCheck(ExecutionEngine &EE, SaveNode *result, Variable *inputVar,
   // Create a version of the network that records the gradients to some side
   // table instead of updating them.
   VariableGradientsList varGrads;
-  Function *recordNet =
-      glow::differentiate(&F, EE.getConfig(), "record", &varGrads);
+  Function *recordNet = glow::differentiate(&F, TC, "record", &varGrads);
   EE.compile(CompilationMode::Train, recordNet);
 
   // Clear the gradients of the first layer.
@@ -509,6 +509,7 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   const int testSamples = 5;
   const float stepSize = 1e-4;
   const float delta = 0.015;
+  TrainingConfig TC;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
@@ -536,7 +537,7 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   outputsH.at({2}) = 1;
 
   VariableGradientsList varGrads;
-  Function *TF = glow::differentiate(F, EE_.getConfig(), "record", &varGrads);
+  Function *TF = glow::differentiate(F, TC, "record", &varGrads);
   EE_.compile(CompilationMode::Train, TF);
 
   auto gradP = getGrad(varGrads, P)->getHandle();

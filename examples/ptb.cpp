@@ -190,9 +190,10 @@ void testPTB() {
   ExecutionEngine EE(executionBackend);
 
   // Construct the network:
-  EE.getConfig().learningRate = learningRate;
-  EE.getConfig().momentum = 0;
-  EE.getConfig().batchSize = minibatchSize;
+  TrainingConfig TC;
+  TC.learningRate = learningRate;
+  TC.momentum = 0;
+  TC.batchSize = minibatchSize;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -232,7 +233,7 @@ void testPTB() {
     F->dumpDAG(dumpInitialGraphDAGFileOpt.c_str());
   }
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
+  Function *TF = glow::differentiate(F, TC);
 
   EE.compile(CompilationMode::Train, TF);
 

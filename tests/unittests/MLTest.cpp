@@ -37,8 +37,10 @@ class InterpreterAndCPU : public TestRunnerBase {};
 class MLTest : public TestRunnerBase {};
 
 TEST_P(MLTest, trainASimpleNetwork) {
+  TrainingConfig TC;
+
   // Learning a single input vector.
-  EE_.getConfig().learningRate = 0.05;
+  TC.learningRate = 0.05;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("trainASimpleNetwork");
@@ -63,7 +65,7 @@ TEST_P(MLTest, trainASimpleNetwork) {
   inputs.getHandle<>() = {0.15f, 0.15f, 0.15f, 0.15f};
   expected.getHandle<>() = {0.9f, 0.9f, 0.9f, 0.9f};
 
-  Function *TF = glow::differentiate(F, EE_.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network. Learn 1000 batches.
@@ -81,13 +83,15 @@ TEST_P(MLTest, trainASimpleNetwork) {
 }
 
 TEST_P(MLTest, simpleRegression) {
+  TrainingConfig TC;
+
   // Testing the regression layer. This test takes the first element from the
   // input vector, adds one to it and places the result in the second element of
   // the output vector.
   const size_t numInputs = 4;
 
   // Learning a single input vector.
-  EE_.getConfig().learningRate = 0.05;
+  TC.learningRate = 0.05;
 
   Tensor inputs(ElemKind::FloatTy, {1, numInputs});
   Tensor expected(ElemKind::FloatTy, {1, numInputs});
@@ -108,7 +112,7 @@ TEST_P(MLTest, simpleRegression) {
   auto I = inputs.getHandle<>();
   auto E = expected.getHandle<>();
 
-  Function *TF = glow::differentiate(F, EE_.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
@@ -136,11 +140,13 @@ TEST_P(MLTest, simpleRegression) {
 }
 
 TEST_P(MLTest, learnXor) {
+  TrainingConfig TC;
+
   unsigned numInputs = 10;
 
   // Learning a single input vector.
-  EE_.getConfig().learningRate = 0.05;
-  EE_.getConfig().batchSize = numInputs;
+  TC.learningRate = 0.05;
+  TC.batchSize = numInputs;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("learnXor");
@@ -174,7 +180,7 @@ TEST_P(MLTest, learnXor) {
     TL.at({i, 0}) = a ^ b;
   }
 
-  Function *TF = glow::differentiate(F, EE_.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
@@ -203,10 +209,12 @@ TEST_P(MLTest, learnXor) {
 
 /// Learn the logarithmic function.
 TEST_P(MLTest, learnLog) {
+  TrainingConfig TC;
+
   unsigned numInputs = 50;
   unsigned batchSize = 5;
-  EE_.getConfig().learningRate = 0.07;
-  EE_.getConfig().batchSize = batchSize;
+  TC.learningRate = 0.07;
+  TC.batchSize = batchSize;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("learnLog");
@@ -241,7 +249,7 @@ TEST_P(MLTest, learnLog) {
     TL.at({i, 0}) = std::log(a);
   }
 
-  Function *TF = glow::differentiate(F, EE_.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
@@ -306,13 +314,15 @@ void generateCircleData(Tensor &coordinates, Tensor &labels, PseudoRNG &PRNG) {
 /// Example from:
 /// http://cs.stanford.edu/people/karpathy/convnetjs/demo/classify2d.html
 TEST_P(MLTest, circle) {
+  TrainingConfig TC;
+
   unsigned minibatchSize = 11;
 
   // Testing the softmax layer.
   // Learning a single input vector.
-  EE_.getConfig().momentum = 0.9;
-  EE_.getConfig().learningRate = 0.01;
-  EE_.getConfig().batchSize = minibatchSize;
+  TC.momentum = 0.9;
+  TC.learningRate = 0.01;
+  TC.batchSize = minibatchSize;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("circle");
@@ -329,7 +339,7 @@ TEST_P(MLTest, circle) {
   auto *SM = F->createSoftMax("soft", FCL1, S);
   auto *result = F->createSave("ret", SM);
 
-  Function *TF = glow::differentiate(F, EE_.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF);
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
@@ -396,8 +406,9 @@ TEST_P(MLTest, learnSingleValueConcat) {
   unsigned width = 6;
 
   // Learning a single input vector.
-  EE_.getConfig().momentum = 0.9;
-  EE_.getConfig().learningRate = 0.01;
+  TrainingConfig TC;
+  TC.momentum = 0.9;
+  TC.learningRate = 0.01;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("learnSingleValueConcat");
@@ -430,7 +441,7 @@ TEST_P(MLTest, learnSingleValueConcat) {
   inputs.getHandle<>().clear(0.15);
   expected.getHandle<>().clear(0.9);
 
-  Function *TF = glow::differentiate(F, EE_.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
@@ -470,9 +481,11 @@ using TCellGenerator = void (*)(Function *, const std::vector<Node *> &,
                                 unsigned, unsigned, std::vector<NodeValue> &);
 
 void testRNNCell(TCellGenerator cell) {
+  TrainingConfig TC;
+
   ExecutionEngine EE;
   // Learning a single input vector.
-  EE.getConfig().learningRate = 0.05;
+  TC.learningRate = 0.05;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("testRNNCell");
@@ -521,7 +534,7 @@ void testRNNCell(TCellGenerator cell) {
   auto *R = F->createConcat("O", regressionNodes, 1);
   auto *result = F->createSave("result", R);
 
-  Function *TF = glow::differentiate(F, EE.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
 
   // Values for the input and output variables.
@@ -558,7 +571,9 @@ TEST_P(MLTest, trainLSTM) { testRNNCell(buildLSTM); };
 
 /// Learn the square root of two.
 TEST_P(MLTest, learnSqrt2) {
-  EE_.getConfig().learningRate = 0.03;
+  TrainingConfig TC;
+
+  TC.learningRate = 0.03;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("Square root of 2");
@@ -575,7 +590,7 @@ TEST_P(MLTest, learnSqrt2) {
   O = F->createRegression("reg", O, Ex);
   F->createSave("ret", O);
 
-  Function *TF = glow::differentiate(F, EE_.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
@@ -588,12 +603,14 @@ TEST_P(MLTest, learnSqrt2) {
 }
 
 TEST_P(MLTest, trainSimpleLinearRegression) {
+  TrainingConfig TC;
+
   // Given 1-D vectors x and y, find real numbers m and b such that
   // m * x + b is approximately equal to y.
   unsigned numSamples = 500;
 
-  EE_.getConfig().learningRate = 0.1;
-  EE_.getConfig().batchSize = numSamples;
+  TC.learningRate = 0.1;
+  TC.batchSize = numSamples;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction(
@@ -627,7 +644,7 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
   Variable *M = llvm::cast<Variable>(FC->getWeights());
   Variable *B = llvm::cast<Variable>(FC->getBias());
 
-  Function *TF = glow::differentiate(F, EE_.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network doing 100 steps. Learn on 500 samples.
@@ -673,8 +690,10 @@ TEST_P(MLTest, classifyPlayerSport) {
   const size_t numFeatures = 2;
   const size_t numClasses = 2;
 
-  EE_.getConfig().learningRate = 0.05;
-  EE_.getConfig().batchSize = numTrainPlayers;
+  TrainingConfig TC;
+
+  TC.learningRate = 0.05;
+  TC.batchSize = numTrainPlayers;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("classifyPlayers");
@@ -690,7 +709,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   auto *SM = F->createSoftMax("softmax", FC, S);
   auto *result = F->createSave("result", SM);
 
-  Function *TF = glow::differentiate(F, EE_.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF);
 
   Tensor players(ElemKind::FloatTy, {numTrainPlayers, numFeatures});
@@ -726,12 +745,14 @@ TEST_P(MLTest, classifyPlayerSport) {
 }
 
 TEST_P(MLTest, learnSinus) {
+  TrainingConfig TC;
+
   // Try to learn the sin(x) function.
   float epsilon = 0.1;
   unsigned numSamples = 50;
 
-  EE_.getConfig().learningRate = 0.2;
-  EE_.getConfig().batchSize = numSamples;
+  TC.learningRate = 0.2;
+  TC.batchSize = numSamples;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("Gradient descent solution for sin(x)");
@@ -768,7 +789,7 @@ TEST_P(MLTest, learnSinus) {
   Node *R = F->createRegression("reg", FC2, expectedY);
   auto *result = F->createSave("return", R);
 
-  Function *TF = glow::differentiate(F, EE_.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF);
 
   // Learn on numSamples samples.
@@ -800,9 +821,10 @@ TEST_P(MLTest, nonLinearClassifier) {
   unsigned batchSize = 46;
   unsigned numSamples = 230;
 
-  EE_.getConfig().learningRate = 0.01;
-  EE_.getConfig().momentum = 0.9;
-  EE_.getConfig().batchSize = batchSize;
+  TrainingConfig TC;
+  TC.learningRate = 0.01;
+  TC.momentum = 0.9;
+  TC.batchSize = batchSize;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("nonLinearClassifier");
@@ -822,7 +844,7 @@ TEST_P(MLTest, nonLinearClassifier) {
   auto *SM = F->createSoftMax("soft", FCL2, S);
   auto *result = F->createSave("ret", SM);
 
-  Function *TF = glow::differentiate(F, EE_.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF);
 
   Tensor samples(ElemKind::FloatTy, {numSamples, 2});
@@ -888,9 +910,10 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   const unsigned numSamples = 500;
   const unsigned batchSize = 7;
 
-  EE.getConfig().learningRate = 0.01;
-  EE.getConfig().batchSize = batchSize;
-  EE.getConfig().momentum = 0.9;
+  TrainingConfig TC;
+  TC.learningRate = 0.01;
+  TC.batchSize = batchSize;
+  TC.momentum = 0.9;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("convNetForImageRecognition");
@@ -908,7 +931,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   auto *FCL = F->createFullyConnected("fc", TANH, 2);
   auto *SM = F->createSoftMax("sm", FCL, ex);
   auto *result = F->createSave("ret", SM);
-  Function *TF = glow::differentiate(F, EE.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
 
   Tensor images(ElemKind::FloatTy, {numSamples, 8, 8, 1});
@@ -974,9 +997,10 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   const unsigned numSamples = 1000;
   const unsigned batchSize = 10;
 
-  EE.getConfig().learningRate = 0.01;
-  EE.getConfig().batchSize = batchSize;
-  EE.getConfig().momentum = 0.9;
+  TrainingConfig TC;
+  TC.learningRate = 0.01;
+  TC.batchSize = batchSize;
+  TC.momentum = 0.9;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -996,7 +1020,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   auto *FC1 = F->createFullyConnected("fc1", RL0, 2);
   auto *R = F->createRegression("regression", FC1, ex);
   auto *result = F->createSave("ret", R);
-  Function *TF = glow::differentiate(F, EE.getConfig());
+  Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
 
   // --  STEP1 - train the network. --
@@ -1135,21 +1159,21 @@ static void generateMatrixRotationRecognitionData(Tensor &matricesA,
 }
 
 TEST_P(MLTest, matrixRotationRecognition) {
-  TrainingConfig &config = EE_.getConfig();
-  config.learningRate = 0.15;
-  config.batchSize = 17;
+  TrainingConfig TC;
+  TC.learningRate = 0.15;
+  TC.batchSize = 17;
 
   Module &mod = EE_.getModule();
   PseudoRNG &PRNG = mod.getPRNG();
   Function *F = mod.createFunction("MatrixRotationRecognition");
   Variable *varMatricesA =
-      mod.createVariable(ElemKind::FloatTy, {config.batchSize, 3, 3}, "matrixA",
+      mod.createVariable(ElemKind::FloatTy, {TC.batchSize, 3, 3}, "matrixA",
                          VisibilityKind::Public, Variable::TrainKind::None);
   Variable *varMatricesB =
-      mod.createVariable(ElemKind::FloatTy, {config.batchSize, 3, 3}, "matrixB",
+      mod.createVariable(ElemKind::FloatTy, {TC.batchSize, 3, 3}, "matrixB",
                          VisibilityKind::Public, Variable::TrainKind::None);
   Variable *varExpected =
-      mod.createVariable(ElemKind::IndexTy, {config.batchSize, 1}, "expected",
+      mod.createVariable(ElemKind::IndexTy, {TC.batchSize, 1}, "expected",
                          VisibilityKind::Public, Variable::TrainKind::None);
 
   // Simply concatenating the matrices first would probability be as effective
@@ -1165,7 +1189,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
   auto *finalFC = F->createFullyConnected("output_fc", finalReLU, 2);
   auto *softMax = F->createSoftMax("output", finalFC, varExpected);
   SaveNode *forwardInferenceResult = F->createSave("result", softMax);
-  Function *trainingGradientFunction = glow::differentiate(F, config);
+  Function *trainingGradientFunction = glow::differentiate(F, TC);
 
   // Train the network.
   const unsigned numSamples = 50;
@@ -1185,7 +1209,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
   // At this point we should have overfitted the data.
   // Take a random batch and check that the values match what we expect.
   auto RHtrain = forwardInferenceResult->getVariable()->getHandle<>();
-  auto batchSize = config.batchSize;
+  auto batchSize = TC.batchSize;
   unsigned numBatches = numSamples / batchSize;
   unsigned batchStartIdx = PRNG.nextRandInt(0, numBatches - 1) * batchSize;
 

@@ -98,11 +98,14 @@ void testMNIST() {
   ExecutionEngine EE(executionBackend);
   llvm::Timer timer("Training", "Training");
 
+  /// The training configuration.
+  TrainingConfig TC;
+
   // Construct the network:
-  EE.getConfig().learningRate = 0.001;
-  EE.getConfig().momentum = 0.9;
-  EE.getConfig().L2Decay = 0.001;
-  EE.getConfig().batchSize = minibatchSize;
+  TC.learningRate = 0.001;
+  TC.momentum = 0.9;
+  TC.L2Decay = 0.001;
+  TC.batchSize = minibatchSize;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -127,7 +130,7 @@ void testMNIST() {
 
   auto *result = F->createSave("return", SM);
 
-  Function *T = glow::differentiate(F, EE.getConfig());
+  Function *T = glow::differentiate(F, TC);
 
   EE.compile(CompilationMode::Train, T);
 
