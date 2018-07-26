@@ -419,8 +419,8 @@ TEST(Quantization, chooseQuantizationAsymmetric) {
   // 2. scale(127 - offset) == 6.0
   // Given scale != 0, #1 gives -128 == offset
   // Then #2, gives scale == 6.0 / (127 - (-128)).
-  EXPECT_EQ(asymmetricParams.offset_, -128);
-  EXPECT_NEAR(asymmetricParams.scale_, 6.0 / 255, 0.001);
+  EXPECT_EQ(asymmetricParams.offset, -128);
+  EXPECT_NEAR(asymmetricParams.scale, 6.0 / 255, 0.001);
 
   // Map float [-3.0; 3.0] to int [-128; 127].
   asymmetricParams =
@@ -437,8 +437,8 @@ TEST(Quantization, chooseQuantizationAsymmetric) {
   // In other words, scale(0 - offset) == 0.0, so our offset is 0.
   // Then our scale is simply: (inputMax - inputMin) / (outputMax - outputMin).
   // (3.0 - (-3.0)) / (127 - (-128)) == 6.0 / 255.
-  EXPECT_EQ(asymmetricParams.offset_, 0);
-  EXPECT_NEAR(asymmetricParams.scale_, 6.0 / 255, 0.001);
+  EXPECT_EQ(asymmetricParams.offset, 0);
+  EXPECT_NEAR(asymmetricParams.scale, 6.0 / 255, 0.001);
 
   // Map float [-2.0; 5.0] to int [-128; 127].
   asymmetricParams =
@@ -449,8 +449,8 @@ TEST(Quantization, chooseQuantizationAsymmetric) {
   //                  -128 - offset == -2.0 * 255.0 / 7.0
   //                  offset == 2.0 * 255.0 / 7.0 - 128
   //                  offset == ~-55
-  EXPECT_EQ(asymmetricParams.offset_, (int32_t)(2.0 * 255 / 7.0 - 128));
-  EXPECT_NEAR(asymmetricParams.scale_, 7.0 / 255, 0.001);
+  EXPECT_EQ(asymmetricParams.offset, (int32_t)(2.0 * 255 / 7.0 - 128));
+  EXPECT_NEAR(asymmetricParams.scale, 7.0 / 255, 0.001);
 
   // Map float [2.0; 5.0] to int [-128; 127].
   // Make sure we extend the range to include 0.0, i.e.,
@@ -459,8 +459,8 @@ TEST(Quantization, chooseQuantizationAsymmetric) {
       chooseQuantizationParams(2.0, 5.0, quantization::Schema::Asymmetric);
   // Scale: (5.0 - (0.0)) / (127 - (-128)) == 5.0 / 255.0
   // Offset from min: scale(-128 - offset) == 0.0
-  EXPECT_EQ(asymmetricParams.offset_, -128);
-  EXPECT_NEAR(asymmetricParams.scale_, 5.0 / 255, 0.001);
+  EXPECT_EQ(asymmetricParams.offset, -128);
+  EXPECT_NEAR(asymmetricParams.scale, 5.0 / 255, 0.001);
 
   // Map float [-8.0; -2.0] to int [-128; 127].
   // Make sure we extend the range to include 0.0, i.e.,
@@ -469,8 +469,8 @@ TEST(Quantization, chooseQuantizationAsymmetric) {
       chooseQuantizationParams(-8.0, -2.0, quantization::Schema::Asymmetric);
   // Scale: (0.0 - (-8.0)) / (127 - (-128)) == 8.0 / 255.0
   // Offset from min: scale(127 - offset) == 0.0
-  EXPECT_EQ(asymmetricParams.offset_, 127);
-  EXPECT_NEAR(asymmetricParams.scale_, 8.0 / 255, 0.001);
+  EXPECT_EQ(asymmetricParams.offset, 127);
+  EXPECT_NEAR(asymmetricParams.scale, 8.0 / 255, 0.001);
 }
 
 /// Check that our symmetric quantization schema produces
@@ -481,21 +481,21 @@ TEST(Quantization, chooseQuantizationSymmetric) {
   TensorQuantizationParams symmetricParams =
       chooseQuantizationParams(0.0, 6.0, quantization::Schema::Symmetric);
   // With symmetric mapping offset should always be zero.
-  EXPECT_EQ(symmetricParams.offset_, 0);
-  EXPECT_NEAR(symmetricParams.scale_, 12.0 / 255, 0.001);
+  EXPECT_EQ(symmetricParams.offset, 0);
+  EXPECT_NEAR(symmetricParams.scale, 12.0 / 255, 0.001);
 
   // Map float [-3.0; 3.0] to int [-128; 127].
   symmetricParams =
       chooseQuantizationParams(-3.0, 3.0, quantization::Schema::Symmetric);
-  EXPECT_EQ(symmetricParams.offset_, 0);
-  EXPECT_NEAR(symmetricParams.scale_, 6.0 / 255, 0.001);
+  EXPECT_EQ(symmetricParams.offset, 0);
+  EXPECT_NEAR(symmetricParams.scale, 6.0 / 255, 0.001);
 
   // Map float [-2.0; 5.0] to int [-128; 127].
   // => [-5.0; 5.0] range for symmetric mode.
   symmetricParams =
       chooseQuantizationParams(-2.0, 5.0, quantization::Schema::Symmetric);
-  EXPECT_EQ(symmetricParams.offset_, 0);
-  EXPECT_NEAR(symmetricParams.scale_, 10.0 / 255, 0.001);
+  EXPECT_EQ(symmetricParams.offset, 0);
+  EXPECT_NEAR(symmetricParams.scale, 10.0 / 255, 0.001);
 
   // Map float [2.0; 5.0] to int [-128; 127].
   // => [-5.0; 5.0] range for symmetric mode.
@@ -503,15 +503,15 @@ TEST(Quantization, chooseQuantizationSymmetric) {
       chooseQuantizationParams(2.0, 5.0, quantization::Schema::Symmetric);
   // Scale: (5.0 - (0.0)) / (127 - (-128)) == 5.0 / 255.0
   // Offset from min: scale(-128 - offset) == 0.0
-  EXPECT_EQ(symmetricParams.offset_, 0);
-  EXPECT_NEAR(symmetricParams.scale_, 10.0 / 255, 0.001);
+  EXPECT_EQ(symmetricParams.offset, 0);
+  EXPECT_NEAR(symmetricParams.scale, 10.0 / 255, 0.001);
 
   // Map float [-8.0; -2.0] to int [-128; 127].
   // => [-8.0; 8.0] range for symmetric mode.
   symmetricParams =
       chooseQuantizationParams(-8.0, -2.0, quantization::Schema::Symmetric);
-  EXPECT_EQ(symmetricParams.offset_, 0);
-  EXPECT_NEAR(symmetricParams.scale_, 16.0 / 255, 0.001);
+  EXPECT_EQ(symmetricParams.offset, 0);
+  EXPECT_NEAR(symmetricParams.scale, 16.0 / 255, 0.001);
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, Quantization,

@@ -79,7 +79,7 @@ quantizeInputs(Function *F, Node *node,
     const TensorQuantizationParams &TQP =
         nodeToTQP.find(nodeOutputName)->second;
     auto QT = F->getParent()->uniqueType(ElemKind::Int8QTy, NV.dims(),
-                                         TQP.scale_, TQP.offset_);
+                                         TQP.scale, TQP.offset);
 
     Node *quantizeNode = F->createQuantize("quantize", NV, QT);
     quantizedInputs.push_back(quantizeNode);
@@ -135,7 +135,7 @@ static Node *quantizeNode(Function *F, Node *node,
     assert(qParams.size() == 1 && "Invalid number of quantized outputs");
     auto QT =
         F->getParent()->uniqueType(ElemKind::Int8QTy, FC->getResult().dims(),
-                                   qParams[0].scale_, qParams[0].offset_);
+                                   qParams[0].scale, qParams[0].offset);
     quantizedNode =
         F->createFullyConnected(FC->getName(), quantizedInputs[0],
                                 quantizedInputs[1], quantizedInputs[2], QT);
@@ -148,7 +148,7 @@ static Node *quantizeNode(Function *F, Node *node,
     assert(qParams.size() == 1 && "Invalid number of quantized outputs");
     auto QT =
         F->getParent()->uniqueType(ElemKind::Int8QTy, CV->getResult().dims(),
-                                   qParams[0].scale_, qParams[0].offset_);
+                                   qParams[0].scale, qParams[0].offset);
     quantizedNode =
         F->createConv(CV->getName(), quantizedInputs[0], quantizedInputs[1],
                       quantizedInputs[2], QT, CV->getKernel(), CV->getStride(),
@@ -220,7 +220,7 @@ static Node *quantizeNode(Function *F, Node *node,
     assert(qParams.size() == 1 && "Invalid number of quantized outputs");      \
     auto outTy =                                                               \
         F->getParent()->uniqueType(ElemKind::Int8QTy, AN->getResult().dims(),  \
-                                   qParams[0].scale_, qParams[0].offset_);     \
+                                   qParams[0].scale, qParams[0].offset);     \
     quantizedNode = F->create##NODE_NAME_(                                     \
         AN->getName(), outTy, quantizedInputs[0], quantizedInputs[1]);         \
     break;                                                                     \
@@ -231,6 +231,7 @@ static Node *quantizeNode(Function *F, Node *node,
     CASE_QUANTIZE_NODE(Max);
     CASE_QUANTIZE_NODE(Min);
 #undef CASE_QUANTIZE_NODE
+
   case Kinded::Kind::ConcatNodeKind: {
     auto *C = cast<ConcatNode>(node);
     assert(qParams.size() == 1 && "Invalid number of quantized outputs");
@@ -239,8 +240,8 @@ static Node *quantizeNode(Function *F, Node *node,
     // same {S,O} params.
     for (size_t qi = 0, e = quantizedInputs.size(); qi < e; qi++) {
       auto argOutTy = F->getParent()->uniqueType(
-          ElemKind::Int8QTy, quantizedInputs[qi].dims(), qParams[0].scale_,
-          qParams[0].offset_);
+          ElemKind::Int8QTy, quantizedInputs[qi].dims(), qParams[0].scale,
+          qParams[0].offset);
 
       quantizedInputs[qi] = F->createRescaleQuantized(
           quantizedInputs[qi]->getName(), quantizedInputs[qi], argOutTy);
@@ -248,7 +249,7 @@ static Node *quantizeNode(Function *F, Node *node,
 
     auto outTy =
         F->getParent()->uniqueType(ElemKind::Int8QTy, C->getResult().dims(),
-                                   qParams[0].scale_, qParams[0].offset_);
+                                   qParams[0].scale, qParams[0].offset);
     quantizedNode =
         F->createConcat(node->getName(), quantizedInputs, C->getDim(), outTy);
     break;
@@ -341,7 +342,7 @@ postProcessQuantizedNode(Function *F, Node *quantizedNode,
     // the taken profile from the node.
     auto outTy =
         F->getParent()->uniqueType(ElemKind::Int8QTy, quantizedNode->dims(0),
-                                   qParams[0].scale_, qParams[0].offset_);
+                                   qParams[0].scale, qParams[0].offset);
     return F->createRescaleQuantized(quantizedNode->getName(), quantizedNode,
                                      outTy);
   }

@@ -28,29 +28,29 @@ namespace glow {
 /// Scale and Offset allow quantization of a float tensor and dequantization of
 /// integer tensor back to float one.
 struct TensorQuantizationParams {
-  float scale_;
-  int32_t offset_;
+  float scale;
+  int32_t offset;
 };
 
 /// A data structure that represents the 32-bit to 8-bit quantization
 /// scaling operation. This data structure represents the transformation:
 /// (((input >> pre) * scale) + rtn) >> post + offset.
 struct QuantizationTransform32To8 {
-  int pre_;
-  int post_;
-  int scale_;
-  int offset_;
+  int pre;
+  int post;
+  int scale;
+  int offset;
 
   /// Initializes the transformation based on the conversion formula (above).
   QuantizationTransform32To8(int pre, int post, int scale, int offset)
-      : pre_(pre), post_(post), scale_(scale), offset_(offset) {}
+      : pre(pre), post(post), scale(scale), offset(offset) {}
 
   /// \returns the scaled integer.
   int32_t transform(int32_t input) {
     // The operation x >> y is rounded down to negative infinity. To get to
     // round-nearest we add (1 << (shift - 1)) to the value prior to shifting.
-    int rtn = (1 << (post_ - 1));
-    return ((((input >> pre_) * scale_) + rtn) >> post_) + offset_;
+    int rtn = (1 << (post - 1));
+    return ((((input >> pre) * scale) + rtn) >> post) + offset;
   }
 };
 

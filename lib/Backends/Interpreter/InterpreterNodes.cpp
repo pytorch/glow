@@ -411,14 +411,14 @@ void InterpreterFunction::fwdPoolAvgInst(const PoolAvgInst *I) {
                   continue;
                 }
 
-                sum += inW.at({n, (size_t)ox, (size_t)oy, z}) - inQP.offset_;
+                sum += inW.at({n, (size_t)ox, (size_t)oy, z}) - inQP.offset;
               }
             }
             // Instead of dividing by filterArea, just change scale.
             outW.at({n, ax, ay, z}) =
                 quantization::clip<int32_t, int8_t>(std::round(
-                    float(sum) * (inQP.scale_ / outQP.scale_ / filterArea) +
-                    outQP.offset_));
+                    float(sum) * (inQP.scale / outQP.scale / filterArea) +
+                    outQP.offset));
           } // W
         }   // H
       }     // C
@@ -1002,11 +1002,11 @@ void InterpreterFunction::fwdElementMulInst(const ElementMulInst *I) {
     auto outW = getWeightHandle<int8_t>(I->getDest());
     auto lhsW = getWeightHandle<int8_t>(I->getLHS());
     auto rhsW = getWeightHandle<int8_t>(I->getRHS());
-    float scale = lhsQ.scale_ * rhsQ.scale_ / destQ.scale_;
+    float scale = lhsQ.scale * rhsQ.scale / destQ.scale;
     for (size_t i = 0, e = outW.size(); i < e; i++) {
-      int32_t mul = (lhsW.raw(i) - lhsQ.offset_) * (rhsW.raw(i) - rhsQ.offset_);
+      int32_t mul = (lhsW.raw(i) - lhsQ.offset) * (rhsW.raw(i) - rhsQ.offset);
       outW.raw(i) = quantization::clip<int32_t, int8_t>(
-          std::round(mul * scale) + destQ.offset_);
+          std::round(mul * scale) + destQ.offset);
     }
     return;
   }

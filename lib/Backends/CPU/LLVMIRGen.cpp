@@ -815,12 +815,12 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       auto rhsScaleParams = quantization::quantizeScaleOffset32To8(
           rhsTy->getScale() / destScale, rhsTy->getOffset());
 
-      auto *lhsPre = emitConstI32(builder, lhsScaleParams.pre_);
-      auto *lhsPost = emitConstI32(builder, lhsScaleParams.post_);
-      auto *lhsScale = emitConstI32(builder, lhsScaleParams.scale_);
-      auto *rhsPre = emitConstI32(builder, rhsScaleParams.pre_);
-      auto *rhsPost = emitConstI32(builder, rhsScaleParams.post_);
-      auto *rhsScale = emitConstI32(builder, rhsScaleParams.scale_);
+      auto *lhsPre = emitConstI32(builder, lhsScaleParams.pre);
+      auto *lhsPost = emitConstI32(builder, lhsScaleParams.post);
+      auto *lhsScale = emitConstI32(builder, lhsScaleParams.scale);
+      auto *rhsPre = emitConstI32(builder, rhsScaleParams.pre);
+      auto *rhsPost = emitConstI32(builder, rhsScaleParams.post);
+      auto *rhsScale = emitConstI32(builder, rhsScaleParams.scale);
 
       auto *stackedOpCall = createCall(
           builder, F,
@@ -967,12 +967,12 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       auto rhsScaleParams = quantization::quantizeScaleOffset32To8(            \
           rhsTy->getScale() / destScale, rhsTy->getOffset());                  \
                                                                                \
-      auto *lhsPre = emitConstI32(builder, lhsScaleParams.pre_);               \
-      auto *lhsPost = emitConstI32(builder, lhsScaleParams.post_);             \
-      auto *lhsScale = emitConstI32(builder, lhsScaleParams.scale_);           \
-      auto *rhsPre = emitConstI32(builder, rhsScaleParams.pre_);               \
-      auto *rhsPost = emitConstI32(builder, rhsScaleParams.post_);             \
-      auto *rhsScale = emitConstI32(builder, rhsScaleParams.scale_);           \
+      auto *lhsPre = emitConstI32(builder, lhsScaleParams.pre);               \
+      auto *lhsPost = emitConstI32(builder, lhsScaleParams.post);             \
+      auto *lhsScale = emitConstI32(builder, lhsScaleParams.scale);           \
+      auto *rhsPre = emitConstI32(builder, rhsScaleParams.pre);               \
+      auto *rhsPost = emitConstI32(builder, rhsScaleParams.post);             \
+      auto *rhsScale = emitConstI32(builder, rhsScaleParams.scale);           \
                                                                                \
       auto *stackedOpCall = createCall(builder, F,                             \
                                        {loopCount, lhsPtr, rhsPtr, destOffset, \
@@ -1024,9 +1024,9 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       // <=> (s_l / s_r) * (i_l - o_l) <= i_r - o_r
       float scale = lhsTy->getScale() / rhsTy->getScale();
       auto scaleParams = quantization::quantizeScaleOffset32To8(scale, 0);
-      auto *cmpPre = emitConstI32(builder, scaleParams.pre_);
-      auto *cmpPost = emitConstI32(builder, scaleParams.post_);
-      auto *cmpScale = emitConstI32(builder, scaleParams.scale_);
+      auto *cmpPre = emitConstI32(builder, scaleParams.pre);
+      auto *cmpPost = emitConstI32(builder, scaleParams.post);
+      auto *cmpScale = emitConstI32(builder, scaleParams.scale);
 
       auto *stackedOpCall = createCall(builder, F,
                                        {loopCount, lhsPtr, rhsPtr, lhsOffset,
@@ -1100,9 +1100,9 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       // => i_d = (s_l * s_r / s_d) * (i_l - o_l) * (i_r - o_r) + o_d
       float scale = lhsTy->getScale() * rhsTy->getScale() / destTy->getScale();
       auto scaleParams = quantization::quantizeScaleOffset32To8(scale, 0);
-      auto *mulPre = emitConstI32(builder, scaleParams.pre_);
-      auto *mulPost = emitConstI32(builder, scaleParams.post_);
-      auto *mulScale = emitConstI32(builder, scaleParams.scale_);
+      auto *mulPre = emitConstI32(builder, scaleParams.pre);
+      auto *mulPost = emitConstI32(builder, scaleParams.post);
+      auto *mulScale = emitConstI32(builder, scaleParams.scale);
 
       auto *stackedOpCall =
           createCall(builder, F,
@@ -1152,9 +1152,9 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       float scale =
           lhsTy->getScale() / (rhsTy->getScale() * destTy->getScale());
       auto scaleParams = quantization::quantizeScaleOffset32To8(scale, 0);
-      auto *divPre = emitConstI32(builder, scaleParams.pre_);
-      auto *divPost = emitConstI32(builder, scaleParams.post_);
-      auto *divScale = emitConstI32(builder, scaleParams.scale_);
+      auto *divPre = emitConstI32(builder, scaleParams.pre);
+      auto *divPost = emitConstI32(builder, scaleParams.post);
+      auto *divScale = emitConstI32(builder, scaleParams.scale);
 
       auto *stackedOpCall =
           createCall(builder, F,
@@ -1239,9 +1239,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto outScaleParams = quantization::quantizeScaleOffset32To8(
           lhsTy->getScale() * rhsTy->getScale() / destTy->getScale(), 0);
 
-      auto *outPre = emitConstI32(builder, outScaleParams.pre_);
-      auto *outPost = emitConstI32(builder, outScaleParams.post_);
-      auto *outScale = emitConstI32(builder, outScaleParams.scale_);
+      auto *outPre = emitConstI32(builder, outScaleParams.pre);
+      auto *outPost = emitConstI32(builder, outScaleParams.post);
+      auto *outScale = emitConstI32(builder, outScaleParams.scale);
 
       createCall(builder, F,
                  {destPtr, lhsPtr, rhsPtr, destDims, lhsDims, rhsDims,
@@ -1286,12 +1286,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto sliceScaleParams = quantization::quantizeScaleOffset32To8(
           sliceTy->getScale() / destScale, sliceTy->getOffset());
 
-      auto *batchPre = emitConstI32(builder, batchScaleParams.pre_);
-      auto *batchPost = emitConstI32(builder, batchScaleParams.post_);
-      auto *batchScale = emitConstI32(builder, batchScaleParams.scale_);
-      auto *slicePre = emitConstI32(builder, sliceScaleParams.pre_);
-      auto *slicePost = emitConstI32(builder, sliceScaleParams.post_);
-      auto *sliceScale = emitConstI32(builder, sliceScaleParams.scale_);
+      auto *batchPre = emitConstI32(builder, batchScaleParams.pre);
+      auto *batchPost = emitConstI32(builder, batchScaleParams.post);
+      auto *batchScale = emitConstI32(builder, batchScaleParams.scale);
+      auto *slicePre = emitConstI32(builder, sliceScaleParams.pre);
+      auto *slicePost = emitConstI32(builder, sliceScaleParams.post);
+      auto *sliceScale = emitConstI32(builder, sliceScaleParams.scale);
 
       createCall(builder, F,
                  {destPtr, batchPtr, slicePtr, numSlice, sliceSize, destOffset,
@@ -1335,9 +1335,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto batchScaleParams = quantization::quantizeScaleOffset32To8(
           batchTy->getScale() / destTy->getScale(), batchTy->getOffset());
 
-      auto *batchPre = emitConstI32(builder, batchScaleParams.pre_);
-      auto *batchPost = emitConstI32(builder, batchScaleParams.post_);
-      auto *batchScale = emitConstI32(builder, batchScaleParams.scale_);
+      auto *batchPre = emitConstI32(builder, batchScaleParams.pre);
+      auto *batchPost = emitConstI32(builder, batchScaleParams.post);
+      auto *batchScale = emitConstI32(builder, batchScaleParams.scale);
 
       createCall(builder, F,
                  {destPtr, batchPtr, destDims, batchDims, destOffset,
@@ -1415,12 +1415,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
       // Pass the pre-shift, post-shift and integer scale parameters for the
       // bias and output calculation.
-      auto *biasPre = emitConstI32(builder, biasScaleParam.pre_);
-      auto *biasPost = emitConstI32(builder, biasScaleParam.post_);
-      auto *biasScale = emitConstI32(builder, biasScaleParam.scale_);
-      auto *outPre = emitConstI32(builder, outScaleParam.pre_);
-      auto *outPost = emitConstI32(builder, outScaleParam.post_);
-      auto *outScale = emitConstI32(builder, outScaleParam.scale_);
+      auto *biasPre = emitConstI32(builder, biasScaleParam.pre);
+      auto *biasPost = emitConstI32(builder, biasScaleParam.post);
+      auto *biasScale = emitConstI32(builder, biasScaleParam.scale);
+      auto *outPre = emitConstI32(builder, outScaleParam.pre);
+      auto *outPost = emitConstI32(builder, outScaleParam.post);
+      auto *outScale = emitConstI32(builder, outScaleParam.scale);
 
       createCall(builder, F,
                  {destPtr,    srcPtr,     filterPtr,  biasPtr,   destDims,
@@ -1683,9 +1683,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
           srcTy->getScale() / destTy->getScale() /
               (PA->getKernel() * PA->getKernel()),
           destTy->getOffset());
-      auto *outPre = emitConstI32(builder, outScaleParam.pre_);
-      auto *outPost = emitConstI32(builder, outScaleParam.post_);
-      auto *outScale = emitConstI32(builder, outScaleParam.scale_);
+      auto *outPre = emitConstI32(builder, outScaleParam.pre);
+      auto *outPost = emitConstI32(builder, outScaleParam.post);
+      auto *outScale = emitConstI32(builder, outScaleParam.scale);
 
       auto *F = getFunction("pool_avg", dest->getElementType());
       createCall(builder, F,
@@ -1769,9 +1769,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *destOffset = emitConstI32(builder, destType->getOffset());
     auto *srcOffset = emitConstI32(builder, srcType->getOffset());
-    auto *preShift = emitConstI32(builder, rescaleParams.pre_);
-    auto *postShift = emitConstI32(builder, rescaleParams.post_);
-    auto *scale = emitConstI32(builder, rescaleParams.scale_);
+    auto *preShift = emitConstI32(builder, rescaleParams.pre);
+    auto *postShift = emitConstI32(builder, rescaleParams.post);
+    auto *scale = emitConstI32(builder, rescaleParams.scale);
 
     auto *F = getFunction("rescale", dest->getElementType());
     createCall(builder, F,
