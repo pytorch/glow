@@ -189,7 +189,8 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
                                 : zeroPointFromMax;
 
   // For symmetric quantization, if min == -max, force the zero point to be 0.
-  if (min == -max) {
+  float difference = std::abs(max + min);
+  if (difference <= std::numeric_limits<float>::epsilon()) {
     initialZeroPoint = 0;
   }
 
