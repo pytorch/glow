@@ -435,6 +435,10 @@ public:
     return R % sizes_[dim];
   }
 
+  /// \returns the type of the tensor.
+  const Type &getType() const { return tensor_->getType(); }
+
+  /// \returns the element type of the tensor.
   ElemKind getElementType() const { return tensor_->getElementType(); }
 
   /// Construct a Tensor handle.
@@ -467,16 +471,6 @@ public:
 
   /// \returns the number of elements in the whole tensor.
   size_t size() const { return tensor_->size(); }
-
-  /// \returns the number of elements in a slice for a specific dimension.
-  /// For a tensor of dimensions (w, x,y,z) the result for each value of \p
-  /// dimIdx would be [x * y * z, y * z, z, 1]. This means that each element
-  /// in the n-th dimension is made of tensors with n-1 dimensions, and this
-  /// function returns the size of that tensor.
-  size_t sliceSize(unsigned dimIdx) const {
-    assert(dimIdx < max_tensor_dimensions);
-    return sizeIntegral_[dimIdx];
-  }
 
   bool isInBounds(llvm::ArrayRef<size_t> indices) const {
     return tensor_->isInBounds(indices);

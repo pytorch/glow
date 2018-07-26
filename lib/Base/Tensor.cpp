@@ -66,6 +66,7 @@ template <class ElemTy>
 static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
   auto shape = handle.dims();
   size_t numDims = shape.size();
+  auto &Ty = handle.getType();
 
   // Check for 0-dimensional tensor.
   if (!numDims) {
@@ -112,7 +113,7 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
 
     // Print one open brace at the beginning of every row, slice, and tensor.
     for (size_t j = 0, e = numDims - 1; numDims > 1 && j < e; j++) {
-      if (i % handle.sliceSize(j) == 0) {
+      if (i % Ty.getSliceSize(j + 1) == 0) {
         // This iteration of outer loop is a new row, slice or tensor.
         os << "[";
       }
@@ -124,7 +125,7 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
     // Print one closed brace at the end of every row, slice, or tensor.
     for (size_t j = 0, e = numDims - 1; numDims > 1 && j < e; j++) {
       size_t next_index = i + 1;
-      if (next_index % handle.sliceSize(j) == 0u) {
+      if (next_index % Ty.getSliceSize(j + 1) == 0u) {
         os << "]";
       }
     }
@@ -134,7 +135,7 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
     // Print one newline at the end of every row, slice, or tensor.
     for (size_t j = 0, e = numDims - 1; numDims > 1 && j < e; j++) {
       size_t next_index = i + 1;
-      if (next_index % handle.sliceSize(j) == 0u) {
+      if (next_index % Ty.getSliceSize(j + 1) == 0u) {
         // Next iteration of outer loop will be a new row, slice or tensor.
         os << "\n";
       }
