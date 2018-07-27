@@ -36,9 +36,9 @@ bool OCLBackend::transformPostLowering(Function *F,
   bool changed = false;
   for (auto &node : F->getNodes()) {
     if (auto *CN = dyn_cast<ConvolutionNode>(&node)) {
-      if (CN->getInput()->getType(0)->isQuantizedType()) {
-        continue;
-      }
+      // if (CN->getInput()->getType(0)->isQuantizedType()) {
+      //   continue;
+      // }
       auto *NR = convertConvToNCHWConv<OCLConvolutionNode>(CN, F);
       NodeValue(&node, 0).replaceAllUsesOfWith(NR);
       changed = true;
