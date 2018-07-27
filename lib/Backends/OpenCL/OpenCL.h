@@ -187,7 +187,6 @@ public:
       case Kinded::Kind::MinNodeKind:
       case Kinded::Kind::MulNodeKind:
       case Kinded::Kind::QuantizeNodeKind:
-      case Kinded::Kind::ReluNodeKind:
       case Kinded::Kind::RescaleQuantizedNodeKind:
       case Kinded::Kind::SplatNodeKind:
       case Kinded::Kind::SubNodeKind:

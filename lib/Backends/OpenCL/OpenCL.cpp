@@ -45,6 +45,8 @@ typedef uint32_t cl_size_t;
 #include "kernels.cl"
 // This defines kernels for optimized convolutions.
 #include "kernels_fwd_conv.cl"
+// This defines kernels for quantized optimized convolutions.
+#include "kernels_fwd_quantized_conv.cl"
 
 namespace {
 llvm::cl::OptionCategory OpenCLBackendCat("Glow OpenCL Backend Options");
@@ -393,6 +395,7 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   auto odim = ShapeNCHW(CC->getDest()->getType()->dims());
   auto idim = ShapeNCHW(CC->getSrc()->getType()->dims());
   auto fdim = ShapeNCHW(CC->getFilter()->getType()->dims());
+  bool isQuantized = output->getType()->isQuantizedType();
   PaddingTLBR pads(CC->getPads());
   // Create options for compiling the program.
   // Don't use names M, N, K as they are defined in precompiled headers.
@@ -469,13 +472,31 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
 
   // Generate a tailor-made convolution kernel using the provided options based
   // on the parameters of the current convolution.
-  auto prog = createProgram(FWD_CONV_CODE, options, commands_);
-  auto kernel = createKernel("conv_forward_mem", prog);
+  auto &programName = isQuantized ? FWD_CONV_QUANTIZED_CODE : FWD_CONV_CODE;
+  auto prog = createProgram(programName, options, commands_);
+  auto kernelName = isQuantized ? "conv_forward_mem_i8" : "conv_forward_mem";
+  auto kernel = createKernel(kernelName, prog);
   setKernelArg(kernel, 0, deviceBuffer_);
   setKernelArg<cl_uint>(kernel, 1, tensors_[input]);
   setKernelArg<cl_uint>(kernel, 2, tensors_[weights]);
   setKernelArg<cl_uint>(kernel, 3, tensors_[bias]);
   setKernelArg<cl_uint>(kernel, 4, tensors_[output]);
+
+  // Extra options for quantized kernel
+  if (isQuantized) {
+    auto inputTy = CC->getSrc()->getType();
+    auto outputTy = CC->getDest()->getType();
+    auto biasTy = CC->getBias()->getType();
+    auto weightsTy = CC->getFilter()->getType();
+    setKernelArg(kernel, 5, weightsTy->getOffset());
+    setKernelArg(kernel, 6, weightsTy->getScale());
+    setKernelArg(kernel, 7, inputTy->getOffset());
+    setKernelArg(kernel, 8, inputTy->getScale());
+    setKernelArg(kernel, 9, outputTy->getOffset());
+    setKernelArg(kernel, 10, outputTy->getScale());
+    setKernelArg(kernel, 11, biasTy->getOffset());
+    setKernelArg(kernel, 12, biasTy->getScale());
+  }
 
   // Compute proper parameters for global work and workgroups.
   int group = 1;
@@ -539,16 +560,20 @@ void OpenCLFunction::execute() {
       size_t global;
       if (I.isDataParallel()) {
         global = I.getOperand(0).first->getType()->size();
-        if (global % 16 == 0) {
-          // Start less kernels and let each kernel do more work using vector
-          // instructions.
-          global /= 16;
-          kernelName += "16";
-        } else if (global % 8 == 0) {
-          // Start less kernels and let each kernel do more work using vector
-          // instructions.
-          global /= 8;
-          kernelName += "8";
+        // The check for quantization below is a temporary workaround until the 
+        // corresponding kernels are implemented for the quantized operations.
+        if (!isQuantized) {
+          if (global % 16 == 0) {
+            // Start less kernels and let each kernel do more work using vector
+            // instructions.
+            global /= 16;
+            kernelName += "16";
+          } else if (global % 8 == 0) {
+            // Start less kernels and let each kernel do more work using vector
+            // instructions.
+            global /= 8;
+            kernelName += "8";
+          }
         }
       } else {
         GLOW_UNREACHABLE("Invalid instruction.");
@@ -873,19 +898,18 @@ void OpenCLFunction::execute() {
       setKernelArg(kernel, numArgs + 6,
                    ShapeNHWC(CC->getFilter()->getType()->dims()));
       if (isQuantized) {
-        setKernelArg(kernel, numArgs + 7,
-                     CC->getDest()->getType()->getOffset());
-        setKernelArg(kernel, numArgs + 8, CC->getDest()->getType()->getScale());
-        setKernelArg(kernel, numArgs + 9, CC->getSrc()->getType()->getOffset());
-        setKernelArg(kernel, numArgs + 10, CC->getSrc()->getType()->getScale());
-        setKernelArg(kernel, numArgs + 11,
-                     CC->getFilter()->getType()->getOffset());
-        setKernelArg(kernel, numArgs + 12,
-                     CC->getFilter()->getType()->getScale());
-        setKernelArg(kernel, numArgs + 13,
-                     CC->getBias()->getType()->getOffset());
-        setKernelArg(kernel, numArgs + 14,
-                     CC->getBias()->getType()->getScale());
+        auto srcTy = CC->getSrc()->getType();
+        auto destTy = CC->getDest()->getType();
+        auto filterTy = CC->getFilter()->getType();
+        auto biasTy = CC->getBias()->getType();
+        setKernelArg(kernel, numArgs + 7, destTy->getOffset());
+        setKernelArg(kernel, numArgs + 8, destTy->getScale());
+        setKernelArg(kernel, numArgs + 9, srcTy->getOffset());
+        setKernelArg(kernel, numArgs + 10, srcTy->getScale());
+        setKernelArg(kernel, numArgs + 11, filterTy->getOffset());
+        setKernelArg(kernel, numArgs + 12, filterTy->getScale());
+        setKernelArg(kernel, numArgs + 13, biasTy->getOffset());
+        setKernelArg(kernel, numArgs + 14, biasTy->getScale());
       }
 
       // Use a 3D grid where the first dimension is the depth and the second
