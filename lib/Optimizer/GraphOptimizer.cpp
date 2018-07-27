@@ -349,6 +349,10 @@ static bool sinkCode(Function *F) {
         continue;
       }
 
+      if (node->getNthResult(0)->getType(0)->isQuantizedType()) {
+        continue;
+      }
+
       Node *newAN = nullptr;
 
 #define ARITHMETIC_CASE(NODE_NAME_)                                            \

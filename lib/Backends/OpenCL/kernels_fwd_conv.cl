@@ -29,12 +29,25 @@
 // VWM - vector width in dimension M.
 
 static const char* FWD_CONV_CODE = R"(
+#ifndef QUANTIZED
 #define Dtype float
 #define Dtype1 float
 #define Dtype2 float2
 #define Dtype4 float4
 #define Dtype8 float8
 #define Dtype16 float16
+#define ZERO 0.0
+#else
+#define Dtype char
+#define Dtype1 char
+#define Dtype2 char2
+#define Dtype4 char4
+#define Dtype8 char8
+#define Dtype16 char16
+#define ZERO 0
+#endif
+#define A_OFFSET(x) ((x)- Aoffset)
+#define B_OFFSET(x) ((x)- Boffset)
 
 #define VEC_1_0(X) X
 #define VEC_2_0(X) X.x
@@ -110,6 +123,9 @@ static const char* FWD_CONV_CODE = R"(
 #endif
 #define v_num_tiles (((KK - 1)/(TSK*2) + 1)*2)
 
+/// Clips int into char.
+char clip(int val) { return (char)min(max(val, -128), 127); }
+
 __kernel
 __attribute__((reqd_work_group_size(workgroup_size_0, workgroup_size_1, 1)))
 __attribute__((vec_type_hint(Dtype4)))
@@ -147,10 +163,10 @@ conv_forward_mem(__global void *mem, unsigned im_in_offset, unsigned wg_offset,
     for (int_tp wm = 0; wm < WPTM; ++wm) {
 #pragma unroll
       for (int_tp wn = 0; wn < WPTN / VWN; ++wn) {
-        VEC_4_0(Creg[wm][wn]) = 0.0;
-        VEC_4_1(Creg[wm][wn]) = 0.0;
-        VEC_4_2(Creg[wm][wn]) = 0.0;
-        VEC_4_3(Creg[wm][wn]) = 0.0;
+        VEC_4_0(Creg[wm][wn]) = ZERO;
+        VEC_4_1(Creg[wm][wn]) = ZERO;
+        VEC_4_2(Creg[wm][wn]) = ZERO;
+        VEC_4_3(Creg[wm][wn]) = ZERO;
       }
     }
     {
@@ -169,7 +185,7 @@ conv_forward_mem(__global void *mem, unsigned im_in_offset, unsigned wg_offset,
             if ((offM + row) < MM && tiledIndex < KK) {
               Asub[row][col] = Aptr[(offM + row) * KK + tiledIndex];
             } else {
-              Asub[row][col] = 0.0;
+              Asub[row][col] = ZERO;
             }
           }
         }
@@ -227,7 +243,7 @@ conv_forward_mem(__global void *mem, unsigned im_in_offset, unsigned wg_offset,
                 // tiledIndex now holds the memory offset for the input image.
                 Bsub[row][col] = Bptr[tiledIndex];
               } else {
-                Bsub[row][col] = 0.0;
+                Bsub[row][col] = ZERO;
               }
             }
           }
@@ -314,6 +330,223 @@ conv_forward_mem(__global void *mem, unsigned im_in_offset, unsigned wg_offset,
         if (globalRow < MM && globalCol < NN) {
           Cptr[globalRow * NN + globalCol] =
               ((Dtype *)(&(Creg[wm][wn / VWN])))[wn % VWN] + v_bmul * biasval;
+        }
+      }
+    }
+  }
+}
+
+
+__kernel
+__attribute__((reqd_work_group_size(workgroup_size_0, workgroup_size_1, 1)))
+__attribute__((vec_type_hint(Dtype4)))
+void
+conv_forward_mem_i8(__global void *mem, unsigned im_in_offset, unsigned wg_offset,
+                 unsigned bias_offset, unsigned im_out_offset,
+                 int Aoffset, float Ascale, int Boffset, float Bscale,
+                 int Coffset, float Cscale, int Doffset, float Dscale) {
+  __global const Dtype *im_in = &mem[im_in_offset];
+  __global const Dtype *wg = &mem[wg_offset];
+  __global const Dtype *bias = &mem[bias_offset];
+  __global Dtype *im_out = &mem[im_out_offset];
+  // Thread identifiers.
+  // Local row ID (max: RTSM=TSM/WPTM).
+  const int_tp tidn = get_local_id(0);
+  // Local col ID (max: RTSN=TSN/WPTN).
+  const int_tp tidm = get_local_id(1);
+  // Work-group offset.
+  const int_tp offN = TSN * get_group_id(0);
+  // Work-group offset.
+  const int_tp offM = TSM * get_group_id(1);
+  // Local tile memory.
+  // Asub for loading weights & shuffling the output.
+  volatile __local Dtype Asub[TSM][TSK + v_pad_A];
+  // Bsub for loading the input image and shuffling the output image.
+  volatile __local Dtype Bsub[TSK][TSN + v_pad_B];
+  int_tp batch = get_global_id(2);
+  __global const Dtype *Aptr = wg;
+  __global const Dtype *Bptr = im_in + v_B_off * batch;
+  __global Dtype *Cptr = im_out + v_C_off * batch;
+  __global const Dtype *Dptr = bias;
+  // Initialize the accumulation registers.
+  {
+    int4 Creg[WPTM][WPTN / VWN];
+    float matMulScale = Bscale * Ascale;
+// Initialize the accumulation registers.
+#pragma unroll
+    for (int_tp wm = 0; wm < WPTM; ++wm) {
+#pragma unroll
+      for (int_tp wn = 0; wn < WPTN / VWN; ++wn) {
+        VEC_4_0(Creg[wm][wn]) = ZERO;
+        VEC_4_1(Creg[wm][wn]) = ZERO;
+        VEC_4_2(Creg[wm][wn]) = ZERO;
+        VEC_4_3(Creg[wm][wn]) = ZERO;
+      }
+    }
+    {
+// Loop over all tiles.
+#pragma unroll 1
+      for (int_tp t = 0; t < v_num_tiles; ++t) {
+        // Load one tile of A into local memory.
+        {
+#pragma unroll 4
+          for (int_tp la = 0; la < LPTA; ++la) {
+            int_tp tid = tidm * RTSN + tidn;
+            int_tp id = la * RTSN * RTSM + tid;
+            int_tp row = id / TSK;
+            int_tp col = id % TSK;
+            int_tp tiledIndex = TSK * t + col;
+            if ((offM + row) < MM && tiledIndex < KK) {
+              Asub[row][col] = Aptr[(offM + row) * KK + tiledIndex];
+            } else {
+              Asub[row][col] = ZERO;
+            }
+          }
+        }
+        // Load one tile of B into local memory.
+        {
+#pragma unroll 4
+          for (int_tp lb = 0; lb < LPTB; ++lb) {
+            int_tp tid = tidm * RTSN + tidn;
+            int_tp id = lb * RTSN * RTSM + tid;
+            int_tp col = id % TSN;
+            int_tp row = id / TSN;
+            int_tp tiledIndex = TSK * t + row;
+            if ((offN + col) < NN && tiledIndex < KK) {
+              int_tp d_iter_0;
+              int_tp d_temp_0;
+              int_tp d_iter_1;
+              int_tp d_temp_1;
+              int_tp imageIndex = offN + col;
+              // Compute d_iter, final tiledIndex becomes input feature map ID.
+              // Scale d_iter by the dilation factor.
+              d_iter_1 = (tiledIndex % v_k_1) * v_d_1;
+              tiledIndex = tiledIndex / v_k_1;
+              // Compute d_temp.
+              // Scale d_temp by the stride and subtract the padding.
+              d_temp_1 = (imageIndex % v_imso_1) * v_s_1 - v_p_1;
+              imageIndex = imageIndex / v_imso_1;
+              // Compute d_iter, final tiledIndex becomes input feature map ID.
+              // Scale d_iter by the dilation factor.
+              d_iter_0 = (tiledIndex % v_k_0) * v_d_0;
+              tiledIndex = tiledIndex / v_k_0;
+              // Compute d_temp.
+              // Scale d_temp by the stride and subtract the padding.
+              d_temp_0 = (imageIndex % v_imso_0) * v_s_0 - v_p_0;
+              imageIndex = imageIndex / v_imso_0;
+              // Recombine final index, compute in-range.
+              bool skip_range_check = false;
+              // Used only if padding is not 0.
+              bool in_range = !skip_range_check;
+              int_tp d_iter_im;
+              // Here, d_temp_ represents the column shift,
+              // while d_iter_ is the kernel shift.
+              d_iter_im = d_temp_0 + d_iter_0;
+              tiledIndex = tiledIndex * v_imsi_0 + d_iter_im;
+              if (!skip_range_check) {
+                in_range &= d_iter_im >= 0 && d_iter_im < v_imsi_0;
+              }
+              // Here, d_temp_ represents the column shift,
+              // while d_iter_ is the kernel shift.
+              d_iter_im = d_temp_1 + d_iter_1;
+              tiledIndex = tiledIndex * v_imsi_1 + d_iter_im;
+              if (!skip_range_check) {
+                in_range &= d_iter_im >= 0 && d_iter_im < v_imsi_1;
+              }
+              if (skip_range_check || in_range) {
+                // tiledIndex now holds the memory offset for the input image.
+                Bsub[row][col] = Bptr[tiledIndex];
+              } else {
+                Bsub[row][col] = ZERO;
+              }
+            }
+          }
+        }
+        // Synchronize to make sure the tile is loaded.
+        barrier(CLK_LOCAL_MEM_FENCE);
+        // Temporary registers for A and B.
+        Dtype4 Areg;
+        Dtype4 Breg[WPTN / VWN];
+// Loop over the values of a single tile.
+#pragma unroll 1
+        for (int_tp kt = 0; kt < TSK; kt += TSK_UNROLL) {
+#pragma unroll 1
+          for (int_tp ku = 0; ku < TSK_UNROLL; ++ku) {
+            int_tp k = kt + ku;
+// Cache the values of Bsub in registers.
+#pragma unroll
+            for (int_tp wn = 0; wn < WPTN / VWN; ++wn) {
+              int_tp col = tidn + wn * VWN * RTSN;
+              VEC_4_0(Breg[wn]) = Bsub[k][col + 0 * RTSN];
+              VEC_4_1(Breg[wn]) = Bsub[k][col + 1 * RTSN];
+              VEC_4_2(Breg[wn]) = Bsub[k][col + 2 * RTSN];
+              VEC_4_3(Breg[wn]) = Bsub[k][col + 3 * RTSN];
+            }
+// Perform the computation.
+#pragma unroll
+            for (int_tp wm = 0; wm < WPTM / VWM; ++wm) {
+              int_tp row = tidm + wm * VWM * RTSM;
+              VEC_4_0(Areg) = Asub[row + 0 * RTSM][k];
+              VEC_4_1(Areg) = Asub[row + 1 * RTSM][k];
+              VEC_4_2(Areg) = Asub[row + 2 * RTSM][k];
+              VEC_4_3(Areg) = Asub[row + 3 * RTSM][k];
+#pragma unroll
+
+
+              for (int_tp wn = 0; wn < WPTN / VWN; ++wn) {
+                VEC_4_0(Creg[wm * VWM + 0][wn]) +=
+                    A_OFFSET(VEC_4_0(Areg)) * B_OFFSET(VEC_4_0(Breg[wn]));
+                VEC_4_0(Creg[wm * VWM + 1][wn]) +=
+                    A_OFFSET(VEC_4_1(Areg)) * B_OFFSET(VEC_4_0(Breg[wn]));
+                VEC_4_0(Creg[wm * VWM + 2][wn]) +=
+                    A_OFFSET(VEC_4_2(Areg)) * B_OFFSET(VEC_4_0(Breg[wn]));
+                VEC_4_0(Creg[wm * VWM + 3][wn]) +=
+                    A_OFFSET(VEC_4_3(Areg)) * B_OFFSET(VEC_4_0(Breg[wn]));
+                VEC_4_1(Creg[wm * VWM + 0][wn]) +=
+                    A_OFFSET(VEC_4_0(Areg)) * B_OFFSET(VEC_4_1(Breg[wn]));
+                VEC_4_1(Creg[wm * VWM + 1][wn]) +=
+                    A_OFFSET(VEC_4_1(Areg)) * B_OFFSET(VEC_4_1(Breg[wn]));
+                VEC_4_1(Creg[wm * VWM + 2][wn]) +=
+                    A_OFFSET(VEC_4_2(Areg)) * B_OFFSET(VEC_4_1(Breg[wn]));
+                VEC_4_1(Creg[wm * VWM + 3][wn]) +=
+                    A_OFFSET(VEC_4_3(Areg)) * B_OFFSET(VEC_4_1(Breg[wn]));
+                VEC_4_2(Creg[wm * VWM + 0][wn]) +=
+                    A_OFFSET(VEC_4_0(Areg)) * B_OFFSET(VEC_4_2(Breg[wn]));
+                VEC_4_2(Creg[wm * VWM + 1][wn]) +=
+                    A_OFFSET(VEC_4_1(Areg)) * B_OFFSET(VEC_4_2(Breg[wn]));
+                VEC_4_2(Creg[wm * VWM + 2][wn]) +=
+                    A_OFFSET(VEC_4_2(Areg)) * B_OFFSET(VEC_4_2(Breg[wn]));
+                VEC_4_2(Creg[wm * VWM + 3][wn]) +=
+                    A_OFFSET(VEC_4_3(Areg)) * B_OFFSET(VEC_4_2(Breg[wn]));
+                VEC_4_3(Creg[wm * VWM + 0][wn]) +=
+                    A_OFFSET(VEC_4_0(Areg)) * B_OFFSET(VEC_4_3(Breg[wn]));
+                VEC_4_3(Creg[wm * VWM + 1][wn]) +=
+                    A_OFFSET(VEC_4_1(Areg)) * B_OFFSET(VEC_4_3(Breg[wn]));
+                VEC_4_3(Creg[wm * VWM + 2][wn]) +=
+                    A_OFFSET(VEC_4_2(Areg)) * B_OFFSET(VEC_4_3(Breg[wn]));
+                VEC_4_3(Creg[wm * VWM + 3][wn]) +=
+                    A_OFFSET(VEC_4_3(Areg)) * B_OFFSET(VEC_4_3(Breg[wn])); 
+              }
+            }
+          }
+        }
+
+        // Synchronize before loading the next tile.
+        barrier(CLK_LOCAL_MEM_FENCE);
+      }
+    }
+// Store the final results in C.
+#pragma unroll
+    for (int_tp wm = 0; wm < WPTM; ++wm) {
+      int_tp globalRow = offM + tidm + wm * RTSM;
+      int biasval = round((float)(Dptr[globalRow] - Doffset) * (Dscale / matMulScale));
+#pragma unroll
+      for (int_tp wn = 0; wn < WPTN; ++wn) {
+        int_tp globalCol = offN + tidn + wn * RTSN;
+        if (globalRow < MM && globalCol < NN) {
+          Cptr[globalRow * NN + globalCol] =
+              clip(round((float)(((int *)(&(Creg[wm][wn / VWN])))[wn % VWN] + biasval) * 
+              (matMulScale/Cscale) + Coffset));
         }
       }
     }

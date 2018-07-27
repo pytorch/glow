@@ -393,6 +393,7 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   auto odim = ShapeNCHW(CC->getDest()->getType()->dims());
   auto idim = ShapeNCHW(CC->getSrc()->getType()->dims());
   auto fdim = ShapeNCHW(CC->getFilter()->getType()->dims());
+  bool isQuantized = output->getType()->isQuantizedType();
   PaddingTLBR pads(CC->getPads());
   // Create options for compiling the program.
   // Don't use names M, N, K as they are defined in precompiled headers.
@@ -466,16 +467,32 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   // VWN and VWM should be tunable.
   addStringOption(options, "VWM", "4");
   addStringOption(options, "VWN", "4");
+  if (isQuantized) {
+    addStringOption(options, "QUANTIZED", "");
+  }
 
   // Generate a tailor-made convolution kernel using the provided options based
   // on the parameters of the current convolution.
   auto prog = createProgram(FWD_CONV_CODE, options, commands_);
-  auto kernel = createKernel("conv_forward_mem", prog);
+  auto kernelName = isQuantized ? "conv_forward_mem_i8" : "conv_forward_mem";
+  auto kernel = createKernel(kernelName, prog);
   setKernelArg(kernel, 0, deviceBuffer_);
   setKernelArg<cl_uint>(kernel, 1, tensors_[input]);
   setKernelArg<cl_uint>(kernel, 2, tensors_[weights]);
   setKernelArg<cl_uint>(kernel, 3, tensors_[bias]);
   setKernelArg<cl_uint>(kernel, 4, tensors_[output]);
+
+    // Extra options for quantized kernel
+  if(isQuantized) {
+    setKernelArg(kernel, 5, CC->getFilter()->getType()->getOffset());
+    setKernelArg(kernel, 6, CC->getFilter()->getType()->getScale());
+    setKernelArg(kernel, 7, CC->getSrc()->getType()->getOffset());
+    setKernelArg(kernel, 8, CC->getSrc()->getType()->getScale());
+    setKernelArg(kernel, 9, CC->getDest()->getType()->getOffset());
+    setKernelArg(kernel, 10, CC->getDest()->getType()->getScale());
+    setKernelArg(kernel, 11, CC->getBias()->getType()->getOffset());
+    setKernelArg(kernel, 12, CC->getBias()->getType()->getScale());
+  }  
 
   // Compute proper parameters for global work and workgroups.
   int group = 1;
