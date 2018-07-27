@@ -225,7 +225,7 @@ namespace llvm {
 
 template <>
 struct ilist_traits<glow::Instruction>
-    : public ilist_default_traits<glow::Instruction> {
+    : public ilist_node_traits<glow::Instruction> {
   using Instruction = glow::Instruction;
 
 private:
