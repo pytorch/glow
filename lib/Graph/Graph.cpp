@@ -977,7 +977,13 @@ CmpLTENode *Function::createCmpLTE(llvm::StringRef name, NodeValue LHS,
 CmpEQNode *Function::createCmpEQ(llvm::StringRef name, NodeValue LHS,
                                  NodeValue RHS) {
   assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
-  auto OT = getParent()->uniqueType(*LHS.getType());
+  TypeRef OT;
+  if (LHS.getType()->isQuantizedType()) {
+    OT = getParent()->uniqueType(LHS.getType()->getElementType(), LHS.dims(),
+                                 1.0, 0);
+  } else {
+    OT = getParent()->uniqueType(*LHS.getType());
+  }
   return addNode(new CmpEQNode(name, OT, LHS, RHS));
 }
 
