@@ -31,7 +31,8 @@ Node *convertConvToNCHWConv(ConvolutionNode *CN, Function *F) {
 
   auto dimsNHWC = ShapeNHWC(CN->getResult().getType()->dims());
   auto dimsNCHW = {dimsNHWC.n, dimsNHWC.c, dimsNHWC.h, dimsNHWC.w};
-  auto outTy = F->getParent()->uniqueType(ElemKind::FloatTy, dimsNCHW);
+  auto outTy = F->getParent()->uniqueTypeWithNewShape(CN->getResult().getType(),
+                                                      dimsNCHW);
 
   auto *NC = F->addNode(new NCHWConvNode(CN->getName(), outTy, NI, NF,
                                          CN->getBias(), CN->getKernel(),
@@ -50,7 +51,8 @@ Node *convertPoolToNCHWPool(PoolNode *PN, Function *F) {
 
   auto dimsNHWC = ShapeNHWC(PN->getResult().getType()->dims());
   auto dimsNCHW = {dimsNHWC.n, dimsNHWC.c, dimsNHWC.h, dimsNHWC.w};
-  auto outTy = F->getParent()->uniqueType(ElemKind::FloatTy, dimsNCHW);
+  auto outTy = F->getParent()->uniqueTypeWithNewShape(PN->getResult().getType(),
+                                                      dimsNCHW);
 
   auto *NPN =
       F->addNode(new NCHWPoolNode(PN->getName(), outTy, NI, PN->getKernel(),
