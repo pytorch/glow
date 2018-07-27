@@ -57,7 +57,7 @@ class Module final {
   PseudoRNG PRNG_;
 
 public:
-  Module() = default;
+  Module();
 
   ~Module();
 
@@ -139,6 +139,15 @@ public:
                  Variable::TrainKind train = Variable::TrainKind::Broadcast,
                  float val = 0.0);
   ///@}
+
+  /// Variable builder for a singleton Variable with a reserved \p name,
+  /// reserved in the Module constructor. A singleton Variable with this name
+  /// should only be created once.
+  Variable *createSingletonVariable(
+      ElemKind T, llvm::ArrayRef<size_t> dims, float scale, int32_t offset,
+      llvm::StringRef name, VisibilityKind visibility = VisibilityKind::Private,
+      Variable::TrainKind train = Variable::TrainKind::Broadcast,
+      float val = 0.0);
 
   /// Verify the correctness of the Module.
   void verify() const;
@@ -422,6 +431,15 @@ public:
   IntLookupTableNode *createIntLookupTable(llvm::StringRef name,
                                            NodeValue input,
                                            llvm::ArrayRef<int8_t> initValues,
+                                           TypeRef outTy);
+
+  /// Create lookup table for mapping between quantized numbers.
+  /// \p input and \p outTy must have quantized type.
+  /// Table contains all numbers from the quantized range, e.g., 256 entries for
+  /// int8. \p mapping should be a vector of the same length, where index 0
+  /// corresponds to the -128 input number, and index 255 to 127.
+  IntLookupTableNode *createIntLookupTable(llvm::StringRef name,
+                                           NodeValue input, Variable *mapping,
                                            TypeRef outTy);
 
   /// Create quantized tanh.

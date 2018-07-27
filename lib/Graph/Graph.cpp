@@ -32,6 +32,16 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
+static constexpr char intTanhMappingVarName[] = "int_tanh_mapping";
+static constexpr char intSigmoidMappingVarName[] = "int_sigmoid_mapping";
+
+Module::Module() {
+  // Reserve these names for the singleton Variables that may be created for the
+  // IntLookupTables mapping for quantized Sigmoid/Tanh.
+  uniqueVariableNames_.insert(intTanhMappingVarName);
+  uniqueVariableNames_.insert(intSigmoidMappingVarName);
+}
+
 bool Module::hasFunction(llvm::StringRef name) { return getFunction(name); }
 
 Function *Module::getFunction(llvm::StringRef name) {
@@ -336,6 +346,23 @@ Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  Variable::TrainKind train, float val) {
   auto FT = uniqueType(T, dims, scale, offset);
   return createVariable(FT, name, visibility, train, val);
+}
+
+Variable *
+Module::createSingletonVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
+                                float scale, int32_t offset,
+                                llvm::StringRef name, VisibilityKind visibility,
+                                Variable::TrainKind train, float val) {
+  for (auto *V : getVars()) {
+    if (V->getName() == name) {
+      assert(false && "Variable with this name has already been created.");
+    }
+  }
+
+  auto FT = uniqueType(T, dims, scale, offset);
+  auto *V = new Variable(name, FT, visibility, train, val, getPRNG());
+  vars_.push_back(V);
+  return V;
 }
 
 llvm::StringRef Module::uniqueName(llvm::StringRef name,
@@ -1145,62 +1172,89 @@ Function::createIntLookupTable(llvm::StringRef name, NodeValue input,
   return addNode(new IntLookupTableNode(name, outTy, input, mapping));
 }
 
+IntLookupTableNode *Function::createIntLookupTable(llvm::StringRef name,
+                                                   NodeValue input,
+                                                   Variable *mapping,
+                                                   TypeRef outTy) {
+  return addNode(new IntLookupTableNode(name, outTy, input, mapping));
+}
+
 IntLookupTableNode *Function::createIntTanh(llvm::StringRef name,
                                             NodeValue input, TypeRef outTy) {
-  static int8_t mapping[] = {
-      -128, -127, -126, -126, -126, -126, -126, -126, -126, -126, -126, -126,
-      -126, -126, -126, -126, -126, -126, -126, -126, -125, -125, -125, -125,
-      -125, -125, -125, -125, -125, -125, -125, -124, -124, -124, -124, -124,
-      -124, -124, -123, -123, -123, -123, -123, -123, -122, -122, -122, -122,
-      -121, -121, -121, -120, -120, -120, -120, -119, -119, -118, -118, -118,
-      -117, -117, -116, -116, -115, -115, -114, -114, -113, -112, -112, -111,
-      -110, -109, -109, -108, -107, -106, -105, -104, -103, -102, -101, -100,
-      -99,  -98,  -96,  -95,  -94,  -92,  -91,  -89,  -88,  -86,  -85,  -83,
-      -81,  -79,  -77,  -76,  -74,  -72,  -69,  -67,  -65,  -63,  -61,  -58,
-      -56,  -53,  -51,  -48,  -46,  -43,  -41,  -38,  -35,  -32,  -29,  -27,
-      -24,  -21,  -18,  -15,  -12,  -9,   -6,   -3,   0,    3,    6,    9,
-      12,   15,   18,   21,   24,   27,   29,   32,   35,   38,   41,   43,
-      46,   48,   51,   53,   56,   58,   61,   63,   65,   67,   69,   72,
-      74,   76,   77,   79,   81,   83,   85,   86,   88,   89,   91,   92,
-      94,   95,   96,   98,   99,   100,  101,  102,  103,  104,  105,  106,
-      107,  108,  109,  109,  110,  111,  112,  112,  113,  114,  114,  115,
-      115,  116,  116,  117,  117,  118,  118,  118,  119,  119,  120,  120,
-      120,  120,  121,  121,  121,  122,  122,  122,  122,  123,  123,  123,
-      123,  123,  123,  124,  124,  124,  124,  124,  124,  124,  125,  125,
-      125,  125,  125,  125,  125,  125,  125,  125,  125,  126,  126,  126,
-      126,  126,  126,  126,  126,  126,  126,  126,  126,  126,  126,  126,
-      126,  126,  126,  127};
+  auto *intTanhMappingVar =
+      getParent()->getVariableByName(intTanhMappingVarName);
+  if (!intTanhMappingVar) {
+    static int8_t mappingData[] = {
+        -128, -127, -126, -126, -126, -126, -126, -126, -126, -126, -126, -126,
+        -126, -126, -126, -126, -126, -126, -126, -126, -125, -125, -125, -125,
+        -125, -125, -125, -125, -125, -125, -125, -124, -124, -124, -124, -124,
+        -124, -124, -123, -123, -123, -123, -123, -123, -122, -122, -122, -122,
+        -121, -121, -121, -120, -120, -120, -120, -119, -119, -118, -118, -118,
+        -117, -117, -116, -116, -115, -115, -114, -114, -113, -112, -112, -111,
+        -110, -109, -109, -108, -107, -106, -105, -104, -103, -102, -101, -100,
+        -99,  -98,  -96,  -95,  -94,  -92,  -91,  -89,  -88,  -86,  -85,  -83,
+        -81,  -79,  -77,  -76,  -74,  -72,  -69,  -67,  -65,  -63,  -61,  -58,
+        -56,  -53,  -51,  -48,  -46,  -43,  -41,  -38,  -35,  -32,  -29,  -27,
+        -24,  -21,  -18,  -15,  -12,  -9,   -6,   -3,   0,    3,    6,    9,
+        12,   15,   18,   21,   24,   27,   29,   32,   35,   38,   41,   43,
+        46,   48,   51,   53,   56,   58,   61,   63,   65,   67,   69,   72,
+        74,   76,   77,   79,   81,   83,   85,   86,   88,   89,   91,   92,
+        94,   95,   96,   98,   99,   100,  101,  102,  103,  104,  105,  106,
+        107,  108,  109,  109,  110,  111,  112,  112,  113,  114,  114,  115,
+        115,  116,  116,  117,  117,  118,  118,  118,  119,  119,  120,  120,
+        120,  120,  121,  121,  121,  122,  122,  122,  122,  123,  123,  123,
+        123,  123,  123,  124,  124,  124,  124,  124,  124,  124,  125,  125,
+        125,  125,  125,  125,  125,  125,  125,  125,  125,  126,  126,  126,
+        126,  126,  126,  126,  126,  126,  126,  126,  126,  126,  126,  126,
+        126,  126,  126,  127};
+    unsigned numEls = sizeof(mappingData) / sizeof(mappingData[0]);
+    intTanhMappingVar = getParent()->createSingletonVariable(
+        ElemKind::Int8QTy, {numEls}, outTy->getScale(), outTy->getOffset(),
+        intTanhMappingVarName, VisibilityKind::Private,
+        Variable::TrainKind::None);
+    intTanhMappingVar->getHandle<int8_t>() = mappingData;
+  }
 
-  return createIntLookupTable(name, input, mapping, outTy);
+  return createIntLookupTable(name, input, intTanhMappingVar, outTy);
 }
 
 IntLookupTableNode *Function::createIntSigmoid(llvm::StringRef name,
                                                NodeValue input, TypeRef outTy) {
-  static int8_t mapping[] = {
-      -128, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127,
-      -127, -127, -127, -127, -127, -127, -127, -126, -126, -126, -126, -126,
-      -126, -126, -126, -126, -126, -126, -125, -125, -125, -125, -125, -125,
-      -125, -125, -124, -124, -124, -124, -124, -123, -123, -123, -123, -122,
-      -122, -122, -122, -121, -121, -121, -120, -120, -120, -119, -119, -118,
-      -118, -118, -117, -117, -116, -115, -115, -114, -114, -113, -112, -112,
-      -111, -110, -109, -109, -108, -107, -106, -105, -104, -103, -102, -101,
-      -99,  -98,  -97,  -96,  -94,  -93,  -91,  -90,  -88,  -87,  -85,  -83,
-      -82,  -80,  -78,  -76,  -74,  -72,  -70,  -68,  -66,  -63,  -61,  -59,
-      -56,  -54,  -51,  -49,  -46,  -44,  -41,  -38,  -36,  -33,  -30,  -27,
-      -24,  -21,  -18,  -15,  -12,  -9,   -6,   -3,   -1,   2,    5,    8,
-      11,   14,   17,   20,   23,   26,   29,   32,   35,   37,   40,   43,
-      45,   48,   50,   53,   55,   58,   60,   62,   65,   67,   69,   71,
-      73,   75,   77,   79,   81,   82,   84,   86,   87,   89,   90,   92,
-      93,   95,   96,   97,   98,   100,  101,  102,  103,  104,  105,  106,
-      107,  108,  108,  109,  110,  111,  111,  112,  113,  113,  114,  114,
-      115,  116,  116,  117,  117,  117,  118,  118,  119,  119,  119,  120,
-      120,  120,  121,  121,  121,  121,  122,  122,  122,  122,  123,  123,
-      123,  123,  123,  124,  124,  124,  124,  124,  124,  124,  124,  125,
-      125,  125,  125,  125,  125,  125,  125,  125,  125,  125,  126,  126,
-      126,  126,  126,  126,  126,  126,  126,  126,  126,  126,  126,  126,
-      126,  126,  126,  127};
+  auto *intSigmoidMappingVar =
+      getParent()->getVariableByName(intSigmoidMappingVarName);
+  if (!intSigmoidMappingVar) {
+    static int8_t mappingData[] = {
+        -128, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127,
+        -127, -127, -127, -127, -127, -127, -127, -126, -126, -126, -126, -126,
+        -126, -126, -126, -126, -126, -126, -125, -125, -125, -125, -125, -125,
+        -125, -125, -124, -124, -124, -124, -124, -123, -123, -123, -123, -122,
+        -122, -122, -122, -121, -121, -121, -120, -120, -120, -119, -119, -118,
+        -118, -118, -117, -117, -116, -115, -115, -114, -114, -113, -112, -112,
+        -111, -110, -109, -109, -108, -107, -106, -105, -104, -103, -102, -101,
+        -99,  -98,  -97,  -96,  -94,  -93,  -91,  -90,  -88,  -87,  -85,  -83,
+        -82,  -80,  -78,  -76,  -74,  -72,  -70,  -68,  -66,  -63,  -61,  -59,
+        -56,  -54,  -51,  -49,  -46,  -44,  -41,  -38,  -36,  -33,  -30,  -27,
+        -24,  -21,  -18,  -15,  -12,  -9,   -6,   -3,   -1,   2,    5,    8,
+        11,   14,   17,   20,   23,   26,   29,   32,   35,   37,   40,   43,
+        45,   48,   50,   53,   55,   58,   60,   62,   65,   67,   69,   71,
+        73,   75,   77,   79,   81,   82,   84,   86,   87,   89,   90,   92,
+        93,   95,   96,   97,   98,   100,  101,  102,  103,  104,  105,  106,
+        107,  108,  108,  109,  110,  111,  111,  112,  113,  113,  114,  114,
+        115,  116,  116,  117,  117,  117,  118,  118,  119,  119,  119,  120,
+        120,  120,  121,  121,  121,  121,  122,  122,  122,  122,  123,  123,
+        123,  123,  123,  124,  124,  124,  124,  124,  124,  124,  124,  125,
+        125,  125,  125,  125,  125,  125,  125,  125,  125,  125,  126,  126,
+        126,  126,  126,  126,  126,  126,  126,  126,  126,  126,  126,  126,
+        126,  126,  126,  127};
+    unsigned numEls = sizeof(mappingData) / sizeof(mappingData[0]);
+    intSigmoidMappingVar = getParent()->createSingletonVariable(
+        ElemKind::Int8QTy, {numEls}, outTy->getScale(), outTy->getOffset(),
+        intSigmoidMappingVarName, VisibilityKind::Private,
+        Variable::TrainKind::None);
+    intSigmoidMappingVar->getHandle<int8_t>() = mappingData;
+  }
 
-  return createIntLookupTable(name, input, mapping, outTy);
+  return createIntLookupTable(name, input, intSigmoidMappingVar, outTy);
 }
 
 TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
