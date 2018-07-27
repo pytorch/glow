@@ -421,8 +421,8 @@ int main(int argc, char **argv) {
           "Variable *getComputationInfoVar() const;",
           "Variable *QuantizationProfileNode::getComputationInfoVar() const { "
           "return llvm::cast<Variable>(ComputationInfo_.getNode()); };")
-      .addOverwrittenInput("ComputationInfo")
-      .addOverwrittenInput("Histogram")
+      .addResult("ComputationInfo.getType()", "UpdatedComputationInfo")
+      .addResult("Histogram.getType()", "UpdatedHistogram")
       .setHasSideEffects(true)
       .setDocstring(
           "Generate profile (distribution of values) of the Input "

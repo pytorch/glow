@@ -1572,14 +1572,28 @@ void InterpreterFunction::fwdDebugPrintInst(const DebugPrintInst *I) {
 void InterpreterFunction::fwdQuantizationProfileInst(
     const glow::QuantizationProfileInst *I) {
   auto inputTensor = getWeightHandle(I->getInputTensor());
-  auto currentHistogram = getWeightHandle(I->getHistogram());
-  auto computationInfo = getWeightHandle(I->getComputationInfo());
+  // Copy the input value into the output.
+  // Only do the copy if the optimizer didn't coalesce the buffers together.
+  auto *updatedHistogramTensor = getTensor(I->getUpdatedHistogram());
+  const auto *histogramTensor = getTensor(I->getHistogram());
+  if (updatedHistogramTensor != histogramTensor) {
+    updatedHistogramTensor->copyFrom(histogramTensor);
+  }
+  auto *updatedComputationInfoTensor =
+      getTensor(I->getUpdatedComputationInfo());
+  const auto *computationInfoTensor = getTensor(I->getComputationInfo());
+  if (updatedComputationInfoTensor != computationInfoTensor) {
+    updatedComputationInfoTensor->copyFrom(computationInfoTensor);
+  }
 
-  float &min = computationInfo.raw(0);
-  float &max = computationInfo.raw(1);
+  auto updatedHistogram = updatedHistogramTensor->getHandle();
+  auto updatedComputationInfo = updatedComputationInfoTensor->getHandle();
 
-  // Update current histogram, min and max based on the inputTensor data.
-  quantization::generateTensorHistogram(inputTensor, currentHistogram, min,
+  float &min = updatedComputationInfo.raw(0);
+  float &max = updatedComputationInfo.raw(1);
+
+  // Update the output histogram, min and max based on the inputTensor data.
+  quantization::generateTensorHistogram(inputTensor, updatedHistogram, min,
                                         max);
 }
 /// Quantize floating point tensor. Scale and Offset are based on return type
