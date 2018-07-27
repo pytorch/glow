@@ -353,6 +353,15 @@ static bool sinkCode(Function *F) {
 
 #define ARITHMETIC_CASE(NODE_NAME_)                                            \
   case glow::Kinded::Kind::NODE_NAME_##NodeKind:                               \
+    newAN = F->create##NODE_NAME_(                                             \
+        node->getName(),                                                       \
+        F->getParent()->uniqueTypeWithNewShape(                                \
+            node->getType(0), LTR->getInput().getType()->dims()),              \
+        LTR->getInput(), RTR->getInput());                                     \
+    break;
+
+#define LOGICAL_OP_CASE(NODE_NAME_)                                            \
+  case glow::Kinded::Kind::NODE_NAME_##NodeKind:                               \
     newAN = F->create##NODE_NAME_(node->getName(), LTR->getInput(),            \
                                   RTR->getInput());                            \
     break;
@@ -364,11 +373,12 @@ static bool sinkCode(Function *F) {
         ARITHMETIC_CASE(Div);
         ARITHMETIC_CASE(Max);
         ARITHMETIC_CASE(Min);
-        ARITHMETIC_CASE(CmpLTE);
-        ARITHMETIC_CASE(CmpEQ);
+        LOGICAL_OP_CASE(CmpLTE);
+        LOGICAL_OP_CASE(CmpEQ);
       default:
         llvm_unreachable("Unhandled node");
       }
+#undef LOGICAL_OP_CASE
 #undef ARITHMETIC_CASE
 
       changed = true;
