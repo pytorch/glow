@@ -44,6 +44,7 @@ clear and has sufficient instructions to be able to reproduce the issue.
 * Jordan Fix ([jfix71](https://github.com/jfix71))
 * Man Wang ([beicy](https://github.com/beicy))
 * Nadav Rotem ([nadavrot](https://github.com/nadavrot))
+* Quentin Colombet ([qcolombet](https://github.com/qcolombet))
 * Roman Dzhabarov ([rdzhabarov](https://github.com/rdzhabarov))
 * Roman Levenstein ([opti-mix](https://github.com/opti-mix))
 
