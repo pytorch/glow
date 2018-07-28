@@ -965,8 +965,15 @@ ARITHMETIC_FUN_DEF(Max);
 ARITHMETIC_FUN_DEF(Min);
 #undef ARITHMETIC_FUN_DEF
 
-/// \returns the result type for a logical operation.
-static TypeRef getResultTypeOfLogicalOp(Module &M, TypeRef T) {
+/// This helper function is used only by the functions creating boolean
+/// operations like createCmpEQ and createCmpLTE to compute their output types.
+/// The output type is computed based on the type \p T of the operand of the
+/// logical operation. In case of a quantized type we provide concrete scale and
+/// offset for the type as we know that the output of a boolean operation could
+/// be only 0 or 1.
+///
+/// \returns the output type for a boolean operation.
+static TypeRef getResultTypeOfBooleanOp(Module &M, TypeRef T) {
   TypeRef OT;
   if (T->isQuantizedType()) {
     OT = M.uniqueType(T->getElementType(), T->dims(), 1.0, 0);
@@ -981,14 +988,14 @@ static TypeRef getResultTypeOfLogicalOp(Module &M, TypeRef T) {
 CmpLTENode *Function::createCmpLTE(llvm::StringRef name, NodeValue LHS,
                                    NodeValue RHS) {
   assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
-  TypeRef OT = getResultTypeOfLogicalOp(*getParent(), LHS.getType());
+  TypeRef OT = getResultTypeOfBooleanOp(*getParent(), LHS.getType());
   return addNode(new CmpLTENode(name, OT, LHS, RHS));
 }
 
 CmpEQNode *Function::createCmpEQ(llvm::StringRef name, NodeValue LHS,
                                  NodeValue RHS) {
   assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
-  TypeRef OT = getResultTypeOfLogicalOp(*getParent(), LHS.getType());
+  TypeRef OT = getResultTypeOfBooleanOp(*getParent(), LHS.getType());
   return addNode(new CmpEQNode(name, OT, LHS, RHS));
 }
 
