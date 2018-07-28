@@ -101,13 +101,15 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
 void InstrBuilder::emitInplaceMethod(std::ostream &os) const {
   os << "\n  bool isInplaceOp(unsigned dstIdx, unsigned srcIdx) const {\n";
   if (!inplaceOperands_.empty()) {
-    assert(inplaceOperands_.size() > 1 &&
-           "We don't have a pair of inplace args");
-    for (int i = 1, e = inplaceOperands_.size(); i < e; i++) {
-      auto F0 = getOperandIndexByName(inplaceOperands_[0]);
-      auto F1 = getOperandIndexByName(inplaceOperands_[i]);
-      os << "  if (" << F0 << " == dstIdx && " << F1
-         << " == srcIdx) { return true; }\n";
+    for (const std::vector<std::string> curInplaceOperands : inplaceOperands_) {
+      assert(curInplaceOperands.size() > 1 &&
+             "We don't have a pair of inplace args");
+      for (int i = 1, e = curInplaceOperands.size(); i < e; i++) {
+        auto F0 = getOperandIndexByName(curInplaceOperands[0]);
+        auto F1 = getOperandIndexByName(curInplaceOperands[i]);
+        os << "  if (" << F0 << " == dstIdx && " << F1
+           << " == srcIdx) { return true; }\n";
+      }
     }
   }
   os << "    return false;\n  }\n";

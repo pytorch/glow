@@ -1138,9 +1138,14 @@ Function::createQuantizationProfile(llvm::StringRef name, NodeValue input) {
       ElemKind::FloatTy, {2}, "computationInfo", VisibilityKind::Private,
       Variable::TrainKind::None);
 
-  return addNode(
+  QuantizationProfileNode *quantNode = addNode(
       new QuantizationProfileNode(name, input, histogram, computationInfo,
                                   input->getName().str(), input.getResNo()));
+  createSave(name.str() + ".updated.histogram",
+             quantNode->getUpdatedHistogram(), histogram);
+  createSave(name.str() + ".updated.computation.info",
+             quantNode->getUpdatedComputationInfo(), computationInfo);
+  return quantNode;
 }
 
 IntLookupTableNode *

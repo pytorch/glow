@@ -403,11 +403,21 @@ int main(int argc, char **argv) {
   //===--------------------------------------------------------------------===//
 
   BB.newInstr("QuantizationProfile")
+      .addOperand("UpdatedHistogram", OperandKind::Out)
+      .addOperand("UpdatedComputationInfo", OperandKind::Out)
       .addOperand("InputTensor", OperandKind::In)
-      .addOperand("Histogram", OperandKind::InOut)
-      .addOperand("ComputationInfo", OperandKind::InOut)
+      .addOperand("Histogram", OperandKind::In)
+      .addOperand("ComputationInfo", OperandKind::In)
       .autoVerify(VerifyKind::SameElementType,
-                  {"InputTensor", "ElemKind::FloatTy"});
+                  {"InputTensor", "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"UpdatedHistogram", "Histogram"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"UpdatedComputationInfo", "ComputationInfo"})
+      .inplaceOperand(
+          {"UpdatedHistogram", "InputTensor", "Histogram", "ComputationInfo"})
+      .inplaceOperand({"UpdatedComputationInfo", "InputTensor", "Histogram",
+                       "ComputationInfo"});
 
   BB.newInstr("IntLookupTable")
       .addOperand("Dest", OperandKind::Out)

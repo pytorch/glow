@@ -379,8 +379,17 @@ public:
       auto *inputTensor = valueForNode(QPN->getInput());
       auto *histogram = valueForNode(QPN->getHistogramVar());
       auto *computationInfo = valueForNode(QPN->getComputationInfoVar());
-      builder_.createQuantizationProfileInst(QPN->getName(), inputTensor,
-                                             histogram, computationInfo);
+      auto *updatedHistogram = builder_.createAllocActivationInst(
+          QPN->getName().str() + ".upd.histo",
+          QPN->getUpdatedHistogram().getType());
+      auto *updatedComputationInfo = builder_.createAllocActivationInst(
+          QPN->getName().str() + ".opd.compinfo",
+          QPN->getUpdatedComputationInfo().getType());
+      builder_.createQuantizationProfileInst(
+          QPN->getName(), updatedHistogram, updatedComputationInfo, inputTensor,
+          histogram, computationInfo);
+      registerIR(QPN->getUpdatedComputationInfo(), updatedComputationInfo);
+      registerIR(QPN->getUpdatedHistogram(), updatedHistogram);
       break;
     }
     case glow::Kinded::Kind::TopKNodeKind: {
