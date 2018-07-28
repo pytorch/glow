@@ -43,46 +43,47 @@ SaveNode *ProtobufLoader::getOutputByName(llvm::StringRef name) const {
   return it->second;
 }
 
-Node *ProtobufLoader::getNodeByNameOrNull(llvm::StringRef name) const {
-  auto it = nodeByName_.find(name);
-  if (it != nodeByName_.end()) {
+NodeValue
+ProtobufLoader::getNodeValueByNameOrNullNodeValue(llvm::StringRef name) const {
+  auto it = nodeValueByName_.find(name);
+  if (it != nodeValueByName_.end()) {
     return it->second;
   }
 
-  return nullptr;
+  return NodeValue(nullptr);
 }
 
-Node *ProtobufLoader::getNodeByName(llvm::StringRef name) const {
+NodeValue ProtobufLoader::getNodeValueByName(llvm::StringRef name) const {
   assert(hasNodeByName(name) && "No node under that name");
-  auto *node = getNodeByNameOrNull(name);
-  assert(node && "Null is under that name??");
+  auto node = getNodeValueByNameOrNullNodeValue(name);
+  assert(node.getNode() && "Null is under that name??");
   return node;
 }
 
-Node *ProtobufLoader::createAndRememberVariable(llvm::StringRef name,
-                                                const Tensor &tensor,
-                                                VisibilityKind visibilityKind,
-                                                Variable::TrainKind trainKind) {
+Variable *ProtobufLoader::createAndRememberVariable(
+    llvm::StringRef name, const Tensor &tensor, VisibilityKind visibilityKind,
+    Variable::TrainKind trainKind) {
   assert(!hasNodeByName(name) && "Creating an already existing node?!");
-  Node *node =
+  Variable *node =
       G_.getParent()->createVariable(name, tensor, visibilityKind, trainKind);
-  nodeByName_[name] = node;
+  nodeValueByName_[name] = NodeValue(node, 0);
   return node;
 }
 
-Node *ProtobufLoader::getOrCreateVariableByName(llvm::StringRef name) {
-  auto *node = getNodeByNameOrNull(name);
-  if (node) {
+NodeValue
+ProtobufLoader::getNodeValueOrCreateVariableByName(llvm::StringRef name) {
+  auto node = getNodeValueByNameOrNullNodeValue(name);
+  if (node.getNode()) {
     return node;
   }
 
   Tensor *T = getTensorByName(name);
-  return createAndRememberVariable(name, *T);
+  return NodeValue(createAndRememberVariable(name, *T), 0);
 }
 
 Variable *ProtobufLoader::getVariableByName(llvm::StringRef name) const {
   assert(hasNodeByName(name) && "Variable was not created");
-  auto *node = getNodeByName(name);
+  auto *node = getNodeValueByName(name).getNode();
 
   assert(llvm::isa<Variable>(node) && "Node is not a variable");
 
@@ -90,7 +91,7 @@ Variable *ProtobufLoader::getVariableByName(llvm::StringRef name) const {
 }
 
 bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {
-  return getNodeByNameOrNull(name) != nullptr;
+  return getNodeValueByNameOrNullNodeValue(name).getNode() != nullptr;
 }
 
 ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
