@@ -95,7 +95,7 @@ protected:
   /// The graph that we are constructing.
   Function &G_;
   /// Saves network nodes by name.
-  std::unordered_map<std::string, Node *> nodeByName_;
+  std::unordered_map<std::string, NodeValue> nodeValueByName_;
   /// A list of weight tensors indexed by name.
   std::unordered_map<std::string, Tensor *> tensors_;
   /// A map from names of the external outputs of the network to SaveNodes.
@@ -107,28 +107,28 @@ protected:
   /// Create a new variable \p name initialized with \p tensor.
   /// \returns The newly created variable.
   /// \pre !hasNodeByName(name)
-  Node *createAndRememberVariable(
+  Variable *createAndRememberVariable(
       llvm::StringRef name, const Tensor &tensor,
       VisibilityKind visibilityKind = VisibilityKind::Private,
       Variable::TrainKind trainKind = Variable::TrainKind::Broadcast);
 
-  /// \returns the node that was registered with the name \p name or nullptr
-  /// if no node has been registered with this name.
-  Node *getNodeByNameOrNull(llvm::StringRef name) const;
+  /// \returns the NodeValue that was registered with the name \p name or
+  /// a nullptr wrapped in a NodeValue if no node has been registered with this
+  /// name.
+  NodeValue getNodeValueByNameOrNullNodeValue(llvm::StringRef name) const;
 
 public:
-  /// \returns the node that was registered with the name \p name.
+  /// \returns the NodeValue that was registered with the name \p name.
   /// \pre hasNodeByName(name)
-  Node *getNodeByName(llvm::StringRef name) const;
+  NodeValue getNodeValueByName(llvm::StringRef name) const;
 
-  /// \returns the node that was registered with the name \p name or create a
-  /// new Variable node for a tensor with this name.
-  /// In case a new variable is created, this method registers
-  /// it under \p name.
-  Node *getOrCreateVariableByName(llvm::StringRef name);
+  /// \returns the NodeValue that was registered with the name \p name or create
+  /// a new Variable node for a tensor with this name. In case a new variable is
+  /// created, this method registers it under \p name.
+  NodeValue getNodeValueOrCreateVariableByName(llvm::StringRef name);
 
   /// \returns The variable registered under \p name.
-  /// \pre isa<Variable>(getNodeByName(name))
+  /// \pre isa<Variable>(getNodeValueByName(name).getNode())
   Variable *getVariableByName(llvm::StringRef name) const;
 
   /// \returns True if the node that's registered using \p name exists.

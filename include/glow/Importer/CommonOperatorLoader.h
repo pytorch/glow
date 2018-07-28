@@ -43,14 +43,14 @@ protected:
 
   void addNodeAsOutput(const OpType &op, Node *R) {
     for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = R;
+      nodeValueByName_[op.output(i)] = NodeValue(R, i);
     }
   }
 
   /// Loads RELU operator, given its protobuf representation and parsed args.
   void loadRelu(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto *in = getOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
     auto *R = G_.createRELU(opName, in);
     addNodeAsOutput(op, R);
   }
@@ -59,8 +59,8 @@ protected:
     // TODO: support variadic arguments
     assert(op.input_size() == 2 && "Only Sum of 2 inputs is supported.");
     const std::string &opName = loadOperatorName(op);
-    auto *in0 = getOrCreateVariableByName(op.input(0));
-    auto *in1 = getOrCreateVariableByName(op.input(1));
+    auto in0 = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in1 = getNodeValueOrCreateVariableByName(op.input(1));
     auto *node = G_.createAdd(opName, in0, in1);
     addNodeAsOutput(op, node);
   }
@@ -68,9 +68,10 @@ protected:
   void loadSoftmax(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
 
-    auto *softmaxExpected = getOrCreateVariableByName("softmax_expected");
+    auto softmaxExpected =
+        getNodeValueOrCreateVariableByName("softmax_expected");
 
-    Node *in = getOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
 
     // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
     // softmax function. This is similar to a bitcast operation.
@@ -82,7 +83,7 @@ protected:
 
   void loadLRN(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto *in = getOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
 
     size_t size = loadInt(dict["size"]);
     float alpha = loadFloat(dict["alpha"]);
@@ -96,14 +97,16 @@ protected:
 
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
 
-    addNodeAsOutput(op, N);
+    // LRN in Caffe2 has a scale_ output, but I believe it's unused for
+    // inference. So explicitly only set output 0.
+    nodeValueByName_[op.output(0)] = NodeValue(N, 0);
   }
 
   void loadArithmetic(llvm::StringRef typeName, const OpType &op,
                       ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto *in0 = getOrCreateVariableByName(op.input(0));
-    auto *in1 = getOrCreateVariableByName(op.input(1));
+    auto in0 = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in1 = getNodeValueOrCreateVariableByName(op.input(1));
 
     bool broadcast = getBroadcast(dict);
 
@@ -138,7 +141,7 @@ protected:
 
   void loadSplit(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto *in = getOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
     size_t axis = dict.count("axis") ? loadInt(dict["axis"]) : 0;
     std::vector<size_t> split;
     if (dict.count("split"))
@@ -148,13 +151,15 @@ protected:
     G_.createSplit(opName, in, op.output_size(), axis, split, outputs);
 
     for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeByName_[op.output(i)] = outputs[i];
+      // Each output from Split is a SliceNode which only has a single output,
+      // so only use 0 here as the node value result.
+      nodeValueByName_[op.output(i)] = NodeValue(outputs[i], 0);
     }
   }
 
   void loadReshape(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto *in = getOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
 
     std::vector<size_t> newDim;
     if (dict.count("shape")) {
@@ -187,13 +192,15 @@ protected:
 
     auto *node = G_.createReshape(opName, in, newDim);
 
-    addNodeAsOutput(op, node);
+    // Caffe2 sometimes outputs old_shape which goes unused. We do not currently
+    // support it, so explicitly only set the first output.
+    nodeValueByName_[op.output(0)] = NodeValue(node, 0);
   }
 
   void loadTranspose(const OpType &op, ArgumentDictionaryTy &dict,
                      llvm::StringRef permArgName) {
     const std::string &opName = loadOperatorName(op);
-    auto *in = getOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
 
     // There is a difference between ONNX and Caffe2 specs for Transpose:
     // one contains permutation under name "perm", the other contains it under
@@ -213,10 +220,18 @@ protected:
 
   void loadFlatten(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto *in = getOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
     int axis = dict.count("axis") ? loadInt(dict["axis"]) : 1;
     auto *node = G_.createFlatten(opName, in, axis);
     addNodeAsOutput(op, node);
+  }
+
+  void loadDropout(const OpType &op, ArgumentDictionaryTy &dict) {
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    // Save the identity operation. Note the second output (mask) for Dropout in
+    // Caffe2 and ONNX is unused during inference, and our Dropout does not
+    // currently implement it, thus we do not call addNodeAsOutput() here.
+    nodeValueByName_[op.output(0)] = NodeValue(in, 0);
   }
 
   using ProtobufLoader::ProtobufLoader;
@@ -256,6 +271,10 @@ protected:
     }
     if (typeName == "Flatten") {
       loadFlatten(op, dict);
+      return true;
+    }
+    if (typeName == "Dropout") {
+      loadDropout(op, dict);
       return true;
     }
     return false;
