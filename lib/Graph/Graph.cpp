@@ -1952,4 +1952,27 @@ void Function::verify() const {
       variablesWrittenTo[var] = &N;
     }
   }
+
+  // Now check that the variables that are written to are either:
+  // - Written by a save node, or
+  // - Are only used by the node that writes them
+  // If this check fails, that means we have implicit memory
+  // dependencies that may not be honored by the scheduler.
+  // Either the input IR is incorrect or the scheduler needs
+  // fixing.
+  for (const std::pair<const Variable *, const Node *> &varToWrite :
+       variablesWrittenTo) {
+    if (isa<SaveNode>(varToWrite.second)) {
+      continue;
+    }
+    for (const NodeUse &use : varToWrite.first->getUsers()) {
+      const Node *user = use.getUser();
+      // Ignore users outside this function.
+      if (user->getParent() != this) {
+        continue;
+      }
+      assert(user == varToWrite.second &&
+             "Implicit read after write memory dependency may not be honored");
+    }
+  }
 }
