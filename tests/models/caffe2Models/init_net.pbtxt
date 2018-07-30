@@ -1,0 +1,32 @@
+name: "init"
+op {
+  output: "conv_w"
+  type: "GivenTensorFill"
+  arg {
+    name: "shape"
+    ints: 1
+    ints: 1
+    ints: 2
+    ints: 2
+  }
+  arg {
+    name: "values"
+    floats: 1.0
+    floats: 1.0
+    floats: 1.0
+    floats: 1.0
+  }
+}
+op {
+  output: "conv_b"
+  type: "GivenTensorFill"
+  arg {
+    name: "shape"
+    ints: 1
+  }
+  arg {
+    name: "values"
+    floats: 2.0
+  }
+}
+
