@@ -346,3 +346,55 @@ ShapeVector glow::expandDimsToMax(llvm::ArrayRef<size_t> currDims) {
   }
   return newDims;
 }
+
+void Tensor::initPayload(InitKind init, float val, PseudoRNG &PRNG) {
+  switch (init) {
+  case InitKind::Zero:
+    zero();
+    break;
+
+  case InitKind::Broadcast: {
+    switch (getElementType()) {
+    case ElemKind::FloatTy: {
+      getHandle<float>().clear(val);
+      break;
+    }
+    case ElemKind::Int8QTy: {
+      getHandle<int8_t>().clear(val);
+      break;
+    };
+    case ElemKind::Int32QTy: {
+      getHandle<int32_t>().clear(val);
+      break;
+    }
+    case ElemKind::IndexTy: {
+      getHandle<size_t>().clear(val);
+      break;
+    }
+    }
+    break;
+  }
+
+  case InitKind::Xavier: {
+    switch (getElementType()) {
+    case ElemKind::FloatTy: {
+      getHandle<float>().initXavier(val, PRNG);
+      break;
+    }
+    case ElemKind::Int8QTy: {
+      getHandle<int8_t>().initXavier(val, PRNG);
+      break;
+    };
+    case ElemKind::Int32QTy: {
+      getHandle<int32_t>().initXavier(val, PRNG);
+      break;
+    }
+    case ElemKind::IndexTy: {
+      getHandle<size_t>().initXavier(val, PRNG);
+      break;
+    }
+    }
+    break;
+  }
+  }
+}

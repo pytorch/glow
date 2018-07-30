@@ -47,6 +47,15 @@ ShapeVector expandDimsToMax(llvm::ArrayRef<size_t> currDims);
 
 /// A class that represents a contiguous n-dimensional array (a tensor).
 class Tensor final {
+public:
+  /// Specifies the kind initialization for the tensor.
+  enum class InitKind {
+    Zero,      // The tensor is initialized to zero.
+    Broadcast, // Broadcast a single value to all elements.
+    Xavier,    // Init the variable with random values using the Xavier method.
+  };
+
+private:
   /// A pointer to the tensor data.
   char *data_{nullptr};
 
@@ -154,6 +163,11 @@ public:
 
   Tensor(const Tensor &other) = delete;
   Tensor &operator=(const Tensor &other) = delete;
+
+  /// Initialize the content of the tensor using the \p init method. The value
+  /// \p val is the initialization parameter. \p PRNG is used to generate
+  /// random numbers.
+  void initPayload(InitKind init, float val, PseudoRNG &PRNG);
 
   /// \returns unowned tensor using the same data buffer as the current tensor
   /// but having different dimensions \p dims. \p offsets represents an optional
