@@ -338,6 +338,15 @@ Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
   return createVariable(FT, name, visibility, train, val);
 }
 
+Variable *Module::createVariable(llvm::StringRef name, const Tensor &tensor,
+                                 VisibilityKind visibility,
+                                 Variable::TrainKind train) {
+  auto *V = createVariable(tensor.getElementType(), tensor.dims(), name,
+                           visibility, train);
+  V->copyFrom(&tensor);
+  return V;
+}
+
 llvm::StringRef Module::uniqueName(llvm::StringRef name,
                                    llvm::StringSet<> &stringTable) {
   std::string legalName;

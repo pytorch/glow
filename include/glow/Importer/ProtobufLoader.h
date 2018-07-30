@@ -116,13 +116,6 @@ protected:
   /// if no node has been registered with this name.
   Node *getNodeByNameOrNull(llvm::StringRef name) const;
 
-  /// Create a new variable \p name initialized with \p tensor.
-  /// \returns the newly created variable.
-  Node *createVariable(
-      llvm::StringRef name, const Tensor &tensor,
-      VisibilityKind visibilityKind = VisibilityKind::Private,
-      Variable::TrainKind trainKind = Variable::TrainKind::Broadcast);
-
 public:
   /// \returns the node that was registered with the name \p name.
   /// \pre hasNodeByName(name)

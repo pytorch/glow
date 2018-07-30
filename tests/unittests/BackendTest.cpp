@@ -135,10 +135,9 @@ TEST_P(BackendTest, debugPrint) {
   Tensor input{0.0, 1.0, 2.0, 3.0};
   Module mod;
   Function *F = mod.createFunction("main");
-  auto *IV =
-      mod.createVariable(&input.getType(), "input", VisibilityKind::Public,
-                         Variable::TrainKind::None);
-  IV->copyFrom(&input);
+  auto *IV = mod.createVariable("input", input, VisibilityKind::Public,
+                                Variable::TrainKind::None);
+  (void)IV;
 
   auto IR = llvm::make_unique<IRFunction>(F);
   IR->generateIR();

@@ -240,15 +240,15 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     size_t depth = wtag.dims()[0];
 
     // Construct the Filter field.
-    auto *filter = createVariable("conv.filter", wtag);
+    auto *filter = G_.getParent()->createVariable("conv.filter", wtag);
 
     unsigned kernel;
     if (dict.count("kernel_shape")) {
       kernel = getConstantArrayHead(dict["kernel_shape"]);
     } else {
-      assert(filter->dims(0)[1] == filter->dims(0)[2] &&
+      assert(filter->dims()[1] == filter->dims()[2] &&
              "Only square kernels are supported");
-      kernel = filter->dims(0)[1];
+      kernel = filter->dims()[1];
     }
 
     // Construct the Bias field.
@@ -264,7 +264,7 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
         biasTensor.copyFrom(b);
       }
     }
-    auto *bias = createVariable("conv.bias", biasTensor);
+    auto *bias = G_.getParent()->createVariable("conv.bias", biasTensor);
 
     // ONNX passes the input as NCHW, and we expect the input to be NHWC.
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);

@@ -138,6 +138,12 @@ public:
                  VisibilityKind visibility = VisibilityKind::Private,
                  Variable::TrainKind train = Variable::TrainKind::Broadcast,
                  float val = 0.0);
+
+  Variable *
+  createVariable(llvm::StringRef name, const Tensor &tensor,
+                 VisibilityKind visibility = VisibilityKind::Private,
+                 Variable::TrainKind train = Variable::TrainKind::Broadcast);
+
   ///@}
 
   /// Verify the correctness of the Module.
