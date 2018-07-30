@@ -60,7 +60,7 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
   assert(dims.size() == 4 && "Invalid filter size");
   auto *filter8 = M->createVariable(
       filterTy->getElementType(), {dims[0] / 8, dims[1], dims[2], dims[3], 8},
-      filter->getName(), VisibilityKind::Private, Variable::TrainKind::None);
+      filter->getName(), VisibilityKind::Private, false);
 
   auto F8H = filter8->getHandle();
   auto FH = filter->getHandle();

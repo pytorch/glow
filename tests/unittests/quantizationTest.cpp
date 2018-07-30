@@ -107,11 +107,12 @@ TEST(Quantization, quantizeGraph) {
 
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 3}, "input");
   auto *W = mod.createVariable(ElemKind::FloatTy, {3, 3}, "weights",
-                               VisibilityKind::Private,
-                               Variable::TrainKind::Xavier, 3);
+                               VisibilityKind::Private, true);
   auto *B = mod.createVariable(ElemKind::FloatTy, {3}, "bias",
-                               VisibilityKind::Private,
-                               Variable::TrainKind::Broadcast, 0.1);
+                               VisibilityKind::Private, true);
+  W->getPayload().init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  B->getPayload().init(Tensor::InitKind::Broadcast, 0.1, mod.getPRNG());
+
   auto *FC = F->createFullyConnected("FC", input, W, B);
   F->createSave("ret", FC);
 
@@ -184,12 +185,10 @@ static Function *createSimpleGraphForQuantization(Module *M, Variable *A,
 TEST_P(Quantization, end2end) {
   auto *mod = &interpreterEE.getModule();
 
-  auto *A =
-      mod->createVariable(ElemKind::FloatTy, {1, 32, 32, 2}, "A",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  auto *B =
-      mod->createVariable(ElemKind::FloatTy, {10, 9}, "B",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto *A = mod->createVariable(ElemKind::FloatTy, {1, 32, 32, 2}, "A",
+                                VisibilityKind::Public, false);
+  auto *B = mod->createVariable(ElemKind::FloatTy, {10, 9}, "B",
+                                VisibilityKind::Public, false);
 
   // STEP1 - Generate the first network to record the quantization parameters.
   Function *F1 = createSimpleGraphForQuantization(mod, A, B, "main");
@@ -250,17 +249,17 @@ static Function *createGRUForQuantization(Module *M, llvm::StringRef funcName) {
   // STEP1 - Initialize inputs into GRU
   auto *emb = F->getParent()->createVariable(
       ElemKind::FloatTy, {languageSize, embeddingSize}, "embedding",
-      VisibilityKind::Public, Variable::TrainKind::None);
+      VisibilityKind::Public, false);
   fillStableRandomData(emb->getHandle(), 4565, 1);
 
   auto *input = F->getParent()->createVariable(
       ElemKind::IndexTy, {batchSize, sequenceSize}, "input",
-      VisibilityKind::Public, Variable::TrainKind::None);
+      VisibilityKind::Public, false);
   fillStableRandomIndex(input->getHandle<size_t>(), 7227, 10);
 
   auto *hiddenInit = F->getParent()->createVariable(
       ElemKind::FloatTy, {batchSize, embeddingSize}, "hiddenInit",
-      VisibilityKind::Public, Variable::TrainKind::None);
+      VisibilityKind::Public, false);
   hiddenInit->getPayload().zero();
   Node *hidden = hiddenInit;
 
@@ -368,8 +367,9 @@ TEST(Quantization, rescaleSameType) {
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("foo");
   auto *input = mod.createVariable(ElemKind::Int8QTy, {1, 1}, 0.5, 11, "input",
-                                   VisibilityKind::Public,
-                                   Variable::TrainKind::Broadcast, 21);
+                                   VisibilityKind::Public, true);
+  input->getPayload().init(Tensor::InitKind::Broadcast, 21, mod.getPRNG());
+
   auto *Q = F->createRescaleQuantized(
       "rescale", input, mod.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.5, 11));
   auto *D = F->createDequantize("dequantize", Q);
@@ -389,8 +389,9 @@ TEST(Quantization, optimizeRescaleQuantize) {
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("foo");
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 1}, "input",
-                                   VisibilityKind::Public,
-                                   Variable::TrainKind::Broadcast, 21);
+                                   VisibilityKind::Public, true);
+  input->getPayload().init(Tensor::InitKind::Broadcast, 21, mod.getPRNG());
+
   auto *Q = F->createQuantize(
       "quant", input, mod.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.25, 4));
   auto *RS = F->createRescaleQuantized(

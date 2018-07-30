@@ -1223,12 +1223,11 @@ TEST_P(InterpAndCPU, EntropyLossTest) {
 TEST_P(Operator, RescaleNode) {
   // Check the outputs of the RescaleQuantized operation.
   auto *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.4, -3,
-                                    "input", VisibilityKind::Public,
-                                    Variable::TrainKind::Broadcast, 40);
+                                    "input", VisibilityKind::Public, true);
+  auto *output = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.4, -4,
+                                     "output", VisibilityKind::Public, false);
 
-  auto *output =
-      mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.4, -4, "output",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  input->getPayload().init(Tensor::InitKind::Broadcast, 40, mod_.getPRNG());
 
   auto T1 = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.7, 5);
   auto T2 = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.3, -4);
@@ -1261,24 +1260,18 @@ TEST_P(InterpAndCPU, QuantizedArithmeticRescaled) {
                                 VisibilityKind::Public);
   auto *C = mod_.createVariable(ElemKind::FloatTy, {len}, "C",
                                 VisibilityKind::Public);
-  auto *O1 =
-      mod_.createVariable(ElemKind::FloatTy, {len}, "Max",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O2 =
-      mod_.createVariable(ElemKind::FloatTy, {len}, "Min",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O3 =
-      mod_.createVariable(ElemKind::FloatTy, {len}, "Add",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O4 =
-      mod_.createVariable(ElemKind::FloatTy, {len}, "Sub",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O5 =
-      mod_.createVariable(ElemKind::FloatTy, {len}, "Mul",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O6 =
-      mod_.createVariable(ElemKind::FloatTy, {len}, "Div",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto *O1 = mod_.createVariable(ElemKind::FloatTy, {len}, "Max",
+                                 VisibilityKind::Public, false);
+  auto *O2 = mod_.createVariable(ElemKind::FloatTy, {len}, "Min",
+                                 VisibilityKind::Public, false);
+  auto *O3 = mod_.createVariable(ElemKind::FloatTy, {len}, "Add",
+                                 VisibilityKind::Public, false);
+  auto *O4 = mod_.createVariable(ElemKind::FloatTy, {len}, "Sub",
+                                 VisibilityKind::Public, false);
+  auto *O5 = mod_.createVariable(ElemKind::FloatTy, {len}, "Mul",
+                                 VisibilityKind::Public, false);
+  auto *O6 = mod_.createVariable(ElemKind::FloatTy, {len}, "Div",
+                                 VisibilityKind::Public, false);
 
   auto AH = A->getHandle();
   auto BH = B->getHandle();
@@ -1415,24 +1408,24 @@ TEST_P(Operator, QuantizedArithmeticUnrescaled) {
   auto *QC =
       mod_.createVariable(ElemKind::Int8QTy, {len}, TQC->getScale(),
                           TQC->getOffset(), "QC", VisibilityKind::Public);
-  auto *O1 = mod_.createVariable(
-      ElemKind::Int8QTy, {len}, TO1->getScale(), TO1->getOffset(), "Max",
-      VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O2 = mod_.createVariable(
-      ElemKind::Int8QTy, {len}, TO2->getScale(), TO2->getOffset(), "Min",
-      VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O3 = mod_.createVariable(
-      ElemKind::Int8QTy, {len}, TO3->getScale(), TO3->getOffset(), "Add",
-      VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O4 = mod_.createVariable(
-      ElemKind::Int8QTy, {len}, TO4->getScale(), TO4->getOffset(), "Sub",
-      VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O5 = mod_.createVariable(
-      ElemKind::Int8QTy, {len}, TO5->getScale(), TO5->getOffset(), "Mul",
-      VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O6 = mod_.createVariable(
-      ElemKind::Int8QTy, {len}, TO6->getScale(), TO6->getOffset(), "Div",
-      VisibilityKind::Public, Variable::TrainKind::None);
+  auto *O1 = mod_.createVariable(ElemKind::Int8QTy, {len}, TO1->getScale(),
+                                 TO1->getOffset(), "Max",
+                                 VisibilityKind::Public, false);
+  auto *O2 = mod_.createVariable(ElemKind::Int8QTy, {len}, TO2->getScale(),
+                                 TO2->getOffset(), "Min",
+                                 VisibilityKind::Public, false);
+  auto *O3 = mod_.createVariable(ElemKind::Int8QTy, {len}, TO3->getScale(),
+                                 TO3->getOffset(), "Add",
+                                 VisibilityKind::Public, false);
+  auto *O4 = mod_.createVariable(ElemKind::Int8QTy, {len}, TO4->getScale(),
+                                 TO4->getOffset(), "Sub",
+                                 VisibilityKind::Public, false);
+  auto *O5 = mod_.createVariable(ElemKind::Int8QTy, {len}, TO5->getScale(),
+                                 TO5->getOffset(), "Mul",
+                                 VisibilityKind::Public, false);
+  auto *O6 = mod_.createVariable(ElemKind::Int8QTy, {len}, TO6->getScale(),
+                                 TO6->getOffset(), "Div",
+                                 VisibilityKind::Public, false);
 
   auto QAH = QA->getHandle<int8_t>();
   auto QBH = QB->getHandle<int8_t>();
@@ -1509,9 +1502,8 @@ TEST_P(InterpAndCPU, QuantizedCmpLTEAndSelect) {
   auto *QD =
       mod_.createVariable(ElemKind::Int8QTy, {len}, TQD->getScale(),
                           TQD->getOffset(), "QD", VisibilityKind::Public);
-  auto *Out =
-      mod_.createVariable(ElemKind::Int8QTy, {len}, 1.5, -2, "out",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto *Out = mod_.createVariable(ElemKind::Int8QTy, {len}, 1.5, -2, "out",
+                                  VisibilityKind::Public, false);
 
   auto QAH = QA->getHandle<int8_t>();
   auto QBH = QB->getHandle<int8_t>();
@@ -1562,9 +1554,8 @@ TEST_P(Operator, TestQuantizedRescaleSequence) {
 
   auto *A = mod_.createVariable(ElemKind::FloatTy, {len}, "A",
                                 VisibilityKind::Public);
-  auto *O =
-      mod_.createVariable(ElemKind::FloatTy, {len}, "Out",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto *O = mod_.createVariable(ElemKind::FloatTy, {len}, "Out",
+                                VisibilityKind::Public, false);
 
   auto AH = A->getPayload().getHandle();
   auto OH = O->getPayload().getHandle();
@@ -1609,18 +1600,18 @@ TEST_P(Operator, FCGradientCheck) {
   // with reference values.
   TrainingConfig TC;
 
-  auto *A =
-      mod_.createVariable(ElemKind::FloatTy, {2, 1}, "A",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  auto *B =
-      mod_.createVariable(ElemKind::FloatTy, {2, 1}, "B",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto *A = mod_.createVariable(ElemKind::FloatTy, {2, 1}, "A",
+                                VisibilityKind::Public, false);
+  auto *B = mod_.createVariable(ElemKind::FloatTy, {2, 1}, "B",
+                                VisibilityKind::Public, false);
   auto *X = mod_.createVariable(ElemKind::FloatTy, {1, 1}, "X",
-                                VisibilityKind::Public,
-                                Variable::TrainKind::Broadcast, -1.26274);
-  auto *Y =
-      mod_.createVariable(ElemKind::FloatTy, {1}, "Y", VisibilityKind::Public,
-                          Variable::TrainKind::Broadcast, 0.10000);
+                                VisibilityKind::Public, true);
+  auto *Y = mod_.createVariable(ElemKind::FloatTy, {1}, "Y",
+                                VisibilityKind::Public, true);
+
+  X->getPayload().init(Tensor::InitKind::Broadcast, -1.26274, mod_.getPRNG());
+  Y->getPayload().init(Tensor::InitKind::Broadcast, 0.1, mod_.getPRNG());
+
   auto *FC = F_->createFullyConnected("fc", A, X, Y);
   auto *S = F_->createRegression("reg", FC, B);
   F_->createSave("ret", S);
@@ -2244,16 +2235,14 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
     IH.raw(i) = i + 1;
   }
 
-  auto filter =
-      mod_.createVariable(ElemKind::FloatTy, {2, 2, 2, 1}, "filter",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto filter = mod_.createVariable(ElemKind::FloatTy, {2, 2, 2, 1}, "filter",
+                                    VisibilityKind::Public, false);
   auto FH = filter->getHandle();
   for (size_t i = 0; i < 2 * 2 * 2; i++) {
     FH.raw(i) = pow(2.0, i);
   }
-  auto *zeroBias =
-      mod_.createVariable(ElemKind::FloatTy, {2}, "bias",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto *zeroBias = mod_.createVariable(ElemKind::FloatTy, {2}, "bias",
+                                       VisibilityKind::Public, false);
   zeroBias->getPayload().zero();
 
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 8, 2});

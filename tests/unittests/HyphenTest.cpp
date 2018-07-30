@@ -260,11 +260,10 @@ struct HyphenNetwork {
 
   HyphenNetwork(Module &mod, TrainingConfig &conf)
       : input_(mod.createVariable(ElemKind::FloatTy, {conf.batchSize, 6, 27},
-                                  "input", VisibilityKind::Public,
-                                  Variable::TrainKind::None)),
+                                  "input", VisibilityKind::Public, false)),
         expected_(mod.createVariable(ElemKind::IndexTy, {conf.batchSize, 1},
                                      "expected", VisibilityKind::Public,
-                                     Variable::TrainKind::None)),
+                                     false)),
         infer_(mod.createFunction("infer")), result_(nullptr), train_(nullptr) {
     Node *n;
 

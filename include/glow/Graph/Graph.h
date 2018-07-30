@@ -120,29 +120,23 @@ public:
   /// @name High-level Variable builders.
   ///@{
 
-  Variable *
-  createVariable(TypeRef T, llvm::StringRef name,
-                 VisibilityKind visibility = VisibilityKind::Private,
-                 Variable::TrainKind train = Variable::TrainKind::Broadcast,
-                 float val = 0.0);
+  Variable *createVariable(TypeRef T, llvm::StringRef name,
+                           VisibilityKind visibility = VisibilityKind::Private,
+                           bool isTrainable = true);
 
-  Variable *
-  createVariable(ElemKind T, llvm::ArrayRef<size_t> dims, llvm::StringRef name,
-                 VisibilityKind visibility = VisibilityKind::Private,
-                 Variable::TrainKind train = Variable::TrainKind::Broadcast,
-                 float val = 0.0);
+  Variable *createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
+                           llvm::StringRef name,
+                           VisibilityKind visibility = VisibilityKind::Private,
+                           bool isTrainable = true);
 
-  Variable *
-  createVariable(ElemKind T, llvm::ArrayRef<size_t> dims, float scale,
-                 int32_t offset, llvm::StringRef name,
-                 VisibilityKind visibility = VisibilityKind::Private,
-                 Variable::TrainKind train = Variable::TrainKind::Broadcast,
-                 float val = 0.0);
+  Variable *createVariable(ElemKind T, llvm::ArrayRef<size_t> dims, float scale,
+                           int32_t offset, llvm::StringRef name,
+                           VisibilityKind visibility = VisibilityKind::Private,
+                           bool isTrainable = true);
 
-  Variable *
-  createVariable(llvm::StringRef name, const Tensor &tensor,
-                 VisibilityKind visibility = VisibilityKind::Private,
-                 Variable::TrainKind train = Variable::TrainKind::Broadcast);
+  Variable *createVariable(llvm::StringRef name, const Tensor &tensor,
+                           VisibilityKind visibility = VisibilityKind::Private,
+                           bool isTrainable = true);
 
   ///@}
 
@@ -192,6 +186,9 @@ public:
     nodes_.push_back(N);
     return N;
   }
+
+  /// Get the pseudo-random number generator used by this module.
+  PseudoRNG &getPRNG() { return getParent()->getPRNG(); }
 
   /// @name High-level, operation-level IRBuilder.
   ///@{

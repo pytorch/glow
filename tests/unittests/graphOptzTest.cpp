@@ -77,9 +77,8 @@ TEST_F(GraphOptz, liveCodeNotEliminated) {
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                VisibilityKind::Public, false);
   Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   F_->createSave("ret", BN);
@@ -91,9 +90,8 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConvButConvReused) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                VisibilityKind::Public, false);
   Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   SaveNode *ret = F_->createSave("ret", BN);
@@ -117,25 +115,26 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButConvReused) {
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  Variable *filter = mod_.createVariable(ElemKind::FloatTy, {16, 5, 5, 3},
-                                         "filter", VisibilityKind::Private,
-                                         Variable::TrainKind::Broadcast, 75);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                VisibilityKind::Public, false);
+  Variable *filter =
+      mod_.createVariable(ElemKind::FloatTy, {16, 5, 5, 3}, "filter",
+                          VisibilityKind::Private, true);
   Variable *bias = mod_.createVariable(ElemKind::FloatTy, {16}, "bias",
-                                       VisibilityKind::Private,
-                                       Variable::TrainKind::Broadcast, 1.0);
+                                       VisibilityKind::Private, true);
+  filter->getPayload().init(Tensor::InitKind::Broadcast, 75, mod_.getPRNG());
+  bias->getPayload().init(Tensor::InitKind::Broadcast, 1.0, mod_.getPRNG());
+
   ConvolutionNode *CV = F_->createConv(
       "conv", A, filter, bias,
       mod_.uniqueType(ElemKind::FloatTy, {1, 10, 20, 16}), 5, 1, 2, 1);
-  float filterValue = llvm::cast<Variable>(CV->getFilter())->getValue();
   Variable *beta = mod_.createVariable(ElemKind::FloatTy, {16}, "beta",
-                                       VisibilityKind::Private,
-                                       Variable::TrainKind::Broadcast, 0.0);
+                                       VisibilityKind::Private, true);
   Variable *gamma = mod_.createVariable(ElemKind::FloatTy, {16}, "gamma",
-                                        VisibilityKind::Private,
-                                        Variable::TrainKind::Broadcast, 2.0);
+                                        VisibilityKind::Private, true);
+  beta->getPayload().init(Tensor::InitKind::Broadcast, 0, mod_.getPRNG());
+  gamma->getPayload().init(Tensor::InitKind::Broadcast, 2, mod_.getPRNG());
+
   Variable *mean = mod_.createVariable(ElemKind::FloatTy, {16}, "mean");
   Variable *var = mod_.createVariable(ElemKind::FloatTy, {16}, "var");
 
@@ -158,19 +157,11 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
   EXPECT_EQ(batchNorm, BN);
   EXPECT_TRUE(batchNorm && batchNorm->getInput() &&
               batchNorm->getInput().getNode() == CV);
-
-  // Make sure that we didn't temper the values in the filter
-  // given we had more than one use for it.
-  auto filterH = filter->getHandle<>();
-  for (size_t i = 0, e = filterH.size(); i < e; ++i) {
-    EXPECT_EQ(filterH.raw(i), filterValue);
-  }
 }
 
 TEST_F(GraphOptz, transposePrivateVariable) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                          VisibilityKind::Private, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                VisibilityKind::Private, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   F_->createSave("ret", T);
   EXPECT_EQ(F_->getNodes().size(), 2);
@@ -180,9 +171,8 @@ TEST_F(GraphOptz, transposePrivateVariable) {
 }
 
 TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                VisibilityKind::Public, false);
   Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   F_->createSave("ret", BN);
@@ -194,9 +184,8 @@ TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
 }
 
 TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                VisibilityKind::Public, false);
 
   Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
@@ -210,9 +199,8 @@ TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *BN = F_->createBatchNormalization("batch", T, 3, 0.0001, 0.9);
   Node *O = F_->createSave("ret", BN);
@@ -230,9 +218,8 @@ TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowRELU) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *K = F_->createRELU("relu", T);
   Node *O = F_->createSave("ret", K);
@@ -250,9 +237,8 @@ TEST_F(GraphOptz, sinkTransposeBelowRELU) {
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowSigmoid) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *SI = F_->createSigmoid("sigmoid", T);
   Node *O = F_->createSave("ret", SI);
@@ -270,9 +256,8 @@ TEST_F(GraphOptz, sinkTransposeBelowSigmoid) {
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowTanh) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *TN = F_->createTanh("tanh", T);
   Node *O = F_->createSave("ret", TN);
@@ -290,9 +275,8 @@ TEST_F(GraphOptz, sinkTransposeBelowTanh) {
 }
 
 TEST_F(GraphOptz, cancelTwoTransposes) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
   Node *T2 = F_->createTranspose("transpose", T1, NHWC2NCHW);
   Node *K = F_->createRELU("relu", T2);
@@ -306,9 +290,8 @@ TEST_F(GraphOptz, cancelTwoTransposes) {
 }
 
 TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
   Node *T2 = F_->createTranspose("transpose", T1, {0, 1, 2, 3});
   Node *K = F_->createRELU("relu", T2);
@@ -322,12 +305,10 @@ TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
-  Node *A1 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  Node *A2 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                 VisibilityKind::Public, false);
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                 VisibilityKind::Public, false);
   Node *T1 = F_->createTranspose("transpose1", A1, NHWC2NCHW);
   Node *T2 = F_->createTranspose("transpose2", A2, NHWC2NCHW);
   Node *K = F_->createAdd("arith", T1, T2);
@@ -346,12 +327,10 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
 }
 
 TEST_F(GraphOptz, sinkReluBelowConcatNodes) {
-  Node *A1 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  Node *A2 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                 VisibilityKind::Public, false);
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                 VisibilityKind::Public, false);
   Node *R1 = F_->createRELU("relu1", A1);
   Node *R2 = F_->createRELU("relu2", A2);
   Node *CN = F_->createConcat("concat", {R1, R2}, 1);
@@ -369,12 +348,10 @@ TEST_F(GraphOptz, sinkReluBelowConcatNodes) {
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowConcatNodes) {
-  Node *A1 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  Node *A2 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                 VisibilityKind::Public, false);
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                 VisibilityKind::Public, false);
   Node *T1 = F_->createTranspose("transpose", A1, NCHW2NHWC);
   Node *T2 = F_->createTranspose("transpose", A2, NCHW2NHWC);
   Node *CN = F_->createConcat("concat", {T1, T2}, 1);
@@ -393,9 +370,8 @@ TEST_F(GraphOptz, sinkTransposeBelowConcatNodes) {
 }
 
 TEST_F(GraphOptz, poolBelowReluSwapped) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *R = F_->createRELU("relu", A);
   Node *PL = F_->createPoolMax("pool", R, 1, 10, 20);
   Node *O = F_->createSave("ret", PL);
@@ -412,9 +388,8 @@ TEST_F(GraphOptz, poolBelowReluSwapped) {
 }
 
 TEST_F(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *R = F_->createRELU("relu", A);
   Node *PL = F_->createPoolAvg("pool", R, 1, 10, 20);
   Node *O = F_->createSave("ret", PL);
@@ -431,9 +406,8 @@ TEST_F(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
 }
 
 TEST_F(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *R = F_->createRELU("relu", A);
   Node *PL = F_->createPoolMax("pool", R, 1, 10, 20);
   Node *O = F_->createSave("ret", PL);
@@ -466,18 +440,14 @@ struct IsSameNodeAddress {
 };
 
 TEST_F(GraphOptz, mergeConcatNodes) {
-  Node *A1 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  Node *A2 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  Node *A3 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input3",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  Node *A4 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 1, 10, 15}, "input4",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                 VisibilityKind::Public, false);
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                 VisibilityKind::Public, false);
+  Node *A3 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input3",
+                                 VisibilityKind::Public, false);
+  Node *A4 = mod_.createVariable(ElemKind::FloatTy, {1, 1, 10, 15}, "input4",
+                                 VisibilityKind::Public, false);
 
   Node *CN1 = F_->createConcat("concat1", {A1, A2}, 1);
   Node *CN2 = F_->createConcat("concat2", {A1, CN1}, 1);
@@ -525,12 +495,10 @@ TEST_F(GraphOptz, mergeConcatNodes) {
 }
 
 TEST_F(GraphOptz, CSE) {
-  Node *A1 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  Node *A2 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                 VisibilityKind::Public, false);
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                 VisibilityKind::Public, false);
 
   Node *CN1 = F_->createConcat("concat1", {A1, A2}, 1);
   Node *CN2 = F_->createConcat("concat2", {A1, A2}, 1);
@@ -833,9 +801,10 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
 
 TEST_F(GraphOptz, quantizeToRescale) {
   // Check that we are combining quantization-dequantization pairs.
-  Node *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
-                                    "input", VisibilityKind::Public,
-                                    Variable::TrainKind::Broadcast, 15);
+  Variable *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+                                        "input", VisibilityKind::Public, true);
+  input->getPayload().init(Tensor::InitKind::Broadcast, 15, mod_.getPRNG());
+
   auto *D = F_->createDequantize("dequantize", input);
 
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.03, 5);
@@ -859,9 +828,11 @@ TEST_F(GraphOptz, MaxOfQuantizedSplat) {
   auto splatTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
   auto *splat = F_->createSplat("splat", splatTy, 0.0);
 
-  Node *input = mod_.createVariable(ElemKind::Int8QTy, {size}, scale, offset,
-                                    "input", VisibilityKind::Public,
-                                    Variable::TrainKind::Broadcast, 4);
+  Variable *input =
+      mod_.createVariable(ElemKind::Int8QTy, {size}, scale, offset, "input",
+                          VisibilityKind::Public, true);
+  input->getPayload().init(Tensor::InitKind::Broadcast, 4, mod_.getPRNG());
+
   auto *max = F_->createMax("max", splat, input);
   F_->createSave("save", max);
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -920,9 +891,10 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
 
 TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
   // Check that we eliminate rescale nodes by sinking them into other operators.
-  Node *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
-                                    "input", VisibilityKind::Public,
-                                    Variable::TrainKind::Broadcast, 15);
+  Variable *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+                                        "input", VisibilityKind::Public, true);
+  input->getPayload().init(Tensor::InitKind::Broadcast, 15, mod_.getPRNG());
+
   // slice -> rescale -> reshape -> rescale -> transpose -> save.
   auto *slice = F_->createSlice("slice", input, {0, 0}, {3, 3});
   auto *rescale = F_->createRescaleQuantized(
@@ -940,9 +912,10 @@ TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
 
 TEST_F(GraphOptz, mergeRescaleWithArithmeticNode) {
   // Check that Arithmetic operations can be merged with the Rescale.
-  Node *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
-                                    "input", VisibilityKind::Public,
-                                    Variable::TrainKind::Broadcast, 15);
+  Variable *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+                                        "input", VisibilityKind::Public, true);
+  input->getPayload().init(Tensor::InitKind::Broadcast, 15, mod_.getPRNG());
+
   auto *rescale1 = F_->createRescaleQuantized(
       "rescale", input, mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.4, 11));
   auto *add = F_->createAdd("add", rescale1, rescale1);
@@ -1117,19 +1090,16 @@ TEST_F(GraphOptz, concatReshapes) {
 /// Check that Variable CSE works correctly, combining small Variables that have
 /// the same data.
 TEST_F(GraphOptz, VarsCSE) {
-  // Create three variables that are Private, have TrainKind None, and have no
+  // Create three variables that are Private, are not trainable, and have no
   // writers. The first two variables have the same data, and so should be
   // combined via variable CSE. The third variable differs by the last value,
   // and so should not be combined.
-  auto *input1 =
-      mod_.createVariable(ElemKind::FloatTy, {10}, "input1",
-                          VisibilityKind::Private, Variable::TrainKind::None);
-  auto *input2 =
-      mod_.createVariable(ElemKind::FloatTy, {10}, "input2",
-                          VisibilityKind::Private, Variable::TrainKind::None);
-  auto *input3 =
-      mod_.createVariable(ElemKind::FloatTy, {10}, "input3",
-                          VisibilityKind::Private, Variable::TrainKind::None);
+  auto *input1 = mod_.createVariable(ElemKind::FloatTy, {10}, "input1",
+                                     VisibilityKind::Private, false);
+  auto *input2 = mod_.createVariable(ElemKind::FloatTy, {10}, "input2",
+                                     VisibilityKind::Private, false);
+  auto *input3 = mod_.createVariable(ElemKind::FloatTy, {10}, "input3",
+                                     VisibilityKind::Private, false);
   input1->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
   input2->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
   input3->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, -1};

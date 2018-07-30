@@ -1162,9 +1162,9 @@ static void optimizeTranspose(Function *F) {
       continue;
     }
     // Create a new variable NV to hold the transposed result.
-    auto *NV = F->getParent()->createVariable(
-        TN->getResult().getType(), V->getName(), V->getVisibilityKind(),
-        V->getTrainKind(), V->getValue());
+    auto *NV =
+        F->getParent()->createVariable(TN->getResult().getType(), V->getName(),
+                                       V->getVisibilityKind(), V->isTraining());
     // Transpose the value of V into NV.
     genericTranspose(&V->getPayload(), &NV->getPayload(), TN->getShuffle());
     // Rewrite uses of TN to reference NV.
@@ -1261,7 +1261,7 @@ struct VarsHasherDedup {
 
 /// A helper type implementing the Variable equality predicate that can be used
 /// when Variable pointers are used as keys in hash maps for deduplication. It
-/// is assumed the Visibility and TrainKinds are the same, as deduplication
+/// is assumed the Visibility and training mode are the same, as deduplication
 /// only inserts if Private and None, respectively.
 struct VarsEqDedup {
   bool operator()(const Variable *lhs, const Variable *rhs) const {
@@ -1272,8 +1272,8 @@ struct VarsEqDedup {
     }
     assert(lhs->getVisibilityKind() == rhs->getVisibilityKind() &&
            "Should only be comparing Variables with same VisibilityKind.");
-    assert(lhs->getTrainKind() == rhs->getTrainKind() &&
-           "Should only be comparing Variables with same TrainKind.");
+    assert(lhs->isTraining() == rhs->isTraining() &&
+           "Should only be comparing Variables with same training mode.");
     // Only combine Vars if their data matches exactly, so allowed error is 0.0.
     return lhs->getPayload().isEqual(rhs->getPayload(), /* allowedError */ 0.0);
   }
@@ -1303,7 +1303,7 @@ static bool hasWriters(Variable *V) {
 
 /// Deduplicates constant variables in the Module \p M. Applicable constant
 /// variables for deduplication must have the same data, have
-/// VisibilityKind::Private, have TrainKind::None, and have no writers.
+/// VisibilityKind::Private, not trainable, and have no writers.
 static void deduplicateConstants(Module *M) {
   // Map from Variables to other Variables that are equivalent for purposes of
   // deduplication.
@@ -1321,8 +1321,7 @@ static void deduplicateConstants(Module *M) {
     }
 
     // Only perform deduplication on private vars that have no train kind.
-    if (V->getVisibilityKind() != VisibilityKind::Private ||
-        V->getTrainKind() != Variable::TrainKind::None) {
+    if (V->getVisibilityKind() != VisibilityKind::Private || V->isTraining()) {
       continue;
     }
 
@@ -1508,7 +1507,7 @@ static void optimizeQuantization(Function *F) {
         // Create a new variable NV to hold the quantized result.
         auto *NV = F->getParent()->createVariable(
             Q->getResult().getType(), V->getName(), V->getVisibilityKind(),
-            V->getTrainKind(), 1.0);
+            false);
         // Quantize V into NV.
         auto srcHandle = V->getHandle();
         auto destHandle = NV->getHandle<int8_t>();

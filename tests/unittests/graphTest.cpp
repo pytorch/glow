@@ -371,8 +371,9 @@ TEST(Graph, NodeValue) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *inputX = mod.createVariable(ElemKind::FloatTy, {1}, "input",
-                                    VisibilityKind::Public,
-                                    Variable::TrainKind::Broadcast, 3.0);
+                                    VisibilityKind::Public, true);
+  inputX->getPayload().init(Tensor::InitKind::Broadcast, 3.0, mod.getPRNG());
+
   NodeValue a = F->createAdd("x2", inputX, inputX);
   a = F->createAdd("x4", a, a);
   a = F->createAdd("x8", a, a);
@@ -399,9 +400,8 @@ TEST(Graph, nodesWithPredicates) {
 
   auto *ex = mod.createVariable(ElemKind::IndexTy, {1, 1}, "exp");
 
-  Variable *pred =
-      mod.createVariable(ElemKind::IndexTy, {1}, "predicate",
-                         VisibilityKind::Private, Variable::TrainKind::None);
+  Variable *pred = mod.createVariable(ElemKind::IndexTy, {1}, "predicate",
+                                      VisibilityKind::Private, false);
 
   auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
@@ -473,13 +473,14 @@ TEST(Graph, schedulingOfSavesOrderProvided) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {3, 32}, "A",
-                               VisibilityKind::Public,
-                               Variable::TrainKind::Xavier, 1.0);
-  auto *zero = mod.createVariable(A->getType(), "zero", VisibilityKind::Public,
-                                  Variable::TrainKind::Broadcast, 0.0);
+                               VisibilityKind::Public, true);
+  auto *B = mod.createVariable(A->getType(), "B", VisibilityKind::Public, true);
+  auto *zero =
+      mod.createVariable(A->getType(), "zero", VisibilityKind::Public, true);
 
-  auto *B = mod.createVariable(A->getType(), "B", VisibilityKind::Public,
-                               Variable::TrainKind::Xavier, 1.0);
+  A->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
+  B->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
+  zero->getPayload().init(Tensor::InitKind::Broadcast, 0.0, mod.getPRNG());
 
   auto *addAB = F->createAdd("addAB", A, B);
 
@@ -516,14 +517,15 @@ TEST(Graph, schedulingOfSaves) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {3, 32}, "A",
-                               VisibilityKind::Public,
-                               Variable::TrainKind::Xavier, 1.0);
-  auto *zero = mod.createVariable(A->getType(), "zero", VisibilityKind::Public,
-                                  Variable::TrainKind::Broadcast, 0.0);
+                               VisibilityKind::Public, true);
+  auto *B = mod.createVariable(A->getType(), "B", VisibilityKind::Public, true);
+  auto *zero =
+      mod.createVariable(A->getType(), "zero", VisibilityKind::Public, true);
   F->createSave("resetA", zero, A);
 
-  auto *B = mod.createVariable(A->getType(), "B", VisibilityKind::Public,
-                               Variable::TrainKind::Xavier, 1.0);
+  A->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
+  B->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
+  zero->getPayload().init(Tensor::InitKind::Broadcast, 0.0, mod.getPRNG());
 
   auto *addAB = F->createAdd("addAB", A, B);
 
@@ -556,8 +558,10 @@ TEST(Graph, parentLink) {
 
   auto &mod = EE.getModule();
   Variable *V = new Variable("V", mod.uniqueType(ElemKind::FloatTy, {3, 32}),
-                             VisibilityKind::Private,
-                             Variable::TrainKind::Broadcast, 0, mod.getPRNG());
+                             VisibilityKind::Private, true);
+
+  V->getPayload().init(Tensor::InitKind::Broadcast, 0.0, mod.getPRNG());
+
   // Variables don't belong to any function...
   EXPECT_EQ(V->getParent(), nullptr);
   // Even when we create them from a module...

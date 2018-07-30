@@ -29,52 +29,31 @@
 namespace glow {
 
 class Variable : public Node {
-public:
-  /// Specifies the kind of training and initialization for the variable.
-  /// Nodes that are marked as 'none' are not modified during the training
-  /// process. Other nodes are trained with the inititial value specified by
-  /// this enum.
-  enum class TrainKind {
-    None,      // The variable is not trainable. It is initialized to zero.
-    Broadcast, // Broadcast a single value to all elements.
-    Xavier,    // Init the variable with random values using the Xavier method.
-  };
-
-private:
-  /// The value to use during initialization. This can be the value to splat or
-  /// a parameter to specify the range of the random values.
-  float val_;
-  /// Specifies if the variable is trainable and how it's initialized.
-  TrainKind train_;
+  /// Specifies if the variable is trainable.
+  bool isTrainable_;
   /// Specifies the visibility of the variable.
   VisibilityKind visibility_;
   /// The tensor payload that the variable holds.
   Tensor payload_;
 
-  /// Initialize the content of the tensor.
-  /// Payload is initialized to zero for 'None' TrainKind, and user
-  /// of the graph is responsible for updating the tensor externally.
-  void initPayload(PseudoRNG &PRNG);
-
 public:
   /// Create a new variable and initialize its payload.
   Variable(llvm::StringRef name, TypeRef Ty, VisibilityKind visibility,
-           TrainKind train, float val, PseudoRNG &PRNG)
-      : Node(Kinded::Kind::VariableKind, name), val_(val), train_(train),
+           bool isTrainable)
+      : Node(Kinded::Kind::VariableKind, name), isTrainable_(isTrainable),
         visibility_(visibility) {
     addResult(Ty);
-    initPayload(PRNG);
+    payload_.reset(*Ty);
   }
 
   Variable(llvm::StringRef name, VisibilityKind visibility, Tensor &&payload)
-      : Node(Kinded::Kind::VariableKind, name), val_(0.0),
-        train_(TrainKind::None), visibility_(visibility),
-        payload_(std::move(payload)) {
+      : Node(Kinded::Kind::VariableKind, name), isTrainable_(false),
+        visibility_(visibility), payload_(std::move(payload)) {
     addResult(&payload_.getType());
   }
 
   /// \returns True if the Variable is initialized to be in training mode.
-  bool isTraining() const { return train_ != TrainKind::None; }
+  bool isTraining() const { return isTrainable_; }
 
   /// \returns True if the Variable is private.
   bool isPrivate() const { return visibility_ == VisibilityKind::Private; }
@@ -82,9 +61,6 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::VariableKind;
   }
-
-  /// \returns the original training mode of the variable.
-  TrainKind getTrainKind() const { return train_; }
 
   /// \returns result type of the variable.
   TypeRef getType() const { return Node::getType(0); }
@@ -94,9 +70,6 @@ public:
   ElemKind getElementType() const { return getType()->getElementType(); };
   llvm::ArrayRef<size_t> dims() const { return getType()->dims(); };
   /// @}
-
-  /// \returns the value used during initialization.
-  float getValue() const { return val_; }
 
   /// \returns the visibility of the variable.
   VisibilityKind getVisibilityKind() const { return visibility_; }

@@ -21,22 +21,6 @@
 
 using namespace glow;
 
-void Variable::initPayload(PseudoRNG &PRNG) {
-  payload_.reset(*getType());
-  switch (getTrainKind()) {
-  case TrainKind::None:
-    getPayload().initPayload(Tensor::InitKind::Zero, 0, PRNG);
-    break;
-  case TrainKind::Broadcast:
-    getPayload().initPayload(Tensor::InitKind::Broadcast, val_, PRNG);
-    break;
-
-  case TrainKind::Xavier:
-    getPayload().initPayload(Tensor::InitKind::Xavier, val_, PRNG);
-    break;
-  }
-}
-
 /// Equality predicate for variables.
 bool Variable::isEqual(const Variable &other) const {
   /// A variable should be equal only to itself!
@@ -44,8 +28,7 @@ bool Variable::isEqual(const Variable &other) const {
 }
 
 llvm::hash_code Variable::getHash() const {
-  return llvm::hash_combine(getName(), getTrainKind(), getType(),
-                            toBinary(val_));
+  return llvm::hash_combine(getName(), isTraining(), getType());
 }
 //===----------------------------------------------------------------------===//
 //                        Visitor methods
@@ -97,11 +80,6 @@ Node *Variable::clone() const {
 //                     Debug description methods
 //===----------------------------------------------------------------------===//
 
-static const char *getVariableTrainKindStr(Variable::TrainKind kind) {
-  const char *names[] = {"none", "broadcast", "xavier", nullptr};
-  return names[static_cast<int>(kind)];
-}
-
 static const char *getVariableVisibilityKindStr(VisibilityKind kind) {
   const char *names[] = {"public", "private", nullptr};
   return names[static_cast<int>(kind)];
@@ -112,9 +90,7 @@ std::string Variable::getDebugDesc() const {
   db.addParam("name", quote(getName()))
       .addParam("output", *getType())
       .addParam("visibility", getVariableVisibilityKindStr(visibility_));
-  if (train_ != Variable::TrainKind::None) {
-    db.addParam("init", getVariableTrainKindStr(train_)).addParam("val", val_);
-  }
+  db.addParam("train", isTraining());
   db.addParam("users", getNumUsers());
   return db;
 }

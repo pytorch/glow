@@ -167,7 +167,7 @@ public:
   /// Initialize the content of the tensor using the \p init method. The value
   /// \p val is the initialization parameter. \p PRNG is used to generate
   /// random numbers.
-  void initPayload(InitKind init, float val, PseudoRNG &PRNG);
+  void init(InitKind init, float val, PseudoRNG &PRNG);
 
   /// \returns unowned tensor using the same data buffer as the current tensor
   /// but having different dimensions \p dims. \p offsets represents an optional

@@ -199,12 +199,11 @@ void testPTB() {
   Function *F = mod.createFunction("main");
   llvm::outs() << "Building\n";
 
-  Variable *X = mod.createVariable(
-      ElemKind::FloatTy, {minibatchSize, vocabSize * numSteps}, "input",
-      VisibilityKind::Public, Variable::TrainKind::None);
+  Variable *X = mod.createVariable(ElemKind::FloatTy,
+                                   {minibatchSize, vocabSize * numSteps},
+                                   "input", VisibilityKind::Public, false);
   Variable *Y = mod.createVariable(ElemKind::IndexTy, {minibatchSize, numSteps},
-                                   "selected", VisibilityKind::Public,
-                                   Variable::TrainKind::None);
+                                   "selected", VisibilityKind::Public, false);
 
   std::vector<Node *> slicesX;
 

@@ -110,7 +110,7 @@ protected:
   Variable *createAndRememberVariable(
       llvm::StringRef name, const Tensor &tensor,
       VisibilityKind visibilityKind = VisibilityKind::Private,
-      Variable::TrainKind trainKind = Variable::TrainKind::Broadcast);
+      bool trainable = true);
 
   /// \returns the NodeValue that was registered with the name \p name or
   /// a nullptr wrapped in a NodeValue if no node has been registered with this
