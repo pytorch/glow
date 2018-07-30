@@ -59,21 +59,13 @@ Node *ProtobufLoader::getNodeByName(llvm::StringRef name) const {
   return node;
 }
 
-Node *ProtobufLoader::createVariable(llvm::StringRef name, const Tensor &tensor,
-                                     VisibilityKind visibilityKind,
-                                     Variable::TrainKind trainKind) {
-  auto *V = G_.getParent()->createVariable(
-      tensor.getElementType(), tensor.dims(), name, visibilityKind, trainKind);
-  V->copyFrom(&tensor);
-  return V;
-}
-
 Node *ProtobufLoader::createAndRememberVariable(llvm::StringRef name,
                                                 const Tensor &tensor,
                                                 VisibilityKind visibilityKind,
                                                 Variable::TrainKind trainKind) {
   assert(!hasNodeByName(name) && "Creating an already existing node?!");
-  Node *node = createVariable(name, tensor, visibilityKind, trainKind);
+  Node *node =
+      G_.getParent()->createVariable(name, tensor, visibilityKind, trainKind);
   nodeByName_[name] = node;
   return node;
 }

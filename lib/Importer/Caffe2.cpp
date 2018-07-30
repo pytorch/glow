@@ -159,7 +159,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     size_t depth = wtag.dims()[0];
 
     // Construct the Filter field.
-    auto *filter = createVariable("conv.filter", wtag);
+    auto *filter = G_.getParent()->createVariable("conv.filter", wtag);
 
     // Construct the Bias field.
     Tensor biasTensor(ElemKind::FloatTy, {depth});
@@ -174,7 +174,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         biasTensor.copyFrom(b);
       }
     }
-    auto *bias = createVariable("conv.bias", biasTensor);
+    auto *bias = G_.getParent()->createVariable("conv.bias", biasTensor);
 
     // Caffe passes the input as NCHW, and we expect the input to be NHWC.
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
