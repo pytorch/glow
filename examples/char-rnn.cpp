@@ -158,12 +158,11 @@ static Function *createNetwork(Module &mod, size_t minibatchSize,
                                size_t numSteps, size_t hiddenSize) {
   Function *F = mod.createFunction("main");
 
-  Variable *X = mod.createVariable(
-      ElemKind::FloatTy, {minibatchSize, numSteps, 128}, "input",
-      VisibilityKind::Public, Variable::TrainKind::None);
+  Variable *X =
+      mod.createVariable(ElemKind::FloatTy, {minibatchSize, numSteps, 128},
+                         "input", VisibilityKind::Public, false);
   Variable *Y = mod.createVariable(ElemKind::IndexTy, {minibatchSize, numSteps},
-                                   "expected", VisibilityKind::Public,
-                                   Variable::TrainKind::None);
+                                   "expected", VisibilityKind::Public, false);
   std::vector<Node *> slicesX;
   std::vector<Node *> expectedX;
 

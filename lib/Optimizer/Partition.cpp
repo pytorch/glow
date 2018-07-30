@@ -151,9 +151,9 @@ FunctionDAG doPartitioning(Function *F, NodeFunctionMap &mapping) {
         }
 
         // Create a new variable to represent this dependence.
-        auto *tmp = mod->createVariable(
-            input.getType(), std::string(input->getName()) + "_tmp",
-            VisibilityKind::Private, Variable::TrainKind::None);
+        auto *tmp = mod->createVariable(input.getType(),
+                                        std::string(input->getName()) + "_tmp",
+                                        VisibilityKind::Private, false);
         inputF->createSave("tmp", input, tmp);
         variables[input.getNode()] = tmp;
         N.setNthInput(inp, tmp);

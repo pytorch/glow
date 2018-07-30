@@ -315,34 +315,30 @@ static ShapeVector getNewShapeWithoutAxis(llvm::ArrayRef<size_t> dims,
 //===----------------------------------------------------------------------===//
 
 Variable *Module::createVariable(TypeRef T, llvm::StringRef name,
-                                 VisibilityKind visibility,
-                                 Variable::TrainKind train, float val) {
+                                 VisibilityKind visibility, bool isTrainable) {
   auto FT = uniqueType(*T);
-  return addVar(new Variable(name, FT, visibility, train, val, getPRNG()));
+  return addVar(new Variable(name, FT, visibility, isTrainable));
 }
 
 Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  llvm::StringRef name,
-                                 VisibilityKind visibility,
-                                 Variable::TrainKind train, float val) {
+                                 VisibilityKind visibility, bool isTrainable) {
   auto FT = uniqueType(T, dims);
-  return createVariable(FT, name, visibility, train, val);
+  return createVariable(FT, name, visibility, isTrainable);
 }
 
 Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  float scale, int32_t offset,
                                  llvm::StringRef name,
-                                 VisibilityKind visibility,
-                                 Variable::TrainKind train, float val) {
+                                 VisibilityKind visibility, bool isTrainable) {
   auto FT = uniqueType(T, dims, scale, offset);
-  return createVariable(FT, name, visibility, train, val);
+  return createVariable(FT, name, visibility, isTrainable);
 }
 
 Variable *Module::createVariable(llvm::StringRef name, const Tensor &tensor,
-                                 VisibilityKind visibility,
-                                 Variable::TrainKind train) {
+                                 VisibilityKind visibility, bool trainable) {
   auto *V = createVariable(tensor.getElementType(), tensor.dims(), name,
-                           visibility, train);
+                           visibility, trainable);
   V->copyFrom(&tensor);
   return V;
 }
@@ -405,12 +401,14 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
   std::array<size_t, 4> filterDim = {{depth, kernel, kernel, idim.c / group}};
   size_t fanIn = kernel * kernel * idim.c;
   auto *filter = getParent()->createVariable(
-      ElemKind::FloatTy, filterDim, "filter", VisibilityKind::Private,
-      Variable::TrainKind::Xavier, fanIn);
+      ElemKind::FloatTy, filterDim, "filter", VisibilityKind::Private, true);
+
+  filter->getPayload().init(glow::Tensor::InitKind::Xavier, fanIn, getPRNG());
 
   auto *bias = getParent()->createVariable(ElemKind::FloatTy, {depth}, "bias",
-                                           VisibilityKind::Private,
-                                           Variable::TrainKind::Broadcast, 0.1);
+                                           VisibilityKind::Private, true);
+
+  bias->getPayload().init(glow::Tensor::InitKind::Broadcast, 0.1, getPRNG());
 
   auto OT = getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
@@ -540,13 +538,15 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
 
   size_t fanIn = idim.second;
 
-  auto *W = getParent()->createVariable(
-      T->getElementType(), {idim.second, outDepth}, "weights",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, fanIn);
+  auto *W =
+      getParent()->createVariable(T->getElementType(), {idim.second, outDepth},
+                                  "weights", VisibilityKind::Private, true);
 
   auto *B = getParent()->createVariable(T->getElementType(), {outDepth}, "bias",
-                                        VisibilityKind::Private,
-                                        Variable::TrainKind::Broadcast, 0.1);
+                                        VisibilityKind::Private, true);
+
+  W->getPayload().init(Tensor::InitKind::Xavier, fanIn, getPRNG());
+  B->getPayload().init(Tensor::InitKind::Broadcast, .1, getPRNG());
 
   auto OT =
       getParent()->uniqueType(T->getElementType(), {idim.first, outDepth});
@@ -920,19 +920,22 @@ BatchNormalizationNode *Function::createBatchNormalization(llvm::StringRef name,
   size_t channels = input.dims()[channelIdx];
 
   // Allocate the learnable parameters beta and gamma.
-  auto *beta = getParent()->createVariable(ElemKind::FloatTy, {channels},
-                                           "beta", VisibilityKind::Private,
-                                           Variable::TrainKind::Broadcast, 0.);
-  auto *gamma = getParent()->createVariable(
-      ElemKind::FloatTy, {channels}, "gamma", VisibilityKind::Private,
-      Variable::TrainKind::Broadcast, 1.0);
+  auto *beta = getParent()->createVariable(
+      ElemKind::FloatTy, {channels}, "beta", VisibilityKind::Private, true);
 
-  auto *mean = getParent()->createVariable(ElemKind::FloatTy, {channels},
-                                           "mean", VisibilityKind::Private,
-                                           Variable::TrainKind::None);
-  auto *variance = getParent()->createVariable(
-      ElemKind::FloatTy, {channels}, "variance", VisibilityKind::Private,
-      Variable::TrainKind::None);
+  beta->getPayload().init(glow::Tensor::InitKind::Zero, 0, getPRNG());
+
+  auto *gamma = getParent()->createVariable(
+      ElemKind::FloatTy, {channels}, "gamma", VisibilityKind::Private, true);
+
+  gamma->getPayload().init(glow::Tensor::InitKind::Broadcast, 1.0, getPRNG());
+
+  auto *mean = getParent()->createVariable(
+      ElemKind::FloatTy, {channels}, "mean", VisibilityKind::Private, false);
+
+  auto *variance =
+      getParent()->createVariable(ElemKind::FloatTy, {channels}, "variance",
+                                  VisibilityKind::Private, false);
 
   return createBatchNormalization(name, input, beta, gamma, mean, variance,
                                   channelIdx, epsilon, momentum);
@@ -1129,8 +1132,8 @@ SparseLengthsSumNode *Function::createSparseLengthsSum(llvm::StringRef name,
 }
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
-  auto *dest = getParent()->createVariable(
-      input.getType(), name, VisibilityKind::Public, Variable::TrainKind::None);
+  auto *dest = getParent()->createVariable(input.getType(), name,
+                                           VisibilityKind::Public, false);
 
   return addNode(new SaveNode(name, input, dest));
 }
@@ -1144,15 +1147,15 @@ QuantizationProfileNode *
 Function::createQuantizationProfile(llvm::StringRef name, NodeValue input) {
   // TODO: this size is going to be refined. Just a placeholder now.
   const size_t numberOfBuckets = 2000U;
-  auto *histogram = getParent()->createVariable(
-      ElemKind::FloatTy, {numberOfBuckets}, "histogram",
-      VisibilityKind::Private, Variable::TrainKind::None);
+  auto *histogram =
+      getParent()->createVariable(ElemKind::FloatTy, {numberOfBuckets},
+                                  "histogram", VisibilityKind::Private, false);
   // Intermediate data used for histogram calculations.
   // Min tensor value seen so far is kept on the first position.
   // Max tensor value seen so far is kept on the second position.
-  auto *computationInfo = getParent()->createVariable(
-      ElemKind::FloatTy, {2}, "computationInfo", VisibilityKind::Private,
-      Variable::TrainKind::None);
+  auto *computationInfo =
+      getParent()->createVariable(ElemKind::FloatTy, {2}, "computationInfo",
+                                  VisibilityKind::Private, false);
 
   return addNode(
       new QuantizationProfileNode(name, input, histogram, computationInfo,
@@ -1165,8 +1168,7 @@ Function::createIntLookupTable(llvm::StringRef name, NodeValue input,
                                TypeRef outTy) {
   auto *mapping = getParent()->createVariable(
       ElemKind::Int8QTy, {initValues.size()}, outTy->getScale(),
-      outTy->getOffset(), "mapping", VisibilityKind::Private,
-      Variable::TrainKind::None);
+      outTy->getOffset(), "mapping", VisibilityKind::Private, false);
   mapping->getHandle<int8_t>() = initValues;
 
   return addNode(new IntLookupTableNode(name, outTy, input, mapping));
@@ -1350,29 +1352,37 @@ void Function::createSimpleRNN(llvm::StringRef namePrefix,
   // Initialize the state to zero.
   auto *HInit = getParent()->createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize}, nameBase + ".initial_state",
-      VisibilityKind::Public, Variable::TrainKind::None);
+      VisibilityKind::Public, false);
   HInit->getPayload().zero();
   Node *Ht = HInit;
 
   float b = 0.1;
   auto *Whh = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whh",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bhh = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".Bhh",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
+      VisibilityKind::Private, true);
+  auto *Bhh = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".Bhh",
+                                          VisibilityKind::Private, true);
   auto *Wxh = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxh",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, inputSize);
-  auto *Bxh = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".Bxh",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
+      VisibilityKind::Private, true);
+
+  auto *Bxh = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".Bxh",
+                                          VisibilityKind::Private, true);
   auto *Why = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, outputSize}, nameBase + ".Why",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bhy = getParent()->createVariable(
-      ElemKind::FloatTy, {outputSize}, nameBase + ".Bhy",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
+      VisibilityKind::Private, true);
+  auto *Bhy = getParent()->createVariable(ElemKind::FloatTy, {outputSize},
+                                          nameBase + ".Bhy",
+                                          VisibilityKind::Private, true);
+
+  Whh->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Bhh->getPayload().init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+  Wxh->getPayload().init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  Bxh->getPayload().init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+  Why->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Bhy->getPayload().init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
 
   // Un-roll backpropogation through time as a loop with the shared parameters.
   for (unsigned t = 0; t < timeSteps; t++) {
@@ -1405,7 +1415,7 @@ void Function::createGRU(llvm::StringRef namePrefix,
   // Initialize the state to zero.
   auto *HInit = getParent()->createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize}, "initial_state",
-      VisibilityKind::Public, Variable::TrainKind::None);
+      VisibilityKind::Public, false);
 
   HInit->getPayload().zero();
   Node *Ht = HInit;
@@ -1421,53 +1431,72 @@ void Function::createGRU(llvm::StringRef namePrefix,
   float bUpdate = 0.1;
   auto *Wxz = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxz",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, inputSize);
+      VisibilityKind::Private, true);
   auto *Whz = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whz",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bz1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bz1",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bUpdate);
-  auto *Bz2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bz2",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bUpdate);
+      VisibilityKind::Private, true);
+  auto *Bz1 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bz1",
+                                          VisibilityKind::Private, true);
+  auto *Bz2 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bz2",
+                                          VisibilityKind::Private, true);
+
+  Wxz->getPayload().init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  Whz->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Bz1->getPayload().init(glow::Tensor::InitKind::Broadcast, bUpdate, getPRNG());
+  Bz2->getPayload().init(glow::Tensor::InitKind::Broadcast, bUpdate, getPRNG());
+
+  // Reset gate.
   float bReset = -1.0;
-  // reset gate
   auto *Wxr = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxr",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, inputSize);
+      VisibilityKind::Private, true);
   auto *Whr = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whr",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Br1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".br1",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bReset);
-  auto *Br2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".br2",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bReset);
+      VisibilityKind::Private, true);
+  auto *Br1 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".br1",
+                                          VisibilityKind::Private, true);
+  auto *Br2 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".br2",
+                                          VisibilityKind::Private, true);
+
+  Wxr->getPayload().init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  Whr->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Br1->getPayload().init(glow::Tensor::InitKind::Broadcast, bReset, getPRNG());
+  Br2->getPayload().init(glow::Tensor::InitKind::Broadcast, bReset, getPRNG());
 
   // hidden state
   float b = 0.1;
   auto *Wxh = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxh",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, inputSize);
+      VisibilityKind::Private, true);
   auto *Whh = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whh",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bh1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bh1",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
-  auto *Bh2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bh2",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
+      VisibilityKind::Private, true);
+  auto *Bh1 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bh1",
+                                          VisibilityKind::Private, true);
+  auto *Bh2 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bh2",
+                                          VisibilityKind::Private, true);
 
-  // output layer
+  Wxh->getPayload().init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  Whh->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Bh1->getPayload().init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+  Bh2->getPayload().init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+
+  // Output Layer.
   auto *Why = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, outputSize}, nameBase + ".Why",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *By = getParent()->createVariable(
-      ElemKind::FloatTy, {outputSize}, nameBase + ".by",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
+      VisibilityKind::Private, true);
+  auto *By = getParent()->createVariable(ElemKind::FloatTy, {outputSize},
+                                         nameBase + ".by",
+                                         VisibilityKind::Private, true);
+
+  Why->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  By->getPayload().init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
 
   auto ty = getParent()->uniqueType(ElemKind::FloatTy, {batchSize, hiddenSize});
   auto *Ones = createSplat(nameBase + ".ones", ty, 1.0);
@@ -1538,13 +1567,13 @@ void Function::createLSTM(llvm::StringRef namePrefix,
   // Initialize the hidden and cell states to zero.
   auto *HInit = getParent()->createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize}, "initial_hidden_state",
-      VisibilityKind::Public, Variable::TrainKind::None);
+      VisibilityKind::Public, false);
   HInit->getPayload().zero();
   Node *Ht = HInit;
 
   auto *CInit = getParent()->createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize}, "initial_cell_state",
-      VisibilityKind::Public, Variable::TrainKind::None);
+      VisibilityKind::Public, false);
   CInit->getPayload().zero();
   Node *Ct = CInit;
 
@@ -1563,69 +1592,93 @@ void Function::createLSTM(llvm::StringRef namePrefix,
   float bForget = 1.0;
   auto *Wxf = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxf",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, inputSize);
+      VisibilityKind::Private, true);
   auto *Whf = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whf",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bf1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bf1",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bForget);
-  auto *Bf2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bf2",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bForget);
+      VisibilityKind::Private, true);
+  auto *Bf1 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bf1",
+                                          VisibilityKind::Private, true);
+  auto *Bf2 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bf2",
+                                          VisibilityKind::Private, true);
+
+  Wxf->getPayload().init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  Whf->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Bf1->getPayload().init(glow::Tensor::InitKind::Broadcast, bForget, getPRNG());
+  Bf2->getPayload().init(glow::Tensor::InitKind::Broadcast, bForget, getPRNG());
+
   // input gate
   float bInput = 0.1;
   auto *Wxi = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxi",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, inputSize);
+      VisibilityKind::Private, true);
   auto *Whi = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whi",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bi1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bi1",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bInput);
-  auto *Bi2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bi2",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bInput);
+      VisibilityKind::Private, true);
+  auto *Bi1 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bi1",
+                                          VisibilityKind::Private, true);
+  auto *Bi2 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bi2",
+                                          VisibilityKind::Private, true);
+
+  Wxi->getPayload().init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  Whi->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Bi1->getPayload().init(glow::Tensor::InitKind::Broadcast, bInput, getPRNG());
+  Bi2->getPayload().init(glow::Tensor::InitKind::Broadcast, bInput, getPRNG());
 
   // output gate
   float bOutput = 0.1;
   auto *Wxo = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxo",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, inputSize);
+      VisibilityKind::Private, true);
   auto *Who = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Who",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bo1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bo1",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bOutput);
-  auto *Bo2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bo2",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bOutput);
+      VisibilityKind::Private, true);
+  auto *Bo1 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bo1",
+                                          VisibilityKind::Private, true);
+  auto *Bo2 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bo2",
+                                          VisibilityKind::Private, true);
+
+  Wxo->getPayload().init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  Who->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Bo1->getPayload().init(glow::Tensor::InitKind::Broadcast, bOutput, getPRNG());
+  Bo2->getPayload().init(glow::Tensor::InitKind::Broadcast, bOutput, getPRNG());
 
   // cell state
   float bCell = 0.1;
   auto *Wxc = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxc",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, inputSize);
+      VisibilityKind::Private, true);
   auto *Whc = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whc",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bc1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bc1",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bCell);
-  auto *Bc2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bc2",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bCell);
+      VisibilityKind::Private, true);
+  auto *Bc1 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bc1",
+                                          VisibilityKind::Private, true);
+  auto *Bc2 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bc2",
+                                          VisibilityKind::Private, true);
+
+  Wxc->getPayload().init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  Whc->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Bc1->getPayload().init(glow::Tensor::InitKind::Broadcast, bCell, getPRNG());
+  Bc2->getPayload().init(glow::Tensor::InitKind::Broadcast, bCell, getPRNG());
 
   // output layer
   float b = 0.1;
   auto *Why = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, outputSize}, nameBase + ".Why",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *By = getParent()->createVariable(
-      ElemKind::FloatTy, {outputSize}, nameBase + ".by",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
+      VisibilityKind::Private, true);
+  auto *By = getParent()->createVariable(ElemKind::FloatTy, {outputSize},
+                                         nameBase + ".by",
+                                         VisibilityKind::Private, true);
+
+  Why->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  By->getPayload().init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
 
   std::vector<Node *> outputNodes;
   for (unsigned t = 0; t < timeSteps; t++) {

@@ -46,9 +46,8 @@ static void executeSerial(const FunctionDAG &G,
 }
 
 TEST_F(PartitionTest, SerialExecution) {
-  auto *input =
-      mod_.createVariable(ElemKind::FloatTy, {1, 32}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 32}, "input",
+                                    VisibilityKind::Public, false);
 
   // Initial FC.
   Node *I = F_->createFullyConnected("initial_fc", input, 16);
@@ -110,9 +109,8 @@ TEST_F(PartitionTest, SerialExecution) {
 }
 
 TEST_F(PartitionTest, Branchover) {
-  auto *input =
-      mod_.createVariable(ElemKind::FloatTy, {1, 8}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 8}, "input",
+                                    VisibilityKind::Public, false);
   auto *FC1 = F_->createFullyConnected("fc1", input, 8);
   auto *FC2 = F_->createFullyConnected("fc2", FC1, 8);
   auto *add = F_->createAdd("add", FC1, FC2);
@@ -153,9 +151,8 @@ TEST_F(PartitionTest, Branchover) {
 }
 
 TEST_F(PartitionTest, Train) {
-  auto *input =
-      mod_.createVariable(ElemKind::FloatTy, {1, 8}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 8}, "input",
+                                    VisibilityKind::Public, false);
   auto *FC = F_->createFullyConnected("fc", input, 8);
   F_->createSave("save", FC);
   auto *TF = glow::differentiate(F_, TrainingConfig());

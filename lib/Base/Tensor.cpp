@@ -347,7 +347,7 @@ ShapeVector glow::expandDimsToMax(llvm::ArrayRef<size_t> currDims) {
   return newDims;
 }
 
-void Tensor::initPayload(InitKind init, float val, PseudoRNG &PRNG) {
+void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
   switch (init) {
   case InitKind::Zero:
     zero();

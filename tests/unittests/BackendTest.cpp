@@ -39,8 +39,7 @@ TEST(Interpreter, NotImplementedSave) {
   // Create a few nodes to make sure IR can be normally generated.
   Function *F = mod.createFunction("main");
   F->createSave("save", mod.createVariable(ElemKind::FloatTy, {2}, "A",
-                                           VisibilityKind::Public,
-                                           Variable::TrainKind::None));
+                                           VisibilityKind::Public, false));
 
   EXPECT_DEATH(EE.save(CompilationMode::Infer, F, "output"), "");
 }
@@ -135,8 +134,7 @@ TEST_P(BackendTest, debugPrint) {
   Tensor input{0.0, 1.0, 2.0, 3.0};
   Module mod;
   Function *F = mod.createFunction("main");
-  auto *IV = mod.createVariable("input", input, VisibilityKind::Public,
-                                Variable::TrainKind::None);
+  auto *IV = mod.createVariable("input", input, VisibilityKind::Public, false);
   (void)IV;
 
   auto IR = llvm::make_unique<IRFunction>(F);

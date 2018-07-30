@@ -105,12 +105,10 @@ void testCIFAR10() {
   Function *F = mod.createFunction("main");
 
   // Create the input layer:
-  auto *A =
-      mod.createVariable(ElemKind::FloatTy, {minibatchSize, 32, 32, 3}, "input",
-                         VisibilityKind::Public, Variable::TrainKind::None);
-  auto *E =
-      mod.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, "expected",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {minibatchSize, 32, 32, 3},
+                               "input", VisibilityKind::Public, false);
+  auto *E = mod.createVariable(ElemKind::IndexTy, {minibatchSize, 1},
+                               "expected", VisibilityKind::Public, false);
 
   // Create the rest of the network.
   auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2, 1);

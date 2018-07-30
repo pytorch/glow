@@ -112,7 +112,7 @@ void testMNIST() {
 
   Variable *A =
       mod.createVariable(ElemKind::FloatTy, {minibatchSize, 28, 28, 1}, "input",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+                         VisibilityKind::Public, false);
 
   auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu", CV0);
@@ -125,7 +125,7 @@ void testMNIST() {
   auto *FCL1 = F->createFullyConnected("fc", MP1, 10);
   Variable *selected =
       mod.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, "selected",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+                         VisibilityKind::Public, false);
   auto *SM = F->createSoftMax("sm", FCL1, selected);
 
   auto *result = F->createSave("return", SM);
