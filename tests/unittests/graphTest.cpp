@@ -596,3 +596,43 @@ TEST(Graph, parentLink) {
   F->addNode(clonedAddNode);
   EXPECT_EQ(clonedAddNode->getParent(), F);
 }
+
+/// Check that Cmp nodes are created with proper output types.
+TEST(Graph, cmpOutputTypes) {
+  ExecutionEngine EE;
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  // Define two different quntized types.
+  auto qType1 = F->getParent()->uniqueType(ElemKind::Int8QTy, {1, 3}, 0.3, 5);
+  auto qType2 = F->getParent()->uniqueType(ElemKind::Int8QTy, {1, 3}, 0.4, 5);
+  // Define two variables of quantized types.
+  Variable *qv1 = mod.createVariable(qType1, "V1", VisibilityKind::Private);
+  Variable *qv2 = mod.createVariable(qType2, "V2", VisibilityKind::Private);
+  // Create cmp nodes using quantized inputs.
+  auto *cmpNode1 = F->createCmpEQ("cmpeq", qv1, qv2);
+  auto *cmpNode2 = F->createCmpLTE("cmplte", qv1, qv2);
+  // Check that the output type of cmp nodes is quantized, has scale 1.0 and
+  // offset 0.
+  EXPECT_TRUE(cmpNode1->getResult().getType()->isQuantizedType());
+  EXPECT_EQ(cmpNode1->getResult().getType()->getScale(), 1.0);
+  EXPECT_EQ(cmpNode1->getResult().getType()->getOffset(), 0);
+  EXPECT_TRUE(cmpNode2->getResult().getType()->isQuantizedType());
+  EXPECT_EQ(cmpNode2->getResult().getType()->getScale(), 1.0);
+  EXPECT_EQ(cmpNode2->getResult().getType()->getOffset(), 0);
+
+  // Define a non-quantized type.
+  auto nqType3 = F->getParent()->uniqueType(ElemKind::FloatTy, {1, 3});
+  // Define two variables of non-quantized types.
+  Variable *nqv3 = mod.createVariable(nqType3, "V3", VisibilityKind::Private);
+  Variable *nqv4 = mod.createVariable(nqType3, "V4", VisibilityKind::Private);
+  // Create cmp nodes using non-quantized inputs.
+  auto *cmpNode3 = F->createCmpEQ("cmpeq", nqv3, nqv4);
+  auto *cmpNode4 = F->createCmpLTE("cmplte", nqv3, nqv4);
+  // Check that output of cmp nodes is a non-quantized type matching the type of
+  // inputs.
+  EXPECT_FALSE(cmpNode3->getResult().getType()->isQuantizedType());
+  EXPECT_EQ(cmpNode3->getResult().getType(), nqv3->getType());
+  EXPECT_FALSE(cmpNode4->getResult().getType()->isQuantizedType());
+  EXPECT_EQ(cmpNode4->getResult().getType(), nqv3->getType());
+}
