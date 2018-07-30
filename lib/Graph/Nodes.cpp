@@ -23,54 +23,17 @@ using namespace glow;
 
 void Variable::initPayload(PseudoRNG &PRNG) {
   payload_.reset(*getType());
-
   switch (getTrainKind()) {
   case TrainKind::None:
+    getPayload().initPayload(Tensor::InitKind::Zero, 0, PRNG);
+    break;
+  case TrainKind::Broadcast:
+    getPayload().initPayload(Tensor::InitKind::Broadcast, val_, PRNG);
     break;
 
-  case TrainKind::Broadcast: {
-    switch (payload_.getElementType()) {
-    case ElemKind::FloatTy: {
-      payload_.getHandle<float>().clear(val_);
-      break;
-    }
-    case ElemKind::Int8QTy: {
-      payload_.getHandle<int8_t>().clear(val_);
-      break;
-    };
-    case ElemKind::Int32QTy: {
-      payload_.getHandle<int32_t>().clear(val_);
-      break;
-    }
-    case ElemKind::IndexTy: {
-      payload_.getHandle<size_t>().clear(val_);
-      break;
-    }
-    }
+  case TrainKind::Xavier:
+    getPayload().initPayload(Tensor::InitKind::Xavier, val_, PRNG);
     break;
-  }
-
-  case TrainKind::Xavier: {
-    switch (payload_.getElementType()) {
-    case ElemKind::FloatTy: {
-      payload_.getHandle<float>().initXavier(val_, PRNG);
-      break;
-    }
-    case ElemKind::Int8QTy: {
-      payload_.getHandle<int8_t>().initXavier(val_, PRNG);
-      break;
-    };
-    case ElemKind::Int32QTy: {
-      payload_.getHandle<int32_t>().initXavier(val_, PRNG);
-      break;
-    }
-    case ElemKind::IndexTy: {
-      payload_.getHandle<size_t>().initXavier(val_, PRNG);
-      break;
-    }
-    }
-    break;
-  }
   }
 }
 
