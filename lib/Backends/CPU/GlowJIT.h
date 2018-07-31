@@ -43,7 +43,7 @@ namespace orc {
 // KaleidoscopeJIT example in the LLVM tree.
 class GlowJIT {
 private:
-#ifdef FACEBOOK
+#ifdef FACEBOOK_INTERNAL
   SymbolStringPool SSP_;
   ExecutionSession ES_;
   std::shared_ptr<SymbolResolver> resolver_;
@@ -60,7 +60,7 @@ public:
 
   JITSymbol findSymbol(const std::string name);
 
-#ifdef FACEBOOK
+#ifdef FACEBOOK_INTERNAL
   VModuleKey addModule(std::unique_ptr<Module> M);
 
   void removeModule(VModuleKey K);
