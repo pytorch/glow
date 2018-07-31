@@ -792,6 +792,19 @@ TEST_P(BackendCorrectnessTest, tinyResnet) {
   EXPECT_TRUE(out1.isEqual(out2, 0.001));
 }
 
+// Test MaxSplat transformation in CPU backend.
+TEST_P(CPUOnly, maxSplatTest) {
+  PseudoRNG PRNG;
+  Tensor input(ElemKind::Int8QTy, {5, 5}, 0.001, -10);
+  input.getHandle<int8_t>().randomize(-128, 127, PRNG);
+  Tensor out1, out2;
+
+  inferMaxSplat(&input, &out1, backendKind_);
+  inferMaxSplat(&input, &out2, BackendKind::Interpreter);
+
+  EXPECT_TRUE(out1.isEqual(out2));
+}
+
 #ifdef GLOW_WITH_CPU
 INSTANTIATE_TEST_CASE_P(CPU, BackendCorrectnessTest,
                         ::testing::Values(BackendKind::CPU));

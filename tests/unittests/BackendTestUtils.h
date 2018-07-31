@@ -137,4 +137,6 @@ void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
 
 void inferExtract3D(Tensor *input, Tensor *out, BackendKind kind);
 
+void inferMaxSplat(Tensor *input, Tensor *out, BackendKind kind);
+
 } // namespace glow
