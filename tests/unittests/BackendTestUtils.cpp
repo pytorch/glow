@@ -786,4 +786,28 @@ void inferExtract3D(Tensor *input, Tensor *out, BackendKind kind) {
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
+void inferMaxSplat(Tensor *input, Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *var = VarFrom(input);
+  auto T = mod.uniqueType(ElemKind::Int8QTy, var->getType()->dims(),
+                           2 * var->getType()->getScale(),
+                           -var->getType()->getOffset());
+
+  auto *rescale = F->createRescaleQuantized("rescale", var, T);
+
+  auto *splat1 = F->createSplat("splat1", T, 0.0);
+  auto *splat2 = F->createSplat("splat2", T, 5.0);
+
+  auto *max1 = F->createMax("max1", rescale, splat1);
+  auto *max2 = F->createMax("max2", splat2, max1);
+
+  auto result = F->createSave("ret", max2);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({var}, {input});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
 } // namespace glow
