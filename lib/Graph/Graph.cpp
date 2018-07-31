@@ -1062,6 +1062,39 @@ MatMulNode *Function::createMatMul(llvm::StringRef name, NodeValue lhs,
   return createMatMul(name, ty, lhs, rhs);
 }
 
+Node *Function::createBatchMatMul(llvm::StringRef name, NodeValue lhs,
+                                  NodeValue rhs) {
+  assert(lhs.dims().size() == 3 && rhs.dims().size() == 2 &&
+         "Only supporting lhs 3d, rhs 2d for now.");
+
+  // LHS = {numBatches, N, M}
+  // RHS = {M, P}
+  // Multiply each LHS matrix {N, M} by RHS {M, P} to get final matrix
+  // {numBatches, N, P}
+  const auto numBatches = lhs.dims()[0];
+  const auto N = lhs.dims()[1];
+  const auto M = lhs.dims()[2];
+  const auto P = rhs.dims()[1];
+  assert((rhs.dims()[0] == M) && "Batch matmul dimensions are invalid.");
+
+  // Reshape the LHS to be a two-dimensional matrix, where each batch
+  // is essentially concatenated onto itself in the 0th dimension.
+  auto *reshapeLHS =
+      createReshape(name.str() + ".reshapeLHS", lhs, {numBatches * N, M});
+
+  // Perform a normal matmul, implementing the batch matmul.
+  auto *MMN = createMatMul(name, reshapeLHS, rhs);
+
+  assert(MMN->getResult().dims()[0] == (numBatches * N) &&
+         "Incorrect resulting dimension for batch matmul");
+  assert(MMN->getResult().dims()[1] == P &&
+         "Incorrect resulting dimension for batch matmul");
+
+  // Reshape the result back to the expected batch output shape, with the first
+  // dimension the number of batches.
+  return createReshape(name.str() + ".reshapeResult", MMN, {numBatches, N, P});
+}
+
 BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
                                                        TypeRef outTy,
                                                        NodeValue batch,
