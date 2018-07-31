@@ -137,6 +137,12 @@ loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename) {
   using llvm::sys::path::parent_path;
 
   llvm::SMDiagnostic error;
+
+  auto *envPath = getenv("GLOW_LIBJIT_PATH");
+  if (envPath != nullptr) {
+    return llvm::parseIRFile(envPath, error, *ctx);
+  }
+
   // Figure out the location of the current executable.
   auto mainExec =
       llvm::sys::fs::getMainExecutable(nullptr, (void *)&loadStandardLibrary);
