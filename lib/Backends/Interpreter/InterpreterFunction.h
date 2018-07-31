@@ -36,7 +36,7 @@ class Variable;
 #define DEF_VALUE(CLASS, NAME) class CLASS;
 #define DEF_INSTR(CLASS, NAME) class CLASS;
 #define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME)
-#include "AutoGenInstr.def"
+#include "glow/AutoGenInstr.def"
 
 /// Function "compiled" for execution by the interpreter.
 class InterpreterFunction final : public CompiledFunction {
@@ -88,7 +88,7 @@ private:
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME) void fwd##CLASS(const CLASS *I);
 #define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME)
-#include "AutoGenInstr.def"
+#include "glow/AutoGenInstr.def"
 
   void fwdConvolutionInst_I8Impl(Value *inV, Value *outV, Value *filterV,
                                  Value *biasV, size_t filterSize, size_t stride,

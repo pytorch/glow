@@ -33,6 +33,6 @@ BB.newNode("CPUConvDKKC8")
     .setDocstring("This is a cpu-specific convolution implementation where the "
                   "filter is transposed to the shape [D/8, K, K, C, 8]");
 
-BB.includeBackendSpecificVerification("CPUSpecificNodesVerification.h");
+BB.includeBackendSpecificVerification("glow/CPUSpecificNodesVerification.h");
 
 #endif // GLOW_WITH_CPU

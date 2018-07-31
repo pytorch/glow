@@ -1,10 +1,10 @@
 # AutoGenInstr
-set(INSTR_HDR ${GLOW_BINARY_DIR}/AutoGenInstr.h)
-set(INSTR_SRC ${GLOW_BINARY_DIR}/AutoGenInstr.cpp)
-set(INSTR_DEF ${GLOW_BINARY_DIR}/AutoGenInstr.def)
-set(INSTR_BLD_HDR ${GLOW_BINARY_DIR}/AutoGenIRBuilder.h)
-set(INSTR_BLD_SRC ${GLOW_BINARY_DIR}/AutoGenIRBuilder.cpp)
-set(INSTR_IR_GEN ${GLOW_BINARY_DIR}/AutoGenIRGen.h)
+set(INSTR_HDR ${GLOW_BINARY_DIR}/glow/AutoGenInstr.h)
+set(INSTR_SRC ${GLOW_BINARY_DIR}/glow/AutoGenInstr.cpp)
+set(INSTR_DEF ${GLOW_BINARY_DIR}/glow/AutoGenInstr.def)
+set(INSTR_BLD_HDR ${GLOW_BINARY_DIR}/glow/AutoGenIRBuilder.h)
+set(INSTR_BLD_SRC ${GLOW_BINARY_DIR}/glow/AutoGenIRBuilder.cpp)
+set(INSTR_IR_GEN ${GLOW_BINARY_DIR}/glow/AutoGenIRGen.h)
 
 add_custom_command(OUTPUT
                     "${INSTR_HDR}"
@@ -18,9 +18,9 @@ add_custom_command(OUTPUT
                     COMMENT "InstrGen: Generating instructions." VERBATIM)
 
 # AutoGenNodes
-set(NODES_HDR ${GLOW_BINARY_DIR}/AutoGenNodes.h)
-set(NODES_SRC ${GLOW_BINARY_DIR}/AutoGenNodes.cpp)
-set(NODES_DEF ${GLOW_BINARY_DIR}/AutoGenNodes.def)
+set(NODES_HDR ${GLOW_BINARY_DIR}/glow/AutoGenNodes.h)
+set(NODES_SRC ${GLOW_BINARY_DIR}/glow/AutoGenNodes.cpp)
+set(NODES_DEF ${GLOW_BINARY_DIR}/glow/AutoGenNodes.def)
 
 add_custom_command(OUTPUT
                    "${NODES_HDR}"

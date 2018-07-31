@@ -138,7 +138,7 @@ llvm::hash_code hash_value(const glow::NodeHandle &T);
 } // namespace glow
 
 // The rest of the nodes are auto-generated into this file:
-#include "AutoGenNodes.h"
+#include "glow/AutoGenNodes.h"
 
 namespace glow {
 
@@ -172,12 +172,12 @@ public:
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return asImpl().visit##CLASS(static_cast<CLASS *>(N),                      \
                                  std::forward<ArgTys>(args)...);
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
 
 #define DEF_INSTR(CLASS, NAME) case glow::Kinded::Kind::CLASS##Kind:
 #define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME) DEF_INSTR(CLASS, NAME)
 #define DEF_VALUE(CLASS, NAME) DEF_INSTR(CLASS, NAME)
-#include "AutoGenInstr.def"
+#include "glow/AutoGenInstr.def"
 
       llvm_unreachable(
           "Not reachable, values and instructions are not handled here");
@@ -192,7 +192,7 @@ public:
     asImpl().post(N, args...);                                                 \
     return Ret;                                                                \
   }
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
 };
 
 } // namespace glow
