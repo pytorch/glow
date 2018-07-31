@@ -376,7 +376,7 @@ quantizeFunction(const ExecutionEngine &EE,
     --nodeIt;
     Node *node = &*nodeIt;
 
-    // Make sure that all inputs are floats and int8 operation is suppored by
+    // Make sure that all inputs are floats and int8 operation is supported by
     // the backend. Not all backends support particular quantized operation and
     // also we should not quantize Index type inputs.
     if (canBeQuantized(node) &&

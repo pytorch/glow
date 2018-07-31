@@ -49,7 +49,7 @@ TEST(Optimizer, dseBasic) {
                                     WeightVar::MutabilityKind::Constant);
   auto *input2 = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input2",
                                     WeightVar::MutabilityKind::Constant);
-  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "ouput",
+  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "output",
                                     WeightVar::MutabilityKind::Mutable);
 
   bb.createElementAddInst("elem_add1", output, input1, input1);
@@ -74,7 +74,7 @@ TEST(Optimizer, dseDoNotRemloveLastWriteIntoWeightVar) {
                                     WeightVar::MutabilityKind::Constant);
   auto *input2 = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input2",
                                     WeightVar::MutabilityKind::Constant);
-  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "ouput",
+  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "output",
                                     WeightVar::MutabilityKind::Mutable);
 
   // Last write into a WeightVar should not be removed even if there is
@@ -99,7 +99,7 @@ TEST(Optimizer, shareBuffers) {
 
   auto *input = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input",
                                    WeightVar::MutabilityKind::Constant);
-  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "ouput",
+  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "output",
                                     WeightVar::MutabilityKind::Mutable);
 
   auto *alloc1 =
@@ -134,7 +134,7 @@ TEST(Optimizer, deleteDeadViews) {
 
   auto *input = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input",
                                    WeightVar::MutabilityKind::Constant);
-  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "ouput",
+  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "output",
                                     WeightVar::MutabilityKind::Mutable);
 
   auto *tensorView1 = bb.createTensorViewInst(
@@ -161,7 +161,7 @@ TEST(Optimizer, copyPropagation) {
 
   auto *input = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input",
                                    WeightVar::MutabilityKind::Constant);
-  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "ouput",
+  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "output",
                                     WeightVar::MutabilityKind::Mutable);
 
   auto *alloc1 =
@@ -198,7 +198,7 @@ TEST(Optimizer, copyPropagationSimple) {
 
   auto *input = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input",
                                    WeightVar::MutabilityKind::Constant);
-  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "ouput",
+  auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "output",
                                     WeightVar::MutabilityKind::Mutable);
 
   auto *alloc1 =
@@ -230,10 +230,10 @@ TEST(Optimizer, copyPropagationTranspose) {
   IRBuilder bb(&M);
 
   auto *output1 =
-      bb.createWeightVar(glow::ElemKind::FloatTy, {3, 1, 1}, "ouput1",
+      bb.createWeightVar(glow::ElemKind::FloatTy, {3, 1, 1}, "output1",
                          WeightVar::MutabilityKind::Mutable);
   auto *output2 =
-      bb.createWeightVar(glow::ElemKind::FloatTy, {1, 1, 3}, "ouput2",
+      bb.createWeightVar(glow::ElemKind::FloatTy, {1, 1, 3}, "output2",
                          WeightVar::MutabilityKind::Mutable);
 
   auto *alloc1 = bb.createAllocActivationInst("alloc1", glow::ElemKind::FloatTy,
