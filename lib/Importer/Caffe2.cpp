@@ -389,6 +389,35 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "Slice") {
+    auto data = getNodeValueOrCreateVariableByName(op.input(0));
+
+    auto starts = getShape<ssize_t>(dict["starts"]);
+    auto ends = getShape<ssize_t>(dict["ends"]);
+
+    std::vector<size_t> newStarts, newEnds;
+    assert(starts.size() == ends.size());
+    for (size_t i = 0; i < starts.size(); i++) {
+      ssize_t newStart = starts[i];
+      if (newStart == -1) {
+        newStart = data->dims(0)[i];
+      }
+      assert(newStart >= 0 && "Indices should never be negative.");
+      newStarts.push_back(newStart);
+
+      ssize_t newEnd = ends[i];
+      if (newEnd == -1) {
+        newEnd = data->dims(0)[i];
+      }
+      assert(newEnd >= 0 && "Indices should never be negative.");
+      newEnds.push_back(newEnd);
+    }
+
+    Node *SN = G_.createSlice(opName, data, newStarts, newEnds);
+    addNodeAsOutput(op, SN);
+    return;
+  }
+
   if (typeName == "MatMul" || typeName == "BatchMatMul") {
     auto LHS = getNodeValueOrCreateVariableByName(op.input(0));
     auto RHS = getNodeValueOrCreateVariableByName(op.input(1));
