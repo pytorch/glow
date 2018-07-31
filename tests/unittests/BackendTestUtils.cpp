@@ -494,8 +494,72 @@ void inferNonSquarePaddingConv(Tensor *out, BackendKind kind) {
   zeroBias->getPayload().zero();
   auto outTy = mod.uniqueType(ElemKind::FloatTy, {1, 4, 5, 128});
 
-  ConvolutionNode *CN = F->createConv("Conv", input, filter, zeroBias, outTy, 1,
-                                      1, {0, 1, 2, 3}, 1);
+  ConvolutionNode *CN = F->createConv("Conv", input, filter, zeroBias, outTy,
+                                      {1, 1}, {1, 1}, {0, 1, 2, 3}, 1);
+  SaveNode *result = F->createSave("save", CN);
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
+void inferNonSquareKernelConv(Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+
+  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 2, 1, 32}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 2 * 32; i++) {
+    IH.raw(i) = (i + 1) / 10.0;
+  }
+
+  auto filter =
+      mod.createVariable(ElemKind::FloatTy, {128, 2, 1, 32}, "filter");
+  auto FH = filter->getHandle();
+  for (size_t i = 0; i < 128; i++)
+    for (size_t j = 0; j < 2; j++)
+      for (size_t k = 0; k < 32; k++) {
+        FH.at({i, j, 0, k}) = (i + j + k) / 100.0;
+      }
+  auto *zeroBias = mod.createVariable(ElemKind::FloatTy, {128}, "bias");
+  zeroBias->getPayload().zero();
+  auto outTy = mod.uniqueType(ElemKind::FloatTy, {1, 3, 5, 128});
+
+  ConvolutionNode *CN = F->createConv("Conv", input, filter, zeroBias, outTy,
+                                      {2, 1}, {1, 1}, {0, 1, 2, 3}, 1);
+  SaveNode *result = F->createSave("save", CN);
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+  out->copyFrom(&result->getVariable()->getPayload());
+}
+
+void inferNonSquareStrideConv(Tensor *out, BackendKind kind) {
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+
+  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 2, 1, 32}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 2 * 32; i++) {
+    IH.raw(i) = (i + 1) / 10.0;
+  }
+
+  auto filter =
+      mod.createVariable(ElemKind::FloatTy, {128, 2, 1, 32}, "filter");
+  auto FH = filter->getHandle();
+  for (size_t i = 0; i < 128; i++)
+    for (size_t j = 0; j < 2; j++)
+      for (size_t k = 0; k < 32; k++) {
+        FH.at({i, j, 0, k}) = (i + j + k) / 100.0;
+      }
+  auto *zeroBias = mod.createVariable(ElemKind::FloatTy, {128}, "bias");
+  zeroBias->getPayload().zero();
+  auto outTy = mod.uniqueType(ElemKind::FloatTy, {1, 2, 5, 128});
+
+  ConvolutionNode *CN = F->createConv("Conv", input, filter, zeroBias, outTy,
+                                      {2, 1}, {2, 1}, {0, 1, 2, 3}, 1);
   SaveNode *result = F->createSave("save", CN);
 
   EE.compile(CompilationMode::Infer, F);
@@ -527,8 +591,8 @@ void inferConvDKKC8(Tensor *out, BackendKind kind) {
   zeroBias->getPayload().zero();
   auto outTy = mod.uniqueType(ElemKind::FloatTy, {3, 3, 3, 192});
 
-  ConvolutionNode *CN = F->createConv("Conv", input, filter, zeroBias, outTy, 3,
-                                      1, {1, 1, 1, 1}, 1);
+  ConvolutionNode *CN = F->createConv("Conv", input, filter, zeroBias, outTy,
+                                      {3, 3}, {1, 1}, {1, 1, 1, 1}, 1);
   SaveNode *result = F->createSave("save", CN);
 
   EE.compile(CompilationMode::Infer, F);
@@ -627,7 +691,8 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
   Function *F = mod.createFunction("main");
   auto *var = VarFrom(inputs);
   auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
-  auto *conv = F->createConv("conv", tr, convDepth, 5, 2, {1, 1, 1, 1}, 1);
+  auto *conv =
+      F->createConv("conv", tr, convDepth, {5, 5}, {2, 2}, {1, 1, 1, 1}, 1);
   cast<Variable>(conv->getFilter())->getHandle().clear(2);
   cast<Variable>(conv->getBias())->getHandle().clear(2);
   auto *pool = F->createMaxPool("pool", conv, 2, 2, 0);

@@ -85,17 +85,24 @@ static unsigned getChannel(const ArgumentDictionaryTy &dict) {
   GLOW_ASSERT(false && "Invalid order field");
 }
 
-unsigned getSizeHW(ArgumentDictionaryTy &dict, const std::string &name,
-                   unsigned defaultValue) {
+static std::vector<size_t> getSizeHW(ArgumentDictionaryTy &dict,
+                                     const std::string &name,
+                                     unsigned defaultValue) {
   if (dict.count(name)) {
-    return loadInt(dict[name]);
+    int value = loadInt(dict[name]);
+    std::vector<size_t> result(2, value);
+    return result;
   }
   if (dict.count(name + "_h") && dict.count(name + "_w")) {
-    assert(loadInt(dict[name + "_h"]) == loadInt(dict[name + "_w"]) &&
-           "Unsupported size: _h and _w must be equal.");
-    return loadInt(dict[name + "_h"]);
+    std::vector<size_t> result(2);
+    result[0] = loadInt(dict[name + "_h"]);
+    result[1] = loadInt(dict[name + "_w"]);
+    return result;
   }
-  return defaultValue;
+  if (dict.count(name + "s")) {
+    return getShape(dict.at(name + "s"));
+  }
+  return {defaultValue, defaultValue};
 }
 
 bool caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
@@ -139,9 +146,9 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Conv") {
     // Load the inputs:
-    int stride = getSizeHW(dict, "stride", 1);
+    std::vector<size_t> strides = getSizeHW(dict, "stride", 1);
     std::vector<size_t> pads = getPads(dict);
-    unsigned kernel = getSizeHW(dict, "kernel", 0);
+    std::vector<size_t> kernels = getSizeHW(dict, "kernel", 0);
     unsigned group = dict.count("group") ? loadInt(dict["group"]) : 1;
 
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
@@ -182,13 +189,13 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Calculate the size and allocate the output buffer.
     ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
     auto outSz =
-        calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
+        calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
-    auto *node = G_.createConv(opName, tr, filter, bias, outTy, kernel, stride,
-                               pads, group);
+    auto *node = G_.createConv(opName, tr, filter, bias, outTy, kernels,
+                               strides, pads, group);
 
     // Transpose the output back.
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
@@ -199,24 +206,25 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "MaxPool" || typeName == "AveragePool") {
     // Load the inputs:
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
-    int stride = getSizeHW(dict, "stride", 1);
-    unsigned kernel = getSizeHW(dict, "kernel", 0);
+    std::vector<size_t> strides = getSizeHW(dict, "stride", 1);
+    std::vector<size_t> kernels = getSizeHW(dict, "kernel", 0);
     std::vector<size_t> pads = getPads(dict);
 
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
 
     // If 'global_pooling' is set then the operation will pool over the size of
-    // the input by doing: kernel = height/width.
+    // the input by doing: kernels = {height, width}.
     if (dict.count("global_pooling")) {
       auto Ty = in->getType(0);
-      kernel = Ty->dims()[3];
+      kernels[0] = Ty->dims()[2];
+      kernels[1] = Ty->dims()[3];
     }
 
     Node *node = nullptr;
     if (typeName == "MaxPool") {
-      node = G_.createMaxPool(opName, tr, kernel, stride, pads);
+      node = G_.createMaxPool(opName, tr, kernels, strides, pads);
     } else {
-      node = G_.createAvgPool(opName, tr, kernel, stride, pads);
+      node = G_.createAvgPool(opName, tr, kernels, strides, pads);
     }
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);

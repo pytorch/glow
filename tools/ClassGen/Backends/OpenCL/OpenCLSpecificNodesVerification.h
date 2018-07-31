@@ -19,8 +19,10 @@
 void OCLConvolutionNode::verify() const {
   ShapeNCHW idim(getInput().getType()->dims());
   ShapeNCHW odim(getResult().getType()->dims());
-  auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, getKernel(),
-                                           getStride(), getPads());
+  std::vector<size_t> kernels(2, getKernel());
+  std::vector<size_t> strides(2, getStride());
+  auto outSz =
+      calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, getPads());
   ShapeNCHW exp(idim.n, getBias().dims()[0], outSz.first, outSz.second);
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");

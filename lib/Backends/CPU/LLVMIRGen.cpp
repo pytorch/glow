@@ -1373,8 +1373,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *filterDims = emitValueDims(builder, filter);
     auto *biasDims = emitValueDims(builder, bias);
 
-    auto *kernel = emitConstSizeT(builder, CI->getKernel());
-    auto *stride = emitConstSizeT(builder, CI->getStride());
+    auto *kernels = emitConstArray(builder, CI->getKernels());
+    auto *strides = emitConstArray(builder, CI->getStrides());
     auto *pads = emitConstArray(builder, CI->getPads());
     auto *group = emitConstSizeT(builder, CI->getGroup());
 
@@ -1430,14 +1430,15 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
       createCall(builder, F,
                  {destPtr,    srcPtr,     filterPtr,  biasPtr,   destDims,
-                  srcDims,    filterDims, biasDims,   kernel,    stride,
+                  srcDims,    filterDims, biasDims,   kernels,   strides,
                   pads,       group,      destOffset, srcOffset, filterOffset,
                   biasOffset, biasPre,    biasPost,   biasScale, outPre,
                   outPost,    outScale,   unrollD});
     } else {
       createCall(builder, F,
                  {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
-                  filterDims, biasDims, kernel, stride, pads, group, unrollD});
+                  filterDims, biasDims, kernels, strides, pads, group,
+                  unrollD});
     }
     break;
   }
@@ -1458,8 +1459,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *filterDims = emitValueDims(builder, filter);
     auto *biasDims = emitValueDims(builder, bias);
 
-    auto *kernel = emitConstSizeT(builder, CI->getKernel());
-    auto *stride = emitConstSizeT(builder, CI->getStride());
+    auto *kernels = emitConstArray(builder, CI->getKernels());
+    auto *strides = emitConstArray(builder, CI->getStrides());
     auto *pads = emitConstArray(builder, CI->getPads());
     auto *group = emitConstSizeT(builder, CI->getGroup());
 
@@ -1507,7 +1508,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     createCall(builder, F,
                {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
-                filterDims, biasDims, kernel, stride, pads, group,
+                filterDims, biasDims, kernels, strides, pads, group,
                 pixelScanFirstVal, numDepthRegsVal, sizeGroupYVal,
                 depthStripsVal});
     break;
@@ -1530,16 +1531,16 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcDims = emitValueDims(builder, src);
     auto *filterGradDims = emitValueDims(builder, filterGrad);
 
-    auto *kernel = emitConstSizeT(builder, CG->getKernel());
-    auto *stride = emitConstSizeT(builder, CG->getStride());
+    auto *kernels = emitConstArray(builder, CG->getKernels());
+    auto *strides = emitConstArray(builder, CG->getStrides());
     auto *pads = emitConstArray(builder, CG->getPads());
     auto *group = emitConstSizeT(builder, CG->getGroup());
 
     auto *F = getFunction("convolution_grad", srcGrad->getElementType());
     createCall(builder, F,
                {srcGradPtr, destGradPtr, srcPtr, filterGradPtr, biasGradPtr,
-                filterPtr, destGradDims, srcDims, filterGradDims, kernel,
-                stride, pads, group});
+                filterPtr, destGradDims, srcDims, filterGradDims, kernels,
+                strides, pads, group});
     break;
   }
 
@@ -1616,13 +1617,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *kernel = emitConstSizeT(builder, PM->getKernel());
-    auto *stride = emitConstSizeT(builder, PM->getStride());
+    auto *kernels = emitConstArray(builder, PM->getKernels());
+    auto *strides = emitConstArray(builder, PM->getStrides());
     auto *pads = emitConstArray(builder, PM->getPads());
 
     auto *F = getFunction("pool_max", dest->getElementType());
     createCall(builder, F,
-               {srcPtr, destPtr, srcDims, destDims, kernel, stride, pads});
+               {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads});
     break;
   }
 
@@ -1637,14 +1638,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *kernel = emitConstSizeT(builder, PMXY->getKernel());
-    auto *stride = emitConstSizeT(builder, PMXY->getStride());
+    auto *kernels = emitConstArray(builder, PMXY->getKernels());
+    auto *strides = emitConstArray(builder, PMXY->getStrides());
     auto *pads = emitConstArray(builder, PMXY->getPads());
 
     auto *F = getFunction("pool_max_xy", dest->getElementType());
     createCall(
         builder, F,
-        {srcPtr, destPtr, srcXYPtr, srcDims, destDims, kernel, stride, pads});
+        {srcPtr, destPtr, srcXYPtr, srcDims, destDims, kernels, strides, pads});
     break;
   }
 
@@ -1674,8 +1675,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *kernel = emitConstSizeT(builder, PA->getKernel());
-    auto *stride = emitConstSizeT(builder, PA->getStride());
+    auto *kernels = emitConstArray(builder, PA->getKernels());
+    auto *strides = emitConstArray(builder, PA->getStrides());
     auto *pads = emitConstArray(builder, PA->getPads());
 
     if (src->getType()->isQuantizedType()) {
@@ -1683,11 +1684,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *srcTy = src->getType();
       auto *destOffset = emitConstI32(builder, destTy->getOffset());
       auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
-      // Reduce resulting scale by a factor of PA->getKernel() * PA->getKernel()
-      // since each subtensor value is divided by the area of kernel.
+      // Reduce resulting scale by a factor of PA->getKernels()[0] *
+      // PA->getKernels()[1] since each subtensor value is divided by the area
+      // of kernel.
       auto outScaleParam = quantization::quantizeScaleOffset32To8(
           srcTy->getScale() / destTy->getScale() /
-              (PA->getKernel() * PA->getKernel()),
+              (PA->getKernels()[0] * PA->getKernels()[1]),
           destTy->getOffset());
       auto *outPre = emitConstI32(builder, outScaleParam.pre);
       auto *outPost = emitConstI32(builder, outScaleParam.post);
@@ -1695,13 +1697,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
       auto *F = getFunction("pool_avg", dest->getElementType());
       createCall(builder, F,
-                 {srcPtr, destPtr, srcDims, destDims, kernel, stride, pads,
+                 {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads,
                   destOffset, srcOffset, outPre, outPost, outScale});
       break;
     } else {
       auto *F = getFunction("pool_avg", dest->getElementType());
       createCall(builder, F,
-                 {srcPtr, destPtr, srcDims, destDims, kernel, stride, pads});
+                 {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads});
       break;
     }
   }
@@ -1715,14 +1717,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcGradDims = emitValueDims(builder, srcGrad);
     auto *destDims = emitValueDims(builder, PAG->getDest());
 
-    auto *kernel = emitConstSizeT(builder, PAG->getKernel());
-    auto *stride = emitConstSizeT(builder, PAG->getStride());
+    auto *kernels = emitConstArray(builder, PAG->getKernels());
+    auto *strides = emitConstArray(builder, PAG->getStrides());
     auto *pads = emitConstArray(builder, PAG->getPads());
 
     auto *F = getFunction("pool_avg_grad", srcGrad->getElementType());
-    createCall(
-        builder, F,
-        {srcGradPtr, destGradPtr, srcGradDims, destDims, kernel, stride, pads});
+    createCall(builder, F,
+               {srcGradPtr, destGradPtr, srcGradDims, destDims, kernels,
+                strides, pads});
     break;
   }
 

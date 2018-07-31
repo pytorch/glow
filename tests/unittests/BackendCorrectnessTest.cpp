@@ -613,6 +613,28 @@ TEST_P(CPUOnly, nonSquarePaddingConvTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
+/// This non-square kernel test targets the DKKC8 optimization.
+TEST_P(CPUOnly, nonSquareKernelConvTest) {
+  std::array<size_t, 4> S{{1, 3, 5, 128}};
+  Tensor out1(ElemKind::FloatTy, S);
+  Tensor out2(ElemKind::FloatTy, S);
+  inferNonSquareKernelConv(&out1, BackendKind::CPU);
+  inferNonSquareKernelConv(&out2, BackendKind::Interpreter);
+
+  EXPECT_TRUE(out1.isEqual(out2));
+}
+
+/// This non-square stride test targets the DKKC8 optimization.
+TEST_P(CPUOnly, nonSquareStrideConvTest) {
+  std::array<size_t, 4> S{{1, 2, 5, 128}};
+  Tensor out1(ElemKind::FloatTy, S);
+  Tensor out2(ElemKind::FloatTy, S);
+  inferNonSquareStrideConv(&out1, BackendKind::CPU);
+  inferNonSquareStrideConv(&out2, BackendKind::Interpreter);
+
+  EXPECT_TRUE(out1.isEqual(out2));
+}
+
 /// This test targets the DKKC8 opt correctionimization.
 TEST_P(CPUOnly, convDKKC8Test) {
   std::array<size_t, 4> S{{3, 3, 3, 192}};

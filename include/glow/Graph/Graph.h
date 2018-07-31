@@ -197,12 +197,14 @@ public:
   ///@{
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
-                              size_t depth, size_t kernel, size_t stride,
+                              size_t depth, llvm::ArrayRef<size_t> kernels,
+                              llvm::ArrayRef<size_t> strides,
                               llvm::ArrayRef<size_t> pads, size_t group);
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
-                              size_t kernel, size_t stride,
+                              llvm::ArrayRef<size_t> kernels,
+                              llvm::ArrayRef<size_t> strides,
                               llvm::ArrayRef<size_t> pads, size_t group);
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
@@ -215,14 +217,16 @@ public:
                               size_t group);
 
   MaxPoolNode *createMaxPool(llvm::StringRef name, NodeValue input,
-                             size_t kernel, size_t stride,
+                             llvm::ArrayRef<size_t> kernels,
+                             llvm::ArrayRef<size_t> strides,
                              llvm::ArrayRef<size_t> pads);
 
   MaxPoolNode *createMaxPool(llvm::StringRef name, NodeValue input,
                              size_t kernel, size_t stride, size_t pad);
 
   AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
-                             size_t kernel, size_t stride,
+                             llvm::ArrayRef<size_t> kernels,
+                             llvm::ArrayRef<size_t> strides,
                              llvm::ArrayRef<size_t> pads);
 
   AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,

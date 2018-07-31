@@ -151,8 +151,8 @@ static Node *quantizeNode(Function *F, Node *node,
                                    qParams[0].scale, qParams[0].offset);
     quantizedNode =
         F->createConv(CV->getName(), quantizedInputs[0], quantizedInputs[1],
-                      quantizedInputs[2], QT, CV->getKernel(), CV->getStride(),
-                      CV->getPads(), CV->getGroup());
+                      quantizedInputs[2], QT, CV->getKernels(),
+                      CV->getStrides(), CV->getPads(), CV->getGroup());
     break;
   }
   case Kinded::Kind::SliceNodeKind: {
@@ -199,8 +199,8 @@ static Node *quantizeNode(Function *F, Node *node,
     assert(qParams.size() == 1 && "Invalid number of quantized outputs");
 
     quantizedNode =
-        F->createMaxPool(node->getName(), quantizedInputs[0], P->getKernel(),
-                         P->getStride(), P->getPads());
+        F->createMaxPool(node->getName(), quantizedInputs[0], P->getKernels(),
+                         P->getStrides(), P->getPads());
     break;
   }
   case Kinded::Kind::AvgPoolNodeKind: {
@@ -209,8 +209,8 @@ static Node *quantizeNode(Function *F, Node *node,
     assert(qParams.size() == 1 && "Invalid number of quantized outputs");
 
     quantizedNode =
-        F->createAvgPool(node->getName(), quantizedInputs[0], P->getKernel(),
-                         P->getStride(), P->getPads());
+        F->createAvgPool(node->getName(), quantizedInputs[0], P->getKernels(),
+                         P->getStrides(), P->getPads());
     break;
   }
 #define CASE_QUANTIZE_NODE(NODE_NAME_)                                         \

@@ -902,8 +902,12 @@ void OpenCLFunction::execute() {
       auto odim = ShapeNHWC(CC->getDest()->getType()->dims());
       auto idim = ShapeNHWC(CC->getSrc()->getType()->dims());
       auto pads = PaddingTLBR(CC->getPads());
-      setKernelArg<cl_uint>(kernel, numArgs + 1, CC->getKernel());
-      setKernelArg<cl_uint>(kernel, numArgs + 2, CC->getStride());
+      ShapeHW kdim(CC->getKernels());
+      assert(kdim.isSquare() && "Only square kernel is supported");
+      ShapeHW sdim(CC->getStrides());
+      assert(sdim.isSquare() && "Only square stride is supported");
+      setKernelArg<cl_uint>(kernel, numArgs + 1, kdim.height);
+      setKernelArg<cl_uint>(kernel, numArgs + 2, sdim.height);
       setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
@@ -946,8 +950,12 @@ void OpenCLFunction::execute() {
       auto srcDim = ShapeNHWC(src->dims());
       auto filterGradDim = ShapeNHWC(filterGrad->dims());
       auto pads = PaddingTLBR(CG->getPads());
-      setKernelArg<cl_uint>(kernel, numArgs + 1, CG->getKernel());
-      setKernelArg<cl_uint>(kernel, numArgs + 2, CG->getStride());
+      ShapeHW kdim(CG->getKernels());
+      assert(kdim.isSquare() && "Only square kernel is supported");
+      ShapeHW sdim(CG->getStrides());
+      assert(sdim.isSquare() && "Only square stride is supported");
+      setKernelArg<cl_uint>(kernel, numArgs + 1, kdim.height);
+      setKernelArg<cl_uint>(kernel, numArgs + 2, sdim.height);
       setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, srcDim);
       setKernelArg(kernel, numArgs + 5, destGradDim);
@@ -981,9 +989,12 @@ void OpenCLFunction::execute() {
       auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
       auto pads = PaddingTLBR(PM->getPads());
-
-      setKernelArg<cl_uint>(kernel, numArgs + 1, PM->getKernel());
-      setKernelArg<cl_uint>(kernel, numArgs + 2, PM->getStride());
+      ShapeHW kdim(PM->getKernels());
+      assert(kdim.isSquare() && "Only square kernel is supported");
+      ShapeHW sdim(PM->getStrides());
+      assert(sdim.isSquare() && "Only square stride is supported");
+      setKernelArg<cl_uint>(kernel, numArgs + 1, kdim.height);
+      setKernelArg<cl_uint>(kernel, numArgs + 2, sdim.height);
       setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
@@ -1003,9 +1014,12 @@ void OpenCLFunction::execute() {
       auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
       auto pads = PaddingTLBR(PM->getPads());
-
-      setKernelArg<cl_uint>(kernel, numArgs + 1, PM->getKernel());
-      setKernelArg<cl_uint>(kernel, numArgs + 2, PM->getStride());
+      ShapeHW kdim(PM->getKernels());
+      assert(kdim.isSquare() && "Only square kernel is supported");
+      ShapeHW sdim(PM->getStrides());
+      assert(sdim.isSquare() && "Only square stride is supported");
+      setKernelArg<cl_uint>(kernel, numArgs + 1, kdim.height);
+      setKernelArg<cl_uint>(kernel, numArgs + 2, sdim.height);
       setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
@@ -1023,9 +1037,12 @@ void OpenCLFunction::execute() {
       auto destGradDim = ShapeNHWC(PMG->getDestGrad()->dims());
       auto srcGradDim = ShapeNHWC(PMG->getSrcGrad()->dims());
       auto pads = PaddingTLBR(PMG->getPads());
-
-      setKernelArg<cl_uint>(kernel, numArgs + 1, PMG->getKernel());
-      setKernelArg<cl_uint>(kernel, numArgs + 2, PMG->getStride());
+      ShapeHW kdim(PMG->getKernels());
+      assert(kdim.isSquare() && "Only square kernel is supported");
+      ShapeHW sdim(PMG->getStrides());
+      assert(sdim.isSquare() && "Only square stride is supported");
+      setKernelArg<cl_uint>(kernel, numArgs + 1, kdim.height);
+      setKernelArg<cl_uint>(kernel, numArgs + 2, sdim.height);
       setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, srcGradDim);
       setKernelArg(kernel, numArgs + 5, destGradDim);
@@ -1048,9 +1065,12 @@ void OpenCLFunction::execute() {
       auto odim = ShapeNHWC(PA->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PA->getSrc()->getType()->dims());
       auto pads = PaddingTLBR(PA->getPads());
-
-      setKernelArg<cl_uint>(kernel, numArgs + 1, PA->getKernel());
-      setKernelArg<cl_uint>(kernel, numArgs + 2, PA->getStride());
+      ShapeHW kdim(PA->getKernels());
+      assert(kdim.isSquare() && "Only square kernel is supported");
+      ShapeHW sdim(PA->getStrides());
+      assert(sdim.isSquare() && "Only square stride is supported");
+      setKernelArg<cl_uint>(kernel, numArgs + 1, kdim.height);
+      setKernelArg<cl_uint>(kernel, numArgs + 2, sdim.height);
       setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);

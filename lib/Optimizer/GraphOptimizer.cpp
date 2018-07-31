@@ -772,8 +772,8 @@ static void optimizePool(Function *F) {
       }
 
       auto *NPL =
-          F->createMaxPool(PL->getName(), RL->getInput(), PL->getKernel(),
-                           PL->getStride(), PL->getPads());
+          F->createMaxPool(PL->getName(), RL->getInput(), PL->getKernels(),
+                           PL->getStrides(), PL->getPads());
       auto *NRL = F->createRELU(RL->getName(), NPL);
       PL->getResult().replaceAllUsesOfWith(NRL);
       continue;
@@ -1582,7 +1582,7 @@ static void optimizeQuantization(Function *F) {
         // return type.
         auto *newCN = F->createConv(
             CN->getName(), CN->getInput(), CN->getFilter(), CN->getBias(),
-            RS->getResult().getType(), CN->getKernel(), CN->getStride(),
+            RS->getResult().getType(), CN->getKernels(), CN->getStrides(),
             CN->getPads(), CN->getGroup());
         RS->getResult().replaceAllUsesOfWith(newCN);
         continue;

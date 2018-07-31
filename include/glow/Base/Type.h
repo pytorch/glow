@@ -132,6 +132,19 @@ struct PaddingTLBR {
   }
 };
 
+struct ShapeHW {
+  size_t height;
+  size_t width;
+
+  explicit ShapeHW(llvm::ArrayRef<size_t> shape) {
+    assert(shape.size() == 2 && "Invalid shape");
+    height = shape[0];
+    width = shape[1];
+  }
+
+  bool isSquare() const { return height == width; }
+};
+
 /// Collapse a tensor shape into two sizes: the first n dimensions and the size
 /// of the rest of the dimensions. For example, ([7, 3, 4, 2], 1) -> [7, 24]
 inline std::pair<size_t, size_t> flattenCdr(llvm::ArrayRef<size_t> dims,

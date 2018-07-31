@@ -145,7 +145,7 @@ public:
 
       builder_.createConvolutionGradInst(
           N->getName(), input, filter, outGrad, inG, filterG, biasG,
-          CG->getKernel(), CG->getStride(), CG->getPads(), CG->getGroup());
+          CG->getKernels(), CG->getStrides(), CG->getPads(), CG->getGroup());
 
       registerIR(CG->getGradOfInputNamedInput(), inG);
       registerIR(CG->getGradOfInputNamedFilter(), filterG);
@@ -155,8 +155,8 @@ public:
     case glow::Kinded::Kind::MaxPoolNodeKind: {
       auto *P = cast<MaxPoolNode>(N);
       auto *in = valueForNode(P->getInput());
-      auto *V = builder_.createMaxPoolWithXYOp(in, P->getKernel(),
-                                               P->getStride(), P->getPads());
+      auto *V = builder_.createMaxPoolWithXYOp(in, P->getKernels(),
+                                               P->getStrides(), P->getPads());
       Value *dest = V->getDest();
       nodeToInstr_[N] = V;
       V->setName(N->getName());
@@ -179,8 +179,8 @@ public:
       auto *PI = cast<MaxPoolWithXYInst>(nodeToInstr_[poolOut.getNode()]);
 
       builder_.createMaxPoolWithXYGradInst(N->getName(), outW, PI->getSrcXY(),
-                                           outG, inG, PG->getKernel(),
-                                           PG->getStride(), PG->getPads());
+                                           outG, inG, PG->getKernels(),
+                                           PG->getStrides(), PG->getPads());
       registerIR(PG->getGradOfInputNamedInput(), inG);
       break;
     }
@@ -195,7 +195,7 @@ public:
                                                      PG->getInput().getType());
 
       builder_.createAvgPoolGradInst(N->getName(), outW, outG, inG,
-                                     PG->getKernel(), PG->getStride(),
+                                     PG->getKernels(), PG->getStrides(),
                                      PG->getPads());
       registerIR(PG->getGradOfInputNamedInput(), inG);
       break;

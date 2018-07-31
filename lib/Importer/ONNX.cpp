@@ -219,8 +219,10 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
 
   if (typeName == "Conv") {
     // Load the inputs:
-    int stride =
-        dict.count("strides") ? getConstantArrayHead(dict["strides"]) : 1;
+    std::vector<size_t> strides(2, 1);
+    if (dict.count("strides")) {
+      strides = getShape(dict.at("strides"));
+    }
     unsigned group = dict.count("group") ? loadInt(dict["group"]) : 1;
     // Pads : {pad_top, pad_left, pad_bottom, pad_right}
     std::vector<size_t> pads = getPads(dict);
@@ -242,13 +244,12 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     // Construct the Filter field.
     auto *filter = G_.getParent()->createVariable("conv.filter", wtag);
 
-    unsigned kernel;
+    std::vector<size_t> kernels(2);
     if (dict.count("kernel_shape")) {
-      kernel = getConstantArrayHead(dict["kernel_shape"]);
+      kernels = getShape(dict.at("kernel_shape"));
     } else {
-      assert(filter->dims()[1] == filter->dims()[2] &&
-             "Only square kernels are supported");
-      kernel = filter->dims()[1];
+      kernels[0] = filter->dims()[1];
+      kernels[1] = filter->dims()[2];
     }
 
     // Construct the Bias field.
@@ -272,13 +273,13 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     // Calculate the size and allocate the output buffer.
     ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
     auto outSz =
-        calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
+        calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
-    auto *node = G_.createConv(opName, tr, filter, bias, outTy, kernel, stride,
-                               pads, group);
+    auto *node = G_.createConv(opName, tr, filter, bias, outTy, kernels,
+                               strides, pads, group);
 
     // Transpose the output back.
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
@@ -289,9 +290,11 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
   if (typeName == "MaxPool" || typeName == "AveragePool") {
     // Load the inputs:
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
-    int stride =
-        dict.count("strides") ? getConstantArrayHead(dict["strides"]) : 1;
-    size_t kernel = getConstantArrayHead(dict["kernel_shape"]);
+    std::vector<size_t> strides(2, 1);
+    if (dict.count("strides")) {
+      strides = getShape(dict.at("strides"));
+    }
+    std::vector<size_t> kernels = getShape(dict.at("kernel_shape"));
 
     std::vector<size_t> pads = getPads(dict);
 
@@ -301,14 +304,15 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     // the input by doing: kernel = height/width.
     if (dict.count("global_pooling")) {
       auto Ty = in->getType(0);
-      kernel = Ty->dims()[3];
+      kernels[0] = Ty->dims()[2];
+      kernels[1] = Ty->dims()[3];
     }
 
     Node *node = nullptr;
     if (typeName == "MaxPool") {
-      node = G_.createMaxPool(opName, tr, kernel, stride, pads);
+      node = G_.createMaxPool(opName, tr, kernels, strides, pads);
     } else {
-      node = G_.createAvgPool(opName, tr, kernel, stride, pads);
+      node = G_.createAvgPool(opName, tr, kernels, strides, pads);
     }
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);
@@ -318,16 +322,17 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
   if (typeName == "GlobalAveragePool") {
     // Load the inputs:
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
-    int stride =
-        dict.count("strides") ? getConstantArrayHead(dict["strides"]) : 1;
+    std::vector<size_t> strides(2, 1);
+    if (dict.count("strides")) {
+      strides = getShape(dict.at("strides"));
+    }
 
-    GLOW_ASSERT(in->dims(0)[2] == in->dims(0)[3] &&
-                "For the image, height == weight is required");
-
-    size_t kernel = in->dims(0)[2];
+    std::vector<size_t> kernels(2);
+    kernels[0] = in->dims(0)[2];
+    kernels[1] = in->dims(0)[3];
     std::vector<size_t> pads = getPads(dict);
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
-    Node *node = G_.createAvgPool(opName, tr, kernel, stride, pads);
+    Node *node = G_.createAvgPool(opName, tr, kernels, strides, pads);
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);
     return true;

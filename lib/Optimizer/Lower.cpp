@@ -541,16 +541,16 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
   // divided into equal groups of consecutive channels. These will be separately
   // convolved each with its own filter (and bias), and then concatenated.
   // This will result in 4 * Group + 1 nodes.
-  unsigned kernel = BNG.getKernel();
+  llvm::ArrayRef<size_t> kernels = BNG.getKernels();
   llvm::ArrayRef<size_t> pads = BNG.getPads();
-  unsigned stride = BNG.getStride();
+  llvm::ArrayRef<size_t> strides = BNG.getStrides();
   unsigned group = BNG.getGroup();
   auto in = BNG.getInput();
   auto filter = BNG.getFilter();
   auto bias = BNG.getBias();
 
   ShapeNHWC idim = ShapeNHWC(in.dims());
-
+  ShapeHW kdim(kernels);
   unsigned inCperG = idim.c / group;
   unsigned outCperG = filter.dims()[0] / group;
 
@@ -564,13 +564,14 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
     auto *in_slice =
         F->createSlice(BNG.getName(), in, {0, 0, 0, groupId * inCperG},
                        {idim.n, idim.h, idim.w, (groupId + 1) * inCperG});
-    auto *filter_slice =
-        F->createSlice(BNG.getName(), filter, {groupId * outCperG, 0, 0, 0},
-                       {(groupId + 1) * outCperG, kernel, kernel, inCperG});
+    auto *filter_slice = F->createSlice(
+        BNG.getName(), filter, {groupId * outCperG, 0, 0, 0},
+        {(groupId + 1) * outCperG, kdim.height, kdim.width, inCperG});
     auto *bias_slice = F->createSlice(BNG.getName(), bias, {groupId * outCperG},
                                       {(groupId + 1) * outCperG});
     convs.push_back(F->createConv(BNG.getName(), in_slice, filter_slice,
-                                  bias_slice, outTy, kernel, stride, pads, 1));
+                                  bias_slice, outTy, kernels, strides, pads,
+                                  1));
   }
   auto result = F->createConcat(BNG.getName(), convs, 3);
   BNG.getResult().replaceAllUsesOfWith(result);
