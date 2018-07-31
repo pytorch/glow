@@ -1127,8 +1127,8 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
   auto *biasq = F->createQuantize("bias.q", bias, biasTy);
 
   auto *convq =
-      F->createConv("convq", inputq, filterq, biasq, resTy, conv->getKernel(),
-                    conv->getStride(), conv->getPads(), 1);
+      F->createConv("convq", inputq, filterq, biasq, resTy, conv->getKernels(),
+                    conv->getStrides(), conv->getPads(), 1);
   auto *dequantRes = F->createDequantize("dequant", convq);
 
   // Subtract the results of the convolution from the quantized convolution.
@@ -2272,7 +2272,7 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 8, 2});
 
   ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
-                                       2, 1, {0, 2, 1, 3}, 1);
+                                       {2, 2}, {1, 1}, {0, 2, 1, 3}, 1);
   SaveNode *S = F_->createSave("save", CN);
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
@@ -2289,8 +2289,8 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
     }
 
   Function *refF = mod_.createFunction("mainRef");
-  CN = refF->createConv("Conv1", input1, filter, zeroBias, outTy, 2, 1,
-                        {0, 0, 0, 0}, 1);
+  CN = refF->createConv("Conv1", input1, filter, zeroBias, outTy, {2, 2},
+                        {1, 1}, {0, 0, 0, 0}, 1);
   S = refF->createSave("save1", CN);
   EE_.compile(CompilationMode::Infer, refF);
   EE_.run({}, {});
@@ -2309,7 +2309,7 @@ TEST_P(Operator, NonSquarePaddingAveragePool) {
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
-  auto *Pool = F_->createAvgPool("pool", input, 2, 1, {0, 2, 1, 3});
+  auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 2, 1, 3});
   auto *S = F_->createSave("save", Pool);
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
@@ -2343,7 +2343,7 @@ TEST_P(Operator, NonSquarePaddingMaxPool) {
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
-  auto *Pool = F_->createMaxPool("pool", input, 2, 1, {0, 2, 1, 3});
+  auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 2, 1, 3});
   auto *S = F_->createSave("save", Pool);
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
@@ -2371,7 +2371,7 @@ TEST_P(Operator, Int8AvgPool) {
   auto *input =
       mod_.createVariable(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0, "input");
   input->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
-  auto *Pool = F_->createAvgPool("pool", input, 2, 1, {0, 0, 0, 0});
+  auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
@@ -2384,9 +2384,10 @@ TEST_P(Operator, Int8AvgPool) {
 }
 
 TEST_P(Operator, Int8MaxPool) {
-  auto *input = mod_.createVariable(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0, "input");
+  auto *input =
+      mod_.createVariable(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0, "input");
   input->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
-  auto *Pool = F_->createMaxPool("pool", input, 2, 1, {0, 0, 0, 0});
+  auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
@@ -2431,6 +2432,142 @@ TEST_P(InterpAndCPU, Int8Tanh) {
   for (size_t i = 0; i < size; i++) {
     EXPECT_NEAR(fpResult.raw(i), intResult.raw(i), 0.05);
   }
+}
+
+/// Check Non-square kernel for conv.
+TEST_P(InterpAndCPU, NonSquareKernelConvolution) {
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+
+  auto filter = mod_.createVariable(ElemKind::FloatTy, {1, 2, 3, 1}, "filter",
+                                    VisibilityKind::Public, false);
+  auto FH = filter->getHandle();
+  for (size_t i = 0; i < 1 * 2 * 3; i++) {
+    FH.raw(i) = i + 1;
+  }
+
+  auto *zeroBias = mod_.createVariable(ElemKind::FloatTy, {1}, "bias",
+                                       VisibilityKind::Public, false);
+  zeroBias->getPayload().zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 3, 2, 1});
+  ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
+                                       {2, 3}, {1, 1}, {0, 0, 0, 0}, 1);
+  SaveNode *S = F_->createSave("save", CN);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor &result = S->getVariable()->getPayload();
+
+  static const float ref[] = {106, 127, 190, 211, 274, 295};
+  for (size_t i = 0; i < 6; i++)
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
+}
+
+/// Check Non-square kernel for AveragePool.
+TEST_P(InterpAndCPU, NonSquareKernelAveragePool) {
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+  auto *Pool = F_->createAvgPool("pool", input, {2, 3}, {1, 1}, {0, 0, 0, 0});
+  auto *S = F_->createSave("save", Pool);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor &result = S->getVariable()->getPayload();
+
+  static const float ref[] = {4, 5, 8, 9, 12, 13};
+  for (size_t i = 0; i < 6; i++)
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
+}
+
+/// Check Non-square kernel for MaxPool.
+TEST_P(InterpAndCPU, NonSquareKernelMaxPool) {
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+  auto *Pool = F_->createMaxPool("pool", input, {2, 3}, {1, 1}, {0, 0, 0, 0});
+  auto *S = F_->createSave("save", Pool);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor &result = S->getVariable()->getPayload();
+
+  static const float ref[] = {7, 8, 11, 12, 15, 16};
+  for (size_t i = 0; i < 6; i++)
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
+}
+
+/// Check Non-square stride for conv.
+TEST_P(InterpAndCPU, NonSquareStrideConvolution) {
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+
+  auto filter = mod_.createVariable(ElemKind::FloatTy, {1, 2, 2, 1}, "filter",
+                                    VisibilityKind::Public, false);
+  auto FH = filter->getHandle();
+  for (size_t i = 0; i < 1 * 2 * 2; i++) {
+    FH.raw(i) = i + 1;
+  }
+
+  auto *zeroBias = mod_.createVariable(ElemKind::FloatTy, {1}, "bias",
+                                       VisibilityKind::Public, false);
+  zeroBias->getPayload().zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 2, 2, 1});
+  ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
+                                       {2, 2}, {3, 2}, {0, 0, 1, 1}, 1);
+  SaveNode *S = F_->createSave("save", CN);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor &result = S->getVariable()->getPayload();
+
+  static const float ref[] = {44, 64, 41, 47};
+  for (size_t i = 0; i < 4; i++)
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
+}
+
+/// Check Non-square stride for AveragePool.
+TEST_P(InterpAndCPU, NonSquareStrideAveragePool) {
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+  auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {3, 2}, {0, 0, 1, 1});
+  auto *S = F_->createSave("save", Pool);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor &result = S->getVariable()->getPayload();
+
+  static const float ref[] = {3.5, 5.5, 6.75, 7.75};
+  for (size_t i = 0; i < 4; i++)
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
+}
+
+/// Check Non-square stride for MaxPool.
+TEST_P(InterpAndCPU, NonSquareStrideMaxPool) {
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+  auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {3, 2}, {0, 0, 1, 1});
+  auto *S = F_->createSave("save", Pool);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor &result = S->getVariable()->getPayload();
+
+  static const float ref[] = {6, 8, 14, 16};
+  for (size_t i = 0; i < 4; i++)
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
 }
 
 TEST_P(InterpAndCPU, Int8Sigmoid) {

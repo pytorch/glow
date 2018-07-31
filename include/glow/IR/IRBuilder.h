@@ -52,11 +52,13 @@ public:
   /// @name High-level, operation-level IRBuilder.
   ///@{
 
-  MaxPoolWithXYInst *createMaxPoolWithXYOp(Value *input, size_t kernel,
-                                           size_t stride,
+  MaxPoolWithXYInst *createMaxPoolWithXYOp(Value *input,
+                                           llvm::ArrayRef<size_t> kernels,
+                                           llvm::ArrayRef<size_t> strides,
                                            llvm::ArrayRef<size_t> pads);
 
-  AvgPoolInst *createAvgPoolOp(Value *input, size_t kernel, size_t stride,
+  AvgPoolInst *createAvgPoolOp(Value *input, llvm::ArrayRef<size_t> kernels,
+                               llvm::ArrayRef<size_t> strides,
                                llvm::ArrayRef<size_t> pads);
 
   CrossEntropyLossInst *createCrossEntropyLossOp(Value *P, Value *labels);

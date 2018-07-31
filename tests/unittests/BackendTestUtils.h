@@ -101,6 +101,10 @@ void inferGroupConv(Tensor *out, BackendKind kind);
 
 void inferNonSquarePaddingConv(Tensor *out, BackendKind kind);
 
+void inferNonSquareKernelConv(Tensor *out, BackendKind kind);
+
+void inferNonSquareStrideConv(Tensor *out, BackendKind kind);
+
 void inferConvDKKC8(Tensor *out, BackendKind kind);
 
 void inferSmallConv(Tensor *inputs, Tensor *out, BackendKind kind);

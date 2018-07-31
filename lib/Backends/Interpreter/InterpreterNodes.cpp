@@ -38,8 +38,9 @@ void InterpreterFunction::fwdCopyInst(const CopyInst *I) {
 
 // This is the floating point implementation of Convolution.
 void InterpreterFunction::fwdConvolutionInst_FloatImpl(
-    Value *inV, Value *outV, Value *filterV, Value *biasV, size_t filterSize,
-    size_t stride, llvm::ArrayRef<size_t> pads, size_t group) {
+    Value *inV, Value *outV, Value *filterV, Value *biasV,
+    llvm::ArrayRef<size_t> filterSizes, llvm::ArrayRef<size_t> strides,
+    llvm::ArrayRef<size_t> pads, size_t group) {
 
   auto inW = getWeightHandle(inV);
   auto outW = getWeightHandle(outV);
@@ -48,6 +49,8 @@ void InterpreterFunction::fwdConvolutionInst_FloatImpl(
 
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
+  ShapeHW kdim(filterSizes);
+  ShapeHW sdim(strides);
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
   assert(odim.c % group == 0 && "Output channels must be divisible by group.");
@@ -67,14 +70,14 @@ void InterpreterFunction::fwdConvolutionInst_FloatImpl(
 
         // For each convolution 'jump' in the input tensor:
         ssize_t x = -ssize_t(pdim.top);
-        for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+        for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
           ssize_t y = -ssize_t(pdim.left);
-          for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+          for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
 
             // For each element in the convolution-filter:
             float sum = 0;
-            for (size_t fx = 0; fx < filterSize; fx++) {
-              for (size_t fy = 0; fy < filterSize; fy++) {
+            for (size_t fx = 0; fx < kdim.height; fx++) {
+              for (size_t fy = 0; fy < kdim.width; fy++) {
                 ssize_t ox = x + fx;
                 ssize_t oy = y + fy;
 
@@ -101,8 +104,9 @@ void InterpreterFunction::fwdConvolutionInst_FloatImpl(
 
 // This is the quantized i8 implementation of Convolution.
 void InterpreterFunction::fwdConvolutionInst_I8Impl(
-    Value *inV, Value *outV, Value *filterV, Value *biasV, size_t filterSize,
-    size_t stride, llvm::ArrayRef<size_t> pads, size_t group) {
+    Value *inV, Value *outV, Value *filterV, Value *biasV,
+    llvm::ArrayRef<size_t> filterSizes, llvm::ArrayRef<size_t> strides,
+    llvm::ArrayRef<size_t> pads, size_t group) {
   auto inW = getWeightHandle<int8_t>(inV);
   auto outW = getWeightHandle<int8_t>(outV);
   auto filterW = getWeightHandle<int8_t>(filterV);
@@ -110,6 +114,8 @@ void InterpreterFunction::fwdConvolutionInst_I8Impl(
 
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
+  ShapeHW kdim(filterSizes);
+  ShapeHW sdim(strides);
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
   assert(odim.c % group == 0 && "Output channels must be divisible by group.");
@@ -146,14 +152,14 @@ void InterpreterFunction::fwdConvolutionInst_I8Impl(
 
         // For each convolution 'jump' in the input tensor:
         ssize_t x = -ssize_t(pdim.top);
-        for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+        for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
           ssize_t y = -ssize_t(pdim.left);
-          for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+          for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
 
             // For each element in the convolution-filter:
             int32_t sum = 0;
-            for (size_t fx = 0; fx < filterSize; fx++) {
-              for (size_t fy = 0; fy < filterSize; fy++) {
+            for (size_t fx = 0; fx < kdim.height; fx++) {
+              for (size_t fy = 0; fy < kdim.width; fy++) {
                 ssize_t ox = x + fx;
                 ssize_t oy = y + fy;
 
@@ -192,19 +198,19 @@ void InterpreterFunction::fwdConvolutionInst_I8Impl(
 }
 
 void InterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
-  size_t filterSize = I->getKernel();
+  llvm::ArrayRef<size_t> filterSizes = I->getKernels();
   llvm::ArrayRef<size_t> pads = I->getPads();
-  size_t stride = I->getStride();
+  llvm::ArrayRef<size_t> strides = I->getStrides();
   size_t group = I->getGroup();
 
   if (I->getSrc()->getType()->isQuantizedType()) {
     fwdConvolutionInst_I8Impl(I->getSrc(), I->getDest(), I->getFilter(),
-                              I->getBias(), filterSize, stride, pads, group);
+                              I->getBias(), filterSizes, strides, pads, group);
     return;
   }
 
   fwdConvolutionInst_FloatImpl(I->getSrc(), I->getDest(), I->getFilter(),
-                               I->getBias(), filterSize, stride, pads, group);
+                               I->getBias(), filterSizes, strides, pads, group);
 }
 
 void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
@@ -216,9 +222,9 @@ void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
   auto filterG = getWeightHandle(I->getFilterGrad());
   auto biasG = getWeightHandle(I->getBiasGrad());
 
-  size_t filterSize = I->getKernel();
+  llvm::ArrayRef<size_t> filterSizes = I->getKernels();
   llvm::ArrayRef<size_t> pads = I->getPads();
-  size_t stride = I->getStride();
+  llvm::ArrayRef<size_t> strides = I->getStrides();
   size_t group = I->getGroup();
 
   inG.clear();
@@ -227,6 +233,8 @@ void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
 
   ShapeNHWC odim(outG.dims());
   ShapeNHWC idim(inW.dims());
+  ShapeHW kdim(filterSizes);
+  ShapeHW sdim(strides);
   PaddingTLBR pdim(pads);
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
@@ -245,15 +253,15 @@ void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
 
         // For each convolution 'jump' in the input tensor:
         ssize_t x = -ssize_t(pdim.top);
-        for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+        for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
           ssize_t y = -ssize_t(pdim.left);
-          for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+          for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
 
             float chainGrad = outG.at({n, ax, ay, d});
 
             // For each element in the convolution-filter:
-            for (size_t fx = 0; fx < filterSize; fx++) {
-              for (size_t fy = 0; fy < filterSize; fy++) {
+            for (size_t fx = 0; fx < kdim.height; fx++) {
+              for (size_t fy = 0; fy < kdim.width; fy++) {
                 ssize_t ox = x + fx;
                 ssize_t oy = y + fy;
 
@@ -286,13 +294,16 @@ void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
 //===----------------------------------------------------------------------===//
 template <class T>
 static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<size_t> *SXY,
-                       size_t filterSize, size_t stride,
+                       llvm::ArrayRef<size_t> filterSizes,
+                       llvm::ArrayRef<size_t> strides,
                        llvm::ArrayRef<size_t> pads) {
   ShapeNHWC odim(outW->dims());
   ShapeNHWC idim(inW->dims());
   Handle<T> inHandle = inW->getHandle<T>();
   Handle<T> outHandle = outW->getHandle<T>();
   PaddingTLBR pdim(pads);
+  ShapeHW kdim(filterSizes);
+  ShapeHW sdim(strides);
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
@@ -301,17 +312,17 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<size_t> *SXY,
     for (size_t z = 0; z < idim.c; z++) {
       // For each convolution 'jump' in the input tensor:
       ssize_t x = -ssize_t(pdim.top);
-      for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+      for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
         ssize_t y = -ssize_t(pdim.left);
-        for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+        for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
           size_t maxX = x;
           size_t maxY = y;
 
           bool first = true;
           T max_value = 0;
 
-          for (size_t fx = 0; fx < filterSize; fx++) {
-            for (size_t fy = 0; fy < filterSize; fy++) {
+          for (size_t fx = 0; fx < kdim.height; fx++) {
+            for (size_t fy = 0; fy < kdim.width; fy++) {
               ssize_t ox = x + fx;
               ssize_t oy = y + fy;
 
@@ -348,10 +359,10 @@ void InterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
   auto outW = getTensor(I->getDest());
 
   if (inW->getType().isQuantizedType()) {
-    fwdMaxPool<int8_t>(inW, outW, nullptr, I->getKernel(), I->getStride(),
+    fwdMaxPool<int8_t>(inW, outW, nullptr, I->getKernels(), I->getStrides(),
                        I->getPads());
   } else {
-    fwdMaxPool<float>(inW, outW, nullptr, I->getKernel(), I->getStride(),
+    fwdMaxPool<float>(inW, outW, nullptr, I->getKernels(), I->getStrides(),
                       I->getPads());
   }
 }
@@ -362,10 +373,10 @@ void InterpreterFunction::fwdMaxPoolWithXYInst(const MaxPoolWithXYInst *I) {
   auto SXY = getTensor(I->getSrcXY())->getHandle<size_t>();
 
   if (inW->getType().isQuantizedType()) {
-    fwdMaxPool<int8_t>(inW, outW, &SXY, I->getKernel(), I->getStride(),
+    fwdMaxPool<int8_t>(inW, outW, &SXY, I->getKernels(), I->getStrides(),
                        I->getPads());
   } else {
-    fwdMaxPool<float>(inW, outW, &SXY, I->getKernel(), I->getStride(),
+    fwdMaxPool<float>(inW, outW, &SXY, I->getKernels(), I->getStrides(),
                       I->getPads());
   }
 }
@@ -375,11 +386,11 @@ void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
   ShapeNHWC idim(I->getSrc()->dims());
 
   PaddingTLBR pdim(I->getPads());
-  auto filterSize = I->getKernel();
-  auto stride = I->getStride();
+  ShapeHW kdim(I->getKernels());
+  ShapeHW sdim(I->getStrides());
   // Implement the avg pooling operation as defined here:
   // https://arxiv.org/abs/1312.4400
-  float filterArea = filterSize * filterSize;
+  float filterArea = kdim.height * kdim.width;
 
   if (I->getSrc()->getType()->isQuantizedType()) {
     auto inW = getWeightHandle<int8_t>(I->getSrc());
@@ -395,13 +406,13 @@ void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
       for (size_t z = 0; z < idim.c; z++) {
         // For each convolution 'jump' in the input tensor:
         ssize_t x = -ssize_t(pdim.top);
-        for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+        for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
           ssize_t y = -ssize_t(pdim.left);
-          for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+          for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
             int32_t sum = 0;
 
-            for (size_t fx = 0; fx < filterSize; fx++) {
-              for (size_t fy = 0; fy < filterSize; fy++) {
+            for (size_t fx = 0; fx < kdim.height; fx++) {
+              for (size_t fy = 0; fy < kdim.width; fy++) {
                 ssize_t ox = x + fx;
                 ssize_t oy = y + fy;
 
@@ -436,13 +447,13 @@ void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
     for (size_t z = 0; z < idim.c; z++) {
       // For each convolution 'jump' in the input tensor:
       ssize_t x = -ssize_t(pdim.top);
-      for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+      for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
         ssize_t y = -ssize_t(pdim.left);
-        for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+        for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
           float sum = 0;
 
-          for (size_t fx = 0; fx < filterSize; fx++) {
-            for (size_t fy = 0; fy < filterSize; fy++) {
+          for (size_t fx = 0; fx < kdim.height; fx++) {
+            for (size_t fy = 0; fy < kdim.width; fy++) {
               ssize_t ox = x + fx;
               ssize_t oy = y + fy;
 
@@ -505,12 +516,12 @@ void InterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
   ShapeNHWC idim(inG.dims());
 
   PaddingTLBR pdim(I->getPads());
-  auto filterSize = I->getKernel();
-  auto stride = I->getStride();
+  ShapeHW kdim(I->getKernels());
+  ShapeHW sdim(I->getStrides());
 
   inG.clear();
 
-  float filterArea = filterSize * filterSize;
+  float filterArea = kdim.height * kdim.width;
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
@@ -519,14 +530,14 @@ void InterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
     for (size_t z = 0; z < odim.c; z++) {
       // For each convolution 'jump' in the input tensor:
       ssize_t x = -ssize_t(pdim.top);
-      for (size_t ax = 0; ax < odim.h; x += stride, ax++) {
+      for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
         ssize_t y = -ssize_t(pdim.left);
-        for (size_t ay = 0; ay < odim.w; y += stride, ay++) {
+        for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
 
           float dy = outG.at({n, ax, ay, z}) / filterArea;
 
-          for (size_t fx = 0; fx < filterSize; fx++) {
-            for (size_t fy = 0; fy < filterSize; fy++) {
+          for (size_t fx = 0; fx < kdim.height; fx++) {
+            for (size_t fy = 0; fy < kdim.width; fy++) {
               ssize_t ox = x + fx;
               ssize_t oy = y + fy;
 

@@ -60,35 +60,35 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addInput("Filter")
       .addInput("Bias")
-      .addMember(MemberType::SizeT, "Kernel")
-      .addMember(MemberType::SizeT, "Stride")
+      .addMember(MemberType::VectorSizeT, "Kernels")
+      .addMember(MemberType::VectorSizeT, "Strides")
       .addMember(MemberType::VectorSizeT, "Pads")
       .addMember(MemberType::SizeT, "Group")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs Convolution using a given Input, Filter, and "
-                    "Bias tensors, as well as provided Kernel, Stride, Pads, "
+                    "Bias tensors, as well as provided Kernels, Strides, Pads, "
                     "and Group.");
 
   BB.newNode("MaxPool")
       .addInput("Input")
-      .addMember(MemberType::SizeT, "Kernel")
-      .addMember(MemberType::SizeT, "Stride")
+      .addMember(MemberType::VectorSizeT, "Kernels")
+      .addMember(MemberType::VectorSizeT, "Strides")
       .addMember(MemberType::VectorSizeT, "Pads")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs a Max Pool operation on the Input given provided "
-                    "Kernel, Stride, and Pads.");
+                    "Kernels, Strides, and Pads.");
 
   BB.newNode("AvgPool")
       .addInput("Input")
-      .addMember(MemberType::SizeT, "Kernel")
-      .addMember(MemberType::SizeT, "Stride")
+      .addMember(MemberType::VectorSizeT, "Kernels")
+      .addMember(MemberType::VectorSizeT, "Strides")
       .addMember(MemberType::VectorSizeT, "Pads")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs an Average Pool operation on the Input given "
-                    "provided Kernel, Stride, and Pads.");
+                    "provided Kernels, Strides, and Pads.");
 
   BB.newNode("FullyConnected")
       .addInput("Input")

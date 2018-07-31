@@ -35,8 +35,8 @@ Node *convertConvToNCHWConv(ConvolutionNode *CN, Function *F) {
                                                       dimsNCHW);
 
   auto *NC = F->addNode(new NCHWConvNode(CN->getName(), outTy, NI, NF,
-                                         CN->getBias(), CN->getKernel(),
-                                         CN->getStride(), CN->getPads()));
+                                         CN->getBias(), CN->getKernels()[0],
+                                         CN->getStrides()[0], CN->getPads()));
   auto NR = F->createTranspose("conv.result", NC, NCHW2NHWC);
 
   return NR;
@@ -55,8 +55,8 @@ Node *convertPoolToNCHWPool(PoolNode *PN, Function *F) {
                                                       dimsNCHW);
 
   auto *NPN =
-      F->addNode(new NCHWPoolNode(PN->getName(), outTy, NI, PN->getKernel(),
-                                  PN->getStride(), PN->getPads()));
+      F->addNode(new NCHWPoolNode(PN->getName(), outTy, NI, PN->getKernels()[0],
+                                  PN->getStrides()[0], PN->getPads()));
   auto NR = F->createTranspose("maxpool.result", NPN, NCHW2NHWC);
 
   return NR;

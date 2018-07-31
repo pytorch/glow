@@ -91,12 +91,15 @@ private:
 #include "glow/AutoGenInstr.def"
 
   void fwdConvolutionInst_I8Impl(Value *inV, Value *outV, Value *filterV,
-                                 Value *biasV, size_t filterSize, size_t stride,
+                                 Value *biasV,
+                                 llvm::ArrayRef<size_t> filterSizes,
+                                 llvm::ArrayRef<size_t> strides,
                                  llvm::ArrayRef<size_t> pads, size_t group);
   void fwdConvolutionInst_FloatImpl(Value *inV, Value *outV, Value *filterV,
-                                    Value *biasV, size_t filterSize,
-                                    size_t stride, llvm::ArrayRef<size_t> pads,
-                                    size_t group);
+                                    Value *biasV,
+                                    llvm::ArrayRef<size_t> filterSizes,
+                                    llvm::ArrayRef<size_t> strides,
+                                    llvm::ArrayRef<size_t> pads, size_t group);
   ///@}
 };
 
