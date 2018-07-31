@@ -25,13 +25,15 @@
 
 /// Return stable IDs of available backends on the system.
 /// \param backendIDs output parameter and represents pointer to the memory
-///                   where the backend IDs will be returned. If it's NULL, numBackends
-///                   will be populated with the number of backends supported.
+///                   where the backend IDs will be returned. If it's NULL,
+///                   numBackends will be populated with the number of backends
+///                   supported.
 /// \param numBackends input/output parameter.
-///                    As an input, it specifies the capacity allocated in the backendIDs.
-///                    As an output, it specifies the number of actual available backends. 
+///                    As an input, it specifies the capacity allocated in the
+///                    backendIDs. As an output, it specifies the number of
+///                    actual available backends.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxGetBackendIDs(onnxBackendID* backendIDs, size_t* numBackends) {
+onnxGetBackendIDs(onnxBackendID *backendIDs, size_t *numBackends) {
   if (!numBackends) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -54,11 +56,9 @@ onnxReleaseBackendID(onnxBackendID backendID) {
 }
 
 /// Query high-level information about the backend and its target device.
-ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxGetBackendInfo(
-    onnxBackendID backendID,
-    onnxBackendInfo infoType,
-    void* infoValue,
-    size_t* infoValueSize) {
+ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
+onnxGetBackendInfo(onnxBackendID backendID, onnxBackendInfo infoType,
+                   void *infoValue, size_t *infoValueSize) {
   if (!infoValueSize) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -68,10 +68,8 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxGetBackendInfo(
 
 /// Query if an ONNX model graph is compatible with the backend.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxGetBackendCompatibility(
-    onnxBackendID backendID,
-    size_t onnxModelSize,
-    const void* onnxModel) {
+onnxGetBackendCompatibility(onnxBackendID backendID, size_t onnxModelSize,
+                            const void *onnxModel) {
   if (!onnxModel) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -84,10 +82,9 @@ onnxGetBackendCompatibility(
 }
 
 /// Initialize an ONNXIFI backend.
-ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxInitBackend(
-    onnxBackendID backendID,
-    const uint64_t* auxpropertiesList,
-    onnxBackend* backend) {
+ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
+onnxInitBackend(onnxBackendID backendID, const uint64_t *auxpropertiesList,
+                onnxBackend *backend) {
   if (!backend) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -103,7 +100,7 @@ onnxReleaseBackend(onnxBackend backend) {
 
 /// Initialize a single-shot ONNXIFI event.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxInitEvent(onnxBackend backend, onnxEvent* event) {
+onnxInitEvent(onnxBackend backend, onnxEvent *event) {
   if (!event) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -130,30 +127,25 @@ onnxReleaseEvent(onnxEvent event) {
 }
 
 /// Parse an ONNXIFI graph and convert it for a particular backend.
-ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxInitGraph(
-    onnxBackend backend,
-    size_t onnxModelSize,
-    const void* onnxModel,
-    uint32_t weightCount,
-    const onnxTensorDescriptor* weightDescriptors,
-    onnxGraph* graph) {
+ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
+onnxInitGraph(onnxBackend backend, size_t onnxModelSize, const void *onnxModel,
+              uint32_t weightCount,
+              const onnxTensorDescriptor *weightDescriptors, onnxGraph *graph) {
   if (!onnxModel || !weightDescriptors || !graph) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
   if (!onnxModelSize) {
     return ONNXIFI_STATUS_INVALID_SIZE;
   }
-  
+
   return ONNXIFI_STATUS_SUCCESS;
 }
 
 /// Binds inputs and outputs of an ONNXIFI graph to specific addresses.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxSetGraphIO(
-    onnxGraph graph,
-    uint32_t inputsCount,
-    const onnxTensorDescriptor* inputDescriptors,
-    uint32_t outputsCount,
-    const onnxTensorDescriptor* outputDescriptors) {
+    onnxGraph graph, uint32_t inputsCount,
+    const onnxTensorDescriptor *inputDescriptors, uint32_t outputsCount,
+    const onnxTensorDescriptor *outputDescriptors) {
   if (!inputDescriptors || !outputDescriptors) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -163,10 +155,9 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxSetGraphIO(
 
 /// Asynchronously execute operations in an ONNXIFI graph using pre-specified
 /// locations for inputs and outputs.
-ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxRunGraph(
-    onnxGraph graph,
-    const onnxMemoryFence* inputFence,
-    onnxMemoryFence* outputFence) {
+ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
+onnxRunGraph(onnxGraph graph, const onnxMemoryFence *inputFence,
+             onnxMemoryFence *outputFence) {
   if (!inputFence || !outputFence) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }

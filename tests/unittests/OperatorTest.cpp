@@ -922,10 +922,10 @@ TEST_P(InterpAndCPU, ScatterAssignQuantized) {
   slices->getPayload().getHandle() = {-3, -4, -7, -8};
 
   auto qParams = glow::quantization::chooseQuantizationParams(-11, 11);
-  auto dataTy = mod_.uniqueType(ElemKind::Int8QTy, {5, 2}, qParams.scale,
-                                qParams.offset);
-  auto slicesTy = mod_.uniqueType(ElemKind::Int8QTy, {2, 2}, qParams.scale,
-                                  qParams.offset);
+  auto dataTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {5, 2}, qParams.scale, qParams.offset);
+  auto slicesTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {2, 2}, qParams.scale, qParams.offset);
 
   auto *dataQ = F_->createQuantize("quantizeQ", data, dataTy);
   auto *slicesQ = F_->createQuantize("quantizeS", slices, slicesTy);

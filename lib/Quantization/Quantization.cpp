@@ -220,7 +220,7 @@ static Node *quantizeNode(Function *F, Node *node,
     assert(qParams.size() == 1 && "Invalid number of quantized outputs");      \
     auto outTy =                                                               \
         F->getParent()->uniqueType(ElemKind::Int8QTy, AN->getResult().dims(),  \
-                                   qParams[0].scale, qParams[0].offset);     \
+                                   qParams[0].scale, qParams[0].offset);       \
     quantizedNode = F->create##NODE_NAME_(                                     \
         AN->getName(), outTy, quantizedInputs[0], quantizedInputs[1]);         \
     break;                                                                     \

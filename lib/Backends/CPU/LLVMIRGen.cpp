@@ -967,12 +967,12 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       auto rhsScaleParams = quantization::quantizeScaleOffset32To8(            \
           rhsTy->getScale() / destScale, rhsTy->getOffset());                  \
                                                                                \
-      auto *lhsPre = emitConstI32(builder, lhsScaleParams.pre);               \
-      auto *lhsPost = emitConstI32(builder, lhsScaleParams.post);             \
-      auto *lhsScale = emitConstI32(builder, lhsScaleParams.scale);           \
-      auto *rhsPre = emitConstI32(builder, rhsScaleParams.pre);               \
-      auto *rhsPost = emitConstI32(builder, rhsScaleParams.post);             \
-      auto *rhsScale = emitConstI32(builder, rhsScaleParams.scale);           \
+      auto *lhsPre = emitConstI32(builder, lhsScaleParams.pre);                \
+      auto *lhsPost = emitConstI32(builder, lhsScaleParams.post);              \
+      auto *lhsScale = emitConstI32(builder, lhsScaleParams.scale);            \
+      auto *rhsPre = emitConstI32(builder, rhsScaleParams.pre);                \
+      auto *rhsPost = emitConstI32(builder, rhsScaleParams.post);              \
+      auto *rhsScale = emitConstI32(builder, rhsScaleParams.scale);            \
                                                                                \
       auto *stackedOpCall = createCall(builder, F,                             \
                                        {loopCount, lhsPtr, rhsPtr, destOffset, \

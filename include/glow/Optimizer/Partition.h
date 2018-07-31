@@ -59,12 +59,15 @@ public:
   /// Get dependencies for a function.
   const MappedType &getDependencies(Function *F) const {
     auto it = dependencies_.find(F);
-    assert(it != dependencies_.end() && "No dependencies found for function in graph");
+    assert(it != dependencies_.end() &&
+           "No dependencies found for function in graph");
     return it->second;
   }
 
   /// Record that \p F depends on \p inputF.
-  void add(Function *F, Function *inputF) { dependencies_[F].push_back(inputF); }
+  void add(Function *F, Function *inputF) {
+    dependencies_[F].push_back(inputF);
+  }
 
   /// Verify that function graph is well-formed (acyclic, topologically sorted).
   bool verify() const;
