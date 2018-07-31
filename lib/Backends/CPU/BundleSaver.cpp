@@ -147,7 +147,7 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
               "Could not open the output file for saving the bundle code");
   if (fileName.endswith(".bc")) {
     // Emit the bitcode file.
-#ifdef FACEBOOK
+#ifdef FACEBOOK_INTERNAL
     llvm::WriteBitcodeToFile(M, outputFile);
 #else
     llvm::WriteBitcodeToFile(&M, outputFile);

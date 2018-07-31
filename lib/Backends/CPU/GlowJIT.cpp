@@ -30,7 +30,7 @@ static llvm::cl::opt<bool> dumpJITSymbolInfo(
     llvm::cl::desc("Dump the load addresses and sizes of JITted symbols"),
     llvm::cl::init(false), llvm::cl::cat(CPUBackendCat));
 
-#ifndef FACEBOOK
+#ifndef FACEBOOK_INTERNAL
 /// This is a callback that is invoked when an LLVM module is compiled and
 /// loaded by the JIT for execution.
 class NotifyLoadedFunctor {
@@ -88,7 +88,7 @@ public:
 
 } // namespace
 
-#ifdef FACEBOOK
+#ifdef FACEBOOK_INTERNAL
 GlowJIT::GlowJIT(llvm::TargetMachine &TM)
     : ES_(SSP_),
       resolver_(createLegacyLookupResolver(
