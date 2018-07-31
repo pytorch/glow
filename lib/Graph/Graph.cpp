@@ -853,7 +853,7 @@ ReshapeNode *Function::createExpandDims(llvm::StringRef name, NodeValue input,
 
   // The total number of dimensions in the new shape is equal to the original
   // shape size plus the uniqued new shape axes, which represents where to
-  // insert dimensions of 1 into the ouput tensor's shape.
+  // insert dimensions of 1 into the output tensor's shape.
   const size_t totalNumNewDims = shapeAxes.size() + inDims.size();
   assert(totalNumNewDims <= max_tensor_dimensions &&
          "New expanded shape has too many dimensions.");
