@@ -93,12 +93,12 @@ bool Node::isEqual(const Node &other) const {
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<const CLASS *>(this)->isEqual(                          \
         *static_cast<const CLASS *>(&other));
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
 
 #define DEF_INSTR(CLASS, NAME) case glow::Kinded::Kind::CLASS##Kind:
 #define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME) DEF_INSTR(CLASS, NAME)
 #define DEF_VALUE(CLASS, NAME) DEF_INSTR(CLASS, NAME)
-#include "AutoGenInstr.def"
+#include "glow/AutoGenInstr.def"
 
     llvm_unreachable(
         "Not reachable, values and instructions are not handled here");
@@ -143,7 +143,7 @@ class HashNodeVisitor : public NodeVisitor<HashNodeVisitor, llvm::hash_code> {
 public:
 #define DEF_NODE(CLASS, NAME)                                                  \
   hash_code visit##CLASS(const CLASS *N) const { return N->getHash(); }
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
 
   hash_code visit(const Node *N) const {
     return const_cast<HashNodeVisitor *>(this)->super::visit(
@@ -164,7 +164,7 @@ void Node::visit(Node *parent, NodeWalker *visitor) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<CLASS *>(this)->visit(parent, visitor);
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");
   }
@@ -187,7 +187,7 @@ unsigned Node::getNumInputs() const {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<const CLASS *>(this)->getNumInputs();
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");
   }
@@ -197,7 +197,7 @@ llvm::StringRef Node::getInputName(unsigned idx) const {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<const CLASS *>(this)->getInputName(idx);
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");
   }
@@ -207,7 +207,7 @@ NodeValue Node::getNthInput(unsigned idx) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<CLASS *>(this)->getNthInput(idx);
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");
   }
@@ -218,7 +218,7 @@ const NodeValue Node::getNthInput(unsigned idx) const {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<CLASS *>(const_cast<Node *>(this))->getNthInput(idx);
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");
   }
@@ -229,7 +229,7 @@ void Node::setNthInput(unsigned idx, NodeValue val) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<CLASS *>(this)->setNthInput(idx, val);
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");
   }
@@ -250,7 +250,7 @@ llvm::StringRef Node::getOutputName(unsigned idx) const {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<const CLASS *>(this)->getOutputName(idx);
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");
   }
@@ -261,7 +261,7 @@ bool Node::hasSideEffects() const {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<const CLASS *>(this)->hasSideEffects();
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");
   }
@@ -290,7 +290,7 @@ bool Node::isOverwrittenNthInput(unsigned idx) const {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<const CLASS *>(this)->isOverwrittenNthInput(idx);
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");
   }
@@ -301,7 +301,7 @@ std::string Node::getDebugDesc() const {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<const CLASS *>(this)->getDebugDesc();
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");
   }
@@ -312,7 +312,7 @@ Node *Node::clone() const {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<const CLASS *>(this)->clone();
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");
   }
@@ -325,7 +325,7 @@ void Node::destroyNode(Node *N) {
     delete static_cast<CLASS *>(N);                                            \
     break;                                                                     \
   }
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");
   }
@@ -359,7 +359,7 @@ void Node::verify() const {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<const CLASS *>(this)->verify();
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");
   }

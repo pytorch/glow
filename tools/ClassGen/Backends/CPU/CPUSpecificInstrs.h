@@ -34,6 +34,6 @@ BB.newBackendSpecificInstr("CPUConvDKKC8")
     .addMember(MemberType::SizeT, "Group")
     .autoIRGen();
 
-BB.includeBackendSpecificVerification("CPUSpecificInstrsVerification.h");
+BB.includeBackendSpecificVerification("glow/CPUSpecificInstrsVerification.h");
 
 #endif // GLOW_WITH_CPU

@@ -68,9 +68,9 @@ public:
 #define DEF_INSTR(CLASS, NAME) CLASS##Kind,
 #define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME) DEF_INSTR(CLASS, NAME)
 #define DEF_VALUE(CLASS, NAME) DEF_INSTR(CLASS, NAME)
-#include "AutoGenInstr.def"
+#include "glow/AutoGenInstr.def"
 #define DEF_NODE(CLASS, NAME) CLASS##Kind,
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
   };
 
   static const char *getKindName(Kind IK) {
@@ -78,9 +78,9 @@ public:
 #define DEF_INSTR(CLASS, NAME) #NAME,
 #define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME) DEF_INSTR(CLASS, NAME)
 #define DEF_VALUE(CLASS, NAME) DEF_INSTR(CLASS, NAME)
-#include "AutoGenInstr.def"
+#include "glow/AutoGenInstr.def"
 #define DEF_NODE(CLASS, NAME) #NAME,
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
         nullptr};
     return names[(int)IK];
   }

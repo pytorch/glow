@@ -112,7 +112,7 @@ public:
       break;
 
       // Include all automatically generated cases:
-#include "AutoGenIRGen.h"
+#include "glow/AutoGenIRGen.h"
 
     case glow::Kinded::Kind::ReshapeNodeKind: {
       auto *RN = cast<ReshapeNode>(N);

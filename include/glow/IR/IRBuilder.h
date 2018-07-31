@@ -94,7 +94,7 @@ public:
                                                  llvm::ArrayRef<size_t> dims);
 
 // Import the auto-generated instruction creation methods:
-#include "AutoGenIRBuilder.h"
+#include "glow/AutoGenIRBuilder.h"
 
   ///@}
 
