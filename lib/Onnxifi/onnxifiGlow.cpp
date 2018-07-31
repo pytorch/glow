@@ -130,7 +130,7 @@ onnxReleaseEvent(onnxEvent event) {
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxInitGraph(onnxBackend backend, size_t onnxModelSize, const void *onnxModel,
               uint32_t weightCount,
-              const onnxTensorDescriptor *weightDescriptors, onnxGraph *graph) {
+              const onnxTensorDescriptorV1 *weightDescriptors, onnxGraph *graph) {
   if (!onnxModel || !weightDescriptors || !graph) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -144,8 +144,8 @@ onnxInitGraph(onnxBackend backend, size_t onnxModelSize, const void *onnxModel,
 /// Binds inputs and outputs of an ONNXIFI graph to specific addresses.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxSetGraphIO(
     onnxGraph graph, uint32_t inputsCount,
-    const onnxTensorDescriptor *inputDescriptors, uint32_t outputsCount,
-    const onnxTensorDescriptor *outputDescriptors) {
+    const onnxTensorDescriptorV1 *inputDescriptors, uint32_t outputsCount,
+    const onnxTensorDescriptorV1 *outputDescriptors) {
   if (!inputDescriptors || !outputDescriptors) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -156,8 +156,8 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxSetGraphIO(
 /// Asynchronously execute operations in an ONNXIFI graph using pre-specified
 /// locations for inputs and outputs.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxRunGraph(onnxGraph graph, const onnxMemoryFence *inputFence,
-             onnxMemoryFence *outputFence) {
+onnxRunGraph(onnxGraph graph, const onnxMemoryFenceV1 *inputFence,
+             onnxMemoryFenceV1 *outputFence) {
   if (!inputFence || !outputFence) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
