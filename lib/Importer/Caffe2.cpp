@@ -388,6 +388,31 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "MatMul" || typeName == "BatchMatMul") {
+    auto LHS = getNodeValueOrCreateVariableByName(op.input(0));
+    auto RHS = getNodeValueOrCreateVariableByName(op.input(1));
+
+    bool transLHS = dict.count("trans_a") && loadInt(dict["trans_a"]);
+    (void)transLHS;
+    assert(!transLHS && "Don't support transpose lhs for now.");
+    bool transRHS = dict.count("trans_b") && loadInt(dict["trans_b"]);
+    (void)transRHS;
+    assert(!transRHS && "Don't support transpose rhs for now.");
+
+    Node *node = nullptr;
+
+    // BatchMatMul sometimes is actually just a matmul, depending on dimensions
+    // of inputs. Thus, only do batch matmul if LHS is 3-dimensional.
+    if (typeName == "BatchMatMul" && LHS->dims(0).size() == 3) {
+      node = G_.createBatchMatMul(opName, LHS, RHS);
+    } else {
+      node = G_.createMatMul(opName, LHS, RHS);
+    }
+
+    addNodeAsOutput(op, node);
+    return;
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
