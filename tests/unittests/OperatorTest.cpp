@@ -2157,7 +2157,7 @@ TEST_P(InterpAndCPU, Split) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 3}), 12);
 }
 
-TEST_P(InterpAndCPU, IntRelu) {
+TEST_P(Operator, IntRelu) {
   const float splatValue = 10;
   const float scale = 1.0;
   const float rescaleScale = 2.0;
@@ -2184,7 +2184,7 @@ TEST_P(InterpAndCPU, IntRelu) {
   }
 }
 
-TEST_P(InterpAndCPU, IntSplat) {
+TEST_P(Operator, IntSplat) {
   const float splatValue = 10;
   const float scale = 1.0;
   const int32_t offset = 5;

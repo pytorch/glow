@@ -593,7 +593,7 @@ void OpenCLFunction::execute() {
                                          destTy->getOffset()};
           float val = SI->getValue();
           int8_t int8Val = quantization::quantize(val, destQ);
-          setKernelArg<int8_t>(kernel, ++numArgs, int8Val);
+          setKernelArg<float>(kernel, ++numArgs, static_cast<float>(int8Val));
         }
       } else if (auto *EPI = dyn_cast<ElementPowInst>(&I)) {
         // Pass the exp as a parameter.
