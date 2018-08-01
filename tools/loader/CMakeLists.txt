@@ -1,4 +1,3 @@
-
 add_executable(image-classifier
   Loader.cpp
   ImageClassifier.cpp)

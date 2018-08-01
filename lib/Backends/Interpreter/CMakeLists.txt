@@ -1,4 +1,3 @@
-
 add_library(Interpreter
               Interpreter.cpp
               InterpreterFunction.cpp
