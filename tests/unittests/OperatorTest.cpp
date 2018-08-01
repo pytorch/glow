@@ -2367,6 +2367,21 @@ TEST_P(Operator, NonSquarePaddingMaxPool) {
   EXPECT_TRUE(result.isEqual(result1));
 }
 
+TEST_P(Operator, Int8Poolmax) {
+  auto *input = mod_.createVariable(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0, "input");
+  input->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+  auto *Pool = F_->createMaxPool("pool", input, 2, 1, {0, 0, 0, 0});
+  auto *S = F_->createSave("save", Pool);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  auto result = S->getVariable()->getHandle<int8_t>();
+  auto *output = mod_.createVariable(ElemKind::Int8QTy, {2, 2}, 1, 0, "output");
+  output->getHandle<int8_t>() = {4, 5, 7 ,8};
+  for (size_t i = 0; i < 2 * 2; i++) {
+    EXPECT_TRUE(result.raw(i) == output->getHandle<int8_t>().raw(i));
+  }
+}
+
 TEST_P(InterpAndCPU, Int8Tanh) {
   constexpr size_t size = 10;
   auto *input = mod_.createVariable(ElemKind::FloatTy, {size}, "input");

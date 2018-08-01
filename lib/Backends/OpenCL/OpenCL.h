@@ -186,6 +186,7 @@ public:
       case Kinded::Kind::MaxNodeKind:
       case Kinded::Kind::MinNodeKind:
       case Kinded::Kind::MulNodeKind:
+      case Kinded::Kind::MaxPoolNodeKind:
       case Kinded::Kind::QuantizeNodeKind:
       case Kinded::Kind::ReluNodeKind:
       case Kinded::Kind::RescaleQuantizedNodeKind:
