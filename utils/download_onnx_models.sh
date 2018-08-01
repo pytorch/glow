@@ -10,6 +10,7 @@ for modelname in inception_v1 inception_v2 bvlc_alexnet; do
   tar -xzvf $modelname.tar.gz
 done
 
+# shellcheck disable=SC2043
 for modelname in lenet_mnist; do
   wget -nc http://fb-glow-assets.s3.amazonaws.com/models/$modelname.tar.gz
   tar -xzvf $modelname.tar.gz
