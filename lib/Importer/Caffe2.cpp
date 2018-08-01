@@ -319,11 +319,12 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
-  if (typeName == "Gather") {
+  if (typeName == "Gather" || typeName == "BatchGather") {
     auto data = getNodeValueOrCreateVariableByName(op.input(0));
     auto indices = getNodeValueOrCreateVariableByName(op.input(1));
+    size_t batchDims = typeName == "Gather" ? 0 : 1;
 
-    Node *GN = G_.createGather(opName, data, indices);
+    Node *GN = G_.createGather(opName, data, indices, batchDims);
     addNodeAsOutput(op, GN);
     return;
   }
@@ -392,12 +393,13 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto LHS = getNodeValueOrCreateVariableByName(op.input(0));
     auto RHS = getNodeValueOrCreateVariableByName(op.input(1));
 
-    bool transLHS = dict.count("trans_a") && loadInt(dict["trans_a"]);
+    bool transLHS = dict.count("trans_a") && (loadInt(dict["trans_a"]) == 1);
     (void)transLHS;
     assert(!transLHS && "Don't support transpose lhs for now.");
-    bool transRHS = dict.count("trans_b") && loadInt(dict["trans_b"]);
-    (void)transRHS;
-    assert(!transRHS && "Don't support transpose rhs for now.");
+    bool transRHS = dict.count("trans_b") && (loadInt(dict["trans_b"]) == 1);
+    if (transRHS) {
+      RHS = G_.createTranspose("RHS.transpose", RHS, {1, 0});
+    }
 
     Node *node = nullptr;
 

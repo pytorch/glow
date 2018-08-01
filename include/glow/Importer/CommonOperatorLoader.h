@@ -55,6 +55,13 @@ protected:
     addNodeAsOutput(op, R);
   }
 
+  void loadSigmoid(const OpType &op, ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto *S = G_.createSigmoid(opName, in);
+    addNodeAsOutput(op, S);
+  }
+  
   void loadSum(const OpType &op, ArgumentDictionaryTy &dict) {
     // TODO: support variadic arguments
     assert(op.input_size() == 2 && "Only Sum of 2 inputs is supported.");
@@ -242,6 +249,10 @@ protected:
                              ArgumentDictionaryTy &dict) {
     if (typeName == "Relu") {
       loadRelu(op, dict);
+      return true;
+    }
+    if (typeName == "Sigmoid") {
+      loadSigmoid(op, dict);
       return true;
     }
     if (typeName == "Sum") {

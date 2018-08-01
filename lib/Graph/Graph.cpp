@@ -606,10 +606,10 @@ TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
 Node *Function::createBroadcast(llvm::StringRef name, NodeValue input,
                                 llvm::ArrayRef<size_t> newShape,
                                 unsigned axis) {
-  assert(axis >= 0 && axis < newShape.size() &&
-         "Axis must fit inside the newShape.");
-
   const auto &origDims = input.dims();
+
+  assert(axis + origDims.size() <= newShape.size() &&
+         "Axis must fit inside the newShape.");
 
   // Iterate over the new shape; if the original shape had a dimension here
   // (when considering the axis) then verify the dimension either matches the
