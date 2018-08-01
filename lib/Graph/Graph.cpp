@@ -52,9 +52,7 @@ Function *Module::createFunction(llvm::StringRef name) {
 }
 
 Module::~Module() {
-  for (auto *F : functions_) {
-    delete F;
-  }
+  eraseFunctions();
 
   for (auto it = vars_.begin(), e = vars_.end(); it != e;) {
     auto cur = it++;
@@ -264,6 +262,14 @@ void Module::dumpDAG(llvm::StringRef dotFilename) {
 
 void Module::dumpDAG(const char *dotFilename) {
   dumpDAG(llvm::StringRef(dotFilename));
+}
+
+void Module::eraseFunctions() {
+  for (auto *F : functions_) {
+    delete F;
+  }
+
+  functions_.clear();
 }
 
 Function::~Function() {
