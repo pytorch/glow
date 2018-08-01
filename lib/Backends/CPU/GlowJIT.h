@@ -43,13 +43,13 @@ namespace orc {
 // KaleidoscopeJIT example in the LLVM tree.
 class GlowJIT {
 private:
-#ifdef FACEBOOK_INTERNAL
+  TargetMachine &TM_;
+  const DataLayout DL_;
+#if LLVM_VERSION_MAJOR > 6
   SymbolStringPool SSP_;
   ExecutionSession ES_;
   std::shared_ptr<SymbolResolver> resolver_;
 #endif
-  TargetMachine &TM_;
-  const DataLayout DL_;
   RTDyldObjectLinkingLayer objectLayer_;
   IRCompileLayer<decltype(objectLayer_), SimpleCompiler> compileLayer_;
 
@@ -60,17 +60,15 @@ public:
 
   JITSymbol findSymbol(const std::string name);
 
-#ifdef FACEBOOK_INTERNAL
-  VModuleKey addModule(std::unique_ptr<Module> M);
-
-  void removeModule(VModuleKey K);
+#if LLVM_VERSION_MAJOR > 6
+  using ModuleHandle = orc::VModuleKey;
 #else
   using ModuleHandle = decltype(compileLayer_)::ModuleHandleT;
+#endif
 
   ModuleHandle addModule(std::unique_ptr<Module> M);
 
   void removeModule(ModuleHandle H);
-#endif
 };
 
 } // end namespace orc
