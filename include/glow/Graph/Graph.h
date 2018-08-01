@@ -157,6 +157,9 @@ public:
 
   /// Dump a dotty graph that depicts the Module.
   void dumpDAG(const char *dotFilename);
+
+  /// Erase all of the functions from the module.
+  void eraseFunctions();
 };
 
 /// Represents the compute graph.

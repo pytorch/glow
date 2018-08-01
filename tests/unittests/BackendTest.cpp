@@ -146,6 +146,33 @@ TEST_P(BackendTest, debugPrint) {
   function->execute();
 }
 
+/// This test checks that we can compile a function without depending on the
+/// graph representation. We compile some function and then delete the function.
+/// Later we execute the code and check that things work.
+TEST_P(BackendTest, decoupleCodegenFromGraph) {
+  Module mod;
+  Function *F = mod.createFunction("main");
+  auto *X = mod.createVariable(ElemKind::FloatTy, {3}, "X");
+  X->getPayload().getHandle() = {1., 2., 3.};
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  auto *save = F->createSave("save", pow);
+  Variable *res = save->getVariable();
+  EE_.compile(CompilationMode::Infer, F);
+
+  // Erase all of the functions to ensure that the compiled code does not
+  // depend on the graph.
+  mod.eraseFunctions();
+
+  // We can run the compiled code without having the graph representation
+  // around.
+  EE_.run({}, {});
+
+  auto HX = res->getPayload().getHandle();
+  EXPECT_NEAR(HX.at({0}), 1, 1E-5);
+  EXPECT_NEAR(HX.at({1}), 4, 1E-5);
+  EXPECT_NEAR(HX.at({2}), 9, 1E-5);
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, BackendTest,
                         ::testing::Values(BackendKind::Interpreter));
 
