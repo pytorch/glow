@@ -1,4 +1,3 @@
-
 add_library(Optimizer
               IROptimizer.cpp
               GraphOptimizer.cpp

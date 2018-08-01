@@ -1,4 +1,3 @@
-
 add_library(Support
               Debug.cpp
               Random.cpp
