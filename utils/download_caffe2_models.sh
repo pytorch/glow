@@ -16,6 +16,6 @@ EOF
 
 for model in $MODELS; do
   for file in predict_net.pbtxt predict_net.pb init_net.pb; do
-    wget -nc http://fb-glow-assets.s3.amazonaws.com/models/$model/$file -P $model
+    wget -nc "http://fb-glow-assets.s3.amazonaws.com/models/$model/$file" -P "$model"
   done
 done

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 if [ -z "$1" ]; then
-    echo "Usage: $(basename $0) pbtxt"
+    echo "Usage: $(basename "$0") pbtxt"
     exit 1
 fi
 
