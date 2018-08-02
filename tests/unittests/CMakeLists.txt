@@ -170,7 +170,10 @@ target_link_libraries(BackendCorrectnessTest
                         Support
                         gtest
                         testMain)
-add_glow_test(BackendCorrectnessTest ${GLOW_BINARY_DIR}/tests/BackendCorrectnessTest)
+
+add_glow_test(BackendCorrectnessTest
+              ${GLOW_BINARY_DIR}/tests/BackendCorrectnessTest)
+
 LIST(APPEND UNOPT_TESTS ./tests/BackendCorrectnessTest -optimize-ir=false &&)
 
 if(GLOW_WITH_CPU)

@@ -13,7 +13,9 @@ add_custom_command(OUTPUT
                     "${INSTR_BLD_HDR}"
                     "${INSTR_BLD_SRC}"
                     "${INSTR_IR_GEN}"
-                    COMMAND InstrGen ${INSTR_HDR} ${INSTR_SRC} ${INSTR_DEF} ${INSTR_BLD_HDR} ${INSTR_BLD_SRC} ${INSTR_IR_GEN}
+                    COMMAND InstrGen
+                      ${INSTR_HDR} ${INSTR_SRC} ${INSTR_DEF}
+                      ${INSTR_BLD_HDR} ${INSTR_BLD_SRC} ${INSTR_IR_GEN}
                     DEPENDS InstrGen
                     COMMENT "InstrGen: Generating instructions." VERBATIM)
 
