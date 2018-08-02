@@ -21,6 +21,7 @@
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <fstream>
@@ -586,10 +587,9 @@ static const char *getDottyArrowForCC(OperandKind k) {
 }
 
 void IRFunction::dumpDAG() const {
-  std::string buffer;
-  llvm::raw_string_ostream stream(buffer);
-  stream << "dotty_ir_dump_" << this << ".dot";
-  dumpDAG(stream.str().c_str());
+  llvm::SmallString<64> dotPath;
+  llvm::sys::fs::createTemporaryFile("dotty_ir_dump", "dot", dotPath);
+  dumpDAG(dotPath);
 }
 
 /// Dump a dotty graph that depicts the function.
