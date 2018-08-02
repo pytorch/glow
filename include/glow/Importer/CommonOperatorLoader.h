@@ -61,7 +61,7 @@ protected:
     auto *S = G_.createSigmoid(opName, in);
     addNodeAsOutput(op, S);
   }
-  
+
   void loadSum(const OpType &op, ArgumentDictionaryTy &dict) {
     // TODO: support variadic arguments
     assert(op.input_size() == 2 && "Only Sum of 2 inputs is supported.");

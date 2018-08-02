@@ -123,7 +123,8 @@ onnxGetBackendInfo(onnxBackendID backendID, onnxBackendInfo infoType,
     return setBackendInfoUInt64(infoValue, infoValueSize,
                                 ONNXIFI_MEMORY_TYPE_CPU);
   case ONNXIFI_BACKEND_SYNCHRONIZATION_TYPES:
-    return setBackendInfoUInt64(infoValue, infoValueSize, ONNXIFI_SYNCHRONIZATION_EVENT);
+    return setBackendInfoUInt64(infoValue, infoValueSize,
+                                ONNXIFI_SYNCHRONIZATION_EVENT);
   default:
     return ONNXIFI_STATUS_UNSUPPORTED_PARAMETER;
   }
@@ -243,10 +244,10 @@ onnxReleaseEvent(onnxEvent event) {
 }
 
 /// Parse an ONNXIFI graph and convert it for a particular backend.
-ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxInitGraph(onnxBackend backend, size_t onnxModelSize, const void *onnxModel,
-              uint32_t weightsCount,
-              const onnxTensorDescriptorV1 *weightDescriptors, onnxGraph *graph) {
+ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxInitGraph(
+    onnxBackend backend, size_t onnxModelSize, const void *onnxModel,
+    uint32_t weightsCount, const onnxTensorDescriptorV1 *weightDescriptors,
+    onnxGraph *graph) {
   if (!onnxModel || !weightDescriptors || !graph) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -303,8 +304,10 @@ onnxRunGraph(onnxGraph graph, const onnxMemoryFenceV1 *inputFence,
     return ONNXIFI_STATUS_INVALID_GRAPH;
   }
 
-  if (inputFence->type != ONNXIFI_SYNCHRONIZATION_EVENT || inputFence->tag != ONNXIFI_TAG_MEMORY_FENCE_V1 ||
-      outputFence->type != ONNXIFI_SYNCHRONIZATION_EVENT || outputFence->tag != ONNXIFI_TAG_MEMORY_FENCE_V1) {
+  if (inputFence->type != ONNXIFI_SYNCHRONIZATION_EVENT ||
+      inputFence->tag != ONNXIFI_TAG_MEMORY_FENCE_V1 ||
+      outputFence->type != ONNXIFI_SYNCHRONIZATION_EVENT ||
+      outputFence->tag != ONNXIFI_TAG_MEMORY_FENCE_V1) {
     return ONNXIFI_STATUS_UNSUPPORTED_TAG;
   }
 
