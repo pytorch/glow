@@ -15,8 +15,15 @@
  */
 #include "Base.h"
 
+#include "glow/Importer/ONNXIFILoader.h"
+
 namespace glow {
 namespace onnxifi {
+
+bool BackendId::isOpSupported(const Node &node) {
+  // TODO: add support for node with multiple outputs.
+  return executionEngine_.isOpSupported(node.getKind(), node.getElementType(0));
+}
 
 bool Event::signal() {
   {
@@ -38,6 +45,16 @@ void Event::wait() {
 onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
                             uint32_t weightCount,
                             const onnxTensorDescriptorV1 *weightDescriptors) {
+  // TODO: support multiple functions here.
+  function_ = backendPtr_->getEE().getModule().createFunction("inference");
+
+  std::unique_ptr<ModelLoader> loader = ModelLoader::parse(
+      onnxModel, onnxModelSize, weightCount, weightDescriptors, *function_);
+  // TODO: make better error reporting.
+  if (!loader) {
+    return ONNXIFI_STATUS_INTERNAL_ERROR;
+  }
+
   return ONNXIFI_STATUS_SUCCESS;
 }
 

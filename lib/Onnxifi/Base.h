@@ -31,8 +31,16 @@ class BackendId {
 public:
   explicit BackendId(int id) : id_(id) {}
 
+  /// Verify that given operation is supported by the backend.
+  bool isOpSupported(const glow::Node &node);
+
+  /// \returns Execution Engine associated with the Backend.
+  glow::ExecutionEngine &getEE() { return executionEngine_; }
+
 private:
   int id_;
+  // By default use the Interpreter backend.
+  glow::ExecutionEngine executionEngine_{glow::BackendKind::Interpreter};
 };
 
 typedef BackendId *BackendIdPtr;
@@ -40,6 +48,9 @@ typedef BackendId *BackendIdPtr;
 class Backend {
 public:
   explicit Backend(BackendIdPtr backendId) : backendIdPtr_(backendId) {}
+
+  /// \returns Execution Engine associated with the Backend.
+  glow::ExecutionEngine &getEE() { return backendIdPtr_->getEE(); }
 
 private:
   BackendIdPtr backendIdPtr_;
@@ -67,6 +78,8 @@ class Graph {
 public:
   explicit Graph(BackendPtr backendPtr) : backendPtr_(backendPtr) {}
 
+  BackendPtr backend() { return backendPtr_; }
+
   /// InitGraph.
   onnxStatus initGraph(const void *onnxModel, size_t onnxModelSize,
                        uint32_t weightCount,
@@ -81,6 +94,7 @@ public:
 
 private:
   BackendPtr backendPtr_;
+  Function *function_;
 };
 
 typedef Graph *GraphPtr;
