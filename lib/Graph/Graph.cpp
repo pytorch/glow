@@ -22,6 +22,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <fstream>
@@ -243,10 +244,9 @@ public:
 
 // TODO: consider refactoring boilerplate code to new trait: DottyPrintable<ADP>
 void Module::dumpDAG() {
-  std::string buffer;
-  llvm::raw_string_ostream stream(buffer);
-  stream << "dotty_graph_dump_" << this << ".dot";
-  dumpDAG(stream.str().c_str());
+  llvm::SmallString<64> dotPath;
+  llvm::sys::fs::createTemporaryFile("dotty_graph_dump", "dot", dotPath);
+  dumpDAG(dotPath);
 }
 
 void Module::dumpDAG(llvm::StringRef dotFilename) {
@@ -1834,10 +1834,9 @@ public:
 };
 
 void Function::dumpDAG() {
-  std::string buffer;
-  llvm::raw_string_ostream stream(buffer);
-  stream << "dotty_graph_dump_" << this << ".dot";
-  dumpDAG(stream.str().c_str());
+  llvm::SmallString<64> dotPath;
+  llvm::sys::fs::createTemporaryFile("dotty_graph_dump", "dot", dotPath);
+  dumpDAG(dotPath);
 }
 
 void Function::dumpDAG(llvm::StringRef dotFilename) {
