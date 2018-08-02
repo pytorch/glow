@@ -363,6 +363,12 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Glow frees memory automatically.
     return;
   }
+  if (typeName == "StopGradient") {
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    // Currently Caffe2 importer only supports inference.
+    addNodeAsOutput(op, in);
+    return;
+  }
 
   if (typeName == "Transpose") {
     return loadTranspose(op, dict, "axes");
@@ -444,6 +450,18 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
 
     addNodeAsOutput(op, node);
+    return;
+  }
+
+  if (typeName == "Cast") {
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    assert(in.getElementType() == ElemKind::FloatTy &&
+           "Only float to float cast is currently supported.");
+    int to = loadInt(dict["to"]);
+    (void)to;
+    assert(to == caffe2::TensorProto_DataType_FLOAT &&
+           "Only float to float cast is currently supported.");
+    addNodeAsOutput(op, in);
     return;
   }
 
