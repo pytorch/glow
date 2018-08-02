@@ -1199,6 +1199,16 @@ void OpenCLFunction::execute() {
       setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
+      if (isQuantized) {
+        auto srcTy = PA->getSrc()->getType();
+        auto destTy = PA->getDest()->getType();
+        auto destScaleParam = quantization::quantizeScaleOffset32To8(
+            srcTy->getScale() / destTy->getScale() /
+                (PA->getKernel() * PA->getKernel()),
+            destTy->getOffset());
+        setKernelArg(kernel, numArgs + 6, srcTy->getOffset());
+        setKernelArg(kernel, numArgs + 7, destScaleParam);
+      }
 
       enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
                     kernelLaunches_);
