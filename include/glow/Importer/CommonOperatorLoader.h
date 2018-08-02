@@ -69,6 +69,16 @@ protected:
     addNodeAsOutput(op, T);
   }
 
+  void loadShape(const OpType &op, ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto *shape =
+        G_.getParent()->createVariable(ElemKind::IndexTy, {in.dims().size()},
+                                       opName, VisibilityKind::Private, false);
+    shape->template getHandle<size_t>() = in.dims();
+    addNodeAsOutput(op, shape);
+  }
+
   void loadSum(const OpType &op, ArgumentDictionaryTy &dict) {
     // TODO: support variadic arguments
     assert(op.input_size() == 2 && "Only Sum of 2 inputs is supported.");
@@ -264,6 +274,10 @@ protected:
     }
     if (typeName == "Tanh") {
       loadTanh(op, dict);
+      return true;
+    }
+    if (typeName == "Shape") {
+      loadShape(op, dict);
       return true;
     }
     if (typeName == "Sum") {
