@@ -138,27 +138,48 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
   });
 }
 
+/// Calculate the offset for \p TVI into the underlying alloc activation.
+static size_t calculateTensorViewOffset(const TensorViewInst *TVI) {
+  // Pop tensor views off repeatedly until we reach the origin, in case there
+  // are multiple stacked together, to calculate the total offset.
+  const TensorViewInst *currTVI = TVI;
+  size_t totalOffsetLength = 0;
+  do {
+    // Calculate and store the length of the current tensorview's offset
+    // into the the source of the tensorview. Note that this source may be
+    // another tensorview.
+    size_t currOffsetLength =
+        currTVI->getOffsets().empty() ? 0 : currTVI->getOffsets()[0];
+    auto *tvSource = currTVI->getSrc();
+    for (size_t i = 1; i < tvSource->dims().size(); ++i) {
+      currOffsetLength *= tvSource->dims()[i];
+    }
+
+    // Increment the running total offset length which will be used to store
+    // into allocatedAddressed.
+    totalOffsetLength +=
+        currOffsetLength * currTVI->getType()->getElementSize();
+  } while ((currTVI = dyn_cast<TensorViewInst>(currTVI->getSrc())));
+
+  return totalOffsetLength;
+}
+
 void AllocationsInfo::allocateTensorViews(const IRFunction *F) {
   for (const auto &I : F->getInstrs()) {
-    if (const auto *A = dyn_cast<TensorViewInst>(&I)) {
-      auto *viewOrigin = getOrigin(A);
+    if (const auto *TVI = dyn_cast<TensorViewInst>(&I)) {
+      auto *viewOrigin = getOrigin(TVI);
       assert(allocatedAddressed_.count(viewOrigin) &&
              "Did not find original WeightVar or AllocActivation for a "
              "TensorView.");
       size_t originAddr = allocatedAddressed_[viewOrigin];
 
-      // Calculate and store the length of the offset into the base, using the
-      // source of the tensorview.
-      size_t offsetLength = A->getOffsets().empty() ? 0 : A->getOffsets()[0];
-      auto *tvSource = A->getSrc();
-      if (tvSource->dims().size() > 1) {
-        for (size_t i = 1; i < tvSource->dims().size(); ++i) {
-          offsetLength *= tvSource->dims()[i];
-        }
-      }
-      assert(!allocatedAddressed_.count(A) && "Allocation already made!");
-      allocatedAddressed_[A] =
-          originAddr + (offsetLength * A->getType()->getElementSize());
+      // Calculate the offset into the underlying alloc activation.
+      size_t offset = calculateTensorViewOffset(TVI);
+
+      // Calculate the correct address using this offset into the alloc
+      // activation and map from the original TVI to it.
+      assert(!allocatedAddressed_.count(TVI) && "Allocation already made!");
+      allocatedAddressed_[TVI] = originAddr + offset;
       continue;
     }
   }

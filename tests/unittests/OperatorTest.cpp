@@ -2368,7 +2368,8 @@ TEST_P(Operator, NonSquarePaddingMaxPool) {
 }
 
 TEST_P(Operator, Int8Poolmax) {
-  auto *input = mod_.createVariable(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0, "input");
+  auto *input =
+      mod_.createVariable(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0, "input");
   input->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
   auto *Pool = F_->createMaxPool("pool", input, 2, 1, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
@@ -2376,7 +2377,7 @@ TEST_P(Operator, Int8Poolmax) {
   EE_.run({}, {});
   auto result = S->getVariable()->getHandle<int8_t>();
   auto *output = mod_.createVariable(ElemKind::Int8QTy, {2, 2}, 1, 0, "output");
-  output->getHandle<int8_t>() = {4, 5, 7 ,8};
+  output->getHandle<int8_t>() = {4, 5, 7, 8};
   for (size_t i = 0; i < 2 * 2; i++) {
     EXPECT_TRUE(result.raw(i) == output->getHandle<int8_t>().raw(i));
   }
@@ -2617,6 +2618,63 @@ TEST_P(InterpOnly, SparseLengthsSum) {
   };
 
   EXPECT_TRUE(expected.isEqual(result));
+}
+
+/// Stack many slices/reshapes together. Some of these may be turned into tensor
+/// views stacked onto each other.
+TEST_P(Operator, sliceReshape) {
+  auto *X = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "X");
+  auto *resultSX = mod_.createVariable(ElemKind::FloatTy, {1, 3}, "resultSX",
+                                       VisibilityKind::Public);
+  auto *resultSSX = mod_.createVariable(ElemKind::FloatTy, {1, 1}, "resultSSX",
+                                        VisibilityKind::Public);
+  auto *resultRSX = mod_.createVariable(ElemKind::FloatTy, {3}, "resultRSX",
+                                        VisibilityKind::Public);
+  auto *resultRSSX = mod_.createVariable(ElemKind::FloatTy, {1}, "resultRSSX",
+                                         VisibilityKind::Public);
+
+  auto XH = X->getPayload().getHandle();
+  for (size_t i = 0; i < 3; i++) {
+    for (size_t j = 0; j < 3; j++) {
+      XH.at({i, j}) = i * 3 + j;
+    }
+  }
+
+  // Do an assortment of slices/reshapes stacked on top of each other.
+  auto *SX = F_->createSlice("sliceX", X, {2, 0}, {3, 3});
+  auto *RSX = F_->createReshape("reshapeSX", SX, {3});
+  auto *SSX = F_->createSlice("sliceSliceX", SX, {0, 2}, {1, 3});
+  auto *RSSX = F_->createReshape("reshapeSliceSliceX", SSX, {1});
+
+  F_->createSave("saveSX", SX, resultSX);
+  F_->createSave("saveRSX", RSX, resultRSX);
+  F_->createSave("saveSSX", SSX, resultSSX);
+  F_->createSave("saveRSSX", RSSX, resultRSSX);
+
+  EE_.compile(CompilationMode::Infer, F_);
+
+  EE_.run({}, {});
+
+  // Verify the slice has the same data as the original X.
+  auto SXH = resultSX->getPayload().getHandle();
+  for (size_t i = 0; i < 3; i++) {
+    EXPECT_NEAR(SXH.at({0, i}), XH.at({2, i}), 1E-5);
+  }
+
+  // Verify the reshaped slice has the same data as the slice.
+  auto RSXH = resultRSX->getPayload().getHandle();
+  for (size_t i = 0; i < 3; i++) {
+    EXPECT_NEAR(SXH.at({0, i}), RSXH.at({i}), 1E-5);
+  }
+
+  // Verify the slice of the slice has the same data as the slice.
+  auto SSXH = resultSSX->getPayload().getHandle();
+  EXPECT_NEAR(SXH.at({0, 2}), SSXH.at({0, 0}), 1E-5);
+
+  // Verify the reshape of the slice of the slice has the same data as the slice
+  // of the slice.
+  auto RSSXH = resultRSSX->getPayload().getHandle();
+  EXPECT_NEAR(RSSXH.at({0}), SSXH.at({0, 0}), 1E-5);
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
