@@ -423,8 +423,8 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
 
 /// Creates tensor \p T from the input \p in. Note, there is no data associated
 /// with the Tensor. This method makes sure that the tensor is created with the
-/// proper share and element type.
-static void loadShape(const onnx::TypeProto &in, Tensor *T) {
+/// proper shape and element type.
+static void setTensorType(const onnx::TypeProto &in, Tensor *T) {
   std::vector<size_t> dim;
   for (auto d : in.tensor_type().shape().dim()) {
     dim.push_back(d.dim_value());
@@ -444,7 +444,7 @@ static void loadShape(const onnx::TypeProto &in, Tensor *T) {
 void ONNXModelLoader::loadInputs(onnx::GraphProto &net) {
   for (const auto &in : net.input()) {
     Tensor *T = new Tensor();
-    loadShape(in.type(), T);
+    setTensorType(in.type(), T);
     tensors_[in.name()] = T;
   }
 }
