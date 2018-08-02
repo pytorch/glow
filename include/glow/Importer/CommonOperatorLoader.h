@@ -276,6 +276,34 @@ protected:
     addNodeAsOutput(op, R);
   }
 
+  void loadReduceMeanOrSum(llvm::StringRef typeName, const OpType &op,
+                           ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto axes = getShape(dict["axes"]);
+    assert(axes.size() == 1 && "Only supporting single reduction for now.");
+    auto axis = axes[0];
+
+    Node *node = nullptr;
+
+    if (typeName == "ReduceMean") {
+      node = G_.createBatchedReduceMean(opName, in, axis);
+    } else {
+      node = G_.createBatchedReduceAdd(opName, in, axis);
+    }
+
+    bool keepDims = dict.count("keepdims") ? loadInt(dict["keepdims"]) : true;
+
+    // Our batched reduce add does not keep the dim; reshape if necessary.
+    if (keepDims) {
+      std::vector<size_t> shape = node->dims(0);
+      shape.insert(shape.begin() + axis, 1);
+      node = G_.createReshape(opName, node, shape);
+    }
+
+    addNodeAsOutput(op, node);
+  }
+
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns true and creates new operator.
@@ -333,6 +361,10 @@ protected:
     }
     if (typeName == "TopK") {
       loadTopK(op, dict);
+      return true;
+    }
+    if (typeName == "ReduceMean" || typeName == "ReduceSum") {
+      loadReduceMeanOrSum(typeName, op, dict);
       return true;
     }
     return false;
