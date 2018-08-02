@@ -473,6 +473,12 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "ConstantFill" || typeName == "GivenTensorIntFill" ||
+      typeName == "GivenTensorInt64Fill") {
+    loadWeight(op);
+    return;
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
