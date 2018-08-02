@@ -1,5 +1,7 @@
 set(VERIF_FILENAME OpenCLSpecificNodesVerification.h)
-configure_file(${VERIF_FILENAME} ${GLOW_BINARY_DIR}/glow/${VERIF_FILENAME} COPYONLY)
+configure_file(${VERIF_FILENAME}
+               ${GLOW_BINARY_DIR}/glow/${VERIF_FILENAME} COPYONLY)
 
 set(VERIF_FILENAME OpenCLSpecificInstrsVerification.h)
-configure_file(${VERIF_FILENAME} ${GLOW_BINARY_DIR}/glow/${VERIF_FILENAME} COPYONLY)
+configure_file(${VERIF_FILENAME}
+               ${GLOW_BINARY_DIR}/glow/${VERIF_FILENAME} COPYONLY)
