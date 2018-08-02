@@ -2,6 +2,7 @@ find_package(Protobuf REQUIRED)
 
 include_directories(${PROTOBUF_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${GLOW_THIRDPARTY_DIR}/onnx)
 
 add_definitions(-DGOOGLE_PROTOBUF_NO_RTTI)
 
@@ -34,6 +35,7 @@ add_library(Importer
               ProtobufLoader.cpp
               Caffe2.cpp
               ONNX.cpp
+              ONNXIFILoader.cpp 
               ${CAFFE_SRCS}
               ${GLOW_BINARY_DIR}/glow/caffe.pb.h
               ${ONNX_SRCS}

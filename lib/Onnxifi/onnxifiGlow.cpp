@@ -16,7 +16,7 @@
 
 #include "Base.h"
 
-#include "glow/Importer/ONNX.h"
+#include "glow/Importer/ONNXIFILoader.h"
 
 /**
  * This file contains implementation of the onnxifi interface.
@@ -142,13 +142,28 @@ onnxGetBackendCompatibility(onnxBackendID backendID, size_t onnxModelSize,
     return ONNXIFI_STATUS_INVALID_SIZE;
   }
 
+  auto *glowBackendId =
+      reinterpret_cast<glow::onnxifi::BackendIdPtr>(backendID);
+  if (!glowBackendId) {
+    return ONNXIFI_STATUS_INVALID_POINTER;
+  }
+
   glow::Module M;
   auto *F = M.createFunction("check_compatibility");
-  std::unique_ptr<glow::ONNXModelLoader> loader =
-      glow::ONNXModelLoader::parse(onnxModel, onnxModelSize, *F);
+  std::unique_ptr<glow::onnxifi::ModelLoader> loader =
+      glow::onnxifi::ModelLoader::parse(onnxModel, onnxModelSize, *F);
 
+  // TODO: Make better error reporting.
   if (!loader) {
     return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
+  }
+
+  // Make sure that every node from the parsed function F
+  // can be executed by the specific backend.
+  for (const auto &op : F->getNodes()) {
+    if (!glowBackendId->isOpSupported(op)) {
+      return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
+    }
   }
 
   return ONNXIFI_STATUS_SUCCESS;
@@ -210,7 +225,7 @@ onnxSignalEvent(onnxEvent event) {
     return ONNXIFI_STATUS_INVALID_EVENT;
   }
 
-  if (glowEvent->signal()) {
+  if (!glowEvent->signal()) {
     return ONNXIFI_STATUS_INVALID_STATE;
   }
 
@@ -268,7 +283,6 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxInitGraph(
   }
 
   *graph = glowGraph;
-
   return ONNXIFI_STATUS_SUCCESS;
 }
 
@@ -311,7 +325,24 @@ onnxRunGraph(onnxGraph graph, const onnxMemoryFenceV1 *inputFence,
     return ONNXIFI_STATUS_UNSUPPORTED_TAG;
   }
 
-  // Implement graph run procedure.
+  auto initStatus = onnxInitEvent(glowGraph->backend(), &outputFence->event);
+  if (initStatus != ONNXIFI_STATUS_SUCCESS) {
+    return initStatus;
+  }
+
+  // Wait for all inputs to be ready.
+  auto waitStatus = onnxWaitEvent(inputFence->event);
+  if (waitStatus != ONNXIFI_STATUS_SUCCESS) {
+    return waitStatus;
+  }
+
+  // TODO: Implement async graph run procedure. For now run that sync.
+  glowGraph->run();
+
+  auto signalStatus = onnxSignalEvent(outputFence->event);
+  if (signalStatus != ONNXIFI_STATUS_SUCCESS) {
+    return signalStatus;
+  }
 
   return ONNXIFI_STATUS_SUCCESS;
 }

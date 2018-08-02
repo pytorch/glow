@@ -21,9 +21,9 @@
 
 #include "llvm/Support/Casting.h"
 
-#include "onnx/onnx.pb.h"
-#include <google/protobuf/io/coded_stream.h>
-#include <google/protobuf/io/zero_copy_stream_impl.h>
+#include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/zero_copy_stream_impl.h"
+#include "onnx.pb.h"
 
 #include <cassert>
 #include <cstddef>
@@ -426,34 +426,6 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
   return false;
 }
 
-/// Creates tensor \p T from the input \p in. Note, there is no data associated
-/// with the Tensor. This method makes sure that the tensor is created with the
-/// proper shape and element type.
-static void setTensorType(const onnx::TypeProto &in, Tensor *T) {
-  std::vector<size_t> dim;
-  for (auto d : in.tensor_type().shape().dim()) {
-    dim.push_back(d.dim_value());
-  }
-
-  if (in.tensor_type().elem_type() == onnx::TensorProto::FLOAT) {
-    T->reset(ElemKind::FloatTy, dim);
-  } else if (in.tensor_type().elem_type() == onnx::TensorProto::INT64) {
-    // TODO: either switch IndexTy to be 64 bit, or switch to another type here
-    T->reset(ElemKind::IndexTy, dim);
-  } else {
-    llvm_unreachable("Only float and index tensors are supported");
-  }
-}
-
-/// Loads tensor \p T from the input \p in.
-void ONNXModelLoader::loadInputs(onnx::GraphProto &net) {
-  for (const auto &in : net.input()) {
-    Tensor *T = new Tensor();
-    setTensorType(in.type(), T);
-    tensors_[in.name()] = T;
-  }
-}
-
 void ONNXModelLoader::loadInitializers(onnx::GraphProto &net) {
   // Load the network initializaers:
   for (const auto &in : net.initializer()) {
@@ -484,24 +456,6 @@ bool ONNXModelLoader::loadNetwork(onnx::GraphProto &net) {
   }
 
   return true;
-}
-
-std::unique_ptr<ONNXModelLoader> ONNXModelLoader::parse(const void *onnxModel,
-                                                        size_t onnxModelSize,
-                                                        Function &F) {
-  std::unique_ptr<ONNXModelLoader> onnxLoader(new ONNXModelLoader(F));
-
-  onnx::GraphProto modelDef;
-  if (!onnxLoader->loadProto(modelDef, onnxModel, onnxModelSize)) {
-    return nullptr;
-  }
-
-  onnxLoader->loadInputs(modelDef);
-  if (!onnxLoader->loadNetwork(modelDef)) {
-    return nullptr;
-  }
-
-  return onnxLoader;
 }
 
 ONNXModelLoader::ONNXModelLoader(Function &F)
