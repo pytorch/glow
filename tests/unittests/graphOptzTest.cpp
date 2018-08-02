@@ -373,7 +373,7 @@ TEST_F(GraphOptz, poolBelowReluSwapped) {
   Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                                 VisibilityKind::Public, false);
   Node *R = F_->createRELU("relu", A);
-  Node *PL = F_->createPoolMax("pool", R, 1, 10, 20);
+  Node *PL = F_->createMaxPool("pool", R, 1, 10, 20);
   Node *O = F_->createSave("ret", PL);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -391,7 +391,7 @@ TEST_F(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
   Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                                 VisibilityKind::Public, false);
   Node *R = F_->createRELU("relu", A);
-  Node *PL = F_->createPoolAvg("pool", R, 1, 10, 20);
+  Node *PL = F_->createAvgPool("pool", R, 1, 10, 20);
   Node *O = F_->createSave("ret", PL);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -400,7 +400,7 @@ TEST_F(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
 
   // Expecting Pool->Output (no swap).
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
-  EXPECT_TRUE(llvm::isa<PoolAvgNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
+  EXPECT_TRUE(llvm::isa<AvgPoolNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
@@ -409,7 +409,7 @@ TEST_F(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
   Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                                 VisibilityKind::Public, false);
   Node *R = F_->createRELU("relu", A);
-  Node *PL = F_->createPoolMax("pool", R, 1, 10, 20);
+  Node *PL = F_->createMaxPool("pool", R, 1, 10, 20);
   Node *O = F_->createSave("ret", PL);
   F_->createSave("ret", R);
 
@@ -419,7 +419,7 @@ TEST_F(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
 
   // Expecting Pool->Output (no swap).
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
-  EXPECT_TRUE(llvm::isa<PoolMaxNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
+  EXPECT_TRUE(llvm::isa<MaxPoolNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 }

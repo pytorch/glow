@@ -90,9 +90,9 @@ int main(int argc, char **argv) {
                   {"Dest", "Src", "Filter", "Bias"})
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
 
-  // PoolMax version caching XY coordinates to speedup gradient-based
+  // MaxPool version caching XY coordinates to speedup gradient-based
   // computations.
-  BB.newInstr("PoolMaxWithXY")
+  BB.newInstr("MaxPoolWithXY")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("SrcXY", OperandKind::Out)
@@ -102,7 +102,7 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest", "SrcXY"}, {"Dest", "Src"});
 
-  BB.newInstr("PoolMax")
+  BB.newInstr("MaxPool")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::SizeT, "Kernel")
@@ -110,7 +110,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorSizeT, "Pads")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
 
-  BB.newInstr("PoolAvg")
+  BB.newInstr("AvgPool")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::SizeT, "Kernel")

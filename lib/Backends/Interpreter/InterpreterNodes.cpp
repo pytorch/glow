@@ -285,7 +285,7 @@ void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
 //                       Pooling
 //===----------------------------------------------------------------------===//
 template <class T>
-static void fwdPoolMax(Tensor *inW, Tensor *outW, Handle<size_t> *SXY,
+static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<size_t> *SXY,
                        size_t filterSize, size_t stride,
                        llvm::ArrayRef<size_t> pads) {
   ShapeNHWC odim(outW->dims());
@@ -343,34 +343,34 @@ static void fwdPoolMax(Tensor *inW, Tensor *outW, Handle<size_t> *SXY,
   }       // N
 }
 
-void InterpreterFunction::fwdPoolMaxInst(const PoolMaxInst *I) {
+void InterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
 
   if (inW->getType().isQuantizedType()) {
-    fwdPoolMax<int8_t>(inW, outW, nullptr, I->getKernel(), I->getStride(),
+    fwdMaxPool<int8_t>(inW, outW, nullptr, I->getKernel(), I->getStride(),
                        I->getPads());
   } else {
-    fwdPoolMax<float>(inW, outW, nullptr, I->getKernel(), I->getStride(),
+    fwdMaxPool<float>(inW, outW, nullptr, I->getKernel(), I->getStride(),
                       I->getPads());
   }
 }
 
-void InterpreterFunction::fwdPoolMaxWithXYInst(const PoolMaxWithXYInst *I) {
+void InterpreterFunction::fwdMaxPoolWithXYInst(const MaxPoolWithXYInst *I) {
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
   auto SXY = getTensor(I->getSrcXY())->getHandle<size_t>();
 
   if (inW->getType().isQuantizedType()) {
-    fwdPoolMax<int8_t>(inW, outW, &SXY, I->getKernel(), I->getStride(),
+    fwdMaxPool<int8_t>(inW, outW, &SXY, I->getKernel(), I->getStride(),
                        I->getPads());
   } else {
-    fwdPoolMax<float>(inW, outW, &SXY, I->getKernel(), I->getStride(),
+    fwdMaxPool<float>(inW, outW, &SXY, I->getKernel(), I->getStride(),
                       I->getPads());
   }
 }
 
-void InterpreterFunction::fwdPoolAvgInst(const PoolAvgInst *I) {
+void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
   ShapeNHWC odim(I->getDest()->dims());
   ShapeNHWC idim(I->getSrc()->dims());
 
@@ -462,8 +462,8 @@ void InterpreterFunction::fwdPoolAvgInst(const PoolAvgInst *I) {
   }       // N
 }
 
-void InterpreterFunction::fwdPoolMaxWithXYGradInst(
-    const PoolMaxWithXYGradInst *I) {
+void InterpreterFunction::fwdMaxPoolWithXYGradInst(
+    const MaxPoolWithXYGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
@@ -496,7 +496,7 @@ void InterpreterFunction::fwdPoolMaxWithXYGradInst(
   }       // N
 }
 
-void InterpreterFunction::fwdPoolAvgGradInst(const PoolAvgGradInst *I) {
+void InterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());

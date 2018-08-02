@@ -405,7 +405,7 @@ TEST(Graph, nodesWithPredicates) {
 
   auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
-  auto *MP0 = F->createPoolMax("pool1", RL0, 2, 2, 0);
+  auto *MP0 = F->createMaxPool("pool1", RL0, 2, 2, 0);
 
   CV0->setPredicate(pred);
   RL0->setPredicate(pred);

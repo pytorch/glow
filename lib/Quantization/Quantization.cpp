@@ -193,23 +193,23 @@ static Node *quantizeNode(Function *F, Node *node,
         F->createReshape(R->getName(), quantizedInputs[0], R->getDims());
     break;
   }
-  case Kinded::Kind::PoolMaxNodeKind: {
-    auto *P = cast<PoolMaxNode>(node);
+  case Kinded::Kind::MaxPoolNodeKind: {
+    auto *P = cast<MaxPoolNode>(node);
     assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
     assert(qParams.size() == 1 && "Invalid number of quantized outputs");
 
     quantizedNode =
-        F->createPoolMax(node->getName(), quantizedInputs[0], P->getKernel(),
+        F->createMaxPool(node->getName(), quantizedInputs[0], P->getKernel(),
                          P->getStride(), P->getPads());
     break;
   }
-  case Kinded::Kind::PoolAvgNodeKind: {
-    auto *P = cast<PoolAvgNode>(node);
+  case Kinded::Kind::AvgPoolNodeKind: {
+    auto *P = cast<AvgPoolNode>(node);
     assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
     assert(qParams.size() == 1 && "Invalid number of quantized outputs");
 
     quantizedNode =
-        F->createPoolAvg(node->getName(), quantizedInputs[0], P->getKernel(),
+        F->createAvgPool(node->getName(), quantizedInputs[0], P->getKernel(),
                          P->getStride(), P->getPads());
     break;
   }
@@ -334,8 +334,8 @@ static Node *
 postProcessQuantizedNode(Function *F, Node *quantizedNode,
                          llvm::ArrayRef<TensorQuantizationParams> qParams) {
   if (quantizedNode->getKind() == Kinded::Kind::ReluNodeKind ||
-      quantizedNode->getKind() == Kinded::Kind::PoolMaxNodeKind ||
-      quantizedNode->getKind() == Kinded::Kind::PoolAvgNodeKind ||
+      quantizedNode->getKind() == Kinded::Kind::MaxPoolNodeKind ||
+      quantizedNode->getKind() == Kinded::Kind::AvgPoolNodeKind ||
       quantizedNode->getKind() == Kinded::Kind::GatherNodeKind) {
     // These nodes do not change {S,O} of the output, they use the same
     // {S,O} as the input. Make sure that rescale is applied to comply with

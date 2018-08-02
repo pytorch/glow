@@ -1606,8 +1606,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::PoolMaxInstKind: {
-    auto *PM = cast<PoolMaxInst>(I);
+  case Kinded::Kind::MaxPoolInstKind: {
+    auto *PM = cast<MaxPoolInst>(I);
     auto *dest = PM->getDest();
     auto *src = PM->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
@@ -1626,8 +1626,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::PoolMaxWithXYInstKind: {
-    auto *PMXY = cast<PoolMaxWithXYInst>(I);
+  case Kinded::Kind::MaxPoolWithXYInstKind: {
+    auto *PMXY = cast<MaxPoolWithXYInst>(I);
     auto *dest = PMXY->getDest();
     auto *src = PMXY->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
@@ -1648,8 +1648,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::PoolMaxWithXYGradInstKind: {
-    auto *PMG = cast<PoolMaxWithXYGradInst>(I);
+  case Kinded::Kind::MaxPoolWithXYGradInstKind: {
+    auto *PMG = cast<MaxPoolWithXYGradInst>(I);
     auto *srcGrad = PMG->getSrcGrad();
     auto *srcGradPtr = emitValueAddress(builder, srcGrad);
     auto *destGradPtr = emitValueAddress(builder, PMG->getDestGrad());
@@ -1664,8 +1664,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::PoolAvgInstKind: {
-    auto *PA = cast<PoolAvgInst>(I);
+  case Kinded::Kind::AvgPoolInstKind: {
+    auto *PA = cast<AvgPoolInst>(I);
     auto *dest = PA->getDest();
     auto *src = PA->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
@@ -1706,8 +1706,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     }
   }
 
-  case Kinded::Kind::PoolAvgGradInstKind: {
-    auto *PAG = cast<PoolAvgGradInst>(I);
+  case Kinded::Kind::AvgPoolGradInstKind: {
+    auto *PAG = cast<AvgPoolGradInst>(I);
     auto *srcGrad = PAG->getSrcGrad();
     auto *srcGradPtr = emitValueAddress(builder, srcGrad);
     auto *destGradPtr = emitValueAddress(builder, PAG->getDestGrad());

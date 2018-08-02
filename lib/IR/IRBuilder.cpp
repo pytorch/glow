@@ -55,8 +55,8 @@ void IRBuilder::deallocateActiveInstrs() {
 //===----------------------------------------------------------------------===//
 //                        High level operators.
 //===----------------------------------------------------------------------===//
-PoolMaxWithXYInst *
-IRBuilder::createPoolMaxWithXYOp(Value *input, size_t kernel, size_t stride,
+MaxPoolWithXYInst *
+IRBuilder::createMaxPoolWithXYOp(Value *input, size_t kernel, size_t stride,
                                  llvm::ArrayRef<size_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
 
@@ -73,10 +73,10 @@ IRBuilder::createPoolMaxWithXYOp(Value *input, size_t kernel, size_t stride,
       input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
   Value *dest = createAllocActivationInst("pool.res", outTy);
 
-  return createPoolMaxWithXYInst("pool", dest, input, srcXY, kernel, stride,
+  return createMaxPoolWithXYInst("pool", dest, input, srcXY, kernel, stride,
                                  pads);
 }
-PoolAvgInst *IRBuilder::createPoolAvgOp(Value *input, size_t kernel,
+AvgPoolInst *IRBuilder::createAvgPoolOp(Value *input, size_t kernel,
                                         size_t stride,
                                         llvm::ArrayRef<size_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
@@ -87,7 +87,7 @@ PoolAvgInst *IRBuilder::createPoolAvgOp(Value *input, size_t kernel,
       input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
   Value *dest = createAllocActivationInst("pool.res", outTy);
 
-  return createPoolAvgInst("pool", dest, input, kernel, stride, pads);
+  return createAvgPoolInst("pool", dest, input, kernel, stride, pads);
 }
 
 CrossEntropyLossInst *IRBuilder::createCrossEntropyLossOp(Value *p,

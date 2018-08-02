@@ -183,7 +183,7 @@ static void gradientCheckGroupConv(size_t numInputChan, size_t group,
                                 VisibilityKind::Public, false);
 
   Node *O = F->createConv("conv", A, 4, 5, 1, 2, group);
-  O = F->createPoolMax("pool", O, 3, 3, 0);
+  O = F->createMaxPool("pool", O, 3, 3, 0);
   O = F->createFullyConnected("fc", O, numOutputElem);
   O = F->createRELU("relu", O);
   O = F->createRegression("reg", O, Ex);
@@ -220,7 +220,7 @@ TEST_P(InterpreterGrad, gradientCheckAvgPool) {
   auto *Exp = mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
                                  VisibilityKind::Public, false);
 
-  Node *O = F->createPoolAvg("pool", A, 3, 3, 1);
+  Node *O = F->createAvgPool("pool", A, 3, 3, 1);
   O = F->createTanh("tanh", O);
   O = F->createFullyConnected("fc", O, numOutputElem);
   O = F->createRegression("reg", O, Exp);

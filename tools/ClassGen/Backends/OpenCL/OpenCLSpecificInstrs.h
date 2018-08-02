@@ -27,7 +27,7 @@ BB.newBackendSpecificInstr("OCLConvolution")
     .autoIRGen()
     .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter", "Bias"});
 
-BB.newBackendSpecificInstr("OCLPoolAvg")
+BB.newBackendSpecificInstr("OCLAvgPool")
     .addOperand("Dest", OperandKind::Out)
     .addOperand("Src", OperandKind::In)
     .addMember(MemberType::SizeT, "Kernel")
@@ -37,7 +37,7 @@ BB.newBackendSpecificInstr("OCLPoolAvg")
     .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
     .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
-BB.newBackendSpecificInstr("OCLPoolMax")
+BB.newBackendSpecificInstr("OCLMaxPool")
     .addOperand("Dest", OperandKind::Out)
     .addOperand("Src", OperandKind::In)
     .addMember(MemberType::SizeT, "Kernel")

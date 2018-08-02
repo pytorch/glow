@@ -27,7 +27,7 @@ builder (described in the builder Doxygen comments) construct the different
 kinds of fields that the Instruction has.
 
   ```
-  BB.newInstr("PoolAvg")
+  BB.newInstr("AvgPool")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::SizeT, "Kernel")

@@ -380,20 +380,20 @@ TEST_P(BackendCorrectnessTest, minTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST_P(BackendCorrectnessTest, poolAvgTest) {
+TEST_P(BackendCorrectnessTest, AvgPoolTest) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {14, 12, 19, 7});
   inputs.getHandle().initXavier(1, PRNG);
   Tensor out1;
   Tensor out2;
 
-  inferPoolAvgNet(&inputs, &out1, backendKind_);
-  inferPoolAvgNet(&inputs, &out2, BackendKind::Interpreter);
+  inferAvgPoolNet(&inputs, &out1, backendKind_);
+  inferAvgPoolNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST_P(CPUOnly, poolAvgGradTest) {
+TEST_P(CPUOnly, AvgPoolGradTest) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {5, 7, 6, 3});
   Tensor weights(ElemKind::FloatTy, {126, 72});
@@ -413,28 +413,28 @@ TEST_P(CPUOnly, poolAvgGradTest) {
   Tensor out1(ElemKind::FloatTy, shape2);
   Tensor out2(ElemKind::FloatTy, shape2);
 
-  trainPoolAvgNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out1,
+  trainAvgPoolNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out1,
                   backendKind_);
-  trainPoolAvgNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
+  trainAvgPoolNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
                   BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST_P(BackendCorrectnessTest, poolMaxTest) {
+TEST_P(BackendCorrectnessTest, MaxPoolTest) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {5, 53, 71, 14});
   inputs.getHandle().initXavier(1, PRNG);
   Tensor out1;
   Tensor out2;
 
-  inferPoolMaxNet(&inputs, &out1, backendKind_);
-  inferPoolMaxNet(&inputs, &out2, BackendKind::Interpreter);
+  inferMaxPoolNet(&inputs, &out1, backendKind_);
+  inferMaxPoolNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST_P(BackendCorrectnessTest, poolMaxGradTest) {
+TEST_P(BackendCorrectnessTest, MaxPoolGradTest) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {4, 8, 7, 2});
   Tensor weights(ElemKind::FloatTy, {112, 84});
@@ -454,9 +454,9 @@ TEST_P(BackendCorrectnessTest, poolMaxGradTest) {
   Tensor out1(ElemKind::FloatTy, shape2);
   Tensor out2(ElemKind::FloatTy, shape2);
 
-  trainPoolMaxNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out1,
+  trainMaxPoolNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out1,
                   backendKind_);
-  trainPoolMaxNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
+  trainMaxPoolNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
                   BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
