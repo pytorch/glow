@@ -258,6 +258,24 @@ protected:
     nodeValueByName_[op.output(0)] = NodeValue(in, 0);
   }
 
+  void loadTopK(const OpType &op, ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto k = loadInt(dict["k"]);
+
+    int axis = dict.count("axis") ? loadInt(dict["axis"]) : -1;
+    unsigned lastDim = in->dims(0).size() - 1;
+    if (axis == -1) {
+      axis = lastDim;
+    }
+
+    assert(axis == lastDim &&
+           "Currently only support axis being last dimension.");
+
+    auto *R = G_.createTopK(opName, in, k);
+    addNodeAsOutput(op, R);
+  }
+
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns true and creates new operator.
@@ -311,6 +329,10 @@ protected:
     }
     if (typeName == "Dropout") {
       loadDropout(op, dict);
+      return true;
+    }
+    if (typeName == "TopK") {
+      loadTopK(op, dict);
       return true;
     }
     return false;
