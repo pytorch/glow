@@ -16,6 +16,8 @@
 #ifndef GLOW_SUPPORT_MEMORY_H
 #define GLOW_SUPPORT_MEMORY_H
 
+#include "glow/Support/Compiler.h"
+
 #include <cassert>
 #include <cstdlib>
 
@@ -31,9 +33,8 @@ inline void *alignedAlloc(size_t size, size_t align) {
          "Alignment is not a multiple of the machine word size.");
   void *ptr;
   int res = posix_memalign(&ptr, align, size);
-  assert(res == 0 && "posix_memalign failed");
-  (void)res;
-  assert((size_t)ptr % align == 0 && "Alignment failed");
+  GLOW_ASSERT(res == 0 && "posix_memalign failed");
+  GLOW_ASSERT((size_t)ptr % align == 0 && "Alignment failed");
   return ptr;
 }
 
