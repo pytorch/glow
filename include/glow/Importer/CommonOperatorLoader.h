@@ -92,16 +92,20 @@ protected:
   void loadSoftmax(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
 
-    auto softmaxExpected =
-        getNodeValueOrCreateVariableByName("softmax_expected");
-
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
+
+    // We do not do training right now on loaded protos. C2 and ONNX do not even
+    // have an option for a selected input anyway. So I am creating this as a
+    // placeholder which goes unused during inference.
+    auto selected = G_.getParent()->createVariable(
+        ElemKind::IndexTy, {in->dims(0)[0], 1}, "selected",
+        VisibilityKind::Private, false);
 
     // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
     // softmax function. This is similar to a bitcast operation.
     in = G_.createFlatten("flatten", in, 1);
 
-    auto *node = G_.createSoftMax(opName, in, softmaxExpected);
+    auto *node = G_.createSoftMax(opName, in, selected);
     addNodeAsOutput(op, node);
   }
 

@@ -137,22 +137,20 @@ int main(int argc, char **argv) {
 
   // Create the model based on the input format, and set the Softmax save node
   // expected to come at the end of image inference.
-  Tensor expectedSoftmax(ElemKind::IndexTy, {1, 1});
   SaveNode *SM;
   Variable *i0;
   Variable *i1;
   if (!loader.getCaffe2NetDescFilename().empty()) {
     caffe2ModelLoader LD(
         loader.getCaffe2NetDescFilename(), loader.getCaffe2NetWeightFilename(),
-        {"data", "gpu_0/data", "softmax_expected"},
-        {&data, &data, &expectedSoftmax}, *loader.getFunction());
+        {"data", "gpu_0/data"}, {&data, &data}, *loader.getFunction());
     SM = LD.getSingleOutput();
     i0 = LD.getVariableByName("gpu_0/data");
     i1 = LD.getVariableByName("data");
   } else {
     ONNXModelLoader LD(loader.getOnnxModelFilename(),
-                       {"data_0", "gpu_0/data_0", "softmax_expected"},
-                       {&data, &data, &expectedSoftmax}, *loader.getFunction());
+                       {"data_0", "gpu_0/data_0"}, {&data, &data},
+                       *loader.getFunction());
     SM = LD.getSingleOutput();
     i0 = LD.getVariableByName("gpu_0/data_0");
     i1 = LD.getVariableByName("data_0");
