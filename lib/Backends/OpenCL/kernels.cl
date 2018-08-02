@@ -864,7 +864,7 @@ __kernel void convolutiongradW(__global void *mem,
                     filterSize, stride, pads, srcDim, destGradDim, filterGradDim);
 }
 
-__kernel void poolmaxK(__global float *dest, __global float *src,
+__kernel void maxpoolK(__global float *dest, __global float *src,
                        cl_uint32_t filterSize, cl_uint32_t stride,
                        PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
   size_t ax = get_global_id(0);
@@ -905,13 +905,13 @@ __kernel void poolmaxK(__global float *dest, __global float *src,
   } // N
 }
 
-__kernel void poolmaxW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
+__kernel void maxpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
                        cl_uint32_t filterSize, cl_uint32_t stride,
                        PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
-  poolmaxK(&mem[dest], &mem[src], filterSize, stride, pads, odim, idim);
+  maxpoolK(&mem[dest], &mem[src], filterSize, stride, pads, odim, idim);
 }
 
-__kernel void oclpoolmaxK(__global float *dest, __global float *src,
+__kernel void oclmaxpoolK(__global float *dest, __global float *src,
                        cl_uint32_t filterSize, cl_uint32_t stride,
                        PaddingTLBR pads, ShapeNCHW odim, ShapeNCHW idim) {
   size_t ax = get_global_id(0);
@@ -952,13 +952,13 @@ __kernel void oclpoolmaxK(__global float *dest, __global float *src,
   } // N
 }
 
-__kernel void oclpoolmaxW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
+__kernel void oclmaxpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
                        cl_uint32_t filterSize, cl_uint32_t stride,
                        PaddingTLBR pads, ShapeNCHW odim, ShapeNCHW idim) {
-  oclpoolmaxK(&mem[dest], &mem[src], filterSize, stride, pads, odim, idim);
+  oclmaxpoolK(&mem[dest], &mem[src], filterSize, stride, pads, odim, idim);
 }
 
-__kernel void poolmaxwithxyK(__global float *dest, __global float *src,
+__kernel void maxpoolwithxyK(__global float *dest, __global float *src,
                              __global cl_uint64_t *srcXY, cl_uint32_t filterSize,
                              cl_uint32_t stride, PaddingTLBR pads,
                              ShapeNHWC odim, ShapeNHWC idim) {
@@ -1008,16 +1008,16 @@ __kernel void poolmaxwithxyK(__global float *dest, __global float *src,
   } // N
 }
 
-__kernel void poolmaxwithxyW(__global void *mem, cl_uint32_t dest,
+__kernel void maxpoolwithxyW(__global void *mem, cl_uint32_t dest,
                              cl_uint32_t src, cl_uint32_t srcXY,
                              cl_uint32_t filterSize, cl_uint32_t stride,
                              PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
-  poolmaxwithxyK(&mem[dest], &mem[src], &mem[srcXY], filterSize, stride, pads,
+  maxpoolwithxyK(&mem[dest], &mem[src], &mem[srcXY], filterSize, stride, pads,
                  odim, idim);
 }
 
 __kernel void
-poolmaxwithxygradK(__global float *dest, __global cl_uint64_t *srcXY,
+maxpoolwithxygradK(__global float *dest, __global cl_uint64_t *srcXY,
                    __global float *destGrad, __global float *srcGrad,
                    cl_uint32_t filterSize, cl_uint32_t stride, PaddingTLBR pads,
                    ShapeNHWC srcGradDim, ShapeNHWC destGradDim) {
@@ -1047,16 +1047,16 @@ poolmaxwithxygradK(__global float *dest, __global cl_uint64_t *srcXY,
   }     // C
 }
 
-__kernel void poolmaxwithxygradW(__global void *mem, cl_uint32_t dest,
+__kernel void maxpoolwithxygradW(__global void *mem, cl_uint32_t dest,
                                  cl_uint32_t srcXY, cl_uint32_t destGrad,
                                  cl_uint32_t srcGrad, cl_uint32_t filterSize,
                                  cl_uint32_t stride, PaddingTLBR pads,
                                  ShapeNHWC srcGradDim, ShapeNHWC destDim) {
-  poolmaxwithxygradK(&mem[dest], &mem[srcXY], &mem[destGrad], &mem[srcGrad],
+  maxpoolwithxygradK(&mem[dest], &mem[srcXY], &mem[destGrad], &mem[srcGrad],
                      filterSize, stride, pads, srcGradDim, destDim);
 }
 
-__kernel void poolavgK(__global float *dest, __global float *src,
+__kernel void avgpoolK(__global float *dest, __global float *src,
                        cl_uint32_t filterSize, cl_uint32_t stride,
                        PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
   size_t ax = get_global_id(0);
@@ -1092,13 +1092,13 @@ __kernel void poolavgK(__global float *dest, __global float *src,
   } // N
 }
 
-__kernel void poolavgW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
+__kernel void avgpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
                        cl_uint32_t filterSize, cl_uint32_t stride,
                        PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
-  poolavgK(&mem[dest], &mem[src], filterSize, stride, pads, odim, idim);
+  avgpoolK(&mem[dest], &mem[src], filterSize, stride, pads, odim, idim);
 }
 
-__kernel void oclpoolavgK(__global float *dest, __global float *src,
+__kernel void oclavgpoolK(__global float *dest, __global float *src,
                        cl_uint32_t filterSize, cl_uint32_t stride,
                        PaddingTLBR pads, ShapeNCHW odim, ShapeNCHW idim) {
   size_t ax = get_global_id(0);
@@ -1134,10 +1134,10 @@ __kernel void oclpoolavgK(__global float *dest, __global float *src,
   } // N
 }
 
-__kernel void oclpoolavgW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
+__kernel void oclavgpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
                        cl_uint32_t filterSize, cl_uint32_t stride,
                        PaddingTLBR pads, ShapeNCHW odim, ShapeNCHW idim) {
-  oclpoolavgK(&mem[dest], &mem[src], filterSize, stride, pads, odim, idim);
+  oclavgpoolK(&mem[dest], &mem[src], filterSize, stride, pads, odim, idim);
 }
 
 /// Macro to define a kernel for transpose operations. The body of

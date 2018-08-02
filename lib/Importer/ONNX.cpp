@@ -306,9 +306,9 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
 
     Node *node = nullptr;
     if (typeName == "MaxPool") {
-      node = G_.createPoolMax(opName, tr, kernel, stride, pads);
+      node = G_.createMaxPool(opName, tr, kernel, stride, pads);
     } else {
-      node = G_.createPoolAvg(opName, tr, kernel, stride, pads);
+      node = G_.createAvgPool(opName, tr, kernel, stride, pads);
     }
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);
@@ -327,7 +327,7 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     size_t kernel = in->dims(0)[2];
     std::vector<size_t> pads = getPads(dict);
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
-    Node *node = G_.createPoolAvg(opName, tr, kernel, stride, pads);
+    Node *node = G_.createAvgPool(opName, tr, kernel, stride, pads);
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);
     return true;

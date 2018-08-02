@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
                     "Bias tensors, as well as provided Kernel, Stride, Pads, "
                     "and Group.");
 
-  BB.newNode("PoolMax")
+  BB.newNode("MaxPool")
       .addInput("Input")
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")
@@ -80,7 +80,7 @@ int main(int argc, char **argv) {
       .setDocstring("Performs a Max Pool operation on the Input given provided "
                     "Kernel, Stride, and Pads.");
 
-  BB.newNode("PoolAvg")
+  BB.newNode("AvgPool")
       .addInput("Input")
       .addMember(MemberType::SizeT, "Kernel")
       .addMember(MemberType::SizeT, "Stride")

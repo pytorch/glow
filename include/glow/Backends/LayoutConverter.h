@@ -57,7 +57,7 @@ Node *convertPoolToNCHWPool(PoolNode *PN, Function *F) {
   auto *NPN =
       F->addNode(new NCHWPoolNode(PN->getName(), outTy, NI, PN->getKernel(),
                                   PN->getStride(), PN->getPads()));
-  auto NR = F->createTranspose("poolmax.result", NPN, NCHW2NHWC);
+  auto NR = F->createTranspose("maxpool.result", NPN, NCHW2NHWC);
 
   return NR;
 }

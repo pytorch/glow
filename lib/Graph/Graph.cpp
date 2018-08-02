@@ -462,7 +462,7 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
   return createConv(name, input, depth, kernel, stride, pads, group);
 }
 
-PoolMaxNode *Function::createPoolMax(llvm::StringRef name, NodeValue input,
+MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
                                      size_t kernel, size_t stride,
                                      llvm::ArrayRef<size_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
@@ -477,16 +477,16 @@ PoolMaxNode *Function::createPoolMax(llvm::StringRef name, NodeValue input,
   auto OT = getParent()->uniqueTypeWithNewShape(
       input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
 
-  return addNode(new PoolMaxNode(name, OT, input, kernel, stride, pads));
+  return addNode(new MaxPoolNode(name, OT, input, kernel, stride, pads));
 }
 
-PoolMaxNode *Function::createPoolMax(llvm::StringRef name, NodeValue input,
+MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
                                      size_t kernel, size_t stride, size_t pad) {
   llvm::SmallVector<size_t, 4> pads = {pad, pad, pad, pad};
-  return createPoolMax(name, input, kernel, stride, pads);
+  return createMaxPool(name, input, kernel, stride, pads);
 }
 
-PoolAvgNode *Function::createPoolAvg(llvm::StringRef name, NodeValue input,
+AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
                                      size_t kernel, size_t stride,
                                      llvm::ArrayRef<size_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
@@ -501,13 +501,13 @@ PoolAvgNode *Function::createPoolAvg(llvm::StringRef name, NodeValue input,
   auto OT = getParent()->uniqueTypeWithNewShape(
       input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
 
-  return addNode(new PoolAvgNode(name, OT, input, kernel, stride, pads));
+  return addNode(new AvgPoolNode(name, OT, input, kernel, stride, pads));
 }
 
-PoolAvgNode *Function::createPoolAvg(llvm::StringRef name, NodeValue input,
+AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
                                      size_t kernel, size_t stride, size_t pad) {
   llvm::SmallVector<size_t, 4> pads = {pad, pad, pad, pad};
-  return createPoolAvg(name, input, kernel, stride, pads);
+  return createAvgPool(name, input, kernel, stride, pads);
 }
 
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,

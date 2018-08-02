@@ -1500,8 +1500,8 @@ void performPeepholeOptimizations(IRFunction &M) {
     auto cur = it;
     auto *I = &*cur;
     it = std::next(it);
-    // PoolMaxWithXYInst -> PoolMaxInst.
-    if (auto *PMI = dyn_cast<PoolMaxWithXYInst>(I)) {
+    // MaxPoolWithXYInst -> MaxPoolInst.
+    if (auto *PMI = dyn_cast<MaxPoolWithXYInst>(I)) {
       auto *SrcXY = PMI->getSrcXY();
       // Optimize only if the cache is an allocation and
       // it has exactly 2 users: the current instruction and
@@ -1509,7 +1509,7 @@ void performPeepholeOptimizations(IRFunction &M) {
       if (!isa<AllocActivationInst>(SrcXY) || SrcXY->getNumUsers() != 2)
         continue;
 
-      auto *newI = B.createPoolMaxInst(PMI->getName(), PMI->getDest(),
+      auto *newI = B.createMaxPoolInst(PMI->getName(), PMI->getDest(),
                                        PMI->getSrc(), PMI->getKernel(),
                                        PMI->getStride(), PMI->getPads());
       it = M.moveInstruction(I, newI);

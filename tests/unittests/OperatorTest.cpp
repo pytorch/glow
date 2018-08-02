@@ -2309,7 +2309,7 @@ TEST_P(Operator, NonSquarePaddingAveragePool) {
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
-  auto *Pool = F_->createPoolAvg("pool", input, 2, 1, {0, 2, 1, 3});
+  auto *Pool = F_->createAvgPool("pool", input, 2, 1, {0, 2, 1, 3});
   auto *S = F_->createSave("save", Pool);
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
@@ -2324,7 +2324,7 @@ TEST_P(Operator, NonSquarePaddingAveragePool) {
     }
 
   Function *refF = mod_.createFunction("mainRef");
-  Pool = refF->createPoolAvg("pool1", input1, 2, 1, 0);
+  Pool = refF->createAvgPool("pool1", input1, 2, 1, 0);
   S = refF->createSave("save1", Pool);
   EE_.compile(CompilationMode::Infer, refF);
   EE_.run({}, {});
@@ -2343,7 +2343,7 @@ TEST_P(Operator, NonSquarePaddingMaxPool) {
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
-  auto *Pool = F_->createPoolMax("pool", input, 2, 1, {0, 2, 1, 3});
+  auto *Pool = F_->createMaxPool("pool", input, 2, 1, {0, 2, 1, 3});
   auto *S = F_->createSave("save", Pool);
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
@@ -2358,7 +2358,7 @@ TEST_P(Operator, NonSquarePaddingMaxPool) {
     }
 
   Function *refF = mod_.createFunction("mainRef");
-  Pool = refF->createPoolMax("pool1", input1, 2, 1, 0);
+  Pool = refF->createMaxPool("pool1", input1, 2, 1, 0);
   S = refF->createSave("save1", Pool);
   EE_.compile(CompilationMode::Infer, refF);
   EE_.run({}, {});

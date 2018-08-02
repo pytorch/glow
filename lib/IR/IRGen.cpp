@@ -152,10 +152,10 @@ public:
       registerIR(CG->getGradOfInputNamedBias(), biasG);
       break;
     }
-    case glow::Kinded::Kind::PoolMaxNodeKind: {
-      auto *P = cast<PoolMaxNode>(N);
+    case glow::Kinded::Kind::MaxPoolNodeKind: {
+      auto *P = cast<MaxPoolNode>(N);
       auto *in = valueForNode(P->getInput());
-      auto *V = builder_.createPoolMaxWithXYOp(in, P->getKernel(),
+      auto *V = builder_.createMaxPoolWithXYOp(in, P->getKernel(),
                                                P->getStride(), P->getPads());
       Value *dest = V->getDest();
       nodeToInstr_[N] = V;
@@ -163,8 +163,8 @@ public:
       registerIR(N, dest);
       break;
     }
-    case glow::Kinded::Kind::PoolMaxGradNodeKind: {
-      auto *PG = cast<PoolMaxGradNode>(N);
+    case glow::Kinded::Kind::MaxPoolGradNodeKind: {
+      auto *PG = cast<MaxPoolGradNode>(N);
 
       auto poolOut = PG->getOriginalOutputForResult();
       auto *outW = valueForNode(poolOut);
@@ -176,16 +176,16 @@ public:
       // Find the original pool instruction.
       assert(nodeToInstr_.count(poolOut) &&
              "Pool IRgen did not register itself");
-      auto *PI = cast<PoolMaxWithXYInst>(nodeToInstr_[poolOut.getNode()]);
+      auto *PI = cast<MaxPoolWithXYInst>(nodeToInstr_[poolOut.getNode()]);
 
-      builder_.createPoolMaxWithXYGradInst(N->getName(), outW, PI->getSrcXY(),
+      builder_.createMaxPoolWithXYGradInst(N->getName(), outW, PI->getSrcXY(),
                                            outG, inG, PG->getKernel(),
                                            PG->getStride(), PG->getPads());
       registerIR(PG->getGradOfInputNamedInput(), inG);
       break;
     }
-    case glow::Kinded::Kind::PoolAvgGradNodeKind: {
-      auto *PG = cast<PoolAvgGradNode>(N);
+    case glow::Kinded::Kind::AvgPoolGradNodeKind: {
+      auto *PG = cast<AvgPoolGradNode>(N);
 
       auto poolOut = PG->getOriginalOutputForResult();
       auto *outW = valueForNode(poolOut);
@@ -194,7 +194,7 @@ public:
       auto *inG = builder_.createAllocActivationInst("pool.outG",
                                                      PG->getInput().getType());
 
-      builder_.createPoolAvgGradInst(N->getName(), outW, outG, inG,
+      builder_.createAvgPoolGradInst(N->getName(), outW, outG, inG,
                                      PG->getKernel(), PG->getStride(),
                                      PG->getPads());
       registerIR(PG->getGradOfInputNamedInput(), inG);

@@ -214,9 +214,9 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     Node *node = nullptr;
     if (typeName == "MaxPool") {
-      node = G_.createPoolMax(opName, tr, kernel, stride, pads);
+      node = G_.createMaxPool(opName, tr, kernel, stride, pads);
     } else {
-      node = G_.createPoolAvg(opName, tr, kernel, stride, pads);
+      node = G_.createAvgPool(opName, tr, kernel, stride, pads);
     }
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);

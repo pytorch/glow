@@ -26,7 +26,7 @@ void OCLConvolutionNode::verify() const {
   assert(exp == odim && "Invalid output dimensions");
 }
 
-void OCLPoolAvgNode::verify() const {}
+void OCLAvgPoolNode::verify() const {}
 
-void OCLPoolMaxNode::verify() const {}
+void OCLMaxPoolNode::verify() const {}
 #endif // GLOW_WITH_OPENCL

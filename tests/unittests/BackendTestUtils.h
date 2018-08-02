@@ -67,16 +67,16 @@ void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
 void inferMinNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                  BackendKind kind);
 
-void inferPoolAvgNet(Tensor *inputs, Tensor *out, BackendKind kind);
+void inferAvgPoolNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void trainPoolAvgNet(Tensor *inputs, Tensor *weights, Tensor *bias,
+void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      Tensor *selected, llvm::ArrayRef<size_t> shape1,
                      llvm::ArrayRef<size_t> shape2, Tensor *out,
                      BackendKind kind);
 
-void inferPoolMaxNet(Tensor *inputs, Tensor *out, BackendKind kind);
+void inferMaxPoolNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void trainPoolMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
+void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      Tensor *selected, llvm::ArrayRef<size_t> shape1,
                      llvm::ArrayRef<size_t> shape2, Tensor *out,
                      BackendKind kind);

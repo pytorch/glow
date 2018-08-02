@@ -959,7 +959,7 @@ void OpenCLFunction::execute() {
       continue;
     }
 
-    if (auto *PM = dyn_cast<PoolMaxInst>(&I)) {
+    if (auto *PM = dyn_cast<MaxPoolInst>(&I)) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
@@ -981,7 +981,7 @@ void OpenCLFunction::execute() {
       continue;
     }
 
-    if (auto *PM = dyn_cast<PoolMaxWithXYInst>(&I)) {
+    if (auto *PM = dyn_cast<MaxPoolWithXYInst>(&I)) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
@@ -1003,7 +1003,7 @@ void OpenCLFunction::execute() {
       continue;
     }
 
-    if (auto *PMG = dyn_cast<PoolMaxWithXYGradInst>(&I)) {
+    if (auto *PMG = dyn_cast<MaxPoolWithXYGradInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
@@ -1026,7 +1026,7 @@ void OpenCLFunction::execute() {
       continue;
     }
 
-    if (auto *PA = dyn_cast<PoolAvgInst>(&I)) {
+    if (auto *PA = dyn_cast<AvgPoolInst>(&I)) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
@@ -1173,7 +1173,7 @@ void OpenCLFunction::execute() {
       continue;
     }
 
-    if (auto PA = dyn_cast<OCLPoolAvgInst>(&I)) {
+    if (auto PA = dyn_cast<OCLAvgPoolInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
@@ -1193,7 +1193,7 @@ void OpenCLFunction::execute() {
       continue;
     }
 
-    if (auto *PM = dyn_cast<OCLPoolMaxInst>(&I)) {
+    if (auto *PM = dyn_cast<OCLMaxPoolInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);

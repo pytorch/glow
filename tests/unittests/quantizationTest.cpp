@@ -158,12 +158,12 @@ static Function *createSimpleGraphForQuantization(Module *M, Variable *A,
   fillStableRandomData(filter->getPayload().getHandle(), 1000, 1);
 
   auto *RL = F->createRELU("relu", CV);
-  auto *MP = F->createPoolMax("maxPool", RL, 2, 2, 1);
+  auto *MP = F->createMaxPool("maxPool", RL, 2, 2, 1);
   // Just add noop transpose.
   auto *T = F->createTranspose("transpose", MP, {0, 1, 2, 3});
   // Noop reshape, make sure conversion quantization procedure works well.
   auto *R = F->createReshape("reshape", T, T->getResult().dims());
-  auto *AP = F->createPoolAvg("avgPool", R, 2, 2, 1);
+  auto *AP = F->createAvgPool("avgPool", R, 2, 2, 1);
 
   FullyConnectedNode *FC = F->createFullyConnected("fc", AP, 10);
 
