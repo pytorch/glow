@@ -560,7 +560,7 @@ void OpenCLFunction::execute() {
       size_t global;
       if (I.isDataParallel()) {
         global = I.getOperand(0).first->getType()->size();
-        // The check for quantization below is a temporary workaround until the 
+        // The check for quantization below is a temporary workaround until the
         // corresponding kernels are implemented for the quantized operations.
         if (!isQuantized) {
           if (global % 16 == 0) {
