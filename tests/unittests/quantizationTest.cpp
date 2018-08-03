@@ -35,6 +35,12 @@ protected:
   ExecutionEngine backendSpecificEE{GetParam()};
 };
 
+class Operator : public ::testing::TestWithParam<BackendKind> {
+protected:
+  ExecutionEngine interpreterEE{BackendKind::Interpreter};
+  ExecutionEngine backendSpecificEE{GetParam()};
+};
+
 bool operator==(const NodeQuantizationInfo &lhs,
                 const NodeQuantizationInfo &rhs) {
   return lhs.Scale() == rhs.Scale() && lhs.Offset() == rhs.Offset() &&
@@ -182,7 +188,7 @@ static Function *createSimpleGraphForQuantization(Module *M, Variable *A,
   return F;
 }
 
-TEST_P(Quantization, end2end) {
+TEST_P(Operator, end2end) {
   auto *mod = &interpreterEE.getModule();
 
   auto *A = mod->createVariable(ElemKind::FloatTy, {1, 32, 32, 2}, "A",
@@ -517,9 +523,16 @@ TEST(Quantization, chooseQuantizationSymmetric) {
 
 INSTANTIATE_TEST_CASE_P(Interpreter, Quantization,
                         ::testing::Values(BackendKind::Interpreter));
+INSTANTIATE_TEST_CASE_P(Interpreter, Operator,
+                        ::testing::Values(BackendKind::Interpreter));
 
 #ifdef GLOW_WITH_CPU
 INSTANTIATE_TEST_CASE_P(JIT, Quantization, ::testing::Values(BackendKind::CPU));
+INSTANTIATE_TEST_CASE_P(JIT, Operator, ::testing::Values(BackendKind::CPU));
+#endif // GLOW_WITH_CPU
+
+#ifdef GLOW_WITH_OPENCL
+INSTANTIATE_TEST_CASE_P(OpenCL, Operator, ::testing::Values(BackendKind::OpenCL));
 #endif // GLOW_WITH_CPU
 
 } // namespace glow
