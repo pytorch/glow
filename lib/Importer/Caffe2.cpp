@@ -473,6 +473,16 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "ScatterAssign") {
+    auto data = getNodeValueOrCreateVariableByName(op.input(0));
+    auto indices = getNodeValueOrCreateVariableByName(op.input(1));
+    auto slices = getNodeValueOrCreateVariableByName(op.input(2));
+
+    Node *SAN = G_.createScatterAssign(opName, data, indices, slices);
+    addNodeAsOutput(op, SAN);
+    return;
+  }
+
   if (typeName == "ConstantFill" || typeName == "GivenTensorIntFill" ||
       typeName == "GivenTensorInt64Fill") {
     loadWeight(op);
