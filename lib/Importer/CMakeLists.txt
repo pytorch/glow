@@ -22,12 +22,12 @@ PROTOBUF_GENERATE_CPP(ONNX_SRCS
 # Please don't optimize away the "useless" copies!
 add_custom_command(
   OUTPUT ${GLOW_BINARY_DIR}/glow/caffe.pb.h
-  COMMAND cp ${CAFFE_HDRS} ${GLOW_BINARY_DIR}/glow/caffe.pb.h
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CAFFE_HDRS} ${GLOW_BINARY_DIR}/glow/caffe.pb.h
   DEPENDS ${CAFFE_HDRS})
 
 add_custom_command(
   OUTPUT ${GLOW_BINARY_DIR}/onnx/onnx.pb.h
-  COMMAND cp ${ONNX_HDRS} ${GLOW_BINARY_DIR}/onnx/onnx.pb.h
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ONNX_HDRS} ${GLOW_BINARY_DIR}/onnx/onnx.pb.h
   DEPENDS ${ONNX_HDRS})
 
 add_library(Importer
