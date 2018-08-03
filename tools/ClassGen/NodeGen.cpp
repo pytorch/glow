@@ -37,7 +37,9 @@ int main(int argc, char **argv) {
   //                    Input/Output nodes
   //===--------------------------------------------------------------------===//
 
+  BB.declareNode("Storage");
   BB.declareNode("Variable");
+  BB.declareNode("Placeholder");
 
   BB.newNode("Save")
       .addInput("Input")

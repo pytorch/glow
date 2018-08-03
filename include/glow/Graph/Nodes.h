@@ -28,7 +28,43 @@
 
 namespace glow {
 
-class Variable : public Node {
+// Storage is the base class for Variables, which are bound to tensors, and
+// Placeholder nodes which are unbound.
+class Storage : public Node {
+public:
+  Storage(Kinded::Kind k, llvm::StringRef name) : Node(k, name) {}
+
+  NodeValue getOutput() { return getNthResult(0); }
+
+  /// Declare the standard Node methods.
+  /// @{
+  void visit(Node *parent, NodeWalker *visitor);
+  void visit(const Node *parent, NodeWalker *visitor) const;
+  bool isEqual(const Storage &other) const;
+  unsigned getNumInputs() const;
+  std::string getInputName(unsigned idx) const;
+  NodeValue getNthInput(unsigned idx);
+  llvm::StringRef getOutputName(unsigned idx) const;
+  bool hasSideEffects() const;
+  Node *clone() const;
+  /// @}
+
+  /// \returns result type of the variable.
+  TypeRef getType() const { return Node::getType(0); }
+
+  /// Methods that forward to the result type (that must be valid):
+  /// @{
+  ElemKind getElementType() const { return getType()->getElementType(); };
+  llvm::ArrayRef<size_t> dims() const { return getType()->dims(); };
+  /// @}
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::VariableKind ||
+           k->getKind() == Kinded::Kind::PlaceholderKind;
+  }
+};
+
+class Variable : public Storage {
   /// Specifies if the variable is trainable.
   bool isTrainable_;
   /// Specifies the visibility of the variable.
@@ -40,14 +76,14 @@ public:
   /// Create a new variable and initialize its payload.
   Variable(llvm::StringRef name, TypeRef Ty, VisibilityKind visibility,
            bool isTrainable)
-      : Node(Kinded::Kind::VariableKind, name), isTrainable_(isTrainable),
+      : Storage(Kinded::Kind::VariableKind, name), isTrainable_(isTrainable),
         visibility_(visibility) {
     addResult(Ty);
     payload_.reset(*Ty);
   }
 
   Variable(llvm::StringRef name, VisibilityKind visibility, Tensor &&payload)
-      : Node(Kinded::Kind::VariableKind, name), isTrainable_(false),
+      : Storage(Kinded::Kind::VariableKind, name), isTrainable_(false),
         visibility_(visibility), payload_(std::move(payload)) {
     addResult(&payload_.getType());
   }
@@ -62,15 +98,6 @@ public:
     return k->getKind() == Kinded::Kind::VariableKind;
   }
 
-  /// \returns result type of the variable.
-  TypeRef getType() const { return Node::getType(0); }
-
-  /// Methods that forward to the result type (that must be valid):
-  /// @{
-  ElemKind getElementType() const { return getType()->getElementType(); };
-  llvm::ArrayRef<size_t> dims() const { return getType()->dims(); };
-  /// @}
-
   /// \returns the visibility of the variable.
   VisibilityKind getVisibilityKind() const { return visibility_; }
 
@@ -84,22 +111,27 @@ public:
 
   void assign(const Tensor *t) { payload_.assign(t); }
 
-  /// \returns the output NodeValue from the Variable. Variables only have a
-  /// single output.
-  NodeValue getOutput() { return getNthResult(0); }
-
-  unsigned getNumInputs() const;
-  std::string getInputName(unsigned idx) const;
-  NodeValue getNthInput(unsigned idx);
-  llvm::StringRef getOutputName(unsigned idx) const;
-  bool hasSideEffects() const;
   std::string getDebugDesc() const;
-  Node *clone() const;
 
-  void visit(Node *parent, NodeWalker *visitor);
-  void visit(const Node *parent, NodeWalker *visitor) const;
+  llvm::hash_code getHash() const;
+};
 
-  bool isEqual(const Variable &other) const;
+/// Placeholder nodes are unbound-storage. The content tensors are attached to
+/// this node at runtime. Placeholders are used as inputs and output nodes to
+/// the network.
+class Placeholder : public Storage {
+public:
+  /// Create a new placeholder variable.
+  Placeholder(llvm::StringRef name, TypeRef Ty)
+      : Storage(Kinded::Kind::PlaceholderKind, name) {
+    addResult(Ty);
+  }
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::PlaceholderKind;
+  }
+
+  std::string getDebugDesc() const;
 
   llvm::hash_code getHash() const;
 };

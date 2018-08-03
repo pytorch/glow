@@ -21,20 +21,23 @@
 
 using namespace glow;
 
-/// Equality predicate for variables.
-bool Variable::isEqual(const Variable &other) const {
-  /// A variable should be equal only to itself!
+bool Storage::isEqual(const Storage &other) const {
+  /// A storage should be equal only to itself!
   return this == &other;
 }
 
 llvm::hash_code Variable::getHash() const {
   return llvm::hash_combine(getName(), isTraining(), getType());
 }
+
+llvm::hash_code Placeholder::getHash() const {
+  return llvm::hash_combine(getName());
+}
 //===----------------------------------------------------------------------===//
 //                        Visitor methods
 //===----------------------------------------------------------------------===//
 
-void Variable::visit(Node *parent, NodeWalker *visitor) {
+void Storage::visit(Node *parent, NodeWalker *visitor) {
   if (!visitor->shouldVisit(parent, this)) {
     return;
   }
@@ -42,7 +45,7 @@ void Variable::visit(Node *parent, NodeWalker *visitor) {
   visitor->post(parent, this);
 }
 
-void Variable::visit(const Node *parent, NodeWalker *visitor) const {
+void Storage::visit(const Node *parent, NodeWalker *visitor) const {
   if (!visitor->shouldVisit(parent, this)) {
     return;
   }
@@ -53,28 +56,26 @@ void Variable::visit(const Node *parent, NodeWalker *visitor) const {
 //===----------------------------------------------------------------------===//
 //                     Edge getters methods
 //===----------------------------------------------------------------------===//
-unsigned Variable::getNumInputs() const { return 0; }
+unsigned Storage::getNumInputs() const { return 0; }
 
-std::string Variable::getInputName(unsigned idx) const {
+std::string Storage::getInputName(unsigned idx) const {
   llvm_unreachable("Invalid index");
 }
 
-NodeValue Variable::getNthInput(unsigned idx) {
+NodeValue Storage::getNthInput(unsigned idx) {
   llvm_unreachable("Invalid index");
 }
 
-llvm::StringRef Variable::getOutputName(unsigned idx) const {
+llvm::StringRef Storage::getOutputName(unsigned idx) const {
   if (idx == 0) {
     return "Output";
   }
   llvm_unreachable("Invalid index");
 }
 
-bool Variable::hasSideEffects() const { return false; }
+bool Storage::hasSideEffects() const { return false; }
 
-Node *Variable::clone() const {
-  llvm_unreachable("variables can't be cloned.");
-}
+Node *Storage::clone() const { llvm_unreachable("variables can't be cloned."); }
 
 //===----------------------------------------------------------------------===//
 //                     Debug description methods
@@ -92,6 +93,14 @@ std::string Variable::getDebugDesc() const {
       .addParam("visibility", getVariableVisibilityKindStr(visibility_));
   db.addParam("train", isTraining());
   db.addParam("users", getNumUsers());
+  return db;
+}
+
+std::string Placeholder::getDebugDesc() const {
+  DescriptionBuilder db(getKindName());
+  db.addParam("name", quote(getName()))
+      .addParam("output", *getType())
+      .addParam("users", getNumUsers());
   return db;
 }
 
