@@ -45,6 +45,9 @@ class caffe2ModelLoader
   /// \p tensors.
   void loadWeights(caffe2::NetDef &net);
 
+  /// Loads an individual weight \p op.
+  void loadWeight(const caffe2::OperatorDef &op);
+
   /// Load the structure of the network from the 'net' file.
   void loadNetwork(caffe2::NetDef &net);
 

@@ -493,133 +493,136 @@ void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   }
 }
 
-void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
-  for (auto &op : net.op()) {
-    ArgumentDictionaryTy dict = loadArgumentMap(op);
-    const std::string &typeName = op.type();
+void caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
+  ArgumentDictionaryTy dict = loadArgumentMap(op);
+  const std::string &typeName = op.type();
 
-    /// Load tensors with values:
-    if (typeName == "GivenTensorFill" || typeName == "GivenTensorIntFill" ||
-        typeName == "GivenTensorInt64Fill") {
-      /*
-       output: "conv1_w"
-       name: ""
-       type: "GivenTensorFill"
-       arg {
-       name: "shape"
-       ints: 96
-       ints: 3
-       ints: 11
-       ints: 11
-       }
-       arg {
-       name: "values"
-       floats: -0.028315347
-       */
+  /// Load tensors with values:
+  if (typeName == "GivenTensorFill" || typeName == "GivenTensorIntFill" ||
+      typeName == "GivenTensorInt64Fill") {
+    /*
+     output: "conv1_w"
+     name: ""
+     type: "GivenTensorFill"
+     arg {
+     name: "shape"
+     ints: 96
+     ints: 3
+     ints: 11
+     ints: 11
+     }
+     arg {
+     name: "values"
+     floats: -0.028315347
+     */
 
-      auto *T = new Tensor();
-      for (auto &o : op.output()) {
-        tensors_[o] = T;
-      }
-
-      auto dim = getShape(dict["shape"]);
-
-      size_t i = 0;
-      if (dict["values"]->floats_size()) {
-        assert(typeName != "GivenTensorIntFill" &&
-               typeName != "GivenTensorInt64Fill");
-        T->reset(ElemKind::FloatTy, dim);
-        auto TH = T->getHandle<>();
-        for (auto num : dict["values"]->floats()) {
-          TH.raw(i++) = num;
-        }
-      } else if (dict["values"]->ints_size()) {
-        T->reset(ElemKind::IndexTy, dim);
-        auto TH = T->getHandle<size_t>();
-        for (auto num : dict["values"]->ints()) {
-          assert(0 <= num && num < (1LL << 32) &&
-                 "Only uint32 integers are supported");
-          TH.raw(i++) = num;
-        }
-      } else {
-        unexpectedNodeError(op, "Unsupported data type for GivenTensorFill.");
-      }
-
-      assert(i == T->size() && "The number of serialized values does not "
-                               "match the size of the tensor.");
-      continue;
+    auto *T = new Tensor();
+    for (auto &o : op.output()) {
+      tensors_[o] = T;
     }
 
-    // Load tensors with constant fill:
-    if (typeName == "ConstantFill") {
-      /*
-       output: "data"
-       name: ""
-       type: "ConstantFill"
-       arg {
+    auto dim = getShape(dict["shape"]);
+
+    size_t i = 0;
+    if (dict["values"]->floats_size()) {
+      assert(typeName != "GivenTensorIntFill" &&
+             typeName != "GivenTensorInt64Fill");
+      T->reset(ElemKind::FloatTy, dim);
+      auto TH = T->getHandle<>();
+      for (auto num : dict["values"]->floats()) {
+        TH.raw(i++) = num;
+      }
+    } else if (dict["values"]->ints_size()) {
+      T->reset(ElemKind::IndexTy, dim);
+      auto TH = T->getHandle<size_t>();
+      for (auto num : dict["values"]->ints()) {
+        assert(0 <= num && num < (1LL << 32) &&
+               "Only uint32 integers are supported");
+        TH.raw(i++) = num;
+      }
+    } else {
+      unexpectedNodeError(op, "Unsupported data type for GivenTensorFill.");
+    }
+
+    assert(i == T->size() && "The number of serialized values does not "
+                             "match the size of the tensor.");
+    return;
+  }
+
+  // Load tensors with constant fill:
+  if (typeName == "ConstantFill") {
+    /*
+     output: "data"
+     name: ""
+     type: "ConstantFill"
+     arg {
+     name: "shape"
+     ints: 1
+     }
+     */
+
+    const auto &name = op.output(0);
+    // If the tensor is pre-populated by the user of this class then we don't
+    // need to allocate a new tensor.
+    if (tensors_.count(name)) {
+      return;
+    }
+
+    auto *T = new Tensor();
+    tensors_[name] = T;
+
+    auto dim = getShape(dict["shape"]);
+    T->reset(ElemKind::FloatTy, dim);
+    auto TH = T->getHandle<>();
+    TH.clear();
+    return;
+  }
+
+  if (typeName == "UniformFill") {
+    /*
+     output: "fc/w"
+     name: ""
+     type: "UniformFill"
+     arg {
+       name: "max"
+       f: 0.25
+     }
+     arg {
        name: "shape"
        ints: 1
-       }
-       */
-
-      const auto &name = op.output(0);
-      // If the tensor is pre-populated by the user of this class then we don't
-      // need to allocate a new tensor.
-      if (tensors_.count(name)) {
-        continue;
-      }
-
-      auto *T = new Tensor();
-      tensors_[name] = T;
-
-      auto dim = getShape(dict["shape"]);
-      T->reset(ElemKind::FloatTy, dim);
-      auto TH = T->getHandle<>();
-      TH.clear();
-      continue;
-    }
-
-    if (typeName == "UniformFill") {
-      /*
-       output: "fc/w"
-       name: ""
-       type: "UniformFill"
-       arg {
-         name: "max"
-         f: 0.25
-       }
-       arg {
-         name: "shape"
-         ints: 1
-         ints: 16
-       }
-       arg {
-         name: "min"
-         f: -0.25
-       }
-      */
-      const auto &name = op.output(0);
-      auto *T = new Tensor();
-      tensors_[name] = T;
-      auto dim = getShape(dict["shape"]);
-      T->reset(ElemKind::FloatTy, dim);
-      auto TH = T->getHandle<>();
-      float tensorMin = loadFloat(dict["min"]);
-      float tensorMax = loadFloat(dict["max"]);
+       ints: 16
+     }
+     arg {
+       name: "min"
+       f: -0.25
+     }
+    */
+    const auto &name = op.output(0);
+    auto *T = new Tensor();
+    tensors_[name] = T;
+    auto dim = getShape(dict["shape"]);
+    T->reset(ElemKind::FloatTy, dim);
+    auto TH = T->getHandle<>();
+    float tensorMin = loadFloat(dict["min"]);
+    float tensorMax = loadFloat(dict["max"]);
 
 #ifndef NDEBUG
-      llvm::outs() << "The model contains UniformFill operator, which generates"
-                   << " random numbers. This could be source of discrepancy.\n";
+    llvm::outs() << "The model contains UniformFill operator, which generates"
+                 << " random numbers. This could be source of discrepancy.\n";
 #endif // NDEBUG
-      // Uniformly generate random numbers in [tensorMin; tensorMax).
-      for (size_t i = 0, e = T->size(); i != e; i++) {
-        TH.raw(i) =
-            G_.getParent()->getPRNG().nextRandReal(tensorMin, tensorMax);
-      }
-      continue;
+    // Uniformly generate random numbers in [tensorMin; tensorMax).
+    for (size_t i = 0, e = T->size(); i != e; i++) {
+      TH.raw(i) = G_.getParent()->getPRNG().nextRandReal(tensorMin, tensorMax);
     }
+    return;
+  }
 
-    unexpectedNodeError(op, "Unsupported weight kind");
+  unexpectedNodeError(op, "Unsupported weight kind");
+}
+
+void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
+  for (auto &op : net.op()) {
+    loadWeight(op);
   }
 }
 
