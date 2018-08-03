@@ -999,7 +999,7 @@ TEST_P(Operator, QuantizeAndDequantize) {
       fpResult->getVariable()->getPayload()));
 }
 
-TEST_P(InterpAndCPU, IntMatMul) {
+TEST_P(Operator, IntMatMul) {
   // The scaling factor 1.4x was carefully selected to make sure we don't
   // overflow or underflow the calculation.
   TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.60, 4);
