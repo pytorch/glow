@@ -616,6 +616,61 @@ __kernel void matmul_tiled(__global void *mem, cl_uint32_t C_off,
     C[row * N + col] = sum;
   }
 }
+
+__kernel void matmul_tiled_i8(__global void *mem, cl_uint32_t C_off,
+                              cl_uint32_t A_off, cl_uint32_t B_off,
+                              ShapeNHWC ddim, ShapeNHWC ldim, ShapeNHWC rdim,
+                              cl_int32_t aOffset, cl_int32_t bOffset,
+                              cl_int32_t cOffset,
+                              QuantizationTransform32To8 destScaleParams) {
+  __global cl_int8_t *C = &mem[C_off];
+  __global cl_int8_t *A = &mem[A_off];
+  __global cl_int8_t *B = &mem[B_off];
+
+  int M = ldim.n;
+  int N = rdim.h;
+  int K = ldim.h;
+
+  int tx = get_local_id(1);
+  int ty = get_local_id(0);
+  int row = get_global_id(0);
+  int col = get_global_id(1);
+
+  // Tile of LHS.
+  __local cl_int32_t sA[TILE_SIZE][TILE_SIZE];
+  // Tile of RHS.
+  __local cl_int32_t sB[TILE_SIZE][TILE_SIZE];
+
+  cl_int32_t sum = 0;
+  for (int t = 0; t < (K - 1) / TILE_SIZE + 1; t += 1) {
+    // Load LHS tile.
+    if (row < M && t * TILE_SIZE + tx < K) {
+      sA[ty][tx] = A[row * K + (t * TILE_SIZE + tx)] - aOffset;
+    } else {
+      sA[ty][tx] = aOffset;
+    }
+
+    // Load RHS tile and store it transposed.
+    if (t * TILE_SIZE + ty < K && col < N) {
+      sB[tx][ty] = B[(t * TILE_SIZE + ty) * N + col] - bOffset;
+    } else {
+      sB[tx][ty] = bOffset;
+    }
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+#pragma unroll
+    for (int k = 0; k < TILE_SIZE; k++) {
+      sum += sA[ty][k] * sB[tx][k];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+  }
+
+  if (row < M && col < N) {
+    C[row * N + col] =
+        clip(scale_i32i8(sum, destScaleParams.pre, destScaleParams.post,
+                         destScaleParams.scale, cOffset));
+  }
+}
 #undef TILE_SIZE
 
 __kernel void matmulK(__global float *dest, __global float *lhs,
@@ -639,6 +694,38 @@ __kernel void matmulW(__global void *mem, cl_uint32_t dest, cl_uint32_t lhs,
                       cl_uint32_t rhs, ShapeNHWC ddim, ShapeNHWC ldim,
                       ShapeNHWC rdim) {
   matmulK(&mem[dest], &mem[lhs], &mem[rhs], ddim, ldim, rdim);
+}
+
+__kernel void matmul_i8K(__global cl_int8_t *dest, __global cl_int8_t *lhs,
+                         __global cl_int8_t *rhs, ShapeNHWC ddim,
+                         ShapeNHWC ldim, ShapeNHWC rdim, cl_int32_t lhsOffset,
+                         cl_int32_t rhsOffset, cl_int32_t destOffset,
+                         cl_int32_t destPre, cl_int32_t destPost,
+                         cl_int32_t destScale) {
+  // For each X in the destination matrix.
+  size_t x = get_global_id(0);
+  // For each Y in the destination matrix.
+  size_t y = get_global_id(1);
+
+  // Perform DOT on the row an column.
+  cl_int32_t sum = 0;
+  for (size_t i = 0; i < ldim.h; i++) {
+    sum += (lhs[getNHWC(ldim, x, i, 0, 0)] - lhsOffset) *
+           (rhs[getNHWC(rdim, i, y, 0, 0)] - rhsOffset);
+  }
+
+  dest[getNHWC(ddim, x, y, 0, 0)] =
+      clip(scale_i32i8(sum, destPre, destPost, destScale, destOffset));
+}
+
+__kernel void matmul_i8W(__global void *mem, cl_uint32_t dest, cl_uint32_t lhs,
+                         cl_uint32_t rhs, ShapeNHWC ddim, ShapeNHWC ldim,
+                         ShapeNHWC rdim, cl_int32_t lhsOffset,
+                         cl_int32_t rhsOffset, cl_int32_t destOffset,
+                         QuantizationTransform32To8 destScaleParams) {
+  matmul_i8K(&mem[dest], &mem[lhs], &mem[rhs], ddim, ldim, rdim, lhsOffset,
+             rhsOffset, destOffset, destScaleParams.pre, destScaleParams.post,
+             destScaleParams.scale);
 }
 
 __kernel void softmaxK(__global float *dest, __global float *src,

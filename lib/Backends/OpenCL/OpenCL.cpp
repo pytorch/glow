@@ -815,8 +815,9 @@ void OpenCLFunction::execute() {
       // only possible if the device allows workgroups with sizes which are at
       // least as big as a tile.
       bool useTiledMatMul = (WIS[0] >= TILE_DIM && WIS[1] >= TILE_DIM);
+      auto tiledKernelName = isQuantized ? "matmul_tiled_i8" : "matmul_tiled";
       cl_kernel kernel =
-          createKernel(useTiledMatMul ? "matmul_tiled" : kernelName);
+          createKernel(useTiledMatMul ? tiledKernelName : kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
@@ -827,6 +828,17 @@ void OpenCLFunction::execute() {
       setKernelArg(kernel, numArgs + 1, ddim);
       setKernelArg(kernel, numArgs + 2, ldim);
       setKernelArg(kernel, numArgs + 3, rdim);
+      if (isQuantized) {
+        auto lhsTy = BMM->getLHS()->getType();
+        auto rhsTy = BMM->getRHS()->getType();
+        auto destTy = BMM->getDest()->getType();
+        auto destScaleParams = quantization::quantizeScaleOffset32To8(
+            lhsTy->getScale() * rhsTy->getScale() / destTy->getScale(), 0);
+        setKernelArg(kernel, numArgs + 4, lhsTy->getOffset());
+        setKernelArg(kernel, numArgs + 5, rhsTy->getOffset());
+        setKernelArg(kernel, numArgs + 6, destTy->getOffset());
+        setKernelArg(kernel, numArgs + 7, destScaleParams);
+      }
 
       if (useTiledMatMul) {
         std::vector<size_t> local{TILE_DIM, TILE_DIM};
