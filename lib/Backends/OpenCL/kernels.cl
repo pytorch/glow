@@ -561,6 +561,38 @@ __kernel void batchedaddW(__global void *mem, cl_uint32_t dest,
   batchedaddK(&mem[dest], &mem[batch], &mem[slice], numSlice, sliceSize);
 }
 
+__kernel void batchedadd_i8K(__global cl_int8_t *dest, __global cl_int8_t *batch,
+                          __global cl_int8_t *slice, cl_uint32_t numSlice,
+                          cl_uint32_t sliceSize, cl_int32_t destOffset,
+                          cl_int32_t batchOffset, cl_int32_t sliceOffset,
+                          cl_int32_t batchPre, cl_int32_t batchPost,
+                          cl_int32_t batchScale, cl_int32_t slicePre,
+                          cl_int32_t slicePost, cl_int32_t sliceScale) {
+  size_t s = get_global_id(0);
+  for (size_t n = 0; n < numSlice; n++) {
+      cl_int32_t batchVal = batch[n * sliceSize + s] - batchOffset;
+      cl_int32_t sliceVal = slice[s] - sliceOffset;
+      cl_int32_t x = scale_i32i8(batchVal, batchPre, batchPost, batchScale, 0);
+      cl_int32_t y = scale_i32i8(sliceVal, slicePre, slicePost, sliceScale, 0);
+      dest[n * sliceSize + s] = clip(x + y + destOffset);
+  }
+}
+
+__kernel void batchedadd_i8W(__global void *mem, cl_uint32_t dest,
+                          cl_uint32_t batch, cl_uint32_t slice,
+                          cl_uint32_t numSlice, cl_uint32_t sliceSize,
+                          cl_int32_t destOffset, 
+                          QuantizationTransform32To8 batchScaleParams,
+                          QuantizationTransform32To8 sliceScaleParams) {
+  batchedadd_i8K(&mem[dest], &mem[batch], 
+                &mem[slice], numSlice, sliceSize,
+                destOffset, batchScaleParams.offset,
+                sliceScaleParams.offset, batchScaleParams.pre,
+                batchScaleParams.post, batchScaleParams.scale,
+                sliceScaleParams.pre, sliceScaleParams.post,
+                sliceScaleParams.scale);
+}
+
 /// Size of the tile to be used for matrix multiplication.
 /// The kernel can only be executed by the OpenCL backends that allow
 /// workgroups with sizes which are at least as big as a tile.

@@ -2675,7 +2675,7 @@ TEST_P(Operator, testBatchAdd) {
 }
 
 /// Tests quantized batched-add arithmetic.
-TEST_P(InterpAndCPU, testQuantizedBatchAdd) {
+TEST_P(Operator, testQuantizedBatchAdd) {
   unsigned numSlices = 10;
   auto *input = mod_.createVariable(ElemKind::FloatTy, {numSlices, 10, 10},
                                     "input", VisibilityKind::Public);

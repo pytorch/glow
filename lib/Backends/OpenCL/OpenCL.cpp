@@ -864,6 +864,23 @@ void OpenCLFunction::execute() {
       setKernelArg<cl_uint>(kernel, numArgs + 1, bdim.first);
       setKernelArg<cl_uint>(kernel, numArgs + 2, bdim.second);
 
+      if (isQuantized) {
+        auto *destTy = BA->getDest()->getType();
+        auto *batchTy = BA->getBatch()->getType();
+        auto *sliceTy = BA->getSlice()->getType();
+
+        setKernelArg(kernel, numArgs + 3, destTy->getOffset());
+
+        float destScale = destTy->getScale();
+        auto batchScaleParams = quantization::quantizeScaleOffset32To8(
+            batchTy->getScale() / destScale, batchTy->getOffset());
+        auto sliceScaleParams = quantization::quantizeScaleOffset32To8(
+            sliceTy->getScale() / destScale, sliceTy->getOffset());
+
+        setKernelArg(kernel, numArgs + 4, batchScaleParams);
+        setKernelArg(kernel, numArgs + 5, sliceScaleParams);
+      }
+
       // Parallelize on each element in the slice.
       enqueueKernel(commands_, kernel, deviceId_, {bdim.second},
                     kernelLaunches_);
