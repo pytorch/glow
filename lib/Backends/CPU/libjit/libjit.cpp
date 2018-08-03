@@ -841,6 +841,13 @@ void libjit_gather_i8(int8_t *dest, const int8_t *data, const size_t *indices,
                 sampleSize);
 }
 
+void libjit_gather_u(size_t *dest, const size_t *data, const size_t *indices,
+                     size_t numIndices, size_t sliceSize, size_t numSamples,
+                     size_t sampleSize) {
+  libjit_gather(dest, data, indices, numIndices, sliceSize, numSamples,
+                sampleSize);
+}
+
 void libjit_scatterassign_f(float *data, const size_t *indices,
                             const float *slices, size_t numIndices,
                             size_t sliceSize) {
