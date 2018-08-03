@@ -463,12 +463,24 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Cast") {
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
-    assert(in.getElementType() == ElemKind::FloatTy &&
-           "Only float to float cast is currently supported.");
     int to = loadInt(dict["to"]);
-    (void)to;
-    assert(to == caffe2::TensorProto_DataType_FLOAT &&
-           "Only float to float cast is currently supported.");
+
+    switch (to) {
+    case caffe2::TensorProto_DataType_FLOAT: {
+      assert(in.getElementType() == ElemKind::FloatTy &&
+             "Can only cast float to float.");
+      break;
+    }
+    case caffe2::TensorProto_DataType_INT32:
+    case caffe2::TensorProto_DataType_INT64: {
+      assert(in.getElementType() == ElemKind::IndexTy &&
+             "Can only cast int to int.");
+      break;
+    }
+    default:
+      llvm_unreachable("Unsupported Cast type.");
+    }
+
     addNodeAsOutput(op, in);
     return;
   }
