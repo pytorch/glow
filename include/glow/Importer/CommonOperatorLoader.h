@@ -72,11 +72,14 @@ protected:
   void loadShape(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
-    auto *shape =
-        G_.getParent()->createVariable(ElemKind::IndexTy, {in.dims().size()},
-                                       opName, VisibilityKind::Private, false);
-    shape->template getHandle<size_t>() = in.dims();
-    addNodeAsOutput(op, shape);
+
+    // This is statically known data, and so we create a Tensor for it and
+    // register it in tensors_.
+    auto *T = new Tensor(ElemKind::IndexTy, {in.dims().size()});
+    tensors_[opName] = T;
+    T->template getHandle<size_t>() = in.dims();
+
+    createAndRememberVariable(opName, *T, VisibilityKind::Private, false);
   }
 
   void loadSum(const OpType &op, ArgumentDictionaryTy &dict) {
