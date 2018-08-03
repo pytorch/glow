@@ -587,8 +587,21 @@ void caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     auto *T = new Tensor();
     tensors_[name] = T;
 
-    auto dim = getShape(dict["shape"]);
-    T->reset(ElemKind::FloatTy, dim);
+    // The shape is set either the shape argument, or from another input
+    // tensor. Shape takes priority over input.
+    std::vector<size_t> dims;
+    if (dict.count("shape")) {
+      dims = getShape(dict["shape"]);
+    } else {
+      assert(op.input_size() > 0 &&
+             "If no shape provided, must have input shape.");
+      // It must be registered as a tensor because it must be statically set
+      // already, as shapes must be statically known.
+      auto *in = getTensorByName(op.input(0));
+      dims = in->dims();
+    }
+
+    T->reset(ElemKind::FloatTy, dims);
     auto TH = T->getHandle<>();
     TH.clear();
     return;
