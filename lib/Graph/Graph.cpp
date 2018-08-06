@@ -660,7 +660,7 @@ Node *Function::createBroadcast(llvm::StringRef name, NodeValue input,
         reshapeDims[i] = 1;
       } else {
         // Incompatible dimensions for broadcasting
-        assert(false && "Cannot broadcast with these dimensions.");
+        llvm_unreachable("Cannot broadcast with these dimensions.");
       }
     } else {
       // Will broadcast this dimension to size from newShape.

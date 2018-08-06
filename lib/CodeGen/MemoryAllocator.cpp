@@ -18,6 +18,7 @@
 #include "glow/Support/Memory.h"
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/ErrorHandling.h"
 
 using namespace glow;
 
@@ -55,5 +56,5 @@ void MemoryAllocator::deallocate(size_t ptr) {
       return;
     }
   }
-  assert(false && "Unknown buffer to allocate");
+  llvm_unreachable("Unknown buffer to allocate");
 }

@@ -751,7 +751,7 @@ void OpenCLFunction::execute() {
         idim = ShapeNHWC(ET->getSrc()->getType()->dims());
         offset = ShapeNHWC(ET->getOffsets());
       } else {
-        assert(false && "Unsupported tensor dimension");
+        llvm_unreachable("Unsupported tensor dimension");
       }
 
       setKernelArg(kernel, numArgs + 1, odim);
@@ -790,7 +790,7 @@ void OpenCLFunction::execute() {
         idim = ShapeNHWC(IT->getSrc()->getType()->dims());
         offset = ShapeNHWC(IT->getOffsets());
       } else {
-        assert(false && "Unsupported tensor dimension");
+        llvm_unreachable("Unsupported tensor dimension");
       }
 
       setKernelArg(kernel, numArgs + 1, odim);

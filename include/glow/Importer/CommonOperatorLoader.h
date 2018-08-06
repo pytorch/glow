@@ -166,7 +166,7 @@ protected:
     } else if (typeName == "Div") {
       node = G_.createDiv(opName, in0, finalIn1);
     } else {
-      assert(false && "Unsupported arithmetic typeName");
+      llvm_unreachable("Unsupported arithmetic typeName");
     }
 
     addNodeAsOutput(op, node);
@@ -209,8 +209,8 @@ protected:
         requestedDims.push_back(protoDims[i]);
       }
     } else {
-      assert(false &&
-             "Missing output shape information for the Reshape operator.");
+      llvm_unreachable(
+          "Missing output shape information for the Reshape operator.");
     }
 
     // Compute the actual new shape
