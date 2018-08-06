@@ -601,9 +601,29 @@ void caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       dims = in->dims();
     }
 
-    T->reset(ElemKind::FloatTy, dims);
-    auto TH = T->getHandle<>();
-    TH.clear();
+    int to = dict.count("dtype") ? loadInt(dict["dtype"])
+                                 : caffe2::TensorProto_DataType_FLOAT;
+
+    switch (to) {
+    case caffe2::TensorProto_DataType_FLOAT: {
+      T->reset(ElemKind::FloatTy, dims);
+      auto TH = T->getHandle<float>();
+      auto f = dict.at("value")->has_f() ? loadFloat(dict.at("value")) : 0.0f;
+      TH.clear(f);
+      break;
+    }
+    case caffe2::TensorProto_DataType_INT32:
+    case caffe2::TensorProto_DataType_INT64: {
+      T->reset(ElemKind::IndexTy, dims);
+      auto TH = T->getHandle<size_t>();
+      auto i = dict.at("value")->has_i() ? loadInt(dict.at("value")) : 0;
+      TH.clear(i);
+      break;
+    }
+    default:
+      llvm_unreachable("Unsupported datatype for ConstantFill.");
+    }
+
     return;
   }
 
