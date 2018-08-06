@@ -34,6 +34,7 @@ class Storage : public Node {
 public:
   Storage(Kinded::Kind k, llvm::StringRef name) : Node(k, name) {}
 
+  /// \return the single output value of the node.
   NodeValue getOutput() { return getNthResult(0); }
 
   /// Declare the standard Node methods.

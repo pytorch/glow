@@ -38,8 +38,8 @@ using NodesList = llvm::iplist<glow::Node>;
 using NodesPtrList = std::list<glow::Node *>;
 /// List of Functions.
 using FunctionList = std::list<Function *>;
-/// List of Variables.
 using VariablesList = std::list<Variable *>;
+using PlaceholderList = std::list<Placeholder *>;
 using UnsignedArrayRef = llvm::ArrayRef<size_t>;
 
 class Module final {
@@ -53,6 +53,8 @@ class Module final {
   llvm::StringSet<> uniqueVariableNames_{};
   /// A list of variables that the Module owns.
   VariablesList vars_;
+  /// A list of placeholder nodes that the Module owns.
+  PlaceholderList placeholders_;
   /// Deterministic PRNG used to initialize weights in this module.
   PseudoRNG PRNG_;
 
@@ -67,11 +69,10 @@ public:
                                     llvm::StringSet<> &stringTable);
 
   /// Inserts the variable \p V to the list of variables.
-  Variable *addVar(Variable *V) {
-    V->setName(uniqueName(V->getName(), uniqueVariableNames_));
-    vars_.push_back(V);
-    return V;
-  }
+  Variable *addVar(Variable *V);
+
+  /// Inserts the placeholder node \p ph to the list of variables.
+  Placeholder *addPlaceholder(Placeholder *ph);
 
   /// Return a pointer to a uniqued type \p T.
   TypeRef uniqueType(const Type &T);
@@ -117,8 +118,18 @@ public:
 
   const VariablesList &getVars() const { return vars_; }
 
+  /// \returns the list of placeholders that the Module owns.
+  PlaceholderList &getPlaceholders() { return placeholders_; }
+
+  const PlaceholderList &getPlaceholders() const { return placeholders_; }
+
   /// @name High-level Variable builders.
   ///@{
+
+  Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
+                                 llvm::StringRef name);
+
+  Placeholder *createPlaceholder(TypeRef T, llvm::StringRef name);
 
   Variable *createVariable(TypeRef T, llvm::StringRef name,
                            VisibilityKind visibility = VisibilityKind::Private,

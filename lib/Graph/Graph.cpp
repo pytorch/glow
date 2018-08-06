@@ -54,10 +54,17 @@ Function *Module::createFunction(llvm::StringRef name) {
 Module::~Module() {
   eraseFunctions();
 
-  for (auto it = vars_.begin(), e = vars_.end(); it != e;) {
-    auto cur = it++;
-    eraseVariable(*cur);
+  for (auto it = vars_.begin(), e = vars_.end(); it != e; it++) {
+    Variable *v = *it;
+    delete v;
   }
+  for (auto it = placeholders_.begin(), e = placeholders_.end(); it != e;
+       it++) {
+    Placeholder *p = *it;
+    delete p;
+  }
+  vars_.clear();
+  placeholders_.clear();
 }
 
 void Module::verify() const {
@@ -325,6 +332,17 @@ static ShapeVector getNewShapeWithoutAxis(llvm::ArrayRef<size_t> dims,
 //                       Node builders
 //===----------------------------------------------------------------------===//
 
+Placeholder *Module::createPlaceholder(TypeRef T, llvm::StringRef name) {
+  auto FT = uniqueType(*T);
+  return addPlaceholder(new Placeholder(name, FT));
+}
+
+Placeholder *Module::createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
+                                       llvm::StringRef name) {
+  auto FT = uniqueType(T, dims);
+  return createPlaceholder(FT, name);
+}
+
 Variable *Module::createVariable(TypeRef T, llvm::StringRef name,
                                  VisibilityKind visibility, bool isTrainable) {
   auto FT = uniqueType(*T);
@@ -387,6 +405,18 @@ llvm::StringRef Module::uniqueName(llvm::StringRef name,
   }
 
   llvm_unreachable("Unable to find a unique a name.");
+}
+
+Variable *Module::addVar(Variable *V) {
+  V->setName(uniqueName(V->getName(), uniqueVariableNames_));
+  vars_.push_back(V);
+  return V;
+}
+
+Placeholder *Module::addPlaceholder(Placeholder *ph) {
+  ph->setName(uniqueName(ph->getName(), uniqueVariableNames_));
+  placeholders_.push_back(ph);
+  return ph;
 }
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
