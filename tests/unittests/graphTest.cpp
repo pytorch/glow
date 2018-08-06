@@ -886,3 +886,16 @@ TEST(Graph, PostOrderTest) {
   EXPECT_EQ(order[12], ret2->getOutput());
   EXPECT_EQ(order[13], ret2);
 }
+
+TEST(Graph, placeholder) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  IRFunction M(F);
+  Node *K = MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+  Node *S = MD.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select");
+
+  K = F->createFullyConnected("FC", K, 10); 
+  K = F->createRELU("Relu", K);
+  K = F->createSoftMax("SoftMax", K, S);
+  F->createSave("Save", K);
+}
