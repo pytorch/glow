@@ -58,8 +58,8 @@ TEST_P(BackendCorrectnessTest, DISABLED_quantizedBatchedAddTest) {
   llvm::ArrayRef<size_t> shape(S);
   Tensor batch(ElemKind::Int8QTy, shape, 0.875, -1);
   Tensor slice(ElemKind::Int8QTy, {1, 1, 2}, 1.4, 5);
-  batch.getHandle<int8_t>().randomize(-129, 128, PRNG);
-  slice.getHandle<int8_t>().randomize(-129, 128, PRNG);
+  batch.getHandle<int8_t>().randomize(-128, 127, PRNG);
+  slice.getHandle<int8_t>().randomize(-128, 127, PRNG);
   Tensor out1(ElemKind::Int8QTy, shape, 0.375, -10);
   Tensor out2(ElemKind::Int8QTy, shape, 0.375, -10);
 
@@ -121,8 +121,8 @@ TEST_P(CPUOnly, quantizedConvTest) {
   Tensor inputs(ElemKind::Int8QTy, {20, 41, 32, 6}, 0.025, -7);
   Tensor kernel(ElemKind::Int8QTy, {10, 5, 5, 6}, 0.003, 3);
   Tensor bias(ElemKind::Int8QTy, {10}, 0.5, -4);
-  inputs.getHandle<int8_t>().randomize(-129, 128, PRNG);
-  kernel.getHandle<int8_t>().randomize(-129, 128, PRNG);
+  inputs.getHandle<int8_t>().randomize(-128, 127, PRNG);
+  kernel.getHandle<int8_t>().randomize(-128, 127, PRNG);
   bias.getHandle<int8_t>().randomize(-11, 8, PRNG);
   std::array<size_t, 4> S{{20, 15, 12, 10}};
   llvm::ArrayRef<size_t> shape(S);
@@ -333,8 +333,8 @@ TEST_P(CPUOnly, quantizedMatMulTest) {
   PseudoRNG PRNG;
   Tensor lhs(ElemKind::Int8QTy, {10, 9}, 2.7, 31);
   Tensor rhs(ElemKind::Int8QTy, {9, 8}, 3.2, -12);
-  lhs.getHandle<int8_t>().randomize(-129, 128, PRNG);
-  rhs.getHandle<int8_t>().randomize(-129, 128, PRNG);
+  lhs.getHandle<int8_t>().randomize(-128, 127, PRNG);
+  rhs.getHandle<int8_t>().randomize(-128, 127, PRNG);
   std::array<size_t, 2> S{{10, 8}};
   llvm::ArrayRef<size_t> shape(S);
   Tensor out1(ElemKind::Int8QTy, shape, 8.1, 7);

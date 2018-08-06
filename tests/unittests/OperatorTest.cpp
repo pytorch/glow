@@ -1535,10 +1535,10 @@ TEST_P(InterpAndCPU, QuantizedCmpLTEAndSelect) {
   auto QDH = QD->getHandle<int8_t>();
   auto OH = Out->getHandle<int8_t>();
 
-  QAH.randomize(-129, 128, mod_.getPRNG());
-  QBH.randomize(-129, 128, mod_.getPRNG());
-  QCH.randomize(-129, 128, mod_.getPRNG());
-  QDH.randomize(-129, 128, mod_.getPRNG());
+  QAH.randomize(-128, 127, mod_.getPRNG());
+  QBH.randomize(-128, 127, mod_.getPRNG());
+  QCH.randomize(-128, 127, mod_.getPRNG());
+  QDH.randomize(-128, 127, mod_.getPRNG());
 
   // Apply comparison and selection quantized.
   Node *cmpLTE = F_->createCmpLTE("cmpLTE", QA, QB);
