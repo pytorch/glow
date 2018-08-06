@@ -459,8 +459,9 @@ int main(int argc, char **argv) {
   BB.newNode("RescaleQuantized")
       .addInput("Input")
       .addResultFromCtorArg()
-      .setDocstring("Rescale input quantized tensor to a new Scale and "
-                    "Offset.");
+      .setDocstring("Rescale the input quantized tensor to a new Scale and "
+                    "Offset. The new Scale and Offset are specified by the "
+                    "output type passed to the constructor");
 
   //===--------------------------------------------------------------------===//
   //                Nodes used by RNN
