@@ -185,7 +185,7 @@ static void dumpAsciiGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
     }
 
   } else {
-    assert(false && "Invalid tensor size");
+    llvm_unreachable("Invalid tensor size");
   }
 }
 

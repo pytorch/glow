@@ -112,7 +112,7 @@ std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
       // Return default value 0 for pads.
       return {0, 0, 0, 0};
     }
-    assert(false && "only auto_pad==VALID is supported");
+    llvm_unreachable("only auto_pad==VALID is supported");
   }
   // Return default value 0 for pads.
   return {0, 0, 0, 0};
@@ -139,7 +139,7 @@ static void loadTensor(const onnx::TensorProto &in, Tensor *T) {
       inStream.read((char *)T->getRawDataPointer<float>(),
                     T->size() * sizeof(float));
     } else {
-      assert(false && "Unsupported Tensor format.");
+      llvm_unreachable("Unsupported Tensor format.");
     }
   } else if (in.data_type() == onnx::TensorProto::INT64) {
     // TODO: either switch IndexTy to be 64 bit, or switch to another type here
@@ -156,10 +156,10 @@ static void loadTensor(const onnx::TensorProto &in, Tensor *T) {
       inStream.read((char *)T->getRawDataPointer<size_t>(),
                     T->size() * sizeof(int64_t));
     } else {
-      assert(false && "Unsupported Tensor format.");
+      llvm_unreachable("Unsupported Tensor format.");
     }
   } else {
-    assert(false && "Only float and index tensors are supported");
+    llvm_unreachable("Only float and index tensors are supported");
   }
 }
 
@@ -441,7 +441,7 @@ static void setTensorType(const onnx::TypeProto &in, Tensor *T) {
     // TODO: either switch IndexTy to be 64 bit, or switch to another type here
     T->reset(ElemKind::IndexTy, dim);
   } else {
-    assert(false && "Only float and index tensors are supported");
+    llvm_unreachable("Only float and index tensors are supported");
   }
 }
 

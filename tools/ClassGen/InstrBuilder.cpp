@@ -245,7 +245,7 @@ void InstrBuilder::emitClass(std::ostream &os) const {
         break;
       }
       default:
-        assert(false && "Unknown verification kind.");
+        llvm_unreachable("Unknown verification kind.");
         break;
       }
     }
