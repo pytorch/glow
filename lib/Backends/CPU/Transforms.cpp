@@ -83,7 +83,7 @@ bool CPUBackend::transformPostLowering(Function *F,
                                        CompilationMode mode) const {
   bool changed = false;
   for (auto &node : F->getNodes()) {
-
+    // Try to replace generic convolution with cpu-optimized version.
     if (auto *CN = dyn_cast<ConvolutionNode>(&node)) {
       if (Node *NCN = optimizeCPUConv(CN, F)) {
         NodeValue(&node, 0).replaceAllUsesOfWith(NCN);
