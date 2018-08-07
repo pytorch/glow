@@ -50,9 +50,12 @@ public:
 
   ~ExecutionEngine();
 
-  // Set the code generator kind to \p backendKind. New code will be generated
-  // using this backend.
+  /// Set the code generator kind to \p backendKind. New code will be generated
+  /// using this backend.
   void setBackend(BackendKind backendKind);
+
+  /// Set the code generator to a custom \p backend.
+  void setBackend(Backend *backend);
 
   /// \returns the internal graph.
   Module &getModule() { return M_; }
