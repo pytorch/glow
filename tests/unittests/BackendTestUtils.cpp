@@ -130,7 +130,8 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   Function *F = mod.createFunction("main");
   auto *var1 = VarFrom(inputs);
   auto *var2 = VarFrom(selected);
-  auto *conv1 = F->createConv("conv1", var1, 3, 3, 2, 1, 1);
+  auto *conv1 =
+      F->createConv("conv1", var1, 3, {5, 3}, {2, 1}, {2, 1, 2, 1}, 1);
   cast<Variable>(conv1->getFilter())->copyFrom(kernel1);
   cast<Variable>(conv1->getBias())->copyFrom(bias1);
   auto *reshape1 = F->createReshape("reshape1", conv1, shape1);
