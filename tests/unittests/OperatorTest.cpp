@@ -859,6 +859,72 @@ TEST_P(Operator, Gather) {
   EXPECT_FLOAT_EQ(H.at({1, 3, 1}), 1.2);
 }
 
+/// Check that gather on IndexTy/size_t works.
+TEST_P(InterpAndCPU, GatherSizeT) {
+  /*
+    DATA  = [
+        [1, 2],
+        [3, 4],
+        [5, 6],
+    ]
+    INDICES = [
+        [0, 1, 0, 1],
+        [1, 2, 2, 0],
+    ]
+    OUTPUT = [
+        [
+            [1, 2],
+            [3, 4],
+            [1, 2],
+            [3, 4],
+        ],
+        [
+            [3, 4],
+            [5, 6],
+            [5, 6],
+            [1, 2],
+        ],
+    ]
+  */
+  auto *data = mod_.createVariable(ElemKind::IndexTy, {3, 2}, "data");
+  auto *indices = mod_.createVariable(ElemKind::IndexTy, {2, 4}, "indices");
+  auto *result = mod_.createVariable(ElemKind::IndexTy, {2, 4, 2}, "result");
+
+  data->getPayload().getHandle<size_t>() = {
+      1, 2, 3, 4, 5, 6,
+  };
+  indices->getPayload().getHandle<size_t>() = {
+      0, 1, 0, 1, 1, 2, 2, 0,
+  };
+
+  auto R = F_->createGather("gather", data, indices);
+
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto H = result->getPayload().getHandle<size_t>();
+
+  EXPECT_EQ(H.at({0, 0, 0}), 1);
+  EXPECT_EQ(H.at({0, 0, 1}), 2);
+  EXPECT_EQ(H.at({0, 1, 0}), 3);
+  EXPECT_EQ(H.at({0, 1, 1}), 4);
+  EXPECT_EQ(H.at({0, 2, 0}), 1);
+  EXPECT_EQ(H.at({0, 2, 1}), 2);
+  EXPECT_EQ(H.at({0, 3, 0}), 3);
+  EXPECT_EQ(H.at({0, 3, 1}), 4);
+
+  EXPECT_EQ(H.at({1, 0, 0}), 3);
+  EXPECT_EQ(H.at({1, 0, 1}), 4);
+  EXPECT_EQ(H.at({1, 1, 0}), 5);
+  EXPECT_EQ(H.at({1, 1, 1}), 6);
+  EXPECT_EQ(H.at({1, 2, 0}), 5);
+  EXPECT_EQ(H.at({1, 2, 1}), 6);
+  EXPECT_EQ(H.at({1, 3, 0}), 1);
+  EXPECT_EQ(H.at({1, 3, 1}), 2);
+}
+
 TEST_P(Operator, BatchedGather) {
   /*
    DATA  = [
