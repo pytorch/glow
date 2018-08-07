@@ -183,6 +183,7 @@ public:
       case Kinded::Kind::ConvolutionNodeKind:
       case Kinded::Kind::DequantizeNodeKind:
       case Kinded::Kind::DivNodeKind:
+      case Kinded::Kind::FullyConnectedNodeKind:
       case Kinded::Kind::MaxNodeKind:
       case Kinded::Kind::MinNodeKind:
       case Kinded::Kind::MulNodeKind:
