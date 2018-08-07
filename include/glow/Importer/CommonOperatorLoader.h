@@ -207,6 +207,8 @@ protected:
         requestedDims.push_back(TH.at({i}));
       }
     } else if (dict.count("shape")) {
+      assert(op.input_size() == 1 &&
+             "Cannot specify new shape by both argument and input.");
       std::vector<int64_t> protoDims = getShape<int64_t>(dict["shape"]);
       for (size_t i = 0, e = protoDims.size(); i != e; i++) {
         requestedDims.push_back(protoDims[i]);
