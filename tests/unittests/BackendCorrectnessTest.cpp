@@ -137,8 +137,8 @@ TEST_P(CPUOnly, quantizedConvTest) {
 
 TEST_P(BackendCorrectnessTest, convGradTest) {
   PseudoRNG PRNG;
-  Tensor inputs(ElemKind::FloatTy, {9, 8, 9, 4});
-  Tensor kernel1(ElemKind::FloatTy, {3, 3, 3, 4});
+  Tensor inputs(ElemKind::FloatTy, {9, 8, 5, 4});
+  Tensor kernel1(ElemKind::FloatTy, {3, 5, 3, 4});
   Tensor bias1(ElemKind::FloatTy, {3});
   Tensor kernel2(ElemKind::FloatTy, {2, 2, 2, 1});
   Tensor bias2(ElemKind::FloatTy, {2});

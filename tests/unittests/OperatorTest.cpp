@@ -2509,7 +2509,7 @@ TEST_P(InterpAndCPU, Int8Tanh) {
 }
 
 /// Check Non-square kernel for conv.
-TEST_P(InterpAndCPU, NonSquareKernelConvolution) {
+TEST_P(Operator, NonSquareKernelConvolution) {
   auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
   auto IH = input->getHandle();
   for (size_t i = 0; i < 4 * 4; i++) {
@@ -2577,7 +2577,7 @@ TEST_P(InterpAndCPU, NonSquareKernelMaxPool) {
 }
 
 /// Check Non-square stride for conv.
-TEST_P(InterpAndCPU, NonSquareStrideConvolution) {
+TEST_P(Operator, NonSquareStrideConvolution) {
   auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
   auto IH = input->getHandle();
   for (size_t i = 0; i < 4 * 4; i++) {
