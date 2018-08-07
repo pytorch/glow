@@ -61,11 +61,12 @@ NodeValue ProtobufLoader::getNodeValueByName(llvm::StringRef name) const {
 }
 
 Variable *ProtobufLoader::createAndRememberVariable(
-    llvm::StringRef name, const Tensor &tensor, VisibilityKind visibilityKind,
-    bool trainable) {
+    llvm::StringRef name, const Tensor &tensor, VisibilityKind visibilityKind) {
   assert(!hasNodeByName(name) && "Creating an already existing node?!");
-  Variable *node =
-      G_.getParent()->createVariable(name, tensor, visibilityKind, trainable);
+  // Note: We do not support training from models loaded from protos, so
+  // trainable is always set to false here.
+  Variable *node = G_.getParent()->createVariable(name, tensor, visibilityKind,
+                                                  /* trainable */ false);
   nodeValueByName_[name] = NodeValue(node, 0);
 
   return node;
@@ -106,7 +107,7 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
   for (unsigned i = 0; i < tensorNames.size(); i++) {
     assert(!hasNodeByName(tensorNames[i]) && "Input names have duplicate");
     createAndRememberVariable(tensorNames[i], *tensors[i],
-                              VisibilityKind::Public, false);
+                              VisibilityKind::Public);
   }
 }
 

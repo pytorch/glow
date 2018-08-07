@@ -79,7 +79,7 @@ protected:
     tensors_[opName] = T;
     T->template getHandle<size_t>() = in.dims();
 
-    createAndRememberVariable(opName, *T, VisibilityKind::Private, false);
+    createAndRememberVariable(opName, *T);
   }
 
   /// Loads Sqrt operator, given its protobuf representation and parsed args.
