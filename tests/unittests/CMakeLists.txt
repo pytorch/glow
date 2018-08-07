@@ -208,13 +208,25 @@ add_executable(caffe2ImporterTest
 target_link_libraries(caffe2ImporterTest
                       PRIVATE
                         Graph
-                        IR
                         Importer
                         ExecutionEngine
                         gtest
                         testMain)
 add_glow_test(NAME caffe2ImporterTest 
               COMMAND ${GLOW_BINARY_DIR}/tests/caffe2ImporterTest
+              WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_executable(onnxImporterTest
+               onnxImporterTest.cpp)
+target_link_libraries(onnxImporterTest
+                      PRIVATE
+                        Graph
+                        Importer
+                        ExecutionEngine
+                        gtest
+			testMain)
+add_glow_test(NAME onnxImporterTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/onnxImporterTest
               WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 LIST(APPEND UNOPT_TESTS

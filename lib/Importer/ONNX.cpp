@@ -100,6 +100,20 @@ bool ONNXModelLoader::loadProto(ONNX_NAMESPACE::GraphProto &net,
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
   GLOW_ASSERT(ff && "Can't find the model or network files.");
 
+  // TODO: intend to find a way to reuse the following function later
+  // for the text format onnx model:
+  // bool ONNXModelLoader::loadProto(ONNX_NAMESPACE::GraphProto &net,
+  //  google::protobuf::io::ZeroCopyInputStream &iStream)
+  if (filename.find(".onnxtxt") != std::string::npos) {
+    std::string str((std::istreambuf_iterator<char>(ff)),
+                    std::istreambuf_iterator<char>());
+    ONNX_NAMESPACE::ModelProto MP;
+    bool parseNet = google::protobuf::TextFormat::ParseFromString(str, &MP);
+    net = MP.graph();
+    setVersion(MP);
+    return parseNet;
+  }
+
   google::protobuf::io::IstreamInputStream fileStream(&ff);
   return loadProto(net, fileStream);
 }
