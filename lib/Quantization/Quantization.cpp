@@ -99,6 +99,10 @@ static bool canBeQuantized(const Node *node) {
     auto *gather = cast<GatherNode>(node);
     return gather->getData().getElementType() == ElemKind::FloatTy;
   }
+  case Kinded::Kind::SoftMaxNodeKind: {
+    auto *SMN = cast<SoftMaxNode>(node);
+    return SMN->getInput().getElementType() == ElemKind::FloatTy;
+  }
   default:
     // Let the general procedure handle this node kind.
     break;
@@ -305,6 +309,24 @@ static Node *quantizeNode(Function *F, Node *node,
     // Note: This should either be lowered into an IntLookupTable, or
     // implemented via a backend-specific Node/Inst.
     quantizedNode = F->createSigmoid(SN->getName(), quantizedInputs[0]);
+    break;
+  }
+  case Kinded::Kind::LocalResponseNormalizationNodeKind: {
+    auto *LRN = cast<LocalResponseNormalizationNode>(node);
+    assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+    quantizedNode = F->createLocalResponseNormalization(
+        LRN->getName(), quantizedInputs[0], LRN->getHalfWindowSize(),
+        LRN->getAlpha(), LRN->getBeta(), LRN->getK());
+    break;
+  }
+  case Kinded::Kind::SoftMaxNodeKind: {
+    auto *SMN = cast<SoftMaxNode>(node);
+    // SoftMax node has 2 inputs, but only one should be quantized.
+    assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+    quantizedNode = F->createSoftMax(SMN->getName(), quantizedInputs[0],
+                                     SMN->getSelected());
     break;
   }
   default:

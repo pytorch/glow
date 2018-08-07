@@ -41,9 +41,15 @@ static llvm::cl::opt<bool> dumpIR("dump-ir",
 ExecutionEngine::ExecutionEngine(BackendKind backendKind)
     : backend_(createBackend(backendKind)) {}
 
-// Set the code generator kind to \p backendKind.
+/// Set the code generator kind to \p backendKind.
 void ExecutionEngine::setBackend(BackendKind backendKind) {
   backend_.reset(createBackend(backendKind));
+  function_.reset();
+}
+
+/// Set the code generator kind to \p backend.
+void ExecutionEngine::setBackend(Backend *backend) {
+  backend_.reset(backend);
   function_.reset();
 }
 

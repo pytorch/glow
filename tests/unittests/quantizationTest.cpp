@@ -17,6 +17,7 @@
 #include "glow/Quantization/Quantization.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
+#include "glow/IR/IR.h"
 #include "glow/Quantization/Serialization.h"
 
 #include "gtest/gtest.h"
@@ -575,6 +576,60 @@ TEST(Quantization, chooseQuantizationSymmetricWithUInt8) {
       -8.0, -2.0, quantization::Schema::SymmetricWithUInt8);
   EXPECT_EQ(symmetricParams.offset, 0);
   EXPECT_NEAR(symmetricParams.scale, 16.0 / 255, 0.001);
+}
+
+/// This is a mock backend which extended support of quantized operators.
+class MockQuantBackend : public Backend {
+  // The actual backend being wrapped.
+  std::unique_ptr<Backend> backend_;
+
+public:
+  MockQuantBackend() {
+    backend_.reset(createBackend(BackendKind::Interpreter));
+  }
+  std::unique_ptr<CompiledFunction>
+  compile(std::unique_ptr<IRFunction> IR) const override {
+    return backend_->compile(std::move(IR));
+  }
+  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
+    if (opKind == Kinded::Kind::SoftMaxNodeKind ||
+        opKind == Kinded::Kind::LocalResponseNormalizationNodeKind) {
+      return true;
+    }
+    return backend_->isOpSupported(opKind, elementTy);
+  }
+};
+
+/// Check that LRN and Softmax are quantized.
+TEST(Quantization, quantizeSoftmaxAndLRN) {
+  ExecutionEngine EE;
+  EE.setBackend(new MockQuantBackend());
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 10}, "input");
+  auto *selected = mod.createVariable(ElemKind::IndexTy, {1, 10}, "selected");
+  auto *LRN =
+      F->createLocalResponseNormalization("LRN", input, 2, 1.0, 0.0001, 0.75);
+  auto *SM = F->createSoftMax("softmax", LRN, selected);
+  F->createSave("ret", SM);
+
+  std::vector<NodeQuantizationInfo> QI{
+      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+       {0.2f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(LRN->getName()), {0.3f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(SM->getName()), {0.4f, 0}},
+  };
+
+  F = quantization::quantizeFunction(EE, QI, F);
+
+  auto *qLRN = cast<LocalResponseNormalizationNode>(F->getNodeByName("LRN1"));
+  auto *qSM = cast<SoftMaxNode>(F->getNodeByName("softmax1"));
+  ASSERT_NE(qLRN, nullptr);
+  ASSERT_NE(qSM, nullptr);
+  EXPECT_TRUE(qLRN->getInput().getType()->isQuantizedType());
+  EXPECT_TRUE(qSM->getInput().getType()->isQuantizedType());
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, Quantization,
