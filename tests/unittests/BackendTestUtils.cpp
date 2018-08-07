@@ -858,8 +858,8 @@ void inferMaxSplat(Tensor *input, Tensor *out, BackendKind kind) {
 
   auto *var = VarFrom(input);
   auto T = mod.uniqueType(ElemKind::Int8QTy, var->getType()->dims(),
-                           2 * var->getType()->getScale(),
-                           -var->getType()->getOffset());
+                          2 * var->getType()->getScale(),
+                          -var->getType()->getOffset());
 
   auto *rescale = F->createRescaleQuantized("rescale", var, T);
 
