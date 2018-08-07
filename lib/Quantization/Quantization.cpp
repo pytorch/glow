@@ -226,10 +226,11 @@ static Node *quantizeNode(Function *F, Node *node,
     break;                                                                     \
   }
     CASE_QUANTIZE_NODE(Add);
-    CASE_QUANTIZE_NODE(Mul);
-    CASE_QUANTIZE_NODE(Sub);
+    CASE_QUANTIZE_NODE(Div);
     CASE_QUANTIZE_NODE(Max);
     CASE_QUANTIZE_NODE(Min);
+    CASE_QUANTIZE_NODE(Mul);
+    CASE_QUANTIZE_NODE(Sub);
 #undef CASE_QUANTIZE_NODE
 
   case Kinded::Kind::ConcatNodeKind: {
