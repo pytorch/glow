@@ -2895,6 +2895,33 @@ TEST_P(Operator, sliceReshape) {
   EXPECT_NEAR(RSSXH.at({0}), SSXH.at({0, 0}), 1E-5);
 }
 
+/// Check that div on IndexTy/size_t works.
+TEST_P(InterpAndCPU, DivSizeT) {
+  auto *LHS = mod_.createVariable(ElemKind::IndexTy, {3, 2}, "LHS");
+  auto *RHS = mod_.createVariable(ElemKind::IndexTy, {3, 2}, "RHS");
+  auto *result = mod_.createVariable(ElemKind::IndexTy, {3, 2}, "result");
+  auto LHSH = LHS->getPayload().getHandle<size_t>();
+  auto RHSH = RHS->getPayload().getHandle<size_t>();
+
+  LHSH = {10, 20, 30, 40, 50, 60};
+  RHSH = {2, 20, 100, 41, 3, 59};
+
+  auto R = F_->createDiv("div", LHS, RHS);
+
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto H = result->getPayload().getHandle<size_t>();
+
+  for (size_t i = 0; i < 3; i++) {
+    for (size_t j = 0; j < 2; j++) {
+      EXPECT_EQ(LHSH.at({i, j}) / RHSH.at({i, j}), H.at({i, j}));
+    }
+  }
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 
