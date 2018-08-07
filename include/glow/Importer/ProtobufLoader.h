@@ -109,8 +109,7 @@ protected:
   /// \pre !hasNodeByName(name)
   Variable *createAndRememberVariable(
       llvm::StringRef name, const Tensor &tensor,
-      VisibilityKind visibilityKind = VisibilityKind::Private,
-      bool trainable = true);
+      VisibilityKind visibilityKind = VisibilityKind::Private);
 
   /// \returns the NodeValue that was registered with the name \p name or
   /// a nullptr wrapped in a NodeValue if no node has been registered with this
