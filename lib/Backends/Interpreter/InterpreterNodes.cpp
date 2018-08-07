@@ -1058,11 +1058,26 @@ void InterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
     return;
   }
 
-  auto outW = getWeightHandle(I->getDest());
-  auto lhsW = getWeightHandle(I->getLHS());
-  auto rhsW = getWeightHandle(I->getRHS());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = lhsW.raw(i) / rhsW.raw(i);
+#define DIV_LOOP(TYPE_)                                                        \
+  auto outW = getWeightHandle<TYPE_>(I->getDest());                            \
+  auto lhsW = getWeightHandle<TYPE_>(I->getLHS());                             \
+  auto rhsW = getWeightHandle<TYPE_>(I->getRHS());                             \
+  for (size_t i = 0, e = outW.size(); i < e; i++) {                            \
+    outW.raw(i) = lhsW.raw(i) / rhsW.raw(i);                                   \
+  }
+
+  auto *T = getTensor(I->getDest());
+  switch (T->getElementType()) {
+  case ElemKind::IndexTy: {
+    DIV_LOOP(size_t);
+    return;
+  }
+  case ElemKind::FloatTy: {
+    DIV_LOOP(float);
+    return;
+  }
+  default:
+    llvm_unreachable("Unsupported type for Div.");
   }
 }
 
