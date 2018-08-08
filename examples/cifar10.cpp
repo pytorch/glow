@@ -72,7 +72,7 @@ void testCIFAR10() {
   Tensor labels(ElemKind::IndexTy, {cifarNumImages, 1});
   size_t idx = 0;
 
-  auto labelsH = labels.getHandle<size_t>();
+  auto labelsH = labels.getHandle<uint64_t>();
   auto imagesH = images.getHandle<>();
   for (unsigned w = 0; w < cifarNumImages; w++) {
     labelsH.at({w, 0}) = static_cast<uint8_t>(dbInput.get());

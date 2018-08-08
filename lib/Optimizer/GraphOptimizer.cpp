@@ -930,7 +930,8 @@ static bool checkConcatNodeUniformDims(llvm::ArrayRef<NodeValue> inputs,
 /// dimension 1 as the trailing dimensions after it are <4,5>, which matches the
 /// size 20, and the leading dimensions are <1,2>, which matches the size 2.
 static ssize_t findMatchingConcatDimForSameTrailingAndLeadingDims(
-    llvm::ArrayRef<size_t> firstDims, size_t leadingDimsProdOriginalConcatNode,
+    llvm::ArrayRef<uint64_t> firstDims,
+    size_t leadingDimsProdOriginalConcatNode,
     size_t trailingDimsProdOriginalConcatNode) {
   size_t trailingDimsProdCurNode = 1;
   for (ssize_t i = firstDims.size() - 1; i >= 0; i--) {
@@ -1248,8 +1249,8 @@ struct VarsHasherDedup {
     // Only use the first 8 elements in the hash. It's likely that if two
     // tensors have different content they will diverge quickly. Fall back to
     // full equality check in VarsEqDedup.
-    constexpr size_t maxNumEls = 8;
-    size_t numEls = std::min(T.getType().size(), maxNumEls);
+    constexpr uint64_t maxNumEls = 8;
+    uint64_t numEls = std::min(T.getType().size(), maxNumEls);
     size_t bufSize = T.getType().getElementSize() * numEls;
     auto *data = T.getUnsafePtr();
     for (size_t i = 0; i < bufSize; i++) {

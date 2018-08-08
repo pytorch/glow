@@ -88,7 +88,7 @@ static void loadText(Tensor &inputText, Tensor &nextChar, llvm::StringRef text,
   auto S = idim[1];
 
   auto IH = inputText.getHandle();
-  auto NH = nextChar.getHandle<size_t>();
+  auto NH = nextChar.getHandle<uint64_t>();
 
   // Fill the tensor with slices from the sentence with an offset of 1.
   // Example:

@@ -81,8 +81,8 @@ TEST(OpenCLCorrectnessTest, inferMixedNet) {
 
 TEST(OpenCLCorrectnessTest, softmaxGradTest) {
   PseudoRNG PRNG;
-  std::array<size_t, 2> S{{8, 23}};
-  llvm::ArrayRef<size_t> shape(S);
+  std::array<uint64_t, 2> S{{8, 23}};
+  llvm::ArrayRef<uint64_t> shape(S);
   Tensor inputs(ElemKind::FloatTy, shape);
   Tensor weights(ElemKind::FloatTy, {23, 23});
   Tensor bias(ElemKind::FloatTy, {23});
@@ -90,7 +90,7 @@ TEST(OpenCLCorrectnessTest, softmaxGradTest) {
   inputs.getHandle().initXavier(1, PRNG);
   weights.getHandle().randomize(0.0, 0.5, PRNG);
   bias.getHandle().randomize(-0.2, 0.0, PRNG);
-  auto selectedH = selected.getHandle<size_t>();
+  auto selectedH = selected.getHandle<uint64_t>();
   for (size_t i = 0; i < 8; i++) {
     selectedH.raw(i) = PRNG.nextRandInt(0, 22);
   }
@@ -118,14 +118,14 @@ TEST(OpenCLCorrectnessTest, convGradTest) {
   bias1.getHandle().randomize(-0.2, 0.5, PRNG);
   kernel2.getHandle().randomize(-1.8, 2.3, PRNG);
   bias2.getHandle().randomize(-0.5, 1.0, PRNG);
-  auto selectedH = selected.getHandle<size_t>();
+  auto selectedH = selected.getHandle<uint64_t>();
   for (size_t i = 0; i < 9; i++) {
     selectedH.raw(i) = PRNG.nextRandInt(0, 29);
   }
-  std::array<size_t, 4> S1{{9, 6, 10, 1}};
-  llvm::ArrayRef<size_t> shape1(S1);
-  std::array<size_t, 2> S2{{9, 30}};
-  llvm::ArrayRef<size_t> shape2(S2);
+  std::array<uint64_t, 4> S1{{9, 6, 10, 1}};
+  llvm::ArrayRef<uint64_t> shape1(S1);
+  std::array<uint64_t, 2> S2{{9, 30}};
+  llvm::ArrayRef<uint64_t> shape2(S2);
   Tensor out1(ElemKind::FloatTy, shape2);
   Tensor out2(ElemKind::FloatTy, shape2);
 
@@ -146,7 +146,7 @@ TEST(OpenCLCorrectnessTest, gatherTest) {
   data.getHandle().initXavier(1, PRNG);
 
   Tensor indices(ElemKind::IndexTy, {nGathered});
-  auto indicesH = indices.getHandle<size_t>();
+  auto indicesH = indices.getHandle<uint64_t>();
   for (size_t i = 0; i < nGathered; i++) {
     indicesH.raw(i) = PRNG.nextRandInt(0, nSlices - 1);
   }

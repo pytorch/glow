@@ -49,14 +49,14 @@ static ArgumentDictionaryTy loadArgumentMap(const caffe2::OperatorDef &op) {
   return dict;
 }
 
-static std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
+static std::vector<uint64_t> getPads(const ArgumentDictionaryTy &dict) {
   if (dict.count("pad")) {
     int pad = loadInt(dict.at("pad"));
-    std::vector<size_t> pads(4, pad);
+    std::vector<uint64_t> pads(4, pad);
     return pads;
   }
   if (dict.count("pad_t")) {
-    std::vector<size_t> pads(4);
+    std::vector<uint64_t> pads(4);
     pads[0] = loadInt(dict.at("pad_t"));
     assert(dict.count("pad_l") && "missing pad_l");
     pads[1] = loadInt(dict.at("pad_l"));
@@ -85,16 +85,16 @@ static unsigned getChannel(const ArgumentDictionaryTy &dict) {
   GLOW_ASSERT(false && "Invalid order field");
 }
 
-static std::vector<size_t> getSizeHW(ArgumentDictionaryTy &dict,
-                                     const std::string &name,
-                                     unsigned defaultValue) {
+static std::vector<uint64_t> getSizeHW(ArgumentDictionaryTy &dict,
+                                       const std::string &name,
+                                       unsigned defaultValue) {
   if (dict.count(name)) {
     int value = loadInt(dict[name]);
-    std::vector<size_t> result(2, value);
+    std::vector<uint64_t> result(2, value);
     return result;
   }
   if (dict.count(name + "_h") && dict.count(name + "_w")) {
-    std::vector<size_t> result(2);
+    std::vector<uint64_t> result(2);
     result[0] = loadInt(dict[name + "_h"]);
     result[1] = loadInt(dict[name + "_w"]);
     return result;
@@ -146,9 +146,9 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Conv") {
     // Load the inputs:
-    std::vector<size_t> strides = getSizeHW(dict, "stride", 1);
-    std::vector<size_t> pads = getPads(dict);
-    std::vector<size_t> kernels = getSizeHW(dict, "kernel", 0);
+    std::vector<uint64_t> strides = getSizeHW(dict, "stride", 1);
+    std::vector<uint64_t> pads = getPads(dict);
+    std::vector<uint64_t> kernels = getSizeHW(dict, "kernel", 0);
     unsigned group = dict.count("group") ? loadInt(dict["group"]) : 1;
 
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
@@ -163,7 +163,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // The structure of the conv weigts is: NHWC. We take the C, which is the
     // number of filters. We use this value to calculate the size of the bias
     // if it is not specified.
-    size_t depth = wtag.dims()[0];
+    uint64_t depth = wtag.dims()[0];
 
     // Construct the Filter field.
     auto *filter = G_.getParent()->createVariable("conv.filter", wtag);
@@ -190,7 +190,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
     auto outSz =
         calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
-    std::array<size_t, 4> outDims = {
+    std::array<uint64_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
@@ -206,9 +206,9 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "MaxPool" || typeName == "AveragePool") {
     // Load the inputs:
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
-    std::vector<size_t> strides = getSizeHW(dict, "stride", 1);
-    std::vector<size_t> kernels = getSizeHW(dict, "kernel", 0);
-    std::vector<size_t> pads = getPads(dict);
+    std::vector<uint64_t> strides = getSizeHW(dict, "stride", 1);
+    std::vector<uint64_t> kernels = getSizeHW(dict, "kernel", 0);
+    std::vector<uint64_t> pads = getPads(dict);
 
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
 
@@ -280,14 +280,14 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Load the inputs:
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
     if (in.getType()->dims().size() > 2) {
-      size_t axis = dict.count("axis") ? loadInt(dict["axis"]) : 1;
+      uint64_t axis = dict.count("axis") ? loadInt(dict["axis"]) : 1;
       in = G_.createFlatten("fc.in", in, axis);
     }
 
     // Load weights.
     Tensor *w = getTensorByName(op.input(1));
     Tensor *b = getTensorByName(op.input(2));
-    size_t axis_w = dict.count("axis_w") ? loadInt(dict["axis_w"]) : 1;
+    uint64_t axis_w = dict.count("axis_w") ? loadInt(dict["axis_w"]) : 1;
 
     // Caffe2 stores the transposed W matrix. In here we first coerce W to a 2D
     // matrix size if necessay and then transpose it back.
@@ -314,8 +314,8 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "ChannelShuffle") {
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
 
-    size_t group = loadInt(dict["group"]);
-    size_t kernel = loadInt(dict["kernel"]);
+    uint64_t group = loadInt(dict["group"]);
+    uint64_t kernel = loadInt(dict["kernel"]);
 
     Node *node = G_.createChannelShuffle(opName, in, group, kernel);
     addNodeAsOutput(op, node);
@@ -333,7 +333,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "Gather" || typeName == "BatchGather") {
     auto data = getNodeValueOrCreateVariableByName(op.input(0));
     auto indices = getNodeValueOrCreateVariableByName(op.input(1));
-    size_t batchDims = typeName == "Gather" ? 0 : 1;
+    unsigned batchDims = typeName == "Gather" ? 0 : 1;
 
     Node *GN = G_.createGather(opName, data, indices, batchDims);
     addNodeAsOutput(op, GN);
@@ -412,7 +412,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto starts = getShape<ssize_t>(dict["starts"]);
     auto ends = getShape<ssize_t>(dict["ends"]);
 
-    std::vector<size_t> newStarts, newEnds;
+    std::vector<uint64_t> newStarts, newEnds;
     assert(starts.size() == ends.size());
     for (size_t i = 0; i < starts.size(); i++) {
       ssize_t newStart = starts[i];
@@ -562,7 +562,7 @@ void caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       }
     } else if (dict["values"]->ints_size()) {
       T->reset(ElemKind::IndexTy, dim);
-      auto TH = T->getHandle<size_t>();
+      auto TH = T->getHandle<uint64_t>();
       for (auto num : dict["values"]->ints()) {
         assert(0 <= num && num < (1LL << 32) &&
                "Only uint32 integers are supported");
@@ -601,7 +601,7 @@ void caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
 
     // The shape is set either the shape argument, or from another input
     // tensor. Shape takes priority over input.
-    std::vector<size_t> dims;
+    std::vector<uint64_t> dims;
     if (dict.count("shape")) {
       dims = getShape(dict["shape"]);
     } else {
@@ -627,7 +627,7 @@ void caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     case caffe2::TensorProto_DataType_INT32:
     case caffe2::TensorProto_DataType_INT64: {
       T->reset(ElemKind::IndexTy, dims);
-      auto TH = T->getHandle<size_t>();
+      auto TH = T->getHandle<uint64_t>();
       auto i = dict.at("value")->has_i() ? loadInt(dict.at("value")) : 0;
       TH.clear(i);
       break;

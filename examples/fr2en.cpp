@@ -298,7 +298,7 @@ void Model::loadDecoder() {
       mod.createVariable(ElemKind::IndexTy, {batchSize_}, "decoder.input",
                          VisibilityKind::Private, false);
   for (size_t i = 0; i < batchSize_; i++) {
-    input->getPayload().getHandle<size_t>().at({i}) = en_.word2index_["SOS"];
+    input->getPayload().getHandle<uint64_t>().at({i}) = en_.word2index_["SOS"];
   }
 
   Variable *w_ih =
@@ -379,14 +379,15 @@ void Model::translate(const std::vector<std::string> &batch) {
     for (size_t i = 0; i < words.size(); i++) {
       auto iter = fr_.word2index_.find(words[i]);
       GLOW_ASSERT(iter != fr_.word2index_.end() && "Unknown word.");
-      input.getHandle<size_t>().at({j, i}) = iter->second;
+      input.getHandle<uint64_t>().at({j, i}) = iter->second;
     }
-    seqLength.getHandle<size_t>().at({j}) = (words.size() - 1) + j * MAX_LENGTH;
+    seqLength.getHandle<uint64_t>().at({j}) =
+        (words.size() - 1) + j * MAX_LENGTH;
   }
 
   EE_.run({input_, seqLength_}, {&input, &seqLength});
 
-  auto OH = output_->getPayload().getHandle<size_t>();
+  auto OH = output_->getPayload().getHandle<uint64_t>();
   for (unsigned j = 0; j < batch.size(); j++) {
     for (unsigned i = 0; i < MAX_LENGTH; i++) {
       size_t wordIdx = OH.at({i, j});

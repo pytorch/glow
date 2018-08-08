@@ -56,9 +56,9 @@ void IRBuilder::deallocateActiveInstrs() {
 //                        High level operators.
 //===----------------------------------------------------------------------===//
 MaxPoolWithXYInst *
-IRBuilder::createMaxPoolWithXYOp(Value *input, llvm::ArrayRef<size_t> kernels,
-                                 llvm::ArrayRef<size_t> strides,
-                                 llvm::ArrayRef<size_t> pads) {
+IRBuilder::createMaxPoolWithXYOp(Value *input, llvm::ArrayRef<uint64_t> kernels,
+                                 llvm::ArrayRef<uint64_t> strides,
+                                 llvm::ArrayRef<uint64_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
 
   auto outSz =
@@ -78,9 +78,9 @@ IRBuilder::createMaxPoolWithXYOp(Value *input, llvm::ArrayRef<size_t> kernels,
                                  pads);
 }
 AvgPoolInst *IRBuilder::createAvgPoolOp(Value *input,
-                                        llvm::ArrayRef<size_t> kernels,
-                                        llvm::ArrayRef<size_t> strides,
-                                        llvm::ArrayRef<size_t> pads) {
+                                        llvm::ArrayRef<uint64_t> kernels,
+                                        llvm::ArrayRef<uint64_t> strides,
+                                        llvm::ArrayRef<uint64_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
 
   auto outSz =
@@ -107,16 +107,16 @@ CrossEntropyLossInst *IRBuilder::createCrossEntropyLossOp(Value *p,
 /// \param offsets is a vector of offsets into the Tensor for this view of the
 /// Tensor.
 TensorViewInst *IRBuilder::createTensorView(ElemKind elemKind,
-                                            llvm::ArrayRef<size_t> dims,
+                                            llvm::ArrayRef<uint64_t> dims,
                                             Value *src, llvm::StringRef name,
-                                            llvm::ArrayRef<size_t> offsets) {
+                                            llvm::ArrayRef<uint64_t> offsets) {
   auto ty =
       getIRFunction().getGraph()->getParent()->uniqueType(Type(elemKind, dims));
   return createTensorViewInst(
       name, src, ty,
       (offsets.size()
            ? offsets
-           : llvm::ArrayRef<size_t>(std::vector<size_t>(dims.size(), 0))));
+           : llvm::ArrayRef<uint64_t>(std::vector<uint64_t>(dims.size(), 0))));
 }
 
 LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationOp(
@@ -161,7 +161,7 @@ Value *IRBuilder::createReturnOp(Value *input) {
 //===----------------------------------------------------------------------===//
 
 WeightVar *IRBuilder::createWeightVar(ElemKind elemTy,
-                                      llvm::ArrayRef<size_t> dims,
+                                      llvm::ArrayRef<uint64_t> dims,
                                       llvm::StringRef name,
                                       WeightVar::MutabilityKind m,
                                       VisibilityKind v) {
@@ -183,7 +183,7 @@ WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
 
 AllocActivationInst *
 IRBuilder::createAllocActivationInst(llvm::StringRef name, ElemKind elemTy,
-                                     llvm::ArrayRef<size_t> dims) {
+                                     llvm::ArrayRef<uint64_t> dims) {
   auto T = F_->getGraph()->getParent()->uniqueType(elemTy, dims);
   return createAllocActivationInst(name, T);
 }

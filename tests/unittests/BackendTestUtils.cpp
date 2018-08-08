@@ -118,8 +118,9 @@ void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
 
 void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
                   Tensor *kernel2, Tensor *bias2, Tensor *selected,
-                  llvm::ArrayRef<size_t> shape1, llvm::ArrayRef<size_t> shape2,
-                  Tensor *out, BackendKind kind) {
+                  llvm::ArrayRef<uint64_t> shape1,
+                  llvm::ArrayRef<uint64_t> shape2, Tensor *out,
+                  BackendKind kind) {
   ExecutionEngine EE(kind);
   TrainingConfig TC;
 
@@ -179,8 +180,8 @@ void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
 
 void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
                                         Tensor *bias, Tensor *selected,
-                                        llvm::ArrayRef<size_t> shape1,
-                                        llvm::ArrayRef<size_t> shape2,
+                                        llvm::ArrayRef<uint64_t> shape1,
+                                        llvm::ArrayRef<uint64_t> shape2,
                                         Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   TrainingConfig TC;
@@ -280,8 +281,8 @@ void inferAvgPoolNet(Tensor *inputs, Tensor *out, BackendKind kind) {
 }
 
 void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
-                     Tensor *selected, llvm::ArrayRef<size_t> shape1,
-                     llvm::ArrayRef<size_t> shape2, Tensor *out,
+                     Tensor *selected, llvm::ArrayRef<uint64_t> shape1,
+                     llvm::ArrayRef<uint64_t> shape2, Tensor *out,
                      BackendKind kind) {
   ExecutionEngine EE(kind);
   TrainingConfig TC;
@@ -324,8 +325,8 @@ void inferMaxPoolNet(Tensor *inputs, Tensor *out, BackendKind kind) {
 }
 
 void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
-                     Tensor *selected, llvm::ArrayRef<size_t> shape1,
-                     llvm::ArrayRef<size_t> shape2, Tensor *out,
+                     Tensor *selected, llvm::ArrayRef<uint64_t> shape1,
+                     llvm::ArrayRef<uint64_t> shape2, Tensor *out,
                      BackendKind kind) {
   ExecutionEngine EE(kind);
   TrainingConfig TC;
@@ -386,8 +387,8 @@ void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   out->copyFrom(&result->getVariable()->getPayload());
 }
 
-void inferReshapeNet(Tensor *inputs, llvm::ArrayRef<size_t> shape, Tensor *out,
-                     BackendKind kind) {
+void inferReshapeNet(Tensor *inputs, llvm::ArrayRef<uint64_t> shape,
+                     Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");

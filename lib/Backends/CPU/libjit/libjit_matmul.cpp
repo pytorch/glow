@@ -56,7 +56,7 @@ constexpr int nc = 4096;
 /// Only pack matrices if dimension is above this threshold.  Packing is
 /// primarily helpful for avoiding TLB pressure and cache set conflicts, so this
 /// can be fairly large.
-constexpr size_t pack_threshold = 1024;
+constexpr uint64_t pack_threshold = 1024;
 
 /// Compute a RAxRB block of C using a vectorized dot product, where RA is the
 /// number of registers to load from matrix A, and RB is the number of registers
@@ -257,8 +257,8 @@ extern "C" {
 /// \p a is a m x k matrix, so \p aDims = {m, k}
 /// \p b is a k x n matrix, so \p bDims = {k, n}
 void libjit_matmul_f(float *c, const float *a, const float *b,
-                     const size_t *cDims, const size_t *aDims,
-                     const size_t *bDims) {
+                     const uint64_t *cDims, const uint64_t *aDims,
+                     const uint64_t *bDims) {
   memset(c, 0, cDims[0] * cDims[1] * sizeof(float));
   // Call the matrix multiplication routine with appropriate dimensions and
   // leading dimensions. The "leading dimension" for a row-major matrix is equal
@@ -283,14 +283,14 @@ void libjit_matmul_f(float *c, const float *a, const float *b,
 }
 
 void libjit_matmul_i8(int8_t *outW, const int8_t *lhsW, const int8_t *rhsW,
-                      const size_t *outWdims, const size_t *lhsWdims,
-                      const size_t *rhsWdims, int32_t outOffset,
+                      const uint64_t *outWdims, const uint64_t *lhsWdims,
+                      const uint64_t *rhsWdims, int32_t outOffset,
                       int32_t lhsOffset, int32_t rhsOffset, int32_t outPre,
                       int32_t outPost, int32_t outScale) {
-  for (size_t x = 0; x < outWdims[0]; x++) {
-    for (size_t y = 0; y < outWdims[1]; y++) {
+  for (uint64_t x = 0; x < outWdims[0]; x++) {
+    for (uint64_t y = 0; y < outWdims[1]; y++) {
       int32_t sum = 0;
-      for (size_t i = 0; i < lhsWdims[1]; i++) {
+      for (uint64_t i = 0; i < lhsWdims[1]; i++) {
         int32_t lhs = lhsW[libjit_getXY(lhsWdims, x, i)] - lhsOffset;
         int32_t rhs = rhsW[libjit_getXY(rhsWdims, i, y)] - rhsOffset;
         sum += lhs * rhs;

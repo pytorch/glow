@@ -194,12 +194,12 @@ static void dumpAsciiGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
 /// single copy of a single element.
 template <class ElemTy>
 static void transposeGenericImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
-                                 size_t *srcCoor, size_t *destCoor,
+                                 uint64_t *srcCoor, uint64_t *destCoor,
                                  llvm::ArrayRef<unsigned> shuffle,
                                  unsigned depth = 0) {
   if (depth == shuffle.size()) {
-    auto srcIdx = llvm::ArrayRef<size_t>(srcCoor, depth);
-    auto destIdx = llvm::ArrayRef<size_t>(destCoor, depth);
+    auto srcIdx = llvm::ArrayRef<uint64_t>(srcCoor, depth);
+    auto destIdx = llvm::ArrayRef<uint64_t>(destCoor, depth);
     dest.at(destIdx) = src.at(srcIdx);
     return;
   }
@@ -222,10 +222,10 @@ template <class ElemTy>
 static bool tryTransposeFastImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
                                  llvm::ArrayRef<unsigned> shuffle) {
   const size_t numDims = dest.dims().size();
-  size_t srcCoorArr[max_tensor_dimensions];
-  size_t destCoorArr[max_tensor_dimensions] = {0};
-  auto srcCoor = llvm::ArrayRef<size_t>(srcCoorArr, numDims);
-  auto destCoor = llvm::ArrayRef<size_t>(destCoorArr, numDims);
+  uint64_t srcCoorArr[max_tensor_dimensions];
+  uint64_t destCoorArr[max_tensor_dimensions] = {0};
+  auto srcCoor = llvm::ArrayRef<uint64_t>(srcCoorArr, numDims);
+  auto destCoor = llvm::ArrayRef<uint64_t>(destCoorArr, numDims);
 
   /// This defines a single depth of the for loop used to iterate over the
   /// source and destination tensors for transposing.
@@ -258,8 +258,8 @@ static void transposeSelectImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
                                 llvm::ArrayRef<unsigned> shuffle) {
   bool transposeOccurred = tryTransposeFastImpl(src, dest, shuffle);
   if (!transposeOccurred) {
-    size_t srcCoor[max_tensor_dimensions];
-    size_t destCoor[max_tensor_dimensions];
+    uint64_t srcCoor[max_tensor_dimensions];
+    uint64_t destCoor[max_tensor_dimensions];
     transposeGenericImpl(src, dest, srcCoor, destCoor, shuffle);
   }
 }
@@ -274,7 +274,7 @@ void glow::dumpAsciiImpl(Tensor *T, llvm::raw_ostream &os) {
   case ElemKind::Int32QTy:
     return dumpAsciiGenericImpl(T->getHandle<int32_t>(), os);
   case ElemKind::IndexTy:
-    return dumpAsciiGenericImpl(T->getHandle<size_t>(), os);
+    return dumpAsciiGenericImpl(T->getHandle<uint64_t>(), os);
   }
 }
 
@@ -289,7 +289,7 @@ void glow::dumpImpl(Tensor *T, llvm::raw_ostream &os) {
   case ElemKind::Int32QTy:
     return dumpGenericImpl(T->getHandle<int32_t>(), os);
   case ElemKind::IndexTy:
-    return dumpGenericImpl(T->getHandle<size_t>(), os);
+    return dumpGenericImpl(T->getHandle<uint64_t>(), os);
   }
 }
 
@@ -299,7 +299,7 @@ void glow::genericTranspose(Tensor *src, Tensor *dest,
                             llvm::ArrayRef<unsigned> shuffle) {
   assert(src->dims().size() == shuffle.size() && "Invalid dimensions");
 
-  size_t newSizes[max_tensor_dimensions];
+  uint64_t newSizes[max_tensor_dimensions];
 
   // Generate the swizzled dimensions.
   auto origDims = src->dims();
@@ -331,15 +331,15 @@ void glow::genericTranspose(Tensor *src, Tensor *dest,
     return;
   }
   case ElemKind::IndexTy: {
-    auto srcH = src->getHandle<size_t>();
-    auto destH = dest->getHandle<size_t>();
+    auto srcH = src->getHandle<uint64_t>();
+    auto destH = dest->getHandle<uint64_t>();
     transposeSelectImpl(srcH, destH, shuffle);
     return;
   }
   }
 }
 
-ShapeVector glow::expandDimsToMax(llvm::ArrayRef<size_t> currDims) {
+ShapeVector glow::expandDimsToMax(llvm::ArrayRef<uint64_t> currDims) {
   ShapeVector newDims(currDims.begin(), currDims.end());
   for (size_t i = newDims.size(); i < max_tensor_dimensions; i++) {
     newDims.push_back(1);
@@ -368,7 +368,7 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
       break;
     }
     case ElemKind::IndexTy: {
-      getHandle<size_t>().clear(val);
+      getHandle<uint64_t>().clear(val);
       break;
     }
     }
@@ -390,7 +390,7 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
       break;
     }
     case ElemKind::IndexTy: {
-      getHandle<size_t>().initXavier(val, PRNG);
+      getHandle<uint64_t>().initXavier(val, PRNG);
       break;
     }
     }

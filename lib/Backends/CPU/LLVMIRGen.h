@@ -133,13 +133,18 @@ class LLVMIRGen {
   llvm::Value *emitConstI8(llvm::IRBuilder<> &builder, int8_t val);
   /// Generates LLVM IR that materializes the constant \p val.
   llvm::Value *emitConstSizeT(llvm::IRBuilder<> &builder, size_t val);
+  /// Generates LLVM IR that materializes the constant \p val.
+  llvm::Value *emitConstUI64(llvm::IRBuilder<> &builder, uint64_t val);
   /// Generates LLVM IR that materializes the constant \p val as a constant of
   /// the type specified by \p kind.
   llvm::Value *emitConst(llvm::IRBuilder<> &builder, float val,
                          glow::ElemKind kind);
   /// Generates LLVM IR that materializes the constant array \p vals.
-  llvm::Value *emitConstArray(llvm::IRBuilder<> &builder,
-                              llvm::ArrayRef<size_t> vals);
+  llvm::Value *emitConstSizeTArray(llvm::IRBuilder<> &builder,
+                                   llvm::ArrayRef<size_t> vals);
+  /// Generates LLVM IR that materializes the constant array \p vals.
+  llvm::Value *emitConstUI64Array(llvm::IRBuilder<> &builder,
+                                  llvm::ArrayRef<uint64_t> vals);
 
   /// Generates LLVM IR that materializes the constant array \p vals. Elements
   /// of vals have the type \p elemTy.

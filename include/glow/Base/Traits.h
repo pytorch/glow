@@ -50,7 +50,7 @@ public:
 
   TypeRef getType() const { return Ty_; }
 
-  llvm::ArrayRef<size_t> dims() const { return Ty_->dims(); }
+  llvm::ArrayRef<uint64_t> dims() const { return Ty_->dims(); }
 
   size_t size() const { return Ty_->size(); }
 

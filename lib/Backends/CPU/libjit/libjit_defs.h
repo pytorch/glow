@@ -55,8 +55,9 @@ inline void AdduFloat8(float *p, float8 v) {
 }
 
 /// \returns the index of the element at x,y,z,w,q,r.
-inline size_t libjit_getXYZWQR(const size_t *dims, size_t x, size_t y, size_t z,
-                               size_t w, size_t q, size_t r) {
+inline uint64_t libjit_getXYZWQR(const uint64_t *dims, uint64_t x, uint64_t y,
+                                 uint64_t z, uint64_t w, uint64_t q,
+                                 uint64_t r) {
   return (x * dims[1] * dims[2] * dims[3] * dims[4] * dims[5]) +
          (y * dims[2] * dims[3] * dims[4] * dims[5]) +
          (z * dims[3] * dims[4] * dims[5]) + (w * dims[4] * dims[5]) +
@@ -64,27 +65,28 @@ inline size_t libjit_getXYZWQR(const size_t *dims, size_t x, size_t y, size_t z,
 }
 
 /// \returns the index of the element at x,y,z,w,q.
-inline size_t libjit_getXYZWQ(const size_t *dims, size_t x, size_t y, size_t z,
-                              size_t w, size_t q) {
+inline uint64_t libjit_getXYZWQ(const uint64_t *dims, uint64_t x, uint64_t y,
+                                uint64_t z, uint64_t w, uint64_t q) {
   return (x * dims[1] * dims[2] * dims[3] * dims[4]) +
          (y * dims[2] * dims[3] * dims[4]) + (z * dims[3] * dims[4]) +
          (w * dims[4]) + q;
 }
 
 /// \returns the index of the element at x,y,z,w.
-inline size_t libjit_getXYZW(const size_t *dims, size_t x, size_t y, size_t z,
-                             size_t w) {
+inline uint64_t libjit_getXYZW(const uint64_t *dims, uint64_t x, uint64_t y,
+                               uint64_t z, uint64_t w) {
   return (x * dims[1] * dims[2] * dims[3]) + (y * dims[2] * dims[3]) +
          (z * dims[3]) + w;
 }
 
 /// \returns the index of the element at x,y,z.
-inline size_t libjit_getXYZ(const size_t *dims, size_t x, size_t y, size_t z) {
+inline uint64_t libjit_getXYZ(const uint64_t *dims, uint64_t x, uint64_t y,
+                              uint64_t z) {
   return (x * dims[1] * dims[2]) + (y * dims[2]) + z;
 }
 
 /// \returns the index of the element at x,y.
-inline size_t libjit_getXY(const size_t *dims, size_t x, size_t y) {
+inline uint64_t libjit_getXY(const uint64_t *dims, uint64_t x, uint64_t y) {
   return (x * dims[1]) + y;
 }
 

@@ -73,9 +73,8 @@ Tensor *InterpreterFunction::getOrCreateTensor(const Value *v) {
   return it->second;
 }
 
-Tensor *
-InterpreterFunction::getOrCreateUnownedTensor(const Value *v, const Value *src,
-                                              llvm::ArrayRef<size_t> offsets) {
+Tensor *InterpreterFunction::getOrCreateUnownedTensor(
+    const Value *v, const Value *src, llvm::ArrayRef<uint64_t> offsets) {
   assert(llvm::isa<TensorViewInst>(v) && "Expected a tensor view");
 
   // Pick the tensor.

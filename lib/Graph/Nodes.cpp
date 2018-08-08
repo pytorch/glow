@@ -116,9 +116,9 @@ static void checkType(NodeValue A, ElemKind expectedType) {
 }
 
 static void verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
-                              NodeValue bias, llvm::ArrayRef<size_t> kernels,
-                              llvm::ArrayRef<size_t> strides,
-                              llvm::ArrayRef<size_t> pads, size_t group) {
+                              NodeValue bias, llvm::ArrayRef<uint64_t> kernels,
+                              llvm::ArrayRef<uint64_t> strides,
+                              llvm::ArrayRef<uint64_t> pads, size_t group) {
   assert(src.getElementType() == dest.getElementType() && "Invalid Type");
   assert(src.getElementType() == filter.getElementType() && "Invalid Type");
   assert(src.getElementType() == bias.getElementType() && "Invalid Type");
@@ -161,9 +161,9 @@ static void verifyFullyConnected(NodeValue src, NodeValue weights,
 }
 
 static void verifyPool(NodeValue src, NodeValue dest,
-                       llvm::ArrayRef<size_t> kernels,
-                       llvm::ArrayRef<size_t> strides,
-                       llvm::ArrayRef<size_t> pads) {
+                       llvm::ArrayRef<uint64_t> kernels,
+                       llvm::ArrayRef<uint64_t> strides,
+                       llvm::ArrayRef<uint64_t> pads) {
   ShapeNHWC idim = ShapeNHWC(src.getType()->dims());
   ShapeNHWC odim = ShapeNHWC(dest.getType()->dims());
   (void)odim;
@@ -188,7 +188,7 @@ static void verifyBatchNormalization(NodeValue src, NodeValue dest,
   checkSameType(dest, src);
 
   // Figure out how many channels are in the tensor.
-  size_t channels = src.dims()[channel];
+  uint64_t channels = src.dims()[channel];
 
   auto exp = {channels};
   (void)exp;

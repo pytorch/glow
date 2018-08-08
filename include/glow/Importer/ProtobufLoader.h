@@ -36,7 +36,7 @@
 namespace glow {
 
 /// Returns true iff all elements of \p a are the same.
-bool isArrayConstant(const llvm::ArrayRef<size_t> a);
+bool isArrayConstant(const llvm::ArrayRef<uint64_t> a);
 
 /// Prints a single serialized protocol buffer node. This method is useful for
 /// debugging the network and printing errors.
@@ -66,7 +66,7 @@ template <typename T> static const std::string &loadStr(const T *arg) {
 }
 
 /// Load the 'shape' record into a vector of sizes.
-template <typename ElemTy = size_t, typename AttrType>
+template <typename ElemTy = uint64_t, typename AttrType>
 std::vector<ElemTy> getShape(const AttrType *arg) {
   std::vector<ElemTy> dim;
   for (auto i : arg->ints()) {

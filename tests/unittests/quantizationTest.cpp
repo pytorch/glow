@@ -235,7 +235,7 @@ TEST_P(Operator, end2end) {
 
 /// Fills the tensor \p H with some stable random integers with the seed \p seed
 /// and the range [0, scale).
-static void fillStableRandomIndex(Handle<size_t> H, size_t seed,
+static void fillStableRandomIndex(Handle<uint64_t> H, size_t seed,
                                   size_t scale = 10) {
   for (size_t i = 0, e = H.size(); i < e; i++) {
     H.raw(i) = int(i * 1921 + seed) % scale;
@@ -261,7 +261,7 @@ static Function *createGRUForQuantization(Module *M, llvm::StringRef funcName) {
   auto *input = F->getParent()->createVariable(
       ElemKind::IndexTy, {batchSize, sequenceSize}, "input",
       VisibilityKind::Public, false);
-  fillStableRandomIndex(input->getHandle<size_t>(), 7227, 10);
+  fillStableRandomIndex(input->getHandle<uint64_t>(), 7227, 10);
 
   auto *hiddenInit = F->getParent()->createVariable(
       ElemKind::FloatTy, {batchSize, embeddingSize}, "hiddenInit",
