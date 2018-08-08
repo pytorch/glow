@@ -245,6 +245,25 @@ onnxWaitEvent(onnxEvent event) {
   return ONNXIFI_STATUS_SUCCESS;
 }
 
+/// Query ONNXIFI event state without blocking.
+ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
+  onnxGetEventState(
+    onnxEvent event,
+    onnxEventState* state) {
+  if (!state) {
+    return ONNXIFI_STATUS_INVALID_POINTER;
+  }
+  *state = ONNXIFI_EVENT_STATE_INVALID;
+
+  auto *glowEvent = static_cast<glow::onnxifi::EventPtr>(event);
+  if (!glowEvent) {
+    return ONNXIFI_STATUS_INVALID_EVENT;
+  }
+
+  *state = glowEvent->isSignalled() ? ONNXIFI_EVENT_STATE_SIGNALLED : ONNXIFI_EVENT_STATE_NONSIGNALLED;
+  return ONNXIFI_STATUS_SUCCESS; 
+}
+
 /// Deinitialize an ONNXIFI event and release associated resources.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxReleaseEvent(onnxEvent event) {

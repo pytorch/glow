@@ -39,7 +39,7 @@ bool Event::signal() {
 
 void Event::wait() {
   std::unique_lock<std::mutex> guard(mutex_);
-  cond_.wait(guard, [this] { return fired_; });
+  cond_.wait(guard, [this] { return fired_ == true; });
 }
 
 onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,

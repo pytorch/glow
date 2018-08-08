@@ -20,6 +20,7 @@
 
 #include "onnx/onnxifi.h"
 
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
 
@@ -61,13 +62,17 @@ typedef Backend *BackendPtr;
 class Event {
 public:
   Event() : fired_{false} {}
-  /// Signal.
+  /// Signal the event.
   bool signal();
-  /// Wait.
+
+  /// Wait until the event is signalled.
   void wait();
 
+  /// Check if event was signalled.
+  bool isSignalled() { return fired_; }
+
 private:
-  bool fired_;
+  std::atomic<bool> fired_;
   std::mutex mutex_;
   std::condition_variable cond_;
 };
