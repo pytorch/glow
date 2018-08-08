@@ -296,6 +296,14 @@ static Node *quantizeNode(Function *F, Node *node,
     quantizedNode = F->createSigmoid(SN->getName(), quantizedInputs[0]);
     break;
   }
+  case Kinded::Kind::SplatNodeKind: {
+    auto *SPN = cast<SplatNode>(node);
+    assert(quantizedInputs.size() == 0 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+
+    quantizedNode = F->createSplat(SPN->getName(), SPN->getResult().getType(), SPN->getValue());
+    break;
+  }
   default:
     GLOW_UNREACHABLE("The node type is not supported for quantization");
   }
