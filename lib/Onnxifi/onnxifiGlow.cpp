@@ -126,7 +126,7 @@ onnxGetBackendInfo(onnxBackendID backendID, onnxBackendInfo infoType,
     return setBackendInfoUInt64(infoValue, infoValueSize,
                                 ONNXIFI_SYNCHRONIZATION_EVENT);
   default:
-    return ONNXIFI_STATUS_UNSUPPORTED_PARAMETER;
+    return ONNXIFI_STATUS_UNSUPPORTED_PROPERTY;
   }
 }
 
@@ -260,9 +260,9 @@ onnxReleaseEvent(onnxEvent event) {
 
 /// Parse an ONNXIFI graph and convert it for a particular backend.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxInitGraph(
-    onnxBackend backend, size_t onnxModelSize, const void *onnxModel,
-    uint32_t weightsCount, const onnxTensorDescriptorV1 *weightDescriptors,
-    onnxGraph *graph) {
+    onnxBackend backend, const uint64_t *auxPropertiesList,
+    size_t onnxModelSize, const void *onnxModel, uint32_t weightsCount,
+    const onnxTensorDescriptorV1 *weightDescriptors, onnxGraph *graph) {
   if (!onnxModel || !weightDescriptors || !graph) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
