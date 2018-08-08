@@ -180,9 +180,11 @@ public:
     if (elementTy == ElemKind::Int8QTy) {
       switch (opKind) {
       case Kinded::Kind::AddNodeKind:
+      case Kinded::Kind::ConcatNodeKind:
       case Kinded::Kind::ConvolutionNodeKind:
       case Kinded::Kind::DequantizeNodeKind:
       case Kinded::Kind::DivNodeKind:
+      case Kinded::Kind::FullyConnectedNodeKind:
       case Kinded::Kind::MaxNodeKind:
       case Kinded::Kind::MinNodeKind:
       case Kinded::Kind::MulNodeKind:
@@ -191,6 +193,8 @@ public:
       case Kinded::Kind::QuantizeNodeKind:
       case Kinded::Kind::ReluNodeKind:
       case Kinded::Kind::RescaleQuantizedNodeKind:
+      case Kinded::Kind::ReshapeNodeKind:
+      case Kinded::Kind::SliceNodeKind:
       case Kinded::Kind::SplatNodeKind:
       case Kinded::Kind::SubNodeKind:
       case Kinded::Kind::TransposeNodeKind:
