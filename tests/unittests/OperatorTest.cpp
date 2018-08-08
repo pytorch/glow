@@ -44,7 +44,7 @@ class InterpAndCPU : public Operator {};
 
 class InterpOnly : public Operator {};
 
-TEST_P(InterpAndCPU, pow) {
+TEST_P(Operator, pow) {
   auto *X = mod_.createVariable(ElemKind::FloatTy, {1, 1, 3}, "X");
   auto *Y = mod_.createVariable(ElemKind::FloatTy, {2}, "Y");
   auto *Exp = mod_.createVariable(ElemKind::FloatTy, {2}, "Exp");
