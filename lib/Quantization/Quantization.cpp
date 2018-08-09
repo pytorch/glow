@@ -255,6 +255,16 @@ static Node *quantizeNode(Function *F, Node *node,
         F->createConcat(node->getName(), quantizedInputs, C->getDim(), outTy);
     break;
   }
+  case Kinded::Kind::SplatNodeKind: {
+    auto *SPN = cast<SplatNode>(node);
+    assert(quantizedInputs.size() == 0 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+    auto outTy =
+        F->getParent()->uniqueType(ElemKind::Int8QTy, SPN->getResult().dims(),
+                                   qParams[0].scale, qParams[0].offset);
+    quantizedNode = F->createSplat(node->getName(), outTy, SPN->getValue());
+    break;
+  }
   case Kinded::Kind::GatherNodeKind: {
     auto *gather = cast<GatherNode>(node);
     // Gather node has 2 inputs, but only one should be quantized.
