@@ -627,6 +627,17 @@ RegressionNode *Function::createRegression(llvm::StringRef name,
   return addNode(new RegressionNode(name, input, expected));
 }
 
+SigmoidCrossEntropyWithLogitsNode *
+Function::createSigmoidCrossEntropyWithLogits(llvm::StringRef name,
+                                              NodeValue logits,
+                                              NodeValue targets) {
+  assert(logits.dims().size() > 1);
+  std::vector<size_t> outDims(logits.dims().begin(), logits.dims().end() - 1);
+  auto ty = getParent()->uniqueTypeWithNewShape(logits.getType(), outDims);
+  return addNode(
+      new SigmoidCrossEntropyWithLogitsNode(name, ty, logits, targets));
+}
+
 ReshapeNode *Function::createReshape(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<size_t> shape) {
   auto TR = getParent()->uniqueTypeWithNewShape(input.getType(), shape);

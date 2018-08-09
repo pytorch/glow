@@ -2980,6 +2980,60 @@ TEST_P(InterpAndCPU, DivSizeT) {
   }
 }
 
+TEST_P(Operator, SigmoidCrossEntropyWithLogits) {
+  /*
+    LOGITS  = [
+      [
+        [1.0, 1.2, -0.5],
+        [0.1, 0.6, 0.5],
+      ],
+      [
+        [-0.1, -2., 0.3],
+        [1, 2, 3],
+      ],
+    ]
+    TARGETS = [
+      [
+        [0.7, 0.7, 0.7],
+        [-0.7, -0.99, 1.0],
+      ],
+      [
+        [0, 0, 0],
+        [1, 2, 3],
+      ],
+    ]
+    OUTPUT = [
+      [ 0.68687367,  0.97332054],
+      [ 0.5418933,  -2.50374103],
+    ]
+  */
+  auto *logits = mod_.createVariable(ElemKind::FloatTy, {2, 2, 3}, "logits");
+  auto *targets = mod_.createVariable(ElemKind::FloatTy, {2, 2, 3}, "targets");
+  auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "result");
+
+  logits->getPayload().getHandle() = {1.0,  1.2, -0.5, 0.1, 0.6, 0.5,
+                                      -0.1, -2., 0.3,  1,   2,   3};
+  targets->getPayload().getHandle() = {0.7, 0.7, 0.7, -0.7, -0.99, 1.0,
+                                       0,   0,   0,   1,    2,     3};
+
+  auto *R = F_->createSigmoidCrossEntropyWithLogits("SCEL", logits, targets);
+
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  Tensor expected(ElemKind::FloatTy, {2, 2});
+  expected.getHandle() = {
+      0.68687367,
+      0.97332054,
+      0.5418933,
+      -2.50374103,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result->getPayload()));
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 

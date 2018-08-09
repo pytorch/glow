@@ -268,6 +268,11 @@ public:
   RegressionNode *createRegression(llvm::StringRef name, NodeValue input,
                                    NodeValue expected);
 
+  /// Creates a node, which computes sigmoid cross entropy between two inputs.
+  SigmoidCrossEntropyWithLogitsNode *
+  createSigmoidCrossEntropyWithLogits(llvm::StringRef name, NodeValue logits,
+                                      NodeValue targets);
+
   ReshapeNode *createReshape(llvm::StringRef name, NodeValue input,
                              UnsignedArrayRef shape);
 
