@@ -620,7 +620,9 @@ void caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     case caffe2::TensorProto_DataType_FLOAT: {
       T->reset(ElemKind::FloatTy, dims);
       auto TH = T->getHandle<float>();
-      auto f = dict.at("value")->has_f() ? loadFloat(dict.at("value")) : 0.0f;
+      auto f = (dict.count("value") && dict["value"]->has_f())
+                   ? loadFloat(dict["value"])
+                   : 0.0f;
       TH.clear(f);
       break;
     }
@@ -628,7 +630,9 @@ void caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     case caffe2::TensorProto_DataType_INT64: {
       T->reset(ElemKind::IndexTy, dims);
       auto TH = T->getHandle<size_t>();
-      auto i = dict.at("value")->has_i() ? loadInt(dict.at("value")) : 0;
+      auto i = (dict.count("value") && dict["value"]->has_i())
+                   ? loadInt(dict["value"])
+                   : 0;
       TH.clear(i);
       break;
     }
