@@ -47,14 +47,18 @@ class InterpOnly : public Operator {};
 TEST_P(InterpAndCPU, pow) {
   auto *X = mod_.createVariable(ElemKind::FloatTy, {1, 1, 3}, "X");
   auto *Y = mod_.createVariable(ElemKind::FloatTy, {2}, "Y");
+  auto *Exp = mod_.createVariable(ElemKind::FloatTy, {2}, "Exp");
   X->getPayload().getHandle() = {5, 0.1f, -3};
   Y->getPayload().getHandle() = {2, 100};
+  Exp->getPayload().getHandle() = {2, -1};
 
   auto *Pow1 = F_->createPow("Pow1", X, 2.0);
   auto *Pow2 = F_->createPow("Pow2", Y, 0.5);
+  auto *Pow3 = F_->createPow("Pow3", Y, Exp);
 
   auto *Save1 = F_->createSave("save", Pow1);
   auto *Save2 = F_->createSave("save", Pow2);
+  auto *Save3 = F_->createSave("save", Pow3);
 
   EE_.compile(CompilationMode::Infer, F_);
 
@@ -68,6 +72,10 @@ TEST_P(InterpAndCPU, pow) {
   auto HY = llvm::cast<Variable>(Save2->getOutput())->getPayload().getHandle();
   EXPECT_NEAR(HY.at({0}), sqrt(2.0), 1E-5);
   EXPECT_NEAR(HY.at({1}), 10, 1E-5);
+
+  auto HZ = llvm::cast<Variable>(Save3->getOutput())->getPayload().getHandle();
+  EXPECT_NEAR(HZ.at({0}), 4, 1E-5);
+  EXPECT_NEAR(HZ.at({1}), 0.01, 1E-5);
 }
 
 TEST_P(InterpAndCPU, log) {

@@ -1000,6 +1000,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     ARITHMETIC_BINARY_OP_CASE(ElementSub, "element_sub");
     ARITHMETIC_BINARY_OP_CASE(ElementMax, "elementmax");
     ARITHMETIC_BINARY_OP_CASE(ElementMin, "elementmin");
+    ARITHMETIC_BINARY_OP_CASE(ElementPow, "element_pow");
 #undef ARITHMETIC_BINARY_OP_CASE
 
   case Kinded::Kind::ElementCmpLTEInstKind: {
@@ -1179,29 +1180,6 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     }
     break;
   }
-
-#define ARITHMETIC_BINARY_OP_WITH_IMM_CASE(INST_NAME_, FUN_NAME_, SRC_,        \
-                                           VALUE_)                             \
-  case Kinded::Kind::INST_NAME_##InstKind: {                                   \
-    auto *AN = cast<INST_NAME_##Inst>(I);                                      \
-    auto *dest = AN->getDest();                                                \
-    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);  \
-    auto *val = emitConstF32(builder, AN->get##VALUE_());                      \
-    auto *lhsPtr =                                                             \
-        emitBufferAddress(builder, AN->get##SRC_(), kernel, bufferToArgNum);   \
-    auto *F = getFunction(FUN_NAME_ "_kernel", dest->getElementType());        \
-    auto *elementTy = getElementType(builder, dest);                           \
-    auto *pointerNull =                                                        \
-        llvm::ConstantPointerNull::get(elementTy->getPointerTo());             \
-    auto *stackedOpCall =                                                      \
-        createCall(builder, F, {loopCount, val, lhsPtr, pointerNull});         \
-    auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,          \
-                                       loopCount, "buffer.element.addr");      \
-    builder.CreateStore(stackedOpCall, destAddr);                              \
-    break;                                                                     \
-  }
-    ARITHMETIC_BINARY_OP_WITH_IMM_CASE(ElementPow, "element_pow", Base, Exp);
-#undef ARITHMETIC_BINARY_OP_WITH_IMM_CASE
 
   default:
 #ifndef NDEBUG

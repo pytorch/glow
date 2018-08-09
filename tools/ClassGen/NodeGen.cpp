@@ -229,10 +229,10 @@ int main(int argc, char **argv) {
                     "RHS operands. Inputs must be integer.");
 
   BB.newNode("Pow")
-      .addInput("Base")
-      .addMember(MemberType::Float, "Exp")
+      .addInput("LHS")
+      .addInput("RHS")
       .addResultFromCtorArg()
-      .setDocstring("Performs elementwise pow(Base, Exp).");
+      .setDocstring("Performs elementwise pow(LHS, RHS).");
 
   // clang-format off
   BB.newNode("Log")

@@ -366,9 +366,10 @@ public:
   ARITHMETIC_FUN_DECL(Min);
   ARITHMETIC_FUN_DECL(CmpLTE);
   ARITHMETIC_FUN_DECL(CmpEQ);
+  ARITHMETIC_FUN_DECL(Pow);
 #undef ARITHMETIC_FUN_DECL
 
-  PowNode *createPow(llvm::StringRef name, NodeValue Base, float exp);
+  PowNode *createPow(llvm::StringRef name, NodeValue base, float exp);
 
   SelectNode *createSelect(llvm::StringRef name, NodeValue Cond, NodeValue LHS,
                            NodeValue RHS);
