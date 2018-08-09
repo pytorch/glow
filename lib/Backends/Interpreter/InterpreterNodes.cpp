@@ -1193,11 +1193,11 @@ void InterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
 }
 
 void InterpreterFunction::fwdElementPowInst(const glow::ElementPowInst *I) {
-  auto baseW = getWeightHandle(I->getBase());
-  float exp = I->getExp();
+  auto baseW = getWeightHandle(I->getLHS());
+  auto expW = getWeightHandle(I->getRHS());
   auto outW = getWeightHandle(I->getDest());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = pow(baseW.raw(i), exp);
+    outW.raw(i) = pow(baseW.raw(i), expW.raw(i));
   }
 }
 

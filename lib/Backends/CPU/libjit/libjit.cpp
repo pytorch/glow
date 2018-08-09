@@ -650,6 +650,8 @@ DEFINE_DATA_PARALLEL_KERNEL(libjit_element_div_kernel_u, size_t,
                             LHS[idx] / RHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_mul_kernel_f, float,
                             LHS[idx] * RHS[idx])
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_pow_kernel_f, float,
+                            pow(LHS[idx], RHS[idx]))
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_log_kernel_f, float, log(LHS[idx]))
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_element_add_kernel_i8, int8_t,
                                       lhs + rhs)
@@ -708,8 +710,6 @@ DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_element_maxsplat_kernel_f,
                                              float, MAX(LHS[idx], val))
 DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_element_maxsplat_kernel_i8,
                                              int8_t, MAX(LHS[idx], val))
-DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_element_pow_kernel_f, float,
-                                             pow(LHS[idx], val))
 DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_splat_kernel_f, float, val)
 DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_splat_kernel_u, size_t, val)
 DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_splat_kernel_i8, int8_t,

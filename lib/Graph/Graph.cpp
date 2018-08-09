@@ -1007,6 +1007,7 @@ ARITHMETIC_FUN_DEF(Sub);
 ARITHMETIC_FUN_DEF(Div);
 ARITHMETIC_FUN_DEF(Max);
 ARITHMETIC_FUN_DEF(Min);
+ARITHMETIC_FUN_DEF(Pow);
 #undef ARITHMETIC_FUN_DEF
 
 /// This helper function is used only by the functions creating boolean
@@ -1043,8 +1044,9 @@ CmpEQNode *Function::createCmpEQ(llvm::StringRef name, NodeValue LHS,
   return addNode(new CmpEQNode(name, OT, LHS, RHS));
 }
 
-PowNode *Function::createPow(llvm::StringRef name, NodeValue Base, float exp) {
-  return addNode(new PowNode(name, Base.getType(), Base, exp));
+PowNode *Function::createPow(llvm::StringRef name, NodeValue base, float exp) {
+  auto *SP = createSplat(name, base.getType(), exp);
+  return createPow(name, base, SP);
 }
 
 LogNode *Function::createLog(llvm::StringRef name, NodeValue input) {

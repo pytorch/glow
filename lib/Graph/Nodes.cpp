@@ -457,6 +457,7 @@ VERIFY_ARITHMETIC(Div);
 VERIFY_ARITHMETIC(Max);
 VERIFY_ARITHMETIC(Min);
 VERIFY_ARITHMETIC(CmpEQ);
+VERIFY_ARITHMETIC(Pow);
 #undef VERIFY_ARITHMETIC
 
 void CmpLTENode::verify() const {
@@ -613,8 +614,6 @@ void ScatterAssignNode::verify() const {
 }
 
 void SaveNode::verify() const { checkSameType(getInput(), getOutput()); }
-
-void PowNode::verify() const { checkSameType(getResult(), getBase()); }
 
 void LogNode::verify() const { checkSameType(getInput(), getResult()); }
 

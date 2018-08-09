@@ -279,6 +279,7 @@ bool Node::isArithmetic() const {
   case glow::Kinded::Kind::MinNodeKind:
   case glow::Kinded::Kind::CmpLTENodeKind:
   case glow::Kinded::Kind::CmpEQNodeKind:
+  case glow::Kinded::Kind::PowNodeKind:
     return true;
   default:
     return false;

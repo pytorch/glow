@@ -289,11 +289,11 @@ int main(int argc, char **argv) {
 
   BB.newInstr("ElementPow")
       .addOperand("Dest", OperandKind::Out)
-      .addOperand("Base", OperandKind::In)
-      .addMember(MemberType::Float, "Exp")
-      .inplaceOperand({"Dest", "Base"})
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"})
       .dataParallel()
-      .autoVerify(VerifyKind::SameShape, {"Dest", "Base"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Pow");
 
   BB.newInstr("ElementLog")

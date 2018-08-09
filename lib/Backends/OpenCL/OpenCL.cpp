@@ -595,9 +595,6 @@ void OpenCLFunction::execute() {
           int8_t int8Val = quantization::quantize(val, destQ);
           setKernelArg<float>(kernel, ++numArgs, static_cast<float>(int8Val));
         }
-      } else if (auto *EPI = dyn_cast<ElementPowInst>(&I)) {
-        // Pass the exp as a parameter.
-        setKernelArg(kernel, ++numArgs, EPI->getExp());
       }
 
       if (isQuantized) {
