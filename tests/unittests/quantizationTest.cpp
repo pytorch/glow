@@ -183,7 +183,9 @@ static Function *createSimpleGraphForQuantization(Module *M, Variable *A,
   fillStableRandomData(bias2->getPayload().getHandle(), 3001, 1);
   fillStableRandomData(filter2->getPayload().getHandle(), 4000, 1);
 
-  auto *O = F->createConcat("concat", {S, B}, 0);
+  auto *CN = F->createConcat("concat", {S, B}, 0);
+  auto *SP = F->createSplat("splat", B->getType(), 10.0);
+  auto *O = F->createConcat("concat", {CN, SP}, 0);
   F->createSave("save", O);
   return F;
 }
