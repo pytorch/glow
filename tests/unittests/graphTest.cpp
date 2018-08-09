@@ -640,3 +640,51 @@ TEST(Graph, cmpOutputTypes) {
   EXPECT_FALSE(cmpNode4->getResult().getType()->isQuantizedType());
   EXPECT_EQ(cmpNode4->getResult().getType(), nqv3->getType());
 }
+
+/// Check that our uses lists are correct for nodes with multiple results.
+TEST(Graph, usesLists) {
+  ExecutionEngine EE;
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *input = mod.createVariable(ElemKind::FloatTy, {3, 32}, "input",
+                                   VisibilityKind::Public, true);
+  auto *topK = F->createTopK("topK", input, 12);
+  EXPECT_EQ(topK->getNumUsers(), 0);
+
+  NodeValue values = topK->getValues();
+  NodeValue indices = topK->getIndices();
+  // Right now, we actually don't have a way to query the number
+  // of users for specific NodeValues.
+  // What we would really want to check here is indices.getNumUsers()
+  // (. instead of ->), but this API does not exist.
+  // As counter-intuitive this may be, both the following calls
+  // asks the number of users for topK.
+  // To add to the confusion, it is possible to use
+  // replaceAllUsesOfWith directly with an instance NodeValue and
+  // this would walk only the right uses.
+  EXPECT_EQ(indices->getNumUsers(), 0);
+  EXPECT_EQ(values->getNumUsers(), 0);
+
+  // Now add a user to only one result of the topK node.
+  F->createSave("saveValues", values);
+
+  // The whole node should inherit the uses of each of its results.
+  EXPECT_EQ(topK->getNumUsers(), 1);
+
+  // Each result should have its own use list.
+  // FIXME: but right now they don't.
+  EXPECT_EQ(indices->getNumUsers(), 1 /*should be 0*/);
+  EXPECT_EQ(values->getNumUsers(), 1);
+
+  // Add a user to the other result of the topK node.
+  F->createSave("saveIndices", indices);
+
+  // The whole node should inherit the uses of each of its results.
+  EXPECT_EQ(topK->getNumUsers(), 2);
+
+  // Each result should have its own use list.
+  // FIXME: but right now they don't.
+  EXPECT_EQ(indices->getNumUsers(), 2 /*should be 1*/);
+  EXPECT_EQ(values->getNumUsers(), 2 /*should be 1*/);
+}
