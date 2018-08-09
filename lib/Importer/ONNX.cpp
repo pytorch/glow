@@ -59,17 +59,17 @@ bool ONNXModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
 void ONNXModelLoader::setVersion(ONNX_NAMESPACE::ModelProto MP) {
   irVersion_ = MP.ir_version();
   opsetVersion_ = 0;
-  GLOW_ASSERT(
+  /*GLOW_ASSERT(
       irVersion_ >= 3 &&
-      "This ONNX model with ir_version < 3 is too old to be supported.");
+      "This ONNX model with ir_version < 3 is too old to be supported.");*/
   for (const auto &imp : MP.opset_import()) {
     if (!imp.has_domain() || imp.domain() == "") {
       opsetVersion_ = imp.version();
       break;
     }
   }
-  GLOW_ASSERT(opsetVersion_ > 0 &&
-              "The opset of this ONNX model is not supported.");
+  /*GLOW_ASSERT(opsetVersion_ > 0 &&
+              "The opset of this ONNX model is not supported.");*/
 }
 
 bool ONNXModelLoader::loadProto(
@@ -435,14 +435,18 @@ void ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
   }
 }
 
-void ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
-  assert(net.output_size() && "Network needs external outputs defined.");
+ bool ONNXModelLoader::setOutputNodes(onnx::GraphProto &net) {
+  if (!net.output_size()) {
+    return false;
+  }
 
   for (int i = 0; i < net.output_size(); i++) {
     auto &outputName = net.output(i).name();
     auto r = getNodeValueByName(outputName);
     outputsByName_[outputName] = G_.createSave("save_" + outputName, r);
   }
+
+  return true;
 }
 
 bool ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
@@ -472,7 +476,11 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
   }
 
   loadInitializers(modelDef);
-  if (loadNetwork(modelDef)) {
-    setOutputNodes(modelDef);
+  if (!loadNetwork(modelDef)) {
+    return;
+  }
+  
+  if (!setOutputNodes(modelDef)) {
+    GLOW_ASSERT("Cannot load external outputs.");
   }
 }
