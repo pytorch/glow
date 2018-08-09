@@ -215,7 +215,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // If 'global_pooling' is set then the operation will pool over the size of
     // the input by doing: kernels = {height, width}.
     if (dict.count("global_pooling")) {
-      auto Ty = in->getType(0);
+      auto Ty = in.getType();
       kernels[0] = Ty->dims()[2];
       kernels[1] = Ty->dims()[3];
     }
@@ -417,14 +417,14 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     for (size_t i = 0; i < starts.size(); i++) {
       ssize_t newStart = starts[i];
       if (newStart == -1) {
-        newStart = data->dims(0)[i];
+        newStart = data.dims()[i];
       }
       assert(newStart >= 0 && "Indices should never be negative.");
       newStarts.push_back(newStart);
 
       ssize_t newEnd = ends[i];
       if (newEnd == -1) {
-        newEnd = data->dims(0)[i];
+        newEnd = data.dims()[i];
       }
       assert(newEnd >= 0 && "Indices should never be negative.");
       newEnds.push_back(newEnd);
@@ -451,7 +451,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     // BatchMatMul sometimes is actually just a matmul, depending on dimensions
     // of inputs. Thus, only do batch matmul if LHS is 3-dimensional.
-    if (typeName == "BatchMatMul" && LHS->dims(0).size() == 3) {
+    if (typeName == "BatchMatMul" && LHS.dims().size() == 3) {
       node = G_.createBatchMatMul(opName, LHS, RHS);
     } else {
       node = G_.createMatMul(opName, LHS, RHS);

@@ -1224,9 +1224,9 @@ Function::createQuantizationProfile(llvm::StringRef name, NodeValue input) {
       getParent()->createVariable(ElemKind::FloatTy, {2}, "computationInfo",
                                   VisibilityKind::Private, false);
 
-  return addNode(
-      new QuantizationProfileNode(name, input, histogram, computationInfo,
-                                  input->getName().str(), input.getResNo()));
+  return addNode(new QuantizationProfileNode(
+      name, input, histogram, computationInfo, input.getNode()->getName().str(),
+      input.getResNo()));
 }
 
 IntLookupTableNode *
@@ -1834,8 +1834,9 @@ class FunctionDottyPrinter : public AbstractDottyPrinter {
       auto pred = N->getPredicate();
       size_t resNo = pred.getResNo();
       std::ostringstream edge;
-      edge << uniqueVertexName(pred) << ":" << pred->getOutputName(resNo).str()
-           << " -> " << uniqueVertexName(N) << ":w";
+      edge << uniqueVertexName(pred) << ":"
+           << pred.getNode()->getOutputName(resNo).str() << " -> "
+           << uniqueVertexName(N) << ":w";
       dumpEdgeStyle(N, 0, pred, edge);
       edges_.insert(edge.str());
       visitNode(pred);

@@ -157,7 +157,7 @@ llvm::hash_code Node::getHash() const { return HashNodeVisitor().visit(this); }
 
 void Node::visit(Node *parent, NodeWalker *visitor) {
   if (hasPredicate()) {
-    getPredicate()->visit(this, visitor);
+    getPredicate().getNode()->visit(this, visitor);
   }
 
   switch (getKind()) {

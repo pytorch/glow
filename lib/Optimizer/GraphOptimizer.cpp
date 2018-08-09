@@ -1041,7 +1041,7 @@ static NodeValue tryToOptimizeConcatOfRehapes(Function *F, ConcatNode *CN) {
     return NodeValue(nullptr);
   }
   auto *newCN = F->createConcat(CN->getName(), newConcatInputs, dim);
-  return F->createReshape(CN->getInputs().front()->getName(), newCN,
+  return F->createReshape(CN->getInputs().front().getNode()->getName(), newCN,
                           CN->getResult().dims());
 }
 
