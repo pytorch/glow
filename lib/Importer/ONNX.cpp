@@ -303,7 +303,7 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     // If 'global_pooling' is set then the operation will pool over the size of
     // the input by doing: kernel = height/width.
     if (dict.count("global_pooling")) {
-      auto Ty = in->getType(0);
+      auto Ty = in.getType();
       kernels[0] = Ty->dims()[2];
       kernels[1] = Ty->dims()[3];
     }
@@ -328,8 +328,8 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     }
 
     std::vector<size_t> kernels(2);
-    kernels[0] = in->dims(0)[2];
-    kernels[1] = in->dims(0)[3];
+    kernels[0] = in.dims()[2];
+    kernels[1] = in.dims()[3];
     std::vector<size_t> pads = getPads(dict);
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
     Node *node = G_.createAvgPool(opName, tr, kernels, strides, pads);
@@ -409,7 +409,7 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
 
     MatMulNode *mul = G_.createMatMul(opName, A, B);
     if (broadcastC) {
-      int axis = mul->getResult().dims().size() - C->dims(0).size();
+      int axis = mul->getResult().dims().size() - C.dims().size();
       C = G_.createBroadcast(opName, C, mul->getResult().dims(), axis);
     }
 

@@ -377,16 +377,17 @@ void NodeBuilder::emitVisitor(std::ostream &os) const {
      << "Node::visit(Node *parent, NodeWalker *visitor) {\n"
      << "  if (!visitor->shouldVisit(parent, this)) { return; }\n"
      << "  visitor->pre(parent, this);\n"
-     << "  if (hasPredicate()) getPredicate()->visit(this, visitor);\n";
+     << "if (hasPredicate())\n"
+     << " getPredicate().getNode()->visit(this, visitor);\n";
 
   for (const auto &op : nodeInputs_) {
-    os << "  get" << op << "()->visit(this, visitor);\n";
+    os << "  get" << op << "().getNode()->visit(this, visitor);\n";
   }
 
   for (const auto &op : members_) {
     if (op.first == MemberType::VectorNodeValue) {
       os << "  for (auto &I : " << op.second
-         << "_) { I->visit(this, visitor); }\n";
+         << "_) { I.getNode()->visit(this, visitor); }\n";
     }
   }
 

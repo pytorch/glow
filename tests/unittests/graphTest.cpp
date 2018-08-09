@@ -83,15 +83,15 @@ TEST(Graph, useList) {
   // Therefore those checks are currently inverted but should be
   // fixed eventually.
   // Test with implicit temporary NodeValue.
-  EXPECT_TRUE(conv->getFilter()->hasOneUse());
-  EXPECT_EQ(conv->getFilter()->getNumUsers(), 1);
+  EXPECT_TRUE(conv->getFilter().getNode()->hasOneUse());
+  EXPECT_EQ(conv->getFilter().getNode()->getNumUsers(), 1);
 
   // Test with explicit temporary NodeValue.
   Node *nodeFilter;
   {
     NodeValue tmp = conv->getFilter();
-    EXPECT_TRUE(tmp->hasOneUse());
-    EXPECT_EQ(tmp->getNumUsers(), 1);
+    EXPECT_TRUE(tmp.getNode()->hasOneUse());
+    EXPECT_EQ(tmp.getNode()->getNumUsers(), 1);
     nodeFilter = tmp.getNode();
     // Test with NodeValue still around.
     EXPECT_TRUE(nodeFilter->hasOneUse());
@@ -106,7 +106,7 @@ TEST(Graph, useList) {
   {
     NodeValue tmpConvRes(conv, 0);
     EXPECT_EQ(conv->getNumUsers(), 0);
-    EXPECT_EQ(tmpConvRes->getNumUsers(), 0);
+    EXPECT_EQ(tmpConvRes.getNode()->getNumUsers(), 0);
   }
 
   // Add a couple of uses to conv and make sure it reflects on its use list.
@@ -119,10 +119,10 @@ TEST(Graph, useList) {
 
   {
     NodeValue tmpConvRes(conv, 0);
-    EXPECT_TRUE(tmpConvRes->hasOneUse());
+    EXPECT_TRUE(tmpConvRes.getNode()->hasOneUse());
     EXPECT_TRUE(conv->hasOneUse());
     EXPECT_EQ(conv->getNumUsers(), 1);
-    EXPECT_EQ(tmpConvRes->getNumUsers(), 1);
+    EXPECT_EQ(tmpConvRes.getNode()->getNumUsers(), 1);
   }
 
   F->createSave("Save", conv, K);
@@ -134,10 +134,10 @@ TEST(Graph, useList) {
 
   {
     NodeValue tmpConvRes(conv, 0);
-    EXPECT_FALSE(tmpConvRes->hasOneUse());
+    EXPECT_FALSE(tmpConvRes.getNode()->hasOneUse());
     EXPECT_FALSE(conv->hasOneUse());
     EXPECT_EQ(conv->getNumUsers(), 2);
-    EXPECT_EQ(tmpConvRes->getNumUsers(), 2);
+    EXPECT_EQ(tmpConvRes.getNode()->getNumUsers(), 2);
   }
 }
 
@@ -154,8 +154,8 @@ TEST(Graph, useListIteration) {
   // Check the number of users for different nodes.
   EXPECT_EQ(K->getNumUsers(), 2);
   EXPECT_EQ(conv1->getNumUsers(), 0);
-  EXPECT_TRUE(conv2->getFilter()->hasOneUse());
-  EXPECT_EQ(conv1->getFilter()->getNumUsers(), 1);
+  EXPECT_TRUE(conv2->getFilter().getNode()->hasOneUse());
+  EXPECT_EQ(conv1->getFilter().getNode()->getNumUsers(), 1);
   // Check that the first user of K is conv1.
   EXPECT_EQ(K->getUsers().begin()->getUser(), conv1);
   // Check that the second user of K is conv2.
@@ -663,8 +663,8 @@ TEST(Graph, usesLists) {
   // To add to the confusion, it is possible to use
   // replaceAllUsesOfWith directly with an instance NodeValue and
   // this would walk only the right uses.
-  EXPECT_EQ(indices->getNumUsers(), 0);
-  EXPECT_EQ(values->getNumUsers(), 0);
+  EXPECT_EQ(indices.getNode()->getNumUsers(), 0);
+  EXPECT_EQ(values.getNode()->getNumUsers(), 0);
 
   // Now add a user to only one result of the topK node.
   F->createSave("saveValues", values);
@@ -673,9 +673,10 @@ TEST(Graph, usesLists) {
   EXPECT_EQ(topK->getNumUsers(), 1);
 
   // Each result should have its own use list.
-  // FIXME: but right now they don't.
-  EXPECT_EQ(indices->getNumUsers(), 1 /*should be 0*/);
-  EXPECT_EQ(values->getNumUsers(), 1);
+  // FIXME: but right now they don't, we have to go through the node.
+  EXPECT_EQ(indices.getNode()->getNumUsers(),
+            1 /*we want a way to get 0 here*/);
+  EXPECT_EQ(values.getNode()->getNumUsers(), 1);
 
   // Add a user to the other result of the topK node.
   F->createSave("saveIndices", indices);
@@ -685,6 +686,6 @@ TEST(Graph, usesLists) {
 
   // Each result should have its own use list.
   // FIXME: but right now they don't.
-  EXPECT_EQ(indices->getNumUsers(), 2 /*should be 1*/);
-  EXPECT_EQ(values->getNumUsers(), 2 /*should be 1*/);
+  EXPECT_EQ(indices.getNode()->getNumUsers(), 2 /*should be 1*/);
+  EXPECT_EQ(values.getNode()->getNumUsers(), 2 /*should be 1*/);
 }

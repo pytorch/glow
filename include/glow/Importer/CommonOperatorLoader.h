@@ -118,7 +118,7 @@ protected:
     // have an option for a selected input anyway. So I am creating this as a
     // placeholder which goes unused during inference.
     auto selected = G_.getParent()->createVariable(
-        ElemKind::IndexTy, {in->dims(0)[0], 1}, "selected",
+        ElemKind::IndexTy, {in.dims()[0], 1}, "selected",
         VisibilityKind::Private, false);
 
     // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
@@ -187,9 +187,9 @@ protected:
       // In ONNX, if axis == -1 then it sets the axis so that the
       // trailing-most dimensions are aligned like this.
       if (axis == -1) {
-        axis = in0->dims(0).size() - in1->dims(0).size();
+        axis = in0.dims().size() - in1.dims().size();
       }
-      finalIn1 = G_.createBroadcast(opName, in1, in0->dims(0), axis);
+      finalIn1 = G_.createBroadcast(opName, in1, in0.dims(), axis);
     } else {
       finalIn1 = in1;
     }
@@ -300,7 +300,7 @@ protected:
     std::vector<unsigned> perm = getShape<unsigned>(dict[permArgName]);
     if (perm.empty()) {
       // Empty permutation argument means reversing axes order.
-      size_t N = in->dims(0).size();
+      size_t N = in.dims().size();
       for (int64_t i = N - 1; i >= 0; i--)
         perm.push_back(i);
     }
@@ -332,7 +332,7 @@ protected:
     auto k = loadInt(dict["k"]);
 
     int axis = dict.count("axis") ? loadInt(dict["axis"]) : -1;
-    unsigned lastDim = in->dims(0).size() - 1;
+    unsigned lastDim = in.dims().size() - 1;
     if (axis == -1) {
       axis = lastDim;
     }

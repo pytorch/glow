@@ -82,8 +82,6 @@ public:
   /// Replace all of the uses of this value with \p v.
   void replaceAllUsesOfWith(NodeValue v);
 
-  /// Provide a smart-pointer interface.
-  Node *operator->() const { return node_; }
   /// Return the TypeRef of the referenced return value.
   TypeRef getType() const;
 

@@ -687,7 +687,7 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
 
   // The second input of A3 shoule be a splat node with a shape of R3.
   auto *SN = llvm::dyn_cast<SplatNode>(
-      llvm::dyn_cast<SaveNode>(O)->getInput()->getNthInput(1));
+      llvm::dyn_cast<SaveNode>(O)->getInput().getNode()->getNthInput(1));
   EXPECT_TRUE(SN);
   EXPECT_TRUE(SN->getResult().getType()->dims().equals(reshape));
 
@@ -1077,13 +1077,14 @@ TEST_F(GraphOptz, concatReshapes) {
 
   // The first input of addNode should be a Reshape node now, with the same
   // result shape of concatNode1.
-  auto *newRN = llvm::dyn_cast<ReshapeNode>(O->getInput()->getNthInput(0));
+  auto *newRN =
+      llvm::dyn_cast<ReshapeNode>(O->getInput().getNode()->getNthInput(0));
   ASSERT_TRUE(newRN);
   EXPECT_TRUE(newRN->getResult().getType()->dims().equals(outputShape));
 
   // The input of newRN should be a ConcatNode now.
-  auto *newCN =
-      llvm::dyn_cast<ConcatNode>(O->getInput()->getNthInput(0)->getNthInput(0));
+  auto *newCN = llvm::dyn_cast<ConcatNode>(
+      O->getInput().getNode()->getNthInput(0).getNode()->getNthInput(0));
   ASSERT_TRUE(newCN);
 }
 

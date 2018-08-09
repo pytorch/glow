@@ -72,7 +72,7 @@ quantizeInputs(Function *F, Node *node,
     }
 
     std::string nodeOutputName = NodeQuantizationInfo::generateNodeOutputName(
-        NV->getName(), NV.getResNo());
+        NV.getNode()->getName(), NV.getResNo());
     assert(nodeToTQP.find(nodeOutputName) != nodeToTQP.end() &&
            "Missing quantization params for a node");
 
@@ -244,8 +244,9 @@ static Node *quantizeNode(Function *F, Node *node,
           ElemKind::Int8QTy, quantizedInputs[qi].dims(), qParams[0].scale,
           qParams[0].offset);
 
-      quantizedInputs[qi] = F->createRescaleQuantized(
-          quantizedInputs[qi]->getName(), quantizedInputs[qi], argOutTy);
+      quantizedInputs[qi] =
+          F->createRescaleQuantized(quantizedInputs[qi].getNode()->getName(),
+                                    quantizedInputs[qi], argOutTy);
     }
 
     auto outTy =
