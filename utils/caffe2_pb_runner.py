@@ -98,6 +98,12 @@ model_props = dict(
         28,
         1,
     ),
+    resnext=Model(
+        "data",
+        mode_0to1,
+        224,
+        3,
+    ),
 )
 
 MODEL = args.model_name
