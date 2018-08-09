@@ -23,7 +23,7 @@
 
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream_impl.h"
-#include "onnx.pb.h"
+#include "onnx/onnx.pb.h"
 
 #include <cassert>
 #include <cstddef>
@@ -38,13 +38,13 @@ using namespace glow;
 using llvm::cast;
 
 using ArgumentDictionaryTy =
-    std::unordered_map<std::string, const onnx::AttributeProto *>;
+    std::unordered_map<std::string, const ONNX_NAMESPACE::AttributeProto *>;
 
 /// Translates the protocol buffer node \p op into a random access map.
-static ArgumentDictionaryTy loadArgumentMap(const onnx::NodeProto &op) {
+static ArgumentDictionaryTy loadArgumentMap(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict;
   for (auto i = 0, e = op.attribute_size(); i < e; i++) {
-    const onnx::AttributeProto &arg = op.attribute(i);
+    const ONNX_NAMESPACE::AttributeProto &arg = op.attribute(i);
     dict[arg.name()] = &arg;
   }
   return dict;
@@ -56,7 +56,7 @@ bool ONNXModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
   return dict.count("broadcast") && (loadInt(dict.at("broadcast")) == 1);
 }
 
-void ONNXModelLoader::setVersion(onnx::ModelProto MP) {
+void ONNXModelLoader::setVersion(ONNX_NAMESPACE::ModelProto MP) {
   irVersion_ = MP.ir_version();
   opsetVersion_ = 0;
   GLOW_ASSERT(
@@ -73,13 +73,13 @@ void ONNXModelLoader::setVersion(onnx::ModelProto MP) {
 }
 
 bool ONNXModelLoader::loadProto(
-    onnx::GraphProto &net, google::protobuf::io::ZeroCopyInputStream &iStream) {
+    ONNX_NAMESPACE::GraphProto &net, google::protobuf::io::ZeroCopyInputStream &iStream) {
   // Construct and configure a Coded Input Stream
   google::protobuf::io::CodedInputStream codedStream(&iStream);
 
   // Don't warn about large file sizes.
   codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE, MAX_PROTO_SIZE);
-  onnx::ModelProto MP;
+  ONNX_NAMESPACE::ModelProto MP;
   bool parseNet = MP.ParseFromCodedStream(&codedStream);
   net = MP.graph();
   setVersion(MP);
@@ -87,13 +87,13 @@ bool ONNXModelLoader::loadProto(
   return parseNet;
 }
 
-bool ONNXModelLoader::loadProto(onnx::GraphProto &net, const void *onnxModel,
+bool ONNXModelLoader::loadProto(ONNX_NAMESPACE::GraphProto &net, const void *onnxModel,
                                 size_t onnxModelSize) {
   google::protobuf::io::ArrayInputStream arrayStream(onnxModel, onnxModelSize);
   return loadProto(net, arrayStream);
 }
 
-bool ONNXModelLoader::loadProto(onnx::GraphProto &net,
+bool ONNXModelLoader::loadProto(ONNX_NAMESPACE::GraphProto &net,
                                 const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
   GLOW_ASSERT(ff && "Can't find the model or network files.");
@@ -119,13 +119,13 @@ std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
 }
 
 /// Loads tensor \p T from the input \p in.
-static void loadTensor(const onnx::TensorProto &in, Tensor *T) {
+static void loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
   std::vector<size_t> dim;
   for (auto d : in.dims()) {
     dim.push_back(d);
   }
 
-  if (in.data_type() == onnx::TensorProto::FLOAT) {
+  if (in.data_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
     T->reset(ElemKind::FloatTy, dim);
 
     if (in.float_data_size() > 0) {
@@ -141,7 +141,7 @@ static void loadTensor(const onnx::TensorProto &in, Tensor *T) {
     } else {
       llvm_unreachable("Unsupported Tensor format.");
     }
-  } else if (in.data_type() == onnx::TensorProto::INT64) {
+  } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
     // TODO: either switch IndexTy to be 64 bit, or switch to another type here
     T->reset(ElemKind::IndexTy, dim);
 
@@ -163,7 +163,7 @@ static void loadTensor(const onnx::TensorProto &in, Tensor *T) {
   }
 }
 
-bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
+bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
 
@@ -208,7 +208,7 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
       return true;
     }
 
-    assert(dict["value"]->type() == onnx::AttributeProto::TENSOR &&
+    assert(dict["value"]->type() == ONNX_NAMESPACE::AttributeProto::TENSOR &&
            "Only Tensor type constants are supported.");
 
     auto *T = new Tensor();
@@ -426,7 +426,7 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
   return false;
 }
 
-void ONNXModelLoader::loadInitializers(onnx::GraphProto &net) {
+void ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
   // Load the network initializaers:
   for (const auto &in : net.initializer()) {
     Tensor *T = new Tensor();
@@ -435,7 +435,7 @@ void ONNXModelLoader::loadInitializers(onnx::GraphProto &net) {
   }
 }
 
-void ONNXModelLoader::setOutputNodes(onnx::GraphProto &net) {
+void ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
   assert(net.output_size() && "Network needs external outputs defined.");
 
   for (int i = 0; i < net.output_size(); i++) {
@@ -445,7 +445,7 @@ void ONNXModelLoader::setOutputNodes(onnx::GraphProto &net) {
   }
 }
 
-bool ONNXModelLoader::loadNetwork(onnx::GraphProto &net) {
+bool ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
   /// Load the network operators:
   for (int i = 0; i < net.node_size(); i++) {
     auto &op = net.node(i);
@@ -466,7 +466,7 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  llvm::ArrayRef<Tensor *> tensors, Function &F)
     : CommonOperatorLoader(tensorNames, tensors, F) {
   // The ONNX model that we are deserializing.
-  onnx::GraphProto modelDef;
+  ONNX_NAMESPACE::GraphProto modelDef;
   if (!loadProto(modelDef, modelDescFilename)) {
     GLOW_ASSERT("Cannot load the network.");
   }

@@ -16,7 +16,7 @@
 
 #include "glow/Importer/ONNXIFILoader.h"
 
-#include "onnx.pb.h"
+#include "onnx/onnx.pb.h"
 
 namespace glow {
 namespace onnxifi {
@@ -24,15 +24,15 @@ namespace onnxifi {
 /// Creates tensor \p T from the input \p in. Note, there is no data associated
 /// with the Tensor. This method makes sure that the tensor is created with the
 /// proper shape and element type.
-static void setTensorType(const onnx::TypeProto &in, Tensor *T) {
+static void setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
   std::vector<size_t> dim;
   for (auto d : in.tensor_type().shape().dim()) {
     dim.push_back(d.dim_value());
   }
 
-  if (in.tensor_type().elem_type() == onnx::TensorProto::FLOAT) {
+  if (in.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
     T->reset(ElemKind::FloatTy, dim);
-  } else if (in.tensor_type().elem_type() == onnx::TensorProto::INT64) {
+  } else if (in.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto::INT64) {
     // TODO: either switch IndexTy to be 64 bit, or switch to another type here.
     T->reset(ElemKind::IndexTy, dim);
   } else {
@@ -40,7 +40,7 @@ static void setTensorType(const onnx::TypeProto &in, Tensor *T) {
   }
 }
 
-void ModelLoader::loadInputs(onnx::GraphProto &net) {
+void ModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net) {
   for (const auto &in : net.input()) {
     Tensor *T = new Tensor();
     setTensorType(in.type(), T);
@@ -104,7 +104,7 @@ std::unique_ptr<ModelLoader> ModelLoader::parse(
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F) {
   std::unique_ptr<ModelLoader> loader(new ModelLoader(F));
 
-  onnx::GraphProto modelDef;
+  ONNX_NAMESPACE::GraphProto modelDef;
   if (!loader->loadProto(modelDef, onnxModel, onnxModelSize)) {
     return nullptr;
   }
@@ -125,7 +125,7 @@ std::unique_ptr<ModelLoader>
 ModelLoader::parse(const void *onnxModel, size_t onnxModelSize, Function &F) {
   std::unique_ptr<ModelLoader> loader(new ModelLoader(F));
 
-  onnx::GraphProto modelDef;
+  ONNX_NAMESPACE::GraphProto modelDef;
   if (!loader->loadProto(modelDef, onnxModel, onnxModelSize)) {
     return nullptr;
   }
