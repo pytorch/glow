@@ -60,7 +60,7 @@ onnxGetBackendIDs(onnxBackendID *backendIDs, size_t *numBackends) {
 /// (onnxBackend, onnxGraph, onnxEvent) before calling this function.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxReleaseBackendID(onnxBackendID backendID) {
-  auto *backendId = reinterpret_cast<glow::onnxifi::BackendIdPtr>(backendID);
+  auto *backendId = static_cast<glow::onnxifi::BackendIdPtr>(backendID);
   if (!backendID) {
     return ONNXIFI_STATUS_INVALID_ID;
   }
@@ -103,7 +103,7 @@ onnxGetBackendInfo(onnxBackendID backendID, onnxBackendInfo infoType,
   }
 
   auto *glowBackendId =
-      reinterpret_cast<glow::onnxifi::BackendIdPtr>(backendID);
+      static_cast<glow::onnxifi::BackendIdPtr>(backendID);
   if (!glowBackendId) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -143,7 +143,7 @@ onnxGetBackendCompatibility(onnxBackendID backendID, size_t onnxModelSize,
   }
 
   auto *glowBackendId =
-      reinterpret_cast<glow::onnxifi::BackendIdPtr>(backendID);
+      static_cast<glow::onnxifi::BackendIdPtr>(backendID);
   if (!glowBackendId) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -177,7 +177,7 @@ onnxInitBackend(onnxBackendID backendID, const uint64_t *auxpropertiesList,
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
 
-  auto *backendId = reinterpret_cast<glow::onnxifi::BackendIdPtr>(backendID);
+  auto *backendId = static_cast<glow::onnxifi::BackendIdPtr>(backendID);
   if (!backendId) {
     return ONNXIFI_STATUS_INVALID_ID;
   }
@@ -191,7 +191,7 @@ onnxInitBackend(onnxBackendID backendID, const uint64_t *auxpropertiesList,
 /// Deinitialize an ONNXIFI backend and release associated resources.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxReleaseBackend(onnxBackend backend) {
-  auto *glowBackend = reinterpret_cast<glow::onnxifi::BackendPtr>(backend);
+  auto *glowBackend = static_cast<glow::onnxifi::BackendPtr>(backend);
   if (!glowBackend) {
     return ONNXIFI_STATUS_INVALID_BACKEND;
   }
@@ -208,7 +208,7 @@ onnxInitEvent(onnxBackend backend, onnxEvent *event) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
 
-  auto *glowBackend = reinterpret_cast<glow::onnxifi::BackendPtr>(backend);
+  auto *glowBackend = static_cast<glow::onnxifi::BackendPtr>(backend);
   if (!glowBackend) {
     return ONNXIFI_STATUS_INVALID_BACKEND;
   }
@@ -220,7 +220,7 @@ onnxInitEvent(onnxBackend backend, onnxEvent *event) {
 /// Change the state of the ONNXIFI event \p event to signalled.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxSignalEvent(onnxEvent event) {
-  auto *glowEvent = reinterpret_cast<glow::onnxifi::EventPtr>(event);
+  auto *glowEvent = static_cast<glow::onnxifi::EventPtr>(event);
   if (!event) {
     return ONNXIFI_STATUS_INVALID_EVENT;
   }
@@ -235,7 +235,7 @@ onnxSignalEvent(onnxEvent event) {
 /// Wait until an ONNXIFI event is signalled.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxWaitEvent(onnxEvent event) {
-  auto *glowEvent = reinterpret_cast<glow::onnxifi::EventPtr>(event);
+  auto *glowEvent = static_cast<glow::onnxifi::EventPtr>(event);
   if (!glowEvent) {
     return ONNXIFI_STATUS_INVALID_EVENT;
   }
@@ -267,7 +267,7 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 /// Deinitialize an ONNXIFI event and release associated resources.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxReleaseEvent(onnxEvent event) {
-  auto *glowEvent = reinterpret_cast<glow::onnxifi::EventPtr>(event);
+  auto *glowEvent = static_cast<glow::onnxifi::EventPtr>(event);
   if (!glowEvent) {
     return ONNXIFI_STATUS_INVALID_EVENT;
   }
@@ -289,7 +289,7 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxInitGraph(
     return ONNXIFI_STATUS_INVALID_SIZE;
   }
 
-  auto *glowBackend = reinterpret_cast<glow::onnxifi::BackendPtr>(backend);
+  auto *glowBackend = static_cast<glow::onnxifi::BackendPtr>(backend);
   if (!glowBackend) {
     return ONNXIFI_STATUS_INVALID_BACKEND;
   }
@@ -314,7 +314,7 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxSetGraphIO(
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
 
-  auto *glowGraph = reinterpret_cast<glow::onnxifi::GraphPtr>(graph);
+  auto *glowGraph = static_cast<glow::onnxifi::GraphPtr>(graph);
   if (!glowGraph) {
     return ONNXIFI_STATUS_INVALID_GRAPH;
   }
@@ -332,7 +332,7 @@ onnxRunGraph(onnxGraph graph, const onnxMemoryFenceV1 *inputFence,
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
 
-  auto *glowGraph = reinterpret_cast<glow::onnxifi::GraphPtr>(graph);
+  auto *glowGraph = static_cast<glow::onnxifi::GraphPtr>(graph);
   if (!glowGraph) {
     return ONNXIFI_STATUS_INVALID_GRAPH;
   }
@@ -370,7 +370,7 @@ onnxRunGraph(onnxGraph graph, const onnxMemoryFenceV1 *inputFence,
 /// It blocks until all in-flight inference operations complete.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxReleaseGraph(onnxGraph graph) {
-  auto *glowGraph = reinterpret_cast<glow::onnxifi::GraphPtr>(graph);
+  auto *glowGraph = static_cast<glow::onnxifi::GraphPtr>(graph);
   if (!glowGraph) {
     return ONNXIFI_STATUS_INVALID_GRAPH;
   }
