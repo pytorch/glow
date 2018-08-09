@@ -30,7 +30,7 @@ private:
 
   /// Load the inputs from the GraphProto. This is useful when the
   /// initializers are not available.
-  void loadInputs(onnx::GraphProto &net);
+  void loadInputs(ONNX_NAMESPACE::GraphProto &net);
 
   /// Load pre-trained weights from \p weightDescriptors.
   bool loadWeights(uint32_t weightsCount,

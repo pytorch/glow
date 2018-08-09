@@ -24,44 +24,44 @@
 
 #include <string>
 
-namespace onnx {
+namespace ONNX_NAMESPACE {
 class AttributeProto;
 class NodeProto;
 class GraphProto;
 class ModelProto;
-} // namespace onnx
+} // namespace ONNX_NAMESPACE
 
 namespace glow {
 
 /// Loads ONNX models.
 class ONNXModelLoader
-    : public CommonOperatorLoader<onnx::NodeProto, onnx::AttributeProto> {
+    : public CommonOperatorLoader<ONNX_NAMESPACE::NodeProto, ONNX_NAMESPACE::AttributeProto> {
   /// Get the broadcast attribute based on different ONNX op versions.
   bool getBroadcast(const ArgumentDictionaryTy &dict) override;
 
   /// Set ir verion and op version.
-  void setVersion(onnx::ModelProto MP);
+  void setVersion(ONNX_NAMESPACE::ModelProto MP);
 
   /// Set the output nodes of the network \p net. Initializes the map from the
   /// names of the outputs to the save nodes that save each output.
-  void setOutputNodes(onnx::GraphProto &net);
+  void setOutputNodes(ONNX_NAMESPACE::GraphProto &net);
 
   /// Load the network initializers from the GraphProto.
-  void loadInitializers(onnx::GraphProto &net);
+  void loadInitializers(ONNX_NAMESPACE::GraphProto &net);
 
   /// \returns true if operator \p op can be loaded.
   /// Load the operator \p op into the network. This creates one or more nodes
   /// in the network.
-  bool loadOperator(const onnx::NodeProto &op);
+  bool loadOperator(const ONNX_NAMESPACE::NodeProto &op);
 
   /// \returns true if \p net can be constructed from the content of the
   /// file \p filename.
   /// Loads GraphProto \p net from the file containing serialized protobuf.
-  bool loadProto(onnx::GraphProto &net, const std::string &filename);
+  bool loadProto(ONNX_NAMESPACE::GraphProto &net, const std::string &filename);
 
   /// \returns true if GraphProto \p net can be loaded from the stream \p
   /// iStream.
-  bool loadProto(onnx::GraphProto &net,
+  bool loadProto(ONNX_NAMESPACE::GraphProto &net,
                  google::protobuf::io::ZeroCopyInputStream &iStream);
 
   /// ONNX model ir_version;
@@ -76,13 +76,13 @@ protected:
 
   /// Load the network operators from the GraphProto.
   /// \returns true if network can be loaded.
-  bool loadNetwork(onnx::GraphProto &net);
+  bool loadNetwork(ONNX_NAMESPACE::GraphProto &net);
 
   /// \returns true if \p net can be constructed from the in-memory
   /// serialized protobuf.
   /// Loads GraphProto \p net from the in-memory serialized protobuf \p
   /// onnxModel with the model size \p onnxModelSize.
-  bool loadProto(onnx::GraphProto &net, const void *onnxModel,
+  bool loadProto(ONNX_NAMESPACE::GraphProto &net, const void *onnxModel,
                  size_t onnxModelSize);
 
 public:
