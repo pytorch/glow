@@ -230,16 +230,16 @@ TEST(Graph, simpleQuant) {
   auto *F = MD.createFunction("main");
 
   unsigned depth = 16;
-  llvm::SmallVector<size_t, 2> kernels = {5, 5};
-  llvm::SmallVector<size_t, 4> pads = {0, 0, 0, 0};
-  llvm::SmallVector<size_t, 2> steps = {1, 1};
+  llvm::SmallVector<uint64_t, 2> kernels = {5, 5};
+  llvm::SmallVector<uint64_t, 4> pads = {0, 0, 0, 0};
+  llvm::SmallVector<uint64_t, 2> steps = {1, 1};
   unsigned width = 224;
 
   auto *input = MD.createVariable(ElemKind::Int8QTy, {1, width, width, 3}, 0.4,
                                   2, "Input", VisibilityKind::Public);
 
   // Calculate the size and allocate the output buffer.
-  std::array<size_t, 4> filterDim = {{depth, kernels[0], kernels[1], 3}};
+  std::array<uint64_t, 4> filterDim = {{depth, kernels[0], kernels[1], 3}};
   auto *filter = MD.createVariable(ElemKind::Int8QTy, filterDim, 3.3, 4, "F",
                                    VisibilityKind::Private);
   auto *bias = MD.createVariable(ElemKind::Int8QTy, {depth}, 1.3, 5, "B",
@@ -247,7 +247,7 @@ TEST(Graph, simpleQuant) {
 
   // Calculate the size and allocate the output buffer.
   auto outSz = calculateConvPoolOutputDims(width, width, kernels, steps, pads);
-  std::array<size_t, 4> outDims = {{1, outSz.first, outSz.second, 16}};
+  std::array<uint64_t, 4> outDims = {{1, outSz.first, outSz.second, 16}};
   auto t = F->getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims, 1.5, 6);
 
   auto *conv =

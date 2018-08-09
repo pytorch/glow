@@ -53,20 +53,20 @@ public:
   ///@{
 
   MaxPoolWithXYInst *createMaxPoolWithXYOp(Value *input,
-                                           llvm::ArrayRef<size_t> kernels,
-                                           llvm::ArrayRef<size_t> strides,
-                                           llvm::ArrayRef<size_t> pads);
+                                           llvm::ArrayRef<uint64_t> kernels,
+                                           llvm::ArrayRef<uint64_t> strides,
+                                           llvm::ArrayRef<uint64_t> pads);
 
-  AvgPoolInst *createAvgPoolOp(Value *input, llvm::ArrayRef<size_t> kernels,
-                               llvm::ArrayRef<size_t> strides,
-                               llvm::ArrayRef<size_t> pads);
+  AvgPoolInst *createAvgPoolOp(Value *input, llvm::ArrayRef<uint64_t> kernels,
+                               llvm::ArrayRef<uint64_t> strides,
+                               llvm::ArrayRef<uint64_t> pads);
 
   CrossEntropyLossInst *createCrossEntropyLossOp(Value *P, Value *labels);
 
   TensorViewInst *createTensorView(ElemKind elemKind,
-                                   llvm::ArrayRef<size_t> dims, Value *src,
+                                   llvm::ArrayRef<uint64_t> dims, Value *src,
                                    llvm::StringRef name,
-                                   llvm::ArrayRef<size_t> offsets = {});
+                                   llvm::ArrayRef<uint64_t> offsets = {});
 
   LocalResponseNormalizationInst *
   createLocalResponseNormalizationOp(Value *input, size_t halfWindowSize = 2,
@@ -86,14 +86,14 @@ public:
                              MutabilityKind m = MutabilityKind::Mutable,
                              VisibilityKind v = VisibilityKind::Private);
 
-  WeightVar *createWeightVar(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
+  WeightVar *createWeightVar(ElemKind elemTy, llvm::ArrayRef<uint64_t> dims,
                              llvm::StringRef name = "",
                              MutabilityKind m = MutabilityKind::Mutable,
                              VisibilityKind v = VisibilityKind::Private);
 
   AllocActivationInst *createAllocActivationInst(llvm::StringRef name,
                                                  ElemKind elemTy,
-                                                 llvm::ArrayRef<size_t> dims);
+                                                 llvm::ArrayRef<uint64_t> dims);
 
 // Import the auto-generated instruction creation methods:
 #include "glow/AutoGenIRBuilder.h"

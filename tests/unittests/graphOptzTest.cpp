@@ -631,7 +631,7 @@ TEST(GraphOptzTest, SliceOfSplatNodeChain) {
 }
 
 TEST_F(GraphOptz, ReshapeNoop) {
-  const size_t shape[] = {10, 20, 30};
+  const uint64_t shape[] = {10, 20, 30};
   Type t(ElemKind::FloatTy, shape);
   auto *Z = F_->createSplat("zero", &t, 0.);
   auto *R = F_->createReshape("reshape", Z, shape);
@@ -655,8 +655,8 @@ TEST_F(GraphOptz, ReshapeNoop) {
 /// use. In the negative case, the optimization will not happen as the splat
 /// node (Z1) has more than one use.
 TEST_F(GraphOptz, ReshapeAfterSplat) {
-  const size_t shape[] = {10, 20, 30};
-  const size_t reshape[] = {1, 6000};
+  const uint64_t shape[] = {10, 20, 30};
+  const uint64_t reshape[] = {1, 6000};
   Type t1(ElemKind::FloatTy, shape);
   Type t2(ElemKind::FloatTy, reshape);
   Node *input =
@@ -704,9 +704,9 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
 
 /// Test the Reshape(Reshape(x)) -> Reshape(x) transformation.
 TEST_F(GraphOptz, ReshapeReshapeOpt) {
-  const size_t shape[] = {10, 20};
-  const size_t reshape1[] = {200, 1};
-  const size_t reshape2[] = {200};
+  const uint64_t shape[] = {10, 20};
+  const uint64_t reshape1[] = {200, 1};
+  const uint64_t reshape2[] = {200};
   Node *input =
       F_->getParent()->createVariable(ElemKind::FloatTy, shape, "input");
   auto *R1 = F_->createReshape("reshape1", input, reshape1);
@@ -1019,9 +1019,9 @@ TEST_F(GraphOptz, concatElim) {
 
 // Check the transformation Concat(Reshape(x) * N) -> Reshape(Concat(x * N)).
 TEST_F(GraphOptz, concatReshapes) {
-  const size_t shape1[] = {2, 5, 2, 1, 20};
-  const size_t shape2[] = {10, 2, 2, 10};
-  const size_t shape3[] = {5, 80};
+  const uint64_t shape1[] = {2, 5, 2, 1, 20};
+  const uint64_t shape2[] = {10, 2, 2, 10};
+  const uint64_t shape3[] = {5, 80};
   llvm::SmallVector<NodeValue, 10> inputs1;
   llvm::SmallVector<NodeValue, 10> inputs2;
   for (size_t i = 0; i < 10; i++) {

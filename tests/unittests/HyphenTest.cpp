@@ -343,7 +343,7 @@ TEST(HyphenTest, network) {
   Tensor inputs(ElemKind::FloatTy, {numSamples, 6, 27});
   Tensor expected(ElemKind::IndexTy, {numSamples, 1});
   auto inputHandle = inputs.getHandle<float>();
-  auto expectedHandle = expected.getHandle<size_t>();
+  auto expectedHandle = expected.getHandle<uint64_t>();
   for (size_t i = 0; i != numSamples; i++) {
     mapLetterWindow(words[i], i, inputHandle);
     expectedHandle.at({i, 0}) = hyphens[i];

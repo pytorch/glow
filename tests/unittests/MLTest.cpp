@@ -279,7 +279,7 @@ unsigned numSamples = 230;
 /// L0, and the rest of the dots, away from the axis are L1.
 void generateCircleData(Tensor &coordinates, Tensor &labels, PseudoRNG &PRNG) {
   auto C = coordinates.getHandle<>();
-  auto L = labels.getHandle<size_t>();
+  auto L = labels.getHandle<uint64_t>();
 
   for (size_t i = 0; i < numSamples / 2; i++) {
     float r = PRNG.nextRand() * 0.4;
@@ -644,7 +644,7 @@ enum class Sport : size_t { BASKETBALL = 0, SOCCER = 1 };
 void generatePlayerData(Tensor &players, Tensor &labels,
                         unsigned numTrainPlayers, PseudoRNG &PRNG) {
   auto P = players.getHandle<>();
-  auto L = labels.getHandle<size_t>();
+  auto L = labels.getHandle<uint64_t>();
 
   // Auto generate height/weights for basketball players.
   for (size_t i = 0; i < numTrainPlayers / 2; i++) {
@@ -836,7 +836,7 @@ TEST_P(MLTest, nonLinearClassifier) {
     size_t label = (x < 0.0) ^ (y < 0.0);
     samples.getHandle<>().at({i, 0}) = x;
     samples.getHandle<>().at({i, 1}) = y;
-    labels.getHandle<size_t>().at({i, 0}) = label;
+    labels.getHandle<uint64_t>().at({i, 0}) = label;
   }
 
   EE_.runBatch(500, {A, S}, {&samples, &labels});
@@ -861,7 +861,7 @@ TEST_P(MLTest, nonLinearClassifier) {
 /// Generate images in two classes.
 /// A "line" is labeled as 0 and a "cross" is labeled as 1.
 static void generateImageData(Tensor &images, Tensor &labels, PseudoRNG &PRNG) {
-  auto L = labels.getHandle<size_t>();
+  auto L = labels.getHandle<uint64_t>();
   auto image = images.getHandle<>();
   unsigned numSamples = images.dims()[0];
   images.zero();
@@ -940,7 +940,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   EE.run({input}, {&testImages});
   auto SMH = result->getVariable()->getHandle<>();
   for (size_t i = 0; i < batchSize; i++) {
-    bool isLine = testLabels.getHandle<size_t>().at({i, 0}) == 0;
+    bool isLine = testLabels.getHandle<uint64_t>().at({i, 0}) == 0;
     auto lineWeight = SMH.at({i, 0});
     auto crossWeight = SMH.at({i, 1});
     EXPECT_TRUE((isLine && lineWeight > crossWeight) ||
@@ -1097,7 +1097,7 @@ static void generateMatrixRotationRecognitionData(Tensor &matricesA,
          "Size of the tensors is incompatible");
   auto handleMatricesA = matricesA.getHandle<float>();
   auto handleMatricesB = matricesB.getHandle<float>();
-  auto handleExpected = expected.getHandle<size_t>();
+  auto handleExpected = expected.getHandle<uint64_t>();
 
   handleMatricesA.randomize<int>(0, 1, PRNG);
   handleMatricesB.randomize<int>(0, 1, PRNG);
@@ -1201,7 +1201,8 @@ TEST_P(MLTest, matrixRotationRecognition) {
     // Note that the two softmax outputs always sum to 1, so we only look at
     // one. Index one is true if there is a rotation.
     float value = RHtrain.at({i, 1});
-    bool hasRotation = expected.getHandle<size_t>().at({batchStartIdx + i, 0});
+    bool hasRotation =
+        expected.getHandle<uint64_t>().at({batchStartIdx + i, 0});
     if ((value > 0.5) != hasRotation) {
       ++errors;
     }

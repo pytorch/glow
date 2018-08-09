@@ -68,7 +68,7 @@ public:
   /// Methods that forward to the result type (that must be valid):
   /// @{
   ElemKind getElementType() const { return getType()->getElementType(); };
-  llvm::ArrayRef<size_t> dims() const { return getType()->dims(); };
+  llvm::ArrayRef<uint64_t> dims() const { return getType()->dims(); };
   /// @}
 
   /// \returns the visibility of the variable.
@@ -107,8 +107,8 @@ public:
 /// Calculate the size of the output tensor based on the convolution/pooling
 /// parameters.
 inline std::pair<size_t, size_t> calculateConvPoolOutputDims(
-    size_t sx, size_t sy, llvm::ArrayRef<size_t> kernels,
-    llvm::ArrayRef<size_t> strides, llvm::ArrayRef<size_t> pads) {
+    size_t sx, size_t sy, llvm::ArrayRef<uint64_t> kernels,
+    llvm::ArrayRef<uint64_t> strides, llvm::ArrayRef<uint64_t> pads) {
   PaddingTLBR pdim(pads);
   ShapeHW kdim(kernels);
   ShapeHW sdim(strides);

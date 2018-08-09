@@ -688,7 +688,7 @@ getCompatibleValueForReplacement(IRBuilder &B, Instruction *Before,
   }
 
   // Perform a cast to make the types match.
-  std::vector<size_t> offsets(replacement->dims().size(), 0);
+  std::vector<uint64_t> offsets(replacement->dims().size(), 0);
   auto *tv = B.createTensorViewInst(with.getName(), replacement, val.getType(),
                                     offsets);
   assert(tv->getType()->size() == with.getType()->size() &&
@@ -1261,7 +1261,7 @@ static void eliminateDeadStores(IRFunction &M) {
 }
 
 /// \returns true if the first dimension in \p offsets has a non-zero value.
-static bool isOnlyOffsetInFirstDim(llvm::ArrayRef<size_t> offsets) {
+static bool isOnlyOffsetInFirstDim(llvm::ArrayRef<uint64_t> offsets) {
   if (offsets.size() > 1) {
     for (size_t i = 1; i < offsets.size(); ++i) {
       if (offsets[i] != 0) {
@@ -1274,8 +1274,8 @@ static bool isOnlyOffsetInFirstDim(llvm::ArrayRef<size_t> offsets) {
 
 /// \returns true if the dimensions of \p sourceDims, other than the first
 /// dimension, all equal the dimensions in \p destDims.
-static bool allButFirstDimsEqual(llvm::ArrayRef<size_t> sourceDims,
-                                 llvm::ArrayRef<size_t> destDims) {
+static bool allButFirstDimsEqual(llvm::ArrayRef<uint64_t> sourceDims,
+                                 llvm::ArrayRef<uint64_t> destDims) {
   assert(sourceDims.size() == destDims.size() &&
          "Source and dest dims must have same number of dims.");
   if (sourceDims.size() > 1) {
@@ -1526,7 +1526,7 @@ void performPeepholeOptimizations(IRFunction &M) {
       if (auto W = getSingleWriter(src)) {
         if (isa<SplatInst>(W)) {
           if (src->getType() != dest->getType()) {
-            std::vector<size_t> offsets(src->getType()->dims().size(), 0);
+            std::vector<uint64_t> offsets(src->getType()->dims().size(), 0);
             auto *TVI = B.createTensorViewInst(TI->getName(), src,
                                                dest->getType(), offsets);
             M.moveInstruction(I, TVI);

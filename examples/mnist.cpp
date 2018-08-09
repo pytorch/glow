@@ -67,7 +67,7 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
 
   size_t idx = 0;
 
-  auto LIH = labelInputs.getHandle<size_t>();
+  auto LIH = labelInputs.getHandle<uint64_t>();
   auto IIH = imageInputs.getHandle<>();
 
   for (unsigned w = 0; w < mnistNumImages; w++) {
@@ -153,7 +153,7 @@ void testMNIST() {
   llvm::outs() << "Validating.\n";
   EE.compile(CompilationMode::Infer, F);
 
-  auto LIH = labelInputs.getHandle<size_t>();
+  auto LIH = labelInputs.getHandle<uint64_t>();
 
   // Check how many examples out of eighty previously unseen digits we can
   // classify correctly.

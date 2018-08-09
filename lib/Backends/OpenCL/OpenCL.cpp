@@ -557,7 +557,7 @@ void OpenCLFunction::execute() {
     // Element-wise operations, except the copy instruction.
     if (I.isDataParallel() && !isa<CopyInst>(I)) {
       // Figure out how many element-wise elements are there to process:
-      size_t global;
+      uint64_t global;
       if (I.isDataParallel()) {
         global = I.getOperand(0).first->getType()->size();
         // The check for quantization below is a temporary workaround until the
@@ -634,7 +634,7 @@ void OpenCLFunction::execute() {
       float destTensorQuantizationScale = QI->getDest()->getType()->getScale();
       int32_t destTensorQuantizationOffset =
           QI->getDest()->getType()->getOffset();
-      size_t global = QI->getDest()->getType()->size();
+      uint64_t global = QI->getDest()->getType()->size();
 
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
@@ -652,7 +652,7 @@ void OpenCLFunction::execute() {
       auto *src = RQI->getSrc();
       auto *destType = dest->getType();
       auto *srcType = src->getType();
-      size_t global = destType->size();
+      uint64_t global = destType->size();
 
       auto rescaleParams = quantization::quantizeScaleOffset32To8(
           srcType->getScale() / destType->getScale(), srcType->getOffset());
@@ -673,7 +673,7 @@ void OpenCLFunction::execute() {
       float srcTensorQuantizationScale = QI->getSrc()->getType()->getScale();
       int32_t srcTensorQuantizationOffset =
           QI->getSrc()->getType()->getOffset();
-      size_t global = QI->getDest()->getType()->size();
+      uint64_t global = QI->getDest()->getType()->size();
 
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
@@ -694,7 +694,7 @@ void OpenCLFunction::execute() {
       // This is the number of elements for each slice. There are N slices in
       // our batch.
       auto inputDims = SM->getSrc()->getType()->dims();
-      size_t numSlices = inputDims[0];
+      uint64_t numSlices = inputDims[0];
 
       // Pass the slice size (size of each sample in the batch) as a parameter.
       setKernelArg<cl_uint>(kernel, numArgs + 1, flattenCdr(inputDims).second);
@@ -713,7 +713,7 @@ void OpenCLFunction::execute() {
       // This is the number of elements for each slice. There are N slices in
       // our batch.
       auto inputDims = SM->getSrcGrad()->getType()->dims();
-      size_t numSlices = inputDims[0];
+      uint64_t numSlices = inputDims[0];
 
       // Pass the slice size (size of each sample in the batch) as a parameter.
       setKernelArg<cl_uint>(kernel, numArgs + 1, flattenCdr(inputDims).second);
@@ -1109,8 +1109,8 @@ void OpenCLFunction::execute() {
 
       // Temporary hack to support 3-dim transposes.
       // TODO: support any dimensional transposes.
-      std::vector<size_t> odim_vec = TR->getDest()->getType()->dims();
-      std::vector<size_t> idim_vec = TR->getSrc()->getType()->dims();
+      std::vector<uint64_t> odim_vec = TR->getDest()->getType()->dims();
+      std::vector<uint64_t> idim_vec = TR->getSrc()->getType()->dims();
       std::vector<unsigned> mask = TR->getShuffle();
       while (mask.size() < 4) {
         odim_vec.push_back(1);
@@ -1139,9 +1139,9 @@ void OpenCLFunction::execute() {
       if (src == dest) {
         continue;
       }
-      size_t destOff = tensors_[dest];
-      size_t srcOff = tensors_[src];
-      size_t sizeInBytes = dest->getSizeInBytes();
+      uint64_t destOff = tensors_[dest];
+      uint64_t srcOff = tensors_[src];
+      uint64_t sizeInBytes = dest->getSizeInBytes();
       cl_event event{nullptr};
       cl_int err = clEnqueueCopyBuffer(commands_, deviceBuffer_, deviceBuffer_,
                                        srcOff, destOff, sizeInBytes, 0, nullptr,
@@ -1165,16 +1165,16 @@ void OpenCLFunction::execute() {
              "At the moment only floats are supported");
 
       TypeRef dataType = data->getType();
-      size_t numIndices = GI->getIndices()->size();
+      uint64_t numIndices = GI->getIndices()->size();
 
       // The size of the sample in the batch.
-      size_t sliceSize = dataType->getSliceSize(batchDims + 1);
+      uint64_t sliceSize = dataType->getSliceSize(batchDims + 1);
       // The size of the slices that we gather.
-      size_t srcSampleSize = dataType->getSliceSize(batchDims);
+      uint64_t srcSampleSize = dataType->getSliceSize(batchDims);
       // The size of the slices that we pack.
-      size_t destSampleSize = numIndices * sliceSize;
+      uint64_t destSampleSize = numIndices * sliceSize;
       // The size of each sample in the batch.
-      size_t numSamples = dataType->size() / srcSampleSize;
+      uint64_t numSamples = dataType->size() / srcSampleSize;
 
       setKernelArg<cl_uint>(kernel, numArgs + 1, numIndices);
       setKernelArg<cl_uint>(kernel, numArgs + 2, sliceSize);
@@ -1195,8 +1195,8 @@ void OpenCLFunction::execute() {
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
       auto *data = SAI->getData();
-      size_t dataSliceSize = data->size() / data->dims()[0];
-      size_t numIndices = SAI->getIndices()->size();
+      uint64_t dataSliceSize = data->size() / data->dims()[0];
+      uint64_t numIndices = SAI->getIndices()->size();
       setKernelArg<cl_uint>(kernel, numArgs + 1, dataSliceSize);
 
       enqueueKernel(commands_, kernel, deviceId_, {numIndices},
@@ -1296,7 +1296,7 @@ size_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
   size_t copiedBytes = 0;
   auto it = tensors_.find(v);
   assert(it != tensors_.end() && "Unknown value");
-  size_t sizeInBytes = v->getType()->getSizeInBytes();
+  size_t sizeInBytes = (size_t)v->getType()->getSizeInBytes();
   // Issue a non-blocking command to copy the buffer to the device.
   if (sizeInBytes) {
     if (!buf) {
@@ -1323,7 +1323,7 @@ size_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
   size_t copiedBytes = 0;
   auto it = tensors_.find(v);
   assert(it != tensors_.end() && "Unknown value");
-  size_t sizeInBytes = v->getType()->getSizeInBytes();
+  size_t sizeInBytes = (size_t)v->getType()->getSizeInBytes();
   // Issue a non-blocking command to copy the buffer from the device.
   if (sizeInBytes) {
     if (!buf) {
@@ -1412,7 +1412,7 @@ void OpenCLFunction::allocateMemory() {
   // Assign device-space addresses to the weights.
   for (auto it : externalTensors_) {
     Tensor *T = it.second;
-    size_t sizeInBytes = T->getType().getSizeInBytes();
+    size_t sizeInBytes = (size_t)T->getType().getSizeInBytes();
     size_t addr = allocator.allocate(sizeInBytes);
     // Associate the new buffer with the weight value.
     tensors_[it.first] = addr;
@@ -1432,7 +1432,8 @@ void OpenCLFunction::allocateMemory() {
       // Calculate and store the length of the offset into the base, using the
       // source of the tensorview.
       assert(!tensors_.count(TV) && "Allocation already made!");
-      size_t offsetLength = TV->getOffsets().empty() ? 0 : TV->getOffsets()[0];
+      size_t offsetLength =
+          TV->getOffsets().empty() ? 0 : (size_t)TV->getOffsets()[0];
       auto *tvSource = TV->getSrc();
       if (tvSource->dims().size() > 1) {
         for (size_t i = 1; i < tvSource->dims().size(); ++i) {

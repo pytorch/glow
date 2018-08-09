@@ -40,7 +40,7 @@ using NodesPtrList = std::list<glow::Node *>;
 using FunctionList = std::list<Function *>;
 /// List of Variables.
 using VariablesList = std::list<Variable *>;
-using UnsignedArrayRef = llvm::ArrayRef<size_t>;
+using UnsignedArrayRef = llvm::ArrayRef<uint64_t>;
 
 class Module final {
   /// Stores the functions in the module.
@@ -77,15 +77,15 @@ public:
   TypeRef uniqueType(const Type &T);
 
   /// Return a pointer to a uniqued type \p T.
-  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims);
+  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<uint64_t> dims);
 
   /// Return a pointer to a uniqued type \p T.
-  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
-                     int32_t offset);
+  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<uint64_t> dims,
+                     float scale, int32_t offset);
 
   /// Return a pointer to a uniqued type \p T.
   /// The new type is identical to \p T, with a new shape \p dims.
-  TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims);
+  TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<uint64_t> dims);
 
   /// Return the void type.
   TypeRef getVoidTy();
@@ -124,13 +124,13 @@ public:
                            VisibilityKind visibility = VisibilityKind::Private,
                            bool isTrainable = true);
 
-  Variable *createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
+  Variable *createVariable(ElemKind T, llvm::ArrayRef<uint64_t> dims,
                            llvm::StringRef name,
                            VisibilityKind visibility = VisibilityKind::Private,
                            bool isTrainable = true);
 
-  Variable *createVariable(ElemKind T, llvm::ArrayRef<size_t> dims, float scale,
-                           int32_t offset, llvm::StringRef name,
+  Variable *createVariable(ElemKind T, llvm::ArrayRef<uint64_t> dims,
+                           float scale, int32_t offset, llvm::StringRef name,
                            VisibilityKind visibility = VisibilityKind::Private,
                            bool isTrainable = true);
 
@@ -197,40 +197,40 @@ public:
   ///@{
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
-                              size_t depth, llvm::ArrayRef<size_t> kernels,
-                              llvm::ArrayRef<size_t> strides,
-                              llvm::ArrayRef<size_t> pads, size_t group);
+                              uint64_t depth, llvm::ArrayRef<uint64_t> kernels,
+                              llvm::ArrayRef<uint64_t> strides,
+                              llvm::ArrayRef<uint64_t> pads, uint64_t group);
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
-                              llvm::ArrayRef<size_t> kernels,
-                              llvm::ArrayRef<size_t> strides,
-                              llvm::ArrayRef<size_t> pads, size_t group);
+                              llvm::ArrayRef<uint64_t> kernels,
+                              llvm::ArrayRef<uint64_t> strides,
+                              llvm::ArrayRef<uint64_t> pads, uint64_t group);
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
-                              size_t depth, size_t kernel, size_t stride,
-                              size_t pad, size_t group);
+                              uint64_t depth, uint64_t kernel, uint64_t stride,
+                              uint64_t pad, uint64_t group);
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
-                              size_t kernel, size_t stride, size_t pad,
-                              size_t group);
+                              uint64_t kernel, uint64_t stride, uint64_t pad,
+                              uint64_t group);
 
   MaxPoolNode *createMaxPool(llvm::StringRef name, NodeValue input,
-                             llvm::ArrayRef<size_t> kernels,
-                             llvm::ArrayRef<size_t> strides,
-                             llvm::ArrayRef<size_t> pads);
+                             llvm::ArrayRef<uint64_t> kernels,
+                             llvm::ArrayRef<uint64_t> strides,
+                             llvm::ArrayRef<uint64_t> pads);
 
   MaxPoolNode *createMaxPool(llvm::StringRef name, NodeValue input,
-                             size_t kernel, size_t stride, size_t pad);
+                             uint64_t kernel, uint64_t stride, uint64_t pad);
 
   AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
-                             llvm::ArrayRef<size_t> kernels,
-                             llvm::ArrayRef<size_t> strides,
-                             llvm::ArrayRef<size_t> pads);
+                             llvm::ArrayRef<uint64_t> kernels,
+                             llvm::ArrayRef<uint64_t> strides,
+                             llvm::ArrayRef<uint64_t> pads);
 
   AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
-                             size_t kernel, size_t stride, size_t pad);
+                             uint64_t kernel, uint64_t stride, uint64_t pad);
 
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, Variable *W,
@@ -245,7 +245,7 @@ public:
   /// Create a fully connected node with the given \p name, \p input and \p
   /// output depth. Trainable weight and bias variables are created implicitly.
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
-                                           NodeValue input, size_t outDepth);
+                                           NodeValue input, uint64_t outDepth);
 
   ReluNode *createRELU(llvm::StringRef name, NodeValue input);
 
@@ -301,14 +301,14 @@ public:
   /// Create a slice node with the given starting point for each dimension.
   /// End points will be calculated based on the output type during execution.
   SliceNode *createSlice(llvm::StringRef name, NodeValue input,
-                         llvm::ArrayRef<size_t> start, TypeRef outTy);
+                         llvm::ArrayRef<uint64_t> start, TypeRef outTy);
 
   /// Shuffles dimension number \p kernel. Suppose original size is D. It will
   /// be represented as groupX(D/group) matrix, transposed and concatenated back
   /// to size D. For example, shuffle of {1, 2, 3, 4, 5, 6} with \p group = 2 is
   /// {1, 4, 2, 5, 3, 6}
   Node *createChannelShuffle(llvm::StringRef name, NodeValue input,
-                             size_t group, size_t kernel);
+                             uint64_t group, uint64_t kernel);
 
   /// Removes single-dimensional entries from the shape of a tensor. The
   /// parameter \p axes is a list of positive integers, indicating the
@@ -316,41 +316,41 @@ public:
   /// opposite of ExpandDims.
   /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#squeeze
   ReshapeNode *createSqueeze(llvm::StringRef name, NodeValue input,
-                             llvm::ArrayRef<size_t> axes);
+                             llvm::ArrayRef<uint64_t> axes);
 
   /// Add single-dimensional entries to the shape of the \p input tensor at
   /// locations in \p axes. \p axes is listed as seen in the output tensor.
   /// Implemented as a single ReshapeNode. This is the opposite of Squeeze.
   ReshapeNode *createExpandDims(llvm::StringRef name, NodeValue input,
-                                llvm::ArrayRef<size_t> axes);
+                                llvm::ArrayRef<uint64_t> axes);
 
   /// Flattens the input tensor into a 2D matrix. If input tensor has shape
   /// (d_0, d_1, ... d_n) then the output will have shape:
   /// (d_0 X d_1 ... d_(axis-1), d_axis X d_(axis+1) ... X d_n).
   ReshapeNode *createFlatten(llvm::StringRef name, NodeValue input,
-                             size_t axis);
+                             uint64_t axis);
 
   /// Create \p outputNum slice nodes of \p input. Slices happen along dimension
   /// number \p axis. Array \p split defines lengths of slices. If \p split is
   /// empty, \p input is split to equal sized parts.
-  void createSplit(llvm::StringRef name, NodeValue input, size_t outputNum,
-                   size_t axis, llvm::ArrayRef<size_t> split,
+  void createSplit(llvm::StringRef name, NodeValue input, uint64_t outputNum,
+                   uint64_t axis, llvm::ArrayRef<uint64_t> split,
                    std::vector<Node *> &outputs);
 
   BatchNormalizationNode *createBatchNormalization(llvm::StringRef name,
                                                    NodeValue input,
-                                                   size_t channelIdx = 0,
+                                                   uint64_t channelIdx = 0,
                                                    float epsilon = 1e-5,
                                                    float momentum = 0.9);
 
   BatchNormalizationNode *
   createBatchNormalization(llvm::StringRef name, NodeValue input,
                            NodeValue beta, NodeValue gamma, NodeValue mean,
-                           NodeValue var, size_t channelIdx = 0,
+                           NodeValue var, uint64_t channelIdx = 0,
                            float epsilon = 1e-5, float momentum = 0.9);
 
   LocalResponseNormalizationNode *createLocalResponseNormalization(
-      llvm::StringRef name, NodeValue input, size_t halfWindowSize = 2,
+      llvm::StringRef name, NodeValue input, uint64_t halfWindowSize = 2,
       float alpha = 1e-4, float beta = 0.75, float k = 2.0);
 
 #define ARITHMETIC_FUN_DECL(NODE_NAME_)                                        \
@@ -390,25 +390,25 @@ public:
   Node *createBatchMatMul(llvm::StringRef name, NodeValue lhs, NodeValue rhs);
 
   BatchedReduceAddNode *createBatchedReduceAdd(llvm::StringRef name,
-                                               NodeValue batch, size_t axis);
+                                               NodeValue batch, uint64_t axis);
 
   BatchedReduceAddNode *createBatchedReduceAdd(llvm::StringRef name,
                                                TypeRef outTy, NodeValue batch,
-                                               size_t axis);
+                                               uint64_t axis);
 
   /// Implements a batched reduce mean of the \p batch on the provided \p axis
   /// with output type \p outTy with three nodes: a BatchedReduceAdd followed by
   /// a DivNode with a SplatNode of the length of the \p axis
   /// dimension. \returns the final DivNode.
   DivNode *createBatchedReduceMean(llvm::StringRef name, TypeRef outTy,
-                                   NodeValue batch, size_t axis);
+                                   NodeValue batch, uint64_t axis);
 
   /// Implements a batched reduce mean of the \p batch on the provided \p axis
   /// with three nodes: a BatchedReduceAdd followed by a DivNode with a
   /// SplatNode of the length of the \p axis dimension. \returns the final
   /// DivNode.
   DivNode *createBatchedReduceMean(llvm::StringRef name, NodeValue batch,
-                                   size_t axis);
+                                   uint64_t axis);
 
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, NodeValue batch,
                                    NodeValue sample);
@@ -454,7 +454,7 @@ public:
   IntLookupTableNode *createIntSigmoid(llvm::StringRef name, NodeValue input,
                                        TypeRef outTy);
 
-  TopKNode *createTopK(llvm::StringRef name, NodeValue input, size_t k);
+  TopKNode *createTopK(llvm::StringRef name, NodeValue input, uint64_t k);
 
   /// Gathers entries of the outer-most dimension of \p data indexed by
   /// \p indices, and concatenates them. A non-zero \p batchDims specifies the

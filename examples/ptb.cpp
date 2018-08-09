@@ -127,7 +127,7 @@ unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
   inputWords.reset(ElemKind::FloatTy, {numSequences, vocabSize * numSteps});
   targetWords.reset(ElemKind::IndexTy, {numSequences, numSteps});
   auto IIH = inputWords.getHandle<>();
-  auto TIH = targetWords.getHandle<size_t>();
+  auto TIH = targetWords.getHandle<uint64_t>();
   for (unsigned batch = 0; batch < minibatchSize; batch++) {
     for (unsigned iter = 0; iter < numBatches; iter++) {
       size_t sequence = batch + iter * minibatchSize;
@@ -272,7 +272,7 @@ void testPTB() {
         for (unsigned int i = 0; i < minibatchSize; i++) {
           auto T =
               res.getHandle<float>().extractSlice(step * minibatchSize + i);
-          size_t correct = targetWords.getHandle<std::size_t>().at(
+          size_t correct = targetWords.getHandle<uint64_t>().at(
               {minibatchSize * batch + i, step});
           float soft_guess = -std::log(T.getHandle<float>().at({correct}));
           perplexity += soft_guess;

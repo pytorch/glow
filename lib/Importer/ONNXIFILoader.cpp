@@ -25,7 +25,7 @@ namespace onnxifi {
 /// with the Tensor. This method makes sure that the tensor is created with the
 /// proper shape and element type.
 static void setTensorType(const onnx::TypeProto &in, Tensor *T) {
-  std::vector<size_t> dim;
+  std::vector<uint64_t> dim;
   for (auto d : in.tensor_type().shape().dim()) {
     dim.push_back(d.dim_value());
   }
@@ -55,7 +55,7 @@ static bool loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
     return false;
   }
 
-  std::vector<size_t> dims;
+  std::vector<uint64_t> dims;
   for (unsigned i = 0; i < in.dimensions; ++i) {
     dims.push_back(in.shape[i]);
   }
@@ -72,7 +72,7 @@ static bool loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
     // TODO: either switch IndexTy to be 64 bit, or switch to another type here.
     T->reset(ElemKind::IndexTy, dims);
 
-    auto TH = T->getHandle<size_t>();
+    auto TH = T->getHandle<uint64_t>();
     int64_t *data = (int64_t *)in.buffer;
     for (size_t i = 0; i < TH.size(); ++i) {
       TH.raw(i) = data[i];

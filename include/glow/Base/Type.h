@@ -36,15 +36,15 @@ using TypeRef = const Type *;
 
 constexpr unsigned max_tensor_dimensions = 6;
 
-using ShapeVector = llvm::SmallVector<size_t, max_tensor_dimensions>;
+using ShapeVector = llvm::SmallVector<uint64_t, max_tensor_dimensions>;
 
 struct ShapeNHWC {
-  size_t n; // Number of samples
-  size_t h; // Height
-  size_t w; // Width
-  size_t c; // Number of Channels
+  uint64_t n; // Number of samples
+  uint64_t h; // Height
+  uint64_t w; // Width
+  uint64_t c; // Number of Channels
 
-  explicit ShapeNHWC(llvm::ArrayRef<size_t> shape) {
+  explicit ShapeNHWC(llvm::ArrayRef<uint64_t> shape) {
     assert(shape.size() == 4 && "Invalid shape");
     n = shape[0];
     h = shape[1];
@@ -52,25 +52,25 @@ struct ShapeNHWC {
     c = shape[3];
   }
 
-  static ShapeNHWC fromXYZ(llvm::ArrayRef<size_t> shape) {
+  static ShapeNHWC fromXYZ(llvm::ArrayRef<uint64_t> shape) {
     assert(shape.size() == 3 && "Invalid 3d shape");
     return ShapeNHWC(shape[0], shape[1], shape[2], 1);
   }
 
-  static ShapeNHWC fromXY(llvm::ArrayRef<size_t> shape) {
+  static ShapeNHWC fromXY(llvm::ArrayRef<uint64_t> shape) {
     assert(shape.size() == 2 && "Invalid 2d shape");
     return ShapeNHWC(shape[0], shape[1], 1, 1);
   }
 
-  static ShapeNHWC fromX(llvm::ArrayRef<size_t> shape) {
+  static ShapeNHWC fromX(llvm::ArrayRef<uint64_t> shape) {
     assert(shape.size() == 1 && "Invalid 1d shape");
     return ShapeNHWC(shape[0], 1, 1, 1);
   }
 
   static ShapeNHWC empty() { return ShapeNHWC(0, 0, 0, 0); }
 
-  explicit ShapeNHWC(size_t samples, size_t height, size_t width,
-                     size_t channels)
+  explicit ShapeNHWC(uint64_t samples, uint64_t height, uint64_t width,
+                     uint64_t channels)
       : n(samples), h(height), w(width), c(channels) {}
 
   bool equals(const ShapeNHWC &other) const {
@@ -79,12 +79,12 @@ struct ShapeNHWC {
 };
 
 struct ShapeNCHW {
-  size_t n; // Number of samples
-  size_t c; // Number of Channels
-  size_t h; // Height
-  size_t w; // Width
+  uint64_t n; // Number of samples
+  uint64_t c; // Number of Channels
+  uint64_t h; // Height
+  uint64_t w; // Width
 
-  explicit ShapeNCHW(llvm::ArrayRef<size_t> shape) {
+  explicit ShapeNCHW(llvm::ArrayRef<uint64_t> shape) {
     assert(shape.size() == 4 && "Invalid shape");
     n = shape[0];
     c = shape[1];
@@ -92,20 +92,20 @@ struct ShapeNCHW {
     w = shape[3];
   }
 
-  static ShapeNCHW fromXYZ(llvm::ArrayRef<size_t> shape) {
+  static ShapeNCHW fromXYZ(llvm::ArrayRef<uint64_t> shape) {
     assert(shape.size() == 3 && "Invalid 3d shape");
     return ShapeNCHW(shape[0], 1, shape[1], shape[2]);
   }
 
-  static ShapeNCHW fromXY(llvm::ArrayRef<size_t> shape) {
+  static ShapeNCHW fromXY(llvm::ArrayRef<uint64_t> shape) {
     assert(shape.size() == 2 && "Invalid 2d shape");
     return ShapeNCHW(shape[0], 1, shape[1], 1);
   }
 
   static ShapeNCHW empty() { return ShapeNCHW(0, 0, 0, 0); }
 
-  explicit ShapeNCHW(size_t samples, size_t channels, size_t height,
-                     size_t width)
+  explicit ShapeNCHW(uint64_t samples, uint64_t channels, uint64_t height,
+                     uint64_t width)
       : n(samples), c(channels), h(height), w(width) {}
 
   bool equals(const ShapeNCHW &other) const {
@@ -114,12 +114,12 @@ struct ShapeNCHW {
 };
 
 struct PaddingTLBR {
-  size_t top;
-  size_t left;
-  size_t bottom;
-  size_t right;
+  uint64_t top;
+  uint64_t left;
+  uint64_t bottom;
+  uint64_t right;
 
-  explicit PaddingTLBR(llvm::ArrayRef<size_t> pads) {
+  explicit PaddingTLBR(llvm::ArrayRef<uint64_t> pads) {
     assert(pads.size() == 4 && "Invalid padding");
     top = pads[0];
     left = pads[1];
@@ -133,10 +133,10 @@ struct PaddingTLBR {
 };
 
 struct ShapeHW {
-  size_t height;
-  size_t width;
+  uint64_t height;
+  uint64_t width;
 
-  explicit ShapeHW(llvm::ArrayRef<size_t> shape) {
+  explicit ShapeHW(llvm::ArrayRef<uint64_t> shape) {
     assert(shape.size() == 2 && "Invalid shape");
     height = shape[0];
     width = shape[1];
@@ -147,15 +147,15 @@ struct ShapeHW {
 
 /// Collapse a tensor shape into two sizes: the first n dimensions and the size
 /// of the rest of the dimensions. For example, ([7, 3, 4, 2], 1) -> [7, 24]
-inline std::pair<size_t, size_t> flattenCdr(llvm::ArrayRef<size_t> dims,
-                                            size_t n = 1) {
+inline std::pair<uint64_t, uint64_t> flattenCdr(llvm::ArrayRef<uint64_t> dims,
+                                                size_t n = 1) {
   assert(1 <= n && n < dims.size());
-  size_t first = dims[0];
+  uint64_t first = dims[0];
   for (size_t i = 1; i < n; i++) {
     first *= dims[i];
   }
 
-  size_t rest = dims[n];
+  uint64_t rest = dims[n];
   for (size_t i = n + 1; i < dims.size(); i++) {
     rest *= dims[i];
   }
@@ -181,7 +181,7 @@ enum class ElemKind : unsigned char {
 /// A class that represents a type of a tensor.
 struct Type final {
   /// Contains the dimensions (sizes) of the tensor. Ex: [sx, sy, sz, ...].
-  size_t sizes_[max_tensor_dimensions] = {
+  uint64_t sizes_[max_tensor_dimensions] = {
       0,
   };
 
@@ -197,7 +197,7 @@ struct Type final {
   ElemKind elementType_{ElemKind::IndexTy};
 
   /// Initialize a new integer type with \p scale and \p offset.
-  Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
+  Type(ElemKind elemTy, llvm::ArrayRef<uint64_t> dims, float scale,
        int32_t offset)
       : scale_(scale), offset_(offset), elementType_(elemTy) {
     assert(isQuantizedType() && "Only Integer types have a scale and offset");
@@ -205,14 +205,14 @@ struct Type final {
   }
 
   /// Initialize a new float type.
-  Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims) : elementType_(elemTy) {
+  Type(ElemKind elemTy, llvm::ArrayRef<uint64_t> dims) : elementType_(elemTy) {
     assert(!isQuantizedType() &&
            "Can't initialize Integer types without scale and offset");
     initDims(dims);
   }
 
   /// Reshape existing type. This method takes care of quantized types.
-  static Type newShape(const Type &T, llvm::ArrayRef<size_t> dims) {
+  static Type newShape(const Type &T, llvm::ArrayRef<uint64_t> dims) {
     if (T.isQuantizedType()) {
       return Type(T.getElementType(), dims, T.getScale(), T.getOffset());
     } else {
@@ -266,13 +266,13 @@ struct Type final {
   ElemKind getElementType() const { return elementType_; }
 
   /// \returns the shape of the tensor.
-  llvm::ArrayRef<size_t> dims() const { return {sizes_, numSizes_}; }
+  llvm::ArrayRef<uint64_t> dims() const { return {sizes_, numSizes_}; }
 
   /// \returns the number of elements in the tensor.
-  size_t size() const {
-    size_t s = 1;
+  uint64_t size() const {
+    uint64_t s = 1;
     for (unsigned char i = 0; i < numSizes_; i++) {
-      s *= size_t(sizes_[i]);
+      s *= uint64_t(sizes_[i]);
     }
 
     return s;
@@ -282,11 +282,11 @@ struct Type final {
   /// size of the slice starting at \p startDim. For example, the tensor with
   /// the shape [10, 10, 3] and startDim 1 would have the size 30, because this
   /// is the size of the slice [10, 3] that starts at index 1.
-  size_t getSliceSize(unsigned char startDim) const {
+  uint64_t getSliceSize(unsigned char startDim) const {
     assert(startDim <= numSizes_ && "Invalid start dim");
-    size_t s = 1;
+    uint64_t s = 1;
     for (unsigned char i = startDim; i < numSizes_; i++) {
-      s *= size_t(sizes_[i]);
+      s *= uint64_t(sizes_[i]);
     }
     return s;
   }
@@ -307,7 +307,7 @@ struct Type final {
     case ElemKind::Int32QTy:
       return std::is_same<ElemTy, int32_t>::value;
     case ElemKind::IndexTy:
-      return std::is_same<ElemTy, size_t>::value;
+      return std::is_same<ElemTy, uint64_t>::value;
     }
     GLOW_UNREACHABLE("Invalid type.");
   }
@@ -321,7 +321,7 @@ struct Type final {
   unsigned getElementSize() const { return getElementSize(elementType_); }
 
   /// \returns the size in bytes for this Tensor.
-  size_t getSizeInBytes() const { return getElementSize() * size(); }
+  uint64_t getSizeInBytes() const { return getElementSize() * size(); }
 
   /// \return the size of the element \p Ty.
   static unsigned getElementSize(ElemKind Ty) {
@@ -333,7 +333,7 @@ struct Type final {
     case ElemKind::Int32QTy:
       return sizeof(int32_t);
     case ElemKind::IndexTy:
-      return sizeof(size_t);
+      return sizeof(uint64_t);
     }
     GLOW_UNREACHABLE("Invalid type.");
   }
@@ -357,7 +357,7 @@ struct Type final {
 private:
   /// Setup the internals of type that store the dimensions. This method is used
   /// by the constructor.
-  void initDims(llvm::ArrayRef<size_t> dims) {
+  void initDims(llvm::ArrayRef<uint64_t> dims) {
     assert(dims.size() <= max_tensor_dimensions && "Too many dimensions.");
     // Update the tensor sizes.
     for (size_t i = 0, e = dims.size(); i < e; i++) {

@@ -21,7 +21,7 @@
 
 namespace glow {
 
-bool isArrayConstant(llvm::ArrayRef<size_t> a) {
+bool isArrayConstant(llvm::ArrayRef<uint64_t> a) {
   for (size_t i = 1; i < a.size(); i++)
     if (a[0] != a[i])
       return false;

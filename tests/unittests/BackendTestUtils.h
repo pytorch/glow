@@ -44,8 +44,9 @@ void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
 
 void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
                   Tensor *kernel2, Tensor *bias2, Tensor *selected,
-                  llvm::ArrayRef<size_t> shape1, llvm::ArrayRef<size_t> shape2,
-                  Tensor *out, BackendKind kind);
+                  llvm::ArrayRef<uint64_t> shape1,
+                  llvm::ArrayRef<uint64_t> shape2, Tensor *out,
+                  BackendKind kind);
 
 void inferGatherNet(Tensor *data, Tensor *indices, Tensor *dest,
                     BackendKind kind);
@@ -55,8 +56,8 @@ void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
 
 void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
                                         Tensor *bias, Tensor *selected,
-                                        llvm::ArrayRef<size_t> shape1,
-                                        llvm::ArrayRef<size_t> shape2,
+                                        llvm::ArrayRef<uint64_t> shape1,
+                                        llvm::ArrayRef<uint64_t> shape2,
                                         Tensor *out, BackendKind kind);
 
 void inferMatMulNet(Tensor *lhs, Tensor *rhs, Tensor *out, BackendKind kind);
@@ -70,15 +71,15 @@ void inferMinNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
 void inferAvgPoolNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
 void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
-                     Tensor *selected, llvm::ArrayRef<size_t> shape1,
-                     llvm::ArrayRef<size_t> shape2, Tensor *out,
+                     Tensor *selected, llvm::ArrayRef<uint64_t> shape1,
+                     llvm::ArrayRef<uint64_t> shape2, Tensor *out,
                      BackendKind kind);
 
 void inferMaxPoolNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
 void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
-                     Tensor *selected, llvm::ArrayRef<size_t> shape1,
-                     llvm::ArrayRef<size_t> shape2, Tensor *out,
+                     Tensor *selected, llvm::ArrayRef<uint64_t> shape1,
+                     llvm::ArrayRef<uint64_t> shape2, Tensor *out,
                      BackendKind kind);
 
 void inferIntLookupTableNet(Tensor *input, Tensor *out,
@@ -89,8 +90,8 @@ void inferQuantizeNet(Tensor *inputs, float scale, int32_t offset, Tensor *out,
 
 void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void inferReshapeNet(Tensor *inputs, llvm::ArrayRef<size_t> shape, Tensor *out,
-                     BackendKind kind);
+void inferReshapeNet(Tensor *inputs, llvm::ArrayRef<uint64_t> shape,
+                     Tensor *out, BackendKind kind);
 
 void inferSelectNet(Tensor *cond, Tensor *inputs1, Tensor *inputs2, Tensor *out,
                     BackendKind kind);

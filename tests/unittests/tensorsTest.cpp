@@ -174,11 +174,11 @@ template <typename Ty> void testAssignment(const Type &ty) {
 }
 
 TEST(Tensor, assignment) {
-  size_t dim[] = {320, 200, 64};
+  uint64_t dim[] = {320, 200, 64};
   testAssignment<float>(Type{ElemKind::FloatTy, dim});
   testAssignment<int8_t>(Type{ElemKind::Int8QTy, dim, 1., 0});
   testAssignment<int32_t>(Type{ElemKind::Int32QTy, dim, 1., 0});
-  testAssignment<size_t>(Type{ElemKind::IndexTy, dim});
+  testAssignment<uint64_t>(Type{ElemKind::IndexTy, dim});
 }
 
 TEST(Tensor, concatTensors1D) {
@@ -600,7 +600,7 @@ TEST(ZeroDimensionalTensor, compareToNonZeroDimensional) {
 
 TEST(ZeroDimensionalTensor, transpose) {
   Tensor T(ElemKind::IndexTy, {});
-  T.getHandle<size_t>() = {15};
+  T.getHandle<uint64_t>() = {15};
 
   Tensor TT;
   T.transpose(&TT, {});

@@ -77,7 +77,7 @@ protected:
     // register it in tensors_.
     auto *T = new Tensor(ElemKind::IndexTy, {in.dims().size()});
     tensors_[opName] = T;
-    T->template getHandle<size_t>() = in.dims();
+    T->template getHandle<uint64_t>() = in.dims();
 
     createAndRememberVariable(opName, *T);
   }
@@ -214,7 +214,7 @@ protected:
     const std::string &opName = loadOperatorName(op);
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
     size_t axis = dict.count("axis") ? loadInt(dict["axis"]) : 0;
-    std::vector<size_t> split;
+    std::vector<uint64_t> split;
     if (dict.count("split"))
       split = getShape(dict["split"]);
 
@@ -237,7 +237,7 @@ protected:
     std::vector<int64_t> requestedDims;
     if (op.input_size() > 1) {
       Tensor *constShapeTensor = getTensorByName(op.input(1));
-      auto TH = constShapeTensor->getHandle<size_t>();
+      auto TH = constShapeTensor->getHandle<uint64_t>();
       for (size_t i = 0, e = constShapeTensor->size(); i != e; i++) {
         requestedDims.push_back(TH.at({i}));
       }
@@ -255,8 +255,8 @@ protected:
 
     // Compute the actual new shape
     ssize_t negOneIndex = -1;
-    llvm::ArrayRef<size_t> inputDims = in.dims();
-    std::vector<size_t> outputDims;
+    llvm::ArrayRef<uint64_t> inputDims = in.dims();
+    std::vector<uint64_t> outputDims;
     int64_t dimProduct = 1;
     for (size_t i = 0, e = requestedDims.size(); i != e; i++) {
       int64_t newDim = requestedDims[i];
@@ -364,7 +364,7 @@ protected:
 
     // Our batched reduce add does not keep the dim; reshape if necessary.
     if (keepDims) {
-      std::vector<size_t> shape = node->dims(0);
+      std::vector<uint64_t> shape = node->dims(0);
       shape.insert(shape.begin() + axis, 1);
       node = G_.createReshape(opName, node, shape);
     }

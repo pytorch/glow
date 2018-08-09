@@ -334,7 +334,7 @@ void NodeBuilder::emitEquator(std::ostream &os) const {
 
 static bool isVectorType(MemberType ty) {
   return ty == MemberType::VectorFloat || ty == MemberType::VectorNodeValue ||
-         ty == MemberType::VectorSizeT || ty == MemberType::VectorUnsigned;
+         ty == MemberType::VectorUInt64 || ty == MemberType::VectorUnsigned;
 }
 
 void NodeBuilder::emitHasher(std::ostream &os) const {

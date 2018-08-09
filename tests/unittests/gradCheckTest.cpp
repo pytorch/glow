@@ -503,7 +503,7 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   Tensor outputs(ElemKind::IndexTy, {batchSize});
 
   auto inputsH = inputs.getHandle();
-  auto outputsH = outputs.getHandle<size_t>();
+  auto outputsH = outputs.getHandle<uint64_t>();
 
   inputsH.randomize(0.0, 1.0, mod.getPRNG());
   outputsH.at({0}) = 2;

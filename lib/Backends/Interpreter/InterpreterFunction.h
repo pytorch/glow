@@ -70,7 +70,7 @@ private:
   /// the unowned tensor is provided by \p src.
   /// \returns a tensor for \p v.
   Tensor *getOrCreateUnownedTensor(const Value *v, const Value *src,
-                                   llvm::ArrayRef<size_t> offsets);
+                                   llvm::ArrayRef<uint64_t> offsets);
 
   /// If a tensor is allocated for \p v then delete it.
   void deleteTensor(const Value *v);
@@ -92,14 +92,15 @@ private:
 
   void fwdConvolutionInst_I8Impl(Value *inV, Value *outV, Value *filterV,
                                  Value *biasV,
-                                 llvm::ArrayRef<size_t> filterSizes,
-                                 llvm::ArrayRef<size_t> strides,
-                                 llvm::ArrayRef<size_t> pads, size_t group);
+                                 llvm::ArrayRef<uint64_t> filterSizes,
+                                 llvm::ArrayRef<uint64_t> strides,
+                                 llvm::ArrayRef<uint64_t> pads, uint64_t group);
   void fwdConvolutionInst_FloatImpl(Value *inV, Value *outV, Value *filterV,
                                     Value *biasV,
-                                    llvm::ArrayRef<size_t> filterSizes,
-                                    llvm::ArrayRef<size_t> strides,
-                                    llvm::ArrayRef<size_t> pads, size_t group);
+                                    llvm::ArrayRef<uint64_t> filterSizes,
+                                    llvm::ArrayRef<uint64_t> strides,
+                                    llvm::ArrayRef<uint64_t> pads,
+                                    uint64_t group);
   ///@}
 };
 

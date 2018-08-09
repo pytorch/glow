@@ -102,7 +102,7 @@ bool ONNXModelLoader::loadProto(onnx::GraphProto &net,
   return loadProto(net, fileStream);
 }
 
-std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
+std::vector<uint64_t> getPads(const ArgumentDictionaryTy &dict) {
   if (dict.count("pads")) {
     return getShape(dict.at("pads"));
   }
@@ -120,7 +120,7 @@ std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
 
 /// Loads tensor \p T from the input \p in.
 static void loadTensor(const onnx::TensorProto &in, Tensor *T) {
-  std::vector<size_t> dim;
+  std::vector<uint64_t> dim;
   for (auto d : in.dims()) {
     dim.push_back(d);
   }
@@ -153,7 +153,7 @@ static void loadTensor(const onnx::TensorProto &in, Tensor *T) {
       }
     } else if (in.has_raw_data()) {
       std::istringstream inStream(in.raw_data(), std::stringstream::binary);
-      inStream.read((char *)T->getRawDataPointer<size_t>(),
+      inStream.read((char *)T->getRawDataPointer<uint64_t>(),
                     T->size() * sizeof(int64_t));
     } else {
       llvm_unreachable("Unsupported Tensor format.");
@@ -219,13 +219,13 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
 
   if (typeName == "Conv") {
     // Load the inputs:
-    std::vector<size_t> strides(2, 1);
+    std::vector<uint64_t> strides(2, 1);
     if (dict.count("strides")) {
       strides = getShape(dict.at("strides"));
     }
     unsigned group = dict.count("group") ? loadInt(dict["group"]) : 1;
     // Pads : {pad_top, pad_left, pad_bottom, pad_right}
-    std::vector<size_t> pads = getPads(dict);
+    std::vector<uint64_t> pads = getPads(dict);
 
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
     Tensor *w = getTensorByName(op.input(1));
@@ -239,12 +239,12 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     // The structure of the conv weigts is: NHWC. We take the C, which is the
     // number of filters. We use this value to calculate the size of the bias
     // if it is not specified.
-    size_t depth = wtag.dims()[0];
+    uint64_t depth = wtag.dims()[0];
 
     // Construct the Filter field.
     auto *filter = G_.getParent()->createVariable("conv.filter", wtag);
 
-    std::vector<size_t> kernels(2);
+    std::vector<uint64_t> kernels(2);
     if (dict.count("kernel_shape")) {
       kernels = getShape(dict.at("kernel_shape"));
     } else {
@@ -274,7 +274,7 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
     ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
     auto outSz =
         calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
-    std::array<size_t, 4> outDims = {
+    std::array<uint64_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
@@ -290,13 +290,13 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
   if (typeName == "MaxPool" || typeName == "AveragePool") {
     // Load the inputs:
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
-    std::vector<size_t> strides(2, 1);
+    std::vector<uint64_t> strides(2, 1);
     if (dict.count("strides")) {
       strides = getShape(dict.at("strides"));
     }
-    std::vector<size_t> kernels = getShape(dict.at("kernel_shape"));
+    std::vector<uint64_t> kernels = getShape(dict.at("kernel_shape"));
 
-    std::vector<size_t> pads = getPads(dict);
+    std::vector<uint64_t> pads = getPads(dict);
 
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
 
@@ -322,15 +322,15 @@ bool ONNXModelLoader::loadOperator(const onnx::NodeProto &op) {
   if (typeName == "GlobalAveragePool") {
     // Load the inputs:
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
-    std::vector<size_t> strides(2, 1);
+    std::vector<uint64_t> strides(2, 1);
     if (dict.count("strides")) {
       strides = getShape(dict.at("strides"));
     }
 
-    std::vector<size_t> kernels(2);
+    std::vector<uint64_t> kernels(2);
     kernels[0] = in->dims(0)[2];
     kernels[1] = in->dims(0)[3];
-    std::vector<size_t> pads = getPads(dict);
+    std::vector<uint64_t> pads = getPads(dict);
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
     Node *node = G_.createAvgPool(opName, tr, kernels, strides, pads);
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);

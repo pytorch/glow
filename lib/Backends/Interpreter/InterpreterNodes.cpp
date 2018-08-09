@@ -39,8 +39,8 @@ void InterpreterFunction::fwdCopyInst(const CopyInst *I) {
 // This is the floating point implementation of Convolution.
 void InterpreterFunction::fwdConvolutionInst_FloatImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
-    llvm::ArrayRef<size_t> filterSizes, llvm::ArrayRef<size_t> strides,
-    llvm::ArrayRef<size_t> pads, size_t group) {
+    llvm::ArrayRef<uint64_t> filterSizes, llvm::ArrayRef<uint64_t> strides,
+    llvm::ArrayRef<uint64_t> pads, uint64_t group) {
 
   auto inW = getWeightHandle(inV);
   auto outW = getWeightHandle(outV);
@@ -54,41 +54,42 @@ void InterpreterFunction::fwdConvolutionInst_FloatImpl(
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
   assert(odim.c % group == 0 && "Output channels must be divisible by group.");
-  size_t inCperG = idim.c / group;
-  size_t outCperG = odim.c / group;
+  uint64_t inCperG = idim.c / group;
+  uint64_t outCperG = odim.c / group;
 
   PaddingTLBR pdim(pads);
 
   // For each input in the batch:
-  for (size_t n = 0; n < idim.n; n++) {
+  for (uint64_t n = 0; n < idim.n; n++) {
 
     // For each group of input channels:
-    for (size_t g = 0; g < group; g++) {
+    for (uint64_t g = 0; g < group; g++) {
 
       // For each output channel in the group:
-      for (size_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
+      for (uint64_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
 
         // For each convolution 'jump' in the input tensor:
-        ssize_t x = -ssize_t(pdim.top);
-        for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
-          ssize_t y = -ssize_t(pdim.left);
-          for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+        int64_t x = -int64_t(pdim.top);
+        for (uint64_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          int64_t y = -int64_t(pdim.left);
+          for (uint64_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
 
             // For each element in the convolution-filter:
             float sum = 0;
-            for (size_t fx = 0; fx < kdim.height; fx++) {
-              for (size_t fy = 0; fy < kdim.width; fy++) {
-                ssize_t ox = x + fx;
-                ssize_t oy = y + fy;
+            for (uint64_t fx = 0; fx < kdim.height; fx++) {
+              for (uint64_t fy = 0; fy < kdim.width; fy++) {
+                int64_t ox = x + fx;
+                int64_t oy = y + fy;
 
                 // Ignore index access below zero (this is due to padding).
-                if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-                    oy >= ssize_t(idim.w)) {
+                if (ox < 0 || oy < 0 || ox >= int64_t(idim.h) ||
+                    oy >= int64_t(idim.w)) {
                   continue;
                 }
-                for (size_t fd = 0; fd < inCperG; fd++) {
-                  sum += filterW.at({d, fx, fy, fd}) *
-                         inW.at({n, (size_t)ox, (size_t)oy, g * inCperG + fd});
+                for (uint64_t fd = 0; fd < inCperG; fd++) {
+                  sum +=
+                      filterW.at({d, fx, fy, fd}) *
+                      inW.at({n, (uint64_t)ox, (uint64_t)oy, g * inCperG + fd});
                 }
               }
             }
@@ -105,8 +106,8 @@ void InterpreterFunction::fwdConvolutionInst_FloatImpl(
 // This is the quantized i8 implementation of Convolution.
 void InterpreterFunction::fwdConvolutionInst_I8Impl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
-    llvm::ArrayRef<size_t> filterSizes, llvm::ArrayRef<size_t> strides,
-    llvm::ArrayRef<size_t> pads, size_t group) {
+    llvm::ArrayRef<uint64_t> filterSizes, llvm::ArrayRef<uint64_t> strides,
+    llvm::ArrayRef<uint64_t> pads, uint64_t group) {
   auto inW = getWeightHandle<int8_t>(inV);
   auto outW = getWeightHandle<int8_t>(outV);
   auto filterW = getWeightHandle<int8_t>(filterV);
@@ -119,8 +120,8 @@ void InterpreterFunction::fwdConvolutionInst_I8Impl(
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
   assert(odim.c % group == 0 && "Output channels must be divisible by group.");
-  size_t inCperG = idim.c / group;
-  size_t outCperG = odim.c / group;
+  uint64_t inCperG = idim.c / group;
+  uint64_t outCperG = odim.c / group;
 
   PaddingTLBR pdim(pads);
   auto outTy = outV->getType();
@@ -143,36 +144,36 @@ void InterpreterFunction::fwdConvolutionInst_I8Impl(
   float matMulScale = inScale * filterScale;
 
   // For each input in the batch:
-  for (size_t n = 0; n < idim.n; n++) {
+  for (uint64_t n = 0; n < idim.n; n++) {
     // For each group of input channels:
-    for (size_t g = 0; g < group; g++) {
+    for (uint64_t g = 0; g < group; g++) {
 
       // For each output channel in the group:
-      for (size_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
+      for (uint64_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
 
         // For each convolution 'jump' in the input tensor:
-        ssize_t x = -ssize_t(pdim.top);
-        for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
-          ssize_t y = -ssize_t(pdim.left);
-          for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+        int64_t x = -int64_t(pdim.top);
+        for (uint64_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          int64_t y = -int64_t(pdim.left);
+          for (uint64_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
 
             // For each element in the convolution-filter:
             int32_t sum = 0;
-            for (size_t fx = 0; fx < kdim.height; fx++) {
-              for (size_t fy = 0; fy < kdim.width; fy++) {
-                ssize_t ox = x + fx;
-                ssize_t oy = y + fy;
+            for (uint64_t fx = 0; fx < kdim.height; fx++) {
+              for (uint64_t fy = 0; fy < kdim.width; fy++) {
+                int64_t ox = x + fx;
+                int64_t oy = y + fy;
 
                 // Ignore index access below zero (this is due to padding).
-                if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-                    oy >= ssize_t(idim.w)) {
+                if (ox < 0 || oy < 0 || ox >= int64_t(idim.h) ||
+                    oy >= int64_t(idim.w)) {
                   continue;
                 }
-                for (size_t fd = 0; fd < inCperG; fd++) {
+                for (uint64_t fd = 0; fd < inCperG; fd++) {
 
                   int32_t F = filterW.at({d, fx, fy, fd});
                   int32_t I =
-                      inW.at({n, (size_t)ox, (size_t)oy, g * inCperG + fd});
+                      inW.at({n, (uint64_t)ox, (uint64_t)oy, g * inCperG + fd});
                   // We represent the element multiplication with offset as
                   // (value - offset).
                   sum += (F - filterOffset) * (I - inOffset);
@@ -198,10 +199,10 @@ void InterpreterFunction::fwdConvolutionInst_I8Impl(
 }
 
 void InterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
-  llvm::ArrayRef<size_t> filterSizes = I->getKernels();
-  llvm::ArrayRef<size_t> pads = I->getPads();
-  llvm::ArrayRef<size_t> strides = I->getStrides();
-  size_t group = I->getGroup();
+  llvm::ArrayRef<uint64_t> filterSizes = I->getKernels();
+  llvm::ArrayRef<uint64_t> pads = I->getPads();
+  llvm::ArrayRef<uint64_t> strides = I->getStrides();
+  uint64_t group = I->getGroup();
 
   if (I->getSrc()->getType()->isQuantizedType()) {
     fwdConvolutionInst_I8Impl(I->getSrc(), I->getDest(), I->getFilter(),
@@ -222,10 +223,10 @@ void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
   auto filterG = getWeightHandle(I->getFilterGrad());
   auto biasG = getWeightHandle(I->getBiasGrad());
 
-  llvm::ArrayRef<size_t> filterSizes = I->getKernels();
-  llvm::ArrayRef<size_t> pads = I->getPads();
-  llvm::ArrayRef<size_t> strides = I->getStrides();
-  size_t group = I->getGroup();
+  llvm::ArrayRef<uint64_t> filterSizes = I->getKernels();
+  llvm::ArrayRef<uint64_t> pads = I->getPads();
+  llvm::ArrayRef<uint64_t> strides = I->getStrides();
+  uint64_t group = I->getGroup();
 
   inG.clear();
   filterG.clear();
@@ -239,43 +240,44 @@ void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
   assert(odim.c % group == 0 && "Output channels must be divisible by group.");
-  size_t inCperG = idim.c / group;
-  size_t outCperG = odim.c / group;
+  uint64_t inCperG = idim.c / group;
+  uint64_t outCperG = odim.c / group;
 
   // For each input in the batch:
-  for (size_t n = 0; n < odim.n; n++) {
+  for (uint64_t n = 0; n < odim.n; n++) {
 
     // For each group of input channels:
-    for (size_t g = 0; g < group; g++) {
+    for (uint64_t g = 0; g < group; g++) {
 
       // Compute the gradient. For each layer in the output tensor:
-      for (size_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
+      for (uint64_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
 
         // For each convolution 'jump' in the input tensor:
-        ssize_t x = -ssize_t(pdim.top);
-        for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
-          ssize_t y = -ssize_t(pdim.left);
-          for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+        int64_t x = -int64_t(pdim.top);
+        for (uint64_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          int64_t y = -int64_t(pdim.left);
+          for (uint64_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
 
             float chainGrad = outG.at({n, ax, ay, d});
 
             // For each element in the convolution-filter:
-            for (size_t fx = 0; fx < kdim.height; fx++) {
-              for (size_t fy = 0; fy < kdim.width; fy++) {
-                ssize_t ox = x + fx;
-                ssize_t oy = y + fy;
+            for (uint64_t fx = 0; fx < kdim.height; fx++) {
+              for (uint64_t fy = 0; fy < kdim.width; fy++) {
+                int64_t ox = x + fx;
+                int64_t oy = y + fy;
 
                 // Ignore index access below zero (this is due to padding).
-                if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-                    oy >= ssize_t(idim.w)) {
+                if (ox < 0 || oy < 0 || ox >= int64_t(idim.h) ||
+                    oy >= int64_t(idim.w)) {
                   continue;
                 }
 
-                for (size_t fd = 0; fd < inCperG; fd++) {
+                for (uint64_t fd = 0; fd < inCperG; fd++) {
                   filterG.at({d, fx, fy, fd}) +=
-                      inW.at({n, (size_t)ox, (size_t)oy, g * inCperG + fd}) *
+                      inW.at(
+                          {n, (uint64_t)ox, (uint64_t)oy, g * inCperG + fd}) *
                       chainGrad;
-                  inG.at({n, (size_t)ox, (size_t)oy, g * inCperG + fd}) +=
+                  inG.at({n, (uint64_t)ox, (uint64_t)oy, g * inCperG + fd}) +=
                       filterW.at({d, fx, fy, fd}) * chainGrad;
                 }
               }
@@ -293,10 +295,10 @@ void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
 //                       Pooling
 //===----------------------------------------------------------------------===//
 template <class T>
-static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<size_t> *SXY,
-                       llvm::ArrayRef<size_t> filterSizes,
-                       llvm::ArrayRef<size_t> strides,
-                       llvm::ArrayRef<size_t> pads) {
+static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<uint64_t> *SXY,
+                       llvm::ArrayRef<uint64_t> filterSizes,
+                       llvm::ArrayRef<uint64_t> strides,
+                       llvm::ArrayRef<uint64_t> pads) {
   ShapeNHWC odim(outW->dims());
   ShapeNHWC idim(inW->dims());
   Handle<T> inHandle = inW->getHandle<T>();
@@ -306,33 +308,33 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<size_t> *SXY,
   ShapeHW sdim(strides);
 
   // For each input in the batch:
-  for (size_t n = 0; n < odim.n; n++) {
+  for (uint64_t n = 0; n < odim.n; n++) {
 
     // For each layer in the output tensor:
-    for (size_t z = 0; z < idim.c; z++) {
+    for (uint64_t z = 0; z < idim.c; z++) {
       // For each convolution 'jump' in the input tensor:
-      ssize_t x = -ssize_t(pdim.top);
-      for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
-        ssize_t y = -ssize_t(pdim.left);
-        for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
-          size_t maxX = x;
-          size_t maxY = y;
+      int64_t x = -int64_t(pdim.top);
+      for (uint64_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+        int64_t y = -int64_t(pdim.left);
+        for (uint64_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+          uint64_t maxX = x;
+          uint64_t maxY = y;
 
           bool first = true;
           T max_value = 0;
 
-          for (size_t fx = 0; fx < kdim.height; fx++) {
-            for (size_t fy = 0; fy < kdim.width; fy++) {
-              ssize_t ox = x + fx;
-              ssize_t oy = y + fy;
+          for (uint64_t fx = 0; fx < kdim.height; fx++) {
+            for (uint64_t fy = 0; fy < kdim.width; fy++) {
+              int64_t ox = x + fx;
+              int64_t oy = y + fy;
 
               // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-                  oy >= ssize_t(idim.w)) {
+              if (ox < 0 || oy < 0 || ox >= int64_t(idim.h) ||
+                  oy >= int64_t(idim.w)) {
                 continue;
               }
 
-              T val = inHandle.at({n, (size_t)ox, (size_t)oy, z});
+              T val = inHandle.at({n, (uint64_t)ox, (uint64_t)oy, z});
               if (first || (val >= max_value)) {
                 first = false;
                 max_value = val;
@@ -370,7 +372,7 @@ void InterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
 void InterpreterFunction::fwdMaxPoolWithXYInst(const MaxPoolWithXYInst *I) {
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
-  auto SXY = getTensor(I->getSrcXY())->getHandle<size_t>();
+  auto SXY = getTensor(I->getSrcXY())->getHandle<uint64_t>();
 
   if (inW->getType().isQuantizedType()) {
     fwdMaxPool<int8_t>(inW, outW, &SXY, I->getKernels(), I->getStrides(),
@@ -401,28 +403,28 @@ void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
                                    I->getDest()->getType()->getOffset()};
 
     // For each input in the batch:
-    for (size_t n = 0; n < odim.n; n++) {
+    for (uint64_t n = 0; n < odim.n; n++) {
       // For each layer in the output tensor:
-      for (size_t z = 0; z < idim.c; z++) {
+      for (uint64_t z = 0; z < idim.c; z++) {
         // For each convolution 'jump' in the input tensor:
-        ssize_t x = -ssize_t(pdim.top);
-        for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
-          ssize_t y = -ssize_t(pdim.left);
-          for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+        int64_t x = -int64_t(pdim.top);
+        for (uint64_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          int64_t y = -int64_t(pdim.left);
+          for (uint64_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
             int32_t sum = 0;
 
-            for (size_t fx = 0; fx < kdim.height; fx++) {
-              for (size_t fy = 0; fy < kdim.width; fy++) {
-                ssize_t ox = x + fx;
-                ssize_t oy = y + fy;
+            for (uint64_t fx = 0; fx < kdim.height; fx++) {
+              for (uint64_t fy = 0; fy < kdim.width; fy++) {
+                int64_t ox = x + fx;
+                int64_t oy = y + fy;
 
                 // Ignore index access below zero (this is due to padding).
-                if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-                    oy >= ssize_t(idim.w)) {
+                if (ox < 0 || oy < 0 || ox >= int64_t(idim.h) ||
+                    oy >= int64_t(idim.w)) {
                   continue;
                 }
 
-                sum += inW.at({n, (size_t)ox, (size_t)oy, z}) - inQP.offset;
+                sum += inW.at({n, (uint64_t)ox, (uint64_t)oy, z}) - inQP.offset;
               }
             }
             // Instead of dividing by filterArea, just change scale.
@@ -442,28 +444,28 @@ void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
   auto outW = getWeightHandle(I->getDest());
 
   // For each input in the batch:
-  for (size_t n = 0; n < odim.n; n++) {
+  for (uint64_t n = 0; n < odim.n; n++) {
     // For each layer in the output tensor:
-    for (size_t z = 0; z < idim.c; z++) {
+    for (uint64_t z = 0; z < idim.c; z++) {
       // For each convolution 'jump' in the input tensor:
-      ssize_t x = -ssize_t(pdim.top);
-      for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
-        ssize_t y = -ssize_t(pdim.left);
-        for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+      int64_t x = -int64_t(pdim.top);
+      for (uint64_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+        int64_t y = -int64_t(pdim.left);
+        for (uint64_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
           float sum = 0;
 
-          for (size_t fx = 0; fx < kdim.height; fx++) {
-            for (size_t fy = 0; fy < kdim.width; fy++) {
-              ssize_t ox = x + fx;
-              ssize_t oy = y + fy;
+          for (uint64_t fx = 0; fx < kdim.height; fx++) {
+            for (uint64_t fy = 0; fy < kdim.width; fy++) {
+              int64_t ox = x + fx;
+              int64_t oy = y + fy;
 
               // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-                  oy >= ssize_t(idim.w)) {
+              if (ox < 0 || oy < 0 || ox >= int64_t(idim.h) ||
+                  oy >= int64_t(idim.w)) {
                 continue;
               }
 
-              sum += inW.at({n, (size_t)ox, (size_t)oy, z});
+              sum += inW.at({n, (uint64_t)ox, (uint64_t)oy, z});
             }
           }
           outW.at({n, ax, ay, z}) = sum / filterArea;
@@ -483,22 +485,22 @@ void InterpreterFunction::fwdMaxPoolWithXYGradInst(
 
   ShapeNHWC odim(outW.dims());
 
-  auto SXY = getTensor(I->getSrcXY())->getHandle<size_t>();
+  auto SXY = getTensor(I->getSrcXY())->getHandle<uint64_t>();
 
   // For each input in the batch:
-  for (size_t n = 0; n < odim.n; n++) {
+  for (uint64_t n = 0; n < odim.n; n++) {
 
     // Compute the gradient. For each layer in the output tensor:
-    for (size_t z = 0; z < odim.c; z++) {
+    for (uint64_t z = 0; z < odim.c; z++) {
 
       // For each convolution 'jump' in the input tensor:
-      for (size_t ax = 0; ax < odim.h; ax++) {
-        for (size_t ay = 0; ay < odim.w; ay++) {
+      for (uint64_t ax = 0; ax < odim.h; ax++) {
+        for (uint64_t ay = 0; ay < odim.w; ay++) {
 
           float chainGrad = outG.at({n, ax, ay, z});
 
-          size_t maxX = SXY.at({n, ax, ay, z, 0});
-          size_t maxY = SXY.at({n, ax, ay, z, 1});
+          uint64_t maxX = SXY.at({n, ax, ay, z, 0});
+          uint64_t maxY = SXY.at({n, ax, ay, z, 1});
 
           inG.at({n, maxX, maxY, z}) += chainGrad;
         } // W
@@ -524,29 +526,29 @@ void InterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
   float filterArea = kdim.height * kdim.width;
 
   // For each input in the batch:
-  for (size_t n = 0; n < odim.n; n++) {
+  for (uint64_t n = 0; n < odim.n; n++) {
 
     // For each layer in the output tensor:
-    for (size_t z = 0; z < odim.c; z++) {
+    for (uint64_t z = 0; z < odim.c; z++) {
       // For each convolution 'jump' in the input tensor:
-      ssize_t x = -ssize_t(pdim.top);
-      for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
-        ssize_t y = -ssize_t(pdim.left);
-        for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+      int64_t x = -int64_t(pdim.top);
+      for (uint64_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+        int64_t y = -int64_t(pdim.left);
+        for (uint64_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
 
           float dy = outG.at({n, ax, ay, z}) / filterArea;
 
-          for (size_t fx = 0; fx < kdim.height; fx++) {
-            for (size_t fy = 0; fy < kdim.width; fy++) {
-              ssize_t ox = x + fx;
-              ssize_t oy = y + fy;
+          for (uint64_t fx = 0; fx < kdim.height; fx++) {
+            for (uint64_t fy = 0; fy < kdim.width; fy++) {
+              int64_t ox = x + fx;
+              int64_t oy = y + fy;
 
               // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-                  oy >= ssize_t(idim.w)) {
+              if (ox < 0 || oy < 0 || ox >= int64_t(idim.h) ||
+                  oy >= int64_t(idim.w)) {
                 continue;
               }
-              inG.at({n, (size_t)ox, (size_t)oy, z}) += dy;
+              inG.at({n, (uint64_t)ox, (uint64_t)oy, z}) += dy;
             }
           }
         } // W
@@ -563,7 +565,7 @@ void InterpreterFunction::fwdSigmoidInst(const SigmoidInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
 
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
+  for (uint64_t i = 0, e = outW.size(); i < e; i++) {
     float val = inW.raw(i);
     outW.raw(i) = 1 / (1 + std::exp(-val));
   }
@@ -573,7 +575,7 @@ void InterpreterFunction::fwdTanhInst(const TanhInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
 
-  for (size_t i = 0, e = inW.size(); i < e; i++) {
+  for (uint64_t i = 0, e = inW.size(); i < e; i++) {
     float val = inW.raw(i);
     outW.raw(i) = std::tanh(val);
   }
@@ -588,23 +590,23 @@ void InterpreterFunction::fwdSoftMaxInst(const SoftMaxInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto idim = inW.dims();
 
-  for (size_t n = 0; n < idim[0]; n++) {
+  for (uint64_t n = 0; n < idim[0]; n++) {
     // Find Max.
     float max = inW.at({n, 0});
-    for (size_t i = 1; i < idim[1]; i++) {
+    for (uint64_t i = 1; i < idim[1]; i++) {
       max = std::max(max, inW.at({n, i}));
     }
 
     // Compute exp.
     float sum = 0;
-    for (size_t i = 0; i < idim[1]; i++) {
+    for (uint64_t i = 0; i < idim[1]; i++) {
       float e = std::exp(inW.at({n, i}) - max);
       sum += e;
       outW.at({n, i}) = e;
     }
 
     // Normalize the output.
-    for (size_t i = 0; i < idim[1]; i++) {
+    for (uint64_t i = 0; i < idim[1]; i++) {
       outW.at({n, i}) = outW.at({n, i}) / sum;
     }
   } // N
@@ -614,14 +616,14 @@ void InterpreterFunction::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto idim = inG.dims();
   auto outW = getWeightHandle(I->getOrigDest());
-  auto selectedH = getTensor(I->getSelected())->getHandle<size_t>();
+  auto selectedH = getTensor(I->getSelected())->getHandle<uint64_t>();
 
   inG.clear();
 
   // http://eli.thegreenplace.net/2016/the-softmax-function-and-its-derivative/
   // https://stats.stackexchange.com/questions/79454/softmax-layer-in-a-neural-network
-  for (size_t n = 0; n < idim[0]; n++) {
-    for (size_t i = 0; i < idim[1]; i++) {
+  for (uint64_t n = 0; n < idim[0]; n++) {
+    for (uint64_t i = 0; i < idim[1]; i++) {
       float delta = (selectedH.at({n, 0}) == i);
       inG.at({n, i}) = outW.at({n, i}) - delta;
     }
@@ -631,10 +633,10 @@ void InterpreterFunction::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {
 void InterpreterFunction::fwdCrossEntropyLossInst(
     const CrossEntropyLossInst *I) {
   auto P = getWeightHandle(I->getP());
-  auto labels = getTensor(I->getLabels())->getHandle<size_t>();
+  auto labels = getTensor(I->getLabels())->getHandle<uint64_t>();
   auto CE = getWeightHandle(I->getCE());
   auto dims = P.dims();
-  for (size_t n = 0; n < dims[0]; ++n) {
+  for (uint64_t n = 0; n < dims[0]; ++n) {
     auto y = labels.raw(n);
     auto p_n = P.at({n, y});
     CE.at({0}) -= log(p_n);
@@ -644,11 +646,11 @@ void InterpreterFunction::fwdCrossEntropyLossInst(
 void InterpreterFunction::fwdCrossEntropyLossGradInst(
     const CrossEntropyLossGradInst *I) {
   auto P = getWeightHandle(I->getP());
-  auto Labels = getTensor(I->getLabels())->getHandle<size_t>();
+  auto Labels = getTensor(I->getLabels())->getHandle<uint64_t>();
   auto PGrad = getWeightHandle(I->getPgrad());
   auto dims = PGrad.dims();
   PGrad.clear();
-  for (size_t n = 0; n < dims[0]; ++n) {
+  for (uint64_t n = 0; n < dims[0]; ++n) {
     auto y = Labels.raw(n);
     PGrad.at({n, y}) = -1 / P.at({n, y}); // * CEGrad.at({0})
   }
@@ -680,7 +682,7 @@ void InterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
   ElemKind k = T->getElementType();
 
   if (k == ElemKind::IndexTy) {
-    return T->getHandle<size_t>().clear(I->getValue());
+    return T->getHandle<uint64_t>().clear(I->getValue());
   }
 
   if (k == ElemKind::FloatTy) {
@@ -710,7 +712,7 @@ void InterpreterFunction::fwdInsertTensorInst(const glow::InsertTensorInst *I) {
     return OH.insertTensors(IH, I->getOffsets(), I->getCount(), I->getAxis()); \
   }
 
-  TYPED_INSERT(size_t, ElemKind::IndexTy);
+  TYPED_INSERT(uint64_t, ElemKind::IndexTy);
   TYPED_INSERT(float, ElemKind::FloatTy);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
 #undef TYPED_INSERT
@@ -730,7 +732,7 @@ void InterpreterFunction::fwdExtractTensorInst(
     return IH.extractTensors(OH, I->getOffsets());                             \
   }
 
-  TYPED_INSERT(size_t, ElemKind::IndexTy);
+  TYPED_INSERT(uint64_t, ElemKind::IndexTy);
   TYPED_INSERT(float, ElemKind::FloatTy);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy)
 #undef TYPED_INSERT
@@ -745,23 +747,23 @@ void InterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
   Tensor *outT = getTensor(I->getDest());
   unsigned batchDims = I->getBatchDims();
 
-  size_t out_p = 0;
+  uint64_t out_p = 0;
   unsigned elementSize = dataTy.getElementSize();
   // The size of the sample in the batch.
-  size_t dataSampleSize = dataTy.getSliceSize(batchDims) * elementSize;
+  uint64_t dataSampleSize = dataTy.getSliceSize(batchDims) * elementSize;
   // The size of the slices that we gather.
-  size_t dataSliceSize = dataTy.getSliceSize(batchDims + 1) * elementSize;
+  uint64_t dataSliceSize = dataTy.getSliceSize(batchDims + 1) * elementSize;
 
   // Calculate the size of each sample in the batch.
-  size_t numSamples = (dataT->size() * elementSize) / dataSampleSize;
+  uint64_t numSamples = (dataT->size() * elementSize) / dataSampleSize;
 
   // For each sample in the batch:
-  for (size_t sample = 0; sample < numSamples; sample++) {
-    size_t sampleStart = sample * dataSampleSize;
+  for (uint64_t sample = 0; sample < numSamples; sample++) {
+    uint64_t sampleStart = sample * dataSampleSize;
 
     // For each slice (small fragment) that we copy from the source memory:
-    for (size_t i = 0, end = indicesT->size(); i < end; i++) {
-      size_t slice = indicesT->getHandle<size_t>().raw(i);
+    for (uint64_t i = 0, end = indicesT->size(); i < end; i++) {
+      uint64_t slice = indicesT->getHandle<uint64_t>().raw(i);
       std::copy(
           &dataT->getUnsafePtr()[sampleStart + dataSliceSize * slice],
           &dataT->getUnsafePtr()[sampleStart + dataSliceSize * (slice + 1)],
@@ -777,13 +779,13 @@ void InterpreterFunction::fwdScatterAssignInst(
   Tensor *indicesT = getTensor(I->getIndices());
   Tensor *slicesT = getTensor(I->getSlices());
 
-  size_t dataSliceSize =
+  uint64_t dataSliceSize =
       dataT->size() / dataT->dims()[0] * dataT->getType().getElementSize();
 
   // For each index, copy from the slice at that index into the location in data
   // given the offset from the indices tensor.
-  for (size_t i = 0, end = indicesT->size(); i < end; i++) {
-    size_t destDataIdx = indicesT->getHandle<size_t>().raw(i);
+  for (uint64_t i = 0, end = indicesT->size(); i < end; i++) {
+    uint64_t destDataIdx = indicesT->getHandle<uint64_t>().raw(i);
     std::copy(&slicesT->getUnsafePtr()[i * dataSliceSize],
               &slicesT->getUnsafePtr()[(i + 1) * dataSliceSize],
               &dataT->getUnsafePtr()[dataSliceSize * destDataIdx]);
@@ -819,18 +821,18 @@ void InterpreterFunction::fwdLocalResponseNormalizationInst(
   auto normedAlpha = I->getAlpha() / windowSize;
 
   // For every input in the batch:
-  for (size_t n = 0; n < idim.n; n++) {
+  for (uint64_t n = 0; n < idim.n; n++) {
 
     // For every row:
-    for (size_t h = 0; h < idim.h; h++) {
+    for (uint64_t h = 0; h < idim.h; h++) {
 
       // For every column:
-      for (size_t w = 0; w < idim.w; w++) {
+      for (uint64_t w = 0; w < idim.w; w++) {
 
         // For every channel:
-        for (size_t c = 0; c < idim.c; c++) {
+        for (uint64_t c = 0; c < idim.c; c++) {
           float squareSum = 0.0;
-          for (size_t i = (c >= halfWindowSize ? c - halfWindowSize : 0);
+          for (uint64_t i = (c >= halfWindowSize ? c - halfWindowSize : 0);
                i <= std::min(c + halfWindowSize, idim.c - 1); i++) {
             auto val = inW.at({n, h, w, i});
             squareSum += val * val;
@@ -865,18 +867,18 @@ void InterpreterFunction::fwdLocalResponseNormalizationGradInst(
   auto normedAlpha = I->getAlpha() / windowSize;
 
   // For every input in the batch:
-  for (size_t n = 0; n < odim.n; n++) {
+  for (uint64_t n = 0; n < odim.n; n++) {
 
     // For every row:
-    for (size_t h = 0; h < odim.h; h++) {
+    for (uint64_t h = 0; h < odim.h; h++) {
 
       // For every column:
-      for (size_t w = 0; w < odim.w; w++) {
+      for (uint64_t w = 0; w < odim.w; w++) {
 
         float sum = 0.0;
 
         // Compute sum for first channel.
-        for (size_t c = 0; c <= halfWindowSize && c < odim.c; c++) {
+        for (uint64_t c = 0; c <= halfWindowSize && c < odim.c; c++) {
           auto outw = outW.at({n, h, w, c});
           auto scale = scaleCache.at({n, h, w, c});
           auto outg = outG.at({n, h, w, c});
@@ -884,7 +886,7 @@ void InterpreterFunction::fwdLocalResponseNormalizationGradInst(
         }
 
         // For every channel:
-        for (size_t c = 0; c < odim.c; c++) {
+        for (uint64_t c = 0; c < odim.c; c++) {
           auto outg = outG.at({n, h, w, c});
           auto scale = scaleCache.at({n, h, w, c});
           auto inw = inW.at({n, h, w, c});
@@ -940,7 +942,7 @@ void InterpreterFunction::fwdElementAddInst(const ElementAddInst *I) {
     auto outW = getWeightHandle<int8_t>(I->getDest());
     auto lhsW = getWeightHandle<int8_t>(I->getLHS());
     auto rhsW = getWeightHandle<int8_t>(I->getRHS());
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
+    for (uint64_t i = 0, e = outW.size(); i < e; i++) {
       int32_t L = lhsW.raw(i);
       int32_t R = rhsW.raw(i);
 
@@ -959,7 +961,7 @@ void InterpreterFunction::fwdElementAddInst(const ElementAddInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto lhsW = getWeightHandle(I->getLHS());
   auto rhsW = getWeightHandle(I->getRHS());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
+  for (uint64_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = lhsW.raw(i) + rhsW.raw(i);
   }
 }
@@ -981,7 +983,7 @@ void InterpreterFunction::fwdElementSubInst(const ElementSubInst *I) {
     auto outW = getWeightHandle<int8_t>(I->getDest());
     auto lhsW = getWeightHandle<int8_t>(I->getLHS());
     auto rhsW = getWeightHandle<int8_t>(I->getRHS());
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
+    for (uint64_t i = 0, e = outW.size(); i < e; i++) {
       //    s_d * (i_d - o_d) = s_l * (i_l - o_l) - s_r * (i_r - o_r)
       // => i_d = (s_l / s_d) * (i_l - o_l) - (s_r / s_d) * (i_r - o_r) + o_d
       float l = (lhsScale / destScale) * float(lhsW.raw(i) - lhsOffset);
@@ -995,7 +997,7 @@ void InterpreterFunction::fwdElementSubInst(const ElementSubInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto lhsW = getWeightHandle(I->getLHS());
   auto rhsW = getWeightHandle(I->getRHS());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
+  for (uint64_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = lhsW.raw(i) - rhsW.raw(i);
   }
 }
@@ -1014,7 +1016,7 @@ void InterpreterFunction::fwdElementMulInst(const ElementMulInst *I) {
     auto lhsW = getWeightHandle<int8_t>(I->getLHS());
     auto rhsW = getWeightHandle<int8_t>(I->getRHS());
     float scale = lhsQ.scale * rhsQ.scale / destQ.scale;
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
+    for (uint64_t i = 0, e = outW.size(); i < e; i++) {
       int32_t mul = (lhsW.raw(i) - lhsQ.offset) * (rhsW.raw(i) - rhsQ.offset);
       outW.raw(i) = quantization::clip<int32_t, int8_t>(
           std::round(mul * scale) + destQ.offset);
@@ -1025,7 +1027,7 @@ void InterpreterFunction::fwdElementMulInst(const ElementMulInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto lhsW = getWeightHandle(I->getLHS());
   auto rhsW = getWeightHandle(I->getRHS());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
+  for (uint64_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = lhsW.raw(i) * rhsW.raw(i);
   }
 }
@@ -1047,7 +1049,7 @@ void InterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
     auto outW = getWeightHandle<int8_t>(I->getDest());
     auto lhsW = getWeightHandle<int8_t>(I->getLHS());
     auto rhsW = getWeightHandle<int8_t>(I->getRHS());
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
+    for (uint64_t i = 0, e = outW.size(); i < e; i++) {
       //    s_d * (i_d - o_d) = (s_l * (i_l - o_l)) / (s_r * (i_r - o_r))
       // => i_d = (s_l * (i_l - o_l)) / (s_d * s_r * (i_r - o_r)) + o_d
       float l = lhsScale * float(lhsW.raw(i) - lhsOffset);
@@ -1062,14 +1064,14 @@ void InterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
   auto outW = getWeightHandle<TYPE_>(I->getDest());                            \
   auto lhsW = getWeightHandle<TYPE_>(I->getLHS());                             \
   auto rhsW = getWeightHandle<TYPE_>(I->getRHS());                             \
-  for (size_t i = 0, e = outW.size(); i < e; i++) {                            \
+  for (uint64_t i = 0, e = outW.size(); i < e; i++) {                          \
     outW.raw(i) = lhsW.raw(i) / rhsW.raw(i);                                   \
   }
 
   auto *T = getTensor(I->getDest());
   switch (T->getElementType()) {
   case ElemKind::IndexTy: {
-    DIV_LOOP(size_t);
+    DIV_LOOP(uint64_t);
     return;
   }
   case ElemKind::FloatTy: {
@@ -1094,7 +1096,7 @@ void InterpreterFunction::fwdElementMaxInst(const ElementMaxInst *I) {
     auto outW = getWeightHandle<int8_t>(I->getDest());
     auto lhsW = getWeightHandle<int8_t>(I->getLHS());
     auto rhsW = getWeightHandle<int8_t>(I->getRHS());
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
+    for (uint64_t i = 0, e = outW.size(); i < e; i++) {
       // Convert both sides to the destination scale and perform a regular
       // comparison.
       int8_t L = quantization::quantize(
@@ -1112,7 +1114,7 @@ void InterpreterFunction::fwdElementMaxInst(const ElementMaxInst *I) {
   auto outW = out->getHandle();
   auto lhsW = lhs->getHandle();
   auto rhsW = rhs->getHandle();
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
+  for (uint64_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = std::max(lhsW.raw(i), rhsW.raw(i));
   }
 }
@@ -1130,7 +1132,7 @@ void InterpreterFunction::fwdElementMinInst(const ElementMinInst *I) {
     auto outW = getWeightHandle<int8_t>(I->getDest());
     auto lhsW = getWeightHandle<int8_t>(I->getLHS());
     auto rhsW = getWeightHandle<int8_t>(I->getRHS());
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
+    for (uint64_t i = 0, e = outW.size(); i < e; i++) {
       // Convert both sides to the destination scale and perform a regular
       // comparison.
       int8_t L = quantization::quantize(
@@ -1145,7 +1147,7 @@ void InterpreterFunction::fwdElementMinInst(const ElementMinInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto lhsW = getWeightHandle(I->getLHS());
   auto rhsW = getWeightHandle(I->getRHS());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
+  for (uint64_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = std::min(lhsW.raw(i), rhsW.raw(i));
   }
 }
@@ -1166,7 +1168,7 @@ void InterpreterFunction::fwdElementCmpLTEInst(const ElementCmpLTEInst *I) {
     auto outW = getWeightHandle<int8_t>(I->getDest());
     auto lhsW = getWeightHandle<int8_t>(I->getLHS());
     auto rhsW = getWeightHandle<int8_t>(I->getRHS());
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
+    for (uint64_t i = 0, e = outW.size(); i < e; i++) {
       outW.raw(i) = lhsScale * (lhsW.raw(i) - lhsOffset) <=
                             rhsScale * (rhsW.raw(i) - rhsOffset)
                         ? 1.0
@@ -1178,16 +1180,16 @@ void InterpreterFunction::fwdElementCmpLTEInst(const ElementCmpLTEInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto lhsW = getWeightHandle(I->getLHS());
   auto rhsW = getWeightHandle(I->getRHS());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
+  for (uint64_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = lhsW.raw(i) <= rhsW.raw(i) ? 1.0 : 0.0;
   }
 }
 
 void InterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
-  auto outW = getWeightHandle<size_t>(I->getDest());
-  auto lhsW = getWeightHandle<size_t>(I->getLHS());
-  auto rhsW = getWeightHandle<size_t>(I->getRHS());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
+  auto outW = getWeightHandle<uint64_t>(I->getDest());
+  auto lhsW = getWeightHandle<uint64_t>(I->getLHS());
+  auto rhsW = getWeightHandle<uint64_t>(I->getRHS());
+  for (uint64_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = lhsW.raw(i) == rhsW.raw(i) ? 1 : 0;
   }
 }
@@ -1196,7 +1198,7 @@ void InterpreterFunction::fwdElementPowInst(const glow::ElementPowInst *I) {
   auto baseW = getWeightHandle(I->getBase());
   float exp = I->getExp();
   auto outW = getWeightHandle(I->getDest());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
+  for (uint64_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = pow(baseW.raw(i), exp);
   }
 }
@@ -1204,7 +1206,7 @@ void InterpreterFunction::fwdElementPowInst(const glow::ElementPowInst *I) {
 void InterpreterFunction::fwdElementLogInst(const ElementLogInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
-  for (size_t i = 0, e = inW.size(); i < e; i++) {
+  for (uint64_t i = 0, e = inW.size(); i < e; i++) {
     float val = inW.raw(i);
     outW.raw(i) = log(val);
   }
@@ -1229,7 +1231,7 @@ void InterpreterFunction::fwdElementSelectInst(
     auto condW = getWeightHandle<int8_t>(I->getCond());
     auto lhsW = getWeightHandle<int8_t>(I->getLHS());
     auto rhsW = getWeightHandle<int8_t>(I->getRHS());
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
+    for (uint64_t i = 0, e = outW.size(); i < e; i++) {
       float val = (condW.raw(i) != 0) ? lhsScale * (lhsW.raw(i) - lhsOffset)
                                       : rhsScale * (rhsW.raw(i) - rhsOffset);
       int32_t q = std::round(val / destScale + destOffset);
@@ -1242,7 +1244,7 @@ void InterpreterFunction::fwdElementSelectInst(
   auto condW = getWeightHandle(I->getCond());
   auto lhsW = getWeightHandle(I->getLHS());
   auto rhsW = getWeightHandle(I->getRHS());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
+  for (uint64_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = (condW.raw(i) != 0.0) ? lhsW.raw(i) : rhsW.raw(i);
   }
 }
@@ -1272,12 +1274,12 @@ void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
     int32_t destOffset = destTy->getOffset();
 
     // For each (x,y) in the destination matrix:
-    for (size_t x = 0; x < destDim[0]; x++) {
-      for (size_t y = 0; y < destDim[1]; y++) {
+    for (uint64_t x = 0; x < destDim[0]; x++) {
+      for (uint64_t y = 0; y < destDim[1]; y++) {
 
         // Perform DOT on the row an column.
         int32_t sum = 0;
-        for (size_t i = 0; i < lhsDim[1]; i++) {
+        for (uint64_t i = 0; i < lhsDim[1]; i++) {
           int32_t L = lhs.at({x, i});
           int32_t R = rhs.at({i, y});
           // We represent the element multiplication with offset as
@@ -1302,12 +1304,12 @@ void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
   dest.clear(0);
 
   // For each (x,y) in the destination matrix:
-  for (size_t x = 0; x < destDim[0]; x++) {
-    for (size_t y = 0; y < destDim[1]; y++) {
+  for (uint64_t x = 0; x < destDim[0]; x++) {
+    for (uint64_t y = 0; y < destDim[1]; y++) {
 
       // Perform DOT on the row an column.
       float sum = 0;
-      for (size_t i = 0; i < lhsDim[1]; i++) {
+      for (uint64_t i = 0; i < lhsDim[1]; i++) {
         sum += lhs.at({x, i}) * rhs.at({i, y});
       }
       dest.at({x, y}) = sum;
@@ -1338,11 +1340,11 @@ void InterpreterFunction::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
     assert(batch.dims().drop_front() == slice.dims() && "Invalid batch size");
 
     // For each layer in the batch:
-    for (size_t n = 0; n < bdim.first; n++) {
-      size_t base = batch.getElementPtr({n});
+    for (uint64_t n = 0; n < bdim.first; n++) {
+      uint64_t base = batch.getElementPtr({n});
 
       // For each element in the slice.
-      for (size_t i = 0; i < bdim.second; i++) {
+      for (uint64_t i = 0; i < bdim.second; i++) {
         int32_t batchVal = batch.raw(base + i);
         int32_t sliceVal = slice.raw(i);
         // We increase the size of the integer up to 16 bits for more accurate
@@ -1370,11 +1372,11 @@ void InterpreterFunction::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
   assert(batch.dims().drop_front() == slice.dims() && "Invalid batch size");
 
   // For each layer in the batch:
-  for (size_t n = 0; n < bdim.first; n++) {
-    size_t base = batch.getElementPtr({n});
+  for (uint64_t n = 0; n < bdim.first; n++) {
+    uint64_t base = batch.getElementPtr({n});
 
     // For each element in the slice.
-    for (size_t i = 0; i < bdim.second; i++) {
+    for (uint64_t i = 0; i < bdim.second; i++) {
       dest.raw(base + i) = batch.raw(base + i) + slice.raw(i);
     }
   }
@@ -1422,17 +1424,17 @@ void InterpreterFunction::fwdBatchedReduceAddInst(
     switch (axis) {
 #define LOOP_AXIS_CASE(_D0, _D1, _D2, _D3, _D4, _D5_AXIS)                      \
   case _D5_AXIS:                                                               \
-    for (size_t i##_D0 = 0; i##_D0 < eBatchDims[_D0]; i##_D0++)                \
-      for (size_t i##_D1 = 0; i##_D1 < eBatchDims[_D1]; i##_D1++)              \
-        for (size_t i##_D2 = 0; i##_D2 < eBatchDims[_D2]; i##_D2++)            \
-          for (size_t i##_D3 = 0; i##_D3 < eBatchDims[_D3]; i##_D3++)          \
-            for (size_t i##_D4 = 0; i##_D4 < eBatchDims[_D4]; i##_D4++) {      \
+    for (uint64_t i##_D0 = 0; i##_D0 < eBatchDims[_D0]; i##_D0++)              \
+      for (uint64_t i##_D1 = 0; i##_D1 < eBatchDims[_D1]; i##_D1++)            \
+        for (uint64_t i##_D2 = 0; i##_D2 < eBatchDims[_D2]; i##_D2++)          \
+          for (uint64_t i##_D3 = 0; i##_D3 < eBatchDims[_D3]; i##_D3++)        \
+            for (uint64_t i##_D4 = 0; i##_D4 < eBatchDims[_D4]; i##_D4++) {    \
               float sum = 0.0;                                                 \
-              for (size_t i##_D5_AXIS = 0; i##_D5_AXIS < eBatchDims[_D5_AXIS]; \
-                   i##_D5_AXIS++) {                                            \
+              for (uint64_t i##_D5_AXIS = 0;                                   \
+                   i##_D5_AXIS < eBatchDims[_D5_AXIS]; i##_D5_AXIS++) {        \
                 sum += eBatchH.at({i0, i1, i2, i3, i4, i5}) - batchOffset;     \
               }                                                                \
-              size_t i##_D5_AXIS = 0;                                          \
+              uint64_t i##_D5_AXIS = 0;                                        \
               int32_t res =                                                    \
                   std::round(sum * batchScale / destScale) + destOffset;       \
               eDestH.at({i0, i1, i2, i3, i4, i5}) =                            \
@@ -1462,13 +1464,13 @@ void InterpreterFunction::fwdBatchedReduceAddInst(
 
   // We can use this loop for all shapes. Use the same indices for both the
   // batch and dest, except for setting the axis index in the dest to 0.
-  for (size_t x = 0; x < eBatchDims[0]; x++) {
-    for (size_t y = 0; y < eBatchDims[1]; y++) {
-      for (size_t z = 0; z < eBatchDims[2]; z++) {
-        for (size_t w = 0; w < eBatchDims[3]; w++) {
-          for (size_t q = 0; q < eBatchDims[4]; q++) {
-            for (size_t r = 0; r < eBatchDims[5]; r++) {
-              size_t destIndices[] = {x, y, z, w, q, r};
+  for (uint64_t x = 0; x < eBatchDims[0]; x++) {
+    for (uint64_t y = 0; y < eBatchDims[1]; y++) {
+      for (uint64_t z = 0; z < eBatchDims[2]; z++) {
+        for (uint64_t w = 0; w < eBatchDims[3]; w++) {
+          for (uint64_t q = 0; q < eBatchDims[4]; q++) {
+            for (uint64_t r = 0; r < eBatchDims[5]; r++) {
+              uint64_t destIndices[] = {x, y, z, w, q, r};
               destIndices[axis] = 0;
               eDestH.at(destIndices) += eBatchH.at({x, y, z, w, q, r});
             }
@@ -1488,18 +1490,18 @@ void InterpreterFunction::fwdSparseLengthsSumInst(
 
   out->zero();
 
-  auto IH = indices->getHandle<size_t>();
-  auto LH = lengths->getHandle<size_t>();
+  auto IH = indices->getHandle<uint64_t>();
+  auto LH = lengths->getHandle<uint64_t>();
 
-  size_t segments = lengths->dims()[0];
-  size_t totalLength = 0;
-  for (size_t i = 0; i < segments; i++) {
+  uint64_t segments = lengths->dims()[0];
+  uint64_t totalLength = 0;
+  for (uint64_t i = 0; i < segments; i++) {
     totalLength += LH.raw(i);
   }
   assert(totalLength == indices->dims()[0] &&
          "sum(Lengths) must be equal to len(Indices)");
 
-  size_t lineSize = data->size() / data->dims()[0];
+  uint64_t lineSize = data->size() / data->dims()[0];
 
   assert(!data->getType().isQuantizedType() &&
          "Quantization is not yet supported for SparseLengthsSum.");
@@ -1507,12 +1509,12 @@ void InterpreterFunction::fwdSparseLengthsSumInst(
   auto DH = data->getHandle<float>();
   auto OH = out->getHandle<float>();
 
-  size_t curIdx = 0;
-  for (size_t i = 0; i < segments; i++) {
-    for (size_t j = 0, e = LH.raw(i); j < e; j++) {
-      size_t offsetIn = IH.raw(curIdx++) * lineSize;
-      size_t offsetOut = i * lineSize;
-      for (size_t k = 0; k < lineSize; k++)
+  uint64_t curIdx = 0;
+  for (uint64_t i = 0; i < segments; i++) {
+    for (uint64_t j = 0, e = LH.raw(i); j < e; j++) {
+      uint64_t offsetIn = IH.raw(curIdx++) * lineSize;
+      uint64_t offsetOut = i * lineSize;
+      for (uint64_t k = 0; k < lineSize; k++)
         OH.raw(offsetOut++) += DH.raw(offsetIn++);
     }
   }
@@ -1522,19 +1524,19 @@ void InterpreterFunction::fwdSparseLengthsSumInst(
 //                Instructions used by RNN
 //===----------------------------------------------------------------------===//
 template <typename T>
-static void fwdTopK(Tensor *outW, Tensor *indW, Tensor *inW, size_t k) {
+static void fwdTopK(Tensor *outW, Tensor *indW, Tensor *inW, uint64_t k) {
   auto values = outW->getHandle<T>();
-  auto indices = indW->getHandle<size_t>();
+  auto indices = indW->getHandle<uint64_t>();
   auto in = inW->getHandle<T>();
-  size_t n = in.dims().back();
+  uint64_t n = in.dims().back();
 
-  size_t in_p = 0, out_p = 0;
-  size_t tensor_end = in.size();
-  using pairType = std::pair<float, size_t>;
+  uint64_t in_p = 0, out_p = 0;
+  uint64_t tensor_end = in.size();
+  using pairType = std::pair<float, uint64_t>;
   std::vector<pairType> buf(n);
 
   while (in_p < tensor_end) {
-    for (size_t i = 0; i < n; i++) {
+    for (uint64_t i = 0; i < n; i++) {
       buf[i].first = in.raw(in_p++);
       buf[i].second = i;
     }
@@ -1544,7 +1546,7 @@ static void fwdTopK(Tensor *outW, Tensor *indW, Tensor *inW, size_t k) {
         return a.first > b.first;
       return a.second < b.second;
     });
-    for (size_t i = 0; i < k; i++) {
+    for (uint64_t i = 0; i < k; i++) {
       values.raw(out_p) = buf[i].first;
       indices.raw(out_p) = buf[i].second;
       out_p++;
@@ -1556,7 +1558,7 @@ void InterpreterFunction::fwdTopKInst(const TopKInst *I) {
   auto outW = getTensor(I->getValues());
   auto indW = getTensor(I->getIndices());
   auto inW = getTensor(I->getInput());
-  size_t k = I->getK();
+  uint64_t k = I->getK();
 
   if (inW->getType().isQuantizedType()) {
     fwdTopK<int8_t>(outW, indW, inW, k);
@@ -1618,7 +1620,7 @@ void InterpreterFunction::fwdQuantizeInst(const glow::QuantizeInst *I) {
                                   destTensor->getType().getOffset()};
 
   auto destHandle = destTensor->getHandle<int8_t>();
-  for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
+  for (uint64_t i = 0, e = destHandle.size(); i < e; ++i) {
     destHandle.raw(i) = quantization::quantize(srcHandle.raw(i), params);
   }
 }
@@ -1632,7 +1634,7 @@ void InterpreterFunction::fwdDequantizeInst(const glow::DequantizeInst *I) {
                                   srcTensor->getType().getOffset()};
 
   auto srcHandle = srcTensor->getHandle<int8_t>();
-  for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
+  for (uint64_t i = 0, e = destHandle.size(); i < e; ++i) {
     destHandle.raw(i) = quantization::dequantize(srcHandle.raw(i), params);
   }
 }
@@ -1650,7 +1652,7 @@ void InterpreterFunction::fwdRescaleQuantizedInst(
   auto srcH = getWeightHandle<int8_t>(src);
   auto destH = getWeightHandle<int8_t>(dest);
 
-  for (size_t i = 0, e = destH.size(); i < e; ++i) {
+  for (uint64_t i = 0, e = destH.size(); i < e; ++i) {
     float val = quantization::dequantize(srcH.raw(i), srcQ);
     destH.raw(i) = quantization::quantize(val, destQ);
   }
@@ -1661,7 +1663,7 @@ void InterpreterFunction::fwdIntLookupTableInst(const IntLookupTableInst *I) {
   auto destH = getWeightHandle<int8_t>(I->getDest());
   auto mappingH = getWeightHandle<int8_t>(I->getMapping());
 
-  for (size_t i = 0, e = destH.size(); i < e; i++) {
+  for (uint64_t i = 0, e = destH.size(); i < e; i++) {
     destH.raw(i) = mappingH.raw((int)srcH.raw(i) + 128);
   }
 }

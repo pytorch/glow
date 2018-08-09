@@ -43,7 +43,7 @@ void genericTranspose(Tensor *src, Tensor *dest,
 /// currDims expanded with dimension = 1 until the maximum tensor dimension is
 /// reached. The number of elements in the input dims is the same as in the
 /// returned dims. For example, input {2,1,4} would result in {2,1,4,1,1,1}.
-ShapeVector expandDimsToMax(llvm::ArrayRef<size_t> currDims);
+ShapeVector expandDimsToMax(llvm::ArrayRef<uint64_t> currDims);
 
 /// A class that represents a contiguous n-dimensional array (a tensor).
 class Tensor final {
@@ -81,7 +81,7 @@ public:
   ElemKind getElementType() const { return type_.getElementType(); }
 
   /// \returns True if the coordinate is within the array.
-  bool isInBounds(llvm::ArrayRef<size_t> indices) const {
+  bool isInBounds(llvm::ArrayRef<uint64_t> indices) const {
     assert(type_.numSizes_ == indices.size() && "Invalid number of indices");
     for (size_t i = 0u, e = indices.size(); i < e; i++) {
       if (indices[i] >= type_.sizes_[i]) {
@@ -98,7 +98,7 @@ public:
   }
 
   /// \returns the shape of the tensor.
-  llvm::ArrayRef<size_t> dims() const { return type_.dims(); }
+  llvm::ArrayRef<uint64_t> dims() const { return type_.dims(); }
 
   /// \returns the number of elements in the tensor.
   size_t size() const { return type_.size(); }
@@ -140,7 +140,7 @@ public:
   }
 
   /// Allocate and initialize a float new tensor.
-  Tensor(ElemKind elemTy, llvm::ArrayRef<size_t> dims)
+  Tensor(ElemKind elemTy, llvm::ArrayRef<uint64_t> dims)
       : data_(nullptr), type_(elemTy, dims), isUnowned_{false} {
     reset(elemTy, dims);
   }
@@ -155,7 +155,7 @@ public:
   }
 
   /// Allocate and initialize a new integer tensor with \p scale and \p offset.
-  Tensor(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
+  Tensor(ElemKind elemTy, llvm::ArrayRef<uint64_t> dims, float scale,
          int32_t offset)
       : data_(nullptr), type_(elemTy, dims, scale, offset), isUnowned_{false} {
     reset(type_);
@@ -178,8 +178,8 @@ public:
   /// The lifetime of the returned unowned tensor should be always within
   /// the lifetime of its parent tensor, i.e. the unowned tensor should not
   /// outlive its parent tensor.
-  Tensor getUnowned(llvm::ArrayRef<size_t> dims,
-                    llvm::ArrayRef<size_t> offsets = {}) const {
+  Tensor getUnowned(llvm::ArrayRef<uint64_t> dims,
+                    llvm::ArrayRef<uint64_t> offsets = {}) const {
     Tensor unownedTensor;
 
     auto *firstElemPtr = getData();
@@ -216,12 +216,12 @@ public:
   /// \p other.
   void reset(const Tensor *other) { reset(other->getType()); }
 
-  void reset(ElemKind elemTy, llvm::ArrayRef<size_t> shape) {
+  void reset(ElemKind elemTy, llvm::ArrayRef<uint64_t> shape) {
     Type t(elemTy, shape);
     reset(t);
   }
 
-  void reset(ElemKind elemTy, llvm::ArrayRef<size_t> shape, float scale,
+  void reset(ElemKind elemTy, llvm::ArrayRef<uint64_t> shape, float scale,
              int32_t offset) {
     Type t(elemTy, shape, scale, offset);
     reset(t);
@@ -288,7 +288,7 @@ public:
     case ElemKind::Int32QTy:
       return isEqualImpl<int32_t>(other, allowedError);
     case ElemKind::IndexTy:
-      return isEqualImpl<size_t>(other, allowedError);
+      return isEqualImpl<uint64_t>(other, allowedError);
     }
 
     // This is to make compiler happy. It can never reach this point as switch
@@ -404,11 +404,11 @@ template <class ElemTy> class Handle final {
 
   /// Contains the multiplication of the sizes from current position to end.
   /// For example, for index (w,z,y,z):  [x * y * z, y * z, z, 1]
-  size_t sizeIntegral_[max_tensor_dimensions] = {
+  uint64_t sizeIntegral_[max_tensor_dimensions] = {
       0,
   };
 
-  size_t sizes_[max_tensor_dimensions] = {
+  uint64_t sizes_[max_tensor_dimensions] = {
       0,
   };
 
@@ -428,7 +428,7 @@ public:
 
   /// Calculate the index for a specific element in the tensor. Notice that
   /// the list of indices may be incomplete.
-  size_t getElementPtr(llvm::ArrayRef<size_t> indices) const {
+  size_t getElementPtr(llvm::ArrayRef<uint64_t> indices) const {
     assert(indices.size() <= numDims_ && "Invalid number of indices");
     // The loop below can be rewritten using std::inner_product. Unfortunately
     // std::inner_product does not optimize very well and loops that use this
@@ -479,14 +479,14 @@ public:
     assert(numDims_ <= max_tensor_dimensions && "Too many dimensions.");
   }
 
-  llvm::ArrayRef<size_t> dims() const {
-    return llvm::ArrayRef<size_t>(sizes_, numDims_);
+  llvm::ArrayRef<uint64_t> dims() const {
+    return llvm::ArrayRef<uint64_t>(sizes_, numDims_);
   }
 
   /// \returns the number of elements in the whole tensor.
   size_t size() const { return tensor_->size(); }
 
-  bool isInBounds(llvm::ArrayRef<size_t> indices) const {
+  bool isInBounds(llvm::ArrayRef<uint64_t> indices) const {
     return tensor_->isInBounds(indices);
   }
 
@@ -495,7 +495,7 @@ public:
     std::fill(&data[0], &data[0] + size(), value);
   }
 
-  ElemTy &at(llvm::ArrayRef<size_t> indices) {
+  ElemTy &at(llvm::ArrayRef<uint64_t> indices) {
     assert(tensor_->isInBounds(indices));
     size_t index = getElementPtr(indices);
     assert(index < size() && "Out of bounds");
@@ -503,7 +503,7 @@ public:
     return data[index];
   }
 
-  const ElemTy &at(llvm::ArrayRef<size_t> indices) const {
+  const ElemTy &at(llvm::ArrayRef<uint64_t> indices) const {
     assert(tensor_->isInBounds(indices));
     size_t index = getElementPtr(indices);
     assert(index < size() && "Out of bounds");
@@ -672,7 +672,7 @@ public:
   /// where O is the offset vector, assuming \p count = 1. For \p count > 1, the
   /// same Tensor is copied \p count times along the provided \p axis. The
   /// tensors must be of the right dimensions.
-  void insertTensors(Handle<ElemTy> &slice, llvm::ArrayRef<size_t> offset,
+  void insertTensors(Handle<ElemTy> &slice, llvm::ArrayRef<uint64_t> offset,
                      size_t count = 1, size_t axis = 0) {
     auto sliceCoor = slice.dims().vec();
     auto fusedCoor = dims().vec();
@@ -685,7 +685,7 @@ public:
   /// copying into the cell at coordinate {d_0, d_1, ... d_n} a value from the
   /// tensor at {d_0 + O_0, d_1 + O_1, ... d_n + O_n}, where O is the offset
   /// vector. The tensors must be of the right dimensions.
-  void extractTensors(Handle<ElemTy> &slice, llvm::ArrayRef<size_t> offset) {
+  void extractTensors(Handle<ElemTy> &slice, llvm::ArrayRef<uint64_t> offset) {
     auto sliceCoor = slice.dims().vec();
     auto fusedCoor = dims().vec();
     insertTensorsImpl(sliceCoor, fusedCoor, slice, false, offset, /* count */ 1,
@@ -705,10 +705,10 @@ private:
   /// data is copied from \p fused to \p slice. \p count and \p axis are used in
   /// conjunction for inserting the same tensor \p count times along the \p
   /// axis.
-  void insertTensorsImpl(llvm::MutableArrayRef<size_t> sliceCoor,
-                         llvm::MutableArrayRef<size_t> fusedCoor,
+  void insertTensorsImpl(llvm::MutableArrayRef<uint64_t> sliceCoor,
+                         llvm::MutableArrayRef<uint64_t> fusedCoor,
                          Handle<ElemTy> &slice, bool isInsert,
-                         llvm::ArrayRef<size_t> offset, size_t count,
+                         llvm::ArrayRef<uint64_t> offset, size_t count,
                          size_t axis, unsigned d) {
     bool isDone = (d == slice.dims().size());
 

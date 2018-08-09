@@ -34,8 +34,8 @@ using llvm::cast;
 extern "C" {
 // Forward declare functions from libjit.
 extern void libjit_matmul_f(float *c, const float *a, const float *b,
-                            const size_t *cDims, const size_t *aDims,
-                            const size_t *bDims);
+                            const uint64_t *cDims, const uint64_t *aDims,
+                            const uint64_t *bDims);
 }
 
 void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
@@ -59,9 +59,9 @@ void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
 TEST(Gemm, jitTest) {
   PseudoRNG PRNG;
 
-  for (size_t m : {1, 4, 5, 8}) {
-    for (size_t n : {1, 16, 17, 1024}) {
-      for (size_t k : {1, 3}) {
+  for (uint64_t m : {1, 4, 5, 8}) {
+    for (uint64_t n : {1, 16, 17, 1024}) {
+      for (uint64_t k : {1, 3}) {
         Tensor lhs(ElemKind::FloatTy, {m, k});
         Tensor rhs(ElemKind::FloatTy, {k, n});
         lhs.getHandle().randomize(-7.2, 8.3, PRNG);

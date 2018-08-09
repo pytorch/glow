@@ -71,7 +71,7 @@ ElemKind Node::getElementType(unsigned resNo) const {
   return TR->getElementType();
 }
 
-llvm::ArrayRef<size_t> Node::dims(unsigned resNo) const {
+llvm::ArrayRef<uint64_t> Node::dims(unsigned resNo) const {
   TypeRef TR = getType(resNo);
   return TR->dims();
 }
@@ -176,7 +176,7 @@ ElemKind NodeValue::getElementType() const {
   return getType()->getElementType();
 }
 
-llvm::ArrayRef<size_t> NodeValue::dims() const { return getType()->dims(); }
+llvm::ArrayRef<uint64_t> NodeValue::dims() const { return getType()->dims(); }
 
 //===----------------------------------------------------------------------===//
 //                     Debug description methods

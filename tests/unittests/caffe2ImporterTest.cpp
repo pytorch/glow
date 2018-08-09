@@ -21,11 +21,11 @@
 
 using namespace glow;
 
-static void getImageData(Tensor *result, size_t n, size_t c, size_t h,
-                         size_t w) {
+static void getImageData(Tensor *result, uint64_t n, uint64_t c, uint64_t h,
+                         uint64_t w) {
   result->reset(ElemKind::FloatTy, {n, c, h, w});
   auto RH = result->getHandle<>();
-  for (size_t i = 0, e = n * c * h * w; i < e; i++)
+  for (uint64_t i = 0, e = n * c * h * w; i < e; i++)
     RH.raw(i) = i;
 }
 
@@ -54,10 +54,10 @@ TEST(caffe2, importConv) {
   EE.compile(CompilationMode::Infer, F);
   EE.run({}, {});
   auto result = output->getVariable()->getHandle();
-  std::vector<size_t> expectedDims = {1, 1, 4, 4};
+  std::vector<uint64_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
                                        11, 22, 26, 15, 8, 15, 17, 10};
   EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < 4 * 4; i++)
+  for (uint64_t i = 0; i < 4 * 4; i++)
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
 }
