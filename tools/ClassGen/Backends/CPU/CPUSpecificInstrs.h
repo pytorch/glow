@@ -28,10 +28,10 @@ BB.newBackendSpecificInstr("CPUConvDKKC8")
     .addOperand("Src", OperandKind::In)
     .addOperand("Filter", OperandKind::In)
     .addOperand("Bias", OperandKind::In)
-    .addMember(MemberType::VectorSizeT, "Kernels")
-    .addMember(MemberType::VectorSizeT, "Strides")
-    .addMember(MemberType::VectorSizeT, "Pads")
-    .addMember(MemberType::SizeT, "Group")
+    .addMember(MemberType::VectorUInt64, "Kernels")
+    .addMember(MemberType::VectorUInt64, "Strides")
+    .addMember(MemberType::VectorUInt64, "Pads")
+    .addMember(MemberType::UInt64, "Group")
     .autoIRGen();
 
 BB.includeBackendSpecificVerification("glow/CPUSpecificInstrsVerification.h");

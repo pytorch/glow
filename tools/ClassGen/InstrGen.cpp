@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
   BB.newInstr("TensorView")
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::TypeRef, "Ty")
-      .addMember(MemberType::VectorSizeT, "Offsets")
+      .addMember(MemberType::VectorUInt64, "Offsets")
       .setType("Ty");
 
   BB.newInstr("DeallocActivation")
@@ -81,10 +81,10 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addOperand("Filter", OperandKind::In)
       .addOperand("Bias", OperandKind::In)
-      .addMember(MemberType::VectorSizeT, "Kernels")
-      .addMember(MemberType::VectorSizeT, "Strides")
-      .addMember(MemberType::VectorSizeT, "Pads")
-      .addMember(MemberType::SizeT, "Group")
+      .addMember(MemberType::VectorUInt64, "Kernels")
+      .addMember(MemberType::VectorUInt64, "Strides")
+      .addMember(MemberType::VectorUInt64, "Pads")
+      .addMember(MemberType::UInt64, "Group")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType,
                   {"Dest", "Src", "Filter", "Bias"})
@@ -96,26 +96,26 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("SrcXY", OperandKind::Out)
-      .addMember(MemberType::VectorSizeT, "Kernels")
-      .addMember(MemberType::VectorSizeT, "Strides")
-      .addMember(MemberType::VectorSizeT, "Pads")
+      .addMember(MemberType::VectorUInt64, "Kernels")
+      .addMember(MemberType::VectorUInt64, "Strides")
+      .addMember(MemberType::VectorUInt64, "Pads")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest", "SrcXY"}, {"Dest", "Src"});
 
   BB.newInstr("MaxPool")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addMember(MemberType::VectorSizeT, "Kernels")
-      .addMember(MemberType::VectorSizeT, "Strides")
-      .addMember(MemberType::VectorSizeT, "Pads")
+      .addMember(MemberType::VectorUInt64, "Kernels")
+      .addMember(MemberType::VectorUInt64, "Strides")
+      .addMember(MemberType::VectorUInt64, "Pads")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
 
   BB.newInstr("AvgPool")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addMember(MemberType::VectorSizeT, "Kernels")
-      .addMember(MemberType::VectorSizeT, "Strides")
-      .addMember(MemberType::VectorSizeT, "Pads")
+      .addMember(MemberType::VectorUInt64, "Kernels")
+      .addMember(MemberType::VectorUInt64, "Strides")
+      .addMember(MemberType::VectorUInt64, "Pads")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
@@ -128,7 +128,7 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("Scale", OperandKind::Out)
-      .addMember(MemberType::SizeT, "HalfWindowSize")
+      .addMember(MemberType::UInt64, "HalfWindowSize")
       .addMember(MemberType::Float, "Alpha")
       .addMember(MemberType::Float, "Beta")
       .addMember(MemberType::Float, "K")
@@ -191,7 +191,7 @@ int main(int argc, char **argv) {
   BB.newInstr("BatchedReduceAdd")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Batch", OperandKind::In)
-      .addMember(MemberType::SizeT, "Axis")
+      .addMember(MemberType::UInt64, "Axis")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
       .autoIRGen();
 
@@ -364,15 +364,15 @@ int main(int argc, char **argv) {
   BB.newInstr("InsertTensor")
       .addOperand("Dest", OperandKind::InOut)
       .addOperand("Src", OperandKind::In)
-      .addMember(MemberType::VectorSizeT, "Offsets")
-      .addMember(MemberType::SizeT, "Count")
-      .addMember(MemberType::SizeT, "Axis");
+      .addMember(MemberType::VectorUInt64, "Offsets")
+      .addMember(MemberType::UInt64, "Count")
+      .addMember(MemberType::UInt64, "Axis");
 
   BB.newInstr("ExtractTensor")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-      .addMember(MemberType::VectorSizeT, "Offsets");
+      .addMember(MemberType::VectorUInt64, "Offsets");
 
   BB.newInstr("Gather")
       .addOperand("Dest", OperandKind::Out)
@@ -451,7 +451,7 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::Out)
       .addOperand("Input", OperandKind::In)
       .addOperand("Scratch", OperandKind::InOut)
-      .addMember(MemberType::SizeT, "K")
+      .addMember(MemberType::UInt64, "K")
       .autoVerify(VerifyKind::SameElementType, {"Values", "Input"})
       .autoVerify(VerifyKind::SameShape, {"Values", "Indices"});
 

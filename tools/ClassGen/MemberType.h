@@ -24,11 +24,11 @@ enum class MemberType : unsigned {
   TypeRef,
   Float,
   Unsigned,
-  SizeT,
+  UInt64,
   String,
   VectorFloat,
   VectorUnsigned,
-  VectorSizeT,
+  VectorUInt64,
   VectorNodeValue,
 };
 
