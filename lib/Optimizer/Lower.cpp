@@ -577,6 +577,46 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
   BNG.getResult().replaceAllUsesOfWith(result);
 }
 
+void lowerSigmoidCrossEntropyWithLogitsNode(
+    Function *F, SigmoidCrossEntropyWithLogitsNode &SCEL) {
+  // Following Caffe2 implementation closely to lower this Node.
+  // https://github.com/caffe2/caffe2/blob/master/caffe2/operators/cross_entropy_op.cc
+
+  auto lgt = SCEL.getLogits();
+  auto tgt = SCEL.getTargets();
+
+  // Element-wise transformation:
+  // max(lgt, 0) - lgt * tgt + log(1 + exp(-abs(x)))
+
+  auto *zeroSplat = F->createSplat("zeroSplat", lgt.getType(), 0.0);
+  auto *oneSplat = F->createSplat("oneSplat", lgt.getType(), 1.0);
+  auto *expSplat = F->createSplat("oneSplat", lgt.getType(), exp(1.0));
+
+  auto *cmp0lgt = F->createCmpLTE("cmp.0.lgt", zeroSplat, lgt);
+
+  // (tgt - (lgt >= 0))
+  auto *coeff = F->createSelect("select", cmp0lgt,
+                                F->createSub("tgt.m1", tgt, oneSplat), tgt);
+
+  // exp(lgt >= 0 ? -lgt : lgt)
+  auto *expArg = F->createSelect("exp.arg", cmp0lgt,
+                                 F->createSub("neg.lgt", zeroSplat, lgt), lgt);
+
+  // (1 + exp(expArg))
+  auto *logArg =
+      F->createAdd("log.arg", oneSplat, F->createPow("exp", expSplat, expArg));
+
+  // log(logArg) - lgt * coeff
+  auto *sigmoidXent =
+      F->createSub("sigmoid.xent.pointwise", F->createLog("log", logArg),
+                   F->createMul("lhs", lgt, coeff));
+
+  auto *reducedSigmoidXent = F->createBatchedReduceMean(
+      "sigmoid.xent.lowered", sigmoidXent, lgt.dims().size() - 1);
+
+  SCEL.getResult().replaceAllUsesOfWith(reducedSigmoidXent);
+}
+
 void glow::lower(Function *F, const Backend &B) {
   auto &nodes = F->getNodes();
 
@@ -617,6 +657,8 @@ void glow::lower(Function *F, const Backend &B) {
       lowerMeanVarNormalizationNode(F, *MVN);
     } else if (auto *BNG = dyn_cast<BatchNormalizationGradNode>(node)) {
       lowerBatchNormalizationGradNode(F, *BNG);
+    } else if (auto *SCEL = dyn_cast<SigmoidCrossEntropyWithLogitsNode>(node)) {
+      lowerSigmoidCrossEntropyWithLogitsNode(F, *SCEL);
     } else if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
       if (CN->getGroup() > 1)
         lowerGroupConvolutionNode(F, *CN);

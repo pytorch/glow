@@ -673,6 +673,11 @@ void RegressionGradNode::verify() const {
                    getGradOfInputNamedExpected());
 }
 
+void SigmoidCrossEntropyWithLogitsNode::verify() const {
+  assert(getResult().getElementType() == getLogits().getElementType());
+  checkSameType(getLogits(), getTargets());
+}
+
 void FullyConnectedNode::verify() const {
   verifyFullyConnected(getInput(), getWeights(), getBias(), getResult());
 }

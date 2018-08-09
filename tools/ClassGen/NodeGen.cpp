@@ -169,6 +169,12 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Takes an Input tensor and creates a regression output layer.");
 
+  BB.newNode("SigmoidCrossEntropyWithLogits")
+      .addInput("Logits")
+      .addInput("Targets")
+      .addResultFromCtorArg()
+      .setDocstring("Computes the sigmoid cross entropy between two inputs.");
+
   //===--------------------------------------------------------------------===//
   //                      Arithmetic
   //===--------------------------------------------------------------------===//
