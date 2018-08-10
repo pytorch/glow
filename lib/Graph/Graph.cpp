@@ -389,7 +389,7 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       llvm::ArrayRef<size_t> kernels,
                                       llvm::ArrayRef<size_t> strides,
                                       llvm::ArrayRef<size_t> pads,
-                                      size_t group) {
+                                      unsigned group) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   ShapeHW kdim(kernels);
   PaddingTLBR pdim(pads);
@@ -433,7 +433,7 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
 static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
                            llvm::ArrayRef<size_t> kernels,
                            llvm::ArrayRef<size_t> strides,
-                           llvm::ArrayRef<size_t> pads, size_t group) {
+                           llvm::ArrayRef<size_t> pads, unsigned group) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   PaddingTLBR pdim(pads);
   (void)pdim;
@@ -454,10 +454,13 @@ static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
   assert(bias.getType()->size() == filterDims[0] && "Invalid bias size");
 }
 
-ConvolutionNode *Function::createConv(
-    llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
-    TypeRef outTy, llvm::ArrayRef<size_t> kernels,
-    llvm::ArrayRef<size_t> strides, llvm::ArrayRef<size_t> pads, size_t group) {
+ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
+                                      NodeValue filter, NodeValue bias,
+                                      TypeRef outTy,
+                                      llvm::ArrayRef<size_t> kernels,
+                                      llvm::ArrayRef<size_t> strides,
+                                      llvm::ArrayRef<size_t> pads,
+                                      unsigned group) {
   assertConvDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
@@ -467,7 +470,8 @@ ConvolutionNode *Function::createConv(
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       NodeValue filter, NodeValue bias,
                                       TypeRef outTy, size_t kernel,
-                                      size_t stride, size_t pad, size_t group) {
+                                      size_t stride, size_t pad,
+                                      unsigned group) {
   llvm::SmallVector<size_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<size_t, 2> strides = {stride, stride};
   llvm::SmallVector<size_t, 2> kernels = {kernel, kernel};
@@ -477,7 +481,8 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       size_t depth, size_t kernel,
-                                      size_t stride, size_t pad, size_t group) {
+                                      size_t stride, size_t pad,
+                                      unsigned group) {
   llvm::SmallVector<size_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<size_t, 2> strides = {stride, stride};
   llvm::SmallVector<size_t, 2> kernels = {kernel, kernel};
@@ -945,7 +950,7 @@ void Function::createSplit(llvm::StringRef name, NodeValue input,
 
 BatchNormalizationNode *Function::createBatchNormalization(llvm::StringRef name,
                                                            NodeValue input,
-                                                           size_t channelIdx,
+                                                           unsigned channelIdx,
                                                            float epsilon,
                                                            float momentum) {
   // Figure out how many channels are in the tensor.
@@ -975,14 +980,14 @@ BatchNormalizationNode *Function::createBatchNormalization(llvm::StringRef name,
 
 BatchNormalizationNode *Function::createBatchNormalization(
     llvm::StringRef name, NodeValue input, NodeValue beta, NodeValue gamma,
-    NodeValue mean, NodeValue var, size_t channelIdx, float epsilon,
+    NodeValue mean, NodeValue var, unsigned channelIdx, float epsilon,
     float momentum) {
   return addNode(new BatchNormalizationNode(name, input, gamma, beta, mean, var,
                                             channelIdx, epsilon, momentum));
 }
 
 LocalResponseNormalizationNode *Function::createLocalResponseNormalization(
-    llvm::StringRef name, NodeValue input, size_t halfWindowSize, float alpha,
+    llvm::StringRef name, NodeValue input, unsigned halfWindowSize, float alpha,
     float beta, float k) {
   // The output tensor is of the same shape as the input tensor.
   return addNode(new LocalResponseNormalizationNode(name, input, halfWindowSize,
@@ -1132,7 +1137,7 @@ Node *Function::createBatchMatMul(llvm::StringRef name, NodeValue lhs,
 BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
                                                        TypeRef outTy,
                                                        NodeValue batch,
-                                                       size_t axis) {
+                                                       unsigned axis) {
   // Calculate the expected total number of elements in the output tensor based
   // on the number of elements in the batch divided by the axis dimension.
   const size_t outNumElements = batch.getType()->size() / batch.dims()[axis];
@@ -1145,14 +1150,14 @@ BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
 
 BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
                                                        NodeValue batch,
-                                                       size_t axis) {
+                                                       unsigned axis) {
   auto outDims = getNewShapeWithoutAxis(batch.dims(), axis);
   auto OT = getParent()->uniqueType(batch.getType()->getElementType(), outDims);
   return createBatchedReduceAdd(name, OT, batch, axis);
 }
 
 DivNode *Function::createBatchedReduceMean(llvm::StringRef name, TypeRef outTy,
-                                           NodeValue batch, size_t axis) {
+                                           NodeValue batch, unsigned axis) {
   // Use the same output type for both the batched reduce add and the
   // denominator splat. Only use outTy as the output of the final div.
   auto redDims = getNewShapeWithoutAxis(batch.dims(), axis);
@@ -1170,7 +1175,7 @@ DivNode *Function::createBatchedReduceMean(llvm::StringRef name, TypeRef outTy,
 }
 
 DivNode *Function::createBatchedReduceMean(llvm::StringRef name,
-                                           NodeValue batch, size_t axis) {
+                                           NodeValue batch, unsigned axis) {
   auto redDims = getNewShapeWithoutAxis(batch.dims(), axis);
   auto outTy = getParent()->uniqueTypeWithNewShape(batch.getType(), redDims);
   return createBatchedReduceMean(name, outTy, batch, axis);
@@ -1300,7 +1305,7 @@ IntLookupTableNode *Function::createIntSigmoid(llvm::StringRef name,
 }
 
 TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
-                               size_t k) {
+                               unsigned k) {
   auto inDims = input.dims();
   assert(inDims.size() > 0);
   assert(k <= inDims.back());
