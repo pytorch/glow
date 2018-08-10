@@ -195,16 +195,17 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
       .autoIRGen();
 
-  BB.newInstr("SparseLengthsSum")
+  BB.newInstr("SparseLengthsWeightedSum")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Data", OperandKind::In)
+      .addOperand("Weights", OperandKind::In)
       .addOperand("Indices", OperandKind::In)
       .addOperand("Lengths", OperandKind::In)
       .autoIRGen()
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Data", "Weights"})
       .autoVerify(VerifyKind::SameElementType, {"Indices", "ElemKind::IndexTy"})
-      .autoVerify(VerifyKind::SameElementType,
-                  {"Lengths", "ElemKind::IndexTy"});
+      .autoVerify(VerifyKind::SameElementType, {"Lengths", "ElemKind::IndexTy"})
+      .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
   /// Adds the 'Slice' operand to each one of the slices in the batch.
   BB.newInstr("BatchedAdd")

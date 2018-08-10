@@ -502,8 +502,10 @@ void BatchedReduceAddNode::verify() const {
   assert(getBatch().dims().size() > 1 && "Invalid shape");
 }
 
-void SparseLengthsSumNode::verify() const {
+void SparseLengthsWeightedSumNode::verify() const {
   assert(getResult().getElementType() == getData().getElementType() &&
+         "Mismatched element types");
+  assert(getWeights().getElementType() == getData().getElementType() &&
          "Mismatched element types");
   assert(getIndices().getElementType() == ElemKind::IndexTy &&
          "Indices must have index type");
@@ -511,6 +513,9 @@ void SparseLengthsSumNode::verify() const {
          "Lengths must have index type");
   assert(getIndices().dims().size() == 1 && "Indices must be 1D vector");
   assert(getLengths().dims().size() == 1 && "Lengths must be 1D vector");
+  assert(getWeights().dims().size() == 1 && "Weights must be 1D vector");
+  assert(getWeights().dims()[0] == getIndices().dims()[0] &&
+         "Weights and Indices must have the same size");
 }
 
 void SGDNode::verify() const {

@@ -1479,10 +1479,11 @@ void InterpreterFunction::fwdBatchedReduceAddInst(
   }
 }
 
-void InterpreterFunction::fwdSparseLengthsSumInst(
-    const SparseLengthsSumInst *I) {
+void InterpreterFunction::fwdSparseLengthsWeightedSumInst(
+    const SparseLengthsWeightedSumInst *I) {
   auto out = getTensor(I->getDest());
   auto data = getTensor(I->getData());
+  auto weights = getTensor(I->getWeights());
   auto indices = getTensor(I->getIndices());
   auto lengths = getTensor(I->getLengths());
 
@@ -1502,18 +1503,20 @@ void InterpreterFunction::fwdSparseLengthsSumInst(
   size_t lineSize = data->size() / data->dims()[0];
 
   assert(!data->getType().isQuantizedType() &&
-         "Quantization is not yet supported for SparseLengthsSum.");
+         "Quantization is not yet supported for SparseLengthsWeightedSum.");
 
   auto DH = data->getHandle<float>();
+  auto WH = weights->getHandle<float>();
   auto OH = out->getHandle<float>();
 
   size_t curIdx = 0;
   for (size_t i = 0; i < segments; i++) {
     for (size_t j = 0, e = LH.raw(i); j < e; j++) {
+      float weight = WH.raw(curIdx);
       size_t offsetIn = IH.raw(curIdx++) * lineSize;
       size_t offsetOut = i * lineSize;
       for (size_t k = 0; k < lineSize; k++)
-        OH.raw(offsetOut++) += DH.raw(offsetIn++);
+        OH.raw(offsetOut++) += DH.raw(offsetIn++) * weight;
     }
   }
 }

@@ -2846,6 +2846,56 @@ TEST_P(InterpOnly, SparseLengthsSum) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
+TEST_P(InterpOnly, SparseLengthsWeightedSum) {
+  /*
+    DATA  =   [2.0, -0.5, 13]
+    WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
+    INDICES = [1, 0, 2, 0, 1, 2, 2, 0]
+    LENGTHS = [3, 0, 3, 2]
+    OUTPUT =  [0.5, 0, 0, 25]
+  */
+  auto *data = mod_.createVariable(ElemKind::FloatTy, {3}, "data");
+  auto *weights = mod_.createVariable(ElemKind::FloatTy, {8}, "weights");
+  auto *indices = mod_.createVariable(ElemKind::IndexTy, {8}, "indices");
+  auto *lengths = mod_.createVariable(ElemKind::IndexTy, {4}, "lengths");
+
+  data->getPayload().getHandle() = {
+      2.0,
+      -0.5,
+      13,
+  };
+  weights->getPayload().getHandle() = {
+      3, 1, 0, 0, 0, 0, 2, -0.5,
+  };
+  indices->getPayload().getHandle<size_t>() = {
+      1, 0, 2, 0, 1, 2, 2, 0,
+  };
+  lengths->getPayload().getHandle<size_t>() = {
+      3,
+      0,
+      3,
+      2,
+  };
+
+  auto R = F_->createSparseLengthsWeightedSum("SLWS", data, weights, indices,
+                                              lengths);
+  auto S = F_->createSave("save", R);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  Tensor &result = llvm::cast<Variable>(S->getOutput())->getPayload();
+  Tensor expected(ElemKind::FloatTy, {4});
+  expected.getHandle() = {
+      0.5,
+      0,
+      0,
+      25,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
 /// Stack many slices/reshapes together. Some of these may be turned into tensor
 /// views stacked onto each other.
 TEST_P(Operator, sliceReshape) {
