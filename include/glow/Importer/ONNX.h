@@ -42,10 +42,6 @@ class ONNXModelLoader
   /// Set ir verion and op version.
   void setVersion(ONNX_NAMESPACE::ModelProto MP);
 
-  /// Set the output nodes of the network \p net. Initializes the map from the
-  /// names of the outputs to the save nodes that save each output.
-  bool setOutputNodes(ONNX_NAMESPACE::GraphProto &net);
-
   /// Load the network initializers from the GraphProto.
   void loadInitializers(ONNX_NAMESPACE::GraphProto &net);
 
@@ -88,7 +84,7 @@ protected:
   /// Set the output nodes of the network \p net. Initializes the map from the
   /// names of the outputs to the save nodes that save each output.
   /// \returns false if no output nodes are found in the model.
-  bool setOutputNodes(onnx::GraphProto &net);
+  bool setOutputNodes(ONNX_NAMESPACE::GraphProto &net);
 
 public:
   /// Loads the ONNX model that's represented by a model description file,

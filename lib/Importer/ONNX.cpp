@@ -435,7 +435,7 @@ void ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
   }
 }
 
- bool ONNXModelLoader::setOutputNodes(onnx::GraphProto &net) {
+ bool ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
   if (!net.output_size()) {
     return false;
   }

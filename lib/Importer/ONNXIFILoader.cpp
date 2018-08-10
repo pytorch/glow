@@ -112,19 +112,19 @@ std::unique_ptr<ModelLoader> ModelLoader::parse(
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F) {
   std::unique_ptr<ModelLoader> loader(new ModelLoader(F));
 
-  ONNX_NAMESPACE::GraphProto modelDef;
-  std::cout << "before loading proto" << std::endl;
-  if (!loader->loadProto(modelDef, onnxModel, onnxModelSize)) {
-    return nullptr;
-  }
+  //ONNX_NAMESPACE::GraphProto modelDef;
+  //std::cout << "before loading proto" << std::endl;
+  //if (!loader->loadProto(modelDef, onnxModel, onnxModelSize)) {
+  //  return nullptr;
+  //}
   
-  std::cout << "before loading weights" << std::endl;
+  std::cout << "before loading weights, weightsCount" << weightsCount << std::endl;
   if (!loader->loadWeights(weightsCount, weightDescriptors)) {
     return nullptr;
   }
 
   std::cout << "before loading inputs" << std::endl;
-  loader->loadInputs(modelDef);
+  /*loader->loadInputs(modelDef);
 
   std::cout << "before loading outputs" << std::endl;
   if (!loader->setOutputNodes(modelDef)) {
@@ -134,7 +134,7 @@ std::unique_ptr<ModelLoader> ModelLoader::parse(
   std::cout << "before loading network" << std::endl;
   if (!loader->loadNetwork(modelDef)) {
     return nullptr;
-  }
+  }*/
 
   return loader;
 }

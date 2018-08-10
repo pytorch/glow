@@ -302,6 +302,7 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxInitGraph(
     size_t onnxModelSize, const void *onnxModel, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, onnxGraph *graph) {
   std::cout << "hello from onnxInitGraph" << std::endl;
+  std::cout << "weights count: " << weightsCount << std::endl;
 
   if (!onnxModel || !weightDescriptors || !graph) {
     return ONNXIFI_STATUS_INVALID_POINTER;
