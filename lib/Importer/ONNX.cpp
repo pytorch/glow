@@ -451,14 +451,18 @@ void ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
   }
 }
 
-void ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
-  assert(net.output_size() && "Network needs external outputs defined.");
+bool ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
+  if (net.output_size() == 0) {
+    return false;
+  }
 
   for (int i = 0; i < net.output_size(); i++) {
     auto &outputName = net.output(i).name();
     auto r = getNodeValueByName(outputName);
     outputsByName_[outputName] = G_.createSave("save_" + outputName, r);
   }
+
+  return true;
 }
 
 bool ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
@@ -520,7 +524,11 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
   checkInputs(modelDef, tensorNames, tensors);
 
   loadInitializers(modelDef);
-  if (loadNetwork(modelDef)) {
-    setOutputNodes(modelDef);
+  if (!loadNetwork(modelDef)) {
+    GLOW_ASSERT("Cannot load the model.");
+  }
+
+  if (!setOutputNodes(modelDef)) {
+    GLOW_ASSERT("Cannot load external outputs.");
   }
 }

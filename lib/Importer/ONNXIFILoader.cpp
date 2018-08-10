@@ -118,6 +118,10 @@ std::unique_ptr<ModelLoader> ModelLoader::parse(
   if (!loader->loadNetwork(modelDef)) {
     return nullptr;
   }
+  
+  if (!loader->setOutputNodes(modelDef)) {
+    return nullptr;
+  }
 
   return loader;
 }
