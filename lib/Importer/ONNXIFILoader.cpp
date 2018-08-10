@@ -50,17 +50,21 @@ void ModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net) {
 
 /// Loads tensor \p T from the input \p in.
 static bool loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
+  std::cout << "memory type: " << in.memoryType << " CPU: " << ONNXIFI_MEMORY_TYPE_CPU << std::endl;
+  std::cout << "trying to load dimensions:" << in.dimensions << std::endl;
   // Only support CPU memory tensors.
-  if (in.memoryType != ONNXIFI_MEMORY_TYPE_CPU) {
+  if (in.memoryType && in.memoryType != ONNXIFI_MEMORY_TYPE_CPU) {
     return false;
   }
 
+  
   std::vector<size_t> dims;
   for (unsigned i = 0; i < in.dimensions; ++i) {
     dims.push_back(in.shape[i]);
   }
 
   if (in.dataType == ONNXIFI_DATATYPE_FLOAT32) {
+    std::cout << "trying to load tensor, dims: " << in.dimensions <<  std::endl;
     T->reset(ElemKind::FloatTy, dims);
 
     auto TH = T->getHandle<>();
@@ -87,12 +91,16 @@ static bool loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
 bool ModelLoader::loadWeights(uint32_t weightsCount,
                               const onnxTensorDescriptorV1 *weightDescriptors) {
   for (uint32_t i = 0; i < weightsCount; ++i) {
+    std::cout << "loading tensor" << std::endl;
     Tensor *T = new Tensor();
 
+    std::cout << "loading weight" << std::endl;
     if (!loadWeight(weightDescriptors[i], T)) {
+      std::cout << "failed to load the weight" << std::endl;
       return false;
     }
 
+    std::cout << "set the weight descriptor" << std::endl;
     tensors_[weightDescriptors[i].name] = T;
   }
 
@@ -104,19 +112,29 @@ std::unique_ptr<ModelLoader> ModelLoader::parse(
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F) {
   std::unique_ptr<ModelLoader> loader(new ModelLoader(F));
 
-  ONNX_NAMESPACE::GraphProto modelDef;
-  if (!loader->loadProto(modelDef, onnxModel, onnxModelSize)) {
-    return nullptr;
-  }
-
+  //ONNX_NAMESPACE::GraphProto modelDef;
+  //std::cout << "before loading proto" << std::endl;
+  //if (!loader->loadProto(modelDef, onnxModel, onnxModelSize)) {
+  //  return nullptr;
+  //}
+  
+  std::cout << "before loading weights, weightsCount" << weightsCount << std::endl;
   if (!loader->loadWeights(weightsCount, weightDescriptors)) {
     return nullptr;
   }
-  loader->loadInputs(modelDef);
 
-  if (!loader->loadNetwork(modelDef)) {
+  std::cout << "before loading inputs" << std::endl;
+  /*loader->loadInputs(modelDef);
+
+  std::cout << "before loading outputs" << std::endl;
+  if (!loader->setOutputNodes(modelDef)) {
     return nullptr;
   }
+
+  std::cout << "before loading network" << std::endl;
+  if (!loader->loadNetwork(modelDef)) {
+    return nullptr;
+  }*/
 
   return loader;
 }

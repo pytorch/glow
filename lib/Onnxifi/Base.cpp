@@ -47,11 +47,15 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
                             const onnxTensorDescriptorV1 *weightDescriptors) {
   // TODO: support multiple functions here.
   function_ = backendPtr_->getEE().getModule().createFunction("inference");
+  std::cout << "got the backend and function" << std::endl;
 
   std::unique_ptr<ModelLoader> loader = ModelLoader::parse(
       onnxModel, onnxModelSize, weightCount, weightDescriptors, *function_);
+  
+  function_->dumpDAG();
   // TODO: make better error reporting.
   if (!loader) {
+    std::cout << "no loader, return internal error" << std::endl;
     return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 

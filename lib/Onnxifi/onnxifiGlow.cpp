@@ -41,6 +41,7 @@ onnxGetBackendIDs(onnxBackendID *backendIDs, size_t *numBackends) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
 
+  std::cout << "hello from GetBackendID" << std::endl;
   // In case backendIDs are not set, just return total number of supported
   // backends.
   if (!backendIDs) {
@@ -60,6 +61,8 @@ onnxGetBackendIDs(onnxBackendID *backendIDs, size_t *numBackends) {
 /// (onnxBackend, onnxGraph, onnxEvent) before calling this function.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxReleaseBackendID(onnxBackendID backendID) {
+  std::cout << "hello from ReleaseBackendID" << std::endl;
+
   auto *backendId = static_cast<glow::onnxifi::BackendIdPtr>(backendID);
   if (!backendID) {
     return ONNXIFI_STATUS_INVALID_ID;
@@ -134,6 +137,8 @@ onnxGetBackendInfo(onnxBackendID backendID, onnxBackendInfo infoType,
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxGetBackendCompatibility(onnxBackendID backendID, size_t onnxModelSize,
                             const void *onnxModel) {
+  std::cout << "hello from onnxGetBackendCompatibility" << std::endl;
+
   if (!onnxModel) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -173,6 +178,8 @@ onnxGetBackendCompatibility(onnxBackendID backendID, size_t onnxModelSize,
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxInitBackend(onnxBackendID backendID, const uint64_t *auxpropertiesList,
                 onnxBackend *backend) {
+  std::cout << "hello from onnxInitBackend" << std::endl;
+
   if (!backend) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -191,6 +198,8 @@ onnxInitBackend(onnxBackendID backendID, const uint64_t *auxpropertiesList,
 /// Deinitialize an ONNXIFI backend and release associated resources.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxReleaseBackend(onnxBackend backend) {
+  std::cout << "hello from onnxReleaseBackend" << std::endl;
+
   auto *glowBackend = static_cast<glow::onnxifi::BackendPtr>(backend);
   if (!glowBackend) {
     return ONNXIFI_STATUS_INVALID_BACKEND;
@@ -204,6 +213,8 @@ onnxReleaseBackend(onnxBackend backend) {
 /// Initialize a single-shot ONNXIFI event.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxInitEvent(onnxBackend backend, onnxEvent *event) {
+  std::cout << "hello from onnxInitEvent" << std::endl;
+
   if (!event) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -220,6 +231,8 @@ onnxInitEvent(onnxBackend backend, onnxEvent *event) {
 /// Change the state of the ONNXIFI event \p event to signalled.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxSignalEvent(onnxEvent event) {
+  std::cout << "hello from onnxSignalEvent" << std::endl;
+
   auto *glowEvent = static_cast<glow::onnxifi::EventPtr>(event);
   if (!event) {
     return ONNXIFI_STATUS_INVALID_EVENT;
@@ -235,6 +248,8 @@ onnxSignalEvent(onnxEvent event) {
 /// Wait until an ONNXIFI event is signalled.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxWaitEvent(onnxEvent event) {
+  std::cout << "hello from onnxWaitEvent" << std::endl;
+
   auto *glowEvent = static_cast<glow::onnxifi::EventPtr>(event);
   if (!glowEvent) {
     return ONNXIFI_STATUS_INVALID_EVENT;
@@ -250,6 +265,8 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
   onnxGetEventState(
     onnxEvent event,
     onnxEventState* state) {
+  std::cout << "hello from onnxGetEventState" << std::endl;
+
   if (!state) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -267,6 +284,8 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 /// Deinitialize an ONNXIFI event and release associated resources.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxReleaseEvent(onnxEvent event) {
+  std::cout << "hello from onnxReleaseEvent" << std::endl;
+ 
   auto *glowEvent = static_cast<glow::onnxifi::EventPtr>(event);
   if (!glowEvent) {
     return ONNXIFI_STATUS_INVALID_EVENT;
@@ -282,6 +301,9 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxInitGraph(
     onnxBackend backend, const uint64_t *auxPropertiesList,
     size_t onnxModelSize, const void *onnxModel, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, onnxGraph *graph) {
+  std::cout << "hello from onnxInitGraph" << std::endl;
+  std::cout << "weights count: " << weightsCount << std::endl;
+
   if (!onnxModel || !weightDescriptors || !graph) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -310,6 +332,8 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxSetGraphIO(
     onnxGraph graph, uint32_t inputsCount,
     const onnxTensorDescriptorV1 *inputDescriptors, uint32_t outputsCount,
     const onnxTensorDescriptorV1 *outputDescriptors) {
+  std::cout << "hello from onnxSetGraphIO" << std::endl;
+
   if (!inputDescriptors || !outputDescriptors) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -328,6 +352,8 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxSetGraphIO(
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxRunGraph(onnxGraph graph, const onnxMemoryFenceV1 *inputFence,
              onnxMemoryFenceV1 *outputFence) {
+  std::cout << "hello from onnxRunGraph" << std::endl;
+  
   if (!inputFence || !outputFence) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -370,6 +396,8 @@ onnxRunGraph(onnxGraph graph, const onnxMemoryFenceV1 *inputFence,
 /// It blocks until all in-flight inference operations complete.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxReleaseGraph(onnxGraph graph) {
+  std::cout << "hello from onnxReleaseGraph" << std::endl;
+
   auto *glowGraph = static_cast<glow::onnxifi::GraphPtr>(graph);
   if (!glowGraph) {
     return ONNXIFI_STATUS_INVALID_GRAPH;
