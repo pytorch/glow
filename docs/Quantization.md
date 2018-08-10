@@ -74,16 +74,22 @@ For example, you can run the following command to capture profile for Resnet50.
 ./bin/image-classifier tests/images/imagenet/*.png -image_mode=0to1 -m=resnet50 -dump_profile="profile.yaml"
 ```
 By default, the loader will produce quantized results using asymmetric ranges.
-That is ranges not necessarily centered on 0. The loader supports two modes
-or schemas of quantization: asymmetric and symmetric. The symmetric schema
+That is ranges not necessarily centered on 0. The loader supports three modes
+or schemas of quantization: asymmetric, symmetric, and symmetric with uint8. The symmetric schema
 will always map the data on ranges centered on 0. In practice, this means
 the symmetric schema may extend the range it needs to capture to make
 sure 0.0 is at the center of that range. Therefore, this schema potentially
 waste some encoding space to enforce the symmetric property, but it comes
 with the property that the offset is always equal to zero.
+The symmetric with uint8 schema conceptually produces ranges where the offset
+is always equal to zero but allows the quantized ranges to be either
+int8 [-128; 127] or uint8 [0; 255]. In practice, this schema represents
+uint8 ranges using int8 ranges with an offset of -128. Therefore, when
+using this schema, the produced profile will have two kinds of ranges:
+one with an offset of 0 and the other with an offset of -128.
 Use ```quantization-schema=<schema>``` to specify the schema for
-the quantization process, where schema is either ```asymmetric``` or
-```symmetric```.
+the quantization process, where schema is ```asymmetric```,
+```symmetric```, or ```symmetric_with_uint8```.
 
 
 ```load_profile=profile.yaml``` option is used to quantize graph based on the
