@@ -71,10 +71,14 @@ llvm::cl::opt<std::string> dumpProfileFileOpt(
 llvm::cl::opt<quantization::Schema> quantizationSchema(
     "quantization-schema",
     llvm::cl::desc("Specify which quantization schema to use"),
-    llvm::cl::values(clEnumValN(quantization::Schema::Asymmetric, "asymmetric",
-                                "Use asymmetric ranges"),
-                     clEnumValN(quantization::Schema::Symmetric, "symmetric",
-                                "Use symmetric ranges")),
+    llvm::cl::values(
+        clEnumValN(quantization::Schema::Asymmetric, "asymmetric",
+                   "Use asymmetric ranges"),
+        clEnumValN(quantization::Schema::Symmetric, "symmetric",
+                   "Use symmetric ranges"),
+        clEnumValN(quantization::Schema::SymmetricWithUInt8,
+                   "symmetric_with_uint8",
+                   "Use symmetric ranges with potentially uint8 ranges")),
     llvm::cl::init(quantization::Schema::Asymmetric), llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<std::string> loadProfileFileOpt(
