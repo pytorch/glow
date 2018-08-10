@@ -272,8 +272,9 @@ int main(int argc, char **argv) {
                     "tensor that has the same dimensions as the input tensor "
                     "without the first dimension.");
 
-  BB.newNode("SparseLengthsSum")
+  BB.newNode("SparseLengthsWeightedSum")
       .addInput("Data")
+      .addInput("Weights")
       .addInput("Indices")
       .addInput("Lengths")
       .addResultFromCtorArg()
@@ -282,7 +283,10 @@ int main(int argc, char **argv) {
                     "len(Lengths) entries: first Lengths[0] slices are "
                     "aggregated to Result[0], next Lengths[1] slices are "
                     "aggregated to Result[1], etc. I.e. sum(Lengths) must be "
-                    "equal to len(Indices).");
+                    "equal to len(Indices). Before doing aggregation, each "
+                    "individual slice is scaled by its weight: Result[0] = "
+                    "Weights[0] * Slice(0) + Weights[1] * Slice(1) + ... "
+                    "It implies that len(Weights) == len(Indices).");
 
   //===--------------------------------------------------------------------===//
   //                Non-linearities

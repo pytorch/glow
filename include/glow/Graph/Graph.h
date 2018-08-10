@@ -423,10 +423,17 @@ public:
   /// first Lengths[0] slices are aggregated to Result[0], next Lengths[1]
   /// slices are aggregated to Result[1], etc. I.e. sum(Lengths) must be equal
   /// to len(Indices).
-  SparseLengthsSumNode *createSparseLengthsSum(llvm::StringRef name,
-                                               NodeValue data,
-                                               NodeValue indices,
-                                               NodeValue lengths);
+  SparseLengthsWeightedSumNode *createSparseLengthsSum(llvm::StringRef name,
+                                                       NodeValue data,
+                                                       NodeValue indices,
+                                                       NodeValue lengths);
+
+  /// Same as SparseLengthsSum, but i-th slice is multiplied by weights[i].
+  /// len(weights) must be equal to len(indices).
+  SparseLengthsWeightedSumNode *
+  createSparseLengthsWeightedSum(llvm::StringRef name, NodeValue data,
+                                 NodeValue weights, NodeValue indices,
+                                 NodeValue lengths);
 
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
   SaveNode *createSave(llvm::StringRef name, NodeValue input, Variable *output);

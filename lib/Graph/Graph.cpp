@@ -1187,15 +1187,25 @@ BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name, TypeRef outTy,
       new BatchedAddNode(name, getParent()->uniqueType(*outTy), batch, sample));
 }
 
-SparseLengthsSumNode *Function::createSparseLengthsSum(llvm::StringRef name,
-                                                       NodeValue data,
-                                                       NodeValue indices,
-                                                       NodeValue lengths) {
+SparseLengthsWeightedSumNode *
+Function::createSparseLengthsSum(llvm::StringRef name, NodeValue data,
+                                 NodeValue indices, NodeValue lengths) {
+  auto ty =
+      getParent()->uniqueTypeWithNewShape(data.getType(), {indices.dims()[0]});
+  auto ones = createSplat(name.str() + ".ones", ty, 1.0);
+  return createSparseLengthsWeightedSum(name, data, ones, indices, lengths);
+}
+
+SparseLengthsWeightedSumNode *
+Function::createSparseLengthsWeightedSum(llvm::StringRef name, NodeValue data,
+                                         NodeValue weights, NodeValue indices,
+                                         NodeValue lengths) {
   auto inDims = data.dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = lengths.dims()[0];
   auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
-  return addNode(new SparseLengthsSumNode(name, outTy, data, indices, lengths));
+  return addNode(new SparseLengthsWeightedSumNode(name, outTy, data, weights,
+                                                  indices, lengths));
 }
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
