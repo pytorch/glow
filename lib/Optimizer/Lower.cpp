@@ -541,9 +541,9 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
   // divided into equal groups of consecutive channels. These will be separately
   // convolved each with its own filter (and bias), and then concatenated.
   // This will result in 4 * Group + 1 nodes.
-  llvm::ArrayRef<size_t> kernels = BNG.getKernels();
-  llvm::ArrayRef<size_t> pads = BNG.getPads();
-  llvm::ArrayRef<size_t> strides = BNG.getStrides();
+  llvm::ArrayRef<unsigned> kernels = BNG.getKernels();
+  llvm::ArrayRef<unsigned> pads = BNG.getPads();
+  llvm::ArrayRef<unsigned> strides = BNG.getStrides();
   unsigned group = BNG.getGroup();
   auto in = BNG.getInput();
   auto filter = BNG.getFilter();

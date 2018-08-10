@@ -53,13 +53,13 @@ public:
   ///@{
 
   MaxPoolWithXYInst *createMaxPoolWithXYOp(Value *input,
-                                           llvm::ArrayRef<size_t> kernels,
-                                           llvm::ArrayRef<size_t> strides,
-                                           llvm::ArrayRef<size_t> pads);
+                                           llvm::ArrayRef<unsigned> kernels,
+                                           llvm::ArrayRef<unsigned> strides,
+                                           llvm::ArrayRef<unsigned> pads);
 
-  AvgPoolInst *createAvgPoolOp(Value *input, llvm::ArrayRef<size_t> kernels,
-                               llvm::ArrayRef<size_t> strides,
-                               llvm::ArrayRef<size_t> pads);
+  AvgPoolInst *createAvgPoolOp(Value *input, llvm::ArrayRef<unsigned> kernels,
+                               llvm::ArrayRef<unsigned> strides,
+                               llvm::ArrayRef<unsigned> pads);
 
   CrossEntropyLossInst *createCrossEntropyLossOp(Value *P, Value *labels);
 

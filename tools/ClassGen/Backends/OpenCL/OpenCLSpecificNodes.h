@@ -20,9 +20,9 @@ BB.newNode("OCLConvolution")
     .addInput("Input")
     .addInput("Filter")
     .addInput("Bias")
-    .addMember(MemberType::VectorSizeT, "Kernels")
-    .addMember(MemberType::VectorSizeT, "Strides")
-    .addMember(MemberType::VectorSizeT, "Pads")
+    .addMember(MemberType::VectorUnsigned, "Kernels")
+    .addMember(MemberType::VectorUnsigned, "Strides")
+    .addMember(MemberType::VectorUnsigned, "Pads")
     .addResultFromCtorArg()
     .setDocstring(
         "This is an OpenCL-specific convolution implementation where the "
@@ -32,7 +32,7 @@ BB.newNode("OCLAvgPool")
     .addInput("Input")
     .addMember(MemberType::Unsigned, "Kernel")
     .addMember(MemberType::Unsigned, "Stride")
-    .addMember(MemberType::VectorSizeT, "Pads")
+    .addMember(MemberType::VectorUnsigned, "Pads")
     .addResultFromCtorArg()
     .setDocstring(
         "This is an OpenCL-specific Average Pool operation on the Input given "
@@ -43,7 +43,7 @@ BB.newNode("OCLMaxPool")
     .addInput("Input")
     .addMember(MemberType::Unsigned, "Kernel")
     .addMember(MemberType::Unsigned, "Stride")
-    .addMember(MemberType::VectorSizeT, "Pads")
+    .addMember(MemberType::VectorUnsigned, "Pads")
     .addResultFromCtorArg()
     .setDocstring(
         "This is an OpenCL-specific Max Pool operation on the Input given "

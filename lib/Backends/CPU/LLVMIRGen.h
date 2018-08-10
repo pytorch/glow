@@ -139,9 +139,11 @@ class LLVMIRGen {
   /// the type specified by \p kind.
   llvm::Value *emitConst(llvm::IRBuilder<> &builder, float val,
                          glow::ElemKind kind);
-  /// Generates LLVM IR that materializes the constant array \p vals.
-  llvm::Value *emitConstArray(llvm::IRBuilder<> &builder,
-                              llvm::ArrayRef<size_t> vals);
+  /// Generates LLVM IR that materializes the constant array \p vals. Note that
+  /// it will cast non-size_t types T into size_t.
+  template <typename T>
+  llvm::Value *emitConstSizeTArray(llvm::IRBuilder<> &builder,
+                                   llvm::ArrayRef<T> vals);
 
   /// Generates LLVM IR that materializes the constant array \p vals. Elements
   /// of vals have the type \p elemTy.

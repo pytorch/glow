@@ -116,9 +116,9 @@ static void checkType(NodeValue A, ElemKind expectedType) {
 }
 
 static void verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
-                              NodeValue bias, llvm::ArrayRef<size_t> kernels,
-                              llvm::ArrayRef<size_t> strides,
-                              llvm::ArrayRef<size_t> pads, size_t group) {
+                              NodeValue bias, llvm::ArrayRef<unsigned> kernels,
+                              llvm::ArrayRef<unsigned> strides,
+                              llvm::ArrayRef<unsigned> pads, size_t group) {
   assert(src.getElementType() == dest.getElementType() && "Invalid Type");
   assert(src.getElementType() == filter.getElementType() && "Invalid Type");
   assert(src.getElementType() == bias.getElementType() && "Invalid Type");
@@ -161,9 +161,9 @@ static void verifyFullyConnected(NodeValue src, NodeValue weights,
 }
 
 static void verifyPool(NodeValue src, NodeValue dest,
-                       llvm::ArrayRef<size_t> kernels,
-                       llvm::ArrayRef<size_t> strides,
-                       llvm::ArrayRef<size_t> pads) {
+                       llvm::ArrayRef<unsigned> kernels,
+                       llvm::ArrayRef<unsigned> strides,
+                       llvm::ArrayRef<unsigned> pads) {
   ShapeNHWC idim = ShapeNHWC(src.getType()->dims());
   ShapeNHWC odim = ShapeNHWC(dest.getType()->dims());
   (void)odim;

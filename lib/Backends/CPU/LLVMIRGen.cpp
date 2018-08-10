@@ -366,12 +366,17 @@ LLVMIRGen::emitConstOffsetsArray(llvm::IRBuilder<> &builder,
   return constArrayVar;
 }
 
-llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,
-                                       llvm::ArrayRef<size_t> vals) {
+template <typename T>
+llvm::Value *LLVMIRGen::emitConstSizeTArray(llvm::IRBuilder<> &builder,
+                                            llvm::ArrayRef<T> vals) {
+  assert(std::is_integral<T>() && "Can only convert integral type to size_t.");
   auto SizeTType = builder.getIntNTy(sizeof(size_t) * 8);
   std::vector<llvm::Constant *> elems;
   for (auto I : vals) {
-    elems.push_back(llvm::ConstantInt::get(SizeTType, I));
+    assert(I >= 0 && "Only allow casting positive values into size_t.");
+    assert(I <= std::numeric_limits<size_t>::max() &&
+           "Do not allow overflow of size_t.");
+    elems.push_back(llvm::ConstantInt::get(SizeTType, (size_t)I));
   }
   return emitConstArray(builder, elems, SizeTType);
 }
@@ -404,7 +409,7 @@ llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,
 llvm::Value *LLVMIRGen::emitValueDims(llvm::IRBuilder<> &builder,
                                       const glow::Value *val) {
   auto dims = val->dims();
-  return emitConstArray(builder, dims);
+  return emitConstSizeTArray(builder, dims);
 }
 
 llvm::Value *LLVMIRGen::emitValueSize(llvm::IRBuilder<> &builder,
@@ -1301,8 +1306,10 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     ShapeVector eDestDims = eBatchDims;
     eDestDims[BR->getAxis()] = 1;
 
-    auto *batchDims = emitConstArray(builder, eBatchDims);
-    auto *destDims = emitConstArray(builder, eDestDims);
+    auto *batchDims =
+        emitConstSizeTArray(builder, llvm::makeArrayRef(eBatchDims));
+    auto *destDims =
+        emitConstSizeTArray(builder, llvm::makeArrayRef(eDestDims));
 
     auto *F = getFunction("batchedreduceadd", dest->getElementType());
 
@@ -1352,9 +1359,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *filterDims = emitValueDims(builder, filter);
     auto *biasDims = emitValueDims(builder, bias);
 
-    auto *kernels = emitConstArray(builder, CI->getKernels());
-    auto *strides = emitConstArray(builder, CI->getStrides());
-    auto *pads = emitConstArray(builder, CI->getPads());
+    auto *kernels = emitConstSizeTArray(builder, CI->getKernels());
+    auto *strides = emitConstSizeTArray(builder, CI->getStrides());
+    auto *pads = emitConstSizeTArray(builder, CI->getPads());
     auto *group = emitConstSizeT(builder, CI->getGroup());
 
     const char *kernelName = "convolution";
@@ -1438,9 +1445,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *filterDims = emitValueDims(builder, filter);
     auto *biasDims = emitValueDims(builder, bias);
 
-    auto *kernels = emitConstArray(builder, CI->getKernels());
-    auto *strides = emitConstArray(builder, CI->getStrides());
-    auto *pads = emitConstArray(builder, CI->getPads());
+    auto *kernels = emitConstSizeTArray(builder, CI->getKernels());
+    auto *strides = emitConstSizeTArray(builder, CI->getStrides());
+    auto *pads = emitConstSizeTArray(builder, CI->getPads());
     auto *group = emitConstSizeT(builder, CI->getGroup());
 
     size_t inChannels = src->dims()[3];
@@ -1510,9 +1517,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcDims = emitValueDims(builder, src);
     auto *filterGradDims = emitValueDims(builder, filterGrad);
 
-    auto *kernels = emitConstArray(builder, CG->getKernels());
-    auto *strides = emitConstArray(builder, CG->getStrides());
-    auto *pads = emitConstArray(builder, CG->getPads());
+    auto *kernels = emitConstSizeTArray(builder, CG->getKernels());
+    auto *strides = emitConstSizeTArray(builder, CG->getStrides());
+    auto *pads = emitConstSizeTArray(builder, CG->getPads());
     auto *group = emitConstSizeT(builder, CG->getGroup());
 
     auto *F = getFunction("convolution_grad", srcGrad->getElementType());
@@ -1596,9 +1603,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *kernels = emitConstArray(builder, PM->getKernels());
-    auto *strides = emitConstArray(builder, PM->getStrides());
-    auto *pads = emitConstArray(builder, PM->getPads());
+    auto *kernels = emitConstSizeTArray(builder, PM->getKernels());
+    auto *strides = emitConstSizeTArray(builder, PM->getStrides());
+    auto *pads = emitConstSizeTArray(builder, PM->getPads());
 
     auto *F = getFunction("max_pool", dest->getElementType());
     createCall(builder, F,
@@ -1617,9 +1624,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *kernels = emitConstArray(builder, PMXY->getKernels());
-    auto *strides = emitConstArray(builder, PMXY->getStrides());
-    auto *pads = emitConstArray(builder, PMXY->getPads());
+    auto *kernels = emitConstSizeTArray(builder, PMXY->getKernels());
+    auto *strides = emitConstSizeTArray(builder, PMXY->getStrides());
+    auto *pads = emitConstSizeTArray(builder, PMXY->getPads());
 
     auto *F = getFunction("max_pool_xy", dest->getElementType());
     createCall(
@@ -1654,9 +1661,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *kernels = emitConstArray(builder, PA->getKernels());
-    auto *strides = emitConstArray(builder, PA->getStrides());
-    auto *pads = emitConstArray(builder, PA->getPads());
+    auto *kernels = emitConstSizeTArray(builder, PA->getKernels());
+    auto *strides = emitConstSizeTArray(builder, PA->getStrides());
+    auto *pads = emitConstSizeTArray(builder, PA->getPads());
 
     if (src->getType()->isQuantizedType()) {
       auto *destTy = dest->getType();
@@ -1696,9 +1703,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcGradDims = emitValueDims(builder, srcGrad);
     auto *destDims = emitValueDims(builder, PAG->getDest());
 
-    auto *kernels = emitConstArray(builder, PAG->getKernels());
-    auto *strides = emitConstArray(builder, PAG->getStrides());
-    auto *pads = emitConstArray(builder, PAG->getPads());
+    auto *kernels = emitConstSizeTArray(builder, PAG->getKernels());
+    auto *strides = emitConstSizeTArray(builder, PAG->getStrides());
+    auto *pads = emitConstSizeTArray(builder, PAG->getPads());
 
     auto *F = getFunction("avg_pool_grad", srcGrad->getElementType());
     createCall(builder, F,
@@ -1833,7 +1840,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       shuffSizeT.push_back((size_t)D);
     }
 
-    auto *shuffle = emitConstArray(builder, shuffSizeT);
+    auto *shuffle =
+        emitConstSizeTArray(builder, llvm::makeArrayRef(shuffSizeT));
     auto *len = emitConstSizeT(builder, TI->getShuffle().size());
 
     auto *F = getFunction("transpose", dest->getElementType());
@@ -1861,7 +1869,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDimsSize =
         emitConstSizeT(builder, dest->getType()->dims().size());
     auto *srcDimsSize = emitConstSizeT(builder, src->getType()->dims().size());
-    auto *offsetsPtr = emitConstArray(builder, offsets);
+    auto *offsetsPtr = emitConstSizeTArray(builder, offsets);
     auto *offsetsArraySize = emitConstSizeT(builder, offsets.size());
     auto *count = emitConstSizeT(builder, ITI->getCount());
     auto *axis = emitConstSizeT(builder, ITI->getAxis());
@@ -1892,7 +1900,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDimsSize =
         emitConstSizeT(builder, dest->getType()->dims().size());
     auto *srcDimsSize = emitConstSizeT(builder, src->getType()->dims().size());
-    auto *offsetsPtr = emitConstArray(builder, offsets);
+    auto *offsetsPtr = emitConstSizeTArray(builder, offsets);
     auto *offsetsArraySize = emitConstSizeT(builder, offsets.size());
 
     // Don't specialize the offsetPtr because we typically generate lots of

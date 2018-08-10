@@ -1120,8 +1120,8 @@ void OpenCLFunction::execute() {
         continue;
       }
 
-      auto odim = ShapeNHWC(odim_vec);
-      auto idim = ShapeNHWC(idim_vec);
+      auto odim = ShapeNHWC(llvm::makeArrayRef(odim_vec));
+      auto idim = ShapeNHWC(llvm::makeArrayRef(idim_vec));
 
       setKernelArg(kernel, numArgs + 1, odim);
       setKernelArg(kernel, numArgs + 2, idim);

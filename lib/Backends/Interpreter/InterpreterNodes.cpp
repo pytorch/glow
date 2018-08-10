@@ -39,8 +39,8 @@ void InterpreterFunction::fwdCopyInst(const CopyInst *I) {
 // This is the floating point implementation of Convolution.
 void InterpreterFunction::fwdConvolutionInst_FloatImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
-    llvm::ArrayRef<size_t> filterSizes, llvm::ArrayRef<size_t> strides,
-    llvm::ArrayRef<size_t> pads, size_t group) {
+    llvm::ArrayRef<unsigned> filterSizes, llvm::ArrayRef<unsigned> strides,
+    llvm::ArrayRef<unsigned> pads, size_t group) {
 
   auto inW = getWeightHandle(inV);
   auto outW = getWeightHandle(outV);
@@ -105,8 +105,8 @@ void InterpreterFunction::fwdConvolutionInst_FloatImpl(
 // This is the quantized i8 implementation of Convolution.
 void InterpreterFunction::fwdConvolutionInst_I8Impl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
-    llvm::ArrayRef<size_t> filterSizes, llvm::ArrayRef<size_t> strides,
-    llvm::ArrayRef<size_t> pads, size_t group) {
+    llvm::ArrayRef<unsigned> filterSizes, llvm::ArrayRef<unsigned> strides,
+    llvm::ArrayRef<unsigned> pads, size_t group) {
   auto inW = getWeightHandle<int8_t>(inV);
   auto outW = getWeightHandle<int8_t>(outV);
   auto filterW = getWeightHandle<int8_t>(filterV);
@@ -198,9 +198,9 @@ void InterpreterFunction::fwdConvolutionInst_I8Impl(
 }
 
 void InterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
-  llvm::ArrayRef<size_t> filterSizes = I->getKernels();
-  llvm::ArrayRef<size_t> pads = I->getPads();
-  llvm::ArrayRef<size_t> strides = I->getStrides();
+  llvm::ArrayRef<unsigned> filterSizes = I->getKernels();
+  llvm::ArrayRef<unsigned> pads = I->getPads();
+  llvm::ArrayRef<unsigned> strides = I->getStrides();
   size_t group = I->getGroup();
 
   if (I->getSrc()->getType()->isQuantizedType()) {
@@ -222,9 +222,9 @@ void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
   auto filterG = getWeightHandle(I->getFilterGrad());
   auto biasG = getWeightHandle(I->getBiasGrad());
 
-  llvm::ArrayRef<size_t> filterSizes = I->getKernels();
-  llvm::ArrayRef<size_t> pads = I->getPads();
-  llvm::ArrayRef<size_t> strides = I->getStrides();
+  llvm::ArrayRef<unsigned> filterSizes = I->getKernels();
+  llvm::ArrayRef<unsigned> pads = I->getPads();
+  llvm::ArrayRef<unsigned> strides = I->getStrides();
   size_t group = I->getGroup();
 
   inG.clear();
@@ -294,9 +294,9 @@ void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
 //===----------------------------------------------------------------------===//
 template <class T>
 static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<size_t> *SXY,
-                       llvm::ArrayRef<size_t> filterSizes,
-                       llvm::ArrayRef<size_t> strides,
-                       llvm::ArrayRef<size_t> pads) {
+                       llvm::ArrayRef<unsigned> filterSizes,
+                       llvm::ArrayRef<unsigned> strides,
+                       llvm::ArrayRef<unsigned> pads) {
   ShapeNHWC odim(outW->dims());
   ShapeNHWC idim(inW->dims());
   Handle<T> inHandle = inW->getHandle<T>();
