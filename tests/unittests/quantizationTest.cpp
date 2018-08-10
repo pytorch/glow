@@ -507,7 +507,8 @@ TEST(Quantization, chooseQuantizationSymmetric) {
   EXPECT_NEAR(symmetricParams.scale, 10.0 / 255, 0.001);
 
   // Map float [2.0; 5.0] to int [-128; 127].
-  // => [-5.0; 5.0] range for symmetric mode.
+  // Ranges are extended to include 0.
+  // => [0.0; 5.0] range for symmetric mode.
   symmetricParams =
       chooseQuantizationParams(2.0, 5.0, quantization::Schema::Symmetric);
   // Scale: (5.0 - (0.0)) / (127 - (-128)) == 5.0 / 255.0
