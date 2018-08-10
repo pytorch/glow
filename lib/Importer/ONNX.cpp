@@ -461,13 +461,13 @@ bool ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
 ONNXModelLoader::ONNXModelLoader(Function &F)
     : CommonOperatorLoader({}, {}, F) {}
 
-void ONNXModelLoader::checkInputs(onnx::GraphProto &net,
+void ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
                                   llvm::ArrayRef<const char *> tensorNames,
                                   llvm::ArrayRef<Tensor *> tensors) {
   for (size_t i = 0; i < tensorNames.size(); i++) {
     // Look if a corresponding input exists.
     for (int j = 0; j < net.input_size(); j++) {
-      const onnx::ValueInfoProto &valueInfo = net.input(j);
+      const ONNX_NAMESPACE::ValueInfoProto &valueInfo = net.input(j);
       const std::string &inputName = valueInfo.name();
 
       if (inputName != tensorNames[i]) {
@@ -475,8 +475,9 @@ void ONNXModelLoader::checkInputs(onnx::GraphProto &net,
       }
 
       llvm::ArrayRef<size_t> dims = tensors[i]->dims();
-      const onnx::TensorShapeProto &shape =
+      const ONNX_NAMESPACE::TensorShapeProto &shape =
           valueInfo.type().tensor_type().shape();
+      (void)shape;
 
       // Check if the number of dimensions is consistent.
       assert(dims.size() == shape.dim_size() &&
