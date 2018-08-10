@@ -391,9 +391,9 @@ llvm::StringRef Module::uniqueName(llvm::StringRef name,
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       size_t depth,
-                                      llvm::ArrayRef<size_t> kernels,
-                                      llvm::ArrayRef<size_t> strides,
-                                      llvm::ArrayRef<size_t> pads,
+                                      llvm::ArrayRef<unsigned> kernels,
+                                      llvm::ArrayRef<unsigned> strides,
+                                      llvm::ArrayRef<unsigned> pads,
                                       unsigned group) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   ShapeHW kdim(kernels);
@@ -436,9 +436,9 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
 /// Check that the dimensions that are passed in when the convolution is
 /// constructed are correct.
 static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
-                           llvm::ArrayRef<size_t> kernels,
-                           llvm::ArrayRef<size_t> strides,
-                           llvm::ArrayRef<size_t> pads, unsigned group) {
+                           llvm::ArrayRef<unsigned> kernels,
+                           llvm::ArrayRef<unsigned> strides,
+                           llvm::ArrayRef<unsigned> pads, unsigned group) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   PaddingTLBR pdim(pads);
   (void)pdim;
@@ -462,9 +462,9 @@ static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       NodeValue filter, NodeValue bias,
                                       TypeRef outTy,
-                                      llvm::ArrayRef<size_t> kernels,
-                                      llvm::ArrayRef<size_t> strides,
-                                      llvm::ArrayRef<size_t> pads,
+                                      llvm::ArrayRef<unsigned> kernels,
+                                      llvm::ArrayRef<unsigned> strides,
+                                      llvm::ArrayRef<unsigned> pads,
                                       unsigned group) {
   assertConvDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
@@ -474,30 +474,30 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       NodeValue filter, NodeValue bias,
-                                      TypeRef outTy, size_t kernel,
-                                      size_t stride, size_t pad,
+                                      TypeRef outTy, unsigned kernel,
+                                      unsigned stride, unsigned pad,
                                       unsigned group) {
-  llvm::SmallVector<size_t, 4> pads = {pad, pad, pad, pad};
-  llvm::SmallVector<size_t, 2> strides = {stride, stride};
-  llvm::SmallVector<size_t, 2> kernels = {kernel, kernel};
+  llvm::SmallVector<unsigned, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned, 2> kernels = {kernel, kernel};
   return createConv(name, input, filter, bias, outTy, kernels, strides, pads,
                     group);
 }
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
-                                      size_t depth, size_t kernel,
-                                      size_t stride, size_t pad,
+                                      size_t depth, unsigned kernel,
+                                      unsigned stride, unsigned pad,
                                       unsigned group) {
-  llvm::SmallVector<size_t, 4> pads = {pad, pad, pad, pad};
-  llvm::SmallVector<size_t, 2> strides = {stride, stride};
-  llvm::SmallVector<size_t, 2> kernels = {kernel, kernel};
+  llvm::SmallVector<unsigned, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned, 2> kernels = {kernel, kernel};
   return createConv(name, input, depth, kernels, strides, pads, group);
 }
 
 MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
-                                     llvm::ArrayRef<size_t> kernels,
-                                     llvm::ArrayRef<size_t> strides,
-                                     llvm::ArrayRef<size_t> pads) {
+                                     llvm::ArrayRef<unsigned> kernels,
+                                     llvm::ArrayRef<unsigned> strides,
+                                     llvm::ArrayRef<unsigned> pads) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   PaddingTLBR pdim(pads);
   (void)pdim;
@@ -516,17 +516,18 @@ MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
 }
 
 MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
-                                     size_t kernel, size_t stride, size_t pad) {
-  llvm::SmallVector<size_t, 4> pads = {pad, pad, pad, pad};
-  llvm::SmallVector<size_t, 2> strides = {stride, stride};
-  llvm::SmallVector<size_t, 2> kernels = {kernel, kernel};
+                                     unsigned kernel, unsigned stride,
+                                     unsigned pad) {
+  llvm::SmallVector<unsigned, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned, 2> kernels = {kernel, kernel};
   return createMaxPool(name, input, kernels, strides, pads);
 }
 
 AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
-                                     llvm::ArrayRef<size_t> kernels,
-                                     llvm::ArrayRef<size_t> strides,
-                                     llvm::ArrayRef<size_t> pads) {
+                                     llvm::ArrayRef<unsigned> kernels,
+                                     llvm::ArrayRef<unsigned> strides,
+                                     llvm::ArrayRef<unsigned> pads) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   PaddingTLBR pdim(pads);
   (void)pdim;
@@ -545,10 +546,11 @@ AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
 }
 
 AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
-                                     size_t kernel, size_t stride, size_t pad) {
-  llvm::SmallVector<size_t, 4> pads = {pad, pad, pad, pad};
-  llvm::SmallVector<size_t, 2> strides = {stride, stride};
-  llvm::SmallVector<size_t, 2> kernels = {kernel, kernel};
+                                     unsigned kernel, unsigned stride,
+                                     unsigned pad) {
+  llvm::SmallVector<unsigned, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned, 2> kernels = {kernel, kernel};
   return createAvgPool(name, input, kernels, strides, pads);
 }
 

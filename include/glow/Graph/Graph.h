@@ -200,40 +200,40 @@ public:
   ///@{
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
-                              size_t depth, llvm::ArrayRef<size_t> kernels,
-                              llvm::ArrayRef<size_t> strides,
-                              llvm::ArrayRef<size_t> pads, unsigned group);
+                              size_t depth, llvm::ArrayRef<unsigned> kernels,
+                              llvm::ArrayRef<unsigned> strides,
+                              llvm::ArrayRef<unsigned> pads, unsigned group);
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
-                              llvm::ArrayRef<size_t> kernels,
-                              llvm::ArrayRef<size_t> strides,
-                              llvm::ArrayRef<size_t> pads, unsigned group);
+                              llvm::ArrayRef<unsigned> kernels,
+                              llvm::ArrayRef<unsigned> strides,
+                              llvm::ArrayRef<unsigned> pads, unsigned group);
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
-                              size_t depth, size_t kernel, size_t stride,
-                              size_t pad, unsigned group);
+                              size_t depth, unsigned kernel, unsigned stride,
+                              unsigned pad, unsigned group);
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
-                              size_t kernel, size_t stride, size_t pad,
+                              unsigned kernel, unsigned stride, unsigned pad,
                               unsigned group);
 
   MaxPoolNode *createMaxPool(llvm::StringRef name, NodeValue input,
-                             llvm::ArrayRef<size_t> kernels,
-                             llvm::ArrayRef<size_t> strides,
-                             llvm::ArrayRef<size_t> pads);
+                             llvm::ArrayRef<unsigned> kernels,
+                             llvm::ArrayRef<unsigned> strides,
+                             llvm::ArrayRef<unsigned> pads);
 
   MaxPoolNode *createMaxPool(llvm::StringRef name, NodeValue input,
-                             size_t kernel, size_t stride, size_t pad);
+                             unsigned kernel, unsigned stride, unsigned pad);
 
   AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
-                             llvm::ArrayRef<size_t> kernels,
-                             llvm::ArrayRef<size_t> strides,
-                             llvm::ArrayRef<size_t> pads);
+                             llvm::ArrayRef<unsigned> kernels,
+                             llvm::ArrayRef<unsigned> strides,
+                             llvm::ArrayRef<unsigned> pads);
 
   AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
-                             size_t kernel, size_t stride, size_t pad);
+                             unsigned kernel, unsigned stride, unsigned pad);
 
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, Variable *W,

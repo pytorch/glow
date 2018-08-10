@@ -49,14 +49,14 @@ static ArgumentDictionaryTy loadArgumentMap(const caffe2::OperatorDef &op) {
   return dict;
 }
 
-static std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
+static std::vector<unsigned> getPads(const ArgumentDictionaryTy &dict) {
   if (dict.count("pad")) {
     int pad = loadInt(dict.at("pad"));
-    std::vector<size_t> pads(4, pad);
+    std::vector<unsigned> pads(4, pad);
     return pads;
   }
   if (dict.count("pad_t")) {
-    std::vector<size_t> pads(4);
+    std::vector<unsigned> pads(4);
     pads[0] = loadInt(dict.at("pad_t"));
     assert(dict.count("pad_l") && "missing pad_l");
     pads[1] = loadInt(dict.at("pad_l"));
@@ -85,22 +85,22 @@ static unsigned getChannel(const ArgumentDictionaryTy &dict) {
   GLOW_ASSERT(false && "Invalid order field");
 }
 
-static std::vector<size_t> getSizeHW(ArgumentDictionaryTy &dict,
-                                     const std::string &name,
-                                     unsigned defaultValue) {
+static std::vector<unsigned> getSizeHW(ArgumentDictionaryTy &dict,
+                                       const std::string &name,
+                                       unsigned defaultValue) {
   if (dict.count(name)) {
     int value = loadInt(dict[name]);
-    std::vector<size_t> result(2, value);
+    std::vector<unsigned> result(2, value);
     return result;
   }
   if (dict.count(name + "_h") && dict.count(name + "_w")) {
-    std::vector<size_t> result(2);
+    std::vector<unsigned> result(2);
     result[0] = loadInt(dict[name + "_h"]);
     result[1] = loadInt(dict[name + "_w"]);
     return result;
   }
   if (dict.count(name + "s")) {
-    return getShape(dict.at(name + "s"));
+    return getShape<unsigned>(dict.at(name + "s"));
   }
   return {defaultValue, defaultValue};
 }
@@ -146,9 +146,9 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Conv") {
     // Load the inputs:
-    std::vector<size_t> strides = getSizeHW(dict, "stride", 1);
-    std::vector<size_t> pads = getPads(dict);
-    std::vector<size_t> kernels = getSizeHW(dict, "kernel", 0);
+    std::vector<unsigned> strides = getSizeHW(dict, "stride", 1);
+    std::vector<unsigned> pads = getPads(dict);
+    std::vector<unsigned> kernels = getSizeHW(dict, "kernel", 0);
     unsigned group = dict.count("group") ? loadInt(dict["group"]) : 1;
 
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
@@ -206,9 +206,9 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "MaxPool" || typeName == "AveragePool") {
     // Load the inputs:
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
-    std::vector<size_t> strides = getSizeHW(dict, "stride", 1);
-    std::vector<size_t> kernels = getSizeHW(dict, "kernel", 0);
-    std::vector<size_t> pads = getPads(dict);
+    std::vector<unsigned> strides = getSizeHW(dict, "stride", 1);
+    std::vector<unsigned> kernels = getSizeHW(dict, "kernel", 0);
+    std::vector<unsigned> pads = getPads(dict);
 
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
 

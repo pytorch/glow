@@ -60,9 +60,9 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addInput("Filter")
       .addInput("Bias")
-      .addMember(MemberType::VectorSizeT, "Kernels")
-      .addMember(MemberType::VectorSizeT, "Strides")
-      .addMember(MemberType::VectorSizeT, "Pads")
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
       .addResultFromCtorArg()
       .addGradient()
@@ -72,9 +72,9 @@ int main(int argc, char **argv) {
 
   BB.newNode("MaxPool")
       .addInput("Input")
-      .addMember(MemberType::VectorSizeT, "Kernels")
-      .addMember(MemberType::VectorSizeT, "Strides")
-      .addMember(MemberType::VectorSizeT, "Pads")
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs a Max Pool operation on the Input given provided "
@@ -82,9 +82,9 @@ int main(int argc, char **argv) {
 
   BB.newNode("AvgPool")
       .addInput("Input")
-      .addMember(MemberType::VectorSizeT, "Kernels")
-      .addMember(MemberType::VectorSizeT, "Strides")
-      .addMember(MemberType::VectorSizeT, "Pads")
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs an Average Pool operation on the Input given "

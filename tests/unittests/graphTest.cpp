@@ -232,9 +232,9 @@ TEST(Graph, simpleQuant) {
   auto *F = MD.createFunction("main");
 
   unsigned depth = 16;
-  llvm::SmallVector<size_t, 2> kernels = {5, 5};
-  llvm::SmallVector<size_t, 4> pads = {0, 0, 0, 0};
-  llvm::SmallVector<size_t, 2> steps = {1, 1};
+  llvm::SmallVector<unsigned, 2> kernels = {5, 5};
+  llvm::SmallVector<unsigned, 4> pads = {0, 0, 0, 0};
+  llvm::SmallVector<unsigned, 2> steps = {1, 1};
   unsigned width = 224;
 
   auto *input = MD.createVariable(ElemKind::Int8QTy, {1, width, width, 3}, 0.4,

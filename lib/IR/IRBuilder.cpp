@@ -56,9 +56,9 @@ void IRBuilder::deallocateActiveInstrs() {
 //                        High level operators.
 //===----------------------------------------------------------------------===//
 MaxPoolWithXYInst *
-IRBuilder::createMaxPoolWithXYOp(Value *input, llvm::ArrayRef<size_t> kernels,
-                                 llvm::ArrayRef<size_t> strides,
-                                 llvm::ArrayRef<size_t> pads) {
+IRBuilder::createMaxPoolWithXYOp(Value *input, llvm::ArrayRef<unsigned> kernels,
+                                 llvm::ArrayRef<unsigned> strides,
+                                 llvm::ArrayRef<unsigned> pads) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
 
   auto outSz =
@@ -78,9 +78,9 @@ IRBuilder::createMaxPoolWithXYOp(Value *input, llvm::ArrayRef<size_t> kernels,
                                  pads);
 }
 AvgPoolInst *IRBuilder::createAvgPoolOp(Value *input,
-                                        llvm::ArrayRef<size_t> kernels,
-                                        llvm::ArrayRef<size_t> strides,
-                                        llvm::ArrayRef<size_t> pads) {
+                                        llvm::ArrayRef<unsigned> kernels,
+                                        llvm::ArrayRef<unsigned> strides,
+                                        llvm::ArrayRef<unsigned> pads) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
 
   auto outSz =

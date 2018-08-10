@@ -118,9 +118,9 @@ bool ONNXModelLoader::loadProto(ONNX_NAMESPACE::GraphProto &net,
   return loadProto(net, fileStream);
 }
 
-std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
+std::vector<unsigned> getPads(const ArgumentDictionaryTy &dict) {
   if (dict.count("pads")) {
-    return getShape(dict.at("pads"));
+    return getShape<unsigned>(dict.at("pads"));
   }
   if (dict.count("auto_pad")) {
     auto padStr = loadStr(dict.at("auto_pad"));
@@ -235,13 +235,13 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
 
   if (typeName == "Conv") {
     // Load the inputs:
-    std::vector<size_t> strides(2, 1);
+    std::vector<unsigned> strides(2, 1);
     if (dict.count("strides")) {
-      strides = getShape(dict.at("strides"));
+      strides = getShape<unsigned>(dict.at("strides"));
     }
     unsigned group = dict.count("group") ? loadInt(dict["group"]) : 1;
     // Pads : {pad_top, pad_left, pad_bottom, pad_right}
-    std::vector<size_t> pads = getPads(dict);
+    std::vector<unsigned> pads = getPads(dict);
 
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
     Tensor *w = getTensorByName(op.input(1));
@@ -260,9 +260,9 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     // Construct the Filter field.
     auto *filter = G_.getParent()->createVariable("conv.filter", wtag);
 
-    std::vector<size_t> kernels(2);
+    std::vector<unsigned> kernels(2);
     if (dict.count("kernel_shape")) {
-      kernels = getShape(dict.at("kernel_shape"));
+      kernels = getShape<unsigned>(dict.at("kernel_shape"));
     } else {
       kernels[0] = filter->dims()[1];
       kernels[1] = filter->dims()[2];
@@ -306,13 +306,13 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "MaxPool" || typeName == "AveragePool") {
     // Load the inputs:
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
-    std::vector<size_t> strides(2, 1);
+    std::vector<unsigned> strides(2, 1);
     if (dict.count("strides")) {
-      strides = getShape(dict.at("strides"));
+      strides = getShape<unsigned>(dict.at("strides"));
     }
-    std::vector<size_t> kernels = getShape(dict.at("kernel_shape"));
+    std::vector<unsigned> kernels = getShape<unsigned>(dict.at("kernel_shape"));
 
-    std::vector<size_t> pads = getPads(dict);
+    std::vector<unsigned> pads = getPads(dict);
 
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
 
@@ -338,15 +338,15 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "GlobalAveragePool") {
     // Load the inputs:
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
-    std::vector<size_t> strides(2, 1);
+    std::vector<unsigned> strides(2, 1);
     if (dict.count("strides")) {
-      strides = getShape(dict.at("strides"));
+      strides = getShape<unsigned>(dict.at("strides"));
     }
 
-    std::vector<size_t> kernels(2);
+    std::vector<unsigned> kernels(2);
     kernels[0] = in.dims()[2];
     kernels[1] = in.dims()[3];
-    std::vector<size_t> pads = getPads(dict);
+    std::vector<unsigned> pads = getPads(dict);
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
     Node *node = G_.createAvgPool(opName, tr, kernels, strides, pads);
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);

@@ -44,7 +44,7 @@ struct ShapeNHWC {
   size_t w; // Width
   size_t c; // Number of Channels
 
-  explicit ShapeNHWC(llvm::ArrayRef<size_t> shape) {
+  template <typename T> explicit ShapeNHWC(llvm::ArrayRef<T> shape) {
     assert(shape.size() == 4 && "Invalid shape");
     n = shape[0];
     h = shape[1];
@@ -119,7 +119,7 @@ struct PaddingTLBR {
   size_t bottom;
   size_t right;
 
-  explicit PaddingTLBR(llvm::ArrayRef<size_t> pads) {
+  template <typename T> explicit PaddingTLBR(llvm::ArrayRef<T> pads) {
     assert(pads.size() == 4 && "Invalid padding");
     top = pads[0];
     left = pads[1];
@@ -136,7 +136,7 @@ struct ShapeHW {
   size_t height;
   size_t width;
 
-  explicit ShapeHW(llvm::ArrayRef<size_t> shape) {
+  template <typename T> explicit ShapeHW(llvm::ArrayRef<T> shape) {
     assert(shape.size() == 2 && "Invalid shape");
     height = shape[0];
     width = shape[1];

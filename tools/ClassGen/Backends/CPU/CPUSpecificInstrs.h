@@ -28,9 +28,9 @@ BB.newBackendSpecificInstr("CPUConvDKKC8")
     .addOperand("Src", OperandKind::In)
     .addOperand("Filter", OperandKind::In)
     .addOperand("Bias", OperandKind::In)
-    .addMember(MemberType::VectorSizeT, "Kernels")
-    .addMember(MemberType::VectorSizeT, "Strides")
-    .addMember(MemberType::VectorSizeT, "Pads")
+    .addMember(MemberType::VectorUnsigned, "Kernels")
+    .addMember(MemberType::VectorUnsigned, "Strides")
+    .addMember(MemberType::VectorUnsigned, "Pads")
     .addMember(MemberType::Unsigned, "Group")
     .autoIRGen();
 
